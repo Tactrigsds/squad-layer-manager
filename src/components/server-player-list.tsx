@@ -17,7 +17,7 @@ interface PlayerItemProps {
 }
 
 function PlayerItem({ player, matchId }: PlayerItemProps) {
-	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
+	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.secondaryFilterState)
 	return (
 		<div className="flex items-center gap-1.5 py-0.5 px-2 hover:bg-accent/50 rounded">
 			{player.isLeader && (
@@ -159,7 +159,7 @@ function TeamUnassignedSection({ players, matchId }: TeamUnassignedSectionProps)
 export default function ServerPlayerList() {
 	const interpolatedState = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.interpolatedState)
 	const eventBuffer = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.eventBuffer)
-	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
+	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.secondaryFilterState)
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
 
 	// Get the most recent matchId from the event buffer

@@ -51,10 +51,6 @@ export namespace InterpolableState {
 
 export type Event = SM.Events.Event
 
-export type DedupedBase = {
-	eventCount: number
-}
-
 // event enriched with relevant data
 export type EventEnriched =
 	| NoopEvent
@@ -64,27 +60,25 @@ export type EventEnriched =
 	| SM.Events.RconConnected
 	| SM.Events.RconDisconnected
 	| SM.Events.RoundEnded
-	| (SM.Events.PlayerConnected & { player: SM.Player })
-	| (SM.Events.PlayerDisconnected & { player: SM.Player })
-	| (SM.Events.PlayerDetailsChanged & { player: SM.Player })
+	| SM.Events.PlayerConnected<SM.Player>
+	| (SM.Events.PlayerDisconnected<SM.Player>)
+	| (SM.Events.PlayerDetailsChanged<SM.Player>)
 	| (SM.Events.SquadDetailsChanged & { squad: SM.Squad })
-	| (SM.Events.PlayerChangedTeam & { player: SM.Player; prevTeamId: SM.TeamId | null })
-	| (SM.Events.PlayerJoinedSquad & { player: SM.Player; squad: SM.Squad })
-	| (SM.Events.PlayerPromotedToLeader & { player: SM.Player })
+	| (SM.Events.PlayerChangedTeam<SM.Player> & { prevTeamId: SM.TeamId | null })
+	| (SM.Events.PlayerJoinedSquad<SM.Player> & { squad: SM.Squad })
+	| SM.Events.PlayerPromotedToLeader<SM.Player>
 	| (SM.Events.SquadDisbanded & { squad: SM.Squad })
-	| (SM.Events.PlayerLeftSquad & { player: SM.Player; wasLeader: boolean; squad: SM.Squad })
-	| { type: 'PLAYER_LEFT_SQUAD_DEDUPED'; players: (SM.Player & { wasLeader: boolean })[]; squad: SM.Squad } & SM.Events.Base
+	| (SM.Events.PlayerLeftSquad<SM.Player> & { wasLeader: boolean; squad: SM.Squad })
 	| (SM.Events.SquadCreated & { creator: SM.Player; squad: SM.Squad })
-	| (SM.Events.PlayerWarned & { player: SM.Player })
-	| { type: 'PLAYER_WARNED_DEDUPED'; players: (SM.Player & { times: number })[]; reason: string } & SM.Events.Base
-	| (SM.Events.PlayerBanned & { player: SM.Player })
-	| (SM.Events.PlayerKicked & { player: SM.Player })
-	| (SM.Events.PossessedAdminCamera & { player: SM.Player })
-	| (SM.Events.UnpossessedAdminCamera & { player: SM.Player })
-	| (SM.Events.ChatMessage & { player: SM.Player })
+	| SM.Events.PlayerWarned<SM.Player>
+	| SM.Events.PlayerBanned<SM.Player>
+	| SM.Events.PlayerKicked<SM.Player>
+	| SM.Events.PossessedAdminCamera<SM.Player>
+	| SM.Events.UnpossessedAdminCamera<SM.Player>
+	| SM.Events.ChatMessage<SM.Player>
 	| (SM.Events.AdminBroadcast & { player: SM.Player | undefined })
-	| (SM.Events.PlayerDied & { victim: SM.Player; attacker: SM.Player })
-	| (SM.Events.PlayerWounded & { victim: SM.Player; attacker: SM.Player })
+	| SM.Events.PlayerDied<SM.Player>
+	| SM.Events.PlayerWounded<SM.Player>
 
 export type NoopEvent = {
 	type: 'NOOP'
@@ -319,9 +313,9 @@ export function interpolateEvent(
 		}
 
 		case 'PLAYER_DISCONNECTED': {
-			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.playerIds)
+			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.player)
 			if (index === -1) {
-				return noop(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} disconnected but was not found in the player list`)
+				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} disconnected but was not found in the player list`)
 			}
 			const [player] = state.players.splice(index, 1)
 			return {
@@ -331,9 +325,9 @@ export function interpolateEvent(
 		}
 
 		case 'PLAYER_DETAILS_CHANGED': {
-			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.playerIds)
+			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.player)
 			if (index === -1) {
-				return noop(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} had details changed but was not found in the player list`)
+				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} had details changed but was not found in the player list`)
 			}
 			const player = state.players[index]
 			const updated = { ...player, ...event.details }
@@ -359,9 +353,9 @@ export function interpolateEvent(
 		}
 
 		case 'PLAYER_CHANGED_TEAM': {
-			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.playerIds)
+			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.player)
 			if (index === -1) {
-				return noop(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} joined squad but was not found in the player list`)
+				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} joined squad but was not found in the player list`)
 			}
 
 			const player = state.players[index]
@@ -378,9 +372,9 @@ export function interpolateEvent(
 		}
 
 		case 'PLAYER_JOINED_SQUAD': {
-			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.playerIds)
+			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.player)
 			if (index === -1) {
-				return noop(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} joined squad but was not found in the player list`)
+				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} joined squad but was not found in the player list`)
 			}
 
 			const player = state.players[index]
@@ -391,8 +385,8 @@ export function interpolateEvent(
 
 			if (SM.Squads.idsEqual(player, squad)) {
 				return noop(
-					`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} joined squad but was already in it ${
-						SM.PlayerIds.match(player.ids, squad.creatorIds) ? '(is creator)' : ''
+					`Player ${SM.PlayerIds.prettyPrint(event.player)} joined squad but was already in it ${
+						SM.PlayerIds.match(player.ids, squad.creator) ? '(is creator)' : ''
 					}`,
 				)
 			}
@@ -415,7 +409,7 @@ export function interpolateEvent(
 			for (let i = 0; i < state.players.length; i++) {
 				const player = state.players[i]
 				if (!SM.Squads.idsEqual(player, event)) continue
-				const isNewLeader = SM.PlayerIds.match(player.ids, event.newLeaderIds)
+				const isNewLeader = SM.PlayerIds.match(player.ids, event.player)
 				if (isNewLeader) {
 					newLeaderIdx = i
 				}
@@ -428,7 +422,7 @@ export function interpolateEvent(
 			}
 
 			if (newLeaderIdx === -1) {
-				return noop(`Player ${SM.PlayerIds.prettyPrint(event.newLeaderIds)} promoted to leader but was not found in the player list`)
+				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} promoted to leader but was not found in the player list`)
 			}
 
 			return {
@@ -450,15 +444,15 @@ export function interpolateEvent(
 		}
 
 		case 'PLAYER_LEFT_SQUAD': {
-			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.playerIds)
+			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.player)
 			if (index === -1) {
-				return noop(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} left squad but was not found in the player list`)
+				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} left squad but was not found in the player list`)
 			}
 
 			const player = state.players[index]
 			const squad = state.squads.find(s => SM.Squads.idsEqual(s, player))
 			if (!squad) {
-				return noop(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} left squad but was not found in the squad list`)
+				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} left squad but was not found in the squad list`)
 			}
 			const updatedPlayer: SM.Player = {
 				...player,
@@ -480,12 +474,12 @@ export function interpolateEvent(
 			if (existingSquad) {
 				return noop(`Squad ${SM.Squads.printKey(event.squad)} already exists`)
 			}
-			const creatorIndex = SM.PlayerIds.indexOf(state.players, p => p.ids, event.squad.creatorIds)
+			const creatorIndex = SM.PlayerIds.indexOf(state.players, p => p.ids, event.squad.creator)
 			const squad: SM.Squad = event.squad
 			if (creatorIndex === -1) {
 				return noop(
 					`Squad ${SM.Squads.printKey(squad)} "${event.squad.squadName}" created by unknown player ${
-						SM.PlayerIds.prettyPrint(squad.creatorIds)
+						SM.PlayerIds.prettyPrint(squad.creator)
 					}`,
 				)
 			}
@@ -512,11 +506,11 @@ export function interpolateEvent(
 			if (testPatterns(opts?.warnSuppressionPatterns ?? [], event.reason)) {
 				return noop(`Warn reason ${event.reason} matches warn suppression pattern`)
 			}
-			let player = SM.PlayerIds.find(state.players, p => p.ids, event.playerIds)
+			let player = SM.PlayerIds.find(state.players, p => p.ids, event.player)
 			if (!player) {
 				return noop(
 					`Player ${
-						SM.PlayerIds.prettyPrint(event.playerIds)
+						SM.PlayerIds.prettyPrint(event.player)
 					} was involved in ${event.type} but was not found in the interpolated player list`,
 				)
 			}
@@ -531,11 +525,11 @@ export function interpolateEvent(
 		case 'PLAYER_KICKED':
 		case 'POSSESSED_ADMIN_CAMERA':
 		case 'UNPOSSESSED_ADMIN_CAMERA': {
-			let player = SM.PlayerIds.find(state.players, p => p.ids, event.playerIds)
+			let player = SM.PlayerIds.find(state.players, p => p.ids, event.player)
 			if (!player) {
 				return noop(
 					`Player ${
-						SM.PlayerIds.prettyPrint(event.playerIds)
+						SM.PlayerIds.prettyPrint(event.player)
 					} was involved in ${event.type} but was not found in the interpolated player list`,
 				)
 			}
@@ -552,11 +546,11 @@ export function interpolateEvent(
 			}
 		}
 		case 'CHAT_MESSAGE': {
-			let player = SM.PlayerIds.find(state.players, p => p.ids, event.playerIds)
+			let player = SM.PlayerIds.find(state.players, p => p.ids, event.player)
 			if (!player) {
 				return noop(
 					`Player ${
-						SM.PlayerIds.prettyPrint(event.playerIds)
+						SM.PlayerIds.prettyPrint(event.player)
 					} was involved in ${event.type} but was not found in the interpolated player list`,
 				)
 			}
@@ -587,19 +581,19 @@ export function interpolateEvent(
 
 		case 'PLAYER_DIED':
 		case 'PLAYER_WOUNDED': {
-			const victim = SM.PlayerIds.find(state.players, p => p.ids, event.victimIds)
+			const victim = SM.PlayerIds.find(state.players, p => p.ids, event.victim)
 			if (!victim) {
 				return noop(
 					`Victim ${
-						SM.PlayerIds.prettyPrint(event.victimIds)
+						SM.PlayerIds.prettyPrint(event.victim)
 					} was involved in ${event.type} but was not found in the interpolated player list`,
 				)
 			}
-			const attacker = SM.PlayerIds.find(state.players, p => p.ids, event.attackerIds)
+			const attacker = SM.PlayerIds.find(state.players, p => p.ids, event.attacker)
 			if (!attacker) {
 				return noop(
 					`Attacker ${
-						SM.PlayerIds.prettyPrint(event.attackerIds)
+						SM.PlayerIds.prettyPrint(event.attacker)
 					} was involved in ${event.type} but was not found in the interpolated player list`,
 				)
 			}
@@ -625,10 +619,25 @@ export function interpolateEvent(
 	}
 }
 
-export const EVENT_FILTER_STATE = z.enum(['ALL', 'DEFAULT', 'CHAT', 'ADMIN'])
-export type EventFilterState = z.infer<typeof EVENT_FILTER_STATE>
+export type PrimaryFilterState = null | {
+	type: 'player'
+	id: SM.PlayerId
+} | {
+	type: 'squad'
+	id: number
+}
 
-export function isEventFiltered(event: EventEnriched, filterState: EventFilterState): boolean {
+export const SECONDARY_FILTER_STATE = z.enum(['ALL', 'DEFAULT', 'CHAT', 'ADMIN'])
+export type SecondaryFilterState = z.infer<typeof SECONDARY_FILTER_STATE>
+
+export type ChatViewOptionsStore = {
+	primaryFilter: PrimaryFilterState
+	setPrimaryFilter(primary: PrimaryFilterState): void
+	secondaryFilter: SecondaryFilterState
+	setSecondaryFilter(secondary: SecondaryFilterState): void
+}
+
+export function isEventFilteredBySecondary(event: EventEnriched, filterState: SecondaryFilterState): boolean {
 	// Always show new game and round ended events
 	if (
 		['NEW_GAME', 'ROUND_ENDED', 'RESET', 'RCON_CONNECTED', 'RCON_DISCONNECTED'].includes(event.type)
@@ -657,6 +666,18 @@ export function isEventFiltered(event: EventEnriched, filterState: EventFilterSt
 			return false
 		}
 		return true
+	}
+	return false
+}
+
+export function isEventAssocWithPlayer(event: EventEnriched, playerId: SM.PlayerId) {
+	if (event.type === 'NOOP') return false
+	const meta = SM.Events.EVENT_META[event.type]
+
+	for (const prop of meta.playerAssocs) {
+		// @ts-expect-error  idgaf
+		const player = event[prop] as SM.Player | undefined
+		if (player && SM.PlayerIds.getPlayerId(player.ids) === playerId) return true
 	}
 	return false
 }

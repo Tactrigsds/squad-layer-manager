@@ -330,6 +330,13 @@
       "when": 1766095577547,
       "tag": "0046_backfill_match_history_created_at",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "5",
+      "when": 1768858190467,
+      "tag": "0047_cool_squadron_sinister",
+      "breakpoints": true
     }
   ]
 }

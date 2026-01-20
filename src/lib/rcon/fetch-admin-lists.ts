@@ -28,7 +28,7 @@ export default C.spanOp(
 		const groups: OneToManyMap<string, string> = new Map()
 
 		// maps players to their groups
-		const players: OneToManyMap<bigint, string> = new Map()
+		const players: SM.SquadAdmins = new Map()
 
 		for (const [_idx, source] of sources.entries()) {
 			log.info(`Fetching admin list from ${source.type} source ${source.source}`)
@@ -93,17 +93,12 @@ export default C.spanOp(
 				}
 			}
 			for (const m of data.matchAll(adminRgx)) {
-				try {
-					const adminID = BigInt(m.groups!.adminID)
-					OneToMany.set(players, adminID, m.groups!.groupID)
-				} catch (error) {
-					log.error(`Error parsing admin group ${m.groups!.groupID} from admin list: ${source.source}`, error)
-				}
+				OneToMany.set(players, m.groups!.adminID, m.groups!.groupID)
 			}
 		}
 
 		log.trace(`${Object.keys(players).length} players loaded...`)
-		const admins: Set<bigint> = new Set()
+		const admins: SM.AdminList['admins'] = new Set()
 
 		for (const [steamId, group] of OneToMany.iter(players)) {
 			for (const [_, permission] of OneToMany.iter(groups, group)) {

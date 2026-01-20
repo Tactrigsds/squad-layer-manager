@@ -139,7 +139,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 				await SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.commands.missingSteamId())
 				return { code: 'err:missing-steam-id' as const }
 			}
-			const res = await Users.completeSteamAccountLink(ctx, args.code, msg.playerIds.steam)
+			const res = await Users.completeSteamAccountLink(ctx, args.code, BigInt(msg.playerIds.steam))
 			switch (res.code) {
 				case 'ok':
 					await SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.commands.steamAccountLinked(res.linkedUsername))

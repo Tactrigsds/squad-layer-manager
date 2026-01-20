@@ -187,7 +187,7 @@ export const startVote = C.spanOp(
 	'start',
 	{ module, levels: { event: 'info' }, attrs: (_, opts) => opts, mutexes: (ctx) => ctx.vote.mtx },
 	async (
-		ctx: C.Db & Partial<C.User> & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.AdminList,
+		ctx: C.Db & Partial<C.User> & C.SquadServer & C.Rcon & C.Vote & C.LayerQueue & C.MatchHistory & C.AdminList,
 		opts: V.StartVoteInput & { initiator: USR.GuiOrChatUserId | 'autostart' },
 	) => {
 		if (ctx.user !== undefined) {
@@ -291,7 +291,7 @@ export const startVote = C.spanOp(
 export const handleVote = C.spanOp('handle-vote', {
 	module,
 	attrs: (_, msg) => ({ messageId: msg.message, playerUsername: msg.playerIds.username }),
-}, (ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.AdminList, msg: SM.RconEvents.ChatMessage) => {
+}, (ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.Rcon & C.AdminList, msg: SM.RconEvents.ChatMessage) => {
 	//
 	const choiceIdx = parseInt(msg.message.trim())
 	const voteState = ctx.vote.state
@@ -351,7 +351,7 @@ export const abortVote = C.spanOp(
 	'abort',
 	{ module, levels: { event: 'info' }, attrs: (_, opts) => opts, mutexes: ctx => ctx.vote.mtx },
 	async (
-		ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.AdminList,
+		ctx: C.Db & C.Rcon & C.SquadServer & C.Vote & C.LayerQueue & C.AdminList,
 		opts: { aborter: USR.GuiOrChatUserId },
 	) => {
 		const voteState = ctx.vote.state
@@ -493,7 +493,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 const handleVoteTimeout = C.spanOp(
 	'handle-timeout',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.vote.mtx },
-	async (ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.AdminList) => {
+	async (ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.Rcon & C.AdminList) => {
 		const res = await DB.runTransaction(ctx, async (ctx) => {
 			if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') {
 				return {
@@ -558,7 +558,7 @@ const handleVoteTimeout = C.spanOp(
 )
 
 async function broadcastVoteUpdate(
-	ctx: C.SquadServer & C.Vote & C.AdminList,
+	ctx: C.SquadServer & C.Vote & C.AdminList & C.Rcon,
 	msg: string,
 	opts?: { onlyNotifyNonVotingAdmins?: boolean; repeatWarn?: boolean },
 ) {

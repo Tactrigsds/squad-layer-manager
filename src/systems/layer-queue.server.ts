@@ -226,7 +226,7 @@ export function schedulePostRollTasks(ctx: C.SquadServer, newLayerId: L.LayerId)
 export async function updateQueue(
 	{ input, ctx }: {
 		input: { layerQueue: LL.List; layerQueueSeqId: number }
-		ctx: C.OrpcBase & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory
+		ctx: C.OrpcBase & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.Rcon
 	},
 ) {
 	input = Obj.deepClone(input)
@@ -292,7 +292,7 @@ export async function updateQueue(
 }
 
 export async function warnShowNext(
-	ctx: C.Db & C.SquadServer & C.LayerQueue & C.AdminList,
+	ctx: C.Db & C.SquadServer & C.LayerQueue & C.Rcon & C.AdminList & C.Rcon,
 	playerIds: 'all-admins' | SM.PlayerIds.Type,
 	opts?: { repeat?: number },
 ) {
@@ -316,7 +316,7 @@ export async function warnShowNext(
  * sets next layer on server according to the current queue, generating a new queue item if needed. modifies serverState in place.
  */
 export async function syncNextLayerInPlace<NoDbWrite extends boolean>(
-	ctx: C.Db & (NoDbWrite extends true ? object : C.Tx) & C.SquadServer & C.LayerQueue & C.MatchHistory,
+	ctx: C.Db & (NoDbWrite extends true ? object : C.Tx) & C.SquadServer & C.Rcon & C.LayerQueue & C.MatchHistory,
 	serverState: SS.ServerState,
 	opts?: { skipDbWrite: NoDbWrite },
 ) {
@@ -392,7 +392,7 @@ export async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 }
 
 export async function toggleUpdatesToSquadServer(
-	{ ctx, input }: { ctx: C.Db & C.SquadServer & C.UserOrPlayer & C.LayerQueue & C.AdminList; input: { disabled: boolean } },
+	{ ctx, input }: { ctx: C.Db & C.SquadServer & C.UserOrPlayer & C.LayerQueue & C.AdminList & C.Rcon; input: { disabled: boolean } },
 ) {
 	// if player we assume authorization has already been established
 	if (ctx.user) {
@@ -419,7 +419,7 @@ export async function getSlmUpdatesEnabled(ctx: C.Db & C.UserOrPlayer & C.SquadS
 }
 
 export async function requestFeedback(
-	ctx: C.Db & C.SquadServer & C.LayerQueue & C.AdminList,
+	ctx: C.Db & C.SquadServer & C.LayerQueue & C.AdminList & C.Rcon,
 	playerName: string,
 	layerQueueNumber: string | undefined,
 ) {

@@ -1,7 +1,7 @@
 import { enumTupleOptions } from '@/lib/zod'
 import { bigint, index, int, json, mysqlEnum, mysqlTable, primaryKey, timestamp, unique, varchar } from 'drizzle-orm/mysql-core'
 import superjson from 'superjson'
-import { BALANCE_TRIGGER_LEVEL, SERVER_EVENT_TYPE } from './enums'
+import { BALANCE_TRIGGER_LEVEL, SERVER_EVENT_PLAYER_ASSOC_TYPE, SERVER_EVENT_TYPE } from './enums'
 
 export const matchHistory = mysqlTable(
 	'matchHistory',
@@ -57,7 +57,7 @@ export const balanceTriggerEvents = mysqlTable(
 export const serverEvents = mysqlTable(
 	'serverEvents',
 	{
-		id: int('id').primaryKey(),
+		id: int('id').primaryKey().autoincrement(),
 		type: mysqlEnum('type', enumTupleOptions(SERVER_EVENT_TYPE)).notNull(),
 		time: timestamp('time').notNull(),
 		matchId: int('matchId').references(() => matchHistory.id, { onDelete: 'cascade' }).notNull(),
@@ -65,6 +65,70 @@ export const serverEvents = mysqlTable(
 		version: int('version').default(1),
 		data: json('data').notNull(),
 	},
+	(table) => ({
+		typeIndex: index('typeIndex').on(table.type),
+		timeIndex: index('timeIndex').on(table.time),
+		matchIdIndex: index('matchIdIndex').on(table.matchId),
+	}),
+)
+
+export const players = mysqlTable(
+	'players',
+	{
+		steamId: bigint('steamId', { mode: 'bigint' }).primaryKey(),
+		eosId: varchar('eosId', { length: 32 }).notNull().unique(),
+		// exists for cases where we don't know wwhat the tag string is
+		username: varchar('username', { length: 48 }).notNull(),
+		usernameNoTag: varchar('usernameNoTag', { length: 32 }),
+		createdAt: timestamp('createdAt').defaultNow(),
+		modifiedAt: timestamp('modifiedAt').defaultNow(),
+	},
+	(table) => ({
+		eosIdIndex: index('eosIdIndex').on(table.eosId),
+		usernameIndex: index('usernameIndex').on(table.username),
+		createdAtIndex: index('createdAtIndex').on(table.createdAt),
+	}),
+)
+
+export const playerEventAssociations = mysqlTable(
+	'playerEventAssociations',
+	{
+		serverEventId: int('serverEventId').references(() => serverEvents.id, { onDelete: 'cascade' }).notNull(),
+		playerId: bigint('playerId', { mode: 'bigint' }).references(() => players.steamId, { onDelete: 'cascade' }).notNull(),
+		assocType: mysqlEnum('assocType', enumTupleOptions(SERVER_EVENT_PLAYER_ASSOC_TYPE)).notNull(),
+		createdAt: timestamp('createdAt').defaultNow(),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.serverEventId, table.playerId] }),
+		playerIdIndex: index('playerIdIndex').on(table.playerId),
+	}),
+)
+
+export const squads = mysqlTable(
+	'squads',
+	{
+		id: int('id').primaryKey(),
+		ingameSquadId: int('ingameSquadId').notNull(),
+		name: varchar('name', { length: 64 }).notNull(),
+		creatorId: bigint('creatorId', { mode: 'bigint' }).references(() => players.steamId, { onDelete: 'set null' }),
+		createdAt: timestamp('createdAt').defaultNow(),
+	},
+	(table) => ({
+		nameIndex: index('nameIndex').on(table.name),
+		creatorIdIndex: index('creatorIdIndex').on(table.creatorId),
+	}),
+)
+
+export const squadEventAssociations = mysqlTable(
+	'squadEventAssociations',
+	{
+		serverEventId: int('serverEventId').references(() => serverEvents.id, { onDelete: 'cascade' }).notNull(),
+		squadId: int('squadId').references(() => squads.id, { onDelete: 'cascade' }).notNull(),
+		createdAt: timestamp('createdAt').defaultNow(),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.serverEventId, table.squadId] }),
+	}),
 )
 
 export const filters = mysqlTable('filters', {

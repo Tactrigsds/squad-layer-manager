@@ -438,16 +438,14 @@ export type MatchHistory = CS.Ctx & {
 
 export type SquadServer =
 	& CS.Ctx
-	& Rcon
-	& {
-		server: SquadServerSys.SquadServer
-	}
+	& { server: SquadServerSys.SquadServer }
 	& ServerId
 
 export type SharedLayerList =
 	& CS.Ctx
 	& SharedLayerListSys.SharedLayerListContext
 	& ServerId
+
 export type ServerSliceCleanup = CS.Ctx & {
 	cleanup: CleanupTasks
 }

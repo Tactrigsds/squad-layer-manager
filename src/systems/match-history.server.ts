@@ -3,10 +3,12 @@ import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array'
 import { type CleanupTasks, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
+import { LRUMap } from '@/lib/lru-map'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import type { Parts } from '@/lib/types'
 import * as Messages from '@/messages'
 import * as BAL from '@/models/balance-triggers.models'
+import * as CHAT from '@/models/chat.models'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LOG from '@/models/logs'
@@ -23,7 +25,9 @@ import * as SquadServer from '@/systems/squad-server.server'
 import * as UsersClient from '@/systems/users.server'
 
 import { Mutex } from 'async-mutex'
+import { sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
+import { alias } from 'drizzle-orm/mysql-core'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
 
@@ -41,8 +45,8 @@ export type MatchHistoryContext = {
 	recentMatches: MH.MatchDetails[]
 	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
 
-	// NOTE: does not include the current match
-	recentMatchEvents: Map<number, SM.Events.Event[]>
+	// matchId -> event
+	interpolatedEventCache: LRUMap<number, Promise<CHAT.EventEnriched[]>>
 } & Parts<USR.UserPart>
 
 export function initMatchHistoryContext(cleanup: CleanupTasks): MatchHistoryContext {
@@ -55,7 +59,7 @@ export function initMatchHistoryContext(cleanup: CleanupTasks): MatchHistoryCont
 		parts: { users: [] },
 		recentMatches: [],
 		recentBalanceTriggerEvents: [],
-		recentMatchEvents: new Map(),
+		interpolatedEventCache: new LRUMap(200),
 	}
 
 	cleanup.push(ctx.update$, ctx.mtx)
@@ -130,18 +134,6 @@ export const loadState = C.spanOp(
 			Arr.upsertOn(state.recentBalanceTriggerEvents, unsuperjsonify(Schema.balanceTriggerEvents, row.balanceTriggerEvents), 'id')
 		}
 
-		for (const row of eventRows) {
-			const event = SquadServer.fromEventRow(row.serverEvents)
-			const matchId = row.matchId
-			// discord events from current match
-			if (matchId === ctx.matchHistory.recentMatches[ctx.matchHistory.recentMatches.length - 1].historyEntryId) continue
-			if (!state.recentMatchEvents.has(matchId)) {
-				state.recentMatchEvents.set(matchId, [])
-			}
-			const events = state.recentMatchEvents.get(matchId)!
-			Arr.upsertOn(events, event, 'id')
-		}
-
 		if (state.recentMatches.length > MH.MAX_RECENT_MATCHES) {
 			state.recentMatches = state.recentMatches.slice(state.recentMatches.length - MH.MAX_RECENT_MATCHES, state.recentMatches.length)
 		}
@@ -199,14 +191,79 @@ export const matchHistoryRouter = {
 
 	getMatchEvents: orpcBase.input(z.number()).handler(async ({ input: ordinal, context: _ctx }) => {
 		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
-		const match = ctx.matchHistory.recentMatches.find(m => ctx.serverId === m.serverId && m.ordinal === ordinal)
-		const previousMatch = ctx.matchHistory.recentMatches.find(m => ctx.serverId === m.serverId && m.ordinal === ordinal - 1)
-		if (!match) return null
-		const events = ctx.matchHistory.recentMatchEvents.get(match.historyEntryId)
+		let match = ctx.matchHistory.recentMatches.find(m => ctx.serverId === m.serverId && m.ordinal === ordinal)
+		let previousMatch = ctx.matchHistory.recentMatches.find(m => ctx.serverId === m.serverId && m.ordinal === ordinal - 1)
+
+		if (!match || !previousMatch) {
+			const ordinalsToFetch: number[] = []
+			if (!match) ordinalsToFetch.push(ordinal)
+			if (!previousMatch) ordinalsToFetch.push(ordinal - 1)
+
+			const matchesRaw = await ctx.db().select().from(Schema.matchHistory).where(
+				E.and(
+					E.eq(Schema.matchHistory.serverId, ctx.serverId),
+					E.inArray(Schema.matchHistory.ordinal, ordinalsToFetch),
+				),
+			)
+
+			for (const matchRaw of matchesRaw) {
+				if (matchRaw.ordinal === ordinal && !match) {
+					match = MH.matchHistoryEntryToMatchDetails(matchRaw, false)
+				} else if (matchRaw.ordinal === ordinal - 1 && !previousMatch) {
+					previousMatch = MH.matchHistoryEntryToMatchDetails(matchRaw, false)
+				}
+			}
+		}
+
+		if (!match) {
+			throw new Error(`Match with ordinal ${ordinal} not found`)
+		}
+
+		const events = await getEventsForMatches(ctx, match.historyEntryId)
+
 		return {
 			events,
 			previousOrdinal: previousMatch?.ordinal,
 		}
+	}),
+
+	getRecentPlayerEvents: orpcBase.input(z.object({
+		playerId: z.string(),
+		lastEventId: z.number().optional(),
+	})).handler(async ({ input, context: _ctx }) => {
+		const pageSize = 50
+		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
+		const playerId = BigInt(input.playerId)
+
+		// Get counts of player-associated events per match
+		const eventCountsPerMatch = await ctx.db()
+			.select({
+				matchId: Schema.serverEvents.matchId,
+				count: sql<number>`COUNT(${Schema.playerEventAssociations.serverEventId})`,
+			})
+			.from(Schema.playerEventAssociations)
+			.innerJoin(Schema.serverEvents, E.eq(Schema.playerEventAssociations.serverEventId, Schema.serverEvents.id))
+			.where(E.eq(Schema.playerEventAssociations.playerId, playerId))
+			.groupBy(Schema.serverEvents.matchId)
+			.orderBy(E.desc(Schema.serverEvents.matchId))
+			.limit(pageSize)
+
+		let matchesToLoad = []
+		let eventCount = 0
+		for (const { matchId, count } of eventCountsPerMatch) {
+			matchesToLoad.push(matchId)
+			if (eventCount >= pageSize) break
+			eventCount += count
+		}
+
+		const allEvents = await getEventsForMatches(ctx, ...matchesToLoad)
+
+		const events = allEvents.filter(event =>
+			event.type === 'NEW_GAME' || event.type === 'RESET' || event.type === 'ROUND_ENDED'
+			|| CHAT.isEventAssocWithPlayer(event, input.playerId)
+		)
+
+		return events
 	}),
 }
 
@@ -220,7 +277,6 @@ export const addNewCurrentMatch = C.spanOp(
 		await DB.runTransaction(ctx, async (ctx) => {
 			const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
-			const oldMatchId = currentMatch?.historyEntryId ?? null
 			await ctx.db().insert(Schema.matchHistory).values(
 				superjsonify(Schema.matchHistory, { ...entry, ordinal, serverId: ctx.serverId }),
 			)
@@ -231,10 +287,6 @@ export const addNewCurrentMatch = C.spanOp(
 			// flush the events buffer
 			const eventBuffer = ctx.server.state.eventBuffer
 			ctx.server.state.eventBuffer = []
-			// we should have a complete set of the now previous match's events, so let's set them here
-			if (oldMatchId) {
-				ctx.matchHistory.recentMatchEvents.set(oldMatchId, eventBuffer.filter(e => e.matchId === oldMatchId))
-			}
 
 			await loadState(ctx, { startAtOrdinal: ordinal })
 			addReleaseTask(ctx.matchHistory.dispatchUpdate)
@@ -357,3 +409,34 @@ export const syncWithCurrentLayer = C.spanOp(
 		})
 	},
 )
+
+const getEventsForMatches = C.spanOp('get-match-events', { module }, async (ctx: C.Db & C.MatchHistory, ..._matches: number[]) => {
+	const matches = _matches.toSorted((a, b) => a - b)
+
+	let ops: Promise<CHAT.EventEnriched[]>[] = []
+	for (const matchId of matches) {
+		const cachedEvents$ = ctx.matchHistory.interpolatedEventCache.get(matchId)
+		if (cachedEvents$) {
+			ops.push(cachedEvents$)
+			continue
+		}
+		const events$ = (async () => {
+			const it = ctx.db().select()
+				.from(Schema.serverEvents)
+				.where(E.inArray(Schema.serverEvents.id, matches))
+				.orderBy(E.asc(Schema.serverEvents.id)).iterator()
+
+			const state = CHAT.getInitialChatState()
+			for await (const rawEvent of it) {
+				const event = SquadServer.fromEventRow(rawEvent)
+				CHAT.handleEvent(state, event)
+			}
+			return state.eventBuffer
+		})()
+		ctx.matchHistory.interpolatedEventCache.set(matchId, events$)
+		ops.push(events$)
+	}
+
+	const allEvents = (await Promise.all(ops)).flat()
+	return allEvents
+})

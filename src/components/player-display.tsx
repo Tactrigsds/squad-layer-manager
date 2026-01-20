@@ -1,8 +1,10 @@
 import { MatchTeamDisplay } from '@/components/teams-display'
-
 import { cn } from '@/lib/utils'
-import type * as SM from '@/models/squad.models'
+import * as SM from '@/models/squad.models'
 import * as Icons from 'lucide-react'
+import { useOpenPlayerDetailsWindow } from './player-details-window.helpers'
+
+void import('@/components/player-details-window')
 
 export interface PlayerDisplayProps {
 	player: SM.Player
@@ -14,6 +16,12 @@ export interface PlayerDisplayProps {
 }
 
 export function PlayerDisplay({ player, showTeam, showSquad, showRole, className, matchId }: PlayerDisplayProps) {
+	const openWindow = useOpenPlayerDetailsWindow({ playerId: SM.PlayerIds.getPlayerId(player.ids) })
+
+	const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+		openWindow()
+	}
+
 	return (
 		<span className={cn('', className)}>
 			{player.isAdmin && (
@@ -21,9 +29,9 @@ export function PlayerDisplay({ player, showTeam, showSquad, showRole, className
 					<Icons.ShieldCheckIcon className="h-[1em] w-[1em] text-background fill-blue-300" />
 				</span>
 			)}
-			<span className="font-bold">
+			<button type="button" className="font-bold hover:underline cursor-pointer" onClick={handleClick}>
 				{player.ids.username}
-			</span>
+			</button>
 			{showTeam && player.teamId !== null && (
 				<span className="inline-flex flex-nowrap">
 					(<MatchTeamDisplay matchId={matchId} teamId={player.teamId} />)

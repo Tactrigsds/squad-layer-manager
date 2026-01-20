@@ -1,11 +1,17 @@
+import type { ServerEventPlayerAssocType } from '$root/drizzle/enums'
+import type * as SchemaModels from '$root/drizzle/schema.models'
+import * as Arr from '@/lib/array'
 import { createLogMatcher, eventDef, matchLog } from '@/lib/log-parsing'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
 import * as ZodUtils from '@/lib/zod'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
 import * as dateFns from 'date-fns'
+import { Event } from 'ws'
 
 import { z } from 'zod'
+
+export type SteamId = string
 
 export const ServerRawInfoSchema = z.object({
 	ServerName_s: z.string().default('Unknown'),
@@ -57,20 +63,36 @@ export const TeamIdSchema = z.union([z.literal(1), z.literal(2)])
 export type TeamId = z.infer<typeof TeamIdSchema>
 
 export namespace PlayerIds {
-	const SchemaBase = z.object({
-		username: z.string(),
-		steam: z.bigint().optional(),
-		eos: z.string().optional(),
-		playerController: z.string().optional(),
-	})
+	export type Fields = 'username' | 'steam' | 'eos' | 'playerController'
 
-	export const Schema = SchemaBase.refine((data) => data.steam || data.eos, {
-		error: 'At least one of  (steam, eos) must be provided',
-	})
+	export type IdQuery<Required extends Fields = never> = { [k in Fields]?: string } & { [k in Required]: string }
+
+	export function IdFields<F extends Fields | never>(...fields: F[]): z.ZodType<IdQuery<F>> {
+		return z.object({
+			username: Arr.includes(fields, 'username') ? z.string() : z.string().optional(),
+			steam: Arr.includes(fields, 'steam') ? z.string() : z.string().optional(),
+			eos: Arr.includes(fields, 'eos') ? z.string() : z.string().optional(),
+			playerController: Arr.includes(fields, 'playerController') ? z.string() : z.string().optional(),
+			tag: Arr.includes(fields, 'tag') ? z.string().nullable() : z.string().nullable().optional(),
+		}) as any
+	}
+
+	export const IdQuerySchema = IdFields()
+	export const Schema = IdFields('steam', 'username', 'eos')
+
+	export function getPlayerId(ids: IdQuery<'steam'>) {
+		return ids.steam
+	}
+	export function queryFromPlayerId(id: PlayerId): IdQuery<'steam'> {
+		return { steam: id }
+	}
+
+	export type IdQueryOrPlayerId = IdQuery | PlayerId
+	function normalizeIdQuery(id: IdQueryOrPlayerId): IdQuery {
+		return typeof id === 'string' ? queryFromPlayerId(id) : id
+	}
+
 	export type Type = z.infer<typeof Schema>
-
-	export const IdQuerySchema = SchemaBase.partial()
-	export type IdQuery = z.infer<typeof IdQuerySchema>
 
 	// in order of lookup preference
 	const LOOKUP_PROPS = ['steam', 'eos', 'playerController', 'username'] as const
@@ -80,46 +102,31 @@ export namespace PlayerIds {
 
 	// old signature
 	// export function parsePlayerIds(username: string, idsStr?: string): Type {
-	export function parsePlayerIdQuery(opts: { playerController?: string; username?: string; idsStr?: string }) {
+	export function parse(opts: { playerController?: string; usernameNoTag?: string; username?: string; idsStr?: string; eos?: string }) {
 		const ids: any = {}
 		if (opts.idsStr) {
 			for (const { key, value } of matchAllIds(opts.idsStr)) {
 				if (value === undefined) continue
-				if (key === 'steam') {
-					ids[key] = BigInt(value)
-				} else {
-					ids[key] = value
-				}
+				ids[key] = value
 			}
 		}
-		return { ...ids, username: opts.username?.trim(), playerController: opts.playerController }
-	}
-
-	export function extractPlayerIds(opts: { playerController?: string; username: string; idsStr?: string }): Type {
-		const ids: any = {}
-		if (opts.idsStr) {
-			for (const { key, value } of matchAllIds(opts.idsStr)) {
-				if (key === 'steam') {
-					ids[key] = BigInt(value)
-				} else {
-					ids[key] = value
-				}
-			}
+		if (opts.username) {
+			;[ids.usernameNoTag, ids.tag] = opts.username.split(/\s+/, 2)
+			if (!ids.tag) throw new Error('No tag-denoting whitespace in parsed username ' + opts.username)
 		}
-		return { ...ids, username: opts.username.trim(), playerController: opts.playerController }
+		return { ...ids, username: opts.username?.trim(), playerController: opts.playerController?.trim(), eos: opts.eos?.trim() ?? ids.eos }
 	}
 
-	export function find(idList: Type[], id: IdQuery): Type | undefined
-	export function find<T>(idList: T[], cb: (item: T) => Type, id: IdQuery): T | undefined
+	export function find(idList: Type[], id: IdQueryOrPlayerId): Type | undefined
+	export function find<T>(idList: T[], cb: (item: T) => Type, id: IdQueryOrPlayerId): T | undefined
 	export function find<T>(
 		elts: T[] | Type[],
-		cbOrId?: ((item: T) => Type) | Partial<Type>,
-		id?: Partial<Type>,
+		cbOrId?: ((item: T) => Type) | IdQueryOrPlayerId,
+		id?: IdQueryOrPlayerId,
 	): T | Type | undefined {
 		if (typeof cbOrId === 'function') {
-			// Overload: find<T>(idList: T[], cb: (item: Type) => boolean, id: Partial<Type> | string): T | undefined
 			const cb = cbOrId
-			const searchId = id!
+			const searchId = normalizeIdQuery(id!)
 			for (const prop of LOOKUP_PROPS) {
 				if (!searchId[prop]) continue
 				for (const item of elts as T[]) {
@@ -129,16 +136,7 @@ export namespace PlayerIds {
 			return undefined
 		}
 
-		// Original overload: find(idList: Type[], id: Partial<Type> | string): Type | undefined
-		const searchId = cbOrId as Partial<Type> | string
-		if (typeof searchId === 'string') {
-			for (const item of elts as Type[]) {
-				for (const prop of UNIQUE_PROPS) {
-					if (item[prop]?.toString() === searchId) return item
-				}
-			}
-			return undefined
-		}
+		const searchId = normalizeIdQuery(cbOrId!)
 		for (const prop of LOOKUP_PROPS) {
 			if (!searchId[prop]) continue
 			for (const item of elts as Type[]) {
@@ -147,17 +145,16 @@ export namespace PlayerIds {
 		}
 	}
 
-	export function indexOf(idList: Type[], id: IdQuery): number
-	export function indexOf<T>(idList: T[], cb: (item: T) => Type, id: IdQuery): number
+	export function indexOf(idList: Type[], id: IdQueryOrPlayerId): number
+	export function indexOf<T>(idList: T[], cb: (item: T) => Type, id: IdQueryOrPlayerId): number
 	export function indexOf<T>(
 		elts: T[] | Type[],
-		cbOrId?: ((item: T) => Type) | Partial<Type>,
-		id?: Partial<Type>,
+		cbOrId?: ((item: T) => Type) | IdQueryOrPlayerId,
+		id?: IdQueryOrPlayerId,
 	): number {
 		if (typeof cbOrId === 'function') {
-			// Overload: indexOf<T>(idList: T[], cb: (item: T) => Type, id: Partial<Type>): number
 			const cb = cbOrId
-			const searchId = id!
+			const searchId = normalizeIdQuery(id!)
 			for (const prop of LOOKUP_PROPS) {
 				if (!searchId[prop]) continue
 				for (let i = 0; i < (elts as T[]).length; i++) {
@@ -167,16 +164,7 @@ export namespace PlayerIds {
 			return -1
 		}
 
-		// Original overload: indexOf(idList: Type[], id: Partial<Type>): number
-		const searchId = cbOrId as Partial<Type> | string
-		if (typeof searchId === 'string') {
-			for (let i = 0; i < (elts as Type[]).length; i++) {
-				for (const prop of UNIQUE_PROPS) {
-					if ((elts as Type[])[i][prop]?.toString() === searchId) return i
-				}
-			}
-			return -1
-		}
+		const searchId = normalizeIdQuery(cbOrId!)
 		for (const prop of LOOKUP_PROPS) {
 			if (!searchId[prop]) continue
 			for (let i = 0; i < (elts as Type[]).length; i++) {
@@ -236,17 +224,16 @@ export namespace PlayerIds {
 		return searchId
 	}
 
-	export function remove(idList: Type[], id: IdQuery): boolean
-	export function remove<T>(idList: T[], cb: (item: T) => Type, id: IdQuery): boolean
+	export function remove(idList: Type[], id: IdQueryOrPlayerId): boolean
+	export function remove<T>(idList: T[], cb: (item: T) => Type, id: IdQueryOrPlayerId): boolean
 	export function remove<T>(
 		elts: T[] | Type[],
-		cbOrId?: ((item: T) => Type) | Partial<Type>,
-		id?: Partial<Type>,
+		cbOrId?: ((item: T) => Type) | IdQueryOrPlayerId,
+		id?: IdQueryOrPlayerId,
 	): boolean {
 		if (typeof cbOrId === 'function') {
-			// Overload: delete_<T>(idList: T[], cb: (item: T) => Type, id: Partial<Type>): boolean
 			const cb = cbOrId
-			const searchId = id!
+			const searchId = normalizeIdQuery(id!)
 			for (const prop of LOOKUP_PROPS) {
 				if (!searchId[prop]) continue
 				for (let i = 0; i < (elts as T[]).length; i++) {
@@ -259,19 +246,7 @@ export namespace PlayerIds {
 			return false
 		}
 
-		// Original overload: delete_(idList: Type[], id: Partial<Type>): boolean
-		const searchId = cbOrId as Partial<Type> | string
-		if (typeof searchId === 'string') {
-			for (let i = 0; i < (elts as Type[]).length; i++) {
-				for (const prop of UNIQUE_PROPS) {
-					if ((elts as Type[])[i][prop]?.toString() === searchId) {
-						;(elts as Type[]).splice(i, 1)
-						return true
-					}
-				}
-			}
-			return false
-		}
+		const searchId = normalizeIdQuery(cbOrId!)
 		for (const prop of LOOKUP_PROPS) {
 			if (!searchId[prop]) continue
 			for (let i = 0; i < (elts as Type[]).length; i++) {
@@ -284,9 +259,11 @@ export namespace PlayerIds {
 		return false
 	}
 
-	export function match(a: IdQuery, b: IdQuery): boolean {
+	export function match(a: IdQueryOrPlayerId, b: IdQueryOrPlayerId): boolean {
+		const aNorm = normalizeIdQuery(a)
+		const bNorm = normalizeIdQuery(b)
 		for (const prop of LOOKUP_PROPS) {
-			if (a[prop] && b[prop] && a[prop] === b[prop]) return true
+			if (aNorm[prop] && bNorm[prop] && aNorm[prop] === bNorm[prop]) return true
 		}
 		return false
 	}
@@ -304,7 +281,8 @@ export namespace PlayerIds {
 		return (ids.steam?.toString() ?? ids.steam?.toString())!
 	}
 
-	export function prettyPrint(type: IdQuery) {
+	export function prettyPrint(id: IdQueryOrPlayerId) {
+		const type = normalizeIdQuery(id)
 		const parts: string[] = []
 		if (type.username) parts.push(type.username)
 		if (type.steam) parts.push(`steam:${type.steam}`)
@@ -327,6 +305,9 @@ export const PlayerSchema = z.object({
 })
 
 export type Player = z.infer<typeof PlayerSchema>
+export const PlayerIdSchema = z.string()
+export type PlayerId = SteamId
+export type PlayerAssoc<Type extends SchemaModels.ServerEventPlayerAssocType = 'player', Value = PlayerId> = { [key in Type]: Value }
 
 export namespace Players {
 	export type SquadGroup = { squadId: SquadId; teamId: TeamId; players: Player[] }
@@ -350,7 +331,7 @@ export const SquadSchema = z.object({
 	squadId: z.number(),
 	squadName: z.string().min(1),
 	locked: z.boolean(),
-	creatorIds: PlayerIds.Schema,
+	creator: PlayerIdSchema,
 	teamId: TeamIdSchema,
 })
 
@@ -358,8 +339,8 @@ export type Squad = z.infer<typeof SquadSchema>
 
 export type PlayerListRes = { code: 'ok'; players: Player[] } | RconError
 export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError
-export type TeamsRes = { code: 'ok'; players: Player[]; squads: Squad[] } | RconError
-export type Teams = Extract<TeamsRes, { code: 'ok' }>
+export type Teams<P = Player> = { players: P[]; squads: Squad[] }
+export type TeamsRes<P = Player> = { code: 'ok' } & Teams<P> | RconError
 
 export namespace Squads {
 	// identifies a squad across teams
@@ -412,10 +393,10 @@ export const AdminListSourceSchema = z.object({
 })
 export type AdminListSource = z.infer<typeof AdminListSourceSchema>
 // steamId -> groups
-export type SquadAdmins = OneToManyMap<bigint, string>
+export type SquadAdmins = OneToManyMap<SteamId, string>
 // group -> permissions
 export type SquadGroups = OneToManyMap<string, string>
-export type AdminList = { players: SquadAdmins; groups: SquadGroups; admins: Set<bigint> }
+export type AdminList = { players: SquadAdmins; groups: SquadGroups; admins: Set<SteamId> }
 
 export const CHAT_CHANNEL_TYPE = z.enum(['ChatAdmin', 'ChatTeam', 'ChatSquad', 'ChatAll'])
 export type ChatChannelType = z.infer<typeof CHAT_CHANNEL_TYPE>
@@ -464,91 +445,121 @@ export namespace Events {
 		matchId: number
 	}
 
+	export type EventMeta = { playerAssocs: ServerEventPlayerAssocType[] }
+
+	function meta<T extends ServerEventPlayerAssocType[]>(playerAssocs?: T) {
+		return { playerAssocs: playerAssocs ?? [] } satisfies EventMeta
+	}
+
 	export type MapSet = {
 		type: 'MAP_SET'
 		layerId: L.LayerId
 	} & Base
+	export const MAP_SET_META = meta()
 
 	export type NewGame = {
 		type: 'NEW_GAME'
 		source: 'slm-started' | 'rcon-reconnected' | 'new-game-detected'
 		layerId: L.LayerId
-		state: {
-			players: Player[]
-			squads: Squad[]
-		}
+		state: Teams
 	} & Base
+	export const NEW_GAME_META = meta()
 
 	export type Reset = {
 		type: 'RESET'
 		source: 'slm-started' | 'rcon-reconnected'
-		state: {
-			players: Player[]
-			squads: Squad[]
-		}
+		state: Teams
 	} & Base
+
+	export const RESET_META = meta()
 
 	export type RconConnected = {
 		type: 'RCON_CONNECTED'
 		reconnected: boolean
 	} & Base
+	export const RCON_CONNECTED_META = meta()
 
 	export type RconDisconnected = {
 		type: 'RCON_DISCONNECTED'
 	} & Base
+	export const RCON_DISCONNECTED_META = meta()
 
 	export type RoundEnded = {
 		type: 'ROUND_ENDED'
 	} & Base
+	export const ROUND_ENDED_META = meta()
 
-	export type PlayerConnected = {
-		type: 'PLAYER_CONNECTED'
-		player: Player
-	} & Base
+	export type PlayerConnected<P = Player> =
+		& {
+			type: 'PLAYER_CONNECTED'
+		}
+		& PlayerAssoc<'player', P>
+		& Base
+	export const PLAYER_CONNECTED_META = meta(['player'])
+	if (PLAYER_CONNECTED_META.playerAssocs.length !== 1) {
+		throw new Error('Multiple associations for PLAYER_CONNECTED, we need to update how we save these events')
+	}
 
-	export type PlayerDisconnected = {
-		type: 'PLAYER_DISCONNECTED'
-		playerIds: PlayerIds.IdQuery
-	} & Base
+	export type PlayerDisconnected<P = PlayerId> =
+		& {
+			type: 'PLAYER_DISCONNECTED'
+		}
+		& PlayerAssoc<'player', P>
+		& Base
+	export const PLAYER_DISCONNECTED_META = meta(['player'])
 
 	export type SquadCreated = {
 		type: 'SQUAD_CREATED'
 		squad: Squad
 	} & Base
+	export const SQUAD_CREATED_META = meta()
 
-	export type ChatMessage = {
-		type: 'CHAT_MESSAGE'
-		playerIds: PlayerIds.Type
-		message: string
-		channel: ChatChannel
-	} & Base
+	export type ChatMessage<P = PlayerId> =
+		& {
+			type: 'CHAT_MESSAGE'
+			message: string
+			channel: ChatChannel
+		}
+		& PlayerAssoc<'player', P>
+		& Base
+	export const CHAT_MESSAGE_META = meta(['player'])
 
 	export type AdminBroadcast = {
 		type: 'ADMIN_BROADCAST'
 		message: string
 		from: LogEvents.AdminBroadcast['from']
 	} & Base
+	export const ADMIN_BROADCAST_META = meta()
 
 	// synthetic events from player state
-	export type PlayerDetailsChanged = {
-		type: 'PLAYER_DETAILS_CHANGED'
-		playerIds: PlayerIds.Type
-		details: Pick<Player, (typeof PLAYER_DETAILS)[number]>
-	} & Base
+	export type PlayerDetailsChanged<P = PlayerId> =
+		& {
+			type: 'PLAYER_DETAILS_CHANGED'
+			details: Pick<Player, (typeof PLAYER_DETAILS)[number]>
+		}
+		& PlayerAssoc<'player', P>
+		& Base
+	export const PLAYER_DETAILS_CHANGED_META = meta(['player'])
 
-	export type PlayerChangedTeam = {
-		type: 'PLAYER_CHANGED_TEAM'
-		playerIds: PlayerIds.Type
-		newTeamId: TeamId | null
-	} & Base
+	export type PlayerChangedTeam<P = PlayerId> =
+		& {
+			type: 'PLAYER_CHANGED_TEAM'
+			newTeamId: TeamId | null
+		}
+		& PlayerAssoc<'player', P>
+		& Base
+	export const PLAYER_CHANGED_TEAM_META = meta(['player'])
 
 	// can originate if the player manually leaves the squad, or is removed for some other reason
-	export type PlayerLeftSquad = {
-		type: 'PLAYER_LEFT_SQUAD'
-		playerIds: PlayerIds.Type
-		squadId: SquadId
-		teamId: TeamId
-	} & Base
+	export type PlayerLeftSquad<P = PlayerId> =
+		& {
+			type: 'PLAYER_LEFT_SQUAD'
+			squadId: SquadId
+			teamId: TeamId
+		}
+		& PlayerAssoc<'player', P>
+		& Base
+	export const PLAYER_LEFT_SQUAD_META = meta(['player'])
 
 	// this event is redundant in terms of state transfer, as it could be inferred as the last player leaving a particular squad
 	export type SquadDisbanded = {
@@ -556,6 +567,7 @@ export namespace Events {
 		squadId: SquadId
 		teamId: TeamId
 	} & Base
+	export const SQUAD_DISBANDED_META = meta()
 
 	export type SquadDetailsChanged = {
 		type: 'SQUAD_DETAILS_CHANGED'
@@ -565,52 +577,87 @@ export namespace Events {
 			locked: boolean
 		}
 	} & Base
+	export const SQUAD_DETAILS_CHANGED_META = meta()
 
 	/**
 	 * Player joined pre-existing squad
 	 */
-	export type PlayerJoinedSquad = {
-		type: 'PLAYER_JOINED_SQUAD'
-		playerIds: PlayerIds.Type
-		squadId: SquadId
-		teamId: TeamId
-	} & Base
+	export type PlayerJoinedSquad<P = PlayerId> =
+		& {
+			type: 'PLAYER_JOINED_SQUAD'
+			squadId: SquadId
+			teamId: TeamId
+		}
+		& PlayerAssoc<'player', P>
+		& Base
+	export const PLAYER_JOINED_SQUAD_META = meta(['player'])
 
-	export type PlayerPromotedToLeader = {
-		type: 'PLAYER_PROMOTED_TO_LEADER'
-		squadId: SquadId
-		teamId: TeamId
-		newLeaderIds: PlayerIds.Type
-	} & Base
-	export type PlayerKicked = {
-		type: 'PLAYER_KICKED'
-		playerIds: PlayerIds.Type
-		reason?: string
-	} & Base
-	export type PossessedAdminCamera = RconEvents.PossessedAdminCamera & Base
-	export type UnpossessedAdminCamera = RconEvents.UnpossessedAdminCamera & Base
-	export type PlayerBanned = RconEvents.PlayerBanned & Base
-	export type PlayerWarned = RconEvents.PlayerWarned & Base
+	export type PlayerPromotedToLeader<P = PlayerId> =
+		& {
+			type: 'PLAYER_PROMOTED_TO_LEADER'
+			squadId: SquadId
+			teamId: TeamId
+		}
+		& PlayerAssoc<'player', P>
+		& Base
+	export const PLAYER_PROMOTED_TO_LEADER_META = meta(['player'])
 
-	export type PlayerDied = {
-		type: 'PLAYER_DIED'
-		victimIds: PlayerIds.Type
-		attackerIds: PlayerIds.Type
-		damage: number
-		weapon: string
-		variant: PlayerWoundedOrDiedVariant
-	} & Base
+	export type PlayerKicked<P = PlayerId> =
+		& {
+			type: 'PLAYER_KICKED'
+			reason?: string
+		}
+		& PlayerAssoc<'player', P>
+		& Base
+	export const PLAYER_KICKED_META = meta(['player'])
+
+	export type PossessedAdminCamera<P = PlayerId> =
+		& {
+			type: 'POSSESSED_ADMIN_CAMERA'
+		}
+		& PlayerAssoc<'player', P>
+		& Base
+	export const POSSESSED_ADMIN_CAMERA_META = meta(['player'])
+
+	export type UnpossessedAdminCamera<P = PlayerId> =
+		& {
+			type: 'UNPOSSESSED_ADMIN_CAMERA'
+		}
+		& PlayerAssoc<'player', P>
+		& Base
+	export const UNPOSSESSED_ADMIN_CAMERA_META = meta(['player'])
+
+	export type PlayerBanned<P = PlayerId> = { type: 'PLAYER_BANNED'; interval: string } & PlayerAssoc<'player', P> & Base
+	export const PLAYER_BANNED_META = meta(['player'])
+
+	export type PlayerWarned<P = PlayerId> = RconEvents.PlayerWarned & PlayerAssoc<'player', P> & Base
+	export const PLAYER_WARNED_META = meta(['player'])
+
+	export type PlayerDied<P = PlayerId> =
+		& {
+			type: 'PLAYER_DIED'
+			damage: number
+			weapon: string
+			variant: PlayerWoundedOrDiedVariant
+		}
+		& PlayerAssoc<'victim', P>
+		& PlayerAssoc<'attacker', P>
+		& Base
+	export const PLAYER_DIED_META = meta(['victim', 'attacker'])
 
 	export type PlayerWoundedOrDiedVariant = 'normal' | 'suicide' | 'teamkill'
 
-	export type PlayerWounded = {
-		type: 'PLAYER_WOUNDED'
-		victimIds: PlayerIds.Type
-		attackerIds: PlayerIds.Type
-		damage: number
-		weapon: string
-		variant: PlayerWoundedOrDiedVariant
-	} & Base
+	export type PlayerWounded<P = PlayerId> =
+		& {
+			type: 'PLAYER_WOUNDED'
+			damage: number
+			weapon: string
+			variant: PlayerWoundedOrDiedVariant
+		}
+		& PlayerAssoc<'victim', P>
+		& PlayerAssoc<'attacker', P>
+		& Base
+	export const PLAYER_WOUNDED_META = meta(['victim', 'attacker'])
 
 	export type Event =
 		| MapSet
@@ -640,6 +687,34 @@ export namespace Events {
 		| SquadDetailsChanged
 		| PlayerJoinedSquad
 		| PlayerPromotedToLeader
+
+	export const EVENT_META = {
+		MAP_SET: MAP_SET_META,
+		NEW_GAME: NEW_GAME_META,
+		RESET: RESET_META,
+		RCON_CONNECTED: RCON_CONNECTED_META,
+		RCON_DISCONNECTED: RCON_DISCONNECTED_META,
+		ROUND_ENDED: ROUND_ENDED_META,
+		PLAYER_CONNECTED: PLAYER_CONNECTED_META,
+		PLAYER_DISCONNECTED: PLAYER_DISCONNECTED_META,
+		SQUAD_CREATED: SQUAD_CREATED_META,
+		CHAT_MESSAGE: CHAT_MESSAGE_META,
+		ADMIN_BROADCAST: ADMIN_BROADCAST_META,
+		PLAYER_DETAILS_CHANGED: PLAYER_DETAILS_CHANGED_META,
+		PLAYER_CHANGED_TEAM: PLAYER_CHANGED_TEAM_META,
+		PLAYER_LEFT_SQUAD: PLAYER_LEFT_SQUAD_META,
+		SQUAD_DISBANDED: SQUAD_DISBANDED_META,
+		SQUAD_DETAILS_CHANGED: SQUAD_DETAILS_CHANGED_META,
+		PLAYER_JOINED_SQUAD: PLAYER_JOINED_SQUAD_META,
+		PLAYER_PROMOTED_TO_LEADER: PLAYER_PROMOTED_TO_LEADER_META,
+		PLAYER_KICKED: PLAYER_KICKED_META,
+		POSSESSED_ADMIN_CAMERA: POSSESSED_ADMIN_CAMERA_META,
+		UNPOSSESSED_ADMIN_CAMERA: UNPOSSESSED_ADMIN_CAMERA_META,
+		PLAYER_BANNED: PLAYER_BANNED_META,
+		PLAYER_WARNED: PLAYER_WARNED_META,
+		PLAYER_DIED: PLAYER_DIED_META,
+		PLAYER_WOUNDED: PLAYER_WOUNDED_META,
+	} satisfies Record<Event['type'], EventMeta>
 }
 
 export namespace RconEvents {
@@ -659,7 +734,7 @@ export namespace RconEvents {
 				time: Date.now(),
 				channelType: match[1] as ChatChannelType,
 				message: match[4],
-				playerIds: PlayerIds.extractPlayerIds({ username: match[3], idsStr: match[2] }),
+				playerIds: PlayerIds.parse({ username: match[3], idsStr: match[2] }),
 			}
 		},
 	})
@@ -678,7 +753,7 @@ export namespace RconEvents {
 			return {
 				time: Date.now(),
 				reason: match[2],
-				playerIds: PlayerIds.extractPlayerIds({ username: match[1] }),
+				playerIds: PlayerIds.parse({ username: match[1] }),
 			}
 		},
 	})
@@ -696,7 +771,7 @@ export namespace RconEvents {
 			return {
 				type: 'POSSESSED_ADMIN_CAMERA' as const,
 				time: Date.now(),
-				playerIds: PlayerIds.extractPlayerIds({ username: match[2], idsStr: match[1] }),
+				playerIds: PlayerIds.parse({ username: match[2], idsStr: match[1] }),
 			}
 		},
 	})
@@ -713,7 +788,7 @@ export namespace RconEvents {
 		onMatch: (match) => {
 			return {
 				time: Date.now(),
-				playerIds: PlayerIds.extractPlayerIds({ username: match[2], idsStr: match[1] }),
+				playerIds: PlayerIds.parse({ username: match[2], idsStr: match[1] }),
 			}
 		},
 	})
@@ -736,7 +811,7 @@ export namespace RconEvents {
 				squadId: match.groups!.squadId,
 				squadName: match.groups!.squadName,
 				teamName: match.groups!.teamName,
-				creatorIds: PlayerIds.extractPlayerIds({ username: match.groups!.playerName, idsStr: match[2] }),
+				creatorIds: PlayerIds.parse({ username: match.groups!.playerName, idsStr: match[2] }),
 			}
 		},
 	})
@@ -757,7 +832,7 @@ export namespace RconEvents {
 				time: Date.now(),
 				playerID: match[1],
 				interval: match[4],
-				playerIds: PlayerIds.extractPlayerIds({ username: match[3], idsStr: match[2] }),
+				playerIds: PlayerIds.parse({ username: match[3], idsStr: match[2] }),
 			}
 		},
 	})
@@ -926,7 +1001,7 @@ export namespace LogEvents {
 
 	export const PlayerConnectedSchema = eventDef('PLAYER_CONNECTED', {
 		...BaseEventProperties,
-		player: PlayerIds.IdQuerySchema,
+		playerIds: PlayerIds.IdFields('eos', 'steam', 'playerController'),
 		ip: z.union([z.ipv4(), z.ipv6()]),
 	})
 	export type PlayerConnected = z.infer<typeof PlayerConnectedSchema['schema']>
@@ -939,7 +1014,7 @@ export namespace LogEvents {
 				raw: args[0],
 				time: parseTimestamp(args[1]),
 				chainID: args[2],
-				player: PlayerIds.parsePlayerIdQuery({ idsStr: args[5], playerController: args[3] }),
+				playerIds: PlayerIds.parse({ idsStr: args[5], playerController: args[3] }),
 				ip: args[4],
 			}
 		},
@@ -947,7 +1022,7 @@ export namespace LogEvents {
 
 	export const PlayerDisconnectedSchema = eventDef('PLAYER_DISCONNECTED', {
 		...BaseEventProperties,
-		playerIds: PlayerIds.IdQuerySchema,
+		playerIds: PlayerIds.IdFields('eos', 'playerController'),
 		ip: z.union([z.ipv4(), z.ipv6()]),
 	})
 	export type PlayerDisconnected = z.infer<typeof PlayerDisconnectedSchema['schema']>
@@ -961,17 +1036,17 @@ export namespace LogEvents {
 				time: parseTimestamp(args[1]),
 				chainID: args[2],
 				ip: args[3],
-				playerIds: {
-					playerController: args[4].trim(),
-					eos: args[5].trim(),
-				},
+				playerIds: PlayerIds.parse({
+					playerController: args[4],
+					eos: args[5],
+				}),
 			}
 		},
 	})
 
 	export const PlayerJoinSuccededSchema = eventDef('PLAYER_JOIN_SUCCEEDED', {
 		...BaseEventProperties,
-		player: PlayerIds.IdQuerySchema,
+		player: PlayerIds.IdFields('username'),
 	})
 
 	export type PlayerJoinSucceeded = z.infer<typeof PlayerJoinSuccededSchema['schema']>
@@ -983,18 +1058,17 @@ export namespace LogEvents {
 				raw: args[0],
 				time: parseTimestamp(args[1]),
 				chainID: args[2],
-				player: { username: args[3].trim() },
+				player: PlayerIds.parse({ usernameNoTag: args[3] }),
 			}
 		},
 	})
 
 	export const PlayerDiedSchema = eventDef('PLAYER_DIED', {
 		...BaseEventProperties,
-		victimName: z.string(),
 		damage: z.number(),
-		attackerPlayerController: z.string(),
-		attackerIds: PlayerIds.IdQuerySchema,
 		weapon: z.string(),
+		attackerIds: PlayerIds.IdFields('eos', 'steam', 'playerController'),
+		victimIds: PlayerIds.IdFields('username'),
 	})
 
 	export type PlayerDied = z.infer<typeof PlayerDiedSchema['schema']>
@@ -1010,10 +1084,10 @@ export namespace LogEvents {
 				raw: args[0],
 				time: parseTimestamp(args[1]),
 				chainID: args[2],
-				victimName: args[3].trim(),
+				victimIds: PlayerIds.parse({ username: args[3] }),
 				damage: parseFloat(args[4]),
 				attackerPlayerController: args[5],
-				attackerIds: PlayerIds.parsePlayerIdQuery({ idsStr: args[6], playerController: args[7] }),
+				attackerIds: PlayerIds.parse({ idsStr: args[6], playerController: args[7] }),
 				weapon: args[8],
 			}
 		},
@@ -1021,13 +1095,11 @@ export namespace LogEvents {
 
 	export const PlayerWoundedSchema = eventDef('PLAYER_WOUNDED', {
 		...BaseEventProperties,
-		victimName: z.string(),
 		damage: z.number(),
-		attackerPlayerController: z.string(),
-		attackerIds: PlayerIds.IdQuerySchema,
 		weapon: z.string(),
+		attackerIds: PlayerIds.IdFields('eos', 'steam', 'playerController'),
+		victimIds: PlayerIds.IdFields('username'),
 	})
-
 	export type PlayerWounded = z.infer<typeof PlayerWoundedSchema['schema']>
 	export const PlayerWoundedMatcher = createLogMatcher({
 		event: PlayerWoundedSchema,
@@ -1041,10 +1113,9 @@ export namespace LogEvents {
 				raw: args[0],
 				time: parseTimestamp(args[1]),
 				chainID: args[2],
-				victimName: args[3].trim(),
+				victimIds: PlayerIds.parse({ username: args[3] }),
 				damage: parseFloat(args[4]),
-				attackerPlayerController: args[5],
-				attackerIds: PlayerIds.parsePlayerIdQuery({ idsStr: args[6], playerController: args[7] }),
+				attackerIds: PlayerIds.parse({ idsStr: args[6], playerController: args[7] }),
 				weapon: args[8],
 			}
 		},
@@ -1068,7 +1139,7 @@ export namespace LogEvents {
 			} else {
 				const match = args[4].trim().match(/player \d+\. \[Online IDs= ([^\]]+)\]  (.+)/)
 				if (match) {
-					from = PlayerIds.extractPlayerIds({ username: match[2], idsStr: match[1] })
+					from = PlayerIds.parse({ username: match[2], idsStr: match[1] })
 				} else {
 					from = 'unknown'
 				}
@@ -1106,8 +1177,8 @@ export namespace LogEvents {
 
 	export const KickingPlayerSchema = eventDef('KICKING_PLAYER', {
 		...BaseEventProperties,
-		username: z.string().trim(),
 		reason: z.string().trim(),
+		playerIds: PlayerIds.IdFields('username'),
 	})
 
 	export type KickingPlayer = z.infer<typeof KickingPlayerSchema['schema']>
@@ -1119,7 +1190,7 @@ export namespace LogEvents {
 				raw: args[0],
 				time: parseTimestamp(args[1]),
 				chainID: args[2],
-				username: args[3],
+				playerIds: PlayerIds.parse({ username: args[3] }),
 				reason: args[4],
 			}
 		},
@@ -1127,7 +1198,7 @@ export namespace LogEvents {
 
 	export const PlayerKickedSchema = eventDef('PLAYER_KICKED', {
 		...BaseEventProperties,
-		playerIds: PlayerIds.Schema,
+		playerIds: PlayerIds.IdFields('username', 'eos', 'steam'),
 	})
 
 	export type PlayerKicked = z.infer<typeof PlayerKickedSchema['schema']>
@@ -1139,7 +1210,7 @@ export namespace LogEvents {
 				raw: args[0],
 				time: parseTimestamp(args[1]),
 				chainID: args[2],
-				playerIds: PlayerIds.extractPlayerIds({ username: args[4], idsStr: args[3] }),
+				playerIds: PlayerIds.parse({ username: args[4], idsStr: args[3] }),
 			}
 		},
 	})

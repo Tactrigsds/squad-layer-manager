@@ -35,3 +35,12 @@ export const SERVER_EVENT_TYPE = z.enum([
 ])
 
 export type ServerEventType = z.infer<typeof SERVER_EVENT_TYPE>
+
+export const SERVER_EVENT_PLAYER_ASSOC_TYPE = z.enum([
+	'player', // default
+	'attacker',
+	'victim',
+	'game-participant', // participants will be part of a NEW_GAME or INIT, and they are treated as a collection during serialization/deserialization
+])
+
+export type ServerEventPlayerAssocType = z.infer<typeof SERVER_EVENT_PLAYER_ASSOC_TYPE>

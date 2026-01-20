@@ -142,7 +142,7 @@ const fetchPlayers = C.spanOp('squad-rcon:fetch-players', { module }, async (ctx
 		data.isLeader = data.isLeader === 'True'
 		data.teamId = data.teamId !== 'N/A' ? +data.teamId : null
 		data.squadId = data.squadId !== 'N/A' && data.squadId !== null ? +data.squadId : null
-		data.ids = SM.PlayerIds.extractPlayerIds({ username: match.groups!.name, idsStr: match[2] })
+		data.ids = SM.PlayerIds.parse({ username: match.groups!.name, idsStr: match[2] })
 
 		data.isAdmin = false
 		if (data.ids.steam) {
@@ -184,7 +184,7 @@ const fetchSquads = C.spanOp('squad-rcon:fetch-squads', { module }, async (ctx: 
 			teamName: teamName,
 			squadName: match.groups!.squadName,
 			locked: match.groups?.locked === 'True',
-			creatorIds: SM.PlayerIds.extractPlayerIds({ username: match.groups!.creatorName, idsStr: match[6] }),
+			creatorIds: SM.PlayerIds.parse({ username: match.groups!.creatorName, idsStr: match[6] }),
 		}
 
 		const parsed = SM.SquadSchema.parse(squad)

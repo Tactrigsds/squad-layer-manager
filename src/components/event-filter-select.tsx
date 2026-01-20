@@ -6,9 +6,9 @@ import * as Icons from 'lucide-react'
 import * as Zus from 'zustand'
 
 export default function EventFilterSelect() {
-	const value = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
-	const onValueChange = Zus.useStore(SquadServerClient.ChatStore, s => s.setEventFilterState)
-	const labels: Record<CHAT.EventFilterState, string> = {
+	const value = Zus.useStore(SquadServerClient.ChatStore, s => s.secondaryFilterState)
+	const onValueChange = Zus.useStore(SquadServerClient.ChatStore, s => s.setSecondaryFilterState)
+	const labels: Record<CHAT.SecondaryFilterState, string> = {
 		ALL: 'All',
 		DEFAULT: 'Default',
 		CHAT: 'Chat Only',

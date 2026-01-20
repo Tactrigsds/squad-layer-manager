@@ -50,8 +50,8 @@ export const chatEvent$ = RPC.observe(
 type ChatStore = {
 	chatState: CHAT.ChatState
 	loadedServerId: string | null
-	eventFilterState: CHAT.EventFilterState
-	setEventFilterState(state: CHAT.EventFilterState): void
+	secondaryFilterState: CHAT.SecondaryFilterState
+	setSecondaryFilterState(state: CHAT.SecondaryFilterState): void
 	handleChatEvents(event: (CHAT.Event | CHAT.LifecycleEvent)[]): void
 	// increments every time we modify the chat state
 	eventGeneration: number
@@ -61,10 +61,10 @@ export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 	return {
 		chatState: CHAT.getInitialChatState(),
 		loadedServerId: null,
-		eventFilterState: 'DEFAULT',
+		secondaryFilterState: 'DEFAULT',
 		eventGeneration: 0,
-		setEventFilterState(state) {
-			set({ eventFilterState: state })
+		setSecondaryFilterState(state) {
+			set({ secondaryFilterState: state })
 		},
 		handleChatEvents(events) {
 			const config = ConfigClient.getConfig()
