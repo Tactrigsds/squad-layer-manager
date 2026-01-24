@@ -152,7 +152,7 @@ const handleSllStateUpdate = C.spanOp(
 				if (editSession.ops.length < input.expectedIndex) throw new Error('Invalid index')
 				SLL.applyOperations(editSession, [input.op])
 				log.info('Applied operation %o:%s', input.op, input.op.opId)
-				if (input.op.op === 'finish-editing' && editSession.editors.size === 0 && SLL.hasMutations(editSession)) {
+				if (input.op.op === 'finish-editing' && (input.op.forceSave || editSession.editors.size === 0 && SLL.hasMutations(editSession))) {
 					await commitChanges(ctx, input)
 					return
 				} else {
@@ -336,7 +336,13 @@ function dispatchPresenceAction(ctx: C.SharedLayerList & C.User & C.WSSession, a
 	}
 	const update = action(actionInput)
 	SLL.updateClientPresence(currentPresence, update)
-	const extraOps = SLL.getOpsForActivityStateUpdate(ctx.sharedList.session, ctx.user.discordId, update)
+	const extraOps = SLL.getOpsForActivityStateUpdate(
+		ctx.sharedList.session,
+		ctx.sharedList.presence,
+		ctx.wsClientId,
+		ctx.user.discordId,
+		update,
+	)
 	if (extraOps) {
 		SLL.applyOperations(ctx.sharedList.session, extraOps)
 	}
@@ -362,7 +368,7 @@ export function setup() {
 				for (const [wsClientId, presence] of Array.from(presenceState.entries())) {
 					// we don't want to remove presence instances that still might have an away indicator
 					const pastDisconnectTimeout = presence.lastSeen === null || (Date.now() - presence.lastSeen) > SLL.DISPLAYED_AWAY_PRESENCE_WINDOW
-					if (!WSSessionSys.wsSessions.has(wsClientId) && pastDisconnectTimeout) {
+					if (!WSSessionSys.wsSessions.has(wsClientId) && pastDisconnectTimeout && !slice.sharedList.session.editors.has(presence.userId)) {
 						presenceState.delete(wsClientId)
 						numCleaned++
 					}

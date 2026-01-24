@@ -161,6 +161,7 @@ function buildOperationSchema<T extends { [key: string]: z.ZodType }, ItemSchema
 			...base,
 			// uses "source" to determine what user finished editing
 			op: z.literal('finish-editing'),
+			forceSave: z.boolean().optional(),
 		}),
 	])
 }
@@ -563,16 +564,61 @@ export function endAllEditing(state: PresenceState, session: EditSession) {
 	session.editors.clear()
 }
 
-export function getOpsForActivityStateUpdate(session: EditSession, userId: bigint, output: PresenceActions.ActionOutput) {
-	if (!output.activityState?.child.EDITING && session.editors.has(userId)) {
-		return [
-			{
-				op: 'finish-editing',
-				opId: createId(6),
-				userId,
-			} satisfies Operation,
-		]
+export function getOpsForActivityStateUpdate(
+	session: EditSession,
+	state: PresenceState,
+	wsClientId: string,
+	userId: bigint,
+	output: PresenceActions.ActionOutput,
+) {
+	let ops: Operation[] = []
+
+	// this isn't super necessary given the way the frontend locks out users  but it's here for completeness
+	startEditing: {
+		if (session.editors.has(userId) || !output.activityState?.child.EDITING) break startEditing
+		let firstEditor = true
+		for (const [clientId, presence] of state.entries()) {
+			if (wsClientId === clientId) continue
+			if (presence.activityState?.child.EDITING) {
+				firstEditor = false
+				break
+			}
+		}
+
+		if (firstEditor) {
+			ops.push(
+				{
+					op: 'start-editing',
+					opId: createId(5),
+					userId,
+				} satisfies Operation,
+			)
+		}
 	}
+
+	finishEditing: {
+		if (!session.editors.has(userId) || output.activityState?.child.EDITING) break finishEditing
+		let lastEditor = true
+		for (const [clientId, presence] of state.entries()) {
+			if (wsClientId === clientId) continue
+			if (presence.activityState?.child.EDITING) {
+				lastEditor = false
+				break
+			}
+		}
+
+		if (lastEditor) {
+			ops.push(
+				{
+					op: 'finish-editing',
+					opId: createId(6),
+					userId,
+				} satisfies Operation,
+			)
+		}
+	}
+
+	return ops
 }
 
 export function createNewSession(list?: LL.List): EditSession {

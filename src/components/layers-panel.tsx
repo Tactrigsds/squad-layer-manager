@@ -1,5 +1,6 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ButtonGroup } from '@/components/ui/button-group'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CardDescription } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -39,15 +40,23 @@ export default function LayersPanel() {
 
 function QueueControlPanel() {
 	const isEditing = SLLClient.useIsEditing()
+	const [forceSave, setForceSave] = React.useState(false)
 	const setEditing = (editing: boolean) => {
-		void SLLClient.Store.getState().dispatch({ op: editing ? 'start-editing' : 'finish-editing' })
+		if (editing) {
+			void SLLClient.Store.getState().dispatch({ op: 'start-editing' })
+		} else {
+			void SLLClient.Store.getState().dispatch({ op: 'finish-editing', forceSave: forceSave || undefined })
+			setForceSave(false)
+		}
 	}
 
-	const [isModified, committing] = Zus.useStore(
+	const [isModified, committing, numEditors] = Zus.useStore(
 		SLLClient.Store,
-		useShallow(s => [s.isModified, s.committing]),
+		useShallow(s => [s.isModified, s.committing, s.session.editors.size]),
 	)
-	const numEditors = Zus.useStore(SLLClient.Store, useShallow(s => s.session.editors.size))
+	React.useEffect(() => {
+		console.log('numEditors', numEditors)
+	}, [numEditors])
 
 	function clear() {
 		const state = QD.LQStore.getState()
@@ -65,9 +74,7 @@ function QueueControlPanel() {
 						? 'saving'
 						: !isEditing
 						? 'idle'
-						: (isModified && numEditors === 1)
-						? 'editing-solo'
-						: 'editing-shared-or-unmodified'}
+						: 'editing'}
 				>
 					<Tooltip>
 						<TooltipTrigger asChild>
@@ -76,7 +83,7 @@ function QueueControlPanel() {
 								disabled={!isModified}
 								onClick={() => SLLClient.Store.getState().reset()}
 								variant="secondary"
-								className="col-start-1 row-start-1 group-data-[status=idle]:invisible group-data-[status=saving]:invisible"
+								className="col-start-1 row-start-1 invisible: group-data-[status=editing]:visible"
 							>
 								<Icons.Undo />
 							</Button>
@@ -97,20 +104,30 @@ function QueueControlPanel() {
 						<Icons.Edit />
 						<span>Start Editing</span>
 					</Button>
-					<Button
-						onClick={() => setEditing(false)}
-						className="col-start-2 row-start-1 invisible group-data-[status=editing-shared-or-unmodified]:visible "
-					>
-						<Icons.Check />
-						<span>Finish Editing</span>
-					</Button>
-					<Button
-						onClick={() => setEditing(false)}
-						className="col-start-2 row-start-1 invisible group-data-[status=editing-solo]:visible"
-					>
-						<Icons.Save />
-						<span>Save</span>
-					</Button>
+					<ButtonGroup className="col-start-2 row-start-1 invisible group-data-[status=editing]:visible">
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									size="icon"
+									variant={forceSave ? 'destructive' : 'secondary'}
+									onClick={() => setForceSave(!forceSave)}
+								>
+									<Icons.Sword />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>
+								<p>Toggle Force save (Save even if others are stil )</p>
+							</TooltipContent>
+						</Tooltip>
+						<Button
+							className="w-[150px]"
+							variant={forceSave ? 'destructive' : 'default'}
+							onClick={() => setEditing(false)}
+						>
+							<Icons.Save />
+							<span>{forceSave ? 'Force Save' : numEditors === 1 ? 'Save' : 'Finish Editing'}</span>
+						</Button>
+					</ButtonGroup>
 				</div>
 			</div>
 			<Separator orientation="vertical" />
@@ -140,6 +157,7 @@ function QueueControlPanel() {
 				preload="intent"
 				render={Button}
 				className="flex w-min items-center space-x-0"
+				variant="secondary"
 				disabled={!isEditing}
 			>
 				<Icons.PlusIcon />
