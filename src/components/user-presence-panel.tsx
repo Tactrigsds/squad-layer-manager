@@ -45,13 +45,14 @@ export default function UserPresencePanel() {
 			eventTextTimeouts.current.set(op.userId, timeout)
 		})
 
+		const timeouts = eventTextTimeouts.current
 		return () => {
 			sub.unsubscribe()
 			// Clear all timeouts on unmount
-			for (const timeout of eventTextTimeouts.current.values()) {
+			for (const timeout of timeouts.values()) {
 				clearTimeout(timeout)
 			}
-			eventTextTimeouts.current.clear()
+			timeouts.clear()
 		}
 	}, [])
 

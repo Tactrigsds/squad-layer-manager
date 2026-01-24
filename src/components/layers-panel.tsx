@@ -5,12 +5,12 @@ import { CardDescription } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
-import * as ST from '@/lib/state-tree.ts'
+
 import * as SLL from '@/models/shared-layer-list'
 import * as ConfigClient from '@/systems/config.client'
 import * as QD from '@/systems/queue-dashboard.client'
 import * as SLLClient from '@/systems/shared-layer-list.client'
-import * as Im from 'immer'
+
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -18,7 +18,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { LayerList, StartActivityInteraction } from './layer-list.tsx'
 import { MatchHistoryPanelContent } from './match-history-panel'
 import PoolConfigurationPopover from './server-settings-popover.tsx'
-import UserPresencePanel from './user-presence-panel'
+import UserPresencePanel from './user-presence-panel.tsx'
 
 export default function LayersPanel() {
 	return (
@@ -40,7 +40,7 @@ export default function LayersPanel() {
 function QueueControlPanel() {
 	const isEditing = SLLClient.useIsEditing()
 	const setEditing = (editing: boolean) => {
-		SLLClient.Store.getState().dispatch({ op: editing ? 'start-editing' : 'finish-editing' })
+		void SLLClient.Store.getState().dispatch({ op: editing ? 'start-editing' : 'finish-editing' })
 	}
 
 	const [isModified, committing] = Zus.useStore(
@@ -59,11 +59,10 @@ function QueueControlPanel() {
 	return (
 		<div className="flex items-center space-x-1 grow justify-end">
 			<div className="space-x-1 flex items-center">
-				<Icons.LoaderCircle
-					className="animate-spin data-[pending=false]:invisible"
-					data-pending={committing}
-				/>
-				{isEditing && (
+				<div
+					className="grid group"
+					data-status={committing ? 'saving' : !isEditing ? 'idle' : (isModified && numEditors === 1) ? 'editing-solo' : 'editing-shared'}
+				>
 					<Tooltip>
 						<TooltipTrigger asChild>
 							<Button
@@ -71,6 +70,7 @@ function QueueControlPanel() {
 								disabled={!isModified}
 								onClick={() => SLLClient.Store.getState().reset()}
 								variant="secondary"
+								className="col-start-1 row-start-1 group-data-[status=idle]:invisible group-data-[status=saving]:invisible"
 							>
 								<Icons.Undo />
 							</Button>
@@ -79,23 +79,33 @@ function QueueControlPanel() {
 							<p>Reset</p>
 						</TooltipContent>
 					</Tooltip>
-				)}
-				{!isEditing && (
-					<Button variant="outline" onClick={() => setEditing(true)}>
+					<div className="col-start-2 row-start-1 flex items-center gap-2 group-data-[status=idle]:invisible group-data-[status=editing-solo]:invisible group-data-[status=editing-shared]:invisible">
+						<Icons.LoaderCircle className="animate-spin h-4 w-4" />
+						<span className="text-sm">Saving...</span>
+					</div>
+					<Button
+						variant="outline"
+						onClick={() => setEditing(true)}
+						className="col-start-2 row-start-1 group-data-[status=editing-solo]:invisible group-data-[status=editing-shared]:invisible group-data-[status=saving]:invisible"
+					>
 						<Icons.Edit />
 						<span>Start Editing</span>
 					</Button>
-				)}
-				{(isEditing || committing)
-					&& (
-						<Button
-							onClick={() => setEditing(false)}
-							disabled={committing}
-						>
-							{isModified && numEditors === 1 ? <Icons.Save /> : <Icons.Check />}
-							<span>{isModified && numEditors === 1 ? 'Save' : 'Finish Editing'}</span>
-						</Button>
-					)}
+					<Button
+						onClick={() => setEditing(false)}
+						className="col-start-2 row-start-1 group-data-[status=idle]:invisible group-data-[status=editing-solo]:invisible group-data-[status=saving]:invisible"
+					>
+						<Icons.Check />
+						<span>Finish Editing</span>
+					</Button>
+					<Button
+						onClick={() => setEditing(false)}
+						className="col-start-2 row-start-1 group-data-[status=idle]:invisible group-data-[status=editing-shared]:invisible group-data-[status=saving]:invisible"
+					>
+						<Icons.Save />
+						<span>Save</span>
+					</Button>
+				</div>
 			</div>
 			<Separator orientation="vertical" />
 			<Tooltip>

@@ -507,47 +507,58 @@ function createStore() {
 				const userId = UsersClient.loggedInUserId!
 				const baseProps = { opId: createId(6), userId }
 
-				if (newOp.op === 'start-editing') {
-					this.updateActivity(SLL.TOGGLE_EDITING_TRANSITIONS.createActivity)
-				} else if (newOp.op === 'finish-editing') {
-					this.updateActivity(SLL.TOGGLE_EDITING_TRANSITIONS.removeActivity)
-				}
-
-				let op: SLL.Operation
-				const source: LL.Source = { type: 'manual', userId }
-				switch (newOp.op) {
-					case 'add': {
-						const items = newOp.items.map(item => LL.createLayerListItem(item, source))
-						op = {
-							op: 'add',
-							index: newOp.index,
-							items,
-							...baseProps,
+				let isComitting = false
+				try {
+					if (newOp.op === 'start-editing') {
+						this.updateActivity(SLL.TOGGLE_EDITING_TRANSITIONS.createActivity)
+					} else if (newOp.op === 'finish-editing') {
+						if (get().session.editors.size === 1) {
+							set({ committing: true })
+							isComitting = true
 						}
-						break
+						this.updateActivity(SLL.TOGGLE_EDITING_TRANSITIONS.removeActivity)
 					}
-					default: {
-						op = {
-							...newOp,
-							...baseProps,
-						}
-						break
-					}
-				}
 
-				set(state =>
-					Im.produce(state, draft => {
-						draft.outgoingOpsPendingSync.push(op.opId)
-						SLL.applyOperations(draft.session, [op])
+					let op: SLL.Operation
+					const source: LL.Source = { type: 'manual', userId }
+					switch (newOp.op) {
+						case 'add': {
+							const items = newOp.items.map(item => LL.createLayerListItem(item, source))
+							op = {
+								op: 'add',
+								index: newOp.index,
+								items,
+								...baseProps,
+							}
+							break
+						}
+						default: {
+							op = {
+								...newOp,
+								...baseProps,
+							}
+							break
+						}
+					}
+
+					set(state =>
+						Im.produce(state, draft => {
+							draft.outgoingOpsPendingSync.push(op.opId)
+							SLL.applyOperations(draft.session, [op])
+						})
+					)
+
+					await processUpdate({
+						code: 'op',
+						op,
+						expectedIndex: get().session!.ops.length - 1,
+						sessionSeqId: get().sessionSeqId,
 					})
-				)
-
-				await processUpdate({
-					code: 'op',
-					op,
-					expectedIndex: get().session!.ops.length - 1,
-					sessionSeqId: get().sessionSeqId,
-				})
+				} finally {
+					if (isComitting) {
+						set({ committing: false })
+					}
+				}
 			},
 
 			async pushPresenceAction(action) {

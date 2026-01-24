@@ -112,6 +112,12 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 			typeof item === 'string' || item === null ? { value: item as T } : item
 		)
 
+		const values = options.map(o => o.value)
+		const duplicates = values.filter((v, i) => values.indexOf(v) !== i)
+		if (duplicates.length > 0) {
+			throw new Error(`ComboBoxMulti options contain duplicate values: ${duplicates.join(', ')}`)
+		}
+
 		options.sort((a, b) => (a.disabled ? 1 : 0) - (b.disabled ? 1 : 0))
 	}
 

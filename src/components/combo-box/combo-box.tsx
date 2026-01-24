@@ -42,6 +42,12 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 			typeof item === 'string' || item === null ? { value: item as T } : item
 		)
 
+		const values = options.map(o => o.value)
+		const duplicates = values.filter((v, i) => values.indexOf(v) !== i)
+		if (duplicates.length > 0) {
+			throw new Error(`ComboBox options contain duplicate values: ${duplicates.join(', ')}`)
+		}
+
 		options.sort((a, b) => (a.disabled ? 1 : 0) - (b.disabled ? 1 : 0))
 	}
 
@@ -95,7 +101,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 						</Button>
 					)}
 			</PopoverTrigger>
-			<PopoverContent align="start" className="w-[200px] p-0">
+			<PopoverContent align="start" className="w-50 p-0">
 				<Command shouldFilter={!props.setInputValue}>
 					<CommandInput ref={inputRef} placeholder="Search..." value={props.inputValue} onValueChange={props.setInputValue} />
 					<CommandList>
