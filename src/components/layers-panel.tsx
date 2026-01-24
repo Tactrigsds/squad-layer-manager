@@ -61,7 +61,13 @@ function QueueControlPanel() {
 			<div className="space-x-1 flex items-center">
 				<div
 					className="grid group"
-					data-status={committing ? 'saving' : !isEditing ? 'idle' : (isModified && numEditors === 1) ? 'editing-solo' : 'editing-shared'}
+					data-status={committing
+						? 'saving'
+						: !isEditing
+						? 'idle'
+						: (isModified && numEditors === 1)
+						? 'editing-solo'
+						: 'editing-shared-or-unmodified'}
 				>
 					<Tooltip>
 						<TooltipTrigger asChild>
@@ -79,28 +85,28 @@ function QueueControlPanel() {
 							<p>Reset</p>
 						</TooltipContent>
 					</Tooltip>
-					<div className="col-start-2 row-start-1 flex items-center gap-2 group-data-[status=idle]:invisible group-data-[status=editing-solo]:invisible group-data-[status=editing-shared]:invisible">
+					<div className="col-start-2 row-start-1 flex items-center gap-2 invisible group-data-[status=saving]:visible">
 						<Icons.LoaderCircle className="animate-spin h-4 w-4" />
 						<span className="text-sm">Saving...</span>
 					</div>
 					<Button
 						variant="outline"
 						onClick={() => setEditing(true)}
-						className="col-start-2 row-start-1 group-data-[status=editing-solo]:invisible group-data-[status=editing-shared]:invisible group-data-[status=saving]:invisible"
+						className="col-start-2 row-start-1 invisible group-data-[status=idle]:visible"
 					>
 						<Icons.Edit />
 						<span>Start Editing</span>
 					</Button>
 					<Button
 						onClick={() => setEditing(false)}
-						className="col-start-2 row-start-1 group-data-[status=idle]:invisible group-data-[status=editing-solo]:invisible group-data-[status=saving]:invisible"
+						className="col-start-2 row-start-1 invisible group-data-[status=editing-shared-or-unmodified]:visible "
 					>
 						<Icons.Check />
 						<span>Finish Editing</span>
 					</Button>
 					<Button
 						onClick={() => setEditing(false)}
-						className="col-start-2 row-start-1 group-data-[status=idle]:invisible group-data-[status=editing-shared]:invisible group-data-[status=saving]:invisible"
+						className="col-start-2 row-start-1 invisible group-data-[status=editing-solo]:visible"
 					>
 						<Icons.Save />
 						<span>Save</span>

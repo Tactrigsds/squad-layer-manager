@@ -64,20 +64,19 @@ export function setupInstance(ctx: C.Db & C.LayerQueue & C.SharedLayerList & C.S
 		const ctx = SquadServer.resolveSliceCtx(_ctx, _ctx.serverId)
 		if (update.state.layerQueueSeqId === ctx.sharedList.queueSeqId) return
 
-		const session = ctx.sharedList.session
-		const sessionSeqId = ctx.sharedList.sessionSeqId
+		const prevSessionSeqId = ctx.sharedList.sessionSeqId
 
-		SLL.applyListUpdate(session, update.state.layerQueue)
-		SLL.endAllEditing(ctx.sharedList.presence)
+		ctx.sharedList.session = SLL.createNewSession(update.state.layerQueue)
+		SLL.endAllEditing(ctx.sharedList.presence, ctx.sharedList.session)
 		ctx.sharedList.sessionSeqId++
 		ctx.sharedList.queueSeqId = update.state.layerQueueSeqId
 		ctx.sharedList.itemLocks = new Map()
-		// all clients that receive list-updated will update themselves
+		// all clients that receive session-updated will update themselves
 		PresenceActions.applyToAll(ctx.sharedList.presence, ctx.sharedList.session, PresenceActions.editSessionChanged)
 		void sendUpdate(ctx, {
 			code: 'list-updated',
 			list: ctx.sharedList.session.list,
-			sessionSeqId,
+			sessionSeqId: prevSessionSeqId,
 			newSessionSeqId: ctx.sharedList.sessionSeqId,
 		})
 	})))
@@ -169,8 +168,8 @@ const handleSllStateUpdate = C.spanOp(
 
 			case 'reset': {
 				const serverState = await SquadServer.getServerState(ctx)
-				SLL.applyListUpdate(ctx.sharedList.session, serverState.layerQueue)
-				const sessionSeqId = ctx.sharedList.sessionSeqId
+				ctx.sharedList.session = SLL.createNewSession(serverState.layerQueue)
+				const prevSessionSeqId = ctx.sharedList.sessionSeqId
 				ctx.sharedList.sessionSeqId++
 				ctx.sharedList.itemLocks = new Map()
 
@@ -179,7 +178,7 @@ const handleSllStateUpdate = C.spanOp(
 				void sendUpdate(ctx, {
 					code: 'reset-completed',
 					list: ctx.sharedList.session.list,
-					sessionSeqId,
+					sessionSeqId: prevSessionSeqId,
 					newSessionSeqId: ctx.sharedList.sessionSeqId,
 					initiator: ctx.user.username,
 				})
@@ -221,7 +220,7 @@ async function commitChanges(
 		})
 		if (res.code === 'ok') {
 			serverState = res.update
-			SLL.applyListUpdate(ctx.sharedList.session, serverState.layerQueue)
+			ctx.sharedList.session = SLL.createNewSession(serverState.layerQueue)
 			ctx.sharedList.queueSeqId = serverState.layerQueueSeqId
 			ctx.sharedList.sessionSeqId++
 			ctx.sharedList.itemLocks = new Map()
@@ -234,7 +233,7 @@ async function commitChanges(
 				newSessionSeqId: ctx.sharedList.sessionSeqId,
 				initiator: ctx.user.username,
 			})
-			SLL.endAllEditing(ctx.sharedList.presence)
+			SLL.endAllEditing(ctx.sharedList.presence, ctx.sharedList.session)
 		} else {
 			void sendUpdate(ctx, {
 				code: 'commit-rejected',
@@ -337,12 +336,17 @@ function dispatchPresenceAction(ctx: C.SharedLayerList & C.User & C.WSSession, a
 	}
 	const update = action(actionInput)
 	SLL.updateClientPresence(currentPresence, update)
+	const extraOps = SLL.getOpsForActivityStateUpdate(ctx.sharedList.session, ctx.user.discordId, update)
+	if (extraOps) {
+		SLL.applyOperations(ctx.sharedList.session, extraOps)
+	}
 	void sendUpdate(ctx, {
 		code: 'update-presence',
 		wsClientId: ctx.wsClientId,
 		userId: ctx.user.discordId,
 		changes: action(actionInput),
 		fromServer: true,
+		sideEffectOps: extraOps || [],
 	})
 }
 

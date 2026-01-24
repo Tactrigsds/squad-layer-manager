@@ -50,6 +50,7 @@ export type Store = {
 
 	handleServerUpdate(update: SLL.Update): void
 	dispatch(op: SLL.NewOperation): Promise<void>
+	writeIncomingOperations(ops: SLL.Operation[]): void
 	pushPresenceAction(action: PresenceActions.Action): void
 
 	syncedOp$: Rx.Subject<SLL.Operation>
@@ -400,35 +401,7 @@ function createStore() {
 						break
 					}
 					case 'op': {
-						const state = get()
-						const nextPendingOpId = state.outgoingOpsPendingSync[0]
-						if (nextPendingOpId && nextPendingOpId === update.op.opId) {
-							const serverDivergedOps = state.incomingOpsPendingSync
-							const serverSession = Obj.deepClone(state.syncedState)
-							const newOpsHead = [...serverDivergedOps, update.op]
-							SLL.applyOperations(serverSession, newOpsHead)
-
-							set({
-								session: serverSession,
-								syncedState: serverSession,
-								incomingOpsPendingSync: [],
-								outgoingOpsPendingSync: this.outgoingOpsPendingSync.slice(1),
-							})
-							for (const op of newOpsHead) {
-								state.syncedOp$.next(op)
-							}
-						} else if (nextPendingOpId) {
-							set({ incomingOpsPendingSync: [...state.incomingOpsPendingSync, update.op] })
-						} else {
-							set(state =>
-								Im.produce(state, draft => {
-									SLL.applyOperations(draft.syncedState, [update.op])
-									SLL.applyOperations(draft.session, [update.op])
-								})
-							)
-							state.syncedOp$.next(update.op)
-						}
-
+						get().writeIncomingOperations([update.op])
 						break
 					}
 					case 'update-presence': {
@@ -443,6 +416,7 @@ function createStore() {
 								SLL.updateClientPresence(currentPresence, { ...update.changes })
 							})
 						)
+						if (update.sideEffectOps) this.writeIncomingOperations(update.sideEffectOps)
 						break
 					}
 
@@ -499,6 +473,39 @@ function createStore() {
 
 					default:
 						assertNever(update)
+				}
+			},
+
+			writeIncomingOperations(ops: SLL.Operation[]) {
+				for (const op of ops) {
+					const state = get()
+					const nextPendingOpId = state.outgoingOpsPendingSync[0]
+					if (nextPendingOpId && nextPendingOpId === op.opId) {
+						const serverDivergedOps = state.incomingOpsPendingSync
+						const serverSession = Obj.deepClone(state.syncedState)
+						const newOpsHead = [...serverDivergedOps, op]
+						SLL.applyOperations(serverSession, newOpsHead)
+
+						set({
+							session: serverSession,
+							syncedState: serverSession,
+							incomingOpsPendingSync: [],
+							outgoingOpsPendingSync: this.outgoingOpsPendingSync.slice(1),
+						})
+						for (const op of newOpsHead) {
+							state.syncedOp$.next(op)
+						}
+					} else if (nextPendingOpId) {
+						set({ incomingOpsPendingSync: [...state.incomingOpsPendingSync, op] })
+					} else {
+						set(state =>
+							Im.produce(state, draft => {
+								SLL.applyOperations(draft.syncedState, [op])
+								SLL.applyOperations(draft.session, [op])
+							})
+						)
+						state.syncedOp$.next(op)
+					}
 				}
 			},
 

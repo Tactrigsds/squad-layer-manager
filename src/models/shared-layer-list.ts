@@ -1,3 +1,4 @@
+import { createId } from '@/lib/id'
 import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
@@ -471,6 +472,7 @@ export const ClientUpdateSchema = z.discriminatedUnion('code', [
 		userId: z.bigint(),
 		changes: ClientPresenceSchema.partial(),
 		fromServer: z.boolean().optional(),
+		sideEffectOps: z.array(OperationSchema).optional().meta({ description: 'Extra operations to be applied as a result of this update' }),
 	}),
 ])
 
@@ -552,11 +554,24 @@ export function anyLocksInaccessible(locks: ItemLocks, ids: LL.ItemId[], wsClien
 	return false
 }
 
-export function endAllEditing(state: PresenceState) {
+export function endAllEditing(state: PresenceState, session: EditSession) {
 	for (const presence of state.values()) {
 		if (presence.activityState?.child.EDITING) {
 			updateClientPresence(presence, { activityState: null })
 		}
+	}
+	session.editors.clear()
+}
+
+export function getOpsForActivityStateUpdate(session: EditSession, userId: bigint, output: PresenceActions.ActionOutput) {
+	if (!output.activityState?.child.EDITING && session.editors.has(userId)) {
+		return [
+			{
+				op: 'finish-editing',
+				opId: createId(6),
+				userId,
+			} satisfies Operation,
+		]
 	}
 }
 
@@ -567,13 +582,6 @@ export function createNewSession(list?: LL.List): EditSession {
 		ops: [],
 		mutations: ItemMut.initMutations(),
 	}
-}
-
-export function applyListUpdate(session: EditSession, list: LL.List) {
-	session.list = Obj.deepClone(list)
-	session.editors.clear()
-	session.ops = []
-	session.mutations = ItemMut.initMutations()
 }
 
 export function hasMutations(session: EditSession, userId?: USR.UserId) {
