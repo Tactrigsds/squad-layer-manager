@@ -66,75 +66,19 @@ function QueueControlPanel() {
 	}
 
 	return (
-		<div className="flex items-center space-x-1 grow justify-end">
-			<div className="space-x-1 flex items-center">
-				<div
-					className="grid group"
-					data-status={committing
-						? 'saving'
-						: !isEditing
-						? 'idle'
-						: 'editing'}
-				>
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<Button
-								size="icon"
-								disabled={!isModified}
-								onClick={() => SLLClient.Store.getState().reset()}
-								variant="secondary"
-								className="col-start-1 row-start-1 invisible: group-data-[status=editing]:visible"
-							>
-								<Icons.Undo />
-							</Button>
-						</TooltipTrigger>
-						<TooltipContent>
-							<p>Reset</p>
-						</TooltipContent>
-					</Tooltip>
-					<div className="col-start-2 row-start-1 flex items-center gap-2 invisible group-data-[status=saving]:visible">
-						<Icons.LoaderCircle className="animate-spin h-4 w-4" />
-						<span className="text-sm">Saving...</span>
-					</div>
-					<Button
-						variant="outline"
-						onClick={() => setEditing(true)}
-						className="col-start-2 row-start-1 invisible group-data-[status=idle]:visible"
-					>
-						<Icons.Edit />
-						<span>Start Editing</span>
-					</Button>
-					<ButtonGroup className="col-start-2 row-start-1 invisible group-data-[status=editing]:visible">
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Button
-									size="icon"
-									variant={forceSave ? 'destructive' : 'secondary'}
-									onClick={() => setForceSave(!forceSave)}
-								>
-									<Icons.Sword />
-								</Button>
-							</TooltipTrigger>
-							<TooltipContent>
-								<p>Toggle Force save (Save even if others are stil )</p>
-							</TooltipContent>
-						</Tooltip>
-						<Button
-							className="w-[150px]"
-							variant={forceSave ? 'destructive' : 'default'}
-							onClick={() => setEditing(false)}
-						>
-							<Icons.Save />
-							<span>{forceSave ? 'Force Save' : numEditors === 1 ? 'Save' : 'Finish Editing'}</span>
-						</Button>
-					</ButtonGroup>
-				</div>
-			</div>
-			<Separator orientation="vertical" />
+		<div
+			className="flex items-center gap-1 grow justify-end group"
+			data-status={committing
+				? 'saving'
+				: !isEditing
+				? 'idle'
+				: 'editing'}
+		>
 			<Tooltip>
 				<TooltipTrigger asChild>
 					<Button
 						disabled={!isEditing}
+						className="not-group-data-[status=editing]:invisible"
 						variant="outline"
 						size="icon"
 						onClick={() => clear()}
@@ -156,13 +100,81 @@ function QueueControlPanel() {
 				matchKey={key => key.id === 'ADDING_ITEM' && key.opts.variant === 'toggle-position'}
 				preload="intent"
 				render={Button}
-				className="flex w-min items-center space-x-0"
+				className="flex w-min items-center space-x-0 not-group-data-[status=editing]:invisible"
 				variant="secondary"
 				disabled={!isEditing}
 			>
 				<Icons.PlusIcon />
 				<span>Add Layers</span>
 			</StartActivityInteraction>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Button
+						size="icon"
+						disabled={!isModified}
+						onClick={() => SLLClient.Store.getState().reset()}
+						variant="secondary"
+						className="col-start-1 row-start-1 not-group-data-[status=editing]:invisible"
+					>
+						<Icons.Undo />
+					</Button>
+				</TooltipTrigger>
+				<TooltipContent>
+					<p>Reset</p>
+				</TooltipContent>
+			</Tooltip>
+			{/*<Separator orientation="vertical" />*/}
+			<div className="grid">
+				<div className="col-start-2 row-start-1 flex items-center gap-2 invisible group-data-[status=saving]:visible">
+					<Icons.LoaderCircle className="animate-spin h-4 w-4" />
+					<span className="text-sm">Saving...</span>
+				</div>
+				<Button
+					variant="outline"
+					onClick={() => setEditing(true)}
+					className="col-start-2 row-start-1 invisible group-data-[status=idle]:visible"
+				>
+					<Icons.Edit />
+					<span>Start Editing</span>
+				</Button>
+				<ButtonGroup className="col-start-2 row-start-1 invisible group-data-[status=editing]:visible">
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								size="icon"
+								variant={forceSave ? 'destructive' : 'secondary'}
+								onClick={() => setForceSave(!forceSave)}
+							>
+								<Icons.Sword />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>
+							<p>Toggle Force save (Save even if others are stil )</p>
+						</TooltipContent>
+					</Tooltip>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								className="w-37.5"
+								variant={forceSave ? 'destructive' : 'default'}
+								onClick={() => setEditing(false)}
+							>
+								<Icons.Save />
+								<span>{forceSave ? 'Force Save' : (numEditors === 1 && isModified) ? 'Save' : 'Finish Editing'}</span>
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>
+							<p>
+								{forceSave
+									? 'Save changes, even if others are still editing'
+									: isModified
+									? 'Save changes to the queue'
+									: 'Finish editing the queue'}
+							</p>
+						</TooltipContent>
+					</Tooltip>
+				</ButtonGroup>
+			</div>
 			<PoolConfigurationPopover>
 				<Button size="icon" variant="ghost" title="Pool Configuration">
 					<Icons.Settings />
