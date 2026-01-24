@@ -527,7 +527,7 @@ function MatchHistoryRow({
 					data-is-editing={isEditingQueue}
 					className={cn(
 						Typo.LayerText,
-						'whitespace-nowrap bg-background data-[is-dragging=true]:outline-solid group rounded text-xs',
+						'whitespace-nowrap bg-background data-[is-dragging=true]:outline-solid group rounded text-xs data-is-editing:cursor-grab',
 						bgColor,
 						hoverColor,
 					)}
