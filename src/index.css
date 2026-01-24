@@ -63,7 +63,7 @@
 		--border: 240 3.7% 15.9%;
 		--input: 240 3.7% 15.9%;
 		--ring: 240 4.9% 83.9%;
-		--moved: 210 100% 50%;
+		--moved: 210 100% 60%;
 		--moved-foreground: 0 0% 100%;
 		--edited: 30 100% 30%;
 		--edited-foreground: 0 0% 100%;
@@ -86,5 +86,23 @@
 	}
 	body {
 		@apply bg-background text-foreground;
+	}
+}
+
+.activity-text {
+	display: grid;
+	grid-template-columns: 1fr;
+	transition: grid-template-columns 200ms ease-out, opacity 200ms ease-out;
+	opacity: 1;
+}
+
+.activity-text > * {
+	overflow: hidden;
+}
+
+@starting-style {
+	.activity-text {
+		grid-template-columns: 0fr;
+		opacity: 0;
 	}
 }

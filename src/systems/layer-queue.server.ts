@@ -12,7 +12,6 @@ import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
-
 import * as MH from '@/models/match-history.models'
 import * as SS from '@/models/server-state.models'
 import type * as SM from '@/models/squad.models.ts'
@@ -23,7 +22,6 @@ import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { initModule } from '@/server/logger'
-
 import orpcBase from '@/server/orpc-base'
 import * as LayerQueriesServer from '@/systems/layer-queries.server'
 import * as LayerQueries from '@/systems/layer-queries.shared.ts'
@@ -33,7 +31,6 @@ import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Users from '@/systems/users.server'
 import * as VoteSys from '@/systems/vote.server'
-
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
@@ -226,7 +223,7 @@ export function schedulePostRollTasks(ctx: C.SquadServer, newLayerId: L.LayerId)
 export async function updateQueue(
 	{ input, ctx }: {
 		input: { layerQueue: LL.List; layerQueueSeqId: number }
-		ctx: C.OrpcBase & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory
+		ctx: C.Db & C.User & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory
 	},
 ) {
 	input = Obj.deepClone(input)

@@ -38,29 +38,16 @@ export default function LayersPanel() {
 }
 
 function QueueControlPanel() {
-	const [isEditing, setEditing] = SLLClient.useActivityState({
-		matchActivity: React.useCallback((root) => !!root.child?.EDITING, []),
-		createActivity: Im.produce((root: Im.WritableDraft<SLL.RootActivity>) => {
-			root.child.EDITING ??= {
-				_tag: 'variant',
-				id: 'EDITING',
-				opts: {},
-				chosen: ST.Match.leaf('IDLE', {}),
-			}
-		}),
-		removeActivity: Im.produce((root: Im.WritableDraft<SLL.RootActivity>) => {
-			delete root.child.EDITING
-		}),
-	})
-
-	const [isModified, saving] = Zus.useStore(
-		SLLClient.Store,
-		useShallow(s => [s.isModified, s.saving]),
-	)
-
-	async function saveLqState() {
-		await SLLClient.Store.getState().save()
+	const isEditing = SLLClient.useIsEditing()
+	const setEditing = (editing: boolean) => {
+		SLLClient.Store.getState().dispatch({ op: editing ? 'start-editing' : 'finish-editing' })
 	}
+
+	const [isModified, committing] = Zus.useStore(
+		SLLClient.Store,
+		useShallow(s => [s.isModified, s.committing]),
+	)
+	const numEditors = Zus.useStore(SLLClient.Store, useShallow(s => s.session.editors.size))
 
 	function clear() {
 		const state = QD.LQStore.getState()
@@ -71,44 +58,50 @@ function QueueControlPanel() {
 
 	return (
 		<div className="flex items-center space-x-1 flex-grow justify-end">
-			{isModified && (
-				<>
-					<div className="space-x-1 flex items-center">
-						<Icons.LoaderCircle
-							className="animate-spin data-[pending=false]:invisible"
-							data-pending={saving}
-						/>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Button
-									onClick={saveLqState}
-									disabled={saving}
-								>
-									<Icons.Save />
-									<span>Save</span>
-								</Button>
-							</TooltipTrigger>
-							<TooltipContent>
-								<p>Save</p>
-							</TooltipContent>
-						</Tooltip>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Button size="icon" disabled={saving} onClick={() => SLLClient.Store.getState().reset()} variant="secondary">
-									<Icons.Undo />
-								</Button>
-							</TooltipTrigger>
-							<TooltipContent>
-								<p>Reset</p>
-							</TooltipContent>
-						</Tooltip>
-					</div>
-					<Separator orientation="vertical" />
-				</>
-			)}
+			<div className="space-x-1 flex items-center">
+				<Icons.LoaderCircle
+					className="animate-spin data-[pending=false]:invisible"
+					data-pending={committing}
+				/>
+				{isEditing && (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								size="icon"
+								disabled={!isModified}
+								onClick={() => SLLClient.Store.getState().reset()}
+								variant="secondary"
+							>
+								<Icons.Undo />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>
+							<p>Reset</p>
+						</TooltipContent>
+					</Tooltip>
+				)}
+				{!isEditing && (
+					<Button variant="outline" onClick={() => setEditing(true)}>
+						<Icons.Edit />
+						<span>Start Editing</span>
+					</Button>
+				)}
+				{(isEditing || committing)
+					&& (
+						<Button
+							onClick={() => setEditing(false)}
+							disabled={committing}
+						>
+							{isModified && numEditors === 1 ? <Icons.Save /> : <Icons.Check />}
+							<span>{isModified && numEditors === 1 ? 'Save' : 'Finish Editing'}</span>
+						</Button>
+					)}
+			</div>
+			<Separator orientation="vertical" />
 			<Tooltip>
 				<TooltipTrigger asChild>
 					<Button
+						disabled={!isEditing}
 						variant="outline"
 						size="icon"
 						onClick={() => clear()}
@@ -131,6 +124,7 @@ function QueueControlPanel() {
 				preload="intent"
 				render={Button}
 				className="flex w-min items-center space-x-0"
+				disabled={!isEditing}
 			>
 				<Icons.PlusIcon />
 				<span>Add Layers</span>

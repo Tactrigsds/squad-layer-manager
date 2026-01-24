@@ -151,6 +151,16 @@ function buildOperationSchema<T extends { [key: string]: z.ZodType }, ItemSchema
 			op: z.literal('clear'),
 			itemIds: z.array(LL.ItemIdSchema),
 		}),
+		z.object({
+			...base,
+			// uses "source" to determine what user started editing
+			op: z.literal('start-editing'),
+		}),
+		z.object({
+			...base,
+			// uses "source" to determine what user finished editing
+			op: z.literal('finish-editing'),
+		}),
 	])
 }
 
@@ -255,15 +265,18 @@ export type PresenceState = z.infer<typeof PresenceStateSchema>
 
 export type EditSession = {
 	list: LL.List
+	editors: Set<USR.UserId>
 	ops: Operation[]
 
+	// TODO I would like to move away from this approach of calculating mutations when operations are applied
 	mutations: ItemMut.Mutations
 }
 
 // no presence instances older than this should be displayed
 export const DISPLAYED_AWAY_PRESENCE_WINDOW = 1000 * 60 * 10
 
-export function applyOperation(list: LL.List, newOp: Operation | NewOperation, mutations?: ItemMut.Mutations) {
+export function applyOperation(session: EditSession, newOp: Operation | NewOperation, mutations?: ItemMut.Mutations) {
+	const list = session.list
 	const source: LL.Source = isOperation(newOp) ? { type: 'manual', userId: newOp.userId } : { type: 'unknown' }
 	switch (newOp.op) {
 		case 'add': {
@@ -362,6 +375,18 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 			break
 		}
 
+		case 'start-editing': {
+			if (source.type === 'unknown') break
+			session.editors.add(source.userId)
+			break
+		}
+
+		case 'finish-editing': {
+			if (source.type === 'unknown') break
+			session.editors.delete(source.userId)
+			break
+		}
+
 		default:
 			assertNever(newOp)
 	}
@@ -370,7 +395,7 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 export function applyOperations(s: EditSession, ops: Operation[]) {
 	for (let i = 0; i < ops.length; i++) {
 		const op = ops[i]
-		applyOperation(s.list, op, s.mutations)
+		applyOperation(s, op, s.mutations)
 	}
 	s.ops.push(...ops)
 }
@@ -383,6 +408,9 @@ export type Update =
 		sessionSeqId: SessionSequenceId
 	}
 	| {
+		code: 'commit-started'
+	}
+	| {
 		code: 'commit-completed'
 		list: LL.List
 		committer: USR.User
@@ -390,6 +418,7 @@ export type Update =
 		newSessionSeqId: SessionSequenceId
 		initiator: string
 	}
+	| { code: 'commit-rejected'; reason: string; msg: string; sessionSeqId: SessionSequenceId; committer: USR.User }
 	| {
 		code: 'reset-completed'
 		list: LL.List
@@ -404,7 +433,6 @@ export type Update =
 		sessionSeqId: SessionSequenceId
 		newSessionSeqId: SessionSequenceId
 	}
-	| { code: 'commit-rejected'; reason: string; msg: string; sessionSeqId: SessionSequenceId; committer: USR.User }
 	| {
 		code: 'locks-modified'
 		mutations: [LL.ItemId, string | null][]
@@ -535,6 +563,7 @@ export function endAllEditing(state: PresenceState) {
 export function createNewSession(list?: LL.List): EditSession {
 	return {
 		list: list ?? [],
+		editors: new Set(),
 		ops: [],
 		mutations: ItemMut.initMutations(),
 	}
@@ -542,14 +571,17 @@ export function createNewSession(list?: LL.List): EditSession {
 
 export function applyListUpdate(session: EditSession, list: LL.List) {
 	session.list = Obj.deepClone(list)
+	session.editors.clear()
 	session.ops = []
 	session.mutations = ItemMut.initMutations()
 }
 
-export function checkUserHasEdits(session: EditSession, userId: USR.UserId) {
-	for (const { item } of LL.iterItems(...session.list)) {
-		if (!ItemMut.idMutated(session.mutations, item.itemId)) continue
-		if (item.source.type === 'manual' && item.source.userId === userId) return true
+export function hasMutations(session: EditSession, userId?: USR.UserId) {
+	for (const op of session.ops) {
+		if (op.op === 'start-editing' || op.op === 'finish-editing') {
+			continue
+		}
+		if (!userId || userId === op.userId) return true
 	}
 	return false
 }
@@ -566,7 +598,7 @@ export const getHumanReadableActivity = (activity: RootActivity, listOrIndex: LL
 
 	if (!editingActivity) return null
 	if (editingActivity.chosen.id === 'IDLE') {
-		return `Editing`
+		return `Editing item`
 	}
 	if (editingActivity.chosen.id === 'ADDING_ITEM') {
 		return 'Adding layers'

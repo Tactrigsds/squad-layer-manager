@@ -321,8 +321,9 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	const voteState = (globalVoteState && globalVoteState?.itemId === parentItem?.itemId ? globalVoteState : undefined)
 		?? parentItem?.endingVoteState
 
+	const isEditing = SLLClient.useIsEditing()
 	const draggableItem = LL.layerItemToDragItem(item)
-	const dragProps = DndKit.useDraggable(draggableItem, { feedback: 'move' })
+	const dragProps = DndKit.useDraggable(draggableItem, { feedback: 'move', disabled: !isEditing })
 	const user = UsersClient.useLoggedInUser()
 
 	const [dropdownOpen, _setDropdownOpen] = React.useState(false)
@@ -349,8 +350,9 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	const editButtonProps = (className?: string) => ({
 		'data-can-edit': canEdit,
 		'data-mobile': isMobile,
+		'data-is-editing': !!isEditing,
 		disabled: !canEdit,
-		className: cn('data-[mobile=false]:invisible group-hover/single-item:visible', className),
+		className: cn('data-[mobile=false]:invisible data-[is-editing=true]:group-hover/single-item:visible', className),
 	})
 
 	const dropdownProps = {
@@ -432,7 +434,8 @@ function SingleLayerListItem(props: LayerListItemProps) {
 						<span className="grid">
 							<span
 								data-can-edit={canEdit}
-								className=" text-right m-auto font-mono text-s col-start-1 row-start-1 group-hover/single-item:invisible"
+								data-is-editing={!!isEditing}
+								className=" text-right m-auto font-mono text-s col-start-1 row-start-1 data-[is-editing=true]:group-hover/single-item:invisible"
 							>
 								{LL.getItemNumber(index)}
 							</span>
@@ -493,8 +496,9 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const canEdit = !SLLClient.useIsItemLocked(item.itemId)
 	const user = UsersClient.useLoggedInUser()
 	const canManageVote = user ? RBAC.rbacUserHasPerms(user, RBAC.perm('vote:manage')) : false
+	const isEditing = SLLClient.useIsEditing()
 	const draggableItem = LL.layerItemToDragItem(item)
-	const dragProps = DndKit.useDraggable(draggableItem)
+	const dragProps = DndKit.useDraggable(draggableItem, { disabled: !isEditing })
 
 	const [dropdownOpen, setDropdownOpen] = React.useState(false)
 	const isMobile = useIsMobile()
@@ -982,6 +986,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 	}, [item.itemId])
 
 	const isLocked = SLLClient.useIsItemLocked(item.itemId)
+	const isEditing = SLLClient.useIsEditing()
 	const itemActions = () => QD.getLLItemActions(props.listStore.getState(), props.itemId)
 
 	function sendToFront() {
@@ -1020,19 +1025,20 @@ function ItemDropdown(props: ItemDropdownProps) {
 							matchKey={key => Obj.deepEqualStrict(key, activities['edit'])}
 							preload="viewport"
 							render={DropdownMenuItem}
+							disabled={!isEditing}
 						>
 							Edit
 						</StartActivityInteraction>
 					)}
 					<DropdownMenuItem
-						disabled={isLocked || !LL.swapFactions(item)}
+						disabled={!isEditing || isLocked || !LL.swapFactions(item)}
 						onClick={() => itemActions().dispatch({ op: 'swap-factions' })}
 					>
 						Swap Factions
 					</DropdownMenuItem>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem
-						disabled={isLocked}
+						disabled={!isEditing || isLocked}
 						onClick={() => {
 							itemActions().dispatch({ op: 'delete' })
 						}}
@@ -1067,6 +1073,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 						matchKey={key => Obj.deepEqualStrict(key, activities['add-after'])}
 						preload="viewport"
 						render={DropdownMenuItem}
+						disabled={!isEditing}
 					>
 						Add Layers Before
 					</StartActivityInteraction>
@@ -1077,6 +1084,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 						matchKey={key => Obj.deepEqualStrict(key, activities['add-before'])}
 						preload="viewport"
 						render={DropdownMenuItem}
+						disabled={!isEditing}
 					>
 						Add Layers After
 					</StartActivityInteraction>
@@ -1085,13 +1093,13 @@ function ItemDropdown(props: ItemDropdownProps) {
 				<DropdownMenuSeparator />
 				<DropdownMenuGroup>
 					<DropdownMenuItem
-						disabled={(index.innerIndex ?? index.outerIndex) === 0 || isLocked}
+						disabled={!isEditing || (index.innerIndex ?? index.outerIndex) === 0 || isLocked}
 						onClick={sendToFront}
 					>
 						Send to Front
 					</DropdownMenuItem>
 					<DropdownMenuItem
-						disabled={lastLocalIndex && LL.indexesEqual(index, lastLocalIndex) || isLocked}
+						disabled={!isEditing || lastLocalIndex && LL.indexesEqual(index, lastLocalIndex) || isLocked}
 						onClick={sendToBack}
 					>
 						Send to Back

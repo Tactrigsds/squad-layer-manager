@@ -52,8 +52,8 @@ export type Store = {
 	dispatch(op: SLL.NewOperation): Promise<void>
 	pushPresenceAction(action: PresenceActions.Action): void
 
-	saving: boolean
-	save(): Promise<void>
+	syncedOp$: Rx.Subject<SLL.Operation>
+	committing: boolean
 
 	reset(): Promise<void>
 
@@ -200,18 +200,16 @@ function createStore() {
 				set({ layerList: state.session.list })
 			}
 
-			const isModified = state.session.ops.length > 0
-			const prevIsModified = prev.session.ops.length > 0
-			if (isModified !== prevIsModified) {
-				set({ isModified })
+			const hasMutations = SLL.hasMutations(state.session)
+			if (hasMutations !== SLL.hasMutations(prev.session)) {
+				set({ isModified: hasMutations })
 			}
 
-			;(() => {
-				if (prev.presence !== state.presence) {
-					set({ userPresence: SLL.resolveUserPresence(state.presence) })
+			if (prev.presence !== state.presence) {
+				set({ userPresence: SLL.resolveUserPresence(state.presence) })
 
-					const config = ConfigClient.getConfig()
-					if (!config) return
+				const config = ConfigClient.getConfig()
+				if (config) {
 					const wsClientId = config.wsClientId
 					const prevClientActivityState = prev.presence.get(wsClientId)?.activityState ?? null
 					const clientActivityState = state.presence.get(wsClientId)?.activityState ?? null
@@ -219,7 +217,8 @@ function createStore() {
 						dispatchClientActivityEvents(clientActivityState, prevClientActivityState, false)
 					}
 				}
-			})()
+			}
+
 			for (const entry of state.activityLoaderCache) {
 				const config = ACTIVITY_LOADER_CONFIGS.find(e => e.name === entry.name)
 				if (!config?.checkShouldUnload) continue
@@ -374,6 +373,8 @@ function createStore() {
 
 			presence: new Map(),
 			userPresence: new Map(),
+			committing: false,
+			syncedOp$: new Rx.Subject(),
 
 			// shorthands
 			layerList: session.list,
@@ -401,11 +402,11 @@ function createStore() {
 					case 'op': {
 						const state = get()
 						const nextPendingOpId = state.outgoingOpsPendingSync[0]
-
 						if (nextPendingOpId && nextPendingOpId === update.op.opId) {
 							const serverDivergedOps = state.incomingOpsPendingSync
 							const serverSession = Obj.deepClone(state.syncedState)
-							SLL.applyOperations(serverSession, [...serverDivergedOps, update.op])
+							const newOpsHead = [...serverDivergedOps, update.op]
+							SLL.applyOperations(serverSession, newOpsHead)
 
 							set({
 								session: serverSession,
@@ -413,6 +414,9 @@ function createStore() {
 								incomingOpsPendingSync: [],
 								outgoingOpsPendingSync: this.outgoingOpsPendingSync.slice(1),
 							})
+							for (const op of newOpsHead) {
+								state.syncedOp$.next(op)
+							}
 						} else if (nextPendingOpId) {
 							set({ incomingOpsPendingSync: [...state.incomingOpsPendingSync, update.op] })
 						} else {
@@ -422,6 +426,7 @@ function createStore() {
 									SLL.applyOperations(draft.session, [update.op])
 								})
 							)
+							state.syncedOp$.next(update.op)
 						}
 
 						break
@@ -444,6 +449,7 @@ function createStore() {
 					case 'reset-completed':
 					case 'list-updated':
 					case 'commit-completed': {
+						set({ committing: false })
 						if (update.code === 'list-updated') {
 							globalToast$.next({ title: 'Queue Updated' })
 						} else {
@@ -464,6 +470,7 @@ function createStore() {
 					}
 
 					case 'commit-rejected': {
+						set({ committing: false })
 						globalToast$.next({ variant: 'destructive', title: update.msg })
 						break
 					}
@@ -482,7 +489,13 @@ function createStore() {
 
 					case 'commit':
 					case 'reset':
+						set({ committing: false })
 						break
+
+					case 'commit-started': {
+						set({ committing: true })
+						break
+					}
 
 					default:
 						assertNever(update)
@@ -493,6 +506,12 @@ function createStore() {
 			async dispatch(newOp) {
 				const userId = UsersClient.loggedInUserId!
 				const baseProps = { opId: createId(6), userId }
+
+				if (newOp.op === 'start-editing') {
+					this.updateActivity(SLL.TOGGLE_EDITING_TRANSITIONS.createActivity)
+				} else if (newOp.op === 'finish-editing') {
+					this.updateActivity(SLL.TOGGLE_EDITING_TRANSITIONS.removeActivity)
+				}
 
 				let op: SLL.Operation
 				const source: LL.Source = { type: 'manual', userId }
@@ -522,7 +541,6 @@ function createStore() {
 						SLL.applyOperations(draft.session, [op])
 					})
 				)
-				this.updateActivity(SLL.TOGGLE_EDITING_TRANSITIONS.createActivity)
 
 				await processUpdate({
 					code: 'op',
@@ -538,7 +556,7 @@ function createStore() {
 				const state = get()
 				const userId = UsersClient.loggedInUserId
 				if (!userId) return
-				const hasEdits = SLL.checkUserHasEdits(state.session, userId!)
+				const hasEdits = SLL.hasMutations(state.session, userId!)
 				let update = action({ hasEdits, prev: state.presence.get(config.wsClientId) })
 				update = Obj.trimUndefined(update)
 				let presenceUpdated = false
@@ -594,23 +612,6 @@ function createStore() {
 					const next = update(prev)
 					dispatchClientActivityEvents(next, prev, true)
 				})
-			},
-
-			saving: false,
-			async save() {
-				set({ saving: true })
-				try {
-					const commitResponse = Rx.firstValueFrom(
-						serverUpdate$.pipe(Rx.filter(update => update.code === 'commit-completed' || update.code === 'commit-rejected')),
-					)
-					await processUpdate({
-						code: 'commit',
-						sessionSeqId: get().sessionSeqId,
-					})
-					await commitResponse
-				} finally {
-					set({ saving: false })
-				}
 			},
 
 			async reset() {
@@ -709,9 +710,8 @@ export async function setup() {
 }
 
 export function useIsEditing() {
-	const config = ConfigClient.useConfig()
-	const isEditing = Zus.useStore(Store, (s) => config ? !!s.presence.get(config.wsClientId)?.activityState?.child?.EDITING : undefined)
-		?? false
+	const user = UsersClient.useLoggedInUser()
+	const isEditing = Zus.useStore(Store, (s) => user && s.session.editors.has(user.discordId) && !s.committing)
 
 	return isEditing
 }
