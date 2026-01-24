@@ -5,7 +5,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 type AlertDialogButton = {
 	id: string
 	label: string
-	variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
+	variant?: 'default' | 'destructive' | 'outline-solid' | 'secondary' | 'ghost' | 'link'
 }
 
 type AlertDialogOptions = {

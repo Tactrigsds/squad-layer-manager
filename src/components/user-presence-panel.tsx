@@ -169,7 +169,7 @@ export default function UserPresencePanel() {
 										!activityText && 'px-0',
 									)}
 								>
-									<div className="flex items-center justify-center w-6 h-6 flex-shrink-0">
+									<div className="flex items-center justify-center w-6 h-6 shrink-0">
 										<Avatar
 											style={{ backgroundColor: user.displayHexColor ?? undefined }}
 											className={cn(

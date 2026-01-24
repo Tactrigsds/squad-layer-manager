@@ -157,19 +157,19 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 
 	return (
 		<div
-			className="flex gap-2 py-1 text-xs w-full min-w-0 border-r-2 bg-gradient-to-l to-transparent items-baseline"
+			className="flex gap-2 py-1 text-xs w-full min-w-0 border-r-2 bg-linear-to-l to-transparent items-baseline"
 			style={{
 				borderRightColor: channelStyle.color,
 				backgroundImage: `linear-gradient(to left, ${channelStyle.gradientColor}, transparent)`,
 			}}
 		>
 			<EventTime time={event.time} />
-			<div className="flex-grow min-w-0">
+			<div className="grow min-w-0">
 				<span className="inline-block whitespace-nowrap">
 					{channelLabel}
 					{fromDisplay}
 				</span>
-				: <span className="break-words">{event.message}</span>
+				: <span className="wrap-break-word">{event.message}</span>
 			</div>
 		</div>
 	)
@@ -260,12 +260,12 @@ function PlayerBannedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 	return (
 		<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
 			<EventTime time={event.time} variant="small" />
-			<Icons.Ban className="h-4 w-4 text-red-500 flex-shrink-0" />
-			<div className="flex-grow min-w-0">
+			<Icons.Ban className="h-4 w-4 text-red-500 shrink-0" />
+			<div className="grow min-w-0">
 				<span className="inline-block whitespace-nowrap">
 					<PlayerDisplay player={event.player} matchId={event.matchId} /> was banned
 				</span>
-				reason: "<span className="break-words">{event.interval}</span>"
+				reason: "<span className="wrap-break-word">{event.interval}</span>"
 			</div>
 		</div>
 	)
@@ -275,12 +275,12 @@ function PlayerWarnedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 	return (
 		<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
 			<EventTime time={event.time} variant="small" />
-			<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
-			<div className="flex-grow min-w-0">
+			<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
+			<div className="grow min-w-0">
 				<span className="inline-block whitespace-nowrap">
 					<PlayerDisplay showTeam player={event.player} matchId={event.matchId} /> was warned
 				</span>
-				: "<span className="break-words">{event.reason}</span>"
+				: "<span className="wrap-break-word">{event.reason}</span>"
 			</div>
 		</div>
 	)
@@ -296,12 +296,12 @@ function PlayerWarnedDedupedEvent({ event }: { event: Extract<CHAT.EventEnriched
 		return (
 			<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
 				<EventTime time={event.time} variant="small" />
-				<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
-				<div className="flex-grow min-w-0">
+				<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
+				<div className="grow min-w-0">
 					<span className="inline-block whitespace-nowrap">
 						<PlayerDisplay showTeam player={player} matchId={event.matchId} /> was warned {player.times}x
 					</span>
-					: "<span className="break-words">{event.reason}</span>"
+					: "<span className="wrap-break-word">{event.reason}</span>"
 				</div>
 			</div>
 		)
@@ -311,8 +311,8 @@ function PlayerWarnedDedupedEvent({ event }: { event: Extract<CHAT.EventEnriched
 	return (
 		<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
 			<EventTime time={event.time} variant="small" />
-			<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
-			<div className="flex-grow min-w-0">
+			<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
+			<div className="grow min-w-0">
 				<span className="inline-block whitespace-nowrap">
 					<Tooltip>
 						<TooltipTrigger asChild>
@@ -333,7 +333,7 @@ function PlayerWarnedDedupedEvent({ event }: { event: Extract<CHAT.EventEnriched
 					</Tooltip>{' '}
 					players were warned
 				</span>
-				: "<span className="break-words">{event.reason}</span>"
+				: "<span className="wrap-break-word">{event.reason}</span>"
 			</div>
 		</div>
 	)
@@ -365,8 +365,8 @@ function NewGameEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'N
 		<div className="border-t border-green-500 pt-0.5 mt-1 w-full">
 			<div className="flex gap-2 py-0.5 text-muted-foreground items-center w-full">
 				<EventTime time={event.time} variant="small" />
-				<Icons.Play className="h-4 w-4 text-green-500 flex-shrink-0" />
-				<span className="text-xs inline-flex flex-wrap items-center gap-1 flex-grow whitespace-nowrap">
+				<Icons.Play className="h-4 w-4 text-green-500 shrink-0" />
+				<span className="text-xs inline-flex flex-wrap items-center gap-1 grow whitespace-nowrap">
 					<span>{label} ({visibleMatchIndex === 0 ? 'Current Match' : visibleMatchIndex}):</span>
 					{match && <ShortLayerName layerId={match.layerId} teamParity={match.ordinal % 2} className="text-xs" />}
 				</span>
@@ -597,7 +597,7 @@ function MapSetEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'MA
 		<div className="flex gap-2 py-0.5 text-muted-foreground items-center">
 			<EventTime time={event.time} variant="small" />
 			<Icons.Map className="h-4 w-4 text-blue-400" />
-			<span className="text-xs inline-flex items-center gap-1 flex-grow whitespace-nowrap">
+			<span className="text-xs inline-flex items-center gap-1 grow whitespace-nowrap">
 				Next layer set to <ShortLayerName layerId={event.layerId} teamParity={0} className="text-xs" />
 			</span>
 		</div>
@@ -820,7 +820,7 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 	return (
 		<div className={cn(props.className, 'h-full relative')}>
 			{!synced && (
-				<div className="absolute inset-0 z-30 bg-background/80 backdrop-blur-sm flex items-center justify-center">
+				<div className="absolute inset-0 z-30 bg-background/80 backdrop-blur-xs flex items-center justify-center">
 					<Icons.Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
 				</div>
 			)}
@@ -848,8 +848,8 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 					{connectionError && (
 						<div className="flex gap-2 py-1 text-destructive">
 							{connectionError.code === 'CONNECTION_LOST'
-								? <Icons.Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
-								: <Icons.WifiOff className="h-4 w-4 flex-shrink-0" />}
+								? <Icons.Loader2 className="h-4 w-4 animate-spin shrink-0" />
+								: <Icons.WifiOff className="h-4 w-4 shrink-0" />}
 							<span className="text-xs">
 								{connectionError.code === 'CONNECTION_LOST'
 									? 'Connection lost - attempting to reconnect...'
@@ -863,7 +863,7 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 					<Button
 						onClick={() => scrollToBottom()}
 						variant="secondary"
-						className="absolute bottom-0 left-0 right-0 w-full h-8 shadow-lg flex items-center justify-center gap-2 z-10 bg-opacity-20! rounded-none backdrop-blur-sm"
+						className="absolute bottom-0 left-0 right-0 w-full h-8 shadow-lg flex items-center justify-center gap-2 z-10 bg-opacity-20! rounded-none backdrop-blur-xs"
 						title="Scroll to bottom"
 					>
 						<Icons.ChevronDown className="h-4 w-4" />
@@ -965,7 +965,7 @@ function PreviousMatchEvents() {
 				}}
 				variant="secondary"
 				disabled={isFetchingNextPage}
-				className="w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-sm"
+				className="w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-xs"
 			>
 				<Icons.ChevronUp className="h-4 w-4" />
 				<span className="text-xs">Show Previous Match</span>
@@ -976,7 +976,7 @@ function PreviousMatchEvents() {
 			<Button
 				onClick={() => fetchNextPage()}
 				variant="destructive"
-				className="w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-sm"
+				className="w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-xs"
 			>
 				<Icons.AlertCircle className="h-4 w-4" />
 				<span className="text-xs">Failed to load - Click to retry</span>
@@ -987,7 +987,7 @@ function PreviousMatchEvents() {
 			<Button
 				variant="secondary"
 				disabled={isFetchingNextPage}
-				className="w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-sm"
+				className="w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-xs"
 			>
 				<Icons.Loader2 className="h-4 w-4 animate-spin" />
 				<span className="text-xs">Loading...</span>
@@ -1094,7 +1094,7 @@ export default function ServerActivityPanel() {
 
 	return (
 		<Card className="flex flex-col min-h-0 w-fit">
-			<CardHeader className="flex flex-row justify-between flex-shrink-0 items-center pb-3">
+			<CardHeader className="flex flex-row justify-between shrink-0 items-center pb-3">
 				<div className="flex items-center gap-4">
 					<CardTitle className="flex items-center gap-2">
 						<Icons.Server className="h-5 w-5" />
@@ -1122,7 +1122,7 @@ export default function ServerActivityPanel() {
 						isStatePanelOpen={isStatePanelOpen}
 					/>
 					{isStatePanelOpen && synced && (
-						<div className="w-[240px] flex-shrink-0">
+						<div className="w-[240px] shrink-0">
 							<ServerPlayerList />
 						</div>
 					)}

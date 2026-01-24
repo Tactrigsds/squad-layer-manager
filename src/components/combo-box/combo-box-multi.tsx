@@ -151,7 +151,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 						aria-expanded={open}
 						className={cn(props.className, restrictValueSize && 'max-w-[400px]', 'justify-between font-mono')}
 					>
-						<span className="grow-1 overflow-hidden text-ellipsis">
+						<span className="grow overflow-hidden text-ellipsis">
 							{valuesDisplay}
 						</span>
 						<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />

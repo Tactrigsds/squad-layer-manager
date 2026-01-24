@@ -254,7 +254,7 @@ function PoolFiltersConfigurationPanel({
 						<div className="flex items-center space-x-2 bg-card" key={filterId}>
 							<FilterEntitySelect
 								enabled={canWriteSettings ?? false}
-								className="flex-grow"
+								className="grow"
 								title="Pool Filter"
 								filterId={filterId}
 								onSelect={onSelect}

@@ -598,7 +598,7 @@ export const getHumanReadableActivity = (activity: RootActivity, listOrIndex: LL
 
 	if (!editingActivity) return null
 	if (editingActivity.chosen.id === 'IDLE') {
-		return `Editing item`
+		return `Editing Queue`
 	}
 	if (editingActivity.chosen.id === 'ADDING_ITEM') {
 		return 'Adding layers'

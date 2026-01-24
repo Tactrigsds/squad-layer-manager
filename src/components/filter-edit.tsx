@@ -328,7 +328,7 @@ export function FilterEdit(
 												{(field) => {
 													const label = 'Alert Message'
 													return (
-														<div className="flex flex-col space-y-2 flex-grow">
+														<div className="flex flex-col space-y-2 grow">
 															<Label htmlFor={field.name}>{label}</Label>
 															<Textarea
 																id={field.name}
@@ -385,7 +385,7 @@ export function FilterEdit(
 												{(field) => {
 													const label = 'Alert Message'
 													return (
-														<div className="flex flex-col space-y-2 flex-grow">
+														<div className="flex flex-col space-y-2 grow">
 															<Label htmlFor={field.name}>{label}</Label>
 															<Textarea
 																id={field.name}
@@ -418,7 +418,7 @@ export function FilterEdit(
 										{(field) => {
 											const label = 'Description'
 											return (
-												<div className="flex flex-col space-y-2 flex-grow">
+												<div className="flex flex-col space-y-2 grow">
 													<Label htmlFor={field.name}>{label}</Label>
 													<Textarea
 														id={field.name}
@@ -427,7 +427,7 @@ export function FilterEdit(
 														onBlur={field.handleBlur}
 														onChange={(e) => field.handleChange(e.target.value?.trim() ?? null)}
 														rows={15}
-														className="font-mono text-sm flex-grow"
+														className="font-mono text-sm grow"
 													/>
 													{field.state.meta.errors.length > 0 && (
 														<Alert variant="destructive">
@@ -530,7 +530,7 @@ function FilterContributors(props: {
 								<li key={user.discordId} className="flex items-center space-x-1">
 									<Icons.Minus
 										onClick={() => removeMutation.mutate({ filterId: props.filterId, userId: user.discordId })}
-										className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+										className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
 									/>
 									<Badge>{user.displayName}</Badge>
 								</li>
@@ -551,7 +551,7 @@ function FilterContributors(props: {
 								<li key={role} className="flex items-center space-x-1">
 									<Icons.Minus
 										onClick={() => removeMutation.mutate({ filterId: props.filterId, roleId: role })}
-										className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+										className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
 									/>
 									<Badge>{role}</Badge>
 								</li>

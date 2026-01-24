@@ -47,7 +47,7 @@ function FilterEntityCard({ entity, cfg }: FilterEntityCardProps) {
 							<Badge variant="secondary" className="flex items-center gap-1.5">
 								<Avatar
 									style={{ backgroundColor: user.displayHexColor ?? undefined }}
-									className="hover:cursor-pointer select-none h-5 w-5 flex-shrink-0"
+									className="hover:cursor-pointer select-none h-5 w-5 shrink-0"
 								>
 									<AvatarImage src={USR.getAvatarUrl(user)} crossOrigin="anonymous" />
 									<AvatarFallback className="text-xs">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>

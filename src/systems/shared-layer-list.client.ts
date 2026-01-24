@@ -711,9 +711,12 @@ export async function setup() {
 
 export function useIsEditing() {
 	const user = UsersClient.useLoggedInUser()
-	const isEditing = Zus.useStore(Store, (s) => user && s.session.editors.has(user.discordId) && !s.committing)
+	return Zus.useStore(Store, React.useMemo(() => (s) => selectIsEditing(s, user), [user]))
+}
 
-	return isEditing
+export function selectIsEditing(store: Store, user?: USR.User) {
+	if (!user) return false
+	return user && store.session.editors.has(user.discordId) && !store.committing
 }
 
 export function useIsItemLocked(itemId: LL.ItemId) {

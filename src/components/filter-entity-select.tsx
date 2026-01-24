@@ -58,7 +58,7 @@ export default function FilterEntitySelect(props: {
 			<ComboBox
 				title={props.title ?? 'Filter'}
 				disabled={!hasForceWrite}
-				className="flex-grow"
+				className="grow"
 				options={filterOptions ?? LOADING}
 				allowEmpty={props.allowEmpty ?? true}
 				value={props.filterId}

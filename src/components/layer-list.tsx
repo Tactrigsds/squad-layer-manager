@@ -60,7 +60,9 @@ export function LayerList(
 	// -------- dispatch move events --------
 	DndKit.useDragEnd(React.useCallback(async (event) => {
 		const user = UsersClient.loggedInUser
+		const sllState = SLLClient.Store.getState()
 		if (!user || !event.over) return
+		if (!SLLClient.selectIsEditing(sllState, user)) return
 		const target = event.over.slots[0]
 		if (target.dragItem.type !== 'layer-item') return
 		const cursors = LL.dropItemToLLItemCursors(event.over)
@@ -93,6 +95,7 @@ export function LayerList(
 			})
 		}
 	}, [props.store]))
+
 	DndKit.useDraggingCallback(item => {
 		const storeState = SLLClient.Store.getState()
 		const getIsDraggingStuff = (root: SLL.RootActivity) => {
@@ -352,7 +355,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 		'data-mobile': isMobile,
 		'data-is-editing': !!isEditing,
 		disabled: !canEdit,
-		className: cn('data-[mobile=false]:invisible data-[is-editing=true]:group-hover/single-item:visible', className),
+		className: cn('data-[mobile=false]:invisible group-hover/single-item:data-[is-editing=true]:visible', className),
 	})
 
 	const dropdownProps = {
@@ -422,20 +425,20 @@ function SingleLayerListItem(props: LayerListItemProps) {
 				ref={dragProps.ref}
 				className={cn(
 					Typo.LayerText,
-					'group/single-item flex data-[is-voting=true]:border-added  data-[is-voting=true]:bg-secondary data-[is-dragging=false]:w-full min-w-[40px] min-h-[20px] max items-center justify-between space-x-2 bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30 cursor-default data-[is-hovered=true]:outline',
+					'group/single-item flex data-[is-voting=true]:border-added  data-[is-voting=true]:bg-secondary data-[is-dragging=false]:w-full min-w-10 min-h-5 max items-center justify-between space-x-2 bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline-solid rounded-md bg-opacity-30 cursor-default data-[is-hovered=true]:outline-solid',
 				)}
 				data-mutation={displayedMutation}
 				data-is-dragging={dragProps.isDragging}
 				data-is-voting={voteState?.code === 'in-progress'}
 				data-is-hovered={activityHovered}
 			>
-				{dragProps.isDragging ? <span className="w-[20px] mx-auto">...</span> : (
+				{dragProps.isDragging ? <span className="w-5 mx-auto">...</span> : (
 					<>
 						<span className="grid">
 							<span
 								data-can-edit={canEdit}
 								data-is-editing={!!isEditing}
-								className=" text-right m-auto font-mono text-s col-start-1 row-start-1 data-[is-editing=true]:group-hover/single-item:invisible"
+								className=" text-right m-auto font-mono text-s col-start-1 row-start-1 group-hover/single-item:data-[is-editing=true]:invisible"
 							>
 								{LL.getItemNumber(index)}
 							</span>
@@ -619,14 +622,14 @@ function VoteLayerListItem(props: LayerListItemProps) {
 			<li
 				ref={dragProps.ref}
 				className={cn(
-					'group/parent-item flex data-[is-dragging=false]:w-full min-w-[40px] min-h-[20px] items-center justify-between px-1 py-0 border-2 border-gray-400 rounded inset-2',
-					`data-[mutation=added]:border-added data-[mutation=moved]:border-moved data-[mutation=edited]:border-edited data-[is-dragging=true]:outline cursor-default`,
+					'group/parent-item flex data-[is-dragging=false]:w-full min-w-10 min-h-5 items-center justify-between px-1 py-0 border-2 border-gray-400 rounded inset-2',
+					`data-[mutation=added]:border-added data-[mutation=moved]:border-moved data-[mutation=edited]:border-edited data-[is-dragging=true]:outline-solid cursor-default`,
 				)}
 				data-mutation={displayedMutation}
 				data-is-dragging={dragProps.isDragging}
 			>
-				{dragProps.isDragging ? <span className="mx-auto w-[20px]">...</span> : (
-					<div className="h-full flex flex-col flex-grow">
+				{dragProps.isDragging ? <span className="mx-auto w-5">...</span> : (
+					<div className="h-full flex flex-col grow">
 						<div className="p-1 space-x-2 flex items-center justify-between w-full">
 							<span className="flex items-center space-x-1">
 								<Button

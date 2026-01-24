@@ -57,7 +57,7 @@ function QueueControlPanel() {
 	}
 
 	return (
-		<div className="flex items-center space-x-1 flex-grow justify-end">
+		<div className="flex items-center space-x-1 grow justify-end">
 			<div className="space-x-1 flex items-center">
 				<Icons.LoaderCircle
 					className="animate-spin data-[pending=false]:invisible"

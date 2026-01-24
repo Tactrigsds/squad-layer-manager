@@ -22,12 +22,12 @@ function PlayerItem({ player, matchId }: PlayerItemProps) {
 		<div className="flex items-center gap-1.5 py-0.5 px-2 hover:bg-accent/50 rounded">
 			{player.isLeader && (
 				<span title="Squad Leader">
-					<Icons.Star className="h-3 w-3 text-yellow-500 fill-yellow-500 flex-shrink-0" />
+					<Icons.Star className="h-3 w-3 text-yellow-500 fill-yellow-500 shrink-0" />
 				</span>
 			)}
 			{player.isAdmin && (
 				<span title="Admin">
-					<Icons.ShieldCheckIcon className="w-3 h-3 text-background fill-blue-300 flex-shrink-0" />
+					<Icons.ShieldCheckIcon className="w-3 h-3 text-background fill-blue-300 shrink-0" />
 				</span>
 			)}
 			<span className="text-xs font-medium truncate">{player.ids.username}</span>
@@ -94,7 +94,7 @@ function TeamSection({ teamId, squads, players, matchId }: TeamSectionProps) {
 	return (
 		<Collapsible open={isOpen} onOpenChange={setIsOpen} className="mb-4">
 			<CollapsibleTrigger className="flex items-center gap-1.5 w-full py-1.5 px-2 hover:bg-accent/20 rounded border-b">
-				<Icons.ChevronRight className={cn('h-3 w-3 transition-transform flex-shrink-0', isOpen && 'rotate-90')} />
+				<Icons.ChevronRight className={cn('h-3 w-3 transition-transform shrink-0', isOpen && 'rotate-90')} />
 				<span className="text-xs font-bold flex items-center flex-nowrap gap-1 whitespace-nowrap">
 					<MatchTeamDisplay matchId={matchId} teamId={teamId} showAltTeamIndicator={true} />
 				</span>
@@ -145,7 +145,7 @@ function TeamUnassignedSection({ players, matchId }: TeamUnassignedSectionProps)
 	return (
 		<Collapsible open={isOpen} onOpenChange={setIsOpen} className="mb-4">
 			<CollapsibleTrigger className="flex items-center gap-1.5 w-full py-1.5 px-2 hover:bg-accent/20 rounded border-b">
-				<Icons.ChevronRight className={cn('h-3 w-3 transition-transform flex-shrink-0', isOpen && 'rotate-90')} />
+				<Icons.ChevronRight className={cn('h-3 w-3 transition-transform shrink-0', isOpen && 'rotate-90')} />
 				<span className="text-xs font-bold text-muted-foreground">Unassigned</span>
 				<span className="text-xs text-muted-foreground whitespace-nowrap">({players.length})</span>
 			</CollapsibleTrigger>

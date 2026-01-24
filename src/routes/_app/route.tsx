@@ -81,11 +81,11 @@ function RouteComponent() {
 	const selectedServer = config?.servers.find(server => server.id === selectedServerId)
 	return (
 		<div
-			className="data-[on-dashboard]:h-screen w-full flex flex-col data-[on-dashboard]:overflow-hidden"
+			className="data-on-dashboard:h-screen w-full flex flex-col data-on-dashboard:overflow-hidden"
 			data-on-dashboard={orUndef(!!isOnServerDashboard)}
 		>
 			<nav
-				className="flex h-16 flex-shrink-0 items-center justify-between border-b px-2 sm:px-4"
+				className="flex h-16 shrink-0 items-center justify-between border-b px-2 sm:px-4"
 				style={{ backgroundColor: config?.topBarColor ?? undefined }}
 			>
 				<div className="flex items-start space-x-3 sm:space-x-6">
@@ -102,7 +102,7 @@ function RouteComponent() {
 				</div>
 				<div className="flex h-max min-h-0 flex-row items-center space-x-1 sm:space-x-3 lg:space-x-6 overflow-hidden">
 					{simulateRoles && (
-						<div className="hidden sm:flex items-center space-x-1 flex-shrink-0">
+						<div className="hidden sm:flex items-center space-x-1 shrink-0">
 							<span className="text-sm font-medium">Simulating Roles</span>{' '}
 							<Button size="icon" variant="ghost" onClick={() => setSimulateRoles(false)}>
 								<Icons.X className="h-4 w-4" />
@@ -162,14 +162,14 @@ function RouteComponent() {
 							<DropdownMenuTrigger asChild>
 								<Avatar
 									style={{ backgroundColor: user.displayHexColor ?? undefined }}
-									className="hover:cursor-pointer select-none h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0"
+									className="hover:cursor-pointer select-none h-8 w-8 sm:h-10 sm:w-10 shrink-0"
 								>
 									<AvatarImage src={avatarUrl} crossOrigin="anonymous" />
 									<AvatarFallback className="text-xs sm:text-sm">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
 								</Avatar>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent align="end">
-								<DropdownMenuLabel className="truncate max-w-[200px]">{user.displayName}</DropdownMenuLabel>
+								<DropdownMenuLabel className="truncate max-w-50">{user.displayName}</DropdownMenuLabel>
 								{simulateRoles && (
 									<DropdownMenuItem onClick={() => setSimulateRoles(false)} className="sm:hidden text-sm">
 										<Icons.X className="mr-2 h-4 w-4" />
