@@ -259,9 +259,10 @@ function handlePresenceUpdate(
 		log.warn('Received presence update from another user: %s, expected: %s', update.userId, ctx.user.discordId)
 		return
 	}
-	if (update.changes.lastSeen && update.changes.lastSeen > Date.now()) {
-		log.warn('Received presence update with invalid lastSeen: %s', update.changes.lastSeen)
-		return
+	const now = Date.now()
+	if (update.changes.lastSeen && update.changes.lastSeen > now) {
+		log.warn('Received presence update with invalid lastSeen: %s, patching to %s', update.changes.lastSeen, now)
+		update.changes.lastSeen = now
 	}
 
 	const prevActivity = ctx.sharedList.presence.get(update.wsClientId)?.activityState
