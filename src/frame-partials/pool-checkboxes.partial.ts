@@ -10,6 +10,7 @@ export type Store = {
 	setCheckbox: (type: keyof PoolCheckboxesState, value: SS.ConstraintApplyAs) => void
 }
 type Args = FRM.SetupArgs<{ defaultState: PoolCheckboxesState }, Store>
+export type Key = FRM.InstanceKey<FRM.FrameTypes & { state: Store }>
 
 export function initNewPoolCheckboxes(args: Args) {
 	const { set } = args

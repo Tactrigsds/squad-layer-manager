@@ -7,7 +7,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
+import { VoteDisplayConfig } from '@/components/vote-display-config'
 import { getFrameState, useFrameStore } from '@/frames/frame-manager.ts'
+import type * as GenVoteFrame from '@/frames/gen-vote.frame.ts'
 import type * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import { useIsMobile } from '@/hooks/use-is-mobile.ts'
@@ -17,6 +19,7 @@ import * as Obj from '@/lib/object'
 import { inline, useStableValue } from '@/lib/react.ts'
 import * as ST from '@/lib/state-tree.ts'
 import { statusCodeToTitleCase } from '@/lib/string.ts'
+import { assertNever } from '@/lib/type-guards.ts'
 import { resToOptional } from '@/lib/types.ts'
 import * as Typo from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
@@ -40,11 +43,11 @@ import * as UsersClient from '@/systems/users.client'
 import * as VotesClient from '@/systems/vote.client'
 import * as RQ from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
-
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
 import EditLayerDialog from './edit-layer-dialog.tsx'
+import GenVoteDialog from './gen-vote-dialog.tsx'
 import LayerDisplay from './layer-display.tsx'
 import LayerSourceDisplay from './layer-source-display.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
@@ -91,7 +94,7 @@ export function LayerList(
 				op: 'move',
 				cursor: cursor,
 				itemId: event.active.id,
-				newFirstItemId: LL.createLayerListItemId(),
+				newFirstItemId: LL.createItemId(),
 			})
 		}
 	}, [props.store]))
@@ -137,17 +140,27 @@ export function LayerList(
 function LoadedActivitiesRenderer({ store }: { store: Zus.StoreApi<QD.LLStore> }) {
 	return (
 		<>
-			{SLLClient.useLoadedActivities().map((entry) =>
-				entry.name === 'selectLayers'
-					? (
+			{SLLClient.useLoadedActivities().map((entry) => {
+				if (entry.name === 'selectLayers') {
+					return (
 						<LoadedSelectLayersView
 							key={entry.data.selectLayersFrame.instanceId}
 							store={store}
 							entry={entry}
 						/>
 					)
-					: null
-			)}
+				}
+				if (entry.name === 'genVote') {
+					return (
+						<LoadedGenVoteView
+							key={entry.data.genVoteFrame.instanceId}
+							store={store}
+							entry={entry}
+						/>
+					)
+				}
+				assertNever(entry)
+			})}
 		</>
 	)
 }
@@ -159,7 +172,7 @@ function LoadedSelectLayersView({
 	entry: _entry,
 }: {
 	store: Zus.StoreApi<QD.LLStore>
-	entry: SLLClient.LoadedActivityState
+	entry: Extract<SLLClient.LoadedActivityState, { name: 'selectLayers' }>
 }) {
 	const entry = useStableValue((e) => e, [_entry])
 	const positionCursors = React.useMemo(() => {
@@ -259,6 +272,48 @@ function LoadedSelectLayersView({
 		)
 	}
 	return null
+}
+
+function LoadedGenVoteView({
+	store,
+	entry: _entry,
+}: {
+	store: Zus.StoreApi<QD.LLStore>
+	entry: Extract<SLLClient.LoadedActivityState, { name: 'genVote' }>
+}) {
+	const entry = useStableValue((e) => e, [_entry])
+	const data = entry.data
+
+	const onOpenChange = React.useCallback((open: boolean) => {
+		if (open) return
+		store.getState().updateActivity(SLL.toEditIdleOrNone())
+	}, [store])
+
+	const frames = React.useMemo(() => ({
+		genVote: data.genVoteFrame,
+	}), [data.genVoteFrame])
+
+	const onSubmit = React.useCallback((result: GenVoteFrame.Result) => {
+		const state = store.getState()
+		const source: LL.Source = {
+			type: 'manual',
+			userId: UsersClient.loggedInUserId!,
+		}
+		const item = LL.createVoteItem(result.choices, source, result.voteConfig, result.displayProps)
+
+		state.dispatch({ op: 'add', index: { outerIndex: 0, innerIndex: null }, items: [item] })
+		state.updateActivity(SLL.toEditIdleOrNone())
+	}, [store])
+
+	return (
+		<GenVoteDialog
+			title="Generate Vote"
+			frames={frames}
+			open={entry.active}
+			onOpenChange={onOpenChange}
+			onSubmit={onSubmit}
+		/>
+	)
 }
 
 export type QueueItemAction =
@@ -799,138 +854,28 @@ export function VoteDisplayPropsPopover(
 		children: React.ReactNode
 	},
 ) {
-	const config = ConfigClient.useConfig()
 	const itemActions = () => QD.getLLItemActions(props.listStore.getState(), props.itemId)
-	const [statuses, usingDefault, preview, valid] = ZusUtils.useStoreDeep(props.listStore, store => {
+	const [displayProps, choices] = ZusUtils.useStoreDeep(props.listStore, store => {
 		const s = QD.selectLLItemState(store, props.itemId)
 		const itemDisplayProps = s.item.displayProps
-		const displayProps = itemDisplayProps ?? config?.vote.voteDisplayProps ?? []
 		const choices = s.item.choices?.map(c => c.layerId) ?? []
-		const preview = BROADCASTS.vote.started({ choices, voterType: 'public' }, config?.vote.voteDuration ?? 120, displayProps)
-		const valid = V.validateChoicesWithDisplayProps(choices, displayProps)
-		return [DH.toDisplayPropStatuses(displayProps), !itemDisplayProps && !!config?.vote.voteDisplayProps, preview, valid]
-	}, { dependencies: [config] })
+		return [itemDisplayProps, choices]
+	})
 
-	function setDisplayProps(update: Partial<DH.LayerDisplayPropsStatuses>) {
-		update = { ...update }
-
-		const updated = { ...statuses, ...update }
-		if (update.layer) {
-			updated.map = true
-			updated.gamemode = true
-		} else if (update.layer === false) {
-			updated.map = false
-			updated.gamemode = false
-		} else if (update.gamemode === false || update.map === false) {
-			updated.layer = false
-		}
-
+	function handleDisplayPropsChange(displayProps: DH.LayerDisplayProp[] | null) {
 		const actions = itemActions()
-		if (config && Obj.deepEqual(updated, DH.toDisplayPropStatuses(config.vote.voteDisplayProps))) {
-			actions.dispatch({ op: 'configure-vote', displayProps: null })
-		} else {
-			actions.dispatch({ op: 'configure-vote', displayProps: DH.fromDisplayPropStatuses(updated) })
-		}
-	}
-
-	function resetToDefault() {
-		if (usingDefault) return
-		const actions = itemActions()
-		actions.dispatch({ op: 'configure-vote', displayProps: null })
+		actions.dispatch({ op: 'configure-vote', displayProps })
 	}
 
 	return (
 		<Popover open={props.open} onOpenChange={props.onOpenChange}>
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
 			<PopoverContent className="w-80">
-				<div className="grid gap-4">
-					<div className="space-y-2">
-						<h4 className="font-medium leading-none">Vote Display Options</h4>
-						<p className="text-sm text-muted-foreground">
-							Choose what to show in vote choices
-						</p>
-					</div>
-					<div className="grid gap-4">
-						<div className="grid grid-cols-2 gap-4">
-							<div className="space-y-2">
-								<div className="grid gap-2">
-									<div className="flex items-center space-x-2">
-										<Checkbox
-											id="layer"
-											checked={statuses.layer}
-											onCheckedChange={(checked) => setDisplayProps({ layer: checked === true })}
-										/>
-										<Label htmlFor="layer">Layer</Label>
-									</div>
-									<div className="ml-6 grid gap-2">
-										<div className="flex items-center space-x-2">
-											<Checkbox
-												id="map"
-												checked={statuses.map}
-												onCheckedChange={(checked) => setDisplayProps({ map: checked === true })}
-											/>
-											<Label htmlFor="map">
-												Map
-											</Label>
-										</div>
-										<div className="flex items-center space-x-2">
-											<Checkbox
-												id="gamemode"
-												checked={statuses.gamemode}
-												onCheckedChange={(checked) => setDisplayProps({ gamemode: checked === true })}
-											/>
-											<Label htmlFor="gamemode">
-												Gamemode
-											</Label>
-										</div>
-									</div>
-								</div>
-							</div>
-							<div className="space-y-2">
-								<div className="grid gap-2">
-									<div className="flex items-center space-x-2">
-										<Checkbox
-											id="factions"
-											checked={statuses.factions}
-											onCheckedChange={(checked) => setDisplayProps({ factions: checked === true })}
-										/>
-										<Label htmlFor="factions">Factions</Label>
-									</div>
-									<div className="flex items-center space-x-2">
-										<Checkbox
-											id="units"
-											checked={statuses.units}
-											onCheckedChange={(checked) => setDisplayProps({ units: checked === true })}
-										/>
-										<Label htmlFor="units">Units</Label>
-									</div>
-								</div>
-							</div>
-						</div>
-						{!valid && (
-							<div className="bg-destructive/10 border border-destructive rounded p-2">
-								<p className="text-sm text-destructive">
-									Warning: Can't distinguish between vote choices.
-								</p>
-							</div>
-						)}
-						<div className="space-y-2">
-							<Label>Preview</Label>
-							<pre className="font-mono text-xs bg-muted p-2 rounded overflow-x-auto whitespace-pre-wrap">
-         {preview}
-							</pre>
-						</div>
-						<Separator />
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={resetToDefault}
-							disabled={usingDefault}
-						>
-							Reset to Defaults
-						</Button>
-					</div>
-				</div>
+				<VoteDisplayConfig
+					displayProps={displayProps}
+					choices={choices}
+					onChange={handleDisplayPropsChange}
+				/>
 			</PopoverContent>
 		</Popover>
 	)
@@ -997,7 +942,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 		const firstItem = props.listStore.getState().layerList[0]
 		itemActions().dispatch({
 			op: 'move',
-			newFirstItemId: LL.createLayerListItemId(),
+			newFirstItemId: LL.createItemId(),
 			cursor: { type: 'item-relative', itemId: firstItem.itemId, position: 'before' },
 		})
 	}
@@ -1010,7 +955,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 		const targetItemId = LL.resolveItemForIndex(layerList, lastLocalIndex)!.itemId
 		itemActions().dispatch({
 			op: 'move',
-			newFirstItemId: LL.createLayerListItemId(),
+			newFirstItemId: LL.createItemId(),
 			cursor: { type: 'item-relative', itemId: targetItemId, position: 'after' },
 		})
 	}

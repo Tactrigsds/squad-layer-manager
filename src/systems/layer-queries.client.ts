@@ -297,6 +297,16 @@ export function getQueryLayersInput(baseInput: LQY.BaseQueryInput, _opts?: Query
 	}
 }
 
+export async function generateVote(input: LQY.GenVote.Input) {
+	const res = await sendWorkerRequest('genVote', input)
+	if (res.code !== 'ok') return res
+	const choiceRowData = res.chosenLayers.map(l => !!l ? layerToRowData(l, false, input.constraints ?? []) : undefined)
+	return {
+		...res,
+		chosenLayers: choiceRowData,
+	}
+}
+
 export function useLayerComponents(
 	input: LQY.LayerComponentInput,
 	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
@@ -491,6 +501,7 @@ export const QUERY_PRIORITIES: Record<WorkerTypes.RequestInner['type'], number> 
 	'init': 5,
 	getLayerItemStatuses: 4,
 	queryLayers: 3,
+	genVote: 3,
 	layerExists: 2,
 	getLayerInfo: 2,
 	queryLayerComponent: 1,

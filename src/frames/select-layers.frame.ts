@@ -65,7 +65,7 @@ type Primary = {
 
 type Store =
 	& Primary
-	& AppliedFiltersPrt.State
+	& AppliedFiltersPrt.Store
 	& PoolCheckboxesPrt.Store
 	& LayerFilterMenuPrt.Store
 	& LayerTablePrt.Store
@@ -86,7 +86,6 @@ const setup: Frame['setup'] = (args) => {
 	const get = args.get
 	const set = args.set
 	const input = args.input
-	// will never change
 	const colConfig = input.colConfig
 
 	set(

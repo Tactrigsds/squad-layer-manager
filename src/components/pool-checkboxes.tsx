@@ -1,12 +1,12 @@
+import type * as PoolCheckBoxesPrt from '@/frame-partials/pool-checkboxes.partial'
 import { useFrameStore } from '@/frames/frame-manager.ts'
-import type * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import { assertNever } from '@/lib/type-guards.ts'
 import type * as SS from '@/models/server-state.models.ts'
 import React from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { TriStateCheckbox } from './ui/tri-state-checkbox'
 
-export default function PoolCheckboxes(props: { frameKey: SelectLayersFrame.Key }) {
+export default function PoolCheckboxes(props: { frameKey: PoolCheckBoxesPrt.Key }) {
 	const [checkboxes, setCheckbox] = useFrameStore(
 		props.frameKey,
 		useShallow(s => [s.checkboxesState, s.setCheckbox]),

@@ -8,6 +8,7 @@ import * as USR from '@/models/users.models'
 import { z } from 'zod'
 import * as LL from './layer-list.models'
 
+export const DEFAULT_NUM_CHOICES = 3
 export const VOTER_TYPE = z.enum(['public', 'internal'])
 export type VoterType = z.infer<typeof VOTER_TYPE>
 

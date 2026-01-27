@@ -354,7 +354,7 @@ export async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 			return L.DEFAULT_LAYER_ID
 		})()
 
-		const nextQueueItem = LL.createLayerListItem({ layerId: nextQueuedLayerId }, { type: 'generated' })
+		const nextQueueItem = LL.createItem({ layerId: nextQueuedLayerId }, { type: 'generated' })
 		serverState.layerQueue.push(nextQueueItem)
 		if (!opts?.skipDbWrite) {
 			await SquadServer.updateServerState(ctx as C.Db & C.SquadServer & C.LayerQueue & C.Tx, serverState, {

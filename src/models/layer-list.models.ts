@@ -245,16 +245,34 @@ export function resolveCursorIndex(list: List, cursor: Cursor): ItemIndex | unde
 	assertNever(cursor.position)
 }
 
-export function createLayerListItemId() {
+export function createItemId() {
 	return createId(24)
 }
 
-export function createLayerListItem(newItem: NewLayerListItem, source: Source): Item {
+export function createItem(newItem: NewLayerListItem, source: Source): Item {
 	return {
-		itemId: newItem.itemId ?? createLayerListItemId(),
+		itemId: newItem.itemId ?? createItemId(),
 		source,
 		...newItem,
 	}
+}
+
+export function createVoteItem(
+	choices: L.LayerId[],
+	source: Source,
+	voteConfig?: Partial<V.AdvancedVoteConfig>,
+	displayProps?: DH.LayerDisplayProp[],
+) {
+	const items = choices.map(layerId => createItem({ layerId: layerId }, source))
+	const voteItem: ParentVoteItem = {
+		itemId: createItemId(),
+		layerId: choices[0],
+		choices: items,
+		displayProps,
+		voteConfig: { ...(voteConfig ?? {}), source },
+		source,
+	}
+	return voteItem
 }
 
 export function getNextLayerId(layerQueue: List) {
@@ -406,7 +424,7 @@ export function addItemsDeterministic(list: List, source: Source, index: ItemInd
 
 export function addItems(list: List, source: Source, index: ItemIndex, ...items: NewLayerListItem[]) {
 	index = truncateAddIndex(index, list)
-	const createdItems = items.map(item => createLayerListItem(item, source))
+	const createdItems = items.map(item => createItem(item, source))
 
 	splice(list, index, 0, ...createdItems)
 

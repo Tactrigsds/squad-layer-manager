@@ -736,7 +736,8 @@ function ApplyFilter(props: ApplyFilterProps) {
 		</>
 	)
 }
-function StringEqConfig<T extends string | null>(
+
+export function StringEqConfig<T extends string | null>(
 	props: {
 		value: T | undefined
 		column: LC.GroupByColumn

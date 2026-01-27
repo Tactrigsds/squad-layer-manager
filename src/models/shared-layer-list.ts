@@ -33,6 +33,7 @@ export const [ACTIVITIES] = (() => {
 			leaf('EDITING_ITEM', { itemId: LL.ItemIdSchema, cursor: LL.CursorSchema }),
 			leaf('MOVING_ITEM', { itemId: LL.ItemIdSchema }),
 			leaf('CONFIGURING_VOTE', { itemId: LL.ItemIdSchema }),
+			leaf('GENERATING_VOTE', { cursor: LL.CursorSchema }),
 		]),
 		branch('VIEWING_SETTINGS', [leaf('CHANGING_SETTINGS')]),
 	]) satisfies ST.Def.Node
@@ -286,7 +287,7 @@ export function applyOperation(session: EditSession, newOp: Operation | NewOpera
 			if (isOperation(newOp)) {
 				items = newOp.items
 			} else {
-				items = newOp.items.map(item => LL.createLayerListItem(item, source))
+				items = newOp.items.map(item => LL.createItem(item, source))
 			}
 			LL.addItemsDeterministic(list, source, newOp.index, ...items)
 			ItemMut.tryApplyMutation('added', items.map(item => item.itemId), mutations)
@@ -656,6 +657,9 @@ export const getHumanReadableActivity = (activity: RootActivity, listOrIndex: LL
 	}
 	if (editingActivity.chosen.id === 'ADDING_ITEM') {
 		return 'Adding layers'
+	}
+	if (editingActivity.chosen.id === 'GENERATING_VOTE') {
+		return 'Generating vote'
 	}
 	if (editingActivity.chosen.id === 'ADDING_ITEM_FROM_HISTORY') {
 		return 'Adding layer from History'

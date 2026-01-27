@@ -99,7 +99,7 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 				} else if (selectMode === 'vote') {
 					const item: LL.NewLayerListItem = {
 						layerId: selectedLayers[0],
-						choices: selectedLayers.map(layerId => LL.createLayerListItem({ layerId }, source)),
+						choices: selectedLayers.map(layerId => LL.createItem({ layerId }, source)),
 					}
 					;(props.selectQueueItems!)([item])
 				}

@@ -102,6 +102,49 @@ export type LayersQueryInput = {
 	selectedLayers?: L.LayerId[]
 } & BaseQueryInput
 
+export namespace GenVote {
+	export const CHOICE_COMPARISON_KEY = z.enum(['Size', 'Map', 'Gamemode', 'Unit'])
+	export const DEFAULT_CHOICE_COMPARISONS: ChoiceConstraintKey[] = ['Map']
+	export type ChoiceConstraintKey = z.infer<typeof CHOICE_COMPARISON_KEY>
+	export type ChoiceConstraints = { [k in ChoiceConstraintKey]?: LC.InputValue }
+	export function* iterChoiceCols() {
+		for (const key of CHOICE_COMPARISON_KEY.options) {
+			const colKeys = key === 'Unit' ? ['Unit_1', 'Unit_2'] as const : [key] as const
+			for (const colKey of colKeys) {
+				yield [key, colKey] as const
+			}
+		}
+	}
+
+	export function choiceConstraintAllowedValues(key: ChoiceConstraintKey, components = L.StaticLayerComponents) {
+		switch (key) {
+			case 'Size':
+				return components.size
+			case 'Map':
+				return components.maps
+			case 'Gamemode':
+				return components.gamemodes
+			case 'Unit':
+				return components.units
+		}
+	}
+
+	export type Choice = {
+		layerId?: L.LayerId
+		choiceConstraints: ChoiceConstraints
+	}
+	export function initChoice(): Choice {
+		return {
+			choiceConstraints: {},
+		}
+	}
+
+	export type Input = BaseQueryInput & {
+		choices: Choice[]
+		seed?: string
+	}
+}
+
 export type LayerComponentInput = BaseQueryInput & { column: LC.GroupByColumn }
 
 export type LayerExistsInput = L.LayerId[]

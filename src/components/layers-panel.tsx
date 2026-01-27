@@ -107,6 +107,18 @@ function QueueControlPanel() {
 				<Icons.PlusIcon />
 				<span>Add Layers</span>
 			</StartActivityInteraction>
+			<StartActivityInteraction
+				loaderName="genVote"
+				createActivity={SLL.createEditActivityVariant({ _tag: 'leaf', id: 'GENERATING_VOTE', opts: { cursor: { type: 'start' } } })}
+				matchKey={key => key.id === 'GENERATING_VOTE'}
+				preload="intent"
+				render={Button}
+				className="flex w-min items-center space-x-0 not-group-data-[status=editing]:invisible"
+				variant="secondary"
+				disabled={!isEditing}
+			>
+				Gen Vote
+			</StartActivityInteraction>
 			<Tooltip>
 				<TooltipTrigger asChild>
 					<Button

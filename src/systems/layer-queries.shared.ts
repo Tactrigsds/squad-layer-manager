@@ -1,4 +1,5 @@
 import { createId } from '@/lib/id'
+import * as Obj from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { shuffled, weightedRandomSelection } from '@/lib/random'
 import { assertNever } from '@/lib/type-guards'
@@ -134,6 +135,67 @@ export async function* queryLayersStreamed(args: {
 			code: 'menu-item-possible-values',
 			values: await queryFilterMenuPossibleValues(ctx, conditionsRes.filterMenuItemPossibleValueConditions),
 		}
+	}
+}
+
+export async function genVote(args: { ctx: CS.LayerQuery; input: LQY.GenVote.Input }) {
+	const { input, ctx } = args
+	const base = buildQueryInputSqlCondition(ctx, input)
+	if (base.code !== 'ok') return base
+	let explicitelyMappedKeys = new Set(input.choices.flatMap(c => Object.keys(Obj.trimUndefined(c.choiceConstraints))))
+
+	const choices = Obj.deepClone(input.choices)
+	const chosenLayers: (PostProcessedLayer | undefined)[] = new Array<PostProcessedLayer>(choices.length)
+
+	for (let i = 0; i < input.choices.length; i++) {
+		const choice = choices[i]
+		const conditions = [...base.conditions]
+		if (choice.layerId) continue
+
+		for (const [key, colKey] of LQY.GenVote.iterChoiceCols()) {
+			if (!choice.choiceConstraints[key]) continue
+			const constraint = choice.choiceConstraints[key]
+			conditions.push(E.eq(LC.viewCol(colKey, ctx), LC.dbValue(colKey, constraint, ctx)))
+		}
+
+		for (let j = 0; j < choices.length; j++) {
+			if (i === j) continue
+			const otherChoice = choices[j]
+			if (otherChoice.layerId) {
+				conditions.push(E.ne(LC.viewCol('id', ctx), LC.dbValue('id', otherChoice.layerId, ctx)))
+			}
+
+			const layer = otherChoice.layerId ? L.toLayer(otherChoice.layerId) : null
+			for (const [key, colKey] of LQY.GenVote.iterChoiceCols()) {
+				let value: LC.InputValue | undefined
+
+				// don't repeat any values that have already been chosen for columns referencing "explicitely mapped keys", as in  we set a choice constraint for that key
+				if (layer && layer[colKey] && explicitelyMappedKeys.has(key)) {
+					value = layer[colKey]
+				} else if (otherChoice.choiceConstraints?.[key]) {
+					value = otherChoice.choiceConstraints[key]
+				} else {
+					continue
+				}
+
+				conditions.push(E.ne(LC.viewCol(colKey, ctx), LC.dbValue(colKey, value, ctx)))
+			}
+		}
+
+		const condition = E.and(...conditions)
+
+		const res = await getRandomGeneratedLayers(ctx, condition, base.selectProperties, 1, input, true, LQY.getSeed(), 0)
+		if (res.layers[0]) {
+			choice.layerId = res.layers[0].id
+			chosenLayers[i] = res.layers[0]
+		} else {
+			throw new Error('No suitable layer found')
+		}
+	}
+
+	return {
+		code: 'ok' as const,
+		chosenLayers,
 	}
 }
 
@@ -995,6 +1057,7 @@ export const queries = {
 	queryLayerComponent: queryLayerComponent,
 	getLayerItemStatuses,
 	getLayerInfo,
+	genVote,
 }
 
 function factionMaskToSqlCondition(

@@ -33,7 +33,7 @@ export const BROADCASTS = {
 			const lines = voteChoicesLines(state.choices, undefined, displayProps).join('\n')
 			const formattedInterval = formatInterval(duration, false)
 			const voterTypeDisp = state.voterType === 'internal' ? ' (internal)' : ''
-			const fullText = `\nVote for the next layer${voterTypeDisp}:\n${lines}\nYou have ${formattedInterval} to vote.`
+			const fullText = `Vote for the next layer${voterTypeDisp}:\n${lines}\nYou have ${formattedInterval} to vote.\n`
 			return fullText
 		},
 		winnerSelected(tally: V.Tally, winner: L.LayerId, displayProps: DH.LayerDisplayProp[]) {
