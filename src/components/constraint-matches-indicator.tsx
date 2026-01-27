@@ -117,7 +117,7 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 	if (renderedRepeats.length > 0) indicatorIcons.unshift(<ConstraintViolationIcon key="__repeat-violation__" size={iconSize} />)
 
 	return (
-		<Tooltip delayDuration={0}>
+		<Tooltip delayDuration={250}>
 			<TooltipTrigger
 				className={cn('flex -space-x-2 items-center flex-nowrap overflow-hidden', props.className)}
 				style={{ height: `${height}px` }}

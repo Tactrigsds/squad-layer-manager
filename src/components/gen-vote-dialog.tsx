@@ -19,7 +19,9 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
 import { ConstraintMatchesIndicator } from './constraint-matches-indicator'
+import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
+import { ButtonGroup } from './ui/button-group'
 
 export type GenVoteDialogProps = {
 	title: string
@@ -52,15 +54,30 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		equalityFn: Obj.deepEqual,
 	})
 
-	const store = useFrameStore(frameKey, s => s)
-	console.log({ store })
-	const choices = useFrameStore(frameKey, (s) => s.choices)
-	const chosenLayersMap = useFrameStore(frameKey, (s) => s.chosenLayers)
-	const generating = useFrameStore(frameKey, s => s.generating)
-	const canSubmit = useFrameStore(frameKey, s => s.result)
-	const cursor = useFrameStore(frameKey, s => s.cursor)
-	const includedConstraintKeys = useFrameStore(frameKey, s => s.includedConstraints)
-	const displayProps = useFrameStore(frameKey, s => s.displayProps)
+	const {
+		choices,
+		chosenLayers: chosenLayersMap,
+		choiceErrors,
+		generating,
+		result: canSubmit,
+		cursor,
+		includedConstraints: includedConstraintKeys,
+		uniqueConstraints: uniqueConstraintKeys,
+		displayProps,
+	} = useFrameStore(
+		frameKey,
+		ZusUtils.useShallow(s => ({
+			choices: s.choices,
+			chosenLayers: s.chosenLayers,
+			choiceErrors: s.choiceErrors,
+			generating: s.generating,
+			result: s.result,
+			cursor: s.cursor,
+			includedConstraints: s.includedConstraints,
+			uniqueConstraints: s.uniqueConstraints,
+			displayProps: s.displayProps,
+		})),
+	)
 
 	// Track which items are being regenerated (undefined = all, number = specific index)
 	const [regeneratingIndex, setRegeneratingIndex] = React.useState<number | undefined | 'all'>()
@@ -72,12 +89,12 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		}
 	}, [generating])
 	// const index = useFrameStore(frameKey, s => LQY.resolveCursorIndex(s.cursor)),
-	const handleToggleConstraint = (key: LQY.GenVote.ChoiceConstraintKey) => {
+	const handleToggleUniqueConstraint = (key: LQY.GenVote.ChoiceConstraintKey) => {
 		const state = getFrameState(frameKey)
-		if (state.includedConstraints.includes(key)) {
-			state.removeIncludedConstraint(key)
+		if (state.uniqueConstraints.includes(key)) {
+			state.removeUniqueConstraint(key)
 		} else {
-			state.addIncludedConstraint(key)
+			state.addUniqueConstraint(key)
 		}
 	}
 
@@ -129,15 +146,25 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 					<div className="flex gap-1 justify-between">
 						<div className="flex gap-1">
 							{LQY.GenVote.CHOICE_COMPARISON_KEY.options.map((key) => (
-								<Button
-									key={key}
-									size="sm"
-									variant="ghost"
-									onClick={() => includedConstraintKeys.includes(key) ? handleRemoveConstraint(key) : handleAddConstraint(key)}
-								>
-									{includedConstraintKeys.includes(key) ? <Icons.Minus /> : <Icons.Plus />}
-									{key}
-								</Button>
+								<ButtonGroup key={key}>
+									<Button
+										size="sm"
+										variant={includedConstraintKeys.includes(key) ? 'secondary' : 'ghost'}
+										onClick={() => includedConstraintKeys.includes(key) ? handleRemoveConstraint(key) : handleAddConstraint(key)}
+									>
+										{includedConstraintKeys.includes(key) ? <Icons.Minus /> : <Icons.Plus />}
+										{key}
+									</Button>
+									<Button
+										size="icon"
+										variant={uniqueConstraintKeys.includes(key) ? 'default' : 'ghost'}
+										onClick={() => handleToggleUniqueConstraint(key)}
+										disabled={!includedConstraintKeys.includes(key)}
+										title={uniqueConstraintKeys.includes(key) ? 'Disable unique constraint' : 'Enable unique constraint'}
+									>
+										<Icons.Lock className="w-4 h-4" />
+									</Button>
+								</ButtonGroup>
 							))}
 						</div>
 						<Button
@@ -154,6 +181,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 						<div className="flex flex-col gap-4 flex-1">
 							{choices.map((choice, index) => {
 								const constraints = choice.layerId ? chosenLayersMap[choice.layerId]?.constraints : undefined
+								const error = choiceErrors[index]
 								return (
 									<div key={index} className="flex flex-col gap-2 p-4 border rounded-lg">
 										<div className="flex items-center justify-between mb-2">
@@ -178,6 +206,13 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 																)}
 															</div>
 														)
+														: error
+														? (
+															<Alert variant="destructive" className="py-2">
+																<Icons.AlertCircle className="h-4 w-4" />
+																<AlertTitle>{error}</AlertTitle>
+															</Alert>
+														)
 														: <span className="text-muted-foreground">No layer selected</span>}
 												</div>
 											</div>
@@ -186,7 +221,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 													size="sm"
 													variant="ghost"
 													onClick={() => handleRegen(index)}
-													disabled={generating}
+													disabled={generating || !choice.layerId}
 													title="Regenerate this choice"
 												>
 													<Icons.RefreshCw className={regeneratingIndex === 'all' || regeneratingIndex === index ? 'animate-spin' : ''} />
@@ -228,25 +263,25 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 								Add Choice
 							</Button>
 						</div>
-						<div className="w-80 shrink-0">
+						<div className="w-80 shrink-0 flex flex-col justify-between">
 							<VoteDisplayConfig
 								displayProps={displayProps}
 								choices={choices.map(c => c.layerId).filter((id): id is string => !!id)}
 								onChange={handleSetDisplayProps}
 								previewPlaceholder="Generate layers to see vote preview"
+								includeResetToDefault={false}
 							/>
+							<div className="self-end">
+								<Button variant="outline" onClick={props.onClose} className="self-end">
+									Cancel
+								</Button>
+								<Button onClick={handleSubmit} disabled={!canSubmit}>
+									Submit
+								</Button>
+							</div>
 						</div>
 					</div>
 				</div>
-
-				<HeadlessDialogFooter>
-					<Button variant="outline" onClick={props.onClose}>
-						Cancel
-					</Button>
-					<Button onClick={handleSubmit} disabled={!canSubmit}>
-						Submit
-					</Button>
-				</HeadlessDialogFooter>
 			</>
 		</HeadlessDialogContent>
 	)
@@ -266,7 +301,7 @@ function ChoiceConstraintSelect(
 		ZusUtils.useShallow(s => {
 			let disallowedValues: string[] = []
 			for (let i = 0; i < s.choices.length; i++) {
-				if (i === props.index) continue
+				if (i === props.index || !s.uniqueConstraints.includes(props.constraintKey)) continue
 				const value = s.choices[i].choiceConstraints[props.constraintKey]
 				if (value && typeof value === 'string') disallowedValues.push(value)
 			}

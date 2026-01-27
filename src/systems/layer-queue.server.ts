@@ -72,6 +72,7 @@ export const setupInstance = C.spanOp(
 			const initialServerState = await SquadServer.getFullServerState(ctx)
 
 			// -------- initialize vote state --------
+			await Rx.firstValueFrom(ctx.server.historyConflictsResolved$.pipe(Rx.filter(v => v)))
 			await VoteSys.syncVoteStateWithQueueStateInPlace(ctx, [], initialServerState.layerQueue)
 
 			addReleaseTask(() => s.update$.next([{ state: initialServerState, source: { type: 'system', event: 'app-startup' } }, ctx]))

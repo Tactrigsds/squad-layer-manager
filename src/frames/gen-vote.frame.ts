@@ -59,6 +59,7 @@ type Primary = {
 	setCursor: (cursor: LQY.Cursor) => void
 	choices: LQY.GenVote.Choice[]
 	chosenLayers: Record<string, LayerQueriesClient.RowData | undefined>
+	choiceErrors: (string | undefined)[]
 	setChoiceConstraint: (index: number, key: LQY.GenVote.ChoiceConstraintKey, value: LC.InputValue) => void
 	deleteChoiceConstraints: (keys: LQY.GenVote.ChoiceConstraintKey[]) => void
 	addChoice: () => void
@@ -66,8 +67,11 @@ type Primary = {
 	regen(choiceIndex?: number): Promise<void>
 	generating: boolean
 	includedConstraints: LQY.GenVote.ChoiceConstraintKey[]
+	uniqueConstraints: LQY.GenVote.ChoiceConstraintKey[]
 	addIncludedConstraint: (key: LQY.GenVote.ChoiceConstraintKey) => void
 	removeIncludedConstraint: (key: LQY.GenVote.ChoiceConstraintKey) => void
+	addUniqueConstraint: (key: LQY.GenVote.ChoiceConstraintKey) => void
+	removeUniqueConstraint: (key: LQY.GenVote.ChoiceConstraintKey) => void
 	voteConfig: Partial<V.AdvancedVoteConfig>
 	displayProps?: DH.LayerDisplayProp[]
 	displayPropsManuallySet: boolean
@@ -118,6 +122,7 @@ const setup: Frame['setup'] = (args) => {
 			},
 
 			chosenLayers: {},
+			choiceErrors: [],
 			choices: Array.from(Gen.map(Gen.range(V.DEFAULT_NUM_CHOICES), () => LQY.GenVote.initChoice())),
 			voteConfig: {},
 			displayProps: constraintsToDisplayProps(LQY.GenVote.DEFAULT_CHOICE_COMPARISONS),
@@ -165,7 +170,11 @@ const setup: Frame['setup'] = (args) => {
 					)
 					const base = selectBaseQueryInput(state)
 
-					const res = await LayerQueriesClient.generateVote({ ...base, choices: startingChoices })
+					const res = await LayerQueriesClient.generateVote({
+						...base,
+						choices: startingChoices,
+						uniqueConstraints: state.uniqueConstraints,
+					})
 					if (res.code !== 'ok') throw new Error(JSON.stringify(res.errors))
 					const chosenLayersMap: Record<string, LayerQueriesClient.RowData | undefined> = { ...state.chosenLayers }
 					for (const layer of res.chosenLayers) {
@@ -184,6 +193,7 @@ const setup: Frame['setup'] = (args) => {
 
 					set({
 						chosenLayers: chosenLayersMap,
+						choiceErrors: res.choiceErrors ?? [],
 						choices,
 						result,
 						generating: false,
@@ -194,6 +204,7 @@ const setup: Frame['setup'] = (args) => {
 			},
 			result: null,
 			includedConstraints: LQY.GenVote.DEFAULT_CHOICE_COMPARISONS,
+			uniqueConstraints: LQY.GenVote.DEFAULT_CHOICE_COMPARISONS,
 			addIncludedConstraint: (key) => {
 				if (get().includedConstraints.includes(key)) return
 				const newConstraints = [...get().includedConstraints, key]
@@ -221,6 +232,17 @@ const setup: Frame['setup'] = (args) => {
 					update.displayProps = constraintsToDisplayProps(newConstraints)
 				}
 				set(update)
+			},
+			addUniqueConstraint: (key) => {
+				if (get().uniqueConstraints.includes(key)) return
+				set({
+					uniqueConstraints: [...get().uniqueConstraints, key],
+				})
+			},
+			removeUniqueConstraint: (key) => {
+				set({
+					uniqueConstraints: get().uniqueConstraints.filter(k => k !== key),
+				})
 			},
 		} satisfies Primary,
 	)

@@ -209,7 +209,6 @@ function LoadedSelectLayersView({
 		} else {
 			return
 		}
-		console.log({ cursor, index })
 		if (!index) return
 
 		void state.dispatch({
@@ -429,6 +428,10 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	const itemChoiceTallyPercentage = (isVoteChoice && voteState) ? tally?.percentages?.get(item.layerId) : undefined
 	const isVoteWinner = isVoteChoice && voteState?.code === 'ended:winner' && voteState?.winner === item.layerId
 	const voteCount = (isVoteChoice && voteState) ? tally?.totals?.get(item.layerId) : undefined
+	const isFirstQueuedLayer = Zus.useStore(
+		props.llStore,
+		s => index.innerIndex === 0 && LL.getNextLayerId(s.layerList) === item.layerId,
+	)
 
 	if (index.innerIndex === 0 && voteState?.code !== 'ended:winner') {
 		badges.unshift(
@@ -446,8 +449,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	}
 
 	if (
-		!isModified && layersStatus?.nextLayer && index.outerIndex === 0 && (index.innerIndex === 0 || index.innerIndex === null)
-		&& !isVoteChoice
+		!isModified && layersStatus?.nextLayer && isFirstQueuedLayer
 		&& !L.areLayersCompatible(item.layerId, layersStatus.nextLayer, true)
 	) {
 		badges.push(
@@ -551,10 +553,10 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const voteState = (globalVoteState?.itemId === item.itemId ? globalVoteState : undefined) ?? endingVoteState
 
 	const isModified = Zus.useStore(SLLClient.Store, s => s.isModified)
-	const canEdit = !SLLClient.useIsItemLocked(item.itemId)
 	const user = UsersClient.useLoggedInUser()
 	const canManageVote = user ? RBAC.rbacUserHasPerms(user, RBAC.perm('vote:manage')) : false
 	const isEditing = SLLClient.useIsEditing()
+	const canEdit = !SLLClient.useIsItemLocked(item.itemId) && isEditing
 	const draggableItem = LL.layerItemToDragItem(item)
 	const dragProps = DndKit.useDraggable(draggableItem, { disabled: !isEditing })
 
@@ -564,7 +566,9 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const editButtonProps = (className?: string) => ({
 		['data-mobile']: isMobile,
 		disabled: !canEdit,
-		className: cn('data-[mobile=false]:invisible group-hover/parent-item:visible', className),
+		// className: cn('data-[mobile=false]:invisible group-hover/parent-item:visible', className),
+		className: cn('group-hover/parent-item:visible', className),
+		['data-can-edit']: canEdit,
 	})
 
 	const manageVoteButtonProps = (opts?: { className?: string; hideWhenNotHovering?: boolean }) => {
@@ -573,7 +577,8 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		return ({
 			['data-mobile']: isMobile,
 			disabled: !canManageVote,
-			className: cn(opts.hideWhenNotHovering ? 'data-[mobile=false]:invisible group-hover/parent-item:visible' : '', opts?.className),
+			className: cn(opts.hideWhenNotHovering ? 'group-hover/parent-item:visible' : '', opts?.className),
+			// className: cn(opts.hideWhenNotHovering ? 'data-[mobile=false]:invisible group-hover/parent-item:visible' : '', opts?.className),
 		})
 	}
 
@@ -819,7 +824,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 										data-mobile={isMobile}
 										variant="ghost"
 										size="icon"
-										className={cn('data-[mobile=false]:invisible group-hover/parent-item:visible')}
+										className={cn('group-hover/parent-item:visible')}
 									>
 										<Icons.EllipsisVertical />
 									</Button>

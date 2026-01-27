@@ -103,7 +103,7 @@ export type LayersQueryInput = {
 } & BaseQueryInput
 
 export namespace GenVote {
-	export const CHOICE_COMPARISON_KEY = z.enum(['Size', 'Map', 'Gamemode', 'Unit'])
+	export const CHOICE_COMPARISON_KEY = z.enum(['Size', 'Map', 'Layer', 'Gamemode', 'Unit'])
 	export const DEFAULT_CHOICE_COMPARISONS: ChoiceConstraintKey[] = ['Map']
 	export type ChoiceConstraintKey = z.infer<typeof CHOICE_COMPARISON_KEY>
 	export type ChoiceConstraints = { [k in ChoiceConstraintKey]?: LC.InputValue }
@@ -122,6 +122,8 @@ export namespace GenVote {
 				return components.size
 			case 'Map':
 				return components.maps
+			case 'Layer':
+				return components.layers
 			case 'Gamemode':
 				return components.gamemodes
 			case 'Unit':
@@ -140,6 +142,8 @@ export namespace GenVote {
 	}
 
 	export type Input = BaseQueryInput & {
+		// choice constraints to be considered "present" aka we should ensure uniqueness among choices for this key
+		uniqueConstraints: ChoiceConstraintKey[]
 		choices: Choice[]
 		seed?: string
 	}

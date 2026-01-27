@@ -15,6 +15,7 @@ export type VoteDisplayConfigProps = {
 	choices: L.LayerId[]
 	onChange: (displayProps: DH.LayerDisplayProp[] | null) => void
 	previewPlaceholder?: string
+	includeResetToDefault?: boolean
 }
 
 export function VoteDisplayConfig(props: VoteDisplayConfigProps) {
@@ -132,19 +133,27 @@ export function VoteDisplayConfig(props: VoteDisplayConfigProps) {
 				)}
 				<div className="space-y-2">
 					<Label>Preview</Label>
-					<pre className="font-mono text-xs bg-muted p-2 rounded overflow-x-auto whitespace-pre-wrap">
+					<pre
+						style={{
+							'fontFamily': `"Roboto Condensed", 'sans-serif'`,
+							color: '#fcff00',
+						}}
+						className="text-xs bg-muted p-2 rounded overflow-x-auto whitespace-pre-wrap"
+					>
 						{preview}
 					</pre>
 				</div>
 				<Separator />
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={resetToDefault}
-					disabled={usingDefault}
-				>
-					Reset to Defaults
-				</Button>
+				{(props.includeResetToDefault ?? true) && (
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={resetToDefault}
+						disabled={usingDefault}
+					>
+						Reset to Defaults
+					</Button>
+				)}
 			</div>
 		</div>
 	)

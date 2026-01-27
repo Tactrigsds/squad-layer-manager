@@ -142,7 +142,6 @@ export async function genVote(args: { ctx: CS.LayerQuery; input: LQY.GenVote.Inp
 	const { input, ctx } = args
 	const base = buildQueryInputSqlCondition(ctx, input)
 	if (base.code !== 'ok') return base
-	let explicitelyMappedKeys = new Set(input.choices.flatMap(c => Object.keys(Obj.trimUndefined(c.choiceConstraints))))
 
 	const choices = Obj.deepClone(input.choices)
 	const chosenLayers: (PostProcessedLayer | undefined)[] = new Array<PostProcessedLayer>(choices.length)
@@ -170,7 +169,7 @@ export async function genVote(args: { ctx: CS.LayerQuery; input: LQY.GenVote.Inp
 				let value: LC.InputValue | undefined
 
 				// don't repeat any values that have already been chosen for columns referencing "explicitely mapped keys", as in  we set a choice constraint for that key
-				if (layer && layer[colKey] && explicitelyMappedKeys.has(key)) {
+				if (layer && layer[colKey] && input.uniqueConstraints.includes(key)) {
 					value = layer[colKey]
 				} else if (otherChoice.choiceConstraints?.[key]) {
 					value = otherChoice.choiceConstraints[key]
@@ -188,14 +187,20 @@ export async function genVote(args: { ctx: CS.LayerQuery; input: LQY.GenVote.Inp
 		if (res.layers[0]) {
 			choice.layerId = res.layers[0].id
 			chosenLayers[i] = res.layers[0]
-		} else {
-			throw new Error('No suitable layer found')
+		}
+	}
+
+	const choiceErrors: (string | undefined)[] = new Array(choices.length)
+	for (let i = 0; i < choices.length; i++) {
+		if (!chosenLayers[i] && !input.choices[i].layerId) {
+			choiceErrors[i] = 'No suitable layer found'
 		}
 	}
 
 	return {
 		code: 'ok' as const,
 		chosenLayers,
+		choiceErrors,
 	}
 }
 
