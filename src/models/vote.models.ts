@@ -3,9 +3,11 @@ import * as Obj from '@/lib/object'
 import type { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod'
 import * as L from '@/models/layer'
+import * as LQY from '@/models/layer-queries.models'
 import * as SM from '@/models/squad.models'
 import * as USR from '@/models/users.models'
 import { z } from 'zod'
+import type * as LC from './layer-columns'
 import * as LL from './layer-list.models'
 
 export const DEFAULT_NUM_CHOICES = 3
@@ -14,9 +16,50 @@ export type VoterType = z.infer<typeof VOTER_TYPE>
 
 export const AdvancedVoteConfigSchema = z.object({
 	duration: z.number().positive().optional(),
+	displayProps: z.lazy(() => z.array(DH.LAYER_DISPLAY_PROP).optional()),
 })
 
 export type AdvancedVoteConfig = z.infer<typeof AdvancedVoteConfigSchema>
+
+export namespace GenVote {
+	export const CHOICE_COMPARISON_KEY = z.enum(['Size', 'Map', 'Layer', 'Gamemode', 'Unit'])
+	export const DEFAULT_CHOICE_COMPARISONS: ChoiceConstraintKey[] = ['Map']
+	export type ChoiceConstraintKey = z.infer<typeof CHOICE_COMPARISON_KEY>
+	export type ChoiceConstraints = { [k in ChoiceConstraintKey]?: LC.InputValue }
+	export function* iterChoiceCols() {
+		for (const key of CHOICE_COMPARISON_KEY.options) {
+			const colKeys = key === 'Unit' ? ['Unit_1', 'Unit_2'] as const : [key] as const
+			for (const colKey of colKeys) {
+				yield [key, colKey] as const
+			}
+		}
+	}
+
+	export function choiceConstraintAllowedValues(key: ChoiceConstraintKey, components = L.StaticLayerComponents) {
+		switch (key) {
+			case 'Size':
+				return components.size
+			case 'Map':
+				return components.maps
+			case 'Layer':
+				return components.layers
+			case 'Gamemode':
+				return components.gamemodes
+			case 'Unit':
+				return components.units
+		}
+	}
+
+	export type Choice = {
+		layerId?: L.LayerId
+		choiceConstraints: ChoiceConstraints
+	}
+	export function initChoice(): Choice {
+		return {
+			choiceConstraints: {},
+		}
+	}
+}
 
 export const StartVoteInputSchema = z.object({
 	itemId: z.string().optional(),
@@ -55,7 +98,7 @@ const TallyPropertiesSchema = z.object({
 
 const LayerVoteSchema = z.object({
 	itemId: z.string(),
-	choices: z.array(z.string()),
+	choiceIds: z.lazy(() => z.array(LL.ItemIdSchema)),
 	voterType: VOTER_TYPE,
 	autostartCancelled: z.boolean().optional(),
 })
@@ -82,7 +125,7 @@ export type VoteState = z.infer<typeof VoteStateSchema>
 export const EndingVoteStateSchema = z.discriminatedUnion('code', [
 	z.object({
 		code: z.literal('ended:winner'),
-		winner: z.string(),
+		winnerId: z.lazy(() => LL.ItemIdSchema),
 		...TallyPropertiesSchema.shape,
 		...LayerVoteSchema.shape,
 	}),
@@ -112,22 +155,22 @@ export function isVoteStateWithVoteData(state: VoteState | EndingVoteState): sta
 }
 
 export const TallySchema = z.object({
-	totals: z.map(z.string(), z.number()),
+	totals: z.map(z.lazy(() => LL.ItemIdSchema), z.number()),
 	totalVotes: z.number(),
 	turnoutPercentage: z.number(),
-	percentages: z.map(z.string(), z.number()),
+	percentages: z.map(z.lazy(() => LL.ItemIdSchema), z.number()),
 	leaders: z.array(z.string()),
 })
 
 export type Tally = z.infer<typeof TallySchema>
 
 export function tallyVotes(currentVote: VoteStateWithVoteData, numPlayers: number): Tally {
-	if (Object.values(currentVote.choices).length == 0) {
+	if (Object.values(currentVote.choiceIds).length == 0) {
 		throw new Error('No choices listed')
 	}
 	const tally = new Map<string, number>()
 	let leaders: string[] = []
-	for (const choice of currentVote.choices) {
+	for (const choice of currentVote.choiceIds) {
 		tally.set(choice, 0)
 	}
 
@@ -198,8 +241,8 @@ export type VoteStateUpdateSource = VoteStateUpdate['source']
 export type VoteStateUpdateSourceEvent = VoteStateUpdateSource['event']
 export type ManualVoteStateUpdateSourceEvent = Extract<VoteStateUpdateSource, { type: 'manual' }>['event']
 
-export function getDefaultChoice(state: { choices: string[] }) {
-	return state.choices[0]
+export function getDefaultChoice(state: { choiceIds: string[] }) {
+	return state.choiceIds[0]
 }
 
 export function canInitiateVote(

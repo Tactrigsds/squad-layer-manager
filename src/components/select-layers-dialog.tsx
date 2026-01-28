@@ -21,25 +21,25 @@ type SelectLayersDialogProps = {
 	title: string
 	description?: React.ReactNode
 	pinMode?: SelectMode
-	selectQueueItems?: (queueItems: LL.NewLayerListItem[]) => void
+	selectQueueItems?: (queueItems: LL.NewItem[]) => void
 	defaultSelected?: L.LayerId[]
 	frames?: Partial<SelectLayersFrame.KeyProp>
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
 	footerAdditions?: React.ReactNode
 	children?: React.ReactNode
-	cursor?: LQY.Cursor
+	cursor?: LL.Cursor
 }
 
 type SelectLayersDialogContentProps = {
 	title: string
 	description?: React.ReactNode
 	pinMode?: SelectMode
-	selectQueueItems?: (queueItems: LL.NewLayerListItem[]) => void
+	selectQueueItems?: (queueItems: LL.NewItem[]) => void
 	defaultSelected: L.LayerId[]
 	frames?: Partial<SelectLayersFrame.KeyProp>
 	footerAdditions?: React.ReactNode
-	cursor?: LQY.Cursor
+	cursor?: LL.Cursor
 	onClose: () => void
 }
 
@@ -89,17 +89,15 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 			try {
 				const source: LL.Source = { type: 'manual', userId: user!.discordId }
 				if (selectMode === 'layers' || selectedLayers.length === 1) {
-					const items = selectedLayers.map(
-						(layerId) =>
-							({
-								layerId: layerId,
-							}) satisfies LL.NewLayerListItem,
+					const items: LL.NewSingleItem[] = selectedLayers.map(
+						(layerId) => ({ type: 'single-list-item', layerId }),
 					)
 					;(props.selectQueueItems!)(items)
 				} else if (selectMode === 'vote') {
-					const item: LL.NewLayerListItem = {
+					const item: LL.NewVoteItem = {
+						type: 'vote-list-item',
 						layerId: selectedLayers[0],
-						choices: selectedLayers.map(layerId => LL.createItem({ layerId }, source)),
+						choices: selectedLayers.map(layerId => LL.createItem({ type: 'single-list-item', layerId }, source)),
 					}
 					;(props.selectQueueItems!)([item])
 				}

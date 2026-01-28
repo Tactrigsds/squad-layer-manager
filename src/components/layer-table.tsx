@@ -132,7 +132,7 @@ function buildColumn(
 				QD.layerItemsState$,
 				React.useCallback((state) => {
 					if (!cursor) return 0
-					return LQY.resolveTeamParityForCursor(state, cursor)
+					return LQY.resolveTeamParityForCursor(state, LQY.fromLayerListCursor(state, cursor))
 				}, [cursor]),
 			)
 			if (colDef.name === 'Layer') {
@@ -328,7 +328,7 @@ function buildColDefs(
 				QD.layerItemsState$,
 				React.useCallback((state) => {
 					if (!cursor) return 0
-					return LQY.resolveTeamParityForCursor(state, cursor)
+					return LQY.resolveTeamParityForCursor(state, LQY.fromLayerListCursor(state, cursor))
 				}, [cursor]),
 			)
 			return (
@@ -439,7 +439,7 @@ export default function LayerTable(props: {
 
 	return (
 		<div className="space-y-2">
-			<div className="rounded-md border min-w-[1000px]">
+			<div className="rounded-md border min-w-250">
 				<LayerTableControlPanel {...props} table={table} />
 				{/*--------- table ---------*/}
 				<Table>
@@ -524,7 +524,7 @@ const LayerTableRow = React.memo(function LayerTableRow(props: { frameKey: Layer
 			<ContextMenuTrigger asChild>
 				<TableRow
 					key={row.id}
-					className="select-none h-8 data-[disabled]:hover:bg-unset data-[disabled]:hover:bg-unset data-[disabled]:bg-grey-800"
+					className="select-none h-8 data-disabled:hover:bg-unset data-disabled:hover:bg-unset data-disabled:bg-grey-800"
 					data-disabled={orUndef(isUnselectable && !isSelected)}
 					onClick={(e) => {
 						if (isUnselectable) return
@@ -914,7 +914,7 @@ function MultiLayerSetDialog({
 					<div className="relative">
 						<Textarea
 							onChange={onTextChange}
-							className=" w-full min-h-[300px] pr-8 min-w overflow-x-auto text-sm font-mono"
+							className=" w-full min-h-75 pr-8 min-w overflow-x-auto text-sm font-mono"
 							style={{ 'lineHeight': '1.5rem' }}
 							wrap="off"
 							placeholder="Enter one layer per line (e.g. Narva_RAAS_v1 RGF USMC or a layer id)"

@@ -6,6 +6,7 @@ import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import type * as PresenceActions from '@/models/shared-layer-list/presence-actions'
 import * as USR from '@/models/users.models'
+import * as V from '@/models/vote.models'
 import * as Im from 'immer'
 import { z } from 'zod'
 import * as L from './layer'
@@ -122,15 +123,14 @@ function buildItemOpSchemaEntries<T extends { [key: string]: z.ZodType }>(base: 
 			// create a vote from an existing item
 			op: z.literal('create-vote'),
 			newFirstItemId: LL.ItemIdSchema,
-			otherLayers: z.array(LL.LayerListItemSchema),
+			otherLayers: z.array(LL.SingleItemSchema),
 		}),
 		z.object({
 			...base,
 			op: z.literal('configure-vote'),
 
 			// null means use defaults(remove), undefined means don't modify
-			voteConfig: LL.NewLayerListItemSchema.shape.voteConfig.nullable(),
-			displayProps: LL.NewLayerListItemSchema.shape.displayProps.nullable(),
+			config: V.AdvancedVoteConfigSchema.nullable(),
 		}),
 		z.object({
 			...base,
@@ -167,11 +167,11 @@ function buildOperationSchema<T extends { [key: string]: z.ZodType }, ItemSchema
 	])
 }
 
-export const OperationSchema = buildOperationSchema({ opId: z.string(), userId: USR.UserIdSchema }, LL.LayerListItemSchema)
+export const OperationSchema = buildOperationSchema({ opId: z.string(), userId: USR.UserIdSchema }, LL.ItemSchema)
 export type Operation = z.infer<typeof OperationSchema>
 export type OpCode = Operation['op']
 
-export const NewOperationSchema = buildOperationSchema({}, LL.NewLayerListItemSchema)
+export const NewOperationSchema = buildOperationSchema({}, LL.NewItemSchema)
 export type NewOperation = z.infer<typeof NewOperationSchema>
 
 export function isOperation(obj: Operation | NewOperation): obj is Operation {
@@ -300,7 +300,7 @@ export function applyOperation(session: EditSession, newOp: Operation | NewOpera
 				if (merged) {
 					const { item } = Obj.destrNullable(LL.findItemById(list, merged))
 					if (item) {
-						if (!LL.isParentVoteItem(item)) throw new Error('Expected parent vote item')
+						if (!LL.isVoteItem(item)) throw new Error('Expected parent vote item')
 						ItemMut.tryApplyMutation('edited', [item.itemId], mutations)
 						ItemMut.tryApplyMutation('added', [item.choices[0].itemId], mutations)
 						ItemMut.tryApplyMutation('moved', item.choices.slice(1).map(choice => choice.itemId), mutations)
@@ -340,7 +340,7 @@ export function applyOperation(session: EditSession, newOp: Operation | NewOpera
 		}
 
 		case 'configure-vote': {
-			LL.configureVote(list, source, newOp.itemId, newOp.voteConfig, newOp.displayProps)
+			LL.configureVote(list, source, newOp.itemId, newOp.config)
 			const itemRes = LL.findItemById(list, newOp.itemId)
 			if (itemRes) {
 				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)

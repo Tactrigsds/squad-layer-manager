@@ -65,6 +65,13 @@ export const eq = (column: string, value: string) =>
 		value,
 	}) satisfies F.Comparison
 
+export const neq = (column: string, value: string) =>
+	({
+		code: 'neq' as const,
+		column,
+		value,
+	}) satisfies F.Comparison
+
 export const isTrue = (column: string) =>
 	({
 		code: 'is-true' as const,

@@ -11,15 +11,18 @@ import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import * as ZusUtils from '@/lib/zustand'
+import * as CB from '@/models/constraint-builders.ts'
+import * as L from '@/models/layer'
+import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
+import * as V from '@/models/vote.models'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as QD from '@/systems/queue-dashboard.client'
-import { disableValidators } from 'discord.js'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import * as Zus from 'zustand'
 import { ConstraintMatchesIndicator } from './constraint-matches-indicator'
-import { Alert, AlertDescription, AlertTitle } from './ui/alert'
+import EditLayerDialog from './edit-layer-dialog.tsx'
+import { Alert, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
 import { ButtonGroup } from './ui/button-group'
 
@@ -29,7 +32,7 @@ export type GenVoteDialogProps = {
 	frames?: Partial<GenVoteFrame.KeyProp>
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
-	cursor?: LQY.Cursor
+	cursor?: LL.Cursor
 	onSubmit(choices: GenVoteFrame.Result): void
 }
 
@@ -37,7 +40,7 @@ type GenVoteDialogContentProps = {
 	title: string
 	description?: React.ReactNode
 	frames?: Partial<GenVoteFrame.KeyProp>
-	cursor?: LQY.Cursor
+	cursor?: LL.Cursor
 	onClose: () => void
 	onSubmit: (result: GenVoteFrame.Result) => void
 }
@@ -56,7 +59,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 
 	const {
 		choices,
-		chosenLayers: chosenLayersMap,
+		chosenLayers,
 		choiceErrors,
 		generating,
 		result: canSubmit,
@@ -64,6 +67,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		includedConstraints: includedConstraintKeys,
 		uniqueConstraints: uniqueConstraintKeys,
 		displayProps,
+		voteConfig,
 	} = useFrameStore(
 		frameKey,
 		ZusUtils.useShallow(s => ({
@@ -76,6 +80,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 			includedConstraints: s.includedConstraints,
 			uniqueConstraints: s.uniqueConstraints,
 			displayProps: s.displayProps,
+			voteConfig: s.voteConfig,
 		})),
 	)
 
@@ -89,7 +94,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		}
 	}, [generating])
 	// const index = useFrameStore(frameKey, s => LQY.resolveCursorIndex(s.cursor)),
-	const handleToggleUniqueConstraint = (key: LQY.GenVote.ChoiceConstraintKey) => {
+	const handleToggleUniqueConstraint = (key: V.GenVote.ChoiceConstraintKey) => {
 		const state = getFrameState(frameKey)
 		if (state.uniqueConstraints.includes(key)) {
 			state.removeUniqueConstraint(key)
@@ -102,7 +107,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		QD.layerItemsState$,
 		React.useCallback((state) => {
 			if (!cursor) return 0
-			return LQY.resolveTeamParityForCursor(state, cursor)
+			return LQY.resolveTeamParityForCursor(state, LQY.fromLayerListCursor(state, cursor))
 		}, [cursor]),
 	)
 
@@ -117,16 +122,27 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		getFrameState(frameKey).regen(choiceIndex)
 	}
 
-	const handleAddConstraint = (key: LQY.GenVote.ChoiceConstraintKey) => {
+	const handleAddConstraint = (key: V.GenVote.ChoiceConstraintKey) => {
 		getFrameState(frameKey).addIncludedConstraint(key)
 	}
 
-	const handleRemoveConstraint = (key: LQY.GenVote.ChoiceConstraintKey) => {
+	const handleRemoveConstraint = (key: V.GenVote.ChoiceConstraintKey) => {
 		getFrameState(frameKey).removeIncludedConstraint(key)
 	}
 
-	const handleSetDisplayProps = (displayProps: DH.LayerDisplayProp[] | null) => {
-		getFrameState(frameKey).setDisplayProps(displayProps)
+	const handleSetDisplayProps = (config: Partial<V.AdvancedVoteConfig> | null) => {
+		const state = getFrameState(frameKey)
+		if (config === null) {
+			state.setDisplayProps(null)
+			state.setVoteConfig({})
+		} else {
+			if (config.displayProps !== undefined) {
+				state.setDisplayProps(config.displayProps, true)
+			}
+			if (config.duration !== undefined) {
+				state.setVoteConfig({ duration: config.duration })
+			}
+		}
 	}
 
 	return (
@@ -145,7 +161,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 				<div>
 					<div className="flex gap-1 justify-between">
 						<div className="flex gap-1">
-							{LQY.GenVote.CHOICE_COMPARISON_KEY.options.map((key) => (
+							{V.GenVote.CHOICE_COMPARISON_KEY.options.map((key) => (
 								<ButtonGroup key={key}>
 									<Button
 										size="sm"
@@ -180,7 +196,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 					<div className="flex gap-4">
 						<div className="flex flex-col gap-4 flex-1">
 							{choices.map((choice, index) => {
-								const constraints = choice.layerId ? chosenLayersMap[choice.layerId]?.constraints : undefined
+								const constraints = choice.layerId ? chosenLayers[choice.layerId]?.constraints : undefined
 								const error = choiceErrors[index]
 								return (
 									<div key={index} className="flex flex-col gap-2 p-4 border rounded-lg">
@@ -190,7 +206,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 												<div>
 													{choice.layerId
 														? (
-															<div className="flex gap-1 items-center">
+															<div className="flex gap-1 items-center text-sm">
 																<ShortLayerName
 																	layerId={choice.layerId}
 																	matchDescriptors={constraints?.matchDescriptors}
@@ -216,7 +232,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 														: <span className="text-muted-foreground">No layer selected</span>}
 												</div>
 											</div>
-											<div className="flex gap-1">
+											<ButtonGroup>
 												<Button
 													size="sm"
 													variant="ghost"
@@ -235,7 +251,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 												>
 													<Icons.X />
 												</Button>
-											</div>
+											</ButtonGroup>
 										</div>
 										<div className="flex flex-col gap-2">
 											{includedConstraintKeys.map((key) => (
@@ -266,6 +282,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 						<div className="w-80 shrink-0 flex flex-col justify-between">
 							<VoteDisplayConfig
 								displayProps={displayProps}
+								duration={voteConfig.duration}
 								choices={choices.map(c => c.layerId).filter((id): id is string => !!id)}
 								onChange={handleSetDisplayProps}
 								previewPlaceholder="Generate layers to see vote preview"
@@ -288,9 +305,9 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 })
 
 function ChoiceConstraintSelect(
-	props: { frameKey: GenVoteFrame.Key; constraintKey: LQY.GenVote.ChoiceConstraintKey; index: number; value: string | undefined },
+	props: { frameKey: GenVoteFrame.Key; constraintKey: V.GenVote.ChoiceConstraintKey; index: number; value: string | undefined },
 ) {
-	const handleSetConstraint = (index: number, key: LQY.GenVote.ChoiceConstraintKey, value: string | null | undefined) => {
+	const handleSetConstraint = (index: number, key: V.GenVote.ChoiceConstraintKey, value: string | null | undefined) => {
 		getFrameState(props.frameKey).setChoiceConstraint(index, key, value)
 	}
 	const column = props.constraintKey === 'Unit' ? 'Unit_1' : props.constraintKey

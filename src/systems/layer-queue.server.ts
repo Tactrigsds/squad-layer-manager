@@ -66,13 +66,14 @@ export const setupInstance = C.spanOp(
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.vote.mtx },
 	async (ctx: C.Db & C.ServerSlice) => {
 		const serverId = ctx.serverId
+
+		await Rx.firstValueFrom(ctx.server.historyConflictsResolved$.pipe(Rx.filter(v => v)))
+		// -------- initialize vote state --------
 		await DB.runTransaction(ctx, async (ctx) => {
 			const s = ctx.layerQueue
 
 			const initialServerState = await SquadServer.getFullServerState(ctx)
 
-			// -------- initialize vote state --------
-			await Rx.firstValueFrom(ctx.server.historyConflictsResolved$.pipe(Rx.filter(v => v)))
 			await VoteSys.syncVoteStateWithQueueStateInPlace(ctx, [], initialServerState.layerQueue)
 
 			addReleaseTask(() => s.update$.next([{ state: initialServerState, source: { type: 'system', event: 'app-startup' } }, ctx]))
@@ -263,7 +264,10 @@ export async function updateQueue(
 			}
 			if (
 				LL.isVoteItem(item)
-				&& !V.validateChoicesWithDisplayProps(item.choices.map(c => c.layerId), item.displayProps ?? CONFIG.vote.voteDisplayProps)
+				&& !V.validateChoicesWithDisplayProps(
+					item.choices.map(c => c.layerId),
+					item.voteConfig?.displayProps ?? CONFIG.vote.voteDisplayProps,
+				)
 			) {
 				return {
 					code: 'err:not-enough-visible-info' as const,
@@ -328,7 +332,7 @@ export async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 				ctx: layerCtx,
 				input: {
 					constraints,
-					cursor: { type: 'item-relative', itemId: LQY.SpecialItemId.FIRST_LIST_ITEM, position: 'before' },
+					cursor: { type: 'start' },
 					action: 'add',
 					pageSize: 1,
 					sort: { type: 'random', seed: LQY.getSeed() },
@@ -355,7 +359,7 @@ export async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 			return L.DEFAULT_LAYER_ID
 		})()
 
-		const nextQueueItem = LL.createItem({ layerId: nextQueuedLayerId }, { type: 'generated' })
+		const nextQueueItem = LL.createItem({ type: 'single-list-item', layerId: nextQueuedLayerId }, { type: 'generated' })
 		serverState.layerQueue.push(nextQueueItem)
 		if (!opts?.skipDbWrite) {
 			await SquadServer.updateServerState(ctx as C.Db & C.SquadServer & C.LayerQueue & C.Tx, serverState, {

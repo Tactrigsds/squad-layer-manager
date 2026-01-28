@@ -2,26 +2,29 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
+import * as LL from '@/models/layer-list.models'
 import * as V from '@/models/vote.models'
 import * as SquadServerClient from '@/systems/squad-server.client'
 
 type VoteTallyProps = {
 	voteState: V.VoteStateWithVoteData
+	voteItem: LL.VoteItem
 	playerCount: number
 }
 
-export default function VoteTallyDisplay({ voteState, playerCount }: VoteTallyProps) {
+export default function VoteTallyDisplay({ voteState, voteItem, playerCount }: VoteTallyProps) {
 	const tally = V.tallyVotes(voteState, playerCount)
 	const options = Array.from(tally.totals)
-		.map(([layerId, voteCount]) => {
-			const index = voteState.choices.findIndex((choice) => choice === layerId)
+		.map(([itemId, voteCount]) => {
+			const index = voteState.choiceIds.findIndex((id) => id === itemId)
+			const choice = voteItem.choices.find(c => c.itemId === itemId)
 			return {
-				id: layerId,
+				id: itemId,
 				index,
-				percentage: tally.percentages.get(layerId),
-				name: DH.toShortLayerNameFromId(layerId),
+				percentage: tally.percentages.get(itemId),
+				name: choice ? DH.toShortLayerNameFromId(choice.layerId) : 'Unknown',
 				votes: voteCount,
-				isWinner: voteState.code === 'ended:winner' && voteState.winner === layerId,
+				isWinner: voteState.code === 'ended:winner' && voteState.winnerId === itemId,
 			}
 		})
 		.sort((a, b) => a.index - b.index)

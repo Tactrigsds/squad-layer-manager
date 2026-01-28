@@ -150,7 +150,7 @@ export const syncVoteStateWithQueueStateInPlace = C.spanOp(
 			}
 			newVoteState = {
 				code: 'ready',
-				choices: newQueueItem.choices.map(choice => choice.layerId),
+				choiceIds: newQueueItem.choices.map(choice => choice.itemId),
 				itemId: newQueueItem.itemId,
 				voterType: vote.state?.voterType ?? 'public',
 				autostartTime,
@@ -249,7 +249,7 @@ export const startVote = C.spanOp(
 				deadline: Date.now() + duration,
 				votes: [],
 				initiator: opts.initiator,
-				choices: item.choices.map(choice => choice.layerId),
+				choiceIds: item.choices.map(choice => choice.itemId),
 				itemId: item.itemId,
 				voterType: opts.voterType ?? 'public',
 			} satisfies V.VoteState
@@ -276,8 +276,9 @@ export const startVote = C.spanOp(
 				ctx,
 				Messages.BROADCASTS.vote.started(
 					ctx.vote.state,
+					item,
 					duration,
-					item.displayProps ?? CONFIG.vote.voteDisplayProps,
+					item.voteConfig?.displayProps ?? CONFIG.vote.voteDisplayProps,
 				),
 			)
 
@@ -311,7 +312,7 @@ export const handleVote = C.spanOp('handle-vote', {
 			return
 		}
 	}
-	if (choiceIdx <= 0 || choiceIdx > voteState.choices.length) {
+	if (choiceIdx <= 0 || choiceIdx > voteState.choiceIds.length) {
 		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Invalid choice')
 		void SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.invalidChoice)
 		return
@@ -322,8 +323,8 @@ export const handleVote = C.spanOp('handle-vote', {
 		return
 	}
 
-	const choice = voteState.choices[choiceIdx - 1]
-	SM.PlayerIds.upsert(voteState.votes, ({ playerIds }) => playerIds, { playerIds: msg.playerIds, choice })
+	const choiceItemId = voteState.choiceIds[choiceIdx - 1]
+	SM.PlayerIds.upsert(voteState.votes, ({ playerIds }) => playerIds, { playerIds: msg.playerIds, choice: choiceItemId })
 	// voteState.votes[msg.playerIds] = choice
 	const update: V.VoteStateUpdate = {
 		state: voteState,
@@ -338,10 +339,13 @@ export const handleVote = C.spanOp('handle-vote', {
 	void (async () => {
 		const serverState = await SquadServer.getServerState(ctx)
 		const voteItem = LL.resolveParentVoteItem(voteState.itemId, serverState.layerQueue)
+		if (!voteItem) return
+		const choiceLayerId = LL.findItemById(voteItem.choices, choiceItemId)?.item.layerId
+		if (!choiceLayerId) return
 		void SquadRcon.warn(
 			ctx,
 			msg.playerIds,
-			Messages.WARNS.vote.voteCast(choice, voteItem?.displayProps ?? CONFIG.vote.voteDisplayProps),
+			Messages.WARNS.vote.voteCast(choiceLayerId, voteItem?.voteConfig?.displayProps ?? CONFIG.vote.voteDisplayProps),
 		)
 	})()
 	C.setSpanStatus(Otel.SpanStatusCode.OK)
@@ -365,7 +369,7 @@ export const abortVote = C.spanOp(
 			const serverState = await SquadServer.getServerState(ctx)
 			const newVoteState: V.EndingVoteState = {
 				code: 'ended:aborted',
-				...Obj.selectProps(voteState, ['choices', 'itemId', 'voterType', 'votes', 'deadline']),
+				...Obj.selectProps(voteState, ['choiceIds', 'itemId', 'voterType', 'votes', 'deadline']),
 				aborter: opts.aborter,
 			}
 
@@ -443,11 +447,13 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 					const timeLeft = ctx.vote.state.deadline - Date.now()
 					const serverState = await SquadServer.getServerState(ctx)
 					const voteItem = LL.resolveParentVoteItem(ctx.vote.state.itemId, serverState.layerQueue)
+					if (!voteItem) return
 					const msg = Messages.BROADCASTS.vote.voteReminder(
 						ctx.vote.state,
+						voteItem,
 						timeLeft,
-						ctx.vote.state.choices,
-						voteItem?.displayProps ?? CONFIG.vote.voteDisplayProps,
+						false,
+						voteItem.voteConfig?.displayProps ?? CONFIG.vote.voteDisplayProps,
 					)
 					await broadcastVoteUpdate(ctx, msg, { onlyNotifyNonVotingAdmins: true })
 				}),
@@ -464,11 +470,13 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 					if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
 					const serverState = await SquadServer.getServerState(ctx)
 					const voteItem = LL.resolveParentVoteItem(ctx.vote.state.itemId, serverState.layerQueue)
+					if (!voteItem) return
 					const msg = Messages.BROADCASTS.vote.voteReminder(
 						ctx.vote.state,
+						voteItem,
 						CONFIG.vote.finalVoteReminder,
 						true,
-						voteItem?.displayProps ?? CONFIG.vote.voteDisplayProps,
+						voteItem.voteConfig?.displayProps ?? CONFIG.vote.voteDisplayProps,
 					)
 					await broadcastVoteUpdate(ctx, msg, { onlyNotifyNonVotingAdmins: true, repeatWarn: false })
 				}),
@@ -510,7 +518,7 @@ const handleVoteTimeout = C.spanOp(
 			if (Object.values(ctx.vote.state.votes).length === 0) {
 				endingVoteState = {
 					code: 'ended:insufficient-votes',
-					...Obj.selectProps(ctx.vote.state, ['choices', 'itemId', 'deadline', 'votes', 'voterType']),
+					...Obj.selectProps(ctx.vote.state, ['choiceIds', 'itemId', 'deadline', 'votes', 'voterType']),
 				}
 			} else {
 				const serverInfoRes = await ctx.server.serverInfo.get(ctx, { ttl: 10_000 })
@@ -521,24 +529,25 @@ const handleVoteTimeout = C.spanOp(
 				tally = V.tallyVotes(ctx.vote.state, serverInfo.playerCount)
 				C.setSpanOpAttrs({ tally })
 
-				const winner = tally.leaders[Math.floor(Math.random() * tally.leaders.length)]
+				const winnerId = tally.leaders[Math.floor(Math.random() * tally.leaders.length)]
+				const winnerChoice = listItem.choices.find(c => c.itemId === winnerId)
 				endingVoteState = {
 					code: 'ended:winner',
-					...Obj.selectProps(ctx.vote.state, ['choices', 'itemId', 'deadline', 'votes', 'voterType']),
-					winner,
+					...Obj.selectProps(ctx.vote.state, ['choiceIds', 'itemId', 'deadline', 'votes', 'voterType']),
+					winnerId,
 				}
-				listItem.layerId = winner
+				if (winnerChoice) listItem.layerId = winnerChoice.layerId
 			}
 			listItem.endingVoteState = endingVoteState
-			if (LL.isParentVoteItem(listItem)) LL.setCorrectChosenLayerIdInPlace(listItem)
-			const displayProps = listItem.displayProps ?? CONFIG.vote.voteDisplayProps
+			if (LL.isVoteItem(listItem)) LL.setCorrectChosenLayerIdInPlace(listItem)
+			const displayProps = listItem.voteConfig?.displayProps ?? CONFIG.vote.voteDisplayProps
 			if (endingVoteState.code === 'ended:winner') {
-				await broadcastVoteUpdate(ctx, Messages.BROADCASTS.vote.winnerSelected(tally!, endingVoteState!.winner, displayProps), {
+				await broadcastVoteUpdate(ctx, Messages.BROADCASTS.vote.winnerSelected(tally!, listItem, endingVoteState.winnerId, displayProps), {
 					repeatWarn: false,
 				})
 			}
 			if (endingVoteState.code === 'ended:insufficient-votes') {
-				await broadcastVoteUpdate(ctx, Messages.BROADCASTS.vote.insufficientVotes(V.getDefaultChoice(endingVoteState), displayProps), {
+				await broadcastVoteUpdate(ctx, Messages.BROADCASTS.vote.insufficientVotes(listItem, displayProps), {
 					repeatWarn: false,
 				})
 			}

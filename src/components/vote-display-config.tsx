@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import * as DH from '@/lib/display-helpers.ts'
@@ -12,8 +13,9 @@ import React from 'react'
 
 export type VoteDisplayConfigProps = {
 	displayProps?: DH.LayerDisplayProp[]
+	duration?: number
 	choices: L.LayerId[]
-	onChange: (displayProps: DH.LayerDisplayProp[] | null) => void
+	onChange: (config: Partial<V.AdvancedVoteConfig> | null) => void
 	previewPlaceholder?: string
 	includeResetToDefault?: boolean
 }
@@ -21,13 +23,15 @@ export type VoteDisplayConfigProps = {
 export function VoteDisplayConfig(props: VoteDisplayConfigProps) {
 	const config = ConfigClient.useConfig()
 	const displayProps = props.displayProps ?? config?.vote.voteDisplayProps ?? []
-	const usingDefault = !props.displayProps && !!config?.vote.voteDisplayProps
+	const duration = props.duration ?? config?.vote.voteDuration ?? 120
+	const usingDefault = !props.displayProps && !props.duration && !!config?.vote.voteDisplayProps
 	const statuses = DH.toDisplayPropStatuses(displayProps)
 
 	const preview = props.choices.length > 0
 		? BROADCASTS.vote.started(
-			{ choices: props.choices, voterType: 'public' },
-			config?.vote.voteDuration ?? 120,
+			{ choiceIds: [], voterType: 'public' },
+			props.choices,
+			duration,
 			displayProps,
 		)
 		: (props.previewPlaceholder ?? 'No layers selected for preview')
@@ -47,10 +51,31 @@ export function VoteDisplayConfig(props: VoteDisplayConfigProps) {
 			updated.layer = false
 		}
 
-		if (config && Obj.deepEqual(updated, DH.toDisplayPropStatuses(config.vote.voteDisplayProps))) {
+		const displayPropsValue = DH.fromDisplayPropStatuses(updated)
+		const configToPass: Partial<V.AdvancedVoteConfig> = { displayProps: displayPropsValue }
+
+		if (props.duration !== undefined) {
+			configToPass.duration = props.duration
+		}
+
+		if (config && Obj.deepEqual(updated, DH.toDisplayPropStatuses(config.vote.voteDisplayProps)) && props.duration === undefined) {
 			props.onChange(null)
 		} else {
-			props.onChange(DH.fromDisplayPropStatuses(updated))
+			props.onChange(configToPass)
+		}
+	}
+
+	function setDuration(newDuration: number) {
+		const configToPass: Partial<V.AdvancedVoteConfig> = { duration: newDuration }
+
+		if (!Obj.deepEqual(displayProps, config?.vote.voteDisplayProps ?? [])) {
+			configToPass.displayProps = displayProps
+		}
+
+		if (config && newDuration === config.vote.voteDuration && !props.displayProps) {
+			props.onChange(null)
+		} else {
+			props.onChange(configToPass)
 		}
 	}
 
@@ -143,7 +168,17 @@ export function VoteDisplayConfig(props: VoteDisplayConfigProps) {
 						{preview}
 					</pre>
 				</div>
-				<Separator />
+				<div className="space-y-2">
+					<Label htmlFor="duration">Vote Duration (seconds)</Label>
+					<Input
+						id="duration"
+						type="number"
+						min="1"
+						value={(duration / 1000).toFixed(0)}
+						onChange={(e) => setDuration(Math.max(1000, parseInt(e.target.value) * 1000 || 1000))}
+						className="w-full"
+					/>
+				</div>
 				{(props.includeResetToDefault ?? true) && (
 					<Button
 						variant="outline"
@@ -151,7 +186,7 @@ export function VoteDisplayConfig(props: VoteDisplayConfigProps) {
 						onClick={resetToDefault}
 						disabled={usingDefault}
 					>
-						Reset to Defaults
+						Reset to Default
 					</Button>
 				)}
 			</div>

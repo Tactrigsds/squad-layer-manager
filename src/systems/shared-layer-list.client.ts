@@ -126,7 +126,7 @@ const ACTIVITY_LOADER_CONFIGS = [
 				if (item) editedLayerId = item.layerId
 			}
 			const input = SelectLayersFrame.createInput({
-				cursor: LQY.fromLayerListCursor(args.key.opts.cursor),
+				cursor: args.key.opts.cursor,
 				initialEditedLayerId: editedLayerId,
 			})
 			const frameKey = frameManager.ensureSetup(SelectLayersFrame.frame, input)
@@ -153,7 +153,7 @@ const ACTIVITY_LOADER_CONFIGS = [
 	)({
 		unloadOnLeave: true,
 		load(args) {
-			const input = GenVoteFrame.createInput()
+			const input = GenVoteFrame.createInput({ cursor: { type: 'index', index: { outerIndex: 0, innerIndex: null } } })
 			const frameKey = frameManager.ensureSetup(GenVoteFrame.frame, input)
 			return { genVoteFrame: frameKey, activity: args.key }
 		},

@@ -28,6 +28,7 @@ import { BROADCASTS } from '@/messages.ts'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
+import type * as MH from '@/models/match-history.models.ts'
 import * as SLL from '@/models/shared-layer-list.ts'
 import * as V from '@/models/vote.models.ts'
 import * as RPC from '@/orpc.client.ts'
@@ -86,7 +87,7 @@ export function LayerList(
 			const entry = history.find((entry) => entry.historyEntryId === activeId)
 			if (!entry) return
 			const index = LL.resolveCursorIndex(layerList, cursor)!
-			void props.store.getState().dispatch({ op: 'add', items: [{ layerId: entry.layerId }], index })
+			void props.store.getState().dispatch({ op: 'add', items: [{ type: 'single-list-item', layerId: entry.layerId }], index })
 		}
 
 		if (event.active.type === 'layer-item') {
@@ -176,8 +177,8 @@ function LoadedSelectLayersView({
 }) {
 	const entry = useStableValue((e) => e, [_entry])
 	const positionCursors = React.useMemo(() => {
-		const next: LQY.Cursor = { type: 'item-relative', itemId: LQY.SpecialItemId.FIRST_LIST_ITEM, position: 'before' }
-		const after: LQY.Cursor = { type: 'item-relative', itemId: LQY.SpecialItemId.LAST_LIST_ITEM, position: 'after' }
+		const next: LL.Cursor = { type: 'start' }
+		const after: LL.Cursor = { type: 'end' }
 		return { next, after }
 	}, [])
 
@@ -189,7 +190,7 @@ function LoadedSelectLayersView({
 	const addLayersAtPosition = useFrameStore(
 		entry.data.selectLayersFrame,
 		React.useCallback((s: SelectLayersFrame.Types['state']) => {
-			if (s.cursor?.type === 'item-relative' && s.cursor.itemId === LQY.SpecialItemId.LAST_LIST_ITEM) return 'after' as const
+			if (s.cursor?.type === 'end') return 'after' as const
 			return 'next' as const
 		}, []),
 	)
@@ -197,20 +198,14 @@ function LoadedSelectLayersView({
 	const activity = entry.key
 	const data = entry.data
 
-	const onAddItems = React.useCallback((items: LL.NewLayerListItem[]) => {
+	const onAddItems = React.useCallback((items: LL.NewItem[]) => {
 		if (activity.id !== 'ADDING_ITEM') return
 		const state = store.getState()
+		let cursor = getFrameState(entry.data.selectLayersFrame).cursor
 		let index: LL.ItemIndex
-		const cursor = getFrameState(entry.data.selectLayersFrame).cursor
-		if (cursor?.type === 'item-relative' && cursor.itemId === LQY.SpecialItemId.LAST_LIST_ITEM) {
-			index = { outerIndex: state.layerList.length, innerIndex: null }
-		} else if (cursor?.type === 'item-relative' && cursor.itemId === LQY.SpecialItemId.FIRST_LIST_ITEM) {
-			index = { outerIndex: 0, innerIndex: null }
-		} else {
-			return
-		}
-		if (!index) return
-
+		const defaultIndex = { outerIndex: 0, innerIndex: null }
+		if (cursor) index = LL.resolveCursorIndex(state.layerList, cursor) ?? defaultIndex
+		else index = defaultIndex
 		void state.dispatch({
 			op: 'add',
 			items,
@@ -298,9 +293,21 @@ function LoadedGenVoteView({
 			type: 'manual',
 			userId: UsersClient.loggedInUserId!,
 		}
-		const item = LL.createVoteItem(result.choices, source, result.voteConfig, result.displayProps)
+		const voteConfig = result.voteConfig
+			? { ...result.voteConfig, displayProps: result.displayProps }
+			: { displayProps: result.displayProps }
+		const item = LL.createVoteItem(result.choices, source, voteConfig)
 
-		state.dispatch({ op: 'add', index: { outerIndex: 0, innerIndex: null }, items: [item] })
+		const cursor = result.cursor
+		let index: LL.ItemIndex
+		const defaultIndex: LL.ItemIndex = { outerIndex: 0, innerIndex: null }
+		if (cursor) {
+			index = LL.resolveCursorIndex(state.layerList, cursor) ?? defaultIndex
+		} else {
+			index = defaultIndex
+		}
+
+		state.dispatch({ op: 'add', index: index ?? { outerIndex: 0, innerIndex: null }, items: [item] })
 		state.updateActivity(SLL.toEditIdleOrNone())
 	}, [store])
 
@@ -367,7 +374,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 			return [s.item, s.index, s.isLocallyLast, getDisplayedMutation(s.mutationState)]
 		}),
 	)
-	const isVoteChoice = LL.isVoteItem(item)
+	const isVoteChoice = !!parentItem
 
 	const isModified = Zus.useStore(SLLClient.Store, s => s.isModified)
 	const canEdit = !SLLClient.useIsItemLocked(item.itemId)
@@ -425,9 +432,9 @@ function SingleLayerListItem(props: LayerListItemProps) {
 		? V.tallyVotes(voteState, serverInfo.playerCount)
 		: undefined
 
-	const itemChoiceTallyPercentage = (isVoteChoice && voteState) ? tally?.percentages?.get(item.layerId) : undefined
-	const isVoteWinner = isVoteChoice && voteState?.code === 'ended:winner' && voteState?.winner === item.layerId
-	const voteCount = (isVoteChoice && voteState) ? tally?.totals?.get(item.layerId) : undefined
+	const itemChoiceTallyPercentage = (isVoteChoice && voteState) ? tally?.percentages?.get(item.itemId) : undefined
+	const isVoteWinner = isVoteChoice && voteState?.code === 'ended:winner' && voteState?.winnerId === item.itemId
+	const voteCount = (isVoteChoice && voteState) ? tally?.totals?.get(item.itemId) : undefined
 	const isFirstQueuedLayer = Zus.useStore(
 		props.llStore,
 		s => index.innerIndex === 0 && LL.getNextLayerId(s.layerList) === item.layerId,
@@ -449,7 +456,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	}
 
 	if (
-		!isModified && layersStatus?.nextLayer && isFirstQueuedLayer
+		!isModified && layersStatus?.nextLayer && isFirstQueuedLayer && voteState?.code !== 'in-progress'
 		&& !L.areLayersCompatible(item.layerId, layersStatus.nextLayer, true)
 	) {
 		badges.push(
@@ -545,7 +552,8 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		props.llStore,
 		ZusUtils.useDeep((llState) => {
 			const s = QD.selectLLItemState(llState, props.itemId)!
-			return [s.item as LL.ParentVoteItem, s.index, getDisplayedMutation(s.mutationState), s.isLocallyLast, s.item.endingVoteState]
+			const voteItem = s.item as LL.VoteItem
+			return [voteItem, s.index, getDisplayedMutation(s.mutationState), s.isLocallyLast, voteItem.endingVoteState]
 		}),
 	)
 
@@ -860,16 +868,18 @@ export function VoteDisplayPropsPopover(
 	},
 ) {
 	const itemActions = () => QD.getLLItemActions(props.listStore.getState(), props.itemId)
-	const [displayProps, choices] = ZusUtils.useStoreDeep(props.listStore, store => {
+	const [displayProps, duration, choices] = ZusUtils.useStoreDeep(props.listStore, store => {
 		const s = QD.selectLLItemState(store, props.itemId)
-		const itemDisplayProps = s.item.displayProps
-		const choices = s.item.choices?.map(c => c.layerId) ?? []
-		return [itemDisplayProps, choices]
+		const voteItem = s.item as LL.VoteItem
+		const itemDisplayProps = voteItem.voteConfig?.displayProps
+		const itemDuration = voteItem.voteConfig?.duration
+		const choices = voteItem.choices.map(c => c.layerId)
+		return [itemDisplayProps, itemDuration, choices]
 	})
 
-	function handleDisplayPropsChange(displayProps: DH.LayerDisplayProp[] | null) {
+	function handleConfigChange(config: Partial<V.AdvancedVoteConfig> | null) {
 		const actions = itemActions()
-		actions.dispatch({ op: 'configure-vote', displayProps })
+		actions.dispatch({ op: 'configure-vote', config })
 	}
 
 	return (
@@ -878,8 +888,9 @@ export function VoteDisplayPropsPopover(
 			<PopoverContent className="w-80">
 				<VoteDisplayConfig
 					displayProps={displayProps}
+					duration={duration}
 					choices={choices}
-					onChange={handleDisplayPropsChange}
+					onChange={handleConfigChange}
 				/>
 			</PopoverContent>
 		</Popover>
