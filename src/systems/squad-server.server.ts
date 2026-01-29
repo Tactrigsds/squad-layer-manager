@@ -467,7 +467,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 	// -------- keep event buffer state up-to-date --------
 	server.event$.subscribe(([ctx, events]) => {
 		for (const event of events) {
-			log.info(event, 'emitted event: %s', event.type)
+			log.debug('emitted event: %s %d', event.type, event.id)
 		}
 		ctx.server.state.eventBuffer.push(...events)
 	})
