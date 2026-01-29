@@ -1,27 +1,24 @@
 import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial'
-import * as FB from '@/models/filter-builders'
+
 export type { PostProcessedLayer } from '@/systems/layer-queries.shared'
-import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
-import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
+
 import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
-import * as DH from '@/lib/display-helpers'
+import type * as DH from '@/lib/display-helpers'
 import type * as FRM from '@/lib/frame'
 import * as Gen from '@/lib/generator'
 import { createId } from '@/lib/id'
-import * as Obj from '@/lib/object'
-import * as CS from '@/models/context-shared'
-import * as F from '@/models/filter.models'
-import * as L from '@/models/layer'
-import * as LC from '@/models/layer-columns'
-import * as LL from '@/models/layer-list.models'
-import * as LQY from '@/models/layer-queries.models'
+
+import type * as L from '@/models/layer'
+import type * as LC from '@/models/layer-columns'
+import type * as LL from '@/models/layer-list.models'
+import type * as LQY from '@/models/layer-queries.models'
 import * as V from '@/models/vote.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as QD from '@/systems/queue-dashboard.client'
 import * as ServerSettingsClient from '@/systems/server-settings.client'
 import * as Im from 'immer'
-import * as Rx from 'rxjs'
+
 import { frameManager } from './frame-manager'
 
 export type SelectType = 'generic' | 'indexed'
@@ -110,8 +107,6 @@ const createKey: Frame['createKey'] = (frameId, input) => ({ frameId, instanceId
 const setup: Frame['setup'] = (args) => {
 	const get = args.get
 	const set = args.set
-	const input = args.input
-	const colConfig = input.colConfig
 
 	set(
 		{

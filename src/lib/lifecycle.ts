@@ -161,7 +161,6 @@ export function createLoaderConfig<
 export type LoaderManagerContext<
 	Config extends LoaderConfig,
 	StoreState,
-	MatchState,
 > = {
 	configs: readonly Config[]
 	getCache: (draft: Im.Draft<StoreState>) => LoaderCacheEntry<Config>[]
@@ -179,7 +178,7 @@ export function dispatchLoaderEvents<
 	StoreState,
 	MatchState,
 >(
-	ctx: LoaderManagerContext<Config, StoreState, MatchState>,
+	ctx: LoaderManagerContext<Config, StoreState>,
 	updated: MatchState | null,
 	prev: MatchState | null,
 	preloading: boolean,
@@ -214,7 +213,7 @@ export function dispatchLoaderEvents<
 			}
 			const existingEntry = loaderCache.find(e => Obj.deepEqual(e.key, cacheKey))
 			let cacheEntry: LoaderCacheEntry<typeof config>
-			let load$: Rx.Observable<LoaderData<typeof config> | undefined> | undefined
+			let load$: Rx.Observable<LoaderData<typeof config> | undefined> | null = null
 			if (!existingEntry) {
 				cacheEntry = { name: config.name, key: cacheKey, active: undefined!, data: undefined }
 				const args = { key: cacheKey, preload: preloading, state: Im.current(draft) as StoreState }
@@ -231,7 +230,7 @@ export function dispatchLoaderEvents<
 						directLoad$,
 						Rx.fromEvent(controller.signal, 'abort', { once: true }).pipe(Rx.map(() => undefined)),
 					)
-					load$.subscribe((data: LoaderData<typeof config> | undefined) => {
+					load$!.subscribe((data: LoaderData<typeof config> | undefined) => {
 						if (data === undefined) return
 						ctx.set(Im.produce<StoreState>(draft => {
 							const cache = ctx.getCache(draft)
@@ -259,7 +258,7 @@ export function dispatchLoaderEvents<
 					delete cacheEntry.unloadSub
 					void config.onEnter?.({ key: cacheKey, data: cacheEntry.data, draft: draft })
 				} else if (load$) {
-					load$.subscribe((data: LoaderData<typeof config> | undefined) => {
+					load$!.subscribe((data: LoaderData<typeof config> | undefined) => {
 						if (!data) return
 						ctx.set(Im.produce<StoreState>(draft => {
 							const cache = ctx.getCache(draft)
@@ -281,9 +280,8 @@ export function dispatchLoaderEvents<
 export function unloadLoaderEntry<
 	Config extends LoaderConfig,
 	StoreState,
-	MatchState,
 >(
-	ctx: LoaderManagerContext<Config, StoreState, MatchState>,
+	ctx: LoaderManagerContext<Config, StoreState>,
 	config: Config,
 	key: LoaderKey<Config>,
 	draft: Im.Draft<StoreState>,
@@ -306,9 +304,8 @@ export function unloadLoaderEntry<
 export function scheduleUnloadLoaderEntry<
 	Config extends LoaderConfig,
 	StoreState,
-	MatchState,
 >(
-	ctx: LoaderManagerContext<Config, StoreState, MatchState>,
+	ctx: LoaderManagerContext<Config, StoreState>,
 	config: Config,
 	key: LoaderKey<Config>,
 ): Rx.Subscription | undefined {
@@ -328,9 +325,8 @@ export function scheduleUnloadLoaderEntry<
 export function checkAndUnloadStaleEntries<
 	Config extends LoaderConfig,
 	StoreState,
-	MatchState,
 >(
-	ctx: LoaderManagerContext<Config, StoreState, MatchState>,
+	ctx: LoaderManagerContext<Config, StoreState>,
 	state: StoreState,
 ) {
 	const cache = ctx.getCache(state as Im.Draft<StoreState>)

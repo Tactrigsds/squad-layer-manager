@@ -1,5 +1,5 @@
 import * as Schema from '$root/drizzle/schema'
-import { type CleanupTasks, sleep, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { type CleanupTasks, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'

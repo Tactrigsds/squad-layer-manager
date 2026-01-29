@@ -11,7 +11,7 @@ import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
-import * as V from '@/models/vote.models'
+
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems/config.client'
@@ -301,7 +301,7 @@ export function getQueryLayersInput(baseInput: LQY.BaseQueryInput, _opts?: Query
 export async function generateVote(input: LQY.GenVote.Input) {
 	const res = await sendWorkerRequest('genVote', input)
 	if (res.code !== 'ok') return res
-	const choiceRowData = res.chosenLayers.map(l => !!l ? layerToRowData(l, false, input.constraints ?? []) : undefined)
+	const choiceRowData = res.chosenLayers.map(l => l ? layerToRowData(l, false, input.constraints ?? []) : undefined)
 	return {
 		...res,
 		chosenLayers: choiceRowData,

@@ -13,7 +13,7 @@ import type * as GenVoteFrame from '@/frames/gen-vote.frame.ts'
 import type * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import { useIsMobile } from '@/hooks/use-is-mobile.ts'
-import * as DH from '@/lib/display-helpers.ts'
+
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
 import * as Obj from '@/lib/object'
 import { inline, useStableValue } from '@/lib/react.ts'
@@ -24,16 +24,15 @@ import { resToOptional } from '@/lib/types.ts'
 import * as Typo from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand.ts'
-import { BROADCASTS } from '@/messages.ts'
+
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
-import * as LQY from '@/models/layer-queries.models'
-import type * as MH from '@/models/match-history.models.ts'
+
 import * as SLL from '@/models/shared-layer-list.ts'
 import * as V from '@/models/vote.models.ts'
 import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
-import * as ConfigClient from '@/systems/config.client'
+
 import * as DndKit from '@/systems/dndkit.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as QD from '@/systems/queue-dashboard.client'
@@ -305,7 +304,7 @@ function LoadedGenVoteView({
 			index = defaultIndex
 		}
 
-		state.dispatch({ op: 'add', index: index ?? { outerIndex: 0, innerIndex: null }, items: [item] })
+		void state.dispatch({ op: 'add', index: index ?? { outerIndex: 0, innerIndex: null }, items: [item] })
 		state.updateActivity(SLL.toEditIdleOrNone())
 	}, [store])
 

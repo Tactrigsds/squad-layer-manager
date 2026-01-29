@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
-import * as LL from '@/models/layer-list.models'
+import type * as LL from '@/models/layer-list.models'
 import * as V from '@/models/vote.models'
 import * as SquadServerClient from '@/systems/squad-server.client'
 

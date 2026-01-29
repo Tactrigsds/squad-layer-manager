@@ -11,7 +11,7 @@ import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
 import type * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
-import * as LQY from '@/models/layer-queries.models'
+
 import * as SLL from '@/models/shared-layer-list'
 import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
 import type * as USR from '@/models/users.models'
@@ -170,13 +170,13 @@ function createStore() {
 		const session = SLL.createNewSession()
 
 		// Create loader manager context for lifecycle functions
-		const loaderCtx: Lifecycle.LoaderManagerContext<ConfiguredLoaderConfig, Store, SLL.RootActivity> = {
+		const loaderCtx: Lifecycle.LoaderManagerContext<ConfiguredLoaderConfig, Store> = {
 			configs: ACTIVITY_LOADER_CONFIGS,
-			getCache: (draft) => draft.activityLoaderCache as Lifecycle.LoaderCacheEntry<ConfiguredLoaderConfig>[],
-			setCache: (draft, cache) => {
+			getCache: (draft: Im.Draft<Store>) => draft.activityLoaderCache as Lifecycle.LoaderCacheEntry<ConfiguredLoaderConfig>[],
+			setCache: (draft: Im.Draft<Store>, cache: Lifecycle.LoaderCacheEntry<ConfiguredLoaderConfig>[]) => {
 				draft.activityLoaderCache = cache
 			},
-			set: (updater) => set(updater),
+			set: (updater: (state: Store) => Store) => set(updater),
 			getCurrentState: () => get(),
 		}
 

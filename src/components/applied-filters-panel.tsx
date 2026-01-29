@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button'
-import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial.ts'
+import type * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial.ts'
 import { getFrameState, useFrameStore } from '@/frames/frame-manager.ts'
 import * as Gen from '@/lib/generator.ts'
 import * as ZusUtils from '@/lib/zustand.ts'

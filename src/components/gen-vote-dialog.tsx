@@ -3,17 +3,16 @@ import AppliedFiltersPanel from '@/components/applied-filters-panel.tsx'
 import { StringEqConfig } from '@/components/filter-card'
 import PoolCheckboxes from '@/components/pool-checkboxes.tsx'
 import ShortLayerName from '@/components/short-layer-name'
-import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogDescription, HeadlessDialogFooter, HeadlessDialogHeader, HeadlessDialogTitle } from '@/components/ui/headless-dialog'
+import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogDescription, HeadlessDialogHeader, HeadlessDialogTitle } from '@/components/ui/headless-dialog'
 import { getFrameState, useFrameLifecycle, useFrameStore } from '@/frames/frame-manager'
 import * as GenVoteFrame from '@/frames/gen-vote.frame'
-import * as DH from '@/lib/display-helpers'
+
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import * as ZusUtils from '@/lib/zustand'
-import * as CB from '@/models/constraint-builders.ts'
-import * as L from '@/models/layer'
-import * as LL from '@/models/layer-list.models'
+
+import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as V from '@/models/vote.models'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
@@ -21,7 +20,7 @@ import * as QD from '@/systems/queue-dashboard.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import { ConstraintMatchesIndicator } from './constraint-matches-indicator'
-import EditLayerDialog from './edit-layer-dialog.tsx'
+
 import { Alert, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
 import { ButtonGroup } from './ui/button-group'
@@ -117,7 +116,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 
 	const handleRegen = (choiceIndex?: number) => {
 		setRegeneratingIndex(choiceIndex === undefined ? 'all' : choiceIndex)
-		getFrameState(frameKey).regen(choiceIndex)
+		void getFrameState(frameKey).regen(choiceIndex)
 	}
 
 	const handleAddConstraint = (key: V.GenVote.ChoiceConstraintKey) => {
@@ -192,7 +191,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 								const constraints = choice.layerId ? chosenLayers[choice.layerId]?.constraints : undefined
 								const error = choiceErrors[index]
 								return (
-									<div key={index} className="flex flex-col gap-2 p-4 border rounded-lg">
+									<div key={`choice-${index}`} className="flex flex-col gap-2 p-4 border rounded-lg">
 										<div className="flex items-center justify-between mb-2">
 											<div className="flex items-center gap-2">
 												<span className="font-semibold text-lg">{index + 1}.</span>
