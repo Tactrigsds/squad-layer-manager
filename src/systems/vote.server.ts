@@ -337,8 +337,8 @@ export const handleVote = C.spanOp('handle-vote', {
 	ctx.vote.update$.next(update)
 	void (async () => {
 		const serverState = await SquadServer.getServerState(ctx)
-		const voteItem = LL.resolveParentVoteItem(voteState.itemId, serverState.layerQueue)
-		if (!voteItem) return
+		const { item: voteItem } = Obj.destrNullable(LL.findItemById(serverState.layerQueue, voteState.itemId))
+		if (!voteItem || !LL.isVoteItem(voteItem)) return
 		const choiceLayerId = LL.findItemById(voteItem.choices, choiceItemId)?.item.layerId
 		if (!choiceLayerId) return
 		void SquadRcon.warn(
@@ -446,8 +446,8 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 					if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
 					const timeLeft = ctx.vote.state.deadline - Date.now()
 					const serverState = await SquadServer.getServerState(ctx)
-					const voteItem = LL.resolveParentVoteItem(ctx.vote.state.itemId, serverState.layerQueue)
-					if (!voteItem) return
+					const { item: voteItem } = Obj.destrNullable(LL.findItemById(serverState.layerQueue, ctx.vote.state.itemId))
+					if (!voteItem || !LL.isVoteItem(voteItem)) return
 					const msg = Messages.BROADCASTS.vote.voteReminder(
 						ctx.vote.state,
 						voteItem,
@@ -469,8 +469,8 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 					const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 					if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
 					const serverState = await SquadServer.getServerState(ctx)
-					const voteItem = LL.resolveParentVoteItem(ctx.vote.state.itemId, serverState.layerQueue)
-					if (!voteItem) return
+					const { item: voteItem } = Obj.destrNullable(LL.findItemById(serverState.layerQueue, ctx.vote.state.itemId))
+					if (!voteItem || !LL.isVoteItem(voteItem)) return
 					const msg = Messages.BROADCASTS.vote.voteReminder(
 						ctx.vote.state,
 						voteItem,

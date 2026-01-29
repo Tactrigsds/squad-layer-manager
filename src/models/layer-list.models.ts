@@ -1,4 +1,3 @@
-import * as Arr from '@/lib/array'
 import * as DH from '@/lib/display-helpers'
 import * as Gen from '@/lib/generator'
 import * as ItemMut from '@/lib/item-mutations'
@@ -211,13 +210,6 @@ export function llItemCursorsToDropItem(cursors: ItemRelativeCursor[]): DND.Drop
 			position: cursor.position,
 		})),
 	}
-}
-
-export function resolveParentVoteItem(itemId: ItemId, list: List): VoteItem | undefined {
-	const itemRes = findItemById(list, itemId)
-	if (!itemRes) return
-	if (!isVoteItem(itemRes.item)) return
-	return itemRes.item
 }
 
 export function dropItemToLLItemCursors(dropItem: DND.DropItem): ItemRelativeCursor[] {
@@ -529,13 +521,7 @@ export function moveItem(
 export function editLayer(list: List, source: Source, itemId: ItemId, layerId: L.LayerId) {
 	const { item } = Obj.destrNullable(findItemById(list, itemId))
 	if (!item) return
-	const parentVoteItem = resolveParentVoteItem(itemId, list)
-	if (parentVoteItem) {
-		const otherChoices = parentVoteItem?.choices.filter(choice => choice.itemId !== itemId)
-		if (Arr.deref('layerId', otherChoices).includes(layerId)) {
-			return
-		}
-	}
+	const parentVoteItem = findParentItem(list, itemId)
 	item.source = source
 	item.layerId = layerId
 	if (parentVoteItem) setCorrectChosenLayerIdInPlace(parentVoteItem)
