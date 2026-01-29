@@ -274,7 +274,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 										</Button>
 									</TooltipTrigger>
 									<TooltipContent>
-										<p>Toggle Force save (Save even if others are stil )</p>
+										<p>Toggle Force save (Save even if others are still editing)</p>
 									</TooltipContent>
 								</Tooltip>
 								<Tooltip>
