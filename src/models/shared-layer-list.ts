@@ -317,13 +317,14 @@ export function applyOperation(session: EditSession, newOp: Operation | NewOpera
 		case 'swap-factions': {
 			const { index, item } = Obj.destrNullable(LL.findItemById(list, newOp.itemId))
 			if (!index || !item) break
+			const originalLayerId = item.layerId
 			const swapped = LL.swapFactionsInPlace(list, item.itemId, source)
 			if (!swapped) break
 
 			// maybe mirror matchups will be a thing at some point who knows
-			if (item.layerId === item.layerId) break
-			ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
+			if (L.layersEqual(item.layerId, originalLayerId)) break
 			LL.splice(list, index, 1, item)
+			ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
 			if (mutations && source.type === 'manual') LL.changeGeneratedLayerAttributionInPlace(list, mutations, source.userId)
 			break
 		}

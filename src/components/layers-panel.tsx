@@ -114,7 +114,7 @@ function QueueControlPanel() {
 				variant="secondary"
 				disabled={!isEditing}
 			>
-				Gen Vote
+				<Icons.Vote />Gen Vote
 			</StartActivityInteraction>
 			<Tooltip>
 				<TooltipTrigger asChild>
