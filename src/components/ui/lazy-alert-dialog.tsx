@@ -11,6 +11,7 @@ type AlertDialogButton = {
 type AlertDialogOptions = {
 	title: string
 	description?: string
+	content?: React.ReactNode
 	buttons?: AlertDialogButton[]
 	onOpenChange?: (open: boolean) => void
 	onOpen?: () => void
@@ -63,6 +64,7 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
 						<AlertDialogTitle>{options?.title}</AlertDialogTitle>
 						{options?.description && <AlertDialogDescription>{options.description}</AlertDialogDescription>}
 					</AlertDialogHeader>
+					{options?.content}
 					<AlertDialogFooter>
 						<AlertDialogCancel onClick={() => handleButtonClick('cancel')}>Cancel</AlertDialogCancel>
 						{options?.buttons?.map((button) => (

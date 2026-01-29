@@ -17,4 +17,4 @@ export const Label = 'text-sm font-medium leading-none peer-disabled:cursor-not-
 
 export const LayerText = 'text-xs'
 
-export const ConstraintViolationDescriptor = 'underline decoration-pink-400 decoration-2'
+export const ConstraintViolationDescriptor = 'underline decoration-repeat-violation decoration-2'

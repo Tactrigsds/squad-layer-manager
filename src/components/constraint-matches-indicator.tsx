@@ -135,62 +135,18 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 					<div className="flex flex-col">
 						<div className={cn(Typo.Label, 'text-foreground')}>Repeats Detected:</div>
 						<ItemGroup>
-							{renderedRepeats.map((constraint, index) => {
-								const layerId = props.layerId ?? props.layerItem?.layerId
-								const descriptors = (() => {
-									if (!layerId || !props.matchDescriptors || props.itemParity === undefined) return []
-									return props.matchDescriptors
-										.filter(descriptor => descriptor.constraintId === constraint.id && descriptor.type === 'repeat-rule')
-										.flatMap(descriptor => {
-											if (descriptor.type !== 'repeat-rule') return []
-											const property = LQY.resolveLayerPropertyForRepeatDescriptorField(descriptor, props.itemParity!)
-											return [{
-												...descriptor,
-												fieldValue: L.toLayer(layerId)[property]!,
-											}]
-										})
-								})()
-
-								const boldValue = (value: string | number) => <span className="font-semibold">{value}</span>
-
-								return (
-									<React.Fragment key={constraint.id}>
-										{index > 0 && <Separator key={`separator-${constraint.id}`} />}
-										<Item variant="default" className="w-max">
-											<ItemMedia>
-												<ConstraintViolationIcon />
-											</ItemMedia>
-											<ItemContent className="flex flex-col">
-												<ItemTitle className="leading-none">
-													{constraint.rule.label ?? constraint.rule.field}
-												</ItemTitle>
-												<ItemDescription className="font-light flex flex-col">
-													{descriptors.length > 0
-														? (
-															<>
-																{descriptors.map((d, i) => (
-																	<span key={`${d.fieldValue}-${d.constraintId}-${d.repeatOffset}`}>
-																		<span className="font-semibold">{boldValue(d.fieldValue)}</span> was played{' '}
-																		<span className="font-semibold">{boldValue(d.repeatOffset)}</span>{' '}
-																		match{d.repeatOffset === 1 ? '' : 'es'} prior
-																	</span>
-																))}
-																<span>
-																	Should be &gt; <span className="font-semibold">{boldValue(constraint.rule.within)}</span>
-																</span>
-															</>
-														)
-														: (
-															<span className="whitespace-nowrap">
-																within <span className="font-semibold">{constraint.rule.within}</span>
-															</span>
-														)}
-												</ItemDescription>
-											</ItemContent>
-										</Item>
-									</React.Fragment>
-								)
-							})}
+							{renderedRepeats.map((constraint, index) => (
+								<React.Fragment key={constraint.id}>
+									{index > 0 && <Separator key={`separator-${constraint.id}`} />}
+									<RepeatViolationDisplay
+										showIcon={true}
+										constraint={constraint}
+										layerId={props.layerId ?? props.layerItem?.layerId}
+										matchDescriptors={props.matchDescriptors}
+										itemParity={props.itemParity}
+									/>
+								</React.Fragment>
+							))}
 						</ItemGroup>
 					</div>
 				)}
@@ -214,6 +170,69 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 	)
 }
 
+export type RepeatViolationDisplayProps = {
+	constraint: Extract<LQY.ViewableConstraint, { type: 'do-not-repeat' }>
+	showIcon: boolean
+	layerId?: string
+	matchDescriptors?: LQY.MatchDescriptor[]
+	itemParity?: number
+}
+
+export function RepeatViolationDisplay(props: RepeatViolationDisplayProps) {
+	const { constraint, layerId, matchDescriptors, itemParity } = props
+
+	const descriptors = React.useMemo(() => {
+		if (!layerId || !matchDescriptors || itemParity === undefined) return []
+		return matchDescriptors
+			.filter(descriptor => descriptor.constraintId === constraint.id && descriptor.type === 'repeat-rule')
+			.flatMap(descriptor => {
+				if (descriptor.type !== 'repeat-rule') return []
+				const property = LQY.resolveLayerPropertyForRepeatDescriptorField(descriptor, itemParity)
+				return [{
+					...descriptor,
+					fieldValue: L.toLayer(layerId)[property]!,
+				}]
+			})
+	}, [layerId, matchDescriptors, itemParity, constraint.id])
+
+	const boldValue = (value: string | number) => <span className="font-semibold">{value}</span>
+
+	return (
+		<Item variant="default" className="w-max">
+			{props.showIcon && (
+				<ItemMedia>
+					<ConstraintViolationIcon />
+				</ItemMedia>
+			)}
+			<ItemContent className="flex flex-col">
+				<ItemTitle className="leading-none">
+					{constraint.rule.label ?? constraint.rule.field}
+				</ItemTitle>
+				<ItemDescription className="font-light flex flex-col">
+					{descriptors.length > 0
+						? (
+							<>
+								{descriptors.map((d) => (
+									<span key={`${d.fieldValue}-${d.constraintId}-${d.repeatOffset}`}>
+										{boldValue(d.fieldValue)} was played {boldValue(d.repeatOffset)} match{d.repeatOffset === 1 ? '' : 'es'} prior
+									</span>
+								))}
+								<span>
+									Should be &gt; {boldValue(constraint.rule.within)}
+								</span>
+							</>
+						)
+						: (
+							<span className="whitespace-nowrap">
+								within <span className="font-semibold">{constraint.rule.within}</span>
+							</span>
+						)}
+				</ItemDescription>
+			</ItemContent>
+		</Item>
+	)
+}
+
 export function ConstraintViolationIcon({ size }: { size?: number }) {
-	return <Icons.Repeat className="text-pink-400" size={size} />
+	return <Icons.Repeat className="text-repeat-violation" size={size} />
 }

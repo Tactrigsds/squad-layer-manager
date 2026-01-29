@@ -47,6 +47,9 @@
 	--color-warning: hsl(var(--warning));
 	--color-warning-foreground: hsl(var(--warning-foreground));
 
+	--color-repeat-violation: hsl(var(--repeat-violation));
+	--color-repeat-violation-foreground: hsl(var(--repeat-violation-foreground));
+
 	--color-added: hsl(var(--added));
 	--color-added-foreground: hsl(var(--added-foreground));
 
@@ -133,6 +136,8 @@
 		--edited-foreground: 0 0% 0%;
 		--warning: 30 100% 50%;
 		--warning-foreground: 0 0% 0%;
+		--repeat-violation: 330 90% 70%;
+		--repeat-violation-foreground: 0 0% 100%;
 		--added: 120 60% 50%;
 		--added-foreground: 0 0% 100%;
 		--deleted: 0 100% 50%;
@@ -172,6 +177,8 @@
 		--edited-foreground: 0 0% 100%;
 		--warning: 30 100% 50%;
 		--warning-foreground: 0 0% 0%;
+		--repeat-violation: 330 90% 70%;
+		--repeat-violation-foreground: 0 0% 100%;
 		--added: 120 100% 20%;
 		--added-foreground: 0 0% 100%;
 		--deleted: 0 100% 50%;

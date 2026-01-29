@@ -539,9 +539,10 @@ export function getLayerItemForMatchHistoryEntry(entry: MH.MatchDetails): LayerI
 	}
 }
 
-export function getParityForLayerItem(state: LayerItemsState, item: LayerItem) {
+export function getParityForLayerItem(state: LayerItemsState, item: LayerItem | string) {
 	if (!state.layerItems) return 0
-	const { index } = Obj.destrNullable(LL.findItemById(state.layerItems, item.itemId))
+	const itemId = typeof item === 'string' ? item : item.itemId
+	const { index } = Obj.destrNullable(LL.findItemById(state.layerItems, itemId))
 	if (isNullOrUndef(index)) {
 		console.warn('Item not found when getting parity, setting 0 instead', item)
 		return 0
