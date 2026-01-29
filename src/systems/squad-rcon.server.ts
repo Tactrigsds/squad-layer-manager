@@ -263,12 +263,19 @@ export async function broadcast(ctx: C.Rcon, message: string) {
 		}
 	}
 	for (const message of messages) {
-		log.info(`Broadcasting message: %s`, message)
 		await ctx.rcon.execute(`AdminBroadcast ${message}`)
 	}
 }
 
-export type WarnOptionsBase = { msg: string | string[]; repeat?: number } | string | string[]
+export type WarnOptionsBase =
+	| {
+		msg: string | string[]
+		repeat?: number
+		// whether to include CONFIG.warnPrefix
+		prefix?: boolean
+	}
+	| string
+	| string[]
 // returning undefined indicates warning should be skipped
 export type WarnOptions = WarnOptionsBase | ((ctx: C.Player) => WarnOptionsBase | undefined)
 
@@ -294,6 +301,7 @@ export async function warn(ctx: C.SquadRcon & C.AdminList, ids: SM.PlayerIds.Typ
 	}
 
 	let repeatCount = 1
+	let prefix: boolean = false
 	let msgArr: string[]
 	if (typeof opts === 'string') {
 		msgArr = [opts]
@@ -302,8 +310,9 @@ export async function warn(ctx: C.SquadRcon & C.AdminList, ids: SM.PlayerIds.Typ
 	} else {
 		msgArr = Array.isArray(opts.msg) ? opts.msg : [opts.msg]
 		repeatCount = opts.repeat || 1
+		prefix = opts.prefix ?? prefix
 	}
-	if (msgArr[0] && CONFIG.warnPrefix) {
+	if (msgArr[0] && CONFIG.warnPrefix && prefix) {
 		msgArr[0] = CONFIG.warnPrefix + msgArr[0]
 	}
 

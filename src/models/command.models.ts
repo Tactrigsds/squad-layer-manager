@@ -1,6 +1,5 @@
 import * as Obj from '@/lib/object'
 import { BasicStrNoWhitespace } from '@/lib/zod'
-import * as Messages from '@/messages'
 import type * as SM from '@/models/squad.models.ts'
 
 import StringComparison from 'string-comparison'
@@ -88,7 +87,7 @@ function CommandConfigSchema(commandId: CommandId) {
 		),
 		scopes: z.array(COMMAND_SCOPES).prefault(defaultConfig.scopes).describe('Scopes in which this command is available'),
 		enabled: z.boolean().prefault(defaultConfig.enabled),
-	}).describe(Messages.GENERAL.command.descriptions[commandId]).prefault(defaultConfig)
+	}).prefault(defaultConfig)
 }
 
 export const AllCommandConfigSchema = z.object(

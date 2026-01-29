@@ -49,7 +49,6 @@ export function createInput(opts?: { cursor?: LL.Cursor }): Input {
 export type Result = {
 	choices: L.LayerId[]
 	voteConfig: Partial<V.AdvancedVoteConfig>
-	cursor?: LL.Cursor
 }
 
 type Primary = {
@@ -177,7 +176,6 @@ const setup: Frame['setup'] = (args) => {
 						result = {
 							choices: choices.map(c => c.layerId!),
 							voteConfig: get().voteConfig,
-							cursor: get().cursor,
 						}
 					}
 
@@ -217,6 +215,7 @@ const setup: Frame['setup'] = (args) => {
 							delete choice.choiceConstraints[key]
 						}
 					}),
+					uniqueConstraints: get().uniqueConstraints.filter(k => k !== key),
 				}
 				// Auto-sync displayProps if not manually set
 				if (!get().displayPropsManuallySet) {

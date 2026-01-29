@@ -146,11 +146,11 @@ export async function genVote(args: { ctx: CS.LayerQuery; input: LQY.GenVote.Inp
 	const choices = Obj.deepClone(input.choices)
 	const chosenLayers: (PostProcessedLayer | undefined)[] = new Array<PostProcessedLayer>(choices.length)
 
-	for (let i = 0; i < input.choices.length; i++) {
+	for (let i = 0; i < choices.length; i++) {
 		const choice = choices[i]
 		const conditions = [...base.conditions]
 		if (choice.layerId || input.onlyIndex !== undefined && input.onlyIndex !== i) continue
-		const filterNode = LQY.GenVote.getChoiceFilterNode(input.choices, input.uniqueConstraints, i)!
+		const filterNode = LQY.GenVote.getChoiceFilterNode(choices, input.uniqueConstraints, i)!
 		const filterNodeRes = getFilterNodeSQLConditions(ctx, filterNode, [], [])
 		if (filterNodeRes.code !== 'ok') return filterNodeRes
 		conditions.push(filterNodeRes.condition)
@@ -164,7 +164,7 @@ export async function genVote(args: { ctx: CS.LayerQuery; input: LQY.GenVote.Inp
 
 	const choiceErrors: (string | undefined)[] = new Array(choices.length)
 	for (let i = 0; i < choices.length; i++) {
-		if (!chosenLayers[i] && !input.choices[i].layerId) {
+		if (!chosenLayers[i] && !choices[i].layerId && input.onlyIndex === undefined || input.onlyIndex === i) {
 			choiceErrors[i] = 'No suitable layer found'
 		}
 	}

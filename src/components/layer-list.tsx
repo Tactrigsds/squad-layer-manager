@@ -286,7 +286,7 @@ function LoadedGenVoteView({
 		genVote: data.genVoteFrame,
 	}), [data.genVoteFrame])
 
-	const onSubmit = React.useCallback((result: GenVoteFrame.Result) => {
+	const onSubmit = React.useCallback((result: GenVoteFrame.Result, cursor?: LL.Cursor) => {
 		const state = store.getState()
 		const source: LL.Source = {
 			type: 'manual',
@@ -295,7 +295,6 @@ function LoadedGenVoteView({
 
 		const item = LL.createVoteItem(result.choices, source, result.voteConfig)
 
-		const cursor = result.cursor
 		let index: LL.ItemIndex
 		const defaultIndex: LL.ItemIndex = { outerIndex: 0, innerIndex: null }
 		if (cursor) {

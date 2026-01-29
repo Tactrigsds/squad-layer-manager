@@ -112,6 +112,7 @@ export namespace GenVote {
 		seed?: string
 		onlyIndex?: number
 	}
+
 	export function getChoiceFilterNode(choices: V.GenVote.Choice[], uniqueConstraints: V.GenVote.ChoiceConstraintKey[], index: number) {
 		const choice = choices[index]
 		if (!choice) {
@@ -138,15 +139,17 @@ export namespace GenVote {
 				let value: string
 
 				// don't repeat any values that have already been chosen for columns referencing "explicitely mapped keys", as in  we set a choice constraint for that key
-				if (layer && layer[colKey] && uniqueConstraints.includes(key)) {
-					value = layer[colKey] as string
-				} else if (otherChoice.choiceConstraints?.[key]) {
-					value = otherChoice.choiceConstraints[key] as string
-				} else {
-					continue
-				}
+				if (uniqueConstraints.includes(key)) {
+					if (layer && layer[colKey]) {
+						value = layer[colKey] as string
+					} else if (otherChoice.choiceConstraints?.[key]) {
+						value = otherChoice.choiceConstraints[key] as string
+					} else {
+						continue
+					}
 
-				nodes.push(FB.comp(FB.neq(colKey, value)))
+					nodes.push(FB.comp(FB.neq(colKey, value)))
+				}
 			}
 		}
 

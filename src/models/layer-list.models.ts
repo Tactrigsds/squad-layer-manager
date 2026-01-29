@@ -241,7 +241,7 @@ export function dropItemToLLItemCursors(dropItem: DND.DropItem): ItemRelativeCur
 export function resolveCursorIndex(list: List, cursor: Cursor): ItemIndex | undefined {
 	if (cursor.type === 'index') return cursor.index
 	if (cursor.type === 'start') return { innerIndex: null, outerIndex: 0 }
-	if (cursor.type === 'end') return { innerIndex: null, outerIndex: list.length - 1 }
+	if (cursor.type === 'end') return { innerIndex: null, outerIndex: list.length }
 	const itemRes = findItemById(list, cursor.itemId)
 	if (!itemRes) return undefined
 	if (cursor.position === 'before' || cursor.position === 'on') return itemRes.index

@@ -107,7 +107,15 @@ export const setupInstance = C.spanOp(
 							&& currentMatch.startTime !== undefined
 							&& currentMatch.startTime.getTime() + CONFIG.vote.startVoteReminderThreshold < Date.now()
 						) {
-							await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.votePending)
+							await SquadRcon.warnAllAdmins(
+								ctx,
+								Messages.WARNS.queue.votePending(
+									currentMatch.startTime,
+									CONFIG.vote.startVoteReminderThreshold,
+									CONFIG.commands,
+									CONFIG.commandPrefix,
+								),
+							)
 						} else if (serverState.layerQueue.length === 0) {
 							await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.empty)
 						}

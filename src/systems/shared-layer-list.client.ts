@@ -153,7 +153,7 @@ const ACTIVITY_LOADER_CONFIGS = [
 	)({
 		unloadOnLeave: true,
 		load(args) {
-			const input = GenVoteFrame.createInput({ cursor: { type: 'index', index: { outerIndex: 0, innerIndex: null } } })
+			const input = GenVoteFrame.createInput({ cursor: { type: 'start' } })
 			const frameKey = frameManager.ensureSetup(GenVoteFrame.frame, input)
 			return { genVoteFrame: frameKey, activity: args.key }
 		},

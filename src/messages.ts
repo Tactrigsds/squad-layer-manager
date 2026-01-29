@@ -1,7 +1,7 @@
 import * as DH from '@/lib/display-helpers'
 import * as Obj from '@/lib/object'
 import * as BAL from '@/models/balance-triggers.models'
-import type * as CMD from '@/models/command.models'
+import * as CMD from '@/models/command.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as MH from '@/models/match-history.models'
@@ -127,7 +127,12 @@ export const WARNS = {
 		lowQueueItemCount(count: number) {
 			return `WARNING: only ${count} item${count === 1 ? '' : 's'} in the queue. Consider adding some more`
 		},
-		votePending: `Vote is pending`,
+		votePending(matchStartTime: Date, threshold: number, commands: CMD.CommandConfigs, commandPrefix: string) {
+			const timeUntilVote = Math.max(0, threshold - (Date.now() - matchStartTime.getTime()))
+			const formattedTime = formatInterval(timeUntilVote, { terse: false, round: 'second' })
+			const showNextCmd = CMD.buildCommand('showNext', {}, commands, commandPrefix, true)[0]
+			return `Vote is pending and will be run in ${formattedTime}. Run ${showNextCmd} to preview the vote`
+		},
 		empty: `WARNING: Queue is empty. Please populate it`,
 		showNext: (layerQueue: LL.List, parts: USR.UserPart, opts?: { repeat?: number }) => (ctx: C.Player) => {
 			const item = layerQueue[0]

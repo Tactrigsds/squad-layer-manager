@@ -24,15 +24,11 @@ import { ConstraintMatchesIndicator } from './constraint-matches-indicator'
 import { Alert, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
 import { ButtonGroup } from './ui/button-group'
+import TabsList from './ui/tabs-list'
 
-export type GenVoteDialogProps = {
-	title: string
-	description?: React.ReactNode
-	frames?: Partial<GenVoteFrame.KeyProp>
+export type GenVoteDialogProps = Omit<GenVoteDialogContentProps, 'onClose'> & {
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
-	cursor?: LL.Cursor
-	onSubmit(choices: GenVoteFrame.Result): void
 }
 
 type GenVoteDialogContentProps = {
@@ -41,7 +37,7 @@ type GenVoteDialogContentProps = {
 	frames?: Partial<GenVoteFrame.KeyProp>
 	cursor?: LL.Cursor
 	onClose: () => void
-	onSubmit: (result: GenVoteFrame.Result) => void
+	onSubmit: (result: GenVoteFrame.Result, cursor?: LL.Cursor) => void
 }
 
 const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenVoteDialogContent(props) {
@@ -110,8 +106,9 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 
 	const handleSubmit = () => {
 		const result = getFrameState(frameKey).result
+		const cursor = getFrameState(frameKey).cursor
 		if (!result) return
-		props.onSubmit(result)
+		props.onSubmit(result, cursor)
 	}
 
 	const handleRegen = (choiceIndex?: number) => {
@@ -279,10 +276,18 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 								previewPlaceholder="Generate layers to see vote preview"
 								includeResetToDefault={false}
 							/>
-							<div className="self-end">
-								<Button variant="outline" onClick={props.onClose} className="self-end">
-									Cancel
-								</Button>
+							<div className="self-end flex gap-1">
+								<TabsList
+									options={[
+										{ label: 'Play Next', value: 'next' },
+										{ label: 'Play After', value: 'after' },
+									]}
+									active={cursor?.type === 'start' ? 'next' : 'after'}
+									setActive={() => {
+										const newCursor: LL.Cursor = cursor?.type === 'start' ? { type: 'end' } : { type: 'start' }
+										getFrameState(frameKey).setCursor(newCursor)
+									}}
+								/>
 								<Button onClick={handleSubmit} disabled={!canSubmit}>
 									Submit
 								</Button>
