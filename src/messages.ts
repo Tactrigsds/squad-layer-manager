@@ -57,7 +57,7 @@ export const BROADCASTS = {
 					const isWinner = choiceId === winnerId
 					const choice = voteItem.choices.find(c => c.itemId === choiceId)
 					const layerName = choice ? DH.toShortLayerNameFromId(choice.layerId, undefined, displayProps) : 'Unknown'
-					return `${votes} votes - (${tally.percentages.get(choiceId)?.toFixed(1)}%) ${isWinner ? '[WINNER] ' : ''}${layerName}`
+					return `${votes} votes - (${tally.percentages.get(choiceId)?.toFixed(0)}%) ${isWinner ? '[WINNER] ' : ''}${layerName}`
 				})
 			const randomChoiceExplanation = tally.leaders.length > 1 ? `\n(Winner randomly selected - ${tally.leaders.length} way tie.)` : ''
 			const fullText = `\nVote has ended:\n${resultsText.join('\n')}\n${randomChoiceExplanation}`
