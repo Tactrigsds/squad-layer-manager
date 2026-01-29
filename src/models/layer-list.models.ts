@@ -176,14 +176,6 @@ export type List = z.infer<typeof ListSchema>
 // Functions
 // ============================================================================
 
-export function getActiveItemLayerId<T extends SparseItem>(item: T) {
-	return item.layerId
-}
-
-export function getDefaultLayerId<T extends SparseItem & { choices: SparseSingleItem[] }>(item: T) {
-	return item.choices[0].layerId
-}
-
 export function toSparseItem(item: Item) {
 	if (isVoteItem(item)) {
 		return {
@@ -317,16 +309,13 @@ export function isVoteItem<T extends SparseItem>(item: T): item is Extract<T, { 
 	return item.type === 'vote-list-item'
 }
 
-export function isChildItem(itemId: ItemId, parentItemId: ItemId, layerList: List): boolean {
+export function isChildItem(itemId: ItemId, voteItemId: ItemId, layerList: List): boolean {
 	const parentItem = findParentItem(layerList, itemId)
-	if (!parentItem || parentItem.itemId === itemId) return false
-	return true
+	return !!parentItem && parentItem.itemId === voteItemId
 }
 
 export function resolveParentItemIndex<T extends SparseItem>(itemId: ItemId, layerQueue: T[]): number | undefined {
-	const index = layerQueue.findIndex((layer) =>
-		layer.itemId === itemId || (isVoteItem(layer) && layer.choices.some(l => l.itemId === itemId))
-	)
+	const index = layerQueue.findIndex((layer) => (isVoteItem(layer) && layer.choices.some(l => l.itemId === itemId)))
 	if (index === -1) return undefined
 	return index
 }
@@ -624,6 +613,22 @@ export function isItemIndex(item: ItemRelativeCursor | ItemIndex): item is ItemI
 	return (item as any).outerIndex !== undefined
 }
 
+export function getChosenItem(voteItem: VoteItem) {
+	if (voteItem.endingVoteState && voteItem.endingVoteState.code === 'ended:winner') {
+		return findItemById(voteItem.choices, voteItem.endingVoteState.winnerId)?.item as SingleItem
+	}
+	return voteItem.choices[0]
+}
+
+export function setEndingVoteStateInPlace(voteItem: VoteItem, state: V.EndingVoteState | null) {
+	if (state) {
+		voteItem.endingVoteState = state
+	} else {
+		delete voteItem.endingVoteState
+	}
+	setCorrectChosenLayerIdInPlace(voteItem)
+}
+
 export function setCorrectChosenLayerIdInPlace(item: VoteItem) {
 	if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') return item
 	item.layerId = item.choices[0].layerId
@@ -646,36 +651,29 @@ export function changeGeneratedLayerAttributionInPlace(layerList: List, mutation
 	}
 }
 
-export function swapFactions(existingItem: Item, newSource?: Source): Item | null {
+export function swapFactionsInPlace(list: List, id: ItemId, newSource?: Source): boolean {
+	const { item: existingItem } = Obj.destrNullable(findItemById(list, id))
+	if (!existingItem) return false
 	const layer = L.swapFactions(existingItem.layerId)
-	if (!layer) return null
+	if (!layer) return false
 
+	existingItem.layerId = layer.id
+	existingItem.source = newSource ?? existingItem.source
 	if (isVoteItem(existingItem)) {
-		const updatedChoices: SingleItem[] = []
-		for (const choice of existingItem.choices) {
-			const updatedChoice = swapFactions(choice, newSource)
-			if (!updatedChoice || isVoteItem(updatedChoice)) return null
-			updatedChoices.push(updatedChoice)
+		const updatedChoices = Obj.deepClone(existingItem.choices)
+		for (const choice of updatedChoices) {
+			const success = swapFactionsInPlace(existingItem.choices, choice.itemId, newSource)
+			if (!success) return false
 		}
-		return {
-			...existingItem,
-			layerId: layer.id,
-			source: newSource ?? existingItem.source,
-			choices: updatedChoices,
+		existingItem.choices = updatedChoices
+	} else {
+		const parentVoteItem = findParentItem(list, existingItem.itemId)
+		if (parentVoteItem && getChosenItem(parentVoteItem).itemId === existingItem.itemId) {
+			parentVoteItem.layerId = layer.id
 		}
 	}
 
-	return {
-		...existingItem,
-		layerId: layer.id,
-		source: newSource ?? existingItem.source,
-	}
-}
-
-export function clearTally(_item: Item): Item {
-	if (!isVoteItem(_item) || !_item.endingVoteState) return _item
-	const { endingVoteState: _, ...item } = _item
-	return item
+	return true
 }
 
 export function isLocallyLastIndex<T extends SparseItem>(itemId: ItemId, list: T[]) {

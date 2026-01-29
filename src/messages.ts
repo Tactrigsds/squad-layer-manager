@@ -13,8 +13,10 @@ import type { WarnOptions } from '@/systems/squad-rcon.server'
 import * as dateFns from 'date-fns'
 import { assertNever, isNullOrUndef } from './lib/type-guards'
 
-function formatInterval(interval: number, terse = true) {
-	const duration = dateFns.intervalToDuration({ start: 0, end: interval })
+function formatInterval(interval: number, options?: { terse?: boolean; round?: 'second' }) {
+	const { terse = true, round } = options ?? {}
+	const normalizedInterval = round === 'second' ? Math.round(interval / 1000) * 1000 : interval
+	const duration = dateFns.intervalToDuration({ start: 0, end: normalizedInterval })
 	let txt = dateFns.formatDuration(duration)
 	if (terse) txt = txt.replace(' seconds', 's').replace(' minutes', 'm')
 	return txt
@@ -43,7 +45,7 @@ export const BROADCASTS = {
 					return []
 				})
 			const lines = voteChoicesLines(layerIds, undefined, displayProps).join('\n')
-			const formattedInterval = formatInterval(duration, false)
+			const formattedInterval = formatInterval(duration, { terse: false, round: 'second' })
 			const voterTypeDisp = state.voterType === 'internal' ? ' (internal)' : ''
 			const fullText = `Vote for the next layer${voterTypeDisp}:\n${lines}\nYou have ${formattedInterval} to vote.\n`
 			return fullText
@@ -78,7 +80,7 @@ export const BROADCASTS = {
 			finalReminder = false,
 			displayProps: DH.LayerDisplayProp[],
 		) {
-			const durationStr = formatInterval(timeLeft, false)
+			const durationStr = formatInterval(timeLeft, { terse: false, round: 'second' })
 			const prefix = finalReminder ? `VOTE NOW: ${durationStr} left to cast your vote!` : `${durationStr} to cast your vote!`
 
 			const lines = voteChoicesLines(

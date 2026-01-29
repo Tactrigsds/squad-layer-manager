@@ -110,6 +110,7 @@ export namespace GenVote {
 		uniqueConstraints: V.GenVote.ChoiceConstraintKey[]
 		choices: V.GenVote.Choice[]
 		seed?: string
+		onlyIndex?: number
 	}
 	export function getChoiceFilterNode(choices: V.GenVote.Choice[], uniqueConstraints: V.GenVote.ChoiceConstraintKey[], index: number) {
 		const choice = choices[index]

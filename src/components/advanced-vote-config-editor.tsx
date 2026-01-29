@@ -2,7 +2,6 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
 import * as DH from '@/lib/display-helpers.ts'
 import * as Obj from '@/lib/object'
 import { BROADCASTS } from '@/messages.ts'
@@ -11,20 +10,20 @@ import * as V from '@/models/vote.models.ts'
 import * as ConfigClient from '@/systems/config.client'
 import React from 'react'
 
-export type VoteDisplayConfigProps = {
-	displayProps?: DH.LayerDisplayProp[]
-	duration?: number
+export type AdvancedVoteConfigEditorProps = {
+	config: Partial<V.AdvancedVoteConfig> | null
 	choices: L.LayerId[]
 	onChange: (config: Partial<V.AdvancedVoteConfig> | null) => void
 	previewPlaceholder?: string
 	includeResetToDefault?: boolean
+	readonly?: boolean
 }
 
-export function VoteDisplayConfig(props: VoteDisplayConfigProps) {
-	const config = ConfigClient.useConfig()
-	const displayProps = props.displayProps ?? config?.vote.voteDisplayProps ?? []
-	const duration = props.duration ?? config?.vote.voteDuration ?? 120
-	const usingDefault = !props.displayProps && !props.duration && !!config?.vote.voteDisplayProps
+export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
+	const appConfig = ConfigClient.useConfig()
+	const displayProps = props.config?.displayProps ?? appConfig?.vote.voteDisplayProps ?? []
+	const duration = props.config?.duration ?? appConfig?.vote.voteDuration ?? 120
+	const usingDefault = !props.config?.displayProps && !props.config?.duration && !!appConfig?.vote.voteDisplayProps
 	const statuses = DH.toDisplayPropStatuses(displayProps)
 
 	const preview = props.choices.length > 0
@@ -52,31 +51,21 @@ export function VoteDisplayConfig(props: VoteDisplayConfigProps) {
 		}
 
 		const displayPropsValue = DH.fromDisplayPropStatuses(updated)
-		const configToPass: Partial<V.AdvancedVoteConfig> = { displayProps: displayPropsValue }
-
-		if (props.duration !== undefined) {
-			configToPass.duration = props.duration
+		const configToPass: Partial<V.AdvancedVoteConfig> = {
+			...props.config,
+			displayProps: displayPropsValue,
 		}
 
-		if (config && Obj.deepEqual(updated, DH.toDisplayPropStatuses(config.vote.voteDisplayProps)) && props.duration === undefined) {
-			props.onChange(null)
-		} else {
-			props.onChange(configToPass)
-		}
+		props.onChange(configToPass)
 	}
 
 	function setDuration(newDuration: number) {
-		const configToPass: Partial<V.AdvancedVoteConfig> = { duration: newDuration }
-
-		if (!Obj.deepEqual(displayProps, config?.vote.voteDisplayProps ?? [])) {
-			configToPass.displayProps = displayProps
+		const configToPass: Partial<V.AdvancedVoteConfig> = {
+			...props.config,
+			duration: newDuration,
 		}
 
-		if (config && newDuration === config.vote.voteDuration && !props.displayProps) {
-			props.onChange(null)
-		} else {
-			props.onChange(configToPass)
-		}
+		props.onChange(configToPass)
 	}
 
 	function resetToDefault() {
@@ -101,6 +90,7 @@ export function VoteDisplayConfig(props: VoteDisplayConfigProps) {
 									id="layer"
 									checked={statuses.layer}
 									onCheckedChange={(checked) => setDisplayProps({ layer: checked === true })}
+									disabled={props.readonly}
 								/>
 								<Label htmlFor="layer">Layer</Label>
 							</div>
@@ -110,6 +100,7 @@ export function VoteDisplayConfig(props: VoteDisplayConfigProps) {
 										id="map"
 										checked={statuses.map}
 										onCheckedChange={(checked) => setDisplayProps({ map: checked === true })}
+										disabled={props.readonly}
 									/>
 									<Label htmlFor="map">
 										Map
@@ -120,6 +111,7 @@ export function VoteDisplayConfig(props: VoteDisplayConfigProps) {
 										id="gamemode"
 										checked={statuses.gamemode}
 										onCheckedChange={(checked) => setDisplayProps({ gamemode: checked === true })}
+										disabled={props.readonly}
 									/>
 									<Label htmlFor="gamemode">
 										Gamemode
@@ -135,6 +127,7 @@ export function VoteDisplayConfig(props: VoteDisplayConfigProps) {
 									id="factions"
 									checked={statuses.factions}
 									onCheckedChange={(checked) => setDisplayProps({ factions: checked === true })}
+									disabled={props.readonly}
 								/>
 								<Label htmlFor="factions">Factions</Label>
 							</div>
@@ -143,6 +136,7 @@ export function VoteDisplayConfig(props: VoteDisplayConfigProps) {
 									id="units"
 									checked={statuses.units}
 									onCheckedChange={(checked) => setDisplayProps({ units: checked === true })}
+									disabled={props.readonly}
 								/>
 								<Label htmlFor="units">Units</Label>
 							</div>
@@ -177,6 +171,7 @@ export function VoteDisplayConfig(props: VoteDisplayConfigProps) {
 						value={(duration / 1000).toFixed(0)}
 						onChange={(e) => setDuration(Math.max(1000, parseInt(e.target.value) * 1000 || 1000))}
 						className="w-full"
+						disabled={props.readonly}
 					/>
 				</div>
 				{(props.includeResetToDefault ?? true) && (
@@ -184,7 +179,7 @@ export function VoteDisplayConfig(props: VoteDisplayConfigProps) {
 						variant="outline"
 						size="sm"
 						onClick={resetToDefault}
-						disabled={usingDefault}
+						disabled={usingDefault || props.readonly}
 					>
 						Reset to Default
 					</Button>

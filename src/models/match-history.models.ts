@@ -308,7 +308,7 @@ export function getNewMatchHistoryEntry(opts: { layerId: L.LayerId; serverId: st
 	}
 
 	if (opts.lqItem) {
-		newEntry.layerId = LL.getActiveItemLayerId(opts.lqItem) ?? newEntry.layerId
+		newEntry.layerId = opts.lqItem.layerId ?? newEntry.layerId
 		newEntry.lqItemId = opts.lqItem.itemId
 		newEntry.setByType = opts.lqItem.source.type
 

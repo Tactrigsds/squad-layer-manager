@@ -54,9 +54,6 @@ function QueueControlPanel() {
 		SLLClient.Store,
 		useShallow(s => [s.isModified, s.committing, s.session.editors.size]),
 	)
-	React.useEffect(() => {
-		console.log('numEditors', numEditors)
-	}, [numEditors])
 
 	function clear() {
 		const state = QD.LQStore.getState()

@@ -240,8 +240,7 @@ export const startVote = C.spanOp(
 			}
 
 			const item = initiateVoteRes.item
-			delete item.endingVoteState
-			LL.setCorrectChosenLayerIdInPlace(item)
+			LL.setEndingVoteStateInPlace(item, null)
 			await SquadServer.updateServerState(ctx, newServerState, { event: 'vote-start', type: 'system' })
 
 			const updatedVoteState = {
@@ -389,8 +388,7 @@ export const abortVote = C.spanOp(
 			const layerQueue = Obj.deepClone(serverState.layerQueue)
 			const { item } = Obj.destrNullable(LL.findItemById(layerQueue, newVoteState.itemId))
 			if (!item || !LL.isVoteItem(item)) throw new Error('vote item not found or is invalid')
-			item.endingVoteState = newVoteState
-			LL.setCorrectChosenLayerIdInPlace(item)
+			LL.setEndingVoteStateInPlace(item, newVoteState)
 			await SquadServer.updateServerState(ctx, { layerQueue }, { event: 'vote-abort', type: 'system' })
 
 			return { code: 'ok' as const }
@@ -433,8 +431,10 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 
 	const currentTime = Date.now()
 	const finalReminderWaitTime = Math.max(0, ctx.vote.state.deadline - CONFIG.vote.finalVoteReminder - currentTime)
-	const finalReminderBuffer = finalReminderWaitTime - 5 * 1000
-	const regularReminderInterval = CONFIG.vote.voteReminderInterval
+	const regularReminderInterval = ctx.vote.state.voterType === 'internal'
+		? CONFIG.vote.internalVoteReminderInterval
+		: CONFIG.vote.voteReminderInterval
+	const finalReminderBuffer = finalReminderWaitTime - regularReminderInterval
 
 	// -------- schedule regular reminders --------
 	ctx.vote.voteEndTask.add(
@@ -538,8 +538,7 @@ const handleVoteTimeout = C.spanOp(
 				}
 				if (winnerChoice) listItem.layerId = winnerChoice.layerId
 			}
-			listItem.endingVoteState = endingVoteState
-			if (LL.isVoteItem(listItem)) LL.setCorrectChosenLayerIdInPlace(listItem)
+			LL.setEndingVoteStateInPlace(listItem, endingVoteState)
 			const displayProps = listItem.voteConfig?.displayProps ?? CONFIG.vote.voteDisplayProps
 			if (endingVoteState.code === 'ended:winner') {
 				await broadcastVoteUpdate(ctx, Messages.BROADCASTS.vote.winnerSelected(tally!, listItem, endingVoteState.winnerId, displayProps), {
@@ -571,7 +570,6 @@ async function broadcastVoteUpdate(
 	msg: string,
 	opts?: { onlyNotifyNonVotingAdmins?: boolean; repeatWarn?: boolean },
 ) {
-	const repeatWarn = opts?.repeatWarn ?? true
 	if (!ctx.vote.state) return
 	switch (ctx.vote.state.voterType) {
 		case 'public':
@@ -579,18 +577,15 @@ async function broadcastVoteUpdate(
 			break
 		case 'internal':
 			{
-				for (let i = 0; i < (repeatWarn ? 3 : 1); i++) {
-					await SquadRcon.warnAllAdmins(
-						ctx,
-						({ player }) => {
-							if (!ctx.vote.state || !opts?.onlyNotifyNonVotingAdmins) return msg
-							if (!V.isVoteStateWithVoteData(ctx.vote.state)) return
-							if (SM.PlayerIds.find(ctx.vote.state.votes, ({ playerIds }) => playerIds, player.ids)) return
-							return msg
-						},
-					)
-					if (i < 2) await sleep(5000)
-				}
+				await SquadRcon.warnAllAdmins(
+					ctx,
+					({ player }) => {
+						if (!ctx.vote.state || !opts?.onlyNotifyNonVotingAdmins) return msg
+						if (!V.isVoteStateWithVoteData(ctx.vote.state)) return
+						if (SM.PlayerIds.find(ctx.vote.state.votes, ({ playerIds }) => playerIds, player.ids)) return
+						return msg
+					},
+				)
 			}
 			break
 		default:

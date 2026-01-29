@@ -1,3 +1,4 @@
+import { AdvancedVoteConfigEditor } from '@/components/advanced-vote-config-editor'
 import { Badge } from '@/components/ui/badge.tsx'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -7,7 +8,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
-import { VoteDisplayConfig } from '@/components/vote-display-config'
 import { getFrameState, useFrameStore } from '@/frames/frame-manager.ts'
 import type * as GenVoteFrame from '@/frames/gen-vote.frame.ts'
 import type * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
@@ -293,10 +293,8 @@ function LoadedGenVoteView({
 			type: 'manual',
 			userId: UsersClient.loggedInUserId!,
 		}
-		const voteConfig = result.voteConfig
-			? { ...result.voteConfig, displayProps: result.displayProps }
-			: { displayProps: result.displayProps }
-		const item = LL.createVoteItem(result.choices, source, voteConfig)
+
+		const item = LL.createVoteItem(result.choices, source, result.voteConfig)
 
 		const cursor = result.cursor
 		let index: LL.ItemIndex
@@ -360,11 +358,7 @@ function LayerListItem(props: LayerListItemProps) {
 function SingleLayerListItem(props: LayerListItemProps) {
 	const parentItem = Zus.useStore(
 		props.llStore,
-		ZusUtils.useDeep(s => {
-			const parentItem = LL.findParentItem(s.layerList, props.itemId)
-			if (!parentItem || !LL.isVoteItem(parentItem)) return undefined
-			return parentItem
-		}),
+		s => LL.findParentItem(s.layerList, props.itemId),
 	)
 
 	const [item, index, isLocallyLast, displayedMutation] = Zus.useStore(
@@ -377,7 +371,8 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	const isVoteChoice = !!parentItem
 
 	const isModified = Zus.useStore(SLLClient.Store, s => s.isModified)
-	const canEdit = !SLLClient.useIsItemLocked(item.itemId)
+	const isEditing = SLLClient.useIsEditing()
+	const canEdit = !SLLClient.useIsItemLocked(item.itemId) && isEditing
 
 	const [itemPresence, itemActivityUser, activityHovered] = SLLClient.useItemPresence(item.itemId)
 
@@ -385,7 +380,6 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	const voteState = (globalVoteState && globalVoteState?.itemId === parentItem?.itemId ? globalVoteState : undefined)
 		?? parentItem?.endingVoteState
 
-	const isEditing = SLLClient.useIsEditing()
 	const draggableItem = LL.layerItemToDragItem(item)
 	const dragProps = DndKit.useDraggable(draggableItem, { feedback: 'move', disabled: !isEditing })
 	const user = UsersClient.useLoggedInUser()
@@ -416,7 +410,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 		'data-mobile': isMobile,
 		'data-is-editing': !!isEditing,
 		disabled: !canEdit,
-		className: cn('data-[mobile=false]:invisible group-hover/single-item:data-[is-editing=true]:visible', className),
+		className,
 	})
 
 	const dropdownProps = {
@@ -474,7 +468,9 @@ function SingleLayerListItem(props: LayerListItemProps) {
 			ref={dragProps.handleRef}
 			variant="ghost"
 			size="icon"
-			{...editButtonProps(cn('data-[can-edit=true]:cursor-grab', props.className))}
+			{...editButtonProps(
+				cn('data-[can-edit=true]:cursor-grab data-[mobile=false]:not-group-hover/single-item:invisible', props.className),
+			)}
 		>
 			<Icons.GripVertical />
 		</Button>
@@ -500,9 +496,8 @@ function SingleLayerListItem(props: LayerListItemProps) {
 					<>
 						<span className="grid">
 							<span
-								data-can-edit={canEdit}
-								data-is-editing={!!isEditing}
-								className=" text-right m-auto font-mono text-s col-start-1 row-start-1 group-hover/single-item:data-[is-editing=true]:invisible"
+								data-mobile={isMobile}
+								className="text-right m-auto font-mono text-s col-start-1 row-start-1 invisible data-[mobile=false]:not-group-hover/single-item:visible"
 							>
 								{LL.getItemNumber(index)}
 							</span>
@@ -574,8 +569,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const editButtonProps = (className?: string) => ({
 		['data-mobile']: isMobile,
 		disabled: !canEdit,
-		// className: cn('data-[mobile=false]:invisible group-hover/parent-item:visible', className),
-		className: cn('group-hover/parent-item:visible', className),
+		className: className,
 		['data-can-edit']: canEdit,
 	})
 
@@ -585,8 +579,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		return ({
 			['data-mobile']: isMobile,
 			disabled: !canManageVote,
-			className: cn(opts.hideWhenNotHovering ? 'group-hover/parent-item:visible' : '', opts?.className),
-			// className: cn(opts.hideWhenNotHovering ? 'data-[mobile=false]:invisible group-hover/parent-item:visible' : '', opts?.className),
+			className: opts?.className,
 		})
 	}
 
@@ -601,7 +594,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const afterItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'after', itemId: item.itemId }]
 
 	// we're only using .useActivityState here because there's nothing to load with this activity at the moment
-	const [voteDisplayPropsOpen, setVoteDisplayPropsOpen] = SLLClient.useActivityState({
+	const [configuringVote, setConfiguringVote] = SLLClient.useActivityState({
 		createActivity: SLL.createEditActivityVariant({ _tag: 'leaf', id: 'CONFIGURING_VOTE', opts: { itemId: item.itemId } }),
 		matchActivity: React.useCallback(
 			(state) => state.child.EDITING?.chosen.id === 'CONFIGURING_VOTE' && state.child.EDITING?.chosen.opts.itemId === item.itemId,
@@ -609,6 +602,14 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		),
 		removeActivity: SLL.toEditIdleOrNone(),
 	})
+
+	const [_voteDisplayPropsOpen, _setVoteDisplayPropsOpen] = React.useState(false)
+	const voteDisplayPropsOpen = configuringVote || _voteDisplayPropsOpen
+
+	const setVoteDisplayPropsOpen: React.Dispatch<React.SetStateAction<boolean>> = (update) => {
+		if (isEditing) setConfiguringVote(update)
+		else _setVoteDisplayPropsOpen(update)
+	}
 
 	const startVoteMutation = RQ.useMutation(RPC.orpc.vote.startVote.mutationOptions())
 	async function startVote() {
@@ -696,162 +697,164 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				data-mutation={displayedMutation}
 				data-is-dragging={dragProps.isDragging}
 			>
-				{dragProps.isDragging ? <span className="mx-auto w-5">...</span> : (
-					<div className="h-full flex flex-col grow">
-						<div className="p-1 space-x-2 flex items-center justify-between w-full">
-							<span className="flex items-center space-x-1">
-								<Button
-									ref={dragProps.handleRef}
-									{...editButtonProps('data-[can-edit=true]:cursor-grab')}
-									variant="ghost"
-									size="icon"
-								>
-									<Icons.GripHorizontal />
-								</Button>
-								<h3 className={cn(Typo.Label, 'bold')}>Vote</h3>
-								{voteAutostartTime && (
-									<>
-										<span>:</span>
-										<span className="whitespace-nowrap text-nowrap w-max text-sm flex flex-nowrap items-center space-x-2">
-											<span>starts in</span> <Timer deadline={voteAutostartTime.getTime()} />
-											<Button variant="ghost" size="icon" title="Cancel Autostart" onClick={cancelAutostart} {...manageVoteButtonProps()}>
-												<Icons.X />
-											</Button>
-										</span>
-									</>
-								)}
-								{voteState && voteState.code !== 'ready' && (
-									<div className="flex space-x-2 items-center">
-										<Icons.Dot width={20} height={20} />
-										<span>{statusCodeToTitleCase(voteState.code)}</span>
-										<Icons.Dot width={20} height={20} />
-										<span>{voteTally && serverInfo && <span>{voteTally.totalVotes} of {serverInfo.playerCount} votes received</span>}</span>
-										{voteState.code === 'in-progress' && (
-											<>
-												<Icons.Dot width={20} height={20} />
-												<Badge variant="outline">
-													<Timer
-														className="font-mono"
-														formatTime={ms => dateFns.format(new Date(ms), 'm:ss')}
-														deadline={voteState.deadline}
-														zeros
-													/>
-												</Badge>
-											</>
-										)}
-										{voteState.code === 'in-progress' && (
-											<Button
-												title="Abort Vote"
-												variant="ghost"
-												size="icon"
-												onClick={abortVote}
-												{...manageVoteButtonProps({ hideWhenNotHovering: false })}
-											>
-												<Icons.X />
-											</Button>
-										)}
-									</div>
-								)}
-							</span>
-							<span className="flex items-center space-x-1">
-								<div
-									{...manageVoteButtonProps({ className: 'flex items-center space-x-2' })}
-								>
-									<Checkbox
-										{...manageVoteButtonProps()}
-										id={internalVoteCheckboxId}
-										disabled={!canManageVote || voteState?.code === 'in-progress'}
-										checked={voterType === 'internal'}
-										onCheckedChange={checked => setVoterType(checked ? 'internal' : 'public')}
-									/>
-									<Label
-										htmlFor={internalVoteCheckboxId}
-										className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-									>
-										Internal
-									</Label>
-								</div>
-								<Button
-									{...manageVoteButtonProps({ className: 'text-green-500 disabled:text-foreground' })}
-									variant="ghost"
-									size="icon"
-									onClick={() => startVote()}
-									disabled={!canManageVote || canInitiateVote.code !== 'ok'}
-									title="Start Vote"
-								>
-									<Icons.Play />
-								</Button>
-
-								{/* -------- add vote choices -------- */}
-								{inline(() => {
-									const activityTitle = 'Add Vote Choices'
-									return (
-										<StartActivityInteraction
-											loaderName="selectLayers"
-											preload="intent"
-											createActivity={SLL.createEditActivityVariant(
-												{
-													_tag: 'leaf',
-													id: 'ADDING_ITEM',
-													opts: {
-														cursor: {
-															type: 'index',
-															index: { outerIndex: index.outerIndex, innerIndex: item.choices.length },
-														},
-														action: 'add',
-														title: activityTitle,
-													},
-												},
-											)}
-											matchKey={key => key.id === 'ADDING_ITEM' && key.opts.title === activityTitle}
-											render={Button}
-											variant="ghost"
-											size="icon"
-											title="Add Vote Choices"
-											{...editButtonProps()}
-										>
-											<Icons.Plus />
-										</StartActivityInteraction>
-									)
-								})}
-
-								<VoteDisplayPropsPopover
-									open={voteDisplayPropsOpen}
-									onOpenChange={setVoteDisplayPropsOpen}
-									listStore={props.llStore}
-									itemId={props.itemId}
-								>
-									<Button variant="ghost" size="icon" {...editButtonProps()} disabled={!canEdit || !canManageVote}>
-										<Icons.Settings2 />
-									</Button>
-								</VoteDisplayPropsPopover>
-								<ItemDropdown {...dropdownProps}>
+				{dragProps.isDragging
+					? <span className="mx-auto w-5">...</span>
+					: (
+						<div className="h-full flex flex-col grow">
+							<div className="p-1 space-x-2 flex items-center justify-between w-full">
+								<span className="flex items-center space-x-1">
 									<Button
-										disabled={!canEdit}
-										data-canedit={canEdit}
-										data-mobile={isMobile}
+										ref={dragProps.handleRef}
+										{...editButtonProps('data-[can-edit=true]:cursor-grab')}
 										variant="ghost"
 										size="icon"
-										className={cn('group-hover/parent-item:visible')}
 									>
-										<Icons.EllipsisVertical />
+										<Icons.GripHorizontal />
 									</Button>
-								</ItemDropdown>
-							</span>
+									<h3 className={cn(Typo.Label, 'bold')}>Vote</h3>
+									{voteAutostartTime && (
+										<>
+											<span>:</span>
+											<span className="whitespace-nowrap text-nowrap w-max text-sm flex flex-nowrap items-center space-x-2">
+												<span>starts in</span> <Timer deadline={voteAutostartTime.getTime()} />
+												<Button variant="ghost" size="icon" title="Cancel Autostart" onClick={cancelAutostart} {...manageVoteButtonProps()}>
+													<Icons.X />
+												</Button>
+											</span>
+										</>
+									)}
+									{voteState && voteState.code !== 'ready' && (
+										<div className="flex space-x-2 items-center">
+											<Icons.Dot width={20} height={20} />
+											<span>{statusCodeToTitleCase(voteState.code)}</span>
+											<Icons.Dot width={20} height={20} />
+											<span>
+												{voteTally && serverInfo && <span>{voteTally.totalVotes} of {serverInfo.playerCount} votes received</span>}
+											</span>
+											{voteState.code === 'in-progress' && (
+												<>
+													<Icons.Dot width={20} height={20} />
+													<Badge variant="outline">
+														<Timer
+															className="font-mono"
+															formatTime={ms => dateFns.format(new Date(ms), 'm:ss')}
+															deadline={voteState.deadline}
+															zeros
+														/>
+													</Badge>
+												</>
+											)}
+											{voteState.code === 'in-progress' && (
+												<Button
+													title="Abort Vote"
+													variant="ghost"
+													size="icon"
+													onClick={abortVote}
+													{...manageVoteButtonProps({ hideWhenNotHovering: false })}
+												>
+													<Icons.X />
+												</Button>
+											)}
+										</div>
+									)}
+								</span>
+								<span className="flex items-center space-x-1">
+									<div
+										{...manageVoteButtonProps({ className: 'flex items-center space-x-2' })}
+									>
+										<Checkbox
+											{...manageVoteButtonProps()}
+											id={internalVoteCheckboxId}
+											disabled={!canManageVote || voteState?.code === 'in-progress'}
+											checked={voterType === 'internal'}
+											onCheckedChange={checked => setVoterType(checked ? 'internal' : 'public')}
+										/>
+										<Label
+											htmlFor={internalVoteCheckboxId}
+											className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+										>
+											Internal
+										</Label>
+									</div>
+									<Button
+										{...manageVoteButtonProps({ className: 'text-green-500 disabled:text-foreground' })}
+										variant="ghost"
+										size="icon"
+										onClick={() => startVote()}
+										disabled={!canManageVote || canInitiateVote.code !== 'ok'}
+										title="Start Vote"
+									>
+										<Icons.Play />
+									</Button>
+
+									{/* -------- add vote choices -------- */}
+									{inline(() => {
+										const activityTitle = 'Add Vote Choices'
+										return (
+											<StartActivityInteraction
+												loaderName="selectLayers"
+												preload="intent"
+												createActivity={SLL.createEditActivityVariant(
+													{
+														_tag: 'leaf',
+														id: 'ADDING_ITEM',
+														opts: {
+															cursor: {
+																type: 'index',
+																index: { outerIndex: index.outerIndex, innerIndex: item.choices.length },
+															},
+															action: 'add',
+															title: activityTitle,
+														},
+													},
+												)}
+												matchKey={key => key.id === 'ADDING_ITEM' && key.opts.title === activityTitle}
+												render={Button}
+												variant="ghost"
+												size="icon"
+												title="Add Vote Choices"
+												{...editButtonProps()}
+											>
+												<Icons.Plus />
+											</StartActivityInteraction>
+										)
+									})}
+
+									<VoteDisplayPropsPopover
+										open={voteDisplayPropsOpen}
+										onOpenChange={setVoteDisplayPropsOpen}
+										listStore={props.llStore}
+										itemId={props.itemId}
+										readonly={!canEdit || !canManageVote}
+									>
+										<Button variant="ghost" size="icon">
+											<Icons.Settings2 />
+										</Button>
+									</VoteDisplayPropsPopover>
+									<ItemDropdown {...dropdownProps}>
+										<Button
+											variant="ghost"
+											size="icon"
+											{...editButtonProps()}
+										>
+											<Icons.EllipsisVertical />
+										</Button>
+									</ItemDropdown>
+								</span>
+							</div>
+							<ol className="flex flex-col items-start">
+								{item.choices!.map((choice) => {
+									return (
+										<SingleLayerListItem
+											key={choice.itemId}
+											itemId={choice.itemId}
+											llStore={props.llStore}
+										/>
+									)
+								})}
+							</ol>
 						</div>
-						<ol className="flex flex-col items-start">
-							{item.choices!.map((choice) => {
-								return (
-									<SingleLayerListItem
-										key={choice.itemId}
-										itemId={choice.itemId}
-										llStore={props.llStore}
-									/>
-								)
-							})}
-						</ol>
-					</div>
-				)}
+					)}
 			</li>
 			<QueueItemSeparator links={afterItemLinks} isAfterLast={isLocallyLast} />
 		</>
@@ -865,33 +868,56 @@ export function VoteDisplayPropsPopover(
 		open: boolean
 		onOpenChange: React.Dispatch<React.SetStateAction<boolean>>
 		children: React.ReactNode
+		readonly?: boolean
 	},
 ) {
 	const itemActions = () => QD.getLLItemActions(props.listStore.getState(), props.itemId)
-	const [displayProps, duration, choices] = ZusUtils.useStoreDeep(props.listStore, store => {
+	const [voteConfig, choices] = ZusUtils.useStoreDeep(props.listStore, store => {
 		const s = QD.selectLLItemState(store, props.itemId)
 		const voteItem = s.item as LL.VoteItem
-		const itemDisplayProps = voteItem.voteConfig?.displayProps
-		const itemDuration = voteItem.voteConfig?.duration
 		const choices = voteItem.choices.map(c => c.layerId)
-		return [itemDisplayProps, itemDuration, choices]
+		return [voteItem.voteConfig, choices]
 	})
 
+	const [localConfig, setLocalConfig] = React.useState<Partial<V.AdvancedVoteConfig> | null>(null)
+
+	React.useEffect(() => {
+		if (props.open) {
+			setLocalConfig(null)
+		}
+	}, [props.open])
+
+	const currentConfig = localConfig ?? voteConfig ?? null
+
 	function handleConfigChange(config: Partial<V.AdvancedVoteConfig> | null) {
+		setLocalConfig(config)
+	}
+
+	function handleSave() {
 		const actions = itemActions()
-		actions.dispatch({ op: 'configure-vote', config })
+		actions.dispatch({ op: 'configure-vote', config: localConfig })
+		props.onOpenChange(false)
 	}
 
 	return (
 		<Popover open={props.open} onOpenChange={props.onOpenChange}>
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
 			<PopoverContent className="w-80">
-				<VoteDisplayConfig
-					displayProps={displayProps}
-					duration={duration}
+				<AdvancedVoteConfigEditor
+					config={currentConfig}
+					readonly={props.readonly}
 					choices={choices}
 					onChange={handleConfigChange}
 				/>
+				{!props.readonly && (
+					<Button
+						className="w-full mt-4"
+						size="sm"
+						onClick={handleSave}
+					>
+						Save
+					</Button>
+				)}
 			</PopoverContent>
 		</Popover>
 	)
@@ -995,7 +1021,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 						</StartActivityInteraction>
 					)}
 					<DropdownMenuItem
-						disabled={!isEditing || isLocked || !LL.swapFactions(item)}
+						disabled={!isEditing || isLocked || !L.swapFactions(item.layerId)}
 						onClick={() => itemActions().dispatch({ op: 'swap-factions' })}
 					>
 						Swap Factions

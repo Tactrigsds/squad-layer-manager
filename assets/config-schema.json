@@ -194,7 +194,13 @@
         },
         "voteReminderInterval": {
           "description": "How often to remind users to vote",
-          "default": "45s",
+          "default": "30s",
+          "type": "string",
+          "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"
+        },
+        "internalVoteReminderInterval": {
+          "description": "How often to remind amdins to vote in an internal vote",
+          "default": "15s",
           "type": "string",
           "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"
         },

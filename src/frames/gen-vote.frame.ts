@@ -52,7 +52,6 @@ export function createInput(opts?: { cursor?: LL.Cursor }): Input {
 export type Result = {
 	choices: L.LayerId[]
 	voteConfig: Partial<V.AdvancedVoteConfig>
-	displayProps?: DH.LayerDisplayProp[]
 	cursor?: LL.Cursor
 }
 
@@ -75,10 +74,8 @@ type Primary = {
 	addUniqueConstraint: (key: V.GenVote.ChoiceConstraintKey) => void
 	removeUniqueConstraint: (key: V.GenVote.ChoiceConstraintKey) => void
 	voteConfig: Partial<V.AdvancedVoteConfig>
-	displayProps?: DH.LayerDisplayProp[]
 	displayPropsManuallySet: boolean
 	setVoteConfig: (update: Partial<V.AdvancedVoteConfig>) => void
-	setDisplayProps: (displayProps: DH.LayerDisplayProp[] | null, manuallySet?: boolean) => void
 	result: Result | null
 }
 
@@ -126,18 +123,13 @@ const setup: Frame['setup'] = (args) => {
 			chosenLayers: {},
 			choiceErrors: [],
 			choices: Array.from(Gen.map(Gen.range(V.DEFAULT_NUM_CHOICES), () => V.GenVote.initChoice())),
-			voteConfig: {},
-			displayProps: constraintsToDisplayProps(V.GenVote.DEFAULT_CHOICE_COMPARISONS),
+			voteConfig: {
+				displayProps: constraintsToDisplayProps(V.GenVote.DEFAULT_CHOICE_COMPARISONS),
+			},
 			displayPropsManuallySet: false,
 			setVoteConfig: (update: Partial<V.AdvancedVoteConfig>) => {
 				set({
 					voteConfig: { ...get().voteConfig, ...update },
-				})
-			},
-			setDisplayProps: (displayProps: DH.LayerDisplayProp[] | null, manuallySet = true) => {
-				set({
-					displayProps: displayProps ?? undefined,
-					displayPropsManuallySet: manuallySet,
 				})
 			},
 			setChoiceConstraint: (index, key, value) => {
@@ -163,12 +155,12 @@ const setup: Frame['setup'] = (args) => {
 			},
 
 			generating: false,
-			regen: async (omitIndex?: number) => {
+			regen: async (onlyIndex?: number) => {
 				let state = get()
 				set({ generating: true })
 				try {
 					const startingChoices = state.choices.map((c, i) =>
-						(omitIndex === undefined || i === omitIndex) ? ({ ...c, layerId: undefined }) : c
+						(onlyIndex === undefined || i === onlyIndex) ? ({ ...c, layerId: undefined }) : c
 					)
 					const base = selectBaseQueryInput(state)
 
@@ -176,6 +168,7 @@ const setup: Frame['setup'] = (args) => {
 						...base,
 						choices: startingChoices,
 						uniqueConstraints: state.uniqueConstraints,
+						onlyIndex,
 					})
 					if (res.code !== 'ok') throw new Error(JSON.stringify(res.errors))
 					const chosenLayersMap: Record<string, LayerQueriesClient.RowData | undefined> = { ...state.chosenLayers }
@@ -189,7 +182,6 @@ const setup: Frame['setup'] = (args) => {
 						result = {
 							choices: choices.map(c => c.layerId!),
 							voteConfig: get().voteConfig,
-							displayProps: get().displayProps,
 							cursor: get().cursor,
 						}
 					}
@@ -216,7 +208,8 @@ const setup: Frame['setup'] = (args) => {
 				}
 				// Auto-sync displayProps if not manually set
 				if (!get().displayPropsManuallySet) {
-					update.displayProps = constraintsToDisplayProps(newConstraints)
+					update.voteConfig ??= get().voteConfig
+					update.voteConfig.displayProps = constraintsToDisplayProps(newConstraints)
 				}
 				set(update)
 			},
@@ -232,7 +225,8 @@ const setup: Frame['setup'] = (args) => {
 				}
 				// Auto-sync displayProps if not manually set
 				if (!get().displayPropsManuallySet) {
-					update.displayProps = constraintsToDisplayProps(newConstraints)
+					update.voteConfig ??= get().voteConfig
+					update.voteConfig.displayProps = constraintsToDisplayProps(newConstraints)
 				}
 				set(update)
 			},
@@ -250,7 +244,7 @@ const setup: Frame['setup'] = (args) => {
 		} satisfies Primary,
 	)
 	AppliedFiltersPrt.initAppliedFiltersStore({ ...args, input: { poolDefaultDisabled: false } })
-	PoolCheckboxesPrt.initNewPoolCheckboxes({ ...args, input: { defaultState: { dnr: 'disabled' } } })
+	PoolCheckboxesPrt.initNewPoolCheckboxes({ ...args, input: { defaultState: { dnr: 'inverted' } } })
 }
 
 export const frame: Frame = frameManager.createFrame<Types>({

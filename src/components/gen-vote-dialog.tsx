@@ -1,9 +1,9 @@
+import { AdvancedVoteConfigEditor } from '@/components/advanced-vote-config-editor'
 import AppliedFiltersPanel from '@/components/applied-filters-panel.tsx'
 import { StringEqConfig } from '@/components/filter-card'
 import PoolCheckboxes from '@/components/pool-checkboxes.tsx'
 import ShortLayerName from '@/components/short-layer-name'
 import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogDescription, HeadlessDialogFooter, HeadlessDialogHeader, HeadlessDialogTitle } from '@/components/ui/headless-dialog'
-import { VoteDisplayConfig } from '@/components/vote-display-config'
 import { getFrameState, useFrameLifecycle, useFrameStore } from '@/frames/frame-manager'
 import * as GenVoteFrame from '@/frames/gen-vote.frame'
 import * as DH from '@/lib/display-helpers'
@@ -66,7 +66,6 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		cursor,
 		includedConstraints: includedConstraintKeys,
 		uniqueConstraints: uniqueConstraintKeys,
-		displayProps,
 		voteConfig,
 	} = useFrameStore(
 		frameKey,
@@ -79,7 +78,6 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 			cursor: s.cursor,
 			includedConstraints: s.includedConstraints,
 			uniqueConstraints: s.uniqueConstraints,
-			displayProps: s.displayProps,
 			voteConfig: s.voteConfig,
 		})),
 	)
@@ -130,18 +128,13 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		getFrameState(frameKey).removeIncludedConstraint(key)
 	}
 
-	const handleSetDisplayProps = (config: Partial<V.AdvancedVoteConfig> | null) => {
+	const handleSetVoteConfig = (config: Partial<V.AdvancedVoteConfig> | null) => {
+		console.log('setting config ', config)
 		const state = getFrameState(frameKey)
 		if (config === null) {
-			state.setDisplayProps(null)
 			state.setVoteConfig({})
 		} else {
-			if (config.displayProps !== undefined) {
-				state.setDisplayProps(config.displayProps, true)
-			}
-			if (config.duration !== undefined) {
-				state.setVoteConfig({ duration: config.duration })
-			}
+			state.setVoteConfig({ ...state.voteConfig, ...config })
 		}
 	}
 
@@ -237,8 +230,8 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 													size="sm"
 													variant="ghost"
 													onClick={() => handleRegen(index)}
-													disabled={generating || !choice.layerId}
-													title="Regenerate this choice"
+													disabled={generating}
+													title={choice.layerId ? 'Regenerate this choice' : 'Generate this choice'}
 												>
 													<Icons.RefreshCw className={regeneratingIndex === 'all' || regeneratingIndex === index ? 'animate-spin' : ''} />
 												</Button>
@@ -280,11 +273,10 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 							</Button>
 						</div>
 						<div className="w-80 shrink-0 flex flex-col justify-between">
-							<VoteDisplayConfig
-								displayProps={displayProps}
-								duration={voteConfig.duration}
+							<AdvancedVoteConfigEditor
+								config={voteConfig}
 								choices={choices.map(c => c.layerId).filter((id): id is string => !!id)}
-								onChange={handleSetDisplayProps}
+								onChange={handleSetVoteConfig}
 								previewPlaceholder="Generate layers to see vote preview"
 								includeResetToDefault={false}
 							/>

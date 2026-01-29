@@ -149,7 +149,7 @@ export async function genVote(args: { ctx: CS.LayerQuery; input: LQY.GenVote.Inp
 	for (let i = 0; i < input.choices.length; i++) {
 		const choice = choices[i]
 		const conditions = [...base.conditions]
-		if (choice.layerId) continue
+		if (choice.layerId || input.onlyIndex !== undefined && input.onlyIndex !== i) continue
 		const filterNode = LQY.GenVote.getChoiceFilterNode(input.choices, input.uniqueConstraints, i)!
 		const filterNodeRes = getFilterNodeSQLConditions(ctx, filterNode, [], [])
 		if (filterNodeRes.code !== 'ok') return filterNodeRes
