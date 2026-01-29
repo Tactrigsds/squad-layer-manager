@@ -7,7 +7,6 @@ import { CardDescription } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
-
 import * as ItemMut from '@/lib/item-mutations'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -18,7 +17,6 @@ import * as LQYClient from '@/systems/layer-queries.client.ts'
 import * as QD from '@/systems/queue-dashboard.client'
 import * as SLLClient from '@/systems/shared-layer-list.client'
 import * as UsersClient from '@/systems/users.client.ts'
-
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -28,7 +26,6 @@ import { LayerList, StartActivityInteraction } from './layer-list.tsx'
 import { MatchHistoryPanelContent } from './match-history-panel'
 import PoolConfigurationPopover from './server-settings-popover.tsx'
 import ShortLayerName from './short-layer-name.tsx'
-
 import UserPresencePanel from './user-presence-panel.tsx'
 
 export default function LayersPanel() {
@@ -133,6 +130,7 @@ function useQueueErrors() {
 			const parity = LQY.getParityForLayerItem(layerItemsState, item.itemId)
 			errors.push({ item, index, descriptors: relevantDescriptors, parity })
 		}
+		if (errors.length === 0) return null
 		return errors
 	}, [session.list, session.mutations, loggedInUser?.discordId, statuses?.matchDescriptors, layerItemsState])
 }

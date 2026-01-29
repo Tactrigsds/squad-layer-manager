@@ -299,17 +299,9 @@ export const handleVote = C.spanOp('handle-vote', {
 		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'No vote in progress')
 		return
 	}
-	if (voteState.voterType === 'public') {
-		if (msg.channelType !== 'ChatAll') {
-			void SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.wrongChat('AllChat'))
-			return
-		}
-	}
-	if (voteState.voterType === 'internal') {
-		if (msg.channelType !== 'ChatAdmin') {
-			void SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.wrongChat('AdminChat'))
-			return
-		}
+	if (voteState.voterType === 'internal' && msg.channelType !== 'ChatAdmin') {
+		void SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.wrongChat('AdminChat'))
+		return
 	}
 	if (choiceIdx <= 0 || choiceIdx > voteState.choiceIds.length) {
 		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Invalid choice')
