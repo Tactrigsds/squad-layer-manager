@@ -134,6 +134,7 @@ function useQueueErrors() {
 					relevantDescriptors.push(descriptor)
 				}
 			}
+			if (relevantDescriptors.length === 0) continue
 			const parity = LQY.getParityForLayerItem(layerItemsState, item.itemId)
 			errors.push({ item, index, descriptors: relevantDescriptors, parity })
 		}
