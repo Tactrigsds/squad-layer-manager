@@ -7,7 +7,6 @@ import { CardDescription } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
-import * as ItemMut from '@/lib/item-mutations'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as SLL from '@/models/shared-layer-list'
@@ -113,13 +112,15 @@ function useQueueErrors() {
 	const session = Zus.useStore(SLLClient.Store, s => s.session)
 	const loggedInUser = UsersClient.useLoggedInUser()
 	const layerItemsState = QD.useLayerItemsState()
+	const queueModifiedByUser = Zus.useStore(
+		SLLClient.Store,
+		s => s.isModified && s.session.ops.some(s => loggedInUser && s.userId === loggedInUser.discordId),
+	)
 
 	return React.useMemo(() => {
-		if (!loggedInUser?.discordId) return null
+		if (!statuses || !queueModifiedByUser) return null
 		const errors: QueueError[] = []
 		for (const { item, index } of LL.iterItems(session.list)) {
-			if (!ItemMut.idMutated(session.mutations, item.itemId)) continue
-			if (item.source.type !== 'manual' || item.source.userId !== loggedInUser.discordId) continue
 			const descriptors = statuses?.matchDescriptors.get(item.itemId)
 			if (!descriptors) continue
 			const relevantDescriptors: LQY.RepeatMatchDescriptor[] = []
@@ -133,7 +134,12 @@ function useQueueErrors() {
 		}
 		if (errors.length === 0) return null
 		return errors
-	}, [session.list, session.mutations, loggedInUser?.discordId, statuses?.matchDescriptors, layerItemsState])
+	}, [
+		session.list,
+		layerItemsState,
+		statuses,
+		queueModifiedByUser,
+	])
 }
 
 type QueueControlPanelProps = {
