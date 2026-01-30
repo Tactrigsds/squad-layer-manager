@@ -21,7 +21,7 @@ export function setup() {
 }
 
 export default C.spanOp(
-	'fetch-admin-lists',
+	'fetchAdminLists',
 	{ module },
 	async (sources: SM.AdminListSource[], adminIdentifyingPerms: SM.PlayerPerm[]): Promise<SM.AdminList> => {
 		// maps groups to their permissions

@@ -123,7 +123,7 @@ export async function getNextLayer(ctx: C.Rcon) {
 	return { code: 'ok' as const, layer: L.parseRawLayerText(`${layer} ${factions}`) }
 }
 
-const fetchPlayers = C.spanOp('squad-rcon:fetch-players', { module }, async (ctx: C.Rcon & C.AdminList) => {
+const fetchPlayers = C.spanOp('fetchPlayers', { module }, async (ctx: C.Rcon & C.AdminList) => {
 	const res = await ctx.rcon.execute('ListPlayers')
 	if (res.code !== 'ok') return res
 
@@ -156,7 +156,7 @@ const fetchPlayers = C.spanOp('squad-rcon:fetch-players', { module }, async (ctx
 	return { code: 'ok' as const, players }
 })
 
-const fetchSquads = C.spanOp('squad-rcon:fetch-squads', { module }, async (ctx: C.Rcon) => {
+const fetchSquads = C.spanOp('fetchSquads', { module }, async (ctx: C.Rcon) => {
 	const resSquad = await ctx.rcon.execute('ListSquads')
 	if (resSquad.code !== 'ok') return resSquad
 
@@ -326,7 +326,7 @@ export async function warn(ctx: C.SquadRcon & C.AdminList, ids: SM.PlayerIds.Typ
 }
 
 export const warnAllAdmins = C.spanOp(
-	'warn-all-admins',
+	'warnAllAdmins',
 	{ module, levels: { event: 'info' } },
 	async (ctx: C.SquadRcon & C.AdminList, options: WarnOptions) => {
 		const [currentAdminList, teamsRes] = await Promise.all([

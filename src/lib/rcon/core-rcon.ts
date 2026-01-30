@@ -181,7 +181,7 @@ export default class Rcon extends EventEmitter<Events> {
 		return buffer
 	}
 
-	#onData = C.spanOp('core-rcon:onData', { module, levels: { event: 'trace' }, root: true }, (data: Buffer): void => {
+	#onData = C.spanOp('onData', { module, levels: { event: 'trace' }, root: true }, (data: Buffer): void => {
 		this.stream = Buffer.concat([this.stream, data], this.stream.byteLength + data.byteLength)
 		while (this.stream.byteLength >= 7) {
 			const packet = this.#decode()

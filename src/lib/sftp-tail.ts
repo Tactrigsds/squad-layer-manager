@@ -71,7 +71,7 @@ export class SftpTail extends EventEmitter {
 		this.fetchLoopPromise = null
 		const module = getChildModule(options.parentModule, 'sftp-tail')
 		this.log = module.getLogger()
-		this.tryRead = C.spanOp('try-read', { module, root: true, levels: { error: 'error', event: 'trace' } }, () => this._tryRead())
+		this.tryRead = C.spanOp('tryRead', { module, root: true, levels: { error: 'error', event: 'trace' } }, () => this._tryRead())
 	}
 
 	watch() {

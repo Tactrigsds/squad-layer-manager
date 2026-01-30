@@ -145,7 +145,7 @@ export async function setup() {
 }
 
 export const validateAndUpdate = C.spanOp(
-	'validate-and-update',
+	'validateAndUpdate',
 	{ module },
 	async (ctx: C.Db & C.FastifyRequest & Partial<C.FastifyReply>, allowRefresh = false) => {
 		async function errorOrBypass<Res>(res: Res) {
@@ -246,7 +246,7 @@ export async function logInUser(ctx: C.Db & C.FastifyRequest & C.FastifyReply, d
 	return { sessionId, expiresAt, res: ctx.res }
 }
 
-export const logout = C.spanOp('sessions:logout', { module }, async (ctx: { sessionId: string } & C.FastifyReply & C.Db) => {
+export const logout = C.spanOp('logout', { module }, async (ctx: { sessionId: string } & C.FastifyReply & C.Db) => {
 	await removeSessionFromCacheAndDb(ctx, ctx.sessionId)
 	C.setSpanStatus(Otel.SpanStatusCode.OK)
 	await clearInvalidSession(ctx)
@@ -264,7 +264,7 @@ export function clearInvalidSession(ctx: C.FastifyReply) {
 }
 
 export const getUser = C.spanOp(
-	'get-user',
+	'getUser',
 	{ module, attrs: ({ lock }) => ({ lock }) },
 	async (opts: { lock?: boolean }, ctx: C.AuthedUser & C.HttpRequest & C.Db) => {
 		opts.lock ??= false

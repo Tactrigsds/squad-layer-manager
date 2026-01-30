@@ -113,7 +113,7 @@ export function initVoteContext(cleanup: CleanupTasks) {
 }
 
 export const syncVoteStateWithQueueStateInPlace = C.spanOp(
-	'sync-vote-state-with-queue-state',
+	'syncVoteStateWithQueueStateInPlace',
 	{ module, mutexes: (ctx) => ctx.vote.mtx },
 	async (
 		ctx: C.SquadServer & C.Vote & C.MatchHistory,
@@ -184,7 +184,7 @@ export const syncVoteStateWithQueueStateInPlace = C.spanOp(
 )
 
 export const startVote = C.spanOp(
-	'start',
+	'startVote',
 	{ module, levels: { event: 'info' }, attrs: (_, opts) => opts, mutexes: (ctx) => ctx.vote.mtx },
 	async (
 		ctx: C.Db & Partial<C.User> & C.SquadServer & C.Rcon & C.Vote & C.LayerQueue & C.MatchHistory & C.AdminList,
@@ -288,7 +288,7 @@ export const startVote = C.spanOp(
 	},
 )
 
-export const handleVote = C.spanOp('handle-vote', {
+export const handleVote = C.spanOp('handleVote', {
 	module,
 	attrs: (_, msg) => ({ messageId: msg.message, playerUsername: msg.playerIds.username }),
 }, (ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.Rcon & C.AdminList, msg: SM.RconEvents.ChatMessage) => {
@@ -343,7 +343,7 @@ export const handleVote = C.spanOp('handle-vote', {
 })
 
 export const abortVote = C.spanOp(
-	'abort',
+	'abortVote',
 	{ module, levels: { event: 'info' }, attrs: (_, opts) => opts, mutexes: ctx => ctx.vote.mtx },
 	async (
 		ctx: C.Db & C.Rcon & C.SquadServer & C.Vote & C.LayerQueue & C.AdminList,
@@ -389,7 +389,7 @@ export const abortVote = C.spanOp(
 )
 
 export const cancelVoteAutostart = C.spanOp(
-	'cancel-autostart',
+	'cancelVoteAutostart',
 	{ module, attrs: (_, opts) => opts, mutexes: (ctx) => ctx.vote.mtx },
 	async (ctx: C.Vote, opts: { user: USR.GuiOrChatUserId }) => {
 		if (ctx.vote.state?.autostartCancelled) {
@@ -491,7 +491,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 }
 
 const handleVoteTimeout = C.spanOp(
-	'handle-timeout',
+	'handleVoteTimeout',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.vote.mtx },
 	async (ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.Rcon & C.AdminList) => {
 		const res = await DB.runTransaction(ctx, async (ctx) => {

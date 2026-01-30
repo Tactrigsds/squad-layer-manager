@@ -62,7 +62,7 @@ export function initLayerQueueContext(cleanup: CleanupTasks) {
 }
 
 export const setupInstance = C.spanOp(
-	'init',
+	'setupInstance',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.vote.mtx },
 	async (ctx: C.Db & C.ServerSlice) => {
 		const serverId = ctx.serverId

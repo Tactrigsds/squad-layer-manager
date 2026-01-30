@@ -60,7 +60,7 @@ export function setup() {
 const module = initModule('rbac')
 
 export const getRolesForDiscordUser = C.spanOp(
-	'get-roles-for-discord-user',
+	'getRolesForDiscordUser',
 	{ module, attrs: (_, userId) => ({ userId }) },
 	async (baseCtx: C.UserId) => {
 		const userId = baseCtx.user.discordId
@@ -96,7 +96,7 @@ export const getRolesForDiscordUser = C.spanOp(
 )
 
 export const getUserRbacPerms = C.spanOp(
-	'get-permissions-for-discord-user',
+	'getUserRbacPerms',
 	{ module, attrs: (_, userId) => ({ userId }) },
 	async (baseCtx: C.Db & C.UserId): Promise<RBAC.TracedPermission[]> => {
 		const userId = baseCtx.user.discordId

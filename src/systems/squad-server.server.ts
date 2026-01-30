@@ -763,7 +763,7 @@ export function selectedServerCtx$<Ctx extends C.WSSession>({ wsClientId }: Ctx)
 /**
  * Performs state tracking and event consolidation for squad log events.
  */
-const processLogEvent = C.spanOp('on-log-event', { module, levels: { event: 'trace' } }, async (
+const processLogEvent = C.spanOp('processLogEvent', { module, levels: { event: 'trace' } }, async (
 	ctx: C.Db & C.ServerSlice,
 	logEvent: SM.LogEvents.Event,
 ) => {
@@ -1012,7 +1012,7 @@ const processLogEvent = C.spanOp('on-log-event', { module, levels: { event: 'tra
 	}
 })
 
-export const processRconEvent = C.spanOp('process-rcon-event', { module }, async (
+export const processRconEvent = C.spanOp('processRconEvent', { module }, async (
 	ctx: C.ServerSlice & C.Db,
 	event: SM.RconEvents.Event,
 ) => {
@@ -1360,7 +1360,7 @@ export function fromEventRow(row: SchemaModels.ServerEvent): SM.Events.Event {
 	}
 }
 
-const loadSavedEvents = C.spanOp('load-saved-events', { module }, async (ctx: C.SquadServer & C.Db) => {
+const loadSavedEvents = C.spanOp('loadSavedEvents', { module }, async (ctx: C.SquadServer & C.Db) => {
 	const server = ctx.server
 	const [lastMatch] = await ctx.db().select({ id: Schema.matchHistory.id }).from(Schema.matchHistory).where(
 		E.eq(Schema.matchHistory.serverId, ctx.serverId),
@@ -1380,7 +1380,7 @@ const loadSavedEvents = C.spanOp('load-saved-events', { module }, async (ctx: C.
 })
 
 export const saveEvents = C.spanOp(
-	'save-events',
+	'saveEvents',
 	{ module, mutexes: (ctx) => ctx.server.savingEventsMtx },
 	async (ctx: C.SquadServer & C.Db) => {
 		const state = ctx.server.state
@@ -1500,7 +1500,7 @@ export const saveEvents = C.spanOp(
 	},
 )
 
-const interceptTeamsUpdate = C.spanOp('intercept-team-update', {
+const interceptTeamsUpdate = C.spanOp('interceptTeamsUpdate', {
 	module,
 	mutexes: (ctx) => ctx.server.teamUpdateInterceptorMtx,
 }, async (ctx: C.SquadServer) => {

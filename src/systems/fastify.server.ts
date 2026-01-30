@@ -50,7 +50,7 @@ async function getFastifyBase() {
 	})
 }
 
-export const setup = C.spanOp('fastify:setup', { module }, async () => {
+export const setup = C.spanOp('setup', { module }, async () => {
 	log = module.getLogger()
 	ENV = envBuilder()
 	instance = await getFastifyBase()
