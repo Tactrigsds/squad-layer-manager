@@ -161,6 +161,11 @@ const ACTIVITY_LOADER_CONFIGS = [
 			if (args.data) void requestIdleCallback(() => frameManager.teardown(args.data!.genVoteFrame))
 		},
 	}),
+	createActivityLoaderConfig('pasteRotation', s => {
+		const node = s.child.EDITING?.chosen
+		if (node?.id === 'PASTE_ROTATION') return node
+		return undefined
+	})({ load(args) {} }),
 ] as const
 
 export const Store = createStore()

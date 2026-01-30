@@ -35,6 +35,7 @@ import * as Zus from 'zustand'
 import { ConstraintMatchesIndicator } from './constraint-matches-indicator'
 import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
+import { MultiLayerSetDialog } from './multi-layer-set-dialog'
 import { TablePagination } from './table-pagination'
 import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
@@ -840,7 +841,7 @@ function SetRawLayerDialog(props: {
 					}
 				}}
 			>
-				<MultiLayerSetDialog open={multiSetLayerDialogOpen} setOpen={setMultiSetLayerDialogOpen} onSubmit={props.onSubmit} />
+				<MultiLayerSetDialog open={multiSetLayerDialogOpen} onOpenChange={setMultiSetLayerDialogOpen} onSubmit={props.onSubmit} />
 				<Input
 					ref={inputRef}
 					defaultValue={props.defaultValue}
@@ -884,57 +885,6 @@ function SetRawLayerDialog(props: {
 				</Button>
 			</div>
 		)
-	)
-}
-
-function MultiLayerSetDialog({
-	onSubmit,
-	open,
-	setOpen,
-}: {
-	onSubmit: (value: L.UnvalidatedLayer[]) => void
-	open: boolean
-	setOpen: (open: boolean) => void
-}) {
-	const [possibleLayers, setPossibleLayers] = React.useState([] as L.UnvalidatedLayer[])
-	function onTextChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
-		const text = e.target.value
-		const lines = text.trim().split('\n').filter(line => line.trim().length > 0)
-		const possibleLayers = lines.map(line => L.parseRawLayerText(line.trim())).filter(l => l !== null)
-		setPossibleLayers(possibleLayers)
-	}
-
-	return (
-		<Dialog open={open} onOpenChange={setOpen}>
-			<DialogContent className="max-w-lg min-w-[min(700px,70vw)]">
-				<DialogHeader>
-					<DialogTitle>Add Multiple Layers</DialogTitle>
-				</DialogHeader>
-				<div className="space-y-4">
-					<div className="relative">
-						<Textarea
-							onChange={onTextChange}
-							className=" w-full min-h-75 pr-8 min-w overflow-x-auto text-sm font-mono"
-							style={{ 'lineHeight': '1.5rem' }}
-							wrap="off"
-							placeholder="Enter one layer per line (e.g. Narva_RAAS_v1 RGF USMC or a layer id)"
-						/>
-					</div>
-					<div className="flex justify-end space-x-2">
-						<Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-						<Button
-							onClick={() => {
-								onSubmit(possibleLayers)
-								setOpen(false)
-							}}
-							disabled={possibleLayers.length === 0}
-						>
-							Add Layers
-						</Button>
-					</div>
-				</div>
-			</DialogContent>
-		</Dialog>
 	)
 }
 

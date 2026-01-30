@@ -35,6 +35,7 @@ export const [ACTIVITIES] = (() => {
 			leaf('MOVING_ITEM', { itemId: LL.ItemIdSchema }),
 			leaf('CONFIGURING_VOTE', { itemId: LL.ItemIdSchema }),
 			leaf('GENERATING_VOTE', { cursor: LL.CursorSchema }),
+			leaf('PASTE_ROTATION'),
 		]),
 		branch('VIEWING_SETTINGS', [leaf('CHANGING_SETTINGS')]),
 	]) satisfies ST.Def.Node
@@ -666,6 +667,9 @@ export const getHumanReadableActivity = (activity: RootActivity, listOrIndex: LL
 	}
 	if (editingActivity.chosen.id === 'ADDING_ITEM_FROM_HISTORY') {
 		return 'Adding layer from History'
+	}
+	if (editingActivity.chosen.id === 'PASTE_ROTATION') {
+		return 'Pasting rotation'
 	}
 	if (!withItemName) {
 		switch (editingActivity.chosen.id) {
