@@ -5,14 +5,59 @@ import * as SLLClient from '@/systems/shared-layer-list.client'
 import * as UsersClient from '@/systems/users.client'
 import * as DateFns from 'date-fns'
 import React from 'react'
+import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
+const EVENT_TEXT_DURATION = 2000
+
 export default function UserPresencePanel() {
-	const [userPresence, layerList] = Zus.useStore(SLLClient.Store, useShallow(state => [state.userPresence, state.session.list]))
-	const usersRes = UsersClient.useUsers(Array.from(userPresence.keys()), { enabled: userPresence.size > 0 })
+	const [userPresence, layerList, editorIds] = Zus.useStore(
+		SLLClient.Store,
+		useShallow(state => [state.userPresence, state.session.list, state.session.editors]),
+	)
+
+	// -------- Track temporary event text for users (e.g., "Finished editing") --------
+	const [userEventText, setUserEventText] = React.useState<Map<bigint, string>>(new Map())
+	const eventTextTimeouts = React.useRef<Map<bigint, ReturnType<typeof setTimeout>>>(new Map())
+	React.useEffect(() => {
+		const sub = SLLClient.Store.getState().syncedOp$.pipe(
+			Rx.filter((op): op is SLL.Operation & { op: 'finish-editing' } => op.op === 'finish-editing'),
+		).subscribe((op) => {
+			// Clear existing timeout for this user if any
+			const existingTimeout = eventTextTimeouts.current.get(op.userId)
+			if (existingTimeout) {
+				clearTimeout(existingTimeout)
+			}
+
+			setUserEventText(prev => new Map(prev).set(op.userId, 'Finished editing'))
+
+			const timeout = setTimeout(() => {
+				eventTextTimeouts.current.delete(op.userId)
+				setUserEventText(prev => {
+					const next = new Map(prev)
+					next.delete(op.userId)
+					return next
+				})
+			}, EVENT_TEXT_DURATION)
+			eventTextTimeouts.current.set(op.userId, timeout)
+		})
+
+		const timeouts = eventTextTimeouts.current
+		return () => {
+			sub.unsubscribe()
+			// Clear all timeouts on unmount
+			for (const timeout of timeouts.values()) {
+				clearTimeout(timeout)
+			}
+			timeouts.clear()
+		}
+	}, [])
+
+	const allUserIds = React.useMemo(() => Array.from(new Set([...userPresence.keys(), ...editorIds])), [userPresence, editorIds])
+	const usersRes = UsersClient.useUsers(allUserIds, { enabled: allUserIds.length > 0 })
 	const loggedInUser = UsersClient.useLoggedInUser()
 	const users = React.useMemo(() => {
 		return usersRes.data?.code === 'ok' ? usersRes.data.users : []
@@ -92,16 +137,23 @@ export default function UserPresencePanel() {
 	if (sortedUserPresence.length === 0) {
 		return <div className="text-muted-foreground self-center">No users online</div>
 	}
+	let otherEditorsCount = 0
+	for (const editorId of editorIds) {
+		if (editorId === loggedInUser?.discordId) continue
+		otherEditorsCount++
+	}
 
 	return (
 		<div className="flex flex-wrap space-x-1">
+			{otherEditorsCount > 1 && <div className="text-sm text-muted-foreground pr-1">{otherEditorsCount} other users editing queue</div>}
 			{sortedUserPresence.map(({ user, presence }) => {
 				const isAway = presence.away
 				const currentActivity = presence.activityState
-				const isEditing = !!currentActivity?.child?.EDITING
-				const hasActivity = currentActivity && Object.keys(currentActivity.child).length > 0
-					&& currentActivity.child.EDITING?.chosen.id !== 'IDLE'
-				const activityText = currentActivity ? SLL.getHumanReadableActivity(currentActivity, layerList) : null
+				const isEditing = editorIds.has(user.discordId)
+				const eventText = userEventText.get(user.discordId)
+				const activityText = eventText ?? (currentActivity
+					? SLL.getHumanReadableActivity(currentActivity, layerList)
+					: (isEditing ? 'Editing Queue' : null))
 
 				return (
 					<div key={user.discordId.toString()} className="flex items-center space-x-1">
@@ -114,17 +166,16 @@ export default function UserPresencePanel() {
 									onMouseOut={() => setHoveredUser(user.discordId, false)}
 									className={cn(
 										'inline-flex items-center gap-1.5 h-6 py-0 rounded-full transition-all duration-200 cursor-pointer',
-										hasActivity && 'bg-accent px-2',
-										!hasActivity && 'px-0',
+										activityText && 'bg-accent pr-2',
+										!activityText && 'px-0',
 									)}
 								>
-									<div className="flex items-center justify-center w-6 h-6 flex-shrink-0">
+									<div className="flex items-center justify-center w-6 h-6 shrink-0">
 										<Avatar
 											style={{ backgroundColor: user.displayHexColor ?? undefined }}
 											className={cn(
 												'h-6 w-6 transition-all duration-200',
 												isAway && 'grayscale opacity-50',
-												isEditing && 'ring-2 ring-blue-500 ring-offset-0',
 											)}
 										>
 											<AvatarImage src={USR.getAvatarUrl(user)} crossOrigin="anonymous" />
@@ -133,9 +184,11 @@ export default function UserPresencePanel() {
 											</AvatarFallback>
 										</Avatar>
 									</div>
-									{hasActivity && activityText && (
-										<span className="text-xs font-medium whitespace-nowrap flex items-center h-6">
-											{activityText}
+									{activityText && (
+										<span className="activity-text">
+											<span className="text-xs font-medium whitespace-nowrap">
+												{activityText}
+											</span>
 										</span>
 									)}
 								</div>
@@ -147,16 +200,6 @@ export default function UserPresencePanel() {
 									{isAway && presence.lastSeen && (
 										<div className="text-xs mt-1">
 											Last seen {DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
-										</div>
-									)}
-									{isEditing && !isAway && (
-										<div className="text-xs text-blue-600 mt-1">
-											Editing
-										</div>
-									)}
-									{isEditing && isAway && (
-										<div className="text-xs text-blue-600 mt-1">
-											Editing (away)
 										</div>
 									)}
 								</div>

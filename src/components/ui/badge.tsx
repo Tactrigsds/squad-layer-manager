@@ -4,19 +4,19 @@ import * as React from 'react'
 import { cn } from '@/lib/utils'
 
 const badgeVariants = cva(
-	'inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+	'inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2',
 	{
 		variants: {
 			variant: {
-				default: 'border-transparent bg-primary text-primary-foreground shadow hover:bg-primary/80',
+				default: 'border-transparent bg-primary text-primary-foreground shadow-sm hover:bg-primary/80',
 				secondary: 'border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80',
-				destructive: 'border-transparent bg-destructive text-destructive-foreground shadow hover:bg-destructive/80',
+				destructive: 'border-transparent bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/80',
 				outline: 'text-foreground',
-				edited: 'border-transparent bg-edited text-edited-foreground shadow hover:bg-edited/80',
-				moved: 'border-transparent bg-moved text-moved-foreground shadow hover:bg-moved/80',
-				added: 'border-transparent bg-added text-added-foreground shadow hover:bg-added/80',
-				removed: 'border-transparent bg-removed text-removed-foreground shadow hover:bg-removed/80',
-				info: 'border-transparent bg-info text-info-foreground shadow hover:bg-info/80',
+				edited: 'border-transparent bg-edited text-edited-foreground shadow-sm hover:bg-edited/80',
+				moved: 'border-transparent bg-moved text-moved-foreground shadow-sm hover:bg-moved/80',
+				added: 'border-transparent bg-added text-added-foreground shadow-sm hover:bg-added/80',
+				removed: 'border-transparent bg-removed text-removed-foreground shadow-sm hover:bg-removed/80',
+				info: 'border-transparent bg-info text-info-foreground shadow-sm hover:bg-info/80',
 			},
 		},
 		defaultVariants: {

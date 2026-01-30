@@ -1,6 +1,6 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import type * as BAL from '@/models/balance-triggers.models'
-import * as LL from '@/models/layer-list.models'
+import type * as LL from '@/models/layer-list.models'
 import type * as SM from '@/models/squad.models'
 
 import { assertNever, isNullOrUndef } from '../lib/type-guards'
@@ -308,7 +308,7 @@ export function getNewMatchHistoryEntry(opts: { layerId: L.LayerId; serverId: st
 	}
 
 	if (opts.lqItem) {
-		newEntry.layerId = LL.getActiveItemLayerId(opts.lqItem) ?? newEntry.layerId
+		newEntry.layerId = opts.lqItem.layerId ?? newEntry.layerId
 		newEntry.lqItemId = opts.lqItem.itemId
 		newEntry.setByType = opts.lqItem.source.type
 

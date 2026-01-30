@@ -1,7 +1,6 @@
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { Button } from '@/components/ui/button'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuShortcut, ContextMenuTrigger } from '@/components/ui/context-menu'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Toggle } from '@/components/ui/toggle'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -35,13 +34,14 @@ import * as Zus from 'zustand'
 import { ConstraintMatchesIndicator } from './constraint-matches-indicator'
 import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
+import { MultiLayerSetDialog } from './multi-layer-set-dialog'
 import { TablePagination } from './table-pagination'
 import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Separator } from './ui/separator'
 import { Switch } from './ui/switch'
-import { Textarea } from './ui/textarea'
+
 export type { PostProcessedLayer } from '@/systems/layer-queries.shared'
 import { orUndef } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -132,7 +132,7 @@ function buildColumn(
 				QD.layerItemsState$,
 				React.useCallback((state) => {
 					if (!cursor) return 0
-					return LQY.resolveTeamParityForCursor(state, cursor)
+					return LQY.resolveTeamParityForCursor(state, LQY.fromLayerListCursor(state, cursor))
 				}, [cursor]),
 			)
 			if (colDef.name === 'Layer') {
@@ -328,7 +328,7 @@ function buildColDefs(
 				QD.layerItemsState$,
 				React.useCallback((state) => {
 					if (!cursor) return 0
-					return LQY.resolveTeamParityForCursor(state, cursor)
+					return LQY.resolveTeamParityForCursor(state, LQY.fromLayerListCursor(state, cursor))
 				}, [cursor]),
 			)
 			return (
@@ -439,7 +439,7 @@ export default function LayerTable(props: {
 
 	return (
 		<div className="space-y-2">
-			<div className="rounded-md border min-w-[1000px]">
+			<div className="rounded-md border min-w-250">
 				<LayerTableControlPanel {...props} table={table} />
 				{/*--------- table ---------*/}
 				<Table>
@@ -524,7 +524,7 @@ const LayerTableRow = React.memo(function LayerTableRow(props: { frameKey: Layer
 			<ContextMenuTrigger asChild>
 				<TableRow
 					key={row.id}
-					className="select-none h-8 data-[disabled]:hover:bg-unset data-[disabled]:hover:bg-unset data-[disabled]:bg-grey-800"
+					className="select-none h-8 data-disabled:hover:bg-unset data-disabled:hover:bg-unset data-disabled:bg-grey-800"
 					data-disabled={orUndef(isUnselectable && !isSelected)}
 					onClick={(e) => {
 						if (isUnselectable) return
@@ -840,7 +840,7 @@ function SetRawLayerDialog(props: {
 					}
 				}}
 			>
-				<MultiLayerSetDialog open={multiSetLayerDialogOpen} setOpen={setMultiSetLayerDialogOpen} onSubmit={props.onSubmit} />
+				<MultiLayerSetDialog open={multiSetLayerDialogOpen} onOpenChange={setMultiSetLayerDialogOpen} onSubmit={props.onSubmit} />
 				<Input
 					ref={inputRef}
 					defaultValue={props.defaultValue}
@@ -884,57 +884,6 @@ function SetRawLayerDialog(props: {
 				</Button>
 			</div>
 		)
-	)
-}
-
-function MultiLayerSetDialog({
-	onSubmit,
-	open,
-	setOpen,
-}: {
-	onSubmit: (value: L.UnvalidatedLayer[]) => void
-	open: boolean
-	setOpen: (open: boolean) => void
-}) {
-	const [possibleLayers, setPossibleLayers] = React.useState([] as L.UnvalidatedLayer[])
-	function onTextChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
-		const text = e.target.value
-		const lines = text.trim().split('\n').filter(line => line.trim().length > 0)
-		const possibleLayers = lines.map(line => L.parseRawLayerText(line.trim())).filter(l => l !== null)
-		setPossibleLayers(possibleLayers)
-	}
-
-	return (
-		<Dialog open={open} onOpenChange={setOpen}>
-			<DialogContent className="max-w-lg min-w-[min(700px,70vw)]">
-				<DialogHeader>
-					<DialogTitle>Add Multiple Layers</DialogTitle>
-				</DialogHeader>
-				<div className="space-y-4">
-					<div className="relative">
-						<Textarea
-							onChange={onTextChange}
-							className=" w-full min-h-[300px] pr-8 min-w overflow-x-auto text-sm font-mono"
-							style={{ 'lineHeight': '1.5rem' }}
-							wrap="off"
-							placeholder="Enter one layer per line (e.g. Narva_RAAS_v1 RGF USMC or a layer id)"
-						/>
-					</div>
-					<div className="flex justify-end space-x-2">
-						<Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-						<Button
-							onClick={() => {
-								onSubmit(possibleLayers)
-								setOpen(false)
-							}}
-							disabled={possibleLayers.length === 0}
-						>
-							Add Layers
-						</Button>
-					</div>
-				</div>
-			</DialogContent>
-		</Dialog>
 	)
 }
 

@@ -190,7 +190,7 @@ export default function FilterNew(props: { frameKey: EditFrame.Key }) {
 								{(field) => {
 									const label = 'Alert Message'
 									return (
-										<div className="flex flex-col space-y-2 flex-grow">
+										<div className="flex flex-col space-y-2 grow">
 											<Label htmlFor={field.name}>{label}</Label>
 											<Textarea
 												id={field.name}
@@ -246,7 +246,7 @@ export default function FilterNew(props: { frameKey: EditFrame.Key }) {
 								{(field) => {
 									const label = 'Alert Message'
 									return (
-										<div className="flex flex-col space-y-2 flex-grow">
+										<div className="flex flex-col space-y-2 grow">
 											<Label htmlFor={field.name}>{label}</Label>
 											<Textarea
 												id={field.name}
@@ -287,7 +287,7 @@ export default function FilterNew(props: { frameKey: EditFrame.Key }) {
 									onBlur={field.handleBlur}
 									onChange={(e) => field.handleChange(e.target.value?.trim() ?? null)}
 									rows={20}
-									className="font-mono text-sm flex-grow"
+									className="font-mono text-sm grow"
 								/>
 								{field.state.meta.errors.length > 0 && (
 									<Alert variant="destructive">

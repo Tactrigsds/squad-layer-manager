@@ -6,7 +6,7 @@ import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react.ts'
 import * as ZusUtils from '@/lib/zustand'
 import type * as L from '@/models/layer'
-import type * as LQY from '@/models/layer-queries.models.ts'
+import type * as LL from '@/models/layer-list.models'
 import { DragContextProvider } from '@/systems/dndkit.client.tsx'
 import React from 'react'
 import AppliedFiltersPanel from './applied-filters-panel.tsx'
@@ -19,14 +19,14 @@ export type EditLayerDialogProps = {
 	onOpenChange: (open: boolean) => void
 	layerId?: L.LayerId
 	onSelectLayer: (layerId: L.LayerId) => void
-	cursor?: LQY.Cursor
+	cursor?: LL.Cursor
 	frames?: Partial<SelectLayersFrame.KeyProp>
 }
 
 type EditLayerDialogContentProps = {
 	layerId?: L.LayerId
 	onSelectLayer: (layerId: L.LayerId) => void
-	cursor?: LQY.Cursor
+	cursor?: LL.Cursor
 	frames?: Partial<SelectLayersFrame.KeyProp>
 	onClose: () => void
 }

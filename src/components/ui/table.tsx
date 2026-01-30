@@ -21,7 +21,7 @@ TableBody.displayName = 'TableBody'
 
 const TableFooter = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
 	({ className, ...props }, ref) => (
-		<tfoot ref={ref} className={cn('border-t bg-muted/50 font-medium [&>tr]:last:border-b-0', className)} {...props} />
+		<tfoot ref={ref} className={cn('border-t bg-muted/50 font-medium last:[&>tr]:border-b-0', className)} {...props} />
 	),
 )
 TableFooter.displayName = 'TableFooter'
@@ -35,7 +35,7 @@ const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<
 	<th
 		ref={ref}
 		className={cn(
-			'h-8 px-0 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
+			'h-8 px-0 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 *:[[role=checkbox]]:translate-y-[2px]',
 			className,
 		)}
 		{...props}
@@ -46,7 +46,7 @@ TableHead.displayName = 'TableHead'
 const TableCell = React.forwardRef<HTMLTableCellElement, React.TdHTMLAttributes<HTMLTableCellElement>>(({ className, ...props }, ref) => (
 	<td
 		ref={ref}
-		className={cn('px-0 py-1 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]', className)}
+		className={cn('px-0 py-1 align-middle [&:has([role=checkbox])]:pr-0 *:[[role=checkbox]]:translate-y-[2px]', className)}
 		{...props}
 	/>
 ))

@@ -4,10 +4,12 @@ import { PlayerDisplay } from '@/components/player-display'
 import ShortLayerName from '@/components/short-layer-name'
 import { SquadDisplay } from '@/components/squad-display'
 import { MatchTeamDisplay } from '@/components/teams-display'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
+import * as SM from '@/models/squad.models'
 import { GlobalSettingsStore } from '@/systems/global-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as Icons from 'lucide-react'
@@ -272,6 +274,59 @@ function PlayerWarnedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 	)
 }
 
+function PlayerWarnedDedupedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_WARNED_DEDUPED' }> }) {
+	const playerCount = event.players.length
+	const totalWarnings = event.players.reduce((sum, p) => sum + p.times, 0)
+
+	// Single player warned multiple times
+	if (playerCount === 1) {
+		const player = event.players[0]
+		return (
+			<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
+				<EventTime time={event.time} variant="small" />
+				<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
+				<div className="flex-grow min-w-0">
+					<span className="inline-block whitespace-nowrap">
+						<PlayerDisplay showTeam player={player} matchId={event.matchId} /> was warned {player.times}x
+					</span>
+					: "<span className="break-words">{event.reason}</span>"
+				</div>
+			</div>
+		)
+	}
+
+	// Multiple players warned
+	return (
+		<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
+			<EventTime time={event.time} variant="small" />
+			<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
+			<div className="flex-grow min-w-0">
+				<span className="inline-block whitespace-nowrap">
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<span className="underline decoration-dotted cursor-help">
+								{totalWarnings}x
+							</span>
+						</TooltipTrigger>
+						<TooltipContent>
+							<div className="flex flex-col gap-1">
+								{event.players.map((player) => (
+									<div key={SM.PlayerIds.resolvePlayerId(player.ids)} className="flex items-center gap-1">
+										<PlayerDisplay showTeam player={player} matchId={event.matchId} />
+										{player.times > 1 && <span className="text-muted-foreground">({player.times}x)</span>}
+									</div>
+								))}
+							</div>
+						</TooltipContent>
+					</Tooltip>{' '}
+					players were warned
+				</span>
+				: "<span className="break-words">{event.reason}</span>"
+			</div>
+		</div>
+	)
+}
+
 function NewGameEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'NEW_GAME' }> }) {
 	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === event.matchId)
 	const currentMatch = MatchHistoryClient.useCurrentMatch()
@@ -377,6 +432,46 @@ function PlayerLeftSquadEvent({ event }: { event: Extract<CHAT.EventEnriched, { 
 					showTeam={true}
 				/>{' '}
 				{event.wasLeader ? '(was leader)' : ''}
+			</span>
+		</div>
+	)
+}
+
+function PlayerLeftSquadDedupedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_LEFT_SQUAD_DEDUPED' }> }) {
+	// server is rolling
+	if (event.squad.teamId === null) return null
+
+	const playerCount = event.players.length
+
+	return (
+		<div className="flex gap-2 py-1 text-muted-foreground">
+			<EventTime time={event.time} variant="small" />
+			<Icons.LogOut className="h-4 w-4 text-orange-400" />
+			<span className="text-xs flex items-center gap-1">
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<span className="underline decoration-dotted cursor-help">
+							{playerCount}x
+						</span>
+					</TooltipTrigger>
+					<TooltipContent>
+						<div className="flex flex-col gap-1">
+							{event.players.map((player) => (
+								<div key={SM.PlayerIds.resolvePlayerId(player.ids)} className="flex items-center gap-1">
+									<PlayerDisplay player={player} matchId={event.matchId} />
+									{player.wasLeader && <span className="text-muted-foreground">(was leader)</span>}
+								</div>
+							))}
+						</div>
+					</TooltipContent>
+				</Tooltip>{' '}
+				players left{' '}
+				<SquadDisplay
+					squad={event.squad}
+					matchId={event.matchId}
+					showName={false}
+					showTeam={true}
+				/>
 			</span>
 		</div>
 	)
@@ -542,6 +637,8 @@ export function ServerEvent({ event }: { event: CHAT.EventEnriched }) {
 			return <PlayerBannedEvent event={event} />
 		case 'PLAYER_WARNED':
 			return <PlayerWarnedEvent event={event} />
+		case 'PLAYER_WARNED_DEDUPED':
+			return <PlayerWarnedDedupedEvent event={event} />
 		case 'NEW_GAME':
 			return <NewGameEvent event={event} />
 		case 'RESET':
@@ -555,6 +652,8 @@ export function ServerEvent({ event }: { event: CHAT.EventEnriched }) {
 			return <PlayerChangedTeamEvent event={event} />
 		case 'PLAYER_LEFT_SQUAD':
 			return <PlayerLeftSquadEvent event={event} />
+		case 'PLAYER_LEFT_SQUAD_DEDUPED':
+			return <PlayerLeftSquadDedupedEvent event={event} />
 		case 'SQUAD_DISBANDED':
 			return <SquadDisbandedEvent event={event} />
 		case 'PLAYER_JOINED_SQUAD':

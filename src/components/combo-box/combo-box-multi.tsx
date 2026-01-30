@@ -112,6 +112,12 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 			typeof item === 'string' || item === null ? { value: item as T } : item
 		)
 
+		const values = options.map(o => o.value)
+		const duplicates = values.filter((v, i) => values.indexOf(v) !== i)
+		if (duplicates.length > 0) {
+			throw new Error(`ComboBoxMulti options contain duplicate values: ${duplicates.join(', ')}`)
+		}
+
 		options.sort((a, b) => (a.disabled ? 1 : 0) - (b.disabled ? 1 : 0))
 	}
 
@@ -151,7 +157,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 						aria-expanded={open}
 						className={cn(props.className, restrictValueSize && 'max-w-[400px]', 'justify-between font-mono')}
 					>
-						<span className="grow-1 overflow-hidden text-ellipsis">
+						<span className="grow overflow-hidden text-ellipsis">
 							{valuesDisplay}
 						</span>
 						<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />

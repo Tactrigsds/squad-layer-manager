@@ -11,13 +11,14 @@ import * as Im from 'immer'
 
 export type ApplyAs = 'regular' | 'inverted' | 'disabled'
 
-export type State = {
+export type Store = {
 	appliedFilters: Map<F.FilterEntityId, ApplyAs>
 	setAppliedFilterState: (filterId: F.FilterEntityId, active: ApplyAs) => void
 	disableAllAppliedFilters: () => void
 }
 
-export type Args = FRM.SetupArgs<{ poolDefaultDisabled: boolean }, State>
+export type Args = FRM.SetupArgs<{ poolDefaultDisabled: boolean }, Store>
+export type Key = FRM.InstanceKey<FRM.FrameTypes & { state: Store }>
 export function initAppliedFiltersStore(
 	args: Args,
 ) {
@@ -55,7 +56,7 @@ export function initAppliedFiltersStore(
 }
 
 function getInitialFilterStates(poolDefaultDisabled: boolean) {
-	const initialState: State['appliedFilters'] = new Map()
+	const initialState: Store['appliedFilters'] = new Map()
 	const extraFilters = QD.ExtraFiltersStore.getState().extraFilters
 	for (const filterid of extraFilters) {
 		initialState.set(filterid, 'disabled')
@@ -78,7 +79,7 @@ function getInitialFilterStates(poolDefaultDisabled: boolean) {
 	return initialState
 }
 
-export function getAppliedFiltersConstraints(state: State) {
+export function getAppliedFiltersConstraints(state: Store) {
 	const constraints: LQY.Constraint[] = []
 	for (const [filterId, applyAs] of state.appliedFilters.entries()) {
 		constraints.push(CB.filterEntity('selected-filter', filterId, {

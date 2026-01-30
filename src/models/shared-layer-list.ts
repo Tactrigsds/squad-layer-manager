@@ -1,3 +1,4 @@
+import { createId } from '@/lib/id'
 import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
@@ -5,6 +6,7 @@ import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import type * as PresenceActions from '@/models/shared-layer-list/presence-actions'
 import * as USR from '@/models/users.models'
+import * as V from '@/models/vote.models'
 import * as Im from 'immer'
 import { z } from 'zod'
 import * as L from './layer'
@@ -32,6 +34,8 @@ export const [ACTIVITIES] = (() => {
 			leaf('EDITING_ITEM', { itemId: LL.ItemIdSchema, cursor: LL.CursorSchema }),
 			leaf('MOVING_ITEM', { itemId: LL.ItemIdSchema }),
 			leaf('CONFIGURING_VOTE', { itemId: LL.ItemIdSchema }),
+			leaf('GENERATING_VOTE', { cursor: LL.CursorSchema }),
+			leaf('PASTE_ROTATION'),
 		]),
 		branch('VIEWING_SETTINGS', [leaf('CHANGING_SETTINGS')]),
 	]) satisfies ST.Def.Node
@@ -120,15 +124,14 @@ function buildItemOpSchemaEntries<T extends { [key: string]: z.ZodType }>(base: 
 			// create a vote from an existing item
 			op: z.literal('create-vote'),
 			newFirstItemId: LL.ItemIdSchema,
-			otherLayers: z.array(LL.LayerListItemSchema),
+			otherLayers: z.array(LL.SingleItemSchema),
 		}),
 		z.object({
 			...base,
 			op: z.literal('configure-vote'),
 
 			// null means use defaults(remove), undefined means don't modify
-			voteConfig: LL.NewLayerListItemSchema.shape.voteConfig.nullable(),
-			displayProps: LL.NewLayerListItemSchema.shape.displayProps.nullable(),
+			config: V.AdvancedVoteConfigSchema.nullable(),
 		}),
 		z.object({
 			...base,
@@ -151,14 +154,25 @@ function buildOperationSchema<T extends { [key: string]: z.ZodType }, ItemSchema
 			op: z.literal('clear'),
 			itemIds: z.array(LL.ItemIdSchema),
 		}),
+		z.object({
+			...base,
+			// uses "source" to determine what user started editing
+			op: z.literal('start-editing'),
+		}),
+		z.object({
+			...base,
+			// uses "source" to determine what user finished editing
+			op: z.literal('finish-editing'),
+			forceSave: z.boolean().optional(),
+		}),
 	])
 }
 
-export const OperationSchema = buildOperationSchema({ opId: z.string(), userId: USR.UserIdSchema }, LL.LayerListItemSchema)
+export const OperationSchema = buildOperationSchema({ opId: z.string(), userId: USR.UserIdSchema }, LL.ItemSchema)
 export type Operation = z.infer<typeof OperationSchema>
 export type OpCode = Operation['op']
 
-export const NewOperationSchema = buildOperationSchema({}, LL.NewLayerListItemSchema)
+export const NewOperationSchema = buildOperationSchema({}, LL.NewItemSchema)
 export type NewOperation = z.infer<typeof NewOperationSchema>
 
 export function isOperation(obj: Operation | NewOperation): obj is Operation {
@@ -255,15 +269,18 @@ export type PresenceState = z.infer<typeof PresenceStateSchema>
 
 export type EditSession = {
 	list: LL.List
+	editors: Set<USR.UserId>
 	ops: Operation[]
 
+	// TODO I would like to move away from this approach of calculating mutations when operations are applied
 	mutations: ItemMut.Mutations
 }
 
 // no presence instances older than this should be displayed
 export const DISPLAYED_AWAY_PRESENCE_WINDOW = 1000 * 60 * 10
 
-export function applyOperation(list: LL.List, newOp: Operation | NewOperation, mutations?: ItemMut.Mutations) {
+export function applyOperation(session: EditSession, newOp: Operation | NewOperation, mutations?: ItemMut.Mutations) {
+	const list = session.list
 	const source: LL.Source = isOperation(newOp) ? { type: 'manual', userId: newOp.userId } : { type: 'unknown' }
 	switch (newOp.op) {
 		case 'add': {
@@ -271,7 +288,7 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 			if (isOperation(newOp)) {
 				items = newOp.items
 			} else {
-				items = newOp.items.map(item => LL.createLayerListItem(item, source))
+				items = newOp.items.map(item => LL.createItem(item, source))
 			}
 			LL.addItemsDeterministic(list, source, newOp.index, ...items)
 			ItemMut.tryApplyMutation('added', items.map(item => item.itemId), mutations)
@@ -284,7 +301,7 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 				if (merged) {
 					const { item } = Obj.destrNullable(LL.findItemById(list, merged))
 					if (item) {
-						if (!LL.isParentVoteItem(item)) throw new Error('Expected parent vote item')
+						if (!LL.isVoteItem(item)) throw new Error('Expected parent vote item')
 						ItemMut.tryApplyMutation('edited', [item.itemId], mutations)
 						ItemMut.tryApplyMutation('added', [item.choices[0].itemId], mutations)
 						ItemMut.tryApplyMutation('moved', item.choices.slice(1).map(choice => choice.itemId), mutations)
@@ -301,13 +318,14 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 		case 'swap-factions': {
 			const { index, item } = Obj.destrNullable(LL.findItemById(list, newOp.itemId))
 			if (!index || !item) break
-			const swapped = LL.swapFactions(item, source)
+			const originalLayerId = item.layerId
+			const swapped = LL.swapFactionsInPlace(list, item.itemId, source)
 			if (!swapped) break
 
 			// maybe mirror matchups will be a thing at some point who knows
-			if (swapped.layerId === item.layerId) break
+			if (L.layersEqual(item.layerId, originalLayerId)) break
+			LL.splice(list, index, 1, item)
 			ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
-			LL.splice(list, index, 1, swapped)
 			if (mutations && source.type === 'manual') LL.changeGeneratedLayerAttributionInPlace(list, mutations, source.userId)
 			break
 		}
@@ -324,7 +342,7 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 		}
 
 		case 'configure-vote': {
-			LL.configureVote(list, source, newOp.itemId, newOp.voteConfig, newOp.displayProps)
+			LL.configureVote(list, source, newOp.itemId, newOp.config)
 			const itemRes = LL.findItemById(list, newOp.itemId)
 			if (itemRes) {
 				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
@@ -362,6 +380,18 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 			break
 		}
 
+		case 'start-editing': {
+			if (source.type === 'unknown') break
+			session.editors.add(source.userId)
+			break
+		}
+
+		case 'finish-editing': {
+			if (source.type === 'unknown') break
+			session.editors.delete(source.userId)
+			break
+		}
+
 		default:
 			assertNever(newOp)
 	}
@@ -370,8 +400,10 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 export function applyOperations(s: EditSession, ops: Operation[]) {
 	for (let i = 0; i < ops.length; i++) {
 		const op = ops[i]
-		applyOperation(s.list, op, s.mutations)
+		applyOperation(s, op, s.mutations)
 	}
+	// catch any invalid operations early, hopefully on the client
+	LL.ListSchema.parse(s.list)
 	s.ops.push(...ops)
 }
 
@@ -383,6 +415,9 @@ export type Update =
 		sessionSeqId: SessionSequenceId
 	}
 	| {
+		code: 'commit-started'
+	}
+	| {
 		code: 'commit-completed'
 		list: LL.List
 		committer: USR.User
@@ -390,6 +425,7 @@ export type Update =
 		newSessionSeqId: SessionSequenceId
 		initiator: string
 	}
+	| { code: 'commit-rejected'; reason: string; msg: string; sessionSeqId: SessionSequenceId; committer: USR.User }
 	| {
 		code: 'reset-completed'
 		list: LL.List
@@ -404,7 +440,6 @@ export type Update =
 		sessionSeqId: SessionSequenceId
 		newSessionSeqId: SessionSequenceId
 	}
-	| { code: 'commit-rejected'; reason: string; msg: string; sessionSeqId: SessionSequenceId; committer: USR.User }
 	| {
 		code: 'locks-modified'
 		mutations: [LL.ItemId, string | null][]
@@ -443,6 +478,7 @@ export const ClientUpdateSchema = z.discriminatedUnion('code', [
 		userId: z.bigint(),
 		changes: ClientPresenceSchema.partial(),
 		fromServer: z.boolean().optional(),
+		sideEffectOps: z.array(OperationSchema).optional().meta({ description: 'Extra operations to be applied as a result of this update' }),
 	}),
 ])
 
@@ -524,32 +560,87 @@ export function anyLocksInaccessible(locks: ItemLocks, ids: LL.ItemId[], wsClien
 	return false
 }
 
-export function endAllEditing(state: PresenceState) {
+export function endAllEditing(state: PresenceState, session: EditSession) {
 	for (const presence of state.values()) {
 		if (presence.activityState?.child.EDITING) {
 			updateClientPresence(presence, { activityState: null })
 		}
 	}
+	session.editors.clear()
+}
+
+export function getOpsForActivityStateUpdate(
+	session: EditSession,
+	state: PresenceState,
+	wsClientId: string,
+	userId: bigint,
+	output: PresenceActions.ActionOutput,
+) {
+	let ops: Operation[] = []
+
+	// this isn't super necessary given the way the frontend locks out users  but it's here for completeness
+	startEditing: {
+		if (session.editors.has(userId) || !output.activityState?.child.EDITING) break startEditing
+		let firstEditor = true
+		for (const [clientId, presence] of state.entries()) {
+			if (wsClientId === clientId) continue
+			if (presence.activityState?.child.EDITING) {
+				firstEditor = false
+				break
+			}
+		}
+
+		if (firstEditor) {
+			ops.push(
+				{
+					op: 'start-editing',
+					opId: createId(5),
+					userId,
+				} satisfies Operation,
+			)
+		}
+	}
+
+	finishEditing: {
+		if (!session.editors.has(userId) || output.activityState?.child.EDITING) break finishEditing
+		let lastEditor = true
+		for (const [clientId, presence] of state.entries()) {
+			if (wsClientId === clientId) continue
+			if (presence.activityState?.child.EDITING) {
+				lastEditor = false
+				break
+			}
+		}
+
+		if (lastEditor) {
+			ops.push(
+				{
+					op: 'finish-editing',
+					opId: createId(6),
+					userId,
+				} satisfies Operation,
+			)
+		}
+	}
+
+	return ops
 }
 
 export function createNewSession(list?: LL.List): EditSession {
 	return {
 		list: list ?? [],
+		editors: new Set(),
 		ops: [],
 		mutations: ItemMut.initMutations(),
 	}
 }
 
-export function applyListUpdate(session: EditSession, list: LL.List) {
-	session.list = Obj.deepClone(list)
-	session.ops = []
-	session.mutations = ItemMut.initMutations()
-}
-
-export function checkUserHasEdits(session: EditSession, userId: USR.UserId) {
-	for (const { item } of LL.iterItems(...session.list)) {
-		if (!ItemMut.idMutated(session.mutations, item.itemId)) continue
-		if (item.source.type === 'manual' && item.source.userId === userId) return true
+export function hasMutations(session: EditSession, userId?: USR.UserId) {
+	for (const op of session.ops) {
+		if (op.op === 'start-editing' || op.op === 'finish-editing') {
+			continue
+		}
+		if (!userId || userId === op.userId) return true
 	}
 	return false
 }
@@ -566,13 +657,19 @@ export const getHumanReadableActivity = (activity: RootActivity, listOrIndex: LL
 
 	if (!editingActivity) return null
 	if (editingActivity.chosen.id === 'IDLE') {
-		return `Editing`
+		return `Editing Queue`
 	}
 	if (editingActivity.chosen.id === 'ADDING_ITEM') {
 		return 'Adding layers'
 	}
+	if (editingActivity.chosen.id === 'GENERATING_VOTE') {
+		return 'Generating vote'
+	}
 	if (editingActivity.chosen.id === 'ADDING_ITEM_FROM_HISTORY') {
 		return 'Adding layer from History'
+	}
+	if (editingActivity.chosen.id === 'PASTE_ROTATION') {
+		return 'Pasting rotation'
 	}
 	if (!withItemName) {
 		switch (editingActivity.chosen.id) {

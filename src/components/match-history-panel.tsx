@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Table, TableBody, TableCell as ShadcnTableCell, TableHead as ShadcnTableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import * as SLLClient from '@/systems/shared-layer-list.client'
 
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
@@ -306,10 +307,11 @@ function MatchHistoryRow({
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	const serverRolling = !!SquadServerClient.useServerRolling()
 
+	const isEditingQueue = SLLClient.useIsEditing()
 	const dragProps = DndKit.useDraggable({
 		type: 'history-entry',
 		id: entry.historyEntryId,
-	})
+	}, { disabled: !isEditingQueue })
 	const statusData = LayerQueriesClient.useLayerItemStatusData(
 		entry.historyEntryId,
 	)
@@ -522,18 +524,19 @@ function MatchHistoryRow({
 					title="Right click for Context Menu, Click+drag to requeue"
 					ref={dragProps.ref}
 					data-is-dragging={dragProps.isDragging}
+					data-is-editing={isEditingQueue}
 					className={cn(
 						Typo.LayerText,
-						'whitespace-nowrap bg-background data-[is-dragging=true]:outline group rounded text-xs',
+						'whitespace-nowrap bg-background data-[is-dragging=true]:outline-solid group rounded text-xs data-is-editing:cursor-grab',
 						bgColor,
 						hoverColor,
 					)}
 				>
 					<TableCell className="font-mono text-xs relative text-right pl-2">
-						<div className="opacity-0 group-hover:opacity-100 absolute inset-0 flex items-center justify-end pr-2">
+						<div className="opacity-0 group-data-[is-editing=true]:group-hover:opacity-100 absolute inset-0 flex items-center justify-end pr-2">
 							<Icons.GripVertical className="h-4 w-4" />
 						</div>
-						<div className="group-hover:opacity-0 flex justify-end items-center pr-2">
+						<div className="group-data-[is-editing=true]:group-hover:opacity-0 flex justify-end items-center pr-2">
 							{entry.isCurrentMatch && entry.status === 'in-progress'
 								? <Icons.Play className="h-3 w-3 text-green-500" />
 								: entry.isCurrentMatch && entry.status === 'post-game'

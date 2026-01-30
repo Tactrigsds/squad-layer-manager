@@ -41,7 +41,7 @@ function RouteComponent() {
 		})
 	}
 	return (
-		<div className="w-[100vw] h-[100vh] p-4">
+		<div className="w-screen h-screen p-4">
 			<LayerInfo tab={tab} setTab={setTab} hidePopoutButton layerId={layer.id} />
 		</div>
 	)

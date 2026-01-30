@@ -280,7 +280,6 @@ export function initLayerTable(
 			distinctDeepEquals(),
 			Rx.throttleTime(500, Rx.asyncScheduler, { leading: true, trailing: true }),
 			Rx.switchMap((input) => {
-				console.log('switching')
 				const packet$ = new Rx.Subject<LayerQueriesClient.QueryLayersPacket>()
 				const options = LayerQueriesClient.getQueryLayersOptions(input, packet$)
 				let o: Rx.Observable<LayerQueriesClient.QueryLayersPacket>

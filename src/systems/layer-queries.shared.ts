@@ -1,4 +1,5 @@
 import { createId } from '@/lib/id'
+import * as Obj from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { shuffled, weightedRandomSelection } from '@/lib/random'
 import { assertNever } from '@/lib/type-guards'
@@ -134,6 +135,44 @@ export async function* queryLayersStreamed(args: {
 			code: 'menu-item-possible-values',
 			values: await queryFilterMenuPossibleValues(ctx, conditionsRes.filterMenuItemPossibleValueConditions),
 		}
+	}
+}
+
+export async function genVote(args: { ctx: CS.LayerQuery; input: LQY.GenVote.Input }) {
+	const { input, ctx } = args
+	const base = buildQueryInputSqlCondition(ctx, input)
+	if (base.code !== 'ok') return base
+
+	const choices = Obj.deepClone(input.choices)
+	const chosenLayers: (PostProcessedLayer | undefined)[] = new Array<PostProcessedLayer>(choices.length)
+
+	for (let i = 0; i < choices.length; i++) {
+		const choice = choices[i]
+		const conditions = [...base.conditions]
+		if (choice.layerId || input.onlyIndex !== undefined && input.onlyIndex !== i) continue
+		const filterNode = LQY.GenVote.getChoiceFilterNode(choices, input.uniqueConstraints, i)!
+		const filterNodeRes = getFilterNodeSQLConditions(ctx, filterNode, [], [])
+		if (filterNodeRes.code !== 'ok') return filterNodeRes
+		conditions.push(filterNodeRes.condition)
+		const condition = E.and(...conditions)
+		const res = await getRandomGeneratedLayers(ctx, condition, base.selectProperties, 1, input, true, LQY.getSeed(), 0)
+		if (res.layers[0]) {
+			choice.layerId = res.layers[0].id
+			chosenLayers[i] = res.layers[0]
+		}
+	}
+
+	const choiceErrors: (string | undefined)[] = new Array(choices.length)
+	for (let i = 0; i < choices.length; i++) {
+		if (!chosenLayers[i] && !choices[i].layerId && input.onlyIndex === undefined || input.onlyIndex === i) {
+			choiceErrors[i] = 'No suitable layer found'
+		}
+	}
+
+	return {
+		code: 'ok' as const,
+		chosenLayers,
+		choiceErrors,
 	}
 }
 
@@ -418,7 +457,11 @@ function buildQueryInputSqlCondition(
 	const selectProperties: any = {}
 	const constraints = [...(input.constraints ?? [])]
 
-	const cursorIndex = input.cursor ? LQY.resolveCursorIndex(ctx.layerItemsState, input.cursor) : undefined
+	let cursorIndex: LQY.ItemIndex | null = null
+	if (input.cursor) {
+		const cursor = LQY.fromLayerListCursor(ctx.layerItemsState, input.cursor)
+		cursorIndex = LQY.resolveCursorIndex(ctx.layerItemsState, cursor)
+	}
 
 	for (let i = 0; i < constraints.length; i++) {
 		const constraint = constraints[i]
@@ -593,64 +636,63 @@ function getisMatchedByRepeatRuleDirect(
 	for (let i = cursorIndex - 1; i >= Math.max(cursorIndex - rule.within, 0); i--) {
 		if (LQY.isLookbackTerminatingLayerItem(previousLayers[i])) break
 		const layerTeamParity = MH.getTeamParityForOffset({ ordinal: ctx.layerItemsState.firstLayerItemParity }, i)
-		for (const layerItem of LQY.coalesceLayerItems(previousLayers[i])) {
-			const layer = L.toLayer(layerItem.layerId)
-			const getViolationDescriptor = (field: LQY.RepeatMatchDescriptor['field']): LQY.RepeatMatchDescriptor => ({
-				itemId: layerItem.itemId,
-				constraintId,
-				type: 'repeat-rule',
-				field: field,
-				repeatOffset: Math.abs(cursorIndex - i),
-			})
+		const layerItem = previousLayers[i]
+		const layer = L.toLayer(layerItem.layerId)
+		const getViolationDescriptor = (field: LQY.RepeatMatchDescriptor['field']): LQY.RepeatMatchDescriptor => ({
+			itemId: layerItem.itemId,
+			constraintId,
+			type: 'repeat-rule',
+			field: field,
+			repeatOffset: Math.abs(cursorIndex - i),
+		})
 
-			switch (rule.field) {
-				case 'Map':
-				case 'Gamemode':
-				case 'Layer':
-				case 'Size':
+		switch (rule.field) {
+			case 'Map':
+			case 'Gamemode':
+			case 'Layer':
+			case 'Size':
+				if (
+					layer[rule.field]
+					&& targetLayer[rule.field] === layer[rule.field]
+					&& (!LQY.valueFilteredByTargetValues(rule, layer[rule.field]))
+				) {
+					descriptors.push(getViolationDescriptor(rule.field))
+				}
+				break
+			case 'Faction': {
+				const checkFaction = (team: 'A' | 'B') => {
+					// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
+					const targetFaction = targetLayer[MH.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]!
+					const previousFaction = layer[MH.getTeamNormalizedFactionProp(layerTeamParity, team)]
 					if (
-						layer[rule.field]
-						&& targetLayer[rule.field] === layer[rule.field]
-						&& (!LQY.valueFilteredByTargetValues(rule, layer[rule.field]))
+						targetFaction
+						&& previousFaction === targetFaction
+						&& (!LQY.valueFilteredByTargetValues(rule, previousFaction))
 					) {
-						descriptors.push(getViolationDescriptor(rule.field))
+						descriptors.push(getViolationDescriptor(`Faction_${team}`))
 					}
-					break
-				case 'Faction': {
-					const checkFaction = (team: 'A' | 'B') => {
-						// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
-						const targetFaction = targetLayer[MH.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]!
-						const previousFaction = layer[MH.getTeamNormalizedFactionProp(layerTeamParity, team)]
-						if (
-							targetFaction
-							&& previousFaction === targetFaction
-							&& (!LQY.valueFilteredByTargetValues(rule, previousFaction))
-						) {
-							descriptors.push(getViolationDescriptor(`Faction_${team}`))
-						}
-					}
-					checkFaction('A')
-					checkFaction('B')
-					break
 				}
-				case 'Alliance': {
-					const checkAlliance = (team: 'A' | 'B') => {
-						// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
-						const targetAlliance = targetLayer[MH.getTeamNormalizedAllianceProp(targetLayerTeamParity, team)]
-						const previousAlliance = layer[MH.getTeamNormalizedAllianceProp(layerTeamParity, team)]
-
-						if (targetAlliance && targetAlliance === previousAlliance && (!LQY.valueFilteredByTargetValues(rule, previousAlliance))) {
-							descriptors.push(getViolationDescriptor(`Alliance_${team}`))
-						}
-					}
-
-					checkAlliance('A')
-					checkAlliance('B')
-					break
-				}
-				default:
-					assertNever(rule.field)
+				checkFaction('A')
+				checkFaction('B')
+				break
 			}
+			case 'Alliance': {
+				const checkAlliance = (team: 'A' | 'B') => {
+					// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
+					const targetAlliance = targetLayer[MH.getTeamNormalizedAllianceProp(targetLayerTeamParity, team)]
+					const previousAlliance = layer[MH.getTeamNormalizedAllianceProp(layerTeamParity, team)]
+
+					if (targetAlliance && targetAlliance === previousAlliance && (!LQY.valueFilteredByTargetValues(rule, previousAlliance))) {
+						descriptors.push(getViolationDescriptor(`Alliance_${team}`))
+					}
+				}
+
+				checkAlliance('A')
+				checkAlliance('B')
+				break
+			}
+			default:
+				assertNever(rule.field)
 		}
 	}
 	return descriptors.length > 0 ? descriptors : undefined
@@ -671,56 +713,55 @@ function getRepeatSQLConditions(
 	for (let i = cursorIndex - 1; i >= Math.max(cursorIndex - rule.within, 0); i--) {
 		const teamParity = MH.getTeamParityForOffset({ ordinal: ctx.layerItemsState.firstLayerItemParity }, i)
 		if (LQY.isLookbackTerminatingLayerItem(previousLayers[i])) break
-		for (const layerItem of LQY.coalesceLayerItems(previousLayers[i])) {
-			const layer = L.toLayer(layerItem.layerId)
-			switch (rule.field) {
-				case 'Map':
-				case 'Gamemode':
-				case 'Size':
-				case 'Layer':
-					if (
-						layer[rule.field]
-						&& (rule.targetValues?.includes(layer[rule.field]!) ?? true)
-					) {
-						const value = LC.dbValue(rule.field, layer[rule.field]!, ctx)
-						if (LC.isUnmappedDbValue(value)) break
-						values.add(value as number)
-					}
-					break
-				case 'Faction': {
-					const addApplicable = (team: 'A' | 'B') => {
-						// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
-						const column = MH.getTeamNormalizedFactionProp(teamParity, team)
-						const value = layer[column]
-						const values = team === 'A' ? valuesA : valuesB
-						if (value && (!LQY.valueFilteredByTargetValues(rule, value))) {
-							const dbValue = LC.dbValue(column, value, ctx)
-							if (LC.isUnmappedDbValue(dbValue)) return
-							values.add(dbValue as number)
-						}
-					}
-					addApplicable('A')
-					addApplicable('B')
-					break
+		const layerItem = previousLayers[i]
+		const layer = L.toLayer(layerItem.layerId)
+		switch (rule.field) {
+			case 'Map':
+			case 'Gamemode':
+			case 'Size':
+			case 'Layer':
+				if (
+					layer[rule.field]
+					&& (rule.targetValues?.includes(layer[rule.field]!) ?? true)
+				) {
+					const value = LC.dbValue(rule.field, layer[rule.field]!, ctx)
+					if (LC.isUnmappedDbValue(value)) break
+					values.add(value as number)
 				}
-				case 'Alliance': {
-					const addApplicable = (team: 'A' | 'B') => {
-						const column = MH.getTeamNormalizedAllianceProp(teamParity, team)
-						const alliance = layer[column]
-						const values = team === 'A' ? valuesA : valuesB
-						if (!LQY.valueFilteredByTargetValues(rule, alliance)) {
-							const dbValue = LC.dbValue(column, alliance, ctx)
-							if (LC.isUnmappedDbValue(dbValue)) return
-							values.add(dbValue as number)
-						}
+				break
+			case 'Faction': {
+				const addApplicable = (team: 'A' | 'B') => {
+					// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
+					const column = MH.getTeamNormalizedFactionProp(teamParity, team)
+					const value = layer[column]
+					const values = team === 'A' ? valuesA : valuesB
+					if (value && (!LQY.valueFilteredByTargetValues(rule, value))) {
+						const dbValue = LC.dbValue(column, value, ctx)
+						if (LC.isUnmappedDbValue(dbValue)) return
+						values.add(dbValue as number)
 					}
-					addApplicable('A')
-					addApplicable('B')
-					break
 				}
-				default:
-					assertNever(rule.field)
+				addApplicable('A')
+				addApplicable('B')
+				break
 			}
+			case 'Alliance': {
+				const addApplicable = (team: 'A' | 'B') => {
+					const column = MH.getTeamNormalizedAllianceProp(teamParity, team)
+					const alliance = layer[column]
+					const values = team === 'A' ? valuesA : valuesB
+					if (!LQY.valueFilteredByTargetValues(rule, alliance)) {
+						const dbValue = LC.dbValue(column, alliance, ctx)
+						if (LC.isUnmappedDbValue(dbValue)) return
+						values.add(dbValue as number)
+					}
+				}
+				addApplicable('A')
+				addApplicable('B')
+				break
+			}
+			default:
+				assertNever(rule.field)
 		}
 	}
 
@@ -942,7 +983,11 @@ function postProcessLayers(
 	layers: ({ id: number } & Record<string, string | number | boolean> & Record<string, boolean>)[],
 	baseInput: LQY.BaseQueryInput,
 ) {
-	const cursorIndex = baseInput.cursor ? LQY.resolveCursorIndex(ctx.layerItemsState, baseInput.cursor) : undefined
+	let cursorIndex: LQY.ItemIndex | null = null
+	if (baseInput.cursor) {
+		const cursor = LQY.fromLayerListCursor(ctx.layerItemsState, baseInput.cursor)
+		cursorIndex = LQY.resolveCursorIndex(ctx.layerItemsState, cursor)
+	}
 	const constraints = baseInput.constraints ?? []
 	return layers.map((layer) => {
 		// default to true because missing means the constraint is applied via a where condition
@@ -995,6 +1040,7 @@ export const queries = {
 	queryLayerComponent: queryLayerComponent,
 	getLayerItemStatuses,
 	getLayerInfo,
+	genVote,
 }
 
 function factionMaskToSqlCondition(

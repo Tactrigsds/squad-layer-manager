@@ -62,7 +62,7 @@ export function ServerActionsDropdown() {
 					<DialogTrigger asChild>
 						<DropdownMenuItem
 							disabled={!canEndMatch}
-							className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600 data-[noplayers]:flex data-[noplayers]:flex-col"
+							className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600 data-noplayers:flex data-noplayers:flex-col"
 							data-noplayers={!hasPlayers || undefined}
 						>
 							<span>End Match</span>

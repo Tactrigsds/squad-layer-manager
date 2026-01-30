@@ -80,7 +80,7 @@ const TriStateCheckbox = ({
 			{children}
 			<div
 				className={cn(
-					'h-4 w-4 shrink-0 rounded-sm border border-primary shadow transition-colors',
+					'h-4 w-4 shrink-0 rounded-sm border border-primary shadow-sm transition-colors',
 					checked === 'regular' && 'bg-primary text-primary-foreground',
 					checked === 'inverted' && 'bg-destructive text-destructive-foreground border-destructive',
 					checked === 'disabled' && 'bg-background',
@@ -88,7 +88,7 @@ const TriStateCheckbox = ({
 			>
 				<span className="flex items-center justify-center">
 					{checked === 'regular' && <CheckIcon className="h-4 w-4" />}
-					{checked === 'inverted' && <X className="h-3.5 w-3.5 stroke-[3]" />}
+					{checked === 'inverted' && <X className="h-3.5 w-3.5 stroke-3" />}
 					{/* Invisible icon to maintain consistent sizing */}
 					{checked === 'disabled' && <CheckIcon className="h-4 w-4 invisible" />}
 				</span>
@@ -115,7 +115,7 @@ const TriStateCheckboxDisplay = ({
 			role="img"
 			aria-label={checked === 'regular' ? 'checked' : checked === 'inverted' ? 'inverted' : 'disabled'}
 			className={cn(
-				'h-4 w-4 shrink-0 rounded-sm border border-primary shadow transition-colors',
+				'h-4 w-4 shrink-0 rounded-sm border border-primary shadow-sm transition-colors',
 				checked === 'regular' && 'bg-primary text-primary-foreground',
 				checked === 'inverted' && 'bg-destructive text-destructive-foreground border-destructive',
 				checked === 'disabled' && 'bg-background',
@@ -125,7 +125,7 @@ const TriStateCheckboxDisplay = ({
 		>
 			<span className="flex items-center justify-center">
 				{checked === 'regular' && <CheckIcon className="h-4 w-4" />}
-				{checked === 'inverted' && <X className="h-3.5 w-3.5 stroke-[3]" />}
+				{checked === 'inverted' && <X className="h-3.5 w-3.5 stroke-3" />}
 				{/* Invisible icon to maintain consistent sizing */}
 				{checked === 'disabled' && <CheckIcon className="h-4 w-4 invisible" />}
 			</span>

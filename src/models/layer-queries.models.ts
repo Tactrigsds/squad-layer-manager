@@ -2,6 +2,8 @@ import * as Gen from '@/lib/generator'
 import * as Obj from '@/lib/object'
 import { assertNever, isNullOrUndef } from '@/lib/type-guards'
 import * as CB from '@/models/constraint-builders'
+import * as FB from '@/models/filter-builders'
+import * as V from '@/models/vote.models'
 import type { VisibilityState } from '@tanstack/react-table'
 import { z } from 'zod'
 import * as F from './filter.models'
@@ -102,6 +104,59 @@ export type LayersQueryInput = {
 	selectedLayers?: L.LayerId[]
 } & BaseQueryInput
 
+export namespace GenVote {
+	export type Input = BaseQueryInput & {
+		// choice constraints to be considered "present" aka we should ensure uniqueness among choices for this key
+		uniqueConstraints: V.GenVote.ChoiceConstraintKey[]
+		choices: V.GenVote.Choice[]
+		seed?: string
+		onlyIndex?: number
+	}
+
+	export function getChoiceFilterNode(choices: V.GenVote.Choice[], uniqueConstraints: V.GenVote.ChoiceConstraintKey[], index: number) {
+		const choice = choices[index]
+		if (!choice) {
+			return null
+		}
+
+		let nodes: F.FilterNode[] = []
+
+		for (const [key, colKey] of V.GenVote.iterChoiceCols()) {
+			if (!choice.choiceConstraints[key]) continue
+			const constraint = choice.choiceConstraints[key]
+			nodes.push(FB.comp(FB.eq(colKey, constraint as string)))
+		}
+
+		for (let i = 0; i < choices.length; i++) {
+			if (index === i) continue
+			const otherChoice = choices[i]
+			if (otherChoice.layerId) {
+				nodes.push(FB.comp(FB.neq('id', otherChoice.layerId)))
+			}
+
+			const layer = otherChoice.layerId ? L.toLayer(otherChoice.layerId) : null
+			for (const [key, colKey] of V.GenVote.iterChoiceCols()) {
+				let value: string
+
+				// don't repeat any values that have already been chosen for columns referencing "explicitely mapped keys", as in  we set a choice constraint for that key
+				if (uniqueConstraints.includes(key)) {
+					if (layer && layer[colKey]) {
+						value = layer[colKey] as string
+					} else if (otherChoice.choiceConstraints?.[key]) {
+						value = otherChoice.choiceConstraints[key] as string
+					} else {
+						continue
+					}
+
+					nodes.push(FB.comp(FB.neq(colKey, value)))
+				}
+			}
+		}
+
+		return FB.and(nodes)
+	}
+}
+
 export type LayerComponentInput = BaseQueryInput & { column: LC.GroupByColumn }
 
 export type LayerExistsInput = L.LayerId[]
@@ -126,8 +181,8 @@ export type LayerItemAction = z.infer<typeof LAYER_ITEM_ACTION>
 export type BaseQueryInput = {
 	constraints?: Constraint[]
 
-	// no cursor or action == repeat rules ignored
-	cursor?: Cursor
+	// no cursor or action == repeat rules ignored : we perform a conversion to a layer query cursor
+	cursor?: LL.Cursor
 	action?: LayerItemAction
 }
 
@@ -139,6 +194,14 @@ export function mergeBaseInputs(a: BaseQueryInput, b: BaseQueryInput): BaseQuery
 }
 
 export type ItemIndex = LL.ItemIndex
+
+export function offsetListIndexToItemIndex(state: LayerItemsState, index: LL.ItemIndex): ItemIndex {
+	for (const { index: currentIndex, item } of iterItems(state.layerItems)) {
+		if (item.type === 'match-history-entry') continue
+		return { outerIndex: currentIndex.outerIndex + index.outerIndex, innerIndex: index.innerIndex }
+	}
+	return { outerIndex: state.layerItems.length, innerIndex: index.innerIndex }
+}
 
 // cleaning this shit up is incentive to move to zod 4
 export const SpecialItemId = {
@@ -165,8 +228,14 @@ export const CursorSchema = z.discriminatedUnion('type', [
 
 export type Cursor = z.infer<typeof CursorSchema>
 
-export function fromLayerListCursor(cursor: LL.Cursor): Cursor {
-	if (cursor.type === 'item-relative' || cursor.type === 'index') return cursor
+export function fromLayerListCursor(state: LayerItemsState, cursor: LL.Cursor): Cursor {
+	if (cursor.type === 'index') {
+		return {
+			type: 'index',
+			index: offsetListIndexToItemIndex(state, cursor.index),
+		}
+	}
+	if (cursor.type === 'item-relative') return cursor
 	if (cursor.type === 'start') {
 		return {
 			type: 'item-relative',
@@ -261,13 +330,11 @@ export type SingleListItem = {
 	type: 'single-list-item'
 	itemId: LL.ItemId
 	layerId: L.LayerId
-} & LL.SparseSingleItem
+}
 
-// uniquely identifies positions layers can appear within the application's state
-// TODO this has become awkwardly structured after changes to layer list items
 export type VoteListItem = {
 	type: 'vote-list-item'
-	choices: LL.SparseSingleItem[]
+	choices: SingleListItem[]
 	voteDecided: boolean
 	itemId: LL.ItemId
 	layerId: L.LayerId
@@ -304,6 +371,7 @@ export function resolveId(item: LayerItem | ItemId) {
 
 export type OrderedLayerItems = LayerItem[]
 export function isVoteListitem(item: LayerItem): item is VoteListItem {
+	if (item.type === 'match-history-entry') return false
 	return LL.isVoteItem(item)
 }
 
@@ -355,7 +423,7 @@ export function resolveLayerItemsState(layerList: LL.List, history: MH.MatchDeta
 		layerItems.push(getLayerItemForMatchHistoryEntry(entry))
 	}
 
-	for (const { item } of LL.iterItems(layerList)) {
+	for (const item of layerList) {
 		layerItems.push(getItemForLayerListItem(item))
 	}
 
@@ -368,13 +436,13 @@ export function splice(list: LayerItem[], index: ItemIndex, deleteCount: number,
 		const parentItem = list[index.outerIndex]
 		if (!isVoteListitem(parentItem)) throw new Error('Cannot splice non-vote item index on a vote choice')
 
-		let newItems = Gen.map(iterItems(...items), res => res.item)
-		newItems = Gen.filter(newItems, item => !isVoteListitem(item))
+		const newItems = Gen.map(iterItems(...items), res => res.item)
+		const newSingleItems = Gen.filter(newItems, item => !isVoteListitem(item)) as Generator<SingleListItem>
 
 		parentItem.choices.splice(
 			index.innerIndex,
 			deleteCount,
-			...newItems,
+			...newSingleItems,
 		)
 		if (parentItem.choices.length === 0) {
 			list.splice(index.outerIndex, 1)
@@ -449,7 +517,7 @@ export function getItemForLayerListItem(item: LL.Item): LayerItem {
 			itemId: item.itemId,
 			voteDecided,
 			layerId: item.layerId,
-			choices: item.choices!.map(choice => ({
+			choices: item.choices.map(choice => ({
 				type: 'single-list-item',
 				itemId: choice.itemId,
 				layerId: choice.layerId,
@@ -471,9 +539,10 @@ export function getLayerItemForMatchHistoryEntry(entry: MH.MatchDetails): LayerI
 	}
 }
 
-export function getParityForLayerItem(state: LayerItemsState, item: LayerItem) {
+export function getParityForLayerItem(state: LayerItemsState, item: LayerItem | string) {
 	if (!state.layerItems) return 0
-	const { index } = Obj.destrNullable(LL.findItemById(state.layerItems, item.itemId))
+	const itemId = typeof item === 'string' ? item : item.itemId
+	const { index } = Obj.destrNullable(LL.findItemById(state.layerItems, itemId))
 	if (isNullOrUndef(index)) {
 		console.warn('Item not found when getting parity, setting 0 instead', item)
 		return 0

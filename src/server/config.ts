@@ -61,7 +61,8 @@ export const ConfigSchema = z.object({
 	vote: z.object({
 		voteDuration: HumanTime.prefault('120s').describe('Duration of a vote'),
 		startVoteReminderThreshold: HumanTime.prefault('20m').describe('How far into a match to start reminding admins to start a vote'),
-		voteReminderInterval: HumanTime.prefault('45s').describe('How often to remind users to vote'),
+		voteReminderInterval: HumanTime.prefault('30s').describe('How often to remind users to vote'),
+		internalVoteReminderInterval: HumanTime.prefault('15s').describe('How often to remind amdins to vote in an internal vote'),
 		autoStartVoteDelay: HumanTime.prefault('20m').nullable().describe(
 			'Delay before autostarting a vote from the start of the current match. Set to null to disable auto-starting votes',
 		),
@@ -198,6 +199,10 @@ export function getPublicConfig(wsClientId: string) {
 		layersVersion: LayerDb.layersVersion,
 		commands: CONFIG.commands,
 		commandPrefix: CONFIG.commandPrefix,
+		vote: {
+			voteDuration: CONFIG.vote.voteDuration,
+			voteDisplayProps: CONFIG.vote.voteDisplayProps,
+		},
 		servers: CONFIG.servers.filter(s => s.enabled).map((server): ServerEntry => ({
 			id: server.id,
 			displayName: server.displayName,

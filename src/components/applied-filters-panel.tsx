@@ -1,7 +1,6 @@
 import { Button } from '@/components/ui/button'
+import type * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial.ts'
 import { getFrameState, useFrameStore } from '@/frames/frame-manager.ts'
-import type * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
-
 import * as Gen from '@/lib/generator.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
 import type * as F from '@/models/filter.models.ts'
@@ -20,7 +19,7 @@ import { ScrollArea, ScrollBar } from './ui/scroll-area.tsx'
 
 import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
 
-export default function AppliedFiltersPanel(props: { frameKey: SelectLayersFrame.Key }) {
+export default function AppliedFiltersPanel(props: { frameKey: AppliedFiltersPrt.Key }) {
 	const filterEntities = FilterEntityClient.useFilterEntities()
 	const scrollRef = React.useRef<HTMLDivElement>(null)
 	const extraFilters = Zus.useStore(QD.ExtraFiltersStore, s => s.extraFilters)
@@ -170,7 +169,7 @@ export default function AppliedFiltersPanel(props: { frameKey: SelectLayersFrame
 	)
 }
 
-function FilterCheckbox({ filterId, frameKey }: { filterId: string; frameKey: SelectLayersFrame.Key }) {
+function FilterCheckbox({ filterId, frameKey }: { filterId: string; frameKey: AppliedFiltersPrt.Key }) {
 	const [storeAppliedState, setAppliedFilterState] = useFrameStore(
 		frameKey,
 		useShallow(s => [s.appliedFilters.get(filterId) ?? 'disabled', s.setAppliedFilterState]),

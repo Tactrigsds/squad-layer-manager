@@ -38,7 +38,7 @@ export type LLItemStore = LLItemState & LLItemActions
 
 export type LLItemActions = {
 	dispatch: (op: SLL.NewContextItemOperation) => void
-	addVoteItems: (items: LL.NewLayerListItem[]) => void
+	addVoteItems: (items: LL.NewItem[]) => void
 }
 
 export function getSource(): LL.Source {

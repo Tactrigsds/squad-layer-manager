@@ -55,3 +55,33 @@ export function* counterBigint(count = 0n): Generator<bigint, never> {
 		count++
 	}
 }
+
+export function* range(start: number, end?: number, step: number = 1): Generator<number> {
+	let startValue: number
+	let endValue: number
+	let stepValue: number
+
+	if (end === undefined) {
+		startValue = 0
+		endValue = start
+		stepValue = step
+	} else {
+		startValue = start
+		endValue = end
+		stepValue = step
+	}
+
+	if (stepValue === 0) {
+		throw new Error('range() step argument must not be zero')
+	}
+
+	if (stepValue > 0) {
+		for (let i = startValue; i < endValue; i += stepValue) {
+			yield i
+		}
+	} else {
+		for (let i = startValue; i > endValue; i += stepValue) {
+			yield i
+		}
+	}
+}

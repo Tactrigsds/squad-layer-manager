@@ -31,7 +31,7 @@ export default function BalanceTriggerAlert(
 			variant = 'default'
 	}
 	return (
-		<Alert variant={variant} key={props.event.id} className={cn('w-full !bg-background', props.className)}>
+		<Alert variant={variant} key={props.event.id} className={cn('w-full bg-background!', props.className)}>
 			<AlertTitle className="flex items-center space-x-2">
 				<AlertIcon className="h-4 w-4 mr-2" />
 				{trigger.name}

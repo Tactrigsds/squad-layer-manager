@@ -37,7 +37,7 @@ export default function LayerDisplay(
 			<ConstraintMatchesIndicator
 				key="constraint violation display"
 				queriedConstraints={statusData.queriedConstraints}
-				side="right"
+				side="top"
 				matchingConstraintIds={statusData.matchingConstraintIds}
 				layerItem={props.item}
 				matchDescriptors={statusData.matchingDescriptors}

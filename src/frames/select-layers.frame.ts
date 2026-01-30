@@ -8,6 +8,7 @@ import * as Obj from '@/lib/object'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
+import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as QD from '@/systems/queue-dashboard.client'
@@ -23,7 +24,7 @@ export function createInput(
 	opts: {
 		selected?: L.LayerId[]
 		initialEditedLayerId?: L.LayerId
-		cursor?: LQY.Cursor
+		cursor?: LL.Cursor
 		maxSelected?: number
 		minSelected?: number
 		sharedInstanceId?: string
@@ -52,20 +53,20 @@ export function createInput(
 	}
 }
 
-type BaseInput = { colConfig: LQY.EffectiveColumnAndTableConfig; cursor?: LQY.Cursor; initialEditedLayerId?: L.LayerId; instanceId: string }
+type BaseInput = { colConfig: LQY.EffectiveColumnAndTableConfig; cursor?: LL.Cursor; initialEditedLayerId?: L.LayerId; instanceId: string }
 
 type Input = BaseInput & LayerTablePrt.Input
 
 type Primary = {
-	setCursor: (cursor: LQY.Cursor | undefined) => void
+	setCursor: (cursor: LL.Cursor | undefined) => void
 	initialEditedLayerId?: L.LayerId
-	cursor: LQY.Cursor | undefined
+	cursor: LL.Cursor | undefined
 	input: Input
 }
 
 type Store =
 	& Primary
-	& AppliedFiltersPrt.State
+	& AppliedFiltersPrt.Store
 	& PoolCheckboxesPrt.Store
 	& LayerFilterMenuPrt.Store
 	& LayerTablePrt.Store
@@ -86,7 +87,6 @@ const setup: Frame['setup'] = (args) => {
 	const get = args.get
 	const set = args.set
 	const input = args.input
-	// will never change
 	const colConfig = input.colConfig
 
 	set(

@@ -64,7 +64,7 @@ export default function ServerDashboard() {
 				/* Mobile/tablet: Single column with tabs */
 				<div className="flex flex-col gap-2 h-full min-h-0">
 					{/* Top line - always visible */}
-					<div className="justify-between flex items-center flex-shrink-0">
+					<div className="justify-between flex items-center shrink-0">
 						<div className="flex items-center gap-2">
 							<TabsList
 								options={[
@@ -96,7 +96,7 @@ export default function ServerDashboard() {
 				/* Desktop: Two column layout */
 				<div className="flex gap-2 h-full min-h-0 mx-auto">
 					{/* left column */}
-					<div className="flex flex-col gap-2 flex-shrink-0">
+					<div className="flex flex-col gap-2 shrink-0">
 						<LayersPanel />
 					</div>
 					{/* right column */}

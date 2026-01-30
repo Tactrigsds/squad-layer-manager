@@ -80,7 +80,7 @@ export const failedToAcquireLocks = (beforeUpdates: SLL.ClientPresence): Action 
 export function applyToAll(state: SLL.PresenceState, session: SLL.EditSession, action: Action): SLL.PresenceState {
 	for (const key of state.keys()) {
 		const userId = state.get(key)!.userId!
-		const hasEdits = SLL.checkUserHasEdits(session, userId)
+		const hasEdits = SLL.hasMutations(session, userId)
 		const update = action({ hasEdits: hasEdits, prev: state.get(key) })
 		const presence = state.get(key)!
 		SLL.updateClientPresence(presence, update)

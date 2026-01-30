@@ -12,7 +12,6 @@ import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
-
 import * as MH from '@/models/match-history.models'
 import * as SS from '@/models/server-state.models'
 import type * as SM from '@/models/squad.models.ts'
@@ -23,7 +22,6 @@ import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { initModule } from '@/server/logger'
-
 import orpcBase from '@/server/orpc-base'
 import * as LayerQueriesServer from '@/systems/layer-queries.server'
 import * as LayerQueries from '@/systems/layer-queries.shared.ts'
@@ -33,7 +31,6 @@ import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Users from '@/systems/users.server'
 import * as VoteSys from '@/systems/vote.server'
-
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
@@ -69,12 +66,14 @@ export const setupInstance = C.spanOp(
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.vote.mtx },
 	async (ctx: C.Db & C.ServerSlice) => {
 		const serverId = ctx.serverId
+
+		await Rx.firstValueFrom(ctx.server.historyConflictsResolved$.pipe(Rx.filter(v => v)))
+		// -------- initialize vote state --------
 		await DB.runTransaction(ctx, async (ctx) => {
 			const s = ctx.layerQueue
 
 			const initialServerState = await SquadServer.getFullServerState(ctx)
 
-			// -------- initialize vote state --------
 			await VoteSys.syncVoteStateWithQueueStateInPlace(ctx, [], initialServerState.layerQueue)
 
 			addReleaseTask(() => s.update$.next([{ state: initialServerState, source: { type: 'system', event: 'app-startup' } }, ctx]))
@@ -108,7 +107,15 @@ export const setupInstance = C.spanOp(
 							&& currentMatch.startTime !== undefined
 							&& currentMatch.startTime.getTime() + CONFIG.vote.startVoteReminderThreshold < Date.now()
 						) {
-							await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.votePending)
+							await SquadRcon.warnAllAdmins(
+								ctx,
+								Messages.WARNS.queue.votePending(
+									currentMatch.startTime,
+									CONFIG.vote.startVoteReminderThreshold,
+									CONFIG.commands,
+									CONFIG.commandPrefix,
+								),
+							)
 						} else if (serverState.layerQueue.length === 0) {
 							await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.empty)
 						}
@@ -226,7 +233,7 @@ export function schedulePostRollTasks(ctx: C.SquadServer, newLayerId: L.LayerId)
 export async function updateQueue(
 	{ input, ctx }: {
 		input: { layerQueue: LL.List; layerQueueSeqId: number }
-		ctx: C.OrpcBase & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.Rcon
+		ctx: C.Db & C.User & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.Rcon
 	},
 ) {
 	input = Obj.deepClone(input)
@@ -265,7 +272,10 @@ export async function updateQueue(
 			}
 			if (
 				LL.isVoteItem(item)
-				&& !V.validateChoicesWithDisplayProps(item.choices.map(c => c.layerId), item.displayProps ?? CONFIG.vote.voteDisplayProps)
+				&& !V.validateChoicesWithDisplayProps(
+					item.choices.map(c => c.layerId),
+					item.voteConfig?.displayProps ?? CONFIG.vote.voteDisplayProps,
+				)
 			) {
 				return {
 					code: 'err:not-enough-visible-info' as const,
@@ -330,7 +340,7 @@ export async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 				ctx: layerCtx,
 				input: {
 					constraints,
-					cursor: { type: 'item-relative', itemId: LQY.SpecialItemId.FIRST_LIST_ITEM, position: 'before' },
+					cursor: { type: 'start' },
 					action: 'add',
 					pageSize: 1,
 					sort: { type: 'random', seed: LQY.getSeed() },
@@ -357,7 +367,7 @@ export async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 			return L.DEFAULT_LAYER_ID
 		})()
 
-		const nextQueueItem = LL.createLayerListItem({ layerId: nextQueuedLayerId }, { type: 'generated' })
+		const nextQueueItem = LL.createItem({ type: 'single-list-item', layerId: nextQueuedLayerId }, { type: 'generated' })
 		serverState.layerQueue.push(nextQueueItem)
 		if (!opts?.skipDbWrite) {
 			await SquadServer.updateServerState(ctx as C.Db & C.SquadServer & C.LayerQueue & C.Tx, serverState, {

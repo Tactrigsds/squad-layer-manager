@@ -5,15 +5,13 @@ import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
 import type * as LL from '@/models/layer-list.models'
-import { initModule } from '@/server/logger'
-
 import type * as SS from '@/models/server-state.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
 import * as RBAC from '@/rbac.models.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
-
+import { initModule } from '@/server/logger'
 import orpcBase from '@/server/orpc-base'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as Rbac from '@/systems/rbac.server'
@@ -66,20 +64,19 @@ export function setupInstance(ctx: C.Db & C.LayerQueue & C.SharedLayerList & C.S
 		const ctx = SquadServer.resolveSliceCtx(_ctx, _ctx.serverId)
 		if (update.state.layerQueueSeqId === ctx.sharedList.queueSeqId) return
 
-		const session = ctx.sharedList.session
-		const sessionSeqId = ctx.sharedList.sessionSeqId
+		const prevSessionSeqId = ctx.sharedList.sessionSeqId
 
-		SLL.applyListUpdate(session, update.state.layerQueue)
-		SLL.endAllEditing(ctx.sharedList.presence)
+		ctx.sharedList.session = SLL.createNewSession(update.state.layerQueue)
+		SLL.endAllEditing(ctx.sharedList.presence, ctx.sharedList.session)
 		ctx.sharedList.sessionSeqId++
 		ctx.sharedList.queueSeqId = update.state.layerQueueSeqId
 		ctx.sharedList.itemLocks = new Map()
-		// all clients that receive list-updated will update themselves
+		// all clients that receive session-updated will update themselves
 		PresenceActions.applyToAll(ctx.sharedList.presence, ctx.sharedList.session, PresenceActions.editSessionChanged)
 		void sendUpdate(ctx, {
 			code: 'list-updated',
 			list: ctx.sharedList.session.list,
-			sessionSeqId,
+			sessionSeqId: prevSessionSeqId,
 			newSessionSeqId: ctx.sharedList.sessionSeqId,
 		})
 	})))
@@ -155,63 +152,24 @@ const handleSllStateUpdate = C.spanOp(
 				if (editSession.ops.length < input.expectedIndex) throw new Error('Invalid index')
 				SLL.applyOperations(editSession, [input.op])
 				log.info('Applied operation %o:%s', input.op, input.op.opId)
-				void sendUpdate(ctx, input)
+				if (input.op.op === 'finish-editing' && (input.op.forceSave || editSession.editors.size === 0 && SLL.hasMutations(editSession))) {
+					await commitChanges(ctx, input)
+					return
+				} else {
+					void sendUpdate(ctx, input)
+				}
 				break
 			}
 
 			case 'commit': {
-				void DB.runTransaction(ctx, async (ctx) => {
-					let serverState = await SquadServer.getServerState(ctx)
-					if (serverState.layerQueueSeqId !== ctx.sharedList.queueSeqId) {
-						return {
-							code: 'err:outdated-queue-id' as const,
-							msg: `Outdated queue seq id ${serverState.layerQueueSeqId} for ${ctx.serverId} (expected ${ctx.sharedList.queueSeqId})`,
-						}
-					}
-					if (ctx.sharedList.sessionSeqId !== input.sessionSeqId) {
-						return {
-							code: 'err:outdated-session-id' as const,
-							msg: `Outdated session seq id ${ctx.sharedList.sessionSeqId} for ${ctx.serverId} (expected ${input.sessionSeqId})`,
-						}
-					}
-					const sessionSeqId = input.sessionSeqId
-					const res = await LayerQueue.updateQueue({
-						ctx,
-						input: { layerQueue: ctx.sharedList.session.list, layerQueueSeqId: serverState.layerQueueSeqId },
-					})
-					if (res.code === 'ok') {
-						serverState = res.update
-						SLL.applyListUpdate(ctx.sharedList.session, serverState.layerQueue)
-						ctx.sharedList.queueSeqId = serverState.layerQueueSeqId
-						ctx.sharedList.sessionSeqId++
-						ctx.sharedList.itemLocks = new Map()
-						PresenceActions.applyToAll(ctx.sharedList.presence, ctx.sharedList.session, PresenceActions.editSessionChanged)
-						void sendUpdate(ctx, {
-							code: 'commit-completed',
-							list: ctx.sharedList.session.list,
-							committer: ctx.user,
-							sessionSeqId: sessionSeqId,
-							newSessionSeqId: ctx.sharedList.sessionSeqId,
-							initiator: ctx.user.username,
-						})
-						SLL.endAllEditing(ctx.sharedList.presence)
-					} else {
-						void sendUpdate(ctx, {
-							code: 'commit-rejected',
-							msg: res.msg,
-							reason: res.code,
-							committer: ctx.user,
-							sessionSeqId: sessionSeqId,
-						})
-					}
-				})
+				await commitChanges(ctx, input)
 				break
 			}
 
 			case 'reset': {
 				const serverState = await SquadServer.getServerState(ctx)
-				SLL.applyListUpdate(ctx.sharedList.session, serverState.layerQueue)
-				const sessionSeqId = ctx.sharedList.sessionSeqId
+				ctx.sharedList.session = SLL.createNewSession(serverState.layerQueue)
+				const prevSessionSeqId = ctx.sharedList.sessionSeqId
 				ctx.sharedList.sessionSeqId++
 				ctx.sharedList.itemLocks = new Map()
 
@@ -220,7 +178,7 @@ const handleSllStateUpdate = C.spanOp(
 				void sendUpdate(ctx, {
 					code: 'reset-completed',
 					list: ctx.sharedList.session.list,
-					sessionSeqId,
+					sessionSeqId: prevSessionSeqId,
 					newSessionSeqId: ctx.sharedList.sessionSeqId,
 					initiator: ctx.user.username,
 				})
@@ -234,6 +192,60 @@ const handleSllStateUpdate = C.spanOp(
 	},
 )
 
+async function commitChanges(
+	ctx: C.Db & C.SharedLayerList & C.User & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory,
+	input: Exclude<SLL.ClientUpdate, { code: 'update-presence' }>,
+) {
+	void sendUpdate(ctx, {
+		code: 'commit-started',
+	})
+	await DB.runTransaction(ctx, async (ctx) => {
+		let serverState = await SquadServer.getServerState(ctx)
+		if (serverState.layerQueueSeqId !== ctx.sharedList.queueSeqId) {
+			return {
+				code: 'err:outdated-queue-id' as const,
+				msg: `Outdated queue seq id ${serverState.layerQueueSeqId} for ${ctx.serverId} (expected ${ctx.sharedList.queueSeqId})`,
+			}
+		}
+		if (ctx.sharedList.sessionSeqId !== input.sessionSeqId) {
+			return {
+				code: 'err:outdated-session-id' as const,
+				msg: `Outdated session seq id ${ctx.sharedList.sessionSeqId} for ${ctx.serverId} (expected ${input.sessionSeqId})`,
+			}
+		}
+		const sessionSeqId = input.sessionSeqId
+		const res = await LayerQueue.updateQueue({
+			ctx,
+			input: { layerQueue: ctx.sharedList.session.list, layerQueueSeqId: serverState.layerQueueSeqId },
+		})
+		if (res.code === 'ok') {
+			serverState = res.update
+			ctx.sharedList.session = SLL.createNewSession(serverState.layerQueue)
+			ctx.sharedList.queueSeqId = serverState.layerQueueSeqId
+			ctx.sharedList.sessionSeqId++
+			ctx.sharedList.itemLocks = new Map()
+			PresenceActions.applyToAll(ctx.sharedList.presence, ctx.sharedList.session, PresenceActions.editSessionChanged)
+			void sendUpdate(ctx, {
+				code: 'commit-completed',
+				list: ctx.sharedList.session.list,
+				committer: ctx.user,
+				sessionSeqId: sessionSeqId,
+				newSessionSeqId: ctx.sharedList.sessionSeqId,
+				initiator: ctx.user.username,
+			})
+			SLL.endAllEditing(ctx.sharedList.presence, ctx.sharedList.session)
+		} else {
+			void sendUpdate(ctx, {
+				code: 'commit-rejected',
+				msg: res.msg,
+				reason: res.code,
+				committer: ctx.user,
+				sessionSeqId: sessionSeqId,
+			})
+		}
+	})
+}
+
 function handlePresenceUpdate(
 	ctx: C.SharedLayerList & C.User & C.WSSession,
 	update: Extract<SLL.ClientUpdate, { code: 'update-presence' }>,
@@ -246,9 +258,10 @@ function handlePresenceUpdate(
 		log.warn('Received presence update from another user: %s, expected: %s', update.userId, ctx.user.discordId)
 		return
 	}
-	if (update.changes.lastSeen && update.changes.lastSeen > Date.now()) {
-		log.warn('Received presence update with invalid lastSeen: %s', update.changes.lastSeen)
-		return
+	const now = Date.now()
+	if (update.changes.lastSeen && update.changes.lastSeen > now) {
+		log.warn('Received presence update with invalid lastSeen: %s, patching to %s', update.changes.lastSeen, now)
+		update.changes.lastSeen = now
 	}
 
 	const prevActivity = ctx.sharedList.presence.get(update.wsClientId)?.activityState
@@ -314,7 +327,7 @@ function getBaseCtx() {
 function dispatchPresenceAction(ctx: C.SharedLayerList & C.User & C.WSSession, action: PresenceActions.Action) {
 	let currentPresence = ctx.sharedList.presence.get(ctx.wsClientId)
 	const actionInput: PresenceActions.ActionInput = {
-		hasEdits: SLL.checkUserHasEdits(ctx.sharedList.session, ctx.user.discordId),
+		hasEdits: SLL.hasMutations(ctx.sharedList.session, ctx.user.discordId),
 		prev: currentPresence,
 	}
 	if (!currentPresence) {
@@ -323,12 +336,23 @@ function dispatchPresenceAction(ctx: C.SharedLayerList & C.User & C.WSSession, a
 	}
 	const update = action(actionInput)
 	SLL.updateClientPresence(currentPresence, update)
+	const extraOps = SLL.getOpsForActivityStateUpdate(
+		ctx.sharedList.session,
+		ctx.sharedList.presence,
+		ctx.wsClientId,
+		ctx.user.discordId,
+		update,
+	)
+	if (extraOps) {
+		SLL.applyOperations(ctx.sharedList.session, extraOps)
+	}
 	void sendUpdate(ctx, {
 		code: 'update-presence',
 		wsClientId: ctx.wsClientId,
 		userId: ctx.user.discordId,
 		changes: action(actionInput),
 		fromServer: true,
+		sideEffectOps: extraOps || [],
 	})
 }
 
@@ -344,7 +368,7 @@ export function setup() {
 				for (const [wsClientId, presence] of Array.from(presenceState.entries())) {
 					// we don't want to remove presence instances that still might have an away indicator
 					const pastDisconnectTimeout = presence.lastSeen === null || (Date.now() - presence.lastSeen) > SLL.DISPLAYED_AWAY_PRESENCE_WINDOW
-					if (!WSSessionSys.wsSessions.has(wsClientId) && pastDisconnectTimeout) {
+					if (!WSSessionSys.wsSessions.has(wsClientId) && pastDisconnectTimeout && !slice.sharedList.session.editors.has(presence.userId)) {
 						presenceState.delete(wsClientId)
 						numCleaned++
 					}

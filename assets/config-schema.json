@@ -194,7 +194,13 @@
         },
         "voteReminderInterval": {
           "description": "How often to remind users to vote",
-          "default": "45s",
+          "default": "30s",
+          "type": "string",
+          "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"
+        },
+        "internalVoteReminderInterval": {
+          "description": "How often to remind amdins to vote in an internal vote",
+          "default": "15s",
           "type": "string",
           "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"
         },
@@ -318,7 +324,6 @@
             "strings": ["help", "h"],
             "enabled": true
           },
-          "description": "Display help information",
           "type": "object",
           "properties": {
             "strings": {
@@ -346,7 +351,6 @@
             "strings": ["feedback", "fb"],
             "enabled": true
           },
-          "description": "Request feedback on a layer",
           "type": "object",
           "properties": {
             "strings": {
@@ -374,7 +378,6 @@
             "strings": ["startvote", "sv"],
             "enabled": true
           },
-          "description": "Start a new vote",
           "type": "object",
           "properties": {
             "strings": {
@@ -402,7 +405,6 @@
             "strings": ["abortvote", "av"],
             "enabled": true
           },
-          "description": "Abort the current vote",
           "type": "object",
           "properties": {
             "strings": {
@@ -430,7 +432,6 @@
             "strings": ["shownext", "sn"],
             "enabled": true
           },
-          "description": "Show the next item in the queue",
           "type": "object",
           "properties": {
             "strings": {
@@ -458,7 +459,6 @@
             "strings": ["enable-slm"],
             "enabled": true
           },
-          "description": "Allow SLM to set the next layer",
           "type": "object",
           "properties": {
             "strings": {
@@ -486,7 +486,6 @@
             "strings": ["disable-slm"],
             "enabled": true
           },
-          "description": "Prevent SLM from setting the next layer",
           "type": "object",
           "properties": {
             "strings": {
@@ -514,7 +513,6 @@
             "strings": ["get-slm-status"],
             "enabled": true
           },
-          "description": "Check if SLM is allowed to set the next layer",
           "type": "object",
           "properties": {
             "strings": {
@@ -542,7 +540,6 @@
             "strings": ["link-steam-account"],
             "enabled": true
           },
-          "description": "Link your Steam account to your Squad account",
           "type": "object",
           "properties": {
             "strings": {
