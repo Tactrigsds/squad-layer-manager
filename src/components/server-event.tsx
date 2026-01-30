@@ -144,19 +144,19 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 
 	return (
 		<div
-			className="flex gap-2 py-1 text-xs w-full min-w-0 border-r-2 bg-gradient-to-l to-transparent items-baseline"
+			className="flex gap-2 py-1 text-xs w-full min-w-0 border-r-2 bg-linear-to-l to-transparent items-baseline"
 			style={{
 				borderRightColor: channelStyle.color,
 				backgroundImage: `linear-gradient(to left, ${channelStyle.gradientColor}, transparent)`,
 			}}
 		>
 			<EventTime time={event.time} />
-			<div className="flex-grow min-w-0">
+			<div className="grow min-w-0">
 				<span className="inline-block whitespace-nowrap">
 					{channelLabel}
 					{fromDisplay}
 				</span>
-				: <span className="break-words">{event.message}</span>
+				: <span className="wrap-break-word">{event.message}</span>
 			</div>
 		</div>
 	)
@@ -248,12 +248,12 @@ function PlayerBannedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 	return (
 		<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
 			<EventTime time={event.time} variant="small" />
-			<Icons.Ban className="h-4 w-4 text-red-500 flex-shrink-0" />
-			<div className="flex-grow min-w-0">
+			<Icons.Ban className="h-4 w-4 text-red-500 shrink-0" />
+			<div className="grow min-w-0">
 				<span className="inline-block whitespace-nowrap">
 					<PlayerDisplay player={event.player} matchId={event.matchId} /> was banned
 				</span>
-				reason: "<span className="break-words">{event.interval}</span>"
+				reason: "<span className="words">{event.interval}</span>"
 			</div>
 		</div>
 	)
@@ -263,65 +263,12 @@ function PlayerWarnedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 	return (
 		<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
 			<EventTime time={event.time} variant="small" />
-			<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
-			<div className="flex-grow min-w-0">
+			<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
+			<div className="grow min-w-0">
 				<span className="inline-block whitespace-nowrap">
 					<PlayerDisplay showTeam player={event.player} matchId={event.matchId} /> was warned
 				</span>
-				: "<span className="break-words">{event.reason}</span>"
-			</div>
-		</div>
-	)
-}
-
-function PlayerWarnedDedupedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_WARNED_DEDUPED' }> }) {
-	const playerCount = event.players.length
-	const totalWarnings = event.players.reduce((sum, p) => sum + p.times, 0)
-
-	// Single player warned multiple times
-	if (playerCount === 1) {
-		const player = event.players[0]
-		return (
-			<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
-				<EventTime time={event.time} variant="small" />
-				<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
-				<div className="flex-grow min-w-0">
-					<span className="inline-block whitespace-nowrap">
-						<PlayerDisplay showTeam player={player} matchId={event.matchId} /> was warned {player.times}x
-					</span>
-					: "<span className="break-words">{event.reason}</span>"
-				</div>
-			</div>
-		)
-	}
-
-	// Multiple players warned
-	return (
-		<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
-			<EventTime time={event.time} variant="small" />
-			<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
-			<div className="flex-grow min-w-0">
-				<span className="inline-block whitespace-nowrap">
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<span className="underline decoration-dotted cursor-help">
-								{totalWarnings}x
-							</span>
-						</TooltipTrigger>
-						<TooltipContent>
-							<div className="flex flex-col gap-1">
-								{event.players.map((player) => (
-									<div key={SM.PlayerIds.resolvePlayerId(player.ids)} className="flex items-center gap-1">
-										<PlayerDisplay showTeam player={player} matchId={event.matchId} />
-										{player.times > 1 && <span className="text-muted-foreground">({player.times}x)</span>}
-									</div>
-								))}
-							</div>
-						</TooltipContent>
-					</Tooltip>{' '}
-					players were warned
-				</span>
-				: "<span className="break-words">{event.reason}</span>"
+				: "<span className="wrap-break-word">{event.reason}</span>"
 			</div>
 		</div>
 	)
@@ -353,8 +300,8 @@ function NewGameEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'N
 		<div className="border-t border-green-500 pt-0.5 mt-1 w-full">
 			<div className="flex gap-2 py-0.5 text-muted-foreground items-center w-full">
 				<EventTime time={event.time} variant="small" />
-				<Icons.Play className="h-4 w-4 text-green-500 flex-shrink-0" />
-				<span className="text-xs inline-flex flex-wrap items-center gap-1 flex-grow whitespace-nowrap">
+				<Icons.Play className="h-4 w-4 text-green-500 shrink-0" />
+				<span className="text-xs inline-flex flex-wrap items-center gap-1 grow whitespace-nowrap">
 					<span>{label} ({visibleMatchIndex === 0 ? 'Current Match' : visibleMatchIndex}):</span>
 					{match && <ShortLayerName layerId={match.layerId} teamParity={match.ordinal % 2} className="text-xs" />}
 				</span>
@@ -432,46 +379,6 @@ function PlayerLeftSquadEvent({ event }: { event: Extract<CHAT.EventEnriched, { 
 					showTeam={true}
 				/>{' '}
 				{event.wasLeader ? '(was leader)' : ''}
-			</span>
-		</div>
-	)
-}
-
-function PlayerLeftSquadDedupedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_LEFT_SQUAD_DEDUPED' }> }) {
-	// server is rolling
-	if (event.squad.teamId === null) return null
-
-	const playerCount = event.players.length
-
-	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
-			<EventTime time={event.time} variant="small" />
-			<Icons.LogOut className="h-4 w-4 text-orange-400" />
-			<span className="text-xs flex items-center gap-1">
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<span className="underline decoration-dotted cursor-help">
-							{playerCount}x
-						</span>
-					</TooltipTrigger>
-					<TooltipContent>
-						<div className="flex flex-col gap-1">
-							{event.players.map((player) => (
-								<div key={SM.PlayerIds.resolvePlayerId(player.ids)} className="flex items-center gap-1">
-									<PlayerDisplay player={player} matchId={event.matchId} />
-									{player.wasLeader && <span className="text-muted-foreground">(was leader)</span>}
-								</div>
-							))}
-						</div>
-					</TooltipContent>
-				</Tooltip>{' '}
-				players left{' '}
-				<SquadDisplay
-					squad={event.squad}
-					matchId={event.matchId}
-					showName={false}
-					showTeam={true}
-				/>
 			</span>
 		</div>
 	)
@@ -585,7 +492,7 @@ function MapSetEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'MA
 		<div className="flex gap-2 py-0.5 text-muted-foreground items-center">
 			<EventTime time={event.time} variant="small" />
 			<Icons.Map className="h-4 w-4 text-blue-400" />
-			<span className="text-xs inline-flex items-center gap-1 flex-grow whitespace-nowrap">
+			<span className="text-xs inline-flex items-center gap-1 grow whitespace-nowrap">
 				Next layer set to <ShortLayerName layerId={event.layerId} teamParity={0} className="text-xs" />
 			</span>
 		</div>
@@ -637,8 +544,6 @@ export function ServerEvent({ event }: { event: CHAT.EventEnriched }) {
 			return <PlayerBannedEvent event={event} />
 		case 'PLAYER_WARNED':
 			return <PlayerWarnedEvent event={event} />
-		case 'PLAYER_WARNED_DEDUPED':
-			return <PlayerWarnedDedupedEvent event={event} />
 		case 'NEW_GAME':
 			return <NewGameEvent event={event} />
 		case 'RESET':
@@ -652,8 +557,6 @@ export function ServerEvent({ event }: { event: CHAT.EventEnriched }) {
 			return <PlayerChangedTeamEvent event={event} />
 		case 'PLAYER_LEFT_SQUAD':
 			return <PlayerLeftSquadEvent event={event} />
-		case 'PLAYER_LEFT_SQUAD_DEDUPED':
-			return <PlayerLeftSquadDedupedEvent event={event} />
 		case 'SQUAD_DISBANDED':
 			return <SquadDisbandedEvent event={event} />
 		case 'PLAYER_JOINED_SQUAD':

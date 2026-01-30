@@ -193,7 +193,7 @@ const handleSllStateUpdate = C.spanOp(
 )
 
 async function commitChanges(
-	ctx: C.Db & C.SharedLayerList & C.User & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory,
+	ctx: C.Db & C.SharedLayerList & C.User & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon,
 	input: Exclude<SLL.ClientUpdate, { code: 'update-presence' }>,
 ) {
 	void sendUpdate(ctx, {
