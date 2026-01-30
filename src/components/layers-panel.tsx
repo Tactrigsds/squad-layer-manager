@@ -8,10 +8,10 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import * as ItemMut from '@/lib/item-mutations'
-
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as SLL from '@/models/shared-layer-list'
+import * as RBAC from '@/rbac.models.ts'
 import * as ConfigClient from '@/systems/config.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as LQYClient from '@/systems/layer-queries.client.ts'
@@ -166,6 +166,8 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 		SLLClient.Store,
 		useShallow(s => [s.isModified, s.committing, s.session.editors.size]),
 	)
+	const loggedInUser = UsersClient.useLoggedInUser()
+	const canStartEditing = loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:write'))
 
 	function clear() {
 		const state = QD.LQStore.getState()
@@ -266,6 +268,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					</div>
 					<Button
 						variant="outline"
+						disabled={!canStartEditing}
 						onClick={() => setEditing(true)}
 						className="col-start-2 row-start-1 invisible group-data-[status=idle]:visible"
 					>
