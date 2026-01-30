@@ -165,7 +165,12 @@ const ACTIVITY_LOADER_CONFIGS = [
 		const node = s.child.EDITING?.chosen
 		if (node?.id === 'PASTE_ROTATION') return node
 		return undefined
-	})({ load(args) {} }),
+	})({
+		unloadOnLeave: true,
+		load(args) {
+			return { activity: args.key }
+		},
+	}),
 ] as const
 
 export const Store = createStore()

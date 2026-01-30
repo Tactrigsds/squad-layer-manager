@@ -8,7 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import * as ItemMut from '@/lib/item-mutations'
-import * as L from '@/models/layer'
+
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as SLL from '@/models/shared-layer-list'
@@ -25,10 +25,8 @@ import { useShallow } from 'zustand/react/shallow'
 import { RepeatViolationDisplay } from './constraint-matches-indicator.tsx'
 import { LayerList, StartActivityInteraction } from './layer-list.tsx'
 import { MatchHistoryPanelContent } from './match-history-panel'
-import { MultiLayerSetDialog } from './multi-layer-set-dialog'
 import PoolConfigurationPopover from './server-settings-popover.tsx'
 import ShortLayerName from './short-layer-name.tsx'
-import TabsList from './ui/tabs-list.tsx'
 import UserPresencePanel from './user-presence-panel.tsx'
 
 export default function LayersPanel() {
@@ -168,14 +166,6 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 		SLLClient.Store,
 		useShallow(s => [s.isModified, s.committing, s.session.editors.size]),
 	)
-	type Position = 'next' | 'after'
-	const [pastePosition, setPastePosition] = React.useState<Position>('next')
-
-	const [pasteRotationOpen, setPasteRotationOpen] = SLLClient.useActivityState({
-		createActivity: SLL.createEditActivityVariant({ _tag: 'leaf', id: 'PASTE_ROTATION', opts: {} }),
-		matchActivity: state => state.child.EDITING?.chosen.id === 'PASTE_ROTATION',
-		removeActivity: SLL.toEditIdleOrNone(),
-	})
 
 	function clear() {
 		const state = QD.LQStore.getState()
@@ -239,42 +229,19 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				>
 					<Icons.Vote />Gen Vote
 				</StartActivityInteraction>
-				<MultiLayerSetDialog
-					open={pasteRotationOpen}
-					onOpenChange={setPasteRotationOpen}
-					title="Paste Rotation"
-					onSubmit={(layers) => {
-						const layerIds = layers.map(l => l.id)
-						const cursor: LL.Cursor = pastePosition === 'next' ? { type: 'start' } : { type: 'end' }
-						const list = SLLClient.Store.getState().layerList
-						const index: LL.ItemIndex = LL.resolveCursorIndex(list, cursor) ?? { outerIndex: 0, innerIndex: null }
-						void SLLClient.Store.getState().dispatch({
-							op: 'add',
-							index,
-							items: layerIds.map(layerId => ({ type: 'single-list-item', layerId })),
-						})
-					}}
-					trigger={
-						<Button
-							className="flex w-min items-center space-x-0 not-group-data-[status=editing]:invisible"
-							variant="secondary"
-							disabled={!isEditing}
-						>
-							<Icons.FileText />
-							<span>Paste Rotation</span>
-						</Button>
-					}
-					extraFooter={
-						<TabsList
-							options={[
-								{ label: 'Play Next', value: 'next' },
-								{ label: 'Play After', value: 'after' },
-							]}
-							active={pastePosition}
-							setActive={setPastePosition}
-						/>
-					}
-				/>
+				<StartActivityInteraction
+					loaderName="pasteRotation"
+					createActivity={SLL.createEditActivityVariant({ _tag: 'leaf', id: 'PASTE_ROTATION', opts: {} })}
+					matchKey={key => key.id === 'PASTE_ROTATION'}
+					preload="intent"
+					render={Button}
+					className="flex w-min items-center space-x-0 not-group-data-[status=editing]:invisible"
+					variant="secondary"
+					disabled={!isEditing}
+				>
+					<Icons.FileText />
+					<span>Paste Rotation</span>
+				</StartActivityInteraction>
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button

@@ -50,6 +50,7 @@ import EditLayerDialog from './edit-layer-dialog.tsx'
 import GenVoteDialog from './gen-vote-dialog.tsx'
 import LayerDisplay from './layer-display.tsx'
 import LayerSourceDisplay from './layer-source-display.tsx'
+import { MultiLayerSetDialog } from './multi-layer-set-dialog.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
 import { Timer } from './timer.tsx'
 import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator } from './ui/dropdown-menu.tsx'
@@ -154,6 +155,15 @@ function LoadedActivitiesRenderer({ store }: { store: Zus.StoreApi<QD.LLStore> }
 					return (
 						<LoadedGenVoteView
 							key={entry.data.genVoteFrame.instanceId}
+							store={store}
+							entry={entry}
+						/>
+					)
+				}
+				if (entry.name === 'pasteRotation') {
+					return (
+						<LoadedPasteRotation
+							key="paste-rotation"
 							store={store}
 							entry={entry}
 						/>
@@ -314,6 +324,56 @@ function LoadedGenVoteView({
 			open={entry.active}
 			onOpenChange={onOpenChange}
 			onSubmit={onSubmit}
+		/>
+	)
+}
+
+function LoadedPasteRotation({
+	store,
+	entry: _entry,
+}: {
+	store: Zus.StoreApi<QD.LLStore>
+	entry: Extract<SLLClient.LoadedActivityState, { name: 'pasteRotation' }>
+}) {
+	const entry = useStableValue((e) => e, [_entry])
+	const [pastePosition, setPastePosition] = React.useState<'next' | 'after'>('next')
+
+	const onOpenChange = React.useCallback((open: boolean) => {
+		if (open) return
+		store.getState().updateActivity(SLL.toEditIdleOrNone())
+	}, [store])
+
+	const onSubmit = React.useCallback((layers: L.UnvalidatedLayer[]) => {
+		const state = store.getState()
+		const layerIds = layers.map(l => l.id)
+		const cursor: LL.Cursor = pastePosition === 'next' ? { type: 'start' } : { type: 'end' }
+		const index: LL.ItemIndex = LL.resolveCursorIndex(state.layerList, cursor) ?? { outerIndex: 0, innerIndex: null }
+		void state.dispatch({
+			op: 'add',
+			index,
+			items: layerIds.map(layerId => ({ type: 'single-list-item', layerId })),
+		})
+		state.updateActivity(SLL.toEditIdleOrNone())
+	}, [store, pastePosition])
+
+	const positionTabsList = React.useMemo(() => (
+		<TabsList
+			options={[
+				{ label: 'Play Next', value: 'next' },
+				{ label: 'Play After', value: 'after' },
+			]}
+			active={pastePosition}
+			setActive={setPastePosition}
+		/>
+	), [pastePosition])
+
+	return (
+		<MultiLayerSetDialog
+			title="Paste Rotation"
+			open={entry.active}
+			onOpenChange={onOpenChange}
+			onSubmit={onSubmit}
+			extraFooter={positionTabsList}
 		/>
 	)
 }
