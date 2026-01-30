@@ -67,7 +67,7 @@ function ValidationErrorsDisplay(
 			<Icons.AlertTriangle className="h-4 w-4" />
 			<AlertTitle>Repeats Detected</AlertTitle>
 			<AlertDescription>
-				The following layers from your edits have repeated elements that violate our configured rules:
+				The following queued layers have repeated elements that violate our configured rules:
 				<div className="flex flex-col gap-1">
 					{props.errors.map(({ item, index, descriptors, parity }) => {
 						const onMouseOver = () => {
@@ -94,7 +94,12 @@ function ValidationErrorsDisplay(
 									>
 									if (!constraint) return null
 									return (
-										<RepeatViolationDisplay showIcon={false} key={descriptor.constraintId} constraint={constraint} itemParity={parity} />
+										<RepeatViolationDisplay
+											showIcon={false}
+											key={`${item.itemId}-${descriptor.constraintId}-${descriptor.field}${descriptor.repeatOffset}`}
+											constraint={constraint}
+											itemParity={parity}
+										/>
 									)
 								})}
 							</div>
