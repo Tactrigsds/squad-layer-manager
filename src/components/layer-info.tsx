@@ -45,7 +45,7 @@ type LayerInfoContentProps = {
 DraggableWindowStore.getState().registerDefinition<LayerInfoWindowProps, unknown>({
 	type: WINDOW_ID.enum['layer-info'],
 	component: LayerInfoWindow,
-	initialPosition: 'viewport-center',
+	initialPosition: 'above',
 	getId: (props) => props.layerId,
 	loadAsync: async ({ props }) => {
 		await RPC.queryClient.fetchQuery(LayerQueriesClient.getLayerInfoQueryOptions(props.layerId))
