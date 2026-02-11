@@ -108,6 +108,7 @@ interface DraggableWindowContextValue {
 	setIsPinned: (pinned: boolean) => void
 	bringToFront: () => void
 	registerDragBar: (element: HTMLElement | null) => void
+	zIndex: number
 }
 
 const DraggableWindowContext = React.createContext<DraggableWindowContextValue | null>(null)
@@ -334,8 +335,9 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 			setIsPinned,
 			bringToFront,
 			registerDragBar,
+			zIndex: windowState.zIndex,
 		}),
-		[windowState.id, windowState.isPinned, close, setIsPinned, bringToFront, registerDragBar],
+		[windowState.id, windowState.isPinned, windowState.zIndex, close, setIsPinned, bringToFront, registerDragBar],
 	)
 
 	const Component = definition.component

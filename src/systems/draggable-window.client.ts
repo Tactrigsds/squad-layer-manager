@@ -68,7 +68,7 @@ interface DraggableWindowStore extends DraggableWindowStoreState {
 	setIsPinned: (id: string, pinned: boolean) => void
 }
 
-const BASE_Z_INDEX = 20
+const BASE_Z_INDEX = 18
 
 function defToLoaderConfig(def: WindowDefinition): WindowLoaderConfig {
 	return {

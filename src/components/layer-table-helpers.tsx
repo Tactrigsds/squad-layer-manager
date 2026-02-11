@@ -4,6 +4,8 @@ import { globalToast$ } from '@/hooks/use-global-toast'
 import * as L from '@/models/layer'
 import LayerInfoDialog from './layer-info'
 
+void import('./layer-info')
+
 function copyHistoryEntryId(selectedHistoryEntryIds: number[]) {
 	let text = ''
 	for (const id of selectedHistoryEntryIds) {
@@ -33,10 +35,7 @@ export function LayerContextMenuItems(props: { selectedLayerIds: L.LayerId[]; se
 		<>
 			{props.selectedLayerIds.length === 1 && L.isKnownLayer(props.selectedLayerIds[0]) && (
 				<LayerInfoDialog layerId={props.selectedLayerIds[0]}>
-					<ContextMenuItem
-						onSelect={(e) =>
-							e.preventDefault()}
-					>
+					<ContextMenuItem>
 						Show layer info
 					</ContextMenuItem>
 				</LayerInfoDialog>

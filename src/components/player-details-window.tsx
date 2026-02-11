@@ -67,6 +67,7 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>(globalFilterState)
 	const filteredEvents = allEvents.filter(e => !CHAT.isEventFilteredBySecondary(e, filterState))
 	const { scrollAreaRef, contentRef, bottomRef, showScrollButton, scrollToBottom } = useTailingScroll()
+	const { setIsPinned, zIndex } = useDraggableWindow()
 
 	return (
 		<div className="min-w-0 min-h-0 flex flex-col">
@@ -142,7 +143,20 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 					<h3 className="inline">
 						Server Activity
 					</h3>
-					<EventFilterSelect variant="ghost" value={filterState} onValueChange={setFilterState} />
+					{/* explicitely setting zIndex here is another hack to get around bad interations between draggable windows and other kinds of floating elements TODO probably just need to find a nice way to set portals correctly on sleemnts inside drag windows */}
+					<EventFilterSelect
+						zIndex={zIndex + 10}
+						variant="ghost"
+						value={filterState}
+						onOpenChange={(open) => {
+							// hack to get around close on click-out behaviour. TODO find better pattern
+							open && setIsPinned(true)
+						}}
+						onValueChange={v => {
+							setFilterState(v)
+							setIsPinned(true)
+						}}
+					/>
 				</div>
 				<ScrollArea ref={scrollAreaRef} className="h-100">
 					<div ref={contentRef} className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">

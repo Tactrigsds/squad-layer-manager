@@ -32,13 +32,15 @@ function ProvidersInner(props: { children: ReactNode }) {
 			{(flags.reactQueryDevtools || !slmConfig?.isProduction) && <ReactQueryDevtools initialIsOpen />}
 			<TooltipProvider>
 				<DragContextProvider>
-					<AlertDialogProvider>{props.children}</AlertDialogProvider>
+					<AlertDialogProvider>
+						<Toaster />
+						<Suspense fallback={null}>
+							<DraggableWindowOutlet />
+						</Suspense>
+						{props.children}
+					</AlertDialogProvider>
 				</DragContextProvider>
 			</TooltipProvider>
-			<Toaster />
-			<Suspense fallback={null}>
-				<DraggableWindowOutlet />
-			</Suspense>
 		</>
 	)
 }

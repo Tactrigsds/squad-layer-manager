@@ -1,19 +1,22 @@
 import scoreRanges from '$root/assets/score-ranges.json'
 import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers'
 import * as DH from '@/lib/display-helpers.ts'
+import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns.ts'
 import type * as SLL from '@/models/squad-layer-list.models'
+import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems/config.client'
+import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as LayerInfoDialogClient from '@/systems/layer-info-dialog.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { useQuery } from '@tanstack/react-query'
-import { useLinkProps } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React, { useRef } from 'react'
+import { LayerInfoWindowProps } from './layer-info-window.helpers'
 import MapLayerDisplay from './map-layer-display.tsx'
 import { Button, buttonVariants } from './ui/button.tsx'
-import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from './ui/dialog.tsx'
+import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle, OpenWindowInteraction } from './ui/draggable-window'
 import { Spinner } from './ui/spinner.tsx'
 import TabsList from './ui/tabs-list.tsx'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
@@ -21,6 +24,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/t
 type LayerInfoProps = {
 	// expected to be known layer id
 	layerId: L.LayerId
+	tab?: LayerInfoDialogClient.Tab
 	children: React.ReactNode
 }
 
@@ -32,26 +36,85 @@ type LayerInfoContentProps = {
 	tab: Tab
 	setTab: (tab: Tab) => void
 	hidePopoutButton?: boolean
+	hideTabs?: boolean
+	hideLayerName?: boolean
 	close?: () => void
+}
+
+// Register the draggable window definition
+DraggableWindowStore.getState().registerDefinition<LayerInfoWindowProps, unknown>({
+	type: WINDOW_ID.enum['layer-info'],
+	component: LayerInfoWindow,
+	initialPosition: 'viewport-center',
+	getId: (props) => props.layerId,
+	loadAsync: async ({ props }) => {
+		await RPC.queryClient.fetchQuery(LayerQueriesClient.getLayerInfoQueryOptions(props.layerId))
+	},
+})
+
+function LayerInfoTrigger(
+	props: React.HTMLAttributes<HTMLElement> & { ref?: React.Ref<HTMLElement> },
+) {
+	return <span ref={props.ref} {...props} />
 }
 
 export default function LayerInfoDialog(props: LayerInfoProps) {
 	const isKnownLayer = L.isKnownLayer(L.toLayer(props.layerId))
-	const [tab, setTab] = LayerInfoDialogClient.useActiveTab()
-	const [open, setOpen] = React.useState(false)
 	if (!isKnownLayer) return null
 
 	return (
-		<Dialog open={open} onOpenChange={setOpen}>
-			<DialogTrigger asChild>
-				{props.children}
-			</DialogTrigger>
-			<DialogContent className="w-auto max-w-full overflow-x-auto overflow-y-auto max-h-screen min-w-0 p-8">
-				<DialogTitle className="hidden">Layer Info</DialogTitle>
-				<DialogDescription className="hidden">Layer Info for {DH.displayLayer(props.layerId)}</DialogDescription>
-				<LayerInfo layerId={props.layerId} tab={tab || 'details'} setTab={setTab} close={() => setOpen(false)} />
-			</DialogContent>
-		</Dialog>
+		<OpenWindowInteraction
+			windowId={WINDOW_ID.enum['layer-info']}
+			windowProps={{ layerId: props.layerId, tab: props.tab }}
+			preload="intent"
+			render={LayerInfoTrigger}
+		>
+			{props.children}
+		</OpenWindowInteraction>
+	)
+}
+
+function LayerInfoWindow({ layerId, tab: initialTab }: LayerInfoWindowProps) {
+	const [tab, setTab] = React.useState<LayerInfoDialogClient.Tab>(initialTab || 'details')
+	const layerRes = useQuery(LayerQueriesClient.getLayerInfoQueryOptions(layerId))
+	const cfg = ConfigClient.useEffectiveColConfig()
+
+	let scores: LC.PartitionedScores | undefined
+	if (layerRes.data && cfg) {
+		const layer = layerRes.data as L.KnownLayer
+		scores = LC.partitionScores(layer, cfg)
+	}
+
+	const hasScores = scores && Object.values(scores).some(type => Object.values(type).some(score => typeof score === 'number'))
+
+	React.useEffect(() => {
+		if (!hasScores && tab === 'scores') {
+			setTab('details')
+		}
+	}, [hasScores, tab])
+
+	return (
+		<div className="min-w-0 min-h-0 flex flex-col">
+			<DraggableWindowDragBar>
+				<DraggableWindowTitle>
+					{DH.displayLayer(layerId)}
+				</DraggableWindowTitle>
+				<TabsList
+					options={[
+						{ value: 'details', label: 'Details' },
+						{ value: 'scores', label: 'Scores', disabled: !hasScores && 'Scores are not available for this layer' },
+					]}
+					active={tab}
+					setActive={setTab}
+					className="h-7 ml-2"
+				/>
+				<DraggableWindowPinToggle />
+				<DraggableWindowClose />
+			</DraggableWindowDragBar>
+			<div className="p-8 overflow-auto">
+				<LayerInfo layerId={layerId} tab={tab} setTab={setTab} hideTabs hideLayerName />
+			</div>
+		</div>
 	)
 }
 
@@ -84,7 +147,8 @@ export function LayerInfo(props: LayerInfoContentProps) {
 		const layer = layerRes.data as L.KnownLayer
 		scores = LC.partitionScores(layer, cfg)
 	}
-	const { href } = useLinkProps({ to: '/layers/$layerId/$tab', params: { layerId: props.layerId, tab: activeTab } })
+	// we aren't using the tanstack router utility functions here because we might be portaled outside of tanstack router context. unsure of how to best deal with this.
+	const href = `/layers/${props.layerId}/${activeTab}`
 	const openInPopoutWindow = () => {
 		let width = 650
 		let height = 450
@@ -116,12 +180,12 @@ export function LayerInfo(props: LayerInfoContentProps) {
 	return (
 		<div
 			ref={contentRef}
-			className="space-y-3 data-[tab=scores]:max-w-[800px] data-[tab=details]:max-w-[800px] mx-auto"
+			className="space-y-3 data-[tab=scores]:max-w-200 data-[tab=details]:max-w-200 mx-auto"
 			data-tab={activeTab}
 		>
 			<div className="flex justify-between items-center space-x-2">
 				<div className="flex items-center gap-3">
-					<MapLayerDisplay layer={L.toLayer(props.layerId).Layer} extraLayerStyles={undefined} />
+					{!props.hideLayerName && <MapLayerDisplay layer={L.toLayer(props.layerId).Layer} extraLayerStyles={undefined} />}
 					<Button
 						onClick={() => copyAdminSetNextLayerCommand([props.layerId])}
 						size="icon"
@@ -145,14 +209,16 @@ export function LayerInfo(props: LayerInfoContentProps) {
 					</a>
 					{layerDetails?.layerConfig && <LayerConfigInfo layerConfig={layerDetails.layerConfig} />}
 				</div>
-				<TabsList
-					options={[
-						{ value: 'details', label: 'Details' },
-						{ value: 'scores', label: 'Scores', disabled: !hasScores && 'Scores are not available for this layer' },
-					]}
-					active={activeTab}
-					setActive={setActiveTab}
-				/>
+				{!props.hideTabs && (
+					<TabsList
+						options={[
+							{ value: 'details', label: 'Details' },
+							{ value: 'scores', label: 'Scores', disabled: !hasScores && 'Scores are not available for this layer' },
+						]}
+						active={activeTab}
+						setActive={setActiveTab}
+					/>
+				)}
 			</div>
 			{activeTab === 'details' && layerDetails && <LayerDetailsDisplay layerDetails={layerDetails} />}
 			{activeTab === 'details' && !layerDetails && <div>No details available</div>}
