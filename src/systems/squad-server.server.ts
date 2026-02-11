@@ -1458,6 +1458,7 @@ export const saveEvents = C.spanOp(
 				} else {
 					const meta = SM.Events.EVENT_META[e.type]
 					for (const prop of meta.playerAssocs) {
+						// @ts-expect-error idgaf
 						if (prop in e && e[prop] !== undefined) {
 							// @ts-expect-error idgaf
 							const assocPlayerId = e[prop] as SM.PlayerId
