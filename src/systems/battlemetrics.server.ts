@@ -27,8 +27,8 @@ type CacheEntry<T> = {
 }
 
 const CACHE_TTL = {
-	steamIdResolution: 60 * 60 * 1000, // 1 hour
-	orgServerIds: 15 * 60 * 1000, // 15 minutes
+	steamIdResolution: Infinity,
+	orgServerIds: Infinity,
 	playerFlags: 5 * 60 * 1000, // 5 minutes
 	playerBansAndNotes: 5 * 60 * 1000, // 5 minutes
 	playerProfile: 5 * 60 * 1000, // 5 minutes
@@ -270,6 +270,38 @@ const resolvePlayerBySteamId = C.spanOp(
 	},
 )
 
+/** Batch-resolve multiple steam IDs to BM player IDs in a single API call, populating the cache. */
+const batchResolvePlayersBySteamId = C.spanOp(
+	'batchResolvePlayersBySteamId',
+	{ module, attrs: (_ctx, steamIds) => ({ count: steamIds.length }) },
+	async (ctx: CS.Ctx, steamIds: string[]): Promise<void> => {
+		// filter out already-cached IDs
+		const uncached = steamIds.filter((id) => !getCached(cache.steamIdResolution.get(id)))
+		if (uncached.length === 0) return
+
+		const [data] = await bmFetch(ctx, 'POST', '/players/match', {
+			responseSchema: BM.PlayerMatchResponse,
+			body: {
+				data: uncached.map((steamId) => ({
+					type: 'identifier',
+					attributes: {
+						type: 'steamID',
+						identifier: steamId,
+					},
+				})),
+			},
+		})
+
+		for (const entry of data.data) {
+			const steamId = entry.attributes?.identifier
+			const playerId = entry.relationships?.player?.data?.id
+			if (steamId && playerId) {
+				cache.steamIdResolution.set(steamId, setCached(playerId, CACHE_TTL.steamIdResolution))
+			}
+		}
+	},
+)
+
 const getOrgServerIds = C.spanOp(
 	'getOrgServerIds',
 	{ module },
@@ -411,9 +443,16 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 
 			if (steamIdsToPrime.size === 0) return
 
-			log.debug('priming BM cache for %d players', steamIdsToPrime.size)
+			const steamIds = [...steamIdsToPrime]
+			log.debug('priming BM cache for %d players', steamIds.length)
+
+			// batch-resolve all steam IDs to BM player IDs in a single API call
+			await batchResolvePlayersBySteamId(ctx, steamIds).catch((err) => {
+				log.warn({ err }, 'batch resolve failed, falling back to individual resolution')
+			})
+
 			await Promise.allSettled(
-				[...steamIdsToPrime].map((steamId) => primePlayerCache(ctx, steamId)),
+				steamIds.map((steamId) => primePlayerCache(ctx, steamId)),
 			)
 		}),
 	).subscribe()
@@ -439,93 +478,4 @@ export const router = {
 	})).handler(async ({ input, context: ctx }) => {
 		return fetchPlayerProfile(ctx, input.steamId)
 	}),
-}
-
-// -------- rate-limit queue --------
-
-namespace RateLimit {
-	const RATE_LIMIT = {
-		perSecond: 15,
-		perMinute: 60,
-	} as const
-
-	const rateLimiter = {
-		/** Timestamps of requests dispatched in the last 60s */
-		timestamps: [] as number[],
-		/** Queue of pending requests waiting for capacity */
-		queue: [] as Array<() => void>,
-		drainScheduled: false,
-	}
-
-	function pruneTimestamps(now: number) {
-		const cutoff = now - 60_000
-		while (rateLimiter.timestamps.length > 0 && rateLimiter.timestamps[0] <= cutoff) {
-			rateLimiter.timestamps.shift()
-		}
-	}
-
-	function countInWindow(now: number, windowMs: number): number {
-		let count = 0
-		for (let i = rateLimiter.timestamps.length - 1; i >= 0; i--) {
-			if (rateLimiter.timestamps[i] > now - windowMs) count++
-			else break
-		}
-		return count
-	}
-
-	function canDispatch(now: number): boolean {
-		return (
-			countInWindow(now, 1_000) < RATE_LIMIT.perSecond
-			&& countInWindow(now, 60_000) < RATE_LIMIT.perMinute
-		)
-	}
-
-	function scheduleDrain() {
-		if (rateLimiter.drainScheduled || rateLimiter.queue.length === 0) return
-		rateLimiter.drainScheduled = true
-
-		const now = Date.now()
-		pruneTimestamps(now)
-
-		// figure out how long until we have capacity
-		let delayMs = 0
-		if (countInWindow(now, 1_000) >= RATE_LIMIT.perSecond) {
-			// wait until the oldest request in the 1s window expires
-			const oldest1s = rateLimiter.timestamps.find((t) => t > now - 1_000)!
-			delayMs = Math.max(delayMs, oldest1s + 1_000 - now)
-		}
-		if (countInWindow(now, 60_000) >= RATE_LIMIT.perMinute) {
-			const oldest60s = rateLimiter.timestamps[0]
-			delayMs = Math.max(delayMs, oldest60s + 60_000 - now)
-		}
-
-		setTimeout(() => {
-			rateLimiter.drainScheduled = false
-			drainQueue()
-		}, delayMs + 1)
-	}
-
-	function drainQueue() {
-		const now = Date.now()
-		pruneTimestamps(now)
-		while (rateLimiter.queue.length > 0 && canDispatch(now)) {
-			rateLimiter.timestamps.push(now)
-			const resolve = rateLimiter.queue.shift()!
-			resolve()
-		}
-		scheduleDrain()
-	}
-
-	export function acquireRateSlot(): Promise<void> {
-		const now = Date.now()
-		pruneTimestamps(now)
-		if (canDispatch(now)) {
-			rateLimiter.timestamps.push(now)
-			return Promise.resolve()
-		}
-		return new Promise<void>((resolve) => {
-			rateLimiter.queue.push(resolve)
-			scheduleDrain()
-		})
-	}
 }

@@ -17,6 +17,10 @@ export const PlayerMatchResponse = z.object({
 	data: z.array(z.object({
 		type: z.literal('identifier'),
 		id: z.string(),
+		attributes: z.object({
+			type: z.string(),
+			identifier: z.string(),
+		}).optional(),
 		relationships: z.object({
 			player: z.object({
 				data: JsonApiResourceRef,
