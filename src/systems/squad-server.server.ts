@@ -1458,7 +1458,7 @@ export const saveEvents = C.spanOp(
 				} else {
 					const meta = SM.Events.EVENT_META[e.type]
 					for (const prop of meta.playerAssocs) {
-						if (prop in e) {
+						if (prop in e && e[prop] !== undefined) {
 							// @ts-expect-error idgaf
 							const assocPlayerId = e[prop] as SM.PlayerId
 							playerAssociationRows.push({ assocType: prop, playerId: BigInt(assocPlayerId), serverEventId: e.id })
