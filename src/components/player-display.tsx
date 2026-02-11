@@ -5,7 +5,7 @@ import * as SM from '@/models/squad.models'
 import { usePlayerFlagColor } from '@/systems/battlemetrics.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import { PlayerDetailsWindowProps } from './player-details-window.helpers'
+import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
 import { OpenWindowInteraction } from './ui/draggable-window'
 
 void import('@/components/player-details-window')

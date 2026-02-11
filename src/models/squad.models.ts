@@ -8,7 +8,7 @@ import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
 import * as dateFns from 'date-fns'
 import superjson from 'superjson'
-import { Event } from 'ws'
+
 import { z } from 'zod'
 
 export type SteamId = string
@@ -67,7 +67,7 @@ export namespace PlayerIds {
 
 	export type IdQuery<Required extends Fields = never> = { [k in Fields]?: string } & { [k in Required]: string }
 
-	export function IdFields<F extends Fields | never>(...fields: F[]): z.ZodType<IdQuery<F>> {
+	export function IdFields<F extends Fields>(...fields: F[]): z.ZodType<IdQuery<F>> {
 		return z.object({
 			username: Arr.includes(fields, 'username') ? z.string() : z.string().optional(),
 			usernameNoTag: Arr.includes(fields, 'usernameNoTag') ? z.string() : z.string().optional(),

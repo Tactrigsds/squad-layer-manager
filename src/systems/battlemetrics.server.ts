@@ -6,7 +6,7 @@ import * as C from '@/server/context'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
-import * as Rx from 'rxjs'
+
 import { z } from 'zod'
 
 const getEnv = Env.getEnvBuilder({ ...Env.groups.battlemetrics })

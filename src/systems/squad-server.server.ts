@@ -1,5 +1,5 @@
 import * as Schema from '$root/drizzle/schema'
-import * as SchemaModels from '$root/drizzle/schema.models.ts'
+import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 import * as AR from '@/app-routes'
 import * as Arr from '@/lib/array'
 import { type CleanupTasks, distinctDeepEquals, runCleanup, toAsyncGenerator, traceTag, withAbortSignal } from '@/lib/async'

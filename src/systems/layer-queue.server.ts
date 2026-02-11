@@ -303,7 +303,7 @@ export async function updateQueue(
 }
 
 export async function warnShowNext(
-	ctx: C.Db & C.SquadServer & C.LayerQueue & C.Rcon & C.AdminList & C.Rcon,
+	ctx: C.Db & C.SquadServer & C.LayerQueue & C.Rcon & C.AdminList,
 	playerIds: 'all-admins' | SM.PlayerIds.Type,
 	opts?: { repeat?: number },
 ) {

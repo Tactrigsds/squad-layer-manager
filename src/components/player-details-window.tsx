@@ -8,7 +8,7 @@ import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as RPC from '@/orpc.client'
 import { getPlayerBansAndNotesQueryOptions, getPlayerFlagsQueryOptions, getPlayerProfileQueryOptions, sortFlagsByHierarchy, usePlayerFlagColor } from '@/systems/battlemetrics.client'
-import { DraggableWindowStore, useWindowLoading } from '@/systems/draggable-window.client'
+import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import { useQuery } from '@tanstack/react-query'
@@ -16,9 +16,9 @@ import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
-import { PlayerDetailsWindowProps } from './player-details-window.helpers'
+import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
 import { ServerEvent } from './server-event'
-import { Card, CardHeader, CardTitle } from './ui/card'
+
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
 import { Separator } from './ui/separator'
 
@@ -52,7 +52,11 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 		// Attach data.events and currentMatchEvents for logging
 		console.log('data:', data)
 		console.log('currentMatchEvents:', currentMatchEvents)
-	}, [data?.events, currentMatchEvents])
+	}, [
+		data?.events,
+		currentMatchEvents,
+		data,
+	])
 
 	const allEvents = [...(data?.events ?? []), ...currentMatchEvents]
 	const livePlayer = Zus.useStore(
@@ -150,7 +154,7 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 						value={filterState}
 						onOpenChange={(open) => {
 							// hack to get around close on click-out behaviour. TODO find better pattern
-							open && setIsPinned(true)
+							if (open) setIsPinned(true)
 						}}
 						onValueChange={v => {
 							setFilterState(v)

@@ -1,9 +1,8 @@
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import type * as CHAT from '@/models/chat.models'
-import * as SquadServerClient from '@/systems/squad-server.client'
+
 import * as Icons from 'lucide-react'
-import * as Zus from 'zustand'
 
 const labels: Record<CHAT.SecondaryFilterState, string> = {
 	ALL: 'All',

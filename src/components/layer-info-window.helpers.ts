@@ -1,7 +1,7 @@
 import { WINDOW_ID } from '@/models/draggable-windows.models'
+import type * as L from '@/models/layer'
 import { buildUseOpenWindow } from '@/systems/draggable-window.client'
 import type * as LayerInfoDialogClient from '@/systems/layer-info-dialog.client'
-import type * as L from '@/models/layer'
 
 export type LayerInfoWindowProps = {
 	layerId: L.LayerId

@@ -5,7 +5,7 @@ import * as Zus from 'zustand'
 
 import * as Obj from '@/lib/object'
 import { cn } from '@/lib/utils'
-import { DraggableWindowStore, type InitialPosition, useOpenWindows, useWindowDefinitions, type WindowDefinition, type WindowLoaderCacheEntry, type WindowState } from '@/systems/draggable-window.client'
+import { DraggableWindowStore, type InitialPosition, useOpenWindows, useWindowDefinitions, type WindowDefinition, type WindowState } from '@/systems/draggable-window.client'
 
 // ============================================================================
 // Position Calculation
@@ -321,7 +321,12 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 			document.removeEventListener('mousemove', handleMouseMove)
 			document.removeEventListener('mouseup', handleMouseUp)
 		}
-	}, [dragBarNode, bringToFront, applyPosition])
+	}, [
+		dragBarNode,
+		bringToFront,
+		applyPosition,
+		setIsPinned,
+	])
 
 	const handleMouseDown = React.useCallback(() => {
 		bringToFront()
@@ -480,13 +485,6 @@ export function DraggableWindowClose({ className, onClick, ref, ...props }: Drag
 // Open Window Interaction (with preloading support)
 // ============================================================================
 
-interface ChildPropsBase {
-	ref: React.Ref<Element>
-	onClick: () => void
-	onMouseEnter: () => void
-	onMouseLeave: () => void
-}
-
 interface OpenWindowInteractionProps<TProps> {
 	windowId: string
 	windowProps: TProps
@@ -534,7 +532,7 @@ export function OpenWindowInteraction<TProps>(
 	// Preload on render
 	React.useEffect(() => {
 		if (props.preload === 'render') {
-			void preloadWindow()
+			preloadWindow()
 		}
 	}, [props.preload, preloadWindow])
 
@@ -546,7 +544,7 @@ export function OpenWindowInteraction<TProps>(
 			(entries) => {
 				entries.forEach((entry) => {
 					if (entry.isIntersecting) {
-						void preloadWindow()
+						preloadWindow()
 					}
 				})
 			},
@@ -564,7 +562,7 @@ export function OpenWindowInteraction<TProps>(
 		if (props.preload === 'intent' && !isLoaded) {
 			const delay = props.intentDelay ?? 150
 			const timeout = setTimeout(() => {
-				void preloadWindow()
+				preloadWindow()
 			}, delay)
 			setIntentTimeout(timeout)
 		}

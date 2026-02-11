@@ -1,4 +1,4 @@
-import * as BM from '@/models/battlemetrics.models'
+import type * as BM from '@/models/battlemetrics.models'
 import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems/config.client'
 import { useQuery } from '@tanstack/react-query'

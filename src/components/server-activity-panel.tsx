@@ -13,7 +13,7 @@ import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { current } from 'immer'
+
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Rx from 'rxjs'
@@ -73,7 +73,7 @@ function ServerChatEvents(
 				scrollToBottom()
 			})
 		}
-	}, [synced])
+	}, [synced, scrollToBottom])
 
 	// Reset new message count when scrolled to bottom
 	React.useEffect(() => {

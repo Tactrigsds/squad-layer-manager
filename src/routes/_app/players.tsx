@@ -1,7 +1,7 @@
 import { PlayerDisplay } from '@/components/player-display'
-import * as SM from '@/models/squad.models'
+import type * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
-import * as MatchHistoryCLient from '@/systems/match-history.client'
+
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 

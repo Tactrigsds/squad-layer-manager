@@ -23,7 +23,7 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as UsersClient from '@/systems/users.server'
 import { Mutex } from 'async-mutex'
-import { sql } from 'drizzle-orm'
+
 import * as E from 'drizzle-orm/expressions'
 import { alias } from 'drizzle-orm/mysql-core'
 import * as Rx from 'rxjs'
@@ -356,7 +356,7 @@ export const addNewCurrentMatch = C.spanOp(
 			await SquadServer.saveEvents(ctx)
 			ctx.server.state.lastSavedEventId = null
 			// flush the events buffer
-			const eventBuffer = ctx.server.state.eventBuffer
+
 			ctx.server.state.eventBuffer = []
 
 			await loadState(ctx, { startAtOrdinal: ordinal })
