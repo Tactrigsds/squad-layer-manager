@@ -38,6 +38,9 @@ const FlagPlayerInclude = z.object({
 		playerFlag: z.object({
 			data: JsonApiResourceRef,
 		}),
+		player: z.object({
+			data: JsonApiResourceRef,
+		}).optional(),
 	}).nullable().optional(),
 })
 
@@ -70,6 +73,51 @@ export const PlayerWithFlagsAndServersResponse = z.object({
 		id: z.string(),
 	}),
 	included: z.array(z.discriminatedUnion('type', [FlagPlayerInclude, PlayerFlagInclude, ServerInclude])).nullable().optional(),
+})
+
+// ---- GET /players?include=identifier,flagPlayer,playerFlag,server (list) ----
+
+const IdentifierInclude = z.object({
+	type: z.literal('identifier'),
+	id: z.string(),
+	attributes: z.object({
+		type: z.string(),
+		identifier: z.string(),
+	}),
+	relationships: z.object({
+		player: z.object({
+			data: JsonApiResourceRef,
+		}),
+	}).optional(),
+})
+
+const PlayerServerRef = z.object({
+	type: z.literal('server'),
+	id: z.string(),
+	meta: z.object({
+		timePlayed: z.number().nullable().optional(),
+	}).optional(),
+})
+
+export const PlayerListResponse = z.object({
+	data: z.array(z.object({
+		type: z.literal('player'),
+		id: z.string(),
+		relationships: z.object({
+			servers: z.object({
+				data: z.array(PlayerServerRef).optional(),
+			}).optional(),
+		}).optional(),
+	})),
+	included: z.array(z.discriminatedUnion('type', [
+		IdentifierInclude,
+		FlagPlayerInclude,
+		PlayerFlagInclude,
+	])).nullable().optional(),
+	links: z.object({
+		next: z.string().nullable().optional(),
+		prev: z.string().nullable().optional(),
+	}).nullable().optional(),
 })
 
 // ---- /servers?filter[organizations]=... ----

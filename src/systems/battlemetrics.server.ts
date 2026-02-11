@@ -315,38 +315,6 @@ const resolvePlayerBySteamId = C.spanOp(
 	},
 )
 
-/** Batch-resolve multiple steam IDs to BM player IDs in a single API call, populating the cache. */
-const batchResolvePlayersBySteamId = C.spanOp(
-	'batchResolvePlayersBySteamId',
-	{ module, attrs: (_ctx, steamIds) => ({ count: steamIds.length }) },
-	async (ctx: CS.Ctx, steamIds: string[]): Promise<void> => {
-		// filter out already-cached IDs
-		const uncached = steamIds.filter((id) => !getCached(cache.steamIdResolution.get(id)))
-		if (uncached.length === 0) return
-
-		const [data] = await bmFetch(ctx, 'POST', '/players/match', {
-			responseSchema: BM.PlayerMatchResponse,
-			body: {
-				data: uncached.map((steamId) => ({
-					type: 'identifier',
-					attributes: {
-						type: 'steamID',
-						identifier: steamId,
-					},
-				})),
-			},
-		})
-
-		for (const entry of data.data) {
-			const steamId = entry.attributes?.identifier
-			const playerId = entry.relationships?.player?.data?.id
-			if (steamId && playerId) {
-				cache.steamIdResolution.set(steamId, setCached(playerId, CACHE_TTL.steamIdResolution))
-			}
-		}
-	},
-)
-
 const getOrgServerIds = C.spanOp(
 	'getOrgServerIds',
 	{ module },
@@ -438,53 +406,129 @@ const fetchPlayerBansAndNotes = C.spanOp(
 	},
 )
 
-// -------- event-driven cache priming --------
+// -------- bulk fetch online players --------
 
-const primePlayerCache = C.spanOp(
-	'primePlayerCache',
-	{ module, levels: { error: 'error', event: 'trace' }, attrs: (_ctx, steamId) => ({ steamId }) },
-	async (ctx: CS.Ctx, steamId: string) => {
-		await Promise.all([
-			fetchPlayerFlagsAndProfile(ctx, steamId),
-			fetchPlayerBansAndNotes(ctx, steamId),
-		])
+const bulkFetchOnlinePlayers = C.spanOp(
+	'bulkFetchOnlinePlayers',
+	{ module },
+	async (ctx: CS.Ctx): Promise<string[]> => {
+		const serverIds = await getOrgServerIds(ctx)
+		if (serverIds.length === 0) return []
+
+		const orgServerIdSet = new Set(serverIds)
+		const primedSteamIds: string[] = []
+
+		let path: string | null = `/players?filter[online]=true&filter[servers]=${serverIds.join(',')}`
+			+ `&include=identifier,flagPlayer,playerFlag`
+			+ `&filter[identifiers]=steamID`
+			+ `&fields[playerFlag]=name,color,description,icon`
+			+ `&fields[server]=name`
+			+ `&page[size]=100`
+
+		while (path) {
+			const [data, _res] = await bmFetch(ctx, 'GET', path, {
+				responseSchema: BM.PlayerListResponse,
+			})
+
+			const included = data.included ?? []
+			const identifiers = included.filter((i): i is typeof i & { type: 'identifier' } => i.type === 'identifier')
+			const flagPlayers = included.filter((i): i is typeof i & { type: 'flagPlayer' } => i.type === 'flagPlayer')
+			const playerFlags = included.filter((i): i is typeof i & { type: 'playerFlag' } => i.type === 'playerFlag')
+
+			for (const player of data.data) {
+				const bmPlayerId = player.id
+
+				// find steamID identifier for this player
+				const ident = identifiers.find(
+					(i) => i.attributes.type === 'steamID' && i.relationships?.player?.data?.id === bmPlayerId,
+				)
+				if (!ident) continue
+				const steamId = ident.attributes.identifier
+
+				// populate steam ID resolution cache
+				cache.steamIdResolution.set(steamId, setCached(bmPlayerId, CACHE_TTL.steamIdResolution))
+
+				// extract flags for this player
+				const playerFlagPlayers = flagPlayers.filter(
+					(fp) => fp.relationships?.player?.data?.id === bmPlayerId,
+				)
+				const flags = playerFlagPlayers.map((fp) => {
+					const flagId = fp.relationships?.playerFlag?.data?.id
+					const flag = playerFlags.find((pf) => pf.id === flagId)
+					return {
+						id: flagId ?? fp.id,
+						name: flag?.attributes?.name ?? null,
+						color: flag?.attributes?.color ?? null,
+						description: flag?.attributes?.description ?? null,
+						icon: flag?.attributes?.icon ?? null,
+					}
+				})
+
+				// extract server time played from player relationships
+				const serverRefs = player.relationships?.servers?.data ?? []
+				const totalSeconds = serverRefs
+					.filter((s) => orgServerIdSet.has(s.id))
+					.reduce((sum, s) => sum + (s.meta?.timePlayed ?? 0), 0)
+
+				// populate flags+profile cache
+				cache.playerFlagsAndProfile.set(
+					steamId,
+					setCached({
+						flags,
+						bmPlayerId,
+						profileUrl: `https://www.battlemetrics.com/rcon/players/${bmPlayerId}`,
+						hoursPlayed: Math.round(totalSeconds / 3600),
+					}, CACHE_TTL.playerFlagsAndProfile),
+				)
+
+				primedSteamIds.push(steamId)
+			}
+
+			// follow pagination
+			const nextUrl = data.links?.next
+			if (nextUrl) {
+				// links.next is a full URL; extract the path+query
+				const parsed = new URL(nextUrl)
+				path = parsed.pathname + parsed.search
+			} else {
+				path = null
+			}
+		}
+
+		log.debug('bulk fetched %d online players', primedSteamIds.length)
+		return primedSteamIds
 	},
 )
+
+// -------- event-driven cache priming --------
 
 export function setupSquadServerInstance(ctx: C.ServerSlice) {
 	ctx.server.event$.pipe(
 		C.durableSub('bm-cache-prime', { module, root: true, taskScheduling: 'parallel' }, async ([ctx, events]) => {
-			const steamIdsToPrime = new Set<string>()
+			let shouldBulkFetch = false
 
 			for (const event of events) {
 				if (event.type === 'PLAYER_CONNECTED') {
 					const steamId = (event as SM.Events.PlayerConnected).player.ids.steam
 					if (steamId && !getCached(cache.playerFlagsAndProfile.get(steamId))) {
-						steamIdsToPrime.add(steamId)
+						shouldBulkFetch = true
+						break
 					}
 				} else if (event.type === 'NEW_GAME' || event.type === 'RESET') {
-					const state = (event as SM.Events.NewGame).state
-					for (const player of state.players) {
-						if (player.ids.steam && !getCached(cache.playerFlagsAndProfile.get(player.ids.steam))) {
-							steamIdsToPrime.add(player.ids.steam)
-						}
-					}
+					shouldBulkFetch = true
+					break
 				}
 			}
 
-			if (steamIdsToPrime.size === 0) return
+			if (!shouldBulkFetch) return
 
-			const steamIds = [...steamIdsToPrime]
-			log.debug('priming BM cache for %d players', steamIds.length)
-
-			// batch-resolve all steam IDs to BM player IDs in a single API call
-			await batchResolvePlayersBySteamId(ctx, steamIds).catch((err) => {
-				log.warn({ err }, 'batch resolve failed, falling back to individual resolution')
+			// bulk fetch flags+profile for all online players across org servers
+			const primedSteamIds = await bulkFetchOnlinePlayers(ctx).catch((err) => {
+				log.warn({ err }, 'bulk fetch online players failed')
+				return [] as string[]
 			})
 
-			await Promise.allSettled(
-				steamIds.map((steamId) => primePlayerCache(ctx, steamId)),
-			)
+			if (primedSteamIds.length === 0) return
 		}),
 	).subscribe()
 }
