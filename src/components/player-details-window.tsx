@@ -113,7 +113,7 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 				{player?.role && <div className="text-muted-foreground">{player.role}</div>}
 				{profile && (
 					<div className="flex items-center gap-2 text-muted-foreground">
-						<span>{profile.hoursPlayed}h played</span>
+						<span>{profile.hoursPlayed}h played on org servers</span>
 						{bansAndNotes && (
 							<>
 								<span>|</span>
