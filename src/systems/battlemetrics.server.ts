@@ -81,6 +81,110 @@ async function cachedFetch<T>(
 	return inflight
 }
 
+// -------- rate-limit queue --------
+
+const RATE_LIMITS = {
+	perSecond: 15,
+	perMinute: 60,
+	backoffDefaultMs: 30_000,
+} as const
+
+const rateLimiter = {
+	timestamps: [] as number[],
+	queue: [] as Array<() => void>,
+	drainScheduled: false,
+	backoffUntil: 0,
+}
+
+function pruneTimestamps(now: number) {
+	const cutoff = now - 60_000
+	while (rateLimiter.timestamps.length > 0 && rateLimiter.timestamps[0] <= cutoff) {
+		rateLimiter.timestamps.shift()
+	}
+}
+
+function countInWindow(now: number, windowMs: number): number {
+	let count = 0
+	for (let i = rateLimiter.timestamps.length - 1; i >= 0; i--) {
+		if (rateLimiter.timestamps[i] > now - windowMs) count++
+		else break
+	}
+	return count
+}
+
+function canDispatch(now: number): boolean {
+	if (now < rateLimiter.backoffUntil) return false
+	return (
+		countInWindow(now, 1_000) < RATE_LIMITS.perSecond
+		&& countInWindow(now, 60_000) < RATE_LIMITS.perMinute
+	)
+}
+
+function scheduleDrain() {
+	if (rateLimiter.drainScheduled || rateLimiter.queue.length === 0) return
+	rateLimiter.drainScheduled = true
+
+	const now = Date.now()
+	pruneTimestamps(now)
+
+	let delayMs = 0
+	if (now < rateLimiter.backoffUntil) {
+		delayMs = rateLimiter.backoffUntil - now
+	} else {
+		if (countInWindow(now, 1_000) >= RATE_LIMITS.perSecond) {
+			const oldest1s = rateLimiter.timestamps.find((t) => t > now - 1_000)!
+			delayMs = Math.max(delayMs, oldest1s + 1_000 - now)
+		}
+		if (countInWindow(now, 60_000) >= RATE_LIMITS.perMinute) {
+			const oldest60s = rateLimiter.timestamps[0]
+			delayMs = Math.max(delayMs, oldest60s + 60_000 - now)
+		}
+	}
+
+	setTimeout(() => {
+		rateLimiter.drainScheduled = false
+		drainQueue()
+	}, delayMs + 1)
+}
+
+function drainQueue() {
+	const now = Date.now()
+	pruneTimestamps(now)
+	while (rateLimiter.queue.length > 0 && canDispatch(now)) {
+		rateLimiter.timestamps.push(now)
+		const resolve = rateLimiter.queue.shift()!
+		resolve()
+	}
+	scheduleDrain()
+}
+
+function acquireRateSlot(): Promise<void> {
+	const now = Date.now()
+	pruneTimestamps(now)
+	if (canDispatch(now)) {
+		rateLimiter.timestamps.push(now)
+		return Promise.resolve()
+	}
+	return new Promise<void>((resolve) => {
+		rateLimiter.queue.push(resolve)
+		scheduleDrain()
+	})
+}
+
+function triggerBackoff(res: Response) {
+	const retryAfter = res.headers.get('Retry-After')
+	let delayMs = RATE_LIMITS.backoffDefaultMs
+	if (retryAfter) {
+		const seconds = Number(retryAfter)
+		if (!Number.isNaN(seconds)) {
+			delayMs = seconds * 1_000
+		}
+	}
+	rateLimiter.backoffUntil = Date.now() + delayMs
+	log.warn('BattleMetrics 429 — backing off for %dms', delayMs)
+	scheduleDrain()
+}
+
 // -------- BM API --------
 
 async function bmFetch<T = null>(
@@ -108,11 +212,16 @@ async function bmFetch<T = null>(
 				headers['Content-Type'] = 'application/json'
 			}
 
-			await RateLimit.acquireRateSlot()
+			await acquireRateSlot()
 			const res = await fetch(url, { method, headers, body }).catch((error) => {
 				log.error(`${method} ${path}: ${error.message}`)
 				throw error
 			})
+
+			if (res.status === 429) {
+				triggerBackoff(res)
+				throw new Error(`BattleMetrics API rate limited: 429 Too Many Requests`)
+			}
 
 			if (!res.ok) {
 				const text = await res.text().catch(() => '')
