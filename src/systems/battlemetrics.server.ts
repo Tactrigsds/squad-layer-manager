@@ -187,6 +187,15 @@ function triggerBackoff(res: Response) {
 
 // -------- BM API --------
 
+const RETRY = {
+	maxAttempts: 3,
+	baseDelayMs: 1_000,
+} as const
+
+function isRetryable(status: number): boolean {
+	return status === 429 || status >= 500
+}
+
 async function bmFetch<T = null>(
 	ctx: CS.Ctx,
 	method: 'GET' | 'POST' | 'PUT' | 'DELETE',
@@ -212,34 +221,65 @@ async function bmFetch<T = null>(
 				headers['Content-Type'] = 'application/json'
 			}
 
-			await acquireRateSlot()
-			const res = await fetch(url, { method, headers, body }).catch((error) => {
-				log.error(`${method} ${path}: ${error.message}`)
-				throw error
-			})
+			let lastError!: Error
+			for (let attempt = 0; attempt < RETRY.maxAttempts; attempt++) {
+				await acquireRateSlot()
+				const res = await fetch(url, { method, headers, body }).catch((error) => {
+					log.error(`${method} ${path}: ${error.message}`)
+					return error as Error
+				})
 
-			if (res.status === 429) {
-				triggerBackoff(res)
-				throw new Error(`BattleMetrics API rate limited: 429 Too Many Requests`)
-			}
-
-			if (!res.ok) {
-				const text = await res.text().catch(() => '')
-				log.error({ status: res.status, statusText: res.statusText, body: text }, `${method} ${path}: ${res.status} ${res.statusText}`)
-				throw new Error(`BattleMetrics API error: ${res.status} ${res.statusText}`)
-			}
-
-			if (init?.responseSchema) {
-				const payload = await res.json()
-				const result = init.responseSchema.safeParse(payload)
-				if (!result.success) {
-					log.error({ validationError: z.prettifyError(result.error) }, `${method} ${path}: response validation failed`)
-					throw new Error(`Failed to validate response from ${method} ${path}: \n${z.prettifyError(result.error)}`)
+				// network error
+				if (res instanceof Error) {
+					lastError = res
+					if (attempt < RETRY.maxAttempts - 1) {
+						const delay = RETRY.baseDelayMs * 2 ** attempt
+						log.warn(`${method} ${path}: network error, retrying in ${delay}ms (attempt ${attempt + 1}/${RETRY.maxAttempts})`)
+						await new Promise((r) => setTimeout(r, delay))
+						continue
+					}
+					throw lastError
 				}
-				return [result.data, res] as const
+
+				if (res.status === 429) {
+					triggerBackoff(res)
+					lastError = new Error(`BattleMetrics API rate limited: 429 Too Many Requests`)
+					if (attempt < RETRY.maxAttempts - 1) {
+						const delay = Math.max(RETRY.baseDelayMs * 2 ** attempt, rateLimiter.backoffUntil - Date.now())
+						log.warn(`${method} ${path}: 429 rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${RETRY.maxAttempts})`)
+						await new Promise((r) => setTimeout(r, delay))
+						continue
+					}
+					throw lastError
+				}
+
+				if (!res.ok) {
+					const text = await res.text().catch(() => '')
+					lastError = new Error(`BattleMetrics API error: ${res.status} ${res.statusText}`)
+					if (isRetryable(res.status) && attempt < RETRY.maxAttempts - 1) {
+						const delay = RETRY.baseDelayMs * 2 ** attempt
+						log.warn(`${method} ${path}: ${res.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${RETRY.maxAttempts})`)
+						await new Promise((r) => setTimeout(r, delay))
+						continue
+					}
+					log.error({ status: res.status, statusText: res.statusText, body: text }, `${method} ${path}: ${res.status} ${res.statusText}`)
+					throw lastError
+				}
+
+				if (init?.responseSchema) {
+					const payload = await res.json()
+					const result = init.responseSchema.safeParse(payload)
+					if (!result.success) {
+						log.error({ validationError: z.prettifyError(result.error) }, `${method} ${path}: response validation failed`)
+						throw new Error(`Failed to validate response from ${method} ${path}: \n${z.prettifyError(result.error)}`)
+					}
+					return [result.data, res] as const
+				}
+
+				return [null as T, res] as const
 			}
 
-			return [null as T, res] as const
+			throw lastError
 		},
 	)(ctx)
 }
