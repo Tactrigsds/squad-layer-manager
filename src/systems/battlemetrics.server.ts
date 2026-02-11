@@ -257,7 +257,7 @@ const fetchPlayerProfile = C.spanOp(
 
 			return {
 				bmPlayerId,
-				profileUrl: `https://www.battlemetrics.com/players/${bmPlayerId}`,
+				profileUrl: `https://www.battlemetrics.com/rcon/players/${bmPlayerId}`,
 				hoursPlayed: Math.round(totalSeconds / 3600),
 			}
 		})
