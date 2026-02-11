@@ -108,6 +108,7 @@ async function bmFetch<T = null>(
 				headers['Content-Type'] = 'application/json'
 			}
 
+			await RateLimit.acquireRateSlot()
 			const res = await fetch(url, { method, headers, body }).catch((error) => {
 				log.error(`${method} ${path}: ${error.message}`)
 				throw error
@@ -329,4 +330,93 @@ export const router = {
 	})).handler(async ({ input, context: ctx }) => {
 		return fetchPlayerProfile(ctx, input.steamId)
 	}),
+}
+
+// -------- rate-limit queue --------
+
+namespace RateLimit {
+	const RATE_LIMIT = {
+		perSecond: 15,
+		perMinute: 60,
+	} as const
+
+	const rateLimiter = {
+		/** Timestamps of requests dispatched in the last 60s */
+		timestamps: [] as number[],
+		/** Queue of pending requests waiting for capacity */
+		queue: [] as Array<() => void>,
+		drainScheduled: false,
+	}
+
+	function pruneTimestamps(now: number) {
+		const cutoff = now - 60_000
+		while (rateLimiter.timestamps.length > 0 && rateLimiter.timestamps[0] <= cutoff) {
+			rateLimiter.timestamps.shift()
+		}
+	}
+
+	function countInWindow(now: number, windowMs: number): number {
+		let count = 0
+		for (let i = rateLimiter.timestamps.length - 1; i >= 0; i--) {
+			if (rateLimiter.timestamps[i] > now - windowMs) count++
+			else break
+		}
+		return count
+	}
+
+	function canDispatch(now: number): boolean {
+		return (
+			countInWindow(now, 1_000) < RATE_LIMIT.perSecond
+			&& countInWindow(now, 60_000) < RATE_LIMIT.perMinute
+		)
+	}
+
+	function scheduleDrain() {
+		if (rateLimiter.drainScheduled || rateLimiter.queue.length === 0) return
+		rateLimiter.drainScheduled = true
+
+		const now = Date.now()
+		pruneTimestamps(now)
+
+		// figure out how long until we have capacity
+		let delayMs = 0
+		if (countInWindow(now, 1_000) >= RATE_LIMIT.perSecond) {
+			// wait until the oldest request in the 1s window expires
+			const oldest1s = rateLimiter.timestamps.find((t) => t > now - 1_000)!
+			delayMs = Math.max(delayMs, oldest1s + 1_000 - now)
+		}
+		if (countInWindow(now, 60_000) >= RATE_LIMIT.perMinute) {
+			const oldest60s = rateLimiter.timestamps[0]
+			delayMs = Math.max(delayMs, oldest60s + 60_000 - now)
+		}
+
+		setTimeout(() => {
+			rateLimiter.drainScheduled = false
+			drainQueue()
+		}, delayMs + 1)
+	}
+
+	function drainQueue() {
+		const now = Date.now()
+		pruneTimestamps(now)
+		while (rateLimiter.queue.length > 0 && canDispatch(now)) {
+			rateLimiter.timestamps.push(now)
+			const resolve = rateLimiter.queue.shift()!
+			resolve()
+		}
+		scheduleDrain()
+	}
+
+	export function acquireRateSlot(): Promise<void> {
+		const now = Date.now()
+		pruneTimestamps(now)
+		if (canDispatch(now)) {
+			rateLimiter.timestamps.push(now)
+			return Promise.resolve()
+		}
+		return new Promise<void>((resolve) => {
+			rateLimiter.queue.push(resolve)
+			scheduleDrain()
+		})
+	}
 }
