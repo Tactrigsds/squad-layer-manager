@@ -1,6 +1,7 @@
 import EventFilterSelect from '@/components/event-filter-select'
 import { MatchTeamDisplay } from '@/components/teams-display'
 import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import * as ZusUtils from '@/lib/zustand'
@@ -104,21 +105,7 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 							/>
 						)
 				)}
-				{flags && flags.length > 0 && (
-					<div className="flex items-center gap-0.5 min-w-0">
-						{flags.map((flag) => (
-							<span
-								key={flag.id}
-								className="inline-flex items-center gap-0.5 rounded px-1 py-0 text-[10px] font-medium leading-tight shrink-0"
-								style={{ backgroundColor: flag.color ? `${flag.color}33` : undefined, color: flag.color ?? undefined }}
-								title={flag.description ?? undefined}
-							>
-								{flag.icon && <span className="material-symbols-outlined leading-none" style={{ fontSize: '12px' }}>{flag.icon}</span>}
-								{flag.name}
-							</span>
-						))}
-					</div>
-				)}
+				{flags && flags.length > 0 && <PlayerFlagsList flags={flags} zIndex={zIndex} />}
 				<DraggableWindowPinToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
@@ -222,4 +209,100 @@ function formatDateLabel(dateKey: string): string {
 	if (dateFns.isToday(date)) return 'Today'
 	if (dateFns.isYesterday(date)) return 'Yesterday'
 	return dateFns.format(date, 'EEE, MMM d')
+}
+
+interface PlayerFlagsListProps {
+	flags: NonNullable<ReturnType<typeof sortFlagsByHierarchy>>
+	zIndex: number
+}
+
+function PlayerFlagsList({ flags, zIndex }: PlayerFlagsListProps) {
+	const containerRef = React.useRef<HTMLDivElement>(null)
+	const [visibleCount, setVisibleCount] = React.useState(flags.length)
+	const [isPopoverOpen, setIsPopoverOpen] = React.useState(false)
+
+	React.useEffect(() => {
+		if (!containerRef.current) return
+
+		const container = containerRef.current
+		const children = Array.from(container.children) as HTMLElement[]
+		let totalWidth = 0
+		let count = 0
+		const maxWidth = 450
+		const ellipsisWidth = 40 // approximate width for ellipsis button
+
+		for (let i = 0; i < children.length - 1; i++) { // -1 to exclude the ellipsis button
+			const child = children[i]
+			const childWidth = child.offsetWidth
+			const gap = 2 // gap-0.5 = 2px
+
+			if (totalWidth + childWidth + (count > 0 ? gap : 0) > maxWidth - ellipsisWidth) {
+				break
+			}
+
+			totalWidth += childWidth + (count > 0 ? gap : 0)
+			count++
+		}
+
+		setVisibleCount(count === flags.length ? flags.length : count)
+	}, [flags])
+
+	const visibleFlags = flags.slice(0, visibleCount)
+	const hasOverflow = visibleCount < flags.length
+
+	return (
+		<div className="flex items-center gap-0.5 min-w-0" ref={containerRef}>
+			{visibleFlags.map((flag) => (
+				<span
+					key={flag.id}
+					className="inline-flex items-center gap-0.5 rounded px-1 py-0 text-[10px] font-medium leading-tight shrink-0"
+					style={{ backgroundColor: flag.color ? `${flag.color}33` : undefined, color: flag.color ?? undefined }}
+					title={flag.description ?? undefined}
+				>
+					{flag.icon && <span className="material-symbols-outlined leading-none" style={{ fontSize: '12px' }}>{flag.icon}</span>}
+					{flag.name}
+				</span>
+			))}
+			{hasOverflow && (
+				<Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
+					<PopoverTrigger asChild>
+						<button
+							type="button"
+							className="inline-flex items-center gap-0.5 rounded px-1 py-0 text-[10px] font-medium leading-tight shrink-0 bg-muted hover:bg-muted/80 transition-colors"
+							title="Show all tags"
+						>
+							<Icons.MoreHorizontal className="h-3 w-3" />
+						</button>
+					</PopoverTrigger>
+					<PopoverContent style={{ zIndex: zIndex + 10 }} className="w-auto max-w-md p-2">
+						<div className="flex flex-wrap gap-1">
+							{flags.map((flag) => (
+								<span
+									key={flag.id}
+									className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium leading-tight"
+									style={{ backgroundColor: flag.color ? `${flag.color}33` : undefined, color: flag.color ?? undefined }}
+									title={flag.description ?? undefined}
+								>
+									{flag.icon && <span className="material-symbols-outlined leading-none" style={{ fontSize: '12px' }}>{flag.icon}</span>}
+									{flag.name}
+								</span>
+							))}
+						</div>
+					</PopoverContent>
+				</Popover>
+			)}
+			<div style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none' }}>
+				{flags.map((flag) => (
+					<span
+						key={flag.id}
+						className="inline-flex items-center gap-0.5 rounded px-1 py-0 text-[10px] font-medium leading-tight shrink-0"
+						style={{ backgroundColor: flag.color ? `${flag.color}33` : undefined, color: flag.color ?? undefined }}
+					>
+						{flag.icon && <span className="material-symbols-outlined leading-none" style={{ fontSize: '12px' }}>{flag.icon}</span>}
+						{flag.name}
+					</span>
+				))}
+			</div>
+		</div>
+	)
 }
