@@ -26,20 +26,25 @@ type CacheEntry<T> = {
 	inflight?: Promise<T>
 }
 
+type PlayerFlagsAndProfile = {
+	flags: BM.PlayerFlag[]
+	bmPlayerId: string
+	profileUrl: string
+	hoursPlayed: number
+}
+
 const CACHE_TTL = {
 	steamIdResolution: Infinity,
 	orgServerIds: Infinity,
-	playerFlags: 5 * 60 * 1000, // 5 minutes
+	playerFlagsAndProfile: 5 * 60 * 1000, // 5 minutes
 	playerBansAndNotes: 5 * 60 * 1000, // 5 minutes
-	playerProfile: 5 * 60 * 1000, // 5 minutes
 } as const
 
 const cache = {
 	steamIdResolution: new FixedSizeMap<string, CacheEntry<string>>(500),
 	orgServerIds: null as CacheEntry<string[]> | null,
-	playerFlags: new FixedSizeMap<string, CacheEntry<BM.PlayerFlag[]>>(500),
+	playerFlagsAndProfile: new FixedSizeMap<string, CacheEntry<PlayerFlagsAndProfile>>(500),
 	playerBansAndNotes: new FixedSizeMap<string, CacheEntry<{ banCount: number; noteCount: number }>>(500),
-	playerProfile: new FixedSizeMap<string, CacheEntry<{ bmPlayerId: string; profileUrl: string; hoursPlayed: number }>>(500),
 }
 
 function getCached<T>(entry: CacheEntry<T> | undefined | null): T | undefined {
@@ -363,24 +368,28 @@ const getOrgServerIds = C.spanOp(
 
 // -------- cached fetchers (shared by handlers and priming) --------
 
-const fetchPlayerFlags = C.spanOp(
-	'fetchPlayerFlags',
+const fetchPlayerFlagsAndProfile = C.spanOp(
+	'fetchPlayerFlagsAndProfile',
 	{ module, attrs: (_ctx, steamId) => ({ steamId }) },
-	async (ctx: CS.Ctx, steamId: string): Promise<BM.PlayerFlag[]> => {
-		return cachedFetch(cache.playerFlags, steamId, CACHE_TTL.playerFlags, async () => {
+	async (ctx: CS.Ctx, steamId: string): Promise<PlayerFlagsAndProfile> => {
+		return cachedFetch(cache.playerFlagsAndProfile, steamId, CACHE_TTL.playerFlagsAndProfile, async () => {
 			const bmPlayerId = await resolvePlayerBySteamId(ctx, steamId)
+			const serverIds = await getOrgServerIds(ctx)
+
+			const serverFilter = serverIds.length > 0 ? `&filter[servers]=${serverIds.join(',')}` : ''
 			const [data] = await bmFetch(
 				ctx,
 				'GET',
-				`/players/${bmPlayerId}?include=flagPlayer,playerFlag&fields[playerFlag]=name,color,description,icon`,
-				{ responseSchema: BM.PlayerWithFlagsResponse },
+				`/players/${bmPlayerId}?include=flagPlayer,playerFlag,server&fields[playerFlag]=name,color,description,icon&fields[server]=name${serverFilter}`,
+				{ responseSchema: BM.PlayerWithFlagsAndServersResponse },
 			)
 
 			const included = data.included ?? []
 			const flagPlayers = included.filter((i): i is typeof i & { type: 'flagPlayer' } => i.type === 'flagPlayer')
 			const playerFlags = included.filter((i): i is typeof i & { type: 'playerFlag' } => i.type === 'playerFlag')
+			const servers = included.filter((i): i is typeof i & { type: 'server' } => i.type === 'server')
 
-			return flagPlayers.map((fp) => {
+			const flags = flagPlayers.map((fp) => {
 				const flagId = fp.relationships?.playerFlag?.data?.id
 				const flag = playerFlags.find((pf) => pf.id === flagId)
 				return {
@@ -391,6 +400,18 @@ const fetchPlayerFlags = C.spanOp(
 					icon: flag?.attributes?.icon ?? null,
 				}
 			})
+
+			const orgServerIdSet = new Set(serverIds)
+			const totalSeconds = servers
+				.filter((s) => orgServerIdSet.has(s.id))
+				.reduce((sum, s) => sum + (s.meta?.timePlayed ?? 0), 0)
+
+			return {
+				flags,
+				bmPlayerId,
+				profileUrl: `https://www.battlemetrics.com/rcon/players/${bmPlayerId}`,
+				hoursPlayed: Math.round(totalSeconds / 3600),
+			}
 		})
 	},
 )
@@ -417,35 +438,6 @@ const fetchPlayerBansAndNotes = C.spanOp(
 	},
 )
 
-const fetchPlayerProfile = C.spanOp(
-	'fetchPlayerProfile',
-	{ module, attrs: (_ctx, steamId) => ({ steamId }) },
-	async (ctx: CS.Ctx, steamId: string) => {
-		return cachedFetch(cache.playerProfile, steamId, CACHE_TTL.playerProfile, async () => {
-			const bmPlayerId = await resolvePlayerBySteamId(ctx, steamId)
-			const serverIds = await getOrgServerIds(ctx)
-
-			const serverInfos = await Promise.all(
-				serverIds.map((serverId) =>
-					bmFetch(ctx, 'GET', `/players/${bmPlayerId}/servers/${serverId}`, {
-						responseSchema: BM.PlayerServerResponse,
-					})
-						.then(([d]) => d.data.attributes.timePlayed ?? 0)
-						.catch(() => 0)
-				),
-			)
-
-			const totalSeconds = serverInfos.reduce((sum, t) => sum + t, 0)
-
-			return {
-				bmPlayerId,
-				profileUrl: `https://www.battlemetrics.com/rcon/players/${bmPlayerId}`,
-				hoursPlayed: Math.round(totalSeconds / 3600),
-			}
-		})
-	},
-)
-
 // -------- event-driven cache priming --------
 
 const primePlayerCache = C.spanOp(
@@ -453,9 +445,8 @@ const primePlayerCache = C.spanOp(
 	{ module, levels: { error: 'error', event: 'trace' }, attrs: (_ctx, steamId) => ({ steamId }) },
 	async (ctx: CS.Ctx, steamId: string) => {
 		await Promise.all([
-			fetchPlayerFlags(ctx, steamId),
+			fetchPlayerFlagsAndProfile(ctx, steamId),
 			fetchPlayerBansAndNotes(ctx, steamId),
-			fetchPlayerProfile(ctx, steamId),
 		])
 	},
 )
@@ -468,13 +459,13 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 			for (const event of events) {
 				if (event.type === 'PLAYER_CONNECTED') {
 					const steamId = (event as SM.Events.PlayerConnected).player.ids.steam
-					if (steamId && !getCached(cache.playerFlags.get(steamId))) {
+					if (steamId && !getCached(cache.playerFlagsAndProfile.get(steamId))) {
 						steamIdsToPrime.add(steamId)
 					}
 				} else if (event.type === 'NEW_GAME' || event.type === 'RESET') {
 					const state = (event as SM.Events.NewGame).state
 					for (const player of state.players) {
-						if (player.ids.steam && !getCached(cache.playerFlags.get(player.ids.steam))) {
+						if (player.ids.steam && !getCached(cache.playerFlagsAndProfile.get(player.ids.steam))) {
 							steamIdsToPrime.add(player.ids.steam)
 						}
 					}
@@ -504,7 +495,8 @@ export const router = {
 	getPlayerFlags: orpcBase.input(z.object({
 		steamId: z.string(),
 	})).handler(async ({ input, context: ctx }) => {
-		return fetchPlayerFlags(ctx, input.steamId)
+		const result = await fetchPlayerFlagsAndProfile(ctx, input.steamId)
+		return result.flags
 	}),
 
 	getPlayerBansAndNotes: orpcBase.input(z.object({
@@ -516,6 +508,7 @@ export const router = {
 	getPlayerProfile: orpcBase.input(z.object({
 		steamId: z.string(),
 	})).handler(async ({ input, context: ctx }) => {
-		return fetchPlayerProfile(ctx, input.steamId)
+		const { flags: _, ...profile } = await fetchPlayerFlagsAndProfile(ctx, input.steamId)
+		return profile
 	}),
 }

@@ -56,12 +56,20 @@ const PlayerFlagInclude = z.object({
 	attributes: PlayerFlagAttributes,
 })
 
-export const PlayerWithFlagsResponse = z.object({
+const ServerInclude = z.object({
+	type: z.literal('server'),
+	id: z.string(),
+	meta: z.object({
+		timePlayed: z.number().nullable().optional(),
+	}).optional(),
+})
+
+export const PlayerWithFlagsAndServersResponse = z.object({
 	data: z.object({
 		type: z.literal('player'),
 		id: z.string(),
 	}),
-	included: z.array(z.discriminatedUnion('type', [FlagPlayerInclude, PlayerFlagInclude])).nullable().optional(),
+	included: z.array(z.discriminatedUnion('type', [FlagPlayerInclude, PlayerFlagInclude, ServerInclude])).nullable().optional(),
 })
 
 // ---- /servers?filter[organizations]=... ----
@@ -71,16 +79,6 @@ export const ServersResponse = z.object({
 		type: z.literal('server'),
 		id: z.string(),
 	})),
-})
-
-// ---- /players/{id}/servers/{serverId} ----
-
-export const PlayerServerResponse = z.object({
-	data: z.object({
-		attributes: z.object({
-			timePlayed: z.number().nullable().optional(),
-		}),
-	}),
 })
 
 // ---- /bans?filter[player]=... ----
