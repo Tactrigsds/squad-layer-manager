@@ -1,21 +1,207 @@
+import EventFilterSelect from '@/components/event-filter-select'
+import { MatchTeamDisplay } from '@/components/teams-display'
+import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { useTailingScroll } from '@/hooks/use-tailing-scroll'
+import * as ZusUtils from '@/lib/zustand'
+import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
-import { DraggableWindowStore } from '@/systems/draggable-window.client'
+import * as RPC from '@/orpc.client'
+import { getPlayerBansAndNotesQueryOptions, getPlayerFlagsQueryOptions, getPlayerProfileQueryOptions, sortFlagsByHierarchy, usePlayerFlagColor } from '@/systems/battlemetrics.client'
+import { DraggableWindowStore, useWindowLoading } from '@/systems/draggable-window.client'
+import * as MatchHistoryClient from '@/systems/match-history.client'
+import * as SquadServerClient from '@/systems/squad-server.client'
+import { useQuery } from '@tanstack/react-query'
+import * as dateFns from 'date-fns'
+import * as Icons from 'lucide-react'
+import React from 'react'
+import * as Zus from 'zustand'
 import { PlayerDetailsWindowProps } from './player-details-window.helpers'
+import { ServerEvent } from './server-event'
+import { Card, CardHeader, CardTitle } from './ui/card'
+import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
+import { Separator } from './ui/separator'
 
-DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps>({
+DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unknown>({
 	type: WINDOW_ID.enum['player-details'],
 	component: PlayerDetailsWindow,
 	initialPosition: 'left',
 	getId: (props) => props.playerId,
+	loadAsync: async ({ props }) => {
+		await Promise.all([
+			RPC.queryClient.fetchQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { playerId: props.playerId } })),
+			RPC.queryClient.fetchQuery(getPlayerFlagsQueryOptions(props.playerId)),
+			RPC.queryClient.fetchQuery(getPlayerProfileQueryOptions(props.playerId)),
+			RPC.queryClient.fetchQuery(getPlayerBansAndNotesQueryOptions(props.playerId)),
+		])
+	},
 })
 
 function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
+	const { data } = useQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { playerId } }))
+	const { data: rawFlags } = useQuery(getPlayerFlagsQueryOptions(playerId))
+	const flags = rawFlags ? sortFlagsByHierarchy(rawFlags) : undefined
+	const flagColor = usePlayerFlagColor(playerId)
+	const { data: profile } = useQuery(getPlayerProfileQueryOptions(playerId))
+	const { data: bansAndNotes } = useQuery(getPlayerBansAndNotesQueryOptions(playerId))
+	const currentMatchEvents = Zus.useStore(
+		SquadServerClient.ChatStore,
+		ZusUtils.useShallow(s => s.chatState.eventBuffer.filter(e => CHAT.getAssocPlayer(e, playerId) || e.type === 'NEW_GAME')),
+	)
+	React.useEffect(() => {
+		// Attach data.events and currentMatchEvents for logging
+		console.log('data:', data)
+		console.log('currentMatchEvents:', currentMatchEvents)
+	}, [data?.events, currentMatchEvents])
+
+	const allEvents = [...(data?.events ?? []), ...currentMatchEvents]
+	const livePlayer = Zus.useStore(
+		SquadServerClient.ChatStore,
+		(s) => s.chatState.interpolatedState.players.find((p) => p.ids.steam === playerId) ?? null,
+	)
+	const player = livePlayer ?? CHAT.findLastPlayerInstance(allEvents, playerId)
+	const currentMatch = MatchHistoryClient.useCurrentMatch()
+	const connectionStatus = data?.connectionStatus ?? null
+	const elapsed = useElapsed(connectionStatus?.status === 'online' ? connectionStatus.connectedSince : null)
+	const globalFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.secondaryFilterState)
+	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>(globalFilterState)
+	const filteredEvents = allEvents.filter(e => !CHAT.isEventFilteredBySecondary(e, filterState))
+	const { scrollAreaRef, contentRef, bottomRef, showScrollButton, scrollToBottom } = useTailingScroll()
+
 	return (
-		<div>
-			<h2>
-				player details
-			</h2>
-			<span>{playerId}</span>
+		<div className="min-w-0 min-h-0 flex flex-col">
+			<DraggableWindowDragBar>
+				<DraggableWindowTitle style={flagColor ? { color: flagColor } : undefined}>
+					{player?.ids.username ?? 'Player Details'}
+					{livePlayer && (livePlayer.teamId !== null || livePlayer.squadId !== null) && (
+						<span className="text-muted-foreground font-normal ml-1">
+							({livePlayer.teamId !== null && currentMatch
+								? (
+									<>
+										<MatchTeamDisplay matchId={currentMatch.historyEntryId} teamId={livePlayer.teamId} />
+										{livePlayer.squadId !== null && ', '}
+									</>
+								)
+								: null}
+							{livePlayer.squadId !== null && <>Squad {livePlayer.squadId}</>})
+						</span>
+					)}
+				</DraggableWindowTitle>
+				{connectionStatus && (
+					connectionStatus.status === 'online'
+						? <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" title={`Online${elapsed ? ` for ${elapsed}` : ''}`} />
+						: (
+							<span
+								className="h-2 w-2 rounded-full bg-muted-foreground shrink-0"
+								title={connectionStatus.lastSeen
+									? `Last seen ${dateFns.formatDistanceToNow(connectionStatus.lastSeen, { addSuffix: true })}`
+									: 'Offline'}
+							/>
+						)
+				)}
+				{flags && flags.length > 0 && (
+					<div className="flex items-center gap-0.5 min-w-0">
+						{flags.map((flag) => (
+							<span
+								key={flag.id}
+								className="inline-flex items-center gap-0.5 rounded px-1 py-0 text-[10px] font-medium leading-tight shrink-0"
+								style={{ backgroundColor: flag.color ? `${flag.color}33` : undefined, color: flag.color ?? undefined }}
+								title={flag.description ?? undefined}
+							>
+								{flag.icon && <span className="material-symbols-outlined leading-none" style={{ fontSize: '12px' }}>{flag.icon}</span>}
+								{flag.name}
+							</span>
+						))}
+					</div>
+				)}
+				<DraggableWindowPinToggle />
+				<DraggableWindowClose />
+			</DraggableWindowDragBar>
+			<div className="px-3 py-2 space-y-1.5 text-xs border-b border-border/50">
+				{player?.role && <div className="text-muted-foreground">{player.role}</div>}
+				{profile && (
+					<div className="flex items-center gap-2 text-muted-foreground">
+						<span>{profile.hoursPlayed}h played</span>
+						{bansAndNotes && (
+							<>
+								<span>|</span>
+								<span>{bansAndNotes.banCount} bans</span>
+								<span>|</span>
+								<span>{bansAndNotes.noteCount} notes</span>
+							</>
+						)}
+						<a href={profile.profileUrl} target="_blank" rel="noopener noreferrer" className="hover:underline text-blue-400">
+							BattleMetrics
+						</a>
+					</div>
+				)}
+			</div>
+			<Separator />
+			<div className="p-0.5">
+				<div className="inline-flex items-baseline gap-1 justify-between w-full">
+					<h3 className="inline">
+						Server Activity
+					</h3>
+					<EventFilterSelect variant="ghost" value={filterState} onValueChange={setFilterState} />
+				</div>
+				<ScrollArea ref={scrollAreaRef} className="h-100">
+					<div ref={contentRef} className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">
+						{groupEventsByDate(filteredEvents).map(([dateKey, events]) => (
+							<div key={dateKey}>
+								<div className="sticky top-0 z-10 bg-background/90 backdrop-blur-sm px-2 py-0.5 text-[10px] text-muted-foreground font-medium border-b border-border/50">
+									{formatDateLabel(dateKey)}
+								</div>
+								{events.map(e => <ServerEvent key={e.id} event={e} />)}
+							</div>
+						))}
+					</div>
+					<div ref={bottomRef} />
+					{showScrollButton && (
+						<Button
+							onClick={() => scrollToBottom()}
+							variant="secondary"
+							className="absolute bottom-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center z-10 bg-opacity-20! rounded-none backdrop-blur-sm"
+							title="Scroll to bottom"
+						>
+							<Icons.ChevronDown className="h-3 w-3" />
+							<span className="text-xs">Scroll to bottom</span>
+						</Button>
+					)}
+				</ScrollArea>
+			</div>
 		</div>
 	)
+}
+
+function useElapsed(since: number | null): string | null {
+	const [, setTick] = React.useState(0)
+	React.useEffect(() => {
+		if (since === null) return
+		const id = setInterval(() => setTick(t => t + 1), 30_000)
+		return () => clearInterval(id)
+	}, [since])
+
+	if (since === null) return null
+	return dateFns.formatDistanceToNow(since)
+}
+
+function groupEventsByDate(events: CHAT.EventEnriched[]): [string, CHAT.EventEnriched[]][] {
+	const groups = new Map<string, CHAT.EventEnriched[]>()
+	for (const event of events) {
+		const key = dateFns.format(event.time, 'yyyy-MM-dd')
+		let group = groups.get(key)
+		if (!group) {
+			group = []
+			groups.set(key, group)
+		}
+		group.push(event)
+	}
+	return Array.from(groups.entries())
+}
+
+function formatDateLabel(dateKey: string): string {
+	const date = dateFns.parseISO(dateKey)
+	if (dateFns.isToday(date)) return 'Today'
+	if (dateFns.isYesterday(date)) return 'Yesterday'
+	return dateFns.format(date, 'EEE, MMM d')
 }

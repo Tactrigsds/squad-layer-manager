@@ -178,15 +178,15 @@ const fetchSquads = C.spanOp('fetchSquads', { module }, async (ctx: C.Rcon) => {
 		if (!match) continue
 		const ids = match.groups as any
 		ids.squadId = +match.groups!.squadId
+		const creatorIds = SM.PlayerIds.parse({ username: match.groups!.creatorName, idsStr: match[6] })
 		const squad: any = {
 			squadId: +match.groups!.squadId,
 			teamId: teamId ?? null,
 			teamName: teamName,
 			squadName: match.groups!.squadName,
 			locked: match.groups?.locked === 'True',
-			creatorIds: SM.PlayerIds.parse({ username: match.groups!.creatorName, idsStr: match[6] }),
+			creator: creatorIds.steam,
 		}
-
 		const parsed = SM.SquadSchema.parse(squad)
 		squads.push(parsed)
 	}

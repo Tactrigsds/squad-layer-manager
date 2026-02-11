@@ -6,7 +6,7 @@ import { initModule } from '@/server/logger'
 import { CONFIG } from '@/server/config'
 import * as Env from '@/server/env'
 
-import orpcBase from '@/server/orpc-base'
+import { getOrpcBase } from '@/server/orpc-base'
 import * as D from 'discord.js'
 import { z } from 'zod'
 
@@ -29,6 +29,7 @@ export type AccessToken = {
 
 const module = initModule('discord')
 let log!: CS.Logger
+const orpcBase = getOrpcBase(module)
 
 let client!: D.Client
 

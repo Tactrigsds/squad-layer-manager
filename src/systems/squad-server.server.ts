@@ -17,7 +17,7 @@ import type { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod'
 import * as Messages from '@/messages.ts'
 import type * as BAL from '@/models/balance-triggers.models'
-import type * as CHAT from '@/models/chat.models.ts'
+import * as CHAT from '@/models/chat.models.ts'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import type * as LL from '@/models/layer-list.models'
@@ -30,7 +30,8 @@ import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
-import orpcBase from '@/server/orpc-base'
+import { getOrpcBase } from '@/server/orpc-base'
+import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Commands from '@/systems/commands.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
@@ -51,6 +52,7 @@ import { z } from 'zod'
 
 const module = initModule('squad-server')
 let log!: CS.Logger
+const orpcBase = getOrpcBase(module)
 
 type State = {
 	slices: Map<string, C.ServerSlice>
@@ -112,6 +114,7 @@ type EphemeralState = {
 	destroyed: boolean
 
 	nextSetLayerId: L.LayerId | null
+	chat: CHAT.ChatState
 
 	cleanupId: number | null
 }
@@ -132,6 +135,7 @@ namespace EphemeralState {
 			nextSetLayerId: null,
 			destroyed: false,
 			cleanupId: null,
+			chat: CHAT.getInitialChatState(),
 		}
 	}
 }
@@ -457,6 +461,11 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 	// -------- keep event buffer state up-to-date --------
 	server.event$.subscribe(([ctx, events]) => {
 		for (const event of events) {
+			try {
+				CHAT.handleEvent(ctx.server.state.chat, event)
+			} catch (error) {
+				log.error('Error handling event: %s %d', event.type, event.id, error)
+			}
 			log.debug('emitted event: %s %d', event.type, event.id)
 		}
 		ctx.server.state.eventBuffer.push(...events)
@@ -539,6 +548,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 
 	void LayerQueue.setupInstance({ ...ctx, ...slice })
 	SharedLayerList.setupInstance({ ...ctx, ...slice })
+	Battlemetrics.setupSquadServerInstance({ ...ctx, ...slice })
 	void adminList.get(slice)
 
 	server.state.cleanupId = CleanupSys.register(async () => {
@@ -1154,7 +1164,6 @@ function setupListenForTeamChanges(ctx: CS.Ctx & C.SquadRcon & C.AdminList) {
 				async function*([prev, current]) {
 					const ctx = resolveSliceCtx(getBaseCtx(), serverId)
 					const server = ctx.server
-					log.info('looking for team updates')
 
 					let intercepted = false
 					if (server.teamUpdateInterceptor) {
@@ -1349,17 +1358,6 @@ export async function updateServerState(
 	return newServerState
 }
 
-// TODO Zod?
-export function fromEventRow(row: SchemaModels.ServerEvent): SM.Events.Event {
-	return {
-		...(superjson.deserialize(row.data as any, { inPlace: true }) as any),
-		id: row.id,
-		type: row.type,
-		time: row.time.getTime(),
-		matchId: row.matchId,
-	}
-}
-
 const loadSavedEvents = C.spanOp('loadSavedEvents', { module }, async (ctx: C.SquadServer & C.Db) => {
 	const server = ctx.server
 	const [lastMatch] = await ctx.db().select({ id: Schema.matchHistory.id }).from(Schema.matchHistory).where(
@@ -1374,7 +1372,7 @@ const loadSavedEvents = C.spanOp('loadSavedEvents', { module }, async (ctx: C.Sq
 		)
 			.orderBy(E.asc(Schema.serverEvents.id))
 		: []
-	const events = rowsRaw.map(r => fromEventRow(r.event))
+	const events = rowsRaw.map(r => SM.Events.fromEventRow(r.event))
 	server.state.lastSavedEventId = events[events.length - 1]?.id ?? null
 	server.state.eventBuffer = events
 })
@@ -1382,122 +1380,167 @@ const loadSavedEvents = C.spanOp('loadSavedEvents', { module }, async (ctx: C.Sq
 export const saveEvents = C.spanOp(
 	'saveEvents',
 	{ module, mutexes: (ctx) => ctx.server.savingEventsMtx },
-	async (ctx: C.SquadServer & C.Db) => {
-		const state = ctx.server.state
+	async (ctx: C.SquadServer & C.Db) =>
+		await DB.runTransaction(ctx, async (ctx) => {
+			const state = ctx.server.state
 
-		let events: SM.Events.Event[] = []
-		if (state.lastSavedEventId === null) {
-			events = state.eventBuffer.slice()
-		} else {
-			const lastSavedIndex = state.eventBuffer.findIndex(e => e.id === state.lastSavedEventId)
-			if (lastSavedIndex === -1) throw new Error(`CRITICAL: Unable to resolve last saved event ${state.lastSavedEventId}`)
-			events = state.eventBuffer.slice(lastSavedIndex + 1)
-		}
+			let events: SM.Events.Event[] = []
+			if (state.lastSavedEventId === null) {
+				events = state.eventBuffer.slice()
+			} else {
+				const lastSavedIndex = state.eventBuffer.findIndex(e => e.id === state.lastSavedEventId)
+				if (lastSavedIndex === -1) throw new Error(`CRITICAL: Unable to resolve last saved event ${state.lastSavedEventId}`)
+				events = state.eventBuffer.slice(lastSavedIndex + 1)
+			}
 
-		if (events.length === 0) {
-			log.info('No events to save')
-			return
-		}
+			if (events.length === 0) {
+				log.debug('No events to save')
+				return
+			}
 
-		const eventRows: SchemaModels.NewServerEvent[] = []
-		const playerRows: SchemaModels.NewPlayer[] = []
-		const playerAssociationRows: SchemaModels.NewPlayerEventAssociation[] = []
-		const squadRows: { squad: SM.Squad; serverEventId: number }[] = []
+			let eventRows: SchemaModels.NewServerEvent[] = []
+			let playerRows: SchemaModels.NewPlayer[] = []
+			let playerAssociationRows: SchemaModels.NewPlayerEventAssociation[] = []
+			let squadRows: SchemaModels.NewSquad[] = []
+			let squadAssociationRows: SchemaModels.NewSquadEventAssociation[] = []
 
-		for (const e of events) {
-			let persisted = Obj.omit(e, ['id', 'type', 'time', 'matchId'])
-			if (e.type === 'NEW_GAME' || e.type === 'RESET') {
-				for (const player of e.state.players) {
-					const playerId = BigInt(SM.PlayerIds.getPlayerId(player.ids))
+			for (const e of events) {
+				const persisted = Obj.omit(e, ['id', 'type', 'time', 'matchId'])
+				eventRows.push({
+					id: e.id,
+					type: e.type,
+					time: new Date(e.time),
+					matchId: e.matchId,
+					data: superjson.serialize(persisted),
+				})
+				if (e.type === 'NEW_GAME' || e.type === 'RESET') {
+					for (const player of e.state.players) {
+						const playerId = BigInt(SM.PlayerIds.getPlayerId(player.ids))
+						playerRows.push({
+							steamId: playerId,
+							eosId: player.ids.eos,
+							username: player.ids.username,
+						})
+						playerAssociationRows.push({
+							assocType: 'game-participant',
+							playerId,
+							serverEventId: e.id,
+						})
+					}
+
+					for (const squad of e.state.squads) {
+						const id = squadId()
+						squadRows.push({
+							id,
+							ingameSquadId: squad.squadId,
+							name: squad.squadName,
+							teamId: squad.teamId,
+							creatorId: BigInt(squad.creator),
+						})
+						squadAssociationRows.push({
+							squadId: id,
+							serverEventId: e.id,
+						})
+					}
+				} else if (e.type === 'PLAYER_CONNECTED') {
+					const playerId = BigInt(SM.PlayerIds.getPlayerId(e.player.ids))
 					playerRows.push({
 						steamId: playerId,
-						eosId: player.ids.eos,
-						username: player.ids.username,
+						eosId: e.player.ids.eos,
+						username: e.player.ids.username,
 					})
+					const [assocType] = SM.Events.PLAYER_CONNECTED_META.playerAssocs
 					playerAssociationRows.push({
-						assocType: 'game-participant',
+						assocType,
 						playerId,
 						serverEventId: e.id,
 					})
+				} else {
+					const meta = SM.Events.EVENT_META[e.type]
+					for (const prop of meta.playerAssocs) {
+						if (prop in e) {
+							// @ts-expect-error idgaf
+							const assocPlayerId = e[prop] as SM.PlayerId
+							playerAssociationRows.push({ assocType: prop, playerId: BigInt(assocPlayerId), serverEventId: e.id })
+						}
+					}
 				}
-				for (const squad of e.state.squads) {
-					squadRows.push({ squad, serverEventId: e.id })
+
+				if (e.type === 'SQUAD_CREATED') {
+					const id = squadId()
+					squadRows.push({
+						id,
+						ingameSquadId: e.squad.squadId,
+						name: e.squad.squadName,
+						teamId: e.squad.teamId,
+						creatorId: BigInt(e.squad.creator),
+					})
+					squadAssociationRows.push({ serverEventId: e.id, squadId: id })
 				}
-			} else if (e.type === 'PLAYER_CONNECTED') {
-				const playerId = BigInt(SM.PlayerIds.getPlayerId(e.player.ids))
-				playerRows.push({
-					steamId: playerId,
-					eosId: e.player.ids.eos,
-					username: e.player.ids.username,
-				})
-				const [assocType] = SM.Events.PLAYER_CONNECTED_META.playerAssocs
-				playerAssociationRows.push({
-					assocType,
-					playerId,
-					serverEventId: e.id,
-				})
-			} else if (e.type === 'SQUAD_CREATED') {
-				squadRows.push({ squad: e.squad, serverEventId: e.id })
-			} else {
-				const meta = SM.Events.EVENT_META[e.type]
-				for (const prop of meta.playerAssocs) {
-					if (prop in e) {
-						// @ts-expect-error idgaf
-						const assocPlayerId = e[prop] as SM.PlayerId
-						playerAssociationRows.push({ assocType: prop, playerId: BigInt(assocPlayerId), serverEventId: e.id })
+
+				if ('PLAYER_LEFT_SQUAD' === e.type || 'SQUAD_DISBANDED' === e.type || 'SQUAD_DETAILS_CHANGED' === e.type) {
+					// need to write all previous events here so that we get the correct squad pk when we search for it below, as the squad may have been disbaneded and created by someone else in the events that we processed this batch.
+					await flush()
+					const [row] = await ctx.db().select({ squad: Schema.squads }).from(Schema.serverEvents).where(
+						E.and(
+							E.eq(Schema.serverEvents.matchId, e.matchId),
+							E.eq(Schema.squads.ingameSquadId, e.squadId),
+							E.eq(Schema.squads.teamId, e.teamId),
+						),
+					)
+						.innerJoin(Schema.squadEventAssociations, E.eq(Schema.squadEventAssociations.serverEventId, Schema.serverEvents.id))
+						.innerJoin(
+							Schema.squads,
+							E.and(
+								E.eq(Schema.squadEventAssociations.squadId, Schema.squads.id),
+							),
+						)
+						.orderBy(E.desc(Schema.serverEvents.time))
+						.limit(1)
+
+					if (row?.squad) {
+						squadAssociationRows.push({ serverEventId: e.id, squadId: row.squad.id })
 					}
 				}
 			}
+			await flush()
 
-			eventRows.push({
-				id: e.id,
-				type: e.type,
-				time: new Date(e.time),
-				matchId: e.matchId,
-				data: superjson.serialize(persisted),
-			})
-		}
-
-		await DB.runTransaction(ctx, async (ctx) => {
-			if (playerRows.length > 0) {
-				await ctx.db({ redactParams: true })
-					.insert(Schema.players)
-					.values(playerRows)
-					.onDuplicateKeyUpdate({
-						set: {
-							eosId: sql`VALUES(eosId)`,
-							username: sql`VALUES(username)`,
-							modifiedAt: sql`IF(eosId != VALUES(eosId) OR username != VALUES(username), NOW(), modifiedAt)`,
-						},
-					})
-			}
-			await ctx.db({ redactParams: true }).insert(Schema.serverEvents).values(eventRows)
-			if (playerAssociationRows.length > 0) {
-				await ctx.db({ redactParams: true }).insert(Schema.playerEventAssociations).values(playerAssociationRows)
-			}
-			if (squadRows.length > 0) {
-				const squadDbRows: SchemaModels.NewSquad[] = []
-				const squadAssociationRows: SchemaModels.NewSquadEventAssociation[] = []
-				for (const { squad, serverEventId } of squadRows) {
-					const id = squadId()
-					squadDbRows.push({
-						id,
-						ingameSquadId: squad.squadId,
-						name: squad.squadName,
-						creatorId: BigInt(squad.creator),
-					})
-					squadAssociationRows.push({
-						squadId: id,
-						serverEventId,
-					})
+			async function flush() {
+				if (eventRows.length > 0) {
+					await ctx.db({ redactParams: true }).insert(Schema.serverEvents).values(eventRows)
+					state.lastSavedEventId = eventRows[eventRows.length - 1].id!
+					eventRows = []
 				}
-				await ctx.db({ redactParams: true }).insert(Schema.squads).values(squadDbRows)
-				await ctx.db({ redactParams: true }).insert(Schema.squadEventAssociations).values(squadAssociationRows)
+				if (playerRows.length > 0) {
+					await ctx.db({ redactParams: true })
+						.insert(Schema.players)
+						.values(playerRows)
+						.onDuplicateKeyUpdate({
+							set: {
+								steamId: sql`VALUES(steamId)`,
+								eosId: sql`VALUES(eosId)`,
+								username: sql`VALUES(username)`,
+								modifiedAt:
+									sql`IF(eosId != VALUES(eosId) OR username != VALUES(username) OR steamId != VALUES(steamId), NOW(), modifiedAt)`,
+							},
+						})
+					playerRows = []
+				}
+				if (playerAssociationRows.length > 0) {
+					await ctx.db({ redactParams: true }).insert(Schema.playerEventAssociations).values(playerAssociationRows)
+					playerAssociationRows = []
+				}
+				if (squadRows.length > 0) {
+					await ctx.db({ redactParams: true }).insert(Schema.squads).values(squadRows)
+					squadRows = []
+				}
+				if (squadAssociationRows.length > 0) {
+					await ctx.db({ redactParams: true }).insert(Schema.squadEventAssociations).values(squadAssociationRows)
+					squadAssociationRows = []
+				}
+				log.info('saved %d events [%d:%d]', events.length, events[0].id, events[events.length - 1].id)
 			}
-		})
-		log.info('saved %d events [%d:%d]', events.length, events[0].id, events[events.length - 1].id)
-		state.lastSavedEventId = events[events.length - 1].id
-	},
+		}),
 )
 
 const interceptTeamsUpdate = C.spanOp('interceptTeamsUpdate', {

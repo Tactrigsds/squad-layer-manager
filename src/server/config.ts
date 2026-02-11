@@ -10,7 +10,8 @@ import * as LQY from '@/models/layer-queries.models.ts'
 import * as SS from '@/models/server-state.models.ts'
 import * as SM from '@/models/squad.models.ts'
 import * as RBAC from '@/rbac.models'
-import orpcBase from '@/server/orpc-base.ts'
+import { initModule } from '@/server/logger'
+import { getOrpcBase } from '@/server/orpc-base.ts'
 import * as Cli from '@/systems/cli.server'
 import * as LayerDb from '@/systems/layer-db.server'
 import * as fsPromise from 'fs/promises'
@@ -117,6 +118,7 @@ export const ConfigSchema = z.object({
 		],
 		defaultSortBy: { type: 'random' },
 	}),
+	playerFlagColorHierarchy: z.array(z.uuid()).optional(),
 })
 
 type Config = z.infer<typeof ConfigSchema>
@@ -187,7 +189,7 @@ export type ServerEntry = {
 // we also include public env variables here and the websocket client id for expediency
 export function getPublicConfig(wsClientId: string) {
 	return {
-		...Obj.selectProps(CONFIG, ['layerQueue', 'vote', 'topBarColor', 'layerTable']),
+		...Obj.selectProps(CONFIG, ['layerQueue', 'vote', 'topBarColor', 'layerTable', 'playerFlagColorHierarchy']),
 		isProduction: ENV.NODE_ENV === 'production',
 		PUBLIC_GIT_BRANCH: ENV.PUBLIC_GIT_BRANCH,
 		PUBLIC_GIT_SHA: ENV.PUBLIC_GIT_SHA,
@@ -219,6 +221,9 @@ async function generateConfigJsonSchema() {
 	await fsPromise.writeFile(schemaPath, stringifyCompact(schema))
 	console.log('Wrote generated config schema to %s', schemaPath)
 }
+
+const module = initModule('config')
+const orpcBase = getOrpcBase(module)
 
 export const router = {
 	getPublicConfig: orpcBase.handler(({ context: ctx }) => {

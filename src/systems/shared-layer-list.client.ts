@@ -232,7 +232,7 @@ function createStore() {
 				if (!hovered) {
 					if (userId !== get().hoveredActivityUserId) return
 					else set({ hoveredActivityUserId: null })
-				} else {
+
 					set({ hoveredActivityUserId: userId })
 				}
 			},

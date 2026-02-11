@@ -17,7 +17,7 @@ import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 
-import orpcBase from '@/server/orpc-base'
+import { getOrpcBase } from '@/server/orpc-base'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
@@ -40,6 +40,7 @@ export type VoteContext = {
 
 const module = initModule('vote')
 let log!: CS.Logger
+const orpcBase = getOrpcBase(module)
 
 export function setup() {
 	log = module.getLogger()

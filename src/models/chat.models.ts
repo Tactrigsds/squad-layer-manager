@@ -670,14 +670,24 @@ export function isEventFilteredBySecondary(event: EventEnriched, filterState: Se
 	return false
 }
 
-export function isEventAssocWithPlayer(event: EventEnriched, playerId: SM.PlayerId) {
-	if (event.type === 'NOOP') return false
+export function getAssocPlayer(event: EventEnriched, playerId?: SM.PlayerId) {
+	if (event.type === 'NOOP') return
 	const meta = SM.Events.EVENT_META[event.type]
 
 	for (const prop of meta.playerAssocs) {
 		// @ts-expect-error  idgaf
 		const player = event[prop] as SM.Player | undefined
-		if (player && SM.PlayerIds.getPlayerId(player.ids) === playerId) return true
+		if (player && (playerId === undefined || SM.PlayerIds.getPlayerId(player.ids) === playerId)) return player
 	}
-	return false
+	return
+}
+
+export function findLastPlayerInstance(events: EventEnriched[], playerId: SM.PlayerId): SM.Player | undefined {
+	const playerEvent = Arr.revFind(events, e => !!getAssocPlayer(e, playerId))
+	if (!playerEvent) return
+	return getAssocPlayer(playerEvent, playerId)
+}
+
+export function getPlayerRelatedEvents(events: EventEnriched[], playerId: SM.PlayerId): EventEnriched[] {
+	return events.filter(event => getAssocPlayer(event, playerId))
 }

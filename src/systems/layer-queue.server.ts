@@ -22,7 +22,7 @@ import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { initModule } from '@/server/logger'
-import orpcBase from '@/server/orpc-base'
+import { getOrpcBase } from '@/server/orpc-base'
 import * as LayerQueriesServer from '@/systems/layer-queries.server'
 import * as LayerQueries from '@/systems/layer-queries.shared.ts'
 import * as MatchHistory from '@/systems/match-history.server'
@@ -44,6 +44,7 @@ export type LayerQueueContext = {
 
 const module = initModule('layer-queue')
 let log!: CS.Logger
+const orpcBase = getOrpcBase(module)
 
 export function setup() {
 	log = module.getLogger()

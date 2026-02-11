@@ -4,6 +4,7 @@ import ServerPlayerList from '@/components/server-player-list.tsx'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import * as DH from '@/lib/display-helpers'
 import { cn } from '@/lib/utils.ts'
 import * as CHAT from '@/models/chat.models'
@@ -12,6 +13,7 @@ import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import { useInfiniteQuery } from '@tanstack/react-query'
+import { current } from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Rx from 'rxjs'
@@ -28,12 +30,7 @@ function ServerChatEvents(
 	const synced = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.synced)
 	const connectionError = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.connectionError)
 	const currentMatch = MatchHistoryClient.useCurrentMatch()
-	const bottomRef = React.useRef<HTMLDivElement>(null)
-	const scrollAreaRef = React.useRef<HTMLDivElement>(null)
-	// are we following the latest events by autoscrolling down
-	const tailing = React.useRef(true)
-	const eventsContainerRef = React.useRef<HTMLDivElement>(null)
-	const [showScrollButton, setShowScrollButton] = React.useState(false)
+	const { scrollAreaRef, contentRef: eventsContainerRef, bottomRef, showScrollButton, scrollToBottom } = useTailingScroll()
 	const [newMessageCount, setNewMessageCount] = React.useState(0)
 	const prevState = React.useRef<
 		{ eventGeneration: number; filteredEvents: CHAT.EventEnriched[]; eventFilterState: CHAT.SecondaryFilterState; matchId: number } | null
@@ -70,59 +67,6 @@ function ServerChatEvents(
 		}, [currentMatch?.historyEntryId]),
 	)
 
-	const scrollToBottom = () => {
-		const scrollElement = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
-		if (scrollElement) {
-			scrollElement.scrollTop = scrollElement.scrollHeight
-		}
-		tailing.current = true
-		setNewMessageCount(0)
-	}
-
-	const checkIfAtBottom = () => {
-		const scrollElement = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
-		if (!scrollElement) return false
-
-		const threshold = 10 // pixels from bottom to consider "at bottom"
-		const { scrollHeight, scrollTop, clientHeight } = scrollElement
-		const distanceFromBottom = scrollHeight - scrollTop - clientHeight
-
-		const isAtBottom = distanceFromBottom < threshold
-		return isAtBottom
-	}
-
-	// Scroll to bottom on initial render and when new events arrive if already tailing
-	// Scroll to bottom when scroll area content changes (via ResizeObserver)
-	// Scroll to bottom when window becomes visible again if already tailing
-	React.useEffect(() => {
-		const scrollElement = eventsContainerRef.current
-		if (!scrollElement) return
-
-		const resizeObserver = new ResizeObserver(() => {
-			requestAnimationFrame(() => {
-				if (tailing.current && !checkIfAtBottom()) {
-					scrollToBottom()
-				}
-			})
-		})
-
-		const sub = Rx.fromEvent(document, 'visibilitychange').subscribe(() => {
-			if (document.hidden || !tailing.current) return
-			scrollToBottom()
-		})
-
-		requestAnimationFrame(() => {
-			scrollToBottom()
-		})
-
-		resizeObserver.observe(scrollElement)
-
-		return () => {
-			resizeObserver.disconnect()
-			sub.unsubscribe()
-		}
-	}, [])
-
 	React.useEffect(() => {
 		if (synced) {
 			requestAnimationFrame(() => {
@@ -131,27 +75,12 @@ function ServerChatEvents(
 		}
 	}, [synced])
 
-	// Listen to scroll events to show/hide button
+	// Reset new message count when scrolled to bottom
 	React.useEffect(() => {
-		const scrollElement = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
-		if (!scrollElement) return
-
-		const handleScroll = () => {
-			const atBottom = checkIfAtBottom()
-			setShowScrollButton(!atBottom)
-			if (atBottom) {
-				setNewMessageCount(0)
-				tailing.current = true
-			} else {
-				tailing.current = false
-			}
+		if (!showScrollButton) {
+			setNewMessageCount(0)
 		}
-
-		scrollElement.addEventListener('scroll', handleScroll)
-		handleScroll() // Initial check
-
-		return () => scrollElement.removeEventListener('scroll', handleScroll)
-	}, [])
+	}, [showScrollButton])
 
 	return (
 		<div className={cn(props.className, 'h-full relative')}>
@@ -213,8 +142,19 @@ function ServerChatEvents(
 	)
 }
 
-function PreviousMatchEvents() {
-	const currentMatch = MatchHistoryClient.useCurrentMatch()
+export function PreviousMatchEvents(props?: {
+	current?: { ordinal: number; historyEntryId: number }
+}) {
+	const _currentMatch = MatchHistoryClient.useCurrentMatch()
+	type Current = { ordinal: number; historyEntryId: number }
+	let currentMatch: Current | undefined
+
+	if (props?.current) {
+		currentMatch = props.current
+	} else {
+		currentMatch = _currentMatch
+	}
+
 	const recentMatches = MatchHistoryClient.useRecentMatches()
 	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.secondaryFilterState)
 
@@ -422,6 +362,8 @@ export default function ServerActivityPanel() {
 			sub.unsubscribe()
 		}
 	}, [isStatePanelOpen])
+	const eventFilter = Zus.useStore(SquadServerClient.ChatStore, s => s.secondaryFilterState)
+	const onSelectEventFilter = Zus.useStore(SquadServerClient.ChatStore, s => s.setSecondaryFilterState)
 
 	return (
 		<Card className="flex flex-col min-h-0 w-fit">
@@ -431,7 +373,7 @@ export default function ServerActivityPanel() {
 						<Icons.Server className="h-5 w-5" />
 						Server Activity
 					</CardTitle>
-					<EventFilterSelect />
+					<EventFilterSelect value={eventFilter} onValueChange={onSelectEventFilter} />
 				</div>
 				<ServerCounts />
 			</CardHeader>

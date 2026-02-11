@@ -12,7 +12,7 @@ import * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 
-import orpcBase from '@/server/orpc-base'
+import { getOrpcBase } from '@/server/orpc-base'
 import * as Rbac from '@/systems/rbac.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Users from '@/systems/users.server'
@@ -24,6 +24,7 @@ import { z } from 'zod'
 
 const module = initModule('filter-entity')
 let log!: CS.Logger
+const orpcBase = getOrpcBase(module)
 
 export const filterMutation$ = new Subject<[C.Db & C.OtelCtx, USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>]>()
 const ToggleFilterContributorInputSchema = z

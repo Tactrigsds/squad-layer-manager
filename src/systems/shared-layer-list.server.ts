@@ -12,7 +12,7 @@ import * as RBAC from '@/rbac.models.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
-import orpcBase from '@/server/orpc-base'
+import { getOrpcBase } from '@/server/orpc-base'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as SquadServer from '@/systems/squad-server.server'
@@ -39,6 +39,7 @@ export type SharedLayerListContext = {
 }
 const module = initModule('shared-layer-list')
 let log!: CS.Logger
+const orpcBase = getOrpcBase(module)
 
 export function getDefaultState(serverState: SS.ServerState): SharedLayerListContext['sharedList'] {
 	const editSession: SLL.EditSession = SLL.createNewSession(Obj.deepClone(serverState.layerQueue))

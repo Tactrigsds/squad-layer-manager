@@ -1,4 +1,5 @@
 import * as Config from '@/server/config'
+import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as Discord from '@/systems/discord.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
 import * as LayerQueries from '@/systems/layer-queries.server'
@@ -14,6 +15,7 @@ import * as Vote from '@/systems/vote.server'
 export type OrpcAppRouter = typeof orpcAppRouter
 
 export const orpcAppRouter = {
+	battlemetrics: Battlemetrics.router,
 	squadServer: SquadServer.orpcRouter,
 	layerQueue: LayerQueue.router,
 	vote: Vote.router,

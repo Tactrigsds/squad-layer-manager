@@ -6,7 +6,7 @@ import * as RBAC from '@/rbac.models'
 import { CONFIG } from '@/server/config'
 import * as C from '@/server/context'
 
-import orpcBase from '@/server/orpc-base'
+import { getOrpcBase } from '@/server/orpc-base'
 import * as Discord from '@/systems/discord.server'
 
 import * as E from 'drizzle-orm/expressions'
@@ -58,6 +58,7 @@ export function setup() {
 // TODO error visibility
 
 const module = initModule('rbac')
+const orpcBase = getOrpcBase(module)
 
 export const getRolesForDiscordUser = C.spanOp(
 	'getRolesForDiscordUser',

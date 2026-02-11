@@ -7,7 +7,7 @@ import { initModule } from '@/server/logger'
 import type * as SS from '@/models/server-state.models'
 import type * as C from '@/server/context'
 
-import orpcBase from '@/server/orpc-base'
+import { getOrpcBase } from '@/server/orpc-base'
 import * as FilterEntity from '@/systems/filter-entity.server'
 import * as LayerDb from '@/systems/layer-db.server'
 import * as LayerQueries from '@/systems/layer-queries.shared'
@@ -16,6 +16,7 @@ import { z } from 'zod'
 
 const module = initModule('layer-queries')
 let log!: CS.Logger
+const orpcBase = getOrpcBase(module)
 
 export function setup() {
 	log = module.getLogger()

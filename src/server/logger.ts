@@ -49,6 +49,7 @@ export function ensureLoggerSetup() {
 			if (inputArgs.length === 0) {
 				inputArgs = ['']
 			} else if (inputArgs[0] instanceof Error) {
+				console.error(inputArgs[0])
 				const obj = inputArgs[0] as Error
 				attrs['error.type'] = obj.name
 				attrs['error.message'] = obj.message

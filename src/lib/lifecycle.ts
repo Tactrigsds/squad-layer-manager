@@ -213,7 +213,7 @@ export function dispatchLoaderEvents<
 			}
 			const existingEntry = loaderCache.find(e => Obj.deepEqual(e.key, cacheKey))
 			let cacheEntry: LoaderCacheEntry<typeof config>
-			let load$: Rx.Observable<LoaderData<typeof config> | undefined> | null = null
+			let isNewAsyncEntry = false
 			if (!existingEntry) {
 				cacheEntry = { name: config.name, key: cacheKey, active: undefined!, data: undefined }
 				const args = { key: cacheKey, preload: preloading, state: Im.current(draft) as StoreState }
@@ -223,23 +223,27 @@ export function dispatchLoaderEvents<
 				} else if (hasAsyncLoader(config)) {
 					const controller = new AbortController()
 					cacheEntry.loadAbortController = controller
-					const directLoad$ = Rx.from(
-						config.loadAsync({ ...args, abortController: cacheEntry.loadAbortController }).catch(() => undefined),
-					)
-					load$ = Rx.race(
-						directLoad$,
-						Rx.fromEvent(controller.signal, 'abort', { once: true }).pipe(Rx.map(() => undefined)),
-					)
-					load$!.subscribe((data: LoaderData<typeof config> | undefined) => {
-						if (data === undefined) return
-						ctx.set(Im.produce<StoreState>(draft => {
-							const cache = ctx.getCache(draft)
-							const entry = cache.find(e => e.key === cacheKey)
-							if (entry) {
-								entry.data = data
+					isNewAsyncEntry = true
+					startAsyncLoad(
+						ctx,
+						config,
+						cacheKey,
+						Im.current(draft) as StoreState,
+						preloading,
+						controller,
+						!preloading
+							? (data, draft) => {
+								const cache = ctx.getCache(draft)
+								const entry = cache.find(e => Obj.deepEqual(e.key, cacheKey))
+								if (entry) {
+									entry.active = true
+									entry.unloadSub?.unsubscribe()
+									delete entry.unloadSub
+								}
+								void config.onEnter?.({ key: cacheKey, data, draft })
 							}
-						}))
-					})
+							: undefined,
+					)
 				}
 
 				loaderCache.push(cacheEntry)
@@ -257,16 +261,22 @@ export function dispatchLoaderEvents<
 					cacheEntry.unloadSub?.unsubscribe()
 					delete cacheEntry.unloadSub
 					void config.onEnter?.({ key: cacheKey, data: cacheEntry.data, draft: draft })
-				} else if (load$) {
-					load$!.subscribe((data: LoaderData<typeof config> | undefined) => {
-						if (!data) return
-						ctx.set(Im.produce<StoreState>(draft => {
-							const cache = ctx.getCache(draft)
-							const entry = cache.find(e => e.key === cacheKey)
-							if (entry) {
-								entry.data = data
-							}
-						}))
+				} else if (!isNewAsyncEntry && !cacheEntry.data && cacheEntry.loadAbortController) {
+					// Existing entry with an in-flight async load (e.g. from preload).
+					// Restart the load with an onComplete callback so onEnter fires.
+					const existingController = cacheEntry.loadAbortController
+					const controller = new AbortController()
+					cacheEntry.loadAbortController = controller
+					existingController.abort('replaced')
+					startAsyncLoad(ctx, config as any, cacheKey, Im.current(draft) as StoreState, false, controller, (data, draft) => {
+						const cache = ctx.getCache(draft)
+						const entry = cache.find(e => Obj.deepEqual(e.key, cacheKey))
+						if (entry) {
+							entry.active = true
+							entry.unloadSub?.unsubscribe()
+							delete entry.unloadSub
+						}
+						void config.onEnter?.({ key: cacheKey, data, draft })
 					})
 				}
 			}
@@ -301,7 +311,7 @@ export function unloadLoaderEntry<
  * Schedules an unload after the configured staleTime.
  * Returns a subscription that can be used to cancel the scheduled unload.
  */
-export function scheduleUnloadLoaderEntry<
+function scheduleUnloadLoaderEntry<
 	Config extends LoaderConfig,
 	StoreState,
 >(
@@ -316,6 +326,186 @@ export function scheduleUnloadLoaderEntry<
 			unloadLoaderEntry(ctx, config, key, draft)
 		}))
 	})
+}
+
+// -------- Cache Entry Upsert --------
+
+/**
+ * Starts an async load operation and sets up a subscription to update the cache when complete.
+ */
+function startAsyncLoad<
+	Config extends LoaderConfig,
+	StoreState,
+>(
+	ctx: LoaderManagerContext<Config, StoreState>,
+	config: Extract<Config, { loadAsync: (...args: any[]) => any }>,
+	key: LoaderKey<Config>,
+	state: StoreState,
+	preload: boolean,
+	controller: AbortController,
+	onComplete?: (data: LoaderData<typeof config>, draft: Im.Draft<StoreState>) => void,
+): void {
+	const load$ = Rx.race(
+		Rx.from(config.loadAsync({ key, preload, state, abortController: controller }).catch(() => undefined)),
+		Rx.fromEvent(controller.signal, 'abort', { once: true }).pipe(Rx.map(() => undefined)),
+	)
+
+	load$.subscribe((data: LoaderData<typeof config> | undefined) => {
+		if (data === undefined) return
+		ctx.set(Im.produce<StoreState>(draft => {
+			const cache = ctx.getCache(draft)
+			const entry = cache.find(e => Obj.deepEqual(e.key, key))
+			if (entry) {
+				entry.data = data
+				delete entry.loadAbortController
+				onComplete?.(data, draft)
+			}
+		}))
+	})
+}
+
+/**
+ * Inserts or replaces a cache entry matching the given key.
+ * If no entry with a matching key exists, the new entry is appended.
+ * If an entry with a matching key exists, it is replaced in-place.
+ */
+function upsertCacheEntry<
+	Config extends LoaderConfig,
+	StoreState,
+>(
+	ctx: LoaderManagerContext<Config, StoreState>,
+	draft: Im.Draft<StoreState>,
+	entry: LoaderCacheEntry<Config>,
+) {
+	const cache = ctx.getCache(draft)
+	const idx = cache.findIndex(e => Obj.deepEqual(e.key, entry.key))
+	if (idx === -1) {
+		cache.push(entry)
+	} else {
+		cache[idx].unloadSub?.unsubscribe()
+		cache[idx].loadAbortController?.abort('replaced')
+		cache[idx] = entry
+	}
+}
+
+/**
+ * Preloads a cache entry for the given config and key.
+ * The entry is inserted if no matching key exists, otherwise replaced.
+ * A preloaded entry is inactive and will be scheduled for unload per the config's staleTime.
+ * Invokes the loader (sync or async) internally.
+ */
+export function preloadCacheEntry<
+	Config extends LoaderConfig,
+	StoreState,
+>(
+	ctx: LoaderManagerContext<Config, StoreState>,
+	config: Config,
+	key: LoaderKey<Config>,
+	draft: Im.Draft<StoreState>,
+) {
+	const state = Im.current(draft) as StoreState
+
+	if (hasSyncLoader(config)) {
+		const data = config.load({ key, preload: true, state })
+		upsertCacheEntry(ctx, draft, {
+			name: config.name,
+			key,
+			data,
+			active: false,
+			unloadSub: scheduleUnloadLoaderEntry(ctx, config, key),
+		})
+	} else if (hasAsyncLoader(config)) {
+		const controller = new AbortController()
+		upsertCacheEntry(ctx, draft, {
+			name: config.name,
+			key,
+			data: undefined,
+			active: false,
+			loadAbortController: controller,
+			unloadSub: scheduleUnloadLoaderEntry(ctx, config, key),
+		})
+
+		startAsyncLoad(ctx, config, key, state, true, controller)
+	}
+}
+
+/**
+ * Loads a cache entry for the given config and key, marking it as active.
+ * The entry is inserted if no matching key exists, otherwise replaced.
+ * Invokes the loader (sync or async) internally.
+ * Fires the config's onEnter hook when data is available.
+ */
+export function loadCacheEntry<
+	Config extends LoaderConfig,
+	StoreState,
+>(
+	ctx: LoaderManagerContext<Config, StoreState>,
+	config: Config,
+	key: LoaderKey<Config>,
+	draft: Im.Draft<StoreState>,
+) {
+	const state = Im.current(draft) as StoreState
+
+	if (hasSyncLoader(config)) {
+		const data = config.load({ key, preload: false, state })
+		upsertCacheEntry(ctx, draft, {
+			name: config.name,
+			key,
+			data,
+			active: true,
+		})
+		void config.onEnter?.({ key, data, draft })
+	} else if (hasAsyncLoader(config)) {
+		const controller = new AbortController()
+		upsertCacheEntry(ctx, draft, {
+			name: config.name,
+			key,
+			data: undefined,
+			active: true,
+			loadAbortController: controller,
+		})
+
+		startAsyncLoad(ctx, config, key, state, false, controller, (data, draft) => {
+			void config.onEnter?.({ key, data, draft })
+		})
+	}
+}
+
+/**
+ * Closes/deactivates a cache entry, calling onLeave and handling unload based on config.
+ * If config.unloadOnLeave is true, immediately unloads the entry.
+ * Otherwise, marks the entry as inactive and schedules unload based on staleTime.
+ */
+export function closeCacheEntry<
+	Config extends LoaderConfig,
+	StoreState,
+>(
+	ctx: LoaderManagerContext<Config, StoreState>,
+	config: Config,
+	key: LoaderKey<Config>,
+	draft: Im.Draft<StoreState>,
+) {
+	const loaderCache = ctx.getCache(draft)
+	const cacheEntry = loaderCache.find(e => Obj.deepEqual(e.key, key))
+	if (!cacheEntry || !cacheEntry.active) return
+
+	// Call onLeave if defined
+	if (config.onLeave && cacheEntry.data) {
+		void config.onLeave({
+			key,
+			data: Im.current(cacheEntry.data) as LoaderData<typeof config>,
+			draft,
+		})
+	}
+
+	// Either unload immediately or schedule for later
+	if (config.unloadOnLeave) {
+		unloadLoaderEntry(ctx, config, key, draft)
+	} else {
+		cacheEntry.active = false
+		cacheEntry.unloadSub?.unsubscribe()
+		cacheEntry.unloadSub = scheduleUnloadLoaderEntry(ctx, config, key)
+	}
 }
 
 /**

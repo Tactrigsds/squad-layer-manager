@@ -10,6 +10,7 @@ import * as SquadServerClient from '@/systems/squad-server.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
+import { PlayerDisplay } from './player-display'
 
 interface PlayerItemProps {
 	player: SM.Player
@@ -20,17 +21,7 @@ function PlayerItem({ player, matchId }: PlayerItemProps) {
 	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.secondaryFilterState)
 	return (
 		<div className="flex items-center gap-1.5 py-0.5 px-2 hover:bg-accent/50 rounded">
-			{player.isLeader && (
-				<span title="Squad Leader">
-					<Icons.Star className="h-3 w-3 text-yellow-500 fill-yellow-500 shrink-0" />
-				</span>
-			)}
-			{player.isAdmin && (
-				<span title="Admin">
-					<Icons.ShieldCheckIcon className="w-3 h-3 text-background fill-blue-300 shrink-0" />
-				</span>
-			)}
-			<span className="text-xs font-medium truncate">{player.ids.username}</span>
+			<PlayerDisplay className="text-xs" player={player} matchId={matchId} />
 			{player.role && eventFilterState === 'ALL' && <span className="text-xs text-muted-foreground truncate">- {player.role}</span>}
 		</div>
 	)
@@ -72,7 +63,7 @@ function SquadSection({ squad, players, matchId }: SquadSectionProps) {
 				)}
 			</CollapsibleTrigger>
 			<CollapsibleContent>
-				{players.map((player) => <PlayerItem key={player.ids.username} player={player} matchId={matchId} />)}
+				{players.map((player) => <PlayerItem key={player.ids.steam} player={player} matchId={matchId} />)}
 			</CollapsibleContent>
 		</Collapsible>
 	)

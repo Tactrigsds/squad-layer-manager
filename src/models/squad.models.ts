@@ -1,5 +1,5 @@
 import type { ServerEventPlayerAssocType } from '$root/drizzle/enums'
-import type * as SchemaModels from '$root/drizzle/schema.models'
+import * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array'
 import { createLogMatcher, eventDef, matchLog } from '@/lib/log-parsing'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
@@ -7,8 +7,8 @@ import * as ZodUtils from '@/lib/zod'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
 import * as dateFns from 'date-fns'
+import superjson from 'superjson'
 import { Event } from 'ws'
-
 import { z } from 'zod'
 
 export type SteamId = string
@@ -63,13 +63,14 @@ export const TeamIdSchema = z.union([z.literal(1), z.literal(2)])
 export type TeamId = z.infer<typeof TeamIdSchema>
 
 export namespace PlayerIds {
-	export type Fields = 'username' | 'steam' | 'eos' | 'playerController'
+	export type Fields = 'username' | 'steam' | 'eos' | 'playerController' | 'usernameNoTag'
 
 	export type IdQuery<Required extends Fields = never> = { [k in Fields]?: string } & { [k in Required]: string }
 
 	export function IdFields<F extends Fields | never>(...fields: F[]): z.ZodType<IdQuery<F>> {
 		return z.object({
 			username: Arr.includes(fields, 'username') ? z.string() : z.string().optional(),
+			usernameNoTag: Arr.includes(fields, 'usernameNoTag') ? z.string() : z.string().optional(),
 			steam: Arr.includes(fields, 'steam') ? z.string() : z.string().optional(),
 			eos: Arr.includes(fields, 'eos') ? z.string() : z.string().optional(),
 			playerController: Arr.includes(fields, 'playerController') ? z.string() : z.string().optional(),
@@ -110,11 +111,17 @@ export namespace PlayerIds {
 				ids[key] = value
 			}
 		}
-		if (opts.username) {
+		if (opts.username && opts.usernameNoTag) {
 			;[ids.usernameNoTag, ids.tag] = opts.username.split(/\s+/, 2)
 			if (!ids.tag) throw new Error('No tag-denoting whitespace in parsed username ' + opts.username)
 		}
-		return { ...ids, username: opts.username?.trim(), playerController: opts.playerController?.trim(), eos: opts.eos?.trim() ?? ids.eos }
+		return {
+			...ids,
+			usernameNoTag: opts.usernameNoTag?.trim(),
+			username: opts.username?.trim(),
+			playerController: opts.playerController?.trim(),
+			eos: opts.eos?.trim() ?? ids.eos,
+		}
 	}
 
 	export function find(idList: Type[], id: IdQueryOrPlayerId): Type | undefined
@@ -308,7 +315,6 @@ export type Player = z.infer<typeof PlayerSchema>
 export const PlayerIdSchema = z.string()
 export type PlayerId = SteamId
 export type PlayerAssoc<Type extends SchemaModels.ServerEventPlayerAssocType = 'player', Value = PlayerId> = { [key in Type]: Value }
-
 export namespace Players {
 	export type SquadGroup = { squadId: SquadId; teamId: TeamId; players: Player[] }
 	export function groupIntoSquads(players: Player[]) {
@@ -445,7 +451,9 @@ export namespace Events {
 		matchId: number
 	}
 
-	export type EventMeta = { playerAssocs: ServerEventPlayerAssocType[] }
+	export type EventMeta = {
+		playerAssocs: ServerEventPlayerAssocType[]
+	}
 
 	function meta<T extends ServerEventPlayerAssocType[]>(playerAssocs?: T) {
 		return { playerAssocs: playerAssocs ?? [] } satisfies EventMeta
@@ -512,12 +520,14 @@ export namespace Events {
 		type: 'SQUAD_CREATED'
 		squad: Squad
 	} & Base
+
 	export const SQUAD_CREATED_META = meta()
 
 	export type ChatMessage<P = PlayerId> =
 		& {
 			type: 'CHAT_MESSAGE'
 			message: string
+			// has indirect SquadAssoc through channel if ChatSquad
 			channel: ChatChannel
 		}
 		& PlayerAssoc<'player', P>
@@ -574,7 +584,8 @@ export namespace Events {
 		squadId: SquadId
 		teamId: TeamId
 		details: {
-			locked: boolean
+			locked?: boolean
+			squadName?: string
 		}
 	} & Base
 	export const SQUAD_DETAILS_CHANGED_META = meta()
@@ -659,34 +670,34 @@ export namespace Events {
 		& Base
 	export const PLAYER_WOUNDED_META = meta(['victim', 'attacker'])
 
-	export type Event =
+	export type Event<P = PlayerId> =
 		| MapSet
 		| NewGame
 		| Reset
 		| RconConnected
 		| RconDisconnected
 		| RoundEnded
-		| PlayerConnected
-		| PlayerDisconnected
+		| PlayerConnected<Player>
+		| PlayerDisconnected<P>
 		| SquadCreated
-		| ChatMessage
+		| ChatMessage<P>
 		| AdminBroadcast
 		// from rcon
-		| PossessedAdminCamera
-		| UnpossessedAdminCamera
-		| PlayerKicked
-		| PlayerBanned
-		| PlayerWarned
-		| PlayerDied
-		| PlayerWounded
+		| PossessedAdminCamera<P>
+		| UnpossessedAdminCamera<P>
+		| PlayerKicked<P>
+		| PlayerBanned<P>
+		| PlayerWarned<P>
+		| PlayerDied<P>
+		| PlayerWounded<P>
 		// synthetic
-		| PlayerDetailsChanged
-		| PlayerChangedTeam
-		| PlayerLeftSquad
+		| PlayerDetailsChanged<P>
+		| PlayerChangedTeam<P>
+		| PlayerLeftSquad<P>
 		| SquadDisbanded
 		| SquadDetailsChanged
-		| PlayerJoinedSquad
-		| PlayerPromotedToLeader
+		| PlayerJoinedSquad<P>
+		| PlayerPromotedToLeader<P>
 
 	export const EVENT_META = {
 		MAP_SET: MAP_SET_META,
@@ -715,6 +726,54 @@ export namespace Events {
 		PLAYER_DIED: PLAYER_DIED_META,
 		PLAYER_WOUNDED: PLAYER_WOUNDED_META,
 	} satisfies Record<Event['type'], EventMeta>
+
+	// TODO Zod?
+	export function fromEventRow(row: SchemaModels.ServerEvent): Event {
+		return {
+			...(superjson.deserialize(row.data as any, { inPlace: true }) as any),
+			id: row.id,
+			type: row.type,
+			time: row.time.getTime(),
+			matchId: row.matchId,
+		}
+	}
+
+	export function* iterAssocPlayerIds(event: Event<PlayerId | Player>) {
+		const meta = Events.EVENT_META[event.type]
+		if (event.type === 'NEW_GAME' || event.type === 'RESET') {
+			for (const player of event.state.players) {
+				yield [SchemaModels.SERVER_EVENT_PLAYER_ASSOC_TYPE.enum['game-participant'], PlayerIds.getPlayerId(player.ids)] as const
+			}
+			return
+		}
+
+		for (const prop of meta.playerAssocs) {
+			let playerId: PlayerId
+			// @ts-expect-error  idgaf
+			const player = event[prop] as Player | PlayerId
+			if (!player) return
+			if (typeof player === 'string') playerId = player
+			else playerId = PlayerIds.getPlayerId(player.ids)
+			yield [SchemaModels.SERVER_EVENT_PLAYER_ASSOC_TYPE.enum['player'], playerId] as const
+		}
+	}
+
+	export function* iterAssocPlayers(event: Event<Player>): Generator<[SchemaModels.ServerEventPlayerAssocType, Player]> {
+		const meta = Events.EVENT_META[event.type]
+		if (event.type === 'NEW_GAME' || event.type === 'RESET') {
+			for (const player of event.state.players) {
+				yield [SchemaModels.SERVER_EVENT_PLAYER_ASSOC_TYPE.enum['game-participant'], player] as const
+			}
+			return
+		}
+
+		for (const prop of meta.playerAssocs) {
+			// @ts-expect-error  idgaf
+			const player = event[prop] as Player | undefined
+			if (!player) continue
+			yield [SchemaModels.SERVER_EVENT_PLAYER_ASSOC_TYPE.enum[prop], player] as const
+		}
+	}
 }
 
 export namespace RconEvents {
@@ -1046,7 +1105,7 @@ export namespace LogEvents {
 
 	export const PlayerJoinSuccededSchema = eventDef('PLAYER_JOIN_SUCCEEDED', {
 		...BaseEventProperties,
-		player: PlayerIds.IdFields('username'),
+		player: PlayerIds.IdFields('usernameNoTag'),
 	})
 
 	export type PlayerJoinSucceeded = z.infer<typeof PlayerJoinSuccededSchema['schema']>

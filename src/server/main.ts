@@ -3,6 +3,7 @@ import * as CoreRcon from '@/lib/rcon/core-rcon'
 import * as FetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import { formatVersion } from '@/lib/versioning.ts'
 
+import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Cli from '@/systems/cli.server'
 import * as Commands from '@/systems/commands.server'
@@ -44,6 +45,7 @@ await C.spanOp('main', { module }, async () => {
 	log.info('-------- Starting SLM version %s --------', formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA))
 	CleanupSys.setup()
 	// Initialize all module loggers
+	Battlemetrics.setup()
 	CoreRcon.setup()
 	FetchAdminLists.setup()
 	Commands.setup()

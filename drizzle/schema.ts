@@ -109,6 +109,7 @@ export const squads = mysqlTable(
 	{
 		id: int('id').primaryKey(),
 		ingameSquadId: int('ingameSquadId').notNull(),
+		teamId: int('teamId').notNull(),
 		name: varchar('name', { length: 64 }).notNull(),
 		creatorId: bigint('creatorId', { mode: 'bigint' }).references(() => players.steamId, { onDelete: 'set null' }),
 		createdAt: timestamp('createdAt').defaultNow(),

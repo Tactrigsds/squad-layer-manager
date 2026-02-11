@@ -4,12 +4,16 @@ import * as SS from '@/models/server-state.models'
 import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models.ts'
 import * as DB from '@/server/db.ts'
-import orpcBase from '@/server/orpc-base'
+import { initModule } from '@/server/logger'
+import { getOrpcBase } from '@/server/orpc-base'
 import * as Rbac from '@/systems/rbac.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Orpc from '@orpc/server'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
+
+const module = initModule('server-settings')
+const orpcBase = getOrpcBase(module)
 
 export const orpcRouter = {
 	watchSettings: orpcBase.handler(async function*({ context: _ctx, signal }) {

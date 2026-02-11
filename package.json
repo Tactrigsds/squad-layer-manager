@@ -34,6 +34,7 @@
 		"@kubiks/otel-drizzle": "^2.1.0",
 		"@node-rs/argon2": "^1.8.3",
 		"@node-rs/bcrypt": "^1.10.6",
+		"@orpc/otel": "^1.13.4",
 		"@typescript/native-preview": "7.0.0-dev.20251214.1",
 		"better-sqlite3": "^12.2.0",
 		"bufferutil": "^4.0.9",

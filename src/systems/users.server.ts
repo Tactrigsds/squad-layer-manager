@@ -5,15 +5,13 @@ import * as MapUtils from '@/lib/map'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import * as CMD from '@/models/command.models'
 import type * as CS from '@/models/context-shared'
-import { initModule } from '@/server/logger'
-
 import * as USR from '@/models/users.models'
 import type * as RBAC from '@/rbac.models'
 import { CONFIG } from '@/server/config'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
-
-import orpcBase from '@/server/orpc-base'
+import { initModule } from '@/server/logger'
+import { getOrpcBase } from '@/server/orpc-base'
 import * as Discord from '@/systems/discord.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as E from 'drizzle-orm/expressions'
@@ -29,6 +27,7 @@ const invalidateUsers$ = new Rx.Subject<void>()
 
 const module = initModule('users')
 let log!: CS.Logger
+const orpcBase = getOrpcBase(module)
 
 export function setup() {
 	log = module.getLogger()

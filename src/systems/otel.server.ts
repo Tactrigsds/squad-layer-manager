@@ -10,6 +10,7 @@ import { Resource } from '@opentelemetry/resources'
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
 import { logs, NodeSDK, tracing } from '@opentelemetry/sdk-node'
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions'
+import { ORPCInstrumentation } from '@orpc/otel'
 import { randomBytes } from 'crypto'
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
@@ -43,7 +44,9 @@ export function setupOtel() {
 		spanProcessor: new tracing.BatchSpanProcessor(traceExporter),
 		metricReader: new PeriodicExportingMetricReader({ exporter: metricExporter }),
 		logRecordProcessors: [new logs.BatchLogRecordProcessor(logExporter)],
-		instrumentations: [getNodeAutoInstrumentations() // new PinoInstrumentation()
+		instrumentations: [
+			getNodeAutoInstrumentations(),
+			new ORPCInstrumentation(),
 		],
 	})
 }
