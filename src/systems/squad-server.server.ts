@@ -1130,13 +1130,44 @@ export const processRconEvent = C.spanOp('processRconEvent', { module }, async (
 			break
 		}
 
-		case 'PLAYER_BANNED':
-		case 'PLAYER_WARNED':
-		case 'POSSESSED_ADMIN_CAMERA':
+		case 'PLAYER_BANNED': {
+			emittedEvent = {
+				type: event.type,
+				id: eventId(),
+				interval: event.interval,
+				player: SM.PlayerIds.getPlayerId(event.playerIds),
+				...base,
+			}
+			break
+		}
+		case 'PLAYER_WARNED': {
+			const player = SM.PlayerIds.find(ctx.server.state.pendingEventState.recentPlayers, p => p.ids, event.playerIds)
+			if (!player) {
+				console.error('Player not found in recentPlayers:', event.playerIds)
+				return
+			}
+			emittedEvent = {
+				type: event.type,
+				id: eventId(),
+				reason: event.reason,
+				player: SM.PlayerIds.getPlayerId(player.ids),
+				...base,
+			}
+			break
+		}
+		case 'POSSESSED_ADMIN_CAMERA': {
+			emittedEvent = {
+				type: event.type,
+				id: eventId(),
+				player: SM.PlayerIds.getPlayerId(event.playerIds),
+				...base,
+			}
+			break
+		}
 		case 'UNPOSSESSED_ADMIN_CAMERA': {
 			emittedEvent = {
+				type: event.type,
 				id: eventId(),
-				...event,
 				player: SM.PlayerIds.getPlayerId(event.playerIds),
 				...base,
 			}

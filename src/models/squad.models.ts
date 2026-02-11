@@ -641,7 +641,7 @@ export namespace Events {
 	export type PlayerBanned<P = PlayerId> = { type: 'PLAYER_BANNED'; interval: string } & PlayerAssoc<'player', P> & Base
 	export const PLAYER_BANNED_META = meta(['player'])
 
-	export type PlayerWarned<P = PlayerId> = RconEvents.PlayerWarned & PlayerAssoc<'player', P> & Base
+	export type PlayerWarned<P = PlayerId> = { type: 'PLAYER_WARNED'; reason: string } & PlayerAssoc<'player', P> & Base
 	export const PLAYER_WARNED_META = meta(['player'])
 
 	export type PlayerDied<P = PlayerId> =
@@ -801,7 +801,7 @@ export namespace RconEvents {
 	const PlayerWarnedSchema = eventDef('PLAYER_WARNED', {
 		time: z.number(),
 		reason: z.string(),
-		playerIds: PlayerIds.IdQuerySchema,
+		playerIds: PlayerIds.IdFields('username'),
 	})
 	export type PlayerWarned = z.infer<typeof PlayerWarnedSchema['schema']>
 
@@ -879,7 +879,7 @@ export namespace RconEvents {
 		time: z.number(),
 		playerID: z.string(),
 		interval: z.string(),
-		playerIds: PlayerIds.Schema,
+		playerIds: PlayerIds.IdFields('username', 'eos', 'steam'),
 	})
 	export type PlayerBanned = z.infer<typeof PlayerBannedSchema['schema']>
 
