@@ -210,7 +210,6 @@ export const orpcRouter = {
 			return { code: 'err:unknown' as const, message: 'Failed to end match: unknown error' }
 		}
 		if (result.type === 'ROUND_ENDED') {
-			await SquadRcon.broadcast(ctx, Messages.BROADCASTS.matchEnded(ctx.user))
 			return { code: 'ok' as const, message: 'Match ended successfully' }
 		}
 		assertNever(result.type)

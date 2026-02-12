@@ -26,9 +26,6 @@ function formatInterval(interval: number, options?: { terse?: boolean; round?: '
 
 export const BROADCASTS = {
 	fogOff: 'Fog of War is disabled. All points are visible. Check your maps.',
-	matchEnded(user: USR.User) {
-		return `${user.displayName} ended the match via SLM`
-	},
 	queue: {},
 	vote: {
 		started(
