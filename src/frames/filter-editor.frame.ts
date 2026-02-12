@@ -157,7 +157,6 @@ const setup: Frame['setup'] = (args) => {
 		const filter = F.treeToFilterNode(state.tree)
 		const validatedFilter = F.isValidFilterNode(filter) ? filter : null
 		const baseQueryInput = validatedFilter ? Obj.deepClone(LQY.getEditFilterPageBaseInput(validatedFilter)) : undefined
-		console.log('validating filter', filter, !!validatedFilter, baseQueryInput)
 		set({
 			validatedFilter: validatedFilter ?? null,
 			baseQueryInput,

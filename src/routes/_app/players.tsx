@@ -21,7 +21,6 @@ function RouteComponent() {
 			}
 		}
 	}
-	console.log('Players:', players)
 
 	return (
 		<div className="w-full h-full grid place-items-center">
