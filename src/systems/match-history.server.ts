@@ -314,7 +314,7 @@ export const matchHistoryRouter = {
 			.leftJoin(Schema.squadEventAssociations, E.eq(Schema.serverEvents.id, Schema.squadEventAssociations.serverEventId))
 			.orderBy(E.desc(Schema.serverEvents.id))
 
-		const events = eventRows.map((row) => SM.Events.fromEventRow(row.event))
+		const events = eventRows.map((row) => SM.Events.fromEventRow(row.event)).toReversed()
 		const state = CHAT.getInitialChatState()
 		const processedEvents = new Set<number>()
 		for (const event of events) {
