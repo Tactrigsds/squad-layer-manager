@@ -44,7 +44,7 @@ const CACHE_TTL = {
 
 const cache = {
 	steamIdResolution: new FixedSizeMap<string, CacheEntry<string>>(500),
-	orgServerIds: null as CacheEntry<string[]> | null,
+	orgServerIds: null as CacheEntry<{ ids: { id: string; name: string | null }[] }> | null,
 	playerFlagsAndProfile: new FixedSizeMap<string, CacheEntry<PlayerFlagsAndProfile>>(500),
 	playerBansAndNotes: new FixedSizeMap<string, CacheEntry<{ banCount: number; noteCount: number }>>(500),
 }
@@ -319,17 +319,28 @@ const resolvePlayerBySteamId = C.spanOp(
 const getOrgServerIds = C.spanOp(
 	'getOrgServerIds',
 	{ module },
-	async (ctx: CS.Ctx): Promise<string[]> => {
+	async (ctx: CS.Ctx, serverName?: string | null): Promise<string[]> => {
 		const cached = getCached(cache.orgServerIds)
-		if (cached) return cached
+		if (cached) {
+			if (serverName) {
+				const filtered = cached.ids.filter((s) => s.name?.includes(serverName))
+				if (filtered.length > 0) return filtered.map((s) => s.id)
+			}
+			return cached.ids.map((s) => s.id)
+		}
 
 		const { BM_ORG_ID } = getEnv()
 		const [data] = await bmFetch(ctx, 'GET', `/servers?filter[organizations]=${BM_ORG_ID}&fields[server]=name`, {
 			responseSchema: BM.ServersResponse,
 		})
-		const ids = data.data.map((s) => s.id)
-		cache.orgServerIds = setCached(ids, CACHE_TTL.orgServerIds)
-		return ids
+		const servers = data.data.map((s) => ({ id: s.id, name: s.attributes.name ?? null }))
+		cache.orgServerIds = setCached({ ids: servers }, CACHE_TTL.orgServerIds)
+
+		if (serverName) {
+			const filtered = servers.filter((s) => s.name?.includes(serverName))
+			if (filtered.length > 0) return filtered.map((s) => s.id)
+		}
+		return servers.map((s) => s.id)
 	},
 )
 
@@ -412,8 +423,10 @@ const fetchPlayerBansAndNotes = C.spanOp(
 const bulkFetchOnlinePlayers = C.spanOp(
 	'bulkFetchOnlinePlayers',
 	{ module },
-	async (ctx: CS.Ctx): Promise<string[]> => {
-		const serverIds = await getOrgServerIds(ctx)
+	async (ctx: CS.Ctx & C.ServerSlice): Promise<string[]> => {
+		const info = await ctx.server.serverInfo.get(ctx)
+		const serverName = info.code === 'ok' ? info.data.name : null
+		const serverIds = await getOrgServerIds(ctx, serverName)
 		if (serverIds.length === 0) return []
 
 		const orgServerIdSet = new Set(serverIds)

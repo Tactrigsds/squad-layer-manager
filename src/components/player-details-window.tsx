@@ -22,6 +22,7 @@ import { ServerEvent } from './server-event'
 
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
 import { Separator } from './ui/separator'
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unknown>({
 	type: WINDOW_ID.enum['player-details'],
@@ -49,17 +50,8 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 		SquadServerClient.ChatStore,
 		ZusUtils.useShallow(s => s.chatState.eventBuffer.filter(e => CHAT.getAssocPlayer(e, playerId) || e.type === 'NEW_GAME')),
 	)
-	React.useEffect(() => {
-		// Attach data.events and currentMatchEvents for logging
-		console.log('data:', data)
-		console.log('currentMatchEvents:', currentMatchEvents)
-	}, [
-		data?.events,
-		currentMatchEvents,
-		data,
-	])
 
-	const allEvents = [...(data?.events ?? []), ...currentMatchEvents]
+	const allEvents = [...(data?.events ?? []), ...(currentMatchEvents.some(e => CHAT.getAssocPlayer(e, playerId)) ? currentMatchEvents : [])]
 	const livePlayer = Zus.useStore(
 		SquadServerClient.ChatStore,
 		(s) => s.chatState.interpolatedState.players.find((p) => p.ids.steam === playerId) ?? null,
@@ -111,6 +103,19 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 			</DraggableWindowDragBar>
 			<div className="px-3 py-2 space-y-1.5 text-xs border-b border-border/50">
 				{player?.role && <div className="text-muted-foreground">{player.role}</div>}
+				<div className="flex items-center gap-2 text-muted-foreground">
+					<CopySteamIdButton steamId={playerId} zIndex={zIndex} />
+					<ExtLink href={`https://steamcommunity.com/profiles/${playerId}`}>Steam</ExtLink>
+					<ExtLink href={`https://communitybanlist.com/search/${playerId}`}>CBL</ExtLink>
+					<ExtLink href={`https://mysquadstats.com/search/${playerId}#player`}>MySquadStats</ExtLink>
+					<ExtLink
+						href={profile
+							? profile.profileUrl
+							: `https://www.battlemetrics.com/rcon/players?filter%5Bsearch%5D=${playerId}&filter%5Bservers%5D=false&filter%5BplayerFlags%5D=&sort=score&showServers=true&method=quick`}
+					>
+						BattleMetrics
+					</ExtLink>
+				</div>
 				{profile && (
 					<div className="flex items-center gap-2 text-muted-foreground">
 						<span>{profile.hoursPlayed}h played on org servers</span>
@@ -122,14 +127,11 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 								<span>{bansAndNotes.noteCount} notes</span>
 							</>
 						)}
-						<a href={profile.profileUrl} target="_blank" rel="noopener noreferrer" className="hover:underline text-blue-400">
-							BattleMetrics
-						</a>
 					</div>
 				)}
 			</div>
 			<Separator />
-			<div className="p-0.5">
+			<div className="px-3 py-0.5">
 				<div className="inline-flex items-baseline gap-1 justify-between w-full">
 					<h3 className="inline">
 						Server Activity
@@ -149,8 +151,8 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 						}}
 					/>
 				</div>
-				<ScrollArea ref={scrollAreaRef} className="h-100">
-					<div ref={contentRef} className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">
+				<ScrollArea ref={scrollAreaRef} className="h-75">
+					<div ref={contentRef} className="flex flex-col gap-0.5 min-h-0 w-full">
 						{groupEventsByDate(filteredEvents).map(([dateKey, events]) => (
 							<div key={dateKey}>
 								<div className="sticky top-0 z-10 bg-background/90 backdrop-blur-sm px-2 py-0.5 text-[10px] text-muted-foreground font-medium border-b border-border/50">
@@ -175,6 +177,53 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 				</ScrollArea>
 			</div>
 		</div>
+	)
+}
+
+function ExtLink({ href, children }: { href: string; children: React.ReactNode }) {
+	return (
+		<a
+			href={href}
+			target="_blank"
+			rel="noopener noreferrer"
+			className="inline-flex items-center gap-0.5 text-blue-400 hover:underline"
+		>
+			{children}
+			<Icons.ExternalLink className="h-2.5 w-2.5" />
+		</a>
+	)
+}
+
+function CopySteamIdButton({ steamId, zIndex }: { steamId: string; zIndex: number }) {
+	const [open, setOpen] = React.useState(false)
+	const timeoutRef = React.useRef<ReturnType<typeof setTimeout>>(null)
+
+	const handleClick = () => {
+		void navigator.clipboard.writeText(steamId)
+		setOpen(true)
+		if (timeoutRef.current) clearTimeout(timeoutRef.current)
+		timeoutRef.current = setTimeout(() => setOpen(false), 1500)
+	}
+
+	React.useEffect(() => () => {
+		if (timeoutRef.current) clearTimeout(timeoutRef.current)
+	}, [])
+
+	return (
+		<Tooltip open={open}>
+			<TooltipTrigger asChild>
+				<button
+					type="button"
+					className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer"
+					title="Copy Steam ID"
+					onClick={handleClick}
+				>
+					<span className="font-mono">{steamId}</span>
+					<Icons.Copy className="h-3 w-3" />
+				</button>
+			</TooltipTrigger>
+			<TooltipContent style={{ zIndex: zIndex + 10 }}>Copied!</TooltipContent>
+		</Tooltip>
 	)
 }
 
