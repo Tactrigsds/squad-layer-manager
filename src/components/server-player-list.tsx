@@ -63,7 +63,9 @@ function SquadSection({ squad, players, matchId }: SquadSectionProps) {
 				)}
 			</CollapsibleTrigger>
 			<CollapsibleContent>
-				{players.map((player) => <PlayerItem key={player.ids.steam} player={player} matchId={matchId} />)}
+				{players.toSorted((a, b) => a.isLeader ? -1 : b.isLeader ? 1 : 0).map((player) => (
+					<PlayerItem key={player.ids.steam} player={player} matchId={matchId} />
+				))}
 			</CollapsibleContent>
 		</Collapsible>
 	)
