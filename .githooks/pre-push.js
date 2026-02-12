@@ -36,15 +36,15 @@ process.stdin.on('end', () => {
 
 	try {
 		console.log('📋 Checking format...')
-		execSync('pnpm exec dprint check', { stdio: 'inherit' })
+		execSync('pnpm run format:check', { stdio: 'inherit' })
 		console.log('✅ Format check passed\n')
 
 		console.log('🔎 Type checking...')
-		execSync('pnpm exec tsc -b', { stdio: 'inherit' })
+		execSync('pnpm run check', { stdio: 'inherit' })
 		console.log('✅ Type check passed\n')
 
 		console.log('🔎 Running linter...')
-		execSync('pnpm exec oxlint --type-aware', { stdio: 'inherit' })
+		execSync('pnpm run lint', { stdio: 'inherit' })
 		console.log('✅ Linting passed\n')
 
 		console.log('✨ All checks passed! Ready to push.')

@@ -10,12 +10,14 @@ import { getOrpcBase } from '@/server/orpc-base'
 import { z } from 'zod'
 
 const getEnv = Env.getEnvBuilder({ ...Env.groups.battlemetrics })
+let ENV = getEnv()
 const module = initModule('battlemetrics')
 const orpcBase = getOrpcBase(module)
 let log!: ReturnType<typeof module.getLogger>
 
 export function setup() {
 	log = module.getLogger()
+	ENV = getEnv()
 }
 
 // -------- TTL cache --------
@@ -36,8 +38,8 @@ type PlayerFlagsAndProfile = {
 const CACHE_TTL = {
 	steamIdResolution: Infinity,
 	orgServerIds: Infinity,
-	playerFlagsAndProfile: 5 * 60 * 1000, // 5 minutes
-	playerBansAndNotes: 5 * 60 * 1000, // 5 minutes
+	playerFlagsAndProfile: 30 * 60 * 1000, // 30 minutes
+	playerBansAndNotes: 60 * 60 * 1000, // 60 minutes
 } as const
 
 const cache = {
@@ -211,11 +213,10 @@ async function bmFetch<T = null>(
 		'bmFetch',
 		{ module, levels: { error: 'error', event: 'trace' }, attrs: () => ({ 'http.method': method, 'http.path': path }) },
 		async (ctx: CS.Ctx) => {
-			const { BM_HOST, BM_PAT } = getEnv()
-			const url = `${BM_HOST}${path}`
+			const url = `${ENV.BM_HOST}${path}`
 
 			const headers: Record<string, string> = {
-				'Authorization': `Bearer ${BM_PAT}`,
+				'Authorization': `Bearer ${ENV.BM_PAT}`,
 				'Accept': 'application/json',
 				...(init?.headers as Record<string, string>),
 			}
