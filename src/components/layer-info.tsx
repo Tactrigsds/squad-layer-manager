@@ -111,7 +111,7 @@ function LayerInfoWindow({ layerId, tab: initialTab }: LayerInfoWindowProps) {
 				<DraggableWindowPinToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
-			<div className="p-8 overflow-auto">
+			<div className="px-3 overflow-auto">
 				<LayerInfo layerId={layerId} tab={tab} setTab={setTab} hideTabs hideLayerName />
 			</div>
 		</div>
