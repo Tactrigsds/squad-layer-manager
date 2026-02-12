@@ -272,6 +272,13 @@ async function bmFetch<T = null>(
 					throw lastError
 				}
 
+				const contentType = res.headers.get('content-type') ?? ''
+				if (!contentType.includes('application/json')) {
+					const text = await res.text().catch(() => '')
+					log.error({ contentType, body: text }, `${method} ${path}: unexpected content-type: ${contentType}`)
+					throw new Error(`BattleMetrics API returned unexpected content-type: ${contentType}`)
+				}
+
 				if (init?.responseSchema) {
 					const payload = await res.json()
 					const result = init.responseSchema.safeParse(payload)
