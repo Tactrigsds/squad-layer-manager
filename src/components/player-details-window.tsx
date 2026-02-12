@@ -22,6 +22,7 @@ import { ServerEvent } from './server-event'
 
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
 import { Separator } from './ui/separator'
+import { Spinner } from './ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unknown>({
@@ -40,12 +41,12 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 })
 
 function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
-	const { data } = useQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { playerId } }))
+	const { data, isPending: isDetailsPending } = useQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { playerId } }))
 	const { data: rawFlags } = useQuery(getPlayerFlagsQueryOptions(playerId))
 	const flags = rawFlags ? sortFlagsByHierarchy(rawFlags) : undefined
 	const flagColor = usePlayerFlagColor(playerId)
-	const { data: profile } = useQuery(getPlayerProfileQueryOptions(playerId))
-	const { data: bansAndNotes } = useQuery(getPlayerBansAndNotesQueryOptions(playerId))
+	const { data: profile, isPending: isProfilePending } = useQuery(getPlayerProfileQueryOptions(playerId))
+	const { data: bansAndNotes, isPending: isBansAndNotesPending } = useQuery(getPlayerBansAndNotesQueryOptions(playerId))
 	const currentMatchEvents = Zus.useStore(
 		SquadServerClient.ChatStore,
 		ZusUtils.useShallow(s => s.chatState.eventBuffer.filter(e => CHAT.getAssocPlayer(e, playerId) || e.type === 'NEW_GAME')),
@@ -116,19 +117,27 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 						BattleMetrics
 					</ExtLink>
 				</div>
-				{profile && (
-					<div className="flex items-center gap-2 text-muted-foreground">
-						<span>{profile.hoursPlayed}h played on org servers</span>
-						{bansAndNotes && (
-							<>
-								<span>|</span>
-								<span>{bansAndNotes.banCount} bans</span>
-								<span>|</span>
-								<span>{bansAndNotes.noteCount} notes</span>
-							</>
-						)}
-					</div>
-				)}
+				{profile
+					? (
+						<div className="flex items-center gap-2 text-muted-foreground">
+							<span>{profile.hoursPlayed}h played on org servers</span>
+							{bansAndNotes
+								? (
+									<>
+										<span>|</span>
+										<span>{bansAndNotes.banCount} bans</span>
+										<span>|</span>
+										<span>{bansAndNotes.noteCount} notes</span>
+									</>
+								)
+								: isBansAndNotesPending && <Spinner className="size-3" />}
+						</div>
+					)
+					: isProfilePending && (
+						<div className="flex items-center gap-2 text-muted-foreground">
+							<Spinner className="size-3" />
+						</div>
+					)}
 			</div>
 			<Separator />
 			<div className="px-3 py-0.5">
@@ -153,6 +162,11 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 				</div>
 				<ScrollArea ref={scrollAreaRef} className="h-75">
 					<div ref={contentRef} className="flex flex-col gap-0.5 min-h-0 w-full max-w-175">
+						{isDetailsPending && filteredEvents.length === 0 && (
+							<div className="flex items-center justify-center py-6">
+								<Spinner className="size-5" />
+							</div>
+						)}
 						{groupEventsByDate(filteredEvents).map(([dateKey, events]) => (
 							<div key={dateKey}>
 								<div className="sticky top-0 z-10 bg-background/90 backdrop-blur-sm px-2 py-0.5 text-[10px] text-muted-foreground font-medium border-b border-border/50">
