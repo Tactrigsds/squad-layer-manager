@@ -54,16 +54,15 @@ export function PlayerDisplay({ player, showTeam, showSquad, showRole, className
 				username={player.ids.username}
 				style={flagColor ? { color: flagColor } : undefined}
 			/>
-			{showTeam && player.teamId !== null && (
-				<span className="inline-flex flex-nowrap">
-					(<MatchTeamDisplay matchId={matchId} teamId={player.teamId} />)
-				</span>
-			)}
-			{showSquad && player.squadId !== null && (
-				<span className="text-muted-foreground text-xs">
-					{player.squadId}
-				</span>
-			)}
+			{(showTeam && player.teamId !== null) || (showSquad && player.squadId !== null)
+				? (
+					<span className="inline-flex flex-nowrap">
+						({showTeam && player.teamId !== null && <MatchTeamDisplay matchId={matchId} teamId={player.teamId} />}
+						{showTeam && player.teamId !== null && showSquad && player.squadId !== null && ', '}
+						{showSquad && player.squadId !== null && player.squadId})
+					</span>
+				)
+				: null}
 			{showRole && player.role && (
 				<span className="text-muted-foreground text-xs">
 					[{player.role}]
