@@ -100,7 +100,7 @@ function RouteComponent() {
 					</NavLink>
 					<ExploreLayersDialog />
 				</div>
-				<div className="flex h-max min-h-0 flex-row items-center space-x-1 sm:space-x-3 lg:space-x-6 overflow-hidden">
+				<div className="flex h-max min-h-0 flex-row items-center space-x-1 sm:space-x-3 overflow-hidden">
 					{simulateRoles && (
 						<div className="hidden sm:flex items-center space-x-1 shrink-0">
 							<span className="text-sm font-medium">Simulating Roles</span>{' '}
@@ -136,6 +136,7 @@ function RouteComponent() {
 							<ServerActionsDropdown />
 						</>
 					)}
+					{config && <NavLinksDropdown globalLinks={config.navLinks} serverLinks={selectedServer?.navLinks} />}
 					{isOnServerDashboard && selectedServer && config && (config.servers.length === 1
 						? <div className="font-medium text-sm">{selectedServer.displayName}</div>
 						: (
@@ -272,6 +273,68 @@ function ExploreLayersDialog() {
 				pinMode="layers"
 			/>
 		</>
+	)
+}
+
+function NavLinksDropdown(
+	{ globalLinks, serverLinks }: { globalLinks?: { label: string; url: string }[]; serverLinks?: { label: string; url: string }[] },
+) {
+	const hasGlobal = globalLinks && globalLinks.length > 0
+	const hasServer = serverLinks && serverLinks.length > 0
+	if (!hasGlobal && !hasServer) return null
+
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>
+				<Button variant="ghost" size="icon" className="shrink-0">
+					<Icons.LayoutGrid className="h-4 w-4" />
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end">
+				{hasGlobal && globalLinks.map((link) => (
+					<DropdownMenuItem key={link.url} asChild className="cursor-pointer">
+						<a href={link.url} target="_blank" rel="noopener noreferrer">
+							<NavLinkFavicon url={link.url} />
+							{link.label}
+						</a>
+					</DropdownMenuItem>
+				))}
+				{hasGlobal && hasServer && <DropdownMenuSeparator />}
+				{hasServer && serverLinks.map((link) => (
+					<DropdownMenuItem key={link.url} asChild className="cursor-pointer">
+						<a href={link.url} target="_blank" rel="noopener noreferrer">
+							<NavLinkFavicon url={link.url} />
+							{link.label}
+						</a>
+					</DropdownMenuItem>
+				))}
+			</DropdownMenuContent>
+		</DropdownMenu>
+	)
+}
+
+function NavLinkFavicon({ url }: { url: string }) {
+	const [errored, setErrored] = React.useState(false)
+	const faviconUrl = React.useMemo(() => {
+		try {
+			const origin = new URL(url).origin
+			return `${origin}/favicon.ico`
+		} catch {
+			return null
+		}
+	}, [url])
+
+	if (!faviconUrl || errored) {
+		return <Icons.ExternalLink className="mr-2 h-4 w-4 shrink-0" />
+	}
+
+	return (
+		<img
+			src={faviconUrl}
+			alt=""
+			className="mr-2 h-4 w-4 shrink-0"
+			onError={() => setErrored(true)}
+		/>
 	)
 }
 

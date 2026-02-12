@@ -30,7 +30,7 @@ import { Readable } from 'node:stream'
 import type { WebSocket } from 'ws'
 
 const BASE_HEADERS = {
-	'Cross-Origin-Embedder-Policy': 'require-corp',
+	'Cross-Origin-Embedder-Policy': 'credentialless',
 	'Cross-Origin-Opener-Policy': 'same-origin',
 	'Cross-Origin-Resource-Policy': 'cross-origin',
 }

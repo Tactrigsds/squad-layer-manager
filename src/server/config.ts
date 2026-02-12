@@ -22,6 +22,11 @@ import path from 'node:path'
 import { z } from 'zod'
 import * as Env from './env.ts'
 
+const NavLinkSchema = z.array(z.object({
+	label: z.string(),
+	url: z.url(),
+}))
+
 export const ConfigSchema = z.object({
 	'$schema': z.string(),
 	topBarColor: z.string().prefault('green').nullable().describe('this should be set to null for production'),
@@ -42,6 +47,7 @@ export const ConfigSchema = z.object({
 			connections: SS.ServerConnectionSchema,
 			remindersAndAnnouncementsEnabled: z.boolean().prefault(true).describe('Whether reminders/annoucements for admins are enabled'),
 			defaultServer: z.boolean().default(false),
+			navLinks: NavLinkSchema.optional().describe('Server-specific links to display in the navbar dropdown menu'),
 		}),
 	).refine((servers) => {
 		const defaultServerCount = servers.filter((server) => server.defaultServer).length
@@ -119,6 +125,7 @@ export const ConfigSchema = z.object({
 		defaultSortBy: { type: 'random' },
 	}),
 	playerFlagColorHierarchy: z.array(z.uuid()).optional(),
+	navLinks: NavLinkSchema.optional().describe('Links to display in the navbar dropdown menu'),
 })
 
 type Config = z.infer<typeof ConfigSchema>
@@ -184,6 +191,7 @@ export type ServerEntry = {
 	id: string
 	displayName: string
 	defaultServer: boolean
+	navLinks?: { label: string; url: string }[]
 }
 
 // we also include public env variables here and the websocket client id for expediency
@@ -196,6 +204,7 @@ export function getPublicConfig(wsClientId: string) {
 		PUBLIC_SQUADCALC_URL: ENV.PUBLIC_SQUADCALC_URL,
 		repoUrl: CONFIG.repoUrl,
 		issuesUrl: CONFIG.issuesUrl,
+		navLinks: CONFIG.navLinks,
 		extraColumnsConfig: LayerDb.LAYER_DB_CONFIG,
 		chat: CONFIG.chat,
 		layersVersion: LayerDb.layersVersion,
@@ -209,6 +218,7 @@ export function getPublicConfig(wsClientId: string) {
 			id: server.id,
 			displayName: server.displayName,
 			defaultServer: server.defaultServer,
+			navLinks: server.navLinks,
 		})),
 
 		wsClientId,

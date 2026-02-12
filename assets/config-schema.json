@@ -130,7 +130,19 @@
             "default": true,
             "type": "boolean"
           },
-          "defaultServer": {"default": false, "type": "boolean"}
+          "defaultServer": {"default": false, "type": "boolean"},
+          "navLinks": {
+            "description": "Server-specific links to display in the navbar dropdown menu",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {"type": "string"},
+                "url": {"type": "string", "format": "uri"}
+              },
+              "required": ["label", "url"]
+            }
+          }
         },
         "required": ["id", "displayName", "connections"]
       }
@@ -848,6 +860,18 @@
         "type": "string",
         "format": "uuid",
         "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      }
+    },
+    "navLinks": {
+      "description": "Links to display in the navbar dropdown menu",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": {"type": "string"},
+          "url": {"type": "string", "format": "uri"}
+        },
+        "required": ["label", "url"]
       }
     }
   },
