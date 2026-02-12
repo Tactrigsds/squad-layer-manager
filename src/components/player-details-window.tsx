@@ -152,7 +152,7 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 					/>
 				</div>
 				<ScrollArea ref={scrollAreaRef} className="h-75">
-					<div ref={contentRef} className="flex flex-col gap-0.5 min-h-0 w-full">
+					<div ref={contentRef} className="flex flex-col gap-0.5 min-h-0 w-full max-w-175">
 						{groupEventsByDate(filteredEvents).map(([dateKey, events]) => (
 							<div key={dateKey}>
 								<div className="sticky top-0 z-10 bg-background/90 backdrop-blur-sm px-2 py-0.5 text-[10px] text-muted-foreground font-medium border-b border-border/50">
