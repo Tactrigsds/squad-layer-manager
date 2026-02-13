@@ -1,3 +1,4 @@
+import * as RPC from '@/orpc.client'
 import * as LQClient from '@/systems/layer-queries.client'
 import * as ServerSettingsClient from '@/systems/server-settings.client'
 import * as SLLClient from '@/systems/shared-layer-list.client'
@@ -15,5 +16,6 @@ w.SquadClient = SquadServerClient
 w.ChatStore = SquadServerClient.ChatStore
 w.Im = Im
 w.z = z
+w.RPC = RPC
 
 console.log('-------- DEVELOPER CONSOLE LOADED --------')

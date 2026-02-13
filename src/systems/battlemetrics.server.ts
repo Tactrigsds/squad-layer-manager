@@ -371,8 +371,10 @@ const fetchPlayerFlagsAndProfile = C.spanOp(
 				{ responseSchema: BM.PlayerWithFlagsAndServersResponse },
 			)
 
+			const { BM_ORG_ID } = getEnv()
 			const included = data.included ?? []
 			const flagPlayers = included.filter((i): i is typeof i & { type: 'flagPlayer' } => i.type === 'flagPlayer')
+				.filter((fp) => !BM_ORG_ID || fp.relationships?.organization?.data?.id === BM_ORG_ID)
 			const playerFlags = included.filter((i): i is typeof i & { type: 'playerFlag' } => i.type === 'playerFlag')
 			const servers = included.filter((i): i is typeof i & { type: 'server' } => i.type === 'server')
 
@@ -451,9 +453,11 @@ const bulkFetchOnlinePlayers = C.spanOp(
 				responseSchema: BM.PlayerListResponse,
 			})
 
+			const { BM_ORG_ID } = getEnv()
 			const included = data.included ?? []
 			const identifiers = included.filter((i): i is typeof i & { type: 'identifier' } => i.type === 'identifier')
 			const flagPlayers = included.filter((i): i is typeof i & { type: 'flagPlayer' } => i.type === 'flagPlayer')
+				.filter((fp) => !BM_ORG_ID || fp.relationships?.organization?.data?.id === BM_ORG_ID)
 			const playerFlags = included.filter((i): i is typeof i & { type: 'playerFlag' } => i.type === 'playerFlag')
 
 			for (const player of data.data) {

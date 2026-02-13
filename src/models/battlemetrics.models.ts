@@ -41,6 +41,9 @@ const FlagPlayerInclude = z.object({
 		player: z.object({
 			data: JsonApiResourceRef,
 		}).optional(),
+		organization: z.object({
+			data: JsonApiResourceRef,
+		}).optional(),
 	}).nullable().optional(),
 })
 
