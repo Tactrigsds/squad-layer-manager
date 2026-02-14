@@ -47,9 +47,14 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 	const flagColor = usePlayerFlagColor(playerId)
 	const { data: profile, isPending: isProfilePending } = useQuery(getPlayerProfileQueryOptions(playerId))
 	const { data: bansAndNotes, isPending: isBansAndNotesPending } = useQuery(getPlayerBansAndNotesQueryOptions(playerId))
+	const currentMatch = MatchHistoryClient.useCurrentMatch()
 	const currentMatchEvents = Zus.useStore(
 		SquadServerClient.ChatStore,
-		ZusUtils.useShallow(s => s.chatState.eventBuffer.filter(e => CHAT.getAssocPlayer(e, playerId) || e.type === 'NEW_GAME')),
+		ZusUtils.useShallow(s =>
+			s.chatState.eventBuffer.filter(e =>
+				currentMatch && e.matchId === currentMatch?.historyEntryId && (CHAT.getAssocPlayer(e, playerId) || e.type === 'NEW_GAME')
+			)
+		),
 	)
 
 	const allEvents = [...(data?.events ?? []), ...(currentMatchEvents.some(e => CHAT.getAssocPlayer(e, playerId)) ? currentMatchEvents : [])]
@@ -58,7 +63,6 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 		(s) => s.chatState.interpolatedState.players.find((p) => p.ids.steam === playerId) ?? null,
 	)
 	const player = livePlayer ?? CHAT.findLastPlayerInstance(allEvents, playerId)
-	const currentMatch = MatchHistoryClient.useCurrentMatch()
 	const connectionStatus = data?.connectionStatus ?? null
 	const elapsed = useElapsed(connectionStatus?.status === 'online' ? connectionStatus.connectedSince : null)
 	const globalFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.secondaryFilterState)
