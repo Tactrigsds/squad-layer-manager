@@ -23,6 +23,12 @@ export namespace Span {
 	export const ROOT_NAME = 'slm.span.root_name'
 }
 
+export namespace Http {
+	export const METHOD = 'http.method'
+	export const PATH = 'http.path'
+	export const STATUS_CODE = 'http.status_code'
+}
+
 export namespace SpanLink {
 	export const SOURCE = 'slm.link-source'
 	export const SOURCE_TYPES = [

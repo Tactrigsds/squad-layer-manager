@@ -1,18 +1,19 @@
 import { FixedSizeMap } from '@/lib/lru-map'
 import * as BM from '@/models/battlemetrics.models'
 import type * as CS from '@/models/context-shared'
+import * as ATTRS from '@/models/otel-attrs'
 import type * as SM from '@/models/squad.models'
 import * as C from '@/server/context'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
-
 import { z } from 'zod'
 
 const getEnv = Env.getEnvBuilder({ ...Env.groups.battlemetrics })
-let ENV = getEnv()
 const module = initModule('battlemetrics')
 const orpcBase = getOrpcBase(module)
+
+let ENV!: ReturnType<typeof getEnv>
 let log!: ReturnType<typeof module.getLogger>
 
 export function setup() {
@@ -211,7 +212,7 @@ async function bmFetch<T = null>(
 ): Promise<readonly [T, Response]> {
 	return C.spanOp(
 		'bmFetch',
-		{ module, levels: { error: 'error', event: 'trace' }, attrs: () => ({ 'http.method': method, 'http.path': path }) },
+		{ module, levels: { error: 'error', event: 'trace' }, attrs: () => ({ [ATTRS.Http.METHOD]: method, [ATTRS.Http.PATH]: path }) },
 		async (ctx: CS.Ctx) => {
 			const url = `${ENV.BM_HOST}${path}`
 
@@ -271,6 +272,9 @@ async function bmFetch<T = null>(
 					log.error({ status: res.status, statusText: res.statusText, body: text }, `${method} ${path}: ${res.status} ${res.statusText}`)
 					throw lastError
 				}
+
+				log.debug({ status: res.status, method, path }, `${method} ${path} : ${res.status}`)
+				C.setSpanOpAttrs({ [ATTRS.Http.STATUS_CODE]: res.status })
 
 				const contentType = res.headers.get('content-type') ?? ''
 				if (!contentType.includes('application/json')) {
