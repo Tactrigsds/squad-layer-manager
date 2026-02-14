@@ -91,8 +91,8 @@ async function cachedFetch<T>(
 // -------- rate-limit queue --------
 
 const RATE_LIMITS = {
-	perSecond: 15,
-	perMinute: 60,
+	perSecond: 10,
+	perMinute: 45,
 	backoffDefaultMs: 30_000,
 } as const
 
