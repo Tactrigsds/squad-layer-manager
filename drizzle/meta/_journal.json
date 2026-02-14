@@ -344,6 +344,13 @@
       "when": 1769887469126,
       "tag": "0048_happy_tinkerer",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "5",
+      "when": 1771027200000,
+      "tag": "0049_add_playerEventAssociations_id",
+      "breakpoints": true
     }
   ]
 }

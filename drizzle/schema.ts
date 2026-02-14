@@ -93,14 +93,16 @@ export const players = mysqlTable(
 export const playerEventAssociations = mysqlTable(
 	'playerEventAssociations',
 	{
+		id: int('id').autoincrement().primaryKey(),
 		serverEventId: int('serverEventId').references(() => serverEvents.id, { onDelete: 'cascade' }).notNull(),
 		playerId: bigint('playerId', { mode: 'bigint' }).references(() => players.steamId, { onDelete: 'cascade' }).notNull(),
 		assocType: mysqlEnum('assocType', enumTupleOptions(SERVER_EVENT_PLAYER_ASSOC_TYPE)).notNull(),
 		createdAt: timestamp('createdAt').defaultNow(),
 	},
 	(table) => ({
-		pk: primaryKey({ columns: [table.serverEventId, table.playerId] }),
 		playerIdIndex: index('playerIdIndex').on(table.playerId),
+		assocTypeIndex: index('assocTypeIndex').on(table.assocType),
+		serverEventIdIndex: index('serverEventIdIndex').on(table.serverEventId),
 	}),
 )
 

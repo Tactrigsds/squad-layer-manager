@@ -1510,7 +1510,7 @@ export const saveEvents = C.spanOp(
 				}
 
 				if ('PLAYER_LEFT_SQUAD' === e.type || 'SQUAD_DISBANDED' === e.type || 'SQUAD_DETAILS_CHANGED' === e.type) {
-					// need to write all previous events here so that we get the correct squad pk when we search for it below, as the squad may have been disbaneded and created by someone else in the events that we processed this batch.
+					// need to write all previous events here so that we get the correct squad pk when we search for it below, as the squad may have been disbanded and created by someone else in the events that we processed this batch.
 					await flush()
 					const [row] = await ctx.db().select({ squad: Schema.squads }).from(Schema.serverEvents).where(
 						E.and(
