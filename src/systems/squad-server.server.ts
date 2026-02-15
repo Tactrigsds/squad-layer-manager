@@ -1211,7 +1211,6 @@ function setupListenForTeamChanges(ctx: CS.Ctx & C.SquadRcon & C.AdminList) {
 
 					if (intercepted) return
 
-					log.debug('Generating synthetic events')
 					yield Array.from(generateSyntheticEvents(ctx, prev.teams, current.teams, current.time, match.historyEntryId))
 				},
 			),
@@ -1230,7 +1229,6 @@ function setupListenForTeamChanges(ctx: CS.Ctx & C.SquadRcon & C.AdminList) {
 					return
 				}
 				ctx.server.event$.next([ctx, events])
-				log.info('done generating synthetic events')
 			},
 		})
 }
