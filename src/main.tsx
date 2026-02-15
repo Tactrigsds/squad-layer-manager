@@ -6,6 +6,7 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { Providers } from './components/providers.tsx'
 import './index.css'
+import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
@@ -24,6 +25,7 @@ enableMapSet()
 	ThemeSys.setup()
 	ConfigClient.setup()
 	FilterEntityClient.setup()
+	BattlemetricsClient.setup()
 	MatchHistoryClient.setup()
 	SquadServerClient.setup()
 	UsersClient.setup()

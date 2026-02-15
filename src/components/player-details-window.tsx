@@ -8,7 +8,7 @@ import * as ZusUtils from '@/lib/zustand'
 import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as RPC from '@/orpc.client'
-import { getPlayerBansAndNotesQueryOptions, getPlayerFlagsQueryOptions, getPlayerProfileQueryOptions, sortFlagsByHierarchy, usePlayerFlagColor } from '@/systems/battlemetrics.client'
+import { getPlayerBansAndNotesQueryOptions, sortFlagsByHierarchy, usePlayerFlagColor, usePlayerFlags, usePlayerProfile } from '@/systems/battlemetrics.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -33,8 +33,6 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 	loadAsync: async ({ props }) => {
 		await Promise.all([
 			RPC.queryClient.fetchQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { playerId: props.playerId } })),
-			RPC.queryClient.fetchQuery(getPlayerFlagsQueryOptions(props.playerId)),
-			RPC.queryClient.fetchQuery(getPlayerProfileQueryOptions(props.playerId)),
 			RPC.queryClient.fetchQuery(getPlayerBansAndNotesQueryOptions(props.playerId)),
 		])
 	},
@@ -42,10 +40,10 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 
 function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 	const { data, isPending: isDetailsPending } = useQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { playerId } }))
-	const { data: rawFlags } = useQuery(getPlayerFlagsQueryOptions(playerId))
+	const rawFlags = usePlayerFlags(playerId)
 	const flags = rawFlags ? sortFlagsByHierarchy(rawFlags) : undefined
 	const flagColor = usePlayerFlagColor(playerId)
-	const { data: profile, isPending: isProfilePending } = useQuery(getPlayerProfileQueryOptions(playerId))
+	const profile = usePlayerProfile(playerId)
 	const { data: bansAndNotes, isPending: isBansAndNotesPending } = useQuery(getPlayerBansAndNotesQueryOptions(playerId))
 	const currentMatch = MatchHistoryClient.useCurrentMatch()
 	const currentMatchEvents = Zus.useStore(
@@ -137,11 +135,7 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 								: isBansAndNotesPending && <Spinner className="size-3" />}
 						</div>
 					)
-					: isProfilePending && (
-						<div className="flex items-center gap-2 text-muted-foreground">
-							<Spinner className="size-3" />
-						</div>
-					)}
+					: null}
 			</div>
 			<Separator />
 			<div className="px-3 py-0.5">

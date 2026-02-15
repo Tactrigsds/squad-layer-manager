@@ -154,3 +154,14 @@ export const NotesResponse = z.object({
 	})),
 	meta: JsonApiMeta,
 })
+
+// ---- Composite types used by server + client ----
+
+export type PlayerFlagsAndProfile = {
+	flags: PlayerFlag[]
+	bmPlayerId: string
+	profileUrl: string
+	hoursPlayed: number
+}
+
+export type PublicPlayerBmData = Record<string, PlayerFlagsAndProfile>

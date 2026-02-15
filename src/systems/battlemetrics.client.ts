@@ -1,19 +1,15 @@
 import type * as BM from '@/models/battlemetrics.models'
 import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems/config.client'
-import { useQuery } from '@tanstack/react-query'
 
-export const getPlayerFlagsQueryOptions = (steamId: string) =>
-	RPC.orpc.battlemetrics.getPlayerFlags.queryOptions({
-		input: { steamId },
-		staleTime: Infinity,
-	})
+import * as ReactRx from '@react-rxjs/core'
 
-export const getPlayerProfileQueryOptions = (steamId: string) =>
-	RPC.orpc.battlemetrics.getPlayerProfile.queryOptions({
-		input: { steamId },
-		staleTime: Infinity,
-	})
+import type { PublicPlayerBmData } from '@/models/battlemetrics.models'
+
+export const [usePlayerBmData, playerBmData$] = ReactRx.bind<PublicPlayerBmData>(
+	RPC.observe(() => RPC.orpc.battlemetrics.watchPlayerBmData.call()),
+	{},
+)
 
 export const getPlayerBansAndNotesQueryOptions = (steamId: string) =>
 	RPC.orpc.battlemetrics.getPlayerBansAndNotes.queryOptions({
@@ -31,8 +27,26 @@ export function sortFlagsByHierarchy<T extends BM.PlayerFlag>(flags: T[]): T[] {
 	})
 }
 
+export function usePlayerFlags(steamId: string) {
+	const bmData = usePlayerBmData()
+	const player = bmData[steamId]
+	return player?.flags ?? null
+}
+
+export function usePlayerProfile(steamId: string) {
+	const bmData = usePlayerBmData()
+	const player = bmData[steamId]
+	if (!player) return null
+	const { flags: _, ...profile } = player
+	return profile
+}
+
 export function usePlayerFlagColor(steamId: string): string | null {
-	const { data: flags } = useQuery(getPlayerFlagsQueryOptions(steamId))
+	const flags = usePlayerFlags(steamId)
 	if (!flags || flags.length === 0) return null
 	return sortFlagsByHierarchy(flags)[0]?.color ?? null
+}
+
+export function setup() {
+	playerBmData$.subscribe()
 }

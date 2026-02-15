@@ -1,12 +1,14 @@
+import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { FixedSizeMap } from '@/lib/lru-map'
 import * as BM from '@/models/battlemetrics.models'
 import type * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
-import type * as SM from '@/models/squad.models'
 import * as C from '@/server/context'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as SquadServer from '@/systems/squad-server.server'
+import * as Rx from 'rxjs'
 import { z } from 'zod'
 
 const getEnv = Env.getEnvBuilder({ ...Env.groups.battlemetrics })
@@ -29,12 +31,7 @@ type CacheEntry<T> = {
 	inflight?: Promise<T>
 }
 
-type PlayerFlagsAndProfile = {
-	flags: BM.PlayerFlag[]
-	bmPlayerId: string
-	profileUrl: string
-	hoursPlayed: number
-}
+type PlayerFlagsAndProfile = BM.PlayerFlagsAndProfile
 
 const CACHE_TTL = {
 	steamIdResolution: Infinity,
@@ -87,6 +84,40 @@ async function cachedFetch<T>(
 
 	map.set(key, { value: undefined as T, expiresAt: 0, inflight })
 	return inflight
+}
+
+// -------- polling config --------
+
+const POLL_INTERVAL_MS = 30_000
+
+/** Per-server state for bulk polling and streaming */
+type ServerBmState = {
+	update$: Rx.Subject<void>
+	onlineSteamIds: Set<string>
+}
+
+const serverBmState = new Map<string, ServerBmState>()
+
+function getServerBmState(serverId: string): ServerBmState {
+	let state = serverBmState.get(serverId)
+	if (!state) {
+		state = { update$: new Rx.Subject<void>(), onlineSteamIds: new Set() }
+		serverBmState.set(serverId, state)
+	}
+	return state
+}
+
+export type { PublicPlayerBmData } from '@/models/battlemetrics.models'
+type PublicPlayerBmData = BM.PublicPlayerBmData
+
+function getPlayerBmDataSnapshot(steamIds: Set<string>): PublicPlayerBmData {
+	const result: PublicPlayerBmData = {}
+	for (const steamId of steamIds) {
+		const entry = cache.playerFlagsAndProfile.get(steamId)
+		const value = getCached(entry)
+		if (value) result[steamId] = value
+	}
+	return result
 }
 
 // -------- rate-limit queue --------
@@ -355,60 +386,6 @@ const getOrgServerIds = C.spanOp(
 	},
 )
 
-// -------- handler result types --------
-
-// -------- cached fetchers (shared by handlers and priming) --------
-
-const fetchPlayerFlagsAndProfile = C.spanOp(
-	'fetchPlayerFlagsAndProfile',
-	{ module, attrs: (_ctx, steamId) => ({ steamId }) },
-	async (ctx: CS.Ctx, steamId: string): Promise<PlayerFlagsAndProfile> => {
-		return cachedFetch(cache.playerFlagsAndProfile, steamId, CACHE_TTL.playerFlagsAndProfile, async () => {
-			const bmPlayerId = await resolvePlayerBySteamId(ctx, steamId)
-			const serverIds = await getOrgServerIds(ctx)
-
-			const serverFilter = serverIds.length > 0 ? `&filter[servers]=${serverIds.join(',')}` : ''
-			const [data] = await bmFetch(
-				ctx,
-				'GET',
-				`/players/${bmPlayerId}?include=flagPlayer,playerFlag,server&fields[playerFlag]=name,color,description,icon&fields[server]=name${serverFilter}`,
-				{ responseSchema: BM.PlayerWithFlagsAndServersResponse },
-			)
-
-			const { BM_ORG_ID } = getEnv()
-			const included = data.included ?? []
-			const flagPlayers = included.filter((i): i is typeof i & { type: 'flagPlayer' } => i.type === 'flagPlayer')
-				.filter((fp) => !BM_ORG_ID || fp.relationships?.organization?.data?.id === BM_ORG_ID)
-			const playerFlags = included.filter((i): i is typeof i & { type: 'playerFlag' } => i.type === 'playerFlag')
-			const servers = included.filter((i): i is typeof i & { type: 'server' } => i.type === 'server')
-
-			const flags = flagPlayers.map((fp) => {
-				const flagId = fp.relationships?.playerFlag?.data?.id
-				const flag = playerFlags.find((pf) => pf.id === flagId)
-				return {
-					id: flagId ?? fp.id,
-					name: flag?.attributes?.name ?? null,
-					color: flag?.attributes?.color ?? null,
-					description: flag?.attributes?.description ?? null,
-					icon: flag?.attributes?.icon ?? null,
-				}
-			})
-
-			const orgServerIdSet = new Set(serverIds)
-			const totalSeconds = servers
-				.filter((s) => orgServerIdSet.has(s.id))
-				.reduce((sum, s) => sum + (s.meta?.timePlayed ?? 0), 0)
-
-			return {
-				flags,
-				bmPlayerId,
-				profileUrl: `https://www.battlemetrics.com/rcon/players/${bmPlayerId}`,
-				hoursPlayed: Math.round(totalSeconds / 3600),
-			}
-		})
-	},
-)
-
 const fetchPlayerBansAndNotes = C.spanOp(
 	'fetchPlayerBansAndNotes',
 	{ module, attrs: (_ctx, steamId) => ({ steamId }) },
@@ -529,59 +506,70 @@ const bulkFetchOnlinePlayers = C.spanOp(
 	},
 )
 
-// -------- event-driven cache priming --------
+// -------- interval-based bulk polling --------
 
 export function setupSquadServerInstance(ctx: C.ServerSlice) {
-	ctx.server.event$.pipe(
-		C.durableSub('bm-cache-prime', { module, root: true, taskScheduling: 'parallel' }, async ([ctx, events]) => {
-			let shouldBulkFetch = false
+	const serverId = ctx.serverId
+	const state = getServerBmState(serverId)
+	let lastKnownSteamIds: Set<string> | null = null
 
-			for (const event of events) {
-				if (event.type === 'PLAYER_CONNECTED') {
-					const steamId = (event as SM.Events.PlayerConnected).player.ids.steam
-					if (steamId && !getCached(cache.playerFlagsAndProfile.get(steamId))) {
-						shouldBulkFetch = true
-						break
-					}
-				} else if (event.type === 'NEW_GAME' || event.type === 'RESET') {
-					shouldBulkFetch = true
-					break
-				}
-			}
+	Rx.interval(POLL_INTERVAL_MS).pipe(
+		Rx.startWith(0),
+		C.durableSub('bm-bulk-poll', { module, root: true, taskScheduling: 'exhaust' }, async () => {
+			const sliceCtx = SquadServer.resolveSliceCtx({}, serverId)
 
-			if (!shouldBulkFetch) return
+			// get current online player steam IDs from server state
+			const teamsRes = await sliceCtx.server.teams.get(sliceCtx)
+			const currentSteamIds = new Set(
+				teamsRes.code === 'ok'
+					? teamsRes.players.map((p) => p.ids.steam).filter((id): id is string => !!id)
+					: [],
+			)
 
-			// bulk fetch flags+profile for all online players across org servers
-			const primedSteamIds = await bulkFetchOnlinePlayers(ctx).catch((err) => {
+			// skip if player set hasn't changed
+			if (lastKnownSteamIds && setsEqual(currentSteamIds, lastKnownSteamIds)) return
+			lastKnownSteamIds = currentSteamIds
+
+			await bulkFetchOnlinePlayers(sliceCtx).catch((err) => {
 				log.warn({ err }, 'bulk fetch online players failed')
-				return [] as string[]
 			})
 
-			if (primedSteamIds.length === 0) return
+			state.onlineSteamIds = currentSteamIds
+			state.update$.next()
 		}),
 	).subscribe()
+}
+
+function setsEqual<T>(a: Set<T>, b: Set<T>): boolean {
+	if (a.size !== b.size) return false
+	for (const item of a) {
+		if (!b.has(item)) return false
+	}
+	return true
 }
 
 // -------- oRPC handlers --------
 
 export const router = {
-	getPlayerFlags: orpcBase.input(z.object({
-		steamId: z.string(),
-	})).handler(async ({ input, context: ctx }) => {
-		const result = await fetchPlayerFlagsAndProfile(ctx, input.steamId)
-		return result.flags
-	}),
-
 	getPlayerBansAndNotes: orpcBase.input(z.object({
 		steamId: z.string(),
 	})).handler(async ({ input, context: ctx }) => {
 		return fetchPlayerBansAndNotes(ctx, input.steamId)
 	}),
 
-	getPlayerProfile: orpcBase.input(z.object({
-		steamId: z.string(),
-	})).handler(async ({ input, context: ctx }) => {
-		const { flags: _, ...profile } = await fetchPlayerFlagsAndProfile(ctx, input.steamId)
-		return profile
+	watchPlayerBmData: orpcBase.handler(async function*({ signal, context: _ctx }) {
+		const server$ = SquadServer.selectedServerCtx$(_ctx).pipe(withAbortSignal(signal!))
+		const data$ = server$.pipe(
+			Rx.switchMap(async function*(ctx) {
+				const state = getServerBmState(ctx.serverId)
+				yield getPlayerBmDataSnapshot(state.onlineSteamIds)
+				const update$ = state.update$.pipe(withAbortSignal(signal!))
+				for await (const _ of toAsyncGenerator(update$)) {
+					yield getPlayerBmDataSnapshot(state.onlineSteamIds)
+				}
+			}),
+			withAbortSignal(signal!),
+		)
+		yield* toAsyncGenerator(data$)
 	}),
 }
