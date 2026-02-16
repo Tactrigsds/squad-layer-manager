@@ -45,7 +45,7 @@ function setCachedPlayer(steamId: string, value: BM.PlayerFlagsAndProfile) {
 
 // -------- polling config --------
 
-const POLL_INTERVAL_MS = 30_000
+const POLL_INTERVAL_MS = 120_000
 
 /** Per-server state for bulk polling and streaming */
 type ServerBmState = {
@@ -80,7 +80,7 @@ function getPlayerBmDataSnapshot(steamIds: Set<string>): PublicPlayerBmData {
 
 const RATE_LIMITS = {
 	perSecond: 10,
-	perMinute: 45,
+	perMinute: 60,
 	backoffDefaultMs: 30_000,
 } as const
 
@@ -399,41 +399,21 @@ const bulkFetchOnlinePlayers = C.spanOp(
 	'bulkFetchOnlinePlayers',
 	{ module },
 	async (ctx: CS.Ctx & C.ServerSlice): Promise<string[]> => {
-		const info = await ctx.server.serverInfo.get(ctx)
-		const serverName = info.code === 'ok' ? info.data.name : null
-		const serverIds = await getOrgServerIds(ctx, serverName)
-		if (serverIds.length === 0) return []
+		const onlineSteamIds = ctx.server.state.chat.interpolatedState.players
+			.map((p) => p.ids.steam)
+			.filter((id): id is string => !!id)
 
-		const orgServerIdSet = new Set(serverIds)
-		const primedSteamIds: string[] = []
-
-		const lastSeenAfter = new Date(Date.now() - 15 * 60 * 1000).toISOString()
-		let path: string | null = `/players?filter[online]=true&filter[servers]=${serverIds.join(',')}`
-			+ `&filter[lastSeen]=${lastSeenAfter}:`
-			+ `&include=identifier,flagPlayer,playerFlag`
-			+ `&filter[identifiers]=steamID`
-			+ `&fields[playerFlag]=name,color,description,icon`
-			+ `&fields[server]=name`
-			+ `&page[size]=100`
-
-		while (path) {
-			const [data] = await bmFetch(ctx, 'GET', path, {
-				responseSchema: BM.PlayerListResponse,
-			})
-
-			primedSteamIds.push(...parsePlayerListPage(data, orgServerIdSet))
-
-			const nextUrl = data.links?.next
-			if (nextUrl) {
-				const parsed = new URL(nextUrl)
-				path = parsed.pathname + parsed.search
-			} else {
-				path = null
-			}
+		const uncached = onlineSteamIds.filter((id) => !getCachedPlayer(id))
+		if (uncached.length > 0) {
+			await Promise.all(uncached.map((steamId) =>
+				fetchSinglePlayerBmData(ctx, steamId).catch((err) => {
+					log.warn({ err, steamId }, 'failed to fetch player bm data')
+				})
+			))
 		}
 
-		log.debug('bulk fetched %d online players', primedSteamIds.length)
-		return primedSteamIds
+		log.debug('found %d online players (%d fetched from api)', onlineSteamIds.length, uncached.length)
+		return onlineSteamIds
 	},
 )
 
@@ -482,18 +462,12 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 		C.durableSub('bm-bulk-poll', { module, root: true, taskScheduling: 'exhaust' }, async () => {
 			const sliceCtx = SquadServer.resolveSliceCtx({}, serverId)
 
-			const teamsRes = await sliceCtx.server.teams.get(sliceCtx)
-			const currentSteamIds = new Set(
-				teamsRes.code === 'ok'
-					? teamsRes.players.map((p) => p.ids.steam).filter((id): id is string => !!id)
-					: [],
-			)
-
-			await bulkFetchOnlinePlayers(sliceCtx).catch((err) => {
+			const onlineSteamIds = await bulkFetchOnlinePlayers(sliceCtx).catch((err) => {
 				log.warn({ err }, 'bulk fetch online players failed')
+				return [] as string[]
 			})
 
-			state.onlineSteamIds = currentSteamIds
+			state.onlineSteamIds = new Set(onlineSteamIds)
 			state.update$.next()
 		}),
 	).subscribe()
