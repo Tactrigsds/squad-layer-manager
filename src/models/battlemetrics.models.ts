@@ -7,29 +7,7 @@ const JsonApiResourceRef = z.object({
 	id: z.string(),
 })
 
-const JsonApiMeta = z.object({
-	total: z.number().nullable().optional(),
-}).nullable().optional()
-
-// ---- /players/match ----
-
-export const PlayerMatchResponse = z.object({
-	data: z.array(z.object({
-		type: z.literal('identifier'),
-		id: z.string(),
-		attributes: z.object({
-			type: z.string(),
-			identifier: z.string(),
-		}).optional(),
-		relationships: z.object({
-			player: z.object({
-				data: JsonApiResourceRef,
-			}),
-		}),
-	})),
-})
-
-// ---- /players/{id}?include=flagPlayer,playerFlag ----
+// ---- Player flags ----
 
 const FlagPlayerInclude = z.object({
 	type: z.literal('flagPlayer'),
@@ -62,23 +40,7 @@ const PlayerFlagInclude = z.object({
 	attributes: PlayerFlagAttributes,
 })
 
-const ServerInclude = z.object({
-	type: z.literal('server'),
-	id: z.string(),
-	meta: z.object({
-		timePlayed: z.number().nullable().optional(),
-	}).optional(),
-})
-
-export const PlayerWithFlagsAndServersResponse = z.object({
-	data: z.object({
-		type: z.literal('player'),
-		id: z.string(),
-	}),
-	included: z.array(z.discriminatedUnion('type', [FlagPlayerInclude, PlayerFlagInclude, ServerInclude])).nullable().optional(),
-})
-
-// ---- GET /players?include=identifier,flagPlayer,playerFlag,server (list) ----
+// ---- GET /players?include=identifier,flagPlayer,playerFlag (list) ----
 
 const IdentifierInclude = z.object({
 	type: z.literal('identifier'),
@@ -133,26 +95,6 @@ export const ServersResponse = z.object({
 			name: z.string(),
 		}),
 	})),
-})
-
-// ---- /bans?filter[player]=... ----
-
-export const BansResponse = z.object({
-	data: z.array(z.object({
-		type: z.literal('ban'),
-		id: z.string(),
-	})),
-	meta: JsonApiMeta,
-})
-
-// ---- /players/{id}/relationships/notes ----
-
-export const NotesResponse = z.object({
-	data: z.array(z.object({
-		type: z.literal('playerNote'),
-		id: z.string(),
-	})),
-	meta: JsonApiMeta,
 })
 
 // ---- Composite types used by server + client ----

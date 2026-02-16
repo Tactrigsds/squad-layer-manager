@@ -11,12 +11,6 @@ export const [usePlayerBmData, playerBmData$] = ReactRx.bind<PublicPlayerBmData>
 	{},
 )
 
-export const getPlayerBansAndNotesQueryOptions = (steamId: string) =>
-	RPC.orpc.battlemetrics.getPlayerBansAndNotes.queryOptions({
-		input: { steamId },
-		staleTime: Infinity,
-	})
-
 export function sortFlagsByHierarchy<T extends BM.PlayerFlag>(flags: T[]): T[] {
 	const hierarchy = ConfigClient.getConfig()?.playerFlagColorHierarchy
 	if (!hierarchy || hierarchy.length === 0) return flags

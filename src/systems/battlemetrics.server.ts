@@ -23,67 +23,23 @@ export function setup() {
 	ENV = getEnv()
 }
 
-// -------- TTL cache --------
+// -------- cache --------
 
-type CacheEntry<T> = {
-	value: T
-	expiresAt: number
-	inflight?: Promise<T>
-}
+const PLAYER_CACHE_TTL = 30 * 60 * 1000 // 30 minutes
 
-type PlayerFlagsAndProfile = BM.PlayerFlagsAndProfile
+const playerFlagsAndProfileCache = new FixedSizeMap<string, { value: BM.PlayerFlagsAndProfile; expiresAt: number }>(500)
 
-const CACHE_TTL = {
-	steamIdResolution: Infinity,
-	orgServerIds: Infinity,
-	playerFlagsAndProfile: 30 * 60 * 1000, // 30 minutes
-	playerBansAndNotes: 60 * 60 * 1000, // 60 minutes
-} as const
+let orgServerIdsCache: { ids: { id: string; name: string | null }[] } | null = null
 
-const cache = {
-	steamIdResolution: new FixedSizeMap<string, CacheEntry<string>>(500),
-	orgServerIds: null as CacheEntry<{ ids: { id: string; name: string | null }[] }> | null,
-	playerFlagsAndProfile: new FixedSizeMap<string, CacheEntry<PlayerFlagsAndProfile>>(500),
-	playerBansAndNotes: new FixedSizeMap<string, CacheEntry<{ banCount: number; noteCount: number }>>(500),
-}
-
-function getCached<T>(entry: CacheEntry<T> | undefined | null): T | undefined {
+function getCachedPlayer(steamId: string): BM.PlayerFlagsAndProfile | undefined {
+	const entry = playerFlagsAndProfileCache.get(steamId)
 	if (!entry) return undefined
 	if (Date.now() > entry.expiresAt) return undefined
 	return entry.value
 }
 
-function setCached<T>(value: T, ttl: number): CacheEntry<T> {
-	return { value, expiresAt: Date.now() + ttl }
-}
-
-/** Get cached value or fetch, deduplicating in-flight requests */
-async function cachedFetch<T>(
-	map: FixedSizeMap<string, CacheEntry<T>>,
-	key: string,
-	ttl: number,
-	fetch: () => Promise<T>,
-): Promise<T> {
-	const existing = map.get(key)
-	const cached = getCached(existing)
-	if (cached !== undefined) return cached
-
-	// deduplicate in-flight requests
-	if (existing?.inflight) return existing.inflight
-
-	const inflight = fetch().then((value) => {
-		map.set(key, setCached(value, ttl))
-		return value
-	}).catch((err) => {
-		// clear inflight on error so retries work
-		if (map.get(key)?.inflight === inflight) {
-			map.delete(key)
-		}
-		throw err
-	})
-
-	map.set(key, { value: undefined as T, expiresAt: 0, inflight })
-	return inflight
+function setCachedPlayer(steamId: string, value: BM.PlayerFlagsAndProfile) {
+	playerFlagsAndProfileCache.set(steamId, { value, expiresAt: Date.now() + PLAYER_CACHE_TTL })
 }
 
 // -------- polling config --------
@@ -113,8 +69,7 @@ type PublicPlayerBmData = BM.PublicPlayerBmData
 function getPlayerBmDataSnapshot(steamIds: Set<string>): PublicPlayerBmData {
 	const result: PublicPlayerBmData = {}
 	for (const steamId of steamIds) {
-		const entry = cache.playerFlagsAndProfile.get(steamId)
-		const value = getCached(entry)
+		const value = getCachedPlayer(steamId)
 		if (value) result[steamId] = value
 	}
 	return result
@@ -332,43 +287,18 @@ async function bmFetch<T = null>(
 	)(ctx)
 }
 
-const resolvePlayerBySteamId = C.spanOp(
-	'resolvePlayerBySteamId',
-	{ module, attrs: (_ctx, steamId) => ({ steamId }) },
-	async (ctx: CS.Ctx, steamId: string): Promise<string> => {
-		return cachedFetch(cache.steamIdResolution, steamId, CACHE_TTL.steamIdResolution, async () => {
-			const [data] = await bmFetch(ctx, 'POST', '/players/match', {
-				responseSchema: BM.PlayerMatchResponse,
-				body: {
-					data: [{
-						type: 'identifier',
-						attributes: {
-							type: 'steamID',
-							identifier: steamId,
-						},
-					}],
-				},
-			})
-			const playerId = data.data[0]?.relationships?.player?.data?.id
-			if (!playerId) {
-				throw new Error(`No BattleMetrics player found for Steam ID ${steamId}`)
-			}
-			return playerId
-		})
-	},
-)
+// -------- BM data fetching --------
 
 const getOrgServerIds = C.spanOp(
 	'getOrgServerIds',
 	{ module },
 	async (ctx: CS.Ctx, serverName?: string | null): Promise<string[]> => {
-		const cached = getCached(cache.orgServerIds)
-		if (cached) {
+		if (orgServerIdsCache) {
 			if (serverName) {
-				const filtered = cached.ids.filter((s) => s.name?.includes(serverName))
+				const filtered = orgServerIdsCache.ids.filter((s) => s.name?.includes(serverName))
 				if (filtered.length > 0) return filtered.map((s) => s.id)
 			}
-			return cached.ids.map((s) => s.id)
+			return orgServerIdsCache.ids.map((s) => s.id)
 		}
 
 		const { BM_ORG_ID } = getEnv()
@@ -376,7 +306,7 @@ const getOrgServerIds = C.spanOp(
 			responseSchema: BM.ServersResponse,
 		})
 		const servers = data.data.map((s) => ({ id: s.id, name: s.attributes.name ?? null }))
-		cache.orgServerIds = setCached({ ids: servers }, CACHE_TTL.orgServerIds)
+		orgServerIdsCache = { ids: servers }
 
 		if (serverName) {
 			const filtered = servers.filter((s) => s.name?.includes(serverName))
@@ -386,29 +316,59 @@ const getOrgServerIds = C.spanOp(
 	},
 )
 
-const fetchPlayerBansAndNotes = C.spanOp(
-	'fetchPlayerBansAndNotes',
-	{ module, attrs: (_ctx, steamId) => ({ steamId }) },
-	async (ctx: CS.Ctx, steamId: string) => {
-		return cachedFetch(cache.playerBansAndNotes, steamId, CACHE_TTL.playerBansAndNotes, async () => {
-			const bmPlayerId = await resolvePlayerBySteamId(ctx, steamId)
-			const [[bansData], [notesData]] = await Promise.all([
-				bmFetch(ctx, 'GET', `/bans?filter[player]=${bmPlayerId}&page[size]=1`, {
-					responseSchema: BM.BansResponse,
-				}),
-				bmFetch(ctx, 'GET', `/players/${bmPlayerId}/relationships/notes?page[size]=1`, {
-					responseSchema: BM.NotesResponse,
-				}),
-			])
+type PlayerListData = z.infer<typeof BM.PlayerListResponse>
+
+function parsePlayerListPage(data: PlayerListData, orgServerIdSet: Set<string>): string[] {
+	const { BM_ORG_ID } = getEnv()
+	const included = data.included ?? []
+	const identifiers = included.filter((i): i is typeof i & { type: 'identifier' } => i.type === 'identifier')
+	const flagPlayers = included.filter((i): i is typeof i & { type: 'flagPlayer' } => i.type === 'flagPlayer')
+		.filter((fp) => !BM_ORG_ID || fp.relationships?.organization?.data?.id === BM_ORG_ID)
+	const playerFlags = included.filter((i): i is typeof i & { type: 'playerFlag' } => i.type === 'playerFlag')
+
+	const steamIds: string[] = []
+
+	for (const player of data.data) {
+		const bmPlayerId = player.id
+
+		const ident = identifiers.find(
+			(i) => i.attributes.type === 'steamID' && i.relationships?.player?.data?.id === bmPlayerId,
+		)
+		if (!ident) continue
+		const steamId = ident.attributes.identifier
+
+		const playerFlagPlayers = flagPlayers.filter(
+			(fp) => fp.relationships?.player?.data?.id === bmPlayerId,
+		)
+		const flags = playerFlagPlayers.map((fp) => {
+			const flagId = fp.relationships?.playerFlag?.data?.id
+			const flag = playerFlags.find((pf) => pf.id === flagId)
 			return {
-				banCount: bansData.meta?.total ?? bansData.data.length,
-				noteCount: notesData.meta?.total ?? notesData.data.length,
+				id: flagId ?? fp.id,
+				name: flag?.attributes?.name ?? null,
+				color: flag?.attributes?.color ?? null,
+				description: flag?.attributes?.description ?? null,
+				icon: flag?.attributes?.icon ?? null,
 			}
 		})
-	},
-)
 
-// -------- bulk fetch online players --------
+		const serverRefs = player.relationships?.servers?.data ?? []
+		const totalSeconds = serverRefs
+			.filter((s) => orgServerIdSet.has(s.id))
+			.reduce((sum, s) => sum + (s.meta?.timePlayed ?? 0), 0)
+
+		setCachedPlayer(steamId, {
+			flags,
+			bmPlayerId,
+			profileUrl: `https://www.battlemetrics.com/rcon/players/${bmPlayerId}`,
+			hoursPlayed: Math.round(totalSeconds / 3600),
+		})
+
+		steamIds.push(steamId)
+	}
+
+	return steamIds
+}
 
 const bulkFetchOnlinePlayers = C.spanOp(
 	'bulkFetchOnlinePlayers',
@@ -430,70 +390,14 @@ const bulkFetchOnlinePlayers = C.spanOp(
 			+ `&page[size]=100`
 
 		while (path) {
-			const [data, _res] = await bmFetch(ctx, 'GET', path, {
+			const [data] = await bmFetch(ctx, 'GET', path, {
 				responseSchema: BM.PlayerListResponse,
 			})
 
-			const { BM_ORG_ID } = getEnv()
-			const included = data.included ?? []
-			const identifiers = included.filter((i): i is typeof i & { type: 'identifier' } => i.type === 'identifier')
-			const flagPlayers = included.filter((i): i is typeof i & { type: 'flagPlayer' } => i.type === 'flagPlayer')
-				.filter((fp) => !BM_ORG_ID || fp.relationships?.organization?.data?.id === BM_ORG_ID)
-			const playerFlags = included.filter((i): i is typeof i & { type: 'playerFlag' } => i.type === 'playerFlag')
+			primedSteamIds.push(...parsePlayerListPage(data, orgServerIdSet))
 
-			for (const player of data.data) {
-				const bmPlayerId = player.id
-
-				// find steamID identifier for this player
-				const ident = identifiers.find(
-					(i) => i.attributes.type === 'steamID' && i.relationships?.player?.data?.id === bmPlayerId,
-				)
-				if (!ident) continue
-				const steamId = ident.attributes.identifier
-
-				// populate steam ID resolution cache
-				cache.steamIdResolution.set(steamId, setCached(bmPlayerId, CACHE_TTL.steamIdResolution))
-
-				// extract flags for this player
-				const playerFlagPlayers = flagPlayers.filter(
-					(fp) => fp.relationships?.player?.data?.id === bmPlayerId,
-				)
-				const flags = playerFlagPlayers.map((fp) => {
-					const flagId = fp.relationships?.playerFlag?.data?.id
-					const flag = playerFlags.find((pf) => pf.id === flagId)
-					return {
-						id: flagId ?? fp.id,
-						name: flag?.attributes?.name ?? null,
-						color: flag?.attributes?.color ?? null,
-						description: flag?.attributes?.description ?? null,
-						icon: flag?.attributes?.icon ?? null,
-					}
-				})
-
-				// extract server time played from player relationships
-				const serverRefs = player.relationships?.servers?.data ?? []
-				const totalSeconds = serverRefs
-					.filter((s) => orgServerIdSet.has(s.id))
-					.reduce((sum, s) => sum + (s.meta?.timePlayed ?? 0), 0)
-
-				// populate flags+profile cache
-				cache.playerFlagsAndProfile.set(
-					steamId,
-					setCached({
-						flags,
-						bmPlayerId,
-						profileUrl: `https://www.battlemetrics.com/rcon/players/${bmPlayerId}`,
-						hoursPlayed: Math.round(totalSeconds / 3600),
-					}, CACHE_TTL.playerFlagsAndProfile),
-				)
-
-				primedSteamIds.push(steamId)
-			}
-
-			// follow pagination
 			const nextUrl = data.links?.next
 			if (nextUrl) {
-				// links.next is a full URL; extract the path+query
 				const parsed = new URL(nextUrl)
 				path = parsed.pathname + parsed.search
 			} else {
@@ -506,29 +410,57 @@ const bulkFetchOnlinePlayers = C.spanOp(
 	},
 )
 
+const fetchSinglePlayerBmData = C.spanOp(
+	'fetchSinglePlayerBmData',
+	{ module, attrs: (_ctx, steamId) => ({ steamId }) },
+	async (ctx: CS.Ctx & C.ServerSlice, steamId: string): Promise<BM.PlayerFlagsAndProfile | null> => {
+		const cached = getCachedPlayer(steamId)
+		if (cached) return cached
+
+		const info = await ctx.server.serverInfo.get(ctx)
+		const serverName = info.code === 'ok' ? info.data.name : null
+		const serverIds = await getOrgServerIds(ctx, serverName)
+		const orgServerIdSet = new Set(serverIds)
+
+		const path = `/players?filter[search]=${steamId}`
+			+ `&include=identifier,flagPlayer,playerFlag`
+			+ `&filter[identifiers]=steamID`
+			+ `&fields[playerFlag]=name,color,description,icon`
+			+ `&fields[server]=name`
+			+ `&page[size]=1`
+
+		const [data] = await bmFetch(ctx, 'GET', path, {
+			responseSchema: BM.PlayerListResponse,
+		})
+
+		const parsed = parsePlayerListPage(data, orgServerIdSet)
+		if (parsed.length === 0) return null
+
+		const state = getServerBmState(ctx.serverId)
+		state.onlineSteamIds.add(steamId)
+		state.update$.next()
+
+		return getCachedPlayer(parsed[0]) ?? null
+	},
+)
+
 // -------- interval-based bulk polling --------
 
 export function setupSquadServerInstance(ctx: C.ServerSlice) {
 	const serverId = ctx.serverId
 	const state = getServerBmState(serverId)
-	let lastKnownSteamIds: Set<string> | null = null
 
 	Rx.interval(POLL_INTERVAL_MS).pipe(
 		Rx.startWith(0),
 		C.durableSub('bm-bulk-poll', { module, root: true, taskScheduling: 'exhaust' }, async () => {
 			const sliceCtx = SquadServer.resolveSliceCtx({}, serverId)
 
-			// get current online player steam IDs from server state
 			const teamsRes = await sliceCtx.server.teams.get(sliceCtx)
 			const currentSteamIds = new Set(
 				teamsRes.code === 'ok'
 					? teamsRes.players.map((p) => p.ids.steam).filter((id): id is string => !!id)
 					: [],
 			)
-
-			// skip if player set hasn't changed
-			if (lastKnownSteamIds && setsEqual(currentSteamIds, lastKnownSteamIds)) return
-			lastKnownSteamIds = currentSteamIds
 
 			await bulkFetchOnlinePlayers(sliceCtx).catch((err) => {
 				log.warn({ err }, 'bulk fetch online players failed')
@@ -540,21 +472,14 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 	).subscribe()
 }
 
-function setsEqual<T>(a: Set<T>, b: Set<T>): boolean {
-	if (a.size !== b.size) return false
-	for (const item of a) {
-		if (!b.has(item)) return false
-	}
-	return true
-}
-
 // -------- oRPC handlers --------
 
 export const router = {
-	getPlayerBansAndNotes: orpcBase.input(z.object({
+	getPlayerBmData: orpcBase.input(z.object({
 		steamId: z.string(),
 	})).handler(async ({ input, context: ctx }) => {
-		return fetchPlayerBansAndNotes(ctx, input.steamId)
+		const serverCtx = await Rx.firstValueFrom(SquadServer.selectedServerCtx$(ctx))
+		return fetchSinglePlayerBmData(serverCtx, input.steamId)
 	}),
 
 	watchPlayerBmData: orpcBase.handler(async function*({ signal, context: _ctx }) {

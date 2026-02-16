@@ -8,7 +8,7 @@ import * as ZusUtils from '@/lib/zustand'
 import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as RPC from '@/orpc.client'
-import { getPlayerBansAndNotesQueryOptions, sortFlagsByHierarchy, usePlayerFlagColor, usePlayerFlags, usePlayerProfile } from '@/systems/battlemetrics.client'
+import { sortFlagsByHierarchy, usePlayerFlagColor, usePlayerFlags, usePlayerProfile } from '@/systems/battlemetrics.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -33,7 +33,7 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 	loadAsync: async ({ props }) => {
 		await Promise.all([
 			RPC.queryClient.fetchQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { playerId: props.playerId } })),
-			RPC.queryClient.fetchQuery(getPlayerBansAndNotesQueryOptions(props.playerId)),
+			RPC.orpc.battlemetrics.getPlayerBmData.call({ steamId: props.playerId }),
 		])
 	},
 })
@@ -44,7 +44,6 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 	const flags = rawFlags ? sortFlagsByHierarchy(rawFlags) : undefined
 	const flagColor = usePlayerFlagColor(playerId)
 	const profile = usePlayerProfile(playerId)
-	const { data: bansAndNotes, isPending: isBansAndNotesPending } = useQuery(getPlayerBansAndNotesQueryOptions(playerId))
 	const currentMatch = MatchHistoryClient.useCurrentMatch()
 	const currentMatchEvents = Zus.useStore(
 		SquadServerClient.ChatStore,
@@ -123,16 +122,6 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 					? (
 						<div className="flex items-center gap-2 text-muted-foreground">
 							<span>{profile.hoursPlayed}h played on org servers</span>
-							{bansAndNotes
-								? (
-									<>
-										<span>|</span>
-										<span>{bansAndNotes.banCount} bans</span>
-										<span>|</span>
-										<span>{bansAndNotes.noteCount} notes</span>
-									</>
-								)
-								: isBansAndNotesPending && <Spinner className="size-3" />}
 						</div>
 					)
 					: null}
