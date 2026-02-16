@@ -8,6 +8,7 @@ import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as SquadServer from '@/systems/squad-server.server'
+import { metrics } from '@opentelemetry/api'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
 
@@ -151,6 +152,30 @@ function drainQueue() {
 	}
 	scheduleDrain()
 }
+
+const meter = metrics.getMeter('battlemetrics')
+
+meter.createObservableGauge('battlemetrics.rate_limit.per_second', {
+	description: 'Number of BattleMetrics API requests in the last 1s window',
+}).addCallback((result) => {
+	const now = Date.now()
+	pruneTimestamps(now)
+	result.observe(countInWindow(now, 1_000))
+})
+
+meter.createObservableGauge('battlemetrics.rate_limit.per_minute', {
+	description: 'Number of BattleMetrics API requests in the last 60s window',
+}).addCallback((result) => {
+	const now = Date.now()
+	pruneTimestamps(now)
+	result.observe(countInWindow(now, 60_000))
+})
+
+meter.createObservableGauge('battlemetrics.rate_limit.queue_size', {
+	description: 'Number of queued BattleMetrics API requests waiting for a rate limit slot',
+}).addCallback((result) => {
+	result.observe(rateLimiter.queue.length)
+})
 
 function acquireRateSlot(): Promise<void> {
 	const now = Date.now()
@@ -382,7 +407,9 @@ const bulkFetchOnlinePlayers = C.spanOp(
 		const orgServerIdSet = new Set(serverIds)
 		const primedSteamIds: string[] = []
 
+		const lastSeenAfter = new Date(Date.now() - 15 * 60 * 1000).toISOString()
 		let path: string | null = `/players?filter[online]=true&filter[servers]=${serverIds.join(',')}`
+			+ `&filter[lastSeen]=${lastSeenAfter}:`
 			+ `&include=identifier,flagPlayer,playerFlag`
 			+ `&filter[identifiers]=steamID`
 			+ `&fields[playerFlag]=name,color,description,icon`
