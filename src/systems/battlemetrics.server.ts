@@ -31,6 +31,7 @@ const PLAYER_CACHE_TTL = 30 * 60 * 1000 // 30 minutes
 const playerFlagsAndProfileCache = new FixedSizeMap<string, { value: BM.PlayerFlagsAndProfile; expiresAt: number }>(500)
 
 let orgServerIdsCache: { ids: { id: string; name: string | null }[] } | null = null
+let orgServerIdsFetchPromise: Promise<{ id: string; name: string | null }[]> | null = null
 
 function getCachedPlayer(steamId: string): BM.PlayerFlagsAndProfile | undefined {
 	const entry = playerFlagsAndProfileCache.get(steamId)
@@ -326,11 +327,19 @@ const getOrgServerIds = C.spanOp(
 			return orgServerIdsCache.ids.map((s) => s.id)
 		}
 
-		const { BM_ORG_ID } = getEnv()
-		const [data] = await bmFetch(ctx, 'GET', `/servers?filter[organizations]=${BM_ORG_ID}&fields[server]=name`, {
-			responseSchema: BM.ServersResponse,
-		})
-		const servers = data.data.map((s) => ({ id: s.id, name: s.attributes.name ?? null }))
+		if (!orgServerIdsFetchPromise) {
+			orgServerIdsFetchPromise = (async () => {
+				const { BM_ORG_ID } = getEnv()
+				const [data] = await bmFetch(ctx, 'GET', `/servers?filter[organizations]=${BM_ORG_ID}&fields[server]=name`, {
+					responseSchema: BM.ServersResponse,
+				})
+				return data.data.map((s) => ({ id: s.id, name: s.attributes.name ?? null }))
+			})().catch((err) => {
+				orgServerIdsFetchPromise = null
+				throw err
+			})
+		}
+		const servers = await orgServerIdsFetchPromise
 		orgServerIdsCache = { ids: servers }
 
 		if (serverName) {
