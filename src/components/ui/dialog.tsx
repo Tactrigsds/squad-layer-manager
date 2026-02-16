@@ -4,6 +4,7 @@ import * as React from 'react'
 
 import { useIsMobile } from '@/hooks/use-is-mobile'
 import { cn } from '@/lib/utils'
+import { DraggableWindowOutlet } from './draggable-window'
 
 const Dialog = DialogPrimitive.Root
 
@@ -33,11 +34,26 @@ const DialogContent = React.forwardRef<
 	React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => {
 	const isMobile = useIsMobile()
+	const outletKey = React.useId()
+	const contentRef = React.useRef<HTMLDivElement | null>(null)
+
+	const combinedRef = React.useCallback(
+		(node: HTMLDivElement | null) => {
+			contentRef.current = node
+			if (typeof ref === 'function') {
+				ref(node)
+			} else if (ref) {
+				;(ref as React.MutableRefObject<HTMLDivElement | null>).current = node
+			}
+		},
+		[ref],
+	)
+
 	return (
 		<DialogPortal>
 			<DialogOverlay />
 			<DialogPrimitive.Content
-				ref={ref}
+				ref={combinedRef}
 				data-mobile={isMobile}
 				className={cn(
 					'fixed left-[50%] top-[50%] data-[mobile=true]:top-[0%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] data-[mobile=true]:translate-y-[0%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg',
@@ -45,7 +61,9 @@ const DialogContent = React.forwardRef<
 				)}
 				{...props}
 			>
-				{children}
+				<DraggableWindowOutlet outletKey={outletKey} getElement={() => contentRef.current}>
+					{children}
+				</DraggableWindowOutlet>
 				<DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
 					<Cross2Icon className="h-4 w-4" />
 					<span className="sr-only">Close</span>

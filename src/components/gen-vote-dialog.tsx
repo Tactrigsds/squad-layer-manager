@@ -136,166 +136,164 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 
 	return (
 		<HeadlessDialogContent className="max-h-[95vh] w-max max-w-[95vw] flex flex-col overflow-auto">
-			<>
-				<HeadlessDialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
-					<div className="flex items-center">
-						<HeadlessDialogTitle>{props.title}</HeadlessDialogTitle>
-						{props.description && <HeadlessDialogDescription>{props.description}</HeadlessDialogDescription>}
+			<HeadlessDialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
+				<div className="flex items-center">
+					<HeadlessDialogTitle>{props.title}</HeadlessDialogTitle>
+					{props.description && <HeadlessDialogDescription>{props.description}</HeadlessDialogDescription>}
+				</div>
+				<div className="flex justify-end items-center space-x-2">
+					<PoolCheckboxes frameKey={frameKey} />
+					<AppliedFiltersPanel frameKey={frameKey} />
+				</div>
+			</HeadlessDialogHeader>
+			<div>
+				<div className="flex gap-1 justify-between">
+					<div className="flex gap-1">
+						{V.GenVote.CHOICE_COMPARISON_KEY.options.map((key) => (
+							<ButtonGroup key={key}>
+								<Button
+									size="sm"
+									variant={includedConstraintKeys.includes(key) ? 'secondary' : 'ghost'}
+									onClick={() => includedConstraintKeys.includes(key) ? handleRemoveConstraint(key) : handleAddConstraint(key)}
+								>
+									{includedConstraintKeys.includes(key) ? <Icons.Minus /> : <Icons.Plus />}
+									{key}
+								</Button>
+								<Button
+									size="icon"
+									variant={uniqueConstraintKeys.includes(key) ? 'default' : 'ghost'}
+									onClick={() => handleToggleUniqueConstraint(key)}
+									disabled={!includedConstraintKeys.includes(key)}
+									title={uniqueConstraintKeys.includes(key) ? 'Disable unique constraint' : 'Enable unique constraint'}
+								>
+									<Icons.Lock className="w-4 h-4" />
+								</Button>
+							</ButtonGroup>
+						))}
 					</div>
-					<div className="flex justify-end items-center space-x-2">
-						<PoolCheckboxes frameKey={frameKey} />
-						<AppliedFiltersPanel frameKey={frameKey} />
-					</div>
-				</HeadlessDialogHeader>
-				<div>
-					<div className="flex gap-1 justify-between">
-						<div className="flex gap-1">
-							{V.GenVote.CHOICE_COMPARISON_KEY.options.map((key) => (
-								<ButtonGroup key={key}>
-									<Button
-										size="sm"
-										variant={includedConstraintKeys.includes(key) ? 'secondary' : 'ghost'}
-										onClick={() => includedConstraintKeys.includes(key) ? handleRemoveConstraint(key) : handleAddConstraint(key)}
-									>
-										{includedConstraintKeys.includes(key) ? <Icons.Minus /> : <Icons.Plus />}
-										{key}
-									</Button>
-									<Button
-										size="icon"
-										variant={uniqueConstraintKeys.includes(key) ? 'default' : 'ghost'}
-										onClick={() => handleToggleUniqueConstraint(key)}
-										disabled={!includedConstraintKeys.includes(key)}
-										title={uniqueConstraintKeys.includes(key) ? 'Disable unique constraint' : 'Enable unique constraint'}
-									>
-										<Icons.Lock className="w-4 h-4" />
-									</Button>
-								</ButtonGroup>
-							))}
-						</div>
+					<Button
+						size="sm"
+						variant="default"
+						onClick={() => handleRegen()}
+						disabled={generating}
+					>
+						<Icons.RefreshCw className={regeneratingIndex === 'all' ? 'animate-spin' : ''} />
+						{choices.some(c => c.layerId) ? 'Regenerate All' : 'Generate'}
+					</Button>
+				</div>
+				<div className="flex gap-4">
+					<div className="flex flex-col gap-4 flex-1">
+						{choices.map((choice, index) => {
+							const constraints = choice.layerId ? chosenLayers[choice.layerId]?.constraints : undefined
+							const error = choiceErrors[index]
+							return (
+								<div key={`choice-${index}`} className="flex flex-col gap-2 p-4 border rounded-lg">
+									<div className="flex items-center justify-between mb-2">
+										<div className="flex items-center gap-2">
+											<span className="font-semibold text-lg">{index + 1}.</span>
+											<div>
+												{choice.layerId
+													? (
+														<div className="flex gap-1 items-center text-sm">
+															<ShortLayerName
+																layerId={choice.layerId}
+																matchDescriptors={constraints?.matchDescriptors}
+															/>
+															{constraints && (
+																<ConstraintMatchesIndicator
+																	matchingConstraintIds={constraints.matchedConstraintIds}
+																	matchDescriptors={constraints.matchDescriptors}
+																	queriedConstraints={constraints.queriedConstraints}
+																	itemParity={teamParity}
+																	layerId={choice.layerId}
+																/>
+															)}
+														</div>
+													)
+													: error
+													? (
+														<Alert variant="destructive" className="py-2">
+															<Icons.AlertCircle className="h-4 w-4" />
+															<AlertTitle>{error}</AlertTitle>
+														</Alert>
+													)
+													: <span className="text-muted-foreground">No layer selected</span>}
+											</div>
+										</div>
+										<ButtonGroup>
+											<Button
+												size="sm"
+												variant="ghost"
+												onClick={() => handleRegen(index)}
+												disabled={generating}
+												title={choice.layerId ? 'Regenerate this choice' : 'Generate this choice'}
+											>
+												<Icons.RefreshCw className={regeneratingIndex === 'all' || regeneratingIndex === index ? 'animate-spin' : ''} />
+											</Button>
+											<Button
+												size="sm"
+												variant="ghost"
+												onClick={() => getFrameState(frameKey).removeChoice(index)}
+												disabled={generating || choices.length <= 2}
+												title="Remove this choice (minimum 2 required)"
+											>
+												<Icons.X />
+											</Button>
+										</ButtonGroup>
+									</div>
+									<div className="flex flex-col gap-2">
+										{includedConstraintKeys.map((key) => (
+											<ChoiceConstraintSelect
+												frameKey={frameKey}
+												key={key}
+												constraintKey={key}
+												index={index}
+												value={choice.choiceConstraints[key] as string | undefined}
+											/>
+										))}
+									</div>
+								</div>
+							)
+						})}
 						<Button
 							size="sm"
-							variant="default"
-							onClick={() => handleRegen()}
+							variant="outline"
+							onClick={() => getFrameState(frameKey).addChoice()}
 							disabled={generating}
+							title="Add choice"
+							className="w-full"
 						>
-							<Icons.RefreshCw className={regeneratingIndex === 'all' ? 'animate-spin' : ''} />
-							{choices.some(c => c.layerId) ? 'Regenerate All' : 'Generate'}
+							<Icons.Plus />
+							Add Choice
 						</Button>
 					</div>
-					<div className="flex gap-4">
-						<div className="flex flex-col gap-4 flex-1">
-							{choices.map((choice, index) => {
-								const constraints = choice.layerId ? chosenLayers[choice.layerId]?.constraints : undefined
-								const error = choiceErrors[index]
-								return (
-									<div key={`choice-${index}`} className="flex flex-col gap-2 p-4 border rounded-lg">
-										<div className="flex items-center justify-between mb-2">
-											<div className="flex items-center gap-2">
-												<span className="font-semibold text-lg">{index + 1}.</span>
-												<div>
-													{choice.layerId
-														? (
-															<div className="flex gap-1 items-center text-sm">
-																<ShortLayerName
-																	layerId={choice.layerId}
-																	matchDescriptors={constraints?.matchDescriptors}
-																/>
-																{constraints && (
-																	<ConstraintMatchesIndicator
-																		matchingConstraintIds={constraints.matchedConstraintIds}
-																		matchDescriptors={constraints.matchDescriptors}
-																		queriedConstraints={constraints.queriedConstraints}
-																		itemParity={teamParity}
-																		layerId={choice.layerId}
-																	/>
-																)}
-															</div>
-														)
-														: error
-														? (
-															<Alert variant="destructive" className="py-2">
-																<Icons.AlertCircle className="h-4 w-4" />
-																<AlertTitle>{error}</AlertTitle>
-															</Alert>
-														)
-														: <span className="text-muted-foreground">No layer selected</span>}
-												</div>
-											</div>
-											<ButtonGroup>
-												<Button
-													size="sm"
-													variant="ghost"
-													onClick={() => handleRegen(index)}
-													disabled={generating}
-													title={choice.layerId ? 'Regenerate this choice' : 'Generate this choice'}
-												>
-													<Icons.RefreshCw className={regeneratingIndex === 'all' || regeneratingIndex === index ? 'animate-spin' : ''} />
-												</Button>
-												<Button
-													size="sm"
-													variant="ghost"
-													onClick={() => getFrameState(frameKey).removeChoice(index)}
-													disabled={generating || choices.length <= 2}
-													title="Remove this choice (minimum 2 required)"
-												>
-													<Icons.X />
-												</Button>
-											</ButtonGroup>
-										</div>
-										<div className="flex flex-col gap-2">
-											{includedConstraintKeys.map((key) => (
-												<ChoiceConstraintSelect
-													frameKey={frameKey}
-													key={key}
-													constraintKey={key}
-													index={index}
-													value={choice.choiceConstraints[key] as string | undefined}
-												/>
-											))}
-										</div>
-									</div>
-								)
-							})}
-							<Button
-								size="sm"
-								variant="outline"
-								onClick={() => getFrameState(frameKey).addChoice()}
-								disabled={generating}
-								title="Add choice"
-								className="w-full"
-							>
-								<Icons.Plus />
-								Add Choice
-							</Button>
-						</div>
-						<div className="w-80 shrink-0 flex flex-col justify-between">
-							<AdvancedVoteConfigEditor
-								config={voteConfig}
-								choices={choices.map(c => c.layerId).filter((id): id is string => !!id)}
-								onChange={handleSetVoteConfig}
-								previewPlaceholder="Generate layers to see vote preview"
-								includeResetToDefault={false}
+					<div className="w-80 shrink-0 flex flex-col justify-between">
+						<AdvancedVoteConfigEditor
+							config={voteConfig}
+							choices={choices.map(c => c.layerId).filter((id): id is string => !!id)}
+							onChange={handleSetVoteConfig}
+							previewPlaceholder="Generate layers to see vote preview"
+							includeResetToDefault={false}
+						/>
+						<div className="self-end flex gap-1">
+							<TabsList
+								options={[
+									{ label: 'Play Next', value: 'next' },
+									{ label: 'Play After', value: 'after' },
+								]}
+								active={cursor?.type === 'start' ? 'next' : 'after'}
+								setActive={() => {
+									const newCursor: LL.Cursor = cursor?.type === 'start' ? { type: 'end' } : { type: 'start' }
+									getFrameState(frameKey).setCursor(newCursor)
+								}}
 							/>
-							<div className="self-end flex gap-1">
-								<TabsList
-									options={[
-										{ label: 'Play Next', value: 'next' },
-										{ label: 'Play After', value: 'after' },
-									]}
-									active={cursor?.type === 'start' ? 'next' : 'after'}
-									setActive={() => {
-										const newCursor: LL.Cursor = cursor?.type === 'start' ? { type: 'end' } : { type: 'start' }
-										getFrameState(frameKey).setCursor(newCursor)
-									}}
-								/>
-								<Button onClick={handleSubmit} disabled={!canSubmit}>
-									Submit
-								</Button>
-							</div>
+							<Button onClick={handleSubmit} disabled={!canSubmit}>
+								Submit
+							</Button>
 						</div>
 					</div>
 				</div>
-			</>
+			</div>
 		</HeadlessDialogContent>
 	)
 })

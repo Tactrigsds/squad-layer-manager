@@ -112,7 +112,6 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 	React.useEffect(() => {
 		setSelectedLayers(props.defaultSelected)
 	}, [props.defaultSelected, setSelectedLayers])
-
 	return (
 		<HeadlessDialogContent className="max-h-[95vh] w-max max-w-[95vw] flex flex-col overflow-auto">
 			<HeadlessDialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">

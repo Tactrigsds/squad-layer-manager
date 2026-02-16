@@ -7,7 +7,7 @@ import * as FeatureFlagClient from '@/systems/feature-flags.client'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import type { ReactNode } from 'react'
-import React, { Suspense } from 'react'
+import React from 'react'
 import { DraggableWindowOutlet } from './ui/draggable-window'
 import { AlertDialogProvider } from './ui/lazy-alert-dialog'
 import { TooltipProvider } from './ui/tooltip'
@@ -34,10 +34,9 @@ function ProvidersInner(props: { children: ReactNode }) {
 				<DragContextProvider>
 					<AlertDialogProvider>
 						<Toaster />
-						<Suspense fallback={null}>
-							<DraggableWindowOutlet />
-						</Suspense>
-						{props.children}
+						<DraggableWindowOutlet outletKey="default">
+							{props.children}
+						</DraggableWindowOutlet>
 					</AlertDialogProvider>
 				</DragContextProvider>
 			</TooltipProvider>

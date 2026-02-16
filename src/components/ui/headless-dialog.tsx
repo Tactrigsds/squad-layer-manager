@@ -4,6 +4,7 @@ import * as React from 'react'
 
 import { useIsMobile } from '@/hooks/use-is-mobile'
 import { cn } from '@/lib/utils'
+import { DraggableWindowOutlet } from './draggable-window'
 
 interface DialogProps {
 	open: boolean
@@ -28,6 +29,20 @@ const HeadlessDialogContent = React.forwardRef<
 	}
 >(({ className, children, showCloseButton = true, ...props }, ref) => {
 	const isMobile = useIsMobile()
+	const outletKey = React.useId()
+	const panelRef = React.useRef<HTMLDivElement | null>(null)
+
+	const combinedRef = React.useCallback(
+		(node: HTMLDivElement | null) => {
+			panelRef.current = node
+			if (typeof ref === 'function') {
+				ref(node)
+			} else if (ref) {
+				;(ref as React.MutableRefObject<HTMLDivElement | null>).current = node
+			}
+		},
+		[ref],
+	)
 
 	return (
 		<>
@@ -37,7 +52,7 @@ const HeadlessDialogContent = React.forwardRef<
 			/>
 			<div className="fixed inset-0 z-50 flex w-screen items-center justify-center p-4">
 				<DialogPanel
-					ref={ref}
+					ref={combinedRef}
 					data-mobile={isMobile}
 					className={cn(
 						'relative grid w-full gap-4 border bg-background p-6 shadow-lg',
@@ -49,7 +64,9 @@ const HeadlessDialogContent = React.forwardRef<
 					transition
 					{...props}
 				>
-					{children}
+					<DraggableWindowOutlet outletKey={outletKey} getElement={() => panelRef.current}>
+						{children}
+					</DraggableWindowOutlet>
 					{showCloseButton && (
 						<CloseButton className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background hover:opacity-100 focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-hover:bg-accent data-hover:text-muted-foreground">
 							<Cross2Icon className="h-4 w-4" />

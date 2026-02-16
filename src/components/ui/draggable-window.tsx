@@ -1,11 +1,10 @@
+import * as Obj from '@/lib/object'
+import { cn } from '@/lib/utils'
+import { DraggableWindowOutletContext, DraggableWindowStore, type InitialPosition, useOpenWindows, useOutletBaseZIndex, useOutletKey, useWindowDefinitions, type WindowDefinition, type WindowState } from '@/systems/draggable-window.client'
 import { Cross2Icon, DrawingPinFilledIcon, DrawingPinIcon } from '@radix-ui/react-icons'
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 import * as Zus from 'zustand'
-
-import * as Obj from '@/lib/object'
-import { cn } from '@/lib/utils'
-import { DraggableWindowStore, type InitialPosition, useOpenWindows, useWindowDefinitions, type WindowDefinition, type WindowState } from '@/systems/draggable-window.client'
 
 // ============================================================================
 // Position Calculation
@@ -346,6 +345,8 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 	)
 
 	const Component = definition.component
+	const outletBaseZIndex = useOutletBaseZIndex()
+	const effectiveZIndex = outletBaseZIndex + windowState.zIndex
 
 	return (
 		<DraggableWindowContext.Provider value={contextValue}>
@@ -355,7 +356,7 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 				tabIndex={-1}
 				onMouseDown={handleMouseDown}
 				className="fixed rounded-md border bg-popover text-popover-foreground shadow-lg outline-none invisible"
-				style={{ zIndex: windowState.zIndex }}
+				style={{ zIndex: effectiveZIndex }}
 			>
 				<Component {...windowState.props} />
 			</div>
@@ -367,21 +368,42 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 // Window Outlet (renders all open windows)
 // ============================================================================
 
-export function DraggableWindowOutlet() {
+export function DraggableWindowOutlet(
+	props: { outletKey: unknown; getElement?: () => HTMLElement | null | undefined; children: React.ReactNode },
+) {
 	const openWindows = useOpenWindows()
 	const definitions = useWindowDefinitions()
 
-	if (openWindows.length === 0) return null
+	const outletKeyRef = React.useRef(props.outletKey)
+	outletKeyRef.current = props.outletKey
 
-	return createPortal(
-		<>
-			{openWindows.map((windowState) => {
-				const def = definitions.find((d) => d.type === windowState.type)
-				if (!def) return null
-				return <DraggableWindowInstance key={windowState.id} window={windowState} definition={def} />
-			})}
-		</>,
-		document.body,
+	React.useEffect(() => {
+		return () => {
+			const state = DraggableWindowStore.getState()
+			for (const win of state.windows) {
+				if (Obj.deepEqual(win.outletKey, outletKeyRef.current)) {
+					state.closeWindow(win.id)
+				}
+			}
+		}
+	}, [])
+
+	const element = props.getElement?.() ?? document.body
+	return (
+		<DraggableWindowOutletContext.Provider value={{ outletKey: props.outletKey, getElement: props.getElement }}>
+			{createPortal(
+				<React.Suspense fallback={null}>
+					{openWindows.map((windowState) => {
+						if (!Obj.deepEqual(windowState.outletKey, props.outletKey)) return null
+						const def = definitions.find((d) => d.type === windowState.type)
+						if (!def) return null
+						return <DraggableWindowInstance key={windowState.id} window={windowState} definition={def} />
+					})}
+				</React.Suspense>,
+				element,
+			)}
+			{props.children}
+		</DraggableWindowOutletContext.Provider>
 	)
 }
 
@@ -518,14 +540,24 @@ export function OpenWindowInteraction<TProps>(
 		return !!entry?.data
 	})
 
+	const outletKey = useOutletKey()
 	const openWindow = React.useCallback((anchor?: Element | null) => {
-		DraggableWindowStore.getState().openWindow(props.windowId, props.windowProps, anchor as HTMLElement | null)
-	}, [props.windowId, props.windowProps])
+		DraggableWindowStore.getState().openWindow(props.windowId, props.windowProps, anchor as HTMLElement | null, outletKey)
+	}, [
+		props.windowId,
+		props.windowProps,
+		outletKey,
+	])
 
 	const preloadWindow = React.useCallback(() => {
 		if (isLoaded) return
-		DraggableWindowStore.getState().preloadWindow(props.windowId, props.windowProps)
-	}, [props.windowId, props.windowProps, isLoaded])
+		DraggableWindowStore.getState().preloadWindow(props.windowId, props.windowProps, outletKey)
+	}, [
+		props.windowId,
+		props.windowProps,
+		isLoaded,
+		outletKey,
+	])
 
 	const [intentTimeout, setIntentTimeout] = React.useState<NodeJS.Timeout | null>(null)
 

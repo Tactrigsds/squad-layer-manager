@@ -38,10 +38,11 @@ export type WindowState<TProps = any> = {
 	isPinned: boolean
 	id: string
 	type: string
+	outletKey: unknown
 	props: TProps
 }
 
-type WindowLoaderKey<TProps = any> = { type: string; windowId: string; props: TProps }
+type WindowLoaderKey<TProps = any> = { type: string; windowId: string; props: TProps; outletKey: unknown }
 
 type WindowLoaderConfig = Lifecycle.LoaderConfig<string, WindowLoaderKey, any, DraggableWindowStoreState, WindowState[]>
 
@@ -61,21 +62,28 @@ interface DraggableWindowStore extends DraggableWindowStoreState {
 	// Actions
 	registerDefinition: <TProps, TData>(def: WindowDefinition<TProps, TData>) => void
 	unregisterDefinition: (type: string) => void
-	preloadWindow: <TProps>(type: string, props: TProps) => void
-	openWindow: <TProps>(type: string, props: TProps, anchor?: HTMLElement | null) => void
+	preloadWindow: <TProps>(type: string, props: TProps, outletKey?: unknown) => void
+	openWindow: <TProps>(type: string, props: TProps, anchor?: HTMLElement | null, outletKey?: unknown) => void
 	closeWindow: (id: string) => void
 	bringToFront: (id: string) => void
 	setIsPinned: (id: string, pinned: boolean) => void
 }
 
-const BASE_Z_INDEX = 18
+interface DraggableWindowOutletContextValue {
+	outletKey: unknown
+	getElement?: () => HTMLElement | null | undefined
+}
+
+export const DraggableWindowOutletContext = React.createContext<DraggableWindowOutletContextValue | null>(null)
+const DEFAULT_OUTLET_KEY = 'default'
+const BASE_Z_INDEX = 0
 
 function defToLoaderConfig(def: WindowDefinition): WindowLoaderConfig {
 	return {
 		name: def.type,
 		match: (windows: WindowState[]) => {
 			const win = windows.find(w => w.type === def.type)
-			return win ? { windowId: win.id, props: win.props, type: win.type } : undefined
+			return win ? { windowId: win.id, props: win.props, type: win.type, outletKey: win.outletKey } : undefined
 		},
 		unloadOnLeave: false,
 		...(def.load
@@ -150,7 +158,7 @@ export const DraggableWindowStore = (() => {
 				}))
 			},
 
-			preloadWindow: (id, props) => {
+			preloadWindow: (id, props, outletKey) => {
 				requestIdleCallback(() => {
 					const def = get().definitions.find((d) => d.type === id)
 					if (!def) {
@@ -162,7 +170,7 @@ export const DraggableWindowStore = (() => {
 					if (!config) return
 
 					const windowId = def.getId(props)
-					const key: WindowLoaderKey = { type: id, windowId, props }
+					const key: WindowLoaderKey = { type: id, windowId, props, outletKey: outletKey ?? DEFAULT_OUTLET_KEY }
 
 					loaderCtx.set(Im.produce<DraggableWindowStoreState>((draft) => {
 						Lifecycle.preloadCacheEntry(loaderCtx as any, config, key, draft)
@@ -170,7 +178,7 @@ export const DraggableWindowStore = (() => {
 				})
 			},
 
-			openWindow: (id, props, anchor) => {
+			openWindow: (id, props, anchor, outletKey) => {
 				const { definitions, windows, zIndexCounter } = get()
 				const def = definitions.find((d) => d.type === id)
 				if (!def) {
@@ -181,8 +189,9 @@ export const DraggableWindowStore = (() => {
 				const windowId = def.getId(props)
 				if (windows.find((w) => w.id === windowId)) return
 
+				const resolvedOutletKey = outletKey ?? DEFAULT_OUTLET_KEY
 				const config = loaderConfigs.find((c) => c.name === id)
-				const key: WindowLoaderKey = { type: id, windowId, props }
+				const key: WindowLoaderKey = { type: id, windowId, props, outletKey: resolvedOutletKey }
 				const anchorRect = anchor?.getBoundingClientRect() ?? null
 				const openState: WindowState = {
 					id: windowId,
@@ -191,6 +200,7 @@ export const DraggableWindowStore = (() => {
 					anchorRect,
 					zIndex: zIndexCounter + 1,
 					isPinned: def.defaultPinned ?? false,
+					outletKey: resolvedOutletKey,
 				}
 
 				loaderCtx.set(Im.produce<DraggableWindowStoreState>((draft) => {
@@ -209,7 +219,7 @@ export const DraggableWindowStore = (() => {
 
 				const config = loaderConfigs.find((c) => c.name === window.type)
 				if (config) {
-					const key: WindowLoaderKey = { type: window.type, windowId: window.id, props: window.props }
+					const key: WindowLoaderKey = { type: window.type, windowId: window.id, props: window.props, outletKey: window.outletKey }
 					loaderCtx.set(Im.produce<DraggableWindowStoreState>((draft) => {
 						draft.windows = draft.windows.filter((w) => w.id !== id)
 						Lifecycle.closeCacheEntry(loaderCtx as any, config, key, draft)
@@ -241,10 +251,24 @@ export const DraggableWindowStore = (() => {
 // Hooks
 // ============================================================================
 
+export function useOutletKey() {
+	const ctx = React.useContext(DraggableWindowOutletContext)
+	return ctx?.outletKey ?? DEFAULT_OUTLET_KEY
+}
+
+export function useOutletBaseZIndex() {
+	const ctx = React.useContext(DraggableWindowOutletContext)
+	const element = ctx?.getElement?.()
+	if (!element) return 0
+	const parsed = parseInt(getComputedStyle(element).zIndex)
+	return isNaN(parsed) ? 0 : parsed + 1
+}
+
 export function buildUseOpenWindow<TProps>(id: string) {
 	return (props: TProps) => {
 		const store = Zus.useStore(DraggableWindowStore)
-		return (anchor?: HTMLElement | null) => store.openWindow(id, props, anchor)
+		const outletKey = useOutletKey()
+		return (anchor?: HTMLElement | null) => store.openWindow(id, props, anchor, outletKey)
 	}
 }
 
