@@ -45,7 +45,7 @@ function setCachedPlayer(steamId: string, value: BM.PlayerFlagsAndProfile) {
 
 // -------- polling config --------
 
-const POLL_INTERVAL_MS = 120_000
+const POLL_INTERVAL_MS = 5 * 60 * 1000
 
 /** Per-server state for bulk polling and streaming */
 type ServerBmState = {
@@ -399,9 +399,7 @@ const bulkFetchOnlinePlayers = C.spanOp(
 	'bulkFetchOnlinePlayers',
 	{ module },
 	async (ctx: CS.Ctx & C.ServerSlice): Promise<string[]> => {
-		const onlineSteamIds = ctx.server.state.chat.interpolatedState.players
-			.map((p) => p.ids.steam)
-			.filter((id): id is string => !!id)
+		const onlineSteamIds = ctx.server.state.chat.interpolatedState.players.map((p) => p.ids.steam)
 
 		const uncached = onlineSteamIds.filter((id) => !getCachedPlayer(id))
 		if (uncached.length > 0) {
