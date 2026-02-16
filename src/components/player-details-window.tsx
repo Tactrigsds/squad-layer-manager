@@ -118,13 +118,6 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 						BattleMetrics
 					</ExtLink>
 				</div>
-				{profile
-					? (
-						<div className="flex items-center gap-2 text-muted-foreground">
-							<span>{profile.hoursPlayed}h played on org servers</span>
-						</div>
-					)
-					: null}
 			</div>
 			<Separator />
 			<div className="px-3 py-0.5">
