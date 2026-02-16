@@ -12,6 +12,9 @@ const JsonApiResourceRef = z.object({
 const FlagPlayerInclude = z.object({
 	type: z.literal('flagPlayer'),
 	id: z.string(),
+	attributes: z.object({
+		removedAt: z.string().nullable().optional(),
+	}).nullable().optional(),
 	relationships: z.object({
 		playerFlag: z.object({
 			data: JsonApiResourceRef,

@@ -357,6 +357,7 @@ function parsePlayerListPage(data: PlayerListData, orgServerIdSet: Set<string>):
 	const included = data.included ?? []
 	const identifiers = included.filter((i): i is typeof i & { type: 'identifier' } => i.type === 'identifier')
 	const flagPlayers = included.filter((i): i is typeof i & { type: 'flagPlayer' } => i.type === 'flagPlayer')
+		.filter((fp) => !fp.attributes?.removedAt)
 		.filter((fp) => !BM_ORG_ID || fp.relationships?.organization?.data?.id === BM_ORG_ID)
 	const playerFlags = included.filter((i): i is typeof i & { type: 'playerFlag' } => i.type === 'playerFlag')
 
