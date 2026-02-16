@@ -282,7 +282,7 @@ export const GENERAL = {
 			enableSlmUpdates: 'Allow SLM to set the next layer',
 			disableSlmUpdates: 'Prevent SLM from setting the next layer',
 			getSlmUpdatesEnabled: 'Check if SLM is allowed to set the next layer',
-			linkSteamAccount: 'Link your Steam account to your Squad account',
+			linkSteamAccount: 'Link your Steam account to your Discord account',
 			requestFeedback: 'Request feedback on a layer',
 		},
 	},
