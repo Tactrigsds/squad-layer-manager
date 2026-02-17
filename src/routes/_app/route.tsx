@@ -287,7 +287,7 @@ function NavLinksDropdown(
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
 				<Button variant="ghost" size="icon" className="shrink-0">
-					<Icons.LayoutGrid className="h-4 w-4" />
+					<Icons.Link2 className="h-4 w-4" />
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end">
