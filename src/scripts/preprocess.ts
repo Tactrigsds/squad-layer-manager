@@ -20,6 +20,7 @@ import { promisify } from 'node:util'
 import zlib from 'node:zlib'
 import path from 'path'
 import * as Rx from 'rxjs'
+
 import { z } from 'zod'
 
 const gzip = promisify(zlib.gzip)
@@ -166,7 +167,7 @@ async function populateExtraColsTable(ctx: CS.LayerDb, csvPath: string, componen
 			if (row.SubFac_1) row.Unit_1 = row.SubFac_1
 			if (row.SubFac_2) row.Unit_2 = row.SubFac_2
 
-			let segments = L.parseLayerStringSegment(row['Layer'])
+			let segments = L.parseLayerStringSegment(row['Layer'], components)
 			if (!segments) throw new Error(`Layer ${row['Layer']} is invalid`)
 			segments = L.applyBackwardsCompatMappings(segments, components)
 
@@ -175,6 +176,7 @@ async function populateExtraColsTable(ctx: CS.LayerDb, csvPath: string, componen
 				Map: segments.Map,
 				Gamemode: segments.Gamemode,
 				LayerVersion: segments.LayerVersion,
+				Collection: segments.Collection,
 				Faction_1: row['Faction_1'],
 				Faction_2: row['Faction_2'],
 				Unit_1: row['Unit_1'],
@@ -290,12 +292,14 @@ async function parseSquadLayerSheetData() {
 	const availability: Map<string, L.LayerFactionAvailabilityEntry[]> = new Map()
 	const factionToAlliance = OneToMany.invertOneToOne(allianceToFaction)
 	const sizes = await getMapLayerSizes()
+	// @ts-expect-error it's fine
+	const componentsTemp = LC.buildFullLayerComponents({}, true)
 
 	const mapLayers: L.LayerConfig[] = []
 	for (const map of json.Maps) {
 		if (map.levelName.includes('Automation')) continue
 		if (map.levelName.toLowerCase().includes('tutorial')) continue
-		const segments = L.parseLayerStringSegment(map.levelName)
+		const segments = L.parseLayerStringSegment(map.levelName, componentsTemp)
 		if (!segments) {
 			log.error(`Invalid layer name: ${map.levelName}`)
 			continue
@@ -385,7 +389,7 @@ async function parseSquadLayerSheetData() {
 		}
 	}
 
-	const baseLayers: L.KnownLayer[] = []
+	let baseLayers: L.KnownLayer[] = []
 	const idToIdx: Map<string, number> = new Map()
 	const components: LC.LayerComponents = LC.buildFullLayerComponents(
 		{
@@ -395,7 +399,6 @@ async function parseSquadLayerSheetData() {
 			factionToUnit: Object.fromEntries(Array.from(factionToUnit).map(([k, v]) => [k, Array.from(v)])),
 			factionUnitToUnitFullName: Object.fromEntries(factionUnitToUnitFullName),
 			layerFactionAvailability: Object.fromEntries(availability),
-
 			gamemodes: [],
 			alliances: [],
 			maps: [],
@@ -425,17 +428,18 @@ async function parseSquadLayerSheetData() {
 			for (const availEntry2 of availability.get(layer.Layer)!) {
 				if (!availEntry2.allowedTeams.includes(2)) continue
 
-				const alliance1 = factionToAlliance.get(availEntry1.Faction)!
-				const alliance2 = factionToAlliance.get(availEntry2.Faction)!
 				if (availEntry1.Faction === availEntry2.Faction) continue
-				if (alliance1 === alliance2 && alliance1 !== 'INDEPENDENT') continue
 
-				let parsedSegments = L.parseLayerStringSegment(layer.Layer)
+				let parsedSegments = L.parseLayerStringSegment(layer.Layer, components)
 				if (!parsedSegments) throw new Error(`Invalid layer string segment: ${layer.Layer}`)
 				parsedSegments = L.applyBackwardsCompatMappings(parsedSegments, components)
 				Arr.upsert(components.alliances, factionToAlliance.get(availEntry1.Faction)!)
 				Arr.upsert(components.alliances, factionToAlliance.get(availEntry2.Faction)!)
 				Arr.upsert(components.versions, parsedSegments.LayerVersion)
+				if (!components.collections.includes(parsedSegments.Collection)) throw new Error(`Invalid collection: ${parsedSegments.Collection}`)
+				if (!Object.keys(components.collectionAbbreviations).includes(parsedSegments.Collection)) {
+					throw new Error(`Invalid collection (no abbreviation): ${parsedSegments.Collection}`)
+				}
 				Arr.upsert(components.gamemodes, parsedSegments.Gamemode)
 				Arr.upsert(components.factions, availEntry1.Faction)
 				Arr.upsert(components.factions, availEntry2.Faction)
@@ -446,6 +450,7 @@ async function parseSquadLayerSheetData() {
 					Map: layer.Map,
 					LayerVersion: parsedSegments.LayerVersion,
 					Gamemode: parsedSegments.Gamemode,
+					Collection: parsedSegments.Collection,
 					Faction_1: availEntry1.Faction,
 					Faction_2: availEntry2.Faction,
 					Unit_1: availEntry1.Unit ?? null,
@@ -459,6 +464,7 @@ async function parseSquadLayerSheetData() {
 					Layer: layer.Layer,
 					Gamemode: parsedSegments.Gamemode,
 					LayerVersion: parsedSegments.LayerVersion,
+					Collection: parsedSegments.Collection,
 					Size: layer.Size,
 					Faction_1: availEntry1.Faction,
 					Unit_1: availEntry1.Unit ?? null,
@@ -490,7 +496,7 @@ async function parseSquadLayerSheetData() {
 		idToIdx.set(fraasVariant.id, i + baseLayers.length)
 		i++
 	}
-	baseLayers.push(...layersToAdd)
+	baseLayers = baseLayers.concat(layersToAdd)
 
 	const mapLayersToAdd: L.LayerConfig[] = []
 	for (const layerConfig of components.mapLayers) {

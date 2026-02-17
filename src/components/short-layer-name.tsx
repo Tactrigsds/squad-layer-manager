@@ -70,6 +70,7 @@ export default function ShortLayerName(
 			Faction_2: combineStyles('Faction_2'),
 			Unit_2: combineStyles('Unit_2'),
 			Alliance_2: combineStyles('Alliance_2'),
+			Collection: combineStyles('Collection'),
 		}
 		return extraStyles
 	}, [

@@ -1,3 +1,4 @@
+import * as Arr from '@/lib/array'
 import type * as FRM from '@/lib/frame'
 import * as CB from '@/models/constraint-builders'
 import * as CS from '@/models/context-shared'
@@ -110,20 +111,22 @@ export function initLayerFilterMenuStore(
 							draft['Map'].value = parsedLayer.Map
 							draft['Gamemode'].value = parsedLayer.Gamemode
 							draft['LayerVersion'].value = parsedLayer.LayerVersion
+							draft['Collection'].value = parsedLayer.Collection
 						} else if (comp.column === 'Layer' && !comp.value) {
 							delete draft['Layer'].value
 							delete draft['Map'].value
 							delete draft['Gamemode'].value
 							delete draft['LayerVersion'].value
+							delete draft['Collection'].value
 						} else if (comp !== undefined) {
 							draft[field] = comp
 						}
 
 						if (
 							comp.column === 'Map'
-							|| comp.column === 'Gamemode'
+							|| (comp.column === 'Gamemode'
 								// keep layer version if switching from RAAS to FRAAS or vice versa TODO test this
-								&& !(prevComp.value?.toString().includes('RAAS') && comp.value?.toString().includes('RAAS'))
+								&& !(prevComp.value?.toString().includes('RAAS') && comp.value?.toString().includes('RAAS')))
 						) {
 							delete draft['LayerVersion'].value
 						}
@@ -175,6 +178,7 @@ export function getDefaultFilterMenuItemState(
 		Map: EFB.eq('Map', defaultFields['Map']),
 		Gamemode: EFB.eq('Gamemode', defaultFields['Gamemode']),
 		LayerVersion: EFB.eq('LayerVersion', defaultFields['LayerVersion'] ?? undefined),
+		Collection: EFB.eq('Collection', defaultFields['Collection'] ?? undefined),
 		Alliance_1: EFB.eq('Alliance_1', defaultFields['Alliance_1'] ?? undefined),
 		Faction_1: EFB.eq('Faction_1', defaultFields['Faction_1']),
 		Unit_1: EFB.eq('Unit_1', defaultFields['Unit_1']),
@@ -208,10 +212,9 @@ export function selectFilterMenuConstraints(store: Store): LQY.Constraint[] {
 	for (const [field, node] of Object.entries(store.filterMenu.menuItems)) {
 		const returnPossibleValues = LC.isEnumeratedColumn(field, { ...CS.init(), effectiveColsConfig: store.filterMenu.colConfig })
 		let excludedSiblings: string[] | undefined
-		const compositeLayerFields = ['Map', 'Gamemode', 'LayerVersion']
 		if (field === 'Layer') {
-			excludedSiblings = compositeLayerFields
-		} else if (compositeLayerFields.includes(field)) {
+			excludedSiblings = [...L.LAYER_STRING_PROPERTIES as string[]]
+		} else if (Arr.includes(L.LAYER_STRING_PROPERTIES, field)) {
 			excludedSiblings = ['Layer']
 		}
 		items.push({

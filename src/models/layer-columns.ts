@@ -22,6 +22,7 @@ export const BASE_COLUMN_DEFS = {
 	...createColumnDef('Size', { type: 'string', displayName: 'Size', enumMapping: 'size' }),
 	...createColumnDef('Gamemode', { type: 'string', displayName: 'Gamemode', enumMapping: 'gamemodes' }),
 	...createColumnDef('LayerVersion', { type: 'string', displayName: 'Version', enumMapping: 'versions' }),
+	...createColumnDef('Collection', { type: 'string', displayName: 'Collection', enumMapping: 'collections' }),
 
 	...createColumnDef('Faction_1', { type: 'string', displayName: 'T1', enumMapping: 'factions' }),
 	...createColumnDef('Faction_2', { type: 'string', displayName: 'T2', enumMapping: 'factions' }),
@@ -74,6 +75,7 @@ export const GROUP_BY_COLUMNS = [
 	'Alliance_2',
 	'Gamemode',
 	'LayerVersion',
+	'Collection',
 ] as const satisfies L.LayerColumnKey[]
 export type GroupByColumn = typeof GROUP_BY_COLUMNS[number]
 
@@ -106,6 +108,9 @@ export function groupByColumnDefaultValues<C extends GroupByColumn>(column: C, c
 		case 'Unit_2':
 			return components.units
 
+		case 'Collection':
+			return components.collections
+
 		default:
 			assertNever(column)
 	}
@@ -123,6 +128,7 @@ export const layers = sqliteTable('layers', {
 	Size: int('Size').notNull(),
 	Gamemode: int('Gamemode').notNull(),
 	LayerVersion: int('LayerVersion'),
+	Collection: int('Collection').notNull(),
 
 	Faction_1: int('Faction_1').notNull(),
 	Unit_1: int('Unit_1').notNull(),
@@ -502,7 +508,7 @@ export function unpackId(
 	const layerIndex = (packed >> bitOffset) & layerMask
 
 	const layer = components.layers[layerIndex]
-	const parsedSegments = L.parseLayerStringSegment(layer)!
+	const parsedSegments = L.parseLayerStringSegment(layer, components)!
 	const compatMappedSegments = L.applyBackwardsCompatMappings(parsedSegments, components)
 	return L.getKnownLayerId({
 		...compatMappedSegments,
@@ -521,6 +527,7 @@ export function toRow(layer: L.KnownLayer, ctx: CS.EffectiveColumnConfig, compon
 		Size: assertedEnumDbValue('Size', layer.Size, ctx, components),
 		Gamemode: assertedEnumDbValue('Gamemode', layer.Gamemode, ctx, components),
 		LayerVersion: assertedEnumDbValue('LayerVersion', layer.LayerVersion, ctx, components) ?? null,
+		Collection: assertedEnumDbValue('Collection', layer.Collection, ctx, components),
 		Faction_1: assertedEnumDbValue('Faction_1', layer.Faction_1, ctx, components),
 		Unit_1: assertedEnumDbValue('Unit_1', layer.Unit_1, ctx, components),
 		Alliance_1: assertedEnumDbValue('Alliance_1', layer.Alliance_1, ctx, components),
@@ -553,6 +560,8 @@ export type LayerComponents = BaseLayerComponents & {
 	unitShortNames: Record<string, string>
 	gamemodeAbbreviations: Record<string, string>
 	backwardsCompat: L.BackwardsCompatMappings
+	collections: string[]
+	collectionAbbreviations: Record<string, string | null>
 }
 
 const baseProperties = {
@@ -674,6 +683,11 @@ export function buildFullLayerComponents(
 		AmphibiousAssault: 'AM',
 	}
 
+	const COLLECTION_ABBREVIATIONS: Record<string, string | null> = {
+		OWI: null,
+		Community: 'CL',
+	}
+
 	const GAMEMODE_ABBREVIATIONS = {
 		RAAS: 'RAAS',
 		FRAAS: 'FRAAS',
@@ -705,6 +719,7 @@ export function buildFullLayerComponents(
 			MEA: 'GFI',
 		},
 		gamemodes: {},
+		collections: {},
 		maps: {},
 		units: {},
 	}
@@ -728,6 +743,8 @@ export function buildFullLayerComponents(
 
 	const layerComponents: LayerComponents = {
 		...components,
+		collections: Object.keys(COLLECTION_ABBREVIATIONS),
+		collectionAbbreviations: COLLECTION_ABBREVIATIONS,
 		gamemodeAbbreviations: GAMEMODE_ABBREVIATIONS,
 		unitAbbreviations: UNIT_ABBREVIATIONS,
 		unitShortNames: UNIT_SHORT_NAMES,

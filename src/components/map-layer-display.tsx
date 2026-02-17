@@ -15,10 +15,22 @@ export default function MapLayerDisplay(
 	return (
 		<span className={cn(_extraLayerStyles.Layer, _extraLayerStyles.Size, className)}>
 			<span className={_extraLayerStyles.Map}>{segments.Map}</span>
-			{segments.Gamemode && '_'}
-			<span className={_extraLayerStyles.Gamemode}>{segments.Gamemode}</span>
-			{segments.LayerVersion && segments.Gamemode && '_'}
-			<span className={_extraLayerStyles.Layer}>{segments.LayerVersion?.toLowerCase()}</span>
+			{segments.Gamemode
+				&& (
+					<>
+						_<span className={_extraLayerStyles.Gamemode}>{segments.Gamemode}</span>
+					</>
+				)}
+			{segments.LayerVersion && (
+				<>
+					_<span className={_extraLayerStyles.Layer}>{segments.LayerVersion?.toLowerCase()}</span>
+				</>
+			)}
+			{segments.Collection && L.StaticLayerComponents.collectionAbbreviations[segments.Collection] !== null && (
+				<>
+					_<span className={_extraLayerStyles.Collection}>{L.StaticLayerComponents.collectionAbbreviations[segments.Collection]}</span>
+				</>
+			)}
 		</span>
 	)
 }

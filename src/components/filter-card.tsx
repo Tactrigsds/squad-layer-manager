@@ -781,6 +781,7 @@ export function StringEqConfig<T extends string | null>(
 		}
 		options.push({ label, value, disabled: !matched && !props.onSetAllValuesAllowed })
 	}
+	options.sort((a, b) => props.allowedValues?.indexOf(b.value as T) ?? Infinity - (props.allowedValues?.indexOf(a.value as T) ?? Infinity))
 	return (
 		<ComboBox
 			ref={props.ref}
