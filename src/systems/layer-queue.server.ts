@@ -105,6 +105,7 @@ export const setupInstance = C.spanOp(
 						if (
 							LL.isVoteItem(serverState.layerQueue[0])
 							&& voteState?.code === 'ready'
+							&& !serverState.layerQueue[0].endingVoteState
 							&& currentMatch.startTime !== undefined
 							&& currentMatch.startTime.getTime() + CONFIG.vote.startVoteReminderThreshold < Date.now()
 						) {
