@@ -339,7 +339,7 @@ export async function setup() {
 						layerQueue: [],
 						layerQueueSeqId: 0,
 					}
-					await ctx.db().insert(Schema.servers).values(superjsonify(Schema.servers, server))
+					await ctx.db({ redactParams: true }).insert(Schema.servers).values(superjsonify(Schema.servers, server))
 				} else {
 					server = unsuperjsonify(Schema.servers, server) as typeof server
 					log.info(`Server ${serverConfig.id} found, ensuring settings are up-to-date`)
@@ -358,7 +358,9 @@ export async function setup() {
 					if (!Obj.deepEqual(server.settings, oldSettings)) update = true
 					if (update) {
 						log.info(`Server ${serverConfig.id} settings updated`)
-						await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, server)).where(E.eq(Schema.servers.id, serverConfig.id))
+						await ctx.db({ redactParams: true }).update(Schema.servers).set(superjsonify(Schema.servers, server)).where(
+							E.eq(Schema.servers.id, serverConfig.id),
+						)
 					} else {
 						log.info(`Server ${serverConfig.id} settings are up-to-date`)
 					}
@@ -1377,7 +1379,7 @@ export async function updateServerState(
 	if (!Obj.deepEqual(newServerState.layerQueue, serverState.layerQueue)) {
 		newServerState.layerQueueSeqId = serverState.layerQueueSeqId + 1
 	}
-	await ctx.db().update(Schema.servers)
+	await ctx.db({ redactParams: true }).update(Schema.servers)
 		.set(superjsonify(Schema.servers, { ...changes, layerQueueSeqId: newServerState.layerQueueSeqId }))
 		.where(E.eq(Schema.servers.id, ctx.serverId))
 	const update: SS.LQStateUpdate = { state: newServerState, source }
