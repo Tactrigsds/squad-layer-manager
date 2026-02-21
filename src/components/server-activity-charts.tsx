@@ -355,10 +355,6 @@ function createRatioChartOption(
 					color: team1Color,
 					width: 2,
 				},
-				areaStyle: {
-					color: team1Color,
-					opacity: 0.2,
-				},
 				symbol: 'none',
 			},
 			{
@@ -369,10 +365,6 @@ function createRatioChartOption(
 				lineStyle: {
 					color: team2Color,
 					width: 2,
-				},
-				areaStyle: {
-					color: team2Color,
-					opacity: 0.2,
 				},
 				symbol: 'none',
 			},
@@ -397,7 +389,8 @@ export function ServerActivityCharts(props: {
 	currentMatchId?: number
 }) {
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
-	const [timeInterval, setTimeInterval] = React.useState<1 | 5 | 10>(5)
+	const timeInterval = Zus.useStore(GlobalSettingsStore, s => s.chartTimeInterval)
+	const setTimeInterval = Zus.useStore(GlobalSettingsStore, s => s.setChartTimeInterval)
 	const selectedMatchOrdinal = Zus.useStore(SquadServerClient.ChatStore, s => s.selectedMatchOrdinal)
 	const [, forceUpdate] = React.useReducer((x) => x + 1, 0)
 
@@ -495,7 +488,8 @@ export function ServerActivityCharts(props: {
 		[chartData.wdRatio, team1Color, team2Color, team1Label, team2Label],
 	)
 
-	const [activeTab, setActiveTab] = React.useState<'population' | 'kd' | 'wd'>('population')
+	const activeTab = Zus.useStore(GlobalSettingsStore, s => s.chartTab)
+	const setActiveTab = Zus.useStore(GlobalSettingsStore, s => s.setChartTab)
 
 	if (isEmpty) {
 		return (
