@@ -55,8 +55,8 @@ export type Event = SM.Events.Event
 export type EventEnriched =
 	| NoopEvent
 	| SM.Events.MapSet
-	| Omit<SM.Events.NewGame, 'state'>
-	| Omit<SM.Events.Reset, 'state'>
+	| SM.Events.NewGame
+	| SM.Events.Reset
 	| SM.Events.RconConnected
 	| SM.Events.RconDisconnected
 	| SM.Events.RoundEnded
@@ -290,9 +290,8 @@ export function interpolateEvent(
 			return event
 		case 'NEW_GAME':
 		case 'RESET': {
-			const { state: newState, ...rest } = event
-			Object.assign(state, InterpolableState.clone({ ...newState }))
-			return rest
+			Object.assign(state, InterpolableState.clone({ ...event.state }))
+			return event
 		}
 
 		case 'RCON_CONNECTED':

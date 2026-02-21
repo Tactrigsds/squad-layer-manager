@@ -1,3 +1,4 @@
+import { withThrown } from '@/lib/error'
 import * as L from '@/models/layer'
 
 import * as MH from '@/models/match-history.models'
@@ -5,6 +6,7 @@ import type * as SM from '@/models/squad.models'
 import { GlobalSettingsStore } from '@/systems/global-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import * as Zus from 'zustand'
 import * as DH from '../lib/display-helpers'
@@ -58,7 +60,26 @@ export function TeamFactionDisplay(
 	},
 ) {
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
-	const partialLayer = typeof props.layer === 'string' ? L.toLayer(props.layer) : props.layer
+	const [partialLayer, error] = withThrown(() => typeof props.layer === 'string' ? L.toLayer(props.layer) : props.layer)
+
+	if (error || !partialLayer) {
+		const layerId = typeof props.layer === 'string' ? props.layer : props.layer.id
+		return (
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<span className="inline-block whitespace-nowrap text-destructive cursor-help">
+						{layerId}
+					</span>
+				</TooltipTrigger>
+				<TooltipContent>
+					<div className="text-xs">
+						<div className="font-semibold">Failed to parse layer</div>
+						<div className="text-muted-foreground mt-1">{error instanceof Error ? error.message : 'Unknown error'}</div>
+					</div>
+				</TooltipContent>
+			</Tooltip>
+		)
+	}
 
 	// Determine which team we're displaying (1 or 2)
 	const allianceProp = props.team === 1 ? 'Alliance_1' : 'Alliance_2'
@@ -92,6 +113,7 @@ export function TeamFactionDisplay(
 	] as const satisfies { label: string; color: string; title: string; id: 'A' | 'B' | SM.TeamId }[]
 
 	if (displayTeamsNormalized) attrs.reverse()
+
 	if (!faction) return
 
 	return (

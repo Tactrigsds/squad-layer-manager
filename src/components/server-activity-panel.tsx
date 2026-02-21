@@ -1,4 +1,5 @@
 import EventFilterSelect from '@/components/event-filter-select'
+import { ServerActivityCharts } from '@/components/server-activity-charts'
 import { ServerEvent } from '@/components/server-event'
 import ServerPlayerList from '@/components/server-player-list.tsx'
 import { Button } from '@/components/ui/button'
@@ -6,11 +7,11 @@ import { ButtonGroup } from '@/components/ui/button-group'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
-import * as DH from '@/lib/display-helpers'
+
 import { cn } from '@/lib/utils.ts'
-import * as ZusUtils from '@/lib/zustand'
+
 import * as CHAT from '@/models/chat.models'
-import * as MH from '@/models/match-history.models'
+import type * as MH from '@/models/match-history.models'
 import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -27,16 +28,155 @@ function ServerChatEvents(
 		className?: string
 		onToggleStatePanel?: () => void
 		isStatePanelOpen?: boolean
+		filteredEvents: CHAT.EventEnriched[] | null
+		connectionError?: CHAT.ConnectionErrorEvent | null
+		synced: boolean
+		isLoadingHistorical: boolean
 	},
 ) {
-	const synced = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.synced)
-	const connectionError = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.connectionError)
-	const currentMatch = MatchHistoryClient.useCurrentMatch()
-	const recentMatches = MatchHistoryClient.useRecentMatches()
 	const selectedMatchOrdinal = Zus.useStore(
 		SquadServerClient.ChatStore,
 		s => s.selectedMatchOrdinal,
 	)
+	const currentMatch = MatchHistoryClient.useCurrentMatch()
+	const recentMatches = MatchHistoryClient.useRecentMatches()
+	const displayMatch = React.useMemo(() => {
+		if (selectedMatchOrdinal === null) return currentMatch
+		return recentMatches.find(m => m.ordinal === selectedMatchOrdinal)
+	}, [selectedMatchOrdinal, currentMatch, recentMatches])
+
+	const { scrollAreaRef, contentRef: eventsContainerRef, bottomRef, showScrollButton, scrollToBottom } = useTailingScroll()
+	const [newMessageCount, setNewMessageCount] = React.useState(0)
+	const synced = props.synced
+	const connectionError = props.connectionError
+
+	React.useEffect(() => {
+		if (synced) {
+			requestAnimationFrame(() => {
+				scrollToBottom()
+			})
+		}
+	}, [synced, scrollToBottom])
+
+	// Auto-scroll to bottom when returning to live match
+	const prevSelectedMatchOrdinal = React.useRef<number | null>(selectedMatchOrdinal)
+	React.useEffect(() => {
+		if (prevSelectedMatchOrdinal.current !== null && selectedMatchOrdinal === null) {
+			// Just switched from historical to live
+			requestAnimationFrame(() => {
+				scrollToBottom()
+			})
+		}
+		prevSelectedMatchOrdinal.current = selectedMatchOrdinal
+	}, [selectedMatchOrdinal, scrollToBottom])
+
+	// Reset new message count when scrolled to bottom
+	React.useEffect(() => {
+		if (!showScrollButton) {
+			setNewMessageCount(0)
+		}
+	}, [showScrollButton])
+
+	return (
+		<div className={cn(props.className, 'h-full relative')}>
+			{!synced && selectedMatchOrdinal === null && (
+				<div className="absolute inset-0 z-30 bg-background/80 backdrop-blur-sm flex items-center justify-center">
+					<Icons.Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+				</div>
+			)}
+			{selectedMatchOrdinal !== null && props.isLoadingHistorical && (
+				<div className="absolute inset-0 z-30 bg-background/80 backdrop-blur-sm flex items-center justify-center">
+					<Icons.Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+				</div>
+			)}
+			{props.onToggleStatePanel && (
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={props.onToggleStatePanel}
+					className="h-8 w-6 p-0 absolute top-0 right-0 z-20"
+					title={`${props.isStatePanelOpen ? 'Hide' : 'Show'} player list`}
+				>
+					{props.isStatePanelOpen ? <Icons.ChevronRight className="h-3 w-3" /> : <Icons.ChevronLeft className="h-3 w-3" />}
+				</Button>
+			)}
+			<ScrollArea ref={scrollAreaRef} className="h-full">
+				{/* it's important that the only things which can significantly resize the scrollarea are in this container, otherwise the autoscroll will break */}
+				<div ref={eventsContainerRef} className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">
+					{selectedMatchOrdinal !== null && displayMatch && (
+						<div className="text-muted-foreground text-xs text-center py-2 bg-blue-500/10">
+							Viewing historical match
+							{displayMatch.startTime && <>: {dateFns.format(displayMatch.startTime, 'MMM d, yyyy HH:mm')}</>}
+						</div>
+					)}
+					{props.filteredEvents && props.filteredEvents.length === 0 && (
+						<div className="text-muted-foreground text-sm text-center py-8">
+							No events yet for {selectedMatchOrdinal === null ? 'current match' : 'this match'}
+						</div>
+					)}
+					{props.filteredEvents && props.filteredEvents.map((event: CHAT.EventEnriched) => <ServerEvent key={event.id} event={event} />)}
+					{connectionError && (
+						<div className="flex gap-2 py-1 text-destructive">
+							{connectionError.code === 'CONNECTION_LOST'
+								? <Icons.Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+								: <Icons.WifiOff className="h-4 w-4 flex-shrink-0" />}
+							<span className="text-xs">
+								{connectionError.code === 'CONNECTION_LOST'
+									? 'Connection lost - attempting to reconnect...'
+									: 'Reconnection failed - unable to reconnect to the server. Please refresh the page.'}
+							</span>
+						</div>
+					)}
+				</div>
+				<div ref={bottomRef} />
+				{showScrollButton && (
+					<Button
+						onClick={() => scrollToBottom()}
+						variant="secondary"
+						className="absolute bottom-0 left-0 right-0 w-full h-8 shadow-lg flex items-center justify-center gap-2 z-10 bg-opacity-20! rounded-none backdrop-blur-sm"
+						title="Scroll to bottom"
+					>
+						<Icons.ChevronDown className="h-4 w-4" />
+						<span className="text-xs">
+							{newMessageCount > 0 ? `${newMessageCount} new event${newMessageCount === 1 ? '' : 's'}` : 'Scroll to bottom'}
+						</span>
+					</Button>
+				)}
+			</ScrollArea>
+		</div>
+	)
+}
+
+function ServerCounts() {
+	const serverInfoStatusRes = SquadServerClient.useServerInfoRes()
+	const playerCount = SquadServerClient.usePlayerCount()
+
+	if (serverInfoStatusRes.code !== 'ok') return <ServerUnreachable statusRes={serverInfoStatusRes} />
+
+	const serverInfo = serverInfoStatusRes.data
+
+	return (
+		<div className="inline-flex text-muted-foreground space-x-2 items-baseline text-sm">
+			{playerCount ?? '<unknown>'} / {serverInfo.maxPlayerCount} online, {serverInfo.queueLength} / {serverInfo.maxQueueLength} in queue
+		</div>
+	)
+}
+
+const AUTO_CLOSE_WIDTH_THRESHOLD = 1350 // pixels
+const AUTO_OPEN_WIDTH_THRESHOLD = AUTO_CLOSE_WIDTH_THRESHOLD * 1.2 // 20% above threshold (1620 pixels)
+
+export default function ServerActivityPanel() {
+	const [isStatePanelOpen, setIsStatePanelOpen] = React.useState(window.innerWidth >= AUTO_CLOSE_WIDTH_THRESHOLD)
+	const synced = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.synced)
+	const connectionError = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.connectionError)
+	const selectedMatchOrdinal = Zus.useStore(
+		SquadServerClient.ChatStore,
+		s => s.selectedMatchOrdinal,
+	)
+	const recentMatches = MatchHistoryClient.useRecentMatches()
+	const currentMatch = MatchHistoryClient.useCurrentMatch()
+	const serverInfoRes = SquadServerClient.useServerInfoRes()
+	const maxPlayerCount = serverInfoRes.code === 'ok' ? serverInfoRes.data.maxPlayerCount : undefined
 
 	// Fetch historical events when viewing a past match
 	const historicalEventsQuery = useQuery({
@@ -51,7 +191,6 @@ function ServerChatEvents(
 
 	// Reset to current match when a new match starts
 	const prevCurrentMatchId = React.useRef<number | undefined>(undefined)
-
 	React.useEffect(() => {
 		if (currentMatch?.historyEntryId !== prevCurrentMatchId.current && currentMatch?.historyEntryId !== undefined) {
 			const hadPreviousMatch = prevCurrentMatchId.current !== undefined
@@ -70,8 +209,7 @@ function ServerChatEvents(
 		return recentMatches.find(m => m.ordinal === selectedMatchOrdinal)
 	}, [selectedMatchOrdinal, currentMatch, recentMatches])
 
-	const { scrollAreaRef, contentRef: eventsContainerRef, bottomRef, showScrollButton, scrollToBottom } = useTailingScroll()
-	const [newMessageCount, setNewMessageCount] = React.useState(0)
+	// Event filtering logic
 	const prevState = React.useRef<
 		{ eventGeneration: number; filteredEvents: CHAT.EventEnriched[]; eventFilterState: CHAT.SecondaryFilterState; matchId: number } | null
 	>(null)
@@ -85,7 +223,6 @@ function ServerChatEvents(
 		| null
 	>(null)
 
-	// Get filtered events - either from live buffer or historical query
 	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.secondaryFilterState)
 
 	const filteredEvents = React.useMemo(() => {
@@ -154,130 +291,6 @@ function ServerChatEvents(
 	)
 
 	const finalFilteredEvents = selectedMatchOrdinal !== null ? filteredEvents : liveFilteredEvents
-
-	React.useEffect(() => {
-		if (synced) {
-			requestAnimationFrame(() => {
-				scrollToBottom()
-			})
-		}
-	}, [synced, scrollToBottom])
-
-	// Auto-scroll to bottom when returning to live match
-	const prevSelectedMatchOrdinal = React.useRef<number | null>(selectedMatchOrdinal)
-	React.useEffect(() => {
-		if (prevSelectedMatchOrdinal.current !== null && selectedMatchOrdinal === null) {
-			// Just switched from historical to live
-			requestAnimationFrame(() => {
-				scrollToBottom()
-			})
-		}
-		prevSelectedMatchOrdinal.current = selectedMatchOrdinal
-	}, [selectedMatchOrdinal, scrollToBottom])
-
-	// Reset new message count when scrolled to bottom
-	React.useEffect(() => {
-		if (!showScrollButton) {
-			setNewMessageCount(0)
-		}
-	}, [showScrollButton])
-
-	return (
-		<div className={cn(props.className, 'h-full relative')}>
-			{!synced && selectedMatchOrdinal === null && (
-				<div className="absolute inset-0 z-30 bg-background/80 backdrop-blur-sm flex items-center justify-center">
-					<Icons.Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-				</div>
-			)}
-			{selectedMatchOrdinal !== null && historicalEventsQuery.isLoading && (
-				<div className="absolute inset-0 z-30 bg-background/80 backdrop-blur-sm flex items-center justify-center">
-					<Icons.Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-				</div>
-			)}
-			{props.onToggleStatePanel && (
-				<Button
-					variant="ghost"
-					size="sm"
-					onClick={props.onToggleStatePanel}
-					className="h-8 w-6 p-0 absolute top-0 right-0 z-20"
-					title={`${props.isStatePanelOpen ? 'Hide' : 'Show'} player list`}
-				>
-					{props.isStatePanelOpen ? <Icons.ChevronRight className="h-3 w-3" /> : <Icons.ChevronLeft className="h-3 w-3" />}
-				</Button>
-			)}
-			<ScrollArea ref={scrollAreaRef} className="h-full">
-				{/* it's important that the only things which can significantly resize the scrollarea are in this container, otherwise the autoscroll will break */}
-				<div ref={eventsContainerRef} className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">
-					{selectedMatchOrdinal !== null && displayMatch && (
-						<div className="text-muted-foreground text-xs text-center py-2 bg-blue-500/10">
-							Viewing historical match: {displayMatch.startTime && <>{dateFns.format(displayMatch.startTime, 'MMM d, yyyy HH:mm')}</>}
-						</div>
-					)}
-					{finalFilteredEvents && finalFilteredEvents.length === 0 && (
-						<div className="text-muted-foreground text-sm text-center py-8">
-							No events yet for {selectedMatchOrdinal === null ? 'current match' : 'this match'}
-						</div>
-					)}
-					{finalFilteredEvents && finalFilteredEvents.map((event: CHAT.EventEnriched) => <ServerEvent key={event.id} event={event} />)}
-					{connectionError && (
-						<div className="flex gap-2 py-1 text-destructive">
-							{connectionError.code === 'CONNECTION_LOST'
-								? <Icons.Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
-								: <Icons.WifiOff className="h-4 w-4 flex-shrink-0" />}
-							<span className="text-xs">
-								{connectionError.code === 'CONNECTION_LOST'
-									? 'Connection lost - attempting to reconnect...'
-									: 'Reconnection failed - unable to reconnect to the server. Please refresh the page.'}
-							</span>
-						</div>
-					)}
-				</div>
-				<div ref={bottomRef} />
-				{showScrollButton && (
-					<Button
-						onClick={() => scrollToBottom()}
-						variant="secondary"
-						className="absolute bottom-0 left-0 right-0 w-full h-8 shadow-lg flex items-center justify-center gap-2 z-10 bg-opacity-20! rounded-none backdrop-blur-sm"
-						title="Scroll to bottom"
-					>
-						<Icons.ChevronDown className="h-4 w-4" />
-						<span className="text-xs">
-							{newMessageCount > 0 ? `${newMessageCount} new event${newMessageCount === 1 ? '' : 's'}` : 'Scroll to bottom'}
-						</span>
-					</Button>
-				)}
-			</ScrollArea>
-		</div>
-	)
-}
-
-function ServerCounts() {
-	const serverInfoStatusRes = SquadServerClient.useServerInfoRes()
-	const playerCount = SquadServerClient.usePlayerCount()
-
-	if (serverInfoStatusRes.code !== 'ok') return <ServerUnreachable statusRes={serverInfoStatusRes} />
-
-	const serverInfo = serverInfoStatusRes.data
-
-	return (
-		<div className="inline-flex text-muted-foreground space-x-2 items-baseline text-sm">
-			{playerCount ?? '<unknown>'} / {serverInfo.maxPlayerCount} online, {serverInfo.queueLength} / {serverInfo.maxQueueLength} in queue
-		</div>
-	)
-}
-
-const AUTO_CLOSE_WIDTH_THRESHOLD = 1350 // pixels
-const AUTO_OPEN_WIDTH_THRESHOLD = AUTO_CLOSE_WIDTH_THRESHOLD * 1.2 // 20% above threshold (1620 pixels)
-
-export default function ServerActivityPanel() {
-	const [isStatePanelOpen, setIsStatePanelOpen] = React.useState(window.innerWidth >= AUTO_CLOSE_WIDTH_THRESHOLD)
-	const synced = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.synced)
-	const selectedMatchOrdinal = Zus.useStore(
-		SquadServerClient.ChatStore,
-		s => s.selectedMatchOrdinal,
-	)
-	const recentMatches = MatchHistoryClient.useRecentMatches()
-	const currentMatch = MatchHistoryClient.useCurrentMatch()
 
 	const canGoPrevious = React.useMemo(() => {
 		if (!recentMatches.length) return false
@@ -366,11 +379,6 @@ export default function ServerActivityPanel() {
 		s => s.secondaryFilterState,
 	)
 
-	const displayMatch = React.useMemo(() => {
-		if (selectedMatchOrdinal === null) return currentMatch
-		return recentMatches.find(m => m.ordinal === selectedMatchOrdinal)
-	}, [selectedMatchOrdinal, currentMatch, recentMatches])
-
 	return (
 		<Card className="flex flex-col min-h-0 w-fit">
 			<CardHeader className="flex flex-row justify-between flex-shrink-0 items-center pb-3">
@@ -421,27 +429,40 @@ export default function ServerActivityPanel() {
 				<ServerCounts />
 			</CardHeader>
 			<CardContent className="flex-1 overflow-hidden min-h-0">
-				<div className="flex gap-0.5 h-full">
-					<ServerChatEvents
-						className="flex-1 min-w-[350px] h-full"
-						onToggleStatePanel={() => {
-							const newState = !isStatePanelOpen
-							setIsStatePanelOpen(newState)
-							// Track if user manually closed the panel while above auto-open threshold
-							if (!newState && window.innerWidth >= AUTO_OPEN_WIDTH_THRESHOLD) {
-								userManuallyClosed.current = true
-							} else if (newState) {
-								// User manually opened it, reset the flag
-								userManuallyClosed.current = false
-							}
-						}}
-						isStatePanelOpen={isStatePanelOpen}
-					/>
-					{isStatePanelOpen && synced && (
-						<div className="w-[240px] flex-shrink-0">
-							<ServerPlayerList />
-						</div>
-					)}
+				<div className="flex flex-col gap-2 h-full">
+					<div className="flex-shrink-0">
+						<ServerActivityCharts
+							events={finalFilteredEvents ?? []}
+							maxPlayerCount={maxPlayerCount}
+							currentMatchOrdinal={selectedMatchOrdinal ?? currentMatch?.ordinal}
+						/>
+					</div>
+					<div className="flex gap-0.5 flex-1 min-h-0">
+						<ServerChatEvents
+							className="flex-1 min-w-[350px] h-full"
+							filteredEvents={finalFilteredEvents}
+							connectionError={connectionError}
+							synced={synced}
+							isLoadingHistorical={historicalEventsQuery.isLoading}
+							onToggleStatePanel={() => {
+								const newState = !isStatePanelOpen
+								setIsStatePanelOpen(newState)
+								// Track if user manually closed the panel while above auto-open threshold
+								if (!newState && window.innerWidth >= AUTO_OPEN_WIDTH_THRESHOLD) {
+									userManuallyClosed.current = true
+								} else if (newState) {
+									// User manually opened it, reset the flag
+									userManuallyClosed.current = false
+								}
+							}}
+							isStatePanelOpen={isStatePanelOpen}
+						/>
+						{isStatePanelOpen && synced && (
+							<div className="w-[240px] flex-shrink-0">
+								<ServerPlayerList />
+							</div>
+						)}
+					</div>
 				</div>
 			</CardContent>
 		</Card>

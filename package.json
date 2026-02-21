@@ -41,6 +41,8 @@
 		"dockerode": "^4.0.7",
 		"drizzle-kit": "^0.30.6",
 		"drizzle-orm": "^0.40.1",
+		"echarts": "^6.0.0",
+		"echarts-for-react": "^3.0.6",
 		"fastify": "^5.6.1",
 		"fastify-plugin": "^5.1.0",
 		"jsonc-parser": "^3.3.1",

@@ -38,6 +38,12 @@ importers:
       drizzle-orm:
         specifier: ^0.40.1
         version: 0.40.1(@libsql/client-wasm@0.15.9)(@libsql/client@0.15.9(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@opentelemetry/api@1.9.0)(@types/better-sqlite3@7.6.13)(@types/pg@8.6.1)(@types/sql.js@1.4.9)(better-sqlite3@12.2.0)(gel@2.1.1)(mysql2@3.14.1)(sql.js@1.13.0)(sqlite3@5.1.7)
+      echarts:
+        specifier: ^6.0.0
+        version: 6.0.0
+      echarts-for-react:
+        specifier: ^3.0.6
+        version: 3.0.6(echarts@6.0.0)(react@19.1.0)
       fastify:
         specifier: ^5.6.1
         version: 5.6.1
@@ -4704,6 +4710,15 @@ packages:
   eastasianwidth@0.2.0:
     resolution: {integrity: sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA==}
 
+  echarts-for-react@3.0.6:
+    resolution: {integrity: sha512-4zqLgTGWS3JvkQDXjzkR1k1CHRdpd6by0988TWMJgnvDytegWLbeP/VNZmMa+0VJx2eD7Y632bi2JquXDgiGJg==}
+    peerDependencies:
+      echarts: ^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0
+      react: ^15.0.0 || >=16.0.0
+
+  echarts@6.0.0:
+    resolution: {integrity: sha512-Tte/grDQRiETQP4xz3iZWSvoHrkCQtwqd6hs+mifXcjrCuo2iKWbajFObuLJVBlDIJlOzgQPd1hsaKt/3+OMkQ==}
+
   ejs@3.1.10:
     resolution: {integrity: sha512-UeJmFfOrAQS8OJWPZ4qtgHyWExa088/MtK5UEyoJGFH67cDEXkZSviOiKRCZ4Xij0zxI3JECgYs3oKx+AizQBA==}
     engines: {node: '>=0.10.0'}
@@ -6188,6 +6203,9 @@ packages:
   simple-oauth2@5.1.0:
     resolution: {integrity: sha512-gWDa38Ccm4MwlG5U7AlcJxPv3lvr80dU7ARJWrGdgvOKyzSj1gr3GBPN1rABTedAYvC/LsGYoFuFxwDBPtGEbw==}
 
+  size-sensor@1.0.3:
+    resolution: {integrity: sha512-+k9mJ2/rQMiRmQUcjn+qznch260leIXY8r4FyYKKyRBO/s5UoeMAHGkCJyE1R/4wrIhTJONfyloY55SkE7ve3A==}
+
   smart-buffer@4.2.0:
     resolution: {integrity: sha512-94hK0Hh8rPqQl2xXc3HsaBoOXKV20MToPkcXvwbISWLEs+64sBq5kFgn2kJDHb1Pry9yrP0dxrCI9RRci7RXKg==}
     engines: {node: '>= 6.0.0', npm: '>= 3.0.0'}
@@ -6437,6 +6455,9 @@ packages:
     peerDependenciesMeta:
       typescript:
         optional: true
+
+  tslib@2.3.0:
+    resolution: {integrity: sha512-N82ooyxVNm6h1riLCoyS9e3fuJ3AMG2zIZs2Gd1ATcSFjSA23Q0fzjjZeh0jbJvWVDZ0cJT8yaNNaaXHzueNjg==}
 
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
@@ -6776,6 +6797,9 @@ packages:
 
   zod@4.1.13:
     resolution: {integrity: sha512-AvvthqfqrAhNH9dnfmrfKzX5upOdjUVJYFqNSlkmGf64gRaTzlPwz99IHYnVs28qYAybvAlBV+H7pn0saFY4Ig==}
+
+  zrender@6.0.0:
+    resolution: {integrity: sha512-41dFXEEXuJpNecuUQq6JlbybmnHaqqpGlbH1yxnA5V9MMP4SbohSVZsJIwz+zdjQXSSlR1Vc34EgH1zxyTDvhg==}
 
   zustand-rx@2.1.0:
     resolution: {integrity: sha512-ceszeq1PO9SeJFz8bQs+nRFsXZjjPbjETR6oKHMKUeniYag223H8QN89I++pKlBhDShnrlTowpfD3nFLdDLZyQ==}
@@ -11032,6 +11056,18 @@ snapshots:
 
   eastasianwidth@0.2.0: {}
 
+  echarts-for-react@3.0.6(echarts@6.0.0)(react@19.1.0):
+    dependencies:
+      echarts: 6.0.0
+      fast-deep-equal: 3.1.3
+      react: 19.1.0
+      size-sensor: 1.0.3
+
+  echarts@6.0.0:
+    dependencies:
+      tslib: 2.3.0
+      zrender: 6.0.0
+
   ejs@3.1.10:
     dependencies:
       jake: 10.9.4
@@ -12857,6 +12893,8 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  size-sensor@1.0.3: {}
+
   smart-buffer@4.2.0:
     optional: true
 
@@ -13105,6 +13143,8 @@ snapshots:
   tsconfck@3.1.6(typescript@5.7.2):
     optionalDependencies:
       typescript: 5.7.2
+
+  tslib@2.3.0: {}
 
   tslib@2.8.1: {}
 
@@ -13470,6 +13510,10 @@ snapshots:
   zod@3.25.67: {}
 
   zod@4.1.13: {}
+
+  zrender@6.0.0:
+    dependencies:
+      tslib: 2.3.0
 
   zustand-rx@2.1.0(rxjs@7.8.2)(zustand@5.0.6(@types/react@19.1.0)(immer@10.1.1)(react@19.1.0)(use-sync-external-store@1.6.0(react@19.1.0))):
     dependencies:
