@@ -5,7 +5,7 @@ import type * as CHAT from '@/models/chat.models'
 import * as ZusUtils from '@/lib/zustand'
 import * as SM from '@/models/squad.models'
 import { GlobalSettingsStore } from '@/systems/global-settings.client'
-import * as MatchHistoryClient from '@/systems/match-history.client'
+
 import * as SquadServerClient from '@/systems/squad-server.client'
 import type { EChartsOption } from 'echarts'
 import ReactECharts from 'echarts-for-react'
@@ -23,14 +23,94 @@ type TeamRatioDataPoint = {
 	team2Ratio: number
 }
 
-function aggregateByTimeWindow(
-	events: CHAT.EventEnriched[],
-	windowMs: number,
-): {
+type ChartData = {
 	playerPopulation: ChartDataPoint[]
 	kdRatio: TeamRatioDataPoint[]
 	wdRatio: TeamRatioDataPoint[]
-} {
+}
+
+function calculateOverallKD(events: CHAT.EventEnriched[]): { team1Ratio: number; team2Ratio: number } {
+	let team1Kills = 0
+	let team1Deaths = 0
+	let team2Kills = 0
+	let team2Deaths = 0
+
+	for (const event of events) {
+		if (event.type === 'PLAYER_DIED') {
+			const victimTeam = event.victim.teamId
+			const attackerTeam = event.attacker.teamId
+
+			// Deaths count for the victim's team
+			if (victimTeam === 1) {
+				team1Deaths++
+			} else if (victimTeam === 2) {
+				team2Deaths++
+			}
+
+			// Kills count only for normal kills (not teamkills/suicides)
+			if (event.variant === 'normal') {
+				if (attackerTeam === 1) {
+					team1Kills++
+				} else if (attackerTeam === 2) {
+					team2Kills++
+				}
+			}
+		}
+	}
+
+	const team1Ratio = team1Deaths === 0
+		? (team1Kills > 0 ? 999 : 0)
+		: team1Kills / team1Deaths
+	const team2Ratio = team2Deaths === 0
+		? (team2Kills > 0 ? 999 : 0)
+		: team2Kills / team2Deaths
+
+	return { team1Ratio, team2Ratio }
+}
+
+function calculateOverallWD(events: CHAT.EventEnriched[]): { team1Ratio: number; team2Ratio: number } {
+	let team1Wounds = 0
+	let team1Wounded = 0
+	let team2Wounds = 0
+	let team2Wounded = 0
+
+	for (const event of events) {
+		if (event.type === 'PLAYER_WOUNDED') {
+			const victimTeam = event.victim.teamId
+			const attackerTeam = event.attacker.teamId
+
+			// Wounded count for the victim's team
+			if (victimTeam === 1) {
+				team1Wounded++
+			} else if (victimTeam === 2) {
+				team2Wounded++
+			}
+
+			// Wounds count only for normal wounds (not teamkills/suicides)
+			if (event.variant === 'normal') {
+				if (attackerTeam === 1) {
+					team1Wounds++
+				} else if (attackerTeam === 2) {
+					team2Wounds++
+				}
+			}
+		}
+	}
+
+	const team1Ratio = team1Wounded === 0
+		? (team1Wounds > 0 ? 999 : 0)
+		: team1Wounds / team1Wounded
+	const team2Ratio = team2Wounded === 0
+		? (team2Wounds > 0 ? 999 : 0)
+		: team2Wounds / team2Wounded
+
+	return { team1Ratio, team2Ratio }
+}
+
+function aggregateByTimeWindow(
+	events: CHAT.EventEnriched[],
+	windowMs: number,
+): ChartData {
 	if (events.length === 0) {
 		return { playerPopulation: [], kdRatio: [], wdRatio: [] }
 	}
@@ -205,7 +285,7 @@ function createPopulationChartOption(data: ChartDataPoint[], maxPlayerCount?: nu
 				name: 'Player Count',
 				type: 'line',
 				data: data.map(d => [d.time, d.value]),
-				smooth: true,
+				smooth: false,
 				lineStyle: {
 					color: '#3b82f6',
 					width: 2,
@@ -270,7 +350,7 @@ function createRatioChartOption(
 				name: team1Label,
 				type: 'line',
 				data: data.map(d => [d.time, d.team1Ratio]),
-				smooth: true,
+				smooth: false,
 				lineStyle: {
 					color: team1Color,
 					width: 2,
@@ -285,7 +365,7 @@ function createRatioChartOption(
 				name: team2Label,
 				type: 'line',
 				data: data.map(d => [d.time, d.team2Ratio]),
-				smooth: true,
+				smooth: false,
 				lineStyle: {
 					color: team2Color,
 					width: 2,
@@ -317,11 +397,11 @@ export function ServerActivityCharts(props: {
 	currentMatchId?: number
 }) {
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
-	const [timeInterval, setTimeInterval] = React.useState<1 | 5 | 10>(1)
+	const [timeInterval, setTimeInterval] = React.useState<1 | 5 | 10>(5)
 	const selectedMatchOrdinal = Zus.useStore(SquadServerClient.ChatStore, s => s.selectedMatchOrdinal)
 	const [, forceUpdate] = React.useReducer((x) => x + 1, 0)
 
-	// Get unfiltered events directly from store (before secondary filter is applied)
+	// Get unfiltered events from store (before secondary filter is applied)
 	const liveUnfilteredEvents = Zus.useStore(
 		SquadServerClient.ChatStore,
 		ZusUtils.useDeep(s => {
@@ -337,8 +417,40 @@ export function ServerActivityCharts(props: {
 		}),
 	)
 
-	// Use historical events if viewing a past match, otherwise use live events
-	const events = selectedMatchOrdinal !== null ? (props.historicalEvents ?? []) : (liveUnfilteredEvents ?? [])
+	// Calculate chart data for live events
+	const liveChartData = React.useMemo(() => {
+		if (!liveUnfilteredEvents) return null
+
+		const windowMs = timeInterval * 60 * 1000
+		return {
+			chartData: aggregateByTimeWindow(liveUnfilteredEvents, windowMs),
+			overallKD: calculateOverallKD(liveUnfilteredEvents),
+			overallWD: calculateOverallWD(liveUnfilteredEvents),
+			isEmpty: liveUnfilteredEvents.length === 0,
+		}
+	}, [liveUnfilteredEvents, timeInterval])
+
+	// Calculate chart data for historical events
+	const historicalChartData = React.useMemo(() => {
+		if (selectedMatchOrdinal === null || !props.historicalEvents) return null
+
+		const events = props.historicalEvents
+		const windowMs = timeInterval * 60 * 1000
+
+		return {
+			chartData: aggregateByTimeWindow(events, windowMs),
+			overallKD: calculateOverallKD(events),
+			overallWD: calculateOverallWD(events),
+			isEmpty: events.length === 0,
+		}
+	}, [selectedMatchOrdinal, props.historicalEvents, timeInterval])
+
+	// Use historical or live chart data
+	const computedData = selectedMatchOrdinal !== null ? historicalChartData : liveChartData
+	const chartData = computedData?.chartData ?? { playerPopulation: [], kdRatio: [], wdRatio: [] }
+	const overallKD = computedData?.overallKD ?? { team1Ratio: 0, team2Ratio: 0 }
+	const overallWD = computedData?.overallWD ?? { team1Ratio: 0, team2Ratio: 0 }
+	const isEmpty = computedData?.isEmpty ?? true
 
 	// Force chart updates on live view to keep time axis current
 	React.useEffect(() => {
@@ -351,91 +463,6 @@ export function ServerActivityCharts(props: {
 
 		return () => clearInterval(timer)
 	}, [selectedMatchOrdinal, timeInterval])
-
-	const chartData = React.useMemo(() => {
-		// Convert minutes to milliseconds
-		return aggregateByTimeWindow(events, timeInterval * 60 * 1000)
-	}, [events, timeInterval])
-
-	// Calculate overall K/D ratio for the entire match
-	const overallKD = React.useMemo(() => {
-		let team1Kills = 0
-		let team1Deaths = 0
-		let team2Kills = 0
-		let team2Deaths = 0
-
-		for (const event of events) {
-			if (event.type === 'PLAYER_DIED') {
-				const victimTeam = event.victim.teamId
-				const attackerTeam = event.attacker.teamId
-
-				// Deaths count for the victim's team
-				if (victimTeam === 1) {
-					team1Deaths++
-				} else if (victimTeam === 2) {
-					team2Deaths++
-				}
-
-				// Kills count only for normal kills (not teamkills/suicides)
-				if (event.variant === 'normal') {
-					if (attackerTeam === 1) {
-						team1Kills++
-					} else if (attackerTeam === 2) {
-						team2Kills++
-					}
-				}
-			}
-		}
-
-		const team1Ratio = team1Deaths === 0
-			? (team1Kills > 0 ? 999 : 0)
-			: team1Kills / team1Deaths
-		const team2Ratio = team2Deaths === 0
-			? (team2Kills > 0 ? 999 : 0)
-			: team2Kills / team2Deaths
-
-		return { team1Ratio, team2Ratio }
-	}, [events])
-
-	// Calculate overall wound ratio for the entire match
-	const overallWD = React.useMemo(() => {
-		let team1Wounds = 0
-		let team1Wounded = 0
-		let team2Wounds = 0
-		let team2Wounded = 0
-
-		for (const event of events) {
-			if (event.type === 'PLAYER_WOUNDED') {
-				const victimTeam = event.victim.teamId
-				const attackerTeam = event.attacker.teamId
-
-				// Wounded count for the victim's team
-				if (victimTeam === 1) {
-					team1Wounded++
-				} else if (victimTeam === 2) {
-					team2Wounded++
-				}
-
-				// Wounds count only for normal wounds (not teamkills/suicides)
-				if (event.variant === 'normal') {
-					if (attackerTeam === 1) {
-						team1Wounds++
-					} else if (attackerTeam === 2) {
-						team2Wounds++
-					}
-				}
-			}
-		}
-
-		const team1Ratio = team1Wounded === 0
-			? (team1Wounds > 0 ? 999 : 0)
-			: team1Wounds / team1Wounded
-		const team2Ratio = team2Wounded === 0
-			? (team2Wounds > 0 ? 999 : 0)
-			: team2Wounds / team2Wounded
-
-		return { team1Ratio, team2Ratio }
-	}, [events])
 
 	const populationOption = React.useMemo(
 		() => createPopulationChartOption(chartData.playerPopulation, props.maxPlayerCount),
@@ -470,7 +497,7 @@ export function ServerActivityCharts(props: {
 
 	const [activeTab, setActiveTab] = React.useState<'population' | 'kd' | 'wd'>('population')
 
-	if (events.length === 0) {
+	if (isEmpty) {
 		return (
 			<div className="text-muted-foreground text-sm text-center py-4">
 				No data available for charts
