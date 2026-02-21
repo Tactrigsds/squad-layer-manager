@@ -66,7 +66,7 @@ export const ConfigSchema = z.object({
 		maxQueueSize: z.int().min(1).max(100).prefault(20).describe('Maximum number of layers that can be in the queue'),
 	}),
 	vote: z.object({
-		voteDuration: HumanTime.prefault('120s').describe('Duration of a vote'),
+		voteDuration: HumanTime.prefault('180s').describe('Duration of a vote'),
 		startVoteReminderThreshold: HumanTime.prefault('20m').describe('How far into a match to start reminding admins to start a vote'),
 		voteReminderInterval: HumanTime.prefault('30s').describe('How often to remind users to vote'),
 		internalVoteReminderInterval: HumanTime.prefault('15s').describe('How often to remind amdins to vote in an internal vote'),
