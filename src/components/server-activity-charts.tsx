@@ -19,8 +19,8 @@ type ChartDataPoint = {
 
 type TeamRatioDataPoint = {
 	time: number
-	team1Ratio: number
-	team2Ratio: number
+	team1Ratio: number | null
+	team2Ratio: number | null
 }
 
 type ChartData = {
@@ -229,12 +229,17 @@ function aggregateByTimeWindow(
 		})
 
 		// Calculate K/D ratio (kills / deaths), handle division by zero
-		// If no deaths, use a high value if there are kills, otherwise 0
-		const team1KD = deathsBuckets[i].team1 === 0
-			? (killsBuckets[i].team1 > 0 ? 999 : 0)
+		// If no activity (both kills and deaths are 0), use null to create a gap in the chart
+		// If no deaths but there are kills, use a high value, otherwise calculate ratio
+		const team1KD = killsBuckets[i].team1 === 0 && deathsBuckets[i].team1 === 0
+			? null
+			: deathsBuckets[i].team1 === 0
+			? 999
 			: killsBuckets[i].team1 / deathsBuckets[i].team1
-		const team2KD = deathsBuckets[i].team2 === 0
-			? (killsBuckets[i].team2 > 0 ? 999 : 0)
+		const team2KD = killsBuckets[i].team2 === 0 && deathsBuckets[i].team2 === 0
+			? null
+			: deathsBuckets[i].team2 === 0
+			? 999
 			: killsBuckets[i].team2 / deathsBuckets[i].team2
 
 		kdRatio.push({
@@ -244,12 +249,17 @@ function aggregateByTimeWindow(
 		})
 
 		// Calculate W/D ratio (wounds dealt / wounded received), handle division by zero
-		// If no wounded, use a high value if there are wounds, otherwise 0
-		const team1WD = woundedBuckets[i].team1 === 0
-			? (woundsBuckets[i].team1 > 0 ? 999 : 0)
+		// If no activity (both wounds and wounded are 0), use null to create a gap in the chart
+		// If no wounded but there are wounds, use a high value, otherwise calculate ratio
+		const team1WD = woundsBuckets[i].team1 === 0 && woundedBuckets[i].team1 === 0
+			? null
+			: woundedBuckets[i].team1 === 0
+			? 999
 			: woundsBuckets[i].team1 / woundedBuckets[i].team1
-		const team2WD = woundedBuckets[i].team2 === 0
-			? (woundsBuckets[i].team2 > 0 ? 999 : 0)
+		const team2WD = woundsBuckets[i].team2 === 0 && woundedBuckets[i].team2 === 0
+			? null
+			: woundedBuckets[i].team2 === 0
+			? 999
 			: woundsBuckets[i].team2 / woundedBuckets[i].team2
 
 		wdRatio.push({
@@ -351,6 +361,7 @@ function createRatioChartOption(
 				type: 'line',
 				data: data.map(d => [d.time, d.team1Ratio]),
 				smooth: false,
+				connectNulls: false,
 				lineStyle: {
 					color: team1Color,
 					width: 2,
@@ -362,6 +373,7 @@ function createRatioChartOption(
 				type: 'line',
 				data: data.map(d => [d.time, d.team2Ratio]),
 				smooth: false,
+				connectNulls: false,
 				lineStyle: {
 					color: team2Color,
 					width: 2,
