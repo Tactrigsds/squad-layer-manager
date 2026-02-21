@@ -9,6 +9,7 @@ import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import * as ZusUtils from '@/lib/zustand'
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
@@ -306,12 +307,51 @@ function MatchHistoryRow({
 }: MatchHistoryRowProps) {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	const serverRolling = !!SquadServerClient.useServerRolling()
+	const selectedMatchOrdinalFromStore = Zus.useStore(SquadServerClient.ChatStore, s => s.selectedMatchOrdinal)
+
+	// Determine if this match is being viewed in the activity panel
+	const isViewingThisMatch = selectedMatchOrdinalFromStore === null
+		? entry.isCurrentMatch
+		: selectedMatchOrdinalFromStore === entry.ordinal
 
 	const isEditingQueue = SLLClient.useIsEditing()
 	const dragProps = DndKit.useDraggable({
 		type: 'history-entry',
 		id: entry.historyEntryId,
 	}, { disabled: !isEditingQueue })
+
+	// Track mouse down/up to detect clicks vs drags
+	const mouseDownPosRef = React.useRef<{ x: number; y: number } | null>(null)
+
+	const handleMouseDown = React.useCallback((e: React.MouseEvent) => {
+		if (e.button === 0) { // Left click only
+			mouseDownPosRef.current = { x: e.clientX, y: e.clientY }
+		}
+	}, [])
+
+	const handleMouseUp = React.useCallback((e: React.MouseEvent) => {
+		if (e.button === 0 && mouseDownPosRef.current) { // Left click only
+			const dx = e.clientX - mouseDownPosRef.current.x
+			const dy = e.clientY - mouseDownPosRef.current.y
+			const distance = Math.sqrt(dx * dx + dy * dy)
+
+			// If mouse moved less than 5 pixels, treat as click (not drag)
+			if (distance < 5) {
+				// Switch to this match's events
+				const state = SquadServerClient.ChatStore.getState()
+				if (entry.isCurrentMatch) {
+					state.setSelectedMatchOrdinal(null)
+				} else {
+					state.setSelectedMatchOrdinal(entry.ordinal)
+				}
+			}
+			mouseDownPosRef.current = null
+		}
+	}, [entry.ordinal, entry.isCurrentMatch])
+
+	const handleMouseLeave = React.useCallback(() => {
+		mouseDownPosRef.current = null
+	}, [])
 	const statusData = LayerQueriesClient.useLayerItemStatusData(
 		entry.historyEntryId,
 	)
@@ -503,9 +543,12 @@ function MatchHistoryRow({
 	// Determine background color and hover state based on trigger level or current match
 	let bgColor = ''
 	let hoverColor = ''
-	if (entry.isCurrentMatch && entry.status === 'in-progress') {
+	if (isViewingThisMatch && entry.status === 'in-progress') {
 		bgColor = 'bg-green-500/20'
 		hoverColor = 'hover:bg-green-500/30'
+	} else if (isViewingThisMatch) {
+		bgColor = 'bg-blue-500/10'
+		hoverColor = 'hover:bg-blue-500/20'
 	} else if (triggerLevel === 'violation') {
 		bgColor = 'bg-red-500/10'
 		hoverColor = 'hover:bg-red-500/20'
@@ -521,13 +564,16 @@ function MatchHistoryRow({
 		<ContextMenu key={entry.historyEntryId}>
 			<ContextMenuTrigger asChild>
 				<TableRow
-					title="Right click for Context Menu, Click+drag to requeue"
+					title="Left click to view events, Right click for Context Menu, Click+drag to requeue"
 					ref={dragProps.ref}
 					data-is-dragging={dragProps.isDragging}
 					data-is-editing={isEditingQueue}
+					onMouseDown={handleMouseDown}
+					onMouseUp={handleMouseUp}
+					onMouseLeave={handleMouseLeave}
 					className={cn(
 						Typo.LayerText,
-						'whitespace-nowrap bg-background data-[is-dragging=true]:outline-solid group rounded text-xs data-is-editing:cursor-grab',
+						'whitespace-nowrap bg-background data-[is-dragging=true]:outline-solid group rounded text-xs data-is-editing:cursor-grab cursor-pointer',
 						bgColor,
 						hoverColor,
 					)}
@@ -536,7 +582,8 @@ function MatchHistoryRow({
 						<div className="opacity-0 group-data-[is-editing=true]:group-hover:opacity-100 absolute inset-0 flex items-center justify-end pr-2">
 							<Icons.GripVertical className="h-4 w-4" />
 						</div>
-						<div className="group-data-[is-editing=true]:group-hover:opacity-0 flex justify-end items-center pr-2">
+						<div className="group-data-[is-editing=true]:group-hover:opacity-0 flex justify-end items-center pr-2 gap-1">
+							{isViewingThisMatch && <Icons.Eye className="h-3 w-3 text-blue-500" />}
 							{entry.isCurrentMatch && entry.status === 'in-progress'
 								? <Icons.Play className="h-3 w-3 text-green-500" />
 								: entry.isCurrentMatch && entry.status === 'post-game'

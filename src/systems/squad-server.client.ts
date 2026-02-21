@@ -55,6 +55,9 @@ type ChatStore = {
 	handleChatEvents(event: (CHAT.Event | CHAT.LifecycleEvent)[]): void
 	// increments every time we modify the chat state
 	eventGeneration: number
+	// Selected match ordinal for viewing historical events (null = current match)
+	selectedMatchOrdinal: number | null
+	setSelectedMatchOrdinal(ordinal: number | null): void
 }
 
 export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
@@ -63,8 +66,12 @@ export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 		loadedServerId: null,
 		secondaryFilterState: 'DEFAULT',
 		eventGeneration: 0,
+		selectedMatchOrdinal: null,
 		setSecondaryFilterState(state) {
 			set({ secondaryFilterState: state })
+		},
+		setSelectedMatchOrdinal(ordinal) {
+			set({ selectedMatchOrdinal: ordinal })
 		},
 		handleChatEvents(events) {
 			const config = ConfigClient.getConfig()

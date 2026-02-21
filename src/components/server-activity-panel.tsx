@@ -2,18 +2,20 @@ import EventFilterSelect from '@/components/event-filter-select'
 import { ServerEvent } from '@/components/server-event'
 import ServerPlayerList from '@/components/server-player-list.tsx'
 import { Button } from '@/components/ui/button'
+import { ButtonGroup } from '@/components/ui/button-group'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import * as DH from '@/lib/display-helpers'
 import { cn } from '@/lib/utils.ts'
+import * as ZusUtils from '@/lib/zustand'
 import * as CHAT from '@/models/chat.models'
 import * as MH from '@/models/match-history.models'
 import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
-import { useInfiniteQuery } from '@tanstack/react-query'
-
+import { useQuery } from '@tanstack/react-query'
+import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Rx from 'rxjs'
@@ -30,18 +32,102 @@ function ServerChatEvents(
 	const synced = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.synced)
 	const connectionError = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.connectionError)
 	const currentMatch = MatchHistoryClient.useCurrentMatch()
+	const recentMatches = MatchHistoryClient.useRecentMatches()
+	const selectedMatchOrdinal = Zus.useStore(
+		SquadServerClient.ChatStore,
+		s => s.selectedMatchOrdinal,
+	)
+
+	// Fetch historical events when viewing a past match
+	const historicalEventsQuery = useQuery({
+		queryKey: [...RPC.orpc.matchHistory.getMatchEvents.key(), selectedMatchOrdinal],
+		queryFn: async () => {
+			if (selectedMatchOrdinal === null) return null
+			return RPC.orpc.matchHistory.getMatchEvents.call(selectedMatchOrdinal)
+		},
+		enabled: selectedMatchOrdinal !== null && selectedMatchOrdinal !== undefined,
+		staleTime: Infinity,
+	})
+
+	// Reset to current match when a new match starts
+	const prevCurrentMatchId = React.useRef<number | undefined>(undefined)
+
+	React.useEffect(() => {
+		if (currentMatch?.historyEntryId !== prevCurrentMatchId.current && currentMatch?.historyEntryId !== undefined) {
+			const hadPreviousMatch = prevCurrentMatchId.current !== undefined
+			prevCurrentMatchId.current = currentMatch?.historyEntryId
+			// Reset to current match when a new match begins (but not on initial load)
+			const currentSelectedOrdinal = SquadServerClient.ChatStore.getState().selectedMatchOrdinal
+			if (hadPreviousMatch && currentSelectedOrdinal !== null) {
+				SquadServerClient.ChatStore.getState().setSelectedMatchOrdinal(null)
+			}
+		}
+	}, [currentMatch?.historyEntryId])
+
+	// Determine which match to display - either selected or current
+	const displayMatch = React.useMemo(() => {
+		if (selectedMatchOrdinal === null) return currentMatch
+		return recentMatches.find(m => m.ordinal === selectedMatchOrdinal)
+	}, [selectedMatchOrdinal, currentMatch, recentMatches])
+
 	const { scrollAreaRef, contentRef: eventsContainerRef, bottomRef, showScrollButton, scrollToBottom } = useTailingScroll()
 	const [newMessageCount, setNewMessageCount] = React.useState(0)
 	const prevState = React.useRef<
 		{ eventGeneration: number; filteredEvents: CHAT.EventEnriched[]; eventFilterState: CHAT.SecondaryFilterState; matchId: number } | null
 	>(null)
-	const filteredEvents = Zus.useStore(
+	const prevHistoricalState = React.useRef<
+		| {
+			selectedMatchOrdinal: number
+			filteredEvents: CHAT.EventEnriched[]
+			eventFilterState: CHAT.SecondaryFilterState
+			eventsVersion: any
+		}
+		| null
+	>(null)
+
+	// Get filtered events - either from live buffer or historical query
+	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.secondaryFilterState)
+
+	const filteredEvents = React.useMemo(() => {
+		// If viewing a historical match, use the historical query data
+		if (selectedMatchOrdinal !== null) {
+			if (!historicalEventsQuery.data?.events) return null
+
+			// Cache check for historical events
+			if (
+				prevHistoricalState.current?.selectedMatchOrdinal === selectedMatchOrdinal
+				&& prevHistoricalState.current?.eventFilterState === eventFilterState
+				&& prevHistoricalState.current?.eventsVersion === historicalEventsQuery.data
+			) {
+				return prevHistoricalState.current.filteredEvents
+			}
+
+			const filtered = historicalEventsQuery.data.events.filter((event: CHAT.EventEnriched) =>
+				!CHAT.isEventFilteredBySecondary(event, eventFilterState)
+			)
+
+			prevHistoricalState.current = {
+				selectedMatchOrdinal,
+				filteredEvents: filtered,
+				eventFilterState,
+				eventsVersion: historicalEventsQuery.data,
+			}
+			return filtered
+		}
+
+		// Otherwise use live event buffer - handled by separate selector below
+		return null
+	}, [selectedMatchOrdinal, historicalEventsQuery.data, eventFilterState])
+
+	const liveFilteredEvents = Zus.useStore(
 		SquadServerClient.ChatStore,
 		React.useCallback(s => {
-			if (!s.chatState.synced || currentMatch?.historyEntryId === undefined) return null
+			if (selectedMatchOrdinal !== null) return null // Using historical events instead
+			if (!s.chatState.synced || displayMatch?.historyEntryId === undefined) return null
+
 			// we have all of this ceremony to prevent having to reallocate the event buffer array every time it's modified. maybe a bit excessive :shrug:
 			if (
-				currentMatch?.historyEntryId === prevState.current?.matchId
+				displayMatch?.historyEntryId === prevState.current?.matchId
 				&& s.eventGeneration === prevState.current?.eventGeneration
 				&& s.secondaryFilterState === prevState.current.eventFilterState
 			) {
@@ -52,7 +138,7 @@ function ServerChatEvents(
 			const eventBuffer = s.chatState.eventBuffer
 			const filtered: CHAT.EventEnriched[] = []
 			for (const event of eventBuffer) {
-				if (event.matchId !== currentMatch?.historyEntryId) continue
+				if (event.matchId !== displayMatch?.historyEntryId) continue
 				if (!CHAT.isEventFilteredBySecondary(event, eventFilterState)) {
 					filtered.push(event)
 				}
@@ -61,11 +147,13 @@ function ServerChatEvents(
 				eventGeneration: s.eventGeneration,
 				filteredEvents: filtered,
 				eventFilterState: s.secondaryFilterState,
-				matchId: currentMatch?.historyEntryId,
+				matchId: displayMatch?.historyEntryId,
 			}
 			return filtered
-		}, [currentMatch?.historyEntryId]),
+		}, [displayMatch?.historyEntryId, selectedMatchOrdinal]),
 	)
+
+	const finalFilteredEvents = selectedMatchOrdinal !== null ? filteredEvents : liveFilteredEvents
 
 	React.useEffect(() => {
 		if (synced) {
@@ -74,6 +162,18 @@ function ServerChatEvents(
 			})
 		}
 	}, [synced, scrollToBottom])
+
+	// Auto-scroll to bottom when returning to live match
+	const prevSelectedMatchOrdinal = React.useRef<number | null>(selectedMatchOrdinal)
+	React.useEffect(() => {
+		if (prevSelectedMatchOrdinal.current !== null && selectedMatchOrdinal === null) {
+			// Just switched from historical to live
+			requestAnimationFrame(() => {
+				scrollToBottom()
+			})
+		}
+		prevSelectedMatchOrdinal.current = selectedMatchOrdinal
+	}, [selectedMatchOrdinal, scrollToBottom])
 
 	// Reset new message count when scrolled to bottom
 	React.useEffect(() => {
@@ -84,7 +184,12 @@ function ServerChatEvents(
 
 	return (
 		<div className={cn(props.className, 'h-full relative')}>
-			{!synced && (
+			{!synced && selectedMatchOrdinal === null && (
+				<div className="absolute inset-0 z-30 bg-background/80 backdrop-blur-sm flex items-center justify-center">
+					<Icons.Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+				</div>
+			)}
+			{selectedMatchOrdinal !== null && historicalEventsQuery.isLoading && (
 				<div className="absolute inset-0 z-30 bg-background/80 backdrop-blur-sm flex items-center justify-center">
 					<Icons.Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
 				</div>
@@ -103,13 +208,17 @@ function ServerChatEvents(
 			<ScrollArea ref={scrollAreaRef} className="h-full">
 				{/* it's important that the only things which can significantly resize the scrollarea are in this container, otherwise the autoscroll will break */}
 				<div ref={eventsContainerRef} className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">
-					<PreviousMatchEvents />
-					{filteredEvents && filteredEvents.length === 0 && (
-						<div className="text-muted-foreground text-sm text-center py-8">
-							No events yet for current match
+					{selectedMatchOrdinal !== null && displayMatch && (
+						<div className="text-muted-foreground text-xs text-center py-2 bg-blue-500/10">
+							Viewing historical match: {displayMatch.startTime && <>{dateFns.format(displayMatch.startTime, 'MMM d, yyyy HH:mm')}</>}
 						</div>
 					)}
-					{filteredEvents && filteredEvents.map((event) => <ServerEvent key={event.id} event={event} />)}
+					{finalFilteredEvents && finalFilteredEvents.length === 0 && (
+						<div className="text-muted-foreground text-sm text-center py-8">
+							No events yet for {selectedMatchOrdinal === null ? 'current match' : 'this match'}
+						</div>
+					)}
+					{finalFilteredEvents && finalFilteredEvents.map((event: CHAT.EventEnriched) => <ServerEvent key={event.id} event={event} />)}
 					{connectionError && (
 						<div className="flex gap-2 py-1 text-destructive">
 							{connectionError.code === 'CONNECTION_LOST'
@@ -142,160 +251,6 @@ function ServerChatEvents(
 	)
 }
 
-export function PreviousMatchEvents(props?: {
-	current?: { ordinal: number; historyEntryId: number }
-}) {
-	const _currentMatch = MatchHistoryClient.useCurrentMatch()
-	type Current = { ordinal: number; historyEntryId: number }
-	let currentMatch: Current | undefined
-
-	if (props?.current) {
-		currentMatch = props.current
-	} else {
-		currentMatch = _currentMatch
-	}
-
-	const recentMatches = MatchHistoryClient.useRecentMatches()
-	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.secondaryFilterState)
-
-	const containerRef = React.useRef<HTMLDivElement>(null)
-	const prevScrollHeightRef = React.useRef<number>(0)
-	const [revealedPageCount, setRevealedPageCount] = React.useState(0)
-	const revealedPageMatches: MH.MatchDetails[] = []
-	for (let i = 0; i < revealedPageCount; i++) {
-		if (!currentMatch) break
-		const currentMatchIndex = recentMatches.length - 1
-		revealedPageMatches.push(recentMatches[currentMatchIndex - i - 1])
-	}
-
-	type Page = {
-		events: CHAT.EventEnriched[]
-		previousOrdinal?: number
-	}
-
-	const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isError } = useInfiniteQuery({
-		// we start at the current match but we don't actually load any events for it
-		initialPageParam: currentMatch?.ordinal !== undefined ? currentMatch.ordinal - 1 : 0,
-		enabled: !!currentMatch,
-		// when the current match changes we want to unload these
-		queryKey: [...RPC.orpc.matchHistory.getMatchEvents.key(), currentMatch?.ordinal],
-		staleTime: Infinity,
-		queryFn: async ({ pageParam }): Promise<Page> => {
-			try {
-				if (pageParam === currentMatch!.ordinal) return { events: [], previousOrdinal: pageParam - 1 }
-				const res = await RPC.orpc.matchHistory.getMatchEvents.call(pageParam)
-				if (!res?.events) return { events: [] as CHAT.EventEnriched[], previousOrdinal: res?.previousOrdinal }
-
-				return { events: res.events, previousOrdinal: res.previousOrdinal }
-			} catch (err) {
-				console.error('Failed to fetch match events for ordinal', pageParam, err)
-				throw err
-			}
-		},
-		getNextPageParam: (lastPage: Page) => lastPage?.previousOrdinal,
-		maxPages: MH.MAX_RECENT_MATCHES - 1,
-	})
-
-	const totalPages = data?.pages.length ?? 0
-
-	const prevCurrentMatchId = React.useRef(-1)
-	// reset  pages when a new game starts
-	React.useEffect(() => {
-		if (!currentMatch?.historyEntryId) return
-		if (prevCurrentMatchId.current === currentMatch.historyEntryId) return
-		prevCurrentMatchId.current = currentMatch.historyEntryId
-		setRevealedPageCount(0)
-	}, [currentMatch?.historyEntryId])
-
-	// Maintain scroll position when loading previous matches
-	React.useEffect(() => {
-		if (!containerRef.current) return
-		const scrollElement = containerRef.current.closest('[data-radix-scroll-area-viewport]')
-		if (!scrollElement) return
-
-		const currentScrollHeight = scrollElement.scrollHeight
-		const prevScrollHeight = prevScrollHeightRef.current
-
-		if (prevScrollHeight > 0 && currentScrollHeight > prevScrollHeight) {
-			// Content was added above, adjust scroll position
-			const heightDifference = currentScrollHeight - prevScrollHeight
-			scrollElement.scrollTop += heightDifference
-		}
-
-		prevScrollHeightRef.current = currentScrollHeight
-	}, [revealedPageCount])
-
-	let loadElt: React.ReactNode = null
-
-	if (revealedPageCount < totalPages) {
-		loadElt = (
-			<Button
-				onClick={() => {
-					setRevealedPageCount(prev => prev + 1)
-					void fetchNextPage()
-				}}
-				variant="secondary"
-				disabled={isFetchingNextPage}
-				className="w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-sm"
-			>
-				<Icons.ChevronUp className="h-4 w-4" />
-				<span className="text-xs">Show Previous Match</span>
-			</Button>
-		)
-	} else if (revealedPageCount >= totalPages && isError) {
-		loadElt = (
-			<Button
-				onClick={() => fetchNextPage()}
-				variant="destructive"
-				className="w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-sm"
-			>
-				<Icons.AlertCircle className="h-4 w-4" />
-				<span className="text-xs">Failed to load - Click to retry</span>
-			</Button>
-		)
-	} else if (revealedPageCount >= totalPages && isFetchingNextPage) {
-		loadElt = (
-			<Button
-				variant="secondary"
-				disabled={isFetchingNextPage}
-				className="w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-sm"
-			>
-				<Icons.Loader2 className="h-4 w-4 animate-spin" />
-				<span className="text-xs">Loading...</span>
-			</Button>
-		)
-	} else if (revealedPageCount >= totalPages && !hasNextPage) {
-		loadElt = (
-			<div className="text-muted-foreground text-xs text-center py-2">
-				No previous matches available for {totalPages === MH.MAX_RECENT_MATCHES - 1 ? ' (max already loaded)' : ''}
-			</div>
-		)
-	} else {
-		loadElt = <span data-whelp="idk"></span>
-	}
-
-	return (
-		<div ref={containerRef}>
-			{loadElt}
-			{data?.pages.slice(0, revealedPageCount).map((page, pageIndex) => {
-				const match = revealedPageMatches[pageIndex]
-				const filteredEvents = page?.events?.filter(event => !CHAT.isEventFilteredBySecondary(event, eventFilterState))
-
-				return (
-					<div key={page.events[0]?.id ?? `empty-${page.previousOrdinal}`}>
-						{filteredEvents && filteredEvents.length === 0 && match && (
-							<div className="text-muted-foreground text-xs py-2">
-								No events for {DH.displayLayer(match.layerId)}
-							</div>
-						)}
-						{filteredEvents?.map((event) => <ServerEvent key={event.id} event={event} />)}
-					</div>
-				)
-			}).reverse()}
-		</div>
-	)
-}
-
 function ServerCounts() {
 	const serverInfoStatusRes = SquadServerClient.useServerInfoRes()
 	const playerCount = SquadServerClient.usePlayerCount()
@@ -317,6 +272,50 @@ const AUTO_OPEN_WIDTH_THRESHOLD = AUTO_CLOSE_WIDTH_THRESHOLD * 1.2 // 20% above 
 export default function ServerActivityPanel() {
 	const [isStatePanelOpen, setIsStatePanelOpen] = React.useState(window.innerWidth >= AUTO_CLOSE_WIDTH_THRESHOLD)
 	const synced = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.synced)
+	const selectedMatchOrdinal = Zus.useStore(
+		SquadServerClient.ChatStore,
+		s => s.selectedMatchOrdinal,
+	)
+	const recentMatches = MatchHistoryClient.useRecentMatches()
+	const currentMatch = MatchHistoryClient.useCurrentMatch()
+
+	const canGoPrevious = React.useMemo(() => {
+		if (!recentMatches.length) return false
+		const currentOrdinal = selectedMatchOrdinal ?? currentMatch?.ordinal
+		if (currentOrdinal === undefined) return false
+		return recentMatches[0].ordinal < currentOrdinal
+	}, [selectedMatchOrdinal, currentMatch, recentMatches])
+
+	const canGoNext = React.useMemo(() => {
+		if (!currentMatch) return false
+		const currentOrdinal = selectedMatchOrdinal ?? currentMatch.ordinal
+		return currentOrdinal < currentMatch.ordinal
+	}, [selectedMatchOrdinal, currentMatch])
+
+	const handlePrevious = React.useCallback(() => {
+		if (!currentMatch || !Array.isArray(recentMatches)) return
+		const state = SquadServerClient.ChatStore.getState()
+		const currentOrdinal = state.selectedMatchOrdinal ?? currentMatch.ordinal
+		if (currentOrdinal === undefined) return
+		const currentIndex = recentMatches.findIndex((m: MH.MatchDetails) => m.ordinal === currentOrdinal)
+		if (currentIndex > 0) {
+			state.setSelectedMatchOrdinal(recentMatches[currentIndex - 1].ordinal)
+		}
+	}, [currentMatch, recentMatches])
+
+	const handleNext = React.useCallback(() => {
+		if (!currentMatch || !Array.isArray(recentMatches)) return
+		const state = SquadServerClient.ChatStore.getState()
+		const currentOrdinal = state.selectedMatchOrdinal ?? currentMatch.ordinal
+		if (currentOrdinal === undefined) return
+		const currentIndex = recentMatches.findIndex((m: MH.MatchDetails) => m.ordinal === currentOrdinal)
+		if (currentIndex < recentMatches.length - 1) {
+			state.setSelectedMatchOrdinal(recentMatches[currentIndex + 1].ordinal)
+		} else {
+			// Go to current match
+			state.setSelectedMatchOrdinal(null)
+		}
+	}, [currentMatch, recentMatches])
 
 	// Track viewport width state for auto-closing/opening the panel
 	const hasBeenAboveThresholdRef = React.useRef(window.innerWidth >= AUTO_CLOSE_WIDTH_THRESHOLD)
@@ -362,8 +361,15 @@ export default function ServerActivityPanel() {
 			sub.unsubscribe()
 		}
 	}, [isStatePanelOpen])
-	const eventFilter = Zus.useStore(SquadServerClient.ChatStore, s => s.secondaryFilterState)
-	const onSelectEventFilter = Zus.useStore(SquadServerClient.ChatStore, s => s.setSecondaryFilterState)
+	const eventFilter = Zus.useStore(
+		SquadServerClient.ChatStore,
+		s => s.secondaryFilterState,
+	)
+
+	const displayMatch = React.useMemo(() => {
+		if (selectedMatchOrdinal === null) return currentMatch
+		return recentMatches.find(m => m.ordinal === selectedMatchOrdinal)
+	}, [selectedMatchOrdinal, currentMatch, recentMatches])
 
 	return (
 		<Card className="flex flex-col min-h-0 w-fit">
@@ -373,7 +379,44 @@ export default function ServerActivityPanel() {
 						<Icons.Server className="h-5 w-5" />
 						Server Activity
 					</CardTitle>
-					<EventFilterSelect value={eventFilter} onValueChange={onSelectEventFilter} />
+					<ButtonGroup>
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={handlePrevious}
+							disabled={!canGoPrevious}
+							className="h-8 w-8 p-0"
+							title="Previous match"
+						>
+							<Icons.ChevronLeft className="h-4 w-4" />
+						</Button>
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={handleNext}
+							disabled={!canGoNext}
+							className="h-8 w-8 p-0"
+							title="Next match"
+						>
+							<Icons.ChevronRight className="h-4 w-4" />
+						</Button>
+						{selectedMatchOrdinal !== null && (
+							<Button
+								variant="default"
+								size="sm"
+								onClick={() => SquadServerClient.ChatStore.getState().setSelectedMatchOrdinal(null)}
+								className="h-8 px-3 bg-green-500 hover:bg-green-600 text-white"
+								title="Return to live events"
+							>
+								<Icons.Radio className="h-4 w-4 mr-1" />
+								Return to Live
+							</Button>
+						)}
+					</ButtonGroup>
+					<EventFilterSelect
+						value={eventFilter}
+						onValueChange={(value) => SquadServerClient.ChatStore.getState().setSecondaryFilterState(value)}
+					/>
 				</div>
 				<ServerCounts />
 			</CardHeader>
