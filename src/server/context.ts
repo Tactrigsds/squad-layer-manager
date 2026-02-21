@@ -3,11 +3,11 @@ import type { AsyncResource, AsyncResourceInvocationOpts, ImmediateRefetchError 
 import type { CleanupTasks } from '@/lib/async.ts'
 import { sleep, toCold } from '@/lib/async.ts'
 import { LRUMap } from '@/lib/lru-map.ts'
-
 import { withAcquired } from '@/lib/nodejs-reentrant-mutexes.ts'
 import type { OtelModule } from '@/lib/otel'
 import type RconCore from '@/lib/rcon/core-rcon.ts'
 import * as CS from '@/models/context-shared.ts'
+import * as LOG from '@/models/logs.ts'
 import * as ATTR from '@/models/otel-attrs.ts'
 import type * as SM from '@/models/squad.models.ts'
 import type * as USR from '@/models/users.models.ts'
@@ -25,8 +25,6 @@ import type Pino from 'pino'
 import * as Rx from 'rxjs'
 import type * as ws from 'ws'
 import type * as DB from './db.ts'
-
-import * as LOG from '@/models/logs.ts'
 import { baseLogger } from './logger.ts'
 
 // Map context properties to their corresponding OpenTelemetry attributes
@@ -123,6 +121,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 
 		let links = opts.links ? [...opts.links] : []
 		let spanContext = Otel.context.active()
+		const fullName = `${opts.module.name}:${name}`
 
 		const spanAttrs: Record<string, any> = {}
 
@@ -144,6 +143,10 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 			}
 
 			const baggageEntries: Record<string, Otel.BaggageEntry> = {}
+
+			if (opts.root || !Otel.trace.getActiveSpan()) {
+				baggageEntries[ATTR.Span.ROOT_NAME] = { value: fullName }
+			}
 
 			// Extract attributes from context using the mapping
 			for (const { ctxPath, attr } of CONTEXT_ATTR_MAPPING) {
@@ -194,7 +197,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 
 		const tracer = opts.module.tracer
 		return await tracer.startActiveSpan(
-			`${opts.module.name}:${name}`,
+			fullName,
 			{ root: opts.root, links },
 			spanContext,
 			async (span) => {
