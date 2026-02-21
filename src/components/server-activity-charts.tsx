@@ -340,14 +340,16 @@ function createRatioChartOption(
 			scale: true,
 			min: (value: any) => {
 				// Center the chart at 1.0 (equal kills/deaths - neutral ratio)
+				// Minimum scale is 0-2
 				const max = value.max
-				const distanceFromOne = Math.max(Math.abs(max - 1), Math.abs(value.min - 1))
+				const distanceFromOne = Math.max(Math.abs(max - 1), Math.abs(value.min - 1), 1)
 				return 1 - distanceFromOne
 			},
 			max: (value: any) => {
 				// Center the chart at 1.0 (equal kills/deaths - neutral ratio)
+				// Minimum scale is 0-2
 				const min = value.min
-				const distanceFromOne = Math.max(Math.abs(value.max - 1), Math.abs(min - 1))
+				const distanceFromOne = Math.max(Math.abs(value.max - 1), Math.abs(min - 1), 1)
 				return 1 + distanceFromOne
 			},
 		},
