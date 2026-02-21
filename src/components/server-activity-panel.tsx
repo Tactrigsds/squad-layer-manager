@@ -223,7 +223,48 @@ export default function ServerActivityPanel() {
 		| null
 	>(null)
 
+	// Refs for unfiltered events (for charts)
+	const prevUnfilteredState = React.useRef<
+		{ eventGeneration: number; unfilteredEvents: CHAT.EventEnriched[]; matchId: number } | null
+	>(null)
+	const prevHistoricalUnfilteredState = React.useRef<
+		| {
+			selectedMatchOrdinal: number
+			unfilteredEvents: CHAT.EventEnriched[]
+			eventsVersion: any
+		}
+		| null
+	>(null)
+
 	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.secondaryFilterState)
+
+	// Unfiltered events for charts (before secondary filter is applied)
+	const unfilteredEventsForCharts = React.useMemo(() => {
+		// If viewing a historical match, use the historical query data
+		if (selectedMatchOrdinal !== null) {
+			if (!historicalEventsQuery.data?.events) return null
+
+			// Cache check for historical unfiltered events
+			if (
+				prevHistoricalUnfilteredState.current?.selectedMatchOrdinal === selectedMatchOrdinal
+				&& prevHistoricalUnfilteredState.current?.eventsVersion === historicalEventsQuery.data
+			) {
+				return prevHistoricalUnfilteredState.current.unfilteredEvents
+			}
+
+			const unfiltered = historicalEventsQuery.data.events
+
+			prevHistoricalUnfilteredState.current = {
+				selectedMatchOrdinal,
+				unfilteredEvents: unfiltered,
+				eventsVersion: historicalEventsQuery.data,
+			}
+			return unfiltered
+		}
+
+		// Otherwise use live event buffer - handled by separate selector below
+		return null
+	}, [selectedMatchOrdinal, historicalEventsQuery.data])
 
 	const filteredEvents = React.useMemo(() => {
 		// If viewing a historical match, use the historical query data
@@ -290,7 +331,37 @@ export default function ServerActivityPanel() {
 		}, [displayMatch?.historyEntryId, selectedMatchOrdinal]),
 	)
 
+	const liveUnfilteredEventsForCharts = Zus.useStore(
+		SquadServerClient.ChatStore,
+		React.useCallback(s => {
+			if (selectedMatchOrdinal !== null) return null // Using historical events instead
+			if (!s.chatState.synced || displayMatch?.historyEntryId === undefined) return null
+
+			// Cache check for unfiltered events
+			if (
+				displayMatch?.historyEntryId === prevUnfilteredState.current?.matchId
+				&& s.eventGeneration === prevUnfilteredState.current?.eventGeneration
+			) {
+				return prevUnfilteredState.current?.unfilteredEvents
+			}
+
+			const eventBuffer = s.chatState.eventBuffer
+			const unfiltered: CHAT.EventEnriched[] = []
+			for (const event of eventBuffer) {
+				if (event.matchId !== displayMatch?.historyEntryId) continue
+				unfiltered.push(event)
+			}
+			prevUnfilteredState.current = {
+				eventGeneration: s.eventGeneration,
+				unfilteredEvents: unfiltered,
+				matchId: displayMatch?.historyEntryId,
+			}
+			return unfiltered
+		}, [displayMatch?.historyEntryId, selectedMatchOrdinal]),
+	)
+
 	const finalFilteredEvents = selectedMatchOrdinal !== null ? filteredEvents : liveFilteredEvents
+	const finalUnfilteredEventsForCharts = selectedMatchOrdinal !== null ? unfilteredEventsForCharts : liveUnfilteredEventsForCharts
 
 	const canGoPrevious = React.useMemo(() => {
 		if (!recentMatches.length) return false
@@ -432,7 +503,7 @@ export default function ServerActivityPanel() {
 				<div className="flex flex-col gap-2 h-full">
 					<div className="flex-shrink-0">
 						<ServerActivityCharts
-							events={finalFilteredEvents ?? []}
+							events={finalUnfilteredEventsForCharts ?? []}
 							maxPlayerCount={maxPlayerCount}
 							currentMatchOrdinal={selectedMatchOrdinal ?? currentMatch?.ordinal}
 						/>
