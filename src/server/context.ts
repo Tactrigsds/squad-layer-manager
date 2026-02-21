@@ -123,6 +123,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 
 		let links = opts.links ? [...opts.links] : []
 		let spanContext = Otel.context.active()
+		const fullName = `${opts.module.name}:${name}`
 
 		const spanAttrs: Record<string, any> = {}
 
@@ -144,6 +145,10 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 			}
 
 			const baggageEntries: Record<string, Otel.BaggageEntry> = {}
+
+			if (opts.root || !Otel.trace.getActiveSpan()) {
+				baggageEntries[ATTR.Span.ROOT_NAME] = { value: fullName }
+			}
 
 			// Extract attributes from context using the mapping
 			for (const { ctxPath, attr } of CONTEXT_ATTR_MAPPING) {
@@ -194,7 +199,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 
 		const tracer = opts.module.tracer
 		return await tracer.startActiveSpan(
-			`${opts.module.name}:${name}`,
+			fullName,
 			{ root: opts.root, links },
 			spanContext,
 			async (span) => {

@@ -204,6 +204,7 @@ export function showLogEvent(obj: { level: number; [key: string]: unknown }, sho
 		pid: _pid,
 		hostname: _hostname,
 		span_name: rawSpanName,
+		root_span_name: rawRootSpanName,
 		[ATTRS.Module.NAME]: rawModuleName,
 		[ATTRS.SquadServer.ID]: rawServerId,
 		[ATTRS.User.ID]: rawUserId,
@@ -213,6 +214,7 @@ export function showLogEvent(obj: { level: number; [key: string]: unknown }, sho
 
 	const moduleName = rawModuleName as string | undefined
 	const spanName = rawSpanName as string | undefined
+	const rootSpanName = rawRootSpanName as string | undefined
 	const traceId = props.trace_id as string | undefined
 	const spanId = props.span_id as string | undefined
 	const serverId = rawServerId as string | undefined
@@ -225,7 +227,7 @@ export function showLogEvent(obj: { level: number; [key: string]: unknown }, sho
 		const moduleColor = getModuleColor(moduleName)
 		mainBracketContent += ` ${moduleColor}${moduleName}${resetColor}`
 	}
-	if (spanName) {
+	if (spanName && rootSpanName !== spanName) {
 		const spanColor = getSpanColor(spanName)
 		mainBracketContent += ` ${spanColor}${spanName}${resetColor}`
 	}
@@ -237,7 +239,9 @@ export function showLogEvent(obj: { level: number; [key: string]: unknown }, sho
 	if (traceId && spanId) {
 		const traceColor = getTraceColor(String(traceId))
 		contextParts.push(
-			`${keyColor}trace=${traceColor}${String(traceId).slice(-4)}${keyColor}->${valueColor}${String(spanId).slice(-4)}${resetColor}`,
+			`${keyColor}trace=${traceColor}${rootSpanName ? `${rootSpanName}-` : ''}${String(traceId).slice(-4)}${keyColor}->${valueColor}${
+				String(spanId).slice(-4)
+			}${resetColor}`,
 		)
 	}
 	if (serverId) contextParts.push(`${keyColor}server=${valueColor}${serverId}${resetColor}`)
