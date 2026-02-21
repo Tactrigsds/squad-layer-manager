@@ -176,7 +176,7 @@
         },
         "adminQueueReminderInterval": {
           "description": "How often to remind admins to maintain the queue. Low queue warnings happen half as often.",
-          "default": "10m",
+          "default": "5m",
           "type": "string",
           "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"
         },
@@ -194,7 +194,7 @@
       "properties": {
         "voteDuration": {
           "description": "Duration of a vote",
-          "default": "120s",
+          "default": "180s",
           "type": "string",
           "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"
         },

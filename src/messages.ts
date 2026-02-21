@@ -124,11 +124,11 @@ export const WARNS = {
 		lowQueueItemCount(count: number) {
 			return `WARNING: only ${count} item${count === 1 ? '' : 's'} in the queue. Consider adding some more`
 		},
-		votePending(matchStartTime: Date, threshold: number, commands: CMD.CommandConfigs, commandPrefix: string) {
+		votePending(matchStartTime: Date, threshold: number, autostart: boolean, commands: CMD.CommandConfigs, commandPrefix: string) {
 			const timeUntilVote = Math.max(0, threshold - (Date.now() - matchStartTime.getTime()))
 			const formattedTime = formatInterval(timeUntilVote, { terse: false, round: 'second' })
 			const showNextCmd = CMD.buildCommand('showNext', {}, commands, commandPrefix, true)[0]
-			return `Vote is pending and will be run in ${formattedTime}. Run ${showNextCmd} to preview the vote`
+			return `A Vote is pending${autostart ? ' and will be run in ' + formattedTime : ''}. Run ${showNextCmd} to preview the vote`
 		},
 		empty: `WARNING: Queue is empty. Please populate it`,
 		showNext: (layerQueue: LL.List, parts: USR.UserPart, opts?: { repeat?: number }) => (ctx: C.Player) => {

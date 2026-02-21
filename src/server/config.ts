@@ -60,7 +60,7 @@ export const ConfigSchema = z.object({
 			.positive()
 			.prefault(1)
 			.describe('Number of layers in the queue to trigger a low queue size warning'),
-		adminQueueReminderInterval: HumanTime.prefault('10m').describe(
+		adminQueueReminderInterval: HumanTime.prefault('5m').describe(
 			'How often to remind admins to maintain the queue. Low queue warnings happen half as often.',
 		),
 		maxQueueSize: z.int().min(1).max(100).prefault(20).describe('Maximum number of layers that can be in the queue'),

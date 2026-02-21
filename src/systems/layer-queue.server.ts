@@ -96,7 +96,7 @@ export const setupInstance = C.spanOp(
 		if (CONFIG.servers.find(s => s.id === ctx.serverId)!.remindersAndAnnouncementsEnabled) {
 			ctx.cleanup.push(
 				Rx.interval(CONFIG.layerQueue.adminQueueReminderInterval).pipe(
-					C.durableSub('queue-reminders', { module }, async () => {
+					C.durableSub('queue-reminders', { module, levels: { event: 'info' } }, async () => {
 						const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 						const serverState = await SquadServer.getServerState(ctx)
 						const currentMatch = await MatchHistory.getCurrentMatch(ctx)
@@ -114,6 +114,7 @@ export const setupInstance = C.spanOp(
 								Messages.WARNS.queue.votePending(
 									currentMatch.startTime,
 									CONFIG.vote.startVoteReminderThreshold,
+									CONFIG.vote.autoStartVoteDelay !== null,
 									CONFIG.commands,
 									CONFIG.commandPrefix,
 								),
