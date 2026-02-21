@@ -44,8 +44,8 @@ export type MatchHistoryContext = {
 	recentMatches: MH.MatchDetails[]
 	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
 
-	// matchId -> event
-	interpolatedEventCache: LRUMap<number, Promise<CHAT.EventEnriched[]>>
+	// matchId -> events
+	matchEventsCache: LRUMap<number, Promise<CHAT.EventEnriched[]>>
 } & Parts<USR.UserPart>
 
 export function initMatchHistoryContext(cleanup: CleanupTasks): MatchHistoryContext {
@@ -58,7 +58,7 @@ export function initMatchHistoryContext(cleanup: CleanupTasks): MatchHistoryCont
 		parts: { users: [] },
 		recentMatches: [],
 		recentBalanceTriggerEvents: [],
-		interpolatedEventCache: new LRUMap(200),
+		matchEventsCache: new LRUMap(500),
 	}
 
 	cleanup.push(ctx.update$, ctx.mtx)
@@ -136,6 +136,14 @@ export const loadState = C.spanOp(
 		if (state.recentMatches.length > MH.MAX_RECENT_MATCHES) {
 			state.recentMatches = state.recentMatches.slice(state.recentMatches.length - MH.MAX_RECENT_MATCHES, state.recentMatches.length)
 		}
+
+		// Prime matchEventsCache for all recent matches (skip current match)
+		for (const match of state.recentMatches) {
+			if (match.isCurrentMatch) continue // Skip current match - events are still being generated
+			if (state.matchEventsCache.has(match.historyEntryId)) continue
+			// Call getEventsForMatches to populate cache (it will set the cache internally)
+			await getEventsForMatches(ctx, match.historyEntryId)
+		}
 	},
 )
 
@@ -190,6 +198,13 @@ export const matchHistoryRouter = {
 
 	getMatchEvents: orpcBase.input(z.number()).handler(async ({ input: ordinal, context: _ctx }) => {
 		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
+
+		// Check if trying to get events for current match - this should never happen
+		const currentMatch = await getCurrentMatch(ctx)
+		if (currentMatch && currentMatch.ordinal === ordinal) {
+			throw new Error(`Cannot call getMatchEvents for current match (ordinal ${ordinal}). Use live event stream instead.`)
+		}
+
 		let match = ctx.matchHistory.recentMatches.find(m => ctx.serverId === m.serverId && m.ordinal === ordinal)
 		let previousMatch = ctx.matchHistory.recentMatches.find(m => ctx.serverId === m.serverId && m.ordinal === ordinal - 1)
 
@@ -486,7 +501,7 @@ const getEventsForMatches = C.spanOp('getEventsForMatches', { module }, async (c
 
 	let ops: Promise<CHAT.EventEnriched[]>[] = []
 	for (const matchId of matches) {
-		const cachedEvents$ = ctx.matchHistory.interpolatedEventCache.get(matchId)
+		const cachedEvents$ = ctx.matchHistory.matchEventsCache.get(matchId)
 		if (cachedEvents$) {
 			ops.push(cachedEvents$)
 			continue
@@ -504,7 +519,7 @@ const getEventsForMatches = C.spanOp('getEventsForMatches', { module }, async (c
 			}
 			return state.eventBuffer
 		})()
-		ctx.matchHistory.interpolatedEventCache.set(matchId, events$)
+		ctx.matchHistory.matchEventsCache.set(matchId, events$)
 		ops.push(events$)
 	}
 

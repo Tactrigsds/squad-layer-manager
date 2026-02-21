@@ -2,8 +2,10 @@ import { ButtonGroup } from '@/components/ui/button-group'
 import * as DH from '@/lib/display-helpers'
 import type * as CHAT from '@/models/chat.models'
 
+import * as ZusUtils from '@/lib/zustand'
 import * as SM from '@/models/squad.models'
 import { GlobalSettingsStore } from '@/systems/global-settings.client'
+import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import type { EChartsOption } from 'echarts'
 import ReactECharts from 'echarts-for-react'
@@ -309,14 +311,34 @@ function createRatioChartOption(
 }
 
 export function ServerActivityCharts(props: {
-	events: CHAT.EventEnriched[]
+	historicalEvents: CHAT.EventEnriched[] | null
 	maxPlayerCount?: number
 	currentMatchOrdinal?: number
+	currentMatchId?: number
 }) {
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
 	const [timeInterval, setTimeInterval] = React.useState<1 | 5 | 10>(1)
 	const selectedMatchOrdinal = Zus.useStore(SquadServerClient.ChatStore, s => s.selectedMatchOrdinal)
 	const [, forceUpdate] = React.useReducer((x) => x + 1, 0)
+
+	// Get unfiltered events directly from store (before secondary filter is applied)
+	const liveUnfilteredEvents = Zus.useStore(
+		SquadServerClient.ChatStore,
+		ZusUtils.useDeep(s => {
+			if (selectedMatchOrdinal !== null || !s.chatState.synced || props.currentMatchId === undefined) return null
+
+			const eventBuffer = s.chatState.eventBuffer
+			const unfiltered: CHAT.EventEnriched[] = []
+			for (const event of eventBuffer) {
+				if (event.matchId !== props.currentMatchId) continue
+				unfiltered.push(event)
+			}
+			return unfiltered
+		}),
+	)
+
+	// Use historical events if viewing a past match, otherwise use live events
+	const events = selectedMatchOrdinal !== null ? (props.historicalEvents ?? []) : (liveUnfilteredEvents ?? [])
 
 	// Force chart updates on live view to keep time axis current
 	React.useEffect(() => {
@@ -332,8 +354,8 @@ export function ServerActivityCharts(props: {
 
 	const chartData = React.useMemo(() => {
 		// Convert minutes to milliseconds
-		return aggregateByTimeWindow(props.events, timeInterval * 60 * 1000)
-	}, [props.events, timeInterval])
+		return aggregateByTimeWindow(events, timeInterval * 60 * 1000)
+	}, [events, timeInterval])
 
 	// Calculate overall K/D ratio for the entire match
 	const overallKD = React.useMemo(() => {
@@ -342,7 +364,7 @@ export function ServerActivityCharts(props: {
 		let team2Kills = 0
 		let team2Deaths = 0
 
-		for (const event of props.events) {
+		for (const event of events) {
 			if (event.type === 'PLAYER_DIED') {
 				const victimTeam = event.victim.teamId
 				const attackerTeam = event.attacker.teamId
@@ -373,7 +395,7 @@ export function ServerActivityCharts(props: {
 			: team2Kills / team2Deaths
 
 		return { team1Ratio, team2Ratio }
-	}, [props.events])
+	}, [events])
 
 	// Calculate overall wound ratio for the entire match
 	const overallWD = React.useMemo(() => {
@@ -382,7 +404,7 @@ export function ServerActivityCharts(props: {
 		let team2Wounds = 0
 		let team2Wounded = 0
 
-		for (const event of props.events) {
+		for (const event of events) {
 			if (event.type === 'PLAYER_WOUNDED') {
 				const victimTeam = event.victim.teamId
 				const attackerTeam = event.attacker.teamId
@@ -413,7 +435,7 @@ export function ServerActivityCharts(props: {
 			: team2Wounds / team2Wounded
 
 		return { team1Ratio, team2Ratio }
-	}, [props.events])
+	}, [events])
 
 	const populationOption = React.useMemo(
 		() => createPopulationChartOption(chartData.playerPopulation, props.maxPlayerCount),
@@ -448,7 +470,7 @@ export function ServerActivityCharts(props: {
 
 	const [activeTab, setActiveTab] = React.useState<'population' | 'kd' | 'wd'>('population')
 
-	if (props.events.length === 0) {
+	if (events.length === 0) {
 		return (
 			<div className="text-muted-foreground text-sm text-center py-4">
 				No data available for charts
