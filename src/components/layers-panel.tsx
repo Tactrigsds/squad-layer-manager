@@ -15,8 +15,10 @@ import * as ConfigClient from '@/systems/config.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as LQYClient from '@/systems/layer-queries.client.ts'
 import * as QD from '@/systems/queue-dashboard.client'
+import * as ServerSettingsClient from '@/systems/server-settings.client'
 import * as SLLClient from '@/systems/shared-layer-list.client'
-import * as UsersClient from '@/systems/users.client.ts'
+import * as SquadServerClient from '@/systems/squad-server.client'
+import * as UsersClient from '@/systems/users.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -39,6 +41,7 @@ export default function LayersPanel() {
 					<UserPresencePanel />
 				</CardHeader>
 				<Separator />
+				<SlmUpdatesDisabledAlert />
 				<QueuePanelContent />
 			</ScrollArea>
 		</Card>
@@ -431,5 +434,30 @@ export function QueuePanelContent() {
 				<LayerList store={SLLClient.Store} />
 			</CardContent>
 		</>
+	)
+}
+
+function SlmUpdatesDisabledAlert() {
+	const statusRes = SquadServerClient.useLayersStatus()
+	const nextLayer = statusRes.code === 'ok' ? statusRes.data.nextLayer : null
+	const updatesDisabled = Zus.useStore(ServerSettingsClient.Store, s => s.saved.updatesToSquadServerDisabled)
+	const { enableUpdates } = QD.useToggleSquadServerUpdates()
+	const loggedInUser = UsersClient.useLoggedInUser()
+	const canEnableUpdates = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:disable-slm-updates'))
+	if (!updatesDisabled) return null
+
+	return (
+		<Alert variant="destructive">
+			<AlertTitle>SLM Updates Disabled</AlertTitle>
+			<AlertDescription>
+				SLM is not currently syncing the queue to the squad server. {nextLayer && (
+					<>
+						Current next layer on the server is <ShortLayerName layerId={nextLayer.id} />.
+					</>
+				)} <br />{' '}
+				<Button disabled={!canEnableUpdates} className="mr-1" variant="secondary" onClick={() => enableUpdates()}>Click Here</Button>
+				to enable SLM Updates.
+			</AlertDescription>
+		</Alert>
 	)
 }
