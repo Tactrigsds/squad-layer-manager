@@ -344,7 +344,7 @@ export function ServerActivityCharts(props: {
 	return (
 		<div className="w-full flex flex-col gap-2">
 			<div className="flex gap-4 text-xs px-1">
-				<span className="text-muted-foreground">Overall K/D Ratio:</span>
+				<span className="text-muted-foreground">K/D Ratio:</span>
 				<span className="flex items-center gap-1">
 					<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team1Color }}></span>
 					{team1Label}:{' '}
