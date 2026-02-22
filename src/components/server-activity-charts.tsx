@@ -10,6 +10,7 @@ import * as ConfigClient from '@/systems/config.client'
 import { GlobalSettingsStore } from '@/systems/global-settings.client'
 
 import * as SquadServerClient from '@/systems/squad-server.client'
+import * as ThemeClient from '@/systems/theme.client'
 import type { EChartsOption } from 'echarts'
 import ReactECharts from 'echarts-for-react'
 import React from 'react'
@@ -98,9 +99,15 @@ function createFlagGroupChartOption(
 	groupColors: string[],
 	team1Counts: number[],
 	team2Counts: number[],
+	team1Players: string[][],
+	team2Players: string[][],
 	team1Label: string,
 	team2Label: string,
+	isDark: boolean,
 ): EChartsOption {
+	const textColor = isDark ? '#e5e7eb' : '#111827'
+	const barLabelColor = '#fff'
+	const otherIdx = groupLabels.length - 1
 	return {
 		animation: false,
 		grid: {
@@ -114,14 +121,17 @@ function createFlagGroupChartOption(
 			data: groupLabels.map((label, i) => ({ name: label, itemStyle: { color: groupColors[i] } })),
 			top: 5,
 			type: 'scroll',
+			textStyle: { color: textColor },
 		},
 		xAxis: {
 			type: 'value',
 			minInterval: 1,
+			axisLabel: { color: textColor },
 		},
 		yAxis: {
 			type: 'category',
 			data: [team1Label, team2Label],
+			axisLabel: { color: textColor },
 		},
 		series: groupLabels.map((label, i) => ({
 			name: label,
@@ -129,12 +139,32 @@ function createFlagGroupChartOption(
 			stack: 'total',
 			data: [team1Counts[i], team2Counts[i]],
 			itemStyle: { color: groupColors[i] },
-			label: { show: false },
+			label: { show: true, color: barLabelColor, fontWeight: 'bold', textShadowBlur: isDark ? 0 : 3, textShadowColor: '#0006' },
 		})),
 		tooltip: {
 			trigger: 'axis',
 			axisPointer: { type: 'shadow' },
 			confine: true,
+			formatter: (params: unknown) => {
+				const items = params as { seriesIndex: number; seriesName: string; value: number; color: string; dataIndex: number }[]
+				if (!items.length) return ''
+				const teamLabel = items[0].dataIndex === 0 ? team1Label : team2Label
+				const playersByGroup = items[0].dataIndex === 0 ? team1Players : team2Players
+				let html = `<div style="font-weight:bold;margin-bottom:4px">${teamLabel}</div>`
+				for (const item of items) {
+					if (item.value === 0) continue
+					const groupIdx = item.seriesIndex
+					const players = groupIdx !== otherIdx ? playersByGroup[groupIdx] : null
+					html += `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">`
+					html += `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${item.color}"></span>`
+					html += `<span><b>${item.seriesName}</b>: ${item.value}`
+					if (players && players.length > 0) {
+						html += ` — ${players.join(', ')}`
+					}
+					html += `</span></div>`
+				}
+				return html
+			},
 		},
 	}
 }
@@ -148,6 +178,8 @@ export function ServerActivityCharts(props: {
 }) {
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
 	const selectedMatchOrdinal = Zus.useStore(SquadServerClient.ChatStore, s => s.selectedMatchOrdinal)
+	const { theme } = ThemeClient.useTheme()
+	const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
 
 	// Get unfiltered live events for K/D calculation
 	const liveUnfilteredEvents = Zus.useStore(
@@ -237,14 +269,22 @@ export function ServerActivityCharts(props: {
 		const groupLabels = [...Object.keys(playerFlagGroupings), 'Other']
 		const team1Counts = new Array(groupLabels.length).fill(0)
 		const team2Counts = new Array(groupLabels.length).fill(0)
+		const team1Players: string[][] = groupLabels.map(() => [])
+		const team2Players: string[][] = groupLabels.map(() => [])
 		const otherIdx = groupLabels.length - 1
 
 		for (const player of livePlayers) {
 			const group = player.ids.steam != null ? playerGroups.get(player.ids.steam) : undefined
 			const idx = group != null ? groupLabels.indexOf(group) : otherIdx
 			if (idx === -1) continue
-			if (player.teamId === 1) team1Counts[idx]++
-			else if (player.teamId === 2) team2Counts[idx]++
+			const name = player.ids.usernameNoTag ?? player.ids.username ?? player.ids.steam ?? '?'
+			if (player.teamId === 1) {
+				team1Counts[idx]++
+				team1Players[idx].push(name)
+			} else if (player.teamId === 2) {
+				team2Counts[idx]++
+				team2Players[idx].push(name)
+			}
 		}
 
 		// Build a flagId -> color lookup from all known player flags
@@ -267,10 +307,20 @@ export function ServerActivityCharts(props: {
 		const groupColors = groupLabels.map(resolveGroupColor)
 
 		return {
-			option: createFlagGroupChartOption(groupLabels, groupColors, team1Counts, team2Counts, team1Label, team2Label),
+			option: createFlagGroupChartOption(
+				groupLabels,
+				groupColors,
+				team1Counts,
+				team2Counts,
+				team1Players,
+				team2Players,
+				team1Label,
+				team2Label,
+				isDark,
+			),
 			groupCount: groupLabels.length,
 		}
-	}, [playerFlagGroupings, livePlayers, bmData, team1Label, team2Label])
+	}, [playerFlagGroupings, livePlayers, bmData, team1Label, team2Label, isDark])
 
 	if (isEmpty) {
 		return (
