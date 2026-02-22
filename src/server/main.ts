@@ -14,6 +14,7 @@ import * as LayerDb from '@/systems/layer-db.server'
 import * as LayerQueries from '@/systems/layer-queries.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
+import * as PersistedCache from '@/systems/persistedCache.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sessions from '@/systems/sessions.server'
 import * as SharedLayerList from '@/systems/shared-layer-list.server'
@@ -45,7 +46,6 @@ await C.spanOp('main', { module }, async () => {
 	log.info('-------- Starting SLM version %s --------', formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA))
 	CleanupSys.setup()
 	// Initialize all module loggers
-	Battlemetrics.setup()
 	CoreRcon.setup()
 	FetchAdminLists.setup()
 	Commands.setup()
@@ -57,6 +57,8 @@ await C.spanOp('main', { module }, async () => {
 	Vote.setup()
 	WsSession.setup()
 	await Promise.all([Config.ensureSetup(), LayerDb.setup(), DB.setup(), FilterEntity.setup()])
+	PersistedCache.setup()
+	await Battlemetrics.setup()
 	SquadLogsReceiver.setup()
 	Rbac.setup()
 	void Sessions.setup()

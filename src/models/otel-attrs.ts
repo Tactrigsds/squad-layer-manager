@@ -29,6 +29,14 @@ export namespace Http {
 	export const STATUS_CODE = 'http.status_code'
 }
 
+export namespace Battlemetrics {
+	export namespace RateLimit {
+		export const PER_SECOND = 'battlemetrics.rate_limit.per_second'
+		export const PER_MINUTE = 'battlemetrics.rate_limit.per_minute'
+		export const QUEUE_SIZE = 'battlemetrics.rate_limit.queue_size'
+	}
+}
+
 export namespace SpanLink {
 	export const SOURCE = 'slm.link-source'
 	export const SOURCE_TYPES = [

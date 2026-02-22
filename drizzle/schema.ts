@@ -216,3 +216,9 @@ export const sessions = mysqlTable(
 		expiresAtIndex: index('expiresAtIndex').on(table.expiresAt),
 	}),
 )
+
+export const persistedCache = mysqlTable('persistedCache', {
+	key: varchar('key', { length: 256 }).primaryKey(),
+	value: json('value').notNull(),
+	updatedAt: timestamp('updatedAt').defaultNow().notNull(),
+})

@@ -7,6 +7,8 @@ import * as C from '@/server/context'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as CleanupSys from '@/systems/cleanup.server'
+import * as PersistedCache from '@/systems/persistedCache.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import { metrics } from '@opentelemetry/api'
 import * as Rx from 'rxjs'
@@ -19,9 +21,41 @@ const orpcBase = getOrpcBase(module)
 let ENV!: ReturnType<typeof getEnv>
 let log!: ReturnType<typeof module.getLogger>
 
-export function setup() {
+export async function setup() {
 	log = module.getLogger()
 	ENV = getEnv()
+
+	try {
+		const stored = await PersistedCache.load<PersistedCacheValue>(CACHE_PERSIST_KEY)
+		if (stored) {
+			const now = Date.now()
+			let loaded = 0
+			for (const [steamId, entry] of Object.entries(stored)) {
+				if (entry.expiresAt <= now) continue
+				playerFlagsAndProfileCache.set(steamId, entry)
+				loaded++
+			}
+			log.info('Loaded %d player BM cache entries from DB', loaded)
+		}
+	} catch (err) {
+		log.warn({ err }, 'Failed to load BM player cache from DB')
+	}
+
+	const persistSub = Rx.interval(CACHE_PERSIST_INTERVAL_MS).pipe(
+		C.durableSub(
+			'bm-cache-persist',
+			{ module, root: true, taskScheduling: 'exhaust' },
+			() => persistCache().catch((err) => log.warn({ err }, 'Failed to persist BM player cache')),
+		),
+	).subscribe()
+
+	const evictSub = Rx.interval(CACHE_EVICTION_INTERVAL_MS).subscribe(() => evictExpiredCacheEntries())
+
+	CleanupSys.register(async () => {
+		persistSub.unsubscribe()
+		evictSub.unsubscribe()
+		await persistCache().catch((err) => log.warn({ err }, 'Failed to final-persist BM player cache on shutdown'))
+	})
 }
 
 // -------- cache --------
@@ -42,6 +76,39 @@ function getCachedPlayer(steamId: string): BM.PlayerFlagsAndProfile | undefined 
 
 function setCachedPlayer(steamId: string, value: BM.PlayerFlagsAndProfile) {
 	playerFlagsAndProfileCache.set(steamId, { value, expiresAt: Date.now() + PLAYER_CACHE_TTL })
+}
+
+// -------- cache eviction --------
+
+const CACHE_EVICTION_INTERVAL_MS = 10 * 60 * 1000
+
+function evictExpiredCacheEntries() {
+	const now = Date.now()
+	let evicted = 0
+	for (const [steamId, entry] of playerFlagsAndProfileCache.entries()) {
+		if (entry.expiresAt <= now) {
+			playerFlagsAndProfileCache.delete(steamId)
+			evicted++
+		}
+	}
+	if (evicted > 0) log.debug('Evicted %d expired BM cache entries', evicted)
+}
+
+// -------- cache persistence --------
+
+const CACHE_PERSIST_KEY = 'bm:playerCache'
+const CACHE_PERSIST_INTERVAL_MS = 5 * 60 * 1000
+
+type PersistedCacheValue = Record<string, { value: BM.PlayerFlagsAndProfile; expiresAt: number }>
+
+async function persistCache() {
+	const now = Date.now()
+	const toStore: PersistedCacheValue = {}
+	for (const [steamId, entry] of playerFlagsAndProfileCache.entries()) {
+		if (entry.expiresAt <= now) continue
+		toStore[steamId] = entry
+	}
+	await PersistedCache.save(CACHE_PERSIST_KEY, toStore)
 }
 
 // -------- polling config --------
@@ -156,7 +223,7 @@ function drainQueue() {
 
 const meter = metrics.getMeter('battlemetrics')
 
-meter.createObservableGauge('battlemetrics.rate_limit.per_second', {
+meter.createObservableGauge(ATTRS.Battlemetrics.RateLimit.PER_SECOND, {
 	description: 'Number of BattleMetrics API requests in the last 1s window',
 }).addCallback((result) => {
 	const now = Date.now()
@@ -164,7 +231,7 @@ meter.createObservableGauge('battlemetrics.rate_limit.per_second', {
 	result.observe(countInWindow(now, 1_000))
 })
 
-meter.createObservableGauge('battlemetrics.rate_limit.per_minute', {
+meter.createObservableGauge(ATTRS.Battlemetrics.RateLimit.PER_MINUTE, {
 	description: 'Number of BattleMetrics API requests in the last 60s window',
 }).addCallback((result) => {
 	const now = Date.now()
@@ -172,7 +239,7 @@ meter.createObservableGauge('battlemetrics.rate_limit.per_minute', {
 	result.observe(countInWindow(now, 60_000))
 })
 
-meter.createObservableGauge('battlemetrics.rate_limit.queue_size', {
+meter.createObservableGauge(ATTRS.Battlemetrics.RateLimit.QUEUE_SIZE, {
 	description: 'Number of queued BattleMetrics API requests waiting for a rate limit slot',
 }).addCallback((result) => {
 	result.observe(rateLimiter.queue.length)
@@ -465,34 +532,35 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 	const serverId = ctx.serverId
 	const state = getServerBmState(serverId)
 
-	Rx.interval(POLL_INTERVAL_MS).pipe(
-		Rx.startWith(0),
-		C.durableSub('bm-bulk-poll', { module, root: true, taskScheduling: 'exhaust' }, async () => {
-			const sliceCtx = SquadServer.resolveSliceCtx({}, serverId)
+	ctx.cleanup.push(
+		Rx.interval(POLL_INTERVAL_MS).pipe(
+			Rx.startWith(0),
+			C.durableSub('bm-bulk-poll', { module, root: true, taskScheduling: 'exhaust' }, async () => {
+				const sliceCtx = SquadServer.resolveSliceCtx({}, serverId)
 
-			const onlineSteamIds = await bulkFetchOnlinePlayers(sliceCtx).catch((err) => {
-				log.warn({ err }, 'bulk fetch online players failed')
-				return [] as string[]
-			})
-
-			state.onlineSteamIds = new Set(onlineSteamIds)
-			state.update$.next()
-		}),
-	).subscribe()
-
-	ctx.server.event$.pipe(
-		C.durableSub('bm-on-player-connected', { module, root: true }, async ([eventCtx, events]) => {
-			for (const event of events) {
-				if (event.type !== 'PLAYER_CONNECTED') continue
-				const steamId = event.player.ids.steam
-				if (!steamId) continue
-				const sliceCtx = SquadServer.resolveSliceCtx(eventCtx, serverId)
-				fetchSinglePlayerBmData(sliceCtx, steamId).catch((err) => {
-					log.warn({ err, steamId }, 'failed to fetch bm data on player connect')
+				const onlineSteamIds = await bulkFetchOnlinePlayers(sliceCtx).catch((err) => {
+					log.warn({ err }, 'bulk fetch online players failed')
+					return [] as string[]
 				})
-			}
-		}),
-	).subscribe()
+
+				state.onlineSteamIds = new Set(onlineSteamIds)
+				state.update$.next()
+			}),
+		).subscribe(),
+		ctx.server.event$.pipe(
+			C.durableSub('bm-on-player-connected', { module, root: true }, async ([eventCtx, events]) => {
+				for (const event of events) {
+					if (event.type !== 'PLAYER_CONNECTED') continue
+					const steamId = event.player.ids.steam
+					if (!steamId) continue
+					const sliceCtx = SquadServer.resolveSliceCtx(eventCtx, serverId)
+					fetchSinglePlayerBmData(sliceCtx, steamId).catch((err) => {
+						log.warn({ err, steamId }, 'failed to fetch bm data on player connect')
+					})
+				}
+			}),
+		).subscribe(),
+	)
 }
 
 // -------- oRPC handlers --------

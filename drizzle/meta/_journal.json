@@ -351,6 +351,13 @@
       "when": 1771027200000,
       "tag": "0049_add_playerEventAssociations_id",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "5",
+      "when": 1771797326764,
+      "tag": "0050_add_persisted_cache",
+      "breakpoints": true
     }
   ]
 }
