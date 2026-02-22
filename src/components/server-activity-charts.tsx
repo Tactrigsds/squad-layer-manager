@@ -352,6 +352,9 @@ function createRatioChartOption(
 				const distanceFromOne = Math.max(Math.abs(value.max - 1), Math.abs(min - 1), 1)
 				return 1 + distanceFromOne
 			},
+			axisLabel: {
+				formatter: (value: number) => value.toFixed(2),
+			},
 		},
 		legend: {
 			data: [team1Label, team2Label],
@@ -388,8 +391,8 @@ function createRatioChartOption(
 			formatter: (params: any) => {
 				const date = new Date(params[0].value[0])
 				const time = date.toLocaleTimeString()
-				const ratio1 = params[0].value[1].toFixed(2)
-				const ratio2 = params[1].value[1].toFixed(2)
+				const ratio1 = params[0]?.value[1] != null ? params[0].value[1].toFixed(2) : 'N/A'
+				const ratio2 = params[1]?.value[1] != null ? params[1].value[1].toFixed(2) : 'N/A'
 				return `${time}<br/>${team1Label}: ${ratio1}<br/>${team2Label}: ${ratio2}`
 			},
 		},
