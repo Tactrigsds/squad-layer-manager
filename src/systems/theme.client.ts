@@ -44,5 +44,9 @@ export function setup() {
 }
 
 export function useTheme() {
-	return Zus.useStore(ThemeStore)
+	const { theme, setTheme } = Zus.useStore(ThemeStore)
+	const resolvedTheme = theme === 'system'
+		? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+		: theme
+	return { theme, setTheme, resolvedTheme } as const
 }

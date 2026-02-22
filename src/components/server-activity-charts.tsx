@@ -178,8 +178,8 @@ export function ServerActivityCharts(props: {
 }) {
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
 	const selectedMatchOrdinal = Zus.useStore(SquadServerClient.ChatStore, s => s.selectedMatchOrdinal)
-	const { theme } = ThemeClient.useTheme()
-	const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+	const { resolvedTheme } = ThemeClient.useTheme()
+	const isDark = resolvedTheme === 'dark'
 
 	// Get unfiltered live events for K/D calculation
 	const liveUnfilteredEvents = Zus.useStore(
