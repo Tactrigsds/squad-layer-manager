@@ -159,7 +159,18 @@ function createFlagGroupChartOption(
 					html += `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${item.color}"></span>`
 					html += `<span><b>${item.seriesName}</b>: ${item.value}`
 					if (players && players.length > 0) {
-						html += ` — ${players.join(', ')}`
+						let playerStr = ''
+						let remaining = 0
+						for (const name of players) {
+							const next = playerStr ? `, ${name}` : name
+							if (playerStr && playerStr.length + next.length > 70) {
+								remaining = players.length - players.indexOf(name)
+								break
+							}
+							playerStr += next
+						}
+						html += ` — ${playerStr}`
+						if (remaining > 0) html += `, +${remaining} more`
 					}
 					html += `</span></div>`
 				}
