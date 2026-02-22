@@ -88,7 +88,17 @@ export function MatchHistoryPanelContent() {
 	// -------- Page-based navigation --------
 	const [currentPage, setCurrentPage] = React.useState(1)
 
-	const [currentDate, currentEntries] = matchesByDate[matchesByDate.length - currentPage]
+	const [currentDate, currentEntries] = React.useMemo(() => {
+		const [date, entries] = matchesByDate[matchesByDate.length - currentPage] ?? ['', []]
+		// On today's page, always include the current in-progress match even if it started yesterday
+		if (currentPage === 1) {
+			const currentMatch = history[history.length - 1]
+			if (currentMatch?.status === 'in-progress' && !entries.includes(currentMatch)) {
+				return [date, [currentMatch, ...entries]]
+			}
+		}
+		return [date, entries]
+	}, [matchesByDate, currentPage, history])
 	const onFirstPage = currentPage === 1
 	const totalPages = matchesByDate.length
 	const onLastPage = currentPage === totalPages
