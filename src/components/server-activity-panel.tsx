@@ -436,6 +436,7 @@ export default function ServerActivityPanel() {
 							maxPlayerCount={maxPlayerCount}
 							currentMatchOrdinal={selectedMatchOrdinal ?? currentMatch?.ordinal}
 							currentMatchId={displayMatch?.historyEntryId}
+							layerId={displayMatch?.layerId}
 						/>
 					</div>
 					<div className="flex gap-0.5 flex-1 min-h-0">

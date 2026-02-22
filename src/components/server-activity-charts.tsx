@@ -3,6 +3,7 @@ import type * as CHAT from '@/models/chat.models'
 
 import * as ZusUtils from '@/lib/zustand'
 import * as BM from '@/models/battlemetrics.models'
+import * as L from '@/models/layer'
 import type * as SM from '@/models/squad.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
@@ -143,6 +144,7 @@ export function ServerActivityCharts(props: {
 	maxPlayerCount?: number
 	currentMatchOrdinal?: number
 	currentMatchId?: number
+	layerId?: L.LayerId
 }) {
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
 	const selectedMatchOrdinal = Zus.useStore(SquadServerClient.ChatStore, s => s.selectedMatchOrdinal)
@@ -190,17 +192,31 @@ export function ServerActivityCharts(props: {
 	}, [events])
 
 	const [team1Label, team2Label, team1Color, team2Color] = React.useMemo(() => {
+		const layer = props.layerId ? L.toLayer(props.layerId) : null
+		const faction1 = layer && L.isKnownLayer(layer) ? layer.Faction_1 : null
+		const faction2 = layer && L.isKnownLayer(layer) ? layer.Faction_2 : null
+
 		if (!displayTeamsNormalized) {
-			return ['Team 1', 'Team 2', DH.TEAM_COLORS.team1, DH.TEAM_COLORS.team2]
+			return [
+				faction1 ? `Team 1 (${faction1})` : 'Team 1',
+				faction2 ? `Team 2 (${faction2})` : 'Team 2',
+				DH.TEAM_COLORS.team1,
+				DH.TEAM_COLORS.team2,
+			]
 		}
-		const ordinal = props.currentMatchOrdinal ?? 0
-		const parity = ordinal % 2
-		if (parity === 0) {
-			return ['Team A', 'Team B', DH.TEAM_COLORS.teamA, DH.TEAM_COLORS.teamB]
-		} else {
-			return ['Team B', 'Team A', DH.TEAM_COLORS.teamB, DH.TEAM_COLORS.teamA]
-		}
-	}, [displayTeamsNormalized, props.currentMatchOrdinal])
+		// (parity + team - 1) % 2 === 0 → Team A, === 1 → Team B (mirrors teams-display.tsx)
+		const parity = props.currentMatchOrdinal ?? 0
+		const normedLabels = ['A', 'B'] as const
+		const normedColors = [DH.TEAM_COLORS.teamA, DH.TEAM_COLORS.teamB] as const
+		const t1NormedIdx = (parity + 1 - 1) % 2 // team 1
+		const t2NormedIdx = (parity + 2 - 1) % 2 // team 2
+		return [
+			faction1 ? `Team ${normedLabels[t1NormedIdx]} (${faction1})` : `Team ${normedLabels[t1NormedIdx]}`,
+			faction2 ? `Team ${normedLabels[t2NormedIdx]} (${faction2})` : `Team ${normedLabels[t2NormedIdx]}`,
+			normedColors[t1NormedIdx],
+			normedColors[t2NormedIdx],
+		]
+	}, [displayTeamsNormalized, props.currentMatchOrdinal, props.layerId])
 
 	// Build flag group counts per team from live players
 	const flagGroupChart = React.useMemo(() => {
