@@ -479,6 +479,20 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 			state.update$.next()
 		}),
 	).subscribe()
+
+	ctx.server.event$.pipe(
+		C.durableSub('bm-on-player-connected', { module, root: true }, async ([eventCtx, events]) => {
+			for (const event of events) {
+				if (event.type !== 'PLAYER_CONNECTED') continue
+				const steamId = event.player.ids.steam
+				if (!steamId) continue
+				const sliceCtx = SquadServer.resolveSliceCtx(eventCtx, serverId)
+				fetchSinglePlayerBmData(sliceCtx, steamId).catch((err) => {
+					log.warn({ err, steamId }, 'failed to fetch bm data on player connect')
+				})
+			}
+		}),
+	).subscribe()
 }
 
 // -------- oRPC handlers --------
