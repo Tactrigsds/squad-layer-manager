@@ -1,3 +1,4 @@
+import type * as SM from '@/models/squad.models'
 import { z } from 'zod'
 
 // ---- JSON:API shared shapes ----
@@ -110,3 +111,28 @@ export type PlayerFlagsAndProfile = {
 }
 
 export type PublicPlayerBmData = Record<string, PlayerFlagsAndProfile>
+export const PlayerFlagGroupingsSchema = z.record(z.string(), z.object({ associations: z.record(z.uuid(), z.number()), color: z.string() }))
+export type PlayerFlagGroupings = z.infer<typeof PlayerFlagGroupingsSchema>
+
+export function resolvePlayerFlagGroups(players: [SM.PlayerId, PlayerFlag[]][], groupings: PlayerFlagGroupings) {
+	const associations: [string, string, number][] = []
+	for (const [label, group] of Object.entries(groupings)) {
+		for (const [id, priority] of Object.entries(group.associations)) {
+			associations.push([label, id, priority])
+		}
+	}
+	associations.sort((a, b) => a[2] - b[2])
+
+	const groups: Map<SM.PlayerId, string> = new Map()
+
+	for (const [playerId, playerFlags] of players) {
+		for (const [label, flagId] of associations) {
+			if (playerFlags.some(f => f.id === flagId)) {
+				groups.set(playerId, label)
+				break
+			}
+		}
+	}
+
+	return groups
+}

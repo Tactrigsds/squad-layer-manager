@@ -4,6 +4,7 @@ import * as DH from '@/lib/display-helpers.ts'
 import * as Obj from '@/lib/object.ts'
 import { BasicStrNoWhitespace, HumanTime, ParsedBigIntSchema } from '@/lib/zod'
 import * as BAL from '@/models/balance-triggers.models.ts'
+import * as BM from '@/models/battlemetrics.models.ts'
 import * as CHAT from '@/models/chat.models.ts'
 import * as CMD from '@/models/command.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -125,6 +126,8 @@ export const ConfigSchema = z.object({
 		defaultSortBy: { type: 'random' },
 	}),
 	playerFlagColorHierarchy: z.array(z.uuid()).optional(),
+	// group label -> flag uuid -> priority
+	playerFlagGroupings: BM.PlayerFlagGroupingsSchema.optional(),
 	navLinks: NavLinkSchema.optional().describe('Links to display in the navbar dropdown menu'),
 })
 
@@ -222,6 +225,7 @@ export function getPublicConfig(wsClientId: string) {
 		})),
 
 		wsClientId,
+		playerFlagGroupings: CONFIG.playerFlagGroupings,
 	}
 }
 
