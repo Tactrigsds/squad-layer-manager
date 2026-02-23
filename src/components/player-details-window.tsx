@@ -133,6 +133,7 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 					>
 						BattleMetrics
 					</ExtLink>
+					{!!profile?.hoursPlayed && <span title="Hours played on this org's servers">{profile.hoursPlayed}h</span>}
 				</div>
 			</div>
 			<Separator />

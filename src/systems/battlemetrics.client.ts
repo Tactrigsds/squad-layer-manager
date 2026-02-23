@@ -21,22 +21,22 @@ export function sortFlagsByHierarchy<T extends BM.PlayerFlag>(flags: T[]): T[] {
 	})
 }
 
-export function usePlayerFlags(steamId: string) {
+export function usePlayerFlags(playerId: string) {
 	const bmData = usePlayerBmData()
-	const player = bmData[steamId]
+	const player = bmData[playerId]
 	return player?.flags ?? null
 }
 
-export function usePlayerProfile(steamId: string) {
+export function usePlayerProfile(playerId: string) {
 	const bmData = usePlayerBmData()
-	const player = bmData[steamId]
+	const player = bmData[playerId]
 	if (!player) return null
 	const { flags: _, ...profile } = player
 	return profile
 }
 
-export function usePlayerFlagColor(steamId: string): string | null {
-	const flags = usePlayerFlags(steamId)
+export function usePlayerFlagColor(playerId: string): string | null {
+	const flags = usePlayerFlags(playerId)
 	if (!flags || flags.length === 0) return null
 	return sortFlagsByHierarchy(flags)[0]?.color ?? null
 }

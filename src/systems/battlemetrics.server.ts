@@ -586,8 +586,8 @@ const fetchSinglePlayerBmData = C.spanOp(
 		// Search by EOS ID (required). BattleMetrics supports searching by EOS identifier type.
 		// We also request steamID identifiers to be included so we can store both IDs.
 		const path = `/players?filter[search]=${eosId}`
-			+ `&include=identifier,flagPlayer,playerFlag`
-			+ `&filter[identifiers]=eosID`
+			+ `&include=identifier,flagPlayer,playerFlag,server`
+			+ `&filter[identifiers]=eosID,steamID`
 			+ `&fields[playerFlag]=name,color,description,icon`
 			+ `&fields[server]=name`
 			+ `&page[size]=1`
