@@ -75,8 +75,9 @@ export const serverEvents = mysqlTable(
 export const players = mysqlTable(
 	'players',
 	{
-		steamId: bigint('steamId', { mode: 'bigint' }).primaryKey(),
-		eosId: varchar('eosId', { length: 32 }).notNull().unique(),
+		eosId: varchar('eosId', { length: 32 }).notNull().primaryKey(),
+		steamId: bigint('steamId', { mode: 'bigint' }).unique(),
+		epicId: varchar('epicId', { length: 32 }).unique(),
 		// exists for cases where we don't know wwhat the tag string is
 		username: varchar('username', { length: 48 }).notNull(),
 		usernameNoTag: varchar('usernameNoTag', { length: 32 }),
@@ -95,7 +96,7 @@ export const playerEventAssociations = mysqlTable(
 	{
 		id: int('id').autoincrement().primaryKey(),
 		serverEventId: int('serverEventId').references(() => serverEvents.id, { onDelete: 'cascade' }).notNull(),
-		playerId: bigint('playerId', { mode: 'bigint' }).references(() => players.steamId, { onDelete: 'cascade' }).notNull(),
+		playerId: varchar('playerId', { length: 32 }).references(() => players.eosId, { onDelete: 'cascade' }).notNull(),
 		assocType: mysqlEnum('assocType', enumTupleOptions(SERVER_EVENT_PLAYER_ASSOC_TYPE)).notNull(),
 		createdAt: timestamp('createdAt').defaultNow(),
 	},
@@ -113,7 +114,7 @@ export const squads = mysqlTable(
 		ingameSquadId: int('ingameSquadId').notNull(),
 		teamId: int('teamId').notNull(),
 		name: varchar('name', { length: 64 }).notNull(),
-		creatorId: bigint('creatorId', { mode: 'bigint' }).references(() => players.steamId, { onDelete: 'set null' }),
+		creatorId: varchar('creatorId', { length: 32 }).references(() => players.eosId, { onDelete: 'set null' }),
 		createdAt: timestamp('createdAt').defaultNow(),
 	},
 	(table) => ({

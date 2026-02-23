@@ -12,6 +12,7 @@ import superjson from 'superjson'
 import { z } from 'zod'
 
 export type SteamId = string
+export type EosId = string
 
 export const ServerRawInfoSchema = z.object({
 	ServerName_s: z.string().default('Unknown'),
@@ -63,7 +64,7 @@ export const TeamIdSchema = z.union([z.literal(1), z.literal(2)])
 export type TeamId = z.infer<typeof TeamIdSchema>
 
 export namespace PlayerIds {
-	export type Fields = 'username' | 'steam' | 'eos' | 'playerController' | 'usernameNoTag'
+	export type Fields = 'username' | 'steam' | 'eos' | 'playerController' | 'usernameNoTag' | 'epic'
 
 	export type IdQuery<Required extends Fields = never> = { [k in Fields]?: string } & { [k in Required]: string }
 
@@ -73,19 +74,20 @@ export namespace PlayerIds {
 			usernameNoTag: Arr.includes(fields, 'usernameNoTag') ? z.string() : z.string().optional(),
 			steam: Arr.includes(fields, 'steam') ? z.string() : z.string().optional(),
 			eos: Arr.includes(fields, 'eos') ? z.string() : z.string().optional(),
+			epic: Arr.includes(fields, 'epic') ? z.string() : z.string().optional(),
 			playerController: Arr.includes(fields, 'playerController') ? z.string() : z.string().optional(),
 			tag: Arr.includes(fields, 'tag') ? z.string().nullable() : z.string().nullable().optional(),
 		}) as any
 	}
 
 	export const IdQuerySchema = IdFields()
-	export const Schema = IdFields('steam', 'username', 'eos')
+	export const Schema = IdFields('username', 'eos')
 
-	export function getPlayerId(ids: IdQuery<'steam'>) {
-		return ids.steam
+	export function getPlayerId(ids: IdQuery<'eos'>) {
+		return ids.eos
 	}
-	export function queryFromPlayerId(id: PlayerId): IdQuery<'steam'> {
-		return { steam: id }
+	export function queryFromPlayerId(id: PlayerId): IdQuery<'eos'> {
+		return { eos: id }
 	}
 
 	export type IdQueryOrPlayerId = IdQuery | PlayerId
@@ -96,10 +98,10 @@ export namespace PlayerIds {
 	export type Type = z.infer<typeof Schema>
 
 	// in order of lookup preference
-	const LOOKUP_PROPS = ['steam', 'eos', 'playerController', 'username'] as const
+	const LOOKUP_PROPS = ['eos', 'steam', 'epic', 'playerController', 'username'] as const
 
 	// expected to be unique in a collection of PlayerIds. maybe playerController is unique too, not sure
-	const UNIQUE_PROPS = ['steam', 'eos'] as const
+	const UNIQUE_PROPS = ['steam', 'eos', 'epic'] as const
 
 	// old signature
 	// export function parsePlayerIds(username: string, idsStr?: string): Type {
@@ -285,7 +287,7 @@ export namespace PlayerIds {
 
 	// gets generic id for use in commands(ex warns)
 	export function resolvePlayerId(ids: Type): string {
-		return (ids.steam?.toString() ?? ids.steam?.toString())!
+		return (ids.eos?.toString() ?? ids.eos?.toString())!
 	}
 
 	export function prettyPrint(id: IdQueryOrPlayerId) {
@@ -294,6 +296,7 @@ export namespace PlayerIds {
 		if (type.username) parts.push(type.username)
 		if (type.steam) parts.push(`steam:${type.steam}`)
 		if (type.eos) parts.push(`eos:${type.eos}`)
+		if (type.epic) parts.push(`epic:${type.epic}`)
 		if (type.playerController) parts.push(`pc:${type.playerController}`)
 		return parts.join(' | ')
 	}
@@ -313,7 +316,7 @@ export const PlayerSchema = z.object({
 
 export type Player = z.infer<typeof PlayerSchema>
 export const PlayerIdSchema = z.string()
-export type PlayerId = SteamId
+export type PlayerId = EosId
 export type PlayerAssoc<Type extends SchemaModels.ServerEventPlayerAssocType = 'player', Value = PlayerId> = { [key in Type]: Value }
 export namespace Players {
 	export type SquadGroup = { squadId: SquadId; teamId: TeamId; players: Player[] }
@@ -879,7 +882,7 @@ export namespace RconEvents {
 		time: z.number(),
 		playerID: z.string(),
 		interval: z.string(),
-		playerIds: PlayerIds.IdFields('username', 'eos', 'steam'),
+		playerIds: PlayerIds.IdFields('username', 'eos'),
 	})
 	export type PlayerBanned = z.infer<typeof PlayerBannedSchema['schema']>
 
@@ -1060,7 +1063,7 @@ export namespace LogEvents {
 
 	export const PlayerConnectedSchema = eventDef('PLAYER_CONNECTED', {
 		...BaseEventProperties,
-		playerIds: PlayerIds.IdFields('eos', 'steam', 'playerController'),
+		playerIds: PlayerIds.IdFields('eos', 'playerController'),
 		ip: z.union([z.ipv4(), z.ipv6()]),
 	})
 	export type PlayerConnected = z.infer<typeof PlayerConnectedSchema['schema']>
@@ -1126,7 +1129,7 @@ export namespace LogEvents {
 		...BaseEventProperties,
 		damage: z.number(),
 		weapon: z.string(),
-		attackerIds: PlayerIds.IdFields('eos', 'steam', 'playerController'),
+		attackerIds: PlayerIds.IdFields('eos', 'playerController'),
 		victimIds: PlayerIds.IdFields('username'),
 	})
 
@@ -1156,7 +1159,7 @@ export namespace LogEvents {
 		...BaseEventProperties,
 		damage: z.number(),
 		weapon: z.string(),
-		attackerIds: PlayerIds.IdFields('eos', 'steam', 'playerController'),
+		attackerIds: PlayerIds.IdFields('eos', 'playerController'),
 		victimIds: PlayerIds.IdFields('username'),
 	})
 	export type PlayerWounded = z.infer<typeof PlayerWoundedSchema['schema']>
@@ -1257,7 +1260,7 @@ export namespace LogEvents {
 
 	export const PlayerKickedSchema = eventDef('PLAYER_KICKED', {
 		...BaseEventProperties,
-		playerIds: PlayerIds.IdFields('username', 'eos', 'steam'),
+		playerIds: PlayerIds.IdFields('username', 'eos'),
 	})
 
 	export type PlayerKicked = z.infer<typeof PlayerKickedSchema['schema']>

@@ -105,7 +105,7 @@ export const ServersResponse = z.object({
 
 export type PlayerFlagsAndProfile = {
 	flags: PlayerFlag[]
-	bmPlayerId: string
+	playerIds: SM.PlayerIds.IdQuery<'eos'>
 	profileUrl: string
 	hoursPlayed: number
 }

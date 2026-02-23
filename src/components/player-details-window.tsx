@@ -34,7 +34,7 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 	loadAsync: async ({ props }) => {
 		await Promise.all([
 			RPC.queryClient.fetchQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { playerId: props.playerId } })),
-			RPC.orpc.battlemetrics.getPlayerBmData.call({ steamId: props.playerId }),
+			RPC.orpc.battlemetrics.getPlayerBmData.call({ playerId: props.playerId }),
 		])
 	},
 })
@@ -106,12 +106,26 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
 			<div className="px-3 py-2 space-y-1.5 text-xs border-b border-border/50">
-				{player?.role && <div className="text-muted-foreground">{player.role}</div>}
+				<div className="inline-flex gap-1 items-baseline">
+					{player?.role && <div className="text-muted-foreground">{player.role}</div>}
+					<CopyIdButton label="eos" id={playerId} zIndex={zIndex} />
+					{(player?.ids.steam ?? profile?.playerIds.steam) && (
+						<CopyIdButton label="steam" id={(player?.ids.steam ?? profile?.playerIds.steam)!} zIndex={zIndex} />
+					)}
+					{player?.ids.epic && <CopyIdButton label="epic" id={player.ids.epic} zIndex={zIndex} />}
+				</div>
 				<div className="flex items-center gap-2 text-muted-foreground">
-					<CopySteamIdButton steamId={playerId} zIndex={zIndex} />
-					<ExtLink href={`https://steamcommunity.com/profiles/${playerId}`}>Steam</ExtLink>
-					<ExtLink href={`https://communitybanlist.com/search/${playerId}`}>CBL</ExtLink>
-					<ExtLink href={`https://mysquadstats.com/search/${playerId}#player`}>MySquadStats</ExtLink>
+					{(player?.ids.steam ?? profile?.playerIds.steam)
+						? (
+							<>
+								<ExtLink href={`https://steamcommunity.com/profiles/${player?.ids.steam ?? profile?.playerIds.steam}`}>Steam</ExtLink>
+								<ExtLink href={`https://communitybanlist.com/search/${player?.ids.steam ?? profile?.playerIds.steam}`}>CBL</ExtLink>
+								<ExtLink href={`https://mysquadstats.com/search/${player?.ids.steam ?? profile?.playerIds.steam}#player`}>
+									MySquadStats
+								</ExtLink>
+							</>
+						)
+						: <span className="italic">(no steam id)</span>}
 					<ExtLink
 						href={profile
 							? profile.profileUrl
@@ -190,12 +204,12 @@ function ExtLink({ href, children }: { href: string; children: React.ReactNode }
 	)
 }
 
-function CopySteamIdButton({ steamId, zIndex }: { steamId: string; zIndex: number }) {
+function CopyIdButton({ label, id, zIndex }: { label: string; id: string; zIndex: number }) {
 	const [open, setOpen] = React.useState(false)
 	const timeoutRef = React.useRef<ReturnType<typeof setTimeout>>(null)
 
 	const handleClick = () => {
-		void navigator.clipboard.writeText(steamId)
+		void navigator.clipboard.writeText(id)
 		setOpen(true)
 		if (timeoutRef.current) clearTimeout(timeoutRef.current)
 		timeoutRef.current = setTimeout(() => setOpen(false), 1500)
@@ -211,10 +225,11 @@ function CopySteamIdButton({ steamId, zIndex }: { steamId: string; zIndex: numbe
 				<button
 					type="button"
 					className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer"
-					title="Copy Steam ID"
+					title={`Copy ${label} ID`}
 					onClick={handleClick}
 				>
-					<span className="font-mono">{steamId}</span>
+					<span className="font-mono text-muted-foreground">{label}:</span>
+					<span className="font-mono">{id}</span>
 					<Icons.Copy className="h-3 w-3" />
 				</button>
 			</TooltipTrigger>
@@ -392,7 +407,7 @@ function EditFlagsButton({ playerId, currentFlags, zIndex }: EditFlagsButtonProp
 			options={options}
 			confirm="Apply"
 			onConfirm={(flagIds) => {
-				mutation.mutate({ steamId: playerId, flagIds })
+				mutation.mutate({ playerId, flagIds })
 			}}
 			selectOnClose={false}
 		>

@@ -1445,9 +1445,9 @@ export const saveEvents = C.spanOp(
 				})
 				if (e.type === 'NEW_GAME' || e.type === 'RESET') {
 					for (const player of e.state.players) {
-						const playerId = BigInt(SM.PlayerIds.getPlayerId(player.ids))
+						const playerId = SM.PlayerIds.getPlayerId(player.ids)
 						playerRows.push({
-							steamId: playerId,
+							steamId: player.ids.steam ? BigInt(player.ids.steam) : null,
 							eosId: player.ids.eos,
 							username: player.ids.username,
 						})
@@ -1465,7 +1465,7 @@ export const saveEvents = C.spanOp(
 							ingameSquadId: squad.squadId,
 							name: squad.squadName,
 							teamId: squad.teamId,
-							creatorId: BigInt(squad.creator),
+							creatorId: squad.creator,
 						})
 						squadAssociationRows.push({
 							squadId: id,
@@ -1473,9 +1473,9 @@ export const saveEvents = C.spanOp(
 						})
 					}
 				} else if (e.type === 'PLAYER_CONNECTED') {
-					const playerId = BigInt(SM.PlayerIds.getPlayerId(e.player.ids))
+					const playerId = SM.PlayerIds.getPlayerId(e.player.ids)
 					playerRows.push({
-						steamId: playerId,
+						steamId: e.player.ids.steam ? BigInt(e.player.ids.steam) : null,
 						eosId: e.player.ids.eos,
 						username: e.player.ids.username,
 					})
@@ -1492,7 +1492,7 @@ export const saveEvents = C.spanOp(
 						if (prop in e && e[prop] !== undefined) {
 							// @ts-expect-error idgaf
 							const assocPlayerId = e[prop] as SM.PlayerId
-							playerAssociationRows.push({ assocType: prop, playerId: BigInt(assocPlayerId), serverEventId: e.id })
+							playerAssociationRows.push({ assocType: prop, playerId: assocPlayerId, serverEventId: e.id })
 						}
 					}
 				}
@@ -1504,7 +1504,7 @@ export const saveEvents = C.spanOp(
 						ingameSquadId: e.squad.squadId,
 						name: e.squad.squadName,
 						teamId: e.squad.teamId,
-						creatorId: BigInt(e.squad.creator),
+						creatorId: e.squad.creator,
 					})
 					squadAssociationRows.push({ serverEventId: e.id, squadId: id })
 				}
