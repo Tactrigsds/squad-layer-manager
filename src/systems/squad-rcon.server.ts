@@ -131,8 +131,10 @@ const fetchPlayers = C.spanOp('fetchPlayers', { module }, async (ctx: C.Rcon & C
 
 	if (!res || res.data.length < 1) return { code: 'ok' as const, players: [] }
 
-	log.info('Raw player info:\n %s', res.data)
 	for (const line of res.data.split('\n')) {
+		if (line.includes('epic:')) {
+			log.info('found line with epic id: %s', line)
+		}
 		const match = line.match(
 			/^ID: (?<playerID>\d+) \| Online IDs:([^|]+)\| Name: (?<name>.+) \| Team ID: (?<teamId>\d|N\/A) \| Squad ID: (?<squadId>\d+|N\/A) \| Is Leader: (?<isLeader>True|False) \| Role: (?<role>.+)$/,
 		)
@@ -149,8 +151,9 @@ const fetchPlayers = C.spanOp('fetchPlayers', { module }, async (ctx: C.Rcon & C
 		if (data.ids.steam) {
 			const adminList = await ctx.adminList.get(ctx, { ttl: Infinity })
 			data.isAdmin = adminList.admins.has(data.ids.steam)
+		} else {
+			log.info('parsed player info data without steam id: %o', data)
 		}
-		log.info('parsed player info data: %o', data)
 
 		const parsedData = SM.PlayerSchema.parse(data)
 		players.push(parsedData)
