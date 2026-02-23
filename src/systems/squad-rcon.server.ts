@@ -149,6 +149,7 @@ const fetchPlayers = C.spanOp('fetchPlayers', { module }, async (ctx: C.Rcon & C
 			const adminList = await ctx.adminList.get(ctx, { ttl: Infinity })
 			data.isAdmin = adminList.admins.has(data.ids.steam)
 		}
+		log.info('parsed player schema data: %o', data)
 
 		const parsedData = SM.PlayerSchema.parse(data)
 		players.push(parsedData)
