@@ -1,6 +1,8 @@
 import * as Obj from '@/lib/object'
 import { cn } from '@/lib/utils'
-import { DraggableWindowOutletContext, DraggableWindowStore, type InitialPosition, useOpenWindows, useOutletBaseZIndex, useOutletKey, useWindowDefinitions, type WindowDefinition, type WindowState } from '@/systems/draggable-window.client'
+import { DraggableWindowContext, type DraggableWindowContextValue, DraggableWindowOutletContext, DraggableWindowStore, type InitialPosition, useDraggableWindow, useDraggableWindowContext, useOpenWindows, useOutletBaseZIndex, useOutletKey, useWindowDefinitions, type WindowDefinition, type WindowState } from '@/systems/draggable-window.client'
+
+export { useDraggableWindow, useDraggableWindowContext }
 import { Cross2Icon, DrawingPinFilledIcon, DrawingPinIcon } from '@radix-ui/react-icons'
 import * as React from 'react'
 import { createPortal } from 'react-dom'
@@ -94,30 +96,6 @@ function getInitialPosition(
 			Math.min((viewport.height - contentRect.height) / 2, viewport.height - contentRect.height - collisionPadding),
 		),
 	}
-}
-
-// ============================================================================
-// Window Context
-// ============================================================================
-
-interface DraggableWindowContextValue {
-	windowId: string
-	close: () => void
-	isPinned: boolean
-	setIsPinned: (pinned: boolean) => void
-	bringToFront: () => void
-	registerDragBar: (element: HTMLElement | null) => void
-	zIndex: number
-}
-
-const DraggableWindowContext = React.createContext<DraggableWindowContextValue | null>(null)
-
-export function useDraggableWindow() {
-	const context = React.useContext(DraggableWindowContext)
-	if (!context) {
-		throw new Error('useDraggableWindow must be used within a DraggableWindow')
-	}
-	return context
 }
 
 // ============================================================================
@@ -331,6 +309,10 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 		bringToFront()
 	}, [bringToFront])
 
+	const Component = definition.component
+	const outletBaseZIndex = useOutletBaseZIndex()
+	const effectiveZIndex = outletBaseZIndex + windowState.zIndex
+
 	const contextValue = React.useMemo<DraggableWindowContextValue>(
 		() => ({
 			windowId: windowState.id,
@@ -339,14 +321,10 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 			setIsPinned,
 			bringToFront,
 			registerDragBar,
-			zIndex: windowState.zIndex,
+			zIndex: effectiveZIndex,
 		}),
-		[windowState.id, windowState.isPinned, windowState.zIndex, close, setIsPinned, bringToFront, registerDragBar],
+		[windowState.id, windowState.isPinned, effectiveZIndex, close, setIsPinned, bringToFront, registerDragBar],
 	)
-
-	const Component = definition.component
-	const outletBaseZIndex = useOutletBaseZIndex()
-	const effectiveZIndex = outletBaseZIndex + windowState.zIndex
 
 	return (
 		<DraggableWindowContext.Provider value={contextValue}>

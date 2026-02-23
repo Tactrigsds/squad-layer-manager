@@ -36,3 +36,20 @@ export function escapeRegex(str: string) {
 export namespace StrPatterns {
 	export const PATH_SEGMENT = /[^/]+/
 }
+
+export function checkMatches(names: string[], target: string) {
+	const matched: string[] = []
+	for (const name of names) {
+		if (name.includes(target.toLowerCase())) {
+			matched.push(name)
+		}
+	}
+
+	if (matched.length === 0) {
+		return { code: 'err:not-found' as const }
+	} else if (matched.length > 1) {
+		return { code: 'err:multiple-matches' as const }
+	} else {
+		return { code: 'ok' as const, matched }
+	}
+}

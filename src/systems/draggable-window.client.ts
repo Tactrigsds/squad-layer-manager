@@ -1,4 +1,5 @@
 import * as Lifecycle from '@/lib/lifecycle'
+import type { DraggableWindowContextValue } from '@/models/draggable-windows.models'
 
 import * as Im from 'immer'
 import React from 'react'
@@ -246,6 +247,26 @@ export const DraggableWindowStore = (() => {
 
 	return store
 })()
+
+// ============================================================================
+// Window Context
+// ============================================================================
+
+export { type DraggableWindowContextValue } from '@/models/draggable-windows.models'
+
+export const DraggableWindowContext = React.createContext<DraggableWindowContextValue | null>(null)
+
+export function useDraggableWindow() {
+	const context = React.useContext(DraggableWindowContext)
+	if (!context) {
+		throw new Error('useDraggableWindow must be used within a DraggableWindow')
+	}
+	return context
+}
+
+export function useDraggableWindowContext() {
+	return React.useContext(DraggableWindowContext)
+}
 
 // ============================================================================
 // Hooks

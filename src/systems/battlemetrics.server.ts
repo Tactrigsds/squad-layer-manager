@@ -681,6 +681,9 @@ export const router = {
 		playerFlagsAndProfileCache.delete(input.steamId)
 		const updated = await fetchSinglePlayerBmData(serverCtx, input.steamId)
 
+		// Persist immediately so DB doesn't serve stale flags on next startup
+		persistCache().catch((err) => log.warn({ err }, 'Failed to persist BM cache after flag update'))
+
 		// Notify watchers
 		const state = getServerBmState(serverCtx.serverId)
 		state.update$.next()

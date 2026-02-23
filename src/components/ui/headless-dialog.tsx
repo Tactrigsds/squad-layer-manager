@@ -4,7 +4,7 @@ import * as React from 'react'
 
 import { useIsMobile } from '@/hooks/use-is-mobile'
 import { cn } from '@/lib/utils'
-import { DraggableWindowOutlet } from './draggable-window'
+import { DraggableWindowOutlet, useDraggableWindowContext } from './draggable-window'
 
 interface DialogProps {
 	open: boolean
@@ -27,10 +27,11 @@ const HeadlessDialogContent = React.forwardRef<
 		showCloseButton?: boolean
 		children?: React.ReactNode
 	}
->(({ className, children, showCloseButton = true, ...props }, ref) => {
+>(({ className, children, showCloseButton = true, style, ...props }, ref) => {
 	const isMobile = useIsMobile()
 	const outletKey = React.useId()
 	const panelRef = React.useRef<HTMLDivElement | null>(null)
+	const draggableWindow = useDraggableWindowContext()
 
 	const combinedRef = React.useCallback(
 		(node: HTMLDivElement | null) => {
@@ -44,13 +45,19 @@ const HeadlessDialogContent = React.forwardRef<
 		[ref],
 	)
 
+	const zIndex = draggableWindow ? draggableWindow.zIndex + 1 : undefined
+
 	return (
 		<>
 			<DialogBackdrop
 				className="fixed inset-0 z-50 bg-black/80 transition-opacity duration-200 ease-out data-closed:opacity-0"
+				style={zIndex !== undefined ? { zIndex } : undefined}
 				transition
 			/>
-			<div className="fixed inset-0 z-50 flex w-screen items-center justify-center p-4">
+			<div
+				className="fixed inset-0 z-50 flex w-screen items-center justify-center p-4"
+				style={zIndex !== undefined ? { zIndex: zIndex + 1 } : undefined}
+			>
 				<DialogPanel
 					ref={combinedRef}
 					data-mobile={isMobile}
@@ -61,6 +68,7 @@ const HeadlessDialogContent = React.forwardRef<
 						isMobile && 'fixed top-0 left-0 right-0 translate-x-0 translate-y-0 max-w-none rounded-none border-0',
 						className,
 					)}
+					style={zIndex !== undefined ? { zIndex: zIndex + 1, ...style } : style}
 					transition
 					{...props}
 				>
