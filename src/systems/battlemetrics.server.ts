@@ -536,7 +536,7 @@ function parsePlayerListPage(data: PlayerListData, orgServerIdSet: Set<string>):
 		const canonicalId = SM.PlayerIds.getPlayerId(playerIds)
 		setCachedPlayer(canonicalId, bmPlayerId, {
 			flags,
-			playerIds,
+			playerIds: playerIds,
 			profileUrl: `https://www.battlemetrics.com/rcon/players/${bmPlayerId}`,
 			hoursPlayed: Math.round(totalSeconds / 3600),
 		})
@@ -550,9 +550,11 @@ function parsePlayerListPage(data: PlayerListData, orgServerIdSet: Set<string>):
 const bulkFetchOnlinePlayers = C.spanOp(
 	'bulkFetchOnlinePlayers',
 	{ module },
-	async (ctx: CS.Ctx & C.ServerSlice): Promise<string[]> => {
-		const onlinePlayers = ctx.server.state.chat.interpolatedState.players
-		const onlineEosIds = onlinePlayers.map((p) => SM.PlayerIds.getPlayerId(p.ids))
+	async (ctx: CS.Ctx & C.ServerSlice): Promise<string[] | undefined> => {
+		const teamsRes = await ctx.server.teams.get(ctx)
+		if (teamsRes.code !== 'ok') return
+		const onlinePlayers = teamsRes.players
+		const onlineEosIds = onlinePlayers.map(p => p.ids.eos)
 
 		const uncached = onlinePlayers.filter((p) => !getCachedPlayer(SM.PlayerIds.getPlayerId(p.ids)))
 		if (uncached.length > 0) {
@@ -621,8 +623,9 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 					log.warn({ err }, 'bulk fetch online players failed')
 					return [] as string[]
 				})
-
-				state.onlineEosIds = new Set(onlineEosIds)
+				if (onlineEosIds) {
+					state.onlineEosIds = new Set(onlineEosIds)
+				}
 				state.update$.next()
 			}),
 		).subscribe(),
