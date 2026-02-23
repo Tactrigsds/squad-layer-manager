@@ -1,3 +1,4 @@
+import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import EventFilterSelect from '@/components/event-filter-select'
 import { MatchTeamDisplay } from '@/components/teams-display'
 import { Button } from '@/components/ui/button'
@@ -12,7 +13,7 @@ import { sortFlagsByHierarchy, usePlayerFlagColor, usePlayerFlags, usePlayerProf
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -100,6 +101,7 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 						)
 				)}
 				{flags && flags.length > 0 && <PlayerFlagsList flags={flags} zIndex={zIndex} />}
+				<EditFlagsButton playerId={playerId} currentFlags={flags ?? []} zIndex={zIndex} />
 				<DraggableWindowPinToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
@@ -347,5 +349,60 @@ function PlayerFlagsList({ flags, zIndex }: PlayerFlagsListProps) {
 				))}
 			</div>
 		</div>
+	)
+}
+
+interface EditFlagsButtonProps {
+	playerId: string
+	currentFlags: NonNullable<ReturnType<typeof usePlayerFlags>>
+	zIndex: number
+}
+
+function EditFlagsButton({ playerId, currentFlags, zIndex }: EditFlagsButtonProps) {
+	const { data: orgFlags } = useQuery(RPC.orpc.battlemetrics.listOrgFlags.queryOptions())
+	const mutation = useMutation(RPC.orpc.battlemetrics.updatePlayerFlags.mutationOptions())
+
+	const currentFlagIds = currentFlags.map((f) => f.id)
+
+	const flagsToRender = React.useMemo(() => {
+		// Merge orgFlags with currentFlags so labels are available immediately even before orgFlags loads
+		const map = new Map(currentFlags.map((f) => [f.id, f]))
+		for (const f of orgFlags ?? []) map.set(f.id, f)
+		return Array.from(map.values())
+	}, [orgFlags, currentFlags])
+
+	const options = React.useMemo(() =>
+		flagsToRender.map((f) => ({
+			value: f.id,
+			keywords: f.name ? [f.name] : undefined,
+			label: (
+				<span
+					className="inline-flex items-center gap-1"
+					style={{ color: f.color ?? undefined }}
+				>
+					{f.icon && <span className="material-symbols-outlined leading-none" style={{ fontSize: '14px' }}>{f.icon}</span>}
+					{f.name}
+				</span>
+			),
+		})), [flagsToRender])
+
+	return (
+		<ComboBoxMulti
+			values={currentFlagIds}
+			options={options}
+			confirm="Apply"
+			onConfirm={(flagIds) => {
+				mutation.mutate({ steamId: playerId, flagIds })
+			}}
+			selectOnClose={false}
+		>
+			<button
+				type="button"
+				className="inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+				title="Edit flags"
+			>
+				<Icons.Pencil className="h-3 w-3" />
+			</button>
+		</ComboBoxMulti>
 	)
 }

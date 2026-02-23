@@ -3,12 +3,14 @@ import { FixedSizeMap } from '@/lib/lru-map'
 import * as BM from '@/models/battlemetrics.models'
 import type * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
+import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
+import * as Rbac from '@/systems/rbac.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import { metrics } from '@opentelemetry/api'
 import * as Rx from 'rxjs'
@@ -66,6 +68,9 @@ const playerFlagsAndProfileCache = new FixedSizeMap<string, { value: BM.PlayerFl
 
 let orgServerIdsCache: { ids: { id: string; name: string | null }[] } | null = null
 let orgServerIdsFetchPromise: Promise<{ id: string; name: string | null }[]> | null = null
+
+let orgFlagsCache: BM.PlayerFlag[] | null = null
+let orgFlagsFetchPromise: Promise<BM.PlayerFlag[]> | null = null
 
 function getCachedPlayer(steamId: string): BM.PlayerFlagsAndProfile | undefined {
 	const entry = playerFlagsAndProfileCache.get(steamId)
@@ -417,6 +422,58 @@ const getOrgServerIds = C.spanOp(
 	},
 )
 
+const OrgFlagsResponse = z.object({
+	data: z.array(z.object({
+		type: z.literal('playerFlag'),
+		id: z.string(),
+		attributes: BM.PlayerFlagAttributes,
+	})),
+})
+
+const getOrgFlags = C.spanOp(
+	'getOrgFlags',
+	{ module },
+	async (ctx: CS.Ctx): Promise<BM.PlayerFlag[]> => {
+		if (orgFlagsCache) return orgFlagsCache
+
+		if (!orgFlagsFetchPromise) {
+			orgFlagsFetchPromise = (async () => {
+				const [data] = await bmFetch(ctx, 'GET', `/player-flags?page[size]=100`, {
+					responseSchema: OrgFlagsResponse,
+				})
+				return data.data.map((f) => ({ id: f.id, ...f.attributes }))
+			})().catch((err) => {
+				orgFlagsFetchPromise = null
+				throw err
+			})
+		}
+
+		const flags = await orgFlagsFetchPromise
+		orgFlagsCache = flags
+		return flags
+	},
+)
+
+const addPlayerFlags = C.spanOp(
+	'addPlayerFlags',
+	{ module },
+	async (ctx: CS.Ctx, bmPlayerId: string, flagIds: string[]): Promise<void> => {
+		if (flagIds.length === 0) return
+		await bmFetch(ctx, 'POST', `/players/${bmPlayerId}/relationships/flags`, {
+			body: { data: flagIds.map((id) => ({ type: 'playerFlag', id })) },
+		})
+	},
+)
+
+const removePlayerFlags = C.spanOp(
+	'removePlayerFlags',
+	{ module },
+	async (ctx: CS.Ctx, bmPlayerId: string, flagIds: string[]): Promise<void> => {
+		if (flagIds.length === 0) return
+		await Promise.all(flagIds.map((flagId) => bmFetch(ctx, 'DELETE', `/players/${bmPlayerId}/relationships/flags/${flagId}`)))
+	},
+)
+
 type PlayerListData = z.infer<typeof BM.PlayerListResponse>
 
 function parsePlayerListPage(data: PlayerListData, orgServerIdSet: Set<string>): string[] {
@@ -548,16 +605,19 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 			}),
 		).subscribe(),
 		ctx.server.event$.pipe(
-			C.durableSub('bm-on-player-connected', { module, root: true }, async ([eventCtx, events]) => {
-				for (const event of events) {
-					if (event.type !== 'PLAYER_CONNECTED') continue
-					const steamId = event.player.ids.steam
-					if (!steamId) continue
-					const sliceCtx = SquadServer.resolveSliceCtx(eventCtx, serverId)
-					fetchSinglePlayerBmData(sliceCtx, steamId).catch((err) => {
-						log.warn({ err, steamId }, 'failed to fetch bm data on player connect')
-					})
-				}
+			Rx.concatMap(([eventCtx, events]) =>
+				events
+					.filter(e => e.type === 'PLAYER_CONNECTED')
+					.map(e => [eventCtx, e] as const)
+			),
+			C.durableSub('bm-on-player-connected', { module, root: true }, async ([eventCtx, event]) => {
+				if (event.type !== 'PLAYER_CONNECTED') return
+				const steamId = event.player.ids.steam
+				if (!steamId) return
+				const sliceCtx = SquadServer.resolveSliceCtx(eventCtx, serverId)
+				fetchSinglePlayerBmData(sliceCtx, steamId).catch((err) => {
+					log.warn({ err, steamId }, 'failed to fetch bm data on player connect')
+				})
 			}),
 		).subscribe(),
 	)
@@ -587,5 +647,44 @@ export const router = {
 			withAbortSignal(signal!),
 		)
 		yield* toAsyncGenerator(data$)
+	}),
+
+	listOrgFlags: orpcBase.handler(async ({ context: ctx }) => {
+		const serverCtx = await Rx.firstValueFrom(SquadServer.selectedServerCtx$(ctx))
+		return getOrgFlags(serverCtx)
+	}),
+
+	updatePlayerFlags: orpcBase.input(z.object({
+		steamId: z.string(),
+		flagIds: z.array(z.string()),
+	})).handler(async ({ input, context: ctx }) => {
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('battlemetrics:write-flags'))
+		if (denyRes) return denyRes
+
+		const serverCtx = await Rx.firstValueFrom(SquadServer.selectedServerCtx$(ctx))
+
+		const current = await fetchSinglePlayerBmData(serverCtx, input.steamId)
+		if (!current) return { code: 'err:not-found' as const }
+
+		const currentFlagIds = new Set(current.flags.map((f) => f.id))
+		const desiredFlagIds = new Set(input.flagIds)
+
+		const toAdd = input.flagIds.filter((id) => !currentFlagIds.has(id))
+		const toRemove = [...currentFlagIds].filter((id) => !desiredFlagIds.has(id))
+
+		await Promise.all([
+			addPlayerFlags(serverCtx, current.bmPlayerId, toAdd),
+			removePlayerFlags(serverCtx, current.bmPlayerId, toRemove),
+		])
+
+		// Bust cache so next fetch returns fresh data
+		playerFlagsAndProfileCache.delete(input.steamId)
+		const updated = await fetchSinglePlayerBmData(serverCtx, input.steamId)
+
+		// Notify watchers
+		const state = getServerBmState(serverCtx.serverId)
+		state.update$.next()
+
+		return { code: 'ok' as const, data: updated }
 	}),
 }

@@ -28,6 +28,7 @@ export type ComboBoxProps<T extends string | null = string | null> = {
 export interface ComboBoxOption<T> {
 	value: T
 	label?: React.ReactNode
+	keywords?: string[]
 	disabled?: boolean
 }
 

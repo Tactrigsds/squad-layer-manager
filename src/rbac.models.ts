@@ -91,6 +91,8 @@ export const PERMISSION_DEFINITION = {
 	...definePermission('squad-server:end-match', { description: 'End the current match on the server', scope: 'global' }),
 	...definePermission('squad-server:disable-slm-updates', { description: 'Disable updates from slm to the game-server', scope: 'global' }),
 	...definePermission('squad-server:turn-fog-off', { description: 'Disable fog-of-war for the current match', scope: 'global' }),
+
+	...definePermission('battlemetrics:write-flags', { description: 'Add or remove BattleMetrics player flags', scope: 'global' }),
 }
 export type KnownPermission = (typeof PERMISSION_DEFINITION)[number]
 export type PermissionType = KnownPermission['type']

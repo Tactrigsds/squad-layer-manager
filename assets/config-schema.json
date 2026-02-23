@@ -621,7 +621,8 @@
                 "filters:write-all",
                 "squad-server:end-match",
                 "squad-server:disable-slm-updates",
-                "squad-server:turn-fog-off"
+                "squad-server:turn-fog-off",
+                "battlemetrics:write-flags"
               ]
             },
             {"description": "include all", "type": "string", "const": "*"},
