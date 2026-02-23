@@ -1,5 +1,5 @@
 import { PlayerDisplay } from '@/components/player-display'
-import type * as SM from '@/models/squad.models'
+import * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 
 import { useQuery } from '@tanstack/react-query'
@@ -15,9 +15,12 @@ function RouteComponent() {
 	if (res.data?.events) {
 		const seenIds = new Set<string>()
 		for (const event of res.data.events) {
-			if (event.type === 'PLAYER_CONNECTED' && event.player && !seenIds.has(event.player.ids.steam)) {
-				players.push(event.player)
-				seenIds.add(event.player.ids.steam)
+			if (event.type === 'PLAYER_CONNECTED') {
+				const playerId = SM.PlayerIds.getPlayerId(event.player.ids)
+				if (event.player && !seenIds.has(playerId)) {
+					players.push(event.player)
+					seenIds.add(playerId)
+				}
 			}
 		}
 	}

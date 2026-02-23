@@ -3,6 +3,7 @@ import { FixedSizeMap } from '@/lib/lru-map'
 import * as BM from '@/models/battlemetrics.models'
 import type * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
+import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context'
 import * as Env from '@/server/env'
@@ -32,9 +33,9 @@ export async function setup() {
 		if (stored) {
 			const now = Date.now()
 			let loaded = 0
-			for (const [steamId, entry] of Object.entries(stored)) {
+			for (const [eosId, entry] of Object.entries(stored)) {
 				if (entry.expiresAt <= now) continue
-				playerFlagsAndProfileCache.set(steamId, entry)
+				playerFlagsAndProfileCache.set(eosId, entry)
 				loaded++
 			}
 			log.info('Loaded %d player BM cache entries from DB', loaded)
@@ -64,7 +65,9 @@ export async function setup() {
 
 const PLAYER_CACHE_TTL = 30 * 60 * 1000 // 30 minutes
 
-const playerFlagsAndProfileCache = new FixedSizeMap<string, { value: BM.PlayerFlagsAndProfile; expiresAt: number }>(500)
+// Keyed by EOS ID (required). Each entry also keeps the BM-internal player ID
+// needed for flag mutation endpoints, which is not part of PlayerFlagsAndProfile.
+const playerFlagsAndProfileCache = new FixedSizeMap<string, { value: BM.PlayerFlagsAndProfile; bmPlayerId: string; expiresAt: number }>(500)
 
 let orgServerIdsCache: { ids: { id: string; name: string | null }[] } | null = null
 let orgServerIdsFetchPromise: Promise<{ id: string; name: string | null }[]> | null = null
@@ -72,15 +75,22 @@ let orgServerIdsFetchPromise: Promise<{ id: string; name: string | null }[]> | n
 let orgFlagsCache: BM.PlayerFlag[] | null = null
 let orgFlagsFetchPromise: Promise<BM.PlayerFlag[]> | null = null
 
-function getCachedPlayer(steamId: string): BM.PlayerFlagsAndProfile | undefined {
-	const entry = playerFlagsAndProfileCache.get(steamId)
+function getCachedPlayer(eosId: string): BM.PlayerFlagsAndProfile | undefined {
+	const entry = playerFlagsAndProfileCache.get(eosId)
 	if (!entry) return undefined
 	if (Date.now() > entry.expiresAt) return undefined
 	return entry.value
 }
 
-function setCachedPlayer(steamId: string, value: BM.PlayerFlagsAndProfile) {
-	playerFlagsAndProfileCache.set(steamId, { value, expiresAt: Date.now() + PLAYER_CACHE_TTL })
+function getCachedPlayerEntry(eosId: string): { value: BM.PlayerFlagsAndProfile; bmPlayerId: string } | undefined {
+	const entry = playerFlagsAndProfileCache.get(eosId)
+	if (!entry) return undefined
+	if (Date.now() > entry.expiresAt) return undefined
+	return entry
+}
+
+function setCachedPlayer(eosId: string, bmPlayerId: string, value: BM.PlayerFlagsAndProfile) {
+	playerFlagsAndProfileCache.set(eosId, { value, bmPlayerId, expiresAt: Date.now() + PLAYER_CACHE_TTL })
 }
 
 // -------- cache eviction --------
@@ -90,9 +100,9 @@ const CACHE_EVICTION_INTERVAL_MS = 10 * 60 * 1000
 function evictExpiredCacheEntries() {
 	const now = Date.now()
 	let evicted = 0
-	for (const [steamId, entry] of playerFlagsAndProfileCache.entries()) {
+	for (const [eosId, entry] of playerFlagsAndProfileCache.entries()) {
 		if (entry.expiresAt <= now) {
-			playerFlagsAndProfileCache.delete(steamId)
+			playerFlagsAndProfileCache.delete(eosId)
 			evicted++
 		}
 	}
@@ -104,14 +114,14 @@ function evictExpiredCacheEntries() {
 const CACHE_PERSIST_KEY = 'bm:playerCache'
 const CACHE_PERSIST_INTERVAL_MS = 5 * 60 * 1000
 
-type PersistedCacheValue = Record<string, { value: BM.PlayerFlagsAndProfile; expiresAt: number }>
+type PersistedCacheValue = Record<string, { value: BM.PlayerFlagsAndProfile; bmPlayerId: string; expiresAt: number }>
 
 async function persistCache() {
 	const now = Date.now()
 	const toStore: PersistedCacheValue = {}
-	for (const [steamId, entry] of playerFlagsAndProfileCache.entries()) {
+	for (const [eosId, entry] of playerFlagsAndProfileCache.entries()) {
 		if (entry.expiresAt <= now) continue
-		toStore[steamId] = entry
+		toStore[eosId] = entry
 	}
 	await PersistedCache.save(CACHE_PERSIST_KEY, toStore)
 }
@@ -123,7 +133,7 @@ const POLL_INTERVAL_MS = 5 * 60 * 1000
 /** Per-server state for bulk polling and streaming */
 type ServerBmState = {
 	update$: Rx.Subject<void>
-	onlineSteamIds: Set<string>
+	onlineEosIds: Set<string>
 }
 
 const serverBmState = new Map<string, ServerBmState>()
@@ -131,7 +141,7 @@ const serverBmState = new Map<string, ServerBmState>()
 function getServerBmState(serverId: string): ServerBmState {
 	let state = serverBmState.get(serverId)
 	if (!state) {
-		state = { update$: new Rx.Subject<void>(), onlineSteamIds: new Set() }
+		state = { update$: new Rx.Subject<void>(), onlineEosIds: new Set() }
 		serverBmState.set(serverId, state)
 	}
 	return state
@@ -140,11 +150,11 @@ function getServerBmState(serverId: string): ServerBmState {
 export type { PublicPlayerBmData } from '@/models/battlemetrics.models'
 type PublicPlayerBmData = BM.PublicPlayerBmData
 
-function getPlayerBmDataSnapshot(steamIds: Set<string>): PublicPlayerBmData {
+function getPlayerBmDataSnapshot(eosIds: Set<string>): PublicPlayerBmData {
 	const result: PublicPlayerBmData = {}
-	for (const steamId of steamIds) {
-		const value = getCachedPlayer(steamId)
-		if (value) result[steamId] = value
+	for (const eosId of eosIds) {
+		const value = getCachedPlayer(eosId)
+		if (value) result[eosId] = value
 	}
 	return result
 }
@@ -485,16 +495,23 @@ function parsePlayerListPage(data: PlayerListData, orgServerIdSet: Set<string>):
 		.filter((fp) => !BM_ORG_ID || fp.relationships?.organization?.data?.id === BM_ORG_ID)
 	const playerFlags = included.filter((i): i is typeof i & { type: 'playerFlag' } => i.type === 'playerFlag')
 
-	const steamIds: string[] = []
+	const eosIds: string[] = []
 
 	for (const player of data.data) {
 		const bmPlayerId = player.id
 
-		const ident = identifiers.find(
+		const eosIdent = identifiers.find(
+			(i) => i.attributes.type === 'eosID' && i.relationships?.player?.data?.id === bmPlayerId,
+		)
+		if (!eosIdent) continue
+		const eosId = eosIdent.attributes.identifier
+
+		const steamIdent = identifiers.find(
 			(i) => i.attributes.type === 'steamID' && i.relationships?.player?.data?.id === bmPlayerId,
 		)
-		if (!ident) continue
-		const steamId = ident.attributes.identifier
+		const steamId = steamIdent?.attributes.identifier
+
+		const playerIds: SM.PlayerIds.IdQuery<'eos'> = { eos: eosId, ...(steamId ? { steam: steamId } : {}) }
 
 		const playerFlagPlayers = flagPlayers.filter(
 			(fp) => fp.relationships?.player?.data?.id === bmPlayerId,
@@ -516,44 +533,47 @@ function parsePlayerListPage(data: PlayerListData, orgServerIdSet: Set<string>):
 			.filter((s) => orgServerIdSet.has(s.id))
 			.reduce((sum, s) => sum + (s.meta?.timePlayed ?? 0), 0)
 
-		setCachedPlayer(steamId, {
+		const canonicalId = SM.PlayerIds.getPlayerId(playerIds)
+		setCachedPlayer(canonicalId, bmPlayerId, {
 			flags,
-			bmPlayerId,
+			playerIds,
 			profileUrl: `https://www.battlemetrics.com/rcon/players/${bmPlayerId}`,
 			hoursPlayed: Math.round(totalSeconds / 3600),
 		})
 
-		steamIds.push(steamId)
+		eosIds.push(canonicalId)
 	}
 
-	return steamIds
+	return eosIds
 }
 
 const bulkFetchOnlinePlayers = C.spanOp(
 	'bulkFetchOnlinePlayers',
 	{ module },
 	async (ctx: CS.Ctx & C.ServerSlice): Promise<string[]> => {
-		const onlineSteamIds = ctx.server.state.chat.interpolatedState.players.map((p) => p.ids.steam)
+		const onlinePlayers = ctx.server.state.chat.interpolatedState.players
+		const onlineEosIds = onlinePlayers.map((p) => SM.PlayerIds.getPlayerId(p.ids))
 
-		const uncached = onlineSteamIds.filter((id) => !getCachedPlayer(id))
+		const uncached = onlinePlayers.filter((p) => !getCachedPlayer(SM.PlayerIds.getPlayerId(p.ids)))
 		if (uncached.length > 0) {
-			await Promise.all(uncached.map((steamId) =>
-				fetchSinglePlayerBmData(ctx, steamId).catch((err) => {
-					log.warn({ err, steamId }, 'failed to fetch player bm data')
+			await Promise.all(uncached.map((p) =>
+				fetchSinglePlayerBmData(ctx, p.ids).catch((err) => {
+					log.warn({ err, playerIds: p.ids }, 'failed to fetch player bm data')
 				})
 			))
 		}
 
-		log.debug('found %d online players (%d fetched from api)', onlineSteamIds.length, uncached.length)
-		return onlineSteamIds
+		log.debug('found %d online players (%d fetched from api)', onlineEosIds.length, uncached.length)
+		return onlineEosIds
 	},
 )
 
 const fetchSinglePlayerBmData = C.spanOp(
 	'fetchSinglePlayerBmData',
-	{ module, attrs: (_ctx, steamId) => ({ steamId }) },
-	async (ctx: CS.Ctx & C.ServerSlice, steamId: string): Promise<BM.PlayerFlagsAndProfile | null> => {
-		const cached = getCachedPlayer(steamId)
+	{ module, attrs: (_ctx, playerIds) => ({ eosId: playerIds.eos, steamId: playerIds.steam }) },
+	async (ctx: CS.Ctx & C.ServerSlice, playerIds: SM.PlayerIds.IdQuery<'eos'>): Promise<BM.PlayerFlagsAndProfile | null> => {
+		const eosId = playerIds.eos
+		const cached = getCachedPlayer(eosId)
 		if (cached) return cached
 
 		const info = await ctx.server.serverInfo.get(ctx)
@@ -561,9 +581,11 @@ const fetchSinglePlayerBmData = C.spanOp(
 		const serverIds = await getOrgServerIds(ctx, serverName)
 		const orgServerIdSet = new Set(serverIds)
 
-		const path = `/players?filter[search]=${steamId}`
+		// Search by EOS ID (required). BattleMetrics supports searching by EOS identifier type.
+		// We also request steamID identifiers to be included so we can store both IDs.
+		const path = `/players?filter[search]=${eosId}`
 			+ `&include=identifier,flagPlayer,playerFlag`
-			+ `&filter[identifiers]=steamID`
+			+ `&filter[identifiers]=eosID`
 			+ `&fields[playerFlag]=name,color,description,icon`
 			+ `&fields[server]=name`
 			+ `&page[size]=1`
@@ -576,7 +598,7 @@ const fetchSinglePlayerBmData = C.spanOp(
 		if (parsed.length === 0) return null
 
 		const state = getServerBmState(ctx.serverId)
-		state.onlineSteamIds.add(steamId)
+		state.onlineEosIds.add(eosId)
 		state.update$.next()
 
 		return getCachedPlayer(parsed[0]) ?? null
@@ -595,12 +617,12 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 			C.durableSub('bm-bulk-poll', { module, root: true, taskScheduling: 'exhaust' }, async () => {
 				const sliceCtx = SquadServer.resolveSliceCtx({}, serverId)
 
-				const onlineSteamIds = await bulkFetchOnlinePlayers(sliceCtx).catch((err) => {
+				const onlineEosIds = await bulkFetchOnlinePlayers(sliceCtx).catch((err) => {
 					log.warn({ err }, 'bulk fetch online players failed')
 					return [] as string[]
 				})
 
-				state.onlineSteamIds = new Set(onlineSteamIds)
+				state.onlineEosIds = new Set(onlineEosIds)
 				state.update$.next()
 			}),
 		).subscribe(),
@@ -612,11 +634,10 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 			),
 			C.durableSub('bm-on-player-connected', { module, root: true }, async ([eventCtx, event]) => {
 				if (event.type !== 'PLAYER_CONNECTED') return
-				const steamId = event.player.ids.steam
-				if (!steamId) return
+				const playerIds = event.player.ids
 				const sliceCtx = SquadServer.resolveSliceCtx(eventCtx, serverId)
-				fetchSinglePlayerBmData(sliceCtx, steamId).catch((err) => {
-					log.warn({ err, steamId }, 'failed to fetch bm data on player connect')
+				fetchSinglePlayerBmData(sliceCtx, playerIds).catch((err) => {
+					log.warn({ err, playerIds }, 'failed to fetch bm data on player connect')
 				})
 			}),
 		).subscribe(),
@@ -626,11 +647,9 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 // -------- oRPC handlers --------
 
 export const router = {
-	getPlayerBmData: orpcBase.input(z.object({
-		steamId: z.string(),
-	})).handler(async ({ input, context: ctx }) => {
+	getPlayerBmData: orpcBase.input(z.object({ playerId: z.string() })).handler(async ({ input, context: ctx }) => {
 		const serverCtx = await Rx.firstValueFrom(SquadServer.selectedServerCtx$(ctx))
-		return fetchSinglePlayerBmData(serverCtx, input.steamId)
+		return fetchSinglePlayerBmData(serverCtx, SM.PlayerIds.queryFromPlayerId(input.playerId))
 	}),
 
 	watchPlayerBmData: orpcBase.handler(async function*({ signal, context: _ctx }) {
@@ -638,10 +657,10 @@ export const router = {
 		const data$ = server$.pipe(
 			Rx.switchMap(async function*(ctx) {
 				const state = getServerBmState(ctx.serverId)
-				yield getPlayerBmDataSnapshot(state.onlineSteamIds)
+				yield getPlayerBmDataSnapshot(state.onlineEosIds)
 				const update$ = state.update$.pipe(withAbortSignal(signal!))
 				for await (const _ of toAsyncGenerator(update$)) {
-					yield getPlayerBmDataSnapshot(state.onlineSteamIds)
+					yield getPlayerBmDataSnapshot(state.onlineEosIds)
 				}
 			}),
 			withAbortSignal(signal!),
@@ -655,7 +674,7 @@ export const router = {
 	}),
 
 	updatePlayerFlags: orpcBase.input(z.object({
-		steamId: z.string(),
+		playerId: z.string(),
 		flagIds: z.array(z.string()),
 	})).handler(async ({ input, context: ctx }) => {
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('battlemetrics:write-flags'))
@@ -663,7 +682,9 @@ export const router = {
 
 		const serverCtx = await Rx.firstValueFrom(SquadServer.selectedServerCtx$(ctx))
 
-		const current = await fetchSinglePlayerBmData(serverCtx, input.steamId)
+		const playerIds = SM.PlayerIds.queryFromPlayerId(input.playerId)
+		const eosId = input.playerId
+		const current = await fetchSinglePlayerBmData(serverCtx, playerIds)
 		if (!current) return { code: 'err:not-found' as const }
 
 		const currentFlagIds = new Set(current.flags.map((f) => f.id))
@@ -672,14 +693,15 @@ export const router = {
 		const toAdd = input.flagIds.filter((id) => !currentFlagIds.has(id))
 		const toRemove = [...currentFlagIds].filter((id) => !desiredFlagIds.has(id))
 
+		const cacheEntry = getCachedPlayerEntry(eosId)!
 		await Promise.all([
-			addPlayerFlags(serverCtx, current.bmPlayerId, toAdd),
-			removePlayerFlags(serverCtx, current.bmPlayerId, toRemove),
+			addPlayerFlags(serverCtx, cacheEntry.bmPlayerId, toAdd),
+			removePlayerFlags(serverCtx, cacheEntry.bmPlayerId, toRemove),
 		])
 
 		// Bust cache so next fetch returns fresh data
-		playerFlagsAndProfileCache.delete(input.steamId)
-		const updated = await fetchSinglePlayerBmData(serverCtx, input.steamId)
+		playerFlagsAndProfileCache.delete(eosId)
+		const updated = await fetchSinglePlayerBmData(serverCtx, playerIds)
 
 		// Persist immediately so DB doesn't serve stale flags on next startup
 		persistCache().catch((err) => log.warn({ err }, 'Failed to persist BM cache after flag update'))

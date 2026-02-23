@@ -248,7 +248,7 @@ export const matchHistoryRouter = {
 	})).handler(async ({ input, context: _ctx }) => {
 		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
 		const currentMatch = await getCurrentMatch(ctx)
-		const playerId = BigInt(input.playerId)
+		const playerId = input.playerId
 
 		const otherAssociatedPlayers = alias(Schema.playerEventAssociations, 'otherAssociatedPlayers')
 		// Everything that's selected in the two queries below is dictated by what data we need to successfully interploate the events we need to display for this player.
@@ -297,7 +297,7 @@ export const matchHistoryRouter = {
 				.limit(1),
 		])
 
-		const otherPlayers = new Set<bigint>()
+		const otherPlayers = new Set<string>()
 		const squads = new Set<number>()
 		const matches = new Set<number>()
 		const shownEventIds = new Set<number>()

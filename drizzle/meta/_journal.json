@@ -358,6 +358,34 @@
       "when": 1771797326764,
       "tag": "0050_add_persisted_cache",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "5",
+      "when": 1771881059647,
+      "tag": "0051_elite_zarda",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "5",
+      "when": 1771881059648,
+      "tag": "0052_migrate_fk_ids_to_eos",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "5",
+      "when": 1771881059649,
+      "tag": "0053_backfill_server_event_player_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "5",
+      "when": 1771884347870,
+      "tag": "0054_colossal_madripoor",
+      "breakpoints": true
     }
   ]
 }
