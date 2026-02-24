@@ -1,33 +1,22 @@
-import { frameManager } from '@/frames/frame-manager'
-import * as GenVoteFrame from '@/frames/gen-vote.frame'
-import * as SelectLayersFrame from '@/frames/select-layers.frame'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import { createId } from '@/lib/id'
-import * as Lifecycle from '@/lib/lifecycle'
-import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
-import * as ST from '@/lib/state-tree'
 import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
-import type * as L from '@/models/layer'
+import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
-
 import * as SLL from '@/models/shared-layer-list'
-import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
-import type * as USR from '@/models/users.models'
+import * as UP from '@/models/user-presence'
 import * as RPC from '@/orpc.client'
-import * as ConfigClient from '@/systems/config.client'
+
 import * as RbacClient from '@/systems/rbac.client'
-import * as ServerSettingsClient from '@/systems/server-settings.client'
+import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 import * as VotesClient from '@/systems/vote.client'
 import * as ReactRx from '@react-rxjs/core'
 import * as Im from 'immer'
-import React from 'react'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
-import { toStream } from 'zustand-rx'
-import { useShallow } from 'zustand/react/shallow'
 
 export type Store = {
 	sessionSeqId: SLL.SessionSequenceId
@@ -44,151 +33,31 @@ export type Store = {
 	// operations that have come from the server that represent potential conflicts
 	incomingOpsPendingSync: SLL.Operation[]
 
-	hoveredActivityUserId: USR.UserId | null
-	setHoveredActivityUserId(userId: USR.UserId, hovered: boolean): void
-
-	presence: SLL.PresenceState
 	itemLocks: SLL.ItemLocks
 
 	handleServerUpdate(update: SLL.Update): void
 	dispatch(op: SLL.NewOperation): Promise<void>
 	writeIncomingOperations(ops: SLL.Operation[]): void
-	pushPresenceAction(action: PresenceActions.Action): void
 
 	syncedOp$: Rx.Subject<SLL.Operation>
 	committing: boolean
 
 	reset(): Promise<void>
 
-	// if this layer is set as the next one on the server but is only a partial, then we want to "backfill" the details that the server fills in for us. If this property is defined that indicates that we should attempt to backfill
-	// nextLayerBackfillId?: string
 	// -------- derived properties --------
 	layerList: LL.Item[]
 	isModified: boolean
-	userPresence: Map<bigint, SLL.ClientPresence>
-
-	activityLoaderCache: LoaderCacheEntry<(typeof ACTIVITY_LOADER_CONFIGS)[number]>[]
-
-	updateActivity: (update: (prev: SLL.RootActivity) => SLL.RootActivity) => void
-	preloadActivity: (update: (prev: SLL.RootActivity) => SLL.RootActivity) => void
 }
 
 const [_useServerUpdate, serverUpdate$] = ReactRx.bind<SLL.Update>(
 	RPC.observe(() => RPC.orpc.sharedLayerList.watchUpdates.call()),
 )
 
-// Re-export lifecycle types for this module's loaders
-type ActivityLoaderConfig<Name extends string = string, Key = any, Data = any> = Lifecycle.LoaderConfig<
-	Name,
-	Key,
-	Data,
-	Store,
-	SLL.RootActivity
->
-export type LoaderCacheEntry<Config extends ActivityLoaderConfig, Loaded extends boolean = boolean> = Lifecycle.LoaderCacheEntry<
-	Config,
-	Loaded
->
-export type LoaderData<Config extends ActivityLoaderConfig> = Lifecycle.LoaderData<Config>
-export type LoaderCacheKey<Config extends ActivityLoaderConfig> = Lifecycle.LoaderKey<Config>
-
-// -------- configure loaders --------
-export type ConfiguredLoaders = typeof ACTIVITY_LOADER_CONFIGS
-export type ConfiguredLoaderConfig = ConfiguredLoaders[number]
-
-/** Discriminated union of all loaded activity states - narrows automatically on `name` check */
-export type LoadedActivityState = Lifecycle.LoaderCacheEntryUnion<ConfiguredLoaders, true>
-
-function createActivityLoaderConfig<Name extends string, Key extends ST.Match.Node>(
-	name: Name,
-	match: (state: SLL.RootActivity) => Key | undefined,
-) {
-	return <Data>(config: Lifecycle.LoaderConfigOptions<Key, Data, Store>) =>
-		Lifecycle.createLoaderConfig<Name, Key, SLL.RootActivity>(name, match)<Data, Store>(config)
-}
-
-const ACTIVITY_LOADER_CONFIGS = [
-	createActivityLoaderConfig(
-		'selectLayers',
-		s => {
-			const node = s.child.EDITING?.chosen
-			if (node?.id === 'ADDING_ITEM' || node?.id === 'EDITING_ITEM') return node
-			return undefined
-		},
-	)({
-		// this is what ensures that we reset the dialogs after they're closed
-		unloadOnLeave: true,
-
-		load(args) {
-			let editedLayerId: L.LayerId | undefined
-			if (args.key.id === 'EDITING_ITEM') {
-				const { item } = Obj.destrNullable(LL.findItemById(args.state.layerList, args.key.opts.itemId))
-				if (item) editedLayerId = item.layerId
-			}
-			const input = SelectLayersFrame.createInput({
-				cursor: args.key.opts.cursor,
-				initialEditedLayerId: editedLayerId,
-			})
-			const frameKey = frameManager.ensureSetup(SelectLayersFrame.frame, input)
-			return { selectLayersFrame: frameKey, activity: args.key }
-		},
-		onEnter(_args) {},
-		onUnload(args) {
-			// crudely wait for unload to render as .teardown will probably trigger a react rerender by itself. in future we could do this in a different lifecycle event
-			if (args.data) void requestIdleCallback(() => frameManager.teardown(args.data!.selectLayersFrame))
-		},
-		checkShouldUnload(args) {
-			if (args.key.opts.cursor.type !== 'item-relative') return false
-			const itemId = args.key.opts.cursor.itemId
-			return !LL.findItemById(args.state.layerList, itemId)
-		},
-	}),
-	createActivityLoaderConfig(
-		'genVote',
-		s => {
-			const node = s.child.EDITING?.chosen
-			if (node?.id === 'GENERATING_VOTE') return node
-			return undefined
-		},
-	)({
-		unloadOnLeave: true,
-		load(args) {
-			const input = GenVoteFrame.createInput({ cursor: { type: 'start' } })
-			const frameKey = frameManager.ensureSetup(GenVoteFrame.frame, input)
-			return { genVoteFrame: frameKey, activity: args.key }
-		},
-		onUnload(args) {
-			if (args.data) void requestIdleCallback(() => frameManager.teardown(args.data!.genVoteFrame))
-		},
-	}),
-	createActivityLoaderConfig('pasteRotation', s => {
-		const node = s.child.EDITING?.chosen
-		if (node?.id === 'PASTE_ROTATION') return node
-		return undefined
-	})({
-		unloadOnLeave: true,
-		load(args) {
-			return { activity: args.key }
-		},
-	}),
-] as const
-
 export const Store = createStore()
 
 function createStore() {
 	const store = Zus.createStore<Store>((set, get, store) => {
 		const session = SLL.createNewSession()
-
-		// Create loader manager context for lifecycle functions
-		const loaderCtx: Lifecycle.LoaderManagerContext<ConfiguredLoaderConfig, Store> = {
-			configs: ACTIVITY_LOADER_CONFIGS,
-			getCache: (draft: Im.Draft<Store>) => draft.activityLoaderCache as Lifecycle.LoaderCacheEntry<ConfiguredLoaderConfig>[],
-			setCache: (draft: Im.Draft<Store>, cache: Lifecycle.LoaderCacheEntry<ConfiguredLoaderConfig>[]) => {
-				draft.activityLoaderCache = cache
-			},
-			set: (updater: (state: Store) => Store) => set(updater),
-			getCurrentState: () => get(),
-		}
 
 		store.subscribe((state, prev) => {
 			if (state.session.list !== state.layerList) {
@@ -199,22 +68,6 @@ function createStore() {
 			if (hasMutations !== SLL.hasMutations(prev.session)) {
 				set({ isModified: hasMutations })
 			}
-
-			if (prev.presence !== state.presence) {
-				set({ userPresence: SLL.resolveUserPresence(state.presence) })
-
-				const config = ConfigClient.getConfig()
-				if (config) {
-					const wsClientId = config.wsClientId
-					const prevClientActivityState = prev.presence.get(wsClientId)?.activityState ?? null
-					const clientActivityState = state.presence.get(wsClientId)?.activityState ?? null
-					if (prevClientActivityState !== clientActivityState) {
-						Lifecycle.dispatchLoaderEvents(loaderCtx, clientActivityState, prevClientActivityState, false)
-					}
-				}
-			}
-
-			Lifecycle.checkAndUnloadStaleEntries(loaderCtx, state)
 		})
 
 		return {
@@ -227,18 +80,6 @@ function createStore() {
 			outgoingOpsPendingSync: [],
 			incomingOpsPendingSync: [],
 
-			hoveredActivityUserId: null,
-			setHoveredActivityUserId(userId, hovered) {
-				if (!hovered) {
-					if (userId !== get().hoveredActivityUserId) return
-					else set({ hoveredActivityUserId: null })
-
-					set({ hoveredActivityUserId: userId })
-				}
-			},
-
-			presence: new Map(),
-			userPresence: new Map(),
 			committing: false,
 			syncedOp$: new Rx.Subject(),
 
@@ -246,23 +87,17 @@ function createStore() {
 			layerList: session.list,
 			isModified: false,
 
-			_activityState: null,
-
 			async handleServerUpdate(update) {
 				switch (update.code) {
 					case 'init': {
-						const clientId = ConfigClient.getConfig()?.wsClientId
-						const clientPresence = clientId ? get().presence.get(clientId) : null
 						set({
 							...store.getInitialState(),
 							session: update.session,
 							syncedState: update.session,
 							outgoingOpsPendingSync: [],
-							presence: new Map([...update.presence, ...(clientPresence ? [[clientId!, clientPresence] as const] : [])]),
 							sessionSeqId: update.sessionSeqId,
 							itemLocks: new Map(),
 						})
-						this.pushPresenceAction(PresenceActions.editSessionChanged)
 						break
 					}
 					case 'op': {
@@ -270,17 +105,6 @@ function createStore() {
 						break
 					}
 					case 'update-presence': {
-						set(state =>
-							Im.produce(state, draft => {
-								let currentPresence = draft.presence.get(update.wsClientId)
-								if (!currentPresence) {
-									currentPresence = PresenceActions.getClientPresenceDefaults(update.userId)
-									draft.presence.set(update.wsClientId, currentPresence)
-								}
-
-								SLL.updateClientPresence(currentPresence, { ...update.changes })
-							})
-						)
 						if (update.sideEffectOps) this.writeIncomingOperations(update.sideEffectOps)
 						break
 					}
@@ -295,16 +119,15 @@ function createStore() {
 							const msg = `Queue ${update.code === 'commit-completed' ? 'updated' : 'reset'} by ${update.initiator}`
 							globalToast$.next({ title: msg })
 						}
-						// we always re-push our own state because we may have edited our presence since the server sent this update
-						this.pushPresenceAction(PresenceActions.editSessionChanged)
+						const newSession = SLL.createNewSession(update.list)
 						set(state =>
 							Im.produce(state, draft => {
 								draft.sessionSeqId = update.newSessionSeqId
-								draft.session = draft.syncedState = SLL.createNewSession(update.list)
+								draft.session = draft.syncedState = newSession
 								draft.itemLocks = new Map()
-								PresenceActions.applyToAll(draft.presence, draft.session, PresenceActions.editSessionChanged)
 							})
 						)
+						UPClient.PresenceStore.getState().onSessionChanged(newSession)
 						break
 					}
 
@@ -376,6 +199,9 @@ function createStore() {
 
 			// try to call this such that react will batch the rerenders
 			async dispatch(newOp) {
+				// import inline to avoid circular dep at module load time
+				const UPClient = await import('@/systems/user-presence.client')
+
 				const userId = UsersClient.loggedInUserId!
 				const baseProps = { opId: createId(6), userId }
 
@@ -400,6 +226,7 @@ function createStore() {
 						break
 					}
 				}
+				console.log(op)
 
 				set(state =>
 					Im.produce(state, draft => {
@@ -411,13 +238,13 @@ function createStore() {
 				let isComitting = false
 				try {
 					if (newOp.op === 'start-editing') {
-						this.updateActivity(SLL.TOGGLE_EDITING_TRANSITIONS.createActivity)
+						UPClient.PresenceStore.getState().updateActivity(UP.TOGGLE_EDITING_TRANSITIONS.createActivity)
 					} else if (newOp.op === 'finish-editing') {
 						if (get().session.editors.size === 0 && SLL.hasMutations(get().session)) {
 							set({ committing: true })
 							isComitting = true
 						}
-						this.updateActivity(SLL.TOGGLE_EDITING_TRANSITIONS.removeActivity)
+						UPClient.PresenceStore.getState().updateActivity(UP.TOGGLE_EDITING_TRANSITIONS.removeActivity)
 					}
 
 					await processUpdate({
@@ -431,70 +258,6 @@ function createStore() {
 						set({ committing: false })
 					}
 				}
-			},
-
-			async pushPresenceAction(action) {
-				const config = ConfigClient.getConfig()
-				if (!config) return
-				const state = get()
-				const userId = UsersClient.loggedInUserId
-				if (!userId) return
-				const hasEdits = SLL.hasMutations(state.session, userId!)
-				let update = action({ hasEdits, prev: state.presence.get(config.wsClientId) })
-				update = Obj.trimUndefined(update)
-				let presenceUpdated = false
-				const beforeUpdates = get().presence.get(config.wsClientId)
-				set(state =>
-					Im.produce(state, draft => {
-						let currentPresence = draft.presence.get(config.wsClientId)
-						if (!currentPresence) {
-							currentPresence = PresenceActions.getClientPresenceDefaults(userId)
-							draft.presence.set(config.wsClientId, currentPresence)
-						}
-
-						presenceUpdated = SLL.updateClientPresence(
-							currentPresence,
-							update,
-						)
-					})
-				)
-				if (presenceUpdated) {
-					const res = await processUpdate({
-						code: 'update-presence',
-						wsClientId: config.wsClientId,
-						userId,
-						changes: update,
-					})
-					if (res?.code === 'err:locked' && beforeUpdates) {
-						this.pushPresenceAction(PresenceActions.failedToAcquireLocks(beforeUpdates))
-					}
-				}
-			},
-
-			activityLoaderCache: [],
-
-			updateActivity(update) {
-				const config = ConfigClient.getConfig()
-				if (!config) return
-				let prev: SLL.RootActivity | null = get().presence.get(config.wsClientId)?.activityState ?? null
-				if (!prev) {
-					prev = SLL.DEFAULT_ACTIVITY
-				}
-				const next = update(prev)
-				get().pushPresenceAction(PresenceActions.updateActivity(next))
-			},
-
-			preloadActivity(update) {
-				requestIdleCallback(() => {
-					const config = ConfigClient.getConfig()
-					if (!config) return
-					let prev: SLL.RootActivity | null = get().presence.get(config.wsClientId)?.activityState ?? null
-					if (!prev) {
-						prev = SLL.DEFAULT_ACTIVITY
-					}
-					const next = update(prev)
-					Lifecycle.dispatchLoaderEvents(loaderCtx, next, prev, true)
-				})
 			},
 
 			async reset() {
@@ -521,87 +284,6 @@ async function processUpdate(update: SLL.ClientUpdate) {
 	return res
 }
 
-export function useItemPresence(itemId: LL.ItemId) {
-	const [presence, activityHovered] = Zus.useStore(
-		Store,
-		ZusUtils.useDeep(state => {
-			const res = MapUtils.find(
-				state.presence,
-				(_, v) => {
-					const activity = v.activityState?.child.EDITING?.chosen
-					return !!activity && SLL.isItemOwnedActivity(activity) && activity.opts.itemId === itemId
-				},
-			)
-			if (!res) return [undefined, undefined] as const
-			const root = res[1].activityState!
-			const presence = {
-				...res?.[1],
-				itemActivity: root.child.EDITING!.chosen as SLL.ItemOwnedActivity,
-			}
-			if (!presence) return [undefined, undefined] as const
-			const hovered = state.hoveredActivityUserId === presence.userId
-			return [presence, hovered] as const
-		}),
-	)
-
-	const userRes = UsersClient.useUser(presence?.userId)
-
-	if (!presence || userRes.data?.code !== 'ok') return [undefined, undefined, undefined] as const
-
-	return [presence, userRes.data.user, activityHovered] as const
-}
-
-export function useClientPresence() {
-	const config = ConfigClient.useConfig()
-	const presence = Zus.useStore(Store, state => config ? state.presence.get(config?.wsClientId) : undefined)
-	return presence
-}
-
-export async function setup() {
-	serverUpdate$.subscribe(update => {
-		Store.getState().handleServerUpdate(update)
-	})
-
-	const settingsModified$ = toStream(ServerSettingsClient.Store).pipe(Rx.map(s => s.modified), Rx.distinctUntilChanged())
-
-	const wsClientId$ = ConfigClient.fetchConfig().then(config => config.wsClientId)
-	settingsModified$.pipe(
-		Rx.withLatestFrom(wsClientId$),
-	).subscribe(([modified, wsClientId]) => {
-		try {
-			const currentActivity = Store.getState().presence.get(wsClientId)?.activityState
-			const dialogActivity = currentActivity?.child?.VIEWING_SETTINGS
-			const inChangingSettingsActivity = dialogActivity?.id === 'VIEWING_SETTINGS' && dialogActivity?.child?.CHANGING_SETTINGS
-			if (!modified && inChangingSettingsActivity) {
-				Store.getState().updateActivity(Im.produce(draft => {
-					const activity = draft.child?.VIEWING_SETTINGS
-					if (!activity) return
-					delete activity.child.CHANGING_SETTINGS
-				}))
-			}
-			if (modified) {
-				Store.getState().updateActivity(Im.produce(draft => {
-					draft.child.VIEWING_SETTINGS = ST.Match.branch('VIEWING_SETTINGS', draft.child.VIEWING_SETTINGS?.opts ?? {}, {
-						CHANGING_SETTINGS: ST.Match.leaf('CHANGING_SETTINGS', {}),
-					})
-				}))
-			}
-		} catch (error) {
-			console.error('Error handling settings modification:', error)
-		}
-	})
-}
-
-export function useIsEditing() {
-	const user = UsersClient.useLoggedInUser()
-	return Zus.useStore(Store, React.useMemo(() => (s) => selectIsEditing(s, user), [user]))
-}
-
-export function selectIsEditing(store: Store, user?: USR.User) {
-	if (!user) return false
-	return user && store.session.editors.has(user.discordId) && !store.committing
-}
-
 export function useIsItemLocked(itemId: LL.ItemId) {
 	const globalVoteState = VotesClient.useVoteState()
 	const config = UsersClient.useLoggedInUser()
@@ -614,97 +296,13 @@ export function useIsItemLocked(itemId: LL.ItemId) {
 	return locked || voteState?.code === 'in-progress'
 }
 
-// allows familiar useState binding to a presence activity. it's expected that multiple dialogs can bind to the same presence so activating a presence will not flip the state
-export function useActivityState<P>(
-	opts: {
-		createActivity: (prev: SLL.RootActivity) => SLL.RootActivity
-		removeActivity: (prev: SLL.RootActivity) => SLL.RootActivity
-
-		// the callback passed here should probably be memoized
-		matchActivity: (prev: SLL.RootActivity) => P
-	},
-) {
-	const { matchActivity, createActivity, removeActivity } = opts
-
-	const createActivityRef = React.useRef(createActivity)
-	const removeActivityRef = React.useRef(removeActivity)
-	createActivityRef.current = createActivity
-	removeActivityRef.current = removeActivity
-
-	const predicate = Zus.useStore(
-		Store,
-		ZusUtils.useDeep(React.useCallback(() => {
-			const config = ConfigClient.getConfig()
-			const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? SLL.DEFAULT_ACTIVITY
-			return matchActivity(state)
-		}, [matchActivity])),
-	)
-	const setActive: React.Dispatch<React.SetStateAction<boolean>> = React.useCallback((update) => {
-		const config = ConfigClient.getConfig()
-		if (!config) return
-		const storeState = Store.getState()
-		const state = Store.getState().presence.get(config?.wsClientId)?.activityState ?? SLL.DEFAULT_ACTIVITY
-
-		const alreadyActive = !!matchActivity(state)
-		const newActive = typeof update === 'function' ? update(alreadyActive) : update
-
-		if (newActive && !alreadyActive) {
-			storeState.updateActivity(createActivityRef.current)
-		}
-		if (!newActive && alreadyActive) {
-			storeState.updateActivity(removeActivityRef.current)
-		}
-	}, [matchActivity])
-	return [predicate, setActive] as const
+export async function setup() {
+	serverUpdate$.subscribe(update => {
+		Store.getState().handleServerUpdate(update)
+	})
 }
 
-export function useHoveredActivityUser() {
-	const [hovered, setHovered] = Zus.useStore(Store, useShallow((state) => [state.hoveredActivityUserId, state.setHoveredActivityUserId]))
-	return [hovered, setHovered] as const
-}
-
-export const selectActivityPresent = (targetActivity: SLL.RootActivity) => (state: Store) => {
-	for (const [activity] of SLL.iterActivities(state.presence)) {
-		if (Obj.deepEqual(activity, targetActivity)) {
-			return true
-		}
-	}
-	return false
-}
-
-export function useLoadedActivities() {
-	return Zus.useStore(
-		Store,
-		ZusUtils.useShallow(state => {
-			const loadedEntries = state.activityLoaderCache.filter(entry => !!entry.data)
-			return loadedEntries as unknown as LoadedActivityState[]
-		}),
-	)
-}
-
-export function useActivityLoaded(_matchActivity: (state: SLL.RootActivity) => boolean) {
-	return Zus.useStore(
-		Store,
-		ZusUtils.useShallow(state => {
-			return state.activityLoaderCache.some(entry => entry.data !== undefined)
-		}),
-	)
-}
-
-export function useActivityLoaderData<Loader extends ConfiguredLoaderConfig, O = LoaderCacheEntry<Loader>['data']>(opts: {
-	loaderName: Loader['name']
-	matchKey?: (predicate: LoaderCacheKey<Loader>) => boolean
-	trace?: string
-	select?: (data: LoaderCacheEntry<Loader> | undefined) => O
-}) {
-	const { loaderName, matchKey: matchPredicate = () => true, trace, select = (entry) => entry?.data } = opts
-	return Zus.useStore(
-		Store,
-		state => {
-			const loadedEntries = state.activityLoaderCache.filter(entry => entry.name === loaderName && matchPredicate(entry.key as any))
-			if (loadedEntries.length > 1) console.warn(`Multiple activities loaded for ${trace ?? loaderName}`)
-			const entry = loadedEntries[0] as LoaderCacheEntry<Loader> | undefined
-			return select(entry)
-		},
-	) as O
-}
+// suppress unused reference warnings for items only accessed via types
+void _useServerUpdate
+void ZusUtils
+void L

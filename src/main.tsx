@@ -14,6 +14,7 @@ import * as QueueDashboard from '@/systems/queue-dashboard.client'
 import * as SharedLayerListClient from '@/systems/shared-layer-list.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as ThemeSys from '@/systems/theme.client'
+import * as UserPresenceClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 import { enableMapSet } from 'immer'
 import { rootRouter } from './root-router.ts'
@@ -30,6 +31,7 @@ enableMapSet()
 	SquadServerClient.setup()
 	UsersClient.setup()
 	void SharedLayerListClient.setup()
+	void UserPresenceClient.setup()
 	QueueDashboard.setup()
 	VotesClient.setup()
 	ServerSettingsClient.setup()

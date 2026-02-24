@@ -9,6 +9,7 @@ import * as Rbac from '@/systems/rbac.server'
 import * as ServerSettings from '@/systems/server-settings.server'
 import * as SharedLayerList from '@/systems/shared-layer-list.server'
 import * as SquadServer from '@/systems/squad-server.server'
+import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
 
@@ -22,6 +23,7 @@ export const orpcAppRouter = {
 	config: Config.router,
 	layerQueries: LayerQueries.router,
 	sharedLayerList: SharedLayerList.orpcRouter,
+	userPresence: UserPresence.orpcRouter,
 	discord: Discord.orpcRouter,
 	matchHistory: MatchHistory.matchHistoryRouter,
 	filters: FilterEntity.filtersRouter,

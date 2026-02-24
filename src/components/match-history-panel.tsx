@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Table, TableBody, TableCell as ShadcnTableCell, TableHead as ShadcnTableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import * as SLLClient from '@/systems/shared-layer-list.client'
+
+import * as UPClient from '@/systems/user-presence.client'
 
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
@@ -324,7 +325,7 @@ function MatchHistoryRow({
 		? entry.isCurrentMatch
 		: selectedMatchOrdinalFromStore === entry.ordinal
 
-	const isEditingQueue = SLLClient.useIsEditing()
+	const isEditingQueue = UPClient.useIsEditing()
 	const dragProps = DndKit.useDraggable({
 		type: 'history-entry',
 		id: entry.historyEntryId,

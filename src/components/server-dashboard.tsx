@@ -5,6 +5,7 @@ import { GlobalSettingsStore } from '@/systems/global-settings.client'
 import React from 'react'
 import * as Zus from 'zustand'
 
+import { useIsDesktopSize } from '@/lib/browser.ts'
 import { Label } from './ui/label.tsx'
 import { Switch } from './ui/switch.tsx'
 import TabsList from './ui/tabs-list.tsx'
@@ -44,19 +45,7 @@ export function NormTeamsSwitch() {
 
 export default function ServerDashboard() {
 	const [activeTab, setActiveTab] = React.useState<'layers' | 'server-activity'>('layers')
-	const [isDesktop, setIsDesktop] = React.useState(false)
-
-	React.useEffect(() => {
-		const mediaQuery = window.matchMedia('(min-width: 1280px)')
-		setIsDesktop(mediaQuery.matches)
-
-		const handleChange = (e: MediaQueryListEvent) => {
-			setIsDesktop(e.matches)
-		}
-
-		mediaQuery.addEventListener('change', handleChange)
-		return () => mediaQuery.removeEventListener('change', handleChange)
-	}, [])
+	const isDesktop = useIsDesktopSize()
 
 	return (
 		<div className="w-full h-full flex flex-col">

@@ -3,104 +3,12 @@ import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as LL from '@/models/layer-list.models'
-import * as LQY from '@/models/layer-queries.models'
-import type * as PresenceActions from '@/models/shared-layer-list/presence-actions'
+import * as UP from '@/models/user-presence'
+import type * as UPActions from '@/models/user-presence/actions'
 import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models'
-import * as Im from 'immer'
 import { z } from 'zod'
 import * as L from './layer'
-
-import * as ST from '@/lib/state-tree'
-
-export const [ACTIVITIES] = (() => {
-	const { variant, leaf, branch } = ST.Def
-
-	const activities = branch('ON_QUEUE_PAGE', [
-		variant('EDITING', [
-			leaf('IDLE'),
-			leaf(
-				'ADDING_ITEM',
-				z.object({
-					cursor: LL.CursorSchema,
-					action: LQY.LAYER_ITEM_ACTION.prefault('add'),
-					title: z.string().optional(),
-					variant: z.enum(['toggle-position']).optional(),
-					selected: z.array(LL.ItemIdSchema).optional(),
-				}),
-			),
-			leaf('ADDING_ITEM_FROM_HISTORY'),
-
-			leaf('EDITING_ITEM', { itemId: LL.ItemIdSchema, cursor: LL.CursorSchema }),
-			leaf('MOVING_ITEM', { itemId: LL.ItemIdSchema }),
-			leaf('CONFIGURING_VOTE', { itemId: LL.ItemIdSchema }),
-			leaf('GENERATING_VOTE', { cursor: LL.CursorSchema }),
-			leaf('PASTE_ROTATION'),
-		]),
-		branch('VIEWING_SETTINGS', [leaf('CHANGING_SETTINGS')]),
-	]) satisfies ST.Def.Node
-	return [activities] as const
-})()
-
-export const DEFAULT_ACTIVITY: RootActivity = {
-	_tag: 'branch',
-	id: 'ON_QUEUE_PAGE',
-	opts: {},
-	child: {},
-}
-
-const _editActivityVariants = ACTIVITIES.child.EDITING.child
-type EditActivityVariant = (typeof _editActivityVariants)[keyof typeof _editActivityVariants]['id']
-
-export type QueueEditActivity<
-	K extends EditActivityVariant = EditActivityVariant,
-> = ST.Match.Node<
-	Extract<(typeof _editActivityVariants)[keyof typeof _editActivityVariants], { id: K }>
->
-
-export function createEditActivityVariant<K extends EditActivityVariant>(
-	activity: QueueEditActivity<K>,
-): (prev: RootActivity) => RootActivity {
-	return Im.produce((state: Im.WritableDraft<RootActivity>) => {
-		state.child.EDITING = {
-			_tag: 'variant',
-			id: 'EDITING',
-			opts: {},
-			chosen: activity as any,
-		}
-	})
-}
-
-export const TOGGLE_EDITING_TRANSITIONS = {
-	matchActivity: (root: RootActivity) => !!root.child?.EDITING,
-	createActivity: Im.produce((root: Im.WritableDraft<RootActivity>) => {
-		root.child.EDITING ??= {
-			_tag: 'variant',
-			id: 'EDITING',
-			opts: {},
-			chosen: ST.Match.leaf('IDLE', {}),
-		}
-	}),
-	removeActivity: Im.produce((root: Im.WritableDraft<RootActivity>) => {
-		delete root.child.EDITING
-	}),
-}
-
-export function toEditIdleOrNone(match?: (root: RootActivity) => any): (prev: RootActivity) => RootActivity {
-	return Im.produce((state: Im.WritableDraft<RootActivity>) => {
-		if (!state.child.EDITING) return
-		if (match && !match(state)) return
-		state.child.EDITING = {
-			_tag: 'variant',
-			id: 'EDITING',
-			opts: {},
-			chosen: ST.Match.leaf('IDLE', {}),
-		}
-	})
-}
-
-export type ActivityCode = ST.Def.NodeIds<typeof ACTIVITIES>
-export type RootActivity = ST.Match.Node<typeof ACTIVITIES>
 
 function buildItemOpSchemaEntries<T extends { [key: string]: z.ZodType }>(base: T) {
 	return [
@@ -245,28 +153,6 @@ export function containsConflict(session: EditSession, expectedIndex: number, ne
 	return false
 }
 
-export const UserPresenceActivitySchema = ST.MatchUtils.createMatchSchema(ACTIVITIES)
-export const ITEM_OWNED_ACTIVITY_CODE = z.enum(['EDITING_ITEM', 'CONFIGURING_VOTE', 'MOVING_ITEM'])
-type ItemOwnedActivityId = z.infer<typeof ITEM_OWNED_ACTIVITY_CODE>
-
-export type ItemOwnedActivity = Extract<QueueEditActivity, { id: ItemOwnedActivityId }>
-export function isItemOwnedActivity(activity: QueueEditActivity): activity is QueueEditActivity<ItemOwnedActivityId> {
-	return (ITEM_OWNED_ACTIVITY_CODE.options as string[]).includes(activity.id)
-}
-
-// presence may evolve into its own system eventually if we're doing non SLL related stuff with it
-export const ClientPresenceSchema = z.object({
-	userId: USR.UserIdSchema,
-	away: z.boolean(),
-	lastSeen: z.number().positive().nullable(),
-	activityState: UserPresenceActivitySchema.nullable(),
-})
-
-export type ClientPresence = z.infer<typeof ClientPresenceSchema>
-
-export const PresenceStateSchema = z.map(z.string(), ClientPresenceSchema)
-export type PresenceState = z.infer<typeof PresenceStateSchema>
-
 export type EditSession = {
 	list: LL.List
 	editors: Set<USR.UserId>
@@ -276,8 +162,170 @@ export type EditSession = {
 	mutations: ItemMut.Mutations
 }
 
-// no presence instances older than this should be displayed
-export const DISPLAYED_AWAY_PRESENCE_WINDOW = 1000 * 60 * 10
+export type Update =
+	| {
+		code: 'init'
+		session: EditSession
+		sessionSeqId: SessionSequenceId
+	}
+	| {
+		code: 'commit-started'
+	}
+	| {
+		code: 'commit-completed'
+		list: LL.List
+		committer: USR.User
+		sessionSeqId: SessionSequenceId
+		newSessionSeqId: SessionSequenceId
+		initiator: string
+	}
+	| { code: 'commit-rejected'; reason: string; msg: string; sessionSeqId: SessionSequenceId; committer: USR.User }
+	| {
+		code: 'reset-completed'
+		list: LL.List
+		sessionSeqId: SessionSequenceId
+		newSessionSeqId: SessionSequenceId
+		// username
+		initiator: string
+	}
+	| {
+		code: 'list-updated'
+		list: LL.List
+		sessionSeqId: SessionSequenceId
+		newSessionSeqId: SessionSequenceId
+	}
+	| {
+		code: 'locks-modified'
+		mutations: [LL.ItemId, string | null][]
+	}
+	| ClientUpdate
+	| {
+		// sent through SLL stream when presence actions trigger SLL side effects (editing ops)
+		code: 'update-presence'
+		wsClientId: string
+		userId: bigint
+		changes: Partial<Omit<UP.ClientPresence, 'userId'>>
+		fromServer?: boolean
+		sideEffectOps: Operation[]
+	}
+
+export type Rollback = {
+	// the index of the first replacement
+	toIndex: number
+
+	replacements: Operation[]
+}
+
+// the sequence id of the base queue the session
+const QueueSequenceId = z.number()
+export type SessionSequenceId = z.infer<typeof QueueSequenceId>
+
+export const ClientUpdateSchema = z.discriminatedUnion('code', [
+	z.object({
+		code: z.literal('op'),
+		sessionSeqId: QueueSequenceId,
+		expectedIndex: z.number(),
+		op: OperationSchema,
+	}),
+	z.object({
+		code: z.literal('commit'),
+		sessionSeqId: QueueSequenceId,
+	}),
+	z.object({
+		code: z.literal('reset'),
+		sessionSeqId: QueueSequenceId,
+	}),
+])
+
+export type ClientUpdate = z.infer<typeof ClientUpdateSchema>
+
+export type ItemLocks = Map<LL.ItemId, string>
+export type LockMutation = [LL.ItemId, string]
+
+export function tryAcquireAllLocks(locks: ItemLocks, itemIds: LL.ItemId[], wsClientId: string): boolean {
+	for (const itemId of itemIds) {
+		const existingLock = locks.get(itemId)
+		if (existingLock && wsClientId !== existingLock) return false
+	}
+	for (const itemId of itemIds) {
+		locks.set(itemId, wsClientId)
+	}
+	return true
+}
+
+export function anyLocksInaccessible(locks: ItemLocks, ids: LL.ItemId[], wsClientId: string): boolean {
+	for (const id of ids) {
+		const existingLock = locks.get(id)
+		if (existingLock && existingLock !== wsClientId) return true
+	}
+	return false
+}
+
+export function endAllEditing(state: UP.PresenceState, session: EditSession) {
+	for (const presence of state.values()) {
+		if (presence.activityState?.child.EDITING) {
+			UP.updateClientPresence(presence, { activityState: null })
+		}
+	}
+	session.editors.clear()
+}
+
+export function getOpsForActivityStateUpdate(
+	session: EditSession,
+	state: UP.PresenceState,
+	wsClientId: string,
+	userId: bigint,
+	output: UPActions.ActionOutput,
+) {
+	let ops: Operation[] = []
+
+	// this isn't super necessary given the way the frontend locks out users  but it's here for completeness
+	startEditing: {
+		if (session.editors.has(userId) || !output.activityState?.child.EDITING) break startEditing
+		let firstEditor = true
+		for (const [clientId, presence] of state.entries()) {
+			if (wsClientId === clientId) continue
+			if (presence.activityState?.child.EDITING) {
+				firstEditor = false
+				break
+			}
+		}
+
+		if (firstEditor) {
+			ops.push(
+				{
+					op: 'start-editing',
+					opId: createId(5),
+					userId,
+				} satisfies Operation,
+			)
+		}
+	}
+
+	finishEditing: {
+		if (!session.editors.has(userId) || output.activityState?.child.EDITING) break finishEditing
+		let lastEditor = true
+		for (const [clientId, presence] of state.entries()) {
+			if (wsClientId === clientId) continue
+			if (presence.activityState?.child.EDITING) {
+				lastEditor = false
+				break
+			}
+		}
+
+		if (lastEditor) {
+			ops.push(
+				{
+					op: 'finish-editing',
+					opId: createId(6),
+					userId,
+				} satisfies Operation,
+			)
+		}
+	}
+
+	return ops
+}
 
 export function applyOperation(session: EditSession, newOp: Operation | NewOperation, mutations?: ItemMut.Mutations) {
 	const list = session.list
@@ -407,225 +455,6 @@ export function applyOperations(s: EditSession, ops: Operation[]) {
 	s.ops.push(...ops)
 }
 
-export type Update =
-	| {
-		code: 'init'
-		session: EditSession
-		presence: PresenceState
-		sessionSeqId: SessionSequenceId
-	}
-	| {
-		code: 'commit-started'
-	}
-	| {
-		code: 'commit-completed'
-		list: LL.List
-		committer: USR.User
-		sessionSeqId: SessionSequenceId
-		newSessionSeqId: SessionSequenceId
-		initiator: string
-	}
-	| { code: 'commit-rejected'; reason: string; msg: string; sessionSeqId: SessionSequenceId; committer: USR.User }
-	| {
-		code: 'reset-completed'
-		list: LL.List
-		sessionSeqId: SessionSequenceId
-		newSessionSeqId: SessionSequenceId
-		// username
-		initiator: string
-	}
-	| {
-		code: 'list-updated'
-		list: LL.List
-		sessionSeqId: SessionSequenceId
-		newSessionSeqId: SessionSequenceId
-	}
-	| {
-		code: 'locks-modified'
-		mutations: [LL.ItemId, string | null][]
-	}
-	| ClientUpdate
-
-export type Rollback = {
-	// the index of the first replacement
-	toIndex: number
-
-	replacements: Operation[]
-}
-
-// the sequence id of the base queue the session
-const QueueSequenceId = z.number()
-export type SessionSequenceId = z.infer<typeof QueueSequenceId>
-
-export const ClientUpdateSchema = z.discriminatedUnion('code', [
-	z.object({
-		code: z.literal('op'),
-		sessionSeqId: QueueSequenceId,
-		expectedIndex: z.number(),
-		op: OperationSchema,
-	}),
-	z.object({
-		code: z.literal('commit'),
-		sessionSeqId: QueueSequenceId,
-	}),
-	z.object({
-		code: z.literal('reset'),
-		sessionSeqId: QueueSequenceId,
-	}),
-	z.object({
-		code: z.literal('update-presence'),
-		wsClientId: z.string(),
-		userId: z.bigint(),
-		changes: ClientPresenceSchema.partial(),
-		fromServer: z.boolean().optional(),
-		sideEffectOps: z.array(OperationSchema).optional().meta({ description: 'Extra operations to be applied as a result of this update' }),
-	}),
-])
-
-export type ClientUpdate = z.infer<typeof ClientUpdateSchema>
-
-export function updateClientPresence(
-	presence: ClientPresence,
-	updates: PresenceActions.ActionOutput,
-) {
-	updates = Obj.trimUndefined(updates)
-	if (Object.keys(updates).length === 0) {
-		return false
-	}
-	let modified = false
-	for (const [key, value] of Obj.objEntries(updates)) {
-		modified = modified || !Obj.deepEqual(presence[key], value)
-		// @ts-expect-error idgaf
-		presence[key] = value
-	}
-	return modified
-}
-
-export function resolveUserPresence(state: PresenceState) {
-	const presenceByUser = new Map<bigint, ClientPresence>()
-	for (const presence of state.values()) {
-		const existing = presenceByUser.get(presence.userId)
-		if (!existing) {
-			presenceByUser.set(presence.userId, presence)
-			continue
-		}
-		if (presence.lastSeen && !existing.lastSeen) {
-			presenceByUser.set(presence.userId, presence)
-			continue
-		}
-		if (presence.lastSeen && existing.lastSeen && presence.lastSeen > existing.lastSeen) {
-			presenceByUser.set(presence.userId, presence)
-			continue
-		}
-	}
-	return presenceByUser
-}
-
-export type ItemLocks = Map<LL.ItemId, string>
-export type LockMutation = [LL.ItemId, string]
-
-export function itemsToLockForActivity(list: LL.List, activity: RootActivity): LL.ItemId[] {
-	const dialogActivity = activity.child.EDITING?.chosen
-	if (!dialogActivity || !isItemOwnedActivity(dialogActivity)) return []
-	const itemId = dialogActivity.opts.itemId
-	const item = LL.findItemById(list, itemId)?.item
-	if (!item) return []
-	const ids: LL.ItemId[] = [itemId]
-	const parentItem = LL.findParentItem(list, itemId)
-	if (parentItem) {
-		ids.push(parentItem.itemId)
-	}
-	if (LL.isVoteItem(item)) {
-		ids.push(...item.choices.map(choice => choice.itemId))
-	}
-	return ids
-}
-
-export function tryAcquireAllLocks(locks: ItemLocks, itemIds: LL.ItemId[], wsClientId: string): boolean {
-	for (const itemId of itemIds) {
-		const existingLock = locks.get(itemId)
-		if (existingLock && wsClientId !== existingLock) return false
-	}
-	for (const itemId of itemIds) {
-		locks.set(itemId, wsClientId)
-	}
-	return true
-}
-
-export function anyLocksInaccessible(locks: ItemLocks, ids: LL.ItemId[], wsClientId: string): boolean {
-	for (const id of ids) {
-		const existingLock = locks.get(id)
-		if (existingLock && existingLock !== wsClientId) return true
-	}
-	return false
-}
-
-export function endAllEditing(state: PresenceState, session: EditSession) {
-	for (const presence of state.values()) {
-		if (presence.activityState?.child.EDITING) {
-			updateClientPresence(presence, { activityState: null })
-		}
-	}
-	session.editors.clear()
-}
-
-export function getOpsForActivityStateUpdate(
-	session: EditSession,
-	state: PresenceState,
-	wsClientId: string,
-	userId: bigint,
-	output: PresenceActions.ActionOutput,
-) {
-	let ops: Operation[] = []
-
-	// this isn't super necessary given the way the frontend locks out users  but it's here for completeness
-	startEditing: {
-		if (session.editors.has(userId) || !output.activityState?.child.EDITING) break startEditing
-		let firstEditor = true
-		for (const [clientId, presence] of state.entries()) {
-			if (wsClientId === clientId) continue
-			if (presence.activityState?.child.EDITING) {
-				firstEditor = false
-				break
-			}
-		}
-
-		if (firstEditor) {
-			ops.push(
-				{
-					op: 'start-editing',
-					opId: createId(5),
-					userId,
-				} satisfies Operation,
-			)
-		}
-	}
-
-	finishEditing: {
-		if (!session.editors.has(userId) || output.activityState?.child.EDITING) break finishEditing
-		let lastEditor = true
-		for (const [clientId, presence] of state.entries()) {
-			if (wsClientId === clientId) continue
-			if (presence.activityState?.child.EDITING) {
-				lastEditor = false
-				break
-			}
-		}
-
-		if (lastEditor) {
-			ops.push(
-				{
-					op: 'finish-editing',
-					opId: createId(6),
-					userId,
-				} satisfies Operation,
-			)
-		}
-	}
-
-	return ops
-}
-
 export function createNewSession(list?: LL.List): EditSession {
 	return {
 		list: list ?? [],
@@ -643,87 +472,4 @@ export function hasMutations(session: EditSession, userId?: USR.UserId) {
 		if (!userId || userId === op.userId) return true
 	}
 	return false
-}
-
-export const getHumanReadableActivity = (activity: RootActivity, listOrIndex: LL.List | LL.ItemIndex, withItemName?: boolean) => {
-	const editingActivity = activity.child.EDITING
-	const settingsActivity = activity.child.VIEWING_SETTINGS
-
-	if (settingsActivity) {
-		if (settingsActivity.child.CHANGING_SETTINGS) {
-			return 'Changing Pool Settings'
-		}
-	}
-
-	if (!editingActivity) return null
-	if (editingActivity.chosen.id === 'IDLE') {
-		return `Editing Queue`
-	}
-	if (editingActivity.chosen.id === 'ADDING_ITEM') {
-		return 'Adding layers'
-	}
-	if (editingActivity.chosen.id === 'GENERATING_VOTE') {
-		return 'Generating vote'
-	}
-	if (editingActivity.chosen.id === 'ADDING_ITEM_FROM_HISTORY') {
-		return 'Adding layer from History'
-	}
-	if (editingActivity.chosen.id === 'PASTE_ROTATION') {
-		return 'Pasting rotation'
-	}
-	if (!withItemName) {
-		switch (editingActivity.chosen.id) {
-			case 'EDITING_ITEM':
-				return `Editing`
-			case 'CONFIGURING_VOTE':
-				return `Configuring vote`
-			case 'MOVING_ITEM':
-				return `Moving`
-			default:
-				assertNever(editingActivity.chosen)
-		}
-	}
-
-	let index: LL.ItemIndex
-	if (Array.isArray(listOrIndex)) {
-		const foundIndex = Obj.destrNullable(LL.findItemById(listOrIndex, editingActivity.chosen.opts.itemId))?.index
-		if (!foundIndex) {
-			console.warn(`Item ${editingActivity.chosen.opts.itemId} not found in list`, listOrIndex)
-			index = { outerIndex: 0, innerIndex: null }
-		} else {
-			index = foundIndex
-		}
-	} else {
-		index = listOrIndex
-	}
-
-	const itemName = index ? LL.getItemNumber(index) : 'Item'
-	switch (editingActivity.chosen.id) {
-		case 'EDITING_ITEM':
-			return `Editing ${itemName}`
-		case 'CONFIGURING_VOTE':
-			return ` Configuring vote for ${itemName}`
-		case 'MOVING_ITEM':
-			return `Moving ${itemName}`
-		default:
-			assertNever(editingActivity.chosen)
-	}
-}
-
-export const getAttributedHumanReadableActivity = (
-	activity: RootActivity,
-	listOrIndex: LL.List | LL.ItemIndex,
-	displayName: string,
-	withItemName?: boolean,
-) => {
-	const activityText = getHumanReadableActivity(activity, listOrIndex)
-	if (!activityText) return null
-	return `${displayName} is ${activityText.toLowerCase()}`
-}
-
-export function* iterActivities(state: PresenceState) {
-	for (const [wsClientId, presence] of state.entries()) {
-		if (!presence.activityState) continue
-		yield [presence.activityState, wsClientId] as const
-	}
 }

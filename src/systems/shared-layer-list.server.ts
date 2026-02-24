@@ -1,13 +1,12 @@
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
-import * as MapUtils from '@/lib/map'
 import { withAcquired } from '@/lib/nodejs-reentrant-mutexes'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
-import type * as LL from '@/models/layer-list.models'
+import * as LL from '@/models/layer-list.models'
 import type * as SS from '@/models/server-state.models'
 import * as SLL from '@/models/shared-layer-list'
-import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
+import * as UPActions from '@/models/user-presence/actions'
 import * as RBAC from '@/rbac.models.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
@@ -16,6 +15,7 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as SquadServer from '@/systems/squad-server.server'
+import * as UserPresence from '@/systems/user-presence.server'
 import * as WSSessionSys from '@/systems/ws-session.server'
 import * as Otel from '@opentelemetry/api'
 import { Mutex } from 'async-mutex'
@@ -33,7 +33,6 @@ export type SharedLayerListContext = {
 
 		mtx: Mutex
 
-		presence: SLL.PresenceState
 		itemLocks: SLL.ItemLocks
 	}
 }
@@ -46,7 +45,6 @@ export function getDefaultState(serverState: SS.ServerState): SharedLayerListCon
 
 	return {
 		session: editSession,
-		presence: new Map(),
 		update$: new Rx.Subject<SLL.Update>(),
 		sessionSeqId: serverState.layerQueueSeqId,
 		queueSeqId: serverState.layerQueueSeqId,
@@ -55,12 +53,11 @@ export function getDefaultState(serverState: SS.ServerState): SharedLayerListCon
 	}
 }
 
-export function setupInstance(ctx: C.Db & C.LayerQueue & C.SharedLayerList & C.ServerSliceCleanup) {
+export function setupInstance(ctx: C.Db & C.LayerQueue & C.SharedLayerList & C.UserPresence & C.ServerSliceCleanup) {
 	const editSession = ctx.sharedList.session
-	const presence = ctx.sharedList.presence
 	const serverId = ctx.serverId
 
-	void sendUpdate(ctx, { code: 'init', session: editSession, presence, sessionSeqId: 1 })
+	void sendUpdate(ctx, { code: 'init', session: editSession, sessionSeqId: 1 })
 	ctx.cleanup.push(ctx.layerQueue.update$.subscribe(withAcquired(() => ctx.sharedList.mtx, async ([update, _ctx]) => {
 		const ctx = SquadServer.resolveSliceCtx(_ctx, _ctx.serverId)
 		if (update.state.layerQueueSeqId === ctx.sharedList.queueSeqId) return
@@ -68,12 +65,12 @@ export function setupInstance(ctx: C.Db & C.LayerQueue & C.SharedLayerList & C.S
 		const prevSessionSeqId = ctx.sharedList.sessionSeqId
 
 		ctx.sharedList.session = SLL.createNewSession(update.state.layerQueue)
-		SLL.endAllEditing(ctx.sharedList.presence, ctx.sharedList.session)
+		SLL.endAllEditing(ctx.userPresence.presence, ctx.sharedList.session)
 		ctx.sharedList.sessionSeqId++
 		ctx.sharedList.queueSeqId = update.state.layerQueueSeqId
 		ctx.sharedList.itemLocks = new Map()
 		// all clients that receive session-updated will update themselves
-		PresenceActions.applyToAll(ctx.sharedList.presence, ctx.sharedList.session, PresenceActions.editSessionChanged)
+		UPActions.applyToAll(ctx.userPresence.presence, ctx.sharedList.session, UPActions.editSessionChanged)
 		void sendUpdate(ctx, {
 			code: 'list-updated',
 			list: ctx.sharedList.session.list,
@@ -86,12 +83,12 @@ export function setupInstance(ctx: C.Db & C.LayerQueue & C.SharedLayerList & C.S
 	ctx.cleanup.push(
 		WSSessionSys.disconnect$.pipe(
 			// just add a flat delay for disconnects to give the user time to reconnect in a differen session
-			Rx.delay(PresenceActions.DISCONNECT_TIMEOUT),
+			Rx.delay(UPActions.DISCONNECT_TIMEOUT),
 			Rx.map(ctx => SquadServer.resolveSliceCtx(ctx, serverId)),
 			C.durableSub('shared-layer-list:handle-user-disconnect', { module, mutexes: ctx => ctx.sharedList.mtx }, async (ctx) => {
 				if (ctx.serverId !== serverId) return
-				dispatchPresenceAction(ctx, PresenceActions.disconnectedTimeout)
-				cleanupActivityLocks(ctx, ctx.wsClientId)
+				UserPresence.dispatchPresenceAction(ctx, UPActions.disconnectedTimeout)
+				UserPresence.cleanupActivityLocks(ctx, ctx.wsClientId)
 				C.setSpanStatus(Otel.SpanStatusCode.OK)
 			}),
 		).subscribe(),
@@ -105,13 +102,11 @@ export const orpcRouter = {
 				const initial: SLL.Update = {
 					code: 'init',
 					session: ctx.sharedList.session!,
-					presence: ctx.sharedList.presence,
 					sessionSeqId: ctx.sharedList.sessionSeqId,
 				}
 				const updateForClient$ = ctx.sharedList.update$.pipe(
 					// if we don't do this then the orpcWs breaks
 					Rx.observeOn(Rx.asyncScheduler),
-					Rx.filter(update => update.code !== 'update-presence' || update.fromServer || update.wsClientId !== context.wsClientId),
 				)
 				return updateForClient$.pipe(Rx.startWith(initial))
 			}),
@@ -125,7 +120,6 @@ export const orpcRouter = {
 		.input(SLL.ClientUpdateSchema)
 		.handler(async ({ context: _ctx, input }) => {
 			const sliceCtx = SquadServer.resolveWsClientSliceCtx(_ctx)
-			if (input.code === 'update-presence') return handlePresenceUpdate(sliceCtx, input)
 			return await handleSllStateUpdate(sliceCtx, input)
 		}),
 }
@@ -133,7 +127,7 @@ export const orpcRouter = {
 const handleSllStateUpdate = C.spanOp(
 	'handleSllStateUpdate',
 	{ module, mutexes: (ctx) => ctx.sharedList.mtx },
-	async (ctx: C.OrpcBase & C.ServerSlice, input: Exclude<SLL.ClientUpdate, { code: 'update-presence' }>) => {
+	async (ctx: C.OrpcBase & C.ServerSlice, input: SLL.ClientUpdate) => {
 		log.info('Processing update %o for %s', input, ctx.serverId)
 
 		const authRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write'))
@@ -175,7 +169,7 @@ const handleSllStateUpdate = C.spanOp(
 				ctx.sharedList.itemLocks = new Map()
 
 				// all clients that receive reset-completed will update themselves
-				PresenceActions.applyToAll(ctx.sharedList.presence, ctx.sharedList.session, PresenceActions.editSessionChanged)
+				UPActions.applyToAll(ctx.userPresence.presence, ctx.sharedList.session, UPActions.editSessionChanged)
 				void sendUpdate(ctx, {
 					code: 'reset-completed',
 					list: ctx.sharedList.session.list,
@@ -194,8 +188,8 @@ const handleSllStateUpdate = C.spanOp(
 )
 
 async function commitChanges(
-	ctx: C.Db & C.SharedLayerList & C.User & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon,
-	input: Exclude<SLL.ClientUpdate, { code: 'update-presence' }>,
+	ctx: C.Db & C.SharedLayerList & C.UserPresence & C.User & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon,
+	input: SLL.ClientUpdate,
 ) {
 	void sendUpdate(ctx, {
 		code: 'commit-started',
@@ -225,7 +219,7 @@ async function commitChanges(
 			ctx.sharedList.queueSeqId = serverState.layerQueueSeqId
 			ctx.sharedList.sessionSeqId++
 			ctx.sharedList.itemLocks = new Map()
-			PresenceActions.applyToAll(ctx.sharedList.presence, ctx.sharedList.session, PresenceActions.editSessionChanged)
+			UPActions.applyToAll(ctx.userPresence.presence, ctx.sharedList.session, UPActions.editSessionChanged)
 			void sendUpdate(ctx, {
 				code: 'commit-completed',
 				list: ctx.sharedList.session.list,
@@ -234,7 +228,7 @@ async function commitChanges(
 				newSessionSeqId: ctx.sharedList.sessionSeqId,
 				initiator: ctx.user.username,
 			})
-			SLL.endAllEditing(ctx.sharedList.presence, ctx.sharedList.session)
+			SLL.endAllEditing(ctx.userPresence.presence, ctx.sharedList.session)
 		} else {
 			void sendUpdate(ctx, {
 				code: 'commit-rejected',
@@ -247,137 +241,17 @@ async function commitChanges(
 	})
 }
 
-function handlePresenceUpdate(
-	ctx: C.SharedLayerList & C.User & C.WSSession,
-	update: Extract<SLL.ClientUpdate, { code: 'update-presence' }>,
-) {
-	if (update.wsClientId !== ctx.wsClientId) {
-		log.warn('Received presence update from another client: %s, expected: %s', update.wsClientId, ctx.wsClientId)
-		return
-	}
-	if (update.userId !== ctx.user.discordId) {
-		log.warn('Received presence update from another user: %s, expected: %s', update.userId, ctx.user.discordId)
-		return
-	}
-	const now = Date.now()
-	if (update.changes.lastSeen && update.changes.lastSeen > now) {
-		log.warn('Received presence update with invalid lastSeen: %s, patching to %s', update.changes.lastSeen, now)
-		update.changes.lastSeen = now
-	}
-
-	const prevActivity = ctx.sharedList.presence.get(update.wsClientId)?.activityState
-	const lockMutations: Map<LL.ItemId, string | null> = new Map()
-	if (
-		prevActivity && (update.changes === null || update.changes.activityState === null)
-	) {
-		const itemIds = MapUtils.revLookupAll(ctx.sharedList.itemLocks, update.wsClientId)
-		for (const itemId of itemIds) {
-			lockMutations.set(itemId, null)
-		}
-	} else if (update.changes?.activityState) {
-		const existingItemIds = MapUtils.revLookupAll(ctx.sharedList.itemLocks, update.wsClientId)
-		for (const itemId of existingItemIds) {
-			lockMutations.set(itemId, null)
-		}
-
-		const itemIds = SLL.itemsToLockForActivity(ctx.sharedList.session.list, update.changes.activityState)
-		if (itemIds.length > 0) {
-			if (SLL.anyLocksInaccessible(ctx.sharedList.itemLocks, itemIds, ctx.wsClientId)) {
-				return { code: 'err:locked' as const, msg: 'Failed to acquire all locks' }
-			}
-			for (const itemId of itemIds) {
-				lockMutations.set(itemId, ctx.wsClientId)
-			}
-		}
-	}
-
-	if (lockMutations.size > 0) {
-		for (const [itemId, wsClientId] of lockMutations.entries()) {
-			if (wsClientId === null) ctx.sharedList.itemLocks.delete(itemId)
-			else ctx.sharedList.itemLocks.set(itemId, wsClientId)
-		}
-		void sendUpdate(ctx, { code: 'locks-modified', mutations: Array.from(lockMutations.entries()) })
-	}
-	let clientPresence = ctx.sharedList.presence.get(update.wsClientId)
-	if (!clientPresence) {
-		clientPresence = PresenceActions.getClientPresenceDefaults(update.userId)
-		ctx.sharedList.presence.set(update.wsClientId, clientPresence)
-	}
-	const modified = SLL.updateClientPresence(clientPresence, update.changes)
-	if (modified) void sendUpdate(ctx, { ...update, changes: update.changes })
-}
-
-function cleanupActivityLocks(ctx: C.SharedLayerList, wsClientId: string) {
-	const itemIds = MapUtils.revLookupAll(ctx.sharedList.itemLocks, wsClientId)
-	if (itemIds.length > 0) {
-		MapUtils.bulkDelete(ctx.sharedList.itemLocks, ...itemIds)
-		void sendUpdate(ctx, { code: 'locks-modified', mutations: itemIds.map(id => [id, null]) })
-	}
-}
-
 // send a shared layer list update on unlock with fresh references
 export async function sendUpdate(ctx: C.SharedLayerList, update: SLL.Update) {
 	update = Obj.deepClone(update)
 	ctx.sharedList.update$.next(update)
 }
 
-function getBaseCtx() {
-	return C.initMutexStore(CS.init())
-}
-
-function dispatchPresenceAction(ctx: C.SharedLayerList & C.User & C.WSSession, action: PresenceActions.Action) {
-	let currentPresence = ctx.sharedList.presence.get(ctx.wsClientId)
-	const actionInput: PresenceActions.ActionInput = {
-		hasEdits: SLL.hasMutations(ctx.sharedList.session, ctx.user.discordId),
-		prev: currentPresence,
-	}
-	if (!currentPresence) {
-		currentPresence = PresenceActions.getClientPresenceDefaults(ctx.user.discordId)
-		ctx.sharedList.presence.set(ctx.wsClientId, currentPresence)
-	}
-	const update = action(actionInput)
-	SLL.updateClientPresence(currentPresence, update)
-	const extraOps = SLL.getOpsForActivityStateUpdate(
-		ctx.sharedList.session,
-		ctx.sharedList.presence,
-		ctx.wsClientId,
-		ctx.user.discordId,
-		update,
-	)
-	if (extraOps) {
-		SLL.applyOperations(ctx.sharedList.session, extraOps)
-	}
-	void sendUpdate(ctx, {
-		code: 'update-presence',
-		wsClientId: ctx.wsClientId,
-		userId: ctx.user.discordId,
-		changes: action(actionInput),
-		fromServer: true,
-		sideEffectOps: extraOps || [],
-	})
-}
-
 export function setup() {
 	log = module.getLogger()
-
-	Rx.interval(SLL.DISPLAYED_AWAY_PRESENCE_WINDOW * 2).pipe(
-		Rx.map(() => getBaseCtx()),
-		C.durableSub('shared-layer-list:clean-presence', { module }, async (ctx) => {
-			let numCleaned = 0
-			for (const slice of SquadServer.globalState.slices.values()) {
-				const presenceState = slice.sharedList.presence
-				for (const [wsClientId, presence] of Array.from(presenceState.entries())) {
-					// we don't want to remove presence instances that still might have an away indicator
-					const pastDisconnectTimeout = presence.lastSeen === null || (Date.now() - presence.lastSeen) > SLL.DISPLAYED_AWAY_PRESENCE_WINDOW
-					if (!WSSessionSys.wsSessions.has(wsClientId) && pastDisconnectTimeout && !slice.sharedList.session.editors.has(presence.userId)) {
-						presenceState.delete(wsClientId)
-						numCleaned++
-					}
-				}
-			}
-
-			log.info(`Cleaned ${numCleaned} stale presence sessions`)
-			// no need to send these deletions to the client. would be flabbergasted if a client stayed idle with no other sources of resets for it to matter
-		}),
-	).subscribe()
+	UserPresence.setup()
 }
+
+// suppress unused import warnings — used transitively
+void LL
+void CS

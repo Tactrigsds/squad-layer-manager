@@ -14,11 +14,12 @@ import type * as F from '@/models/filter.models.ts'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as SS from '@/models/server-state.models.ts'
-import type * as SLL from '@/models/shared-layer-list'
+import type * as UP from '@/models/user-presence'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as ServerSettingsClient from '@/systems/server-settings.client'
-import * as SLLClient from '@/systems/shared-layer-list.client'
+
+import * as UPClient from '@/systems/user-presence.client'
 import { useLoggedInUser } from '@/systems/users.client'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
@@ -53,9 +54,9 @@ export default function ServerSettingsPopover(
 
 	const [poolId, setPoolId] = React.useState<'mainPool' | 'generationPool'>('mainPool')
 
-	const [open, _setOpen] = SLLClient.useActivityState({
+	const [open, _setOpen] = UPClient.useActivityState({
 		matchActivity: React.useCallback((activity) => !!activity.child.VIEWING_SETTINGS, []),
-		createActivity: Im.produce((draft: Im.WritableDraft<SLL.RootActivity>) => {
+		createActivity: Im.produce((draft: Im.WritableDraft<UP.RootActivity>) => {
 			draft.child.VIEWING_SETTINGS = {
 				_tag: 'branch',
 				id: 'VIEWING_SETTINGS',
@@ -63,7 +64,7 @@ export default function ServerSettingsPopover(
 				child: {},
 			}
 		}),
-		removeActivity: Im.produce((draft: Im.WritableDraft<SLL.RootActivity>) => {
+		removeActivity: Im.produce((draft: Im.WritableDraft<UP.RootActivity>) => {
 			delete draft.child.VIEWING_SETTINGS
 		}),
 	})

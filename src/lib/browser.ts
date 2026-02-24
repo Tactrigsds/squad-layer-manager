@@ -1,3 +1,4 @@
+import * as React from 'react'
 import * as Rx from 'rxjs'
 
 export function isBrowser(): boolean {
@@ -40,3 +41,20 @@ export const userIsActive$ = (function createPageActivityObservable(): Rx.Observ
 		Rx.share(),
 	)
 })()
+
+export function useIsDesktopSize() {
+	const [isDesktop, setIsDesktop] = React.useState(false)
+
+	React.useEffect(() => {
+		const mediaQuery = window.matchMedia('(min-width: 1280px)')
+		setIsDesktop(mediaQuery.matches)
+
+		const handleChange = (e: MediaQueryListEvent) => {
+			setIsDesktop(e.matches)
+		}
+
+		mediaQuery.addEventListener('change', handleChange)
+		return () => mediaQuery.removeEventListener('change', handleChange)
+	}, [])
+	return isDesktop
+}

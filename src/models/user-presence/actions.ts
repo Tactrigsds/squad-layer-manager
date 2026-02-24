@@ -1,10 +1,11 @@
 import * as SLL from '@/models/shared-layer-list'
+import * as UP from '@/models/user-presence'
 
-export type ActionInput = { hasEdits: boolean; prev?: SLL.ClientPresence }
-export type ActionOutput = Partial<Omit<SLL.ClientPresence, 'userId'>>
+export type ActionInput = { hasEdits: boolean; prev?: UP.ClientPresence }
+export type ActionOutput = Partial<Omit<UP.ClientPresence, 'userId'>>
 export type Action = (input: ActionInput) => ActionOutput
 
-export function getClientPresenceDefaults(userId: bigint): SLL.ClientPresence {
+export function getClientPresenceDefaults(userId: bigint): UP.ClientPresence {
 	return {
 		userId,
 		away: true,
@@ -13,7 +14,7 @@ export function getClientPresenceDefaults(userId: bigint): SLL.ClientPresence {
 	}
 }
 
-export const pageLoaded: Action = (input) => {
+export const pageLoaded: Action = (_input) => {
 	return {
 		away: false,
 		activityState: null,
@@ -21,7 +22,7 @@ export const pageLoaded: Action = (input) => {
 }
 
 // the page has been interacted with or newly opened/navigated to
-export const pageInteraction: Action = (input) => {
+export const pageInteraction: Action = (_input) => {
 	return {
 		away: false,
 		lastSeen: Date.now(),
@@ -32,7 +33,7 @@ export const pageInteraction: Action = (input) => {
 export const INTERACT_TIMEOUT = 30_000
 
 // page has been idle for too long
-export const interactionTimeout: Action = (input) => {
+export const interactionTimeout: Action = (_input) => {
 	return {
 		away: true,
 	}
@@ -56,7 +57,7 @@ export const disconnectedTimeout: Action = () => {
 	}
 }
 
-export const updateActivity = (activity: SLL.RootActivity): Action => {
+export const updateActivity = (activity: UP.RootActivity): Action => {
 	return () => ({
 		away: false,
 		activityState: activity,
@@ -71,19 +72,19 @@ export const editSessionChanged: Action = () => {
 	}
 }
 
-export const failedToAcquireLocks = (beforeUpdates: SLL.ClientPresence): Action => () => {
+export const failedToAcquireLocks = (beforeUpdates: UP.ClientPresence): Action => () => {
 	return {
 		...beforeUpdates,
 	}
 }
 
-export function applyToAll(state: SLL.PresenceState, session: SLL.EditSession, action: Action): SLL.PresenceState {
+export function applyToAll(state: UP.PresenceState, session: SLL.EditSession, action: Action): UP.PresenceState {
 	for (const key of state.keys()) {
 		const userId = state.get(key)!.userId!
 		const hasEdits = SLL.hasMutations(session, userId)
 		const update = action({ hasEdits: hasEdits, prev: state.get(key) })
 		const presence = state.get(key)!
-		SLL.updateClientPresence(presence, update)
+		UP.updateClientPresence(presence, update)
 	}
 	return state
 }

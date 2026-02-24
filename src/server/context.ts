@@ -17,6 +17,7 @@ import type * as MatchHistorySys from '@/systems/match-history.server'
 import type * as SharedLayerListSys from '@/systems/shared-layer-list.server'
 import type * as SquadRconSys from '@/systems/squad-rcon.server'
 import type * as SquadServerSys from '@/systems/squad-server.server'
+import type * as UserPresenceSys from '@/systems/user-presence.server'
 import type * as VoteSys from '@/systems/vote.server'
 import * as Otel from '@opentelemetry/api'
 import type { Mutex, MutexInterface } from 'async-mutex'
@@ -449,6 +450,11 @@ export type SharedLayerList =
 	& SharedLayerListSys.SharedLayerListContext
 	& ServerId
 
+export type UserPresence =
+	& CS.Ctx
+	& UserPresenceSys.UserPresenceContext
+	& ServerId
+
 export type ServerSliceCleanup = CS.Ctx & {
 	cleanup: CleanupTasks
 }
@@ -460,6 +466,7 @@ export type ServerSlice =
 	& LayerQueue
 	& MatchHistory
 	& SharedLayerList
+	& UserPresence
 	& ServerSliceCleanup
 	& AdminList
 

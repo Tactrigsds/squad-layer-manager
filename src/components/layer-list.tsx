@@ -28,7 +28,7 @@ import * as ZusUtils from '@/lib/zustand.ts'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 
-import * as SLL from '@/models/shared-layer-list.ts'
+import * as UP from '@/models/user-presence'
 import * as V from '@/models/vote.models.ts'
 import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
@@ -39,6 +39,7 @@ import * as QD from '@/systems/queue-dashboard.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SLLClient from '@/systems/shared-layer-list.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
+import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 import * as VotesClient from '@/systems/vote.client'
 import * as RQ from '@tanstack/react-query'
@@ -46,6 +47,7 @@ import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
+import { StartActivityInteraction } from './activity.tsx'
 import EditLayerDialog from './edit-layer-dialog.tsx'
 import GenVoteDialog from './gen-vote-dialog.tsx'
 import LayerDisplay from './layer-display.tsx'
@@ -66,7 +68,7 @@ export function LayerList(
 		const user = UsersClient.loggedInUser
 		const sllState = SLLClient.Store.getState()
 		if (!user || !event.over) return
-		if (!SLLClient.selectIsEditing(sllState, user)) return
+		if (!UPClient.selectIsEditing(sllState, user)) return
 		const target = event.over.slots[0]
 		if (target.dragItem.type !== 'layer-item') return
 		const cursors = LL.dropItemToLLItemCursors(event.over)
@@ -101,23 +103,23 @@ export function LayerList(
 	}, [props.store]))
 
 	DndKit.useDraggingCallback(item => {
-		const storeState = SLLClient.Store.getState()
-		const getIsDraggingStuff = (root: SLL.RootActivity) => {
+		const presenceState = UPClient.PresenceStore.getState()
+		const getIsDraggingStuff = (root: UP.RootActivity) => {
 			const id = root.child?.EDITING?.chosen?.id
 			return id === 'MOVING_ITEM' || id === 'ADDING_ITEM_FROM_HISTORY'
 		}
 		if (!item) {
-			storeState.updateActivity(SLL.toEditIdleOrNone(getIsDraggingStuff))
+			presenceState.updateActivity(UP.toEditIdleOrNone(getIsDraggingStuff))
 			return
 		}
 		const { leaf } = ST.Match
 		if (item?.type === 'layer-item') {
-			storeState.updateActivity(SLL.createEditActivityVariant(leaf('MOVING_ITEM', { itemId: item.id })))
+			presenceState.updateActivity(UP.createEditActivityVariant(leaf('MOVING_ITEM', { itemId: item.id })))
 			return
 		}
 
 		if (item?.type === 'history-entry') {
-			storeState.updateActivity(SLL.createEditActivityVariant(leaf('ADDING_ITEM_FROM_HISTORY', {})))
+			presenceState.updateActivity(UP.createEditActivityVariant(leaf('ADDING_ITEM_FROM_HISTORY', {})))
 			return
 		}
 	})
@@ -141,7 +143,7 @@ export function LayerList(
 function LoadedActivitiesRenderer({ store }: { store: Zus.StoreApi<QD.LLStore> }) {
 	return (
 		<>
-			{SLLClient.useLoadedActivities().map((entry) => {
+			{UPClient.useLoadedActivities().map((entry) => {
 				if (entry.name === 'selectLayers') {
 					return (
 						<LoadedSelectLayersView
@@ -182,7 +184,7 @@ function LoadedSelectLayersView({
 	entry: _entry,
 }: {
 	store: Zus.StoreApi<QD.LLStore>
-	entry: Extract<SLLClient.LoadedActivityState, { name: 'selectLayers' }>
+	entry: Extract<UPClient.LoadedActivityState, { name: 'selectLayers' }>
 }) {
 	const entry = useStableValue((e) => e, [_entry])
 	const positionCursors = React.useMemo(() => {
@@ -235,8 +237,8 @@ function LoadedSelectLayersView({
 
 	const onSelectLayersChange = React.useCallback((open: boolean) => {
 		if (open) return
-		store.getState().updateActivity(SLL.toEditIdleOrNone())
-	}, [store])
+		UPClient.PresenceStore.getState().updateActivity(UP.toEditIdleOrNone())
+	}, [])
 
 	const frames = React.useMemo(() => ({
 		selectLayers: data.selectLayersFrame,
@@ -282,15 +284,15 @@ function LoadedGenVoteView({
 	entry: _entry,
 }: {
 	store: Zus.StoreApi<QD.LLStore>
-	entry: Extract<SLLClient.LoadedActivityState, { name: 'genVote' }>
+	entry: Extract<UPClient.LoadedActivityState, { name: 'genVote' }>
 }) {
 	const entry = useStableValue((e) => e, [_entry])
 	const data = entry.data
 
 	const onOpenChange = React.useCallback((open: boolean) => {
 		if (open) return
-		store.getState().updateActivity(SLL.toEditIdleOrNone())
-	}, [store])
+		UPClient.PresenceStore.getState().updateActivity(UP.toEditIdleOrNone())
+	}, [])
 
 	const frames = React.useMemo(() => ({
 		genVote: data.genVoteFrame,
@@ -314,7 +316,7 @@ function LoadedGenVoteView({
 		}
 
 		void state.dispatch({ op: 'add', index: index ?? { outerIndex: 0, innerIndex: null }, items: [item] })
-		state.updateActivity(SLL.toEditIdleOrNone())
+		UPClient.PresenceStore.getState().updateActivity(UP.toEditIdleOrNone())
 	}, [store])
 
 	return (
@@ -333,15 +335,15 @@ function LoadedPasteRotation({
 	entry: _entry,
 }: {
 	store: Zus.StoreApi<QD.LLStore>
-	entry: Extract<SLLClient.LoadedActivityState, { name: 'pasteRotation' }>
+	entry: Extract<UPClient.LoadedActivityState, { name: 'pasteRotation' }>
 }) {
 	const entry = useStableValue((e) => e, [_entry])
 	const [pastePosition, setPastePosition] = React.useState<'next' | 'after'>('next')
 
 	const onOpenChange = React.useCallback((open: boolean) => {
 		if (open) return
-		store.getState().updateActivity(SLL.toEditIdleOrNone())
-	}, [store])
+		UPClient.PresenceStore.getState().updateActivity(UP.toEditIdleOrNone())
+	}, [])
 
 	const onSubmit = React.useCallback((layers: L.UnvalidatedLayer[]) => {
 		const state = store.getState()
@@ -353,7 +355,7 @@ function LoadedPasteRotation({
 			index,
 			items: layerIds.map(layerId => ({ type: 'single-list-item', layerId })),
 		})
-		state.updateActivity(SLL.toEditIdleOrNone())
+		UPClient.PresenceStore.getState().updateActivity(UP.toEditIdleOrNone())
 	}, [store, pastePosition])
 
 	const positionTabsList = React.useMemo(() => (
@@ -429,10 +431,10 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	const isVoteChoice = !!parentItem
 
 	const isModified = Zus.useStore(SLLClient.Store, s => s.isModified)
-	const isEditing = SLLClient.useIsEditing()
+	const isEditing = UPClient.useIsEditing()
 	const canEdit = !SLLClient.useIsItemLocked(item.itemId) && isEditing
 
-	const [itemPresence, itemActivityUser, activityHovered] = SLLClient.useItemPresence(item.itemId)
+	const [itemPresence, itemActivityUser, activityHovered] = UPClient.useItemPresence(item.itemId)
 
 	const globalVoteState = VotesClient.useVoteState()
 	const voteState = (globalVoteState && globalVoteState?.itemId === parentItem?.itemId ? globalVoteState : undefined)
@@ -456,7 +458,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	if (user && itemPresence?.itemActivity && itemActivityUser.discordId !== user.discordId) {
 		sourceDisplay = (
 			<Badge key={`activity ${itemPresence.itemActivity.id}`} variant="info" className="text-nowrap">
-				{SLL.getAttributedHumanReadableActivity(itemPresence.activityState!, index, itemActivityUser.displayName)}...
+				{UP.getAttributedHumanReadableActivity(itemPresence.activityState!, index, itemActivityUser.displayName)}...
 			</Badge>
 		)
 	} else {
@@ -616,7 +618,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const isModified = Zus.useStore(SLLClient.Store, s => s.isModified)
 	const user = UsersClient.useLoggedInUser()
 	const canManageVote = user ? RBAC.rbacUserHasPerms(user, RBAC.perm('vote:manage')) : false
-	const isEditing = SLLClient.useIsEditing()
+	const isEditing = UPClient.useIsEditing()
 	const canEdit = !SLLClient.useIsItemLocked(item.itemId) && isEditing
 	const draggableItem = LL.layerItemToDragItem(item)
 	const dragProps = DndKit.useDraggable(draggableItem, { disabled: !isEditing })
@@ -652,13 +654,13 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const afterItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'after', itemId: item.itemId }]
 
 	// we're only using .useActivityState here because there's nothing to load with this activity at the moment
-	const [configuringVote, setConfiguringVote] = SLLClient.useActivityState({
-		createActivity: SLL.createEditActivityVariant({ _tag: 'leaf', id: 'CONFIGURING_VOTE', opts: { itemId: item.itemId } }),
+	const [configuringVote, setConfiguringVote] = UPClient.useActivityState({
+		createActivity: UP.createEditActivityVariant({ _tag: 'leaf', id: 'CONFIGURING_VOTE', opts: { itemId: item.itemId } }),
 		matchActivity: React.useCallback(
 			(state) => state.child.EDITING?.chosen.id === 'CONFIGURING_VOTE' && state.child.EDITING?.chosen.opts.itemId === item.itemId,
 			[item.itemId],
 		),
-		removeActivity: SLL.toEditIdleOrNone(),
+		removeActivity: UP.toEditIdleOrNone(),
 	})
 
 	const [_voteDisplayPropsOpen, _setVoteDisplayPropsOpen] = React.useState(false)
@@ -852,7 +854,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 											<StartActivityInteraction
 												loaderName="selectLayers"
 												preload="intent"
-												createActivity={SLL.createEditActivityVariant(
+												createActivity={UP.createEditActivityVariant(
 													{
 														_tag: 'leaf',
 														id: 'ADDING_ITEM',
@@ -1027,14 +1029,14 @@ function ItemDropdown(props: ItemDropdownProps) {
 				id: 'EDITING_ITEM',
 				opts: { itemId: item.itemId, cursor: { type: 'item-relative', itemId: item.itemId, position: 'on' } },
 			},
-		} satisfies { [k in SubDropdownState]: SLL.QueueEditActivity }
+		} satisfies { [k in SubDropdownState]: UP.QueueEditActivity }
 		// activities.edit = activities['add-after']
 
 		return [activities] as const
 	}, [item.itemId])
 
 	const isLocked = SLLClient.useIsItemLocked(item.itemId)
-	const isEditing = SLLClient.useIsEditing()
+	const isEditing = UPClient.useIsEditing()
 	const itemActions = () => QD.getLLItemActions(props.listStore.getState(), props.itemId)
 
 	function sendToFront() {
@@ -1069,7 +1071,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 					{!LL.isVoteItem(item) && (
 						<StartActivityInteraction
 							loaderName="selectLayers"
-							createActivity={SLL.createEditActivityVariant(activities['edit'])}
+							createActivity={UP.createEditActivityVariant(activities['edit'])}
 							matchKey={key => Obj.deepEqualStrict(key, activities['edit'])}
 							preload="viewport"
 							render={DropdownMenuItem}
@@ -1099,7 +1101,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 					/*{!LL.isVoteItem(item) && (
 					<StartActivityInteraction
 						loaderName="selectLayers"
-						createActivity={SLL.createEditActivityVariant(activities['create-vote'])}
+						createActivity={UP.createEditActivityVariant(activities['create-vote'])}
 						// we're using deepEqualStrict here so that his breaks if the definition for key changes
 						matchKey={key => Obj.deepEqualStrict(key, activities['create-vote'])}
 						preload="viewport"
@@ -1117,7 +1119,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 					<StartActivityInteraction
 						loaderName="selectLayers"
 						className={dropdownMenuItemClassesBase}
-						createActivity={SLL.createEditActivityVariant(activities['add-after'])}
+						createActivity={UP.createEditActivityVariant(activities['add-after'])}
 						matchKey={key => Obj.deepEqualStrict(key, activities['add-after'])}
 						preload="viewport"
 						render={DropdownMenuItem}
@@ -1128,7 +1130,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 					<StartActivityInteraction
 						loaderName="selectLayers"
 						className={dropdownMenuItemClassesBase}
-						createActivity={SLL.createEditActivityVariant(activities['add-before'])}
+						createActivity={UP.createEditActivityVariant(activities['add-before'])}
 						matchKey={key => Obj.deepEqualStrict(key, activities['add-before'])}
 						preload="viewport"
 						render={DropdownMenuItem}
@@ -1173,122 +1175,4 @@ function QueueItemSeparator(props: {
 			data-is-over={!disabled && isDropTarget}
 		/>
 	)
-}
-
-type ChildPropsBase = {
-	ref?: React.Ref<any>
-	onClick: () => void
-	onMouseEnter: () => void
-	onMouseLeave: () => void
-}
-export function StartActivityInteraction<
-	Loader extends SLLClient.ConfiguredLoaderConfig = SLLClient.ConfiguredLoaderConfig,
-	Component extends React.FunctionComponent<ChildPropsBase> = never,
->(
-	_props: {
-		loaderName: Loader['name']
-		createActivity: (root: SLL.RootActivity) => SLL.RootActivity
-		matchKey: (predicate: SLLClient.LoaderCacheKey<Loader>) => boolean
-
-		preload: 'intent' | 'viewport' | 'render'
-		intentDelay?: number
-		render: Component
-		ref?: any
-	} & Omit<React.ComponentProps<Component>, keyof ChildPropsBase>,
-) {
-	const eltRef = React.useRef<Element | null>(null)
-	const [props, otherEltProps] = Obj.partition(
-		_props,
-		// stop ref from being passed to child so we don't get into weird situations
-		'ref',
-		'loaderName',
-		'createActivity',
-		'matchKey',
-		'preload',
-		'intentDelay',
-		'render',
-	)
-	const [isLoaded, _isActive] = SLLClient.useActivityLoaderData({
-		loaderName: props.loaderName,
-		matchKey: props.matchKey,
-		trace: `StartActivityInteraction:${props.loaderName}`,
-		select: ZusUtils.useShallow(entry => [!!entry?.data, !!entry?.active] as const),
-	})
-
-	const startActivity = () => {
-		return SLLClient.Store.getState().updateActivity(props.createActivity)
-	}
-
-	// NOTE: preloadActivity should be implemented such that it runs the work lazily
-
-	const preloadActivity = React.useCallback(
-		async () => {
-			// this is mostly redundant(maybe slightly better perf) but shows intent
-			if (isLoaded) return
-
-			SLLClient.Store.getState().preloadActivity(props.createActivity)
-		},
-		[props.createActivity, isLoaded],
-	)
-
-	const [intentTimeout, setIntentTimeout] = React.useState<NodeJS.Timeout | null>(null)
-
-	React.useEffect(() => {
-		// preloadActivity depends on isLoaded above
-		if (props.preload === 'render') {
-			void preloadActivity()
-		}
-	}, [props.preload, preloadActivity])
-
-	React.useEffect(() => {
-		if (props.preload !== 'viewport' || !eltRef.current || isLoaded) return
-
-		const observer = new IntersectionObserver(
-			(entries) => {
-				entries.forEach((entry) => {
-					if (entry.isIntersecting) {
-						void preloadActivity()
-					}
-				})
-			},
-			{ threshold: 0.1 }, // Trigger when 10% of the element is visible
-		)
-
-		observer.observe(eltRef.current as unknown as Element)
-
-		return () => {
-			observer.disconnect()
-		}
-	}, [props.preload, preloadActivity, eltRef, isLoaded])
-
-	const handleMouseEnter = () => {
-		if (props.preload === 'intent' && !isLoaded) {
-			const delay = props.intentDelay ?? 150
-			const timeout = setTimeout(() => {
-				void preloadActivity()
-			}, delay)
-			setIntentTimeout(timeout)
-		}
-	}
-
-	const handleMouseLeave = () => {
-		if (intentTimeout) {
-			clearTimeout(intentTimeout)
-			setIntentTimeout(null)
-		}
-	}
-
-	const handleClick = () => {
-		startActivity()
-	}
-
-	const childProps = {
-		...otherEltProps,
-		ref: eltRef,
-		onClick: handleClick,
-		onMouseEnter: handleMouseEnter,
-		onMouseLeave: handleMouseLeave,
-	} as any
-
-	return <props.render {...childProps} />
 }

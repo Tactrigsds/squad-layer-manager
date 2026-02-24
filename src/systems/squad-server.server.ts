@@ -40,6 +40,7 @@ import * as Rbac from '@/systems/rbac.server'
 import * as SharedLayerList from '@/systems/shared-layer-list.server'
 import * as SquadLogsReceiver from '@/systems/squad-logs-receiver.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
+import * as UserPresence from '@/systems/user-presence.server'
 import * as Vote from '@/systems/vote.server'
 import * as WsSessionSys from '@/systems/ws-session.server'
 import * as Orpc from '@orpc/server'
@@ -449,6 +450,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 
 		layerQueue: LayerQueue.initLayerQueueContext(cleanup),
 		sharedList: SharedLayerList.getDefaultState(serverState),
+		userPresence: UserPresence.getDefaultState(),
 		vote: Vote.initVoteContext(cleanup),
 
 		adminList,

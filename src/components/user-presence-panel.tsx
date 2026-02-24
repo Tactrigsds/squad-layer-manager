@@ -1,7 +1,9 @@
 import { cn } from '@/lib/utils'
-import * as SLL from '@/models/shared-layer-list'
+import type * as SLL from '@/models/shared-layer-list'
+import * as UP from '@/models/user-presence'
 import * as USR from '@/models/users.models'
 import * as SLLClient from '@/systems/shared-layer-list.client'
+import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 import * as DateFns from 'date-fns'
 import React from 'react'
@@ -14,10 +16,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 const EVENT_TEXT_DURATION = 2000
 
 export default function UserPresencePanel() {
-	const [userPresence, layerList, editorIds] = Zus.useStore(
+	const [layerList, editorIds] = Zus.useStore(
 		SLLClient.Store,
-		useShallow(state => [state.userPresence, state.session.list, state.session.editors]),
+		useShallow(state => [state.session.list, state.session.editors]),
 	)
+	const userPresence = Zus.useStore(UPClient.PresenceStore, useShallow(state => state.userPresence))
 
 	// -------- Track temporary event text for users (e.g., "Finished editing") --------
 	const [userEventText, setUserEventText] = React.useState<Map<bigint, string>>(new Map())
@@ -77,11 +80,11 @@ export default function UserPresencePanel() {
 
 	// Sort users based on presence priority
 	const sortedUserPresence = React.useMemo(() => {
-		const oldestLastSeenToDisplay = Date.now() - SLL.DISPLAYED_AWAY_PRESENCE_WINDOW
+		const oldestLastSeenToDisplay = Date.now() - UP.DISPLAYED_AWAY_PRESENCE_WINDOW
 		const userPresenceList = Array.from(userPresence.entries()).map(([userId, presence]) => {
 			const user = userMap.get(userId)
 			return user ? { user, presence } : null
-		}).filter((item): item is { user: USR.User; presence: SLL.ClientPresence } => {
+		}).filter((item): item is { user: USR.User; presence: UP.ClientPresence } => {
 			if (!item) return false
 			// Only show users who are not away, or who have been seen in the last 5 minutes
 			if (!item.presence.away) return true
@@ -128,7 +131,7 @@ export default function UserPresencePanel() {
 		return user.displayName.slice(0, 2).toUpperCase()
 	}
 
-	const [_, setHoveredUser] = SLLClient.useHoveredActivityUser()
+	const [_, setHoveredUser] = UPClient.useHoveredActivityUser()
 
 	if (isLoading) {
 		return <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-current mx-auto mb-2"></div>
@@ -152,7 +155,7 @@ export default function UserPresencePanel() {
 				const isEditing = editorIds.has(user.discordId)
 				const eventText = userEventText.get(user.discordId)
 				const activityText = eventText ?? (currentActivity
-					? SLL.getHumanReadableActivity(currentActivity, layerList)
+					? UP.getHumanReadableActivity(currentActivity, layerList)
 					: (isEditing ? 'Editing Queue' : null))
 
 				return (

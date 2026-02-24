@@ -1,3 +1,4 @@
+import { StartActivityInteraction } from '@/components/activity.tsx'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,7 +10,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
-import * as SLL from '@/models/shared-layer-list'
+import * as UP from '@/models/user-presence'
 import * as RBAC from '@/rbac.models.ts'
 import * as ConfigClient from '@/systems/config.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
@@ -18,31 +19,49 @@ import * as QD from '@/systems/queue-dashboard.client'
 import * as ServerSettingsClient from '@/systems/server-settings.client'
 import * as SLLClient from '@/systems/shared-layer-list.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
+import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import { RepeatViolationDisplay } from './constraint-matches-indicator.tsx'
-import { LayerList, StartActivityInteraction } from './layer-list.tsx'
+import { LayerList } from './layer-list.tsx'
 import { MatchHistoryPanelContent } from './match-history-panel'
 import PoolConfigurationPopover from './server-settings-popover.tsx'
 import ShortLayerName from './short-layer-name.tsx'
+import TeamsPanel from './teams-panel.tsx'
+import TabsList from './ui/tabs-list.tsx'
 import UserPresencePanel from './user-presence-panel.tsx'
 
 export default function LayersPanel() {
+	type Tab = 'layer-queue' | 'teams'
+	const [tab, setTab] = React.useState<Tab>('layer-queue')
 	return (
 		<Card className="flex flex-col flex-1 min-h-0">
 			<ScrollArea className="flex-1">
 				<MatchHistoryPanelContent />
 				<Separator />
 				<CardHeader className="flex flex-row items-center justify-between">
-					<CardTitle>Recent Users</CardTitle>
+					<TabsList
+						active={tab}
+						options={[
+							{ label: 'Layer Queue', value: 'layer-queue' },
+							{ label: 'Teams', value: 'teams' },
+						]}
+						setActive={setTab}
+					/>
 					<UserPresencePanel />
 				</CardHeader>
 				<Separator />
-				<SlmUpdatesDisabledAlert />
-				<QueuePanelContent />
+				{tab === 'layer-queue'
+					? (
+						<>
+							<SlmUpdatesDisabledAlert />
+							<QueuePanelContent />
+						</>
+					)
+					: <TeamsPanel />}
 			</ScrollArea>
 		</Card>
 	)
@@ -159,7 +178,7 @@ type QueueControlPanelProps = {
 
 function QueueControlPanel(props: QueueControlPanelProps) {
 	const { errors, showErrors, setShowErrors } = props
-	const isEditing = SLLClient.useIsEditing()
+	const isEditing = UPClient.useIsEditing()
 	const [forceSave, setForceSave] = React.useState(false)
 
 	const setEditing = async (editing: boolean) => {
@@ -219,7 +238,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				</Tooltip>
 				<StartActivityInteraction
 					loaderName="selectLayers"
-					createActivity={SLL.createEditActivityVariant({
+					createActivity={UP.createEditActivityVariant({
 						_tag: 'leaf',
 						id: 'ADDING_ITEM',
 						opts: { cursor: { type: 'start' }, variant: 'toggle-position', action: 'add' },
@@ -236,7 +255,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				</StartActivityInteraction>
 				<StartActivityInteraction
 					loaderName="genVote"
-					createActivity={SLL.createEditActivityVariant({ _tag: 'leaf', id: 'GENERATING_VOTE', opts: { cursor: { type: 'start' } } })}
+					createActivity={UP.createEditActivityVariant({ _tag: 'leaf', id: 'GENERATING_VOTE', opts: { cursor: { type: 'start' } } })}
 					matchKey={key => key.id === 'GENERATING_VOTE'}
 					preload="intent"
 					render={Button}
@@ -248,7 +267,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				</StartActivityInteraction>
 				<StartActivityInteraction
 					loaderName="pasteRotation"
-					createActivity={SLL.createEditActivityVariant({ _tag: 'leaf', id: 'PASTE_ROTATION', opts: {} })}
+					createActivity={UP.createEditActivityVariant({ _tag: 'leaf', id: 'PASTE_ROTATION', opts: {} })}
 					matchKey={key => key.id === 'PASTE_ROTATION'}
 					preload="intent"
 					render={Button}

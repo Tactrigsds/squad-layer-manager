@@ -5,11 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Browser from '@/lib/browser'
 import * as SS from '@/models/server-state.models'
-import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
+import * as PresenceActions from '@/models/user-presence/actions'
 import * as ConfigClient from '@/systems/config.client'
 import * as ServerSettingsClient from '@/systems/server-settings.client'
-import * as SLLClient from '@/systems/shared-layer-list.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
+import * as UPClient from '@/systems/user-presence.client'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { AlertCircle, Home } from 'lucide-react'
 import React from 'react'
@@ -38,8 +38,7 @@ export const Route = createFileRoute('/_app/servers/$serverId')({
 	},
 
 	onLeave() {
-		const storeState = SLLClient.Store.getState()
-		storeState.pushPresenceAction(PresenceActions.navigatedAway)
+		UPClient.PresenceStore.getState().pushPresenceAction(PresenceActions.navigatedAway)
 	},
 })
 
@@ -62,13 +61,12 @@ function RouteComponent() {
 
 		sub.add(interaction$.subscribe((active) => {
 			try {
-				const storeState = SLLClient.Store.getState()
 				if (active) {
 					// if the user comes back to this page we want to set this as the default server again
 					SquadServerClient.SelectedServerStore.getState().setAsDefaultServer()
-					storeState.pushPresenceAction(PresenceActions.pageInteraction)
+					UPClient.PresenceStore.getState().pushPresenceAction(PresenceActions.pageInteraction)
 				} else {
-					storeState.pushPresenceAction(PresenceActions.interactionTimeout)
+					UPClient.PresenceStore.getState().pushPresenceAction(PresenceActions.interactionTimeout)
 				}
 			} catch (error) {
 				console.error('Error in pushing pageInteraction$', error)
