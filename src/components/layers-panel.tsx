@@ -238,7 +238,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				</Tooltip>
 				<StartActivityInteraction
 					loaderName="selectLayers"
-					createActivity={UP.createEditActivityVariant({
+					createActivity={UP.createEditingQueueVariant({
 						_tag: 'leaf',
 						id: 'ADDING_ITEM',
 						opts: { cursor: { type: 'start' }, variant: 'toggle-position', action: 'add' },
@@ -255,7 +255,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				</StartActivityInteraction>
 				<StartActivityInteraction
 					loaderName="genVote"
-					createActivity={UP.createEditActivityVariant({ _tag: 'leaf', id: 'GENERATING_VOTE', opts: { cursor: { type: 'start' } } })}
+					createActivity={UP.createEditingQueueVariant({ _tag: 'leaf', id: 'GENERATING_VOTE', opts: { cursor: { type: 'start' } } })}
 					matchKey={key => key.id === 'GENERATING_VOTE'}
 					preload="intent"
 					render={Button}
@@ -267,7 +267,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				</StartActivityInteraction>
 				<StartActivityInteraction
 					loaderName="pasteRotation"
-					createActivity={UP.createEditActivityVariant({ _tag: 'leaf', id: 'PASTE_ROTATION', opts: {} })}
+					createActivity={UP.createEditingQueueVariant({ _tag: 'leaf', id: 'PASTE_ROTATION', opts: {} })}
 					matchKey={key => key.id === 'PASTE_ROTATION'}
 					preload="intent"
 					render={Button}

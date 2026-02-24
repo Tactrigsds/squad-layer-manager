@@ -238,13 +238,13 @@ function createStore() {
 				let isComitting = false
 				try {
 					if (newOp.op === 'start-editing') {
-						UPClient.PresenceStore.getState().updateActivity(UP.TOGGLE_EDITING_TRANSITIONS.createActivity)
+						UPClient.PresenceStore.getState().updateActivity(UP.TOGGLE_EDITING_QUEUE_TRANSITIONS.createActivity)
 					} else if (newOp.op === 'finish-editing') {
 						if (get().session.editors.size === 0 && SLL.hasMutations(get().session)) {
 							set({ committing: true })
 							isComitting = true
 						}
-						UPClient.PresenceStore.getState().updateActivity(UP.TOGGLE_EDITING_TRANSITIONS.removeActivity)
+						UPClient.PresenceStore.getState().updateActivity(UP.TOGGLE_EDITING_QUEUE_TRANSITIONS.removeActivity)
 					}
 
 					await processUpdate({

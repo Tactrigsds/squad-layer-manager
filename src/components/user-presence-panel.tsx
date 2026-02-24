@@ -108,8 +108,8 @@ export default function UserPresencePanel() {
 			}
 
 			// Priority: has queue non-idle edit activity > editing > present
-			const aEditingActivity = aPresence.activityState?.child.EDITING
-			const bEditingActivity = bPresence.activityState?.child.EDITING
+			const aEditingActivity = aPresence.activityState?.child.EDITING_QUEUE
+			const bEditingActivity = bPresence.activityState?.child.EDITING_QUEUE
 
 			const aNonIdle = !!aEditingActivity?.chosen && aEditingActivity.chosen.id !== 'IDLE'
 			const bNonIdle = !!bEditingActivity?.chosen && bEditingActivity.chosen.id !== 'IDLE'

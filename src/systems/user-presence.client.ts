@@ -57,7 +57,7 @@ export const ACTIVITY_LOADER_CONFIGS = [
 	createActivityLoaderConfig(
 		'selectLayers',
 		s => {
-			const node = s.child.EDITING?.chosen
+			const node = s.child.EDITING_QUEUE?.chosen
 			if (node?.id === 'ADDING_ITEM' || node?.id === 'EDITING_ITEM') return node
 			return undefined
 		},
@@ -91,7 +91,7 @@ export const ACTIVITY_LOADER_CONFIGS = [
 	createActivityLoaderConfig(
 		'genVote',
 		s => {
-			const node = s.child.EDITING?.chosen
+			const node = s.child.EDITING_QUEUE?.chosen
 			if (node?.id === 'GENERATING_VOTE') return node
 			return undefined
 		},
@@ -107,7 +107,7 @@ export const ACTIVITY_LOADER_CONFIGS = [
 		},
 	}),
 	createActivityLoaderConfig('pasteRotation', s => {
-		const node = s.child.EDITING?.chosen
+		const node = s.child.EDITING_QUEUE?.chosen
 		if (node?.id === 'PASTE_ROTATION') return node
 		return undefined
 	})({
@@ -294,7 +294,7 @@ export function useItemPresence(itemId: LL.ItemId) {
 			const res = MapUtils.find(
 				state.presence,
 				(_, v) => {
-					const activity = v.activityState?.child.EDITING?.chosen
+					const activity = v.activityState?.child.EDITING_QUEUE?.chosen
 					return !!activity && UP.isItemOwnedActivity(activity) && activity.opts.itemId === itemId
 				},
 			)
@@ -302,7 +302,7 @@ export function useItemPresence(itemId: LL.ItemId) {
 			const root = res[1].activityState!
 			const presence = {
 				...res?.[1],
-				itemActivity: root.child.EDITING!.chosen as UP.ItemOwnedActivity,
+				itemActivity: root.child.EDITING_QUEUE!.chosen as UP.ItemOwnedActivity,
 			}
 			if (!presence) return [undefined, undefined] as const
 			const hovered = state.hoveredActivityUserId === presence.userId

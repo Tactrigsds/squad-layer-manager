@@ -105,21 +105,21 @@ export function LayerList(
 	DndKit.useDraggingCallback(item => {
 		const presenceState = UPClient.PresenceStore.getState()
 		const getIsDraggingStuff = (root: UP.RootActivity) => {
-			const id = root.child?.EDITING?.chosen?.id
+			const id = root.child?.EDITING_QUEUE?.chosen?.id
 			return id === 'MOVING_ITEM' || id === 'ADDING_ITEM_FROM_HISTORY'
 		}
 		if (!item) {
-			presenceState.updateActivity(UP.toEditIdleOrNone(getIsDraggingStuff))
+			presenceState.updateActivity(UP.toEditingQueueIdleOrNone(getIsDraggingStuff))
 			return
 		}
 		const { leaf } = ST.Match
 		if (item?.type === 'layer-item') {
-			presenceState.updateActivity(UP.createEditActivityVariant(leaf('MOVING_ITEM', { itemId: item.id })))
+			presenceState.updateActivity(UP.createEditingQueueVariant(leaf('MOVING_ITEM', { itemId: item.id })))
 			return
 		}
 
 		if (item?.type === 'history-entry') {
-			presenceState.updateActivity(UP.createEditActivityVariant(leaf('ADDING_ITEM_FROM_HISTORY', {})))
+			presenceState.updateActivity(UP.createEditingQueueVariant(leaf('ADDING_ITEM_FROM_HISTORY', {})))
 			return
 		}
 	})
@@ -237,7 +237,7 @@ function LoadedSelectLayersView({
 
 	const onSelectLayersChange = React.useCallback((open: boolean) => {
 		if (open) return
-		UPClient.PresenceStore.getState().updateActivity(UP.toEditIdleOrNone())
+		UPClient.PresenceStore.getState().updateActivity(UP.toEditingQueueIdleOrNone())
 	}, [])
 
 	const frames = React.useMemo(() => ({
@@ -291,7 +291,7 @@ function LoadedGenVoteView({
 
 	const onOpenChange = React.useCallback((open: boolean) => {
 		if (open) return
-		UPClient.PresenceStore.getState().updateActivity(UP.toEditIdleOrNone())
+		UPClient.PresenceStore.getState().updateActivity(UP.toEditingQueueIdleOrNone())
 	}, [])
 
 	const frames = React.useMemo(() => ({
@@ -316,7 +316,7 @@ function LoadedGenVoteView({
 		}
 
 		void state.dispatch({ op: 'add', index: index ?? { outerIndex: 0, innerIndex: null }, items: [item] })
-		UPClient.PresenceStore.getState().updateActivity(UP.toEditIdleOrNone())
+		UPClient.PresenceStore.getState().updateActivity(UP.toEditingQueueIdleOrNone())
 	}, [store])
 
 	return (
@@ -342,7 +342,7 @@ function LoadedPasteRotation({
 
 	const onOpenChange = React.useCallback((open: boolean) => {
 		if (open) return
-		UPClient.PresenceStore.getState().updateActivity(UP.toEditIdleOrNone())
+		UPClient.PresenceStore.getState().updateActivity(UP.toEditingQueueIdleOrNone())
 	}, [])
 
 	const onSubmit = React.useCallback((layers: L.UnvalidatedLayer[]) => {
@@ -355,7 +355,7 @@ function LoadedPasteRotation({
 			index,
 			items: layerIds.map(layerId => ({ type: 'single-list-item', layerId })),
 		})
-		UPClient.PresenceStore.getState().updateActivity(UP.toEditIdleOrNone())
+		UPClient.PresenceStore.getState().updateActivity(UP.toEditingQueueIdleOrNone())
 	}, [store, pastePosition])
 
 	const positionTabsList = React.useMemo(() => (
@@ -655,12 +655,12 @@ function VoteLayerListItem(props: LayerListItemProps) {
 
 	// we're only using .useActivityState here because there's nothing to load with this activity at the moment
 	const [configuringVote, setConfiguringVote] = UPClient.useActivityState({
-		createActivity: UP.createEditActivityVariant({ _tag: 'leaf', id: 'CONFIGURING_VOTE', opts: { itemId: item.itemId } }),
+		createActivity: UP.createEditingQueueVariant({ _tag: 'leaf', id: 'CONFIGURING_VOTE', opts: { itemId: item.itemId } }),
 		matchActivity: React.useCallback(
-			(state) => state.child.EDITING?.chosen.id === 'CONFIGURING_VOTE' && state.child.EDITING?.chosen.opts.itemId === item.itemId,
+			(state) => state.child.EDITING_QUEUE?.chosen.id === 'CONFIGURING_VOTE' && state.child.EDITING_QUEUE?.chosen.opts.itemId === item.itemId,
 			[item.itemId],
 		),
-		removeActivity: UP.toEditIdleOrNone(),
+		removeActivity: UP.toEditingQueueIdleOrNone(),
 	})
 
 	const [_voteDisplayPropsOpen, _setVoteDisplayPropsOpen] = React.useState(false)
@@ -854,7 +854,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 											<StartActivityInteraction
 												loaderName="selectLayers"
 												preload="intent"
-												createActivity={UP.createEditActivityVariant(
+												createActivity={UP.createEditingQueueVariant(
 													{
 														_tag: 'leaf',
 														id: 'ADDING_ITEM',
@@ -1029,7 +1029,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 				id: 'EDITING_ITEM',
 				opts: { itemId: item.itemId, cursor: { type: 'item-relative', itemId: item.itemId, position: 'on' } },
 			},
-		} satisfies { [k in SubDropdownState]: UP.QueueEditActivity }
+		} satisfies { [k in SubDropdownState]: UP.QueueEditingActivity }
 		// activities.edit = activities['add-after']
 
 		return [activities] as const
@@ -1071,7 +1071,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 					{!LL.isVoteItem(item) && (
 						<StartActivityInteraction
 							loaderName="selectLayers"
-							createActivity={UP.createEditActivityVariant(activities['edit'])}
+							createActivity={UP.createEditingQueueVariant(activities['edit'])}
 							matchKey={key => Obj.deepEqualStrict(key, activities['edit'])}
 							preload="viewport"
 							render={DropdownMenuItem}
@@ -1101,7 +1101,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 					/*{!LL.isVoteItem(item) && (
 					<StartActivityInteraction
 						loaderName="selectLayers"
-						createActivity={UP.createEditActivityVariant(activities['create-vote'])}
+						createActivity={UP.createEditingQueueVariant(activities['create-vote'])}
 						// we're using deepEqualStrict here so that his breaks if the definition for key changes
 						matchKey={key => Obj.deepEqualStrict(key, activities['create-vote'])}
 						preload="viewport"
@@ -1119,7 +1119,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 					<StartActivityInteraction
 						loaderName="selectLayers"
 						className={dropdownMenuItemClassesBase}
-						createActivity={UP.createEditActivityVariant(activities['add-after'])}
+						createActivity={UP.createEditingQueueVariant(activities['add-after'])}
 						matchKey={key => Obj.deepEqualStrict(key, activities['add-after'])}
 						preload="viewport"
 						render={DropdownMenuItem}
@@ -1130,7 +1130,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 					<StartActivityInteraction
 						loaderName="selectLayers"
 						className={dropdownMenuItemClassesBase}
-						createActivity={UP.createEditActivityVariant(activities['add-before'])}
+						createActivity={UP.createEditingQueueVariant(activities['add-before'])}
 						matchKey={key => Obj.deepEqualStrict(key, activities['add-before'])}
 						preload="viewport"
 						render={DropdownMenuItem}

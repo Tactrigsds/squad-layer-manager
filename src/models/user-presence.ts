@@ -10,8 +10,8 @@ import { z } from 'zod'
 export const [ACTIVITIES] = (() => {
 	const { variant, leaf, branch } = ST.Def
 
-	const activities = branch('ON_QUEUE_PAGE', [
-		variant('EDITING', [
+	const activities = branch('ON_DASHBOARD', [
+		variant('EDITING_QUEUE', [
 			leaf('IDLE'),
 			leaf(
 				'ADDING_ITEM',
@@ -38,55 +38,55 @@ export const [ACTIVITIES] = (() => {
 
 export const DEFAULT_ACTIVITY: RootActivity = {
 	_tag: 'branch',
-	id: 'ON_QUEUE_PAGE',
+	id: 'ON_DASHBOARD',
 	opts: {},
 	child: {},
 }
 
-const _editActivityVariants = ACTIVITIES.child.EDITING.child
-type EditActivityVariant = (typeof _editActivityVariants)[keyof typeof _editActivityVariants]['id']
+const _editingQueueVariants = ACTIVITIES.child.EDITING_QUEUE.child
+type EditingQueueVariant = (typeof _editingQueueVariants)[keyof typeof _editingQueueVariants]['id']
 
-export type QueueEditActivity<
-	K extends EditActivityVariant = EditActivityVariant,
+export type QueueEditingActivity<
+	K extends EditingQueueVariant = EditingQueueVariant,
 > = ST.Match.Node<
-	Extract<(typeof _editActivityVariants)[keyof typeof _editActivityVariants], { id: K }>
+	Extract<(typeof _editingQueueVariants)[keyof typeof _editingQueueVariants], { id: K }>
 >
 
-export function createEditActivityVariant<K extends EditActivityVariant>(
-	activity: QueueEditActivity<K>,
+export function createEditingQueueVariant<K extends EditingQueueVariant>(
+	activity: QueueEditingActivity<K>,
 ): (prev: RootActivity) => RootActivity {
 	return Im.produce((state: Im.WritableDraft<RootActivity>) => {
-		state.child.EDITING = {
+		state.child.EDITING_QUEUE = {
 			_tag: 'variant',
-			id: 'EDITING',
+			id: 'EDITING_QUEUE',
 			opts: {},
 			chosen: activity as any,
 		}
 	})
 }
 
-export const TOGGLE_EDITING_TRANSITIONS = {
-	matchActivity: (root: RootActivity) => !!root.child?.EDITING,
+export const TOGGLE_EDITING_QUEUE_TRANSITIONS = {
+	matchActivity: (root: RootActivity) => !!root.child?.EDITING_QUEUE,
 	createActivity: Im.produce((root: Im.WritableDraft<RootActivity>) => {
-		root.child.EDITING ??= {
+		root.child.EDITING_QUEUE ??= {
 			_tag: 'variant',
-			id: 'EDITING',
+			id: 'EDITING_QUEUE',
 			opts: {},
 			chosen: ST.Match.leaf('IDLE', {}),
 		}
 	}),
 	removeActivity: Im.produce((root: Im.WritableDraft<RootActivity>) => {
-		delete root.child.EDITING
+		delete root.child.EDITING_QUEUE
 	}),
 }
 
-export function toEditIdleOrNone(match?: (root: RootActivity) => any): (prev: RootActivity) => RootActivity {
+export function toEditingQueueIdleOrNone(match?: (root: RootActivity) => any): (prev: RootActivity) => RootActivity {
 	return Im.produce((state: Im.WritableDraft<RootActivity>) => {
-		if (!state.child.EDITING) return
+		if (!state.child.EDITING_QUEUE) return
 		if (match && !match(state)) return
-		state.child.EDITING = {
+		state.child.EDITING_QUEUE = {
 			_tag: 'variant',
-			id: 'EDITING',
+			id: 'EDITING_QUEUE',
 			opts: {},
 			chosen: ST.Match.leaf('IDLE', {}),
 		}
@@ -100,8 +100,8 @@ export const UserPresenceActivitySchema = ST.MatchUtils.createMatchSchema(ACTIVI
 export const ITEM_OWNED_ACTIVITY_CODE = z.enum(['EDITING_ITEM', 'CONFIGURING_VOTE', 'MOVING_ITEM'])
 type ItemOwnedActivityId = z.infer<typeof ITEM_OWNED_ACTIVITY_CODE>
 
-export type ItemOwnedActivity = Extract<QueueEditActivity, { id: ItemOwnedActivityId }>
-export function isItemOwnedActivity(activity: QueueEditActivity): activity is QueueEditActivity<ItemOwnedActivityId> {
+export type ItemOwnedActivity = Extract<QueueEditingActivity, { id: ItemOwnedActivityId }>
+export function isItemOwnedActivity(activity: QueueEditingActivity): activity is QueueEditingActivity<ItemOwnedActivityId> {
 	return (ITEM_OWNED_ACTIVITY_CODE.options as string[]).includes(activity.id)
 }
 
@@ -184,7 +184,7 @@ export function* iterActivities(state: PresenceState) {
 }
 
 export function itemsToLockForActivity(list: LL.List, activity: RootActivity): LL.ItemId[] {
-	const dialogActivity = activity.child.EDITING?.chosen
+	const dialogActivity = activity.child.EDITING_QUEUE?.chosen
 	if (!dialogActivity || !isItemOwnedActivity(dialogActivity)) return []
 	const itemId = dialogActivity.opts.itemId
 	const item = LL.findItemById(list, itemId)?.item
@@ -201,7 +201,7 @@ export function itemsToLockForActivity(list: LL.List, activity: RootActivity): L
 }
 
 export const getHumanReadableActivity = (activity: RootActivity, listOrIndex: LL.List | LL.ItemIndex, withItemName?: boolean) => {
-	const editingActivity = activity.child.EDITING
+	const editingActivity = activity.child.EDITING_QUEUE
 	const settingsActivity = activity.child.VIEWING_SETTINGS
 
 	if (settingsActivity) {

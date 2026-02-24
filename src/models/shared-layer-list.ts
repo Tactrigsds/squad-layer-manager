@@ -263,7 +263,7 @@ export function anyLocksInaccessible(locks: ItemLocks, ids: LL.ItemId[], wsClien
 
 export function endAllEditing(state: UP.PresenceState, session: EditSession) {
 	for (const presence of state.values()) {
-		if (presence.activityState?.child.EDITING) {
+		if (presence.activityState?.child.EDITING_QUEUE) {
 			UP.updateClientPresence(presence, { activityState: null })
 		}
 	}
@@ -281,11 +281,11 @@ export function getOpsForActivityStateUpdate(
 
 	// this isn't super necessary given the way the frontend locks out users  but it's here for completeness
 	startEditing: {
-		if (session.editors.has(userId) || !output.activityState?.child.EDITING) break startEditing
+		if (session.editors.has(userId) || !output.activityState?.child.EDITING_QUEUE) break startEditing
 		let firstEditor = true
 		for (const [clientId, presence] of state.entries()) {
 			if (wsClientId === clientId) continue
-			if (presence.activityState?.child.EDITING) {
+			if (presence.activityState?.child.EDITING_QUEUE) {
 				firstEditor = false
 				break
 			}
@@ -303,11 +303,11 @@ export function getOpsForActivityStateUpdate(
 	}
 
 	finishEditing: {
-		if (!session.editors.has(userId) || output.activityState?.child.EDITING) break finishEditing
+		if (!session.editors.has(userId) || output.activityState?.child.EDITING_QUEUE) break finishEditing
 		let lastEditor = true
 		for (const [clientId, presence] of state.entries()) {
 			if (wsClientId === clientId) continue
-			if (presence.activityState?.child.EDITING) {
+			if (presence.activityState?.child.EDITING_QUEUE) {
 				lastEditor = false
 				break
 			}
