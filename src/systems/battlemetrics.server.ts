@@ -69,9 +69,6 @@ const PLAYER_CACHE_TTL = 30 * 60 * 1000 // 30 minutes
 // needed for flag mutation endpoints, which is not part of PlayerFlagsAndProfile.
 const playerFlagsAndProfileCache = new FixedSizeMap<string, { value: BM.PlayerFlagsAndProfile; bmPlayerId: string; expiresAt: number }>(500)
 
-let orgServerIdsCache: { ids: { id: string; name: string | null }[] } | null = null
-let orgServerIdsFetchPromise: Promise<{ id: string; name: string | null }[]> | null = null
-
 let orgFlagsCache: BM.PlayerFlag[] | null = null
 let orgFlagsFetchPromise: Promise<BM.PlayerFlag[]> | null = null
 
@@ -386,41 +383,6 @@ async function bmFetch<T = null>(
 
 // -------- BM data fetching --------
 
-const getOrgServerIds = C.spanOp(
-	'getOrgServerIds',
-	{ module },
-	async (ctx: CS.Ctx, serverName?: string | null): Promise<string[]> => {
-		if (orgServerIdsCache) {
-			if (serverName) {
-				const filtered = orgServerIdsCache.ids.filter((s) => s.name?.includes(serverName))
-				if (filtered.length > 0) return filtered.map((s) => s.id)
-			}
-			return orgServerIdsCache.ids.map((s) => s.id)
-		}
-
-		if (!orgServerIdsFetchPromise) {
-			orgServerIdsFetchPromise = (async () => {
-				const { BM_ORG_ID } = getEnv()
-				const [data] = await bmFetch(ctx, 'GET', `/servers?filter[organizations]=${BM_ORG_ID}&fields[server]=name`, {
-					responseSchema: BM.ServersResponse,
-				})
-				return data.data.map((s) => ({ id: s.id, name: s.attributes.name ?? null }))
-			})().catch((err) => {
-				orgServerIdsFetchPromise = null
-				throw err
-			})
-		}
-		const servers = await orgServerIdsFetchPromise
-		orgServerIdsCache = { ids: servers }
-
-		if (serverName) {
-			const filtered = servers.filter((s) => s.name?.includes(serverName))
-			if (filtered.length > 0) return filtered.map((s) => s.id)
-		}
-		return servers.map((s) => s.id)
-	},
-)
-
 const OrgFlagsResponse = z.object({
 	data: z.array(z.object({
 		type: z.literal('playerFlag'),
@@ -473,6 +435,50 @@ const removePlayerFlags = C.spanOp(
 	},
 )
 
+async function fetchPlayerDetail(
+	ctx: CS.Ctx & C.ServerSlice,
+	eosId: string,
+	bmPlayerId: string,
+): Promise<BM.PlayerFlagsAndProfile> {
+	const { BM_ORG_ID } = getEnv()
+	const detailPath = `/players/${bmPlayerId}`
+		+ `?include=identifier,flagPlayer,playerFlag`
+		+ `&filter[identifiers]=eosID,steamID`
+		+ `&fields[identifier]=type,identifier`
+		+ `&fields[playerFlag]=name,color,description,icon`
+
+	const [detailData] = await bmFetch(ctx, 'GET', detailPath, {
+		responseSchema: BM.PlayerDetailResponse,
+	})
+
+	const detailIncluded = detailData.included ?? []
+
+	const detailIdentifiers = detailIncluded.filter((i): i is typeof i & { type: 'identifier' } => i.type === 'identifier')
+	const steamIdent = detailIdentifiers.find((i) => i.attributes.type === 'steamID')
+	const steamId = steamIdent?.attributes.identifier
+	const resolvedPlayerIds: SM.PlayerIds.IdQuery<'eos'> = { eos: eosId, ...(steamId ? { steam: steamId } : {}) }
+
+	const flagPlayers = detailIncluded
+		.filter((i): i is typeof i & { type: 'flagPlayer' } => i.type === 'flagPlayer')
+		.filter((fp) => !fp.attributes?.removedAt)
+		.filter((fp) => !BM_ORG_ID || fp.relationships?.organization?.data?.id === BM_ORG_ID)
+
+	const flagIds = flagPlayers.map((fp) => fp.relationships?.playerFlag?.data?.id ?? fp.id)
+
+	const canonicalId = SM.PlayerIds.getPlayerId(resolvedPlayerIds)
+	const value: BM.PlayerFlagsAndProfile = {
+		flagIds,
+		playerIds: resolvedPlayerIds,
+		profileUrl: `https://www.battlemetrics.com/rcon/players/${bmPlayerId}`,
+		hoursPlayed: 0,
+	}
+	setCachedPlayer(canonicalId, bmPlayerId, value)
+
+	const state = getServerBmState(ctx.serverId)
+	state.update$.next({ playerId: canonicalId, data: value })
+
+	return value
+}
 
 const bulkFetchOnlinePlayers = C.spanOp(
 	'bulkFetchOnlinePlayers',
@@ -484,12 +490,29 @@ const bulkFetchOnlinePlayers = C.spanOp(
 
 		const onlineEosIds = onlinePlayers.map(p => SM.PlayerIds.getPlayerId(p.ids))
 		const uncached = onlinePlayers.filter((p) => !getCachedPlayer(SM.PlayerIds.getPlayerId(p.ids)))
+
 		if (uncached.length > 0) {
-			await Promise.all(uncached.map((p) =>
-				fetchSinglePlayerBmData(ctx, p.ids).catch((err) => {
-					log.warn({ err, playerIds: p.ids }, 'failed to fetch player bm data')
+			// Resolve all uncached EOS IDs to BM player IDs in one request.
+			const [matchData] = await bmFetch(ctx, 'POST', '/players/quick-match', {
+				body: { data: uncached.map((p) => ({ type: 'identifier', attributes: { type: 'eosID', identifier: p.ids.eos } })) },
+				responseSchema: BM.PlayerQuickMatchResponse,
+			})
+
+			// Build a map from EOS ID → BM player ID using the identifier value in the response.
+			const eosIdToBmId = new Map<string, string>()
+			for (const item of matchData.data) {
+				const bmId = item.relationships?.player?.data?.id
+				if (bmId) eosIdToBmId.set(item.attributes.identifier, bmId)
+			}
+
+			// Fetch full detail for each matched player in parallel.
+			await Promise.all(uncached.map(async (p) => {
+				const bmPlayerId = eosIdToBmId.get(p.ids.eos)
+				if (!bmPlayerId) return
+				await fetchPlayerDetail(ctx, p.ids.eos, bmPlayerId).catch((err) => {
+					log.warn({ err, playerIds: p.ids }, 'failed to fetch player bm detail')
 				})
-			))
+			}))
 		}
 
 		log.debug('found %d online players (%d fetched from api)', onlineEosIds.length, uncached.length)
@@ -505,12 +528,6 @@ const fetchSinglePlayerBmData = C.spanOp(
 		const cached = getCachedPlayer(eosId)
 		if (cached) return cached
 
-		const info = await ctx.server.serverInfo.get(ctx)
-		const serverName = info.code === 'ok' ? info.data.name : null
-		const serverIds = await getOrgServerIds(ctx, serverName)
-		const orgServerIdSet = new Set(serverIds)
-
-		// Step 1: use quick-match to resolve the EOS ID to a BM player ID.
 		const [matchData] = await bmFetch(ctx, 'POST', '/players/quick-match', {
 			body: { data: [{ type: 'identifier', attributes: { type: 'eosID', identifier: eosId } }] },
 			responseSchema: BM.PlayerQuickMatchResponse,
@@ -520,52 +537,7 @@ const fetchSinglePlayerBmData = C.spanOp(
 		const bmPlayerId = matchData.data[0].relationships?.player?.data?.id
 		if (!bmPlayerId) return null
 
-		// Step 2: fetch the full player detail to get identifiers, flags and time played.
-		// The single-player endpoint supports include=identifier,flagPlayer,playerFlag.
-		const { BM_ORG_ID } = getEnv()
-		const detailPath = `/players/${bmPlayerId}`
-			+ `?include=identifier,flagPlayer,playerFlag`
-			+ `&filter[identifiers]=eosID,steamID`
-			+ `&fields[identifier]=type,identifier`
-			+ `&fields[playerFlag]=name,color,description,icon`
-
-		const [detailData] = await bmFetch(ctx, 'GET', detailPath, {
-			responseSchema: BM.PlayerDetailResponse,
-		})
-
-		const detailIncluded = detailData.included ?? []
-
-		const detailIdentifiers = detailIncluded.filter((i): i is typeof i & { type: 'identifier' } => i.type === 'identifier')
-		const steamIdent = detailIdentifiers.find((i) => i.attributes.type === 'steamID')
-		const steamId = steamIdent?.attributes.identifier
-		const resolvedPlayerIds: SM.PlayerIds.IdQuery<'eos'> = { eos: eosId, ...(steamId ? { steam: steamId } : {}) }
-
-		const flagPlayers = detailIncluded
-			.filter((i): i is typeof i & { type: 'flagPlayer' } => i.type === 'flagPlayer')
-			.filter((fp) => !fp.attributes?.removedAt)
-			.filter((fp) => !BM_ORG_ID || fp.relationships?.organization?.data?.id === BM_ORG_ID)
-
-		const flagIds = flagPlayers
-			.map((fp) => fp.relationships?.playerFlag?.data?.id ?? fp.id)
-
-		const serverRefs = detailData.data.relationships?.servers?.data ?? []
-		const totalSeconds = serverRefs
-			.filter((s) => orgServerIdSet.has(s.id))
-			.reduce((sum, s) => sum + (s.meta?.timePlayed ?? 0), 0)
-
-		const canonicalId = SM.PlayerIds.getPlayerId(resolvedPlayerIds)
-		const value: BM.PlayerFlagsAndProfile = {
-			flagIds,
-			playerIds: resolvedPlayerIds,
-			profileUrl: `https://www.battlemetrics.com/rcon/players/${bmPlayerId}`,
-			hoursPlayed: Math.round(totalSeconds / 3600),
-		}
-		setCachedPlayer(canonicalId, bmPlayerId, value)
-
-		const state = getServerBmState(ctx.serverId)
-		state.update$.next({ playerId: canonicalId, data: value })
-
-		return value
+		return fetchPlayerDetail(ctx, eosId, bmPlayerId)
 	},
 )
 

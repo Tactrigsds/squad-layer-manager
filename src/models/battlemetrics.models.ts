@@ -126,18 +126,6 @@ export const PlayerDetailResponse = z.object({
 	])).nullable().optional(),
 })
 
-// ---- /servers?filter[organizations]=... ----
-
-export const ServersResponse = z.object({
-	data: z.array(z.object({
-		type: z.literal('server'),
-		id: z.string(),
-		attributes: z.object({
-			name: z.string(),
-		}),
-	})),
-})
-
 // ---- Composite types used by server + client ----
 
 export type PlayerFlagsAndProfile = {
