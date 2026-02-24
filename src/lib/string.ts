@@ -37,10 +37,15 @@ export namespace StrPatterns {
 	export const PATH_SEGMENT = /[^/]+/
 }
 
+function normalizeForMatch(s: string) {
+	return s.replace(/[^\x20-\x7E]|\s/g, '').toLowerCase()
+}
+
 export function simpleUniqueStringMatch(names: string[], target: string) {
+	const normalizedTarget = normalizeForMatch(target)
 	const matched: number[] = []
 	for (let i = 0; i < names.length; i++) {
-		if (names[i].toLowerCase().includes(target.toLowerCase())) {
+		if (normalizeForMatch(names[i]).includes(normalizedTarget)) {
 			matched.push(i)
 		}
 	}

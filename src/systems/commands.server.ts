@@ -274,7 +274,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 				if (flags.length === 0) {
 					return 'none'
 				}
-				return Arr.paged(flags.map(f => f.name), 3).map(g => g.join('\n'))
+				return Arr.paged(flags.map(f => f.name), 4).map(g => g.join('\n'))
 			}
 			const flags = await Battlemetrics.getOrgFlags(ctx)
 
