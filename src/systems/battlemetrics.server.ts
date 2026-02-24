@@ -288,7 +288,7 @@ async function bmFetch<T = null>(
 	ctx: CS.Ctx,
 	method: 'GET' | 'POST' | 'PUT' | 'DELETE',
 	path: string,
-	init?: Omit<RequestInit, 'body' | 'method'> & { body?: unknown; responseSchema?: z.ZodType<T> },
+	init?: Omit<RequestInit, 'body' | 'method'> & { body?: unknown; responseSchema?: z.ZodType<T>; passthroughCodes?: number[] },
 ): Promise<readonly [T, Response]> {
 	return C.spanOp(
 		'bmFetch',
@@ -339,10 +339,13 @@ async function bmFetch<T = null>(
 					}
 					throw lastError
 				}
+				if (init?.passthroughCodes?.includes(res.status)) {
+					return [null as any, res] as const
+				}
 
 				if (!res.ok) {
 					const text = await res.text().catch(() => '')
-					lastError = new Error(`BattleMetrics API error: ${res.status} ${res.statusText}`)
+					lastError = new Error(`BattleMetrics API error: ${res.status} ${res.statusText}\n${text}`)
 					if (isRetryable(res.status) && attempt < RETRY.maxAttempts - 1) {
 						const delay = RETRY.baseDelayMs * 2 ** attempt
 						log.warn(`${method} ${path}: ${res.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${RETRY.maxAttempts})`)
@@ -391,7 +394,7 @@ const OrgFlagsResponse = z.object({
 	})),
 })
 
-const getOrgFlags = C.spanOp(
+export const getOrgFlags = C.spanOp(
 	'getOrgFlags',
 	{ module },
 	async (ctx: CS.Ctx): Promise<BM.PlayerFlag[]> => {
@@ -415,23 +418,37 @@ const getOrgFlags = C.spanOp(
 	},
 )
 
-const addPlayerFlags = C.spanOp(
+export const addPlayerFlags = C.spanOp(
 	'addPlayerFlags',
 	{ module },
-	async (ctx: CS.Ctx, bmPlayerId: string, flagIds: string[]): Promise<void> => {
-		if (flagIds.length === 0) return
-		await bmFetch(ctx, 'POST', `/players/${bmPlayerId}/relationships/flags`, {
+	async (ctx: CS.Ctx, bmPlayerId: string, flagIds: string[]) => {
+		if (flagIds.length === 0) return { code: 'err:no-flags' as const }
+		const [_, res] = await bmFetch(ctx, 'POST', `/players/${bmPlayerId}/relationships/flags`, {
 			body: { data: flagIds.map((id) => ({ type: 'playerFlag', id })) },
+			passthroughCodes: [409],
 		})
+		if (res.status === 409) return { code: 'player-already-has-flag' as const }
+		return { code: 'ok' as const }
 	},
 )
 
-const removePlayerFlags = C.spanOp(
+export const removePlayerFlags = C.spanOp(
 	'removePlayerFlags',
 	{ module },
-	async (ctx: CS.Ctx, bmPlayerId: string, flagIds: string[]): Promise<void> => {
-		if (flagIds.length === 0) return
-		await Promise.all(flagIds.map((flagId) => bmFetch(ctx, 'DELETE', `/players/${bmPlayerId}/relationships/flags/${flagId}`)))
+	async (ctx: CS.Ctx, bmPlayerId: string, flagIds: string[]): Promise<('ok' | 'already-removed')[]> => {
+		if (flagIds.length === 0) return []
+		return Promise.all(flagIds.map(async (flagId) => {
+			const [, res] = await bmFetch(ctx, 'DELETE', `/players/${bmPlayerId}/relationships/flags/${flagId}`, { passthroughCodes: [400] })
+			if (res.status === 400) {
+				const bodyText = await res.text()
+				const body = JSON.parse(bodyText)
+				if (body.details === 'Flag is already removed') {
+					return 'already-removed' as const
+				}
+				throw new Error(`Battlemetrics API error: ${res.status} ${res.statusText}\n${bodyText}`)
+			}
+			return 'ok' as const
+		}))
 	},
 )
 
@@ -468,6 +485,7 @@ async function fetchPlayerDetail(
 	const canonicalId = SM.PlayerIds.getPlayerId(resolvedPlayerIds)
 	const value: BM.PlayerFlagsAndProfile = {
 		flagIds,
+		bmPlayerId,
 		playerIds: resolvedPlayerIds,
 		profileUrl: `https://www.battlemetrics.com/rcon/players/${bmPlayerId}`,
 		hoursPlayed: 0,
@@ -520,7 +538,14 @@ const bulkFetchOnlinePlayers = C.spanOp(
 	},
 )
 
-const fetchSinglePlayerBmData = C.spanOp(
+export async function invalidateAndRefetchPlayer(ctx: CS.Ctx & C.ServerSlice, eosId: string): Promise<BM.PlayerFlagsAndProfile | null> {
+	playerFlagsAndProfileCache.delete(eosId)
+	const updated = await fetchSinglePlayerBmData(ctx, SM.PlayerIds.queryFromPlayerId(eosId))
+	persistCache().catch((err) => log.warn({ err }, 'Failed to persist BM cache after flag update'))
+	return updated
+}
+
+export const fetchSinglePlayerBmData = C.spanOp(
 	'fetchSinglePlayerBmData',
 	{ module, attrs: (_ctx, playerIds) => ({ eosId: playerIds.eos, steamId: playerIds.steam }) },
 	async (ctx: CS.Ctx & C.ServerSlice, playerIds: SM.PlayerIds.IdQuery<'eos'>): Promise<BM.PlayerFlagsAndProfile | null> => {

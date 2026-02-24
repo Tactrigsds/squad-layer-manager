@@ -3,6 +3,7 @@ import * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array'
 import { createLogMatcher, eventDef, matchLog } from '@/lib/log-parsing'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
+import { simpleUniqueStringMatch } from '@/lib/string'
 import * as ZodUtils from '@/lib/zod'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
@@ -299,6 +300,43 @@ export namespace PlayerIds {
 		if (type.epic) parts.push(`epic:${type.epic}`)
 		if (type.playerController) parts.push(`pc:${type.playerController}`)
 		return parts.join(' | ')
+	}
+
+	export function fuzzyMatchIdentifierUniquely(
+		players: Type[],
+		id: string,
+	): { code: 'ok'; matched: Type } | { code: 'err:not-found' } | { code: 'err:multiple-matches'; count: number }
+	export function fuzzyMatchIdentifierUniquely<T>(
+		players: T[],
+		cb: (item: T) => Type,
+		id: string,
+	): { code: 'ok'; matched: T } | { code: 'err:not-found' } | { code: 'err:multiple-matches'; count: number }
+	export function fuzzyMatchIdentifierUniquely<T>(
+		players: T[] | Type[],
+		cbOrId: ((item: T) => Type) | string,
+		id?: string,
+	): { code: 'ok'; matched: T | Type } | { code: 'err:not-found' } | { code: 'err:multiple-matches'; count: number } {
+		if (typeof cbOrId === 'function') {
+			const cb = cbOrId
+			const searchId = id!
+			const exact = (players as T[]).filter(p => {
+				const ids = cb(p)
+				return ids.eos === searchId || ids.steam === searchId
+			})
+			if (exact.length === 1) return { code: 'ok', matched: exact[0] }
+			if (exact.length > 1) return { code: 'err:multiple-matches', count: exact.length }
+			const result = simpleUniqueStringMatch((players as T[]).map(p => cb(p).username?.toLowerCase() ?? ''), searchId)
+			if (result.code !== 'ok') return result
+			return { code: 'ok', matched: (players as T[])[result.matched] }
+		}
+
+		const searchId = cbOrId
+		const exact = (players as Type[]).filter(p => p.eos === searchId || p.steam === searchId)
+		if (exact.length === 1) return { code: 'ok', matched: exact[0] }
+		if (exact.length > 1) return { code: 'err:multiple-matches', count: exact.length }
+		const result = simpleUniqueStringMatch((players as Type[]).map(p => p.username?.toLowerCase() ?? ''), searchId)
+		if (result.code !== 'ok') return result
+		return { code: 'ok', matched: (players as Type[])[result.matched] }
 	}
 }
 

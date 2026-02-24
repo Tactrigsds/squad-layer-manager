@@ -37,19 +37,19 @@ export namespace StrPatterns {
 	export const PATH_SEGMENT = /[^/]+/
 }
 
-export function checkMatches(names: string[], target: string) {
-	const matched: string[] = []
-	for (const name of names) {
-		if (name.includes(target.toLowerCase())) {
-			matched.push(name)
+export function simpleUniqueStringMatch(names: string[], target: string) {
+	const matched: number[] = []
+	for (let i = 0; i < names.length; i++) {
+		if (names[i].toLowerCase().includes(target.toLowerCase())) {
+			matched.push(i)
 		}
 	}
 
 	if (matched.length === 0) {
 		return { code: 'err:not-found' as const }
 	} else if (matched.length > 1) {
-		return { code: 'err:multiple-matches' as const }
+		return { code: 'err:multiple-matches' as const, count: matched.length }
 	} else {
-		return { code: 'ok' as const, matched }
+		return { code: 'ok' as const, matched: matched[0] }
 	}
 }

@@ -30,7 +30,7 @@ const FlagPlayerInclude = z.object({
 })
 
 export const PlayerFlagAttributes = z.object({
-	name: z.string().nullable(),
+	name: z.string(),
 	color: z.string().nullable(),
 	description: z.string().nullable(),
 	icon: z.string().nullable(),
@@ -129,6 +129,7 @@ export const PlayerDetailResponse = z.object({
 // ---- Composite types used by server + client ----
 
 export type PlayerFlagsAndProfile = {
+	bmPlayerId: string
 	flagIds: string[]
 	playerIds: SM.PlayerIds.IdQuery<'eos'>
 	profileUrl: string
@@ -162,3 +163,10 @@ export function resolvePlayerFlagGroups(players: [SM.PlayerId, PlayerFlag[]][], 
 
 	return groups
 }
+
+export const UpdatePlayerFlagsInputSchema = z.object({
+	steamId: z.string(),
+	flagIds: z.array(z.string()),
+})
+
+export type UpdatePlayerFlagsInput = z.infer<typeof UpdatePlayerFlagsInputSchema>

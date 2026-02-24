@@ -68,6 +68,9 @@ export const COMMAND_DECLARATIONS = {
 		args: ['code'],
 		defaults: { scopes: ['admin'], strings: ['link-steam-account'], enabled: true },
 	}),
+	...declareCommand('flag', { args: ['player', 'flag'], defaults: { scopes: ['admin'], strings: ['flag'], enabled: true } }),
+	...declareCommand('removeFlag', { args: ['player', 'flag'], defaults: { scopes: ['admin'], strings: ['removeFlag', 'rf'], enabled: true } }),
+	...declareCommand('listFlags', { args: [{ name: 'player', optional: true }], defaults: { enabled: true, scopes: ['admin'], strings: ['listFlags', 'lf'] } }),
 }
 
 export type CommandId = (typeof COMMAND_DECLARATIONS)[number]['id']

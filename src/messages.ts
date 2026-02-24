@@ -284,6 +284,9 @@ export const GENERAL = {
 			getSlmUpdatesEnabled: 'Check if SLM is allowed to set the next layer',
 			linkSteamAccount: 'Link your Steam account to your Discord account',
 			requestFeedback: 'Request feedback on a layer',
+			flag: "Flag a player's BM profile",
+			removeFlag: "Remove a flag from a player's BM profile",
+			listFlags: 'List BM flags for a player, or all org flags if no player is given',
 		},
 	},
 }

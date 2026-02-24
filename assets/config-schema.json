@@ -326,6 +326,17 @@
           "scopes": ["admin"],
           "strings": ["link-steam-account"],
           "enabled": true
+        },
+        "flag": {"scopes": ["admin"], "strings": ["flag"], "enabled": true},
+        "removeFlag": {
+          "scopes": ["admin"],
+          "strings": ["removeFlag", "rf"],
+          "enabled": true
+        },
+        "listFlags": {
+          "enabled": true,
+          "scopes": ["admin"],
+          "strings": ["listFlags", "lf"]
         }
       },
       "type": "object",
@@ -557,6 +568,87 @@
             "strings": {
               "description": "Command strings that trigger this command when prefixed with the command prefix",
               "default": ["link-steam-account"],
+              "type": "array",
+              "items": {
+                "description": "A string with no whitespace characters",
+                "type": "string",
+                "pattern": "^\\S+$"
+              }
+            },
+            "scopes": {
+              "description": "Scopes in which this command is available",
+              "default": ["admin"],
+              "type": "array",
+              "items": {"type": "string", "enum": ["admin", "public"]}
+            },
+            "enabled": {"default": true, "type": "boolean"}
+          }
+        },
+        "flag": {
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["flag"],
+            "enabled": true
+          },
+          "type": "object",
+          "properties": {
+            "strings": {
+              "description": "Command strings that trigger this command when prefixed with the command prefix",
+              "default": ["flag"],
+              "type": "array",
+              "items": {
+                "description": "A string with no whitespace characters",
+                "type": "string",
+                "pattern": "^\\S+$"
+              }
+            },
+            "scopes": {
+              "description": "Scopes in which this command is available",
+              "default": ["admin"],
+              "type": "array",
+              "items": {"type": "string", "enum": ["admin", "public"]}
+            },
+            "enabled": {"default": true, "type": "boolean"}
+          }
+        },
+        "removeFlag": {
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["removeFlag", "rf"],
+            "enabled": true
+          },
+          "type": "object",
+          "properties": {
+            "strings": {
+              "description": "Command strings that trigger this command when prefixed with the command prefix",
+              "default": ["removeFlag", "rf"],
+              "type": "array",
+              "items": {
+                "description": "A string with no whitespace characters",
+                "type": "string",
+                "pattern": "^\\S+$"
+              }
+            },
+            "scopes": {
+              "description": "Scopes in which this command is available",
+              "default": ["admin"],
+              "type": "array",
+              "items": {"type": "string", "enum": ["admin", "public"]}
+            },
+            "enabled": {"default": true, "type": "boolean"}
+          }
+        },
+        "listFlags": {
+          "default": {
+            "enabled": true,
+            "scopes": ["admin"],
+            "strings": ["listFlags", "lf"]
+          },
+          "type": "object",
+          "properties": {
+            "strings": {
+              "description": "Command strings that trigger this command when prefixed with the command prefix",
+              "default": ["listFlags", "lf"],
               "type": "array",
               "items": {
                 "description": "A string with no whitespace characters",

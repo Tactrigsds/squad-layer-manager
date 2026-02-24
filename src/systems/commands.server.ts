@@ -1,14 +1,16 @@
+import * as Arr from '@/lib/array'
+import { simpleUniqueStringMatch as simpleUniqueStringMatch } from '@/lib/string'
 import { assertNever } from '@/lib/type-guards'
 import * as Messages from '@/messages.ts'
+import * as BM from '@/models/battlemetrics.models'
 import * as CMD from '@/models/command.models.ts'
 import type * as CS from '@/models/context-shared'
-import { initModule } from '@/server/logger'
-
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import { CONFIG } from '@/server/config.ts'
 import type * as C from '@/server/context.ts'
-
+import { initModule } from '@/server/logger'
+import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as Users from '@/systems/users.server'
@@ -172,6 +174,137 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 			}
 			break
 		}
+
+		case 'flag': {
+			const teamsStateRes = await ctx.server.teams.get(ctx)
+			if (teamsStateRes.code !== 'ok') {
+				return teamsStateRes
+			}
+			let matchedPlayerRes = SM.PlayerIds.fuzzyMatchIdentifierUniquely(teamsStateRes.players, p => p.ids, args.player)
+			if (matchedPlayerRes.code === 'err:not-found') {
+				return await showError('not-found', `No player matches found for "${args.player}"`)
+			}
+
+			if (matchedPlayerRes.code === 'err:multiple-matches') {
+				return await showError('multiple-matches', `Multiple(${matchedPlayerRes.count}) player matches found for "${args.player}".`)
+			}
+
+			const flags = await Battlemetrics.getOrgFlags(ctx)
+
+			const matchedFlagRes = simpleUniqueStringMatch(flags.map(f => f.name), args.flag)
+
+			if (matchedFlagRes.code === 'err:not-found') {
+				return await showError('not-found', `No flag matches found for "${args.flag}"`)
+			}
+
+			if (matchedFlagRes.code === 'err:multiple-matches') {
+				return await showError('multiple-matches', `Multiple(${matchedFlagRes.count}) flag matches found for "${args.flag}".`)
+			}
+
+			const flagToUpdate = flags[matchedFlagRes.matched]
+			const targetIds = matchedPlayerRes.matched.ids
+			const bmPlayerData = await Battlemetrics.fetchSinglePlayerBmData(ctx, targetIds)
+			if (!bmPlayerData) {
+				return await showError('not-in-battlemetrics', `Unable to resolve player "${args.player}" in battlemetrics`)
+			}
+
+			const res = await Battlemetrics.addPlayerFlags(ctx, bmPlayerData.bmPlayerId, [flagToUpdate.id])
+			if (res.code === 'err:no-flags') return
+			if (res.code === 'player-already-has-flag') {
+				return await showError(res.code, `Player "${targetIds.username}" is already assigned flag "${flagToUpdate.name}"`)
+			}
+			if (res.code === 'ok') {
+				await Battlemetrics.invalidateAndRefetchPlayer(ctx, targetIds.eos)
+				await SquadRcon.warn(ctx, msg.playerIds, `Added flag "${flagToUpdate.name}" to ${targetIds.username}'s BM profile`)
+				return
+			}
+			assertNever(res)
+			break
+		}
+
+		case 'removeFlag': {
+			const teamsStateRes = await ctx.server.teams.get(ctx)
+			if (teamsStateRes.code !== 'ok') {
+				return teamsStateRes
+			}
+			const matchedPlayerRes = SM.PlayerIds.fuzzyMatchIdentifierUniquely(teamsStateRes.players, p => p.ids, args.player)
+			if (matchedPlayerRes.code === 'err:not-found') {
+				return await showError('not-found', `No player matches found for "${args.player}"`)
+			}
+			if (matchedPlayerRes.code === 'err:multiple-matches') {
+				return await showError('multiple-matches', `Multiple(${matchedPlayerRes.count}) player matches found for "${args.player}".`)
+			}
+
+			const flags = await Battlemetrics.getOrgFlags(ctx)
+			const matchedFlagRes = simpleUniqueStringMatch(flags.map(f => f.name), args.flag)
+			if (matchedFlagRes.code === 'err:not-found') {
+				return await showError('not-found', `No flag matches found for "${args.flag}"`)
+			}
+			if (matchedFlagRes.code === 'err:multiple-matches') {
+				return await showError('multiple-matches', `Multiple(${matchedFlagRes.count}) flag matches found for "${args.flag}".`)
+			}
+
+			const flagToRemove = flags[matchedFlagRes.matched]
+			const bmPlayerData = await Battlemetrics.fetchSinglePlayerBmData(ctx, matchedPlayerRes.matched.ids)
+			if (!bmPlayerData) {
+				return await showError('not-in-battlemetrics', `Unable to resolve player "${args.player}" in battlemetrics`)
+			}
+			if (!bmPlayerData.flagIds.includes(flagToRemove.id)) {
+				return await showError('not-found', `Player "${matchedPlayerRes.matched.ids.username}" does not have flag "${flagToRemove.name}"`)
+			}
+
+			const [status] = await Battlemetrics.removePlayerFlags(ctx, bmPlayerData.bmPlayerId, [flagToRemove.id])
+			if (status === 'already-removed') {
+				return await showError(
+					'already-removed',
+					`Flag "${flagToRemove.name}" is already removed from ${matchedPlayerRes.matched.ids.username}'s BM profile`,
+				)
+			}
+			await Battlemetrics.invalidateAndRefetchPlayer(ctx, matchedPlayerRes.matched.ids.eos)
+			await SquadRcon.warn(
+				ctx,
+				msg.playerIds,
+				`Removed flag "${flagToRemove.name}" from ${matchedPlayerRes.matched.ids.username}'s BM profile`,
+			)
+			break
+		}
+
+		case 'listFlags': {
+			function formatFlagList(flags: BM.PlayerFlag[]) {
+				if (flags.length === 0) {
+					return 'none'
+				}
+				return Arr.paged(flags.map(f => f.name), 3).map(g => g.join('\n'))
+			}
+			const flags = await Battlemetrics.getOrgFlags(ctx)
+
+			if (!args.player) {
+				await SquadRcon.warn(ctx, msg.playerIds, formatFlagList(flags))
+				break
+			}
+
+			const teamsStateRes = await ctx.server.teams.get(ctx)
+			if (teamsStateRes.code !== 'ok') {
+				return teamsStateRes
+			}
+			const matchedPlayerRes = SM.PlayerIds.fuzzyMatchIdentifierUniquely(teamsStateRes.players, p => p.ids, args.player)
+			if (matchedPlayerRes.code === 'err:not-found') {
+				return await showError('not-found', `No player matches found for "${args.player}"`)
+			}
+			if (matchedPlayerRes.code === 'err:multiple-matches') {
+				return await showError('multiple-matches', `Multiple(${matchedPlayerRes.count}) player matches found for "${args.player}".`)
+			}
+
+			const bmPlayerData = await Battlemetrics.fetchSinglePlayerBmData(ctx, matchedPlayerRes.matched.ids)
+			if (!bmPlayerData) {
+				return await showError('not-in-battlemetrics', `Unable to resolve player "${args.player}" in battlemetrics`)
+			}
+			const playerFlags = flags.filter(f => bmPlayerData.flagIds.includes(f.id))
+
+			await SquadRcon.warn(ctx, msg.playerIds, formatFlagList(playerFlags))
+			break
+		}
+
 		default: {
 			assertNever(cmd)
 		}

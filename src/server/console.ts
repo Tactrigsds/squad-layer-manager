@@ -1,3 +1,4 @@
+import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as Discord from '@/systems/discord.server'
 import * as Fastify from '@/systems/fastify.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
@@ -16,6 +17,7 @@ w.Rbac = Rbac
 w.Sessions = Sessions
 w.SquadServer = SquadServer
 w.superjson = superjson
+w.Battlemetrics = Battlemetrics
 
 w.debug__setTicketOutcome = (team1: number, team2: number) => {
 	SquadServer.globalState.debug__ticketOutcome = { team1, team2 }
