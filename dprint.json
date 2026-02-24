@@ -29,6 +29,7 @@
 	},
 	"excludes": [
 		"data/**",
+		"prod/**",
 		"assets/**",
 		"**/*-lock.json",
 		"**/*-lock.yaml",
