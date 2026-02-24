@@ -266,14 +266,14 @@ export function ServerActivityCharts(props: {
 	const flagGroupChart = React.useMemo(() => {
 		if (!playerFlagGroupings || !livePlayers) return null
 
-		// Build [playerId, flags[]] pairs for all live players
+		// Build [eosId, flags[]] pairs for all live players — bmData is keyed by EOS ID
 		const playerFlagPairs: [SM.PlayerId, BM.PlayerFlag[]][] = livePlayers
-			.filter(p => p.ids.steam != null)
+			.filter(p => p.ids.eos != null)
 			.map(p => {
-				const steamId = p.ids.steam!
-				const flagIds = bmData[steamId]?.flagIds ?? []
+				const eosId = p.ids.eos!
+				const flagIds = bmData[eosId]?.flagIds ?? []
 				const flags = orgFlags ? BattlemetricsClient.resolveFlags(flagIds, orgFlags) : []
-				return [steamId, flags]
+				return [eosId, flags]
 			})
 
 		const playerGroups = BM.resolvePlayerFlagGroups(playerFlagPairs, playerFlagGroupings)
@@ -287,7 +287,7 @@ export function ServerActivityCharts(props: {
 		const otherIdx = groupLabels.length - 1
 
 		for (const player of livePlayers) {
-			const group = player.ids.steam != null ? playerGroups.get(player.ids.steam) : undefined
+			const group = player.ids.eos != null ? playerGroups.get(player.ids.eos) : undefined
 			const idx = group != null ? groupLabels.indexOf(group) : otherIdx
 			if (idx === -1) continue
 			const name = player.ids.usernameNoTag ?? player.ids.username ?? player.ids.steam ?? '?'
