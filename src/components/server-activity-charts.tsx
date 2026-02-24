@@ -329,7 +329,15 @@ export function ServerActivityCharts(props: {
 			),
 			groupCount: groupLabels.length,
 		}
-	}, [playerFlagGroupings, livePlayers, bmData, team1Label, team2Label, isDark])
+	}, [
+	playerFlagGroupings,
+	livePlayers,
+	bmData,
+	team1Label,
+	team2Label,
+	isDark,
+	orgFlags
+])
 
 	if (isEmpty) {
 		return (

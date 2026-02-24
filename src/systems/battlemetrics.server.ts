@@ -473,59 +473,6 @@ const removePlayerFlags = C.spanOp(
 	},
 )
 
-type PlayerListData = z.infer<typeof BM.PlayerListResponse>
-
-function parsePlayerListPage(data: PlayerListData, orgServerIdSet: Set<string>): string[] {
-	const { BM_ORG_ID } = getEnv()
-	const included = data.included ?? []
-	const identifiers = included.filter((i): i is typeof i & { type: 'identifier' } => i.type === 'identifier')
-	const flagPlayers = included.filter((i): i is typeof i & { type: 'flagPlayer' } => i.type === 'flagPlayer')
-		.filter((fp) => !fp.attributes?.removedAt)
-		.filter((fp) => !BM_ORG_ID || fp.relationships?.organization?.data?.id === BM_ORG_ID)
-	const playerFlags = included.filter((i): i is typeof i & { type: 'playerFlag' } => i.type === 'playerFlag')
-
-	const eosIds: string[] = []
-
-	for (const player of data.data) {
-		const bmPlayerId = player.id
-
-		const eosIdent = identifiers.find(
-			(i) => i.attributes.type === 'eosID' && i.relationships?.player?.data?.id === bmPlayerId,
-		)
-		if (!eosIdent) continue
-		const eosId = eosIdent.attributes.identifier
-
-		const steamIdent = identifiers.find(
-			(i) => i.attributes.type === 'steamID' && i.relationships?.player?.data?.id === bmPlayerId,
-		)
-		const steamId = steamIdent?.attributes.identifier
-
-		const playerIds: SM.PlayerIds.IdQuery<'eos'> = { eos: eosId, ...(steamId ? { steam: steamId } : {}) }
-
-		const playerFlagPlayers = flagPlayers.filter(
-			(fp) => fp.relationships?.player?.data?.id === bmPlayerId,
-		)
-		const flagIds = playerFlagPlayers
-			.map((fp) => fp.relationships?.playerFlag?.data?.id ?? fp.id)
-
-		const serverRefs = player.relationships?.servers?.data ?? []
-		const totalSeconds = serverRefs
-			.filter((s) => orgServerIdSet.has(s.id))
-			.reduce((sum, s) => sum + (s.meta?.timePlayed ?? 0), 0)
-
-		const canonicalId = SM.PlayerIds.getPlayerId(playerIds)
-		setCachedPlayer(canonicalId, bmPlayerId, {
-			flagIds,
-			playerIds: playerIds,
-			profileUrl: `https://www.battlemetrics.com/rcon/players/${bmPlayerId}`,
-			hoursPlayed: Math.round(totalSeconds / 3600),
-		})
-
-		eosIds.push(canonicalId)
-	}
-
-	return eosIds
-}
 
 const bulkFetchOnlinePlayers = C.spanOp(
 	'bulkFetchOnlinePlayers',
