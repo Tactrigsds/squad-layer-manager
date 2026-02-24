@@ -211,13 +211,12 @@ export function showLogEvent(obj: { level: number; [key: string]: unknown }, sho
 		[ATTRS.User.ID]: rawUserId,
 		[ATTRS.WebSocket.CLIENT_ID]: rawWsClientId,
 		trace_id: rawTraceId,
-		span_id: rawSpanId,
 		...props
 	} = obj
 
 	const moduleName = rawModuleName as string | undefined
 	const spanName = rawSpanName as string | undefined
-	const rootSpanName = rawRootSpanName ?? rawRootSpanName2 as string | undefined
+	const rootSpanName = (rawRootSpanName ?? rawRootSpanName2) as string | undefined
 	const traceId = rawTraceId as string | undefined
 	const spanId = props.span_id as string | undefined
 	const serverId = rawServerId as string | undefined
