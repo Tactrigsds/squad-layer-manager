@@ -147,18 +147,18 @@ export function MatchHistoryPanelContent() {
 						<Button
 							variant="outline"
 							size="sm"
-							onClick={goToFirstPage}
-							disabled={onFirstPage}
 							className="rounded-r-none px-2"
+							onClick={goToLastPage}
+							disabled={onLastPage}
 						>
 							<Icons.ChevronsLeft className="h-4 w-4" />
 						</Button>
 						<Button
 							variant="outline"
 							size="sm"
-							onClick={goToPrevPage}
-							disabled={onFirstPage}
 							className="rounded-l-none border-l-0 px-2"
+							onClick={goToNextPage}
+							disabled={onLastPage}
 						>
 							<Icons.ChevronLeft className="h-4 w-4" />
 						</Button>
@@ -170,18 +170,18 @@ export function MatchHistoryPanelContent() {
 						<Button
 							variant="outline"
 							size="sm"
-							onClick={goToNextPage}
-							disabled={onLastPage}
 							className="rounded-r-none px-2"
+							onClick={goToPrevPage}
+							disabled={onFirstPage}
 						>
 							<Icons.ChevronRight className="h-4 w-4" />
 						</Button>
 						<Button
 							variant="outline"
 							size="sm"
-							onClick={goToLastPage}
-							disabled={onLastPage}
 							className="rounded-l-none border-l-0 px-2"
+							onClick={goToFirstPage}
+							disabled={onFirstPage}
 						>
 							<Icons.ChevronsRight className="h-4 w-4" />
 						</Button>
