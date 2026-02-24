@@ -118,8 +118,8 @@ export function parseCommand(msg: SM.RconEvents.ChatMessage, configs: CommandCon
 		const allCommandStrings = Obj.objValues(configs)
 			.filter((c) => chatInScope(c.scopes, msg.channelType))
 			.flatMap((c) => c.strings)
-			.map((s) => commandPrefix + s)
-		const sortedMatches = StringComparison.diceCoefficient.sortMatch(words[0], allCommandStrings)
+			.map((s) => (commandPrefix + s).toLowerCase())
+		const sortedMatches = StringComparison.diceCoefficient.sortMatch(words[0].toLowerCase(), allCommandStrings)
 		if (sortedMatches.length === 0) {
 			return { code: 'err:unknown-command' as const, msg: `Unknown command "${words[0]}"` }
 		}
