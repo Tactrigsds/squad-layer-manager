@@ -16,7 +16,7 @@ import * as RbacClient from '@/systems/rbac.client'
 import * as UsersClient from '@/systems/users.client'
 import * as Form from '@tanstack/react-form'
 import { useMutation } from '@tanstack/react-query'
-import { useBlocker } from '@tanstack/react-router'
+import { useBlocker, useRouter } from '@tanstack/react-router'
 import { useNavigate } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import { useState } from 'react'
@@ -48,6 +48,7 @@ export function FilterEdit(
 	const useFrame = <O,>(selector: (table: EditFrame.FilterEditor) => O) => useFrameStore(frameKey, selector)
 
 	const navigate = useNavigate()
+	const router = useRouter()
 
 	const updateFilterMutation = FilterEntityClient.useFilterUpdate()
 	const deleteFilterMutation = FilterEntityClient.useFilterDelete()
@@ -86,6 +87,7 @@ export function FilterEdit(
 				case 'ok':
 					toast({ title: 'Filter saved' })
 					frameState().reset(res.filter.filter)
+					router.invalidate()
 					formApi.reset({
 						name: res.filter.name,
 						description: res.filter.description,
