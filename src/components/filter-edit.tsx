@@ -87,7 +87,7 @@ export function FilterEdit(
 				case 'ok':
 					toast({ title: 'Filter saved' })
 					frameState().reset(res.filter.filter)
-					router.invalidate()
+					void router.invalidate()
 					formApi.reset({
 						name: res.filter.name,
 						description: res.filter.description,
