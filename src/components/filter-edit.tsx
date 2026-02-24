@@ -650,23 +650,12 @@ export function SelectUserDefinedRolePopover(props: { children: React.ReactNode;
 }
 
 function DescriptionDisplay({ description }: { description?: string | null }) {
-	const [expanded, setExpanded] = useState(false)
 	if (!description) return null
 	description = description.trim()
-	let truncatedDescription = description.split('\n')[0]
-	if (truncatedDescription.length > 128) truncatedDescription = truncatedDescription.slice(0, 128) + '...'
-	const truncated = truncatedDescription !== description
 
 	return (
 		<div>
-			<div>
-				<Markdown components={markdownComponents}>{expanded ? description : truncatedDescription}</Markdown>
-			</div>
-			{truncated && (
-				<Button variant="link" className={Typography.Muted} onClick={() => setExpanded(!expanded)}>
-					{expanded ? 'Hide' : ' Show More'}
-				</Button>
-			)}
+			<Markdown components={markdownComponents}>{description}</Markdown>
 		</div>
 	)
 }
