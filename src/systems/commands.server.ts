@@ -250,7 +250,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 				return await showError('not-in-battlemetrics', `Unable to resolve player "${args.player}" in battlemetrics`)
 			}
 			if (!bmPlayerData.flagIds.includes(flagToRemove.id)) {
-				return await showError('not-found', `Player "${matchedPlayerRes.matched.ids.username}" does not have flag "${flagToRemove.name}"`)
+				return await showError('not-found', `Player "${matchedPlayerRes.matched.ids.username}" does not have flag "${flagToRemove.name}".`)
 			}
 
 			const [status] = await Battlemetrics.removePlayerFlags(ctx, bmPlayerData.bmPlayerId, [flagToRemove.id])

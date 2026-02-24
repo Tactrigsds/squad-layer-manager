@@ -321,7 +321,7 @@ export namespace PlayerIds {
 			const searchId = id!
 			const exact = (players as T[]).filter(p => {
 				const ids = cb(p)
-				return ids.eos === searchId || ids.steam === searchId
+				return ids.eos === searchId || ids.steam === searchId || ids.epic === searchId
 			})
 			if (exact.length === 1) return { code: 'ok', matched: exact[0] }
 			if (exact.length > 1) return { code: 'err:multiple-matches', count: exact.length }

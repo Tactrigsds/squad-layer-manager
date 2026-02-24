@@ -57,8 +57,14 @@ export default function CommandsHelpDialog({ children, open, onOpenChange }: Com
 			<DialogContent className="max-w-2xl max-h-[80vh]">
 				<DialogHeader>
 					<DialogTitle>Available Ingame Commands</DialogTitle>
-					<DialogDescription>
-						If scope is 'admin', the command can only be used in admin chat, and so on.
+					<DialogDescription asChild>
+						<ul className="list-disc pl-4 space-y-1">
+							<li>
+								If scope is <code>admin</code>, the command can only be used in admin chat, and so on.
+							</li>
+							<li>Players can be matched by ID (Steam, EOS, Epic) or by username match (see below)</li>
+							<li>All matching (usernames, flag names) is case-insensitive with non-ASCII and whitespace stripped.</li>
+						</ul>
 					</DialogDescription>
 				</DialogHeader>
 				<ScrollArea className="max-h-[60vh] pr-4">
