@@ -204,18 +204,21 @@ export function showLogEvent(obj: { level: number; [key: string]: unknown }, sho
 		pid: _pid,
 		hostname: _hostname,
 		span_name: rawSpanName,
-		root_span_name: rawRootSpanName,
+		[ATTRS.Span.ROOT_NAME]: rawRootSpanName,
+		root_span_name: rawRootSpanName2,
 		[ATTRS.Module.NAME]: rawModuleName,
 		[ATTRS.SquadServer.ID]: rawServerId,
 		[ATTRS.User.ID]: rawUserId,
 		[ATTRS.WebSocket.CLIENT_ID]: rawWsClientId,
+		trace_id: rawTraceId,
+		span_id: rawSpanId,
 		...props
 	} = obj
 
 	const moduleName = rawModuleName as string | undefined
 	const spanName = rawSpanName as string | undefined
-	const rootSpanName = rawRootSpanName as string | undefined
-	const traceId = props.trace_id as string | undefined
+	const rootSpanName = rawRootSpanName ?? rawRootSpanName2 as string | undefined
+	const traceId = rawTraceId as string | undefined
 	const spanId = props.span_id as string | undefined
 	const serverId = rawServerId as string | undefined
 	const userId = rawUserId as string | undefined
