@@ -291,6 +291,7 @@ export function interpolateEvent(
 		case 'NEW_GAME':
 		case 'RESET': {
 			Object.assign(state, InterpolableState.clone({ ...event.state }))
+			state.squads.sort((a, b) => a.squadId - b.squadId)
 			return event
 		}
 
@@ -488,7 +489,12 @@ export function interpolateEvent(
 					`Creator ${SM.PlayerIds.prettyPrint(creator.ids)} is not in the same team as the squad they created ${SM.Squads.printKey(squad)}`,
 				)
 			}
-			state.squads.push(squad)
+			const insertIndex = state.squads.findIndex(s => s.squadId > squad.squadId)
+			if (insertIndex === -1) {
+				state.squads.push(squad)
+			} else {
+				state.squads.splice(insertIndex, 0, squad)
+			}
 			const updatedCreator: SM.Player = {
 				...creator,
 				isLeader: true,
