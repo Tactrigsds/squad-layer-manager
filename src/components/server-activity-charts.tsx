@@ -218,6 +218,7 @@ export function ServerActivityCharts(props: {
 	)
 
 	const bmData = BattlemetricsClient.usePlayerBmData()
+	const orgFlags = BattlemetricsClient.useOrgFlags()
 	const config = ConfigClient.useConfig()
 	const playerFlagGroupings = config?.playerFlagGroupings
 
@@ -270,7 +271,8 @@ export function ServerActivityCharts(props: {
 			.filter(p => p.ids.steam != null)
 			.map(p => {
 				const steamId = p.ids.steam!
-				const flags = bmData[steamId]?.flags ?? []
+				const flagIds = bmData[steamId]?.flagIds ?? []
+				const flags = orgFlags ? BattlemetricsClient.resolveFlags(flagIds, orgFlags) : []
 				return [steamId, flags]
 			})
 
@@ -298,14 +300,10 @@ export function ServerActivityCharts(props: {
 			}
 		}
 
-		// Build a flagId -> color lookup from all known player flags
+		// Build a flagId -> color lookup from org flags
 		const flagColorById = new Map<string, string>()
-		for (const { flags } of Object.values(bmData)) {
-			for (const flag of flags) {
-				if (flag.color && !flagColorById.has(flag.id)) {
-					flagColorById.set(flag.id, flag.color)
-				}
-			}
+		for (const flag of orgFlags ?? []) {
+			if (flag.color) flagColorById.set(flag.id, flag.color)
 		}
 
 		const resolveGroupColor = (label: string): string => {

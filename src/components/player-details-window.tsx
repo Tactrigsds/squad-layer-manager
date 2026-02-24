@@ -9,7 +9,7 @@ import * as ZusUtils from '@/lib/zustand'
 import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as RPC from '@/orpc.client'
-import { sortFlagsByHierarchy, usePlayerFlagColor, usePlayerFlags, usePlayerProfile } from '@/systems/battlemetrics.client'
+import { resolveFlags, sortFlagsByHierarchy, useOrgFlags } from '@/systems/battlemetrics.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -34,17 +34,19 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 	loadAsync: async ({ props }) => {
 		await Promise.all([
 			RPC.queryClient.fetchQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { playerId: props.playerId } })),
-			RPC.orpc.battlemetrics.getPlayerBmData.call({ playerId: props.playerId }),
+			RPC.queryClient.fetchQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId: props.playerId } })),
 		])
 	},
 })
 
 function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 	const { data, isPending: isDetailsPending } = useQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { playerId } }))
-	const rawFlags = usePlayerFlags(playerId)
+	const { data: bmData } = useQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId } }))
+	const orgFlags = useOrgFlags()
+	const rawFlags = bmData && orgFlags ? resolveFlags(bmData.flagIds, orgFlags) : null
 	const flags = rawFlags ? sortFlagsByHierarchy(rawFlags) : undefined
-	const flagColor = usePlayerFlagColor(playerId)
-	const profile = usePlayerProfile(playerId)
+	const flagColor = flags ? flags[0]?.color ?? null : null
+	const profile = bmData ? (({ flagIds: _, ...rest }) => rest)(bmData) : null
 	const currentMatch = MatchHistoryClient.useCurrentMatch()
 	const currentMatchEvents = Zus.useStore(
 		SquadServerClient.ChatStore,
@@ -101,7 +103,7 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 						)
 				)}
 				{flags && flags.length > 0 && <PlayerFlagsList flags={flags} zIndex={zIndex} />}
-				<EditFlagsButton playerId={playerId} currentFlags={flags ?? []} zIndex={zIndex} />
+				<EditFlagsButton playerId={playerId} currentFlagIds={bmData?.flagIds ?? []} zIndex={zIndex} />
 				<DraggableWindowPinToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
@@ -370,22 +372,17 @@ function PlayerFlagsList({ flags, zIndex }: PlayerFlagsListProps) {
 
 interface EditFlagsButtonProps {
 	playerId: string
-	currentFlags: NonNullable<ReturnType<typeof usePlayerFlags>>
+	currentFlagIds: string[]
 	zIndex: number
 }
 
-function EditFlagsButton({ playerId, currentFlags, zIndex }: EditFlagsButtonProps) {
+function EditFlagsButton({ playerId, currentFlagIds, zIndex }: EditFlagsButtonProps) {
 	const { data: orgFlags } = useQuery(RPC.orpc.battlemetrics.listOrgFlags.queryOptions())
 	const mutation = useMutation(RPC.orpc.battlemetrics.updatePlayerFlags.mutationOptions())
 
-	const currentFlagIds = currentFlags.map((f) => f.id)
-
 	const flagsToRender = React.useMemo(() => {
-		// Merge orgFlags with currentFlags so labels are available immediately even before orgFlags loads
-		const map = new Map(currentFlags.map((f) => [f.id, f]))
-		for (const f of orgFlags ?? []) map.set(f.id, f)
-		return Array.from(map.values())
-	}, [orgFlags, currentFlags])
+		return orgFlags ?? []
+	}, [orgFlags])
 
 	const options = React.useMemo(() =>
 		flagsToRender.map((f) => ({

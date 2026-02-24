@@ -89,6 +89,43 @@ export const PlayerListResponse = z.object({
 	}).nullable().optional(),
 })
 
+// ---- POST /players/quick-match ----
+
+export const PlayerQuickMatchResponse = z.object({
+	data: z.array(z.object({
+		type: z.literal('identifier'),
+		id: z.string(),
+		attributes: z.object({
+			type: z.string(),
+			identifier: z.string(),
+		}),
+		relationships: z.object({
+			player: z.object({
+				data: z.object({ type: z.literal('player'), id: z.string() }),
+			}).optional(),
+		}).optional(),
+	})),
+})
+
+// ---- GET /players/{player_id} (single player detail with flags) ----
+
+export const PlayerDetailResponse = z.object({
+	data: z.object({
+		type: z.literal('player'),
+		id: z.string(),
+		relationships: z.object({
+			servers: z.object({
+				data: z.array(PlayerServerRef).optional(),
+			}).optional(),
+		}).optional(),
+	}),
+	included: z.array(z.discriminatedUnion('type', [
+		IdentifierInclude,
+		FlagPlayerInclude,
+		PlayerFlagInclude,
+	])).nullable().optional(),
+})
+
 // ---- /servers?filter[organizations]=... ----
 
 export const ServersResponse = z.object({
@@ -104,13 +141,14 @@ export const ServersResponse = z.object({
 // ---- Composite types used by server + client ----
 
 export type PlayerFlagsAndProfile = {
-	flags: PlayerFlag[]
+	flagIds: string[]
 	playerIds: SM.PlayerIds.IdQuery<'eos'>
 	profileUrl: string
 	hoursPlayed: number
 }
 
 export type PublicPlayerBmData = Record<string, PlayerFlagsAndProfile>
+export type PlayerBmDataUpdate = { playerId: string; data: PlayerFlagsAndProfile }
 export const PlayerFlagGroupingsSchema = z.record(z.string(), z.object({ associations: z.record(z.uuid(), z.number()), color: z.string() }))
 export type PlayerFlagGroupings = z.infer<typeof PlayerFlagGroupingsSchema>
 

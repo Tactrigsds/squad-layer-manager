@@ -132,8 +132,7 @@ const POLL_INTERVAL_MS = 5 * 60 * 1000
 
 /** Per-server state for bulk polling and streaming */
 type ServerBmState = {
-	update$: Rx.Subject<void>
-	onlineEosIds: Set<string>
+	update$: Rx.Subject<BM.PlayerBmDataUpdate>
 }
 
 const serverBmState = new Map<string, ServerBmState>()
@@ -141,23 +140,13 @@ const serverBmState = new Map<string, ServerBmState>()
 function getServerBmState(serverId: string): ServerBmState {
 	let state = serverBmState.get(serverId)
 	if (!state) {
-		state = { update$: new Rx.Subject<void>(), onlineEosIds: new Set() }
+		state = { update$: new Rx.Subject<BM.PlayerBmDataUpdate>() }
 		serverBmState.set(serverId, state)
 	}
 	return state
 }
 
 export type { PublicPlayerBmData } from '@/models/battlemetrics.models'
-type PublicPlayerBmData = BM.PublicPlayerBmData
-
-function getPlayerBmDataSnapshot(eosIds: Set<string>): PublicPlayerBmData {
-	const result: PublicPlayerBmData = {}
-	for (const eosId of eosIds) {
-		const value = getCachedPlayer(eosId)
-		if (value) result[eosId] = value
-	}
-	return result
-}
 
 // -------- rate-limit queue --------
 
@@ -516,17 +505,8 @@ function parsePlayerListPage(data: PlayerListData, orgServerIdSet: Set<string>):
 		const playerFlagPlayers = flagPlayers.filter(
 			(fp) => fp.relationships?.player?.data?.id === bmPlayerId,
 		)
-		const flags = playerFlagPlayers.map((fp) => {
-			const flagId = fp.relationships?.playerFlag?.data?.id
-			const flag = playerFlags.find((pf) => pf.id === flagId)
-			return {
-				id: flagId ?? fp.id,
-				name: flag?.attributes?.name ?? null,
-				color: flag?.attributes?.color ?? null,
-				description: flag?.attributes?.description ?? null,
-				icon: flag?.attributes?.icon ?? null,
-			}
-		})
+		const flagIds = playerFlagPlayers
+			.map((fp) => fp.relationships?.playerFlag?.data?.id ?? fp.id)
 
 		const serverRefs = player.relationships?.servers?.data ?? []
 		const totalSeconds = serverRefs
@@ -535,7 +515,7 @@ function parsePlayerListPage(data: PlayerListData, orgServerIdSet: Set<string>):
 
 		const canonicalId = SM.PlayerIds.getPlayerId(playerIds)
 		setCachedPlayer(canonicalId, bmPlayerId, {
-			flags,
+			flagIds,
 			playerIds: playerIds,
 			profileUrl: `https://www.battlemetrics.com/rcon/players/${bmPlayerId}`,
 			hoursPlayed: Math.round(totalSeconds / 3600),
@@ -554,8 +534,8 @@ const bulkFetchOnlinePlayers = C.spanOp(
 		const teamsRes = await ctx.server.teams.get(ctx)
 		if (teamsRes.code !== 'ok') return
 		const onlinePlayers = teamsRes.players
-		const onlineEosIds = onlinePlayers.map(p => p.ids.eos)
 
+		const onlineEosIds = onlinePlayers.map(p => SM.PlayerIds.getPlayerId(p.ids))
 		const uncached = onlinePlayers.filter((p) => !getCachedPlayer(SM.PlayerIds.getPlayerId(p.ids)))
 		if (uncached.length > 0) {
 			await Promise.all(uncached.map((p) =>
@@ -583,27 +563,62 @@ const fetchSinglePlayerBmData = C.spanOp(
 		const serverIds = await getOrgServerIds(ctx, serverName)
 		const orgServerIdSet = new Set(serverIds)
 
-		// Search by EOS ID (required). BattleMetrics supports searching by EOS identifier type.
-		// We also request steamID identifiers to be included so we can store both IDs.
-		const path = `/players?filter[search]=${eosId}`
-			+ `&include=identifier,flagPlayer,playerFlag,server`
-			+ `&filter[identifiers]=eosID,steamID`
-			+ `&fields[playerFlag]=name,color,description,icon`
-			+ `&fields[server]=name`
-			+ `&page[size]=1`
-
-		const [data] = await bmFetch(ctx, 'GET', path, {
-			responseSchema: BM.PlayerListResponse,
+		// Step 1: use quick-match to resolve the EOS ID to a BM player ID.
+		const [matchData] = await bmFetch(ctx, 'POST', '/players/quick-match', {
+			body: { data: [{ type: 'identifier', attributes: { type: 'eosID', identifier: eosId } }] },
+			responseSchema: BM.PlayerQuickMatchResponse,
 		})
 
-		const parsed = parsePlayerListPage(data, orgServerIdSet)
-		if (parsed.length === 0) return null
+		if (matchData.data.length === 0) return null
+		const bmPlayerId = matchData.data[0].relationships?.player?.data?.id
+		if (!bmPlayerId) return null
+
+		// Step 2: fetch the full player detail to get identifiers, flags and time played.
+		// The single-player endpoint supports include=identifier,flagPlayer,playerFlag.
+		const { BM_ORG_ID } = getEnv()
+		const detailPath = `/players/${bmPlayerId}`
+			+ `?include=identifier,flagPlayer,playerFlag`
+			+ `&filter[identifiers]=eosID,steamID`
+			+ `&fields[identifier]=type,identifier`
+			+ `&fields[playerFlag]=name,color,description,icon`
+
+		const [detailData] = await bmFetch(ctx, 'GET', detailPath, {
+			responseSchema: BM.PlayerDetailResponse,
+		})
+
+		const detailIncluded = detailData.included ?? []
+
+		const detailIdentifiers = detailIncluded.filter((i): i is typeof i & { type: 'identifier' } => i.type === 'identifier')
+		const steamIdent = detailIdentifiers.find((i) => i.attributes.type === 'steamID')
+		const steamId = steamIdent?.attributes.identifier
+		const resolvedPlayerIds: SM.PlayerIds.IdQuery<'eos'> = { eos: eosId, ...(steamId ? { steam: steamId } : {}) }
+
+		const flagPlayers = detailIncluded
+			.filter((i): i is typeof i & { type: 'flagPlayer' } => i.type === 'flagPlayer')
+			.filter((fp) => !fp.attributes?.removedAt)
+			.filter((fp) => !BM_ORG_ID || fp.relationships?.organization?.data?.id === BM_ORG_ID)
+
+		const flagIds = flagPlayers
+			.map((fp) => fp.relationships?.playerFlag?.data?.id ?? fp.id)
+
+		const serverRefs = detailData.data.relationships?.servers?.data ?? []
+		const totalSeconds = serverRefs
+			.filter((s) => orgServerIdSet.has(s.id))
+			.reduce((sum, s) => sum + (s.meta?.timePlayed ?? 0), 0)
+
+		const canonicalId = SM.PlayerIds.getPlayerId(resolvedPlayerIds)
+		const value: BM.PlayerFlagsAndProfile = {
+			flagIds,
+			playerIds: resolvedPlayerIds,
+			profileUrl: `https://www.battlemetrics.com/rcon/players/${bmPlayerId}`,
+			hoursPlayed: Math.round(totalSeconds / 3600),
+		}
+		setCachedPlayer(canonicalId, bmPlayerId, value)
 
 		const state = getServerBmState(ctx.serverId)
-		state.onlineEosIds.add(eosId)
-		state.update$.next()
+		state.update$.next({ playerId: canonicalId, data: value })
 
-		return getCachedPlayer(parsed[0]) ?? null
+		return value
 	},
 )
 
@@ -624,9 +639,11 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 					return [] as string[]
 				})
 				if (onlineEosIds) {
-					state.onlineEosIds = new Set(onlineEosIds)
+					for (const eosId of onlineEosIds) {
+						const value = getCachedPlayer(eosId)
+						if (value) state.update$.next({ playerId: eosId, data: value })
+					}
 				}
-				state.update$.next()
 			}),
 		).subscribe(),
 		ctx.server.event$.pipe(
@@ -657,18 +674,19 @@ export const router = {
 
 	watchPlayerBmData: orpcBase.handler(async function*({ signal, context: _ctx }) {
 		const server$ = SquadServer.selectedServerCtx$(_ctx).pipe(withAbortSignal(signal!))
-		const data$ = server$.pipe(
-			Rx.switchMap(async function*(ctx) {
+		const updates$ = server$.pipe(
+			Rx.switchMap((ctx) => {
 				const state = getServerBmState(ctx.serverId)
-				yield getPlayerBmDataSnapshot(state.onlineEosIds)
-				const update$ = state.update$.pipe(withAbortSignal(signal!))
-				for await (const _ of toAsyncGenerator(update$)) {
-					yield getPlayerBmDataSnapshot(state.onlineEosIds)
-				}
+				const initial$ = Rx.from(
+					[...playerFlagsAndProfileCache.entries()]
+						.filter(([, entry]) => Date.now() <= entry.expiresAt)
+						.map(([playerId, entry]): BM.PlayerBmDataUpdate => ({ playerId, data: entry.value })),
+				)
+				return Rx.merge(initial$, state.update$).pipe(withAbortSignal(signal!))
 			}),
 			withAbortSignal(signal!),
 		)
-		yield* toAsyncGenerator(data$)
+		yield* toAsyncGenerator(updates$)
 	}),
 
 	listOrgFlags: orpcBase.handler(async ({ context: ctx }) => {
@@ -690,7 +708,7 @@ export const router = {
 		const current = await fetchSinglePlayerBmData(serverCtx, playerIds)
 		if (!current) return { code: 'err:not-found' as const }
 
-		const currentFlagIds = new Set(current.flags.map((f) => f.id))
+		const currentFlagIds = new Set(current.flagIds)
 		const desiredFlagIds = new Set(input.flagIds)
 
 		const toAdd = input.flagIds.filter((id) => !currentFlagIds.has(id))
@@ -708,10 +726,6 @@ export const router = {
 
 		// Persist immediately so DB doesn't serve stale flags on next startup
 		persistCache().catch((err) => log.warn({ err }, 'Failed to persist BM cache after flag update'))
-
-		// Notify watchers
-		const state = getServerBmState(serverCtx.serverId)
-		state.update$.next()
 
 		return { code: 'ok' as const, data: updated }
 	}),
