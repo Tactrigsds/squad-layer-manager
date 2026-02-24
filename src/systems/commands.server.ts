@@ -182,7 +182,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 			}
 			let matchedPlayerRes = SM.PlayerIds.fuzzyMatchIdentifierUniquely(teamsStateRes.players, p => p.ids, args.player)
 			if (matchedPlayerRes.code === 'err:not-found') {
-				return await showError('not-found', `No player matches found for "${args.player}"`)
+				return await showError('not-found', `No player matches found for "${args.player}.\nPlayer must be on the server."`)
 			}
 
 			if (matchedPlayerRes.code === 'err:multiple-matches') {
@@ -229,7 +229,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 			}
 			const matchedPlayerRes = SM.PlayerIds.fuzzyMatchIdentifierUniquely(teamsStateRes.players, p => p.ids, args.player)
 			if (matchedPlayerRes.code === 'err:not-found') {
-				return await showError('not-found', `No player matches found for "${args.player}"`)
+				return await showError('not-found', `No player matches found for "${args.player}.\nPlayer must be on server."`)
 			}
 			if (matchedPlayerRes.code === 'err:multiple-matches') {
 				return await showError('multiple-matches', `Multiple(${matchedPlayerRes.count}) player matches found for "${args.player}".`)
