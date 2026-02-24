@@ -309,22 +309,22 @@
         },
         "enableSlmUpdates": {
           "scopes": ["admin"],
-          "strings": ["enable-slm"],
+          "strings": ["enableSlm"],
           "enabled": true
         },
         "disableSlmUpdates": {
           "scopes": ["admin"],
-          "strings": ["disable-slm"],
+          "strings": ["disableSlm"],
           "enabled": true
         },
         "getSlmUpdatesEnabled": {
           "scopes": ["admin"],
-          "strings": ["get-slm-status"],
+          "strings": ["getSlmStatus"],
           "enabled": true
         },
         "linkSteamAccount": {
           "scopes": ["admin"],
-          "strings": ["link-steam-account"],
+          "strings": ["linkSteamAccount"],
           "enabled": false
         },
         "flag": {"scopes": ["admin"], "strings": ["flag"], "enabled": true},
@@ -479,14 +479,14 @@
         "enableSlmUpdates": {
           "default": {
             "scopes": ["admin"],
-            "strings": ["enable-slm"],
+            "strings": ["enableSlm"],
             "enabled": true
           },
           "type": "object",
           "properties": {
             "strings": {
               "description": "Command strings that trigger this command when prefixed with the command prefix",
-              "default": ["enable-slm"],
+              "default": ["enableSlm"],
               "type": "array",
               "items": {
                 "description": "A string with no whitespace characters",
@@ -506,14 +506,14 @@
         "disableSlmUpdates": {
           "default": {
             "scopes": ["admin"],
-            "strings": ["disable-slm"],
+            "strings": ["disableSlm"],
             "enabled": true
           },
           "type": "object",
           "properties": {
             "strings": {
               "description": "Command strings that trigger this command when prefixed with the command prefix",
-              "default": ["disable-slm"],
+              "default": ["disableSlm"],
               "type": "array",
               "items": {
                 "description": "A string with no whitespace characters",
@@ -533,14 +533,14 @@
         "getSlmUpdatesEnabled": {
           "default": {
             "scopes": ["admin"],
-            "strings": ["get-slm-status"],
+            "strings": ["getSlmStatus"],
             "enabled": true
           },
           "type": "object",
           "properties": {
             "strings": {
               "description": "Command strings that trigger this command when prefixed with the command prefix",
-              "default": ["get-slm-status"],
+              "default": ["getSlmStatus"],
               "type": "array",
               "items": {
                 "description": "A string with no whitespace characters",
@@ -560,14 +560,14 @@
         "linkSteamAccount": {
           "default": {
             "scopes": ["admin"],
-            "strings": ["link-steam-account"],
+            "strings": ["linkSteamAccount"],
             "enabled": false
           },
           "type": "object",
           "properties": {
             "strings": {
               "description": "Command strings that trigger this command when prefixed with the command prefix",
-              "default": ["link-steam-account"],
+              "default": ["linkSteamAccount"],
               "type": "array",
               "items": {
                 "description": "A string with no whitespace characters",

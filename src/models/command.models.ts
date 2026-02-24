@@ -61,12 +61,12 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('abortVote', { args: [], defaults: { scopes: ['admin'], strings: ['abortvote', 'av'], enabled: true } }),
 	...declareCommand('showNext', { args: [], defaults: { scopes: ['admin'], strings: ['shownext', 'sn'], enabled: true } }),
-	...declareCommand('enableSlmUpdates', { args: [], defaults: { scopes: ['admin'], strings: ['enable-slm'], enabled: true } }),
-	...declareCommand('disableSlmUpdates', { args: [], defaults: { scopes: ['admin'], strings: ['disable-slm'], enabled: true } }),
-	...declareCommand('getSlmUpdatesEnabled', { args: [], defaults: { scopes: ['admin'], strings: ['get-slm-status'], enabled: true } }),
+	...declareCommand('enableSlmUpdates', { args: [], defaults: { scopes: ['admin'], strings: ['enableSlm'], enabled: true } }),
+	...declareCommand('disableSlmUpdates', { args: [], defaults: { scopes: ['admin'], strings: ['disableSlm'], enabled: true } }),
+	...declareCommand('getSlmUpdatesEnabled', { args: [], defaults: { scopes: ['admin'], strings: ['getSlmStatus'], enabled: true } }),
 	...declareCommand('linkSteamAccount', {
 		args: ['code'],
-		defaults: { scopes: ['admin'], strings: ['link-steam-account'], enabled: false },
+		defaults: { scopes: ['admin'], strings: ['linkSteamAccount'], enabled: false },
 	}),
 	...declareCommand('flag', { args: ['player', 'flag'], defaults: { scopes: ['admin'], strings: ['flag'], enabled: true } }),
 	...declareCommand('removeFlag', {
