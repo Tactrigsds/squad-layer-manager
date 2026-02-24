@@ -66,7 +66,7 @@ export const COMMAND_DECLARATIONS = {
 	...declareCommand('getSlmUpdatesEnabled', { args: [], defaults: { scopes: ['admin'], strings: ['get-slm-status'], enabled: true } }),
 	...declareCommand('linkSteamAccount', {
 		args: ['code'],
-		defaults: { scopes: ['admin'], strings: ['link-steam-account'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['link-steam-account'], enabled: false },
 	}),
 	...declareCommand('flag', { args: ['player', 'flag'], defaults: { scopes: ['admin'], strings: ['flag'], enabled: true } }),
 	...declareCommand('removeFlag', {

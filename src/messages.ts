@@ -208,7 +208,7 @@ export const WARNS = {
 		},
 		wrongChat: (correctChats: string[]) => `Command not available in this chat. Try using ${correctChats.join(' or ')}`,
 		help(commands: Record<CMD.CommandId, CMD.CommandConfig>, prefix: string) {
-			const commandLines = Obj.objEntries(commands).map(([id, cmd]) => {
+			const commandLines = Obj.objEntries(commands).filter(([_, cmd]) => cmd.enabled).map(([id, cmd]) => {
 				const sortedStrings = cmd.strings.sort((a, b) => a.length - b.length).map((s) => `${prefix}${s}`)
 				return `[${sortedStrings.join(', ')}]: ${GENERAL.command.descriptions[id]}`
 			})
@@ -276,7 +276,7 @@ export const GENERAL = {
 	command: {
 		descriptions: {
 			help: 'Display help information',
-			startVote: 'Start a new vote',
+			startVote: 'Start the configured vote',
 			abortVote: 'Abort the current vote',
 			showNext: 'Show the next item in the queue',
 			enableSlmUpdates: 'Allow SLM to set the next layer',

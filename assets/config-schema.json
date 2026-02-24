@@ -325,7 +325,7 @@
         "linkSteamAccount": {
           "scopes": ["admin"],
           "strings": ["link-steam-account"],
-          "enabled": true
+          "enabled": false
         },
         "flag": {"scopes": ["admin"], "strings": ["flag"], "enabled": true},
         "removeFlag": {
@@ -561,7 +561,7 @@
           "default": {
             "scopes": ["admin"],
             "strings": ["link-steam-account"],
-            "enabled": true
+            "enabled": false
           },
           "type": "object",
           "properties": {
@@ -581,7 +581,7 @@
               "type": "array",
               "items": {"type": "string", "enum": ["admin", "public"]}
             },
-            "enabled": {"default": true, "type": "boolean"}
+            "enabled": {"type": "boolean"}
           }
         },
         "flag": {
