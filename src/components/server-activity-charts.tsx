@@ -107,13 +107,6 @@ function createFlagGroupChartOption(
 ): EChartsOption {
 	const textColor = isDark ? '#e5e7eb' : '#111827'
 	const barLabelColor = '#fff'
-	const activeIndices = groupLabels.map((_, i) => i).filter(i => team1Counts[i] > 0 || team2Counts[i] > 0)
-	groupLabels = activeIndices.map(i => groupLabels[i])
-	groupColors = activeIndices.map(i => groupColors[i])
-	team1Counts = activeIndices.map(i => team1Counts[i])
-	team2Counts = activeIndices.map(i => team2Counts[i])
-	team1Players = activeIndices.map(i => team1Players[i])
-	team2Players = activeIndices.map(i => team2Players[i])
 	return {
 		animation: false,
 		grid: {
@@ -327,21 +320,17 @@ export function ServerActivityCharts(props: {
 
 		const groupColors = groupLabels.map(resolveGroupColor)
 
-		const activeGroupCount = groupLabels.filter((_, i) => team1Counts[i] > 0 || team2Counts[i] > 0).length
-		return {
-			option: createFlagGroupChartOption(
-				groupLabels,
-				groupColors,
-				team1Counts,
-				team2Counts,
-				team1Players,
-				team2Players,
-				team1Label,
-				team2Label,
-				isDark,
-			),
-			groupCount: activeGroupCount,
-		}
+		return createFlagGroupChartOption(
+			groupLabels,
+			groupColors,
+			team1Counts,
+			team2Counts,
+			team1Players,
+			team2Players,
+			team1Label,
+			team2Label,
+			isDark,
+		)
 	}, [
 		playerFlagGroupings,
 		activeModeId,
@@ -412,7 +401,7 @@ export function ServerActivityCharts(props: {
 							</div>
 						)}
 					</div>
-					<ReactECharts option={flagGroupChart.option} style={{ height: '126px' }} />
+					<ReactECharts option={flagGroupChart} notMerge={true} style={{ height: '126px' }} />
 				</div>
 			)}
 		</div>
