@@ -94,6 +94,10 @@ export function missing<T>(arr: T[], target: T[]): T[] {
 	return arr.filter(item => !target.includes(item))
 }
 
+export function isSubset<T>(superset: T[], subset: T[]): boolean {
+	return subset.every(item => superset.includes(item))
+}
+
 export function paged<T>(arr: T[], pageSize: number): T[][] {
 	const result: T[][] = []
 	for (let i = 0; i < arr.length; i += pageSize) {

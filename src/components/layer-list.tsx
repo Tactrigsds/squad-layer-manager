@@ -657,7 +657,8 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const [configuringVote, setConfiguringVote] = UPClient.useActivityState({
 		createActivity: UP.createEditingQueueVariant({ _tag: 'leaf', id: 'CONFIGURING_VOTE', opts: { itemId: item.itemId } }),
 		matchActivity: React.useCallback(
-			(state) => state.child.EDITING_QUEUE?.chosen.id === 'CONFIGURING_VOTE' && state.child.EDITING_QUEUE?.chosen.opts.itemId === item.itemId,
+			(state) =>
+				state.child.EDITING_QUEUE?.chosen.id === 'CONFIGURING_VOTE' && state.child.EDITING_QUEUE?.chosen.opts.itemId === item.itemId,
 			[item.itemId],
 		),
 		removeActivity: UP.toEditingQueueIdleOrNone(),
