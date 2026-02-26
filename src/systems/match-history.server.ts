@@ -142,7 +142,7 @@ export const loadState = C.spanOp(
 			if (match.isCurrentMatch) continue // Skip current match - events are still being generated
 			if (state.matchEventsCache.has(match.historyEntryId)) continue
 			// Call getEventsForMatches to populate cache (it will set the cache internally)
-			await getEventsForMatches(ctx, match.historyEntryId)
+			void getEventsForMatches(ctx, match.historyEntryId)
 		}
 	},
 )
