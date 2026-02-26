@@ -956,11 +956,12 @@
       }
     },
     "playerFlagGroupings": {
-      "type": "object",
-      "propertyNames": {"type": "string"},
-      "additionalProperties": {
+      "type": "array",
+      "items": {
         "type": "object",
         "properties": {
+          "label": {"type": "string"},
+          "modeIds": {"type": "array", "items": {"type": "string"}},
           "associations": {
             "type": "object",
             "propertyNames": {
@@ -972,7 +973,7 @@
           },
           "color": {"type": "string"}
         },
-        "required": ["associations", "color"]
+        "required": ["label", "modeIds", "associations", "color"]
       }
     },
     "navLinks": {

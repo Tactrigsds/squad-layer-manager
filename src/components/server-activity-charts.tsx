@@ -107,7 +107,6 @@ function createFlagGroupChartOption(
 ): EChartsOption {
 	const textColor = isDark ? '#e5e7eb' : '#111827'
 	const barLabelColor = '#fff'
-	const originalOtherIdx = groupLabels.length - 1
 	const activeIndices = groupLabels.map((_, i) => i).filter(i => team1Counts[i] > 0 || team2Counts[i] > 0)
 	groupLabels = activeIndices.map(i => groupLabels[i])
 	groupColors = activeIndices.map(i => groupColors[i])
@@ -115,7 +114,6 @@ function createFlagGroupChartOption(
 	team2Counts = activeIndices.map(i => team2Counts[i])
 	team1Players = activeIndices.map(i => team1Players[i])
 	team2Players = activeIndices.map(i => team2Players[i])
-	const otherIdx = activeIndices.indexOf(originalOtherIdx)
 	return {
 		animation: false,
 		grid: {
@@ -157,37 +155,21 @@ function createFlagGroupChartOption(
 			},
 		})),
 		tooltip: {
-			trigger: 'axis',
-			axisPointer: { type: 'shadow' },
+			trigger: 'item',
 			confine: true,
 			formatter: (params: unknown) => {
-				const items = params as { seriesIndex: number; seriesName: string; value: number; color: string; dataIndex: number }[]
-				if (!items.length) return ''
-				const teamLabel = items[0].dataIndex === 0 ? team1Label : team2Label
-				const playersByGroup = items[0].dataIndex === 0 ? team1Players : team2Players
+				const item = params as { seriesIndex: number; seriesName: string; value: number | null; color: string; dataIndex: number }
+				if (!item.value) return ''
+				const teamLabel = item.dataIndex === 0 ? team1Label : team2Label
+				const playersByGroup = item.dataIndex === 0 ? team1Players : team2Players
+				const players = playersByGroup[item.seriesIndex]
 				let html = `<div style="font-weight:bold;margin-bottom:4px">${teamLabel}</div>`
-				for (const item of items) {
-					if (item.value === 0) continue
-					const groupIdx = item.seriesIndex
-					const players = groupIdx !== otherIdx ? playersByGroup[groupIdx] : null
-					html += `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">`
-					html += `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${item.color}"></span>`
-					html += `<span><b>${item.seriesName}</b>: ${item.value}`
-					if (players && players.length > 0) {
-						let playerStr = ''
-						let remaining = 0
-						for (const name of players) {
-							const next = playerStr ? `, ${name}` : name
-							if (playerStr && playerStr.length + next.length > 70) {
-								remaining = players.length - players.indexOf(name)
-								break
-							}
-							playerStr += next
-						}
-						html += ` — ${playerStr}`
-						if (remaining > 0) html += `, +${remaining} more`
-					}
-					html += `</span></div>`
+				html += `<div style="display:flex;align-items:center;gap:6px">`
+				html += `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${item.color}"></span>`
+				html += `<span><b>${item.seriesName}</b>: ${item.value}</span>`
+				html += `</div>`
+				if (players && players.length > 0) {
+					html += `<div style="margin-top:4px">${players.join(', ')}</div>`
 				}
 				return html
 			},
@@ -237,6 +219,16 @@ export function ServerActivityCharts(props: {
 	const config = ConfigClient.useConfig()
 	const playerFlagGroupings = config?.playerFlagGroupings
 
+	const groupingModeIds = React.useMemo(
+		() => playerFlagGroupings ? BM.getGroupingModeIds(playerFlagGroupings) : [],
+		[playerFlagGroupings],
+	)
+	const selectedModeId = Zus.useStore(BattlemetricsClient.Store, s => s.selectedModeId)
+	const setSelectedModeId = Zus.useStore(BattlemetricsClient.Store, s => s.setSelectedModeId)
+	const activeModeId = selectedModeId !== null && groupingModeIds.includes(selectedModeId)
+		? selectedModeId
+		: groupingModeIds[0] ?? null
+
 	const events = selectedMatchOrdinal !== null ? props.historicalEvents : liveUnfilteredEvents
 	const isEmpty = !events || events.length === 0
 
@@ -279,7 +271,9 @@ export function ServerActivityCharts(props: {
 
 	// Build flag group counts per team from live players
 	const flagGroupChart = React.useMemo(() => {
-		if (!playerFlagGroupings || !livePlayers) return null
+		if (!playerFlagGroupings || !livePlayers || activeModeId === null) return null
+
+		const modeGroupings = playerFlagGroupings.filter(g => g.modeIds.includes(activeModeId))
 
 		// Build [eosId, flags[]] pairs for all live players — bmData is keyed by EOS ID
 		const playerFlagPairs: [SM.PlayerId, BM.PlayerFlag[]][] = livePlayers
@@ -291,10 +285,12 @@ export function ServerActivityCharts(props: {
 				return [eosId, flags]
 			})
 
-		const playerGroups = BM.resolvePlayerFlagGroups(playerFlagPairs, playerFlagGroupings)
+		const playerGroups = BM.resolvePlayerFlagGroups(playerFlagPairs, playerFlagGroupings, activeModeId)
 
 		// Count per group per team, with "Other" for unmatched players
-		const groupLabels = [...Object.keys(playerFlagGroupings), 'Other']
+		// Labels are unique within a mode, so we can use a Map for O(1) lookup
+		const groupLabels = [...modeGroupings.map(g => g.label), 'Other']
+		const labelToIdx = new Map(groupLabels.map((label, i) => [label, i]))
 		const team1Counts = new Array(groupLabels.length).fill(0)
 		const team2Counts = new Array(groupLabels.length).fill(0)
 		const team1Players: string[][] = groupLabels.map(() => [])
@@ -303,7 +299,7 @@ export function ServerActivityCharts(props: {
 
 		for (const player of livePlayers) {
 			const group = player.ids.eos != null ? playerGroups.get(player.ids.eos) : undefined
-			const idx = group != null ? groupLabels.indexOf(group) : otherIdx
+			const idx = group != null ? (labelToIdx.get(group) ?? -1) : otherIdx
 			if (idx === -1) continue
 			const name = player.ids.usernameNoTag ?? player.ids.username ?? player.ids.steam ?? '?'
 			if (player.teamId === 1) {
@@ -321,8 +317,9 @@ export function ServerActivityCharts(props: {
 			if (flag.color) flagColorById.set(flag.id, flag.color)
 		}
 
+		const groupColorByLabel = new Map(modeGroupings.map(g => [g.label, g.color]))
 		const resolveGroupColor = (label: string): string => {
-			const raw = playerFlagGroupings[label]?.color
+			const raw = groupColorByLabel.get(label)
 			if (!raw) return '#888'
 			// If raw looks like a UUID, treat it as a flag ID and look up its color
 			return flagColorById.get(raw) ?? raw
@@ -330,6 +327,7 @@ export function ServerActivityCharts(props: {
 
 		const groupColors = groupLabels.map(resolveGroupColor)
 
+		const activeGroupCount = groupLabels.filter((_, i) => team1Counts[i] > 0 || team2Counts[i] > 0).length
 		return {
 			option: createFlagGroupChartOption(
 				groupLabels,
@@ -342,10 +340,11 @@ export function ServerActivityCharts(props: {
 				team2Label,
 				isDark,
 			),
-			groupCount: groupLabels.length,
+			groupCount: activeGroupCount,
 		}
 	}, [
 		playerFlagGroupings,
+		activeModeId,
 		livePlayers,
 		bmData,
 		team1Label,
@@ -354,7 +353,9 @@ export function ServerActivityCharts(props: {
 		orgFlags,
 	])
 
-	if (isEmpty) {
+	const hasAnything = !isEmpty || flagGroupChart !== null
+
+	if (!hasAnything) {
 		return (
 			<div className="text-muted-foreground text-sm text-center py-4">
 				No data available for charts
@@ -364,34 +365,54 @@ export function ServerActivityCharts(props: {
 
 	return (
 		<div className="w-full flex flex-col gap-2">
-			<div className="flex gap-4 text-xs px-1">
-				<span className="text-muted-foreground">K/D Ratio:</span>
-				<span className="flex items-center gap-1">
-					<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team1Color }}></span>
-					{team1Label}:{' '}
-					<span className="font-mono font-semibold">{overallKD.team1Ratio >= 999 ? '∞' : overallKD.team1Ratio.toFixed(2)}</span>
-				</span>
-				<span className="flex items-center gap-1">
-					<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team2Color }}></span>
-					{team2Label}:{' '}
-					<span className="font-mono font-semibold">{overallKD.team2Ratio >= 999 ? '∞' : overallKD.team2Ratio.toFixed(2)}</span>
-				</span>
-				<span className="text-muted-foreground ml-2">Wound Ratio:</span>
-				<span className="flex items-center gap-1">
-					<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team1Color }}></span>
-					{team1Label}:{' '}
-					<span className="font-mono font-semibold">{overallWD.team1Ratio >= 999 ? '∞' : overallWD.team1Ratio.toFixed(2)}</span>
-				</span>
-				<span className="flex items-center gap-1">
-					<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team2Color }}></span>
-					{team2Label}:{' '}
-					<span className="font-mono font-semibold">{overallWD.team2Ratio >= 999 ? '∞' : overallWD.team2Ratio.toFixed(2)}</span>
-				</span>
-			</div>
+			{!isEmpty && (
+				<div className="flex gap-4 text-xs px-1">
+					<span className="text-muted-foreground">K/D Ratio:</span>
+					<span className="flex items-center gap-1">
+						<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team1Color }}></span>
+						{team1Label}:{' '}
+						<span className="font-mono font-semibold">{overallKD.team1Ratio >= 999 ? '∞' : overallKD.team1Ratio.toFixed(2)}</span>
+					</span>
+					<span className="flex items-center gap-1">
+						<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team2Color }}></span>
+						{team2Label}:{' '}
+						<span className="font-mono font-semibold">{overallKD.team2Ratio >= 999 ? '∞' : overallKD.team2Ratio.toFixed(2)}</span>
+					</span>
+					<span className="text-muted-foreground ml-2">Wound Ratio:</span>
+					<span className="flex items-center gap-1">
+						<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team1Color }}></span>
+						{team1Label}:{' '}
+						<span className="font-mono font-semibold">{overallWD.team1Ratio >= 999 ? '∞' : overallWD.team1Ratio.toFixed(2)}</span>
+					</span>
+					<span className="flex items-center gap-1">
+						<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team2Color }}></span>
+						{team2Label}:{' '}
+						<span className="font-mono font-semibold">{overallWD.team2Ratio >= 999 ? '∞' : overallWD.team2Ratio.toFixed(2)}</span>
+					</span>
+				</div>
+			)}
 			{flagGroupChart && (
 				<div>
-					<div className="text-xs text-muted-foreground px-1 mb-0.5">Team Breakdowns</div>
-					<ReactECharts option={flagGroupChart.option} style={{ height: `${Math.max(100, flagGroupChart.groupCount * 22 + 60)}px` }} />
+					<div className="flex items-center gap-1 px-1 mb-0.5">
+						<span className="text-xs text-muted-foreground">Team Breakdowns</span>
+						{groupingModeIds.length > 1 && (
+							<div className="flex gap-0.5 ml-2">
+								{groupingModeIds.map(modeId => (
+									<button
+										type="button"
+										key={modeId}
+										onClick={() => setSelectedModeId(modeId)}
+										className={`text-xs px-2 py-0.5 rounded ${
+											activeModeId === modeId ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+										}`}
+									>
+										{modeId}
+									</button>
+								))}
+							</div>
+						)}
+					</div>
+					<ReactECharts option={flagGroupChart.option} style={{ height: '126px' }} />
 				</div>
 			)}
 		</div>

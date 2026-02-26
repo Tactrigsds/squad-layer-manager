@@ -2,7 +2,7 @@ import { MatchTeamDisplay } from '@/components/teams-display'
 import { cn } from '@/lib/utils'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
-import { usePlayerFlagColor } from '@/systems/battlemetrics.client'
+import { useGroupedPlayerFlagColor } from '@/systems/battlemetrics.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
@@ -32,7 +32,7 @@ function PlayerButton(
 export function PlayerDisplay({ player, showTeam, showSquad, showRole, className, matchId }: PlayerDisplayProps) {
 	const playerId = SM.PlayerIds.getPlayerId(player.ids)
 	const windowProps: PlayerDetailsWindowProps = { playerId }
-	const flagColor = usePlayerFlagColor(playerId)
+	const flagColor = useGroupedPlayerFlagColor(playerId)
 
 	return (
 		<span className={cn('inline-flex items-baseline', className)}>

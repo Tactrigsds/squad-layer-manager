@@ -1,9 +1,20 @@
-import type * as BM from '@/models/battlemetrics.models'
+import * as BM from '@/models/battlemetrics.models'
 import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as ReactRx from '@react-rxjs/core'
 import { useQuery } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
+import * as Zus from 'zustand'
+
+type StoreState = {
+	selectedModeId: string | null
+	setSelectedModeId: (id: string | null) => void
+}
+
+export const Store = Zus.createStore<StoreState>((set) => ({
+	selectedModeId: null,
+	setSelectedModeId: (id) => set({ selectedModeId: id }),
+}))
 
 export const [usePlayerBmData, playerBmData$] = ReactRx.bind<BM.PublicPlayerBmData>(
 	RPC.observe(() => RPC.orpc.battlemetrics.watchPlayerBmData.call()).pipe(
@@ -55,9 +66,46 @@ export function usePlayerProfile(playerId: string) {
 	return profile
 }
 
-export function usePlayerFlagColor(playerId: string): string | null {
+export function useGroupedPlayerFlagColor(playerId: string): string | null {
 	const flags = usePlayerFlags(playerId)
+	const orgFlags = useOrgFlags()
+	const config = ConfigClient.useConfig()
+	const selectedModeId = Zus.useStore(Store, s => s.selectedModeId)
+
 	if (!flags || flags.length === 0) return null
+
+	const playerFlagGroupings = config?.playerFlagGroupings
+	if (playerFlagGroupings && orgFlags) {
+		const modeIds = BM.getGroupingModeIds(playerFlagGroupings)
+		const activeModeId = selectedModeId !== null && modeIds.includes(selectedModeId)
+			? selectedModeId
+			: modeIds[0] ?? null
+
+		if (activeModeId !== null) {
+			const modeGroupings = playerFlagGroupings.filter(g => g.modeIds.includes(activeModeId))
+
+			const flagColorById = new Map<string, string>()
+			for (const flag of orgFlags) {
+				if (flag.color) flagColorById.set(flag.id, flag.color)
+			}
+
+			const associations: [string, string, number][] = []
+			for (const group of modeGroupings) {
+				for (const [flagId, priority] of Object.entries(group.associations)) {
+					associations.push([group.color, flagId, priority])
+				}
+			}
+			associations.sort((a, b) => a[2] - b[2])
+			for (const [groupColor, flagId] of associations) {
+				if (flags.some(f => f.id === flagId)) {
+					return flagColorById.get(groupColor) ?? groupColor
+				}
+			}
+			return null
+		}
+	}
+
+	// Fallback: hierarchy-based color
 	return sortFlagsByHierarchy(flags)[0]?.color ?? null
 }
 
@@ -65,7 +113,7 @@ export function setup() {
 	playerBmData$.subscribe()
 	RPC.observe(() => RPC.orpc.battlemetrics.watchPlayerBmData.call()).subscribe((update) => {
 		RPC.queryClient.setQueryData(
-			RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId: update.playerId } }).queryKey,
+			RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId: update.playerId }, staleTime: Infinity }).queryKey,
 			update.data,
 		)
 	})

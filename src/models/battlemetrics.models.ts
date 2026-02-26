@@ -138,14 +138,31 @@ export type PlayerFlagsAndProfile = {
 
 export type PublicPlayerBmData = Record<string, PlayerFlagsAndProfile>
 export type PlayerBmDataUpdate = { playerId: string; data: PlayerFlagsAndProfile }
-export const PlayerFlagGroupingsSchema = z.record(z.string(), z.object({ associations: z.record(z.uuid(), z.number()), color: z.string() }))
+export const PlayerFlagGroupingsSchema = z.array(
+	z.object({ label: z.string(), modeIds: z.array(z.string()), associations: z.record(z.uuid(), z.number()), color: z.string() }),
+)
 export type PlayerFlagGroupings = z.infer<typeof PlayerFlagGroupingsSchema>
 
-export function resolvePlayerFlagGroups(players: [SM.PlayerId, PlayerFlag[]][], groupings: PlayerFlagGroupings) {
+export function getGroupingModeIds(groupings: PlayerFlagGroupings): string[] {
+	const seen = new Set<string>()
+	const result: string[] = []
+	for (const group of groupings) {
+		for (const modeId of group.modeIds) {
+			if (!seen.has(modeId)) {
+				seen.add(modeId)
+				result.push(modeId)
+			}
+		}
+	}
+	return result
+}
+
+export function resolvePlayerFlagGroups(players: [SM.PlayerId, PlayerFlag[]][], groupings: PlayerFlagGroupings, modeId: string) {
+	const modeGroupings = groupings.filter(g => g.modeIds.includes(modeId))
 	const associations: [string, string, number][] = []
-	for (const [label, group] of Object.entries(groupings)) {
+	for (const group of modeGroupings) {
 		for (const [id, priority] of Object.entries(group.associations)) {
-			associations.push([label, id, priority])
+			associations.push([group.label, id, priority])
 		}
 	}
 	associations.sort((a, b) => a[2] - b[2])

@@ -41,7 +41,7 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 
 function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 	const { data, isPending: isDetailsPending } = useQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { playerId } }))
-	const { data: bmData } = useQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId } }))
+	const { data: bmData } = useQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId }, staleTime: Infinity }))
 	const orgFlags = useOrgFlags()
 	const rawFlags = bmData && orgFlags ? resolveFlags(bmData.flagIds, orgFlags) : null
 	const flags = rawFlags ? sortFlagsByHierarchy(rawFlags) : undefined
