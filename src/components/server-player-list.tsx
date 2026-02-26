@@ -32,11 +32,12 @@ function PlayerItem({ player, matchId }: PlayerItemProps) {
 interface SquadSectionProps {
 	squad: SM.Squad | null
 	players: SM.Player[]
+	totalCount: number
 	matchId: number
 }
 
-function SquadSection({ squad, players, matchId }: SquadSectionProps) {
-	if (players.length === 0) return null
+function SquadSection({ squad, players, totalCount, matchId }: SquadSectionProps) {
+	if (players.length === 0 && totalCount === 0) return null
 
 	return (
 		<div className="mb-3 rounded border border-border/50">
@@ -49,7 +50,7 @@ function SquadSection({ squad, players, matchId }: SquadSectionProps) {
 						</>
 					)
 					: <span className="text-xs font-semibold">Unassigned</span>}
-				<span className="text-xs text-muted-foreground">({players.length})</span>
+				<span className="text-xs text-muted-foreground">({totalCount})</span>
 				{squad?.locked && (
 					<span title="Squad is locked">
 						<Icons.Lock className="h-3 w-3 text-muted-foreground" />
@@ -69,13 +70,15 @@ interface TeamSectionProps {
 	teamId: SM.TeamId
 	squads: SM.Squad[]
 	players: SM.Player[]
+	allPlayers: SM.Player[]
 	matchId: number
 }
 
-function TeamSection({ teamId, squads, players, matchId }: TeamSectionProps) {
+function TeamSection({ teamId, squads, players, allPlayers, matchId }: TeamSectionProps) {
 	const [isOpen, setIsOpen] = React.useState(true)
 
 	const teamPlayers = players.filter(p => p.teamId === teamId)
+	const allTeamPlayers = allPlayers.filter(p => p.teamId === teamId)
 	const teamSquads = squads.filter(s => s.teamId === teamId)
 
 	return (
@@ -85,7 +88,7 @@ function TeamSection({ teamId, squads, players, matchId }: TeamSectionProps) {
 				<span className="text-xs font-bold flex items-center flex-nowrap gap-1 whitespace-nowrap">
 					<MatchTeamDisplay matchId={matchId} teamId={teamId} showAltTeamIndicator={true} />
 				</span>
-				<span className="text-xs text-muted-foreground whitespace-nowrap">({teamPlayers.length})</span>
+				<span className="text-xs text-muted-foreground whitespace-nowrap">({allTeamPlayers.length})</span>
 			</CollapsibleTrigger>
 			<CollapsibleContent className="pt-2">
 				{teamPlayers.length === 0
@@ -98,11 +101,13 @@ function TeamSection({ teamId, squads, players, matchId }: TeamSectionProps) {
 						<>
 							{teamSquads.map((squad) => {
 								const squadPlayers = teamPlayers.filter(p => p.squadId === squad.squadId)
+								const totalSquadCount = allTeamPlayers.filter(p => p.squadId === squad.squadId).length
 								return (
 									<SquadSection
 										key={squad.squadId}
 										squad={squad}
 										players={squadPlayers}
+										totalCount={totalSquadCount}
 										matchId={matchId}
 									/>
 								)
@@ -110,6 +115,7 @@ function TeamSection({ teamId, squads, players, matchId }: TeamSectionProps) {
 							<SquadSection
 								squad={null}
 								players={teamPlayers.filter(p => p.squadId === null)}
+								totalCount={allTeamPlayers.filter(p => p.squadId === null).length}
 								matchId={matchId}
 							/>
 						</>
@@ -205,12 +211,14 @@ export default function ServerPlayerList() {
 										teamId={firstTeamId}
 										squads={squads}
 										players={filteredPlayers}
+										allPlayers={players}
 										matchId={currentMatchId}
 									/>
 									<TeamSection
 										teamId={secondTeamId}
 										squads={squads}
 										players={filteredPlayers}
+										allPlayers={players}
 										matchId={currentMatchId}
 									/>
 									<TeamUnassignedSection players={unassignedPlayers} matchId={currentMatchId} />
