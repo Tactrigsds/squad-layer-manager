@@ -218,6 +218,7 @@ export function ServerActivityCharts(props: {
 	)
 	const selectedModeId = Zus.useStore(BattlemetricsClient.Store, s => s.selectedModeId)
 	const setSelectedModeId = Zus.useStore(BattlemetricsClient.Store, s => s.setSelectedModeId)
+	const slsOnly = Zus.useStore(BattlemetricsClient.Store, s => s.slsOnly)
 	const activeModeId = selectedModeId !== null && groupingModeIds.includes(selectedModeId)
 		? selectedModeId
 		: groupingModeIds[0] ?? null
@@ -268,8 +269,10 @@ export function ServerActivityCharts(props: {
 
 		const modeGroupings = playerFlagGroupings.filter(g => g.modeIds.includes(activeModeId))
 
+		const chartPlayers = slsOnly ? livePlayers.filter(p => p.isLeader) : livePlayers
+
 		// Build [eosId, flags[]] pairs for all live players — bmData is keyed by EOS ID
-		const playerFlagPairs: [SM.PlayerId, BM.PlayerFlag[]][] = livePlayers
+		const playerFlagPairs: [SM.PlayerId, BM.PlayerFlag[]][] = chartPlayers
 			.filter(p => p.ids.eos != null)
 			.map(p => {
 				const eosId = p.ids.eos!
@@ -290,7 +293,7 @@ export function ServerActivityCharts(props: {
 		const team2Players: string[][] = groupLabels.map(() => [])
 		const otherIdx = groupLabels.length - 1
 
-		for (const player of livePlayers) {
+		for (const player of chartPlayers) {
 			const group = player.ids.eos != null ? playerGroups.get(player.ids.eos) : undefined
 			const idx = group != null ? (labelToIdx.get(group) ?? -1) : otherIdx
 			if (idx === -1) continue
@@ -335,6 +338,7 @@ export function ServerActivityCharts(props: {
 		playerFlagGroupings,
 		activeModeId,
 		livePlayers,
+		slsOnly,
 		bmData,
 		team1Label,
 		team2Label,

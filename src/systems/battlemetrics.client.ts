@@ -9,11 +9,15 @@ import * as Zus from 'zustand'
 type StoreState = {
 	selectedModeId: string | null
 	setSelectedModeId: (id: string | null) => void
+	slsOnly: boolean
+	setSlsOnly: (v: boolean) => void
 }
 
 export const Store = Zus.createStore<StoreState>((set) => ({
 	selectedModeId: null,
 	setSelectedModeId: (id) => set({ selectedModeId: id }),
+	slsOnly: false,
+	setSlsOnly: (v) => set({ slsOnly: v }),
 }))
 
 export const [usePlayerBmData, playerBmData$] = ReactRx.bind<BM.PublicPlayerBmData>(
