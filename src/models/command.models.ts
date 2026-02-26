@@ -75,7 +75,7 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('listFlags', {
 		args: [{ name: 'player', optional: true }],
-		defaults: { enabled: true, scopes: ['admin'], strings: ['listFlags', 'lf'] },
+		defaults: { enabled: true, scopes: ['admin'], strings: ['listflags', 'lf'] },
 	}),
 }
 
@@ -118,7 +118,7 @@ export function parseCommand(msg: SM.RconEvents.ChatMessage, configs: CommandCon
 		const allCommandStrings = Obj.objValues(configs)
 			.filter((c) => chatInScope(c.scopes, msg.channelType))
 			.flatMap((c) => c.strings)
-			.map((s) => (commandPrefix + s).toLowerCase())
+			.map((s) => (commandPrefix + s))
 		const sortedMatches = StringComparison.diceCoefficient.sortMatch(words[0].toLowerCase(), allCommandStrings)
 		if (sortedMatches.length === 0) {
 			return { code: 'err:unknown-command' as const, msg: `Unknown command "${words[0]}"` }
@@ -150,7 +150,7 @@ function extractArgs(id: CommandId, words: string[]) {
 
 function matchCommandText(configs: CommandConfigs, cmdText: string) {
 	for (const [cmd, config] of Object.entries(configs)) {
-		if (config.strings.includes(cmdText)) {
+		if (config.strings.some(s => s.toLowerCase() === cmdText.toLowerCase())) {
 			return cmd as CommandId
 		}
 	}
