@@ -43,25 +43,12 @@ export default function LayersPanel() {
 				<MatchHistoryPanelContent />
 				<Separator />
 				<CardHeader className="flex flex-row items-center justify-between">
-					<TabsList
-						active={tab}
-						options={[
-							{ label: 'Layer Queue', value: 'layer-queue' },
-							{ label: 'Teams', value: 'teams' },
-						]}
-						setActive={setTab}
-					/>
+					<CardTitle>Recent Users</CardTitle>
 					<UserPresencePanel />
 				</CardHeader>
 				<Separator />
-				{tab === 'layer-queue'
-					? (
-						<>
-							<SlmUpdatesDisabledAlert />
-							<QueuePanelContent />
-						</>
-					)
-					: <TeamsPanel />}
+				<SlmUpdatesDisabledAlert />
+				<QueuePanelContent />
 			</ScrollArea>
 		</Card>
 	)
