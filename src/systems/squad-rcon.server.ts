@@ -145,7 +145,15 @@ const fetchPlayers = C.spanOp('fetchPlayers', { module }, async (ctx: C.Rcon & C
 		data.isLeader = data.isLeader === 'True'
 		data.teamId = data.teamId !== 'N/A' ? +data.teamId : null
 		data.squadId = data.squadId !== 'N/A' && data.squadId !== null ? +data.squadId : null
-		data.ids = SM.PlayerIds.parse({ username: match.groups!.name, idsStr: match[2] })
+		const idsInput = { username: match.groups!.name, idsStr: match[2] }
+		let ids: SM.PlayerIds.Type
+		try {
+			ids = SM.PlayerIds.parse(idsInput)
+		} catch (e) {
+			log.error(e, 'Failed to parse player ids. line: %s, input: %o', line, idsInput)
+			continue
+		}
+		data.ids = ids
 
 		data.isAdmin = false
 		if (data.ids.steam) {
@@ -155,8 +163,12 @@ const fetchPlayers = C.spanOp('fetchPlayers', { module }, async (ctx: C.Rcon & C
 			log.info('parsed player info data without steam id: %o', data)
 		}
 
-		const parsedData = SM.PlayerSchema.parse(data)
-		players.push(parsedData)
+		const playerResult = SM.PlayerSchema.safeParse(data)
+		if (!playerResult.success) {
+			log.error(playerResult.error, 'Failed to parse player. line: %s, input: %o', line, data)
+			continue
+		}
+		players.push(playerResult.data)
 	}
 	return { code: 'ok' as const, players }
 })
@@ -183,7 +195,14 @@ const fetchSquads = C.spanOp('fetchSquads', { module }, async (ctx: C.Rcon) => {
 		if (!match) continue
 		const ids = match.groups as any
 		ids.squadId = +match.groups!.squadId
-		const creatorIds = SM.PlayerIds.parse({ username: match.groups!.creatorName, idsStr: match[6] })
+		const creatorIdsInput = { username: match.groups!.creatorName, idsStr: match[6] }
+		let creatorIds: SM.PlayerIds.Type
+		try {
+			creatorIds = SM.PlayerIds.parse(creatorIdsInput)
+		} catch (e) {
+			log.error(e, 'Failed to parse squad creator ids. line: %s, input: %o', line, creatorIdsInput)
+			continue
+		}
 		const squad: any = {
 			squadId: +match.groups!.squadId,
 			teamId: teamId ?? null,
@@ -192,8 +211,12 @@ const fetchSquads = C.spanOp('fetchSquads', { module }, async (ctx: C.Rcon) => {
 			locked: match.groups?.locked === 'True',
 			creator: creatorIds.steam,
 		}
-		const parsed = SM.SquadSchema.parse(squad)
-		squads.push(parsed)
+		const squadResult = SM.SquadSchema.safeParse(squad)
+		if (!squadResult.success) {
+			log.error(squadResult.error, 'Failed to parse squad. line: %s, input: %o', line, squad)
+			continue
+		}
+		squads.push(squadResult.data)
 	}
 	return {
 		code: 'ok' as const,
