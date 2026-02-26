@@ -107,7 +107,15 @@ function createFlagGroupChartOption(
 ): EChartsOption {
 	const textColor = isDark ? '#e5e7eb' : '#111827'
 	const barLabelColor = '#fff'
-	const otherIdx = groupLabels.length - 1
+	const originalOtherIdx = groupLabels.length - 1
+	const activeIndices = groupLabels.map((_, i) => i).filter(i => team1Counts[i] > 0 || team2Counts[i] > 0)
+	groupLabels = activeIndices.map(i => groupLabels[i])
+	groupColors = activeIndices.map(i => groupColors[i])
+	team1Counts = activeIndices.map(i => team1Counts[i])
+	team2Counts = activeIndices.map(i => team2Counts[i])
+	team1Players = activeIndices.map(i => team1Players[i])
+	team2Players = activeIndices.map(i => team2Players[i])
+	const otherIdx = activeIndices.indexOf(originalOtherIdx)
 	return {
 		animation: false,
 		grid: {
@@ -139,7 +147,14 @@ function createFlagGroupChartOption(
 			stack: 'total',
 			data: [team1Counts[i], team2Counts[i]],
 			itemStyle: { color: groupColors[i] },
-			label: { show: true, color: barLabelColor, fontWeight: 'bold', textShadowBlur: isDark ? 0 : 3, textShadowColor: '#0006' },
+			label: {
+				show: true,
+				color: barLabelColor,
+				fontWeight: 'bold',
+				textShadowBlur: isDark ? 0 : 3,
+				textShadowColor: '#0006',
+				formatter: (p: { value?: unknown }) => (typeof p.value === 'number' && p.value > 0) ? String(p.value) : '',
+			},
 		})),
 		tooltip: {
 			trigger: 'axis',
