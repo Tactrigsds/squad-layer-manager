@@ -122,7 +122,7 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 							<>
 								<ExtLink href={`https://steamcommunity.com/profiles/${player?.ids.steam ?? profile?.playerIds.steam}`}>Steam</ExtLink>
 								<ExtLink href={`https://communitybanlist.com/search/${player?.ids.steam ?? profile?.playerIds.steam}`}>CBL</ExtLink>
-								<ExtLink href={`https://mysquadstats.com/search/${player?.ids.steam ?? profile?.playerIds.steam}#player`}>
+								<ExtLink href={`https://mysquadstats.com/search/${player?.ids.steam ?? profile?.playerIds.steam}#vanillaStats`}>
 									MySquadStats
 								</ExtLink>
 							</>
