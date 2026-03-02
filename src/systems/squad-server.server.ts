@@ -475,34 +475,35 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 	})
 
 	// -------- process log events --------
-	//
-	let chunk$: Rx.Observable<string>
-	if (settings.connections.logs.type === 'sftp') {
-		const sftpReader = new SftpTail({
-			filePath: settings.connections!.logs.logFile,
-			host: settings.connections!.logs.host,
-			port: settings.connections!.logs.port,
-			username: settings.connections!.logs.username,
-			password: settings.connections!.logs.password,
-			pollInterval: CONFIG.squadServer.sftpPollInterval,
-			reconnectInterval: CONFIG.squadServer.sftpReconnectInterval,
-			parentModule: module,
-		})
-		cleanup.push(() => sftpReader.disconnect())
-		sftpReader.watch()
-
-		chunk$ = Rx.fromEvent(sftpReader, 'chunk').pipe(
-			Rx.map((...args) => args[0] as string),
-		)
-	} else if (settings.connections.logs.type === 'log-receiver') {
-		chunk$ = SquadLogsReceiver.event$.pipe(
-			Rx.concatMap((event) => event.type === 'data' ? Rx.of(event.data) : Rx.EMPTY),
-		)
-	} else {
-		assertNever(settings.connections.logs)
-	}
-
 	void (async () => {
+		// wait for history to be up-to-date before processing log events
+		await Rx.firstValueFrom(server.historyConflictsResolved$.pipe(Rx.filter(v => !!v)))
+		let chunk$: Rx.Observable<string>
+		if (settings.connections.logs.type === 'sftp') {
+			const sftpReader = new SftpTail({
+				filePath: settings.connections!.logs.logFile,
+				host: settings.connections!.logs.host,
+				port: settings.connections!.logs.port,
+				username: settings.connections!.logs.username,
+				password: settings.connections!.logs.password,
+				pollInterval: CONFIG.squadServer.sftpPollInterval,
+				reconnectInterval: CONFIG.squadServer.sftpReconnectInterval,
+				parentModule: module,
+			})
+			cleanup.push(() => sftpReader.disconnect())
+			sftpReader.watch()
+
+			chunk$ = Rx.fromEvent(sftpReader, 'chunk').pipe(
+				Rx.map((...args) => args[0] as string),
+			)
+		} else if (settings.connections.logs.type === 'log-receiver') {
+			chunk$ = SquadLogsReceiver.event$.pipe(
+				Rx.concatMap((event) => event.type === 'data' ? Rx.of(event.data) : Rx.EMPTY),
+			)
+		} else {
+			assertNever(settings.connections.logs)
+		}
+
 		for await (const [event, err] of SM.LogEvents.parse(toAsyncGenerator(chunk$))) {
 			const ctx = resolveSliceCtx(getBaseCtx(), serverId)
 			if (err) {
