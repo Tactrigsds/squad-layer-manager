@@ -4,10 +4,11 @@ import * as SelectLayersFrame from '@/frames/select-layers.frame'
 import * as Lifecycle from '@/lib/lifecycle'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
+import * as RbSyncState from '@/lib/rollback-synced-state'
 import * as ST from '@/lib/state-tree'
 import * as ZusUtils from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
-import * as SLL from '@/models/shared-layer-list'
+import type * as SLL from '@/models/shared-layer-list'
 import * as UP from '@/models/user-presence'
 import * as UPActions from '@/models/user-presence/actions'
 import type * as USR from '@/models/users.models'
@@ -133,7 +134,7 @@ export type PresenceStore = {
 	handlePresenceUpdate(update: UP.PresenceBroadcast): void
 
 	// applies editSessionChanged action to all presence entries (called when session resets)
-	onSessionChanged(session: SLL.EditSession): void
+	onSessionChanged(ops: SLL.Operation[]): void
 
 	pushPresenceAction(action: UPActions.Action): void
 	updateActivity(update: (prev: UP.RootActivity) => UP.RootActivity): void
@@ -220,10 +221,10 @@ function createPresenceStore() {
 				}
 			},
 
-			onSessionChanged(session) {
+			onSessionChanged(ops) {
 				set(state =>
 					Im.produce(state, draft => {
-						UPActions.applyToAll(draft.presence, session, UPActions.editSessionChanged)
+						UPActions.applyToAll(draft.presence, ops, UPActions.editSessionChanged)
 					})
 				)
 				get().pushPresenceAction(UPActions.editSessionChanged)
@@ -235,7 +236,7 @@ function createPresenceStore() {
 				const userId = UsersClient.loggedInUserId
 				if (!userId) return
 				const sllState = SLLClient.Store.getState()
-				const hasEdits = SLL.hasMutations(sllState.session, userId)
+				const hasEdits = sllState.isModified
 				let update = action({ hasEdits, prev: get().presence.get(config.wsClientId) })
 				update = Obj.trimUndefined(update)
 				let presenceUpdated = false
@@ -330,7 +331,7 @@ export function useIsEditing() {
 
 export function selectIsEditing(store: SLLClient.Store, user?: USR.User) {
 	if (!user) return false
-	return user && store.session.editors.has(user.discordId) && !store.committing
+	return user && store.editors.has(user.discordId) && !store.committing
 }
 
 // allows familiar useState binding to a presence activity
@@ -439,10 +440,10 @@ export async function setup() {
 
 	// Hook into SLL session changes to re-apply presence actions
 	SLLClient.Store.subscribe((state, prev) => {
-		if (state.session !== prev.session) {
+		if (state.rbSession.localState !== prev.rbSession.localState) {
 			// When session resets (new session object), notify presence store
 			if (state.sessionSeqId !== prev.sessionSeqId) {
-				PresenceStore.getState().onSessionChanged(state.session)
+				PresenceStore.getState().onSessionChanged(RbSyncState.Client.localOps(prev.rbSession))
 			}
 		}
 	})

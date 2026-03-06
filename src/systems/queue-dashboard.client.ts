@@ -73,7 +73,7 @@ export function selectLLItemState(llStore: LLStore, itemId: string): LLItemState
 	return {
 		index,
 		item,
-		mutationState: ItemMut.toItemMutationState(llStore.session.mutations, itemId, parentItem?.layerId),
+		mutationState: ItemMut.toItemMutationState(llStore.mutations, itemId, parentItem?.layerId),
 		isLocallyLast,
 	}
 }

@@ -101,64 +101,13 @@ export type NewItemOperation = z.infer<typeof NewItemOperationSchema>
 export const NewContextItemOperationSchema = z.discriminatedUnion('op', buildItemOpSchemaEntries({}))
 export type NewContextItemOperation = z.infer<typeof NewContextItemOperationSchema>
 
-// operations which are almost always non-associative, so for now we just always assume a conflict. this could be improved
-export const UNSTABLE_OPS = ['delete', 'clear', 'add', 'move'] as const satisfies OpCode[]
-
-export function isUnstableOp(op: Operation): op is ItemOperation {
-	return (UNSTABLE_OPS as string[]).includes(op.op)
-}
-
 export function isOpForItem(op: Operation): op is ItemOperation {
 	return (ItemOperationSchema.options.map(op => op.shape.op.value as string)).includes(op.op)
-}
-
-export function updatesLayer(op: Operation) {
-	if (!isOpForItem(op)) return false
-	return op.op === 'edit-layer' || op.op === 'swap-factions'
-}
-
-function itemsRelated(list: LL.List, itemIdA: LL.ItemId, itemIdB: LL.ItemId) {
-	if (itemIdA === itemIdB) return true
-	const itemA = LL.findItemById(list, itemIdA)?.item
-	const itemB = LL.findItemById(list, itemIdB)?.item
-	if (!itemA || !itemB) return false
-	const parentItemA = LL.findParentItem(list, itemIdA)
-	const parentItemB = LL.findParentItem(list, itemIdB)
-	if (parentItemA && itemIdB === parentItemA.itemId) return true
-	if (parentItemB && itemIdA === parentItemB.itemId) return true
-	if (parentItemA && parentItemA.itemId === parentItemB?.itemId) return true
-	return false
-}
-
-// check if newOp is associative with respect to other new operations (anything at or past the "expected" index)
-// expectedIndex represents where the source client expects to insert their operation, assuming no other clients
-// have made modifications. Any operations at or after this index are potential conflicts we need to check.
-//
-// TODO we can reduce the cases where we have to rollback here substantially if we're smart about it
-export function containsConflict(session: EditSession, expectedIndex: number, newOp: Operation) {
-	// peer operations are operations that have happened since the last sync for the source client for newOp
-	const peerOps = session.ops.slice(expectedIndex)
-	const peerPushedUnstable = !!peerOps.find(isUnstableOp)
-	if (peerPushedUnstable && isUnstableOp(newOp)) return true
-
-	if (isOpForItem(newOp)) {
-		const peerOpsForItem = peerOps.filter(op => isOpForItem(op) && itemsRelated(session.list, op.itemId, newOp.itemId))
-		if (peerOpsForItem.length === 0) return false
-		for (const peerOp of peerOpsForItem) {
-			if (peerOp.op === newOp.op) return true
-			if (updatesLayer(peerOp) && updatesLayer(newOp)) return true
-		}
-	}
-
-	return false
 }
 
 export type EditSession = {
 	list: LL.List
 	editors: Set<USR.UserId>
-	ops: Operation[]
-
-	// TODO I would like to move away from this approach of calculating mutations when operations are applied
 	mutations: ItemMut.Mutations
 }
 
@@ -209,13 +158,6 @@ export type Update =
 		sideEffectOps: Operation[]
 	}
 
-export type Rollback = {
-	// the index of the first replacement
-	toIndex: number
-
-	replacements: Operation[]
-}
-
 // the sequence id of the base queue the session
 const QueueSequenceId = z.number()
 export type SessionSequenceId = z.infer<typeof QueueSequenceId>
@@ -224,7 +166,6 @@ export const ClientUpdateSchema = z.discriminatedUnion('code', [
 	z.object({
 		code: z.literal('op'),
 		sessionSeqId: QueueSequenceId,
-		expectedIndex: z.number(),
 		op: OperationSchema,
 	}),
 	z.object({
@@ -445,31 +386,47 @@ export function applyOperation(session: EditSession, newOp: Operation | NewOpera
 	}
 }
 
-export function applyOperations(s: EditSession, ops: Operation[]) {
+export function applyOperations(s: EditSession, ops: Operation[]): ItemMut.Mutations {
+	const mutations = ItemMut.initMutations()
 	for (let i = 0; i < ops.length; i++) {
 		const op = ops[i]
-		applyOperation(s, op, s.mutations)
+		applyOperation(s, op, mutations)
 	}
 	// catch any invalid operations early, hopefully on the client
 	LL.ListSchema.parse(s.list)
-	s.ops.push(...ops)
+	return mutations
+}
+
+export function mergeMutations(base: ItemMut.Mutations, additions: ItemMut.Mutations): ItemMut.Mutations {
+	const result: ItemMut.Mutations = {
+		added: new Set(base.added),
+		removed: new Set(base.removed),
+		moved: new Set(base.moved),
+		edited: new Set(base.edited),
+	}
+	for (const id of additions.added) ItemMut.tryApplyMutation('added', id, result)
+	for (const id of additions.removed) ItemMut.tryApplyMutation('removed', id, result)
+	for (const id of additions.moved) ItemMut.tryApplyMutation('moved', id, result)
+	for (const id of additions.edited) ItemMut.tryApplyMutation('edited', id, result)
+	return result
 }
 
 export function createNewSession(list?: LL.List): EditSession {
 	return {
 		list: list ?? [],
 		editors: new Set(),
-		ops: [],
 		mutations: ItemMut.initMutations(),
 	}
 }
 
-export function hasMutations(session: EditSession, userId?: USR.UserId) {
-	for (const op of session.ops) {
-		if (op.op === 'start-editing' || op.op === 'finish-editing') {
-			continue
-		}
-		if (!userId || userId === op.userId) return true
+export function hasMutations(session: EditSession): boolean {
+	return ItemMut.hasMutations(session.mutations)
+}
+
+export function hasUserMutations(ops: Operation[], userId: USR.UserId): boolean {
+	for (const op of ops) {
+		if (op.op === 'start-editing' || op.op === 'finish-editing') continue
+		if (op.userId === userId) return true
 	}
 	return false
 }

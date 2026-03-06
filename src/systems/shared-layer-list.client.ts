@@ -1,6 +1,8 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
 import { createId } from '@/lib/id'
+import type * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
+import * as RbSyncState from '@/lib/rollback-synced-state'
 import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
 import * as L from '@/models/layer'
@@ -8,7 +10,6 @@ import * as LL from '@/models/layer-list.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as UP from '@/models/user-presence'
 import * as RPC from '@/orpc.client'
-
 import * as RbacClient from '@/systems/rbac.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
@@ -21,17 +22,7 @@ import * as Zus from 'zustand'
 export type Store = {
 	sessionSeqId: SLL.SessionSequenceId
 
-	// state plus any in-flight operations applied
-	session: SLL.EditSession
-
-	// state that we're sure is syncronized between server and client
-	syncedState: SLL.EditSession
-
-	// operation ids which have not been synced from this client
-	outgoingOpsPendingSync: string[]
-
-	// operations that have come from the server that represent potential conflicts
-	incomingOpsPendingSync: SLL.Operation[]
+	rbSession: RbSyncState.Client.Session<SLL.Operation, SLL.EditSession>
 
 	itemLocks: SLL.ItemLocks
 
@@ -46,7 +37,16 @@ export type Store = {
 
 	// -------- derived properties --------
 	layerList: LL.Item[]
+	editors: SLL.EditSession['editors']
+	mutations: ItemMut.Mutations
 	isModified: boolean
+}
+
+const sllReducer: RbSyncState.Reducer<SLL.Operation, SLL.EditSession> = (state, ops) => {
+	const next = Obj.deepClone(state)
+	const batchMutations = SLL.applyOperations(next, ops)
+	next.mutations = SLL.mergeMutations(next.mutations, batchMutations)
+	return next
 }
 
 const [_useServerUpdate, serverUpdate$] = ReactRx.bind<SLL.Update>(
@@ -56,45 +56,45 @@ const [_useServerUpdate, serverUpdate$] = ReactRx.bind<SLL.Update>(
 export const Store = createStore()
 
 function createStore() {
+	const initRbSession = RbSyncState.Client.initSession<SLL.Operation, SLL.EditSession>(SLL.createNewSession())
+
 	const store = Zus.createStore<Store>((set, get, store) => {
-		const session = SLL.createNewSession()
-
 		store.subscribe((state, prev) => {
-			if (state.session.list !== state.layerList) {
-				set({ layerList: state.session.list })
-			}
+			const localState = state.rbSession.localState
+			const prevLocalState = prev.rbSession.localState
+			if (localState === prevLocalState) return
 
-			const hasMutations = SLL.hasMutations(state.session)
-			if (hasMutations !== SLL.hasMutations(prev.session)) {
-				set({ isModified: hasMutations })
-			}
+			const updates: Partial<Store> = {}
+			if (localState.list !== state.layerList) updates.layerList = localState.list
+			if (localState.editors !== state.editors) updates.editors = localState.editors
+			if (localState.mutations !== state.mutations) updates.mutations = localState.mutations
+			const hasMutations = SLL.hasMutations(localState)
+			if (hasMutations !== state.isModified) updates.isModified = hasMutations
+			if (Object.keys(updates).length > 0) set(updates)
 		})
 
 		return {
-			session,
+			rbSession: initRbSession,
 
 			sessionSeqId: 0,
-			syncedState: SLL.createNewSession(),
 			itemLocks: new Map(),
-
-			outgoingOpsPendingSync: [],
-			incomingOpsPendingSync: [],
 
 			committing: false,
 			syncedOp$: new Rx.Subject(),
 
-			// shorthands
-			layerList: session.list,
+			// derived
+			layerList: initRbSession.localState.list,
+			editors: initRbSession.localState.editors,
+			mutations: initRbSession.localState.mutations,
 			isModified: false,
 
 			async handleServerUpdate(update) {
 				switch (update.code) {
 					case 'init': {
+						const newRbSession = RbSyncState.Client.initSession<SLL.Operation, SLL.EditSession>(update.session)
 						set({
 							...store.getInitialState(),
-							session: update.session,
-							syncedState: update.session,
-							outgoingOpsPendingSync: [],
+							rbSession: newRbSession,
 							sessionSeqId: update.sessionSeqId,
 							itemLocks: new Map(),
 						})
@@ -119,15 +119,15 @@ function createStore() {
 							const msg = `Queue ${update.code === 'commit-completed' ? 'updated' : 'reset'} by ${update.initiator}`
 							globalToast$.next({ title: msg })
 						}
+						const prevOps = RbSyncState.Client.localOps(get().rbSession)
 						const newSession = SLL.createNewSession(update.list)
-						set(state =>
-							Im.produce(state, draft => {
-								draft.sessionSeqId = update.newSessionSeqId
-								draft.session = draft.syncedState = newSession
-								draft.itemLocks = new Map()
-							})
-						)
-						UPClient.PresenceStore.getState().onSessionChanged(newSession)
+						const newRbSession = RbSyncState.Client.initSession<SLL.Operation, SLL.EditSession>(newSession)
+						set({
+							rbSession: newRbSession,
+							sessionSeqId: update.newSessionSeqId,
+							itemLocks: new Map(),
+						})
+						UPClient.PresenceStore.getState().onSessionChanged(prevOps)
 						break
 					}
 
@@ -165,35 +165,10 @@ function createStore() {
 			},
 
 			writeIncomingOperations(ops: SLL.Operation[]) {
+				const newRbSession = RbSyncState.Client.processIncomingOps(get().rbSession, ops, sllReducer)
+				set({ rbSession: newRbSession })
 				for (const op of ops) {
-					const state = get()
-					const nextPendingOpId = state.outgoingOpsPendingSync[0]
-					if (nextPendingOpId && nextPendingOpId === op.opId) {
-						const serverDivergedOps = state.incomingOpsPendingSync
-						const serverSession = Obj.deepClone(state.syncedState)
-						const newOpsHead = [...serverDivergedOps, op]
-						SLL.applyOperations(serverSession, newOpsHead)
-
-						set({
-							session: serverSession,
-							syncedState: serverSession,
-							incomingOpsPendingSync: [],
-							outgoingOpsPendingSync: this.outgoingOpsPendingSync.slice(1),
-						})
-						for (const op of newOpsHead) {
-							state.syncedOp$.next(op)
-						}
-					} else if (nextPendingOpId) {
-						set({ incomingOpsPendingSync: [...state.incomingOpsPendingSync, op] })
-					} else {
-						set(state =>
-							Im.produce(state, draft => {
-								SLL.applyOperations(draft.syncedState, [op])
-								SLL.applyOperations(draft.session, [op])
-							})
-						)
-						state.syncedOp$.next(op)
-					}
+					get().syncedOp$.next(op)
 				}
 			},
 
@@ -228,19 +203,14 @@ function createStore() {
 				}
 				console.log(op)
 
-				set(state =>
-					Im.produce(state, draft => {
-						draft.outgoingOpsPendingSync.push(op.opId)
-						SLL.applyOperations(draft.session, [op])
-					})
-				)
+				set({ rbSession: RbSyncState.Client.processOutgoingOps(get().rbSession, [op], sllReducer) })
 
 				let isComitting = false
 				try {
 					if (newOp.op === 'start-editing') {
 						UPClient.PresenceStore.getState().updateActivity(UP.TOGGLE_EDITING_QUEUE_TRANSITIONS.createActivity)
 					} else if (newOp.op === 'finish-editing') {
-						if (get().session.editors.size === 0 && SLL.hasMutations(get().session)) {
+						if (get().editors.size === 0 && get().isModified) {
 							set({ committing: true })
 							isComitting = true
 						}
@@ -250,7 +220,6 @@ function createStore() {
 					await processUpdate({
 						code: 'op',
 						op,
-						expectedIndex: get().session!.ops.length - 1,
 						sessionSeqId: get().sessionSeqId,
 					})
 				} finally {

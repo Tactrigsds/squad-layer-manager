@@ -18,7 +18,7 @@ const EVENT_TEXT_DURATION = 2000
 export default function UserPresencePanel() {
 	const [layerList, editorIds] = Zus.useStore(
 		SLLClient.Store,
-		useShallow(state => [state.session.list, state.session.editors]),
+		useShallow(state => [state.layerList, state.editors]),
 	)
 	const userPresence = Zus.useStore(UPClient.PresenceStore, useShallow(state => state.userPresence))
 

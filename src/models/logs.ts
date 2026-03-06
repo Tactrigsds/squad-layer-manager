@@ -96,6 +96,7 @@ let maxModuleNameLength = 0
 let maxPrefixLength = 0
 
 function visibleLength(s: string): number {
+	// oxlint-disable-next-line no-control-regex
 	return s.replace(/\x1b\[[0-9;]*m/g, '').length
 }
 

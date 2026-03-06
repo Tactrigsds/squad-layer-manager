@@ -1,6 +1,7 @@
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { withAcquired } from '@/lib/nodejs-reentrant-mutexes'
 import * as Obj from '@/lib/object'
+import * as RbSyncState from '@/lib/rollback-synced-state'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
 import * as LL from '@/models/layer-list.models'
@@ -24,7 +25,7 @@ import * as Rx from 'rxjs'
 export type SharedLayerListContext = {
 	// right now this is just used for the layer queue context but when we implement a more general form of layer lists this may be the abstractionw we stick with
 	sharedList: {
-		session: SLL.EditSession
+		session: RbSyncState.Server.Session<SLL.Operation, SLL.EditSession>
 		update$: Rx.Subject<SLL.Update>
 		sessionSeqId: SLL.SessionSequenceId
 
@@ -40,11 +41,22 @@ const module = initModule('shared-layer-list')
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
 
+const sllServerReducer: RbSyncState.Reducer<SLL.Operation, SLL.EditSession> = (state, ops) => {
+	const batchMutations = SLL.applyOperations(state, ops)
+	state.mutations = SLL.mergeMutations(state.mutations, batchMutations)
+	return state
+}
+
+export function applySessionOps(ctx: C.SharedLayerList, ops: SLL.Operation[]) {
+	if (ops.length === 0) return
+	ctx.sharedList.session = RbSyncState.Server.applyOps(ctx.sharedList.session, ops, sllServerReducer)
+}
+
 export function getDefaultState(serverState: SS.ServerState): SharedLayerListContext['sharedList'] {
 	const editSession: SLL.EditSession = SLL.createNewSession(Obj.deepClone(serverState.layerQueue))
 
 	return {
-		session: editSession,
+		session: RbSyncState.Server.initSession(editSession),
 		update$: new Rx.Subject<SLL.Update>(),
 		sessionSeqId: serverState.layerQueueSeqId,
 		queueSeqId: serverState.layerQueueSeqId,
@@ -54,26 +66,27 @@ export function getDefaultState(serverState: SS.ServerState): SharedLayerListCon
 }
 
 export function setupInstance(ctx: C.Db & C.LayerQueue & C.SharedLayerList & C.UserPresence & C.ServerSliceCleanup) {
-	const editSession = ctx.sharedList.session
 	const serverId = ctx.serverId
 
-	void sendUpdate(ctx, { code: 'init', session: editSession, sessionSeqId: 1 })
+	void sendUpdate(ctx, { code: 'init', session: ctx.sharedList.session.state, sessionSeqId: 1 })
 	ctx.cleanup.push(ctx.layerQueue.update$.subscribe(withAcquired(() => ctx.sharedList.mtx, async ([update, _ctx]) => {
 		const ctx = SquadServer.resolveSliceCtx(_ctx, _ctx.serverId)
 		if (update.state.layerQueueSeqId === ctx.sharedList.queueSeqId) return
 
 		const prevSessionSeqId = ctx.sharedList.sessionSeqId
 
-		ctx.sharedList.session = SLL.createNewSession(update.state.layerQueue)
-		SLL.endAllEditing(ctx.userPresence.presence, ctx.sharedList.session)
+		const prevOps = ctx.sharedList.session.ops
+		const newSession = SLL.createNewSession(update.state.layerQueue)
+		ctx.sharedList.session = RbSyncState.Server.initSession(newSession)
+		SLL.endAllEditing(ctx.userPresence.presence, newSession)
 		ctx.sharedList.sessionSeqId++
 		ctx.sharedList.queueSeqId = update.state.layerQueueSeqId
 		ctx.sharedList.itemLocks = new Map()
 		// all clients that receive session-updated will update themselves
-		UPActions.applyToAll(ctx.userPresence.presence, ctx.sharedList.session, UPActions.editSessionChanged)
+		UPActions.applyToAll(ctx.userPresence.presence, prevOps, UPActions.editSessionChanged)
 		void sendUpdate(ctx, {
 			code: 'list-updated',
-			list: ctx.sharedList.session.list,
+			list: newSession.list,
 			sessionSeqId: prevSessionSeqId,
 			newSessionSeqId: ctx.sharedList.sessionSeqId,
 		})
@@ -101,7 +114,7 @@ export const orpcRouter = {
 			Rx.switchMap(ctx => {
 				const initial: SLL.Update = {
 					code: 'init',
-					session: ctx.sharedList.session!,
+					session: ctx.sharedList.session.state,
 					sessionSeqId: ctx.sharedList.sessionSeqId,
 				}
 				const updateForClient$ = ctx.sharedList.update$.pipe(
@@ -132,7 +145,6 @@ const handleSllStateUpdate = C.spanOp(
 
 		const authRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write'))
 		if (authRes) return authRes
-		const editSession = ctx.sharedList.session
 		if (input.sessionSeqId !== ctx.sharedList.sessionSeqId) {
 			const msg = `Outdated session seq id ${input.sessionSeqId} for ${ctx.serverId} (expected ${ctx.sharedList.sessionSeqId})`
 			log.warn(msg)
@@ -144,10 +156,12 @@ const handleSllStateUpdate = C.spanOp(
 
 		switch (input.code) {
 			case 'op': {
-				if (editSession.ops.length < input.expectedIndex) throw new Error('Invalid index')
-				SLL.applyOperations(editSession, [input.op])
+				ctx.sharedList.session = RbSyncState.Server.applyOps(ctx.sharedList.session, [input.op], sllServerReducer)
 				log.info('Applied operation %o:%s', input.op, input.op.opId)
-				if (input.op.op === 'finish-editing' && (input.op.forceSave || editSession.editors.size === 0 && SLL.hasMutations(editSession))) {
+				if (
+					input.op.op === 'finish-editing'
+					&& (input.op.forceSave || ctx.sharedList.session.state.editors.size === 0 && SLL.hasMutations(ctx.sharedList.session.state))
+				) {
 					await commitChanges(ctx, input)
 					return
 				} else {
@@ -163,16 +177,18 @@ const handleSllStateUpdate = C.spanOp(
 
 			case 'reset': {
 				const serverState = await SquadServer.getServerState(ctx)
-				ctx.sharedList.session = SLL.createNewSession(serverState.layerQueue)
+				const prevOps = ctx.sharedList.session.ops
+				const newSession = SLL.createNewSession(serverState.layerQueue)
+				ctx.sharedList.session = RbSyncState.Server.initSession(newSession)
 				const prevSessionSeqId = ctx.sharedList.sessionSeqId
 				ctx.sharedList.sessionSeqId++
 				ctx.sharedList.itemLocks = new Map()
 
 				// all clients that receive reset-completed will update themselves
-				UPActions.applyToAll(ctx.userPresence.presence, ctx.sharedList.session, UPActions.editSessionChanged)
+				UPActions.applyToAll(ctx.userPresence.presence, prevOps, UPActions.editSessionChanged)
 				void sendUpdate(ctx, {
 					code: 'reset-completed',
-					list: ctx.sharedList.session.list,
+					list: newSession.list,
 					sessionSeqId: prevSessionSeqId,
 					newSessionSeqId: ctx.sharedList.sessionSeqId,
 					initiator: ctx.user.username,
@@ -211,24 +227,26 @@ async function commitChanges(
 		const sessionSeqId = input.sessionSeqId
 		const res = await LayerQueue.updateQueue({
 			ctx,
-			input: { layerQueue: ctx.sharedList.session.list, layerQueueSeqId: serverState.layerQueueSeqId },
+			input: { layerQueue: ctx.sharedList.session.state.list, layerQueueSeqId: serverState.layerQueueSeqId },
 		})
 		if (res.code === 'ok') {
 			serverState = res.update
-			ctx.sharedList.session = SLL.createNewSession(serverState.layerQueue)
+			const prevOps = ctx.sharedList.session.ops
+			const newSession = SLL.createNewSession(serverState.layerQueue)
+			ctx.sharedList.session = RbSyncState.Server.initSession(newSession)
 			ctx.sharedList.queueSeqId = serverState.layerQueueSeqId
 			ctx.sharedList.sessionSeqId++
 			ctx.sharedList.itemLocks = new Map()
-			UPActions.applyToAll(ctx.userPresence.presence, ctx.sharedList.session, UPActions.editSessionChanged)
+			UPActions.applyToAll(ctx.userPresence.presence, prevOps, UPActions.editSessionChanged)
 			void sendUpdate(ctx, {
 				code: 'commit-completed',
-				list: ctx.sharedList.session.list,
+				list: newSession.list,
 				committer: ctx.user,
 				sessionSeqId: sessionSeqId,
 				newSessionSeqId: ctx.sharedList.sessionSeqId,
 				initiator: ctx.user.username,
 			})
-			SLL.endAllEditing(ctx.userPresence.presence, ctx.sharedList.session)
+			SLL.endAllEditing(ctx.userPresence.presence, newSession)
 		} else {
 			void sendUpdate(ctx, {
 				code: 'commit-rejected',

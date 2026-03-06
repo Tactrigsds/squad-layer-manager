@@ -64,7 +64,7 @@ export function handlePresenceUpdate(
 			lockMutations.set(itemId, null)
 		}
 
-		const itemIds = UP.itemsToLockForActivity(ctx.sharedList.session.list, update.changes.activityState)
+		const itemIds = UP.itemsToLockForActivity(ctx.sharedList.session.state.list, update.changes.activityState)
 		if (itemIds.length > 0) {
 			if (SLL.anyLocksInaccessible(ctx.sharedList.itemLocks, itemIds, ctx.wsClientId)) {
 				return { code: 'err:locked' as const, msg: 'Failed to acquire all locks' }
@@ -109,7 +109,7 @@ export function cleanupActivityLocks(ctx: C.SharedLayerList, wsClientId: string)
 export function dispatchPresenceAction(ctx: C.SharedLayerList & C.UserPresence & C.User & C.WSSession, action: UPActions.Action) {
 	let currentPresence = ctx.userPresence.presence.get(ctx.wsClientId)
 	const actionInput: UPActions.ActionInput = {
-		hasEdits: SLL.hasMutations(ctx.sharedList.session, ctx.user.discordId),
+		hasEdits: SLL.hasUserMutations(ctx.sharedList.session.ops, ctx.user.discordId),
 		prev: currentPresence,
 	}
 	if (!currentPresence) {
@@ -119,14 +119,14 @@ export function dispatchPresenceAction(ctx: C.SharedLayerList & C.UserPresence &
 	const update = action(actionInput)
 	UP.updateClientPresence(currentPresence, update)
 	const extraOps = SLL.getOpsForActivityStateUpdate(
-		ctx.sharedList.session,
+		ctx.sharedList.session.state,
 		ctx.userPresence.presence,
 		ctx.wsClientId,
 		ctx.user.discordId,
 		update,
 	)
 	if (extraOps) {
-		SLL.applyOperations(ctx.sharedList.session, extraOps)
+		SharedLayerList.applySessionOps(ctx, extraOps)
 		void SharedLayerList.sendUpdate(ctx, {
 			code: 'update-presence',
 			wsClientId: ctx.wsClientId,
@@ -191,7 +191,10 @@ export function setup() {
 				for (const [wsClientId, presence] of Array.from(presenceState.entries())) {
 					// we don't want to remove presence instances that still might have an away indicator
 					const pastDisconnectTimeout = presence.lastSeen === null || (Date.now() - presence.lastSeen) > UP.DISPLAYED_AWAY_PRESENCE_WINDOW
-					if (!WSSessionSys.wsSessions.has(wsClientId) && pastDisconnectTimeout && !slice.sharedList.session.editors.has(presence.userId)) {
+					if (
+						!WSSessionSys.wsSessions.has(wsClientId) && pastDisconnectTimeout
+						&& !slice.sharedList.session.state.editors.has(presence.userId)
+					) {
 						presenceState.delete(wsClientId)
 						numCleaned++
 					}

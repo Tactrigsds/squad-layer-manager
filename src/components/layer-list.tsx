@@ -455,7 +455,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	const badges: React.ReactNode[] = []
 	let sourceDisplay: React.ReactNode | undefined
 
-	if (user && itemPresence?.itemActivity && itemActivityUser.discordId !== user.discordId) {
+	if (user && itemPresence?.itemActivity) {
 		sourceDisplay = (
 			<Badge key={`activity ${itemPresence.itemActivity.id}`} variant="info" className="text-nowrap">
 				{UP.getAttributedHumanReadableActivity(itemPresence.activityState!, index, itemActivityUser.displayName)}...

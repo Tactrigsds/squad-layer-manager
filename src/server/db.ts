@@ -1,6 +1,6 @@
 import type * as CS from '@/models/context-shared'
 import { initModule } from '@/server/logger'
-import { instrumentDrizzleClient } from '@kubiks/otel-drizzle'
+
 import type { MySql2Database } from 'drizzle-orm/mysql2'
 import { drizzle } from 'drizzle-orm/mysql2'
 import MySQL from 'mysql2/promise'
@@ -37,8 +37,6 @@ export async function setup() {
 
 	pool = rawPool
 
-	const instrumentOpts = { dbSystem: 'mysql', dbName: ENV.DB_DATABASE, peerName: ENV.DB_HOST, peerPort: ENV.DB_PORT }
-
 	db = drizzle(pool, {
 		logger: {
 			logQuery: (query: string, params: unknown[]) => {
@@ -46,16 +44,16 @@ export async function setup() {
 			},
 		},
 	})
-	instrumentDrizzleClient(db, instrumentOpts)
+	// instrumentDrizzleClient(db, instrumentOpts)
 
 	dbRedactParams = drizzle(pool, {
 		logger: {
 			logQuery: (query: string, params: unknown[]) => {
-				log.debug('%s', query)
+				log.debug('redacted %s', query)
 			},
 		},
 	})
-	instrumentDrizzleClient(dbRedactParams, instrumentOpts)
+	// instrumentDrizzleClient(dbRedactParams, instrumentOpts)
 }
 
 // try to use the getter instead of passing the db instance around by itself. that way the logger is always up-to-date. not expensive.

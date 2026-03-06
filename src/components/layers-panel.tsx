@@ -8,8 +8,10 @@ import { CardDescription } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
+import * as RbSyncState from '@/lib/rollback-synced-state'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
+import * as SLL from '@/models/shared-layer-list'
 import * as UP from '@/models/user-presence'
 import * as RBAC from '@/rbac.models.ts'
 import * as ConfigClient from '@/systems/config.client'
@@ -122,18 +124,22 @@ function ValidationErrorsDisplay(
 function useQueueErrors() {
 	const constraints = LayerQueriesClient.useLayerItemStatusConstraints()
 	const statuses = LayerQueriesClient.useLayerItemStatuses(constraints)?.data
-	const session = Zus.useStore(SLLClient.Store, s => s.session)
+	const layerList = Zus.useStore(SLLClient.Store, s => s.layerList)
 	const loggedInUser = UsersClient.useLoggedInUser()
 	const layerItemsState = QD.useLayerItemsState()
 	const queueModifiedByUser = Zus.useStore(
 		SLLClient.Store,
-		s => s.isModified && s.session.ops.some(s => loggedInUser && s.userId === loggedInUser.discordId),
+		s =>
+			s.isModified && !!loggedInUser && SLL.hasUserMutations(
+				RbSyncState.Client.localOps(s.rbSession),
+				loggedInUser.discordId,
+			),
 	)
 
 	return React.useMemo(() => {
 		if (!statuses || !queueModifiedByUser) return null
 		const errors: QueueError[] = []
-		for (const { item, index } of LL.iterItems(session.list)) {
+		for (const { item, index } of LL.iterItems(layerList)) {
 			const descriptors = statuses?.matchDescriptors.get(item.itemId)
 			if (!descriptors) continue
 			const relevantDescriptors: LQY.RepeatMatchDescriptor[] = []
@@ -149,7 +155,7 @@ function useQueueErrors() {
 		if (errors.length === 0) return null
 		return errors
 	}, [
-		session.list,
+		layerList,
 		layerItemsState,
 		statuses,
 		queueModifiedByUser,
@@ -184,7 +190,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 
 	const [isModified, committing, numEditors] = Zus.useStore(
 		SLLClient.Store,
-		useShallow(s => [s.isModified, s.committing, s.session.editors.size]),
+		useShallow(s => [s.isModified, s.committing, s.editors.size]),
 	)
 	const loggedInUser = UsersClient.useLoggedInUser()
 	const canStartEditing = loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:write'))
@@ -359,7 +365,7 @@ export function QueuePanelContent() {
 
 	const queueLength = Zus.useStore(QD.LQStore, (s) => s.layerList.length)
 	const maxQueueSize = ConfigClient.useConfig()?.layerQueue.maxQueueSize
-	const queueMutations = Zus.useStore(QD.LQStore, (s) => s.session.mutations)
+	const queueMutations = Zus.useStore(QD.LQStore, (s) => s.mutations)
 
 	const errors = useQueueErrors()
 	const [showErrors, setShowErrors] = React.useState(false)
