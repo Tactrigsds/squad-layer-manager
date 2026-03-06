@@ -31,6 +31,7 @@ export const [ACTIVITIES] = (() => {
 			leaf('GENERATING_VOTE', { cursor: LL.CursorSchema }),
 			leaf('PASTE_ROTATION'),
 		]),
+		leaf('EDITING_TEAMSWAPS'),
 		branch('VIEWING_SETTINGS', [leaf('CHANGING_SETTINGS')]),
 	]) satisfies ST.Def.Node
 	return [activities] as const

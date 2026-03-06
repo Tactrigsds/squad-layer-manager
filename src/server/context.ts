@@ -251,7 +251,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 								: result.code
 							const extraTextPart = extraText ? ` : ${extraText.trim()}` : ''
 							const logArgs = [
-								`OP : ${name}${extraTextPart} : value-error : ${message}`,
+								`OP : ${fullName}${extraTextPart} : value-error : ${message}`,
 							]
 							if (result.error || result.err) {
 								logArgs.unshift(result.error || result.err)
@@ -273,7 +273,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 						? (spanStatus?.message ?? 'error')
 						: 'ok'
 					const extraTextPart = extraText ? ` : ${extraText.trim()}` : ''
-					log?.[logLevel](`OP : ${name}${extraTextPart} : ${statusString}`)
+					log?.[logLevel](`op : ${fullName}${extraTextPart} : ${statusString}`)
 					return result as Awaited<ReturnType<Cb>>
 				} catch (error) {
 					const message = recordGenericError(error)

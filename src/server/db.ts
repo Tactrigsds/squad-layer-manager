@@ -1,7 +1,6 @@
 import type * as CS from '@/models/context-shared'
 import { initModule } from '@/server/logger'
 import { instrumentDrizzleClient } from '@kubiks/otel-drizzle'
-import * as Otel from '@opentelemetry/api'
 import type { MySql2Database } from 'drizzle-orm/mysql2'
 import { drizzle } from 'drizzle-orm/mysql2'
 import MySQL from 'mysql2/promise'
@@ -75,37 +74,31 @@ export function addPooledDb<T extends object>(ctx: T) {
 	}
 }
 
-const tracer = Otel.trace.getTracer('db')
 export async function runTransaction<T extends C.Db, V>(
 	ctx: T & { tx?: { rollback: () => void } },
 	callback: (ctx: T & C.Tx) => Promise<V>,
 ) {
-	return await tracer.startActiveSpan('db.transaction', async (span) => {
-		let res!: Awaited<V>
-		let shouldRollback = false
-		const unlockTasks: C.Tx['tx']['unlockTasks'] = []
-		try {
-			await ctx.db().transaction(async (tx) => {
-				res = await callback({
-					...ctx,
-					tx: {
-						rollback: () => {
-							shouldRollback = true
-						},
-						unlockTasks,
+	let res!: Awaited<V>
+	let shouldRollback = false
+	const unlockTasks: C.Tx['tx']['unlockTasks'] = []
+	try {
+		await ctx.db().transaction(async (tx) => {
+			res = await callback({
+				...ctx,
+				tx: {
+					rollback: () => {
+						shouldRollback = true
 					},
-					db: () => tx,
-				})
-				if (shouldRollback) tx.rollback()
+					unlockTasks,
+				},
+				db: () => tx,
 			})
-			await Promise.all(unlockTasks.map((task) => task()))
-			span.setStatus({ code: Otel.SpanStatusCode.OK })
-			return res
-		} catch (err) {
-			if (shouldRollback) return res
-			throw err
-		} finally {
-			span.end()
-		}
-	})
+			if (shouldRollback) tx.rollback()
+		})
+		await Promise.all(unlockTasks.map((task) => task()))
+		return res
+	} catch (err) {
+		if (shouldRollback) return res
+		throw err
+	}
 }

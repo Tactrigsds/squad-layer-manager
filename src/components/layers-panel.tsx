@@ -30,8 +30,7 @@ import { LayerList } from './layer-list.tsx'
 import { MatchHistoryPanelContent } from './match-history-panel'
 import PoolConfigurationPopover from './server-settings-popover.tsx'
 import ShortLayerName from './short-layer-name.tsx'
-import TeamsPanel from './teams-panel.tsx'
-import TabsList from './ui/tabs-list.tsx'
+
 import UserPresencePanel from './user-presence-panel.tsx'
 
 export default function LayersPanel() {

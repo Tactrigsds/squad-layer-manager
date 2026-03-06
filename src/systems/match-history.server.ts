@@ -496,33 +496,37 @@ export const syncWithCurrentLayer = C.spanOp(
 	},
 )
 
-const getEventsForMatches = C.spanOp('getEventsForMatches', { module }, async (ctx: C.Db & C.MatchHistory, ..._matches: number[]) => {
-	const matches = _matches.toSorted((a, b) => a - b)
+const getEventsForMatches = C.spanOp(
+	'getEventsForMatches',
+	{ module, levels: { event: 'trace' } },
+	async (ctx: C.Db & C.MatchHistory, ..._matches: number[]) => {
+		const matches = _matches.toSorted((a, b) => a - b)
 
-	let ops: Promise<CHAT.EventEnriched[]>[] = []
-	for (const matchId of matches) {
-		const cachedEvents$ = ctx.matchHistory.matchEventsCache.get(matchId)
-		if (cachedEvents$) {
-			ops.push(cachedEvents$)
-			continue
-		}
-		const events$ = (async () => {
-			const it = ctx.db().select()
-				.from(Schema.serverEvents)
-				.where(E.inArray(Schema.serverEvents.matchId, matches))
-				.orderBy(E.asc(Schema.serverEvents.id)).iterator()
-
-			const state = CHAT.getInitialChatState()
-			for await (const rawEvent of it) {
-				const event = SM.Events.fromEventRow(rawEvent)
-				CHAT.handleEvent(state, event)
+		let ops: Promise<CHAT.EventEnriched[]>[] = []
+		for (const matchId of matches) {
+			const cachedEvents$ = ctx.matchHistory.matchEventsCache.get(matchId)
+			if (cachedEvents$) {
+				ops.push(cachedEvents$)
+				continue
 			}
-			return state.eventBuffer
-		})()
-		ctx.matchHistory.matchEventsCache.set(matchId, events$)
-		ops.push(events$)
-	}
+			const events$ = (async () => {
+				const it = ctx.db().select()
+					.from(Schema.serverEvents)
+					.where(E.inArray(Schema.serverEvents.matchId, matches))
+					.orderBy(E.asc(Schema.serverEvents.id)).iterator()
 
-	const allEvents = (await Promise.all(ops)).flat()
-	return allEvents
-})
+				const state = CHAT.getInitialChatState()
+				for await (const rawEvent of it) {
+					const event = SM.Events.fromEventRow(rawEvent)
+					CHAT.handleEvent(state, event)
+				}
+				return state.eventBuffer
+			})()
+			ctx.matchHistory.matchEventsCache.set(matchId, events$)
+			ops.push(events$)
+		}
+
+		const allEvents = (await Promise.all(ops)).flat()
+		return allEvents
+	},
+)

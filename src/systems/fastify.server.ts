@@ -10,7 +10,7 @@ import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env.ts'
-import { baseLogger } from '@/server/logger.ts'
+
 import * as ORPCServer from '@/server/orpc-handler'
 import * as Discord from '@/systems/discord.server'
 import * as LayerDb from '@/systems/layer-db.server'
@@ -58,9 +58,8 @@ export const setup = C.spanOp('setup', { module }, async () => {
 	// --------  logging --------
 	instance.log = log
 	instance.addHook('onRequest', async (request) => {
-		const route = AR.resolveRoute(request.url)
-		baseLogger.info(`REQUEST %s %s${route ? ', resolved route ' + route.id : ''}`, request.method, request.url)
 		monkeyPatchContextAndLogs(request)
+		log.info(`%s %s`, request.method, request.url)
 	})
 
 	// --------  static file serving --------

@@ -90,6 +90,8 @@ function getSpanColor(spanName: string): string {
 const traceIdsMap = new FixedSizeMap<string, number>(500)
 let traceIdsOffset = 0
 
+let maxModuleNameLength = 0
+
 function getTraceColor(traceId: string): string {
 	let idx = traceIdsMap.get(traceId)
 	if (idx === undefined) {
@@ -155,7 +157,7 @@ export function showLogEvent(obj: { level: number; [key: string]: unknown }, sho
 	const resetColor = '\x1b[0m'
 
 	const level = obj.level
-	const levelLabel = (LEVELS[level as keyof typeof LEVELS] ?? 'UNKNOWN') as (typeof LEVELS)[keyof typeof LEVELS] | 'UNKNOWN'
+	const levelLabel = (LEVELS[level as keyof typeof LEVELS] ?? 'UNK') as (typeof LEVELS)[keyof typeof LEVELS] | 'UNK'
 
 	// Color coding based on level
 	let levelColor = ''
@@ -186,7 +188,7 @@ export function showLogEvent(obj: { level: number; [key: string]: unknown }, sho
 			levelColor = '\x1b[35m' // magenta
 			log = console.error
 			break
-		case 'UNKNOWN':
+		case 'UNK':
 			log = console.log
 			break
 		default:
@@ -204,6 +206,7 @@ export function showLogEvent(obj: { level: number; [key: string]: unknown }, sho
 		pid: _pid,
 		hostname: _hostname,
 		span_name: rawSpanName,
+		span_id: rawSpanId,
 		[ATTRS.Span.ROOT_NAME]: rawRootSpanName,
 		root_span_name: rawRootSpanName2,
 		[ATTRS.Module.NAME]: rawModuleName,
@@ -218,34 +221,41 @@ export function showLogEvent(obj: { level: number; [key: string]: unknown }, sho
 	const spanName = rawSpanName as string | undefined
 	const rootSpanName = (rawRootSpanName ?? rawRootSpanName2) as string | undefined
 	const traceId = rawTraceId as string | undefined
-	const spanId = props.span_id as string | undefined
+	const spanId = rawSpanId as string | undefined
 	const serverId = rawServerId as string | undefined
 	const userId = rawUserId as string | undefined
 	const wsClientId = rawWsClientId as string | undefined
 
-	// Build main bracket with level, module, span
-	let mainBracketContent = levelLabel
+	// Build main bracket with level (padded) and module (padded to longest seen)
+	if (moduleName) maxModuleNameLength = Math.max(maxModuleNameLength, moduleName.length)
+	let mainBracketContent = levelLabel.padEnd(5)
 	if (moduleName) {
 		const moduleColor = getModuleColor(moduleName)
-		mainBracketContent += ` ${moduleColor}${moduleName}${resetColor}`
-	}
-	if (spanName && rootSpanName !== spanName) {
-		const spanColor = getSpanColor(spanName)
-		mainBracketContent += ` ${spanColor}${spanName}${resetColor}`
+		mainBracketContent += ` ${moduleColor}${moduleName.padEnd(maxModuleNameLength)}${resetColor}`
+	} else if (maxModuleNameLength > 0) {
+		mainBracketContent += ' ' + ' '.repeat(maxModuleNameLength)
 	}
 	const mainBracket = `${levelColor}[${mainBracketContent}]${resetColor}`
+
+	// Build trace segment: rootSpanName-traceId[-4]/spanName-spanId[-4]
+	// Root span + trace ID use trace color; current span + span ID use span color
+	let traceSegment = ''
+	if (traceId && spanId) {
+		const traceColor = getTraceColor(String(traceId))
+		const shortTrace = String(traceId).slice(-4)
+		const shortSpan = String(spanId).slice(-4)
+		if (rootSpanName && rootSpanName !== spanName) {
+			const spanColor = getSpanColor(spanName ?? '')
+			traceSegment = ` ${traceColor}${rootSpanName}-${shortTrace}${dimColor}/${resetColor}${spanColor}${spanName}-${shortSpan}${resetColor}`
+		} else {
+			const name = spanName ?? rootSpanName ?? ''
+			traceSegment = ` ${traceColor}${name ? `${name}-` : ''}${shortTrace}${dimColor}/${traceColor}${shortSpan}${resetColor}`
+		}
+	}
 
 	const keyColor = '\x1b[90m' // grey for keys
 	const valueColor = '\x1b[37m' // white for values
 	const contextParts: string[] = []
-	if (traceId && spanId) {
-		const traceColor = getTraceColor(String(traceId))
-		contextParts.push(
-			`${keyColor}trace=${traceColor}${rootSpanName ? `${rootSpanName}-` : ''}${String(traceId).slice(-4)}${keyColor}->${valueColor}${
-				String(spanId).slice(-4)
-			}${resetColor}`,
-		)
-	}
 	if (serverId) contextParts.push(`${keyColor}server=${valueColor}${serverId}${resetColor}`)
 	if (userId) contextParts.push(`${keyColor}user=${valueColor}${userId}${resetColor}`)
 	if (wsClientId) contextParts.push(`${keyColor}ws=${valueColor}${wsClientId.slice(-4)}${resetColor}`)
@@ -254,8 +264,8 @@ export function showLogEvent(obj: { level: number; [key: string]: unknown }, sho
 
 	// Include additional context as object parameter if any
 	if (Object.keys(props).length > 0) {
-		log(`${dimColor}${time}${resetColor} ${mainBracket}${contextLine} ${msg}`, props)
+		log(`${dimColor}${time}${resetColor} ${mainBracket}${traceSegment}${contextLine} ${msg}`, props)
 	} else {
-		log(`${dimColor}${time}${resetColor} ${mainBracket}${contextLine} ${msg}`)
+		log(`${dimColor}${time}${resetColor} ${mainBracket}${traceSegment}${contextLine} ${msg}`)
 	}
 }

@@ -121,7 +121,7 @@ export default class Rcon extends EventEmitter<Events> {
 
 	execute = C.spanOp(
 		'execute',
-		{ module, levels: { event: 'trace' }, extraText: (body) => body },
+		{ module, attrs: (body) => ({ body }), levels: { event: 'debug' }, extraText: (body) => body },
 		async (body: string): Promise<{ code: 'err:rcon'; msg: string } | { code: 'ok'; data: string }> => {
 			if (typeof body !== 'string') {
 				throw new Error('Rcon.execute() body must be a string.')
@@ -146,7 +146,6 @@ export default class Rcon extends EventEmitter<Events> {
 				const listenerId = `response${this.msgId}`
 				const timeout$ = Rx.timer(2_000).pipe(Rx.map(() => ({ code: 'err:rcon' as const, msg: `Rcon response timed out` })))
 				const response$ = Rx.fromEvent(this, listenerId).pipe(Rx.take(1), Rx.map(data => ({ code: 'ok' as const, data: data as string })))
-				log.debug(`Executing %s `, body)
 				this.#send(body, this.msgId)
 				this.msgId++
 				return await Rx.firstValueFrom(Rx.race(timeout$, response$))
