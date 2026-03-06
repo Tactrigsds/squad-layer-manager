@@ -123,7 +123,7 @@ export async function getNextLayer(ctx: C.Rcon) {
 	return { code: 'ok' as const, layer: L.parseRawLayerText(`${layer} ${factions}`) }
 }
 
-const fetchPlayers = C.spanOp('fetchPlayers', { module }, async (ctx: C.Rcon & C.AdminList) => {
+async function fetchPlayers(ctx: C.Rcon & C.AdminList) {
 	const res = await ctx.rcon.execute('ListPlayers')
 	if (res.code !== 'ok') return res
 
@@ -171,9 +171,9 @@ const fetchPlayers = C.spanOp('fetchPlayers', { module }, async (ctx: C.Rcon & C
 		players.push(playerResult.data)
 	}
 	return { code: 'ok' as const, players }
-})
+}
 
-const fetchSquads = C.spanOp('fetchSquads', { module }, async (ctx: C.Rcon) => {
+async function fetchSquads(ctx: C.Rcon) {
 	const resSquad = await ctx.rcon.execute('ListSquads')
 	if (resSquad.code !== 'ok') return resSquad
 
@@ -222,7 +222,7 @@ const fetchSquads = C.spanOp('fetchSquads', { module }, async (ctx: C.Rcon) => {
 		code: 'ok' as const,
 		squads,
 	}
-})
+}
 
 const getTeams = C.spanOp(
 	'fetch-teams',
