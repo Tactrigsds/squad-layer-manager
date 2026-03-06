@@ -62,7 +62,7 @@ const orpcBase = getOrpcBase(module)
 
 export const getRolesForDiscordUser = C.spanOp(
 	'getRolesForDiscordUser',
-	{ module, attrs: (_, userId) => ({ userId }) },
+	{ module, levels: { event: 'trace' }, attrs: (_, userId) => ({ userId }) },
 	async (baseCtx: C.UserId) => {
 		const userId = baseCtx.user.discordId
 		const roles: RBAC.Role[] = []
@@ -98,7 +98,7 @@ export const getRolesForDiscordUser = C.spanOp(
 
 export const getUserRbacPerms = C.spanOp(
 	'getUserRbacPerms',
-	{ module, attrs: (_, userId) => ({ userId }) },
+	{ module, levels: { event: 'trace' }, attrs: (_, userId) => ({ userId }) },
 	async (baseCtx: C.Db & C.UserId): Promise<RBAC.TracedPermission[]> => {
 		const userId = baseCtx.user.discordId
 		const ownedFiltersPromise = getOwnedFilters()

@@ -90,7 +90,14 @@ function getSpanColor(spanName: string): string {
 const traceIdsMap = new FixedSizeMap<string, number>(500)
 let traceIdsOffset = 0
 
+const MAX_ALIGN_WIDTH = 120
+const MAX_MODULE_NAME_LENGTH = 14
 let maxModuleNameLength = 0
+let maxPrefixLength = 0
+
+function visibleLength(s: string): number {
+	return s.replace(/\x1b\[[0-9;]*m/g, '').length
+}
 
 function getTraceColor(traceId: string): string {
 	let idx = traceIdsMap.get(traceId)
@@ -149,7 +156,7 @@ export function mapSpanAttrs(span: Otel.Span, record: Record<string, any>) {
 	}
 }
 
-export function showLogEvent(obj: { level: number; [key: string]: unknown }, showAdditionalContext = true) {
+export function showLogEvent(obj: { level: number; [key: string]: unknown }, showAdditionalContext = true, align = false) {
 	// Format time with 24h time format (HH:MM:SS)
 	const dateObj = new Date(obj.time as number)
 	const time = dateObj.toLocaleTimeString([], { hour12: false })
@@ -227,12 +234,14 @@ export function showLogEvent(obj: { level: number; [key: string]: unknown }, sho
 	const wsClientId = rawWsClientId as string | undefined
 
 	// Build main bracket with level (padded) and module (padded to longest seen)
-	if (moduleName) maxModuleNameLength = Math.max(maxModuleNameLength, moduleName.length)
+	if (moduleName) maxModuleNameLength = Math.min(Math.max(maxModuleNameLength, moduleName.length), MAX_MODULE_NAME_LENGTH)
 	let mainBracketContent = levelLabel.padEnd(5)
 	if (moduleName) {
 		const moduleColor = getModuleColor(moduleName)
-		mainBracketContent += ` ${moduleColor}${moduleName.padEnd(maxModuleNameLength)}${resetColor}`
-	} else if (maxModuleNameLength > 0) {
+		const truncatedModule = moduleName.slice(0, MAX_MODULE_NAME_LENGTH)
+		const paddedModule = align ? truncatedModule.padEnd(maxModuleNameLength) : truncatedModule
+		mainBracketContent += ` ${moduleColor}${paddedModule}${resetColor}`
+	} else if (align && maxModuleNameLength > 0) {
 		mainBracketContent += ' ' + ' '.repeat(maxModuleNameLength)
 	}
 	const mainBracket = `${levelColor}[${mainBracketContent}]${resetColor}`
@@ -263,9 +272,16 @@ export function showLogEvent(obj: { level: number; [key: string]: unknown }, sho
 	const contextLine = contextParts.length > 0 ? ` ${dimColor}[${resetColor}${contextParts.join(' ')}${dimColor}]${resetColor}` : ''
 
 	// Include additional context as object parameter if any
+	const prefix = `${dimColor}${time}${resetColor} ${mainBracket}${traceSegment}${contextLine}`
+	let padding = ''
+	if (align) {
+		const prefixLen = visibleLength(prefix)
+		maxPrefixLength = Math.min(Math.max(maxPrefixLength, prefixLen), MAX_ALIGN_WIDTH)
+		padding = ' '.repeat(Math.max(0, maxPrefixLength - prefixLen))
+	}
 	if (Object.keys(props).length > 0) {
-		log(`${dimColor}${time}${resetColor} ${mainBracket}${traceSegment}${contextLine} ${msg}`, props)
+		log(`${prefix}${padding} ${msg}`, props)
 	} else {
-		log(`${dimColor}${time}${resetColor} ${mainBracket}${traceSegment}${contextLine} ${msg}`)
+		log(`${prefix}${padding} ${msg}`)
 	}
 }

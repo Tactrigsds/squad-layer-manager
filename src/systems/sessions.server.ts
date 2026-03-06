@@ -146,7 +146,7 @@ export async function setup() {
 
 export const validateAndUpdate = C.spanOp(
 	'validateAndUpdate',
-	{ module },
+	{ module, levels: { event: 'trace' } },
 	async (ctx: C.Db & C.FastifyRequest & Partial<C.FastifyReply>, allowRefresh = false) => {
 		async function errorOrBypass<Res>(res: Res) {
 			if (ENV.QUERY_PARAM_AUTH_BYPASS && !!ctx.res) {
@@ -265,7 +265,7 @@ export function clearInvalidSession(ctx: C.FastifyReply) {
 
 export const getUser = C.spanOp(
 	'getUser',
-	{ module, attrs: ({ lock }) => ({ lock }) },
+	{ module, levels: { event: 'trace' }, attrs: ({ lock }) => ({ lock }) },
 	async (opts: { lock?: boolean }, ctx: C.AuthedUser & C.HttpRequest & C.Db) => {
 		opts.lock ??= false
 
