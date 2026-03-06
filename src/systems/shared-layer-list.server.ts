@@ -98,7 +98,7 @@ export function setupInstance(ctx: C.Db & C.LayerQueue & C.SharedLayerList & C.U
 			// just add a flat delay for disconnects to give the user time to reconnect in a differen session
 			Rx.delay(UPActions.DISCONNECT_TIMEOUT),
 			Rx.map(ctx => SquadServer.resolveSliceCtx(ctx, serverId)),
-			C.durableSub('shared-layer-list:handle-user-disconnect', { module, mutexes: ctx => ctx.sharedList.mtx }, async (ctx) => {
+			C.durableSub('handle-user-disconnect', { module, mutexes: ctx => ctx.sharedList.mtx }, async (ctx) => {
 				if (ctx.serverId !== serverId) return
 				UserPresence.dispatchPresenceAction(ctx, UPActions.disconnectedTimeout)
 				UserPresence.cleanupActivityLocks(ctx, ctx.wsClientId)
