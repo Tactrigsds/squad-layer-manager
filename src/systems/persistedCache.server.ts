@@ -61,7 +61,7 @@ export async function load<T>(key: string): Promise<T | null> {
 export async function save<T>(key: string, value: T): Promise<void> {
 	const ctx = DB.addPooledDb(CS.init())
 	const serialized = superjson.serialize(value)
-	await ctx.db()
+	await ctx.db({ redactParams: true })
 		.insert(Schema.persistedCache)
 		.values({ key, value: serialized })
 		.onDuplicateKeyUpdate({ set: { value: sql`VALUES(value)`, updatedAt: sql`NOW()` } })
