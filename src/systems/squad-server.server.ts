@@ -945,15 +945,17 @@ const processLogEvent = C.spanOp('processLogEvent', { module, levels: { event: '
 						}),
 				)()
 				const teamsRes = await teamsResPromise
+				const teams = { squads: teamsRes.squads, players: teamsRes.players }
 				event = {
 					type: 'NEW_GAME',
 					id: eventId(),
 					layerId: newLayerId,
 					source: 'new-game-detected',
-					state: { squads: teamsRes.squads, players: teamsRes.players },
+					state: teams,
 					...base,
 					matchId: match.historyEntryId,
 				}
+				resetTeamState(ctx, teams)
 			} finally {
 				server.serverRolling$.next(null)
 			}
@@ -1368,13 +1370,22 @@ function* generateSyntheticEvents(
 	}
 
 	for (const squad of squads) {
-		const prevSquad = prevSquads.find(s => SM.Squads.idsEqual(s, squad))
-		const createdSquad = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, squad))
-		if (!prevSquad || prevSquad.locked !== squad.locked && (!createdSquad || createdSquad.locked !== squad.locked)) {
+		const prevSquad = prevSquads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
+		const createdSquad = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
+		type Details = SM.Events.SquadDetailsChanged['details']
+		if (!prevSquad || !createdSquad) continue
+		const changedDetails: Details = {}
+		if (prevSquad.locked !== squad.locked) {
+			changedDetails.locked = squad.locked
+		}
+		if (prevSquad.squadName !== squad.squadName) {
+			changedDetails.squadName = squad.squadName
+		}
+		if (Object.keys(changedDetails).length > 0) {
 			yield {
 				id: eventId(),
 				type: 'SQUAD_DETAILS_CHANGED',
-				details: { locked: squad.locked },
+				details: changedDetails,
 				squadId: squad.squadId,
 				teamId: squad.teamId,
 				...base,
