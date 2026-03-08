@@ -149,7 +149,7 @@ export function mapSpanAttrs(span: Otel.Span, record: Record<string, any>) {
 	}
 
 	// Include root span name if available in baggage
-	if (!('root_span_name' in record) && baggage) {
+	if (baggage) {
 		const rootSpanEntry = baggage.getEntry(ATTRS.Span.ROOT_NAME)
 		if (rootSpanEntry?.value) {
 			record.root_span_name = rootSpanEntry.value
