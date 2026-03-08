@@ -234,7 +234,7 @@ export async function acquireInBlock(mutex: MutexInterface, opts?: { lock?: bool
 }
 
 export function switchMapWithSignal<T, R>(
-	project: (value: T, signal: AbortSignal) => Rx.ObservableInput<R>
+	project: (value: T, signal: AbortSignal) => Rx.ObservableInput<R>,
 ): Rx.OperatorFunction<T, R> {
 	return (source: Rx.Observable<T>) =>
 		new Rx.Observable<R>((subscriber) => {
@@ -249,15 +249,21 @@ export function switchMapWithSignal<T, R>(
 
 					controller = new AbortController()
 					innerSub = Rx.from(project(value, controller.signal)).subscribe({
-						next(v) { subscriber.next(v) },
-						error(e) { subscriber.error(e) },
+						next(v) {
+							subscriber.next(v)
+						},
+						error(e) {
+							subscriber.error(e)
+						},
 						complete() {
 							innerSub = null
 							if (outerComplete) subscriber.complete()
 						},
 					})
 				},
-				error(e) { subscriber.error(e) },
+				error(e) {
+					subscriber.error(e)
+				},
 				complete() {
 					outerComplete = true
 					if (!innerSub || innerSub.closed) subscriber.complete()

@@ -238,6 +238,9 @@ function SquadCreatedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 				<PlayerDisplay player={event.creator} matchId={event.matchId} /> created{' '}
 				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={false} /> on{' '}
 				<MatchTeamDisplay matchId={event.matchId} teamId={event.squad.teamId} />
+				{event.squad.locked
+					? <Icons.Lock className="h-3 w-3 text-red-600" />
+					: null}
 			</span>
 		</div>
 	)
@@ -390,6 +393,40 @@ function SquadDisbandedEvent({ event }: { event: Extract<CHAT.EventEnriched, { t
 			<Icons.UsersRound className="h-4 w-4 text-red-400" />
 			<span className="text-xs flex items-center gap-1">
 				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={true} /> was disbanded
+			</span>
+		</div>
+	)
+}
+
+function SquadDetailsChangedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'SQUAD_DETAILS_CHANGED' }> }) {
+	const locked = event.details.locked
+	const prevLocked = event.prevDetails.locked
+	if (locked === prevLocked || locked === undefined) return null
+	return (
+		<div className="flex gap-2 py-1 text-muted-foreground">
+			<EventTime time={event.time} variant="small" />
+			{locked ? <Icons.Lock className="h-4 w-4 text-yellow-500" /> : <Icons.LockOpen className="h-4 w-4 text-green-500" />}
+			<span className="text-xs flex items-center gap-1">
+				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={true} /> {locked ? 'locked' : 'unlocked'}
+			</span>
+		</div>
+	)
+}
+
+function SquadRenamedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'SQUAD_RENAMED' }> }) {
+	return (
+		<div className="flex gap-2 py-1 text-muted-foreground">
+			<EventTime time={event.time} variant="small" />
+			<Icons.Pencil className="h-4 w-4 text-cyan-400" />
+			<span className="text-xs flex items-center gap-1">
+				<SquadDisplay
+					squad={{ squadId: event.squadId, teamId: event.teamId, squadName: event.oldSquadName }}
+					matchId={event.matchId}
+					showName={true}
+					showTeam={true}
+				/>{' '}
+				renamed to
+				<span className="font-medium text-foreground">"{event.newSquadName}"</span>
 			</span>
 		</div>
 	)
@@ -550,8 +587,11 @@ export function ServerEvent({ event }: { event: CHAT.EventEnriched }) {
 		case 'ROUND_ENDED':
 			return <RoundEndedEvent event={event} />
 		case 'PLAYER_DETAILS_CHANGED':
-		case 'SQUAD_DETAILS_CHANGED':
 			return null
+		case 'SQUAD_DETAILS_CHANGED':
+			return <SquadDetailsChangedEvent event={event} />
+		case 'SQUAD_RENAMED':
+			return <SquadRenamedEvent event={event} />
 		case 'PLAYER_CHANGED_TEAM':
 			return <PlayerChangedTeamEvent event={event} />
 		case 'PLAYER_LEFT_SQUAD':

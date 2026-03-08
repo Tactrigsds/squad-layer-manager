@@ -211,7 +211,7 @@ async function fetchSquads(ctx: C.Rcon) {
 			teamName: teamName,
 			squadName: match.groups!.squadName,
 			locked: match.groups?.locked === 'True',
-			creator: creatorIds.steam,
+			creator: SM.PlayerIds.getPlayerId(creatorIds),
 		}
 		const squadResult = SM.SquadSchema.safeParse(squad)
 		if (!squadResult.success) {

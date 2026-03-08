@@ -63,7 +63,8 @@ export type EventEnriched =
 	| SM.Events.PlayerConnected<SM.Player>
 	| (SM.Events.PlayerDisconnected<SM.Player>)
 	| (SM.Events.PlayerDetailsChanged<SM.Player>)
-	| (SM.Events.SquadDetailsChanged & { squad: SM.Squad })
+	| (SM.Events.SquadDetailsChanged & { squad: SM.Squad; prevDetails: SM.Events.SquadDetailsChanged['details'] })
+	| (SM.Events.SquadRenamed & { squad: SM.Squad })
 	| (SM.Events.PlayerChangedTeam<SM.Player> & { prevTeamId: SM.TeamId | null })
 	| (SM.Events.PlayerJoinedSquad<SM.Player> & { squad: SM.Squad })
 	| SM.Events.PlayerPromotedToLeader<SM.Player>
@@ -344,7 +345,23 @@ export function interpolateEvent(
 				return noop(`Squad ${SM.Squads.printKey(event)} had details changed but was not found in the squad list`)
 			}
 			const squad = state.squads[index]
+			const prevDetails: SM.Events.SquadDetailsChanged['details'] = { locked: squad.locked }
 			const updated = { ...squad, ...event.details }
+			state.squads[index] = updated
+			return {
+				...event,
+				squad: updated,
+				prevDetails,
+			}
+		}
+
+		case 'SQUAD_RENAMED': {
+			const index = state.squads.findIndex(s => SM.Squads.idsEqual(s, event))
+			if (index === -1) {
+				return noop(`Squad ${SM.Squads.printKey(event)} was renamed but was not found in the squad list`)
+			}
+			const squad = state.squads[index]
+			const updated = { ...squad, squadName: event.newSquadName }
 			state.squads[index] = updated
 			return {
 				...event,

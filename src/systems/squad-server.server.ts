@@ -1158,6 +1158,19 @@ export const processRconEvent = C.spanOp('processRconEvent', { module }, async (
 			break
 		}
 
+		case 'SQUAD_RENAMED': {
+			emittedEvent = {
+				type: 'SQUAD_RENAMED',
+				id: eventId(),
+				squadId: event.squadId,
+				teamId: event.teamId as SM.TeamId,
+				oldSquadName: event.oldSquadName,
+				newSquadName: event.newSquadName,
+				...base,
+			}
+			break
+		}
+
 		case 'PLAYER_BANNED': {
 			emittedEvent = {
 				type: event.type,
@@ -1273,9 +1286,6 @@ function* generateSyntheticEvents(
 	const { players, squads } = teams
 	const { players: prevPlayers, squads: prevSquads } = prevTeams
 
-	const squadGroups = SM.Players.groupIntoSquads(players)
-	const prevSquadGroups = SM.Players.groupIntoSquads(prevPlayers)
-
 	for (const player of players) {
 		const prev = SM.PlayerIds.find(prevPlayers, p => p.ids, player.ids)
 		if (!prev) continue
@@ -1357,9 +1367,10 @@ function* generateSyntheticEvents(
 		}
 	}
 
-	for (const prevSquad of prevSquadGroups) {
-		if (squadGroups.some(s => SM.Squads.idsEqual(s, prevSquad))) continue
-		ctx.server.state.createdSquads = ctx.server.state.createdSquads.filter(s => !SM.Squads.idsEqual(s, prevSquad))
+	let disbandedSquads: SM.Squad[] = []
+	for (const prevSquad of prevSquads) {
+		if (squads.some(s => SM.Squads.idsEqual(s, prevSquad))) continue
+		disbandedSquads.push(prevSquad)
 		yield {
 			id: eventId(),
 			type: 'SQUAD_DISBANDED',
@@ -1373,13 +1384,17 @@ function* generateSyntheticEvents(
 		const prevSquad = prevSquads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
 		const createdSquad = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
 		type Details = SM.Events.SquadDetailsChanged['details']
-		if (!prevSquad || !createdSquad) continue
+		if (!createdSquad) continue
 		const changedDetails: Details = {}
-		if (prevSquad.locked !== squad.locked) {
-			changedDetails.locked = squad.locked
-		}
-		if (prevSquad.squadName !== squad.squadName) {
-			changedDetails.squadName = squad.squadName
+
+		if (!prevSquad) {
+			if (createdSquad.locked !== squad.locked) {
+				changedDetails.locked = squad.locked
+			}
+		} else {
+			if (prevSquad.locked !== squad.locked) {
+				changedDetails.locked = squad.locked
+			}
 		}
 		if (Object.keys(changedDetails).length > 0) {
 			yield {
@@ -1392,6 +1407,8 @@ function* generateSyntheticEvents(
 			} satisfies SM.Events.SquadDetailsChanged
 		}
 	}
+
+	ctx.server.state.createdSquads = ctx.server.state.createdSquads.filter(s => !disbandedSquads.some(d => SM.Squads.idsEqual(s, d)))
 }
 
 export async function getServerState(ctx: C.Db & C.ServerId) {

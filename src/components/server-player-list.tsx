@@ -53,7 +53,7 @@ function SquadSection({ squad, players, totalCount, matchId }: SquadSectionProps
 				<span className="text-xs text-muted-foreground">({totalCount})</span>
 				{squad?.locked && (
 					<span title="Squad is locked">
-						<Icons.Lock className="h-3 w-3 text-muted-foreground" />
+						<Icons.Lock className="h-3 w-3 text-red-600" />
 					</span>
 				)}
 			</div>

@@ -626,10 +626,18 @@ export namespace Events {
 		teamId: TeamId
 		details: {
 			locked?: boolean
-			squadName?: string
 		}
 	} & Base
 	export const SQUAD_DETAILS_CHANGED_META = meta()
+
+	export type SquadRenamed = {
+		type: 'SQUAD_RENAMED'
+		squadId: SquadId
+		teamId: TeamId
+		oldSquadName: string
+		newSquadName: string
+	} & Base
+	export const SQUAD_RENAMED_META = meta()
 
 	/**
 	 * Player joined pre-existing squad
@@ -737,6 +745,7 @@ export namespace Events {
 		| PlayerLeftSquad<P>
 		| SquadDisbanded
 		| SquadDetailsChanged
+		| SquadRenamed
 		| PlayerJoinedSquad<P>
 		| PlayerPromotedToLeader<P>
 
@@ -757,6 +766,7 @@ export namespace Events {
 		PLAYER_LEFT_SQUAD: PLAYER_LEFT_SQUAD_META,
 		SQUAD_DISBANDED: SQUAD_DISBANDED_META,
 		SQUAD_DETAILS_CHANGED: SQUAD_DETAILS_CHANGED_META,
+		SQUAD_RENAMED: SQUAD_RENAMED_META,
 		PLAYER_JOINED_SQUAD: PLAYER_JOINED_SQUAD_META,
 		PLAYER_PROMOTED_TO_LEADER: PLAYER_PROMOTED_TO_LEADER_META,
 		PLAYER_KICKED: PLAYER_KICKED_META,
@@ -937,6 +947,30 @@ export namespace RconEvents {
 		},
 	})
 
+	const SquadRenamedSchema = eventDef('SQUAD_RENAMED', {
+		time: z.number(),
+		squadId: z.number(),
+		teamId: z.number(),
+		oldSquadName: z.string(),
+		newSquadName: z.string(),
+	})
+
+	export type SquadRenamed = z.infer<typeof SquadRenamedSchema['schema']>
+
+	export const SquadRenamedMatcher = createLogMatcher({
+		event: SquadRenamedSchema,
+		regex: /Remote admin renamed squad (?<squadId>\d+) on team (?<teamId>\d+), named "(?<oldSquadName>.+)", to "(?<newSquadName>.+)"/,
+		onMatch: (match) => {
+			return {
+				time: Date.now(),
+				squadId: Number(match[1]),
+				teamId: Number(match[2]),
+				oldSquadName: match[3],
+				newSquadName: match[4],
+			}
+		},
+	})
+
 	export const matchers = [
 		ChatMessageMatcher,
 		PlayerWarnedMatcher,
@@ -944,6 +978,7 @@ export namespace RconEvents {
 		UnpossessedAdminCameraMatcher,
 		SquadCreatedMatcher,
 		PlayerBannedMatcher,
+		SquadRenamedMatcher,
 	] as const
 
 	export type Event = z.infer<(typeof matchers)[number]['event']['schema']>
