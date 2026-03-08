@@ -2,7 +2,7 @@ import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 import * as AR from '@/app-routes'
 import * as Arr from '@/lib/array'
-import { type CleanupTasks, distinctDeepEquals, runCleanup, toAsyncGenerator, traceTag, withAbortSignal } from '@/lib/async'
+import { type CleanupTasks, distinctDeepEquals, runCleanup, switchMapWithSignal, toAsyncGenerator, traceTag, withAbortSignal } from '@/lib/async'
 import { AsyncResource } from '@/lib/async-resource'
 import * as DH from '@/lib/display-helpers'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
@@ -162,10 +162,32 @@ export const orpcRouter = {
 	watchLayersStatus: orpcBase.handler(async function*({ context, signal }) {
 		const obs = selectedServerCtx$(context)
 			.pipe(
-				Rx.switchMap(ctx => {
-					return Rx.concat(fetchLayersStatusExt(ctx), ctx.server.layersStatusExt$)
-				}),
 				withAbortSignal(signal!),
+				switchMapWithSignal(async function*(ctx, signal) {
+					{
+						const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+						const nextLayerId = ctx.server.state.nextSetLayerId
+						const status: SM.LayersStatusExt = {
+							currentLayer: L.toLayer(currentMatch.layerId),
+							nextLayer: nextLayerId ? L.toLayer(nextLayerId) : null,
+							currentMatch,
+						}
+						yield status
+					}
+					const event$ = ctx.server.event$.pipe(withAbortSignal(signal))
+					for await (const [ctx, events] of toAsyncGenerator(event$)) {
+						if (!events.some(e => ['NEW_GAME', 'MAP_SET', 'RESET'].includes(e.type))) continue
+						const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+						const nextLayerId = ctx.server.state.nextSetLayerId
+						const status: SM.LayersStatusExt = {
+							currentLayer: L.toLayer(currentMatch.layerId),
+							nextLayer: nextLayerId ? L.toLayer(nextLayerId) : null,
+							currentMatch,
+						}
+						yield status
+					}
+				}),
+				Rx.map((status): SM.LayersStatusResExt => ({ code: 'ok', data: status })),
 			)
 		yield* toAsyncGenerator(obs)
 	}),
@@ -896,7 +918,7 @@ const processLogEvent = C.spanOp('processLogEvent', { module, levels: { event: '
 				const { match } = await withAcquired(
 					() => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx],
 					() =>
-						DB.runTransaction(ctx, async (ctx) => {
+						DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 							const serverState = await getServerState(ctx)
 							const nextLqItem = serverState.layerQueue[0]
 
@@ -1414,7 +1436,7 @@ export const saveEvents = C.spanOp(
 	'saveEvents',
 	{ module, mutexes: (ctx) => ctx.server.savingEventsMtx },
 	async (ctx: C.SquadServer & C.Db) =>
-		await DB.runTransaction(ctx, async (ctx) => {
+		await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 			const state = ctx.server.state
 
 			let events: SM.Events.Event[] = []
@@ -1538,6 +1560,8 @@ export const saveEvents = C.spanOp(
 				}
 			}
 			await flush()
+			const eventIds = events.map(e => e.id).join(',')
+			log.info({ eventIds }, 'saved %d events [%d:%d]', events.length, events[0].id, events[events.length - 1].id)
 
 			async function flush() {
 				if (eventRows.length > 0) {
@@ -1561,7 +1585,20 @@ export const saveEvents = C.spanOp(
 					playerRows = []
 				}
 				if (playerAssociationRows.length > 0) {
-					await ctx.db({ redactParams: true }).insert(Schema.playerEventAssociations).values(playerAssociationRows)
+					const playerIds = [...new Set(playerAssociationRows.map(r => r.playerId))]
+					const existingPlayers = await ctx.db()
+						.select({ eosId: Schema.players.eosId })
+						.from(Schema.players)
+						.where(E.inArray(Schema.players.eosId, playerIds))
+					const existingIds = new Set(existingPlayers.map(p => p.eosId))
+					const validRows = playerAssociationRows.filter(r => {
+						if (existingIds.has(r.playerId)) return true
+						log.error('skipping playerEventAssociation for unknown player %s (event %d)', r.playerId, r.serverEventId)
+						return false
+					})
+					if (validRows.length > 0) {
+						await ctx.db({ redactParams: true }).insert(Schema.playerEventAssociations).values(validRows)
+					}
 					playerAssociationRows = []
 				}
 				if (squadRows.length > 0) {
@@ -1569,10 +1606,22 @@ export const saveEvents = C.spanOp(
 					squadRows = []
 				}
 				if (squadAssociationRows.length > 0) {
-					await ctx.db({ redactParams: true }).insert(Schema.squadEventAssociations).values(squadAssociationRows)
+					const squadIds = [...new Set(squadAssociationRows.map(r => r.squadId))]
+					const existingSquads = await ctx.db()
+						.select({ id: Schema.squads.id })
+						.from(Schema.squads)
+						.where(E.inArray(Schema.squads.id, squadIds))
+					const existingIds = new Set(existingSquads.map(s => s.id))
+					const validRows = squadAssociationRows.filter(r => {
+						if (existingIds.has(r.squadId)) return true
+						log.error('skipping squadEventAssociation for unknown squad %d (event %d)', r.squadId, r.serverEventId)
+						return false
+					})
+					if (validRows.length > 0) {
+						await ctx.db({ redactParams: true }).insert(Schema.squadEventAssociations).values(validRows)
+					}
 					squadAssociationRows = []
 				}
-				log.info('saved %d events [%d:%d]', events.length, events[0].id, events[events.length - 1].id)
 			}
 		}),
 )

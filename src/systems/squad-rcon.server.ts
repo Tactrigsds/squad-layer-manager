@@ -108,7 +108,9 @@ export async function getCurrentLayer(ctx: C.Rcon) {
 	if (!match) throw new Error('Invalid response from ShowCurrentMap: ' + response.data)
 	const layer = match[2]
 	const factions = match[3]
-	return { code: 'ok' as const, layer: L.parseRawLayerText(`${layer} ${factions}`)! }
+	const parsedLayer = L.parseRawLayerText(`${layer} ${factions}`)!
+	log.debug('current layer: %s', parsedLayer.id)
+	return { code: 'ok' as const, layer: parsedLayer }
 }
 
 export async function getNextLayer(ctx: C.Rcon) {

@@ -51,7 +51,7 @@ export const orpcRouter = {
 					throw new Orpc.ORPCError('FORBIDDEN', { message: 'err:trying-to-edit-connection-settings' })
 				}
 			}
-			return await DB.runTransaction(ctx, async (ctx) => {
+			return await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 				const state = await SquadServer.getServerState(ctx)
 				SS.applySettingMutations(state.settings, input)
 				const res = SS.ServerSettingsSchema.safeParse(state.settings)

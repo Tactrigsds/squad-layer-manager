@@ -212,7 +212,7 @@ export async function logInUser(ctx: C.Db & C.FastifyRequest & C.FastifyReply, d
 	const sessionId = createId(64)
 	const expiresAt = new Date(Date.now() + SESSION_MAX_AGE)
 
-	await DB.runTransaction(ctx, async (ctx) => {
+	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 		const [user] = await ctx.db()
 			.select()
 			.from(Schema.users)

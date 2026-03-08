@@ -44,16 +44,14 @@ export async function setup() {
 			},
 		},
 	})
-	// instrumentDrizzleClient(db, instrumentOpts)
 
 	dbRedactParams = drizzle(pool, {
 		logger: {
 			logQuery: (query: string, params: unknown[]) => {
-				log.debug('redacted %s', query)
+				log.debug('%s', query)
 			},
 		},
 	})
-	// instrumentDrizzleClient(dbRedactParams, instrumentOpts)
 }
 
 // try to use the getter instead of passing the db instance around by itself. that way the logger is always up-to-date. not expensive.
@@ -74,13 +72,26 @@ export function addPooledDb<T extends object>(ctx: T) {
 
 export async function runTransaction<T extends C.Db, V>(
 	ctx: T & { tx?: { rollback: () => void } },
+	opts: { redactParams?: boolean },
 	callback: (ctx: T & C.Tx) => Promise<V>,
-) {
+): Promise<V>
+export async function runTransaction<T extends C.Db, V>(
+	ctx: T & { tx?: { rollback: () => void } },
+	callback: (ctx: T & C.Tx) => Promise<V>,
+): Promise<V>
+export async function runTransaction<T extends C.Db, V>(
+	ctx: T & { tx?: { rollback: () => void } },
+	secondArg: ((ctx: T & C.Tx) => Promise<V>) | { redactParams?: boolean },
+	thirdArg?: (ctx: T & C.Tx) => Promise<V>,
+): Promise<V> {
+	const opts = typeof secondArg === 'object' ? secondArg : undefined
+	const callback = (typeof secondArg === 'function' ? secondArg : thirdArg)!
+
 	let res!: Awaited<V>
 	let shouldRollback = false
 	const unlockTasks: C.Tx['tx']['unlockTasks'] = []
 	try {
-		await ctx.db().transaction(async (tx) => {
+		await ctx.db(opts).transaction(async (tx) => {
 			res = await callback({
 				...ctx,
 				tx: {

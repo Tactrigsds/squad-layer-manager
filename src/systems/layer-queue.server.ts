@@ -70,7 +70,7 @@ export const setupInstance = C.spanOp(
 
 		await Rx.firstValueFrom(ctx.server.historyConflictsResolved$.pipe(Rx.filter(v => v)))
 		// -------- initialize vote state --------
-		await DB.runTransaction(ctx, async (ctx) => {
+		await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 			const s = ctx.layerQueue
 
 			const initialServerState = await SquadServer.getFullServerState(ctx)
@@ -163,7 +163,7 @@ export const setupInstance = C.spanOp(
 						if (event.type !== 'MAP_SET') continue
 						// this case will be dealt with in handleNewGame, so can ignore it here
 						if (ctx.server.serverRolling$.value) return
-						await DB.runTransaction(ctx, async (ctx) => {
+						await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 							const serverState = await SquadServer.getServerState(ctx)
 							await syncNextLayerInPlace(ctx, serverState)
 						})
@@ -240,7 +240,7 @@ export async function updateQueue(
 	},
 ) {
 	input = Obj.deepClone(input)
-	const res = await DB.runTransaction(ctx, async (ctx) => {
+	const res = await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 		const serverStatePrev = await SquadServer.getServerState(ctx)
 		const serverState = Obj.deepClone(serverStatePrev)
 		if (input.layerQueueSeqId !== serverState.layerQueueSeqId) {
@@ -413,7 +413,7 @@ export async function toggleUpdatesToSquadServer(
 		if (denyRes) return denyRes
 	}
 
-	await DB.runTransaction(ctx, async ctx => {
+	await DB.runTransaction(ctx, { redactParams: true }, async ctx => {
 		const serverState = await SquadServer.getServerState(ctx)
 		serverState.settings.updatesToSquadServerDisabled = input.disabled
 		await SquadServer.updateServerState(ctx, { settings: serverState.settings }, {

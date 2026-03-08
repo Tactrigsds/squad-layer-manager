@@ -233,6 +233,45 @@ export async function acquireInBlock(mutex: MutexInterface, opts?: { lock?: bool
 	}
 }
 
+export function switchMapWithSignal<T, R>(
+	project: (value: T, signal: AbortSignal) => Rx.ObservableInput<R>
+): Rx.OperatorFunction<T, R> {
+	return (source: Rx.Observable<T>) =>
+		new Rx.Observable<R>((subscriber) => {
+			let innerSub: Rx.Subscription | null = null
+			let controller: AbortController | null = null
+			let outerComplete = false
+
+			const outerSub = source.subscribe({
+				next(value) {
+					controller?.abort()
+					innerSub?.unsubscribe()
+
+					controller = new AbortController()
+					innerSub = Rx.from(project(value, controller.signal)).subscribe({
+						next(v) { subscriber.next(v) },
+						error(e) { subscriber.error(e) },
+						complete() {
+							innerSub = null
+							if (outerComplete) subscriber.complete()
+						},
+					})
+				},
+				error(e) { subscriber.error(e) },
+				complete() {
+					outerComplete = true
+					if (!innerSub || innerSub.closed) subscriber.complete()
+				},
+			})
+
+			return () => {
+				controller?.abort()
+				innerSub?.unsubscribe()
+				outerSub.unsubscribe()
+			}
+		})
+}
+
 export function withAbortSignal(signal: AbortSignal) {
 	const abort$: Rx.Observable<unknown> = Rx.merge(
 		// emit immediatly if aborted already

@@ -209,7 +209,7 @@ export const startVote = C.spanOp(
 		}
 
 		const duration = opts.duration ?? CONFIG.vote.voteDuration
-		const res = await DB.runTransaction(ctx, async (ctx) => {
+		const res = await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 			const serverState = await SquadServer.getServerState(ctx)
 			const newServerState = Obj.deepClone(serverState)
 			const itemId = opts.itemId ?? newServerState.layerQueue[0]?.itemId
@@ -351,7 +351,7 @@ export const abortVote = C.spanOp(
 		opts: { aborter: USR.GuiOrChatUserId },
 	) => {
 		const voteState = ctx.vote.state
-		return await DB.runTransaction(ctx, async (ctx) => {
+		return await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 			if (!voteState || voteState?.code !== 'in-progress') {
 				return {
 					code: 'err:no-vote-in-progress' as const,
@@ -495,7 +495,7 @@ const handleVoteTimeout = C.spanOp(
 	'handleVoteTimeout',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.vote.mtx },
 	async (ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.Rcon & C.AdminList) => {
-		const res = await DB.runTransaction(ctx, async (ctx) => {
+		const res = await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 			if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') {
 				return {
 					code: 'err:no-vote-in-progress' as const,
