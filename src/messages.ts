@@ -278,6 +278,7 @@ export const GENERAL = {
 			help: 'Display help information',
 			startVote: 'Start the configured vote',
 			abortVote: 'Abort the current vote',
+			endVoteEarly: 'End the current vote early',
 			showNext: 'Show the next item in the queue',
 			enableSlmUpdates: 'Allow SLM to set the next layer',
 			disableSlmUpdates: 'Prevent SLM from setting the next layer',

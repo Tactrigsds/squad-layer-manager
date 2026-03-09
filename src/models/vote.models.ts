@@ -126,6 +126,7 @@ export const EndingVoteStateSchema = z.discriminatedUnion('code', [
 	z.object({
 		code: z.literal('ended:winner'),
 		winnerId: z.lazy(() => LL.ItemIdSchema),
+		endedEarly: USR.GuiOrChatUserIdSchema.optional(),
 		...TallyPropertiesSchema.shape,
 		...LayerVoteSchema.shape,
 	}),
@@ -137,6 +138,7 @@ export const EndingVoteStateSchema = z.discriminatedUnion('code', [
 	}),
 	z.object({
 		code: z.literal('ended:insufficient-votes'),
+		endedEarly: USR.GuiOrChatUserIdSchema.optional(),
 		...TallyPropertiesSchema.shape,
 		...LayerVoteSchema.shape,
 	}),
@@ -226,6 +228,7 @@ export type VoteStateUpdate = {
 			event:
 				| 'automatic-start-vote'
 				| 'vote-timeout'
+				| 'ended-early'
 				| 'queue-change'
 				| 'next-layer-override'
 				| 'app-startup'

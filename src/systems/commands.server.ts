@@ -109,6 +109,23 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 			}
 			break
 		}
+
+		case 'endVoteEarly': {
+			const res = await Vote.endVote(ctx, { reason: 'ended-early', endedBy: user })
+			switch (res.code) {
+				case 'ok':
+					return { code: 'ok' as const }
+				case 'err:no-vote-in-progress':
+					return await showError('no-vote-in-progress', Messages.WARNS.vote.noVoteInProgress)
+				case 'err:rcon':
+					return await showError('rcon', res.msg)
+				default: {
+					assertNever(res)
+					return
+				}
+			}
+		}
+
 		case 'help': {
 			await SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.commands.help(CONFIG.commands, CONFIG.commandPrefix))
 			return { code: 'ok' as const }

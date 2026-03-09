@@ -157,6 +157,7 @@ export type LQStateUpdate = {
 			event:
 				| 'server-roll'
 				| 'app-startup'
+				| 'ended-early'
 				| 'vote-timeout'
 				| 'vote-abort'
 				| 'vote-cleared'
@@ -189,6 +190,7 @@ export function printSource(source: LQStateUpdate['source']) {
 			'filter-delete': 'Filter deleted',
 			'next-layer-generated': 'Next layer generated',
 			'updates-to-squad-server-toggled': 'Updates to Squad server toggled',
+			'ended-early': 'Vote ended early',
 		}
 		return eventLabels[source.event]
 	} else {

@@ -302,6 +302,11 @@
           "strings": ["abortvote", "av"],
           "enabled": true
         },
+        "endVoteEarly": {
+          "scopes": ["admin"],
+          "strings": ["endvote", "ev"],
+          "enabled": true
+        },
         "showNext": {
           "scopes": ["admin"],
           "strings": ["shownext", "sn"],
@@ -309,17 +314,17 @@
         },
         "enableSlmUpdates": {
           "scopes": ["admin"],
-          "strings": ["enableSlm"],
+          "strings": ["enableslm"],
           "enabled": true
         },
         "disableSlmUpdates": {
           "scopes": ["admin"],
-          "strings": ["disableSlm"],
+          "strings": ["disableslm"],
           "enabled": true
         },
         "getSlmUpdatesEnabled": {
           "scopes": ["admin"],
-          "strings": ["getSlmStatus"],
+          "strings": ["slmstatus"],
           "enabled": true
         },
         "linkSteamAccount": {
@@ -449,6 +454,33 @@
             "enabled": {"default": true, "type": "boolean"}
           }
         },
+        "endVoteEarly": {
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["endvote", "ev"],
+            "enabled": true
+          },
+          "type": "object",
+          "properties": {
+            "strings": {
+              "description": "Command strings that trigger this command when prefixed with the command prefix",
+              "default": ["endvote", "ev"],
+              "type": "array",
+              "items": {
+                "description": "A string with no whitespace characters",
+                "type": "string",
+                "pattern": "^\\S+$"
+              }
+            },
+            "scopes": {
+              "description": "Scopes in which this command is available",
+              "default": ["admin"],
+              "type": "array",
+              "items": {"type": "string", "enum": ["admin", "public"]}
+            },
+            "enabled": {"default": true, "type": "boolean"}
+          }
+        },
         "showNext": {
           "default": {
             "scopes": ["admin"],
@@ -479,14 +511,14 @@
         "enableSlmUpdates": {
           "default": {
             "scopes": ["admin"],
-            "strings": ["enableSlm"],
+            "strings": ["enableslm"],
             "enabled": true
           },
           "type": "object",
           "properties": {
             "strings": {
               "description": "Command strings that trigger this command when prefixed with the command prefix",
-              "default": ["enableSlm"],
+              "default": ["enableslm"],
               "type": "array",
               "items": {
                 "description": "A string with no whitespace characters",
@@ -506,14 +538,14 @@
         "disableSlmUpdates": {
           "default": {
             "scopes": ["admin"],
-            "strings": ["disableSlm"],
+            "strings": ["disableslm"],
             "enabled": true
           },
           "type": "object",
           "properties": {
             "strings": {
               "description": "Command strings that trigger this command when prefixed with the command prefix",
-              "default": ["disableSlm"],
+              "default": ["disableslm"],
               "type": "array",
               "items": {
                 "description": "A string with no whitespace characters",
@@ -533,14 +565,14 @@
         "getSlmUpdatesEnabled": {
           "default": {
             "scopes": ["admin"],
-            "strings": ["getSlmStatus"],
+            "strings": ["slmstatus"],
             "enabled": true
           },
           "type": "object",
           "properties": {
             "strings": {
               "description": "Command strings that trigger this command when prefixed with the command prefix",
-              "default": ["getSlmStatus"],
+              "default": ["slmstatus"],
               "type": "array",
               "items": {
                 "description": "A string with no whitespace characters",

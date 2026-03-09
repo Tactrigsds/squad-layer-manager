@@ -7,6 +7,7 @@ import type { Parts } from '@/lib/types'
 import * as Messages from '@/messages.ts'
 import * as CS from '@/models/context-shared'
 import * as LL from '@/models/layer-list.models'
+import * as SS from '@/models/server-state.models'
 
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
@@ -53,6 +54,16 @@ export const router = {
 			const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
 			return startVote(ctx, { ...input, initiator: { discordId: ctx.user.discordId } })
 		}),
+
+	endVoteEarly: orpcBase.handler(async ({ context: _ctx }) => {
+		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage'))
+		if (denyRes) return denyRes
+		return await endVote(ctx, {
+			reason: 'ended-early',
+			endedBy: { discordId: ctx.user.discordId },
+		})
+	}),
 
 	abortVote: orpcBase.handler(async ({ context: _ctx }) => {
 		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
@@ -481,7 +492,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 	ctx.vote.voteEndTask.add(
 		Rx.timer(Math.max(ctx.vote.state.deadline - currentTime, 0)).subscribe({
 			next: async () => {
-				await handleVoteTimeout(SquadServer.resolveSliceCtx(getBaseCtx(), serverId))
+				await endVote(SquadServer.resolveSliceCtx(getBaseCtx(), serverId), { reason: 'vote-timeout' })
 			},
 			complete: () => {
 				log.info('vote deadline reached')
@@ -491,10 +502,18 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 	)
 }
 
-const handleVoteTimeout = C.spanOp(
-	'handleVoteTimeout',
-	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.vote.mtx },
-	async (ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.Rcon & C.AdminList) => {
+export const endVote = C.spanOp(
+	'endVote',
+	{
+		module,
+		levels: { event: 'info' },
+		mutexes: (ctx) => ctx.vote.mtx,
+		attrs: (_, opts) => opts,
+	},
+	async (
+		ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.Rcon & C.AdminList,
+		opts: { reason: 'vote-timeout' } | { reason: 'ended-early'; endedBy: USR.GuiOrChatUserId },
+	) => {
 		const res = await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 			if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') {
 				return {
@@ -511,6 +530,7 @@ const handleVoteTimeout = C.spanOp(
 			if (Object.values(ctx.vote.state.votes).length === 0) {
 				endingVoteState = {
 					code: 'ended:insufficient-votes',
+					endedEarly: opts.reason === 'ended-early' ? opts.endedBy : undefined,
 					...Obj.selectProps(ctx.vote.state, ['choiceIds', 'itemId', 'deadline', 'votes', 'voterType']),
 				}
 			} else {
@@ -526,6 +546,7 @@ const handleVoteTimeout = C.spanOp(
 				const winnerChoice = listItem.choices.find(c => c.itemId === winnerId)
 				endingVoteState = {
 					code: 'ended:winner',
+					endedEarly: opts.reason === 'ended-early' ? opts.endedBy : undefined,
 					...Obj.selectProps(ctx.vote.state, ['choiceIds', 'itemId', 'deadline', 'votes', 'voterType']),
 					winnerId,
 				}
@@ -546,12 +567,12 @@ const handleVoteTimeout = C.spanOp(
 			ctx.vote.state = null
 			const update: V.VoteStateUpdate = {
 				state: null,
-				source: { type: 'system', event: 'vote-timeout' },
+				source: { type: 'system', event: opts.reason },
 			}
 			addReleaseTask(() => ctx.vote.update$.next(update))
 
 			await LayerQueue.syncNextLayerInPlace(ctx, serverState, { skipDbWrite: true })
-			await SquadServer.updateServerState(ctx, serverState, { type: 'system', event: 'vote-timeout' })
+			await SquadServer.updateServerState(ctx, serverState, { type: 'system', event: opts.reason })
 			return { code: 'ok' as const, endingVoteState, tally }
 		})
 		return res

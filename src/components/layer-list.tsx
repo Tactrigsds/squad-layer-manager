@@ -702,6 +702,21 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		}
 	}
 
+	const endVoteEarlyMutation = RQ.useMutation(RPC.orpc.vote.endVoteEarly.mutationOptions())
+	async function endVoteEarly() {
+		const res = await endVoteEarlyMutation.mutateAsync(undefined)
+		switch (res.code) {
+			case 'err:permission-denied':
+				RbacClient.handlePermissionDenied(res)
+				break
+			case 'ok':
+				globalToast$.next({ title: 'Vote ended early!' })
+				break
+			default:
+				globalToast$.next({ variant: 'destructive', title: res.msg })
+		}
+	}
+
 	const cancelAutostartMutation = RQ.useMutation(RPC.orpc.vote.cancelVoteAutostart.mutationOptions())
 	async function cancelAutostart() {
 		const res = await cancelAutostartMutation.mutateAsync(undefined)
@@ -804,6 +819,17 @@ function VoteLayerListItem(props: LayerListItemProps) {
 														/>
 													</Badge>
 												</>
+											)}
+											{voteState.code === 'in-progress' && (
+												<Button
+													title="End Vote Early"
+													variant="ghost"
+													size="icon"
+													onClick={endVoteEarly}
+													{...manageVoteButtonProps({ hideWhenNotHovering: false })}
+												>
+													<Icons.CheckCheck />
+												</Button>
 											)}
 											{voteState.code === 'in-progress' && (
 												<Button
