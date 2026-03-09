@@ -22,6 +22,7 @@ import React from 'react'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import { ServerUnreachable } from './server-offline-display.tsx'
+import ShortLayerName from './short-layer-name.tsx'
 
 function ServerChatEvents(
 	props: {
@@ -78,7 +79,7 @@ function ServerChatEvents(
 	}, [showScrollButton])
 
 	return (
-		<div className={cn(props.className, 'h-full relative')}>
+		<div className={cn(props.className, 'h-full relative @container')}>
 			{!synced && selectedMatchOrdinal === null && (
 				<div className="absolute inset-0 z-30 bg-background/80 backdrop-blur-sm flex items-center justify-center">
 					<Icons.Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -100,15 +101,16 @@ function ServerChatEvents(
 					{props.isStatePanelOpen ? <Icons.ChevronRight className="h-3 w-3" /> : <Icons.ChevronLeft className="h-3 w-3" />}
 				</Button>
 			)}
+			{selectedMatchOrdinal !== null && displayMatch && (
+				<div className="text-muted-foreground text-xs py-2 bg-blue-500/10 flex flex-wrap justify-center gap-x-1">
+					<span>Viewing historical match</span>
+					<ShortLayerName layerId={displayMatch.layerId} teamParity={displayMatch.ordinal % 2} />
+					{displayMatch.startTime && <span>{dateFns.format(displayMatch.startTime, 'MMM d, yyyy HH:mm')}</span>}
+				</div>
+			)}
 			<ScrollArea ref={scrollAreaRef} className="h-full">
 				{/* it's important that the only things which can significantly resize the scrollarea are in this container, otherwise the autoscroll will break */}
 				<div ref={eventsContainerRef} className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">
-					{selectedMatchOrdinal !== null && displayMatch && (
-						<div className="text-muted-foreground text-xs text-center py-2 bg-blue-500/10">
-							Viewing historical match
-							{displayMatch.startTime && <>: {dateFns.format(displayMatch.startTime, 'MMM d, yyyy HH:mm')}</>}
-						</div>
-					)}
 					{props.filteredEvents && props.filteredEvents.length === 0 && (
 						<div className="text-muted-foreground text-sm text-center py-8">
 							No events yet for {selectedMatchOrdinal === null ? 'current match' : 'this match'}
@@ -198,7 +200,7 @@ export default function ServerActivityPanel() {
 			// Reset to current match when a new match begins (but not on initial load)
 			const currentSelectedOrdinal = SquadServerClient.ChatStore.getState().selectedMatchOrdinal
 			if (hadPreviousMatch && currentSelectedOrdinal !== null) {
-				SquadServerClient.ChatStore.getState().setSelectedMatchOrdinal(null)
+				void SquadServerClient.ChatStore.getState().setSelectedMatchOrdinal(null)
 			}
 		}
 	}, [currentMatch?.historyEntryId])

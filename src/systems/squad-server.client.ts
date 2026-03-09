@@ -58,7 +58,7 @@ type ChatStore = {
 	eventGeneration: number
 	// Selected match ordinal for viewing historical events (null = current match)
 	selectedMatchOrdinal: number | null
-	setSelectedMatchOrdinal(ordinal: number | null): void
+	setSelectedMatchOrdinal(ordinal: number | null): Promise<void>
 }
 
 export const ChatStore = Zus.createStore<ChatStore>((set, get) => {

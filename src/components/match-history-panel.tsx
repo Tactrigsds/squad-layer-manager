@@ -15,6 +15,7 @@ import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import type * as MH from '@/models/match-history.models'
+
 import * as DndKit from '@/systems/dndkit.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
 import { GlobalSettingsStore } from '@/systems/global-settings.client'
@@ -100,6 +101,31 @@ export function MatchHistoryPanelContent() {
 		}
 		return [date, entries]
 	}, [matchesByDate, currentPage, history])
+
+	const historyRef = React.useRef(history)
+	historyRef.current = history
+	const matchesByDateRef = React.useRef(matchesByDate)
+	matchesByDateRef.current = matchesByDate
+
+	React.useEffect(() => {
+		return SquadServerClient.ChatStore.subscribe((state, prevState) => {
+			if (state.selectedMatchOrdinal === prevState.selectedMatchOrdinal) return
+			const ordinal = state.selectedMatchOrdinal
+			if (ordinal === null) {
+				setCurrentPage(1)
+				return
+			}
+			const match = historyRef.current.find(m => m.ordinal === ordinal)
+			if (!match) return
+			const date = match.startTime ?? match.createdAt
+			if (!date) return
+			const dateStr = dateFns.format(date, 'yyyy-MM-dd')
+			const idx = matchesByDateRef.current.findIndex(([key]) => key === dateStr)
+			if (idx === -1) return
+			setCurrentPage(matchesByDateRef.current.length - idx)
+		})
+	}, [])
+
 	const onFirstPage = currentPage === 1
 	const totalPages = matchesByDate.length
 	const onLastPage = currentPage === totalPages
