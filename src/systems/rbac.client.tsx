@@ -2,7 +2,7 @@ import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Obj from '@/lib/object'
 import * as Messages from '@/messages'
 import * as RPC from '@/orpc.client'
-import type * as RBAC from '@/rbac.models'
+import * as RBAC from '@/rbac.models'
 import * as UsersClient from '@/systems/users.client'
 import { useQuery } from '@tanstack/react-query'
 import * as Zus from 'zustand'
@@ -13,6 +13,15 @@ export function handlePermissionDenied(res: RBAC.PermissionDeniedResponse) {
 		variant: 'destructive',
 		title: Messages.WARNS.permissionDenied(res),
 	})
+}
+
+export function usePermsCheck<T extends RBAC.PermissionType>(
+	req: RBAC.Permission<T> | RBAC.Permission<T>[] | RBAC.PermissionReq<T>,
+): RBAC.PermissionDeniedResponse<T> | null {
+	const user = UsersClient.useLoggedInUser()
+	const normReq: RBAC.PermissionReq<T> = 'check' in req ? req : { check: 'all', permits: Array.isArray(req) ? req : [req] }
+	if (!user) return RBAC.permissionDenied(normReq)
+	return RBAC.tryDenyPermissionsForRbacUser(user, normReq)
 }
 
 export const GET_ROLES_QUERY_KEY = ['getRoles']

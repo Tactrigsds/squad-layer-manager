@@ -1,3 +1,4 @@
+import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -17,10 +18,10 @@ import * as SS from '@/models/server-state.models.ts'
 import type * as UP from '@/models/user-presence'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import * as RbacClient from '@/systems/rbac.client'
 import * as ServerSettingsClient from '@/systems/server-settings.client'
 
 import * as UPClient from '@/systems/user-presence.client'
-import { useLoggedInUser } from '@/systems/users.client'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -45,8 +46,7 @@ export default function ServerSettingsPopover(
 		ref?: React.ForwardedRef<ServerSettingsPopoverHandle>
 	},
 ) {
-	const user = useLoggedInUser()
-	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
+	const writeSettingsDenied = RbacClient.usePermsCheck(RBAC.perm('settings:write'))
 
 	React.useImperativeHandle(props.ref, () => ({
 		reset: () => {},
@@ -99,12 +99,14 @@ export default function ServerSettingsPopover(
 					<div className="flex items-center space-x-2">
 						<div className={cn('flex items-center space-x-1', poolId === 'generationPool' ? '' : 'invisible')}>
 							<Label htmlFor={applymainPoolSwitchId}>Apply Main Pool</Label>
-							<Switch
-								disabled={!canWriteSettings}
-								id={applymainPoolSwitchId}
-								checked={applyMainPool}
-								onCheckedChange={setApplyMainPool}
-							/>
+							<PermissionDeniedTooltip denied={writeSettingsDenied}>
+								<Switch
+									disabled={!!writeSettingsDenied}
+									id={applymainPoolSwitchId}
+									checked={applyMainPool}
+									onCheckedChange={setApplyMainPool}
+								/>
+							</PermissionDeniedTooltip>
 						</div>
 						<TabsList
 							options={[
@@ -188,8 +190,7 @@ function PoolFiltersConfigurationPanel({
 	)
 	const filterEntities = FilterEntityClient.useFilterEntities()
 
-	const user = useLoggedInUser()
-	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
+	const writeSettingsDenied = RbacClient.usePermsCheck(RBAC.perm('settings:write'))
 
 	const add = (filterId: F.FilterEntityId | null) => {
 		if (filterId === null) return
@@ -210,12 +211,14 @@ function PoolFiltersConfigurationPanel({
 					onSelect={add}
 					excludedFilterIds={Arr.deref('filterId', filterConfigs)}
 					allowEmpty={false}
-					enabled={canWriteSettings ?? false}
+					enabled={!writeSettingsDenied}
 				>
-					<Button disabled={!canWriteSettings} size="sm" variant="outline">
-						<Icons.Plus className="h-4 w-4 mr-2" />
-						Add Filter
-					</Button>
+					<PermissionDeniedTooltip denied={writeSettingsDenied}>
+						<Button disabled={!!writeSettingsDenied} size="sm" variant="outline">
+							<Icons.Plus className="h-4 w-4 mr-2" />
+							Add Filter
+						</Button>
+					</PermissionDeniedTooltip>
 				</FilterEntitySelect>
 			</div>
 			<div className="space-y-2">
@@ -254,7 +257,7 @@ function PoolFiltersConfigurationPanel({
 					return (
 						<div className="flex items-center space-x-2 bg-card" key={filterId}>
 							<FilterEntitySelect
-								enabled={canWriteSettings ?? false}
+								enabled={!writeSettingsDenied}
 								className="grow"
 								title="Pool Filter"
 								filterId={filterId}
@@ -269,7 +272,7 @@ function PoolFiltersConfigurationPanel({
 								title={descriptions[filterConfig.applyAs]}
 							/>
 							<Button
-								disabled={!canWriteSettings}
+								disabled={!!writeSettingsDenied}
 								size="icon"
 								variant="outline"
 								onClick={() => deleteFilter()}
@@ -310,8 +313,7 @@ function RepeatRuleRow(props: {
 		[paths.rules, index],
 	)
 
-	const user = useLoggedInUser()
-	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
+	const writeSettingsDenied = RbacClient.usePermsCheck(RBAC.perm('settings:write'))
 	const rule = Zus.useStore(ServerSettingsClient.Store, selectRule)
 
 	const writeLabel = React.useCallback((label: string) => {
@@ -386,7 +388,7 @@ function RepeatRuleRow(props: {
 				<Input
 					placeholder="Label"
 					defaultValue={rule.label ?? rule.field}
-					disabled={!canWriteSettings}
+					disabled={!!writeSettingsDenied}
 					onChange={(e) => {
 						setLabel(e.target.value)
 					}}
@@ -403,14 +405,14 @@ function RepeatRuleRow(props: {
 						if (!value) return
 						setField(value as LQY.RepeatRuleField)
 					}}
-					disabled={!canWriteSettings}
+					disabled={!!writeSettingsDenied}
 				/>
 			</div>
 			<div className="contents">
 				<Input
 					type="number"
 					defaultValue={rule.within}
-					disabled={!canWriteSettings}
+					disabled={!!writeSettingsDenied}
 					onChange={(e) => {
 						setWithin(Math.floor(Number(e.target.value)))
 					}}
@@ -423,7 +425,7 @@ function RepeatRuleRow(props: {
 					title="Target"
 					selectOnClose
 					options={targetValueOptions}
-					disabled={!canWriteSettings}
+					disabled={!!writeSettingsDenied}
 					values={rule.targetValues ?? []}
 					onSelect={(updated) => {
 						setTargetValues(updated)
@@ -431,15 +433,17 @@ function RepeatRuleRow(props: {
 				/>
 			</div>
 			<div className="contents">
-				<Button
-					size="icon"
-					variant="outline"
-					onClick={deleteRule}
-					disabled={!canWriteSettings}
-					className="h-8 w-8"
-				>
-					<Icons.Minus className="h-4 w-4" />
-				</Button>
+				<PermissionDeniedTooltip denied={writeSettingsDenied}>
+					<Button
+						size="icon"
+						variant="outline"
+						onClick={deleteRule}
+						disabled={!!writeSettingsDenied}
+						className="h-8 w-8"
+					>
+						<Icons.Minus className="h-4 w-4" />
+					</Button>
+				</PermissionDeniedTooltip>
 			</div>
 		</>
 	)
@@ -455,8 +459,7 @@ function PoolRepeatRulesConfigurationPanel(props: {
 		[rulesPath],
 	)
 
-	const user = useLoggedInUser()
-	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
+	const writeSettingsDenied = RbacClient.usePermsCheck(RBAC.perm('settings:write'))
 	const rulesLength = Zus.useStore(ServerSettingsClient.Store, selectRulesLength)
 
 	const addRule = React.useCallback(() => {
@@ -481,15 +484,17 @@ function PoolRepeatRulesConfigurationPanel(props: {
 					</h4>
 					<ConstraintViolationIcon />
 				</span>
-				<Button
-					size="sm"
-					variant="outline"
-					disabled={!canWriteSettings}
-					onClick={addRule}
-				>
-					<Icons.Plus className="h-4 w-4 mr-2" />
-					Add Repeat Rule
-				</Button>
+				<PermissionDeniedTooltip denied={writeSettingsDenied}>
+					<Button
+						size="sm"
+						variant="outline"
+						disabled={!!writeSettingsDenied}
+						onClick={addRule}
+					>
+						<Icons.Plus className="h-4 w-4 mr-2" />
+						Add Repeat Rule
+					</Button>
+				</PermissionDeniedTooltip>
 			</div>
 			<div className="border rounded-md p-3">
 				<div

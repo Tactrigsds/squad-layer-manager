@@ -245,9 +245,25 @@ export function userHasPerms<T extends PermissionType>(
 	return req.check === 'all'
 }
 
-export function tryDenyPermissionsForRbacUser<T extends PermissionType>(user: UserWithRbac, req: PermissionReq<T>) {
-	if (!rbacUserHasPerms(user, req)) {
-		return permissionDenied(req)
+export function tryDenyPermissionsForRbacUser<T extends PermissionType>(
+	user: UserWithRbac,
+	req: Permission<T>,
+): PermissionDeniedResponse<T> | null
+export function tryDenyPermissionsForRbacUser<T extends PermissionType>(
+	user: UserWithRbac,
+	req: Permission<T>[],
+): PermissionDeniedResponse<T> | null
+export function tryDenyPermissionsForRbacUser<T extends PermissionType>(
+	user: UserWithRbac,
+	req: PermissionReq<T>,
+): PermissionDeniedResponse<T> | null
+export function tryDenyPermissionsForRbacUser<T extends PermissionType>(
+	user: UserWithRbac,
+	req: Permission<T> | Permission<T>[] | PermissionReq<T>,
+): PermissionDeniedResponse<T> | null {
+	const normReq: PermissionReq<T> = 'check' in req ? req : { check: 'all', permits: Array.isArray(req) ? req : [req] }
+	if (!rbacUserHasPerms(user, normReq)) {
+		return permissionDenied(normReq)
 	}
 	return null
 }

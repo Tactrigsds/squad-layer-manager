@@ -1,12 +1,13 @@
 import ComboBox from '@/components/combo-box/combo-box.tsx'
 import { LOADING } from '@/components/combo-box/constants.ts'
 import EmojiDisplay from '@/components/emoji-display.tsx'
+import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type * as F from '@/models/filter.models'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
-import { useLoggedInUser } from '@/systems/users.client'
+import * as RbacClient from '@/systems/rbac.client'
 import { Link } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -40,34 +41,36 @@ export default function FilterEntitySelect(props: {
 		}
 	}
 	const enableCheckboxId = React.useId()
-	const loggedInUser = useLoggedInUser()
-	const hasForceWrite = loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:force-write'))
+	const forceWriteDenied = RbacClient.usePermsCheck(RBAC.perm('queue:force-write'))
 	return (
-		<div className={cn('flex space-x-2 items-center flex-nowrap', props.className)}>
-			{props.allowToggle && (
-				<Checkbox
-					id={enableCheckboxId}
-					disabled={!hasForceWrite}
-					onCheckedChange={(v) => {
-						if (v === 'indeterminate') return
-						props.setEnabled?.(v)
-					}}
-					checked={props.enabled}
-				/>
-			)}
-			<ComboBox
-				title={props.title ?? 'Filter'}
-				disabled={!hasForceWrite}
-				className="grow"
-				options={filterOptions ?? LOADING}
-				allowEmpty={props.allowEmpty ?? true}
-				value={props.filterId}
-				onSelect={(filter) => props.onSelect(filter ?? null)}
-			>
-				{props.children}
-			</ComboBox>
-			{props.filterId && <FilterEntityLink filterId={props.filterId} />}
-		</div>
+		<PermissionDeniedTooltip denied={forceWriteDenied} triggerClassName={cn('flex space-x-2 items-center flex-nowrap', props.className)}>
+			<div className={cn('flex space-x-2 items-center flex-nowrap', props.className)}>
+				{props.allowToggle && (
+					<Checkbox
+						id={enableCheckboxId}
+						disabled={!!forceWriteDenied}
+						onCheckedChange={(v) => {
+							if (v === 'indeterminate') return
+							props.setEnabled?.(v)
+						}}
+						checked={props.enabled}
+					/>
+				)}
+				<ComboBox
+					title={props.title ?? 'Filter'}
+					disabled={!!forceWriteDenied}
+					className="grow"
+					options={filterOptions ?? LOADING}
+					allowEmpty={props.allowEmpty ?? true}
+					value={props.filterId}
+					onSelect={(filter) =>
+						props.onSelect(filter ?? null)}
+				>
+					{props.children}
+				</ComboBox>
+				{props.filterId && <FilterEntityLink filterId={props.filterId} />}
+			</div>
+		</PermissionDeniedTooltip>
 	)
 }
 

@@ -1,4 +1,5 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as RBAC from '@/rbac.models'
@@ -42,8 +43,6 @@ export default function UserPermissionsDialog(
 			</Dialog>
 		)
 	}
-
-	const roles = new Set(userBase.perms?.flatMap(p => p.allowedByRoles))
 
 	const formatPermissionScope = (perm: RBAC.TracedPermission) => {
 		if (perm.scope === 'global') return 'Global'
@@ -105,7 +104,6 @@ export default function UserPermissionsDialog(
 								</TableHeader>
 								<TableBody>
 									{user.perms.map((perm) => {
-										if (perm.type === 'site:authorized') return null
 										const permKey = `${perm.type}:${perm.scope}:${perm.negated ? 'neg' : ''}`
 										return (
 											<TableRow key={permKey}>
@@ -157,14 +155,14 @@ export default function UserPermissionsDialog(
 									Simulate roles
 								</label>
 								<span className="text-xs text-muted-foreground">
-									Toggle roles to see how your permissions would change
+									Toggle roles to see how your permissions would change. You can only simulate losing roles, not gaining roles that you
+									don't already have.
 								</span>
 							</div>
 
 							<div className="space-y-6">
-								{[...roles]?.map((role) => {
-									const perms = permissionsByRole.find(([r]) => r === role)?.[1] ?? []
-									const isRoleEnabled = !simulateRoles || !disabledRoles.some(r => JSON.stringify(r) === JSON.stringify(role))
+								{permissionsByRole.map(([role, perms]) => {
+									const isRoleEnabled = !simulateRoles || !disabledRoles.some(r => Obj.deepEqual(r, role))
 
 									const checkboxId = 'simulate-role-checkbox-' + JSON.stringify(role)
 									return (
@@ -201,7 +199,6 @@ export default function UserPermissionsDialog(
 											{isRoleEnabled && (
 												<div className="space-y-2">
 													{perms.map((perm) => {
-														if (perm.type === 'site:authorized') return
 														const permKey = `${perm.type}:${perm.scope}:${perm.negated ? 'neg' : ''}`
 														return (
 															<div key={permKey} className="flex items-start justify-between p-2 bg-muted/50 rounded text-sm">

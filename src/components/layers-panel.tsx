@@ -1,4 +1,5 @@
 import { StartActivityInteraction } from '@/components/activity.tsx'
+import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -18,6 +19,7 @@ import * as ConfigClient from '@/systems/config.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as LQYClient from '@/systems/layer-queries.client.ts'
 import * as QD from '@/systems/queue-dashboard.client'
+import * as RbacClient from '@/systems/rbac.client'
 import * as ServerSettingsClient from '@/systems/server-settings.client'
 import * as SLLClient from '@/systems/shared-layer-list.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -192,8 +194,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 		SLLClient.Store,
 		useShallow(s => [s.isModified, s.committing, s.editors.size]),
 	)
-	const loggedInUser = UsersClient.useLoggedInUser()
-	const canStartEditing = loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:write'))
+	const startEditingDenied = RbacClient.usePermsCheck(RBAC.perm('queue:write'))
 
 	function clear() {
 		const state = QD.LQStore.getState()
@@ -292,15 +293,19 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 						<Icons.LoaderCircle className="animate-spin h-4 w-4" />
 						<span className="text-sm">Saving...</span>
 					</div>
-					<Button
-						variant="outline"
-						disabled={!canStartEditing}
-						onClick={() => setEditing(true)}
-						className="col-start-2 row-start-1 invisible group-data-[status=idle]:visible"
+					<PermissionDeniedTooltip
+						denied={startEditingDenied}
+						triggerClassName="col-start-2 row-start-1 invisible group-data-[status=idle]:visible"
 					>
-						<Icons.Edit />
-						<span>Start Editing</span>
-					</Button>
+						<Button
+							variant="outline"
+							disabled={!!startEditingDenied}
+							onClick={() => setEditing(true)}
+						>
+							<Icons.Edit />
+							<span>Start Editing</span>
+						</Button>
+					</PermissionDeniedTooltip>
 					{(() => {
 						const saveButtonGroup = (
 							<ButtonGroup>
@@ -453,8 +458,7 @@ function SlmUpdatesDisabledAlert() {
 	const nextLayer = statusRes.code === 'ok' ? statusRes.data.nextLayer : null
 	const updatesDisabled = Zus.useStore(ServerSettingsClient.Store, s => s.saved.updatesToSquadServerDisabled)
 	const { enableUpdates } = QD.useToggleSquadServerUpdates()
-	const loggedInUser = UsersClient.useLoggedInUser()
-	const canEnableUpdates = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:disable-slm-updates'))
+	const enableUpdatesDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:disable-slm-updates'))
 	if (!updatesDisabled) return null
 
 	return (
@@ -466,7 +470,9 @@ function SlmUpdatesDisabledAlert() {
 						Current next layer on the server is <ShortLayerName layerId={nextLayer.id} />.
 					</>
 				)} <br />{' '}
-				<Button disabled={!canEnableUpdates} className="mr-1" variant="secondary" onClick={() => enableUpdates()}>Click Here</Button>
+				<PermissionDeniedTooltip denied={enableUpdatesDenied} triggerClassName="mr-1 inline-block">
+					<Button disabled={!!enableUpdatesDenied} variant="secondary" onClick={() => enableUpdates()}>Click Here</Button>
+				</PermissionDeniedTooltip>
 				to enable SLM Updates.
 			</AlertDescription>
 		</Alert>

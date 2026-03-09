@@ -1,4 +1,5 @@
 import { AdvancedVoteConfigEditor } from '@/components/advanced-vote-config-editor'
+import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Badge } from '@/components/ui/badge.tsx'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -616,8 +617,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const voteState = (globalVoteState?.itemId === item.itemId ? globalVoteState : undefined) ?? endingVoteState
 
 	const isModified = Zus.useStore(SLLClient.Store, s => s.isModified)
-	const user = UsersClient.useLoggedInUser()
-	const canManageVote = user ? RBAC.rbacUserHasPerms(user, RBAC.perm('vote:manage')) : false
+	const manageVoteDenied = RbacClient.usePermsCheck(RBAC.perm('vote:manage'))
 	const isEditing = UPClient.useIsEditing()
 	const canEdit = !SLLClient.useIsItemLocked(item.itemId) && isEditing
 	const draggableItem = LL.layerItemToDragItem(item)
@@ -638,7 +638,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		opts.hideWhenNotHovering ??= true
 		return ({
 			['data-mobile']: isMobile,
-			disabled: !canManageVote,
+			disabled: !!manageVoteDenied,
 			className: opts?.className,
 		})
 	}
@@ -793,9 +793,17 @@ function VoteLayerListItem(props: LayerListItemProps) {
 											<span>:</span>
 											<span className="whitespace-nowrap text-nowrap w-max text-sm flex flex-nowrap items-center space-x-2">
 												<span>starts in</span> <Timer deadline={voteAutostartTime.getTime()} />
-												<Button variant="ghost" size="icon" title="Cancel Autostart" onClick={cancelAutostart} {...manageVoteButtonProps()}>
-													<Icons.X />
-												</Button>
+												<PermissionDeniedTooltip denied={manageVoteDenied}>
+													<Button
+														variant="ghost"
+														size="icon"
+														title="Cancel Autostart"
+														onClick={cancelAutostart}
+														{...manageVoteButtonProps()}
+													>
+														<Icons.X />
+													</Button>
+												</PermissionDeniedTooltip>
 											</span>
 										</>
 									)}
@@ -821,58 +829,66 @@ function VoteLayerListItem(props: LayerListItemProps) {
 												</>
 											)}
 											{voteState.code === 'in-progress' && (
-												<Button
-													title="End Vote Early"
-													variant="ghost"
-													size="icon"
-													onClick={endVoteEarly}
-													{...manageVoteButtonProps({ hideWhenNotHovering: false })}
-												>
-													<Icons.CheckCheck />
-												</Button>
+												<PermissionDeniedTooltip denied={manageVoteDenied}>
+													<Button
+														title="End Vote Early"
+														variant="ghost"
+														size="icon"
+														onClick={endVoteEarly}
+														{...manageVoteButtonProps({ hideWhenNotHovering: false })}
+													>
+														<Icons.CheckCheck />
+													</Button>
+												</PermissionDeniedTooltip>
 											)}
 											{voteState.code === 'in-progress' && (
-												<Button
-													title="Abort Vote"
-													variant="ghost"
-													size="icon"
-													onClick={abortVote}
-													{...manageVoteButtonProps({ hideWhenNotHovering: false })}
-												>
-													<Icons.X />
-												</Button>
+												<PermissionDeniedTooltip denied={manageVoteDenied}>
+													<Button
+														title="Abort Vote"
+														variant="ghost"
+														size="icon"
+														onClick={abortVote}
+														{...manageVoteButtonProps({ hideWhenNotHovering: false })}
+													>
+														<Icons.X />
+													</Button>
+												</PermissionDeniedTooltip>
 											)}
 										</div>
 									)}
 								</span>
 								<span className="flex items-center space-x-1">
-									<div
-										{...manageVoteButtonProps({ className: 'flex items-center space-x-2' })}
-									>
-										<Checkbox
-											{...manageVoteButtonProps()}
-											id={internalVoteCheckboxId}
-											disabled={!canManageVote || voteState?.code === 'in-progress'}
-											checked={voterType === 'internal'}
-											onCheckedChange={checked => setVoterType(checked ? 'internal' : 'public')}
-										/>
-										<Label
-											htmlFor={internalVoteCheckboxId}
-											className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+									<PermissionDeniedTooltip denied={manageVoteDenied}>
+										<div
+											{...manageVoteButtonProps({ className: 'flex items-center space-x-2' })}
 										>
-											Internal
-										</Label>
-									</div>
-									<Button
-										{...manageVoteButtonProps({ className: 'text-green-500 disabled:text-foreground' })}
-										variant="ghost"
-										size="icon"
-										onClick={() => startVote()}
-										disabled={!canManageVote || canInitiateVote.code !== 'ok'}
-										title="Start Vote"
-									>
-										<Icons.Play />
-									</Button>
+											<Checkbox
+												{...manageVoteButtonProps()}
+												id={internalVoteCheckboxId}
+												disabled={!!manageVoteDenied || voteState?.code === 'in-progress'}
+												checked={voterType === 'internal'}
+												onCheckedChange={checked => setVoterType(checked ? 'internal' : 'public')}
+											/>
+											<Label
+												htmlFor={internalVoteCheckboxId}
+												className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+											>
+												Internal
+											</Label>
+										</div>
+									</PermissionDeniedTooltip>
+									<PermissionDeniedTooltip denied={manageVoteDenied}>
+										<Button
+											{...manageVoteButtonProps({ className: 'text-green-500 disabled:text-foreground' })}
+											variant="ghost"
+											size="icon"
+											onClick={() => startVote()}
+											disabled={!!manageVoteDenied || canInitiateVote.code !== 'ok'}
+											title="Start Vote"
+										>
+											<Icons.Play />
+										</Button>
+									</PermissionDeniedTooltip>
 
 									{/* -------- add vote choices -------- */}
 									{inline(() => {
@@ -912,7 +928,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 										onOpenChange={setVoteDisplayPropsOpen}
 										listStore={props.llStore}
 										itemId={props.itemId}
-										readonly={!canEdit || !canManageVote}
+										readonly={!canEdit || !!manageVoteDenied}
 									>
 										<Button variant="ghost" size="icon">
 											<Icons.Settings2 />

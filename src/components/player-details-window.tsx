@@ -21,6 +21,9 @@ import * as Zus from 'zustand'
 import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
 import { ServerEvent } from './server-event'
 
+import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
+import * as RBAC from '@/rbac.models'
+import * as RbacClient from '@/systems/rbac.client'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
 import { Separator } from './ui/separator'
 import { Spinner } from './ui/spinner'
@@ -377,6 +380,7 @@ interface EditFlagsButtonProps {
 }
 
 function EditFlagsButton({ playerId, currentFlagIds, zIndex }: EditFlagsButtonProps) {
+	const denied = RbacClient.usePermsCheck(RBAC.perm('battlemetrics:write-flags'))
 	const { data: orgFlags } = useQuery(RPC.orpc.battlemetrics.listOrgFlags.queryOptions())
 	const mutation = useMutation(RPC.orpc.battlemetrics.updatePlayerFlags.mutationOptions())
 
@@ -400,22 +404,26 @@ function EditFlagsButton({ playerId, currentFlagIds, zIndex }: EditFlagsButtonPr
 		})), [flagsToRender])
 
 	return (
-		<ComboBoxMulti
-			values={currentFlagIds}
-			options={options}
-			confirm="Apply"
-			onConfirm={(flagIds) => {
-				mutation.mutate({ playerId, flagIds })
-			}}
-			selectOnClose={false}
-		>
-			<button
-				type="button"
-				className="inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors shrink-0"
-				title="Edit flags"
+		<PermissionDeniedTooltip denied={denied}>
+			<ComboBoxMulti
+				values={currentFlagIds}
+				options={options}
+				confirm="Apply"
+				onConfirm={(flagIds) => {
+					mutation.mutate({ playerId, flagIds })
+				}}
+				selectOnClose={false}
+				disabled={!!denied}
 			>
-				<Icons.Pencil className="h-3 w-3" />
-			</button>
-		</ComboBoxMulti>
+				<button
+					type="button"
+					disabled={!!denied}
+					className="inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
+					title="Edit flags"
+				>
+					<Icons.Pencil className="h-3 w-3" />
+				</button>
+			</ComboBoxMulti>
+		</PermissionDeniedTooltip>
 	)
 }

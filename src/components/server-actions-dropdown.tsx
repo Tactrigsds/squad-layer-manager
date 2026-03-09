@@ -1,3 +1,4 @@
+import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -10,21 +11,17 @@ import * as QD from '@/systems/queue-dashboard.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as ServerSettingsClient from '@/systems/server-settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
-import { useLoggedInUser } from '@/systems/users.client'
 import { useMutation } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
 
 export function ServerActionsDropdown() {
-	const loggedInUser = useLoggedInUser()
 	const playerCount = SquadServerClient.usePlayerCount()
 	const hasPlayers = playerCount !== null && playerCount > 0
-	const [canEndMatch, hasDisableUpdatesPerm, canDisableFogOfWar] = React.useMemo(() => [
-		!!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:end-match')) && hasPlayers,
-		!!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:disable-slm-updates')),
-		!!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:turn-fog-off')),
-	], [loggedInUser, hasPlayers])
+	const endMatchDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:end-match'))
+	const disableUpdatesDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:disable-slm-updates'))
+	const disableFogOfWarDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:turn-fog-off'))
 
 	const updatesToSquadServerDisabled = Zus.useStore(ServerSettingsClient.Store, s => s.saved?.updatesToSquadServerDisabled)
 	const { disableUpdates, enableUpdates } = QD.useToggleSquadServerUpdates()
@@ -59,38 +56,46 @@ export function ServerActionsDropdown() {
 					</Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent>
-					<DialogTrigger asChild>
-						<DropdownMenuItem
-							disabled={!canEndMatch}
-							className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600 data-noplayers:flex data-noplayers:flex-col"
-							data-noplayers={!hasPlayers || undefined}
-						>
-							<span>End Match</span>
-							{!hasPlayers && (
-								<small>
-									(disabled: Cannot end match when server is empty.)
-								</small>
-							)}
-						</DropdownMenuItem>
-					</DialogTrigger>
-					{updatesToSquadServerDisabled
-						? <DropdownMenuItem disabled={!hasDisableUpdatesPerm} onClick={enableUpdates}>Re-enable SLM Updates</DropdownMenuItem>
-						: (
+					<PermissionDeniedTooltip denied={endMatchDenied}>
+						<DialogTrigger asChild>
 							<DropdownMenuItem
-								title="Prevents SLM from setting layers on the Squad Server"
-								disabled={!hasDisableUpdatesPerm}
-								onClick={disableUpdates}
+								disabled={!!endMatchDenied || !hasPlayers}
+								className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600 data-noplayers:flex data-noplayers:flex-col"
+								data-noplayers={!hasPlayers || undefined}
 							>
-								Disable SLM Updates
+								<span>End Match</span>
+								{!hasPlayers && (
+									<small>
+										(disabled: Cannot end match when server is empty.)
+									</small>
+								)}
 							</DropdownMenuItem>
+						</DialogTrigger>
+					</PermissionDeniedTooltip>
+					{updatesToSquadServerDisabled
+						? (
+							<PermissionDeniedTooltip denied={disableUpdatesDenied}>
+								<DropdownMenuItem disabled={!!disableUpdatesDenied} onClick={enableUpdates}>Re-enable SLM Updates</DropdownMenuItem>
+							</PermissionDeniedTooltip>
+						)
+						: (
+							<PermissionDeniedTooltip denied={disableUpdatesDenied}>
+								<DropdownMenuItem
+									disabled={!!disableUpdatesDenied}
+									onClick={disableUpdates}
+								>
+									Disable SLM Updates
+								</DropdownMenuItem>
+							</PermissionDeniedTooltip>
 						)}
-					<DropdownMenuItem
-						title="Disables Fog Of War for the current match"
-						disabled={!canDisableFogOfWar}
-						onClick={disableFogOfWar}
-					>
-						Disable Fog Of War
-					</DropdownMenuItem>
+					<PermissionDeniedTooltip denied={disableFogOfWarDenied}>
+						<DropdownMenuItem
+							disabled={!!disableFogOfWarDenied}
+							onClick={disableFogOfWar}
+						>
+							Disable Fog Of War
+						</DropdownMenuItem>
+					</PermissionDeniedTooltip>
 				</DropdownMenuContent>
 			</DropdownMenu>
 		</EndMatchDialog>
@@ -100,7 +105,7 @@ export function ServerActionsDropdown() {
 function EndMatchDialog(props: { children: React.ReactNode }) {
 	const [isOpen, setIsOpen] = React.useState(false)
 
-	const loggedInUser = useLoggedInUser()
+	const endMatchDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:end-match'))
 	const endMatchMutation = useMutation(RPC.orpc.squadServer.endMatch.mutationOptions({}))
 	const serverInfoRes = SquadServerClient.useServerInfoRes()
 	if (!serverInfoRes || serverInfoRes?.code !== 'ok') return null
@@ -125,7 +130,6 @@ function EndMatchDialog(props: { children: React.ReactNode }) {
 		setIsOpen(false)
 	}
 
-	const canEndMatch = !loggedInUser || RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:end-match'))
 	return (
 		<Dialog open={isOpen} onOpenChange={setIsOpen}>
 			{props.children}
@@ -137,10 +141,12 @@ function EndMatchDialog(props: { children: React.ReactNode }) {
 					Are you sure you want to end the match for <b>{serverInfo?.name}</b>?
 				</DialogDescription>
 				<DialogFooter>
-					<Button disabled={!canEndMatch || endMatchMutation.isPending} onClick={endMatch} variant="destructive">
-						{endMatchMutation.isPending && <Icons.Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-						End Match
-					</Button>
+					<PermissionDeniedTooltip denied={endMatchDenied}>
+						<Button disabled={!!endMatchDenied || endMatchMutation.isPending} onClick={endMatch} variant="destructive">
+							{endMatchMutation.isPending && <Icons.Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+							End Match
+						</Button>
+					</PermissionDeniedTooltip>
 					<Button
 						onClick={() => {
 							setIsOpen(false)

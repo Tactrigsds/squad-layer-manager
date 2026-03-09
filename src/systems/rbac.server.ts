@@ -180,6 +180,7 @@ export const getUserRbacPerms = C.spanOp(
 	},
 )
 
+// TODO we should implement a version of this which only loads the relevant perms for the user
 export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
 	baseCtx: C.Db & C.UserId,
 	perm: RBAC.Permission<T>,

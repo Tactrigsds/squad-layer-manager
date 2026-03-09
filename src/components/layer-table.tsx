@@ -1,4 +1,5 @@
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
+import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Button } from '@/components/ui/button'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuShortcut, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -22,7 +23,8 @@ import * as RBAC from '@/rbac.models'
 import * as GlobalSettings from '@/systems/global-settings.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as QD from '@/systems/queue-dashboard.client'
-import { useLoggedInUser } from '@/systems/users.client'
+import * as RbacClient from '@/systems/rbac.client'
+
 import type { ColumnDef, Row } from '@tanstack/react-table'
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import type { Table as CoreTable } from '@tanstack/table-core'
@@ -640,8 +642,7 @@ export function LayerTableControlPanel(
 		}
 	}
 
-	const loggedInUser = useLoggedInUser()
-	const userCanForceSelect = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:force-write'))
+	const forceSelectDenied = RbacClient.usePermsCheck(RBAC.perm('queue:force-write'))
 
 	const [rawSetDialogOpen, _setRawSetDialogOpen] = React.useState(false)
 	const rawSetDialogRef = React.useRef<SetRawDialogHandle>(null)
@@ -684,16 +685,18 @@ export function LayerTableControlPanel(
 					)}
 
 					{props.enableForceSelect && (
-						<Toggle
-							size="sm"
-							title={`${rawSetDialogOpen ? 'Hide' : 'Show'} Raw Input`}
-							aria-label={`${rawSetDialogOpen ? 'Hide' : 'Show'} Raw Input`}
-							pressed={rawSetDialogOpen}
-							onClick={() => setRawSetDialogOpen(prev => !prev)}
-							disabled={!userCanForceSelect}
-						>
-							<Icons.TextCursorInput />
-						</Toggle>
+						<PermissionDeniedTooltip denied={forceSelectDenied}>
+							<Toggle
+								size="sm"
+								title={`${rawSetDialogOpen ? 'Hide' : 'Show'} Raw Input`}
+								aria-label={`${rawSetDialogOpen ? 'Hide' : 'Show'} Raw Input`}
+								pressed={rawSetDialogOpen}
+								onClick={() => setRawSetDialogOpen(prev => !prev)}
+								disabled={!!forceSelectDenied}
+							>
+								<Icons.TextCursorInput />
+							</Toggle>
+						</PermissionDeniedTooltip>
 					)}
 
 					<Separator orientation="vertical" className="h-full min-h-0" />
