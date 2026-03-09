@@ -351,9 +351,9 @@ function MatchHistoryRow({
 				// Switch to this match's events
 				const state = SquadServerClient.ChatStore.getState()
 				if (entry.isCurrentMatch) {
-					state.setSelectedMatchOrdinal(null)
+					void state.setSelectedMatchOrdinal(null)
 				} else {
-					state.setSelectedMatchOrdinal(entry.ordinal)
+					void state.setSelectedMatchOrdinal(entry.ordinal)
 				}
 			}
 			mouseDownPosRef.current = null

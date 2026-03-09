@@ -312,7 +312,7 @@ export default function ServerActivityPanel() {
 		if (currentOrdinal === undefined) return
 		const currentIndex = recentMatches.findIndex((m: MH.MatchDetails) => m.ordinal === currentOrdinal)
 		if (currentIndex > 0) {
-			state.setSelectedMatchOrdinal(recentMatches[currentIndex - 1].ordinal)
+			void state.setSelectedMatchOrdinal(recentMatches[currentIndex - 1].ordinal)
 		}
 	}, [currentMatch, recentMatches])
 
@@ -323,10 +323,10 @@ export default function ServerActivityPanel() {
 		if (currentOrdinal === undefined) return
 		const currentIndex = recentMatches.findIndex((m: MH.MatchDetails) => m.ordinal === currentOrdinal)
 		if (currentIndex < recentMatches.length - 1) {
-			state.setSelectedMatchOrdinal(recentMatches[currentIndex + 1].ordinal)
+			void state.setSelectedMatchOrdinal(recentMatches[currentIndex + 1].ordinal)
 		} else {
 			// Go to current match
-			state.setSelectedMatchOrdinal(null)
+			void state.setSelectedMatchOrdinal(null)
 		}
 	}, [currentMatch, recentMatches])
 

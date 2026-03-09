@@ -4,6 +4,7 @@ import type * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as Cookies from '@/systems/app-routes.client'
 import * as ConfigClient from '@/systems/config.client'
+import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
@@ -70,8 +71,9 @@ export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 		setSecondaryFilterState(state) {
 			set({ secondaryFilterState: state })
 		},
-		setSelectedMatchOrdinal(ordinal) {
-			set({ selectedMatchOrdinal: ordinal })
+		async setSelectedMatchOrdinal(ordinal) {
+			const currentMatch = await MatchHistoryClient.currentMatch$().getValue()
+			set({ selectedMatchOrdinal: currentMatch?.ordinal === ordinal ? null : ordinal })
 		},
 		handleChatEvents(events) {
 			const config = ConfigClient.getConfig()
