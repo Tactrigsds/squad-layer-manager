@@ -49,6 +49,11 @@ const events = await ctx.db()
 
 log.info(`Found ${events.length} squad-related events`)
 
+// Pre-load existing squad IDs to skip associations with missing squads
+const existingSquadRows = await ctx.db().select({ id: Schema.squads.id }).from(Schema.squads)
+const existingSquadIds = new Set(existingSquadRows.map(r => r.id))
+log.info(`Loaded ${existingSquadIds.size} existing squad IDs`)
+
 // Pre-load existing associations: eventId → Set<uniqueId>
 const existingAssocs = await ctx.db().select().from(Schema.squadEventAssociations)
 const existingAssocMap = new Map<number, Set<number>>()
@@ -231,9 +236,14 @@ for (let i = 0; i < squadRows.length; i += 500) {
 		.onDuplicateKeyUpdate({ set: { id: E.sql`id` } })
 }
 
-log.info(`Inserting ${squadAssocRows.length} squad associations`)
-for (let i = 0; i < squadAssocRows.length; i += 500) {
-	await ctx.db().insert(Schema.squadEventAssociations).values(squadAssocRows.slice(i, i + 500))
+const validSquadIds = new Set([...existingSquadIds, ...seenSquadIds])
+const filteredAssocRows = squadAssocRows.filter(r => validSquadIds.has(r.squadId!))
+const skippedAssocs = squadAssocRows.length - filteredAssocRows.length
+if (skippedAssocs > 0) log.warn(`Skipping ${skippedAssocs} associations with missing squads`)
+
+log.info(`Inserting ${filteredAssocRows.length} squad associations`)
+for (let i = 0; i < filteredAssocRows.length; i += 500) {
+	await ctx.db().insert(Schema.squadEventAssociations).values(filteredAssocRows.slice(i, i + 500))
 		.onDuplicateKeyUpdate({ set: { squadId: E.sql`squadId` } })
 }
 
