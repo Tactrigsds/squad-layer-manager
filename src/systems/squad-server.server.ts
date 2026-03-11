@@ -22,6 +22,7 @@ import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import type * as LL from '@/models/layer-list.models'
 import * as MH from '@/models/match-history.models'
+import * as SE from '@/models/server-events.models'
 import * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
@@ -86,7 +87,7 @@ export type SquadServer = {
 	savingEventsMtx: Mutex
 
 	// TODO we should slim down the context we provide here so that we're just transmitting span & logging info, and leave the listener to construct everything else
-	event$: Rx.Subject<[C.Db & C.ServerSlice, SM.Events.Event[]]>
+	event$: Rx.Subject<[C.Db & C.ServerSlice, SE.Event[]]>
 } & SquadRcon.SquadRcon
 
 type EphemeralState = {
@@ -108,7 +109,7 @@ type EphemeralState = {
 	createdSquads: SM.Squad[]
 
 	// constains mostly events from the current match. however don't assume this and filter for the current match whenever accessing
-	eventBuffer: SM.Events.Event[]
+	eventBuffer: SE.Event[]
 	// if null, we haven't saved yet in this instantiation of the server
 	lastSavedEventId: number | null
 
@@ -240,7 +241,7 @@ export const orpcRouter = {
 
 	watchChatEvents: orpcBase.input(z.object({ lastEventId: z.number().optional(), serverId: z.string() })).handler(
 		async function*({ context, signal, input }) {
-			const obs: Rx.Observable<(SM.Events.Event | CHAT.LifecycleEvent)[]> = selectedServerCtx$(
+			const obs: Rx.Observable<(SE.Event | CHAT.LifecycleEvent)[]> = selectedServerCtx$(
 				context,
 			)
 				.pipe(
@@ -252,8 +253,8 @@ export const orpcRouter = {
 								matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
 							}
 
-							let allEvents: SM.Events.Event[] = ctx.server.state.eventBuffer
-							let events: (SM.Events.Event | CHAT.LifecycleEvent)[] = []
+							let allEvents: SE.Event[] = ctx.server.state.eventBuffer
+							let events: (SE.Event | CHAT.LifecycleEvent)[] = []
 
 							if (input.lastEventId === undefined || ctx.serverId !== input.serverId) {
 								events.push({
@@ -283,7 +284,7 @@ export const orpcRouter = {
 								Rx.concatAll(),
 							)
 
-						const upcoming$ = ctx.server.event$.pipe(Rx.map(([_, events]): SM.Events.Event[] => events))
+						const upcoming$ = ctx.server.event$.pipe(Rx.map(([_, events]): SE.Event[] => events))
 
 						return Rx.concat(initial$, upcoming$).pipe(
 							// orpc will break without this
@@ -612,7 +613,7 @@ function setupResolveHistoryConflicts(ctx: C.ServerId & C.Rcon) {
 				if (server.historyConflictsResolved$.value) {
 					server.historyConflictsResolved$.next(false)
 					const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-					const event: SM.Events.RconDisconnected = {
+					const event: SE.RconDisconnected = {
 						type: 'RCON_DISCONNECTED',
 						id: eventId(),
 						time: Date.now(),
@@ -633,7 +634,7 @@ function setupResolveHistoryConflicts(ctx: C.ServerId & C.Rcon) {
 			const teams = await interceptTeamsUpdate(ctx)
 			resetTeamState(ctx, teams)
 
-			let events: SM.Events.Event[] = []
+			let events: SE.Event[] = []
 			const base = {
 				time: Date.now(),
 				matchId: currentMatch.historyEntryId,
@@ -808,7 +809,7 @@ const processLogEvent = C.spanOp('processLogEvent', { module, levels: { event: '
 		time: logEvent.time,
 		matchId: match.historyEntryId,
 	}
-	let event: SM.Events.Event | null = null
+	let event: SE.Event | null = null
 
 	const server = ctx.server
 	switch (logEvent.type) {
@@ -1064,7 +1065,7 @@ export const processRconEvent = C.spanOp('processRconEvent', { module }, async (
 		time: event.time,
 	}
 
-	let emittedEvent: SM.Events.Event | null = null
+	let emittedEvent: SE.Event | null = null
 
 	// TODO could maybe parse the log version of some of these events for better continuity, specifically for the chat/event view
 	switch (event.type) {
@@ -1281,7 +1282,7 @@ function* generateSyntheticEvents(
 	teams: SM.Teams,
 	time: number,
 	matchId: number,
-): Generator<SM.Events.Event> {
+): Generator<SE.Event> {
 	const base = { time, matchId }
 	const { players, squads } = teams
 	const { players: prevPlayers, squads: prevSquads } = prevTeams
@@ -1298,7 +1299,7 @@ function* generateSyntheticEvents(
 				teamId: prev.teamId,
 				squadId: prev.squadId,
 				...base,
-			} satisfies SM.Events.PlayerLeftSquad
+			} satisfies SE.PlayerLeftSquad
 		}
 
 		if (player.teamId !== prev.teamId) {
@@ -1308,7 +1309,7 @@ function* generateSyntheticEvents(
 				newTeamId: player.teamId,
 				player: SM.PlayerIds.getPlayerId(player.ids),
 				...base,
-			} satisfies SM.Events.PlayerChangedTeam
+			} satisfies SE.PlayerChangedTeam
 		}
 
 		if (player.squadId !== null && player.teamId !== null && SM.Squads.idsEqual(player, prev) && player.isLeader && !prev.isLeader) {
@@ -1319,7 +1320,7 @@ function* generateSyntheticEvents(
 				teamId: player.teamId,
 				player: SM.PlayerIds.getPlayerId(player.ids),
 				...base,
-			} satisfies SM.Events.PlayerPromotedToLeader
+			} satisfies SE.PlayerPromotedToLeader
 		}
 
 		if (
@@ -1330,7 +1331,7 @@ function* generateSyntheticEvents(
 			// if we violently thrash squad creations/leaves then we can maybe break this but that's unlikely
 			if (isNewSquad && squad) {
 				if (!ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, player))) {
-					const event: SM.Events.SquadCreated = {
+					const event: SE.SquadCreated = {
 						type: 'SQUAD_CREATED',
 						id: eventId(),
 						squad,
@@ -1348,7 +1349,7 @@ function* generateSyntheticEvents(
 					teamId: player.teamId,
 					squadId: player.squadId,
 					...base,
-				} satisfies SM.Events.PlayerJoinedSquad
+				} satisfies SE.PlayerJoinedSquad
 			}
 		}
 
@@ -1362,7 +1363,7 @@ function* generateSyntheticEvents(
 					player: SM.PlayerIds.getPlayerId(player.ids),
 					details,
 					...base,
-				} satisfies SM.Events.PlayerDetailsChanged
+				} satisfies SE.PlayerDetailsChanged
 			}
 		}
 	}
@@ -1377,13 +1378,13 @@ function* generateSyntheticEvents(
 			squadId: prevSquad.squadId,
 			teamId: prevSquad.teamId,
 			...base,
-		} satisfies SM.Events.SquadDisbanded
+		} satisfies SE.SquadDisbanded
 	}
 
 	for (const squad of squads) {
 		const prevSquad = prevSquads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
 		const createdSquad = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
-		type Details = SM.Events.SquadDetailsChanged['details']
+		type Details = SE.SquadDetailsChanged['details']
 		if (!createdSquad) continue
 		const changedDetails: Details = {}
 
@@ -1404,7 +1405,7 @@ function* generateSyntheticEvents(
 				squadId: squad.squadId,
 				teamId: squad.teamId,
 				...base,
-			} satisfies SM.Events.SquadDetailsChanged
+			} satisfies SE.SquadDetailsChanged
 		}
 	}
 
@@ -1455,7 +1456,7 @@ const loadSavedEvents = C.spanOp('loadSavedEvents', { module }, async (ctx: C.Sq
 		)
 			.orderBy(E.asc(Schema.serverEvents.id))
 		: []
-	const events = rowsRaw.map(r => SM.Events.fromEventRow(r.event))
+	const events = rowsRaw.map(r => SE.fromEventRow(r.event))
 	server.state.lastSavedEventId = events[events.length - 1]?.id ?? null
 	server.state.eventBuffer = events
 })
@@ -1467,7 +1468,7 @@ export const saveEvents = C.spanOp(
 		await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 			const state = ctx.server.state
 
-			let events: SM.Events.Event[] = []
+			let events: SE.Event[] = []
 			if (state.lastSavedEventId === null) {
 				events = state.eventBuffer.slice()
 			} else {
@@ -1487,169 +1488,134 @@ export const saveEvents = C.spanOp(
 			let squadRows: SchemaModels.NewSquad[] = []
 			let squadAssociationRows: SchemaModels.NewSquadEventAssociation[] = []
 
-			for (const e of events) {
-				const persisted = Obj.omit(e, ['id', 'type', 'time', 'matchId'])
+			for (const event of events) {
+				const persisted = Obj.omit(event, ['id', 'type', 'time', 'matchId'])
 				eventRows.push({
-					id: e.id,
-					type: e.type,
-					time: new Date(e.time),
-					matchId: e.matchId,
+					id: event.id,
+					type: event.type,
+					time: new Date(event.time),
+					matchId: event.matchId,
 					data: superjson.serialize(persisted),
 				})
-				if (e.type === 'NEW_GAME' || e.type === 'RESET') {
-					for (const player of e.state.players) {
-						const playerId = SM.PlayerIds.getPlayerId(player.ids)
+
+				for (const [player, assocType] of SE.iterAssocPlayers(event)) {
+					let playerId: SM.PlayerId
+					if (typeof player === 'object') {
 						playerRows.push({
 							steamId: player.ids.steam ? BigInt(player.ids.steam) : null,
 							eosId: player.ids.eos,
 							username: player.ids.username,
+							epicId: player.ids.epic,
 						})
-						playerAssociationRows.push({
-							assocType: 'game-participant',
-							playerId,
-							serverEventId: e.id,
-						})
+						playerId = SM.PlayerIds.getPlayerId(player.ids)
+					} else {
+						playerId = player
 					}
+					playerAssociationRows.push({
+						assocType: assocType,
+						playerId,
+						serverEventId: event.id,
+					})
+				}
 
-					for (const squad of e.state.squads) {
+				let prevSquads: (SM.Squads.Key & { dbId: number })[] = []
+
+				for (const squadOrKey of SE.iterAssocSquads(event)) {
+					const squadRes = SM.SquadSchema.safeParse(squadOrKey)
+					if (squadRes.success) {
 						const id = squadId()
+						prevSquads.push({ ...squadRes.data, dbId: id })
 						squadRows.push({
 							id,
-							ingameSquadId: squad.squadId,
-							name: squad.squadName,
-							teamId: squad.teamId,
-							creatorId: squad.creator,
-						})
-						squadAssociationRows.push({
-							squadId: id,
-							serverEventId: e.id,
+							ingameSquadId: squadRes.data.squadId,
+							name: squadRes.data.squadName,
+							creatorId: squadRes.data.creator,
+							teamId: squadRes.data.teamId,
 						})
 					}
-				} else if (e.type === 'PLAYER_CONNECTED') {
-					const playerId = SM.PlayerIds.getPlayerId(e.player.ids)
-					playerRows.push({
-						steamId: e.player.ids.steam ? BigInt(e.player.ids.steam) : null,
-						eosId: e.player.ids.eos,
-						username: e.player.ids.username,
-					})
-					const [assocType] = SM.Events.PLAYER_CONNECTED_META.playerAssocs
-					playerAssociationRows.push({
-						assocType,
-						playerId,
-						serverEventId: e.id,
-					})
-				} else {
-					const meta = SM.Events.EVENT_META[e.type]
-					for (const prop of meta.playerAssocs) {
-						// @ts-expect-error idgaf
-						if (prop in e && e[prop] !== undefined) {
-							// @ts-expect-error idgaf
-							const assocPlayerId = e[prop] as SM.PlayerId
-							playerAssociationRows.push({ assocType: prop, playerId: assocPlayerId, serverEventId: e.id })
+
+					const key = (squadRes.success ? squadRes.data : squadOrKey) as SM.Squads.Key
+					let dbId: number | undefined
+					foundId: if (!squadRes.success) {
+						const prev = Arr.revFind(prevSquads, s => SM.Squads.idsEqual(s, key))
+						if (prev) {
+							dbId = prev.dbId
+							break foundId
+						}
+
+						// TODO could be optimized to search all squads from this batch in one query
+						const [row] = await ctx.db().select().from(Schema.squads).where(
+							E.and(
+								E.eq(Schema.squads.ingameSquadId, key.squadId),
+								E.eq(Schema.squads.teamId, key.teamId),
+							),
+						).orderBy(E.desc(Schema.squads.createdAt)).limit(1).execute()
+
+						if (row) {
+							prevSquads.push({ squadId: row.ingameSquadId, teamId: row.teamId as 1 | 2, dbId: row.id })
+							dbId = row.id
 						}
 					}
-				}
+					if (!dbId) continue
 
-				if (e.type === 'SQUAD_CREATED') {
-					const id = squadId()
-					squadRows.push({
-						id,
-						ingameSquadId: e.squad.squadId,
-						name: e.squad.squadName,
-						teamId: e.squad.teamId,
-						creatorId: e.squad.creator,
+					squadAssociationRows.push({
+						squadId: dbId,
+						serverEventId: event.id,
 					})
-					squadAssociationRows.push({ serverEventId: e.id, squadId: id })
-				}
-
-				if ('PLAYER_LEFT_SQUAD' === e.type || 'SQUAD_DISBANDED' === e.type || 'SQUAD_DETAILS_CHANGED' === e.type) {
-					// need to write all previous events here so that we get the correct squad pk when we search for it below, as the squad may have been disbanded and created by someone else in the events that we processed this batch.
-					await flush()
-					const [row] = await ctx.db().select({ squad: Schema.squads }).from(Schema.serverEvents).where(
-						E.and(
-							E.eq(Schema.serverEvents.matchId, e.matchId),
-							E.eq(Schema.squads.ingameSquadId, e.squadId),
-							E.eq(Schema.squads.teamId, e.teamId),
-						),
-					)
-						.innerJoin(Schema.squadEventAssociations, E.eq(Schema.squadEventAssociations.serverEventId, Schema.serverEvents.id))
-						.innerJoin(
-							Schema.squads,
-							E.and(
-								E.eq(Schema.squadEventAssociations.squadId, Schema.squads.id),
-							),
-						)
-						.orderBy(E.desc(Schema.serverEvents.time))
-						.limit(1)
-
-					if (row?.squad) {
-						squadAssociationRows.push({ serverEventId: e.id, squadId: row.squad.id })
-					}
 				}
 			}
-			await flush()
-			const eventIds = events.map(e => e.id).join(',')
-			log.info({ eventIds }, 'saved %d events [%d:%d]', events.length, events[0].id, events[events.length - 1].id)
 
-			async function flush() {
-				if (eventRows.length > 0) {
-					await ctx.db({ redactParams: true }).insert(Schema.serverEvents).values(eventRows)
-					state.lastSavedEventId = eventRows[eventRows.length - 1].id!
-					eventRows = []
-				}
-				if (playerRows.length > 0) {
-					await ctx.db({ redactParams: true })
-						.insert(Schema.players)
-						.values(playerRows)
-						.onDuplicateKeyUpdate({
-							set: {
-								steamId: sql`VALUES(steamId)`,
-								eosId: sql`VALUES(eosId)`,
-								username: sql`VALUES(username)`,
-								modifiedAt:
-									sql`IF(eosId != VALUES(eosId) OR username != VALUES(username) OR steamId != VALUES(steamId), NOW(), modifiedAt)`,
-							},
-						})
-					playerRows = []
-				}
-				if (playerAssociationRows.length > 0) {
-					const playerIds = [...new Set(playerAssociationRows.map(r => r.playerId))]
-					const existingPlayers = await ctx.db()
-						.select({ eosId: Schema.players.eosId })
-						.from(Schema.players)
-						.where(E.inArray(Schema.players.eosId, playerIds))
-					const existingIds = new Set(existingPlayers.map(p => p.eosId))
-					const validRows = playerAssociationRows.filter(r => {
-						if (existingIds.has(r.playerId)) return true
-						log.error('skipping playerEventAssociation for unknown player %s (event %d)', r.playerId, r.serverEventId)
-						return false
+			await ctx.db({ redactParams: true }).insert(Schema.serverEvents).values(eventRows)
+			state.lastSavedEventId = eventRows[eventRows.length - 1].id!
+
+			if (playerRows.length > 0) {
+				await ctx.db({ redactParams: true })
+					.insert(Schema.players)
+					.values(playerRows)
+					.onDuplicateKeyUpdate({
+						set: {
+							steamId: sql`VALUES(steamId)`,
+							eosId: sql`VALUES(eosId)`,
+							username: sql`VALUES(username)`,
+							modifiedAt: sql`IF(eosId != VALUES(eosId) OR username != VALUES(username) OR steamId != VALUES(steamId), NOW(), modifiedAt)`,
+						},
 					})
-					if (validRows.length > 0) {
-						await ctx.db({ redactParams: true }).insert(Schema.playerEventAssociations).values(validRows)
-					}
-					playerAssociationRows = []
+				playerRows = []
+			}
+
+			if (playerAssociationRows.length > 0) {
+				const playersToLookup = [...new Set(playerAssociationRows.map(r => r.playerId).filter(r => !playerRows.some(p => p.eosId === r)))]
+				const existingPlayers = await ctx.db()
+					.select({ eosId: Schema.players.eosId })
+					.from(Schema.players)
+					.where(E.inArray(Schema.players.eosId, playersToLookup))
+				const existingIds = new Set(existingPlayers.map(p => p.eosId))
+				const validRows = playerAssociationRows.filter(r => {
+					if (!playersToLookup.includes(r.playerId)) return true
+					if (existingIds.has(r.playerId)) return true
+					log.error('skipping playerEventAssociation for unknown player %s (event %d)', r.playerId, r.serverEventId)
+					return false
+				})
+				if (validRows.length > 0) {
+					await ctx.db({ redactParams: true }).insert(Schema.playerEventAssociations).values(validRows)
 				}
-				if (squadRows.length > 0) {
-					await ctx.db({ redactParams: true }).insert(Schema.squads).values(squadRows)
-					squadRows = []
-				}
-				if (squadAssociationRows.length > 0) {
-					const squadIds = [...new Set(squadAssociationRows.map(r => r.squadId))]
-					const existingSquads = await ctx.db()
-						.select({ id: Schema.squads.id })
-						.from(Schema.squads)
-						.where(E.inArray(Schema.squads.id, squadIds))
-					const existingIds = new Set(existingSquads.map(s => s.id))
-					const validRows = squadAssociationRows.filter(r => {
-						if (existingIds.has(r.squadId)) return true
-						log.error('skipping squadEventAssociation for unknown squad %d (event %d)', r.squadId, r.serverEventId)
-						return false
+			}
+
+			if (squadRows.length > 0) {
+				await ctx.db({ redactParams: true })
+					.insert(Schema.squads)
+					.values(squadRows)
+					.onDuplicateKeyUpdate({
+						set: {
+							ingameSquadId: sql`VALUES(ingameSquadId)`,
+							teamId: sql`VALUES(teamId)`,
+							name: sql`VALUES(name)`,
+							creatorId: sql`VALUES(creatorId)`,
+						},
 					})
-					if (validRows.length > 0) {
-						await ctx.db({ redactParams: true }).insert(Schema.squadEventAssociations).values(validRows)
-					}
-					squadAssociationRows = []
-				}
+			}
+			if (squadAssociationRows.length > 0) {
+				await ctx.db({ redactParams: true }).insert(Schema.squadEventAssociations).values(squadAssociationRows)
 			}
 		}),
 )
@@ -1684,7 +1650,7 @@ const interceptTeamsUpdate = C.spanOp('interceptTeamsUpdate', {
 })
 
 namespace PendingEvents {
-	type PendingConnectedEvent = Omit<SM.Events.PlayerConnected, 'player' | 'id'> & { player: SM.PlayerIds.IdQuery }
+	type PendingConnectedEvent = Omit<SE.PlayerConnected, 'player' | 'id'> & { player: SM.PlayerIds.IdQuery }
 	type PendingPlayerWoundedOrDiedEvent = (SM.LogEvents.PlayerWounded | SM.LogEvents.PlayerDied) & { matchId: number }
 	export type State = {
 		events: {
@@ -1737,14 +1703,15 @@ namespace PendingEvents {
 		{
 			const toDelete = new Set<PendingConnectedEvent>()
 			for (const event of state.events.connecting) {
-				const playerRes = SM.PlayerIds.find(state.recentPlayers, (p) => p.ids, event.player)
+				const currentMatchPlayers = state.recentPlayers.filter((p) => p.lastSeenMatchOrdinal === event.matchId)
+				const playerRes = SM.PlayerIds.find(currentMatchPlayers, (p) => p.ids, event.player)
 				if (!playerRes) continue
 				const { lastSeenMatchOrdinal: _, ...player } = playerRes
 				toDelete.add(event)
 				if (SM.PlayerIds.find(state.disconnectedPlayers, player.ids)) {
 					continue
 				}
-				const processed: SM.Events.PlayerConnected = {
+				const processed: SE.PlayerConnected = {
 					id: eventId(),
 					...event,
 					player,
@@ -1759,14 +1726,23 @@ namespace PendingEvents {
 			let toDelete = new Set<PendingPlayerWoundedOrDiedEvent>()
 			for (let i = 0; i < state.events.woundedOrDied.length; i++) {
 				const event = state.events.woundedOrDied[i]
-				const victimRes = SM.PlayerIds.find(state.recentPlayers, (p) => p.ids, event.victimIds)
-				const attackerRes = SM.PlayerIds.find(state.recentPlayers, (p) => p.ids, event.attackerIds)
+				const currentMatchPlayers = state.recentPlayers.filter((p) => p.lastSeenMatchOrdinal === event.matchId)
+				const victimRes = SM.PlayerIds.find(
+					currentMatchPlayers,
+					(p) => p.ids,
+					event.victimIds,
+				)
+				const attackerRes = SM.PlayerIds.find(
+					currentMatchPlayers,
+					(p) => p.ids,
+					event.attackerIds,
+				)
 				if (!victimRes || !attackerRes) continue
 				const { lastSeenMatchOrdinal: _, ...victim } = victimRes
 				const { lastSeenMatchOrdinal: __, ...attacker } = attackerRes
 
 				toDelete.add(event)
-				let variant: SM.Events.PlayerWoundedOrDiedVariant
+				let variant: SE.PlayerWoundedOrDiedVariant
 				if (SM.PlayerIds.match(victim.ids, attacker.ids)) {
 					variant = 'suicide'
 				} else if (victim.teamId !== null && victim.teamId === attacker.teamId) {
@@ -1774,7 +1750,7 @@ namespace PendingEvents {
 				} else {
 					variant = 'normal'
 				}
-				const processed: SM.Events.PlayerDied | SM.Events.PlayerWounded = {
+				const processed: SE.PlayerDied | SE.PlayerWounded = {
 					id: eventId(),
 					type: event.type,
 					victim: SM.PlayerIds.getPlayerId(victim.ids),

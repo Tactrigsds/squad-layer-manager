@@ -13,7 +13,8 @@ import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LOG from '@/models/logs'
 import * as MH from '@/models/match-history.models'
-import * as SM from '@/models/squad.models'
+import * as SE from '@/models/server-events.models'
+import type * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import { CONFIG } from '@/server/config'
 import * as C from '@/server/context'
@@ -329,7 +330,7 @@ export const matchHistoryRouter = {
 			.leftJoin(Schema.squadEventAssociations, E.eq(Schema.serverEvents.id, Schema.squadEventAssociations.serverEventId))
 			.orderBy(E.desc(Schema.serverEvents.id))
 
-		const events = eventRows.map((row) => SM.Events.fromEventRow(row.event)).toReversed()
+		const events = eventRows.map((row) => SE.fromEventRow(row.event)).toReversed()
 		const state = CHAT.getInitialChatState()
 		const processedEvents = new Set<number>()
 		for (const event of events) {
@@ -517,7 +518,7 @@ const getEventsForMatches = C.spanOp(
 
 				const state = CHAT.getInitialChatState()
 				for await (const rawEvent of it) {
-					const event = SM.Events.fromEventRow(rawEvent)
+					const event = SE.fromEventRow(rawEvent)
 					CHAT.handleEvent(state, event)
 				}
 				return state.eventBuffer

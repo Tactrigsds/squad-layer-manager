@@ -1,5 +1,6 @@
 import fastDeepEqual from 'fast-deep-equal/es6'
 import { current, isDraft } from 'immer'
+import jp from 'jsonpath'
 import { isNullOrUndef } from './type-guards'
 
 export function reverseMapping<T extends { [key: string]: string }>(obj: T) {
@@ -276,4 +277,8 @@ export function shallowEquals<T extends object>(a: T, b: T): boolean {
 export function destrNullable<T extends object>(obj: T | undefined) {
 	if (obj) return obj
 	return {} as T | { [k in keyof T]: undefined }
+}
+
+export function queryPath<T>(path: string, obj: any): T[] {
+	return jp.query(obj, path) as T[]
 }

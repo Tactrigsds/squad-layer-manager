@@ -1,7 +1,8 @@
 import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as CS from '@/models/context-shared'
-import type * as SM from '@/models/squad.models'
+import type * as SE from '@/models/server-events.models'
+
 import * as Config from '@/server/config.ts'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
@@ -31,7 +32,7 @@ await DB.runTransaction(ctx, async (ctx) => {
 	}
 })
 
-async function saveEvents(ctx: CS.Log & C.Db, events: SM.Events.Event[]) {
+async function saveEvents(ctx: CS.Log & C.Db, events: SE.Event[]) {
 	const rows: SchemaModels.NewServerEvent[] = events.map(e => ({
 		id: e.id,
 		type: e.type,

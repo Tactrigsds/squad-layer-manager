@@ -1,5 +1,7 @@
 import * as Arr from '@/lib/array'
+import * as Gen from '@/lib/generator'
 import { assertNever } from '@/lib/type-guards'
+import * as SE from '@/models/server-events.models'
 import * as SM from '@/models/squad.models'
 import { z } from 'zod'
 
@@ -49,37 +51,37 @@ export namespace InterpolableState {
 	}
 }
 
-export type Event = SM.Events.Event
+export type Event = SE.Event
 
 // event enriched with relevant data
 export type EventEnriched =
 	| NoopEvent
-	| SM.Events.MapSet
-	| SM.Events.NewGame
-	| SM.Events.Reset
-	| SM.Events.RconConnected
-	| SM.Events.RconDisconnected
-	| SM.Events.RoundEnded
-	| SM.Events.PlayerConnected<SM.Player>
-	| (SM.Events.PlayerDisconnected<SM.Player>)
-	| (SM.Events.PlayerDetailsChanged<SM.Player>)
-	| (SM.Events.SquadDetailsChanged & { squad: SM.Squad; prevDetails: SM.Events.SquadDetailsChanged['details'] })
-	| (SM.Events.SquadRenamed & { squad: SM.Squad })
-	| (SM.Events.PlayerChangedTeam<SM.Player> & { prevTeamId: SM.TeamId | null })
-	| (SM.Events.PlayerJoinedSquad<SM.Player> & { squad: SM.Squad })
-	| SM.Events.PlayerPromotedToLeader<SM.Player>
-	| (SM.Events.SquadDisbanded & { squad: SM.Squad })
-	| (SM.Events.PlayerLeftSquad<SM.Player> & { wasLeader: boolean; squad: SM.Squad })
-	| (SM.Events.SquadCreated & { creator: SM.Player; squad: SM.Squad })
-	| SM.Events.PlayerWarned<SM.Player>
-	| SM.Events.PlayerBanned<SM.Player>
-	| SM.Events.PlayerKicked<SM.Player>
-	| SM.Events.PossessedAdminCamera<SM.Player>
-	| SM.Events.UnpossessedAdminCamera<SM.Player>
-	| SM.Events.ChatMessage<SM.Player>
-	| (SM.Events.AdminBroadcast & { player: SM.Player | undefined })
-	| SM.Events.PlayerDied<SM.Player>
-	| SM.Events.PlayerWounded<SM.Player>
+	| SE.MapSet
+	| SE.NewGame
+	| SE.Reset
+	| SE.RconConnected
+	| SE.RconDisconnected
+	| SE.RoundEnded
+	| SE.PlayerConnected<SM.Player>
+	| (SE.PlayerDisconnected<SM.Player>)
+	| (SE.PlayerDetailsChanged<SM.Player>)
+	| (SE.SquadDetailsChanged & { squad: SM.Squad; prevDetails: SE.SquadDetailsChanged['details'] })
+	| (SE.SquadRenamed & { squad: SM.Squad })
+	| (SE.PlayerChangedTeam<SM.Player> & { prevTeamId: SM.TeamId | null })
+	| (SE.PlayerJoinedSquad<SM.Player> & { squad: SM.Squad })
+	| SE.PlayerPromotedToLeader<SM.Player>
+	| (SE.SquadDisbanded & { squad: SM.Squad })
+	| (SE.PlayerLeftSquad<SM.Player> & { wasLeader: boolean; squad: SM.Squad })
+	| (SE.SquadCreated & { creator: SM.Player; squad: SM.Squad })
+	| SE.PlayerWarned<SM.Player>
+	| SE.PlayerBanned<SM.Player>
+	| SE.PlayerKicked<SM.Player>
+	| SE.PossessedAdminCamera<SM.Player>
+	| SE.UnpossessedAdminCamera<SM.Player>
+	| SE.ChatMessage<SM.Player>
+	| (SE.AdminBroadcast & { player: SM.Player | undefined })
+	| SE.PlayerDied<SM.Player>
+	| SE.PlayerWounded<SM.Player>
 
 export type NoopEvent = {
 	type: 'NOOP'
@@ -345,7 +347,7 @@ export function interpolateEvent(
 				return noop(`Squad ${SM.Squads.printKey(event)} had details changed but was not found in the squad list`)
 			}
 			const squad = state.squads[index]
-			const prevDetails: SM.Events.SquadDetailsChanged['details'] = { locked: squad.locked }
+			const prevDetails: SE.SquadDetailsChanged['details'] = { locked: squad.locked }
 			const updated = { ...squad, ...event.details }
 			state.squads[index] = updated
 			return {
@@ -587,7 +589,7 @@ export function interpolateEvent(
 				if (testPatterns(opts?.broadcastSuppressionPatterns ?? [], event.message)) {
 					return noop(`Broadcast message ${event.message} matches broadcast suppression pattern`)
 				}
-				return { ...event, player: undefined } as SM.Events.AdminBroadcast & { player: undefined }
+				return { ...event, player: undefined } as SE.AdminBroadcast & { player: undefined }
 			}
 			const player = SM.PlayerIds.find(state.players, p => p.ids, event.from)
 			if (!player) {
@@ -598,7 +600,7 @@ export function interpolateEvent(
 			return {
 				...event,
 				player: player,
-			} as SM.Events.AdminBroadcast & { player: SM.Player }
+			} as SE.AdminBroadcast & { player: SM.Player }
 		}
 
 		case 'PLAYER_DIED':
@@ -692,24 +694,26 @@ export function isEventFilteredBySecondary(event: EventEnriched, filterState: Se
 	return false
 }
 
-export function getAssocPlayer(event: EventEnriched, playerId?: SM.PlayerId) {
+export function* getAssocPlayers(event: EventEnriched, playerId?: SM.PlayerId) {
 	if (event.type === 'NOOP') return
-	const meta = SM.Events.EVENT_META[event.type]
-
-	for (const prop of meta.playerAssocs) {
-		// @ts-expect-error  idgaf
-		const player = event[prop] as SM.Player | undefined
-		if (player && (playerId === undefined || SM.PlayerIds.getPlayerId(player.ids) === playerId)) return player
+	if (!event) {
+		yield* SE.iterAssocPlayers(event)
+		return
 	}
-	return
+	for (const [player, assocType] of SE.iterAssocPlayers(event)) {
+		if (typeof player === 'string' && player === playerId) yield [player, assocType] as const
+		if (typeof player === 'object' && SM.PlayerIds.getPlayerId(player.ids) === playerId) yield [player, assocType] as const
+	}
 }
 
 export function findLastPlayerInstance(events: EventEnriched[], playerId: SM.PlayerId): SM.Player | undefined {
-	const playerEvent = Arr.revFind(events, e => !!getAssocPlayer(e, playerId))
-	if (!playerEvent) return
-	return getAssocPlayer(playerEvent, playerId)
+	for (const event of Arr.revIter(events)) {
+		for (const [player] of getAssocPlayers(event, playerId)) {
+			if (typeof player === 'object') return player
+		}
+	}
 }
 
 export function getPlayerRelatedEvents(events: EventEnriched[], playerId: SM.PlayerId): EventEnriched[] {
-	return events.filter(event => getAssocPlayer(event, playerId))
+	return events.filter(event => Gen.hasValues(getAssocPlayers(event, playerId)))
 }
