@@ -15,14 +15,14 @@ export type NewGame = {
 	type: 'NEW_GAME'
 	source: 'slm-started' | 'rcon-reconnected' | 'new-game-detected'
 	layerId: L.LayerId
-	state: SM.Teams
+	state: SM.UniqueTeams
 } & Base
 export const NEW_GAME_META = meta({ players: [{ assocType: 'game-participant', path: '$.state.players[*]' }] })
 
 export type Reset = {
 	type: 'RESET'
 	source: 'slm-started' | 'rcon-reconnected'
-	state: SM.Teams
+	state: SM.UniqueTeams
 } & Base
 
 export const RESET_META = meta({ players: [{ assocType: 'game-participant', path: '$.state.players[*]' }] })
@@ -59,24 +59,22 @@ export type PlayerDisconnected<P = SM.PlayerId> =
 	& Base
 export const PLAYER_DISCONNECTED_META = meta({ players: [{ assocType: 'player' }] })
 
-// TODO: we should probably include the uniquely created database id here to simplify a bunch of code related to resolving squad instances, and use that for all references to squad in these events
 export type SquadCreated = {
 	type: 'SQUAD_CREATED'
-	squad: SM.Squad
+	squad: SM.UniqueSquad
 } & Base
 
-export const SQUAD_CREATED_META = meta({ squads: ['$.squad'], players: [{ assocType: 'player', path: '$.squad.creator' }] })
+export const SQUAD_CREATED_META = meta({ squads: ['$.squad.uniqueId'], players: [{ assocType: 'player', path: '$.squad.creator' }] })
 
 export type ChatMessage<P = SM.PlayerId> =
 	& {
 		type: 'CHAT_MESSAGE'
 		message: string
-		// has indirect SquadAssoc through channel if ChatSquad
 		channel: SM.ChatChannel
 	}
 	& SM.PlayerAssoc<'player', P>
 	& Base
-export const CHAT_MESSAGE_META = meta({ players: [{ assocType: 'player' }] })
+export const CHAT_MESSAGE_META = meta({ players: [{ assocType: 'player' }], squads: ['$.channel.uniqueId'] })
 
 export type AdminBroadcast = {
 	type: 'ADMIN_BROADCAST'
@@ -108,39 +106,35 @@ export const PLAYER_CHANGED_TEAM_META = meta({ players: [{ assocType: 'player' }
 export type PlayerLeftSquad<P = SM.PlayerId> =
 	& {
 		type: 'PLAYER_LEFT_SQUAD'
-		squadId: SM.SquadId
-		teamId: SM.TeamId
+		uniqueId: number
 	}
 	& SM.PlayerAssoc<'player', P>
 	& Base
-export const PLAYER_LEFT_SQUAD_META = meta({ players: [{ assocType: 'player' }] })
+export const PLAYER_LEFT_SQUAD_META = meta({ players: [{ assocType: 'player' }], squads: ['$.uniqueId'] })
 
 // this event is redundant in terms of state transfer, as it could be inferred as the last player leaving a particular squad
 export type SquadDisbanded = {
 	type: 'SQUAD_DISBANDED'
-	squadId: SM.SquadId
-	teamId: SM.TeamId
+	uniqueId: number
 } & Base
-export const SQUAD_DISBANDED_META = meta({ squads: ['$'] })
+export const SQUAD_DISBANDED_META = meta({ squads: ['$.uniqueId'] })
 
 export type SquadDetailsChanged = {
 	type: 'SQUAD_DETAILS_CHANGED'
-	squadId: SM.SquadId
-	teamId: SM.TeamId
+	uniqueId: number
 	details: {
 		locked?: boolean
 	}
 } & Base
-export const SQUAD_DETAILS_CHANGED_META = meta({ squads: ['$'] })
+export const SQUAD_DETAILS_CHANGED_META = meta({ squads: ['$.uniqueId'] })
 
 export type SquadRenamed = {
 	type: 'SQUAD_RENAMED'
-	squadId: SM.SquadId
-	teamId: SM.TeamId
+	uniqueId: number
 	oldSquadName: string
 	newSquadName: string
 } & Base
-export const SQUAD_RENAMED_META = meta({ squads: ['$'] })
+export const SQUAD_RENAMED_META = meta({ squads: ['$.uniqueId'] })
 
 /**
  * Player joined pre-existing squad
@@ -148,22 +142,20 @@ export const SQUAD_RENAMED_META = meta({ squads: ['$'] })
 export type PlayerJoinedSquad<P = SM.PlayerId> =
 	& {
 		type: 'PLAYER_JOINED_SQUAD'
-		squadId: SM.SquadId
-		teamId: SM.TeamId
+		uniqueId: number
 	}
 	& SM.PlayerAssoc<'player', P>
 	& Base
-export const PLAYER_JOINED_SQUAD_META = meta({ players: [{ assocType: 'player' }], squads: ['$'] })
+export const PLAYER_JOINED_SQUAD_META = meta({ players: [{ assocType: 'player' }], squads: ['$.uniqueId'] })
 
 export type PlayerPromotedToLeader<P = SM.PlayerId> =
 	& {
 		type: 'PLAYER_PROMOTED_TO_LEADER'
-		squadId: SM.SquadId
-		teamId: SM.TeamId
+		uniqueId: number
 	}
 	& SM.PlayerAssoc<'player', P>
 	& Base
-export const PLAYER_PROMOTED_TO_LEADER_META = meta({ players: [{ assocType: 'player' }], squads: ['$'] })
+export const PLAYER_PROMOTED_TO_LEADER_META = meta({ players: [{ assocType: 'player' }], squads: ['$.uniqueId'] })
 
 export type PlayerKicked<P = SM.PlayerId> =
 	& {
@@ -322,15 +314,13 @@ export function* iterAssocPlayerIds(event: Event<SM.Player | SM.PlayerId>) {
 	}
 }
 
-export function* iterAssocSquads(event: Event) {
+export function* iterAssocSquads(event: Event): Generator<number> {
 	const meta = EVENT_META[event.type]
 	for (const path of meta.squads) {
-		const results = Obj.queryPath<any>(path, event)
-
+		const results = Obj.queryPath<unknown>(path, event)
 		for (const result of results) {
-			if (!result || typeof result !== 'object') continue
-			if (!SM.Squads.isSquadKeyLike(result)) continue
-			yield { squadId: result.squadId, teamId: result.teamId } as SM.Squads.Key | SM.Squad
+			if (typeof result !== 'number') continue
+			yield result
 		}
 	}
 }

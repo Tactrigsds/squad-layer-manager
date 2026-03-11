@@ -382,9 +382,13 @@ export const SquadSchema = z.object({
 
 export type Squad = z.infer<typeof SquadSchema>
 
+// Squad with a server-assigned uniqueId that is stable for the lifetime of the squad instance
+export type UniqueSquad = Squad & { uniqueId: number }
+
 export type PlayerListRes = { code: 'ok'; players: Player[] } | RconError
 export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError
 export type Teams<P = Player> = { players: P[]; squads: Squad[] }
+export type UniqueTeams<P = Player> = { players: P[]; squads: UniqueSquad[] }
 export type TeamsRes<P = Player> = { code: 'ok' } & Teams<P> | RconError
 
 export namespace Squads {
@@ -455,7 +459,7 @@ export type ChatChannel =
 	| { type: 'ChatAll' }
 	| { type: 'ChatAdmin' }
 	| { type: 'ChatTeam'; teamId: TeamId }
-	| { type: 'ChatSquad'; teamId: TeamId; squadId: SquadId }
+	| { type: 'ChatSquad'; teamId: TeamId; squadId: SquadId; uniqueId?: number }
 
 export const RCON_MAX_BUF_LEN = 4152
 

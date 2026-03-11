@@ -366,8 +366,6 @@ function PlayerChangedTeamEvent({ event }: { event: Extract<CHAT.EventEnriched, 
 }
 
 function PlayerLeftSquadEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_LEFT_SQUAD' }> }) {
-	// server is rolling
-	if (event.teamId === null) return null
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
@@ -420,7 +418,7 @@ function SquadRenamedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 			<Icons.Pencil className="h-4 w-4 text-cyan-400" />
 			<span className="text-xs flex items-center gap-1">
 				<SquadDisplay
-					squad={{ squadId: event.squadId, teamId: event.teamId, squadName: event.oldSquadName }}
+					squad={{ ...event.squad, squadName: event.oldSquadName }}
 					matchId={event.matchId}
 					showName={true}
 					showTeam={true}

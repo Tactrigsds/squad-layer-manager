@@ -25,6 +25,7 @@ import * as SquadServer from '@/systems/squad-server.server'
 import * as UsersClient from '@/systems/users.server'
 import { Mutex } from 'async-mutex'
 
+import { sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
 import { alias } from 'drizzle-orm/mysql-core'
 import * as Rx from 'rxjs'
@@ -350,6 +351,80 @@ export const matchHistoryRouter = {
 		return {
 			events: state.eventBuffer.filter((event) => shownEventIds.has(event.id)),
 			connectionStatus,
+		}
+	}),
+
+	getSquadDetails: orpcBase.input(z.object({
+		uniqueSquadId: z.number(),
+	})).handler(async ({ input, context: _ctx }) => {
+		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
+
+		const [squadRow] = await ctx.db().select().from(Schema.squads).where(E.eq(Schema.squads.id, input.uniqueSquadId))
+		if (!squadRow) throw new Error(`Squad ${input.uniqueSquadId} not found`)
+
+		const associatedPlayers = alias(Schema.playerEventAssociations, 'associatedPlayers')
+
+		const rawEventRows = await ctx.db()
+			.select({
+				playerAssoc: associatedPlayers.playerId,
+				matchId: Schema.serverEvents.matchId,
+				eventId: Schema.serverEvents.id,
+			})
+			.from(Schema.serverEvents)
+			.innerJoin(
+				Schema.squadEventAssociations,
+				E.and(
+					E.eq(Schema.serverEvents.id, Schema.squadEventAssociations.serverEventId),
+					E.eq(Schema.squadEventAssociations.squadId, input.uniqueSquadId),
+				),
+			)
+			.leftJoin(associatedPlayers, E.eq(Schema.serverEvents.id, associatedPlayers.serverEventId))
+			.orderBy(E.desc(Schema.serverEvents.time))
+
+		const otherPlayers = new Set<string>()
+		const shownEventIds = new Set<number>()
+		for (const row of rawEventRows) {
+			if (row.playerAssoc) otherPlayers.add(row.playerAssoc)
+			shownEventIds.add(row.eventId)
+		}
+		if (squadRow.creatorId) otherPlayers.add(squadRow.creatorId)
+
+		const matchId = rawEventRows[0]?.matchId
+		if (matchId === undefined) {
+			return { squad: squadRow, events: [] }
+		}
+
+		const eventRows = await ctx.db()
+			.select({ event: Schema.serverEvents })
+			.from(Schema.serverEvents)
+			.where(
+				E.and(
+					E.eq(Schema.serverEvents.matchId, matchId),
+					E.or(
+						otherPlayers.size > 0
+							? E.inArray(Schema.playerEventAssociations.playerId, [...otherPlayers.values()])
+							: sql`1=0`,
+						E.inArray(Schema.squadEventAssociations.squadId, [input.uniqueSquadId]),
+						E.eq(Schema.serverEvents.type, 'NEW_GAME'),
+					),
+				),
+			)
+			.innerJoin(Schema.playerEventAssociations, E.eq(Schema.serverEvents.id, Schema.playerEventAssociations.serverEventId))
+			.leftJoin(Schema.squadEventAssociations, E.eq(Schema.serverEvents.id, Schema.squadEventAssociations.serverEventId))
+			.orderBy(E.desc(Schema.serverEvents.id))
+
+		const events = eventRows.map((row) => SE.fromEventRow(row.event)).toReversed()
+		const state = CHAT.getInitialChatState()
+		const processedEvents = new Set<number>()
+		for (const event of events) {
+			if (processedEvents.has(event.id)) continue
+			processedEvents.add(event.id)
+			CHAT.handleEvent(state, event)
+		}
+
+		return {
+			squad: squadRow,
+			events: state.eventBuffer.filter((event) => shownEventIds.has(event.id)),
 		}
 	}),
 }

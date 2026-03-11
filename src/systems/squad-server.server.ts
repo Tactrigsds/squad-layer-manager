@@ -106,7 +106,7 @@ type EphemeralState = {
 	connected: SM.PlayerIds.Type[]
 	pendingEventState: PendingEvents.State
 
-	createdSquads: SM.Squad[]
+	createdSquads: SM.UniqueSquad[]
 
 	// constains mostly events from the current match. however don't assume this and filter for the current match whenever accessing
 	eventBuffer: SE.Event[]
@@ -632,16 +632,13 @@ function setupResolveHistoryConflicts(ctx: C.ServerId & C.Rcon) {
 			log.info('rcon connection established, match history is synced')
 
 			const teams = await interceptTeamsUpdate(ctx)
-			resetTeamState(ctx, teams)
+			const uniqueTeams = resetTeamState(ctx, teams, pushedNewMatch)
 
 			let events: SE.Event[] = []
 			const base = {
 				time: Date.now(),
 				matchId: currentMatch.historyEntryId,
-				state: {
-					players: teams.players,
-					squads: teams.squads,
-				},
+				state: uniqueTeams,
 			}
 
 			events.push({
@@ -947,16 +944,16 @@ const processLogEvent = C.spanOp('processLogEvent', { module, levels: { event: '
 				)()
 				const teamsRes = await teamsResPromise
 				const teams = { squads: teamsRes.squads, players: teamsRes.players }
+				const uniqueTeams = resetTeamState(ctx, teams, true)
 				event = {
 					type: 'NEW_GAME',
 					id: eventId(),
 					layerId: newLayerId,
 					source: 'new-game-detected',
-					state: teams,
+					state: uniqueTeams,
 					...base,
 					matchId: match.historyEntryId,
 				}
-				resetTeamState(ctx, teams)
 			} finally {
 				server.serverRolling$.next(null)
 			}
@@ -1105,6 +1102,13 @@ export const processRconEvent = C.spanOp('processRconEvent', { module }, async (
 				assertNever(event.channelType)
 			}
 
+			if (channel.type === 'ChatSquad') {
+				const squadChannel = channel
+				const uniqueId = ctx.server.state.createdSquads.find(s => s.squadId === squadChannel.squadId && s.teamId === squadChannel.teamId)
+					?.uniqueId
+				if (uniqueId !== undefined) channel = { ...squadChannel, uniqueId }
+			}
+
 			emittedEvent = {
 				type: 'CHAT_MESSAGE',
 				id: eventId(),
@@ -1138,12 +1142,12 @@ export const processRconEvent = C.spanOp('processRconEvent', { module }, async (
 				}
 			}
 
-			const squad: SM.Squad = {
+			const squad: SM.UniqueSquad = {
 				teamId,
 				squadId: event.squadId,
 				creator: SM.PlayerIds.getPlayerId(event.creatorIds),
 				squadName: event.squadName,
-
+				uniqueId: squadId(),
 				// will be updated later if incorrect
 				locked: false,
 			}
@@ -1160,11 +1164,15 @@ export const processRconEvent = C.spanOp('processRconEvent', { module }, async (
 		}
 
 		case 'SQUAD_RENAMED': {
+			const squad = ctx.server.state.createdSquads.find(s => s.squadId === event.squadId && s.teamId === event.teamId)
+			if (!squad) {
+				log.warn('SQUAD_RENAMED: squad not found for squadId=%d, teamId=%d', event.squadId, event.teamId)
+				return
+			}
 			emittedEvent = {
 				type: 'SQUAD_RENAMED',
 				id: eventId(),
-				squadId: event.squadId,
-				teamId: event.teamId as SM.TeamId,
+				uniqueId: squad.uniqueId,
 				oldSquadName: event.oldSquadName,
 				newSquadName: event.newSquadName,
 				...base,
@@ -1292,14 +1300,16 @@ function* generateSyntheticEvents(
 		if (!prev) continue
 
 		if (!SM.Squads.idsEqual(prev, player) && prev.squadId !== null && prev.teamId !== null) {
-			yield {
-				type: 'PLAYER_LEFT_SQUAD',
-				id: eventId(),
-				player: SM.PlayerIds.getPlayerId(player.ids),
-				teamId: prev.teamId,
-				squadId: prev.squadId,
-				...base,
-			} satisfies SE.PlayerLeftSquad
+			const prevSquadUnique = ctx.server.state.createdSquads.find(s => s.squadId === prev.squadId && s.teamId === prev.teamId)
+			if (prevSquadUnique) {
+				yield {
+					type: 'PLAYER_LEFT_SQUAD',
+					id: eventId(),
+					player: SM.PlayerIds.getPlayerId(player.ids),
+					uniqueId: prevSquadUnique.uniqueId,
+					...base,
+				} satisfies SE.PlayerLeftSquad
+			}
 		}
 
 		if (player.teamId !== prev.teamId) {
@@ -1313,14 +1323,16 @@ function* generateSyntheticEvents(
 		}
 
 		if (player.squadId !== null && player.teamId !== null && SM.Squads.idsEqual(player, prev) && player.isLeader && !prev.isLeader) {
-			yield {
-				type: 'PLAYER_PROMOTED_TO_LEADER',
-				squadId: player.squadId,
-				id: eventId(),
-				teamId: player.teamId,
-				player: SM.PlayerIds.getPlayerId(player.ids),
-				...base,
-			} satisfies SE.PlayerPromotedToLeader
+			const promotedSquad = ctx.server.state.createdSquads.find(s => s.squadId === player.squadId && s.teamId === player.teamId)
+			if (promotedSquad) {
+				yield {
+					type: 'PLAYER_PROMOTED_TO_LEADER',
+					uniqueId: promotedSquad.uniqueId,
+					id: eventId(),
+					player: SM.PlayerIds.getPlayerId(player.ids),
+					...base,
+				} satisfies SE.PlayerPromotedToLeader
+			}
 		}
 
 		if (
@@ -1331,25 +1343,28 @@ function* generateSyntheticEvents(
 			// if we violently thrash squad creations/leaves then we can maybe break this but that's unlikely
 			if (isNewSquad && squad) {
 				if (!ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, player))) {
+					const uniqueSquad: SM.UniqueSquad = { ...squad, uniqueId: squadId() }
 					const event: SE.SquadCreated = {
 						type: 'SQUAD_CREATED',
 						id: eventId(),
-						squad,
+						squad: uniqueSquad,
 						...base,
 					}
-					ctx.server.state.createdSquads.push(squad)
+					ctx.server.state.createdSquads.push(uniqueSquad)
 
 					yield event
 				}
 			} else {
-				yield {
-					type: 'PLAYER_JOINED_SQUAD',
-					id: eventId(),
-					player: SM.PlayerIds.getPlayerId(player.ids),
-					teamId: player.teamId,
-					squadId: player.squadId,
-					...base,
-				} satisfies SE.PlayerJoinedSquad
+				const joinedSquad = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, player))
+				if (joinedSquad) {
+					yield {
+						type: 'PLAYER_JOINED_SQUAD',
+						id: eventId(),
+						player: SM.PlayerIds.getPlayerId(player.ids),
+						uniqueId: joinedSquad.uniqueId,
+						...base,
+					} satisfies SE.PlayerJoinedSquad
+				}
 			}
 		}
 
@@ -1372,13 +1387,15 @@ function* generateSyntheticEvents(
 	for (const prevSquad of prevSquads) {
 		if (squads.some(s => SM.Squads.idsEqual(s, prevSquad))) continue
 		disbandedSquads.push(prevSquad)
-		yield {
-			id: eventId(),
-			type: 'SQUAD_DISBANDED',
-			squadId: prevSquad.squadId,
-			teamId: prevSquad.teamId,
-			...base,
-		} satisfies SE.SquadDisbanded
+		const disbandedUnique = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, prevSquad))
+		if (disbandedUnique) {
+			yield {
+				id: eventId(),
+				type: 'SQUAD_DISBANDED',
+				uniqueId: disbandedUnique.uniqueId,
+				...base,
+			} satisfies SE.SquadDisbanded
+		}
 	}
 
 	for (const squad of squads) {
@@ -1402,8 +1419,7 @@ function* generateSyntheticEvents(
 				id: eventId(),
 				type: 'SQUAD_DETAILS_CHANGED',
 				details: changedDetails,
-				squadId: squad.squadId,
-				teamId: squad.teamId,
+				uniqueId: createdSquad.uniqueId,
 				...base,
 			} satisfies SE.SquadDetailsChanged
 		}
@@ -1518,48 +1534,29 @@ export const saveEvents = C.spanOp(
 					})
 				}
 
-				let prevSquads: (SM.Squads.Key & { dbId: number })[] = []
-
-				for (const squadOrKey of SE.iterAssocSquads(event)) {
-					const squadRes = SM.SquadSchema.safeParse(squadOrKey)
-					if (squadRes.success) {
-						const id = squadId()
-						prevSquads.push({ ...squadRes.data, dbId: id })
+				if (event.type === 'SQUAD_CREATED') {
+					squadRows.push({
+						id: event.squad.uniqueId,
+						ingameSquadId: event.squad.squadId,
+						name: event.squad.squadName,
+						creatorId: event.squad.creator,
+						teamId: event.squad.teamId,
+					})
+				} else if (event.type === 'NEW_GAME' || event.type === 'RESET') {
+					for (const squad of event.state.squads) {
 						squadRows.push({
-							id,
-							ingameSquadId: squadRes.data.squadId,
-							name: squadRes.data.squadName,
-							creatorId: squadRes.data.creator,
-							teamId: squadRes.data.teamId,
+							id: squad.uniqueId,
+							ingameSquadId: squad.squadId,
+							name: squad.squadName,
+							creatorId: squad.creator,
+							teamId: squad.teamId,
 						})
 					}
+				}
 
-					const key = (squadRes.success ? squadRes.data : squadOrKey) as SM.Squads.Key
-					let dbId: number | undefined
-					foundId: if (!squadRes.success) {
-						const prev = Arr.revFind(prevSquads, s => SM.Squads.idsEqual(s, key))
-						if (prev) {
-							dbId = prev.dbId
-							break foundId
-						}
-
-						// TODO could be optimized to search all squads from this batch in one query
-						const [row] = await ctx.db().select().from(Schema.squads).where(
-							E.and(
-								E.eq(Schema.squads.ingameSquadId, key.squadId),
-								E.eq(Schema.squads.teamId, key.teamId),
-							),
-						).orderBy(E.desc(Schema.squads.createdAt)).limit(1).execute()
-
-						if (row) {
-							prevSquads.push({ squadId: row.ingameSquadId, teamId: row.teamId as 1 | 2, dbId: row.id })
-							dbId = row.id
-						}
-					}
-					if (!dbId) continue
-
+				for (const uniqueId of SE.iterAssocSquads(event)) {
 					squadAssociationRows.push({
-						squadId: dbId,
+						squadId: uniqueId,
 						serverEventId: event.id,
 					})
 				}
@@ -1768,17 +1765,24 @@ namespace PendingEvents {
 	}
 }
 
-function resetTeamState(ctx: C.SquadServer, { players, squads }: SM.Teams) {
+function resetTeamState(ctx: C.SquadServer, { players, squads }: SM.Teams, isNewGame: boolean): SM.UniqueTeams {
 	const server = ctx.server
 
 	server.state.connected = []
 	for (const player of players) {
 		server.state.connected.push(player.ids)
 	}
-	server.state.createdSquads = []
-	for (const squad of squads) {
-		server.state.createdSquads.push(squad)
-	}
+
+	const uniqueSquads: SM.UniqueSquad[] = squads.map(squad => {
+		if (!isNewGame) {
+			const existing = server.state.createdSquads.find(s => SM.Squads.idsEqual(s, squad))
+			if (existing) return { ...squad, uniqueId: existing.uniqueId }
+		}
+		return { ...squad, uniqueId: squadId() }
+	})
+
+	server.state.createdSquads = uniqueSquads
+	return { players, squads: uniqueSquads }
 }
 
 function eventId() {

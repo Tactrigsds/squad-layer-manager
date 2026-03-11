@@ -39,7 +39,7 @@ export type LifecycleEvent = SyncedEvent | ConnectionErrorEvent | ReconnectedEve
 
 export type InterpolableState = {
 	players: SM.Player[]
-	squads: SM.Squad[]
+	squads: SM.UniqueSquad[]
 }
 
 export namespace InterpolableState {
@@ -65,14 +65,14 @@ export type EventEnriched =
 	| SE.PlayerConnected<SM.Player>
 	| (SE.PlayerDisconnected<SM.Player>)
 	| (SE.PlayerDetailsChanged<SM.Player>)
-	| (SE.SquadDetailsChanged & { squad: SM.Squad; prevDetails: SE.SquadDetailsChanged['details'] })
-	| (SE.SquadRenamed & { squad: SM.Squad })
+	| (SE.SquadDetailsChanged & { squad: SM.UniqueSquad; prevDetails: SE.SquadDetailsChanged['details'] })
+	| (SE.SquadRenamed & { squad: SM.UniqueSquad })
 	| (SE.PlayerChangedTeam<SM.Player> & { prevTeamId: SM.TeamId | null })
-	| (SE.PlayerJoinedSquad<SM.Player> & { squad: SM.Squad })
-	| SE.PlayerPromotedToLeader<SM.Player>
-	| (SE.SquadDisbanded & { squad: SM.Squad })
-	| (SE.PlayerLeftSquad<SM.Player> & { wasLeader: boolean; squad: SM.Squad })
-	| (SE.SquadCreated & { creator: SM.Player; squad: SM.Squad })
+	| (SE.PlayerJoinedSquad<SM.Player> & { squad: SM.UniqueSquad })
+	| (SE.PlayerPromotedToLeader<SM.Player> & { squad: SM.UniqueSquad })
+	| (SE.SquadDisbanded & { squad: SM.UniqueSquad })
+	| (SE.PlayerLeftSquad<SM.Player> & { wasLeader: boolean; squad: SM.UniqueSquad })
+	| (SE.SquadCreated & { creator: SM.Player; squad: SM.UniqueSquad })
 	| SE.PlayerWarned<SM.Player>
 	| SE.PlayerBanned<SM.Player>
 	| SE.PlayerKicked<SM.Player>
@@ -342,9 +342,9 @@ export function interpolateEvent(
 		}
 
 		case 'SQUAD_DETAILS_CHANGED': {
-			const index = state.squads.findIndex(s => SM.Squads.idsEqual(s, event))
+			const index = state.squads.findIndex(s => s.uniqueId === event.uniqueId)
 			if (index === -1) {
-				return noop(`Squad ${SM.Squads.printKey(event)} had details changed but was not found in the squad list`)
+				return noop(`Squad ${event.uniqueId} had details changed but was not found in the squad list`)
 			}
 			const squad = state.squads[index]
 			const prevDetails: SE.SquadDetailsChanged['details'] = { locked: squad.locked }
@@ -358,9 +358,9 @@ export function interpolateEvent(
 		}
 
 		case 'SQUAD_RENAMED': {
-			const index = state.squads.findIndex(s => SM.Squads.idsEqual(s, event))
+			const index = state.squads.findIndex(s => s.uniqueId === event.uniqueId)
 			if (index === -1) {
-				return noop(`Squad ${SM.Squads.printKey(event)} was renamed but was not found in the squad list`)
+				return noop(`Squad ${event.uniqueId} was renamed but was not found in the squad list`)
 			}
 			const squad = state.squads[index]
 			const updated = { ...squad, squadName: event.newSquadName }
@@ -397,9 +397,9 @@ export function interpolateEvent(
 			}
 
 			const player = state.players[index]
-			const squad = state.squads.find(s => SM.Squads.idsEqual(s, event))
+			const squad = state.squads.find(s => s.uniqueId === event.uniqueId)
 			if (!squad) {
-				return noop(`Squad ${SM.Squads.printKey(event)} not found`)
+				return noop(`Squad ${event.uniqueId} not found`)
 			}
 
 			if (SM.Squads.idsEqual(player, squad)) {
@@ -412,7 +412,7 @@ export function interpolateEvent(
 
 			const updatedPlayer: SM.Player = {
 				...player,
-				squadId: event.squadId,
+				squadId: squad.squadId,
 				isLeader: false,
 			}
 			state.players.splice(index, 1, updatedPlayer)
@@ -424,10 +424,14 @@ export function interpolateEvent(
 		}
 
 		case 'PLAYER_PROMOTED_TO_LEADER': {
+			const squad = state.squads.find(s => s.uniqueId === event.uniqueId)
+			if (!squad) {
+				return noop(`Squad ${event.uniqueId} not found for PLAYER_PROMOTED_TO_LEADER`)
+			}
 			let newLeaderIdx = -1
 			for (let i = 0; i < state.players.length; i++) {
 				const player = state.players[i]
-				if (!SM.Squads.idsEqual(player, event)) continue
+				if (player.squadId !== squad.squadId || player.teamId !== squad.teamId) continue
 				const isNewLeader = SM.PlayerIds.match(player.ids, event.player)
 				if (isNewLeader) {
 					newLeaderIdx = i
@@ -447,13 +451,14 @@ export function interpolateEvent(
 			return {
 				...event,
 				player: state.players[newLeaderIdx],
+				squad,
 			}
 		}
 
 		case 'SQUAD_DISBANDED': {
-			const squadIndex = state.squads.findIndex(s => SM.Squads.idsEqual(s, event))
+			const squadIndex = state.squads.findIndex(s => s.uniqueId === event.uniqueId)
 			if (squadIndex === -1) {
-				return noop(`Squad ${event.squadId} disbanded but was not found in the squad list`)
+				return noop(`Squad ${event.uniqueId} disbanded but was not found in the squad list`)
 			}
 			const [squad] = state.squads.splice(squadIndex, 1)
 			return {
@@ -469,9 +474,9 @@ export function interpolateEvent(
 			}
 
 			const player = state.players[index]
-			const squad = state.squads.find(s => SM.Squads.idsEqual(s, player))
+			const squad = state.squads.find(s => s.uniqueId === event.uniqueId)
 			if (!squad) {
-				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} left squad but was not found in the squad list`)
+				return noop(`Squad ${event.uniqueId} not found for PLAYER_LEFT_SQUAD`)
 			}
 			const updatedPlayer: SM.Player = {
 				...player,
@@ -489,12 +494,12 @@ export function interpolateEvent(
 		}
 
 		case 'SQUAD_CREATED': {
-			const existingSquad = state.squads.find(s => SM.Squads.idsEqual(s, event.squad))
+			const existingSquad = state.squads.find(s => s.uniqueId === event.squad.uniqueId)
 			if (existingSquad) {
-				return noop(`Squad ${SM.Squads.printKey(event.squad)} already exists`)
+				return noop(`Squad ${event.squad.uniqueId} already exists`)
 			}
 			const creatorIndex = SM.PlayerIds.indexOf(state.players, p => p.ids, event.squad.creator)
-			const squad: SM.Squad = event.squad
+			const squad: SM.UniqueSquad = event.squad
 			if (creatorIndex === -1) {
 				return noop(
 					`Squad ${SM.Squads.printKey(squad)} "${event.squad.squadName}" created by unknown player ${
