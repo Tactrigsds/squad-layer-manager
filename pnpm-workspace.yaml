@@ -13,3 +13,4 @@ onlyBuiltDependencies:
   - ssh2
   - oxlint
   - tsgo
+  - jsonpath
