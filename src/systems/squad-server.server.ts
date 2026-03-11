@@ -1257,7 +1257,7 @@ function setupListenForTeamChanges(ctx: CS.Ctx & C.SquadRcon & C.AdminList) {
 
 					const match = await MatchHistory.getCurrentMatch(ctx)
 
-					PendingEvents.upsertRecentPlayers(server.state.pendingEventState, current.teams.players, match.ordinal)
+					PendingEvents.upsertRecentPlayers(server.state.pendingEventState, current.teams.players, match.ordinal, match.historyEntryId)
 					yield Array.from(PendingEvents.processPendingEvents(server.state.pendingEventState))
 
 					if (intercepted) return
@@ -1655,7 +1655,7 @@ namespace PendingEvents {
 			woundedOrDied: PendingPlayerWoundedOrDiedEvent[]
 		}
 		// players from the last =<2 matches
-		recentPlayers: (SM.Player & { lastSeenMatchOrdinal: number })[]
+		recentPlayers: (SM.Player & { lastSeenMatchOrdinal: number; lastSeenMatchId: number })[]
 
 		// players which have disconnected in the last =<2 matches
 		disconnectedPlayers: SM.PlayerIds.Type[]
@@ -1688,10 +1688,10 @@ namespace PendingEvents {
 		return player
 	}
 
-	export function upsertRecentPlayers(state: State, players: SM.Player[], matchOrdinal: number) {
+	export function upsertRecentPlayers(state: State, players: SM.Player[], matchOrdinal: number, matchId: number) {
 		state.recentPlayers = state.recentPlayers.filter(p => matchOrdinal - p.lastSeenMatchOrdinal <= 2)
 		for (const player of players) {
-			SM.PlayerIds.upsert(state.recentPlayers, p => p.ids, { ...player, lastSeenMatchOrdinal: matchOrdinal })
+			SM.PlayerIds.upsert(state.recentPlayers, p => p.ids, { ...player, lastSeenMatchOrdinal: matchOrdinal, lastSeenMatchId: matchId })
 		}
 		state.disconnectedPlayers = state.disconnectedPlayers.filter(ids => SM.PlayerIds.find(state.recentPlayers, (p) => p.ids, ids))
 	}
@@ -1700,10 +1700,10 @@ namespace PendingEvents {
 		{
 			const toDelete = new Set<PendingConnectedEvent>()
 			for (const event of state.events.connecting) {
-				const currentMatchPlayers = state.recentPlayers.filter((p) => p.lastSeenMatchOrdinal === event.matchId)
+				const currentMatchPlayers = state.recentPlayers.filter((p) => p.lastSeenMatchId === event.matchId)
 				const playerRes = SM.PlayerIds.find(currentMatchPlayers, (p) => p.ids, event.player)
 				if (!playerRes) continue
-				const { lastSeenMatchOrdinal: _, ...player } = playerRes
+				const player = Obj.omit(playerRes, ['lastSeenMatchOrdinal', 'lastSeenMatchId'])
 				toDelete.add(event)
 				if (SM.PlayerIds.find(state.disconnectedPlayers, player.ids)) {
 					continue
@@ -1723,7 +1723,7 @@ namespace PendingEvents {
 			let toDelete = new Set<PendingPlayerWoundedOrDiedEvent>()
 			for (let i = 0; i < state.events.woundedOrDied.length; i++) {
 				const event = state.events.woundedOrDied[i]
-				const currentMatchPlayers = state.recentPlayers.filter((p) => p.lastSeenMatchOrdinal === event.matchId)
+				const currentMatchPlayers = state.recentPlayers.filter((p) => p.lastSeenMatchId === event.matchId)
 				const victimRes = SM.PlayerIds.find(
 					currentMatchPlayers,
 					(p) => p.ids,
@@ -1735,8 +1735,8 @@ namespace PendingEvents {
 					event.attackerIds,
 				)
 				if (!victimRes || !attackerRes) continue
-				const { lastSeenMatchOrdinal: _, ...victim } = victimRes
-				const { lastSeenMatchOrdinal: __, ...attacker } = attackerRes
+				const victim = Obj.omit(victimRes, ['lastSeenMatchOrdinal', 'lastSeenMatchId'])
+				const attacker = Obj.omit(attackerRes, ['lastSeenMatchOrdinal', 'lastSeenMatchId'])
 
 				toDelete.add(event)
 				let variant: SE.PlayerWoundedOrDiedVariant
