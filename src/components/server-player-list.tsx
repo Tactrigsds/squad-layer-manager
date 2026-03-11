@@ -1,3 +1,4 @@
+import { SquadDisplay } from '@/components/squad-display'
 import { MatchTeamDisplay } from '@/components/teams-display'
 
 import { Checkbox } from '@/components/ui/checkbox'
@@ -43,12 +44,7 @@ function SquadSection({ squad, players, totalCount, matchId }: SquadSectionProps
 		<div className="mb-3 rounded border border-border/50">
 			<div className="flex items-center gap-1.5 w-full py-1 text-xs px-2 bg-accent/20 rounded-t">
 				{squad
-					? (
-						<>
-							<b>{squad.squadId}</b>
-							<span className="font-semibold">{squad.squadName}</span>
-						</>
-					)
+					? <SquadDisplay squad={squad} matchId={matchId} />
 					: <span className="text-xs font-semibold">Unassigned</span>}
 				<span className="text-xs text-muted-foreground">({totalCount})</span>
 				{squad?.locked && (
