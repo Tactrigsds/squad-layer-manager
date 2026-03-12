@@ -54,15 +54,13 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 	const currentMatchEvents = Zus.useStore(
 		SquadServerClient.ChatStore,
 		ZusUtils.useShallow(s =>
-			s.chatState.eventBuffer.filter(e =>
-				currentMatch && e.matchId === currentMatch?.historyEntryId && (CHAT.getAssocPlayers(e, playerId) || e.type === 'NEW_GAME')
-			)
+			s.chatState.eventBuffer.filter(e => currentMatch && e.matchId === currentMatch?.historyEntryId && (CHAT.hasAssocPlayer(e, playerId)))
 		),
 	)
 
 	const allEvents = [
 		...(data?.events ?? []),
-		...(currentMatchEvents.some(e => CHAT.getAssocPlayers(e, playerId)) ? currentMatchEvents : []),
+		...(currentMatchEvents.some(e => CHAT.hasAssocPlayer(e, playerId)) ? currentMatchEvents : []),
 	]
 	const livePlayer = Zus.useStore(
 		SquadServerClient.ChatStore,

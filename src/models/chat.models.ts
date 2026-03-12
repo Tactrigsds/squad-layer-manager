@@ -699,7 +699,7 @@ export function isEventFilteredBySecondary(event: EventEnriched, filterState: Se
 	return false
 }
 
-export function* getAssocPlayers(event: EventEnriched, playerId?: SM.PlayerId) {
+export function* iterAssocPlayers(event: EventEnriched, playerId?: SM.PlayerId) {
 	if (event.type === 'NOOP') return
 	if (!event) {
 		yield* SE.iterAssocPlayers(event)
@@ -711,14 +711,18 @@ export function* getAssocPlayers(event: EventEnriched, playerId?: SM.PlayerId) {
 	}
 }
 
+export function hasAssocPlayer(event: EventEnriched, playerId: SM.PlayerId): boolean {
+	return Gen.hasValues(iterAssocPlayers(event, playerId))
+}
+
 export function findLastPlayerInstance(events: EventEnriched[], playerId: SM.PlayerId): SM.Player | undefined {
 	for (const event of Arr.revIter(events)) {
-		for (const [player] of getAssocPlayers(event, playerId)) {
+		for (const [player] of iterAssocPlayers(event, playerId)) {
 			if (typeof player === 'object') return player
 		}
 	}
 }
 
 export function getPlayerRelatedEvents(events: EventEnriched[], playerId: SM.PlayerId): EventEnriched[] {
-	return events.filter(event => Gen.hasValues(getAssocPlayers(event, playerId)))
+	return events.filter(event => hasAssocPlayer(event, playerId))
 }
