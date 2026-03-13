@@ -73,7 +73,7 @@ function SquadDetailsWindow({ uniqueSquadId }: SquadDetailsWindowProps) {
 				? []
 				: s.chatState.eventBuffer.filter(e => {
 					if (e.matchId !== currentMatch.historyEntryId || e.type === 'NOOP') return false
-					return Array.from(SE.iterAssocSquads(e as SE.Event)).some(k => k === uniqueSquadId)
+					return Array.from(SE.iterAssocSquadUniqueIds(e as SE.Event)).some(k => k === uniqueSquadId)
 				})
 		),
 	)

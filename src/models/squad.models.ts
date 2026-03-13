@@ -383,7 +383,10 @@ export const SquadSchema = z.object({
 export type Squad = z.infer<typeof SquadSchema>
 
 // Squad with a server-assigned uniqueId that is stable for the lifetime of the squad instance
-export type UniqueSquad = Squad & { uniqueId: number }
+export const UniqueSquadSchema = SquadSchema.extend({
+	uniqueId: z.number(),
+})
+export type UniqueSquad = z.infer<typeof UniqueSquadSchema>
 
 export type PlayerListRes = { code: 'ok'; players: Player[] } | RconError
 export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError

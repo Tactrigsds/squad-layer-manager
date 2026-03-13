@@ -1241,8 +1241,10 @@ function setupListenForTeamChanges(ctx: CS.Ctx & C.SquadRcon & C.AdminList) {
 			// pair with the previous state so we can generate synthetic events by looking for changes
 			Rx.pairwise(),
 			// capture event time before we're potentially waiting for server to roll
-			Rx.concatMap(
-				async function*([prev, current]) {
+			C.durableSub(
+				'processTeamChanges',
+				{ module, numTaskRetries: 0 },
+				async function([prev, current]) {
 					const ctx = resolveSliceCtx(getBaseCtx(), serverId)
 					const server = ctx.server
 
@@ -1258,30 +1260,19 @@ function setupListenForTeamChanges(ctx: CS.Ctx & C.SquadRcon & C.AdminList) {
 					const match = await MatchHistory.getCurrentMatch(ctx)
 
 					PendingEvents.upsertRecentPlayers(server.state.pendingEventState, current.teams.players, match.ordinal, match.historyEntryId)
-					yield Array.from(PendingEvents.processPendingEvents(server.state.pendingEventState))
+					const events: SE.Event[] = []
+					events.push(...(PendingEvents.processPendingEvents(server.state.pendingEventState)))
 
-					if (intercepted) return
-
-					yield Array.from(generateSyntheticEvents(ctx, prev.teams, current.teams, current.time, match.historyEntryId))
+					if (!intercepted) {
+						events.push(...generateSyntheticEvents(ctx, prev.teams, current.teams, current.time, match.historyEntryId))
+					}
+					if (events.length === 0) {
+						return
+					}
+					ctx.server.event$.next([ctx, events])
 				},
 			),
-		).subscribe({
-			error: err => {
-				log.error(err, 'Player list subscription error')
-			},
-			complete: () => {
-				log.warn('Player list subscription completed')
-			},
-			next: events => {
-				if (!events) return
-				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-				if (events.length === 0) {
-					log.debug('No synthetic events generated')
-					return
-				}
-				ctx.server.event$.next([ctx, events])
-			},
-		})
+		).subscribe()
 }
 
 function* generateSyntheticEvents(
@@ -1310,7 +1301,7 @@ function* generateSyntheticEvents(
 					...base,
 				} satisfies SE.PlayerLeftSquad
 			} else {
-				log.info(
+				log.error(
 					'Player %s left squad, but no created squad found (squadId=%s teamId=%s)',
 					SM.PlayerIds.prettyPrint(player.ids),
 					prev.squadId,
@@ -1340,7 +1331,7 @@ function* generateSyntheticEvents(
 					...base,
 				} satisfies SE.PlayerPromotedToLeader
 			} else {
-				log.info(
+				log.error(
 					'Player %s promoted to leader, but no created squad found (squadId=%s teamId=%s)',
 					SM.PlayerIds.prettyPrint(player.ids),
 					player.squadId,
@@ -1367,13 +1358,6 @@ function* generateSyntheticEvents(
 					ctx.server.state.createdSquads.push(uniqueSquad)
 
 					yield event
-				} else {
-					log.info(
-						'Player %s created new squad but it already exists in createdSquads (squadId=%s teamId=%s)',
-						SM.PlayerIds.prettyPrint(player.ids),
-						player.squadId,
-						player.teamId,
-					)
 				}
 			} else if (squad) {
 				const joinedSquad = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, player))
@@ -1386,14 +1370,14 @@ function* generateSyntheticEvents(
 						...base,
 					} satisfies SE.PlayerJoinedSquad
 				} else {
-					log.info(
+					log.error(
 						'Player %s joined squad, but no created squad found for %s',
 						SM.PlayerIds.prettyPrint(player.ids),
 						SM.Squads.printKey(squad),
 					)
 				}
 			} else {
-				log.info(
+				log.error(
 					'Player %s squad changed but no squad found (squadId=%s teamId=%s)',
 					SM.PlayerIds.prettyPrint(player.ids),
 					player.squadId,
@@ -1429,8 +1413,9 @@ function* generateSyntheticEvents(
 				uniqueId: disbandedUnique.uniqueId,
 				...base,
 			} satisfies SE.SquadDisbanded
+			ctx.server.state.createdSquads = ctx.server.state.createdSquads.filter(s => s.uniqueId !== disbandedUnique.uniqueId)
 		} else {
-			log.info(
+			log.error(
 				'Squad disbanded but no created squad found (squadId=%s teamId=%s)',
 				prevSquad.squadId,
 				prevSquad.teamId,
@@ -1443,7 +1428,7 @@ function* generateSyntheticEvents(
 		const createdSquad = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
 		type Details = SE.SquadDetailsChanged['details']
 		if (!createdSquad) {
-			log.info(
+			log.error(
 				'Squad exists in current state but not in createdSquads (squadId=%s teamId=%s)',
 				squad.squadId,
 				squad.teamId,
@@ -1581,16 +1566,9 @@ export const saveEvents = C.spanOp(
 					})
 				}
 
-				if (event.type === 'SQUAD_CREATED') {
-					squadRows.push({
-						id: event.squad.uniqueId,
-						ingameSquadId: event.squad.squadId,
-						name: event.squad.squadName,
-						creatorId: event.squad.creator,
-						teamId: event.squad.teamId,
-					})
-				} else if (event.type === 'NEW_GAME' || event.type === 'RESET') {
-					for (const squad of event.state.squads) {
+				for (const squad of SE.iterAssocUniqueSquads(event)) {
+					let uniqueSquadId: number
+					if (typeof squad === 'object') {
 						squadRows.push({
 							id: squad.uniqueId,
 							ingameSquadId: squad.squadId,
@@ -1598,12 +1576,12 @@ export const saveEvents = C.spanOp(
 							creatorId: squad.creator,
 							teamId: squad.teamId,
 						})
+						uniqueSquadId = squad.uniqueId
+					} else {
+						uniqueSquadId = squad
 					}
-				}
-
-				for (const uniqueId of SE.iterAssocSquads(event)) {
 					squadAssociationRows.push({
-						squadId: uniqueId,
+						squadId: uniqueSquadId,
 						serverEventId: event.id,
 					})
 				}
@@ -1822,7 +1800,7 @@ function resetTeamState(ctx: C.SquadServer, { players, squads }: SM.Teams, isNew
 
 	const uniqueSquads: SM.UniqueSquad[] = squads.map(squad => {
 		if (!isNewGame) {
-			const existing = server.state.createdSquads.find(s => SM.Squads.idsEqual(s, squad))
+			const existing = server.state.createdSquads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
 			if (existing) return { ...squad, uniqueId: existing.uniqueId }
 		}
 		return { ...squad, uniqueId: squadId() }

@@ -17,7 +17,10 @@ export type NewGame = {
 	layerId: L.LayerId
 	state: SM.UniqueTeams
 } & Base
-export const NEW_GAME_META = meta({ players: [{ assocType: 'game-participant', path: '$.state.players[*]' }] })
+export const NEW_GAME_META = meta({
+	players: [{ assocType: 'game-participant', path: '$.state.players[*]' }],
+	squads: ['$.state.squads[*]'],
+})
 
 export type Reset = {
 	type: 'RESET'
@@ -25,7 +28,7 @@ export type Reset = {
 	state: SM.UniqueTeams
 } & Base
 
-export const RESET_META = meta({ players: [{ assocType: 'game-participant', path: '$.state.players[*]' }] })
+export const RESET_META = meta({ players: [{ assocType: 'game-participant', path: '$.state.players[*]' }], squads: ['$.state.squads[*]'] })
 
 export type RconConnected = {
 	type: 'RCON_CONNECTED'
@@ -64,7 +67,7 @@ export type SquadCreated = {
 	squad: SM.UniqueSquad
 } & Base
 
-export const SQUAD_CREATED_META = meta({ squads: ['$.squad.uniqueId'], players: [{ assocType: 'player', path: '$.squad.creator' }] })
+export const SQUAD_CREATED_META = meta({ squads: ['$.squad'], players: [{ assocType: 'player', path: '$.squad.creator' }] })
 
 export type ChatMessage<P = SM.PlayerId> =
 	& {
@@ -314,13 +317,28 @@ export function* iterAssocPlayerIds(event: Event<SM.Player | SM.PlayerId>) {
 	}
 }
 
-export function* iterAssocSquads(event: Event): Generator<number> {
+export function* iterAssocUniqueSquads(event: Event): Generator<SM.UniqueSquad | number> {
 	const meta = EVENT_META[event.type]
 	for (const path of meta.squads) {
 		const results = Obj.queryPath<unknown>(path, event)
 		for (const result of results) {
-			if (typeof result !== 'number') continue
-			yield result
+			if (typeof result === 'number') {
+				yield result
+				continue
+			}
+			const parseRes = SM.UniqueSquadSchema.safeParse(result)
+			if (!parseRes.success) continue
+			yield parseRes.data
+		}
+	}
+}
+
+export function* iterAssocSquadUniqueIds(event: Event): Generator<number> {
+	for (const squad of iterAssocUniqueSquads(event)) {
+		if (typeof squad === 'object') {
+			yield squad.uniqueId
+		} else {
+			yield squad
 		}
 	}
 }
