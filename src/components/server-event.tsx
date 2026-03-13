@@ -100,7 +100,7 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 							style={{ color: channelStyle.color }}
 						>
 							<SquadDisplay
-								squad={{ squadId: event.channel.squadId, squadName: '', teamId: event.channel.teamId }}
+								squad={{ squadId: event.channel.squadId, squadName: '', teamId: event.channel.teamId, uniqueId: event.channel.uniqueId }}
 								matchId={event.matchId}
 								showName={false}
 								showTeam={false}

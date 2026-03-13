@@ -41,14 +41,25 @@ DraggableWindowStore.getState().registerDefinition<SquadDetailsWindowProps, unkn
 
 function SquadDetailsWindow({ uniqueSquadId }: SquadDetailsWindowProps) {
 	const currentMatch = MatchHistoryClient.useCurrentMatch()
-	const [showHistoricalPlayers, setShowHistoricalPlayers] = React.useState(false)
 
 	const liveSquad = Zus.useStore(
 		SquadServerClient.ChatStore,
 		s => s.chatState.interpolatedState.squads.find(sq => sq.uniqueId === uniqueSquadId) ?? null,
 	)
 
-	const isCurrentMatchSquad = liveSquad !== null
+	const currentMatchEvents = Zus.useStore(
+		SquadServerClient.ChatStore,
+		ZusUtils.useShallow(s =>
+			!currentMatch
+				? []
+				: s.chatState.eventBuffer.filter(e => {
+					if (e.matchId !== currentMatch.historyEntryId || e.type === 'NOOP') return false
+					return Array.from(SE.iterAssocSquadUniqueIds(e as SE.Event)).some(k => k === uniqueSquadId)
+				})
+		),
+	)
+
+	const isCurrentMatchSquad = currentMatchEvents.length > 0
 
 	const { data, isPending } = useQuery({
 		...RPC.orpc.matchHistory.getSquadDetails.queryOptions({ input: { uniqueSquadId } }),
@@ -63,18 +74,6 @@ function SquadDetailsWindow({ uniqueSquadId }: SquadDetailsWindowProps) {
 			liveSquad
 				? s.chatState.interpolatedState.players.filter(p => p.squadId === liveSquad.squadId && p.teamId === liveSquad.teamId)
 				: []
-		),
-	)
-
-	const currentMatchEvents = Zus.useStore(
-		SquadServerClient.ChatStore,
-		ZusUtils.useShallow(s =>
-			!currentMatch
-				? []
-				: s.chatState.eventBuffer.filter(e => {
-					if (e.matchId !== currentMatch.historyEntryId || e.type === 'NOOP') return false
-					return Array.from(SE.iterAssocSquadUniqueIds(e as SE.Event)).some(k => k === uniqueSquadId)
-				})
 		),
 	)
 
@@ -102,10 +101,18 @@ function SquadDetailsWindow({ uniqueSquadId }: SquadDetailsWindowProps) {
 				}
 			}
 		}
-		return Array.from(seen.values())
-	}, [allEvents])
+		const players = Array.from(seen.values())
+		players.sort((a, b) => {
+			const aIsCreator = SM.PlayerIds.getPlayerId(a.ids) === creatorId
+			const bIsCreator = SM.PlayerIds.getPlayerId(b.ids) === creatorId
+			return Number(bIsCreator) - Number(aIsCreator)
+		})
+		return players
+	}, [allEvents, creatorId])
 
-	const isDisbanded = !isCurrentMatchSquad && allEvents.some(e => e.type === 'SQUAD_DISBANDED')
+	const isDisbanded = allEvents.some(e => e.type === 'SQUAD_DISBANDED')
+	const [_showHistoricalPlayers, setShowHistoricalPlayers] = React.useState(false)
+	const showHistoricalPlayers = _showHistoricalPlayers || isDisbanded
 
 	const teamId = (liveSquad?.teamId ?? squad?.teamId) as 1 | 2 | undefined
 	const ingameSquadId = liveSquad?.squadId ?? squad?.ingameSquadId
@@ -152,81 +159,78 @@ function SquadDetailsWindow({ uniqueSquadId }: SquadDetailsWindowProps) {
 
 			<Separator />
 
-			<div className="px-3 py-2 border-b border-border/50">
-				{isDisbanded
-					? (
-						<div className="flex items-baseline justify-between gap-1 mb-1">
-							<span className="text-xs text-muted-foreground italic flex items-center gap-1">
-								<Icons.UsersRound className="h-3 w-3 text-red-400 shrink-0" />
-								Squad disbanded
-							</span>
-							<button
-								type="button"
-								className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-								onClick={() => setShowHistoricalPlayers(v => !v)}
-							>
-								{showHistoricalPlayers ? 'Hide players' : `Show players (${historicalPlayers.length})`}
-							</button>
+			<div className="flex min-h-0 flex-1">
+				<div className="flex-1 px-3 py-0.5 min-w-0">
+					<h3 className="text-xs font-medium py-0.5">Squad Events</h3>
+					<ScrollArea ref={scrollAreaRef} className="h-75">
+						<div ref={contentRef} className="flex flex-col gap-0.5 min-h-0 w-full max-w-175">
+							{isPending && allEvents.length === 0 && (
+								<div className="flex items-center justify-center py-6">
+									<Spinner className="size-5" />
+								</div>
+							)}
+							{allEvents.map(e => <ServerEvent key={e.id} event={e} />)}
 						</div>
-					)
-					: (
-						<div className="flex items-baseline justify-between gap-1 mb-1">
-							<h3 className="text-xs font-medium">
-								{showHistoricalPlayers ? 'All Players' : 'Current Players'}{' '}
-								<span className="text-muted-foreground font-normal">
-									({showHistoricalPlayers ? historicalPlayers.length : currentPlayers.length})
-								</span>
-							</h3>
-							<button
-								type="button"
-								className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-								onClick={() => setShowHistoricalPlayers(v => !v)}
+						<div ref={bottomRef} />
+						{showScrollButton && (
+							<Button
+								onClick={() => scrollToBottom()}
+								variant="secondary"
+								className="absolute bottom-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center z-10 bg-opacity-20! rounded-none backdrop-blur-sm"
+								title="Scroll to bottom"
 							>
-								{showHistoricalPlayers ? 'Show current' : 'Show historical'}
-							</button>
-						</div>
-					)}
-				{(!isDisbanded || showHistoricalPlayers) && (
-					<div className="flex flex-wrap gap-1">
-						{(isDisbanded || showHistoricalPlayers ? historicalPlayers : currentPlayers).map(player => (
-							<PlayerDisplay
-								key={SM.PlayerIds.getPlayerId(player.ids)}
-								className="text-xs"
-								player={player}
-								matchId={currentMatch?.historyEntryId ?? 0}
-							/>
-						))}
-						{!isDisbanded && !showHistoricalPlayers && currentPlayers.length === 0 && (
-							<span className="text-muted-foreground text-xs italic">No players currently in squad</span>
+								<Icons.ChevronDown className="h-3 w-3" />
+								<span className="text-xs">Scroll to bottom</span>
+							</Button>
 						)}
-					</div>
-				)}
-			</div>
+					</ScrollArea>
+				</div>
 
-			<div className="px-3 py-0.5">
-				<h3 className="text-xs font-medium py-0.5">Squad Events</h3>
-				<ScrollArea ref={scrollAreaRef} className="h-75">
-					<div ref={contentRef} className="flex flex-col gap-0.5 min-h-0 w-full max-w-175">
-						{isPending && allEvents.length === 0 && (
-							<div className="flex items-center justify-center py-6">
-								<Spinner className="size-5" />
-							</div>
+				<Separator orientation="vertical" />
+
+				<div className="w-36 shrink-0 px-2 py-0.5">
+					<div className="flex gap-0 mb-1.5 mt-0.5 border-b border-border/50">
+						{!isDisbanded && (
+							<button
+								type="button"
+								className={`text-[10px] px-1.5 py-0.5 -mb-px border-b transition-colors ${
+									!showHistoricalPlayers
+										? 'border-foreground text-foreground'
+										: 'border-transparent text-muted-foreground hover:text-foreground'
+								}`}
+								onClick={() => setShowHistoricalPlayers(false)}
+							>
+								Current ({currentPlayers.length})
+							</button>
 						)}
-						{allEvents.map(e => <ServerEvent key={e.id} event={e} />)}
-					</div>
-					<div ref={bottomRef} />
-					{showScrollButton && (
-						<Button
-							onClick={() => scrollToBottom()}
-							variant="secondary"
-							className="absolute bottom-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center z-10 bg-opacity-20! rounded-none backdrop-blur-sm"
-							title="Scroll to bottom"
+						<button
+							type="button"
+							className={`text-[10px] px-1.5 py-0.5 -mb-px border-b transition-colors ${
+								showHistoricalPlayers
+									? 'border-foreground text-foreground'
+									: 'border-transparent text-muted-foreground hover:text-foreground'
+							}`}
+							onClick={() => setShowHistoricalPlayers(true)}
 						>
-							<Icons.ChevronDown className="h-3 w-3" />
-							<span className="text-xs">Scroll to bottom</span>
-						</Button>
-					)}
-				</ScrollArea>
+							All{isDisbanded ? ' Members' : ''} ({historicalPlayers.length})
+						</button>
+					</div>
+					<div className="flex flex-col gap-1">
+						{(showHistoricalPlayers ? historicalPlayers : [...currentPlayers].sort((a, b) => Number(b.isLeader) - Number(a.isLeader))).map(
+							player => (
+								<PlayerDisplay
+									key={SM.PlayerIds.getPlayerId(player.ids)}
+									className="text-xs"
+									player={player}
+									matchId={currentMatch?.historyEntryId ?? 0}
+								/>
+							),
+						)}
+						{!showHistoricalPlayers && currentPlayers.length === 0 && (
+							<span className="text-muted-foreground text-xs italic">No players</span>
+						)}
+					</div>
+				</div>
 			</div>
 		</div>
 	)
