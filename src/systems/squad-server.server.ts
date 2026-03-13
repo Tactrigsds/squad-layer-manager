@@ -1309,6 +1309,13 @@ function* generateSyntheticEvents(
 					uniqueId: prevSquadUnique.uniqueId,
 					...base,
 				} satisfies SE.PlayerLeftSquad
+			} else {
+				log.info(
+					'Player %s left squad, but no created squad found (squadId=%s teamId=%s)',
+					SM.PlayerIds.prettyPrint(player.ids),
+					prev.squadId,
+					prev.teamId,
+				)
 			}
 		}
 
@@ -1332,6 +1339,13 @@ function* generateSyntheticEvents(
 					player: SM.PlayerIds.getPlayerId(player.ids),
 					...base,
 				} satisfies SE.PlayerPromotedToLeader
+			} else {
+				log.info(
+					'Player %s promoted to leader, but no created squad found (squadId=%s teamId=%s)',
+					SM.PlayerIds.prettyPrint(player.ids),
+					player.squadId,
+					player.teamId,
+				)
 			}
 		}
 
@@ -1353,8 +1367,15 @@ function* generateSyntheticEvents(
 					ctx.server.state.createdSquads.push(uniqueSquad)
 
 					yield event
+				} else {
+					log.info(
+						'Player %s created new squad but it already exists in createdSquads (squadId=%s teamId=%s)',
+						SM.PlayerIds.prettyPrint(player.ids),
+						player.squadId,
+						player.teamId,
+					)
 				}
-			} else {
+			} else if (squad) {
 				const joinedSquad = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, player))
 				if (joinedSquad) {
 					yield {
@@ -1364,7 +1385,20 @@ function* generateSyntheticEvents(
 						uniqueId: joinedSquad.uniqueId,
 						...base,
 					} satisfies SE.PlayerJoinedSquad
+				} else {
+					log.info(
+						'Player %s joined squad, but no created squad found for %s',
+						SM.PlayerIds.prettyPrint(player.ids),
+						SM.Squads.printKey(squad),
+					)
 				}
+			} else {
+				log.info(
+					'Player %s squad changed but no squad found (squadId=%s teamId=%s)',
+					SM.PlayerIds.prettyPrint(player.ids),
+					player.squadId,
+					player.teamId,
+				)
 			}
 		}
 
@@ -1395,6 +1429,12 @@ function* generateSyntheticEvents(
 				uniqueId: disbandedUnique.uniqueId,
 				...base,
 			} satisfies SE.SquadDisbanded
+		} else {
+			log.info(
+				'Squad disbanded but no created squad found (squadId=%s teamId=%s)',
+				prevSquad.squadId,
+				prevSquad.teamId,
+			)
 		}
 	}
 
@@ -1402,7 +1442,14 @@ function* generateSyntheticEvents(
 		const prevSquad = prevSquads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
 		const createdSquad = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
 		type Details = SE.SquadDetailsChanged['details']
-		if (!createdSquad) continue
+		if (!createdSquad) {
+			log.info(
+				'Squad exists in current state but not in createdSquads (squadId=%s teamId=%s)',
+				squad.squadId,
+				squad.teamId,
+			)
+			continue
+		}
 		const changedDetails: Details = {}
 
 		if (!prevSquad) {
