@@ -388,28 +388,6 @@ export function QueuePanelContent() {
 					<span className="flex flex-col gap-0.5">
 						<span className="flex items-center space-x-1">
 							<CardTitle>Up Next</CardTitle>
-							{
-								/*<Toggle
-							pressed={isEditing}
-							onPressedChange={setEditing}
-							aria-label="Toggle bookmark"
-							size="sm"
-						>
-							{isEditing
-								? (
-									<>
-										<Icons.Check className="ml-1" />
-										<span>Finished</span>
-									</>
-								)
-								: (
-									<>
-										<Icons.Edit className="ml-1" />
-										<span>Start Editing</span>
-									</>
-								)}
-						</Toggle>*/
-							}
 							{isModified && (
 								<CardDescription
 									data-limitreached={queueLength >= (maxQueueSize ?? Infinity)}
