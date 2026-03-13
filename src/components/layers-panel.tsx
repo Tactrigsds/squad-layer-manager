@@ -295,9 +295,9 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					</div>
 					<PermissionDeniedTooltip
 						denied={startEditingDenied}
-						triggerClassName="col-start-2 row-start-1 invisible group-data-[status=idle]:visible"
 					>
 						<Button
+							className="col-start-2 row-start-1 invisible group-data-[status=idle]:visible"
 							variant="outline"
 							disabled={!!startEditingDenied}
 							onClick={() => setEditing(true)}
