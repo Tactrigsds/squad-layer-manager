@@ -284,7 +284,6 @@ export const setup = C.spanOp('setup', { module }, async () => {
 
 	// -------- webpage serving --------
 	async function getHtmlResponse(req: FastifyRequest, res: FastifyReply) {
-		console.log('HTML RESPONSE')
 		const ctx = { ...getAuthedCtx(req), res }
 		for (const [key, value] of Object.entries(BASE_HEADERS)) {
 			res.header(key, value)
