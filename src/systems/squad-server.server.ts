@@ -1345,28 +1345,30 @@ function* generateSyntheticEvents(
 		) {
 			const squad = squads.find(s => SM.Squads.idsEqual(s, player))
 			const isNewSquad = !prevSquads.find(s => SM.Squads.idsEqual(s, player))
-			// if we violently thrash squad creations/leaves then we can maybe break this but that's unlikely
-			if (isNewSquad && squad) {
-				if (!ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, player))) {
-					const uniqueSquad: SM.UniqueSquad = { ...squad, uniqueId: squadId() }
-					const event: SE.SquadCreated = {
-						type: 'SQUAD_CREATED',
-						id: eventId(),
-						squad: uniqueSquad,
-						...base,
-					}
-					ctx.server.state.createdSquads.push(uniqueSquad)
-
-					yield event
+			let createdSquad = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, player))
+			if (isNewSquad && squad && !createdSquad) {
+				const uniqueSquad: SM.UniqueSquad = { ...squad, uniqueId: squadId() }
+				const event: SE.SquadCreated = {
+					type: 'SQUAD_CREATED',
+					id: eventId(),
+					squad: uniqueSquad,
+					...base,
 				}
-			} else if (squad) {
-				const joinedSquad = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, player))
-				if (joinedSquad) {
+				ctx.server.state.createdSquads.push(uniqueSquad)
+				createdSquad = uniqueSquad
+
+				yield event
+			}
+
+			if (squad) {
+				if (createdSquad && squad.creator === SM.PlayerIds.getPlayerId(player.ids)) {
+					// SQUAD_CREATED will handle this case
+				} else if (createdSquad) {
 					yield {
 						type: 'PLAYER_JOINED_SQUAD',
 						id: eventId(),
 						player: SM.PlayerIds.getPlayerId(player.ids),
-						uniqueId: joinedSquad.uniqueId,
+						uniqueId: createdSquad.uniqueId,
 						...base,
 					} satisfies SE.PlayerJoinedSquad
 				} else {
@@ -1413,7 +1415,6 @@ function* generateSyntheticEvents(
 				uniqueId: disbandedUnique.uniqueId,
 				...base,
 			} satisfies SE.SquadDisbanded
-			ctx.server.state.createdSquads = ctx.server.state.createdSquads.filter(s => s.uniqueId !== disbandedUnique.uniqueId)
 		} else {
 			log.error(
 				'Squad disbanded but no created squad found (squadId=%s teamId=%s)',
@@ -1422,6 +1423,8 @@ function* generateSyntheticEvents(
 			)
 		}
 	}
+
+	ctx.server.state.createdSquads = ctx.server.state.createdSquads.filter(s => !disbandedSquads.some(d => SM.Squads.idsEqual(s, d)))
 
 	for (const squad of squads) {
 		const prevSquad = prevSquads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
@@ -1456,8 +1459,6 @@ function* generateSyntheticEvents(
 			} satisfies SE.SquadDetailsChanged
 		}
 	}
-
-	ctx.server.state.createdSquads = ctx.server.state.createdSquads.filter(s => !disbandedSquads.some(d => SM.Squads.idsEqual(s, d)))
 }
 
 export async function getServerState(ctx: C.Db & C.ServerId) {
