@@ -1373,6 +1373,7 @@ function* generateSyntheticEvents(
 			}
 		}
 	}
+	ctx.server.state.createdSquads = ctx.server.state.createdSquads.filter(s => !disbandedSquads.has(s.uniqueId))
 
 	for (const player of players) {
 		const playerId = SM.PlayerIds.getPlayerId(player.ids)
