@@ -1,11 +1,10 @@
 import { SquadDisplay } from '@/components/squad-display'
 import { MatchTeamDisplay } from '@/components/teams-display'
-
 import { Checkbox } from '@/components/ui/checkbox'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
-import type * as SM from '@/models/squad.models'
+import * as SM from '@/models/squad.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import { GlobalSettingsStore } from '@/systems/global-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
@@ -31,7 +30,7 @@ function PlayerItem({ player, matchId }: PlayerItemProps) {
 }
 
 interface SquadSectionProps {
-	squad: SM.Squad | null
+	squad: SM.UniqueSquad | null
 	players: SM.Player[]
 	totalCount: number
 	matchId: number
@@ -55,7 +54,7 @@ function SquadSection({ squad, players, totalCount, matchId }: SquadSectionProps
 			</div>
 			<div className="py-0.5">
 				{players.toSorted((a, b) => a.isLeader ? -1 : b.isLeader ? 1 : 0).map((player) => (
-					<PlayerItem key={player.ids.steam} player={player} matchId={matchId} />
+					<PlayerItem key={SM.PlayerIds.getPlayerId(player.ids)} player={player} matchId={matchId} />
 				))}
 			</div>
 		</div>
@@ -64,7 +63,7 @@ function SquadSection({ squad, players, totalCount, matchId }: SquadSectionProps
 
 interface TeamSectionProps {
 	teamId: SM.TeamId
-	squads: SM.Squad[]
+	squads: SM.UniqueSquad[]
 	players: SM.Player[]
 	allPlayers: SM.Player[]
 	matchId: number
@@ -100,7 +99,7 @@ function TeamSection({ teamId, squads, players, allPlayers, matchId }: TeamSecti
 								const totalSquadCount = allTeamPlayers.filter(p => p.squadId === squad.squadId).length
 								return (
 									<SquadSection
-										key={squad.squadId}
+										key={squad.uniqueId}
 										squad={squad}
 										players={squadPlayers}
 										totalCount={totalSquadCount}
@@ -139,7 +138,7 @@ function TeamUnassignedSection({ players, matchId }: TeamUnassignedSectionProps)
 				<span className="text-xs text-muted-foreground whitespace-nowrap">({players.length})</span>
 			</CollapsibleTrigger>
 			<CollapsibleContent className="pt-2">
-				{players.map((player) => <PlayerItem key={player.ids.username} player={player} matchId={matchId} />)}
+				{players.map((player) => <PlayerItem key={SM.PlayerIds.getPlayerId(player.ids)} player={player} matchId={matchId} />)}
 			</CollapsibleContent>
 		</Collapsible>
 	)

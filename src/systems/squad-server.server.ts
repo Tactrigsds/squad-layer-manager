@@ -106,7 +106,7 @@ type EphemeralState = {
 	connected: SM.PlayerIds.Type[]
 	pendingEventState: PendingEvents.State
 
-	createdSquads: SM.UniqueSquad[]
+	createdSquads: (SM.Squads.Key & { creator: SM.PlayerId; uniqueId: number })[]
 
 	// constains mostly events from the current match. however don't assume this and filter for the current match whenever accessing
 	eventBuffer: SE.Event[]
@@ -615,7 +615,7 @@ function setupResolveHistoryConflicts(ctx: C.ServerId & C.Rcon) {
 					const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 					const event: SE.RconDisconnected = {
 						type: 'RCON_DISCONNECTED',
-						id: eventId(),
+						id: newEventId(),
 						time: Date.now(),
 						matchId: currentMatch.historyEntryId,
 					}
@@ -643,7 +643,7 @@ function setupResolveHistoryConflicts(ctx: C.ServerId & C.Rcon) {
 
 			events.push({
 				type: 'RCON_CONNECTED',
-				id: eventId(),
+				id: newEventId(),
 				reconnected: !firstConnection,
 				...base,
 			})
@@ -651,14 +651,14 @@ function setupResolveHistoryConflicts(ctx: C.ServerId & C.Rcon) {
 			if (pushedNewMatch) {
 				events.push({
 					type: 'NEW_GAME',
-					id: eventId(),
+					id: newEventId(),
 					layerId: currentMatch.layerId,
 					source: firstConnection ? 'slm-started' : 'rcon-reconnected',
 					...base,
 				})
 			} else {
 				events.push({
-					id: eventId(),
+					id: newEventId(),
 					type: 'RESET',
 					source: firstConnection ? 'slm-started' : 'rcon-reconnected',
 					...base,
@@ -876,7 +876,7 @@ const processLogEvent = C.spanOp('processLogEvent', { module, levels: { event: '
 
 			event = {
 				type: 'ROUND_ENDED',
-				id: eventId(),
+				id: newEventId(),
 				...base,
 			}
 			break
@@ -890,7 +890,7 @@ const processLogEvent = C.spanOp('processLogEvent', { module, levels: { event: '
 			server.state.nextSetLayerId = layer.id
 			event = {
 				type: 'MAP_SET',
-				id: eventId(),
+				id: newEventId(),
 				...base,
 				layerId: layer.id,
 			}
@@ -947,7 +947,7 @@ const processLogEvent = C.spanOp('processLogEvent', { module, levels: { event: '
 				const uniqueTeams = resetTeamState(ctx, teams, true)
 				event = {
 					type: 'NEW_GAME',
-					id: eventId(),
+					id: newEventId(),
 					layerId: newLayerId,
 					source: 'new-game-detected',
 					state: uniqueTeams,
@@ -991,7 +991,7 @@ const processLogEvent = C.spanOp('processLogEvent', { module, levels: { event: '
 			// we don't need to process the pending events here
 
 			event = {
-				id: eventId(),
+				id: newEventId(),
 				type: 'PLAYER_DISCONNECTED',
 				player: SM.PlayerIds.getPlayerId(player.ids),
 				...base,
@@ -1001,7 +1001,7 @@ const processLogEvent = C.spanOp('processLogEvent', { module, levels: { event: '
 
 		case 'ADMIN_BROADCAST': {
 			event = {
-				id: eventId(),
+				id: newEventId(),
 				type: 'ADMIN_BROADCAST',
 				message: logEvent.message,
 				from: logEvent.from,
@@ -1030,7 +1030,7 @@ const processLogEvent = C.spanOp('processLogEvent', { module, levels: { event: '
 			server.state.kickingPlayerEvents.delete(logEvent.chainID)
 
 			event = {
-				id: eventId(),
+				id: newEventId(),
 				type: 'PLAYER_KICKED',
 				player: SM.PlayerIds.getPlayerId(logEvent.playerIds),
 				reason: kickingEvent?.reason,
@@ -1111,7 +1111,7 @@ export const processRconEvent = C.spanOp('processRconEvent', { module }, async (
 
 			emittedEvent = {
 				type: 'CHAT_MESSAGE',
-				id: eventId(),
+				id: newEventId(),
 				message: event.message,
 				player: SM.PlayerIds.getPlayerId(event.playerIds),
 				channel,
@@ -1142,20 +1142,37 @@ export const processRconEvent = C.spanOp('processRconEvent', { module }, async (
 				}
 			}
 
-			const squad: SM.UniqueSquad = {
+			const prevCreatedSquad = ctx.server.state.createdSquads.find(s =>
+				SM.Squads.idsEqual(s, { squadId: event.squadId, teamId }) && s.creator === SM.PlayerIds.getPlayerId(event.creatorIds)
+			)
+			if (prevCreatedSquad) {
+				log.warn(
+					'Squad %s(%s) with creator %s was created previously to receiving SQUAD_CREATED RCON event, skipping',
+					SM.Squads.printKey(prevCreatedSquad),
+					prevCreatedSquad.uniqueId,
+					prevCreatedSquad.creator,
+				)
+				break
+			}
+
+			const key = {
 				teamId,
 				squadId: event.squadId,
 				creator: SM.PlayerIds.getPlayerId(event.creatorIds),
+				uniqueId: newSquadId(),
+			}
+			ctx.server.state.createdSquads.push(key)
+
+			const squad = {
+				...key,
 				squadName: event.squadName,
-				uniqueId: squadId(),
 				// will be updated later if incorrect
 				locked: false,
 			}
-			ctx.server.state.createdSquads.push(squad)
 
 			emittedEvent = {
 				type: 'SQUAD_CREATED',
-				id: eventId(),
+				id: newEventId(),
 				squad,
 
 				...base,
@@ -1171,7 +1188,7 @@ export const processRconEvent = C.spanOp('processRconEvent', { module }, async (
 			}
 			emittedEvent = {
 				type: 'SQUAD_RENAMED',
-				id: eventId(),
+				id: newEventId(),
 				uniqueId: squad.uniqueId,
 				oldSquadName: event.oldSquadName,
 				newSquadName: event.newSquadName,
@@ -1183,7 +1200,7 @@ export const processRconEvent = C.spanOp('processRconEvent', { module }, async (
 		case 'PLAYER_BANNED': {
 			emittedEvent = {
 				type: event.type,
-				id: eventId(),
+				id: newEventId(),
 				interval: event.interval,
 				player: SM.PlayerIds.getPlayerId(event.playerIds),
 				...base,
@@ -1198,7 +1215,7 @@ export const processRconEvent = C.spanOp('processRconEvent', { module }, async (
 			}
 			emittedEvent = {
 				type: event.type,
-				id: eventId(),
+				id: newEventId(),
 				reason: event.reason,
 				player: SM.PlayerIds.getPlayerId(player.ids),
 				...base,
@@ -1208,7 +1225,7 @@ export const processRconEvent = C.spanOp('processRconEvent', { module }, async (
 		case 'POSSESSED_ADMIN_CAMERA': {
 			emittedEvent = {
 				type: event.type,
-				id: eventId(),
+				id: newEventId(),
 				player: SM.PlayerIds.getPlayerId(event.playerIds),
 				...base,
 			}
@@ -1217,7 +1234,7 @@ export const processRconEvent = C.spanOp('processRconEvent', { module }, async (
 		case 'UNPOSSESSED_ADMIN_CAMERA': {
 			emittedEvent = {
 				type: event.type,
-				id: eventId(),
+				id: newEventId(),
 				player: SM.PlayerIds.getPlayerId(event.playerIds),
 				...base,
 			}
@@ -1283,118 +1300,158 @@ function* generateSyntheticEvents(
 	matchId: number,
 ): Generator<SE.Event> {
 	const base = { time, matchId }
-	const { players, squads } = teams
-	const { players: prevPlayers, squads: prevSquads } = prevTeams
+	const { players } = teams
+	const { players: prevPlayers } = prevTeams
+
+	const createdSquads = new Set<number>()
+	const disbandedSquads = new Set<number>()
+	const uniqueSquads: SM.UniqueSquad[] = []
+	const prevUniqueSquads: SM.UniqueSquad[] = []
+	{
+		const { squads } = teams
+		const { squads: prevSquads } = prevTeams
+
+		for (const prevSquad of prevSquads) {
+			const squadKey = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, prevSquad) && s.creator === prevSquad.creator)
+			if (!squadKey) {
+				log.error('No key found for previous squad (squadId: %s, teamId: %s)', prevSquad.squadId, prevSquad.teamId)
+				continue
+			}
+			prevUniqueSquads.push({ ...squadKey, ...prevSquad })
+		}
+
+		for (const squad of squads) {
+			const prevSquad = prevSquads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
+			let squadKey = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
+			if (!prevSquad) {
+				if (!squadKey) {
+					squadKey = {
+						teamId: squad.teamId,
+						squadId: squad.squadId,
+						creator: squad.creator,
+						uniqueId: newSquadId(),
+					}
+				}
+				createdSquads.add(squadKey.uniqueId)
+			}
+
+			if (!squadKey) {
+				log.error('No key found for previously existing squad (squadId: %s, teamId: %s)', squad.squadId, squad.teamId)
+				continue
+			}
+			const uniqueSquad = { ...squad, uniqueId: squadKey.uniqueId }
+			uniqueSquads.push(uniqueSquad)
+		}
+	}
 
 	for (const player of players) {
-		const prev = SM.PlayerIds.find(prevPlayers, p => p.ids, player.ids)
-		if (!prev) continue
+		const playerId = SM.PlayerIds.getPlayerId(player.ids)
+		const prevPlayer = SM.PlayerIds.find(prevPlayers, p => p.ids, player.ids)
+		const squad = player.squadId && uniqueSquads.find(s => SM.Squads.idsEqual(s, player))
+		const prevSquad = prevPlayer?.squadId && prevUniqueSquads.find(s => SM.Squads.idsEqual(s, prevPlayer))
 
-		if (!SM.Squads.idsEqual(prev, player) && prev.squadId !== null && prev.teamId !== null) {
-			const prevSquadUnique = ctx.server.state.createdSquads.find(s => s.squadId === prev.squadId && s.teamId === prev.teamId)
-			if (prevSquadUnique) {
-				yield {
-					type: 'PLAYER_LEFT_SQUAD',
-					id: eventId(),
-					player: SM.PlayerIds.getPlayerId(player.ids),
-					uniqueId: prevSquadUnique.uniqueId,
-					...base,
-				} satisfies SE.PlayerLeftSquad
-			} else {
-				log.error(
-					'Player %s left squad, but no created squad found (squadId=%s teamId=%s)',
-					SM.PlayerIds.prettyPrint(player.ids),
-					prev.squadId,
-					prev.teamId,
-				)
-			}
-		}
-
-		if (player.teamId !== prev.teamId) {
+		if (prevSquad && (!squad || prevSquad.uniqueId !== squad.uniqueId)) {
 			yield {
-				type: 'PLAYER_CHANGED_TEAM',
-				id: eventId(),
-				newTeamId: player.teamId,
-				player: SM.PlayerIds.getPlayerId(player.ids),
+				id: newEventId(),
+				type: 'PLAYER_LEFT_SQUAD',
+				uniqueId: prevSquad.uniqueId,
+				player: playerId,
 				...base,
-			} satisfies SE.PlayerChangedTeam
+			}
+		}
+	}
+
+	for (const prevSquad of prevUniqueSquads) {
+		const squad = uniqueSquads.find(s => s.uniqueId === prevSquad.uniqueId)
+		if (!squad) {
+			disbandedSquads.add(prevSquad.uniqueId)
+			yield {
+				id: newEventId(),
+				type: 'SQUAD_DISBANDED',
+				uniqueId: prevSquad.uniqueId,
+				...base,
+			}
+		}
+	}
+
+	for (const player of players) {
+		const playerId = SM.PlayerIds.getPlayerId(player.ids)
+		const prevPlayer = SM.PlayerIds.find(prevPlayers, p => p.ids, player.ids)
+		const squad = player.squadId && uniqueSquads.find(s => SM.Squads.idsEqual(s, player))
+
+		const prevSquad = prevPlayer?.squadId && prevUniqueSquads.find(s => SM.Squads.idsEqual(s, prevPlayer))
+
+		if (prevSquad && (!squad || prevSquad.uniqueId !== squad.uniqueId)) {
+			yield {
+				id: newEventId(),
+				type: 'PLAYER_LEFT_SQUAD',
+				uniqueId: prevSquad.uniqueId,
+				player: playerId,
+				...base,
+			}
 		}
 
-		if (player.squadId !== null && player.teamId !== null && SM.Squads.idsEqual(player, prev) && player.isLeader && !prev.isLeader) {
-			const promotedSquad = ctx.server.state.createdSquads.find(s => s.squadId === player.squadId && s.teamId === player.teamId)
-			if (promotedSquad) {
+		if (prevPlayer && player.teamId !== prevPlayer.teamId) {
+			yield {
+				id: newEventId(),
+				type: 'PLAYER_CHANGED_TEAM',
+				player: playerId,
+				newTeamId: player.teamId,
+				...base,
+			}
+		}
+	}
+
+	for (const squad of uniqueSquads) {
+		if (!createdSquads.has(squad.uniqueId)) continue
+		yield {
+			id: newEventId(),
+			type: 'SQUAD_CREATED',
+			squad,
+			...base,
+		}
+	}
+
+	for (const player of players) {
+		const playerId = SM.PlayerIds.getPlayerId(player.ids)
+		const prevPlayer = SM.PlayerIds.find(prevPlayers, p => p.ids, player.ids)
+		const squad = (player.squadId && uniqueSquads.find(s => SM.Squads.idsEqual(s, player))) ?? undefined
+
+		let prevSquad = (player.squadId && prevUniqueSquads.find(s => SM.Squads.idsEqual(s, player))) ?? undefined
+		if (typeof prevSquad === 'number') prevSquad = undefined
+
+		if (squad) {
+			const isNewSquadCreator = !prevSquad && squad?.creator === playerId
+			const hasChangedSquad = squad.uniqueId !== prevSquad?.uniqueId
+
+			if (hasChangedSquad && (prevSquad || !isNewSquadCreator)) {
 				yield {
+					id: newEventId(),
+					type: 'PLAYER_JOINED_SQUAD',
+					uniqueId: squad.uniqueId,
+					player: playerId,
+					...base,
+				}
+			}
+
+			if (player.isLeader && !prevPlayer?.isLeader && !isNewSquadCreator) {
+				yield {
+					id: newEventId(),
 					type: 'PLAYER_PROMOTED_TO_LEADER',
-					uniqueId: promotedSquad.uniqueId,
-					id: eventId(),
-					player: SM.PlayerIds.getPlayerId(player.ids),
+					uniqueId: squad.uniqueId,
+					player: playerId,
 					...base,
-				} satisfies SE.PlayerPromotedToLeader
-			} else {
-				log.error(
-					'Player %s promoted to leader, but no created squad found (squadId=%s teamId=%s)',
-					SM.PlayerIds.prettyPrint(player.ids),
-					player.squadId,
-					player.teamId,
-				)
+				}
 			}
 		}
 
-		if (
-			player.squadId !== null && player.teamId !== null && !SM.Squads.idsEqual(player, prev)
-		) {
-			const squad = squads.find(s => SM.Squads.idsEqual(s, player))
-			const isNewSquad = !prevSquads.find(s => SM.Squads.idsEqual(s, player))
-			let createdSquad = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, player))
-			if (isNewSquad && squad && !createdSquad) {
-				const uniqueSquad: SM.UniqueSquad = { ...squad, uniqueId: squadId() }
-				const event: SE.SquadCreated = {
-					type: 'SQUAD_CREATED',
-					id: eventId(),
-					squad: uniqueSquad,
-					...base,
-				}
-				ctx.server.state.createdSquads.push(uniqueSquad)
-				createdSquad = uniqueSquad
-
-				yield event
-			}
-
-			if (squad) {
-				if (createdSquad && squad.creator === SM.PlayerIds.getPlayerId(player.ids)) {
-					// SQUAD_CREATED will handle this case
-				} else if (createdSquad) {
-					yield {
-						type: 'PLAYER_JOINED_SQUAD',
-						id: eventId(),
-						player: SM.PlayerIds.getPlayerId(player.ids),
-						uniqueId: createdSquad.uniqueId,
-						...base,
-					} satisfies SE.PlayerJoinedSquad
-				} else {
-					log.error(
-						'Player %s joined squad, but no created squad found for %s',
-						SM.PlayerIds.prettyPrint(player.ids),
-						SM.Squads.printKey(squad),
-					)
-				}
-			} else {
-				log.error(
-					'Player %s squad changed but no squad found (squadId=%s teamId=%s)',
-					SM.PlayerIds.prettyPrint(player.ids),
-					player.squadId,
-					player.teamId,
-				)
-			}
-		}
-
-		{
+		if (prevPlayer) {
 			const details = Obj.selectProps(player, SM.PLAYER_DETAILS)
-			const prevDetails = Obj.selectProps(prev, SM.PLAYER_DETAILS)
+			const prevDetails = Obj.selectProps(prevPlayer, SM.PLAYER_DETAILS)
 			if (!Obj.deepEqual(details, prevDetails)) {
 				yield {
 					type: 'PLAYER_DETAILS_CHANGED',
-					id: eventId(),
+					id: newEventId(),
 					player: SM.PlayerIds.getPlayerId(player.ids),
 					details,
 					...base,
@@ -1403,58 +1460,26 @@ function* generateSyntheticEvents(
 		}
 	}
 
-	let disbandedSquads: SM.Squad[] = []
-	for (const prevSquad of prevSquads) {
-		if (squads.some(s => SM.Squads.idsEqual(s, prevSquad))) continue
-		disbandedSquads.push(prevSquad)
-		const disbandedUnique = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, prevSquad))
-		if (disbandedUnique) {
-			yield {
-				id: eventId(),
-				type: 'SQUAD_DISBANDED',
-				uniqueId: disbandedUnique.uniqueId,
-				...base,
-			} satisfies SE.SquadDisbanded
-		} else {
-			log.error(
-				'Squad disbanded but no created squad found (squadId=%s teamId=%s)',
-				prevSquad.squadId,
-				prevSquad.teamId,
-			)
-		}
-	}
-
-	ctx.server.state.createdSquads = ctx.server.state.createdSquads.filter(s => !disbandedSquads.some(d => SM.Squads.idsEqual(s, d)))
-
-	for (const squad of squads) {
-		const prevSquad = prevSquads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
-		const createdSquad = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
-		type Details = SE.SquadDetailsChanged['details']
-		if (!createdSquad) {
-			log.error(
-				'Squad exists in current state but not in createdSquads (squadId=%s teamId=%s)',
-				squad.squadId,
-				squad.teamId,
-			)
-			continue
-		}
+	for (const squad of uniqueSquads) {
+		const prevSquad = prevUniqueSquads.find(s => s.uniqueId === squad.uniqueId)
+		type Details = { locked?: boolean }
 		const changedDetails: Details = {}
-
 		if (!prevSquad) {
-			if (createdSquad.locked !== squad.locked) {
-				changedDetails.locked = squad.locked
+			if (squad.locked) {
+				changedDetails.locked = true
 			}
 		} else {
 			if (prevSquad.locked !== squad.locked) {
 				changedDetails.locked = squad.locked
 			}
 		}
+
 		if (Object.keys(changedDetails).length > 0) {
 			yield {
-				id: eventId(),
+				id: newEventId(),
 				type: 'SQUAD_DETAILS_CHANGED',
 				details: changedDetails,
-				uniqueId: createdSquad.uniqueId,
+				uniqueId: squad.uniqueId,
 				...base,
 			} satisfies SE.SquadDetailsChanged
 		}
@@ -1735,7 +1760,7 @@ namespace PendingEvents {
 					continue
 				}
 				const processed: SE.PlayerConnected = {
-					id: eventId(),
+					id: newEventId(),
 					...event,
 					player,
 				}
@@ -1774,7 +1799,7 @@ namespace PendingEvents {
 					variant = 'normal'
 				}
 				const processed: SE.PlayerDied | SE.PlayerWounded = {
-					id: eventId(),
+					id: newEventId(),
 					type: event.type,
 					victim: SM.PlayerIds.getPlayerId(victim.ids),
 					attacker: SM.PlayerIds.getPlayerId(attacker.ids),
@@ -1804,17 +1829,17 @@ function resetTeamState(ctx: C.SquadServer, { players, squads }: SM.Teams, isNew
 			const existing = server.state.createdSquads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
 			if (existing) return { ...squad, uniqueId: existing.uniqueId }
 		}
-		return { ...squad, uniqueId: squadId() }
+		return { ...squad, uniqueId: newSquadId() }
 	})
 
 	server.state.createdSquads = uniqueSquads
 	return { players, squads: uniqueSquads }
 }
 
-function eventId() {
+function newEventId() {
 	return globalState.serverEventIdCounter.next().value
 }
 
-function squadId() {
+function newSquadId() {
 	return globalState.squadIdCounter.next().value
 }

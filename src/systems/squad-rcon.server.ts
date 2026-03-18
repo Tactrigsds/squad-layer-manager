@@ -240,6 +240,19 @@ const getTeams = C.spanOp(
 		const grouped = SM.Players.groupIntoSquads(players)
 
 		// -------- validate data coherence between players and squads --------
+		//
+		for (const player of players) {
+			if (player.squadId !== null && player.teamId === null) {
+				throw ctx.refetch(
+					`player ${SM.PlayerIds.prettyPrint(player.ids)} is in a squad without a team`,
+				)
+			}
+			if (player.isLeader && player.squadId === null || player.teamId === null) {
+				throw ctx.refetch(
+					`player ${SM.PlayerIds.prettyPrint(player.ids)} is a leader without a squad or team`,
+				)
+			}
+		}
 
 		for (const squad of squads) {
 			const group = grouped.find(group => SM.Squads.idsEqual(squad, group))

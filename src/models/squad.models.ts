@@ -398,6 +398,7 @@ export namespace Squads {
 	// identifies a squad across teams
 	export type Key = { squadId: SquadId; teamId: TeamId }
 	export type PartialKey = { squadId: SquadId | null; teamId: TeamId | null }
+	export type FullKey = Key & { uniqueId: number; creator: PlayerId }
 
 	// returns false if any missing properties
 	export function idsEqual(a: PartialKey, b: PartialKey) {

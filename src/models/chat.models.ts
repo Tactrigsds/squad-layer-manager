@@ -574,6 +574,7 @@ export function interpolateEvent(
 				player: player,
 			}
 		}
+
 		case 'CHAT_MESSAGE': {
 			let player = SM.PlayerIds.find(state.players, p => p.ids, event.player)
 			if (!player) {
