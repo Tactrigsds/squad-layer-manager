@@ -1303,7 +1303,7 @@ function* generateSyntheticEvents(
 	const { players } = teams
 	const { players: prevPlayers } = prevTeams
 
-	const createdSquads = new Set<number>()
+	const missingCreatedSquads = new Set<number>()
 	const disbandedSquads = new Set<number>()
 	const uniqueSquads: SM.UniqueSquad[] = []
 	const prevUniqueSquads: SM.UniqueSquad[] = []
@@ -1331,8 +1331,8 @@ function* generateSyntheticEvents(
 						creator: squad.creator,
 						uniqueId: newSquadId(),
 					}
+					missingCreatedSquads.add(squadKey.uniqueId)
 				}
-				createdSquads.add(squadKey.uniqueId)
 			}
 
 			if (!squadKey) {
@@ -1378,19 +1378,6 @@ function* generateSyntheticEvents(
 	for (const player of players) {
 		const playerId = SM.PlayerIds.getPlayerId(player.ids)
 		const prevPlayer = SM.PlayerIds.find(prevPlayers, p => p.ids, player.ids)
-		const squad = player.squadId && uniqueSquads.find(s => SM.Squads.idsEqual(s, player))
-
-		const prevSquad = prevPlayer?.squadId && prevUniqueSquads.find(s => SM.Squads.idsEqual(s, prevPlayer))
-
-		if (prevSquad && (!squad || prevSquad.uniqueId !== squad.uniqueId)) {
-			yield {
-				id: newEventId(),
-				type: 'PLAYER_LEFT_SQUAD',
-				uniqueId: prevSquad.uniqueId,
-				player: playerId,
-				...base,
-			}
-		}
 
 		if (prevPlayer && player.teamId !== prevPlayer.teamId) {
 			yield {
@@ -1404,7 +1391,7 @@ function* generateSyntheticEvents(
 	}
 
 	for (const squad of uniqueSquads) {
-		if (!createdSquads.has(squad.uniqueId)) continue
+		if (!missingCreatedSquads.has(squad.uniqueId)) continue
 		yield {
 			id: newEventId(),
 			type: 'SQUAD_CREATED',
@@ -1416,16 +1403,16 @@ function* generateSyntheticEvents(
 	for (const player of players) {
 		const playerId = SM.PlayerIds.getPlayerId(player.ids)
 		const prevPlayer = SM.PlayerIds.find(prevPlayers, p => p.ids, player.ids)
-		const squad = (player.squadId && uniqueSquads.find(s => SM.Squads.idsEqual(s, player))) ?? undefined
+		const squad = (player.squadId && uniqueSquads.find(s => SM.Squads.idsEqual(s, player))) || undefined
 
-		let prevSquad = (player.squadId && prevUniqueSquads.find(s => SM.Squads.idsEqual(s, player))) ?? undefined
-		if (typeof prevSquad === 'number') prevSquad = undefined
+		let prevSquad = (prevPlayer?.squadId && prevUniqueSquads.find(s => SM.Squads.idsEqual(s, prevPlayer))) || undefined
 
 		if (squad) {
-			const isNewSquadCreator = !prevSquad && squad?.creator === playerId
 			const hasChangedSquad = squad.uniqueId !== prevSquad?.uniqueId
+			const isSquadNew = !prevUniqueSquads.find(s => s.uniqueId === squad.uniqueId)
+			const isNewSquadCreator = squad.creator === playerId
 
-			if (hasChangedSquad && (prevSquad || !isNewSquadCreator)) {
+			if (hasChangedSquad && (!isSquadNew || !isNewSquadCreator)) {
 				yield {
 					id: newEventId(),
 					type: 'PLAYER_JOINED_SQUAD',

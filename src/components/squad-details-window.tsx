@@ -90,30 +90,6 @@ function SquadDetailsWindow({ uniqueSquadId }: SquadDetailsWindowProps) {
 			?? CHAT.findLastPlayerInstance(allEvents, creatorId))
 		: null
 
-	const historicalPlayers = React.useMemo(() => {
-		const seen = new Map<string, SM.Player>()
-		for (const event of allEvents) {
-			if (event.type === 'NOOP') continue
-			for (const [player] of SE.iterAssocPlayers(event as SE.Event)) {
-				if (typeof player === 'object') {
-					const id = SM.PlayerIds.getPlayerId(player.ids)
-					if (!seen.has(id)) seen.set(id, player)
-				}
-			}
-		}
-		const players = Array.from(seen.values())
-		players.sort((a, b) => {
-			const aIsCreator = SM.PlayerIds.getPlayerId(a.ids) === creatorId
-			const bIsCreator = SM.PlayerIds.getPlayerId(b.ids) === creatorId
-			return Number(bIsCreator) - Number(aIsCreator)
-		})
-		return players
-	}, [allEvents, creatorId])
-
-	const isDisbanded = allEvents.some(e => e.type === 'SQUAD_DISBANDED')
-	const [_showHistoricalPlayers, setShowHistoricalPlayers] = React.useState(false)
-	const showHistoricalPlayers = _showHistoricalPlayers || isDisbanded
-
 	const teamId = (liveSquad?.teamId ?? squad?.teamId) as 1 | 2 | undefined
 	const ingameSquadId = liveSquad?.squadId ?? squad?.ingameSquadId
 	const isDefaultName = !liveSquad || liveSquad.squadName === `Squad ${ingameSquadId}`
@@ -189,46 +165,17 @@ function SquadDetailsWindow({ uniqueSquadId }: SquadDetailsWindowProps) {
 				<Separator orientation="vertical" />
 
 				<div className="w-36 shrink-0 px-2 py-0.5">
-					<div className="flex gap-0 mb-1.5 mt-0.5 border-b border-border/50">
-						{!isDisbanded && (
-							<button
-								type="button"
-								className={`text-[10px] px-1.5 py-0.5 -mb-px border-b transition-colors ${
-									!showHistoricalPlayers
-										? 'border-foreground text-foreground'
-										: 'border-transparent text-muted-foreground hover:text-foreground'
-								}`}
-								onClick={() => setShowHistoricalPlayers(false)}
-							>
-								Current ({currentPlayers.length})
-							</button>
-						)}
-						<button
-							type="button"
-							className={`text-[10px] px-1.5 py-0.5 -mb-px border-b transition-colors ${
-								showHistoricalPlayers
-									? 'border-foreground text-foreground'
-									: 'border-transparent text-muted-foreground hover:text-foreground'
-							}`}
-							onClick={() => setShowHistoricalPlayers(true)}
-						>
-							All{isDisbanded ? ' Members' : ''} ({historicalPlayers.length})
-						</button>
-					</div>
+					<h3 className="text-xs font-medium py-0.5">Players ({currentPlayers.length})</h3>
 					<div className="flex flex-col gap-1">
-						{(showHistoricalPlayers ? historicalPlayers : [...currentPlayers].sort((a, b) => Number(b.isLeader) - Number(a.isLeader))).map(
-							player => (
-								<PlayerDisplay
-									key={SM.PlayerIds.getPlayerId(player.ids)}
-									className="text-xs"
-									player={player}
-									matchId={currentMatch?.historyEntryId ?? 0}
-								/>
-							),
-						)}
-						{!showHistoricalPlayers && currentPlayers.length === 0 && (
-							<span className="text-muted-foreground text-xs italic">No players</span>
-						)}
+						{[...currentPlayers].sort((a, b) => Number(b.isLeader) - Number(a.isLeader)).map(player => (
+							<PlayerDisplay
+								key={SM.PlayerIds.getPlayerId(player.ids)}
+								className="text-xs"
+								player={player}
+								matchId={currentMatch?.historyEntryId ?? 0}
+							/>
+						))}
+						{currentPlayers.length === 0 && <span className="text-muted-foreground text-xs italic">No players</span>}
 					</div>
 				</div>
 			</div>
