@@ -59,7 +59,7 @@ export function initSquadRcon(ctx: C.Rcon & C.AdminList, cleanup: CleanupTasks):
 
 	const teams: SquadRcon['teams'] = new AsyncResource<SM.TeamsRes, C.Rcon & C.AdminList>(
 		'teams',
-		(ctx) => getTeams(ctx),
+		(ctx) => fetchTeams(ctx),
 		module,
 		{
 			defaultTTL: 5000,
@@ -226,21 +226,18 @@ async function fetchSquads(ctx: C.Rcon) {
 	}
 }
 
-const getTeams = C.spanOp(
-	'fetch-teams',
-	{ module },
-	async (ctx: C.Rcon & C.AdminList & C.AsyncResourceInvocation): Promise<SM.TeamsRes> => {
-		const [playersRes, squadsRes] = await Promise.all([fetchPlayers(ctx), fetchSquads(ctx)])
+async function fetchTeams(ctx: C.Rcon & C.AdminList & C.AsyncResourceInvocation): Promise<SM.TeamsRes> {
+	const [playersRes, squadsRes] = await Promise.all([fetchPlayers(ctx), fetchSquads(ctx)])
 
-		if (playersRes.code === 'err:rcon') return playersRes
-		if (squadsRes.code === 'err:rcon') return squadsRes
-		const players = playersRes.players
-		const squads = squadsRes.squads
+	if (playersRes.code === 'err:rcon') return playersRes
+	if (squadsRes.code === 'err:rcon') return squadsRes
+	const players = playersRes.players
+	const squads = squadsRes.squads
 
-		const grouped = SM.Players.groupIntoSquads(players)
+	const grouped = SM.Players.groupIntoSquads(players)
 
-		// -------- validate data coherence between players and squads --------
-		//
+	// -------- validate data coherence between players and squads --------
+	try {
 		for (const player of players) {
 			if (player.squadId !== null && player.teamId === null) {
 				throw ctx.refetch(
@@ -248,9 +245,8 @@ const getTeams = C.spanOp(
 				)
 			}
 			if (player.isLeader && player.squadId === null || player.teamId === null) {
-				throw ctx.refetch(
-					`player ${SM.PlayerIds.prettyPrint(player.ids)} is a leader without a squad or team`,
-				)
+				player.isLeader = false
+				log.error(`player ${SM.PlayerIds.prettyPrint(player.ids)} is a leader without a squad or team, setting isLeader to false`)
 			}
 		}
 
@@ -280,14 +276,18 @@ const getTeams = C.spanOp(
 				)
 			}
 		}
+	} catch (e) {
+		log.error(e, 'Received error while validating players and squads.')
+		log.error({ playersRes, squadsRes }, 'Parsed responses:')
+		throw e
+	}
 
-		return {
-			code: 'ok',
-			players,
-			squads,
-		}
-	},
-)
+	return {
+		code: 'ok',
+		players,
+		squads,
+	}
+}
 
 export async function broadcast(ctx: C.Rcon, message: string) {
 	let messages = [message]
