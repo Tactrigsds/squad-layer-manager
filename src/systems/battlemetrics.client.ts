@@ -28,7 +28,7 @@ export const [usePlayerBmData, playerBmData$] = ReactRx.bind<BM.PublicPlayerBmDa
 )
 
 export function useOrgFlags(): BM.PlayerFlag[] | undefined {
-	const { data } = useQuery(RPC.orpc.battlemetrics.listOrgFlags.queryOptions())
+	const { data } = useQuery(RPC.orpc.battlemetrics.listOrgFlags.queryOptions({ staleTime: Infinity }))
 	return data
 }
 

@@ -37,7 +37,9 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 	loadAsync: async ({ props }) => {
 		await Promise.all([
 			RPC.queryClient.fetchQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { playerId: props.playerId } })),
-			RPC.queryClient.fetchQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId: props.playerId } })),
+			RPC.queryClient.fetchQuery(
+				RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId: props.playerId }, staleTime: Infinity }),
+			),
 		])
 	},
 })
@@ -382,7 +384,7 @@ interface EditFlagsButtonProps {
 
 function EditFlagsButton({ playerId, currentFlagIds, zIndex }: EditFlagsButtonProps) {
 	const denied = RbacClient.usePermsCheck(RBAC.perm('battlemetrics:write-flags'))
-	const { data: orgFlags } = useQuery(RPC.orpc.battlemetrics.listOrgFlags.queryOptions())
+	const { data: orgFlags } = useQuery(RPC.orpc.battlemetrics.listOrgFlags.queryOptions({ staleTime: Infinity }))
 	const mutation = useMutation(RPC.orpc.battlemetrics.updatePlayerFlags.mutationOptions())
 
 	const flagsToRender = React.useMemo(() => {
