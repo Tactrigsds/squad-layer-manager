@@ -210,7 +210,7 @@ async function commitChanges(
 	void sendUpdate(ctx, {
 		code: 'commit-started',
 	})
-	await DB.runTransaction(ctx, async (ctx) => {
+	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 		let serverState = await SquadServer.getServerState(ctx)
 		if (serverState.layerQueueSeqId !== ctx.sharedList.queueSeqId) {
 			return {

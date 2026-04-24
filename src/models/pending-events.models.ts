@@ -150,561 +150,572 @@ export async function* process(
 	const processedEventIds = new Set<number>()
 	loop: for (let i = 0; i < toProcess.length; i++) {
 		const pendingEvent = toProcess[i]
-		if (pendingEvent.type === 'RCON_CONNECTED' && state.syncState.type !== 'rolling') {
-			const { match, isNewMatch } = await state.hooks.onNewGameDuringSync(
-				pendingEvent.currentLayerId,
-				pendingEvent.time,
-			)
-			state.syncState = { type: 'syncing', isNewMatch }
-			state.currentMatch = {
-				historyEntryId: match.historyEntryId,
-				layerId: match.layerId,
+		try {
+			if (pendingEvent.time < time - 45_000) {
+				state.log.warn('Skipping event %s (%s) as it is stale (%s)', pendingEvent.type, pendingEvent.id, pendingEvent.time)
+				processedEventIds.add(pendingEvent.id)
+				continue
 			}
 
-			state.isFirstConnection = state.isFirstConnection === null
-			yield {
-				type: 'RCON_CONNECTED',
-				matchId: state.currentMatch.historyEntryId,
-				time: pendingEvent.time,
-				reconnected: !state.isFirstConnection,
-				id: pendingEvent.id,
-			}
-
-			if (
-				pendingEvent.nextLayerId !== null && (state.nextLayerId === null || !L.layersEqual(state.nextLayerId, pendingEvent.nextLayerId))
-			) {
-				state.nextLayerId = pendingEvent.nextLayerId
-				yield {
-					type: 'MAP_SET',
-					layerId: state.nextLayerId,
-					id: Gen.next(state.counters.eventId),
-					matchId: state.currentMatch.historyEntryId,
-					time: Date.now(),
-				}
-			}
-		}
-		if (pendingEvent.type === 'RCON_DISCONNECTED') {
-			if (state.syncState.type !== 'rolling') {
-				state.syncState = { type: 'desynced' }
-			}
-			state.currTeams = null
-			if (state.currentMatch !== 'PENDING') {
-				yield {
-					type: 'RCON_DISCONNECTED',
-					time: pendingEvent.time,
-					id: pendingEvent.id,
-					matchId: state.currentMatch.historyEntryId,
-				}
-			}
-		}
-
-		if (pendingEvent.type === 'TEAMS_UPDATE' && state.syncState.type === 'syncing') {
-			if (state.currentMatch === 'PENDING') throw new Error('Unexpected missing current match')
-			state.currTeams = initUniqueTeams(state, pendingEvent.teams)
-
-			if (state.syncState.isNewMatch) {
-				yield {
-					type: 'NEW_GAME',
-					id: Gen.next(state.counters.eventId),
-					layerId: state.currentMatch.layerId,
-					matchId: state.currentMatch.historyEntryId,
-					source: state.isFirstConnection ? 'slm-started' : 'rcon-reconnected',
-					state: Obj.deepClone(state.currTeams),
-					time: pendingEvent.time,
-				}
-			} else {
-				yield {
-					type: 'RESET',
-					matchId: state.currentMatch.historyEntryId,
-					state: Obj.deepClone(state.currTeams),
-					time: pendingEvent.time,
-					id: Gen.next(state.counters.eventId),
-					source: state.isFirstConnection ? 'slm-started' : 'rcon-reconnected',
-				}
-			}
-			state.syncState = { type: 'synced' }
-		}
-
-		if (
-			pendingEvent.type === 'TEAMS_UPDATE' && state.syncState.type === 'rolling' && !!state.syncState.newGameEvent
-			&& state.currentMatch !== 'PENDING'
-		) {
-			state.currTeams = initUniqueTeams(state, pendingEvent.teams)
-			const event = state.syncState.newGameEvent
-			yield {
-				type: 'NEW_GAME',
-				id: event.id,
-				time: event.time,
-				matchId: state.currentMatch.historyEntryId,
-				layerId: state.currentMatch.layerId,
-				state: Obj.deepClone(state.currTeams),
-				source: 'new-game-detected',
-			}
-			state.syncState = { type: 'synced' }
-		}
-
-		if (pendingEvent.type === 'NEW_GAME') {
-			if (pendingEvent.layerClassname === 'TransitionMap') {
-				state.syncState = { type: 'rolling' }
-				state.currTeams = null
-				state.expectedNewLayerId = state.nextLayerId
-			} else {
-				state.syncState = { type: 'rolling', newGameEvent: pendingEvent }
-
-				let newLayerId = state.expectedNewLayerId
-				if (!newLayerId) throw new Error('expectedNewLayerId is null')
-				if (!L.layerMatchesIngameLayerClassname(newLayerId, pendingEvent.layerClassname)) {
-					throw new Error(`layerClassname mismatch: expected ${newLayerId}, got ${pendingEvent.layerClassname}`)
-				}
-
-				const { match, nextLayerId } = await state.hooks.onNewGameDuringRoll(newLayerId, pendingEvent.time)
+			if (pendingEvent.type === 'RCON_CONNECTED' && state.syncState.type !== 'rolling') {
+				const { match, isNewMatch } = await state.hooks.onNewGameDuringSync(
+					pendingEvent.currentLayerId,
+					pendingEvent.time,
+				)
+				state.syncState = { type: 'syncing', isNewMatch }
 				state.currentMatch = {
 					historyEntryId: match.historyEntryId,
 					layerId: match.layerId,
 				}
-				state.expectedNewLayerId = null
-				if (nextLayerId !== null) {
-					// we don't emit a MAP_SET event here as we've assumd the caller has already handled this logic in onNewGameDuringRoll
-					state.nextLayerId = nextLayerId
+
+				state.isFirstConnection = state.isFirstConnection === null
+				yield {
+					type: 'RCON_CONNECTED',
+					matchId: state.currentMatch.historyEntryId,
+					time: pendingEvent.time,
+					reconnected: !state.isFirstConnection,
+					id: pendingEvent.id,
+				}
+
+				if (
+					pendingEvent.nextLayerId !== null && (state.nextLayerId === null || !L.layersEqual(state.nextLayerId, pendingEvent.nextLayerId))
+				) {
+					state.nextLayerId = pendingEvent.nextLayerId
+					yield {
+						type: 'MAP_SET',
+						layerId: state.nextLayerId,
+						id: Gen.next(state.counters.eventId),
+						matchId: state.currentMatch.historyEntryId,
+						time: Date.now(),
+					}
 				}
 			}
-		}
+			if (pendingEvent.type === 'RCON_DISCONNECTED') {
+				if (state.syncState.type !== 'rolling') {
+					state.syncState = { type: 'desynced' }
+				}
+				state.currTeams = null
+				if (state.currentMatch !== 'PENDING') {
+					yield {
+						type: 'RCON_DISCONNECTED',
+						time: pendingEvent.time,
+						id: pendingEvent.id,
+						matchId: state.currentMatch.historyEntryId,
+					}
+				}
+			}
 
-		if (state.syncState.type !== 'synced' || state.currentMatch === 'PENDING') {
-			processedEventIds.add(pendingEvent.id)
-			continue loop
-		}
-		if (!state.currTeams) throw new Error('currTeams is null when synced')
+			if (pendingEvent.type === 'TEAMS_UPDATE' && state.syncState.type === 'syncing') {
+				if (state.currentMatch === 'PENDING') throw new Error('Unexpected missing current match')
+				state.currTeams = initUniqueTeams(state, pendingEvent.teams)
 
-		const base = {
-			id: pendingEvent.id,
-			matchId: state.currentMatch.historyEntryId,
-			time: pendingEvent.time,
-		}
+				if (state.syncState.isNewMatch) {
+					yield {
+						type: 'NEW_GAME',
+						id: Gen.next(state.counters.eventId),
+						layerId: state.currentMatch.layerId,
+						matchId: state.currentMatch.historyEntryId,
+						source: state.isFirstConnection ? 'slm-started' : 'rcon-reconnected',
+						state: Obj.deepClone(state.currTeams),
+						time: pendingEvent.time,
+					}
+				} else {
+					yield {
+						type: 'RESET',
+						matchId: state.currentMatch.historyEntryId,
+						state: Obj.deepClone(state.currTeams),
+						time: pendingEvent.time,
+						id: Gen.next(state.counters.eventId),
+						source: state.isFirstConnection ? 'slm-started' : 'rcon-reconnected',
+					}
+				}
+				state.syncState = { type: 'synced' }
+			}
 
-		switch (pendingEvent.type) {
-			case 'MAP_SET': {
-				const layer = L.parseRawLayerText(`${pendingEvent.nextLayer} ${pendingEvent.nextFactions ?? ''}`.trim())
-				if (!layer) {
-					log.error(`Failed to parse layer text: ${pendingEvent.nextLayer} ${pendingEvent.nextFactions ?? ''}`)
+			if (
+				pendingEvent.type === 'TEAMS_UPDATE' && state.syncState.type === 'rolling' && !!state.syncState.newGameEvent
+				&& state.currentMatch !== 'PENDING'
+			) {
+				state.currTeams = initUniqueTeams(state, pendingEvent.teams)
+				const event = state.syncState.newGameEvent
+				yield {
+					type: 'NEW_GAME',
+					id: event.id,
+					time: event.time,
+					matchId: state.currentMatch.historyEntryId,
+					layerId: state.currentMatch.layerId,
+					state: Obj.deepClone(state.currTeams),
+					source: 'new-game-detected',
+				}
+				state.syncState = { type: 'synced' }
+			}
+
+			if (pendingEvent.type === 'NEW_GAME') {
+				if (pendingEvent.layerClassname === 'TransitionMap') {
+					state.syncState = { type: 'rolling' }
+					state.currTeams = null
+					state.expectedNewLayerId = state.nextLayerId
+				} else {
+					state.syncState = { type: 'rolling', newGameEvent: pendingEvent }
+
+					let newLayerId = state.expectedNewLayerId
+					if (!newLayerId) throw new Error('expectedNewLayerId is null')
+					if (!L.layerMatchesIngameLayerClassname(newLayerId, pendingEvent.layerClassname)) {
+						throw new Error(`layerClassname mismatch: expected ${newLayerId}, got ${pendingEvent.layerClassname}`)
+					}
+
+					const { match, nextLayerId } = await state.hooks.onNewGameDuringRoll(newLayerId, pendingEvent.time)
+					state.currentMatch = {
+						historyEntryId: match.historyEntryId,
+						layerId: match.layerId,
+					}
+					state.expectedNewLayerId = null
+					if (nextLayerId !== null) {
+						// we don't emit a MAP_SET event here as we've assumd the caller has already handled this logic in onNewGameDuringRoll
+						state.nextLayerId = nextLayerId
+					}
+				}
+			}
+
+			if (state.syncState.type !== 'synced' || state.currentMatch === 'PENDING') {
+				processedEventIds.add(pendingEvent.id)
+				continue loop
+			}
+			if (!state.currTeams) throw new Error('currTeams is null when synced')
+
+			const base = {
+				id: pendingEvent.id,
+				matchId: state.currentMatch.historyEntryId,
+				time: pendingEvent.time,
+			}
+
+			switch (pendingEvent.type) {
+				case 'MAP_SET': {
+					const layer = L.parseRawLayerText(`${pendingEvent.nextLayer} ${pendingEvent.nextFactions ?? ''}`.trim())
+					if (!layer) {
+						log.error(`Failed to parse layer text: ${pendingEvent.nextLayer} ${pendingEvent.nextFactions ?? ''}`)
+						break
+					}
+					state.nextLayerId = layer.id
+					yield {
+						type: 'MAP_SET',
+						...base,
+						layerId: layer.id,
+					}
 					break
 				}
-				state.nextLayerId = layer.id
-				yield {
-					type: 'MAP_SET',
-					...base,
-					layerId: layer.id,
-				}
-				break
-			}
 
-			case 'ROUND_ENDED_CHAIN': {
-				let loser: SM.SquadOutcomeTeam | null
-				let winner: SM.SquadOutcomeTeam | null
+				case 'ROUND_ENDED_CHAIN': {
+					let loser: SM.SquadOutcomeTeam | null
+					let winner: SM.SquadOutcomeTeam | null
 
-				if (state.debug__ticketOutcome) {
-					let winnerId: SM.TeamId | null
-					let loserId: SM.TeamId | null
-					if (state.debug__ticketOutcome.team1 === state.debug__ticketOutcome.team2) {
-						winnerId = null
-						loserId = null
+					if (state.debug__ticketOutcome) {
+						let winnerId: SM.TeamId | null
+						let loserId: SM.TeamId | null
+						if (state.debug__ticketOutcome.team1 === state.debug__ticketOutcome.team2) {
+							winnerId = null
+							loserId = null
+						} else {
+							winnerId = state.debug__ticketOutcome.team1 - state.debug__ticketOutcome.team2 > 0 ? 1 : 2
+							loserId = state.debug__ticketOutcome.team1 - state.debug__ticketOutcome.team2 < 0 ? 1 : 2
+						}
+						const partial = L.toLayer(state.currentMatch.layerId)
+						const teams: SM.SquadOutcomeTeam[] = [
+							{
+								faction: partial.Faction_1!,
+								unit: partial.Unit_1!,
+								team: 1,
+								tickets: state.debug__ticketOutcome.team1,
+							},
+							{
+								faction: partial.Faction_2!,
+								unit: partial.Unit_2!,
+								team: 2,
+								tickets: state.debug__ticketOutcome.team2,
+							},
+						]
+						winner = teams.find(t => t?.team && t.team === winnerId) ?? null
+						loser = teams.find(t => t?.team && t.team === loserId) ?? null
+						delete state.debug__ticketOutcome
+					} else if (!pendingEvent.events.ROUND_DECIDED_WINNER || pendingEvent.events.ROUND_DECIDED_WINNER.team === -1) {
+						winner = null
+						loser = null
 					} else {
-						winnerId = state.debug__ticketOutcome.team1 - state.debug__ticketOutcome.team2 > 0 ? 1 : 2
-						loserId = state.debug__ticketOutcome.team1 - state.debug__ticketOutcome.team2 < 0 ? 1 : 2
-					}
-					const partial = L.toLayer(state.currentMatch.layerId)
-					const teams: SM.SquadOutcomeTeam[] = [
-						{
-							faction: partial.Faction_1!,
-							unit: partial.Unit_1!,
-							team: 1,
-							tickets: state.debug__ticketOutcome.team1,
-						},
-						{
-							faction: partial.Faction_2!,
-							unit: partial.Unit_2!,
-							team: 2,
-							tickets: state.debug__ticketOutcome.team2,
-						},
-					]
-					winner = teams.find(t => t?.team && t.team === winnerId) ?? null
-					loser = teams.find(t => t?.team && t.team === loserId) ?? null
-					delete state.debug__ticketOutcome
-				} else if (!pendingEvent.events.ROUND_DECIDED_WINNER || pendingEvent.events.ROUND_DECIDED_WINNER.team === -1) {
-					winner = null
-					loser = null
-				} else {
-					winner = {
-						faction: pendingEvent.events.ROUND_DECIDED_WINNER.faction,
-						team: pendingEvent.events.ROUND_DECIDED_WINNER.team as SM.TeamId,
-						tickets: pendingEvent.events.ROUND_DECIDED_WINNER.tickets,
-						unit: pendingEvent.events.ROUND_DECIDED_WINNER.unit,
-					}
-					loser = {
-						faction: pendingEvent.events.ROUND_DECIDED_LOSER.faction,
-						team: pendingEvent.events.ROUND_DECIDED_LOSER.team as SM.TeamId,
-						tickets: pendingEvent.events.ROUND_DECIDED_LOSER.tickets,
-						unit: pendingEvent.events.ROUND_DECIDED_LOSER.unit,
-					}
-				}
-				let outcome: MH.MatchOutcome
-				if (!winner) {
-					outcome = {
-						type: 'draw',
-					}
-				} else {
-					const [team1, team2] = winner.team === 1 ? [winner, loser] : [loser, winner]
-					outcome = {
-						type: winner.team === 1 ? 'team1' : 'team2',
-						team1Tickets: team1!.tickets,
-						team2Tickets: team2!.tickets,
-					}
-				}
-
-				yield {
-					type: 'ROUND_ENDED',
-					outcome,
-					...base,
-				}
-				break
-			}
-
-			case 'PLAYER_KICKED_CHAIN': {
-				const events = pendingEvent.events
-				yield {
-					...base,
-					type: 'PLAYER_KICKED',
-					player: SM.PlayerIds.getPlayerId(events.PLAYER_KICKED.playerIds),
-					reason: events.KICKING_PLAYER.reason,
-				}
-				break
-			}
-
-			// carryover from squadjs, no recent instances of this in current prod logs
-			case 'PLAYER_BANNED': {
-				yield {
-					...base,
-					type: 'PLAYER_BANNED',
-					player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
-					interval: pendingEvent.interval,
-				}
-				break
-			}
-
-			case 'PLAYER_WARNED': {
-				const player = SM.PlayerIds.find(state.currTeams.players, p => p.ids, pendingEvent.playerIds)
-				if (!player) {
-					log.error('Player not found in recentPlayers: %s', SM.PlayerIds.prettyPrint(pendingEvent.playerIds))
-					break
-				}
-				yield {
-					...base,
-					type: 'PLAYER_WARNED',
-					reason: pendingEvent.reason,
-					player: SM.PlayerIds.getPlayerId(player.ids),
-				}
-				break
-			}
-
-			case 'POSSESSED_ADMIN_CAMERA': {
-				yield {
-					...base,
-					type: 'POSSESSED_ADMIN_CAMERA',
-					player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
-				}
-				break
-			}
-
-			case 'UNPOSSESSED_ADMIN_CAMERA': {
-				yield {
-					...base,
-					type: 'UNPOSSESSED_ADMIN_CAMERA',
-					player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
-				}
-				break
-			}
-
-			case 'PLAYER_CONNECTED_CHAIN': {
-				const events = pendingEvent.events
-				let username: string | undefined
-				for (const teamUpdate of state.eventBufs.teamsUpdates) {
-					username = SM.PlayerIds.find(teamUpdate.teams.players, p => p.ids, events.PLAYER_CONNECTED.playerIds)?.ids.username
-					if (username) break
-				}
-				// suspend processing until we can find a username for this player that we can use(we don't get a full username with tags attached in the log chain)
-				if (!username) {
-					break loop
-				}
-				const player: SM.Player = {
-					ids: {
-						...events.PLAYER_CONNECTED.playerIds,
-						...events.PLAYER_JOIN_SUCCEEDED.player,
-						username,
-					},
-					teamId: events.PLAYER_ADDED_TO_TEAM?.teamId ?? 1,
-					squadId: null,
-					isLeader: false,
-					isAdmin: state.admins.has(SM.PlayerIds.getPlayerId(events.PLAYER_CONNECTED.playerIds)),
-					role: events.PLAYER_RESTARTED.deployRole,
-				}
-
-				state.currTeams.players.push(player)
-				yield {
-					type: 'PLAYER_CONNECTED',
-					...base,
-					player: Obj.deepClone(player),
-				}
-				break
-			}
-
-			case 'SQUAD_CREATED': {
-				const factionId = L.getFactionIdForFactionNameInexact(pendingEvent.teamName)
-				if (!factionId) {
-					log.error(`unable to resolve faction id for team name ${pendingEvent.teamName}`)
-					break
-				}
-				const layer = L.toLayer(state.currentMatch.layerId)
-
-				let teamId: SM.TeamId
-				if (layer.Faction_1 && layer.Faction_1 === factionId) {
-					teamId = 1
-				} else if (layer.Faction_2 && layer.Faction_2 === factionId) {
-					teamId = 2
-				} else {
-					log.error(`unable to resolve team id for squad created with team name ${pendingEvent.teamName} (factionId=${factionId})`)
-					break
-				}
-
-				const squadKey = {
-					teamId,
-					squadId: pendingEvent.squadId,
-					creator: SM.PlayerIds.getPlayerId(pendingEvent.creatorIds),
-					uniqueId: Gen.next(state.counters.squadId),
-				}
-				const player = SM.PlayerIds.find(state.currTeams?.players, p => p.ids, pendingEvent.creatorIds)
-				if (!player) {
-					break
-				}
-
-				if (player.teamId !== teamId) {
-					yield* changePlayerTeam(state, pendingEvent.time, player, teamId)
-				}
-
-				const prevSquadIndex = state.currTeams.squads.findIndex(s => SM.Squads.idsEqual(s, squadKey))
-				if (prevSquadIndex !== -1) {
-					yield* disbandSquad(state, pendingEvent.time, squadKey)
-				}
-
-				const squad = {
-					...squadKey,
-					squadName: pendingEvent.squadName,
-					// will be updated later if incorrect
-					locked: false,
-				}
-
-				state.currTeams.squads.push(squad)
-				player.squadId = squad.squadId
-				player.isLeader = true
-				yield {
-					type: 'SQUAD_CREATED',
-					squad: Obj.deepClone(squad),
-					...base,
-				}
-
-				break
-			}
-
-			case 'PLAYER_DISCONNECTED': {
-				if (!state.currTeams) break
-				const player = SM.PlayerIds.find(state.currTeams.players, p => p.ids, pendingEvent.playerIds)
-				if (player) {
-					if (player.squadId) yield* changeSquad(state, pendingEvent.time, player.ids, null)
-					state.currTeams.players = state.currTeams.players.filter(p => !SM.PlayerIds.match(p.ids, pendingEvent.playerIds))
-				} else {
-					log.warn(`Player not found on disconnect: ${SM.PlayerIds.prettyPrint(pendingEvent.playerIds)}`)
-				}
-				yield {
-					type: 'PLAYER_DISCONNECTED',
-					player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
-					...base,
-				}
-				break
-			}
-
-			case 'SQUAD_RENAMED': {
-				const squad = state.currTeams.squads.find(s => s.squadId === pendingEvent.squadId && s.teamId === pendingEvent.teamId)
-				if (!squad) {
-					log.error('SQUAD_RENAMED: squad not found for squadId=%d, teamId=%d', pendingEvent.squadId, pendingEvent.teamId)
-					break
-				}
-				yield {
-					type: 'SQUAD_RENAMED',
-					uniqueId: squad.uniqueId,
-					oldSquadName: pendingEvent.oldSquadName,
-					newSquadName: pendingEvent.newSquadName,
-					...base,
-				}
-				break
-			}
-
-			case 'TEAMS_UPDATE': {
-				const nextTeams = pendingEvent.teams
-				state.currTeams = Obj.deepClone(state.currTeams)
-				for (const player of nextTeams.players) {
-					const prevPlayer = SM.PlayerIds.find(state.currTeams.players, p => p.ids, player.ids)
-					if (!prevPlayer) continue
-					if (player.teamId !== prevPlayer.teamId) {
-						yield* changePlayerTeam(state, pendingEvent.time, prevPlayer, player.teamId)
-					}
-
-					if (player.squadId !== prevPlayer.squadId) {
-						// disbanding squads handled here
-						yield* changeSquad(state, pendingEvent.time, prevPlayer.ids, player.squadId)
-					}
-
-					if (player.isLeader && !prevPlayer.isLeader) {
-						// all promotions and demotions are paired off so this should handle all cases
-						yield* promotePlayerToLeader(state, pendingEvent.time, prevPlayer.ids)
-					}
-
-					const details = Obj.selectProps(player, SM.PLAYER_DETAILS)
-					const prevDetails = Obj.selectProps(prevPlayer, SM.PLAYER_DETAILS)
-					if (!Obj.deepEqual(details, prevDetails)) {
-						for (const prop of SM.PLAYER_DETAILS) {
-							// @ts-expect-error idgaf
-							prevPlayer[prop] = player[prop]
+						winner = {
+							faction: pendingEvent.events.ROUND_DECIDED_WINNER.faction,
+							team: pendingEvent.events.ROUND_DECIDED_WINNER.team as SM.TeamId,
+							tickets: pendingEvent.events.ROUND_DECIDED_WINNER.tickets,
+							unit: pendingEvent.events.ROUND_DECIDED_WINNER.unit,
 						}
-						yield {
-							type: 'PLAYER_DETAILS_CHANGED',
-							player: SM.PlayerIds.getPlayerId(player.ids),
-							id: Gen.next(state.counters.eventId),
-							details,
-							time: pendingEvent.time,
-							matchId: state.currentMatch.historyEntryId,
+						loser = {
+							faction: pendingEvent.events.ROUND_DECIDED_LOSER.faction,
+							team: pendingEvent.events.ROUND_DECIDED_LOSER.team as SM.TeamId,
+							tickets: pendingEvent.events.ROUND_DECIDED_LOSER.tickets,
+							unit: pendingEvent.events.ROUND_DECIDED_LOSER.unit,
 						}
 					}
-				}
-				for (const squad of nextTeams.squads) {
-					const prevSquad = state.currTeams.squads.find(s => SM.Squads.idsEqual(s, squad))
-					if (!prevSquad) {
-						log.error(`squad ${SM.Squads.printKey(squad)} not found`)
-						continue
-					}
-					const details = Obj.selectProps(squad, SM.SQUAD_DETAILS)
-					const prevDetails = Obj.selectProps(prevSquad, SM.SQUAD_DETAILS)
-
-					if (!Obj.deepEqual(details, prevDetails)) {
-						for (const prop of SM.SQUAD_DETAILS) {
-							prevSquad[prop] = squad[prop]
+					let outcome: MH.MatchOutcome
+					if (!winner) {
+						outcome = {
+							type: 'draw',
 						}
-						yield {
-							type: 'SQUAD_DETAILS_CHANGED',
-							uniqueId: prevSquad.uniqueId,
-							id: Gen.next(state.counters.eventId),
-							details,
-							time: pendingEvent.time,
-							matchId: state.currentMatch.historyEntryId,
+					} else {
+						const [team1, team2] = winner.team === 1 ? [winner, loser] : [loser, winner]
+						outcome = {
+							type: winner.team === 1 ? 'team1' : 'team2',
+							team1Tickets: team1!.tickets,
+							team2Tickets: team2!.tickets,
 						}
 					}
-				}
-				break
-			}
 
-			case 'PLAYER_DIED':
-			case 'PLAYER_WOUNDED': {
-				const victim = SM.PlayerIds.find(state.currTeams.players, p => p.ids, pendingEvent.victimIds)
-				const attacker = SM.PlayerIds.find(state.currTeams.players, p => p.ids, pendingEvent.attackerIds)
-				if (!victim || !attacker) {
-					const missing: string[] = []
-					if (!victim) missing.push(`victim: ${SM.PlayerIds.prettyPrint(pendingEvent.victimIds)}`)
-					if (!attacker) missing.push(`attacker: ${SM.PlayerIds.prettyPrint(pendingEvent.attackerIds)}`)
-					log.warn(`Player died/wounded with missing victim or attacker: %s %s`, missing.join(', '), JSON.stringify(pendingEvent))
+					yield {
+						type: 'ROUND_ENDED',
+						outcome,
+						...base,
+					}
 					break
 				}
 
-				let variant: SE.PlayerWoundedOrDiedVariant
-				if (SM.PlayerIds.match(victim.ids, attacker.ids)) {
-					variant = 'suicide'
-				} else if (victim.teamId !== null && victim.teamId === attacker.teamId) {
-					variant = 'teamkill'
-				} else {
-					variant = 'normal'
+				case 'PLAYER_KICKED_CHAIN': {
+					const events = pendingEvent.events
+					yield {
+						...base,
+						type: 'PLAYER_KICKED',
+						player: SM.PlayerIds.getPlayerId(events.PLAYER_KICKED.playerIds),
+						reason: events.KICKING_PLAYER.reason,
+					}
+					break
 				}
 
-				yield {
-					type: pendingEvent.type,
-					...base,
-					damage: pendingEvent.damage,
-					weapon: pendingEvent.weapon,
-					variant,
-					attacker: SM.PlayerIds.getPlayerId(attacker.ids),
-					victim: SM.PlayerIds.getPlayerId(victim.ids),
+				// carryover from squadjs, no recent instances of this in current prod logs
+				case 'PLAYER_BANNED': {
+					yield {
+						...base,
+						type: 'PLAYER_BANNED',
+						player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
+						interval: pendingEvent.interval,
+					}
+					break
 				}
 
-				break
-			}
-
-			case 'CHAT_MESSAGE': {
-				let channel: SM.ChatChannel
-				if (pendingEvent.channelType === 'ChatAdmin' || pendingEvent.channelType === 'ChatAll') {
-					channel = { type: pendingEvent.channelType }
-				} else if (pendingEvent.channelType === 'ChatTeam' || pendingEvent.channelType === 'ChatSquad') {
+				case 'PLAYER_WARNED': {
 					const player = SM.PlayerIds.find(state.currTeams.players, p => p.ids, pendingEvent.playerIds)
 					if (!player) {
-						log.error(`player ${SM.PlayerIds.prettyPrint(pendingEvent.playerIds)} not found`)
+						log.error('Player not found in recentPlayers: %s', SM.PlayerIds.prettyPrint(pendingEvent.playerIds))
 						break
 					}
-					if (player.teamId === null) {
-						log.error(`player ${SM.PlayerIds.prettyPrint(player.ids)} is not in a team`)
-						break
+					yield {
+						...base,
+						type: 'PLAYER_WARNED',
+						reason: pendingEvent.reason,
+						player: SM.PlayerIds.getPlayerId(player.ids),
+					}
+					break
+				}
+
+				case 'POSSESSED_ADMIN_CAMERA': {
+					yield {
+						...base,
+						type: 'POSSESSED_ADMIN_CAMERA',
+						player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
+					}
+					break
+				}
+
+				case 'UNPOSSESSED_ADMIN_CAMERA': {
+					yield {
+						...base,
+						type: 'UNPOSSESSED_ADMIN_CAMERA',
+						player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
+					}
+					break
+				}
+
+				case 'PLAYER_CONNECTED_CHAIN': {
+					const events = pendingEvent.events
+					let username: string | undefined
+					for (const teamUpdate of state.eventBufs.teamsUpdates) {
+						username = SM.PlayerIds.find(teamUpdate.teams.players, p => p.ids, events.PLAYER_CONNECTED.playerIds)?.ids.username
+						if (username) break
+					}
+					// suspend processing until we can find a username for this player that we can use(we don't get a full username with tags attached in the log chain)
+					if (!username) {
+						break loop
+					}
+					const player: SM.Player = {
+						ids: {
+							...events.PLAYER_CONNECTED.playerIds,
+							...events.PLAYER_JOIN_SUCCEEDED.player,
+							username,
+						},
+						teamId: events.PLAYER_ADDED_TO_TEAM?.teamId ?? 1,
+						squadId: null,
+						isLeader: false,
+						isAdmin: state.admins.has(SM.PlayerIds.getPlayerId(events.PLAYER_CONNECTED.playerIds)),
+						role: events.PLAYER_RESTARTED.deployRole,
 					}
 
-					if (player.squadId === null && pendingEvent.channelType === 'ChatSquad') {
-						log.error(`player ${SM.PlayerIds.prettyPrint(player.ids)} is not in a squad`)
+					state.currTeams.players.push(player)
+					yield {
+						type: 'PLAYER_CONNECTED',
+						...base,
+						player: Obj.deepClone(player),
+					}
+					break
+				}
+
+				case 'SQUAD_CREATED': {
+					const factionId = L.getFactionIdForFactionNameInexact(pendingEvent.teamName)
+					if (!factionId) {
+						log.error(`unable to resolve faction id for team name ${pendingEvent.teamName}`)
 						break
 					}
+					const layer = L.toLayer(state.currentMatch.layerId)
 
-					if (pendingEvent.channelType === 'ChatTeam') {
-						channel = { type: pendingEvent.channelType, teamId: player.teamId }
+					let teamId: SM.TeamId
+					if (layer.Faction_1 && layer.Faction_1 === factionId) {
+						teamId = 1
+					} else if (layer.Faction_2 && layer.Faction_2 === factionId) {
+						teamId = 2
 					} else {
-						if (player.squadId === null) {
+						log.error(`unable to resolve team id for squad created with team name ${pendingEvent.teamName} (factionId=${factionId})`)
+						break
+					}
+
+					const squadKey = {
+						teamId,
+						squadId: pendingEvent.squadId,
+						creator: SM.PlayerIds.getPlayerId(pendingEvent.creatorIds),
+						uniqueId: Gen.next(state.counters.squadId),
+					}
+					const player = SM.PlayerIds.find(state.currTeams?.players, p => p.ids, pendingEvent.creatorIds)
+					if (!player) {
+						break
+					}
+
+					if (player.teamId !== teamId) {
+						yield* changePlayerTeam(state, pendingEvent.time, player, teamId)
+					}
+
+					const prevSquadIndex = state.currTeams.squads.findIndex(s => SM.Squads.idsEqual(s, squadKey))
+					if (prevSquadIndex !== -1) {
+						yield* disbandSquad(state, pendingEvent.time, squadKey)
+					}
+
+					const squad = {
+						...squadKey,
+						squadName: pendingEvent.squadName,
+						// will be updated later if incorrect
+						locked: false,
+					}
+
+					state.currTeams.squads.push(squad)
+					player.squadId = squad.squadId
+					player.isLeader = true
+					yield {
+						type: 'SQUAD_CREATED',
+						squad: Obj.deepClone(squad),
+						...base,
+					}
+
+					break
+				}
+
+				case 'PLAYER_DISCONNECTED': {
+					if (!state.currTeams) break
+					const player = SM.PlayerIds.find(state.currTeams.players, p => p.ids, pendingEvent.playerIds)
+					if (player) {
+						if (player.squadId) yield* changeSquad(state, pendingEvent.time, player.ids, null)
+						state.currTeams.players = state.currTeams.players.filter(p => !SM.PlayerIds.match(p.ids, pendingEvent.playerIds))
+					} else {
+						log.warn(`Player not found on disconnect: ${SM.PlayerIds.prettyPrint(pendingEvent.playerIds)}`)
+					}
+					yield {
+						type: 'PLAYER_DISCONNECTED',
+						player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
+						...base,
+					}
+					break
+				}
+
+				case 'SQUAD_RENAMED': {
+					const squad = state.currTeams.squads.find(s => s.squadId === pendingEvent.squadId && s.teamId === pendingEvent.teamId)
+					if (!squad) {
+						log.error('SQUAD_RENAMED: squad not found for squadId=%d, teamId=%d', pendingEvent.squadId, pendingEvent.teamId)
+						break
+					}
+					yield {
+						type: 'SQUAD_RENAMED',
+						uniqueId: squad.uniqueId,
+						oldSquadName: pendingEvent.oldSquadName,
+						newSquadName: pendingEvent.newSquadName,
+						...base,
+					}
+					break
+				}
+
+				case 'TEAMS_UPDATE': {
+					const nextTeams = pendingEvent.teams
+					state.currTeams = Obj.deepClone(state.currTeams)
+					for (const player of nextTeams.players) {
+						const prevPlayer = SM.PlayerIds.find(state.currTeams.players, p => p.ids, player.ids)
+						if (!prevPlayer) continue
+						if (player.teamId !== prevPlayer.teamId) {
+							yield* changePlayerTeam(state, pendingEvent.time, prevPlayer, player.teamId)
+						}
+
+						if (player.squadId !== prevPlayer.squadId) {
+							// disbanding squads handled here
+							yield* changeSquad(state, pendingEvent.time, prevPlayer.ids, player.squadId)
+						}
+
+						if (player.isLeader && !prevPlayer.isLeader) {
+							// all promotions and demotions are paired off so this should handle all cases
+							yield* promotePlayerToLeader(state, pendingEvent.time, prevPlayer.ids)
+						}
+
+						const details = Obj.selectProps(player, SM.PLAYER_DETAILS)
+						const prevDetails = Obj.selectProps(prevPlayer, SM.PLAYER_DETAILS)
+						if (!Obj.deepEqual(details, prevDetails)) {
+							for (const prop of SM.PLAYER_DETAILS) {
+								// @ts-expect-error idgaf
+								prevPlayer[prop] = player[prop]
+							}
+							yield {
+								type: 'PLAYER_DETAILS_CHANGED',
+								player: SM.PlayerIds.getPlayerId(player.ids),
+								id: Gen.next(state.counters.eventId),
+								details,
+								time: pendingEvent.time,
+								matchId: state.currentMatch.historyEntryId,
+							}
+						}
+					}
+					for (const squad of nextTeams.squads) {
+						const prevSquad = state.currTeams.squads.find(s => SM.Squads.idsEqual(s, squad))
+						if (!prevSquad) {
+							log.error(`squad ${SM.Squads.printKey(squad)} not found`)
+							continue
+						}
+						const details = Obj.selectProps(squad, SM.SQUAD_DETAILS)
+						const prevDetails = Obj.selectProps(prevSquad, SM.SQUAD_DETAILS)
+
+						if (!Obj.deepEqual(details, prevDetails)) {
+							for (const prop of SM.SQUAD_DETAILS) {
+								prevSquad[prop] = squad[prop]
+							}
+							yield {
+								type: 'SQUAD_DETAILS_CHANGED',
+								uniqueId: prevSquad.uniqueId,
+								id: Gen.next(state.counters.eventId),
+								details,
+								time: pendingEvent.time,
+								matchId: state.currentMatch.historyEntryId,
+							}
+						}
+					}
+					break
+				}
+
+				case 'PLAYER_DIED':
+				case 'PLAYER_WOUNDED': {
+					const victim = SM.PlayerIds.find(state.currTeams.players, p => p.ids, pendingEvent.victimIds)
+					const attacker = SM.PlayerIds.find(state.currTeams.players, p => p.ids, pendingEvent.attackerIds)
+					if (!victim || !attacker) {
+						const missing: string[] = []
+						if (!victim) missing.push(`victim: ${SM.PlayerIds.prettyPrint(pendingEvent.victimIds)}`)
+						if (!attacker) missing.push(`attacker: ${SM.PlayerIds.prettyPrint(pendingEvent.attackerIds)}`)
+						log.warn(`Player died/wounded with missing victim or attacker: %s %s`, missing.join(', '), JSON.stringify(pendingEvent))
+						break
+					}
+
+					let variant: SE.PlayerWoundedOrDiedVariant
+					if (SM.PlayerIds.match(victim.ids, attacker.ids)) {
+						variant = 'suicide'
+					} else if (victim.teamId !== null && victim.teamId === attacker.teamId) {
+						variant = 'teamkill'
+					} else {
+						variant = 'normal'
+					}
+
+					yield {
+						type: pendingEvent.type,
+						...base,
+						damage: pendingEvent.damage,
+						weapon: pendingEvent.weapon,
+						variant,
+						attacker: SM.PlayerIds.getPlayerId(attacker.ids),
+						victim: SM.PlayerIds.getPlayerId(victim.ids),
+					}
+
+					break
+				}
+
+				case 'CHAT_MESSAGE': {
+					let channel: SM.ChatChannel
+					if (pendingEvent.channelType === 'ChatAdmin' || pendingEvent.channelType === 'ChatAll') {
+						channel = { type: pendingEvent.channelType }
+					} else if (pendingEvent.channelType === 'ChatTeam' || pendingEvent.channelType === 'ChatSquad') {
+						const player = SM.PlayerIds.find(state.currTeams.players, p => p.ids, pendingEvent.playerIds)
+						if (!player) {
+							log.error(`player ${SM.PlayerIds.prettyPrint(pendingEvent.playerIds)} not found`)
+							break
+						}
+						if (player.teamId === null) {
+							log.error(`player ${SM.PlayerIds.prettyPrint(player.ids)} is not in a team`)
+							break
+						}
+
+						if (player.squadId === null && pendingEvent.channelType === 'ChatSquad') {
 							log.error(`player ${SM.PlayerIds.prettyPrint(player.ids)} is not in a squad`)
 							break
 						}
-						channel = { type: pendingEvent.channelType, teamId: player.teamId, squadId: player.squadId }
+
+						if (pendingEvent.channelType === 'ChatTeam') {
+							channel = { type: pendingEvent.channelType, teamId: player.teamId }
+						} else {
+							if (player.squadId === null) {
+								log.error(`player ${SM.PlayerIds.prettyPrint(player.ids)} is not in a squad`)
+								break
+							}
+							channel = { type: pendingEvent.channelType, teamId: player.teamId, squadId: player.squadId }
+						}
+					} else {
+						assertNever(pendingEvent.channelType)
 					}
-				} else {
-					assertNever(pendingEvent.channelType)
+
+					if (channel.type === 'ChatSquad') {
+						const squadChannel = channel
+						const squad = state.currTeams.squads.find(s => SM.Squads.idsEqual(s, squadChannel))
+						if (squad) channel = { ...squadChannel, uniqueId: squad.uniqueId }
+					}
+
+					yield {
+						type: 'CHAT_MESSAGE',
+						message: pendingEvent.message,
+						player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
+						channel,
+						...base,
+					}
+					break
 				}
 
-				if (channel.type === 'ChatSquad') {
-					const squadChannel = channel
-					const squad = state.currTeams.squads.find(s => SM.Squads.idsEqual(s, squadChannel))
-					if (squad) channel = { ...squadChannel, uniqueId: squad.uniqueId }
+				case 'ADMIN_BROADCAST': {
+					yield {
+						type: 'ADMIN_BROADCAST',
+						message: pendingEvent.message,
+						from: pendingEvent.from,
+						...base,
+					}
+					break
 				}
-
-				yield {
-					type: 'CHAT_MESSAGE',
-					message: pendingEvent.message,
-					player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
-					channel,
-					...base,
-				}
-				break
 			}
 
-			case 'ADMIN_BROADCAST': {
-				yield {
-					type: 'ADMIN_BROADCAST',
-					message: pendingEvent.message,
-					from: pendingEvent.from,
-					...base,
-				}
-				break
-			}
+			processedEventIds.add(pendingEvent.id)
+		} catch (err) {
+			state.log.error(err, 'Error while processing event %s (%s)', pendingEvent.type, pendingEvent.id)
+			processedEventIds.add(pendingEvent.id)
 		}
-
-		processedEventIds.add(pendingEvent.id)
 	}
 
 	for (const prop of Obj.objKeys(state.eventBufs)) {
