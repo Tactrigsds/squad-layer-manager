@@ -14,7 +14,7 @@ import * as L from '@/models/layer'
 import * as LOG from '@/models/logs'
 import * as MH from '@/models/match-history.models'
 import * as SE from '@/models/server-events.models'
-import type * as SM from '@/models/squad.models'
+
 import type * as USR from '@/models/users.models'
 import { CONFIG } from '@/server/config'
 import * as C from '@/server/context'

@@ -1,6 +1,6 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array'
-import { createLogMatcher, eventDef, EventSchema, matchLog } from '@/lib/log-parsing'
+import { createLogMatcher, eventDef, type EventSchema, matchLog } from '@/lib/log-parsing'
 import * as Obj from '@/lib/object'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
 import { simpleUniqueStringMatch } from '@/lib/string'
@@ -659,7 +659,6 @@ export const RCON_EVENT_MATCHERS = RconEvents.matchers
 
 export namespace LogEvents {
 	const logStartRegex = /^([[0-9.:-]+]\[[ 0-9]*]).+$/
-	const logPreambleRegex = /^\w+: /
 
 	export async function* parse(chunk$: AsyncGenerator<string>, errors: Error[]) {
 		let foundLogStart: boolean = false
@@ -1242,7 +1241,10 @@ export namespace LogEvents {
 			{ event: PlayerAddedToTeamDef, optional: true },
 			PlayerRestartedDef,
 		],
-		ROUND_ENDED_CHAIN: [DetermineMatchWinnerDef, { event: RoundDecidedWinnerDef, optional: true }, { event: RoundDecidedLoserDef, optional: true }],
+		ROUND_ENDED_CHAIN: [DetermineMatchWinnerDef, { event: RoundDecidedWinnerDef, optional: true }, {
+			event: RoundDecidedLoserDef,
+			optional: true,
+		}],
 		PLAYER_KICKED_CHAIN: [KickingPlayerDef, PlayerKickedDef],
 	}
 

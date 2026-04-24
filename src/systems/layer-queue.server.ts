@@ -1,5 +1,4 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import * as Arr from '@/lib/array'
 import { type CleanupTasks, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
@@ -68,7 +67,7 @@ export const setupInstance = C.spanOp(
 	async (ctx: C.Db & C.ServerSlice) => {
 		const serverId = ctx.serverId
 
-		SquadServer.waitForSynced(ctx).then(async () => {
+		void SquadServer.waitForSynced(ctx).then(async () => {
 			// -------- initialize vote state --------
 			await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 				const s = ctx.layerQueue

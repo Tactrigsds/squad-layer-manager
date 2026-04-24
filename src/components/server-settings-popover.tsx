@@ -205,21 +205,21 @@ function PoolFiltersConfigurationPanel({
 				<span className="flex items-center gap-2">
 					<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Filters:</h4>
 				</span>
-				<FilterEntitySelect
-					title="New Pool Filter"
-					filterId={null}
-					onSelect={add}
-					excludedFilterIds={Arr.deref('filterId', filterConfigs)}
-					allowEmpty={false}
-					enabled={!writeSettingsDenied}
-				>
-					<PermissionDeniedTooltip denied={writeSettingsDenied}>
+				<PermissionDeniedTooltip denied={writeSettingsDenied}>
+					<FilterEntitySelect
+						title="New Pool Filter"
+						filterId={null}
+						onSelect={add}
+						excludedFilterIds={Arr.deref('filterId', filterConfigs)}
+						allowEmpty={false}
+						enabled={!writeSettingsDenied}
+					>
 						<Button disabled={!!writeSettingsDenied} size="sm" variant="outline">
 							<Icons.Plus className="h-4 w-4 mr-2" />
 							Add Filter
 						</Button>
-					</PermissionDeniedTooltip>
-				</FilterEntitySelect>
+					</FilterEntitySelect>
+				</PermissionDeniedTooltip>
 			</div>
 			<div className="space-y-2">
 				{filterConfigs.map((filterConfig, i) => {

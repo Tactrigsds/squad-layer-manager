@@ -1,18 +1,17 @@
-import { describe, expect, it, vi } from 'vitest'
 import * as Gen from '@/lib/generator'
 import type * as CS from '@/models/context-shared'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
 import * as PendingEvents from '@/models/pending-events.models'
-import * as SE from '@/models/server-events.models'
-import * as SM from '@/models/squad.models'
+import type * as SE from '@/models/server-events.models'
+import type * as SM from '@/models/squad.models'
+import { describe, expect, it, vi } from 'vitest'
 
 // --- Layer IDs (from layer.test.ts) ---
 // Gorodok_RAAS_v1, Faction_1=RGF ('Russian Ground Forces'), Faction_2=ADF ('Australian Defence Force')
 const LAYER_A = 'RAW:Gorodok_FRAAS_v1 RGF+CombinedArms ADF+Mechanized' as L.LayerId
 const LAYER_A_CLASSNAME = 'Gorodok_RAAS_v1'
 // Narva_RAAS_v1, Faction_1=CAF, Faction_2=RGF
-const LAYER_B = 'RAW:Narva_FRAAS_v1 CAF+CombinedArms RGF+CombinedArms' as L.LayerId
 
 // --- Ref collection ---
 
@@ -54,7 +53,15 @@ function makeLog(): CS.Logger {
 }
 
 function makeMatchDetails(historyEntryId: number, layerId: L.LayerId): MH.MatchDetails {
-	return { historyEntryId, layerId, status: 'in-progress', ordinal: 1, serverId: 'test', isCurrentMatch: true, createdAt: null } as unknown as MH.MatchDetails
+	return {
+		historyEntryId,
+		layerId,
+		status: 'in-progress',
+		ordinal: 1,
+		serverId: 'test',
+		isCurrentMatch: true,
+		createdAt: null,
+	} as unknown as MH.MatchDetails
 }
 
 function makeState(opts: {
@@ -124,7 +131,15 @@ function makeRoundEndedChain(
 		time,
 		events: {
 			DETERMINE_MATCH_WINNER: { type: 'DETERMINE_MATCH_WINNER', time, chainID: 0, raw: '', winner: winner.unit, map: 'Gorodok' },
-			ROUND_DECIDED_WINNER: { type: 'ROUND_DECIDED_WINNER', time, chainID: 0, raw: '', ...winner, layer: 'Gorodok_RAAS_v1', map: 'Gorodok' },
+			ROUND_DECIDED_WINNER: {
+				type: 'ROUND_DECIDED_WINNER',
+				time,
+				chainID: 0,
+				raw: '',
+				...winner,
+				layer: 'Gorodok_RAAS_v1',
+				map: 'Gorodok',
+			},
 			ROUND_DECIDED_LOSER: { type: 'ROUND_DECIDED_LOSER', time, chainID: 0, raw: '', ...loser, layer: 'Gorodok_RAAS_v1', map: 'Gorodok' },
 		},
 	}
@@ -135,7 +150,14 @@ function makePlayerConnectedChain(time: number, eos: string, controller: string,
 		type: 'PLAYER_CONNECTED_CHAIN',
 		time,
 		events: {
-			PLAYER_CONNECTED: { type: 'PLAYER_CONNECTED', time, chainID: 549, raw: '', playerIds: { eos, playerController: controller }, ip: '1.2.3.4' },
+			PLAYER_CONNECTED: {
+				type: 'PLAYER_CONNECTED',
+				time,
+				chainID: 549,
+				raw: '',
+				playerIds: { eos, playerController: controller },
+				ip: '1.2.3.4',
+			},
 			PLAYER_JOIN_SUCCEEDED: { type: 'PLAYER_JOIN_SUCCEEDED', time, chainID: 549, raw: '', player: { usernameNoTag: 'Test Player' } },
 			PLAYER_ADDED_TO_TEAM: { type: 'PLAYER_ADDED_TO_TEAM', time, chainID: 549, raw: '', playerIds: { username: 'Test Player' }, teamId },
 			PLAYER_RESTARTED: { type: 'PLAYER_RESTARTED', time, chainID: 549, raw: '', playerController: controller, deployRole: 'Rifleman_01' },
@@ -200,7 +222,14 @@ describe('PendingEvents', () => {
 			const { state } = makeState()
 			await syncUp(state)
 			// Simulate a TransitionMap new-game log event to enter rolling
-			PendingEvents.onLogEvent(state, { type: 'NEW_GAME', time: 200, chainID: 0, raw: '', mapClassname: 'Transition', layerClassname: 'TransitionMap' })
+			PendingEvents.onLogEvent(state, {
+				type: 'NEW_GAME',
+				time: 200,
+				chainID: 0,
+				raw: '',
+				mapClassname: 'Transition',
+				layerClassname: 'TransitionMap',
+			})
 			await collect(state)
 			expect(state.syncState.type).toBe('rolling')
 
@@ -262,7 +291,14 @@ describe('PendingEvents', () => {
 		it('does not change syncState to desynced if rolling', async () => {
 			const { state } = makeState()
 			await syncUp(state)
-			PendingEvents.onLogEvent(state, { type: 'NEW_GAME', time: 200, chainID: 0, raw: '', mapClassname: 'Transition', layerClassname: 'TransitionMap' })
+			PendingEvents.onLogEvent(state, {
+				type: 'NEW_GAME',
+				time: 200,
+				chainID: 0,
+				raw: '',
+				mapClassname: 'Transition',
+				layerClassname: 'TransitionMap',
+			})
 			await collect(state)
 			expect(state.syncState.type).toBe('rolling')
 
@@ -283,22 +319,41 @@ describe('PendingEvents', () => {
 			state.nextLayerId = LAYER_A
 
 			// 1. Round ends
-			PendingEvents.onLogEvent(state, makeRoundEndedChain(200,
-				{ team: 1, tickets: 300, faction: 'RGF', unit: 'CombinedArms' },
-				{ team: 2, tickets: 150, faction: 'ADF', unit: 'Mechanized' },
-			))
+			PendingEvents.onLogEvent(
+				state,
+				makeRoundEndedChain(200, { team: 1, tickets: 300, faction: 'RGF', unit: 'CombinedArms' }, {
+					team: 2,
+					tickets: 150,
+					faction: 'ADF',
+					unit: 'Mechanized',
+				}),
+			)
 			const batch1 = await collect(state)
 			expect(batch1.map(e => e.type)).toEqual(['ROUND_ENDED'])
 
 			// 2. Server transitions — TransitionMap NEW_GAME enters rolling, clears teams
-			PendingEvents.onLogEvent(state, { type: 'NEW_GAME', time: 300, chainID: 0, raw: '', mapClassname: 'Transition', layerClassname: 'TransitionMap' })
+			PendingEvents.onLogEvent(state, {
+				type: 'NEW_GAME',
+				time: 300,
+				chainID: 0,
+				raw: '',
+				mapClassname: 'Transition',
+				layerClassname: 'TransitionMap',
+			})
 			const batch2 = await collect(state)
 			expect(batch2).toHaveLength(0)
 			expect(state.syncState.type).toBe('rolling')
 			expect(state.currTeams).toBeNull()
 
 			// 3. Actual layer loads — non-TransitionMap NEW_GAME is buffered, no event yet (waiting for TEAMS_UPDATE)
-			PendingEvents.onLogEvent(state, { type: 'NEW_GAME', time: 400, chainID: 0, raw: '', mapClassname: 'Gorodok', layerClassname: LAYER_A_CLASSNAME })
+			PendingEvents.onLogEvent(state, {
+				type: 'NEW_GAME',
+				time: 400,
+				chainID: 0,
+				raw: '',
+				mapClassname: 'Gorodok',
+				layerClassname: LAYER_A_CLASSNAME,
+			})
 			const batch3 = await collect(state)
 			expect(batch3).toHaveLength(0)
 			expect(state.syncState).toMatchObject({ type: 'rolling', newGameEvent: expect.objectContaining({ type: 'NEW_GAME' }) })
@@ -324,7 +379,14 @@ describe('PendingEvents', () => {
 			await syncUp(state, { teams: makeTeams([makePlayer('eos-001', 1)]) })
 			expect(state.currTeams?.players).toHaveLength(1)
 
-			PendingEvents.onLogEvent(state, { type: 'NEW_GAME', time: 200, chainID: 0, raw: '', mapClassname: 'Transition', layerClassname: 'TransitionMap' })
+			PendingEvents.onLogEvent(state, {
+				type: 'NEW_GAME',
+				time: 200,
+				chainID: 0,
+				raw: '',
+				mapClassname: 'Transition',
+				layerClassname: 'TransitionMap',
+			})
 			await collect(state)
 
 			expect(state.syncState.type).toBe('rolling')
@@ -337,11 +399,25 @@ describe('PendingEvents', () => {
 
 			// TransitionMap first (sets expectedNewLayerId = nextLayerId)
 			state.nextLayerId = LAYER_A
-			PendingEvents.onLogEvent(state, { type: 'NEW_GAME', time: 200, chainID: 0, raw: '', mapClassname: 'Transition', layerClassname: 'TransitionMap' })
+			PendingEvents.onLogEvent(state, {
+				type: 'NEW_GAME',
+				time: 200,
+				chainID: 0,
+				raw: '',
+				mapClassname: 'Transition',
+				layerClassname: 'TransitionMap',
+			})
 			await collect(state)
 
 			// Actual layer transition
-			PendingEvents.onLogEvent(state, { type: 'NEW_GAME', time: 300, chainID: 0, raw: '', mapClassname: 'Gorodok', layerClassname: LAYER_A_CLASSNAME })
+			PendingEvents.onLogEvent(state, {
+				type: 'NEW_GAME',
+				time: 300,
+				chainID: 0,
+				raw: '',
+				mapClassname: 'Gorodok',
+				layerClassname: LAYER_A_CLASSNAME,
+			})
 			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-new', 1)]), 300)
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(301))
 			const events = await collect(state)
@@ -388,10 +464,15 @@ describe('PendingEvents', () => {
 			const { state } = makeState()
 			await syncUp(state)
 
-			PendingEvents.onLogEvent(state, makeRoundEndedChain(200,
-				{ team: 1, tickets: 300, faction: 'RGF', unit: 'CombinedArms' },
-				{ team: 2, tickets: 150, faction: 'ADF', unit: 'Mechanized' },
-			))
+			PendingEvents.onLogEvent(
+				state,
+				makeRoundEndedChain(200, { team: 1, tickets: 300, faction: 'RGF', unit: 'CombinedArms' }, {
+					team: 2,
+					tickets: 150,
+					faction: 'ADF',
+					unit: 'Mechanized',
+				}),
+			)
 			const events = await collect(state)
 
 			expect(events).toHaveLength(1)
@@ -405,10 +486,15 @@ describe('PendingEvents', () => {
 			const { state } = makeState()
 			await syncUp(state)
 
-			PendingEvents.onLogEvent(state, makeRoundEndedChain(200,
-				{ team: 2, tickets: 250, faction: 'ADF', unit: 'Mechanized' },
-				{ team: 1, tickets: 100, faction: 'RGF', unit: 'CombinedArms' },
-			))
+			PendingEvents.onLogEvent(
+				state,
+				makeRoundEndedChain(200, { team: 2, tickets: 250, faction: 'ADF', unit: 'Mechanized' }, {
+					team: 1,
+					tickets: 100,
+					faction: 'RGF',
+					unit: 'CombinedArms',
+				}),
+			)
 			const events = await collect(state)
 
 			expect(events[0]).toMatchObject({
@@ -422,10 +508,15 @@ describe('PendingEvents', () => {
 			await syncUp(state)
 			state.debug__ticketOutcome = { team1: 400, team2: 200 }
 
-			PendingEvents.onLogEvent(state, makeRoundEndedChain(200,
-				{ team: 2, tickets: 999, faction: 'ADF', unit: 'Mechanized' },
-				{ team: 1, tickets: 0, faction: 'RGF', unit: 'CombinedArms' },
-			))
+			PendingEvents.onLogEvent(
+				state,
+				makeRoundEndedChain(200, { team: 2, tickets: 999, faction: 'ADF', unit: 'Mechanized' }, {
+					team: 1,
+					tickets: 0,
+					faction: 'RGF',
+					unit: 'CombinedArms',
+				}),
+			)
 			const events = await collect(state)
 
 			expect(events[0]).toMatchObject({
@@ -440,10 +531,15 @@ describe('PendingEvents', () => {
 			await syncUp(state)
 			state.debug__ticketOutcome = { team1: 200, team2: 200 }
 
-			PendingEvents.onLogEvent(state, makeRoundEndedChain(200,
-				{ team: 1, tickets: 200, faction: 'RGF', unit: 'CombinedArms' },
-				{ team: 2, tickets: 200, faction: 'ADF', unit: 'Mechanized' },
-			))
+			PendingEvents.onLogEvent(
+				state,
+				makeRoundEndedChain(200, { team: 1, tickets: 200, faction: 'RGF', unit: 'CombinedArms' }, {
+					team: 2,
+					tickets: 200,
+					faction: 'ADF',
+					unit: 'Mechanized',
+				}),
+			)
 			const events = await collect(state)
 
 			expect(events[0]).toMatchObject({ type: 'ROUND_ENDED', outcome: { type: 'draw' } })
@@ -738,15 +834,19 @@ describe('PendingEvents', () => {
 			const sq2 = makeSquad(2, 1, 'eos-003', 102)
 			const state = makeSyncedState([p1, p2, p3, p4], [sq1, sq2])
 
-			PendingEvents.onTeamsPolled(state, makeTeams(
-				[
-					makePlayer('eos-001', 1, { squadId: 2 }),
-					makePlayer('eos-002', 1, { squadId: 2 }),
-					makePlayer('eos-003', 1, { squadId: 2, isLeader: true }),
-					makePlayer('eos-004', 1, { squadId: 2 }),
-				],
-				[sq2],
-			), 500)
+			PendingEvents.onTeamsPolled(
+				state,
+				makeTeams(
+					[
+						makePlayer('eos-001', 1, { squadId: 2 }),
+						makePlayer('eos-002', 1, { squadId: 2 }),
+						makePlayer('eos-003', 1, { squadId: 2, isLeader: true }),
+						makePlayer('eos-004', 1, { squadId: 2 }),
+					],
+					[sq2],
+				),
+				500,
+			)
 			const events = await collect(state)
 
 			const types = events.map(e => e.type)
@@ -769,10 +869,14 @@ describe('PendingEvents', () => {
 			const sq2 = makeSquad(2, 1, 'eos-002', 102)
 			const state = makeSyncedState([p1, p2], [sq1, sq2])
 
-			PendingEvents.onTeamsPolled(state, makeTeams(
-				[makePlayer('eos-001', 2), makePlayer('eos-002', 2)],
-				[],
-			), 500)
+			PendingEvents.onTeamsPolled(
+				state,
+				makeTeams(
+					[makePlayer('eos-001', 2), makePlayer('eos-002', 2)],
+					[],
+				),
+				500,
+			)
 			const events = await collect(state)
 
 			const types = events.map(e => e.type)
@@ -795,15 +899,19 @@ describe('PendingEvents', () => {
 			const sq2 = makeSquad(2, 1, 'eos-003', 102)
 			const state = makeSyncedState([p1, p2, p3, p4], [sq1, sq2])
 
-			PendingEvents.onTeamsPolled(state, makeTeams(
-				[
-					makePlayer('eos-001', 1),
-					makePlayer('eos-002', 1, { squadId: 1, isLeader: true }),
-					makePlayer('eos-003', 1),
-					makePlayer('eos-004', 1, { squadId: 2, isLeader: true }),
-				],
-				[sq1, sq2],
-			), 500)
+			PendingEvents.onTeamsPolled(
+				state,
+				makeTeams(
+					[
+						makePlayer('eos-001', 1),
+						makePlayer('eos-002', 1, { squadId: 1, isLeader: true }),
+						makePlayer('eos-003', 1),
+						makePlayer('eos-004', 1, { squadId: 2, isLeader: true }),
+					],
+					[sq1, sq2],
+				),
+				500,
+			)
 			const events = await collect(state)
 
 			const types = events.map(e => e.type)
@@ -825,14 +933,18 @@ describe('PendingEvents', () => {
 			const sq1 = makeSquad(1, 1, 'eos-001', 101)
 			const state = makeSyncedState([p1, p2, p3], [sq1])
 
-			PendingEvents.onTeamsPolled(state, makeTeams(
-				[
-					makePlayer('eos-001', 2),
-					makePlayer('eos-002', 1, { role: 'Rifleman_01' }),
-					makePlayer('eos-003', 2),
-				],
-				[],
-			), 500)
+			PendingEvents.onTeamsPolled(
+				state,
+				makeTeams(
+					[
+						makePlayer('eos-001', 2),
+						makePlayer('eos-002', 1, { role: 'Rifleman_01' }),
+						makePlayer('eos-003', 2),
+					],
+					[],
+				),
+				500,
+			)
 			const events = await collect(state)
 
 			const types = events.map(e => e.type)
@@ -857,8 +969,22 @@ describe('PendingEvents', () => {
 			state.currTeams!.squads[0].uniqueId = 100
 
 			// Buffer two SQUAD_RENAMED rcon events in reverse time order
-			PendingEvents.onRconEvent(state, { type: 'SQUAD_RENAMED', time: 300, squadId: 1, teamId: 1, oldSquadName: 'Bravo', newSquadName: 'Charlie' })
-			PendingEvents.onRconEvent(state, { type: 'SQUAD_RENAMED', time: 200, squadId: 1, teamId: 1, oldSquadName: 'Alpha', newSquadName: 'Bravo' })
+			PendingEvents.onRconEvent(state, {
+				type: 'SQUAD_RENAMED',
+				time: 300,
+				squadId: 1,
+				teamId: 1,
+				oldSquadName: 'Bravo',
+				newSquadName: 'Charlie',
+			})
+			PendingEvents.onRconEvent(state, {
+				type: 'SQUAD_RENAMED',
+				time: 200,
+				squadId: 1,
+				teamId: 1,
+				oldSquadName: 'Alpha',
+				newSquadName: 'Bravo',
+			})
 
 			// Log event at t=301 unlocks both
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(301))
@@ -901,10 +1027,14 @@ describe('PendingEvents', () => {
 			const state = makeSyncedState([p1, p2], [sq1])
 
 			// p1 leaves squad1 as leader with p2 still in it → PLAYER_LEFT_SQUAD + PLAYER_PROMOTED_TO_LEADER
-			PendingEvents.onTeamsPolled(state, makeTeams(
-				[makePlayer('eos-001', 1), makePlayer('eos-002', 1, { squadId: 1 })],
-				[sq1],
-			), 200)
+			PendingEvents.onTeamsPolled(
+				state,
+				makeTeams(
+					[makePlayer('eos-001', 1), makePlayer('eos-002', 1, { squadId: 1 })],
+					[sq1],
+				),
+				200,
+			)
 			const events = await collect(state)
 
 			expect(events.length).toBeGreaterThan(1)
@@ -920,17 +1050,25 @@ describe('PendingEvents', () => {
 			const state = makeSyncedState([p1, p2], [sq1])
 
 			// Call 1: p1 leaves as leader → PLAYER_LEFT_SQUAD(p1) + PLAYER_PROMOTED_TO_LEADER(p2)
-			PendingEvents.onTeamsPolled(state, makeTeams(
-				[makePlayer('eos-001', 1), makePlayer('eos-002', 1, { squadId: 1 })],
-				[sq1],
-			), 200)
+			PendingEvents.onTeamsPolled(
+				state,
+				makeTeams(
+					[makePlayer('eos-001', 1), makePlayer('eos-002', 1, { squadId: 1 })],
+					[sq1],
+				),
+				200,
+			)
 			const batch1 = await collect(state)
 
 			// Call 2: p2 (now sole member) leaves → PLAYER_LEFT_SQUAD(p2) + SQUAD_DISBANDED
-			PendingEvents.onTeamsPolled(state, makeTeams(
-				[makePlayer('eos-001', 1), makePlayer('eos-002', 1)],
-				[],
-			), 400)
+			PendingEvents.onTeamsPolled(
+				state,
+				makeTeams(
+					[makePlayer('eos-001', 1), makePlayer('eos-002', 1)],
+					[],
+				),
+				400,
+			)
 			const batch2 = await collect(state)
 
 			const allEvents = [...batch1, ...batch2]

@@ -8,7 +8,6 @@ export const serializers = {
 	bigint: (n: bigint) => n.toString() + 'n',
 }
 
-
 /**
  * If the source format has only a single severity that matches the meaning of the range
  * then it is recommended to assign that severity the smallest value of the range.
@@ -158,7 +157,11 @@ export function mapSpanAttrs(span: Otel.Span, record: Record<string, any>) {
 	}
 }
 
-export function showLogEvent(obj: { level: number; [key: string]: unknown }, align = false, excludedContextParams: ReadonlySet<string> = new Set()) {
+export function showLogEvent(
+	obj: { level: number; [key: string]: unknown },
+	align = false,
+	excludedContextParams: ReadonlySet<string> = new Set(),
+) {
 	// Format time with 24h time format (HH:MM:SS)
 	const dateObj = new Date(obj.time as number)
 	const time = dateObj.toLocaleTimeString([], { hour12: false })

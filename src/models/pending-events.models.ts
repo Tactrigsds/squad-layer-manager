@@ -2,10 +2,10 @@ import * as Arr from '@/lib/array'
 import * as Gen from '@/lib/generator'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
-import * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
-import * as SE from '@/models/server-events.models'
+import type * as SE from '@/models/server-events.models'
 import * as SM from '@/models/squad.models'
 
 export type State = {

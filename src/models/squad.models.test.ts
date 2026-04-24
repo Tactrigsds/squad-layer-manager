@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
 import * as SM from '@/models/squad.models'
+import { describe, expect, it } from 'vitest'
 
 async function* toChunks(...chunks: string[]): AsyncGenerator<string> {
 	for (const chunk of chunks) yield chunk
@@ -20,10 +20,8 @@ const NEW_GAME =
 
 const PLAYER_CONNECTED =
 	'[2025.11.19-18.18.26:148][549]LogSquad: PostLogin: NewPlayer: BP_PlayerController_C /Game/Maps/Level.PersistentLevel.Logano_Stefano (IP: 192.168.1.1 | Online IDs: EOS: 0002abc123def456789abc123def4567)'
-const PLAYER_JOIN_SUCCEEDED =
-	'[2025.11.19-18.18.26:151][549]LogNet: Join succeeded: Logano Stefano'
-const PLAYER_ADDED_TO_TEAM =
-	'[2025.11.19-18.18.26:152][549]LogSquad: Player  Logano Stefano has been added to Team 1'
+const PLAYER_JOIN_SUCCEEDED = '[2025.11.19-18.18.26:151][549]LogNet: Join succeeded: Logano Stefano'
+const PLAYER_ADDED_TO_TEAM = '[2025.11.19-18.18.26:152][549]LogSquad: Player  Logano Stefano has been added to Team 1'
 const PLAYER_RESTARTED =
 	'[2025.11.19-18.18.26:153][549]LogSquadTrace: [DedicatedServer]RestartPlayer(): On Server PC=Logano_Stefano Spawn=nullptr DeployRole=MEI_Rifleman_01'
 const JOIN_CHAIN = [PLAYER_CONNECTED, PLAYER_JOIN_SUCCEEDED, PLAYER_ADDED_TO_TEAM, PLAYER_RESTARTED].join('\n')
@@ -56,20 +54,23 @@ const DETERMINE_MATCH_WINNER_ADMIN =
 	'[2026.04.17-19.29.13:107][427]LogSquadTrace: [DedicatedServer]DetermineMatchWinner(): 31st Marine Expeditionary Unit won on Kohat Toi'
 const DETERMINE_MATCH_WINNER_DRAW_ADMIN =
 	'[2026.04.17-19.29.13:107][427]LogSquadTrace: [DedicatedServer]DetermineMatchWinner(): The game was a draw on Kohat Toi'
-const ROUND_ENDED_ADMIN =
-	'[2026.04.17-19.29.13:108][427]LogGameState: Match State Changed from InProgress to WaitingPostMatch'
-const ADMIN_MATCH_ENDED =
-	'[2026.04.17-19.29.13:108][427]LogSquad: ADMIN COMMAND: Match ended from RCON'
+const ROUND_ENDED_ADMIN = '[2026.04.17-19.29.13:108][427]LogGameState: Match State Changed from InProgress to WaitingPostMatch'
+const ADMIN_MATCH_ENDED = '[2026.04.17-19.29.13:108][427]LogSquad: ADMIN COMMAND: Match ended from RCON'
 // A subsequent event with a different chainID forces the chain to complete
 const NEXT_TICK_EVENT =
 	'[2026.04.17-19.29.15:000][428]LogWorld: Bringing World /Kohat/Maps/Gameplay_Layers/Kohat_RAAS_v1.Kohat_RAAS_v1 up for play'
-const ROUND_ADMIN_CHAIN = [DETERMINE_MATCH_WINNER_ADMIN, DETERMINE_MATCH_WINNER_DRAW_ADMIN, ROUND_ENDED_ADMIN, ADMIN_MATCH_ENDED, NEXT_TICK_EVENT].join('\n')
+const ROUND_ADMIN_CHAIN = [
+	DETERMINE_MATCH_WINNER_ADMIN,
+	DETERMINE_MATCH_WINNER_DRAW_ADMIN,
+	ROUND_ENDED_ADMIN,
+	ADMIN_MATCH_ENDED,
+	NEXT_TICK_EVENT,
+].join('\n')
 
 const PLAYER_DISCONNECTED =
 	'[2026.04.17-18.35.14:535][115]LogNet: UChannel::Close: Sending CloseBunch. ChIndex == 0. Name: [UChannel] ChIndex: 0, Closing: 0 [UNetConnection] RemoteAddr: 75.155.191.37:51909, Name: RedpointEOSIpNetConnection_2147440814, Driver: Name:GameNetDriver Def:GameNetDriver RedpointEOSNetDriver_2147482371, IsServer: YES, PC: BP_PlayerController_C_2147440788, Owner: BP_PlayerController_C_2147440788, UniqueId: RedpointEOS:000249a430574933aefd9bbc9a8f2f37'
 
-const ADMIN_BROADCAST_SINGLE =
-	'[2025.11.19-18.18.26:151][549]LogSquad: ADMIN COMMAND: Message broadcasted <Hello world> from RCON'
+const ADMIN_BROADCAST_SINGLE = '[2025.11.19-18.18.26:151][549]LogSquad: ADMIN COMMAND: Message broadcasted <Hello world> from RCON'
 const ADMIN_BROADCAST_MULTILINE =
 	'[2025.11.19-18.18.26:151][549]LogSquad: ADMIN COMMAND: Message broadcasted <Hello world\nFactions: RGF+CombinedArms AFU+CombinedArms> from RCON'
 
@@ -188,7 +189,9 @@ describe('LogEvents.parse', () => {
 			const errors: Error[] = []
 			// Second PLAYER_CONNECTED restarts the chain; the first is abandoned
 			const events = await collect(
-				[PLAYER_CONNECTED, PLAYER_JOIN_SUCCEEDED, PLAYER_CONNECTED, PLAYER_JOIN_SUCCEEDED, PLAYER_ADDED_TO_TEAM, PLAYER_RESTARTED].join('\n'),
+				[PLAYER_CONNECTED, PLAYER_JOIN_SUCCEEDED, PLAYER_CONNECTED, PLAYER_JOIN_SUCCEEDED, PLAYER_ADDED_TO_TEAM, PLAYER_RESTARTED].join(
+					'\n',
+				),
 				errors,
 			)
 			expect(events).toHaveLength(1)
