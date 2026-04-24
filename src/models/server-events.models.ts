@@ -1,6 +1,7 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Obj from '@/lib/object'
 import type * as L from '@/models/layer'
+import type * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import superjson from 'superjson'
 import { type Base, type EventMeta, meta } from './server-events-base.models'
@@ -43,6 +44,7 @@ export const RCON_DISCONNECTED_META = meta()
 
 export type RoundEnded = {
 	type: 'ROUND_ENDED'
+	outcome: MH.MatchOutcome
 } & Base
 export const ROUND_ENDED_META = meta()
 
@@ -218,6 +220,16 @@ export type PlayerWounded<P = SM.PlayerId> =
 	& Base
 
 export const PLAYER_WOUNDED_META = meta({ players: [{ assocType: 'victim' }, { assocType: 'attacker' }] })
+
+export type SyntheticEvent<P = SM.PlayerId> =
+	| PlayerDetailsChanged<P>
+	| PlayerChangedTeam<P>
+	| PlayerLeftSquad<P>
+	| SquadDisbanded
+	| SquadDetailsChanged
+	// | SquadCreated
+	| PlayerJoinedSquad<P>
+	| PlayerPromotedToLeader<P>
 
 export type Event<P = SM.PlayerId> =
 	| MapSet

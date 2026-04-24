@@ -1,6 +1,7 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array'
-import { createLogMatcher, eventDef, matchLog } from '@/lib/log-parsing'
+import { createLogMatcher, eventDef, EventSchema, matchLog } from '@/lib/log-parsing'
+import * as Obj from '@/lib/object'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
 import { simpleUniqueStringMatch } from '@/lib/string'
 import * as ZodUtils from '@/lib/zod'
@@ -80,7 +81,7 @@ export namespace PlayerIds {
 	}
 
 	export const IdQuerySchema = IdFields()
-	export const Schema = IdFields('username', 'eos')
+	export const Schema = IdFields('eos', 'username')
 
 	export function getPlayerId(ids: IdQuery<'eos'>) {
 		return ids.eos
@@ -90,7 +91,7 @@ export namespace PlayerIds {
 	}
 
 	export type IdQueryOrPlayerId = IdQuery | PlayerId
-	function normalizeIdQuery(id: IdQueryOrPlayerId): IdQuery {
+	export function normalizeIdQuery(id: IdQueryOrPlayerId): IdQuery {
 		return typeof id === 'string' ? queryFromPlayerId(id) : id
 	}
 
@@ -116,13 +117,13 @@ export namespace PlayerIds {
 			;[ids.usernameNoTag, ids.tag] = opts.username.split(/\s+/, 2)
 			if (!ids.tag) throw new Error('No tag-denoting whitespace in parsed username ' + opts.username)
 		}
-		return {
+		return Obj.trimUndefined({
 			...ids,
 			usernameNoTag: opts.usernameNoTag?.trim(),
 			username: opts.username?.trim(),
 			playerController: opts.playerController?.trim(),
 			eos: opts.eos?.trim() ?? ids.eos,
-		}
+		})
 	}
 
 	export function find(idList: Type[], id: IdQueryOrPlayerId): Type | undefined
@@ -381,6 +382,7 @@ export const SquadSchema = z.object({
 })
 
 export type Squad = z.infer<typeof SquadSchema>
+export const SQUAD_DETAILS = ['locked'] as const
 
 // Squad with a server-assigned uniqueId that is stable for the lifetime of the squad instance
 export const UniqueSquadSchema = SquadSchema.extend({
@@ -497,16 +499,16 @@ export type LayerSyncState =
 export type PlayerRef = string
 
 export namespace RconEvents {
-	const ChatMessageSchema = eventDef('CHAT_MESSAGE', {
+	const ChatMessageDef = eventDef('CHAT_MESSAGE', {
 		time: z.number(),
 		channelType: CHAT_CHANNEL_TYPE,
 		message: z.string(),
 		playerIds: PlayerIds.Schema,
 	})
-	export type ChatMessage = z.infer<typeof ChatMessageSchema['schema']>
+	export type ChatMessage = z.infer<typeof ChatMessageDef['schema']>
 
 	export const ChatMessageMatcher = createLogMatcher({
-		event: ChatMessageSchema,
+		event: ChatMessageDef,
 		regex: /\[(ChatAll|ChatTeam|ChatSquad|ChatAdmin)] \[Online IDs:([^\]]+)\] (.+?) : (.*)/,
 		onMatch: (match) => {
 			return {
@@ -518,15 +520,15 @@ export namespace RconEvents {
 		},
 	})
 
-	const PlayerWarnedSchema = eventDef('PLAYER_WARNED', {
+	const PlayerWarnedDef = eventDef('PLAYER_WARNED', {
 		time: z.number(),
 		reason: z.string(),
 		playerIds: PlayerIds.IdFields('username'),
 	})
-	export type PlayerWarned = z.infer<typeof PlayerWarnedSchema['schema']>
+	export type PlayerWarned = z.infer<typeof PlayerWarnedDef['schema']>
 
 	export const PlayerWarnedMatcher = createLogMatcher({
-		event: PlayerWarnedSchema,
+		event: PlayerWarnedDef,
 		regex: /Remote admin has warned player (.*)\. Message was "(.*)"/,
 		onMatch: (match) => {
 			return {
@@ -537,14 +539,14 @@ export namespace RconEvents {
 		},
 	})
 
-	const PossessedAdminCameraSchema = eventDef('POSSESSED_ADMIN_CAMERA', {
+	const PossessedAdminCameraDef = eventDef('POSSESSED_ADMIN_CAMERA', {
 		time: z.number(),
 		playerIds: PlayerIds.Schema,
 	})
-	export type PossessedAdminCamera = z.infer<typeof PossessedAdminCameraSchema['schema']>
+	export type PossessedAdminCamera = z.infer<typeof PossessedAdminCameraDef['schema']>
 
 	export const PossessedAdminCameraMatcher = createLogMatcher({
-		event: PossessedAdminCameraSchema,
+		event: PossessedAdminCameraDef,
 		regex: /\[Online Ids:([^\]]+)\] (.+) has possessed admin camera\./,
 		onMatch: (match) => {
 			return {
@@ -555,14 +557,14 @@ export namespace RconEvents {
 		},
 	})
 
-	const UnpossessedAdminCameraSchema = eventDef('UNPOSSESSED_ADMIN_CAMERA', {
+	const UnpossessedAdminCameraDef = eventDef('UNPOSSESSED_ADMIN_CAMERA', {
 		time: z.number(),
 		playerIds: PlayerIds.Schema,
 	})
-	export type UnpossessedAdminCamera = z.infer<typeof UnpossessedAdminCameraSchema['schema']>
+	export type UnpossessedAdminCamera = z.infer<typeof UnpossessedAdminCameraDef['schema']>
 
 	export const UnpossessedAdminCameraMatcher = createLogMatcher({
-		event: UnpossessedAdminCameraSchema,
+		event: UnpossessedAdminCameraDef,
 		regex: /\[Online IDs:([^\]]+)\] (.+) has unpossessed admin camera\./,
 		onMatch: (match) => {
 			return {
@@ -572,17 +574,17 @@ export namespace RconEvents {
 		},
 	})
 
-	const SquadCreatedSchema = eventDef('SQUAD_CREATED', {
+	const SquadCreatedDef = eventDef('SQUAD_CREATED', {
 		time: z.number(),
 		squadId: ZodUtils.ParsedIntSchema,
 		squadName: z.string(),
 		teamName: z.string(),
 		creatorIds: PlayerIds.Schema,
 	})
-	export type SquadCreated = z.infer<typeof SquadCreatedSchema['schema']>
+	export type SquadCreated = z.infer<typeof SquadCreatedDef['schema']>
 
 	export const SquadCreatedMatcher = createLogMatcher({
-		event: SquadCreatedSchema,
+		event: SquadCreatedDef,
 		regex: /(?<playerName>.+) \(Online IDs:([^)]+)\) has created Squad (?<squadId>\d+) \(Squad Name: (?<squadName>.+)\) on (?<teamName>.+)/,
 		onMatch: (match) => {
 			return {
@@ -595,16 +597,16 @@ export namespace RconEvents {
 		},
 	})
 
-	const PlayerBannedSchema = eventDef('PLAYER_BANNED', {
+	const PlayerBannedDef = eventDef('PLAYER_BANNED', {
 		time: z.number(),
 		playerID: z.string(),
 		interval: z.string(),
 		playerIds: PlayerIds.IdFields('username', 'eos'),
 	})
-	export type PlayerBanned = z.infer<typeof PlayerBannedSchema['schema']>
+	export type PlayerBanned = z.infer<typeof PlayerBannedDef['schema']>
 
 	export const PlayerBannedMatcher = createLogMatcher({
-		event: PlayerBannedSchema,
+		event: PlayerBannedDef,
 		regex: /Banned player ([0-9]+)\. \[Online IDs=([^\]]+)\] (.*) for interval (.*)/,
 		onMatch: (match) => {
 			return {
@@ -616,7 +618,7 @@ export namespace RconEvents {
 		},
 	})
 
-	const SquadRenamedSchema = eventDef('SQUAD_RENAMED', {
+	const SquadRenamedDef = eventDef('SQUAD_RENAMED', {
 		time: z.number(),
 		squadId: z.number(),
 		teamId: z.number(),
@@ -624,10 +626,10 @@ export namespace RconEvents {
 		newSquadName: z.string(),
 	})
 
-	export type SquadRenamed = z.infer<typeof SquadRenamedSchema['schema']>
+	export type SquadRenamed = z.infer<typeof SquadRenamedDef['schema']>
 
 	export const SquadRenamedMatcher = createLogMatcher({
-		event: SquadRenamedSchema,
+		event: SquadRenamedDef,
 		regex: /Remote admin renamed squad (?<squadId>\d+) on team (?<teamId>\d+), named "(?<oldSquadName>.+)", to "(?<newSquadName>.+)"/,
 		onMatch: (match) => {
 			return {
@@ -659,9 +661,65 @@ export namespace LogEvents {
 	const logStartRegex = /^([[0-9.:-]+]\[[ 0-9]*]).+$/
 	const logPreambleRegex = /^\w+: /
 
-	export async function* parse(chunk$: AsyncGenerator<string>) {
+	export async function* parse(chunk$: AsyncGenerator<string>, errors: Error[]) {
 		let foundLogStart: boolean = false
 		let lineBuffer: string[] = []
+		let chainState: { chainKey: keyof typeof LOG_CHAINS; chainID: number; events: Record<string, Event> } | null = null
+
+		function isChainComplete(): boolean {
+			if (!chainState) return false
+			const chainDef = LOG_CHAINS[chainState.chainKey]
+			return chainDef.every(item => isChainItemOptional(item) || getChainItemSchema(item).type in chainState!.events)
+		}
+
+		function finalizeChain(): AnyChainEvent | null {
+			if (!chainState) return null
+			if (isChainComplete()) {
+				const time = Object.values(chainState.events).reduce((acc, e) => acc < e.time ? acc : e.time, Infinity)
+				const result = { type: chainState.chainKey, events: chainState.events, time } as AnyChainEvent
+				chainState = null
+				return result
+			}
+			errors.push(new Error(`Incomplete chain ${chainState.chainKey} at end of stream`))
+			chainState = null
+			return null
+		}
+
+		function handleEvent(event: Event): (AnyChainEvent | NonChainEvent)[] {
+			const results: (AnyChainEvent | NonChainEvent)[] = []
+
+			if (chainState && event.chainID !== chainState.chainID) {
+				const chain = finalizeChain()
+				if (chain) results.push(chain)
+			}
+
+			const membership = EVENT_CHAIN_MAP.get(event.type)
+
+			if (!membership) {
+				if (!chainState) results.push(event as NonChainEvent)
+				return results
+			}
+
+			const { chainKey, position } = membership
+
+			if (position === 0) {
+				if (chainState) {
+					errors.push(new Error(`Chain ${chainKey} restarted before completion`))
+					chainState = null
+				}
+				chainState = { chainKey, chainID: event.chainID, events: { [event.type]: event } }
+			} else if (!chainState) {
+				results.push(event as NonChainEvent)
+				return results
+			} else {
+				if (event.type in chainState.events) {
+					errors.push(new Error(`Duplicate event ${event.type} in chain ${chainKey}`))
+				}
+				chainState.events[event.type] = event
+			}
+
+			return results
+		}
 
 		let carry = ''
 		for await (const chunk of chunk$) {
@@ -670,35 +728,38 @@ export namespace LogEvents {
 			carry = lines.pop() ?? ''
 			if (lines.length === 0) continue
 			for (const line of lines) {
-				if (logPreambleRegex.test(line)) {
-					if (foundLogStart) {
-						const [event, err] = matchLog(lineBuffer.join('\n'), EventMatchers)
-						lineBuffer = []
-						foundLogStart = false
-						if (event === null && err == null) continue
-						yield [event, err] as const
-					}
+				const match = line.match(logStartRegex)
+				if (!match) {
+					if (foundLogStart) lineBuffer.push(line)
 					continue
 				}
-				const match = line.match(logStartRegex)
-				if (!match && !foundLogStart) continue
-				if (match && foundLogStart) {
+				if (foundLogStart) {
 					const [event, err] = matchLog(lineBuffer.join('\n'), EventMatchers)
 					lineBuffer = [line]
 					if (event === null && err == null) continue
-					yield [event, err] as const
+					if (err !== null) {
+						yield [null, err] as const
+						continue
+					}
+					for (const result of handleEvent(event!)) yield [result, null] as const
 					continue
 				}
-				if (match && !foundLogStart) {
-					foundLogStart = true
-					lineBuffer = [line]
-					continue
-				}
-				if (!match && foundLogStart) {
-					lineBuffer.push(line)
-					continue
-				}
+				foundLogStart = true
+				lineBuffer = [line]
 			}
+		}
+
+		if (foundLogStart && lineBuffer.length > 0) {
+			const [event, err] = matchLog(lineBuffer.join('\n'), EventMatchers)
+			if (err !== null) yield [null, err] as const
+			else if (event !== null) {
+				for (const result of handleEvent(event)) yield [result, null] as const
+			}
+		}
+
+		if (chainState) {
+			const chain = finalizeChain()
+			if (chain) yield [chain, null] as const
 		}
 	}
 
@@ -712,17 +773,17 @@ export namespace LogEvents {
 		type: string
 	}
 
-	const NewGameSchema = eventDef('NEW_GAME', {
+	const NewGameDef = eventDef('NEW_GAME', {
 		...BaseEventProperties,
 		mapClassname: z.string().trim(),
 		layerClassname: z.string().trim(),
 	})
 
-	export type NewGame = z.infer<typeof NewGameSchema['schema']>
+	export type NewGame = z.infer<typeof NewGameDef['schema']>
 
 	export const NewGameEventMatcher = createLogMatcher({
 		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogWorld: Bringing World \/([A-z]+)\/(?:Maps\/)?([A-z0-9-]+)\/(?:.+\/)?([A-z0-9-]+)(?:\.[A-z0-9-]+)/,
-		event: NewGameSchema,
+		event: NewGameDef,
 		onMatch: (args) => ({
 			raw: args[0],
 			time: parseTimestamp(args[1]),
@@ -732,17 +793,37 @@ export namespace LogEvents {
 		}),
 	})
 
-	const RoundWinnerSchema = eventDef('ROUND_TEAM_OUTCOME', {
+	const DetermineMatchWinnerDef = eventDef('DETERMINE_MATCH_WINNER', {
+		...BaseEventProperties,
+		winner: z.string(),
+		map: z.string(),
+	})
+
+	export type DetermineMatchWinner = z.infer<typeof DetermineMatchWinnerDef['schema']>
+
+	export const DetermineMatchWinnerMatcher = createLogMatcher({
+		event: DetermineMatchWinnerDef,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer\]DetermineMatchWinner\(\): (.+) won on (.+)/,
+		onMatch: (args) => ({
+			raw: args[0],
+			time: parseTimestamp(args[1]),
+			chainID: args[2],
+			winner: args[3],
+			map: args[4],
+		}),
+	})
+
+	const RoundWinnerDef = eventDef('ROUND_TEAM_OUTCOME', {
 		...BaseEventProperties,
 		winner: z.string(),
 		layer: z.string(),
 	})
 
-	export type RoundTeamOutcome = z.infer<typeof RoundWinnerSchema['schema']>
+	export type RoundTeamOutcome = z.infer<typeof RoundWinnerDef['schema']>
 
 	export const RoundWinnerEventMatcher = createLogMatcher({
 		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogGame: Winner: (.+) \(Layer: (.+)\)/,
-		event: RoundWinnerSchema,
+		event: RoundWinnerDef,
 		onMatch: (args) => ({
 			raw: args[0],
 			time: parseTimestamp(args[1]),
@@ -752,23 +833,23 @@ export namespace LogEvents {
 		}),
 	})
 
-	export const RoundDecidedSchema = eventDef('ROUND_DECIDED', {
+	const RoundDecidedBaseProps = {
 		...BaseEventProperties,
-		team: TeamIdSchema,
+		team: z.union([z.literal(1), z.literal(2), z.literal(-1)]),
 		unit: z.string(),
 		faction: z.string(),
-		action: z.enum(['won', 'lost']),
 		tickets: z.int(),
 		layer: z.string(),
 		map: z.string(),
-	})
+	}
 
-	export type RoundDecided = z.infer<typeof RoundDecidedSchema['schema']>
+	export const RoundDecidedWinnerDef = eventDef('ROUND_DECIDED_WINNER', RoundDecidedBaseProps)
+	export type RoundDecidedWinner = z.infer<typeof RoundDecidedWinnerDef['schema']>
 
-	export const RoundDecidedMatcher = createLogMatcher({
-		event: RoundDecidedSchema,
+	export const RoundDecidedWinnerMatcher = createLogMatcher({
+		event: RoundDecidedWinnerDef,
 		regex:
-			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadGameEvents: Display: Team ([0-9]+), (.*) \( ?(.*?) ?\) has (won|lost) the match with ([0-9]+) Tickets on layer (.*) \(level (.*)\)!/,
+			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadGameEvents: Display: Team (-?[0-9]+), (.*) \( ?(.*?) ?\) has won the match with (-?[0-9]+) Tickets on layer (.*) \(level (.*)\)!/,
 		onMatch: (args) => {
 			return {
 				raw: args[0],
@@ -777,22 +858,43 @@ export namespace LogEvents {
 				team: parseInt(args[3]) as 1 | 2,
 				unit: args[4],
 				faction: args[5],
-				action: args[6] as 'won' | 'lost',
-				tickets: parseInt(args[7]),
-				layer: args[8],
-				map: args[9],
+				tickets: parseInt(args[6]),
+				layer: args[7],
+				map: args[8],
 			}
 		},
 	})
 
-	export const RoundEndedSchema = eventDef('ROUND_ENDED', {
+	export const RoundDecidedLoserDef = eventDef('ROUND_DECIDED_LOSER', RoundDecidedBaseProps)
+	export type RoundDecidedLoser = z.infer<typeof RoundDecidedLoserDef['schema']>
+
+	export const RoundDecidedLoserMatcher = createLogMatcher({
+		event: RoundDecidedLoserDef,
+		regex:
+			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadGameEvents: Display: Team (-?[0-9]+), (.*) \( ?(.*?) ?\) has lost the match with (-?[0-9]+) Tickets on layer (.*) \(level (.*)\)!/,
+		onMatch: (args) => {
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
+				team: parseInt(args[3]) as 1 | 2,
+				unit: args[4],
+				faction: args[5],
+				tickets: parseInt(args[6]),
+				layer: args[7],
+				map: args[8],
+			}
+		},
+	})
+
+	export const RoundEndedDef = eventDef('ROUND_ENDED', {
 		...BaseEventProperties,
 	})
 
-	export type RoundEnded = z.infer<typeof RoundEndedSchema['schema']>
+	export type RoundEnded = z.infer<typeof RoundEndedDef['schema']>
 
 	export const RoundEndedMatcher = createLogMatcher({
-		event: RoundEndedSchema,
+		event: RoundEndedDef,
 		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogGameState: Match State Changed from InProgress to WaitingPostMatch/,
 		onMatch: (args) => {
 			return {
@@ -803,14 +905,14 @@ export namespace LogEvents {
 		},
 	})
 
-	export const PlayerConnectedSchema = eventDef('PLAYER_CONNECTED', {
+	export const PlayerConnectedDef = eventDef('PLAYER_CONNECTED', {
 		...BaseEventProperties,
 		playerIds: PlayerIds.IdFields('eos', 'playerController'),
 		ip: z.union([z.ipv4(), z.ipv6()]),
 	})
-	export type PlayerConnected = z.infer<typeof PlayerConnectedSchema['schema']>
+	export type PlayerConnected = z.infer<typeof PlayerConnectedDef['schema']>
 	export const PlayerConnectedMatcher = createLogMatcher({
-		event: PlayerConnectedSchema,
+		event: PlayerConnectedDef,
 		regex:
 			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: PostLogin: NewPlayer: BP_PlayerController\w*_C .+PersistentLevel\.([^\s]+) \(IP: ([\d.]+) \| Online IDs:([^)|]+)\)/,
 		onMatch: (args) => {
@@ -824,14 +926,14 @@ export namespace LogEvents {
 		},
 	})
 
-	export const PlayerDisconnectedSchema = eventDef('PLAYER_DISCONNECTED', {
+	export const PlayerDisconnectedDef = eventDef('PLAYER_DISCONNECTED', {
 		...BaseEventProperties,
 		playerIds: PlayerIds.IdFields('eos', 'playerController'),
 		ip: z.union([z.ipv4(), z.ipv6()]),
 	})
-	export type PlayerDisconnected = z.infer<typeof PlayerDisconnectedSchema['schema']>
+	export type PlayerDisconnected = z.infer<typeof PlayerDisconnectedDef['schema']>
 	export const PlayerDisconnectedMatcher = createLogMatcher({
-		event: PlayerDisconnectedSchema,
+		event: PlayerDisconnectedDef,
 		regex:
 			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogNet: UChannel::Close: Sending CloseBunch\. ChIndex == [0-9]+\. Name: \[UChannel\] ChIndex: [0-9]+, Closing: [0-9]+ \[UNetConnection\] RemoteAddr: ([\d.]+):[\d]+, Name: \w+EOSIpNetConnection_[0-9]+, Driver: .*?NetDriver_[0-9]+, IsServer: YES, PC: ([^ ]+), Owner: [^ ]+, UniqueId: RedpointEOS:([\d\w]+)/,
 		onMatch: (args) => {
@@ -848,14 +950,14 @@ export namespace LogEvents {
 		},
 	})
 
-	export const PlayerJoinSuccededSchema = eventDef('PLAYER_JOIN_SUCCEEDED', {
+	export const PlayerJoinSuccededDef = eventDef('PLAYER_JOIN_SUCCEEDED', {
 		...BaseEventProperties,
 		player: PlayerIds.IdFields('usernameNoTag'),
 	})
 
-	export type PlayerJoinSucceeded = z.infer<typeof PlayerJoinSuccededSchema['schema']>
+	export type PlayerJoinSucceeded = z.infer<typeof PlayerJoinSuccededDef['schema']>
 	export const PlayerJoinSuccededMatcher = createLogMatcher({
-		event: PlayerJoinSuccededSchema,
+		event: PlayerJoinSuccededDef,
 		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogNet: Join succeeded: (.+)/,
 		onMatch: (args) => {
 			return {
@@ -867,7 +969,7 @@ export namespace LogEvents {
 		},
 	})
 
-	export const PlayerDiedSchema = eventDef('PLAYER_DIED', {
+	export const PlayerDiedDef = eventDef('PLAYER_DIED', {
 		...BaseEventProperties,
 		damage: z.number(),
 		weapon: z.string(),
@@ -875,9 +977,9 @@ export namespace LogEvents {
 		victimIds: PlayerIds.IdFields('username'),
 	})
 
-	export type PlayerDied = z.infer<typeof PlayerDiedSchema['schema']>
+	export type PlayerDied = z.infer<typeof PlayerDiedDef['schema']>
 	export const PlayerDiedMatcher = createLogMatcher({
-		event: PlayerDiedSchema,
+		event: PlayerDiedDef,
 		regex:
 			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer](?:ASQSoldier::)?Die\(\): Player:(.+) KillingDamage=(?:-)*([0-9.]+) from ([A-z_0-9]+) \(Online IDs:([^)|]+)\| Contoller ID: ([\w\d]+)\) caused by ([A-z_0-9-]+)_C/,
 		onMatch: (args) => {
@@ -897,16 +999,16 @@ export namespace LogEvents {
 		},
 	})
 
-	export const PlayerWoundedSchema = eventDef('PLAYER_WOUNDED', {
+	export const PlayerWoundedDef = eventDef('PLAYER_WOUNDED', {
 		...BaseEventProperties,
 		damage: z.number(),
 		weapon: z.string(),
 		attackerIds: PlayerIds.IdFields('eos', 'playerController'),
 		victimIds: PlayerIds.IdFields('username'),
 	})
-	export type PlayerWounded = z.infer<typeof PlayerWoundedSchema['schema']>
+	export type PlayerWounded = z.infer<typeof PlayerWoundedDef['schema']>
 	export const PlayerWoundedMatcher = createLogMatcher({
-		event: PlayerWoundedSchema,
+		event: PlayerWoundedDef,
 		regex:
 			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer](?:ASQSoldier::)?Wound\(\): Player:(.+) KillingDamage=(?:-)*([0-9.]+) from ([A-z_0-9]+) \(Online IDs:([^)|]+)\| Controller ID: ([\w\d]+)\) caused by ([A-z_0-9-]+)_C/,
 		onMatch: (args) => {
@@ -925,17 +1027,16 @@ export namespace LogEvents {
 		},
 	})
 
-	export const AdminBroadcastSchema = eventDef('ADMIN_BROADCAST', {
+	export const AdminBroadcastDef = eventDef('ADMIN_BROADCAST', {
 		...BaseEventProperties,
 		message: z.string(),
 		from: z.union([z.literal('RCON'), z.literal('unknown'), PlayerIds.Schema]),
 	})
 
-	export type AdminBroadcast = z.infer<typeof AdminBroadcastSchema['schema']>
+	export type AdminBroadcast = z.infer<typeof AdminBroadcastDef['schema']>
 	export const AdminBroadcastMatcher = createLogMatcher({
-		event: AdminBroadcastSchema,
-		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Message broadcasted <(.+)> from (.+)/,
-		// TODO multiline broadcasts will be truncated. eventually we could set up sftp-tail to handle special cases like this, or maybe use multiple matchers and a flag to reconstruct the full broadcast
+		event: AdminBroadcastDef,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Message broadcasted <([\s\S]+)> from (.+)/,
 		onMatch: (args) => {
 			let from: AdminBroadcast['from']
 			if (args[4] === 'RCON') {
@@ -958,15 +1059,15 @@ export namespace LogEvents {
 		},
 	})
 
-	export const MapSetSchema = eventDef('MAP_SET', {
+	export const MapSetDef = eventDef('MAP_SET', {
 		...BaseEventProperties,
 		nextLayer: z.string().trim(),
 		nextFactions: z.string().trim().optional(),
 	})
 
-	export type MapSet = z.infer<typeof MapSetSchema['schema']>
+	export type MapSet = z.infer<typeof MapSetDef['schema']>
 	export const MapSetMatcher = createLogMatcher({
-		event: MapSetSchema,
+		event: MapSetDef,
 		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Set next layer to ([^\s]+)(?: ([^[]+))? from .+/,
 		onMatch: (args) => {
 			return {
@@ -979,15 +1080,15 @@ export namespace LogEvents {
 		},
 	})
 
-	export const KickingPlayerSchema = eventDef('KICKING_PLAYER', {
+	export const KickingPlayerDef = eventDef('KICKING_PLAYER', {
 		...BaseEventProperties,
 		reason: z.string().trim(),
 		playerIds: PlayerIds.IdFields('username'),
 	})
 
-	export type KickingPlayer = z.infer<typeof KickingPlayerSchema['schema']>
+	export type KickingPlayer = z.infer<typeof KickingPlayerDef['schema']>
 	export const KickingPlayerMatcher = createLogMatcher({
-		event: KickingPlayerSchema,
+		event: KickingPlayerDef,
 		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogOnlineGame: Display: Kicking player:\s+(.+?)\s+;\s+Reason\s+=\s+(.+)/,
 		onMatch: (args) => {
 			return {
@@ -1000,14 +1101,14 @@ export namespace LogEvents {
 		},
 	})
 
-	export const PlayerKickedSchema = eventDef('PLAYER_KICKED', {
+	export const PlayerKickedDef = eventDef('PLAYER_KICKED', {
 		...BaseEventProperties,
 		playerIds: PlayerIds.IdFields('username', 'eos'),
 	})
 
-	export type PlayerKicked = z.infer<typeof PlayerKickedSchema['schema']>
+	export type PlayerKicked = z.infer<typeof PlayerKickedDef['schema']>
 	export const PlayerKickedMatcher = createLogMatcher({
-		event: PlayerKickedSchema,
+		event: PlayerKickedDef,
 		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Kicked player \d+\. \[Online IDs=([^\]]+)\]\s+(.+) from .+/,
 		onMatch: (args) => {
 			return {
@@ -1019,14 +1120,68 @@ export namespace LogEvents {
 		},
 	})
 
+	export const PlayerAddedToTeamDef = eventDef('PLAYER_ADDED_TO_TEAM', {
+		...BaseEventProperties,
+		playerIds: PlayerIds.IdFields('username'),
+		teamId: TeamIdSchema,
+	})
+
+	export type PlayerAddedToTeam = z.infer<typeof PlayerAddedToTeamDef['schema']>
+	export const PlayerAddedToTeamMatcher = createLogMatcher({
+		event: PlayerAddedToTeamDef,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: Player\s+(.+) has been added to Team ([12])/,
+		onMatch: (args) => ({
+			raw: args[0],
+			time: parseTimestamp(args[1]),
+			chainID: args[2],
+			playerIds: PlayerIds.parse({ username: args[3] }),
+			teamId: parseInt(args[4]) as 1 | 2,
+		}),
+	})
+
+	export const PlayerRestartedDef = eventDef('PLAYER_RESTARTED', {
+		...BaseEventProperties,
+		playerController: z.string(),
+		deployRole: z.string(),
+	})
+
+	export type PlayerRestarted = z.infer<typeof PlayerRestartedDef['schema']>
+	export const PlayerRestartedMatcher = createLogMatcher({
+		event: PlayerRestartedDef,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer]RestartPlayer\(\): On Server PC=(\S+) Spawn=\S+ DeployRole=(\S+)/,
+		onMatch: (args) => ({
+			raw: args[0],
+			time: parseTimestamp(args[1]),
+			chainID: args[2],
+			playerController: args[3],
+			deployRole: args[4],
+		}),
+	})
+
+	const UnknownEventDef = eventDef('UNKNOWN', {
+		...BaseEventProperties,
+	})
+	export type UnknownEvent = z.infer<typeof UnknownEventDef['schema']>
+	export const UnknownEventMatcher = createLogMatcher({
+		event: UnknownEventDef,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)](.*)$/s,
+		onMatch: (m) => ({
+			raw: m[0],
+			time: parseTimestamp(m[1]),
+			chainID: m[2].trim(),
+		}),
+	})
+
 	export type ToEventMap<E extends SquadLogEvent> = {
 		[e in E['type']]: (evt: Extract<E, { type: e }>) => void
 	}
 
 	export const EventMatchers = [
 		NewGameEventMatcher,
+		DetermineMatchWinnerMatcher,
 		RoundWinnerEventMatcher,
-		RoundDecidedMatcher,
+		RoundDecidedWinnerMatcher,
+		RoundDecidedLoserMatcher,
 		RoundEndedMatcher,
 		PlayerConnectedMatcher,
 		PlayerDisconnectedMatcher,
@@ -1037,10 +1192,22 @@ export namespace LogEvents {
 		MapSetMatcher,
 		KickingPlayerMatcher,
 		PlayerKickedMatcher,
+		PlayerAddedToTeamMatcher,
+		PlayerRestartedMatcher,
+		UnknownEventMatcher,
 	] as const
 
+	type LogEventType = (typeof EventMatchers)[number]['event']['type']
+	export const LOG_EVENT_TYPES = z.enum(EventMatchers.map(m => m.event.type) as [LogEventType, ...LogEventType[]])
+
+	export function isLogEvent<T extends { type: string }>(event: T): event is Extract<T, { type: LogEventType }> {
+		return (LOG_EVENT_TYPES.options as string[]).includes(event.type)
+	}
+
 	export type Event =
-		| RoundDecided
+		| DetermineMatchWinner
+		| RoundDecidedWinner
+		| RoundDecidedLoser
 		| RoundEnded
 		| RoundTeamOutcome
 		| NewGame
@@ -1053,6 +1220,9 @@ export namespace LogEvents {
 		| MapSet
 		| KickingPlayer
 		| PlayerKicked
+		| PlayerAddedToTeam
+		| PlayerRestarted
+		| UnknownEvent
 
 	function parseTimestamp(raw: string) {
 		const date = dateFns.parse(
@@ -1061,5 +1231,46 @@ export namespace LogEvents {
 			new Date(),
 		)
 		return date.getTime()
+	}
+
+	type ChainDef = (EventSchema | { event: EventSchema; optional?: boolean })[]
+
+	const LOG_CHAINS = {
+		PLAYER_CONNECTED_CHAIN: [
+			PlayerConnectedDef,
+			PlayerJoinSuccededDef,
+			{ event: PlayerAddedToTeamDef, optional: true },
+			PlayerRestartedDef,
+		],
+		ROUND_ENDED_CHAIN: [DetermineMatchWinnerDef, { event: RoundDecidedWinnerDef, optional: true }, { event: RoundDecidedLoserDef, optional: true }],
+		PLAYER_KICKED_CHAIN: [KickingPlayerDef, PlayerKickedDef],
+	}
+
+	type GetEventSchema<T> = T extends EventSchema ? T : T extends { event: infer E extends EventSchema } ? E : never
+
+	type ChainEvents<Chain extends ChainDef> =
+		& { [Item in Exclude<Chain[number], { optional: true }> as GetEventSchema<Item>['type']]: z.infer<GetEventSchema<Item>['schema']> }
+		& { [Item in Extract<Chain[number], { optional: true }> as GetEventSchema<Item>['type']]?: z.infer<GetEventSchema<Item>['schema']> }
+
+	type ChainEvent<K extends keyof typeof LOG_CHAINS> = { type: K; events: ChainEvents<(typeof LOG_CHAINS)[K]>; time: number }
+	export type AnyChainEvent = { [K in keyof typeof LOG_CHAINS]: ChainEvent<K> }[keyof typeof LOG_CHAINS]
+	type ChainMemberType = GetEventSchema<(typeof LOG_CHAINS)[keyof typeof LOG_CHAINS][number]>['type']
+	export type NonChainEvent = Exclude<Event, { type: ChainMemberType }>
+	export type ParsedEvent = AnyChainEvent | NonChainEvent
+
+	function getChainItemSchema(item: ChainDef[number]): EventSchema {
+		return 'event' in item ? item.event : item
+	}
+	function isChainItemOptional(item: ChainDef[number]): boolean {
+		return 'event' in item && item.optional === true
+	}
+
+	type ChainMembership = { chainKey: keyof typeof LOG_CHAINS; position: number }
+	const EVENT_CHAIN_MAP: Map<string, ChainMembership> = new Map()
+	for (const chainKey of Object.keys(LOG_CHAINS) as (keyof typeof LOG_CHAINS)[]) {
+		const chainDef = LOG_CHAINS[chainKey]
+		for (let i = 0; i < chainDef.length; i++) {
+			EVENT_CHAIN_MAP.set(getChainItemSchema(chainDef[i]).type, { chainKey, position: i })
+		}
 	}
 }

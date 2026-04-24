@@ -499,6 +499,12 @@ export function layersEqual(
 	return true
 }
 
+export function layerMatchesIngameLayerClassname(_layer: LayerId | UnvalidatedLayer, classname: string) {
+	const layer = toLayer(_layer)
+	const normalizedLayerName = layer.Layer.replace('FRAAS', 'RAAS')
+	return normalizedLayerName === classname
+}
+
 // try to convert raw layers into known layers where possible
 export function normalize<Original extends LayerId | UnvalidatedLayer>(
 	original: Original,

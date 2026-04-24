@@ -160,6 +160,16 @@ export function* revIter<T>(arr: T[]): Generator<T> {
 	}
 }
 
+export function insertIntoSorted<T>(arr: T[], item: T, comparator: (a: T, b: T) => number): void {
+	for (let i = 0; i < arr.length; i++) {
+		if (comparator(item, arr[i]) < 0) {
+			arr.splice(i, 0, item)
+			return
+		}
+	}
+	arr.push(item)
+}
+
 export function partition<T, S extends T>(arr: T[], predicate: (item: T) => item is S): [S[], Exclude<T, S>[]]
 export function partition<T>(arr: T[], predicate: (item: T) => boolean): [T[], T[]]
 export function partition<T>(arr: T[], predicate: (item: T) => boolean): [T[], T[]] {

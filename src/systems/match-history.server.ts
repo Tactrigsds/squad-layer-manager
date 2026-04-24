@@ -50,7 +50,7 @@ export type MatchHistoryContext = {
 	matchEventsCache: LRUMap<number, Promise<CHAT.EventEnriched[]>>
 } & Parts<USR.UserPart>
 
-export function initMatchHistoryContext(cleanup: CleanupTasks): MatchHistoryContext {
+export function initMatchHistoryContext(event$: SquadServer.SquadServer['event$'], cleanup: CleanupTasks): MatchHistoryContext {
 	const update$ = new Rx.Subject<void>()
 	const ctx: MatchHistoryContext = {
 		mtx: new Mutex(),
@@ -62,6 +62,14 @@ export function initMatchHistoryContext(cleanup: CleanupTasks): MatchHistoryCont
 		recentBalanceTriggerEvents: [],
 		matchEventsCache: new LRUMap(500),
 	}
+
+	event$.pipe(
+		Rx.filter(([ctx, e]) => e.type === 'ROUND_ENDED'),
+		C.durableSub('onRoundEnded', { module }, async ([ctx, e]) => {
+			if (e.type !== 'ROUND_ENDED' || e.matchId !== (await getCurrentMatch(ctx)).historyEntryId) return
+			await finalizeCurrentMatch(ctx, e.outcome, new Date(e.time))
+		}),
+	).subscribe()
 
 	cleanup.push(ctx.update$, ctx.mtx)
 
@@ -445,10 +453,10 @@ export const addNewCurrentMatch = C.spanOp(
 
 			// write event buffer since we're about to flush it
 			await SquadServer.saveEvents(ctx)
-			ctx.server.state.lastSavedEventId = null
+			ctx.server.lastSavedEventId = null
 			// flush the events buffer
 
-			ctx.server.state.eventBuffer = []
+			ctx.server.emittedEvents = []
 
 			await loadState(ctx, { startAtOrdinal: ordinal })
 			addReleaseTask(ctx.matchHistory.dispatchUpdate)
@@ -467,9 +475,7 @@ export const finalizeCurrentMatch = C.spanOp('finalizeCurrentMatch', {
 	}),
 }, async (
 	ctx: C.Db & C.MatchHistory,
-	currentLayerId: string,
-	winner: SM.SquadOutcomeTeam | null,
-	loser: SM.SquadOutcomeTeam | null,
+	outcome: MH.MatchOutcome,
 	time: Date,
 ) => {
 	const res = await DB.runTransaction(ctx, async ctx => {
@@ -479,20 +485,12 @@ export const finalizeCurrentMatch = C.spanOp('finalizeCurrentMatch', {
 			log.warn('unable to update current history entry: not in-progress')
 			return { code: 'err:match-not-in-progress' as const, message: 'Match not in progress' }
 		}
-		if (!L.areLayersCompatible(currentLayerId, currentMatch.layerId)) {
-			log.warn('unable to update current history entry: layer id mismatch')
-			return { code: 'err:layer-id-mismatch' as const, message: 'Layer id mismatch' }
-		}
-
-		const teams: [SM.SquadOutcomeTeam | null, SM.SquadOutcomeTeam | null] = [winner, loser]
-		if (teams[0]) teams.sort((a, b) => a!.team - b!.team)
-		const outcome = winner === null ? 'draw' as const : winner.team === 1 ? 'team1' as const : 'team2' as const
 
 		const update = {
 			endTime: time,
-			outcome: outcome,
-			team1Tickets: teams[0]?.tickets,
-			team2Tickets: teams[1]?.tickets,
+			outcome: outcome.type === 'unknown' ? null : outcome.type,
+			team1Tickets: (outcome.type === 'team1' || outcome.type === 'team2') ? outcome.team1Tickets : undefined,
+			team2Tickets: (outcome.type === 'team1' || outcome.type === 'team2') ? outcome.team2Tickets : undefined,
 		}
 
 		await ctx.db().update(Schema.matchHistory).set(superjsonify(Schema.matchHistory, update)).where(
@@ -545,14 +543,27 @@ export const finalizeCurrentMatch = C.spanOp('finalizeCurrentMatch', {
 export const syncWithCurrentLayer = C.spanOp(
 	'syncWithCurrentLayer',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.matchHistory.mtx },
-	async (ctx: C.Db & C.MatchHistory & C.SquadServer, currentLayerOnServer: L.UnvalidatedLayer) => {
+	async (ctx: C.Db & C.MatchHistory & C.SquadServer, _currentLayerOnServer: L.UnvalidatedLayer | L.LayerId) => {
+		const currentLayerOnServer = L.toLayer(_currentLayerOnServer)
 		return await DB.runTransaction(ctx, async ctx => {
 			const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
 			if (currentMatch && L.areLayersCompatible(currentMatch.layerId, currentLayerOnServer)) {
-				log.info('Current layer %s, match %d is compatible with the match history', currentMatch.layerId, currentMatch.historyEntryId)
+				log.info(
+					'Current layer %s, is compatible with previously recorded layer %s (%s)',
+					currentLayerOnServer.id,
+					currentMatch.layerId,
+					currentMatch.historyEntryId,
+				)
 				await loadState(ctx)
 				addReleaseTask(ctx.matchHistory.dispatchUpdate)
 				return { pushedNewMatch: false, currentMatch }
+			} else {
+				log.info(
+					'Current layer %s, is not compatible with previously recorded layer %s (%s)',
+					currentLayerOnServer.id,
+					currentMatch?.layerId,
+					currentMatch?.historyEntryId ?? 'unknown',
+				)
 			}
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
 			await ctx.db().insert(Schema.matchHistory).values(superjsonify(Schema.matchHistory, {

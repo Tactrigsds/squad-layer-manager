@@ -85,3 +85,7 @@ export function* range(start: number, end?: number, step: number = 1): Generator
 		}
 	}
 }
+
+export function next<T>(generator: Generator<T>): T {
+	return generator.next().value
+}

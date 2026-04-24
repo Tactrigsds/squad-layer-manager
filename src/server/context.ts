@@ -503,7 +503,7 @@ export function durableSub<T, O>(
 		taskScheduling?: 'switch' | 'parallel' | 'sequential' | 'exhaust'
 		root?: boolean
 		attrs?: Record<string, any> | ((arg: T) => Record<string, any>)
-		mutexes?: (args: T) => Mutex[] | Mutex
+		mutexes?: (args: T) => MutexInterface[] | MutexInterface
 	},
 	cb: (value: T) => Promise<O>,
 ): (o: Rx.Observable<T>) => Rx.Observable<O> {

@@ -17,6 +17,8 @@ export const groups = {
 		REACT_SCAN_ENABLED_OVERRIDE: z.stringbool().optional(),
 
 		QUERY_PARAM_AUTH_BYPASS: z.stringbool().optional(),
+
+		LOG_EXCLUDE_CONTEXT_PARAMS: z.string().default('').transform(val => new Set(val.split(',').map(s => s.trim()).filter(Boolean))),
 	},
 
 	squadcalc: {

@@ -20,8 +20,9 @@ import type * as BAL from '@/models/balance-triggers.models'
 import * as CHAT from '@/models/chat.models.ts'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
-import type * as LL from '@/models/layer-list.models'
+import * as LL from '@/models/layer-list.models'
 import * as MH from '@/models/match-history.models'
+import * as PendingEvents from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
 import * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
@@ -73,74 +74,24 @@ export type SquadServer = {
 
 	postRollEventsSub: Rx.Subscription | null
 
-	historyConflictsResolved$: Rx.BehaviorSubject<boolean>
-
 	serverRolling$: Rx.BehaviorSubject<number | null>
 
-	// when set this intercepts team updates that are intended to generate synthetic events. handling code must account for the absent synthetic events
-	teamUpdateInterceptor: Rx.Subject<SM.Teams> | null
-	teamUpdateInterceptorMtx: MutexInterface
-
-	// ephemeral state that isn't persisted to the database, as compared to SS.ServerState which is
-	state: EphemeralState
-
-	savingEventsMtx: Mutex
-
-	// TODO we should slim down the context we provide here so that we're just transmitting span & logging info, and leave the listener to construct everything else
-	event$: Rx.Subject<[C.Db & C.ServerSlice, SE.Event[]]>
-} & SquadRcon.SquadRcon
-
-type EphemeralState = {
-	roundWinner: SM.SquadOutcomeTeam | null
-	roundLoser: SM.SquadOutcomeTeam | null
-	roundEndState: {
-		winner: string | null
-		layer: string
-	} | null
-
-	// chainID -> values
-	joinRequests: Map<number, SM.PlayerIds.IdQuery>
-	kickingPlayerEvents: Map<number, SM.LogEvents.KickingPlayer>
-
-	// ids of players currently connected to the server. players are considered "connected" once PLAYER_CONNECTED has fired (or is scheduled to be fired in this microtask)
-	connected: SM.PlayerIds.Type[]
-	pendingEventState: PendingEvents.State
-
-	createdSquads: (SM.Squads.Key & { creator: SM.PlayerId; uniqueId: number })[]
-
-	// constains mostly events from the current match. however don't assume this and filter for the current match whenever accessing
-	eventBuffer: SE.Event[]
 	// if null, we haven't saved yet in this instantiation of the server
 	lastSavedEventId: number | null
 
+	emittedEvents: SE.Event[]
+	// TODO we should slim down the context we provide here so that we're just transmitting span & logging info, and leave the listener to construct everything else
+	event$: Rx.Subject<[C.Db & C.ServerSlice, SE.Event]>
+	eventState: PendingEvents.State
+
+	chatState: CHAT.ChatState
+
 	destroyed: boolean
-
-	nextSetLayerId: L.LayerId | null
-	chat: CHAT.ChatState
-
 	cleanupId: number | null
-}
 
-namespace EphemeralState {
-	export function init(): EphemeralState {
-		return {
-			roundEndState: null,
-			roundLoser: null,
-			roundWinner: null,
-			joinRequests: new Map(),
-			kickingPlayerEvents: new Map(),
-			pendingEventState: PendingEvents.init(),
-			connected: [],
-			createdSquads: [],
-			eventBuffer: [],
-			lastSavedEventId: null,
-			nextSetLayerId: null,
-			destroyed: false,
-			cleanupId: null,
-			chat: CHAT.getInitialChatState(),
-		}
-	}
-}
+	processEventsMtx: MutexInterface
+	savingEventsMtx: MutexInterface
+} & SquadRcon.SquadRcon
 
 export type MatchHistoryState = {
 	historyMtx: Mutex
@@ -167,7 +118,7 @@ export const orpcRouter = {
 				switchMapWithSignal(async function*(ctx, signal) {
 					{
 						const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-						const nextLayerId = ctx.server.state.nextSetLayerId
+						const nextLayerId = ctx.server.eventState.nextLayerId
 						const status: SM.LayersStatusExt = {
 							currentLayer: L.toLayer(currentMatch.layerId),
 							nextLayer: nextLayerId ? L.toLayer(nextLayerId) : null,
@@ -176,10 +127,10 @@ export const orpcRouter = {
 						yield status
 					}
 					const event$ = ctx.server.event$.pipe(withAbortSignal(signal))
-					for await (const [ctx, events] of toAsyncGenerator(event$)) {
-						if (!events.some(e => ['NEW_GAME', 'MAP_SET', 'RESET'].includes(e.type))) continue
+					for await (const [ctx, event] of toAsyncGenerator(event$)) {
+						if (!['NEW_GAME', 'MAP_SET', 'RESET'].includes(event.type)) continue
 						const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-						const nextLayerId = ctx.server.state.nextSetLayerId
+						const nextLayerId = ctx.server.eventState.nextLayerId
 						const status: SM.LayersStatusExt = {
 							currentLayer: L.toLayer(currentMatch.layerId),
 							nextLayer: nextLayerId ? L.toLayer(nextLayerId) : null,
@@ -221,8 +172,8 @@ export const orpcRouter = {
 		const ctx = resolveWsClientSliceCtx(_ctx)
 		const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:end-match'))
 		if (deniedRes) return deniedRes
-		const matchEnded$ = ctx.server.event$.pipe(Rx.concatMap(([_, e]) => e), Rx.filter(e => e.type === 'ROUND_ENDED'), Rx.endWith(null))
-		const result$ = Rx.firstValueFrom(Rx.race(matchEnded$, Rx.timer(5_000).pipe(Rx.map(() => 'timeout' as const))))
+		const matchEnded$ = ctx.server.event$.pipe(Rx.map(([_, e]) => e), Rx.filter((e) => e.type === 'ROUND_ENDED'), Rx.endWith(null))
+		const result$ = Rx.firstValueFrom(Rx.race(matchEnded$, Rx.timer(10_000).pipe(Rx.map(() => 'timeout' as const))))
 
 		SquadRcon.endMatch(ctx)
 
@@ -253,7 +204,7 @@ export const orpcRouter = {
 								matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
 							}
 
-							let allEvents: SE.Event[] = ctx.server.state.eventBuffer
+							let allEvents: SE.Event[] = ctx.server.emittedEvents
 							let events: (SE.Event | CHAT.LifecycleEvent)[] = []
 
 							if (input.lastEventId === undefined || ctx.serverId !== input.serverId) {
@@ -276,15 +227,9 @@ export const orpcRouter = {
 
 							return Arr.paged(events, 512)
 						}
-						const initial$ = ctx.server.historyConflictsResolved$
-							.pipe(
-								Rx.filter(resolved => resolved),
-								Rx.first(),
-								Rx.concatMap(getInitialEvents),
-								Rx.concatAll(),
-							)
+						const initial$ = Rx.from(getInitialEvents()).pipe(Rx.concatAll())
 
-						const upcoming$ = ctx.server.event$.pipe(Rx.map(([_, events]): SE.Event[] => events))
+						const upcoming$ = ctx.server.event$.pipe(Rx.map(([_, event]): SE.Event[] => [event]))
 
 						return Rx.concat(initial$, upcoming$).pipe(
 							// orpc will break without this
@@ -352,7 +297,7 @@ export async function setup() {
 			adminIdentifyingPermissions: serverConfig.adminIdentifyingPermissions,
 		}
 		ops.push((async function loadServerConfig() {
-			const serverState = await DB.runTransaction(ctx, async () => {
+			const serverState = await DB.runTransaction(ctx, { redactParams: true }, async () => {
 				let [server] = await ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, serverConfig.id)).for('update')
 				if (!server) {
 					log.info(`Server ${serverConfig.id} not found, creating new`)
@@ -433,20 +378,34 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 		)
 	})()
 	cleanup.push(() => adminList.dispose())
+	const eventState: PendingEvents.State = PendingEvents.init({
+		counters: { eventId: globalState.serverEventIdCounter, squadId: globalState.squadIdCounter },
+		currentMatch: 'PENDING',
+		log: log,
+		hooks: {
+			onNewGameDuringRoll: onNewGameDuringRoll(serverId),
+			onNewGameDuringSync: onNewGameDuringSync(serverId),
+		},
+	})
 
 	const server: SquadServer = {
 		layersStatusExt$,
 
 		postRollEventsSub: null,
 
-		historyConflictsResolved$: new Rx.BehaviorSubject(false),
-
 		serverRolling$: new Rx.BehaviorSubject(null as number | null),
-		teamUpdateInterceptor: null,
-		teamUpdateInterceptorMtx: new Mutex(),
 
 		event$: new Rx.Subject(),
-		state: EphemeralState.init(),
+		processEventsMtx: new Mutex(),
+
+		eventState: eventState,
+
+		chatState: CHAT.getInitialChatState(),
+		emittedEvents: [],
+		lastSavedEventId: null,
+		destroyed: false,
+		cleanupId: null,
+
 		savingEventsMtx: new Mutex(),
 
 		...SquadRcon.initSquadRcon({ ...ctx, rcon, adminList, serverId }, cleanup),
@@ -454,12 +413,10 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 
 	cleanup.push(
 		() => server.postRollEventsSub,
-		server.historyConflictsResolved$,
 		server.serverRolling$,
 		server.event$,
 		server.savingEventsMtx,
-		server.teamUpdateInterceptorMtx,
-		() => server.teamUpdateInterceptor,
+		server.processEventsMtx,
 	)
 
 	const slice: C.ServerSlice = {
@@ -469,7 +426,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 		rcon,
 		server,
 
-		matchHistory: MatchHistory.initMatchHistoryContext(cleanup),
+		matchHistory: MatchHistory.initMatchHistoryContext(server.event$, cleanup),
 
 		layerQueue: LayerQueue.initLayerQueueContext(cleanup),
 		sharedList: SharedLayerList.getDefaultState(serverState),
@@ -479,28 +436,25 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 		adminList,
 		cleanup: cleanup,
 	}
+
 	globalState.slices.set(serverId, slice)
 
 	// -------- load saved events --------
 	await loadSavedEvents({ ...ctx, server, serverId })
 
-	// -------- keep event buffer state up-to-date --------
-	server.event$.subscribe(([ctx, events]) => {
-		for (const event of events) {
-			try {
-				CHAT.handleEvent(ctx.server.state.chat, event)
-			} catch (error) {
-				log.error('Error handling event: %s %d', event.type, event.id, error)
-			}
-			log.debug('emitted event: %s %d', event.type, event.id)
+	// // -------- watch events --------
+	server.event$.subscribe(([ctx, event]) => {
+		try {
+			CHAT.handleEvent(ctx.server.chatState, event)
+		} catch (error) {
+			log.error('Error handling event: %s %d', event.type, event.id, error)
 		}
-		ctx.server.state.eventBuffer.push(...events)
+		log.debug('emitted event: %s %s', event.type, JSON.stringify(event))
+		ctx.server.emittedEvents.push(event)
 	})
 
 	// -------- process log events --------
 	void (async () => {
-		// wait for history to be up-to-date before processing log events
-		await Rx.firstValueFrom(server.historyConflictsResolved$.pipe(Rx.filter(v => !!v)))
 		let chunk$: Rx.Observable<string>
 		if (settings.connections.logs.type === 'sftp') {
 			const sftpReader = new SftpTail({
@@ -526,41 +480,90 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 		} else {
 			assertNever(settings.connections.logs)
 		}
-
-		for await (const [event, err] of SM.LogEvents.parse(toAsyncGenerator(chunk$))) {
+		let errors: Error[] = []
+		for await (const [event, err] of SM.LogEvents.parse(toAsyncGenerator(chunk$), errors)) {
 			const ctx = resolveSliceCtx(getBaseCtx(), serverId)
 			if (err) {
 				log.error(err)
 				continue
 			}
 			if (!event) continue
-			await processLogEvent(ctx, event)
+
+			const release = await ctx.server.processEventsMtx.acquire()
+			try {
+				PendingEvents.onLogEvent(eventState, event)
+				await collectEvents(ctx)
+			} finally {
+				release()
+			}
+		}
+		for (const error of errors) {
+			log.error(error)
 		}
 	})()
+
+	rcon.connected$.pipe(C.durableSub('onRconConnectStatusChange', { module, mutexes: () => server.processEventsMtx }, async connected => {
+		const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+		if (!connected) {
+			const time = Date.now()
+			PendingEvents.onRconDisconnected(ctx.server.eventState, time)
+		} else {
+			const layerStatus = await ctx.server.layersStatus.get({ ...ctx, rcon })
+			if (layerStatus.code !== 'ok') return layerStatus
+			const time = Date.now()
+			PendingEvents.onRconConnected(
+				ctx.server.eventState,
+				time,
+				layerStatus.data.nextLayer?.id ?? null,
+				layerStatus.data.currentLayer.id,
+			)
+		}
+		await collectEvents({ ...ctx, server })
+	})).subscribe()
 
 	// -------- process rcon events --------
 	server.rconEvent$
 		.pipe(
-			C.durableSub('on-rcon-event', { module, levels: { event: 'trace' } }, async ([_ctx, event]) => {
+			C.durableSub('onRconEvent', { module, taskScheduling: 'parallel', levels: { event: 'trace' } }, async ([_ctx, event]) => {
 				const ctx = DB.addPooledDb(resolveSliceCtx(_ctx, serverId))
-				if (!ctx.server.historyConflictsResolved$.value) {
-					log.warn('History conflicts not resolved, ignoring RCON event %s', event.type)
-					return { code: 'err:history-conflicts-not-resolved' as const }
+				const release = await ctx.server.processEventsMtx.acquire()
+				try {
+					if (event.type === 'CHAT_MESSAGE') {
+						if (event.message.startsWith(CONFIG.commandPrefix)) {
+							void Commands.handleCommand(ctx, event).then(res => {
+								if (res?.code !== 'ok') log.error(res)
+							})
+						} else if (event.message.trim().match(/^\d+$/) && ctx.vote.state?.code === 'in-progress') {
+							void Vote.handleVote(ctx, event)
+						}
+					}
+				} catch (err) {
+					log.error(err)
 				}
-				return await processRconEvent(ctx, event)
+				try {
+					PendingEvents.onRconEvent(ctx.server.eventState, event)
+					await collectEvents(ctx)
+				} finally {
+					release()
+				}
 			}),
 		).subscribe()
 
-	setupListenForTeamChanges({ ...ctx, rcon, serverId, server, adminList })
-
-	setupResolveHistoryConflicts({ ...ctx, rcon, serverId })
+	server.teams.observe({ ...slice, ...ctx }).pipe(
+		C.durableSub('onTeamsPolled', { module, mutexes: () => server.processEventsMtx, numTaskRetries: 0 }, async (teamsRes) => {
+			if (teamsRes.code !== 'ok') return teamsRes
+			const time = Date.now()
+			const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+			PendingEvents.onTeamsPolled(server.eventState, { players: teamsRes.players, squads: teamsRes.squads }, time)
+			await collectEvents(ctx)
+		}),
+	).subscribe()
 
 	{
 		// -------- periodically save events  --------
 		const saveEventSub = Rx.interval(10_000).pipe(
 			C.durableSub('save-events-interval', { module, root: true, taskScheduling: 'exhaust' }, async () => {
 				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-				if (!ctx.server.historyConflictsResolved$.value) return
 				return saveEvents(ctx)
 			}),
 		).subscribe()
@@ -578,7 +581,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 	Battlemetrics.setupSquadServerInstance({ ...ctx, ...slice })
 	void adminList.get(slice)
 
-	server.state.cleanupId = CleanupSys.register(async () => {
+	server.cleanupId = CleanupSys.register(async () => {
 		const ctx = resolveSliceCtx(getBaseCtx(), serverId)
 		await destroyServer(ctx)
 	})
@@ -586,9 +589,9 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 }
 
 export async function destroyServer(ctx: C.ServerSlice) {
-	if (ctx.server.state.destroyed) return
-	ctx.server.state.destroyed = true
-	const cleanupId = ctx.server.state.cleanupId
+	if (ctx.server.destroyed) return
+	ctx.server.destroyed = true
+	const cleanupId = ctx.server.cleanupId
 	if (cleanupId !== null) CleanupSys.unregister(cleanupId)
 	await runCleanup({ ...CS.init(), ...ctx, log }, ctx.cleanup)
 	// we're not dealing with mutexes yet Sadge
@@ -598,91 +601,18 @@ export async function destroyServer(ctx: C.ServerSlice) {
 	}
 }
 
-function setupResolveHistoryConflicts(ctx: C.ServerId & C.Rcon) {
-	let previouslyConnected = false
-	// -------- make sure history and chat state is up to date once an rcon connection is established --------
-	ctx.rcon.connected$.pipe(
-		Rx.map(connected => [resolveSliceCtx(getBaseCtx(), ctx.serverId), connected] as const),
-		C.durableSub('resolve-history-conflicts', {
-			module,
-			levels: { event: 'info' },
-			mutexes: ([ctx]) => [ctx.matchHistory.mtx],
-		}, async ([ctx, connected]) => {
-			const server = ctx.server
-			if (!connected) {
-				if (server.historyConflictsResolved$.value) {
-					server.historyConflictsResolved$.next(false)
-					const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-					const event: SE.RconDisconnected = {
-						type: 'RCON_DISCONNECTED',
-						id: newEventId(),
-						time: Date.now(),
-						matchId: currentMatch.historyEntryId,
-					}
-					ctx.server.event$.next([ctx, [event]])
-				}
-				return
-			}
-
-			const statusRes = await server.layersStatus.get(ctx, { ttl: 500 })
-			if (statusRes.code === 'err:rcon') return Rx.EMPTY
-			const firstConnection = !previouslyConnected
-			previouslyConnected = true
-			const { currentMatch, pushedNewMatch } = await MatchHistory.syncWithCurrentLayer(ctx, statusRes.data.currentLayer)
-			log.info('rcon connection established, match history is synced')
-
-			const teams = await interceptTeamsUpdate(ctx)
-			const uniqueTeams = resetTeamState(ctx, teams, pushedNewMatch)
-
-			let events: SE.Event[] = []
-			const base = {
-				time: Date.now(),
-				matchId: currentMatch.historyEntryId,
-				state: uniqueTeams,
-			}
-
-			events.push({
-				type: 'RCON_CONNECTED',
-				id: newEventId(),
-				reconnected: !firstConnection,
-				...base,
-			})
-
-			if (pushedNewMatch) {
-				events.push({
-					type: 'NEW_GAME',
-					id: newEventId(),
-					layerId: currentMatch.layerId,
-					source: firstConnection ? 'slm-started' : 'rcon-reconnected',
-					...base,
-				})
-			} else {
-				events.push({
-					id: newEventId(),
-					type: 'RESET',
-					source: firstConnection ? 'slm-started' : 'rcon-reconnected',
-					...base,
-				})
-			}
-
-			const layersStatusRes = await server.layersStatus.get(ctx)
-			if (layersStatusRes.code === 'ok' && layersStatusRes.data.nextLayer) {
-				server.state.nextSetLayerId = layersStatusRes.data.nextLayer.id
-				const serverState = await getServerState(ctx)
-				await LayerQueue.syncNextLayerInPlace(ctx, serverState)
-			}
-			server.event$.next([ctx, events])
-			server.historyConflictsResolved$.next(true)
-		}),
-	).subscribe()
-}
-
 export async function getFullServerState(ctx: C.Db & C.LayerQueue) {
 	const query = ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, ctx.serverId))
 	let serverRaw: any
 	if (ctx.tx) [serverRaw] = await query.for('update')
 	else [serverRaw] = await query
 	return SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
+}
+
+async function collectEvents(ctx: C.ServerSlice & C.Db) {
+	for await (const event of PendingEvents.process(ctx.server.eventState, Date.now())) {
+		ctx.server.event$.next([ctx, event])
+	}
 }
 
 function getLayersStatusExt$(
@@ -794,686 +724,6 @@ export function selectedServerCtx$<Ctx extends C.WSSession>({ wsClientId }: Ctx)
 	)
 }
 
-/**
- * Performs state tracking and event consolidation for squad log events.
- */
-const processLogEvent = C.spanOp('processLogEvent', { module, levels: { event: 'trace' } }, async (
-	ctx: C.Db & C.ServerSlice,
-	logEvent: SM.LogEvents.Event,
-) => {
-	const match = await MatchHistory.getCurrentMatch(ctx)
-	const base = {
-		time: logEvent.time,
-		matchId: match.historyEntryId,
-	}
-	let event: SE.Event | null = null
-
-	const server = ctx.server
-	switch (logEvent.type) {
-		case 'ROUND_DECIDED': {
-			const prop = logEvent.action === 'won' ? 'roundWinner' : 'roundLoser'
-			server.state[prop] = {
-				faction: logEvent.faction,
-				unit: logEvent.unit,
-				team: logEvent.team,
-				tickets: logEvent.tickets,
-			}
-			return
-		}
-
-		case 'ROUND_TEAM_OUTCOME': {
-			server.state.roundEndState = {
-				winner: logEvent.winner,
-				layer: logEvent.layer,
-			}
-			return
-		}
-
-		case 'ROUND_ENDED': {
-			let loser: SM.SquadOutcomeTeam | null
-			let winner: SM.SquadOutcomeTeam | null
-
-			const statusRes = await ctx.server.layersStatus.get(ctx, { ttl: 0 })
-			if (statusRes.code !== 'ok') return statusRes
-			// -------- use debug ticketOutcome if one was set --------
-			if (globalState.debug__ticketOutcome) {
-				let winnerId: SM.TeamId | null
-				let loserId: SM.TeamId | null
-				if (globalState.debug__ticketOutcome.team1 === globalState.debug__ticketOutcome.team2) {
-					winnerId = null
-					loserId = null
-				} else {
-					winnerId = globalState.debug__ticketOutcome.team1 - globalState.debug__ticketOutcome.team2 > 0 ? 1 : 2
-					loserId = globalState.debug__ticketOutcome.team1 - globalState.debug__ticketOutcome.team2 < 0 ? 1 : 2
-				}
-				const partial = L.toLayer(statusRes.data.currentLayer)
-				const teams: SM.SquadOutcomeTeam[] = [
-					{
-						faction: partial.Faction_1!,
-						unit: partial.Unit_1!,
-						team: 1,
-						tickets: globalState.debug__ticketOutcome.team1,
-					},
-					{
-						faction: partial.Faction_2!,
-						unit: partial.Unit_2!,
-						team: 2,
-						tickets: globalState.debug__ticketOutcome.team2,
-					},
-				]
-				winner = teams.find(t => t?.team && t.team === winnerId) ?? null
-				loser = teams.find(t => t?.team && t.team === loserId) ?? null
-				delete globalState.debug__ticketOutcome
-			} else {
-				loser = server.state.roundLoser
-				winner = server.state.roundWinner
-			}
-			server.state.roundWinner = null
-			server.state.roundLoser = null
-			server.state.roundEndState = null
-			const res = await MatchHistory.finalizeCurrentMatch(ctx, statusRes.data.currentLayer.id, winner, loser, new Date(logEvent.time))
-			if (res.code !== 'ok') return res
-
-			event = {
-				type: 'ROUND_ENDED',
-				id: newEventId(),
-				...base,
-			}
-			break
-		}
-
-		case 'MAP_SET': {
-			const layer = L.parseRawLayerText(`${logEvent.nextLayer} ${logEvent.nextFactions ?? ''}`.trim())
-			if (!layer) {
-				throw new Error(`Failed to parse layer text: ${logEvent.nextLayer} ${logEvent.nextFactions ?? ''}`)
-			}
-			server.state.nextSetLayerId = layer.id
-			event = {
-				type: 'MAP_SET',
-				id: newEventId(),
-				...base,
-				layerId: layer.id,
-			}
-			break
-		}
-
-		case 'NEW_GAME': {
-			if (logEvent.layerClassname === 'TransitionMap') {
-				return
-			}
-			try {
-				server.serverRolling$.next(logEvent.time)
-
-				// get these ASAP
-				let newLayerId = server.state.nextSetLayerId
-				if (newLayerId === null) {
-					log.error(`next layer ID was not set`)
-					return
-				}
-				log.info('creating new game with layer %s', DH.displayLayer(newLayerId))
-
-				const teamsResPromise = interceptTeamsUpdate(ctx)
-				const { match } = await withAcquired(
-					() => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx],
-					() =>
-						DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-							const serverState = await getServerState(ctx)
-							const nextLqItem = serverState.layerQueue[0]
-
-							let currentMatchLqItem: LL.Item | undefined
-							const newServerState = Obj.deepClone(serverState)
-							if (nextLqItem && L.areLayersCompatible(nextLqItem.layerId, newLayerId)) {
-								currentMatchLqItem = newServerState.layerQueue.shift()
-							}
-							const { match } = await MatchHistory.addNewCurrentMatch(
-								ctx,
-								MH.getNewMatchHistoryEntry({
-									layerId: newLayerId,
-									serverId: ctx.serverId,
-									startTime: new Date(logEvent.time),
-									lqItem: currentMatchLqItem,
-								}),
-							)
-
-							await LayerQueue.syncNextLayerInPlace(ctx, newServerState, { skipDbWrite: true })
-							await Vote.syncVoteStateWithQueueStateInPlace(ctx, serverState.layerQueue, newServerState.layerQueue)
-							await updateServerState(ctx, newServerState, { type: 'system', event: 'server-roll' })
-							LayerQueue.schedulePostRollTasks(ctx, match.layerId)
-							return { match }
-						}),
-				)()
-				const teamsRes = await teamsResPromise
-				const teams = { squads: teamsRes.squads, players: teamsRes.players }
-				const uniqueTeams = resetTeamState(ctx, teams, true)
-				event = {
-					type: 'NEW_GAME',
-					id: newEventId(),
-					layerId: newLayerId,
-					source: 'new-game-detected',
-					state: uniqueTeams,
-					...base,
-					matchId: match.historyEntryId,
-				}
-			} finally {
-				server.serverRolling$.next(null)
-			}
-			break
-		}
-
-		case 'PLAYER_CONNECTED': {
-			server.state.joinRequests.set(logEvent.chainID, logEvent.playerIds)
-			return
-		}
-
-		// TODO PLAYER_JOIN_FAILED?
-		case 'PLAYER_JOIN_SUCCEEDED': {
-			const joinedPlayerIdQuery = server.state.joinRequests.get(logEvent.chainID)
-			if (!joinedPlayerIdQuery) return
-			server.state.joinRequests.delete(logEvent.chainID)
-
-			PendingEvents.addConnecting(server.state.pendingEventState, {
-				type: 'PLAYER_CONNECTED',
-				player: joinedPlayerIdQuery,
-				time: logEvent.time,
-				matchId: match.historyEntryId,
-			})
-
-			const events = Array.from(PendingEvents.processPendingEvents(server.state.pendingEventState))
-			if (events.length > 1) throw new Error('Multiple events, this should not be possible')
-			if (events.length === 0) return
-			event = events[0]
-			break
-		}
-
-		case 'PLAYER_DISCONNECTED': {
-			const player = PendingEvents.addDisconnecting(server.state.pendingEventState, logEvent)
-			if (!player) return
-			// we don't need to process the pending events here
-
-			event = {
-				id: newEventId(),
-				type: 'PLAYER_DISCONNECTED',
-				player: SM.PlayerIds.getPlayerId(player.ids),
-				...base,
-			}
-			break
-		}
-
-		case 'ADMIN_BROADCAST': {
-			event = {
-				id: newEventId(),
-				type: 'ADMIN_BROADCAST',
-				message: logEvent.message,
-				from: logEvent.from,
-				...base,
-			}
-			break
-		}
-
-		case 'PLAYER_DIED':
-		case 'PLAYER_WOUNDED': {
-			PendingEvents.addWoundedOrDied(server.state.pendingEventState, { ...logEvent, matchId: match.historyEntryId })
-			const events = Array.from(PendingEvents.processPendingEvents(server.state.pendingEventState))
-			if (events.length > 1) throw new Error('Multiple events, this should not be possible')
-			if (events.length === 0) return
-			event = events[0]
-			break
-		}
-
-		case 'KICKING_PLAYER': {
-			server.state.kickingPlayerEvents.set(logEvent.chainID, logEvent)
-			return
-		}
-
-		case 'PLAYER_KICKED': {
-			const kickingEvent = server.state.kickingPlayerEvents.get(logEvent.chainID)
-			server.state.kickingPlayerEvents.delete(logEvent.chainID)
-
-			event = {
-				id: newEventId(),
-				type: 'PLAYER_KICKED',
-				player: SM.PlayerIds.getPlayerId(logEvent.playerIds),
-				reason: kickingEvent?.reason,
-				...base,
-			}
-			break
-		}
-
-		default:
-			assertNever(logEvent)
-	}
-
-	if (event) {
-		server.event$.next([ctx, [event]])
-	}
-})
-
-export const processRconEvent = C.spanOp('processRconEvent', { module }, async (
-	ctx: C.ServerSlice & C.Db,
-	event: SM.RconEvents.Event,
-) => {
-	const match = await MatchHistory.getCurrentMatch(ctx)
-	const matchId = match.historyEntryId
-
-	// for when we want to fetch data from rcon that's more likely to have been updated after the event in question. very crude, could be improved
-
-	const base = {
-		matchId,
-		time: event.time,
-	}
-
-	let emittedEvent: SE.Event | null = null
-
-	// TODO could maybe parse the log version of some of these events for better continuity, specifically for the chat/event view
-	switch (event.type) {
-		case 'CHAT_MESSAGE': {
-			if (event.message.startsWith(CONFIG.commandPrefix)) {
-				await Commands.handleCommand(ctx, event)
-			} else if (event.message.trim().match(/^\d+$/) && ctx.vote.state?.code === 'in-progress') {
-				await Vote.handleVote(ctx, event)
-			}
-
-			let channel: SM.ChatChannel
-			if (event.channelType === 'ChatAdmin' || event.channelType === 'ChatAll') {
-				channel = { type: event.channelType }
-			} else if (event.channelType === 'ChatTeam' || event.channelType === 'ChatSquad') {
-				const res = await SquadRcon.getPlayer(ctx, event.playerIds)
-				if (res.code !== 'ok') return res
-				const player = res.player
-				if (player.teamId === null) {
-					return {
-						code: 'err:chatting-player-not-in-team' as const,
-						message: `player ${SM.PlayerIds.prettyPrint(player.ids)} is not in a team`,
-					}
-				}
-
-				if (event.channelType === 'ChatTeam') {
-					channel = { type: event.channelType, teamId: player.teamId }
-				} else {
-					if (player.squadId === null) {
-						return {
-							code: 'err:chatting-player-not-in-squad' as const,
-							message: `player ${SM.PlayerIds.prettyPrint(player.ids)} is not in a squad`,
-						}
-					}
-					channel = { type: event.channelType, teamId: player.teamId, squadId: player.squadId }
-				}
-			} else {
-				assertNever(event.channelType)
-			}
-
-			if (channel.type === 'ChatSquad') {
-				const squadChannel = channel
-				const uniqueId = ctx.server.state.createdSquads.find(s => s.squadId === squadChannel.squadId && s.teamId === squadChannel.teamId)
-					?.uniqueId
-				if (uniqueId !== undefined) channel = { ...squadChannel, uniqueId }
-			}
-
-			emittedEvent = {
-				type: 'CHAT_MESSAGE',
-				id: newEventId(),
-				message: event.message,
-				player: SM.PlayerIds.getPlayerId(event.playerIds),
-				channel,
-				...base,
-			}
-			break
-		}
-
-		case 'SQUAD_CREATED': {
-			const factionId = L.getFactionIdForFactionNameInexact(event.teamName)
-			if (!factionId) {
-				return {
-					code: 'err:unable-to-resolve-faction-id' as const,
-					message: `unable to resolve faction id for team name ${event.teamName}`,
-				}
-			}
-			const layer = L.toLayer(match.layerId)
-
-			let teamId: SM.TeamId
-			if (layer.Faction_1 && layer.Faction_1 === factionId) {
-				teamId = 1
-			} else if (layer.Faction_2 && layer.Faction_2 === factionId) {
-				teamId = 2
-			} else {
-				return {
-					code: 'err:unable-to-resolve-team-id' as const,
-					message: `unable to resolve team id for faction id ${factionId}`,
-				}
-			}
-
-			const prevCreatedSquad = ctx.server.state.createdSquads.find(s =>
-				SM.Squads.idsEqual(s, { squadId: event.squadId, teamId }) && s.creator === SM.PlayerIds.getPlayerId(event.creatorIds)
-			)
-			if (prevCreatedSquad) {
-				log.warn(
-					'Squad %s(%s) with creator %s was created previously to receiving SQUAD_CREATED RCON event, skipping',
-					SM.Squads.printKey(prevCreatedSquad),
-					prevCreatedSquad.uniqueId,
-					prevCreatedSquad.creator,
-				)
-				break
-			}
-
-			const key = {
-				teamId,
-				squadId: event.squadId,
-				creator: SM.PlayerIds.getPlayerId(event.creatorIds),
-				uniqueId: newSquadId(),
-			}
-			ctx.server.state.createdSquads.push(key)
-
-			const squad = {
-				...key,
-				squadName: event.squadName,
-				// will be updated later if incorrect
-				locked: false,
-			}
-
-			emittedEvent = {
-				type: 'SQUAD_CREATED',
-				id: newEventId(),
-				squad,
-
-				...base,
-			}
-			break
-		}
-
-		case 'SQUAD_RENAMED': {
-			const squad = ctx.server.state.createdSquads.find(s => s.squadId === event.squadId && s.teamId === event.teamId)
-			if (!squad) {
-				log.warn('SQUAD_RENAMED: squad not found for squadId=%d, teamId=%d', event.squadId, event.teamId)
-				return
-			}
-			emittedEvent = {
-				type: 'SQUAD_RENAMED',
-				id: newEventId(),
-				uniqueId: squad.uniqueId,
-				oldSquadName: event.oldSquadName,
-				newSquadName: event.newSquadName,
-				...base,
-			}
-			break
-		}
-
-		case 'PLAYER_BANNED': {
-			emittedEvent = {
-				type: event.type,
-				id: newEventId(),
-				interval: event.interval,
-				player: SM.PlayerIds.getPlayerId(event.playerIds),
-				...base,
-			}
-			break
-		}
-		case 'PLAYER_WARNED': {
-			const player = SM.PlayerIds.find(ctx.server.state.pendingEventState.recentPlayers, p => p.ids, event.playerIds)
-			if (!player) {
-				console.error('Player not found in recentPlayers:', event.playerIds)
-				return
-			}
-			emittedEvent = {
-				type: event.type,
-				id: newEventId(),
-				reason: event.reason,
-				player: SM.PlayerIds.getPlayerId(player.ids),
-				...base,
-			}
-			break
-		}
-		case 'POSSESSED_ADMIN_CAMERA': {
-			emittedEvent = {
-				type: event.type,
-				id: newEventId(),
-				player: SM.PlayerIds.getPlayerId(event.playerIds),
-				...base,
-			}
-			break
-		}
-		case 'UNPOSSESSED_ADMIN_CAMERA': {
-			emittedEvent = {
-				type: event.type,
-				id: newEventId(),
-				player: SM.PlayerIds.getPlayerId(event.playerIds),
-				...base,
-			}
-			break
-		}
-	}
-
-	if (emittedEvent) {
-		ctx.server.event$.next([ctx, [emittedEvent]])
-		return { code: 'ok' as const }
-	}
-})
-
-function setupListenForTeamChanges(ctx: CS.Ctx & C.SquadRcon & C.AdminList) {
-	const serverId = ctx.serverId
-	ctx.server.teams.observe(ctx)
-		.pipe(
-			traceTag('listenForTeamChanges'),
-			// only listen while server isn't rolling
-			Rx.concatMap(teams => teams.code === 'ok' ? Rx.of({ teams, time: Date.now() }) : Rx.EMPTY),
-			// pair with the previous state so we can generate synthetic events by looking for changes
-			Rx.pairwise(),
-			// capture event time before we're potentially waiting for server to roll
-			C.durableSub(
-				'processTeamChanges',
-				{ module, numTaskRetries: 0 },
-				async function([prev, current]) {
-					const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-					const server = ctx.server
-
-					let intercepted = false
-					if (server.teamUpdateInterceptor) {
-						log.info('intercepting team update')
-						server.teamUpdateInterceptor.next(current.teams)
-						intercepted = true
-					}
-
-					if (!server.historyConflictsResolved$.value) return
-
-					const match = await MatchHistory.getCurrentMatch(ctx)
-
-					PendingEvents.upsertRecentPlayers(server.state.pendingEventState, current.teams.players, match.ordinal, match.historyEntryId)
-					const events: SE.Event[] = []
-					events.push(...(PendingEvents.processPendingEvents(server.state.pendingEventState)))
-
-					if (!intercepted) {
-						events.push(...generateSyntheticEvents(ctx, prev.teams, current.teams, current.time, match.historyEntryId))
-					}
-					if (events.length === 0) {
-						return
-					}
-					ctx.server.event$.next([ctx, events])
-				},
-			),
-		).subscribe()
-}
-
-function* generateSyntheticEvents(
-	ctx: C.ServerSlice & C.Db,
-	prevTeams: SM.Teams,
-	teams: SM.Teams,
-	time: number,
-	matchId: number,
-): Generator<SE.Event> {
-	const base = { time, matchId }
-	const { players } = teams
-	const { players: prevPlayers } = prevTeams
-
-	const missingCreatedSquads = new Set<number>()
-	const disbandedSquads = new Set<number>()
-	const uniqueSquads: SM.UniqueSquad[] = []
-	const prevUniqueSquads: SM.UniqueSquad[] = []
-	{
-		const { squads } = teams
-		const { squads: prevSquads } = prevTeams
-
-		for (const prevSquad of prevSquads) {
-			const squadKey = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, prevSquad) && s.creator === prevSquad.creator)
-			if (!squadKey) {
-				log.error('No key found for previous squad (squadId: %s, teamId: %s)', prevSquad.squadId, prevSquad.teamId)
-				continue
-			}
-			prevUniqueSquads.push({ ...squadKey, ...prevSquad })
-		}
-
-		for (const squad of squads) {
-			const prevSquad = prevSquads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
-			let squadKey = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
-			if (!prevSquad) {
-				if (!squadKey) {
-					squadKey = {
-						teamId: squad.teamId,
-						squadId: squad.squadId,
-						creator: squad.creator,
-						uniqueId: newSquadId(),
-					}
-					missingCreatedSquads.add(squadKey.uniqueId)
-				}
-			}
-
-			if (!squadKey) {
-				log.error('No key found for previously existing squad (squadId: %s, teamId: %s)', squad.squadId, squad.teamId)
-				continue
-			}
-			const uniqueSquad = { ...squad, uniqueId: squadKey.uniqueId }
-			uniqueSquads.push(uniqueSquad)
-		}
-	}
-
-	for (const player of players) {
-		const playerId = SM.PlayerIds.getPlayerId(player.ids)
-		const prevPlayer = SM.PlayerIds.find(prevPlayers, p => p.ids, player.ids)
-		const squad = player.squadId && uniqueSquads.find(s => SM.Squads.idsEqual(s, player))
-		const prevSquad = prevPlayer?.squadId && prevUniqueSquads.find(s => SM.Squads.idsEqual(s, prevPlayer))
-
-		if (prevSquad && (!squad || prevSquad.uniqueId !== squad.uniqueId)) {
-			yield {
-				id: newEventId(),
-				type: 'PLAYER_LEFT_SQUAD',
-				uniqueId: prevSquad.uniqueId,
-				player: playerId,
-				...base,
-			}
-		}
-	}
-
-	for (const prevSquad of prevUniqueSquads) {
-		const squad = uniqueSquads.find(s => s.uniqueId === prevSquad.uniqueId)
-		if (!squad) {
-			disbandedSquads.add(prevSquad.uniqueId)
-			yield {
-				id: newEventId(),
-				type: 'SQUAD_DISBANDED',
-				uniqueId: prevSquad.uniqueId,
-				...base,
-			}
-		}
-	}
-	ctx.server.state.createdSquads = ctx.server.state.createdSquads.filter(s => !disbandedSquads.has(s.uniqueId))
-
-	for (const player of players) {
-		const playerId = SM.PlayerIds.getPlayerId(player.ids)
-		const prevPlayer = SM.PlayerIds.find(prevPlayers, p => p.ids, player.ids)
-
-		if (prevPlayer && player.teamId !== prevPlayer.teamId) {
-			yield {
-				id: newEventId(),
-				type: 'PLAYER_CHANGED_TEAM',
-				player: playerId,
-				newTeamId: player.teamId,
-				...base,
-			}
-		}
-	}
-
-	for (const squad of uniqueSquads) {
-		if (!missingCreatedSquads.has(squad.uniqueId)) continue
-		yield {
-			id: newEventId(),
-			type: 'SQUAD_CREATED',
-			squad,
-			...base,
-		}
-	}
-
-	for (const player of players) {
-		const playerId = SM.PlayerIds.getPlayerId(player.ids)
-		const prevPlayer = SM.PlayerIds.find(prevPlayers, p => p.ids, player.ids)
-		const squad = (player.squadId && uniqueSquads.find(s => SM.Squads.idsEqual(s, player))) || undefined
-
-		let prevSquad = (prevPlayer?.squadId && prevUniqueSquads.find(s => SM.Squads.idsEqual(s, prevPlayer))) || undefined
-
-		if (squad) {
-			const hasChangedSquad = squad.uniqueId !== prevSquad?.uniqueId
-			const isSquadNew = !prevUniqueSquads.find(s => s.uniqueId === squad.uniqueId)
-			const isNewSquadCreator = squad.creator === playerId
-
-			if (hasChangedSquad && (!isSquadNew || !isNewSquadCreator)) {
-				yield {
-					id: newEventId(),
-					type: 'PLAYER_JOINED_SQUAD',
-					uniqueId: squad.uniqueId,
-					player: playerId,
-					...base,
-				}
-			}
-
-			if (player.isLeader && !prevPlayer?.isLeader && !isNewSquadCreator) {
-				yield {
-					id: newEventId(),
-					type: 'PLAYER_PROMOTED_TO_LEADER',
-					uniqueId: squad.uniqueId,
-					player: playerId,
-					...base,
-				}
-			}
-		}
-
-		if (prevPlayer) {
-			const details = Obj.selectProps(player, SM.PLAYER_DETAILS)
-			const prevDetails = Obj.selectProps(prevPlayer, SM.PLAYER_DETAILS)
-			if (!Obj.deepEqual(details, prevDetails)) {
-				yield {
-					type: 'PLAYER_DETAILS_CHANGED',
-					id: newEventId(),
-					player: SM.PlayerIds.getPlayerId(player.ids),
-					details,
-					...base,
-				} satisfies SE.PlayerDetailsChanged
-			}
-		}
-	}
-
-	for (const squad of uniqueSquads) {
-		const prevSquad = prevUniqueSquads.find(s => s.uniqueId === squad.uniqueId)
-		type Details = { locked?: boolean }
-		const changedDetails: Details = {}
-		if (!prevSquad) {
-			if (squad.locked) {
-				changedDetails.locked = true
-			}
-		} else {
-			if (prevSquad.locked !== squad.locked) {
-				changedDetails.locked = squad.locked
-			}
-		}
-
-		if (Object.keys(changedDetails).length > 0) {
-			yield {
-				id: newEventId(),
-				type: 'SQUAD_DETAILS_CHANGED',
-				details: changedDetails,
-				uniqueId: squad.uniqueId,
-				...base,
-			} satisfies SE.SquadDetailsChanged
-		}
-	}
-}
-
 export async function getServerState(ctx: C.Db & C.ServerId) {
 	const query = ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, ctx.serverId))
 	let serverRaw: any
@@ -1519,24 +769,32 @@ const loadSavedEvents = C.spanOp('loadSavedEvents', { module }, async (ctx: C.Sq
 			.orderBy(E.asc(Schema.serverEvents.id))
 		: []
 	const events = rowsRaw.map(r => SE.fromEventRow(r.event))
-	server.state.lastSavedEventId = events[events.length - 1]?.id ?? null
-	server.state.eventBuffer = events
+	server.lastSavedEventId = events[events.length - 1]?.id ?? null
+	server.emittedEvents = events
 })
 
+let prevEvents: Map<number, any> = new Map()
 export const saveEvents = C.spanOp(
 	'saveEvents',
 	{ module, mutexes: (ctx) => ctx.server.savingEventsMtx },
 	async (ctx: C.SquadServer & C.Db) =>
 		await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-			const state = ctx.server.state
+			const server = ctx.server
 
 			let events: SE.Event[] = []
-			if (state.lastSavedEventId === null) {
-				events = state.eventBuffer.slice()
+			if (server.lastSavedEventId === null) {
+				events = server.emittedEvents.slice()
 			} else {
-				const lastSavedIndex = state.eventBuffer.findIndex(e => e.id === state.lastSavedEventId)
-				if (lastSavedIndex === -1) throw new Error(`CRITICAL: Unable to resolve last saved event ${state.lastSavedEventId}`)
-				events = state.eventBuffer.slice(lastSavedIndex + 1)
+				const lastSavedIndex = server.emittedEvents.findIndex(e => e.id === server.lastSavedEventId)
+				if (lastSavedIndex === -1) throw new Error(`CRITICAL: Unable to resolve last saved event ${server.lastSavedEventId}`)
+				events = server.emittedEvents.slice(lastSavedIndex + 1)
+			}
+			for (const event of events) {
+				if (prevEvents.has(event.id)) {
+					const prevEvent = prevEvents.get(event.id)
+					throw new Error(`Duplicate event id: ${event.id} (prev: ${JSON.stringify(event)}, new: ${JSON.stringify(prevEvent)}`)
+				}
+				prevEvents.set(event.id, event)
 			}
 
 			if (events.length === 0) {
@@ -1602,7 +860,7 @@ export const saveEvents = C.spanOp(
 			}
 
 			await ctx.db({ redactParams: true }).insert(Schema.serverEvents).values(eventRows)
-			state.lastSavedEventId = eventRows[eventRows.length - 1].id!
+			server.lastSavedEventId = eventRows[eventRows.length - 1].id!
 
 			if (playerRows.length > 0) {
 				await ctx.db({ redactParams: true })
@@ -1656,178 +914,58 @@ export const saveEvents = C.spanOp(
 		}),
 )
 
-const interceptTeamsUpdate = C.spanOp('interceptTeamsUpdate', {
-	module,
-	mutexes: (ctx) => ctx.server.teamUpdateInterceptorMtx,
-}, async (ctx: C.SquadServer) => {
-	log.info('interceptTeamsUpdate started')
-	const server = ctx.server
-	let interceptor = new Rx.Subject<SM.Teams>()
-	try {
-		server.teamUpdateInterceptor = interceptor
-		return await Rx.firstValueFrom(Rx.race(
-			server.teamUpdateInterceptor.pipe(
-				Rx.tap({
-					next: (value) => {
-						log.info('got value for interceptTeamsUpdate %o', value)
-						server.teamUpdateInterceptor = null
-					},
-				}),
-			),
-			Rx.timer(20_000).pipe(Rx.map(() => {
-				throw new Error('Timeout')
-			})),
-		)) as unknown as SM.Teams
-	} finally {
-		log.info('interceptTeamsUpdate completed')
-		interceptor.complete()
-		server.teamUpdateInterceptor = null
-	}
-})
-
-namespace PendingEvents {
-	type PendingConnectedEvent = Omit<SE.PlayerConnected, 'player' | 'id'> & { player: SM.PlayerIds.IdQuery }
-	type PendingPlayerWoundedOrDiedEvent = (SM.LogEvents.PlayerWounded | SM.LogEvents.PlayerDied) & { matchId: number }
-	export type State = {
-		events: {
-			connecting: PendingConnectedEvent[]
-			woundedOrDied: PendingPlayerWoundedOrDiedEvent[]
-		}
-		// players from the last =<2 matches
-		recentPlayers: (SM.Player & { lastSeenMatchOrdinal: number; lastSeenMatchId: number })[]
-
-		// players which have disconnected in the last =<2 matches
-		disconnectedPlayers: SM.PlayerIds.Type[]
-	}
-	export function init(): State {
-		return {
-			events: {
-				connecting: [],
-				woundedOrDied: [],
-			},
-			recentPlayers: [],
-			disconnectedPlayers: [],
-		}
-	}
-
-	export function addConnecting(state: State, event: PendingConnectedEvent) {
-		state.events.connecting.push(event)
-		SM.PlayerIds.remove(state.disconnectedPlayers, event.player)
-	}
-
-	export function addWoundedOrDied(state: State, event: PendingPlayerWoundedOrDiedEvent) {
-		state.events.woundedOrDied.push(event)
-	}
-
-	export function addDisconnecting(state: State, event: SM.LogEvents.PlayerDisconnected) {
-		const player = SM.PlayerIds.find(state.recentPlayers, (p) => p.ids, event.playerIds)
-		if (!player) return false
-		if (SM.PlayerIds.find(state.disconnectedPlayers, player.ids)) return false
-		state.disconnectedPlayers.push(player.ids)
-		return player
-	}
-
-	export function upsertRecentPlayers(state: State, players: SM.Player[], matchOrdinal: number, matchId: number) {
-		state.recentPlayers = state.recentPlayers.filter(p => matchOrdinal - p.lastSeenMatchOrdinal <= 2)
-		for (const player of players) {
-			SM.PlayerIds.upsert(state.recentPlayers, p => p.ids, { ...player, lastSeenMatchOrdinal: matchOrdinal, lastSeenMatchId: matchId })
-		}
-		state.disconnectedPlayers = state.disconnectedPlayers.filter(ids => SM.PlayerIds.find(state.recentPlayers, (p) => p.ids, ids))
-	}
-
-	export function* processPendingEvents(state: State) {
-		{
-			const toDelete = new Set<PendingConnectedEvent>()
-			for (const event of state.events.connecting) {
-				const currentMatchPlayers = state.recentPlayers.filter((p) => p.lastSeenMatchId === event.matchId)
-				const playerRes = SM.PlayerIds.find(currentMatchPlayers, (p) => p.ids, event.player)
-				if (!playerRes) continue
-				const player = Obj.omit(playerRes, ['lastSeenMatchOrdinal', 'lastSeenMatchId'])
-				toDelete.add(event)
-				if (SM.PlayerIds.find(state.disconnectedPlayers, player.ids)) {
-					continue
-				}
-				const processed: SE.PlayerConnected = {
-					id: newEventId(),
-					...event,
-					player,
-				}
-				yield processed
-			}
-
-			state.events.connecting = state.events.connecting.filter((event) => !toDelete.has(event))
-		}
-
-		{
-			let toDelete = new Set<PendingPlayerWoundedOrDiedEvent>()
-			for (let i = 0; i < state.events.woundedOrDied.length; i++) {
-				const event = state.events.woundedOrDied[i]
-				const currentMatchPlayers = state.recentPlayers.filter((p) => p.lastSeenMatchId === event.matchId)
-				const victimRes = SM.PlayerIds.find(
-					currentMatchPlayers,
-					(p) => p.ids,
-					event.victimIds,
-				)
-				const attackerRes = SM.PlayerIds.find(
-					currentMatchPlayers,
-					(p) => p.ids,
-					event.attackerIds,
-				)
-				if (!victimRes || !attackerRes) continue
-				const victim = Obj.omit(victimRes, ['lastSeenMatchOrdinal', 'lastSeenMatchId'])
-				const attacker = Obj.omit(attackerRes, ['lastSeenMatchOrdinal', 'lastSeenMatchId'])
-
-				toDelete.add(event)
-				let variant: SE.PlayerWoundedOrDiedVariant
-				if (SM.PlayerIds.match(victim.ids, attacker.ids)) {
-					variant = 'suicide'
-				} else if (victim.teamId !== null && victim.teamId === attacker.teamId) {
-					variant = 'teamkill'
-				} else {
-					variant = 'normal'
-				}
-				const processed: SE.PlayerDied | SE.PlayerWounded = {
-					id: newEventId(),
-					type: event.type,
-					victim: SM.PlayerIds.getPlayerId(victim.ids),
-					attacker: SM.PlayerIds.getPlayerId(attacker.ids),
-					damage: event.damage,
-					weapon: event.weapon,
-					variant,
-					time: event.time,
-					matchId: event.matchId,
-				}
-				yield processed
-			}
-			state.events.woundedOrDied = state.events.woundedOrDied.filter((event) => !toDelete.has(event))
-		}
-	}
+const onNewGameDuringSync = (serverId: string): PendingEvents.State['hooks']['onNewGameDuringSync'] => async (currentLayerId, time) => {
+	const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+	return await withAcquired(
+		() => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx],
+		async () => {
+			const { currentMatch, pushedNewMatch } = await MatchHistory.syncWithCurrentLayer(ctx, currentLayerId)
+			return { match: currentMatch, isNewMatch: pushedNewMatch }
+		},
+	)()
 }
 
-function resetTeamState(ctx: C.SquadServer, { players, squads }: SM.Teams, isNewGame: boolean): SM.UniqueTeams {
-	const server = ctx.server
+const onNewGameDuringRoll = (serverId: string): PendingEvents.State['hooks']['onNewGameDuringRoll'] => async (newLayerId, time) => {
+	const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+	return await withAcquired(
+		() => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx],
+		() =>
+			DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
+				ctx.server.serverRolling$.next(Date.now())
+				try {
+					const serverState = await getServerState(ctx)
+					const nextLqItem = serverState.layerQueue[0]
 
-	server.state.connected = []
-	for (const player of players) {
-		server.state.connected.push(player.ids)
-	}
+					let currentMatchLqItem: LL.Item | undefined
+					const newServerState = Obj.deepClone(serverState)
+					if (nextLqItem && L.areLayersCompatible(nextLqItem.layerId, newLayerId)) {
+						currentMatchLqItem = newServerState.layerQueue.shift()
+					}
+					const { match } = await MatchHistory.addNewCurrentMatch(
+						ctx,
+						MH.getNewMatchHistoryEntry({
+							layerId: newLayerId,
+							serverId: ctx.serverId,
+							startTime: new Date(time),
+							lqItem: currentMatchLqItem,
+						}),
+					)
 
-	const uniqueSquads: SM.UniqueSquad[] = squads.map(squad => {
-		if (!isNewGame) {
-			const existing = server.state.createdSquads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
-			if (existing) return { ...squad, uniqueId: existing.uniqueId }
-		}
-		return { ...squad, uniqueId: newSquadId() }
-	})
+					await LayerQueue.syncNextLayerInPlace(ctx, newServerState, { skipDbWrite: true })
+					const nextLayerId = LL.getNextLayerId(newServerState.layerQueue)
+					await Vote.syncVoteStateWithQueueStateInPlace(ctx, serverState.layerQueue, newServerState.layerQueue)
 
-	server.state.createdSquads = uniqueSquads
-	return { players, squads: uniqueSquads }
+					await updateServerState(ctx, newServerState, { type: 'system', event: 'server-roll' })
+					LayerQueue.schedulePostRollTasks(ctx, match.layerId)
+					return { match, nextLayerId }
+				} finally {
+					ctx.server.serverRolling$.next(null)
+				}
+			}),
+	)()
 }
 
-function newEventId() {
-	return globalState.serverEventIdCounter.next().value
-}
-
-function newSquadId() {
-	return globalState.squadIdCounter.next().value
+export async function waitForSynced(ctx: C.SquadServer) {
+	if (ctx.server.eventState.syncState.type === 'synced') return
+	await Rx.firstValueFrom(ctx.server.event$.pipe(Rx.filter(([ctx, event]) => event.type === 'NEW_GAME' || event.type === 'RESET')))
 }

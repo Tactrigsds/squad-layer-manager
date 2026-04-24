@@ -591,11 +591,7 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 			}),
 		).subscribe(),
 		ctx.server.event$.pipe(
-			Rx.concatMap(([eventCtx, events]) =>
-				events
-					.filter(e => e.type === 'PLAYER_CONNECTED')
-					.map(e => [eventCtx, e] as const)
-			),
+			Rx.filter(([eventCtx, event]) => event.type === 'PLAYER_CONNECTED'),
 			C.durableSub('bm-on-player-connected', { module, root: true }, async ([eventCtx, event]) => {
 				if (event.type !== 'PLAYER_CONNECTED') return
 				const playerIds = event.player.ids

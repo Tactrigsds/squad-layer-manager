@@ -68,20 +68,20 @@ export const setupInstance = C.spanOp(
 	async (ctx: C.Db & C.ServerSlice) => {
 		const serverId = ctx.serverId
 
-		await Rx.firstValueFrom(ctx.server.historyConflictsResolved$.pipe(Rx.filter(v => v)))
-		// -------- initialize vote state --------
-		await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-			const s = ctx.layerQueue
+		SquadServer.waitForSynced(ctx).then(async () => {
+			// -------- initialize vote state --------
+			await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
+				const s = ctx.layerQueue
 
-			const initialServerState = await SquadServer.getFullServerState(ctx)
+				const initialServerState = await SquadServer.getFullServerState(ctx)
 
-			await VoteSys.syncVoteStateWithQueueStateInPlace(ctx, [], initialServerState.layerQueue)
+				await VoteSys.syncVoteStateWithQueueStateInPlace(ctx, [], initialServerState.layerQueue)
 
-			addReleaseTask(() => s.update$.next([{ state: initialServerState, source: { type: 'system', event: 'app-startup' } }, ctx]))
+				addReleaseTask(() => s.update$.next([{ state: initialServerState, source: { type: 'system', event: 'app-startup' } }, ctx]))
 
-			log.info('vote state initialized')
+				log.info('vote state initialized')
+			})
 		})
-		log.info('initial update complete')
 
 		// -------- log vote state updates --------
 		ctx.cleanup.push(ctx.vote.update$.subscribe((update) => {
@@ -158,16 +158,17 @@ export const setupInstance = C.spanOp(
 		// -------- make sure next layer set is synced with queue --------
 		{
 			ctx.server.event$.pipe(
-				C.durableSub('sync-server-map-set', { module }, async ([ctx, events]) => {
-					for (const event of Arr.revIter(events)) {
-						if (event.type !== 'MAP_SET') continue
-						// this case will be dealt with in handleNewGame, so can ignore it here
-						if (ctx.server.serverRolling$.value) return
-						await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-							const serverState = await SquadServer.getServerState(ctx)
-							await syncNextLayerInPlace(ctx, serverState)
-						})
-					}
+				C.durableSub('sync-server-map-set', { module }, async ([ctx, event]) => {
+					if (event.type !== 'MAP_SET') return
+					// this case will be dealt with in handleNewGame, so can ignore it here
+					if (ctx.server.serverRolling$.value) return
+					await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
+						const serverState = await SquadServer.getServerState(ctx)
+						const serverStatePrev = Obj.deepClone(serverState)
+						await syncNextLayerInPlace(ctx, serverState, { skipDbWrite: true })
+						await VoteSys.syncVoteStateWithQueueStateInPlace(ctx, serverStatePrev.layerQueue, serverState.layerQueue)
+						await SquadServer.updateServerState(ctx, serverState, { type: 'system', event: 'next-layer-override' })
+					})
 				}),
 			).subscribe()
 		}
@@ -381,7 +382,7 @@ export async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 		wroteServerState = true
 	}
 
-	const nextSetLayerId = ctx.server.state.nextSetLayerId
+	const nextSetLayerId = ctx.server.eventState.nextLayerId
 
 	if (nextSetLayerId && L.areLayersCompatible(nextQueuedLayerId, nextSetLayerId)) return
 

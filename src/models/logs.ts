@@ -8,6 +8,7 @@ export const serializers = {
 	bigint: (n: bigint) => n.toString() + 'n',
 }
 
+
 /**
  * If the source format has only a single severity that matches the meaning of the range
  * then it is recommended to assign that severity the smallest value of the range.
@@ -157,7 +158,7 @@ export function mapSpanAttrs(span: Otel.Span, record: Record<string, any>) {
 	}
 }
 
-export function showLogEvent(obj: { level: number; [key: string]: unknown }, showAdditionalContext = true, align = false) {
+export function showLogEvent(obj: { level: number; [key: string]: unknown }, align = false, excludedContextParams: ReadonlySet<string> = new Set()) {
 	// Format time with 24h time format (HH:MM:SS)
 	const dateObj = new Date(obj.time as number)
 	const time = dateObj.toLocaleTimeString([], { hour12: false })
@@ -266,9 +267,9 @@ export function showLogEvent(obj: { level: number; [key: string]: unknown }, sho
 	const keyColor = '\x1b[90m' // grey for keys
 	const valueColor = '\x1b[37m' // white for values
 	const contextParts: string[] = []
-	if (serverId) contextParts.push(`${keyColor}server=${valueColor}${serverId}${resetColor}`)
-	if (userId) contextParts.push(`${keyColor}user=${valueColor}${userId}${resetColor}`)
-	if (wsClientId) contextParts.push(`${keyColor}ws=${valueColor}${wsClientId.slice(-4)}${resetColor}`)
+	if (serverId && !excludedContextParams.has('server')) contextParts.push(`${keyColor}server=${valueColor}${serverId}${resetColor}`)
+	if (userId && !excludedContextParams.has('user')) contextParts.push(`${keyColor}user=${valueColor}${userId}${resetColor}`)
+	if (wsClientId && !excludedContextParams.has('ws')) contextParts.push(`${keyColor}ws=${valueColor}${wsClientId.slice(-4)}${resetColor}`)
 
 	const contextLine = contextParts.length > 0 ? ` ${dimColor}[${resetColor}${contextParts.join(' ')}${dimColor}]${resetColor}` : ''
 

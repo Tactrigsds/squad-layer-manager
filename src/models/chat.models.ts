@@ -93,8 +93,6 @@ export type NoopEvent = {
 }
 
 export type ChatState = {
-	rawEventBuffer: Event[]
-
 	eventBuffer: EventEnriched[]
 
 	// the state of the chat as of the last event
@@ -102,18 +100,7 @@ export type ChatState = {
 
 	connectionError: ConnectionErrorEvent | null
 
-	// snapshots we can revert to in case of an out-of-order event
-	savepoints: Savepoint[]
 	synced: boolean
-}
-
-const NUMBER_OF_SAVEPOINTS = 4
-const SAVEPOINT_INTERVAL = 200
-
-export type Savepoint = {
-	// the index in the iterpolated event buffer
-	savedAtEventId: number
-	state: InterpolableState
 }
 
 export function getInitialInterpolatedState(): InterpolableState {
@@ -125,30 +112,22 @@ export function getInitialInterpolatedState(): InterpolableState {
 
 export function getInitialChatState(): ChatState {
 	return {
-		rawEventBuffer: [],
 		interpolatedState: getInitialInterpolatedState(),
-		savepoints: [],
 		eventBuffer: [],
-		// indicates when this chat is now caught up on initial events from the server
 		synced: false,
 		connectionError: null,
 	}
 }
 
-/**
- * Process events into ChatState, with roll-back behavior in the case of out-of-order events
- * Given a stream of events this lets us annot
- */
 export function handleEvent(
 	state: ChatState,
 	event: Event | LifecycleEvent,
 	opts?: InterpolationOptions,
 ) {
 	if (event.type === 'INIT') {
-		state = Object.assign(state, getInitialChatState())
+		Object.assign(state, getInitialChatState())
 		return
 	}
-
 	if (event.type === 'SYNCED') {
 		state.synced = true
 		return
@@ -157,99 +136,22 @@ export function handleEvent(
 		state.connectionError = event
 		return
 	}
-
 	if (event.type === 'CHAT_RECONNECTED') {
 		state.connectionError = null
 		const lastEvent = state.eventBuffer[state.eventBuffer.length - 1]
 		if (!lastEvent || event.resumedEventId === lastEvent.id) {
-			// we're good to go, should be receiving events soon
 			state.synced = false
 			return
 		}
 		if (event.resumedEventId !== null) {
 			throw new Error(`resumed from the wrong event id!`)
 		}
-
-		// we're out of sync and we need to reset the state
 		Object.assign(state, getInitialChatState())
 		return
 	}
 
-	let mutatedIndex: number | null = null
-	for (let i = state.rawEventBuffer.length - 1; i >= 0; i--) {
-		const current = state.rawEventBuffer[i]
-		if (current.time <= event.time) {
-			mutatedIndex = i + 1
-			break
-		}
-	}
-	if (mutatedIndex === null && state.rawEventBuffer.length >= Math.floor((SAVEPOINT_INTERVAL * NUMBER_OF_SAVEPOINTS) / 2)) {
-		throw new Error(`Event ${event.id} is too far out-of-order to be reconciled`)
-	}
-
-	mutatedIndex ??= 0
-
-	// remove all savepoints at or after the mutated index
-	for (let i = mutatedIndex; i < state.rawEventBuffer.length; i++) {
-		const event = state.rawEventBuffer[i]
-		const savepointIndex = state.savepoints.findIndex(s => s.savedAtEventId === event.id)
-		if (savepointIndex !== -1) {
-			state.savepoints = state.savepoints.slice(0, savepointIndex)
-			break
-		}
-	}
-	let lastSaveEventIndex = -1
-	if (state.savepoints.length > 0) {
-		lastSaveEventIndex = state.rawEventBuffer.findIndex(e => e.id === state.savepoints[state.savepoints.length - 1].savedAtEventId)
-	}
-	const eventsToProcess: Event[] = []
-	if (mutatedIndex < state.rawEventBuffer.length) {
-		eventsToProcess.push(...state.rawEventBuffer.slice(lastSaveEventIndex + 1, mutatedIndex))
-		eventsToProcess.push(event)
-		eventsToProcess.push(...state.rawEventBuffer.slice(mutatedIndex))
-		state.rawEventBuffer = state.rawEventBuffer.slice(0, lastSaveEventIndex + 1)
-		state.eventBuffer = state.eventBuffer.slice(0, lastSaveEventIndex + 1)
-		let savepoint = state.savepoints[state.savepoints.length - 1]
-		if (!savepoint) {
-			state.interpolatedState = getInitialInterpolatedState()
-		} else {
-			state.interpolatedState = InterpolableState.clone(savepoint.state)
-		}
-	} else {
-		eventsToProcess.push(event)
-	}
-
-	for (const event of eventsToProcess) {
-		state.rawEventBuffer.push(event)
-		// we may also modify eventBuffer in place
-		const interpolated = interpolateEvent(state.interpolatedState, state.eventBuffer, event, opts)
-		state.eventBuffer.push(interpolated)
-	}
-
-	if (SAVEPOINT_INTERVAL < state.rawEventBuffer.length - lastSaveEventIndex) {
-		state.savepoints.push({ savedAtEventId: event.id, state: InterpolableState.clone(state.interpolatedState) })
-
-		if (state.savepoints.length <= NUMBER_OF_SAVEPOINTS) return
-		const newFirstSavepointIndex = state.savepoints.length - NUMBER_OF_SAVEPOINTS
-		state.savepoints = state.savepoints.slice(newFirstSavepointIndex)
-
-		const firstSavepointEventIndex = state.rawEventBuffer.findIndex(e => e.id === state.savepoints[0].savedAtEventId)
-		// get the index of the event of the last NEW_GAME which is beyond  all current savepoints
-		const newFirstEventIndex = Arr.revFindIndex(
-			state.rawEventBuffer,
-			(e, index) => e.type === 'NEW_GAME' && index <= firstSavepointEventIndex,
-		)
-		if (newFirstEventIndex === -1) {
-			console.warn(`Could not find NEW_GAME event in buffer`)
-			return
-		}
-		if (state.rawEventBuffer.length !== state.eventBuffer.length) {
-			throw new Error(`Event buffer and raw event buffer are not the same size`)
-		}
-		state.rawEventBuffer = state.rawEventBuffer.slice(newFirstEventIndex)
-		// eventBuffer and rawEventBuffer are always the same size so this is safe
-		state.eventBuffer = state.eventBuffer.slice(newFirstEventIndex)
-	}
+	const interpolated = interpolateEvent(state.interpolatedState, state.eventBuffer, event, opts)
+	state.eventBuffer.push(interpolated)
 }
 
 const compiledPatternMap = new WeakMap<string[], RegExp[]>()
