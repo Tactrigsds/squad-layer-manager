@@ -174,7 +174,7 @@ export async function* process(
 					matchId: state.currentMatch.historyEntryId,
 					time: pendingEvent.time,
 					reconnected: !state.isFirstConnection,
-					id: pendingEvent.id,
+					id: Gen.next(state.counters.eventId),
 				}
 
 				if (
