@@ -717,7 +717,6 @@ export async function* process(
 			processedEventIds.add(pendingEvent.id)
 		}
 	}
-	log.info('Processed %s/%s events', processedEventIds.size, toProcess.length)
 
 	for (const prop of Obj.objKeys(state.eventBufs)) {
 		// @ts-expect-error idgaf
