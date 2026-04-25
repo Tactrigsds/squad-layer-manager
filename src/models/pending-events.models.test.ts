@@ -240,21 +240,23 @@ describe('PendingEvents', () => {
 			expect(state.syncState.type).toBe('rolling')
 		})
 
-		it('TEAMS_UPDATE is held until a log event advances the clock past its timestamp', async () => {
+		it('RCON_CONNECTED and TEAMS_UPDATE are both held until a log event advances the clock past their timestamp', async () => {
 			const { state } = makeState()
 			PendingEvents.onRconConnected(state, 100, LAYER_A, LAYER_A)
 			PendingEvents.onTeamsPolled(state, makeTeams(), 100)
 
-			// RCON_CONNECTED + MAP_SET fire immediately; TEAMS_UPDATE still buffered
+			// Nothing fires without a log event — lifecycle events are also held
 			const batch1 = await collect(state)
-			expect(batch1.map(e => e.type)).toEqual(['RCON_CONNECTED', 'MAP_SET'])
-			expect(state.eventBufs.teamsUpdates).toHaveLength(1) // still buffered
+			expect(batch1).toHaveLength(0)
+			expect(state.eventBufs.teamsUpdates).toHaveLength(1)
+			expect(state.eventBufs.lifecycleEvents).toHaveLength(1)
 
-			// After a log event at t=101, TEAMS_UPDATE is released
+			// After a log event at t=101, all three fire together in timestamp order
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(101))
 			const batch2 = await collect(state)
-			expect(batch2.map(e => e.type)).toEqual(['NEW_GAME'])
-			expect(state.eventBufs.teamsUpdates).toHaveLength(0) // consumed
+			expect(batch2.map(e => e.type)).toEqual(['RCON_CONNECTED', 'MAP_SET', 'NEW_GAME'])
+			expect(state.eventBufs.teamsUpdates).toHaveLength(0)
+			expect(state.eventBufs.lifecycleEvents).toHaveLength(0)
 		})
 
 		it('processed events are removed from buffers after process()', async () => {
@@ -273,6 +275,7 @@ describe('PendingEvents', () => {
 			expect(state.syncState.type).toBe('synced')
 
 			PendingEvents.onRconDisconnected(state, 200)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 			expect(events).toHaveLength(1)
 			expect(events[0]).toMatchObject({ type: 'RCON_DISCONNECTED' })

@@ -14,7 +14,7 @@ export type GlobalSettingsStore = {
 }
 
 export const GlobalSettingsStore = Zus.createStore<GlobalSettingsStore>()(ZusMiddle.persist((set, _get) => ({
-	displayTeamsNormalized: false,
+	displayTeamsNormalized: true,
 	setDisplayTeamsNormalized: (value: boolean) => set({ displayTeamsNormalized: value }),
 	chartTab: 'population',
 	setChartTab: (value: ChartTab) => set({ chartTab: value }),
@@ -24,3 +24,6 @@ export const GlobalSettingsStore = Zus.createStore<GlobalSettingsStore>()(ZusMid
 	name: 'settings:v1',
 	storage: ZusMiddle.createJSONStorage(() => localStorage),
 }))
+
+// we're just hardcoding this to true for now
+GlobalSettingsStore.getState().setDisplayTeamsNormalized(true)

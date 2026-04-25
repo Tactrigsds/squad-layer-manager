@@ -4,7 +4,6 @@ import CommandsHelpDialog from '@/components/commands-help-dialog'
 import NicknameDialog from '@/components/nickname-dialog'
 import SelectLayersDialog from '@/components/select-layers-dialog'
 import { ServerActionsDropdown } from '@/components/server-actions-dropdown'
-import { NormTeamsSwitch } from '@/components/server-dashboard'
 import { Alert, AlertTitle } from '@/components/ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -128,14 +127,7 @@ function RouteComponent() {
 							{config.wsClientId}
 						</span>
 					)}
-					{isOnServerDashboard && (
-						<>
-							<div className="hidden xl:block">
-								<NormTeamsSwitch />
-							</div>
-							<ServerActionsDropdown />
-						</>
-					)}
+					{isOnServerDashboard && <ServerActionsDropdown />}
 					{config && <NavLinksDropdown globalLinks={config.navLinks} serverLinks={selectedServer?.navLinks} />}
 					{isOnServerDashboard && selectedServer && config && (config.servers.length === 1
 						? <div className="font-medium text-sm">{selectedServer.displayName}</div>
