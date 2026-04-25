@@ -157,6 +157,7 @@ export const setupInstance = C.spanOp(
 		// -------- make sure next layer set is synced with queue --------
 		{
 			ctx.server.event$.pipe(
+				Rx.filter(([ctx, event]) => event.type === 'MAP_SET'),
 				C.durableSub('sync-server-map-set', { module }, async ([ctx, event]) => {
 					if (event.type !== 'MAP_SET') return
 					// this case will be dealt with in handleNewGame, so can ignore it here
