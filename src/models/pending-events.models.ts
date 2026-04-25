@@ -133,6 +133,7 @@ export async function* process(
 	}
 
 	for (const lifecycleEvt of state.eventBufs.lifecycleEvents) {
+		if (state.lastKnownLogEventTime == null || state.lastKnownLogEventTime < lifecycleEvt.time) continue
 		Arr.insertIntoSorted(toProcess, lifecycleEvt, comparator)
 	}
 
