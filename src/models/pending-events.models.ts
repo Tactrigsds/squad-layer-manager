@@ -563,9 +563,10 @@ export async function* process(
 						if (!prevPlayer) continue
 						if (player.teamId !== prevPlayer.teamId) {
 							yield* changePlayerTeam(state, pendingEvent.time, prevPlayer, player.teamId)
-						}
-
-						if (player.squadId !== prevPlayer.squadId) {
+							if (player.squadId !== null) {
+								yield* changeSquad(state, pendingEvent.time, player.ids, player.squadId)
+							}
+						} else if (player.squadId !== prevPlayer.squadId) {
 							// disbanding squads handled here
 							yield* changeSquad(state, pendingEvent.time, prevPlayer.ids, player.squadId)
 						}
