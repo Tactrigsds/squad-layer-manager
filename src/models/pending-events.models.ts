@@ -596,7 +596,7 @@ export async function* process(
 					for (const squad of nextTeams.squads) {
 						const prevSquad = state.currTeams.squads.find(s => SM.Squads.idsEqual(s, squad))
 						if (!prevSquad) {
-							log.error(`squad ${SM.Squads.printKey(squad)} not found`)
+							log.debug(`squad ${SM.Squads.printKey(squad)} not found`)
 							continue
 						}
 						const details = Obj.selectProps(squad, SM.SQUAD_DETAILS)
@@ -778,6 +778,7 @@ function* changeSquad(
 	playerId: SM.PlayerIds.IdQueryOrPlayerId,
 	newSquadId: number | null,
 ): Generator<SE.Event> {
+	const log = state.log
 	if (!state.currTeams) throw new Error(`currTeams is null, cannot process player leave squad`)
 	if (state.currentMatch === 'PENDING') throw new Error(`Cannot leave squad in PENDING match state`)
 	const player = state.currTeams.players.find(p => SM.PlayerIds.match(p.ids, playerId))
@@ -785,7 +786,10 @@ function* changeSquad(
 	if (player.squadId === newSquadId) return
 	if (player.squadId !== null) {
 		const squad = state.currTeams.squads.find(squad => SM.Squads.idsEqual(squad, player))!
-		if (!squad) throw new Error(`No squad found for player squadId ${player.squadId} teamId ${player.teamId}`)
+		if (!squad) {
+			log.error(`No squad found for player squadId ${player.squadId} teamId ${player.teamId}`)
+			return
+		}
 		player.squadId = null
 		yield {
 			type: 'PLAYER_LEFT_SQUAD',
@@ -806,7 +810,10 @@ function* changeSquad(
 
 	if (newSquadId !== null) {
 		const squad = state.currTeams.squads.find(s => s.squadId === newSquadId && s.teamId === player.teamId)!
-		if (!squad) throw new Error(`No squad found for squadId ${newSquadId}`)
+		if (!squad) {
+			log.error(`No squad found for squadId ${newSquadId}`)
+			return
+		}
 		player.squadId = newSquadId
 		yield {
 			type: 'PLAYER_JOINED_SQUAD',
@@ -820,11 +827,15 @@ function* changeSquad(
 }
 
 function* promotePlayerToLeader(state: State, time: number, _playerIds: SM.PlayerIds.IdQueryOrPlayerId): Generator<SE.Event> {
+	const log = state.log
 	const playerIds = SM.PlayerIds.normalizeIdQuery(_playerIds)
 	if (!state.currTeams || state.currentMatch === 'PENDING') return
 	const player = state.currTeams.players.find(p => SM.PlayerIds.match(p.ids, playerIds))
 	if (!player) return
-	if (player.isLeader) throw new Error(`Player ${SM.PlayerIds.prettyPrint(playerIds)} is already a squad leader`)
+	if (player.isLeader) {
+		log.error(`Player ${SM.PlayerIds.prettyPrint(playerIds)} is already a squad leader`)
+		return
+	}
 	const playerSquad = state.currTeams.squads.find(squad => SM.Squads.idsEqual(squad, player))!
 	for (const otherPlayer of state.currTeams.players) {
 		if (otherPlayer.isLeader && SM.Squads.idsEqual(playerSquad, otherPlayer) && !SM.PlayerIds.match(player.ids, otherPlayer.ids)) {
