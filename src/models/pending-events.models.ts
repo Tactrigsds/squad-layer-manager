@@ -151,6 +151,9 @@ export async function* process(
 	const processedEventIds = new Set<number>()
 	loop: for (let i = 0; i < toProcess.length; i++) {
 		const pendingEvent = toProcess[i]
+		if (pendingEvent.type !== 'UNKNOWN') {
+			log.debug('Attempting to process event %s (%s)', pendingEvent.type, pendingEvent.id, JSON.stringify(pendingEvent))
+		}
 		try {
 			if (pendingEvent.time < time - 45_000) {
 				state.log.warn('Skipping event %s (%s) as it is stale (%s)', pendingEvent.type, pendingEvent.id, pendingEvent.time)
