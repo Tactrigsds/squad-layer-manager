@@ -92,8 +92,9 @@ export function FilterEntityLink(props: { filterId: F.FilterEntityId }) {
 			className={buttonVariants({ variant: 'ghost', size: 'icon' })}
 			params={{ filterId: props.filterId }}
 			to="/filters/$filterId"
+			target="__blank"
 		>
-			<Icons.Edit />
+			<Icons.ExternalLink />
 		</Link>
 	)
 }
