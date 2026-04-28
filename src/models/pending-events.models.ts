@@ -437,21 +437,11 @@ export async function* process(
 
 				case 'PLAYER_CONNECTED_CHAIN': {
 					const events = pendingEvent.events
-					let username: string | undefined
-					for (const teamUpdate of state.eventBufs.teamsUpdates) {
-						username = SM.PlayerIds.find(teamUpdate.teams.players, p => p.ids, events.PLAYER_CONNECTED.playerIds)?.ids.username
-						if (username) break
-					}
-					// suspend processing until we can find a username for this player that we can use(we don't get a full username with tags attached in the log chain)
-					if (!username) {
-						break loop
-					}
-					log.info(`Found username for player ${username}`)
 					const player: SM.Player = {
 						ids: {
 							...events.PLAYER_CONNECTED.playerIds,
 							...events.PLAYER_JOIN_SUCCEEDED.player,
-							username,
+							username: events.PLAYER_JOIN_SUCCEEDED.player.usernameNoTag,
 						},
 						teamId: events.PLAYER_ADDED_TO_TEAM?.teamId ?? 1,
 						squadId: null,
@@ -582,10 +572,14 @@ export async function* process(
 
 						const details = Obj.selectProps(player, SM.PLAYER_DETAILS)
 						const prevDetails = Obj.selectProps(prevPlayer, SM.PLAYER_DETAILS)
-						if (!Obj.deepEqual(details, prevDetails)) {
+						const newUsername = prevPlayer.ids.username !== player.ids.username ? player.ids.username : undefined
+						if (!Obj.deepEqual(details, prevDetails) || newUsername) {
 							for (const prop of SM.PLAYER_DETAILS) {
 								// @ts-expect-error idgaf
 								prevPlayer[prop] = player[prop]
+							}
+							if (newUsername) {
+								prevPlayer.ids.username = newUsername
 							}
 							yield {
 								type: 'PLAYER_DETAILS_CHANGED',
@@ -594,6 +588,7 @@ export async function* process(
 								details,
 								time: pendingEvent.time,
 								matchId: state.currentMatch.historyEntryId,
+								newUsername,
 							}
 						}
 					}

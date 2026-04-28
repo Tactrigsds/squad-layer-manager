@@ -93,6 +93,7 @@ export type PlayerDetailsChanged<P = SM.PlayerId> =
 	& {
 		type: 'PLAYER_DETAILS_CHANGED'
 		details: Pick<SM.Player, (typeof SM.PLAYER_DETAILS)[number]>
+		newUsername?: string
 	}
 	& SM.PlayerAssoc<'player', P>
 	& Base

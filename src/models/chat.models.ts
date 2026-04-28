@@ -45,7 +45,7 @@ export type InterpolableState = {
 export namespace InterpolableState {
 	export function clone(state: InterpolableState): InterpolableState {
 		return {
-			players: [...state.players],
+			players: state.players.map(p => ({ ...p, ids: { ...p.ids } })),
 			squads: [...state.squads],
 		}
 	}
@@ -235,7 +235,7 @@ export function interpolateEvent(
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} had details changed but was not found in the player list`)
 			}
 			const player = state.players[index]
-			const updated = { ...player, ...event.details }
+			const updated: SM.Player = { ...player, ...event.details, ids: { ...player.ids, username: event.newUsername ?? player.ids.username } }
 			state.players[index] = updated
 			return {
 				...event,

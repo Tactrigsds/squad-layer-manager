@@ -453,6 +453,14 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 		ctx.server.emittedEvents.push(event)
 	})
 
+	server.event$.pipe(
+		Rx.filter(([_, event]) => event.type === 'PLAYER_DETAILS_CHANGED' && !!event.newUsername),
+		C.durableSub('onPlayerNameChanged', { module }, async ([ctx, event]) => {
+			if (event.type !== 'PLAYER_DETAILS_CHANGED' || !event.newUsername) return
+			await ctx.db().update(Schema.players).set({ username: event.newUsername }).where(E.eq(Schema.players.eosId, event.player))
+		}),
+	).subscribe()
+
 	// -------- process log events --------
 	void (async () => {
 		let chunk$: Rx.Observable<string>
