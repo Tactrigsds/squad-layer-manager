@@ -152,7 +152,7 @@ export async function* process(
 	loop: for (let i = 0; i < toProcess.length; i++) {
 		const pendingEvent = toProcess[i]
 		if (pendingEvent.type !== 'UNKNOWN') {
-			log.debug('Attempting to process event %s (%s)', pendingEvent.type, pendingEvent.id, JSON.stringify(pendingEvent))
+			log.debug('Attempting to process raw event %s (%s)', pendingEvent.type, pendingEvent.id, JSON.stringify(pendingEvent))
 		}
 		try {
 			if (pendingEvent.time < time - 45_000) {
@@ -446,6 +446,7 @@ export async function* process(
 					if (!username) {
 						break loop
 					}
+					log.info(`Found username for player ${username}`)
 					const player: SM.Player = {
 						ids: {
 							...events.PLAYER_CONNECTED.playerIds,

@@ -74,6 +74,9 @@ const ADMIN_BROADCAST_SINGLE = '[2025.11.19-18.18.26:151][549]LogSquad: ADMIN CO
 const ADMIN_BROADCAST_MULTILINE =
 	'[2025.11.19-18.18.26:151][549]LogSquad: ADMIN COMMAND: Message broadcasted <Hello world\nFactions: RGF+CombinedArms AFU+CombinedArms> from RCON'
 
+const PLAYER_WOUNDED =
+	'[2026.04.27-23.33.47:250][332]LogSquadTrace: [DedicatedServer]Wound(): Player:RaT I Gangry KillingDamage=0.000000 from BP_PlayerController_C_2146093177 (Online IDs: EOS: 00029ce874284d2ba0199af5dd36a199 steam: 76561198397430155 | Controller ID: BP_PlayerController_C_2146093177) caused by BP_Soldier_USMC_Rifleman1_Woodland_C'
+
 // --- Tests ---
 
 describe('LogEvents.parse', () => {
@@ -106,6 +109,24 @@ describe('LogEvents.parse', () => {
 				type: 'ADMIN_BROADCAST',
 				message: 'Hello world\nFactions: RGF+CombinedArms AFU+CombinedArms',
 				from: 'RCON',
+			})
+		})
+	})
+
+	describe('PLAYER_WOUNDED', () => {
+		it('parses wound with steam+EOS IDs and generic controller name', async () => {
+			const events = await collect(PLAYER_WOUNDED)
+			expect(events).toHaveLength(1)
+			expect(events[0]).toMatchObject({
+				type: 'PLAYER_WOUNDED',
+				damage: 0,
+				weapon: 'BP_Soldier_USMC_Rifleman1_Woodland',
+				attackerIds: expect.objectContaining({
+					steam: '76561198397430155',
+					eos: '00029ce874284d2ba0199af5dd36a199',
+					playerController: 'BP_PlayerController_C_2146093177',
+				}),
+				victimIds: expect.objectContaining({ username: 'RaT I Gangry' }),
 			})
 		})
 	})
