@@ -34,15 +34,17 @@ export const ParsedNanFloatSchema = z
 
 const ParsedNullableFloat = ParsedFloatSchema.transform((val) => (isNaN(val) ? null : val))
 
-const Steps = z.enum(['update-layers-table', 'download-csvs', 'write-components-and-units', 'compress-db'])
+const Steps = z.enum(['update-layers-table', 'download-csvs', 'write-components-and-units', 'compress-db', 'all'])
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.preprocess, ...Env.groups.layerDb })
 let ENV!: ReturnType<typeof envBuilder>
 let log = baseLogger
 
 async function main() {
-	const args = z.array(Steps).parse(process.argv.slice(2))
-	if (args.length === 0) {
+	let args = z.array(Steps).parse(process.argv.slice(2))
+	if (Arr.includes(args, 'all')) {
+		args = [...Steps.options]
+	} else if (args.length === 0) {
 		args.push('update-layers-table', 'write-components-and-units', 'compress-db')
 	}
 	Env.ensureEnvSetup()
