@@ -183,7 +183,6 @@ export namespace PlayerIds {
 		return -1
 	}
 
-	// returns a version of the element with merged ids
 	export function upsert(idList: Type[], id: Type): Type
 	export function upsert<T>(idList: T[], cb: (item: T) => Type, newItem: T): T
 	export function upsert<T>(
@@ -196,9 +195,9 @@ export namespace PlayerIds {
 			const cb = cbOrId
 			const newItem = itemOrId as T
 			const searchId = cb(newItem)
-			const existing = find(elts as T[], cb, searchId)
-			if (existing) {
-				const existingIds = cb(existing)
+			const existingIndex = indexOf(elts as T[], cb, searchId)
+			if (existingIndex !== -1) {
+				const existingIds = cb((elts as T[])[existingIndex])
 				for (const prop of UNIQUE_PROPS) {
 					if (!searchId[prop]) continue
 					if (existingIds[prop] !== searchId[prop]) {
@@ -206,19 +205,18 @@ export namespace PlayerIds {
 						return
 					}
 				}
-				Object.assign(existingIds, searchId)
-				Object.assign(existing, newItem)
-				return existing
+				;(elts as T[]).splice(existingIndex, 1, newItem)
+				return newItem
 			}
-			Object.assign(cb(newItem), searchId)
 			;(elts as T[]).push(newItem)
 			return newItem
 		}
 
 		// Original overload: upsert(idList: Type[], id: Type): Type
 		const searchId = cbOrId as Type
-		const existing = find(elts as Type[], searchId)
-		if (existing) {
+		const existingIndex = indexOf(elts as Type[], searchId)
+		if (existingIndex !== -1) {
+			const existing = (elts as Type[])[existingIndex]
 			for (const prop of UNIQUE_PROPS) {
 				if (!searchId[prop]) continue
 				if (existing[prop] !== searchId[prop]) {
@@ -226,8 +224,8 @@ export namespace PlayerIds {
 					return existing
 				}
 			}
-			Object.assign(existing, searchId)
-			return existing
+			;(elts as Type[]).splice(existingIndex, 1, searchId)
+			return searchId
 		}
 		;(elts as Type[]).push(searchId)
 		return searchId

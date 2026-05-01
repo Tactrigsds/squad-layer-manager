@@ -67,3 +67,11 @@ export async function* counterBigint(count = 0n): AsyncGenerator<bigint, never> 
 		count++
 	}
 }
+
+export async function toArray<T>(iterable: AsyncIterable<T>): Promise<T[]> {
+	const result: T[] = []
+	for await (const item of iterable) {
+		result.push(item)
+	}
+	return result
+}
