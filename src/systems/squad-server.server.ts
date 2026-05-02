@@ -513,7 +513,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 		} catch (error) {
 			log.error('Error handling event: %s %d', event.type, event.id, error)
 		}
-		log.info('emitted event: %s %s', event.type, JSON.stringify(event))
+		log.info('emitted event: %s %s', event.type, JSON.stringify(Obj.selectProps(event, ['id', 'matchId', 'type', 'time'])))
 		ctx.server.emittedEvents.push(event)
 	})
 

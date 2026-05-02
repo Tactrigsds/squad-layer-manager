@@ -969,9 +969,8 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 
 		if (squad) {
 			const hasChangedSquad = squad.uniqueId !== prevSquad?.uniqueId
-			const isSquadCreator = squad.creator === playerId
 
-			if (!isSquadCreator && hasChangedSquad) {
+			if (hasChangedSquad) {
 				yield {
 					id: Gen.next(state.counters.eventId),
 					type: 'PLAYER_JOINED_SQUAD',
@@ -982,6 +981,10 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 			}
 
 			if (player.isLeader && !prevPlayer?.isLeader) {
+				if (!player.squadId) {
+					log.warn('Attempted to promote player leader but has no squad: %s', playerId)
+					return
+				}
 				yield {
 					id: Gen.next(state.counters.eventId),
 					type: 'PLAYER_PROMOTED_TO_LEADER',
