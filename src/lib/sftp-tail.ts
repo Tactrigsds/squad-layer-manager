@@ -1,5 +1,4 @@
-import * as CS from '@/models/context-shared'
-import * as C from '@/server/context'
+import type * as CS from '@/models/context-shared'
 import crypto from 'crypto'
 import EventEmitter from 'events'
 import fs from 'fs'
@@ -48,7 +47,6 @@ export class SftpTail extends EventEmitter {
 	private tmpFilePath: string | null = null
 	private isConnected = false
 	private log: CS.Logger
-	private tryRead: (ctx: C.OtelCtx) => Promise<void>
 
 	constructor(
 		options: SftpTailOptions,
@@ -71,7 +69,6 @@ export class SftpTail extends EventEmitter {
 		this.fetchLoopPromise = null
 		const module = getChildModule(options.parentModule, 'sftp-tail')
 		this.log = module.getLogger()
-		this.tryRead = C.spanOp('tryRead', { module, root: true, levels: { error: 'error', event: 'trace' } }, () => this._tryRead())
 	}
 
 	watch() {
@@ -161,7 +158,7 @@ export class SftpTail extends EventEmitter {
 	async fetchLoop() {
 		while (this.fetchLoopActive) {
 			try {
-				await this.tryRead(C.storeLinkToActiveSpan(CS.init(), 'event.setup'))
+				await this._tryRead()
 			} catch (err) {
 				this.emit('error', err)
 			}
