@@ -138,7 +138,8 @@ function EndMatchDialog(props: { children: React.ReactNode }) {
 					<DialogTitle>End Match</DialogTitle>
 				</DialogHeader>
 				<DialogDescription>
-					Are you sure you want to end the match for <b>{serverInfo?.name}</b>?
+					Are you sure you want to end the match for <br />
+					<b>{serverInfo?.name}</b>?
 				</DialogDescription>
 				<DialogFooter>
 					<PermissionDeniedTooltip denied={endMatchDenied}>

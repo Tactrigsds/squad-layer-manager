@@ -487,8 +487,7 @@ function MatchHistoryRow({
 					variant="outline"
 					className="flex items-center whitespace-nowrap"
 				>
-					<span className="pr-1">Post-Game</span>
-					{entry.endTime !== 'unknown' && <Timer zeros start={entry.endTime.getTime()} className="font-mono" />}
+					<span>Post-Game</span>
 				</Badge>
 			)
 		} else if (entry.status === 'in-progress') {
@@ -630,11 +629,22 @@ function MatchHistoryRow({
 								)}
 						</div>
 					</TableCell>
-					<TableCell className="text-xs hidden min-[820px]:table-cell pl-2">
+					<TableCell className="text-xs hidden min-[820px]:table-cell pl-2 ">
 						{entry.isCurrentMatch && entry.startTime && entry.status === 'in-progress'
 							&& (
 								<span className="font-mono font-light">
 									<Timer zeros start={entry.startTime.getTime()} />
+								</span>
+							)}
+						{entry.isCurrentMatch && entry.startTime && entry.status === 'post-game'
+							&& (
+								<span className="font-mono font-light">
+									{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}
+									{entry.endTime !== 'unknown' && (
+										<span className="text-muted-foreground flex flex-nowrap items-baseline">
+											+<Timer start={entry.endTime.getTime()} className="font-mono" />
+										</span>
+									)}
 								</span>
 							)}
 						{!entry.isCurrentMatch && entry.startTime

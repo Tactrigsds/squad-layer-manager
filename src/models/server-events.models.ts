@@ -14,7 +14,7 @@ export const MAP_SET_META = meta()
 
 export type NewGame = {
 	type: 'NEW_GAME'
-	source: 'slm-started' | 'rcon-reconnected' | 'server-roll'
+	source: 'slm-started' | 'rcon-reconnected' | 'server-roll' | 'new-game-detected'
 	layerId: L.LayerId
 	state: SM.UniqueTeams
 } & Base
