@@ -7,7 +7,7 @@ import { AsyncResource } from '@/lib/async-resource'
 
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Gen from '@/lib/generator'
-import { withAcquired } from '@/lib/nodejs-reentrant-mutexes'
+
 import * as Obj from '@/lib/object'
 import Rcon from '@/lib/rcon/core-rcon'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
@@ -462,7 +462,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 	).subscribe()
 
 	// -------- process log events --------
-	void (async () => {
+	{
 		let chunk$: Rx.Observable<string>
 		if (settings.connections.logs.type === 'sftp') {
 			const sftpReader = new SftpTail({
@@ -489,44 +489,48 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 			assertNever(settings.connections.logs)
 		}
 		let errors: Error[] = []
-		for await (const [event, err] of SM.LogEvents.parse(toAsyncGenerator(chunk$), errors)) {
-			const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-			if (err) {
-				log.error(err)
-				continue
-			}
-			if (!event) continue
+		const logEvent$ = Rx.from(SM.LogEvents.parse(toAsyncGenerator(chunk$), errors))
 
-			const release = await ctx.server.processEventsMtx.acquire()
-			try {
-				PendingEvents.onLogEvent(eventState, event)
-				await collectEvents(ctx)
-			} finally {
-				release()
-			}
-		}
-		for (const error of errors) {
-			log.error(error)
-		}
-	})()
+		logEvent$.pipe(
+			C.durableSub('onLogEvent', { module, levels: { event: 'trace' } }, async (event) => {
+				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+				for (const error of errors) log.error(error)
+				errors.splice(0, errors.length)
 
-	rcon.connected$.pipe(C.durableSub('onRconConnectStatusChange', { module, mutexes: () => server.processEventsMtx }, async connected => {
+				if (!event) {
+					log.warn('No log event to process')
+					return
+				}
+
+				await collectEvents(ctx, () => {
+					PendingEvents.onLogEvent(ctx.server.eventState, event)
+				})
+			}),
+		).subscribe()
+	}
+
+	rcon.connected$.pipe(C.durableSub('onRconConnectStatusChange', { module }, async connected => {
 		const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-		if (!connected) {
-			const time = Date.now()
-			PendingEvents.onRconDisconnected(ctx.server.eventState, time)
-		} else {
-			const layerStatus = await ctx.server.layersStatus.get({ ...ctx, rcon })
+		const time = Date.now()
+		let layerStatus: SM.LayersStatusResExt | undefined
+		let layersData: SM.LayersStatusExt | undefined
+		if (connected) {
+			layerStatus = await ctx.server.layersStatus.get({ ...ctx, rcon })
 			if (layerStatus.code !== 'ok') return layerStatus
-			const time = Date.now()
-			PendingEvents.onRconConnected(
-				ctx.server.eventState,
-				time,
-				layerStatus.data.nextLayer?.id ?? null,
-				layerStatus.data.currentLayer.id,
-			)
+			layersData = layerStatus.data
 		}
-		await collectEvents({ ...ctx, server })
+		await collectEvents({ ...ctx, server }, () => {
+			if (connected) {
+				PendingEvents.onRconConnected(
+					ctx.server.eventState,
+					time,
+					layersData!.nextLayer?.id ?? null,
+					layersData!.currentLayer.id,
+				)
+			} else {
+				PendingEvents.onRconDisconnected(ctx.server.eventState, time)
+			}
+		})
 	})).subscribe()
 
 	// -------- process rcon events --------
@@ -534,7 +538,6 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 		.pipe(
 			C.durableSub('onRconEvent', { module, taskScheduling: 'parallel', levels: { event: 'trace' } }, async ([_ctx, event]) => {
 				const ctx = DB.addPooledDb(resolveSliceCtx(_ctx, serverId))
-				const release = await ctx.server.processEventsMtx.acquire()
 				try {
 					if (event.type === 'CHAT_MESSAGE') {
 						if (event.message.startsWith(CONFIG.commandPrefix)) {
@@ -548,22 +551,21 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 				} catch (err) {
 					log.error(err)
 				}
-				try {
+
+				await collectEvents(ctx, () => {
 					PendingEvents.onRconEvent(ctx.server.eventState, event)
-					await collectEvents(ctx)
-				} finally {
-					release()
-				}
+				})
 			}),
 		).subscribe()
 
 	server.teams.observe({ ...slice, ...ctx }).pipe(
-		C.durableSub('onTeamsPolled', { module, mutexes: () => server.processEventsMtx, numTaskRetries: 0 }, async (teamsRes) => {
+		C.durableSub('onTeamsPolled', { module, numTaskRetries: 0 }, async (teamsRes) => {
 			if (teamsRes.code !== 'ok') return teamsRes
 			const time = Date.now()
 			const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-			PendingEvents.onTeamsPolled(server.eventState, { players: teamsRes.players, squads: teamsRes.squads }, time)
-			await collectEvents(ctx)
+			await collectEvents(ctx, () => {
+				PendingEvents.onTeamsPolled(server.eventState, { players: teamsRes.players, squads: teamsRes.squads }, time)
+			})
 		}),
 	).subscribe()
 
@@ -617,9 +619,15 @@ export async function getFullServerState(ctx: C.Db & C.LayerQueue) {
 	return SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
 }
 
-async function collectEvents(ctx: C.ServerSlice & C.Db) {
-	for await (const event of PendingEvents.process(ctx.server.eventState, Date.now())) {
-		ctx.server.event$.next([ctx, event])
+async function collectEvents(ctx: C.ServerSlice & C.Db, addEventsCb: () => void) {
+	const release = await ctx.server.processEventsMtx.acquire()
+	addEventsCb()
+	try {
+		for await (const event of PendingEvents.process(ctx.server.eventState, Date.now())) {
+			ctx.server.event$.next([ctx, event])
+		}
+	} finally {
+		release()
 	}
 }
 
@@ -922,10 +930,11 @@ export const saveEvents = C.spanOp(
 		}),
 )
 
-const onNewGameDuringSync = (serverId: string): PendingEvents.State['hooks']['onNewGameDuringSync'] => async (currentLayerId, time) => {
+const onNewGameDuringSync = (serverId: string): PendingEvents.State['hooks']['onNewGameDuringSync'] => async (currentLayerId, _time) => {
 	const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-	return await withAcquired(
-		() => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx],
+	return C.spanOp(
+		'onNewGameDuringSync',
+		{ module, mutexes: () => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx], levels: { event: 'info' } },
 		async () => {
 			const { currentMatch, pushedNewMatch } = await MatchHistory.syncWithCurrentLayer(ctx, currentLayerId)
 			return { match: currentMatch, isNewMatch: pushedNewMatch }
@@ -935,10 +944,11 @@ const onNewGameDuringSync = (serverId: string): PendingEvents.State['hooks']['on
 
 const onNewGameDuringRoll = (serverId: string): PendingEvents.State['hooks']['onNewGameDuringRoll'] => async (newLayerId, time) => {
 	const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-	return await withAcquired(
-		() => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx],
-		() =>
-			DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
+	return C.spanOp(
+		'onNewGameDuringRoll',
+		{ module, mutexes: () => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx], levels: { event: 'info' } },
+		async () =>
+			await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 				ctx.server.serverRolling$.next(Date.now())
 				try {
 					const serverState = await getServerState(ctx)

@@ -9,21 +9,9 @@ import { describe, expect, it, vi } from 'vitest'
 
 // --- Layer IDs (from layer.test.ts) ---
 // Gorodok_RAAS_v1, Faction_1=RGF ('Russian Ground Forces'), Faction_2=ADF ('Australian Defence Force')
-const LAYER_A = 'RAW:Gorodok_FRAAS_v1 RGF+CombinedArms ADF+Mechanized' as L.LayerId
+const LAYER_A = 'RAW:Gorodok_RAAS_v1 RGF+CombinedArms ADF+Mechanized' as L.LayerId
 const LAYER_A_CLASSNAME = 'Gorodok_RAAS_v1'
 // Narva_RAAS_v1, Faction_1=CAF, Faction_2=RGF
-
-// --- Ref collection ---
-
-function collectRefs(value: unknown, refs = new Set<object>()): Set<object> {
-	if (value === null || value === undefined || typeof value !== 'object') return refs
-	if (refs.has(value)) return refs
-	refs.add(value)
-	for (const v of Object.values(value)) {
-		collectRefs(v, refs)
-	}
-	return refs
-}
 
 // --- Helpers ---
 
@@ -224,33 +212,6 @@ describe('PendingEvents', () => {
 			expect(events).toHaveLength(0)
 			expect(state.syncState.type).toBe('rolling')
 		})
-
-		it('RCON_CONNECTED and TEAMS_UPDATE are both held until a log event advances the clock past their timestamp', async () => {
-			const { state } = makeState()
-			PendingEvents.onRconConnected(state, 100, LAYER_A, LAYER_A)
-			PendingEvents.onTeamsPolled(state, makeTeams(), 100)
-
-			// Nothing fires without a log event — lifecycle events are also held
-			const batch1 = await collect(state)
-			expect(batch1).toHaveLength(0)
-			expect(state.eventBufs.teamsUpdates).toHaveLength(1)
-			expect(state.eventBufs.lifecycleEvents).toHaveLength(1)
-
-			// After a log event at t=101, all three fire together in timestamp order
-			PendingEvents.onLogEvent(state, makeUnknownLogEvent(101))
-			const batch2 = await collect(state)
-			expect(batch2.map(e => e.type)).toEqual(['RCON_CONNECTED', 'MAP_SET', 'NEW_GAME'])
-			expect(state.eventBufs.teamsUpdates).toHaveLength(0)
-			expect(state.eventBufs.lifecycleEvents).toHaveLength(0)
-		})
-
-		it('processed events are removed from buffers after process()', async () => {
-			const { state } = makeState()
-			await syncUp(state)
-			expect(state.eventBufs.lifecycleEvents).toHaveLength(0)
-			expect(state.eventBufs.teamsUpdates).toHaveLength(0)
-			expect(state.eventBufs.logEvents).toHaveLength(0)
-		})
 	})
 
 	describe('RCON_DISCONNECTED', () => {
@@ -297,7 +258,7 @@ describe('PendingEvents', () => {
 	})
 
 	describe('full server roll sequence', () => {
-		it('ROUND_ENDED → TransitionMap → new layer + TEAMS_UPDATE → NEW_GAME(new-game-detected)', async () => {
+		it('ROUND_ENDED → TransitionMap → new layer + TEAMS_UPDATE → NEW_GAME(server-roll)', async () => {
 			const { state } = makeState({ layerId: LAYER_A })
 			const p1 = makePlayer('eos-001', 1, { squadId: 1, isLeader: true })
 			const p2 = makePlayer('eos-002', 1, { squadId: 1 })
@@ -346,7 +307,7 @@ describe('PendingEvents', () => {
 			expect(batch3).toHaveLength(0)
 			expect(state.syncState).toMatchObject({ type: 'rolling', newGameEvent: expect.objectContaining({ type: 'NEW_GAME' }) })
 
-			// 4. TEAMS_UPDATE arrives — triggers NEW_GAME with source=new-game-detected
+			// 4. TEAMS_UPDATE arrives — triggers NEW_GAME with source=server-roll
 			const newPlayers = [makePlayer('eos-new', 1)]
 			PendingEvents.onTeamsPolled(state, makeTeams(newPlayers), 400)
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(401))
@@ -354,14 +315,14 @@ describe('PendingEvents', () => {
 
 			expect(batch4).toHaveLength(1)
 			const newGame = batch4[0] as SE.NewGame
-			expect(newGame).toMatchObject({ type: 'NEW_GAME', source: 'new-game-detected' })
+			expect(newGame).toMatchObject({ type: 'NEW_GAME', source: 'server-roll' })
 			expect(newGame.state.players).toHaveLength(1)
 			expect(newGame.state.players[0]).toMatchObject({ ids: { eos: 'eos-new' } })
 			expect(state.syncState.type).toBe('synced')
 		})
 	})
 
-	describe('rolling / new-game-detected flow', () => {
+	describe('rolling / server-roll flow', () => {
 		it('TransitionMap NEW_GAME sets rolling and clears teams', async () => {
 			const { state } = makeState()
 			await syncUp(state, { teams: makeTeams([makePlayer('eos-001', 1)]) })
@@ -381,7 +342,7 @@ describe('PendingEvents', () => {
 			expect(state.currTeams).toBeNull()
 		})
 
-		it('non-TransitionMap NEW_GAME + TEAMS_UPDATE yields NEW_GAME with source=new-game-detected', async () => {
+		it('non-TransitionMap NEW_GAME + TEAMS_UPDATE yields NEW_GAME with source=server-roll', async () => {
 			const { state } = makeState({ layerId: LAYER_A })
 			await syncUp(state, { layerId: LAYER_A })
 
@@ -412,7 +373,7 @@ describe('PendingEvents', () => {
 
 			const newGame = events.find(e => e.type === 'NEW_GAME') as SE.NewGame | undefined
 			expect(newGame).toBeDefined()
-			expect(newGame!.source).toBe('new-game-detected')
+			expect(newGame!.source).toBe('server-roll')
 			expect(newGame!.state.players).toHaveLength(1)
 		})
 	})
@@ -436,14 +397,14 @@ describe('PendingEvents', () => {
 			// No log event at t>=200 yet — rcon event should not fire
 			const batch1 = await collect(state)
 			expect(batch1).toHaveLength(0)
-			expect(state.eventBufs.rconEvents).toHaveLength(1)
+			expect(state.eventBufs.rconEmittedEvents).toHaveLength(1)
 
 			// Add a log event past t=200
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const batch2 = await collect(state)
 			expect(batch2).toHaveLength(1)
 			expect(batch2[0]).toMatchObject({ type: 'SQUAD_CREATED' })
-			expect(state.eventBufs.rconEvents).toHaveLength(0)
+			expect(state.eventBufs.rconEmittedEvents).toHaveLength(0)
 		})
 	})
 

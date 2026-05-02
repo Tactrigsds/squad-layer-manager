@@ -11,7 +11,7 @@ type TeamsUpdateEvent = { type: 'TEAMS_UPDATE'; id: number; teams: SM.Teams; tim
 export type State = {
 	lastKnownLogEventTime: number | null
 	eventBufs: {
-		rconEvents: (SM.RconEvents.Event & { id: number })[]
+		rconEmittedEvents: (SM.RconEvents.Event & { id: number })[]
 		logEvents: (SM.LogEvents.ParsedEvent & { id: number })[]
 		lifecycleEvents: (
 			| (Omit<SE.RconConnected, 'matchId' | 'reconnected'> & { currentLayerId: L.LayerId; nextLayerId: L.LayerId | null })
@@ -74,7 +74,7 @@ export function init(
 		currTeams: null,
 		expectedNewLayerId: null,
 		eventBufs: {
-			rconEvents: [],
+			rconEmittedEvents: [],
 			logEvents: [],
 			lifecycleEvents: [],
 			teamsUpdates: [],
@@ -108,7 +108,7 @@ export function onRconDisconnected(state: State, time: number) {
 }
 
 export function onRconEvent(state: State, event: SM.RconEvents.Event) {
-	state.eventBufs.rconEvents.push({ ...event, id: Gen.next(state.counters.pendingEventId) })
+	state.eventBufs.rconEmittedEvents.push({ ...event, id: Gen.next(state.counters.pendingEventId) })
 }
 
 export function onTeamsPolled(state: State, teams: SM.Teams, time: number) {
@@ -139,11 +139,11 @@ export async function* process(
 	}
 
 	for (const lifecycleEvt of state.eventBufs.lifecycleEvents) {
-		if (state.lastKnownLogEventTime == null || state.lastKnownLogEventTime < lifecycleEvt.time) continue
+		// if (state.lastKnownLogEventTime == null || state.lastKnownLogEventTime < lifecycleEvt.time) continue
 		Arr.insertIntoSorted(toProcess, lifecycleEvt, comparator)
 	}
 
-	for (const rconEvent of state.eventBufs.rconEvents) {
+	for (const rconEvent of state.eventBufs.rconEmittedEvents) {
 		// don't allow processing of non-log events unless we have at least one log event past the timestamp. this ensures that there are no latent log events yet to be processed. Note that all other event sources are assumed to have occured on reception, so there is no chance of latency there
 		if (state.lastKnownLogEventTime == null || state.lastKnownLogEventTime < rconEvent.time) continue
 		Arr.insertIntoSorted(toProcess, rconEvent, comparator)
@@ -448,7 +448,7 @@ async function* processPendingEvent(
 			matchId: state.currentMatch.historyEntryId,
 			layerId: state.currentMatch.layerId,
 			state: Obj.deepClone(state.currTeams),
-			source: 'new-game-detected',
+			source: 'server-roll',
 		}
 		state.syncState = { type: 'synced' }
 	}

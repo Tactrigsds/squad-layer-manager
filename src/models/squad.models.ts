@@ -657,6 +657,7 @@ export const RCON_EVENT_MATCHERS = RconEvents.matchers
 
 export namespace LogEvents {
 	const logStartRegex = /^([[0-9.:-]+]\[[ 0-9]*]).+$/
+	export type ParseOutputEvent = AnyChainEvent | NonChainEvent
 
 	export async function* parse(chunk$: AsyncGenerator<string>, errors: Error[]) {
 		let foundLogStart: boolean = false
@@ -682,7 +683,7 @@ export namespace LogEvents {
 			return null
 		}
 
-		function handleEvent(event: Event): (AnyChainEvent | NonChainEvent)[] {
+		function handleEvent(event: Event): ParseOutputEvent[] {
 			const results: (AnyChainEvent | NonChainEvent)[] = []
 
 			if (chainState && event.chainID !== chainState.chainID) {
@@ -735,10 +736,11 @@ export namespace LogEvents {
 					lineBuffer = [line]
 					if (event === null && err == null) continue
 					if (err !== null) {
-						yield [null, err] as const
+						errors.push(err)
+						yield null
 						continue
 					}
-					for (const result of handleEvent(event!)) yield [result, null] as const
+					for (const result of handleEvent(event!)) yield result
 					continue
 				}
 				foundLogStart = true
@@ -748,15 +750,17 @@ export namespace LogEvents {
 
 		if (foundLogStart && lineBuffer.length > 0) {
 			const [event, err] = matchLog(lineBuffer.join('\n'), EventMatchers)
-			if (err !== null) yield [null, err] as const
-			else if (event !== null) {
-				for (const result of handleEvent(event)) yield [result, null] as const
+			if (err !== null) {
+				errors.push(err)
+				yield null
+			} else if (event !== null) {
+				for (const result of handleEvent(event)) yield result
 			}
 		}
 
 		if (chainState) {
 			const chain = finalizeChain()
-			if (chain) yield [chain, null] as const
+			if (chain) yield chain
 		}
 	}
 

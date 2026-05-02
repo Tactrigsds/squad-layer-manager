@@ -7,7 +7,7 @@ async function* toChunks(...chunks: string[]): AsyncGenerator<string> {
 
 async function collect(log: string, errors: Error[] = []) {
 	const results: (SM.LogEvents.AnyChainEvent | SM.LogEvents.NonChainEvent)[] = []
-	for await (const [event] of SM.LogEvents.parse(toChunks(log + '\n'), errors)) {
+	for await (const event of SM.LogEvents.parse(toChunks(log + '\n'), errors)) {
 		if (event !== null) results.push(event)
 	}
 	return results

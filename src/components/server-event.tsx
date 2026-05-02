@@ -285,7 +285,7 @@ function NewGameEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'N
 
 	let label: string
 	switch (event.source) {
-		case 'new-game-detected':
+		case 'server-roll':
 			label = 'New game started'
 			break
 		case 'slm-started':
