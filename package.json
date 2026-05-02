@@ -11,6 +11,7 @@
 		"check": "tsgo -b",
 		"format": "dprint fmt",
 		"format:check": "dprint check",
+		"test": "vitest run",
 		"build:client": "vite build",
 		"build:server": "rolldown build -c rolldown-server-prod.config.ts",
 		"build:prod": "pnpm run build:client && pnpm run build:server",

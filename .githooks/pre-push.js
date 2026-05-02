@@ -47,6 +47,10 @@ process.stdin.on('end', () => {
 		execSync('pnpm run lint', { stdio: 'inherit' })
 		console.log('✅ Linting passed\n')
 
+		console.log('🧪 Running tests...')
+		execSync('pnpm run test', { stdio: 'inherit' })
+		console.log('✅ Tests passed\n')
+
 		console.log('✨ All checks passed! Ready to push.')
 		process.exit(0)
 	} catch {
