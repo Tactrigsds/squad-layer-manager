@@ -38,6 +38,7 @@ import { Button } from './ui/button'
 const STD_PADDING = 'pl-4'
 
 const MAX_PAGES = 30
+const MATCH_LIMIT = 8
 
 export function MatchHistoryPanelContent() {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
@@ -130,10 +131,15 @@ export function MatchHistoryPanelContent() {
 	const totalPages = matchesByDate.length
 	const onLastPage = currentPage === totalPages
 
+	const hasMore = onFirstPage && currentEntries.length > MATCH_LIMIT
+	const displayedEntries = hasMore && !showFullDay
+		? currentEntries.slice(currentEntries.length - MATCH_LIMIT)
+		: currentEntries
+
 	// -------- Page navigation --------
 	const goToFirstPage = () => {
 		setCurrentPage(1)
-		setShowFullDay(true)
+		setShowFullDay(false)
 	}
 	const goToPrevPage = () => {
 		setCurrentPage((prev) => Math.max(prev - 1, 1))
@@ -220,17 +226,6 @@ export function MatchHistoryPanelContent() {
 					<TableHeader>
 						<TableRow className="font-medium">
 							<TableHead className="text-right px-0.5">
-								{currentEntries.length > 5 && (
-									<Button
-										variant="ghost"
-										size="sm"
-										onClick={() => setShowFullDay(!showFullDay)}
-										className="h-6 w-6 p-0"
-										title={showFullDay ? 'Show less' : 'Show full day'}
-									>
-										{showFullDay ? <Icons.ChevronsDownUp className="h-4 w-4" /> : <Icons.ChevronsUpDown className="h-4 w-4" />}
-									</Button>
-								)}
 							</TableHead>
 							<TableHead className="hidden min-[820px]:table-cell">
 								Time
@@ -299,20 +294,38 @@ export function MatchHistoryPanelContent() {
 								</TableRow>
 							)
 							: (
-								currentEntries.map((entry) => {
-									const balanceTriggerEvents = historyState.recentBalanceTriggerEvents.filter(
-										(event) => event.matchTriggeredId === entry.historyEntryId,
-									)
-									return (
-										<MatchHistoryRow
-											key={entry.historyEntryId}
-											entry={entry}
-											currentMatchOffset={entry.ordinal - currentMatchOrdinal}
-											balanceTriggerEvents={balanceTriggerEvents}
-											debug__showBalanceTriggers={featureFlags.showMockBalanceTriggers}
-										/>
-									)
-								})
+								<>
+									{hasMore && (
+										<TableRow>
+											<TableCell colSpan={8} className="text-center py-1">
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => setShowFullDay(!showFullDay)}
+													className="h-6 text-xs text-muted-foreground"
+												>
+													{showFullDay
+														? 'Show less'
+														: `Show ${currentEntries.length - MATCH_LIMIT} more`}
+												</Button>
+											</TableCell>
+										</TableRow>
+									)}
+									{displayedEntries.map((entry) => {
+										const balanceTriggerEvents = historyState.recentBalanceTriggerEvents.filter(
+											(event) => event.matchTriggeredId === entry.historyEntryId,
+										)
+										return (
+											<MatchHistoryRow
+												key={entry.historyEntryId}
+												entry={entry}
+												currentMatchOffset={entry.ordinal - currentMatchOrdinal}
+												balanceTriggerEvents={balanceTriggerEvents}
+												debug__showBalanceTriggers={featureFlags.showMockBalanceTriggers}
+											/>
+										)
+									})}
+								</>
 							)}
 					</TableBody>
 				</Table>
