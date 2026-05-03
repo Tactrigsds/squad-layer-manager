@@ -678,25 +678,29 @@ async function* processPendingEvent(
 				break
 			}
 
-			const squadKey = {
+			const squad: SM.UniqueSquad = {
 				teamId,
 				squadId: pendingEvent.squadId,
 				creator: SM.PlayerIds.getPlayerId(pendingEvent.creatorIds),
 				uniqueId: Gen.next(state.counters.squadId),
+				squadName: pendingEvent.squadName,
+				// will be updated later if incorrect
+				locked: false,
 			}
+
 			const player = SM.PlayerIds.find(state.currTeams?.players, p => p.ids, pendingEvent.creatorIds)
 			if (!player) {
 				break
 			}
-			const existingSquad = state.currTeams.squads.find(s => SM.Squads.idsEqual(s, squadKey))
+			const existingSquad = state.currTeams.squads.find(s => SM.Squads.idsEqual(s, squad))
 			if (existingSquad) {
 				for (const player of state.currTeams.players) {
-					if (!SM.Squads.idsEqual(player, squadKey)) continue
+					if (!SM.Squads.idsEqual(player, squad)) continue
 					yield {
 						type: 'PLAYER_LEFT_SQUAD',
 						id: Gen.next(state.counters.eventId),
 						player: SM.PlayerIds.getPlayerId(player.ids),
-						uniqueId: squadKey.uniqueId,
+						uniqueId: squad.uniqueId,
 						matchId: state.currentMatch.historyEntryId,
 						time: pendingEvent.time,
 					}
@@ -705,14 +709,14 @@ async function* processPendingEvent(
 				yield {
 					type: 'SQUAD_DISBANDED',
 					id: Gen.next(state.counters.eventId),
-					uniqueId: squadKey.uniqueId,
+					uniqueId: squad.uniqueId,
 					matchId: state.currentMatch.historyEntryId,
 					time: pendingEvent.time,
 				}
 			}
 
 			if (player.squadId && (!existingSquad || !SM.Squads.idsEqual(player, existingSquad))) {
-				yield* emitLeaveSquadEvents(state as StateWithCurrentMatchAndPlayers, pendingEvent.time, player, squadKey.uniqueId)
+				yield* emitLeaveSquadEvents(state as StateWithCurrentMatchAndPlayers, pendingEvent.time, player, squad.uniqueId)
 			}
 
 			if (player.teamId !== teamId) {
@@ -726,19 +730,9 @@ async function* processPendingEvent(
 				}
 			}
 
-			const squad = {
-				...squadKey,
-				squadName: pendingEvent.squadName,
-				// will be updated later if incorrect
-				locked: false,
-			}
-
-			state.currTeams.squads.push(squad)
-			player.squadId = squad.squadId
-			player.isLeader = true
 			yield {
 				type: 'SQUAD_CREATED',
-				squad: Obj.deepClone(squad),
+				squad: squad,
 				...base,
 			}
 
