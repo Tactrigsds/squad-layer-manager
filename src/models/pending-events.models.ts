@@ -652,7 +652,6 @@ async function* processPendingEvent(
 				role: events.PLAYER_RESTARTED?.deployRole ?? 'unknown',
 			}
 
-			state.currTeams.players.push(player)
 			yield {
 				type: 'PLAYER_CONNECTED',
 				...base,
