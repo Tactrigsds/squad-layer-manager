@@ -258,7 +258,7 @@ describe('PendingEvents', () => {
 	})
 
 	describe('full server roll sequence', () => {
-		it.only('ROUND_ENDED → TransitionMap → new layer + TEAMS_UPDATE → NEW_GAME(server-roll)', async () => {
+		it('ROUND_ENDED → TransitionMap → new layer + TEAMS_UPDATE → NEW_GAME(server-roll)', async () => {
 			const { state } = makeState({ layerId: LAYER_A })
 			const p1 = makePlayer('eos-001', 1, { squadId: 1, isLeader: true })
 			const p2 = makePlayer('eos-002', 1, { squadId: 1 })

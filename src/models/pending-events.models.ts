@@ -649,7 +649,7 @@ async function* processPendingEvent(
 				squadId: null,
 				isLeader: false,
 				isAdmin: state.admins.has(SM.PlayerIds.getPlayerId(events.PLAYER_CONNECTED.playerIds)),
-				role: events.PLAYER_RESTARTED.deployRole,
+				role: events.PLAYER_RESTARTED?.deployRole ?? 'unknown',
 			}
 
 			state.currTeams.players.push(player)

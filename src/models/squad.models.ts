@@ -1241,7 +1241,7 @@ export namespace LogEvents {
 			PlayerConnectedDef,
 			PlayerJoinSuccededDef,
 			{ event: PlayerAddedToTeamDef, optional: true },
-			PlayerRestartedDef,
+			{ event: PlayerRestartedDef, optional: true },
 		],
 		ROUND_ENDED_CHAIN: [DetermineMatchWinnerDef, { event: RoundDecidedWinnerDef, optional: true }, {
 			event: RoundDecidedLoserDef,
