@@ -198,7 +198,7 @@ describe('LogEvents.parse', () => {
 		it('pushes error for incomplete chain at end of stream', async () => {
 			const errors: Error[] = []
 			const events = await collect(
-				[PLAYER_CONNECTED, PLAYER_JOIN_SUCCEEDED, PLAYER_ADDED_TO_TEAM].join('\n'),
+				[PLAYER_CONNECTED, PLAYER_ADDED_TO_TEAM].join('\n'),
 				errors,
 			)
 			expect(events).toHaveLength(0)
@@ -252,7 +252,7 @@ describe('LogEvents.parse', () => {
 			const errors: Error[] = []
 			// DETERMINE_MATCH_WINNER (chainID 979) starts a different chain while join chain (chainID 549) is in progress
 			const events = await collect(
-				[PLAYER_CONNECTED, PLAYER_JOIN_SUCCEEDED, DETERMINE_MATCH_WINNER, ROUND_DECIDED, ROUND_DECIDED_LOSER].join('\n'),
+				[PLAYER_CONNECTED, DETERMINE_MATCH_WINNER, ROUND_DECIDED, ROUND_DECIDED_LOSER].join('\n'),
 				errors,
 			)
 			expect(events).toHaveLength(1)
