@@ -886,7 +886,8 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 	for (const squad of nextTeams.squads) {
 		const prevSquad = state.currTeams.squads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
 		if (!prevSquad) {
-			log.error('Squad not found for update: %s, skipping update cycle', SM.Squads.printKey(squad))
+			// we want the SQUAD_CREATED event to have always landed before attempting to process teams updates
+			log.debug('Squad not found for update: %s, skipping update cycle', SM.Squads.printKey(squad))
 			return
 		}
 		nextSquads.push({
