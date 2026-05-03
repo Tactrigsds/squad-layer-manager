@@ -355,8 +355,10 @@ async function bmFetch<T = null>(
 					log.error({ status: res.status, statusText: res.statusText, body: text }, `${method} ${path}: ${res.status} ${res.statusText}`)
 					throw lastError
 				}
+				let level: 'info' | 'debug' = 'info'
+				if (method === 'GET') level = 'debug'
 
-				log.debug({ status: res.status, method, path }, `${method} ${path} : ${res.status}`)
+				log[level]({ status: res.status, method, path }, `${method} ${path} : ${res.status}`)
 				C.setSpanOpAttrs({ [ATTRS.Http.STATUS_CODE]: res.status })
 
 				const contentType = res.headers.get('content-type') ?? ''
@@ -533,7 +535,7 @@ const bulkFetchOnlinePlayers = C.spanOp(
 			}))
 		}
 
-		log.debug('found %d online players (%d fetched from api)', onlineEosIds.length, uncached.length)
+		log.info('fetched %d online players (%d fetched from BM api)', onlineEosIds.length, uncached.length)
 		return onlineEosIds
 	},
 )

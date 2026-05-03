@@ -59,7 +59,9 @@ export const setup = C.spanOp('setup', { module }, async () => {
 	instance.log = log
 	instance.addHook('onRequest', async (request) => {
 		monkeyPatchContextAndLogs(request)
-		log.info(`%s %s`, request.method, request.url)
+		let level: 'info' | 'debug' = 'info'
+		if (request.method === 'GET') level = 'debug'
+		log[level](`%s %s`, request.method, request.url)
 	})
 
 	// --------  static file serving --------
@@ -171,7 +173,7 @@ export const setup = C.spanOp('setup', { module }, async () => {
 			const url = req.url.replace(/^\/discord-cdn\//, '')
 			const cdnUrl = `https://cdn.discordapp.com/${url}`
 
-			log.debug('Proxying request to Discord CDN: %s', cdnUrl)
+			log.trace('Proxying request to Discord CDN: %s', cdnUrl)
 
 			// Fetch from Discord CDN
 			const cdnResponse = await fetch(cdnUrl)

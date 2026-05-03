@@ -24,10 +24,12 @@ export function registerClient(ctx: C.OrpcBase) {
 
 	wsSessions.set(ctx.wsClientId, ctx)
 	ctx.ws.on('close', () => {
+		log.info('%s has disconnected (%s)', ctx.user.username, ctx.wsClientId)
 		disconnect$.next(ctx)
 		wsSessions.delete(ctx.wsClientId)
 		SquadServer.globalState.selectedServers.delete(ctx.wsClientId)
 	})
+	log.info('%s has connected (%s)', ctx.user.username, ctx.wsClientId)
 	connect$.next(ctx)
 }
 

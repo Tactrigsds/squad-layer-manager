@@ -109,7 +109,6 @@ export async function getCurrentLayer(ctx: C.Rcon) {
 	const layer = match[2]
 	const factions = match[3]
 	const parsedLayer = L.parseRawLayerText(`${layer} ${factions}`)!
-	log.debug('current layer: %s', parsedLayer.id)
 	return { code: 'ok' as const, layer: parsedLayer }
 }
 
