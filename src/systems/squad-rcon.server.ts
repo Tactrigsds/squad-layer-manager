@@ -243,9 +243,9 @@ async function fetchTeams(ctx: C.Rcon & C.AdminList & C.AsyncResourceInvocation)
 					`player ${SM.PlayerIds.prettyPrint(player.ids)} is in a squad without a team`,
 				)
 			}
-			if (player.isLeader && player.squadId === null || player.teamId === null) {
+			if (player.isLeader && player.squadId === null) {
+				log.error(`player ${SM.PlayerIds.prettyPrint(player.ids)} is a leader without a squad, setting isLeader to false`)
 				player.isLeader = false
-				log.error(`player ${SM.PlayerIds.prettyPrint(player.ids)} is a leader without a squad or team, setting isLeader to false`)
 			}
 		}
 
