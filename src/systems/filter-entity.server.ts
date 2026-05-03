@@ -64,76 +64,80 @@ export const filtersRouter = {
 		return rows
 	}),
 
-	addFilterContributor: orpcBase.meta({ type: 'mutation' }).input(ToggleFilterContributorInputSchema).handler(async ({ input, context: ctx }) => {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, [
-			RBAC.perm('filters:write', { filterId: input.filterId }),
-			RBAC.perm('filters:write-all'),
-		])
-		if (denyRes) {
-			return denyRes
-		}
-
-		if (input.userId) {
-			const res = await returnInsertErrors(
-				ctx.db().insert(Schema.filterUserContributors).values({
-					filterId: input.filterId,
-					userId: input.userId,
-				}),
-			)
-			switch (res.code) {
-				case 'err:already-exists':
-					return { code: 'err:already-exists' as const }
-				case 'ok':
-					return { code: 'ok' as const }
-				default:
-					assertNever(res)
+	addFilterContributor: orpcBase.meta({ type: 'mutation' }).input(ToggleFilterContributorInputSchema).handler(
+		async ({ input, context: ctx }) => {
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, [
+				RBAC.perm('filters:write', { filterId: input.filterId }),
+				RBAC.perm('filters:write-all'),
+			])
+			if (denyRes) {
+				return denyRes
 			}
-		} else {
-			const res = await returnInsertErrors(
-				ctx.db().insert(Schema.filterRoleContributors).values({
-					filterId: input.filterId,
-					roleId: input.roleId!,
-				}),
-			)
-			switch (res.code) {
-				case 'err:already-exists':
-					return { code: 'err:already-exists' as const }
-				case 'ok':
-					return { code: 'ok' as const }
-				default:
-					assertNever(res)
+
+			if (input.userId) {
+				const res = await returnInsertErrors(
+					ctx.db().insert(Schema.filterUserContributors).values({
+						filterId: input.filterId,
+						userId: input.userId,
+					}),
+				)
+				switch (res.code) {
+					case 'err:already-exists':
+						return { code: 'err:already-exists' as const }
+					case 'ok':
+						return { code: 'ok' as const }
+					default:
+						assertNever(res)
+				}
+			} else {
+				const res = await returnInsertErrors(
+					ctx.db().insert(Schema.filterRoleContributors).values({
+						filterId: input.filterId,
+						roleId: input.roleId!,
+					}),
+				)
+				switch (res.code) {
+					case 'err:already-exists':
+						return { code: 'err:already-exists' as const }
+					case 'ok':
+						return { code: 'ok' as const }
+					default:
+						assertNever(res)
+				}
 			}
-		}
-	}),
-	removeFilterContributor: orpcBase.meta({ type: 'mutation' }).input(ToggleFilterContributorInputSchema).handler(async ({ input, context: ctx }) => {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.getWritePermReqForFilterEntity(input.filterId))
-		if (denyRes) {
-			return denyRes
-		}
-		let query: any
-		if (input.userId) {
-			query = ctx
-				.db()
-				.delete(Schema.filterUserContributors)
-				.where(
-					E.and(E.eq(Schema.filterUserContributors.filterId, input.filterId), E.eq(Schema.filterUserContributors.userId, input.userId!)),
-				)
-		} else {
-			query = ctx
-				.db()
-				.delete(Schema.filterRoleContributors)
-				.where(
-					E.and(E.eq(Schema.filterRoleContributors.filterId, input.filterId), E.eq(Schema.filterRoleContributors.roleId, input.roleId!)),
-				)
-		}
+		},
+	),
+	removeFilterContributor: orpcBase.meta({ type: 'mutation' }).input(ToggleFilterContributorInputSchema).handler(
+		async ({ input, context: ctx }) => {
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.getWritePermReqForFilterEntity(input.filterId))
+			if (denyRes) {
+				return denyRes
+			}
+			let query: any
+			if (input.userId) {
+				query = ctx
+					.db()
+					.delete(Schema.filterUserContributors)
+					.where(
+						E.and(E.eq(Schema.filterUserContributors.filterId, input.filterId), E.eq(Schema.filterUserContributors.userId, input.userId!)),
+					)
+			} else {
+				query = ctx
+					.db()
+					.delete(Schema.filterRoleContributors)
+					.where(
+						E.and(E.eq(Schema.filterRoleContributors.filterId, input.filterId), E.eq(Schema.filterRoleContributors.roleId, input.roleId!)),
+					)
+			}
 
-		const [resultSet] = await query
-		if (resultSet.affectedRows === 0) {
-			return { code: 'err:not-found' as const }
-		}
+			const [resultSet] = await query
+			if (resultSet.affectedRows === 0) {
+				return { code: 'err:not-found' as const }
+			}
 
-		return { code: 'ok' as const }
-	}),
+			return { code: 'ok' as const }
+		},
+	),
 	createFilter: orpcBase.meta({ type: 'mutation' }).input(F.NewFilterEntitySchema).handler(async ({ input, context: ctx }) => {
 		const newFilterEntity: F.FilterEntity = {
 			...input,
