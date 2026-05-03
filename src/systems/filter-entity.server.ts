@@ -64,7 +64,7 @@ export const filtersRouter = {
 		return rows
 	}),
 
-	addFilterContributor: orpcBase.input(ToggleFilterContributorInputSchema).handler(async ({ input, context: ctx }) => {
+	addFilterContributor: orpcBase.meta({ type: 'mutation' }).input(ToggleFilterContributorInputSchema).handler(async ({ input, context: ctx }) => {
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, [
 			RBAC.perm('filters:write', { filterId: input.filterId }),
 			RBAC.perm('filters:write-all'),
@@ -105,7 +105,7 @@ export const filtersRouter = {
 			}
 		}
 	}),
-	removeFilterContributor: orpcBase.input(ToggleFilterContributorInputSchema).handler(async ({ input, context: ctx }) => {
+	removeFilterContributor: orpcBase.meta({ type: 'mutation' }).input(ToggleFilterContributorInputSchema).handler(async ({ input, context: ctx }) => {
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.getWritePermReqForFilterEntity(input.filterId))
 		if (denyRes) {
 			return denyRes
@@ -134,7 +134,7 @@ export const filtersRouter = {
 
 		return { code: 'ok' as const }
 	}),
-	createFilter: orpcBase.input(F.NewFilterEntitySchema).handler(async ({ input, context: ctx }) => {
+	createFilter: orpcBase.meta({ type: 'mutation' }).input(F.NewFilterEntitySchema).handler(async ({ input, context: ctx }) => {
 		const newFilterEntity: F.FilterEntity = {
 			...input,
 			owner: ctx.user.discordId,
@@ -154,6 +154,7 @@ export const filtersRouter = {
 		}
 	}),
 	updateFilter: orpcBase
+		.meta({ type: 'mutation' })
 		.input(z.tuple([F.FilterEntityIdSchema, F.UpdateFilterEntitySchema.partial()]))
 		.handler(async ({ input, context: ctx }) => {
 			const [id, update] = input
@@ -188,7 +189,7 @@ export const filtersRouter = {
 			}
 			return res
 		}),
-	deleteFilter: orpcBase.input(F.FilterEntityIdSchema).handler(async ({ input: idToDelete, context: ctx }) => {
+	deleteFilter: orpcBase.meta({ type: 'mutation' }).input(F.FilterEntityIdSchema).handler(async ({ input: idToDelete, context: ctx }) => {
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.getWritePermReqForFilterEntity(idToDelete))
 		if (denyRes) {
 			return denyRes

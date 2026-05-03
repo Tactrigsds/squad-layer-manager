@@ -48,13 +48,14 @@ export function setup() {
 
 export const router = {
 	startVote: orpcBase
+		.meta({ type: 'mutation' })
 		.input(V.StartVoteInputSchema)
 		.handler(async ({ input, context: _ctx }) => {
 			const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
 			return startVote(ctx, { ...input, initiator: { discordId: ctx.user.discordId } })
 		}),
 
-	endVoteEarly: orpcBase.handler(async ({ context: _ctx }) => {
+	endVoteEarly: orpcBase.meta({ type: 'mutation' }).handler(async ({ context: _ctx }) => {
 		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage'))
 		if (denyRes) return denyRes
@@ -64,14 +65,14 @@ export const router = {
 		})
 	}),
 
-	abortVote: orpcBase.handler(async ({ context: _ctx }) => {
+	abortVote: orpcBase.meta({ type: 'mutation' }).handler(async ({ context: _ctx }) => {
 		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage'))
 		if (denyRes) return denyRes
 		return await abortVote(ctx, { aborter: { discordId: ctx.user.discordId } })
 	}),
 
-	cancelVoteAutostart: orpcBase.handler(async ({ context: _ctx }) => {
+	cancelVoteAutostart: orpcBase.meta({ type: 'mutation' }).handler(async ({ context: _ctx }) => {
 		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage'))
 		if (denyRes) return denyRes

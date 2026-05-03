@@ -41,6 +41,7 @@ export const orpcRouter = {
 	}),
 
 	updateSettings: orpcBase
+		.meta({ type: 'mutation' })
 		.input(z.array(SS.SettingMutationSchema))
 		.handler(async ({ context: _ctx, input }) => {
 			const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)

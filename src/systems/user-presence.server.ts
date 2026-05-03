@@ -168,6 +168,7 @@ export const orpcRouter = {
 	}),
 
 	updatePresence: orpcBase
+		.meta({ type: 'mutation', logLevel: 'debug' })
 		.input(UP.PresenceUpdateSchema)
 		.handler(async ({ context: _ctx, input }) => {
 			const sliceCtx = SquadServer.resolveWsClientSliceCtx(_ctx)

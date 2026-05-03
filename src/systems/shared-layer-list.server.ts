@@ -130,6 +130,7 @@ export const orpcRouter = {
 	}),
 
 	processUpdate: orpcBase
+		.meta({ type: 'mutation' })
 		.input(SLL.ClientUpdateSchema)
 		.handler(async ({ context: _ctx, input }) => {
 			const sliceCtx = SquadServer.resolveWsClientSliceCtx(_ctx)
@@ -139,9 +140,9 @@ export const orpcRouter = {
 
 const handleSllStateUpdate = C.spanOp(
 	'handleSllStateUpdate',
-	{ module, mutexes: (ctx) => ctx.sharedList.mtx },
+	{ module, mutexes: (ctx) => ctx.sharedList.mtx, attrs: (ctx, input) => ({ opCode: input.code, sessionSeqId: input.sessionSeqId }) },
 	async (ctx: C.OrpcBase & C.ServerSlice, input: SLL.ClientUpdate) => {
-		log.info('Processing update %o for %s', input, ctx.serverId)
+		log.info('Processing update with code %s : %o', input.code, input)
 
 		const authRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write'))
 		if (authRes) return authRes
@@ -156,8 +157,8 @@ const handleSllStateUpdate = C.spanOp(
 
 		switch (input.code) {
 			case 'op': {
+				log.info('Applying operation %s:%s %o', input.op.op, input.op.opId, input.op)
 				ctx.sharedList.session = RbSyncState.Server.applyOps(ctx.sharedList.session, [input.op], sllServerReducer)
-				log.info('Applied operation %o:%s', input.op, input.op.opId)
 				if (
 					input.op.op === 'finish-editing'
 					&& (input.op.forceSave || ctx.sharedList.session.state.editors.size === 0 && SLL.hasMutations(ctx.sharedList.session.state))
@@ -176,6 +177,7 @@ const handleSllStateUpdate = C.spanOp(
 			}
 
 			case 'reset': {
+				log.info('Resetting session %s', input.sessionSeqId)
 				const serverState = await SquadServer.getServerState(ctx)
 				const prevOps = ctx.sharedList.session.ops
 				const newSession = SLL.createNewSession(serverState.layerQueue)
@@ -207,6 +209,7 @@ async function commitChanges(
 	ctx: C.Db & C.SharedLayerList & C.UserPresence & C.User & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon,
 	input: SLL.ClientUpdate,
 ) {
+	log.info('Committing changes for session %s', input.sessionSeqId)
 	void sendUpdate(ctx, {
 		code: 'commit-started',
 	})

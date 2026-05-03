@@ -636,7 +636,7 @@ export const router = {
 		return getOrgFlags(serverCtx)
 	}),
 
-	updatePlayerFlags: orpcBase.input(z.object({
+	updatePlayerFlags: orpcBase.meta({ type: 'mutation' }).input(z.object({
 		playerId: z.string(),
 		flagIds: z.array(z.string()),
 	})).handler(async ({ input, context: ctx }) => {

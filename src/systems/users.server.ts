@@ -59,7 +59,7 @@ export const orpcRouter = {
 			return { code: 'ok' as const, users }
 		}),
 
-	beginSteamAccountLink: orpcBase.handler(async ({ context }) => {
+	beginSteamAccountLink: orpcBase.meta({ type: 'mutation' }).handler(async ({ context }) => {
 		const discordId = context.user.discordId
 		const code = createId(9)
 		const sub = scheduleCodeExpiry(code)
@@ -72,7 +72,7 @@ export const orpcRouter = {
 		return { code: 'ok' as const, command: CMD.buildCommand('linkSteamAccount', { code }, CONFIG.commands, CONFIG.commandPrefix)[0] }
 	}),
 
-	cancelSteamAccountLinks: orpcBase.handler(async ({ context }) => {
+	cancelSteamAccountLinks: orpcBase.meta({ type: 'mutation' }).handler(async ({ context }) => {
 		let found = false
 		for (const [code, { discordId, expirySub }] of state.pendingSteamAccountLinks.entries()) {
 			if (discordId === context.user.discordId) {
@@ -96,7 +96,7 @@ export const orpcRouter = {
 		}
 	}),
 
-	unlinkSteamAccount: orpcBase.handler(async ({ context }) => {
+	unlinkSteamAccount: orpcBase.meta({ type: 'mutation' }).handler(async ({ context }) => {
 		return await DB.runTransaction(context, async (context) => {
 			const [user] = await context.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, context.user.discordId)).for(
 				'update',
@@ -111,6 +111,7 @@ export const orpcRouter = {
 	}),
 
 	updateNickname: orpcBase
+		.meta({ type: 'mutation' })
 		.input(z.string().max(64).optional())
 		.handler(async ({ context, input }) => {
 			return await DB.runTransaction(context, async (context) => {

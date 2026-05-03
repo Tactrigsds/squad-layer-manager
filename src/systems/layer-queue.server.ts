@@ -465,6 +465,7 @@ export const router = {
 	}),
 
 	toggleUpdatesToSquadServer: orpcBase
+		.meta({ type: 'mutation' })
 		.input(z.object({ disabled: z.boolean() }))
 		.handler(async ({ context: _ctx, input }) => {
 			const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
