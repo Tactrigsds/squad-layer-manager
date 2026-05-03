@@ -1,9 +1,11 @@
 import type * as CS from '@/models/context-shared'
+import * as ATTRS from '@/models/otel-attrs'
 import { initModule } from '@/server/logger'
 
 import type * as C from '@/server/context'
 
 import * as SquadServer from '@/systems/squad-server.server'
+import { metrics } from '@opentelemetry/api'
 import { Subject } from 'rxjs'
 export const wsSessions = new Map<string, C.OrpcBase>()
 export const disconnect$ = new Subject<C.OrpcBase>()
@@ -11,6 +13,13 @@ export const connect$ = new Subject<C.OrpcBase>()
 
 const module = initModule('ws-session')
 let log!: CS.Logger
+
+const meter = metrics.getMeter('ws-session')
+meter.createObservableGauge(ATTRS.WebSocket.CONNECTED_CLIENTS, {
+	description: 'Number of currently connected WebSocket clients',
+}).addCallback((result) => {
+	result.observe(wsSessions.size)
+})
 
 export function setup() {
 	log = module.getLogger()

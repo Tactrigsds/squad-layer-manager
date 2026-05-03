@@ -17,6 +17,7 @@ export namespace Module {
 
 export namespace WebSocket {
 	export const CLIENT_ID = 'slm.websocket.client_id'
+	export const CONNECTED_CLIENTS = 'slm.websocket.connected_clients'
 }
 
 export namespace Span {
