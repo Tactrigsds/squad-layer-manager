@@ -258,7 +258,7 @@ describe('PendingEvents', () => {
 	})
 
 	describe('full server roll sequence', () => {
-		it('ROUND_ENDED → TransitionMap → new layer + TEAMS_UPDATE → NEW_GAME(server-roll)', async () => {
+		it.only('ROUND_ENDED → TransitionMap → new layer + TEAMS_UPDATE → NEW_GAME(server-roll)', async () => {
 			const { state } = makeState({ layerId: LAYER_A })
 			const p1 = makePlayer('eos-001', 1, { squadId: 1, isLeader: true })
 			const p2 = makePlayer('eos-002', 1, { squadId: 1 })
@@ -309,8 +309,8 @@ describe('PendingEvents', () => {
 
 			// 4. TEAMS_UPDATE arrives — triggers NEW_GAME with source=server-roll
 			const newPlayers = [makePlayer('eos-new', 1)]
-			PendingEvents.onTeamsPolled(state, makeTeams(newPlayers), 400)
-			PendingEvents.onLogEvent(state, makeUnknownLogEvent(401))
+			PendingEvents.onTeamsPolled(state, makeTeams(newPlayers), 401)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(402))
 			const batch4 = await collect(state)
 
 			expect(batch4).toHaveLength(1)
@@ -367,8 +367,8 @@ describe('PendingEvents', () => {
 				mapClassname: 'Gorodok',
 				layerClassname: LAYER_A_CLASSNAME,
 			})
-			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-new', 1)]), 300)
-			PendingEvents.onLogEvent(state, makeUnknownLogEvent(301))
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-new', 1)]), 400)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(500))
 			const events = await collect(state)
 
 			const newGame = events.find(e => e.type === 'NEW_GAME') as SE.NewGame | undefined

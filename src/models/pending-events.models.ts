@@ -321,11 +321,13 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.UniqueTeams, even
 		}
 
 		case 'PLAYER_CONNECTED': {
-			if (SM.PlayerIds.find(teams.players, p => p.ids, event.player.ids)) {
+			const existingPlayerIndex = SM.PlayerIds.indexOf(teams.players, p => p.ids, event.player.ids)
+			if (existingPlayerIndex !== -1) {
 				log.warn(`Player ${SM.PlayerIds.prettyPrint(event.player.ids)} connected but was already in the player list`)
-				break
+				teams.players[existingPlayerIndex] = event.player
+			} else {
+				teams.players.push(event.player)
 			}
-			teams.players.push(event.player)
 			break
 		}
 
@@ -437,6 +439,7 @@ async function* processPendingEvent(
 
 	if (
 		pendingEvent.type === 'TEAMS_UPDATE' && state.syncState.type === 'rolling' && !!state.syncState.newGameEvent
+		&& state.syncState.newGameEvent.time < pendingEvent.time
 		&& state.currentMatch !== 'PENDING'
 	) {
 		state.currTeams = initUniqueTeams(state, pendingEvent.teams)

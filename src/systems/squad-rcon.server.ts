@@ -239,6 +239,7 @@ async function fetchTeams(ctx: C.Rcon & C.AdminList & C.AsyncResourceInvocation)
 	// -------- validate data coherence between players and squads --------
 	try {
 		for (const player of players) {
+			if (player.teamId == null) throw ctx.refetch(`player ${SM.PlayerIds.prettyPrint(player.ids)} has no team`)
 			if (player.squadId !== null && player.teamId === null) {
 				throw ctx.refetch(
 					`player ${SM.PlayerIds.prettyPrint(player.ids)} is in a squad without a team`,
