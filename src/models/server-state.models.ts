@@ -1,10 +1,10 @@
 import * as Obj from '@/lib/object'
-
 import * as CB from '@/models/constraint-builders'
 import * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SM from '@/models/squad.models'
+import * as Teamswitches from '@/models/teamswitches.models'
 import type * as USR from '@/models/users.models'
 import { z } from 'zod'
 
@@ -167,6 +167,8 @@ export type LQStateUpdate = {
 				| 'filter-delete'
 				| 'next-layer-generated'
 				| 'updates-to-squad-server-toggled'
+				| 'teamswitches-saved'
+				| 'teamswitches-executed'
 		}
 		// TODO bring this up to date with signature of VoteStateUpdate
 		| {
@@ -191,6 +193,8 @@ export function printSource(source: LQStateUpdate['source']) {
 			'next-layer-generated': 'Next layer generated',
 			'updates-to-squad-server-toggled': 'Updates to Squad server toggled',
 			'ended-early': 'Vote ended early',
+			'teamswitches-executed': 'Teamswitches Executed',
+			'teamswitches-saved': 'Teamswitches Saved',
 		}
 		return eventLabels[source.event]
 	} else {
@@ -210,6 +214,7 @@ export const ServerStateSchema = z.object({
 	displayName: z.string().min(1).max(256),
 	layerQueueSeqId: z.int().prefault(0),
 	layerQueue: LL.ListSchema,
+	teamswitches: Teamswitches.TeamswitchCollectionSchema,
 	settings: ServerSettingsSchema,
 })
 

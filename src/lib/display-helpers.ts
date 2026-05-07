@@ -45,9 +45,9 @@ export function fromDisplayPropStatuses(statuses: LayerDisplayPropsStatuses): La
 	return displayProps
 }
 
-export function toFormattedNormalizedTeam(team: 'A' | 'B' | 'teamA' | 'teamB') {
-	if (team.startsWith('t')) team = team.slice(team.length - 1) as ('A' | 'B')
-	if (team === 'A') return 'Team A'
+export function toFormattedNormalizedTeam(team: MH.NormedTeamIdOrProp) {
+	const normedTeam = MH.toNormedTeamId(team)
+	if (normedTeam === 'A') return 'Team A'
 	return 'Team B'
 }
 

@@ -16,7 +16,7 @@ export type TriggerWarnLevel = z.infer<typeof TRIGGER_LEVEL>
 export type BalanceTriggerEvent = SchemaModels.BalanceTriggerEvent
 export type EvaluationResultBase<Input> = {
 	code: 'triggered'
-	strongerTeam: 'teamA' | 'teamB'
+	strongerTeam: MH.NormedTeamProp
 	messageTemplate: string
 	relevantInput: Input
 }
@@ -69,7 +69,7 @@ const trig200x2 = createTrigger<'200x2', MH.PostGameMatchDetails[]>({
 
 function resolveBasicTicketStreak(threshold: number, length: number) {
 	return (_ctx: CS.Log, matchDetails: MH.PostGameMatchDetails[]) => {
-		let prevWinner: 'teamA' | 'teamB' | undefined
+		let prevWinner: MH.NormedTeamProp | undefined
 		if (matchDetails.length < length) return
 		let match!: MH.PostGameMatchDetails
 		for (let i = matchDetails.length - 1; i >= 0; i--) {
@@ -96,7 +96,7 @@ const trigRWS5 = createTrigger<'RWS5', MH.PostGameMatchDetails[]>({
 	name: 'Raw Win Streak Across 5',
 	resolveInput: lastNResolvedMatchesForSession(5),
 	evaluate: (_ctx, matchDetails) => {
-		let streaker: 'teamA' | 'teamB' | undefined
+		let streaker: MH.NormedTeamProp | undefined
 		let match!: MH.PostGameMatchDetails
 		let streakLength = 0
 		for (let i = matchDetails.length - 1; i >= 0; i--) {
@@ -124,7 +124,7 @@ const trigRAM3Plus = createTrigger<'RAM3+', MH.PostGameMatchDetails[]>({
 	name: 'Maximum Rolling Average Across 3+',
 	resolveInput: lastNResolvedMatchesForSession(20),
 	evaluate: (_ctx, matchDetails) => {
-		let streaker: 'teamA' | 'teamB' | undefined
+		let streaker: MH.NormedTeamProp | undefined
 		let match!: MH.PostGameMatchDetails
 		let streakLength = 0
 		for (let i = matchDetails.length - 1; i >= 0; i--) {
@@ -259,7 +259,7 @@ export function getHighestPriorityTriggerEvent(events: BalanceTriggerEvent[]): B
 }
 
 export type CurrentStreak = {
-	team: 'teamA' | 'teamB'
+	team: MH.NormedTeamProp
 	length: number
 } | null
 
@@ -272,7 +272,7 @@ export function getCurrentStreak(matches: MH.MatchDetails[]): CurrentStreak | nu
 	const session = resolveMatchSession(matches, true)
 	if (!session.length) return null
 
-	let streaker: 'teamA' | 'teamB' | undefined
+	let streaker: MH.NormedTeamProp | undefined
 	let streakLength = 0
 
 	for (let i = session.length - 1; i >= 0; i--) {
@@ -283,7 +283,7 @@ export function getCurrentStreak(matches: MH.MatchDetails[]): CurrentStreak | nu
 
 		if (streaker && streaker !== outcome.type) break
 
-		if (isNullOrUndef(streaker)) streaker = outcome.type as 'teamA' | 'teamB'
+		if (isNullOrUndef(streaker)) streaker = outcome.type as MH.NormedTeamProp
 		streakLength++
 	}
 

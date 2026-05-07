@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
 import * as Zus from 'zustand'
 import * as DH from '../lib/display-helpers'
 
-export function TeamIndicator(props: { team: 'A' | 'B' | SM.TeamId }) {
+export function TeamIndicator(props: { team: MH.NormedTeamId | SM.TeamId }) {
 	return <span className="font-mono text" style={{ color: DH.TEAM_COLORS[`team${props.team}`] }}>({props.team})</span>
 }
 
@@ -110,7 +110,7 @@ export function TeamFactionDisplay(
 			title: ['Team A', 'Team B'][(props.parity + props.team - 1) % 2],
 			id: MH.getNormedTeamId(props.team, props.parity),
 		},
-	] as const satisfies { label: string; color: string; title: string; id: 'A' | 'B' | SM.TeamId }[]
+	] as const satisfies { label: string; color: string; title: string; id: MH.NormedTeamId | SM.TeamId }[]
 
 	if (displayTeamsNormalized) attrs.reverse()
 

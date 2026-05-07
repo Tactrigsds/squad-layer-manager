@@ -62,6 +62,9 @@ export type LayersStatusResExt = { code: 'ok'; data: LayersStatusExt } | RconErr
 
 export const TeamIdSchema = z.union([z.literal(1), z.literal(2)])
 export type TeamId = z.infer<typeof TeamIdSchema>
+export function oppositeTeamId(teamId: TeamId): TeamId {
+	return teamId === 1 ? 2 : 1
+}
 
 export namespace PlayerIds {
 	export type Fields = 'username' | 'steam' | 'eos' | 'playerController' | 'usernameNoTag' | 'epic'
@@ -91,8 +94,12 @@ export namespace PlayerIds {
 	}
 
 	export type IdQueryOrPlayerId = IdQuery | PlayerId
+	export type EosIdQueryOrPlayerId = IdQuery<'eos'> | PlayerId
 	export function normalizeIdQuery(id: IdQueryOrPlayerId): IdQuery {
 		return typeof id === 'string' ? queryFromPlayerId(id) : id
+	}
+	export function normalizeToPlayerId(id: EosIdQueryOrPlayerId): PlayerId {
+		return typeof id === 'string' ? id : getPlayerId(id)
 	}
 
 	export type Type = z.infer<typeof Schema>

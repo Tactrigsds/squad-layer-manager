@@ -7,6 +7,7 @@ import * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
 import type * as SE from '@/models/server-events.models'
 import * as SM from '@/models/squad.models'
+import { z } from 'zod'
 type TeamsUpdateEvent = { type: 'TEAMS_UPDATE'; id: number; teams: SM.Teams; time: number }
 export type State = {
 	lastKnownLogEventTime: number | null
@@ -59,6 +60,16 @@ type StateWithCurrentMatchAndPlayers = State & {
 }
 
 type PendingEvent = State['eventBufs'][keyof State['eventBufs']][number]
+
+export const TeamModifyingEventTypes = z.enum(
+	[
+		'NEW_GAME',
+		'RESET',
+		'PLAYER_CONNECTED',
+		'PLAYER_DISCONNECTED',
+		'PLAYER_CHANGED_TEAM',
+	] satisfies SE.Event['type'][],
+)
 
 export function init(
 	opts: {

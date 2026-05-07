@@ -187,6 +187,7 @@ export const servers = mysqlTable('servers', {
 	// should be incremented whenver layer queue is modified. used to make sure modifiers are up-to-date with the current state of the queue before submitting modifications
 	layerQueueSeqId: int('layerQueueSeqId').notNull().default(0),
 	layerQueue: json('layerQueue').notNull().default(superjson.stringify([])),
+	teamswitches: json('teamswitches').notNull().default(superjson.stringify(new Map())),
 	settings: json('settings').default(superjson.stringify({})),
 })
 

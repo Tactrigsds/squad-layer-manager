@@ -660,7 +660,7 @@ function getisMatchedByRepeatRuleDirect(
 				}
 				break
 			case 'Faction': {
-				const checkFaction = (team: 'A' | 'B') => {
+				const checkFaction = (team: MH.NormedTeamId) => {
 					// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
 					const targetFaction = targetLayer[MH.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]!
 					const previousFaction = layer[MH.getTeamNormalizedFactionProp(layerTeamParity, team)]
@@ -677,7 +677,7 @@ function getisMatchedByRepeatRuleDirect(
 				break
 			}
 			case 'Alliance': {
-				const checkAlliance = (team: 'A' | 'B') => {
+				const checkAlliance = (team: MH.NormedTeamId) => {
 					// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
 					const targetAlliance = targetLayer[MH.getTeamNormalizedAllianceProp(targetLayerTeamParity, team)]
 					const previousAlliance = layer[MH.getTeamNormalizedAllianceProp(layerTeamParity, team)]
@@ -730,7 +730,7 @@ function getRepeatSQLConditions(
 				}
 				break
 			case 'Faction': {
-				const addApplicable = (team: 'A' | 'B') => {
+				const addApplicable = (team: MH.NormedTeamId) => {
 					// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
 					const column = MH.getTeamNormalizedFactionProp(teamParity, team)
 					const value = layer[column]
@@ -746,7 +746,7 @@ function getRepeatSQLConditions(
 				break
 			}
 			case 'Alliance': {
-				const addApplicable = (team: 'A' | 'B') => {
+				const addApplicable = (team: MH.NormedTeamId) => {
 					const column = MH.getTeamNormalizedAllianceProp(teamParity, team)
 					const alliance = layer[column]
 					const values = team === 'A' ? valuesA : valuesB

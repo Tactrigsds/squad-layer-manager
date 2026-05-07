@@ -2,6 +2,7 @@ import type * as SchemaModels from '$root/drizzle/schema.models'
 import type * as BAL from '@/models/balance-triggers.models'
 import type * as LL from '@/models/layer-list.models'
 import type * as SM from '@/models/squad.models'
+import { z } from 'zod'
 
 import { assertNever, isNullOrUndef } from '../lib/type-guards'
 import * as L from './layer'
@@ -48,7 +49,7 @@ export type MatchOutcome = {
 	type: 'unknown'
 }
 export type NormalizedMatchOutcome = {
-	type: 'teamA' | 'teamB'
+	type: NormedTeamProp
 	teamATickets: number
 	teamBTickets: number
 } | {
@@ -62,6 +63,25 @@ export type PostGameMatchDetails = Extract<MatchDetails, { status: 'post-game' }
 export type PublicMatchHistoryState = {
 	recentMatches: MatchDetails[]
 	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
+}
+
+export const NormedTeamIdSchema = z.enum(['A', 'B'])
+export type NormedTeamId = z.infer<typeof NormedTeamIdSchema>
+
+export const NormedTeamPropSchema = z.enum(['teamA', 'teamB'])
+export type NormedTeamProp = z.infer<typeof NormedTeamPropSchema>
+
+export const NormedTeamIdOrPropSchema = z.union([NormedTeamIdSchema, NormedTeamPropSchema])
+export type NormedTeamIdOrProp = z.infer<typeof NormedTeamIdOrPropSchema>
+
+export function toNormedTeamId(team: NormedTeamIdOrProp): NormedTeamId {
+	return team.slice(team.length - 1) as NormedTeamId
+}
+export function toNormedTeamProp(team: NormedTeamIdOrProp): NormedTeamProp {
+	if (team.startsWith('team')) {
+		return team as NormedTeamProp
+	}
+	return `team${team}` as NormedTeamProp
 }
 
 export function getTeamParityForOffset(matchDetails: Pick<MatchDetails, 'ordinal'>, offset: number) {
@@ -261,25 +281,34 @@ export function matchHistoryEntryFromMatchDetails(matchDetails: MatchDetails): S
 	return entry
 }
 
-export function getTeamNormalizedFactionProp(offset: number, team: 'A' | 'B' | 'teamA' | 'teamB') {
+export function getTeamNormalizedFactionProp(offset: number, team: NormedTeamIdOrProp) {
 	const props = ['Faction_1', 'Faction_2'] as const
-	team = team.slice(team.length - 1) as 'A' | 'B'
-	return props[(offset + Number(team === 'B')) % 2]
+	const normedTeam = toNormedTeamId(team)
+	return props[(offset + Number(normedTeam === 'B')) % 2]
 }
 
-export function getTeamNormalizedUnitProp(offset: number, team: 'A' | 'B' | 'teamA' | 'teamB') {
+export function getTeamNormalizedUnitProp(offset: number, team: NormedTeamIdOrProp) {
 	const props = ['Unit_1', 'Unit_2'] as const
-	return props[(offset + Number(team === 'B')) % 2]
+	const normedTeam = toNormedTeamId(team)
+	return props[(offset + Number(normedTeam === 'B')) % 2]
 }
 
-export function getTeamNormalizedAllianceProp(offset: number, team: 'A' | 'B' | 'teamA' | 'teamB') {
+export function getTeamNormalizedAllianceProp(offset: number, team: NormedTeamIdOrProp) {
 	const props = ['Alliance_1', 'Alliance_2'] as const
-	return props[(offset + Number(team === 'B')) % 2]
+	const normedTeam = toNormedTeamId(team)
+	return props[(offset + Number(normedTeam === 'B')) % 2]
 }
 
 export function getNormedTeamId(teamId: SM.TeamId, parity: number) {
 	const normIds = ['A', 'B'] as const
 	return normIds[(parity + teamId - 1) % 2]
+}
+export function getDenormedTeamId(normedTeamId: NormedTeamId, parity: number) {
+	if (parity % 2 === 0) {
+		return normedTeamId === 'A' ? 1 : 2
+	} else {
+		return normedTeamId === 'A' ? 2 : 1
+	}
 }
 
 export function getActiveTriggerEvents(state: PublicMatchHistoryState) {

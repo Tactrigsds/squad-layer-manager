@@ -1,0 +1,1 @@
+ALTER TABLE `servers` ADD `teamswitches` json DEFAULT ('{"json":[],"meta":{"values":["map"],"v":1}}') NOT NULL;

@@ -4,10 +4,8 @@ import * as AR from '@/app-routes'
 import * as Arr from '@/lib/array'
 import { type CleanupTasks, distinctDeepEquals, runCleanup, switchMapWithSignal, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { AsyncResource } from '@/lib/async-resource'
-
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Gen from '@/lib/generator'
-
 import * as Obj from '@/lib/object'
 import Rcon from '@/lib/rcon/core-rcon'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
@@ -31,6 +29,7 @@ import * as RBAC from '@/rbac.models'
 import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
+import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
@@ -42,6 +41,7 @@ import * as Rbac from '@/systems/rbac.server'
 import * as SharedLayerList from '@/systems/shared-layer-list.server'
 import * as SquadLogsReceiver from '@/systems/squad-logs-receiver.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
+import * as TeamSwitchesSys from '@/systems/teamswitches.server'
 import * as UserPresence from '@/systems/user-presence.server'
 import * as Vote from '@/systems/vote.server'
 import * as WsSessionSys from '@/systems/ws-session.server'
@@ -55,6 +55,8 @@ import { z } from 'zod'
 
 const module = initModule('squad-server')
 let log!: CS.Logger
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.featureFlags })
+let ENV!: ReturnType<typeof envBuilder>
 const orpcBase = getOrpcBase(module)
 
 type State = {
@@ -298,6 +300,7 @@ export const orpcRouter = {
 
 export async function setup() {
 	log = module.getLogger()
+	ENV = envBuilder()
 	const ctx = getBaseCtx()
 
 	globalState = {
@@ -354,6 +357,7 @@ export async function setup() {
 								displayName: serverConfig.displayName,
 								settings: SS.ServerSettingsSchema.parse(settingsFromConfig),
 								layerQueue: [],
+								teamswitches: new Map(),
 								layerQueueSeqId: 0,
 							}
 							await ctx
@@ -492,6 +496,14 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 
 		matchHistory: MatchHistory.initMatchHistoryContext(server.event$, cleanup),
 
+		teamswitches: ENV.FF_TEAMSWITCH_SYSTEM
+			? TeamSwitchesSys.initContext({
+				...ctx,
+				serverId,
+				cleanup,
+				server,
+			})
+			: (null as unknown as TeamSwitchesSys.TeamswitchContext),
 		layerQueue: LayerQueue.initLayerQueueContext(cleanup),
 		sharedList: SharedLayerList.getDefaultState(serverState),
 		userPresence: UserPresence.getDefaultState(),
@@ -516,8 +528,11 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 		log.info(
 			'emitted event: %s %s',
 			event.type,
-			// @ts-expect-error idgaf
-			JSON.stringify(['NEW_GAME', 'RESET'].includes(event.type) ? Obj.omit(event, ['state']) : event),
+			JSON.stringify(
+				['NEW_GAME', 'RESET'].includes(event.type)
+					? Obj.omit(event as any, ['state'])
+					: event,
+			),
 		)
 		ctx.server.emittedEvents.push(event)
 	})
@@ -567,7 +582,12 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 		}
 
 		const errors: Error[] = []
-		for await (const event of SM.LogEvents.parse(toAsyncGenerator(chunk$), errors)) {
+		for await (
+			const event of SM.LogEvents.parse(
+				toAsyncGenerator(chunk$),
+				errors,
+			)
+		) {
 			const ctx = resolveSliceCtx(getBaseCtx(), serverId)
 			for (const error of errors) log.error(error)
 			errors.splice(0, errors.length)

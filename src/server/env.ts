@@ -21,6 +21,10 @@ export const groups = {
 		LOG_EXCLUDE_CONTEXT_PARAMS: z.string().default('').transform(val => new Set(val.split(',').map(s => s.trim()).filter(Boolean))),
 	},
 
+	featureFlags: {
+		FF_TEAMSWITCH_SYSTEM: z.stringbool().default(false),
+	},
+
 	squadcalc: {
 		PUBLIC_SQUADCALC_URL: NormedUrl.default('https://squadcalc.app'),
 	},

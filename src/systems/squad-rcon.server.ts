@@ -330,7 +330,7 @@ export async function getPlayer(ctx: C.SquadRcon & C.AdminList, query: SM.Player
 	return { code: 'ok' as const, player }
 }
 
-export async function warn(ctx: C.SquadRcon & C.AdminList, ids: SM.PlayerIds.Type, _opts: WarnOptions) {
+export async function warn(ctx: C.SquadRcon & C.AdminList, ids: SM.PlayerIds.EosIdQueryOrPlayerId, _opts: WarnOptions) {
 	let opts: WarnOptionsBase
 	if (typeof _opts === 'function') {
 		const playerRes = await getPlayer(ctx, ids)
@@ -362,7 +362,7 @@ export async function warn(ctx: C.SquadRcon & C.AdminList, ids: SM.PlayerIds.Typ
 	for (let i = 0; i < repeatCount; i++) {
 		if (i !== 0) await sleep(5000)
 		for (const msg of msgArr) {
-			await ctx.rcon.execute(`AdminWarn "${SM.PlayerIds.resolvePlayerId(ids)}" ${msg}`)
+			await ctx.rcon.execute(`AdminWarn "${SM.PlayerIds.normalizeToPlayerId(ids)}" ${msg}`)
 		}
 	}
 }
@@ -474,4 +474,12 @@ export function processChatPacket(decodedPacket: DecodedPacket) {
 export function endMatch(ctx: C.Rcon) {
 	log.info(`Ending match`)
 	void ctx.rcon.execute('AdminEndMatch')
+}
+
+export async function switchPlayers(ctx: C.Rcon & C.SquadRcon & C.AdminList, players: SM.PlayerIds.IdQueryOrPlayerId[]) {
+	for (const ids of players) {
+		const id = SM.PlayerIds.normalizeIdQuery(ids)
+		await ctx.rcon.execute(`AdminForceTeamChange ${id}`)
+	}
+	ctx.server.teams.invalidate(ctx)
 }

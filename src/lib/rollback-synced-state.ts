@@ -1,23 +1,44 @@
 import * as Arr from '@/lib/array'
+import { Mutex, MutexInterface } from 'async-mutex'
 
-type OpId = string
-type BaseOp = {
+export type OpId = string
+export type BaseOp = {
 	opId: OpId
 }
 
-export type Reducer<O extends BaseOp, S> = (state: S, ops: O[], prevOps: O[]) => S
+type SideEffectBase = {
+	// this doesn't necessarily have to align with opcode
+	code: string
+} | undefined
+
+export type OnSideEffect<SE extends SideEffectBase> = (sideEffect: SE) => void
+
+export type Reducer<O extends BaseOp, S, SE extends SideEffectBase = undefined> = (
+	state: S,
+	ops: O[],
+	prevOps: O[],
+	onSideEffect?: OnSideEffect<SE>,
+) => S
 
 export namespace Server {
-	export type Session<O extends BaseOp, S> = {
+	export type Session<O extends BaseOp, S, SE extends SideEffectBase = undefined> = {
 		state: S
 		ops: O[]
+		onSideEffect?: OnSideEffect<SE>
 	}
 
-	export function initSession<O extends BaseOp, S>(state: S): Session<O, S> {
-		return { state, ops: [] }
+	export function initSession<O extends BaseOp, S, SE extends SideEffectBase = undefined>(
+		state: S,
+		opts?: { onSideEffect?: OnSideEffect<SE> },
+	): Session<O, S, SE> {
+		return { state, ops: [], onSideEffect: opts?.onSideEffect }
 	}
 
-	export function applyOps<O extends BaseOp, S>(session: Session<O, S>, ops: O[], reducer: Reducer<O, S>): Session<O, S> {
+	export function applyOps<O extends BaseOp, S, SE extends SideEffectBase = undefined>(
+		session: Session<O, S, SE>,
+		ops: O[],
+		reducer: Reducer<O, S, SE>,
+	): Session<O, S, SE> {
 		if (ops.length === 0) throw new Error('No ops to apply')
 		const incomingIds = ops.map(op => op.opId)
 		const incomingIdSet = new Set(incomingIds)
@@ -27,34 +48,46 @@ export namespace Server {
 			if (existingIds.has(id)) throw new Error(`Duplicate opId already in session: ${id}`)
 		}
 		return {
-			state: reducer(session.state, ops, session.ops),
+			state: reducer(session.state, ops, session.ops, session.onSideEffect),
 			ops: [...session.ops, ...ops],
 		}
 	}
 
-	export function resetSession<O extends BaseOp, S>(_session: Session<O, S>, state: S): Session<O, S> {
+	export function resetSession<O extends BaseOp, S, SE extends SideEffectBase = undefined>(
+		_session: Session<O, S, SE>,
+		state: S,
+	): Session<O, S, SE> {
 		return { state, ops: [] }
 	}
 }
 
 export namespace Client {
-	export type Session<O extends BaseOp, S> = {
+	export type Session<O extends BaseOp, S, SE extends SideEffectBase = undefined> = {
 		syncedState: S
 		syncedOps: O[]
 		localState: S
 		pendingOps: O[]
+		onSideEffect?: OnSideEffect<SE>
 	}
 
-	export function initSession<O extends BaseOp, S>(state: S): Session<O, S> {
+	export function initSession<O extends BaseOp, S, SE extends SideEffectBase = undefined>(
+		state: S,
+		opts?: { onSideEffect?: OnSideEffect<SE> },
+	): Session<O, S, SE> {
 		return {
 			syncedOps: [],
 			syncedState: state,
 			localState: state,
 			pendingOps: [],
-		} as Session<O, S>
+			onSideEffect: opts?.onSideEffect,
+		} as Session<O, S, SE>
 	}
 
-	export function processIncomingOps<O extends BaseOp, S>(session: Session<O, S>, ops: O[], reducer: Reducer<O, S>): Session<O, S> {
+	export function processIncomingOps<O extends BaseOp, S, SE extends SideEffectBase>(
+		session: Session<O, S, SE>,
+		ops: O[],
+		reducer: Reducer<O, S, SE>,
+	): Session<O, S, SE> {
 		if (ops.length === 0) throw new Error('No ops to process')
 		const incomingIds = ops.map(op => op.opId)
 		const incomingIdSet = new Set(incomingIds)
@@ -65,7 +98,7 @@ export namespace Client {
 		}
 
 		const prevSyncedOps = session.syncedOps
-		const newSyncedState = reducer(session.syncedState, ops, prevSyncedOps)
+		const newSyncedState = reducer(session.syncedState, ops, prevSyncedOps, session.onSideEffect)
 		const newSyncedOps = [...prevSyncedOps, ...ops]
 
 		const newSyncedOpIds = newSyncedOps.map(op => op.opId)
@@ -88,11 +121,15 @@ export namespace Client {
 		}
 	}
 
-	export function localOps<O extends BaseOp, S>(session: Session<O, S>): O[] {
+	export function localOps<O extends BaseOp, S, SE extends SideEffectBase>(session: Session<O, S, SE>): O[] {
 		return [...session.syncedOps, ...session.pendingOps]
 	}
 
-	export function processOutgoingOps<O extends BaseOp, S>(session: Session<O, S>, ops: O[], reducer: Reducer<O, S>): Session<O, S> {
+	export function processOutgoingOps<O extends BaseOp, S, SE extends SideEffectBase>(
+		session: Session<O, S, SE>,
+		ops: O[],
+		reducer: Reducer<O, S, SE>,
+	): Session<O, S, SE> {
 		if (ops.length === 0) throw new Error('No ops to process')
 		const incomingIds = ops.map(op => op.opId)
 		const incomingIdSet = new Set(incomingIds)
@@ -105,7 +142,7 @@ export namespace Client {
 		const prevLocalOps = [...session.syncedOps, ...session.pendingOps]
 		return {
 			...session,
-			localState: reducer(session.localState, ops, prevLocalOps),
+			localState: reducer(session.localState, ops, prevLocalOps /* no side effects until we're synced */),
 			pendingOps: [...session.pendingOps, ...ops],
 		}
 	}
