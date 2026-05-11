@@ -476,9 +476,9 @@ export function endMatch(ctx: C.Rcon) {
 	void ctx.rcon.execute('AdminEndMatch')
 }
 
-export async function switchPlayers(ctx: C.Rcon & C.SquadRcon & C.AdminList, players: SM.PlayerIds.IdQueryOrPlayerId[]) {
+export async function switchPlayers(ctx: C.Rcon & C.SquadRcon & C.AdminList, players: SM.PlayerIds.EosIdQueryOrPlayerId[]) {
 	for (const ids of players) {
-		const id = SM.PlayerIds.normalizeIdQuery(ids)
+		const id = SM.PlayerIds.normalizeToPlayerId(ids)
 		await ctx.rcon.execute(`AdminForceTeamChange ${id}`)
 	}
 	ctx.server.teams.invalidate(ctx)

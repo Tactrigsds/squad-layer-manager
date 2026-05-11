@@ -1,5 +1,5 @@
 import * as Arr from '@/lib/array'
-import { type CleanupTasks, distinctDeepEquals, runCleanup, switchMapWithSignal, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import * as RbSyncState from '@/lib/rollback-synced-state'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
@@ -14,12 +14,12 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
-import { Match } from '@tanstack/react-router'
+
 import * as Rx from 'rxjs'
 
 export const module = initModule('teamswitches')
 
-let log!: ReturnType<typeof module.getLogger>
+const log = module.getLogger()
 
 type Session = RbSyncState.Server.Session<Teamswitches.Op, Teamswitches.State, Teamswitches.SideEffects>
 
@@ -82,15 +82,6 @@ async function onOperation(ctx: C.Teamswitch, op: Teamswitches.Op) {
 	ctx.teamswitches.session = RbSyncState.Server.applyOps(ctx.teamswitches.session, [op], Teamswitches.reducer)
 }
 
-const onSideEffectOuter = (serverId: string) => async (sideEffects: Teamswitches.SideEffects) => {
-	const ctx = resolveCtx(serverId)
-	try {
-		return await onSideEffect(ctx, sideEffects)
-	} catch (error) {
-		log.error(error)
-	}
-}
-
 async function onSideEffect(
 	ctx: C.Teamswitch & C.Db & C.SquadServer & C.MatchHistory & C.Rcon & C.AdminList & C.LayerQueue,
 	sideEffect: Teamswitches.SideEffects,
@@ -146,10 +137,10 @@ async function onSideEffect(
 				const status = statuses.get(playerId)
 				if (status !== 'ready') continue
 				if (!sideEffect.prevSaved.has(playerId)) {
-					SquadRcon.warn(ctx, playerId, messages.notifyPlayerOfTeamswitch())
+					void SquadRcon.warn(ctx, playerId, messages.notifyPlayerOfTeamswitch())
 				}
 			}
-			DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
+			await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 				await SquadServer.updateServerState(ctx, { teamswitches: sideEffect.switches }, { type: 'system', event: 'teamswitches-saved' })
 			})
 			break

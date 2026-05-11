@@ -1,5 +1,4 @@
 import * as Arr from '@/lib/array'
-import { Mutex, MutexInterface } from 'async-mutex'
 
 export type OpId = string
 export type BaseOp = {

@@ -1,12 +1,11 @@
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object'
-import * as RbSyncState from '@/lib/rollback-synced-state'
+import type * as RbSyncState from '@/lib/rollback-synced-state'
 import { assertNever } from '@/lib/type-guards'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as USR from '@/models/users.models'
 import { z } from 'zod'
-import { create } from 'zustand'
 
 export const TeamswitchStatusSchema = z.enum(['ready', 'player-disconnected', 'player-changed-teams'])
 export type TeamswitchStatus = z.infer<typeof TeamswitchStatusSchema>
@@ -16,7 +15,6 @@ export const TeamswitchSchema = z.object({
 	toTeam: MH.NormedTeamIdSchema,
 	source: USR.GuiOrChatUserIdSchema,
 })
-type Teamswitch = z.infer<typeof TeamswitchSchema>
 export const TeamswitchCollectionSchema = z.map(SM.PlayerIdSchema, TeamswitchSchema)
 type TeamswitchCollection = z.infer<typeof TeamswitchCollectionSchema>
 export const TeamswitchStatusCollectionSchema = z.map(SM.PlayerIdSchema, TeamswitchStatusSchema)
