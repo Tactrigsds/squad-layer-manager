@@ -473,10 +473,13 @@ async function* processPendingEvent(
 			state.currTeams = null
 			state.expectedNewLayerId = state.nextLayerId
 		} else {
-			state.syncState = { type: 'rolling', newGameEvent: pendingEvent }
-
 			let newLayerId = state.expectedNewLayerId
-			if (!newLayerId) throw new Error('expectedNewLayerId is null')
+			if (!newLayerId) {
+				log.warn('expectedNewLayerId is null')
+				processedEventIds.add(pendingEvent.id)
+				return
+			}
+			state.syncState = { type: 'rolling', newGameEvent: pendingEvent }
 			if (!L.layerMatchesIngameLayerClassname(newLayerId, pendingEvent.layerClassname)) {
 				throw new Error(`layerClassname mismatch: expected ${newLayerId}, got ${pendingEvent.layerClassname}`)
 			}
