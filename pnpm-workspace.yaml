@@ -1,5 +1,5 @@
 packages:
-  - "."
+  - .
 
 onlyBuiltDependencies:
   - better-sqlite3
@@ -7,10 +7,11 @@ onlyBuiltDependencies:
   - cpu-features
   - dprint
   - esbuild
+  - jsonpath
   - msw
+  - oxlint
   - protobufjs
   - sqlite3
   - ssh2
-  - oxlint
   - tsgo
-  - jsonpath
+  - utf-8-validate
