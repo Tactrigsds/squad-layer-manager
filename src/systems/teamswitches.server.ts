@@ -19,7 +19,7 @@ import * as Rx from 'rxjs'
 
 export const module = initModule('teamswitches')
 
-const log = module.getLogger()
+let log!: CS.Logger
 
 type Session = RbSyncState.Server.Session<Teamswitches.Op, Teamswitches.State, Teamswitches.SideEffects>
 
@@ -27,6 +27,9 @@ export type TeamswitchContext = {
 	session: Session
 	// outgoing operations
 	op$: Rx.Subject<Teamswitches.Op>
+}
+export function setup() {
+	log = module.getLogger()
 }
 
 export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
