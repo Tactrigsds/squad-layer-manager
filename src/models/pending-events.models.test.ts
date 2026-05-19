@@ -134,7 +134,6 @@ function makePlayerConnectedChain(time: number, eos: string, controller: string,
 			},
 			PLAYER_JOIN_SUCCEEDED: { type: 'PLAYER_JOIN_SUCCEEDED', time, chainID: 549, raw: '', player: { usernameNoTag: 'Test Player' } },
 			PLAYER_ADDED_TO_TEAM: { type: 'PLAYER_ADDED_TO_TEAM', time, chainID: 549, raw: '', playerIds: { username: 'Test Player' }, teamId },
-			PLAYER_RESTARTED: { type: 'PLAYER_RESTARTED', time, chainID: 549, raw: '', playerController: controller, deployRole: 'Rifleman_01' },
 		},
 	}
 }

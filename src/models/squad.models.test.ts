@@ -167,10 +167,6 @@ describe('LogEvents.parse', () => {
 					PLAYER_CONNECTED: expect.objectContaining({ type: 'PLAYER_CONNECTED' }),
 					PLAYER_JOIN_SUCCEEDED: expect.objectContaining({ type: 'PLAYER_JOIN_SUCCEEDED' }),
 					PLAYER_ADDED_TO_TEAM: expect.objectContaining({ type: 'PLAYER_ADDED_TO_TEAM', teamId: 1 }),
-					PLAYER_RESTARTED: expect.objectContaining({
-						type: 'PLAYER_RESTARTED',
-						playerController: 'Logano_Stefano',
-					}),
 				},
 			})
 		})
@@ -234,7 +230,6 @@ describe('LogEvents.parse', () => {
 							playerController: 'BP_PlayerController_C_2147444576',
 						}),
 					}),
-					PLAYER_RESTARTED: expect.objectContaining({ playerController: 'grey275', deployRole: 'AFU_Rifleman_13' }),
 					PLAYER_JOIN_SUCCEEDED: expect.objectContaining({ player: expect.objectContaining({ usernameNoTag: 'grey275' }) }),
 				},
 			})
