@@ -1162,8 +1162,8 @@ function ItemDropdown(props: ItemDropdownProps) {
 					<StartActivityInteraction
 						loaderName="selectLayers"
 						className={dropdownMenuItemClassesBase}
-						createActivity={UP.createEditingQueueVariant(activities['add-after'])}
-						matchKey={key => Obj.deepEqualStrict(key, activities['add-after'])}
+						createActivity={UP.createEditingQueueVariant(activities['add-before'])}
+						matchKey={key => Obj.deepEqualStrict(key, activities['add-before'])}
 						preload="viewport"
 						render={DropdownMenuItem}
 						disabled={!isEditing}
@@ -1173,8 +1173,8 @@ function ItemDropdown(props: ItemDropdownProps) {
 					<StartActivityInteraction
 						loaderName="selectLayers"
 						className={dropdownMenuItemClassesBase}
-						createActivity={UP.createEditingQueueVariant(activities['add-before'])}
-						matchKey={key => Obj.deepEqualStrict(key, activities['add-before'])}
+						createActivity={UP.createEditingQueueVariant(activities['add-after'])}
+						matchKey={key => Obj.deepEqualStrict(key, activities['add-after'])}
 						preload="viewport"
 						render={DropdownMenuItem}
 						disabled={!isEditing}
