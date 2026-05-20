@@ -628,8 +628,14 @@ export function setEndingVoteStateInPlace(voteItem: VoteItem, state: V.EndingVot
 }
 
 export function setCorrectChosenLayerIdInPlace(item: VoteItem) {
-	if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') return item
-	item.layerId = item.choices[0].layerId
+	if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') {
+		const winnerItem = findItemById(item.choices, item.endingVoteState.winnerId)
+		if (winnerItem) {
+			item.layerId = winnerItem.item.layerId
+		}
+	} else {
+		item.layerId = item.choices[0].layerId
+	}
 	return item
 }
 
