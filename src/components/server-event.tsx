@@ -328,6 +328,35 @@ function RoundEndedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type:
 		: 0
 	const winnerId = match?.outcome.type === 'team1' ? 1 : match?.outcome.type === 'team2' ? 2 : null
 	const loserId = winnerId === 1 ? 2 : 1
+	let actionElt: React.ReactNode = null
+	if (event.action) {
+		const source = event.action.source
+		let sourceName: React.ReactNode
+		if (source.type === 'player') {
+			sourceName = (
+				<span>
+					by <b>{source.playerIds.username}</b>
+				</span>
+			)
+		} else if (source.type === 'rcon') {
+			sourceName = (
+				<span>
+					via <b>RCON</b>
+				</span>
+			)
+		} else {
+			assertNever(source)
+		}
+		let nextLayerText: React.ReactNode = null
+		if (event.action.type === 'AdminChangeLayer') {
+			nextLayerText = (
+				<span>
+					, switching to <ShortLayerName layerId={event.action.layerId} />
+				</span>
+			)
+		}
+		actionElt = <span className="text-xs font-semibold">({event.action.type} {sourceName}{nextLayerText})</span>
+	}
 
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground items-center">
@@ -346,6 +375,7 @@ function RoundEndedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type:
 						against <MatchTeamDisplay matchId={event.matchId} teamId={loserId} />
 					</>
 				)}
+				{actionElt}
 			</span>
 		</div>
 	)

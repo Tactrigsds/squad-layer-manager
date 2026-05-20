@@ -453,6 +453,12 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 		hooks: {
 			onNewGameDuringRoll: onNewGameDuringRoll(serverId),
 			onNewGameDuringSync: onNewGameDuringSync(serverId),
+			fetchLayersStatus: async () => {
+				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+				const res = await ctx.server.layersStatus.get(ctx)
+				if (res.code === 'ok') return res.data
+				return null
+			},
 		},
 	})
 
@@ -583,7 +589,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 
 		const errors: Error[] = []
 		for await (
-			const event of SM.LogEvents.parse(
+			const event of SM.LogEvents.parseLogStream(
 				toAsyncGenerator(chunk$),
 				errors,
 			)
@@ -694,6 +700,11 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 		// -------- periodically save events  --------
 		const saveEventSub = Rx.interval(10_000)
 			.pipe(
+				Rx.filter(() => {
+					const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+					return ctx.server.emittedEvents.length > 0
+						&& ctx.server.lastSavedEventId !== ctx.server.emittedEvents[ctx.server.emittedEvents.length - 1].id
+				}),
 				C.durableSub(
 					'save-events-interval',
 					{ module, root: true, taskScheduling: 'exhaust' },
@@ -999,7 +1010,8 @@ const loadSavedEvents = C.spanOp(
 	},
 )
 
-let prevEvents: Map<number, any> = new Map()
+let prevEvents: Set<number> = new Set()
+
 export const saveEvents = C.spanOp(
 	'saveEvents',
 	{ module, mutexes: (ctx) => ctx.server.savingEventsMtx },
@@ -1023,12 +1035,11 @@ export const saveEvents = C.spanOp(
 			}
 			for (const event of events) {
 				if (prevEvents.has(event.id)) {
-					const prevEvent = prevEvents.get(event.id)
 					throw new Error(
-						`Duplicate event id: ${event.id} (prev: ${JSON.stringify(event)}, new: ${JSON.stringify(prevEvent)}`,
+						`Duplicate event id: ${event.id} ${JSON.stringify(event)}`,
 					)
 				}
-				prevEvents.set(event.id, event)
+				prevEvents.add(event.id)
 			}
 
 			if (events.length === 0) {

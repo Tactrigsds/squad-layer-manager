@@ -82,7 +82,7 @@ export type EventEnriched =
 	| SE.PossessedAdminCamera<SM.Player>
 	| SE.UnpossessedAdminCamera<SM.Player>
 	| SE.ChatMessage<SM.Player>
-	| (SE.AdminBroadcast & { player: SM.Player | undefined })
+	| (SE.AdminBroadcast & { player?: SM.Player })
 	| SE.PlayerDied<SM.Player>
 	| SE.PlayerWounded<SM.Player>
 
@@ -192,7 +192,6 @@ function interpolateEvent(
 ): EventEnriched {
 	switch (event.type) {
 		case 'MAP_SET':
-			return event
 		case 'NEW_GAME':
 		case 'RESET': {
 			applyEventTeamMutations(chatLog, state, event)
@@ -396,19 +395,41 @@ function interpolateEvent(
 		}
 
 		case 'ADMIN_BROADCAST': {
-			if (event.from === 'RCON' || event.from === 'unknown') {
-				if (testPatterns(opts?.broadcastSuppressionPatterns ?? [], event.message)) {
-					return noop(`Broadcast message ${event.message} matches broadcast suppression pattern`)
+			if (event.from) {
+				if (event.from === 'RCON' || event.from === 'unknown') {
+					if (testPatterns(opts?.broadcastSuppressionPatterns ?? [], event.message)) {
+						return noop(`Broadcast message ${event.message} matches broadcast suppression pattern`)
+					}
+					return { ...event, player: undefined } as SE.AdminBroadcast & { player: undefined }
 				}
-				return { ...event, player: undefined } as SE.AdminBroadcast & { player: undefined }
+				const player = SM.PlayerIds.find(state.players, p => p.ids, event.from)
+				if (!player) {
+					return noop(
+						`Player ${
+							SM.PlayerIds.prettyPrint(event.from)
+						} was involved in ${event.type} but was not found in the interpolated player list`,
+					)
+				}
+				return { ...event, player } as SE.AdminBroadcast & { player: SM.Player }
+			} else if (event.source) {
+				if (event.source.type === 'player') {
+					const player = SM.PlayerIds.find(state.players, p => p.ids, event.source.playerIds)
+					if (!player) {
+						return noop(
+							`Player ${
+								SM.PlayerIds.prettyPrint(event.source)
+							} was involved in ${event.type} but was not found in the interpolated player list`,
+						)
+					}
+					return { ...event, player } as SE.AdminBroadcast & { player: SM.Player }
+				} else if (event.source.type === 'rcon') {
+					return { ...event } as SE.AdminBroadcast
+				} else {
+					assertNever(event.source)
+				}
+			} else {
+				throw new Error(`AdminBroadcast event must have either from or source property`)
 			}
-			const player = SM.PlayerIds.find(state.players, p => p.ids, event.from)
-			if (!player) {
-				return noop(
-					`Player ${SM.PlayerIds.prettyPrint(event.from)} was involved in ${event.type} but was not found in the interpolated player list`,
-				)
-			}
-			return { ...event, player } as SE.AdminBroadcast & { player: SM.Player }
 		}
 
 		case 'PLAYER_DIED':

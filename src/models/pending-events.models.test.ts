@@ -53,6 +53,7 @@ function makeState(opts: {
 			match: makeMatchDetails(opts.matchId ?? 2, opts.layerId ?? LAYER_A),
 			nextLayerId: opts.layerId ?? LAYER_A,
 		}),
+		fetchLayersStatus: () => Promise.resolve(null),
 	}
 	const state = PendingEvents.init({
 		currentMatch: opts.currentMatch ?? 'PENDING',
@@ -103,6 +104,7 @@ function makeRoundEndedChain(
 	return {
 		type: 'ROUND_ENDED_CHAIN',
 		time,
+		// @ts-expect-error idgaf
 		events: {
 			DETERMINE_MATCH_WINNER: { type: 'DETERMINE_MATCH_WINNER', time, chainID: 0, raw: '', winner: winner.unit, map: 'Gorodok' },
 			ROUND_DECIDED_WINNER: {

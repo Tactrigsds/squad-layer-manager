@@ -4,11 +4,12 @@ import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import superjson from 'superjson'
-import { type Base, type EventMeta, meta } from './server-events-base.models'
+import { type ActionSource, type Base, type EventMeta, meta } from './server-events-base.models'
 
 export type MapSet = {
 	type: 'MAP_SET'
 	layerId: L.LayerId
+	source?: ActionSource
 } & Base
 export const MAP_SET_META = meta()
 
@@ -45,8 +46,16 @@ export const RCON_DISCONNECTED_META = meta()
 export type RoundEnded = {
 	type: 'ROUND_ENDED'
 	outcome: MH.MatchOutcome
+	action?: {
+		type: 'AdminChangeLayer'
+		layerId: L.LayerId
+		source: ActionSource
+	} | {
+		type: 'AdminEndMatch'
+		source: ActionSource
+	}
 } & Base
-export const ROUND_ENDED_META = meta()
+export const ROUND_ENDED_META = meta({ players: [{ assocType: 'player', path: '$.action.source.playerIds.eos' }] })
 
 export type PlayerConnected<P = SM.Player> =
 	& {
@@ -84,7 +93,8 @@ export const CHAT_MESSAGE_META = meta({ players: [{ assocType: 'player' }], squa
 export type AdminBroadcast = {
 	type: 'ADMIN_BROADCAST'
 	message: string
-	from: SM.LogEvents.AdminBroadcast['from']
+	from?: SM.LogEvents.AdminBroadcast['from']
+	source?: SM.LogEvents.AdminBroadcast['source']
 } & Base
 export const ADMIN_BROADCAST_META = meta()
 

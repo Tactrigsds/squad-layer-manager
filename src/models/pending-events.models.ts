@@ -49,6 +49,7 @@ export type State = {
 	hooks: {
 		onNewGameDuringRoll: (newLayerId: L.LayerId, time: number) => Promise<{ match: MH.MatchDetails; nextLayerId: L.LayerId | null }>
 		onNewGameDuringSync: (newLayerId: L.LayerId, time: number) => Promise<{ match: MH.MatchDetails; isNewMatch: boolean }>
+		fetchLayersStatus: () => Promise<SM.LayersStatus | null>
 	}
 
 	debug__ticketOutcome?: { team1: number; team2: number }
@@ -511,16 +512,21 @@ async function* processPendingEvent(
 
 	switch (pendingEvent.type) {
 		case 'MAP_SET': {
-			const layer = L.parseRawLayerText(`${pendingEvent.nextLayer} ${pendingEvent.nextFactions ?? ''}`.trim())
-			if (!layer) {
-				log.error(`Failed to parse layer text: ${pendingEvent.nextLayer} ${pendingEvent.nextFactions ?? ''}`)
-				break
+			let layer = L.parseRawLayerText(`${pendingEvent.nextLayer} ${pendingEvent.nextFactions ?? ''}`.trim())
+			if (!layer || !L.isKnownLayer(layer)) {
+				const layersStatus = await state.hooks.fetchLayersStatus()
+				if (!layersStatus || !layersStatus.nextLayer) {
+					log.error(`Unable to resolve layer on MAP_SET`)
+					break
+				}
+				layer = layersStatus.nextLayer
 			}
 			state.nextLayerId = layer.id
 			yield {
 				type: 'MAP_SET',
 				...base,
 				layerId: layer.id,
+				source: pendingEvent.source,
 			}
 			break
 		}
@@ -588,11 +594,46 @@ async function* processPendingEvent(
 				}
 			}
 
-			yield {
+			log.info('got ROUND_ENDED_CHAIN %o', pendingEvent)
+			let action: SE.RoundEnded['action']
+			actionHandler: if (pendingEvent.events.LAYER_CHANGED) {
+				const layerChanged = pendingEvent.events.LAYER_CHANGED
+				let layer = L.parseRawLayerText(layerChanged.layer)
+				if (!layer || !L.isKnownLayer(layer)) {
+					const layersStatus = await state.hooks.fetchLayersStatus()
+					if (!layersStatus || !layersStatus.nextLayer) {
+						break actionHandler
+					}
+					layer = layersStatus.nextLayer
+				}
+				if (!layer) {
+					log.error(`Failed to parse layer text: ${layerChanged.layer}`)
+					break
+				} else {
+					action = {
+						type: 'AdminChangeLayer',
+						source: layerChanged.source,
+						layerId: layer.id,
+					}
+					state.nextLayerId = layer.id
+				}
+			} else if (pendingEvent.events.ADMIN_ENDED_MATCH) {
+				const endedMatch = pendingEvent.events.ADMIN_ENDED_MATCH
+				action = {
+					type: 'AdminEndMatch',
+					source: endedMatch.source,
+				}
+			}
+
+			const event: SE.RoundEnded = {
 				type: 'ROUND_ENDED',
 				outcome,
+				action: action,
 				...base,
 			}
+
+			yield event
+
 			break
 		}
 
@@ -880,7 +921,7 @@ async function* processPendingEvent(
 			yield {
 				type: 'ADMIN_BROADCAST',
 				message: pendingEvent.message,
-				from: pendingEvent.from,
+				source: pendingEvent.source,
 				...base,
 			}
 			break

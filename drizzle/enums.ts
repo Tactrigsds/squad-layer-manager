@@ -33,6 +33,7 @@ export const SERVER_EVENT_TYPE = z.enum([
 	'RCON_DISCONNECTED',
 	'SQUAD_DETAILS_CHANGED',
 	'SQUAD_RENAMED',
+	'LAYER_CHANGED',
 ])
 
 export type ServerEventType = z.infer<typeof SERVER_EVENT_TYPE>

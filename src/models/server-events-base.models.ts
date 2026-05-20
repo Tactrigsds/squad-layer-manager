@@ -1,4 +1,5 @@
 import type { ServerEventPlayerAssocType } from '$root/drizzle/enums'
+import type * as SM from '@/models/squad.models'
 
 export type Base = {
 	id: number
@@ -15,6 +16,9 @@ export type EventMeta = {
 	// json path to objects with squad details (at least squadId, teamId)
 	squads: string[]
 }
+
+export type ActionSource = SM.LogEvents.ActionSource
+// | { type: 'slm-user'; userId: USR.UserId }
 
 export function meta(opts?: Partial<EventMeta>) {
 	return {

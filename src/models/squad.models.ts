@@ -1,6 +1,7 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array'
 import { createLogMatcher, eventDef, type EventSchema, matchLog } from '@/lib/log-parsing'
+
 import * as Obj from '@/lib/object'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
 import { simpleUniqueStringMatch } from '@/lib/string'
@@ -662,65 +663,79 @@ export namespace RconEvents {
 export const RCON_EVENT_MATCHERS = RconEvents.matchers
 
 export namespace LogEvents {
+	export const ActionSourceSchema = z.discriminatedUnion('type', [
+		z.object({ type: z.literal('rcon') }),
+		z.object({ type: z.literal('player'), playerIds: PlayerIds.IdFields('username', 'eos', 'steam') }),
+	])
+	export type ActionSource = z.infer<typeof ActionSourceSchema>
+
+	// Regex fragment: appends two capture groups — (idsStr, username) for the player case.
+	// Use ACTION_SOURCE_CAPTURE_COUNT to offset subsequent group indices.
+	export const ACTION_SOURCE_CAPTURE_COUNT = 2
+	const ACTION_SOURCE_REGEX_SRC = String.raw`((?<rcon>RCON)|(?<player>player \d+\. \[Online IDs= (?<idsStr>[^\]]+)\]\s+(?<username>.+)))`
+
+	export function parseActionSource(matches: RegExpMatchArray): ActionSource {
+		const { rcon, idsStr, username } = matches.groups!
+		if (rcon) return { type: 'rcon' }
+		if (idsStr && username) {
+			return { type: 'player', playerIds: PlayerIds.parse({ username, idsStr }) }
+		}
+		throw new Error(`Invalid capture groups resolved from ACTION_SOURCE_REGEX_SRC: ${JSON.stringify(matches.groups ?? null)}`)
+	}
+
 	const logStartRegex = /^([[0-9.:-]+]\[[ 0-9]*]).+$/
 	export type ParseOutputEvent = AnyChainEvent | NonChainEvent
 
-	export async function* parse(chunk$: AsyncGenerator<string>, errors: Error[]) {
+	export async function* parseLogStream(chunk$: AsyncGenerator<string>, errors: Error[]) {
 		let foundLogStart: boolean = false
 		let lineBuffer: string[] = []
-		let chainState: { chainKey: keyof typeof LOG_CHAINS; chainID: number; events: Record<string, Event> } | null = null
-
-		function isChainComplete(): boolean {
-			if (!chainState) return false
-			const chainDef = LOG_CHAINS[chainState.chainKey]
-			return chainDef.every(item => isChainItemOptional(item) || getChainItemSchema(item).type in chainState!.events)
-		}
-
-		function finalizeChain(): AnyChainEvent | null {
-			if (!chainState) return null
-			if (isChainComplete()) {
-				const time = Object.values(chainState.events).reduce((acc, e) => acc < e.time ? acc : e.time, Infinity)
-				const result = { type: chainState.chainKey, events: chainState.events, time } as AnyChainEvent
-				chainState = null
-				return result
-			}
-			errors.push(new Error(`Incomplete chain ${chainState.chainKey} at end of stream`))
-			chainState = null
-			return null
-		}
+		let chainState: { chainID: number; events: Event[] } | null = null
 
 		function handleEvent(event: Event): ParseOutputEvent[] {
 			const results: (AnyChainEvent | NonChainEvent)[] = []
-
-			if (chainState && event.chainID !== chainState.chainID) {
-				const chain = finalizeChain()
-				if (chain) results.push(chain)
+			if (!chainState) {
+				chainState = { chainID: event.chainID, events: [] }
 			}
 
-			const membership = EVENT_CHAIN_MAP.get(event.type)
-
-			if (!membership) {
-				if (!chainState) results.push(event as NonChainEvent)
+			if (event.chainID === chainState.chainID) {
+				chainState.events.push(event)
 				return results
 			}
 
-			const { chainKey, position } = membership
-
-			if (position === 0) {
-				if (chainState) {
-					errors.push(new Error(`Chain ${chainKey} restarted before completion`))
-					chainState = null
+			let chainDef: ChainDef | undefined
+			let chainKey: keyof typeof LOG_CHAINS | undefined
+			for (const event of chainState.events) {
+				const membership = EVENT_CHAIN_MAP.get(event.type)
+				if (membership?.primary) {
+					chainDef = LOG_CHAINS[membership.chainKey]
+					chainKey = membership.chainKey
+					break
 				}
-				chainState = { chainKey, chainID: event.chainID, events: { [event.type]: event } }
-			} else if (!chainState) {
-				results.push(event as NonChainEvent)
-				return results
+			}
+
+			if (chainDef) {
+				const chainEvents: ChainEvents<typeof chainDef> = {}
+				const eventKeys = new Set(chainEventKeys(chainDef))
+				for (const event of chainState.events) {
+					if (!eventKeys.has(event.type)) continue
+					if (chainEvents[event.type]) {
+						errors.push(new Error(`Duplicate event type: ${event.type}`))
+						continue
+					}
+					chainEvents[event.type] = event
+				}
+				const chainEvent: AnyChainEvent = { type: chainKey!, events: chainEvents as any, time: chainState.events[0]!.time }
+				const chainErrors = validateChainEvent(chainEvent, chainDef)
+				if (chainErrors.length > 0) {
+					errors.push(...chainErrors)
+				} else {
+					results.push(chainEvent)
+				}
 			} else {
-				if (event.type in chainState.events) {
-					errors.push(new Error(`Duplicate event ${event.type} in chain ${chainKey}`))
-				}
-				chainState.events[event.type] = event
+				results.push(...(chainState.events as any[]))
 			}
+
+			chainState = { chainID: event.chainID, events: [event] }
 
 			return results
 		}
@@ -746,7 +761,7 @@ export namespace LogEvents {
 						yield null
 						continue
 					}
-					for (const result of handleEvent(event!)) yield result
+					yield* handleEvent(event!)
 					continue
 				}
 				foundLogStart = true
@@ -760,13 +775,8 @@ export namespace LogEvents {
 				errors.push(err)
 				yield null
 			} else if (event !== null) {
-				for (const result of handleEvent(event)) yield result
+				yield* handleEvent(event)
 			}
-		}
-
-		if (chainState) {
-			const chain = finalizeChain()
-			if (chain) yield chain
 		}
 	}
 
@@ -912,6 +922,27 @@ export namespace LogEvents {
 		},
 	})
 
+	export const AdminEndedMatchDef = eventDef('ADMIN_ENDED_MATCH', {
+		...BaseEventProperties,
+		source: ActionSourceSchema,
+	})
+
+	export type AdminEndedMatch = z.infer<typeof AdminEndedMatchDef['schema']>
+	export const AdminEndedMatchMatcher = createLogMatcher({
+		event: AdminEndedMatchDef,
+		regex: new RegExp(
+			String.raw`^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Match ended from ${ACTION_SOURCE_REGEX_SRC}`,
+		),
+		onMatch: (args) => {
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
+				source: parseActionSource(args),
+			}
+		},
+	})
+
 	export const PlayerConnectedDef = eventDef('PLAYER_CONNECTED', {
 		...BaseEventProperties,
 		playerIds: PlayerIds.IdFields('eos', 'playerController'),
@@ -1037,31 +1068,26 @@ export namespace LogEvents {
 	export const AdminBroadcastDef = eventDef('ADMIN_BROADCAST', {
 		...BaseEventProperties,
 		message: z.string(),
-		from: z.union([z.literal('RCON'), z.literal('unknown'), PlayerIds.Schema]),
+		source: ActionSourceSchema.optional(),
+
+		// deprecated
+		from: z.union([z.literal('RCON'), z.literal('unknown'), PlayerIds.Schema]).optional(),
 	})
 
 	export type AdminBroadcast = z.infer<typeof AdminBroadcastDef['schema']>
 	export const AdminBroadcastMatcher = createLogMatcher({
 		event: AdminBroadcastDef,
-		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Message broadcasted <([\s\S]+)> from (.+)/,
+		regex: new RegExp(
+			String.raw`^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Message broadcasted <([\s\S]+)> from ${ACTION_SOURCE_REGEX_SRC}`,
+		),
 		onMatch: (args) => {
-			let from: AdminBroadcast['from']
-			if (args[4] === 'RCON') {
-				from = 'RCON'
-			} else {
-				const match = args[4].trim().match(/player \d+\. \[Online IDs= ([^\]]+)\]  (.+)/)
-				if (match) {
-					from = PlayerIds.parse({ username: match[2], idsStr: match[1] })
-				} else {
-					from = 'unknown'
-				}
-			}
+			const source = parseActionSource(args)
 			return {
 				raw: args[0],
 				time: parseTimestamp(args[1]),
 				chainID: args[2],
 				message: args[3],
-				from,
+				source,
 			}
 		},
 	})
@@ -1070,12 +1096,16 @@ export namespace LogEvents {
 		...BaseEventProperties,
 		nextLayer: z.string().trim(),
 		nextFactions: z.string().trim().optional(),
+		source: ActionSourceSchema,
 	})
 
 	export type MapSet = z.infer<typeof MapSetDef['schema']>
 	export const MapSetMatcher = createLogMatcher({
 		event: MapSetDef,
-		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Set next layer to ([^\s]+)(?: ([^[]+))? from .+/,
+		regex: new RegExp(
+			String
+				.raw`^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Set next layer to ([^\s]+)(?: ([^[]+))? from ${ACTION_SOURCE_REGEX_SRC}`,
+		),
 		onMatch: (args) => {
 			return {
 				raw: args[0],
@@ -1083,6 +1113,30 @@ export namespace LogEvents {
 				chainID: args[2],
 				nextLayer: args[3],
 				nextFactions: args[4]?.trim(),
+				source: parseActionSource(args),
+			}
+		},
+	})
+
+	export const LayerChangedDef = eventDef('LAYER_CHANGED', {
+		...BaseEventProperties,
+		layer: z.string().trim(),
+		source: ActionSourceSchema,
+	})
+
+	export type LayerChanged = z.infer<typeof LayerChangedDef['schema']>
+	export const LayerChangedMatcher = createLogMatcher({
+		event: LayerChangedDef,
+		regex: new RegExp(String
+			.raw`^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Change layer to( [^\s]+)( [^\s]+)??( [^\s]+)? ?from ${ACTION_SOURCE_REGEX_SRC}`),
+		onMatch: (args) => {
+			const source = parseActionSource(args)
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
+				layer: `${args[3]} ${args[4] ?? ''} ${args[5] ?? ''}`.trim().replace(/\s+/g, ' '),
+				source,
 			}
 		},
 	})
@@ -1111,18 +1165,23 @@ export namespace LogEvents {
 	export const PlayerKickedDef = eventDef('PLAYER_KICKED', {
 		...BaseEventProperties,
 		playerIds: PlayerIds.IdFields('username', 'eos'),
+		source: ActionSourceSchema,
 	})
 
 	export type PlayerKicked = z.infer<typeof PlayerKickedDef['schema']>
 	export const PlayerKickedMatcher = createLogMatcher({
 		event: PlayerKickedDef,
-		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Kicked player \d+\. \[Online IDs=([^\]]+)\]\s+(.+) from .+/,
+		regex: new RegExp(
+			String
+				.raw`^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Kicked player \d+\. \[Online IDs=([^\]]+)\]\s+(.+) from ${ACTION_SOURCE_REGEX_SRC}`,
+		),
 		onMatch: (args) => {
 			return {
 				raw: args[0],
 				time: parseTimestamp(args[1]),
 				chainID: args[2],
 				playerIds: PlayerIds.parse({ username: args[4], idsStr: args[3] }),
+				source: parseActionSource(args),
 			}
 		},
 	})
@@ -1190,12 +1249,14 @@ export namespace LogEvents {
 		RoundDecidedWinnerMatcher,
 		RoundDecidedLoserMatcher,
 		RoundEndedMatcher,
+		AdminEndedMatchMatcher,
 		PlayerConnectedMatcher,
 		PlayerDisconnectedMatcher,
 		PlayerJoinSuccededMatcher,
 		PlayerDiedMatcher,
 		PlayerWoundedMatcher,
 		AdminBroadcastMatcher,
+		LayerChangedMatcher,
 		MapSetMatcher,
 		KickingPlayerMatcher,
 		PlayerKickedMatcher,
@@ -1216,6 +1277,7 @@ export namespace LogEvents {
 		| RoundDecidedWinner
 		| RoundDecidedLoser
 		| RoundEnded
+		| AdminEndedMatch
 		| RoundTeamOutcome
 		| NewGame
 		| PlayerConnected
@@ -1225,6 +1287,7 @@ export namespace LogEvents {
 		| PlayerWounded
 		| AdminBroadcast
 		| MapSet
+		| LayerChanged
 		| KickingPlayer
 		| PlayerKicked
 		| PlayerAddedToTeam
@@ -1240,19 +1303,25 @@ export namespace LogEvents {
 		return date.getTime()
 	}
 
-	type ChainDef = (EventSchema | { event: EventSchema; optional?: boolean })[]
+	type ChainItemOptions = { primary?: boolean; optional?: boolean }
+	const CHAIN_ITEM_OPTIONS_PROPS = ['primary', 'optional'] as const
+	type ChainItem = { event: EventSchema } & ChainItemOptions
+	type ChainDef = (EventSchema | ChainItem)[]
 
 	const LOG_CHAINS = {
 		PLAYER_CONNECTED_CHAIN: [
-			PlayerConnectedDef,
+			{ event: PlayerConnectedDef, primary: true },
 			PlayerJoinSuccededDef,
 			{ event: PlayerAddedToTeamDef, optional: true },
 		],
-		ROUND_ENDED_CHAIN: [DetermineMatchWinnerDef, { event: RoundDecidedWinnerDef, optional: true }, {
-			event: RoundDecidedLoserDef,
-			optional: true,
-		}],
-		PLAYER_KICKED_CHAIN: [KickingPlayerDef, PlayerKickedDef],
+		ROUND_ENDED_CHAIN: [
+			{ event: DetermineMatchWinnerDef, primary: true },
+			{ event: RoundDecidedWinnerDef, optional: true },
+			{ event: RoundDecidedLoserDef, optional: true },
+			{ event: AdminEndedMatchDef, optional: true },
+			{ event: LayerChangedDef, optional: true },
+		],
+		PLAYER_KICKED_CHAIN: [{ event: KickingPlayerDef, primary: true }, PlayerKickedDef],
 	}
 
 	type GetEventSchema<T> = T extends EventSchema ? T : T extends { event: infer E extends EventSchema } ? E : never
@@ -1270,16 +1339,34 @@ export namespace LogEvents {
 	function getChainItemSchema(item: ChainDef[number]): EventSchema {
 		return 'event' in item ? item.event : item
 	}
-	function isChainItemOptional(item: ChainDef[number]): boolean {
-		return 'event' in item && item.optional === true
+
+	function toChainItem(item: ChainDef[number]): ChainItem {
+		if ('event' in item) return item
+		return { event: item } as ChainItem
 	}
 
-	type ChainMembership = { chainKey: keyof typeof LOG_CHAINS; position: number }
+	function chainEventKeys(def: ChainDef): string[] {
+		return def.map(getChainItemSchema).map(item => item.type)
+	}
+
+	function validateChainEvent(event: AnyChainEvent, chainDef: ChainDef): Error[] {
+		const errors: Error[] = []
+		for (const _item of chainDef) {
+			const item = toChainItem(_item)
+			if (!item.optional && !(item.event.type in event.events)) {
+				errors.push(new Error(`Missing required event: ${item.event.type}`))
+			}
+		}
+		return errors
+	}
+
+	type ChainMembership = { chainKey: keyof typeof LOG_CHAINS } & ChainItemOptions
 	const EVENT_CHAIN_MAP: Map<string, ChainMembership> = new Map()
 	for (const chainKey of Object.keys(LOG_CHAINS) as (keyof typeof LOG_CHAINS)[]) {
 		const chainDef = LOG_CHAINS[chainKey]
 		for (let i = 0; i < chainDef.length; i++) {
-			EVENT_CHAIN_MAP.set(getChainItemSchema(chainDef[i]).type, { chainKey, position: i })
+			const item = toChainItem(chainDef[i])
+			EVENT_CHAIN_MAP.set(item.event.type, { chainKey, ...Obj.selectProps(item, CHAIN_ITEM_OPTIONS_PROPS) })
 		}
 	}
 }

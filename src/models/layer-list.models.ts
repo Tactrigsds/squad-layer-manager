@@ -163,6 +163,17 @@ export const CursorSchema = z.discriminatedUnion('type', [
 export type Cursor = z.infer<typeof CursorSchema>
 export type ItemRelativeCursor = Extract<Cursor, { type: 'item-relative' }>
 
+export type CursorOrIndex = Cursor | ItemIndex
+export function toIndex(list: List, cursorOrIndex: CursorOrIndex): ItemIndex {
+	if ('type' in cursorOrIndex) {
+		const index = resolveCursorIndex(list, cursorOrIndex as Cursor)
+		if (!index) throw new Error(`Cursor ${JSON.stringify(cursorOrIndex)} is out of bounds`)
+		return index
+	} else {
+		return cursorOrIndex as ItemIndex
+	}
+}
+
 // ============================================================================
 // List Schemas and Types
 // ============================================================================
@@ -445,7 +456,8 @@ export function addItemsDeterministic(list: List, source: Source, index: ItemInd
 	addItems(list, source, index, ...items)
 }
 
-export function addItems(list: List, source: Source, index: ItemIndex, ...items: NewItem[]) {
+export function addItems(list: List, source: Source, cursorOrIndex: CursorOrIndex, ...items: NewItem[]) {
+	let index = toIndex(list, cursorOrIndex)
 	index = truncateAddIndex(index, list)
 	const createdItems = items.map((item): Item => {
 		if (item.type === 'vote-list-item') {

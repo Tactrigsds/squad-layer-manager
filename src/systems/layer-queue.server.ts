@@ -172,6 +172,29 @@ export const setupInstance = C.spanOp(
 				}),
 			).subscribe()
 		}
+
+		{
+			ctx.server.event$.pipe(
+				Rx.filter(([ctx, event]) => event.type === 'ROUND_ENDED' && event.action?.type === 'AdminChangeLayer'),
+				C.durableSub('sync-admin-change-layer', { module }, async ([ctx, event]) => {
+					if (event.type !== 'ROUND_ENDED' || event.action?.type !== 'AdminChangeLayer') return
+					const action = event.action
+					await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
+						const serverState = await SquadServer.getServerState(ctx)
+						LL.addItems(
+							serverState.layerQueue,
+							{ type: event.action?.type === 'AdminChangeLayer' && event.action.source.type === 'player' ? 'gameserver' : 'unknown' },
+							{ type: 'start' },
+							{ type: 'single-list-item', layerId: action.layerId },
+						)
+						const serverStatePrev = Obj.deepClone(serverState)
+						await syncNextLayerInPlace(ctx, serverState, { skipDbWrite: true })
+						await VoteSys.syncVoteStateWithQueueStateInPlace(ctx, serverStatePrev.layerQueue, serverState.layerQueue)
+						await SquadServer.updateServerState(ctx, serverState, { type: 'system', event: 'admin-change-layer' })
+					})
+				}),
+			).subscribe()
+		}
 	},
 )
 
