@@ -18,7 +18,6 @@ export default defineConfig({
 			target: 'react',
 		}),
 		ViteEjsPlugin({
-			REACT_SCAN_ENABLED_OVERRIDE: ENV.REACT_SCAN_ENABLED_OVERRIDE,
 			NODE_ENV: ENV.NODE_ENV,
 		}),
 		react({
