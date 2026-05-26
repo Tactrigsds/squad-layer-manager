@@ -68,6 +68,9 @@ importers:
       pino-opentelemetry-transport:
         specifier: ^1.0.1
         version: 1.0.1(@opentelemetry/api@1.9.0)(pino@9.7.0)
+      sql-highlight:
+        specifier: ^6.1.0
+        version: 6.1.0
       ssh2:
         specifier: ^1.16.0
         version: 1.16.0
@@ -6278,6 +6281,10 @@ packages:
   split2@4.2.0:
     resolution: {integrity: sha512-UcjcJOWknrNkF6PLX83qcHM6KHgVKNkV62Y8a5uYDVv9ydGQVwAHMKqHdJje1VTWpljG0WYpCDhrCdAOYH4TWg==}
     engines: {node: '>= 10.x'}
+
+  sql-highlight@6.1.0:
+    resolution: {integrity: sha512-ed7OK4e9ywpE7pgRMkMQmZDPKSVdm0oX5IEtZiKnFucSF0zu6c80GZBe38UqHuVhTWJ9xsKgSMjCG2bml86KvA==}
+    engines: {node: '>=14'}
 
   sql.js@1.13.0:
     resolution: {integrity: sha512-RJbVP1HRDlUUXahJ7VMTcu9Rm1Nzw+EBpoPr94vnbD4LwR715F3CcxE2G2k45PewcaZ57pjetYa+LoSJLAASgA==}
@@ -12997,6 +13004,8 @@ snapshots:
   split-ca@1.0.1: {}
 
   split2@4.2.0: {}
+
+  sql-highlight@6.1.0: {}
 
   sql.js@1.13.0: {}
 

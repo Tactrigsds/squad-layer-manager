@@ -1,5 +1,6 @@
 import type * as CS from '@/models/context-shared'
 import { initModule } from '@/server/logger'
+import { highlight } from 'sql-highlight'
 
 import type { MySql2Database } from 'drizzle-orm/mysql2'
 import { drizzle } from 'drizzle-orm/mysql2'
@@ -40,7 +41,7 @@ export async function setup() {
 	db = drizzle(pool, {
 		logger: {
 			logQuery: (query: string, params: unknown[]) => {
-				log.debug({ params }, '%s', query)
+				log.debug({ params }, '%s', highlight(query))
 			},
 		},
 	})
@@ -48,7 +49,7 @@ export async function setup() {
 	dbRedactParams = drizzle(pool, {
 		logger: {
 			logQuery: (query: string, params: unknown[]) => {
-				log.debug('%s', query)
+				log.debug('%s', highlight(query))
 			},
 		},
 	})
