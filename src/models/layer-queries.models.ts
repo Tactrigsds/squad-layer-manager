@@ -30,35 +30,29 @@ export type Constraint =
 	| {
 		type: 'filter-anon'
 		filter: F.FilterNode
-		filterResults: true
-		indicateMatches: false
-		invert: false
+		filterApplState: 'regular'
+		showIndicator: 'disabled'
 		id: string
 	}
 	| {
 		type: 'filter-entity'
 		filterId: F.FilterEntityId
-		indicateMatches: boolean
-		// only applies to filtering results
-		invert: boolean
-		filterResults: boolean
+		filterApplState: FilterApplicationState
+		showIndicator: IndicatorState
 		id: string
 	}
 	| {
 		type: 'do-not-repeat'
 		rule: RepeatRule
-		indicateMatches: true
-		// always inverted when filtering results
-		invert: boolean
-		filterResults: boolean
+		filterApplState: FilterApplicationState
+		showIndicator: 'regular'
 		id: string
 	}
 	| {
 		type: 'filter-menu-items'
 		items: FilterMenuItem[]
-		filterResults: true
-		indicateMatches: false
-		invert: false
+		filterApplState: 'regular'
+		showIndicator: 'disabled'
 		id: string
 	}
 
@@ -170,6 +164,9 @@ export type LayerItemStatusesInput = BaseQueryInput
 
 export type LayerItemStatuses = {
 	present: Set<L.LayerId>
+
+	// descriptors will only be present for an item if the item has a repeat rule violation, or a filter which evaluates to true.
+	// This means that, for example, if constraint in question has a filterApplState of 'inverted', none of the returned items will contain descriptors for that constraint. This will need to be changed if we want to return more complex details for evaluated filters
 	matchDescriptors: Map<ItemId, MatchDescriptor[]>
 }
 
@@ -264,6 +261,7 @@ export function getEditFilterPageBaseInput(filter: F.FilterNode): BaseQueryInput
 	return { constraints: [CB.filterAnon('edited-filter', filter)] }
 }
 
+// describes how a repeat rules has been violated. an item can possibly violate multiple repeat rules.
 export type RepeatMatchDescriptor = {
 	type: 'repeat-rule'
 	constraintId: string
@@ -280,10 +278,12 @@ export type RepeatMatchDescriptor = {
 	repeatOffset: number
 }
 
+// shows whether a filter entity has been matched or not
 export type FilterEntityMatchDescriptor = {
 	type: 'filter-entity'
 	constraintId: string
 	itemId?: ItemId
+	layerId: L.LayerId
 }
 export type MatchDescriptor = RepeatMatchDescriptor | FilterEntityMatchDescriptor
 
@@ -602,8 +602,11 @@ export type ExtraQueryFiltersActions = {
 	remove: (filterId: F.FilterEntityId) => void
 }
 
-export type ApplyAs = 'regular' | 'inverted'
-export type FilterApplication = { filterId: F.FilterEntityId; applyAs: ApplyAs }
+export const FILTER_APPLICATION = z.enum(['regular', 'inverted', 'disabled'])
+export type FilterApplicationState = z.infer<typeof FILTER_APPLICATION>
+export type FilterApplication = { filterId: F.FilterEntityId; applyAs: FilterApplicationState }
+export const INDICATOR_STATE = z.enum(['regular', 'inverted', 'disabled', 'both'])
+export type IndicatorState = z.infer<typeof INDICATOR_STATE>
 
 export type ExtraQueryFiltersState = {
 	extraFilters: Set<F.FilterEntityId>

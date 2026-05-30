@@ -11,14 +11,12 @@ import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
-
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import type * as WorkerTypes from '@/systems/layer-queries.worker'
 import * as React from 'react'
-
 // oxlint-disable-next-line import/default
 import LQWorker from '@/systems/layer-queries.worker?worker'
 import * as QD from '@/systems/queue-dashboard.client'
@@ -111,7 +109,6 @@ export type ConstraintRowDetails = {
 	values: boolean[]
 	matchDescriptors: LQY.MatchDescriptor[]
 	queriedConstraints: LQY.Constraint[]
-	matchedConstraintIds: string[]
 	matchedConstraintDescriptors: LQY.MatchDescriptor[]
 }
 export type RowData = L.KnownLayer & Record<string, any> & { 'constraints': ConstraintRowDetails; 'isRowDisabled': boolean }
@@ -132,17 +129,12 @@ function layerToRowData(
 		? layer.matchDescriptors
 		: layer.matchDescriptors ?? []
 
-	const matchedConstraintIds = queriedConstraints.flatMap((c, i) => {
-		if (constraintValues[i]) return [c.id]
-		return []
-	})
 	const matchedConstraintDescriptors = matchDescriptors
 
 	const constraints: ConstraintRowDetails = {
 		values: constraintValues,
 		matchDescriptors,
 		queriedConstraints,
-		matchedConstraintIds,
 		matchedConstraintDescriptors,
 	}
 
@@ -283,7 +275,7 @@ export function getQueryLayersInput(baseInput: LQY.BaseQueryInput, _opts?: Query
 		baseInput = {
 			...baseInput,
 			constraints: [
-				...(baseInput.constraints?.filter(c => !c.filterResults) ?? []),
+				...(baseInput.constraints?.filter(c => !c.filterApplState) ?? []),
 				CB.filterAnon('show-selected', filter),
 			],
 		}
@@ -342,6 +334,7 @@ export function useLayerItemStatusConstraints() {
 		},
 	)
 }
+
 function filterAndReportInvalidDescriptors(
 	allConstraints: LQY.Constraint[],
 	matchDescriptors: LQY.MatchDescriptor[] | undefined,

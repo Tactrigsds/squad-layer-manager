@@ -15,10 +15,10 @@ import { FilterEntityLink } from './filter-entity-select'
 import { Separator } from './ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
-export type ConstraintMatchesIndicator = {
+export type ConstraintEvalTooltipProps = {
 	queriedConstraints: LQY.Constraint[]
-	matchingConstraintIds: string[]
 	matchDescriptors?: LQY.MatchDescriptor[]
+	// constraintId -> filter application state
 	padEmpty?: boolean
 	className?: string
 	layerItem?: LQY.LayerItem
@@ -29,11 +29,11 @@ export type ConstraintMatchesIndicator = {
 	height?: number
 }
 
-export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
+export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 	const filters = FilterEntityClient.useFilterEntities()
 	const height = props.height ?? 24
 	const iconSize = height * 0.75
-
+	const layerId = props.layerId ?? props.layerItem?.layerId
 	const itemId = props.layerItem && LQY.resolveId(props.layerItem)
 	const onMouseOver = () => {
 		LQYClient.Store.getState().setHoveredConstraintItemId(itemId ?? null)
@@ -48,8 +48,16 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 	const renderedRepeats: Extract<LQY.ViewableConstraint, { type: 'do-not-repeat' }>[] = []
 	const renderedFilters: [string, React.ReactNode][] = []
 	for (const constraint of props.queriedConstraints) {
-		if (!constraint.indicateMatches) continue
-		const matched = props.matchingConstraintIds.includes(constraint.id)
+		if (constraint.type === 'filter-anon' || constraint.type === 'filter-menu-items') continue
+		const matched = props.matchDescriptors?.some(desc => {
+			if (desc.constraintId !== constraint.id) return false
+			if (desc.itemId && desc.itemId !== itemId) return false
+			if (desc.type === 'filter-entity' && layerId && L.layersEqual(desc.layerId, layerId)) return true
+			return false
+		})
+		// const indication = constraint.
+		if (constraint.showIndicator === 'disabled') continue
+		if (constraint.showIndicator === 'regular' && !matched || constraint.showIndicator === 'inverted' && matched) continue
 		if (constraint.type === 'do-not-repeat') {
 			if (!matched) continue
 			renderedRepeats.push(constraint)

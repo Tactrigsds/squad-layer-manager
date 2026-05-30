@@ -127,32 +127,30 @@ export const setupInstance = C.spanOp(
 		}
 
 		// -------- when SLM is not able to set a layer on the server, notify admins.
-		ctx.cleanup.push(
-			ctx.layerQueue.unexpectedNextLayerSet$
-				.pipe(
-					Rx.switchMap((unexpectedNextLayer) => {
-						if (unexpectedNextLayer) {
-							return Rx.interval(HumanTime.parse('2m')).pipe(
-								Rx.startWith(0),
-								Rx.map(() => unexpectedNextLayer),
-							)
-						}
-						return Rx.EMPTY
-					}),
-					C.durableSub('notify-unexpected-next-layer', { module }, async (unexpectedNextlayer) => {
-						const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-						const serverState = await SquadServer.getServerState(ctx)
-						const expectedNextLayer = LL.getNextLayerId(serverState.layerQueue)!
-						if (!expectedNextLayer) return
-						const expectedLayerName = DH.toFullLayerNameFromId(expectedNextLayer)
-						const actualLayerName = DH.toFullLayerNameFromId(unexpectedNextlayer)
-						await SquadRcon.warnAllAdmins(
-							ctx,
-							`Current next layer on the server is out-of-sync with queue. Got ${actualLayerName}, but expected ${expectedLayerName}`,
+		ctx.layerQueue.unexpectedNextLayerSet$
+			.pipe(
+				Rx.switchMap((unexpectedNextLayer) => {
+					if (unexpectedNextLayer) {
+						return Rx.interval(HumanTime.parse('2m')).pipe(
+							Rx.startWith(0),
+							Rx.map(() => unexpectedNextLayer),
 						)
-					}),
-				).subscribe(),
-		)
+					}
+					return Rx.EMPTY
+				}),
+				C.durableSub('notify-unexpected-next-layer', { module }, async (unexpectedNextlayer) => {
+					const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
+					const serverState = await SquadServer.getServerState(ctx)
+					const expectedNextLayer = LL.getNextLayerId(serverState.layerQueue)!
+					if (!expectedNextLayer) return
+					const expectedLayerName = DH.toFullLayerNameFromId(expectedNextLayer)
+					const actualLayerName = DH.toFullLayerNameFromId(unexpectedNextlayer)
+					await SquadRcon.warnAllAdmins(
+						ctx,
+						`Current next layer on the server is out-of-sync with queue. Got ${actualLayerName}, but expected ${expectedLayerName}`,
+					)
+				}),
+			).subscribe()
 
 		// -------- make sure next layer set is synced with queue --------
 		{

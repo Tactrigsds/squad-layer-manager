@@ -151,7 +151,6 @@ export function initLayerTable(
 	}
 	const initialLayerTable: LayerTable = {
 		colConfig: input.colConfig,
-
 		sort: input.sort,
 		setSort(update) {
 			const updated = typeof update === 'function' ? update(get().sort) : update

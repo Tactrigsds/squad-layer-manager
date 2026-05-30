@@ -19,7 +19,7 @@ import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as QD from '@/systems/queue-dashboard.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import { ConstraintMatchesIndicator } from './constraint-matches-indicator'
+import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 
 import { Alert, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
@@ -200,8 +200,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 																matchDescriptors={constraints?.matchDescriptors}
 															/>
 															{constraints && (
-																<ConstraintMatchesIndicator
-																	matchingConstraintIds={constraints.matchedConstraintIds}
+																<ConstraintEvalTooltip
 																	matchDescriptors={constraints.matchDescriptors}
 																	queriedConstraints={constraints.queriedConstraints}
 																	itemParity={teamParity}

@@ -5,42 +5,37 @@ export const filterAnon = (id: string, filter: F.FilterNode): LQY.Constraint => 
 	type: 'filter-anon',
 	id,
 	filter,
-	filterResults: true,
-	indicateMatches: false,
-	invert: false,
+	filterApplState: 'regular',
+	showIndicator: 'disabled',
 })
 
-export const filterEntity = (idPrefix: string, filterId: F.FilterEntityId, opts?: {
-	indicateMatches?: boolean
-	invert?: boolean
-	filterResults?: boolean
+export const filterEntity = (id: string, filterId: F.FilterEntityId, opts?: {
+	showIndicator?: LQY.IndicatorState
+	filterApplState?: LQY.FilterApplicationState
 }): LQY.Constraint => ({
 	type: 'filter-entity',
-	id: idPrefix + ':' + filterId,
+	id,
 	filterId,
-	indicateMatches: opts?.indicateMatches ?? true,
-	filterResults: opts?.filterResults ?? true,
-	invert: opts?.invert ?? false,
+	showIndicator: opts?.showIndicator ?? 'disabled',
+	filterApplState: opts?.filterApplState ?? 'regular',
 })
 
 export const repeatRule = (
-	idPrefix: string,
+	id: string,
 	rule: LQY.RepeatRule,
-	opts?: { filterResults?: boolean; invert?: boolean },
+	opts?: { filterApplState?: LQY.FilterApplicationState },
 ): LQY.Constraint => ({
 	type: 'do-not-repeat',
-	id: idPrefix + ':' + (rule.label ?? rule.field),
+	id,
 	rule,
-	indicateMatches: true,
-	filterResults: opts?.filterResults ?? true,
-	invert: opts?.invert ?? true,
+	showIndicator: 'regular',
+	filterApplState: opts?.filterApplState ?? 'regular',
 })
 
 export const filterMenuItems = (id: string, items: LQY.FilterMenuItem[]): Extract<LQY.Constraint, { type: 'filter-menu-items' }> => ({
 	type: 'filter-menu-items',
 	id,
 	items,
-	filterResults: true,
-	indicateMatches: false,
-	invert: false,
+	filterApplState: 'regular',
+	showIndicator: 'disabled',
 })

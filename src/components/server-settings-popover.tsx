@@ -20,7 +20,6 @@ import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as ServerSettingsClient from '@/systems/server-settings.client'
-
 import * as UPClient from '@/systems/user-presence.client'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
@@ -32,6 +31,7 @@ import ComboBox from './combo-box/combo-box.tsx'
 import { ConstraintViolationIcon } from './constraint-matches-indicator.tsx'
 import FilterEntitySelect from './filter-entity-select.tsx'
 import { Alert, AlertDescription } from './ui/alert.tsx'
+import { Checkbox } from './ui/checkbox.tsx'
 import { Input } from './ui/input.tsx'
 import TabsList from './ui/tabs-list.tsx'
 import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
@@ -90,7 +90,7 @@ export default function ServerSettingsPopover(
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
 			<PopoverContent
-				className="w-[800px] flex flex-col space-y-4 p-6"
+				className="w-200 flex flex-col space-y-4 p-6"
 				side="left"
 				align="start"
 			>
@@ -166,7 +166,7 @@ export default function ServerSettingsPopover(
 							const saved = await ServerSettingsClient.Store.getState().save()
 							if (saved) _setOpen(false)
 						}}
-						className="min-w-[120px]"
+						className="min-w-30"
 					>
 						<Spinner className="invisible data-[saving=true]:visible" data-saving={saving} />
 						Save Changes
@@ -195,16 +195,17 @@ function PoolFiltersConfigurationPanel({
 	const add = (filterId: F.FilterEntityId | null) => {
 		if (filterId === null) return
 		const state = ServerSettingsClient.Store.getState()
-		const newFilters: SS.PoolFilterConfig[] = [...filterConfigs, { filterId, applyAs: SS.DEFAULT_POOL_FILTER_APPLY_AS }]
+		const newFilters: SS.PoolFilterConfig[] = [...filterConfigs, {
+			filterId,
+			defaultApplyDuringLayerSelection: SS.DEFAULT_POOL_FILTER_APPLY_AS,
+		}]
 		state.set({ path: filtersPath, value: newFilters })
 	}
 
 	return (
 		<div className="space-y-3">
 			<div className="flex items-center justify-between">
-				<span className="flex items-center gap-2">
-					<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Filters:</h4>
-				</span>
+				<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Filters</h4>
 				<PermissionDeniedTooltip denied={writeSettingsDenied}>
 					<FilterEntitySelect
 						title="New Pool Filter"
@@ -221,67 +222,130 @@ function PoolFiltersConfigurationPanel({
 					</FilterEntitySelect>
 				</PermissionDeniedTooltip>
 			</div>
-			<div className="space-y-2">
-				{filterConfigs.map((filterConfig, i) => {
-					const filterId = filterConfig.filterId
-					const filterPath = [...filtersPath, i]
-					const filter = filterEntities.get(filterId)
-					if (!filter) return
-					const onSelect = (newFilterId: string | null) => {
-						if (newFilterId === null || newFilterId === filterId) {
-							return
+			<div className="border rounded-md p-3">
+				<div
+					className="grid gap-2 items-center"
+					style={{ gridTemplateColumns: 'minmax(0, auto) max-content max-content max-content max-content' }}
+				>
+					{/* Header Row */}
+					<div className="contents text-sm font-medium text-muted-foreground">
+						<div>Filter</div>
+						<div>Layer Select Default State</div>
+						<div>Indicate Matches</div>
+						<div>Warn</div>
+						<div></div>
+					</div>
+					{/* Filter Rows */}
+					{filterConfigs.map((filterConfig, i) => {
+						const filterId = filterConfig.filterId
+						const filterPath = [...filtersPath, i]
+						const filter = filterEntities.get(filterId)
+						if (!filter) return
+						const onSelect = (newFilterId: string | null) => {
+							if (newFilterId === null || newFilterId === filterId) {
+								return
+							}
+							const state = ServerSettingsClient.Store.getState()
+							const newValue: SS.PoolFilterConfig = {
+								filterId: newFilterId,
+								defaultApplyDuringLayerSelection: SS.DEFAULT_POOL_FILTER_APPLY_AS,
+							}
+							state.set({ path: filterPath, value: newValue })
 						}
-						const state = ServerSettingsClient.Store.getState()
-						const newValue: SS.PoolFilterConfig = { filterId: newFilterId, applyAs: SS.DEFAULT_POOL_FILTER_APPLY_AS }
-						state.set({ path: filterPath, value: newValue })
-					}
-					const deleteFilter = () => {
-						const state = ServerSettingsClient.Store.getState()
-						const filterConfigs = SS.derefSettingsValue(state.edited, filtersPath) as SS.PoolFilterConfig[]
-						state.set({ path: filtersPath, value: filterConfigs.filter((c) => c.filterId !== filterConfig.filterId) })
-					}
+						const deleteFilter = () => {
+							const state = ServerSettingsClient.Store.getState()
+							const filterConfigs = SS.derefSettingsValue(state.edited, filtersPath) as SS.PoolFilterConfig[]
+							state.set({ path: filtersPath, value: filterConfigs.filter((c) => c.filterId !== filterConfig.filterId) })
+						}
+						const excludedFilterIds = filterConfigs.flatMap((c) => filterId !== c.filterId ? [c.filterId] : [])
+						const defaultApplyDescriptions: { [k in SS.PoolFilterDefaultApplyAsSetting]: string } = {
+							regular: 'Regular',
+							inverted: 'Inverted',
+							disabled: 'Disabled',
+							hidden: 'Hidden',
+						}
+						const indicateDescriptions: { [k in LQY.IndicatorState]: string } = {
+							regular: 'Matches',
+							inverted: 'Non-matches',
+							disabled: 'Disabled',
+							both: 'Both',
+						}
+						const warnDescriptions: { [k in SS.PoolFilterApplyAs]: string } = {
+							regular: 'Warn when a layer matching this filter is queued or about to be played',
+							inverted: 'Warn when a layer NOT matching this filter is queued or about to be played',
+							disabled: 'No warning',
+						}
+						const canWarn = !!filterConfig.showIndicator && filterConfig.showIndicator !== 'disabled'
+						const handleIndicateMatchesChanged = (_newValue: LQY.IndicatorState | undefined) => {
+							const newValue = _newValue ?? 'disabled'
+							const state = ServerSettingsClient.Store.getState()
+							const newConfig: SS.PoolFilterConfig = {
+								...filterConfig,
+								showIndicator: newValue,
+								warn: newValue === 'disabled' ? undefined : filterConfig.warn,
+							}
+							state.set({ path: filterPath, value: newConfig })
+						}
+						const handleDefaultApplyChanged = (_newValue: SS.PoolFilterDefaultApplyAsSetting | undefined) => {
+							const newValue = _newValue ?? 'disabled'
+							const state = ServerSettingsClient.Store.getState()
+							state.set({ path: [...filterPath, 'defaultApplyDuringLayerSelection'], value: newValue })
+						}
+						const handleWarnChanged = (newWarn: SS.PoolFilterApplyAs) => {
+							const state = ServerSettingsClient.Store.getState()
+							state.set({ path: [...filterPath, 'warn'], value: newWarn })
+						}
 
-					const excludedFilterIds = filterConfigs.flatMap((c) => filterId !== c.filterId ? [c.filterId] : [])
-
-					const descriptions: { [k in SS.ConstraintApplyAs]: string } = {
-						regular: 'When selecting layers, filter is applied by default',
-						inverted: 'When selecting layers, filter is applied and inverted by default',
-						disabled: 'When selecting layers, filter is disabled by default',
-					}
-
-					const handleApplyAsChanged = (newApplyAs: SS.ConstraintApplyAs) => {
-						const state = ServerSettingsClient.Store.getState()
-						state.set({ path: [...filterPath, 'applyAs'], value: newApplyAs })
-					}
-
-					return (
-						<div className="flex items-center space-x-2 bg-card" key={filterId}>
-							<FilterEntitySelect
-								enabled={!writeSettingsDenied}
-								className="grow"
-								title="Pool Filter"
-								filterId={filterId}
-								onSelect={onSelect}
-								allowToggle={false}
-								allowEmpty={false}
-								excludedFilterIds={excludedFilterIds}
-							/>
-							<TriStateCheckbox
-								checked={filterConfig.applyAs}
-								onCheckedChange={handleApplyAsChanged}
-								title={descriptions[filterConfig.applyAs]}
-							/>
-							<Button
-								disabled={!!writeSettingsDenied}
-								size="icon"
-								variant="outline"
-								onClick={() => deleteFilter()}
-							>
-								<Icons.Minus className="h-4 w-4" />
-							</Button>
-						</div>
-					)
-				})}
+						return (
+							<React.Fragment key={filterId}>
+								<FilterEntitySelect
+									enabled={!writeSettingsDenied}
+									title="Pool Filter"
+									filterId={filterId}
+									onSelect={onSelect}
+									allowToggle={false}
+									allowEmpty={false}
+									excludedFilterIds={excludedFilterIds}
+								/>
+								<ComboBox
+									title="Default Apply"
+									options={SS.POOL_FILTER_DEFAULT_APPLY_AS_SETTING.options.map(v => ({ value: v, label: defaultApplyDescriptions[v] }))}
+									value={filterConfig.defaultApplyDuringLayerSelection ?? 'disabled'}
+									allowEmpty={false}
+									onSelect={handleDefaultApplyChanged}
+								/>
+								<ComboBox
+									title="Indicator State"
+									options={LQY.INDICATOR_STATE.options.map(v => ({ value: v, label: indicateDescriptions[v] }))}
+									value={filterConfig.showIndicator ?? 'disabled' as const}
+									allowEmpty={false}
+									onSelect={handleIndicateMatchesChanged}
+								/>
+								<div className="border border-input rounded-md flex items-center justify-center">
+									<TriStateCheckbox
+										checked={filterConfig.warn}
+										onCheckedChange={handleWarnChanged}
+										disabled={!canWarn}
+										title={canWarn ? warnDescriptions[filterConfig.warn ?? 'disabled'] : 'Enable "Indicate" first'}
+									/>
+								</div>
+								<div className="contents">
+									<PermissionDeniedTooltip denied={writeSettingsDenied}>
+										<Button
+											disabled={!!writeSettingsDenied}
+											size="icon"
+											variant="outline"
+											onClick={deleteFilter}
+											className="h-8 w-8"
+										>
+											<Icons.Minus className="h-4 w-4" />
+										</Button>
+									</PermissionDeniedTooltip>
+								</div>
+							</React.Fragment>
+						)
+					})}
+				</div>
 			</div>
 		</div>
 	)
@@ -303,18 +367,19 @@ function RepeatRuleRow(props: {
 			field: devValidate(SS.SettingsPathSchema, [...rule, 'field']),
 			within: devValidate(SS.SettingsPathSchema, [...rule, 'within']),
 			targetValues: devValidate(SS.SettingsPathSchema, [...rule, 'targetValues']),
+			warn: devValidate(SS.SettingsPathSchema, [...rule, 'warn']),
 		}
 	}, [poolId, index])
 
-	const selectRule = React.useCallback(
+	const selectRuleConfig = React.useCallback(
 		(s: ServerSettingsClient.EditSettingsStore) => {
-			return (SS.derefSettingsValue(s.edited, paths.rules) as LQY.RepeatRule[])[index]
+			return (SS.derefSettingsValue(s.edited, paths.rules) as SS.PoolRepeatRuleConfig[])[index]
 		},
 		[paths.rules, index],
 	)
 
 	const writeSettingsDenied = RbacClient.usePermsCheck(RBAC.perm('settings:write'))
-	const rule = Zus.useStore(ServerSettingsClient.Store, selectRule)
+	const rule = Zus.useStore(ServerSettingsClient.Store, selectRuleConfig)
 
 	const writeLabel = React.useCallback((label: string) => {
 		const state = ServerSettingsClient.Store.getState()
@@ -347,6 +412,11 @@ function RepeatRuleRow(props: {
 		const originalValues = SS.derefSettingsValue(state.edited, paths.targetValues) as string[] | undefined
 		const targetValues = typeof update === 'function' ? update(originalValues ?? []) : update
 		state.set({ path: paths.targetValues, value: targetValues.length === 0 ? undefined : targetValues })
+	}
+
+	const setWarn = (warn: boolean) => {
+		const state = ServerSettingsClient.Store.getState()
+		state.set({ path: paths.warn, value: warn || undefined })
 	}
 
 	const deleteRule = () => {
@@ -433,6 +503,13 @@ function RepeatRuleRow(props: {
 				/>
 			</div>
 			<div className="contents">
+				<Checkbox
+					checked={!!rule.warn}
+					disabled={!!writeSettingsDenied}
+					onCheckedChange={(checked) => setWarn(checked === true)}
+				/>
+			</div>
+			<div className="contents">
 				<PermissionDeniedTooltip denied={writeSettingsDenied}>
 					<Button
 						size="icon"
@@ -499,7 +576,7 @@ function PoolRepeatRulesConfigurationPanel(props: {
 			<div className="border rounded-md p-3">
 				<div
 					className="grid gap-2 items-center"
-					style={{ gridTemplateColumns: '2fr 2fr 60px 4fr max-content' }}
+					style={{ gridTemplateColumns: '2fr 2fr 60px 4fr max-content max-content' }}
 				>
 					{/* Header Row */}
 					<div className="contents text-sm font-medium text-muted-foreground">
@@ -507,6 +584,7 @@ function PoolRepeatRulesConfigurationPanel(props: {
 						<div>Field</div>
 						<div>Within</div>
 						<div>Target Values</div>
+						<div>Warn</div>
 						<div></div>
 					</div>
 					{/* Rules */}

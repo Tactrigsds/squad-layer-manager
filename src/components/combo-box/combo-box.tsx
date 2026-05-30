@@ -95,9 +95,9 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 							ref={btnRef}
 							variant="outline"
 							role="combobox"
-							className={cn('w-[min] justify-between', props.className)}
+							className={cn('w-[min] justify-between overflow-hidden', props.className)}
 						>
-							<span>{selectedOptionDisplay}</span>
+							<span className="truncate min-w-0">{selectedOptionDisplay}</span>
 							<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 						</Button>
 					)}

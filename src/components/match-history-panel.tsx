@@ -27,7 +27,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
 import BalanceTriggerAlert from './balance-trigger-alert'
-import { ConstraintMatchesIndicator } from './constraint-matches-indicator'
+import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 import LayerSourceDisplay from './layer-source-display'
 import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
@@ -454,9 +454,8 @@ function MatchHistoryRow({
 	}, [effectiveBalanceTriggerEvents, entry])
 
 	const violationDisplayElt = statusData && (
-		<ConstraintMatchesIndicator
+		<ConstraintEvalTooltip
 			queriedConstraints={statusData.queriedConstraints}
-			matchingConstraintIds={statusData.matchingConstraintIds}
 			matchDescriptors={statusData.matchingDescriptors}
 			padEmpty={true}
 			side="right"

@@ -1,13 +1,11 @@
 import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial'
 
 export type { PostProcessedLayer } from '@/systems/layer-queries.shared'
-
 import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
 import type * as DH from '@/lib/display-helpers'
 import type * as FRM from '@/lib/frame'
 import * as Gen from '@/lib/generator'
 import { createId } from '@/lib/id'
-
 import type * as L from '@/models/layer'
 import type * as LC from '@/models/layer-columns'
 import type * as LL from '@/models/layer-list.models'
@@ -20,7 +18,6 @@ import * as ServerSettingsClient from '@/systems/server-settings.client'
 import * as Im from 'immer'
 
 import { frameManager } from './frame-manager'
-
 export type SelectType = 'generic' | 'indexed'
 export type Key = FRM.InstanceKey<Types>
 export type KeyProp = FRM.KeyProp<Types>
@@ -237,6 +234,7 @@ const setup: Frame['setup'] = (args) => {
 			},
 		} satisfies Primary,
 	)
+
 	AppliedFiltersPrt.initAppliedFiltersStore({ ...args, input: { poolDefaultDisabled: false } })
 	PoolCheckboxesPrt.initNewPoolCheckboxes({ ...args, input: { defaultState: { dnr: 'inverted' } } })
 }

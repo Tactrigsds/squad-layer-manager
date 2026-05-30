@@ -29,9 +29,15 @@ export default function PoolCheckboxes(props: { frameKey: PoolCheckBoxesPrt.Key 
 	)
 }
 
-function invertApplyAs(applyAs: SS.ConstraintApplyAs): SS.ConstraintApplyAs {
-	if (applyAs === 'inverted') return 'regular'
-	if (applyAs === 'regular') return 'inverted'
-	if (applyAs === 'disabled') return 'disabled'
-	assertNever(applyAs)
+function invertApplyAs(applyAs: SS.PoolFilterApplyAs): SS.PoolFilterApplyAs {
+	switch (applyAs) {
+		case 'inverted':
+			return 'regular'
+		case 'regular':
+			return 'inverted'
+		case 'disabled':
+			return 'disabled'
+		default:
+			assertNever(applyAs)
+	}
 }

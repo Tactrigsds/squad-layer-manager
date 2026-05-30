@@ -14,6 +14,7 @@ export type ApplyAs = 'regular' | 'inverted' | 'disabled'
 export type Store = {
 	appliedFilters: Map<F.FilterEntityId, ApplyAs>
 	setAppliedFilterState: (filterId: F.FilterEntityId, active: ApplyAs) => void
+	indicatedFilters: Map<F.FilterEntityId, LQY.IndicatorState>
 	disableAllAppliedFilters: () => void
 }
 
@@ -42,9 +43,14 @@ export function initAppliedFiltersStore(
 				}),
 		)
 	}
-	const states = getInitialFilterStates(args.input.poolDefaultDisabled)
+	const { appliedFilters, indicatedFilters } = getInitialFilterStates(args.input.poolDefaultDisabled)
 	if (args.sub.closed) return
-	set({ appliedFilters: states, setAppliedFilterState: setFilterState, disableAllAppliedFilters: disableAll })
+	set({
+		appliedFilters,
+		indicatedFilters,
+		setAppliedFilterState: setFilterState,
+		disableAllAppliedFilters: disableAll,
+	})
 
 	const unsub = QD.ExtraFiltersStore.subscribe(extraFiltersState => {
 		set(state => ({
@@ -56,36 +62,38 @@ export function initAppliedFiltersStore(
 }
 
 function getInitialFilterStates(poolDefaultDisabled: boolean) {
-	const initialState: Store['appliedFilters'] = new Map()
+	const appliedFilters: Store['appliedFilters'] = new Map()
+	const indicatedFilters: Store['indicatedFilters'] = new Map()
 	const extraFilters = QD.ExtraFiltersStore.getState().extraFilters
 	for (const filterid of extraFilters) {
-		initialState.set(filterid, 'disabled')
+		appliedFilters.set(filterid, 'disabled')
 	}
 	if (!poolDefaultDisabled) {
 		const poolSettings = ServerSettingsClient.Store.getState().saved.queue.mainPool.filters
-		for (const { filterId, applyAs } of poolSettings) {
-			initialState.set(filterId, applyAs)
+		for (const { filterId, defaultApplyDuringLayerSelection: applyAs, showIndicator } of poolSettings) {
+			if (applyAs === 'hidden') continue
+			appliedFilters.set(filterId, applyAs ?? 'disabled')
+			indicatedFilters.set(filterId, showIndicator ?? 'disabled')
 		}
 	}
 
 	const filterEntities = FilterEntityClient.filterEntities
-	for (const filterId of initialState.keys()) {
+	for (const filterId of appliedFilters.keys()) {
 		const filterEntity = filterEntities.get(filterId)
 		if (!filterEntity) {
-			initialState.delete(filterId)
+			appliedFilters.delete(filterId)
 		}
 	}
 
-	return initialState
+	return { appliedFilters, indicatedFilters }
 }
 
 export function getAppliedFiltersConstraints(state: Store) {
 	const constraints: LQY.Constraint[] = []
-	for (const [filterId, applyAs] of state.appliedFilters.entries()) {
+	for (const [filterId, applState] of state.appliedFilters.entries()) {
 		constraints.push(CB.filterEntity('selected-filter', filterId, {
-			invert: applyAs === 'inverted',
-			filterResults: applyAs !== 'disabled',
-			indicateMatches: true,
+			filterApplState: applState,
+			showIndicator: state.indicatedFilters.get(filterId) ?? 'both',
 		}))
 	}
 

@@ -8,21 +8,43 @@ import * as Teamswitches from '@/models/teamswitches.models'
 import type * as USR from '@/models/users.models'
 import { z } from 'zod'
 
-const DEFAULT_REPEAT_RULES: LQY.RepeatRule[] = [
+const DEFAULT_REPEAT_RULE_CONFIGS: PoolRepeatRuleConfig[] = [
 	{ label: 'Map', field: 'Map', within: 4 },
 	{ label: 'Layer', field: 'Layer', within: 7 },
 	{ label: 'Faction', field: 'Faction', within: 3 },
 ]
 
 export const POOL_FILTER_APPLY_AS = z.enum(['regular', 'inverted', 'disabled'])
+export type PoolFilterApplyAs = z.infer<typeof POOL_FILTER_APPLY_AS>
+export const POOL_FILTER_DEFAULT_APPLY_AS_SETTING = z.enum(['regular', 'inverted', 'disabled', 'hidden'])
+export type PoolFilterDefaultApplyAsSetting = z.infer<typeof POOL_FILTER_DEFAULT_APPLY_AS_SETTING>
 export type ConstraintApplyAs = z.infer<typeof POOL_FILTER_APPLY_AS>
 export const DEFAULT_POOL_FILTER_APPLY_AS = 'regular'
 
 export const PoolFilterConfigSchema = z.object({
 	filterId: F.FilterEntityIdSchema,
-	applyAs: POOL_FILTER_APPLY_AS,
-})
+	showIndicator: LQY.INDICATOR_STATE.optional().meta({
+		description:
+			'Whether to indicate items that match this filter. Invert to indicate that an item DOES NOT match the filter, or "both" to indicate both matches and non-matches',
+	}),
+	defaultApplyDuringLayerSelection: POOL_FILTER_DEFAULT_APPLY_AS_SETTING.optional().meta({
+		description: 'How to apply this filter during layer selection by default',
+	})
+		.optional(),
+	warn: POOL_FILTER_APPLY_AS.optional().meta({
+		description:
+			"How users should be warned if a layer matching this filter is about to be played, or when it is added to the queue. Invert if you want warnings for layers which *DON't match this filter",
+	}).optional(),
+}).refine(c => !c.warn || c.showIndicator && c.showIndicator !== 'disabled', 'Cannot warn without indicating matches')
 export type PoolFilterConfig = z.infer<typeof PoolFilterConfigSchema>
+
+export const RepeatRuleConfigSchema = LQY.RepeatRuleSchema.extend({
+	warn: z.boolean().optional().meta({
+		description: 'Users should be warned before saving or before the layer violating this repeat rule is played',
+	}),
+})
+
+export type PoolRepeatRuleConfig = z.infer<typeof RepeatRuleConfigSchema>
 
 export const PoolConfigurationSchema = z.object({
 	filters: z.array(
@@ -32,7 +54,7 @@ export const PoolConfigurationSchema = z.object({
 			PoolFilterConfigSchema,
 		),
 	),
-	repeatRules: z.array(LQY.RepeatRuleSchema).refine(
+	repeatRules: z.array(RepeatRuleConfigSchema).refine(
 		(rules) => new Set(rules.map((r) => r.label)).size === rules.length,
 		{
 			error: 'Repeat rule labels must be unique',
@@ -65,7 +87,7 @@ export const ServerConnectionSchema = z.object({
 export type ServerConnection = z.infer<typeof ServerConnectionSchema>
 
 export const QueueSettingsSchema = z.object({
-	mainPool: PoolConfigurationSchema.prefault({ filters: [], repeatRules: DEFAULT_REPEAT_RULES }),
+	mainPool: PoolConfigurationSchema.prefault({ filters: [], repeatRules: DEFAULT_REPEAT_RULE_CONFIGS }),
 	// extends the main pool during automated generation
 	applyMainPoolToGenerationPool: z.boolean().prefault(true),
 	generationPool: PoolConfigurationSchema.prefault({ filters: [], repeatRules: [] }),
@@ -86,7 +108,7 @@ export const PublicServerSettingsSchema = z
 export type PublicServerSettings = z.infer<typeof PublicServerSettingsSchema>
 
 const EXAMPLE_PUBLIC_SETTINGS = PublicServerSettingsSchema.parse({})
-EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.filters.push({ applyAs: DEFAULT_POOL_FILTER_APPLY_AS, filterId: 'test-filter' })
+EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.filters.push({ showIndicator: DEFAULT_POOL_FILTER_APPLY_AS, filterId: 'test-filter' })
 
 export const ServerSettingsSchema = PublicServerSettingsSchema.extend({
 	connections: ServerConnectionSchema,
@@ -100,6 +122,22 @@ export type Changed<T> = {
 }
 
 export type SettingsChanged = Changed<ServerSettings>
+export function getFilterEntityConstraintId(poolName: string, opts: { filterId: string }) {
+	return `layer-pool:${poolName}:${opts.filterId}`
+}
+export function getFilterEntityConfigFromId(poolConfig: PoolFilterConfig[], constraintId: string) {
+	const [filterId] = constraintId.split(':').slice(2)
+	if (!filterId) return
+	return poolConfig.find((p) => p.filterId === filterId)
+}
+export function getRepeatRuleConstraintId(poolName: string, opts: { label: string }) {
+	return `layer-pool:${poolName}:${opts.label}`
+}
+export function getRepeatRuleConfigFromConstraintId(poolConfig: PoolRepeatRuleConfig[], constraintId: string) {
+	const [label] = constraintId.split(':').slice(2)
+	if (!label) return
+	return poolConfig.find((r) => r.label === label)
+}
 
 // note the QueryConstraint is not perfectly suited to this kind of use-case as we have to arbitrarily specify apply-as
 export function getSettingsConstraints(
@@ -118,14 +156,16 @@ export function getSettingsConstraints(
 		for (let j = 0; j < poolConfig.repeatRules.length; j++) {
 			const rule = poolConfig.repeatRules[j]
 			// label/field might not be unique so we're doing this instead. cringe
-			constraints.push(CB.repeatRule(`layer-pool:${poolName}:${rule.label}`, rule, { filterResults: true, invert: true }))
+			constraints.push(
+				CB.repeatRule(getRepeatRuleConstraintId(poolName, { label: rule.label }), rule),
+			)
 		}
 
-		for (const { filterId, applyAs } of poolConfig.filters) {
+		for (const { filterId, showIndicator, defaultApplyDuringLayerSelection: applyAs } of poolConfig.filters) {
 			constraints.push(
-				CB.filterEntity(`layer-pool:${poolName}:${filterId}`, filterId, {
-					filterResults: applyAs !== 'disabled',
-					invert: applyAs === 'inverted',
+				CB.filterEntity(getFilterEntityConstraintId(poolName, { filterId }), filterId, {
+					filterApplState: applyAs === 'hidden' ? 'disabled' : applyAs,
+					showIndicator,
 				}),
 			)
 		}

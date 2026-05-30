@@ -10,7 +10,7 @@ import * as LQYClient from '@/systems/layer-queries.client'
 import * as QD from '@/systems/queue-dashboard.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import { ConstraintMatchesIndicator } from './constraint-matches-indicator.tsx'
+import { ConstraintEvalTooltip } from './constraint-matches-indicator.tsx'
 import ShortLayerName from './short-layer-name.tsx'
 
 export default function LayerDisplay(
@@ -34,11 +34,10 @@ export default function LayerDisplay(
 
 	if (statusData) {
 		badges.push(
-			<ConstraintMatchesIndicator
+			<ConstraintEvalTooltip
 				key="constraint violation display"
 				queriedConstraints={statusData.queriedConstraints}
 				side="top"
-				matchingConstraintIds={statusData.matchingConstraintIds}
 				layerItem={props.item}
 				matchDescriptors={statusData.matchingDescriptors}
 				itemParity={teamParity}

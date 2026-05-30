@@ -2,12 +2,12 @@
 import type * as FRM from '@/lib/frame'
 import type * as SS from '@/models/server-state.models'
 export type PoolCheckboxesState = {
-	dnr: SS.ConstraintApplyAs
+	dnr: SS.PoolFilterApplyAs
 }
 
 export type Store = {
 	checkboxesState: PoolCheckboxesState
-	setCheckbox: (type: keyof PoolCheckboxesState, value: SS.ConstraintApplyAs) => void
+	setCheckbox: (type: keyof PoolCheckboxesState, value: SS.PoolFilterApplyAs) => void
 }
 type Args = FRM.SetupArgs<{ defaultState: PoolCheckboxesState }, Store>
 export type Key = FRM.InstanceKey<FRM.FrameTypes & { state: Store }>

@@ -130,10 +130,10 @@ export function hasWith<M extends Map<any, any>>(
 	return false
 }
 
-export function defaultGet<M extends Map<any, any>>(
-	map: M,
-	key: M extends Map<infer K, any> ? K : never,
-	defaultValue: M extends Map<any, infer V> ? V : never,
+export function defaultGet<K, V>(
+	map: Map<K, V>,
+	key: K,
+	defaultValue: V,
 ) {
 	if (map.has(key)) {
 		return map.get(key)!

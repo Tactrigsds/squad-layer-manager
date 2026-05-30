@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import * as RbSyncState from '@/lib/rollback-synced-state'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
+import * as SS from '@/models/server-state.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as UP from '@/models/user-presence'
 import * as RBAC from '@/rbac.models.ts'
@@ -57,12 +58,19 @@ export default function LayersPanel() {
 	)
 }
 
-type QueueError = {
-	item: LL.Item
-	index: LL.ItemIndex
-	descriptors: LQY.RepeatMatchDescriptor[]
-	parity: number
-}
+type QueueError =
+	& {
+		item: LL.Item
+		parity: number
+		index: LL.ItemIndex
+	}
+	& ({
+		type: 'repeat-rule-violation-warning'
+		descriptors: LQY.RepeatMatchDescriptor[]
+	} | {
+		type: 'filter-entity-warning'
+		matched: boolean
+	})
 
 function ValidationErrorsDisplay(
 	props: {
@@ -74,58 +82,110 @@ function ValidationErrorsDisplay(
 	const constraints = LayerQueriesClient.useLayerItemStatusConstraints()
 	if (!props.showErrors || !props.errors || props.errors.length === 0) return null
 
+	const repeatErrors = props.errors.filter(e => e.type === 'repeat-rule-violation-warning') as Extract<
+		QueueError,
+		{ type: 'repeat-rule-violation-warning' }
+	>[]
+	const filterErrors = props.errors.filter(e => e.type === 'filter-entity-warning') as Extract<
+		QueueError,
+		{ type: 'filter-entity-warning' }
+	>[]
+
 	return (
-		<Alert variant="repeat-violation" className="mx-4 my-2 w-auto">
-			<Icons.AlertTriangle className="h-4 w-4" />
-			<AlertTitle>Repeats Detected</AlertTitle>
-			<AlertDescription>
-				The following queued layers have repeated elements that violate our configured rules:
-				<div className="flex flex-col gap-1">
-					{props.errors.map(({ item, index, descriptors, parity }) => {
-						const onMouseOver = () => {
-							LQYClient.Store.getState().setHoveredConstraintItemId(item.itemId ?? null)
-						}
-						const onMouseOut = () => {
-							const state = LQYClient.Store.getState()
-							if (state.hoveredConstraintItemId !== item.itemId) return
-							state.setHoveredConstraintItemId(null)
-						}
-						return (
-							<div
-								key={item.itemId}
-								className="flex items-center gap-2 text-sm hover:bg-secondary"
-								onMouseOver={onMouseOver}
-								onMouseOut={onMouseOut}
-							>
-								<span className="font-mono text-muted-foreground">{LL.getItemNumber(index)}</span>
-								<ShortLayerName layerId={item.layerId} teamParity={parity} matchDescriptors={descriptors} />
-								{descriptors.map(descriptor => {
-									const constraint = constraints.find(c => descriptor.constraintId === c.id && c.type === 'do-not-repeat') as Extract<
-										LQY.Constraint,
-										{ type: 'do-not-repeat' }
+		<>
+			{repeatErrors.length > 0 && (
+				<Alert variant="repeat-violation" className="mx-4 my-2 w-auto">
+					<Icons.AlertTriangle className="h-4 w-4" />
+					<AlertTitle>Repeats Detected</AlertTitle>
+					<AlertDescription>
+						The following queued layers have repeated elements that violate our configured rules:
+						<div className="flex flex-col gap-1">
+							{repeatErrors.map((error) => {
+								const { item, index, parity, descriptors } = error
+								const onMouseOver = () => {
+									LQYClient.Store.getState().setHoveredConstraintItemId(item.itemId ?? null)
+								}
+								const onMouseOut = () => {
+									const state = LQYClient.Store.getState()
+									if (state.hoveredConstraintItemId !== item.itemId) return
+									state.setHoveredConstraintItemId(null)
+								}
+								return (
+									<div
+										key={item.itemId}
+										className="flex items-center gap-2 text-sm hover:bg-secondary"
+										onMouseOver={onMouseOver}
+										onMouseOut={onMouseOut}
 									>
-									if (!constraint) return null
-									return (
-										<RepeatViolationDisplay
-											showIcon={false}
-											key={`${item.itemId}-${descriptor.constraintId}-${descriptor.field}${descriptor.repeatOffset}`}
-											constraint={constraint}
-											itemParity={parity}
-										/>
-									)
-								})}
-							</div>
-						)
-					})}
-				</div>
-			</AlertDescription>
-		</Alert>
+										<span className="font-mono text-muted-foreground">{LL.getItemNumber(index)}</span>
+										<ShortLayerName layerId={item.layerId} teamParity={parity} matchDescriptors={descriptors} />
+										{descriptors.map(descriptor => {
+											const constraint = constraints.find(c => descriptor.constraintId === c.id && c.type === 'do-not-repeat') as Extract<
+												LQY.Constraint,
+												{ type: 'do-not-repeat' }
+											>
+											if (!constraint) return null
+											return (
+												<RepeatViolationDisplay
+													showIcon={false}
+													key={`${item.itemId}-${descriptor.constraintId}-${descriptor.field}${descriptor.repeatOffset}`}
+													constraint={constraint}
+													itemParity={parity}
+												/>
+											)
+										})}
+									</div>
+								)
+							})}
+						</div>
+					</AlertDescription>
+				</Alert>
+			)}
+			{filterErrors.length > 0 && (
+				<Alert variant="warning" className="mx-4 my-2 w-auto">
+					<Icons.AlertTriangle className="h-4 w-4" />
+					<AlertTitle>Filter Warnings</AlertTitle>
+					<AlertDescription>
+						The following queued layers triggered filter warnings:
+						<div className="flex flex-col gap-1">
+							{filterErrors.map((error) => {
+								const { item, index, parity } = error
+								const onMouseOver = () => {
+									LQYClient.Store.getState().setHoveredConstraintItemId(item.itemId ?? null)
+								}
+								const onMouseOut = () => {
+									const state = LQYClient.Store.getState()
+									if (state.hoveredConstraintItemId !== item.itemId) return
+									state.setHoveredConstraintItemId(null)
+								}
+								return (
+									<div
+										key={item.itemId}
+										className="flex items-center gap-2 text-sm hover:bg-secondary"
+										onMouseOver={onMouseOver}
+										onMouseOut={onMouseOut}
+									>
+										<span className="font-mono text-muted-foreground">
+											{error.matched ? 'MATCHED:' : 'NOT MATCHED:'}
+										</span>
+										<ShortLayerName layerId={item.layerId} teamParity={parity} />
+										<span className="font-mono text-muted-foreground">{LL.getItemNumber(index)}</span>
+									</div>
+								)
+							})}
+						</div>
+					</AlertDescription>
+				</Alert>
+			)}
+		</>
 	)
 }
 
 function useQueueErrors() {
 	const constraints = LayerQueriesClient.useLayerItemStatusConstraints()
 	const statuses = LayerQueriesClient.useLayerItemStatuses(constraints)?.data
+	const filterConfigs = Zus.useStore(ServerSettingsClient.Store, s => s.saved.queue.mainPool.filters)
+	const repeatRuleConfigs = Zus.useStore(ServerSettingsClient.Store, s => s.saved.queue.mainPool.repeatRules)
 	const layerList = Zus.useStore(SLLClient.Store, s => s.layerList)
 	const loggedInUser = UsersClient.useLoggedInUser()
 	const layerItemsState = QD.useLayerItemsState()
@@ -142,17 +202,25 @@ function useQueueErrors() {
 		if (!statuses || !queueModifiedByUser) return null
 		const errors: QueueError[] = []
 		for (const { item, index } of LL.iterItems(layerList)) {
-			const descriptors = statuses?.matchDescriptors.get(item.itemId)
-			if (!descriptors) continue
-			const relevantDescriptors: LQY.RepeatMatchDescriptor[] = []
-			for (const descriptor of descriptors) {
-				if (descriptor.type === 'repeat-rule') {
-					relevantDescriptors.push(descriptor)
+			const parity = LQY.getParityForLayerItem(layerItemsState, item.itemId)
+			for (const config of filterConfigs) {
+				if (config.warn === 'disabled' || !config.warn) continue
+				const constraintId = SS.getFilterEntityConstraintId('mainPool', config)
+				const descriptor = statuses?.matchDescriptors.get(item.itemId)?.find(d => d.constraintId === constraintId)
+				const matched = !!descriptor
+				if (matched && config.warn === 'regular' || !matched && config.warn === 'inverted') {
+					errors.push({ item, index, parity, type: 'filter-entity-warning', matched })
 				}
 			}
-			if (relevantDescriptors.length === 0) continue
-			const parity = LQY.getParityForLayerItem(layerItemsState, item.itemId)
-			errors.push({ item, index, descriptors: relevantDescriptors, parity })
+			for (const config of repeatRuleConfigs) {
+				if (!config.warn) continue
+				const constraintId = SS.getRepeatRuleConstraintId('mainPool', config)
+				const descriptors = statuses?.matchDescriptors.get(item.itemId)?.filter(d => d.constraintId === constraintId) as
+					| (LQY.RepeatMatchDescriptor[])
+					| undefined
+				if (!descriptors || descriptors.length === 0) continue
+				errors.push({ item, index, parity, type: 'repeat-rule-violation-warning', descriptors })
+			}
 		}
 		if (errors.length === 0) return null
 		return errors
@@ -161,6 +229,8 @@ function useQueueErrors() {
 		layerItemsState,
 		statuses,
 		queueModifiedByUser,
+		filterConfigs,
+		repeatRuleConfigs,
 	])
 }
 

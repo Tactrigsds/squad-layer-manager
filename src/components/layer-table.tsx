@@ -24,6 +24,7 @@ import * as GlobalSettings from '@/systems/global-settings.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as QD from '@/systems/queue-dashboard.client'
 import * as RbacClient from '@/systems/rbac.client'
+import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 
 import type { ColumnDef, Row } from '@tanstack/react-table'
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
@@ -33,7 +34,6 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-rea
 import React from 'react'
 import { flushSync } from 'react-dom'
 import * as Zus from 'zustand'
-import { ConstraintMatchesIndicator } from './constraint-matches-indicator'
 import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
 import { MultiLayerSetDialog } from './multi-layer-set-dialog'
@@ -340,13 +340,11 @@ function buildColDefs(
 						e.stopPropagation()
 					}}
 				>
-					<ConstraintMatchesIndicator
+					<ConstraintEvalTooltip
 						side="right"
 						padEmpty
 						layerId={row.original.id}
 						itemParity={teamParity}
-						// itemParity={}
-						matchingConstraintIds={row.original.constraints.matchedConstraintIds}
 						matchDescriptors={row.original.constraints.matchDescriptors}
 						queriedConstraints={row.original.constraints.queriedConstraints}
 						height={32}

@@ -1,4 +1,5 @@
 import { createId } from '@/lib/id'
+import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { shuffled, weightedRandomSelection } from '@/lib/random'
@@ -466,6 +467,7 @@ function buildQueryInputSqlCondition(
 	for (let i = 0; i < constraints.length; i++) {
 		const constraint = constraints[i]
 		if (constraint.type === 'filter-menu-items') continue
+		if (constraint.showIndicator === 'disabled' && constraint.filterApplState === 'disabled') continue
 		let res: F.SQLConditionsResult
 		switch (constraint.type) {
 			case 'filter-anon':
@@ -492,12 +494,26 @@ function buildQueryInputSqlCondition(
 			return res
 		}
 
-		if (constraint.filterResults) {
-			const condition = constraint.invert ? E.not(res.condition) : res.condition
-			baseConditions.push(condition)
+		switch (constraint.filterApplState) {
+			case 'regular': {
+				baseConditions.push(res.condition)
+				break
+			}
+
+			case 'inverted': {
+				baseConditions.push(E.not(res.condition))
+				break
+			}
+
+			case 'disabled': {
+				break
+			}
+
+			default:
+				assertNever(constraint)
 		}
 
-		if (constraint.indicateMatches) {
+		if (constraint.showIndicator) {
 			selectProperties[`constraint_${i}`] = res.condition
 		}
 	}
@@ -551,35 +567,35 @@ export async function getLayerItemStatuses(args: {
 		for (const item of LQY.coalesceLayerItems(layerItems[i])) {
 			const itemMatchDescriptors: LQY.MatchDescriptor[] = []
 			for (const constraint of constraints) {
-				if (constraint.type === 'filter-menu-items') continue
-				if (constraint.type === 'do-not-repeat') {
-					const descriptors = getisMatchedByRepeatRuleDirect(
-						ctx,
-						i,
-						constraint.id,
-						constraint.rule,
-						item.layerId,
-					)
-					if (descriptors) {
-						matchedState.set(item.itemId, constraint.id)
-						itemMatchDescriptors.push(...descriptors)
+				if (constraint.showIndicator === 'disabled') continue
+				switch (constraint.type) {
+					case 'do-not-repeat': {
+						const descriptors = getisMatchedByRepeatRuleDirect(
+							ctx,
+							i,
+							constraint.id,
+							constraint.rule,
+							item.layerId,
+						)
+						if (descriptors) {
+							matchedState.set(item.itemId, constraint.id)
+							itemMatchDescriptors.push(...descriptors)
+						}
+						break
 					}
-					continue
+
+					case 'filter-entity': {
+						const res = getFilterNodeSQLConditions(ctx, FB.applyFilter(constraint.filterId), [constraint.id], [])
+						if (res.code !== 'ok') return res
+						filterConditionResults.set(constraint.id, res.condition)
+						selectExpr[constraint.id] = res.condition
+						break
+					}
+
+					default: {
+						assertNever(constraint)
+					}
 				}
-				if (constraint.type === 'filter-anon') {
-					const res = getFilterNodeSQLConditions(ctx, constraint.filter, [constraint.id], [])
-					if (res.code !== 'ok') return res
-					selectExpr[constraint.id] = res.condition
-					continue
-				}
-				if (constraint.type === 'filter-entity') {
-					const res = getFilterNodeSQLConditions(ctx, FB.applyFilter(constraint.filterId), [constraint.id], [])
-					if (res.code !== 'ok') return res
-					filterConditionResults.set(constraint.id, res.condition)
-					selectExpr[constraint.id] = res.condition
-					continue
-				}
-				assertNever(constraint)
 			}
 			matchDescriptors.set(item.itemId, itemMatchDescriptors)
 		}
@@ -597,14 +613,12 @@ export async function getLayerItemStatuses(args: {
 		present.add(layerId)
 		for (const { item } of LQY.iterItems(layerItems)) {
 			if (item.layerId !== layerId) continue
-			for (const [constraintId, isMatched] of Object.entries(row)) {
+			for (const [constraintId, isMatchedRaw] of Object.entries(row)) {
 				if (constraintId === '_id') continue
-				if (Number(isMatched) === 1) {
-					const existing = matchDescriptors.get(item.itemId)
-					if (existing) {
-						existing.push({ constraintId, type: 'filter-entity' })
-						matchDescriptors.set(item.itemId, [...existing])
-					}
+				const matched = Number(isMatchedRaw) === 1
+				if (matched) {
+					let itemDescriptors = MapUtils.defaultGet(matchDescriptors, item.itemId, [])
+					itemDescriptors.push({ constraintId, type: 'filter-entity', layerId, itemId: item.itemId })
 				}
 			}
 		}
@@ -1023,7 +1037,11 @@ function postProcessLayers(
 				}
 
 				case 'filter-entity': {
-					constraintResults[constraintIdx] = Number(layer[key as keyof L.KnownLayer]) === 1
+					const matched = Number(layer[key as keyof L.KnownLayer]) === 1
+					constraintResults[constraintIdx] = matched
+					if (matched) {
+						matchDescriptors.push({ type: 'filter-entity', constraintId: constraint.id, layerId: strId })
+					}
 				}
 			}
 		}
