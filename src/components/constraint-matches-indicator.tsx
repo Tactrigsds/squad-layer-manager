@@ -52,8 +52,9 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 		const matched = props.matchDescriptors?.some(desc => {
 			if (desc.constraintId !== constraint.id) return false
 			if (desc.itemId && desc.itemId !== itemId) return false
+			if (layerId && !L.layersEqual(desc.layerId, layerId)) return false
 			if (desc.type === 'filter-entity') {
-				return !!layerId && L.layersEqual(desc.layerId, layerId)
+				return !!layerId
 			} else if (desc.type === 'repeat-rule') {
 				return desc.itemId === itemId
 			} else {

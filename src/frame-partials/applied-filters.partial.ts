@@ -97,7 +97,7 @@ function getInitialFilterStates(poolDefaultDisabled: boolean) {
 export function getAppliedFiltersConstraints(state: Store) {
 	const constraints: LQY.Constraint[] = []
 	for (const [filterId, applState] of state.appliedFilters.entries()) {
-		constraints.push(CB.filterEntity('selected-filter', filterId, {
+		constraints.push(CB.filterEntity('applied-filter:' + filterId, filterId, {
 			filterApplState: applState,
 			showIndicator: state.indicatedFilters.get(filterId) ?? 'both',
 		}))
