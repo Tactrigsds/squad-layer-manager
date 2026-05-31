@@ -445,6 +445,14 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	const dragProps = DndKit.useDraggable(draggableItem, { feedback: 'move', disabled: !isEditing })
 	const user = UsersClient.useLoggedInUser()
 
+	const itemActions = () => QD.getLLItemActions(props.llStore.getState(), props.itemId)
+
+	const editActivity = React.useMemo(() => ({
+		_tag: 'leaf' as const,
+		id: 'EDITING_ITEM' as const,
+		opts: { itemId: item.itemId, cursor: { type: 'item-relative' as const, itemId: item.itemId, position: 'on' as const } },
+	}), [item.itemId])
+
 	const [dropdownOpen, _setDropdownOpen] = React.useState(false)
 	const setDropdownOpen: React.Dispatch<React.SetStateAction<boolean>> = React.useCallback((update) => {
 		if (!canEdit) _setDropdownOpen(false)
@@ -586,6 +594,37 @@ function SingleLayerListItem(props: LayerListItemProps) {
 								{sourceDisplay}
 							</>
 						)}
+						<StartActivityInteraction
+							loaderName="selectLayers"
+							createActivity={UP.createEditingQueueVariant(editActivity)}
+							matchKey={key => Obj.deepEqualStrict(key, editActivity)}
+							preload="viewport"
+							render={Button}
+							variant="ghost"
+							size="icon"
+							title="Edit"
+							disabled={!isEditing}
+						>
+							<Icons.Pencil />
+						</StartActivityInteraction>
+						<Button
+							variant="ghost"
+							size="icon"
+							title="Swap Factions"
+							disabled={!canEdit || !L.swapFactions(item.layerId)}
+							onClick={() => itemActions().dispatch({ op: 'swap-factions' })}
+						>
+							<Icons.ArrowLeftRight />
+						</Button>
+						<Button
+							variant="ghost"
+							size="icon"
+							title="Delete"
+							disabled={!canEdit}
+							onClick={() => itemActions().dispatch({ op: 'delete' })}
+						>
+							<Icons.X />
+						</Button>
 						<ItemDropdown {...dropdownProps}>
 							<Button
 								{...editButtonProps()}
@@ -622,6 +661,8 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const canEdit = !SLLClient.useIsItemLocked(item.itemId) && isEditing
 	const draggableItem = LL.layerItemToDragItem(item)
 	const dragProps = DndKit.useDraggable(draggableItem, { disabled: !isEditing })
+
+	const itemActions = () => QD.getLLItemActions(props.llStore.getState(), props.itemId)
 
 	const [dropdownOpen, setDropdownOpen] = React.useState(false)
 	const isMobile = useIsMobile()
@@ -934,6 +975,25 @@ function VoteLayerListItem(props: LayerListItemProps) {
 											<Icons.Settings2 />
 										</Button>
 									</VoteDisplayPropsPopover>
+									<Button
+										variant="ghost"
+										size="icon"
+										title="Swap Factions"
+										disabled={!canEdit || !L.swapFactions(item.layerId)}
+										onClick={() => itemActions().dispatch({ op: 'swap-factions' })}
+									>
+										<Icons.ArrowLeftRight />
+									</Button>
+									<Button
+										variant="ghost"
+										size="icon"
+										title="Delete"
+										disabled={!canEdit}
+										onClick={() => itemActions().dispatch({ op: 'delete' })}
+										className="text-destructive hover:text-destructive"
+									>
+										<Icons.Trash2 />
+									</Button>
 									<ItemDropdown {...dropdownProps}>
 										<Button
 											variant="ghost"
@@ -1035,7 +1095,7 @@ type ItemDropdownProps = {
 	itemId: LL.ItemId
 }
 
-type SubDropdownState = 'add-before' | 'add-after' | 'edit' | 'create-vote'
+type SubDropdownState = 'add-before' | 'add-after' | 'create-vote'
 
 function ItemDropdown(props: ItemDropdownProps) {
 	const [item, index, lastLocalIndex] = Zus.useStore(
@@ -1067,13 +1127,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 				id: 'ADDING_ITEM',
 				opts: { cursor: { type: 'item-relative', itemId: item.itemId, position: 'on' }, title: 'Create Vote', action: 'edit' },
 			},
-			'edit': {
-				_tag: 'leaf',
-				id: 'EDITING_ITEM',
-				opts: { itemId: item.itemId, cursor: { type: 'item-relative', itemId: item.itemId, position: 'on' } },
-			},
 		} satisfies { [k in SubDropdownState]: UP.QueueEditingActivity }
-		// activities.edit = activities['add-after']
 
 		return [activities] as const
 	}, [item.itemId])
@@ -1110,54 +1164,6 @@ function ItemDropdown(props: ItemDropdownProps) {
 		<DropdownMenu modal={false} open={props.open} onOpenChange={props.setOpen}>
 			<DropdownMenuTrigger asChild>{props.children}</DropdownMenuTrigger>
 			<DropdownMenuContent>
-				<DropdownMenuGroup>
-					{!LL.isVoteItem(item) && (
-						<StartActivityInteraction
-							loaderName="selectLayers"
-							createActivity={UP.createEditingQueueVariant(activities['edit'])}
-							matchKey={key => Obj.deepEqualStrict(key, activities['edit'])}
-							preload="viewport"
-							render={DropdownMenuItem}
-							disabled={!isEditing}
-						>
-							Edit
-						</StartActivityInteraction>
-					)}
-					<DropdownMenuItem
-						disabled={!isEditing || isLocked || !L.swapFactions(item.layerId)}
-						onClick={() => itemActions().dispatch({ op: 'swap-factions' })}
-					>
-						Swap Factions
-					</DropdownMenuItem>
-					<DropdownMenuSeparator />
-					<DropdownMenuItem
-						disabled={!isEditing || isLocked}
-						onClick={() => {
-							itemActions().dispatch({ op: 'delete' })
-						}}
-						className="bg-destructive text-destructive-foreground focus:bg-red-600"
-					>
-						Delete
-					</DropdownMenuItem>
-				</DropdownMenuGroup>
-				{
-					/*{!LL.isVoteItem(item) && (
-					<StartActivityInteraction
-						loaderName="selectLayers"
-						createActivity={UP.createEditingQueueVariant(activities['create-vote'])}
-						// we're using deepEqualStrict here so that his breaks if the definition for key changes
-						matchKey={key => Obj.deepEqualStrict(key, activities['create-vote'])}
-						preload="viewport"
-						disabled={isLocked}
-						render={DropdownMenuItem}
-					>
-						Create Vote
-					</StartActivityInteraction>
-				)}*/
-				}
-
-				<DropdownMenuSeparator />
-
 				<DropdownMenuGroup>
 					<StartActivityInteraction
 						loaderName="selectLayers"
