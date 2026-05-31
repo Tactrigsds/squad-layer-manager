@@ -47,19 +47,19 @@ export function weightedRandomSelection<T>(values: T[], weights: number[], rng =
  * @yields Elements from the array in shuffled order
  */
 export function* shuffled<T>(array: T[], rng = Math.random): Generator<T, void, unknown> {
-	const indices = Array.from({ length: array.length }, (_, i) => i)
-	let currentIndex = indices.length, randomIndex
+	const swaps = new Map<number, number>()
+	let remaining = array.length
 
-	// While there remain elements to shuffle.
-	while (currentIndex != 0) {
-		// Pick a remaining element.
-		randomIndex = Math.floor(rng() * currentIndex)
-		currentIndex-- // And swap it with the current element.
-		;[indices[currentIndex], indices[randomIndex]] = [
-			indices[randomIndex],
-			indices[currentIndex],
-		]
+	while (remaining > 0) {
+		const randomIndex = Math.floor(rng() * remaining)
+		remaining--
 
-		yield array[indices[currentIndex]]
+		const valAtRemaining = swaps.get(remaining) ?? remaining
+		const valAtRandom = swaps.get(randomIndex) ?? randomIndex
+
+		swaps.set(remaining, valAtRandom)
+		swaps.set(randomIndex, valAtRemaining)
+
+		yield array[valAtRandom]
 	}
 }

@@ -468,7 +468,7 @@ function buildQueryInputSqlCondition(
 		const constraint = constraints[i]
 		if (constraint.type === 'filter-menu-items') continue
 		if (constraint.showIndicator === 'disabled' && constraint.filterApplState === 'disabled') continue
-		let res: F.SQLConditionsResult
+		let res: F.SQLConditionsResult | undefined
 		switch (constraint.type) {
 			case 'filter-anon':
 				res = getFilterNodeSQLConditions(ctx, constraint.filter, [i.toString()], [])
@@ -513,7 +513,8 @@ function buildQueryInputSqlCondition(
 				assertNever(constraint)
 		}
 
-		if (constraint.showIndicator) {
+		// repeat rules are handled separately
+		if (constraint.showIndicator && constraint.type !== 'do-not-repeat') {
 			selectProperties[`constraint_${i}`] = res.condition
 		}
 	}
