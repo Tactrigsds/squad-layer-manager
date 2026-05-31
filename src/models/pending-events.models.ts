@@ -803,6 +803,7 @@ async function* processPendingEvent(
 				}
 			} else {
 				log.warn(`Player not found on disconnect: ${SM.PlayerIds.prettyPrint(pendingEvent.playerIds)}`)
+				break
 			}
 			yield {
 				type: 'PLAYER_DISCONNECTED',
