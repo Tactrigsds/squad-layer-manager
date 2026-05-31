@@ -34,20 +34,17 @@ const PLAYER_RESTARTED_NEW =
 const PLAYER_JOIN_SUCCEEDED_NEW = '[2026.04.17-18.11.29:556][237]LogNet: Join succeeded: grey275'
 const JOIN_CHAIN_NEW = [PLAYER_CONNECTED_NEW, PLAYER_RESTARTED_NEW, PLAYER_JOIN_SUCCEEDED_NEW].join('\n')
 
-const DETERMINE_MATCH_WINNER =
-	'[2025.11.19-18.19.04:262][979]LogSquadTrace: [DedicatedServer]DetermineMatchWinner(): Irregular Armored Squadron won on Al Basrah'
+const ROUND_ENDED_MAIN = '[2025.11.19-18.19.04:265][979]LogGameState: Match State Changed from InProgress to WaitingPostMatch'
 const ROUND_DECIDED =
 	'[2025.11.19-18.19.04:264][979]LogSquadGameEvents: Display: Team 1, Alpha ( CAF ) has won the match with 150 Tickets on layer Al Basrah AAS v1 (level Al Basrah)!'
 const ROUND_DECIDED_LOSER =
 	'[2025.11.19-18.19.04:264][979]LogSquadGameEvents: Display: Team 2, MEA ( MEA ) has lost the match with 0 Tickets on layer Al Basrah AAS v1 (level Al Basrah)!'
-const DETERMINE_MATCH_WINNER_DRAW =
-	'[2025.11.19-18.19.04:262][979]LogSquadTrace: [DedicatedServer]DetermineMatchWinner(): The game was a draw on Al Basrah'
 const ROUND_DECIDED_DRAW =
 	'[2025.11.19-18.19.04:264][979]LogSquadGameEvents: Display: Team -1,  (  ) has won the match with -1 Tickets on layer Al Basrah AAS v1 (level Al Basrah)!'
 const ROUND_DECIDED_LOSER_DRAW =
 	'[2025.11.19-18.19.04:264][979]LogSquadGameEvents: Display: Team -1,  (  ) has lost the match with -1 Tickets on layer Al Basrah AAS v1 (level Al Basrah)!'
-const ROUND_CHAIN = [DETERMINE_MATCH_WINNER, ROUND_DECIDED, ROUND_DECIDED_LOSER].join('\n')
-const ROUND_DRAW_CHAIN = [DETERMINE_MATCH_WINNER, DETERMINE_MATCH_WINNER_DRAW, ROUND_DECIDED_DRAW, ROUND_DECIDED_LOSER_DRAW].join('\n')
+const ROUND_CHAIN = [ROUND_ENDED_MAIN, ROUND_DECIDED, ROUND_DECIDED_LOSER].join('\n')
+const ROUND_DRAW_CHAIN = [ROUND_ENDED_MAIN, ROUND_DECIDED_DRAW, ROUND_DECIDED_LOSER_DRAW].join('\n')
 
 // Admin-ended round via RCON: no ROUND_DECIDED lines
 const DETERMINE_MATCH_WINNER_ADMIN =
@@ -68,11 +65,10 @@ const ROUND_ADMIN_CHAIN = [
 ].join('\n')
 
 // Admin-ended round via player (in-game admin panel)
-const DETERMINE_MATCH_WINNER_ADMIN_PLAYER =
-	'[2026.05.20-16.39.45:907][508]LogSquadTrace: [DedicatedServer]DetermineMatchWinner(): 64th Infantry Brigade won on Al Basrah'
 const ADMIN_MATCH_ENDED_PLAYER =
 	'[2026.05.20-16.39.45:908][508]LogSquad: ADMIN COMMAND: Match ended from player 0. [Online IDs= EOS: 000249a430574933aefd9bbc9a8f2f37 steam: 76561198052229202]  grey275'
-const ROUND_ADMIN_PLAYER_CHAIN = [DETERMINE_MATCH_WINNER_ADMIN_PLAYER, ADMIN_MATCH_ENDED_PLAYER, NEXT_TICK_EVENT].join('\n')
+const ROUND_ENDED_ADMIN_PLAYER = '[2026.05.20-16.39.45:909][508]LogGameState: Match State Changed from InProgress to WaitingPostMatch'
+const ROUND_ADMIN_PLAYER_CHAIN = [ADMIN_MATCH_ENDED_PLAYER, ROUND_ENDED_ADMIN_PLAYER, NEXT_TICK_EVENT].join('\n')
 const ADMIN_LAYER_CHANGED_PLAYER_CHAIN = `
 [2026.05.20-17.08.43:853][242]LogSquad: ADMIN COMMAND: Change layer to AlBasrah_AAS_v1 RGF+CombinedArms MEI+CombinedArms from player 0. [Online IDs= EOS: 000249a430574933aefd9bbc9a8f2f37 steam: 76561198052229202]   grey275
 [2026.05.20-17.08.43:853][242]LogGameMode: Display: Match State Changed from InProgress to WaitingPostMatch
@@ -274,9 +270,9 @@ describe('LogEvents.parse', () => {
 
 		it('pushes error for abandoned chain when a different chain starts with a new chainID', async () => {
 			const errors: Error[] = []
-			// DETERMINE_MATCH_WINNER (chainID 979) starts a different chain while join chain (chainID 549) is in progress
+			// ROUND_ENDED_MAIN (chainID 979) starts a different chain while join chain (chainID 549) is in progress
 			const events = await collect(
-				[PLAYER_CONNECTED, DETERMINE_MATCH_WINNER, ROUND_DECIDED, ROUND_DECIDED_LOSER, NEXT_TICK_EVENT].join('\n'),
+				[PLAYER_CONNECTED, ROUND_ENDED_MAIN, ROUND_DECIDED, ROUND_DECIDED_LOSER, NEXT_TICK_EVENT].join('\n'),
 				errors,
 			)
 			expect(events).toHaveLength(1)
@@ -293,7 +289,7 @@ describe('LogEvents.parse', () => {
 			expect(events[0]).toMatchObject({
 				type: 'ROUND_ENDED_CHAIN',
 				events: {
-					DETERMINE_MATCH_WINNER: expect.objectContaining({ type: 'DETERMINE_MATCH_WINNER', winner: 'Irregular Armored Squadron' }),
+					ROUND_ENDED: expect.objectContaining({ type: 'ROUND_ENDED' }),
 					ROUND_DECIDED_WINNER: expect.objectContaining({ type: 'ROUND_DECIDED_WINNER', team: 1, tickets: 150 }),
 					ROUND_DECIDED_LOSER: expect.objectContaining({ type: 'ROUND_DECIDED_LOSER', team: 2, tickets: 0 }),
 				},
@@ -308,7 +304,7 @@ describe('LogEvents.parse', () => {
 			expect(events[0]).toMatchObject({
 				type: 'ROUND_ENDED_CHAIN',
 				events: {
-					DETERMINE_MATCH_WINNER: expect.objectContaining({ type: 'DETERMINE_MATCH_WINNER' }),
+					ROUND_ENDED: expect.objectContaining({ type: 'ROUND_ENDED' }),
 					ADMIN_ENDED_MATCH: expect.objectContaining({ source: { type: 'rcon' } }),
 				},
 			})
@@ -323,7 +319,6 @@ describe('LogEvents.parse', () => {
 			expect(events[0]).toMatchObject({
 				type: 'ROUND_ENDED_CHAIN',
 				events: {
-					DETERMINE_MATCH_WINNER: expect.objectContaining({ winner: '64th Infantry Brigade' }),
 					ADMIN_ENDED_MATCH: expect.objectContaining({
 						source: {
 							type: 'player',
@@ -345,7 +340,6 @@ describe('LogEvents.parse', () => {
 			expect(events[0]).toMatchObject({
 				type: 'ROUND_ENDED_CHAIN',
 				events: {
-					DETERMINE_MATCH_WINNER: expect.objectContaining({ winner: '1st Tank Brigade', map: 'Kohat Toi' }),
 					LAYER_CHANGED: expect.objectContaining({
 						layer: 'AlBasrah_AAS_v1 RGF+CombinedArms MEI+CombinedArms',
 						source: {
@@ -361,7 +355,7 @@ describe('LogEvents.parse', () => {
 			expect(events[0]).not.toHaveProperty('events.ADMIN_ENDED_MATCH')
 		})
 
-		it('handles a draw (team -1), dropping the interleaved draw DetermineMatchWinner line', async () => {
+		it('handles a draw (team -1)', async () => {
 			const errors: Error[] = []
 			const events = await collect([ROUND_DRAW_CHAIN, NEXT_TICK_EVENT].join('\n'), errors)
 			expect(errors).toHaveLength(0)
@@ -369,7 +363,7 @@ describe('LogEvents.parse', () => {
 			expect(events[0]).toMatchObject({
 				type: 'ROUND_ENDED_CHAIN',
 				events: {
-					DETERMINE_MATCH_WINNER: expect.objectContaining({ type: 'DETERMINE_MATCH_WINNER' }),
+					ROUND_ENDED: expect.objectContaining({ type: 'ROUND_ENDED' }),
 					ROUND_DECIDED_WINNER: expect.objectContaining({ type: 'ROUND_DECIDED_WINNER', team: -1, tickets: -1 }),
 					ROUND_DECIDED_LOSER: expect.objectContaining({ type: 'ROUND_DECIDED_LOSER', team: -1, tickets: -1 }),
 				},

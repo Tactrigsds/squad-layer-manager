@@ -810,26 +810,6 @@ export namespace LogEvents {
 		}),
 	})
 
-	const DetermineMatchWinnerDef = eventDef('DETERMINE_MATCH_WINNER', {
-		...BaseEventProperties,
-		winner: z.string(),
-		map: z.string(),
-	})
-
-	export type DetermineMatchWinner = z.infer<typeof DetermineMatchWinnerDef['schema']>
-
-	export const DetermineMatchWinnerMatcher = createLogMatcher({
-		event: DetermineMatchWinnerDef,
-		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer\]DetermineMatchWinner\(\): (.+) won on (.+)/,
-		onMatch: (args) => ({
-			raw: args[0],
-			time: parseTimestamp(args[1]),
-			chainID: args[2],
-			winner: args[3],
-			map: args[4],
-		}),
-	})
-
 	const RoundWinnerDef = eventDef('ROUND_TEAM_OUTCOME', {
 		...BaseEventProperties,
 		winner: z.string(),
@@ -1244,7 +1224,6 @@ export namespace LogEvents {
 
 	export const EventMatchers = [
 		NewGameEventMatcher,
-		DetermineMatchWinnerMatcher,
 		RoundWinnerEventMatcher,
 		RoundDecidedWinnerMatcher,
 		RoundDecidedLoserMatcher,
@@ -1273,10 +1252,9 @@ export namespace LogEvents {
 	}
 
 	export type Event =
-		| DetermineMatchWinner
+		| RoundEnded
 		| RoundDecidedWinner
 		| RoundDecidedLoser
-		| RoundEnded
 		| AdminEndedMatch
 		| RoundTeamOutcome
 		| NewGame
@@ -1315,7 +1293,7 @@ export namespace LogEvents {
 			{ event: PlayerAddedToTeamDef, optional: true },
 		],
 		ROUND_ENDED_CHAIN: [
-			{ event: DetermineMatchWinnerDef, primary: true },
+			{ event: RoundEndedDef, primary: true },
 			{ event: RoundDecidedWinnerDef, optional: true },
 			{ event: RoundDecidedLoserDef, optional: true },
 			{ event: AdminEndedMatchDef, optional: true },

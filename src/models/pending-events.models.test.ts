@@ -106,7 +106,7 @@ function makeRoundEndedChain(
 		time,
 		// @ts-expect-error idgaf
 		events: {
-			DETERMINE_MATCH_WINNER: { type: 'DETERMINE_MATCH_WINNER', time, chainID: 0, raw: '', winner: winner.unit, map: 'Gorodok' },
+			ROUND_ENDED: { type: 'ROUND_ENDED', time, chainID: 0, raw: '' },
 			ROUND_DECIDED_WINNER: {
 				type: 'ROUND_DECIDED_WINNER',
 				time,
