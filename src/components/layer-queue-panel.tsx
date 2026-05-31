@@ -9,14 +9,18 @@ import { CardDescription } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
+import * as MapUtils from '@/lib/map'
+import * as Obj from '@/lib/object'
+
 import * as RbSyncState from '@/lib/rollback-synced-state'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
-import * as SS from '@/models/server-state.models'
+
 import * as SLL from '@/models/shared-layer-list'
 import * as UP from '@/models/user-presence'
 import * as RBAC from '@/rbac.models.ts'
 import * as ConfigClient from '@/systems/config.client'
+import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as LQYClient from '@/systems/layer-queries.client.ts'
 import * as QD from '@/systems/queue-dashboard.client'
@@ -36,6 +40,9 @@ import { MatchHistoryPanelContent } from './match-history-panel.tsx'
 import PoolConfigurationPopover from './server-settings-popover.tsx'
 import ShortLayerName from './short-layer-name.tsx'
 
+import { assertNever } from '@/lib/type-guards.ts'
+import EmojiDisplay from './emoji-display.tsx'
+import { FilterEntityLink } from './filter-entity-select.tsx'
 import UserPresencePanel from './user-presence-panel.tsx'
 
 export default function LayersPanel() {
@@ -58,50 +65,53 @@ export default function LayersPanel() {
 	)
 }
 
-type QueueError =
-	& {
-		item: LL.Item
-		parity: number
-		index: LL.ItemIndex
-	}
-	& ({
-		type: 'repeat-rule-violation-warning'
-		descriptors: LQY.RepeatMatchDescriptor[]
-	} | {
-		type: 'filter-entity-warning'
-		matched: boolean
-	})
-
-function ValidationErrorsDisplay(
+function ValidationWarningsDisplay(
 	props: {
-		showErrors: boolean
-		errors: QueueError[] | null
-		setShowErrors: (showErrors: boolean) => void
+		showWarnings: boolean
+		warnings: LQY.QueueWarning[] | null
+		setShowWarnings: (showWarnings: boolean) => void
 	},
 ) {
 	const constraints = LayerQueriesClient.useLayerItemStatusConstraints()
-	if (!props.showErrors || !props.errors || props.errors.length === 0) return null
+	const layerList = Zus.useStore(SLLClient.Store, s => s.layerList)
+	const itemsState = QD.useLayerItemsState()
+	const filters = FilterEntityClient.useFilterEntities()
+	if (!props.showWarnings || !props.warnings || props.warnings.length === 0) return null
 
-	const repeatErrors = props.errors.filter(e => e.type === 'repeat-rule-violation-warning') as Extract<
-		QueueError,
-		{ type: 'repeat-rule-violation-warning' }
-	>[]
-	const filterErrors = props.errors.filter(e => e.type === 'filter-entity-warning') as Extract<
-		QueueError,
-		{ type: 'filter-entity-warning' }
-	>[]
+	type QueueWarning = LQY.QueueWarning & { parity: number; item: LL.Item; index: LL.ItemIndex }
+
+	const repeatWarnings: Extract<QueueWarning, { type: 'repeat-rule-violation-warning' }>[] = []
+	const filterWarnings: Map<string, Extract<QueueWarning, { type: 'filter-entity-warning' }>[]> = new Map()
+
+	if (props.warnings) {
+		for (const warning of props.warnings) {
+			if (!LQY.isLayerListItemId(warning.itemId)) continue
+			const { item, index } = Obj.destrNullable(LL.findItemById(layerList, warning.itemId))
+			if (!item) {
+				console.warn(`No item found for warning itemId: ${warning.itemId}`)
+				continue
+			}
+			const parity = LQY.getParityForLayerItem(itemsState, warning.itemId)
+
+			if (warning.type === 'filter-entity-warning') {
+				const itemFilterWarnings = MapUtils.defaultGet(filterWarnings, warning.itemId, [])
+				itemFilterWarnings.push({ ...warning, item, index, parity })
+			} else if (warning.type === 'repeat-rule-violation-warning') repeatWarnings.push({ ...warning, item, index, parity })
+			else assertNever(warning)
+		}
+	}
 
 	return (
 		<>
-			{repeatErrors.length > 0 && (
+			{repeatWarnings.length > 0 && (
 				<Alert variant="repeat-violation" className="mx-4 my-2 w-auto">
 					<Icons.AlertTriangle className="h-4 w-4" />
 					<AlertTitle>Repeats Detected</AlertTitle>
 					<AlertDescription>
 						The following queued layers have repeated elements that violate our configured rules:
 						<div className="flex flex-col gap-1">
-							{repeatErrors.map((error) => {
-								const { item, index, parity, descriptors } = error
+							{repeatWarnings.map((warning) => {
+								const { item, index, parity, descriptors } = warning
 								const onMouseOver = () => {
 									LQYClient.Store.getState().setHoveredConstraintItemId(item.itemId ?? null)
 								}
@@ -141,15 +151,15 @@ function ValidationErrorsDisplay(
 					</AlertDescription>
 				</Alert>
 			)}
-			{filterErrors.length > 0 && (
+			{filterWarnings.size > 0 && (
 				<Alert variant="warning" className="mx-4 my-2 w-auto">
 					<Icons.AlertTriangle className="h-4 w-4" />
 					<AlertTitle>Filter Warnings</AlertTitle>
 					<AlertDescription>
 						The following queued layers triggered filter warnings:
 						<div className="flex flex-col gap-1">
-							{filterErrors.map((error) => {
-								const { item, index, parity } = error
+							{[...filterWarnings.values()].map((warnings) => {
+								const { item, index, parity } = warnings[0]
 								const onMouseOver = () => {
 									LQYClient.Store.getState().setHoveredConstraintItemId(item.itemId ?? null)
 								}
@@ -165,11 +175,30 @@ function ValidationErrorsDisplay(
 										onMouseOver={onMouseOver}
 										onMouseOut={onMouseOut}
 									>
-										<span className="font-mono text-muted-foreground">
-											{error.matched ? 'MATCHED:' : 'NOT MATCHED:'}
-										</span>
-										<ShortLayerName layerId={item.layerId} teamParity={parity} />
 										<span className="font-mono text-muted-foreground">{LL.getItemNumber(index)}</span>
+										<ShortLayerName layerId={item.layerId} teamParity={parity} />
+										{warnings.map((warning) => {
+											const constraint = constraints.find(c => c.id === warning.constraintId)
+											if (!constraint || constraint.type !== 'filter-entity') return null
+											const filter = filters.get(constraint.filterId)
+											if (!filter) return null
+											let emoji: string | undefined | null
+											let alertMessage: string | undefined | null
+											if (warning.matched) {
+												emoji = filter.emoji
+												alertMessage = filter.alertMessage
+											} else if (filter.invertedEmoji && filter.invertedAlertMessage) {
+												emoji = filter.invertedEmoji
+												alertMessage = filter.invertedAlertMessage
+											}
+											return (
+												<span key={constraint.id} className="text-muted-foreground flex flex-nowrap items-center gap-1">
+													{emoji && <EmojiDisplay showTooltip={false} emoji={emoji} />}
+													{alertMessage && <span>{alertMessage}</span>}
+													<FilterEntityLink filterId={filter.id} />
+												</span>
+											)
+										})}
 									</div>
 								)
 							})}
@@ -181,14 +210,10 @@ function ValidationErrorsDisplay(
 	)
 }
 
-function useQueueErrors() {
+function useQueueWarnings() {
 	const constraints = LayerQueriesClient.useLayerItemStatusConstraints()
 	const statuses = LayerQueriesClient.useLayerItemStatuses(constraints)?.data
-	const filterConfigs = Zus.useStore(ServerSettingsClient.Store, s => s.saved.queue.mainPool.filters)
-	const repeatRuleConfigs = Zus.useStore(ServerSettingsClient.Store, s => s.saved.queue.mainPool.repeatRules)
-	const layerList = Zus.useStore(SLLClient.Store, s => s.layerList)
 	const loggedInUser = UsersClient.useLoggedInUser()
-	const layerItemsState = QD.useLayerItemsState()
 	const queueModifiedByUser = Zus.useStore(
 		SLLClient.Store,
 		s =>
@@ -200,63 +225,37 @@ function useQueueErrors() {
 
 	return React.useMemo(() => {
 		if (!statuses || !queueModifiedByUser) return null
-		const errors: QueueError[] = []
-		for (const { item, index } of LL.iterItems(layerList)) {
-			const parity = LQY.getParityForLayerItem(layerItemsState, item.itemId)
-			for (const config of filterConfigs) {
-				if (config.warn === 'disabled' || !config.warn) continue
-				const constraintId = SS.getFilterEntityConstraintId('main', config)
-				const descriptor = statuses?.matchDescriptors.get(item.itemId)?.find(d => d.constraintId === constraintId)
-				const matched = !!descriptor
-				if (matched && config.warn === 'regular' || !matched && config.warn === 'inverted') {
-					errors.push({ item, index, parity, type: 'filter-entity-warning', matched })
-				}
-			}
-			for (const config of repeatRuleConfigs) {
-				if (!config.warn) continue
-				const constraintId = SS.getRepeatRuleConstraintId('main', config)
-				const descriptors = statuses?.matchDescriptors.get(item.itemId)?.filter(d => d.constraintId === constraintId) as
-					| (LQY.RepeatMatchDescriptor[])
-					| undefined
-				if (!descriptors || descriptors.length === 0) continue
-				errors.push({ item, index, parity, type: 'repeat-rule-violation-warning', descriptors })
-			}
-		}
-		if (errors.length === 0) return null
-		return errors
+		return statuses.warns
 	}, [
-		layerList,
-		layerItemsState,
 		statuses,
 		queueModifiedByUser,
-		filterConfigs,
-		repeatRuleConfigs,
 	])
 }
 
+// type QueueErrorWithDetails =
 type QueueControlPanelProps = {
-	errors: QueueError[] | null
-	showErrors: boolean
-	setShowErrors: (showErrors: boolean) => void
+	warnings: LQY.QueueWarning[] | null
+	showWarnings: boolean
+	setShowWarnings: (showWarnings: boolean) => void
 }
 
 function QueueControlPanel(props: QueueControlPanelProps) {
-	const { errors, showErrors, setShowErrors } = props
+	const { warnings, showWarnings, setShowWarnings } = props
 	const isEditing = UPClient.useIsEditing()
 	const [forceSave, setForceSave] = React.useState(false)
 
 	const setEditing = async (editing: boolean) => {
 		if (editing) {
-			setShowErrors(false)
+			setShowWarnings(false)
 			void SLLClient.Store.getState().dispatch({ op: 'start-editing' })
 		} else {
-			if (errors && !showErrors && !forceSave) {
-				setShowErrors(true)
+			if (warnings && !showWarnings && !forceSave) {
+				setShowWarnings(true)
 				return
 			}
 			void SLLClient.Store.getState().dispatch({ op: 'finish-editing', forceSave: forceSave || undefined })
 			setForceSave(false)
-			setShowErrors(false)
+			setShowWarnings(false)
 		}
 	}
 
@@ -405,8 +404,8 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 												{forceSave
 													? 'Force Save'
 													: (numEditors === 1 && isModified)
-													? (showErrors ? 'Save Anyway' : 'Save')
-													: (showErrors ? 'Finish Editing Anyway' : 'Finish Editing')}
+													? (showWarnings ? 'Save Anyway' : 'Save')
+													: (showWarnings ? 'Finish Editing Anyway' : 'Finish Editing')}
 											</span>
 										</Button>
 									</TooltipTrigger>
@@ -442,17 +441,17 @@ export function QueuePanelContent() {
 	const maxQueueSize = ConfigClient.useConfig()?.layerQueue.maxQueueSize
 	const queueMutations = Zus.useStore(QD.LQStore, (s) => s.mutations)
 
-	const errors = useQueueErrors()
-	const [showErrors, setShowErrors] = React.useState(false)
+	const warnings = useQueueWarnings()
+	const [showWarnings, setShowWarnings] = React.useState(false)
 	React.useEffect(() => {
-		if (!errors) {
-			setShowErrors(false)
+		if (!warnings) {
+			setShowWarnings(false)
 		}
-	}, [errors])
+	}, [warnings])
 
 	return (
 		<>
-			<ValidationErrorsDisplay errors={errors ?? []} showErrors={showErrors} setShowErrors={setShowErrors} />
+			<ValidationWarningsDisplay warnings={warnings ?? []} showWarnings={showWarnings} setShowWarnings={setShowWarnings} />
 			<CardHeader className="flex flex-row items-center justify-between">
 				<span className="flex items-center space-x-1 w-full">
 					<span className="flex flex-col gap-0.5">
@@ -491,7 +490,7 @@ export function QueuePanelContent() {
 								))}
 						</span>
 					</span>
-					<QueueControlPanel errors={errors} showErrors={showErrors} setShowErrors={setShowErrors} />
+					<QueueControlPanel warnings={warnings} showWarnings={showWarnings} setShowWarnings={setShowWarnings} />
 				</span>
 			</CardHeader>
 			<CardContent className="p-0 px-1">

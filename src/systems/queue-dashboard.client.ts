@@ -160,7 +160,7 @@ export function getToggledRepeatRuleConstraints(settings: SS.PublicServerSetting
 	const repeatRules = settings.queue.mainPool.repeatRules
 	for (let i = 0; i < repeatRules.length; i++) {
 		const rule = repeatRules[i]
-		dnrConstraints.push(CB.repeatRule('mainPool', rule, { filterApplState: applyAs }))
+		dnrConstraints.push(CB.repeatRule('mainPool', rule, { filterApplState: applyAs, warn: rule.warn }))
 	}
 	return dnrConstraints
 }

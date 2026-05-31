@@ -86,10 +86,10 @@ export function FilterEntityLabel(props: { className?: string; filter: F.FilterE
 	)
 }
 
-export function FilterEntityLink(props: { filterId: F.FilterEntityId }) {
+export function FilterEntityLink(props: { filterId: F.FilterEntityId; className?: string }) {
 	return (
 		<Link
-			className={buttonVariants({ variant: 'ghost', size: 'icon' })}
+			className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), props.className)}
 			params={{ filterId: props.filterId }}
 			to="/filters/$filterId"
 			target="__blank"

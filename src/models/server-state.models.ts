@@ -161,11 +161,12 @@ export function getSettingsConstraints(
 			)
 		}
 
-		for (const { filterId, showIndicator, defaultApplyDuringLayerSelection: applyAs } of poolConfig.filters) {
+		for (const { filterId, showIndicator, defaultApplyDuringLayerSelection: applyAs, warn } of poolConfig.filters) {
 			constraints.push(
 				CB.filterEntity(getFilterEntityConstraintId(poolName, { filterId }), filterId, {
 					filterApplState: applyAs === 'hidden' ? 'disabled' : applyAs,
 					showIndicator,
+					warn,
 				}),
 			)
 		}

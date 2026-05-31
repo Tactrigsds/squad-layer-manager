@@ -12,24 +12,27 @@ export const filterAnon = (id: string, filter: F.FilterNode): LQY.Constraint => 
 export const filterEntity = (id: string, filterId: F.FilterEntityId, opts?: {
 	showIndicator?: LQY.IndicatorState
 	filterApplState?: LQY.FilterApplicationState
+	warn?: LQY.FilterApplicationState
 }): LQY.Constraint => ({
 	type: 'filter-entity',
 	id,
 	filterId,
 	showIndicator: opts?.showIndicator ?? 'disabled',
 	filterApplState: opts?.filterApplState ?? 'regular',
+	warn: opts?.warn ?? 'disabled',
 })
 
 export const repeatRule = (
 	id: string,
 	rule: LQY.RepeatRule,
-	opts?: { filterApplState?: LQY.FilterApplicationState },
+	opts?: { filterApplState?: LQY.FilterApplicationState; warn?: boolean },
 ): LQY.Constraint => ({
 	type: 'do-not-repeat',
 	id,
 	rule,
 	showIndicator: 'regular',
 	filterApplState: opts?.filterApplState ?? 'regular',
+	warn: opts?.warn ?? true,
 })
 
 export const filterMenuItems = (id: string, items: LQY.FilterMenuItem[]): Extract<LQY.Constraint, { type: 'filter-menu-items' }> => ({

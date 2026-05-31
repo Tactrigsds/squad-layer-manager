@@ -608,6 +608,7 @@ export async function getLayerItemStatuses(args: {
 		.from(LC.layersView(ctx))
 		.where(E.inArray(LC.viewCol('id', ctx), LC.packValidLayers(LQY.getAllLayerIds(layerItems))))
 
+	const warns: LQY.QueueWarning[] = []
 	const present = new Set<L.LayerId>()
 	for (const row of rows) {
 		const layerId = LC.fromDbValue('id', row._id, ctx) as L.LayerId
@@ -619,7 +620,25 @@ export async function getLayerItemStatuses(args: {
 				const matched = Number(isMatchedRaw) === 1
 				if (matched) {
 					let itemDescriptors = MapUtils.defaultGet(matchDescriptors, item.itemId, [])
-					itemDescriptors.push({ constraintId, type: 'filter-entity', layerId, itemId: item.itemId })
+					itemDescriptors.push({ constraintId, type: 'filter-entity', layerId, itemId: item.itemId }!)
+				}
+			}
+
+			for (const constraint of constraints) {
+				const descriptors = matchDescriptors.get(item.itemId)?.filter(d => d.constraintId === constraint.id)
+				const matched = descriptors?.length !== undefined && descriptors.length > 0
+				if (constraint.type === 'filter-entity') {
+					if (constraint.warn === 'regular' && matched || constraint.warn === 'inverted' && !matched) {
+						warns.push({ itemId: item.itemId, type: 'filter-entity-warning', matched, constraintId: constraint.id })
+					}
+				} else if (constraint.type === 'do-not-repeat' && constraint.warn) {
+					if (matched) {
+						warns.push({
+							itemId: item.itemId,
+							type: 'repeat-rule-violation-warning',
+							descriptors: descriptors as LQY.RepeatMatchDescriptor[],
+						})
+					}
 				}
 			}
 		}
@@ -628,6 +647,7 @@ export async function getLayerItemStatuses(args: {
 	const statuses: LQY.LayerItemStatuses = {
 		present,
 		matchDescriptors: matchDescriptors,
+		warns,
 	}
 
 	return {

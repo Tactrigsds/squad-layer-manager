@@ -39,12 +39,14 @@ export type Constraint =
 		filterId: F.FilterEntityId
 		filterApplState: FilterApplicationState
 		showIndicator: IndicatorState
+		warn: FilterApplicationState
 		id: string
 	}
 	| {
 		type: 'do-not-repeat'
 		rule: RepeatRule
 		filterApplState: FilterApplicationState
+		warn: boolean
 		showIndicator: 'regular'
 		id: string
 	}
@@ -168,6 +170,7 @@ export type LayerItemStatuses = {
 	// descriptors will only be present for an item if the item has a repeat rule violation, or a filter which evaluates to true.
 	// This means that, for example, if constraint in question has a filterApplState of 'inverted', none of the returned items will contain descriptors for that constraint. This will need to be changed if we want to return more complex details for evaluated filters
 	matchDescriptors: Map<ItemId, MatchDescriptor[]>
+	warns: QueueWarning[]
 }
 
 export type LayerItemStatusesPart = { layerItemStatuses: LayerItemStatuses }
@@ -376,6 +379,13 @@ export type OrderedLayerItems = LayerItem[]
 export function isVoteListitem(item: LayerItem): item is VoteListItem {
 	if (item.type === 'match-history-entry') return false
 	return LL.isVoteItem(item)
+}
+
+export function isLayerListItem(item: LayerItem): item is SingleListItem | VoteListItem {
+	return item.type === 'single-list-item' || item.type === 'vote-list-item'
+}
+export function isLayerListItemId(itemId: ItemId | SpecialItemId): itemId is LL.ItemId {
+	return typeof itemId === 'string'
 }
 
 export function coalesceLayerItems(item: LayerItem) {
@@ -621,3 +631,16 @@ export function getSeed() {
 	const bytes = crypto.getRandomValues(new Uint8Array(8))
 	return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
 }
+
+export type QueueWarning =
+	& {
+		itemId: ItemId
+	}
+	& ({
+		type: 'repeat-rule-violation-warning'
+		descriptors: RepeatMatchDescriptor[]
+	} | {
+		type: 'filter-entity-warning'
+		matched: boolean
+		constraintId: string
+	})
