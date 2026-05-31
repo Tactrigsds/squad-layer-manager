@@ -126,9 +126,13 @@ export const WARNS = {
 			return `WARNING: only ${count} item${count === 1 ? '' : 's'} in the queue. Consider adding some more`
 		},
 
-		nextLayerWarning(layerId: L.LayerId, opts: { repeatViolations?: LQY.RepeatMatchDescriptor[]; poolViolations: string[] }) {
+		nextLayerWarning(layerId: L.LayerId, _opts: { repeatViolations: LQY.RepeatMatchDescriptor[]; poolViolations: string[] }) {
+			const opts = {
+				repeatViolations: _opts.repeatViolations.length > 0 ? _opts.repeatViolations : undefined,
+				poolViolations: _opts.poolViolations.length > 0 ? _opts.poolViolations : undefined,
+			}
 			const repeatedList = opts.repeatViolations?.map(r => r.field).join(', ')
-			const poolList = opts.poolViolations.join(', ')
+			const poolList = opts.poolViolations?.join(', ')
 			let str = ''
 			if (opts.repeatViolations && opts.poolViolations) {
 				str = `Repeat violations(${repeatedList}) and pool violations (${poolList})`
