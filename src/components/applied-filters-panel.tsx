@@ -92,7 +92,9 @@ export default function AppliedFiltersPanel(props: { frameKey: AppliedFiltersPrt
 
 	const poolFilterIds: F.FilterEntityId[] = Zus.useStore(
 		ServerSettingsClient.Store,
-		ZusUtils.useShallow(s => s.saved.queue.mainPool.filters.map(c => c.filterId)),
+		ZusUtils.useShallow(s =>
+			s.saved.queue.mainPool.filters.filter(c => c.defaultApplyDuringLayerSelection !== 'hidden').map(c => c.filterId)
+		),
 	)
 	const extraFilterIds: F.FilterEntityId[] = Array.from(extraFilters).filter(id => !poolFilterIds.includes(id))
 

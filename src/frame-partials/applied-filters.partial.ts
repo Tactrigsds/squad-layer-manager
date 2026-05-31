@@ -78,10 +78,16 @@ function getInitialFilterStates(poolDefaultDisabled: boolean) {
 	}
 
 	const filterEntities = FilterEntityClient.filterEntities
-	for (const filterId of appliedFilters.keys()) {
+	for (const filterId of [...appliedFilters.keys()]) {
 		const filterEntity = filterEntities.get(filterId)
 		if (!filterEntity) {
 			appliedFilters.delete(filterId)
+		}
+	}
+	for (const filterId of [...indicatedFilters.keys()]) {
+		const filterEntity = filterEntities.get(filterId)
+		if (!filterEntity) {
+			indicatedFilters.delete(filterId)
 		}
 	}
 
