@@ -513,9 +513,9 @@ function buildQueryInputSqlCondition(
 				assertNever(constraint)
 		}
 
-		// repeat rules are handled separately
-		if (constraint.showIndicator && constraint.type !== 'do-not-repeat') {
-			selectProperties[`constraint_${i}`] = res.condition
+		if (constraint.showIndicator) {
+			// repeat rules are handled separately so just use 1=1 for do-not-repeat constraints for now
+			selectProperties[`constraint_${i}`] = constraint.type === 'do-not-repeat' ? sql`1=1` : res.condition
 		}
 	}
 
