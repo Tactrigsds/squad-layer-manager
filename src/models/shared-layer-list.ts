@@ -29,6 +29,11 @@ function buildItemOpSchemaEntries<T extends { [key: string]: z.ZodType }>(base: 
 		}),
 		z.object({
 			...base,
+			op: z.literal('clone'),
+			itemId: LL.ItemIdSchema,
+		}),
+		z.object({
+			...base,
 			// create a vote from an existing item
 			op: z.literal('create-vote'),
 			newFirstItemId: LL.ItemIdSchema,
@@ -325,6 +330,15 @@ export function applyOperation(session: EditSession, newOp: Operation | NewOpera
 			const afterEdit = LL.findItemById(list, newOp.itemId)?.item.layerId
 			if (beforeEdit && afterEdit && beforeEdit !== afterEdit) {
 				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
+				if (mutations && source.type === 'manual') LL.changeGeneratedLayerAttributionInPlace(list, mutations, source.userId)
+			}
+			break
+		}
+
+		case 'clone': {
+			const { item } = Obj.destrNullable(LL.cloneAndInsertItem(list, newOp.itemId, source))
+			if (item) {
+				ItemMut.tryApplyMutation('added', [item.itemId], mutations)
 				if (mutations && source.type === 'manual') LL.changeGeneratedLayerAttributionInPlace(list, mutations, source.userId)
 			}
 			break

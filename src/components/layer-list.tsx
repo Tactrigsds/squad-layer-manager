@@ -1165,6 +1165,16 @@ function ItemDropdown(props: ItemDropdownProps) {
 			<DropdownMenuTrigger asChild>{props.children}</DropdownMenuTrigger>
 			<DropdownMenuContent>
 				<DropdownMenuGroup>
+					<DropdownMenuItem
+						className=""
+						disabled={!isEditing || isLocked}
+						onClick={() => itemActions().dispatch({ op: 'clone', itemId: item.itemId })}
+					>
+						<Icons.Copy />Clone
+					</DropdownMenuItem>
+				</DropdownMenuGroup>
+				<DropdownMenuSeparator />
+				<DropdownMenuGroup>
 					<StartActivityInteraction
 						loaderName="selectLayers"
 						className={dropdownMenuItemClassesBase}

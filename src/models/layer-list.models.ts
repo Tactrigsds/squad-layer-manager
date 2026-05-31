@@ -545,6 +545,33 @@ export function deleteItem(list: List, itemId: ItemId) {
 	splice(list, index, 1)
 }
 
+export function cloneItem(list: List, itemId: ItemId, source: Source): Item | null {
+	const { item } = Obj.destrNullable(findItemById(list, itemId))
+	if (!item) return null
+
+	const clonedItem = Obj.deepClone(item)
+	for (const { item } of iterItems([clonedItem])) {
+		item.itemId = createItemId()
+		clonedItem.source = source
+	}
+	if (clonedItem.type === 'vote-list-item') {
+		delete clonedItem.endingVoteState
+	}
+	return clonedItem
+}
+
+export function cloneAndInsertItem(list: List, itemId: ItemId, source: Source): ItemIteratorResult<Item> | undefined {
+	const { index } = Obj.destrNullable(findItemById(list, itemId))
+	if (!index) return
+
+	const clonedItem = cloneItem(list, itemId, source)
+	if (!clonedItem) return
+
+	const insertIndex = shiftIndex(index)
+	splice(list, insertIndex, 0, clonedItem)
+	return { item: clonedItem, index: insertIndex }
+}
+
 export function configureVote(
 	list: List,
 	source: Source,
