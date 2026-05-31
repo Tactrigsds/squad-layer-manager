@@ -46,8 +46,6 @@ export default function ServerSettingsPopover(
 		ref?: React.ForwardedRef<ServerSettingsPopoverHandle>
 	},
 ) {
-	const writeSettingsDenied = RbacClient.usePermsCheck(RBAC.perm('settings:write'))
-
 	React.useImperativeHandle(props.ref, () => ({
 		reset: () => {},
 	}))
@@ -75,16 +73,10 @@ export default function ServerSettingsPopover(
 		_setOpen(open)
 	}
 
-	const [applyMainPool, settingsChanged, saving, validationErrors] = Zus.useStore(
+	const [settingsChanged, saving, validationErrors] = Zus.useStore(
 		ServerSettingsClient.Store,
-		useShallow(s => [s.edited.queue.applyMainPoolToGenerationPool, s.modified, s.saving, s.validationErrors]),
+		useShallow(s => [s.modified, s.saving, s.validationErrors]),
 	)
-	const applymainPoolSwitchId = React.useId()
-
-	function setApplyMainPool(checked: boolean | 'indeterminate') {
-		if (checked === 'indeterminate') return
-		ServerSettingsClient.Store.getState().set({ path: ['queue', 'applyMainPoolToGenerationPool'], value: checked })
-	}
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
@@ -97,17 +89,6 @@ export default function ServerSettingsPopover(
 				<div className="flex items-center justify-between border-b pb-3">
 					<h3 className="text-lg font-semibold">Pool Configuration</h3>
 					<div className="flex items-center space-x-2">
-						<div className={cn('flex items-center space-x-1', poolId === 'generationPool' ? '' : 'invisible')}>
-							<Label htmlFor={applymainPoolSwitchId}>Apply Main Pool</Label>
-							<PermissionDeniedTooltip denied={writeSettingsDenied}>
-								<Switch
-									disabled={!!writeSettingsDenied}
-									id={applymainPoolSwitchId}
-									checked={applyMainPool}
-									onCheckedChange={setApplyMainPool}
-								/>
-							</PermissionDeniedTooltip>
-						</div>
 						<TabsList
 							options={[
 								{ label: 'Main Pool', value: 'mainPool' },
@@ -136,7 +117,9 @@ export default function ServerSettingsPopover(
 					</div>
 				</div>
 				<div className="space-y-6">
-					<PoolFiltersConfigurationPanel poolId={poolId} />
+					{poolId === 'mainPool'
+						? <PoolFiltersConfigurationPanel />
+						: <GenerationPoolFiltersPanel />}
 					<PoolRepeatRulesConfigurationPanel
 						className={poolId !== 'mainPool' ? 'hidden' : undefined}
 						poolId="mainPool"
@@ -178,12 +161,8 @@ export default function ServerSettingsPopover(
 	)
 }
 
-function PoolFiltersConfigurationPanel({
-	poolId,
-}: {
-	poolId: 'mainPool' | 'generationPool'
-}) {
-	const filtersPath = ['queue', poolId, 'filters']
+function PoolFiltersConfigurationPanel() {
+	const filtersPath = ['queue', 'mainPool', 'filters']
 	const filterConfigs = Zus.useStore(
 		ServerSettingsClient.Store,
 		(s) => SS.derefSettingsValue(s.edited, filtersPath) as SS.PoolFilterConfig[],
@@ -327,6 +306,112 @@ function PoolFiltersConfigurationPanel({
 										onCheckedChange={handleWarnChanged}
 										disabled={!canWarn}
 										title={canWarn ? warnDescriptions[filterConfig.warn ?? 'disabled'] : 'Enable "Indicate" first'}
+									/>
+								</div>
+								<div className="contents">
+									<PermissionDeniedTooltip denied={writeSettingsDenied}>
+										<Button
+											disabled={!!writeSettingsDenied}
+											size="icon"
+											variant="outline"
+											onClick={deleteFilter}
+											className="h-8 w-8"
+										>
+											<Icons.Minus className="h-4 w-4" />
+										</Button>
+									</PermissionDeniedTooltip>
+								</div>
+							</React.Fragment>
+						)
+					})}
+				</div>
+			</div>
+		</div>
+	)
+}
+
+function GenerationPoolFiltersPanel() {
+	const filtersPath = ['queue', 'generationPool', 'filters']
+	const filterConfigs = Zus.useStore(
+		ServerSettingsClient.Store,
+		(s) => SS.derefSettingsValue(s.edited, filtersPath) as SS.GenerationFilterConfig[],
+	)
+	const filterEntities = FilterEntityClient.useFilterEntities()
+	const writeSettingsDenied = RbacClient.usePermsCheck(RBAC.perm('settings:write'))
+
+	const add = (filterId: F.FilterEntityId | null) => {
+		if (filterId === null) return
+		const state = ServerSettingsClient.Store.getState()
+		const newFilters: SS.GenerationFilterConfig[] = [...filterConfigs, { filterId, applyAs: 'regular' }]
+		state.set({ path: filtersPath, value: newFilters })
+	}
+
+	return (
+		<div className="space-y-3">
+			<div className="flex items-center justify-between">
+				<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Filters</h4>
+				<PermissionDeniedTooltip denied={writeSettingsDenied}>
+					<FilterEntitySelect
+						title="New Pool Filter"
+						filterId={null}
+						onSelect={add}
+						excludedFilterIds={Arr.deref('filterId', filterConfigs)}
+						allowEmpty={false}
+						enabled={!writeSettingsDenied}
+					>
+						<Button disabled={!!writeSettingsDenied} size="sm" variant="outline">
+							<Icons.Plus className="h-4 w-4 mr-2" />
+							Add Filter
+						</Button>
+					</FilterEntitySelect>
+				</PermissionDeniedTooltip>
+			</div>
+			<div className="border rounded-md p-3">
+				<div
+					className="grid gap-2 items-center"
+					style={{ gridTemplateColumns: 'minmax(0, auto) max-content max-content' }}
+				>
+					<div className="contents text-sm font-medium text-muted-foreground">
+						<div>Filter</div>
+						<div>Apply As</div>
+						<div></div>
+					</div>
+					{filterConfigs.map((filterConfig, i) => {
+						const filterId = filterConfig.filterId
+						const filterPath = [...filtersPath, i]
+						const filter = filterEntities.get(filterId)
+						if (!filter) return
+						const excludedFilterIds = filterConfigs.flatMap((c) => filterId !== c.filterId ? [c.filterId] : [])
+						const onSelect = (newFilterId: string | null) => {
+							if (newFilterId === null || newFilterId === filterId) return
+							const state = ServerSettingsClient.Store.getState()
+							state.set({ path: filterPath, value: { filterId: newFilterId, applyAs: filterConfig.applyAs } })
+						}
+						const deleteFilter = () => {
+							const state = ServerSettingsClient.Store.getState()
+							const configs = SS.derefSettingsValue(state.edited, filtersPath) as SS.GenerationFilterConfig[]
+							state.set({ path: filtersPath, value: configs.filter((c) => c.filterId !== filterId) })
+						}
+						const handleApplyAsChanged = (newValue: SS.PoolFilterApplyAs) => {
+							const state = ServerSettingsClient.Store.getState()
+							state.set({ path: [...filterPath, 'applyAs'], value: newValue })
+						}
+						return (
+							<React.Fragment key={filterId}>
+								<FilterEntitySelect
+									enabled={!writeSettingsDenied}
+									title="Pool Filter"
+									filterId={filterId}
+									onSelect={onSelect}
+									allowToggle={false}
+									allowEmpty={false}
+									excludedFilterIds={excludedFilterIds}
+								/>
+								<div className="border border-input rounded-md flex items-center justify-center">
+									<TriStateCheckbox
+										checked={filterConfig.applyAs}
+										onCheckedChange={handleApplyAsChanged}
+										disabled={!!writeSettingsDenied}
 									/>
 								</div>
 								<div className="contents">
@@ -502,13 +587,15 @@ function RepeatRuleRow(props: {
 					}}
 				/>
 			</div>
-			<div className="contents">
-				<Checkbox
-					checked={!!rule.warn}
-					disabled={!!writeSettingsDenied}
-					onCheckedChange={(checked) => setWarn(checked === true)}
-				/>
-			</div>
+			{poolId === 'mainPool' && (
+				<div className="contents">
+					<Checkbox
+						checked={!!(rule as SS.PoolRepeatRuleConfig).warn}
+						disabled={!!writeSettingsDenied}
+						onCheckedChange={(checked) => setWarn(checked === true)}
+					/>
+				</div>
+			)}
 			<div className="contents">
 				<PermissionDeniedTooltip denied={writeSettingsDenied}>
 					<Button
@@ -552,6 +639,17 @@ function PoolRepeatRulesConfigurationPanel(props: {
 		state.set({ path: rulesPath, value: updated })
 	}, [rulesPath])
 
+	const showWarn = props.poolId === 'mainPool'
+	const applyMainPoolRepeatRulesSwitchId = React.useId()
+	const applyMainPoolRepeatRules = Zus.useStore(
+		ServerSettingsClient.Store,
+		(s) => s.edited.queue.generationPool.applyMainPoolRepeatRules,
+	)
+	const setApplyMainPoolRepeatRules = (checked: boolean | 'indeterminate') => {
+		if (checked === 'indeterminate') return
+		ServerSettingsClient.Store.getState().set({ path: ['queue', 'generationPool', 'applyMainPoolRepeatRules'], value: checked })
+	}
+
 	return (
 		<div className={cn('space-y-3', props.className)}>
 			<div className="flex items-center justify-between">
@@ -561,22 +659,39 @@ function PoolRepeatRulesConfigurationPanel(props: {
 					</h4>
 					<ConstraintViolationIcon />
 				</span>
-				<PermissionDeniedTooltip denied={writeSettingsDenied}>
-					<Button
-						size="sm"
-						variant="outline"
-						disabled={!!writeSettingsDenied}
-						onClick={addRule}
-					>
-						<Icons.Plus className="h-4 w-4 mr-2" />
-						Add Repeat Rule
-					</Button>
-				</PermissionDeniedTooltip>
+				<span className="flex items-center gap-2">
+					{props.poolId === 'generationPool' && (
+						<span className="flex items-center gap-1 text-sm text-muted-foreground">
+							<Label htmlFor={applyMainPoolRepeatRulesSwitchId} className="font-normal cursor-pointer">
+								Also apply main pool repeat rules
+							</Label>
+							<PermissionDeniedTooltip denied={writeSettingsDenied}>
+								<Switch
+									id={applyMainPoolRepeatRulesSwitchId}
+									disabled={!!writeSettingsDenied}
+									checked={applyMainPoolRepeatRules}
+									onCheckedChange={setApplyMainPoolRepeatRules}
+								/>
+							</PermissionDeniedTooltip>
+						</span>
+					)}
+					<PermissionDeniedTooltip denied={writeSettingsDenied}>
+						<Button
+							size="sm"
+							variant="outline"
+							disabled={!!writeSettingsDenied}
+							onClick={addRule}
+						>
+							<Icons.Plus className="h-4 w-4 mr-2" />
+							Add Repeat Rule
+						</Button>
+					</PermissionDeniedTooltip>
+				</span>
 			</div>
 			<div className="border rounded-md p-3">
 				<div
 					className="grid gap-2 items-center"
-					style={{ gridTemplateColumns: '2fr 2fr 60px 4fr max-content max-content' }}
+					style={{ gridTemplateColumns: showWarn ? '2fr 2fr 60px 4fr max-content max-content' : '2fr 2fr 60px 4fr max-content' }}
 				>
 					{/* Header Row */}
 					<div className="contents text-sm font-medium text-muted-foreground">
@@ -584,7 +699,7 @@ function PoolRepeatRulesConfigurationPanel(props: {
 						<div>Field</div>
 						<div>Within</div>
 						<div>Target Values</div>
-						<div>Warn</div>
+						{showWarn && <div>Warn</div>}
 						<div></div>
 					</div>
 					{/* Rules */}

@@ -84,13 +84,18 @@ export const ServerConnectionSchema = z.object({
 		}),
 	]),
 })
+export const GenerationFilterConfigSchema = z.object({ filterId: z.string(), applyAs: POOL_FILTER_APPLY_AS })
+export type GenerationFilterConfig = z.infer<typeof GenerationFilterConfigSchema>
 export type ServerConnection = z.infer<typeof ServerConnectionSchema>
+export const GenerationConfigSchema = z.object({
+	filters: z.array(GenerationFilterConfigSchema),
+	repeatRules: z.array(LQY.RepeatRuleSchema),
+	applyMainPoolRepeatRules: z.boolean().prefault(false),
+})
 
 export const QueueSettingsSchema = z.object({
 	mainPool: PoolConfigurationSchema.prefault({ filters: [], repeatRules: DEFAULT_REPEAT_RULE_CONFIGS }),
-	// extends the main pool during automated generation
-	applyMainPoolToGenerationPool: z.boolean().prefault(true),
-	generationPool: PoolConfigurationSchema.prefault({ filters: [], repeatRules: [] }),
+	generationPool: GenerationConfigSchema.prefault({ filters: [], repeatRules: [], applyMainPoolRepeatRules: false }),
 	preferredLength: z.number().prefault(12),
 	generatedItemType: z.enum(['layer', 'vote']).prefault('layer'),
 	preferredNumVoteChoices: z.number().prefault(3),
@@ -109,6 +114,7 @@ export type PublicServerSettings = z.infer<typeof PublicServerSettingsSchema>
 
 const EXAMPLE_PUBLIC_SETTINGS = PublicServerSettingsSchema.parse({})
 EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.filters.push({ showIndicator: DEFAULT_POOL_FILTER_APPLY_AS, filterId: 'test-filter' })
+EXAMPLE_PUBLIC_SETTINGS.queue.generationPool.filters.push({ applyAs: DEFAULT_POOL_FILTER_APPLY_AS, filterId: 'test-filter' })
 
 export const ServerSettingsSchema = PublicServerSettingsSchema.extend({
 	connections: ServerConnectionSchema,
@@ -145,32 +151,42 @@ export function getSettingsConstraints(
 	opts?: { generatingLayers?: boolean },
 ) {
 	const constraints: LQY.Constraint[] = []
-	const poolConfigs: Record<string, PoolConfiguration> = { main: settings.queue.mainPool, generation: settings.queue.generationPool }
+
 	if (!opts?.generatingLayers) {
-		delete poolConfigs.generation
-	} else if (!settings.queue.applyMainPoolToGenerationPool) {
-		delete poolConfigs.mainPool
-	}
-
-	for (const [poolName, poolConfig] of Object.entries(poolConfigs)) {
-		for (let j = 0; j < poolConfig.repeatRules.length; j++) {
-			const rule = poolConfig.repeatRules[j]
-			// label/field might not be unique so we're doing this instead. cringe
+		const mainPoolConfig = settings.queue.mainPool
+		for (const { filterId, showIndicator, defaultApplyDuringLayerSelection: applyAs, warn } of mainPoolConfig.filters) {
 			constraints.push(
-				CB.repeatRule(getRepeatRuleConstraintId(poolName, { label: rule.label }), rule),
-			)
-		}
-
-		for (const { filterId, showIndicator, defaultApplyDuringLayerSelection: applyAs, warn } of poolConfig.filters) {
-			constraints.push(
-				CB.filterEntity(getFilterEntityConstraintId(poolName, { filterId }), filterId, {
+				CB.filterEntity(getFilterEntityConstraintId('mainPool', { filterId }), filterId, {
 					filterApplState: applyAs === 'hidden' ? 'disabled' : applyAs,
-					showIndicator,
+					showIndicator: opts?.generatingLayers ? 'disabled' : showIndicator,
 					warn,
 				}),
 			)
 		}
 	}
+
+	if (!opts?.generatingLayers || settings.queue.generationPool.applyMainPoolRepeatRules) {
+		const mainPoolConfig = settings.queue.mainPool
+		for (let j = 0; j < mainPoolConfig.repeatRules.length; j++) {
+			const rule = mainPoolConfig.repeatRules[j]
+			constraints.push(
+				CB.repeatRule(getRepeatRuleConstraintId('mainPool', { label: rule.label }), rule, {
+					filterApplState: opts?.generatingLayers ? 'disabled' : undefined,
+				}),
+			)
+		}
+	}
+
+	if (opts?.generatingLayers) {
+		const genPoolConfig = settings.queue.generationPool
+
+		for (const config of genPoolConfig.filters) {
+			constraints.push(CB.filterEntity(getFilterEntityConstraintId('generationPool', { filterId: config.filterId }), config.filterId, {
+				filterApplState: config.applyAs,
+			}))
+		}
+	}
+
 	return constraints
 }
 
