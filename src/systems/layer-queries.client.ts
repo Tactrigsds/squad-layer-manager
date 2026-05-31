@@ -378,7 +378,7 @@ export function useLayerItemStatusData(
 			const hoveredMatchDescriptors = hoveredConstraintItemId && hoveredConstraintItemId !== itemId
 					&& filterAndReportInvalidDescriptors(
 						queriedConstraints,
-						allMatchDescriptors.get(hoveredConstraintItemId)?.filter(vd => vd.itemId === itemId),
+						allMatchDescriptors.get(hoveredConstraintItemId)?.filter(vd => vd.type === 'repeat-rule' && vd.sourceItemId === itemId),
 					)
 				|| undefined
 

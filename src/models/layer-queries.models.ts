@@ -275,7 +275,10 @@ export type RepeatMatchDescriptor = {
 		| 'Alliance_A'
 		| 'Alliance_B'
 	itemId?: ItemId
+	layerId: string
 	repeatOffset: number
+	// the previous itemId that caused this repeat rule to be violated
+	sourceItemId: ItemId
 }
 
 // shows whether a filter entity has been matched or not

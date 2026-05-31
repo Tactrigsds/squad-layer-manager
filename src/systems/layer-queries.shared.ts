@@ -576,6 +576,7 @@ export async function getLayerItemStatuses(args: {
 							constraint.id,
 							constraint.rule,
 							item.layerId,
+							item.itemId,
 						)
 						if (descriptors) {
 							matchedState.set(item.itemId, constraint.id)
@@ -641,6 +642,7 @@ function getisMatchedByRepeatRuleDirect(
 	constraintId: string,
 	rule: LQY.RepeatRule,
 	targetLayerId: L.LayerId,
+	targetItemId?: LQY.ItemId,
 ) {
 	const targetLayer = L.toLayer(targetLayerId)
 	const previousLayers = ctx.layerItemsState.layerItems
@@ -653,11 +655,13 @@ function getisMatchedByRepeatRuleDirect(
 		const layerItem = previousLayers[i]
 		const layer = L.toLayer(layerItem.layerId)
 		const getViolationDescriptor = (field: LQY.RepeatMatchDescriptor['field']): LQY.RepeatMatchDescriptor => ({
-			itemId: layerItem.itemId,
-			constraintId,
 			type: 'repeat-rule',
+			itemId: targetItemId,
+			layerId: targetLayerId,
+			constraintId,
 			field: field,
 			repeatOffset: Math.abs(cursorIndex - i),
+			sourceItemId: layerItem.itemId,
 		})
 
 		switch (rule.field) {
