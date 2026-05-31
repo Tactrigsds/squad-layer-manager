@@ -96,9 +96,29 @@ export const setupInstance = C.spanOp(
 			ctx.cleanup.push(
 				Rx.interval(CONFIG.layerQueue.adminQueueReminderInterval).pipe(
 					C.durableSub('queue-reminders', { module, levels: { event: 'info' } }, async () => {
-						const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-						const serverState = await SquadServer.getServerState(ctx)
+						const baseCtx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
+						const serverState = await SquadServer.getServerState(baseCtx)
+						const ctx = await LayerQueriesServer.resolveLayerQueryCtx(baseCtx, serverState)
 						const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+						const allConstraints = SS.getSettingsConstraints(serverState.settings, { generatingLayers: false })
+						const statusRes = await LayerQueries.getLayerItemStatuses({ ctx, input: { constraints: allConstraints } })
+
+						warnCondition: if (statusRes.code === 'ok') {
+							const nextLayer = serverState.layerQueue[0] ?? null
+							if (!nextLayer) break warnCondition
+							const warns = statusRes.statuses.warns.filter(w => w.itemId === nextLayer.itemId)
+							if (warns.length === 0) break warnCondition
+							const repeatViolations = warns.filter(w => w.type === 'repeat-rule-violation-warning').flatMap(w => w.descriptors)
+							const poolViolations = warns.filter(w => w.type === 'filter-entity-warning').map(w => {
+								const constraint = allConstraints.find(c => c.id === w.constraintId)! as Extract<LQY.Constraint, { type: 'filter-entity' }>
+								return constraint.warn === 'inverted' ? `!${constraint.filterId}` : constraint.filterId
+							})
+							await SquadRcon.warnAllAdmins(
+								ctx,
+								Messages.WARNS.queue.nextLayerWarning(nextLayer.layerId, { repeatViolations, poolViolations }),
+							)
+						}
+
 						const voteState = ctx.vote.state
 						if (ctx.server.serverRolling$.value || currentMatch.status === 'post-game') return
 						if (

@@ -4,6 +4,7 @@ import * as BAL from '@/models/balance-triggers.models'
 import * as CMD from '@/models/command.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
+import type * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
 import type * as USR from '@/models/users.models'
 import type * as V from '@/models/vote.models'
@@ -124,12 +125,29 @@ export const WARNS = {
 		lowQueueItemCount(count: number) {
 			return `WARNING: only ${count} item${count === 1 ? '' : 's'} in the queue. Consider adding some more`
 		},
+
+		nextLayerWarning(layerId: L.LayerId, opts: { repeatViolations?: LQY.RepeatMatchDescriptor[]; poolViolations: string[] }) {
+			const repeatedList = opts.repeatViolations?.map(r => r.field).join(', ')
+			const poolList = opts.poolViolations.join(', ')
+			let str = ''
+			if (opts.repeatViolations && opts.poolViolations) {
+				str = `Repeat violations(${repeatedList}) and pool violations (${poolList})`
+			} else if (opts.repeatViolations) {
+				str = `Repeat violations(${repeatedList})`
+			} else if (opts.poolViolations) {
+				str = `Pool violations (${poolList})`
+			}
+
+			return `WARNING: The next layer (${DH.displayLayer(layerId)}) has ${str}. Check SLM for more details.`
+		},
+
 		votePending(matchStartTime: Date, threshold: number, autostart: boolean, commands: CMD.CommandConfigs, commandPrefix: string) {
 			const timeUntilVote = Math.max(0, threshold - (Date.now() - matchStartTime.getTime()))
 			const formattedTime = formatInterval(timeUntilVote, { terse: false, round: 'second' })
 			const showNextCmd = CMD.buildCommand('showNext', {}, commands, commandPrefix, true)[0]
 			return `A Vote is pending${autostart ? ' and will be run in ' + formattedTime : ''}. Run ${showNextCmd} to preview the vote`
 		},
+
 		empty: `WARNING: Queue is empty. Please populate it`,
 		showNext: (layerQueue: LL.List, parts: USR.UserPart, opts?: { repeat?: number }) => (ctx: C.Player) => {
 			const item = layerQueue[0]

@@ -230,7 +230,7 @@ function PoolFiltersConfigurationPanel({
 					{/* Header Row */}
 					<div className="contents text-sm font-medium text-muted-foreground">
 						<div>Filter</div>
-						<div>Layer Select Default State</div>
+						<div>Layer Select/Autogen Default State</div>
 						<div>Indicate Matches</div>
 						<div>Warn</div>
 						<div></div>

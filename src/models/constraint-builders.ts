@@ -31,7 +31,7 @@ export const repeatRule = (
 	id,
 	rule,
 	showIndicator: 'regular',
-	filterApplState: opts?.filterApplState ?? 'regular',
+	filterApplState: opts?.filterApplState ?? 'inverted',
 	warn: opts?.warn ?? true,
 })
 

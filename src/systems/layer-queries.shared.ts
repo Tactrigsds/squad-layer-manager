@@ -52,7 +52,7 @@ export async function* queryLayersStreamed(args: {
 	input.pageIndex ??= 0
 
 	ctx.log = ctx.log.child({ query: 'queryLayers-' + createId(4) })
-	ctx.log.debug({ input }, 'running queryLayers')
+	ctx.log.debug('running queryLayers %o', input)
 
 	const conditionsRes = buildQueryInputSqlCondition(ctx, input)
 	if (conditionsRes.code !== 'ok') return yield conditionsRes
@@ -624,6 +624,7 @@ export async function getLayerItemStatuses(args: {
 				}
 			}
 
+			if (!LQY.isLayerListItem(item)) continue
 			for (const constraint of constraints) {
 				const descriptors = matchDescriptors.get(item.itemId)?.filter(d => d.constraintId === constraint.id)
 				const matched = descriptors?.length !== undefined && descriptors.length > 0
