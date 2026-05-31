@@ -6,7 +6,7 @@ import React from 'react'
 
 import { MatchHistoryPanelContent } from './match-history-panel'
 
-import LayersPanel from './layers-panel.tsx'
+import LayerQueuePanel from './layer-queue-panel.tsx'
 import UserPresencePanel from './user-presence-panel.tsx'
 
 export default function PrimaryPanel() {
@@ -22,7 +22,7 @@ export default function PrimaryPanel() {
 					<UserPresencePanel />
 				</CardHeader>
 				<Separator />
-				<LayersPanel />
+				<LayerQueuePanel />
 			</ScrollArea>
 		</Card>
 	)

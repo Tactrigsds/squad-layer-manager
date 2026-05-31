@@ -32,7 +32,7 @@ import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import { RepeatViolationDisplay } from './constraint-matches-indicator.tsx'
 import { LayerList } from './layer-list.tsx'
-import { MatchHistoryPanelContent } from './match-history-panel'
+import { MatchHistoryPanelContent } from './match-history-panel.tsx'
 import PoolConfigurationPopover from './server-settings-popover.tsx'
 import ShortLayerName from './short-layer-name.tsx'
 
@@ -205,7 +205,7 @@ function useQueueErrors() {
 			const parity = LQY.getParityForLayerItem(layerItemsState, item.itemId)
 			for (const config of filterConfigs) {
 				if (config.warn === 'disabled' || !config.warn) continue
-				const constraintId = SS.getFilterEntityConstraintId('mainPool', config)
+				const constraintId = SS.getFilterEntityConstraintId('main', config)
 				const descriptor = statuses?.matchDescriptors.get(item.itemId)?.find(d => d.constraintId === constraintId)
 				const matched = !!descriptor
 				if (matched && config.warn === 'regular' || !matched && config.warn === 'inverted') {
@@ -214,7 +214,7 @@ function useQueueErrors() {
 			}
 			for (const config of repeatRuleConfigs) {
 				if (!config.warn) continue
-				const constraintId = SS.getRepeatRuleConstraintId('mainPool', config)
+				const constraintId = SS.getRepeatRuleConstraintId('main', config)
 				const descriptors = statuses?.matchDescriptors.get(item.itemId)?.filter(d => d.constraintId === constraintId) as
 					| (LQY.RepeatMatchDescriptor[])
 					| undefined
