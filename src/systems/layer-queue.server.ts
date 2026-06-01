@@ -117,6 +117,7 @@ export const setupInstance = C.spanOp(
 								ctx,
 								Messages.WARNS.queue.nextLayerWarning(nextLayer.layerId, { repeatViolations, poolViolations }),
 							)
+							return
 						}
 
 						const voteState = ctx.vote.state

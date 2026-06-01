@@ -131,14 +131,14 @@ export const WARNS = {
 				repeatViolations: _opts.repeatViolations.length > 0 ? _opts.repeatViolations : undefined,
 				poolViolations: _opts.poolViolations.length > 0 ? _opts.poolViolations : undefined,
 			}
-			const repeatedList = opts.repeatViolations?.map(r => r.field).join(', ')
+			const repeatedList = opts.repeatViolations ? [...new Set(opts.repeatViolations?.map(r => r.field))].join(', ') : undefined
 			const poolList = opts.poolViolations?.join(', ')
 			let str = ''
-			if (opts.repeatViolations && opts.poolViolations) {
+			if (repeatedList && poolList) {
 				str = `Repeat violations(${repeatedList}) and pool violations (${poolList})`
-			} else if (opts.repeatViolations) {
+			} else if (repeatedList) {
 				str = `Repeat violations(${repeatedList})`
-			} else if (opts.poolViolations) {
+			} else if (poolList) {
 				str = `Pool violations (${poolList})`
 			}
 

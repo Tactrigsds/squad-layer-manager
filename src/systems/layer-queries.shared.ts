@@ -52,7 +52,7 @@ export async function* queryLayersStreamed(args: {
 	input.pageIndex ??= 0
 
 	ctx.log = ctx.log.child({ query: 'queryLayers-' + createId(4) })
-	ctx.log.debug('running queryLayers %o', input)
+	ctx.log.debug(input, 'running queryLayers')
 
 	const conditionsRes = buildQueryInputSqlCondition(ctx, input)
 	if (conditionsRes.code !== 'ok') return yield conditionsRes
