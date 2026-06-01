@@ -891,7 +891,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 														onClick={abortVote}
 														{...manageVoteButtonProps({ hideWhenNotHovering: false })}
 													>
-														<Icons.X />
+														<Icons.Pause />
 													</Button>
 												</PermissionDeniedTooltip>
 											)}
@@ -990,9 +990,8 @@ function VoteLayerListItem(props: LayerListItemProps) {
 										title="Delete"
 										disabled={!canEdit}
 										onClick={() => itemActions().dispatch({ op: 'delete' })}
-										className="text-destructive hover:text-destructive"
 									>
-										<Icons.Trash2 />
+										<Icons.X />
 									</Button>
 									<ItemDropdown {...dropdownProps}>
 										<Button
