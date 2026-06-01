@@ -475,14 +475,21 @@ async function* processPendingEvent(
 			state.expectedNewLayerId = state.nextLayerId
 		} else {
 			let newLayerId = state.expectedNewLayerId
-			if (!newLayerId) {
-				log.warn('expectedNewLayerId is null')
-				processedEventIds.add(pendingEvent.id)
-				return
-			}
+			state.expectedNewLayerId = null
 			state.syncState = { type: 'rolling', newGameEvent: pendingEvent }
-			if (!L.layerMatchesIngameLayerClassname(newLayerId, pendingEvent.layerClassname)) {
-				throw new Error(`layerClassname mismatch: expected ${newLayerId}, got ${pendingEvent.layerClassname}`)
+			if (!newLayerId || !L.layerMatchesIngameLayerClassname(newLayerId, pendingEvent.layerClassname)) {
+				if (pendingEvent.layerClassname) {
+					log.error(`layerClassname mismatch: expected ${newLayerId}, got ${pendingEvent.layerClassname}`)
+				} else {
+					log.warn('expectedNewLayerId is null')
+				}
+				const layersStatus = await state.hooks.fetchLayersStatus()
+				if (!layersStatus) {
+					log.warn('fetchLayersStatus returned null')
+					processedEventIds.add(pendingEvent.id)
+					return
+				}
+				newLayerId = layersStatus.currentLayer.id
 			}
 
 			const { match, nextLayerId } = await state.hooks.onNewGameDuringRoll(newLayerId, pendingEvent.time)
