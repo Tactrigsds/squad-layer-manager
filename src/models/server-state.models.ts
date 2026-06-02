@@ -170,9 +170,7 @@ export function getSettingsConstraints(
 		for (let j = 0; j < mainPoolConfig.repeatRules.length; j++) {
 			const rule = mainPoolConfig.repeatRules[j]
 			constraints.push(
-				CB.repeatRule(getRepeatRuleConstraintId('mainPool', { label: rule.label }), rule, {
-					filterApplState: opts?.generatingLayers ? 'disabled' : undefined,
-				}),
+				CB.repeatRule(getRepeatRuleConstraintId('mainPool', { label: rule.label }), rule),
 			)
 		}
 	}
@@ -184,6 +182,9 @@ export function getSettingsConstraints(
 			constraints.push(CB.filterEntity(getFilterEntityConstraintId('generationPool', { filterId: config.filterId }), config.filterId, {
 				filterApplState: config.applyAs,
 			}))
+		}
+		for (const config of genPoolConfig.repeatRules) {
+			constraints.push(CB.repeatRule(getRepeatRuleConstraintId('generationPool', { label: config.label }), config))
 		}
 	}
 
