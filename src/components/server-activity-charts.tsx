@@ -277,7 +277,7 @@ export function ServerActivityCharts(props: {
 			.map(p => {
 				const eosId = p.ids.eos!
 				const flagIds = bmData[eosId]?.flagIds ?? []
-				const flags = orgFlags ? BattlemetricsClient.resolveFlags(flagIds, orgFlags) : []
+				const flags = orgFlags ? BM.resolveFlags(flagIds, orgFlags) : []
 				return [eosId, flags]
 			})
 

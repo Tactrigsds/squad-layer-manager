@@ -6,10 +6,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import * as ZusUtils from '@/lib/zustand'
+import * as BM from '@/models/battlemetrics.models'
 import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as RPC from '@/orpc.client'
-import { resolveFlags, sortFlagsByHierarchy, useOrgFlags } from '@/systems/battlemetrics.client'
+import { sortFlagsByHierarchy, useOrgFlags } from '@/systems/battlemetrics.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -48,7 +49,7 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 	const { data, isPending: isDetailsPending } = useQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { playerId } }))
 	const { data: bmData } = useQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId }, staleTime: Infinity }))
 	const orgFlags = useOrgFlags()
-	const rawFlags = bmData && orgFlags ? resolveFlags(bmData.flagIds, orgFlags) : null
+	const rawFlags = bmData && orgFlags ? BM.resolveFlags(bmData.flagIds, orgFlags) : null
 	const flags = rawFlags ? sortFlagsByHierarchy(rawFlags) : undefined
 	const flagColor = flags ? flags[0]?.color ?? null : null
 	const profile = bmData ? (({ flagIds: _, ...rest }) => rest)(bmData) : null

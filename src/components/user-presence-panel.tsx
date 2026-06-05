@@ -37,8 +37,8 @@ export const sortEditingPresence: SortPresenceFn = (a, b) => {
 	}
 
 	// Priority: has queue non-idle edit activity > editing > present
-	const aEditingActivity = UP.getSllEditingQueueNode(aPresence.activityState)
-	const bEditingActivity = UP.getSllEditingQueueNode(bPresence.activityState)
+	const aEditingActivity = UP.getEditingQueueNode(aPresence.activityState)
+	const bEditingActivity = UP.getEditingQueueNode(bPresence.activityState)
 
 	const aNonIdle = !!aEditingActivity?.chosen && aEditingActivity.chosen.id !== 'IDLE'
 	const bNonIdle = !!bEditingActivity?.chosen && bEditingActivity.chosen.id !== 'IDLE'
@@ -57,6 +57,7 @@ export const sortEditingPresence: SortPresenceFn = (a, b) => {
 
 export type UserPresencePanelProps = {
 	// users which have a matchng activity will be listed
+	className?: string
 	matchActivity?: UP.Resolver
 	transitionMessages?: {
 		matchActivity: UP.Resolver
@@ -183,7 +184,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 	}
 
 	if (sortedUserPresence.length === 0) {
-		return <div className="text-muted-foreground self-center">No users online</div>
+		return <div className={props.className}></div>
 	}
 	let otherMatchingUsersCount = 0
 	for (const userId of allUserIds) {
@@ -192,7 +193,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 	}
 
 	return (
-		<div className="flex flex-wrap space-x-1">
+		<div className={cn('flex flex-wrap space-x-1', props.className)}>
 			{otherMatchingUsersCount > 1 && (
 				<div className="text-sm text-muted-foreground pr-1">{otherMatchingUsersCount} other users editing queue</div>
 			)}

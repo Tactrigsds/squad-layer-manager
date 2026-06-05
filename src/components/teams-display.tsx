@@ -51,6 +51,7 @@ export function getTeamsDisplay(
 
 export function TeamFactionDisplay(
 	props: {
+		className?: string
 		parity: number
 		layer: L.UnvalidatedLayer | L.LayerId
 		team: SM.TeamId
@@ -117,7 +118,7 @@ export function TeamFactionDisplay(
 	if (!faction) return
 
 	return (
-		<span className="inline-block whitespace-nowrap-nowrap">
+		<span className={cn('inline-block whitespace-nowrap-nowrap', props.className)}>
 			<span title={attrs[0].title} style={{ color: attrs[0].color }} className="font-semibold">
 				<span className={cn(allianceStyles, factionStyles)}>
 					{faction}
@@ -142,13 +143,30 @@ export function TeamFactionDisplay(
 	)
 }
 
-export function MatchTeamDisplay(props: { matchId: number; teamId: SM.TeamId; includeUnits?: boolean; showAltTeamIndicator?: boolean }) {
-	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === props.matchId)
+export function MatchTeamDisplay(
+	props: {
+		matchId?: number
+		teamId: SM.TeamId | MH.NormedTeamId
+		includeUnits?: boolean
+		showAltTeamIndicator?: boolean
+		className?: string
+	},
+) {
+	const recentMatches = MatchHistoryClient.useRecentMatches()
+	let match: MH.MatchDetails | undefined
+	if (props.matchId === undefined) {
+		match = recentMatches[recentMatches.length - 1]
+		if (!match?.isCurrentMatch) return null
+	} else {
+		match = recentMatches.find(m => m.historyEntryId === props.matchId)
+	}
 	if (!match) return null
+	const teamId = MH.getDenormedTeamId(props.teamId, match.ordinal)
 	return (
 		<TeamFactionDisplay
+			className={props.className}
 			parity={match.ordinal}
-			team={props.teamId}
+			team={teamId}
 			layer={match.layerId}
 			includeUnits={props.includeUnits}
 			showAltTeamIndicator={props.showAltTeamIndicator}

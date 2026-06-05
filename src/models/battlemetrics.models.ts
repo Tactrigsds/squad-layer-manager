@@ -136,6 +136,12 @@ export type PlayerFlagsAndProfile = {
 	hoursPlayed: number
 }
 
+export type PlayerProfile = {
+	hoursPlayer: number
+	profileUrl: string
+	bmPlayerId: string
+}
+
 export type PublicPlayerBmData = Record<string, PlayerFlagsAndProfile>
 export type PlayerBmDataUpdate = { playerId: string; data: PlayerFlagsAndProfile }
 export const PlayerFlagGroupingsSchema = z.array(
@@ -157,7 +163,14 @@ export function getGroupingModeIds(groupings: PlayerFlagGroupings): string[] {
 	return result
 }
 
-export function resolvePlayerFlagGroups(players: [SM.PlayerId, PlayerFlag[]][], groupings: PlayerFlagGroupings, modeId: string) {
+export function resolvePlayerFlagGroups(
+	players: [SM.PlayerId, PlayerFlag[]][],
+	groupings: PlayerFlagGroupings,
+	modeId: string | null | undefined,
+) {
+	const groups: Map<SM.PlayerId, string> = new Map()
+	if (!modeId) return groups
+
 	const modeGroupings = groupings.filter(g => g.modeIds.includes(modeId))
 	const associations: [string, string, number][] = []
 	for (const group of modeGroupings) {
@@ -166,8 +179,6 @@ export function resolvePlayerFlagGroups(players: [SM.PlayerId, PlayerFlag[]][], 
 		}
 	}
 	associations.sort((a, b) => a[2] - b[2])
-
-	const groups: Map<SM.PlayerId, string> = new Map()
 
 	for (const [playerId, playerFlags] of players) {
 		for (const [label, flagId] of associations) {
@@ -181,9 +192,25 @@ export function resolvePlayerFlagGroups(players: [SM.PlayerId, PlayerFlag[]][], 
 	return groups
 }
 
+export function resolveFlags(flagIds: string[], orgFlags: PlayerFlag[]): PlayerFlag[] {
+	return flagIds.flatMap((id) => {
+		const flag = orgFlags.find((f) => f.id === id)
+		return flag ? [flag] : []
+	})
+}
+
 export const UpdatePlayerFlagsInputSchema = z.object({
 	steamId: z.string(),
 	flagIds: z.array(z.string()),
 })
 
 export type UpdatePlayerFlagsInput = z.infer<typeof UpdatePlayerFlagsInputSchema>
+
+export type StoreState = {
+	selectedModeId: string | null
+	setSelectedModeId: (id: string | null) => void
+	slsOnly: boolean
+	setSlsOnly: (v: boolean) => void
+	orgFlags: PlayerFlag[]
+	setOrgFlags: (flags: PlayerFlag[]) => void
+}

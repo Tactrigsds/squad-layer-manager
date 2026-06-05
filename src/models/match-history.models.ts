@@ -303,7 +303,8 @@ export function getNormedTeamId(teamId: SM.TeamId, parity: number) {
 	const normIds = ['A', 'B'] as const
 	return normIds[(parity + teamId - 1) % 2]
 }
-export function getDenormedTeamId(normedTeamId: NormedTeamId, parity: number) {
+export function getDenormedTeamId(normedTeamId: NormedTeamId | SM.TeamId, parity: number) {
+	if (typeof normedTeamId === 'number') return normedTeamId
 	if (parity % 2 === 0) {
 		return normedTeamId === 'A' ? 1 : 2
 	} else {

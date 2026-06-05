@@ -6,18 +6,14 @@ import { useQuery } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 
-type StoreState = {
-	selectedModeId: string | null
-	setSelectedModeId: (id: string | null) => void
-	slsOnly: boolean
-	setSlsOnly: (v: boolean) => void
-}
-
-export const Store = Zus.createStore<StoreState>((set) => ({
+export const Store = Zus.createStore<BM.StoreState>((set) => ({
 	selectedModeId: null,
 	setSelectedModeId: (id) => set({ selectedModeId: id }),
 	slsOnly: false,
 	setSlsOnly: (v) => set({ slsOnly: v }),
+
+	orgFlags: [],
+	setOrgFlags: (flags) => set({ orgFlags: flags }),
 }))
 
 export const [usePlayerBmData, playerBmData$] = ReactRx.bind<BM.PublicPlayerBmData>(
@@ -42,13 +38,6 @@ export function sortFlagsByHierarchy<T extends BM.PlayerFlag>(flags: T[]): T[] {
 	})
 }
 
-export function resolveFlags(flagIds: string[], orgFlags: BM.PlayerFlag[]): BM.PlayerFlag[] {
-	return flagIds.flatMap((id) => {
-		const flag = orgFlags.find((f) => f.id === id)
-		return flag ? [flag] : []
-	})
-}
-
 export function usePlayerFlagIds(playerId: string): string[] | null {
 	const bmData = usePlayerBmData()
 	const player = bmData[playerId]
@@ -59,7 +48,7 @@ export function usePlayerFlags(playerId: string): BM.PlayerFlag[] | null {
 	const flagIds = usePlayerFlagIds(playerId)
 	const orgFlags = useOrgFlags()
 	if (flagIds === null || !orgFlags) return null
-	return resolveFlags(flagIds, orgFlags)
+	return BM.resolveFlags(flagIds, orgFlags)
 }
 
 export function usePlayerProfile(playerId: string) {
@@ -115,10 +104,16 @@ export function useGroupedPlayerFlagColor(playerId: string): string | null {
 
 export function setup() {
 	playerBmData$.subscribe()
+
 	RPC.observe(() => RPC.orpc.battlemetrics.watchPlayerBmData.call()).subscribe((update) => {
 		RPC.queryClient.setQueryData(
 			RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId: update.playerId }, staleTime: Infinity }).queryKey,
 			update.data,
 		)
 	})
+
+	void (async () => {
+		const orgFlagsRes = await RPC.queryClient.fetchQuery(RPC.orpc.battlemetrics.listOrgFlags.queryOptions({ staleTime: Infinity }))
+		Store.getState().setOrgFlags(orgFlagsRes)
+	})()
 }

@@ -5,6 +5,7 @@ import { assertNever } from '@/lib/type-guards'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as USR from '@/models/users.models'
+import { DistributiveOmit } from '@tanstack/react-query'
 import { z } from 'zod'
 
 export const TeamswitchStatusSchema = z.enum(['ready', 'player-disconnected', 'player-changed-teams'])
@@ -73,12 +74,13 @@ export const OpSchema = z.discriminatedUnion('code', [
 ])
 
 export type Op = z.infer<typeof OpSchema>
+export type NewClientOp = DistributiveOmit<Op, 'opId'>
 
-export function newOpId() {
+export function createOpId() {
 	return createId(6)
 }
 
-export type SideEffects = {
+export type SideEffect = {
 	code: 'switches-mutated'
 } | {
 	code: 'executing-teamswitch'
@@ -93,7 +95,7 @@ export type SideEffects = {
 	error: unknown
 }
 
-export const reducer: RbSyncState.Reducer<Op, State, SideEffects> = (oldState, ops, prevOps, onSideEffect) => {
+export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, ops, prevOps, onSideEffect) => {
 	const state = Obj.deepClone(oldState)
 	for (const op of ops) {
 		try {
@@ -226,4 +228,13 @@ export function getTeamswitchStatusDelta(state: State, players: SM.Player[], his
 	for (const playerId of missingPlayerIds.values()) {
 		state.statuses.set(playerId, 'player-disconnected')
 	}
+}
+
+export type UpdateForClient = {
+	code: 'init'
+	state: State
+	ops: Op[]
+} | {
+	code: 'op'
+	op: Op
 }

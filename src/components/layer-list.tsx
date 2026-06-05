@@ -111,7 +111,7 @@ export function LayerList(
 	DndKit.useDraggingCallback(item => {
 		const presenceState = UPClient.Store.getState()
 		const getIsDraggingStuff = (root: UP.RootActivity) => {
-			const id = root.child?.EDITING_QUEUE?.chosen?.id
+			const id = UP.getEditingQueueNode(root)?.chosen?.id
 			return id === 'MOVING_ITEM' || id === 'ADDING_ITEM_FROM_HISTORY'
 		}
 		if (!item) {
@@ -706,7 +706,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		createActivity: UP.createEditingQueueVariant({ _tag: 'leaf', id: 'CONFIGURING_VOTE', opts: { itemId: item.itemId } }),
 		matchActivity: React.useCallback(
 			(state) => {
-				const node = UP.getSllEditingQueueNode(state)?.chosen
+				const node = UP.getEditingQueueNode(state)?.chosen
 				return node?.id === 'CONFIGURING_VOTE' && node.opts.itemId === item.itemId
 			},
 			[item.itemId],

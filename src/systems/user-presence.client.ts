@@ -57,7 +57,7 @@ export const ACTIVITY_LOADER_CONFIGS = [
 	createActivityLoaderConfig(
 		'selectLayers',
 		s => {
-			const node = UP.getSllEditingQueueNode(s)?.chosen
+			const node = UP.getEditingQueueNode(s)?.chosen
 			if (node?.id === 'ADDING_ITEM' || node?.id === 'EDITING_ITEM') return node
 			return undefined
 		},
@@ -91,7 +91,7 @@ export const ACTIVITY_LOADER_CONFIGS = [
 	createActivityLoaderConfig(
 		'genVote',
 		s => {
-			const node = UP.getSllEditingQueueNode(s)?.chosen
+			const node = UP.getEditingQueueNode(s)?.chosen
 			if (node?.id === 'GENERATING_VOTE') return node
 			return undefined
 		},
@@ -107,7 +107,7 @@ export const ACTIVITY_LOADER_CONFIGS = [
 		},
 	}),
 	createActivityLoaderConfig('pasteRotation', s => {
-		const node = UP.getSllEditingQueueNode(s)?.chosen
+		const node = UP.getEditingQueueNode(s)?.chosen
 		if (node?.id === 'PASTE_ROTATION') return node
 		return undefined
 	})({
@@ -175,7 +175,7 @@ function createPresenceStore() {
 				}
 				const editors = new Set<USR.UserId>()
 				for (const client of presence.values()) {
-					if (UP.getSllEditingQueueNode(client.activityState)) {
+					if (UP.getEditingQueueNode(client.activityState)) {
 						editors.add(client.userId)
 					}
 				}
@@ -227,6 +227,7 @@ function createPresenceStore() {
 				const userId = UsersClient.loggedInUserId
 				const config = ConfigClient.getConfig()
 				if (!config || !userId) return
+				if (newOp.code !== 'page-interaction') console.log(newOp)
 				const op: UP.ClientOp = { ...newOp, userId, clientId: config.wsClientId, time: Date.now(), opId: UP.createOpId() } as UP.ClientOp
 				const newSession = RbSyncState.Client.processOutgoingOps(get().session, [op], UP.reducer)
 				set({ session: newSession })
@@ -265,7 +266,7 @@ export function useItemPresence(itemId: LL.ItemId) {
 			const res = MapUtils.find(
 				state.presence,
 				(_, v) => {
-					const activity = UP.getSllEditingQueueNode(v.activityState)?.chosen
+					const activity = UP.getEditingQueueNode(v.activityState)?.chosen
 					return !!activity && UP.isItemOwnedActivity(activity) && activity.opts.itemId === itemId
 				},
 			)
@@ -273,7 +274,7 @@ export function useItemPresence(itemId: LL.ItemId) {
 			const root = res[1].activityState!
 			const presence = {
 				...res?.[1],
-				itemActivity: UP.getSllEditingQueueNode(root)!.chosen as UP.ItemOwnedActivity,
+				itemActivity: UP.getEditingQueueNode(root)!.chosen as UP.ItemOwnedActivity,
 			}
 			if (!presence) return [undefined, undefined] as const
 			const hovered = state.hoveredActivityUserId === presence.userId
@@ -354,7 +355,58 @@ export function useActivityState<P>(
 			storeState.updateActivity(removeActivityRef.current)
 		}
 	}, [matchActivity])
-	return [predicate, setActive] as const
+	return [!!predicate, setActive] as const
+}
+
+type VariantConfig = {
+	createActivity: (prev: UP.RootActivity | null | undefined) => UP.RootActivity
+	removeActivity: (prev: UP.RootActivity) => UP.RootActivity
+	matchActivity: (prev: UP.RootActivity | null | undefined) => any
+}
+
+export function useVariantActivityState<Variants extends Record<string, VariantConfig>>(
+	variants: Variants,
+) {
+	const variantsRef = React.useRef(variants)
+	variantsRef.current = variants
+
+	const currentVariant = Zus.useStore(
+		Store,
+		ZusUtils.useDeep(React.useCallback((): keyof Variants | null => {
+			const config = ConfigClient.getConfig()
+			const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? UP.DEFAULT_ACTIVITY
+			for (const key of Object.keys(variantsRef.current) as (keyof Variants)[]) {
+				if (variantsRef.current[key].matchActivity(state)) return key
+			}
+			return null
+		}, [])),
+	)
+
+	const setVariant = React.useCallback((newVariant: keyof Variants | null) => {
+		const config = ConfigClient.getConfig()
+		if (!config) return
+		const storeState = Store.getState()
+		const state = storeState.presence.get(config?.wsClientId)?.activityState ?? UP.DEFAULT_ACTIVITY
+
+		let currentKey: keyof Variants | null = null
+		for (const key of Object.keys(variantsRef.current) as (keyof Variants)[]) {
+			if (variantsRef.current[key].matchActivity(state)) {
+				currentKey = key
+				break
+			}
+		}
+
+		if (currentKey === newVariant) return
+
+		if (currentKey !== null) {
+			storeState.updateActivity(variantsRef.current[currentKey].removeActivity)
+		}
+		if (newVariant !== null) {
+			storeState.updateActivity(variantsRef.current[newVariant].createActivity)
+		}
+	}, [])
+
+	return [currentVariant, setVariant] as [keyof Variants | null, (variant: keyof Variants | null) => void]
 }
 
 export function useHoveredActivityUser() {
@@ -426,20 +478,20 @@ export async function setup() {
 	).subscribe(([modified, wsClientId]) => {
 		try {
 			const currentActivity = Store.getState().presence.get(wsClientId)?.activityState
-			const dialogActivity = currentActivity?.child?.VIEWING_SETTINGS
-			const inChangingSettingsActivity = dialogActivity?.id === 'VIEWING_SETTINGS' && dialogActivity?.child?.CHANGING_SETTINGS
+			const dialogActivity = UP.VIEWING_SETTINGS_TRANSITIONS.matchActivity(currentActivity)
+			const inChangingSettingsActivity = !!dialogActivity?.child.CHANGING_QUEUE_SETTINGS
 			if (!modified && inChangingSettingsActivity) {
 				Store.getState().updateActivity(Im.produce(draft => {
-					const activity = draft.child?.VIEWING_SETTINGS
-					if (!activity) return
-					delete activity.child.CHANGING_SETTINGS
+					const node = UP.VIEWING_SETTINGS_TRANSITIONS.matchActivity(draft)
+					if (!node) return
+					delete node.child.CHANGING_QUEUE_SETTINGS
 				}))
 			}
 			if (modified) {
 				Store.getState().updateActivity(Im.produce(draft => {
-					draft.child.VIEWING_SETTINGS = ST.Match.branch('VIEWING_SETTINGS', draft.child.VIEWING_SETTINGS?.opts ?? {}, {
-						CHANGING_SETTINGS: ST.Match.leaf('CHANGING_SETTINGS', {}),
-					})
+					const node = UP.VIEWING_SETTINGS_TRANSITIONS.matchActivity(draft)
+					if (!node?.child) return
+					node.child.CHANGING_QUEUE_SETTINGS = ST.Match.leaf('CHANGING_QUEUE_SETTINGS', {})
 				}))
 			}
 		} catch (error) {

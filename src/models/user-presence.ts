@@ -20,28 +20,32 @@ export const [ACTIVITIES] = (() => {
 	const { variant, leaf, branch } = ST.Def
 
 	const activities = branch('ON_DASHBOARD', [
-		variant('EDITING_QUEUE', [
-			leaf('IDLE'),
-			leaf(
-				'ADDING_ITEM',
-				z.object({
-					cursor: LL.CursorSchema,
-					action: LQY.LAYER_ITEM_ACTION.prefault('add'),
-					title: z.string().optional(),
-					variant: z.enum(['toggle-position']).optional(),
-					selected: z.array(LL.ItemIdSchema).optional(),
-				}),
-			),
-			leaf('ADDING_ITEM_FROM_HISTORY'),
+		variant('ON_PRIMARY_PANEL', [
+			branch('VIEWING_QUEUE', [
+				branch('VIEWING_QUEUE_SETTINGS', [leaf('CHANGING_QUEUE_SETTINGS')]),
+				variant('EDITING_QUEUE', [
+					leaf('IDLE'),
+					leaf(
+						'ADDING_ITEM',
+						z.object({
+							cursor: LL.CursorSchema,
+							action: LQY.LAYER_ITEM_ACTION.prefault('add'),
+							title: z.string().optional(),
+							variant: z.enum(['toggle-position']).optional(),
+							selected: z.array(LL.ItemIdSchema).optional(),
+						}),
+					),
+					leaf('ADDING_ITEM_FROM_HISTORY'),
 
-			leaf('EDITING_ITEM', { itemId: LL.ItemIdSchema, cursor: LL.CursorSchema }),
-			leaf('MOVING_ITEM', { itemId: LL.ItemIdSchema }),
-			leaf('CONFIGURING_VOTE', { itemId: LL.ItemIdSchema }),
-			leaf('GENERATING_VOTE', { cursor: LL.CursorSchema }),
-			leaf('PASTE_ROTATION'),
+					leaf('EDITING_ITEM', { itemId: LL.ItemIdSchema, cursor: LL.CursorSchema }),
+					leaf('MOVING_ITEM', { itemId: LL.ItemIdSchema }),
+					leaf('CONFIGURING_VOTE', { itemId: LL.ItemIdSchema }),
+					leaf('GENERATING_VOTE', { cursor: LL.CursorSchema }),
+					leaf('PASTE_ROTATION'),
+				]),
+			]),
+			leaf('VIEWING_TEAMS'),
 		]),
-		leaf('EDITING_TEAMSWAPS'),
-		branch('VIEWING_SETTINGS', [leaf('CHANGING_SETTINGS')]),
 	]) satisfies ST.Def.Node
 
 	return [activities] as const
@@ -53,7 +57,18 @@ export const DEFAULT_ACTIVITY: RootActivity = {
 	_tag: 'branch',
 	id: 'ON_DASHBOARD',
 	opts: {},
-	child: {},
+	child: {
+		ON_PRIMARY_PANEL: {
+			_tag: 'variant',
+			id: 'ON_PRIMARY_PANEL',
+			opts: {},
+			chosen: {
+				_tag: 'leaf',
+				id: 'VIEWING_TEAMS',
+				opts: {},
+			},
+		},
+	},
 }
 
 const serverOpBase = {
@@ -65,7 +80,6 @@ const clientOpBase = {
 	clientId: z.string(),
 	userId: z.bigint(),
 }
-const editActivities = ACTIVITIES.child.EDITING_QUEUE.child
 
 export const OpSchema = z.discriminatedUnion('code', [
 	// ------ basic presence tracking ------
@@ -161,7 +175,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffects> = (prevState, 
 			} else if (op.code === 'sll:end-all-editing') {
 				state.itemLocks.clear()
 				for (const [clientId, clientState] of state.presence.entries()) {
-					state.presence.set(clientId, { ...clientState, activityState: clearSllEditingActivity(clientState.activityState) })
+					state.presence.set(clientId, { ...clientState, activityState: clearQueueEditingActivity(clientState.activityState) })
 				}
 				success = true
 				break
@@ -225,8 +239,8 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffects> = (prevState, 
 					case 'set-activity': {
 						const prevActivity = clientState.activityState
 
-						const prevEditingSll = getSllEditingQueueNode(prevActivity)
-						const sllEditNode = getSllEditingQueueNode(op.activity)
+						const prevEditingSll = getEditingQueueNode(prevActivity)
+						const sllEditNode = getEditingQueueNode(op.activity)
 						if (!sllEditNode && prevEditingSll) {
 							MapUtils.deleteByValue(state.itemLocks, op.clientId)
 						} else if (sllEditNode && !isItemOwnedActivity(sllEditNode.chosen)) {
@@ -279,7 +293,7 @@ export function anyLocksInaccessible(locks: ItemLocks, ids: LL.ItemId[], wsClien
 	return false
 }
 
-const _editingQueueVariants = ACTIVITIES.child.EDITING_QUEUE.child
+const _editingQueueVariants = ACTIVITIES.child.ON_PRIMARY_PANEL.child.VIEWING_QUEUE.child.EDITING_QUEUE.child
 type EditingQueueVariant = (typeof _editingQueueVariants)[keyof typeof _editingQueueVariants]['id']
 
 export type QueueEditingActivity<
@@ -294,7 +308,11 @@ export function createEditingQueueVariant<K extends EditingQueueVariant>(
 	return (prev: RootActivity | undefined | null) => {
 		const base = prev ?? DEFAULT_ACTIVITY
 		return Im.produce((state: Im.WritableDraft<RootActivity>) => {
-			state.child.EDITING_QUEUE = {
+			let queueNode = getViewingQueueNode(state)
+			if (!queueNode) {
+				return
+			}
+			queueNode.child.EDITING_QUEUE = {
 				_tag: 'variant',
 				id: 'EDITING_QUEUE',
 				opts: {},
@@ -305,35 +323,108 @@ export function createEditingQueueVariant<K extends EditingQueueVariant>(
 }
 
 export type Resolver<T = any> = (root: RootActivity | undefined | null) => T
-
-export const TOGGLE_EDITING_QUEUE_TRANSITIONS = {
-	matchActivity: (root: RootActivity | undefined | null) => !!getSllEditingQueueNode(root),
+export const VIEWING_QUEUE_TRANSITIONS = {
+	matchActivity: (root: RootActivity | undefined | null) => !!getViewingQueueNode(root),
 	createActivity: (_activity: RootActivity | undefined | null): RootActivity => {
-		let activity = _activity ?? DEFAULT_ACTIVITY
-		if (activity.child.EDITING_QUEUE) return activity
-		return {
-			...activity,
-			child: {
-				...activity.child,
-				EDITING_QUEUE: {
-					_tag: 'variant',
-					id: 'EDITING_QUEUE',
+		const activity = _activity ?? DEFAULT_ACTIVITY
+		return Im.produce(activity, activity => {
+			activity.child.ON_PRIMARY_PANEL ??= {
+				_tag: 'variant',
+				id: 'ON_PRIMARY_PANEL',
+				opts: {},
+				chosen: {
+					_tag: 'branch',
+					id: 'VIEWING_QUEUE',
 					opts: {},
-					chosen: ST.Match.leaf('IDLE', {}),
+					child: {},
 				},
-			},
-		}
+			}
+			activity.child.ON_PRIMARY_PANEL!.chosen = {
+				_tag: 'branch',
+				id: 'VIEWING_QUEUE',
+				child: {},
+				opts: {},
+			}
+		})
 	},
 	removeActivity: Im.produce((root: Im.WritableDraft<RootActivity>) => {
-		delete root.child.EDITING_QUEUE
+		delete root.child.ON_PRIMARY_PANEL
+	}),
+}
+export const VIEWING_TEAMS_TRANSITIONS = {
+	matchActivity: (activity: RootActivity | undefined | null) => {
+		const primaryPanelChoice = activity?.child.ON_PRIMARY_PANEL?.chosen
+		if (primaryPanelChoice?.id === 'VIEWING_TEAMS') return primaryPanelChoice
+		return null
+	},
+	createActivity: (_activity: RootActivity | undefined | null): RootActivity => {
+		const activity = _activity ?? DEFAULT_ACTIVITY
+		return Im.produce(activity, activity => {
+			activity.child.ON_PRIMARY_PANEL = {
+				_tag: 'variant',
+				id: 'ON_PRIMARY_PANEL',
+				opts: {},
+				chosen: ST.Match.leaf('VIEWING_TEAMS', {}),
+			}
+		})
+	},
+	removeActivity: Im.produce((root: Im.WritableDraft<RootActivity>) => {
+		delete root.child.ON_PRIMARY_PANEL
+	}),
+}
+
+export const TOGGLE_EDITING_QUEUE_TRANSITIONS = {
+	matchActivity: (root: RootActivity | undefined | null) => !!getEditingQueueNode(root),
+	createActivity: (activity: RootActivity | undefined | null): RootActivity => {
+		if (!activity) return DEFAULT_ACTIVITY
+		return Im.produce(activity, activity => {
+			const queueNode = getViewingQueueNode(activity)
+			if (!queueNode) return
+			queueNode.child.EDITING_QUEUE = {
+				_tag: 'variant',
+				id: 'EDITING_QUEUE',
+				opts: {},
+				chosen: ST.Match.leaf('IDLE', {}),
+			}
+		})
+	},
+	removeActivity: Im.produce((root: Im.WritableDraft<RootActivity>) => {
+		const queueNode = getViewingQueueNode(root)
+		if (!queueNode) return
+		delete queueNode.child.EDITING_QUEUE
+	}),
+}
+
+export const VIEWING_SETTINGS_TRANSITIONS = {
+	matchActivity: (root: RootActivity | undefined | null) => {
+		return getViewingQueueNode(root)?.child.VIEWING_QUEUE_SETTINGS
+	},
+	createActivity: (root: RootActivity | undefined | null): RootActivity => {
+		if (!root) return DEFAULT_ACTIVITY
+		return Im.produce(root, root => {
+			const queueNode = getViewingQueueNode(root)
+			if (!queueNode) return
+			queueNode.child.VIEWING_QUEUE_SETTINGS = {
+				_tag: 'branch',
+				id: 'VIEWING_QUEUE_SETTINGS',
+				opts: {},
+				child: {},
+			}
+		})
+	},
+	removeActivity: Im.produce((draft: Im.WritableDraft<RootActivity>) => {
+		const queueNode = getViewingQueueNode(draft)
+		if (!queueNode) return
+		delete queueNode.child.VIEWING_QUEUE_SETTINGS
 	}),
 }
 
 export function toEditingQueueIdleOrNone(match?: (root: RootActivity) => any): (prev: RootActivity) => RootActivity {
 	return Im.produce((state: Im.WritableDraft<RootActivity>) => {
-		if (!state.child.EDITING_QUEUE) return
+		const queueNode = getViewingQueueNode(state)
+		if (!queueNode) return
 		if (match && !match(state)) return
-		state.child.EDITING_QUEUE = {
+		queueNode.child.EDITING_QUEUE = {
 			_tag: 'variant',
 			id: 'EDITING_QUEUE',
 			opts: {},
@@ -417,17 +508,25 @@ export function resolveUserPresence(state: PresenceState) {
 	return presenceByUser
 }
 
-export function getSllEditingQueueNode(activity: RootActivity | null | undefined) {
-	return activity?.child.EDITING_QUEUE
+export function getViewingQueueNode(activity: RootActivity | null | undefined) {
+	const primaryPanelChoice = activity?.child.ON_PRIMARY_PANEL?.chosen
+	if (primaryPanelChoice?.id === 'VIEWING_QUEUE') return primaryPanelChoice
+	return null
 }
 
-export function clearSllEditingActivity(activity: RootActivity | null | undefined): RootActivity | null {
+export function getEditingQueueNode(activity: RootActivity | null | undefined) {
+	const queueNode = getViewingQueueNode(activity)
+	if (!queueNode) return null
+	return queueNode.child.EDITING_QUEUE
+}
+
+export function clearQueueEditingActivity(activity: RootActivity | null | undefined): RootActivity | null {
 	if (!activity) return null
-	if (!activity.child.EDITING_QUEUE) return activity
-	return {
-		...activity,
-		child: Obj.omit(activity.child, ['EDITING_QUEUE']),
-	}
+	return Im.produce(activity, draft => {
+		const queueNode = getViewingQueueNode(draft)
+		if (!queueNode) return
+		delete queueNode.child.EDITING_QUEUE
+	})
 }
 
 export function* iterActivities(state: PresenceState) {
@@ -438,7 +537,7 @@ export function* iterActivities(state: PresenceState) {
 }
 
 export function itemsToLockForActivity(list: LL.List, activity: RootActivity): LL.ItemId[] {
-	const dialogActivity = getSllEditingQueueNode(activity)?.chosen
+	const dialogActivity = getEditingQueueNode(activity)?.chosen
 	if (!dialogActivity || !isItemOwnedActivity(dialogActivity)) return []
 	const itemId = dialogActivity.opts.itemId
 	const item = LL.findItemById(list, itemId)?.item
@@ -455,11 +554,12 @@ export function itemsToLockForActivity(list: LL.List, activity: RootActivity): L
 }
 
 export const getHumanReadableActivity = (activity: RootActivity, listOrIndex: LL.List | LL.ItemIndex, withItemName?: boolean) => {
-	const editingActivity = getSllEditingQueueNode(activity)
-	const settingsActivity = activity.child.VIEWING_SETTINGS
+	const editingActivity = getEditingQueueNode(activity)
+	const queueNode = getViewingQueueNode(activity)
+	const settingsActivity = queueNode?.child.VIEWING_QUEUE_SETTINGS
 
 	if (settingsActivity) {
-		if (settingsActivity.child.CHANGING_SETTINGS) {
+		if (settingsActivity.child.CHANGING_QUEUE_SETTINGS) {
 			return 'Changing Pool Settings'
 		}
 	}

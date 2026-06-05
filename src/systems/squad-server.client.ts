@@ -1,5 +1,7 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
 import * as CHAT from '@/models/chat.models'
+import * as MH from '@/models/match-history.models'
+import * as SquadServer from '@/models/squad-server.models'
 import type * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as Cookies from '@/systems/app-routes.client'
@@ -48,20 +50,7 @@ export const chatEvent$ = RPC.observe(
 	},
 ).pipe(Rx.tap({ next: () => (previouslyConnected = true) }), Rx.share())
 
-type ChatStore = {
-	chatState: CHAT.ChatState
-	loadedServerId: string | null
-	secondaryFilterState: CHAT.SecondaryFilterState
-	setSecondaryFilterState(state: CHAT.SecondaryFilterState): void
-	handleChatEvents(event: (CHAT.Event | CHAT.LifecycleEvent)[]): void
-	// increments every time we modify the chat state
-	eventGeneration: number
-	// Selected match ordinal for viewing historical events (null = current match)
-	selectedMatchOrdinal: number | null
-	setSelectedMatchOrdinal(ordinal: number | null): Promise<void>
-}
-
-export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
+export const ChatStore = Zus.createStore<SquadServer.ChatStore>((set, get) => {
 	return {
 		chatState: CHAT.getInitialChatState(),
 		loadedServerId: null,

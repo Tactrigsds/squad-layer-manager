@@ -21,7 +21,7 @@ export const module = initModule('teamswitches')
 
 let log!: CS.Logger
 
-type Session = RbSyncState.Server.Session<Teamswitches.Op, Teamswitches.State, Teamswitches.SideEffects>
+type Session = RbSyncState.Server.Session<Teamswitches.Op, Teamswitches.State, Teamswitches.SideEffect>
 
 export type TeamswitchContext = {
 	session: Session
@@ -34,7 +34,7 @@ export function setup() {
 
 export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
 	const serverId = ctx.serverId
-	const sideEffectQueue$ = new Rx.Subject<[C.ServerSlice & C.Db, Teamswitches.SideEffects]>()
+	const sideEffectQueue$ = new Rx.Subject<[C.ServerSlice & C.Db, Teamswitches.SideEffect]>()
 	ctx.cleanup.push(sideEffectQueue$)
 	const context: TeamswitchContext = {
 		session: RbSyncState.Server.initSession(Teamswitches.initState(), {
@@ -56,7 +56,7 @@ export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
 			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 			const delta = Teamswitches.getTeamswitchStatusDelta(ctx.teamswitches.session.state, players, currentMatch.ordinal)
 			if (delta) {
-				await onOperation(ctx, { code: 'set-switch-statuses', delta, opId: Teamswitches.newOpId() })
+				await onOperation(ctx, { code: 'set-switch-statuses', delta, opId: Teamswitches.createOpId() })
 			}
 		}),
 	).subscribe()
@@ -66,10 +66,17 @@ export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
 
 const orpcBase = getOrpcBase(module)
 export const orpcRouter = {
-	watchOps: orpcBase.handler(async function* watchOps({ context, signal }) {
+	watchUpdates: orpcBase.handler(async function* watchOps({ context, signal }) {
 		const obs = SquadServer.selectedServerCtx$(context).pipe(
 			withAbortSignal(signal!),
-			Rx.switchMap((ctx) => ctx.teamswitches.op$),
+			Rx.switchMap((ctx) => {
+				const init: Teamswitches.UpdateForClient = {
+					code: 'init',
+					state: ctx.teamswitches.session.state,
+					ops: ctx.teamswitches.session.ops,
+				}
+				return ctx.teamswitches.op$.pipe(Rx.map((op): Teamswitches.UpdateForClient => ({ code: 'op', op })), Rx.startWith(init))
+			}),
 		)
 		yield* toAsyncGenerator(obs)
 	}),
@@ -87,7 +94,7 @@ async function onOperation(ctx: C.Teamswitch, op: Teamswitches.Op) {
 
 async function onSideEffect(
 	ctx: C.Teamswitch & C.Db & C.SquadServer & C.MatchHistory & C.Rcon & C.AdminList & C.LayerQueue,
-	sideEffect: Teamswitches.SideEffects,
+	sideEffect: Teamswitches.SideEffect,
 ) {
 	switch (sideEffect.code) {
 		case 'switches-mutated': {
@@ -96,7 +103,7 @@ async function onSideEffect(
 			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 			const delta = Teamswitches.getTeamswitchStatusDelta(ctx.teamswitches.session.state, players, currentMatch.ordinal)
 			if (delta) {
-				await onOperation(ctx, { code: 'set-switch-statuses', delta, opId: Teamswitches.newOpId() })
+				await onOperation(ctx, { code: 'set-switch-statuses', delta, opId: Teamswitches.createOpId() })
 			}
 			break
 		}
@@ -129,7 +136,7 @@ async function onSideEffect(
 			await DB.runTransaction(ctx, async (ctx) => {
 				await SquadServer.updateServerState(ctx, { teamswitches: new Map() }, { type: 'system', event: 'teamswitches-executed' })
 			})
-			await onOperation(ctx, { code: 'complete-teamswitch-execution', opId: Teamswitches.newOpId() })
+			await onOperation(ctx, { code: 'complete-teamswitch-execution', opId: Teamswitches.createOpId() })
 			log.info('switched %s players', toSwitch.length)
 			break
 		}

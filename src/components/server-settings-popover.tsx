@@ -52,23 +52,7 @@ export default function ServerSettingsPopover(
 
 	const [poolId, setPoolId] = React.useState<'mainPool' | 'generationPool'>('mainPool')
 
-	const [open, _setOpen] = UPClient.useActivityState({
-		matchActivity: React.useCallback((activity) => !!activity?.child.VIEWING_SETTINGS, []),
-		createActivity: (_activity) => {
-			const activity = _activity ?? UP.DEFAULT_ACTIVITY
-			return Im.produce((draft: Im.WritableDraft<UP.RootActivity>) => {
-				draft.child.VIEWING_SETTINGS = {
-					_tag: 'branch',
-					id: 'VIEWING_SETTINGS',
-					opts: {},
-					child: {},
-				}
-			})(activity)
-		},
-		removeActivity: Im.produce((draft: Im.WritableDraft<UP.RootActivity>) => {
-			delete draft.child.VIEWING_SETTINGS
-		}),
-	})
+	const [open, _setOpen] = UPClient.useActivityState(UP.VIEWING_SETTINGS_TRANSITIONS)
 	const setOpen = (open: boolean) => {
 		if (!open) {
 			void ServerSettingsClient.Store.getState().reset()

@@ -51,6 +51,53 @@ export function storeFromObservable<T>(o: StateObservable<T>, initialValue: T, o
 
 type StoresTuple<States extends unknown[]> = [...{ [s in keyof States]: StoreApi<States[s]> }]
 
+type AnySource<T> = StoreApi<T> | StateObservable<T>
+type SourceState<S extends AnySource<any>> = S extends AnySource<infer T> ? T : never
+type SourceStates<Sources extends AnySource<any>[]> = { [K in keyof Sources]: SourceState<Sources[K]> }
+
+function isObservable(s: AnySource<any>): s is StateObservable<any> {
+	return 'getValue' in s
+}
+
+function getSourceState(s: AnySource<any>): any {
+	return isObservable(s) ? s.getValue() : s.getState()
+}
+
+function subscribeSource(s: AnySource<any>, update: () => void): () => void {
+	if (isObservable(s)) {
+		const sub = s.subscribe({ next: update })
+		return () => sub.unsubscribe()
+	}
+	return s.subscribe(update)
+}
+
+export function useStore<S>(store: AnySource<S>): S
+export function useStore<Sources extends AnySource<any>[], R>(
+	...args: [...Sources, (...states: SourceStates<Sources>) => R]
+): R
+export function useStore<Sources extends AnySource<any>[]>(...sources: Sources): SourceStates<Sources>
+export function useStore(...args: (AnySource<any> | ((...states: any[]) => any))[]): any {
+	const hasSelector = typeof args[args.length - 1] === 'function'
+	const sources = (hasSelector ? args.slice(0, -1) : args) as AnySource<any>[]
+	const selector = hasSelector ? args[args.length - 1] as (...states: any[]) => any : undefined
+
+	const compute = () => {
+		const states = sources.map(getSourceState)
+		return selector ? selector(...states) : sources.length === 1 ? states[0] : states
+	}
+
+	const [value, setValue] = React.useState(compute)
+
+	React.useEffect(() => {
+		const update = () => setValue(compute())
+		const unsubs = sources.map(s => subscribeSource(s, update))
+		return () => unsubs.forEach(unsub => unsub())
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [...sources, selector])
+
+	return value
+}
+
 export type UnsubscribeFn = () => void
 export type SubArg = UnsubscribeFn | Rx.Subscription
 

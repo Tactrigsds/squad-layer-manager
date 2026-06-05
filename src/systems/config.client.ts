@@ -7,7 +7,7 @@ import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import { toStream } from 'zustand-rx'
 
-const Store = Zus.createStore<PublicConfig | undefined>(() => undefined)
+export const Store = Zus.createStore<PublicConfig | undefined>(() => undefined)
 
 // just hope the config exists already (probably will)
 export function getConfig() {
