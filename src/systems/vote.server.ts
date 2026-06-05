@@ -559,7 +559,7 @@ export const endVote = C.spanOp(
 			await broadcastVoteUpdate(
 				ctx,
 				endingVoteState,
-				Messages.BROADCASTS.vote.winnerSelected(tally!, listItem, endingVoteState.winnerId, displayProps),
+				Messages.BROADCASTS.vote.winnerSelected(tally!, listItem, endingVoteState.winnerId, displayProps, opts.reason === 'ended-early'),
 				{
 					repeatWarn: false,
 				},

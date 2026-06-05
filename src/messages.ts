@@ -48,7 +48,13 @@ export const BROADCASTS = {
 			const fullText = `Vote for the next layer${voterTypeDisp}:\n${lines}\nYou have ${formattedInterval} to vote.\n`
 			return fullText
 		},
-		winnerSelected(tally: V.Tally, voteItem: LL.VoteItem, winnerId: LL.ItemId, displayProps: DH.LayerDisplayProp[]) {
+		winnerSelected(
+			tally: V.Tally,
+			voteItem: LL.VoteItem,
+			winnerId: LL.ItemId,
+			displayProps: DH.LayerDisplayProp[],
+			early: boolean = false,
+		) {
 			const resultsText = Array.from(tally.totals.entries())
 				.sort((a, b) => b[1] - a[1])
 				.map(([choiceId, votes]) => {
@@ -58,7 +64,9 @@ export const BROADCASTS = {
 					return `${votes} votes - (${tally.percentages.get(choiceId)?.toFixed(0)}%) ${isWinner ? '[WINNER] ' : ''}${layerName}`
 				})
 			const randomChoiceExplanation = tally.leaders.length > 1 ? `\n(Winner randomly selected - ${tally.leaders.length} way tie.)` : ''
-			const fullText = `\nVote has ended:\n${resultsText.join('\n')}\n${randomChoiceExplanation}`
+			const fullText = `\nVote ${early ? 'was' : 'has'} ended${early ? ' early' : ''}:\n${
+				resultsText.join('\n')
+			}\n${randomChoiceExplanation}`
 			return fullText
 		},
 		insufficientVotes(voteItem: LL.VoteItem, displayProps: DH.LayerDisplayProp[]) {
