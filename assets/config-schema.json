@@ -147,6 +147,11 @@
             "description": "Whether AdminSetNExtLayer commands not originating from SLM are respected",
             "default": false,
             "type": "boolean"
+          },
+          "warnOnChangeLayer": {
+            "description": "Warn admins when the next layer is changed",
+            "default": false,
+            "type": "boolean"
           }
         },
         "required": ["id", "displayName", "connections"]

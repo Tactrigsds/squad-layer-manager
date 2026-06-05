@@ -161,7 +161,7 @@ export const WARNS = {
 		},
 
 		empty: `WARNING: Queue is empty. Please populate it`,
-		showNext: (layerQueue: LL.List, parts: USR.UserPart, opts?: { repeat?: number }) => (ctx: C.Player) => {
+		showNext: (layerQueue: LL.List, parts: USR.UserPart, opts?: { repeat?: number; updated?: boolean }) => (ctx: C.Player) => {
 			const item = layerQueue[0]
 			let setByDisplay: string
 			switch (item?.source.type) {
@@ -203,7 +203,7 @@ export const WARNS = {
 							break
 						}
 					}
-					const msg = `Next Layer (Chosen via vote)\n${
+					const msg = `Next Layer${opts?.updated ? ' changed' : ''} (Chosen via vote)\n${
 						winningLayer ? DH.displayLayer(winningLayer, playerNextTeamId, ['layer', 'factions', 'units']) : 'unknown'
 					}`
 					return getOptions(msg)
@@ -220,7 +220,11 @@ export const WARNS = {
 			// this shouldn't be possible
 			if (!item.layerId) return `No next layer set`
 
-			const msg = [`Next Layer\n${DH.displayLayer(item.layerId, playerNextTeamId, ['layer', 'factions', 'units'])}`]
+			const msg = [
+				`Next Layer${opts?.updated ? ' has been changed to:' : ':'}\n${
+					DH.displayLayer(item.layerId, playerNextTeamId, ['layer', 'factions', 'units'])
+				}`,
+			]
 			msg.push(extraDisplay)
 			return getOptions(msg)
 		},

@@ -52,6 +52,7 @@ export const ConfigSchema = z.object({
 			overrideAdminSetNextLayer: z.boolean().default(false).describe(
 				'Whether AdminSetNExtLayer commands not originating from SLM are respected',
 			),
+			warnOnChangeLayer: z.boolean().default(false).describe('Warn admins when the next layer is changed'),
 		}),
 	).refine((servers) => {
 		const defaultServerCount = servers.filter((server) => server.defaultServer).length

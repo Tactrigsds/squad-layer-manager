@@ -182,10 +182,10 @@ export const setupInstance = C.spanOp(
 				Rx.filter(([ctx, event]) => event.type === 'MAP_SET'),
 				C.durableSub('sync-server-map-set', { module, mutexes: ([ctx]) => ctx.layerQueue.updateLayerMtx }, async ([ctx, event]) => {
 					if (event.type !== 'MAP_SET' || event.source?.type === 'layer-queue') return
-					// this case will be dealt with in handleNewGame, so can ignore it here
-					if (ctx.server.serverRolling$.value) return
 					const serverConfig = CONFIG.servers.find(s => s.id === ctx.serverId)!
 					const queue = getSavedQueue(ctx)
+					// this case will be dealt with in handleNewGame, so can ignore it here
+					if (ctx.server.serverRolling$.value) return
 					const savedNextLayerId = LL.getNextLayerId(queue)
 					const savedNextItemId = queue[0]?.itemId || null
 					if (savedNextLayerId && L.areLayersCompatible(event.layerId, savedNextLayerId)) return
@@ -305,7 +305,7 @@ async function onSideEffect(
 }
 
 export async function saveQueueAndUpdateServer(
-	ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon,
+	ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.AdminList,
 	list: LL.List,
 ) {
 	await VoteSys.syncVoteStateWithQueueState(ctx, list)
@@ -313,6 +313,15 @@ export async function saveQueueAndUpdateServer(
 		const serverState = await SquadServer.getServerState(ctx)
 		const nextItemId = list[0]?.itemId || null
 		const nextLayerId = LL.getNextLayerId(list)
+		const serverConfig = CONFIG.servers.find(s => s.id === ctx.serverId)!
+		if (serverConfig.warnOnChangeLayer && nextLayerId) {
+			const statusRes = await ctx.server.layersStatus.get(ctx)
+			if (statusRes.code === 'ok' && statusRes.data.nextLayer) {
+				if (!L.areLayersCompatible(statusRes.data.nextLayer.id, nextLayerId)) {
+					await warnShowNext(ctx, 'all-admins', { updated: true })
+				}
+			}
+		}
 		if (nextLayerId && nextItemId) {
 			await syncNextLayerToServer(ctx, serverState.settings, nextLayerId, nextItemId)
 		} else {
@@ -333,7 +342,7 @@ export async function saveQueueAndUpdateServer(
 export async function warnShowNext(
 	ctx: C.Db & C.SquadServer & C.LayerQueue & C.Rcon & C.AdminList,
 	playerIds: 'all-admins' | SM.PlayerIds.Type,
-	opts?: { repeat?: number },
+	opts?: { repeat?: number; updated?: boolean },
 ) {
 	const layerQueue = getSavedQueue(ctx)
 	const parts: USR.UserPart = { users: [] }
@@ -344,9 +353,16 @@ export async function warnShowNext(
 		parts.users.push(await Users.buildUser(user))
 	}
 	if (playerIds === 'all-admins') {
-		await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.showNext(layerQueue, parts, { repeat: opts?.repeat ?? 1 }))
+		await SquadRcon.warnAllAdmins(
+			ctx,
+			Messages.WARNS.queue.showNext(layerQueue, parts, { repeat: opts?.repeat ?? 1, updated: opts?.updated }),
+		)
 	} else {
-		await SquadRcon.warn(ctx, playerIds, Messages.WARNS.queue.showNext(layerQueue, parts, { repeat: opts?.repeat ?? 1 }))
+		await SquadRcon.warn(
+			ctx,
+			playerIds,
+			Messages.WARNS.queue.showNext(layerQueue, parts, { repeat: opts?.repeat ?? 1, updated: opts?.updated }),
+		)
 	}
 }
 
@@ -502,7 +518,7 @@ export const dispatchOp = C.spanOp(
 		attrs: (ctx, op) => ({ op: op.op, opId: op.opId }),
 	},
 	async (
-		ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon,
+		ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.AdminList,
 		op: SLL.Operation,
 	) => {
 		log.info(`Dispatching op ${op.op} (${op.opId}) %o`, op)
