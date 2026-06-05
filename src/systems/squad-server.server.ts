@@ -731,6 +731,9 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 		await destroyServer(ctx)
 	})
 	log.info('Initialized server %s', serverId)
+	if (CONFIG.warnOnSlmStart) {
+		await SquadRcon.warnAllAdmins({ ...ctx, ...slice }, Messages.WARNS.slmStarted)
+	}
 }
 
 export async function pushAttribution(ctx: C.SquadServer & C.Db, attribution: Omit<PendingEvents.Attribution, 'time'>) {

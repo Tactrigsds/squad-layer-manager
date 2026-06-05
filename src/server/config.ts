@@ -136,6 +136,7 @@ export const ConfigSchema = z.object({
 	// group label -> flag uuid -> priority
 	playerFlagGroupings: BM.PlayerFlagGroupingsSchema.optional(),
 	navLinks: NavLinkSchema.optional().describe('Links to display in the navbar dropdown menu'),
+	warnOnSlmStart: z.boolean().optional().prefault(false),
 })
 
 type Config = z.infer<typeof ConfigSchema>
