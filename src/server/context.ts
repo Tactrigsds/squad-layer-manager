@@ -14,7 +14,6 @@ import type * as USR from '@/models/users.models.ts'
 import type * as RBAC from '@/rbac.models'
 import type * as LayerQueueSys from '@/systems/layer-queue.server'
 import type * as MatchHistorySys from '@/systems/match-history.server'
-import type * as SharedLayerListSys from '@/systems/shared-layer-list.server'
 import type * as SquadRconSys from '@/systems/squad-rcon.server'
 import type * as SquadServerSys from '@/systems/squad-server.server'
 import type * as TeamswitchSys from '@/systems/teamswitches.server'
@@ -434,7 +433,7 @@ export type Vote = CS.Ctx & {
 } & ServerId
 
 export type LayerQueue = CS.Ctx & {
-	layerQueue: LayerQueueSys.LayerQueueContext
+	layerQueue: LayerQueueSys.LayerQueueSlice
 } & ServerId
 
 export type MatchHistory = CS.Ctx & {
@@ -444,11 +443,6 @@ export type MatchHistory = CS.Ctx & {
 export type SquadServer =
 	& CS.Ctx
 	& { server: SquadServerSys.SquadServer }
-	& ServerId
-
-export type SharedLayerList =
-	& CS.Ctx
-	& SharedLayerListSys.SharedLayerListContext
 	& ServerId
 
 export type Teamswitch = CS.Ctx & {
@@ -470,7 +464,6 @@ export type ServerSlice =
 	& Vote
 	& LayerQueue
 	& MatchHistory
-	& SharedLayerList
 	& Teamswitch
 	& UserPresence
 	& ServerSliceCleanup

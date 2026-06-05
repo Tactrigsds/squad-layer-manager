@@ -5,6 +5,7 @@ import React from 'react'
 import { useIsDesktopSize } from '@/lib/browser.ts'
 
 import LayerQueuePanel from './layer-queue-panel.tsx'
+import PrimaryPanel from './primary-panel.tsx'
 import TabsList from './ui/tabs-list.tsx'
 
 export default function ServerDashboard() {
@@ -49,7 +50,7 @@ export default function ServerDashboard() {
 				<div className="flex gap-2 h-full min-h-0 mx-auto">
 					{/* left column */}
 					<div className="flex flex-col gap-2 shrink-0">
-						<LayerQueuePanel />
+						<PrimaryPanel />
 					</div>
 					{/* right column */}
 					<div className="flex gap-2 flex-1 min-h-0">

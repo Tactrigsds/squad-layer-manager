@@ -1,294 +1,307 @@
+import * as Gen from '@/lib/generator'
 import { createId } from '@/lib/id'
 import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
+import * as RbSyncState from '@/lib/rollback-synced-state'
 import { assertNever } from '@/lib/type-guards'
+import { DistributiveOmit } from '@/lib/types'
 import * as LL from '@/models/layer-list.models'
 import * as UP from '@/models/user-presence'
-import type * as UPActions from '@/models/user-presence/actions'
 import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models'
+import seedrandom from 'seedrandom'
 import { z } from 'zod'
 import * as L from './layer'
 
-function buildItemOpSchemaEntries<T extends { [key: string]: z.ZodType }>(base: T) {
+const opPropsBase = { opId: z.string() }
+const opPropsClient = { userId: USR.UserIdSchema }
+const opPropsEditWindow = { editWindowSeqId: z.number() }
+
+// when present ensures that this op is only applied during the edit window it was intended for
+function getItemOpEntries<
+	Props extends { [key: string]: z.ZodType },
+>(
+	props: Props,
+) {
 	return [
 		z.object({
-			...base,
+			...props,
 			op: z.literal('move'),
 			cursor: LL.CursorSchema,
 			newFirstItemId: LL.ItemIdSchema,
 		}),
 		z.object({
-			...base,
+			...props,
 			op: z.literal('swap-factions'),
 		}),
 		z.object({
-			...base,
+			...props,
 			op: z.literal('edit-layer'),
 			newLayerId: L.LayerIdSchema,
 		}),
 		z.object({
-			...base,
+			...props,
 			op: z.literal('clone'),
 			itemId: LL.ItemIdSchema,
 		}),
 		z.object({
-			...base,
-			// create a vote from an existing item
-			op: z.literal('create-vote'),
-			newFirstItemId: LL.ItemIdSchema,
-			otherLayers: z.array(LL.SingleItemSchema),
-		}),
-		z.object({
-			...base,
+			...props,
 			op: z.literal('configure-vote'),
 
 			// null means use defaults(remove), undefined means don't modify
 			config: V.AdvancedVoteConfigSchema.nullable(),
 		}),
 		z.object({
-			...base,
+			...props,
 			op: z.literal('delete'),
 		}),
 	] as const
 }
 
-function buildOperationSchema<T extends { [key: string]: z.ZodType }, ItemSchema extends z.ZodType>(base: T, itemSchema: ItemSchema) {
+const ItemOperationSchema = z.discriminatedUnion(
+	'op',
+	getItemOpEntries({ ...opPropsBase, ...opPropsClient, ...opPropsEditWindow, itemId: LL.ItemIdSchema }),
+)
+export type ItemOperation = z.infer<typeof ItemOperationSchema>
+
+export const NewContextItemOperationSchema = z.discriminatedUnion('op', getItemOpEntries({}))
+export type NewContextItemOperation = z.infer<typeof NewContextItemOperationSchema>
+
+function buildOperationSchema<
+	Item extends z.ZodType,
+	BaseProps extends { [key: string]: z.ZodType },
+	ClientProps extends { [key: string]: z.ZodType },
+	EditWindowProps extends { [key: string]: z.ZodType },
+>(
+	itemSchema: Item,
+	baseProps: BaseProps,
+	clientProps: ClientProps,
+	editWindowProps: EditWindowProps,
+) {
 	return z.discriminatedUnion('op', [
 		z.object({
-			...base,
+			...baseProps,
+			op: z.literal('init'),
+		}),
+		z.object({
+			...baseProps,
+			...clientProps,
+			...editWindowProps,
 			op: z.literal('add'),
 			items: z.array(itemSchema),
 			index: LL.ItemIndexSchema,
 		}),
-		...buildItemOpSchemaEntries({ ...base, itemId: LL.ItemIdSchema }),
 		z.object({
-			...base,
+			...opPropsBase,
+			op: z.literal('shift-first-saved-layer'),
+		}),
+		z.object({
+			...baseProps,
+			// server-only op, used to insert first layer into the savedItems if it's changed on the server
+			op: z.literal('unshift-first-saved-layer'),
+			layerId: L.LayerIdSchema,
+			itemSource: LL.SourceSchema,
+			itemId: LL.ItemIdSchema,
+		}),
+		z.object({
+			...baseProps,
+			op: z.literal('set-vote-result'),
+			voteItemId: LL.ItemIdSchema,
+			result: V.EndingVoteStateSchema.nullable(),
+		}),
+		z.object({
+			...baseProps,
+			op: z.literal('queue-item-generated'),
+			item: itemSchema,
+		}),
+		...getItemOpEntries({ ...baseProps, ...clientProps, ...editWindowProps, itemId: LL.ItemIdSchema }),
+		z.object({
+			...baseProps,
+			...clientProps,
+			...editWindowProps,
 			op: z.literal('clear'),
 			itemIds: z.array(LL.ItemIdSchema),
 		}),
 		z.object({
-			...base,
-			// uses "source" to determine what user started editing
-			op: z.literal('start-editing'),
+			...baseProps,
+			...clientProps,
+			...editWindowProps,
+			// uses "source" to determine what user finished editing
+			op: z.literal('save'),
 		}),
 		z.object({
-			...base,
-			// uses "source" to determine what user finished editing
-			op: z.literal('finish-editing'),
-			forceSave: z.boolean().optional(),
+			...baseProps,
+			op: z.literal('save-completed'),
+		}),
+		z.object({
+			...baseProps,
+			...clientProps,
+			...editWindowProps,
+			op: z.literal('reset-to-saved'),
 		}),
 	])
 }
 
-export const OperationSchema = buildOperationSchema({ opId: z.string(), userId: USR.UserIdSchema }, LL.ItemSchema)
+const CLIENT_OPCODE = z.enum([
+	'add',
+	'move',
+	'swap-factions',
+	'edit-layer',
+	'clone',
+	'configure-vote',
+	'delete',
+	'clear',
+	'save',
+	'reset-to-saved',
+])
+type ClientOpcode = z.infer<typeof CLIENT_OPCODE>
+
+export const OperationSchema = buildOperationSchema(LL.ItemSchema, opPropsBase, opPropsClient, opPropsEditWindow)
 export type Operation = z.infer<typeof OperationSchema>
 export type OpCode = Operation['op']
 
-export const NewOperationSchema = buildOperationSchema({}, LL.NewItemSchema)
+export const NewOperationSchema = buildOperationSchema(LL.NewItemSchema, {}, {}, {})
 export type NewOperation = z.infer<typeof NewOperationSchema>
-
-export function isOperation(obj: Operation | NewOperation): obj is Operation {
-	if ('userId' in obj) {
-		return true
-	}
-	return false
-}
-
-export const ItemOperationSchema = z.discriminatedUnion(
-	'op',
-	buildItemOpSchemaEntries({ opId: z.string(), userId: USR.UserIdSchema, itemId: LL.ItemIdSchema }),
-)
-export type ItemOperation = z.infer<typeof ItemOperationSchema>
-export const NewItemOperationSchema = z.discriminatedUnion('op', buildItemOpSchemaEntries({ itemId: LL.ItemIdSchema }))
-export type NewItemOperation = z.infer<typeof NewItemOperationSchema>
-
-export const NewContextItemOperationSchema = z.discriminatedUnion('op', buildItemOpSchemaEntries({}))
-export type NewContextItemOperation = z.infer<typeof NewContextItemOperationSchema>
+export type NewClientOperation = Extract<NewOperation, { op: ClientOpcode }>
 
 export function isOpForItem(op: Operation): op is ItemOperation {
 	return (ItemOperationSchema.options.map(op => op.shape.op.value as string)).includes(op.op)
 }
 
-export type EditSession = {
+export type State = {
 	list: LL.List
-	editors: Set<USR.UserId>
+	// incremented whenever we save or reset the list. used to throw away latent operations that were intended for a previous edit window
+	editWindowSeqId: number
+	savedList: LL.List
+	saving: boolean
 	mutations: ItemMut.Mutations
+	requestingGeneratedQueueItem: boolean
 }
+
+export type SideEffect =
+	| { code: 'error'; error: unknown }
+	| {
+		// saved list has changed, and needs to be written to the database and/or published to the squad server
+		code: 'request-list-save'
+		list: LL.List
+	}
+	| {
+		// requests that a queue item be generated before the list is saved. happens when the saved list would be empty
+		code: 'request-queue-item-generation'
+	}
+	| {
+		// no more sideEffects for this reducer call
+		code: 'complete'
+	}
 
 export type Update =
 	| {
 		code: 'init'
-		session: EditSession
-		sessionSeqId: SessionSequenceId
+		state: State
+		ops: Operation[]
 	}
 	| {
-		code: 'commit-started'
-	}
-	| {
-		code: 'commit-completed'
-		list: LL.List
-		committer: USR.User
-		sessionSeqId: SessionSequenceId
-		newSessionSeqId: SessionSequenceId
-		initiator: string
-	}
-	| { code: 'commit-rejected'; reason: string; msg: string; sessionSeqId: SessionSequenceId; committer: USR.User }
-	| {
-		code: 'reset-completed'
-		list: LL.List
-		sessionSeqId: SessionSequenceId
-		newSessionSeqId: SessionSequenceId
-		// username
-		initiator: string
-	}
-	| {
-		code: 'list-updated'
-		list: LL.List
-		sessionSeqId: SessionSequenceId
-		newSessionSeqId: SessionSequenceId
-	}
-	| {
-		code: 'locks-modified'
-		mutations: [LL.ItemId, string | null][]
-	}
-	| ClientUpdate
-	| {
-		// sent through SLL stream when presence actions trigger SLL side effects (editing ops)
-		code: 'update-presence'
-		wsClientId: string
-		userId: bigint
-		changes: Partial<Omit<UP.ClientPresence, 'userId'>>
-		fromServer?: boolean
-		sideEffectOps: Operation[]
+		code: 'op'
+		op: Operation
 	}
 
 // the sequence id of the base queue the session
 const QueueSequenceId = z.number()
 export type SessionSequenceId = z.infer<typeof QueueSequenceId>
 
-export const ClientUpdateSchema = z.discriminatedUnion('code', [
-	z.object({
-		code: z.literal('op'),
-		sessionSeqId: QueueSequenceId,
-		op: OperationSchema,
-	}),
-	z.object({
-		code: z.literal('commit'),
-		sessionSeqId: QueueSequenceId,
-	}),
-	z.object({
-		code: z.literal('reset'),
-		sessionSeqId: QueueSequenceId,
-	}),
-])
-
-export type ClientUpdate = z.infer<typeof ClientUpdateSchema>
-
-export type ItemLocks = Map<LL.ItemId, string>
-export type LockMutation = [LL.ItemId, string]
-
-export function tryAcquireAllLocks(locks: ItemLocks, itemIds: LL.ItemId[], wsClientId: string): boolean {
-	for (const itemId of itemIds) {
-		const existingLock = locks.get(itemId)
-		if (existingLock && wsClientId !== existingLock) return false
-	}
-	for (const itemId of itemIds) {
-		locks.set(itemId, wsClientId)
-	}
-	return true
+export function createOpId(): string {
+	return createId(16)
 }
 
-export function anyLocksInaccessible(locks: ItemLocks, ids: LL.ItemId[], wsClientId: string): boolean {
-	for (const id of ids) {
-		const existingLock = locks.get(id)
-		if (existingLock && existingLock !== wsClientId) return true
+export const reducer: RbSyncState.Reducer<Operation, State, SideEffect> = (oldState, ops, prevOps, onSideEffect) => {
+	const state = Obj.deepClone(oldState)
+	for (const op of ops) {
+		applyOperation(state, op, onSideEffect)
 	}
-	return false
+	const result = LL.ListSchema.safeParse(state.list)
+	if (!result.success) {
+		onSideEffect?.({ code: 'error', error: result.error })
+		return oldState
+	}
+	const savedResult = LL.ListSchema.safeParse(state.savedList)
+	if (!savedResult.success) {
+		onSideEffect?.({ code: 'error', error: savedResult.error })
+		return oldState
+	}
+	onSideEffect?.({ code: 'complete' })
+	return state
 }
 
-export function endAllEditing(state: UP.PresenceState, session: EditSession) {
-	for (const presence of state.values()) {
-		if (presence.activityState?.child.EDITING_QUEUE) {
-			UP.updateClientPresence(presence, { activityState: null })
+export function applyOperation(session: State, newOp: Operation, onSideEffect?: RbSyncState.OnSideEffect<SideEffect>) {
+	const opWindowSeqId = (newOp as { editWindowSeqId?: number })?.editWindowSeqId
+	if (opWindowSeqId && opWindowSeqId !== session.editWindowSeqId) {
+		return
+	}
+	if (newOp.op === 'queue-item-generated') {
+		saveList(session, [newOp.item], onSideEffect)
+		session.requestingGeneratedQueueItem = false
+		return
+	}
+	if (session.requestingGeneratedQueueItem) {
+		return
+	}
+	let source: LL.Source
+	{
+		const userId = (newOp as { userId?: USR.UserId })?.userId
+		if (userId) {
+			source = { type: 'manual', userId }
+		} else {
+			source = { type: 'unknown' }
 		}
 	}
-	session.editors.clear()
-}
-
-export function getOpsForActivityStateUpdate(
-	session: EditSession,
-	state: UP.PresenceState,
-	wsClientId: string,
-	userId: bigint,
-	output: UPActions.ActionOutput,
-) {
-	let ops: Operation[] = []
-
-	// this isn't super necessary given the way the frontend locks out users  but it's here for completeness
-	startEditing: {
-		if (session.editors.has(userId) || !output.activityState?.child.EDITING_QUEUE) break startEditing
-		let firstEditor = true
-		for (const [clientId, presence] of state.entries()) {
-			if (wsClientId === clientId) continue
-			if (presence.activityState?.child.EDITING_QUEUE) {
-				firstEditor = false
-				break
-			}
-		}
-
-		if (firstEditor) {
-			ops.push(
-				{
-					op: 'start-editing',
-					opId: createId(5),
-					userId,
-				} satisfies Operation,
-			)
-		}
-	}
-
-	finishEditing: {
-		if (!session.editors.has(userId) || output.activityState?.child.EDITING_QUEUE) break finishEditing
-		let lastEditor = true
-		for (const [clientId, presence] of state.entries()) {
-			if (wsClientId === clientId) continue
-			if (presence.activityState?.child.EDITING_QUEUE) {
-				lastEditor = false
-				break
-			}
-		}
-
-		if (lastEditor) {
-			ops.push(
-				{
-					op: 'finish-editing',
-					opId: createId(6),
-					userId,
-				} satisfies Operation,
-			)
-		}
-	}
-
-	return ops
-}
-
-export function applyOperation(session: EditSession, newOp: Operation | NewOperation, mutations?: ItemMut.Mutations) {
+	// don't write to mutations if we're applying changes to the saved list, just throw them away instead
+	const mutations = session.mutations
 	const list = session.list
-	const source: LL.Source = isOperation(newOp) ? { type: 'manual', userId: newOp.userId } : { type: 'unknown' }
+	const startingWindowSeqId = session.editWindowSeqId
+
 	switch (newOp.op) {
-		case 'add': {
-			let items: LL.Item[]
-			if (isOperation(newOp)) {
-				items = newOp.items
-			} else {
-				items = newOp.items.map(item => LL.createItem(item, source))
+		case 'init': {
+			if (session.savedList.length === 0) {
+				session.requestingGeneratedQueueItem = true
+				onSideEffect?.({ code: 'request-queue-item-generation' })
+				return
 			}
-			LL.addItemsDeterministic(list, source, newOp.index, ...items)
-			ItemMut.tryApplyMutation('added', items.map(item => item.itemId), mutations)
-			if (mutations && source.type === 'manual') LL.changeGeneratedLayerAttributionInPlace(list, mutations, source.userId)
 			break
 		}
+
+		case 'shift-first-saved-layer': {
+			LL.splice(session.savedList, { outerIndex: 0, innerIndex: null }, 1)
+			saveList(session, session.savedList, onSideEffect)
+			break
+		}
+
+		case 'unshift-first-saved-layer': {
+			LL.addItemsDeterministic(session.savedList, newOp.itemSource, { outerIndex: 0, innerIndex: null }, {
+				type: 'single-list-item',
+				itemId: newOp.itemId,
+				layerId: newOp.layerId,
+				source: newOp.itemSource,
+			})
+			saveList(session, session.savedList, onSideEffect)
+			break
+		}
+
+		case 'set-vote-result': {
+			const { item: voteItem } = Obj.destrNullable(LL.findItemById(session.savedList, newOp.voteItemId))
+			if (!voteItem || !LL.isParentVoteItem(voteItem)) return
+			LL.setEndingVoteStateInPlace(voteItem, newOp.result)
+			saveList(session, session.savedList, onSideEffect)
+			break
+		}
+
+		case 'add': {
+			const items = newOp.items
+			LL.addItemsDeterministic(list, source, newOp.index, ...items)
+			ItemMut.tryApplyMutation('added', items.map(item => item.itemId), mutations)
+			if (source.type === 'manual') LL.changeGeneratedLayerAttributionInPlace(list, mutations, source.userId)
+			break
+		}
+
 		case 'move': {
 			const { merged, modified } = LL.moveItem(list, source, newOp.itemId, newOp.newFirstItemId, newOp.cursor)
 			if (modified) {
@@ -373,25 +386,20 @@ export function applyOperation(session: EditSession, newOp: Operation | NewOpera
 			}
 			break
 
-		case 'create-vote': {
-			LL.createVoteOutOfItem(list, source, newOp.itemId, newOp.newFirstItemId, newOp.otherLayers)
-			const { item } = Obj.destrNullable(LL.findItemById(list, newOp.itemId))
-			if (item && LL.isVoteItem(item)) {
-				ItemMut.tryApplyMutation('added', item.choices.map(choice => choice.itemId), mutations)
-				if (mutations && source.type === 'manual') LL.changeGeneratedLayerAttributionInPlace(list, mutations, source.userId)
-			}
+		case 'save': {
+			saveList(session, session.list, onSideEffect)
 			break
 		}
 
-		case 'start-editing': {
-			if (source.type === 'unknown') break
-			session.editors.add(source.userId)
+		case 'save-completed': {
+			session.saving = false
 			break
 		}
 
-		case 'finish-editing': {
-			if (source.type === 'unknown') break
-			session.editors.delete(source.userId)
+		case 'reset-to-saved': {
+			session.list = Obj.deepClone(session.savedList)
+			session.mutations = ItemMut.initMutations()
+			session.editWindowSeqId++
 			break
 		}
 
@@ -400,15 +408,18 @@ export function applyOperation(session: EditSession, newOp: Operation | NewOpera
 	}
 }
 
-export function applyOperations(s: EditSession, ops: Operation[]): ItemMut.Mutations {
-	const mutations = ItemMut.initMutations()
-	for (let i = 0; i < ops.length; i++) {
-		const op = ops[i]
-		applyOperation(s, op, mutations)
+function saveList(session: State, list: LL.List, onSideEffect: RbSyncState.OnSideEffect<SideEffect> | undefined) {
+	session.saving = true
+	if (list.length === 0) {
+		session.requestingGeneratedQueueItem = true
+		onSideEffect?.({ code: 'request-queue-item-generation' })
+		return
 	}
-	// catch any invalid operations early, hopefully on the client
-	LL.ListSchema.parse(s.list)
-	return mutations
+	session.list = list === session.list && list !== session.savedList ? list : Obj.deepClone(list)
+	session.savedList = list === session.savedList && list !== session.list ? list : Obj.deepClone(list)
+	session.mutations = ItemMut.initMutations()
+	session.editWindowSeqId++
+	onSideEffect?.({ code: 'request-list-save', list: session.savedList })
 }
 
 export function mergeMutations(base: ItemMut.Mutations, additions: ItemMut.Mutations): ItemMut.Mutations {
@@ -425,22 +436,31 @@ export function mergeMutations(base: ItemMut.Mutations, additions: ItemMut.Mutat
 	return result
 }
 
-export function createNewSession(list?: LL.List): EditSession {
+export function createNewState(list?: LL.List): State {
 	return {
-		list: list ?? [],
-		editors: new Set(),
+		list: list ? Obj.deepClone(list) : [],
+		editWindowSeqId: 0,
+		saving: false,
 		mutations: ItemMut.initMutations(),
+		savedList: list ? Obj.deepClone(list) : [],
+		requestingGeneratedQueueItem: false,
 	}
 }
 
-export function hasMutations(session: EditSession): boolean {
+export function hasMutations(session: State): boolean {
 	return ItemMut.hasMutations(session.mutations)
 }
 
-export function hasUserMutations(ops: Operation[], userId: USR.UserId): boolean {
-	for (const op of ops) {
-		if (op.op === 'start-editing' || op.op === 'finish-editing') continue
-		if (op.userId === userId) return true
+export function hasUserMutations(ops: Operation[], state: State, userId: USR.UserId): boolean {
+	const windowSeqId = state.editWindowSeqId
+	for (let i = ops.length - 1; i >= 0; i--) {
+		const op = ops[i]
+		if (op.op === 'save') continue
+		const currWindowSeqId = (op as { windowSeqId?: number })?.windowSeqId
+		if (currWindowSeqId === undefined) continue
+		if (windowSeqId !== currWindowSeqId) break
+		const opUserId = (op as { userId?: USR.UserId })?.userId
+		if (opUserId && opUserId === userId) return true
 	}
 	return false
 }

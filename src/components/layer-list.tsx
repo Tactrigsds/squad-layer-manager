@@ -68,8 +68,9 @@ export function LayerList(
 	DndKit.useDragEnd(React.useCallback(async (event) => {
 		const user = UsersClient.loggedInUser
 		const sllState = SLLClient.Store.getState()
+		const upState = UPClient.Store.getState()
 		if (!user || !event.over) return
-		if (!UPClient.selectIsEditing(sllState, user)) return
+		if (!UPClient.selectIsEditing(upState, user.discordId)) return
 		const target = event.over.slots[0]
 		if (target.dragItem.type !== 'layer-item') return
 		const cursors = LL.dropItemToLLItemCursors(event.over)
@@ -90,7 +91,11 @@ export function LayerList(
 			const entry = history.find((entry) => entry.historyEntryId === activeId)
 			if (!entry) return
 			const index = LL.resolveCursorIndex(layerList, cursor)!
-			void props.store.getState().dispatch({ op: 'add', items: [{ type: 'single-list-item', layerId: entry.layerId }], index })
+			void props.store.getState().dispatch({
+				op: 'add',
+				items: [{ type: 'single-list-item', layerId: entry.layerId }],
+				index,
+			})
 		}
 
 		if (event.active.type === 'layer-item') {
@@ -104,7 +109,7 @@ export function LayerList(
 	}, [props.store]))
 
 	DndKit.useDraggingCallback(item => {
-		const presenceState = UPClient.PresenceStore.getState()
+		const presenceState = UPClient.Store.getState()
 		const getIsDraggingStuff = (root: UP.RootActivity) => {
 			const id = root.child?.EDITING_QUEUE?.chosen?.id
 			return id === 'MOVING_ITEM' || id === 'ADDING_ITEM_FROM_HISTORY'
@@ -238,7 +243,7 @@ function LoadedSelectLayersView({
 
 	const onSelectLayersChange = React.useCallback((open: boolean) => {
 		if (open) return
-		UPClient.PresenceStore.getState().updateActivity(UP.toEditingQueueIdleOrNone())
+		UPClient.Store.getState().updateActivity(UP.toEditingQueueIdleOrNone())
 	}, [])
 
 	const frames = React.useMemo(() => ({
@@ -292,7 +297,7 @@ function LoadedGenVoteView({
 
 	const onOpenChange = React.useCallback((open: boolean) => {
 		if (open) return
-		UPClient.PresenceStore.getState().updateActivity(UP.toEditingQueueIdleOrNone())
+		UPClient.Store.getState().updateActivity(UP.toEditingQueueIdleOrNone())
 	}, [])
 
 	const frames = React.useMemo(() => ({
@@ -317,7 +322,7 @@ function LoadedGenVoteView({
 		}
 
 		void state.dispatch({ op: 'add', index: index ?? { outerIndex: 0, innerIndex: null }, items: [item] })
-		UPClient.PresenceStore.getState().updateActivity(UP.toEditingQueueIdleOrNone())
+		UPClient.Store.getState().updateActivity(UP.toEditingQueueIdleOrNone())
 	}, [store])
 
 	return (
@@ -343,7 +348,7 @@ function LoadedPasteRotation({
 
 	const onOpenChange = React.useCallback((open: boolean) => {
 		if (open) return
-		UPClient.PresenceStore.getState().updateActivity(UP.toEditingQueueIdleOrNone())
+		UPClient.Store.getState().updateActivity(UP.toEditingQueueIdleOrNone())
 	}, [])
 
 	const onSubmit = React.useCallback((layers: L.UnvalidatedLayer[]) => {
@@ -356,7 +361,7 @@ function LoadedPasteRotation({
 			index,
 			items: layerIds.map(layerId => ({ type: 'single-list-item', layerId })),
 		})
-		UPClient.PresenceStore.getState().updateActivity(UP.toEditingQueueIdleOrNone())
+		UPClient.Store.getState().updateActivity(UP.toEditingQueueIdleOrNone())
 	}, [store, pastePosition])
 
 	const positionTabsList = React.useMemo(() => (
@@ -429,11 +434,14 @@ function SingleLayerListItem(props: LayerListItemProps) {
 			return [s.item, s.index, s.isLocallyLast, getDisplayedMutation(s.mutationState)]
 		}),
 	)
+
+	const user = UsersClient.useLoggedInUser()
+
 	const isVoteChoice = !!parentItem
 
 	const isModified = Zus.useStore(SLLClient.Store, s => s.isModified)
-	const isEditing = UPClient.useIsEditing()
-	const canEdit = !SLLClient.useIsItemLocked(item.itemId) && isEditing
+	const isEditing = Zus.useStore(UPClient.Store, s => user ? UPClient.selectIsEditing(s, user.discordId) : false)
+	const canEdit = !UPClient.useIsSllItemLocked(item.itemId) && isEditing
 
 	const [itemPresence, itemActivityUser, activityHovered] = UPClient.useItemPresence(item.itemId)
 
@@ -443,7 +451,6 @@ function SingleLayerListItem(props: LayerListItemProps) {
 
 	const draggableItem = LL.layerItemToDragItem(item)
 	const dragProps = DndKit.useDraggable(draggableItem, { feedback: 'move', disabled: !isEditing })
-	const user = UsersClient.useLoggedInUser()
 
 	const itemActions = () => QD.getLLItemActions(props.llStore.getState(), props.itemId)
 
@@ -658,7 +665,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const isModified = Zus.useStore(SLLClient.Store, s => s.isModified)
 	const manageVoteDenied = RbacClient.usePermsCheck(RBAC.perm('vote:manage'))
 	const isEditing = UPClient.useIsEditing()
-	const canEdit = !SLLClient.useIsItemLocked(item.itemId) && isEditing
+	const canEdit = !UPClient.useIsSllItemLocked(item.itemId) && isEditing
 	const draggableItem = LL.layerItemToDragItem(item)
 	const dragProps = DndKit.useDraggable(draggableItem, { disabled: !isEditing })
 
@@ -698,8 +705,10 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const [configuringVote, setConfiguringVote] = UPClient.useActivityState({
 		createActivity: UP.createEditingQueueVariant({ _tag: 'leaf', id: 'CONFIGURING_VOTE', opts: { itemId: item.itemId } }),
 		matchActivity: React.useCallback(
-			(state) =>
-				state.child.EDITING_QUEUE?.chosen.id === 'CONFIGURING_VOTE' && state.child.EDITING_QUEUE?.chosen.opts.itemId === item.itemId,
+			(state) => {
+				const node = UP.getSllEditingQueueNode(state)?.chosen
+				return node?.id === 'CONFIGURING_VOTE' && node.opts.itemId === item.itemId
+			},
 			[item.itemId],
 		),
 		removeActivity: UP.toEditingQueueIdleOrNone(),
@@ -1131,7 +1140,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 		return [activities] as const
 	}, [item.itemId])
 
-	const isLocked = SLLClient.useIsItemLocked(item.itemId)
+	const isLocked = UPClient.useIsSllItemLocked(item.itemId)
 	const isEditing = UPClient.useIsEditing()
 	const itemActions = () => QD.getLLItemActions(props.listStore.getState(), props.itemId)
 

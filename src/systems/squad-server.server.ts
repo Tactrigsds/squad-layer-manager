@@ -23,6 +23,7 @@ import * as MH from '@/models/match-history.models'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
 import * as SS from '@/models/server-state.models'
+import * as SLL from '@/models/shared-layer-list'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
@@ -38,7 +39,6 @@ import * as Commands from '@/systems/commands.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
-import * as SharedLayerList from '@/systems/shared-layer-list.server'
 import * as SquadLogsReceiver from '@/systems/squad-logs-receiver.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as TeamSwitchesSys from '@/systems/teamswitches.server'
@@ -358,7 +358,6 @@ export async function setup() {
 								settings: SS.ServerSettingsSchema.parse(settingsFromConfig),
 								layerQueue: [],
 								teamswitches: new Map(),
-								layerQueueSeqId: 0,
 							}
 							await ctx
 								.db({ redactParams: true })
@@ -510,9 +509,8 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 				server,
 			})
 			: (null as unknown as TeamSwitchesSys.TeamswitchContext),
-		layerQueue: LayerQueue.initLayerQueueContext(cleanup),
-		sharedList: SharedLayerList.getDefaultState(serverState),
-		userPresence: UserPresence.getDefaultState(),
+		layerQueue: LayerQueue.initLayerQueueSlice({ ...ctx, cleanup, serverId }, serverState),
+		userPresence: UserPresence.initUserPresenceContext({ ...ctx, cleanup, serverId }),
 		vote: Vote.initVoteContext(cleanup),
 
 		adminList,
@@ -725,7 +723,6 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 	}
 
 	void LayerQueue.setupInstance({ ...ctx, ...slice })
-	SharedLayerList.setupInstance({ ...ctx, ...slice })
 	Battlemetrics.setupSquadServerInstance({ ...ctx, ...slice })
 	void adminList.get(slice)
 
@@ -734,6 +731,12 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 		await destroyServer(ctx)
 	})
 	log.info('Initialized server %s', serverId)
+}
+
+export async function pushAttribution(ctx: C.SquadServer & C.Db, attribution: Omit<PendingEvents.Attribution, 'time'>) {
+	await collectEvents(ctx, () => {
+		PendingEvents.pushAttribution(ctx.server.eventState, attribution)
+	})
 }
 
 export async function destroyServer(ctx: C.ServerSlice) {
@@ -768,7 +771,7 @@ export async function getFullServerState(ctx: C.Db & C.LayerQueue) {
 }
 
 async function collectEvents(
-	ctx: C.ServerSlice & C.Db,
+	ctx: C.SquadServer & C.Db,
 	addEventsCb: () => void,
 ) {
 	const release = await ctx.server.processEventsMtx.acquire()
@@ -780,7 +783,7 @@ async function collectEvents(
 				Date.now(),
 			)
 		) {
-			ctx.server.event$.next([ctx, event])
+			ctx.server.event$.next([resolveSliceCtx(ctx, ctx.serverId), event])
 		}
 	} finally {
 		release()
@@ -953,23 +956,11 @@ export async function updateServerState(
 ) {
 	const serverState = await getServerState(ctx)
 	const newServerState = { ...serverState, ...changes }
-	if (
-		changes.layerQueueSeqId
-		&& changes.layerQueueSeqId !== serverState.layerQueueSeqId
-	) {
-		throw new Error('Invalid layer queue sequence ID')
-	}
-	if (!Obj.deepEqual(newServerState.layerQueue, serverState.layerQueue)) {
-		newServerState.layerQueueSeqId = serverState.layerQueueSeqId + 1
-	}
 	await ctx
 		.db({ redactParams: true })
 		.update(Schema.servers)
 		.set(
-			superjsonify(Schema.servers, {
-				...changes,
-				layerQueueSeqId: newServerState.layerQueueSeqId,
-			}),
+			superjsonify(Schema.servers, changes),
 		)
 		.where(E.eq(Schema.servers.id, ctx.serverId))
 	const update: SS.LQStateUpdate = { state: newServerState, source }
@@ -1203,23 +1194,22 @@ const onNewGameDuringRoll = (serverId: string): PendingEvents.State['hooks']['on
 		'onNewGameDuringRoll',
 		{
 			module,
-			mutexes: () => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx],
+			mutexes: () => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx, ctx.layerQueue.updateLayerMtx],
 			levels: { event: 'info' },
 		},
 		async () =>
 			await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 				ctx.server.serverRolling$.next(Date.now())
 				try {
-					const serverState = await getServerState(ctx)
-					const nextLqItem = serverState.layerQueue[0]
+					const nextLqItem = LayerQueue.getSavedQueue(ctx)[0]
 
 					let currentMatchLqItem: LL.Item | undefined
-					const newServerState = Obj.deepClone(serverState)
 					if (
 						nextLqItem
 						&& L.areLayersCompatible(nextLqItem.layerId, newLayerId)
 					) {
-						currentMatchLqItem = newServerState.layerQueue.shift()
+						await LayerQueue.dispatchOp(ctx, { op: 'shift-first-saved-layer', opId: SLL.createOpId() })
+						currentMatchLqItem = nextLqItem
 					}
 					const { match } = await MatchHistory.addNewCurrentMatch(
 						ctx,
@@ -1230,22 +1220,8 @@ const onNewGameDuringRoll = (serverId: string): PendingEvents.State['hooks']['on
 							lqItem: currentMatchLqItem,
 						}),
 					)
-
-					await LayerQueue.syncNextLayerInPlace(ctx, newServerState, {
-						skipDbWrite: true,
-					})
-					const nextLayerId = LL.getNextLayerId(newServerState.layerQueue)
-					await Vote.syncVoteStateWithQueueStateInPlace(
-						ctx,
-						serverState.layerQueue,
-						newServerState.layerQueue,
-					)
-
-					await updateServerState(ctx, newServerState, {
-						type: 'system',
-						event: 'server-roll',
-					})
 					LayerQueue.schedulePostRollTasks(ctx, match.layerId)
+					const nextLayerId = LL.getNextLayerId(LayerQueue.getSavedQueue(ctx))
 					return { match, nextLayerId }
 				} finally {
 					ctx.server.serverRolling$.next(null)

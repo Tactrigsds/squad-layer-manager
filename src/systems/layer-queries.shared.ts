@@ -620,7 +620,7 @@ export async function getLayerItemStatuses(args: {
 				if (constraintId === '_id') continue
 				const matched = Number(isMatchedRaw) === 1
 				if (matched) {
-					let itemDescriptors = MapUtils.defaultGet(matchDescriptors, item.itemId, [])
+					let itemDescriptors = MapUtils.defaultInsGet(matchDescriptors, item.itemId, [])
 					itemDescriptors.push({ constraintId, type: 'filter-entity', layerId, itemId: item.itemId }!)
 				}
 			}

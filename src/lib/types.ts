@@ -28,3 +28,5 @@ export type MapTuple<T extends readonly unknown[], U> = {
 export type StrKeys<T extends object> = Extract<keyof T, string>
 
 export type NumericKeys<T extends object> = Extract<keyof T, number>
+
+export type DistributiveOmit<T, K extends PropertyKey> = T extends any ? Omit<T, K> : never

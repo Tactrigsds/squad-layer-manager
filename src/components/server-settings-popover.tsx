@@ -15,7 +15,7 @@ import type * as F from '@/models/filter.models.ts'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as SS from '@/models/server-state.models.ts'
-import type * as UP from '@/models/user-presence'
+import * as UP from '@/models/user-presence'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -53,15 +53,18 @@ export default function ServerSettingsPopover(
 	const [poolId, setPoolId] = React.useState<'mainPool' | 'generationPool'>('mainPool')
 
 	const [open, _setOpen] = UPClient.useActivityState({
-		matchActivity: React.useCallback((activity) => !!activity.child.VIEWING_SETTINGS, []),
-		createActivity: Im.produce((draft: Im.WritableDraft<UP.RootActivity>) => {
-			draft.child.VIEWING_SETTINGS = {
-				_tag: 'branch',
-				id: 'VIEWING_SETTINGS',
-				opts: {},
-				child: {},
-			}
-		}),
+		matchActivity: React.useCallback((activity) => !!activity?.child.VIEWING_SETTINGS, []),
+		createActivity: (_activity) => {
+			const activity = _activity ?? UP.DEFAULT_ACTIVITY
+			return Im.produce((draft: Im.WritableDraft<UP.RootActivity>) => {
+				draft.child.VIEWING_SETTINGS = {
+					_tag: 'branch',
+					id: 'VIEWING_SETTINGS',
+					opts: {},
+					child: {},
+				}
+			})(activity)
+		},
 		removeActivity: Im.produce((draft: Im.WritableDraft<UP.RootActivity>) => {
 			delete draft.child.VIEWING_SETTINGS
 		}),
@@ -209,7 +212,7 @@ function PoolFiltersConfigurationPanel() {
 					{/* Header Row */}
 					<div className="contents text-sm font-medium text-muted-foreground">
 						<div>Filter</div>
-						<div>Layer Default Select/Autogen</div>
+						<div>Layer Default Select</div>
 						<div>Indicate</div>
 						<div>Warn</div>
 						<div></div>

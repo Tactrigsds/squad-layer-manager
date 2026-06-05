@@ -6,8 +6,8 @@ import React from 'react'
 
 import { MatchHistoryPanelContent } from './match-history-panel'
 
-import LayerQueuePanel from './layer-queue-panel.tsx'
-import UserPresencePanel from './user-presence-panel.tsx'
+import { QueuePanelContent, SlmUpdatesDisabledAlert } from './layer-queue-panel.tsx'
+import UserPresencePanel, { sortEditingPresence } from './user-presence-panel.tsx'
 
 export default function PrimaryPanel() {
 	type Tab = 'layer-queue' | 'teams'
@@ -19,10 +19,11 @@ export default function PrimaryPanel() {
 				<Separator />
 				<CardHeader className="flex flex-row items-center justify-between">
 					<CardTitle>Recent Users</CardTitle>
-					<UserPresencePanel />
+					<UserPresencePanel sourcePresenceFn={sortEditingPresence} />
 				</CardHeader>
 				<Separator />
-				<LayerQueuePanel />
+				<SlmUpdatesDisabledAlert />
+				<QueuePanelContent />
 			</ScrollArea>
 		</Card>
 	)

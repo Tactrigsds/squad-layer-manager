@@ -1,179 +1,137 @@
-import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import * as Arr from '@/lib/array'
+import { CleanupTasks, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
+import * as RbSyncState from '@/lib/rollback-synced-state'
+import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
 import * as SLL from '@/models/shared-layer-list'
 import * as UP from '@/models/user-presence'
-import * as UPActions from '@/models/user-presence/actions'
 import * as C from '@/server/context'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
-import * as SharedLayerList from '@/systems/shared-layer-list.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as WSSessionSys from '@/systems/ws-session.server'
 import * as Rx from 'rxjs'
 
 export type UserPresenceContext = {
 	userPresence: {
-		presence: UP.PresenceState
-		update$: Rx.Subject<UP.PresenceBroadcast>
+		session: RbSyncState.Server.Session<UP.Op, UP.State, UP.SideEffects>
+		op$: Rx.Subject<UP.Op>
 	}
 }
 
-export function getDefaultState(): UserPresenceContext['userPresence'] {
-	return {
-		presence: new Map(),
-		update$: new Rx.Subject<UP.PresenceBroadcast>(),
+export function initUserPresenceContext(ctx: C.ServerSliceCleanup & C.ServerId): UserPresenceContext['userPresence'] {
+	const serverId = ctx.serverId
+	const sideEffectQueue$ = new Rx.Subject<[C.ServerSlice, UP.SideEffects]>()
+	ctx.cleanup.push(sideEffectQueue$)
+	const context: UserPresenceContext['userPresence'] = {
+		session: RbSyncState.Server.initSession(UP.initState(), {
+			onSideEffect: se => {
+				const ctx = resolveCtx(serverId)
+				sideEffectQueue$.next([ctx, se])
+			},
+		}),
+		op$: new Rx.Subject<UP.Op>(),
 	}
+	ctx.cleanup.push(context.op$)
+	sideEffectQueue$.pipe(C.durableSub('onSideEffect', { module }, (args) => onSideEffect(...args))).subscribe()
+
+	return context
 }
 
 const module = initModule('user-presence')
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
 
-export function handlePresenceUpdate(
-	ctx: C.SharedLayerList & C.UserPresence & C.User & C.WSSession,
-	update: UP.PresenceUpdate,
-) {
-	if (update.wsClientId !== ctx.wsClientId) {
-		log.warn('Received presence update from another client: %s, expected: %s', update.wsClientId, ctx.wsClientId)
-		return
-	}
-	if (update.userId !== ctx.user.discordId) {
-		log.warn('Received presence update from another user: %s, expected: %s', update.userId, ctx.user.discordId)
-		return
-	}
-	const now = Date.now()
-	if (update.changes.lastSeen && update.changes.lastSeen > now) {
-		log.warn('Received presence update with invalid lastSeen: %s, patching to %s', update.changes.lastSeen, now)
-		update.changes.lastSeen = now
-	}
-
-	const prevActivity = ctx.userPresence.presence.get(update.wsClientId)?.activityState
-	const lockMutations: Map<string, string | null> = new Map()
-	if (
-		prevActivity && (update.changes === null || update.changes.activityState === null)
-	) {
-		const itemIds = MapUtils.revLookupAll(ctx.sharedList.itemLocks, update.wsClientId)
-		for (const itemId of itemIds) {
-			lockMutations.set(itemId, null)
-		}
-	} else if (update.changes?.activityState) {
-		const existingItemIds = MapUtils.revLookupAll(ctx.sharedList.itemLocks, update.wsClientId)
-		for (const itemId of existingItemIds) {
-			lockMutations.set(itemId, null)
-		}
-
-		const itemIds = UP.itemsToLockForActivity(ctx.sharedList.session.state.list, update.changes.activityState)
-		if (itemIds.length > 0) {
-			if (SLL.anyLocksInaccessible(ctx.sharedList.itemLocks, itemIds, ctx.wsClientId)) {
-				return { code: 'err:locked' as const, msg: 'Failed to acquire all locks' }
-			}
-			for (const itemId of itemIds) {
-				lockMutations.set(itemId, ctx.wsClientId)
-			}
-		}
-	}
-
-	if (lockMutations.size > 0) {
-		for (const [itemId, wsClientId] of lockMutations.entries()) {
-			if (wsClientId === null) ctx.sharedList.itemLocks.delete(itemId)
-			else ctx.sharedList.itemLocks.set(itemId, wsClientId)
-		}
-		void SharedLayerList.sendUpdate(ctx, { code: 'locks-modified', mutations: Array.from(lockMutations.entries()) })
-	}
-	let clientPresence = ctx.userPresence.presence.get(update.wsClientId)
-	if (!clientPresence) {
-		clientPresence = UPActions.getClientPresenceDefaults(update.userId)
-		ctx.userPresence.presence.set(update.wsClientId, clientPresence)
-	}
-	const modified = UP.updateClientPresence(clientPresence, update.changes)
-	if (modified) {
-		sendPresenceUpdate(ctx, {
-			code: 'update',
-			wsClientId: update.wsClientId,
-			userId: update.userId,
-			changes: update.changes,
-		})
-	}
-}
-
-export function cleanupActivityLocks(ctx: C.SharedLayerList, wsClientId: string) {
-	const itemIds = MapUtils.revLookupAll(ctx.sharedList.itemLocks, wsClientId)
-	if (itemIds.length > 0) {
-		MapUtils.bulkDelete(ctx.sharedList.itemLocks, ...itemIds)
-		void SharedLayerList.sendUpdate(ctx, { code: 'locks-modified', mutations: itemIds.map(id => [id, null]) })
-	}
-}
-
-export function dispatchPresenceAction(ctx: C.SharedLayerList & C.UserPresence & C.User & C.WSSession, action: UPActions.Action) {
-	let currentPresence = ctx.userPresence.presence.get(ctx.wsClientId)
-	const actionInput: UPActions.ActionInput = {
-		hasEdits: SLL.hasUserMutations(ctx.sharedList.session.ops, ctx.user.discordId),
-		prev: currentPresence,
-	}
-	if (!currentPresence) {
-		currentPresence = UPActions.getClientPresenceDefaults(ctx.user.discordId)
-		ctx.userPresence.presence.set(ctx.wsClientId, currentPresence)
-	}
-	const update = action(actionInput)
-	UP.updateClientPresence(currentPresence, update)
-	const extraOps = SLL.getOpsForActivityStateUpdate(
-		ctx.sharedList.session.state,
-		ctx.userPresence.presence,
-		ctx.wsClientId,
-		ctx.user.discordId,
-		update,
-	)
-	if (extraOps) {
-		SharedLayerList.applySessionOps(ctx, extraOps)
-		void SharedLayerList.sendUpdate(ctx, {
-			code: 'update-presence',
-			wsClientId: ctx.wsClientId,
-			userId: ctx.user.discordId,
-			changes: update,
-			fromServer: true,
-			sideEffectOps: extraOps,
-		})
-	}
-	sendPresenceUpdate(ctx, {
-		code: 'update',
-		wsClientId: ctx.wsClientId,
-		userId: ctx.user.discordId,
-		changes: update,
-	})
-}
-
-export function sendPresenceUpdate(ctx: C.UserPresence, update: UP.PresenceBroadcast) {
-	update = Obj.deepClone(update)
-	ctx.userPresence.update$.next(update)
-}
+// export function sendPresenceUpdate(ctx: C.UserPresence, update: UP.PresenceBroadcast) {
+// 	update = Obj.deepClone(update)
+// 	ctx.userPresence.update$.next(update)
+// }
 
 export const orpcRouter = {
 	watchUpdates: orpcBase.handler(async function*({ context, signal }) {
 		const updateForServer$ = SquadServer.selectedServerCtx$(context).pipe(
 			Rx.switchMap(ctx => {
-				const initial: UP.PresenceBroadcast = {
+				const initial: UP.PresenceUpdate = {
 					code: 'init',
-					presence: ctx.userPresence.presence,
+					state: Obj.deepClone(ctx.userPresence.session.state),
+					ops: Obj.deepClone(ctx.userPresence.session.ops),
 				}
-				const updates$ = ctx.userPresence.update$.pipe(
-					Rx.observeOn(Rx.asyncScheduler),
+				return ctx.userPresence.op$.pipe(
+					Rx.map((op): UP.PresenceUpdate => ({ code: 'op', op })),
+					Rx.startWith(initial),
 				)
-				return updates$.pipe(Rx.startWith(initial))
 			}),
 			withAbortSignal(signal!),
 		)
 		yield* toAsyncGenerator(updateForServer$)
 	}),
 
-	updatePresence: orpcBase
+	dispatchOp: orpcBase
 		.meta({ type: 'mutation', logLevel: 'debug' })
-		.input(UP.PresenceUpdateSchema)
-		.handler(async ({ context: _ctx, input }) => {
-			const sliceCtx = SquadServer.resolveWsClientSliceCtx(_ctx)
-			return handlePresenceUpdate(sliceCtx, input)
+		.input(UP.OpSchema)
+		.handler(async ({ context: _ctx, input: _op }) => {
+			const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
+			if (!Arr.includesId(UP.CLIENT_OP_CODE.options, _op.code)) {
+				return { code: 'invalid-op:non-client' as const, msg: 'Tried to use non-client op code: ' + _op.code }
+			}
+			let op = _op as UP.ClientOp
+			if (op.clientId !== ctx.wsClientId) {
+				return {
+					code: 'err:invalid-op:different-client' as const,
+					msg: 'Tried to update presence for different client: ' + op.clientId + ' vs ' + ctx.wsClientId,
+				}
+			}
+
+			if (op.userId !== ctx.user.discordId) {
+				return {
+					code: 'err:invalid-op:different-user' as const,
+					msg: 'Tried to update presence for different user: ' + op.userId + ' vs ' + ctx.user.discordId,
+				}
+			}
+			// there some clients where the op time is in the future because their clocks are fucked up, so we need to update it to the current time.
+			// We need to create a new opId as well so that the client and server don't fall out of sync
+			if (op.time > Date.now()) {
+				op = {
+					...op,
+					time: Date.now(),
+					opId: UP.createOpId(),
+				}
+			}
+
+			dispatchOp(ctx, op)
+			return { code: 'ok' as const }
 		}),
+}
+
+function dispatchOp(ctx: C.UserPresence, op: UP.Op) {
+	const sideEffects: UP.SideEffects[] = []
+	function onSideEffect(se: UP.SideEffects) {
+		sideEffects.push(se)
+	}
+	ctx.userPresence.session = RbSyncState.Server.applyOps(ctx.userPresence.session, [op], UP.reducer, { onSideEffect })
+	ctx.userPresence.op$.next(op)
+	for (const se of sideEffects) {
+		switch (se.code) {
+			case 'error':
+				log.error(se.error)
+				break
+			case 'op-outcome': {
+				log.debug('op outcome', se.op, se.success)
+
+				// TODO handle start-editing and finish-editing on SLL side once that code is converted to use RbSyncState
+				//
+				// /if (op.code === '')
+				break
+			}
+			default:
+				assertNever(se)
+		}
+	}
+}
+
+async function onSideEffect(ctx: C.UserPresence, effect: UP.SideEffects) {
 }
 
 function getBaseCtx() {
@@ -185,25 +143,31 @@ export function setup() {
 
 	Rx.interval(UP.DISPLAYED_AWAY_PRESENCE_WINDOW * 2).pipe(
 		Rx.map(() => getBaseCtx()),
-		C.durableSub('user-presence:clean-presence', { module }, async (ctx) => {
+		C.durableSub('user-presence:clean-presence', { module }, async (baseCtx) => {
 			let numCleaned = 0
 			for (const slice of SquadServer.globalState.slices.values()) {
-				const presenceState = slice.userPresence.presence
+				const ctx = { ...baseCtx, ...slice }
+				const clientIdsToRemove: string[] = []
+				const presenceState = ctx.userPresence.session.state.presence
 				for (const [wsClientId, presence] of Array.from(presenceState.entries())) {
 					// we don't want to remove presence instances that still might have an away indicator
 					const pastDisconnectTimeout = presence.lastSeen === null || (Date.now() - presence.lastSeen) > UP.DISPLAYED_AWAY_PRESENCE_WINDOW
 					if (
 						!WSSessionSys.wsSessions.has(wsClientId) && pastDisconnectTimeout
-						&& !slice.sharedList.session.state.editors.has(presence.userId)
 					) {
-						presenceState.delete(wsClientId)
-						numCleaned++
+						clientIdsToRemove.push(wsClientId)
 					}
 				}
+				ctx.userPresence.op$.next({ code: 'clean-stale-presence', clientIdsToRemove, opId: UP.createOpId(), time: Date.now() })
+				numCleaned += clientIdsToRemove.length
 			}
 
 			log.info(`Cleaned ${numCleaned} stale presence sessions`)
 			// no need to send these deletions to the client
 		}),
 	).subscribe()
+}
+
+function resolveCtx(serverId: string) {
+	return SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 }

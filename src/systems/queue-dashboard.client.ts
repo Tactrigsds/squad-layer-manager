@@ -24,7 +24,7 @@ import * as UsersClient from './users.client'
 export type LLStore = SLLClient.Store
 
 export type LLActions = {
-	dispatch: (op: SLL.NewOperation) => void
+	dispatch: (op: SLL.NewClientOperation) => void
 }
 
 export type LLItemState = {
@@ -47,7 +47,7 @@ export function getSource(): LL.Source {
 export function getLLItemActions(llStore: LLStore, itemId: string): LLItemActions {
 	const actions: LLItemActions = {
 		dispatch(newItemOp) {
-			const newOp: SLL.NewOperation = { ...newItemOp, itemId }
+			const newOp: SLL.NewClientOperation = { ...newItemOp, itemId }
 			void llStore.dispatch(newOp)
 		},
 

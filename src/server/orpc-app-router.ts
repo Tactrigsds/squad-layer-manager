@@ -7,7 +7,6 @@ import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as ServerSettings from '@/systems/server-settings.server'
-import * as SharedLayerList from '@/systems/shared-layer-list.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
@@ -22,7 +21,6 @@ export const orpcAppRouter = {
 	vote: Vote.router,
 	config: Config.router,
 	layerQueries: LayerQueries.router,
-	sharedLayerList: SharedLayerList.orpcRouter,
 	userPresence: UserPresence.orpcRouter,
 	discord: Discord.orpcRouter,
 	matchHistory: MatchHistory.matchHistoryRouter,

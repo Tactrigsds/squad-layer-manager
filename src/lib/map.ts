@@ -104,6 +104,14 @@ export function bulkDelete<K, T>(map: Map<K, T>, ...keys: K[]): Map<K, T> {
 	return map
 }
 
+export function deleteByValue<K, T>(map: Map<K, T>, ...values: T[]) {
+	for (const [key, val] of map.entries()) {
+		if (values.includes(val)) {
+			map.delete(key)
+		}
+	}
+}
+
 export function getWith<M extends Map<any, any>>(
 	map: M,
 	key: M extends Map<infer K, any> ? K : never,
@@ -130,7 +138,7 @@ export function hasWith<M extends Map<any, any>>(
 	return false
 }
 
-export function defaultGet<K, V>(
+export function defaultInsGet<K, V>(
 	map: Map<K, V>,
 	key: K,
 	defaultValue: V,

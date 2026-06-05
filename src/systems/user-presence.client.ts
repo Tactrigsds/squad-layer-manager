@@ -10,7 +10,6 @@ import * as ZusUtils from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
 import type * as SLL from '@/models/shared-layer-list'
 import * as UP from '@/models/user-presence'
-import * as UPActions from '@/models/user-presence/actions'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems/config.client'
@@ -30,7 +29,7 @@ type ActivityLoaderConfig<Name extends string = string, Key = any, Data = any> =
 	Name,
 	Key,
 	Data,
-	PresenceStore,
+	Store,
 	UP.RootActivity
 >
 export type LoaderCacheEntry<Config extends ActivityLoaderConfig, Loaded extends boolean = boolean> = Lifecycle.LoaderCacheEntry<
@@ -50,15 +49,15 @@ function createActivityLoaderConfig<Name extends string, Key extends ST.Match.No
 	name: Name,
 	match: (state: UP.RootActivity) => Key | undefined,
 ) {
-	return <Data>(config: Lifecycle.LoaderConfigOptions<Key, Data, PresenceStore>) =>
-		Lifecycle.createLoaderConfig<Name, Key, UP.RootActivity>(name, match)<Data, PresenceStore>(config)
+	return <Data>(config: Lifecycle.LoaderConfigOptions<Key, Data, Store>) =>
+		Lifecycle.createLoaderConfig<Name, Key, UP.RootActivity>(name, match)<Data, Store>(config)
 }
 
 export const ACTIVITY_LOADER_CONFIGS = [
 	createActivityLoaderConfig(
 		'selectLayers',
 		s => {
-			const node = s.child.EDITING_QUEUE?.chosen
+			const node = UP.getSllEditingQueueNode(s)?.chosen
 			if (node?.id === 'ADDING_ITEM' || node?.id === 'EDITING_ITEM') return node
 			return undefined
 		},
@@ -92,7 +91,7 @@ export const ACTIVITY_LOADER_CONFIGS = [
 	createActivityLoaderConfig(
 		'genVote',
 		s => {
-			const node = s.child.EDITING_QUEUE?.chosen
+			const node = UP.getSllEditingQueueNode(s)?.chosen
 			if (node?.id === 'GENERATING_VOTE') return node
 			return undefined
 		},
@@ -108,7 +107,7 @@ export const ACTIVITY_LOADER_CONFIGS = [
 		},
 	}),
 	createActivityLoaderConfig('pasteRotation', s => {
-		const node = s.child.EDITING_QUEUE?.chosen
+		const node = UP.getSllEditingQueueNode(s)?.chosen
 		if (node?.id === 'PASTE_ROTATION') return node
 		return undefined
 	})({
@@ -121,64 +120,86 @@ export const ACTIVITY_LOADER_CONFIGS = [
 
 // -------- PresenceStore --------
 
-export type PresenceStore = {
-	presence: UP.PresenceState
-	// derived: resolved per-user presence (latest session wins per userId)
+export type Store = {
 	userPresence: Map<bigint, UP.ClientPresence>
 
 	hoveredActivityUserId: USR.UserId | null
 	setHoveredActivityUserId(userId: USR.UserId, hovered: boolean): void
 
 	activityLoaderCache: LoaderCacheEntry<ConfiguredLoaderConfig>[]
+	handleIncomingPresenceUpdate(update: UP.PresenceUpdate): void
 
-	handlePresenceUpdate(update: UP.PresenceBroadcast): void
+	session: RbSyncState.Client.Session<UP.Op, UP.State, UP.SideEffects>
 
-	// applies editSessionChanged action to all presence entries (called when session resets)
-	onSessionChanged(ops: SLL.Operation[]): void
+	presence: UP.PresenceState
+	editors: Set<USR.UserId>
+	// derived: resolved per-user presence (latest session wins per userId)
 
-	pushPresenceAction(action: UPActions.Action): void
+	dispatch(op: UP.NewClientOp): void
 	updateActivity(update: (prev: UP.RootActivity) => UP.RootActivity): void
 	preloadActivity(update: (prev: UP.RootActivity) => UP.RootActivity): void
 }
 
-const [_usePresenceUpdate, presenceUpdate$] = ReactRx.bind<UP.PresenceBroadcast>(
+const [_usePresenceUpdate, presenceUpdate$] = ReactRx.bind<UP.PresenceUpdate>(
 	RPC.observe(() => RPC.orpc.userPresence.watchUpdates.call()),
 )
 
-export const PresenceStore = createPresenceStore()
+export const Store = createPresenceStore()
 
 function createPresenceStore() {
-	const store = Zus.createStore<PresenceStore>((set, get, store) => {
-		const loaderCtx: Lifecycle.LoaderManagerContext<ConfiguredLoaderConfig, PresenceStore> = {
+	const store = Zus.createStore<Store>((set, get, store) => {
+		const loaderCtx: Lifecycle.LoaderManagerContext<ConfiguredLoaderConfig, Store> = {
 			configs: ACTIVITY_LOADER_CONFIGS,
-			getCache: (draft: Im.Draft<PresenceStore>) => draft.activityLoaderCache as Lifecycle.LoaderCacheEntry<ConfiguredLoaderConfig>[],
-			setCache: (draft: Im.Draft<PresenceStore>, cache: Lifecycle.LoaderCacheEntry<ConfiguredLoaderConfig>[]) => {
+			getCache: (draft: Im.Draft<Store>) => draft.activityLoaderCache as Lifecycle.LoaderCacheEntry<ConfiguredLoaderConfig>[],
+			setCache: (draft: Im.Draft<Store>, cache: Lifecycle.LoaderCacheEntry<ConfiguredLoaderConfig>[]) => {
 				draft.activityLoaderCache = cache
 			},
-			set: (updater: (state: PresenceStore) => PresenceStore) => set(updater),
+			set: (updater: (state: Store) => Store) => set(updater),
 			getCurrentState: () => get(),
 		}
 
 		store.subscribe((state, prev) => {
-			if (prev.presence !== state.presence) {
-				set({ userPresence: UP.resolveUserPresence(state.presence) })
-
+			const presence = state.session.localState.presence
+			let toUpdate: Partial<Store> = {}
+			if (presence !== state.presence) {
+				toUpdate.presence = presence
+				toUpdate.userPresence = UP.resolveUserPresence(presence)
 				const config = ConfigClient.getConfig()
 				if (config) {
 					const wsClientId = config.wsClientId
 					const prevClientActivityState = prev.presence.get(wsClientId)?.activityState ?? null
-					const clientActivityState = state.presence.get(wsClientId)?.activityState ?? null
+					const clientActivityState = presence.get(wsClientId)?.activityState ?? null
 					if (prevClientActivityState !== clientActivityState) {
 						Lifecycle.dispatchLoaderEvents(loaderCtx, clientActivityState, prevClientActivityState, false)
 					}
 				}
+				const editors = new Set<USR.UserId>()
+				for (const client of presence.values()) {
+					if (UP.getSllEditingQueueNode(client.activityState)) {
+						editors.add(client.userId)
+					}
+				}
+				if (!Obj.deepEqual(editors, state.editors)) {
+					toUpdate.editors = editors
+				}
+			}
+
+			if (!Obj.isEmpty(toUpdate)) {
+				set(toUpdate)
 			}
 
 			Lifecycle.checkAndUnloadStaleEntries(loaderCtx, state)
 		})
 
+		function onSideEffect(se: UP.SideEffects) {
+			console.log('side effect', se)
+		}
+
+		const session = RbSyncState.Client.initSession<UP.Op, UP.State, UP.SideEffects>(UP.initState(), { onSideEffect })
 		return {
-			presence: new Map(),
+			session,
+			presence: session.localState.presence,
+			editors: new Set(),
 			userPresence: new Map(),
 			activityLoaderCache: [],
 
@@ -192,75 +213,24 @@ function createPresenceStore() {
 				set({ hoveredActivityUserId: userId })
 			},
 
-			handlePresenceUpdate(update) {
-				switch (update.code) {
-					case 'init': {
-						const config = ConfigClient.getConfig()
-						const clientPresence = config ? get().presence.get(config.wsClientId) : null
-						const merged = new Map([
-							...update.presence,
-							...(clientPresence && config ? [[config.wsClientId, clientPresence] as const] : []),
-						])
-						set({ presence: merged })
-						get().pushPresenceAction(UPActions.editSessionChanged)
-						break
-					}
-					case 'update': {
-						set(state =>
-							Im.produce(state, draft => {
-								let currentPresence = draft.presence.get(update.wsClientId)
-								if (!currentPresence) {
-									currentPresence = UPActions.getClientPresenceDefaults(update.userId)
-									draft.presence.set(update.wsClientId, currentPresence)
-								}
-								UP.updateClientPresence(currentPresence, update.changes)
-							})
-						)
-						break
-					}
+			handleIncomingPresenceUpdate(update) {
+				if (update.code === 'init') {
+					const newSession = RbSyncState.Client.initSession(UP.initState(), { onSideEffect, ops: update.ops })
+					set({ session: newSession })
+				} else if (update.code === 'op') {
+					const newSession = RbSyncState.Client.processIncomingOps(get().session, [update.op], UP.reducer)
+					set({ session: newSession })
 				}
 			},
 
-			onSessionChanged(ops) {
-				set(state =>
-					Im.produce(state, draft => {
-						UPActions.applyToAll(draft.presence, ops, UPActions.editSessionChanged)
-					})
-				)
-				get().pushPresenceAction(UPActions.editSessionChanged)
-			},
-
-			async pushPresenceAction(action) {
-				const config = ConfigClient.getConfig()
-				if (!config) return
+			dispatch(newOp) {
 				const userId = UsersClient.loggedInUserId
-				if (!userId) return
-				const sllState = SLLClient.Store.getState()
-				const hasEdits = sllState.isModified
-				let update = action({ hasEdits, prev: get().presence.get(config.wsClientId) })
-				update = Obj.trimUndefined(update)
-				let presenceUpdated = false
-				const beforeUpdates = get().presence.get(config.wsClientId)
-				set(state =>
-					Im.produce(state, draft => {
-						let currentPresence = draft.presence.get(config.wsClientId)
-						if (!currentPresence) {
-							currentPresence = UPActions.getClientPresenceDefaults(userId)
-							draft.presence.set(config.wsClientId, currentPresence)
-						}
-						presenceUpdated = UP.updateClientPresence(currentPresence, update)
-					})
-				)
-				if (presenceUpdated) {
-					const res = await RPC.orpc.userPresence.updatePresence.call({
-						wsClientId: config.wsClientId,
-						userId,
-						changes: update,
-					})
-					if (res?.code === 'err:locked' && beforeUpdates) {
-						get().pushPresenceAction(UPActions.failedToAcquireLocks(beforeUpdates))
-					}
-				}
+				const config = ConfigClient.getConfig()
+				if (!config || !userId) return
+				const op: UP.ClientOp = { ...newOp, userId, clientId: config.wsClientId, time: Date.now(), opId: UP.createOpId() } as UP.ClientOp
+				const newSession = RbSyncState.Client.processOutgoingOps(get().session, [op], UP.reducer)
+				set({ session: newSession })
+				void RPC.orpc.userPresence.dispatchOp.call(op)
 			},
 
 			updateActivity(update) {
@@ -268,7 +238,7 @@ function createPresenceStore() {
 				if (!config) return
 				const prev = get().presence.get(config.wsClientId)?.activityState ?? UP.DEFAULT_ACTIVITY
 				const next = update(prev)
-				get().pushPresenceAction(UPActions.updateActivity(next))
+				this.dispatch({ code: 'set-activity', activity: next })
 			},
 
 			preloadActivity(update) {
@@ -290,12 +260,12 @@ function createPresenceStore() {
 
 export function useItemPresence(itemId: LL.ItemId) {
 	const [presence, activityHovered] = Zus.useStore(
-		PresenceStore,
+		Store,
 		ZusUtils.useDeep(state => {
 			const res = MapUtils.find(
 				state.presence,
 				(_, v) => {
-					const activity = v.activityState?.child.EDITING_QUEUE?.chosen
+					const activity = UP.getSllEditingQueueNode(v.activityState)?.chosen
 					return !!activity && UP.isItemOwnedActivity(activity) && activity.opts.itemId === itemId
 				},
 			)
@@ -303,7 +273,7 @@ export function useItemPresence(itemId: LL.ItemId) {
 			const root = res[1].activityState!
 			const presence = {
 				...res?.[1],
-				itemActivity: root.child.EDITING_QUEUE!.chosen as UP.ItemOwnedActivity,
+				itemActivity: UP.getSllEditingQueueNode(root)!.chosen as UP.ItemOwnedActivity,
 			}
 			if (!presence) return [undefined, undefined] as const
 			const hovered = state.hoveredActivityUserId === presence.userId
@@ -317,29 +287,40 @@ export function useItemPresence(itemId: LL.ItemId) {
 
 	return [presence, userRes.data.user, activityHovered] as const
 }
+export function useIsSllItemLocked(itemId: string) {
+	return Zus.useStore(Store, state => state.session.localState.itemLocks.has(itemId))
+}
 
 export function useClientPresence() {
 	const config = ConfigClient.useConfig()
-	const presence = Zus.useStore(PresenceStore, state => config ? state.presence.get(config?.wsClientId) : undefined)
+	const presence = Zus.useStore(Store, state => config ? state.presence.get(config?.wsClientId) : undefined)
 	return presence
+}
+
+export function useEditingState() {
+	return useActivityState(UP.TOGGLE_EDITING_QUEUE_TRANSITIONS)
 }
 
 export function useIsEditing() {
 	const user = UsersClient.useLoggedInUser()
-	return Zus.useStore(SLLClient.Store, React.useMemo(() => (s: SLLClient.Store) => selectIsEditing(s, user), [user]))
+	return Zus.useStore(Store, store => user ? selectIsEditing(store, user?.discordId) : false)
+}
+export function selectUserPresence(store: Store, userId: USR.UserId) {
+	if (!userId) return
+	return store.userPresence.get(userId)
 }
 
-export function selectIsEditing(store: SLLClient.Store, user?: USR.User) {
-	if (!user) return false
-	return user && store.editors.has(user.discordId) && !store.committing
+export function selectIsEditing(store: Store, userId: USR.UserId) {
+	const presence = selectUserPresence(store, userId)
+	return UP.TOGGLE_EDITING_QUEUE_TRANSITIONS.matchActivity(presence?.activityState)
 }
 
 // allows familiar useState binding to a presence activity
 export function useActivityState<P>(
 	opts: {
-		createActivity: (prev: UP.RootActivity) => UP.RootActivity
+		createActivity: (prev: UP.RootActivity | null | undefined) => UP.RootActivity
 		removeActivity: (prev: UP.RootActivity) => UP.RootActivity
-		matchActivity: (prev: UP.RootActivity) => P
+		matchActivity: (prev: UP.RootActivity | null | undefined) => P
 	},
 ) {
 	const { matchActivity, createActivity, removeActivity } = opts
@@ -350,18 +331,18 @@ export function useActivityState<P>(
 	removeActivityRef.current = removeActivity
 
 	const predicate = Zus.useStore(
-		PresenceStore,
+		Store,
 		ZusUtils.useDeep(React.useCallback(() => {
 			const config = ConfigClient.getConfig()
-			const state = (config ? PresenceStore.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? UP.DEFAULT_ACTIVITY
+			const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? UP.DEFAULT_ACTIVITY
 			return matchActivity(state)
 		}, [matchActivity])),
 	)
 	const setActive: React.Dispatch<React.SetStateAction<boolean>> = React.useCallback((update) => {
 		const config = ConfigClient.getConfig()
 		if (!config) return
-		const storeState = PresenceStore.getState()
-		const state = PresenceStore.getState().presence.get(config?.wsClientId)?.activityState ?? UP.DEFAULT_ACTIVITY
+		const storeState = Store.getState()
+		const state = Store.getState().presence.get(config?.wsClientId)?.activityState ?? UP.DEFAULT_ACTIVITY
 
 		const alreadyActive = !!matchActivity(state)
 		const newActive = typeof update === 'function' ? update(alreadyActive) : update
@@ -378,13 +359,13 @@ export function useActivityState<P>(
 
 export function useHoveredActivityUser() {
 	const [hovered, setHovered] = Zus.useStore(
-		PresenceStore,
+		Store,
 		useShallow((state) => [state.hoveredActivityUserId, state.setHoveredActivityUserId]),
 	)
 	return [hovered, setHovered] as const
 }
 
-export const selectActivityPresent = (targetActivity: UP.RootActivity) => (state: PresenceStore) => {
+export const selectActivityPresent = (targetActivity: UP.RootActivity) => (state: Store) => {
 	for (const [activity] of UP.iterActivities(state.presence)) {
 		if (Obj.deepEqual(activity, targetActivity)) {
 			return true
@@ -395,7 +376,7 @@ export const selectActivityPresent = (targetActivity: UP.RootActivity) => (state
 
 export function useLoadedActivities() {
 	return Zus.useStore(
-		PresenceStore,
+		Store,
 		ZusUtils.useShallow(state => {
 			const loadedEntries = state.activityLoaderCache.filter(entry => !!entry.data)
 			return loadedEntries as unknown as LoadedActivityState[]
@@ -405,7 +386,7 @@ export function useLoadedActivities() {
 
 export function useActivityLoaded(_matchActivity: (state: UP.RootActivity) => boolean) {
 	return Zus.useStore(
-		PresenceStore,
+		Store,
 		ZusUtils.useShallow(state => {
 			return state.activityLoaderCache.some(entry => entry.data !== undefined)
 		}),
@@ -420,7 +401,7 @@ export function useActivityLoaderData<Loader extends ConfiguredLoaderConfig, O =
 }) {
 	const { loaderName, matchKey: matchPredicate = () => true, trace, select = (entry) => entry?.data } = opts
 	return Zus.useStore(
-		PresenceStore,
+		Store,
 		state => {
 			const loadedEntries = state.activityLoaderCache.filter(entry => entry.name === loaderName && matchPredicate(entry.key as any))
 			if (loadedEntries.length > 1) console.warn(`Multiple activities loaded for ${trace ?? loaderName}`)
@@ -435,17 +416,7 @@ export function useActivityLoaderData<Loader extends ConfiguredLoaderConfig, O =
 export async function setup() {
 	// Subscribe to presence broadcast stream
 	presenceUpdate$.subscribe(update => {
-		PresenceStore.getState().handlePresenceUpdate(update)
-	})
-
-	// Hook into SLL session changes to re-apply presence actions
-	SLLClient.Store.subscribe((state, prev) => {
-		if (state.rbSession.localState !== prev.rbSession.localState) {
-			// When session resets (new session object), notify presence store
-			if (state.sessionSeqId !== prev.sessionSeqId) {
-				PresenceStore.getState().onSessionChanged(RbSyncState.Client.localOps(prev.rbSession))
-			}
-		}
+		Store.getState().handleIncomingPresenceUpdate(update)
 	})
 
 	const settingsModified$ = toStream(ServerSettingsClient.Store).pipe(Rx.map(s => s.modified), Rx.distinctUntilChanged())
@@ -454,18 +425,18 @@ export async function setup() {
 		Rx.withLatestFrom(wsClientId$),
 	).subscribe(([modified, wsClientId]) => {
 		try {
-			const currentActivity = PresenceStore.getState().presence.get(wsClientId)?.activityState
+			const currentActivity = Store.getState().presence.get(wsClientId)?.activityState
 			const dialogActivity = currentActivity?.child?.VIEWING_SETTINGS
 			const inChangingSettingsActivity = dialogActivity?.id === 'VIEWING_SETTINGS' && dialogActivity?.child?.CHANGING_SETTINGS
 			if (!modified && inChangingSettingsActivity) {
-				PresenceStore.getState().updateActivity(Im.produce(draft => {
+				Store.getState().updateActivity(Im.produce(draft => {
 					const activity = draft.child?.VIEWING_SETTINGS
 					if (!activity) return
 					delete activity.child.CHANGING_SETTINGS
 				}))
 			}
 			if (modified) {
-				PresenceStore.getState().updateActivity(Im.produce(draft => {
+				Store.getState().updateActivity(Im.produce(draft => {
 					draft.child.VIEWING_SETTINGS = ST.Match.branch('VIEWING_SETTINGS', draft.child.VIEWING_SETTINGS?.opts ?? {}, {
 						CHANGING_SETTINGS: ST.Match.leaf('CHANGING_SETTINGS', {}),
 					})

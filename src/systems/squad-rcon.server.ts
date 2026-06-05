@@ -276,8 +276,8 @@ async function fetchTeams(ctx: C.Rcon & C.AdminList & C.AsyncResourceInvocation)
 			}
 		}
 	} catch (e) {
-		log.error(e, 'Received error while validating players and squads.')
-		log.error({ playersRes, squadsRes }, 'Parsed responses:')
+		log.warn(e, 'Received error while validating players and squads.')
+		log.warn({ playersRes, squadsRes }, 'Parsed responses:')
 		throw e
 	}
 

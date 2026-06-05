@@ -9,6 +9,7 @@ import type * as SE from '@/models/server-events.models'
 import * as SM from '@/models/squad.models'
 import { z } from 'zod'
 type TeamsUpdateEvent = { type: 'TEAMS_UPDATE'; id: number; teams: SM.Teams; time: number }
+export type Attribution = { type: 'MAP_SET_ATTRIBUTION'; itemId: string; layerId: L.LayerId; time: number }
 export type State = {
 	lastKnownLogEventTime: number | null
 	eventBufs: {
@@ -20,6 +21,8 @@ export type State = {
 		)[]
 		teamsUpdates: TeamsUpdateEvent[]
 	}
+
+	attributions: Attribution[]
 
 	// players from the last =<2 matches
 	nextLayerId: L.LayerId | null
@@ -91,6 +94,7 @@ export function init(
 			lifecycleEvents: [],
 			teamsUpdates: [],
 		},
+		attributions: [],
 		nextLayerId: null,
 		currentMatch: opts.currentMatch,
 		syncState: { type: 'desynced' },
@@ -99,6 +103,10 @@ export function init(
 		hooks: opts.hooks,
 		isFirstConnection: null,
 	}
+}
+
+export function pushAttribution(state: State, attribution: Omit<Attribution, 'time' | 'time'>) {
+	state.attributions.push({ ...attribution, time: Date.now() })
 }
 
 export function onRconConnected(state: State, time: number, nextLayerId: L.LayerId | null, currentLayerId: L.LayerId) {
@@ -528,12 +536,21 @@ async function* processPendingEvent(
 				}
 				layer = layersStatus.nextLayer
 			}
+			let source: SE.MapSet['source'] = pendingEvent.source
 			state.nextLayerId = layer.id
+			const attributionIndex = state.attributions.findIndex(a => a.type === 'MAP_SET_ATTRIBUTION')
+			if (attributionIndex !== -1) {
+				const attribution = state.attributions[attributionIndex]
+				if (L.areLayersCompatible(attribution.layerId, layer.id)) {
+					source = { type: 'layer-queue', itemId: attribution.itemId }
+				}
+				state.attributions.splice(attributionIndex, 1)
+			}
 			yield {
 				type: 'MAP_SET',
 				...base,
 				layerId: layer.id,
-				source: pendingEvent.source,
+				source,
 			}
 			break
 		}

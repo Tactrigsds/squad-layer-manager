@@ -270,7 +270,6 @@ export type ServerId = z.infer<typeof ServerIdSchema>
 export const ServerStateSchema = z.object({
 	id: ServerIdSchema,
 	displayName: z.string().min(1).max(256),
-	layerQueueSeqId: z.int().prefault(0),
 	layerQueue: LL.ListSchema,
 	teamswitches: Teamswitches.TeamswitchCollectionSchema,
 	settings: ServerSettingsSchema,

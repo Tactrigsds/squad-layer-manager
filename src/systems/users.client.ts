@@ -29,7 +29,8 @@ export function useUser(id?: bigint, opts?: { enabled?: boolean }) {
 	return useQuery(getFetchUserOptions(id, opts))
 }
 
-export function useUsers(userIds?: USR.UserId[], opts?: { enabled?: boolean }) {
+export function useUsers(_userIds?: USR.UserId[] | Set<USR.UserId>, opts?: { enabled?: boolean }) {
+	const userIds = _userIds instanceof Set ? [..._userIds.values()] : _userIds
 	return useQuery({
 		queryKey: ['users', 'getUsers', superjson.serialize(userIds)],
 		enabled: opts?.enabled,

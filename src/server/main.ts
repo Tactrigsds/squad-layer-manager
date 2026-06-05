@@ -17,10 +17,10 @@ import * as MatchHistory from '@/systems/match-history.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sessions from '@/systems/sessions.server'
-import * as SharedLayerList from '@/systems/shared-layer-list.server'
 import * as SquadLogsReceiver from '@/systems/squad-logs-receiver.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
+import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
 import * as WsSession from '@/systems/ws-session.server'
@@ -51,6 +51,7 @@ await C.spanOp('main', { module }, async () => {
 	Commands.setup()
 	LayerQueries.setup()
 	LayerQueue.setup()
+	UserPresence.setup()
 	MatchHistory.setup()
 	SquadRcon.setup()
 	Users.setup()
@@ -63,7 +64,6 @@ await C.spanOp('main', { module }, async () => {
 	Rbac.setup()
 	void Sessions.setup()
 	await Promise.all([SquadServer.setup(), Discord.setup()])
-	SharedLayerList.setup()
 	const { serverClosed } = await Fastify.setup()
 	if (ENV.NODE_ENV === 'development') {
 		void import('./console.ts')

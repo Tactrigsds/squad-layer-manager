@@ -9,7 +9,7 @@ import { type ActionSource, type Base, type EventMeta, meta } from './server-eve
 export type MapSet = {
 	type: 'MAP_SET'
 	layerId: L.LayerId
-	source?: ActionSource
+	source?: ActionSource | { type: 'layer-queue'; itemId: string }
 } & Base
 export const MAP_SET_META = meta()
 

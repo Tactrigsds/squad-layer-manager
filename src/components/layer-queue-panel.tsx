@@ -94,7 +94,7 @@ function ValidationWarningsDisplay(
 			const parity = LQY.getParityForLayerItem(itemsState, warning.itemId)
 
 			if (warning.type === 'filter-entity-warning') {
-				const itemFilterWarnings = MapUtils.defaultGet(filterWarnings, warning.itemId, [])
+				const itemFilterWarnings = MapUtils.defaultInsGet(filterWarnings, warning.itemId, [])
 				itemFilterWarnings.push({ ...warning, item, index, parity })
 			} else if (warning.type === 'repeat-rule-violation-warning') repeatWarnings.push({ ...warning, item, index, parity })
 			else assertNever(warning)
@@ -219,6 +219,7 @@ function useQueueWarnings() {
 		s =>
 			s.isModified && !!loggedInUser && SLL.hasUserMutations(
 				RbSyncState.Client.localOps(s.rbSession),
+				s.rbSession.localState,
 				loggedInUser.discordId,
 			),
 	)
@@ -241,27 +242,35 @@ type QueueControlPanelProps = {
 
 function QueueControlPanel(props: QueueControlPanelProps) {
 	const { warnings, showWarnings, setShowWarnings } = props
-	const isEditing = UPClient.useIsEditing()
+	// const isEditing = UPClient.useIsEditing()
+	const [isEditing, setIsEditing] = UPClient.useEditingState()
+	const numEditors = Zus.useStore(UPClient.Store, state => state.editors.size)
 	const [forceSave, setForceSave] = React.useState(false)
 
 	const setEditing = async (editing: boolean) => {
 		if (editing) {
+			setIsEditing(true)
 			setShowWarnings(false)
-			void SLLClient.Store.getState().dispatch({ op: 'start-editing' })
 		} else {
 			if (warnings && !showWarnings && !forceSave) {
 				setShowWarnings(true)
 				return
 			}
-			void SLLClient.Store.getState().dispatch({ op: 'finish-editing', forceSave: forceSave || undefined })
+			setIsEditing(false)
 			setForceSave(false)
 			setShowWarnings(false)
+			const editorCount = UPClient.Store.getState().editors.size
+			const isModified = SLLClient.Store.getState().isModified
+
+			if (isModified && (editorCount === 0 || forceSave)) {
+				await SLLClient.Store.getState().dispatch({ op: 'save' })
+			}
 		}
 	}
 
-	const [isModified, committing, numEditors] = Zus.useStore(
+	const [isModified, committing] = Zus.useStore(
 		SLLClient.Store,
-		useShallow(s => [s.isModified, s.committing, s.editors.size]),
+		useShallow(s => [s.isModified, s.committing]),
 	)
 	const startEditingDenied = RbacClient.usePermsCheck(RBAC.perm('queue:write'))
 
@@ -287,7 +296,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 						<Button
 							disabled={!isEditing}
 							className="not-group-data-[status=editing]:invisible"
-							variant="outline"
+							variant="secondary"
 							size="icon"
 							onClick={() => clear()}
 						>
@@ -345,7 +354,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 						<Button
 							size="icon"
 							disabled={!isModified}
-							onClick={() => SLLClient.Store.getState().reset()}
+							onClick={() => SLLClient.Store.getState().dispatch({ op: 'reset-to-saved' })}
 							variant="secondary"
 							className="col-start-1 row-start-1 not-group-data-[status=editing]:invisible"
 						>
@@ -500,7 +509,7 @@ export function QueuePanelContent() {
 	)
 }
 
-function SlmUpdatesDisabledAlert() {
+export function SlmUpdatesDisabledAlert() {
 	const statusRes = SquadServerClient.useLayersStatus()
 	const nextLayer = statusRes.code === 'ok' ? statusRes.data.nextLayer : null
 	const updatesDisabled = Zus.useStore(ServerSettingsClient.Store, s => s.saved.updatesToSquadServerDisabled)

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Browser from '@/lib/browser'
 import * as SS from '@/models/server-state.models'
-import * as PresenceActions from '@/models/user-presence/actions'
+import * as UP from '@/models/user-presence'
 import * as ConfigClient from '@/systems/config.client'
 import * as ServerSettingsClient from '@/systems/server-settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -38,7 +38,7 @@ export const Route = createFileRoute('/_app/servers/$serverId')({
 	},
 
 	onLeave() {
-		UPClient.PresenceStore.getState().pushPresenceAction(PresenceActions.navigatedAway)
+		UPClient.Store.getState().dispatch({ code: 'navigated-away' })
 	},
 })
 
@@ -51,7 +51,7 @@ function RouteComponent() {
 			return
 		}
 		// -------- schedule presence updates, keep default server id up-to-date --------
-		const timeout$ = Rx.of(false).pipe(Rx.delay(PresenceActions.INTERACT_TIMEOUT))
+		const timeout$ = Rx.of(false).pipe(Rx.delay(UP.INTERACT_TIMEOUT))
 		const interaction$ = Browser.userIsActive$.pipe(
 			Rx.scan((acc) => acc + 1, 0),
 			Rx.audit(t => t === 1 ? Rx.of(true) : Rx.of(true).pipe(Rx.delay(2000))),
@@ -64,9 +64,9 @@ function RouteComponent() {
 				if (active) {
 					// if the user comes back to this page we want to set this as the default server again
 					SquadServerClient.SelectedServerStore.getState().setAsDefaultServer()
-					UPClient.PresenceStore.getState().pushPresenceAction(PresenceActions.pageInteraction)
+					UPClient.Store.getState().dispatch({ code: 'page-interaction' })
 				} else {
-					UPClient.PresenceStore.getState().pushPresenceAction(PresenceActions.interactionTimeout)
+					UPClient.Store.getState().dispatch({ code: 'interaction-timeout' })
 				}
 			} catch (error) {
 				console.error('Error in pushing pageInteraction$', error)

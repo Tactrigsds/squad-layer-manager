@@ -49,6 +49,9 @@ export const ConfigSchema = z.object({
 			remindersAndAnnouncementsEnabled: z.boolean().prefault(true).describe('Whether reminders/annoucements for admins are enabled'),
 			defaultServer: z.boolean().default(false),
 			navLinks: NavLinkSchema.optional().describe('Server-specific links to display in the navbar dropdown menu'),
+			overrideAdminSetNextLayer: z.boolean().default(false).describe(
+				'Whether AdminSetNExtLayer commands not originating from SLM are respected',
+			),
 		}),
 	).refine((servers) => {
 		const defaultServerCount = servers.filter((server) => server.defaultServer).length
@@ -73,6 +76,9 @@ export const ConfigSchema = z.object({
 		internalVoteReminderInterval: HumanTime.prefault('15s').describe('How often to remind amdins to vote in an internal vote'),
 		autoStartVoteDelay: HumanTime.prefault('20m').nullable().describe(
 			'Delay before autostarting a vote from the start of the current match. Set to null to disable auto-starting votes',
+		),
+		autoStartVoteCutoff: HumanTime.prefault('30m').describe(
+			'How far into a match to start auto-starting votes when a vote is shuffled to the front of the queue',
 		),
 		voteDisplayProps: z.array(DH.LAYER_DISPLAY_PROP).prefault(['map', 'gamemode']).describe(
 			'What parts of a layer setup should be displayed',

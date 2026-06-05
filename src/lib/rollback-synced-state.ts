@@ -37,6 +37,7 @@ export namespace Server {
 		session: Session<O, S, SE>,
 		ops: O[],
 		reducer: Reducer<O, S, SE>,
+		opts?: { onSideEffect?: OnSideEffect<SE> },
 	): Session<O, S, SE> {
 		if (ops.length === 0) throw new Error('No ops to apply')
 		const incomingIds = ops.map(op => op.opId)
@@ -47,7 +48,7 @@ export namespace Server {
 			if (existingIds.has(id)) throw new Error(`Duplicate opId already in session: ${id}`)
 		}
 		return {
-			state: reducer(session.state, ops, session.ops, session.onSideEffect),
+			state: reducer(session.state, ops, session.ops, opts?.onSideEffect ?? session.onSideEffect),
 			ops: [...session.ops, ...ops],
 		}
 	}
@@ -71,10 +72,10 @@ export namespace Client {
 
 	export function initSession<O extends BaseOp, S, SE extends SideEffectBase = undefined>(
 		state: S,
-		opts?: { onSideEffect?: OnSideEffect<SE> },
+		opts?: { onSideEffect?: OnSideEffect<SE>; ops?: O[] },
 	): Session<O, S, SE> {
 		return {
-			syncedOps: [],
+			syncedOps: opts?.ops ?? [],
 			syncedState: state,
 			localState: state,
 			pendingOps: [],

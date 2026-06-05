@@ -142,6 +142,11 @@
               },
               "required": ["label", "url"]
             }
+          },
+          "overrideAdminSetNextLayer": {
+            "description": "Whether AdminSetNExtLayer commands not originating from SLM are respected",
+            "default": false,
+            "type": "boolean"
           }
         },
         "required": ["id", "displayName", "connections"]
@@ -227,6 +232,12 @@
             },
             {"type": "null"}
           ]
+        },
+        "autoStartVoteCutoff": {
+          "description": "How far into a match to start auto-starting votes when a vote is shuffled to the front of the queue",
+          "default": "30m",
+          "type": "string",
+          "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"
         },
         "voteDisplayProps": {
           "description": "What parts of a layer setup should be displayed",

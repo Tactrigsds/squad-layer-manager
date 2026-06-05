@@ -400,6 +400,13 @@
       "when": 1777916147955,
       "tag": "0056_steep_kree",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "5",
+      "when": 1780533573372,
+      "tag": "0057_freezing_owl",
+      "breakpoints": true
     }
   ]
 }

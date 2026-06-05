@@ -41,7 +41,7 @@ export async function setup() {
 	db = drizzle(pool, {
 		logger: {
 			logQuery: (query: string, params: unknown[]) => {
-				log.debug({ params }, '%s', highlight(query))
+				log.debug('%s %o', highlight(query), params)
 			},
 		},
 	})
