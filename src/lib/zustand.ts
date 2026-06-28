@@ -1,5 +1,7 @@
 import * as Obj from '@/lib/object'
 import type { StateObservable } from '@rx-state/core'
+import { useQueries } from '@tanstack/react-query'
+import type { UseQueryOptions } from '@tanstack/react-query'
 import { derive } from 'derive-zustand'
 import * as React from 'react'
 import * as Rx from 'rxjs'
@@ -52,8 +54,14 @@ export function storeFromObservable<T>(o: StateObservable<T>, initialValue: T, o
 type StoresTuple<States extends unknown[]> = [...{ [s in keyof States]: StoreApi<States[s]> }]
 
 type AnySource<T> = StoreApi<T> | StateObservable<T>
-type SourceState<S extends AnySource<any>> = S extends AnySource<infer T> ? T : never
-type SourceStates<Sources extends AnySource<any>[]> = { [K in keyof Sources]: SourceState<Sources[K]> }
+type QuerySource<T> = UseQueryOptions<T, any, T, any>
+type AnyInput<T> = AnySource<T> | QuerySource<T>
+type InputState<S> = S extends AnySource<infer T> ? T : S extends QuerySource<infer T> ? T | undefined : never
+type InputStates<Inputs extends AnyInput<any>[]> = { [K in keyof Inputs]: InputState<Inputs[K]> }
+
+function isQuerySource(s: unknown): s is QuerySource<any> {
+	return typeof s === 'object' && s !== null && 'queryKey' in s && !('getState' in s) && !('getValue' in s)
+}
 
 function isObservable(s: AnySource<any>): s is StateObservable<any> {
 	return 'getValue' in s
@@ -71,29 +79,37 @@ function subscribeSource(s: AnySource<any>, update: () => void): () => void {
 	return s.subscribe(update)
 }
 
-export function useStore<S>(store: AnySource<S>): S
-export function useStore<Sources extends AnySource<any>[], R>(
-	...args: [...Sources, (...states: SourceStates<Sources>) => R]
+export function useStore<S>(store: AnyInput<S>): InputState<typeof store>
+export function useStore<Inputs extends AnyInput<any>[], R>(
+	...args: [...Inputs, (...states: InputStates<Inputs>) => R]
 ): R
-export function useStore<Sources extends AnySource<any>[]>(...sources: Sources): SourceStates<Sources>
-export function useStore(...args: (AnySource<any> | ((...states: any[]) => any))[]): any {
+export function useStore<Inputs extends AnyInput<any>[]>(...inputs: Inputs): InputStates<Inputs>
+export function useStore(...args: (AnyInput<any> | ((...states: any[]) => any))[]): any {
 	const hasSelector = typeof args[args.length - 1] === 'function'
-	const sources = (hasSelector ? args.slice(0, -1) : args) as AnySource<any>[]
+	const allInputs = (hasSelector ? args.slice(0, -1) : args) as AnyInput<any>[]
 	const selector = hasSelector ? args[args.length - 1] as (...states: any[]) => any : undefined
 
+	const regularSources = allInputs.filter((s): s is AnySource<any> => !isQuerySource(s))
+	const querySources = allInputs.filter(isQuerySource)
+
+	const queryResults = useQueries({ queries: querySources })
+
 	const compute = () => {
-		const states = sources.map(getSourceState)
-		return selector ? selector(...states) : sources.length === 1 ? states[0] : states
+		let qIdx = 0
+		const states = allInputs.map(input =>
+			isQuerySource(input) ? queryResults[qIdx++]?.data : getSourceState(input as AnySource<any>)
+		)
+		return selector ? selector(...states) : states.length === 1 ? states[0] : states
 	}
 
 	const [value, setValue] = React.useState(compute)
 
 	React.useEffect(() => {
 		const update = () => setValue(compute())
-		const unsubs = sources.map(s => subscribeSource(s, update))
+		const unsubs = regularSources.map(s => subscribeSource(s, update))
 		return () => unsubs.forEach(unsub => unsub())
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [...sources, selector])
+	}, [...regularSources, selector, ...queryResults.map(r => r.data)])
 
 	return value
 }

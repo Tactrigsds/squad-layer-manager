@@ -20,24 +20,33 @@ type AlertDialogOptions = {
 
 type AlertDialogContextType = {
 	openDialog: (options: AlertDialogOptions) => Promise<string>
+	closeDialog: () => void
 }
 
 const AlertDialogContext = React.createContext<AlertDialogContextType>({
 	openDialog: () => Promise.reject('AlertDialogProvider not found'),
+	closeDialog: () => {},
 })
 
 export function AlertDialogProvider({ children }: { children: React.ReactNode }) {
 	const [open, setOpen] = React.useState(false)
 	const [options, setOptions] = React.useState<AlertDialogOptions | null>(null)
-	const [resolveRef, setResolveRef] = React.useState<((value: string) => void) | null>(null)
+	const resolveRef = React.useRef<((value: string) => void) | null>(null)
 
-	const showDialog = useCallback((options: AlertDialogOptions): Promise<string> => {
+	const openDialog = useCallback((opts: AlertDialogOptions): Promise<string> => {
 		return new Promise((resolve) => {
-			setOptions(options)
+			setOptions(opts)
 			setOpen(true)
-			setResolveRef(() => resolve)
-			options.onOpen?.()
+			resolveRef.current = resolve
+			opts.onOpen?.()
 		})
+	}, [])
+
+	const closeDialog = useCallback(() => {
+		resolveRef.current?.('dismissed')
+		resolveRef.current = null
+		setOpen(false)
+		setOptions(null)
 	}, [])
 
 	const handleOpenChange = (open: boolean) => {
@@ -45,18 +54,21 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
 		options?.onOpenChange?.(open)
 		if (!open) {
 			options?.onClose?.()
+			// resolve in case dialog was dismissed via Escape / overlay
+			resolveRef.current?.('cancel')
+			resolveRef.current = null
 			setOptions(null)
 		}
 	}
 
 	const handleButtonClick = (buttonId: string) => {
+		resolveRef.current?.(buttonId)
+		resolveRef.current = null
 		setOpen(false)
-		resolveRef?.(buttonId)
-		setResolveRef(null)
 	}
 
 	return (
-		<AlertDialogContext.Provider value={{ openDialog: showDialog }}>
+		<AlertDialogContext.Provider value={{ openDialog, closeDialog }}>
 			{children}
 			<AlertDialog open={open} onOpenChange={handleOpenChange}>
 				<AlertDialogContent>
@@ -85,4 +97,12 @@ export function useAlertDialog() {
 		throw new Error('useAlertDialog must be used within AlertDialogProvider')
 	}
 	return context.openDialog
+}
+
+export function useCloseAlertDialog() {
+	const context = useContext(AlertDialogContext)
+	if (!context) {
+		throw new Error('useCloseAlertDialog must be used within AlertDialogProvider')
+	}
+	return context.closeDialog
 }

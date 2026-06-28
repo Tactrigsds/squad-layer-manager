@@ -16,8 +16,11 @@ export const TeamswitchSchema = z.object({
 	toTeam: MH.NormedTeamIdSchema,
 	source: USR.GuiOrChatUserIdSchema,
 })
+export type Teamswitch = z.infer<typeof TeamswitchSchema>
 export const TeamswitchCollectionSchema = z.map(SM.PlayerIdSchema, TeamswitchSchema)
 export type TeamswitchCollection = z.infer<typeof TeamswitchCollectionSchema>
+
+export type EnrichedTeamswitch = Teamswitch & { player: SM.Player }
 
 export function initTeamswitchCollection(): TeamswitchCollection {
 	return new Map()

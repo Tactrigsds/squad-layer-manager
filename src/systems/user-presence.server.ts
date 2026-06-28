@@ -1,5 +1,6 @@
 import * as Arr from '@/lib/array'
 import { CleanupTasks, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import * as CleanupSys from '@/systems/cleanup.server'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
@@ -142,7 +143,7 @@ function getBaseCtx() {
 export function setup() {
 	log = module.getLogger()
 
-	Rx.interval(UP.DISPLAYED_AWAY_PRESENCE_WINDOW * 2).pipe(
+	const cleanSub = Rx.interval(UP.DISPLAYED_AWAY_PRESENCE_WINDOW * 2).pipe(
 		Rx.map(() => getBaseCtx()),
 		C.durableSub('user-presence:clean-presence', { module }, async (baseCtx) => {
 			let numCleaned = 0
@@ -167,6 +168,7 @@ export function setup() {
 			// no need to send these deletions to the client
 		}),
 	).subscribe()
+	CleanupSys.register(() => cleanSub.unsubscribe())
 }
 
 function resolveCtx(serverId: string) {

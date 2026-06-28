@@ -1,7 +1,6 @@
 import EventFilterSelect from '@/components/event-filter-select'
 import { ServerActivityCharts } from '@/components/server-activity-charts'
 import { ServerEvent } from '@/components/server-event'
-import ServerPlayerList from '@/components/server-player-list.tsx'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,7 +18,6 @@ import { useQuery } from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import { ServerUnreachable } from './server-offline-display.tsx'
 import ShortLayerName from './short-layer-name.tsx'
@@ -27,8 +25,6 @@ import ShortLayerName from './short-layer-name.tsx'
 function ServerChatEvents(
 	props: {
 		className?: string
-		onToggleStatePanel?: () => void
-		isStatePanelOpen?: boolean
 		filteredEvents: CHAT.EventEnriched[] | null
 		connectionError?: CHAT.ConnectionErrorEvent | null
 		synced: boolean
@@ -89,17 +85,6 @@ function ServerChatEvents(
 				<div className="absolute inset-0 z-30 bg-background/80 backdrop-blur-sm flex items-center justify-center">
 					<Icons.Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
 				</div>
-			)}
-			{props.onToggleStatePanel && (
-				<Button
-					variant="ghost"
-					size="sm"
-					onClick={props.onToggleStatePanel}
-					className="h-8 w-6 p-0 absolute top-0 right-0 z-20"
-					title={`${props.isStatePanelOpen ? 'Hide' : 'Show'} player list`}
-				>
-					{props.isStatePanelOpen ? <Icons.ChevronRight className="h-3 w-3" /> : <Icons.ChevronLeft className="h-3 w-3" />}
-				</Button>
 			)}
 			{selectedMatchOrdinal !== null && displayMatch && (
 				<div className="text-muted-foreground text-xs py-2 bg-blue-500/10 flex flex-wrap justify-center gap-x-1">
@@ -164,11 +149,7 @@ function ServerCounts() {
 	)
 }
 
-const AUTO_CLOSE_WIDTH_THRESHOLD = 1350 // pixels
-const AUTO_OPEN_WIDTH_THRESHOLD = AUTO_CLOSE_WIDTH_THRESHOLD * 1.2 // 20% above threshold (1620 pixels)
-
 export default function ServerActivityPanel() {
-	const [isStatePanelOpen, setIsStatePanelOpen] = React.useState(window.innerWidth >= AUTO_CLOSE_WIDTH_THRESHOLD)
 	const synced = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.synced)
 	const connectionError = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.connectionError)
 	const selectedMatchOrdinal = Zus.useStore(
@@ -332,50 +313,6 @@ export default function ServerActivityPanel() {
 		}
 	}, [currentMatch, recentMatches])
 
-	// Track viewport width state for auto-closing/opening the panel
-	const hasBeenAboveThresholdRef = React.useRef(window.innerWidth >= AUTO_CLOSE_WIDTH_THRESHOLD)
-	const userManuallyClosed = React.useRef(false)
-
-	React.useEffect(() => {
-		const handleResize = () => {
-			const currentWidth = window.innerWidth
-			const isAboveThreshold = currentWidth >= AUTO_CLOSE_WIDTH_THRESHOLD
-			const isAboveAutoOpenThreshold = currentWidth >= AUTO_OPEN_WIDTH_THRESHOLD
-
-			// Auto-open if we're 20% above the threshold, panel is closed, and user hasn't manually closed it
-			if (isAboveAutoOpenThreshold && !isStatePanelOpen && !userManuallyClosed.current) {
-				setIsStatePanelOpen(true)
-				hasBeenAboveThresholdRef.current = true
-				return
-			}
-
-			// If we've crossed above the threshold, mark it
-			if (isAboveThreshold) {
-				hasBeenAboveThresholdRef.current = true
-			}
-
-			// Only auto-close if:
-			// 1. We're below the threshold
-			// 2. We've been above the threshold at some point (this prevents auto-close if user manually opened while below)
-			// 3. The panel is currently open
-			if (!isAboveThreshold && hasBeenAboveThresholdRef.current && isStatePanelOpen) {
-				setIsStatePanelOpen(false)
-				// Reset the flag so if user manually opens, we won't auto-close again until they resize above threshold
-				hasBeenAboveThresholdRef.current = false
-				// Reset manual close flag when we auto-close
-				userManuallyClosed.current = false
-			}
-		}
-
-		const resize$ = Rx.fromEvent(window, 'resize').pipe(Rx.debounceTime(150))
-		const sub = resize$.subscribe(handleResize)
-
-		handleResize()
-
-		return () => {
-			sub.unsubscribe()
-		}
-	}, [isStatePanelOpen])
 	const eventFilter = Zus.useStore(
 		SquadServerClient.ChatStore,
 		s => s.secondaryFilterState,
@@ -448,24 +385,7 @@ export default function ServerActivityPanel() {
 							connectionError={connectionError}
 							synced={synced}
 							isLoadingHistorical={historicalEventsQuery.isLoading}
-							onToggleStatePanel={() => {
-								const newState = !isStatePanelOpen
-								setIsStatePanelOpen(newState)
-								// Track if user manually closed the panel while above auto-open threshold
-								if (!newState && window.innerWidth >= AUTO_OPEN_WIDTH_THRESHOLD) {
-									userManuallyClosed.current = true
-								} else if (newState) {
-									// User manually opened it, reset the flag
-									userManuallyClosed.current = false
-								}
-							}}
-							isStatePanelOpen={isStatePanelOpen}
 						/>
-						{isStatePanelOpen && synced && (
-							<div className="w-[240px] flex-shrink-0">
-								<ServerPlayerList />
-							</div>
-						)}
 					</div>
 				</div>
 			</CardContent>

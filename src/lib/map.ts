@@ -33,8 +33,8 @@ export function mapEntries<K, T, K2, T2>(map: Map<K, T>, fn: (key: K, value: T) 
 	return newMap
 }
 
-export function mapToArray<K, T>(map: Map<K, T>, fn: (key: K, value: T) => [K, T]): [K, T][] {
-	const arr: [K, T][] = []
+export function mapToArray<K, T, O>(map: Map<K, T>, fn: (key: K, value: T) => O): O[] {
+	const arr: O[] = []
 	for (const [key, value] of map.entries()) {
 		arr.push(fn(key, value))
 	}

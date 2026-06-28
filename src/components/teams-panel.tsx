@@ -1,3 +1,4 @@
+import * as MapUtils from '@/lib/map'
 import { cn } from '@/lib/utils.ts'
 import * as ZusUtils from '@/lib/zustand'
 import * as BM from '@/models/battlemetrics.models'
@@ -5,27 +6,36 @@ import * as MH from '@/models/match-history.models'
 import * as SquadServer from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
 import * as TeamsPanelModels from '@/models/teams-panel.models'
+import * as Teamswitches from '@/models/teamswitches.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
+import * as TeamsPanelClient from '@/systems/teams-panel.client'
 import * as TeamsSwitchesClient from '@/systems/teamswitches.client'
 import * as ThemeClient from '@/systems/theme.client'
+import * as UsersClient from '@/systems/users.client'
 import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table'
 import type { RowSelectionState, SortingState } from '@tanstack/react-table'
 import type { EChartsOption } from 'echarts'
 import ReactECharts from 'echarts-for-react'
+import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
 import ComboBox from './combo-box/combo-box'
+import PlayerBulkContextMenuOptions from './player-bulk-context-menu-options'
+import PlayerContextMenuOptions from './player-context-menu-options'
 import { PlayerDisplay } from './player-display'
 import { MatchTeamDisplay } from './teams-display'
+import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from './ui/context-menu'
 import { Input } from './ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
 
 export default function TeamsPanel(props: { className?: string }) {
+	const showSwaps = Zus.useStore(TeamsPanelClient.Store, s => s.showSwaps)
 	return (
 		<div className={cn('flex w-full p-1 flex-col', props.className)}>
 			<div className="grid w-full grid-cols-[1fr_auto_1fr] gap-1">
@@ -44,6 +54,7 @@ export default function TeamsPanel(props: { className?: string }) {
 				<div>
 				</div>
 			</div>
+			{showSwaps && <SwapsPanel />}
 			<div className="grid w-full grid-cols-[1fr_1fr] gap-1">
 				<TeamPlayerTable teamId="A" />
 				<TeamPlayerTable teamId="B" />
@@ -73,6 +84,8 @@ function TeamTitle(props: { teamId: MH.NormedTeamId }) {
 }
 
 function ControlPanel() {
+	const [showSwaps, setShowSwaps] = ZusUtils.useStore(TeamsPanelClient.Store, ZusUtils.useShallow(s => [s.showSwaps, s.setShowSwaps]))
+	const switchCounts = ZusUtils.useStore(TeamsSwitchesClient.Store, ZusUtils.useShallow(TeamsSwitchesClient.Select.switchCounts))
 	return (
 		<div className="flex justify-end">
 			Group by
@@ -84,7 +97,9 @@ function ControlPanel() {
 					throw new Error('Function not implemented.')
 				}}
 			/>
-			<Button>Show Swaps(6/9)</Button>
+			<Button onClick={() => setShowSwaps(!showSwaps)}>
+				{showSwaps ? 'Hide' : 'Show'} Swaps ({switchCounts.A}/{switchCounts.B})
+			</Button>
 		</div>
 	)
 }
@@ -407,16 +422,86 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId }) {
 				))}
 			</TableHeader>
 			<TableBody>
-				{table.getRowModel().rows.map(row => (
-					<TableRow key={row.id} data-state={row.getIsSelected() ? 'selected' : undefined}>
-						{row.getVisibleCells().map(cell => (
-							<TableCell key={cell.id}>
-								{flexRender(cell.column.columnDef.cell, cell.getContext())}
-							</TableCell>
-						))}
-					</TableRow>
-				))}
+				{table.getRowModel().rows.map(row => {
+					const selectedIds = Object.keys(rowSelection)
+					const isBulk = selectedIds.length >= 2 && rowSelection[row.id]
+					return (
+						<ContextMenu key={row.id}>
+							<ContextMenuTrigger asChild>
+								<TableRow data-state={row.getIsSelected() ? 'selected' : undefined}>
+									{row.getVisibleCells().map(cell => (
+										<TableCell key={cell.id}>
+											{flexRender(cell.column.columnDef.cell, cell.getContext())}
+										</TableCell>
+									))}
+								</TableRow>
+							</ContextMenuTrigger>
+							<ContextMenuContent>
+								{isBulk
+									? <PlayerBulkContextMenuOptions playerIds={selectedIds} />
+									: <PlayerContextMenuOptions playerId={row.id} />}
+							</ContextMenuContent>
+						</ContextMenu>
+					)
+				})}
 			</TableBody>
 		</Table>
+	)
+}
+
+function SwapsPanel() {
+	return (
+		<div className="grid grid-cols-[1fr_auto_1fr] gap-1">
+			<TeamSwapsDisplay teamId="A" />
+			<div>
+				<h3>Swaps</h3>
+			</div>
+			<TeamSwapsDisplay teamId="B" />
+		</div>
+	)
+}
+
+function TeamSwapsDisplay(props: { teamId: MH.NormedTeamId }) {
+	const switches = ZusUtils.useStore(
+		TeamsSwitchesClient.Store,
+		SquadServerClient.ChatStore,
+		React.useCallback(
+			(teamsSwitchesStore: TeamsSwitchesClient.Store, chatStore: SquadServer.ChatStore) =>
+				TeamsSwitchesClient.Select.switchesToTeamEnriched(teamsSwitchesStore, chatStore, props.teamId),
+			[props.teamId],
+		),
+	)
+
+	return (
+		<div className="flex flex-col">
+			<h3>
+				Swaps to <MatchTeamDisplay teamId={props.teamId} showAltTeamIndicator={true} />
+			</h3>
+			<div className="flex flex-wrap gap-1">
+				{switches.size === 0 && <span className="text-muted-foreground text-sm">No swaps yet</span>}
+				{MapUtils.mapToArray(switches, (playerId, s) => <SwitchBadge switch={s} key={playerId} />)}
+			</div>
+		</div>
+	)
+}
+
+function SwitchBadge(props: { switch: Teamswitches.EnrichedTeamswitch }) {
+	function remove() {
+		const userId = UsersClient.loggedInUserId
+		TeamsSwitchesClient.Store.getState().dispatch({
+			code: 'remove-player-teamswitches',
+			playerId: SM.PlayerIds.getPlayerId(props.switch.player.ids),
+			source: { discordId: userId },
+			saved: false,
+		})
+	}
+
+	return (
+		<Badge variant="secondary" className="flex items-center gap-1">
+			{props.switch.player.ids.username}
+			<button type="button" onClick={remove} className="ml-1 hover:text-destructive">
+				<Icons.X className="h-3 w-3" />
+			</button>
+		</Badge>
 	)
 }

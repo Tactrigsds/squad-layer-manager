@@ -18,6 +18,7 @@ import * as MatchHistory from '@/systems/match-history.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import { Mutex, MutexInterface } from 'async-mutex'
+import { z } from 'zod'
 
 import * as Rx from 'rxjs'
 
@@ -43,7 +44,7 @@ export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
 		op$: new IsolatedSubject<Teamswitches.Op[]>(),
 		dispatchMtx: new Mutex(),
 	}
-	ctx.cleanup.push(context.op$)
+	ctx.cleanup.push(context.op$, context.dispatchMtx)
 
 	// sync with team updates
 	ctx.cleanup.push(
@@ -134,6 +135,29 @@ export const orpcRouter = {
 		const ctx = SquadServer.resolveWsClientSliceCtx(context)
 		await dispatchOp(ctx, input)
 	}),
+
+	switchNow: orpcBase.meta({ type: 'mutation' }).input(z.array(z.object({ playerId: SM.PlayerIdSchema, toTeam: MH.NormedTeamIdSchema })))
+		.handler(async ({ context, input }) => {
+			const ctx = SquadServer.resolveWsClientSliceCtx(context)
+			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+			const teamsRes = await ctx.server.teams.get(ctx, { ttl: 300 })
+			if (teamsRes.code !== 'ok') return teamsRes
+
+			const toSwitch: SM.PlayerId[] = []
+			for (const { playerId, toTeam } of input) {
+				const player = SM.PlayerIds.find(teamsRes.players, p => p.ids, playerId)
+				if (!player || player.teamId === null) continue
+				const normedTeamId = MH.getNormedTeamId(player.teamId, currentMatch.ordinal)
+				if (normedTeamId === toTeam) continue
+				toSwitch.push(playerId)
+			}
+
+			if (toSwitch.length > 0) {
+				void SquadRcon.switchPlayers(ctx, toSwitch)
+				void SquadRcon.warnAll(ctx, toSwitch, WARNS.teamswitches.notifySwitchNow)
+			}
+			return { code: 'ok' as const }
+		}),
 }
 
 const dispatchOp = C.spanOp(
@@ -144,6 +168,7 @@ const dispatchOp = C.spanOp(
 		ctx.teamswitches.session = RbSyncState.Server.applyOps(ctx.teamswitches.session, ops, Teamswitches.reducer, {
 			onSideEffect: (se) => sideEffects.push(se),
 		})
+		ctx.teamswitches.op$.next(ops)
 
 		const opErrors = new Map<string, (Teamswitches.OpError | unknown)[]>()
 		const addError = (opId: string, error: Teamswitches.OpError | unknown) => {

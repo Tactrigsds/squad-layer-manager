@@ -397,13 +397,15 @@ export function useVariantActivityState<Variants extends Record<string, VariantC
 		}
 
 		if (currentKey === newVariant) return
+		let ops: ((prev: UP.RootActivity) => UP.RootActivity)[] = []
 
 		if (currentKey !== null) {
-			storeState.updateActivity(variantsRef.current[currentKey].removeActivity)
+			ops.push(variantsRef.current[currentKey].removeActivity)
 		}
 		if (newVariant !== null) {
-			storeState.updateActivity(variantsRef.current[newVariant].createActivity)
+			ops.push(variantsRef.current[newVariant].createActivity)
 		}
+		if (ops.length > 0) storeState.updateActivity((s) => ops.reduce((prev, op) => op(prev), s))
 	}, [])
 
 	return [currentVariant, setVariant] as [keyof Variants | null, (variant: keyof Variants | null) => void]

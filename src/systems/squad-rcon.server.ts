@@ -86,12 +86,12 @@ export function initSquadRcon(ctx: C.Rcon & C.AdminList, cleanup: CleanupTasks):
 		Rx.share(),
 	)
 
-	rcon.connected$.subscribe(() => {
+	cleanup.push(rcon.connected$.subscribe(() => {
 		const rconCtx = { ...ctx, rcon }
 		layersStatus.invalidate(rconCtx)
 		teams.invalidate(rconCtx)
 		serverInfo.invalidate(rconCtx)
-	})
+	}))
 
 	return {
 		layersStatus,

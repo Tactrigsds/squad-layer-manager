@@ -3,10 +3,10 @@ import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 import * as AR from '@/app-routes'
 import * as Arr from '@/lib/array'
 import { type CleanupTasks, distinctDeepEquals, runCleanup, switchMapWithSignal, toAsyncGenerator, withAbortSignal } from '@/lib/async'
-import { IsolatedSubject } from '@/lib/isolated-subject'
 import { AsyncResource } from '@/lib/async-resource'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Gen from '@/lib/generator'
+import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as Obj from '@/lib/object'
 import Rcon from '@/lib/rcon/core-rcon'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
@@ -56,8 +56,6 @@ import { z } from 'zod'
 
 const module = initModule('squad-server')
 let log!: CS.Logger
-const envBuilder = Env.getEnvBuilder({ ...Env.groups.featureFlags })
-let ENV!: ReturnType<typeof envBuilder>
 const orpcBase = getOrpcBase(module)
 
 type State = {
@@ -301,7 +299,6 @@ export const orpcRouter = {
 
 export async function setup() {
 	log = module.getLogger()
-	ENV = envBuilder()
 	const ctx = getBaseCtx()
 
 	globalState = {
@@ -502,14 +499,12 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 
 		matchHistory: MatchHistory.initMatchHistoryContext(server.event$, cleanup),
 
-		teamswitches: ENV.FF_TEAMSWITCH_SYSTEM
-			? TeamSwitchesSys.initContext({
-				...ctx,
-				serverId,
-				cleanup,
-				server,
-			})
-			: (null as unknown as TeamSwitchesSys.TeamswitchContext),
+		teamswitches: TeamSwitchesSys.initContext({
+			...ctx,
+			serverId,
+			cleanup,
+			server,
+		}),
 		layerQueue: LayerQueue.initLayerQueueSlice({ ...ctx, cleanup, serverId }, serverState),
 		userPresence: UserPresence.initUserPresenceContext({ ...ctx, cleanup, serverId }),
 		vote: Vote.initVoteContext(cleanup),

@@ -269,6 +269,7 @@ export const WARNS = {
 			+ 'Thank you for helping with team balance and contact admins if you have issues.',
 		notifyTeamswitchCancelled: 'You will no longer be switched to the other team on map roll.',
 		notifyPlayerTeamswitchExecuted: 'You have been switched to the other team to assist with balance.',
+		notifySwitchNow: 'You have been switched to the other team by an admin.',
 	},
 	permissionDenied(res: RBAC.PermissionDeniedResponse) {
 		return `Permission denied. You need ${res.check} of the following ${res.permits.map((p) => p.type).join(', ')}`

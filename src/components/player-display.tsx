@@ -3,9 +3,12 @@ import { cn } from '@/lib/utils'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import { useGroupedPlayerFlagColor } from '@/systems/battlemetrics.client'
+import { ContextMenu } from '@radix-ui/react-context-menu'
 import * as Icons from 'lucide-react'
 import React from 'react'
+import PlayerContextMenuOptions from './player-context-menu-options'
 import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
+import { ContextMenuContent, ContextMenuTrigger } from './ui/context-menu'
 import { OpenWindowInteraction } from './ui/draggable-window'
 
 void import('@/components/player-details-window')
@@ -20,12 +23,23 @@ export interface PlayerDisplayProps {
 }
 
 function PlayerButton(
-	{ username, ref, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { username: string; ref?: React.Ref<HTMLButtonElement> },
+	{ username, ref, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+		username: string
+		playerId: string
+		ref?: React.Ref<HTMLButtonElement>
+	},
 ) {
 	return (
-		<button ref={ref} type="button" className="font-bold hover:underline cursor-pointer" {...props}>
-			{username}
-		</button>
+		<ContextMenu>
+			<ContextMenuTrigger asChild>
+				<button ref={ref} type="button" className="font-bold hover:underline cursor-pointer" {...props}>
+					{username}
+				</button>
+			</ContextMenuTrigger>
+			<ContextMenuContent>
+				{<PlayerContextMenuOptions playerId={props.playerId} />}
+			</ContextMenuContent>
+		</ContextMenu>
 	)
 }
 
@@ -52,6 +66,7 @@ export function PlayerDisplay({ player, showTeam, showSquad, showRole, className
 				preload="intent"
 				render={PlayerButton}
 				username={player.ids.username}
+				playerId={SM.PlayerIds.getPlayerId(player.ids)}
 				style={flagColor ? { color: flagColor } : undefined}
 			/>
 			{(showTeam && player.teamId !== null) || (showSquad && player.squadId !== null)
