@@ -296,7 +296,8 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 export function setSpanOpAttrs(attrs: Record<string, any>) {
 	Otel.default.trace.getActiveSpan()?.setAttributes(attrs)
 }
-export function setSpanStatus(status: Otel.SpanStatusCode, message?: string) {
+export function setSpanStatus(_status: Otel.SpanStatusCode | 'ok' | 'error', message?: string) {
+	const status = _status === 'ok' ? Otel.SpanStatusCode.OK : _status === 'error' ? Otel.SpanStatusCode.ERROR : _status
 	const activeSpan = Otel.default.trace.getActiveSpan()
 	if (!activeSpan) return
 

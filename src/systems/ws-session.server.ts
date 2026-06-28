@@ -6,10 +6,10 @@ import type * as C from '@/server/context'
 
 import * as SquadServer from '@/systems/squad-server.server'
 import { metrics } from '@opentelemetry/api'
-import { Subject } from 'rxjs'
+import { IsolatedSubject } from '@/lib/isolated-subject'
 export const wsSessions = new Map<string, C.OrpcBase>()
-export const disconnect$ = new Subject<C.OrpcBase>()
-export const connect$ = new Subject<C.OrpcBase>()
+export const disconnect$ = new IsolatedSubject<C.OrpcBase>()
+export const connect$ = new IsolatedSubject<C.OrpcBase>()
 
 const module = initModule('ws-session')
 let log!: CS.Logger

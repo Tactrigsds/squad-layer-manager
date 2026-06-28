@@ -1,3 +1,4 @@
+import { cn } from '@/lib/utils.ts'
 import * as ZusUtils from '@/lib/zustand'
 import * as BM from '@/models/battlemetrics.models'
 import * as MH from '@/models/match-history.models'
@@ -10,10 +11,10 @@ import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TeamsSwitchesClient from '@/systems/teamswitches.client'
 import * as ThemeClient from '@/systems/theme.client'
-import type { EChartsOption } from 'echarts'
-import ReactECharts from 'echarts-for-react'
 import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table'
 import type { RowSelectionState, SortingState } from '@tanstack/react-table'
+import type { EChartsOption } from 'echarts'
+import ReactECharts from 'echarts-for-react'
 import React from 'react'
 import * as Zus from 'zustand'
 import ComboBox from './combo-box/combo-box'
@@ -24,10 +25,14 @@ import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
 
-export default function TeamsPanel() {
-	const breakdown = useTeamBreakdownData()
+export default function TeamsPanel(props: { className?: string }) {
 	return (
-		<div className="flex w-full p-1 flex-col">
+		<div className={cn('flex w-full p-1 flex-col', props.className)}>
+			<div className="grid w-full grid-cols-[1fr_auto_1fr] gap-1">
+				<Input placeholder="Search Players..." />
+				<span></span>
+				<ControlPanel />
+			</div>
 			<div className="grid w-full grid-cols-[1fr_auto_1fr] gap-1">
 				<div>
 					<TeamTitle teamId={'A'} />
@@ -39,16 +44,8 @@ export default function TeamsPanel() {
 				<div>
 				</div>
 			</div>
-			<div className="grid w-full grid-cols-[1fr_auto_1fr] gap-1">
-				<Input placeholder="Search Players..." />
-				<div className="flex justify-center w-75">
-					<TeamBreakdownLegend data={breakdown} />
-				</div>
-				<ControlPanel />
-			</div>
-			<div className="grid w-full grid-cols-[1fr_auto_1fr] gap-1">
+			<div className="grid w-full grid-cols-[1fr_1fr] gap-1">
 				<TeamPlayerTable teamId="A" />
-				<TeamBreakdownChart data={breakdown} />
 				<TeamPlayerTable teamId="B" />
 			</div>
 		</div>
@@ -78,11 +75,12 @@ function TeamTitle(props: { teamId: MH.NormedTeamId }) {
 function ControlPanel() {
 	return (
 		<div className="flex justify-end">
+			Group by
 			<ComboBox
 				title="Grouping"
 				options={['Balance', 'Admin']}
 				value={'Balance'}
-				onSelect={function(value: undefined): void {
+				onSelect={function(value) {
 					throw new Error('Function not implemented.')
 				}}
 			/>
@@ -232,8 +230,7 @@ function createVerticalBreakdownChartOption(data: NonNullable<TeamBreakdownData>
 				fontWeight: 'bold',
 				textShadowBlur: isDark ? 0 : 3,
 				textShadowColor: '#0006',
-				formatter: (p: { value?: unknown }) =>
-					typeof p.value === 'number' && p.value > 0 ? String(p.value) : '',
+				formatter: (p: { value?: unknown }) => typeof p.value === 'number' && p.value > 0 ? String(p.value) : '',
 			},
 		})),
 		tooltip: {

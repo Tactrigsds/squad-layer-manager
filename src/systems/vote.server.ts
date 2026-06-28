@@ -1,5 +1,6 @@
 import * as Schema from '$root/drizzle/schema'
 import { type CleanupTasks, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { IsolatedSubject } from '@/lib/isolated-subject'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
@@ -110,7 +111,7 @@ export function initVoteContext(cleanup: CleanupTasks) {
 		state: null,
 		mtx: withTimeout(new Mutex(), 5_000),
 
-		update$: new Rx.Subject<V.VoteStateUpdate>(),
+		update$: new IsolatedSubject<V.VoteStateUpdate>(),
 	}
 
 	cleanup.push(

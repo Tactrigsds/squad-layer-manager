@@ -60,13 +60,12 @@ export function find<K, T>(map: Map<K, T>, predicate: (key: K, value: T) => bool
 	return undefined
 }
 
-export function apply<K, T>(map: Map<K, T>, ...maps: Map<K, T>[]): Map<K, T> {
+export function assign<K, T>(map: Map<K, T>, ...maps: Map<K, T>[]) {
 	for (const otherMap of maps) {
 		for (const [key, value] of otherMap.entries()) {
 			map.set(key, value)
 		}
 	}
-	return map
 }
 
 export function some<K, T>(map: Map<K, T>, predicate: (key: K, value: T) => boolean): boolean {

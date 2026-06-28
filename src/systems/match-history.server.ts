@@ -1,6 +1,7 @@
 import * as Schema from '$root/drizzle/schema'
 import * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array'
+import { IsolatedSubject } from '@/lib/isolated-subject'
 import { type CleanupTasks, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { LRUMap } from '@/lib/lru-map'
@@ -51,7 +52,7 @@ export type MatchHistoryContext = {
 } & Parts<USR.UserPart>
 
 export function initMatchHistoryContext(event$: SquadServer.SquadServer['event$'], cleanup: CleanupTasks): MatchHistoryContext {
-	const update$ = new Rx.Subject<void>()
+	const update$ = new IsolatedSubject<void>()
 	const ctx: MatchHistoryContext = {
 		mtx: new Mutex(),
 		update$,
@@ -171,6 +172,16 @@ export const getCurrentMatch = C.spanOp('getCurrentMatch', {
 	mutexes: (ctx) => ctx.matchHistory.mtx,
 }, async (ctx: C.MatchHistory) => {
 	return ctx.matchHistory.recentMatches[ctx.matchHistory.recentMatches.length - 1]
+})
+
+export const getMatchById = C.spanOp('getMatchById', {
+	module,
+	levels: { event: 'trace' },
+	mutexes: (ctx) => ctx.matchHistory.mtx,
+}, async (ctx: C.MatchHistory, matchId: number) => {
+	const match = ctx.matchHistory.recentMatches.find(m => m.historyEntryId === matchId)
+	if (!match) return null
+	return match
 })
 
 const loadCurrentMatch = C.spanOp(

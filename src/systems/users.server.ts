@@ -1,5 +1,6 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { IsolatedSubject } from '@/lib/isolated-subject'
 import { createId } from '@/lib/id'
 import * as MapUtils from '@/lib/map'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
@@ -22,8 +23,8 @@ const state = {
 	// linking code -> discordId
 	pendingSteamAccountLinks: new Map<string, { discordId: bigint; expirySub: Rx.Subscription }>(),
 }
-const steamAccountLinkComplete$ = new Rx.Subject<{ discordId: bigint; steam64Id: bigint }>()
-const invalidateUsers$ = new Rx.Subject<void>()
+const steamAccountLinkComplete$ = new IsolatedSubject<{ discordId: bigint; steam64Id: bigint }>()
+const invalidateUsers$ = new IsolatedSubject<void>()
 
 const module = initModule('users')
 let log!: CS.Logger

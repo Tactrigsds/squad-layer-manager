@@ -39,6 +39,7 @@
 		"@typescript/native-preview": "7.0.0-dev.20251214.1",
 		"better-sqlite3": "^12.2.0",
 		"bufferutil": "^4.0.9",
+		"cnfast": "^0.0.8",
 		"dockerode": "^4.0.7",
 		"drizzle-kit": "^0.30.6",
 		"drizzle-orm": "^0.40.1",

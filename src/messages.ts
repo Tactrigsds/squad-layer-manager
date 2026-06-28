@@ -264,6 +264,12 @@ export const WARNS = {
 		missingSteamId: () => `You are not signed in as a Steam user.`,
 		steamAccountLinked: (username: string) => `Your Steam account has been linked to discord user ${username}.`,
 	},
+	teamswitches: {
+		notifyPlayerOfUpcomingTeamswitch: 'You have been marked for teamswitching on mapchange. '
+			+ 'Thank you for helping with team balance and contact admins if you have issues.',
+		notifyTeamswitchCancelled: 'You will no longer be switched to the other team on map roll.',
+		notifyPlayerTeamswitchExecuted: 'You have been switched to the other team to assist with balance.',
+	},
 	permissionDenied(res: RBAC.PermissionDeniedResponse) {
 		return `Permission denied. You need ${res.check} of the following ${res.permits.map((p) => p.type).join(', ')}`
 	},

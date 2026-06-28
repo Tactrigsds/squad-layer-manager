@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
+import { cn } from '@/lib/utils.ts'
 
 import * as RbSyncState from '@/lib/rollback-synced-state'
 import * as LL from '@/models/layer-list.models'
@@ -443,7 +444,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 	)
 }
 
-export function QueuePanelContent() {
+export function QueuePanelContent(props: { className?: string }) {
 	const isModified = Zus.useStore(SLLClient.Store, s => s.isModified)
 
 	const queueLength = Zus.useStore(QD.LQStore, (s) => s.layerList.length)
@@ -461,7 +462,7 @@ export function QueuePanelContent() {
 	return (
 		<>
 			<ValidationWarningsDisplay warnings={warnings ?? []} showWarnings={showWarnings} setShowWarnings={setShowWarnings} />
-			<CardHeader className="flex flex-row items-center justify-between">
+			<CardHeader className={cn('flex flex-row items-center justify-between', props.className)}>
 				<span className="flex items-center space-x-1 w-full">
 					<span className="flex flex-col gap-0.5">
 						<span className="flex items-center space-x-1">

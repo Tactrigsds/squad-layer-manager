@@ -44,7 +44,7 @@ export const Store = Zus.createStore<Store>((set, get) => {
 					})
 					break
 				case 'op':
-					RbSyncState.Client.processIncomingOps(get().session, [update.op], Teamswitches.reducer)
+					RbSyncState.Client.processIncomingOps(get().session, update.ops, Teamswitches.reducer)
 					break
 				default:
 					assertNever(update)

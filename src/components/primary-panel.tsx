@@ -80,13 +80,15 @@ export default function PrimaryPanel() {
 					onChange={setTab}
 				/>
 				<Separator />
-				{tab === 'queue' && (
-					<>
+				<div className="grid">
+					<div className={cn('[grid-area:1/1]', tab !== 'queue' && 'invisible')}>
 						<SlmUpdatesDisabledAlert />
 						<QueuePanelContent />
-					</>
-				)}
-				{tab === 'teams' && <TeamsPanel />}
+					</div>
+					<div className={cn('[grid-area:1/1]', tab !== 'teams' && 'invisible')}>
+						<TeamsPanel />
+					</div>
+				</div>
 			</ScrollArea>
 		</Card>
 	)

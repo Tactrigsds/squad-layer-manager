@@ -37,7 +37,7 @@ export function includes(arr: unknown[], value: unknown): boolean {
 	return arr.includes(value)
 }
 
-export function includesId<T extends string>(arr: readonly T[], value: string): value is T {
+export function includesEnum<T extends string>(arr: readonly T[], value: string): value is T {
 	return includes(arr as T[], value)
 }
 

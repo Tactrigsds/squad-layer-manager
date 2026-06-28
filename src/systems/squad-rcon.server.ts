@@ -367,6 +367,19 @@ export async function warn(ctx: C.SquadRcon & C.AdminList, ids: SM.PlayerIds.Eos
 	}
 }
 
+export const warnAll = C.spanOp(
+	'warnAll',
+	{ module, levels: { event: 'info' } },
+	async (ctx: C.SquadRcon & C.AdminList, players: SM.PlayerIds.EosIdQueryOrPlayerId[], options: WarnOptions) => {
+		const ops: Promise<unknown>[] = []
+		for (const player of players) {
+			ops.push(warn(ctx, player, options))
+		}
+
+		await Promise.all(ops)
+	},
+)
+
 export const warnAllAdmins = C.spanOp(
 	'warnAllAdmins',
 	{ module, levels: { event: 'info' } },
@@ -375,16 +388,14 @@ export const warnAllAdmins = C.spanOp(
 			ctx.adminList.get(ctx),
 			ctx.server.teams.get(ctx),
 		])
-		const ops: Promise<unknown>[] = []
-
 		if (teamsRes.code === 'err:rcon') return
+		const admins: SM.PlayerIds.Schema[] = []
 		for (const player of teamsRes.players) {
-			if (!player.ids.steam) continue
-			if (currentAdminList.admins.has(player.ids.steam)) {
-				ops.push(warn(ctx, player.ids, options))
+			if (player.ids.steam && currentAdminList.admins.has(player.ids.steam)) {
+				admins.push(player.ids)
 			}
 		}
-		await Promise.all(ops)
+		await warnAll(ctx, admins, options)
 	},
 )
 
@@ -479,7 +490,7 @@ export function endMatch(ctx: C.Rcon) {
 export async function switchPlayers(ctx: C.Rcon & C.SquadRcon & C.AdminList, players: SM.PlayerIds.EosIdQueryOrPlayerId[]) {
 	for (const ids of players) {
 		const id = SM.PlayerIds.normalizeToPlayerId(ids)
-		await ctx.rcon.execute(`AdminForceTeamChange ${id}`)
+		void ctx.rcon.execute(`AdminForceTeamChange ${id}`)
 	}
 	ctx.server.teams.invalidate(ctx)
 }

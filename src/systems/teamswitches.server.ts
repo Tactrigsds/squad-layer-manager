@@ -1,7 +1,10 @@
 import * as Arr from '@/lib/array'
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { IsolatedSubject } from '@/lib/isolated-subject'
+import * as MapUtils from '@/lib/map'
 import * as RbSyncState from '@/lib/rollback-synced-state'
 import { assertNever } from '@/lib/type-guards'
+import { WARNS } from '@/messages'
 import * as CS from '@/models/context-shared'
 import * as MH from '@/models/match-history.models'
 import * as PendingEvents from '@/models/pending-events.models'
@@ -14,6 +17,7 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
+import { Mutex, MutexInterface } from 'async-mutex'
 
 import * as Rx from 'rxjs'
 
@@ -26,40 +30,84 @@ type Session = RbSyncState.Server.Session<Teamswitches.Op, Teamswitches.State, T
 export type TeamswitchContext = {
 	session: Session
 	// outgoing operations
-	op$: Rx.Subject<Teamswitches.Op>
+	op$: IsolatedSubject<Teamswitches.Op[]>
+	dispatchMtx: MutexInterface
 }
 export function setup() {
 	log = module.getLogger()
 }
 
 export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
-	const serverId = ctx.serverId
-	const sideEffectQueue$ = new Rx.Subject<[C.ServerSlice & C.Db, Teamswitches.SideEffect]>()
-	ctx.cleanup.push(sideEffectQueue$)
 	const context: TeamswitchContext = {
-		session: RbSyncState.Server.initSession(Teamswitches.initState(), {
-			onSideEffect: (sideEffect) => {
-				const ctx = resolveCtx(serverId)
-				sideEffectQueue$.next([ctx, sideEffect])
-			},
-		}),
-		op$: new Rx.Subject<Teamswitches.Op>(),
+		session: RbSyncState.Server.initSession(Teamswitches.initState(), {}),
+		op$: new IsolatedSubject<Teamswitches.Op[]>(),
+		dispatchMtx: new Mutex(),
 	}
-	sideEffectQueue$.pipe(C.durableSub('onSideEffect', { module }, (args) => onSideEffect(...args))).subscribe()
 	ctx.cleanup.push(context.op$)
 
-	ctx.server.event$.pipe(
-		Rx.filter(([ctx, e]) => Arr.includes(PendingEvents.TeamModifyingEventTypes.options, e.type) && e.type !== 'PLAYER_CONNECTED'),
-		C.durableSub('checkTeamswitchStatuses', { module }, async ([ctx, e]) => {
-			const players = ctx.server.eventState.currTeams?.players
-			if (!players) return
-			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-			const delta = Teamswitches.getTeamswitchStatusDelta(ctx.teamswitches.session.state, players, currentMatch.ordinal)
-			if (delta) {
-				await onOperation(ctx, { code: 'set-switch-statuses', delta, opId: Teamswitches.createOpId() })
-			}
-		}),
-	).subscribe()
+	// sync with team updates
+	ctx.cleanup.push(
+		ctx.server.event$.pipe(
+			Rx.filter(([ctx, e]) => Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type)),
+			C.durableSub('onTeamsModified', { module }, async ([ctx, e]) => {
+				const match = (await MatchHistory.getMatchById(ctx, e.matchId))!
+				if (!Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type)) return
+				const ops: Teamswitches.Op[] = []
+				if (e.type === 'PLAYER_CONNECTED') {
+					if (e.player.teamId === null) return
+					const team = MH.getNormedTeamId(e.player.teamId, match.ordinal)
+					ops.push({
+						opId: Teamswitches.createOpId(),
+						code: 'player-joined',
+						playerId: SM.PlayerIds.getPlayerId(e.player.ids),
+						team,
+					})
+				} else if (e.type === 'NEW_GAME' || e.type === 'RESET') {
+					const players = new Map<string, MH.NormedTeamId>()
+					for (const p of e.state.players) {
+						if (p.teamId == null) throw new Error(`Player ${SM.PlayerIds.getPlayerId(p.ids)} has no teamId`)
+						players.set(SM.PlayerIds.getPlayerId(p.ids), MH.getNormedTeamId(p.teamId, match.ordinal))
+					}
+					ops.push({
+						opId: Teamswitches.createOpId(),
+						code: 'reset-players',
+						players,
+					})
+				} else if (e.type === 'PLAYER_CHANGED_TEAM') {
+					if (e.newTeamId == null) return
+					const team = MH.getNormedTeamId(e.newTeamId, match.ordinal)
+
+					ops.push({
+						opId: Teamswitches.createOpId(),
+						code: 'player-changed-team',
+						playerId: e.player,
+						toTeam: team,
+					})
+				} else if (e.type === 'PLAYER_DISCONNECTED') {
+					ops.push({
+						opId: Teamswitches.createOpId(),
+						code: 'player-left',
+						playerId: e.player,
+					})
+				} else {
+					assertNever(e.type)
+				}
+
+				await dispatchOp(ctx, ...ops)
+			}),
+		).subscribe(),
+	)
+
+	// schedule teamswitches on map roll
+	ctx.cleanup.push(
+		ctx.server.event$.pipe(
+			Rx.filter(([ctx, e]) => e.type === 'NEW_GAME'),
+			Rx.switchMap((arg) => Rx.timer(2000).pipe(Rx.map(() => arg))),
+			C.durableSub('performTeamswitches', { module }, async ([ctx]) => {
+				await dispatchOp(ctx, { opId: Teamswitches.createOpId(), code: 'execute-teamswitches' })
+			}),
+		).subscribe(),
+	)
 
 	return context
 }
@@ -75,7 +123,7 @@ export const orpcRouter = {
 					state: ctx.teamswitches.session.state,
 					ops: ctx.teamswitches.session.ops,
 				}
-				return ctx.teamswitches.op$.pipe(Rx.map((op): Teamswitches.UpdateForClient => ({ code: 'op', op })), Rx.startWith(init))
+				return ctx.teamswitches.op$.pipe(Rx.map((ops): Teamswitches.UpdateForClient => ({ code: 'op', ops })), Rx.startWith(init))
 			}),
 		)
 		yield* toAsyncGenerator(obs)
@@ -84,87 +132,112 @@ export const orpcRouter = {
 	// TODO we need to filter errors back to the client that might have occured while handling side-effects
 	dispatchOp: orpcBase.meta({ type: 'mutation' }).input(Teamswitches.OpSchema).handler(async ({ context, input }) => {
 		const ctx = SquadServer.resolveWsClientSliceCtx(context)
-		await onOperation(ctx, input)
+		await dispatchOp(ctx, input)
 	}),
 }
 
-async function onOperation(ctx: C.Teamswitch, op: Teamswitches.Op) {
-	ctx.teamswitches.session = RbSyncState.Server.applyOps(ctx.teamswitches.session, [op], Teamswitches.reducer)
-}
+const dispatchOp = C.spanOp(
+	'dispatchOp',
+	{ module, mutexes: (ctx) => ctx.teamswitches.dispatchMtx },
+	async (ctx: C.Teamswitch & C.ServerSlice & C.Db, ...ops: Teamswitches.Op[]) => {
+		const sideEffects: Teamswitches.SideEffect[] = []
+		ctx.teamswitches.session = RbSyncState.Server.applyOps(ctx.teamswitches.session, ops, Teamswitches.reducer, {
+			onSideEffect: (se) => sideEffects.push(se),
+		})
 
-async function onSideEffect(
-	ctx: C.Teamswitch & C.Db & C.SquadServer & C.MatchHistory & C.Rcon & C.AdminList & C.LayerQueue,
-	sideEffect: Teamswitches.SideEffect,
-) {
-	switch (sideEffect.code) {
-		case 'switches-mutated': {
-			const players = ctx.server.eventState.currTeams?.players
-			if (!players) return
-			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-			const delta = Teamswitches.getTeamswitchStatusDelta(ctx.teamswitches.session.state, players, currentMatch.ordinal)
-			if (delta) {
-				await onOperation(ctx, { code: 'set-switch-statuses', delta, opId: Teamswitches.createOpId() })
-			}
-			break
+		const opErrors = new Map<string, (Teamswitches.OpError | unknown)[]>()
+		const addError = (opId: string, error: Teamswitches.OpError | unknown) => {
+			const errors = MapUtils.defaultInsGet(opErrors, opId, [])
+			errors.push(error)
+			opErrors.set(opId, errors)
 		}
 
-		case 'executing-teamswitch': {
-			if (sideEffect.switches.size === 0) return
-			const teamsRes = await ctx.server.teams.get(ctx, { ttl: 500 })
-			if (teamsRes.code !== 'ok') {
-				log.error('failed to get teams: %s :: %s', teamsRes.code, teamsRes.msg)
-				return
-			}
-			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-			const players = teamsRes.players
-			const toSwitch: SM.PlayerId[] = []
-			for (const [playerId, teamswitch] of sideEffect.switches.entries()) {
-				const player = SM.PlayerIds.find(players, p => p.ids, playerId)
-				if (!player) {
-					log.warn('player %s not found, skipping switch', playerId)
-					continue
+		const nextOps: Teamswitches.Op[] = []
+		for (const se of sideEffects) {
+			try {
+				switch (se.code) {
+					case 'execute-teamswitches': {
+						const res = await (async () => {
+							// TODO get first valid team with timeout
+							const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+							const teamsRes = await ctx.server.teams.get(ctx, { ttl: 300 })
+							if (teamsRes.code === 'err:rcon') return teamsRes
+							const toSwitch: SM.PlayerId[] = []
+							for (const [playerId, _switch] of se.switches.entries()) {
+								const player = SM.PlayerIds.find(teamsRes.players, p => p.ids, playerId)
+								if (!player) continue
+								if (player.teamId == null) throw new Error(`player ${playerId} has no teamId`)
+								const playerNormedTeamId = MH.getNormedTeamId(player.teamId, currentMatch.ordinal)
+								if (playerNormedTeamId === _switch.toTeam) continue
+								toSwitch.push(playerId)
+							}
+							void SquadRcon.switchPlayers(ctx, toSwitch)
+							void SquadRcon.warnAll(ctx, toSwitch, WARNS.teamswitches.notifyPlayerTeamswitchExecuted)
+							nextOps.push({ code: 'teamswitches-executed', opId: Teamswitches.createOpId() })
+
+							return { code: 'ok' as const }
+						})()
+
+						if (res.code !== 'ok') {
+							log.error('error while executing teamswitches: %s', res.code)
+							C.recordGenericError(res)
+							C.setSpanStatus('error')
+							const errors = MapUtils.defaultInsGet(opErrors, se.opId, [])
+							errors.push(res)
+						}
+
+						break
+					}
+
+					case 'error': {
+						const op = ops.find(op => op.opId === se.opId)
+						if (se.error.code === 'err:unexpected') {
+							log.error('op error while executing operation: %s op: %o', se.error.code, op)
+							C.recordGenericError(se.error)
+							C.setSpanStatus('error')
+						} else {
+							log.warn('op was not succesful: %s op: %o', se.error.code, op)
+						}
+						addError(se.opId, se.error)
+						break
+					}
+
+					case 'save': {
+						await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
+							await SquadServer.updateServerState(ctx, { teamswitches: se.switches }, { type: 'system', event: 'teamswitches-saved' })
+						})
+						break
+					}
+
+					case 'notify-upcoming-teamswitches': {
+						await SquadRcon.warnAll(ctx, se.players, WARNS.teamswitches.notifyPlayerOfUpcomingTeamswitch)
+						break
+					}
+
+					case 'notify-teamswitches-cancelled': {
+						await SquadRcon.warnAll(ctx, se.players, WARNS.teamswitches.notifyTeamswitchCancelled)
+						break
+					}
+
+					default:
+						assertNever(se)
 				}
-				const toTeamId = MH.getDenormedTeamId(teamswitch.toTeam, currentMatch.ordinal)
-				if (player.teamId === toTeamId) {
-					log.warn('player %s is already on team %s, skipping switch', SM.PlayerIds.prettyPrint(player.ids), toTeamId)
-					continue
-				}
-				log.info('switching player %s to team %s (%s)', SM.PlayerIds.prettyPrint(player.ids), toTeamId, teamswitch.toTeam)
-				toSwitch.push(playerId)
+			} catch (_e) {
+				const e = _e as any
+				log.error('error processing side effects: %s', e?.message ?? e?.msg ?? e)
+				C.recordGenericError(e)
+				C.setSpanStatus('error')
 			}
-			await SquadRcon.switchPlayers(ctx, toSwitch)
-			await DB.runTransaction(ctx, async (ctx) => {
-				await SquadServer.updateServerState(ctx, { teamswitches: new Map() }, { type: 'system', event: 'teamswitches-executed' })
-			})
-			await onOperation(ctx, { code: 'complete-teamswitch-execution', opId: Teamswitches.createOpId() })
-			log.info('switched %s players', toSwitch.length)
-			break
 		}
 
-		case 'saving': {
-			const statuses = sideEffect.statuses
-			for (const [playerId, teamswitch] of sideEffect.switches.entries()) {
-				const status = statuses.get(playerId)
-				if (status !== 'ready') continue
-				if (!sideEffect.prevSaved.has(playerId)) {
-					void SquadRcon.warn(ctx, playerId, messages.notifyPlayerOfTeamswitch())
-				}
-			}
-			await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-				await SquadServer.updateServerState(ctx, { teamswitches: sideEffect.switches }, { type: 'system', event: 'teamswitches-saved' })
-			})
-			break
+		for (const op of nextOps) {
+			const errors = await dispatchOp(ctx, op)
+			MapUtils.assign(opErrors, errors)
 		}
 
-		case 'error': {
-			log.error(sideEffect.error, 'error while handling teamswitch side effect')
-			break
-		}
-
-		default:
-			assertNever(sideEffect)
-	}
-}
+		return opErrors
+	},
+)
 
 function resolveCtx(serverId: string) {
 	return SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
@@ -172,11 +245,4 @@ function resolveCtx(serverId: string) {
 
 function getBaseCtx() {
 	return DB.addPooledDb(CS.init())
-}
-
-const messages = {
-	notifyPlayerOfTeamswitch: () => {
-		return 'You have been marked for teamswitching on mapchange. '
-			+ 'Thank you for helping with team balance and contact admins if you have issues.'
-	},
 }

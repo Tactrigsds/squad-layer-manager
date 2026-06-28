@@ -19,14 +19,14 @@ import * as Users from '@/systems/users.server'
 import * as Orpc from '@orpc/server'
 import { aliasedTable } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
-import { Subject } from 'rxjs'
+import { IsolatedSubject } from '@/lib/isolated-subject'
 import { z } from 'zod'
 
 const module = initModule('filter-entity')
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
 
-export const filterMutation$ = new Subject<[C.Db & C.OtelCtx, USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>]>()
+export const filterMutation$ = new IsolatedSubject<[C.Db & C.OtelCtx, USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>]>()
 const ToggleFilterContributorInputSchema = z
 	.object({ filterId: F.FilterEntityIdSchema, userId: z.bigint().optional(), roleId: RBAC.UserDefinedRoleIdSchema.optional() })
 	.refine((input) => input.userId || input.roleId, {

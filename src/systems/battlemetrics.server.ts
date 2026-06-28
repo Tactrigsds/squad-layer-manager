@@ -1,4 +1,5 @@
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { IsolatedSubject } from '@/lib/isolated-subject'
 import { FixedSizeMap } from '@/lib/lru-map'
 import * as BM from '@/models/battlemetrics.models'
 import type * as CS from '@/models/context-shared'
@@ -137,7 +138,7 @@ const serverBmState = new Map<string, ServerBmState>()
 function getServerBmState(serverId: string): ServerBmState {
 	let state = serverBmState.get(serverId)
 	if (!state) {
-		state = { update$: new Rx.Subject<BM.PlayerBmDataUpdate>() }
+		state = { update$: new IsolatedSubject<BM.PlayerBmDataUpdate>() }
 		serverBmState.set(serverId, state)
 	}
 	return state

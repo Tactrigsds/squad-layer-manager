@@ -1,5 +1,6 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import { type CleanupTasks, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
+import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as DH from '@/lib/display-helpers.ts'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import * as Obj from '@/lib/object'
@@ -59,7 +60,7 @@ export function setup() {
 
 export function initLayerQueueSlice(ctx: C.ServerSliceCleanup & C.ServerId, serverState: SS.ServerState) {
 	const sllState = SLL.createNewState(serverState.layerQueue)
-	const sideEffect$ = new Rx.Subject<SLL.SideEffect>()
+	const sideEffect$ = new IsolatedSubject<SLL.SideEffect>()
 	const slice: LayerQueueSlice = {
 		unexpectedNextLayerSet$: new Rx.BehaviorSubject<L.LayerId | null>(null),
 		update$: new Rx.ReplaySubject(1),
@@ -67,7 +68,7 @@ export function initLayerQueueSlice(ctx: C.ServerSliceCleanup & C.ServerId, serv
 		session: RbSyncState.Server.initSession<SLL.Operation, SLL.State, SLL.SideEffect>(sllState, {
 			onSideEffect: (e) => sideEffect$.next(e),
 		}),
-		op$: new Rx.Subject<SLL.Operation>(),
+		op$: new IsolatedSubject<SLL.Operation>(),
 		updateLayerMtx: new Mutex(),
 	}
 

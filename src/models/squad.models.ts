@@ -85,6 +85,7 @@ export namespace PlayerIds {
 
 	export const IdQuerySchema = IdFields()
 	export const Schema = IdFields('eos', 'username')
+	export type Schema = z.infer<typeof Schema>
 
 	export function getPlayerId(ids: IdQuery<'eos'>) {
 		return ids.eos

@@ -3,6 +3,7 @@ import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 import * as AR from '@/app-routes'
 import * as Arr from '@/lib/array'
 import { type CleanupTasks, distinctDeepEquals, runCleanup, switchMapWithSignal, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { IsolatedSubject } from '@/lib/isolated-subject'
 import { AsyncResource } from '@/lib/async-resource'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Gen from '@/lib/generator'
@@ -306,7 +307,7 @@ export async function setup() {
 	globalState = {
 		slices: new Map(),
 		selectedServers: new Map(),
-		selectedServerUpdate$: new Rx.Subject(),
+		selectedServerUpdate$: new IsolatedSubject(),
 		serverEventIdCounter: undefined!,
 		squadIdCounter: undefined!,
 	}
@@ -468,7 +469,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 
 		serverRolling$: new Rx.BehaviorSubject(null as number | null),
 
-		event$: new Rx.Subject(),
+		event$: new IsolatedSubject(),
 		processEventsMtx: new Mutex(),
 
 		eventState: eventState,
@@ -771,6 +772,10 @@ export async function getFullServerState(ctx: C.Db & C.LayerQueue) {
 	if (ctx.tx) [serverRaw] = await query.for('update')
 	else [serverRaw] = await query
 	return SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
+}
+
+export function getCurrTeams(ctx: C.SquadServer) {
+	return ctx.server.eventState.currTeams
 }
 
 async function collectEvents(

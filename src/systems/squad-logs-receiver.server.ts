@@ -1,3 +1,4 @@
+import { IsolatedSubject } from '@/lib/isolated-subject'
 import { CONFIG } from '@/server/config'
 import * as Env from '@/server/env'
 import { baseLogger } from '@/server/logger'
@@ -30,7 +31,7 @@ export type ReceiverEvent = {
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.squadLogsReceiver, ...Env.groups.httpServer })
 let ENV!: ReturnType<typeof envBuilder>
 
-export const event$ = new Rx.Subject<ReceiverEvent>()
+export const event$ = new IsolatedSubject<ReceiverEvent>()
 
 export function setup() {
 	ENV = envBuilder()

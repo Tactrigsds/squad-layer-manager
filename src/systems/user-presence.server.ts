@@ -1,5 +1,6 @@
 import * as Arr from '@/lib/array'
 import { CleanupTasks, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
 import * as RbSyncState from '@/lib/rollback-synced-state'
@@ -23,7 +24,7 @@ export type UserPresenceContext = {
 
 export function initUserPresenceContext(ctx: C.ServerSliceCleanup & C.ServerId): UserPresenceContext['userPresence'] {
 	const serverId = ctx.serverId
-	const sideEffectQueue$ = new Rx.Subject<[C.ServerSlice, UP.SideEffects]>()
+	const sideEffectQueue$ = new IsolatedSubject<[C.ServerSlice, UP.SideEffects]>()
 	ctx.cleanup.push(sideEffectQueue$)
 	const context: UserPresenceContext['userPresence'] = {
 		session: RbSyncState.Server.initSession(UP.initState(), {
@@ -32,7 +33,7 @@ export function initUserPresenceContext(ctx: C.ServerSliceCleanup & C.ServerId):
 				sideEffectQueue$.next([ctx, se])
 			},
 		}),
-		op$: new Rx.Subject<UP.Op>(),
+		op$: new IsolatedSubject<UP.Op>(),
 	}
 	ctx.cleanup.push(context.op$)
 	sideEffectQueue$.pipe(C.durableSub('onSideEffect', { module }, (args) => onSideEffect(...args))).subscribe()
@@ -73,7 +74,7 @@ export const orpcRouter = {
 		.input(UP.OpSchema)
 		.handler(async ({ context: _ctx, input: _op }) => {
 			const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
-			if (!Arr.includesId(UP.CLIENT_OP_CODE.options, _op.code)) {
+			if (!Arr.includesEnum(UP.CLIENT_OP_CODE.options, _op.code)) {
 				return { code: 'invalid-op:non-client' as const, msg: 'Tried to use non-client op code: ' + _op.code }
 			}
 			let op = _op as UP.ClientOp
