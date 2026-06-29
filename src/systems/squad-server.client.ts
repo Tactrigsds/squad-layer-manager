@@ -2,7 +2,7 @@ import { globalToast$ } from '@/hooks/use-global-toast'
 import * as CHAT from '@/models/chat.models'
 import * as MH from '@/models/match-history.models'
 import * as SquadServer from '@/models/squad-server.models'
-import type * as SM from '@/models/squad.models'
+import * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as Cookies from '@/systems/app-routes.client'
 import * as ConfigClient from '@/systems/config.client'
@@ -98,6 +98,61 @@ export function useDisableFogOfWarMutation() {
 		},
 	})
 }
+
+export function useWarnPlayerMutation() {
+	return useMutation({
+		mutationFn: async (input: { playerId: string; reason: string }) => {
+			return RPC.orpc.squadServer.warnPlayer.call(input)
+		},
+	})
+}
+
+export function useDemoteCommanderMutation() {
+	return useMutation({
+		mutationFn: async (playerId: string) => {
+			return RPC.orpc.squadServer.demoteCommander.call({ playerId })
+		},
+	})
+}
+
+export function useDisbandSquadMutation() {
+	return useMutation({
+		mutationFn: async (input: { teamId: 1 | 2; squadId: number }) => {
+			return RPC.orpc.squadServer.disbandSquad.call(input)
+		},
+	})
+}
+
+export function useRemoveFromSquadMutation() {
+	return useMutation({
+		mutationFn: async (playerId: string) => {
+			return RPC.orpc.squadServer.removeFromSquad.call({ playerId })
+		},
+	})
+}
+
+type PlayerSelectionStore = {
+	selection: Record<string, boolean>
+	setSelection: (updater: Record<string, boolean> | ((old: Record<string, boolean>) => Record<string, boolean>)) => void
+	selectSquad: (playerId: SM.PlayerId) => void
+}
+
+export const PlayerSelectionStore = Zus.createStore<PlayerSelectionStore>((set, get) => ({
+	selection: {},
+	setSelection: (updater) => {
+		const next = typeof updater === 'function' ? updater(get().selection) : updater
+		set({ selection: next })
+	},
+	selectSquad: (playerId) => {
+		const players = SquadServer.Select.chatState(ChatStore.getState()).players
+		const player = SM.PlayerIds.find(players, p => p.ids, playerId)
+		if (!player?.squadId || !player.teamId) return
+		const squadIds = players
+			.filter(p => p.squadId === player.squadId && p.teamId === player.teamId)
+			.map(p => SM.PlayerIds.getPlayerId(p.ids))
+		set({ selection: Object.fromEntries(squadIds.map(id => [id, true])) })
+	},
+}))
 
 type SelectedServerStore = {
 	selectedServerId: string

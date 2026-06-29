@@ -19,10 +19,14 @@ export namespace Select {
 			bmStore: BM.StoreState,
 			config: PublicConfig | undefined,
 		) => {
-			if (bmStore.selectedModeId || !config) return []
 			const players = SquadServer.Select.playersForTeam(teamId)(store, currentMatch)
-			const orgFlags = bmStore.orgFlags
+			const playerFlagGroupings = config?.playerFlagGroupings ?? []
+			const modeIds = BM.getGroupingModeIds(playerFlagGroupings)
+			const activeModeId = bmStore.selectedModeId !== null && modeIds.includes(bmStore.selectedModeId)
+				? bmStore.selectedModeId
+				: modeIds[0] ?? null
 
+			const orgFlags = bmStore.orgFlags
 			const playerFlagPairs: [SM.PlayerId, BM.PlayerFlag[]][] = players
 				.filter(p => p.ids.eos != null)
 				.map(p => {
@@ -31,13 +35,17 @@ export namespace Select {
 					const flags = BM.resolveFlags(flagIds, orgFlags)
 					return [eosId, flags]
 				})
-			const allGroups = BM.resolvePlayerFlagGroups(playerFlagPairs, config.playerFlagGroupings ?? [], bmStore.selectedModeId)
+			const allGroups = activeModeId !== null
+				? BM.resolvePlayerFlagGroups(playerFlagPairs, playerFlagGroupings, activeModeId)
+				: new Map<SM.PlayerId, string>()
+
 			return players.map((p): EnrichedPlayer => {
-				const profile = bmData[SM.PlayerIds.getPlayerId(p.ids)]
+				const playerId = SM.PlayerIds.getPlayerId(p.ids)
+				const profile = bmData[playerId]
 				return {
 					...p,
 					bmProfile: profile ? Obj.omit(profile, ['playerIds']) : undefined,
-					grouping: allGroups.get(SM.PlayerIds.getPlayerId(p.ids)),
+					grouping: allGroups.get(playerId),
 				}
 			})
 		}

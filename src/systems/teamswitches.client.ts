@@ -1,3 +1,4 @@
+import { toast } from '@/hooks/use-toast'
 import * as ItemMutations from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
 import * as RbSyncState from '@/lib/rollback-synced-state'
@@ -9,6 +10,7 @@ import * as TSW from '@/models/teamswitches.models'
 import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
+import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 import * as ReactRx from '@react-rxjs/core'
 import * as Rx from 'rxjs'
@@ -24,6 +26,42 @@ const [useUpdate, update$] = ReactRx.bind(RPC.observe(() => RPC.orpc.teamswitche
 
 function onSideEffect(se: TSW.SideEffect) {
 	console.log('teamswitch side effect', se)
+	if (se.code !== 'error') return
+	const userId = UsersClient.loggedInUserId
+	if (!userId) return
+	if ((se.error.op as any).source?.discordId !== userId) return
+	// const ops =
+	const { error } = se
+	let title: string
+	let description: string | undefined
+	switch (error.code) {
+		case 'err:currently-switching':
+			title = 'Switch in progress'
+			description = 'Cannot modify switches while a team switch is being executed.'
+			break
+		case 'err:switches-not-saved':
+			title = 'Switches not saved'
+			description = 'Save your switches before executing.'
+			break
+		case 'err:pending-switch':
+			title = 'Player switch pending'
+			description = `A switch for this player is already pending execution.`
+			break
+		case 'err:teamswitch-execution-failed':
+			title = 'Team switch failed'
+			description = error.reason === 'not-all-players-switched'
+				? 'Some players could not be switched to their assigned teams.'
+				: 'An error occurred while executing the team switch.'
+			break
+		case 'err:currently-not-switching':
+		case 'err:unexpected':
+			title = 'Unexpected error'
+			description = 'An unexpected error occurred with the team switch system.'
+			break
+		default:
+			return
+	}
+	toast({ variant: 'destructive', title, description })
 }
 function initSession(state?: TSW.State, ops?: TSW.Op[]) {
 	return RbSyncState.Client.initSession<TSW.Op, TSW.State, TSW.SideEffect>(state ?? TSW.initState(), {

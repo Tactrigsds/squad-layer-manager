@@ -1,7 +1,9 @@
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import EventFilterSelect from '@/components/event-filter-select'
+import { PlayerMenuItems } from '@/components/player-context-menu-options'
 import { MatchTeamDisplay } from '@/components/teams-display'
 import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
@@ -29,6 +31,8 @@ import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle,
 import { Separator } from './ui/separator'
 import { Spinner } from './ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
+
+const dropdownMenuSlots = { Item: DropdownMenuItem, Separator: DropdownMenuSeparator }
 
 DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unknown>({
 	type: WINDOW_ID.enum['player-details'],
@@ -124,25 +128,41 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 					{player?.ids.epic && <CopyIdButton label="epic" id={player.ids.epic} zIndex={zIndex} />}
 				</div>
 				<div className="flex items-center gap-2 text-muted-foreground">
-					{(player?.ids.steam ?? profile?.playerIds.steam)
-						? (
-							<>
-								<ExtLink href={`https://steamcommunity.com/profiles/${player?.ids.steam ?? profile?.playerIds.steam}`}>Steam</ExtLink>
-								<ExtLink href={`https://communitybanlist.com/search/${player?.ids.steam ?? profile?.playerIds.steam}`}>CBL</ExtLink>
-								<ExtLink href={`https://mysquadstats.com/search/${player?.ids.steam ?? profile?.playerIds.steam}#vanillaStats`}>
-									MySquadStats
-								</ExtLink>
-							</>
-						)
-						: <span className="italic">(no steam id)</span>}
-					<ExtLink
-						href={profile
-							? profile.profileUrl
-							: `https://www.battlemetrics.com/rcon/players?filter%5Bsearch%5D=${playerId}&filter%5Bservers%5D=false&filter%5BplayerFlags%5D=&sort=score&showServers=true&method=quick`}
-					>
-						BattleMetrics
-					</ExtLink>
-					{!!profile?.hoursPlayed && <span title="Hours played on this org's servers">{profile.hoursPlayed}h</span>}
+					<div className="flex items-center gap-2 flex-1">
+						{(player?.ids.steam ?? profile?.playerIds.steam)
+							? (
+								<>
+									<ExtLink href={`https://steamcommunity.com/profiles/${player?.ids.steam ?? profile?.playerIds.steam}`}>Steam</ExtLink>
+									<ExtLink href={`https://communitybanlist.com/search/${player?.ids.steam ?? profile?.playerIds.steam}`}>CBL</ExtLink>
+									<ExtLink href={`https://mysquadstats.com/search/${player?.ids.steam ?? profile?.playerIds.steam}#vanillaStats`}>
+										MySquadStats
+									</ExtLink>
+								</>
+							)
+							: <span className="italic">(no steam id)</span>}
+						<ExtLink
+							href={profile
+								? profile.profileUrl
+								: `https://www.battlemetrics.com/rcon/players?filter%5Bsearch%5D=${playerId}&filter%5Bservers%5D=false&filter%5BplayerFlags%5D=&sort=score&showServers=true&method=quick`}
+						>
+							BattleMetrics
+						</ExtLink>
+						{!!profile?.hoursPlayed && <span title="Hours played on this org's servers">{profile.hoursPlayed}h</span>}
+					</div>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<button
+								type="button"
+								className="inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+								title="Player actions"
+							>
+								<Icons.Ellipsis className="h-3.5 w-3.5" />
+							</button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent style={{ zIndex: zIndex + 10 }}>
+							<PlayerMenuItems playerId={playerId} slots={dropdownMenuSlots} />
+						</DropdownMenuContent>
+					</DropdownMenu>
 				</div>
 			</div>
 			<Separator />

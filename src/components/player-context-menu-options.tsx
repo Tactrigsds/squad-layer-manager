@@ -1,3 +1,4 @@
+import { useToast } from '@/hooks/use-toast'
 import * as ZusUtils from '@/lib/zustand'
 import * as MH from '@/models/match-history.models'
 import * as SquadServer from '@/models/squad-server.models'
@@ -5,14 +6,27 @@ import * as SM from '@/models/squad.models'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswitches.client'
-import { useToast } from '@/hooks/use-toast'
+import React from 'react'
 import { ContextMenuItem, ContextMenuSeparator } from './ui/context-menu'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
 
-export default function PlayerContextMenuOptions({ playerId }: { playerId: SM.PlayerId }) {
+export type MenuSlots = {
+	Item: React.ComponentType<{ onClick?: () => void; disabled?: boolean; children?: React.ReactNode }>
+	Separator: React.ComponentType
+}
+
+const contextMenuSlots: MenuSlots = { Item: ContextMenuItem, Separator: ContextMenuSeparator }
+
+export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; slots: MenuSlots }) {
+	const { Item, Separator } = slots
 	const openDialog = useAlertDialog()
 	const closeDialog = useCloseAlertDialog()
 	const { toast } = useToast()
+
+	const warnMutation = SquadServerClient.useWarnPlayerMutation()
+	const demoteCommanderMutation = SquadServerClient.useDemoteCommanderMutation()
+	const disbandSquadMutation = SquadServerClient.useDisbandSquadMutation()
+	const removeFromSquadMutation = SquadServerClient.useRemoveFromSquadMutation()
 
 	const otherTeam = ZusUtils.useStore(
 		SquadServerClient.ChatStore,
@@ -23,6 +37,26 @@ export default function PlayerContextMenuOptions({ playerId }: { playerId: SM.Pl
 			if (!player?.teamId) return null
 			const normed = MH.getNormedTeamId(player.teamId, currentMatch.ordinal)
 			return normed === 'A' ? 'B' : 'A'
+		},
+	)
+
+	const playerInfo = ZusUtils.useStore(
+		SquadServerClient.ChatStore,
+		(chatStore: SquadServer.ChatStore) => {
+			const players = SquadServer.Select.chatState(chatStore).players
+			const squads = SquadServer.Select.chatState(chatStore).squads
+			const player = SM.PlayerIds.find(players, p => p.ids, playerId)
+			if (!player) return null
+			const squad = player.squadId !== null
+				? squads.find(s => s.squadId === player.squadId && s.teamId === player.teamId)
+				: undefined
+			return {
+				squadId: player.squadId,
+				teamId: player.teamId,
+				username: player.ids.username,
+				squadName: squad?.squadName ?? null,
+				isCommander: squad?.squadName === 'Command Squad',
+			}
 		},
 	)
 
@@ -57,29 +91,126 @@ export default function PlayerContextMenuOptions({ playerId }: { playerId: SM.Pl
 		}
 	}
 
+	async function warn() {
+		let reason = ''
+		const result = await openDialog({
+			title: `Warn ${playerInfo?.username ?? 'Player'}`,
+			content: (
+				<input
+					className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+					placeholder="Warn reason"
+					autoFocus
+					onChange={e => { reason = e.target.value }}
+				/>
+			),
+			buttons: [{ id: 'confirm', label: 'Send Warning' }],
+		})
+		if (result !== 'confirm' || !reason.trim()) return
+		await warnMutation.mutateAsync({ playerId, reason: reason.trim() })
+	}
+
+	function copyTeleportCommand() {
+		void navigator.clipboard.writeText(`AdminTeleportToPlayer ${playerId}`)
+		toast({ title: 'Copied', description: 'Teleport command copied to clipboard' })
+	}
+
+	async function removeFromSquad() {
+		const squadLabel = playerInfo?.squadName ? `"${playerInfo.squadName}"` : 'their squad'
+		const result = await openDialog({
+			title: 'Remove from Squad',
+			description: `Remove this player from ${squadLabel}?`,
+			buttons: [{ id: 'confirm', label: 'Remove' }],
+		})
+		if (result !== 'confirm') return
+		await removeFromSquadMutation.mutateAsync(playerId)
+	}
+
+	async function disbandSquad() {
+		if (playerInfo?.squadId === null || playerInfo?.squadId === undefined || !playerInfo.teamId) return
+		const squadLabel = playerInfo.squadName ? `"${playerInfo.squadName}"` : `squad ${playerInfo.squadId}`
+		const result = await openDialog({
+			title: 'Disband Squad',
+			description: `Disband ${squadLabel} on team ${playerInfo.teamId}?`,
+			buttons: [{ id: 'confirm', label: 'Disband' }],
+		})
+		if (result !== 'confirm') return
+		await disbandSquadMutation.mutateAsync({ teamId: playerInfo.teamId as 1 | 2, squadId: playerInfo.squadId })
+	}
+
+	async function demoteCommander() {
+		const result = await openDialog({
+			title: 'Demote Commander',
+			description: 'Demote this player from commander?',
+			buttons: [{ id: 'confirm', label: 'Demote' }],
+		})
+		if (result !== 'confirm') return
+		await demoteCommanderMutation.mutateAsync(playerId)
+	}
+
+	const isOnServer = playerInfo !== null
+	const inSquad = isOnServer && playerInfo.squadId !== null
+
 	return (
 		<>
-			<ContextMenuItem onClick={switchNow} disabled={!otherTeam || !canSwitchNow}>
+			<Item onClick={switchNow} disabled={!otherTeam || !canSwitchNow}>
 				Switch Now
-			</ContextMenuItem>
-			<ContextMenuSeparator />
-			<ContextMenuItem
+			</Item>
+			<Separator />
+			<Item
 				onClick={() => TSWClient.Actions.switchNext([playerId])}
 				disabled={!otherTeam || !canQueue}
 			>
 				Switch Next
-			</ContextMenuItem>
+			</Item>
 			{existingSwitch && (
 				<>
-					<ContextMenuSeparator />
-					<ContextMenuItem
+					<Separator />
+					<Item
 						onClick={() => TSWClient.Actions.removeSwitch([playerId])}
 						disabled={!canSwitchNow}
 					>
-						Remove from Switch Queue
-					</ContextMenuItem>
+						Cancel Switch
+					</Item>
+				</>
+			)}
+			<Separator />
+			<Item onClick={warn} disabled={!isOnServer}>
+				Warn
+			</Item>
+			<Item onClick={copyTeleportCommand} disabled={!isOnServer}>
+				Copy Teleport Command
+			</Item>
+			{inSquad && (
+				<>
+					<Separator />
+					<Item onClick={() => SquadServerClient.PlayerSelectionStore.getState().selectSquad(playerId)}>
+						Select Squad
+					</Item>
+				</>
+			)}
+			{inSquad && (
+				<>
+					<Separator />
+					<Item onClick={removeFromSquad}>
+						Remove from Squad
+					</Item>
+					<Item onClick={disbandSquad}>
+						Disband Squad
+					</Item>
+				</>
+			)}
+			{playerInfo?.isCommander && (
+				<>
+					<Separator />
+					<Item onClick={demoteCommander}>
+						Demote Commander
+					</Item>
 				</>
 			)}
 		</>
 	)
+}
+
+export default function PlayerContextMenuOptions({ playerId }: { playerId: SM.PlayerId }) {
+	return <PlayerMenuItems playerId={playerId} slots={contextMenuSlots} />
 }

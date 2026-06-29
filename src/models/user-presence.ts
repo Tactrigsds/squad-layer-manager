@@ -44,7 +44,9 @@ export const [ACTIVITIES] = (() => {
 					leaf('PASTE_ROTATION'),
 				]),
 			]),
-			leaf('VIEWING_TEAMS'),
+			branch('VIEWING_TEAMS', [
+				leaf('EDITING_TEAMSWAPS'),
+			]),
 		]),
 	]) satisfies ST.Def.Node
 
@@ -63,9 +65,10 @@ export const DEFAULT_ACTIVITY: RootActivity = {
 			id: 'ON_PRIMARY_PANEL',
 			opts: {},
 			chosen: {
-				_tag: 'leaf',
+				_tag: 'branch',
 				id: 'VIEWING_TEAMS',
 				opts: {},
+				child: {},
 			},
 		},
 	},
@@ -364,7 +367,7 @@ export const VIEWING_TEAMS_TRANSITIONS = {
 				_tag: 'variant',
 				id: 'ON_PRIMARY_PANEL',
 				opts: {},
-				chosen: ST.Match.leaf('VIEWING_TEAMS', {}),
+				chosen: ST.Match.branch('VIEWING_TEAMS', {}, {}),
 			}
 		})
 	},

@@ -296,6 +296,38 @@ export const orpcRouter = {
 			}
 			return { code: 'ok' as const }
 		}),
+
+	warnPlayer: orpcBase
+		.input(z.object({ playerId: SM.PlayerIdSchema, reason: z.string().min(1) }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctx = resolveWsClientSliceCtx(_ctx)
+			await SquadRcon.warn(ctx, input.playerId, input.reason)
+			return { code: 'ok' as const }
+		}),
+
+	demoteCommander: orpcBase
+		.input(z.object({ playerId: SM.PlayerIdSchema }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctx = resolveWsClientSliceCtx(_ctx)
+			await SquadRcon.demoteCommander(ctx, input.playerId)
+			return { code: 'ok' as const }
+		}),
+
+	disbandSquad: orpcBase
+		.input(z.object({ teamId: SM.TeamIdSchema, squadId: z.number().int().positive() }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctx = resolveWsClientSliceCtx(_ctx)
+			await SquadRcon.disbandSquad(ctx, input.teamId, input.squadId)
+			return { code: 'ok' as const }
+		}),
+
+	removeFromSquad: orpcBase
+		.input(z.object({ playerId: SM.PlayerIdSchema }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctx = resolveWsClientSliceCtx(_ctx)
+			await SquadRcon.removeFromSquad(ctx, input.playerId)
+			return { code: 'ok' as const }
+		}),
 }
 
 export async function setup() {

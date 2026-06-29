@@ -494,3 +494,23 @@ export async function switchPlayers(ctx: C.Rcon & C.SquadRcon & C.AdminList, pla
 	}
 	ctx.server.teams.invalidate(ctx)
 }
+
+export async function demoteCommander(ctx: C.Rcon & C.SquadRcon & C.AdminList, ids: SM.PlayerIds.EosIdQueryOrPlayerId) {
+	const id = SM.PlayerIds.normalizeToPlayerId(ids)
+	log.info(`Demoting commander %s`, id)
+	await ctx.rcon.execute(`AdminDemoteCommander ${id}`, { level: 'info' })
+	ctx.server.teams.invalidate(ctx)
+}
+
+export async function disbandSquad(ctx: C.Rcon & C.SquadRcon & C.AdminList, teamId: SM.TeamId, squadId: SM.SquadId) {
+	log.info(`Disbanding squad %d on team %d`, squadId, teamId)
+	await ctx.rcon.execute(`AdminDisbandSquad ${teamId} ${squadId}`, { level: 'info' })
+	ctx.server.teams.invalidate(ctx)
+}
+
+export async function removeFromSquad(ctx: C.Rcon & C.SquadRcon & C.AdminList, ids: SM.PlayerIds.EosIdQueryOrPlayerId) {
+	const id = SM.PlayerIds.normalizeToPlayerId(ids)
+	log.info(`Removing player %s from squad`, id)
+	await ctx.rcon.execute(`AdminRemovePlayerFromSquad ${id}`, { level: 'info' })
+	ctx.server.teams.invalidate(ctx)
+}

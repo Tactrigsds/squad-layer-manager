@@ -214,13 +214,16 @@ namespace OpErrors {
 }
 
 export type OpError<OpCode extends Op['code'] = Op['code']> =
-	| OpErrors.Unexpected
-	| (OpCode extends SwitchingMutationOp ? (OpErrors.CurrentlySwitching | OpErrors.PendingSwitch)
-		: OpCode extends 'teamswitch-execution-failed' ? (OpErrors.TeamswitchExecutionFailed)
-		: OpCode extends 'teamswitch-execution-completed' ? (OpErrors.CurrentlyNotSwitching)
-		: OpCode extends 'execute-teamswitches' ? (OpErrors.CurrentlySwitching | OpErrors.SwitchesNotSaved)
-		: OpCode extends 'switch-now' ? OpErrors.CurrentlySwitching
-		: never)
+	& { op: Extract<Op, { code: OpCode }> }
+	& (
+		| OpErrors.Unexpected
+		| (OpCode extends SwitchingMutationOp ? (OpErrors.CurrentlySwitching | OpErrors.PendingSwitch)
+			: OpCode extends 'teamswitch-execution-failed' ? (OpErrors.TeamswitchExecutionFailed)
+			: OpCode extends 'teamswitch-execution-completed' ? (OpErrors.CurrentlyNotSwitching)
+			: OpCode extends 'execute-teamswitches' ? (OpErrors.CurrentlySwitching | OpErrors.SwitchesNotSaved)
+			: OpCode extends 'switch-now' ? OpErrors.CurrentlySwitching
+			: never)
+	)
 
 export type SideEffect =
 	| {
@@ -250,13 +253,13 @@ export type SideEffect =
 export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, ops, prevOps, onSideEffect) => {
 	let state = { ...oldState }
 	for (const op of ops) {
-		const emitOpError = <T extends Op>(op: T, error: OpError<T['code']>) => onSideEffect?.({ code: 'error', opId: op.opId, error })
+		const emitOpError = <T extends Op>(error: OpError<T['code']>) => onSideEffect?.({ code: 'error', opId: error.op.opId, error })
 		try {
 			// switch mutations
 			switch (op.code) {
 				case 'add-player-teamswitch': {
 					if (state.switching) {
-						emitOpError(op, { code: 'err:currently-switching' })
+						emitOpError({ code: 'err:currently-switching', op })
 						break
 					}
 					const switchEntry = { toTeam: op.toTeam, source: op.source }
@@ -273,12 +276,12 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 
 				case 'remove-player-teamswitches': {
 					if (state.switching) {
-						emitOpError(op, { code: 'err:currently-switching' })
+						emitOpError({ code: 'err:currently-switching', op })
 						break
 					}
 
 					if (state.pendingSwitches.has(op.playerId)) {
-						emitOpError(op, { code: 'err:pending-switch', playerId: op.playerId })
+						emitOpError({ code: 'err:pending-switch', playerId: op.playerId, op })
 						break
 					}
 
@@ -297,7 +300,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 
 				case 'revert-to-saved': {
 					if (state.switching) {
-						emitOpError(op, { code: 'err:currently-switching' })
+						emitOpError({ code: 'err:currently-switching', op })
 						break
 					}
 					state.switches = state.savedSwitches
@@ -306,7 +309,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 
 				case 'clear-teamswitches': {
 					if (state.switching) {
-						emitOpError(op, { code: 'err:currently-switching' })
+						emitOpError({ code: 'err:currently-switching', op })
 						break
 					}
 					if (op.save) {
@@ -321,11 +324,11 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 
 				case 'execute-teamswitches': {
 					if (state.switching) {
-						emitOpError(op, { code: 'err:currently-switching' })
+						emitOpError({ code: 'err:currently-switching', op })
 						break
 					}
 					if (op.source && !Obj.deepEqual(state.switches, state.savedSwitches)) {
-						emitOpError(op, { code: 'err:switches-not-saved' })
+						emitOpError({ code: 'err:switches-not-saved', op })
 						break
 					}
 					if (state.savedSwitches.size === 0) {
@@ -341,7 +344,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 
 				case 'teamswitch-execution-completed': {
 					if (!state.switching) {
-						emitOpError(op, { code: 'err:currently-not-switching' })
+						emitOpError({ code: 'err:currently-not-switching', op })
 						break
 					}
 					state.switching = false
@@ -421,7 +424,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 
 				case 'save': {
 					if (state.switching) {
-						emitOpError(op, { code: 'err:currently-switching' })
+						emitOpError({ code: 'err:currently-switching', op })
 						break
 					}
 					const { added, removed } = getTeamswitchChanges(state.switches, state.savedSwitches)
@@ -434,16 +437,17 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 				case 'teamswitch-execution-failed': {
 					state.pendingSwitches = initTeamswitchCollection()
 					state.switching = false
-					emitOpError(op, {
+					emitOpError({
 						code: 'err:teamswitch-execution-failed',
 						reason: op.reason,
+						op,
 					})
 					break
 				}
 
 				case 'switch-now': {
 					if (state.switching) {
-						emitOpError(op, { code: 'err:currently-switching' })
+						emitOpError({ code: 'err:currently-switching', op })
 						break
 					}
 
@@ -464,7 +468,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 				}
 			}
 		} catch (e) {
-			emitOpError(op, { code: 'err:unexpected', error: e })
+			emitOpError({ code: 'err:unexpected', error: e, op })
 		}
 	}
 	if (state.savedSwitches !== oldState.savedSwitches) {
