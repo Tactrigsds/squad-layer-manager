@@ -124,7 +124,7 @@ function getPlayerOppositeTeam(playerId: SM.PlayerId): MH.NormedTeamId | null {
 }
 
 export namespace Actions {
-	export function queueSwitch(playerIds: SM.PlayerId[]) {
+	export function switchNext(playerIds: SM.PlayerId[]) {
 		const source = { discordId: UsersClient.loggedInUserId }
 		for (const playerId of playerIds) {
 			const toTeam = getPlayerOppositeTeam(playerId)

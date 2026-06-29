@@ -36,8 +36,8 @@ export default function PlayerBulkContextMenuOptions({ playerIds }: { playerIds:
 			<ContextMenuSeparator />
 			<ContextMenuItem onClick={switchNow}>Switch Now</ContextMenuItem>
 			<ContextMenuSeparator />
-			<ContextMenuItem onClick={() => TeamsSwitchesClient.Actions.queueSwitch(playerIds)}>
-				Queue Switch
+			<ContextMenuItem onClick={() => TeamsSwitchesClient.Actions.switchNext(playerIds)}>
+				Switch Next
 			</ContextMenuItem>
 			<ContextMenuItem onClick={() => TeamsSwitchesClient.Actions.removeSwitch(playerIds)}>
 				Remove from Switch Queue

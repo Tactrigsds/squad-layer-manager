@@ -58,10 +58,10 @@ export default function PlayerContextMenuOptions({ playerId }: { playerId: SM.Pl
 			</ContextMenuItem>
 			<ContextMenuSeparator />
 			<ContextMenuItem
-				onClick={() => TeamsSwitchesClient.Actions.queueSwitch([playerId])}
+				onClick={() => TeamsSwitchesClient.Actions.switchNext([playerId])}
 				disabled={!otherTeam || existingSwitch?.toTeam === otherTeam}
 			>
-				Queue Switch
+				Switch Next
 			</ContextMenuItem>
 			{existingSwitch && (
 				<>
