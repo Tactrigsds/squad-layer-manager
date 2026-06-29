@@ -10,6 +10,22 @@ type SideEffectBase = {
 	code: string
 } | undefined
 
+namespace OpHistory {
+	// once the history reaches this size, we will always retain the last MAX_GUARANTEED ops. the rest may be discarded
+	const MAX_GUARANTEED = 50
+	const MAX_OVERFLOW = 25
+	const MAX_LENGTH = MAX_GUARANTEED + MAX_OVERFLOW
+
+	export function concat<O extends BaseOp>(history: O[], newOps: O[]): O[] {
+		return truncate([...history, ...newOps])
+	}
+
+	export function truncate<O extends BaseOp>(history: O[]): O[] {
+		if (history.length <= MAX_LENGTH) return history
+		return history.slice(-MAX_GUARANTEED)
+	}
+}
+
 export type OnSideEffect<SE extends SideEffectBase> = (sideEffect: SE) => void
 
 export type Reducer<O extends BaseOp, S, SE extends SideEffectBase = undefined> = (
@@ -49,7 +65,7 @@ export namespace Server {
 		}
 		return {
 			state: reducer(session.state, ops, session.ops, opts?.onSideEffect ?? session.onSideEffect),
-			ops: [...session.ops, ...ops],
+			ops: OpHistory.concat(session.ops, ops),
 		}
 	}
 
@@ -103,12 +119,13 @@ export namespace Client {
 
 		const newSyncedOpIds = newSyncedOps.map(op => op.opId)
 		const pendingOpIds = session.pendingOps.map(op => op.opId)
+		const truncatedNewSyncedOps = OpHistory.truncate(newSyncedOps)
 
 		// wait for client to be completely caught up before rolling back. In other words we don't try to reconcile diverging histories until the synced history is fully caught up to the local history
 		if (Arr.isSubset(newSyncedOpIds, pendingOpIds)) {
 			return {
 				syncedState: newSyncedState,
-				syncedOps: newSyncedOps,
+				syncedOps: truncatedNewSyncedOps,
 				localState: newSyncedState,
 				pendingOps: [],
 			}
@@ -117,7 +134,7 @@ export namespace Client {
 		return {
 			...session,
 			syncedState: newSyncedState,
-			syncedOps: newSyncedOps,
+			syncedOps: truncatedNewSyncedOps,
 		}
 	}
 
@@ -143,7 +160,7 @@ export namespace Client {
 		return {
 			...session,
 			localState: reducer(session.localState, ops, prevLocalOps /* no side effects until we're synced */),
-			pendingOps: [...session.pendingOps, ...ops],
+			pendingOps: OpHistory.concat(session.pendingOps, ops),
 		}
 	}
 }
