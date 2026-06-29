@@ -21,6 +21,7 @@ export type ComboBoxProps<T extends string | null = string | null> = {
 	options: (ComboBoxOption<T> | T)[] | typeof LOADING
 	onSelect: (value: T | undefined) => void
 	disabled?: boolean
+	sort?: boolean
 	children?: React.ReactNode
 	ref?: React.ForwardedRef<ComboBoxHandle>
 }
@@ -49,7 +50,15 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 			throw new Error(`ComboBox options contain duplicate values: ${duplicates.join(', ')}`)
 		}
 
-		options.sort((a, b) => (a.disabled ? 1 : 0) - (b.disabled ? 1 : 0))
+		const sort = props.sort ?? true
+		options.sort((a, b) => {
+			const disabledDiff = (a.disabled ? 1 : 0) - (b.disabled ? 1 : 0)
+			if (disabledDiff !== 0) return disabledDiff
+			if (!sort) return 0
+			const aKey = typeof a.label === 'string' ? a.label : (a.value ?? '')
+			const bKey = typeof b.label === 'string' ? b.label : (b.value ?? '')
+			return aKey.localeCompare(bKey)
+		})
 	}
 
 	const btnRef = useRef<HTMLButtonElement | null>(null)

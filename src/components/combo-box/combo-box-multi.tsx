@@ -18,6 +18,7 @@ export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	values: T[]
 	selectionLimit?: number
 	disabled?: boolean
+	sort?: boolean
 	options: (ComboBoxOption<T> | T)[] | typeof LOADING
 	onSelect?: React.Dispatch<React.SetStateAction<T[]>>
 	ref?: React.ForwardedRef<ComboBoxHandle>
@@ -131,7 +132,15 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 			throw new Error(`ComboBoxMulti options contain duplicate values: ${duplicates.join(', ')}`)
 		}
 
-		options.sort((a, b) => (a.disabled ? 1 : 0) - (b.disabled ? 1 : 0))
+		const sort = props.sort ?? true
+		options.sort((a, b) => {
+			const disabledDiff = (a.disabled ? 1 : 0) - (b.disabled ? 1 : 0)
+			if (disabledDiff !== 0) return disabledDiff
+			if (!sort) return 0
+			const aKey = typeof a.label === 'string' ? a.label : (a.value ?? '')
+			const bKey = typeof b.label === 'string' ? b.label : (b.value ?? '')
+			return aKey.localeCompare(bKey)
+		})
 	}
 
 	const displayValues = useInternalState ? internalValues : values
