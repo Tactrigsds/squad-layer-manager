@@ -13,6 +13,7 @@ import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as QueueDashboard from '@/systems/queue-dashboard.client'
 import * as SharedLayerListClient from '@/systems/shared-layer-list.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
+import * as TeamswitchesClient from '@/systems/teamswitches.client'
 import * as ThemeSys from '@/systems/theme.client'
 import * as UserPresenceClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
@@ -31,6 +32,7 @@ enableMapSet()
 	SquadServerClient.setup()
 	UsersClient.setup()
 	void SharedLayerListClient.setup()
+	void TeamswitchesClient.setup()
 	void UserPresenceClient.setup()
 	QueueDashboard.setup()
 	VotesClient.setup()

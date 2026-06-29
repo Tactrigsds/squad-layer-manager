@@ -55,6 +55,9 @@ export type State = {
 		fetchLayersStatus: () => Promise<SM.LayersStatus | null>
 	}
 
+	// if we receive a non-log event and we haven't received a log event in this amount of time since the time of the received event, we can assume that there are no log events older than this time that we have yet to receive
+	minSafeLeadTimeForOtherEventsSinceLog: number
+
 	debug__ticketOutcome?: { team1: number; team2: number }
 }
 
@@ -81,6 +84,7 @@ export function init(
 		hooks: State['hooks']
 		counters: Omit<State['counters'], 'pendingEventId'>
 		log: State['log']
+		minSafeLogLeadTimeForOtherEvents?: State['minSafeLeadTimeForOtherEventsSinceLog']
 	},
 ): State {
 	return {
@@ -102,6 +106,7 @@ export function init(
 		log: opts.log,
 		hooks: opts.hooks,
 		isFirstConnection: null,
+		minSafeLeadTimeForOtherEventsSinceLog: opts.minSafeLogLeadTimeForOtherEvents ?? Infinity,
 	}
 }
 
@@ -164,13 +169,20 @@ export async function* process(
 	}
 
 	for (const rconEvent of state.eventBufs.rconEmittedEvents) {
-		// don't allow processing of non-log events unless we have at least one log event past the timestamp. this ensures that there are no latent log events yet to be processed. Note that all other event sources are assumed to have occured on reception, so there is no chance of latency there
-		if (state.lastKnownLogEventTime == null || state.lastKnownLogEventTime < rconEvent.time) continue
+		if (
+			state.lastKnownLogEventTime === null || state.lastKnownLogEventTime < rconEvent.time
+				// if the event has been sitting for the min safe lead time, then it's(probably) safe to process
+				&& rconEvent.time + state.minSafeLeadTimeForOtherEventsSinceLog < time
+		) continue
 		Arr.insertIntoSorted(toProcess, rconEvent, comparator)
 	}
 
 	for (const teamUpdateEvent of state.eventBufs.teamsUpdates) {
-		if (state.lastKnownLogEventTime == null || state.lastKnownLogEventTime < teamUpdateEvent.time) continue
+		if (
+			state.lastKnownLogEventTime === null || state.lastKnownLogEventTime < teamUpdateEvent.time
+				// if the event has been sitting for the min safe lead time, then it's(probably) safe to process
+				&& teamUpdateEvent.time + state.minSafeLeadTimeForOtherEventsSinceLog < time
+		) continue
 		Arr.insertIntoSorted(toProcess, teamUpdateEvent, comparator)
 	}
 
@@ -371,9 +383,9 @@ async function* processPendingEvent(
 ): AsyncGenerator<SE.Event> {
 	const log = state.log
 
-	if (pendingEvent.type !== 'UNKNOWN') {
-		log.debug('Attempting to process raw event %s (%s)', pendingEvent.type, pendingEvent.id, JSON.stringify(pendingEvent))
-	}
+	// if (pendingEvent.type !== 'UNKNOWN') {
+	log.debug('Attempting to process raw event %s (%s) %s', pendingEvent.type, pendingEvent.id, pendingEvent?.raw)
+	// }
 
 	if (pendingEvent.time < time - 45_000) {
 		state.log.warn('Skipping event %s (%s) as it is stale (%s)', pendingEvent.type, pendingEvent.id, pendingEvent.time)

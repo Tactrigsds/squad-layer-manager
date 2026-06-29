@@ -46,6 +46,7 @@ export const Store = Zus.createStore<Store>((set, get) => {
 		onUpdate(update) {
 			switch (update.code) {
 				case 'init':
+					console.log('teamswitch init', update.state, update.ops)
 					set({
 						session: initSession(update.state, update.ops),
 					})

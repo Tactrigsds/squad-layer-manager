@@ -358,6 +358,17 @@ export function useActivityState<P>(
 	return [!!predicate, setActive] as const
 }
 
+export function useActivityMatch<P>(matchActivity: (prev: UP.RootActivity | null | undefined) => P) {
+	return Zus.useStore(
+		Store,
+		ZusUtils.useDeep(React.useCallback(() => {
+			const config = ConfigClient.getConfig()
+			const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? UP.DEFAULT_ACTIVITY
+			return matchActivity(state)
+		}, [matchActivity])),
+	)
+}
+
 type VariantConfig = {
 	createActivity: (prev: UP.RootActivity | null | undefined) => UP.RootActivity
 	removeActivity: (prev: UP.RootActivity) => UP.RootActivity

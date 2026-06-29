@@ -440,6 +440,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 		)
 	})()
 	cleanup.push(() => adminList.dispose())
+	const logType = settings.connections.logs.type
 	const eventState: PendingEvents.State = PendingEvents.init({
 		counters: {
 			eventId: globalState.serverEventIdCounter,
@@ -457,6 +458,11 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 				return null
 			},
 		},
+		minSafeLogLeadTimeForOtherEvents: logType === 'sftp'
+			? CONFIG.squadServer.sftpPollInterval * 2
+			: logType === 'log-receiver'
+			? 1000
+			: assertNever(logType),
 	})
 
 	const server: SquadServer = {
@@ -673,7 +679,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 		.pipe(
 			C.durableSub(
 				'onTeamsPolled',
-				{ module, numTaskRetries: 0, levels: { event: 'trace' } },
+				{ module, numTaskRetries: 0, levels: { event: 'debug' } },
 				async (teamsRes) => {
 					if (teamsRes.code !== 'ok') return teamsRes
 					const time = Date.now()

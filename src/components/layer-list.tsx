@@ -509,6 +509,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 		props.llStore,
 		s => index.innerIndex === 0 && LL.getNextLayerId(s.layerList) === item.layerId,
 	)
+	const viewingQueue = UPClient.useActivityMatch(UP.VIEWING_QUEUE_TRANSITIONS.matchActivity)
 
 	if (index.innerIndex === 0 && voteState?.code !== 'ended:winner') {
 		badges.unshift(
@@ -573,7 +574,8 @@ function SingleLayerListItem(props: LayerListItemProps) {
 						<span className="grid">
 							<span
 								data-mobile={isMobile}
-								className="text-right m-auto font-mono text-s col-start-1 row-start-1 invisible data-[mobile=false]:not-group-hover/single-item:visible"
+								data-viewing-queue={viewingQueue}
+								className="text-right m-auto font-mono text-s col-start-1 row-start-1 invisible data-[mobile=false]:data-[viewing-queue=true]:not-group-hover/single-item:visible"
 							>
 								{LL.getItemNumber(index)}
 							</span>

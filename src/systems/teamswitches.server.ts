@@ -34,6 +34,7 @@ export type TeamswitchContext = {
 	// outgoing operations
 	op$: IsolatedSubject<Teamswitches.Op[]>
 	dispatchMtx: MutexInterface
+	teamswitchExecutedAt: number | null
 }
 export function setup() {
 	log = module.getLogger()
@@ -44,6 +45,7 @@ export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
 		session: RbSyncState.Server.initSession(Teamswitches.initState(), {}),
 		op$: new IsolatedSubject<Teamswitches.Op[]>(),
 		dispatchMtx: new Mutex(),
+		teamswitchExecutedAt: null,
 	}
 	ctx.cleanup.push(context.op$, context.dispatchMtx)
 
@@ -57,7 +59,10 @@ export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
 				function tryEndSwitching() {
 					const players = SquadServer.getCurrTeams(ctx)?.players
 					const state = getState(ctx)
-					if (!players || !state.switching) return
+					const executedAt = ctx.teamswitches.teamswitchExecutedAt
+					if (!players || !state.switching || executedAt === null) return
+					// buffer event time to deal with potential latency
+					if (executedAt >= e.time) return
 
 					const missingPlayers = new Set<SM.PlayerId>()
 					for (const [playerId, { toTeam }] of state.pendingSwitches.entries()) {
@@ -69,7 +74,8 @@ export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
 						}
 					}
 
-					if (missingPlayers.size > 0) {
+					ctx.teamswitches.teamswitchExecutedAt = null
+					if (missingPlayers.size === 0) {
 						ops.push({
 							opId: Teamswitches.createOpId(),
 							code: 'teamswitch-execution-completed',
@@ -217,6 +223,7 @@ const dispatchOp = C.spanOp(
 							const switched$ = SquadRcon.switchPlayers(ctx, toSwitch)
 							void SquadRcon.warnAll(ctx, toSwitch, WARNS.teamswitches.notifyPlayerTeamswitchExecuted)
 							await switched$
+							ctx.teamswitches.teamswitchExecutedAt = Date.now()
 							return { code: 'ok' as const }
 						})
 
@@ -233,11 +240,12 @@ const dispatchOp = C.spanOp(
 						// if successful, no need to do anything here. we will wait for the next polling cycle and fire the event in `onTeamsModified`
 
 						if (finalError) {
-							log.error('error while processing teamswitch execution side effect: %s', message)
-							C.recordGenericError(finalError, true)
-
-							nextOps.push({ code: 'teamswitch-execution-failed', reason: 'error', message: message!, opId: Teamswitches.createOpId() })
-							addError(se.opId, finalError)
+							nextOps.push({
+								code: 'teamswitch-execution-failed',
+								reason: 'error',
+								message: message ?? String(finalError),
+								opId: Teamswitches.createOpId(),
+							})
 						}
 
 						break

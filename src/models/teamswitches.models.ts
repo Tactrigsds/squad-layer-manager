@@ -328,10 +328,13 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 						emitOpError(op, { code: 'err:switches-not-saved' })
 						break
 					}
+					if (state.savedSwitches.size === 0) {
+						break
+					}
 					state.switching = true
-					onSideEffect?.({ code: 'execute-teamswitches', opId: op.opId, switches: state.savedSwitches })
 					state.pendingSwitches = state.savedSwitches
-					state.savedSwitches = state.switches = initTeamswitchCollection()
+					const switches = state.savedSwitches
+					onSideEffect?.({ code: 'execute-teamswitches', opId: op.opId, switches })
 					break
 				}
 
@@ -421,19 +424,19 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 						break
 					}
 					const { added, removed } = getTeamswitchChanges(state.switches, state.savedSwitches)
+					state.savedSwitches = state.switches
 					if (added.length > 0) onSideEffect?.({ code: 'notify-upcoming-teamswitches', players: added })
 					if (removed.length > 0) onSideEffect?.({ code: 'notify-teamswitches-cancelled', players: removed })
-					state.savedSwitches = state.switches
 					break
 				}
 
 				case 'teamswitch-execution-failed': {
+					state.pendingSwitches = initTeamswitchCollection()
+					state.switching = false
 					emitOpError(op, {
 						code: 'err:teamswitch-execution-failed',
 						reason: op.reason,
 					})
-					state.pendingSwitches = initTeamswitchCollection()
-					state.switching = false
 					break
 				}
 
@@ -442,6 +445,9 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 						emitOpError(op, { code: 'err:currently-switching' })
 						break
 					}
+
+					state.pendingSwitches = op.switches
+					state.switching = true
 					onSideEffect?.({ code: 'execute-teamswitches', opId: op.opId, switches: op.switches })
 
 					break
