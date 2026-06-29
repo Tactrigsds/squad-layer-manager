@@ -1,5 +1,5 @@
 import * as Arr from '@/lib/array'
-import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { sleep, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { withThrown, withThrownAsync } from '@/lib/error'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as MapUtils from '@/lib/map'
@@ -221,7 +221,10 @@ const dispatchOp = C.spanOp(
 								toSwitch.push(playerId)
 							}
 							const switched$ = SquadRcon.switchPlayers(ctx, toSwitch)
-							void SquadRcon.warnAll(ctx, toSwitch, WARNS.teamswitches.notifyPlayerTeamswitchExecuted)
+							const isManual = ops.find(o => o.opId === se.opId && (o as any).source)
+							if (isManual) {
+								sleep(500).then(() => SquadRcon.warnAll(ctx, toSwitch, WARNS.teamswitches.notifyManualSwitch))
+							}
 							await switched$
 							ctx.teamswitches.teamswitchExecutedAt = Date.now()
 							return { code: 'ok' as const }
