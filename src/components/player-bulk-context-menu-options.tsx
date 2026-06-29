@@ -1,5 +1,5 @@
 import * as SM from '@/models/squad.models'
-import * as TeamsSwitchesClient from '@/systems/teamswitches.client'
+import * as TSWClient from '@/systems/teamswitches.client'
 import { useToast } from '@/hooks/use-toast'
 import { ContextMenuItem, ContextMenuLabel, ContextMenuSeparator } from './ui/context-menu'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
@@ -10,10 +10,10 @@ export default function PlayerBulkContextMenuOptions({ playerIds }: { playerIds:
 	const { toast } = useToast()
 
 	async function switchNow() {
-		const initialState = TeamsSwitchesClient.Select.localState(TeamsSwitchesClient.Store.getState())
+		const initialState = TSWClient.Select.localState(TSWClient.Store.getState())
 		const initialTeams = new Map(playerIds.map(id => [id, initialState.players.get(id)]))
-		const unsubscribe = TeamsSwitchesClient.Store.subscribe(state => {
-			const current = TeamsSwitchesClient.Select.localState(state)
+		const unsubscribe = TSWClient.Store.subscribe(state => {
+			const current = TSWClient.Select.localState(state)
 			if (playerIds.some(id => current.players.get(id) !== initialTeams.get(id))) closeDialog()
 		})
 		const result = await openDialog({
@@ -27,7 +27,7 @@ export default function PlayerBulkContextMenuOptions({ playerIds }: { playerIds:
 			return
 		}
 		if (result !== 'confirm') return
-		TeamsSwitchesClient.Actions.switchNow(playerIds)
+		TSWClient.Actions.switchNow(playerIds)
 	}
 
 	return (
@@ -36,10 +36,10 @@ export default function PlayerBulkContextMenuOptions({ playerIds }: { playerIds:
 			<ContextMenuSeparator />
 			<ContextMenuItem onClick={switchNow}>Switch Now</ContextMenuItem>
 			<ContextMenuSeparator />
-			<ContextMenuItem onClick={() => TeamsSwitchesClient.Actions.switchNext(playerIds)}>
+			<ContextMenuItem onClick={() => TSWClient.Actions.switchNext(playerIds)}>
 				Switch Next
 			</ContextMenuItem>
-			<ContextMenuItem onClick={() => TeamsSwitchesClient.Actions.removeSwitch(playerIds)}>
+			<ContextMenuItem onClick={() => TSWClient.Actions.removeSwitch(playerIds)}>
 				Remove from Switch Queue
 			</ContextMenuItem>
 		</>

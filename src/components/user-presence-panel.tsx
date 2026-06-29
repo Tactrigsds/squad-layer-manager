@@ -179,13 +179,6 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 
 	const [_, setHoveredUser] = UPClient.useHoveredActivityUser()
 
-	if (isLoading) {
-		return <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-current mx-auto mb-2"></div>
-	}
-
-	if (sortedUserPresence.length === 0) {
-		return <div className={props.className}></div>
-	}
 	let otherMatchingUsersCount = 0
 	for (const userId of allUserIds) {
 		if (userId === loggedInUser?.discordId) continue
@@ -193,8 +186,9 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 	}
 
 	return (
-		<div className={cn('flex flex-wrap space-x-1', props.className)}>
-			{otherMatchingUsersCount > 1 && (
+		<div className={cn('flex flex-wrap space-x-1 min-h-6', props.className)}>
+			{isLoading && <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-current mx-auto"></div>}
+			{!isLoading && otherMatchingUsersCount > 1 && (
 				<div className="text-sm text-muted-foreground pr-1">{otherMatchingUsersCount} other users editing queue</div>
 			)}
 			{sortedUserPresence.map(({ user, presence }) => {

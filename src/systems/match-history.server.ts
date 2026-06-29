@@ -1,9 +1,9 @@
 import * as Schema from '$root/drizzle/schema'
 import * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array'
-import { IsolatedSubject } from '@/lib/isolated-subject'
 import { type CleanupTasks, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
+import { IsolatedSubject } from '@/lib/isolated-subject'
 import { LRUMap } from '@/lib/lru-map'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import type { Parts } from '@/lib/types'
@@ -200,7 +200,7 @@ const loadCurrentMatch = C.spanOp(
 )
 
 export const matchHistoryRouter = {
-	watchMatchHistoryState: orpcBase.handler(async function*({ signal, context: _ctx }) {
+	watchMatchHistoryState: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ signal, context: _ctx }) {
 		const server$ = SquadServer.selectedServerCtx$(_ctx).pipe(withAbortSignal(signal!))
 		const state$ = server$.pipe(
 			Rx.switchMap(async function*(ctx) {

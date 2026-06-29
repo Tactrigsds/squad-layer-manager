@@ -4,7 +4,7 @@ import * as SquadServer from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
-import * as TeamsSwitchesClient from '@/systems/teamswitches.client'
+import * as TSWClient from '@/systems/teamswitches.client'
 import { useToast } from '@/hooks/use-toast'
 import { ContextMenuItem, ContextMenuSeparator } from './ui/context-menu'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
@@ -27,18 +27,18 @@ export default function PlayerContextMenuOptions({ playerId }: { playerId: SM.Pl
 	)
 
 	const existingSwitch = ZusUtils.useStore(
-		TeamsSwitchesClient.Store,
-		s => TeamsSwitchesClient.Select.localState(s).switches.get(playerId) ?? null,
+		TSWClient.Store,
+		s => TSWClient.Select.localState(s).switches.get(playerId) ?? null,
 	)
 
-	const canSwitchNow = ZusUtils.useStore(TeamsSwitchesClient.Store, TeamsSwitchesClient.Select.canSwitchNow([playerId]))
-	const canQueue = ZusUtils.useStore(TeamsSwitchesClient.Store, TeamsSwitchesClient.Select.canQueue([playerId]))
+	const canSwitchNow = ZusUtils.useStore(TSWClient.Store, TSWClient.Select.canSwitchNow([playerId]))
+	const canQueue = ZusUtils.useStore(TSWClient.Store, TSWClient.Select.canQueue([playerId]))
 
 	async function switchNow() {
 		if (!otherTeam) return
-		const initialTeam = TeamsSwitchesClient.Select.localState(TeamsSwitchesClient.Store.getState()).players.get(playerId)
-		const unsubscribe = TeamsSwitchesClient.Store.subscribe(state => {
-			if (TeamsSwitchesClient.Select.localState(state).players.get(playerId) !== initialTeam) closeDialog()
+		const initialTeam = TSWClient.Select.localState(TSWClient.Store.getState()).players.get(playerId)
+		const unsubscribe = TSWClient.Store.subscribe(state => {
+			if (TSWClient.Select.localState(state).players.get(playerId) !== initialTeam) closeDialog()
 		})
 		try {
 			const result = await openDialog({
@@ -51,7 +51,7 @@ export default function PlayerContextMenuOptions({ playerId }: { playerId: SM.Pl
 				return
 			}
 			if (result !== 'confirm') return
-			TeamsSwitchesClient.Actions.switchNow([playerId])
+			TSWClient.Actions.switchNow([playerId])
 		} finally {
 			unsubscribe()
 		}
@@ -64,7 +64,7 @@ export default function PlayerContextMenuOptions({ playerId }: { playerId: SM.Pl
 			</ContextMenuItem>
 			<ContextMenuSeparator />
 			<ContextMenuItem
-				onClick={() => TeamsSwitchesClient.Actions.switchNext([playerId])}
+				onClick={() => TSWClient.Actions.switchNext([playerId])}
 				disabled={!otherTeam || !canQueue}
 			>
 				Switch Next
@@ -73,7 +73,7 @@ export default function PlayerContextMenuOptions({ playerId }: { playerId: SM.Pl
 				<>
 					<ContextMenuSeparator />
 					<ContextMenuItem
-						onClick={() => TeamsSwitchesClient.Actions.removeSwitch([playerId])}
+						onClick={() => TSWClient.Actions.removeSwitch([playerId])}
 						disabled={!canSwitchNow}
 					>
 						Remove from Switch Queue

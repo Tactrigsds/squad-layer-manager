@@ -16,7 +16,7 @@ const module = initModule('server-settings')
 const orpcBase = getOrpcBase(module)
 
 export const orpcRouter = {
-	watchSettings: orpcBase.handler(async function*({ context: _ctx, signal }) {
+	watchSettings: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context: _ctx, signal }) {
 		const obs: Rx.Observable<Readonly<[SS.PublicServerSettings, SS.LQStateUpdate['source'] | null]>> = SquadServer.selectedServerCtx$(_ctx)
 			.pipe(
 				Rx.switchMap(async function*(ctx) {

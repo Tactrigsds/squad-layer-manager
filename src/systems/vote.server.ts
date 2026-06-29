@@ -79,7 +79,7 @@ export const router = {
 		return await cancelVoteAutostart(ctx, { user: { discordId: ctx.user.discordId } })
 	}),
 
-	watchUpdates: orpcBase.handler(async function*({ context, signal }) {
+	watchUpdates: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
 		const obs = SquadServer.selectedServerCtx$(context).pipe(
 			Rx.switchMap(async function*(ctx) {
 				let initialState: (V.VoteState & Parts<USR.UserPart>) | null = null

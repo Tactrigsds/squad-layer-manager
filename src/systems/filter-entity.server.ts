@@ -12,6 +12,7 @@ import * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 
+import { IsolatedSubject } from '@/lib/isolated-subject'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as Rbac from '@/systems/rbac.server'
 import * as SquadServer from '@/systems/squad-server.server'
@@ -19,7 +20,6 @@ import * as Users from '@/systems/users.server'
 import * as Orpc from '@orpc/server'
 import { aliasedTable } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
-import { IsolatedSubject } from '@/lib/isolated-subject'
 import { z } from 'zod'
 
 const module = initModule('filter-entity')
@@ -242,7 +242,7 @@ export const filtersRouter = {
 		}])
 		return { code: 'ok' as const }
 	}),
-	watchFilters: orpcBase.handler(async function*({ context, signal }) {
+	watchFilters: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
 		yield* watchFilters({ ctx: context, signal })
 	}),
 }

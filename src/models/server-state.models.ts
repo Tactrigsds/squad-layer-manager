@@ -4,7 +4,7 @@ import * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SM from '@/models/squad.models'
-import * as Teamswitches from '@/models/teamswitches.models'
+import * as TSW from '@/models/teamswitches.models'
 import type * as USR from '@/models/users.models'
 import { z } from 'zod'
 
@@ -271,7 +271,7 @@ export const ServerStateSchema = z.object({
 	id: ServerIdSchema,
 	displayName: z.string().min(1).max(256),
 	layerQueue: LL.ListSchema,
-	teamswitches: Teamswitches.TeamswitchCollectionSchema,
+	teamswitches: TSW.TeamswitchCollectionSchema,
 	settings: ServerSettingsSchema,
 })
 

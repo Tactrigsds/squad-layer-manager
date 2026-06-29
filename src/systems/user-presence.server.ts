@@ -1,6 +1,5 @@
 import * as Arr from '@/lib/array'
 import { CleanupTasks, toAsyncGenerator, withAbortSignal } from '@/lib/async'
-import * as CleanupSys from '@/systems/cleanup.server'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
@@ -12,6 +11,7 @@ import * as UP from '@/models/user-presence'
 import * as C from '@/server/context'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as CleanupSys from '@/systems/cleanup.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as WSSessionSys from '@/systems/ws-session.server'
 import * as Rx from 'rxjs'
@@ -52,7 +52,7 @@ const orpcBase = getOrpcBase(module)
 // }
 
 export const orpcRouter = {
-	watchUpdates: orpcBase.handler(async function*({ context, signal }) {
+	watchUpdates: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
 		const updateForServer$ = SquadServer.selectedServerCtx$(context).pipe(
 			Rx.switchMap(ctx => {
 				const initial: UP.PresenceUpdate = {

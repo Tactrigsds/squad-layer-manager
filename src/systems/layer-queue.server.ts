@@ -1,7 +1,7 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import { type CleanupTasks, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
-import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as DH from '@/lib/display-helpers.ts'
+import { IsolatedSubject } from '@/lib/isolated-subject'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import * as Obj from '@/lib/object'
 import * as RbSyncState from '@/lib/rollback-synced-state'
@@ -446,7 +446,7 @@ function getBaseCtx() {
 
 // -------- setup router --------
 export const router = {
-	watchUnexpectedNextLayer: orpcBase.handler(async function*({ context, signal }) {
+	watchUnexpectedNextLayer: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
 		const obs = SquadServer.selectedServerCtx$(context).pipe(
 			Rx.switchMap(ctx => {
 				return ctx.layerQueue.unexpectedNextLayerSet$
@@ -465,7 +465,7 @@ export const router = {
 		}),
 
 	watchOps: orpcBase
-		.meta({ type: 'mutation' })
+		.meta({ logLevel: 'trace' })
 		.handler(async function*({ context, input, signal }) {
 			const updateForServer$ = SquadServer.selectedServerCtx$(context).pipe(
 				Rx.switchMap(ctx => {

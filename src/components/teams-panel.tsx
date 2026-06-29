@@ -6,12 +6,12 @@ import * as MH from '@/models/match-history.models'
 import * as SquadServer from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
 import * as TeamsPanelModels from '@/models/teams-panel.models'
-import * as Teamswitches from '@/models/teamswitches.models'
+import * as TSW from '@/models/teamswitches.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
-import * as TeamsSwitchesClient from '@/systems/teamswitches.client'
+import * as TSWClient from '@/systems/teamswitches.client'
 import * as ThemeClient from '@/systems/theme.client'
 import * as UsersClient from '@/systems/users.client'
 import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table'
@@ -34,7 +34,10 @@ import { Input } from './ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
 
 export default function TeamsPanel(props: { className?: string }) {
-	const hasSwitches = Zus.useStore(TeamsSwitchesClient.Store, TeamsSwitchesClient.Select.hasSwitches)
+	const showSwapsPanel = Zus.useStore(
+		TSWClient.Store,
+		s => TSWClient.Select.hasSwitches(s),
+	)
 	return (
 		<div className={cn('flex w-full p-1 flex-col', props.className)}>
 			<div className="grid w-full grid-cols-[1fr_auto_1fr] gap-1">
@@ -53,7 +56,7 @@ export default function TeamsPanel(props: { className?: string }) {
 				<div>
 				</div>
 			</div>
-			{hasSwitches && <SwapsPanel />}
+			{showSwapsPanel && <SwapsPanel />}
 			<div className="grid w-full grid-cols-[1fr_1fr] gap-1">
 				<TeamPlayerTable teamId="A" />
 				<TeamPlayerTable teamId="B" />
@@ -70,8 +73,8 @@ function TeamTitle(props: { teamId: MH.NormedTeamId }) {
 		SquadServer.Select.teamPlayerCount(props.teamId),
 	)
 	const diffAfterSwitches = ZusUtils.useStore(
-		TeamsSwitchesClient.Store,
-		TeamsSwitchesClient.Select.diffAfterSwitchesForTeam(props.teamId),
+		TSWClient.Store,
+		TSWClient.Select.diffAfterSwitchesForTeam(props.teamId),
 	)
 	return (
 		<div>
@@ -315,7 +318,7 @@ function TeamBreakdownChart({ data }: { data: TeamBreakdownData }) {
 }
 
 function PendingSwitchSpinner({ playerId }: { playerId: SM.PlayerId }) {
-	const isPending = ZusUtils.useStore(TeamsSwitchesClient.Store, TeamsSwitchesClient.Select.isSwitchPending(playerId))
+	const isPending = ZusUtils.useStore(TSWClient.Store, TSWClient.Select.isSwitchPending(playerId))
 	if (!isPending) return null
 	return <Icons.LoaderCircle className="h-3 w-3 animate-spin text-muted-foreground" />
 }
@@ -454,17 +457,17 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId }) {
 }
 
 function SwapsPanel() {
-	const canExecute = Zus.useStore(TeamsSwitchesClient.Store, TeamsSwitchesClient.Select.canExecuteSavedTeamswitches)
-	const hasPendingEdits = Zus.useStore(TeamsSwitchesClient.Store, TeamsSwitchesClient.Select.hasPendingEdits)
+	const canExecute = Zus.useStore(TSWClient.Store, TSWClient.Select.canExecuteSavedTeamswitches)
+	const hasPendingEdits = Zus.useStore(TSWClient.Store, TSWClient.Select.hasPendingEdits)
 	return (
 		<div className="grid grid-cols-[1fr_auto_1fr] gap-1">
 			<TeamSwapsDisplay teamId="A" />
 			<div className="flex flex-col items-center gap-1">
 				<h3>Swaps</h3>
-				<Button disabled={!hasPendingEdits} onClick={() => TeamsSwitchesClient.Actions.save()}>
+				<Button disabled={!hasPendingEdits} onClick={() => TSWClient.Actions.save()}>
 					Save
 				</Button>
-				<Button disabled={!canExecute} onClick={() => TeamsSwitchesClient.Actions.executeTeamswitches()}>
+				<Button disabled={!canExecute} onClick={() => TSWClient.Actions.executeTeamswitches()}>
 					Switch Now
 				</Button>
 			</div>
@@ -475,11 +478,11 @@ function SwapsPanel() {
 
 function TeamSwapsDisplay(props: { teamId: MH.NormedTeamId }) {
 	const switches = ZusUtils.useStore(
-		TeamsSwitchesClient.Store,
+		TSWClient.Store,
 		SquadServerClient.ChatStore,
 		React.useCallback(
-			(teamsSwitchesStore: TeamsSwitchesClient.Store, chatStore: SquadServer.ChatStore) =>
-				TeamsSwitchesClient.Select.switchesToTeamEnriched(teamsSwitchesStore, chatStore, props.teamId),
+			(teamsSwitchesStore: TSWClient.Store, chatStore: SquadServer.ChatStore) =>
+				TSWClient.Select.switchesToTeamEnriched(teamsSwitchesStore, chatStore, props.teamId),
 			[props.teamId],
 		),
 	)
@@ -491,7 +494,7 @@ function TeamSwapsDisplay(props: { teamId: MH.NormedTeamId }) {
 					Swaps to <MatchTeamDisplay teamId={props.teamId} showAltTeamIndicator={true} />
 				</h3>
 				{switches.size > 0 && (
-					<Button variant="ghost" size="sm" onClick={() => TeamsSwitchesClient.Actions.clearTeamSwitches(props.teamId)}>
+					<Button variant="ghost" size="sm" onClick={() => TSWClient.Actions.clearTeamSwitches(props.teamId)}>
 						Clear
 					</Button>
 				)}
@@ -504,10 +507,10 @@ function TeamSwapsDisplay(props: { teamId: MH.NormedTeamId }) {
 	)
 }
 
-function SwitchBadge(props: { switch: Teamswitches.EnrichedTeamswitch }) {
+function SwitchBadge(props: { switch: TSW.EnrichedTeamswitch }) {
 	function remove() {
 		const userId = UsersClient.loggedInUserId
-		TeamsSwitchesClient.Store.getState().dispatch({
+		TSWClient.Store.getState().dispatch({
 			code: 'remove-player-teamswitches',
 			playerId: SM.PlayerIds.getPlayerId(props.switch.player.ids),
 			source: { discordId: userId },

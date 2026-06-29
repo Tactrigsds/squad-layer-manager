@@ -1,31 +1,31 @@
+import * as Obj from '@/lib/object'
 import * as RbSyncState from '@/lib/rollback-synced-state'
+import { assertNever } from '@/lib/type-guards'
 import * as MH from '@/models/match-history.models'
 import * as SquadServer from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
-import * as Teamswitches from '@/models/teamswitches.models'
+import * as TSW from '@/models/teamswitches.models'
 import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UsersClient from '@/systems/users.client'
-import * as Zus from 'zustand'
-
-import { assertNever } from '@/lib/type-guards'
 import * as ReactRx from '@react-rxjs/core'
 import * as Rx from 'rxjs'
+import * as Zus from 'zustand'
 
 export type Store = {
-	session: RbSyncState.Client.Session<Teamswitches.Op, Teamswitches.State, Teamswitches.SideEffect>
-	onUpdate(update: Teamswitches.UpdateForClient): void
-	dispatch(newOp: Teamswitches.NewClientOp): void
+	session: RbSyncState.Client.Session<TSW.Op, TSW.State, TSW.SideEffect>
+	onUpdate(update: TSW.UpdateForClient): void
+	dispatch(newOp: TSW.NewClientOp): void
 }
 
 const [useUpdate, update$] = ReactRx.bind(RPC.observe(() => RPC.orpc.teamswitches.watchUpdates.call()))
 
-function onSideEffect(se: Teamswitches.SideEffect) {
+function onSideEffect(se: TSW.SideEffect) {
 	console.log('teamswitch side effect', se)
 }
-function initSession(state?: Teamswitches.State, ops?: Teamswitches.Op[]) {
-	return RbSyncState.Client.initSession<Teamswitches.Op, Teamswitches.State, Teamswitches.SideEffect>(state ?? Teamswitches.initState(), {
+function initSession(state?: TSW.State, ops?: TSW.Op[]) {
+	return RbSyncState.Client.initSession<TSW.Op, TSW.State, TSW.SideEffect>(state ?? TSW.initState(), {
 		onSideEffect,
 		ops,
 	})
@@ -36,8 +36,8 @@ export const Store = Zus.createStore<Store>((set, get) => {
 		session: initSession(),
 
 		dispatch(newOp) {
-			const op = { ...newOp, opId: Teamswitches.createOpId() }
-			const updated = RbSyncState.Client.processOutgoingOps(get().session, [op], Teamswitches.reducer)
+			const op = { ...newOp, opId: TSW.createOpId() }
+			const updated = RbSyncState.Client.processOutgoingOps(get().session, [op], TSW.reducer)
 			set({ session: updated })
 			console.log('teamswitch dispatch', op.code, op.opId)
 			void RPC.orpc.teamswitches.dispatchOp.call(op)
@@ -55,7 +55,7 @@ export const Store = Zus.createStore<Store>((set, get) => {
 					for (const op of update.ops) {
 						console.log('teamswitch receive', op.code, op.opId)
 					}
-					const updated = RbSyncState.Client.processIncomingOps(get().session, update.ops, Teamswitches.reducer)
+					const updated = RbSyncState.Client.processIncomingOps(get().session, update.ops, TSW.reducer)
 					set({ session: updated })
 					break
 				default:
@@ -86,11 +86,16 @@ export namespace Select {
 	}
 
 	export function hasSwitches(store: Store) {
-		return localState(store).switches.size > 0
+		return localState(store).switches.size > 0 || localState(store).savedSwitches.size > 0
+	}
+
+	export function switchesModified(store: Store) {
+		const state = localState(store)
+		return !Obj.deepEqual(state.switches, state.savedSwitches)
 	}
 
 	export function canExecuteSavedTeamswitches(store: Store) {
-		return Teamswitches.canExecuteSavedTeamswitches(localState(store))
+		return TSW.canExecuteSavedTeamswitches(localState(store))
 	}
 
 	export function hasPendingEdits(store: Store) {
@@ -108,25 +113,25 @@ export namespace Select {
 	}
 
 	export function canSwitchNow(playerIds: SM.PlayerId[]) {
-		return (store: Store) => Teamswitches.allCanSwitchNow(localState(store), playerIds)
+		return (store: Store) => TSW.allCanSwitchNow(localState(store), playerIds)
 	}
 
 	export function canQueue(playerIds: SM.PlayerId[]) {
-		return (store: Store) => Teamswitches.allCanQueue(localState(store), playerIds)
+		return (store: Store) => TSW.allCanQueue(localState(store), playerIds)
 	}
 
 	export function isSwitchPending(playerId: SM.PlayerId) {
-		return (store: Store) => Teamswitches.isSwitchPending(localState(store), playerId)
+		return (store: Store) => TSW.isSwitchPending(localState(store), playerId)
 	}
 
 	export function switchesToTeamEnriched(
 		store: Store,
 		chatStore: SquadServer.ChatStore,
 		team: MH.NormedTeamId,
-	): Map<SM.PlayerId, Teamswitches.EnrichedTeamswitch> {
+	): Map<SM.PlayerId, TSW.EnrichedTeamswitch> {
 		const switches = localState(store).switches
 		const players = SquadServer.Select.chatState(chatStore).players
-		const result: Map<SM.PlayerId, Teamswitches.EnrichedTeamswitch> = new Map()
+		const result: Map<SM.PlayerId, TSW.EnrichedTeamswitch> = new Map()
 		for (const [playerId, switch_] of switches.entries()) {
 			if (switch_.toTeam !== team) continue
 			const player = SM.PlayerIds.find(players, p => p.ids, playerId)
@@ -168,7 +173,7 @@ export namespace Actions {
 
 	export function switchNow(playerIds: SM.PlayerId[]) {
 		const source = { discordId: UsersClient.loggedInUserId }
-		const switches: Teamswitches.TeamswitchCollection = new Map()
+		const switches: TSW.TeamswitchCollection = new Map()
 		for (const playerId of playerIds) {
 			const toTeam = getPlayerOppositeTeam(playerId)
 			if (!toTeam) continue

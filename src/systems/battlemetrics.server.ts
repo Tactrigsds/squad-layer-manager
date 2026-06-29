@@ -615,7 +615,7 @@ export const router = {
 		return fetchSinglePlayerBmData(serverCtx, SM.PlayerIds.queryFromPlayerId(input.playerId))
 	}),
 
-	watchPlayerBmData: orpcBase.handler(async function*({ signal, context: _ctx }) {
+	watchPlayerBmData: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ signal, context: _ctx }) {
 		const server$ = SquadServer.selectedServerCtx$(_ctx).pipe(withAbortSignal(signal!))
 		const updates$ = server$.pipe(
 			Rx.switchMap((ctx) => {

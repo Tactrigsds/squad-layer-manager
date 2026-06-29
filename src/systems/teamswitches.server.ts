@@ -10,7 +10,7 @@ import * as CS from '@/models/context-shared'
 import * as MH from '@/models/match-history.models'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SM from '@/models/squad.models'
-import * as Teamswitches from '@/models/teamswitches.models'
+import * as TSW from '@/models/teamswitches.models'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
@@ -27,12 +27,12 @@ const TEAMSWITCH_EXECUTION_TIMEOUT = 30_000
 
 let log!: CS.Logger
 
-type Session = RbSyncState.Server.Session<Teamswitches.Op, Teamswitches.State, Teamswitches.SideEffect>
+type Session = RbSyncState.Server.Session<TSW.Op, TSW.State, TSW.SideEffect>
 
 export type TeamswitchContext = {
 	session: Session
 	// outgoing operations
-	op$: IsolatedSubject<Teamswitches.Op[]>
+	op$: IsolatedSubject<TSW.Op[]>
 	dispatchMtx: MutexInterface
 	teamswitchExecutedAt: number | null
 }
@@ -42,8 +42,8 @@ export function setup() {
 
 export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
 	const context: TeamswitchContext = {
-		session: RbSyncState.Server.initSession(Teamswitches.initState(), {}),
-		op$: new IsolatedSubject<Teamswitches.Op[]>(),
+		session: RbSyncState.Server.initSession(TSW.initState(), {}),
+		op$: new IsolatedSubject<TSW.Op[]>(),
 		dispatchMtx: new Mutex(),
 		teamswitchExecutedAt: null,
 	}
@@ -77,24 +77,24 @@ export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
 					ctx.teamswitches.teamswitchExecutedAt = null
 					if (missingPlayers.size === 0) {
 						ops.push({
-							opId: Teamswitches.createOpId(),
+							opId: TSW.createOpId(),
 							code: 'teamswitch-execution-completed',
 						})
 					} else {
 						ops.push({
-							opId: Teamswitches.createOpId(),
+							opId: TSW.createOpId(),
 							code: 'teamswitch-execution-failed',
 							reason: 'not-all-players-switched',
 							playerIds: Array.from(missingPlayers),
 						})
 					}
 				}
-				const ops: Teamswitches.Op[] = []
+				const ops: TSW.Op[] = []
 				if (e.type === 'PLAYER_CONNECTED') {
 					if (e.player.teamId === null) return
 					const team = MH.getNormedTeamId(e.player.teamId, match.ordinal)
 					ops.push({
-						opId: Teamswitches.createOpId(),
+						opId: TSW.createOpId(),
 						code: 'player-joined',
 						playerId: SM.PlayerIds.getPlayerId(e.player.ids),
 						team,
@@ -106,7 +106,7 @@ export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
 						players.set(SM.PlayerIds.getPlayerId(p.ids), MH.getNormedTeamId(p.teamId, match.ordinal))
 					}
 					ops.push({
-						opId: Teamswitches.createOpId(),
+						opId: TSW.createOpId(),
 						code: 'reset-players',
 						players,
 					})
@@ -116,14 +116,14 @@ export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
 					const team = MH.getNormedTeamId(e.newTeamId, match.ordinal)
 
 					ops.push({
-						opId: Teamswitches.createOpId(),
+						opId: TSW.createOpId(),
 						code: 'player-changed-team',
 						playerId: e.player,
 						toTeam: team,
 					})
 				} else if (e.type === 'PLAYER_DISCONNECTED') {
 					ops.push({
-						opId: Teamswitches.createOpId(),
+						opId: TSW.createOpId(),
 						code: 'player-left',
 						playerId: e.player,
 					})
@@ -146,7 +146,7 @@ export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
 			Rx.filter(([ctx, e]) => e.type === 'NEW_GAME'),
 			Rx.switchMap((arg) => Rx.timer(2000).pipe(Rx.map(() => arg))),
 			C.durableSub('performTeamswitches', { module }, async ([ctx]) => {
-				await dispatchOp(ctx, { opId: Teamswitches.createOpId(), code: 'execute-teamswitches' })
+				await dispatchOp(ctx, { opId: TSW.createOpId(), code: 'execute-teamswitches' })
 			}),
 		).subscribe(),
 	)
@@ -160,23 +160,23 @@ function getState(ctx: C.Teamswitch) {
 
 const orpcBase = getOrpcBase(module)
 export const orpcRouter = {
-	watchUpdates: orpcBase.handler(async function* watchOps({ context, signal }) {
+	watchUpdates: orpcBase.meta({ logLevel: 'trace' }).handler(async function* watchOps({ context, signal }) {
 		const obs = SquadServer.selectedServerCtx$(context).pipe(
 			withAbortSignal(signal!),
 			Rx.switchMap((ctx) => {
-				const init: Teamswitches.UpdateForClient = {
+				const init: TSW.UpdateForClient = {
 					code: 'init',
 					state: ctx.teamswitches.session.state,
 					ops: ctx.teamswitches.session.ops,
 				}
-				return ctx.teamswitches.op$.pipe(Rx.map((ops): Teamswitches.UpdateForClient => ({ code: 'op', ops })), Rx.startWith(init))
+				return ctx.teamswitches.op$.pipe(Rx.map((ops): TSW.UpdateForClient => ({ code: 'op', ops })), Rx.startWith(init))
 			}),
 		)
 		yield* toAsyncGenerator(obs)
 	}),
 
 	// TODO we need to filter errors back to the client that might have occured while handling side-effects
-	dispatchOp: orpcBase.meta({ type: 'mutation' }).input(Teamswitches.OpSchema).handler(async ({ context, input }) => {
+	dispatchOp: orpcBase.meta({ type: 'mutation' }).input(TSW.OpSchema).handler(async ({ context, input }) => {
 		const ctx = SquadServer.resolveWsClientSliceCtx(context)
 		await dispatchOp(ctx, input)
 	}),
@@ -185,21 +185,21 @@ export const orpcRouter = {
 const dispatchOp = C.spanOp(
 	'dispatchOp',
 	{ module, mutexes: (ctx) => ctx.teamswitches.dispatchMtx, extraText: (ctx, ...ops) => ops.map(o => o.code).join(',') },
-	async (ctx: C.Teamswitch & C.ServerSlice & C.Db, ...ops: Teamswitches.Op[]) => {
-		const sideEffects: Teamswitches.SideEffect[] = []
-		ctx.teamswitches.session = RbSyncState.Server.applyOps(ctx.teamswitches.session, ops, Teamswitches.reducer, {
+	async (ctx: C.Teamswitch & C.ServerSlice & C.Db, ...ops: TSW.Op[]) => {
+		const sideEffects: TSW.SideEffect[] = []
+		ctx.teamswitches.session = RbSyncState.Server.applyOps(ctx.teamswitches.session, ops, TSW.reducer, {
 			onSideEffect: (se) => sideEffects.push(se),
 		})
 		ctx.teamswitches.op$.next(ops)
 
-		const opErrors = new Map<string, (Teamswitches.OpError | unknown)[]>()
-		const addError = (opId: string, error: Teamswitches.OpError | unknown) => {
+		const opErrors = new Map<string, (TSW.OpError | unknown)[]>()
+		const addError = (opId: string, error: TSW.OpError | unknown) => {
 			const errors = MapUtils.defaultInsGet(opErrors, opId, [])
 			errors.push(error)
 			opErrors.set(opId, errors)
 		}
 
-		const nextOps: Teamswitches.Op[] = []
+		const nextOps: TSW.Op[] = []
 		for (const se of sideEffects) {
 			log.debug(se, 'side effect: %s', se.code)
 			try {
@@ -247,7 +247,7 @@ const dispatchOp = C.spanOp(
 								code: 'teamswitch-execution-failed',
 								reason: 'error',
 								message: message ?? String(finalError),
-								opId: Teamswitches.createOpId(),
+								opId: TSW.createOpId(),
 							})
 						}
 

@@ -3,7 +3,7 @@ import * as LQClient from '@/systems/layer-queries.client'
 import * as ServerSettingsClient from '@/systems/server-settings.client'
 import * as SLLClient from '@/systems/shared-layer-list.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
-import * as TeamswitchesClient from '@/systems/teamswitches.client'
+import * as TSWClient from '@/systems/teamswitches.client'
 
 import * as Im from 'immer'
 import { z } from 'zod'
@@ -16,7 +16,7 @@ w.SLLClient = SLLClient
 w.LQClient = LQClient
 w.SquadClient = SquadServerClient
 w.ChatStore = SquadServerClient.ChatStore
-w.TsClient = TeamswitchesClient
+w.TsClient = TSWClient
 w.Im = Im
 w.z = z
 w.RPC = RPC

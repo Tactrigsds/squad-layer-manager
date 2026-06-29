@@ -447,6 +447,12 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 						break
 					}
 
+					state.savedSwitches = new Map(state.savedSwitches)
+					MapUtils.bulkDelete(state.savedSwitches, ...op.switches.keys())
+
+					state.switches = new Map(state.switches)
+					MapUtils.bulkDelete(state.switches, ...op.switches.keys())
+
 					state.pendingSwitches = op.switches
 					state.switching = true
 					onSideEffect?.({ code: 'execute-teamswitches', opId: op.opId, switches: op.switches })

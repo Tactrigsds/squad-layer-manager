@@ -1,7 +1,7 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
-import { IsolatedSubject } from '@/lib/isolated-subject'
 import { createId } from '@/lib/id'
+import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as MapUtils from '@/lib/map'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import * as CMD from '@/models/command.models'
@@ -131,7 +131,7 @@ export const orpcRouter = {
 			})
 		}),
 
-	watchUserInvalidation: orpcBase.handler(async function*({ signal }) {
+	watchUserInvalidation: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ signal }) {
 		yield* toAsyncGenerator(invalidateUsers$.pipe(withAbortSignal(signal!)))
 	}),
 }

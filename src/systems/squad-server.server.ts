@@ -119,7 +119,7 @@ export const orpcRouter = {
 			return { code: 'ok' as const }
 		}),
 
-	watchLayersStatus: orpcBase.handler(async function*({ context, signal }) {
+	watchLayersStatus: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
 		const obs = selectedServerCtx$(context).pipe(
 			withAbortSignal(signal!),
 			switchMapWithSignal(async function*(ctx, signal) {
@@ -151,7 +151,7 @@ export const orpcRouter = {
 		yield* toAsyncGenerator(obs)
 	}),
 
-	watchServerRolling: orpcBase.handler(async function*({ context, signal }) {
+	watchServerRolling: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
 		const obs = selectedServerCtx$(context).pipe(
 			Rx.switchMap((ctx) => {
 				return ctx.server.serverRolling$
@@ -161,7 +161,7 @@ export const orpcRouter = {
 		yield* toAsyncGenerator(obs)
 	}),
 
-	watchServerInfo: orpcBase.handler(async function*({ context, signal }) {
+	watchServerInfo: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
 		const obs = selectedServerCtx$(context).pipe(
 			Rx.switchMap((ctx) => {
 				return ctx.server.serverInfo.observe(ctx).pipe(distinctDeepEquals())
@@ -212,6 +212,7 @@ export const orpcRouter = {
 	}),
 
 	watchChatEvents: orpcBase
+		.meta({ logLevel: 'trace' })
 		.input(
 			z.object({ lastEventId: z.number().optional(), serverId: z.string() }),
 		)

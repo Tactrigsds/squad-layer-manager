@@ -490,7 +490,7 @@ async function* processPendingEvent(
 		const event = state.syncState.newGameEvent
 		yield {
 			type: 'NEW_GAME',
-			id: event.id,
+			id: Gen.next(state.counters.eventId),
 			time: event.time,
 			matchId: state.currentMatch.historyEntryId,
 			layerId: state.currentMatch.layerId,

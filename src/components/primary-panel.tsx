@@ -81,11 +81,11 @@ export default function PrimaryPanel() {
 				/>
 				<Separator />
 				<div className="grid">
-					<div className={cn('[grid-area:1/1]', tab !== 'queue' && 'invisible')}>
+					<div className={cn('[grid-area:1/1]', tab !== 'queue' && 'invisible -z-20')}>
 						<SlmUpdatesDisabledAlert />
 						<QueuePanelContent />
 					</div>
-					<div className={cn('[grid-area:1/1]', tab !== 'teams' && 'invisible')}>
+					<div className={cn('[grid-area:1/1]', tab !== 'teams' && 'invisible -z-20')}>
 						<TeamsPanel />
 					</div>
 				</div>
