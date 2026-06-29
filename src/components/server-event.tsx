@@ -631,6 +631,8 @@ export function ServerEvent({ event }: { event: CHAT.EventEnriched }) {
 			return <PlayerJoinedSquadEvent event={event} />
 		case 'PLAYER_PROMOTED_TO_LEADER':
 			return <PlayerPromotedToLeaderEvent event={event} />
+		case 'TEAMS_POLLED_UPDATE':
+			return null
 		case 'PLAYER_DIED':
 		case 'PLAYER_WOUNDED':
 			return <PlayerWoundedOrDiedEvent event={event} />

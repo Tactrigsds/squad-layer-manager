@@ -90,9 +90,9 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 		module: OtelModule
 		links?: Otel.Link[]
 		levels?: {
-			event?: Pino.Level
-			error?: Pino.Level
-			valueError?: Pino.Level
+			event?: Pino.Level | ((...args: Parameters<Cb>) => Pino.Level)
+			error?: Pino.Level | ((...args: Parameters<Cb>) => Pino.Level)
+			valueError?: Pino.Level | ((...args: Parameters<Cb>) => Pino.Level)
 		}
 		root?: boolean
 		attrs?:
@@ -227,6 +227,12 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 
 				let log = opts.module?.getLogger() ?? baseLogger
 
+				const resolveLevel = (
+					level: Pino.Level | ((...a: Parameters<Cb>) => Pino.Level) | undefined,
+					fallback: Pino.Level,
+				): Pino.Level =>
+					typeof level === 'function' ? level(...(args as Parameters<Cb>)) : (level ?? fallback)
+
 				const extraText = opts.extraText
 					? `${opts.extraText(...(args as Parameters<Cb>))} `
 					: ''
@@ -257,7 +263,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 								logArgs.unshift(result.error || result.err)
 							}
 							// @ts-expect-error idgaf
-							log?.[opts.levels?.valueError ?? 'warn'](...logArgs)
+							log?.[resolveLevel(opts.levels?.valueError, 'warn')](...logArgs)
 							setSpanStatus(Otel.SpanStatusCode.ERROR, message)
 						}
 					}
@@ -267,8 +273,8 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 						span.setStatus({ code: Otel.SpanStatusCode.OK })
 					}
 					const logLevel = spanStatus.code === Otel.SpanStatusCode.ERROR
-						? (opts.levels?.error ?? 'warn')
-						: (opts.levels?.event ?? 'debug')
+						? resolveLevel(opts.levels?.error, 'warn')
+						: resolveLevel(opts.levels?.event, 'debug')
 					statusString ??= spanStatus.code === Otel.SpanStatusCode.ERROR
 						? (spanStatus?.message ?? 'error')
 						: 'ok'
@@ -492,9 +498,9 @@ export function durableSub<T, O>(
 	opts: {
 		module: OtelModule
 		levels?: {
-			event?: Pino.Level
-			error?: Pino.Level
-			valueError?: Pino.Level
+			event?: Pino.Level | ((arg: T) => Pino.Level)
+			error?: Pino.Level | ((arg: T) => Pino.Level)
+			valueError?: Pino.Level | ((arg: T) => Pino.Level)
 		}
 		numTaskRetries?: number
 		retryTaskOnValueError?: boolean
@@ -525,6 +531,7 @@ export function durableSub<T, O>(
 				links: [initializerLink],
 				root: opts.root ?? true,
 				attrs: opts.attrs,
+				levels: opts.levels,
 			},
 			cb,
 		)

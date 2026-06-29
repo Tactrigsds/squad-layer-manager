@@ -1,4 +1,5 @@
 import type * as CS from '@/models/context-shared'
+import * as Logs from '@/models/logs'
 
 import type * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
@@ -121,8 +122,13 @@ export default class Rcon extends EventEmitter<Events> {
 
 	execute = C.spanOp(
 		'execute',
-		{ module, attrs: (body) => ({ body }), levels: { event: 'debug' }, extraText: (body) => body },
-		async (body: string): Promise<{ code: 'err:rcon'; msg: string } | { code: 'ok'; data: string }> => {
+		{
+			module,
+			attrs: (body) => ({ body }),
+			levels: { event: (body, opts) => opts?.level ?? 'trace' },
+			extraText: (body) => body,
+		},
+		async (body: string, _opts?: { level?: Logs.Level }): Promise<{ code: 'err:rcon'; msg: string } | { code: 'ok'; data: string }> => {
 			if (typeof body !== 'string') {
 				throw new Error('Rcon.execute() body must be a string.')
 			}

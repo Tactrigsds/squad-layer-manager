@@ -173,6 +173,12 @@ export type PlayerPromotedToLeader<P = SM.PlayerId> =
 	& Base
 export const PLAYER_PROMOTED_TO_LEADER_META = meta({ players: [{ assocType: 'player' }], squads: ['$.uniqueId'] })
 
+export type TeamsPolledUpdate = {
+	type: 'TEAMS_POLLED_UPDATE'
+} & Base
+
+export const TEAMS_POLLED_UPDATE_META = meta({})
+
 export type PlayerKicked<P = SM.PlayerId> =
 	& {
 		type: 'PLAYER_KICKED'
@@ -241,6 +247,7 @@ export type SyntheticEvent<P = SM.PlayerId> =
 	// | SquadCreated
 	| PlayerJoinedSquad<P>
 	| PlayerPromotedToLeader<P>
+	| TeamsPolledUpdate
 
 export type Event<P = SM.PlayerId> =
 	| MapSet
@@ -271,6 +278,7 @@ export type Event<P = SM.PlayerId> =
 	| SquadRenamed
 	| PlayerJoinedSquad<P>
 	| PlayerPromotedToLeader<P>
+	| TeamsPolledUpdate
 
 export const EVENT_META = {
 	MAP_SET: MAP_SET_META,
@@ -299,6 +307,7 @@ export const EVENT_META = {
 	PLAYER_WARNED: PLAYER_WARNED_META,
 	PLAYER_DIED: PLAYER_DIED_META,
 	PLAYER_WOUNDED: PLAYER_WOUNDED_META,
+	TEAMS_POLLED_UPDATE: TEAMS_POLLED_UPDATE_META,
 } satisfies Record<Event['type'], EventMeta>
 
 // TODO Zod?

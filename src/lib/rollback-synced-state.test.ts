@@ -183,11 +183,6 @@ describe('Server.applyOps', () => {
 		expect(session.ops).toEqual([op('a', 1), op('b', 2)])
 	})
 
-	it('throws on empty ops', () => {
-		let session = Server.initSession<Op, State>([])
-		expect(() => Server.applyOps(session, [], reducer)).toThrow('No ops to apply')
-	})
-
 	it('throws on duplicate opId within the batch', () => {
 		let session = Server.initSession<Op, State>([])
 		expect(() => Server.applyOps(session, [op('a', 1), op('a', 2)], reducer)).toThrow()

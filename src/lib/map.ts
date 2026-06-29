@@ -137,6 +137,15 @@ export function hasWith<M extends Map<any, any>>(
 	return false
 }
 
+export function hasAny<K, V>(map: Map<K, V>, ...keys: K[]): boolean {
+	for (const key of keys) {
+		if (map.has(key)) {
+			return true
+		}
+	}
+	return false
+}
+
 export function defaultInsGet<K, V>(
 	map: Map<K, V>,
 	key: K,

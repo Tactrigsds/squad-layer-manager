@@ -84,6 +84,19 @@ export namespace Select {
 		}
 	}
 
+	export function hasSwitches(store: Store) {
+		return localState(store).switches.size > 0
+	}
+
+	export function canExecuteSavedTeamswitches(store: Store) {
+		return Teamswitches.canExecuteSavedTeamswitches(localState(store))
+	}
+
+	export function hasPendingEdits(store: Store) {
+		const state = localState(store)
+		return state.switches !== state.savedSwitches
+	}
+
 	export function switchCounts(store: Store) {
 		const state = localState(store)
 		const counts: Record<MH.NormedTeamId, number> = { A: 0, B: 0 }
@@ -91,6 +104,18 @@ export namespace Select {
 			counts[switch_.toTeam]++
 		}
 		return counts
+	}
+
+	export function canSwitchNow(playerIds: SM.PlayerId[]) {
+		return (store: Store) => Teamswitches.allCanSwitchNow(localState(store), playerIds)
+	}
+
+	export function canQueue(playerIds: SM.PlayerId[]) {
+		return (store: Store) => Teamswitches.allCanQueue(localState(store), playerIds)
+	}
+
+	export function isSwitchPending(playerId: SM.PlayerId) {
+		return (store: Store) => Teamswitches.isSwitchPending(localState(store), playerId)
 	}
 
 	export function switchesToTeamEnriched(
@@ -141,11 +166,32 @@ export namespace Actions {
 	}
 
 	export function switchNow(playerIds: SM.PlayerId[]) {
-		const input = playerIds.flatMap(playerId => {
+		const source = { discordId: UsersClient.loggedInUserId }
+		const switches: Teamswitches.TeamswitchCollection = new Map()
+		for (const playerId of playerIds) {
 			const toTeam = getPlayerOppositeTeam(playerId)
-			return toTeam ? [{ playerId, toTeam }] : []
-		})
-		if (input.length > 0) void RPC.orpc.teamswitches.switchNow.call(input)
+			if (!toTeam) continue
+			switches.set(playerId, { toTeam, source })
+		}
+		if (switches.size > 0) Store.getState().dispatch({ code: 'switch-now', switches, source })
+	}
+
+	export function clearTeamSwitches(teamId: MH.NormedTeamId) {
+		const source = { discordId: UsersClient.loggedInUserId }
+		const state = Select.localState(Store.getState())
+		for (const [playerId, switch_] of state.switches.entries()) {
+			if (switch_.toTeam !== teamId) continue
+			Store.getState().dispatch({ code: 'remove-player-teamswitches', playerId, source, saved: false })
+		}
+	}
+
+	export function executeTeamswitches() {
+		const source = { discordId: UsersClient.loggedInUserId }
+		Store.getState().dispatch({ code: 'execute-teamswitches', source })
+	}
+
+	export function save() {
+		Store.getState().dispatch({ code: 'save' })
 	}
 }
 

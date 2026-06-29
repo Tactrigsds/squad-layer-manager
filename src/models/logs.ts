@@ -31,6 +31,8 @@ export const LEVELS = {
 	60: 'FATAL',
 } as const
 
+export type Level = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal'
+
 export const MAPPED_ATTRS = [
 	ATTRS.Module.NAME,
 	ATTRS.SquadServer.ID,

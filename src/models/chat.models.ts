@@ -73,6 +73,7 @@ export type EventEnriched =
 	| (SE.PlayerChangedTeam<SM.Player> & { prevTeamId: SM.TeamId | null })
 	| (SE.PlayerJoinedSquad<SM.Player> & { squad: SM.UniqueSquad })
 	| (SE.PlayerPromotedToLeader<SM.Player> & { squad: SM.UniqueSquad })
+	| SE.TeamsPolledUpdate
 	| (SE.SquadDisbanded & { squad: SM.UniqueSquad })
 	| (SE.PlayerLeftSquad<SM.Player> & { wasLeader: boolean; squad: SM.UniqueSquad })
 	| (SE.SquadCreated & { creator: SM.Player; squad: SM.UniqueSquad })
@@ -201,6 +202,7 @@ function interpolateEvent(
 		case 'RCON_CONNECTED':
 		case 'RCON_DISCONNECTED':
 		case 'ROUND_ENDED':
+		case 'TEAMS_POLLED_UPDATE':
 			return { ...event }
 
 		case 'PLAYER_CONNECTED': {

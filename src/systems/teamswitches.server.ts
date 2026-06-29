@@ -1,5 +1,6 @@
 import * as Arr from '@/lib/array'
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { withThrown, withThrownAsync } from '@/lib/error'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as MapUtils from '@/lib/map'
 import * as RbSyncState from '@/lib/rollback-synced-state'
@@ -17,12 +18,12 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
-import { Mutex, MutexInterface } from 'async-mutex'
-import { z } from 'zod'
-
+import { E_TIMEOUT, Mutex, MutexInterface, withTimeout } from 'async-mutex'
 import * as Rx from 'rxjs'
 
 export const module = initModule('teamswitches')
+
+const TEAMSWITCH_EXECUTION_TIMEOUT = 30_000
 
 let log!: CS.Logger
 
@@ -49,10 +50,39 @@ export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
 	// sync with team updates
 	ctx.cleanup.push(
 		ctx.server.event$.pipe(
-			Rx.filter(([ctx, e]) => Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type)),
+			Rx.filter(([ctx, e]) => Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type) || e.type === 'TEAMS_POLLED_UPDATE'),
 			C.durableSub('onTeamsModified', { module }, async ([ctx, e]) => {
 				const match = (await MatchHistory.getMatchById(ctx, e.matchId))!
-				if (!Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type)) return
+				if (!Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type) && e.type !== 'TEAMS_POLLED_UPDATE') return
+				function tryEndSwitching() {
+					const players = SquadServer.getCurrTeams(ctx)?.players
+					const state = getState(ctx)
+					if (!players || !state.switching) return
+
+					const missingPlayers = new Set<SM.PlayerId>()
+					for (const [playerId, { toTeam }] of state.pendingSwitches.entries()) {
+						const player = SM.PlayerIds.find(players, p => p.ids, playerId)
+						if (!player || player.teamId === null) continue
+						const playerTeam = MH.getNormedTeamId(player.teamId, match.ordinal)
+						if (playerTeam !== toTeam) {
+							missingPlayers.add(playerId)
+						}
+					}
+
+					if (missingPlayers.size > 0) {
+						ops.push({
+							opId: Teamswitches.createOpId(),
+							code: 'teamswitch-execution-completed',
+						})
+					} else {
+						ops.push({
+							opId: Teamswitches.createOpId(),
+							code: 'teamswitch-execution-failed',
+							reason: 'not-all-players-switched',
+							playerIds: Array.from(missingPlayers),
+						})
+					}
+				}
 				const ops: Teamswitches.Op[] = []
 				if (e.type === 'PLAYER_CONNECTED') {
 					if (e.player.teamId === null) return
@@ -74,6 +104,7 @@ export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
 						code: 'reset-players',
 						players,
 					})
+					tryEndSwitching()
 				} else if (e.type === 'PLAYER_CHANGED_TEAM') {
 					if (e.newTeamId == null) return
 					const team = MH.getNormedTeamId(e.newTeamId, match.ordinal)
@@ -90,11 +121,15 @@ export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
 						code: 'player-left',
 						playerId: e.player,
 					})
+				} else if (e.type === 'TEAMS_POLLED_UPDATE') {
+					tryEndSwitching()
 				} else {
 					assertNever(e.type)
 				}
 
-				await dispatchOp(ctx, ...ops)
+				if (ops.length > 0) {
+					await dispatchOp(ctx, ...ops)
+				}
 			}),
 		).subscribe(),
 	)
@@ -111,6 +146,10 @@ export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
 	)
 
 	return context
+}
+
+function getState(ctx: C.Teamswitch) {
+	return ctx.teamswitches.session.state
 }
 
 const orpcBase = getOrpcBase(module)
@@ -135,34 +174,11 @@ export const orpcRouter = {
 		const ctx = SquadServer.resolveWsClientSliceCtx(context)
 		await dispatchOp(ctx, input)
 	}),
-
-	switchNow: orpcBase.meta({ type: 'mutation' }).input(z.array(z.object({ playerId: SM.PlayerIdSchema, toTeam: MH.NormedTeamIdSchema })))
-		.handler(async ({ context, input }) => {
-			const ctx = SquadServer.resolveWsClientSliceCtx(context)
-			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-			const teamsRes = await ctx.server.teams.get(ctx, { ttl: 300 })
-			if (teamsRes.code !== 'ok') return teamsRes
-
-			const toSwitch: SM.PlayerId[] = []
-			for (const { playerId, toTeam } of input) {
-				const player = SM.PlayerIds.find(teamsRes.players, p => p.ids, playerId)
-				if (!player || player.teamId === null) continue
-				const normedTeamId = MH.getNormedTeamId(player.teamId, currentMatch.ordinal)
-				if (normedTeamId === toTeam) continue
-				toSwitch.push(playerId)
-			}
-
-			if (toSwitch.length > 0) {
-				void SquadRcon.switchPlayers(ctx, toSwitch)
-				void SquadRcon.warnAll(ctx, toSwitch, WARNS.teamswitches.notifySwitchNow)
-			}
-			return { code: 'ok' as const }
-		}),
 }
 
 const dispatchOp = C.spanOp(
 	'dispatchOp',
-	{ module, mutexes: (ctx) => ctx.teamswitches.dispatchMtx },
+	{ module, mutexes: (ctx) => ctx.teamswitches.dispatchMtx, extraText: (ctx, ...ops) => ops.map(o => o.code).join(',') },
 	async (ctx: C.Teamswitch & C.ServerSlice & C.Db, ...ops: Teamswitches.Op[]) => {
 		const sideEffects: Teamswitches.SideEffect[] = []
 		ctx.teamswitches.session = RbSyncState.Server.applyOps(ctx.teamswitches.session, ops, Teamswitches.reducer, {
@@ -179,14 +195,16 @@ const dispatchOp = C.spanOp(
 
 		const nextOps: Teamswitches.Op[] = []
 		for (const se of sideEffects) {
+			log.debug(se, 'side effect: %s', se.code)
 			try {
 				switch (se.code) {
 					case 'execute-teamswitches': {
-						const res = await (async () => {
+						const [res, thrownError] = await withThrownAsync(async () => {
 							// TODO get first valid team with timeout
 							const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 							const teamsRes = await ctx.server.teams.get(ctx, { ttl: 300 })
 							if (teamsRes.code === 'err:rcon') return teamsRes
+							log.info('players: %o', teamsRes.players)
 							const toSwitch: SM.PlayerId[] = []
 							for (const [playerId, _switch] of se.switches.entries()) {
 								const player = SM.PlayerIds.find(teamsRes.players, p => p.ids, playerId)
@@ -196,19 +214,30 @@ const dispatchOp = C.spanOp(
 								if (playerNormedTeamId === _switch.toTeam) continue
 								toSwitch.push(playerId)
 							}
-							void SquadRcon.switchPlayers(ctx, toSwitch)
+							const switched$ = SquadRcon.switchPlayers(ctx, toSwitch)
 							void SquadRcon.warnAll(ctx, toSwitch, WARNS.teamswitches.notifyPlayerTeamswitchExecuted)
-							nextOps.push({ code: 'teamswitches-executed', opId: Teamswitches.createOpId() })
-
+							await switched$
 							return { code: 'ok' as const }
-						})()
+						})
 
-						if (res.code !== 'ok') {
-							log.error('error while executing teamswitches: %s', res.code)
-							C.recordGenericError(res)
-							C.setSpanStatus('error')
-							const errors = MapUtils.defaultInsGet(opErrors, se.opId, [])
-							errors.push(res)
+						let message: string | undefined
+						let finalError: unknown
+						if (thrownError) {
+							message = (thrownError as any)?.message ?? String(thrownError)
+							finalError = thrownError
+						} else if (res && res.code !== 'ok') {
+							message = res.msg ?? res.code
+							finalError = res
+						}
+
+						// if successful, no need to do anything here. we will wait for the next polling cycle and fire the event in `onTeamsModified`
+
+						if (finalError) {
+							log.error('error while processing teamswitch execution side effect: %s', message)
+							C.recordGenericError(finalError, true)
+
+							nextOps.push({ code: 'teamswitch-execution-failed', reason: 'error', message: message!, opId: Teamswitches.createOpId() })
+							addError(se.opId, finalError)
 						}
 
 						break
@@ -249,9 +278,8 @@ const dispatchOp = C.spanOp(
 				}
 			} catch (_e) {
 				const e = _e as any
-				log.error('error processing side effects: %s', e?.message ?? e?.msg ?? e)
-				C.recordGenericError(e)
-				C.setSpanStatus('error')
+				log.error('error processing side effects: %o', e?.message ?? e?.msg ?? e?.code ?? e)
+				C.recordGenericError(e, true)
 			}
 		}
 

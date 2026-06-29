@@ -1,4 +1,5 @@
 import { createId } from '@/lib/id'
+import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
 import type * as RbSyncState from '@/lib/rollback-synced-state'
 import { assertNever } from '@/lib/type-guards'
@@ -20,10 +21,76 @@ export type Teamswitch = z.infer<typeof TeamswitchSchema>
 export const TeamswitchCollectionSchema = z.map(SM.PlayerIdSchema, TeamswitchSchema)
 export type TeamswitchCollection = z.infer<typeof TeamswitchCollectionSchema>
 
+function getTeamswitchChanges(next: TeamswitchCollection, prev: TeamswitchCollection) {
+	const allPlayerIds = new Set([...next.keys(), ...prev.keys()])
+	const added: SM.PlayerId[] = []
+	const removed: SM.PlayerId[] = []
+	for (const playerId of allPlayerIds) {
+		const savedSwitch = prev.get(playerId)
+		const editedSwitch = next.get(playerId)
+		if (!savedSwitch && editedSwitch) {
+			added.push(playerId)
+		} else if (savedSwitch && !editedSwitch) {
+			removed.push(playerId)
+		}
+	}
+
+	return { added, removed }
+}
+
+export type PlayerCollection = Map<SM.PlayerId, MH.NormedTeamId>
+function getPlayerChanges(next: PlayerCollection, prev: PlayerCollection) {
+	const added: SM.PlayerId[] = []
+	const removed: SM.PlayerId[] = []
+	const changed: SM.PlayerId[] = []
+	const allPlayerIds = new Set([...next.keys(), ...prev.keys()])
+	for (const playerId of allPlayerIds) {
+		const nextPlayer = next.get(playerId)
+		const prevPlayer = prev.get(playerId)
+		if (!prevPlayer && nextPlayer) {
+			added.push(playerId)
+		} else if (prevPlayer && !nextPlayer) {
+			removed.push(playerId)
+		} else if (prevPlayer && nextPlayer && prevPlayer !== nextPlayer) {
+			changed.push(playerId)
+		}
+	}
+	return { added, removed, changed }
+}
+
 export type EnrichedTeamswitch = Teamswitch & { player: SM.Player }
 
 export function initTeamswitchCollection(): TeamswitchCollection {
 	return new Map()
+}
+
+export function canSwitchNow(state: State, playerId: SM.PlayerId): boolean {
+	return !state.switching && !state.pendingSwitches.has(playerId)
+}
+
+export function canQueue(state: State, playerId: SM.PlayerId): boolean {
+	return !state.switching && !state.pendingSwitches.has(playerId) && !state.switches.has(playerId)
+}
+
+export function allCanSwitchNow(state: State, playerIds: SM.PlayerId[]): boolean {
+	return playerIds.every(id => canSwitchNow(state, id))
+}
+
+export function allCanQueue(state: State, playerIds: SM.PlayerId[]): boolean {
+	return playerIds.every(id => canQueue(state, id))
+}
+
+export function canExecuteSavedTeamswitches(state: State): boolean {
+	return (
+		state.switches === state.savedSwitches
+		&& state.savedSwitches.size > 0
+		&& !state.switching
+		&& state.pendingSwitches.size === 0
+	)
+}
+
+export function isSwitchPending(state: State, playerId: SM.PlayerId): boolean {
+	return state.pendingSwitches.has(playerId)
 }
 
 export type Message = {
@@ -33,8 +100,9 @@ export type Message = {
 
 export type State = {
 	switches: TeamswitchCollection
-	players: Map<SM.PlayerId, MH.NormedTeamId>
+	players: PlayerCollection
 	savedSwitches: TeamswitchCollection
+	pendingSwitches: TeamswitchCollection
 	switching: boolean
 }
 
@@ -42,6 +110,7 @@ export function initState(): State {
 	return {
 		switches: initTeamswitchCollection(),
 		savedSwitches: initTeamswitchCollection(),
+		pendingSwitches: initTeamswitchCollection(),
 		players: new Map(),
 		switching: false,
 	}
@@ -91,9 +160,26 @@ export const OpSchema = z.discriminatedUnion('code', [
 	z.object({ opId: z.string(), code: z.literal('clear-teamswitches'), save: z.boolean() }),
 
 	z.object({ opId: z.string(), code: z.literal('save') }),
-
 	z.object({ opId: z.string(), code: z.literal('execute-teamswitches'), source: USR.GuiOrChatUserIdSchema.optional() }),
-	z.object({ opId: z.string(), code: z.literal('teamswitches-executed') }),
+
+	z.object({
+		opId: z.string(),
+		code: z.literal('switch-now'),
+		switches: TeamswitchCollectionSchema,
+		source: USR.GuiOrChatUserIdSchema,
+	}),
+
+	z.object({ opId: z.string(), code: z.literal('teamswitch-execution-completed') }),
+
+	z.discriminatedUnion('reason', [
+		z.object({ opId: z.string(), code: z.literal('teamswitch-execution-failed'), reason: z.literal('error'), message: z.string() }),
+		z.object({
+			opId: z.string(),
+			code: z.literal('teamswitch-execution-failed'),
+			reason: z.literal('not-all-players-switched'),
+			playerIds: z.array(z.string()),
+		}),
+	]),
 ])
 
 export type Op = z.infer<typeof OpSchema>
@@ -102,9 +188,9 @@ export type NewClientOp = DistributiveOmit<Op, 'opId'>
 export function createOpId() {
 	return createId(6)
 }
+type O = ReturnType<Map<string, any>['keys']>
 
 type SwitchingMutationOp =
-	| 'execute-teamswitches'
 	| 'add-player-teamswitch'
 	| 'remove-player-teamswitches'
 	| 'revert-to-saved'
@@ -115,12 +201,26 @@ type SwitchingMutationOp =
 
 namespace OpErrors {
 	export type CurrentlySwitching = { code: 'err:currently-switching' }
+	export type CurrentlyNotSwitching = { code: 'err:currently-not-switching' }
+	export type PendingSwitch = { code: 'err:pending-switch'; playerId: SM.PlayerId }
+	export type SwitchesNotSaved = { code: 'err:switches-not-saved' }
+
+	export type TeamswitchExecutionFailed = {
+		code: 'err:teamswitch-execution-failed'
+		reason: 'timeout' | 'error' | 'not-all-players-switched'
+	}
+
 	export type Unexpected = { code: 'err:unexpected'; error: unknown }
 }
 
 export type OpError<OpCode extends Op['code'] = Op['code']> =
 	| OpErrors.Unexpected
-	| (OpCode extends SwitchingMutationOp ? OpErrors.CurrentlySwitching : never)
+	| (OpCode extends SwitchingMutationOp ? (OpErrors.CurrentlySwitching | OpErrors.PendingSwitch)
+		: OpCode extends 'teamswitch-execution-failed' ? (OpErrors.TeamswitchExecutionFailed)
+		: OpCode extends 'teamswitch-execution-completed' ? (OpErrors.CurrentlyNotSwitching)
+		: OpCode extends 'execute-teamswitches' ? (OpErrors.CurrentlySwitching | OpErrors.SwitchesNotSaved)
+		: OpCode extends 'switch-now' ? OpErrors.CurrentlySwitching
+		: never)
 
 export type SideEffect =
 	| {
@@ -150,13 +250,13 @@ export type SideEffect =
 export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, ops, prevOps, onSideEffect) => {
 	let state = { ...oldState }
 	for (const op of ops) {
-		const emitError = (error: OpError) => onSideEffect?.({ code: 'error', opId: op.opId, error })
+		const emitOpError = <T extends Op>(op: T, error: OpError<T['code']>) => onSideEffect?.({ code: 'error', opId: op.opId, error })
 		try {
 			// switch mutations
 			switch (op.code) {
 				case 'add-player-teamswitch': {
 					if (state.switching) {
-						emitError({ code: 'err:currently-switching' })
+						emitOpError(op, { code: 'err:currently-switching' })
 						break
 					}
 					const switchEntry = { toTeam: op.toTeam, source: op.source }
@@ -173,9 +273,15 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 
 				case 'remove-player-teamswitches': {
 					if (state.switching) {
-						emitError({ code: 'err:currently-switching' })
+						emitOpError(op, { code: 'err:currently-switching' })
 						break
 					}
+
+					if (state.pendingSwitches.has(op.playerId)) {
+						emitOpError(op, { code: 'err:pending-switch', playerId: op.playerId })
+						break
+					}
+
 					if (op.saved) {
 						state.savedSwitches = new Map(state.savedSwitches)
 						if (state.savedSwitches.has(op.playerId)) {
@@ -191,7 +297,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 
 				case 'revert-to-saved': {
 					if (state.switching) {
-						emitError({ code: 'err:currently-switching' })
+						emitOpError(op, { code: 'err:currently-switching' })
 						break
 					}
 					state.switches = state.savedSwitches
@@ -200,7 +306,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 
 				case 'clear-teamswitches': {
 					if (state.switching) {
-						emitError({ code: 'err:currently-switching' })
+						emitOpError(op, { code: 'err:currently-switching' })
 						break
 					}
 					if (op.save) {
@@ -215,17 +321,27 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 
 				case 'execute-teamswitches': {
 					if (state.switching) {
-						emitError({ code: 'err:currently-switching' })
+						emitOpError(op, { code: 'err:currently-switching' })
+						break
+					}
+					if (op.source && !Obj.deepEqual(state.switches, state.savedSwitches)) {
+						emitOpError(op, { code: 'err:switches-not-saved' })
 						break
 					}
 					state.switching = true
 					onSideEffect?.({ code: 'execute-teamswitches', opId: op.opId, switches: state.savedSwitches })
+					state.pendingSwitches = state.savedSwitches
+					state.savedSwitches = state.switches = initTeamswitchCollection()
 					break
 				}
 
-				case 'teamswitches-executed': {
-					if (!state.switching) break
+				case 'teamswitch-execution-completed': {
+					if (!state.switching) {
+						emitOpError(op, { code: 'err:currently-not-switching' })
+						break
+					}
 					state.switching = false
+					state.pendingSwitches = initTeamswitchCollection()
 					break
 				}
 
@@ -239,8 +355,8 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 					state.players = new Map(state.players)
 					state.players.set(op.playerId, op.toTeam)
 					const _switch = state.switches.get(op.playerId)
+
 					if (state.switching) {
-						emitError({ code: 'err:currently-switching' })
 						break
 					}
 					if (_switch && _switch.toTeam === op.toTeam) {
@@ -261,7 +377,6 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 					state.players = new Map(state.players)
 					state.players.delete(op.playerId)
 					if (state.switching) {
-						emitError({ code: 'err:currently-switching' })
 						break
 					}
 
@@ -274,39 +389,69 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 				}
 
 				case 'reset-players': {
+					let newSavedSwitches: State['savedSwitches'] | undefined
+					let newSwitches: State['switches'] | undefined
+					const allPlayerIds = new Set([...op.players.keys(), ...state.players.keys()])
+					for (const playerId of allPlayerIds) {
+						const nextPlayerTeam = op.players.get(playerId)
+						const currentPlayerTeam = state.players.get(playerId)
+						if (nextPlayerTeam && nextPlayerTeam === currentPlayerTeam) continue
+
+						if (state.switching) continue
+						const savedSwitch = state.savedSwitches.get(playerId)
+						if (savedSwitch) {
+							newSavedSwitches ??= new Map(state.savedSwitches)
+							newSavedSwitches.delete(playerId)
+						}
+						let editedSwitch = state.switches.get(playerId)
+						if (editedSwitch) {
+							newSwitches ??= new Map(state.switches)
+							newSwitches.delete(playerId)
+						}
+					}
+					if (newSavedSwitches !== undefined) state.savedSwitches = newSavedSwitches
+					if (newSwitches !== undefined) state.switches = newSwitches
 					state.players = op.players
 					break
 				}
 
 				case 'save': {
 					if (state.switching) {
-						emitError({ code: 'err:currently-switching' })
+						emitOpError(op, { code: 'err:currently-switching' })
 						break
 					}
-					const allPlayerIds = new Set([...state.savedSwitches.keys(), ...state.switches.keys()])
-					const added: SM.PlayerId[] = []
-					const removed: SM.PlayerId[] = []
-					for (const playerId of allPlayerIds) {
-						const savedSwitch = state.savedSwitches.get(playerId)
-						const editedSwitch = state.switches.get(playerId)
-						if (!savedSwitch && editedSwitch) {
-							added.push(playerId)
-						} else if (savedSwitch && !editedSwitch) {
-							removed.push(playerId)
-						}
-					}
+					const { added, removed } = getTeamswitchChanges(state.switches, state.savedSwitches)
 					if (added.length > 0) onSideEffect?.({ code: 'notify-upcoming-teamswitches', players: added })
 					if (removed.length > 0) onSideEffect?.({ code: 'notify-teamswitches-cancelled', players: removed })
 					state.savedSwitches = state.switches
 					break
 				}
 
+				case 'teamswitch-execution-failed': {
+					emitOpError(op, {
+						code: 'err:teamswitch-execution-failed',
+						reason: op.reason,
+					})
+					state.pendingSwitches = initTeamswitchCollection()
+					state.switching = false
+					break
+				}
+
+				case 'switch-now': {
+					if (state.switching) {
+						emitOpError(op, { code: 'err:currently-switching' })
+						break
+					}
+					onSideEffect?.({ code: 'execute-teamswitches', opId: op.opId, switches: op.switches })
+
+					break
+				}
 				default: {
 					assertNever(op)
 				}
 			}
 		} catch (e) {
-			emitError({ code: 'err:unexpected', error: e })
+			emitOpError(op, { code: 'err:unexpected', error: e })
 		}
 	}
 	if (state.savedSwitches !== oldState.savedSwitches) {

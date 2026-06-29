@@ -20,6 +20,7 @@ import * as Sessions from '@/systems/sessions.server'
 import * as SquadLogsReceiver from '@/systems/squad-logs-receiver.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
+import * as Teamswitches from '@/systems/teamswitches.server'
 import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
@@ -54,6 +55,7 @@ await C.spanOp('main', { module }, async () => {
 	UserPresence.setup()
 	MatchHistory.setup()
 	SquadRcon.setup()
+	Teamswitches.setup()
 	Users.setup()
 	Vote.setup()
 	WsSession.setup()

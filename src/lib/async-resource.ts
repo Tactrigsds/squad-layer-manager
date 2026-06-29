@@ -6,6 +6,7 @@ import * as Rx from 'rxjs'
 import { traceTag } from './async'
 import { withThrownAsync } from './error'
 import { createId } from './id'
+import { IsolatedSubject } from './isolated-subject'
 import { getChildModule, type OtelModule } from './otel'
 
 type AsyncResourceOpts<T> = {
@@ -43,7 +44,7 @@ export class AsyncResource<T, Ctx extends CS.Ctx = CS.Ctx> {
 
 	opts: AsyncResourceOpts<T>
 	state: AsyncValueState<T> | null = null
-	private valueSubject = new Rx.Subject<{ invokerSpanId: string | null; value: T }>()
+	private valueSubject = new IsolatedSubject<{ invokerSpanId: string | null; value: T }>()
 	private setupRefetches: (ctx: Ctx) => void
 	private log?: CS.Logger
 
@@ -68,7 +69,7 @@ export class AsyncResource<T, Ctx extends CS.Ctx = CS.Ctx> {
 				const ctx = C.storeLinkToActiveSpan(_ctx, 'event.setup')
 				void (async () => {
 					while (refetching) {
-						const shouldBreak = await C.spanOp('refetch', { module, root: true }, async (ctx: Ctx) => {
+						const shouldBreak = await C.spanOp('refetch', { module, root: true, levels: { event: 'trace' } }, async (ctx: Ctx) => {
 							const activettl = Math.min(...this.observingTTLs.map(([, ttl]) => ttl))
 							await sleep(activettl)
 							if (!refetching) return true
@@ -139,7 +140,7 @@ export class AsyncResource<T, Ctx extends CS.Ctx = CS.Ctx> {
 		if (!this.state || (this.state.resolveTime !== null && (Date.now() - this.state.resolveTime > opts.ttl))) {
 			return await this.fetchValue(AsyncResource.includeInvocationCtx(ctx, { ttl: opts.ttl }), opts)
 		} else {
-			return await this.state.value
+			return await this.state!.value
 		}
 	}
 

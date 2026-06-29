@@ -22,6 +22,8 @@ Configuration is done via two files: `.env` and `config.json`.
 }
 ```
 
+if using the docker compose for dev, the otel container will fill up your disk space . // TODO this should be fixed
+
 The application must be fully restarted to before changes to the configuration
 take effect.
 

@@ -523,7 +523,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 		try {
 			CHAT.handleEvent(ctx.server.chatState, event)
 		} catch (error) {
-			log.error('Error handling event: %s %d', event.type, event.id, error)
+			log.error(error, 'Error handling event: %s %d', event.type, event.id)
 		}
 		log.info(
 			'emitted event: %s %s',
@@ -673,7 +673,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 		.pipe(
 			C.durableSub(
 				'onTeamsPolled',
-				{ module, numTaskRetries: 0 },
+				{ module, numTaskRetries: 0, levels: { event: 'trace' } },
 				async (teamsRes) => {
 					if (teamsRes.code !== 'ok') return teamsRes
 					const time = Date.now()

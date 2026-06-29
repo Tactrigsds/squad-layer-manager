@@ -31,42 +31,51 @@ export default function PlayerContextMenuOptions({ playerId }: { playerId: SM.Pl
 		s => TeamsSwitchesClient.Select.localState(s).switches.get(playerId) ?? null,
 	)
 
+	const canSwitchNow = ZusUtils.useStore(TeamsSwitchesClient.Store, TeamsSwitchesClient.Select.canSwitchNow([playerId]))
+	const canQueue = ZusUtils.useStore(TeamsSwitchesClient.Store, TeamsSwitchesClient.Select.canQueue([playerId]))
+
 	async function switchNow() {
 		if (!otherTeam) return
 		const initialTeam = TeamsSwitchesClient.Select.localState(TeamsSwitchesClient.Store.getState()).players.get(playerId)
 		const unsubscribe = TeamsSwitchesClient.Store.subscribe(state => {
 			if (TeamsSwitchesClient.Select.localState(state).players.get(playerId) !== initialTeam) closeDialog()
 		})
-		const result = await openDialog({
-			title: 'Switch Player Now',
-			description: `Move this player to Team ${otherTeam} immediately?`,
-			buttons: [{ id: 'confirm', label: 'Switch Now' }],
-		})
-		unsubscribe()
-		if (result === 'dismissed') {
-			toast({ title: 'Switch cancelled', description: 'Player changed teams', variant: 'destructive' })
-			return
+		try {
+			const result = await openDialog({
+				title: 'Switch Player Now',
+				description: `Move this player to Team ${otherTeam} immediately?`,
+				buttons: [{ id: 'confirm', label: 'Switch Now' }],
+			})
+			if (result === 'dismissed') {
+				toast({ title: 'Switch cancelled', description: 'Player changed teams', variant: 'destructive' })
+				return
+			}
+			if (result !== 'confirm') return
+			TeamsSwitchesClient.Actions.switchNow([playerId])
+		} finally {
+			unsubscribe()
 		}
-		if (result !== 'confirm') return
-		TeamsSwitchesClient.Actions.switchNow([playerId])
 	}
 
 	return (
 		<>
-			<ContextMenuItem onClick={switchNow} disabled={!otherTeam}>
+			<ContextMenuItem onClick={switchNow} disabled={!otherTeam || !canSwitchNow}>
 				Switch Now
 			</ContextMenuItem>
 			<ContextMenuSeparator />
 			<ContextMenuItem
 				onClick={() => TeamsSwitchesClient.Actions.switchNext([playerId])}
-				disabled={!otherTeam || existingSwitch?.toTeam === otherTeam}
+				disabled={!otherTeam || !canQueue}
 			>
 				Switch Next
 			</ContextMenuItem>
 			{existingSwitch && (
 				<>
 					<ContextMenuSeparator />
-					<ContextMenuItem onClick={() => TeamsSwitchesClient.Actions.removeSwitch([playerId])}>
+					<ContextMenuItem
+						onClick={() => TeamsSwitchesClient.Actions.removeSwitch([playerId])}
+						disabled={!canSwitchNow}
+					>
 						Remove from Switch Queue
 					</ContextMenuItem>
 				</>

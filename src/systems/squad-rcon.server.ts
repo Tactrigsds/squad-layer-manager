@@ -305,7 +305,7 @@ export async function broadcast(ctx: C.Rcon, message: string) {
 		}
 	}
 	for (const message of messages) {
-		await ctx.rcon.execute(`AdminBroadcast ${message}`)
+		await ctx.rcon.execute(`AdminBroadcast ${message}`, { level: 'debug' })
 	}
 }
 
@@ -358,11 +358,11 @@ export async function warn(ctx: C.SquadRcon & C.AdminList, ids: SM.PlayerIds.Eos
 		msgArr[0] = CONFIG.warnPrefix + msgArr[0]
 	}
 
-	log.info(`Warning player: %s: %s`, ids, msgArr)
+	log.info(`Warning player: %s: %s`, SM.PlayerIds.prettyPrint(ids), msgArr)
 	for (let i = 0; i < repeatCount; i++) {
 		if (i !== 0) await sleep(5000)
 		for (const msg of msgArr) {
-			await ctx.rcon.execute(`AdminWarn "${SM.PlayerIds.normalizeToPlayerId(ids)}" ${msg}`)
+			await ctx.rcon.execute(`AdminWarn "${SM.PlayerIds.normalizeToPlayerId(ids)}" ${msg}`, { level: 'debug' })
 		}
 	}
 }
@@ -453,7 +453,7 @@ export const setNextLayer = C.spanOp(
 	async (ctx: C.SquadRcon, layer: L.LayerId | L.UnvalidatedLayer) => {
 		const cmd = L.getLayerCommand(layer, 'set-next')
 		log.info(`Setting next layer: %s, `, cmd)
-		await ctx.rcon.execute(cmd)
+		await ctx.rcon.execute(cmd, { level: 'info' })
 		ctx.server.layersStatus.invalidate(ctx)
 		const newStatus = await ctx.server.layersStatus.get(ctx)
 		if (newStatus.code !== 'ok') return newStatus
@@ -476,7 +476,7 @@ export const setNextLayer = C.spanOp(
 
 export function setFogOfWar(ctx: C.Rcon, mode: 'on' | 'off') {
 	log.info(`Setting fog of war to %s`, mode)
-	return ctx.rcon.execute(`AdminSetFogOfWar ${mode}`)
+	return ctx.rcon.execute(`AdminSetFogOfWar ${mode}`, { level: 'info' })
 }
 
 export function processChatPacket(decodedPacket: DecodedPacket) {
@@ -484,13 +484,13 @@ export function processChatPacket(decodedPacket: DecodedPacket) {
 
 export function endMatch(ctx: C.Rcon) {
 	log.info(`Ending match`)
-	void ctx.rcon.execute('AdminEndMatch')
+	void ctx.rcon.execute('AdminEndMatch', { level: 'info' })
 }
 
 export async function switchPlayers(ctx: C.Rcon & C.SquadRcon & C.AdminList, players: SM.PlayerIds.EosIdQueryOrPlayerId[]) {
 	for (const ids of players) {
 		const id = SM.PlayerIds.normalizeToPlayerId(ids)
-		void ctx.rcon.execute(`AdminForceTeamChange ${id}`)
+		void ctx.rcon.execute(`AdminForceTeamChange ${id}`, { level: 'info' })
 	}
 	ctx.server.teams.invalidate(ctx)
 }

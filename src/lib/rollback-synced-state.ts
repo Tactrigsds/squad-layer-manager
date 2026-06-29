@@ -55,7 +55,7 @@ export namespace Server {
 		reducer: Reducer<O, S, SE>,
 		opts?: { onSideEffect?: OnSideEffect<SE> },
 	): Session<O, S, SE> {
-		if (ops.length === 0) throw new Error('No ops to apply')
+		if (ops.length === 0) return session
 		const incomingIds = ops.map(op => op.opId)
 		const incomingIdSet = new Set(incomingIds)
 		if (incomingIdSet.size !== incomingIds.length) throw new Error('Duplicate opIds in ops')

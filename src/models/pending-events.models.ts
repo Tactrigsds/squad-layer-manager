@@ -976,6 +976,8 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 		})
 	}
 
+	let emittedEvent = false
+
 	for (const nextPlayer of nextTeams.players) {
 		const playerId = SM.PlayerIds.getPlayerId(nextPlayer.ids)
 		const currPlayer = SM.PlayerIds.find(state.currTeams.players, p => p.ids, nextPlayer.ids)
@@ -985,6 +987,7 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 
 		if (currSquad && (!squad || currSquad.uniqueId !== squad.uniqueId)) {
 			// currPlayer.squadId = null
+			emittedEvent = true
 			yield {
 				id: Gen.next(state.counters.eventId),
 				type: 'PLAYER_LEFT_SQUAD',
@@ -1000,6 +1003,7 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 		const nextSquad = nextSquads.find(s => s.uniqueId === currSquad.uniqueId)
 		if (!nextSquad) {
 			disbandedSquads.add(currSquad.uniqueId)
+			emittedEvent = true
 			yield {
 				id: Gen.next(state.counters.eventId),
 				type: 'SQUAD_DISBANDED',
@@ -1012,6 +1016,7 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 		const details = Obj.selectProps(nextSquad, SM.SQUAD_DETAILS)
 		const prevDetails = Obj.selectProps(currSquad, SM.SQUAD_DETAILS)
 		if (!Obj.deepEqual(details, prevDetails)) {
+			emittedEvent = true
 			yield {
 				id: Gen.next(state.counters.eventId),
 				type: 'SQUAD_DETAILS_CHANGED',
@@ -1027,6 +1032,7 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 		const currPlayer = SM.PlayerIds.find(state.currTeams.players, p => p.ids, nextPlayer.ids)
 
 		if (currPlayer && nextPlayer.teamId !== currPlayer.teamId) {
+			emittedEvent = true
 			yield {
 				id: Gen.next(state.counters.eventId),
 				type: 'PLAYER_CHANGED_TEAM',
@@ -1048,6 +1054,7 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 			const hasChangedSquad = squad.uniqueId !== prevSquad?.uniqueId
 
 			if (hasChangedSquad) {
+				emittedEvent = true
 				yield {
 					id: Gen.next(state.counters.eventId),
 					type: 'PLAYER_JOINED_SQUAD',
@@ -1062,6 +1069,7 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 					log.warn('Attempted to promote player leader but has no squad: %s', playerId)
 					return
 				}
+				emittedEvent = true
 				yield {
 					id: Gen.next(state.counters.eventId),
 					type: 'PLAYER_PROMOTED_TO_LEADER',
@@ -1077,6 +1085,7 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 			const prevDetails = Obj.selectProps(prevPlayer, SM.PLAYER_DETAILS)
 			const newUsername = prevPlayer.ids.username !== player.ids.username ? player.ids.username : undefined
 			if (!Obj.deepEqual(details, prevDetails) || newUsername) {
+				emittedEvent = true
 				yield {
 					id: Gen.next(state.counters.eventId),
 					type: 'PLAYER_DETAILS_CHANGED',
@@ -1086,6 +1095,14 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 					...base,
 				} satisfies SE.PlayerDetailsChanged
 			}
+		}
+	}
+	if (emittedEvent) {
+		yield {
+			id: Gen.next(state.counters.eventId),
+			type: 'TEAMS_POLLED_UPDATE',
+			matchId: state.currentMatch.historyEntryId,
+			time: event.time,
 		}
 	}
 }

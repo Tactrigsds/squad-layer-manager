@@ -226,7 +226,7 @@ export type LQStateUpdate = {
 				| 'next-layer-generated'
 				| 'updates-to-squad-server-toggled'
 				| 'teamswitches-saved'
-				| 'teamswitches-executed'
+				| 'teamswitch-execution-completed'
 		}
 		// TODO bring this up to date with signature of VoteStateUpdate
 		| {
@@ -251,7 +251,7 @@ export function printSource(source: LQStateUpdate['source']) {
 			'next-layer-generated': 'Next layer generated',
 			'updates-to-squad-server-toggled': 'Updates to Squad server toggled',
 			'ended-early': 'Vote ended early',
-			'teamswitches-executed': 'Teamswitches Executed',
+			'teamswitch-execution-completed': 'Teamswitches Executed',
 			'teamswitches-saved': 'Teamswitches Saved',
 		}
 		return eventLabels[source.event]

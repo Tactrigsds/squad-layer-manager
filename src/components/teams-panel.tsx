@@ -11,7 +11,6 @@ import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
-import * as TeamsPanelClient from '@/systems/teams-panel.client'
 import * as TeamsSwitchesClient from '@/systems/teamswitches.client'
 import * as ThemeClient from '@/systems/theme.client'
 import * as UsersClient from '@/systems/users.client'
@@ -35,7 +34,7 @@ import { Input } from './ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
 
 export default function TeamsPanel(props: { className?: string }) {
-	const showSwaps = Zus.useStore(TeamsPanelClient.Store, s => s.showSwaps)
+	const hasSwitches = Zus.useStore(TeamsSwitchesClient.Store, TeamsSwitchesClient.Select.hasSwitches)
 	return (
 		<div className={cn('flex w-full p-1 flex-col', props.className)}>
 			<div className="grid w-full grid-cols-[1fr_auto_1fr] gap-1">
@@ -54,7 +53,7 @@ export default function TeamsPanel(props: { className?: string }) {
 				<div>
 				</div>
 			</div>
-			{showSwaps && <SwapsPanel />}
+			{hasSwitches && <SwapsPanel />}
 			<div className="grid w-full grid-cols-[1fr_1fr] gap-1">
 				<TeamPlayerTable teamId="A" />
 				<TeamPlayerTable teamId="B" />
@@ -84,8 +83,6 @@ function TeamTitle(props: { teamId: MH.NormedTeamId }) {
 }
 
 function ControlPanel() {
-	const [showSwaps, setShowSwaps] = ZusUtils.useStore(TeamsPanelClient.Store, ZusUtils.useShallow(s => [s.showSwaps, s.setShowSwaps]))
-	const switchCounts = ZusUtils.useStore(TeamsSwitchesClient.Store, ZusUtils.useShallow(TeamsSwitchesClient.Select.switchCounts))
 	return (
 		<div className="flex justify-end">
 			Group by
@@ -97,9 +94,6 @@ function ControlPanel() {
 					throw new Error('Function not implemented.')
 				}}
 			/>
-			<Button onClick={() => setShowSwaps(!showSwaps)}>
-				{showSwaps ? 'Hide' : 'Show'} Swaps ({switchCounts.A}/{switchCounts.B})
-			</Button>
 		</div>
 	)
 }
@@ -320,6 +314,12 @@ function TeamBreakdownChart({ data }: { data: TeamBreakdownData }) {
 	return <ReactECharts option={chartOption} notMerge={true} style={{ height: '200px', width: '100px' }} />
 }
 
+function PendingSwitchSpinner({ playerId }: { playerId: SM.PlayerId }) {
+	const isPending = ZusUtils.useStore(TeamsSwitchesClient.Store, TeamsSwitchesClient.Select.isSwitchPending(playerId))
+	if (!isPending) return null
+	return <Icons.LoaderCircle className="h-3 w-3 animate-spin text-muted-foreground" />
+}
+
 type TeamPlayerTableMeta = { matchId: number; squads: SM.UniqueSquad[] }
 
 const playerColumnHelper = createColumnHelper<TeamsPanelModels.EnrichedPlayer>()
@@ -341,6 +341,10 @@ const playerColumns = [
 				aria-label="Select row"
 			/>
 		),
+	}),
+	playerColumnHelper.display({
+		id: 'pending',
+		cell: ({ row }) => <PendingSwitchSpinner playerId={row.id} />,
 	}),
 	playerColumnHelper.accessor(row => row.ids.usernameNoTag ?? row.ids.username ?? '', {
 		id: 'name',
@@ -450,11 +454,19 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId }) {
 }
 
 function SwapsPanel() {
+	const canExecute = Zus.useStore(TeamsSwitchesClient.Store, TeamsSwitchesClient.Select.canExecuteSavedTeamswitches)
+	const hasPendingEdits = Zus.useStore(TeamsSwitchesClient.Store, TeamsSwitchesClient.Select.hasPendingEdits)
 	return (
 		<div className="grid grid-cols-[1fr_auto_1fr] gap-1">
 			<TeamSwapsDisplay teamId="A" />
-			<div>
+			<div className="flex flex-col items-center gap-1">
 				<h3>Swaps</h3>
+				<Button disabled={!hasPendingEdits} onClick={() => TeamsSwitchesClient.Actions.save()}>
+					Save
+				</Button>
+				<Button disabled={!canExecute} onClick={() => TeamsSwitchesClient.Actions.executeTeamswitches()}>
+					Switch Now
+				</Button>
 			</div>
 			<TeamSwapsDisplay teamId="B" />
 		</div>
@@ -474,9 +486,16 @@ function TeamSwapsDisplay(props: { teamId: MH.NormedTeamId }) {
 
 	return (
 		<div className="flex flex-col">
-			<h3>
-				Swaps to <MatchTeamDisplay teamId={props.teamId} showAltTeamIndicator={true} />
-			</h3>
+			<div className="flex items-center gap-2">
+				<h3>
+					Swaps to <MatchTeamDisplay teamId={props.teamId} showAltTeamIndicator={true} />
+				</h3>
+				{switches.size > 0 && (
+					<Button variant="ghost" size="sm" onClick={() => TeamsSwitchesClient.Actions.clearTeamSwitches(props.teamId)}>
+						Clear
+					</Button>
+				)}
+			</div>
 			<div className="flex flex-wrap gap-1">
 				{switches.size === 0 && <span className="text-muted-foreground text-sm">No swaps yet</span>}
 				{MapUtils.mapToArray(switches, (playerId, s) => <SwitchBadge switch={s} key={playerId} />)}
