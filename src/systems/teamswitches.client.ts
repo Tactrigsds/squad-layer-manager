@@ -1,3 +1,4 @@
+import * as ItemMutations from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
 import * as RbSyncState from '@/lib/rollback-synced-state'
 import { assertNever } from '@/lib/type-guards'
@@ -140,6 +141,46 @@ export namespace Select {
 		}
 		return result
 	}
+
+	export type EnrichedTeamswitchWithMutation = TSW.EnrichedTeamswitch & {
+		mutation: ItemMutations.ItemMutationState
+	}
+
+	export function switchesToTeamEnrichedWithMutations(
+		store: Store,
+		chatStore: SquadServer.ChatStore,
+		team: MH.NormedTeamId,
+	): Map<SM.PlayerId, EnrichedTeamswitchWithMutation> {
+		const { switches, savedSwitches } = localState(store)
+		const players = SquadServer.Select.chatState(chatStore).players
+
+		const mutations = ItemMutations.initMutations<SM.PlayerId>()
+		const allPlayerIds = new Set<SM.PlayerId>()
+
+		for (const [playerId, switch_] of switches.entries()) {
+			if (switch_.toTeam !== team) continue
+			allPlayerIds.add(playerId)
+			if (!savedSwitches.has(playerId)) {
+				ItemMutations.tryApplyMutation('added', playerId, mutations)
+			}
+		}
+		for (const [playerId, switch_] of savedSwitches.entries()) {
+			if (switch_.toTeam !== team) continue
+			allPlayerIds.add(playerId)
+			if (!switches.has(playerId)) {
+				ItemMutations.tryApplyMutation('removed', playerId, mutations)
+			}
+		}
+
+		const result = new Map<SM.PlayerId, EnrichedTeamswitchWithMutation>()
+		for (const playerId of allPlayerIds) {
+			const switch_ = switches.get(playerId) ?? savedSwitches.get(playerId)!
+			const player = SM.PlayerIds.find(players, p => p.ids, playerId)
+			if (!player) continue
+			result.set(playerId, { ...switch_, player, mutation: ItemMutations.toItemMutationState(mutations, playerId) })
+		}
+		return result
+	}
 }
 
 function getPlayerOppositeTeam(playerId: SM.PlayerId): MH.NormedTeamId | null {
@@ -198,6 +239,10 @@ export namespace Actions {
 
 	export function save() {
 		Store.getState().dispatch({ code: 'save' })
+	}
+
+	export function revertToSaved() {
+		Store.getState().dispatch({ code: 'revert-to-saved' })
 	}
 }
 

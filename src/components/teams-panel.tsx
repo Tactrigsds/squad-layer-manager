@@ -470,6 +470,9 @@ function SwapsPanel() {
 				<Button disabled={!canExecute} onClick={() => TSWClient.Actions.executeTeamswitches()}>
 					Switch Now
 				</Button>
+				<Button variant="ghost" size="icon" disabled={!hasPendingEdits} onClick={() => TSWClient.Actions.revertToSaved()} title="Revert to saved">
+					<Icons.Undo2 className="h-4 w-4" />
+				</Button>
 			</div>
 			<TeamSwapsDisplay teamId="B" />
 		</div>
@@ -482,10 +485,12 @@ function TeamSwapsDisplay(props: { teamId: MH.NormedTeamId }) {
 		SquadServerClient.ChatStore,
 		React.useCallback(
 			(teamsSwitchesStore: TSWClient.Store, chatStore: SquadServer.ChatStore) =>
-				TSWClient.Select.switchesToTeamEnriched(teamsSwitchesStore, chatStore, props.teamId),
+				TSWClient.Select.switchesToTeamEnrichedWithMutations(teamsSwitchesStore, chatStore, props.teamId),
 			[props.teamId],
 		),
 	)
+
+	const hasLocal = [...switches.values()].some(s => !s.mutation.removed)
 
 	return (
 		<div className="flex flex-col">
@@ -493,7 +498,7 @@ function TeamSwapsDisplay(props: { teamId: MH.NormedTeamId }) {
 				<h3>
 					Swaps to <MatchTeamDisplay teamId={props.teamId} showAltTeamIndicator={true} />
 				</h3>
-				{switches.size > 0 && (
+				{hasLocal && (
 					<Button variant="ghost" size="sm" onClick={() => TSWClient.Actions.clearTeamSwitches(props.teamId)}>
 						Clear
 					</Button>
@@ -507,23 +512,32 @@ function TeamSwapsDisplay(props: { teamId: MH.NormedTeamId }) {
 	)
 }
 
-function SwitchBadge(props: { switch: TSW.EnrichedTeamswitch }) {
+function SwitchBadge(props: { switch: TSWClient.Select.EnrichedTeamswitchWithMutation }) {
+	const { mutation } = props.switch
+	const playerId = SM.PlayerIds.getPlayerId(props.switch.player.ids)
+
 	function remove() {
 		const userId = UsersClient.loggedInUserId
 		TSWClient.Store.getState().dispatch({
 			code: 'remove-player-teamswitches',
-			playerId: SM.PlayerIds.getPlayerId(props.switch.player.ids),
+			playerId,
 			source: { discordId: userId },
 			saved: false,
 		})
 	}
 
+	const variant = mutation.added ? 'added' : mutation.removed ? 'removed' : 'secondary'
+
 	return (
-		<Badge variant="secondary" className="flex items-center gap-1">
-			{props.switch.player.ids.username}
-			<button type="button" onClick={remove} className="ml-1 hover:text-destructive">
-				<Icons.X className="h-3 w-3" />
-			</button>
+		<Badge variant={variant} className="flex items-center gap-1">
+			<span className={mutation.removed ? 'line-through opacity-60' : undefined}>
+				{props.switch.player.ids.username}
+			</span>
+			{!mutation.removed && (
+				<button type="button" onClick={remove} className="ml-1 hover:text-destructive">
+					<Icons.X className="h-3 w-3" />
+				</button>
+			)}
 		</Badge>
 	)
 }
