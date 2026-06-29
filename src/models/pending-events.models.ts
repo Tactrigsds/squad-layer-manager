@@ -172,7 +172,7 @@ export async function* process(
 		if (
 			state.lastKnownLogEventTime === null || state.lastKnownLogEventTime < rconEvent.time
 				// if the event has been sitting for the min safe lead time, then it's(probably) safe to process
-				&& rconEvent.time + state.minSafeLeadTimeForOtherEventsSinceLog < time
+				&& rconEvent.time + state.minSafeLeadTimeForOtherEventsSinceLog > time
 		) continue
 		Arr.insertIntoSorted(toProcess, rconEvent, comparator)
 	}
@@ -181,7 +181,7 @@ export async function* process(
 		if (
 			state.lastKnownLogEventTime === null || state.lastKnownLogEventTime < teamUpdateEvent.time
 				// if the event has been sitting for the min safe lead time, then it's(probably) safe to process
-				&& teamUpdateEvent.time + state.minSafeLeadTimeForOtherEventsSinceLog < time
+				&& teamUpdateEvent.time + state.minSafeLeadTimeForOtherEventsSinceLog > time
 		) continue
 		Arr.insertIntoSorted(toProcess, teamUpdateEvent, comparator)
 	}
@@ -383,9 +383,9 @@ async function* processPendingEvent(
 ): AsyncGenerator<SE.Event> {
 	const log = state.log
 
-	// if (pendingEvent.type !== 'UNKNOWN') {
-	log.debug('Attempting to process raw event %s (%s) %s', pendingEvent.type, pendingEvent.id, pendingEvent?.raw)
-	// }
+	if (pendingEvent.type !== 'UNKNOWN') {
+		log.debug('Attempting to process raw event %s (%s) %s', pendingEvent.type, pendingEvent.id)
+	}
 
 	if (pendingEvent.time < time - 45_000) {
 		state.log.warn('Skipping event %s (%s) as it is stale (%s)', pendingEvent.type, pendingEvent.id, pendingEvent.time)
@@ -442,8 +442,13 @@ async function* processPendingEvent(
 		}
 	}
 
-	if (pendingEvent.type === 'TEAMS_UPDATE' && state.syncState.type === 'syncing') {
+	outerIf: if (pendingEvent.type === 'TEAMS_UPDATE' && state.syncState.type === 'syncing') {
 		if (state.currentMatch === 'PENDING') throw new Error('Unexpected missing current match')
+		for (const player of pendingEvent.teams.players) {
+			if (player.teamId == null) {
+				break outerIf
+			}
+		}
 		const teams = initUniqueTeams(state, pendingEvent.teams)
 
 		if (state.syncState.isNewMatch) {
@@ -469,12 +474,19 @@ async function* processPendingEvent(
 		state.syncState = { type: 'synced' }
 	}
 
-	if (
+	outerIf: if (
 		pendingEvent.type === 'TEAMS_UPDATE' && state.syncState.type === 'rolling' && !!state.syncState.newGameEvent
 		&& state.syncState.newGameEvent.time < pendingEvent.time
 		&& state.currentMatch !== 'PENDING'
 	) {
+		for (const player of pendingEvent.teams.players) {
+			if (player.teamId == null) {
+				break outerIf
+			}
+		}
+
 		state.currTeams = initUniqueTeams(state, pendingEvent.teams)
+
 		const event = state.syncState.newGameEvent
 		yield {
 			type: 'NEW_GAME',

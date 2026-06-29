@@ -334,6 +334,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 					state.switching = true
 					state.pendingSwitches = state.savedSwitches
 					const switches = state.savedSwitches
+					state.savedSwitches = state.switches = initTeamswitchCollection()
 					onSideEffect?.({ code: 'execute-teamswitches', opId: op.opId, switches })
 					break
 				}
