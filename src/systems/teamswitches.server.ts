@@ -10,6 +10,7 @@ import * as RbSyncState from '@/lib/rollback-synced-state'
 import { assertNever } from '@/lib/type-guards'
 import { WARNS } from '@/messages'
 import * as CS from '@/models/context-shared'
+import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SM from '@/models/squad.models'
@@ -199,6 +200,34 @@ function getState(ctx: C.Teamswitch) {
 	return ctx.teamswitches.session.state
 }
 
+function buildFactionLines(
+	playerIds: SM.PlayerId[],
+	switches: TSW.TeamswitchCollection,
+	players: { ids: SM.PlayerIds.Schema }[],
+	layer: { Faction_1: string; Faction_2: string } | null | undefined,
+	ordinal: number,
+): string[] {
+	const groups = new Map<MH.NormedTeamId, { faction: string; names: string[] }>()
+	for (const playerId of playerIds) {
+		const toTeam = switches.get(playerId)?.toTeam
+		if (!toTeam) continue
+		const player = SM.PlayerIds.find(players, p => p.ids, playerId)
+		const playerName = player?.ids.usernameNoTag ?? player?.ids.username ?? playerId
+		if (!groups.has(toTeam)) {
+			const factionProp = MH.getTeamNormalizedFactionProp(ordinal, toTeam)
+			groups.set(toTeam, { faction: layer?.[factionProp] ?? toTeam, names: [] })
+		}
+		groups.get(toTeam)!.names.push(playerName)
+	}
+	for (const group of groups.values()) group.names.sort((a, b) => a.localeCompare(b))
+	return (['A', 'B'] as MH.NormedTeamId[])
+		.filter(team => groups.has(team))
+		.map(team => {
+			const { faction, names } = groups.get(team)!
+			return `to ${faction}: ${names.join(', ')}`
+		})
+}
+
 const orpcBase = getOrpcBase(module)
 export const orpcRouter = {
 	watchUpdates: orpcBase.meta({ logLevel: 'trace' }).handler(async function* watchOps({ context, signal }) {
@@ -281,9 +310,14 @@ const dispatchOp = C.spanOp(
 								const excludeSteamIds = isManual.source.steamId
 									? new Set([isManual.source.steamId])
 									: undefined
+								const layerRes = L.parseLayerId(currentMatch.layerId)
+								const layer = 'layer' in layerRes ? layerRes.layer : null
+								const factionLines = toSwitch.length <= 8
+									? buildFactionLines(toSwitch, se.switches, teamsRes.players, layer, currentMatch.ordinal)
+									: undefined
 								void SquadRcon.warnAllAdmins(
 									ctx,
-									{ msg: WARNS.teamswitches.notifyAdminManualSwitch(name, se.switches.size) },
+									{ msg: WARNS.teamswitches.notifyAdminManualSwitch(name, toSwitch.length, factionLines) },
 									excludeSteamIds,
 								)
 							}
@@ -345,9 +379,15 @@ const dispatchOp = C.spanOp(
 							const excludeSteamIds = se.source.steamId
 								? new Set([se.source.steamId])
 								: undefined
+							const layerRes = L.parseLayerId(currentMatch.layerId)
+							const layer = 'layer' in layerRes ? layerRes.layer : null
+							const currPlayers = SquadServer.getCurrTeams(ctx)?.players ?? []
+							const factionLines = se.switches.size <= 8
+								? buildFactionLines(Array.from(se.switches.keys()), se.switches, currPlayers, layer, currentMatch.ordinal)
+								: undefined
 							void SquadRcon.warnAllAdmins(
 								ctx,
-								{ msg: WARNS.teamswitches.notifyAdminSwitchesSaved(name, se.switches.size) },
+								{ msg: WARNS.teamswitches.notifyAdminSwitchesSaved(name, se.switches.size, factionLines) },
 								excludeSteamIds,
 							)
 						}

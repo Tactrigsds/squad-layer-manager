@@ -8,6 +8,7 @@ import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswitches.client'
+import * as UPClient from '@/systems/user-presence.client'
 import React from 'react'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { ContextMenuItem, ContextMenuSeparator } from './ui/context-menu'
@@ -81,6 +82,7 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 		const unsubscribe = TSWClient.Store.subscribe(state => {
 			if (TSWClient.Select.localState(state).players.get(playerId) !== initialTeam) closeDialog()
 		})
+		UPClient.Store.getState().updateActivity({ code: 'set-player-dialogue', dialog: 'SWITCHING_PLAYERS' })
 		try {
 			const result = await openDialog({
 				title: 'Switch Player Now',
@@ -95,28 +97,34 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 			TSWClient.Actions.switchNow([playerId])
 		} finally {
 			unsubscribe()
+			UPClient.Store.getState().updateActivity({ code: 'clear-player-dialogue' })
 		}
 	}
 
 	async function warn() {
 		TSWClient.Actions.ensureViewingTeams()
-		let reason = ''
-		const result = await openDialog({
-			title: `Warn ${playerInfo?.username ?? 'Player'}`,
-			content: (
-				<input
-					className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-					placeholder="Warn reason"
-					autoFocus
-					onChange={e => {
-						reason = e.target.value
-					}}
-				/>
-			),
-			buttons: [{ id: 'confirm', label: 'Send Warning' }],
-		})
-		if (result !== 'confirm' || !reason.trim()) return
-		await warnMutation.mutateAsync({ playerId, reason: reason.trim() })
+		UPClient.Store.getState().updateActivity({ code: 'set-player-dialogue', dialog: 'WARNING_PLAYERS' })
+		try {
+			let reason = ''
+			const result = await openDialog({
+				title: `Warn ${playerInfo?.username ?? 'Player'}`,
+				content: (
+					<input
+						className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+						placeholder="Warn reason"
+						autoFocus
+						onChange={e => {
+							reason = e.target.value
+						}}
+					/>
+				),
+				buttons: [{ id: 'confirm', label: 'Send Warning' }],
+			})
+			if (result !== 'confirm' || !reason.trim()) return
+			await warnMutation.mutateAsync({ playerId, reason: reason.trim() })
+		} finally {
+			UPClient.Store.getState().updateActivity({ code: 'clear-player-dialogue' })
+		}
 	}
 
 	function copyTeleportCommand() {
@@ -126,51 +134,71 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 
 	async function removeFromSquad() {
 		TSWClient.Actions.ensureViewingTeams()
-		const squadLabel = playerInfo?.squadName ? `"${playerInfo.squadName}"` : 'their squad'
-		const result = await openDialog({
-			title: 'Remove from Squad',
-			description: `Remove this player from ${squadLabel}?`,
-			buttons: [{ id: 'confirm', label: 'Remove' }],
-		})
-		if (result !== 'confirm') return
-		await removeFromSquadMutation.mutateAsync(playerId)
+		UPClient.Store.getState().updateActivity({ code: 'set-player-dialogue', dialog: 'REMOVING_FROM_SQUAD' })
+		try {
+			const squadLabel = playerInfo?.squadName ? `"${playerInfo.squadName}"` : 'their squad'
+			const result = await openDialog({
+				title: 'Remove from Squad',
+				description: `Remove this player from ${squadLabel}?`,
+				buttons: [{ id: 'confirm', label: 'Remove' }],
+			})
+			if (result !== 'confirm') return
+			await removeFromSquadMutation.mutateAsync(playerId)
+		} finally {
+			UPClient.Store.getState().updateActivity({ code: 'clear-player-dialogue' })
+		}
 	}
 
 	async function disbandSquad() {
 		TSWClient.Actions.ensureViewingTeams()
 		if (playerInfo?.squadId === null || playerInfo?.squadId === undefined || !playerInfo.teamId) return
-		const squadLabel = playerInfo.squadName ? `"${playerInfo.squadName}"` : `squad ${playerInfo.squadId}`
-		const result = await openDialog({
-			title: 'Disband Squad',
-			description: `Disband ${squadLabel} on team ${playerInfo.teamId}?`,
-			buttons: [{ id: 'confirm', label: 'Disband' }],
-		})
-		if (result !== 'confirm') return
-		await disbandSquadMutation.mutateAsync({ teamId: playerInfo.teamId as 1 | 2, squadId: playerInfo.squadId })
+		UPClient.Store.getState().updateActivity({ code: 'set-player-dialogue', dialog: 'DISBANDING_SQUAD' })
+		try {
+			const squadLabel = playerInfo.squadName ? `"${playerInfo.squadName}"` : `squad ${playerInfo.squadId}`
+			const result = await openDialog({
+				title: 'Disband Squad',
+				description: `Disband ${squadLabel} on team ${playerInfo.teamId}?`,
+				buttons: [{ id: 'confirm', label: 'Disband' }],
+			})
+			if (result !== 'confirm') return
+			await disbandSquadMutation.mutateAsync({ teamId: playerInfo.teamId as 1 | 2, squadId: playerInfo.squadId })
+		} finally {
+			UPClient.Store.getState().updateActivity({ code: 'clear-player-dialogue' })
+		}
 	}
 
 	async function resetSquadName() {
 		TSWClient.Actions.ensureViewingTeams()
 		if (playerInfo?.squadId === null || playerInfo?.squadId === undefined || !playerInfo.teamId) return
-		const squadLabel = playerInfo.squadName ? `"${playerInfo.squadName}"` : `squad ${playerInfo.squadId}`
-		const result = await openDialog({
-			title: 'Reset Squad Name',
-			description: `Reset the name of ${squadLabel} to default?`,
-			buttons: [{ id: 'confirm', label: 'Reset' }],
-		})
-		if (result !== 'confirm') return
-		await resetSquadNameMutation.mutateAsync({ teamId: playerInfo.teamId as 1 | 2, squadId: playerInfo.squadId })
+		UPClient.Store.getState().updateActivity({ code: 'set-player-dialogue', dialog: 'RESETTING_SQUAD_NAME' })
+		try {
+			const squadLabel = playerInfo.squadName ? `"${playerInfo.squadName}"` : `squad ${playerInfo.squadId}`
+			const result = await openDialog({
+				title: 'Reset Squad Name',
+				description: `Reset the name of ${squadLabel} to default?`,
+				buttons: [{ id: 'confirm', label: 'Reset' }],
+			})
+			if (result !== 'confirm') return
+			await resetSquadNameMutation.mutateAsync({ teamId: playerInfo.teamId as 1 | 2, squadId: playerInfo.squadId })
+		} finally {
+			UPClient.Store.getState().updateActivity({ code: 'clear-player-dialogue' })
+		}
 	}
 
 	async function demoteCommander() {
 		TSWClient.Actions.ensureViewingTeams()
-		const result = await openDialog({
-			title: 'Demote Commander',
-			description: 'Demote this player from commander?',
-			buttons: [{ id: 'confirm', label: 'Demote' }],
-		})
-		if (result !== 'confirm') return
-		await demoteCommanderMutation.mutateAsync(playerId)
+		UPClient.Store.getState().updateActivity({ code: 'set-player-dialogue', dialog: 'DEMOTING_COMMANDER' })
+		try {
+			const result = await openDialog({
+				title: 'Demote Commander',
+				description: 'Demote this player from commander?',
+				buttons: [{ id: 'confirm', label: 'Demote' }],
+			})
+			if (result !== 'confirm') return
+			await demoteCommanderMutation.mutateAsync(playerId)
+		} finally {
+			UPClient.Store.getState().updateActivity({ code: 'clear-player-dialogue' })
+		}
 	}
 
 	const isOnServer = playerInfo !== null

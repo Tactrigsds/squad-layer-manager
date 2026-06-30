@@ -46,8 +46,8 @@ import { OpenWindowInteraction } from './ui/draggable-window'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
 import { Switch } from './ui/switch'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 
 void import('@/components/squad-details-window')
@@ -55,9 +55,10 @@ void import('@/components/teamswitches-help-window')
 
 export default function TeamsPanel(props: { className?: string }) {
 	const isDesktop = useIsDesktopSize()
-	const showSwapsPanel = Zus.useStore(
+	const showSwapsPanel = ZusUtils.useStore(
 		TSWClient.Store,
-		s => TSWClient.Select.hasSwitches(s),
+		UPClient.Store,
+		(tswStore, upStore) => TSWClient.Select.hasSwitches(tswStore) || upStore.teamswitchEditors.size > 0,
 	)
 	const [searchQuery, setSearchQuery] = React.useState('')
 	const [showSelected, setShowSelected] = React.useState(false)
@@ -149,14 +150,14 @@ export default function TeamsPanel(props: { className?: string }) {
 				</div>
 				<ControlPanel />
 			</div>
-			{isDesktop ? (
-				<div className="grid w-full grid-cols-[1fr_1fr] divide-x divide-border">
-					<TeamPlayerTable teamId="A" searchQuery={searchQuery} filters={filtersA} showSelected={showSelected} />
-					<TeamPlayerTable teamId="B" searchQuery={searchQuery} filters={filtersB} showSelected={showSelected} className="pl-1" />
-				</div>
-			) : (
-				<CombinedPlayerTable searchQuery={searchQuery} filters={filtersC} showSelected={showSelected} />
-			)}
+			{isDesktop
+				? (
+					<div className="grid w-full grid-cols-[1fr_1fr] divide-x divide-border">
+						<TeamPlayerTable teamId="A" searchQuery={searchQuery} filters={filtersA} showSelected={showSelected} />
+						<TeamPlayerTable teamId="B" searchQuery={searchQuery} filters={filtersB} showSelected={showSelected} className="pl-1" />
+					</div>
+				)
+				: <CombinedPlayerTable searchQuery={searchQuery} filters={filtersC} showSelected={showSelected} />}
 		</div>
 	)
 }
@@ -586,7 +587,20 @@ const playerColumns = [
 							{ label, ref, onClick, ...rest }:
 								& { label: string; ref?: React.Ref<HTMLButtonElement>; onClick?: React.MouseEventHandler<HTMLButtonElement> }
 								& React.ButtonHTMLAttributes<HTMLButtonElement>,
-						) => <button ref={ref} type="button" className="hover:underline cursor-pointer" onClick={e => { e.stopPropagation(); onClick?.(e) }} {...rest}>{label}</button>}
+						) => (
+							<button
+								ref={ref}
+								type="button"
+								className="hover:underline cursor-pointer"
+								onClick={e => {
+									e.stopPropagation()
+									onClick?.(e)
+								}}
+								{...rest}
+							>
+								{label}
+							</button>
+						)}
 						label={String(squadId)}
 					/>
 				)
@@ -605,8 +619,11 @@ const playerColumns = [
 	}),
 ]
 
-function TeamPlayerTable(props: { teamId: MH.NormedTeamId; searchQuery: string; filters: PlayerFilters; showSelected: boolean; className?: string }) {
+function TeamPlayerTable(
+	props: { teamId: MH.NormedTeamId; searchQuery: string; filters: PlayerFilters; showSelected: boolean; className?: string },
+) {
 	const rowSelection = Zus.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
+	const savedSwitches = Zus.useStore(TSWClient.Store, s => TSWClient.Select.localState(s).savedSwitches)
 	const setRowSelection = SquadServerClient.PlayerSelectionStore.getState().setSelection
 	const mouseDownRef = React.useRef<{ index: number; originalSelected: boolean } | null>(null)
 	const [sorting, setSorting] = React.useState<SortingState>([])
@@ -726,7 +743,7 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; searchQuery: string; 
 						<ContextMenu key={row.id}>
 							<ContextMenuTrigger asChild>
 								<TableRow
-									className="cursor-pointer select-none"
+									className={cn('cursor-pointer select-none', savedSwitches.has(row.id) && 'bg-amber-500/20')}
 									data-state={row.getIsSelected() ? 'selected' : undefined}
 									onClick={() => row.toggleSelected()}
 									onMouseDown={e => {
@@ -902,7 +919,20 @@ const combinedPlayerColumns = [
 							{ label, ref, onClick, ...rest }:
 								& { label: string; ref?: React.Ref<HTMLButtonElement>; onClick?: React.MouseEventHandler<HTMLButtonElement> }
 								& React.ButtonHTMLAttributes<HTMLButtonElement>,
-						) => <button ref={ref} type="button" className="hover:underline cursor-pointer" onClick={e => { e.stopPropagation(); onClick?.(e) }} {...rest}>{label}</button>}
+						) => (
+							<button
+								ref={ref}
+								type="button"
+								className="hover:underline cursor-pointer"
+								onClick={e => {
+									e.stopPropagation()
+									onClick?.(e)
+								}}
+								{...rest}
+							>
+								{label}
+							</button>
+						)}
 						label={displayLabel}
 					/>
 				)
@@ -923,6 +953,7 @@ const combinedPlayerColumns = [
 
 function CombinedPlayerTable(props: { searchQuery: string; filters: PlayerFilters; showSelected: boolean; className?: string }) {
 	const rowSelection = Zus.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
+	const savedSwitches = Zus.useStore(TSWClient.Store, s => TSWClient.Select.localState(s).savedSwitches)
 	const setRowSelection = SquadServerClient.PlayerSelectionStore.getState().setSelection
 	const mouseDownRef = React.useRef<{ index: number; originalSelected: boolean } | null>(null)
 	const [sorting, setSorting] = React.useState<SortingState>([{ id: 'faction', desc: false }])
@@ -1077,7 +1108,7 @@ function CombinedPlayerTable(props: { searchQuery: string; filters: PlayerFilter
 						<ContextMenu key={row.id}>
 							<ContextMenuTrigger asChild>
 								<TableRow
-									className="cursor-pointer select-none"
+									className={cn('cursor-pointer select-none', savedSwitches.has(row.id) && 'bg-amber-500/20')}
 									data-state={row.getIsSelected() ? 'selected' : undefined}
 									onClick={() => row.toggleSelected()}
 									onMouseDown={e => {
@@ -1127,22 +1158,31 @@ function CombinedPlayerTable(props: { searchQuery: string; filters: PlayerFilter
 }
 
 function TeamsAfterSwap() {
-	const countA = ZusUtils.useStore(
+	const { countA, countB } = ZusUtils.useStore(
+		TSWClient.Store,
 		SquadServerClient.ChatStore,
 		MatchHistoryClient.currentMatch$(),
-		SquadServer.Select.teamPlayerCount('A'),
+		(tswStore, chatStore, currentMatch) => {
+			const editedSwitches = TSWClient.Select.localState(tswStore).editedSwitches
+			const players = SquadServer.Select.chatState(chatStore).players
+			if (!currentMatch) return { countA: 0, countB: 0 }
+			let countA = 0
+			let countB = 0
+			for (const player of players) {
+				if (player.teamId === null) continue
+				const playerId = SM.PlayerIds.getPlayerId(player.ids)
+				const sw = editedSwitches.get(playerId)
+				const destTeam = sw?.toTeam ?? MH.getNormedTeamId(player.teamId, currentMatch.ordinal)
+				if (destTeam === 'A') countA++
+				else countB++
+			}
+			return { countA, countB }
+		},
 	)
-	const countB = ZusUtils.useStore(
-		SquadServerClient.ChatStore,
-		MatchHistoryClient.currentMatch$(),
-		SquadServer.Select.teamPlayerCount('B'),
-	)
-	const diffA = Zus.useStore(TSWClient.Store, TSWClient.Select.diffAfterSwitchesForTeam('A'))
-	const diffB = Zus.useStore(TSWClient.Store, TSWClient.Select.diffAfterSwitchesForTeam('B'))
 	return (
 		<div className="flex flex-col items-center">
 			<span className="text-xs text-muted-foreground">Teams After Swap</span>
-			<span className="text-sm font-mono">{(countA ?? 0) + diffA}v{(countB ?? 0) + diffB}</span>
+			<span className="text-sm font-mono">{countA}v{countB}</span>
 		</div>
 	)
 }
@@ -1229,7 +1269,7 @@ function SwapsPanel({ className }: { className?: string }) {
 						)}
 					<AlertDialog>
 						<AlertDialogTrigger asChild>
-							<Button size="sm" disabled={!canExecute}>
+							<Button size="sm" disabled={!canExecute || numEditors > 0}>
 								Switch Now
 							</Button>
 						</AlertDialogTrigger>
@@ -1308,17 +1348,6 @@ function TeamSwapsDisplay(props: { teamId: MH.NormedTeamId; align?: 'left' | 'ri
 function SwitchBadge(props: { switch: TSWClient.Select.EnrichedTeamswitchWithMutation }) {
 	const { mutation } = props.switch
 	const playerId = SM.PlayerIds.getPlayerId(props.switch.player.ids)
-
-	function remove() {
-		const userId = UsersClient.loggedInUserId
-		TSWClient.Store.getState().dispatch({
-			code: 'remove-player-teamswitches',
-			playerId,
-			source: { discordId: userId },
-			saved: false,
-		})
-	}
-
 	const variant = mutation.added ? 'added' : mutation.removed ? 'removed' : 'secondary'
 
 	return (
@@ -1327,7 +1356,11 @@ function SwitchBadge(props: { switch: TSWClient.Select.EnrichedTeamswitchWithMut
 				{props.switch.player.ids.username}
 			</span>
 			{!mutation.removed && (
-				<button type="button" onClick={remove} className="ml-1 hover:text-destructive">
+				<button
+					type="button"
+					onClick={() => TSWClient.Actions.removeSwitch([playerId])}
+					className="ml-1 hover:text-destructive"
+				>
 					<Icons.X className="h-3 w-3" />
 				</button>
 			)}

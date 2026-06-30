@@ -269,10 +269,14 @@ export const WARNS = {
 			+ 'Thank you for helping with team balance and contact admins if you have issues.',
 		notifyTeamswitchCancelled: 'You will no longer be switched to the other team on map roll.',
 		notifyManualSwitch: 'You have been switched to the other team by an admin.',
-		notifyAdminSwitchesSaved: (name: string, count: number) =>
-			`${name} updated teamswitches: ${count} switch${count !== 1 ? 'es' : ''} queued for next map.`,
-		notifyAdminManualSwitch: (name: string, count: number) =>
-			`${name} immediately switched ${count} player${count !== 1 ? 's' : ''} to their assigned teams.`,
+		notifyAdminSwitchesSaved: (name: string, count: number, factionLines?: string[]) =>
+			factionLines
+				? `${name} queued ${count} teamswitch${count !== 1 ? 'es' : ''} for next map:\n${factionLines.join('\n')}`
+				: `${name} queued ${count} teamswitch${count !== 1 ? 'es' : ''} for next map.`,
+		notifyAdminManualSwitch: (name: string, count: number, factionLines?: string[]) =>
+			factionLines
+				? `${name} immediately switched ${count} player${count !== 1 ? 's' : ''}:\n${factionLines.join('\n')}`
+				: `${name} immediately switched ${count} player${count !== 1 ? 's' : ''} to the other team.`,
 	},
 	permissionDenied(res: RBAC.PermissionDeniedResponse) {
 		return `Permission denied. You need ${res.check} of the following ${res.permits.map((p) => p.type).join(', ')}`

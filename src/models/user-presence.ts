@@ -46,6 +46,14 @@ export const [ACTIVITIES] = (() => {
 			]),
 			branch('VIEWING_TEAMS', [
 				leaf('EDITING_TEAMSWITCHES'),
+				variant('PLAYER_DIALOGUE', [
+					leaf('SWITCHING_PLAYERS'),
+					leaf('WARNING_PLAYERS'),
+					leaf('REMOVING_FROM_SQUAD'),
+					leaf('DISBANDING_SQUAD'),
+					leaf('RESETTING_SQUAD_NAME'),
+					leaf('DEMOTING_COMMANDER'),
+				]),
 			]),
 		]),
 	]) satisfies ST.Def.Node
@@ -327,11 +335,30 @@ export type QueueEditingActivity<
 	Extract<(typeof _editingQueueVariants)[keyof typeof _editingQueueVariants], { id: K }>
 >
 
+const _playerDialogueVariants = ACTIVITIES.child.ON_PRIMARY_PANEL.child.VIEWING_TEAMS.child.PLAYER_DIALOGUE.child
+export const PLAYER_DIALOGUE_ID = z.enum([
+	'SWITCHING_PLAYERS',
+	'WARNING_PLAYERS',
+	'REMOVING_FROM_SQUAD',
+	'DISBANDING_SQUAD',
+	'RESETTING_SQUAD_NAME',
+	'DEMOTING_COMMANDER',
+])
+export type PlayerDialogueId = z.infer<typeof PLAYER_DIALOGUE_ID>
+type PlayerDialogueVariant = (typeof _playerDialogueVariants)[keyof typeof _playerDialogueVariants]['id']
+export type PlayerDialogueActivity<
+	K extends PlayerDialogueVariant = PlayerDialogueVariant,
+> = ST.Match.Node<
+	Extract<(typeof _playerDialogueVariants)[keyof typeof _playerDialogueVariants], { id: K }>
+>
+
 export type ActivityUpdate =
 	| { code: 'set-primary-panel'; to: 'VIEWING_QUEUE' | 'VIEWING_TEAMS' }
 	| { code: 'clear-primary-panel' }
 	| { code: 'set-editing-teamswitches' }
 	| { code: 'clear-editing-teamswitches' }
+	| { code: 'set-player-dialogue'; dialog: PlayerDialogueId }
+	| { code: 'clear-player-dialogue' }
 	| { code: 'set-editing-queue'; variant: QueueEditingActivity }
 	| { code: 'set-editing-queue-idle-if'; currentIds: string[] }
 	| { code: 'clear-editing-queue' }
@@ -345,6 +372,8 @@ export const ActivityUpdateSchema: z.ZodType<ActivityUpdate> = z.discriminatedUn
 	z.object({ code: z.literal('clear-primary-panel') }),
 	z.object({ code: z.literal('set-editing-teamswitches') }),
 	z.object({ code: z.literal('clear-editing-teamswitches') }),
+	z.object({ code: z.literal('set-player-dialogue'), dialog: PLAYER_DIALOGUE_ID }),
+	z.object({ code: z.literal('clear-player-dialogue') }),
 	z.object({ code: z.literal('set-editing-queue'), variant: z.any() }),
 	z.object({ code: z.literal('set-editing-queue-idle-if'), currentIds: z.array(z.string()) }),
 	z.object({ code: z.literal('clear-editing-queue') }),
@@ -389,6 +418,10 @@ export const VIEWING_TEAMS_TRANSITIONS = {
 
 export function getEditingTeamswitchesNode(activity: RootActivity | null | undefined) {
 	return VIEWING_TEAMS_TRANSITIONS.matchActivity(activity)?.child.EDITING_TEAMSWITCHES ?? null
+}
+
+export function getPlayerDialogueNode(activity: RootActivity | null | undefined) {
+	return VIEWING_TEAMS_TRANSITIONS.matchActivity(activity)?.child.PLAYER_DIALOGUE ?? null
 }
 
 export const EDITING_TEAMSWITCHES_TRANSITIONS = {
@@ -443,6 +476,27 @@ export function applyActivityUpdate(activity: RootActivity, update: ActivityUpda
 				const teamsNode = VIEWING_TEAMS_TRANSITIONS.matchActivity(draft)
 				if (!teamsNode) return
 				delete teamsNode.child.EDITING_TEAMSWITCHES
+			})
+		case 'set-player-dialogue': {
+			const withTeams = VIEWING_TEAMS_TRANSITIONS.matchActivity(activity)
+				? activity
+				: applyActivityUpdate(activity, { code: 'set-primary-panel', to: 'VIEWING_TEAMS' })
+			return Im.produce(withTeams, draft => {
+				const teamsNode = VIEWING_TEAMS_TRANSITIONS.matchActivity(draft)
+				if (!teamsNode) return
+				teamsNode.child.PLAYER_DIALOGUE = {
+					_tag: 'variant',
+					id: 'PLAYER_DIALOGUE',
+					opts: {},
+					chosen: ST.Match.leaf(update.dialog, {}) as any,
+				}
+			})
+		}
+		case 'clear-player-dialogue':
+			return Im.produce(activity, draft => {
+				const teamsNode = VIEWING_TEAMS_TRANSITIONS.matchActivity(draft)
+				if (!teamsNode) return
+				delete teamsNode.child.PLAYER_DIALOGUE
 			})
 		case 'set-editing-queue':
 			return Im.produce(activity, draft => {
@@ -626,6 +680,24 @@ export function itemsToLockForActivity(list: LL.List, activity: RootActivity): L
 export const getHumanReadableActivity = (activity: RootActivity, listOrIndex: LL.List | LL.ItemIndex, withItemName?: boolean) => {
 	if (getEditingTeamswitchesNode(activity)) {
 		return 'Editing Scheduled Teamswitches'
+	}
+
+	const playerDialogue = getPlayerDialogueNode(activity)
+	if (playerDialogue) {
+		switch (playerDialogue.chosen.id) {
+			case 'SWITCHING_PLAYERS':
+				return 'Switching players Now'
+			case 'WARNING_PLAYERS':
+				return 'Warning players'
+			case 'REMOVING_FROM_SQUAD':
+				return 'Removing from squad'
+			case 'DISBANDING_SQUAD':
+				return 'Disbanding squad'
+			case 'RESETTING_SQUAD_NAME':
+				return 'Resetting squad name'
+			case 'DEMOTING_COMMANDER':
+				return 'Demoting commander'
+		}
 	}
 
 	const editingActivity = getEditingQueueNode(activity)
