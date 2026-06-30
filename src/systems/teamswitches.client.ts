@@ -230,18 +230,14 @@ function getPlayerOppositeTeam(playerId: SM.PlayerId): MH.NormedTeamId | null {
 
 export namespace Actions {
 	export function ensureViewingTeams() {
-		UPClient.Store.getState().updateActivity(activity =>
-			UP.VIEWING_TEAMS_TRANSITIONS.matchActivity(activity)
-				? activity
-				: UP.VIEWING_TEAMS_TRANSITIONS.createActivity(activity)
-		)
+		UPClient.Store.getState().updateActivity(UP.VIEWING_TEAMS_TRANSITIONS.createActivity())
 	}
 
 	function setEditing() {
-		UPClient.Store.getState().updateActivity(UP.EDITING_TEAMSWITCHES_TRANSITIONS.createActivity)
+		UPClient.Store.getState().updateActivity(UP.EDITING_TEAMSWITCHES_TRANSITIONS.createActivity())
 	}
 	function clearEditing() {
-		UPClient.Store.getState().updateActivity(UP.EDITING_TEAMSWITCHES_TRANSITIONS.removeActivity)
+		UPClient.Store.getState().updateActivity(UP.EDITING_TEAMSWITCHES_TRANSITIONS.removeActivity())
 	}
 
 	export function switchNext(playerIds: SM.PlayerId[]) {

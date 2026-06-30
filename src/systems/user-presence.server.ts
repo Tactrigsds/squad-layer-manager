@@ -53,7 +53,6 @@ export function initUserPresenceContext(ctx: C.ServerSliceCleanup & C.ServerId):
 			Rx.pairwise(),
 			Rx.filter(([hadEditors, hasEditors]) => hadEditors && !hasEditors),
 			C.durableSub('teamswitches:revert-on-editing-end', { module }, async () => {
-				debugger
 				const ctx = resolveCtx(serverId)
 				await Teamswitches.dispatchRevertToSaved(ctx)
 			}),

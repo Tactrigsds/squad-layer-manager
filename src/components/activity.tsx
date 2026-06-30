@@ -17,7 +17,7 @@ export function StartActivityInteraction<
 >(
 	_props: {
 		loaderName: Loader['name']
-		createActivity: (root: UP.RootActivity) => UP.RootActivity
+		createActivity: () => UP.ActivityUpdate
 		matchKey: (predicate: UPClient.LoaderCacheKey<Loader>) => boolean
 
 		preload: 'intent' | 'viewport' | 'render'
@@ -46,7 +46,7 @@ export function StartActivityInteraction<
 	})
 
 	const startActivity = () => {
-		return UPClient.Store.getState().updateActivity(props.createActivity)
+		return UPClient.Store.getState().updateActivity(props.createActivity())
 	}
 
 	// NOTE: preloadActivity should be implemented such that it runs the work lazily
@@ -56,7 +56,7 @@ export function StartActivityInteraction<
 			// this is mostly redundant(maybe slightly better perf) but shows intent
 			if (isLoaded) return
 
-			UPClient.Store.getState().preloadActivity(props.createActivity)
+			UPClient.Store.getState().preloadActivity(props.createActivity())
 		},
 		[props.createActivity, isLoaded],
 	)

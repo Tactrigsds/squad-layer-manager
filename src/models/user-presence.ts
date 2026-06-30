@@ -114,8 +114,8 @@ export const OpSchema = z.discriminatedUnion('code', [
 
 	z.object({
 		...clientOpBase,
-		code: z.literal('set-activity'),
-		activity: UserPresenceActivitySchema,
+		code: z.literal('update-activity'),
+		update: z.lazy(() => ActivityUpdateSchema),
 	}),
 
 	z.object({
@@ -139,7 +139,7 @@ export const CLIENT_OP_CODE = z.enum([
 	'interaction-timeout',
 	'navigated-away',
 	'disconnected-timeout',
-	'set-activity',
+	'update-activity',
 ])
 type ClientOpCode = z.infer<typeof CLIENT_OP_CODE>
 
@@ -239,12 +239,12 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffects> = (prevState, 
 						break
 					}
 
-					case 'set-activity': {
-						const teamswitchNode = getEditingTeamswitchesNode(op.activity)
-						const prevActivity = clientState.activityState
+					case 'update-activity': {
+						const prevActivity = clientState.activityState ?? DEFAULT_ACTIVITY
+						const newActivity = applyActivityUpdate(prevActivity, op.update)
 
 						const prevEditingSll = getEditingQueueNode(prevActivity)
-						const sllEditNode = getEditingQueueNode(op.activity)
+						const sllEditNode = getEditingQueueNode(newActivity)
 						if (!sllEditNode && prevEditingSll) {
 							MapUtils.deleteByValue(state.itemLocks, op.clientId)
 						} else if (sllEditNode && !isItemOwnedActivity(sllEditNode.chosen)) {
@@ -269,7 +269,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffects> = (prevState, 
 						newClientState = {
 							...clientState,
 							away: false,
-							activityState: op.activity,
+							activityState: newActivity,
 							lastSeen: op.time,
 						}
 						success = true
@@ -306,76 +306,65 @@ export type QueueEditingActivity<
 	Extract<(typeof _editingQueueVariants)[keyof typeof _editingQueueVariants], { id: K }>
 >
 
+export type ActivityUpdate =
+	| { code: 'set-primary-panel'; to: 'VIEWING_QUEUE' | 'VIEWING_TEAMS' }
+	| { code: 'clear-primary-panel' }
+	| { code: 'set-editing-teamswitches' }
+	| { code: 'clear-editing-teamswitches' }
+	| { code: 'set-editing-queue'; variant: QueueEditingActivity }
+	| { code: 'set-editing-queue-idle-if'; currentIds: string[] }
+	| { code: 'clear-editing-queue' }
+	| { code: 'set-viewing-queue-settings' }
+	| { code: 'clear-viewing-queue-settings' }
+	| { code: 'set-changing-queue-settings' }
+	| { code: 'clear-changing-queue-settings' }
+
+export const ActivityUpdateSchema: z.ZodType<ActivityUpdate> = z.discriminatedUnion('code', [
+	z.object({ code: z.literal('set-primary-panel'), to: z.enum(['VIEWING_QUEUE', 'VIEWING_TEAMS']) }),
+	z.object({ code: z.literal('clear-primary-panel') }),
+	z.object({ code: z.literal('set-editing-teamswitches') }),
+	z.object({ code: z.literal('clear-editing-teamswitches') }),
+	z.object({ code: z.literal('set-editing-queue'), variant: z.any() }),
+	z.object({ code: z.literal('set-editing-queue-idle-if'), currentIds: z.array(z.string()) }),
+	z.object({ code: z.literal('clear-editing-queue') }),
+	z.object({ code: z.literal('set-viewing-queue-settings') }),
+	z.object({ code: z.literal('clear-viewing-queue-settings') }),
+	z.object({ code: z.literal('set-changing-queue-settings') }),
+	z.object({ code: z.literal('clear-changing-queue-settings') }),
+])
+
+export type ActivityTransitions<M = any> = {
+	matchActivity: (root: RootActivity | undefined | null) => M
+	createActivity: () => ActivityUpdate
+	removeActivity: () => ActivityUpdate
+}
+
 export function createEditingQueueVariant<K extends EditingQueueVariant>(
 	activity: QueueEditingActivity<K>,
-): (prev: RootActivity | undefined | null) => RootActivity {
-	return (prev: RootActivity | undefined | null) => {
-		const base = prev ?? DEFAULT_ACTIVITY
-		return Im.produce((state: Im.WritableDraft<RootActivity>) => {
-			let queueNode = getViewingQueueNode(state)
-			if (!queueNode) {
-				return
-			}
-			queueNode.child.EDITING_QUEUE = {
-				_tag: 'variant',
-				id: 'EDITING_QUEUE',
-				opts: {},
-				chosen: activity as any,
-			}
-		})(base)
-	}
+): () => ActivityUpdate {
+	return () => ({ code: 'set-editing-queue', variant: activity })
+}
+
+export function toEditingQueueIdleOrNone(): ActivityUpdate {
+	return { code: 'set-editing-queue', variant: ST.Match.leaf('IDLE', {}) as QueueEditingActivity<'IDLE'> }
 }
 
 export type Resolver<T = any> = (root: RootActivity | undefined | null) => T
 export const VIEWING_QUEUE_TRANSITIONS = {
 	matchActivity: (root: RootActivity | undefined | null) => !!getViewingQueueNode(root),
-	createActivity: (_activity: RootActivity | undefined | null): RootActivity => {
-		const activity = _activity ?? DEFAULT_ACTIVITY
-		return Im.produce(activity, activity => {
-			activity.child.ON_PRIMARY_PANEL ??= {
-				_tag: 'variant',
-				id: 'ON_PRIMARY_PANEL',
-				opts: {},
-				chosen: {
-					_tag: 'branch',
-					id: 'VIEWING_QUEUE',
-					opts: {},
-					child: {},
-				},
-			}
-			activity.child.ON_PRIMARY_PANEL!.chosen = {
-				_tag: 'branch',
-				id: 'VIEWING_QUEUE',
-				child: {},
-				opts: {},
-			}
-		})
-	},
-	removeActivity: Im.produce((root: Im.WritableDraft<RootActivity>) => {
-		delete root.child.ON_PRIMARY_PANEL
-	}),
-}
+	createActivity: (): ActivityUpdate => ({ code: 'set-primary-panel', to: 'VIEWING_QUEUE' }),
+	removeActivity: (): ActivityUpdate => ({ code: 'clear-primary-panel' }),
+} satisfies ActivityTransitions<boolean>
+
 export const VIEWING_TEAMS_TRANSITIONS = {
 	matchActivity: (activity: RootActivity | undefined | null) => {
 		const primaryPanelChoice = activity?.child.ON_PRIMARY_PANEL?.chosen
 		if (primaryPanelChoice?.id === 'VIEWING_TEAMS') return primaryPanelChoice
 		return null
 	},
-	createActivity: (_activity: RootActivity | undefined | null): RootActivity => {
-		const activity = _activity ?? DEFAULT_ACTIVITY
-		return Im.produce(activity, activity => {
-			activity.child.ON_PRIMARY_PANEL = {
-				_tag: 'variant',
-				id: 'ON_PRIMARY_PANEL',
-				opts: {},
-				chosen: ST.Match.branch('VIEWING_TEAMS', {}, {}),
-			}
-		})
-	},
-	removeActivity: Im.produce((root: Im.WritableDraft<RootActivity>) => {
-		delete root.child.ON_PRIMARY_PANEL
-	}),
-}
+	createActivity: (): ActivityUpdate => ({ code: 'set-primary-panel', to: 'VIEWING_TEAMS' }),
+	removeActivity: (): ActivityUpdate => ({ code: 'clear-primary-panel' }),
+} satisfies ActivityTransitions
 
 export function getEditingTeamswitchesNode(activity: RootActivity | null | undefined) {
 	return VIEWING_TEAMS_TRANSITIONS.matchActivity(activity)?.child.EDITING_TEAMSWITCHES ?? null
@@ -383,79 +372,114 @@ export function getEditingTeamswitchesNode(activity: RootActivity | null | undef
 
 export const EDITING_TEAMSWITCHES_TRANSITIONS = {
 	matchActivity: (root: RootActivity | undefined | null) => !!getEditingTeamswitchesNode(root),
-	createActivity: (_activity: RootActivity | undefined | null): RootActivity => {
-		const withTeams = VIEWING_TEAMS_TRANSITIONS.matchActivity(_activity)
-			? _activity!
-			: VIEWING_TEAMS_TRANSITIONS.createActivity(_activity)
-		return Im.produce(withTeams, draft => {
-			VIEWING_TEAMS_TRANSITIONS.matchActivity(draft)!.child.EDITING_TEAMSWITCHES = ST.Match.leaf('EDITING_TEAMSWITCHES', {})
-		})
-	},
-	removeActivity: Im.produce((root: Im.WritableDraft<RootActivity>) => {
-		const teamsNode = VIEWING_TEAMS_TRANSITIONS.matchActivity(root)
-		if (!teamsNode) return
-		delete teamsNode.child.EDITING_TEAMSWITCHES
-	}),
-}
+	createActivity: (): ActivityUpdate => ({ code: 'set-editing-teamswitches' }),
+	removeActivity: (): ActivityUpdate => ({ code: 'clear-editing-teamswitches' }),
+} satisfies ActivityTransitions<boolean>
 
 export const TOGGLE_EDITING_QUEUE_TRANSITIONS = {
 	matchActivity: (root: RootActivity | undefined | null) => !!getEditingQueueNode(root),
-	createActivity: (activity: RootActivity | undefined | null): RootActivity => {
-		if (!activity) return DEFAULT_ACTIVITY
-		return Im.produce(activity, activity => {
-			const queueNode = getViewingQueueNode(activity)
-			if (!queueNode) return
-			queueNode.child.EDITING_QUEUE = {
-				_tag: 'variant',
-				id: 'EDITING_QUEUE',
-				opts: {},
-				chosen: ST.Match.leaf('IDLE', {}),
-			}
-		})
-	},
-	removeActivity: Im.produce((root: Im.WritableDraft<RootActivity>) => {
-		const queueNode = getViewingQueueNode(root)
-		if (!queueNode) return
-		delete queueNode.child.EDITING_QUEUE
-	}),
-}
+	createActivity: (): ActivityUpdate => ({ code: 'set-editing-queue', variant: ST.Match.leaf('IDLE', {}) as QueueEditingActivity<'IDLE'> }),
+	removeActivity: (): ActivityUpdate => ({ code: 'clear-editing-queue' }),
+} satisfies ActivityTransitions<boolean>
 
 export const VIEWING_SETTINGS_TRANSITIONS = {
 	matchActivity: (root: RootActivity | undefined | null) => {
 		return getViewingQueueNode(root)?.child.VIEWING_QUEUE_SETTINGS
 	},
-	createActivity: (root: RootActivity | undefined | null): RootActivity => {
-		if (!root) return DEFAULT_ACTIVITY
-		return Im.produce(root, root => {
-			const queueNode = getViewingQueueNode(root)
-			if (!queueNode) return
-			queueNode.child.VIEWING_QUEUE_SETTINGS = {
-				_tag: 'branch',
-				id: 'VIEWING_QUEUE_SETTINGS',
-				opts: {},
-				child: {},
-			}
-		})
-	},
-	removeActivity: Im.produce((draft: Im.WritableDraft<RootActivity>) => {
-		const queueNode = getViewingQueueNode(draft)
-		if (!queueNode) return
-		delete queueNode.child.VIEWING_QUEUE_SETTINGS
-	}),
-}
+	createActivity: (): ActivityUpdate => ({ code: 'set-viewing-queue-settings' }),
+	removeActivity: (): ActivityUpdate => ({ code: 'clear-viewing-queue-settings' }),
+} satisfies ActivityTransitions
 
-export function toEditingQueueIdleOrNone(match?: (root: RootActivity) => any): (prev: RootActivity) => RootActivity {
-	return Im.produce((state: Im.WritableDraft<RootActivity>) => {
-		const queueNode = getViewingQueueNode(state)
-		if (!queueNode) return
-		if (match && !match(state)) return
-		queueNode.child.EDITING_QUEUE = {
-			_tag: 'variant',
-			id: 'EDITING_QUEUE',
-			opts: {},
-			chosen: ST.Match.leaf('IDLE', {}),
+export function applyActivityUpdate(activity: RootActivity, update: ActivityUpdate): RootActivity {
+	switch (update.code) {
+		case 'set-primary-panel':
+			return Im.produce(activity, draft => {
+				draft.child.ON_PRIMARY_PANEL = {
+					_tag: 'variant',
+					id: 'ON_PRIMARY_PANEL',
+					opts: {},
+					chosen: (update.to === 'VIEWING_QUEUE'
+						? ST.Match.branch('VIEWING_QUEUE', {}, {})
+						: ST.Match.branch('VIEWING_TEAMS', {}, {})) as any,
+				}
+			})
+		case 'clear-primary-panel':
+			return Im.produce(activity, draft => {
+				delete draft.child.ON_PRIMARY_PANEL
+			})
+		case 'set-editing-teamswitches': {
+			const withTeams = VIEWING_TEAMS_TRANSITIONS.matchActivity(activity)
+				? activity
+				: applyActivityUpdate(activity, { code: 'set-primary-panel', to: 'VIEWING_TEAMS' })
+			return Im.produce(withTeams, draft => {
+				const teamsNode = VIEWING_TEAMS_TRANSITIONS.matchActivity(draft)
+				if (!teamsNode) return
+				teamsNode.child.EDITING_TEAMSWITCHES = ST.Match.leaf('EDITING_TEAMSWITCHES', {})
+			})
 		}
-	})
+		case 'clear-editing-teamswitches':
+			return Im.produce(activity, draft => {
+				const teamsNode = VIEWING_TEAMS_TRANSITIONS.matchActivity(draft)
+				if (!teamsNode) return
+				delete teamsNode.child.EDITING_TEAMSWITCHES
+			})
+		case 'set-editing-queue':
+			return Im.produce(activity, draft => {
+				const queueNode = getViewingQueueNode(draft)
+				if (!queueNode) return
+				queueNode.child.EDITING_QUEUE = {
+					_tag: 'variant',
+					id: 'EDITING_QUEUE',
+					opts: {},
+					chosen: update.variant as any,
+				}
+			})
+		case 'set-editing-queue-idle-if': {
+			const currentId = getEditingQueueNode(activity)?.chosen?.id
+			if (!currentId || !update.currentIds.includes(currentId)) return activity
+			return applyActivityUpdate(activity, {
+				code: 'set-editing-queue',
+				variant: ST.Match.leaf('IDLE', {}) as QueueEditingActivity<'IDLE'>,
+			})
+		}
+		case 'clear-editing-queue':
+			return Im.produce(activity, draft => {
+				const queueNode = getViewingQueueNode(draft)
+				if (!queueNode) return
+				delete queueNode.child.EDITING_QUEUE
+			})
+		case 'set-viewing-queue-settings':
+			return Im.produce(activity, draft => {
+				const queueNode = getViewingQueueNode(draft)
+				if (!queueNode) return
+				queueNode.child.VIEWING_QUEUE_SETTINGS = {
+					_tag: 'branch',
+					id: 'VIEWING_QUEUE_SETTINGS',
+					opts: {},
+					child: {},
+				}
+			})
+		case 'clear-viewing-queue-settings':
+			return Im.produce(activity, draft => {
+				const queueNode = getViewingQueueNode(draft)
+				if (!queueNode) return
+				delete queueNode.child.VIEWING_QUEUE_SETTINGS
+			})
+		case 'set-changing-queue-settings':
+			return Im.produce(activity, draft => {
+				const settingsNode = getViewingQueueNode(draft)?.child.VIEWING_QUEUE_SETTINGS
+				if (!settingsNode) return
+				settingsNode.child.CHANGING_QUEUE_SETTINGS = ST.Match.leaf('CHANGING_QUEUE_SETTINGS', {})
+			})
+		case 'clear-changing-queue-settings':
+			return Im.produce(activity, draft => {
+				const settingsNode = getViewingQueueNode(draft)?.child.VIEWING_QUEUE_SETTINGS
+				if (!settingsNode) return
+				delete settingsNode.child.CHANGING_QUEUE_SETTINGS
+			})
+		default:
+			assertNever(update)
+	}
 }
 
 export type ActivityCode = ST.Def.NodeIds<typeof ACTIVITIES>

@@ -110,22 +110,18 @@ export function LayerList(
 
 	DndKit.useDraggingCallback(item => {
 		const presenceState = UPClient.Store.getState()
-		const getIsDraggingStuff = (root: UP.RootActivity) => {
-			const id = UP.getEditingQueueNode(root)?.chosen?.id
-			return id === 'MOVING_ITEM' || id === 'ADDING_ITEM_FROM_HISTORY'
-		}
 		if (!item) {
-			presenceState.updateActivity(UP.toEditingQueueIdleOrNone(getIsDraggingStuff))
+			presenceState.updateActivity({ code: 'set-editing-queue-idle-if', currentIds: ['MOVING_ITEM', 'ADDING_ITEM_FROM_HISTORY'] })
 			return
 		}
 		const { leaf } = ST.Match
 		if (item?.type === 'layer-item') {
-			presenceState.updateActivity(UP.createEditingQueueVariant(leaf('MOVING_ITEM', { itemId: item.id })))
+			presenceState.updateActivity({ code: 'set-editing-queue', variant: leaf('MOVING_ITEM', { itemId: item.id }) })
 			return
 		}
 
 		if (item?.type === 'history-entry') {
-			presenceState.updateActivity(UP.createEditingQueueVariant(leaf('ADDING_ITEM_FROM_HISTORY', {})))
+			presenceState.updateActivity({ code: 'set-editing-queue', variant: leaf('ADDING_ITEM_FROM_HISTORY', {}) })
 			return
 		}
 	})
@@ -713,7 +709,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 			},
 			[item.itemId],
 		),
-		removeActivity: UP.toEditingQueueIdleOrNone(),
+		removeActivity: UP.toEditingQueueIdleOrNone,
 	})
 
 	const [_voteDisplayPropsOpen, _setVoteDisplayPropsOpen] = React.useState(false)

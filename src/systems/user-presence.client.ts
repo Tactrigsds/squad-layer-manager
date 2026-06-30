@@ -136,8 +136,8 @@ export type Store = {
 	// derived: resolved per-user presence (latest session wins per userId)
 
 	dispatch(op: UP.NewClientOp): void
-	updateActivity(update: (prev: UP.RootActivity) => UP.RootActivity): void
-	preloadActivity(update: (prev: UP.RootActivity) => UP.RootActivity): void
+	updateActivity(update: UP.ActivityUpdate): void
+	preloadActivity(update: UP.ActivityUpdate): void
 }
 
 const [_usePresenceUpdate, presenceUpdate$] = ReactRx.bind<UP.PresenceUpdate>(
@@ -235,11 +235,7 @@ function createPresenceStore() {
 			},
 
 			updateActivity(update) {
-				const config = ConfigClient.getConfig()
-				if (!config) return
-				const prev = get().presence.get(config.wsClientId)?.activityState ?? UP.DEFAULT_ACTIVITY
-				const next = update(prev)
-				this.dispatch({ code: 'set-activity', activity: next })
+				this.dispatch({ code: 'update-activity', update })
 			},
 
 			preloadActivity(update) {
@@ -247,7 +243,7 @@ function createPresenceStore() {
 					const config = ConfigClient.getConfig()
 					if (!config) return
 					const prev = get().presence.get(config.wsClientId)?.activityState ?? UP.DEFAULT_ACTIVITY
-					const next = update(prev)
+					const next = UP.applyActivityUpdate(prev, update)
 					Lifecycle.dispatchLoaderEvents(loaderCtx, next, prev, true)
 				})
 			},
@@ -317,13 +313,7 @@ export function selectIsEditing(store: Store, userId: USR.UserId) {
 }
 
 // allows familiar useState binding to a presence activity
-export function useActivityState<P>(
-	opts: {
-		createActivity: (prev: UP.RootActivity | null | undefined) => UP.RootActivity
-		removeActivity: (prev: UP.RootActivity) => UP.RootActivity
-		matchActivity: (prev: UP.RootActivity | null | undefined) => P
-	},
-) {
+export function useActivityState<P>(opts: UP.ActivityTransitions<P>) {
 	const { matchActivity, createActivity, removeActivity } = opts
 
 	const createActivityRef = React.useRef(createActivity)
@@ -340,19 +330,18 @@ export function useActivityState<P>(
 		}, [matchActivity])),
 	)
 	const setActive: React.Dispatch<React.SetStateAction<boolean>> = React.useCallback((update) => {
-		const config = ConfigClient.getConfig()
-		if (!config) return
 		const storeState = Store.getState()
-		const state = Store.getState().presence.get(config?.wsClientId)?.activityState ?? UP.DEFAULT_ACTIVITY
+		const config = ConfigClient.getConfig()
+		const state = config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined
 
-		const alreadyActive = !!matchActivity(state)
+		const alreadyActive = !!matchActivity(state ?? UP.DEFAULT_ACTIVITY)
 		const newActive = typeof update === 'function' ? update(alreadyActive) : update
 
 		if (newActive && !alreadyActive) {
-			storeState.updateActivity(createActivityRef.current)
+			storeState.updateActivity(createActivityRef.current())
 		}
 		if (!newActive && alreadyActive) {
-			storeState.updateActivity(removeActivityRef.current)
+			storeState.updateActivity(removeActivityRef.current())
 		}
 	}, [matchActivity])
 	return [!!predicate, setActive] as const
@@ -369,13 +358,7 @@ export function useActivityMatch<P>(matchActivity: (prev: UP.RootActivity | null
 	)
 }
 
-type VariantConfig = {
-	createActivity: (prev: UP.RootActivity | null | undefined) => UP.RootActivity
-	removeActivity: (prev: UP.RootActivity) => UP.RootActivity
-	matchActivity: (prev: UP.RootActivity | null | undefined) => any
-}
-
-export function useVariantActivityState<Variants extends Record<string, VariantConfig>>(
+export function useVariantActivityState<Variants extends Record<string, UP.ActivityTransitions>>(
 	variants: Variants,
 ) {
 	const variantsRef = React.useRef(variants)
@@ -408,15 +391,13 @@ export function useVariantActivityState<Variants extends Record<string, VariantC
 		}
 
 		if (currentKey === newVariant) return
-		let ops: ((prev: UP.RootActivity) => UP.RootActivity)[] = []
 
 		if (currentKey !== null) {
-			ops.push(variantsRef.current[currentKey].removeActivity)
+			storeState.updateActivity(variantsRef.current[currentKey].removeActivity())
 		}
 		if (newVariant !== null) {
-			ops.push(variantsRef.current[newVariant].createActivity)
+			storeState.updateActivity(variantsRef.current[newVariant].createActivity())
 		}
-		if (ops.length > 0) storeState.updateActivity((s) => ops.reduce((prev, op) => op(prev), s))
 	}, [])
 
 	return [currentVariant, setVariant] as [keyof Variants | null, (variant: keyof Variants | null) => void]
@@ -494,18 +475,10 @@ export async function setup() {
 			const dialogActivity = UP.VIEWING_SETTINGS_TRANSITIONS.matchActivity(currentActivity)
 			const inChangingSettingsActivity = !!dialogActivity?.child.CHANGING_QUEUE_SETTINGS
 			if (!modified && inChangingSettingsActivity) {
-				Store.getState().updateActivity(Im.produce(draft => {
-					const node = UP.VIEWING_SETTINGS_TRANSITIONS.matchActivity(draft)
-					if (!node) return
-					delete node.child.CHANGING_QUEUE_SETTINGS
-				}))
+				Store.getState().updateActivity({ code: 'clear-changing-queue-settings' })
 			}
 			if (modified) {
-				Store.getState().updateActivity(Im.produce(draft => {
-					const node = UP.VIEWING_SETTINGS_TRANSITIONS.matchActivity(draft)
-					if (!node?.child) return
-					node.child.CHANGING_QUEUE_SETTINGS = ST.Match.leaf('CHANGING_QUEUE_SETTINGS', {})
-				}))
+				Store.getState().updateActivity({ code: 'set-changing-queue-settings' })
 			}
 		} catch (error) {
 			console.error('Error handling settings modification:', error)
