@@ -1,29 +1,10 @@
-import * as Zus from 'zustand'
-import * as ZusMiddle from 'zustand/middleware'
+import type * as GS from '@/models/global-settings.models'
+import * as RPC from '@/orpc.client'
+import * as ReactRx from '@react-rxjs/core'
+import * as Rx from 'rxjs'
 
-export type ChartTab = 'population' | 'kd' | 'wd'
-export type ChartTimeInterval = 1 | 5 | 10
-
-export type GlobalSettingsStore = {
-	displayTeamsNormalized: boolean
-	setDisplayTeamsNormalized: (value: boolean) => void
-	chartTab: ChartTab
-	setChartTab: (value: ChartTab) => void
-	chartTimeInterval: ChartTimeInterval
-	setChartTimeInterval: (value: ChartTimeInterval) => void
-}
-
-export const GlobalSettingsStore = Zus.createStore<GlobalSettingsStore>()(ZusMiddle.persist((set, _get) => ({
-	displayTeamsNormalized: true,
-	setDisplayTeamsNormalized: (value: boolean) => set({ displayTeamsNormalized: value }),
-	chartTab: 'population',
-	setChartTab: (value: ChartTab) => set({ chartTab: value }),
-	chartTimeInterval: 5,
-	setChartTimeInterval: (value: ChartTimeInterval) => set({ chartTimeInterval: value }),
-}), {
-	name: 'settings:v1',
-	storage: ZusMiddle.createJSONStorage(() => localStorage),
-}))
-
-// we're just hardcoding this to true for now
-GlobalSettingsStore.getState().setDisplayTeamsNormalized(true)
+export const [useGlobalSettings, globalSettings$] = ReactRx.bind(
+	RPC.observe(() => RPC.orpc.globalSettings.watchSettings.call()).pipe(
+		Rx.filter((value): value is GS.GlobalSettings => !('code' in value)),
+	),
+)

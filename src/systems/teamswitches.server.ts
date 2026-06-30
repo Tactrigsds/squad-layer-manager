@@ -234,6 +234,7 @@ export const orpcRouter = {
 		const obs = SquadServer.selectedServerCtx$(context).pipe(
 			withAbortSignal(signal!),
 			Rx.switchMap((ctx) => {
+				if (!ctx) return Rx.EMPTY
 				const init: TSW.UpdateForClient = {
 					code: 'init',
 					state: ctx.teamswitches.session.state,

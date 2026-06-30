@@ -612,6 +612,7 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 export const router = {
 	getPlayerBmData: orpcBase.input(z.object({ playerId: z.string() })).handler(async ({ input, context: ctx }) => {
 		const serverCtx = await Rx.firstValueFrom(SquadServer.selectedServerCtx$(ctx))
+		if (!serverCtx) return null
 		return fetchSinglePlayerBmData(serverCtx, SM.PlayerIds.queryFromPlayerId(input.playerId))
 	}),
 
@@ -619,6 +620,7 @@ export const router = {
 		const server$ = SquadServer.selectedServerCtx$(_ctx).pipe(withAbortSignal(signal!))
 		const updates$ = server$.pipe(
 			Rx.switchMap((ctx) => {
+				if (!ctx) return Rx.EMPTY
 				const state = getServerBmState(ctx.serverId)
 				const initial$ = Rx.from(
 					[...playerFlagsAndProfileCache.entries()]
@@ -634,6 +636,7 @@ export const router = {
 
 	listOrgFlags: orpcBase.handler(async ({ context: ctx }) => {
 		const serverCtx = await Rx.firstValueFrom(SquadServer.selectedServerCtx$(ctx))
+		if (!serverCtx) return null
 		return getOrgFlags(serverCtx)
 	}),
 
@@ -645,6 +648,7 @@ export const router = {
 		if (denyRes) return denyRes
 
 		const serverCtx = await Rx.firstValueFrom(SquadServer.selectedServerCtx$(ctx))
+		if (!serverCtx) return { code: 'err:no-server' as const }
 
 		const playerIds = SM.PlayerIds.queryFromPlayerId(input.playerId)
 		const eosId = input.playerId

@@ -13,7 +13,7 @@ import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models'
-import { CONFIG } from '@/server/config.ts'
+import * as GlobalSettings from '@/systems/global-settings.server'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
@@ -82,6 +82,7 @@ export const router = {
 	watchUpdates: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
 		const obs = SquadServer.selectedServerCtx$(context).pipe(
 			Rx.switchMap(async function*(ctx) {
+				if (!ctx) return
 				let initialState: (V.VoteState & Parts<USR.UserPart>) | null = null
 				const voteState = ctx.vote.state
 				if (voteState) {
@@ -149,11 +150,11 @@ export const syncVoteStateWithQueueState = C.spanOp(
 			nextUpItem && LL.isVoteItem(nextUpItem) && !nextUpItem.endingVoteState
 			&& nextUpItem && ctx.vote.state?.itemId !== nextUpItem.itemId
 			&& currentMatch.status !== 'post-game'
-			&& (!currentMatch.startTime || currentMatch.startTime.getTime() + CONFIG.vote.autoStartVoteCutoff < Date.now())
+			&& (!currentMatch.startTime || currentMatch.startTime.getTime() + GlobalSettings.GLOBAL_SETTINGS.vote.autoStartVoteCutoff < Date.now())
 		) {
 			let autostartTime: Date | undefined
-			if (currentMatch.startTime && CONFIG.vote.autoStartVoteDelay) {
-				const startTime = dateFns.addMilliseconds(currentMatch.startTime, CONFIG.vote.autoStartVoteDelay)
+			if (currentMatch.startTime && GlobalSettings.GLOBAL_SETTINGS.vote.autoStartVoteDelay) {
+				const startTime = dateFns.addMilliseconds(currentMatch.startTime, GlobalSettings.GLOBAL_SETTINGS.vote.autoStartVoteDelay)
 				if (dateFns.isFuture(startTime)) autostartTime = startTime
 				else autostartTime = dateFns.addMinutes(new Date(), 5)
 			}
@@ -178,7 +179,7 @@ export const syncVoteStateWithQueueState = C.spanOp(
 			vote.voteEndTask = null
 			vote.autostartVoteSub?.unsubscribe()
 			vote.autostartVoteSub = null
-			if (newVoteState?.code === 'ready' && newVoteState.autostartTime && CONFIG.vote.autoStartVoteDelay) {
+			if (newVoteState?.code === 'ready' && newVoteState.autostartTime && GlobalSettings.GLOBAL_SETTINGS.vote.autoStartVoteDelay) {
 				log.info('scheduling autostart vote to %s for %s', newVoteState.autostartTime.toISOString(), newVoteState.itemId)
 				vote.autostartVoteSub = Rx.of(1).pipe(Rx.delay(dateFns.differenceInMilliseconds(newVoteState.autostartTime, Date.now()))).subscribe(
 					() => {
@@ -196,7 +197,7 @@ export const startVote = C.spanOp(
 	'startVote',
 	{ module, levels: { event: 'info' }, attrs: (_, opts) => opts, mutexes: (ctx) => ctx.vote.mtx },
 	async (
-		ctx: C.Db & Partial<C.User> & C.SquadServer & C.Rcon & C.Vote & C.LayerQueue & C.UserPresence & C.MatchHistory & C.AdminList,
+		ctx: C.Db & Partial<C.User> & C.SquadServer & C.Rcon & C.Vote & C.LayerQueue & C.UserPresence & C.MatchHistory & C.AdminList & C.ServerSettings,
 		opts: V.StartVoteInput & { initiator: USR.GuiOrChatUserId | 'autostart' },
 	) => {
 		if (ctx.user !== undefined) {
@@ -216,7 +217,7 @@ export const startVote = C.spanOp(
 			return { code: 'err:vote-not-allowed' as const, msg: Messages.WARNS.vote.start.noVoteInPostGame }
 		}
 
-		const duration = opts.duration ?? CONFIG.vote.voteDuration
+		const duration = opts.duration ?? GlobalSettings.GLOBAL_SETTINGS.vote.voteDuration
 		const layerQueue = LayerQueue.getSavedQueue(ctx)
 		const itemId = opts.itemId ?? layerQueue[0]?.itemId
 		if (!itemId) {
@@ -284,7 +285,7 @@ export const startVote = C.spanOp(
 				ctx.vote.state,
 				item,
 				duration,
-				item.voteConfig?.displayProps ?? CONFIG.vote.voteDisplayProps,
+				item.voteConfig?.displayProps ?? GlobalSettings.GLOBAL_SETTINGS.vote.voteDisplayProps,
 			),
 		)
 
@@ -340,7 +341,7 @@ export const handleVote = C.spanOp('handleVote', {
 		void SquadRcon.warn(
 			ctx,
 			msg.playerIds,
-			Messages.WARNS.vote.voteCast(choiceLayerId, voteItem?.voteConfig?.displayProps ?? CONFIG.vote.voteDisplayProps),
+			Messages.WARNS.vote.voteCast(choiceLayerId, voteItem?.voteConfig?.displayProps ?? GlobalSettings.GLOBAL_SETTINGS.vote.voteDisplayProps),
 		)
 	})()
 	C.setSpanStatus(Otel.SpanStatusCode.OK)
@@ -350,7 +351,7 @@ export const abortVote = C.spanOp(
 	'abortVote',
 	{ module, levels: { event: 'info' }, attrs: (_, opts) => opts, mutexes: ctx => ctx.vote.mtx },
 	async (
-		ctx: C.Db & C.Rcon & C.SquadServer & C.MatchHistory & C.Vote & C.LayerQueue & C.AdminList,
+		ctx: C.Db & C.Rcon & C.SquadServer & C.MatchHistory & C.Vote & C.LayerQueue & C.AdminList & C.ServerSettings,
 		opts: { aborter: USR.GuiOrChatUserId },
 	) => {
 		const voteState = ctx.vote.state
@@ -425,10 +426,10 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 	ctx.vote.voteEndTask = new Rx.Subscription()
 
 	const currentTime = Date.now()
-	const finalReminderWaitTime = Math.max(0, ctx.vote.state.deadline - CONFIG.vote.finalVoteReminder - currentTime)
+	const finalReminderWaitTime = Math.max(0, ctx.vote.state.deadline - GlobalSettings.GLOBAL_SETTINGS.vote.finalVoteReminder - currentTime)
 	const regularReminderInterval = ctx.vote.state.voterType === 'internal'
-		? CONFIG.vote.internalVoteReminderInterval
-		: CONFIG.vote.voteReminderInterval
+		? GlobalSettings.GLOBAL_SETTINGS.vote.internalVoteReminderInterval
+		: GlobalSettings.GLOBAL_SETTINGS.vote.voteReminderInterval
 	const finalReminderBuffer = finalReminderWaitTime - regularReminderInterval
 
 	// -------- schedule regular reminders --------
@@ -448,7 +449,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 						voteItem,
 						timeLeft,
 						false,
-						voteItem.voteConfig?.displayProps ?? CONFIG.vote.voteDisplayProps,
+						voteItem.voteConfig?.displayProps ?? GlobalSettings.GLOBAL_SETTINGS.vote.voteDisplayProps,
 					)
 					await broadcastVoteUpdate(ctx, ctx.vote.state, msg, { onlyNotifyNonVotingAdmins: true })
 				}),
@@ -469,9 +470,9 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 					const msg = Messages.BROADCASTS.vote.voteReminder(
 						ctx.vote.state,
 						voteItem,
-						CONFIG.vote.finalVoteReminder,
+						GlobalSettings.GLOBAL_SETTINGS.vote.finalVoteReminder,
 						true,
-						voteItem.voteConfig?.displayProps ?? CONFIG.vote.voteDisplayProps,
+						voteItem.voteConfig?.displayProps ?? GlobalSettings.GLOBAL_SETTINGS.vote.voteDisplayProps,
 					)
 					await broadcastVoteUpdate(ctx, ctx.vote.state, msg, { onlyNotifyNonVotingAdmins: true, repeatWarn: false })
 				}),
@@ -502,7 +503,7 @@ export const endVote = C.spanOp(
 		attrs: (_, opts) => opts,
 	},
 	async (
-		ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.Rcon & C.AdminList & C.UserPresence,
+		ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.Rcon & C.AdminList & C.UserPresence & C.ServerSettings,
 		opts: { reason: 'vote-timeout' } | { reason: 'ended-early'; endedBy: USR.GuiOrChatUserId },
 	) => {
 		if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') {
@@ -554,7 +555,7 @@ export const endVote = C.spanOp(
 			voteItemId: endingVoteState.itemId,
 		})
 
-		const displayProps = listItem.voteConfig?.displayProps ?? CONFIG.vote.voteDisplayProps
+		const displayProps = listItem.voteConfig?.displayProps ?? GlobalSettings.GLOBAL_SETTINGS.vote.voteDisplayProps
 		if (endingVoteState.code === 'ended:winner') {
 			await broadcastVoteUpdate(
 				ctx,

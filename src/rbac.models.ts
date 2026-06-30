@@ -95,6 +95,9 @@ export const PERMISSION_DEFINITION = {
 	...definePermission('squad-server:warn-players', { description: 'Send in-game warnings to players', scope: 'global' }),
 
 	...definePermission('battlemetrics:write-flags', { description: 'Add or remove BattleMetrics player flags', scope: 'global' }),
+
+	...definePermission('admin:manage-servers', { description: 'Enable or disable servers and edit server-level settings', scope: 'global' }),
+	...definePermission('admin:manage-global-settings', { description: 'Edit global settings', scope: 'global' }),
 }
 export type KnownPermission = (typeof PERMISSION_DEFINITION)[number]
 export type PermissionType = KnownPermission['type']

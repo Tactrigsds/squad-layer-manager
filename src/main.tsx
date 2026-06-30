@@ -23,7 +23,7 @@ import { rootRouter } from './root-router.ts'
 // Enable Map and Set support in Immer
 enableMapSet()
 ;(function setupClientSystems() {
-	console.log('running system initialization')
+	console.debug('running system initialization')
 	ThemeSys.setup()
 	ConfigClient.setup()
 	FilterEntityClient.setup()
@@ -51,6 +51,8 @@ enableMapSet()
 		})
 	}
 })()
+
+console.log('mounting react root')
 
 createRoot(document.getElementById('root')!).render(
 	<React.StrictMode>

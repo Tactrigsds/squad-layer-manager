@@ -6,7 +6,7 @@ import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 
 import * as SM from '@/models/squad.models'
-import { CONFIG } from '@/server/config.ts'
+import * as GlobalSettings from '@/systems/global-settings.server'
 import * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
 
@@ -313,7 +313,7 @@ export type WarnOptionsBase =
 	| {
 		msg: string | string[]
 		repeat?: number
-		// whether to include CONFIG.warnPrefix
+		// whether to include GLOBAL_SETTINGS.warnPrefix
 		prefix?: boolean
 	}
 	| string
@@ -354,8 +354,8 @@ export async function warn(ctx: C.SquadRcon & C.AdminList, ids: SM.PlayerIds.Eos
 		repeatCount = opts.repeat || 1
 		prefix = opts.prefix ?? prefix
 	}
-	if (msgArr[0] && CONFIG.warnPrefix && prefix) {
-		msgArr[0] = CONFIG.warnPrefix + msgArr[0]
+	if (msgArr[0] && GlobalSettings.GLOBAL_SETTINGS.warnPrefix && prefix) {
+		msgArr[0] = GlobalSettings.GLOBAL_SETTINGS.warnPrefix + msgArr[0]
 	}
 
 	log.info(`Warning player: %s: %s`, SM.PlayerIds.prettyPrint(ids), msgArr)

@@ -15,11 +15,22 @@ import { z } from 'zod'
 const module = initModule('server-settings')
 const orpcBase = getOrpcBase(module)
 
+export type ServerSettingsSlice = {
+	settings: SS.PublicServerSettings
+}
+
+export function initServerSettingsSlice(serverState: SS.ServerState): ServerSettingsSlice {
+	return {
+		settings: SS.getPublicSettings(serverState.settings),
+	}
+}
+
 export const orpcRouter = {
 	watchSettings: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context: _ctx, signal }) {
 		const obs: Rx.Observable<Readonly<[SS.PublicServerSettings, SS.LQStateUpdate['source'] | null]>> = SquadServer.selectedServerCtx$(_ctx)
 			.pipe(
 				Rx.switchMap(async function*(ctx) {
+					if (!ctx) return
 					const state = await SquadServer.getServerState(ctx)
 					const settings = SS.getPublicSettings(state.settings)
 					yield [settings, null] as const

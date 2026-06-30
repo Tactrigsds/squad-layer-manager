@@ -57,6 +57,7 @@ export const orpcRouter = {
 	watchUpdates: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
 		const updateForServer$ = SquadServer.selectedServerCtx$(context).pipe(
 			Rx.switchMap(ctx => {
+				if (!ctx) return Rx.EMPTY
 				const initial: UP.PresenceUpdate = {
 					code: 'init',
 					state: Obj.deepClone(ctx.userPresence.session.state),

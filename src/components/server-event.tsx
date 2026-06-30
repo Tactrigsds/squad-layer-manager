@@ -9,7 +9,7 @@ import { assertNever } from '@/lib/type-guards'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
 
-import { GlobalSettingsStore } from '@/systems/global-settings.client'
+import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as Icons from 'lucide-react'
 import * as Zus from 'zustand'

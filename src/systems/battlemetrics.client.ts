@@ -25,7 +25,7 @@ export const [usePlayerBmData, playerBmData$] = ReactRx.bind<BM.PublicPlayerBmDa
 
 export function useOrgFlags(): BM.PlayerFlag[] | undefined {
 	const { data } = useQuery(RPC.orpc.battlemetrics.listOrgFlags.queryOptions({ staleTime: Infinity }))
-	return data
+	return data ?? undefined
 }
 
 export function sortFlagsByHierarchy<T extends BM.PlayerFlag>(flags: T[]): T[] {
@@ -114,6 +114,6 @@ export function setup() {
 
 	void (async () => {
 		const orgFlagsRes = await RPC.queryClient.fetchQuery(RPC.orpc.battlemetrics.listOrgFlags.queryOptions({ staleTime: Infinity }))
-		Store.getState().setOrgFlags(orgFlagsRes)
+		Store.getState().setOrgFlags(orgFlagsRes ?? [])
 	})()
 }

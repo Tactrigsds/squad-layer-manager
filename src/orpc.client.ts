@@ -1,6 +1,5 @@
 import * as AR from '@/app-routes'
 import { globalToast$ } from '@/hooks/use-global-toast'
-import type { PublicConfig } from '@/server/config'
 import type { OrpcAppRouter } from '@/server/orpc-app-router'
 import * as ConfigClient from '@/systems/config.client'
 import { createORPCClient, onError } from '@orpc/client'
@@ -55,7 +54,6 @@ const closed$ = Rx.fromEvent(websocket, 'close')
 const error$ = Rx.fromEvent(websocket, 'error')
 
 let previousConnections = false
-let previousConfig: PublicConfig | undefined
 let disconnectTime: number | undefined
 
 export type ConnectionStatus = 'open' | 'closed' | 'pending' | 'reconnecting'
@@ -79,7 +77,7 @@ export const [useConnectStatus, connectStatus$] = (() => {
 connectStatus$.subscribe()
 
 opened$.pipe(
-	Rx.concatMap(async () => {
+	Rx.tap(() => {
 		if (disconnectTime) {
 			const reconnectionDuration = Date.now() - disconnectTime
 			console.log(`WebSocket reconnected to ${wsUrl} (took ${reconnectionDuration}ms)`)
@@ -87,30 +85,27 @@ opened$.pipe(
 		} else {
 			console.log('WebSocket connection opened to ' + wsUrl)
 		}
-		if (previousConnections) ConfigClient.invalidateConfig()
+		if (previousConnections) void queryClient.invalidateQueries()
 		previousConnections = true
-		const config = await ConfigClient.fetchConfig()
-
-		// -------- version skew protection --------
-		if (previousConfig && previousConfig.PUBLIC_GIT_SHA !== config.PUBLIC_GIT_SHA) {
-			globalToast$.next({ variant: 'info', title: 'SLM is being upgraded, window will refresh shortly...' })
-			await sleep(500)
-			const buildFormatted = formatVersion(previousConfig.PUBLIC_GIT_BRANCH, previousConfig.PUBLIC_GIT_SHA)
-			const configFormatted = formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)
-			console.warn(`Version skew detected (${buildFormatted} -> ${configFormatted}), reloading window`)
-			window.location.reload()
-		} else if (!previousConfig) {
-			console.log(
-				`%cSLM version ${formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)}`,
-				'color: limegreen',
-			)
-			previousConfig = config
-		} else {
-			void queryClient.invalidateQueries()
-		}
 	}),
 	Rx.retry(),
 ).subscribe()
+
+// -------- version skew protection --------
+let previousSha: string | undefined
+ConfigClient.Store.subscribe(config => {
+	if (!config) return
+	if (!previousSha) {
+		previousSha = config.PUBLIC_GIT_SHA
+		console.log(`%cSLM version ${formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)}`, 'color: limegreen')
+	} else if (previousSha !== config.PUBLIC_GIT_SHA) {
+		globalToast$.next({ variant: 'info', title: 'SLM is being upgraded, window will refresh shortly...' })
+		setTimeout(async () => {
+			console.warn(`Version skew detected (${previousSha} -> ${config.PUBLIC_GIT_SHA}), reloading window`)
+			window.location.reload()
+		}, 500)
+	}
+})
 
 error$.subscribe(() => {
 	console.error('Websocket encountered an error')
@@ -132,7 +127,7 @@ closed$.pipe(
 export const queryClient = new QueryClient()
 export const orpc = createTanstackQueryUtils(_orpcClient, { path: ['orpc'] })
 
-export function observe<T>(task: () => Promise<AsyncGenerator<T>>, opts?: { onError?: (error: any, count: number) => void }) {
+export function observe<T>(task: () => Promise<Rx.ObservableInput<T>>, opts?: { onError?: (error: any, count: number) => void }) {
 	return Rx.from(toCold(task)).pipe(
 		traceTag('ORPC_OBSERVE'),
 		Rx.concatAll(),

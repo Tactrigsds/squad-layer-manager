@@ -1,6 +1,6 @@
 import { IsolatedSubject } from '@/lib/isolated-subject'
-import { CONFIG } from '@/server/config'
 import * as Env from '@/server/env'
+import * as GlobalSettings from '@/systems/global-settings.server'
 import { baseLogger } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as net from 'node:net'
@@ -37,7 +37,7 @@ export function setup() {
 	ENV = envBuilder()
 	const ctx = { log: baseLogger }
 	ctx.log.info('Setting up log receiver')
-	if (!CONFIG.servers.some(s => s.connections.logs.type === 'log-receiver')) {
+	if (!GlobalSettings.GLOBAL_SETTINGS.servers.some(s => s.connections.logs.type === 'log-receiver')) {
 		ctx.log.info('No log receiver configured, skipping setup')
 		return
 	}
@@ -76,7 +76,7 @@ export function setup() {
 			}
 
 			// Validate token
-			const serverConfig = CONFIG.servers.find(s => s.id === serverId)
+			const serverConfig = GlobalSettings.GLOBAL_SETTINGS.servers.find(s => s.id === serverId)
 			if (!serverConfig) {
 				ctx.log.error(`Unknown serverId ${serverId} from ${clientId}`)
 				socket.end()

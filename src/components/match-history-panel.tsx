@@ -18,7 +18,7 @@ import type * as MH from '@/models/match-history.models'
 
 import * as DndKit from '@/systems/dndkit.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
-import { GlobalSettingsStore } from '@/systems/global-settings.client'
+import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'

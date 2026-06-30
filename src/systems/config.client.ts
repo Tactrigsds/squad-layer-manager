@@ -33,15 +33,9 @@ export async function fetchConfig() {
 }
 
 export function setup() {
-	void (async () => {
-		const config = await RPC.orpc.config.getPublicConfig.call()
+	RPC.observe(() => RPC.orpc.config.watchPublicConfig.call()).subscribe(config => {
 		Store.setState(config)
-	})()
-}
-
-export function invalidateConfig() {
-	Store.setState(undefined)
-	setup()
+	})
 }
 
 export async function fetchEffectiveColConfig(): Promise<LQY.EffectiveColumnAndTableConfig> {

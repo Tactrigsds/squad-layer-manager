@@ -17,7 +17,7 @@ import * as MH from '@/models/match-history.models'
 import * as SE from '@/models/server-events.models'
 
 import type * as USR from '@/models/users.models'
-import { CONFIG } from '@/server/config'
+import * as GlobalSettings from '@/systems/global-settings.server'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
@@ -204,6 +204,7 @@ export const matchHistoryRouter = {
 		const server$ = SquadServer.selectedServerCtx$(_ctx).pipe(withAbortSignal(signal!))
 		const state$ = server$.pipe(
 			Rx.switchMap(async function*(ctx) {
+				if (!ctx) return
 				const serverId = ctx.serverId
 				yield getPublicMatchHistoryState(ctx)
 				const historyUpdate$ = ctx.matchHistory.update$.pipe(withAbortSignal(signal!))
@@ -510,7 +511,7 @@ export const finalizeCurrentMatch = C.spanOp('finalizeCurrentMatch', {
 		await loadState(ctx, { startAtOrdinal: currentMatch.ordinal })
 
 		// -------- look for tripped balance triggers --------
-		for (const [trigId, level] of Object.entries(CONFIG.balanceTriggerLevels)) {
+		for (const [trigId, level] of Object.entries(GlobalSettings.GLOBAL_SETTINGS.balanceTriggerLevels)) {
 			let inputStored: any
 			const trig = BAL.TRIGGERS[trigId as BAL.TriggerId]
 			try {

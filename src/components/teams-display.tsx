@@ -3,7 +3,7 @@ import * as L from '@/models/layer'
 
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
-import { GlobalSettingsStore } from '@/systems/global-settings.client'
+import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'

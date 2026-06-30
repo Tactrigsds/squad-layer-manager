@@ -7,7 +7,7 @@ import * as L from '@/models/layer'
 import type * as SM from '@/models/squad.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
-import { GlobalSettingsStore } from '@/systems/global-settings.client'
+import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as ThemeClient from '@/systems/theme.client'

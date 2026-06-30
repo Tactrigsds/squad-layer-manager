@@ -14,6 +14,7 @@ import type * as USR from '@/models/users.models.ts'
 import type * as RBAC from '@/rbac.models'
 import type * as LayerQueueSys from '@/systems/layer-queue.server'
 import type * as MatchHistorySys from '@/systems/match-history.server'
+import type * as ServerSettingsSys from '@/systems/server-settings.server'
 import type * as SquadRconSys from '@/systems/squad-rcon.server'
 import type * as SquadServerSys from '@/systems/squad-server.server'
 import type * as TeamswitchSys from '@/systems/teamswitches.server'
@@ -461,6 +462,10 @@ export type UserPresence =
 	& UserPresenceSys.UserPresenceContext
 	& ServerId
 
+export type ServerSettings = CS.Ctx & {
+	serverSettings: ServerSettingsSys.ServerSettingsSlice
+} & ServerId
+
 export type ServerSliceCleanup = CS.Ctx & {
 	cleanup: CleanupTasks
 }
@@ -473,6 +478,7 @@ export type ServerSlice =
 	& MatchHistory
 	& Teamswitch
 	& UserPresence
+	& ServerSettings
 	& ServerSliceCleanup
 	& AdminList
 

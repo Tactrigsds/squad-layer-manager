@@ -414,6 +414,13 @@
       "when": 1782745342666,
       "tag": "0058_workable_trauma",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "5",
+      "when": 1782846791732,
+      "tag": "0059_condemned_post",
+      "breakpoints": true
     }
   ]
 }

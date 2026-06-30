@@ -9,6 +9,7 @@ import type * as CS from '@/models/context-shared'
 import * as USR from '@/models/users.models'
 import type * as RBAC from '@/rbac.models'
 import { CONFIG } from '@/server/config'
+import * as GlobalSettings from '@/systems/global-settings.server'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
@@ -70,7 +71,7 @@ export const orpcRouter = {
 			state.pendingSteamAccountLinks.delete(code)
 		}
 		state.pendingSteamAccountLinks.set(code, { discordId, expirySub: sub })
-		return { code: 'ok' as const, command: CMD.buildCommand('linkSteamAccount', { code }, CONFIG.commands, CONFIG.commandPrefix)[0] }
+		return { code: 'ok' as const, command: CMD.buildCommand('linkSteamAccount', { code }, GlobalSettings.GLOBAL_SETTINGS.commands, GlobalSettings.GLOBAL_SETTINGS.commandPrefix)[0] }
 	}),
 
 	cancelSteamAccountLinks: orpcBase.meta({ type: 'mutation' }).handler(async ({ context }) => {
@@ -158,7 +159,7 @@ export async function completeSteamAccountLink(ctx: C.Db, code: string, steam64I
 }
 
 function scheduleCodeExpiry(code: string) {
-	return Rx.of(1).pipe(Rx.delay(CONFIG.steamLinkCodeExpiry)).subscribe(() => {
+	return Rx.of(1).pipe(Rx.delay(GlobalSettings.GLOBAL_SETTINGS.steamLinkCodeExpiry)).subscribe(() => {
 		state.pendingSteamAccountLinks.delete(code)
 	})
 }

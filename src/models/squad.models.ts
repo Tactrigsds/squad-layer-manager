@@ -56,9 +56,10 @@ export type LayersStatusExt = LayersStatus & {
 }
 
 export type RconError = { code: 'err:rcon'; msg: string }
+export type ServerDisabled = { code: 'server-disabled' }
 export type ServerInfoRes = { code: 'ok'; data: ServerInfo } | RconError
 export type LayerStatusRes = { code: 'ok'; data: LayersStatus } | RconError
-export type LayersStatusResExt = { code: 'ok'; data: LayersStatusExt } | RconError
+export type LayersStatusResExt = { code: 'ok'; data: LayersStatusExt } | RconError | ServerDisabled
 
 export const TeamIdSchema = z.union([z.literal(1), z.literal(2)])
 export type TeamId = z.infer<typeof TeamIdSchema>

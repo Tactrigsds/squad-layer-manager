@@ -22,6 +22,7 @@ import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models.ts'
 import { CONFIG } from '@/server/config.ts'
+import * as GlobalSettings from '@/systems/global-settings.server'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { initModule } from '@/server/logger'
@@ -96,9 +97,10 @@ export const setupInstance = C.spanOp(
 		})
 
 		// -------- schedule generic admin reminders --------
-		if (CONFIG.servers.find(s => s.id === ctx.serverId)!.remindersAndAnnouncementsEnabled) {
+		if (ctx.serverSettings.settings.remindersAndAnnouncementsEnabled) {
+			const GS = GlobalSettings.GLOBAL_SETTINGS
 			ctx.cleanup.push(
-				Rx.interval(CONFIG.layerQueue.adminQueueReminderInterval).pipe(
+				Rx.interval(GS.layerQueue.adminQueueReminderInterval).pipe(
 					C.durableSub('queue-reminders', { module, levels: { event: 'info' } }, async () => {
 						const baseCtx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 						const serverState = await SquadServer.getServerState(baseCtx)
@@ -131,16 +133,16 @@ export const setupInstance = C.spanOp(
 							&& voteState?.code === 'ready'
 							&& !serverState.layerQueue[0].endingVoteState
 							&& currentMatch.startTime !== undefined
-							&& currentMatch.startTime.getTime() + CONFIG.vote.startVoteReminderThreshold < Date.now()
+							&& currentMatch.startTime.getTime() + GS.vote.startVoteReminderThreshold < Date.now()
 						) {
 							await SquadRcon.warnAllAdmins(
 								ctx,
 								Messages.WARNS.queue.votePending(
 									currentMatch.startTime,
-									CONFIG.vote.startVoteReminderThreshold,
-									CONFIG.vote.autoStartVoteDelay !== null,
-									CONFIG.commands,
-									CONFIG.commandPrefix,
+									GS.vote.startVoteReminderThreshold,
+									GS.vote.autoStartVoteDelay !== null,
+									GlobalSettings.GLOBAL_SETTINGS.commands,
+									GlobalSettings.GLOBAL_SETTINGS.commandPrefix,
 								),
 							)
 						} else if (serverState.layerQueue.length === 0) {
@@ -183,14 +185,13 @@ export const setupInstance = C.spanOp(
 				Rx.filter(([ctx, event]) => event.type === 'MAP_SET'),
 				C.durableSub('sync-server-map-set', { module, mutexes: ([ctx]) => ctx.layerQueue.updateLayerMtx }, async ([ctx, event]) => {
 					if (event.type !== 'MAP_SET' || event.source?.type === 'layer-queue') return
-					const serverConfig = CONFIG.servers.find(s => s.id === ctx.serverId)!
 					const queue = getSavedQueue(ctx)
 					// this case will be dealt with in handleNewGame, so can ignore it here
 					if (ctx.server.serverRolling$.value) return
 					const savedNextLayerId = LL.getNextLayerId(queue)
 					const savedNextItemId = queue[0]?.itemId || null
 					if (savedNextLayerId && L.areLayersCompatible(event.layerId, savedNextLayerId)) return
-					if (serverConfig.overrideAdminSetNextLayer) {
+					if (ctx.serverSettings.settings.overrideAdminSetNextLayer) {
 						const serverState = await SquadServer.getServerState(ctx)
 						if (savedNextLayerId === null) {
 							log.warn('no next layer to sync after map set')
@@ -234,7 +235,7 @@ export const setupInstance = C.spanOp(
 	},
 )
 
-export function schedulePostRollTasks(ctx: C.SquadServer, newLayerId: L.LayerId) {
+export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.ServerSettings, newLayerId: L.LayerId) {
 	const serverId = ctx.serverId
 
 	// -------- schedule post-roll events --------
@@ -245,7 +246,7 @@ export function schedulePostRollTasks(ctx: C.SquadServer, newLayerId: L.LayerId)
 	const currentLayer = L.toLayer(newLayerId)
 	if (currentLayer.Gamemode === 'FRAAS') {
 		ctx.server.postRollEventsSub.add(
-			Rx.timer(CONFIG.fogOffDelay).subscribe(async () => {
+			Rx.timer(GlobalSettings.GLOBAL_SETTINGS.fogOffDelay).subscribe(async () => {
 				const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 				await SquadRcon.setFogOfWar(ctx, 'off')
 				void SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
@@ -254,7 +255,7 @@ export function schedulePostRollTasks(ctx: C.SquadServer, newLayerId: L.LayerId)
 	}
 
 	// -------- schedule post-roll announcements --------
-	if (CONFIG.servers.find(s => s.id === ctx.serverId)?.remindersAndAnnouncementsEnabled) {
+	if (ctx.serverSettings.settings.remindersAndAnnouncementsEnabled) {
 		const announcementTasks: (Rx.Observable<void>)[] = []
 		announcementTasks.push(toCold(async () => {
 			const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
@@ -274,13 +275,13 @@ export function schedulePostRollTasks(ctx: C.SquadServer, newLayerId: L.LayerId)
 		announcementTasks.push(toCold(async () => {
 			const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 			const queue = getSavedQueue(ctx)
-			if (queue && queue.length <= CONFIG.layerQueue.lowQueueWarningThreshold) {
+			if (queue && queue.length <= GlobalSettings.GLOBAL_SETTINGS.layerQueue.lowQueueWarningThreshold) {
 				await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.lowQueueItemCount(queue.length))
 			}
 		}))
 
 		const withWaits: Rx.Observable<unknown>[] = []
-		withWaits.push(Rx.timer(CONFIG.postRollAnnouncementsTimeout))
+		withWaits.push(Rx.timer(GlobalSettings.GLOBAL_SETTINGS.postRollAnnouncementsTimeout))
 
 		for (let i = 0; i < announcementTasks.length; i++) {
 			withWaits.push(announcementTasks[i].pipe(Rx.catchError(() => Rx.EMPTY)))
@@ -306,7 +307,7 @@ async function onSideEffect(
 }
 
 export async function saveQueueAndUpdateServer(
-	ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.AdminList,
+	ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.AdminList & C.ServerSettings,
 	list: LL.List,
 ) {
 	await VoteSys.syncVoteStateWithQueueState(ctx, list)
@@ -314,8 +315,7 @@ export async function saveQueueAndUpdateServer(
 		const serverState = await SquadServer.getServerState(ctx)
 		const nextItemId = list[0]?.itemId || null
 		const nextLayerId = LL.getNextLayerId(list)
-		const serverConfig = CONFIG.servers.find(s => s.id === ctx.serverId)!
-		if (serverConfig.warnOnChangeLayer && nextLayerId) {
+		if (ctx.serverSettings.settings.warnOnChangeLayer && nextLayerId) {
 			const statusRes = await ctx.server.layersStatus.get(ctx)
 			if (statusRes.code === 'ok' && statusRes.data.nextLayer) {
 				if (!L.areLayersCompatible(statusRes.data.nextLayer.id, nextLayerId)) {
@@ -398,7 +398,7 @@ export const syncNextLayerToServer = C.spanOp('syncNextLayerToServer', { module,
 })
 
 export async function toggleUpdatesToSquadServer(
-	{ ctx, input }: { ctx: C.Db & C.SquadServer & C.UserOrPlayer & C.LayerQueue & C.AdminList & C.Rcon; input: { disabled: boolean } },
+	{ ctx, input }: { ctx: C.Db & C.SquadServer & C.UserOrPlayer & C.LayerQueue & C.AdminList & C.Rcon & C.ServerSettings; input: { disabled: boolean } },
 ) {
 	// if player we assume authorization has already been established
 	if (ctx.user) {
@@ -449,6 +449,7 @@ export const router = {
 	watchUnexpectedNextLayer: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
 		const obs = SquadServer.selectedServerCtx$(context).pipe(
 			Rx.switchMap(ctx => {
+				if (!ctx) return Rx.EMPTY
 				return ctx.layerQueue.unexpectedNextLayerSet$
 			}),
 			withAbortSignal(signal!),
@@ -469,6 +470,7 @@ export const router = {
 		.handler(async function*({ context, input, signal }) {
 			const updateForServer$ = SquadServer.selectedServerCtx$(context).pipe(
 				Rx.switchMap(ctx => {
+					if (!ctx) return Rx.EMPTY
 					const initial: SLL.Update = {
 						code: 'init',
 						state: ctx.layerQueue.session.state,
@@ -519,7 +521,7 @@ export const dispatchOp = C.spanOp(
 		attrs: (ctx, op) => ({ op: op.op, opId: op.opId }),
 	},
 	async (
-		ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.AdminList,
+		ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.AdminList & C.ServerSettings,
 		op: SLL.Operation,
 	) => {
 		log.info(`Dispatching op ${op.op} (${op.opId}) %o`, op)

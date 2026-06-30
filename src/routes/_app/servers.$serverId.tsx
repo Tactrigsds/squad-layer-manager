@@ -33,8 +33,8 @@ export const Route = createFileRoute('/_app/servers/$serverId')({
 		],
 	}),
 
-	onEnter({ params }) {
-		void SquadServerClient.SelectedServerStore.getState().setSelectedServer(params.serverId)
+	onEnter({ params, loaderData }) {
+		if (loaderData?.serverFound) void SquadServerClient.SelectedServerStore.getState().setSelectedServer(params.serverId)
 	},
 
 	onLeave() {
@@ -46,9 +46,14 @@ function RouteComponent() {
 	const serverId = Route.useParams().serverId
 	const serverFound = Route.useLoaderData().serverFound
 	const config = ConfigClient.useConfig()
+	console.log('RENDERED ROUTE', serverFound)
 	React.useEffect(() => {
+		console.log('dashboard mounted')
 		if (!serverFound) {
-			return
+			return () => {
+				console.log('dashboard unmounted')
+				return
+			}
 		}
 		// -------- schedule presence updates, keep default server id up-to-date --------
 		const timeout$ = Rx.of(false).pipe(Rx.delay(UP.INTERACT_TIMEOUT))
@@ -80,10 +85,14 @@ function RouteComponent() {
 			})
 		}))
 
-		return () => sub.unsubscribe()
+		return () => {
+			console.log('dashboard unmounted')
+			sub.unsubscribe()
+		}
 	}, [serverFound])
 
 	if (!serverFound) {
+		console.log('rendering not found')
 		return (
 			<div className="flex items-center justify-center min-h-screen p-4 w-full">
 				<Card className="w-full max-w-lg">
@@ -100,12 +109,12 @@ function RouteComponent() {
 								This server may have been removed from the configuration or the server ID is incorrect.
 							</AlertDescription>
 						</Alert>
-						{config && config.servers.length > 0
+						{config && config.servers.some(s => s.enabled)
 							? (
 								<div className="space-y-3">
 									<div className="text-sm font-medium text-muted-foreground">Available servers:</div>
 									<div className="space-y-2">
-										{config.servers.map((server) => (
+										{config.servers.filter(s => s.enabled).map((server) => (
 											<Link key={server.id} to="/servers/$serverId" params={{ serverId: server.id }}>
 												<Button variant="outline" className="w-full justify-start" size="lg">
 													<Home className="mr-2 h-4 w-4" />

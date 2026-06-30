@@ -19,6 +19,7 @@ import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
+import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as ThemeClient from '@/systems/theme.client'
@@ -97,6 +98,11 @@ function RouteComponent() {
 					<NavLink to="/filters">
 						Filters
 					</NavLink>
+					{!RbacClient.usePermsCheck({ check: 'any', permits: [RBAC.perm('admin:manage-servers'), RBAC.perm('admin:manage-global-settings')] }) && (
+						<NavLink to="/settings">
+							Settings
+						</NavLink>
+					)}
 					<ExploreLayersDialog />
 				</div>
 				<div className="flex h-max min-h-0 flex-row items-center space-x-1 sm:space-x-3 overflow-hidden">
@@ -129,27 +135,30 @@ function RouteComponent() {
 					)}
 					{isOnServerDashboard && <ServerActionsDropdown />}
 					{config && <NavLinksDropdown globalLinks={config.navLinks} serverLinks={selectedServer?.navLinks} />}
-					{isOnServerDashboard && selectedServer && config && (config.servers.length === 1
-						? <div className="font-medium text-sm">{selectedServer.displayName}</div>
-						: (
-							<DropdownMenu>
-								<DropdownMenuTrigger asChild>
-									<Button variant="outline">
-										{selectedServer.displayName}
-										<Icons.ChevronDown className="ml-2 h-4 w-4" />
-									</Button>
-								</DropdownMenuTrigger>
-								<DropdownMenuContent align="end" className="min-w-[--radix-dropdown-menu-trigger-width] ">
-									{config.servers.filter((server) => server.id !== selectedServer.id).map((server) => (
-										<DropdownMenuItem className="cursor-pointer" asChild key={server.id}>
-											<Link to="/servers/$serverId" params={{ serverId: server.id }}>
-												{server.displayName}
-											</Link>
-										</DropdownMenuItem>
-									))}
-								</DropdownMenuContent>
-							</DropdownMenu>
-						))}
+					{isOnServerDashboard && selectedServer && config && (() => {
+						const enabledServers = config.servers.filter(s => s.enabled)
+						return enabledServers.length <= 1
+							? <div className="font-medium text-sm">{selectedServer.displayName}</div>
+							: (
+								<DropdownMenu>
+									<DropdownMenuTrigger asChild>
+										<Button variant="outline">
+											{selectedServer.displayName}
+											<Icons.ChevronDown className="ml-2 h-4 w-4" />
+										</Button>
+									</DropdownMenuTrigger>
+									<DropdownMenuContent align="end" className="min-w-[--radix-dropdown-menu-trigger-width] ">
+										{enabledServers.filter(server => server.id !== selectedServer.id).map((server) => (
+											<DropdownMenuItem className="cursor-pointer" asChild key={server.id}>
+												<Link to="/servers/$serverId" params={{ serverId: server.id }}>
+													{server.displayName}
+												</Link>
+											</DropdownMenuItem>
+										))}
+									</DropdownMenuContent>
+								</DropdownMenu>
+						)
+					})()}
 					{user && (
 						<DropdownMenu modal={false} open={openState !== null} onOpenChange={onPrimaryDropdownOpenChange}>
 							<DropdownMenuTrigger asChild>

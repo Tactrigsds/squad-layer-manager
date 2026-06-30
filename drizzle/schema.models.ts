@@ -28,3 +28,5 @@ export type Squad = typeof Schema.squads.$inferSelect
 export type NewSquad = typeof Schema.squads.$inferInsert
 export type SquadEventAssociation = typeof Schema.squadEventAssociations.$inferSelect
 export type NewSquadEventAssociation = typeof Schema.squadEventAssociations.$inferInsert
+export type GlobalSettings = typeof Schema.globalSettings.$inferSelect
+export type NewGlobalSettings = typeof Schema.globalSettings.$inferInsert

@@ -1,4 +1,6 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
+import { assertNever } from '@/lib/type-guards'
+import * as ZusUtils from '@/lib/zustand'
 import * as CHAT from '@/models/chat.models'
 import * as MH from '@/models/match-history.models'
 import * as SquadServer from '@/models/squad-server.models'
@@ -35,9 +37,19 @@ let previouslyConnected = false
 
 export const chatEvent$ = RPC.observe(
 	() => {
-		const eventBuffer = ChatStore.getState().chatState.eventBuffer
-		const serverId = ChatStore.getState().loadedServerId ?? SelectedServerStore.getState().selectedServerId
-		return RPC.orpc.squadServer.watchChatEvents.call({ lastEventId: eventBuffer[eventBuffer.length - 1]?.id, serverId: serverId })
+		const serverId$ = Rx.combineLatest([
+			ZusUtils.toObservable(ChatStore),
+			ZusUtils.toObservable(SelectedServerStore),
+		])
+			.pipe(Rx.map(([[chatState], [selectedServerState]]) => chatState.loadedServerId ?? selectedServerState.selectedServerId))
+
+		return Promise.resolve(serverId$.pipe(
+			Rx.switchMap(async serverId => {
+				const eventBuffer = ChatStore.getState().chatState.eventBuffer
+				return await RPC.orpc.squadServer.watchChatEvents.call({ lastEventId: eventBuffer[eventBuffer.length - 1]?.id, serverId })
+			}),
+			Rx.concatAll(),
+		))
 	},
 	{
 		onError: () => {
@@ -196,13 +208,15 @@ export function setup() {
 		setSelectedServer: async (serverId: string) => {
 			if (serverId === get().selectedServerId) return
 			const res = await RPC.orpc.squadServer.setSelectedServer.call(serverId)
-			if (res.code !== 'ok') {
-				globalToast$.next({ variant: 'destructive', title: res.code })
+			if (res.code === 'err:server-not-found') {
+				console.warn('Server not found', serverId)
 				return
+			} else if (res.code === 'ok') {
+				Cookies.setCookie('default-server-id', serverId)
+				return set({ selectedServerId: serverId })
+			} else {
+				assertNever(res)
 			}
-
-			Cookies.setCookie('default-server-id', serverId)
-			return set({ selectedServerId: serverId })
 		},
 		setAsDefaultServer: () => {
 			Cookies.setCookie('default-server-id', get().selectedServerId)

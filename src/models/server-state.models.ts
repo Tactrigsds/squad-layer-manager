@@ -108,6 +108,11 @@ export const PublicServerSettingsSchema = z
 		queue: QueueSettingsSchema
 			// avoid sharing default queue object - TODO unclear if necessary
 			.prefault({}).transform((obj) => Obj.deepClone(obj)),
+		remindersAndAnnouncementsEnabled: z.boolean().prefault(true).describe('Whether reminders/announcements for admins are enabled'),
+		overrideAdminSetNextLayer: z.boolean().prefault(false).describe(
+			'Whether AdminSetNextLayer commands not originating from SLM are respected',
+		),
+		warnOnChangeLayer: z.boolean().prefault(false).describe('Warn admins when the next layer is changed'),
 	})
 
 export type PublicServerSettings = z.infer<typeof PublicServerSettingsSchema>

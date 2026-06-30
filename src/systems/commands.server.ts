@@ -10,7 +10,7 @@ import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswitches.models'
 import type * as USR from '@/models/users.models'
-import { CONFIG } from '@/server/config.ts'
+import * as GlobalSettings from '@/systems/global-settings.server'
 import type * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
@@ -43,7 +43,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 		}
 	}
 
-	const parseRes = CMD.parseCommand(msg, CONFIG.commands, CONFIG.commandPrefix)
+	const parseRes = CMD.parseCommand(msg, GlobalSettings.GLOBAL_SETTINGS.commands, GlobalSettings.GLOBAL_SETTINGS.commandPrefix)
 	if (parseRes.code === 'err:unknown-command') {
 		await SquadRcon.warn(ctx, msg.playerIds, parseRes.msg)
 		return
@@ -53,7 +53,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 
 	log.info('Command received: %s', cmd)
 
-	const cmdConfig = CONFIG.commands[cmd as keyof typeof CONFIG.commands]
+	const cmdConfig = GlobalSettings.GLOBAL_SETTINGS.commands[cmd as keyof typeof GlobalSettings.GLOBAL_SETTINGS.commands]
 	if (!CMD.chatInScope(cmdConfig.scopes, msg.channelType)) {
 		const scopes = CMD.getScopesForChat(msg.channelType)
 		const correctChats = scopes.flatMap((s) => CMD.CHAT_SCOPE_MAPPINGS[s])
@@ -132,7 +132,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 		}
 
 		case 'help': {
-			await SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.commands.help(CONFIG.commands, CONFIG.commandPrefix))
+			await SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.commands.help(GlobalSettings.GLOBAL_SETTINGS.commands, GlobalSettings.GLOBAL_SETTINGS.commandPrefix))
 			return { code: 'ok' as const }
 		}
 		case 'showNext': {

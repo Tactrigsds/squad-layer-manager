@@ -1,8 +1,8 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "0a18f516-d2cd-4dc0-a75d-4b4d369cf779",
-  "prevId": "09bc40da-eea2-491e-a64d-a221f809579c",
+  "id": "2c4886e6-eb7b-44a3-a2ad-241fc720c400",
+  "prevId": "0a18f516-d2cd-4dc0-a75d-4b4d369cf779",
   "tables": {
     "balanceTriggerEvents": {
       "name": "balanceTriggerEvents",
@@ -288,6 +288,39 @@
           ]
         }
       },
+      "checkConstraint": {}
+    },
+    "globalSettings": {
+      "name": "globalSettings",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "settings": {
+          "name": "settings",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "('{\"json\":{}}')"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "globalSettings_id": {
+          "name": "globalSettings_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
       "checkConstraint": {}
     },
     "matchHistory": {
@@ -813,6 +846,14 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
         },
         "layerQueue": {
           "name": "layerQueue",

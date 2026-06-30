@@ -1,5 +1,5 @@
 import { enumTupleOptions } from '@/lib/zod'
-import { bigint, index, int, json, mysqlEnum, mysqlTable, primaryKey, timestamp, unique, varchar } from 'drizzle-orm/mysql-core'
+import { bigint, boolean, index, int, json, mysqlEnum, mysqlTable, primaryKey, timestamp, unique, varchar } from 'drizzle-orm/mysql-core'
 import superjson from 'superjson'
 import { BALANCE_TRIGGER_LEVEL, SERVER_EVENT_PLAYER_ASSOC_TYPE, SERVER_EVENT_TYPE } from './enums'
 
@@ -184,9 +184,15 @@ export type NewFilter = typeof filters.$inferInsert
 export const servers = mysqlTable('servers', {
 	id: varchar('id', { length: 256 }).primaryKey(),
 	displayName: varchar('displayName', { length: 256 }).notNull(),
+	enabled: boolean('enabled').notNull().default(true),
 	layerQueue: json('layerQueue').notNull().default(superjson.stringify([])),
 	teamswitches: json('teamswitches').notNull().default(superjson.stringify(new Map())),
 	settings: json('settings').default(superjson.stringify({})),
+})
+
+export const globalSettings = mysqlTable('globalSettings', {
+	id: int('id').primaryKey().default(1),
+	settings: json('settings').notNull().default(superjson.stringify({})),
 })
 
 export type Server = typeof servers.$inferSelect

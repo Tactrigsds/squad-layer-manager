@@ -23,9 +23,11 @@ import * as SquadServer from '@/systems/squad-server.server'
 import * as Teamswitches from '@/systems/teamswitches.server'
 import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
+import * as GlobalSettings from '@/systems/global-settings.server'
 import * as Vote from '@/systems/vote.server'
 import * as WsSession from '@/systems/ws-session.server'
 
+import * as CS from '@/models/context-shared'
 import * as Config from './config.ts'
 import * as C from './context.ts'
 import * as DB from './db'
@@ -62,9 +64,11 @@ await C.spanOp('main', { module }, async () => {
 	await Promise.all([Config.ensureSetup(), LayerDb.setup(), DB.setup(), FilterEntity.setup()])
 	PersistedCache.setup()
 	await Battlemetrics.setup()
-	SquadLogsReceiver.setup()
 	Rbac.setup()
 	void Sessions.setup()
+	await GlobalSettings.setup(DB.addPooledDb(CS.init()))
+	Config.setupPublicConfig()
+	SquadLogsReceiver.setup()
 	await Promise.all([SquadServer.setup(), Discord.setup()])
 	const { serverClosed } = await Fastify.setup()
 	if (ENV.NODE_ENV === 'development') {
