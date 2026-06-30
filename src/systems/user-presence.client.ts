@@ -227,7 +227,7 @@ function createPresenceStore() {
 				const userId = UsersClient.loggedInUserId
 				const config = ConfigClient.getConfig()
 				if (!config || !userId) return
-				if (newOp.code !== 'page-interaction') console.log(newOp)
+				// if (newOp.code === 'set-activity') console.trace(UP.getEditingTeamswitchesNode(newOp.activity))
 				const op: UP.ClientOp = { ...newOp, userId, clientId: config.wsClientId, time: Date.now(), opId: UP.createOpId() } as UP.ClientOp
 				const newSession = RbSyncState.Client.processOutgoingOps(get().session, [op], UP.reducer)
 				set({ session: newSession })

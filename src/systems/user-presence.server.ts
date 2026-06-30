@@ -9,10 +9,12 @@ import * as CS from '@/models/context-shared'
 import * as SLL from '@/models/shared-layer-list'
 import * as UP from '@/models/user-presence'
 import * as C from '@/server/context'
+import * as Db from '@/server/db'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as SquadServer from '@/systems/squad-server.server'
+import * as Teamswitches from '@/systems/teamswitches.server'
 import * as WSSessionSys from '@/systems/ws-session.server'
 import * as Rx from 'rxjs'
 
@@ -38,6 +40,25 @@ export function initUserPresenceContext(ctx: C.ServerSliceCleanup & C.ServerId):
 	}
 	ctx.cleanup.push(context.op$)
 	sideEffectQueue$.pipe(C.durableSub('onSideEffect', { module }, (args) => onSideEffect(...args))).subscribe()
+
+	// When the last editor removes EDITING_TEAMSWITCHES (disconnect/navigate/save), revert unsaved teamswitch edits
+	ctx.cleanup.push(
+		context.op$.pipe(
+			Rx.map(() => {
+				const ctx = resolveCtx(serverId)
+				const presence = ctx.userPresence.session.state.presence
+				const hasEditors = [...presence.values()].some(c => !!UP.getEditingTeamswitchesNode(c.activityState))
+				return hasEditors
+			}),
+			Rx.pairwise(),
+			Rx.filter(([hadEditors, hasEditors]) => hadEditors && !hasEditors),
+			C.durableSub('teamswitches:revert-on-editing-end', { module }, async () => {
+				debugger
+				const ctx = resolveCtx(serverId)
+				await Teamswitches.dispatchRevertToSaved(ctx)
+			}),
+		).subscribe(),
+	)
 
 	return context
 }
@@ -137,7 +158,7 @@ async function onSideEffect(ctx: C.UserPresence, effect: UP.SideEffects) {
 }
 
 function getBaseCtx() {
-	return C.initMutexStore(CS.init())
+	return C.initMutexStore(Db.addPooledDb(CS.init()))
 }
 
 export function setup() {

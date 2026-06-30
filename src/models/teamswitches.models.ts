@@ -106,10 +106,10 @@ export type State = {
 	switching: boolean
 }
 
-export function initState(): State {
+export function initState(savedSwitches?: TeamswitchCollection): State {
 	return {
 		editedSwitches: initTeamswitchCollection(),
-		savedSwitches: initTeamswitchCollection(),
+		savedSwitches: savedSwitches ?? initTeamswitchCollection(),
 		pendingSwitches: initTeamswitchCollection(),
 		players: new Map(),
 		switching: false,
@@ -126,6 +126,11 @@ export const OpSchema = z.discriminatedUnion('code', [
 		source: USR.GuiOrChatUserIdSchema,
 		playerId: SM.PlayerIdSchema,
 		toTeam: MH.NormedTeamIdSchema,
+	}),
+	z.object({
+		opId: z.string(),
+		code: z.literal('init-saved-teamswitches'),
+		switches: TeamswitchCollectionSchema,
 	}),
 	z.object({
 		opId: z.string(),
@@ -223,6 +228,7 @@ export type OpError<OpCode extends Op['code'] = Op['code']> =
 			: OpCode extends 'teamswitch-execution-completed' ? (OpErrors.CurrentlyNotSwitching)
 			: OpCode extends 'execute-teamswitches' ? (OpErrors.CurrentlySwitching | OpErrors.SwitchesNotSaved)
 			: OpCode extends 'switch-now' ? OpErrors.CurrentlySwitching
+			: OpCode extends 'init-saved-teamswitches' ? OpErrors.CurrentlySwitching
 			: never)
 	)
 
@@ -253,6 +259,7 @@ export type SideEffect =
 
 export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, ops, prevOps, onSideEffect) => {
 	let state = { ...oldState }
+	let skipEmitSave = false
 	for (const op of ops) {
 		const emitOpError = <T extends Op>(error: OpError<T['code']>) => onSideEffect?.({ code: 'error', opId: error.op.opId, error })
 		try {
@@ -276,6 +283,16 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 						state.editedSwitches = new Map(state.editedSwitches)
 						state.editedSwitches.set(op.playerId, switchEntry)
 					}
+					break
+				}
+
+				case 'init-saved-teamswitches': {
+					if (state.switching) {
+						emitOpError({ code: 'err:currently-switching', op })
+						break
+					}
+					state.savedSwitches = state.editedSwitches = op.switches
+					skipEmitSave = true
 					break
 				}
 
@@ -476,7 +493,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 			emitOpError({ code: 'err:unexpected', error: e, op })
 		}
 	}
-	if (state.savedSwitches !== oldState.savedSwitches) {
+	if (state.savedSwitches !== oldState.savedSwitches && !skipEmitSave) {
 		const newSwitchingPlayers: SM.PlayerId[] = []
 		for (const [playerId, _switch] of state.savedSwitches.entries()) {
 			const toTeam = oldState.savedSwitches.get(playerId)?.toTeam

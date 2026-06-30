@@ -108,7 +108,9 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 					className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
 					placeholder="Warn reason"
 					autoFocus
-					onChange={e => { reason = e.target.value }}
+					onChange={e => {
+						reason = e.target.value
+					}}
 				/>
 			),
 			buttons: [{ id: 'confirm', label: 'Send Warning' }],
@@ -198,7 +200,7 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 							onClick={() => TSWClient.Actions.removeSwitch([playerId])}
 							disabled={!!manageDenied || !canSwitchNow}
 						>
-							Cancel Switch
+							Delete Switch
 						</Item>
 					</PermissionDeniedTooltip>
 				</>
@@ -215,7 +217,12 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 			{inSquad && (
 				<>
 					<Separator />
-					<Item onClick={() => { TSWClient.Actions.ensureViewingTeams(); SquadServerClient.PlayerSelectionStore.getState().selectSquad(playerId) }}>
+					<Item
+						onClick={() => {
+							TSWClient.Actions.ensureViewingTeams()
+							SquadServerClient.PlayerSelectionStore.getState().selectSquad(playerId)
+						}}
+					>
 						Select Squad
 					</Item>
 				</>

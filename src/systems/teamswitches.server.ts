@@ -3,6 +3,7 @@ import { sleep, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { withThrown, withThrownAsync } from '@/lib/error'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as MapUtils from '@/lib/map'
+import { destrNullable } from '@/lib/object'
 import * as RbSyncState from '@/lib/rollback-synced-state'
 import { assertNever } from '@/lib/type-guards'
 import { WARNS } from '@/messages'
@@ -37,17 +38,19 @@ export type TeamswitchContext = {
 	op$: IsolatedSubject<TSW.Op[]>
 	dispatchMtx: MutexInterface
 	teamswitchExecutedAt: number | null
+	haveReadSavedSwitchesFromDb: boolean
 }
 export function setup() {
 	log = module.getLogger()
 }
 
-export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
+export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 	const context: TeamswitchContext = {
 		session: RbSyncState.Server.initSession(TSW.initState(), {}),
 		op$: new IsolatedSubject<TSW.Op[]>(),
 		dispatchMtx: new Mutex(),
 		teamswitchExecutedAt: null,
+		haveReadSavedSwitchesFromDb: false,
 	}
 	ctx.cleanup.push(context.op$, context.dispatchMtx)
 
@@ -113,6 +116,19 @@ export function initContext(ctx: C.SquadServer & C.ServerSliceCleanup) {
 						players,
 					})
 					tryEndSwitching()
+					restoreSavedBlock: if (!ctx.teamswitches.haveReadSavedSwitchesFromDb) {
+						ctx.teamswitches.haveReadSavedSwitchesFromDb = true
+						const serverState = await SquadServer.getServerState(ctx)
+						if (!serverState.teamswitches) break restoreSavedBlock
+						const { matchHistoryEntryId, switches } = serverState.teamswitches
+						if (matchHistoryEntryId === match.historyEntryId) {
+							ops.push({
+								opId: TSW.createOpId(),
+								code: 'init-saved-teamswitches',
+								switches,
+							})
+						}
+					}
 				} else if (e.type === 'PLAYER_CHANGED_TEAM') {
 					if (e.newTeamId == null) return
 					const team = MH.getNormedTeamId(e.newTeamId, match.ordinal)
@@ -276,8 +292,12 @@ const dispatchOp = C.spanOp(
 					}
 
 					case 'save': {
+						const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+						const saved = se.switches.size > 0
+							? { switches: se.switches, matchHistoryEntryId: currentMatch.historyEntryId }
+							: null
 						await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-							await SquadServer.updateServerState(ctx, { teamswitches: se.switches }, { type: 'system', event: 'teamswitches-saved' })
+							await SquadServer.updateServerState(ctx, { teamswitches: saved }, { type: 'system', event: 'teamswitches-saved' })
 						})
 						break
 					}

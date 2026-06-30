@@ -18,7 +18,6 @@ import * as Messages from '@/messages.ts'
 import type * as BAL from '@/models/balance-triggers.models'
 import * as CHAT from '@/models/chat.models.ts'
 import * as CS from '@/models/context-shared'
-import * as UP from '@/models/user-presence'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as MH from '@/models/match-history.models'
@@ -27,6 +26,7 @@ import * as SE from '@/models/server-events.models'
 import * as SS from '@/models/server-state.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as SM from '@/models/squad.models'
+import * as UP from '@/models/user-presence'
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import { CONFIG } from '@/server/config.ts'
@@ -407,7 +407,7 @@ export async function setup() {
 								displayName: serverConfig.displayName,
 								settings: SS.ServerSettingsSchema.parse(settingsFromConfig),
 								layerQueue: [],
-								teamswitches: new Map(),
+								teamswitches: null,
 							}
 							await ctx
 								.db({ redactParams: true })
@@ -572,22 +572,6 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 	}
 
 	globalState.slices.set(serverId, slice)
-
-	// When the last editor removes EDITING_TEAMSWITCHES (disconnect/navigate/save), revert unsaved teamswitch edits
-	let hadTeamswitchEditors = false
-	cleanup.push(
-		slice.userPresence.op$.pipe(
-			C.durableSub('teamswitches:revert-on-editing-end', { module }, async () => {
-				const presence = slice.userPresence.session.state.presence
-				const hasEditors = [...presence.values()].some(c => !!UP.getEditingTeamswitchesNode(c.activityState))
-				if (hadTeamswitchEditors && !hasEditors) {
-					const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-					await TeamSwitchesSys.dispatchRevertToSaved(ctx)
-				}
-				hadTeamswitchEditors = hasEditors
-			}),
-		).subscribe(),
-	)
 
 	// -------- load saved events --------
 	await loadSavedEvents({ ...ctx, server, serverId })

@@ -267,11 +267,21 @@ export function printSource(source: LQStateUpdate['source']) {
 export const ServerIdSchema = z.string().min(1).max(256)
 export type ServerId = z.infer<typeof ServerIdSchema>
 
+export const SavedTeamswitchesSchema = z.object({
+	switches: TSW.TeamswitchCollectionSchema,
+	matchHistoryEntryId: z.number().int(),
+})
+export type SavedTeamswitches = z.infer<typeof SavedTeamswitchesSchema>
+
 export const ServerStateSchema = z.object({
 	id: ServerIdSchema,
 	displayName: z.string().min(1).max(256),
 	layerQueue: LL.ListSchema,
-	teamswitches: TSW.TeamswitchCollectionSchema,
+	teamswitches: z.preprocess(
+		// migrate old format (bare Map) to null — we can't recover the match ID
+		(val) => (val instanceof Map ? null : val),
+		SavedTeamswitchesSchema.nullable(),
+	).prefault(null),
 	settings: ServerSettingsSchema,
 })
 

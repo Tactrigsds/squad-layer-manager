@@ -368,6 +368,7 @@
           "strings": ["switchsquadnext"],
           "enabled": true
         },
+        "swaps": {"scopes": ["admin"], "strings": ["swaps"], "enabled": true},
         "flag": {"scopes": ["admin"], "strings": ["flag"], "enabled": true},
         "removeFlag": {
           "scopes": ["admin"],
@@ -744,6 +745,33 @@
             "strings": {
               "description": "Command strings that trigger this command when prefixed with the command prefix",
               "default": ["switchsquadnext"],
+              "type": "array",
+              "items": {
+                "description": "A string with no whitespace characters",
+                "type": "string",
+                "pattern": "^\\S+$"
+              }
+            },
+            "scopes": {
+              "description": "Scopes in which this command is available",
+              "default": ["admin"],
+              "type": "array",
+              "items": {"type": "string", "enum": ["admin", "public"]}
+            },
+            "enabled": {"default": true, "type": "boolean"}
+          }
+        },
+        "swaps": {
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["swaps"],
+            "enabled": true
+          },
+          "type": "object",
+          "properties": {
+            "strings": {
+              "description": "Command strings that trigger this command when prefixed with the command prefix",
+              "default": ["swaps"],
               "type": "array",
               "items": {
                 "description": "A string with no whitespace characters",

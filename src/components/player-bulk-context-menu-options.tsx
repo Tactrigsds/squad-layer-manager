@@ -54,7 +54,9 @@ export default function PlayerBulkContextMenuOptions({ playerIds }: { playerIds:
 					className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
 					placeholder="Warn reason"
 					autoFocus
-					onChange={e => { reason = e.target.value }}
+					onChange={e => {
+						reason = e.target.value
+					}}
 				/>
 			),
 			buttons: [{ id: 'confirm', label: 'Send Warning' }],
@@ -89,7 +91,7 @@ export default function PlayerBulkContextMenuOptions({ playerIds }: { playerIds:
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<ContextMenuItem onClick={() => TSWClient.Actions.removeSwitch(playerIds)} disabled={!!manageDenied}>
-					Cancel Switch
+					Delete Switches
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<ContextMenuSeparator />

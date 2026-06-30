@@ -244,14 +244,17 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 			const toTeam: MH.NormedTeamId = targetNormedTeam === 'A' ? 'B' : 'A'
 			const source: USR.GuiOrChatUserId = { steamId: player.ids.steam?.toString() }
 			const playerId = SM.PlayerIds.getPlayerId(target.ids)
-			const errors = await Teamswitches.dispatchAddSwitch(ctx, playerId, toTeam, source)
+			const errors = await Teamswitches.dispatchSwitchNext(ctx, new Map([[playerId, { toTeam, source }]]))
 			if (errors.length > 0) {
 				const err = errors[0] as TSW.OpError
 				if (err.code === 'err:currently-switching') {
 					return await showError('currently-switching', 'A team switch is currently in progress')
 				}
+				if (err.code === 'err:already-marked') {
+					return await showError('already-marked', `${target.ids.username} is already marked for teamswitching`)
+				}
 			}
-			await SquadRcon.warn(ctx, msg.playerIds, `Queued ${target.ids.username} to switch to team ${toTeam} on next map`)
+			await SquadRcon.warn(ctx, msg.playerIds, `Queued ${target.ids.username} to switch teams on next map`)
 			return { code: 'ok' as const }
 		}
 
@@ -320,18 +323,70 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 				}
 				await SquadRcon.warn(ctx, msg.playerIds, `Switching ${squadPlayers.length} players from "${matchedSquad.squadName}" to the opposite team now`)
 			} else {
-				for (const p of squadPlayers) {
-					const normed = MH.getNormedTeamId(p.teamId!, currentMatch.ordinal)
-					const toTeam: MH.NormedTeamId = normed === 'A' ? 'B' : 'A'
-					const errors = await Teamswitches.dispatchAddSwitch(ctx, SM.PlayerIds.getPlayerId(p.ids), toTeam, source)
-					if (errors.length > 0) {
-						const err = errors[0] as TSW.OpError
-						if (err.code === 'err:currently-switching') {
-							return await showError('currently-switching', 'A team switch is currently in progress')
-						}
-					}
+				const nextSwitches: TSW.TeamswitchCollection = new Map(
+					squadPlayers.map(p => {
+						const normed = MH.getNormedTeamId(p.teamId!, currentMatch.ordinal)
+						const toTeam: MH.NormedTeamId = normed === 'A' ? 'B' : 'A'
+						return [SM.PlayerIds.getPlayerId(p.ids), { toTeam, source }] as const
+					})
+				)
+				const errors = await Teamswitches.dispatchSwitchNext(ctx, nextSwitches)
+				const alreadyMarked = errors.filter(e => (e as TSW.OpError).code === 'err:already-marked').length
+				if (alreadyMarked === nextSwitches.size) {
+					return await showError('already-marked', `All players in "${matchedSquad.squadName}" are already marked for teamswitching`)
 				}
-				await SquadRcon.warn(ctx, msg.playerIds, `Queued ${squadPlayers.length} players from "${matchedSquad.squadName}" to switch teams on next map`)
+				if (errors.some(e => (e as TSW.OpError).code === 'err:currently-switching')) {
+					return await showError('currently-switching', 'A team switch is currently in progress')
+				}
+				const queued = nextSwitches.size - alreadyMarked
+				await SquadRcon.warn(ctx, msg.playerIds, `Queued ${queued} players from "${matchedSquad.squadName}" to switch teams on next map`)
+			}
+			return { code: 'ok' as const }
+		}
+
+		case 'swaps': {
+			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+			const layer = L.toLayer(currentMatch.layerId)
+			const switches = ctx.teamswitches.session.state.savedSwitches
+
+			if (switches.size === 0) {
+				await SquadRcon.warn(ctx, msg.playerIds, 'No swaps queued')
+				return { code: 'ok' as const }
+			}
+
+			const factionA = layer[MH.getTeamNormalizedFactionProp(currentMatch.ordinal, 'A')] ?? 'Team A'
+			const factionB = layer[MH.getTeamNormalizedFactionProp(currentMatch.ordinal, 'B')] ?? 'Team B'
+
+			const toA: SM.PlayerId[] = []
+			const toB: SM.PlayerId[] = []
+			for (const [playerId, sw] of switches) {
+				if (sw.toTeam === 'A') toA.push(playerId)
+				else toB.push(playerId)
+			}
+
+			const parts = [
+				toA.length > 0 ? `${toA.length} to current ${factionA}` : null,
+				toB.length > 0 ? `${toB.length} to current ${factionB}` : null,
+			].filter(Boolean)
+			const header = `Swaps: ${parts.join(', ')}`
+
+			if (switches.size <= 8) {
+				const teamsStateRes = await ctx.server.teams.get(ctx)
+				const players = teamsStateRes.code === 'ok' ? teamsStateRes.players : []
+				const getName = (playerId: SM.PlayerId) =>
+					SM.PlayerIds.find(players, p => p.ids, playerId)?.ids.username ?? playerId
+				const lines = [header]
+				if (toA.length > 0) {
+					lines.push(`\nto ${factionA}:`)
+					for (const id of toA) lines.push(getName(id))
+				}
+				if (toB.length > 0) {
+					lines.push(`\nto ${factionB}:`)
+					for (const id of toB) lines.push(getName(id))
+				}
+				await SquadRcon.warn(ctx, msg.playerIds, lines.join('\n'))
+			} else {
+				await SquadRcon.warn(ctx, msg.playerIds, header)
 			}
 			return { code: 'ok' as const }
 		}

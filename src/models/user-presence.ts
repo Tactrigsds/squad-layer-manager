@@ -240,6 +240,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffects> = (prevState, 
 					}
 
 					case 'set-activity': {
+						const teamswitchNode = getEditingTeamswitchesNode(op.activity)
 						const prevActivity = clientState.activityState
 
 						const prevEditingSll = getEditingQueueNode(prevActivity)
@@ -383,11 +384,11 @@ export function getEditingTeamswitchesNode(activity: RootActivity | null | undef
 export const EDITING_TEAMSWITCHES_TRANSITIONS = {
 	matchActivity: (root: RootActivity | undefined | null) => !!getEditingTeamswitchesNode(root),
 	createActivity: (_activity: RootActivity | undefined | null): RootActivity => {
-		const activity = _activity ?? DEFAULT_ACTIVITY
-		return Im.produce(activity, draft => {
-			const teamsNode = VIEWING_TEAMS_TRANSITIONS.matchActivity(draft)
-			if (!teamsNode) return
-			teamsNode.child.EDITING_TEAMSWITCHES = ST.Match.leaf('EDITING_TEAMSWITCHES', {})
+		const withTeams = VIEWING_TEAMS_TRANSITIONS.matchActivity(_activity)
+			? _activity!
+			: VIEWING_TEAMS_TRANSITIONS.createActivity(_activity)
+		return Im.produce(withTeams, draft => {
+			VIEWING_TEAMS_TRANSITIONS.matchActivity(draft)!.child.EDITING_TEAMSWITCHES = ST.Match.leaf('EDITING_TEAMSWITCHES', {})
 		})
 	},
 	removeActivity: Im.produce((root: Im.WritableDraft<RootActivity>) => {
@@ -578,6 +579,10 @@ export function itemsToLockForActivity(list: LL.List, activity: RootActivity): L
 }
 
 export const getHumanReadableActivity = (activity: RootActivity, listOrIndex: LL.List | LL.ItemIndex, withItemName?: boolean) => {
+	if (getEditingTeamswitchesNode(activity)) {
+		return 'Editing Scheduled Teamswitches'
+	}
+
 	const editingActivity = getEditingQueueNode(activity)
 	const queueNode = getViewingQueueNode(activity)
 	const settingsActivity = queueNode?.child.VIEWING_QUEUE_SETTINGS

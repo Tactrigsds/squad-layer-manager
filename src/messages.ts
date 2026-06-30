@@ -333,6 +333,7 @@ export const GENERAL = {
 			switchNext: 'Queue a player to switch teams on the next map',
 			switchSquadNow: 'Switch an entire squad to the opposite team immediately',
 			switchSquadNext: 'Queue an entire squad to switch teams on the next map',
+			swaps: 'Show a summary of queued team swaps',
 		},
 	},
 }

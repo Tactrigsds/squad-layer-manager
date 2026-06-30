@@ -238,12 +238,7 @@ export namespace Actions {
 	}
 
 	function setEditing() {
-		UPClient.Store.getState().updateActivity(activity => {
-			const withTeams = UP.VIEWING_TEAMS_TRANSITIONS.matchActivity(activity)
-				? activity
-				: UP.VIEWING_TEAMS_TRANSITIONS.createActivity(activity)
-			return UP.EDITING_TEAMSWITCHES_TRANSITIONS.createActivity(withTeams)
-		})
+		UPClient.Store.getState().updateActivity(UP.EDITING_TEAMSWITCHES_TRANSITIONS.createActivity)
 	}
 	function clearEditing() {
 		UPClient.Store.getState().updateActivity(UP.EDITING_TEAMSWITCHES_TRANSITIONS.removeActivity)
