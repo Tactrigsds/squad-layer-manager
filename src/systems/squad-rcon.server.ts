@@ -383,7 +383,7 @@ export const warnAll = C.spanOp(
 export const warnAllAdmins = C.spanOp(
 	'warnAllAdmins',
 	{ module, levels: { event: 'info' } },
-	async (ctx: C.SquadRcon & C.AdminList, options: WarnOptions) => {
+	async (ctx: C.SquadRcon & C.AdminList, options: WarnOptions, excludeSteamIds?: Set<string>) => {
 		const [currentAdminList, teamsRes] = await Promise.all([
 			ctx.adminList.get(ctx),
 			ctx.server.teams.get(ctx),
@@ -391,7 +391,11 @@ export const warnAllAdmins = C.spanOp(
 		if (teamsRes.code === 'err:rcon') return
 		const admins: SM.PlayerIds.Schema[] = []
 		for (const player of teamsRes.players) {
-			if (player.ids.steam && currentAdminList.admins.has(player.ids.steam)) {
+			if (
+				player.ids.steam
+				&& currentAdminList.admins.has(player.ids.steam)
+				&& !excludeSteamIds?.has(player.ids.steam)
+			) {
 				admins.push(player.ids)
 			}
 		}

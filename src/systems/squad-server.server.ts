@@ -548,6 +548,8 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 		server.processEventsMtx,
 	)
 
+	const userPresence = UserPresence.initUserPresenceContext({ ...ctx, cleanup, serverId })
+
 	const slice: C.ServerSlice = {
 		...CS.init(),
 		serverId,
@@ -562,9 +564,10 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 			serverId,
 			cleanup,
 			server,
+			userPresence,
 		}),
 		layerQueue: LayerQueue.initLayerQueueSlice({ ...ctx, cleanup, serverId }, serverState),
-		userPresence: UserPresence.initUserPresenceContext({ ...ctx, cleanup, serverId }),
+		userPresence,
 		vote: Vote.initVoteContext(cleanup),
 
 		adminList,

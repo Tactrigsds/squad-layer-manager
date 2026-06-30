@@ -21,7 +21,7 @@ import * as Rx from 'rxjs'
 export type UserPresenceContext = {
 	userPresence: {
 		session: RbSyncState.Server.Session<UP.Op, UP.State, UP.SideEffects>
-		op$: Rx.Subject<UP.Op>
+		op$: IsolatedSubject<UP.Op[]>
 	}
 }
 
@@ -36,28 +36,10 @@ export function initUserPresenceContext(ctx: C.ServerSliceCleanup & C.ServerId):
 				sideEffectQueue$.next([ctx, se])
 			},
 		}),
-		op$: new IsolatedSubject<UP.Op>(),
+		op$: new IsolatedSubject<UP.Op[]>(),
 	}
 	ctx.cleanup.push(context.op$)
 	sideEffectQueue$.pipe(C.durableSub('onSideEffect', { module }, (args) => onSideEffect(...args))).subscribe()
-
-	// When the last editor removes EDITING_TEAMSWITCHES (disconnect/navigate/save), revert unsaved teamswitch edits
-	ctx.cleanup.push(
-		context.op$.pipe(
-			Rx.map(() => {
-				const ctx = resolveCtx(serverId)
-				const presence = ctx.userPresence.session.state.presence
-				const hasEditors = [...presence.values()].some(c => !!UP.getEditingTeamswitchesNode(c.activityState))
-				return hasEditors
-			}),
-			Rx.pairwise(),
-			Rx.filter(([hadEditors, hasEditors]) => hadEditors && !hasEditors),
-			C.durableSub('teamswitches:revert-on-editing-end', { module }, async () => {
-				const ctx = resolveCtx(serverId)
-				await Teamswitches.dispatchRevertToSaved(ctx)
-			}),
-		).subscribe(),
-	)
 
 	return context
 }
@@ -81,7 +63,7 @@ export const orpcRouter = {
 					ops: Obj.deepClone(ctx.userPresence.session.ops),
 				}
 				return ctx.userPresence.op$.pipe(
-					Rx.map((op): UP.PresenceUpdate => ({ code: 'op', op })),
+					Rx.map((ops): UP.PresenceUpdate => ({ code: 'op', ops })),
 					Rx.startWith(initial),
 				)
 			}),
@@ -127,30 +109,42 @@ export const orpcRouter = {
 		}),
 }
 
-function dispatchOp(ctx: C.UserPresence, op: UP.Op) {
-	const sideEffects: UP.SideEffects[] = []
-	function onSideEffect(se: UP.SideEffects) {
-		sideEffects.push(se)
-	}
-	ctx.userPresence.session = RbSyncState.Server.applyOps(ctx.userPresence.session, [op], UP.reducer, { onSideEffect })
-	ctx.userPresence.op$.next(op)
-	for (const se of sideEffects) {
-		switch (se.code) {
-			case 'error':
-				log.error(se.error)
-				break
-			case 'op-outcome': {
-				log.debug('op outcome', se.op, se.success)
-
-				// TODO handle start-editing and finish-editing on SLL side once that code is converted to use RbSyncState
-				//
-				// /if (op.code === '')
-				break
-			}
-			default:
-				assertNever(se)
+const dispatchOp = C.spanOp(
+	'dispatchOp',
+	{ module, extraText: (ctx, ...ops) => ops.map(o => o.code).join(',') },
+	async (ctx: C.UserPresence, ...ops: UP.Op[]) => {
+		const sideEffects: UP.SideEffects[] = []
+		function onSideEffect(se: UP.SideEffects) {
+			sideEffects.push(se)
 		}
-	}
+		ctx.userPresence.session = RbSyncState.Server.applyOps(ctx.userPresence.session, ops, UP.reducer, { onSideEffect })
+		ctx.userPresence.op$.next(ops)
+		for (const se of sideEffects) {
+			switch (se.code) {
+				case 'error':
+					log.error(se.error)
+					break
+				case 'op-outcome': {
+					log.debug('op outcome', se.op, se.success)
+
+					// TODO handle start-editing and finish-editing on SLL side once that code is converted to use RbSyncState
+					//
+					// /if (op.code === '')
+					break
+				}
+				default:
+					assertNever(se)
+			}
+		}
+	},
+)
+export function dispatchEndAllTeamswitchEditing(ctx: C.UserPresence) {
+	dispatchOp(ctx, {
+		code: 'broadcast-activity-update',
+		opId: UP.createOpId(),
+		time: Date.now(),
+		update: { code: 'clear-editing-teamswitches' },
+	})
 }
 
 async function onSideEffect(ctx: C.UserPresence, effect: UP.SideEffects) {
@@ -180,7 +174,7 @@ export function setup() {
 						clientIdsToRemove.push(wsClientId)
 					}
 				}
-				ctx.userPresence.op$.next({ code: 'clean-stale-presence', clientIdsToRemove, opId: UP.createOpId(), time: Date.now() })
+				await dispatchOp(ctx, { code: 'clean-stale-presence', clientIdsToRemove, opId: UP.createOpId(), time: Date.now() })
 				numCleaned += clientIdsToRemove.length
 			}
 

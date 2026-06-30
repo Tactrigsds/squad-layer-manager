@@ -1,20 +1,26 @@
+import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
+import { useIsDesktopSize } from '@/lib/browser'
 import * as MapUtils from '@/lib/map'
 import * as StrUtils from '@/lib/string'
 import { cn } from '@/lib/utils.ts'
 import * as ZusUtils from '@/lib/zustand'
 import * as BM from '@/models/battlemetrics.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
+import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import * as SquadServer from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
 import * as TeamsPanelModels from '@/models/teams-panel.models'
 import * as TSW from '@/models/teamswitches.models'
+import * as RBAC from '@/rbac.models.ts'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
+import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswitches.client'
 import * as ThemeClient from '@/systems/theme.client'
+import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table'
 import type { RowSelectionState, SortingState } from '@tanstack/react-table'
@@ -25,43 +31,69 @@ import React from 'react'
 import * as Zus from 'zustand'
 import PlayerBulkContextMenuOptions from './player-bulk-context-menu-options'
 import PlayerContextMenuOptions from './player-context-menu-options'
-import SquadContextMenuOptions from './squad-context-menu-options'
 import { PlayerDisplay } from './player-display'
+import SquadContextMenuOptions from './squad-context-menu-options'
 import type { SquadDetailsWindowProps } from './squad-details-window.helpers'
 import { MatchTeamDisplay } from './teams-display'
 import type { TeamswitchesHelpWindowProps } from './teamswitches-help-window.helpers'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
+import { ButtonGroup } from './ui/button-group'
 import { Checkbox } from './ui/checkbox'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from './ui/context-menu'
 import { OpenWindowInteraction } from './ui/draggable-window'
 import { Input } from './ui/input'
+import { Label } from './ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
+import { Switch } from './ui/switch'
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 
 void import('@/components/squad-details-window')
 void import('@/components/teamswitches-help-window')
 
 export default function TeamsPanel(props: { className?: string }) {
+	const isDesktop = useIsDesktopSize()
 	const showSwapsPanel = Zus.useStore(
 		TSWClient.Store,
 		s => TSWClient.Select.hasSwitches(s),
 	)
 	const [searchQuery, setSearchQuery] = React.useState('')
+	const [showSelected, setShowSelected] = React.useState(false)
+	const selectedCount = Zus.useStore(SquadServerClient.PlayerSelectionStore, s => Object.values(s.selection).filter(Boolean).length)
+	const showSelectedId = React.useId()
+	React.useEffect(() => {
+		if (selectedCount === 0 && showSelected) setShowSelected(false)
+	}, [selectedCount, showSelected])
 	const [roleFilter, setRoleFilter] = React.useState<string | null>(null)
 	const [groupingFilter, setGroupingFilter] = React.useState<string | null>(null)
 	const [squadFilterA, setSquadFilterA] = React.useState<string | null>(null)
 	const [squadFilterB, setSquadFilterB] = React.useState<string | null>(null)
+	const [squadFilterCombined, setSquadFilterCombined] = React.useState<string | null>(null)
 	const filtersA: PlayerFilters = {
-		role: roleFilter, setRole: setRoleFilter,
-		grouping: groupingFilter, setGrouping: setGroupingFilter,
-		squad: squadFilterA, setSquad: setSquadFilterA,
+		role: roleFilter,
+		setRole: setRoleFilter,
+		grouping: groupingFilter,
+		setGrouping: setGroupingFilter,
+		squad: squadFilterA,
+		setSquad: setSquadFilterA,
 	}
 	const filtersB: PlayerFilters = {
-		role: roleFilter, setRole: setRoleFilter,
-		grouping: groupingFilter, setGrouping: setGroupingFilter,
-		squad: squadFilterB, setSquad: setSquadFilterB,
+		role: roleFilter,
+		setRole: setRoleFilter,
+		grouping: groupingFilter,
+		setGrouping: setGroupingFilter,
+		squad: squadFilterB,
+		setSquad: setSquadFilterB,
+	}
+	const filtersC: PlayerFilters = {
+		role: roleFilter,
+		setRole: setRoleFilter,
+		grouping: groupingFilter,
+		setGrouping: setGroupingFilter,
+		squad: squadFilterCombined,
+		setSquad: setSquadFilterCombined,
 	}
 	return (
 		<div className={cn('flex w-full p-1 flex-col', props.className)}>
@@ -95,13 +127,36 @@ export default function TeamsPanel(props: { className?: string }) {
 						)
 					}}
 				/>
-				<span></span>
+				<div className="flex items-center gap-2 justify-center">
+					<Switch
+						id={showSelectedId}
+						checked={showSelected}
+						disabled={selectedCount === 0}
+						onCheckedChange={() => setShowSelected(v => !v)}
+					/>
+					<Label htmlFor={showSelectedId} className="text-sm whitespace-nowrap">Show Selected</Label>
+					{selectedCount > 0 && <span className="text-xs text-muted-foreground">({selectedCount})</span>}
+					<Button
+						variant="ghost"
+						size="icon"
+						className="h-7 w-7"
+						disabled={selectedCount === 0}
+						title="Clear selected players"
+						onClick={() => SquadServerClient.PlayerSelectionStore.getState().setSelection({})}
+					>
+						<Icons.Trash className="h-4 w-4" />
+					</Button>
+				</div>
 				<ControlPanel />
 			</div>
-			<div className="grid w-full grid-cols-[1fr_1fr] divide-x divide-border">
-				<TeamPlayerTable teamId="A" searchQuery={searchQuery} filters={filtersA} />
-				<TeamPlayerTable teamId="B" searchQuery={searchQuery} filters={filtersB} className="pl-1" />
-			</div>
+			{isDesktop ? (
+				<div className="grid w-full grid-cols-[1fr_1fr] divide-x divide-border">
+					<TeamPlayerTable teamId="A" searchQuery={searchQuery} filters={filtersA} showSelected={showSelected} />
+					<TeamPlayerTable teamId="B" searchQuery={searchQuery} filters={filtersB} showSelected={showSelected} className="pl-1" />
+				</div>
+			) : (
+				<CombinedPlayerTable searchQuery={searchQuery} filters={filtersC} showSelected={showSelected} />
+			)}
 		</div>
 	)
 }
@@ -416,7 +471,10 @@ function ColumnFilterSelect({ value, onChange, options }: {
 			value={value ?? ''}
 			onChange={e => onChange(e.target.value || null)}
 			onClick={e => e.stopPropagation()}
-			className={cn('ml-1 text-xs bg-transparent border-none cursor-pointer outline-none', value ? 'text-primary font-medium' : 'text-muted-foreground')}
+			className={cn(
+				'ml-1 text-xs bg-transparent border-none cursor-pointer outline-none',
+				value ? 'text-primary font-medium' : 'text-muted-foreground',
+			)}
 		>
 			<option value="">All</option>
 			{options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -439,11 +497,13 @@ const playerColumns = [
 		cell: ({ row }) => {
 			const playerId = row.id
 			return (
-				<SelectOrSpinner
-					playerId={playerId}
-					checked={row.getIsSelected()}
-					onCheckedChange={checked => row.toggleSelected(!!checked)}
-				/>
+				<div onClick={e => e.stopPropagation()}>
+					<SelectOrSpinner
+						playerId={playerId}
+						checked={row.getIsSelected()}
+						onCheckedChange={checked => row.toggleSelected(!!checked)}
+					/>
+				</div>
 			)
 		},
 	}),
@@ -471,7 +531,11 @@ const playerColumns = [
 			return (
 				<span className="inline-flex items-center">
 					Grouping
-					<ColumnFilterSelect value={filters.grouping} onChange={filters.setGrouping} options={availableGroupings.map(g => ({ value: g, label: g }))} />
+					<ColumnFilterSelect
+						value={filters.grouping}
+						onChange={filters.setGrouping}
+						options={availableGroupings.map(g => ({ value: g, label: g }))}
+					/>
 				</span>
 			)
 		},
@@ -519,10 +583,10 @@ const playerColumns = [
 						windowProps={{ uniqueSquadId: squad.uniqueId } satisfies SquadDetailsWindowProps}
 						preload="intent"
 						render={(
-							{ label, ref, ...props }:
-								& { label: string; ref?: React.Ref<HTMLButtonElement> }
+							{ label, ref, onClick, ...rest }:
+								& { label: string; ref?: React.Ref<HTMLButtonElement>; onClick?: React.MouseEventHandler<HTMLButtonElement> }
 								& React.ButtonHTMLAttributes<HTMLButtonElement>,
-						) => <button ref={ref} type="button" className="hover:underline cursor-pointer" {...props}>{label}</button>}
+						) => <button ref={ref} type="button" className="hover:underline cursor-pointer" onClick={e => { e.stopPropagation(); onClick?.(e) }} {...rest}>{label}</button>}
 						label={String(squadId)}
 					/>
 				)
@@ -541,9 +605,10 @@ const playerColumns = [
 	}),
 ]
 
-function TeamPlayerTable(props: { teamId: MH.NormedTeamId; searchQuery: string; filters: PlayerFilters; className?: string }) {
+function TeamPlayerTable(props: { teamId: MH.NormedTeamId; searchQuery: string; filters: PlayerFilters; showSelected: boolean; className?: string }) {
 	const rowSelection = Zus.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
 	const setRowSelection = SquadServerClient.PlayerSelectionStore.getState().setSelection
+	const mouseDownRef = React.useRef<{ index: number; originalSelected: boolean } | null>(null)
 	const [sorting, setSorting] = React.useState<SortingState>([])
 	const match = MatchHistoryClient.useCurrentMatch()
 	const matchId = match?.historyEntryId ?? 0
@@ -607,8 +672,13 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; searchQuery: string; 
 		return result
 	}, [players, props.searchQuery, props.filters])
 
+	const displayedPlayers = React.useMemo(() => {
+		if (!props.showSelected) return filteredPlayers
+		return filteredPlayers.filter(p => !!rowSelection[SM.PlayerIds.getPlayerId(p.ids)])
+	}, [filteredPlayers, props.showSelected, rowSelection])
+
 	const table = useReactTable({
-		data: filteredPlayers,
+		data: displayedPlayers,
 		columns: playerColumns,
 		getCoreRowModel: getCoreRowModel(),
 		getSortedRowModel: getSortedRowModel(),
@@ -616,7 +686,14 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; searchQuery: string; 
 		state: { rowSelection, sorting },
 		onRowSelectionChange: setRowSelection,
 		onSortingChange: setSorting,
-		meta: { matchId, squads, groupingColorByLabel, filters: props.filters, availableRoles, availableGroupings } satisfies TeamPlayerTableMeta,
+		meta: {
+			matchId,
+			squads,
+			groupingColorByLabel,
+			filters: props.filters,
+			availableRoles,
+			availableGroupings,
+		} satisfies TeamPlayerTableMeta,
 	})
 
 	return (
@@ -648,7 +725,387 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; searchQuery: string; 
 					return (
 						<ContextMenu key={row.id}>
 							<ContextMenuTrigger asChild>
-								<TableRow data-state={row.getIsSelected() ? 'selected' : undefined}>
+								<TableRow
+									className="cursor-pointer select-none"
+									data-state={row.getIsSelected() ? 'selected' : undefined}
+									onClick={() => row.toggleSelected()}
+									onMouseDown={e => {
+										if (e.button !== 0) return
+										mouseDownRef.current = { index: row.index, originalSelected: !rowSelection[row.id] }
+									}}
+									onMouseUp={() => {
+										mouseDownRef.current = null
+									}}
+									onMouseEnter={() => {
+										const md = mouseDownRef.current
+										if (!md) return
+										const [lo, hi] = [Math.min(md.index, row.index), Math.max(md.index, row.index)]
+										const current = { ...SquadServerClient.PlayerSelectionStore.getState().selection }
+										for (let i = lo; i <= hi; i++) {
+											const p = displayedPlayers[i]
+											if (!p) continue
+											const pid = SM.PlayerIds.getPlayerId(p.ids)
+											if (md.originalSelected) {
+												current[pid] = true
+											} else {
+												delete current[pid]
+											}
+										}
+										setRowSelection(current)
+										mouseDownRef.current = { index: row.index, originalSelected: md.originalSelected }
+									}}
+								>
+									{row.getVisibleCells().map(cell => (
+										<TableCell key={cell.id}>
+											{flexRender(cell.column.columnDef.cell, cell.getContext())}
+										</TableCell>
+									))}
+								</TableRow>
+							</ContextMenuTrigger>
+							<ContextMenuContent>
+								{isBulk
+									? <PlayerBulkContextMenuOptions playerIds={selectedIds} />
+									: <PlayerContextMenuOptions playerId={row.id} />}
+							</ContextMenuContent>
+						</ContextMenu>
+					)
+				})}
+			</TableBody>
+		</Table>
+	)
+}
+
+type CombinedPlayer = TeamsPanelModels.EnrichedPlayer & { normedTeam: MH.NormedTeamId }
+
+type SquadWithTeam = { squad: SM.UniqueSquad; normedTeam: MH.NormedTeamId }
+
+type CombinedTableMeta = {
+	matchId: number
+	squadsWithTeam: SquadWithTeam[]
+	groupingColorByLabel: Map<string, string>
+	filters: PlayerFilters
+	availableRoles: string[]
+	availableGroupings: string[]
+	getFaction: (normedTeam: MH.NormedTeamId) => string
+}
+
+const combinedColumnHelper = createColumnHelper<CombinedPlayer>()
+
+const combinedPlayerColumns = [
+	combinedColumnHelper.display({
+		id: 'select',
+		header: ({ table }) => (
+			<Checkbox
+				checked={table.getIsAllRowsSelected()}
+				onCheckedChange={checked => table.toggleAllRowsSelected(!!checked)}
+				aria-label="Select all"
+			/>
+		),
+		cell: ({ row }) => (
+			<div onClick={e => e.stopPropagation()}>
+				<SelectOrSpinner
+					playerId={row.id}
+					checked={row.getIsSelected()}
+					onCheckedChange={checked => row.toggleSelected(!!checked)}
+				/>
+			</div>
+		),
+	}),
+	combinedColumnHelper.accessor(row => row.normedTeam, {
+		id: 'faction',
+		header: 'Faction',
+		cell: ({ row, table }) => (table.options.meta as CombinedTableMeta).getFaction(row.original.normedTeam),
+	}),
+	combinedColumnHelper.accessor(row => row.ids.usernameNoTag ?? row.ids.username ?? '', {
+		id: 'name',
+		header: 'Name',
+		cell: ({ row, table }) => <PlayerDisplay player={row.original} matchId={(table.options.meta as CombinedTableMeta).matchId} />,
+	}),
+	combinedColumnHelper.accessor('role', {
+		header: ({ table }) => {
+			const { filters, availableRoles } = table.options.meta as CombinedTableMeta
+			return (
+				<span className="inline-flex items-center">
+					Role
+					<ColumnFilterSelect value={filters.role} onChange={filters.setRole} options={availableRoles.map(r => ({ value: r, label: r }))} />
+				</span>
+			)
+		},
+		enableSorting: false,
+	}),
+	combinedColumnHelper.accessor(row => row.grouping ?? '', {
+		id: 'grouping',
+		header: ({ table }) => {
+			const { filters, availableGroupings } = table.options.meta as CombinedTableMeta
+			return (
+				<span className="inline-flex items-center">
+					Grouping
+					<ColumnFilterSelect
+						value={filters.grouping}
+						onChange={filters.setGrouping}
+						options={availableGroupings.map(g => ({ value: g, label: g }))}
+					/>
+				</span>
+			)
+		},
+		cell: ({ row, table }) => {
+			const label = row.original.grouping
+			if (!label) return null
+			const { groupingColorByLabel } = table.options.meta as CombinedTableMeta
+			const color = groupingColorByLabel.get(label)
+			return (
+				<span className="flex items-center gap-1">
+					{color && <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: color }} />}
+					{label}
+				</span>
+			)
+		},
+	}),
+	combinedColumnHelper.accessor(row => row.squadId ?? -1, {
+		id: 'squad',
+		header: ({ table }) => {
+			const { filters, squadsWithTeam, getFaction } = table.options.meta as CombinedTableMeta
+			const squadOptions = squadsWithTeam.map(({ squad: s, normedTeam }) => {
+				const faction = getFaction(normedTeam)
+				const isCmd = s.squadName === 'Command Squad'
+				return {
+					value: `${normedTeam}:${s.squadId}`,
+					label: isCmd ? `${faction}:CMD` : `${faction}:${s.squadId}`,
+				}
+			})
+			return (
+				<span className="inline-flex items-center">
+					Squad
+					<ColumnFilterSelect value={filters.squad} onChange={filters.setSquad} options={squadOptions} />
+				</span>
+			)
+		},
+		cell: ({ row, table }) => {
+			const { squadsWithTeam, matchId, getFaction } = table.options.meta as CombinedTableMeta
+			const player = row.original
+			const squadId = player.squadId
+			if (squadId === null) return ''
+			const entry = squadsWithTeam.find(({ squad: s, normedTeam }) => s.squadId === squadId && normedTeam === player.normedTeam)
+			if (!entry) return `${getFaction(player.normedTeam)}:${squadId}`
+			const { squad, normedTeam } = entry
+			const faction = getFaction(normedTeam)
+			const isCmd = squad.squadName === 'Command Squad'
+			const displayLabel = isCmd ? `${faction}:CMD` : `${faction}:${squadId}`
+			const squadLabel = isCmd
+				? <span>{displayLabel}</span>
+				: (
+					<OpenWindowInteraction
+						windowId={WINDOW_ID.enum['squad-details']}
+						windowProps={{ uniqueSquadId: squad.uniqueId } satisfies SquadDetailsWindowProps}
+						preload="intent"
+						render={(
+							{ label, ref, onClick, ...rest }:
+								& { label: string; ref?: React.Ref<HTMLButtonElement>; onClick?: React.MouseEventHandler<HTMLButtonElement> }
+								& React.ButtonHTMLAttributes<HTMLButtonElement>,
+						) => <button ref={ref} type="button" className="hover:underline cursor-pointer" onClick={e => { e.stopPropagation(); onClick?.(e) }} {...rest}>{label}</button>}
+						label={displayLabel}
+					/>
+				)
+			return (
+				<span className="inline-flex items-center gap-1">
+					<ContextMenu>
+						<ContextMenuTrigger>{squadLabel}</ContextMenuTrigger>
+						<ContextMenuContent>
+							<SquadContextMenuOptions squad={squad} />
+						</ContextMenuContent>
+					</ContextMenu>
+					{player.isLeader && <span className="text-xs text-muted-foreground">(SL)</span>}
+				</span>
+			)
+		},
+	}),
+]
+
+function CombinedPlayerTable(props: { searchQuery: string; filters: PlayerFilters; showSelected: boolean; className?: string }) {
+	const rowSelection = Zus.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
+	const setRowSelection = SquadServerClient.PlayerSelectionStore.getState().setSelection
+	const mouseDownRef = React.useRef<{ index: number; originalSelected: boolean } | null>(null)
+	const [sorting, setSorting] = React.useState<SortingState>([{ id: 'faction', desc: false }])
+	const match = MatchHistoryClient.useCurrentMatch()
+	const matchId = match?.historyEntryId ?? 0
+
+	const config = ConfigClient.useConfig()
+	const orgFlags = BattlemetricsClient.useOrgFlags()
+	const selectedModeId = Zus.useStore(BattlemetricsClient.Store, s => s.selectedModeId)
+	const groupingColorByLabel = React.useMemo(() => {
+		const playerFlagGroupings = config?.playerFlagGroupings ?? []
+		const modeIds = BM.getGroupingModeIds(playerFlagGroupings)
+		const activeModeId = selectedModeId !== null && modeIds.includes(selectedModeId) ? selectedModeId : modeIds[0] ?? null
+		if (!activeModeId) return new Map<string, string>()
+		const modeGroupings = playerFlagGroupings.filter(g => g.modeIds.includes(activeModeId))
+		const flagColorById = new Map<string, string>()
+		for (const flag of orgFlags ?? []) {
+			if (flag.color) flagColorById.set(flag.id, flag.color)
+		}
+		const result = new Map<string, string>()
+		for (const group of modeGroupings) {
+			result.set(group.label, flagColorById.get(group.color) ?? group.color)
+		}
+		return result
+	}, [config, orgFlags, selectedModeId])
+
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	const selectorA = React.useCallback(TeamsPanelModels.Select.playersForTeam('A'), [])
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	const selectorB = React.useCallback(TeamsPanelModels.Select.playersForTeam('B'), [])
+	const playersA = ZusUtils.useStore(
+		SquadServerClient.ChatStore,
+		MatchHistoryClient.currentMatch$(),
+		BattlemetricsClient.playerBmData$,
+		BattlemetricsClient.Store,
+		ConfigClient.Store,
+		selectorA,
+	)
+	const playersB = ZusUtils.useStore(
+		SquadServerClient.ChatStore,
+		MatchHistoryClient.currentMatch$(),
+		BattlemetricsClient.playerBmData$,
+		BattlemetricsClient.Store,
+		ConfigClient.Store,
+		selectorB,
+	)
+
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	const squadsASelector = React.useCallback(SquadServer.Select.squadsForTeam('A'), [])
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	const squadsBSelector = React.useCallback(SquadServer.Select.squadsForTeam('B'), [])
+	const squadsA = ZusUtils.useStore(SquadServerClient.ChatStore, MatchHistoryClient.currentMatch$(), squadsASelector)
+	const squadsB = ZusUtils.useStore(SquadServerClient.ChatStore, MatchHistoryClient.currentMatch$(), squadsBSelector)
+	const squadsWithTeam = React.useMemo<SquadWithTeam[]>(() => [
+		...squadsA.map(squad => ({ squad, normedTeam: 'A' as const })),
+		...squadsB.map(squad => ({ squad, normedTeam: 'B' as const })),
+	], [squadsA, squadsB])
+
+	const layer = React.useMemo(() => {
+		if (!match?.layerId) return null
+		const l = L.toLayer(match.layerId)
+		return L.isKnownLayer(l) ? l : null
+	}, [match?.layerId])
+	const teamAIsTeam1 = (match?.ordinal ?? 0) % 2 === 0
+
+	const getFaction = React.useCallback((normedTeam: MH.NormedTeamId): string => {
+		if (!layer) return normedTeam
+		const isTeam1 = normedTeam === 'A' ? teamAIsTeam1 : !teamAIsTeam1
+		return isTeam1 ? layer.Faction_1 : layer.Faction_2
+	}, [layer, teamAIsTeam1])
+
+	const players = React.useMemo<CombinedPlayer[]>(() => [
+		...playersA.map(p => ({ ...p, normedTeam: 'A' as const })),
+		...playersB.map(p => ({ ...p, normedTeam: 'B' as const })),
+	], [playersA, playersB])
+
+	const availableRoles = React.useMemo(
+		() => [...new Set(players.map(p => p.role).filter((r): r is string => r != null))].sort(),
+		[players],
+	)
+	const availableGroupings = React.useMemo(
+		() => [...new Set(players.map(p => p.grouping).filter((g): g is string => g != null))].sort(),
+		[players],
+	)
+
+	const filteredPlayers = React.useMemo(() => {
+		let result = players
+		if (props.searchQuery.trim()) {
+			const names = players.map(p => p.ids.usernameNoTag ?? p.ids.username ?? '')
+			const matched = new Set(StrUtils.simpleStringMatch(names, props.searchQuery))
+			result = players.filter((_, i) => matched.has(i))
+		}
+		const { role, grouping, squad } = props.filters
+		if (role !== null) result = result.filter(p => p.role === role)
+		if (grouping !== null) result = result.filter(p => (p.grouping ?? null) === grouping)
+		if (squad !== null) result = result.filter(p => squad === `${p.normedTeam}:${p.squadId}`)
+		return result
+	}, [players, props.searchQuery, props.filters])
+
+	const displayedPlayers = React.useMemo(() => {
+		if (!props.showSelected) return filteredPlayers
+		return filteredPlayers.filter(p => !!rowSelection[SM.PlayerIds.getPlayerId(p.ids)])
+	}, [filteredPlayers, props.showSelected, rowSelection])
+
+	const table = useReactTable({
+		data: displayedPlayers,
+		columns: combinedPlayerColumns,
+		getCoreRowModel: getCoreRowModel(),
+		getSortedRowModel: getSortedRowModel(),
+		getRowId: row => SM.PlayerIds.getPlayerId(row.ids),
+		state: { rowSelection, sorting },
+		onRowSelectionChange: setRowSelection,
+		onSortingChange: setSorting,
+		meta: {
+			matchId,
+			squadsWithTeam,
+			groupingColorByLabel,
+			filters: props.filters,
+			availableRoles,
+			availableGroupings,
+			getFaction,
+		} satisfies CombinedTableMeta,
+	})
+
+	return (
+		<Table className={props.className}>
+			<TableHeader>
+				{table.getHeaderGroups().map(headerGroup => (
+					<TableRow key={headerGroup.id}>
+						{headerGroup.headers.map(header => (
+							<TableHead
+								key={header.id}
+								onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
+								className={header.column.getCanSort() ? 'cursor-pointer select-none' : undefined}
+							>
+								{header.isPlaceholder ? null : (
+									<span className="inline-flex items-center gap-0.5">
+										{flexRender(header.column.columnDef.header, header.getContext())}
+										{header.column.getIsSorted() === 'asc' ? ' ↑' : header.column.getIsSorted() === 'desc' ? ' ↓' : null}
+									</span>
+								)}
+							</TableHead>
+						))}
+					</TableRow>
+				))}
+			</TableHeader>
+			<TableBody>
+				{table.getRowModel().rows.map(row => {
+					const selectedIds = Object.keys(rowSelection)
+					const isBulk = selectedIds.length >= 2 && rowSelection[row.id]
+					return (
+						<ContextMenu key={row.id}>
+							<ContextMenuTrigger asChild>
+								<TableRow
+									className="cursor-pointer select-none"
+									data-state={row.getIsSelected() ? 'selected' : undefined}
+									onClick={() => row.toggleSelected()}
+									onMouseDown={e => {
+										if (e.button !== 0) return
+										mouseDownRef.current = { index: row.index, originalSelected: !rowSelection[row.id] }
+									}}
+									onMouseUp={() => {
+										mouseDownRef.current = null
+									}}
+									onMouseEnter={() => {
+										const md = mouseDownRef.current
+										if (!md) return
+										const [lo, hi] = [Math.min(md.index, row.index), Math.max(md.index, row.index)]
+										const current = { ...SquadServerClient.PlayerSelectionStore.getState().selection }
+										for (let i = lo; i <= hi; i++) {
+											const p = displayedPlayers[i]
+											if (!p) continue
+											const pid = SM.PlayerIds.getPlayerId(p.ids)
+											if (md.originalSelected) {
+												current[pid] = true
+											} else {
+												delete current[pid]
+											}
+										}
+										setRowSelection(current)
+										mouseDownRef.current = { index: row.index, originalSelected: md.originalSelected }
+									}}
+								>
 									{row.getVisibleCells().map(cell => (
 										<TableCell key={cell.id}>
 											{flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -692,25 +1149,84 @@ function TeamsAfterSwap() {
 
 function SwapsPanel({ className }: { className?: string }) {
 	const canExecute = Zus.useStore(TSWClient.Store, TSWClient.Select.canExecuteSavedTeamswitches)
-	const hasPendingEdits = Zus.useStore(TSWClient.Store, TSWClient.Select.hasPendingEdits)
+	const switchesModified = Zus.useStore(TSWClient.Store, TSWClient.Select.switchesModified)
+	const [isEditing, setIsEditing] = UPClient.useEditingTeamswitchesState()
+	const numEditors = Zus.useStore(UPClient.Store, s => s.teamswitchEditors.size)
+	const [forceSave, setForceSave] = React.useState(false)
+	const startEditingDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
+
+	const handleFinishOrSave = () => {
+		const shouldSave = switchesModified && (numEditors <= 1 || forceSave)
+		setIsEditing(false)
+		if (shouldSave) {
+			TSWClient.Actions.save()
+		}
+		setForceSave(false)
+	}
+
+	const saveButtonLabel = forceSave
+		? 'Force Save'
+		: (numEditors <= 1 && switchesModified)
+		? 'Save'
+		: 'Finish Editing'
+
 	return (
 		<div className={cn('grid grid-cols-[1fr_auto_1fr] items-start divide-x divide-border', className)}>
 			<TeamSwapsDisplay teamId="A" className="pr-2" />
 			<div className="flex flex-col items-center gap-1 px-2">
 				<div className="flex items-center gap-1">
-					<Button
-						variant="ghost"
-						size="icon"
-						className="h-7 w-7"
-						disabled={!hasPendingEdits}
-						onClick={() => TSWClient.Actions.revertToSaved()}
-						title="Revert to saved"
-					>
-						<Icons.Undo2 className="h-3.5 w-3.5" />
-					</Button>
-					<Button size="sm" disabled={!hasPendingEdits} onClick={() => TSWClient.Actions.save()}>
-						Save
-					</Button>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								variant="ghost"
+								size="icon"
+								className="h-7 w-7"
+								disabled={!isEditing || !switchesModified}
+								onClick={() => TSWClient.Actions.revertToSaved()}
+							>
+								<Icons.Undo2 className="h-3.5 w-3.5" />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>Revert to saved</TooltipContent>
+					</Tooltip>
+					{isEditing
+						? (
+							<ButtonGroup>
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<Button
+											size="icon"
+											className="h-8 w-8"
+											variant={forceSave ? 'destructive' : 'secondary'}
+											onClick={() => setForceSave(!forceSave)}
+										>
+											<Icons.Sword className="h-3.5 w-3.5" />
+										</Button>
+									</TooltipTrigger>
+									<TooltipContent>Toggle force save (save even if others are still editing)</TooltipContent>
+								</Tooltip>
+								<Button
+									size="sm"
+									variant={forceSave ? 'destructive' : 'default'}
+									onClick={handleFinishOrSave}
+								>
+									{saveButtonLabel}
+								</Button>
+							</ButtonGroup>
+						)
+						: (
+							<PermissionDeniedTooltip denied={startEditingDenied}>
+								<Button
+									size="sm"
+									variant="outline"
+									disabled={!!startEditingDenied}
+									onClick={() => setIsEditing(true)}
+								>
+									<Icons.Edit className="h-3.5 w-3.5" />
+									Start Editing
+								</Button>
+							</PermissionDeniedTooltip>
+						)}
 					<AlertDialog>
 						<AlertDialogTrigger asChild>
 							<Button size="sm" disabled={!canExecute}>

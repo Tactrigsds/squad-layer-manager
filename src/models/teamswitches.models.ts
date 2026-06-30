@@ -298,8 +298,15 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 						emitOpError({ code: 'err:currently-switching', op })
 						break
 					}
-					state.savedSwitches = state.editedSwitches = op.switches
+					state.savedSwitches = new Map(state.savedSwitches)
 					skipEmitSave = true
+					for (const [playerId, switchEntry] of op.switches.entries()) {
+						const team = state.players.get(playerId)
+						if (team && team !== switchEntry.toTeam) state.savedSwitches.set(playerId, switchEntry)
+						else {
+							skipEmitSave = false
+						}
+					}
 					break
 				}
 

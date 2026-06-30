@@ -1,5 +1,4 @@
 import EventFilterSelect from '@/components/event-filter-select'
-import { ServerActivityCharts } from '@/components/server-activity-charts'
 import { ServerEvent } from '@/components/server-event'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
@@ -158,9 +157,6 @@ export default function ServerActivityPanel() {
 	)
 	const recentMatches = MatchHistoryClient.useRecentMatches()
 	const currentMatch = MatchHistoryClient.useCurrentMatch()
-	const serverInfoRes = SquadServerClient.useServerInfoRes()
-	const maxPlayerCount = serverInfoRes.code === 'ok' ? serverInfoRes.data.maxPlayerCount : undefined
-
 	// Fetch historical events when viewing a past match
 	const historicalEventsQuery = useQuery({
 		queryKey: [...RPC.orpc.matchHistory.getMatchEvents.key(), selectedMatchOrdinal],
@@ -319,7 +315,7 @@ export default function ServerActivityPanel() {
 	)
 
 	return (
-		<Card className="flex flex-col min-h-0 w-fit">
+		<Card className="flex flex-col h-full min-h-0 w-full">
 			<CardHeader className="flex flex-row justify-between flex-shrink-0 items-center pb-3">
 				<div className="flex items-center gap-4">
 					<CardTitle className="flex items-center gap-2">
@@ -368,26 +364,13 @@ export default function ServerActivityPanel() {
 				<ServerCounts />
 			</CardHeader>
 			<CardContent className="flex-1 overflow-hidden min-h-0">
-				<div className="flex flex-col gap-2 h-full">
-					<div className="flex-shrink-0">
-						<ServerActivityCharts
-							historicalEvents={selectedMatchOrdinal !== null ? (historicalEventsQuery.data?.events ?? null) : null}
-							maxPlayerCount={maxPlayerCount}
-							currentMatchOrdinal={selectedMatchOrdinal ?? currentMatch?.ordinal}
-							currentMatchId={displayMatch?.historyEntryId}
-							layerId={displayMatch?.layerId}
-						/>
-					</div>
-					<div className="flex gap-0.5 flex-1 min-h-0">
-						<ServerChatEvents
-							className="flex-1 min-w-[350px] h-full"
-							filteredEvents={finalFilteredEvents}
-							connectionError={connectionError}
-							synced={synced}
-							isLoadingHistorical={historicalEventsQuery.isLoading}
-						/>
-					</div>
-				</div>
+				<ServerChatEvents
+					className="min-w-[350px] h-full"
+					filteredEvents={finalFilteredEvents}
+					connectionError={connectionError}
+					synced={synced}
+					isLoadingHistorical={historicalEventsQuery.isLoading}
+				/>
 			</CardContent>
 		</Card>
 	)

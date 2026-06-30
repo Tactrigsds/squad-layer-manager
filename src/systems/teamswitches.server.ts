@@ -1,8 +1,10 @@
+import * as Schema from '$root/drizzle/schema.ts'
 import * as Arr from '@/lib/array'
 import { sleep, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { withThrown, withThrownAsync } from '@/lib/error'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as MapUtils from '@/lib/map'
+import * as Obj from '@/lib/object'
 import { destrNullable } from '@/lib/object'
 import * as RbSyncState from '@/lib/rollback-synced-state'
 import { assertNever } from '@/lib/type-guards'
@@ -12,6 +14,7 @@ import * as MH from '@/models/match-history.models'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswitches.models'
+import * as UP from '@/models/user-presence'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
@@ -21,14 +24,33 @@ import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
+import * as UserPresence from '@/systems/user-presence.server'
 import { E_TIMEOUT, Mutex, MutexInterface, withTimeout } from 'async-mutex'
+import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 
 export const module = initModule('teamswitches')
 
-const TEAMSWITCH_EXECUTION_TIMEOUT = 30_000
-
 let log!: CS.Logger
+
+async function resolveSourceName(
+	ctx: C.Db,
+	source: TSW.Teamswitch['source'],
+	players?: { ids: SM.PlayerIds.Schema }[],
+): Promise<string> {
+	if (source.discordId) {
+		const [user] = await ctx.db()
+			.select({ name: Schema.users.nickname, username: Schema.users.username })
+			.from(Schema.users)
+			.where(E.eq(Schema.users.discordId, source.discordId))
+		return (user?.name || user?.username) ?? 'Admin'
+	}
+	if (source.steamId && players) {
+		const player = players.find(p => p.ids.steam === source.steamId)
+		return player?.ids.usernameNoTag ?? player?.ids.username ?? 'Admin'
+	}
+	return 'Admin'
+}
 
 type Session = RbSyncState.Server.Session<TSW.Op, TSW.State, TSW.SideEffect>
 
@@ -44,7 +66,8 @@ export function setup() {
 	log = module.getLogger()
 }
 
-export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
+export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup & C.UserPresence) {
+	const serverId = ctx.serverId
 	const context: TeamswitchContext = {
 		session: RbSyncState.Server.initSession(TSW.initState(), {}),
 		op$: new IsolatedSubject<TSW.Op[]>(),
@@ -245,12 +268,30 @@ const dispatchOp = C.spanOp(
 								toSwitch.push(playerId)
 							}
 							const switched$ = SquadRcon.switchPlayers(ctx, toSwitch)
-							const isManual = ops.find(o => o.opId === se.opId && (o as any).source)
+							const isManual = ops.find(o => o.opId === se.opId && (o as any).source) as
+								| (TSW.Op & { source: TSW.Teamswitch['source'] })
+								| undefined
 							if (isManual) {
 								sleep(500).then(() => SquadRcon.warnAll(ctx, toSwitch, WARNS.teamswitches.notifyManualSwitch))
 							}
 							await switched$
 							ctx.teamswitches.teamswitchExecutedAt = Date.now()
+							if (isManual) {
+								const name = await resolveSourceName(ctx, isManual.source, teamsRes.players)
+								const excludeSteamIds = isManual.source.steamId
+									? new Set([isManual.source.steamId])
+									: undefined
+								void SquadRcon.warnAllAdmins(
+									ctx,
+									{ msg: WARNS.teamswitches.notifyAdminManualSwitch(name, se.switches.size) },
+									excludeSteamIds,
+								)
+							}
+
+							await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
+								await SquadServer.updateServerState(ctx, { teamswitches: null }, { type: 'system', event: 'teamswitches-saved' })
+							})
+
 							return { code: 'ok' as const }
 						})
 
@@ -299,6 +340,17 @@ const dispatchOp = C.spanOp(
 						await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 							await SquadServer.updateServerState(ctx, { teamswitches: saved }, { type: 'system', event: 'teamswitches-saved' })
 						})
+						if (se.source) {
+							const name = await resolveSourceName(ctx, se.source)
+							const excludeSteamIds = se.source.steamId
+								? new Set([se.source.steamId])
+								: undefined
+							void SquadRcon.warnAllAdmins(
+								ctx,
+								{ msg: WARNS.teamswitches.notifyAdminSwitchesSaved(name, se.switches.size) },
+								excludeSteamIds,
+							)
+						}
 						break
 					}
 
@@ -335,7 +387,6 @@ const dispatchOp = C.spanOp(
 )
 
 export async function dispatchRevertToSaved(ctx: C.Teamswitch & C.ServerSlice & C.Db) {
-	await dispatchOp(ctx, { opId: TSW.createOpId(), code: 'revert-to-saved' })
 }
 
 export async function dispatchSwitchNow(

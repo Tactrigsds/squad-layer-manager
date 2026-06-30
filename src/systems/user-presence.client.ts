@@ -133,6 +133,7 @@ export type Store = {
 
 	presence: UP.PresenceState
 	editors: Set<USR.UserId>
+	teamswitchEditors: Set<USR.UserId>
 	// derived: resolved per-user presence (latest session wins per userId)
 
 	dispatch(op: UP.NewClientOp): void
@@ -174,13 +175,20 @@ function createPresenceStore() {
 					}
 				}
 				const editors = new Set<USR.UserId>()
+				const teamswitchEditors = new Set<USR.UserId>()
 				for (const client of presence.values()) {
 					if (UP.getEditingQueueNode(client.activityState)) {
 						editors.add(client.userId)
 					}
+					if (UP.getEditingTeamswitchesNode(client.activityState)) {
+						teamswitchEditors.add(client.userId)
+					}
 				}
 				if (!Obj.deepEqual(editors, state.editors)) {
 					toUpdate.editors = editors
+				}
+				if (!Obj.deepEqual(teamswitchEditors, state.teamswitchEditors)) {
+					toUpdate.teamswitchEditors = teamswitchEditors
 				}
 			}
 
@@ -191,15 +199,14 @@ function createPresenceStore() {
 			Lifecycle.checkAndUnloadStaleEntries(loaderCtx, state)
 		})
 
-		function onSideEffect(se: UP.SideEffects) {
-			console.log('side effect', se)
-		}
+		function onSideEffect(se: UP.SideEffects) {}
 
 		const session = RbSyncState.Client.initSession<UP.Op, UP.State, UP.SideEffects>(UP.initState(), { onSideEffect })
 		return {
 			session,
 			presence: session.localState.presence,
 			editors: new Set(),
+			teamswitchEditors: new Set(),
 			userPresence: new Map(),
 			activityLoaderCache: [],
 
@@ -218,7 +225,7 @@ function createPresenceStore() {
 					const newSession = RbSyncState.Client.initSession(UP.initState(), { onSideEffect, ops: update.ops })
 					set({ session: newSession })
 				} else if (update.code === 'op') {
-					const newSession = RbSyncState.Client.processIncomingOps(get().session, [update.op], UP.reducer)
+					const newSession = RbSyncState.Client.processIncomingOps(get().session, update.ops, UP.reducer)
 					set({ session: newSession })
 				}
 			},
@@ -294,8 +301,12 @@ export function useClientPresence() {
 	return presence
 }
 
-export function useEditingState() {
+export function useEditingQueueState() {
 	return useActivityState(UP.TOGGLE_EDITING_QUEUE_TRANSITIONS)
+}
+
+export function useEditingTeamswitchesState() {
+	return useActivityState(UP.EDITING_TEAMSWITCHES_TRANSITIONS)
 }
 
 export function useIsEditing() {

@@ -244,7 +244,7 @@ type QueueControlPanelProps = {
 function QueueControlPanel(props: QueueControlPanelProps) {
 	const { warnings, showWarnings, setShowWarnings } = props
 	// const isEditing = UPClient.useIsEditing()
-	const [isEditing, setIsEditing] = UPClient.useEditingState()
+	const [isEditing, setIsEditing] = UPClient.useEditingQueueState()
 	const numEditors = Zus.useStore(UPClient.Store, state => state.editors.size)
 	const [forceSave, setForceSave] = React.useState(false)
 

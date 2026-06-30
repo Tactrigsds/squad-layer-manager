@@ -171,11 +171,6 @@ export namespace Select {
 		return TSW.canExecuteSavedTeamswitches(localState(store))
 	}
 
-	export function hasPendingEdits(store: Store) {
-		const state = localState(store)
-		return state.editedSwitches !== state.savedSwitches
-	}
-
 	export function switchCounts(store: Store) {
 		const state = localState(store)
 		const counts: Record<MH.NormedTeamId, number> = { A: 0, B: 0 }

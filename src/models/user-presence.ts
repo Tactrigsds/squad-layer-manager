@@ -128,6 +128,12 @@ export const OpSchema = z.discriminatedUnion('code', [
 		code: z.literal('clean-stale-presence'),
 		clientIdsToRemove: z.array(z.string()),
 	}),
+
+	z.object({
+		...serverOpBase,
+		code: z.literal('broadcast-activity-update'),
+		update: z.lazy(() => ActivityUpdateSchema),
+	}),
 ])
 export function createOpId(): string {
 	return createId(24)
@@ -182,6 +188,21 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffects> = (prevState, 
 				}
 				success = true
 				break
+			} else if (op.code === 'broadcast-activity-update') {
+				for (const [clientId, clientState] of state.presence.entries()) {
+					const prevActivity = clientState.activityState ?? DEFAULT_ACTIVITY
+					const newActivity = applyActivityUpdate(prevActivity, op.update)
+					if (newActivity === prevActivity) continue
+					const prevEditingSll = getEditingQueueNode(prevActivity)
+					const sllEditNode = getEditingQueueNode(newActivity)
+					if (!sllEditNode && prevEditingSll) {
+						MapUtils.deleteByValue(state.itemLocks, clientId)
+					} else if (sllEditNode && !isItemOwnedActivity(sllEditNode.chosen)) {
+						MapUtils.deleteByValue(state.itemLocks, clientId)
+					}
+					state.presence.set(clientId, { ...clientState, activityState: newActivity })
+				}
+				success = true
 			} else {
 				// client ops
 				const clientState: ClientPresence = state.presence.get(op.clientId)
@@ -514,7 +535,7 @@ export type PresenceUpdate =
 	}
 	| {
 		code: 'op'
-		op: Op
+		ops: Op[]
 	}
 
 // no presence instances older than this should be displayed

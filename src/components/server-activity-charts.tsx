@@ -359,29 +359,33 @@ export function ServerActivityCharts(props: {
 	return (
 		<div className="w-full flex flex-col gap-2">
 			{!isEmpty && (
-				<div className="flex gap-4 text-xs px-1">
-					<span className="text-muted-foreground">K/D Ratio:</span>
-					<span className="flex items-center gap-1">
-						<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team1Color }}></span>
-						{team1Label}:{' '}
-						<span className="font-mono font-semibold">{overallKD.team1Ratio >= 999 ? '∞' : overallKD.team1Ratio.toFixed(2)}</span>
-					</span>
-					<span className="flex items-center gap-1">
-						<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team2Color }}></span>
-						{team2Label}:{' '}
-						<span className="font-mono font-semibold">{overallKD.team2Ratio >= 999 ? '∞' : overallKD.team2Ratio.toFixed(2)}</span>
-					</span>
-					<span className="text-muted-foreground ml-2">Wound Ratio:</span>
-					<span className="flex items-center gap-1">
-						<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team1Color }}></span>
-						{team1Label}:{' '}
-						<span className="font-mono font-semibold">{overallWD.team1Ratio >= 999 ? '∞' : overallWD.team1Ratio.toFixed(2)}</span>
-					</span>
-					<span className="flex items-center gap-1">
-						<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team2Color }}></span>
-						{team2Label}:{' '}
-						<span className="font-mono font-semibold">{overallWD.team2Ratio >= 999 ? '∞' : overallWD.team2Ratio.toFixed(2)}</span>
-					</span>
+				<div className="flex flex-wrap gap-x-6 gap-y-1 text-xs px-1">
+					<div className="flex items-center gap-2 shrink-0">
+						<span className="text-muted-foreground">K/D Ratio:</span>
+						<span className="flex items-center gap-1">
+							<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team1Color }}></span>
+							{team1Label}:{' '}
+							<span className="font-mono font-semibold">{overallKD.team1Ratio >= 999 ? '∞' : overallKD.team1Ratio.toFixed(2)}</span>
+						</span>
+						<span className="flex items-center gap-1">
+							<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team2Color }}></span>
+							{team2Label}:{' '}
+							<span className="font-mono font-semibold">{overallKD.team2Ratio >= 999 ? '∞' : overallKD.team2Ratio.toFixed(2)}</span>
+						</span>
+					</div>
+					<div className="flex items-center gap-2 shrink-0">
+						<span className="text-muted-foreground">Wound Ratio:</span>
+						<span className="flex items-center gap-1">
+							<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team1Color }}></span>
+							{team1Label}:{' '}
+							<span className="font-mono font-semibold">{overallWD.team1Ratio >= 999 ? '∞' : overallWD.team1Ratio.toFixed(2)}</span>
+						</span>
+						<span className="flex items-center gap-1">
+							<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team2Color }}></span>
+							{team2Label}:{' '}
+							<span className="font-mono font-semibold">{overallWD.team2Ratio >= 999 ? '∞' : overallWD.team2Ratio.toFixed(2)}</span>
+						</span>
+					</div>
 				</div>
 			)}
 			{flagGroupChart && (
