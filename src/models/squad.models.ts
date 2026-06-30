@@ -535,7 +535,7 @@ export namespace RconEvents {
 
 	export const PlayerWarnedMatcher = createLogMatcher({
 		event: PlayerWarnedDef,
-		regex: /Remote admin has warned player (.*)\. Message was "(.*)"/,
+		regex: /Remote admin has warned player (.*)\. Message was "(.*)"/s,
 		onMatch: (match) => {
 			return {
 				time: Date.now(),
@@ -741,6 +741,7 @@ export namespace LogEvents {
 			return results
 		}
 
+		const MAX_CONTINUATION_LINES = 100
 		let carry = ''
 		for await (const chunk of chunk$) {
 			const lines = chunk.split(/\r?\n/)
@@ -750,18 +751,20 @@ export namespace LogEvents {
 			for (const line of lines) {
 				const match = line.match(logStartRegex)
 				if (!match) {
-					if (foundLogStart) lineBuffer.push(line)
+					if (foundLogStart && lineBuffer.length <= MAX_CONTINUATION_LINES) lineBuffer.push(line)
 					continue
 				}
 				if (foundLogStart) {
-					const [event, err] = matchLog(lineBuffer.join('\n'), EventMatchers)
+					const bufferContent = lineBuffer.join('\n')
 					lineBuffer = [line]
+					const [event, err] = matchLog(bufferContent, EventMatchers)
 					if (event === null && err == null) continue
 					if (err !== null) {
 						errors.push(err)
 						yield null
 						continue
 					}
+					;(event as any).raw = bufferContent.trim()
 					yield* handleEvent(event!)
 					continue
 				}
@@ -771,11 +774,13 @@ export namespace LogEvents {
 		}
 
 		if (foundLogStart && lineBuffer.length > 0) {
-			const [event, err] = matchLog(lineBuffer.join('\n'), EventMatchers)
+			const bufferContent = lineBuffer.join('\n')
+			const [event, err] = matchLog(bufferContent, EventMatchers)
 			if (err !== null) {
 				errors.push(err)
 				yield null
 			} else if (event !== null) {
+				;(event as any).raw = bufferContent.trim()
 				yield* handleEvent(event)
 			}
 		}

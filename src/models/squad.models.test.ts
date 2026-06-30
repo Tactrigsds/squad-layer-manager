@@ -1,3 +1,4 @@
+import { matchLog } from '@/lib/log-parsing'
 import * as SM from '@/models/squad.models'
 import { describe, expect, it } from 'vitest'
 
@@ -371,6 +372,36 @@ describe('LogEvents.parse', () => {
 		})
 	})
 
+	describe('continuation lines', () => {
+		it('includes non-log continuation lines in the raw field of the parsed event', async () => {
+			const logWithContinuation = NEW_GAME + '\nsome unexpected continuation text'
+			const events = await collect([logWithContinuation, NEXT_TICK_EVENT].join('\n'))
+			expect(events).toHaveLength(1)
+			expect(events[0]).toMatchObject({
+				type: 'NEW_GAME',
+				raw: expect.stringContaining('some unexpected continuation text'),
+			})
+		})
+
+		it('includes multiple continuation lines joined with newlines', async () => {
+			const logWithContinuations = NEW_GAME + '\nfirst continuation\nsecond continuation'
+			const events = await collect([logWithContinuations, NEXT_TICK_EVENT].join('\n'))
+			expect(events).toHaveLength(1)
+			expect(events[0]).toMatchObject({
+				type: 'NEW_GAME',
+				raw: expect.stringContaining('first continuation\nsecond continuation'),
+			})
+		})
+
+		it('does not bleed continuation lines into the next event', async () => {
+			const logWithContinuation = NEW_GAME + '\nsome continuation'
+			const events = await collect([logWithContinuation, NEW_GAME, NEXT_TICK_EVENT].join('\n'))
+			expect(events).toHaveLength(2)
+			expect(events[0]).toMatchObject({ type: 'NEW_GAME', raw: expect.stringContaining('some continuation') })
+			expect((events[1] as any).raw).not.toContain('some continuation')
+		})
+	})
+
 	describe('mixed events', () => {
 		it('yields non-chain events before and after a chain', async () => {
 			const events = await collect([NEW_GAME, JOIN_CHAIN, NEW_GAME, NEXT_TICK_EVENT].join('\n'))
@@ -385,6 +416,36 @@ describe('LogEvents.parse', () => {
 			expect(events).toHaveLength(2)
 			expect(events[0]).toMatchObject({ type: 'PLAYER_CONNECTED_CHAIN' })
 			expect(events[1]).toMatchObject({ type: 'ROUND_ENDED_CHAIN' })
+		})
+	})
+})
+
+describe('RconEvents', () => {
+	describe('PLAYER_WARNED', () => {
+		it('parses a single-line warn message', () => {
+			const [event, err] = matchLog(
+				'Remote admin has warned player TestUser. Message was "you did a bad thing"',
+				[SM.RconEvents.PlayerWarnedMatcher],
+			)
+			expect(err).toBeNull()
+			expect(event).toMatchObject({
+				type: 'PLAYER_WARNED',
+				reason: 'you did a bad thing',
+				playerIds: expect.objectContaining({ username: 'TestUser' }),
+			})
+		})
+
+		it('parses a multiline warn message', () => {
+			const [event, err] = matchLog(
+				'Remote admin has warned player TestUser. Message was "Line one\nLine two\nLine three"',
+				[SM.RconEvents.PlayerWarnedMatcher],
+			)
+			expect(err).toBeNull()
+			expect(event).toMatchObject({
+				type: 'PLAYER_WARNED',
+				reason: 'Line one\nLine two\nLine three',
+				playerIds: expect.objectContaining({ username: 'TestUser' }),
+			})
 		})
 	})
 })
