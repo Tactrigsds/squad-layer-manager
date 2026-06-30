@@ -42,6 +42,7 @@ export default function PlayerBulkContextMenuOptions({ playerIds }: { playerIds:
 	}
 
 	async function warn() {
+		TSWClient.Actions.ensureViewingTeams()
 		let reason = ''
 		const allPlayers = SquadServerClient.ChatStore.getState().chatState.interpolatedState.players
 		const usernames = playerIds.map(id => SM.PlayerIds.find(allPlayers, p => p.ids, id)?.ids.username ?? id)
@@ -63,6 +64,7 @@ export default function PlayerBulkContextMenuOptions({ playerIds }: { playerIds:
 	}
 
 	async function removeFromSquad() {
+		TSWClient.Actions.ensureViewingTeams()
 		const result = await openDialog({
 			title: 'Remove from Squad',
 			description: `Remove ${playerIds.length} players from their squads?`,

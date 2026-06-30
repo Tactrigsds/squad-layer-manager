@@ -2,8 +2,10 @@ import { cn } from '@/lib/utils'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import type * as SM from '@/models/squad.models'
 import React from 'react'
+import SquadContextMenuOptions from './squad-context-menu-options'
 import type { SquadDetailsWindowProps } from './squad-details-window.helpers'
 import { MatchTeamDisplay } from './teams-display'
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from './ui/context-menu'
 import { OpenWindowInteraction } from './ui/draggable-window'
 
 void import('@/components/squad-details-window')
@@ -13,6 +15,7 @@ interface SquadDisplayProps {
 	className?: string
 	showName?: boolean
 	showTeam?: boolean
+	showMenu?: boolean
 	matchId: number
 }
 
@@ -29,7 +32,7 @@ function SquadButton(
 	)
 }
 
-export function SquadDisplay({ squad, matchId, className, showName = true, showTeam = false }: SquadDisplayProps) {
+export function SquadDisplay({ squad, matchId, className, showName = true, showTeam = false, showMenu = true }: SquadDisplayProps) {
 	const isDefaultName = squad.squadName === `Squad ${squad.squadId}`
 	const label = isDefaultName
 		? `Squad ${squad.squadId}`
@@ -49,9 +52,20 @@ export function SquadDisplay({ squad, matchId, className, showName = true, showT
 		)
 		: <span className={labelClass}>{label}</span>
 
+	const labelWithMenu = showMenu
+		? (
+			<ContextMenu>
+				<ContextMenuTrigger>{squadLabel}</ContextMenuTrigger>
+				<ContextMenuContent>
+					<SquadContextMenuOptions squad={squad} />
+				</ContextMenuContent>
+			</ContextMenu>
+		)
+		: squadLabel
+
 	return (
 		<span className={cn('inline-flex flex-nowrap items-center gap-1', className)}>
-			{squadLabel}
+			{labelWithMenu}
 			{showTeam && (
 				<span className="inline-flex flex-nowrap">
 					(

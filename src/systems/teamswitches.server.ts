@@ -315,6 +315,32 @@ export async function dispatchRevertToSaved(ctx: C.Teamswitch & C.ServerSlice & 
 	await dispatchOp(ctx, { opId: TSW.createOpId(), code: 'revert-to-saved' })
 }
 
+export async function dispatchSwitchNow(
+	ctx: C.Teamswitch & C.ServerSlice & C.Db,
+	switches: TSW.TeamswitchCollection,
+	source: TSW.Teamswitch['source'],
+) {
+	const opId = TSW.createOpId()
+	const errors = await dispatchOp(ctx, { opId, code: 'switch-now', switches, source })
+	return errors.get(opId) ?? []
+}
+
+export async function dispatchSwitchNext(
+	ctx: C.Teamswitch & C.ServerSlice & C.Db,
+	switches: TSW.TeamswitchCollection,
+) {
+	const ops = Array.from(switches.entries()).map(([playerId, { toTeam, source }]) => ({
+		opId: TSW.createOpId(),
+		code: 'add-player-teamswitch' as const,
+		playerId,
+		toTeam,
+		source,
+		saved: true,
+	}))
+	const allErrors = await dispatchOp(ctx, ...ops)
+	return ops.flatMap(op => allErrors.get(op.opId) ?? [])
+}
+
 function resolveCtx(serverId: string) {
 	return SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 }

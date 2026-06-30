@@ -329,6 +329,10 @@ export const GENERAL = {
 			flag: "Flag a player's BM profile",
 			removeFlag: "Remove a flag from a player's BM profile",
 			listFlags: 'List BM flags for a player, or all org flags if no player is given',
+			switchNow: 'Switch a player to the opposite team immediately',
+			switchNext: 'Queue a player to switch teams on the next map',
+			switchSquadNow: 'Switch an entire squad to the opposite team immediately',
+			switchSquadNext: 'Queue an entire squad to switch teams on the next map',
 		},
 	},
 }

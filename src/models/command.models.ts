@@ -69,6 +69,22 @@ export const COMMAND_DECLARATIONS = {
 		args: ['code'],
 		defaults: { scopes: ['admin'], strings: ['linkSteamAccount'], enabled: false },
 	}),
+	...declareCommand('switchNow', {
+		args: ['player'],
+		defaults: { scopes: ['admin'], strings: ['switchnow'], enabled: true },
+	}),
+	...declareCommand('switchNext', {
+		args: ['player'],
+		defaults: { scopes: ['admin'], strings: ['switchnext'], enabled: true },
+	}),
+	...declareCommand('switchSquadNow', {
+		args: ['team', 'squad'],
+		defaults: { scopes: ['admin'], strings: ['switchsquadnow'], enabled: true },
+	}),
+	...declareCommand('switchSquadNext', {
+		args: ['team', 'squad'],
+		defaults: { scopes: ['admin'], strings: ['switchsquadnext'], enabled: true },
+	}),
 	...declareCommand('flag', { args: ['player', 'flag'], defaults: { scopes: ['admin'], strings: ['flag'], enabled: true } }),
 	...declareCommand('removeFlag', {
 		args: ['player', 'flag'],

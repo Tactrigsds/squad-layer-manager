@@ -69,7 +69,7 @@ export function canSwitchNow(state: State, playerId: SM.PlayerId): boolean {
 }
 
 export function canQueue(state: State, playerId: SM.PlayerId): boolean {
-	return !state.switching && !state.pendingSwitches.has(playerId) && !state.switches.has(playerId)
+	return !state.switching && !state.pendingSwitches.has(playerId) && !state.editedSwitches.has(playerId)
 }
 
 export function allCanSwitchNow(state: State, playerIds: SM.PlayerId[]): boolean {
@@ -82,7 +82,7 @@ export function allCanQueue(state: State, playerIds: SM.PlayerId[]): boolean {
 
 export function canExecuteSavedTeamswitches(state: State): boolean {
 	return (
-		state.switches === state.savedSwitches
+		state.editedSwitches === state.savedSwitches
 		&& state.savedSwitches.size > 0
 		&& !state.switching
 		&& state.pendingSwitches.size === 0
@@ -99,7 +99,7 @@ export type Message = {
 }
 
 export type State = {
-	switches: TeamswitchCollection
+	editedSwitches: TeamswitchCollection
 	players: PlayerCollection
 	savedSwitches: TeamswitchCollection
 	pendingSwitches: TeamswitchCollection
@@ -108,7 +108,7 @@ export type State = {
 
 export function initState(): State {
 	return {
-		switches: initTeamswitchCollection(),
+		editedSwitches: initTeamswitchCollection(),
 		savedSwitches: initTeamswitchCollection(),
 		pendingSwitches: initTeamswitchCollection(),
 		players: new Map(),
@@ -191,7 +191,6 @@ export function createOpId() {
 type O = ReturnType<Map<string, any>['keys']>
 
 type SwitchingMutationOp =
-	| 'add-player-teamswitch'
 	| 'remove-player-teamswitches'
 	| 'revert-to-saved'
 	| 'clear-teamswitches'
@@ -203,6 +202,7 @@ namespace OpErrors {
 	export type CurrentlySwitching = { code: 'err:currently-switching' }
 	export type CurrentlyNotSwitching = { code: 'err:currently-not-switching' }
 	export type PendingSwitch = { code: 'err:pending-switch'; playerId: SM.PlayerId }
+	export type AlreadyMarked = { code: 'err:already-marked'; playerId: SM.PlayerId }
 	export type SwitchesNotSaved = { code: 'err:switches-not-saved' }
 
 	export type TeamswitchExecutionFailed = {
@@ -217,7 +217,8 @@ export type OpError<OpCode extends Op['code'] = Op['code']> =
 	& { op: Extract<Op, { code: OpCode }> }
 	& (
 		| OpErrors.Unexpected
-		| (OpCode extends SwitchingMutationOp ? (OpErrors.CurrentlySwitching | OpErrors.PendingSwitch)
+		| (OpCode extends 'add-player-teamswitch' ? (OpErrors.CurrentlySwitching | OpErrors.AlreadyMarked)
+			: OpCode extends SwitchingMutationOp ? (OpErrors.CurrentlySwitching | OpErrors.PendingSwitch)
 			: OpCode extends 'teamswitch-execution-failed' ? (OpErrors.TeamswitchExecutionFailed)
 			: OpCode extends 'teamswitch-execution-completed' ? (OpErrors.CurrentlyNotSwitching)
 			: OpCode extends 'execute-teamswitches' ? (OpErrors.CurrentlySwitching | OpErrors.SwitchesNotSaved)
@@ -262,14 +263,18 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 						emitOpError({ code: 'err:currently-switching', op })
 						break
 					}
+					if (state.editedSwitches.has(op.playerId)) {
+						emitOpError({ code: 'err:already-marked', playerId: op.playerId, op })
+						break
+					}
 					const switchEntry = { toTeam: op.toTeam, source: op.source }
 					if (op.saved) {
 						state.savedSwitches = new Map(state.savedSwitches)
 						state.savedSwitches.set(op.playerId, switchEntry)
-						state.switches = state.savedSwitches
+						state.editedSwitches = state.savedSwitches
 					} else {
-						state.switches = new Map(state.switches)
-						state.switches.set(op.playerId, switchEntry)
+						state.editedSwitches = new Map(state.editedSwitches)
+						state.editedSwitches.set(op.playerId, switchEntry)
 					}
 					break
 				}
@@ -292,8 +297,8 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 						}
 						state.savedSwitches.delete(op.playerId)
 					} else {
-						state.switches = new Map(state.switches)
-						state.switches.delete(op.playerId)
+						state.editedSwitches = new Map(state.editedSwitches)
+						state.editedSwitches.delete(op.playerId)
 					}
 					break
 				}
@@ -303,7 +308,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 						emitOpError({ code: 'err:currently-switching', op })
 						break
 					}
-					state.switches = state.savedSwitches
+					state.editedSwitches = state.savedSwitches
 					break
 				}
 
@@ -315,9 +320,9 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 					if (op.save) {
 						const playerIds = Array.from(state.savedSwitches.keys())
 						if (playerIds.length > 0) onSideEffect?.({ code: 'notify-teamswitches-cancelled', players: playerIds })
-						state.savedSwitches = state.switches = initTeamswitchCollection()
+						state.savedSwitches = state.editedSwitches = initTeamswitchCollection()
 					} else {
-						state.switches = initTeamswitchCollection()
+						state.editedSwitches = initTeamswitchCollection()
 					}
 					break
 				}
@@ -327,7 +332,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 						emitOpError({ code: 'err:currently-switching', op })
 						break
 					}
-					if (op.source && !Obj.deepEqual(state.switches, state.savedSwitches)) {
+					if (op.source && !Obj.deepEqual(state.editedSwitches, state.savedSwitches)) {
 						emitOpError({ code: 'err:switches-not-saved', op })
 						break
 					}
@@ -337,7 +342,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 					state.switching = true
 					state.pendingSwitches = state.savedSwitches
 					const switches = state.savedSwitches
-					state.savedSwitches = state.switches = initTeamswitchCollection()
+					state.savedSwitches = state.editedSwitches = initTeamswitchCollection()
 					onSideEffect?.({ code: 'execute-teamswitches', opId: op.opId, switches })
 					break
 				}
@@ -361,14 +366,14 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 				case 'player-changed-team': {
 					state.players = new Map(state.players)
 					state.players.set(op.playerId, op.toTeam)
-					const _switch = state.switches.get(op.playerId)
+					const _switch = state.editedSwitches.get(op.playerId)
 
 					if (state.switching) {
 						break
 					}
 					if (_switch && _switch.toTeam === op.toTeam) {
-						state.switches = new Map(state.switches)
-						state.switches.delete(op.playerId)
+						state.editedSwitches = new Map(state.editedSwitches)
+						state.editedSwitches.delete(op.playerId)
 					}
 
 					const savedSwitch = state.savedSwitches.get(op.playerId)
@@ -397,7 +402,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 
 				case 'reset-players': {
 					let newSavedSwitches: State['savedSwitches'] | undefined
-					let newSwitches: State['switches'] | undefined
+					let newSwitches: State['editedSwitches'] | undefined
 					const allPlayerIds = new Set([...op.players.keys(), ...state.players.keys()])
 					for (const playerId of allPlayerIds) {
 						const nextPlayerTeam = op.players.get(playerId)
@@ -410,14 +415,14 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 							newSavedSwitches ??= new Map(state.savedSwitches)
 							newSavedSwitches.delete(playerId)
 						}
-						let editedSwitch = state.switches.get(playerId)
+						let editedSwitch = state.editedSwitches.get(playerId)
 						if (editedSwitch) {
-							newSwitches ??= new Map(state.switches)
+							newSwitches ??= new Map(state.editedSwitches)
 							newSwitches.delete(playerId)
 						}
 					}
 					if (newSavedSwitches !== undefined) state.savedSwitches = newSavedSwitches
-					if (newSwitches !== undefined) state.switches = newSwitches
+					if (newSwitches !== undefined) state.editedSwitches = newSwitches
 					state.players = op.players
 					break
 				}
@@ -427,8 +432,8 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 						emitOpError({ code: 'err:currently-switching', op })
 						break
 					}
-					const { added, removed } = getTeamswitchChanges(state.switches, state.savedSwitches)
-					state.savedSwitches = state.switches
+					const { added, removed } = getTeamswitchChanges(state.editedSwitches, state.savedSwitches)
+					state.savedSwitches = state.editedSwitches
 					if (added.length > 0) onSideEffect?.({ code: 'notify-upcoming-teamswitches', players: added })
 					if (removed.length > 0) onSideEffect?.({ code: 'notify-teamswitches-cancelled', players: removed })
 					break
@@ -454,8 +459,8 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 					state.savedSwitches = new Map(state.savedSwitches)
 					MapUtils.bulkDelete(state.savedSwitches, ...op.switches.keys())
 
-					state.switches = new Map(state.switches)
-					MapUtils.bulkDelete(state.switches, ...op.switches.keys())
+					state.editedSwitches = new Map(state.editedSwitches)
+					MapUtils.bulkDelete(state.editedSwitches, ...op.switches.keys())
 
 					state.pendingSwitches = op.switches
 					state.switching = true

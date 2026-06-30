@@ -131,6 +131,14 @@ export function useRemoveFromSquadMutation() {
 	})
 }
 
+export function useResetSquadNameMutation() {
+	return useMutation({
+		mutationFn: async (input: { teamId: 1 | 2; squadId: number }) => {
+			return RPC.orpc.squadServer.renameSquad.call(input)
+		},
+	})
+}
+
 type PlayerSelectionStore = {
 	selection: Record<string, boolean>
 	setSelection: (updater: Record<string, boolean> | ((old: Record<string, boolean>) => Record<string, boolean>)) => void

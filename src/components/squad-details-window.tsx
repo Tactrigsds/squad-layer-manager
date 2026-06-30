@@ -1,5 +1,7 @@
 import { PlayerDisplay } from '@/components/player-display'
+import { SquadMenuItems } from '@/components/squad-context-menu-options'
 import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import * as ZusUtils from '@/lib/zustand'
@@ -21,6 +23,8 @@ import { MatchTeamDisplay } from './teams-display'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
 import { Separator } from './ui/separator'
 import { Spinner } from './ui/spinner'
+
+const dropdownMenuSlots = { Item: DropdownMenuItem, Separator: DropdownMenuSeparator }
 
 DraggableWindowStore.getState().registerDefinition<SquadDetailsWindowProps, unknown>({
 	type: WINDOW_ID.enum['squad-details'],
@@ -82,7 +86,7 @@ function SquadDetailsWindow({ uniqueSquadId }: SquadDetailsWindowProps) {
 		: (data?.events ?? [])), [isCurrentMatchSquad, currentMatchEvents, data?.events])
 
 	const { scrollAreaRef, contentRef, bottomRef, showScrollButton, scrollToBottom } = useTailingScroll()
-	useDraggableWindow()
+	const { zIndex } = useDraggableWindow()
 
 	const creatorId = liveSquad?.creator ?? squad?.creatorId ?? null
 	const creatorPlayer = creatorId
@@ -111,6 +115,22 @@ function SquadDetailsWindow({ uniqueSquadId }: SquadDetailsWindowProps) {
 						</span>
 					)}
 				</DraggableWindowTitle>
+				{liveSquad && (
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<button
+								type="button"
+								className="inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+								title="Squad actions"
+							>
+								<Icons.Ellipsis className="h-3.5 w-3.5" />
+							</button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent style={{ zIndex: zIndex + 10 }}>
+							<SquadMenuItems squad={liveSquad} slots={dropdownMenuSlots} />
+						</DropdownMenuContent>
+					</DropdownMenu>
+				)}
 				<DraggableWindowPinToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>

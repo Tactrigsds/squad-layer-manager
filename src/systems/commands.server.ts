@@ -5,14 +5,19 @@ import * as Messages from '@/messages.ts'
 import type * as BM from '@/models/battlemetrics.models'
 import * as CMD from '@/models/command.models.ts'
 import type * as CS from '@/models/context-shared'
+import * as L from '@/models/layer'
+import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
+import * as TSW from '@/models/teamswitches.models'
 import type * as USR from '@/models/users.models'
 import { CONFIG } from '@/server/config.ts'
 import type * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
+import * as MatchHistory from '@/systems/match-history.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
+import * as Teamswitches from '@/systems/teamswitches.server'
 import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
 
@@ -190,6 +195,145 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 				}
 			}
 			break
+		}
+
+		case 'switchNow': {
+			if (!args.player) return await showError('missing-arg', 'Usage: /switchnow <player>')
+			const teamsStateRes = await ctx.server.teams.get(ctx)
+			if (teamsStateRes.code !== 'ok') return teamsStateRes
+			const matchedPlayerRes = SM.PlayerIds.fuzzyMatchIdentifierUniquely(teamsStateRes.players, p => p.ids, args.player)
+			if (matchedPlayerRes.code === 'err:not-found') {
+				return await showError('not-found', `No player matches found for "${args.player}"`)
+			}
+			if (matchedPlayerRes.code === 'err:multiple-matches') {
+				return await showError('multiple-matches', `${matchedPlayerRes.count} players match "${args.player}"`)
+			}
+			const target = matchedPlayerRes.matched
+			if (!target.teamId) return await showError('no-team', `Player "${target.ids.username}" is not on a team`)
+			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+			const targetNormedTeam = MH.getNormedTeamId(target.teamId, currentMatch.ordinal)
+			const toTeam: MH.NormedTeamId = targetNormedTeam === 'A' ? 'B' : 'A'
+			const source: USR.GuiOrChatUserId = { steamId: player.ids.steam?.toString() }
+			const playerId = SM.PlayerIds.getPlayerId(target.ids)
+			const errors = await Teamswitches.dispatchSwitchNow(ctx, new Map([[playerId, { toTeam, source }]]), source)
+			if (errors.length > 0) {
+				const err = errors[0] as TSW.OpError
+				if (err.code === 'err:currently-switching') {
+					return await showError('currently-switching', 'A team switch is currently in progress')
+				}
+			}
+			await SquadRcon.warn(ctx, msg.playerIds, `Switching ${target.ids.username} to team ${toTeam} now`)
+			return { code: 'ok' as const }
+		}
+
+		case 'switchNext': {
+			if (!args.player) return await showError('missing-arg', 'Usage: /switchnext <player>')
+			const teamsStateRes = await ctx.server.teams.get(ctx)
+			if (teamsStateRes.code !== 'ok') return teamsStateRes
+			const matchedPlayerRes = SM.PlayerIds.fuzzyMatchIdentifierUniquely(teamsStateRes.players, p => p.ids, args.player)
+			if (matchedPlayerRes.code === 'err:not-found') {
+				return await showError('not-found', `No player matches found for "${args.player}"`)
+			}
+			if (matchedPlayerRes.code === 'err:multiple-matches') {
+				return await showError('multiple-matches', `${matchedPlayerRes.count} players match "${args.player}"`)
+			}
+			const target = matchedPlayerRes.matched
+			if (!target.teamId) return await showError('no-team', `Player "${target.ids.username}" is not on a team`)
+			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+			const targetNormedTeam = MH.getNormedTeamId(target.teamId, currentMatch.ordinal)
+			const toTeam: MH.NormedTeamId = targetNormedTeam === 'A' ? 'B' : 'A'
+			const source: USR.GuiOrChatUserId = { steamId: player.ids.steam?.toString() }
+			const playerId = SM.PlayerIds.getPlayerId(target.ids)
+			const errors = await Teamswitches.dispatchAddSwitch(ctx, playerId, toTeam, source)
+			if (errors.length > 0) {
+				const err = errors[0] as TSW.OpError
+				if (err.code === 'err:currently-switching') {
+					return await showError('currently-switching', 'A team switch is currently in progress')
+				}
+			}
+			await SquadRcon.warn(ctx, msg.playerIds, `Queued ${target.ids.username} to switch to team ${toTeam} on next map`)
+			return { code: 'ok' as const }
+		}
+
+		case 'switchSquadNow':
+		case 'switchSquadNext': {
+			if (!args.team || !args.squad) return await showError('missing-arg', `Usage: /${cmd === 'switchSquadNow' ? 'switchsquadnow' : 'switchsquadnext'} <team> <squad>`)
+			const teamsStateRes = await ctx.server.teams.get(ctx)
+			if (teamsStateRes.code !== 'ok') return teamsStateRes
+			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+
+			// resolve raw team ID (1|2) from input
+			const teamArg = args.team.toUpperCase()
+			let rawTeamId: SM.TeamId | null = null
+			if (teamArg === '1') {
+				rawTeamId = 1
+			} else if (teamArg === '2') {
+				rawTeamId = 2
+			} else if (teamArg === 'A' || teamArg === 'B') {
+				rawTeamId = MH.getDenormedTeamId(teamArg as MH.NormedTeamId, currentMatch.ordinal)
+			} else {
+				const layer = L.toLayer(currentMatch.layerId)
+				if (layer.Faction_1?.toUpperCase() === teamArg) rawTeamId = 1
+				else if (layer.Faction_2?.toUpperCase() === teamArg) rawTeamId = 2
+			}
+			if (!rawTeamId) {
+				return await showError('unknown-team', `Unknown team "${args.team}". Use 1/2, A/B, or faction name.`)
+			}
+
+			// resolve squad by number or name
+			const squadsOnTeam = teamsStateRes.squads.filter(s => s.teamId === rawTeamId)
+			const squadNum = parseInt(args.squad)
+			let matchedSquad: SM.Squad | null = null
+			if (!isNaN(squadNum)) {
+				matchedSquad = squadsOnTeam.find(s => s.squadId === squadNum) ?? null
+				if (!matchedSquad) return await showError('not-found', `No squad ${squadNum} found on team ${args.team}`)
+			} else {
+				const squadMatchRes = simpleUniqueStringMatch(squadsOnTeam.map(s => s.squadName.toLowerCase()), args.squad.toLowerCase())
+				if (squadMatchRes.code === 'err:not-found') {
+					return await showError('not-found', `No squad matches "${args.squad}" on team ${args.team}`)
+				}
+				if (squadMatchRes.code === 'err:multiple-matches') {
+					return await showError('multiple-matches', `${squadMatchRes.count} squads match "${args.squad}"`)
+				}
+				matchedSquad = squadsOnTeam[squadMatchRes.matched]
+			}
+
+			const squadPlayers = teamsStateRes.players.filter(p => p.teamId === rawTeamId && p.squadId === matchedSquad!.squadId)
+			if (squadPlayers.length === 0) {
+				return await showError('empty-squad', `Squad "${matchedSquad.squadName}" has no players`)
+			}
+
+			const source: USR.GuiOrChatUserId = { steamId: player.ids.steam?.toString() }
+			if (cmd === 'switchSquadNow') {
+				const switches: Map<SM.PlayerId, { toTeam: MH.NormedTeamId; source: USR.GuiOrChatUserId }> = new Map()
+				for (const p of squadPlayers) {
+					const normed = MH.getNormedTeamId(p.teamId!, currentMatch.ordinal)
+					const toTeam: MH.NormedTeamId = normed === 'A' ? 'B' : 'A'
+					switches.set(SM.PlayerIds.getPlayerId(p.ids), { toTeam, source })
+				}
+				const errors = await Teamswitches.dispatchSwitchNow(ctx, switches, source)
+				if (errors.length > 0) {
+					const err = errors[0] as TSW.OpError
+					if (err.code === 'err:currently-switching') {
+						return await showError('currently-switching', 'A team switch is currently in progress')
+					}
+				}
+				await SquadRcon.warn(ctx, msg.playerIds, `Switching ${squadPlayers.length} players from "${matchedSquad.squadName}" to the opposite team now`)
+			} else {
+				for (const p of squadPlayers) {
+					const normed = MH.getNormedTeamId(p.teamId!, currentMatch.ordinal)
+					const toTeam: MH.NormedTeamId = normed === 'A' ? 'B' : 'A'
+					const errors = await Teamswitches.dispatchAddSwitch(ctx, SM.PlayerIds.getPlayerId(p.ids), toTeam, source)
+					if (errors.length > 0) {
+						const err = errors[0] as TSW.OpError
+						if (err.code === 'err:currently-switching') {
+							return await showError('currently-switching', 'A team switch is currently in progress')
+						}
+					}
+				}
+				await SquadRcon.warn(ctx, msg.playerIds, `Queued ${squadPlayers.length} players from "${matchedSquad.squadName}" to switch teams on next map`)
+			}
+			return { code: 'ok' as const }
 		}
 
 		case 'flag': {

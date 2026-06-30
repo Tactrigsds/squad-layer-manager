@@ -337,6 +337,16 @@ export const orpcRouter = {
 			await SquadRcon.removeFromSquad(ctx, input.playerId)
 			return { code: 'ok' as const }
 		}),
+
+	renameSquad: orpcBase
+		.input(z.object({ teamId: SM.TeamIdSchema, squadId: z.number().int().positive() }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctx = resolveWsClientSliceCtx(_ctx)
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
+			if (denyRes) return denyRes
+			await SquadRcon.adminRenameSquad(ctx, input.teamId, input.squadId)
+			return { code: 'ok' as const }
+		}),
 }
 
 export async function setup() {

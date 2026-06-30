@@ -25,6 +25,7 @@ import React from 'react'
 import * as Zus from 'zustand'
 import PlayerBulkContextMenuOptions from './player-bulk-context-menu-options'
 import PlayerContextMenuOptions from './player-context-menu-options'
+import SquadContextMenuOptions from './squad-context-menu-options'
 import { PlayerDisplay } from './player-display'
 import type { SquadDetailsWindowProps } from './squad-details-window.helpers'
 import { MatchTeamDisplay } from './teams-display'
@@ -527,7 +528,12 @@ const playerColumns = [
 				)
 			return (
 				<span className="inline-flex items-center gap-1">
-					{squadLabel}
+					<ContextMenu>
+						<ContextMenuTrigger>{squadLabel}</ContextMenuTrigger>
+						<ContextMenuContent>
+							<SquadContextMenuOptions squad={squad} />
+						</ContextMenuContent>
+					</ContextMenu>
 					{player.isLeader && <span className="text-xs text-muted-foreground">(SL)</span>}
 				</span>
 			)

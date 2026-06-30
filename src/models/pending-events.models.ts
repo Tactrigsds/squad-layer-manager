@@ -384,7 +384,7 @@ async function* processPendingEvent(
 	const log = state.log
 
 	if (pendingEvent.type !== 'UNKNOWN') {
-		log.debug('Attempting to process raw event %s (%s) %s', pendingEvent.type, pendingEvent.id)
+		log.debug('Attempting to process raw event %s (%s)', pendingEvent.type, pendingEvent.id)
 	}
 
 	if (pendingEvent.time < time - 45_000) {

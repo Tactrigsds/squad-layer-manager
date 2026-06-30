@@ -514,3 +514,8 @@ export async function removeFromSquad(ctx: C.Rcon & C.SquadRcon & C.AdminList, i
 	await ctx.rcon.execute(`AdminRemovePlayerFromSquad ${id}`, { level: 'info' })
 	ctx.server.teams.invalidate(ctx)
 }
+
+export async function adminRenameSquad(ctx: C.Rcon & C.SquadRcon & C.AdminList, teamId: SM.TeamId, squadId: SM.SquadId) {
+	await ctx.rcon.execute(`AdminRenameSquad ${teamId} ${squadId}`, { level: 'info' })
+	ctx.server.teams.invalidate(ctx)
+}

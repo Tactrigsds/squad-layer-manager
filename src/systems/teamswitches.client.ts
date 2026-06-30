@@ -108,7 +108,7 @@ export namespace Select {
 		return (store: Store) => {
 			const state = localState(store)
 			let count = 0
-			for (const switch_ of state.switches.values()) {
+			for (const switch_ of state.editedSwitches.values()) {
 				if (switch_.toTeam === team) {
 					count++
 				} else {
@@ -120,12 +120,12 @@ export namespace Select {
 	}
 
 	export function hasSwitches(store: Store) {
-		return localState(store).switches.size > 0 || localState(store).savedSwitches.size > 0
+		return localState(store).editedSwitches.size > 0 || localState(store).savedSwitches.size > 0
 	}
 
 	export function switchesModified(store: Store) {
 		const state = localState(store)
-		return !Obj.deepEqual(state.switches, state.savedSwitches)
+		return !Obj.deepEqual(state.editedSwitches, state.savedSwitches)
 	}
 
 	export function canExecuteSavedTeamswitches(store: Store) {
@@ -134,13 +134,13 @@ export namespace Select {
 
 	export function hasPendingEdits(store: Store) {
 		const state = localState(store)
-		return state.switches !== state.savedSwitches
+		return state.editedSwitches !== state.savedSwitches
 	}
 
 	export function switchCounts(store: Store) {
 		const state = localState(store)
 		const counts: Record<MH.NormedTeamId, number> = { A: 0, B: 0 }
-		for (const switch_ of state.switches.values()) {
+		for (const switch_ of state.editedSwitches.values()) {
 			counts[switch_.toTeam]++
 		}
 		return counts
@@ -163,7 +163,7 @@ export namespace Select {
 		chatStore: SquadServer.ChatStore,
 		team: MH.NormedTeamId,
 	): Map<SM.PlayerId, TSW.EnrichedTeamswitch> {
-		const switches = localState(store).switches
+		const switches = localState(store).editedSwitches
 		const players = SquadServer.Select.chatState(chatStore).players
 		const result: Map<SM.PlayerId, TSW.EnrichedTeamswitch> = new Map()
 		for (const [playerId, switch_] of switches.entries()) {
@@ -184,7 +184,7 @@ export namespace Select {
 		chatStore: SquadServer.ChatStore,
 		team: MH.NormedTeamId,
 	): Map<SM.PlayerId, EnrichedTeamswitchWithMutation> {
-		const { switches, savedSwitches } = localState(store)
+		const { editedSwitches: switches, savedSwitches } = localState(store)
 		const players = SquadServer.Select.chatState(chatStore).players
 
 		const mutations = ItemMutations.initMutations<SM.PlayerId>()
@@ -229,8 +229,21 @@ function getPlayerOppositeTeam(playerId: SM.PlayerId): MH.NormedTeamId | null {
 }
 
 export namespace Actions {
+	export function ensureViewingTeams() {
+		UPClient.Store.getState().updateActivity(activity =>
+			UP.VIEWING_TEAMS_TRANSITIONS.matchActivity(activity)
+				? activity
+				: UP.VIEWING_TEAMS_TRANSITIONS.createActivity(activity)
+		)
+	}
+
 	function setEditing() {
-		UPClient.Store.getState().updateActivity(UP.EDITING_TEAMSWITCHES_TRANSITIONS.createActivity)
+		UPClient.Store.getState().updateActivity(activity => {
+			const withTeams = UP.VIEWING_TEAMS_TRANSITIONS.matchActivity(activity)
+				? activity
+				: UP.VIEWING_TEAMS_TRANSITIONS.createActivity(activity)
+			return UP.EDITING_TEAMSWITCHES_TRANSITIONS.createActivity(withTeams)
+		})
 	}
 	function clearEditing() {
 		UPClient.Store.getState().updateActivity(UP.EDITING_TEAMSWITCHES_TRANSITIONS.removeActivity)
@@ -262,13 +275,16 @@ export namespace Actions {
 			if (!toTeam) continue
 			switches.set(playerId, { toTeam, source })
 		}
-		if (switches.size > 0) Store.getState().dispatch({ code: 'switch-now', switches, source })
+		if (switches.size > 0) {
+			ensureViewingTeams()
+			Store.getState().dispatch({ code: 'switch-now', switches, source })
+		}
 	}
 
 	export function clearTeamSwitches(teamId: MH.NormedTeamId) {
 		const source = { discordId: UsersClient.loggedInUserId }
 		const state = Select.localState(Store.getState())
-		for (const [playerId, switch_] of state.switches.entries()) {
+		for (const [playerId, switch_] of state.editedSwitches.entries()) {
 			if (switch_.toTeam !== teamId) continue
 			Store.getState().dispatch({ code: 'remove-player-teamswitches', playerId, source, saved: false })
 		}
@@ -276,17 +292,20 @@ export namespace Actions {
 	}
 
 	export function executeTeamswitches() {
+		ensureViewingTeams()
 		const source = { discordId: UsersClient.loggedInUserId }
 		Store.getState().dispatch({ code: 'execute-teamswitches', source })
 	}
 
 	export function save() {
+		ensureViewingTeams()
 		const source = { discordId: UsersClient.loggedInUserId }
 		Store.getState().dispatch({ code: 'save', source })
 		clearEditing()
 	}
 
 	export function revertToSaved() {
+		ensureViewingTeams()
 		const source = { discordId: UsersClient.loggedInUserId }
 		Store.getState().dispatch({ code: 'revert-to-saved', source })
 		clearEditing()
