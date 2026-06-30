@@ -11,11 +11,13 @@ import * as MH from '@/models/match-history.models'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswitches.models'
+import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as MatchHistory from '@/systems/match-history.server'
+import * as Rbac from '@/systems/rbac.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import { E_TIMEOUT, Mutex, MutexInterface, withTimeout } from 'async-mutex'
@@ -178,6 +180,12 @@ export const orpcRouter = {
 	// TODO we need to filter errors back to the client that might have occured while handling side-effects
 	dispatchOp: orpcBase.meta({ type: 'mutation' }).input(TSW.OpSchema).handler(async ({ context, input }) => {
 		const ctx = SquadServer.resolveWsClientSliceCtx(context)
+		const source = 'source' in input ? input.source : undefined
+		if (!source?.discordId || source.discordId !== ctx.user.discordId) {
+			return { code: 'err:invalid-source' as const }
+		}
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
+		if (denyRes) return denyRes
 		await dispatchOp(ctx, input)
 	}),
 }
@@ -302,6 +310,10 @@ const dispatchOp = C.spanOp(
 		return opErrors
 	},
 )
+
+export async function dispatchRevertToSaved(ctx: C.Teamswitch & C.ServerSlice & C.Db) {
+	await dispatchOp(ctx, { opId: TSW.createOpId(), code: 'revert-to-saved' })
+}
 
 function resolveCtx(serverId: string) {
 	return SquadServer.resolveSliceCtx(getBaseCtx(), serverId)

@@ -45,7 +45,7 @@ export const [ACTIVITIES] = (() => {
 				]),
 			]),
 			branch('VIEWING_TEAMS', [
-				leaf('EDITING_TEAMSWAPS'),
+				leaf('EDITING_TEAMSWITCHES'),
 			]),
 		]),
 	]) satisfies ST.Def.Node
@@ -373,6 +373,27 @@ export const VIEWING_TEAMS_TRANSITIONS = {
 	},
 	removeActivity: Im.produce((root: Im.WritableDraft<RootActivity>) => {
 		delete root.child.ON_PRIMARY_PANEL
+	}),
+}
+
+export function getEditingTeamswitchesNode(activity: RootActivity | null | undefined) {
+	return VIEWING_TEAMS_TRANSITIONS.matchActivity(activity)?.child.EDITING_TEAMSWITCHES ?? null
+}
+
+export const EDITING_TEAMSWITCHES_TRANSITIONS = {
+	matchActivity: (root: RootActivity | undefined | null) => !!getEditingTeamswitchesNode(root),
+	createActivity: (_activity: RootActivity | undefined | null): RootActivity => {
+		const activity = _activity ?? DEFAULT_ACTIVITY
+		return Im.produce(activity, draft => {
+			const teamsNode = VIEWING_TEAMS_TRANSITIONS.matchActivity(draft)
+			if (!teamsNode) return
+			teamsNode.child.EDITING_TEAMSWITCHES = ST.Match.leaf('EDITING_TEAMSWITCHES', {})
+		})
+	},
+	removeActivity: Im.produce((root: Im.WritableDraft<RootActivity>) => {
+		const teamsNode = VIEWING_TEAMS_TRANSITIONS.matchActivity(root)
+		if (!teamsNode) return
+		delete teamsNode.child.EDITING_TEAMSWITCHES
 	}),
 }
 

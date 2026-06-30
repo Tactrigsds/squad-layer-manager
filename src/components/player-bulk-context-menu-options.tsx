@@ -1,8 +1,11 @@
 import { useToast } from '@/hooks/use-toast'
 import * as SM from '@/models/squad.models'
+import * as RBAC from '@/rbac.models'
+import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswitches.client'
 import React from 'react'
+import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { ContextMenuItem, ContextMenuLabel, ContextMenuSeparator } from './ui/context-menu'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
 
@@ -13,6 +16,9 @@ export default function PlayerBulkContextMenuOptions({ playerIds }: { playerIds:
 
 	const warnMutation = SquadServerClient.useWarnPlayerMutation()
 	const removeFromSquadMutation = SquadServerClient.useRemoveFromSquadMutation()
+
+	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
+	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
 
 	async function switchNow() {
 		const initialState = TSWClient.Select.localState(TSWClient.Store.getState())
@@ -70,17 +76,27 @@ export default function PlayerBulkContextMenuOptions({ playerIds }: { playerIds:
 		<>
 			<ContextMenuLabel>{playerIds.length} players selected</ContextMenuLabel>
 			<ContextMenuSeparator />
-			<ContextMenuItem onClick={switchNow}>Switch Now</ContextMenuItem>
+			<PermissionDeniedTooltip denied={manageDenied}>
+				<ContextMenuItem onClick={switchNow} disabled={!!manageDenied}>Switch Now</ContextMenuItem>
+			</PermissionDeniedTooltip>
 			<ContextMenuSeparator />
-			<ContextMenuItem onClick={() => TSWClient.Actions.switchNext(playerIds)}>
-				Switch Next
-			</ContextMenuItem>
-			<ContextMenuItem onClick={() => TSWClient.Actions.removeSwitch(playerIds)}>
-				Cancel Switch
-			</ContextMenuItem>
+			<PermissionDeniedTooltip denied={manageDenied}>
+				<ContextMenuItem onClick={() => TSWClient.Actions.switchNext(playerIds)} disabled={!!manageDenied}>
+					Switch Next
+				</ContextMenuItem>
+			</PermissionDeniedTooltip>
+			<PermissionDeniedTooltip denied={manageDenied}>
+				<ContextMenuItem onClick={() => TSWClient.Actions.removeSwitch(playerIds)} disabled={!!manageDenied}>
+					Cancel Switch
+				</ContextMenuItem>
+			</PermissionDeniedTooltip>
 			<ContextMenuSeparator />
-			<ContextMenuItem onClick={warn}>Warn</ContextMenuItem>
-			<ContextMenuItem onClick={removeFromSquad}>Remove from Squad</ContextMenuItem>
+			<PermissionDeniedTooltip denied={warnDenied}>
+				<ContextMenuItem onClick={warn} disabled={!!warnDenied}>Warn</ContextMenuItem>
+			</PermissionDeniedTooltip>
+			<PermissionDeniedTooltip denied={manageDenied}>
+				<ContextMenuItem onClick={removeFromSquad} disabled={!!manageDenied}>Remove from Squad</ContextMenuItem>
+			</PermissionDeniedTooltip>
 		</>
 	)
 }

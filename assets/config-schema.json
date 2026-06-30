@@ -762,6 +762,8 @@
                 "squad-server:end-match",
                 "squad-server:disable-slm-updates",
                 "squad-server:turn-fog-off",
+                "squad-server:manage-players",
+                "squad-server:warn-players",
                 "battlemetrics:write-flags"
               ]
             },

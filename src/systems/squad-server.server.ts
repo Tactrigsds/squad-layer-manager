@@ -18,6 +18,7 @@ import * as Messages from '@/messages.ts'
 import type * as BAL from '@/models/balance-triggers.models'
 import * as CHAT from '@/models/chat.models.ts'
 import * as CS from '@/models/context-shared'
+import * as UP from '@/models/user-presence'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as MH from '@/models/match-history.models'
@@ -301,6 +302,8 @@ export const orpcRouter = {
 		.input(z.object({ playerId: SM.PlayerIdSchema, reason: z.string().min(1) }))
 		.handler(async ({ context: _ctx, input }) => {
 			const ctx = resolveWsClientSliceCtx(_ctx)
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players'))
+			if (denyRes) return denyRes
 			await SquadRcon.warn(ctx, input.playerId, input.reason)
 			return { code: 'ok' as const }
 		}),
@@ -309,6 +312,8 @@ export const orpcRouter = {
 		.input(z.object({ playerId: SM.PlayerIdSchema }))
 		.handler(async ({ context: _ctx, input }) => {
 			const ctx = resolveWsClientSliceCtx(_ctx)
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
+			if (denyRes) return denyRes
 			await SquadRcon.demoteCommander(ctx, input.playerId)
 			return { code: 'ok' as const }
 		}),
@@ -317,6 +322,8 @@ export const orpcRouter = {
 		.input(z.object({ teamId: SM.TeamIdSchema, squadId: z.number().int().positive() }))
 		.handler(async ({ context: _ctx, input }) => {
 			const ctx = resolveWsClientSliceCtx(_ctx)
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
+			if (denyRes) return denyRes
 			await SquadRcon.disbandSquad(ctx, input.teamId, input.squadId)
 			return { code: 'ok' as const }
 		}),
@@ -325,6 +332,8 @@ export const orpcRouter = {
 		.input(z.object({ playerId: SM.PlayerIdSchema }))
 		.handler(async ({ context: _ctx, input }) => {
 			const ctx = resolveWsClientSliceCtx(_ctx)
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
+			if (denyRes) return denyRes
 			await SquadRcon.removeFromSquad(ctx, input.playerId)
 			return { code: 'ok' as const }
 		}),
@@ -553,6 +562,22 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 	}
 
 	globalState.slices.set(serverId, slice)
+
+	// When the last editor removes EDITING_TEAMSWITCHES (disconnect/navigate/save), revert unsaved teamswitch edits
+	let hadTeamswitchEditors = false
+	cleanup.push(
+		slice.userPresence.op$.pipe(
+			C.durableSub('teamswitches:revert-on-editing-end', { module }, async () => {
+				const presence = slice.userPresence.session.state.presence
+				const hasEditors = [...presence.values()].some(c => !!UP.getEditingTeamswitchesNode(c.activityState))
+				if (hadTeamswitchEditors && !hasEditors) {
+					const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+					await TeamSwitchesSys.dispatchRevertToSaved(ctx)
+				}
+				hadTeamswitchEditors = hasEditors
+			}),
+		).subscribe(),
+	)
 
 	// -------- load saved events --------
 	await loadSavedEvents({ ...ctx, server, serverId })

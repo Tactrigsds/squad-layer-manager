@@ -7,6 +7,7 @@ import * as MH from '@/models/match-history.models'
 import * as SquadServer from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswitches.models'
+import * as UP from '@/models/user-presence'
 import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -25,7 +26,6 @@ export type Store = {
 const [useUpdate, update$] = ReactRx.bind(RPC.observe(() => RPC.orpc.teamswitches.watchUpdates.call()))
 
 function onSideEffect(se: TSW.SideEffect) {
-	console.log('teamswitch side effect', se)
 	if (se.code !== 'error') return
 	const userId = UsersClient.loggedInUserId
 	if (!userId) return
@@ -78,22 +78,17 @@ export const Store = Zus.createStore<Store>((set, get) => {
 			const op = { ...newOp, opId: TSW.createOpId() }
 			const updated = RbSyncState.Client.processOutgoingOps(get().session, [op], TSW.reducer)
 			set({ session: updated })
-			console.log('teamswitch dispatch', op.code, op.opId)
 			void RPC.orpc.teamswitches.dispatchOp.call(op)
 		},
 
 		onUpdate(update) {
 			switch (update.code) {
 				case 'init':
-					console.log('teamswitch init', update.state, update.ops)
 					set({
 						session: initSession(update.state, update.ops),
 					})
 					break
 				case 'op':
-					for (const op of update.ops) {
-						console.log('teamswitch receive', op.code, op.opId)
-					}
 					const updated = RbSyncState.Client.processIncomingOps(get().session, update.ops, TSW.reducer)
 					set({ session: updated })
 					break
@@ -234,6 +229,13 @@ function getPlayerOppositeTeam(playerId: SM.PlayerId): MH.NormedTeamId | null {
 }
 
 export namespace Actions {
+	function setEditing() {
+		UPClient.Store.getState().updateActivity(UP.EDITING_TEAMSWITCHES_TRANSITIONS.createActivity)
+	}
+	function clearEditing() {
+		UPClient.Store.getState().updateActivity(UP.EDITING_TEAMSWITCHES_TRANSITIONS.removeActivity)
+	}
+
 	export function switchNext(playerIds: SM.PlayerId[]) {
 		const source = { discordId: UsersClient.loggedInUserId }
 		for (const playerId of playerIds) {
@@ -241,6 +243,7 @@ export namespace Actions {
 			if (!toTeam) continue
 			Store.getState().dispatch({ code: 'add-player-teamswitch', playerId, toTeam, source, saved: false })
 		}
+		setEditing()
 	}
 
 	export function removeSwitch(playerIds: SM.PlayerId[]) {
@@ -248,6 +251,7 @@ export namespace Actions {
 		for (const playerId of playerIds) {
 			Store.getState().dispatch({ code: 'remove-player-teamswitches', playerId, source, saved: false })
 		}
+		setEditing()
 	}
 
 	export function switchNow(playerIds: SM.PlayerId[]) {
@@ -268,6 +272,7 @@ export namespace Actions {
 			if (switch_.toTeam !== teamId) continue
 			Store.getState().dispatch({ code: 'remove-player-teamswitches', playerId, source, saved: false })
 		}
+		setEditing()
 	}
 
 	export function executeTeamswitches() {
@@ -276,11 +281,15 @@ export namespace Actions {
 	}
 
 	export function save() {
-		Store.getState().dispatch({ code: 'save' })
+		const source = { discordId: UsersClient.loggedInUserId }
+		Store.getState().dispatch({ code: 'save', source })
+		clearEditing()
 	}
 
 	export function revertToSaved() {
-		Store.getState().dispatch({ code: 'revert-to-saved' })
+		const source = { discordId: UsersClient.loggedInUserId }
+		Store.getState().dispatch({ code: 'revert-to-saved', source })
+		clearEditing()
 	}
 }
 

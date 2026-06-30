@@ -3,10 +3,13 @@ import * as ZusUtils from '@/lib/zustand'
 import * as MH from '@/models/match-history.models'
 import * as SquadServer from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
+import * as RBAC from '@/rbac.models'
 import * as MatchHistoryClient from '@/systems/match-history.client'
+import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswitches.client'
 import React from 'react'
+import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { ContextMenuItem, ContextMenuSeparator } from './ui/context-menu'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
 
@@ -67,6 +70,9 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 
 	const canSwitchNow = ZusUtils.useStore(TSWClient.Store, TSWClient.Select.canSwitchNow([playerId]))
 	const canQueue = ZusUtils.useStore(TSWClient.Store, TSWClient.Select.canQueue([playerId]))
+
+	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
+	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
 
 	async function switchNow() {
 		if (!otherTeam) return
@@ -152,31 +158,39 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 
 	return (
 		<>
-			<Item onClick={switchNow} disabled={!otherTeam || !canSwitchNow}>
-				Switch Now
-			</Item>
+			<PermissionDeniedTooltip denied={manageDenied}>
+				<Item onClick={switchNow} disabled={!!manageDenied || !otherTeam || !canSwitchNow}>
+					Switch Now
+				</Item>
+			</PermissionDeniedTooltip>
 			<Separator />
-			<Item
-				onClick={() => TSWClient.Actions.switchNext([playerId])}
-				disabled={!otherTeam || !canQueue}
-			>
-				Switch Next
-			</Item>
+			<PermissionDeniedTooltip denied={manageDenied}>
+				<Item
+					onClick={() => TSWClient.Actions.switchNext([playerId])}
+					disabled={!!manageDenied || !otherTeam || !canQueue}
+				>
+					Switch Next
+				</Item>
+			</PermissionDeniedTooltip>
 			{existingSwitch && (
 				<>
 					<Separator />
-					<Item
-						onClick={() => TSWClient.Actions.removeSwitch([playerId])}
-						disabled={!canSwitchNow}
-					>
-						Cancel Switch
-					</Item>
+					<PermissionDeniedTooltip denied={manageDenied}>
+						<Item
+							onClick={() => TSWClient.Actions.removeSwitch([playerId])}
+							disabled={!!manageDenied || !canSwitchNow}
+						>
+							Cancel Switch
+						</Item>
+					</PermissionDeniedTooltip>
 				</>
 			)}
 			<Separator />
-			<Item onClick={warn} disabled={!isOnServer}>
-				Warn
-			</Item>
+			<PermissionDeniedTooltip denied={warnDenied}>
+				<Item onClick={warn} disabled={!!warnDenied || !isOnServer}>
+					Warn
+				</Item>
+			</PermissionDeniedTooltip>
 			<Item onClick={copyTeleportCommand} disabled={!isOnServer}>
 				Copy Teleport Command
 			</Item>
@@ -191,20 +205,26 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 			{inSquad && (
 				<>
 					<Separator />
-					<Item onClick={removeFromSquad}>
-						Remove from Squad
-					</Item>
-					<Item onClick={disbandSquad}>
-						Disband Squad
-					</Item>
+					<PermissionDeniedTooltip denied={manageDenied}>
+						<Item onClick={removeFromSquad} disabled={!!manageDenied}>
+							Remove from Squad
+						</Item>
+					</PermissionDeniedTooltip>
+					<PermissionDeniedTooltip denied={manageDenied}>
+						<Item onClick={disbandSquad} disabled={!!manageDenied}>
+							Disband Squad
+						</Item>
+					</PermissionDeniedTooltip>
 				</>
 			)}
 			{playerInfo?.isCommander && (
 				<>
 					<Separator />
-					<Item onClick={demoteCommander}>
-						Demote Commander
-					</Item>
+					<PermissionDeniedTooltip denied={manageDenied}>
+						<Item onClick={demoteCommander} disabled={!!manageDenied}>
+							Demote Commander
+						</Item>
+					</PermissionDeniedTooltip>
 				</>
 			)}
 		</>
