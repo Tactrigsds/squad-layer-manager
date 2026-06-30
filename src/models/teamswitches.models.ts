@@ -250,6 +250,12 @@ export type SideEffect =
 		code: 'save'
 		switches: TeamswitchCollection
 		prevSaved: TeamswitchCollection
+		source?: USR.GuiOrChatUserId
+	}
+	| {
+		code: 'teamswitches-executed'
+		switchCount: number
+		source?: USR.GuiOrChatUserId
 	}
 	| {
 		code: 'error'
@@ -260,6 +266,7 @@ export type SideEffect =
 export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, ops, prevOps, onSideEffect) => {
 	let state = { ...oldState }
 	let skipEmitSave = false
+	let saveSource: USR.GuiOrChatUserId | undefined
 	for (const op of ops) {
 		const emitOpError = <T extends Op>(error: OpError<T['code']>) => onSideEffect?.({ code: 'error', opId: error.op.opId, error })
 		try {
@@ -369,8 +376,11 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 						emitOpError({ code: 'err:currently-not-switching', op })
 						break
 					}
+					const switchCount = state.pendingSwitches.size
+					const executionSource = state.pendingSwitches.values().next().value?.source
 					state.switching = false
 					state.pendingSwitches = initTeamswitchCollection()
+					onSideEffect?.({ code: 'teamswitches-executed', switchCount, source: executionSource })
 					break
 				}
 
@@ -451,6 +461,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 					}
 					const { added, removed } = getTeamswitchChanges(state.editedSwitches, state.savedSwitches)
 					state.savedSwitches = state.editedSwitches
+					saveSource = op.source
 					if (added.length > 0) onSideEffect?.({ code: 'notify-upcoming-teamswitches', players: added })
 					if (removed.length > 0) onSideEffect?.({ code: 'notify-teamswitches-cancelled', players: removed })
 					break
@@ -500,7 +511,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 			if (!toTeam || toTeam !== _switch.toTeam) continue
 			newSwitchingPlayers.push(playerId)
 		}
-		onSideEffect?.({ code: 'save', switches: state.savedSwitches, prevSaved: oldState.savedSwitches })
+		onSideEffect?.({ code: 'save', switches: state.savedSwitches, prevSaved: oldState.savedSwitches, source: saveSource })
 		if (newSwitchingPlayers.length > 0) onSideEffect?.({ code: 'notify-upcoming-teamswitches', players: newSwitchingPlayers })
 	}
 

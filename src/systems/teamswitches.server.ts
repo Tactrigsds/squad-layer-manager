@@ -312,6 +312,9 @@ const dispatchOp = C.spanOp(
 						break
 					}
 
+					case 'teamswitches-executed':
+						break
+
 					default:
 						assertNever(se)
 				}

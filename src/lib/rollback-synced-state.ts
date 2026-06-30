@@ -125,6 +125,7 @@ export namespace Client {
 		if (Arr.isSubset(newSyncedOpIds, pendingOpIds)) {
 			return {
 				syncedState: newSyncedState,
+				onSideEffect: session.onSideEffect,
 				syncedOps: truncatedNewSyncedOps,
 				localState: newSyncedState,
 				pendingOps: [],
