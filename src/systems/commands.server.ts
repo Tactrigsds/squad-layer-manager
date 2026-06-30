@@ -391,6 +391,18 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 			return { code: 'ok' as const }
 		}
 
+		case 'clearSwitches': {
+			const prevCount = ctx.teamswitches.session.state.savedSwitches.size
+			if (prevCount === 0) {
+				await SquadRcon.warn(ctx, msg.playerIds, 'No teamswitches queued')
+				return { code: 'ok' as const }
+			}
+			const source: USR.GuiOrChatUserId = { steamId: player.ids.steam?.toString() }
+			await Teamswitches.dispatchClearSwitches(ctx, source)
+			await SquadRcon.warn(ctx, msg.playerIds, `Cleared ${prevCount} queued teamswitch${prevCount !== 1 ? 'es' : ''}`)
+			return { code: 'ok' as const }
+		}
+
 		case 'flag': {
 			const teamsStateRes = await ctx.server.teams.get(ctx)
 			if (teamsStateRes.code !== 'ok') {

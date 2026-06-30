@@ -387,7 +387,7 @@ const dispatchOp = C.spanOp(
 								: undefined
 							void SquadRcon.warnAllAdmins(
 								ctx,
-								{ msg: WARNS.teamswitches.notifyAdminSwitchesSaved(name, se.switches.size, factionLines) },
+								{ msg: WARNS.teamswitches.notifyAdminSwitchesSaved(name, se.switches.size, se.prevSaved.size, factionLines) },
 								excludeSteamIds,
 							)
 						}
@@ -427,6 +427,11 @@ const dispatchOp = C.spanOp(
 )
 
 export async function dispatchRevertToSaved(ctx: C.Teamswitch & C.ServerSlice & C.Db) {
+}
+
+export async function dispatchClearSwitches(ctx: C.Teamswitch & C.ServerSlice & C.Db, source?: TSW.Teamswitch['source']) {
+	const opId = TSW.createOpId()
+	await dispatchOp(ctx, { opId, code: 'clear-teamswitches', save: true, source })
 }
 
 export async function dispatchSwitchNow(

@@ -8,6 +8,7 @@ import * as SLLClient from '@/systems/shared-layer-list.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 import * as DateFns from 'date-fns'
+import { Loader2 } from 'lucide-react'
 import React from 'react'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
@@ -54,6 +55,9 @@ export const sortEditingPresence: SortPresenceFn = (a, b) => {
 
 	return a.user.displayName.localeCompare(b.user.displayName)
 }
+
+type PresenceEntry = { user: USR.User; presence: UP.ClientPresence; activityText: string | null }
+type PresenceGroup = { activityText: string | null; entries: PresenceEntry[] }
 
 export type UserPresencePanelProps = {
 	// users which have a matchng activity will be listed
@@ -179,6 +183,57 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 
 	const [_, setHoveredUser] = UPClient.useHoveredActivityUser()
 
+	const groupedPresence = React.useMemo((): PresenceGroup[] => {
+		const entries: PresenceEntry[] = sortedUserPresence.map(({ user, presence }) => {
+			const eventText = userEventText.get(user.discordId)
+			const activityText = eventText ?? (presence.activityState ? UP.getHumanReadableActivity(presence.activityState, layerList) : null)
+			return { user, presence, activityText }
+		})
+
+		const textGroups = new Map<string, PresenceEntry[]>()
+		for (const entry of entries) {
+			if (entry.activityText) {
+				if (!textGroups.has(entry.activityText)) textGroups.set(entry.activityText, [])
+				textGroups.get(entry.activityText)!.push(entry)
+			}
+		}
+
+		const result: PresenceGroup[] = []
+		const seenTexts = new Set<string>()
+		for (const entry of entries) {
+			if (entry.activityText) {
+				if (!seenTexts.has(entry.activityText)) {
+					seenTexts.add(entry.activityText)
+					result.push({ activityText: entry.activityText, entries: textGroups.get(entry.activityText)! })
+				}
+			} else {
+				result.push({ activityText: null, entries: [entry] })
+			}
+		}
+		return result
+	}, [sortedUserPresence, userEventText, layerList])
+
+	const actionCount = React.useMemo(() => {
+		return groupedPresence.reduce((count, group) =>
+			count + group.entries.filter(e => e.activityText !== null).length, 0)
+	}, [groupedPresence])
+
+	// -------- Compact mode: switch when content overflows the container --------
+	const [isCompact, setIsCompact] = React.useState(false)
+	const containerRef = React.useRef<HTMLDivElement>(null)
+	const normalContentRef = React.useRef<HTMLDivElement>(null)
+
+	React.useEffect(() => {
+		const container = containerRef.current
+		const content = normalContentRef.current
+		if (!container || !content) return
+		const check = () => setIsCompact(container.scrollWidth > container.clientWidth)
+		const observer = new ResizeObserver(check)
+		observer.observe(container)
+		observer.observe(content)
+		return () => observer.disconnect()
+	}, [])
+
 	let otherMatchingUsersCount = 0
 	for (const userId of allUserIds) {
 		if (userId === loggedInUser?.discordId) continue
@@ -186,71 +241,179 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 	}
 
 	return (
-		<div className={cn('flex flex-wrap space-x-1 min-h-6', props.className)}>
+		<div ref={containerRef} className={cn('relative overflow-hidden min-h-6', props.className)}>
 			{isLoading && <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-current mx-auto"></div>}
-			{!isLoading && otherMatchingUsersCount > 1 && (
-				<div className="text-sm text-muted-foreground pr-1">{otherMatchingUsersCount} other users editing queue</div>
-			)}
-			{sortedUserPresence.map(({ user, presence }) => {
-				const isAway = presence.away
-				const currentActivity = presence.activityState
-				const isMatching = allUserIds.has(user.discordId)
-				const eventText = userEventText.get(user.discordId)
-				const activityText = eventText ?? (currentActivity ? UP.getHumanReadableActivity(currentActivity, layerList) : null)
 
-				return (
-					<div key={user.discordId.toString()} className="flex items-center space-x-1">
-						<Tooltip
-							delayDuration={0}
-						>
-							<TooltipTrigger asChild>
-								<div
-									onMouseOver={() => setHoveredUser(user.discordId, true)}
-									onMouseOut={() => setHoveredUser(user.discordId, false)}
-									className={cn(
-										'inline-flex items-center gap-1.5 h-6 py-0 rounded-full transition-all duration-200 cursor-pointer',
-										activityText && 'bg-accent pr-2',
-										!activityText && 'px-0',
-									)}
-								>
-									<div className="flex items-center justify-center w-6 h-6 shrink-0">
+			{!isLoading && isCompact && (
+				<div className="absolute inset-0 flex items-center">
+					<Tooltip delayDuration={0}>
+						<TooltipTrigger asChild>
+							<div className="inline-flex items-center gap-1.5 h-6 rounded-full bg-accent px-1.5 cursor-pointer">
+								<div className="flex -space-x-1.5">
+									{sortedUserPresence.map(({ user, presence }) => (
 										<Avatar
+											key={user.discordId.toString()}
 											style={{ backgroundColor: user.displayHexColor ?? undefined }}
-											className={cn(
-												'h-6 w-6 transition-all duration-200',
-												isAway && 'grayscale opacity-50',
-											)}
+											className={cn('h-5 w-5 ring-1 ring-background shrink-0', presence.away && 'grayscale opacity-50')}
 										>
 											<AvatarImage src={USR.getAvatarUrl(user)} crossOrigin="anonymous" />
-											<AvatarFallback className="text-xs">
-												{getUserInitials(user)}
-											</AvatarFallback>
+											<AvatarFallback className="text-[10px]">{getUserInitials(user)}</AvatarFallback>
 										</Avatar>
+									))}
+								</div>
+								{actionCount > 0 && (
+									<div className="flex items-center gap-1">
+										<Loader2 className="h-3 w-3 animate-spin shrink-0" />
+										<span className="text-xs font-medium">{actionCount}</span>
 									</div>
-									{activityText && (
-										<span className="activity-text">
-											<span className="text-xs font-medium whitespace-nowrap">
-												{activityText}
-											</span>
-										</span>
-									)}
-								</div>
-							</TooltipTrigger>
-							{/*<TooltipContent className="bg-secondary text-secondary-foreground">*/}
-							<TooltipContent>
-								<div className="text-center">
-									<div className="font-medium">{user.displayName} {loggedInUser?.discordId === user.discordId ? '(You)' : ''}</div>
-									{isAway && presence.lastSeen && (
-										<div className="text-xs mt-1">
-											Last seen {DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
+								)}
+							</div>
+						</TooltipTrigger>
+						<TooltipContent className="p-2">
+							<div className="flex flex-col gap-1.5">
+								{sortedUserPresence.map(({ user, presence }) => {
+									const eventText = userEventText.get(user.discordId)
+									const activityText = eventText ?? (presence.activityState ? UP.getHumanReadableActivity(presence.activityState, layerList) : null)
+									return (
+										<div key={user.discordId.toString()} className="flex items-center gap-2">
+											<Avatar
+												style={{ backgroundColor: user.displayHexColor ?? undefined }}
+												className={cn('h-5 w-5 shrink-0', presence.away && 'grayscale opacity-50')}
+											>
+												<AvatarImage src={USR.getAvatarUrl(user)} crossOrigin="anonymous" />
+												<AvatarFallback className="text-[10px]">{getUserInitials(user)}</AvatarFallback>
+											</Avatar>
+											<div className="flex flex-col leading-none gap-0.5">
+												<span className="text-xs font-medium">
+													{user.displayName}{loggedInUser?.discordId === user.discordId ? ' (You)' : ''}
+												</span>
+												{activityText && (
+													<span className="text-xs opacity-70">{activityText}</span>
+												)}
+												{presence.away && presence.lastSeen && (
+													<span className="text-xs opacity-70">
+														Last seen {DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
+													</span>
+												)}
+											</div>
 										</div>
-									)}
+									)
+								})}
+							</div>
+						</TooltipContent>
+					</Tooltip>
+				</div>
+			)}
+
+			{!isLoading && (
+				<div ref={normalContentRef} className={cn('flex flex-nowrap items-center gap-1', isCompact && 'invisible')}>
+					{otherMatchingUsersCount > 1 && (
+						<div className="text-sm text-muted-foreground pr-1">{otherMatchingUsersCount} other users editing queue</div>
+					)}
+					{groupedPresence.map((group) => {
+						const isGrouped = group.entries.length > 1
+						const key = group.activityText ?? group.entries[0].user.discordId.toString()
+
+						if (isGrouped) {
+							return (
+								<div key={key} className="flex items-center space-x-1">
+									<div className={cn(
+										'inline-flex items-center gap-1.5 h-6 py-0 rounded-full transition-all duration-200',
+										'bg-accent pr-2',
+									)}>
+										<div className="flex -space-x-1.5 shrink-0">
+											{group.entries.map(({ user, presence }) => (
+												<Tooltip key={user.discordId.toString()} delayDuration={0}>
+													<TooltipTrigger asChild>
+														<Avatar
+															onMouseOver={() => setHoveredUser(user.discordId, true)}
+															onMouseOut={() => setHoveredUser(user.discordId, false)}
+															style={{ backgroundColor: user.displayHexColor ?? undefined }}
+															className={cn(
+																'h-6 w-6 transition-all duration-200 cursor-pointer ring-1 ring-background',
+																presence.away && 'grayscale opacity-50',
+															)}
+														>
+															<AvatarImage src={USR.getAvatarUrl(user)} crossOrigin="anonymous" />
+															<AvatarFallback className="text-xs">
+																{getUserInitials(user)}
+															</AvatarFallback>
+														</Avatar>
+													</TooltipTrigger>
+													<TooltipContent>
+														<div className="text-center">
+															<div className="font-medium">{user.displayName} {loggedInUser?.discordId === user.discordId ? '(You)' : ''}</div>
+															{presence.away && presence.lastSeen && (
+																<div className="text-xs mt-1">
+																	Last seen {DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
+																</div>
+															)}
+														</div>
+													</TooltipContent>
+												</Tooltip>
+											))}
+										</div>
+										<span className="text-xs font-medium whitespace-nowrap">
+											{group.activityText}
+										</span>
+									</div>
 								</div>
-							</TooltipContent>
-						</Tooltip>
-					</div>
-				)
-			})}
+							)
+						}
+
+						const { user, presence, activityText } = group.entries[0]
+						return (
+							<div key={user.discordId.toString()} className="flex items-center space-x-1">
+								<Tooltip delayDuration={0}>
+									<TooltipTrigger asChild>
+										<div
+											onMouseOver={() => setHoveredUser(user.discordId, true)}
+											onMouseOut={() => setHoveredUser(user.discordId, false)}
+											className={cn(
+												'inline-flex items-center gap-1.5 h-6 py-0 rounded-full transition-all duration-200 cursor-pointer',
+												activityText && 'bg-accent pr-2',
+												!activityText && 'px-0',
+											)}
+										>
+											<div className="flex items-center justify-center w-6 h-6 shrink-0">
+												<Avatar
+													style={{ backgroundColor: user.displayHexColor ?? undefined }}
+													className={cn(
+														'h-6 w-6 transition-all duration-200',
+														presence.away && 'grayscale opacity-50',
+													)}
+												>
+													<AvatarImage src={USR.getAvatarUrl(user)} crossOrigin="anonymous" />
+													<AvatarFallback className="text-xs">
+														{getUserInitials(user)}
+													</AvatarFallback>
+												</Avatar>
+											</div>
+											{activityText && (
+												<span className="activity-text">
+													<span className="text-xs font-medium whitespace-nowrap">
+														{activityText}
+													</span>
+												</span>
+											)}
+										</div>
+									</TooltipTrigger>
+									<TooltipContent>
+										<div className="text-center">
+											<div className="font-medium">{user.displayName} {loggedInUser?.discordId === user.discordId ? '(You)' : ''}</div>
+											{presence.away && presence.lastSeen && (
+												<div className="text-xs mt-1">
+													Last seen {DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
+												</div>
+											)}
+										</div>
+									</TooltipContent>
+								</Tooltip>
+							</div>
+						)
+					})}
+				</div>
+			)}
 		</div>
 	)
 }

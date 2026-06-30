@@ -60,19 +60,19 @@ export default function PrimaryPanel() {
 						{
 							value: 'queue',
 							label: (
-								<span className="flex justify-between">
+								<div className="flex justify-between">
 									<span>Queue</span>
-									<UserPresencePanel sourcePresenceFn={sortEditingPresence} matchActivity={UP.VIEWING_QUEUE_TRANSITIONS.matchActivity} />
-								</span>
+									<UserPresencePanel sourcePresenceFn={sortEditingPresence} matchActivity={UP.VIEWING_QUEUE_TRANSITIONS.matchActivity} className="min-w-0" />
+								</div>
 							),
 						},
 						{
 							value: 'teams',
 							label: (
-								<span className="flex justify-between">
+								<div className="flex justify-between">
 									<span>Teams</span>
-									<UserPresencePanel sourcePresenceFn={sortEditingPresence} matchActivity={UP.VIEWING_TEAMS_TRANSITIONS.matchActivity} />
-								</span>
+									<UserPresencePanel sourcePresenceFn={sortEditingPresence} matchActivity={UP.VIEWING_TEAMS_TRANSITIONS.matchActivity} className="min-w-0" />
+								</div>
 							),
 						},
 					]}

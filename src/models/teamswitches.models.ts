@@ -162,7 +162,7 @@ export const OpSchema = z.discriminatedUnion('code', [
 		toTeam: MH.NormedTeamIdSchema,
 	}),
 	z.object({ opId: z.string(), code: z.literal('revert-to-saved'), source: USR.GuiOrChatUserIdSchema.optional() }),
-	z.object({ opId: z.string(), code: z.literal('clear-teamswitches'), save: z.boolean() }),
+	z.object({ opId: z.string(), code: z.literal('clear-teamswitches'), save: z.boolean(), source: USR.GuiOrChatUserIdSchema.optional() }),
 
 	z.object({ opId: z.string(), code: z.literal('save'), source: USR.GuiOrChatUserIdSchema }),
 	z.object({ opId: z.string(), code: z.literal('execute-teamswitches'), source: USR.GuiOrChatUserIdSchema.optional() }),
@@ -352,6 +352,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 						const playerIds = Array.from(state.savedSwitches.keys())
 						if (playerIds.length > 0) onSideEffect?.({ code: 'notify-teamswitches-cancelled', players: playerIds })
 						state.savedSwitches = state.editedSwitches = initTeamswitchCollection()
+						if (op.source) saveSource = op.source
 					} else {
 						state.editedSwitches = initTeamswitchCollection()
 					}

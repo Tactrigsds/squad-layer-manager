@@ -743,7 +743,12 @@ function TeamPlayerTable(
 						<ContextMenu key={row.id}>
 							<ContextMenuTrigger asChild>
 								<TableRow
-									className={cn('cursor-pointer select-none', savedSwitches.has(row.id) && 'bg-amber-500/20')}
+									className={cn(
+										'cursor-pointer select-none',
+										savedSwitches.has(row.id)
+											? 'bg-amber-500/20 hover:bg-amber-500/40 data-[state=selected]:bg-amber-500/50'
+											: undefined,
+									)}
 									data-state={row.getIsSelected() ? 'selected' : undefined}
 									onClick={() => row.toggleSelected()}
 									onMouseDown={e => {
@@ -1108,7 +1113,12 @@ function CombinedPlayerTable(props: { searchQuery: string; filters: PlayerFilter
 						<ContextMenu key={row.id}>
 							<ContextMenuTrigger asChild>
 								<TableRow
-									className={cn('cursor-pointer select-none', savedSwitches.has(row.id) && 'bg-amber-500/20')}
+									className={cn(
+										'cursor-pointer select-none',
+										savedSwitches.has(row.id)
+											? 'bg-amber-500/20 hover:bg-amber-500/40 data-[state=selected]:bg-amber-500/50'
+											: undefined,
+									)}
 									data-state={row.getIsSelected() ? 'selected' : undefined}
 									onClick={() => row.toggleSelected()}
 									onMouseDown={e => {

@@ -29,11 +29,11 @@ export default function ServerDashboard() {
 						</div>
 					</div>
 
-					<div className="flex-1 min-h-0 justify-center" style={{ display: activeTab === 'layers' ? 'flex' : 'none' }}>
+					<div className="flex-1 min-h-0" style={{ display: activeTab === 'layers' ? 'flex' : 'none' }}>
 						<PrimaryPanel />
 					</div>
 					<div
-						className="flex-1 min-h-0 justify-center"
+						className="flex-1 min-h-0"
 						style={{ display: activeTab === 'secondary' ? 'flex' : 'none' }}
 					>
 						<SecondaryPanel />

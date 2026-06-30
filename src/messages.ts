@@ -269,10 +269,17 @@ export const WARNS = {
 			+ 'Thank you for helping with team balance and contact admins if you have issues.',
 		notifyTeamswitchCancelled: 'You will no longer be switched to the other team on map roll.',
 		notifyManualSwitch: 'You have been switched to the other team by an admin.',
-		notifyAdminSwitchesSaved: (name: string, count: number, factionLines?: string[]) =>
-			factionLines
-				? `${name} queued ${count} teamswitch${count !== 1 ? 'es' : ''} for next map:\n${factionLines.join('\n')}`
-				: `${name} queued ${count} teamswitch${count !== 1 ? 'es' : ''} for next map.`,
+		notifyAdminSwitchesSaved: (name: string, count: number, prevCount: number, factionLines?: string[]) => {
+			if (count === 0) return `${name} cleared all queued teamswitches for next map.`
+			const added = count - prevCount
+			const removed = prevCount - count
+			const parts: string[] = []
+			if (added > 0) parts.push(`added ${added}`)
+			if (removed > 0) parts.push(`removed ${removed}`)
+			const changeSummary = parts.length > 0 ? ` (${parts.join(', ')})` : ''
+			const base = `${name} queued ${count} teamswitch${count !== 1 ? 'es' : ''} for next map${changeSummary}`
+			return factionLines ? `${base}:\n${factionLines.join('\n')}` : `${base}.`
+		},
 		notifyAdminManualSwitch: (name: string, count: number, factionLines?: string[]) =>
 			factionLines
 				? `${name} immediately switched ${count} player${count !== 1 ? 's' : ''}:\n${factionLines.join('\n')}`
@@ -342,6 +349,7 @@ export const GENERAL = {
 			switchSquadNow: 'Switch an entire squad to the opposite team immediately',
 			switchSquadNext: 'Queue an entire squad to switch teams on the next map',
 			swaps: 'Show a summary of queued team swaps',
+			clearSwitches: 'Clear all queued teamswitches',
 		},
 	},
 }

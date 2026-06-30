@@ -86,6 +86,7 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { scopes: ['admin'], strings: ['switchsquadnext'], enabled: true },
 	}),
 	...declareCommand('swaps', { args: [], defaults: { scopes: ['admin'], strings: ['swaps'], enabled: true } }),
+	...declareCommand('clearSwitches', { args: [], defaults: { scopes: ['admin'], strings: ['clearswitches'], enabled: true } }),
 	...declareCommand('flag', { args: ['player', 'flag'], defaults: { scopes: ['admin'], strings: ['flag'], enabled: true } }),
 	...declareCommand('removeFlag', {
 		args: ['player', 'flag'],
