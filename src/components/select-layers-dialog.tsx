@@ -1,9 +1,11 @@
 import { Button } from '@/components/ui/button'
 import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogDescription, HeadlessDialogFooter, HeadlessDialogHeader, HeadlessDialogTitle } from '@/components/ui/headless-dialog'
-import { getFrameState, useFrameLifecycle, useFrameStore } from '@/frames/frame-manager.ts'
+import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
+import { useFrameLifecycle } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react.ts'
+import * as ZusUtils from '@/lib/zustand'
 import type * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models.ts'
 
@@ -23,7 +25,7 @@ type SelectLayersDialogProps = {
 	pinMode?: SelectMode
 	selectQueueItems?: (queueItems: LL.NewItem[]) => void
 	defaultSelected?: L.LayerId[]
-	frames?: Partial<SelectLayersFrame.KeyProp>
+	stores?: Partial<SelectLayersFrame.KeyProp>
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
 	footerAdditions?: React.ReactNode
@@ -37,7 +39,7 @@ type SelectLayersDialogContentProps = {
 	pinMode?: SelectMode
 	selectQueueItems?: (queueItems: LL.NewItem[]) => void
 	defaultSelected: L.LayerId[]
-	frames?: Partial<SelectLayersFrame.KeyProp>
+	stores?: Partial<SelectLayersFrame.KeyProp>
 	footerAdditions?: React.ReactNode
 	cursor?: LL.Cursor
 	onClose: () => void
@@ -47,18 +49,21 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 	const defaultSelectedRef = React.useRef(props.defaultSelected)
 
 	const frameInputRef = useRefConstructor(() => {
-		if (props.frames?.selectLayers) return undefined
+		if (props.stores?.selectLayers) return undefined
 		SelectLayersFrame.createInput({ cursor: props.cursor, selected: defaultSelectedRef.current })
 	})
 	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, {
-		frameKey: props.frames?.selectLayers,
+		frameKey: props.stores?.selectLayers,
 		input: frameInputRef.current,
 		deps: undefined,
 		equalityFn: Obj.deepEqual,
 	})
 
 	const [selectMode, _setSelectMode] = React.useState<SelectMode>(props.pinMode ?? 'layers')
-	const setSelectedLayers = useFrameStore(frameKey, (s) => s.layerTable.setSelected)
+	const setSelectedLayers = React.useCallback(
+		(update: React.SetStateAction<L.LayerId[]>) => LayerTablePrt.Actions.setSelected({ layerTable: frameKey }, update),
+		[frameKey],
+	)
 
 	function setAdditionType(newAdditionType: SelectMode) {
 		if (newAdditionType === 'vote') {
@@ -79,13 +84,13 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 	const user = useLoggedInUser()
 	const [submitted, setSubmitted] = React.useState(false)
 
-	const canSubmit = useFrameStore(frameKey, (s) => s.layerTable.selected.length > 0 && !submitted)
+	const canSubmit = ZusUtils.useStore(frameKey, (s) => s.layerTable.selected.length > 0 && !submitted)
 
 	const submit = props.selectQueueItems
 		? () => {
 			if (!canSubmit) return
 			setSubmitted(true)
-			const selectedLayers = getFrameState(frameKey).layerTable.selected
+			const selectedLayers = ZusUtils.getState(frameKey).layerTable.selected
 			try {
 				const source: LL.Source = { type: 'manual', userId: user!.discordId }
 				if (selectMode === 'layers' || selectedLayers.length === 1) {
@@ -120,17 +125,21 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 					{props.description && <HeadlessDialogDescription>{props.description}</HeadlessDialogDescription>}
 				</div>
 				<div className="flex justify-end items-center space-x-2">
-					<AppliedFiltersPanel frameKey={frameKey} />
+					{
+						/* FIXME stage4: AppliedFiltersPanel's stores type also requires a squadServer key (see applied-filters-panel.tsx),
+					   which isn't available in this select-layers-only context. Left as-is (pre-existing before this migration pass). */
+					}
+					<AppliedFiltersPanel stores={{ appliedFilters: frameKey }} />
 				</div>
 			</HeadlessDialogHeader>
 
 			<div className="flex min-h-0 items-start space-x-2 ">
-				<LayerFilterMenu frameKey={frameKey} />
+				<LayerFilterMenu stores={{ filterMenu: frameKey }} />
 				<div className="flex flex-col space-y-2 justify-between h-full min-h-0">
 					<div className="flex h-full min-h-0">
 						<LayerTable
-							extraPanelItems={<PoolCheckboxes frameKey={frameKey} />}
-							frameKey={frameKey}
+							extraPanelItems={<PoolCheckboxes stores={{ poolCheckboxes: frameKey }} />}
+							stores={{ layerTable: frameKey }}
 							canChangeRowsPerPage={false}
 							canToggleColumns
 							enableForceSelect
@@ -181,7 +190,7 @@ export default function SelectLayersDialog(props: SelectLayersDialogProps) {
 				pinMode={props.pinMode}
 				selectQueueItems={props.selectQueueItems}
 				defaultSelected={defaultSelected}
-				frames={props.frames}
+				stores={props.stores}
 				footerAdditions={props.footerAdditions}
 				cursor={props.cursor}
 				onClose={onClose}

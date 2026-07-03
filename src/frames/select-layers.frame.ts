@@ -2,17 +2,20 @@ import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial'
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
 import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
+import * as SquadServerFrame from '@/frames/squad-server.frame'
+import { distinctDeepEquals } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object'
+import * as ZusUtils from '@/lib/zustand'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
+import * as MH from '@/models/match-history.models'
 import * as ConfigClient from '@/systems/config.client'
-import * as QD from '@/systems/queue-dashboard.client'
-import * as ServerSettingsClient from '@/systems/server-settings.client'
+import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as Rx from 'rxjs'
 import { frameManager } from './frame-manager'
 
@@ -28,13 +31,14 @@ export function createInput(
 		maxSelected?: number
 		minSelected?: number
 		sharedInstanceId?: string
-	},
+	} & Partial<SquadServerFrame.KeyProp>,
 ): Input {
 	const base: BaseInput = {
 		colConfig: ConfigClient.getColConfig(),
 		initialEditedLayerId: opts.initialEditedLayerId,
 		instanceId: opts.sharedInstanceId ?? createId(4),
 		cursor: opts.cursor,
+		squadServer: opts.squadServer,
 	}
 	return {
 		...LayerTablePrt.getInputDefaults({
@@ -53,12 +57,16 @@ export function createInput(
 	}
 }
 
-type BaseInput = { colConfig: LQY.EffectiveColumnAndTableConfig; cursor?: LL.Cursor; initialEditedLayerId?: L.LayerId; instanceId: string }
+type BaseInput = {
+	colConfig: LQY.EffectiveColumnAndTableConfig
+	cursor?: LL.Cursor
+	initialEditedLayerId?: L.LayerId
+	instanceId: string
+} & Partial<SquadServerFrame.KeyProp>
 
 type Input = BaseInput & LayerTablePrt.Input
 
 type Primary = {
-	setCursor: (cursor: LL.Cursor | undefined) => void
 	initialEditedLayerId?: L.LayerId
 	cursor: LL.Cursor | undefined
 	input: Input
@@ -92,9 +100,6 @@ const setup: Frame['setup'] = (args) => {
 	set(
 		{
 			cursor: args.input.cursor,
-			setCursor: (cursor) => {
-				set({ cursor })
-			},
 			input,
 			initialEditedLayerId: args.input.initialEditedLayerId,
 		} satisfies Primary,
@@ -106,8 +111,7 @@ const setup: Frame['setup'] = (args) => {
 			onLayerFocused: (layerId) => {
 				const defaultFields = getFilterMenuDefaultFields(layerId, colConfig)
 				const itemState = LayerFilterMenuPrt.getDefaultFilterMenuItemState(defaultFields, colConfig)
-				const state = get()
-				state.filterMenu.setMenuItems(itemState)
+				LayerFilterMenuPrt.Actions.setMenuItems({ filterMenu: args.key }, itemState)
 			},
 		} satisfies LayerTablePrt.Predicates,
 	)
@@ -115,10 +119,9 @@ const setup: Frame['setup'] = (args) => {
 	set(
 		{
 			resetAllConstraints() {
-				const s = get()
-				s.filterMenu.resetAllFilters()
-				s.setCheckbox('dnr', 'disabled')
-				s.disableAllAppliedFilters()
+				LayerFilterMenuPrt.Actions.resetAllFilters({ filterMenu: args.key })
+				PoolCheckboxesPrt.Actions.setCheckbox({ poolCheckboxes: args.key }, 'dnr', 'disabled')
+				AppliedFiltersPrt.Actions.disableAllAppliedFilters({ appliedFilters: args.key })
 			},
 		} satisfies LayerFilterMenuPrt.Predicates,
 	)
@@ -134,15 +137,25 @@ const setup: Frame['setup'] = (args) => {
 	})
 	LayerTablePrt.initLayerTable(args)
 
-	set({ baseQueryInput: selectBaseQueryInput(get()) })
+	let baseQueryInput$: Rx.Observable<LQY.BaseQueryInput>
+
+	if (input.squadServer) {
+		baseQueryInput$ = Rx.combineLatest([
+			args.update$.pipe(Rx.startWith([get(), null as any])),
+			ZusUtils.toObservable(input.squadServer, true),
+			MatchHistoryClient.recentMatches$(input.squadServer.serverId),
+		]).pipe(Rx.map(([[state], [layerList], history]) => {
+			return Sel.baseQueryInput(state, layerList, history)
+		}))
+	} else {
+		baseQueryInput$ = args.update$.pipe(Rx.map(([state]) => Sel.baseQueryInput(state)))
+	}
 	args.sub.add(
-		args.update$.pipe(
+		baseQueryInput$.pipe(
 			Rx.retry({ count: Infinity, delay: 1000 }),
-		).subscribe(([state]) => {
-			const baseQueryInput = selectBaseQueryInput(state)
-			if (!Obj.deepEqual(baseQueryInput, get().baseQueryInput)) {
-				set({ baseQueryInput: baseQueryInput })
-			}
+			distinctDeepEquals(),
+		).subscribe((baseQueryInput) => {
+			set({ baseQueryInput })
 		}),
 	)
 }
@@ -177,28 +190,46 @@ export const frame = frameManager.createFrame<Types>({
 	createKey: (frameId, input) => ({ frameId, editedLayerId: input.initialEditedLayerId, instanceId: input.instanceId }),
 })
 
-export function selectPreMenuFilteredQueryInput(state: Store): LQY.BaseQueryInput {
-	const appliedConstraints = AppliedFiltersPrt.getAppliedFiltersConstraints(state)
+export namespace Sel {
+	export function preMenuFilteredQueryInput(
+		state: Store,
+		squadServer?: SquadServerFrame.State,
+		history?: MH.MatchDetails[],
+	): LQY.BaseQueryInput {
+		const appliedConstraints = AppliedFiltersPrt.Sel.constraints(state)
 
-	// should generally not do this, but we're going to move this into frames anyway and it's low impact
-	const settings = ServerSettingsClient.Store.getState().saved
+		// should generally not do this, but we're going to move this into frames anyway and it's low impact
+		const settings = SquadServerFrame.Sel.settingsOrDefault(squadServer)
 
-	const repeatRuleConstraints = QD.getToggledRepeatRuleConstraints(settings, state.checkboxesState.dnr)
+		const repeatRuleConstraints = PoolCheckboxesPrt.getToggledRepeatRuleConstraints(settings, state.poolCheckboxes.checkboxesState.dnr)
 
-	return {
-		cursor: state.cursor,
-		action: state.initialEditedLayerId ? 'edit' : 'add',
-		constraints: [
-			...appliedConstraints,
-			...repeatRuleConstraints,
-		],
+		return {
+			cursor: state.cursor,
+			action: state.initialEditedLayerId ? 'edit' : 'add',
+			constraints: [
+				...appliedConstraints,
+				...repeatRuleConstraints,
+			],
+			list: LQY.resolveLayerItemsState(squadServer?.queue.layerList ?? [], history ?? []),
+		}
+	}
+
+	export function baseQueryInput(state: Store, squadServer?: SquadServerFrame.State, history?: MH.MatchDetails[]): LQY.BaseQueryInput {
+		const preFiltered = preMenuFilteredQueryInput(state)
+		const filterMenuConstraints = LayerFilterMenuPrt.Sel.filterMenuConstraints(state)
+		const base = LQY.mergeBaseInputs(preFiltered, { constraints: filterMenuConstraints })
+		const itemsState = LQY.resolveLayerItemsState(squadServer?.queue.layerList ?? [], history ?? [])
+		return {
+			...base,
+			list: itemsState,
+		}
 	}
 }
 
-export function selectBaseQueryInput(state: Store) {
-	const preFiltered = selectPreMenuFilteredQueryInput(state)
-	const filterMenuConstraints = LayerFilterMenuPrt.selectFilterMenuConstraints(state)
-	return LQY.mergeBaseInputs(preFiltered, { constraints: filterMenuConstraints })
+export namespace Actions {
+	export function setCursor(stores: KeyProp, cursor: LL.Cursor | undefined) {
+		ZusUtils.resolveStore<Store>(stores.selectLayers).setState({ cursor })
+	}
 }
 
 function getFilterMenuDefaultFields(editedLayerId: L.LayerId | undefined, colConfig: LQY.EffectiveColumnAndTableConfig) {

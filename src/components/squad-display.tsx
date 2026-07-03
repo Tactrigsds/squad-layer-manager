@@ -1,3 +1,4 @@
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { cn } from '@/lib/utils'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import type * as SM from '@/models/squad.models'
@@ -17,6 +18,7 @@ interface SquadDisplayProps {
 	showTeam?: boolean
 	showMenu?: boolean
 	matchId: number
+	stores: SquadServerFrame.KeyProp
 }
 
 function SquadButton(
@@ -32,7 +34,7 @@ function SquadButton(
 	)
 }
 
-export function SquadDisplay({ squad, matchId, className, showName = true, showTeam = false, showMenu = true }: SquadDisplayProps) {
+export function SquadDisplay({ squad, matchId, className, showName = true, showTeam = false, showMenu = true, stores }: SquadDisplayProps) {
 	const isDefaultName = squad.squadName === `Squad ${squad.squadId}`
 	const label = isDefaultName
 		? `Squad ${squad.squadId}`
@@ -43,7 +45,7 @@ export function SquadDisplay({ squad, matchId, className, showName = true, showT
 		? (
 			<OpenWindowInteraction
 				windowId={WINDOW_ID.enum['squad-details']}
-				windowProps={{ uniqueSquadId: squad.uniqueId } satisfies SquadDetailsWindowProps}
+				windowProps={{ uniqueSquadId: squad.uniqueId, stores } satisfies SquadDetailsWindowProps}
 				preload="intent"
 				render={SquadButton}
 				label={label}
@@ -57,7 +59,7 @@ export function SquadDisplay({ squad, matchId, className, showName = true, showT
 			<ContextMenu>
 				<ContextMenuTrigger>{squadLabel}</ContextMenuTrigger>
 				<ContextMenuContent>
-					<SquadContextMenuOptions squad={squad} />
+					<SquadContextMenuOptions squad={squad} stores={stores} />
 				</ContextMenuContent>
 			</ContextMenu>
 		)
@@ -69,7 +71,7 @@ export function SquadDisplay({ squad, matchId, className, showName = true, showT
 			{showTeam && (
 				<span className="inline-flex flex-nowrap">
 					(
-					<MatchTeamDisplay teamId={squad.teamId} matchId={matchId} />)
+					<MatchTeamDisplay teamId={squad.teamId} matchId={matchId} stores={stores} />)
 				</span>
 			)}
 		</span>

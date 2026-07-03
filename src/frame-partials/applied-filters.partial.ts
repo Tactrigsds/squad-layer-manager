@@ -1,87 +1,78 @@
+import * as SquadServerFrame from '@/frames/squad-server.frame'
+import { sleep } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
 import * as Gen from '@/lib/generator'
+import * as Obj from '@/lib/object'
 import * as ZusUtils from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
 import type * as F from '@/models/filter.models'
 import type * as LQY from '@/models/layer-queries.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
-import * as QD from '@/systems/queue-dashboard.client'
-import * as ServerSettingsClient from '@/systems/server-settings.client'
-import * as Im from 'immer'
+import type React from 'react'
+import * as Rx from 'rxjs'
+import * as Zus from 'zustand'
 
 export type ApplyAs = 'regular' | 'inverted' | 'disabled'
 
-export type Store = {
-	appliedFilters: Map<F.FilterEntityId, ApplyAs>
-	setAppliedFilterState: (filterId: F.FilterEntityId, active: ApplyAs) => void
+export type AppliedFiltersSlice = {
+	filterStates: Map<F.FilterEntityId, ApplyAs>
 	indicatedFilters: Map<F.FilterEntityId, LQY.IndicatorState>
-	disableAllAppliedFilters: () => void
 }
 
+export type Store = {
+	appliedFilters: AppliedFiltersSlice
+} & Predicates
+
+export type Predicates = SquadServerFrame.KeyProp
+
+export type Key = FRM.InstanceKeyOfState<Store>
+export type KeyProp = { appliedFilters: Key }
+
 export type Args = FRM.SetupArgs<{ poolDefaultDisabled: boolean }, Store>
-export type Key = FRM.InstanceKey<FRM.FrameTypes & { state: Store }>
+
 export function initAppliedFiltersStore(
 	args: Args,
 ) {
-	const set = args.set
-	const setFilterState = (filterId: F.FilterEntityId, newState: 'regular' | 'inverted' | 'disabled') => {
-		set(
-			storeState =>
-				Im.produce(storeState, draft => {
-					const activated = draft.appliedFilters
-					activated.set(filterId, newState)
-				}),
-		)
-	}
-	const disableAll = () => {
-		set(
-			storeState =>
-				Im.produce(storeState, draft => {
-					for (const filterId of draft.appliedFilters.keys()) {
-						draft.appliedFilters.set(filterId, 'disabled')
-					}
-				}),
-		)
-	}
-	const { appliedFilters, indicatedFilters } = getInitialFilterStates(args.input.poolDefaultDisabled)
+	const set = ZusUtils.toPartialSetter(args.set, 'appliedFilters')
+	const { filterStates, indicatedFilters } = getInitialFilterStates(args.input.poolDefaultDisabled, args.get().squadServer)
 	if (args.sub.closed) return
-	set({
-		appliedFilters,
-		indicatedFilters,
-		setAppliedFilterState: setFilterState,
-		disableAllAppliedFilters: disableAll,
-	})
+	set(
+		{
+			filterStates,
+			indicatedFilters,
+		} satisfies AppliedFiltersSlice,
+	)
 
-	const unsub = QD.ExtraFiltersStore.subscribe(extraFiltersState => {
+	const unsub = ExtraFiltersStore.subscribe(extraFiltersState => {
 		set(state => ({
-			appliedFilters: new Map(Gen.filter(state.appliedFilters, ([id]) => extraFiltersState.extraFilters.has(id))),
+			filterStates: new Map(Gen.filter(state.filterStates, ([id]) => extraFiltersState.extraFilters.has(id))),
 		}))
 	})
 
 	args.sub.add(ZusUtils.toRxSub(unsub))
 }
 
-function getInitialFilterStates(poolDefaultDisabled: boolean) {
-	const appliedFilters: Store['appliedFilters'] = new Map()
-	const indicatedFilters: Store['indicatedFilters'] = new Map()
-	const extraFilters = QD.ExtraFiltersStore.getState().extraFilters
+function getInitialFilterStates(poolDefaultDisabled: boolean, squadServer: SquadServerFrame.Key | undefined) {
+	const filterStates: AppliedFiltersSlice['filterStates'] = new Map()
+	const indicatedFilters: AppliedFiltersSlice['indicatedFilters'] = new Map()
+	const extraFilters = ExtraFiltersStore.getState().extraFilters
 	for (const filterid of extraFilters) {
-		appliedFilters.set(filterid, 'disabled')
+		filterStates.set(filterid, 'disabled')
 	}
-	if (!poolDefaultDisabled) {
-		const poolSettings = ServerSettingsClient.Store.getState().saved.queue.mainPool.filters
+	if (!poolDefaultDisabled && squadServer) {
+		const poolSettings = SquadServerFrame.Sel.settings(ZusUtils.getState(squadServer)).queue.mainPool.filters
 		for (const { filterId, defaultApplyDuringLayerSelection: applyAs, showIndicator } of poolSettings) {
 			if (applyAs === 'hidden') continue
-			appliedFilters.set(filterId, applyAs ?? 'disabled')
+			filterStates.set(filterId, applyAs ?? 'disabled')
 			indicatedFilters.set(filterId, showIndicator ?? 'disabled')
 		}
 	}
 
 	const filterEntities = FilterEntityClient.filterEntities
-	for (const filterId of [...appliedFilters.keys()]) {
+	for (const filterId of [...filterStates.keys()]) {
 		const filterEntity = filterEntities.get(filterId)
 		if (!filterEntity) {
-			appliedFilters.delete(filterId)
+			filterStates.delete(filterId)
 		}
 	}
 	for (const filterId of [...indicatedFilters.keys()]) {
@@ -91,17 +82,77 @@ function getInitialFilterStates(poolDefaultDisabled: boolean) {
 		}
 	}
 
-	return { appliedFilters, indicatedFilters }
+	return { filterStates, indicatedFilters }
 }
 
-export function getAppliedFiltersConstraints(state: Store) {
-	const constraints: LQY.Constraint[] = []
-	for (const [filterId, applState] of state.appliedFilters.entries()) {
-		constraints.push(CB.filterEntity('applied-filter:' + filterId, filterId, {
-			filterApplState: applState,
-			showIndicator: state.indicatedFilters.get(filterId) ?? 'both',
+// global, localStorage-backed set of extra filters the user has pulled into the applied-filters panel
+export const ExtraFiltersStore = Zus.createStore<LQY.ExtraQueryFiltersStore>((set, _get, store) => {
+	const extraFilters = new Set(localStorage.getItem('extraQueryFilters:v2')?.split(',') ?? [])
+	void (async () => {
+		await sleep(0)
+		const filterEntities = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
+		set(state => ({
+			...state,
+			extraFilters: new Set(Gen.filter(state.extraFilters.values(), f => filterEntities.has(f))),
 		}))
+	})()
+
+	store.subscribe((state, prev) => {
+		const extraFilters = Array.from(state.extraFilters)
+		const prevExtraFilters = Array.from(prev.extraFilters)
+		if (!Obj.deepEqual(extraFilters, prevExtraFilters)) {
+			localStorage.setItem('extraQueryFilters:v2', extraFilters.join(','))
+		}
+	})
+
+	return { extraFilters }
+})
+
+export namespace Sel {
+	export function constraints(store: Store): LQY.Constraint[] {
+		const constraints: LQY.Constraint[] = []
+		for (const [filterId, applState] of store.appliedFilters.filterStates.entries()) {
+			constraints.push(CB.filterEntity('applied-filter:' + filterId, filterId, {
+				filterApplState: applState,
+				showIndicator: store.appliedFilters.indicatedFilters.get(filterId) ?? 'both',
+			}))
+		}
+
+		return constraints
+	}
+}
+
+export namespace Actions {
+	export function setAppliedFilterState(stores: KeyProp, filterId: F.FilterEntityId, applyAs: ApplyAs) {
+		ZusUtils.toPartialStore(stores.appliedFilters, 'appliedFilters').setState(state => {
+			const filterStates = new Map(state.filterStates)
+			filterStates.set(filterId, applyAs)
+			return { filterStates }
+		})
 	}
 
-	return constraints
+	export function disableAllAppliedFilters(stores: KeyProp) {
+		ZusUtils.toPartialStore(stores.appliedFilters, 'appliedFilters').setState(state => {
+			const filterStates = new Map(state.filterStates)
+			for (const filterId of filterStates.keys()) {
+				filterStates.set(filterId, 'disabled')
+			}
+			return { filterStates }
+		})
+	}
+
+	export function selectExtraFilters(stores: KeyProp, update: React.SetStateAction<F.FilterEntityId[]>) {
+		let filterIds = typeof update === 'function' ? update(Array.from(ExtraFiltersStore.getState().extraFilters)) : update
+		const filterConfig = ZusUtils.getState(ZusUtils.getState(stores.appliedFilters).squadServer).settings.saved.queue.mainPool.filters
+		filterIds = filterIds.filter(id => !filterConfig.some(filterConfig => filterConfig.filterId === id))
+		ExtraFiltersStore.setState({
+			extraFilters: new Set(filterIds),
+		})
+	}
+
+	export function removeExtraFilter(filterId: F.FilterEntityId) {
+		ExtraFiltersStore.setState(state => ({
+			extraFilters: new Set(Gen.filter(state.extraFilters, id => id !== filterId)),
+		}))
+	}
 }

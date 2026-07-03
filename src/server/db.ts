@@ -1,19 +1,21 @@
 import type * as CS from '@/models/context-shared'
 import { initModule } from '@/server/logger'
+import DatabaseConstructor, { type Database } from 'better-sqlite3'
+import fs from 'node:fs'
+import path from 'node:path'
 import { highlight } from 'sql-highlight'
 
-import type { MySql2Database } from 'drizzle-orm/mysql2'
-import { drizzle } from 'drizzle-orm/mysql2'
-import MySQL from 'mysql2/promise'
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
+import { drizzle } from 'drizzle-orm/better-sqlite3'
 import type * as C from './context.ts'
 import * as Env from './env.ts'
 
-export type Db = MySql2Database<Record<string, never>>
+export type Db = BetterSQLite3Database<Record<string, never>>
 
 const module = initModule('db')
 let log!: CS.Logger
 
-let pool: MySQL.Pool
+let driver!: Database
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.db })
 let ENV!: ReturnType<typeof envBuilder>
@@ -23,22 +25,16 @@ let dbRedactParams: Db
 export async function setup() {
 	log = module.getLogger()
 	ENV = envBuilder()
-	const rawPool = MySQL.createPool({
-		host: ENV.DB_HOST,
-		port: ENV.DB_PORT,
-		user: ENV.DB_USER,
-		password: ENV.DB_PASSWORD,
-		database: ENV.DB_DATABASE,
-		connectionLimit: 10,
 
-		// return big numbers as strings to avoid precision loss. without this queries against bigints will return incorrect values
-		supportBigNumbers: true,
-		bigNumberStrings: true,
-	})
+	fs.mkdirSync(path.dirname(ENV.DB_PATH), { recursive: true })
+	driver = new DatabaseConstructor(ENV.DB_PATH)
+	driver.pragma('journal_mode = WAL')
+	driver.pragma('synchronous = NORMAL')
+	// mysql enforced the schema's FK cascades; sqlite only does so with this pragma (per-connection)
+	driver.pragma('foreign_keys = ON')
+	driver.pragma('busy_timeout = 5000')
 
-	pool = rawPool
-
-	db = drizzle(pool, {
+	db = drizzle(driver, {
 		logger: {
 			logQuery: (query: string, params: unknown[]) => {
 				log.debug('%s %o', highlight(query), params)
@@ -46,7 +42,7 @@ export async function setup() {
 		},
 	})
 
-	dbRedactParams = drizzle(pool, {
+	dbRedactParams = drizzle(driver, {
 		logger: {
 			logQuery: (query: string, params: unknown[]) => {
 				log.debug('%s', highlight(query))
@@ -71,6 +67,18 @@ export function addPooledDb<T extends object>(ctx: T) {
 	}
 }
 
+// better-sqlite3 has a single connection and drizzle's transaction API over it is synchronous, so
+// transactions with async callbacks are implemented with manual BEGIN/COMMIT. The lock serializes
+// logical transactions so awaited work inside one can't interleave statements from another.
+let txLock: Promise<void> = Promise.resolve()
+async function acquireTxLock(): Promise<() => void> {
+	let release!: () => void
+	const prev = txLock
+	txLock = new Promise((res) => (release = res))
+	await prev
+	return release
+}
+
 export async function runTransaction<T extends C.Db, V>(
 	ctx: T & { tx?: { rollback: () => void } },
 	opts: { redactParams?: boolean },
@@ -88,11 +96,16 @@ export async function runTransaction<T extends C.Db, V>(
 	const opts = typeof secondArg === 'object' ? secondArg : undefined
 	const callback = (typeof secondArg === 'function' ? secondArg : thirdArg)!
 
+	// already inside a transaction: join it. an inner rollback() rolls back the outer transaction
+	if (ctx.tx) return callback(ctx as T & C.Tx)
+
 	let res!: Awaited<V>
 	let shouldRollback = false
 	const unlockTasks: C.Tx['tx']['unlockTasks'] = []
+	const release = await acquireTxLock()
 	try {
-		await ctx.db(opts).transaction(async (tx) => {
+		driver.exec('BEGIN IMMEDIATE')
+		try {
 			res = await callback({
 				...ctx,
 				tx: {
@@ -101,14 +114,16 @@ export async function runTransaction<T extends C.Db, V>(
 					},
 					unlockTasks,
 				},
-				db: () => tx,
+				db: () => ctx.db(opts),
 			})
-			if (shouldRollback) tx.rollback()
-		})
-		await Promise.all(unlockTasks.map((task) => task()))
-		return res
-	} catch (err) {
-		if (shouldRollback) return res
-		throw err
+			driver.exec(shouldRollback ? 'ROLLBACK' : 'COMMIT')
+		} catch (err) {
+			if (driver.inTransaction) driver.exec('ROLLBACK')
+			throw err
+		}
+	} finally {
+		release()
 	}
+	await Promise.all(unlockTasks.map((task) => task()))
+	return res
 }

@@ -1,0 +1,350 @@
+import * as AR from '@/app-routes.ts'
+import AboutDialog from '@/components/about-dialog'
+import CommandsHelpDialog from '@/components/commands-help-dialog'
+import NicknameDialog from '@/components/nickname-dialog'
+import SelectLayersDialog from '@/components/select-layers-dialog'
+import { ServerActionsDropdown } from '@/components/server-actions-dropdown'
+import { Alert, AlertTitle } from '@/components/ui/alert'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Spinner } from '@/components/ui/spinner'
+import UserPermissionsDialog from '@/components/user-permissions-dialog'
+import { frameManager } from '@/frames/frame-manager.ts'
+import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
+import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
+import { orUndef } from '@/lib/types'
+import { cn } from '@/lib/utils'
+import * as ZusUtils from '@/lib/zustand'
+import * as USR from '@/models/users.models.ts'
+import * as RPC from '@/orpc.client'
+import * as RBAC from '@/rbac.models'
+import * as ConfigClient from '@/systems/config.client'
+import * as FeatureFlags from '@/systems/feature-flags.client'
+import * as LayerQueriesClient from '@/systems/layer-queries.client'
+import * as RbacClient from '@/systems/rbac.client'
+import * as SettingsClient from '@/systems/settings.client'
+import * as SquadServerClient from '@/systems/squad-server.client'
+import * as ThemeClient from '@/systems/theme.client'
+import { useLoggedInUser } from '@/systems/users.client'
+import * as TSR from '@tanstack/react-router'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
+export default function NavBar() {
+	const flags = FeatureFlags.useFeatureFlags()
+	const wsStatus = RPC.useConnectStatus()
+	const { simulateRoles, setSimulateRoles } = ZusUtils.useStore(RbacClient.RbacStore)
+	const user = useLoggedInUser()
+
+	const avatarUrl = user && USR.getAvatarUrl(user)
+
+	// Check if we're on the server dashboard route
+	const isOnServerDashboard = TSR.useMatch({ from: '/_app/servers/$serverId', shouldThrow: false })
+
+	const [openState, setDropdownState] = React.useState<'primary' | 'permissions' | 'commands' | 'steam-link' | 'nickname' | 'about' | null>(
+		null,
+	)
+	const onPrimaryDropdownOpenChange = (newState: boolean) => {
+		if (openState !== 'primary' && openState !== null) return
+		setDropdownState(newState ? 'primary' : null)
+	}
+	const onPermissionsOpenChange = (newState: boolean) => {
+		setDropdownState(newState ? 'permissions' : null)
+	}
+	const onCommandsHelpOpenChange = (newState: boolean) => {
+		setDropdownState(newState ? 'commands' : null)
+	}
+
+	const onNicknameOpenChange = (newState: boolean) => {
+		setDropdownState(newState ? 'nickname' : null)
+	}
+
+	const onAboutOpenChange = (newState: boolean) => {
+		setDropdownState(newState ? 'about' : null)
+	}
+
+	const { theme, setTheme } = ThemeClient.useTheme()
+	const config = ZusUtils.useStore(ConfigClient.Store)
+	const settings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
+	const selectedServerId = ZusUtils.useStore(SquadServerClient.SelectedServerStore, s => s.selectedServerId)
+	const selectedServer = settings?.servers.find(server => server.id === selectedServerId)
+	// NavBar isn't a descendant of the servers/$serverId route, so it can't receive the frame via props --
+	// ensureSetup just dedupes onto the instance the route already created.
+	const squadServerKey = React.useMemo(
+		() => frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(selectedServerId)),
+		[selectedServerId],
+	)
+
+	return (
+		<nav
+			className="flex h-16 shrink-0 items-center justify-between border-b px-2 sm:px-4"
+			style={{ backgroundColor: settings?.topBarColor ?? undefined }}
+		>
+			<div className="flex items-start space-x-3 sm:space-x-6">
+				{selectedServerId
+					? (
+						<NavLink
+							params={{ serverId: selectedServerId }}
+							to="/servers/$serverId"
+						>
+							Server
+						</NavLink>
+					)
+					: <NavLink to="/servers" />}
+				<NavLink to="/filters">
+					Filters
+				</NavLink>
+				{!RbacClient.usePermsCheck({
+					check: 'any',
+					permits: [RBAC.perm('admin:manage-servers'), RBAC.perm('admin:delete-servers'), RBAC.perm('admin:manage-global-settings')],
+				}) && (
+					<NavLink to="/settings">
+						Settings
+					</NavLink>
+				)}
+				<ExploreLayersDialog />
+			</div>
+			<div className="flex h-max min-h-0 flex-row items-center space-x-1 sm:space-x-3 overflow-hidden">
+				{simulateRoles && (
+					<div className="hidden sm:flex items-center space-x-1 shrink-0">
+						<span className="text-sm font-medium">Simulating Roles</span>{' '}
+						<Button size="icon" variant="ghost" onClick={() => setSimulateRoles(false)}>
+							<Icons.X className="h-4 w-4" />
+						</Button>
+					</div>
+				)}
+
+				{wsStatus === 'closed' && (
+					<Alert variant="destructive" className="hidden w-max md:flex items-center space-x-2 py-1 px-2">
+						<AlertTitle className="text-xs font-medium">WebSocket Disconnected</AlertTitle>
+					</Alert>
+				)}
+				{(wsStatus === 'reconnecting' || wsStatus === 'pending') && (
+					<div title="Connecting to server...">
+						<Spinner />
+					</div>
+				)}
+				{flags.displayWsClientId && config && (
+					<span
+						className="text-xs cursor-pointer"
+						onClick={() => navigator.clipboard.writeText(config.wsClientId)}
+					>
+						{config.wsClientId}
+					</span>
+				)}
+				{isOnServerDashboard && selectedServer && <ServerActionsDropdown stores={{ squadServer: squadServerKey }} />}
+				{settings && <NavLinksDropdown globalLinks={settings.navLinks} />}
+				{isOnServerDashboard && selectedServer && settings && (() => {
+					const servers = settings.servers
+					return servers.length <= 1
+						? <div className="font-medium text-sm">{selectedServer.displayName}</div>
+						: (
+							<DropdownMenu>
+								<DropdownMenuTrigger asChild>
+									<Button variant="outline">
+										{selectedServer.displayName}
+										<Icons.ChevronDown className="ml-2 h-4 w-4" />
+									</Button>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="start" className="min-w-[--radix-dropdown-menu-trigger-width] ">
+									{servers.filter(server => server.id !== selectedServer.id).map((server) => (
+										<DropdownMenuItem className="cursor-pointer" asChild key={server.id}>
+											<TSR.Link disabled={!server.enabled || server.broken} to="/servers/$serverId" params={{ serverId: server.id }}>
+												{server.displayName} <Icons.Dot className={cn(server.enabled ? 'text-green-500' : 'text-red-500')} />
+											</TSR.Link>
+										</DropdownMenuItem>
+									))}
+								</DropdownMenuContent>
+							</DropdownMenu>
+						)
+				})()}
+				{user && (
+					<DropdownMenu modal={false} open={openState !== null} onOpenChange={onPrimaryDropdownOpenChange}>
+						<DropdownMenuTrigger asChild>
+							<Avatar
+								style={{ backgroundColor: user.displayHexColor ?? undefined }}
+								className="hover:cursor-pointer select-none h-8 w-8 sm:h-10 sm:w-10 shrink-0"
+							>
+								<AvatarImage src={avatarUrl} crossOrigin="anonymous" />
+								<AvatarFallback className="text-xs sm:text-sm">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
+							</Avatar>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end">
+							<DropdownMenuLabel className="truncate max-w-50">{user.displayName}</DropdownMenuLabel>
+							{simulateRoles && (
+								<DropdownMenuItem onClick={() => setSimulateRoles(false)} className="sm:hidden text-sm">
+									<Icons.X className="mr-2 h-4 w-4" />
+									Stop Simulating Roles
+								</DropdownMenuItem>
+							)}
+							{wsStatus === 'closed' && (
+								<DropdownMenuItem disabled className="md:hidden text-destructive text-sm">
+									<Icons.WifiOff className="mr-2 h-4 w-4" />
+									Websocket Disconnected
+								</DropdownMenuItem>
+							)}
+							<DropdownMenuSub>
+								<DropdownMenuSubTrigger className="text-sm" chevronLeft>
+									Theme
+								</DropdownMenuSubTrigger>
+								<DropdownMenuSubContent>
+									<DropdownMenuRadioGroup value={theme} onValueChange={(value) => setTheme(value as 'dark' | 'light' | 'system')}>
+										<DropdownMenuRadioItem value="light" className="text-sm">
+											<Icons.Sun className="mr-2 h-4 w-4" />
+											Light
+										</DropdownMenuRadioItem>
+										<DropdownMenuRadioItem value="dark" className="text-sm">
+											<Icons.Moon className="mr-2 h-4 w-4" />
+											Dark
+										</DropdownMenuRadioItem>
+										<DropdownMenuRadioItem value="system" className="text-sm">
+											<Icons.Monitor className="mr-2 h-4 w-4" />
+											System
+										</DropdownMenuRadioItem>
+									</DropdownMenuRadioGroup>
+								</DropdownMenuSubContent>
+							</DropdownMenuSub>
+							<DropdownMenuSeparator />
+							<NicknameDialog onOpenChange={onNicknameOpenChange} open={openState === 'nickname'}>
+								<DropdownMenuItem onClick={() => setDropdownState('nickname')} className="text-sm">
+									<Icons.User className="mr-2 h-4 w-4" />
+									Set Nickname
+								</DropdownMenuItem>
+							</NicknameDialog>
+							<UserPermissionsDialog onOpenChange={onPermissionsOpenChange} open={openState === 'permissions'}>
+								<DropdownMenuItem onClick={() => setDropdownState('permissions')} className="text-sm">
+									<Icons.Shield className="mr-2 h-4 w-4" />
+									Permissions
+								</DropdownMenuItem>
+							</UserPermissionsDialog>
+							<CommandsHelpDialog onOpenChange={onCommandsHelpOpenChange} open={openState === 'commands'}>
+								<DropdownMenuItem onClick={() => setDropdownState('commands')} className="text-sm">
+									<Icons.HelpCircle className="mr-2 h-4 w-4" />
+									Commands
+								</DropdownMenuItem>
+							</CommandsHelpDialog>
+							<AboutDialog onOpenChange={onAboutOpenChange} open={openState === 'about'}>
+								<DropdownMenuItem onClick={() => setDropdownState('about')} className="text-sm">
+									<Icons.Info className="mr-2 h-4 w-4" />
+									About
+								</DropdownMenuItem>
+							</AboutDialog>
+							<DropdownMenuSeparator />
+							<form action={AR.route('/logout')} method="POST">
+								<DropdownMenuItem asChild>
+									<button className="w-full text-sm" type="submit">
+										<Icons.LogOut className="mr-2 h-4 w-4" />
+										Log Out
+									</button>
+								</DropdownMenuItem>
+							</form>
+							{
+								/*<LinkSteamAccountDialog onOpenChange={onSteamLinkOpenChange} open={openState === 'steam-link'}>
+									<DropdownMenuItem onClick={() => setDropdownState('steam-link')} className="text-sm">
+										<Icons.Link className="mr-2 h-4 w-4" />
+										Linked Accounts
+									</DropdownMenuItem>
+								</LinkSteamAccountDialog>*/
+							}
+						</DropdownMenuContent>
+					</DropdownMenu>
+				)}
+			</div>
+		</nav>
+	)
+}
+
+function ExploreLayersDialog() {
+	const [open, setOpen] = React.useState(false)
+	const data = TSR.useLoaderData({ from: '/_app' })
+
+	return (
+		<>
+			<Button variant="secondary" size="sm" onClick={() => setOpen(true)}>Explore Layers</Button>
+			<SelectLayersDialog
+				stores={{ selectLayers: data.stores.exploreLayers }}
+				open={open}
+				onOpenChange={setOpen}
+				title="Layers"
+				pinMode="layers"
+			/>
+		</>
+	)
+}
+
+function NavLinksDropdown(
+	{ globalLinks, serverLinks }: { globalLinks?: { label: string; url: string }[]; serverLinks?: { label: string; url: string }[] },
+) {
+	const hasGlobal = globalLinks && globalLinks.length > 0
+	const hasServer = serverLinks && serverLinks.length > 0
+	if (!hasGlobal && !hasServer) return null
+
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>
+				<Button variant="ghost" size="icon" className="shrink-0">
+					<Icons.Link2 className="h-4 w-4" />
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end">
+				{hasGlobal && globalLinks.map((link) => (
+					<DropdownMenuItem key={link.url} asChild className="cursor-pointer">
+						<a href={link.url} target="_blank" rel="noopener noreferrer">
+							<NavLinkFavicon url={link.url} />
+							{link.label}
+						</a>
+					</DropdownMenuItem>
+				))}
+				{hasGlobal && hasServer && <DropdownMenuSeparator />}
+				{hasServer && serverLinks.map((link) => (
+					<DropdownMenuItem key={link.url} asChild className="cursor-pointer">
+						<a href={link.url} target="_blank" rel="noopener noreferrer">
+							<NavLinkFavicon url={link.url} />
+							{link.label}
+						</a>
+					</DropdownMenuItem>
+				))}
+			</DropdownMenuContent>
+		</DropdownMenu>
+	)
+}
+
+function NavLinkFavicon({ url }: { url: string }) {
+	const [errored, setErrored] = React.useState(false)
+	const faviconUrl = React.useMemo(() => {
+		try {
+			const origin = new URL(url).origin
+			return `${origin}/favicon.ico`
+		} catch {
+			return null
+		}
+	}, [url])
+
+	if (!faviconUrl || errored) {
+		return <Icons.ExternalLink className="mr-2 h-4 w-4 shrink-0" />
+	}
+
+	return (
+		<img
+			src={faviconUrl}
+			alt=""
+			className="mr-2 h-4 w-4 shrink-0"
+			onError={() => setErrored(true)}
+		/>
+	)
+}
+
+const NavLink: typeof TSR.Link = (props) => {
+	const baseClasses = 'text-sm sm:text-base font-medium'
+	return (
+		<TSR.Link
+			activeProps={{ className: cn(`${baseClasses} underline`, props.className) }}
+			preload="intent"
+			className={cn(baseClasses, props.className)}
+			{...props}
+		>
+			{props.children}
+		</TSR.Link>
+	)
+}

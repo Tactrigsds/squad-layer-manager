@@ -128,21 +128,7 @@ async function persistCache() {
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000
 
-/** Per-server state for bulk polling and streaming */
-type ServerBmState = {
-	update$: Rx.Subject<BM.PlayerBmDataUpdate>
-}
-
-const serverBmState = new Map<string, ServerBmState>()
-
-function getServerBmState(serverId: string): ServerBmState {
-	let state = serverBmState.get(serverId)
-	if (!state) {
-		state = { update$: new IsolatedSubject<BM.PlayerBmDataUpdate>() }
-		serverBmState.set(serverId, state)
-	}
-	return state
-}
+const playerUpdate$ = new IsolatedSubject<BM.PlayerBmDataUpdate>()
 
 export type { PublicPlayerBmData } from '@/models/battlemetrics.models'
 
@@ -456,7 +442,7 @@ export const removePlayerFlags = C.spanOp(
 )
 
 async function fetchPlayerDetail(
-	ctx: CS.Ctx & C.ServerSlice,
+	ctx: CS.Ctx,
 	eosId: string,
 	bmPlayerId: string,
 ): Promise<BM.PlayerFlagsAndProfile> {
@@ -495,8 +481,7 @@ async function fetchPlayerDetail(
 	}
 	setCachedPlayer(canonicalId, bmPlayerId, value)
 
-	const state = getServerBmState(ctx.serverId)
-	state.update$.next({ playerId: canonicalId, data: value })
+	playerUpdate$.next({ playerId: canonicalId, data: value })
 
 	return value
 }
@@ -551,7 +536,7 @@ export async function invalidateAndRefetchPlayer(ctx: CS.Ctx & C.ServerSlice, eo
 export const fetchSinglePlayerBmData = C.spanOp(
 	'fetchSinglePlayerBmData',
 	{ module, attrs: (_ctx, playerIds) => ({ eosId: playerIds.eos, steamId: playerIds.steam }) },
-	async (ctx: CS.Ctx & C.ServerSlice, playerIds: SM.PlayerIds.IdQuery<'eos'>): Promise<BM.PlayerFlagsAndProfile | null> => {
+	async (ctx: CS.Ctx, playerIds: SM.PlayerIds.IdQuery<'eos'>): Promise<BM.PlayerFlagsAndProfile | null> => {
 		const eosId = playerIds.eos
 		const cached = getCachedPlayer(eosId)
 		if (cached) return cached
@@ -573,7 +558,6 @@ export const fetchSinglePlayerBmData = C.spanOp(
 
 export function setupSquadServerInstance(ctx: C.ServerSlice) {
 	const serverId = ctx.serverId
-	const state = getServerBmState(serverId)
 
 	ctx.cleanup.push(
 		Rx.interval(POLL_INTERVAL_MS).pipe(
@@ -588,7 +572,7 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 				if (onlineEosIds) {
 					for (const eosId of onlineEosIds) {
 						const value = getCachedPlayer(eosId)
-						if (value) state.update$.next({ playerId: eosId, data: value })
+						if (value) playerUpdate$.next({ playerId: eosId, data: value })
 					}
 				}
 			}),
@@ -611,33 +595,20 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 
 export const router = {
 	getPlayerBmData: orpcBase.input(z.object({ playerId: z.string() })).handler(async ({ input, context: ctx }) => {
-		const serverCtx = await Rx.firstValueFrom(SquadServer.selectedServerCtx$(ctx))
-		if (!serverCtx) return null
-		return fetchSinglePlayerBmData(serverCtx, SM.PlayerIds.queryFromPlayerId(input.playerId))
+		return fetchSinglePlayerBmData(ctx, SM.PlayerIds.queryFromPlayerId(input.playerId))
 	}),
 
 	watchPlayerBmData: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ signal, context: _ctx }) {
-		const server$ = SquadServer.selectedServerCtx$(_ctx).pipe(withAbortSignal(signal!))
-		const updates$ = server$.pipe(
-			Rx.switchMap((ctx) => {
-				if (!ctx) return Rx.EMPTY
-				const state = getServerBmState(ctx.serverId)
-				const initial$ = Rx.from(
-					[...playerFlagsAndProfileCache.entries()]
-						.filter(([, entry]) => Date.now() <= entry.expiresAt)
-						.map(([playerId, entry]): BM.PlayerBmDataUpdate => ({ playerId, data: entry.value })),
-				)
-				return Rx.merge(initial$, state.update$).pipe(withAbortSignal(signal!))
-			}),
-			withAbortSignal(signal!),
+		const initial$ = Rx.from(
+			[...playerFlagsAndProfileCache.entries()]
+				.filter(([, entry]) => Date.now() <= entry.expiresAt)
+				.map(([playerId, entry]): BM.PlayerBmDataUpdate => ({ playerId, data: entry.value })),
 		)
-		yield* toAsyncGenerator(updates$)
+		yield* toAsyncGenerator(Rx.merge(initial$, playerUpdate$).pipe(withAbortSignal(signal!)))
 	}),
 
 	listOrgFlags: orpcBase.handler(async ({ context: ctx }) => {
-		const serverCtx = await Rx.firstValueFrom(SquadServer.selectedServerCtx$(ctx))
-		if (!serverCtx) return null
-		return getOrgFlags(serverCtx)
+		return getOrgFlags(ctx)
 	}),
 
 	updatePlayerFlags: orpcBase.meta({ type: 'mutation' }).input(z.object({
@@ -647,12 +618,9 @@ export const router = {
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('battlemetrics:write-flags'))
 		if (denyRes) return denyRes
 
-		const serverCtx = await Rx.firstValueFrom(SquadServer.selectedServerCtx$(ctx))
-		if (!serverCtx) return { code: 'err:no-server' as const }
-
 		const playerIds = SM.PlayerIds.queryFromPlayerId(input.playerId)
 		const eosId = input.playerId
-		const current = await fetchSinglePlayerBmData(serverCtx, playerIds)
+		const current = await fetchSinglePlayerBmData(ctx, playerIds)
 		if (!current) return { code: 'err:not-found' as const }
 
 		const currentFlagIds = new Set(current.flagIds)
@@ -663,13 +631,13 @@ export const router = {
 
 		const cacheEntry = getCachedPlayerEntry(eosId)!
 		await Promise.all([
-			addPlayerFlags(serverCtx, cacheEntry.bmPlayerId, toAdd),
-			removePlayerFlags(serverCtx, cacheEntry.bmPlayerId, toRemove),
+			addPlayerFlags(ctx, cacheEntry.bmPlayerId, toAdd),
+			removePlayerFlags(ctx, cacheEntry.bmPlayerId, toRemove),
 		])
 
 		// Bust cache so next fetch returns fresh data
 		playerFlagsAndProfileCache.delete(eosId)
-		const updated = await fetchSinglePlayerBmData(serverCtx, playerIds)
+		const updated = await fetchSinglePlayerBmData(ctx, playerIds)
 
 		// Persist immediately so DB doesn't serve stale flags on next startup
 		persistCache().catch((err) => log.warn({ err }, 'Failed to persist BM cache after flag update'))

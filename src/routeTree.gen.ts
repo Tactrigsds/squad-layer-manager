@@ -13,7 +13,7 @@ import { Route as AppRouteRouteImport } from './routes/_app/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SandboxSandboxRouteImport } from './routes/_sandbox/sandbox'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
-import { Route as AppPlayersRouteImport } from './routes/_app/players'
+import { Route as AppServersIndexRouteImport } from './routes/_app/servers.index'
 import { Route as AppFiltersIndexRouteImport } from './routes/_app/filters/index'
 import { Route as LayersLayerIdTabRouteImport } from './routes/layers.$layerId.$tab'
 import { Route as AppServersServerIdRouteImport } from './routes/_app/servers.$serverId'
@@ -39,9 +39,9 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AppPlayersRoute = AppPlayersRouteImport.update({
-  id: '/players',
-  path: '/players',
+const AppServersIndexRoute = AppServersIndexRouteImport.update({
+  id: '/servers/',
+  path: '/servers/',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppFiltersIndexRoute = AppFiltersIndexRouteImport.update({
@@ -72,7 +72,6 @@ const AppFiltersFilterIdRoute = AppFiltersFilterIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/players': typeof AppPlayersRoute
   '/settings': typeof AppSettingsRoute
   '/sandbox': typeof SandboxSandboxRoute
   '/filters/$filterId': typeof AppFiltersFilterIdRoute
@@ -80,10 +79,10 @@ export interface FileRoutesByFullPath {
   '/servers/$serverId': typeof AppServersServerIdRoute
   '/layers/$layerId/$tab': typeof LayersLayerIdTabRoute
   '/filters': typeof AppFiltersIndexRoute
+  '/servers': typeof AppServersIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/players': typeof AppPlayersRoute
   '/settings': typeof AppSettingsRoute
   '/sandbox': typeof SandboxSandboxRoute
   '/filters/$filterId': typeof AppFiltersFilterIdRoute
@@ -91,12 +90,12 @@ export interface FileRoutesByTo {
   '/servers/$serverId': typeof AppServersServerIdRoute
   '/layers/$layerId/$tab': typeof LayersLayerIdTabRoute
   '/filters': typeof AppFiltersIndexRoute
+  '/servers': typeof AppServersIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_app': typeof AppRouteRouteWithChildren
-  '/_app/players': typeof AppPlayersRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_sandbox/sandbox': typeof SandboxSandboxRoute
   '/_app/filters/$filterId': typeof AppFiltersFilterIdRoute
@@ -104,12 +103,12 @@ export interface FileRoutesById {
   '/_app/servers/$serverId': typeof AppServersServerIdRoute
   '/layers/$layerId/$tab': typeof LayersLayerIdTabRoute
   '/_app/filters/': typeof AppFiltersIndexRoute
+  '/_app/servers/': typeof AppServersIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/players'
     | '/settings'
     | '/sandbox'
     | '/filters/$filterId'
@@ -117,10 +116,10 @@ export interface FileRouteTypes {
     | '/servers/$serverId'
     | '/layers/$layerId/$tab'
     | '/filters'
+    | '/servers'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/players'
     | '/settings'
     | '/sandbox'
     | '/filters/$filterId'
@@ -128,11 +127,11 @@ export interface FileRouteTypes {
     | '/servers/$serverId'
     | '/layers/$layerId/$tab'
     | '/filters'
+    | '/servers'
   id:
     | '__root__'
     | '/'
     | '/_app'
-    | '/_app/players'
     | '/_app/settings'
     | '/_sandbox/sandbox'
     | '/_app/filters/$filterId'
@@ -140,6 +139,7 @@ export interface FileRouteTypes {
     | '/_app/servers/$serverId'
     | '/layers/$layerId/$tab'
     | '/_app/filters/'
+    | '/_app/servers/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -179,11 +179,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/_app/players': {
-      id: '/_app/players'
-      path: '/players'
-      fullPath: '/players'
-      preLoaderRoute: typeof AppPlayersRouteImport
+    '/_app/servers/': {
+      id: '/_app/servers/'
+      path: '/servers'
+      fullPath: '/servers'
+      preLoaderRoute: typeof AppServersIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/_app/filters/': {
@@ -225,21 +225,21 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteRouteChildren {
-  AppPlayersRoute: typeof AppPlayersRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppFiltersFilterIdRoute: typeof AppFiltersFilterIdRoute
   AppFiltersNewRoute: typeof AppFiltersNewRoute
   AppServersServerIdRoute: typeof AppServersServerIdRoute
   AppFiltersIndexRoute: typeof AppFiltersIndexRoute
+  AppServersIndexRoute: typeof AppServersIndexRoute
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
-  AppPlayersRoute: AppPlayersRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppFiltersFilterIdRoute: AppFiltersFilterIdRoute,
   AppFiltersNewRoute: AppFiltersNewRoute,
   AppServersServerIdRoute: AppServersServerIdRoute,
   AppFiltersIndexRoute: AppFiltersIndexRoute,
+  AppServersIndexRoute: AppServersIndexRoute,
 }
 
 const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(

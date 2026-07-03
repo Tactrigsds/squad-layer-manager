@@ -8,6 +8,9 @@ import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 
 import { cn } from '@/lib/utils.ts'
 
+import * as ChatPrt from '@/frame-partials/chat.partial'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as ZusUtils from '@/lib/zustand'
 import * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
 import * as RPC from '@/orpc.client'
@@ -17,7 +20,6 @@ import { useQuery } from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import * as Zus from 'zustand'
 import { ServerUnreachable } from './server-offline-display.tsx'
 import ShortLayerName from './short-layer-name.tsx'
 
@@ -28,14 +30,16 @@ function ServerChatEvents(
 		connectionError?: CHAT.ConnectionErrorEvent | null
 		synced: boolean
 		isLoadingHistorical: boolean
+		stores: SquadServerFrame.KeyProp
 	},
 ) {
-	const selectedMatchOrdinal = Zus.useStore(
-		SquadServerClient.ChatStore,
-		s => s.selectedMatchOrdinal,
+	const selectedMatchOrdinal = ZusUtils.useStore(
+		props.stores.squadServer!,
+		s => s.chat.selectedMatchOrdinal,
 	)
-	const currentMatch = MatchHistoryClient.useCurrentMatch()
-	const recentMatches = MatchHistoryClient.useRecentMatches()
+	const serverId = props.stores.squadServer!.serverId
+	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
+	const recentMatches = MatchHistoryClient.useRecentMatches(serverId)
 	const displayMatch = React.useMemo(() => {
 		if (selectedMatchOrdinal === null) return currentMatch
 		return recentMatches.find(m => m.ordinal === selectedMatchOrdinal)
@@ -100,7 +104,8 @@ function ServerChatEvents(
 							No events yet for {selectedMatchOrdinal === null ? 'current match' : 'this match'}
 						</div>
 					)}
-					{props.filteredEvents && props.filteredEvents.map((event: CHAT.EventEnriched) => <ServerEvent key={event.id} event={event} />)}
+					{props.filteredEvents
+						&& props.filteredEvents.map((event: CHAT.EventEnriched) => <ServerEvent key={event.id} event={event} stores={props.stores} />)}
 					{connectionError && (
 						<div className="flex gap-2 py-1 text-destructive">
 							{connectionError.code === 'CONNECTION_LOST'
@@ -133,9 +138,13 @@ function ServerChatEvents(
 	)
 }
 
-function ServerCounts() {
-	const serverInfoStatusRes = SquadServerClient.useServerInfoRes()
-	const playerCount = SquadServerClient.usePlayerCount()
+function ServerCounts(props: { stores: SquadServerFrame.KeyProp }) {
+	const serverId = props.stores.squadServer!.serverId
+	const serverInfoStatusRes = SquadServerClient.useServerInfoRes(serverId)
+	const playerCount = ZusUtils.useStore(
+		props.stores.squadServer!,
+		s => (s.chat.chatState.synced && !s.chat.chatState.connectionError) ? s.chat.chatState.interpolatedState.players.length : null,
+	)
 
 	if (serverInfoStatusRes.code !== 'ok') return <ServerUnreachable statusRes={serverInfoStatusRes} />
 
@@ -148,21 +157,23 @@ function ServerCounts() {
 	)
 }
 
-export default function ServerActivityPanel() {
-	const synced = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.synced)
-	const connectionError = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.connectionError)
-	const selectedMatchOrdinal = Zus.useStore(
-		SquadServerClient.ChatStore,
-		s => s.selectedMatchOrdinal,
+export default function ServerActivityPanel(props: { stores: SquadServerFrame.KeyProp }) {
+	const stores = props.stores
+	const synced = ZusUtils.useStore(stores.squadServer!, s => s.chat.chatState.synced)
+	const connectionError = ZusUtils.useStore(stores.squadServer!, s => s.chat.chatState.connectionError)
+	const selectedMatchOrdinal = ZusUtils.useStore(
+		stores.squadServer!,
+		s => s.chat.selectedMatchOrdinal,
 	)
-	const recentMatches = MatchHistoryClient.useRecentMatches()
-	const currentMatch = MatchHistoryClient.useCurrentMatch()
+	const serverId = stores.squadServer!.serverId
+	const recentMatches = MatchHistoryClient.useRecentMatches(serverId)
+	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
 	// Fetch historical events when viewing a past match
 	const historicalEventsQuery = useQuery({
 		queryKey: [...RPC.orpc.matchHistory.getMatchEvents.key(), selectedMatchOrdinal],
 		queryFn: async () => {
 			if (selectedMatchOrdinal === null) return null
-			return RPC.orpc.matchHistory.getMatchEvents.call(selectedMatchOrdinal)
+			return RPC.orpc.matchHistory.getMatchEvents.call({ serverId, ordinal: selectedMatchOrdinal })
 		},
 		enabled: selectedMatchOrdinal !== null && selectedMatchOrdinal !== undefined,
 		staleTime: Infinity,
@@ -175,9 +186,9 @@ export default function ServerActivityPanel() {
 			const hadPreviousMatch = prevCurrentMatchId.current !== undefined
 			prevCurrentMatchId.current = currentMatch?.historyEntryId
 			// Reset to current match when a new match begins (but not on initial load)
-			const currentSelectedOrdinal = SquadServerClient.ChatStore.getState().selectedMatchOrdinal
+			const currentSelectedOrdinal = ZusUtils.getState(stores.squadServer!).chat.selectedMatchOrdinal
 			if (hadPreviousMatch && currentSelectedOrdinal !== null) {
-				void SquadServerClient.ChatStore.getState().setSelectedMatchOrdinal(null)
+				void ChatPrt.Actions.setSelectedMatchOrdinal({ chat: stores.squadServer! }, null)
 			}
 		}
 	}, [currentMatch?.historyEntryId])
@@ -202,7 +213,7 @@ export default function ServerActivityPanel() {
 		| null
 	>(null)
 
-	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.secondaryFilterState)
+	const eventFilterState = ZusUtils.useStore(stores.squadServer!, s => s.chat.secondaryFilterState)
 
 	const filteredEvents = React.useMemo(() => {
 		// If viewing a historical match, use the historical query data
@@ -235,23 +246,23 @@ export default function ServerActivityPanel() {
 		return null
 	}, [selectedMatchOrdinal, historicalEventsQuery.data, eventFilterState])
 
-	const liveFilteredEvents = Zus.useStore(
-		SquadServerClient.ChatStore,
-		React.useCallback(s => {
+	const liveFilteredEvents = ZusUtils.useStore(
+		stores.squadServer!,
+		React.useCallback((s: SquadServerFrame.State) => {
 			if (selectedMatchOrdinal !== null) return null // Using historical events instead
-			if (!s.chatState.synced || displayMatch?.historyEntryId === undefined) return null
+			if (!s.chat.chatState.synced || displayMatch?.historyEntryId === undefined) return null
 
 			// we have all of this ceremony to prevent having to reallocate the event buffer array every time it's modified. maybe a bit excessive :shrug:
 			if (
 				displayMatch?.historyEntryId === prevState.current?.matchId
-				&& s.eventGeneration === prevState.current?.eventGeneration
-				&& s.secondaryFilterState === prevState.current.eventFilterState
+				&& s.chat.eventGeneration === prevState.current?.eventGeneration
+				&& s.chat.secondaryFilterState === prevState.current.eventFilterState
 			) {
 				return prevState.current?.filteredEvents
 			}
 
-			const eventFilterState = s.secondaryFilterState
-			const eventBuffer = s.chatState.eventBuffer
+			const eventFilterState = s.chat.secondaryFilterState
+			const eventBuffer = s.chat.chatState.eventBuffer
 			const filtered: CHAT.EventEnriched[] = []
 			for (const event of eventBuffer) {
 				if (event.matchId !== displayMatch?.historyEntryId) continue
@@ -260,9 +271,9 @@ export default function ServerActivityPanel() {
 				}
 			}
 			prevState.current = {
-				eventGeneration: s.eventGeneration,
+				eventGeneration: s.chat.eventGeneration,
 				filteredEvents: filtered,
-				eventFilterState: s.secondaryFilterState,
+				eventFilterState: s.chat.secondaryFilterState,
 				matchId: displayMatch?.historyEntryId,
 			}
 			return filtered
@@ -286,32 +297,32 @@ export default function ServerActivityPanel() {
 
 	const handlePrevious = React.useCallback(() => {
 		if (!currentMatch || !Array.isArray(recentMatches)) return
-		const state = SquadServerClient.ChatStore.getState()
-		const currentOrdinal = state.selectedMatchOrdinal ?? currentMatch.ordinal
+		const state = ZusUtils.getState(stores.squadServer!)
+		const currentOrdinal = state.chat.selectedMatchOrdinal ?? currentMatch.ordinal
 		if (currentOrdinal === undefined) return
 		const currentIndex = recentMatches.findIndex((m: MH.MatchDetails) => m.ordinal === currentOrdinal)
 		if (currentIndex > 0) {
-			void state.setSelectedMatchOrdinal(recentMatches[currentIndex - 1].ordinal)
+			void ChatPrt.Actions.setSelectedMatchOrdinal({ chat: stores.squadServer! }, recentMatches[currentIndex - 1].ordinal)
 		}
-	}, [currentMatch, recentMatches])
+	}, [currentMatch, recentMatches, stores.squadServer])
 
 	const handleNext = React.useCallback(() => {
 		if (!currentMatch || !Array.isArray(recentMatches)) return
-		const state = SquadServerClient.ChatStore.getState()
-		const currentOrdinal = state.selectedMatchOrdinal ?? currentMatch.ordinal
+		const state = ZusUtils.getState(stores.squadServer!)
+		const currentOrdinal = state.chat.selectedMatchOrdinal ?? currentMatch.ordinal
 		if (currentOrdinal === undefined) return
 		const currentIndex = recentMatches.findIndex((m: MH.MatchDetails) => m.ordinal === currentOrdinal)
 		if (currentIndex < recentMatches.length - 1) {
-			void state.setSelectedMatchOrdinal(recentMatches[currentIndex + 1].ordinal)
+			void ChatPrt.Actions.setSelectedMatchOrdinal({ chat: stores.squadServer! }, recentMatches[currentIndex + 1].ordinal)
 		} else {
 			// Go to current match
-			void state.setSelectedMatchOrdinal(null)
+			void ChatPrt.Actions.setSelectedMatchOrdinal({ chat: stores.squadServer! }, null)
 		}
-	}, [currentMatch, recentMatches])
+	}, [currentMatch, recentMatches, stores.squadServer])
 
-	const eventFilter = Zus.useStore(
-		SquadServerClient.ChatStore,
-		s => s.secondaryFilterState,
+	const eventFilter = ZusUtils.useStore(
+		stores.squadServer!,
+		s => s.chat.secondaryFilterState,
 	)
 
 	return (
@@ -347,7 +358,7 @@ export default function ServerActivityPanel() {
 							<Button
 								variant="default"
 								size="sm"
-								onClick={() => SquadServerClient.ChatStore.getState().setSelectedMatchOrdinal(null)}
+								onClick={() => ChatPrt.Actions.setSelectedMatchOrdinal({ chat: stores.squadServer! }, null)}
 								className="h-8 px-3 bg-green-500 hover:bg-green-600 text-white"
 								title="Return to live events"
 							>
@@ -358,10 +369,10 @@ export default function ServerActivityPanel() {
 					</ButtonGroup>
 					<EventFilterSelect
 						value={eventFilter}
-						onValueChange={(value) => SquadServerClient.ChatStore.getState().setSecondaryFilterState(value)}
+						onValueChange={(value) => ChatPrt.Actions.setSecondaryFilterState({ chat: stores.squadServer! }, value)}
 					/>
 				</div>
-				<ServerCounts />
+				<ServerCounts stores={stores} />
 			</CardHeader>
 			<CardContent className="flex-1 overflow-hidden min-h-0">
 				<ServerChatEvents
@@ -370,6 +381,7 @@ export default function ServerActivityPanel() {
 					connectionError={connectionError}
 					synced={synced}
 					isLoadingHistorical={historicalEventsQuery.isLoading}
+					stores={stores}
 				/>
 			</CardContent>
 		</Card>

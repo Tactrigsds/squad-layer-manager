@@ -4,12 +4,12 @@ import * as Obj from '@/lib/object'
 import { isNullOrUndef } from '@/lib/type-guards.ts'
 import * as Typo from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
+import * as ZusUtils from '@/lib/zustand'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import * as Zus from 'zustand'
 import LayerInfoDialog from './layer-info'
 import MapLayerDisplay from './map-layer-display.tsx'
 
@@ -29,7 +29,7 @@ export default function ShortLayerName(
 	const allowShowInfo = _allowShowInfo ?? true
 	const backfilledStyle = 'text-gray-500'
 
-	const globalSettings = Zus.useStore(GlobalSettingsStore)
+	const globalSettings = ZusUtils.useStore(GlobalSettingsStore)
 	let partialLayer = Obj.trimUndefined(L.toLayer(layerId))
 	let backfillLayer: Partial<L.KnownLayer> | undefined
 	if (backfillLayerId) {

@@ -1,5 +1,6 @@
 import { Toaster } from '@/components/ui/toaster'
 import { useGlobalToast } from '@/hooks/use-global-toast'
+import * as ZusUtils from '@/lib/zustand'
 import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems/config.client'
 import { DragContextProvider } from '@/systems/dndkit.client.tsx'
@@ -24,7 +25,7 @@ export function Providers(props: { children: ReactNode }) {
 
 function ProvidersInner(props: { children: ReactNode }) {
 	useGlobalToast()
-	const slmConfig = ConfigClient.useConfig()
+	const slmConfig = ZusUtils.useStore(ConfigClient.Store)
 	const flags = FeatureFlagClient.useFeatureFlags()
 
 	return (

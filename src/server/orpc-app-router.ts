@@ -1,14 +1,12 @@
 import * as Config from '@/server/config'
-import * as AdminSettings from '@/systems/admin-settings.server'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as Discord from '@/systems/discord.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
-import * as GlobalSettings from '@/systems/global-settings.server'
 import * as LayerQueries from '@/systems/layer-queries.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
-import * as ServerSettings from '@/systems/server-settings.server'
+import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Teamswitches from '@/systems/teamswitches.server'
 import * as UserPresence from '@/systems/user-presence.server'
@@ -23,6 +21,7 @@ export const orpcAppRouter = {
 	layerQueue: LayerQueue.router,
 	vote: Vote.router,
 	config: Config.router,
+	settings: Settings.router,
 	layerQueries: LayerQueries.router,
 	userPresence: UserPresence.orpcRouter,
 	discord: Discord.orpcRouter,
@@ -30,8 +29,5 @@ export const orpcAppRouter = {
 	filters: FilterEntity.filtersRouter,
 	rbac: Rbac.orpcRouter,
 	users: Users.orpcRouter,
-	serverSettings: ServerSettings.orpcRouter,
 	teamswitches: Teamswitches.orpcRouter,
-	globalSettings: GlobalSettings.orpcRouter,
-	adminSettings: AdminSettings.orpcRouter,
 }

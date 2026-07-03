@@ -64,14 +64,6 @@ export const VoteItemSchema = NewVoteItemSchema.extend({
 	itemId: ItemIdSchema,
 	source: SourceSchema,
 })
-	.refine((item) => {
-		const choiceSet = new Set<string>()
-		for (const choice of item.choices) {
-			if (choiceSet.has(choice.layerId)) return false
-			choiceSet.add(choice.layerId)
-		}
-		return true
-	}, { error: 'Duplicate layer IDs in choices' })
 	.refine((item): boolean => {
 		return item.choices.some((choice) => choice.layerId === item.layerId)
 	}, { error: 'The parent layerId must be included in the choices' })

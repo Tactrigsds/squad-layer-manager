@@ -1,10 +1,9 @@
-import { useFrameStore } from '@/frames/frame-manager'
-import type * as FRM from '@/lib/frame'
-import type * as F from '@/models/filter.models'
+import type * as EditFrame from '@/frames/filter-editor.frame.ts'
+import * as ZusUtils from '@/lib/zustand'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 
-export function FilterValidationErrorDisplay(props: { frameKey: FRM.InstanceKey<FRM.PartialType<F.NodeValidationErrorStore>> }) {
-	const extraErrors = useFrameStore(props.frameKey, state => state.errors)
+export function FilterValidationErrorDisplay(props: { stores: EditFrame.KeyProp }) {
+	const extraErrors = ZusUtils.useStore(props.stores.filterEditor, state => state.errors)
 	if (!extraErrors) return null
 	return (
 		<div className="mt-4 space-y-2">

@@ -8,37 +8,41 @@ import * as Rx from 'rxjs'
 
 const [initialized$, setInitialized] = createSignal<boolean>()
 
-export const [useMatchHistoryState, matchHistoryState$] = ReactRx.bind<MH.PublicMatchHistoryState>(
-	RPC.observe(() => RPC.orpc.matchHistory.watchMatchHistoryState.call()).pipe(Rx.map(PartsSys.stripParts)),
-	{ recentBalanceTriggerEvents: [], recentMatches: [] },
+export const [useMatchHistoryState, matchHistoryState$] = ReactRx.bind(
+	(serverId: string) =>
+		RPC.observe(() => RPC.orpc.matchHistory.watchMatchHistoryState.call({ serverId })).pipe(Rx.map(PartsSys.stripParts)),
+	{ recentBalanceTriggerEvents: [], recentMatches: [] } satisfies MH.PublicMatchHistoryState,
 )
 
 export const [useRecentMatches, recentMatches$] = ReactRx.bind(
-	matchHistoryState$.pipe(Rx.map((state) => {
-		return [...state.recentMatches]
-	})),
+	(serverId: string) =>
+		matchHistoryState$(serverId).pipe(Rx.map((state) => {
+			return [...state.recentMatches]
+		})),
 )
 
 export const [useCurrentMatch, currentMatch$] = ReactRx.bind(
-	() => recentMatches$.pipe(Rx.map(matches => (matches[matches.length - 1]) as MH.MatchDetails | undefined)),
+	(serverId: string) => recentMatches$(serverId).pipe(Rx.map(matches => (matches[matches.length - 1]) as MH.MatchDetails | undefined)),
 )
 
 export const [useInitializedRecentMatches, initializedRecentMatches$] = ReactRx.bind(
-	() =>
+	(serverId: string) =>
 		initialized$.pipe(
-			Rx.map(() => recentMatches$.getValue()),
+			Rx.map(() => recentMatches$(serverId).getValue()),
 		),
 )
 
-export async function resolveInitializedRecentMatches() {
-	const recentMatches = await Rx.firstValueFrom(initializedRecentMatches$().pipe(Rx.filter(v => !!v)))
+export async function resolveInitializedRecentMatches(serverId: string) {
+	const recentMatches = await Rx.firstValueFrom(initializedRecentMatches$(serverId).pipe(Rx.filter(v => !!v)))
 	return recentMatches
 }
 
-export function setup() {
-	matchHistoryState$.subscribe(() => {
-		setInitialized(true)
-	})
-	initializedRecentMatches$().subscribe()
-	currentMatch$().subscribe()
+export function watchServer(serverId: string, sub: Rx.Subscription) {
+	sub.add(
+		matchHistoryState$(serverId).subscribe(() => {
+			setInitialized(true)
+		}),
+	)
+	sub.add(initializedRecentMatches$(serverId).subscribe())
+	sub.add(currentMatch$(serverId).subscribe())
 }

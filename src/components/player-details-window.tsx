@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import * as ChatPrt from '@/frame-partials/chat.partial'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import * as ZusUtils from '@/lib/zustand'
 import * as BM from '@/models/battlemetrics.models'
@@ -15,12 +17,10 @@ import * as RPC from '@/orpc.client'
 import { sortFlagsByHierarchy, useOrgFlags } from '@/systems/battlemetrics.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
-import * as SquadServerClient from '@/systems/squad-server.client'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import * as Zus from 'zustand'
 import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
 import { ServerEvent } from './server-event'
 
@@ -40,8 +40,9 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 	initialPosition: 'left',
 	getId: (props) => props.playerId,
 	loadAsync: async ({ props }) => {
+		const serverId = props.stores.squadServer.serverId
 		await Promise.all([
-			RPC.queryClient.fetchQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { playerId: props.playerId } })),
+			RPC.queryClient.fetchQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { serverId, playerId: props.playerId } })),
 			RPC.queryClient.fetchQuery(
 				RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId: props.playerId }, staleTime: Infinity }),
 			),
@@ -49,19 +50,25 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 	},
 })
 
-function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
-	const { data, isPending: isDetailsPending } = useQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { playerId } }))
+function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
+	const squadServerFrameKey = stores.squadServer
+	const serverId = squadServerFrameKey.serverId
+	const { data, isPending: isDetailsPending } = useQuery(
+		RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { serverId, playerId } }),
+	)
 	const { data: bmData } = useQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId }, staleTime: Infinity }))
 	const orgFlags = useOrgFlags()
 	const rawFlags = bmData && orgFlags ? BM.resolveFlags(bmData.flagIds, orgFlags) : null
 	const flags = rawFlags ? sortFlagsByHierarchy(rawFlags) : undefined
 	const flagColor = flags ? flags[0]?.color ?? null : null
 	const profile = bmData ? (({ flagIds: _, ...rest }) => rest)(bmData) : null
-	const currentMatch = MatchHistoryClient.useCurrentMatch()
-	const currentMatchEvents = Zus.useStore(
-		SquadServerClient.ChatStore,
+	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
+	const currentMatchEvents = ZusUtils.useStore(
+		squadServerFrameKey,
 		ZusUtils.useShallow(s =>
-			s.chatState.eventBuffer.filter(e => currentMatch && e.matchId === currentMatch?.historyEntryId && (CHAT.hasAssocPlayer(e, playerId)))
+			ChatPrt.Sel.chatEvents(s).filter(e =>
+				currentMatch && e.matchId === currentMatch?.historyEntryId && (CHAT.hasAssocPlayer(e, playerId))
+			)
 		),
 	)
 
@@ -69,14 +76,14 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 		...(data?.events ?? []),
 		...(currentMatchEvents.some(e => CHAT.hasAssocPlayer(e, playerId)) ? currentMatchEvents : []),
 	]
-	const livePlayer = Zus.useStore(
-		SquadServerClient.ChatStore,
-		(s) => s.chatState.interpolatedState.players.find((p) => p.ids.steam === playerId) ?? null,
+	const livePlayer = ZusUtils.useStore(
+		squadServerFrameKey,
+		(s) => ChatPrt.Sel.chatState(s).players.find((p) => p.ids.steam === playerId) ?? null,
 	)
 	const player = livePlayer ?? CHAT.findLastPlayerInstance(allEvents, playerId)
 	const connectionStatus = data?.connectionStatus ?? null
 	const elapsed = useElapsed(connectionStatus?.status === 'online' ? connectionStatus.connectedSince : null)
-	const globalFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.secondaryFilterState)
+	const globalFilterState = ZusUtils.useStore(squadServerFrameKey, ChatPrt.Sel.secondaryFilterState)
 	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>(globalFilterState)
 	const filteredEvents = allEvents.filter(e => !CHAT.isEventFilteredBySecondary(e, filterState))
 	const { scrollAreaRef, contentRef, bottomRef, showScrollButton, scrollToBottom } = useTailingScroll()
@@ -92,7 +99,7 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 							({livePlayer.teamId !== null && currentMatch
 								? (
 									<>
-										<MatchTeamDisplay matchId={currentMatch.historyEntryId} teamId={livePlayer.teamId} />
+										<MatchTeamDisplay matchId={currentMatch.historyEntryId} teamId={livePlayer.teamId} stores={stores} />
 										{livePlayer.squadId !== null && ', '}
 									</>
 								)
@@ -160,7 +167,7 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 							</button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent style={{ zIndex: zIndex + 10 }}>
-							<PlayerMenuItems playerId={playerId} slots={dropdownMenuSlots} />
+							<PlayerMenuItems playerId={playerId} slots={dropdownMenuSlots} stores={stores} />
 						</DropdownMenuContent>
 					</DropdownMenu>
 				</div>
@@ -198,7 +205,7 @@ function PlayerDetailsWindow({ playerId }: PlayerDetailsWindowProps) {
 								<div className="sticky top-0 z-10 bg-background/90 backdrop-blur-sm px-2 py-0.5 text-[10px] text-muted-foreground font-medium border-b border-border/50">
 									{formatDateLabel(dateKey)}
 								</div>
-								{events.map(e => <ServerEvent key={e.id} event={e} />)}
+								{events.map(e => <ServerEvent key={e.id} event={e} stores={stores} />)}
 							</div>
 						))}
 					</div>

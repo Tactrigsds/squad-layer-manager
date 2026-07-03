@@ -31,19 +31,22 @@ export const router = {
 	}),
 }
 
-export async function resolveLayerQueryCtx<Ctx extends C.MatchHistory & C.LayerQueue>(
+export function resolveLayerQueryCtx<Ctx extends C.MatchHistory & C.LayerQueue>(
 	ctx: Ctx,
-): Promise<Ctx & CS.LayerQuery> {
+): Ctx & CS.LayerQuery {
 	return {
 		...ctx,
 		log,
 		...resolveLayerDbContext(),
 		filters: FilterEntity.state.filters,
-		layerItemsState: LQY.resolveLayerItemsState(
-			LayerQueue.getSavedQueue(ctx),
-			await MatchHistory.getRecentMatches(ctx),
-		),
 	}
+}
+
+export async function resolveLayerItemsState(ctx: C.MatchHistory & C.LayerQueue): Promise<LQY.LayerItemsState> {
+	return LQY.resolveLayerItemsState(
+		LayerQueue.getSavedQueue(ctx),
+		await MatchHistory.getRecentMatches(ctx),
+	)
 }
 
 function resolveLayerDbContext(): CS.LayerDb {

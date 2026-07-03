@@ -2,34 +2,39 @@ import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import { useToast } from '@/hooks/use-toast'
 import { assertNever } from '@/lib/type-guards.ts'
+import * as ZusUtils from '@/lib/zustand'
 import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
-import * as QD from '@/systems/queue-dashboard.client'
+import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as RbacClient from '@/systems/rbac.client'
-import * as ServerSettingsClient from '@/systems/server-settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import { useMutation } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import * as Zus from 'zustand'
 
-export function ServerActionsDropdown() {
-	const playerCount = SquadServerClient.usePlayerCount()
+export function ServerActionsDropdown(props: { stores: SquadServerFrame.KeyProp }) {
+	const stores = props.stores
+	const serverId = stores.squadServer!.serverId
+	const playerCount = ZusUtils.useStore(
+		stores.squadServer!,
+		s => (s.chat.chatState.synced && !s.chat.chatState.connectionError) ? s.chat.chatState.interpolatedState.players.length : null,
+	)
 	const hasPlayers = playerCount !== null && playerCount > 0
 	const endMatchDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:end-match'))
 	const disableUpdatesDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:disable-slm-updates'))
 	const disableFogOfWarDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:turn-fog-off'))
 
-	const updatesToSquadServerDisabled = Zus.useStore(ServerSettingsClient.Store, s => s.saved?.updatesToSquadServerDisabled)
-	const { disableUpdates, enableUpdates } = QD.useToggleSquadServerUpdates()
+	const updatesToSquadServerDisabled = ZusUtils.useStore(stores.squadServer!, s => s.settings.saved?.updatesToSquadServerDisabled)
+	const { disableUpdates, enableUpdates } = LayerQueueClient.useToggleSquadServerUpdates(serverId)
 	const disableFogOfWarMutation = SquadServerClient.useDisableFogOfWarMutation()
 	const { toast } = useToast()
 
 	async function disableFogOfWar() {
-		const res = await disableFogOfWarMutation.mutateAsync()
+		const res = await disableFogOfWarMutation.mutateAsync(serverId)
 		switch (res.code) {
 			case 'err:rcon':
 				break
@@ -48,7 +53,7 @@ export function ServerActionsDropdown() {
 	}
 
 	return (
-		<EndMatchDialog>
+		<EndMatchDialog stores={stores}>
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>
 					<Button variant="secondary" size="sm">
@@ -102,17 +107,17 @@ export function ServerActionsDropdown() {
 	)
 }
 
-function EndMatchDialog(props: { children: React.ReactNode }) {
+function EndMatchDialog(props: { children: React.ReactNode; stores: SquadServerFrame.KeyProp }) {
 	const [isOpen, setIsOpen] = React.useState(false)
 
 	const endMatchDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:end-match'))
 	const endMatchMutation = useMutation(RPC.orpc.squadServer.endMatch.mutationOptions({}))
-	const serverInfoRes = SquadServerClient.useServerInfoRes()
+	const serverInfoRes = SquadServerClient.useServerInfoRes(props.stores.squadServer!.serverId)
 	if (!serverInfoRes || serverInfoRes?.code !== 'ok') return null
 	const serverInfo = serverInfoRes.data
 
 	async function endMatch() {
-		const res = await endMatchMutation.mutateAsync(null)
+		const res = await endMatchMutation.mutateAsync({ serverId: props.stores.squadServer!.serverId })
 		switch (res.code) {
 			case 'ok':
 				globalToast$.next({ title: 'Match ended!' })

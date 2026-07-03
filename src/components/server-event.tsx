@@ -4,15 +4,16 @@ import { PlayerDisplay } from '@/components/player-display'
 import ShortLayerName from '@/components/short-layer-name'
 import { SquadDisplay } from '@/components/squad-display'
 import { MatchTeamDisplay } from '@/components/teams-display'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
+import * as ZusUtils from '@/lib/zustand'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
 
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as Icons from 'lucide-react'
-import * as Zus from 'zustand'
 
 const CHANNEL_STYLES = {
 	ChatAll: { color: 'white', gradientColor: 'rgba(255, 255, 255, 0.1)' },
@@ -22,9 +23,11 @@ const CHANNEL_STYLES = {
 	Broadcast: { color: 'rgb(234, 179, 8)', gradientColor: 'rgba(234, 179, 8, 0.1)' }, // yellow-500
 } as const
 
-function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'CHAT_MESSAGE' | 'ADMIN_BROADCAST' }> }) {
-	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === event.matchId)
-	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
+function ChatMessageEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'CHAT_MESSAGE' | 'ADMIN_BROADCAST' }>; stores: SquadServerFrame.KeyProp },
+) {
+	const match = MatchHistoryClient.useRecentMatches(stores.squadServer.serverId).find(m => m.historyEntryId === event.matchId)
+	const displayTeamsNormalized = ZusUtils.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
 
 	// Get team-specific color for team chats
 	const getChannelStyle = () => {
@@ -87,7 +90,7 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 							style={{ color: channelStyle.color }}
 							className="flex items-baseline flex-nowrap whitespace-nowrap gap-1"
 						>
-							<MatchTeamDisplay matchId={event.matchId} teamId={event.player.teamId!} />
+							<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={event.player.teamId!} />
 						</span>
 						)
 					</span>
@@ -104,8 +107,9 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 								matchId={event.matchId}
 								showName={false}
 								showTeam={false}
+								stores={stores}
 							/>
-							<MatchTeamDisplay matchId={event.matchId} teamId={event.player.teamId!} />
+							<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={event.player.teamId!} />
 						</span>)
 					</span>
 				)
@@ -123,7 +127,7 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 
 	const fromDisplay = (() => {
 		if (event.type === 'ADMIN_BROADCAST') {
-			if (event.player) return <PlayerDisplay player={event.player} matchId={event.matchId} />
+			if (event.player) return <PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} />
 			if (event.from === 'RCON') {
 				return <span className="text-red-400">RCON</span>
 			}
@@ -137,6 +141,7 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 				player={event.player}
 				matchId={event.matchId}
 				showTeam={event.type === 'CHAT_MESSAGE' && ['ChatAdmin', 'ChatAll'].includes(event.channel.type)}
+				stores={stores}
 			/>
 		)
 	})()
@@ -161,18 +166,20 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 	)
 }
 
-function PlayerConnectedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_CONNECTED' }> }) {
+function PlayerConnectedEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_CONNECTED' }>; stores: SquadServerFrame.KeyProp },
+) {
 	return (
 		<div className="flex items-start gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
 			<Icons.UserPlus className="h-4 w-4 text-green-500" />
 			<span className="text-xs flex items-center gap-1 ">
 				<span>
-					<PlayerDisplay player={event.player} matchId={event.matchId} /> connected,
+					<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> connected,
 				</span>
 				{event.player.teamId && (
 					<>
-						joining <MatchTeamDisplay teamId={event.player.teamId} matchId={event.matchId} />
+						joining <MatchTeamDisplay stores={stores} teamId={event.player.teamId} matchId={event.matchId} />
 					</>
 				)}
 			</span>
@@ -180,64 +187,74 @@ function PlayerConnectedEvent({ event }: { event: Extract<CHAT.EventEnriched, { 
 	)
 }
 
-function PlayerDisconnectedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_DISCONNECTED' }> }) {
+function PlayerDisconnectedEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_DISCONNECTED' }>; stores: SquadServerFrame.KeyProp },
+) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
 			<Icons.UserMinus className="h-4 w-4 text-red-500" />
 			<span className="text-xs flex items-center gap-1 whitespace-nowrap">
-				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} /> disconnected
+				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> disconnected
 			</span>
 		</div>
 	)
 }
 
-function PossessedAdminCameraEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'POSSESSED_ADMIN_CAMERA' }> }) {
+function PossessedAdminCameraEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'POSSESSED_ADMIN_CAMERA' }>; stores: SquadServerFrame.KeyProp },
+) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
 			<Icons.Camera className="h-4 w-4 text-purple-500" />
 			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} /> entered admin camera
+				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> entered admin camera
 			</span>
 		</div>
 	)
 }
 
-function UnpossessedAdminCameraEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'UNPOSSESSED_ADMIN_CAMERA' }> }) {
+function UnpossessedAdminCameraEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'UNPOSSESSED_ADMIN_CAMERA' }>; stores: SquadServerFrame.KeyProp },
+) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
 			<Icons.CameraOff className="h-4 w-4 text-purple-500" />
 			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} /> exited admin camera
+				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> exited admin camera
 			</span>
 		</div>
 	)
 }
 
-function PlayerKickedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_KICKED' }> }) {
+function PlayerKickedEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_KICKED' }>; stores: SquadServerFrame.KeyProp },
+) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
 			<Icons.UserX className="h-4 w-4 text-orange-500" />
 			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} /> was kicked
+				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> was kicked
 				{event.reason && <span className="text-muted-foreground/70">- {event.reason}</span>}
 			</span>
 		</div>
 	)
 }
 
-function SquadCreatedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'SQUAD_CREATED' }> }) {
+function SquadCreatedEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'SQUAD_CREATED' }>; stores: SquadServerFrame.KeyProp },
+) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
 			<Icons.Users className="h-4 w-4 text-blue-500" />
 			<span className="text-xs flex items-center gap-1 whitespace-nowrap">
-				<PlayerDisplay player={event.creator} matchId={event.matchId} /> created{' '}
-				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={false} /> on{' '}
-				<MatchTeamDisplay matchId={event.matchId} teamId={event.squad.teamId} />
+				<PlayerDisplay player={event.creator} matchId={event.matchId} stores={stores} /> created{' '}
+				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={false} stores={stores} /> on{' '}
+				<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={event.squad.teamId} />
 				{event.squad.locked
 					? <Icons.Lock className="h-3 w-3 text-red-600" />
 					: null}
@@ -246,14 +263,16 @@ function SquadCreatedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 	)
 }
 
-function PlayerBannedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_BANNED' }> }) {
+function PlayerBannedEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_BANNED' }>; stores: SquadServerFrame.KeyProp },
+) {
 	return (
 		<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
 			<EventTime time={event.time} variant="small" />
 			<Icons.Ban className="h-4 w-4 text-red-500 shrink-0" />
 			<div className="grow min-w-0">
 				<span className="inline-block whitespace-nowrap">
-					<PlayerDisplay player={event.player} matchId={event.matchId} /> was banned
+					<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> was banned
 				</span>
 				reason: "<span className="words">{event.interval}</span>"
 			</div>
@@ -261,14 +280,16 @@ function PlayerBannedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 	)
 }
 
-function PlayerWarnedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_WARNED' }> }) {
+function PlayerWarnedEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_WARNED' }>; stores: SquadServerFrame.KeyProp },
+) {
 	return (
 		<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
 			<EventTime time={event.time} variant="small" />
 			<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
 			<div className="grow min-w-0">
 				<span className="inline-block whitespace-nowrap">
-					<PlayerDisplay showTeam player={event.player} matchId={event.matchId} /> was warned
+					<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> was warned
 				</span>
 				: "<span className="wrap-break-word">{event.reason}</span>"
 			</div>
@@ -276,9 +297,9 @@ function PlayerWarnedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 	)
 }
 
-function NewGameEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'NEW_GAME' }> }) {
-	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === event.matchId)
-	const currentMatch = MatchHistoryClient.useCurrentMatch()
+function NewGameEvent({ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'NEW_GAME' }>; stores: SquadServerFrame.KeyProp }) {
+	const match = MatchHistoryClient.useRecentMatches(stores.squadServer.serverId).find(m => m.historyEntryId === event.matchId)
+	const currentMatch = MatchHistoryClient.useCurrentMatch(stores.squadServer.serverId)
 
 	if (!match || !currentMatch) return
 	const visibleMatchIndex = match.ordinal - currentMatch.ordinal
@@ -313,8 +334,10 @@ function NewGameEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'N
 	)
 }
 
-function RoundEndedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'ROUND_ENDED' }> }) {
-	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === event.matchId)
+function RoundEndedEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'ROUND_ENDED' }>; stores: SquadServerFrame.KeyProp },
+) {
+	const match = MatchHistoryClient.useRecentMatches(stores.squadServer.serverId).find(m => m.historyEntryId === event.matchId)
 	if (match?.status !== 'post-game') return null
 	const winnerTickets = match.outcome.type === 'team1'
 		? match.outcome.team1Tickets
@@ -370,9 +393,9 @@ function RoundEndedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type:
 				{winnerId === null && <span className="text-yellow-400">Draw</span>}
 				{winnerId !== null && (
 					<>
-						<MatchTeamDisplay matchId={event.matchId} teamId={winnerId} /> won
+						<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={winnerId} /> won
 						<span className="font-semibold">{winnerTickets} to {loserTickets}</span>
-						against <MatchTeamDisplay matchId={event.matchId} teamId={loserId} />
+						against <MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={loserId} />
 					</>
 				)}
 				{actionElt}
@@ -381,7 +404,9 @@ function RoundEndedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type:
 	)
 }
 
-function PlayerChangedTeamEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_CHANGED_TEAM' }> }) {
+function PlayerChangedTeamEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_CHANGED_TEAM' }>; stores: SquadServerFrame.KeyProp },
+) {
 	// don't render unassigned, and if the player was previously unassigned that means we're swapping teams after the match, so no need to render
 	if (event.newTeamId === null || event.prevTeamId === null) return
 	return (
@@ -389,25 +414,28 @@ function PlayerChangedTeamEvent({ event }: { event: Extract<CHAT.EventEnriched, 
 			<EventTime time={event.time} variant="small" />
 			<Icons.Repeat className="h-4 w-4 text-purple-400" />
 			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay player={event.player} matchId={event.matchId} /> changed to{' '}
-				<MatchTeamDisplay teamId={event.player.teamId!} matchId={event.matchId} />
+				<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> changed to{' '}
+				<MatchTeamDisplay stores={stores} teamId={event.player.teamId!} matchId={event.matchId} />
 			</span>
 		</div>
 	)
 }
 
-function PlayerLeftSquadEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_LEFT_SQUAD' }> }) {
+function PlayerLeftSquadEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_LEFT_SQUAD' }>; stores: SquadServerFrame.KeyProp },
+) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
 			<Icons.LogOut className="h-4 w-4 text-orange-400" />
 			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay player={event.player} matchId={event.matchId} /> left{' '}
+				<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> left{' '}
 				<SquadDisplay
 					squad={event.squad}
 					matchId={event.matchId}
 					showName={false}
 					showTeam={true}
+					stores={stores}
 				/>{' '}
 				{event.wasLeader ? '(was leader)' : ''}
 			</span>
@@ -415,19 +443,23 @@ function PlayerLeftSquadEvent({ event }: { event: Extract<CHAT.EventEnriched, { 
 	)
 }
 
-function SquadDisbandedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'SQUAD_DISBANDED' }> }) {
+function SquadDisbandedEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'SQUAD_DISBANDED' }>; stores: SquadServerFrame.KeyProp },
+) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
 			<Icons.UsersRound className="h-4 w-4 text-red-400" />
 			<span className="text-xs flex items-center gap-1">
-				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={true} /> was disbanded
+				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={true} stores={stores} /> was disbanded
 			</span>
 		</div>
 	)
 }
 
-function SquadDetailsChangedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'SQUAD_DETAILS_CHANGED' }> }) {
+function SquadDetailsChangedEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'SQUAD_DETAILS_CHANGED' }>; stores: SquadServerFrame.KeyProp },
+) {
 	const locked = event.details.locked
 	const prevLocked = event.prevDetails.locked
 	if (locked === prevLocked || locked === undefined) return null
@@ -436,13 +468,16 @@ function SquadDetailsChangedEvent({ event }: { event: Extract<CHAT.EventEnriched
 			<EventTime time={event.time} variant="small" />
 			{locked ? <Icons.Lock className="h-4 w-4 text-yellow-500" /> : <Icons.LockOpen className="h-4 w-4 text-green-500" />}
 			<span className="text-xs flex items-center gap-1">
-				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={true} /> {locked ? 'locked' : 'unlocked'}
+				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={true} stores={stores} />{' '}
+				{locked ? 'locked' : 'unlocked'}
 			</span>
 		</div>
 	)
 }
 
-function SquadRenamedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'SQUAD_RENAMED' }> }) {
+function SquadRenamedEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'SQUAD_RENAMED' }>; stores: SquadServerFrame.KeyProp },
+) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
@@ -453,6 +488,7 @@ function SquadRenamedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 					matchId={event.matchId}
 					showName={true}
 					showTeam={true}
+					stores={stores}
 				/>{' '}
 				renamed to
 				<span className="font-medium text-foreground">"{event.newSquadName}"</span>
@@ -461,36 +497,44 @@ function SquadRenamedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 	)
 }
 
-function PlayerJoinedSquadEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_JOINED_SQUAD' }> }) {
+function PlayerJoinedSquadEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_JOINED_SQUAD' }>; stores: SquadServerFrame.KeyProp },
+) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
 			<Icons.LogIn className="h-4 w-4 text-green-400" />
 			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay player={event.player} matchId={event.matchId} /> joined{' '}
+				<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> joined{' '}
 				<SquadDisplay
 					squad={event.squad}
 					matchId={event.matchId}
 					showTeam={true}
+					stores={stores}
 				/>
 			</span>
 		</div>
 	)
 }
 
-function PlayerPromotedToLeaderEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_PROMOTED_TO_LEADER' }> }) {
+function PlayerPromotedToLeaderEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_PROMOTED_TO_LEADER' }>; stores: SquadServerFrame.KeyProp },
+) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
 			<Icons.Crown className="h-4 w-4 text-yellow-400" />
 			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay showTeam={true} showSquad={true} player={event.player} matchId={event.matchId} /> promoted to squad leader
+				<PlayerDisplay showTeam={true} showSquad={true} player={event.player} matchId={event.matchId} stores={stores} />{' '}
+				promoted to squad leader
 			</span>
 		</div>
 	)
 }
 
-function PlayerWoundedOrDiedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_WOUNDED' | 'PLAYER_DIED' }> }) {
+function PlayerWoundedOrDiedEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_WOUNDED' | 'PLAYER_DIED' }>; stores: SquadServerFrame.KeyProp },
+) {
 	const getIcon = () => {
 		if (event.type === 'PLAYER_DIED') {
 			switch (event.variant) {
@@ -518,7 +562,7 @@ function PlayerWoundedOrDiedEvent({ event }: { event: Extract<CHAT.EventEnriched
 			case 'suicide':
 				return (
 					<>
-						<PlayerDisplay showTeam showSquad={true} player={event.victim} matchId={event.matchId} />{' '}
+						<PlayerDisplay showTeam showSquad={true} player={event.victim} matchId={event.matchId} stores={stores} />{' '}
 						{event.type === 'PLAYER_WOUNDED' ? 'wounded themselves' : 'killed themselves'}
 						{event.weapon && <span className="text-muted-foreground/70">with {event.weapon}</span>}
 					</>
@@ -526,17 +570,17 @@ function PlayerWoundedOrDiedEvent({ event }: { event: Extract<CHAT.EventEnriched
 			case 'teamkill':
 				return (
 					<>
-						<PlayerDisplay showTeam showSquad={true} player={event.victim} matchId={event.matchId} /> teamkilled by{' '}
-						<PlayerDisplay showTeam showSquad={true} player={event.attacker} matchId={event.matchId} />
+						<PlayerDisplay showTeam showSquad={true} player={event.victim} matchId={event.matchId} stores={stores} /> teamkilled by{' '}
+						<PlayerDisplay showTeam showSquad={true} player={event.attacker} matchId={event.matchId} stores={stores} />
 						{event.weapon && <span className="text-muted-foreground/70">with {event.weapon}</span>}
 					</>
 				)
 			case 'normal':
 				return (
 					<>
-						<PlayerDisplay showTeam player={event.victim} matchId={event.matchId} />{' '}
+						<PlayerDisplay showTeam player={event.victim} matchId={event.matchId} stores={stores} />{' '}
 						{event.type === 'PLAYER_WOUNDED' ? 'wounded by' : 'killed by'}
-						<PlayerDisplay showTeam={true} player={event.attacker} matchId={event.matchId} />
+						<PlayerDisplay showTeam={true} player={event.attacker} matchId={event.matchId} stores={stores} />
 						{event.weapon && <span className="text-muted-foreground/70">with {event.weapon}</span>}
 					</>
 				)
@@ -552,7 +596,7 @@ function PlayerWoundedOrDiedEvent({ event }: { event: Extract<CHAT.EventEnriched
 	)
 }
 
-function MapSetEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'MAP_SET' }> }) {
+function MapSetEvent({ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'MAP_SET' }>; stores: SquadServerFrame.KeyProp }) {
 	return (
 		<div className="flex gap-2 py-0.5 text-muted-foreground items-center">
 			<EventTime time={event.time} variant="small" />
@@ -564,7 +608,9 @@ function MapSetEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'MA
 	)
 }
 
-function RconConnectedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'RCON_CONNECTED' }> }) {
+function RconConnectedEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'RCON_CONNECTED' }>; stores: SquadServerFrame.KeyProp },
+) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
@@ -576,7 +622,9 @@ function RconConnectedEvent({ event }: { event: Extract<CHAT.EventEnriched, { ty
 	)
 }
 
-function RconDisconnectedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'RCON_DISCONNECTED' }> }) {
+function RconDisconnectedEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'RCON_DISCONNECTED' }>; stores: SquadServerFrame.KeyProp },
+) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
@@ -588,60 +636,60 @@ function RconDisconnectedEvent({ event }: { event: Extract<CHAT.EventEnriched, {
 	)
 }
 
-export function ServerEvent({ event }: { event: CHAT.EventEnriched }) {
+export function ServerEvent({ event, stores }: { event: CHAT.EventEnriched; stores: SquadServerFrame.KeyProp }) {
 	switch (event.type) {
 		case 'CHAT_MESSAGE':
 		case 'ADMIN_BROADCAST':
-			return <ChatMessageEvent event={event} />
+			return <ChatMessageEvent event={event} stores={stores} />
 		case 'PLAYER_CONNECTED':
-			return <PlayerConnectedEvent event={event} />
+			return <PlayerConnectedEvent event={event} stores={stores} />
 		case 'PLAYER_DISCONNECTED':
-			return <PlayerDisconnectedEvent event={event} />
+			return <PlayerDisconnectedEvent event={event} stores={stores} />
 		case 'POSSESSED_ADMIN_CAMERA':
-			return <PossessedAdminCameraEvent event={event} />
+			return <PossessedAdminCameraEvent event={event} stores={stores} />
 		case 'UNPOSSESSED_ADMIN_CAMERA':
-			return <UnpossessedAdminCameraEvent event={event} />
+			return <UnpossessedAdminCameraEvent event={event} stores={stores} />
 		case 'PLAYER_KICKED':
-			return <PlayerKickedEvent event={event} />
+			return <PlayerKickedEvent event={event} stores={stores} />
 		case 'SQUAD_CREATED':
-			return <SquadCreatedEvent event={event} />
+			return <SquadCreatedEvent event={event} stores={stores} />
 		case 'PLAYER_BANNED':
-			return <PlayerBannedEvent event={event} />
+			return <PlayerBannedEvent event={event} stores={stores} />
 		case 'PLAYER_WARNED':
-			return <PlayerWarnedEvent event={event} />
+			return <PlayerWarnedEvent event={event} stores={stores} />
 		case 'NEW_GAME':
-			return <NewGameEvent event={event} />
+			return <NewGameEvent event={event} stores={stores} />
 		case 'RESET':
 			return null
 		case 'ROUND_ENDED':
-			return <RoundEndedEvent event={event} />
+			return <RoundEndedEvent event={event} stores={stores} />
 		case 'PLAYER_DETAILS_CHANGED':
 			return null
 		case 'SQUAD_DETAILS_CHANGED':
-			return <SquadDetailsChangedEvent event={event} />
+			return <SquadDetailsChangedEvent event={event} stores={stores} />
 		case 'SQUAD_RENAMED':
-			return <SquadRenamedEvent event={event} />
+			return <SquadRenamedEvent event={event} stores={stores} />
 		case 'PLAYER_CHANGED_TEAM':
-			return <PlayerChangedTeamEvent event={event} />
+			return <PlayerChangedTeamEvent event={event} stores={stores} />
 		case 'PLAYER_LEFT_SQUAD':
-			return <PlayerLeftSquadEvent event={event} />
+			return <PlayerLeftSquadEvent event={event} stores={stores} />
 		case 'SQUAD_DISBANDED':
-			return <SquadDisbandedEvent event={event} />
+			return <SquadDisbandedEvent event={event} stores={stores} />
 		case 'PLAYER_JOINED_SQUAD':
-			return <PlayerJoinedSquadEvent event={event} />
+			return <PlayerJoinedSquadEvent event={event} stores={stores} />
 		case 'PLAYER_PROMOTED_TO_LEADER':
-			return <PlayerPromotedToLeaderEvent event={event} />
+			return <PlayerPromotedToLeaderEvent event={event} stores={stores} />
 		case 'TEAMS_POLLED_UPDATE':
 			return null
 		case 'PLAYER_DIED':
 		case 'PLAYER_WOUNDED':
-			return <PlayerWoundedOrDiedEvent event={event} />
+			return <PlayerWoundedOrDiedEvent event={event} stores={stores} />
 		case 'MAP_SET':
-			return <MapSetEvent event={event} />
+			return <MapSetEvent event={event} stores={stores} />
 		case 'RCON_CONNECTED':
-			return <RconConnectedEvent event={event} />
+			return <RconConnectedEvent event={event} stores={stores} />
 		case 'RCON_DISCONNECTED':
-			return <RconDisconnectedEvent event={event} />
+			return <RconDisconnectedEvent event={event} stores={stores} />
 		case 'NOOP':
 			return null
 		default:

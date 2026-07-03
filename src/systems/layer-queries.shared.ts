@@ -1,4 +1,5 @@
 import { createId } from '@/lib/id'
+import { LRUMap } from '@/lib/lru-map'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
@@ -17,12 +18,102 @@ import { sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
 import seedrandom from 'seedrandom'
 
-// Cache for randomized layer query results
-// Two-tier structure: Map<queryHash, Map<pageIndex, layerIds[]>>
-const randomLayerCache = new Map<string, Map<number, number[]>>()
-let cachedSeed: string | null = null
+// snapshot of the filter entities a query depends on, taken when its result is cached. null means the
+// filter didn't exist at cache time. compared entity-by-entity (not by map identity) to detect staleness
+type FilterEntitySnapshot = Map<string, F.FilterEntity | null>
+
 const MAX_PAGES_PER_QUERY = 1000 // Store up to 1000 pages per unique query
 const MAX_CACHED_QUERIES = 512 // Store up to 512 unique query hashes
+const MAX_CACHED_QUERY_RESULTS = 256
+
+// Cache for randomized layer query results
+// Two-tier structure: LRUMap<queryHash, pages: Map<pageIndex, layerIds[]>>
+const randomLayerCache = new LRUMap<string, { pages: Map<number, number[]>; filterEntities: FilterEntitySnapshot }>(MAX_CACHED_QUERIES)
+let cachedSeed: string | null = null
+
+// Cache for non-random query results, invalidated when any filter entity the query depends on changes
+const queryResultCache = new LRUMap<string, { value: unknown; filterEntities: FilterEntitySnapshot }>(MAX_CACHED_QUERY_RESULTS)
+
+function collectFilterNodeFilterIds(node: F.FilterNode, ids: Set<string>) {
+	if (node.type === 'apply-filter') ids.add(node.filterId)
+	if (F.isBlockNode(node)) {
+		for (const child of node.children) collectFilterNodeFilterIds(child, ids)
+	}
+}
+
+function snapshotRelevantFilterEntities(ctx: CS.Filters, constraints: LQY.Constraint[] | undefined): FilterEntitySnapshot {
+	const ids = new Set<string>()
+	for (const constraint of constraints ?? []) {
+		switch (constraint.type) {
+			case 'filter-anon':
+				collectFilterNodeFilterIds(constraint.filter, ids)
+				break
+			case 'filter-entity':
+				ids.add(constraint.filterId)
+				break
+			case 'filter-menu-items':
+				for (const item of constraint.items) {
+					if (item.node) collectFilterNodeFilterIds(item.node, ids)
+				}
+				break
+			case 'do-not-repeat':
+				break
+			default:
+				assertNever(constraint)
+		}
+	}
+	const snapshot: FilterEntitySnapshot = new Map()
+	const pending = [...ids]
+	while (pending.length > 0) {
+		const id = pending.pop()!
+		if (snapshot.has(id)) continue
+		const entity = ctx.filters.get(id) ?? null
+		snapshot.set(id, entity)
+		if (entity) {
+			const referenced = new Set<string>()
+			collectFilterNodeFilterIds(entity.filter as F.FilterNode, referenced)
+			pending.push(...referenced)
+		}
+	}
+	return snapshot
+}
+
+function relevantFilterEntitiesChanged(ctx: CS.Filters, snapshot: FilterEntitySnapshot): boolean {
+	for (const [id, entity] of snapshot) {
+		const current = ctx.filters.get(id) ?? null
+		if (entity === null || current === null) {
+			if (entity !== current) return true
+		} else if (!Obj.shallowEquals(entity, current)) return true
+	}
+	return false
+}
+
+// effectiveColsConfig is large but referentially stable, so memoize its hash by identity
+const colsConfigHashes = new WeakMap<object, string>()
+function queryCacheKey(name: string, ctx: CS.LayerQuery, input: object) {
+	let colsCfg = colsConfigHashes.get(ctx.effectiveColsConfig)
+	if (colsCfg === undefined) {
+		colsCfg = simpleHash(JSON.stringify(ctx.effectiveColsConfig))
+		colsConfigHashes.set(ctx.effectiveColsConfig, colsCfg)
+	}
+	const str = JSON.stringify({ name, input, colsCfg })
+	// include the length to make hash collisions between differently-shaped inputs less likely
+	return `${simpleHash(str)}:${str.length}`
+}
+
+function getCachedQueryResult<V>(ctx: CS.Filters, key: string): V | undefined {
+	const entry = queryResultCache.get(key)
+	if (!entry) return undefined
+	if (relevantFilterEntitiesChanged(ctx, entry.filterEntities)) {
+		queryResultCache.delete(key)
+		return undefined
+	}
+	return entry.value as V
+}
+
+function setCachedQueryResult(ctx: CS.Filters, key: string, value: unknown, constraints: LQY.Constraint[] | undefined) {
+	queryResultCache.set(key, { value, filterEntities: snapshotRelevantFilterEntities(ctx, constraints) })
+}
 
 export type QueriedLayer = {
 	layers: L.KnownLayer & { constraints: boolean[] }
@@ -53,6 +144,13 @@ export async function* queryLayersStreamed(args: {
 
 	ctx.log = ctx.log.child({ query: 'queryLayers-' + createId(4) })
 	ctx.log.debug(input, 'running queryLayers')
+
+	// the random-sort path has its own cache (randomLayerCache)
+	const cacheKey = input.sort?.type === 'random' ? undefined : queryCacheKey('queryLayers', ctx, input)
+	if (cacheKey) {
+		const cached = getCachedQueryResult<QueryLayersResponsePart[]>(ctx, cacheKey)
+		if (cached) return yield* cached
+	}
 
 	const conditionsRes = buildQueryInputSqlCondition(ctx, input)
 	if (conditionsRes.code !== 'ok') return yield conditionsRes
@@ -124,19 +222,21 @@ export async function* queryLayersStreamed(args: {
 	const layers = postProcessLayers(ctx, rows, input)
 	const [countResult] = await countQuery.execute()
 	const totalCount = Number(countResult.count)
-	yield {
+	const parts: QueryLayersResponsePart[] = [{
 		code: 'layers-page' as const,
 		layers: layers,
 		totalCount,
 		pageCount: Math.ceil(totalCount / input.pageSize!),
-	}
+	}]
 
 	if (conditionsRes.filterMenuItemPossibleValueConditions) {
-		yield {
+		parts.push({
 			code: 'menu-item-possible-values',
 			values: await queryFilterMenuPossibleValues(ctx, conditionsRes.filterMenuItemPossibleValueConditions),
-		}
+		})
 	}
+	setCachedQueryResult(ctx, cacheKey!, parts, input.constraints)
+	yield* parts
 }
 
 export async function genVote(args: { ctx: CS.LayerQuery; input: LQY.GenVote.Input }) {
@@ -220,6 +320,9 @@ export async function queryLayerComponent(args: {
 }) {
 	const ctx: CS.LayerQuery = args.ctx
 	const input = args.input
+	const cacheKey = queryCacheKey('queryLayerComponent', ctx, input)
+	const cached = getCachedQueryResult<string[]>(ctx, cacheKey)
+	if (cached) return cached
 	const conditionsRes = buildQueryInputSqlCondition(ctx, input)
 	if (conditionsRes.code !== 'ok') return conditionsRes
 	const { conditions: whereConditions } = conditionsRes
@@ -230,6 +333,7 @@ export async function queryLayerComponent(args: {
 		.from(LC.layersView(ctx))
 		.where(E.and(...whereConditions)))
 		.map((row: any) => LC.fromDbValue(input.column, row[input.column], ctx))
+	setCachedQueryResult(ctx, cacheKey, res, input.constraints)
 	return res as string[]
 }
 
@@ -451,17 +555,18 @@ export function getFilterNodeSQLConditions(
 }
 
 function buildQueryInputSqlCondition(
-	ctx: CS.Log & CS.Filters & CS.LayerDb & CS.LayerItemsState,
+	ctx: CS.Log & CS.Filters & CS.LayerDb,
 	input: LQY.BaseQueryInput,
 ) {
 	const baseConditions: SQL<unknown>[] = []
 	const selectProperties: any = {}
 	const constraints = [...(input.constraints ?? [])]
+	const list = input.list ?? LQY.initLayerItemsState()
 
 	let cursorIndex: LQY.ItemIndex | null = null
 	if (input.cursor) {
-		const cursor = LQY.fromLayerListCursor(ctx.layerItemsState, input.cursor)
-		cursorIndex = LQY.resolveCursorIndex(ctx.layerItemsState, cursor)
+		const cursor = LQY.fromLayerListCursor(list, input.cursor)
+		cursorIndex = LQY.resolveCursorIndex(list, cursor)
 	}
 
 	for (let i = 0; i < constraints.length; i++) {
@@ -483,7 +588,7 @@ function buildQueryInputSqlCondition(
 				break
 			case 'do-not-repeat':
 				{
-					res = getRepeatSQLConditions(ctx, cursorIndex?.outerIndex ?? 0, constraint.rule)
+					res = getRepeatSQLConditions(ctx, list, cursorIndex?.outerIndex ?? 0, constraint.rule)
 				}
 				break
 			default:
@@ -557,11 +662,15 @@ export async function getLayerItemStatuses(args: {
 }) {
 	const ctx: CS.LayerQuery = { ...args.ctx }
 	const input = args.input
+	const cacheKey = queryCacheKey('getLayerItemStatuses', ctx, input)
+	const cachedRes = getCachedQueryResult<{ code: 'ok'; statuses: LQY.LayerItemStatuses }>(ctx, cacheKey)
+	if (cachedRes) return cachedRes
 	const constraints = input.constraints ?? []
 	const matchDescriptors: Map<LQY.ItemId, LQY.MatchDescriptor[]> = new Map()
 	const filterConditionResults: Map<string, SQL<unknown>> = new Map()
 	const matchedState: Map<LQY.ItemId, string> = new Map()
-	const layerItems = ctx.layerItemsState.layerItems ?? []
+	const list = input.list ?? LQY.initLayerItemsState()
+	const layerItems = list.layerItems
 
 	const selectExpr: any = { _id: LC.viewCol('id', ctx) }
 	for (let i = 0; i < layerItems.length; i++) {
@@ -572,7 +681,7 @@ export async function getLayerItemStatuses(args: {
 				switch (constraint.type) {
 					case 'do-not-repeat': {
 						const descriptors = getisMatchedByRepeatRuleDirect(
-							ctx,
+							list,
 							i,
 							constraint.id,
 							constraint.rule,
@@ -652,14 +761,16 @@ export async function getLayerItemStatuses(args: {
 		warns,
 	}
 
-	return {
+	const res = {
 		code: 'ok' as const,
 		statuses,
 	}
+	setCachedQueryResult(ctx, cacheKey, res, input.constraints)
+	return res
 }
 
 function getisMatchedByRepeatRuleDirect(
-	ctx: CS.Log & CS.LayerItemsState,
+	list: LQY.LayerItemsState,
 	cursorIndex: number,
 	constraintId: string,
 	rule: LQY.RepeatRule,
@@ -667,13 +778,13 @@ function getisMatchedByRepeatRuleDirect(
 	targetItemId?: LQY.ItemId,
 ) {
 	const targetLayer = L.toLayer(targetLayerId)
-	const previousLayers = ctx.layerItemsState.layerItems
-	const targetLayerTeamParity = MH.getTeamParityForOffset({ ordinal: ctx.layerItemsState.firstLayerItemParity }, cursorIndex)
+	const previousLayers = list.layerItems
+	const targetLayerTeamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, cursorIndex)
 
 	const descriptors: LQY.MatchDescriptor[] = []
 	for (let i = cursorIndex - 1; i >= Math.max(cursorIndex - rule.within, 0); i--) {
 		if (LQY.isLookbackTerminatingLayerItem(previousLayers[i])) break
-		const layerTeamParity = MH.getTeamParityForOffset({ ordinal: ctx.layerItemsState.firstLayerItemParity }, i)
+		const layerTeamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, i)
 		const layerItem = previousLayers[i]
 		const layer = L.toLayer(layerItem.layerId)
 		const getViolationDescriptor = (field: LQY.RepeatMatchDescriptor['field']): LQY.RepeatMatchDescriptor => ({
@@ -739,7 +850,8 @@ function getisMatchedByRepeatRuleDirect(
 }
 
 function getRepeatSQLConditions(
-	ctx: CS.EffectiveColumnConfig & CS.LayerItemsState,
+	ctx: CS.EffectiveColumnConfig,
+	list: LQY.LayerItemsState,
 	cursorIndex: number,
 	rule: LQY.RepeatRule,
 ): F.SQLConditionsResult {
@@ -748,10 +860,10 @@ function getRepeatSQLConditions(
 	const valuesB = new Set<number>()
 	if (rule.within <= 0) return { code: 'ok' as const, condition: sql`false` }
 
-	const previousLayers = ctx.layerItemsState.layerItems
+	const previousLayers = list.layerItems
 
 	for (let i = cursorIndex - 1; i >= Math.max(cursorIndex - rule.within, 0); i--) {
-		const teamParity = MH.getTeamParityForOffset({ ordinal: ctx.layerItemsState.firstLayerItemParity }, i)
+		const teamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, i)
 		if (LQY.isLookbackTerminatingLayerItem(previousLayers[i])) break
 		const layerItem = previousLayers[i]
 		const layer = L.toLayer(layerItem.layerId)
@@ -805,7 +917,7 @@ function getRepeatSQLConditions(
 		}
 	}
 
-	const targetLayerTeamParity = MH.getTeamParityForOffset({ ordinal: ctx.layerItemsState.firstLayerItemParity }, cursorIndex)
+	const targetLayerTeamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, cursorIndex)
 	let resultSql: SQL
 	switch (rule.field) {
 		case 'Map':
@@ -878,29 +990,23 @@ async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	const cacheKeyInput = JSON.stringify({
 		constraints: input.constraints,
 		cursor: input.cursor,
+		list: input.list,
 		weights: ctx.effectiveColsConfig.generation.weights,
 		columnOrder: ctx.effectiveColsConfig.generation.columnOrder,
 	})
 	const cacheKey = simpleHash(cacheKeyInput)
 
-	// Check cache first
-	let queryCacheForSeed = randomLayerCache.get(cacheKey)
-	if (!queryCacheForSeed) {
-		queryCacheForSeed = new Map<number, number[]>()
-		randomLayerCache.set(cacheKey, queryCacheForSeed)
-
-		// LRU eviction: if we exceed max cached queries, remove the oldest one
-		if (randomLayerCache.size > MAX_CACHED_QUERIES) {
-			const firstKey = randomLayerCache.keys().next().value
-			if (firstKey !== undefined) {
-				randomLayerCache.delete(firstKey)
-			}
-		}
-	} else {
-		// Move to end for LRU (delete and re-add)
+	// Check cache first (LRUMap.get moves the entry to the end)
+	let cacheEntry = randomLayerCache.get(cacheKey)
+	if (cacheEntry && relevantFilterEntitiesChanged(ctx, cacheEntry.filterEntities)) {
 		randomLayerCache.delete(cacheKey)
-		randomLayerCache.set(cacheKey, queryCacheForSeed)
+		cacheEntry = undefined
 	}
+	if (!cacheEntry) {
+		cacheEntry = { pages: new Map<number, number[]>(), filterEntities: snapshotRelevantFilterEntities(ctx, input.constraints) }
+		randomLayerCache.set(cacheKey, cacheEntry)
+	}
+	const queryCacheForSeed = cacheEntry.pages
 
 	const cachedIds = queryCacheForSeed.get(pageIndex)
 	if (cachedIds) {
@@ -1019,14 +1125,15 @@ export type PostProcessedLayer = Awaited<
 	ReturnType<typeof postProcessLayers>
 >[number]
 function postProcessLayers(
-	ctx: CS.Log & CS.EffectiveColumnConfig & CS.LayerItemsState,
+	ctx: CS.Log & CS.EffectiveColumnConfig,
 	layers: ({ id: number } & Record<string, string | number | boolean> & Record<string, boolean>)[],
 	baseInput: LQY.BaseQueryInput,
 ) {
+	const list = baseInput.list ?? LQY.initLayerItemsState()
 	let cursorIndex: LQY.ItemIndex | null = null
 	if (baseInput.cursor) {
-		const cursor = LQY.fromLayerListCursor(ctx.layerItemsState, baseInput.cursor)
-		cursorIndex = LQY.resolveCursorIndex(ctx.layerItemsState, cursor)
+		const cursor = LQY.fromLayerListCursor(list, baseInput.cursor)
+		cursorIndex = LQY.resolveCursorIndex(list, cursor)
 	}
 	const constraints = baseInput.constraints ?? []
 	return layers.map((layer) => {
@@ -1049,7 +1156,7 @@ function postProcessLayers(
 					if (!cursorIndex) break
 					// TODO being able to do this makes the SQL conditions we made for the dnr rules redundant, we should remove them
 					const descriptors = getisMatchedByRepeatRuleDirect(
-						ctx,
+						list,
 						cursorIndex.outerIndex,
 						constraint.id,
 						constraint.rule,

@@ -4,10 +4,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import * as DH from '@/lib/display-helpers.ts'
 
+import * as ZusUtils from '@/lib/zustand'
 import { BROADCASTS } from '@/messages.ts'
 import type * as L from '@/models/layer'
 import * as V from '@/models/vote.models.ts'
-import * as ConfigClient from '@/systems/config.client'
+import * as SettingsClient from '@/systems/settings.client'
 import React from 'react'
 
 export type AdvancedVoteConfigEditorProps = {
@@ -20,7 +21,7 @@ export type AdvancedVoteConfigEditorProps = {
 }
 
 export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
-	const appConfig = ConfigClient.useConfig()
+	const appConfig = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
 	const displayProps = props.config?.displayProps ?? appConfig?.vote.voteDisplayProps ?? []
 	const duration = props.config?.duration ?? appConfig?.vote.voteDuration ?? 120
 	const usingDefault = !props.config?.displayProps && !props.config?.duration && !!appConfig?.vote.voteDisplayProps

@@ -1,7 +1,8 @@
 import * as Schema from '$root/drizzle/schema'
 import * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array'
-import { type CleanupTasks, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import * as Cleanup from '@/lib/cleanup'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { LRUMap } from '@/lib/lru-map'
@@ -17,11 +18,11 @@ import * as MH from '@/models/match-history.models'
 import * as SE from '@/models/server-events.models'
 
 import type * as USR from '@/models/users.models'
-import * as GlobalSettings from '@/systems/global-settings.server'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as UsersClient from '@/systems/users.server'
 import { Mutex } from 'async-mutex'
@@ -51,7 +52,7 @@ export type MatchHistoryContext = {
 	matchEventsCache: LRUMap<number, Promise<CHAT.EventEnriched[]>>
 } & Parts<USR.UserPart>
 
-export function initMatchHistoryContext(event$: SquadServer.SquadServer['event$'], cleanup: CleanupTasks): MatchHistoryContext {
+export function initMatchHistoryContext(event$: SquadServer.SquadServer['event$'], cleanup: Cleanup.Tasks): MatchHistoryContext {
 	const update$ = new IsolatedSubject<void>()
 	const ctx: MatchHistoryContext = {
 		mtx: new Mutex(),
@@ -200,8 +201,10 @@ const loadCurrentMatch = C.spanOp(
 )
 
 export const matchHistoryRouter = {
-	watchMatchHistoryState: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ signal, context: _ctx }) {
-		const server$ = SquadServer.selectedServerCtx$(_ctx).pipe(withAbortSignal(signal!))
+	watchMatchHistoryState: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
+		{ signal, context: _ctx, input },
+	) {
+		const server$ = SquadServer.sliceCtx$(_ctx.wsClientId, input.serverId).pipe(withAbortSignal(signal!))
 		const state$ = server$.pipe(
 			Rx.switchMap(async function*(ctx) {
 				if (!ctx) return
@@ -218,8 +221,9 @@ export const matchHistoryRouter = {
 		yield* toAsyncGenerator(state$)
 	}),
 
-	getMatchEvents: orpcBase.input(z.number()).handler(async ({ input: ordinal, context: _ctx }) => {
-		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
+	getMatchEvents: orpcBase.input(z.object({ serverId: z.string(), ordinal: z.number() })).handler(async ({ input, context: _ctx }) => {
+		const ordinal = input.ordinal
+		const ctx = SquadServer.resolveSliceCtx(_ctx, input.serverId)
 
 		// Check if trying to get events for current match - this should never happen
 		const currentMatch = await getCurrentMatch(ctx)
@@ -264,11 +268,12 @@ export const matchHistoryRouter = {
 	}),
 
 	getPlayerDetails: orpcBase.input(z.object({
+		serverId: z.string(),
 		playerId: z.string(),
 		page: z.number().nonnegative().default(0),
 		pageSize: z.number().nonnegative().default(100),
 	})).handler(async ({ input, context: _ctx }) => {
-		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
+		const ctx = SquadServer.resolveSliceCtx(_ctx, input.serverId)
 		const currentMatch = await getCurrentMatch(ctx)
 		const playerId = input.playerId
 
@@ -375,9 +380,10 @@ export const matchHistoryRouter = {
 	}),
 
 	getSquadDetails: orpcBase.input(z.object({
+		serverId: z.string(),
 		uniqueSquadId: z.number(),
 	})).handler(async ({ input, context: _ctx }) => {
-		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
+		const ctx = SquadServer.resolveSliceCtx(_ctx, input.serverId)
 
 		const [squadRow] = await ctx.db().select().from(Schema.squads).where(E.eq(Schema.squads.id, input.uniqueSquadId))
 		if (!squadRow) throw new Error(`Squad ${input.uniqueSquadId} not found`)
@@ -511,7 +517,7 @@ export const finalizeCurrentMatch = C.spanOp('finalizeCurrentMatch', {
 		await loadState(ctx, { startAtOrdinal: currentMatch.ordinal })
 
 		// -------- look for tripped balance triggers --------
-		for (const [trigId, level] of Object.entries(GlobalSettings.GLOBAL_SETTINGS.balanceTriggerLevels)) {
+		for (const [trigId, level] of Object.entries(Settings.GLOBAL_SETTINGS.balanceTriggerLevels)) {
 			let inputStored: any
 			const trig = BAL.TRIGGERS[trigId as BAL.TriggerId]
 			try {

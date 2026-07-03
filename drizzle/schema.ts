@@ -1,35 +1,49 @@
 import { enumTupleOptions } from '@/lib/zod'
-import { bigint, boolean, index, int, json, mysqlEnum, mysqlTable, primaryKey, timestamp, unique, varchar } from 'drizzle-orm/mysql-core'
+import { customType, index, integer, primaryKey, sqliteTable, text, unique } from 'drizzle-orm/sqlite-core'
 import superjson from 'superjson'
 import { BALANCE_TRIGGER_LEVEL, SERVER_EVENT_PLAYER_ASSOC_TYPE, SERVER_EVENT_TYPE } from './enums'
 
-export const matchHistory = mysqlTable(
+// 64-bit ids (discord/steam) are stored as TEXT: sqlite INTEGER is signed 64-bit and better-sqlite3
+// returns plain (lossy) JS numbers, so text keeps precision while preserving `bigint` app-facing types.
+const bigintText = customType<{ data: bigint; driverData: string }>({
+	dataType: () => 'text',
+	toDriver: (value) => value.toString(),
+	fromDriver: (value) => BigInt(value),
+})
+
+const timestamp = (name: string) => integer(name, { mode: 'timestamp_ms' })
+const json = (name: string) => text(name, { mode: 'json' })
+const boolean = (name: string) => integer(name, { mode: 'boolean' })
+
+export const matchHistory = sqliteTable(
 	'matchHistory',
 	{
-		id: int('id').primaryKey().autoincrement(),
-		serverId: varchar('serverId', { length: 256 }).notNull().references(() => servers.id, { onDelete: 'no action' }),
-		ordinal: int('ordinal').notNull(),
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		serverId: text('serverId').notNull().references(() => servers.id, { onDelete: 'cascade' }),
+		ordinal: integer('ordinal').notNull(),
 
 		// may not be in layerId table (RAW: prefix or outdated)
-		layerId: varchar('layerId', { length: 256 }).notNull(),
+		layerId: text('layerId').notNull(),
 
 		// here for forwards compatibility & easy export to other systems
-		rawLayerCommandText: varchar('rawLayerCommandText', { length: 256 }),
-		lqItemId: varchar('lqItemId', { length: 256 }),
+		rawLayerCommandText: text('rawLayerCommandText'),
+		lqItemId: text('lqItemId'),
 		startTime: timestamp('startTime'),
 		endTime: timestamp('endTime'),
-		createdAt: timestamp('createdAt').defaultNow(),
-		outcome: mysqlEnum('outcome', ['team1', 'team2', 'draw']),
+		createdAt: timestamp('createdAt').$defaultFn(() => new Date()),
+		outcome: text('outcome', { enum: ['team1', 'team2', 'draw'] }),
 
-		team1Tickets: int('team1Tickets'),
-		team2Tickets: int('team2Tickets'),
-		setByType: mysqlEnum('setByType', [
-			'manual',
-			'gameserver',
-			'generated',
-			'unknown',
-		]).notNull(),
-		setByUserId: bigint('setByUserId', { mode: 'bigint', unsigned: true }),
+		team1Tickets: integer('team1Tickets'),
+		team2Tickets: integer('team2Tickets'),
+		setByType: text('setByType', {
+			enum: [
+				'manual',
+				'gameserver',
+				'generated',
+				'unknown',
+			],
+		}).notNull(),
+		setByUserId: bigintText('setByUserId'),
 	},
 	(table) => ({
 		layerIdIndex: index('layerIdIndex').on(table.layerId),
@@ -40,29 +54,29 @@ export const matchHistory = mysqlTable(
 	}),
 )
 
-export const balanceTriggerEvents = mysqlTable(
+export const balanceTriggerEvents = sqliteTable(
 	'balanceTriggerEvents',
 	{
-		id: int('id').primaryKey().autoincrement(),
-		triggerId: varchar('triggerId', { length: 64 }).notNull(),
-		triggerVersion: int('triggerVersion').notNull(),
-		matchTriggeredId: int('matchTriggeredId').references(() => matchHistory.id, { onDelete: 'cascade' }),
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		triggerId: text('triggerId').notNull(),
+		triggerVersion: integer('triggerVersion').notNull(),
+		matchTriggeredId: integer('matchTriggeredId').references(() => matchHistory.id, { onDelete: 'cascade' }),
 		// the generic form of the message
-		strongerTeam: mysqlEnum('strongerTeam', ['teamA', 'teamB']).notNull(),
-		level: mysqlEnum(enumTupleOptions(BALANCE_TRIGGER_LEVEL)).notNull(),
+		strongerTeam: text('strongerTeam', { enum: ['teamA', 'teamB'] }).notNull(),
+		level: text('level', { enum: enumTupleOptions(BALANCE_TRIGGER_LEVEL) }).notNull(),
 		evaluationResult: json('evaluationResult').notNull(),
 	},
 )
 
-export const serverEvents = mysqlTable(
+export const serverEvents = sqliteTable(
 	'serverEvents',
 	{
-		id: int('id').primaryKey().autoincrement(),
-		type: mysqlEnum('type', enumTupleOptions(SERVER_EVENT_TYPE)).notNull(),
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		type: text('type', { enum: enumTupleOptions(SERVER_EVENT_TYPE) }).notNull(),
 		time: timestamp('time').notNull(),
-		matchId: int('matchId').references(() => matchHistory.id, { onDelete: 'cascade' }).notNull(),
+		matchId: integer('matchId').references(() => matchHistory.id, { onDelete: 'cascade' }).notNull(),
 		// TODO right now code just assumes one version, this is here for forwards compatibility
-		version: int('version').default(1),
+		version: integer('version').default(1),
 		data: json('data').notNull(),
 	},
 	(table) => ({
@@ -72,17 +86,17 @@ export const serverEvents = mysqlTable(
 	}),
 )
 
-export const players = mysqlTable(
+export const players = sqliteTable(
 	'players',
 	{
-		eosId: varchar('eosId', { length: 32 }).notNull().primaryKey(),
-		steamId: bigint('steamId', { mode: 'bigint' }).unique(),
-		epicId: varchar('epicId', { length: 32 }).unique(),
+		eosId: text('eosId').notNull().primaryKey(),
+		steamId: bigintText('steamId').unique(),
+		epicId: text('epicId').unique(),
 		// exists for cases where we don't know wwhat the tag string is
-		username: varchar('username', { length: 48 }).notNull(),
-		usernameNoTag: varchar('usernameNoTag', { length: 32 }),
-		createdAt: timestamp('createdAt').defaultNow(),
-		modifiedAt: timestamp('modifiedAt').defaultNow(),
+		username: text('username').notNull(),
+		usernameNoTag: text('usernameNoTag'),
+		createdAt: timestamp('createdAt').$defaultFn(() => new Date()),
+		modifiedAt: timestamp('modifiedAt').$defaultFn(() => new Date()),
 	},
 	(table) => ({
 		eosIdIndex: index('eosIdIndex').on(table.eosId),
@@ -91,14 +105,14 @@ export const players = mysqlTable(
 	}),
 )
 
-export const playerEventAssociations = mysqlTable(
+export const playerEventAssociations = sqliteTable(
 	'playerEventAssociations',
 	{
-		id: int('id').autoincrement().primaryKey(),
-		serverEventId: int('serverEventId').references(() => serverEvents.id, { onDelete: 'cascade' }).notNull(),
-		playerId: varchar('playerId', { length: 32 }).references(() => players.eosId, { onDelete: 'cascade' }).notNull(),
-		assocType: mysqlEnum('assocType', enumTupleOptions(SERVER_EVENT_PLAYER_ASSOC_TYPE)).notNull(),
-		createdAt: timestamp('createdAt').defaultNow(),
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		serverEventId: integer('serverEventId').references(() => serverEvents.id, { onDelete: 'cascade' }).notNull(),
+		playerId: text('playerId').references(() => players.eosId, { onDelete: 'cascade' }).notNull(),
+		assocType: text('assocType', { enum: enumTupleOptions(SERVER_EVENT_PLAYER_ASSOC_TYPE) }).notNull(),
+		createdAt: timestamp('createdAt').$defaultFn(() => new Date()),
 	},
 	(table) => ({
 		playerIdIndex: index('playerIdIndex').on(table.playerId),
@@ -107,15 +121,15 @@ export const playerEventAssociations = mysqlTable(
 	}),
 )
 
-export const squads = mysqlTable(
+export const squads = sqliteTable(
 	'squads',
 	{
-		id: int('id').primaryKey(),
-		ingameSquadId: int('ingameSquadId').notNull(),
-		teamId: int('teamId').notNull(),
-		name: varchar('name', { length: 64 }).notNull(),
-		creatorId: varchar('creatorId', { length: 32 }).references(() => players.eosId, { onDelete: 'set null' }),
-		createdAt: timestamp('createdAt').defaultNow(),
+		id: integer('id').primaryKey(),
+		ingameSquadId: integer('ingameSquadId').notNull(),
+		teamId: integer('teamId').notNull(),
+		name: text('name').notNull(),
+		creatorId: text('creatorId').references(() => players.eosId, { onDelete: 'set null' }),
+		createdAt: timestamp('createdAt').$defaultFn(() => new Date()),
 	},
 	(table) => ({
 		nameIndex: index('nameIndex').on(table.name),
@@ -123,42 +137,42 @@ export const squads = mysqlTable(
 	}),
 )
 
-export const squadEventAssociations = mysqlTable(
+export const squadEventAssociations = sqliteTable(
 	'squadEventAssociations',
 	{
-		serverEventId: int('serverEventId').references(() => serverEvents.id, { onDelete: 'cascade' }).notNull(),
-		squadId: int('squadId').references(() => squads.id, { onDelete: 'cascade' }).notNull(),
-		createdAt: timestamp('createdAt').defaultNow(),
+		serverEventId: integer('serverEventId').references(() => serverEvents.id, { onDelete: 'cascade' }).notNull(),
+		squadId: integer('squadId').references(() => squads.id, { onDelete: 'cascade' }).notNull(),
+		createdAt: timestamp('createdAt').$defaultFn(() => new Date()),
 	},
 	(table) => ({
 		pk: primaryKey({ columns: [table.serverEventId, table.squadId] }),
 	}),
 )
 
-export const filters = mysqlTable('filters', {
-	id: varchar('id', { length: 64 }).primaryKey().notNull(),
-	name: varchar('name', { length: 128 }).notNull(),
-	description: varchar('description', { length: 2048 }),
+export const filters = sqliteTable('filters', {
+	id: text('id').primaryKey().notNull(),
+	name: text('name').notNull(),
+	description: text('description'),
 	filter: json('filter').notNull(),
-	owner: bigint('owner', { mode: 'bigint', unsigned: true }).references(
+	owner: bigintText('owner').references(
 		() => users.discordId,
 		{ onDelete: 'set null' },
 	),
-	alertMessage: varchar('alertMessage', { length: 280 }),
+	alertMessage: text('alertMessage'),
 	// either a unicode emoji or a custom emoji (prefix discord_)
-	emoji: varchar('emoji', { length: 64 }).unique(),
-	invertedAlertMessage: varchar('invertedAlertMessage', { length: 280 }),
+	emoji: text('emoji').unique(),
+	invertedAlertMessage: text('invertedAlertMessage'),
 	// either a unicode emoji or a custom emoji (prefix discord_)
-	invertedEmoji: varchar('invertedEmoji', { length: 64 }),
+	invertedEmoji: text('invertedEmoji'),
 })
 
-export const filterUserContributors = mysqlTable(
+export const filterUserContributors = sqliteTable(
 	'filterUserContributors',
 	{
-		filterId: varchar('filterId', { length: 64 })
+		filterId: text('filterId')
 			.notNull()
 			.references(() => filters.id, { onDelete: 'cascade' }),
-		userId: bigint('userId', { mode: 'bigint', unsigned: true })
+		userId: bigintText('userId')
 			.notNull()
 			.references(() => users.discordId, { onDelete: 'cascade' }),
 	},
@@ -167,13 +181,13 @@ export const filterUserContributors = mysqlTable(
 	}),
 )
 
-export const filterRoleContributors = mysqlTable(
+export const filterRoleContributors = sqliteTable(
 	'filterRoleContributors',
 	{
-		filterId: varchar('filterId', { length: 64 })
+		filterId: text('filterId')
 			.notNull()
 			.references(() => filters.id, { onDelete: 'cascade' }),
-		roleId: varchar('roleId', { length: 32 }).notNull(),
+		roleId: text('roleId').notNull(),
 	},
 	(table) => ({ pk: primaryKey({ columns: [table.filterId, table.roleId] }) }),
 )
@@ -181,39 +195,40 @@ export const filterRoleContributors = mysqlTable(
 export type Filter = typeof filters.$inferSelect
 export type NewFilter = typeof filters.$inferInsert
 
-export const servers = mysqlTable('servers', {
-	id: varchar('id', { length: 256 }).primaryKey(),
-	displayName: varchar('displayName', { length: 256 }).notNull(),
+export const servers = sqliteTable('servers', {
+	id: text('id').primaryKey(),
+	displayName: text('displayName').notNull(),
 	enabled: boolean('enabled').notNull().default(true),
-	layerQueue: json('layerQueue').notNull().default(superjson.stringify([])),
-	teamswitches: json('teamswitches').notNull().default(superjson.stringify(new Map())),
-	settings: json('settings').default(superjson.stringify({})),
+	defaultServer: boolean('defaultServer').notNull().default(false),
+	layerQueue: json('layerQueue').notNull().default(superjson.serialize([])),
+	teamswitches: json('teamswitches').notNull().default(superjson.serialize(new Map())),
+	settings: json('settings').default(superjson.serialize({})),
 })
 
-export const globalSettings = mysqlTable('globalSettings', {
-	id: int('id').primaryKey().default(1),
-	settings: json('settings').notNull().default(superjson.stringify({})),
+export const globalSettings = sqliteTable('globalSettings', {
+	id: integer('id').primaryKey().default(1),
+	settings: json('settings').notNull().default(superjson.serialize({})),
 })
 
 export type Server = typeof servers.$inferSelect
 
-export const users = mysqlTable('users', {
-	discordId: bigint('discordId', { mode: 'bigint', unsigned: true })
+export const users = sqliteTable('users', {
+	discordId: bigintText('discordId')
 		.notNull()
 		.primaryKey(),
-	steam64Id: bigint('steam64Id', { mode: 'bigint', unsigned: true }),
+	steam64Id: bigintText('steam64Id'),
 	// https://support.discord.com/hc/en-us/articles/12620128861463-New-Usernames-Display-Names#h_01GXPQAGG6W477HSC5SR053QG1
-	username: varchar('username', { length: 32 }).notNull(),
-	nickname: varchar('nickname', { length: 64 }),
+	username: text('username').notNull(),
+	nickname: text('nickname'),
 })
 
 export type User = typeof users.$inferSelect
 
-export const sessions = mysqlTable(
+export const sessions = sqliteTable(
 	'sessions',
 	{
-		id: varchar('session', { length: 255 }).primaryKey(),
-		userId: bigint('userId', { mode: 'bigint', unsigned: true })
+		id: text('session').primaryKey(),
+		userId: bigintText('userId')
 			.notNull()
 			.references(() => users.discordId, { onDelete: 'cascade' }),
 		expiresAt: timestamp('expiresAt').notNull(),
@@ -223,8 +238,8 @@ export const sessions = mysqlTable(
 	}),
 )
 
-export const persistedCache = mysqlTable('persistedCache', {
-	key: varchar('key', { length: 256 }).primaryKey(),
+export const persistedCache = sqliteTable('persistedCache', {
+	key: text('key').primaryKey(),
 	value: json('value').notNull(),
-	updatedAt: timestamp('updatedAt').defaultNow().notNull(),
+	updatedAt: timestamp('updatedAt').$defaultFn(() => new Date()).notNull(),
 })

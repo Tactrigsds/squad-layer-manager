@@ -4,6 +4,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { globalToast$ } from '@/hooks/use-global-toast'
 
 import { formatVersion } from '@/lib/versioning'
+import * as ZusUtils from '@/lib/zustand'
 import * as ConfigClient from '@/systems/config.client'
 import * as UsersClient from '@/systems/users.client'
 import { Copy, Info } from 'lucide-react'
@@ -16,7 +17,7 @@ interface AboutDialogProps {
 }
 
 export default function AboutDialog({ children, open, onOpenChange }: AboutDialogProps) {
-	const config = ConfigClient.useConfig()
+	const config = ZusUtils.useStore(ConfigClient.Store)
 	const user = UsersClient.useLoggedInUser()
 	if (!config || !user) return null
 

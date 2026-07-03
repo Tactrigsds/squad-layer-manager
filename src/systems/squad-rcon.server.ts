@@ -1,14 +1,15 @@
-import { type CleanupTasks, sleep } from '@/lib/async'
+import { sleep } from '@/lib/async'
 import { AsyncResource } from '@/lib/async-resource'
+import * as Cleanup from '@/lib/cleanup'
 import { matchLog } from '@/lib/log-parsing'
 import type { DecodedPacket } from '@/lib/rcon/core-rcon'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 
 import * as SM from '@/models/squad.models'
-import * as GlobalSettings from '@/systems/global-settings.server'
 import * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
+import * as Settings from '@/systems/settings.server'
 
 import * as Rx from 'rxjs'
 
@@ -27,7 +28,7 @@ export type SquadRcon = {
 	teams: AsyncResource<SM.TeamsRes, C.Rcon & C.AdminList>
 }
 
-export function initSquadRcon(ctx: C.Rcon & C.AdminList, cleanup: CleanupTasks): SquadRcon {
+export function initSquadRcon(ctx: C.Rcon & C.AdminList, cleanup: Cleanup.Tasks): SquadRcon {
 	const rcon = ctx.rcon
 	const layersStatus: SquadRcon['layersStatus'] = new AsyncResource<SM.LayerStatusRes, C.Rcon>(
 		`serverStatus`,
@@ -354,8 +355,8 @@ export async function warn(ctx: C.SquadRcon & C.AdminList, ids: SM.PlayerIds.Eos
 		repeatCount = opts.repeat || 1
 		prefix = opts.prefix ?? prefix
 	}
-	if (msgArr[0] && GlobalSettings.GLOBAL_SETTINGS.warnPrefix && prefix) {
-		msgArr[0] = GlobalSettings.GLOBAL_SETTINGS.warnPrefix + msgArr[0]
+	if (msgArr[0] && Settings.GLOBAL_SETTINGS.warnPrefix && prefix) {
+		msgArr[0] = Settings.GLOBAL_SETTINGS.warnPrefix + msgArr[0]
 	}
 
 	log.info(`Warning player: %s: %s`, SM.PlayerIds.prettyPrint(ids), msgArr)

@@ -17,13 +17,13 @@ import * as MatchHistory from '@/systems/match-history.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sessions from '@/systems/sessions.server'
+import * as Settings from '@/systems/settings.server'
 import * as SquadLogsReceiver from '@/systems/squad-logs-receiver.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Teamswitches from '@/systems/teamswitches.server'
 import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
-import * as GlobalSettings from '@/systems/global-settings.server'
 import * as Vote from '@/systems/vote.server'
 import * as WsSession from '@/systems/ws-session.server'
 
@@ -62,13 +62,13 @@ await C.spanOp('main', { module }, async () => {
 	Vote.setup()
 	WsSession.setup()
 	await Promise.all([Config.ensureSetup(), LayerDb.setup(), DB.setup(), FilterEntity.setup()])
+	Config.pushPublicConfig()
 	PersistedCache.setup()
 	await Battlemetrics.setup()
 	Rbac.setup()
 	void Sessions.setup()
-	await GlobalSettings.setup(DB.addPooledDb(CS.init()))
-	Config.setupPublicConfig()
-	SquadLogsReceiver.setup()
+	await Settings.setup(DB.addPooledDb(CS.init()))
+	await SquadLogsReceiver.setup()
 	await Promise.all([SquadServer.setup(), Discord.setup()])
 	const { serverClosed } = await Fastify.setup()
 	if (ENV.NODE_ENV === 'development') {

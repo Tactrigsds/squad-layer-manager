@@ -1,12 +1,13 @@
 import React from 'react'
 
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useIsDesktopSize } from '@/lib/browser.ts'
 
 import PrimaryPanel from './primary-panel.tsx'
 import SecondaryPanel from './secondary-panel.tsx'
 import TabsList from './ui/tabs-list.tsx'
 
-export default function ServerDashboard() {
+export default function ServerDashboard(props: { stores: SquadServerFrame.KeyProp }) {
 	const [activeTab, setActiveTab] = React.useState<'layers' | 'secondary'>('layers')
 	const isDesktop = useIsDesktopSize()
 
@@ -30,13 +31,13 @@ export default function ServerDashboard() {
 					</div>
 
 					<div className="flex-1 min-h-0" style={{ display: activeTab === 'layers' ? 'flex' : 'none' }}>
-						<PrimaryPanel />
+						<PrimaryPanel stores={props.stores} />
 					</div>
 					<div
 						className="flex-1 min-h-0"
 						style={{ display: activeTab === 'secondary' ? 'flex' : 'none' }}
 					>
-						<SecondaryPanel />
+						<SecondaryPanel stores={props.stores} />
 					</div>
 				</div>
 			)}
@@ -46,11 +47,11 @@ export default function ServerDashboard() {
 				<div className="flex gap-2 h-full min-h-0 w-full justify-center">
 					{/* left column */}
 					<div className="flex flex-col gap-2 shrink-0 min-w-0">
-						<PrimaryPanel />
+						<PrimaryPanel stores={props.stores} />
 					</div>
 					{/* right column — explicit width matches SecondaryPanel max-w so justify-center works */}
 					<div className="flex min-h-0 min-w-0 w-[800px] shrink">
-						<SecondaryPanel />
+						<SecondaryPanel stores={props.stores} />
 					</div>
 				</div>
 			)}

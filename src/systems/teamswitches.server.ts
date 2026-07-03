@@ -29,6 +29,7 @@ import * as UserPresence from '@/systems/user-presence.server'
 import { E_TIMEOUT, Mutex, MutexInterface, withTimeout } from 'async-mutex'
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
+import { z } from 'zod'
 
 export const module = initModule('teamswitches')
 
@@ -67,7 +68,7 @@ export function setup() {
 	log = module.getLogger()
 }
 
-export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup & C.UserPresence) {
+export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 	const serverId = ctx.serverId
 	const context: TeamswitchContext = {
 		session: RbSyncState.Server.initSession(TSW.initState(), {}),
@@ -230,8 +231,10 @@ function buildFactionLines(
 
 const orpcBase = getOrpcBase(module)
 export const orpcRouter = {
-	watchUpdates: orpcBase.meta({ logLevel: 'trace' }).handler(async function* watchOps({ context, signal }) {
-		const obs = SquadServer.selectedServerCtx$(context).pipe(
+	watchUpdates: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function* watchOps(
+		{ context, signal, input },
+	) {
+		const obs = SquadServer.sliceCtx$(context.wsClientId, input.serverId).pipe(
 			withAbortSignal(signal!),
 			Rx.switchMap((ctx) => {
 				if (!ctx) return Rx.EMPTY
@@ -247,16 +250,18 @@ export const orpcRouter = {
 	}),
 
 	// TODO we need to filter errors back to the client that might have occured while handling side-effects
-	dispatchOp: orpcBase.meta({ type: 'mutation' }).input(TSW.OpSchema).handler(async ({ context, input }) => {
-		const ctx = SquadServer.resolveWsClientSliceCtx(context)
-		const source = 'source' in input ? input.source : undefined
-		if (!source?.discordId || source.discordId !== ctx.user.discordId) {
-			return { code: 'err:invalid-source' as const }
-		}
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
-		if (denyRes) return denyRes
-		await dispatchOp(ctx, input)
-	}),
+	dispatchOp: orpcBase.meta({ type: 'mutation' }).input(z.object({ serverId: z.string(), op: TSW.OpSchema })).handler(
+		async ({ context, input: { serverId, op: input } }) => {
+			const ctx = SquadServer.resolveSliceCtx(context, serverId)
+			const source = 'source' in input ? input.source : undefined
+			if (!source?.discordId || source.discordId !== ctx.user.discordId) {
+				return { code: 'err:invalid-source' as const }
+			}
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
+			if (denyRes) return denyRes
+			await dispatchOp(ctx, input)
+		},
+	),
 }
 
 const dispatchOp = C.spanOp(

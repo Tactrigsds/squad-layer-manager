@@ -1,3 +1,4 @@
+import * as ZusUtils from '@/lib/zustand'
 import { z } from 'zod'
 import * as Zus from 'zustand'
 
@@ -44,7 +45,7 @@ export function setup() {
 }
 
 export function useTheme() {
-	const { theme, setTheme } = Zus.useStore(ThemeStore)
+	const { theme, setTheme } = ZusUtils.useStore(ThemeStore)
 	const resolvedTheme = theme === 'system'
 		? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
 		: theme

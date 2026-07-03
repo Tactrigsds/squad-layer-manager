@@ -1,4 +1,7 @@
+import * as ChatPrt from '@/frame-partials/chat.partial'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useToast } from '@/hooks/use-toast'
+import * as ZusUtils from '@/lib/zustand'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
@@ -10,25 +13,28 @@ import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { ContextMenuItem, ContextMenuLabel, ContextMenuSeparator } from './ui/context-menu'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
 
-export default function PlayerBulkContextMenuOptions({ playerIds }: { playerIds: SM.PlayerId[] }) {
+export default function PlayerBulkContextMenuOptions(
+	{ playerIds, stores }: { playerIds: SM.PlayerId[]; stores: SquadServerFrame.KeyProp },
+) {
 	const openDialog = useAlertDialog()
 	const closeDialog = useCloseAlertDialog()
 	const { toast } = useToast()
 
 	const warnMutation = SquadServerClient.useWarnPlayerMutation()
 	const removeFromSquadMutation = SquadServerClient.useRemoveFromSquadMutation()
+	const serverId = stores.squadServer.serverId
 
 	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
 
 	async function switchNow() {
-		const initialState = TSWClient.Select.localState(TSWClient.Store.getState())
+		const initialState = TSWClient.Sel.localState(ZusUtils.getState(stores.squadServer))
 		const initialTeams = new Map(playerIds.map(id => [id, initialState.players.get(id)]))
-		const unsubscribe = TSWClient.Store.subscribe(state => {
-			const current = TSWClient.Select.localState(state)
+		const unsubscribe = ZusUtils.resolveReadStore(stores.squadServer).subscribe(state => {
+			const current = TSWClient.Sel.localState(state)
 			if (playerIds.some(id => current.players.get(id) !== initialTeams.get(id))) closeDialog()
 		})
-		UPClient.Store.getState().updateActivity({ code: 'set-player-dialogue', dialog: 'SWITCHING_PLAYERS' })
+		UPClient.Actions.updateActivity({ code: 'set-player-dialogue', dialog: 'SWITCHING_PLAYERS' })
 		try {
 			const result = await openDialog({
 				title: 'Switch Players Now',
@@ -40,19 +46,19 @@ export default function PlayerBulkContextMenuOptions({ playerIds }: { playerIds:
 				return
 			}
 			if (result !== 'confirm') return
-			TSWClient.Actions.switchNow(playerIds)
+			TSWClient.Actions.switchNow(stores, playerIds)
 		} finally {
 			unsubscribe()
-			UPClient.Store.getState().updateActivity({ code: 'clear-player-dialogue' })
+			UPClient.Actions.updateActivity({ code: 'clear-player-dialogue' })
 		}
 	}
 
 	async function warn() {
-		TSWClient.Actions.ensureViewingTeams()
-		UPClient.Store.getState().updateActivity({ code: 'set-player-dialogue', dialog: 'WARNING_PLAYERS' })
+		TSWClient.Actions.ensureViewingTeams(serverId)
+		UPClient.Actions.updateActivity({ code: 'set-player-dialogue', dialog: 'WARNING_PLAYERS' })
 		try {
 			let reason = ''
-			const allPlayers = SquadServerClient.ChatStore.getState().chatState.interpolatedState.players
+			const allPlayers = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer)).players
 			const usernames = playerIds.map(id => SM.PlayerIds.find(allPlayers, p => p.ids, id)?.ids.username ?? id)
 			const result = await openDialog({
 				title: `Warn ${playerIds.length} Players`,
@@ -70,15 +76,15 @@ export default function PlayerBulkContextMenuOptions({ playerIds }: { playerIds:
 				buttons: [{ id: 'confirm', label: 'Send Warning' }],
 			})
 			if (result !== 'confirm' || !reason.trim()) return
-			await Promise.all(playerIds.map(playerId => warnMutation.mutateAsync({ playerId, reason: reason.trim() })))
+			await Promise.all(playerIds.map(playerId => warnMutation.mutateAsync({ serverId, playerId, reason: reason.trim() })))
 		} finally {
-			UPClient.Store.getState().updateActivity({ code: 'clear-player-dialogue' })
+			UPClient.Actions.updateActivity({ code: 'clear-player-dialogue' })
 		}
 	}
 
 	async function removeFromSquad() {
-		TSWClient.Actions.ensureViewingTeams()
-		UPClient.Store.getState().updateActivity({ code: 'set-player-dialogue', dialog: 'REMOVING_FROM_SQUAD' })
+		TSWClient.Actions.ensureViewingTeams(serverId)
+		UPClient.Actions.updateActivity({ code: 'set-player-dialogue', dialog: 'REMOVING_FROM_SQUAD' })
 		try {
 			const result = await openDialog({
 				title: 'Remove from Squad',
@@ -86,9 +92,9 @@ export default function PlayerBulkContextMenuOptions({ playerIds }: { playerIds:
 				buttons: [{ id: 'confirm', label: 'Remove' }],
 			})
 			if (result !== 'confirm') return
-			await Promise.all(playerIds.map(id => removeFromSquadMutation.mutateAsync(id)))
+			await Promise.all(playerIds.map(playerId => removeFromSquadMutation.mutateAsync({ serverId, playerId })))
 		} finally {
-			UPClient.Store.getState().updateActivity({ code: 'clear-player-dialogue' })
+			UPClient.Actions.updateActivity({ code: 'clear-player-dialogue' })
 		}
 	}
 
@@ -101,12 +107,12 @@ export default function PlayerBulkContextMenuOptions({ playerIds }: { playerIds:
 			</PermissionDeniedTooltip>
 			<ContextMenuSeparator />
 			<PermissionDeniedTooltip denied={manageDenied}>
-				<ContextMenuItem onClick={() => TSWClient.Actions.switchNext(playerIds)} disabled={!!manageDenied}>
+				<ContextMenuItem onClick={() => TSWClient.Actions.switchNext(stores, playerIds)} disabled={!!manageDenied}>
 					Switch Next
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
-				<ContextMenuItem onClick={() => TSWClient.Actions.removeSwitch(playerIds)} disabled={!!manageDenied}>
+				<ContextMenuItem onClick={() => TSWClient.Actions.removeSwitch(stores, playerIds)} disabled={!!manageDenied}>
 					Delete Switches
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>

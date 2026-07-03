@@ -71,11 +71,13 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
 		<AlertDialogContext.Provider value={{ openDialog, closeDialog }}>
 			{children}
 			<AlertDialog open={open} onOpenChange={handleOpenChange}>
-				<AlertDialogContent onOpenAutoFocus={e => {
+				<AlertDialogContent
+					onOpenAutoFocus={e => {
 						if (!options?.content) return
 						e.preventDefault()
 						;(e.currentTarget as HTMLElement).querySelector('input')?.focus()
-					}}>
+					}}
+				>
 					<AlertDialogHeader>
 						<AlertDialogTitle>{options?.title}</AlertDialogTitle>
 						{options?.description && <AlertDialogDescription>{options.description}</AlertDialogDescription>}

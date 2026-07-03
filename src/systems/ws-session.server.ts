@@ -4,9 +4,8 @@ import { initModule } from '@/server/logger'
 
 import type * as C from '@/server/context'
 
-import * as SquadServer from '@/systems/squad-server.server'
-import { metrics } from '@opentelemetry/api'
 import { IsolatedSubject } from '@/lib/isolated-subject'
+import { metrics } from '@opentelemetry/api'
 export const wsSessions = new Map<string, C.OrpcBase>()
 export const disconnect$ = new IsolatedSubject<C.OrpcBase>()
 export const connect$ = new IsolatedSubject<C.OrpcBase>()
@@ -36,7 +35,6 @@ export function registerClient(ctx: C.OrpcBase) {
 		log.info('%s has disconnected (%s)', ctx.user.username, ctx.wsClientId)
 		disconnect$.next(ctx)
 		wsSessions.delete(ctx.wsClientId)
-		SquadServer.globalState.selectedServers.delete(ctx.wsClientId)
 	})
 	log.info('%s has connected (%s)', ctx.user.username, ctx.wsClientId)
 	connect$.next(ctx)

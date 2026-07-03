@@ -1,20 +1,19 @@
 import * as DH from '@/lib/display-helpers'
 import type * as CHAT from '@/models/chat.models'
 
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as ZusUtils from '@/lib/zustand'
 import * as BM from '@/models/battlemetrics.models'
 import * as L from '@/models/layer'
 import type * as SM from '@/models/squad.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
-import * as ConfigClient from '@/systems/config.client'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
+import * as SettingsClient from '@/systems/settings.client'
 
-import * as SquadServerClient from '@/systems/squad-server.client'
 import * as ThemeClient from '@/systems/theme.client'
 import type { EChartsOption } from 'echarts'
 import ReactECharts from 'echarts-for-react'
 import React from 'react'
-import * as Zus from 'zustand'
 
 function calculateOverallKD(events: CHAT.EventEnriched[]): { team1Ratio: number; team2Ratio: number } {
 	let team1Kills = 0
@@ -176,19 +175,20 @@ export function ServerActivityCharts(props: {
 	currentMatchOrdinal?: number
 	currentMatchId?: number
 	layerId?: L.LayerId
+	stores: SquadServerFrame.KeyProp
 }) {
-	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
-	const selectedMatchOrdinal = Zus.useStore(SquadServerClient.ChatStore, s => s.selectedMatchOrdinal)
+	const displayTeamsNormalized = ZusUtils.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
+	const selectedMatchOrdinal = ZusUtils.useStore(props.stores.squadServer!, s => s.chat.selectedMatchOrdinal)
 	const { resolvedTheme } = ThemeClient.useTheme()
 	const isDark = resolvedTheme === 'dark'
 
 	// Get unfiltered live events for K/D calculation
-	const liveUnfilteredEvents = Zus.useStore(
-		SquadServerClient.ChatStore,
+	const liveUnfilteredEvents = ZusUtils.useStore(
+		props.stores.squadServer!,
 		ZusUtils.useDeep(s => {
-			if (selectedMatchOrdinal !== null || !s.chatState.synced || props.currentMatchId === undefined) return null
+			if (selectedMatchOrdinal !== null || !s.chat.chatState.synced || props.currentMatchId === undefined) return null
 
-			const eventBuffer = s.chatState.eventBuffer
+			const eventBuffer = s.chat.chatState.eventBuffer
 			const unfiltered: CHAT.EventEnriched[] = []
 			for (const event of eventBuffer) {
 				if (event.matchId !== props.currentMatchId) continue
@@ -199,29 +199,25 @@ export function ServerActivityCharts(props: {
 	)
 
 	// Current live players for flag group chart
-	const livePlayers = Zus.useStore(
-		SquadServerClient.ChatStore,
+	const livePlayers = ZusUtils.useStore(
+		props.stores.squadServer!,
 		ZusUtils.useDeep(s => {
-			if (selectedMatchOrdinal !== null || !s.chatState.synced) return null
-			return s.chatState.interpolatedState.players
+			if (selectedMatchOrdinal !== null || !s.chat.chatState.synced) return null
+			return s.chat.chatState.interpolatedState.players
 		}),
 	)
 
 	const bmData = BattlemetricsClient.usePlayerBmData()
 	const orgFlags = BattlemetricsClient.useOrgFlags()
-	const config = ConfigClient.useConfig()
+	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
 	const playerFlagGroupings = config?.playerFlagGroupings
 
 	const groupingModeIds = React.useMemo(
 		() => playerFlagGroupings ? BM.getGroupingModeIds(playerFlagGroupings) : [],
 		[playerFlagGroupings],
 	)
-	const selectedModeId = Zus.useStore(BattlemetricsClient.Store, s => s.selectedModeId)
-	const setSelectedModeId = Zus.useStore(BattlemetricsClient.Store, s => s.setSelectedModeId)
-	const slsOnly = Zus.useStore(BattlemetricsClient.Store, s => s.slsOnly)
-	const activeModeId = selectedModeId !== null && groupingModeIds.includes(selectedModeId)
-		? selectedModeId
-		: groupingModeIds[0] ?? null
+	const slsOnly = ZusUtils.useStore(BattlemetricsClient.Store, s => s.slsOnly)
+	const activeModeId = ZusUtils.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingModeId(groupingModeIds))
 
 	const events = selectedMatchOrdinal !== null ? props.historicalEvents : liveUnfilteredEvents
 	const isEmpty = !events || events.length === 0
@@ -398,7 +394,7 @@ export function ServerActivityCharts(props: {
 									<button
 										type="button"
 										key={modeId}
-										onClick={() => setSelectedModeId(modeId)}
+										onClick={() => BattlemetricsClient.Actions.setSelectedModeId(modeId)}
 										className={`text-xs px-2 py-0.5 rounded ${
 											activeModeId === modeId ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
 										}`}

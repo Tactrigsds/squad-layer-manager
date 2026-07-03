@@ -1,26 +1,26 @@
+import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as Obj from '@/lib/object'
 import * as BM from '@/models/battlemetrics.models'
 import * as MH from '@/models/match-history.models'
-import * as SquadServer from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
-import type { PublicConfig } from '@/server/config'
+import type { PublicSettings } from '@/systems/settings.server'
 
 export type EnrichedPlayer = SM.Player & {
 	bmProfile: Omit<BM.PlayerFlagsAndProfile, 'playerIds'> | undefined
 	grouping?: string
 }
 
-export namespace Select {
+export namespace Sel {
 	export function playersForTeam(teamId: MH.NormedTeamId | SM.TeamId) {
 		return (
-			store: SquadServer.ChatStore,
+			store: ChatPrt.Store,
 			currentMatch: MH.MatchDetails | undefined,
 			bmData: BM.PublicPlayerBmData,
 			bmStore: BM.StoreState,
-			config: PublicConfig | undefined,
+			settings: PublicSettings | undefined,
 		) => {
-			const players = SquadServer.Select.playersForTeam(teamId)(store, currentMatch)
-			const playerFlagGroupings = config?.playerFlagGroupings ?? []
+			const players = ChatPrt.Sel.playersForTeam(teamId)(store, currentMatch)
+			const playerFlagGroupings = settings?.playerFlagGroupings ?? []
 			const modeIds = BM.getGroupingModeIds(playerFlagGroupings)
 			const activeModeId = bmStore.selectedModeId !== null && modeIds.includes(bmStore.selectedModeId)
 				? bmStore.selectedModeId

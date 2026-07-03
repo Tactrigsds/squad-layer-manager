@@ -1,20 +1,34 @@
+import * as ZusUtils from '@/lib/zustand'
 import * as BM from '@/models/battlemetrics.models'
 import * as RPC from '@/orpc.client'
-import * as ConfigClient from '@/systems/config.client'
+import * as SettingsClient from '@/systems/settings.client'
 import * as ReactRx from '@react-rxjs/core'
 import { useQuery } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 
-export const Store = Zus.createStore<BM.StoreState>((set) => ({
+export const Store = Zus.createStore<BM.StoreState>(() => ({
 	selectedModeId: null,
-	setSelectedModeId: (id) => set({ selectedModeId: id }),
 	slsOnly: false,
-	setSlsOnly: (v) => set({ slsOnly: v }),
-
 	orgFlags: [],
-	setOrgFlags: (flags) => set({ orgFlags: flags }),
 }))
+
+export namespace Sel {
+	// resolves the active grouping mode: the selected one if still configured, else the first configured
+	export const activeGroupingModeId = (groupingModeIds: string[]) => (state: BM.StoreState) =>
+		state.selectedModeId !== null && groupingModeIds.includes(state.selectedModeId)
+			? state.selectedModeId
+			: groupingModeIds[0] ?? null
+}
+
+export namespace Actions {
+	export function setSelectedModeId(id: string | null) {
+		Store.setState({ selectedModeId: id })
+	}
+	export function setSlsOnly(v: boolean) {
+		Store.setState({ slsOnly: v })
+	}
+}
 
 export const [usePlayerBmData, playerBmData$] = ReactRx.bind<BM.PublicPlayerBmData>(
 	RPC.observe(() => RPC.orpc.battlemetrics.watchPlayerBmData.call()).pipe(
@@ -29,7 +43,7 @@ export function useOrgFlags(): BM.PlayerFlag[] | undefined {
 }
 
 export function sortFlagsByHierarchy<T extends BM.PlayerFlag>(flags: T[]): T[] {
-	const hierarchy = ConfigClient.getConfig()?.playerFlagColorHierarchy
+	const hierarchy = SettingsClient.getSettings()?.playerFlagColorHierarchy
 	if (!hierarchy || hierarchy.length === 0) return flags
 	return [...flags].sort((a, b) => {
 		const aIdx = hierarchy.indexOf(a.id)
@@ -62,8 +76,8 @@ export function usePlayerProfile(playerId: string) {
 export function useGroupedPlayerFlagColor(playerId: string): string | null {
 	const flags = usePlayerFlags(playerId)
 	const orgFlags = useOrgFlags()
-	const config = ConfigClient.useConfig()
-	const selectedModeId = Zus.useStore(Store, s => s.selectedModeId)
+	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
+	const selectedModeId = ZusUtils.useStore(Store, s => s.selectedModeId)
 
 	if (!flags || flags.length === 0) return null
 
@@ -114,6 +128,6 @@ export function setup() {
 
 	void (async () => {
 		const orgFlagsRes = await RPC.queryClient.fetchQuery(RPC.orpc.battlemetrics.listOrgFlags.queryOptions({ staleTime: Infinity }))
-		Store.getState().setOrgFlags(orgFlagsRes ?? [])
+		Store.setState({ orgFlags: orgFlagsRes ?? [] })
 	})()
 }

@@ -1,8 +1,10 @@
 import { getTeamsDisplay } from '@/components/teams-display'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Table, TableBody, TableCell as ShadcnTableCell, TableHead as ShadcnTableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import * as ChatPrt from '@/frame-partials/chat.partial'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 
 import * as UPClient from '@/systems/user-presence.client'
 
@@ -10,22 +12,22 @@ import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import * as ZusUtils from '@/lib/zustand'
 
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import type * as MH from '@/models/match-history.models'
 
+import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as DndKit from '@/systems/dndkit.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
-import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import * as Zus from 'zustand'
 import BalanceTriggerAlert from './balance-trigger-alert'
 import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 import LayerSourceDisplay from './layer-source-display'
@@ -40,10 +42,10 @@ const STD_PADDING = 'pl-4'
 const MAX_PAGES = 30
 const MATCH_LIMIT = 8
 
-export function MatchHistoryPanelContent() {
-	const globalSettings = Zus.useStore(GlobalSettingsStore)
+export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyProp }) {
+	const globalSettings = ZusUtils.useStore(GlobalSettingsStore)
 	const featureFlags = FeatureFlags.useFeatureFlags()
-	const historyState = MatchHistoryClient.useMatchHistoryState()
+	const historyState = MatchHistoryClient.useMatchHistoryState(props.stores.squadServer!.serverId)
 	const history = historyState.recentMatches
 	const [showFullDay, setShowFullDay] = React.useState(false)
 	type MatchesByDate = [string, MH.MatchDetails[]][]
@@ -109,9 +111,9 @@ export function MatchHistoryPanelContent() {
 	matchesByDateRef.current = matchesByDate
 
 	React.useEffect(() => {
-		return SquadServerClient.ChatStore.subscribe((state, prevState) => {
-			if (state.selectedMatchOrdinal === prevState.selectedMatchOrdinal) return
-			const ordinal = state.selectedMatchOrdinal
+		return ZusUtils.resolveReadStore(props.stores.squadServer!).subscribe((state, prevState) => {
+			if (state.chat.selectedMatchOrdinal === prevState.chat.selectedMatchOrdinal) return
+			const ordinal = state.chat.selectedMatchOrdinal
 			if (ordinal === null) {
 				setCurrentPage(1)
 				return
@@ -125,7 +127,7 @@ export function MatchHistoryPanelContent() {
 			if (idx === -1) return
 			setCurrentPage(matchesByDateRef.current.length - idx)
 		})
-	}, [])
+	}, [props.stores.squadServer])
 
 	const onFirstPage = currentPage === 1
 	const totalPages = matchesByDate.length
@@ -322,6 +324,7 @@ export function MatchHistoryPanelContent() {
 												currentMatchOffset={entry.ordinal - currentMatchOrdinal}
 												balanceTriggerEvents={balanceTriggerEvents}
 												debug__showBalanceTriggers={featureFlags.showMockBalanceTriggers}
+												stores={props.stores}
 											/>
 										)
 									})}
@@ -334,19 +337,12 @@ export function MatchHistoryPanelContent() {
 	)
 }
 
-export default function MatchHistoryPanel() {
-	return (
-		<Card>
-			<MatchHistoryPanelContent />
-		</Card>
-	)
-}
-
 interface MatchHistoryRowProps {
 	entry: MH.MatchDetails
 	currentMatchOffset: number
 	balanceTriggerEvents: BAL.BalanceTriggerEvent[]
 	debug__showBalanceTriggers?: boolean
+	stores: SquadServerFrame.KeyProp
 }
 
 function MatchHistoryRow({
@@ -354,10 +350,11 @@ function MatchHistoryRow({
 	currentMatchOffset,
 	balanceTriggerEvents,
 	debug__showBalanceTriggers,
+	stores,
 }: MatchHistoryRowProps) {
-	const globalSettings = Zus.useStore(GlobalSettingsStore)
-	const serverRolling = !!SquadServerClient.useServerRolling()
-	const selectedMatchOrdinalFromStore = Zus.useStore(SquadServerClient.ChatStore, s => s.selectedMatchOrdinal)
+	const globalSettings = ZusUtils.useStore(GlobalSettingsStore)
+	const serverRolling = !!SquadServerClient.useServerRolling(stores.squadServer!.serverId)
+	const selectedMatchOrdinalFromStore = ZusUtils.useStore(stores.squadServer!, s => s.chat.selectedMatchOrdinal)
 
 	// Determine if this match is being viewed in the activity panel
 	const isViewingThisMatch = selectedMatchOrdinalFromStore === null
@@ -388,22 +385,22 @@ function MatchHistoryRow({
 			// If mouse moved less than 5 pixels, treat as click (not drag)
 			if (distance < 5) {
 				// Switch to this match's events
-				const state = SquadServerClient.ChatStore.getState()
 				if (entry.isCurrentMatch) {
-					void state.setSelectedMatchOrdinal(null)
+					void ChatPrt.Actions.setSelectedMatchOrdinal({ chat: stores.squadServer! }, null)
 				} else {
-					void state.setSelectedMatchOrdinal(entry.ordinal)
+					void ChatPrt.Actions.setSelectedMatchOrdinal({ chat: stores.squadServer! }, entry.ordinal)
 				}
 			}
 			mouseDownPosRef.current = null
 		}
-	}, [entry.ordinal, entry.isCurrentMatch])
+	}, [entry.ordinal, entry.isCurrentMatch, stores.squadServer])
 
 	const handleMouseLeave = React.useCallback(() => {
 		mouseDownPosRef.current = null
 	}, [])
 	const statusData = LayerQueriesClient.useLayerItemStatusData(
 		entry.historyEntryId,
+		stores.squadServer,
 	)
 
 	// Mock balance triggers for debug mode

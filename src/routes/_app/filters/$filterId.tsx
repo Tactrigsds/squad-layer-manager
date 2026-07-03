@@ -88,5 +88,12 @@ function RouteComponent() {
 	}, [params.filterId])
 
 	if (!loaderData) return <p>Something went wrong</p>
-	return <FilterEdit {...loaderData} />
+	return (
+		<FilterEdit
+			entity={loaderData.entity}
+			contributors={loaderData.contributors}
+			owner={loaderData.owner}
+			stores={{ filterEditor: loaderData.frameKey }}
+		/>
+	)
 }

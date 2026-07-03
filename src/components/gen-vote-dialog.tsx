@@ -4,19 +4,20 @@ import { StringEqConfig } from '@/components/filter-card'
 import PoolCheckboxes from '@/components/pool-checkboxes.tsx'
 import ShortLayerName from '@/components/short-layer-name'
 import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogDescription, HeadlessDialogHeader, HeadlessDialogTitle } from '@/components/ui/headless-dialog'
-import { getFrameState, useFrameLifecycle, useFrameStore } from '@/frames/frame-manager'
+import { useFrameLifecycle } from '@/frames/frame-manager'
 import * as GenVoteFrame from '@/frames/gen-vote.frame'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as MatchHistoryClient from '@/systems/match-history.client'
 
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react'
-import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import * as ZusUtils from '@/lib/zustand'
 
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as V from '@/models/vote.models'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
-import * as QD from '@/systems/queue-dashboard.client'
+import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import { ConstraintEvalTooltip } from './constraint-matches-indicator'
@@ -34,7 +35,9 @@ export type GenVoteDialogProps = Omit<GenVoteDialogContentProps, 'onClose'> & {
 type GenVoteDialogContentProps = {
 	title: string
 	description?: React.ReactNode
-	frames?: Partial<GenVoteFrame.KeyProp>
+	// FIXME stage4: GenVoteFrame.createInput now requires a `server` key to build a fresh gen-vote frame.
+	// Callers that don't already have a `genVote` frame instance must also supply `stores.squadServer`.
+	stores: Partial<GenVoteFrame.KeyProp> & SquadServerFrame.KeyProp
 	cursor?: LL.Cursor
 	onClose: () => void
 	onSubmit: (result: GenVoteFrame.Result, cursor?: LL.Cursor) => void
@@ -42,15 +45,16 @@ type GenVoteDialogContentProps = {
 
 const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenVoteDialogContent(props) {
 	const frameInputRef = useRefConstructor(() => {
-		if (props.frames?.genVote) return undefined
-		return GenVoteFrame.createInput({ cursor: props.cursor })
+		if (props.stores.genVote) return undefined
+		return GenVoteFrame.createInput({ cursor: props.cursor, server: props.stores.squadServer })
 	})
 	const frameKey = useFrameLifecycle(GenVoteFrame.frame, {
-		frameKey: props.frames?.genVote,
+		frameKey: props.stores.genVote,
 		input: frameInputRef.current,
 		deps: undefined,
 		equalityFn: Obj.deepEqual,
 	})
+	const genVoteStores: GenVoteFrame.KeyProp = React.useMemo(() => ({ genVote: frameKey }), [frameKey])
 
 	const {
 		choices,
@@ -62,7 +66,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		includedConstraints: includedConstraintKeys,
 		uniqueConstraints: uniqueConstraintKeys,
 		voteConfig,
-	} = useFrameStore(
+	} = ZusUtils.useStore(
 		frameKey,
 		ZusUtils.useShallow(s => ({
 			choices: s.choices,
@@ -86,51 +90,50 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 			setRegeneratingIndex(undefined)
 		}
 	}, [generating])
-	// const index = useFrameStore(frameKey, s => LQY.resolveCursorIndex(s.cursor)),
 	const handleToggleUniqueConstraint = (key: V.GenVote.ChoiceConstraintKey) => {
-		const state = getFrameState(frameKey)
+		const state = ZusUtils.getState(frameKey)
 		if (state.uniqueConstraints.includes(key)) {
-			state.removeUniqueConstraint(key)
+			GenVoteFrame.Actions.removeUniqueConstraint(genVoteStores, key)
 		} else {
-			state.addUniqueConstraint(key)
+			GenVoteFrame.Actions.addUniqueConstraint(genVoteStores, key)
 		}
 	}
 
-	const teamParity = ReactRxHelpers.useStateObservableSelection(
-		QD.layerItemsState$,
-		React.useCallback((state) => {
+	const teamParity = ZusUtils.useStore(
+		LayerQueueClient.layerItemsState$(props.stores.squadServer.serverId),
+		React.useCallback((state: LQY.LayerItemsState) => {
 			if (!cursor) return 0
 			return LQY.resolveTeamParityForCursor(state, LQY.fromLayerListCursor(state, cursor))
 		}, [cursor]),
 	)
 
 	const handleSubmit = () => {
-		const result = getFrameState(frameKey).result
-		const cursor = getFrameState(frameKey).cursor
+		const result = ZusUtils.getState(frameKey).result
+		const cursor = ZusUtils.getState(frameKey).cursor
 		if (!result) return
 		props.onSubmit(result, cursor)
 	}
 
 	const handleRegen = (choiceIndex?: number) => {
 		setRegeneratingIndex(choiceIndex === undefined ? 'all' : choiceIndex)
-		void getFrameState(frameKey).regen(choiceIndex)
+		void GenVoteFrame.Actions.regen(genVoteStores, choiceIndex)
 	}
 
 	const handleAddConstraint = (key: V.GenVote.ChoiceConstraintKey) => {
-		getFrameState(frameKey).addIncludedConstraint(key)
+		GenVoteFrame.Actions.addIncludedConstraint(genVoteStores, key)
 	}
 
 	const handleRemoveConstraint = (key: V.GenVote.ChoiceConstraintKey) => {
-		getFrameState(frameKey).removeIncludedConstraint(key)
+		GenVoteFrame.Actions.removeIncludedConstraint(genVoteStores, key)
 	}
 
 	const handleSetVoteConfig = (config: Partial<V.AdvancedVoteConfig> | null) => {
 		console.log('setting config ', config)
-		const state = getFrameState(frameKey)
 		if (config === null) {
-			state.setVoteConfig({})
+			// full reset: Actions.setVoteConfig merges onto existing state, so clear it out first via replace
+			ZusUtils.resolveStore<GenVoteFrame.Types['state']>(frameKey).setState({ voteConfig: {} })
 		} else {
-			state.setVoteConfig({ ...state.voteConfig, ...config })
+			GenVoteFrame.Actions.setVoteConfig(genVoteStores, config)
 		}
 	}
 
@@ -142,8 +145,8 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 					{props.description && <HeadlessDialogDescription>{props.description}</HeadlessDialogDescription>}
 				</div>
 				<div className="flex justify-end items-center space-x-2">
-					<PoolCheckboxes frameKey={frameKey} />
-					<AppliedFiltersPanel frameKey={frameKey} />
+					<PoolCheckboxes stores={{ poolCheckboxes: frameKey }} />
+					<AppliedFiltersPanel stores={{ squadServer: props.stores.squadServer, appliedFilters: frameKey }} />
 				</div>
 			</HeadlessDialogHeader>
 			<div>
@@ -232,7 +235,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 											<Button
 												size="sm"
 												variant="ghost"
-												onClick={() => getFrameState(frameKey).removeChoice(index)}
+												onClick={() => GenVoteFrame.Actions.removeChoice(genVoteStores, index)}
 												disabled={generating || choices.length <= 2}
 												title="Remove this choice (minimum 2 required)"
 											>
@@ -243,7 +246,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 									<div className="flex flex-col gap-2">
 										{includedConstraintKeys.map((key) => (
 											<ChoiceConstraintSelect
-												frameKey={frameKey}
+												stores={genVoteStores}
 												key={key}
 												constraintKey={key}
 												index={index}
@@ -257,7 +260,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 						<Button
 							size="sm"
 							variant="outline"
-							onClick={() => getFrameState(frameKey).addChoice()}
+							onClick={() => GenVoteFrame.Actions.addChoice(genVoteStores)}
 							disabled={generating}
 							title="Add choice"
 							className="w-full"
@@ -283,7 +286,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 								active={cursor?.type === 'start' ? 'next' : 'after'}
 								setActive={() => {
 									const newCursor: LL.Cursor = cursor?.type === 'start' ? { type: 'end' } : { type: 'start' }
-									getFrameState(frameKey).setCursor(newCursor)
+									GenVoteFrame.Actions.setCursor(genVoteStores, newCursor)
 								}}
 							/>
 							<Button onClick={handleSubmit} disabled={!canSubmit}>
@@ -298,16 +301,29 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 })
 
 function ChoiceConstraintSelect(
-	props: { frameKey: GenVoteFrame.Key; constraintKey: V.GenVote.ChoiceConstraintKey; index: number; value: string | undefined },
+	props: {
+		stores: GenVoteFrame.KeyProp & Partial<SquadServerFrame.KeyProp>
+		constraintKey: V.GenVote.ChoiceConstraintKey
+		index: number
+		value: string | undefined
+	},
 ) {
 	const handleSetConstraint = (index: number, key: V.GenVote.ChoiceConstraintKey, value: string | null | undefined) => {
-		getFrameState(props.frameKey).setChoiceConstraint(index, key, value)
+		GenVoteFrame.Actions.setChoiceConstraint(props.stores, index, key, value)
 	}
 	const column = props.constraintKey === 'Unit' ? 'Unit_1' : props.constraintKey
-	const input = useFrameStore(props.frameKey, ZusUtils.useDeep(GenVoteFrame.selectBaseQueryInput))
+	const recentMatches$ = React.useMemo(() => {
+		return props.stores.squadServer ? MatchHistoryClient.recentMatches$(props.stores.squadServer.serverId) : undefined
+	}, [props.stores.squadServer])
+	const input = ZusUtils.useStore(
+		props.stores.genVote,
+		props.stores.squadServer,
+		props.stores.squadServer ? recentMatches$ : undefined,
+		ZusUtils.useDeep(GenVoteFrame.Sel.baseQueryInput),
+	)
 	const components = LayerQueriesClient.useLayerComponents({ ...input, column: column })
-	const disallowedValues = useFrameStore(
-		props.frameKey,
+	const disallowedValues = ZusUtils.useStore(
+		props.stores.genVote,
 		ZusUtils.useShallow(s => {
 			let disallowedValues: string[] = []
 			for (let i = 0; i < s.choices.length; i++) {
@@ -344,7 +360,7 @@ export default function GenVoteDialog(props: GenVoteDialogProps) {
 			<GenVoteDialogContent
 				title={props.title}
 				description={props.description}
-				frames={props.frames}
+				stores={props.stores}
 				cursor={props.cursor}
 				onClose={onClose}
 				onSubmit={props.onSubmit}

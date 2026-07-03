@@ -3,6 +3,7 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, 
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import * as ZusUtils from '@/lib/zustand'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
@@ -36,12 +37,12 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 	const layerId = props.layerId ?? props.layerItem?.layerId
 	const itemId = props.layerItem && LQY.resolveId(props.layerItem)
 	const onMouseOver = () => {
-		LQYClient.Store.getState().setHoveredConstraintItemId(itemId ?? null)
+		LQYClient.Actions.setHoveredConstraintItemId(itemId ?? null)
 	}
 	const onMouseOut = () => {
-		const state = LQYClient.Store.getState()
+		const state = ZusUtils.getState(LQYClient.Store)
 		if (state.hoveredConstraintItemId !== itemId) return
-		state.setHoveredConstraintItemId(null)
+		LQYClient.Actions.setHoveredConstraintItemId(null)
 	}
 
 	const indicatorIcons: React.ReactNode[] = []

@@ -1,5 +1,5 @@
-import type { MySqlTableWithColumns, TableConfig } from 'drizzle-orm/mysql-core'
-import { getTableConfig } from 'drizzle-orm/mysql-core'
+import type { SQLiteTableWithColumns, TableConfig } from 'drizzle-orm/sqlite-core'
+import { getTableConfig } from 'drizzle-orm/sqlite-core'
 import superjson from 'superjson'
 export type Error = {
 	code: string
@@ -9,8 +9,8 @@ export async function returnInsertErrors<T>(runningQuery: Promise<T[]>) {
 	try {
 		return { code: 'ok' as const, data: (await runningQuery)[0] }
 	} catch (_err: unknown) {
-		const err = _err as { code: 'ER_DUP_ENTRY'; message: string; sql: string; sqlMessage: string; errno: number }
-		if (err.code === 'ER_DUP_ENTRY') {
+		const err = _err as { code: string; message: string }
+		if (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY') {
 			return {
 				code: 'err:already-exists' as const,
 				err,
@@ -20,8 +20,8 @@ export async function returnInsertErrors<T>(runningQuery: Promise<T[]>) {
 	}
 }
 
-export function superjsonify<C extends TableConfig, T extends Partial<MySqlTableWithColumns<TableConfig>['$inferInsert']>>(
-	schema: MySqlTableWithColumns<C>,
+export function superjsonify<C extends TableConfig, T extends Partial<SQLiteTableWithColumns<TableConfig>['$inferInsert']>>(
+	schema: SQLiteTableWithColumns<C>,
 	obj: T,
 ) {
 	const out = {} as typeof obj
@@ -29,7 +29,7 @@ export function superjsonify<C extends TableConfig, T extends Partial<MySqlTable
 	for (const name of Object.keys(obj)) {
 		const column = config.columns.find((c) => c.name === name)
 		if (!column) {
-			throw new Error(`Column ${name} not found in table ${config.baseName}`)
+			throw new Error(`Column ${name} not found in table ${config.name}`)
 		}
 		if (column.dataType === 'json') {
 			// @ts-expect-error idk
@@ -42,13 +42,13 @@ export function superjsonify<C extends TableConfig, T extends Partial<MySqlTable
 	return out
 }
 
-export function unsuperjsonify<C extends TableConfig>(schema: MySqlTableWithColumns<C>, obj: any) {
+export function unsuperjsonify<C extends TableConfig>(schema: SQLiteTableWithColumns<C>, obj: any) {
 	const out = {} as Record<string, any>
 	const config = getTableConfig(schema)
 	for (const name of Object.keys(obj)) {
 		const column = config.columns.find((c) => c.name === name)
 		if (!column) {
-			throw new Error(`Column ${name} not found in table ${config.baseName}`)
+			throw new Error(`Column ${name} not found in table ${config.name}`)
 		}
 		if (column.dataType === 'json' && obj[name] !== null && obj[name]) {
 			out[name] = superjson.deserialize(obj[name], { inPlace: true })
@@ -69,10 +69,10 @@ export async function returnUpdateErrors<T = never>(runningQuery: Promise<T[]>) 
 }
 
 export async function selectKeys<C extends TableConfig>(
-	schema: MySqlTableWithColumns<C>,
-	keys: (keyof MySqlTableWithColumns<C>['$inferSelect'])[],
+	schema: SQLiteTableWithColumns<C>,
+	keys: (keyof SQLiteTableWithColumns<C>['$inferSelect'])[],
 ) {
-	type Schema = MySqlTableWithColumns<C>
+	type Schema = SQLiteTableWithColumns<C>
 	const out: { [K in keyof Schema['$inferSelect']]: Schema['$inferSelect'][K] } = {} as any
 
 	for (const key of keys) {

@@ -107,58 +107,6 @@ export function filterTruthy() {
 	return <T>(o: Rx.Observable<T>) => o.pipe(Rx.filter((v) => !!v))
 }
 
-export function isSubscription(value: any): value is Rx.Subscription {
-	return typeof value === 'object' && 'subscribe' in value && 'unsubscribe' in value
-}
-export function isMutex(value: any): value is MutexInterface {
-	const methods = ['acquire', 'runExclusive', 'waitForUnlock', 'isLocked', 'release', 'cancel']
-	return typeof value === 'object' && methods.every((method) => method in value)
-}
-
-type CleanupTaskValue =
-	| Rx.Subscription
-	| Rx.ObservableInput<unknown>
-	| Rx.Subject<unknown>
-	| MutexInterface
-	| null
-	| undefined
-
-export type CleanupTask = (() => CleanupTaskValue | void) | CleanupTaskValue
-
-export type CleanupTasks = CleanupTask[]
-
-// runs cleanuptasks in a FILO fashion
-export function runCleanup(ctx: CS.Log, tasks: CleanupTasks) {
-	return Rx.lastValueFrom(Rx.concat(tasks.toReversed().map(to$)).pipe(Rx.endWith(0)))
-
-	function to$(_task: CleanupTask, index: number) {
-		try {
-			let task = typeof _task === 'function' ? _task() : _task
-			if (task == null || task == undefined) {
-				return Rx.EMPTY
-			}
-			if (task instanceof Rx.Subject) {
-				task.complete()
-				return Rx.EMPTY
-			}
-			if (isMutex(task)) {
-				task.cancel()
-				return Rx.EMPTY
-			}
-			if (isSubscription(task)) {
-				task.unsubscribe()
-				return Rx.EMPTY
-			}
-
-			return task
-		} catch (err) {
-			const unreversedIndex = tasks.length - index - 1
-			ctx.log.error(err, 'caught error during cleanup for task at index %d', unreversedIndex)
-			return Rx.EMPTY
-		}
-	}
-}
-
 /**
  * Inserts a function with a custom name into the stack trace of an rxjs pipe to make it somewhat more useful. Confusingly doesn't actually log values passing through.
  * The existence of this function is why you should never use rxjs unless you're addicted like me, and should probably use the effect library instead {@link https://effect.website}

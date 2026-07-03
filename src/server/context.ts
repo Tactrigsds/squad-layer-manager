@@ -1,7 +1,7 @@
 import type * as AR from '@/app-routes.ts'
 import type { AsyncResource, AsyncResourceInvocationOpts, ImmediateRefetchError } from '@/lib/async-resource.ts'
-import type { CleanupTasks } from '@/lib/async.ts'
 import { sleep, toCold } from '@/lib/async.ts'
+import * as Cleanup from '@/lib/cleanup.ts'
 import { LRUMap } from '@/lib/lru-map.ts'
 import { withAcquired } from '@/lib/nodejs-reentrant-mutexes.ts'
 import type { OtelModule } from '@/lib/otel'
@@ -14,7 +14,7 @@ import type * as USR from '@/models/users.models.ts'
 import type * as RBAC from '@/rbac.models'
 import type * as LayerQueueSys from '@/systems/layer-queue.server'
 import type * as MatchHistorySys from '@/systems/match-history.server'
-import type * as ServerSettingsSys from '@/systems/server-settings.server'
+import type * as SettingsSys from '@/systems/settings.server'
 import type * as SquadRconSys from '@/systems/squad-rcon.server'
 import type * as SquadServerSys from '@/systems/squad-server.server'
 import type * as TeamswitchSys from '@/systems/teamswitches.server'
@@ -231,8 +231,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 				const resolveLevel = (
 					level: Pino.Level | ((...a: Parameters<Cb>) => Pino.Level) | undefined,
 					fallback: Pino.Level,
-				): Pino.Level =>
-					typeof level === 'function' ? level(...(args as Parameters<Cb>)) : (level ?? fallback)
+				): Pino.Level => typeof level === 'function' ? level(...(args as Parameters<Cb>)) : (level ?? fallback)
 
 				const extraText = opts.extraText
 					? `${opts.extraText(...(args as Parameters<Cb>))} `
@@ -460,14 +459,13 @@ export type Teamswitch = CS.Ctx & {
 export type UserPresence =
 	& CS.Ctx
 	& UserPresenceSys.UserPresenceContext
-	& ServerId
 
 export type ServerSettings = CS.Ctx & {
-	serverSettings: ServerSettingsSys.ServerSettingsSlice
+	serverSettings: SettingsSys.ServerSettingsSlice
 } & ServerId
 
 export type ServerSliceCleanup = CS.Ctx & {
-	cleanup: CleanupTasks
+	cleanup: Cleanup.Tasks
 }
 export type ServerSlice =
 	& CS.Ctx
@@ -477,7 +475,6 @@ export type ServerSlice =
 	& LayerQueue
 	& MatchHistory
 	& Teamswitch
-	& UserPresence
 	& ServerSettings
 	& ServerSliceCleanup
 	& AdminList

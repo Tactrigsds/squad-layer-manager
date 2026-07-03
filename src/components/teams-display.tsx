@@ -1,4 +1,6 @@
+import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { withThrown } from '@/lib/error'
+import * as ZusUtils from '@/lib/zustand'
 import * as L from '@/models/layer'
 
 import * as MH from '@/models/match-history.models'
@@ -8,7 +10,6 @@ import * as MatchHistoryClient from '@/systems/match-history.client'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import * as Zus from 'zustand'
 import * as DH from '../lib/display-helpers'
 
 export function TeamIndicator(props: { team: MH.NormedTeamId | SM.TeamId }) {
@@ -60,7 +61,7 @@ export function TeamFactionDisplay(
 		extraStyles?: Record<keyof L.KnownLayer, string | undefined>
 	},
 ) {
-	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
+	const displayTeamsNormalized = ZusUtils.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
 	const [partialLayer, error] = withThrown(() => typeof props.layer === 'string' ? L.toLayer(props.layer) : props.layer)
 
 	if (error || !partialLayer) {
@@ -150,9 +151,10 @@ export function MatchTeamDisplay(
 		includeUnits?: boolean
 		showAltTeamIndicator?: boolean
 		className?: string
+		stores: SquadServerFrame.KeyProp
 	},
 ) {
-	const recentMatches = MatchHistoryClient.useRecentMatches()
+	const recentMatches = MatchHistoryClient.useRecentMatches(props.stores.squadServer.serverId)
 	let match: MH.MatchDetails | undefined
 	if (props.matchId === undefined) {
 		match = recentMatches[recentMatches.length - 1]

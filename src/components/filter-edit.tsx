@@ -1,12 +1,12 @@
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import type * as EditFrame from '@/frames/filter-editor.frame.ts'
-import { getFrameState, useFrameStore } from '@/frames/frame-manager'
+import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { useToast } from '@/hooks/use-toast'
 import { assertNever } from '@/lib/type-guards'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import * as ZusUtils from '@/lib/zustand'
 import * as F from '@/models/filter.models'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
@@ -23,7 +23,6 @@ import { useState } from 'react'
 import React from 'react'
 import Markdown from 'react-markdown'
 
-import { useShallow } from 'zustand/react/shallow'
 import EmojiDisplay from './emoji-display'
 import { EmojiPickerPopover } from './emoji-picker-popover'
 import FilterCard from './filter-card'
@@ -39,13 +38,13 @@ import { Separator } from './ui/separator'
 import { Textarea } from './ui/textarea'
 
 export function FilterEdit(
-	props: { entity: F.FilterEntity; contributors: { users: USR.User[]; roles: string[] }; owner: USR.User; frameKey: EditFrame.Key },
+	props: { entity: F.FilterEntity; contributors: { users: USR.User[]; roles: string[] }; owner: USR.User; stores: EditFrame.KeyProp },
 ) {
-	const frameKey = props.frameKey
+	const stores = props.stores
 	// fix refetches wiping out edited state, probably via fast deep equals or w/e
 	const { toast } = useToast()
-	const frameState = () => getFrameState(frameKey)
-	const useFrame = <O,>(selector: (table: EditFrame.FilterEditor) => O) => useFrameStore(frameKey, selector)
+	const frameState = () => ZusUtils.getState(stores.filterEditor)
+	const useFrame = <O,>(selector: (table: EditFrame.FilterEditor) => O) => ZusUtils.useStore(stores.filterEditor, selector)
 
 	const navigate = useNavigate()
 	const router = useRouter()
@@ -86,7 +85,7 @@ export function FilterEdit(
 
 				case 'ok':
 					toast({ title: 'Filter saved' })
-					frameState().reset(res.filter.filter)
+					EditFrame.Actions.reset(stores, res.filter.filter)
 					void router.invalidate()
 					formApi.reset({
 						name: res.filter.name,
@@ -165,7 +164,7 @@ export function FilterEdit(
 	})()
 
 	const [filterValid, filterModified] = useFrame(
-		useShallow((state) => [state.valid, state.modified]),
+		ZusUtils.useShallow((state) => [state.valid, state.modified]),
 	)
 
 	useBlocker({
@@ -201,12 +200,12 @@ export function FilterEdit(
 
 	const filterCard = React.useMemo(() => (
 		<FilterCard
-			frameKey={frameKey}
+			stores={stores}
 		>
 			{saveBtn}
 			{deleteBtn}
 		</FilterCard>
-	), [frameKey, deleteBtn, saveBtn])
+	), [stores, deleteBtn, saveBtn])
 
 	const _nodeMapStore = useFrame((s) => s.nodeMapStore)
 
@@ -457,10 +456,10 @@ export function FilterEdit(
 						</div>
 					)}
 			</div>
-			<FilterValidationErrorDisplay frameKey={frameKey} />
+			<FilterValidationErrorDisplay stores={stores} />
 			{filterCard}
 			<LayerTable
-				frameKey={frameKey}
+				stores={{ layerTable: stores.filterEditor }}
 			/>
 		</div>
 	)

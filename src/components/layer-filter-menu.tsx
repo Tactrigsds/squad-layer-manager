@@ -1,8 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
-import { getFrameState, useFrameStore } from '@/frames/frame-manager'
-import type * as SelectLayersFrame from '@/frames/select-layers.frame'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
@@ -11,9 +9,9 @@ import React from 'react'
 import type { ComparisonHandle } from './filter-card'
 import { Comparison } from './filter-card'
 
-export default function LayerFilterMenu(props: { frameKey: SelectLayersFrame.Key }) {
-	const fields = useFrameStore(
-		props.frameKey,
+export default function LayerFilterMenu(props: { stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
+	const fields = ZusUtils.useStore(
+		props.stores.filterMenu,
 		ZusUtils.useShallow((s) => Object.keys(s.filterMenu.menuItems)),
 	)
 
@@ -23,15 +21,14 @@ export default function LayerFilterMenu(props: { frameKey: SelectLayersFrame.Key
 				<LayerFilterMenuItem
 					key={field}
 					field={field}
-					frameKey={props.frameKey}
+					stores={props.stores}
 				/>
 			))}
 			<Button
 				className="col-span-full"
 				variant="secondary"
 				onClick={() => {
-					const frameState = getFrameState(props.frameKey)
-					frameState.filterMenu.resetAllFilters()
+					LayerFilterMenuPrt.Actions.resetAllFilters(props.stores)
 				}}
 			>
 				<Icons.Trash /> Clear All
@@ -43,17 +40,19 @@ export default function LayerFilterMenu(props: { frameKey: SelectLayersFrame.Key
 function LayerFilterMenuItem(
 	props: {
 		field: string
-		frameKey: SelectLayersFrame.Key
+		stores: LayerFilterMenuPrt.PredicatedKeyProp
 	},
 ) {
-	const getState = () => getFrameState(props.frameKey).filterMenu
+	// resetAllConstraints is a Predicate set up by the owning frame (select-layers / gen-vote), not part of
+	// LayerFilterMenuPrt's own Key type, but always present on the concrete frame state at runtime.
+	const getPredicates = () => ZusUtils.getState(props.stores.filterMenu)
 	const ref = React.useRef<ComparisonHandle>(null)
-	const [swapFactionsDisabled, possibleValues, comp] = useFrameStore(
-		props.frameKey,
+	const [swapFactionsDisabled, possibleValues, comp] = ZusUtils.useStore(
+		props.stores.filterMenu,
 		ZusUtils.useDeep(
 			state =>
 				[
-					LayerFilterMenuPrt.selectSwapFactionsDisabled(state),
+					LayerFilterMenuPrt.Sel.swapFactionsDisabled(state),
 					state.filterMenuItemPossibleValues?.[props.field],
 					state.filterMenu.menuItems[props.field],
 				] as const,
@@ -61,13 +60,13 @@ function LayerFilterMenuItem(
 	)
 
 	React.useEffect(() => {
-		const sub = getFrameState(props.frameKey).filterMenu.clearAll$.subscribe(() => {
+		const sub = ZusUtils.getState(props.stores.filterMenu).filterMenu.clearAll$.subscribe(() => {
 			ref.current?.clear(true)
 		})
 		return () => sub.unsubscribe()
-	}, [props.frameKey])
+	}, [props.stores])
 	let unlockAllValues = () => {
-		getFrameState(props.frameKey).resetAllConstraints()
+		getPredicates().resetAllConstraints()
 	}
 
 	return (
@@ -79,7 +78,7 @@ function LayerFilterMenuItem(
 						title="Swap Factions"
 						disabled={swapFactionsDisabled}
 						onClick={() => {
-							return getState().swapTeams()
+							return LayerFilterMenuPrt.Actions.swapTeams(props.stores)
 						}}
 						size="icon"
 						variant="outline"
@@ -98,7 +97,7 @@ function LayerFilterMenuItem(
 				onSetAllValuesAllowed={unlockAllValues}
 				onSetAllValuesAllowedLabel="Remove all other filters and select this one"
 				setComp={(update) => {
-					return getState().setComparison(props.field, update)
+					return LayerFilterMenuPrt.Actions.setComparison(props.stores, props.field, update)
 				}}
 				lockOnSingleOption
 			/>
@@ -113,7 +112,7 @@ function LayerFilterMenuItem(
 						return
 					}
 
-					getState().resetFilter(props.field)
+					LayerFilterMenuPrt.Actions.resetFilter(props.stores, props.field)
 					ref.current?.clear(true)
 				}}
 			>

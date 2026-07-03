@@ -421,6 +421,20 @@
       "when": 1782846791732,
       "tag": "0059_condemned_post",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "5",
+      "when": 1782886281990,
+      "tag": "0060_add_default_server_column",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "5",
+      "when": 1782896843789,
+      "tag": "0061_early_mysterio",
+      "breakpoints": true
     }
   ]
 }

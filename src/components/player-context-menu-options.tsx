@@ -1,7 +1,8 @@
+import * as ChatPrt from '@/frame-partials/chat.partial'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useToast } from '@/hooks/use-toast'
 import * as ZusUtils from '@/lib/zustand'
 import * as MH from '@/models/match-history.models'
-import * as SquadServer from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
 import * as MatchHistoryClient from '@/systems/match-history.client'
@@ -21,7 +22,9 @@ export type MenuSlots = {
 
 const contextMenuSlots: MenuSlots = { Item: ContextMenuItem, Separator: ContextMenuSeparator }
 
-export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; slots: MenuSlots }) {
+export function PlayerMenuItems(
+	{ playerId, slots, stores }: { playerId: SM.PlayerId; slots: MenuSlots; stores: SquadServerFrame.KeyProp },
+) {
 	const { Item, Separator } = slots
 	const openDialog = useAlertDialog()
 	const closeDialog = useCloseAlertDialog()
@@ -32,13 +35,14 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 	const disbandSquadMutation = SquadServerClient.useDisbandSquadMutation()
 	const removeFromSquadMutation = SquadServerClient.useRemoveFromSquadMutation()
 	const resetSquadNameMutation = SquadServerClient.useResetSquadNameMutation()
+	const serverId = stores.squadServer.serverId
 
 	const otherTeam = ZusUtils.useStore(
-		SquadServerClient.ChatStore,
-		MatchHistoryClient.currentMatch$(),
-		(chatStore: SquadServer.ChatStore, currentMatch: MH.MatchDetails | undefined): MH.NormedTeamId | null => {
+		stores.squadServer,
+		MatchHistoryClient.currentMatch$(serverId),
+		(chatStore: ChatPrt.Store, currentMatch: MH.MatchDetails | undefined): MH.NormedTeamId | null => {
 			if (!currentMatch) return null
-			const player = SM.PlayerIds.find(SquadServer.Select.chatState(chatStore).players, p => p.ids, playerId)
+			const player = SM.PlayerIds.find(ChatPrt.Sel.chatState(chatStore).players, p => p.ids, playerId)
 			if (!player?.teamId) return null
 			const normed = MH.getNormedTeamId(player.teamId, currentMatch.ordinal)
 			return normed === 'A' ? 'B' : 'A'
@@ -46,10 +50,10 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 	)
 
 	const playerInfo = ZusUtils.useStore(
-		SquadServerClient.ChatStore,
-		(chatStore: SquadServer.ChatStore) => {
-			const players = SquadServer.Select.chatState(chatStore).players
-			const squads = SquadServer.Select.chatState(chatStore).squads
+		stores.squadServer,
+		(chatStore: ChatPrt.Store) => {
+			const players = ChatPrt.Sel.chatState(chatStore).players
+			const squads = ChatPrt.Sel.chatState(chatStore).squads
 			const player = SM.PlayerIds.find(players, p => p.ids, playerId)
 			if (!player) return null
 			const squad = player.squadId !== null
@@ -66,23 +70,23 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 	)
 
 	const existingSwitch = ZusUtils.useStore(
-		TSWClient.Store,
-		s => TSWClient.Select.localState(s).editedSwitches.get(playerId) ?? null,
+		stores.squadServer,
+		s => TSWClient.Sel.localState(s).editedSwitches.get(playerId) ?? null,
 	)
 
-	const canSwitchNow = ZusUtils.useStore(TSWClient.Store, TSWClient.Select.canSwitchNow([playerId]))
-	const canQueue = ZusUtils.useStore(TSWClient.Store, TSWClient.Select.canQueue([playerId]))
+	const canSwitchNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwitchNow([playerId]))
+	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canQueue([playerId]))
 
 	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
 
 	async function switchNow() {
 		if (!otherTeam) return
-		const initialTeam = TSWClient.Select.localState(TSWClient.Store.getState()).players.get(playerId)
-		const unsubscribe = TSWClient.Store.subscribe(state => {
-			if (TSWClient.Select.localState(state).players.get(playerId) !== initialTeam) closeDialog()
+		const initialTeam = TSWClient.Sel.localState(ZusUtils.getState(stores.squadServer)).players.get(playerId)
+		const unsubscribe = ZusUtils.resolveReadStore(stores.squadServer).subscribe(state => {
+			if (TSWClient.Sel.localState(state).players.get(playerId) !== initialTeam) closeDialog()
 		})
-		UPClient.Store.getState().updateActivity({ code: 'set-player-dialogue', dialog: 'SWITCHING_PLAYERS' })
+		UPClient.Actions.updateActivity({ code: 'set-player-dialogue', dialog: 'SWITCHING_PLAYERS' })
 		try {
 			const result = await openDialog({
 				title: 'Switch Player Now',
@@ -94,16 +98,16 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 				return
 			}
 			if (result !== 'confirm') return
-			TSWClient.Actions.switchNow([playerId])
+			TSWClient.Actions.switchNow(stores, [playerId])
 		} finally {
 			unsubscribe()
-			UPClient.Store.getState().updateActivity({ code: 'clear-player-dialogue' })
+			UPClient.Actions.updateActivity({ code: 'clear-player-dialogue' })
 		}
 	}
 
 	async function warn() {
-		TSWClient.Actions.ensureViewingTeams()
-		UPClient.Store.getState().updateActivity({ code: 'set-player-dialogue', dialog: 'WARNING_PLAYERS' })
+		TSWClient.Actions.ensureViewingTeams(serverId)
+		UPClient.Actions.updateActivity({ code: 'set-player-dialogue', dialog: 'WARNING_PLAYERS' })
 		try {
 			let reason = ''
 			const result = await openDialog({
@@ -121,9 +125,9 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 				buttons: [{ id: 'confirm', label: 'Send Warning' }],
 			})
 			if (result !== 'confirm' || !reason.trim()) return
-			await warnMutation.mutateAsync({ playerId, reason: reason.trim() })
+			await warnMutation.mutateAsync({ serverId, playerId, reason: reason.trim() })
 		} finally {
-			UPClient.Store.getState().updateActivity({ code: 'clear-player-dialogue' })
+			UPClient.Actions.updateActivity({ code: 'clear-player-dialogue' })
 		}
 	}
 
@@ -133,8 +137,8 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 	}
 
 	async function removeFromSquad() {
-		TSWClient.Actions.ensureViewingTeams()
-		UPClient.Store.getState().updateActivity({ code: 'set-player-dialogue', dialog: 'REMOVING_FROM_SQUAD' })
+		TSWClient.Actions.ensureViewingTeams(serverId)
+		UPClient.Actions.updateActivity({ code: 'set-player-dialogue', dialog: 'REMOVING_FROM_SQUAD' })
 		try {
 			const squadLabel = playerInfo?.squadName ? `"${playerInfo.squadName}"` : 'their squad'
 			const result = await openDialog({
@@ -143,16 +147,16 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 				buttons: [{ id: 'confirm', label: 'Remove' }],
 			})
 			if (result !== 'confirm') return
-			await removeFromSquadMutation.mutateAsync(playerId)
+			await removeFromSquadMutation.mutateAsync({ serverId, playerId })
 		} finally {
-			UPClient.Store.getState().updateActivity({ code: 'clear-player-dialogue' })
+			UPClient.Actions.updateActivity({ code: 'clear-player-dialogue' })
 		}
 	}
 
 	async function disbandSquad() {
-		TSWClient.Actions.ensureViewingTeams()
+		TSWClient.Actions.ensureViewingTeams(serverId)
 		if (playerInfo?.squadId === null || playerInfo?.squadId === undefined || !playerInfo.teamId) return
-		UPClient.Store.getState().updateActivity({ code: 'set-player-dialogue', dialog: 'DISBANDING_SQUAD' })
+		UPClient.Actions.updateActivity({ code: 'set-player-dialogue', dialog: 'DISBANDING_SQUAD' })
 		try {
 			const squadLabel = playerInfo.squadName ? `"${playerInfo.squadName}"` : `squad ${playerInfo.squadId}`
 			const result = await openDialog({
@@ -161,16 +165,16 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 				buttons: [{ id: 'confirm', label: 'Disband' }],
 			})
 			if (result !== 'confirm') return
-			await disbandSquadMutation.mutateAsync({ teamId: playerInfo.teamId as 1 | 2, squadId: playerInfo.squadId })
+			await disbandSquadMutation.mutateAsync({ serverId, teamId: playerInfo.teamId as 1 | 2, squadId: playerInfo.squadId })
 		} finally {
-			UPClient.Store.getState().updateActivity({ code: 'clear-player-dialogue' })
+			UPClient.Actions.updateActivity({ code: 'clear-player-dialogue' })
 		}
 	}
 
 	async function resetSquadName() {
-		TSWClient.Actions.ensureViewingTeams()
+		TSWClient.Actions.ensureViewingTeams(serverId)
 		if (playerInfo?.squadId === null || playerInfo?.squadId === undefined || !playerInfo.teamId) return
-		UPClient.Store.getState().updateActivity({ code: 'set-player-dialogue', dialog: 'RESETTING_SQUAD_NAME' })
+		UPClient.Actions.updateActivity({ code: 'set-player-dialogue', dialog: 'RESETTING_SQUAD_NAME' })
 		try {
 			const squadLabel = playerInfo.squadName ? `"${playerInfo.squadName}"` : `squad ${playerInfo.squadId}`
 			const result = await openDialog({
@@ -179,15 +183,15 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 				buttons: [{ id: 'confirm', label: 'Reset' }],
 			})
 			if (result !== 'confirm') return
-			await resetSquadNameMutation.mutateAsync({ teamId: playerInfo.teamId as 1 | 2, squadId: playerInfo.squadId })
+			await resetSquadNameMutation.mutateAsync({ serverId, teamId: playerInfo.teamId as 1 | 2, squadId: playerInfo.squadId })
 		} finally {
-			UPClient.Store.getState().updateActivity({ code: 'clear-player-dialogue' })
+			UPClient.Actions.updateActivity({ code: 'clear-player-dialogue' })
 		}
 	}
 
 	async function demoteCommander() {
-		TSWClient.Actions.ensureViewingTeams()
-		UPClient.Store.getState().updateActivity({ code: 'set-player-dialogue', dialog: 'DEMOTING_COMMANDER' })
+		TSWClient.Actions.ensureViewingTeams(serverId)
+		UPClient.Actions.updateActivity({ code: 'set-player-dialogue', dialog: 'DEMOTING_COMMANDER' })
 		try {
 			const result = await openDialog({
 				title: 'Demote Commander',
@@ -195,9 +199,9 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 				buttons: [{ id: 'confirm', label: 'Demote' }],
 			})
 			if (result !== 'confirm') return
-			await demoteCommanderMutation.mutateAsync(playerId)
+			await demoteCommanderMutation.mutateAsync({ serverId, playerId })
 		} finally {
-			UPClient.Store.getState().updateActivity({ code: 'clear-player-dialogue' })
+			UPClient.Actions.updateActivity({ code: 'clear-player-dialogue' })
 		}
 	}
 
@@ -214,7 +218,7 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 			<Separator />
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item
-					onClick={() => TSWClient.Actions.switchNext([playerId])}
+					onClick={() => TSWClient.Actions.switchNext(stores, [playerId])}
 					disabled={!!manageDenied || !otherTeam || !canQueue}
 				>
 					Switch Next
@@ -225,7 +229,7 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 					<Separator />
 					<PermissionDeniedTooltip denied={manageDenied}>
 						<Item
-							onClick={() => TSWClient.Actions.removeSwitch([playerId])}
+							onClick={() => TSWClient.Actions.removeSwitch(stores, [playerId])}
 							disabled={!!manageDenied || !canSwitchNow}
 						>
 							Delete Switch
@@ -247,8 +251,9 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 					<Separator />
 					<Item
 						onClick={() => {
-							TSWClient.Actions.ensureViewingTeams()
-							SquadServerClient.PlayerSelectionStore.getState().selectSquad(playerId)
+							TSWClient.Actions.ensureViewingTeams(serverId)
+							const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer)).players
+							SquadServerClient.Actions.selectSquad(playerId, players)
 						}}
 					>
 						Select Squad
@@ -289,6 +294,8 @@ export function PlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; sl
 	)
 }
 
-export default function PlayerContextMenuOptions({ playerId }: { playerId: SM.PlayerId }) {
-	return <PlayerMenuItems playerId={playerId} slots={contextMenuSlots} />
+export default function PlayerContextMenuOptions(
+	{ playerId, stores }: { playerId: SM.PlayerId; stores: SquadServerFrame.KeyProp },
+) {
+	return <PlayerMenuItems playerId={playerId} slots={contextMenuSlots} stores={stores} />
 }

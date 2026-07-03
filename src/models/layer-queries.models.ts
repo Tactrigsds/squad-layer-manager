@@ -180,6 +180,7 @@ export type LayerItemAction = z.infer<typeof LAYER_ITEM_ACTION>
 
 export type BaseQueryInput = {
 	constraints?: Constraint[]
+	list?: LayerItemsState
 
 	// no cursor or action == repeat rules ignored : we perform a conversion to a layer query cursor
 	cursor?: LL.Cursor
@@ -365,6 +366,12 @@ export type LayerItem =
 export type LayerItemsState = {
 	layerItems: OrderedLayerItems
 	firstLayerItemParity: number
+}
+export function initLayerItemsState(): LayerItemsState {
+	return {
+		layerItems: [],
+		firstLayerItemParity: 0,
+	}
 }
 
 export function resolveId(item: LayerItem | ItemId) {
@@ -610,11 +617,6 @@ export function getDefaultColVisibilityState(cfg: EffectiveColumnAndTableConfig)
 	return res
 }
 
-export type ExtraQueryFiltersActions = {
-	select: React.Dispatch<React.SetStateAction<F.FilterEntityId[]>>
-	remove: (filterId: F.FilterEntityId) => void
-}
-
 export const FILTER_APPLICATION = z.enum(['regular', 'inverted', 'disabled'])
 export type FilterApplicationState = z.infer<typeof FILTER_APPLICATION>
 export type FilterApplication = { filterId: F.FilterEntityId; applyAs: FilterApplicationState }
@@ -625,7 +627,7 @@ export type ExtraQueryFiltersState = {
 	extraFilters: Set<F.FilterEntityId>
 }
 
-export type ExtraQueryFiltersStore = ExtraQueryFiltersActions & ExtraQueryFiltersState
+export type ExtraQueryFiltersStore = ExtraQueryFiltersState
 
 export function getSeed() {
 	const bytes = crypto.getRandomValues(new Uint8Array(8))

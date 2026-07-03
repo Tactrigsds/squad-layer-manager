@@ -6,36 +6,47 @@ export const PercentageSchema = z
 	.max(100)
 	.meta({ description: 'A percentage value between 0 and 100' })
 
-export const HumanTimeFormat = z
-	.string()
-	.regex(/^[0-9._]+(s|m|h|d|w|ms)$/)
-export const HumanTime = HumanTimeFormat
-	.transform(parseHumanTime)
-	.meta({
-		description:
-			'allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds',
-	})
+// largest to smallest, so formatHumanTime finds the coarsest unit that divides evenly
+const HUMAN_TIME_UNITS = [
+	['w', 7 * 24 * 60 * 60 * 1000],
+	['d', 24 * 60 * 60 * 1000],
+	['h', 60 * 60 * 1000],
+	['m', 60 * 1000],
+	['s', 1000],
+	['ms', 1],
+] as const satisfies [string, number][]
 
-export function parseHumanTime(val: string) {
+export const HumanTimeFormat = z.union([
+	z.string().regex(/^[0-9._]+(s|m|h|d|w|ms)$/),
+	// numbers are passed through as-is, treated as already being in milliseconds (e.g. a previously-parsed value round-tripped through storage)
+	z.number(),
+])
+export const HumanTime = z.codec(HumanTimeFormat, z.number(), {
+	decode: parseHumanTime,
+	encode: formatHumanTime,
+}).meta({
+	description:
+		'allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds. numbers are passed through as-is. serializes back to the format using the most convenient round unit',
+})
+
+export function parseHumanTime(val: string | number) {
+	if (typeof val === 'number') return val
 	const match = val.match(/^([0-9.]+)(s|m|h|d|w|ms)$/)
 	const [_, numStr, unit] = match!
 	const num = parseFloat(numStr!)
-	switch (unit) {
-		case 's':
-			return num * 1000
-		case 'm':
-			return num * 60 * 1000
-		case 'h':
-			return num * 60 * 60 * 1000
-		case 'd':
-			return num * 24 * 60 * 60 * 1000
-		case 'w':
-			return num * 7 * 24 * 60 * 60 * 1000
-		case 'ms':
-			return num
-		default:
-			return num * 1000
+	const unitMs = HUMAN_TIME_UNITS.find(([u]) => u === unit)![1]
+	return num * unitMs
+}
+
+// finds the largest unit that divides the given milliseconds evenly, e.g. 300_000 -> '5m' rather than '300s'
+export function formatHumanTime(ms: number) {
+	if (ms === 0) return '0ms'
+	for (const [unit, unitMs] of HUMAN_TIME_UNITS) {
+		if (ms % unitMs === 0) {
+			return `${ms / unitMs}${unit}`
+		}
 	}
+	return `${ms}ms`
 }
 
 export const ParsedIntSchema = z

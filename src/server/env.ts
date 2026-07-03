@@ -24,11 +24,7 @@ export const groups = {
 	},
 
 	db: {
-		DB_HOST: z.string().min(1).prefault('localhost'),
-		DB_PORT: ParsedIntSchema.default(3306),
-		DB_USER: z.string().min(1).prefault('root'),
-		DB_PASSWORD: z.string().min(1).prefault('dev'),
-		DB_DATABASE: z.string().min(1).prefault('squadLayerManager'),
+		DB_PATH: z.string().min(1).prefault('./data/main.sqlite3'),
 	},
 
 	// only needed when running integration tests for the rcon modules

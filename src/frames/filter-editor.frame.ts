@@ -6,6 +6,7 @@ import * as MapUtils from '@/lib/map'
 import * as NodeMap from '@/lib/node-map'
 import * as Obj from '@/lib/object'
 import * as Sparse from '@/lib/sparse-tree'
+import * as ZusUtils from '@/lib/zustand'
 import * as EFB from '@/models/editable-filter-builders'
 import * as F from '@/models/filter.models'
 import * as LQY from '@/models/layer-queries.models'
@@ -14,8 +15,7 @@ import * as Im from 'immer'
 import * as React from 'react'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
-import { useShallow } from 'zustand/react/shallow'
-import { frameManager, getFrameState, useFrameStore } from './frame-manager'
+import { frameManager } from './frame-manager'
 
 type Input = {
 	editedFilterId?: string
@@ -45,13 +45,6 @@ type FilterEditorBase =
 		modified: boolean
 		valid: boolean
 
-		moveNode(sourcePath: Sparse.NodePath, targetPath: Sparse.NodePath): void
-		updateRoot(filter: F.EditableFilterNode): void
-		updateNode(id: string, cb: (draft: Im.Draft<F.ShallowEditableFilterNode>) => void): void
-		deleteNode(id: string): void
-		addChild(parentId: string, type: F.NodeType): void
-		reset(filter?: F.EditableFilterNode): void
-
 		nodeMapStore: Zus.StoreApi<NodeMap.NodeMapStore>
 	}
 	& F.NodeValidationErrorStore
@@ -65,6 +58,7 @@ export type FilterEditor =
 	& LayerTablePrt.Store
 
 export type Key = FRM.InstanceKey<Types>
+export type KeyProp = FRM.KeyProp<Types>
 
 export type Types = {
 	name: 'filterEditor'
@@ -99,56 +93,6 @@ const setup: Frame['setup'] = (args) => {
 
 			baseQueryInput: undefined,
 
-			moveNode(sourcePath, targetPath) {
-				set(state => {
-					const tree = Obj.deepClone(state.tree)
-					F.moveTreeNodeInPlace(tree, sourcePath, targetPath)
-					return ({ tree })
-				})
-			},
-			updateRoot(filter) {
-				set({ tree: F.upsertFilterNodeTreeInPlace(filter) })
-			},
-			updateNode(id, update) {
-				set({
-					tree: Im.produce(get().tree, draft => {
-						update(draft.nodes.get(id)!)
-					}),
-				})
-			},
-			deleteNode(id) {
-				set({
-					tree: Im.produce(get().tree, draft => {
-						F.deleteTreeNode(draft, id)
-					}),
-				})
-			},
-
-			addChild(parentId, type) {
-				set({
-					tree: Im.produce(get().tree, draft => {
-						const node: F.ShallowEditableFilterNode = F.toShallowNode(EFB.nodeOfType(type))
-						const id = createId(4)
-						const parentPath = draft.paths.get(parentId)!
-						let last: number = -1
-						for (const path of draft.paths.values()) {
-							if (!Sparse.isChildPath(parentPath, path)) continue
-							last = Math.max(last, path[parentPath.length])
-						}
-
-						const newPath = [...parentPath, last + 1]
-						draft.paths.set(id, newPath)
-						draft.nodes.set(id, node)
-					}),
-				})
-			},
-			reset(filter?: F.EditableFilterNode) {
-				filter ??= get().savedFilter
-				set({
-					savedFilter: filter,
-					tree: F.upsertFilterNodeTreeInPlace(filter),
-				})
-			},
 			nodeMapStore: Zus.create<NodeMap.NodeMapStore>((set, get) => NodeMap.initNodeMap(get, set)),
 		} satisfies FilterEditorBase,
 	)
@@ -185,20 +129,15 @@ export const frame = frameManager.createFrame<Types>({
 	createKey: (frameId, input) => ({ frameId, editedFilterId: input.editedFilterId, instanceId: input.instanceId }),
 })
 
-export function useNodePath(key: Key, id: string | undefined) {
-	return useFrameStore(key, useShallow((s) => id ? s.tree.paths.get(id) : undefined))
-}
+export namespace Sel {
+	export const nodePath = (id: string | undefined) => (state: FilterEditor) => id ? state.tree.paths.get(id) : undefined
 
-export function useImmediateChildren(key: Key, id: string) {
-	return useFrameStore(key, useShallow(s => F.resolveImmediateChildren(s.tree, id)))
-}
+	export const immediateChildren = (id: string) => (state: FilterEditor) => F.resolveImmediateChildren(state.tree, id)
 
-export function selectNode(state: FilterEditor, id: string): F.ShallowEditableFilterNode {
-	return state.tree.nodes.get(id)!
-}
+	export const node = (id: string) => (state: FilterEditor): F.ShallowEditableFilterNode => state.tree.nodes.get(id)!
 
-export function selectIdByPath(state: FilterEditor, path: Sparse.NodePath): string | undefined {
-	return MapUtils.revLookup(state.tree.paths, path, Sparse.serializeNodePath)
+	export const idByPath = (path: Sparse.NodePath) => (state: FilterEditor): string | undefined =>
+		MapUtils.revLookup(state.tree.paths, path, Sparse.serializeNodePath)
 }
 
 export type CommonNodeActions = {
@@ -234,15 +173,77 @@ export type NodeActions = {
 
 type UpdateNodeFn = (cb: (draft: Im.Draft<F.ShallowEditableFilterNode>) => void) => void
 
-export function getNodeActions(key: Key, id: string): NodeActions {
-	const updateNode: UpdateNodeFn = (cb) => getFrameState(key).updateNode(id, (draft) => cb(draft))
-	function getState() {
-		return getFrameState(key)
+export namespace Actions {
+	function store(stores: KeyProp) {
+		return ZusUtils.resolveStore<FilterEditor>(stores.filterEditor)
 	}
+
+	export function moveNode(stores: KeyProp, sourcePath: Sparse.NodePath, targetPath: Sparse.NodePath) {
+		store(stores).setState(state => {
+			const tree = Obj.deepClone(state.tree)
+			F.moveTreeNodeInPlace(tree, sourcePath, targetPath)
+			return ({ tree })
+		})
+	}
+
+	export function updateRoot(stores: KeyProp, filter: F.EditableFilterNode) {
+		store(stores).setState({ tree: F.upsertFilterNodeTreeInPlace(filter) })
+	}
+
+	export function updateNode(stores: KeyProp, id: string, cb: (draft: Im.Draft<F.ShallowEditableFilterNode>) => void) {
+		const s = store(stores)
+		s.setState({
+			tree: Im.produce(s.getState().tree, draft => {
+				cb(draft.nodes.get(id)!)
+			}),
+		})
+	}
+
+	export function deleteNode(stores: KeyProp, id: string) {
+		const s = store(stores)
+		s.setState({
+			tree: Im.produce(s.getState().tree, draft => {
+				F.deleteTreeNode(draft, id)
+			}),
+		})
+	}
+
+	export function addChild(stores: KeyProp, parentId: string, type: F.NodeType) {
+		const s = store(stores)
+		s.setState({
+			tree: Im.produce(s.getState().tree, draft => {
+				const node: F.ShallowEditableFilterNode = F.toShallowNode(EFB.nodeOfType(type))
+				const id = createId(4)
+				const parentPath = draft.paths.get(parentId)!
+				let last: number = -1
+				for (const path of draft.paths.values()) {
+					if (!Sparse.isChildPath(parentPath, path)) continue
+					last = Math.max(last, path[parentPath.length])
+				}
+
+				const newPath = [...parentPath, last + 1]
+				draft.paths.set(id, newPath)
+				draft.nodes.set(id, node)
+			}),
+		})
+	}
+
+	export function reset(stores: KeyProp, filter?: F.EditableFilterNode) {
+		const s = store(stores)
+		filter ??= s.getState().savedFilter
+		s.setState({
+			savedFilter: filter,
+			tree: F.upsertFilterNodeTreeInPlace(filter),
+		})
+	}
+}
+
+export function getNodeActions(stores: KeyProp, id: string): NodeActions {
+	const updateNode: UpdateNodeFn = (cb) => Actions.updateNode(stores, id, (draft) => cb(draft))
 
 	return {
 		common: {
-			delete: () => getState().deleteNode(id),
+			delete: () => Actions.deleteNode(stores, id),
 			setNegation(neg: boolean) {
 				updateNode(draft => {
 					draft.neg = neg
@@ -256,7 +257,7 @@ export function getNodeActions(key: Key, id: string): NodeActions {
 				})
 			},
 			addChild: (type: F.NodeType) => {
-				getFrameState(key).addChild(id, type)
+				Actions.addChild(stores, id, type)
 			},
 		},
 		comp: {

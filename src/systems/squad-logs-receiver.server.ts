@@ -1,10 +1,13 @@
+import * as Schema from '$root/drizzle/schema.ts'
 import { IsolatedSubject } from '@/lib/isolated-subject'
+import * as CS from '@/models/context-shared'
+import type * as SETTINGS from '@/models/settings.models'
+import * as DB from '@/server/db'
 import * as Env from '@/server/env'
-import * as GlobalSettings from '@/systems/global-settings.server'
 import { baseLogger } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
+import * as Settings from '@/systems/settings.server'
 import * as net from 'node:net'
-import * as Rx from 'rxjs'
 
 type ClientConnection = {
 	clientId: string
@@ -33,11 +36,26 @@ let ENV!: ReturnType<typeof envBuilder>
 
 export const event$ = new IsolatedSubject<ReceiverEvent>()
 
-export function setup() {
+export async function setup() {
 	ENV = envBuilder()
 	const ctx = { log: baseLogger }
 	ctx.log.info('Setting up log receiver')
-	if (!GlobalSettings.GLOBAL_SETTINGS.servers.some(s => s.connections.logs.type === 'log-receiver')) {
+
+	const dbCtx = DB.addPooledDb(CS.init())
+	const ids = (await dbCtx.db().select({ id: Schema.servers.id }).from(Schema.servers)).map(r => r.id)
+	const serverSettingsEntries = await Promise.all(
+		ids.map(async (id) => {
+			try {
+				return [id, await Settings.getServerSettings(dbCtx, id)] as const
+			} catch (err) {
+				ctx.log.error(err, `Server ${id} has invalid settings, excluding it from the log receiver`)
+				return null
+			}
+		}),
+	)
+	const serverSettings = new Map<string, SETTINGS.ServerSettings>(serverSettingsEntries.filter(e => e !== null))
+
+	if (![...serverSettings.values()].some(s => s.connections.logs.type === 'log-receiver')) {
 		ctx.log.info('No log receiver configured, skipping setup')
 		return
 	}
@@ -76,7 +94,7 @@ export function setup() {
 			}
 
 			// Validate token
-			const serverConfig = GlobalSettings.GLOBAL_SETTINGS.servers.find(s => s.id === serverId)
+			const serverConfig = serverSettings.get(serverId)
 			if (!serverConfig) {
 				ctx.log.error(`Unknown serverId ${serverId} from ${clientId}`)
 				socket.end()

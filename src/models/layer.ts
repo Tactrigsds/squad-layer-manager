@@ -821,7 +821,7 @@ export function parseLayerStringSegment<
 		return null
 	}
 	const [map, gamemode, versionRaw, collectionRaw] = groups.slice(1)
-	const version = versionRaw.slice(1)
+	const version = versionRaw?.slice(1)
 	const collection = !components
 		? null
 		: (Obj.revLookup(

@@ -1,6 +1,7 @@
 import scoreRanges from '$root/assets/score-ranges.json'
 import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers'
 import * as DH from '@/lib/display-helpers.ts'
+import * as ZusUtils from '@/lib/zustand'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns.ts'
@@ -126,7 +127,7 @@ export function LayerInfo(props: LayerInfoContentProps) {
 	const cfg = ConfigClient.useEffectiveColConfig()
 	let squadcalcUrl: string | undefined
 	{
-		const config = ConfigClient.useConfig()
+		const config = ZusUtils.useStore(ConfigClient.Store)
 		const layer = L.toLayer(props.layerId)
 		if (config && layer.Gamemode && layer.Map) {
 			const params = new URLSearchParams()

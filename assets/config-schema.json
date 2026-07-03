@@ -42,6 +42,7 @@
                 "squad-server:warn-players",
                 "battlemetrics:write-flags",
                 "admin:manage-servers",
+                "admin:delete-servers",
                 "admin:manage-global-settings"
               ]
             },

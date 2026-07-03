@@ -1,6 +1,7 @@
 import { frameManager } from '@/frames/frame-manager'
 import * as GenVoteFrame from '@/frames/gen-vote.frame'
 import * as SelectLayersFrame from '@/frames/select-layers.frame'
+import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Lifecycle from '@/lib/lifecycle'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
@@ -13,8 +14,7 @@ import * as UP from '@/models/user-presence'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems/config.client'
-import * as ServerSettingsClient from '@/systems/server-settings.client'
-import * as SLLClient from '@/systems/shared-layer-list.client'
+import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UsersClient from '@/systems/users.client'
 import * as ReactRx from '@react-rxjs/core'
 import * as Im from 'immer'
@@ -22,7 +22,6 @@ import React from 'react'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import { toStream } from 'zustand-rx'
-import { useShallow } from 'zustand/react/shallow'
 
 // -------- Loader types --------
 type ActivityLoaderConfig<Name extends string = string, Key = any, Data = any> = Lifecycle.LoaderConfig<
@@ -38,6 +37,17 @@ export type LoaderCacheEntry<Config extends ActivityLoaderConfig, Loaded extends
 >
 export type LoaderData<Config extends ActivityLoaderConfig> = Lifecycle.LoaderData<Config>
 export type LoaderCacheKey<Config extends ActivityLoaderConfig> = Lifecycle.LoaderKey<Config>
+
+// bridges non-component code to the currently-active squadServer frame. Relies on the frame
+// already being alive (set up by the servers/$serverId route loader) -- ensureSetup just dedupes onto it.
+function getCurrentServerKey() {
+	const serverId = SquadServerClient.SelectedServerStore.getState().selectedServerId
+	return frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(serverId))
+}
+
+function getCurrentLayerList(): LL.Item[] {
+	return frameManager.getState(getCurrentServerKey())?.queue.layerList ?? []
+}
 
 export type ConfiguredLoaders = typeof ACTIVITY_LOADER_CONFIGS
 export type ConfiguredLoaderConfig = ConfiguredLoaders[number]
@@ -57,7 +67,7 @@ export const ACTIVITY_LOADER_CONFIGS = [
 	createActivityLoaderConfig(
 		'selectLayers',
 		s => {
-			const node = UP.getEditingQueueNode(s)?.chosen
+			const node = UP.Trans.editingQueue(s.opts.serverId).match(s)?.chosen
 			if (node?.id === 'ADDING_ITEM' || node?.id === 'EDITING_ITEM') return node
 			return undefined
 		},
@@ -67,7 +77,7 @@ export const ACTIVITY_LOADER_CONFIGS = [
 		load(args) {
 			let editedLayerId: string | undefined
 			if (args.key.id === 'EDITING_ITEM') {
-				const layerList = SLLClient.Store.getState().layerList
+				const layerList = getCurrentLayerList()
 				const { item } = Obj.destrNullable(LL.findItemById(layerList, args.key.opts.itemId))
 				if (item) editedLayerId = item.layerId
 			}
@@ -85,20 +95,20 @@ export const ACTIVITY_LOADER_CONFIGS = [
 		checkShouldUnload(args) {
 			if (args.key.opts.cursor.type !== 'item-relative') return false
 			const itemId = args.key.opts.cursor.itemId
-			return !LL.findItemById(SLLClient.Store.getState().layerList, itemId)
+			return !LL.findItemById(getCurrentLayerList(), itemId)
 		},
 	}),
 	createActivityLoaderConfig(
 		'genVote',
 		s => {
-			const node = UP.getEditingQueueNode(s)?.chosen
+			const node = UP.Trans.editingQueue(s.opts.serverId).match(s)?.chosen
 			if (node?.id === 'GENERATING_VOTE') return node
 			return undefined
 		},
 	)({
 		unloadOnLeave: true,
 		load(args) {
-			const input = GenVoteFrame.createInput({ cursor: { type: 'start' } })
+			const input = GenVoteFrame.createInput({ cursor: { type: 'start' }, server: getCurrentServerKey() })
 			const frameKey = frameManager.ensureSetup(GenVoteFrame.frame, input)
 			return { genVoteFrame: frameKey, activity: args.key }
 		},
@@ -107,7 +117,7 @@ export const ACTIVITY_LOADER_CONFIGS = [
 		},
 	}),
 	createActivityLoaderConfig('pasteRotation', s => {
-		const node = UP.getEditingQueueNode(s)?.chosen
+		const node = UP.Trans.editingQueue(s.opts.serverId).match(s)?.chosen
 		if (node?.id === 'PASTE_ROTATION') return node
 		return undefined
 	})({
@@ -124,10 +134,8 @@ export type Store = {
 	userPresence: Map<bigint, UP.ClientPresence>
 
 	hoveredActivityUserId: USR.UserId | null
-	setHoveredActivityUserId(userId: USR.UserId, hovered: boolean): void
 
 	activityLoaderCache: LoaderCacheEntry<ConfiguredLoaderConfig>[]
-	handleIncomingPresenceUpdate(update: UP.PresenceUpdate): void
 
 	session: RbSyncState.Client.Session<UP.Op, UP.State, UP.SideEffects>
 
@@ -135,10 +143,6 @@ export type Store = {
 	editors: Set<USR.UserId>
 	teamswitchEditors: Set<USR.UserId>
 	// derived: resolved per-user presence (latest session wins per userId)
-
-	dispatch(op: UP.NewClientOp): void
-	updateActivity(update: UP.ActivityUpdate): void
-	preloadActivity(update: UP.ActivityUpdate): void
 }
 
 const [_usePresenceUpdate, presenceUpdate$] = ReactRx.bind<UP.PresenceUpdate>(
@@ -147,9 +151,14 @@ const [_usePresenceUpdate, presenceUpdate$] = ReactRx.bind<UP.PresenceUpdate>(
 
 export const Store = createPresenceStore()
 
+// assigned during createPresenceStore -- module-level so Actions.preloadActivity can reach it
+let loaderCtx: Lifecycle.LoaderManagerContext<ConfiguredLoaderConfig, Store>
+
+function onSideEffect(_se: UP.SideEffects) {}
+
 function createPresenceStore() {
 	const store = Zus.createStore<Store>((set, get, store) => {
-		const loaderCtx: Lifecycle.LoaderManagerContext<ConfiguredLoaderConfig, Store> = {
+		loaderCtx = {
 			configs: ACTIVITY_LOADER_CONFIGS,
 			getCache: (draft: Im.Draft<Store>) => draft.activityLoaderCache as Lifecycle.LoaderCacheEntry<ConfiguredLoaderConfig>[],
 			setCache: (draft: Im.Draft<Store>, cache: Lifecycle.LoaderCacheEntry<ConfiguredLoaderConfig>[]) => {
@@ -177,10 +186,11 @@ function createPresenceStore() {
 				const editors = new Set<USR.UserId>()
 				const teamswitchEditors = new Set<USR.UserId>()
 				for (const client of presence.values()) {
-					if (UP.getEditingQueueNode(client.activityState)) {
+					const activity = client.activityState
+					if (activity && UP.Trans.editingQueue(activity.opts.serverId).match(activity)) {
 						editors.add(client.userId)
 					}
-					if (UP.getEditingTeamswitchesNode(client.activityState)) {
+					if (activity && UP.Trans.editingTeamswitches(activity.opts.serverId).match(activity)) {
 						teamswitchEditors.add(client.userId)
 					}
 				}
@@ -199,8 +209,6 @@ function createPresenceStore() {
 			Lifecycle.checkAndUnloadStaleEntries(loaderCtx, state)
 		})
 
-		function onSideEffect(se: UP.SideEffects) {}
-
 		const session = RbSyncState.Client.initSession<UP.Op, UP.State, UP.SideEffects>(UP.initState(), { onSideEffect })
 		return {
 			session,
@@ -211,65 +219,68 @@ function createPresenceStore() {
 			activityLoaderCache: [],
 
 			hoveredActivityUserId: null,
-			setHoveredActivityUserId(userId, hovered) {
-				if (!hovered) {
-					if (userId !== get().hoveredActivityUserId) return
-					else set({ hoveredActivityUserId: null })
-					return
-				}
-				set({ hoveredActivityUserId: userId })
-			},
-
-			handleIncomingPresenceUpdate(update) {
-				if (update.code === 'init') {
-					const newSession = RbSyncState.Client.initSession(UP.initState(), { onSideEffect, ops: update.ops })
-					set({ session: newSession })
-				} else if (update.code === 'op') {
-					const newSession = RbSyncState.Client.processIncomingOps(get().session, update.ops, UP.reducer)
-					set({ session: newSession })
-				}
-			},
-
-			dispatch(newOp) {
-				const userId = UsersClient.loggedInUserId
-				const config = ConfigClient.getConfig()
-				if (!config || !userId) return
-				// if (newOp.code === 'set-activity') console.trace(UP.getEditingTeamswitchesNode(newOp.activity))
-				const op: UP.ClientOp = { ...newOp, userId, clientId: config.wsClientId, time: Date.now(), opId: UP.createOpId() } as UP.ClientOp
-				const newSession = RbSyncState.Client.processOutgoingOps(get().session, [op], UP.reducer)
-				set({ session: newSession })
-				void RPC.orpc.userPresence.dispatchOp.call(op)
-			},
-
-			updateActivity(update) {
-				this.dispatch({ code: 'update-activity', update })
-			},
-
-			preloadActivity(update) {
-				requestIdleCallback(() => {
-					const config = ConfigClient.getConfig()
-					if (!config) return
-					const prev = get().presence.get(config.wsClientId)?.activityState ?? UP.DEFAULT_ACTIVITY
-					const next = UP.applyActivityUpdate(prev, update)
-					Lifecycle.dispatchLoaderEvents(loaderCtx, next, prev, true)
-				})
-			},
 		}
 	})
 
 	return store
 }
 
+function handleIncomingPresenceUpdate(update: UP.PresenceUpdate) {
+	if (update.code === 'init') {
+		const newSession = RbSyncState.Client.initSession(UP.initState(), { onSideEffect, ops: update.ops })
+		Store.setState({ session: newSession })
+	} else if (update.code === 'op') {
+		const newSession = RbSyncState.Client.processIncomingOps(Store.getState().session, update.ops, UP.reducer)
+		Store.setState({ session: newSession })
+	}
+}
+
+export namespace Actions {
+	export function setHoveredActivityUserId(userId: USR.UserId, hovered: boolean) {
+		if (!hovered) {
+			if (userId !== Store.getState().hoveredActivityUserId) return
+			Store.setState({ hoveredActivityUserId: null })
+			return
+		}
+		Store.setState({ hoveredActivityUserId: userId })
+	}
+
+	export function dispatch(newOp: UP.NewClientOp) {
+		const userId = UsersClient.loggedInUserId
+		const config = ConfigClient.getConfig()
+		if (!config || !userId) return
+		const op: UP.ClientOp = { ...newOp, userId, clientId: config.wsClientId, time: Date.now(), opId: UP.createOpId() } as UP.ClientOp
+		const newSession = RbSyncState.Client.processOutgoingOps(Store.getState().session, [op], UP.reducer)
+		Store.setState({ session: newSession })
+		void RPC.orpc.userPresence.dispatchOp.call(op)
+	}
+
+	export function updateActivity(update: UP.ActivityUpdate) {
+		dispatch({ code: 'update-activity', update })
+	}
+
+	export function preloadActivity(update: UP.ActivityUpdate) {
+		requestIdleCallback(() => {
+			const config = ConfigClient.getConfig()
+			if (!config) return
+			const prev = Store.getState().presence.get(config.wsClientId)?.activityState ?? null
+			const next = UP.applyActivityUpdate(prev, update)
+			Lifecycle.dispatchLoaderEvents(loaderCtx, next, prev, true)
+		})
+	}
+}
+
 // -------- Hooks --------
 
 export function useItemPresence(itemId: LL.ItemId) {
-	const [presence, activityHovered] = Zus.useStore(
+	const [presence, activityHovered] = ZusUtils.useStore(
 		Store,
 		ZusUtils.useDeep(state => {
 			const res = MapUtils.find(
 				state.presence,
 				(_, v) => {
-					const activity = UP.getEditingQueueNode(v.activityState)?.chosen
+					const root = v.activityState
+					const activity = root ? UP.Trans.editingQueue(root.opts.serverId).match(root)?.chosen : null
 					return !!activity && UP.isItemOwnedActivity(activity) && activity.opts.itemId === itemId
 				},
 			)
@@ -277,7 +288,7 @@ export function useItemPresence(itemId: LL.ItemId) {
 			const root = res[1].activityState!
 			const presence = {
 				...res?.[1],
-				itemActivity: UP.getEditingQueueNode(root)!.chosen as UP.ItemOwnedActivity,
+				itemActivity: UP.Trans.editingQueue(root.opts.serverId).match(root)!.chosen as UP.ItemOwnedActivity,
 			}
 			if (!presence) return [undefined, undefined] as const
 			const hovered = state.hoveredActivityUserId === presence.userId
@@ -291,52 +302,73 @@ export function useItemPresence(itemId: LL.ItemId) {
 
 	return [presence, userRes.data.user, activityHovered] as const
 }
-export function useIsSllItemLocked(itemId: string) {
-	return Zus.useStore(Store, state => state.session.localState.itemLocks.has(itemId))
+export namespace Sel {
+	export const isSllItemLocked = (itemId: string) => (state: Store) => state.session.localState.itemLocks.has(itemId)
+
+	// config comes from ConfigClient.Store -- use with ZusUtils.useStore(ConfigClient.Store, UPClient.Store, Sel.clientPresence)
+	export function clientPresence(config: ReturnType<typeof ConfigClient.getConfig>, state: Store) {
+		return config ? state.presence.get(config.wsClientId) : undefined
+	}
+
+	export const userPresence = (userId: USR.UserId) => (store: Store) => {
+		if (!userId) return
+		return store.userPresence.get(userId)
+	}
+
+	export const isEditing = (userId: USR.UserId) => (store: Store) => {
+		const presence = userPresence(userId)(store)
+		const activity = presence?.activityState
+		return activity ? UP.Trans.editingQueue(activity.opts.serverId).match(activity) : null
+	}
+
+	export const activityPresent = (targetActivity: UP.RootActivity) => (state: Store) => {
+		for (const [activity] of UP.iterActivities(state.presence)) {
+			if (Obj.deepEqual(activity, targetActivity)) {
+				return true
+			}
+		}
+		return false
+	}
+
+	export const hoveredActivityUserId = (state: Store) => state.hoveredActivityUserId
+
+	export function loadedActivities(state: Store) {
+		const loadedEntries = state.activityLoaderCache.filter(entry => !!entry.data)
+		return loadedEntries as unknown as LoadedActivityState[]
+	}
+
+	export function activityLoaded(state: Store) {
+		return state.activityLoaderCache.some(entry => entry.data !== undefined)
+	}
 }
 
-export function useClientPresence() {
-	const config = ConfigClient.useConfig()
-	const presence = Zus.useStore(Store, state => config ? state.presence.get(config?.wsClientId) : undefined)
-	return presence
+export function useEditingQueueState(serverId: string) {
+	return useActivityState(UP.Trans.editingQueue(serverId))
 }
 
-export function useEditingQueueState() {
-	return useActivityState(UP.TOGGLE_EDITING_QUEUE_TRANSITIONS)
-}
-
-export function useEditingTeamswitchesState() {
-	return useActivityState(UP.EDITING_TEAMSWITCHES_TRANSITIONS)
+export function useEditingTeamswitchesState(serverId: string) {
+	return useActivityState(UP.Trans.editingTeamswitches(serverId))
 }
 
 export function useIsEditing() {
 	const user = UsersClient.useLoggedInUser()
-	return Zus.useStore(Store, store => user ? selectIsEditing(store, user?.discordId) : false)
-}
-export function selectUserPresence(store: Store, userId: USR.UserId) {
-	if (!userId) return
-	return store.userPresence.get(userId)
-}
-
-export function selectIsEditing(store: Store, userId: USR.UserId) {
-	const presence = selectUserPresence(store, userId)
-	return UP.TOGGLE_EDITING_QUEUE_TRANSITIONS.matchActivity(presence?.activityState)
+	return ZusUtils.useStore(Store, store => user ? Sel.isEditing(user.discordId)(store) : false)
 }
 
 // allows familiar useState binding to a presence activity
 export function useActivityState<P>(opts: UP.ActivityTransitions<P>) {
-	const { matchActivity, createActivity, removeActivity } = opts
+	const { match: matchActivity, create: createActivity, destroy: removeActivity } = opts
 
 	const createActivityRef = React.useRef(createActivity)
 	const removeActivityRef = React.useRef(removeActivity)
 	createActivityRef.current = createActivity
 	removeActivityRef.current = removeActivity
 
-	const predicate = Zus.useStore(
+	const predicate = ZusUtils.useStore(
 		Store,
 		ZusUtils.useDeep(React.useCallback(() => {
 			const config = ConfigClient.getConfig()
-			const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? UP.DEFAULT_ACTIVITY
+			const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? null
 			return matchActivity(state)
 		}, [matchActivity])),
 	)
@@ -345,25 +377,25 @@ export function useActivityState<P>(opts: UP.ActivityTransitions<P>) {
 		const config = ConfigClient.getConfig()
 		const state = config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined
 
-		const alreadyActive = !!matchActivity(state ?? UP.DEFAULT_ACTIVITY)
+		const alreadyActive = !!matchActivity(state ?? null)
 		const newActive = typeof update === 'function' ? update(alreadyActive) : update
 
 		if (newActive && !alreadyActive) {
-			storeState.updateActivity(createActivityRef.current())
+			Actions.updateActivity(createActivityRef.current())
 		}
 		if (!newActive && alreadyActive) {
-			storeState.updateActivity(removeActivityRef.current())
+			Actions.updateActivity(removeActivityRef.current())
 		}
 	}, [matchActivity])
 	return [!!predicate, setActive] as const
 }
 
 export function useActivityMatch<P>(matchActivity: (prev: UP.RootActivity | null | undefined) => P) {
-	return Zus.useStore(
+	return ZusUtils.useStore(
 		Store,
 		ZusUtils.useDeep(React.useCallback(() => {
 			const config = ConfigClient.getConfig()
-			const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? UP.DEFAULT_ACTIVITY
+			const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? null
 			return matchActivity(state)
 		}, [matchActivity])),
 	)
@@ -375,13 +407,13 @@ export function useVariantActivityState<Variants extends Record<string, UP.Activ
 	const variantsRef = React.useRef(variants)
 	variantsRef.current = variants
 
-	const currentVariant = Zus.useStore(
+	const currentVariant = ZusUtils.useStore(
 		Store,
 		ZusUtils.useDeep(React.useCallback((): keyof Variants | null => {
 			const config = ConfigClient.getConfig()
-			const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? UP.DEFAULT_ACTIVITY
+			const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? null
 			for (const key of Object.keys(variantsRef.current) as (keyof Variants)[]) {
-				if (variantsRef.current[key].matchActivity(state)) return key
+				if (variantsRef.current[key].match(state)) return key
 			}
 			return null
 		}, [])),
@@ -391,11 +423,11 @@ export function useVariantActivityState<Variants extends Record<string, UP.Activ
 		const config = ConfigClient.getConfig()
 		if (!config) return
 		const storeState = Store.getState()
-		const state = storeState.presence.get(config?.wsClientId)?.activityState ?? UP.DEFAULT_ACTIVITY
+		const state = storeState.presence.get(config?.wsClientId)?.activityState ?? null
 
 		let currentKey: keyof Variants | null = null
 		for (const key of Object.keys(variantsRef.current) as (keyof Variants)[]) {
-			if (variantsRef.current[key].matchActivity(state)) {
+			if (variantsRef.current[key].match(state)) {
 				currentKey = key
 				break
 			}
@@ -404,50 +436,14 @@ export function useVariantActivityState<Variants extends Record<string, UP.Activ
 		if (currentKey === newVariant) return
 
 		if (currentKey !== null) {
-			storeState.updateActivity(variantsRef.current[currentKey].removeActivity())
+			Actions.updateActivity(variantsRef.current[currentKey].destroy())
 		}
 		if (newVariant !== null) {
-			storeState.updateActivity(variantsRef.current[newVariant].createActivity())
+			Actions.updateActivity(variantsRef.current[newVariant].create())
 		}
 	}, [])
 
 	return [currentVariant, setVariant] as [keyof Variants | null, (variant: keyof Variants | null) => void]
-}
-
-export function useHoveredActivityUser() {
-	const [hovered, setHovered] = Zus.useStore(
-		Store,
-		useShallow((state) => [state.hoveredActivityUserId, state.setHoveredActivityUserId]),
-	)
-	return [hovered, setHovered] as const
-}
-
-export const selectActivityPresent = (targetActivity: UP.RootActivity) => (state: Store) => {
-	for (const [activity] of UP.iterActivities(state.presence)) {
-		if (Obj.deepEqual(activity, targetActivity)) {
-			return true
-		}
-	}
-	return false
-}
-
-export function useLoadedActivities() {
-	return Zus.useStore(
-		Store,
-		ZusUtils.useShallow(state => {
-			const loadedEntries = state.activityLoaderCache.filter(entry => !!entry.data)
-			return loadedEntries as unknown as LoadedActivityState[]
-		}),
-	)
-}
-
-export function useActivityLoaded(_matchActivity: (state: UP.RootActivity) => boolean) {
-	return Zus.useStore(
-		Store,
-		ZusUtils.useShallow(state => {
-			return state.activityLoaderCache.some(entry => entry.data !== undefined)
-		}),
-	)
 }
 
 export function useActivityLoaderData<Loader extends ConfiguredLoaderConfig, O = LoaderCacheEntry<Loader>['data']>(opts: {
@@ -457,7 +453,7 @@ export function useActivityLoaderData<Loader extends ConfiguredLoaderConfig, O =
 	select?: (data: LoaderCacheEntry<Loader> | undefined) => O
 }) {
 	const { loaderName, matchKey: matchPredicate = () => true, trace, select = (entry) => entry?.data } = opts
-	return Zus.useStore(
+	return ZusUtils.useStore(
 		Store,
 		state => {
 			const loadedEntries = state.activityLoaderCache.filter(entry => entry.name === loaderName && matchPredicate(entry.key as any))
@@ -473,23 +469,32 @@ export function useActivityLoaderData<Loader extends ConfiguredLoaderConfig, O =
 export async function setup() {
 	// Subscribe to presence broadcast stream
 	presenceUpdate$.subscribe(update => {
-		Store.getState().handleIncomingPresenceUpdate(update)
+		handleIncomingPresenceUpdate(update)
 	})
 
-	const settingsModified$ = toStream(ServerSettingsClient.Store).pipe(Rx.map(s => s.modified), Rx.distinctUntilChanged())
+	const settingsModified$ = ZusUtils.toObservable(SquadServerClient.SelectedServerStore, true).pipe(
+		Rx.map(([s]) => s.selectedServerId),
+		Rx.distinctUntilChanged(),
+		Rx.switchMap(serverId => {
+			const key = frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(serverId))
+			return toStream(ZusUtils.resolveReadStore(key)).pipe(Rx.map(s => s.settings.modified), Rx.distinctUntilChanged())
+		}),
+	)
 	const wsClientId$ = ConfigClient.fetchConfig().then(config => config.wsClientId)
 	settingsModified$.pipe(
 		Rx.withLatestFrom(wsClientId$),
 	).subscribe(([modified, wsClientId]) => {
 		try {
 			const currentActivity = Store.getState().presence.get(wsClientId)?.activityState
-			const dialogActivity = UP.VIEWING_SETTINGS_TRANSITIONS.matchActivity(currentActivity)
-			const inChangingSettingsActivity = !!dialogActivity?.child.CHANGING_QUEUE_SETTINGS
+			const inChangingSettingsActivity = !!(
+				currentActivity
+				&& UP.Trans.changingQueueSettings(currentActivity.opts.serverId).match(currentActivity)
+			)
 			if (!modified && inChangingSettingsActivity) {
-				Store.getState().updateActivity({ code: 'clear-changing-queue-settings' })
+				Actions.updateActivity({ code: 'clear-changing-queue-settings' })
 			}
 			if (modified) {
-				Store.getState().updateActivity({ code: 'set-changing-queue-settings' })
+				Actions.updateActivity({ code: 'set-changing-queue-settings' })
 			}
 		} catch (error) {
 			console.error('Error handling settings modification:', error)

@@ -1,19 +1,26 @@
+import * as ChatPrt from '@/frame-partials/chat.partial'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as ZusUtils from '@/lib/zustand'
-import * as SquadServer from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswitches.client'
 import React from 'react'
-import type { MenuSlots } from './player-context-menu-options'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
+import type { MenuSlots } from './player-context-menu-options'
 import { ContextMenuItem, ContextMenuSeparator } from './ui/context-menu'
 import { useAlertDialog } from './ui/lazy-alert-dialog'
 
 const contextMenuSlots: MenuSlots = { Item: ContextMenuItem, Separator: ContextMenuSeparator }
 
-export function SquadMenuItems({ squad, slots }: { squad: Pick<SM.Squad, 'squadId' | 'teamId' | 'squadName'>; slots: MenuSlots }) {
+export function SquadMenuItems(
+	{ squad, slots, stores }: {
+		squad: Pick<SM.Squad, 'squadId' | 'teamId' | 'squadName'>
+		slots: MenuSlots
+		stores: SquadServerFrame.KeyProp
+	},
+) {
 	const { Item, Separator } = slots
 	const openDialog = useAlertDialog()
 
@@ -21,9 +28,9 @@ export function SquadMenuItems({ squad, slots }: { squad: Pick<SM.Squad, 'squadI
 	const resetSquadNameMutation = SquadServerClient.useResetSquadNameMutation()
 
 	const { squadPlayerIds, squadExists } = ZusUtils.useStore(
-		SquadServerClient.ChatStore,
-		(chatStore: SquadServer.ChatStore) => {
-			const state = SquadServer.Select.chatState(chatStore)
+		stores.squadServer,
+		(chatStore: ChatPrt.Store) => {
+			const state = ChatPrt.Sel.chatState(chatStore)
 			const squadExists = state.squads.some(s => s.squadId === squad.squadId && s.teamId === squad.teamId)
 			const squadPlayerIds = state.players
 				.filter(p => p.squadId === squad.squadId && p.teamId === squad.teamId)
@@ -32,40 +39,41 @@ export function SquadMenuItems({ squad, slots }: { squad: Pick<SM.Squad, 'squadI
 		},
 	)
 
-	const canSwitchNow = ZusUtils.useStore(TSWClient.Store, TSWClient.Select.canSwitchNow(squadPlayerIds))
-	const canQueue = ZusUtils.useStore(TSWClient.Store, TSWClient.Select.canQueue(squadPlayerIds))
+	const canSwitchNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwitchNow(squadPlayerIds))
+	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canQueue(squadPlayerIds))
 	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
 
 	const squadLabel = `"${squad.squadName}"`
 	const teamId = squad.teamId as 1 | 2
+	const serverId = stores.squadServer.serverId
 
 	async function disbandSquad() {
-		TSWClient.Actions.ensureViewingTeams()
+		TSWClient.Actions.ensureViewingTeams(serverId)
 		const result = await openDialog({
 			title: 'Disband Squad',
 			description: `Disband squad ${squadLabel}?`,
 			buttons: [{ id: 'confirm', label: 'Disband' }],
 		})
 		if (result !== 'confirm') return
-		await disbandSquadMutation.mutateAsync({ teamId, squadId: squad.squadId })
+		await disbandSquadMutation.mutateAsync({ serverId, teamId, squadId: squad.squadId })
 	}
 
 	async function resetSquadName() {
-		TSWClient.Actions.ensureViewingTeams()
+		TSWClient.Actions.ensureViewingTeams(serverId)
 		const result = await openDialog({
 			title: 'Reset Squad Name',
 			description: `Reset the name of squad ${squadLabel} to default?`,
 			buttons: [{ id: 'confirm', label: 'Reset' }],
 		})
 		if (result !== 'confirm') return
-		await resetSquadNameMutation.mutateAsync({ teamId, squadId: squad.squadId })
+		await resetSquadNameMutation.mutateAsync({ serverId, teamId, squadId: squad.squadId })
 	}
 
 	return (
 		<>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item
-					onClick={() => TSWClient.Actions.switchNow(squadPlayerIds)}
+					onClick={() => TSWClient.Actions.switchNow(stores, squadPlayerIds)}
 					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canSwitchNow}
 				>
 					Switch Squad Now
@@ -73,7 +81,7 @@ export function SquadMenuItems({ squad, slots }: { squad: Pick<SM.Squad, 'squadI
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item
-					onClick={() => TSWClient.Actions.switchNext(squadPlayerIds)}
+					onClick={() => TSWClient.Actions.switchNext(stores, squadPlayerIds)}
 					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canQueue}
 				>
 					Switch Squad Next
@@ -82,7 +90,13 @@ export function SquadMenuItems({ squad, slots }: { squad: Pick<SM.Squad, 'squadI
 			{squadPlayerIds.length > 0 && (
 				<>
 					<Separator />
-					<Item onClick={() => { TSWClient.Actions.ensureViewingTeams(); SquadServerClient.PlayerSelectionStore.getState().selectSquad(squadPlayerIds[0]) }}>
+					<Item
+						onClick={() => {
+							TSWClient.Actions.ensureViewingTeams(serverId)
+							const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer)).players
+							SquadServerClient.Actions.selectSquad(squadPlayerIds[0], players)
+						}}
+					>
 						Select Squad
 					</Item>
 				</>
@@ -102,6 +116,8 @@ export function SquadMenuItems({ squad, slots }: { squad: Pick<SM.Squad, 'squadI
 	)
 }
 
-export default function SquadContextMenuOptions({ squad }: { squad: Pick<SM.Squad, 'squadId' | 'teamId' | 'squadName'> }) {
-	return <SquadMenuItems squad={squad} slots={contextMenuSlots} />
+export default function SquadContextMenuOptions(
+	{ squad, stores }: { squad: Pick<SM.Squad, 'squadId' | 'teamId' | 'squadName'>; stores: SquadServerFrame.KeyProp },
+) {
+	return <SquadMenuItems squad={squad} slots={contextMenuSlots} stores={stores} />
 }

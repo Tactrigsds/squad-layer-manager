@@ -1,8 +1,6 @@
 import type * as F from '@/models/filter.models'
 import type * as LC from '@/models/layer-columns'
-import type * as LQY from '@/models/layer-queries.models'
 import type * as MH from '@/models/match-history.models'
-import type * as Config from '@/server/config'
 import type pino from 'pino'
 import type * as LDB from './layer-db'
 
@@ -36,11 +34,4 @@ export type Filters = Ctx & {
 export type MatchHistory = Ctx & {
 	recentMatches: MH.MatchDetails[]
 }
-export type LayerItemsState = Ctx & {
-	layerItemsState: LQY.LayerItemsState
-}
-export type PublicConfig = Ctx & {
-	publicConfig: Config.PublicConfig
-}
-
-export type LayerQuery = Ctx & LayerDb & Log & Filters & LayerItemsState
+export type LayerQuery = Ctx & LayerDb & Log & Filters

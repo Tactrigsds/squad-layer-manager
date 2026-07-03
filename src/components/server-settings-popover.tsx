@@ -5,27 +5,27 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useDebounced } from '@/hooks/use-debounce.ts'
 import * as Arr from '@/lib/array'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
 import { devValidate } from '@/lib/zod.dev.ts'
+import * as ZusUtils from '@/lib/zustand'
 import type * as F from '@/models/filter.models.ts'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
-import * as SS from '@/models/server-state.models.ts'
+import * as SETTINGS from '@/models/settings.models.ts'
 import * as UP from '@/models/user-presence'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as RbacClient from '@/systems/rbac.client'
-import * as ServerSettingsClient from '@/systems/server-settings.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import * as Zus from 'zustand'
-import { useShallow } from 'zustand/react/shallow'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
 import { ConstraintViolationIcon } from './constraint-matches-indicator.tsx'
@@ -37,32 +37,34 @@ import TabsList from './ui/tabs-list.tsx'
 import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
 
 export type ServerSettingsPopoverHandle = {
-	reset(settings: SS.ServerSettings): void
+	reset(settings: SETTINGS.ServerSettings): void
 }
 
 export default function ServerSettingsPopover(
 	props: {
 		children: React.ReactNode
 		ref?: React.ForwardedRef<ServerSettingsPopoverHandle>
+		stores: SquadServerFrame.KeyProp
 	},
 ) {
+	const stores = props.stores
 	React.useImperativeHandle(props.ref, () => ({
 		reset: () => {},
 	}))
 
 	const [poolId, setPoolId] = React.useState<'mainPool' | 'generationPool'>('mainPool')
 
-	const [open, _setOpen] = UPClient.useActivityState(UP.VIEWING_SETTINGS_TRANSITIONS)
+	const [open, _setOpen] = UPClient.useActivityState(UP.Trans.viewingSettings(stores.squadServer!.serverId))
 	const setOpen = (open: boolean) => {
 		if (!open) {
-			void ServerSettingsClient.Store.getState().reset()
+			ServerSettingsPrt.Actions.reset({ settings: stores.squadServer! })
 		}
 		_setOpen(open)
 	}
 
-	const [settingsChanged, saving, validationErrors] = Zus.useStore(
-		ServerSettingsClient.Store,
-		useShallow(s => [s.modified, s.saving, s.validationErrors]),
+	const [settingsChanged, saving, validationErrors] = ZusUtils.useStore(
+		stores.squadServer!,
+		ZusUtils.useShallow(s => [s.settings.modified, s.settings.saving, s.settings.validationErrors]),
 	)
 
 	return (
@@ -91,7 +93,7 @@ export default function ServerSettingsPopover(
 									variant="ghost"
 									disabled={!settingsChanged || saving}
 									onClick={() => {
-										void ServerSettingsClient.Store.getState().reset()
+										ServerSettingsPrt.Actions.reset({ settings: stores.squadServer! })
 									}}
 								>
 									<Icons.Trash className="h-4 w-4" />
@@ -105,15 +107,17 @@ export default function ServerSettingsPopover(
 				</div>
 				<div className="space-y-6">
 					{poolId === 'mainPool'
-						? <PoolFiltersConfigurationPanel />
-						: <GenerationPoolFiltersPanel />}
+						? <PoolFiltersConfigurationPanel stores={stores} />
+						: <GenerationPoolFiltersPanel stores={stores} />}
 					<PoolRepeatRulesConfigurationPanel
 						className={poolId !== 'mainPool' ? 'hidden' : undefined}
 						poolId="mainPool"
+						stores={stores}
 					/>
 					<PoolRepeatRulesConfigurationPanel
 						className={poolId !== 'generationPool' ? 'hidden' : undefined}
 						poolId="generationPool"
+						stores={stores}
 					/>
 				</div>
 				<div className="flex justify-end gap-2 pt-4 border-t">
@@ -133,7 +137,7 @@ export default function ServerSettingsPopover(
 					<Button
 						disabled={!settingsChanged || saving || !!validationErrors}
 						onClick={async () => {
-							const saved = await ServerSettingsClient.Store.getState().save()
+							const saved = await ServerSettingsPrt.Actions.save({ settings: stores.squadServer! })
 							if (saved) _setOpen(false)
 						}}
 						className="min-w-30"
@@ -148,11 +152,12 @@ export default function ServerSettingsPopover(
 	)
 }
 
-function PoolFiltersConfigurationPanel() {
+function PoolFiltersConfigurationPanel(props: { stores: SquadServerFrame.KeyProp }) {
+	const stores = props.stores
 	const filtersPath = ['queue', 'mainPool', 'filters']
-	const filterConfigs = Zus.useStore(
-		ServerSettingsClient.Store,
-		(s) => SS.derefSettingsValue(s.edited, filtersPath) as SS.PoolFilterConfig[],
+	const filterConfigs = ZusUtils.useStore(
+		stores.squadServer!,
+		(s) => SETTINGS.derefSettingsValue(s.settings.edited, filtersPath) as SETTINGS.PoolFilterConfig[],
 	)
 	const filterEntities = FilterEntityClient.useFilterEntities()
 
@@ -160,12 +165,11 @@ function PoolFiltersConfigurationPanel() {
 
 	const add = (filterId: F.FilterEntityId | null) => {
 		if (filterId === null) return
-		const state = ServerSettingsClient.Store.getState()
-		const newFilters: SS.PoolFilterConfig[] = [...filterConfigs, {
+		const newFilters: SETTINGS.PoolFilterConfig[] = [...filterConfigs, {
 			filterId,
-			defaultApplyDuringLayerSelection: SS.DEFAULT_POOL_FILTER_APPLY_AS,
+			defaultApplyDuringLayerSelection: SETTINGS.DEFAULT_POOL_FILTER_APPLY_AS,
 		}]
-		state.set({ path: filtersPath, value: newFilters })
+		ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, { path: filtersPath, value: newFilters })
 	}
 
 	return (
@@ -211,20 +215,22 @@ function PoolFiltersConfigurationPanel() {
 							if (newFilterId === null || newFilterId === filterId) {
 								return
 							}
-							const state = ServerSettingsClient.Store.getState()
-							const newValue: SS.PoolFilterConfig = {
+							const newValue: SETTINGS.PoolFilterConfig = {
 								filterId: newFilterId,
-								defaultApplyDuringLayerSelection: SS.DEFAULT_POOL_FILTER_APPLY_AS,
+								defaultApplyDuringLayerSelection: SETTINGS.DEFAULT_POOL_FILTER_APPLY_AS,
 							}
-							state.set({ path: filterPath, value: newValue })
+							ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, { path: filterPath, value: newValue })
 						}
 						const deleteFilter = () => {
-							const state = ServerSettingsClient.Store.getState()
-							const filterConfigs = SS.derefSettingsValue(state.edited, filtersPath) as SS.PoolFilterConfig[]
-							state.set({ path: filtersPath, value: filterConfigs.filter((c) => c.filterId !== filterConfig.filterId) })
+							const edited = ZusUtils.getState(stores.squadServer!).settings.edited
+							const filterConfigs = SETTINGS.derefSettingsValue(edited, filtersPath) as SETTINGS.PoolFilterConfig[]
+							ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, {
+								path: filtersPath,
+								value: filterConfigs.filter((c) => c.filterId !== filterConfig.filterId),
+							})
 						}
 						const excludedFilterIds = filterConfigs.flatMap((c) => filterId !== c.filterId ? [c.filterId] : [])
-						const defaultApplyDescriptions: { [k in SS.PoolFilterDefaultApplyAsSetting]: string } = {
+						const defaultApplyDescriptions: { [k in SETTINGS.PoolFilterDefaultApplyAsSetting]: string } = {
 							regular: 'Regular',
 							inverted: 'Inverted',
 							disabled: 'Disabled',
@@ -236,7 +242,7 @@ function PoolFiltersConfigurationPanel() {
 							disabled: 'Disabled',
 							both: 'Both',
 						}
-						const warnDescriptions: { [k in SS.PoolFilterApplyAs]: string } = {
+						const warnDescriptions: { [k in SETTINGS.PoolFilterApplyAs]: string } = {
 							regular: 'Warn when a layer matching this filter is queued or about to be played',
 							inverted: 'Warn when a layer NOT matching this filter is queued or about to be played',
 							disabled: 'No warning',
@@ -244,22 +250,22 @@ function PoolFiltersConfigurationPanel() {
 						const canWarn = !!filterConfig.showIndicator && filterConfig.showIndicator !== 'disabled'
 						const handleIndicateMatchesChanged = (_newValue: LQY.IndicatorState | undefined) => {
 							const newValue = _newValue ?? 'disabled'
-							const state = ServerSettingsClient.Store.getState()
-							const newConfig: SS.PoolFilterConfig = {
+							const newConfig: SETTINGS.PoolFilterConfig = {
 								...filterConfig,
 								showIndicator: newValue,
 								warn: newValue === 'disabled' ? undefined : filterConfig.warn,
 							}
-							state.set({ path: filterPath, value: newConfig })
+							ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, { path: filterPath, value: newConfig })
 						}
-						const handleDefaultApplyChanged = (_newValue: SS.PoolFilterDefaultApplyAsSetting | undefined) => {
+						const handleDefaultApplyChanged = (_newValue: SETTINGS.PoolFilterDefaultApplyAsSetting | undefined) => {
 							const newValue = _newValue ?? 'disabled'
-							const state = ServerSettingsClient.Store.getState()
-							state.set({ path: [...filterPath, 'defaultApplyDuringLayerSelection'], value: newValue })
+							ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, {
+								path: [...filterPath, 'defaultApplyDuringLayerSelection'],
+								value: newValue,
+							})
 						}
-						const handleWarnChanged = (newWarn: SS.PoolFilterApplyAs) => {
-							const state = ServerSettingsClient.Store.getState()
-							state.set({ path: [...filterPath, 'warn'], value: newWarn })
+						const handleWarnChanged = (newWarn: SETTINGS.PoolFilterApplyAs) => {
+							ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, { path: [...filterPath, 'warn'], value: newWarn })
 						}
 
 						return (
@@ -275,7 +281,10 @@ function PoolFiltersConfigurationPanel() {
 								/>
 								<ComboBox
 									title="Default Apply"
-									options={SS.POOL_FILTER_DEFAULT_APPLY_AS_SETTING.options.map(v => ({ value: v, label: defaultApplyDescriptions[v] }))}
+									options={SETTINGS.POOL_FILTER_DEFAULT_APPLY_AS_SETTING.options.map(v => ({
+										value: v,
+										label: defaultApplyDescriptions[v],
+									}))}
 									value={filterConfig.defaultApplyDuringLayerSelection ?? 'disabled'}
 									allowEmpty={false}
 									onSelect={handleDefaultApplyChanged}
@@ -317,20 +326,20 @@ function PoolFiltersConfigurationPanel() {
 	)
 }
 
-function GenerationPoolFiltersPanel() {
+function GenerationPoolFiltersPanel(props: { stores: SquadServerFrame.KeyProp }) {
+	const stores = props.stores
 	const filtersPath = ['queue', 'generationPool', 'filters']
-	const filterConfigs = Zus.useStore(
-		ServerSettingsClient.Store,
-		(s) => SS.derefSettingsValue(s.edited, filtersPath) as SS.GenerationFilterConfig[],
+	const filterConfigs = ZusUtils.useStore(
+		stores.squadServer!,
+		(s) => SETTINGS.derefSettingsValue(s.settings.edited, filtersPath) as SETTINGS.GenerationFilterConfig[],
 	)
 	const filterEntities = FilterEntityClient.useFilterEntities()
 	const writeSettingsDenied = RbacClient.usePermsCheck(RBAC.perm('settings:write'))
 
 	const add = (filterId: F.FilterEntityId | null) => {
 		if (filterId === null) return
-		const state = ServerSettingsClient.Store.getState()
-		const newFilters: SS.GenerationFilterConfig[] = [...filterConfigs, { filterId, applyAs: 'regular' }]
-		state.set({ path: filtersPath, value: newFilters })
+		const newFilters: SETTINGS.GenerationFilterConfig[] = [...filterConfigs, { filterId, applyAs: 'regular' }]
+		ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, { path: filtersPath, value: newFilters })
 	}
 
 	return (
@@ -371,17 +380,21 @@ function GenerationPoolFiltersPanel() {
 						const excludedFilterIds = filterConfigs.flatMap((c) => filterId !== c.filterId ? [c.filterId] : [])
 						const onSelect = (newFilterId: string | null) => {
 							if (newFilterId === null || newFilterId === filterId) return
-							const state = ServerSettingsClient.Store.getState()
-							state.set({ path: filterPath, value: { filterId: newFilterId, applyAs: filterConfig.applyAs } })
+							ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, {
+								path: filterPath,
+								value: { filterId: newFilterId, applyAs: filterConfig.applyAs },
+							})
 						}
 						const deleteFilter = () => {
-							const state = ServerSettingsClient.Store.getState()
-							const configs = SS.derefSettingsValue(state.edited, filtersPath) as SS.GenerationFilterConfig[]
-							state.set({ path: filtersPath, value: configs.filter((c) => c.filterId !== filterId) })
+							const edited = ZusUtils.getState(stores.squadServer!).settings.edited
+							const configs = SETTINGS.derefSettingsValue(edited, filtersPath) as SETTINGS.GenerationFilterConfig[]
+							ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, {
+								path: filtersPath,
+								value: configs.filter((c) => c.filterId !== filterId),
+							})
 						}
-						const handleApplyAsChanged = (newValue: SS.PoolFilterApplyAs) => {
-							const state = ServerSettingsClient.Store.getState()
-							state.set({ path: [...filterPath, 'applyAs'], value: newValue })
+						const handleApplyAsChanged = (newValue: SETTINGS.PoolFilterApplyAs) => {
+							ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, { path: [...filterPath, 'applyAs'], value: newValue })
 						}
 						return (
 							<React.Fragment key={filterId}>
@@ -426,37 +439,37 @@ function GenerationPoolFiltersPanel() {
 function RepeatRuleRow(props: {
 	index: number
 	poolId: 'mainPool' | 'generationPool'
+	stores: SquadServerFrame.KeyProp
 }) {
-	const { index, poolId } = props
+	const { index, poolId, stores } = props
 
 	const paths = React.useMemo(() => {
-		const rules = devValidate(SS.SettingsPathSchema, ['queue', poolId, 'repeatRules'])
-		const rule = devValidate(SS.SettingsPathSchema, [...rules, index])
+		const rules = devValidate(SETTINGS.SettingsPathSchema, ['queue', poolId, 'repeatRules'])
+		const rule = devValidate(SETTINGS.SettingsPathSchema, [...rules, index])
 		return {
 			rules,
 			rule,
-			label: devValidate(SS.SettingsPathSchema, [...rule, 'label']),
-			field: devValidate(SS.SettingsPathSchema, [...rule, 'field']),
-			within: devValidate(SS.SettingsPathSchema, [...rule, 'within']),
-			targetValues: devValidate(SS.SettingsPathSchema, [...rule, 'targetValues']),
-			warn: devValidate(SS.SettingsPathSchema, [...rule, 'warn']),
+			label: devValidate(SETTINGS.SettingsPathSchema, [...rule, 'label']),
+			field: devValidate(SETTINGS.SettingsPathSchema, [...rule, 'field']),
+			within: devValidate(SETTINGS.SettingsPathSchema, [...rule, 'within']),
+			targetValues: devValidate(SETTINGS.SettingsPathSchema, [...rule, 'targetValues']),
+			warn: devValidate(SETTINGS.SettingsPathSchema, [...rule, 'warn']),
 		}
 	}, [poolId, index])
 
 	const selectRuleConfig = React.useCallback(
-		(s: ServerSettingsClient.EditSettingsStore) => {
-			return (SS.derefSettingsValue(s.edited, paths.rules) as SS.PoolRepeatRuleConfig[])[index]
+		(s: ServerSettingsPrt.Store) => {
+			return (SETTINGS.derefSettingsValue(s.settings.edited, paths.rules) as SETTINGS.PoolRepeatRuleConfig[])[index]
 		},
 		[paths.rules, index],
 	)
 
 	const writeSettingsDenied = RbacClient.usePermsCheck(RBAC.perm('settings:write'))
-	const rule = Zus.useStore(ServerSettingsClient.Store, selectRuleConfig)
+	const rule = ZusUtils.useStore(stores.squadServer!, selectRuleConfig)
 
 	const writeLabel = React.useCallback((label: string) => {
-		const state = ServerSettingsClient.Store.getState()
-		state.set({ path: paths.label, value: label })
-	}, [paths.label])
+		ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, { path: paths.label, value: label })
+	}, [paths.label, stores.squadServer])
 
 	const setLabel = useDebounced({
 		onChange: writeLabel,
@@ -464,15 +477,13 @@ function RepeatRuleRow(props: {
 	})
 
 	const setField = (field: LQY.RepeatRuleField) => {
-		const state = ServerSettingsClient.Store.getState()
-		state.set({ path: paths.field, value: field })
-		state.set({ path: paths.label, value: field })
+		ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, { path: paths.field, value: field })
+		ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, { path: paths.label, value: field })
 	}
 
 	const writeWithin = React.useCallback((within: number) => {
-		const state = ServerSettingsClient.Store.getState()
-		state.set({ path: paths.within, value: within })
-	}, [paths.within])
+		ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, { path: paths.within, value: within })
+	}, [paths.within, stores.squadServer])
 
 	const setWithin = useDebounced({
 		onChange: writeWithin,
@@ -480,24 +491,26 @@ function RepeatRuleRow(props: {
 	})
 
 	const setTargetValues = (update: React.SetStateAction<string[]>) => {
-		const state = ServerSettingsClient.Store.getState()
-		const originalValues = SS.derefSettingsValue(state.edited, paths.targetValues) as string[] | undefined
+		const edited = ZusUtils.getState(stores.squadServer!).settings.edited
+		const originalValues = SETTINGS.derefSettingsValue(edited, paths.targetValues) as string[] | undefined
 		const targetValues = typeof update === 'function' ? update(originalValues ?? []) : update
-		state.set({ path: paths.targetValues, value: targetValues.length === 0 ? undefined : targetValues })
+		ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, {
+			path: paths.targetValues,
+			value: targetValues.length === 0 ? undefined : targetValues,
+		})
 	}
 
 	const setWarn = (warn: boolean) => {
-		const state = ServerSettingsClient.Store.getState()
-		state.set({ path: paths.warn, value: warn || undefined })
+		ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, { path: paths.warn, value: warn || undefined })
 	}
 
 	const deleteRule = () => {
-		const state = ServerSettingsClient.Store.getState()
-		const rules = SS.derefSettingsValue(state.edited, paths.rules) as LQY.RepeatRule[]
+		const edited = ZusUtils.getState(stores.squadServer!).settings.edited
+		const rules = SETTINGS.derefSettingsValue(edited, paths.rules) as LQY.RepeatRule[]
 		const updated = Im.produce(rules, (draft) => {
 			draft.splice(index, 1)
 		})
-		state.set({ path: paths.rules, value: updated })
+		ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, { path: paths.rules, value: updated })
 	}
 
 	let targetValueOptions: string[]
@@ -577,7 +590,7 @@ function RepeatRuleRow(props: {
 			{poolId === 'mainPool' && (
 				<div className="contents">
 					<Checkbox
-						checked={!!(rule as SS.PoolRepeatRuleConfig).warn}
+						checked={!!(rule as SETTINGS.PoolRepeatRuleConfig).warn}
 						disabled={!!writeSettingsDenied}
 						onCheckedChange={(checked) => setWarn(checked === true)}
 					/>
@@ -603,19 +616,21 @@ function RepeatRuleRow(props: {
 function PoolRepeatRulesConfigurationPanel(props: {
 	className?: string
 	poolId: 'mainPool' | 'generationPool'
+	stores: SquadServerFrame.KeyProp
 }) {
-	const rulesPath = React.useMemo(() => SS.SettingsPathSchema.parse(['queue', props.poolId, 'repeatRules']), [props.poolId])
+	const stores = props.stores
+	const rulesPath = React.useMemo(() => SETTINGS.SettingsPathSchema.parse(['queue', props.poolId, 'repeatRules']), [props.poolId])
 	const selectRulesLength = React.useCallback(
-		(s: ServerSettingsClient.EditSettingsStore) => (SS.derefSettingsValue(s.edited, rulesPath) as LQY.RepeatRule[]).length,
+		(s: ServerSettingsPrt.Store) => (SETTINGS.derefSettingsValue(s.settings.edited, rulesPath) as LQY.RepeatRule[]).length,
 		[rulesPath],
 	)
 
 	const writeSettingsDenied = RbacClient.usePermsCheck(RBAC.perm('settings:write'))
-	const rulesLength = Zus.useStore(ServerSettingsClient.Store, selectRulesLength)
+	const rulesLength = ZusUtils.useStore(stores.squadServer!, selectRulesLength)
 
 	const addRule = React.useCallback(() => {
-		const state = ServerSettingsClient.Store.getState()
-		const rules = SS.derefSettingsValue(state.edited, rulesPath) as LQY.RepeatRule[]
+		const edited = ZusUtils.getState(stores.squadServer!).settings.edited
+		const rules = SETTINGS.derefSettingsValue(edited, rulesPath) as LQY.RepeatRule[]
 		const updated = Im.produce(rules, (draft) => {
 			draft.push({
 				field: 'Map',
@@ -623,18 +638,21 @@ function PoolRepeatRulesConfigurationPanel(props: {
 				label: 'Map',
 			})
 		})
-		state.set({ path: rulesPath, value: updated })
-	}, [rulesPath])
+		ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, { path: rulesPath, value: updated })
+	}, [rulesPath, stores.squadServer])
 
 	const showWarn = props.poolId === 'mainPool'
 	const applyMainPoolRepeatRulesSwitchId = React.useId()
-	const applyMainPoolRepeatRules = Zus.useStore(
-		ServerSettingsClient.Store,
-		(s) => s.edited.queue.generationPool.applyMainPoolRepeatRules,
+	const applyMainPoolRepeatRules = ZusUtils.useStore(
+		stores.squadServer!,
+		(s) => s.settings.edited.queue.generationPool.applyMainPoolRepeatRules,
 	)
 	const setApplyMainPoolRepeatRules = (checked: boolean | 'indeterminate') => {
 		if (checked === 'indeterminate') return
-		ServerSettingsClient.Store.getState().set({ path: ['queue', 'generationPool', 'applyMainPoolRepeatRules'], value: checked })
+		ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, {
+			path: ['queue', 'generationPool', 'applyMainPoolRepeatRules'],
+			value: checked,
+		})
 	}
 
 	return (
@@ -695,6 +713,7 @@ function PoolRepeatRulesConfigurationPanel(props: {
 							key={index}
 							index={index}
 							poolId={props.poolId}
+							stores={stores}
 						/>
 					))}
 				</div>

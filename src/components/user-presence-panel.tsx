@@ -1,18 +1,15 @@
+import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as MapUtils from '@/lib/map'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
-import type * as SLL from '@/models/shared-layer-list'
 import * as UP from '@/models/user-presence'
 import * as USR from '@/models/users.models'
-import * as SLLClient from '@/systems/shared-layer-list.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 import * as DateFns from 'date-fns'
 import { Loader2 } from 'lucide-react'
 import React from 'react'
-import * as Rx from 'rxjs'
-import * as Zus from 'zustand'
-import { useShallow } from 'zustand/react/shallow'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
@@ -38,8 +35,10 @@ export const sortEditingPresence: SortPresenceFn = (a, b) => {
 	}
 
 	// Priority: has queue non-idle edit activity > editing > present
-	const aEditingActivity = UP.getEditingQueueNode(aPresence.activityState)
-	const bEditingActivity = UP.getEditingQueueNode(bPresence.activityState)
+	const aRoot = aPresence.activityState
+	const bRoot = bPresence.activityState
+	const aEditingActivity = aRoot ? UP.Trans.editingQueue(aRoot.opts.serverId).match(aRoot) : null
+	const bEditingActivity = bRoot ? UP.Trans.editingQueue(bRoot.opts.serverId).match(bRoot) : null
 
 	const aNonIdle = !!aEditingActivity?.chosen && aEditingActivity.chosen.id !== 'IDLE'
 	const bNonIdle = !!bEditingActivity?.chosen && bEditingActivity.chosen.id !== 'IDLE'
@@ -69,15 +68,16 @@ export type UserPresencePanelProps = {
 		joinMessage?: string
 	}[]
 	sourcePresenceFn?: SortPresenceFn
+	stores?: SquadServerFrame.KeyProp
 }
 
 export default function UserPresencePanel(props: UserPresencePanelProps) {
-	const layerList = Zus.useStore(
-		SLLClient.Store,
-		state => state.layerList,
+	const layerList = ZusUtils.useStore(
+		props.stores?.squadServer ?? null,
+		state => state ? LayerQueuePrt.Sel.layerList(state) : [],
 	)
 
-	const matchingUserPresence = Zus.useStore(
+	const matchingUserPresence = ZusUtils.useStore(
 		UPClient.Store,
 		ZusUtils.useDeep(state =>
 			MapUtils.filter(state.userPresence, (userId, presence) => props.matchActivity ? props.matchActivity(presence.activityState) : true)
@@ -181,8 +181,6 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 		return user.displayName.slice(0, 2).toUpperCase()
 	}
 
-	const [_, setHoveredUser] = UPClient.useHoveredActivityUser()
-
 	const groupedPresence = React.useMemo((): PresenceGroup[] => {
 		const entries: PresenceEntry[] = sortedUserPresence.map(({ user, presence }) => {
 			const eventText = userEventText.get(user.discordId)
@@ -214,8 +212,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 	}, [sortedUserPresence, userEventText, layerList])
 
 	const actionCount = React.useMemo(() => {
-		return groupedPresence.reduce((count, group) =>
-			count + group.entries.filter(e => e.activityText !== null).length, 0)
+		return groupedPresence.reduce((count, group) => count + group.entries.filter(e => e.activityText !== null).length, 0)
 	}, [groupedPresence])
 
 	// -------- Compact mode: switch when content overflows the container --------
@@ -273,7 +270,8 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 							<div className="flex flex-col gap-1.5">
 								{sortedUserPresence.map(({ user, presence }) => {
 									const eventText = userEventText.get(user.discordId)
-									const activityText = eventText ?? (presence.activityState ? UP.getHumanReadableActivity(presence.activityState, layerList) : null)
+									const activityText = eventText
+										?? (presence.activityState ? UP.getHumanReadableActivity(presence.activityState, layerList) : null)
 									return (
 										<div key={user.discordId.toString()} className="flex items-center gap-2">
 											<Avatar
@@ -285,11 +283,10 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 											</Avatar>
 											<div className="flex flex-col leading-none gap-0.5">
 												<span className="text-xs font-medium">
-													{user.displayName}{loggedInUser?.discordId === user.discordId ? ' (You)' : ''}
+													{user.displayName}
+													{loggedInUser?.discordId === user.discordId ? ' (You)' : ''}
 												</span>
-												{activityText && (
-													<span className="text-xs opacity-70">{activityText}</span>
-												)}
+												{activityText && <span className="text-xs opacity-70">{activityText}</span>}
 												{presence.away && presence.lastSeen && (
 													<span className="text-xs opacity-70">
 														Last seen {DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
@@ -317,17 +314,19 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 						if (isGrouped) {
 							return (
 								<div key={key} className="flex items-center space-x-1">
-									<div className={cn(
-										'inline-flex items-center gap-1.5 h-6 py-0 rounded-full transition-all duration-200',
-										'bg-accent pr-2',
-									)}>
+									<div
+										className={cn(
+											'inline-flex items-center gap-1.5 h-6 py-0 rounded-full transition-all duration-200',
+											'bg-accent pr-2',
+										)}
+									>
 										<div className="flex -space-x-1.5 shrink-0">
 											{group.entries.map(({ user, presence }) => (
 												<Tooltip key={user.discordId.toString()} delayDuration={0}>
 													<TooltipTrigger asChild>
 														<Avatar
-															onMouseOver={() => setHoveredUser(user.discordId, true)}
-															onMouseOut={() => setHoveredUser(user.discordId, false)}
+															onMouseOver={() => UPClient.Actions.setHoveredActivityUserId(user.discordId, true)}
+															onMouseOut={() => UPClient.Actions.setHoveredActivityUserId(user.discordId, false)}
 															style={{ backgroundColor: user.displayHexColor ?? undefined }}
 															className={cn(
 																'h-6 w-6 transition-all duration-200 cursor-pointer ring-1 ring-background',
@@ -342,7 +341,9 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 													</TooltipTrigger>
 													<TooltipContent>
 														<div className="text-center">
-															<div className="font-medium">{user.displayName} {loggedInUser?.discordId === user.discordId ? '(You)' : ''}</div>
+															<div className="font-medium">
+																{user.displayName} {loggedInUser?.discordId === user.discordId ? '(You)' : ''}
+															</div>
 															{presence.away && presence.lastSeen && (
 																<div className="text-xs mt-1">
 																	Last seen {DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
@@ -367,8 +368,8 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 								<Tooltip delayDuration={0}>
 									<TooltipTrigger asChild>
 										<div
-											onMouseOver={() => setHoveredUser(user.discordId, true)}
-											onMouseOut={() => setHoveredUser(user.discordId, false)}
+											onMouseOver={() => UPClient.Actions.setHoveredActivityUserId(user.discordId, true)}
+											onMouseOut={() => UPClient.Actions.setHoveredActivityUserId(user.discordId, false)}
 											className={cn(
 												'inline-flex items-center gap-1.5 h-6 py-0 rounded-full transition-all duration-200 cursor-pointer',
 												activityText && 'bg-accent pr-2',

@@ -1,5 +1,6 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import { type CleanupTasks, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
+import { toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
+import * as Cleanup from '@/lib/cleanup'
 import * as DH from '@/lib/display-helpers.ts'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
@@ -15,14 +16,14 @@ import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as MH from '@/models/match-history.models'
-import * as SS from '@/models/server-state.models'
+import type * as SS from '@/models/server-state.models'
+import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list'
 import type * as SM from '@/models/squad.models.ts'
 import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models.ts'
 import { CONFIG } from '@/server/config.ts'
-import * as GlobalSettings from '@/systems/global-settings.server'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { initModule } from '@/server/logger'
@@ -31,6 +32,7 @@ import * as LayerQueriesServer from '@/systems/layer-queries.server'
 import * as LayerQueries from '@/systems/layer-queries.shared.ts'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
+import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Users from '@/systems/users.server'
@@ -98,16 +100,19 @@ export const setupInstance = C.spanOp(
 
 		// -------- schedule generic admin reminders --------
 		if (ctx.serverSettings.settings.remindersAndAnnouncementsEnabled) {
-			const GS = GlobalSettings.GLOBAL_SETTINGS
+			const GS = Settings.GLOBAL_SETTINGS
 			ctx.cleanup.push(
 				Rx.interval(GS.layerQueue.adminQueueReminderInterval).pipe(
 					C.durableSub('queue-reminders', { module, levels: { event: 'info' } }, async () => {
 						const baseCtx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 						const serverState = await SquadServer.getServerState(baseCtx)
-						const ctx = await LayerQueriesServer.resolveLayerQueryCtx(baseCtx)
+						const ctx = LayerQueriesServer.resolveLayerQueryCtx(baseCtx)
 						const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-						const allConstraints = SS.getSettingsConstraints(serverState.settings, { generatingLayers: false })
-						const statusRes = await LayerQueries.getLayerItemStatuses({ ctx, input: { constraints: allConstraints } })
+						const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: false })
+						const statusRes = await LayerQueries.getLayerItemStatuses({
+							ctx,
+							input: { constraints: allConstraints, list: await LayerQueriesServer.resolveLayerItemsState(baseCtx) },
+						})
 
 						warnCondition: if (statusRes.code === 'ok') {
 							const nextLayer = getSavedQueue(ctx)[0] ?? null
@@ -141,8 +146,8 @@ export const setupInstance = C.spanOp(
 									currentMatch.startTime,
 									GS.vote.startVoteReminderThreshold,
 									GS.vote.autoStartVoteDelay !== null,
-									GlobalSettings.GLOBAL_SETTINGS.commands,
-									GlobalSettings.GLOBAL_SETTINGS.commandPrefix,
+									Settings.GLOBAL_SETTINGS.commands,
+									Settings.GLOBAL_SETTINGS.commandPrefix,
 								),
 							)
 						} else if (serverState.layerQueue.length === 0) {
@@ -246,7 +251,7 @@ export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.Serv
 	const currentLayer = L.toLayer(newLayerId)
 	if (currentLayer.Gamemode === 'FRAAS') {
 		ctx.server.postRollEventsSub.add(
-			Rx.timer(GlobalSettings.GLOBAL_SETTINGS.fogOffDelay).subscribe(async () => {
+			Rx.timer(Settings.GLOBAL_SETTINGS.fogOffDelay).subscribe(async () => {
 				const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 				await SquadRcon.setFogOfWar(ctx, 'off')
 				void SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
@@ -275,13 +280,13 @@ export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.Serv
 		announcementTasks.push(toCold(async () => {
 			const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 			const queue = getSavedQueue(ctx)
-			if (queue && queue.length <= GlobalSettings.GLOBAL_SETTINGS.layerQueue.lowQueueWarningThreshold) {
+			if (queue && queue.length <= Settings.GLOBAL_SETTINGS.layerQueue.lowQueueWarningThreshold) {
 				await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.lowQueueItemCount(queue.length))
 			}
 		}))
 
 		const withWaits: Rx.Observable<unknown>[] = []
-		withWaits.push(Rx.timer(GlobalSettings.GLOBAL_SETTINGS.postRollAnnouncementsTimeout))
+		withWaits.push(Rx.timer(Settings.GLOBAL_SETTINGS.postRollAnnouncementsTimeout))
 
 		for (let i = 0; i < announcementTasks.length; i++) {
 			withWaits.push(announcementTasks[i].pipe(Rx.catchError(() => Rx.EMPTY)))
@@ -300,7 +305,7 @@ export function getSavedQueue(ctx: C.LayerQueue) {
 }
 
 async function onSideEffect(
-	ctx: C.Db & C.UserPresence & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon,
+	ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon,
 	e: SLL.SideEffect,
 ) {
 	// TODO implement
@@ -372,7 +377,7 @@ export async function warnShowNext(
  */
 export const syncNextLayerToServer = C.spanOp('syncNextLayerToServer', { module, mutexes: (ctx) => ctx.layerQueue.updateLayerMtx }, async (
 	ctx: C.SquadServer & C.Rcon & C.LayerQueue & C.Db,
-	settings: SS.ServerSettings,
+	settings: SETTINGS.ServerSettings,
 	nextQueuedLayerId: L.LayerId,
 	itemId: string,
 ) => {
@@ -398,7 +403,10 @@ export const syncNextLayerToServer = C.spanOp('syncNextLayerToServer', { module,
 })
 
 export async function toggleUpdatesToSquadServer(
-	{ ctx, input }: { ctx: C.Db & C.SquadServer & C.UserOrPlayer & C.LayerQueue & C.AdminList & C.Rcon & C.ServerSettings; input: { disabled: boolean } },
+	{ ctx, input }: {
+		ctx: C.Db & C.SquadServer & C.UserOrPlayer & C.LayerQueue & C.AdminList & C.Rcon & C.ServerSettings
+		input: { disabled: boolean }
+	},
 ) {
 	// if player we assume authorization has already been established
 	if (ctx.user) {
@@ -409,7 +417,7 @@ export async function toggleUpdatesToSquadServer(
 	await DB.runTransaction(ctx, { redactParams: true }, async ctx => {
 		const serverState = await SquadServer.getServerState(ctx)
 		serverState.settings.updatesToSquadServerDisabled = input.disabled
-		await SquadServer.updateServerState(ctx, { settings: serverState.settings }, {
+		await Settings.updateServerSettings(ctx, serverState.settings, {
 			type: 'system',
 			event: 'updates-to-squad-server-toggled',
 		})
@@ -446,8 +454,10 @@ function getBaseCtx() {
 
 // -------- setup router --------
 export const router = {
-	watchUnexpectedNextLayer: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
-		const obs = SquadServer.selectedServerCtx$(context).pipe(
+	watchUnexpectedNextLayer: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
+		{ context, signal, input },
+	) {
+		const obs = SquadServer.sliceCtx$(context.wsClientId, input.serverId).pipe(
 			Rx.switchMap(ctx => {
 				if (!ctx) return Rx.EMPTY
 				return ctx.layerQueue.unexpectedNextLayerSet$
@@ -459,16 +469,17 @@ export const router = {
 
 	toggleUpdatesToSquadServer: orpcBase
 		.meta({ type: 'mutation' })
-		.input(z.object({ disabled: z.boolean() }))
+		.input(z.object({ serverId: z.string(), disabled: z.boolean() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
+			const ctx = SquadServer.resolveSliceCtx(_ctx, input.serverId)
 			return await toggleUpdatesToSquadServer({ ctx, input })
 		}),
 
 	watchOps: orpcBase
 		.meta({ logLevel: 'trace' })
+		.input(z.object({ serverId: z.string() }))
 		.handler(async function*({ context, input, signal }) {
-			const updateForServer$ = SquadServer.selectedServerCtx$(context).pipe(
+			const updateForServer$ = SquadServer.sliceCtx$(context.wsClientId, input.serverId).pipe(
 				Rx.switchMap(ctx => {
 					if (!ctx) return Rx.EMPTY
 					const initial: SLL.Update = {
@@ -492,9 +503,9 @@ export const router = {
 
 	dispatchOp: orpcBase
 		.meta({ type: 'mutation' })
-		.input(SLL.OperationSchema)
-		.handler(async ({ context: _ctx, input: op }) => {
-			const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
+		.input(z.object({ serverId: z.string(), op: SLL.OperationSchema }))
+		.handler(async ({ context: _ctx, input: { serverId, op } }) => {
+			const ctx = SquadServer.resolveSliceCtx(_ctx, serverId)
 			const authRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write'))
 			if (authRes) return authRes
 
@@ -544,8 +555,9 @@ export const dispatchOp = C.spanOp(
 					break
 				case 'request-queue-item-generation': {
 					const serverState = await SquadServer.getServerState(ctx)
-					const allConstraints = SS.getSettingsConstraints(serverState.settings, { generatingLayers: true })
-					const layerCtx = await LayerQueriesServer.resolveLayerQueryCtx(ctx)
+					const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: true })
+					const layerCtx = LayerQueriesServer.resolveLayerQueryCtx(ctx)
+					const layerItemsState = await LayerQueriesServer.resolveLayerItemsState(ctx)
 
 					const nextQueuedLayerId = await (async function getNextQueuedLayerId(constraints: LQY.Constraint[] = allConstraints) {
 						try {
@@ -553,6 +565,7 @@ export const dispatchOp = C.spanOp(
 								ctx: layerCtx,
 								input: {
 									constraints,
+									list: layerItemsState,
 									cursor: { type: 'start' },
 									action: 'add',
 									pageSize: 1,

@@ -2,12 +2,13 @@ import ServerDashboard from '@/components/server-dashboard'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { globalToast$ } from '@/hooks/use-global-toast'
+import { frameManager } from '@/frames/frame-manager'
+import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Browser from '@/lib/browser'
-import * as SS from '@/models/server-state.models'
+import * as FRM from '@/lib/frame'
+import * as ZusUtils from '@/lib/zustand'
 import * as UP from '@/models/user-presence'
-import * as ConfigClient from '@/systems/config.client'
-import * as ServerSettingsClient from '@/systems/server-settings.client'
+import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UPClient from '@/systems/user-presence.client'
 import { createFileRoute, Link } from '@tanstack/react-router'
@@ -19,11 +20,15 @@ export const Route = createFileRoute('/_app/servers/$serverId')({
 	component: RouteComponent,
 
 	loader: async ({ params }) => {
-		const config = await ConfigClient.fetchConfig()
-		const serverConfig = config.servers.find(s => s.id === params.serverId)
+		const settings = await SettingsClient.fetchSettings()
+		const serverConfig = settings.servers.find(s => s.id === params.serverId)
+		const serverFound = serverConfig !== undefined
 		return {
 			displayName: serverConfig?.displayName ?? params.serverId,
-			serverFound: serverConfig !== undefined,
+			serverFound,
+			squadServerFrameKey: serverFound
+				? frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(params.serverId))
+				: undefined,
 		}
 	},
 
@@ -33,27 +38,23 @@ export const Route = createFileRoute('/_app/servers/$serverId')({
 		],
 	}),
 
-	onEnter({ params, loaderData }) {
-		if (loaderData?.serverFound) void SquadServerClient.SelectedServerStore.getState().setSelectedServer(params.serverId)
+	onEnter({ params }) {
+		UPClient.Actions.updateActivity({ code: 'enter-server-dashboard', serverId: params.serverId })
+		SquadServerClient.SelectedServerActions.setSelectedServer(params.serverId)
 	},
 
 	onLeave() {
-		UPClient.Store.getState().dispatch({ code: 'navigated-away' })
+		UPClient.Actions.dispatch({ code: 'navigated-away' })
 	},
 })
 
 function RouteComponent() {
 	const serverId = Route.useParams().serverId
-	const serverFound = Route.useLoaderData().serverFound
-	const config = ConfigClient.useConfig()
-	console.log('RENDERED ROUTE', serverFound)
+	const { serverFound, squadServerFrameKey } = Route.useLoaderData()
+	const settings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
 	React.useEffect(() => {
-		console.log('dashboard mounted')
 		if (!serverFound) {
-			return () => {
-				console.log('dashboard unmounted')
-				return
-			}
+			return
 		}
 		// -------- schedule presence updates, keep default server id up-to-date --------
 		const timeout$ = Rx.of(false).pipe(Rx.delay(UP.INTERACT_TIMEOUT))
@@ -68,31 +69,22 @@ function RouteComponent() {
 			try {
 				if (active) {
 					// if the user comes back to this page we want to set this as the default server again
-					SquadServerClient.SelectedServerStore.getState().setAsDefaultServer()
-					UPClient.Store.getState().dispatch({ code: 'page-interaction' })
+					SquadServerClient.SelectedServerActions.setAsDefaultServer()
+					UPClient.Actions.dispatch({ code: 'page-interaction' })
 				} else {
-					UPClient.Store.getState().dispatch({ code: 'interaction-timeout' })
+					UPClient.Actions.dispatch({ code: 'interaction-timeout' })
 				}
 			} catch (error) {
 				console.error('Error in pushing pageInteraction$', error)
 			}
 		}))
 
-		sub.add(ServerSettingsClient.serverSettings$.subscribe(([settings, source]) => {
-			if (!source) return
-			globalToast$.next({
-				title: SS.printSource(source),
-			})
-		}))
-
 		return () => {
-			console.log('dashboard unmounted')
 			sub.unsubscribe()
 		}
 	}, [serverFound])
 
 	if (!serverFound) {
-		console.log('rendering not found')
 		return (
 			<div className="flex items-center justify-center min-h-screen p-4 w-full">
 				<Card className="w-full max-w-lg">
@@ -109,12 +101,12 @@ function RouteComponent() {
 								This server may have been removed from the configuration or the server ID is incorrect.
 							</AlertDescription>
 						</Alert>
-						{config && config.servers.some(s => s.enabled)
+						{settings && settings.servers.some(s => s.enabled)
 							? (
 								<div className="space-y-3">
 									<div className="text-sm font-medium text-muted-foreground">Available servers:</div>
 									<div className="space-y-2">
-										{config.servers.filter(s => s.enabled).map((server) => (
+										{settings.servers.filter(s => s.enabled).map((server) => (
 											<Link key={server.id} to="/servers/$serverId" params={{ serverId: server.id }}>
 												<Button variant="outline" className="w-full justify-start" size="lg">
 													<Home className="mr-2 h-4 w-4" />
@@ -141,5 +133,5 @@ function RouteComponent() {
 		)
 	}
 
-	return <ServerDashboard />
+	return <ServerDashboard stores={FRM.toProp(squadServerFrameKey!)} />
 }

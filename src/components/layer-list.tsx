@@ -9,9 +9,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
-import { getFrameState, useFrameStore } from '@/frames/frame-manager.ts'
 import type * as GenVoteFrame from '@/frames/gen-vote.frame.ts'
-import type * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
+import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
+import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import { useIsMobile } from '@/hooks/use-is-mobile.ts'
 
@@ -34,11 +34,10 @@ import * as V from '@/models/vote.models.ts'
 import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
 
+import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as DndKit from '@/systems/dndkit.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
-import * as QD from '@/systems/queue-dashboard.client'
 import * as RbacClient from '@/systems/rbac.client'
-import * as SLLClient from '@/systems/shared-layer-list.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
@@ -47,7 +46,6 @@ import * as RQ from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import * as Zus from 'zustand'
 import { StartActivityInteraction } from './activity.tsx'
 import EditLayerDialog from './edit-layer-dialog.tsx'
 import GenVoteDialog from './gen-vote-dialog.tsx'
@@ -60,23 +58,26 @@ import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator } from './ui
 import TabsList from './ui/tabs-list.tsx'
 
 export function LayerList(
-	props: { store: Zus.StoreApi<QD.LLStore> },
+	props: { stores: SquadServerFrame.KeyProp },
 ) {
-	const queueItemIds = Zus.useStore(props.store, ZusUtils.useShallow((store) => store.layerList.map((item) => item.itemId)))
+	const queueItemIds = ZusUtils.useStore(
+		props.stores.squadServer,
+		ZusUtils.useShallow((s) => LayerQueuePrt.Sel.layerList(s).map((item) => item.itemId)),
+	)
+	const serverId = props.stores.squadServer.serverId
 
 	// -------- dispatch move events --------
 	DndKit.useDragEnd(React.useCallback(async (event) => {
 		const user = UsersClient.loggedInUser
-		const sllState = SLLClient.Store.getState()
-		const upState = UPClient.Store.getState()
+		const upState = ZusUtils.getState(UPClient.Store)
 		if (!user || !event.over) return
-		if (!UPClient.selectIsEditing(upState, user.discordId)) return
+		if (!UPClient.Sel.isEditing(user.discordId)(upState)) return
 		const target = event.over.slots[0]
 		if (target.dragItem.type !== 'layer-item') return
 		const cursors = LL.dropItemToLLItemCursors(event.over)
 		if (cursors.length === 0) return
-		const voteState = VotesClient.voteState$.getValue()
-		const layerList = props.store.getState().layerList
+		const voteState = VotesClient.voteState$(serverId).getValue()
+		const layerList = LayerQueuePrt.Sel.layerList(ZusUtils.getState(props.stores.squadServer))
 		if (voteState?.code === 'in-progress') {
 			for (const cursor of cursors) {
 				if (LL.isChildItem(cursor.itemId, voteState.itemId, layerList)) return
@@ -86,12 +87,12 @@ export function LayerList(
 		const cursor = cursors[0]
 
 		if (event.active.type === 'history-entry') {
-			const history = await MatchHistoryClient.recentMatches$.getValue()
+			const history = await MatchHistoryClient.recentMatches$(serverId).getValue()
 			const activeId = event.active.id
 			const entry = history.find((entry) => entry.historyEntryId === activeId)
 			if (!entry) return
 			const index = LL.resolveCursorIndex(layerList, cursor)!
-			void props.store.getState().dispatch({
+			void LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer }, {
 				op: 'add',
 				items: [{ type: 'single-list-item', layerId: entry.layerId }],
 				index,
@@ -99,29 +100,28 @@ export function LayerList(
 		}
 
 		if (event.active.type === 'layer-item') {
-			void props.store.getState().dispatch({
+			void LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer }, {
 				op: 'move',
 				cursor: cursor,
 				itemId: event.active.id,
 				newFirstItemId: LL.createItemId(),
 			})
 		}
-	}, [props.store]))
+	}, [props.stores.squadServer, serverId]))
 
 	DndKit.useDraggingCallback(item => {
-		const presenceState = UPClient.Store.getState()
 		if (!item) {
-			presenceState.updateActivity({ code: 'set-editing-queue-idle-if', currentIds: ['MOVING_ITEM', 'ADDING_ITEM_FROM_HISTORY'] })
+			UPClient.Actions.updateActivity({ code: 'set-editing-queue-idle-if', currentIds: ['MOVING_ITEM', 'ADDING_ITEM_FROM_HISTORY'] })
 			return
 		}
 		const { leaf } = ST.Match
 		if (item?.type === 'layer-item') {
-			presenceState.updateActivity({ code: 'set-editing-queue', variant: leaf('MOVING_ITEM', { itemId: item.id }) })
+			UPClient.Actions.updateActivity({ code: 'set-editing-queue', variant: leaf('MOVING_ITEM', { itemId: item.id }) })
 			return
 		}
 
 		if (item?.type === 'history-entry') {
-			presenceState.updateActivity({ code: 'set-editing-queue', variant: leaf('ADDING_ITEM_FROM_HISTORY', {}) })
+			UPClient.Actions.updateActivity({ code: 'set-editing-queue', variant: leaf('ADDING_ITEM_FROM_HISTORY', {}) })
 			return
 		}
 	})
@@ -131,26 +131,27 @@ export function LayerList(
 			<ul className="flex w-full flex-col">
 				{queueItemIds.map((id) => (
 					<LayerListItem
-						llStore={props.store}
 						key={id}
 						itemId={id}
+						stores={props.stores}
 					/>
 				))}
 			</ul>
-			<LoadedActivitiesRenderer store={props.store} />
+			<LoadedActivitiesRenderer stores={props.stores} />
 		</>
 	)
 }
 
-function LoadedActivitiesRenderer({ store }: { store: Zus.StoreApi<QD.LLStore> }) {
+function LoadedActivitiesRenderer({ stores }: { stores: SquadServerFrame.KeyProp }) {
+	const loadedActivities = ZusUtils.useStore(UPClient.Store, ZusUtils.useShallow(UPClient.Sel.loadedActivities))
 	return (
 		<>
-			{UPClient.useLoadedActivities().map((entry) => {
+			{loadedActivities.map((entry) => {
 				if (entry.name === 'selectLayers') {
 					return (
 						<LoadedSelectLayersView
 							key={entry.data.selectLayersFrame.instanceId}
-							store={store}
+							stores={stores}
 							entry={entry}
 						/>
 					)
@@ -159,7 +160,7 @@ function LoadedActivitiesRenderer({ store }: { store: Zus.StoreApi<QD.LLStore> }
 					return (
 						<LoadedGenVoteView
 							key={entry.data.genVoteFrame.instanceId}
-							store={store}
+							stores={stores}
 							entry={entry}
 						/>
 					)
@@ -168,7 +169,7 @@ function LoadedActivitiesRenderer({ store }: { store: Zus.StoreApi<QD.LLStore> }
 					return (
 						<LoadedPasteRotation
 							key="paste-rotation"
-							store={store}
+							stores={stores}
 							entry={entry}
 						/>
 					)
@@ -182,10 +183,10 @@ function LoadedActivitiesRenderer({ store }: { store: Zus.StoreApi<QD.LLStore> }
 type AddLayersPosition = 'next' | 'after'
 
 function LoadedSelectLayersView({
-	store,
+	stores,
 	entry: _entry,
 }: {
-	store: Zus.StoreApi<QD.LLStore>
+	stores: SquadServerFrame.KeyProp
 	entry: Extract<UPClient.LoadedActivityState, { name: 'selectLayers' }>
 }) {
 	const entry = useStableValue((e) => e, [_entry])
@@ -196,11 +197,10 @@ function LoadedSelectLayersView({
 	}, [])
 
 	const setPosition = React.useCallback((newPosition: AddLayersPosition) => {
-		const frameState = getFrameState(entry.data.selectLayersFrame)
-		frameState.setCursor(positionCursors[newPosition])
+		SelectLayersFrame.Actions.setCursor({ selectLayers: entry.data.selectLayersFrame }, positionCursors[newPosition])
 	}, [entry.data.selectLayersFrame, positionCursors])
 
-	const addLayersAtPosition = useFrameStore(
+	const addLayersAtPosition = ZusUtils.useStore(
 		entry.data.selectLayersFrame,
 		React.useCallback((s: SelectLayersFrame.Types['state']) => {
 			if (s.cursor?.type === 'end') return 'after' as const
@@ -213,36 +213,35 @@ function LoadedSelectLayersView({
 
 	const onAddItems = React.useCallback((items: LL.NewItem[]) => {
 		if (activity.id !== 'ADDING_ITEM') return
-		const state = store.getState()
-		let cursor = getFrameState(entry.data.selectLayersFrame).cursor
+		const layerList = LayerQueuePrt.Sel.layerList(ZusUtils.getState(stores.squadServer))
+		let cursor = ZusUtils.getState(entry.data.selectLayersFrame).cursor
 		let index: LL.ItemIndex
 		const defaultIndex = { outerIndex: 0, innerIndex: null }
-		if (cursor) index = LL.resolveCursorIndex(state.layerList, cursor) ?? defaultIndex
+		if (cursor) index = LL.resolveCursorIndex(layerList, cursor) ?? defaultIndex
 		else index = defaultIndex
-		void state.dispatch({
+		void LayerQueuePrt.Actions.dispatch({ queue: stores.squadServer }, {
 			op: 'add',
 			items,
 			index,
 		})
-	}, [activity.id, store, entry.data.selectLayersFrame])
+	}, [activity.id, stores.squadServer, entry.data.selectLayersFrame])
 
 	const onEditedLayer = React.useCallback((layerId: L.LayerId) => {
 		if (activity.id !== 'EDITING_ITEM') return
-		const state = store.getState()
 		const itemId = activity.opts.itemId
-		void state.dispatch({
+		void LayerQueuePrt.Actions.dispatch({ queue: stores.squadServer }, {
 			op: 'edit-layer',
 			itemId,
 			newLayerId: layerId,
 		})
-	}, [activity.id, activity.opts, store])
+	}, [activity.id, activity.opts, stores.squadServer])
 
 	const onSelectLayersChange = React.useCallback((open: boolean) => {
 		if (open) return
-		UPClient.Store.getState().updateActivity(UP.toEditingQueueIdleOrNone())
+		UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
 	}, [])
 
-	const frames = React.useMemo(() => ({
+	const dialogStores = React.useMemo(() => ({
 		selectLayers: data.selectLayersFrame,
 	}), [data.selectLayersFrame])
 
@@ -260,7 +259,7 @@ function LoadedSelectLayersView({
 	if (activity.id === 'EDITING_ITEM') {
 		return (
 			<EditLayerDialog
-				frames={frames}
+				stores={dialogStores}
 				open={entry.active}
 				onOpenChange={onSelectLayersChange}
 				onSelectLayer={onEditedLayer}
@@ -270,7 +269,7 @@ function LoadedSelectLayersView({
 		return (
 			<SelectLayersDialog
 				title={activity.opts.title ?? 'Add Layers'}
-				frames={frames}
+				stores={dialogStores}
 				open={entry.active}
 				onOpenChange={onSelectLayersChange}
 				selectQueueItems={onAddItems}
@@ -282,10 +281,10 @@ function LoadedSelectLayersView({
 }
 
 function LoadedGenVoteView({
-	store,
+	stores,
 	entry: _entry,
 }: {
-	store: Zus.StoreApi<QD.LLStore>
+	stores: SquadServerFrame.KeyProp
 	entry: Extract<UPClient.LoadedActivityState, { name: 'genVote' }>
 }) {
 	const entry = useStableValue((e) => e, [_entry])
@@ -293,15 +292,15 @@ function LoadedGenVoteView({
 
 	const onOpenChange = React.useCallback((open: boolean) => {
 		if (open) return
-		UPClient.Store.getState().updateActivity(UP.toEditingQueueIdleOrNone())
+		UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
 	}, [])
 
-	const frames = React.useMemo(() => ({
+	const dialogStores = React.useMemo(() => ({
 		genVote: data.genVoteFrame,
-	}), [data.genVoteFrame])
+		squadServer: stores.squadServer,
+	}), [data.genVoteFrame, stores.squadServer])
 
 	const onSubmit = React.useCallback((result: GenVoteFrame.Result, cursor?: LL.Cursor) => {
-		const state = store.getState()
 		const source: LL.Source = {
 			type: 'manual',
 			userId: UsersClient.loggedInUserId!,
@@ -309,22 +308,27 @@ function LoadedGenVoteView({
 
 		const item = LL.createVoteItem(result.choices, source, result.voteConfig)
 
+		const layerList = LayerQueuePrt.Sel.layerList(ZusUtils.getState(stores.squadServer))
 		let index: LL.ItemIndex
 		const defaultIndex: LL.ItemIndex = { outerIndex: 0, innerIndex: null }
 		if (cursor) {
-			index = LL.resolveCursorIndex(state.layerList, cursor) ?? defaultIndex
+			index = LL.resolveCursorIndex(layerList, cursor) ?? defaultIndex
 		} else {
 			index = defaultIndex
 		}
 
-		void state.dispatch({ op: 'add', index: index ?? { outerIndex: 0, innerIndex: null }, items: [item] })
-		UPClient.Store.getState().updateActivity(UP.toEditingQueueIdleOrNone())
-	}, [store])
+		void LayerQueuePrt.Actions.dispatch({ queue: stores.squadServer }, {
+			op: 'add',
+			index: index ?? { outerIndex: 0, innerIndex: null },
+			items: [item],
+		})
+		UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
+	}, [stores.squadServer])
 
 	return (
 		<GenVoteDialog
 			title="Generate Vote"
-			frames={frames}
+			stores={dialogStores}
 			open={entry.active}
 			onOpenChange={onOpenChange}
 			onSubmit={onSubmit}
@@ -333,10 +337,10 @@ function LoadedGenVoteView({
 }
 
 function LoadedPasteRotation({
-	store,
+	stores,
 	entry: _entry,
 }: {
-	store: Zus.StoreApi<QD.LLStore>
+	stores: SquadServerFrame.KeyProp
 	entry: Extract<UPClient.LoadedActivityState, { name: 'pasteRotation' }>
 }) {
 	const entry = useStableValue((e) => e, [_entry])
@@ -344,21 +348,21 @@ function LoadedPasteRotation({
 
 	const onOpenChange = React.useCallback((open: boolean) => {
 		if (open) return
-		UPClient.Store.getState().updateActivity(UP.toEditingQueueIdleOrNone())
+		UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
 	}, [])
 
 	const onSubmit = React.useCallback((layers: L.UnvalidatedLayer[]) => {
-		const state = store.getState()
 		const layerIds = layers.map(l => l.id)
 		const cursor: LL.Cursor = pastePosition === 'next' ? { type: 'start' } : { type: 'end' }
-		const index: LL.ItemIndex = LL.resolveCursorIndex(state.layerList, cursor) ?? { outerIndex: 0, innerIndex: null }
-		void state.dispatch({
+		const layerList = LayerQueuePrt.Sel.layerList(ZusUtils.getState(stores.squadServer))
+		const index: LL.ItemIndex = LL.resolveCursorIndex(layerList, cursor) ?? { outerIndex: 0, innerIndex: null }
+		void LayerQueuePrt.Actions.dispatch({ queue: stores.squadServer }, {
 			op: 'add',
 			index,
 			items: layerIds.map(layerId => ({ type: 'single-list-item', layerId })),
 		})
-		UPClient.Store.getState().updateActivity(UP.toEditingQueueIdleOrNone())
-	}, [store, pastePosition])
+		UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
+	}, [stores.squadServer, pastePosition])
 
 	const positionTabsList = React.useMemo(() => (
 		<TabsList
@@ -404,11 +408,14 @@ export type QueueItemAction =
 
 type LayerListItemProps = {
 	itemId: string
-	llStore: Zus.StoreApi<QD.LLStore>
+	stores: SquadServerFrame.KeyProp
 }
 
 function LayerListItem(props: LayerListItemProps) {
-	const itemRes = Zus.useStore(props.llStore, ZusUtils.useDeep(s => LL.findItemById(s.layerList, props.itemId)))
+	const itemRes = ZusUtils.useStore(
+		props.stores.squadServer,
+		ZusUtils.useDeep(s => LL.findItemById(LayerQueuePrt.Sel.layerList(s), props.itemId)),
+	)
 	if (!itemRes) return null
 	const { item } = itemRes
 	if (LL.isVoteItem(item)) {
@@ -418,15 +425,15 @@ function LayerListItem(props: LayerListItemProps) {
 }
 
 function SingleLayerListItem(props: LayerListItemProps) {
-	const parentItem = Zus.useStore(
-		props.llStore,
-		s => LL.findParentItem(s.layerList, props.itemId),
+	const parentItem = ZusUtils.useStore(
+		props.stores.squadServer,
+		s => LL.findParentItem(LayerQueuePrt.Sel.layerList(s), props.itemId),
 	)
 
-	const [item, index, isLocallyLast, displayedMutation] = Zus.useStore(
-		props.llStore,
+	const [item, index, isLocallyLast, displayedMutation] = ZusUtils.useStore(
+		props.stores.squadServer,
 		ZusUtils.useDeep((llState) => {
-			const s = QD.selectLLItemState(llState, props.itemId)!
+			const s = LayerQueuePrt.Sel.itemState(props.itemId)(llState)!
 			return [s.item, s.index, s.isLocallyLast, getDisplayedMutation(s.mutationState)]
 		}),
 	)
@@ -435,20 +442,21 @@ function SingleLayerListItem(props: LayerListItemProps) {
 
 	const isVoteChoice = !!parentItem
 
-	const isModified = Zus.useStore(SLLClient.Store, s => s.isModified)
-	const isEditing = Zus.useStore(UPClient.Store, s => user ? UPClient.selectIsEditing(s, user.discordId) : false)
-	const canEdit = !UPClient.useIsSllItemLocked(item.itemId) && isEditing
+	const isModified = ZusUtils.useStore(props.stores.squadServer, LayerQueuePrt.Sel.isModified)
+	const isEditing = ZusUtils.useStore(UPClient.Store, s => user ? UPClient.Sel.isEditing(user.discordId)(s) : false)
+	const isLocked = ZusUtils.useStore(UPClient.Store, UPClient.Sel.isSllItemLocked(item.itemId))
+	const canEdit = !isLocked && !!isEditing
 
 	const [itemPresence, itemActivityUser, activityHovered] = UPClient.useItemPresence(item.itemId)
 
-	const globalVoteState = VotesClient.useVoteState()
+	const globalVoteState = VotesClient.useVoteState(props.stores.squadServer.serverId)
 	const voteState = (globalVoteState && globalVoteState?.itemId === parentItem?.itemId ? globalVoteState : undefined)
 		?? parentItem?.endingVoteState
 
 	const draggableItem = LL.layerItemToDragItem(item)
 	const dragProps = DndKit.useDraggable(draggableItem, { feedback: 'move', disabled: !isEditing })
 
-	const itemActions = () => QD.getLLItemActions(props.llStore.getState(), props.itemId)
+	const itemStores = { queue: props.stores.squadServer }
 
 	const editActivity = React.useMemo(() => ({
 		_tag: 'leaf' as const,
@@ -488,12 +496,12 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	const dropdownProps = {
 		open: dropdownOpen && canEdit,
 		setOpen: setDropdownOpen,
-		listStore: props.llStore,
+		stores: props.stores,
 		itemId: props.itemId,
 	} satisfies Partial<ItemDropdownProps>
 
-	const layersStatus = resToOptional(SquadServerClient.useLayersStatus())?.data
-	const serverInfo = SquadServerClient.useServerInfo()
+	const layersStatus = resToOptional(SquadServerClient.useLayersStatus(props.stores.squadServer.serverId))?.data
+	const serverInfo = SquadServerClient.useServerInfo(props.stores.squadServer.serverId)
 	const tally = voteState && V.isVoteStateWithVoteData(voteState) && serverInfo
 		? V.tallyVotes(voteState, serverInfo.playerCount)
 		: undefined
@@ -501,11 +509,11 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	const itemChoiceTallyPercentage = (isVoteChoice && voteState) ? tally?.percentages?.get(item.itemId) : undefined
 	const isVoteWinner = isVoteChoice && voteState?.code === 'ended:winner' && voteState?.winnerId === item.itemId
 	const voteCount = (isVoteChoice && voteState) ? tally?.totals?.get(item.itemId) : undefined
-	const isFirstQueuedLayer = Zus.useStore(
-		props.llStore,
-		s => index.innerIndex === 0 && LL.getNextLayerId(s.layerList) === item.layerId,
+	const isFirstQueuedLayer = ZusUtils.useStore(
+		props.stores.squadServer,
+		s => index.innerIndex === 0 && LL.getNextLayerId(LayerQueuePrt.Sel.layerList(s)) === item.layerId,
 	)
-	const viewingQueue = UPClient.useActivityMatch(UP.VIEWING_QUEUE_TRANSITIONS.matchActivity)
+	const viewingQueue = UPClient.useActivityMatch(UP.Trans.viewingQueue(props.stores.squadServer.serverId).match)
 
 	if (index.innerIndex === 0 && voteState?.code !== 'ended:winner') {
 		badges.unshift(
@@ -617,7 +625,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 							size="icon"
 							title="Swap Factions"
 							disabled={!canEdit || !L.swapFactions(item.layerId)}
-							onClick={() => itemActions().dispatch({ op: 'swap-factions' })}
+							onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })}
 						>
 							<Icons.ArrowLeftRight />
 						</Button>
@@ -626,7 +634,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 							size="icon"
 							title="Delete"
 							disabled={!canEdit}
-							onClick={() => itemActions().dispatch({ op: 'delete' })}
+							onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
 						>
 							<Icons.X />
 						</Button>
@@ -648,26 +656,27 @@ function SingleLayerListItem(props: LayerListItemProps) {
 }
 
 function VoteLayerListItem(props: LayerListItemProps) {
-	const [item, index, displayedMutation, isLocallyLast, endingVoteState] = Zus.useStore(
-		props.llStore,
+	const [item, index, displayedMutation, isLocallyLast, endingVoteState] = ZusUtils.useStore(
+		props.stores.squadServer,
 		ZusUtils.useDeep((llState) => {
-			const s = QD.selectLLItemState(llState, props.itemId)!
+			const s = LayerQueuePrt.Sel.itemState(props.itemId)(llState)!
 			const voteItem = s.item as LL.VoteItem
 			return [voteItem, s.index, getDisplayedMutation(s.mutationState), s.isLocallyLast, voteItem.endingVoteState]
 		}),
 	)
 
-	const globalVoteState = VotesClient.useVoteState()
+	const globalVoteState = VotesClient.useVoteState(props.stores.squadServer.serverId)
 	const voteState = (globalVoteState?.itemId === item.itemId ? globalVoteState : undefined) ?? endingVoteState
 
-	const isModified = Zus.useStore(SLLClient.Store, s => s.isModified)
+	const isModified = ZusUtils.useStore(props.stores.squadServer, LayerQueuePrt.Sel.isModified)
 	const manageVoteDenied = RbacClient.usePermsCheck(RBAC.perm('vote:manage'))
 	const isEditing = UPClient.useIsEditing()
-	const canEdit = !UPClient.useIsSllItemLocked(item.itemId) && isEditing
+	const isLocked = ZusUtils.useStore(UPClient.Store, UPClient.Sel.isSllItemLocked(item.itemId))
+	const canEdit = !isLocked && !!isEditing
 	const draggableItem = LL.layerItemToDragItem(item)
 	const dragProps = DndKit.useDraggable(draggableItem, { disabled: !isEditing })
 
-	const itemActions = () => QD.getLLItemActions(props.llStore.getState(), props.itemId)
+	const itemStores = { queue: props.stores.squadServer }
 
 	const [dropdownOpen, setDropdownOpen] = React.useState(false)
 	const isMobile = useIsMobile()
@@ -692,7 +701,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const dropdownProps = {
 		open: dropdownOpen && canEdit,
 		setOpen: setDropdownOpen,
-		listStore: props.llStore,
+		stores: props.stores,
 		itemId: props.itemId,
 	} satisfies Partial<ItemDropdownProps>
 
@@ -701,15 +710,15 @@ function VoteLayerListItem(props: LayerListItemProps) {
 
 	// we're only using .useActivityState here because there's nothing to load with this activity at the moment
 	const [configuringVote, setConfiguringVote] = UPClient.useActivityState({
-		createActivity: UP.createEditingQueueVariant({ _tag: 'leaf', id: 'CONFIGURING_VOTE', opts: { itemId: item.itemId } }),
-		matchActivity: React.useCallback(
+		create: UP.createEditingQueueVariant({ _tag: 'leaf', id: 'CONFIGURING_VOTE', opts: { itemId: item.itemId } }),
+		match: React.useCallback(
 			(state) => {
-				const node = UP.getEditingQueueNode(state)?.chosen
+				const node = state ? UP.Trans.editingQueue(state.opts.serverId).match(state)?.chosen : null
 				return node?.id === 'CONFIGURING_VOTE' && node.opts.itemId === item.itemId
 			},
 			[item.itemId],
 		),
-		removeActivity: UP.toEditingQueueIdleOrNone,
+		destroy: UP.toEditingQueueIdleOrNone,
 	})
 
 	const [_voteDisplayPropsOpen, _setVoteDisplayPropsOpen] = React.useState(false)
@@ -720,9 +729,11 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		else _setVoteDisplayPropsOpen(update)
 	}
 
+	const serverId = props.stores.squadServer.serverId
+
 	const startVoteMutation = RQ.useMutation(RPC.orpc.vote.startVote.mutationOptions())
 	async function startVote() {
-		const res = await startVoteMutation.mutateAsync({ itemId: item.itemId, ...item.voteConfig, ...{ voterType } })
+		const res = await startVoteMutation.mutateAsync({ serverId, itemId: item.itemId, ...item.voteConfig, ...{ voterType } })
 		switch (res.code) {
 			case 'err:permission-denied':
 				RbacClient.handlePermissionDenied(res)
@@ -737,7 +748,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 
 	const abortVoteMutation = RQ.useMutation(RPC.orpc.vote.abortVote.mutationOptions())
 	async function abortVote() {
-		const res = await abortVoteMutation.mutateAsync(undefined)
+		const res = await abortVoteMutation.mutateAsync({ serverId })
 		switch (res.code) {
 			case 'err:permission-denied':
 				RbacClient.handlePermissionDenied(res)
@@ -752,7 +763,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 
 	const endVoteEarlyMutation = RQ.useMutation(RPC.orpc.vote.endVoteEarly.mutationOptions())
 	async function endVoteEarly() {
-		const res = await endVoteEarlyMutation.mutateAsync(undefined)
+		const res = await endVoteEarlyMutation.mutateAsync({ serverId })
 		switch (res.code) {
 			case 'err:permission-denied':
 				RbacClient.handlePermissionDenied(res)
@@ -767,7 +778,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 
 	const cancelAutostartMutation = RQ.useMutation(RPC.orpc.vote.cancelVoteAutostart.mutationOptions())
 	async function cancelAutostart() {
-		const res = await cancelAutostartMutation.mutateAsync(undefined)
+		const res = await cancelAutostartMutation.mutateAsync({ serverId })
 		switch (res.code) {
 			case 'err:permission-denied':
 				RbacClient.handlePermissionDenied(res)
@@ -782,17 +793,16 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		globalToast$.next({ title: 'Vote autostart cancelled!' })
 	}
 
-	const serverInfoRes = SquadServerClient.useServerInfoRes()
+	const serverInfoRes = SquadServerClient.useServerInfoRes(serverId)
 	const serverInfo = serverInfoRes.code === 'ok' ? serverInfoRes.data : undefined
 
 	const [voterType, setVoterType] = React.useState<V.VoterType>(voteState?.voterType ?? 'public')
 	const internalVoteCheckboxId = React.useId()
-	const { canInitiateVote, voteAutostartTime, voteTally } = ZusUtils.useStoreDeep(
-		props.llStore,
-		store => {
+	const memoizedSelector = React.useCallback(
+		ZusUtils.useDeep((store: SquadServerFrame.Types['state']) => {
 			const canInitiateVote = V.canInitiateVote(
 				item.itemId,
-				store.layerList,
+				LayerQueuePrt.Sel.layerList(store),
 				voterType,
 				globalVoteState ? { code: globalVoteState.code } : undefined,
 				isModified,
@@ -803,10 +813,14 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				voteTally: voteState && voteState.code !== 'ready' ? V.tallyVotes(voteState, serverInfo?.playerCount ?? 0) : undefined,
 			}
 			return res
-		},
-		{
-			dependencies: [item.itemId, voteState, globalVoteState?.code, voterType, serverInfo?.playerCount, isModified],
-		},
+		}),
+		[item.itemId, voterType, globalVoteState, isModified, voteState, serverInfo?.playerCount],
+	)
+
+	const { canInitiateVote, voteAutostartTime, voteTally } = ZusUtils.useStore(
+		props.stores.squadServer,
+		memoizedSelector,
+		// dependencies: [item.itemId, voteState, globalVoteState?.code, voterType, serverInfo?.playerCount, isModified],
 	)
 
 	return (
@@ -974,7 +988,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 									<VoteDisplayPropsPopover
 										open={voteDisplayPropsOpen}
 										onOpenChange={setVoteDisplayPropsOpen}
-										listStore={props.llStore}
+										stores={props.stores}
 										itemId={props.itemId}
 										readonly={!canEdit || !!manageVoteDenied}
 									>
@@ -987,7 +1001,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 										size="icon"
 										title="Swap Factions"
 										disabled={!canEdit || !L.swapFactions(item.layerId)}
-										onClick={() => itemActions().dispatch({ op: 'swap-factions' })}
+										onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })}
 									>
 										<Icons.ArrowLeftRight />
 									</Button>
@@ -996,7 +1010,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 										size="icon"
 										title="Delete"
 										disabled={!canEdit}
-										onClick={() => itemActions().dispatch({ op: 'delete' })}
+										onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
 									>
 										<Icons.X />
 									</Button>
@@ -1017,7 +1031,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 										<SingleLayerListItem
 											key={choice.itemId}
 											itemId={choice.itemId}
-											llStore={props.llStore}
+											stores={props.stores}
 										/>
 									)
 								})}
@@ -1033,20 +1047,22 @@ function VoteLayerListItem(props: LayerListItemProps) {
 export function VoteDisplayPropsPopover(
 	props: {
 		itemId: LL.ItemId
-		listStore: Zus.StoreApi<QD.LLStore>
+		stores: SquadServerFrame.KeyProp
 		open: boolean
 		onOpenChange: React.Dispatch<React.SetStateAction<boolean>>
 		children: React.ReactNode
 		readonly?: boolean
 	},
 ) {
-	const itemActions = () => QD.getLLItemActions(props.listStore.getState(), props.itemId)
-	const [voteConfig, choices] = ZusUtils.useStoreDeep(props.listStore, store => {
-		const s = QD.selectLLItemState(store, props.itemId)
-		const voteItem = s.item as LL.VoteItem
-		const choices = voteItem.choices.map(c => c.layerId)
-		return [voteItem.voteConfig, choices]
-	})
+	const [voteConfig, choices] = ZusUtils.useStore(
+		props.stores.squadServer,
+		ZusUtils.useDeep(React.useCallback((store: SquadServerFrame.Types['state']) => {
+			const s = LayerQueuePrt.Sel.itemState(props.itemId)(store)
+			const voteItem = s.item as LL.VoteItem
+			const choices = voteItem.choices.map(c => c.layerId)
+			return [voteItem.voteConfig, choices] as const
+		}, [props.itemId])),
+	)
 
 	const [localConfig, setLocalConfig] = React.useState<Partial<V.AdvancedVoteConfig> | null>(null)
 
@@ -1063,8 +1079,10 @@ export function VoteDisplayPropsPopover(
 	}
 
 	function handleSave() {
-		const actions = itemActions()
-		actions.dispatch({ op: 'configure-vote', config: localConfig })
+		LayerQueuePrt.Actions.dispatchItemOp({ queue: props.stores.squadServer }, props.itemId, {
+			op: 'configure-vote',
+			config: localConfig,
+		})
 		props.onOpenChange(false)
 	}
 
@@ -1096,7 +1114,7 @@ type ItemDropdownProps = {
 	children: React.ReactNode
 	open: boolean
 	setOpen: React.Dispatch<React.SetStateAction<boolean>>
-	listStore: Zus.StoreApi<QD.LLStore>
+	stores: SquadServerFrame.KeyProp
 	allowVotes?: boolean
 	itemId: LL.ItemId
 }
@@ -1104,14 +1122,14 @@ type ItemDropdownProps = {
 type SubDropdownState = 'add-before' | 'add-after' | 'create-vote'
 
 function ItemDropdown(props: ItemDropdownProps) {
-	const [item, index, lastLocalIndex] = Zus.useStore(
-		props.listStore,
+	const [item, index, lastLocalIndex] = ZusUtils.useStore(
+		props.stores.squadServer,
 		ZusUtils.useDeep((llStore) => {
-			const itemState = QD.selectLLItemState(llStore, props.itemId)
+			const itemState = LayerQueuePrt.Sel.itemState(props.itemId)(llStore)
 			return [
 				itemState.item,
 				itemState.index,
-				LL.getLastLocalIndexForItem(itemState.item.itemId, llStore.layerList),
+				LL.getLastLocalIndexForItem(itemState.item.itemId, LayerQueuePrt.Sel.layerList(llStore)),
 			] as const
 		}),
 	)
@@ -1138,14 +1156,14 @@ function ItemDropdown(props: ItemDropdownProps) {
 		return [activities] as const
 	}, [item.itemId])
 
-	const isLocked = UPClient.useIsSllItemLocked(item.itemId)
+	const isLocked = ZusUtils.useStore(UPClient.Store, UPClient.Sel.isSllItemLocked(item.itemId))
 	const isEditing = UPClient.useIsEditing()
-	const itemActions = () => QD.getLLItemActions(props.listStore.getState(), props.itemId)
+	const itemStores = { queue: props.stores.squadServer }
 
 	function sendToFront() {
 		if (!user) return
-		const firstItem = props.listStore.getState().layerList[0]
-		itemActions().dispatch({
+		const firstItem = LayerQueuePrt.Sel.layerList(ZusUtils.getState(props.stores.squadServer))[0]
+		LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, {
 			op: 'move',
 			newFirstItemId: LL.createItemId(),
 			cursor: { type: 'item-relative', itemId: firstItem.itemId, position: 'before' },
@@ -1153,12 +1171,12 @@ function ItemDropdown(props: ItemDropdownProps) {
 	}
 	function sendToBack() {
 		if (!user) return
-		const itemState = QD.selectLLItemState(props.listStore.getState(), props.itemId)
-		const state = props.listStore.getState()
-		const layerList = state.layerList
+		const state = ZusUtils.getState(props.stores.squadServer)
+		const itemState = LayerQueuePrt.Sel.itemState(props.itemId)(state)
+		const layerList = LayerQueuePrt.Sel.layerList(state)
 		const lastLocalIndex = LL.getLastLocalIndexForItem(itemState.item.itemId, layerList)!
 		const targetItemId = LL.resolveItemForIndex(layerList, lastLocalIndex)!.itemId
-		itemActions().dispatch({
+		LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, {
 			op: 'move',
 			newFirstItemId: LL.createItemId(),
 			cursor: { type: 'item-relative', itemId: targetItemId, position: 'after' },
@@ -1174,7 +1192,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 					<DropdownMenuItem
 						className=""
 						disabled={!isEditing || isLocked}
-						onClick={() => itemActions().dispatch({ op: 'clone', itemId: item.itemId })}
+						onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'clone', itemId: item.itemId })}
 					>
 						<Icons.Copy />Clone
 					</DropdownMenuItem>

@@ -1,37 +1,43 @@
+import * as Cleanup from '@/lib/cleanup'
+import * as CS from '@/models/context-shared'
+import * as C from '@/server/context'
 import * as Env from '@/server/env'
-import { baseLogger } from '@/server/logger'
+import { initModule } from '@/server/logger'
+
+const module = initModule('layer-queue')
+let log!: CS.Logger
 
 const buildEnv = Env.getEnvBuilder({ ...Env.groups.general })
 let ENV!: ReturnType<typeof buildEnv>
-const tasks: (CleanupTaskCb | null)[] = []
-export type CleanupTaskCb = () => void | Promise<void>
-
+const taskRegistry: (Cleanup.Tasks | null)[] = []
 /**
  * Registers a function to run on SIGTERM
  */
-export function register(cb: CleanupTaskCb) {
+export function register(...tasks: Cleanup.Tasks) {
 	const idx = tasks.length
-	tasks.push(cb)
+	tasks.push(tasks)
 
 	return idx
 }
 
 export function unregister(idx: number) {
-	tasks[idx] = null
+	taskRegistry[idx] = null
 }
 
 export function setup() {
 	ENV = buildEnv()
-	const ctx = { log: baseLogger }
+	log = module.getLogger()
 	if (ENV.NODE_ENV === 'development') return
-	process.on('SIGTERM', async () => {
-		const res = await Promise.allSettled(tasks.map(task => task?.() ?? Promise.resolve()))
-		res.forEach((result) => {
-			if (result.status === 'rejected') {
-				ctx.log.error('Cleanup task failed', result.reason)
+	const ctx = { ...CS.init(), log }
+	process.on(
+		'SIGTERM',
+		async () => {
+			for (const tasksList of taskRegistry.toReversed()) {
+				if (!tasksList) continue
+				await Cleanup.runCleanup(ctx, tasksList)
 			}
-		})
-		ctx.log.info('Cleanup complete')
-		process.exit(0)
-	})
+			log.info('Cleanup complete')
+			process.exit(0)
+		},
+	)
 }

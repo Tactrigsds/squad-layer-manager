@@ -1,24 +1,22 @@
 import * as Paths from '$root/paths'
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
-import * as Obj from '@/lib/object.ts'
 import { ParsedBigIntSchema } from '@/lib/zod'
-import * as GS from '@/models/global-settings.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as RBAC from '@/rbac.models'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base.ts'
 import * as Cli from '@/systems/cli.server'
-import * as GlobalSettings from '@/systems/global-settings.server'
 import * as LayerDb from '@/systems/layer-db.server'
-import * as Rx from 'rxjs'
 import * as fsPromise from 'fs/promises'
 import stringifyCompact from 'json-stringify-pretty-compact'
 import { parse as parseJsonc } from 'jsonc-parser'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import * as Rx from 'rxjs'
 import { z } from 'zod'
 import * as Env from './env.ts'
 
+// deploy-time constants only: the JSONC config file and env vars. Runtime, admin-editable state lives in settings.server.ts.
 export const ConfigSchema = z.object({
 	'$schema': z.string().optional(),
 	homeDiscordGuildId: ParsedBigIntSchema,
@@ -58,7 +56,7 @@ type Config = z.infer<typeof ConfigSchema>
 export let CONFIG!: Config
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.squadcalc })
-let ENV!: ReturnType<typeof envBuilder>
+export let ENV!: ReturnType<typeof envBuilder>
 
 export async function ensureSetup() {
 	if (CONFIG) return
@@ -78,84 +76,6 @@ export async function ensureSetup() {
 	CONFIG = parseRes.data
 }
 
-export type ServerEntry = {
-	id: string
-	displayName: string
-	defaultServer: boolean
-	enabled: boolean
-	navLinks?: { label: string; url: string }[]
-}
-
-type PublicConfigBase = {
-	layerQueue: { lowQueueWarningThreshold: number; maxQueueSize: number }
-	topBarColor: GS.GlobalSettings['topBarColor']
-	playerFlagColorHierarchy: GS.GlobalSettings['playerFlagColorHierarchy']
-	layerTable: typeof CONFIG.layerTable
-	isProduction: boolean
-	PUBLIC_GIT_BRANCH: string
-	PUBLIC_GIT_SHA: string
-	PUBLIC_SQUADCALC_URL: string
-	repoUrl: string | undefined
-	issuesUrl: string | undefined
-	navLinks: GS.GlobalSettings['navLinks']
-	extraColumnsConfig: typeof LayerDb.LAYER_DB_CONFIG
-	chat: GS.GlobalSettings['chat']
-	layersVersion: string
-	commands: GS.GlobalSettings['commands']
-	commandPrefix: string
-	vote: { voteDuration: number; voteDisplayProps: GS.GlobalSettings['vote']['voteDisplayProps'] }
-	servers: ServerEntry[]
-	playerFlagGroupings: GS.GlobalSettings['playerFlagGroupings']
-}
-
-export type PublicConfig = PublicConfigBase & { wsClientId: string }
-
-const publicConfig$ = new Rx.ReplaySubject<PublicConfigBase>(1)
-
-function buildPublicConfigBase(): PublicConfigBase {
-	const GS = GlobalSettings.GLOBAL_SETTINGS
-	return {
-		layerQueue: Obj.selectProps(GS.layerQueue, ['lowQueueWarningThreshold', 'maxQueueSize']),
-		topBarColor: GS.topBarColor,
-		playerFlagColorHierarchy: GS.playerFlagColorHierarchy,
-		layerTable: CONFIG.layerTable,
-		isProduction: ENV.NODE_ENV === 'production',
-		PUBLIC_GIT_BRANCH: ENV.PUBLIC_GIT_BRANCH,
-		PUBLIC_GIT_SHA: ENV.PUBLIC_GIT_SHA,
-		PUBLIC_SQUADCALC_URL: ENV.PUBLIC_SQUADCALC_URL,
-		repoUrl: CONFIG.repoUrl,
-		issuesUrl: CONFIG.issuesUrl,
-		navLinks: GS.navLinks,
-		extraColumnsConfig: LayerDb.LAYER_DB_CONFIG,
-		chat: GS.chat,
-		layersVersion: LayerDb.layersVersion,
-		commands: GS.commands,
-		commandPrefix: GS.commandPrefix,
-		vote: {
-			voteDuration: GS.vote.voteDuration,
-			voteDisplayProps: GS.vote.voteDisplayProps,
-		},
-		servers: GS.servers.map((server): ServerEntry => ({
-			id: server.id,
-			displayName: server.displayName,
-			defaultServer: server.defaultServer,
-			enabled: server.enabled,
-			navLinks: server.navLinks,
-		})),
-		playerFlagGroupings: GS.playerFlagGroupings,
-	}
-}
-
-export function pushPublicConfig() {
-	publicConfig$.next(buildPublicConfigBase())
-}
-
-// Called from main.ts after GlobalSettings.setup(); also subscribes to future GlobalSettings changes.
-export function setupPublicConfig() {
-	pushPublicConfig()
-	GlobalSettings.update$.subscribe(() => pushPublicConfig())
-}
-
 async function generateConfigJsonSchema() {
 	const schemaPath = path.join(Paths.ASSETS, 'config-schema.json')
 	const schema = z.toJSONSchema(ConfigSchema, { io: 'input' })
@@ -163,14 +83,47 @@ async function generateConfigJsonSchema() {
 	console.log('Wrote generated config schema to %s', schemaPath)
 }
 
+// ============================== public, static config (never changes for the lifetime of the process) ==============================
+
+export type PublicConfig = {
+	isProduction: boolean
+	PUBLIC_GIT_BRANCH: string
+	PUBLIC_GIT_SHA: string
+	PUBLIC_SQUADCALC_URL: string
+	repoUrl: string | undefined
+	issuesUrl: string | undefined
+	layerTable: typeof CONFIG.layerTable
+	extraColumnsConfig: typeof LayerDb.LAYER_DB_CONFIG
+	layersVersion: string
+}
+
+export type PublicConfigForClient = PublicConfig & { wsClientId: string }
+
+const publicConfig$ = new Rx.ReplaySubject<PublicConfig>(1)
+
+// called once from main.ts, after LayerDb.setup() has resolved
+export function pushPublicConfig() {
+	publicConfig$.next({
+		isProduction: ENV.NODE_ENV === 'production',
+		PUBLIC_GIT_BRANCH: ENV.PUBLIC_GIT_BRANCH,
+		PUBLIC_GIT_SHA: ENV.PUBLIC_GIT_SHA,
+		PUBLIC_SQUADCALC_URL: ENV.PUBLIC_SQUADCALC_URL,
+		repoUrl: CONFIG.repoUrl,
+		issuesUrl: CONFIG.issuesUrl,
+		layerTable: CONFIG.layerTable,
+		extraColumnsConfig: LayerDb.LAYER_DB_CONFIG,
+		layersVersion: LayerDb.layersVersion,
+	})
+}
+
 const module = initModule('config')
 const orpcBase = getOrpcBase(module)
 
 export const router = {
-	watchPublicConfig: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context: ctx, signal }) {
+	watchConfig: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context: ctx, signal }) {
 		yield* toAsyncGenerator(
 			publicConfig$.pipe(
-				Rx.map(base => ({ ...base, wsClientId: ctx.wsClientId })),
+				Rx.map((base): PublicConfigForClient => ({ ...base, wsClientId: ctx.wsClientId })),
 				withAbortSignal(signal!),
 			),
 		)

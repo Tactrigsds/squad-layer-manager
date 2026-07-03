@@ -16,7 +16,6 @@ import * as Discord from '@/systems/discord.server'
 import * as LayerDb from '@/systems/layer-db.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sessions from '@/systems/sessions.server'
-import * as SquadServer from '@/systems/squad-server.server'
 import * as WsSessionSys from '@/systems/ws-session.server'
 import fastifyCookie from '@fastify/cookie'
 import fastifyFormBody from '@fastify/formbody'
@@ -290,7 +289,7 @@ export const setup = C.spanOp('setup', { module }, async () => {
 		for (const [key, value] of Object.entries(BASE_HEADERS)) {
 			res.header(key, value)
 		}
-		SquadServer.manageDefaultServerIdForRequest(ctx)
+		// SquadServer.manageDefaultServerIdForRequest(ctx)
 		switch (ENV.NODE_ENV) {
 			case 'development': {
 				// --------  dev server proxy setup --------
@@ -367,9 +366,6 @@ export function createOrpcBase(
 ): C.OrpcBase {
 	const wsClientId = createId(32)
 
-	// we always expect a default server id to be set and in-line with the current route when the ws connection is established to be set when the ws connection is established.
-	const defaultServerId = ctx.cookies['default-server-id']!
-	SquadServer.globalState.selectedServers.set(wsClientId, defaultServerId)
 	const wsCtx: C.OrpcBase = {
 		wsClientId,
 		...ctx,

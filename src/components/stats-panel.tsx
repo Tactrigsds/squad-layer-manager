@@ -1,25 +1,27 @@
 import { ServerActivityCharts } from '@/components/server-activity-charts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as ZusUtils from '@/lib/zustand'
 import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import { useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import * as Zus from 'zustand'
 
-export default function StatsPanel() {
-	const selectedMatchOrdinal = Zus.useStore(SquadServerClient.ChatStore, s => s.selectedMatchOrdinal)
-	const currentMatch = MatchHistoryClient.useCurrentMatch()
-	const recentMatches = MatchHistoryClient.useRecentMatches()
-	const serverInfoRes = SquadServerClient.useServerInfoRes()
+export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp }) {
+	const serverId = props.stores.squadServer!.serverId
+	const selectedMatchOrdinal = ZusUtils.useStore(props.stores.squadServer!, s => s.chat.selectedMatchOrdinal)
+	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
+	const recentMatches = MatchHistoryClient.useRecentMatches(serverId)
+	const serverInfoRes = SquadServerClient.useServerInfoRes(serverId)
 	const maxPlayerCount = serverInfoRes.code === 'ok' ? serverInfoRes.data.maxPlayerCount : undefined
 
 	const historicalEventsQuery = useQuery({
 		queryKey: [...RPC.orpc.matchHistory.getMatchEvents.key(), selectedMatchOrdinal],
 		queryFn: async () => {
 			if (selectedMatchOrdinal === null) return null
-			return RPC.orpc.matchHistory.getMatchEvents.call(selectedMatchOrdinal)
+			return RPC.orpc.matchHistory.getMatchEvents.call({ serverId, ordinal: selectedMatchOrdinal })
 		},
 		enabled: selectedMatchOrdinal !== null && selectedMatchOrdinal !== undefined,
 		staleTime: Infinity,
@@ -45,6 +47,7 @@ export default function StatsPanel() {
 					currentMatchOrdinal={selectedMatchOrdinal ?? currentMatch?.ordinal}
 					currentMatchId={displayMatch?.historyEntryId}
 					layerId={displayMatch?.layerId}
+					stores={props.stores}
 				/>
 			</CardContent>
 		</Card>

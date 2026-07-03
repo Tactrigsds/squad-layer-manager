@@ -2,11 +2,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
+import * as ZusUtils from '@/lib/zustand'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
 import { useLoggedInUser, useLoggedInUserBase } from '@/systems/users.client'
 import React from 'react'
-import * as Zus from 'zustand'
 import { Badge } from './ui/badge'
 import { Checkbox } from './ui/checkbox'
 import { Label } from './ui/label'
@@ -19,7 +19,7 @@ export default function UserPermissionsDialog(
 ) {
 	const userBase = useLoggedInUserBase()
 	const user = useLoggedInUser()
-	const { simulateRoles, disabledRoles, enableRole, disableRole, setSimulateRoles } = Zus.useStore(RbacClient.RbacStore)
+	const { simulateRoles, disabledRoles, enableRole, disableRole, setSimulateRoles } = ZusUtils.useStore(RbacClient.RbacStore)
 
 	// Group permissions by role
 	const permissionsByRole = React.useMemo(() => user?.perms ? RBAC.getPermissionsByRole(user.perms) : undefined, [user?.perms])

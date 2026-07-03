@@ -1,6 +1,7 @@
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Typo from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
 import * as UP from '@/models/user-presence'
@@ -43,17 +44,18 @@ function TabBar<T extends string>({
 	)
 }
 
-export default function PrimaryPanel() {
+export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }) {
+	const serverId = props.stores.squadServer.serverId
 	const [_tab, setTab] = UserPresenceClient.useVariantActivityState({
-		queue: UP.VIEWING_QUEUE_TRANSITIONS,
-		teams: UP.VIEWING_TEAMS_TRANSITIONS,
+		queue: UP.Trans.viewingQueue(serverId),
+		teams: UP.Trans.viewingTeams(serverId),
 	})
 	const tab = _tab ?? 'queue'
 
 	return (
 		<Card className="flex flex-col flex-1 min-h-0">
 			<ScrollArea className="flex-1">
-				<MatchHistoryPanelContent />
+				<MatchHistoryPanelContent stores={props.stores} />
 				<Separator />
 				<TabBar
 					tabs={[
@@ -62,7 +64,12 @@ export default function PrimaryPanel() {
 							label: (
 								<div className="flex justify-between">
 									<span>Queue</span>
-									<UserPresencePanel sourcePresenceFn={sortEditingPresence} matchActivity={UP.VIEWING_QUEUE_TRANSITIONS.matchActivity} className="min-w-0" />
+									<UserPresencePanel
+										stores={props.stores}
+										sourcePresenceFn={sortEditingPresence}
+										matchActivity={UP.Trans.viewingQueue(serverId).match}
+										className="min-w-0"
+									/>
 								</div>
 							),
 						},
@@ -71,7 +78,12 @@ export default function PrimaryPanel() {
 							label: (
 								<div className="flex justify-between">
 									<span>Teams</span>
-									<UserPresencePanel sourcePresenceFn={sortEditingPresence} matchActivity={UP.VIEWING_TEAMS_TRANSITIONS.matchActivity} className="min-w-0" />
+									<UserPresencePanel
+										stores={props.stores}
+										sourcePresenceFn={sortEditingPresence}
+										matchActivity={UP.Trans.viewingTeams(serverId).match}
+										className="min-w-0"
+									/>
 								</div>
 							),
 						},
@@ -82,11 +94,11 @@ export default function PrimaryPanel() {
 				<Separator />
 				<div className="grid">
 					<div className={cn('[grid-area:1/1]', tab !== 'queue' && 'invisible -z-20')}>
-						<SlmUpdatesDisabledAlert />
-						<QueuePanelContent />
+						<SlmUpdatesDisabledAlert stores={props.stores} />
+						<QueuePanelContent stores={props.stores} />
 					</div>
 					<div className={cn('[grid-area:1/1]', tab !== 'teams' && 'invisible -z-20')}>
-						<TeamsPanel />
+						<TeamsPanel stores={props.stores} />
 					</div>
 				</div>
 			</ScrollArea>

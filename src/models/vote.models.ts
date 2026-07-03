@@ -62,6 +62,7 @@ export namespace GenVote {
 }
 
 export const StartVoteInputSchema = z.object({
+	serverId: z.string(),
 	itemId: z.string().optional(),
 	voterType: VOTER_TYPE.optional(),
 	...AdvancedVoteConfigSchema.shape,

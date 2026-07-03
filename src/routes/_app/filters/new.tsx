@@ -27,5 +27,5 @@ export const Route = createFileRoute('/_app/filters/new')({
 
 function RouteComponent() {
 	const { frameKey } = Route.useLoaderData()
-	return <FilterNew frameKey={frameKey} />
+	return <FilterNew stores={{ filterEditor: frameKey }} />
 }

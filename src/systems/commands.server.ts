@@ -10,12 +10,12 @@ import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswitches.models'
 import type * as USR from '@/models/users.models'
-import * as GlobalSettings from '@/systems/global-settings.server'
 import type * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
+import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as Teamswitches from '@/systems/teamswitches.server'
 import * as Users from '@/systems/users.server'
@@ -43,7 +43,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 		}
 	}
 
-	const parseRes = CMD.parseCommand(msg, GlobalSettings.GLOBAL_SETTINGS.commands, GlobalSettings.GLOBAL_SETTINGS.commandPrefix)
+	const parseRes = CMD.parseCommand(msg, Settings.GLOBAL_SETTINGS.commands, Settings.GLOBAL_SETTINGS.commandPrefix)
 	if (parseRes.code === 'err:unknown-command') {
 		await SquadRcon.warn(ctx, msg.playerIds, parseRes.msg)
 		return
@@ -53,7 +53,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 
 	log.info('Command received: %s', cmd)
 
-	const cmdConfig = GlobalSettings.GLOBAL_SETTINGS.commands[cmd as keyof typeof GlobalSettings.GLOBAL_SETTINGS.commands]
+	const cmdConfig = Settings.GLOBAL_SETTINGS.commands[cmd as keyof typeof Settings.GLOBAL_SETTINGS.commands]
 	if (!CMD.chatInScope(cmdConfig.scopes, msg.channelType)) {
 		const scopes = CMD.getScopesForChat(msg.channelType)
 		const correctChats = scopes.flatMap((s) => CMD.CHAT_SCOPE_MAPPINGS[s])
@@ -132,7 +132,11 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 		}
 
 		case 'help': {
-			await SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.commands.help(GlobalSettings.GLOBAL_SETTINGS.commands, GlobalSettings.GLOBAL_SETTINGS.commandPrefix))
+			await SquadRcon.warn(
+				ctx,
+				msg.playerIds,
+				Messages.WARNS.commands.help(Settings.GLOBAL_SETTINGS.commands, Settings.GLOBAL_SETTINGS.commandPrefix),
+			)
 			return { code: 'ok' as const }
 		}
 		case 'showNext': {
@@ -260,7 +264,9 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 
 		case 'switchSquadNow':
 		case 'switchSquadNext': {
-			if (!args.team || !args.squad) return await showError('missing-arg', `Usage: /${cmd === 'switchSquadNow' ? 'switchsquadnow' : 'switchsquadnext'} <team> <squad>`)
+			if (!args.team || !args.squad) {
+				return await showError('missing-arg', `Usage: /${cmd === 'switchSquadNow' ? 'switchsquadnow' : 'switchsquadnext'} <team> <squad>`)
+			}
 			const teamsStateRes = await ctx.server.teams.get(ctx)
 			if (teamsStateRes.code !== 'ok') return teamsStateRes
 			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
@@ -321,14 +327,18 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 						return await showError('currently-switching', 'A team switch is currently in progress')
 					}
 				}
-				await SquadRcon.warn(ctx, msg.playerIds, `Switching ${squadPlayers.length} players from "${matchedSquad.squadName}" to the opposite team now`)
+				await SquadRcon.warn(
+					ctx,
+					msg.playerIds,
+					`Switching ${squadPlayers.length} players from "${matchedSquad.squadName}" to the opposite team now`,
+				)
 			} else {
 				const nextSwitches: TSW.TeamswitchCollection = new Map(
 					squadPlayers.map(p => {
 						const normed = MH.getNormedTeamId(p.teamId!, currentMatch.ordinal)
 						const toTeam: MH.NormedTeamId = normed === 'A' ? 'B' : 'A'
 						return [SM.PlayerIds.getPlayerId(p.ids), { toTeam, source }] as const
-					})
+					}),
 				)
 				const errors = await Teamswitches.dispatchSwitchNext(ctx, nextSwitches)
 				const alreadyMarked = errors.filter(e => (e as TSW.OpError).code === 'err:already-marked').length
@@ -373,8 +383,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 			if (switches.size <= 8) {
 				const teamsStateRes = await ctx.server.teams.get(ctx)
 				const players = teamsStateRes.code === 'ok' ? teamsStateRes.players : []
-				const getName = (playerId: SM.PlayerId) =>
-					SM.PlayerIds.find(players, p => p.ids, playerId)?.ids.username ?? playerId
+				const getName = (playerId: SM.PlayerId) => SM.PlayerIds.find(players, p => p.ids, playerId)?.ids.username ?? playerId
 				const lines = [header]
 				if (toA.length > 0) {
 					lines.push(`\nto ${factionA}:`)

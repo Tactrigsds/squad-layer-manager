@@ -1,4 +1,5 @@
 import { MatchTeamDisplay } from '@/components/teams-display'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { cn } from '@/lib/utils'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
@@ -20,12 +21,14 @@ export interface PlayerDisplayProps {
 	showRole?: boolean
 	className?: string
 	matchId: number
+	stores: SquadServerFrame.KeyProp
 }
 
 function PlayerButton(
-	{ username, ref, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+	{ username, stores, ref, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
 		username: string
 		playerId: string
+		stores: SquadServerFrame.KeyProp
 		ref?: React.Ref<HTMLButtonElement>
 	},
 ) {
@@ -37,15 +40,15 @@ function PlayerButton(
 				</button>
 			</ContextMenuTrigger>
 			<ContextMenuContent>
-				{<PlayerContextMenuOptions playerId={props.playerId} />}
+				{<PlayerContextMenuOptions playerId={props.playerId} stores={stores} />}
 			</ContextMenuContent>
 		</ContextMenu>
 	)
 }
 
-export function PlayerDisplay({ player, showTeam, showSquad, showRole, className, matchId }: PlayerDisplayProps) {
+export function PlayerDisplay({ player, showTeam, showSquad, showRole, className, matchId, stores }: PlayerDisplayProps) {
 	const playerId = SM.PlayerIds.getPlayerId(player.ids)
-	const windowProps: PlayerDetailsWindowProps = { playerId }
+	const windowProps: PlayerDetailsWindowProps = { playerId, stores }
 	const flagColor = useGroupedPlayerFlagColor(playerId)
 
 	return (
@@ -67,12 +70,13 @@ export function PlayerDisplay({ player, showTeam, showSquad, showRole, className
 				render={PlayerButton}
 				username={player.ids.username}
 				playerId={SM.PlayerIds.getPlayerId(player.ids)}
+				stores={stores}
 				style={flagColor ? { color: flagColor } : undefined}
 			/>
 			{(showTeam && player.teamId !== null) || (showSquad && player.squadId !== null)
 				? (
 					<span className="inline-flex flex-nowrap">
-						({showTeam && player.teamId !== null && <MatchTeamDisplay matchId={matchId} teamId={player.teamId} />}
+						({showTeam && player.teamId !== null && <MatchTeamDisplay matchId={matchId} teamId={player.teamId} stores={stores} />}
 						{showTeam && player.teamId !== null && showSquad && player.squadId !== null && ', '}
 						{showSquad && player.squadId !== null && player.squadId})
 					</span>

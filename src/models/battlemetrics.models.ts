@@ -208,9 +208,6 @@ export type UpdatePlayerFlagsInput = z.infer<typeof UpdatePlayerFlagsInputSchema
 
 export type StoreState = {
 	selectedModeId: string | null
-	setSelectedModeId: (id: string | null) => void
 	slsOnly: boolean
-	setSlsOnly: (v: boolean) => void
 	orgFlags: PlayerFlag[]
-	setOrgFlags: (flags: PlayerFlag[]) => void
 }

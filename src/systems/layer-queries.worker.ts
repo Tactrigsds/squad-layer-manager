@@ -1,8 +1,9 @@
 import * as AR from '@/app-routes'
 import { acquireInBlock } from '@/lib/async'
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
+import * as F from '@/models/filter.models'
 import type { LayerDb } from '@/models/layer-db'
-import type * as LQY from '@/models/layer-queries.models'
+import * as LQY from '@/models/layer-queries.models'
 import * as ATTRS from '@/models/otel-attrs'
 import { queries, type QueryLayersResponsePart, queryLayersStreamed } from '@/systems/layer-queries.shared'
 import { baseLogger } from '@/systems/logger.client'
@@ -14,18 +15,20 @@ export type ToWorker = RequestInner & Sequenced & Prioritized
 
 export type FromWorker = (ResponseInner | { type: 'worker-error'; error: string } | SignalLoadingLayersStarted) & Sequenced
 
-export type RequestInner = OtherQueryRequest | QueryLayersRequest | InitRequest | ContextUpdateRequest
-export type ResponseInner = OtherQueryResponse | QueryLayersResponsePacket | InitResponse | ContextUpdateResponse
+export type RequestInner = OtherQueryRequest | QueryLayersRequest | InitRequest | FilterUpdateRequest
+export type ResponseInner = OtherQueryResponse | QueryLayersResponse | InitResponse | FilterUpdateResponse
 
 export type OtherQueries = typeof queries
 export type OtherQueryType = keyof OtherQueries
 
-export type DynamicQueryCtx = CS.Filters & CS.LayerItemsState
+export type BackgroundQueryState = { filters: Map<F.FilterEntityId, F.FilterEntity> }
 
 type OtherQueryRequests = { [k in OtherQueryType]: { type: k; input: Parameters<OtherQueries[k]>[0]['input'] } }
 export type OtherQueryRequest = OtherQueryRequests[OtherQueryType]
 
-type OtherQueryResponses = { [k in OtherQueryType]: { type: k; payload: Awaited<ReturnType<OtherQueries[k]>> } }
+type OtherQueryResponses = {
+	[k in OtherQueryType]: { type: k; payload: Awaited<ReturnType<OtherQueries[k]>> | { code: 'err:missing-item-states' } }
+}
 export type OtherQueryResponse = OtherQueryResponses[OtherQueryType]
 
 export type QueryLayersRequest = {
@@ -33,11 +36,14 @@ export type QueryLayersRequest = {
 	input: LQY.LayersQueryInput
 }
 
-export type QueryLayersResponsePacket = { type: 'queryLayers'; payload: QueryLayersResponsePart | { code: 'end' } }
+export type QueryLayersResponse = {
+	type: 'queryLayers'
+	payload: QueryLayersResponsePart | { code: 'end' } | { code: 'err:missing-item-states' }
+}
 
 export type InitRequest = {
 	type: 'init'
-	input: CS.EffectiveColumnConfig & DynamicQueryCtx
+	input: CS.EffectiveColumnConfig & BackgroundQueryState
 }
 
 export type InitResponse = {
@@ -45,12 +51,15 @@ export type InitResponse = {
 	payload?: undefined
 }
 
-export type ContextUpdateRequest = {
-	type: 'context-update'
-	input: Partial<DynamicQueryCtx>
+export type FilterUpdateRequest = {
+	type: 'filter-update'
+	input: Map<string, F.FilterEntity>
 }
 
-export type ContextUpdateResponse = { type: 'context-update'; payload?: undefined }
+export type FilterUpdateResponse = {
+	type: 'filter-update'
+	payload?: undefined
+}
 
 export type SignalLoadingLayersStarted = {
 	type: 'layer-download-started'
@@ -64,7 +73,8 @@ export type Prioritized = {
 }
 
 type State = {
-	ctx: CS.LayerQuery
+	ctx: CS.LayerDb & CS.Log
+	filters: Map<string, F.FilterEntity>
 }
 
 const log = baseLogger.child({ [ATTRS.Module.NAME]: 'layer-queries.worker' })
@@ -84,20 +94,24 @@ onmessage = withErrorResponse(async (e) => {
 		post({ type: 'init' })
 		return
 	}
-	if (msg.type === 'context-update') {
-		updateContext(msg)
-		post({ type: 'context-update' })
+	if (msg.type === 'filter-update') {
+		state.filters = msg.input
+		post({ type: 'filter-update' })
 		return
 	}
 
+	const queryCtx = {
+		...state.ctx,
+		filters: state.filters,
+	}
 	if (msg.type === 'queryLayers') {
-		for await (const packet of queryLayersStreamed({ ctx: state.ctx, input: msg.input })) {
+		for await (const packet of queryLayersStreamed({ ctx: queryCtx, input: msg.input })) {
 			post({ type: 'queryLayers', payload: packet })
 		}
 		post({ type: 'queryLayers', payload: { code: 'end' } })
 		return
 	}
-	const response = (await queries[msg.type]({ ctx: state.ctx, input: msg.input as any })) as OtherQueryResponse
+	const response = (await queries[msg.type]({ ctx: queryCtx, input: msg.input as any })) as OtherQueryResponse
 	post({ type: msg.type, payload: response } as any)
 })
 
@@ -115,17 +129,12 @@ async function init(initRequest: InitRequest) {
 	}) as unknown as LayerDb
 	state = {
 		ctx: {
-			...initRequest.input,
+			...CS.init(),
+			effectiveColsConfig: initRequest.input.effectiveColsConfig,
 			log,
 			layerDb: () => db,
 		},
-	}
-}
-
-function updateContext(msg: ContextUpdateRequest) {
-	state.ctx = {
-		...state.ctx,
-		...msg.input,
+		filters: initRequest.input.filters,
 	}
 }
 

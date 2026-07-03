@@ -1,4 +1,5 @@
 import * as Obj from '@/lib/object'
+import * as ZusUtils from '@/lib/zustand'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
@@ -59,7 +60,7 @@ export function useLoggedInUserBase() {
 
 // NOTE: this method of simulating perms will not work with actions that aren't validated client-side.
 export function useLoggedInUser() {
-	const { simulateRoles, disabledRoles } = Zus.useStore(RbacClient.RbacStore)
+	const { simulateRoles, disabledRoles } = ZusUtils.useStore(RbacClient.RbacStore)
 	const loggedInUser = useLoggedInUserBase()
 
 	return React.useMemo(() => {

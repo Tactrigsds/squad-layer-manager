@@ -3,6 +3,8 @@ import { SquadMenuItems } from '@/components/squad-context-menu-options'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import * as ChatPrt from '@/frame-partials/chat.partial'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import * as ZusUtils from '@/lib/zustand'
 import * as CHAT from '@/models/chat.models'
@@ -12,11 +14,9 @@ import * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
-import * as SquadServerClient from '@/systems/squad-server.client'
 import { useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import * as Zus from 'zustand'
 import { ServerEvent } from './server-event'
 import type { SquadDetailsWindowProps } from './squad-details-window.helpers'
 import { MatchTeamDisplay } from './teams-display'
@@ -32,31 +32,33 @@ DraggableWindowStore.getState().registerDefinition<SquadDetailsWindowProps, unkn
 	initialPosition: 'left',
 	getId: (props) => String(props.uniqueSquadId),
 	loadAsync: async ({ props }) => {
-		const isLive = SquadServerClient.ChatStore.getState().chatState.interpolatedState.squads.some(
-			sq => sq.uniqueId === props.uniqueSquadId,
-		)
+		const squadServerFrameKey = props.stores.squadServer
+		const isLive = ChatPrt.Sel.chatState(ZusUtils.getState(squadServerFrameKey)).squads.some(sq => sq.uniqueId === props.uniqueSquadId)
 		if (!isLive) {
+			const serverId = squadServerFrameKey.serverId
 			await RPC.queryClient.fetchQuery(
-				RPC.orpc.matchHistory.getSquadDetails.queryOptions({ input: { uniqueSquadId: props.uniqueSquadId } }),
+				RPC.orpc.matchHistory.getSquadDetails.queryOptions({ input: { serverId, uniqueSquadId: props.uniqueSquadId } }),
 			)
 		}
 	},
 })
 
-function SquadDetailsWindow({ uniqueSquadId }: SquadDetailsWindowProps) {
-	const currentMatch = MatchHistoryClient.useCurrentMatch()
+function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) {
+	const squadServerFrameKey = stores.squadServer
+	const serverId = squadServerFrameKey.serverId
+	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
 
-	const liveSquad = Zus.useStore(
-		SquadServerClient.ChatStore,
-		s => s.chatState.interpolatedState.squads.find(sq => sq.uniqueId === uniqueSquadId) ?? null,
+	const liveSquad = ZusUtils.useStore(
+		squadServerFrameKey,
+		s => ChatPrt.Sel.chatState(s).squads.find(sq => sq.uniqueId === uniqueSquadId) ?? null,
 	)
 
-	const currentMatchEvents = Zus.useStore(
-		SquadServerClient.ChatStore,
+	const currentMatchEvents = ZusUtils.useStore(
+		squadServerFrameKey,
 		ZusUtils.useShallow(s =>
 			!currentMatch
 				? []
-				: s.chatState.eventBuffer.filter(e => {
+				: ChatPrt.Sel.chatEvents(s).filter(e => {
 					if (e.matchId !== currentMatch.historyEntryId || e.type === 'NOOP') return false
 					return Array.from(SE.iterAssocSquadUniqueIds(e as SE.Event)).some(k => k === uniqueSquadId)
 				})
@@ -66,17 +68,17 @@ function SquadDetailsWindow({ uniqueSquadId }: SquadDetailsWindowProps) {
 	const isCurrentMatchSquad = currentMatchEvents.length > 0
 
 	const { data, isPending } = useQuery({
-		...RPC.orpc.matchHistory.getSquadDetails.queryOptions({ input: { uniqueSquadId } }),
+		...RPC.orpc.matchHistory.getSquadDetails.queryOptions({ input: { serverId, uniqueSquadId } }),
 		enabled: !isCurrentMatchSquad,
 	})
 
 	const squad = data?.squad
 
-	const currentPlayers = Zus.useStore(
-		SquadServerClient.ChatStore,
+	const currentPlayers = ZusUtils.useStore(
+		squadServerFrameKey,
 		ZusUtils.useShallow(s =>
 			liveSquad
-				? s.chatState.interpolatedState.players.filter(p => p.squadId === liveSquad.squadId && p.teamId === liveSquad.teamId)
+				? ChatPrt.Sel.chatState(s).players.filter(p => p.squadId === liveSquad.squadId && p.teamId === liveSquad.teamId)
 				: []
 		),
 	)
@@ -109,7 +111,7 @@ function SquadDetailsWindow({ uniqueSquadId }: SquadDetailsWindowProps) {
 					{teamId != null && (
 						<span className="text-muted-foreground font-normal ml-1">
 							(
-							{currentMatch && <MatchTeamDisplay matchId={currentMatch.historyEntryId} teamId={teamId} />}
+							{currentMatch && <MatchTeamDisplay matchId={currentMatch.historyEntryId} teamId={teamId} stores={stores} />}
 							{liveSquad?.locked && <Icons.Lock className="h-3 w-3 inline ml-1" aria-label="Squad is locked" />}
 							)
 						</span>
@@ -127,7 +129,7 @@ function SquadDetailsWindow({ uniqueSquadId }: SquadDetailsWindowProps) {
 							</button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent style={{ zIndex: zIndex + 10 }}>
-							<SquadMenuItems squad={liveSquad} slots={dropdownMenuSlots} />
+							<SquadMenuItems squad={liveSquad} slots={dropdownMenuSlots} stores={stores} />
 						</DropdownMenuContent>
 					</DropdownMenu>
 				)}
@@ -140,7 +142,7 @@ function SquadDetailsWindow({ uniqueSquadId }: SquadDetailsWindowProps) {
 					<div className="flex items-center gap-1">
 						<span className="text-muted-foreground shrink-0">Creator:</span>
 						{creatorPlayer
-							? <PlayerDisplay player={creatorPlayer} matchId={currentMatch?.historyEntryId ?? 0} />
+							? <PlayerDisplay player={creatorPlayer} matchId={currentMatch?.historyEntryId ?? 0} stores={stores} />
 							: <span className="font-mono text-muted-foreground">{creatorId}</span>}
 					</div>
 				)}
@@ -165,7 +167,7 @@ function SquadDetailsWindow({ uniqueSquadId }: SquadDetailsWindowProps) {
 									<Spinner className="size-5" />
 								</div>
 							)}
-							{allEvents.map(e => <ServerEvent key={e.id} event={e} />)}
+							{allEvents.map(e => <ServerEvent key={e.id} event={e} stores={stores} />)}
 						</div>
 						<div ref={bottomRef} />
 						{showScrollButton && (
@@ -193,6 +195,7 @@ function SquadDetailsWindow({ uniqueSquadId }: SquadDetailsWindowProps) {
 								className="text-xs"
 								player={player}
 								matchId={currentMatch?.historyEntryId ?? 0}
+								stores={stores}
 							/>
 						))}
 						{currentPlayers.length === 0 && <span className="text-muted-foreground text-xs italic">No players</span>}

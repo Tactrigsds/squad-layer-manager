@@ -1,15 +1,14 @@
-import type * as PoolCheckBoxesPrt from '@/frame-partials/pool-checkboxes.partial'
-import { useFrameStore } from '@/frames/frame-manager.ts'
+import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
 import { assertNever } from '@/lib/type-guards.ts'
-import type * as SS from '@/models/server-state.models.ts'
+import * as ZusUtils from '@/lib/zustand'
+import type * as SETTINGS from '@/models/settings.models.ts'
 import React from 'react'
-import { useShallow } from 'zustand/react/shallow'
 import { TriStateCheckbox } from './ui/tri-state-checkbox'
 
-export default function PoolCheckboxes(props: { frameKey: PoolCheckBoxesPrt.Key }) {
-	const [checkboxes, setCheckbox] = useFrameStore(
-		props.frameKey,
-		useShallow(s => [s.checkboxesState, s.setCheckbox]),
+export default function PoolCheckboxes(props: { stores: PoolCheckboxesPrt.KeyProp }) {
+	const checkboxes = ZusUtils.useStore(
+		props.stores.poolCheckboxes,
+		PoolCheckboxesPrt.Sel.checkboxesState,
 	)
 
 	return (
@@ -19,7 +18,7 @@ export default function PoolCheckboxes(props: { frameKey: PoolCheckBoxesPrt.Key 
 				size="sm"
 				variant="ghost"
 				onCheckedChange={v => {
-					setCheckbox('dnr', invertApplyAs(v))
+					PoolCheckboxesPrt.Actions.setCheckbox(props.stores, 'dnr', invertApplyAs(v))
 				}}
 				checked={invertApplyAs(checkboxes.dnr)}
 			>
@@ -29,7 +28,7 @@ export default function PoolCheckboxes(props: { frameKey: PoolCheckBoxesPrt.Key 
 	)
 }
 
-function invertApplyAs(applyAs: SS.PoolFilterApplyAs): SS.PoolFilterApplyAs {
+function invertApplyAs(applyAs: SETTINGS.PoolFilterApplyAs): SETTINGS.PoolFilterApplyAs {
 	switch (applyAs) {
 		case 'inverted':
 			return 'regular'

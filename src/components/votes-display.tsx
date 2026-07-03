@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
+import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import type * as LL from '@/models/layer-list.models'
@@ -10,9 +11,10 @@ type VoteTallyProps = {
 	voteState: V.VoteStateWithVoteData
 	voteItem: LL.VoteItem
 	playerCount: number
+	serverId: string
 }
 
-export default function VoteTallyDisplay({ voteState, voteItem, playerCount }: VoteTallyProps) {
+export default function VoteTallyDisplay({ voteState, voteItem, playerCount, serverId }: VoteTallyProps) {
 	const tally = V.tallyVotes(voteState, playerCount)
 	const options = Array.from(tally.totals)
 		.map(([itemId, voteCount]) => {
@@ -29,7 +31,7 @@ export default function VoteTallyDisplay({ voteState, voteItem, playerCount }: V
 		})
 		.sort((a, b) => a.index - b.index)
 
-	const serverInfoRes = SquadServerClient.useServerInfoRes()
+	const serverInfoRes = SquadServerClient.useServerInfoRes(serverId)
 	if (serverInfoRes?.code !== 'ok') return null
 	const serverInfo = serverInfoRes.data
 	const totalVoteDisplay = tally.turnoutPercentage !== null ? ` (${tally.turnoutPercentage.toFixed(1)}%)` : null

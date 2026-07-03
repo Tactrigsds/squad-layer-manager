@@ -1,6 +1,5 @@
 import * as FeatureFlags from '@/systems/feature-flags.client'
-import * as ServerSettingsClient from '@/systems/server-settings.client'
-import * as VotesClient from '@/systems/vote.client'
+import * as SettingsClient from '@/systems/settings.client'
 import * as TSR from '@tanstack/react-router'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
@@ -9,11 +8,7 @@ import './index.css'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
-import * as MatchHistoryClient from '@/systems/match-history.client'
-import * as QueueDashboard from '@/systems/queue-dashboard.client'
-import * as SharedLayerListClient from '@/systems/shared-layer-list.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
-import * as TSWClient from '@/systems/teamswitches.client'
 import * as ThemeSys from '@/systems/theme.client'
 import * as UserPresenceClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
@@ -26,17 +21,12 @@ enableMapSet()
 	console.debug('running system initialization')
 	ThemeSys.setup()
 	ConfigClient.setup()
+	SquadServerClient.setup()
+	SettingsClient.setup()
 	FilterEntityClient.setup()
 	BattlemetricsClient.setup()
-	MatchHistoryClient.setup()
-	SquadServerClient.setup()
 	UsersClient.setup()
-	void SharedLayerListClient.setup()
-	void TSWClient.setup()
 	void UserPresenceClient.setup()
-	QueueDashboard.setup()
-	VotesClient.setup()
-	ServerSettingsClient.setup()
 	console.debug('systems initialized')
 
 	const loadConsoleOnStartup = import.meta.env.DEV || FeatureFlags.get('loadConsole')

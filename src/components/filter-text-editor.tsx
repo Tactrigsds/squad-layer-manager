@@ -1,12 +1,12 @@
 // WARNING: the ordering of imports  matters here unfortunately. be careful when changing
 import Ace from 'ace-builds'
 
-import type * as EditFrame from '@/frames/filter-editor.frame.ts'
-import { getFrameReaderStore, getFrameState } from '@/frames/frame-manager'
+import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { useDebounced } from '@/hooks/use-debounce'
 import { useToast } from '@/hooks/use-toast'
 import * as Obj from '@/lib/object'
 import * as Typography from '@/lib/typography.ts'
+import * as ZusUtils from '@/lib/zustand'
 import * as F from '@/models/filter.models'
 import stringifyCompact from 'json-stringify-pretty-compact'
 import React from 'react'
@@ -19,7 +19,7 @@ export type FilterTextEditorHandle = {
 
 type Editor = Ace.Ace.Editor
 export interface FilterTextEditorProps {
-	frameKey: EditFrame.Key
+	stores: EditFrame.KeyProp
 	ref?: React.Ref<FilterTextEditorHandle>
 }
 let pluginsLoading$: Promise<unknown> | false = Promise.all([
@@ -36,7 +36,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 	const editorRef = React.useRef<Editor>(null)
 	const errorViewRef = React.useRef<Editor>(null)
 
-	const getState = () => getFrameState(props.frameKey)
+	const getState = () => ZusUtils.getState(props.stores.filterEditor)
 
 	const onChange = React.useCallback(
 		(value: string) => {
@@ -61,10 +61,10 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 
 			errorViewRef.current!.setValue('')
 			const valueChanged = !Obj.deepEqual(res.data, F.treeToFilterNode(getState().tree))
-			if (valueChanged) getState().updateRoot(res.data)
+			if (valueChanged) EditFrame.Actions.updateRoot(props.stores, res.data)
 		},
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-		[props.frameKey],
+		[props.stores],
 	)
 
 	const onChangeDebounced = useDebounced({
@@ -108,7 +108,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 		})
 
 		let first = true
-		const unsub = getFrameReaderStore(props.frameKey).subscribe((frameState, prevFrameState) => {
+		const unsub = ZusUtils.resolveReadStore(props.stores.filterEditor).subscribe((frameState, prevFrameState) => {
 			if (!first && frameState.tree === prevFrameState.tree) return
 			first = false
 			editor.setValue(stringifyCompact(F.treeToFilterNode(frameState.tree)))
@@ -117,7 +117,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 		editorRef.current = editor
 		errorViewRef.current = errorView
 		{
-			const tree = getFrameReaderStore(props.frameKey).getState().tree
+			const tree = getState().tree
 			editor.setValue(stringifyCompact(F.treeToFilterNode(tree)))
 		}
 
@@ -127,7 +127,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 			sub.unsubscribe()
 			unsub()
 		}
-	}, [onChangeDebounced, props.frameKey])
+	}, [onChangeDebounced, props.stores])
 
 	React.useImperativeHandle(ref, () => ({
 		format: () => {

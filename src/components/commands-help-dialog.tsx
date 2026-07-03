@@ -3,9 +3,10 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useToast } from '@/hooks/use-toast'
+import * as ZusUtils from '@/lib/zustand'
 import * as Messages from '@/messages'
 import * as CMD from '@/models/command.models'
-import { useConfig } from '@/systems/config.client'
+import * as SettingsClient from '@/systems/settings.client'
 import { Copy, HelpCircle } from 'lucide-react'
 import * as React from 'react'
 
@@ -16,14 +17,14 @@ interface CommandsHelpDialogProps {
 }
 
 export default function CommandsHelpDialog({ children, open, onOpenChange }: CommandsHelpDialogProps) {
-	const config = useConfig()
+	const settings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
 	const { toast } = useToast()
 
-	if (!config) {
+	if (!settings) {
 		return null
 	}
 
-	const commands = config.commands
+	const commands = settings.commands
 
 	const copyCommandToClipboard = async (cmd: CMD.CommandConfig, cmdString: string) => {
 		const chatScope = cmd.scopes.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
@@ -83,7 +84,7 @@ export default function CommandsHelpDialog({ children, open, onOpenChange }: Com
 									<div className="flex items-center gap-2">
 										<div className="flex-1">
 											<div className="flex flex-wrap items-center gap-1">
-												{CMD.buildCommand(cmdId, argObject, commands, config.commandPrefix, true).map((
+												{CMD.buildCommand(cmdId, argObject, commands, settings.commandPrefix, true).map((
 													cmdString,
 												) => (
 													<div key={cmdString} className="flex items-center gap-1">

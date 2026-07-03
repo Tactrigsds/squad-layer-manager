@@ -3,7 +3,7 @@ import * as Arr from '@/lib/array'
 import { distinctDeepEquals, toCold, traceTag } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
-import type * as ZusUtils from '@/lib/zustand'
+import * as ZusUtils from '@/lib/zustand'
 import type * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -94,32 +94,20 @@ export type LayerTable = {
 	colConfig: LQY.EffectiveColumnAndTableConfig
 	// from props
 	sort: ({} & LQY.LayersQuerySort) | null
-	setSort: React.Dispatch<React.SetStateAction<LQY.LayersQuerySort | null>>
-	randomize: () => void
 
 	defaultSelected: L.LayerId[]
 	selected: L.LayerId[]
-	setSelected: React.Dispatch<React.SetStateAction<L.LayerId[]>>
-	resetSelected: () => void
-
-	// tanstack actions
-	onSetRowSelection: OnChangeFn<RowSelectionState>
-	onPaginationChange: OnChangeFn<PaginationState>
 
 	pageIndex: number
-	setPageIndex: (num: number) => void
 
 	pageSize: number
-	setPageSize: (num: number) => void
 
 	maxSelected: number | null
 	minSelected: number | null
 
 	showSelectedLayers: boolean
-	setShowSelectedLayers: React.Dispatch<React.SetStateAction<boolean>>
 
 	columnVisibility: VisibilityState
-	onColumnVisibilityChange: OnChangeFn<VisibilityState>
 
 	isFetching: boolean
 	pageData: LayerQueriesClient.QueryLayersPageData | null
@@ -143,100 +131,19 @@ export function initLayerTable(
 	const setStore = args.set
 	const input = args.input
 
-	const get: ZusUtils.Getter<LayerTable> = () => getStore().layerTable
-	const set: ZusUtils.Setter<LayerTable> = (update) => {
-		const current = getStore().layerTable
-		const updatePartial = typeof update === 'function' ? update(current) : update
-		setStore({ layerTable: { ...current, ...updatePartial } })
-	}
+	const get = ZusUtils.toPartialGetter(args.get, 'layerTable')
+	const set = ZusUtils.toPartialSetter(args.set, 'layerTable')
 	const initialLayerTable: LayerTable = {
 		colConfig: input.colConfig,
 		sort: input.sort,
-		setSort(update) {
-			const updated = typeof update === 'function' ? update(get().sort) : update
-			set({ sort: updated, pageIndex: 0 })
-		},
-		randomize() {
-			set({ sort: { type: 'random', seed: LQY.getSeed() } })
-		},
 
 		defaultSelected: input.selected,
-		// should be run through setSelected
+		// should be run through Actions.setSelected
 		selected: [],
-		setSelected(update) {
-			const state = get()
-			const original = state.selected
-			let updated = typeof update === 'function' ? update(original) : update
-			updated = Arr.dedupe(updated)
-
-			const numToTrim = Math.max(0, updated.length - (state.maxSelected ?? updated.length))
-			const updatedByTimeTrimmed = updated.slice(numToTrim)
-			const updatedTrimmed = updated.filter(id => updatedByTimeTrimmed.includes(id))
-			if (state.minSelected && state.minSelected > updatedTrimmed.length) {
-				return
-			}
-
-			let newPageIndex = state.pageIndex
-			let showSelectedLayers = state.showSelectedLayers
-			if (state.showSelectedLayers) {
-				if (updatedTrimmed.length === 0) {
-					newPageIndex = 0
-					showSelectedLayers = false
-				}
-				if (state.showSelectedLayers && state.pageIndex * state.pageSize >= updatedTrimmed.length) {
-					newPageIndex = Math.max(0, Math.ceil(updatedTrimmed.length / state.pageSize) - 1)
-				}
-			}
-
-			set({ selected: updatedTrimmed, showSelectedLayers, pageIndex: newPageIndex })
-		},
-		resetSelected() {
-			const reset = input.selected ?? []
-			const { minSelected } = get()
-			if (minSelected && reset.length > minSelected) return
-			set({ selected: reset, showSelectedLayers: reset.length > 0, pageIndex: 0 })
-		},
-
-		onSetRowSelection: (rowSelectionUpdate) => {
-			const updated = typeof rowSelectionUpdate === 'function'
-				? rowSelectionUpdate(selectTanstackRowSelection(get()))
-				: rowSelectionUpdate
-			const selected: L.LayerId[] = Object.keys(updated).filter(id => updated[id])
-			get().setSelected(selected)
-		},
-		onPaginationChange: (update) => {
-			let newState: PaginationState
-			const { pageIndex, pageSize } = get()
-			if (typeof update === 'function') {
-				newState = update({ pageIndex, pageSize })
-			} else {
-				newState = update
-			}
-			set({
-				pageIndex: newState.pageIndex,
-				pageSize: newState.pageSize,
-			})
-		},
-		onColumnVisibilityChange: update => {
-			const updated = typeof update === 'function' ? update(get().columnVisibility) : update
-			let { sort, pageIndex } = get()
-			if (sort?.type === 'column' && !updated[sort.sortBy]) {
-				pageIndex = 0
-				sort = null
-			}
-
-			set({ columnVisibility: updated, sort, pageIndex })
-		},
 
 		pageIndex: 0,
-		setPageIndex: (pageIndex) => {
-			set({ pageIndex })
-		},
 
 		pageSize: input.pageSize,
-		setPageSize: (pageSize) => {
-			set({ pageSize, pageIndex: 0 })
-		},
 
 		maxSelected: input.maxSelected,
 		minSelected: input.minSelected,
@@ -247,10 +154,6 @@ export function initLayerTable(
 		},
 
 		showSelectedLayers: false,
-		setShowSelectedLayers(update) {
-			const updated = typeof update === 'function' ? update(get().showSelectedLayers) : update
-			set({ showSelectedLayers: updated, sort: null, pageIndex: 0 })
-		},
 
 		columnVisibility: input.columnVisibility,
 
@@ -258,8 +161,8 @@ export function initLayerTable(
 		isFetching: false,
 	}
 
-	setStore({ layerTable: initialLayerTable })
-	initialLayerTable.setSelected(input.selected)
+	set(initialLayerTable)
+	Actions.setSelected({ layerTable: args.key }, input.selected)
 
 	// -------- schedule queries (poor man's useQuery) --------
 	args.sub.add(
@@ -342,7 +245,7 @@ export function initLayerTable(
 				if (table.pageData.layers.length !== 1) return
 				if (table.pageData.layers[0].id === table.selected[0]) return
 				// we're in edit mode and we're editing a single layer, so let's just select the layer we just queried
-				table.setSelected([table.pageData.layers[0].id])
+				Actions.setSelected({ layerTable: args.key }, [table.pageData.layers[0].id])
 			})()
 		}),
 	)
@@ -350,69 +253,169 @@ export function initLayerTable(
 
 export type Types = FRM.FrameTypes & { state: Store & Predicates }
 export type Key = FRM.InstanceKey<Types>
+export type KeyProp = { layerTable: Key }
 
 type TanstackSortingStateCol = { id: string; desc: boolean }
 type TanstackSortingState = Array<TanstackSortingStateCol>
-export function selectTanstackSortingState(table: LayerTable): TanstackSortingState {
-	if (!table.sort) return []
-	if (table.sort.type === 'random') return []
 
-	return [{
-		id: table.sort.sortBy,
-		desc: table.sort.direction === 'ASC' || table.sort.direction === 'ASC:ABS',
-	}]
-}
+export namespace Sel {
+	export function tanstackSortingState(store: Store): TanstackSortingState {
+		const table = store.layerTable
+		if (!table.sort) return []
+		if (table.sort.type === 'random') return []
 
-export function selectTanstackRowSelection(table: LayerTable): RowSelectionState {
-	const state: RowSelectionState = {}
-	for (const id of table.selected) {
-		state[id] = true
+		return [{
+			id: table.sort.sortBy,
+			desc: table.sort.direction === 'ASC' || table.sort.direction === 'ASC:ABS',
+		}]
 	}
-	return state
-}
 
-export function getTanstackActions(table: LayerTable) {
-	const setSorting: React.Dispatch<React.SetStateAction<TanstackSortingState>> = (sortingUpdate) => {
-		const current = selectTanstackSortingState(table)
-		const updated = typeof sortingUpdate === 'function'
-			? sortingUpdate(current)
-			: current
-
-		if (updated.length === 0) {
-			table.setSort(null)
+	export function tanstackRowSelection(store: Store): RowSelectionState {
+		const state: RowSelectionState = {}
+		for (const id of store.layerTable.selected) {
+			state[id] = true
 		}
-		table.setSort({ type: 'column', sortBy: updated[0]?.id ?? '', direction: updated[0]?.desc ? 'ASC' : 'DESC' })
+		return state
 	}
 
-	const onSetRowSelection: OnChangeFn<RowSelectionState> = (rowSelectionUpdate) => {
+	export function editingSingleValue(store: Store) {
+		return store.layerTable.maxSelected === 1 && store.layerTable.minSelected === 1
+	}
+
+	export const rowSelectionStatus = (rowId: L.LayerId) => (store: Store) => {
+		const table = store.layerTable
+		const row = table.pageData?.layers.find(r => r.id === rowId)
+		if (!row) return [false, false] as const
+		const isSelected = table.selected.includes(rowId)
+		const isRowDisabled = row.isRowDisabled
+
+		// If row is already disabled, it's disabled
+		if (isRowDisabled) return [true, isSelected] as const
+
+		// Check if unchecking would violate minSelected
+		if (isSelected) {
+			const wouldBeUnderMin = (table.minSelected ?? 0) > (table.selected.length - 1)
+			if (wouldBeUnderMin) return [true, isSelected] as const
+		}
+
+		return [false, isSelected] as const
+	}
+}
+
+export namespace Actions {
+	function slice(stores: KeyProp) {
+		return ZusUtils.toPartialStore(stores.layerTable, 'layerTable')
+	}
+
+	export function setSort(stores: KeyProp, update: React.SetStateAction<LQY.LayersQuerySort | null>) {
+		const table = slice(stores)
+		const updated = typeof update === 'function' ? update(table.getState().sort) : update
+		table.setState({ sort: updated, pageIndex: 0 })
+	}
+
+	export function randomize(stores: KeyProp) {
+		slice(stores).setState({ sort: { type: 'random', seed: LQY.getSeed() } })
+	}
+
+	export function setSelected(stores: KeyProp, update: React.SetStateAction<L.LayerId[]>) {
+		const table = slice(stores)
+		const state = table.getState()
+		const original = state.selected
+		let updated = typeof update === 'function' ? update(original) : update
+		updated = Arr.dedupe(updated)
+
+		const numToTrim = Math.max(0, updated.length - (state.maxSelected ?? updated.length))
+		const updatedByTimeTrimmed = updated.slice(numToTrim)
+		const updatedTrimmed = updated.filter(id => updatedByTimeTrimmed.includes(id))
+		if (state.minSelected && state.minSelected > updatedTrimmed.length) {
+			return
+		}
+
+		let newPageIndex = state.pageIndex
+		let showSelectedLayers = state.showSelectedLayers
+		if (state.showSelectedLayers) {
+			if (updatedTrimmed.length === 0) {
+				newPageIndex = 0
+				showSelectedLayers = false
+			}
+			if (state.showSelectedLayers && state.pageIndex * state.pageSize >= updatedTrimmed.length) {
+				newPageIndex = Math.max(0, Math.ceil(updatedTrimmed.length / state.pageSize) - 1)
+			}
+		}
+
+		table.setState({ selected: updatedTrimmed, showSelectedLayers, pageIndex: newPageIndex })
+	}
+
+	export function resetSelected(stores: KeyProp) {
+		const table = slice(stores)
+		const { minSelected, defaultSelected } = table.getState()
+		const reset = defaultSelected ?? []
+		if (minSelected && reset.length > minSelected) return
+		table.setState({ selected: reset, showSelectedLayers: reset.length > 0, pageIndex: 0 })
+	}
+
+	export const onSetRowSelection = (stores: KeyProp): OnChangeFn<RowSelectionState> => (rowSelectionUpdate) => {
 		const updated = typeof rowSelectionUpdate === 'function'
-			? rowSelectionUpdate(selectTanstackRowSelection(table))
+			? rowSelectionUpdate(Sel.tanstackRowSelection(ZusUtils.getState(stores.layerTable)))
 			: rowSelectionUpdate
 		const selected: L.LayerId[] = Object.keys(updated).filter(id => updated[id])
-		table.setSelected(selected)
+		setSelected(stores, selected)
 	}
 
-	return { setSorting, setRowSelection: onSetRowSelection }
-}
-
-export function selectEditingSingleValue(state: LayerTable) {
-	return state.maxSelected === 1 && state.minSelected === 1
-}
-
-export const selectRowSelectionStatus = (rowId: L.LayerId) => (table: LayerTable) => {
-	const row = table.pageData?.layers.find(r => r.id === rowId)
-	if (!row) return [false, false] as const
-	const isSelected = table.selected.includes(rowId)
-	const isRowDisabled = row.isRowDisabled
-
-	// If row is already disabled, it's disabled
-	if (isRowDisabled) return [true, isSelected] as const
-
-	// Check if unchecking would violate minSelected
-	if (isSelected) {
-		const wouldBeUnderMin = (table.minSelected ?? 0) > (table.selected.length - 1)
-		if (wouldBeUnderMin) return [true, isSelected] as const
+	export const onPaginationChange = (stores: KeyProp): OnChangeFn<PaginationState> => (update) => {
+		const table = slice(stores)
+		let newState: PaginationState
+		const { pageIndex, pageSize } = table.getState()
+		if (typeof update === 'function') {
+			newState = update({ pageIndex, pageSize })
+		} else {
+			newState = update
+		}
+		table.setState({
+			pageIndex: newState.pageIndex,
+			pageSize: newState.pageSize,
+		})
 	}
 
-	return [false, isSelected] as const
+	export const onColumnVisibilityChange = (stores: KeyProp): OnChangeFn<VisibilityState> => (update) => {
+		const table = slice(stores)
+		const updated = typeof update === 'function' ? update(table.getState().columnVisibility) : update
+		let { sort, pageIndex } = table.getState()
+		if (sort?.type === 'column' && !updated[sort.sortBy]) {
+			pageIndex = 0
+			sort = null
+		}
+
+		table.setState({ columnVisibility: updated, sort, pageIndex })
+	}
+
+	export function setPageIndex(stores: KeyProp, pageIndex: number) {
+		slice(stores).setState({ pageIndex })
+	}
+
+	export function setPageSize(stores: KeyProp, pageSize: number) {
+		slice(stores).setState({ pageSize, pageIndex: 0 })
+	}
+
+	export function setShowSelectedLayers(stores: KeyProp, update: React.SetStateAction<boolean>) {
+		const table = slice(stores)
+		const updated = typeof update === 'function' ? update(table.getState().showSelectedLayers) : update
+		table.setState({ showSelectedLayers: updated, sort: null, pageIndex: 0 })
+	}
+
+	export function getTanstackActions(stores: KeyProp) {
+		const setSorting: React.Dispatch<React.SetStateAction<TanstackSortingState>> = (sortingUpdate) => {
+			const current = Sel.tanstackSortingState(ZusUtils.getState(stores.layerTable))
+			const updated = typeof sortingUpdate === 'function'
+				? sortingUpdate(current)
+				: current
+
+			if (updated.length === 0) {
+				setSort(stores, null)
+			}
+			setSort(stores, { type: 'column', sortBy: updated[0]?.id ?? '', direction: updated[0]?.desc ? 'ASC' : 'DESC' })
+		}
+
+		return { setSorting, setRowSelection: onSetRowSelection(stores) }
+	}
 }

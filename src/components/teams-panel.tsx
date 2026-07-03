@@ -1,4 +1,6 @@
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
+import * as ChatPrt from '@/frame-partials/chat.partial'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useIsDesktopSize } from '@/lib/browser'
 import * as MapUtils from '@/lib/map'
 import * as StrUtils from '@/lib/string'
@@ -8,15 +10,14 @@ import * as BM from '@/models/battlemetrics.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
-import * as SquadServer from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
 import * as TeamsPanelModels from '@/models/teams-panel.models'
 import * as TSW from '@/models/teamswitches.models'
 import * as RBAC from '@/rbac.models.ts'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
-import * as ConfigClient from '@/systems/config.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as RbacClient from '@/systems/rbac.client'
+import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswitches.client'
 import * as ThemeClient from '@/systems/theme.client'
@@ -28,7 +29,6 @@ import type { EChartsOption } from 'echarts'
 import ReactECharts from 'echarts-for-react'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import * as Zus from 'zustand'
 import PlayerBulkContextMenuOptions from './player-bulk-context-menu-options'
 import PlayerContextMenuOptions from './player-context-menu-options'
 import { PlayerDisplay } from './player-display'
@@ -53,16 +53,16 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 void import('@/components/squad-details-window')
 void import('@/components/teamswitches-help-window')
 
-export default function TeamsPanel(props: { className?: string }) {
+export default function TeamsPanel(props: { className?: string; stores: SquadServerFrame.KeyProp }) {
 	const isDesktop = useIsDesktopSize()
 	const showSwapsPanel = ZusUtils.useStore(
-		TSWClient.Store,
+		props.stores.squadServer!,
 		UPClient.Store,
-		(tswStore, upStore) => TSWClient.Select.hasSwitches(tswStore) || upStore.teamswitchEditors.size > 0,
+		(tswStore, upStore) => TSWClient.Sel.hasSwitches(tswStore) || upStore.teamswitchEditors.size > 0,
 	)
 	const [searchQuery, setSearchQuery] = React.useState('')
 	const [showSelected, setShowSelected] = React.useState(false)
-	const selectedCount = Zus.useStore(SquadServerClient.PlayerSelectionStore, s => Object.values(s.selection).filter(Boolean).length)
+	const selectedCount = ZusUtils.useStore(SquadServerClient.PlayerSelectionStore, s => Object.values(s.selection).filter(Boolean).length)
 	const showSelectedId = React.useId()
 	React.useEffect(() => {
 		if (selectedCount === 0 && showSelected) setShowSelected(false)
@@ -100,16 +100,16 @@ export default function TeamsPanel(props: { className?: string }) {
 		<div className={cn('flex w-full p-1 flex-col', props.className)}>
 			<div className="grid w-full grid-cols-[1fr_auto_1fr] gap-1">
 				<div>
-					<TeamTitle teamId={'A'} />
+					<TeamTitle teamId={'A'} stores={props.stores} />
 				</div>
 				<div></div>
 				<div className="flex justify-end">
-					<TeamTitle teamId={'B'} />
+					<TeamTitle teamId={'B'} stores={props.stores} />
 				</div>
 				<div>
 				</div>
 			</div>
-			{showSwapsPanel && <SwapsPanel className="my-1 rounded-md border bg-muted/40 px-2 py-1.5" />}
+			{showSwapsPanel && <SwapsPanel className="my-1 rounded-md border bg-muted/40 px-2 py-1.5" stores={props.stores} />}
 			<div className="grid w-full grid-cols-[1fr_auto_1fr] gap-1">
 				<Input
 					placeholder="Search Players..."
@@ -117,13 +117,13 @@ export default function TeamsPanel(props: { className?: string }) {
 					onChange={e => setSearchQuery(e.target.value)}
 					onKeyDown={e => {
 						if (e.key !== 'Enter' || !searchQuery.trim()) return
-						const { players } = SquadServerClient.ChatStore.getState().chatState.interpolatedState
+						const { players } = ChatPrt.Sel.chatState(ZusUtils.getState(props.stores.squadServer!))
 						const names = players.map(p => p.ids.usernameNoTag ?? p.ids.username ?? '')
 						const matched = new Set(StrUtils.simpleStringMatch(names, searchQuery))
 						const matchedIds = players
 							.filter((_, i) => matched.has(i))
 							.map(p => SM.PlayerIds.getPlayerId(p.ids))
-						SquadServerClient.PlayerSelectionStore.getState().setSelection(
+						SquadServerClient.Actions.setSelection(
 							Object.fromEntries(matchedIds.map(id => [id, true])),
 						)
 					}}
@@ -143,7 +143,7 @@ export default function TeamsPanel(props: { className?: string }) {
 						className="h-7 w-7"
 						disabled={selectedCount === 0}
 						title="Clear selected players"
-						onClick={() => SquadServerClient.PlayerSelectionStore.getState().setSelection({})}
+						onClick={() => SquadServerClient.Actions.setSelection({})}
 					>
 						<Icons.Trash className="h-4 w-4" />
 					</Button>
@@ -153,29 +153,36 @@ export default function TeamsPanel(props: { className?: string }) {
 			{isDesktop
 				? (
 					<div className="grid w-full grid-cols-[1fr_1fr] divide-x divide-border">
-						<TeamPlayerTable teamId="A" searchQuery={searchQuery} filters={filtersA} showSelected={showSelected} />
-						<TeamPlayerTable teamId="B" searchQuery={searchQuery} filters={filtersB} showSelected={showSelected} className="pl-1" />
+						<TeamPlayerTable teamId="A" searchQuery={searchQuery} filters={filtersA} showSelected={showSelected} stores={props.stores} />
+						<TeamPlayerTable
+							teamId="B"
+							searchQuery={searchQuery}
+							filters={filtersB}
+							showSelected={showSelected}
+							className="pl-1"
+							stores={props.stores}
+						/>
 					</div>
 				)
-				: <CombinedPlayerTable searchQuery={searchQuery} filters={filtersC} showSelected={showSelected} />}
+				: <CombinedPlayerTable searchQuery={searchQuery} filters={filtersC} showSelected={showSelected} stores={props.stores} />}
 		</div>
 	)
 }
 
-function TeamTitle(props: { teamId: MH.NormedTeamId }) {
-	const match = MatchHistoryClient.useCurrentMatch()
+function TeamTitle(props: { teamId: MH.NormedTeamId; stores: SquadServerFrame.KeyProp }) {
+	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
 	const playerCount = ZusUtils.useStore(
-		SquadServerClient.ChatStore,
-		MatchHistoryClient.currentMatch$(),
-		SquadServer.Select.teamPlayerCount(props.teamId),
+		props.stores.squadServer!,
+		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
+		ChatPrt.Sel.teamPlayerCount(props.teamId),
 	)
 	const diffAfterSwitches = ZusUtils.useStore(
-		TSWClient.Store,
-		TSWClient.Select.diffAfterSwitchesForTeam(props.teamId),
+		props.stores.squadServer!,
+		TSWClient.Sel.diffAfterSwitchesForTeam(props.teamId),
 	)
 	return (
 		<div>
-			<MatchTeamDisplay teamId={props.teamId} matchId={match?.historyEntryId} showAltTeamIndicator={true} />,{' '}
+			<MatchTeamDisplay teamId={props.teamId} matchId={match?.historyEntryId} showAltTeamIndicator={true} stores={props.stores} />,{' '}
 			{playerCount}({diffAfterSwitches >= 0 ? '+' : ''}
 			{diffAfterSwitches}) players
 		</div>
@@ -183,24 +190,20 @@ function TeamTitle(props: { teamId: MH.NormedTeamId }) {
 }
 
 function ControlPanel() {
-	const config = ConfigClient.useConfig()
+	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
 	const playerFlagGroupings = config?.playerFlagGroupings
 	const groupingModeIds = React.useMemo(
 		() => playerFlagGroupings ? BM.getGroupingModeIds(playerFlagGroupings) : [],
 		[playerFlagGroupings],
 	)
-	const selectedModeId = Zus.useStore(BattlemetricsClient.Store, s => s.selectedModeId)
-	const setSelectedModeId = Zus.useStore(BattlemetricsClient.Store, s => s.setSelectedModeId)
-	const activeModeId = selectedModeId !== null && groupingModeIds.includes(selectedModeId)
-		? selectedModeId
-		: groupingModeIds[0] ?? null
+	const activeModeId = ZusUtils.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingModeId(groupingModeIds))
 
 	if (groupingModeIds.length === 0) return null
 
 	return (
 		<div className="flex justify-end items-center gap-1">
 			<span className="text-sm text-muted-foreground">Group by</span>
-			<Select value={activeModeId ?? ''} onValueChange={(value) => setSelectedModeId(value || null)}>
+			<Select value={activeModeId ?? ''} onValueChange={(value) => BattlemetricsClient.Actions.setSelectedModeId(value || null)}>
 				<SelectTrigger className="h-7 w-auto text-sm">
 					<SelectValue />
 				</SelectTrigger>
@@ -224,21 +227,21 @@ type TeamBreakdownData = {
 	setSelectedModeId: (id: string | null) => void
 } | null
 
-function useTeamBreakdownData(): TeamBreakdownData {
-	const match = MatchHistoryClient.useCurrentMatch()
+function useTeamBreakdownData(stores: SquadServerFrame.KeyProp): TeamBreakdownData {
+	const match = MatchHistoryClient.useCurrentMatch(stores.squadServer!.serverId)
 	const teamAIsTeam1 = (match?.ordinal ?? 0) % 2 === 0
 
-	const livePlayers = Zus.useStore(
-		SquadServerClient.ChatStore,
+	const livePlayers = ZusUtils.useStore(
+		stores.squadServer!,
 		ZusUtils.useDeep(s => {
-			if (!s.chatState.synced) return null
-			return s.chatState.interpolatedState.players
+			if (!s.chat.chatState.synced) return null
+			return ChatPrt.Sel.chatState(s).players
 		}),
 	)
 
 	const bmData = BattlemetricsClient.usePlayerBmData()
 	const orgFlags = BattlemetricsClient.useOrgFlags()
-	const config = ConfigClient.useConfig()
+	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
 	const playerFlagGroupings = config?.playerFlagGroupings
 
 	const groupingModeIds = React.useMemo(
@@ -246,13 +249,9 @@ function useTeamBreakdownData(): TeamBreakdownData {
 		[playerFlagGroupings],
 	)
 
-	const selectedModeId = Zus.useStore(BattlemetricsClient.Store, s => s.selectedModeId)
-	const setSelectedModeId = Zus.useStore(BattlemetricsClient.Store, s => s.setSelectedModeId)
-	const slsOnly = Zus.useStore(BattlemetricsClient.Store, s => s.slsOnly)
-
-	const activeModeId = selectedModeId !== null && groupingModeIds.includes(selectedModeId)
-		? selectedModeId
-		: groupingModeIds[0] ?? null
+	const activeModeId = ZusUtils.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingModeId(groupingModeIds))
+	const slsOnly = ZusUtils.useStore(BattlemetricsClient.Store, s => s.slsOnly)
+	const setSelectedModeId = BattlemetricsClient.Actions.setSelectedModeId
 
 	return React.useMemo((): TeamBreakdownData => {
 		if (!playerFlagGroupings || !livePlayers || activeModeId === null) return null
@@ -428,12 +427,13 @@ function TeamBreakdownChart({ data }: { data: TeamBreakdownData }) {
 	return <ReactECharts option={chartOption} notMerge={true} style={{ height: '200px', width: '100px' }} />
 }
 
-function SelectOrSpinner({ playerId, checked, onCheckedChange }: {
+function SelectOrSpinner({ playerId, checked, onCheckedChange, stores }: {
 	playerId: SM.PlayerId
 	checked: boolean
 	onCheckedChange: (checked: boolean) => void
+	stores: SquadServerFrame.KeyProp
 }) {
-	const isPending = ZusUtils.useStore(TSWClient.Store, TSWClient.Select.isSwitchPending(playerId))
+	const isPending = ZusUtils.useStore(stores.squadServer!, TSWClient.Sel.isSwitchPending(playerId))
 	return (
 		<div className="h-4 w-4 flex items-center justify-center shrink-0">
 			{isPending
@@ -459,6 +459,7 @@ type TeamPlayerTableMeta = {
 	filters: PlayerFilters
 	availableRoles: string[]
 	availableGroupings: string[]
+	stores: SquadServerFrame.KeyProp
 }
 
 function ColumnFilterSelect({ value, onChange, options }: {
@@ -495,14 +496,16 @@ const playerColumns = [
 				aria-label="Select all"
 			/>
 		),
-		cell: ({ row }) => {
+		cell: ({ row, table }) => {
 			const playerId = row.id
+			const { stores } = table.options.meta as TeamPlayerTableMeta
 			return (
 				<div onClick={e => e.stopPropagation()}>
 					<SelectOrSpinner
 						playerId={playerId}
 						checked={row.getIsSelected()}
 						onCheckedChange={checked => row.toggleSelected(!!checked)}
+						stores={stores}
 					/>
 				</div>
 			)
@@ -511,7 +514,13 @@ const playerColumns = [
 	playerColumnHelper.accessor(row => row.ids.usernameNoTag ?? row.ids.username ?? '', {
 		id: 'name',
 		header: 'Name',
-		cell: ({ row, table }) => <PlayerDisplay player={row.original} matchId={(table.options.meta as TeamPlayerTableMeta).matchId} />,
+		cell: ({ row, table }) => (
+			<PlayerDisplay
+				stores={(table.options.meta as TeamPlayerTableMeta).stores}
+				player={row.original}
+				matchId={(table.options.meta as TeamPlayerTableMeta).matchId}
+			/>
+		),
 	}),
 	playerColumnHelper.accessor('role', {
 		header: ({ table }) => {
@@ -569,7 +578,7 @@ const playerColumns = [
 			)
 		},
 		cell: ({ row, table }) => {
-			const { squads, matchId } = table.options.meta as TeamPlayerTableMeta
+			const { squads, matchId, stores } = table.options.meta as TeamPlayerTableMeta
 			const player = row.original
 			const squadId = player.squadId
 			if (squadId === null) return ''
@@ -581,7 +590,7 @@ const playerColumns = [
 				: (
 					<OpenWindowInteraction
 						windowId={WINDOW_ID.enum['squad-details']}
-						windowProps={{ uniqueSquadId: squad.uniqueId } satisfies SquadDetailsWindowProps}
+						windowProps={{ uniqueSquadId: squad.uniqueId, stores } satisfies SquadDetailsWindowProps}
 						preload="intent"
 						render={(
 							{ label, ref, onClick, ...rest }:
@@ -609,7 +618,7 @@ const playerColumns = [
 					<ContextMenu>
 						<ContextMenuTrigger>{squadLabel}</ContextMenuTrigger>
 						<ContextMenuContent>
-							<SquadContextMenuOptions squad={squad} />
+							<SquadContextMenuOptions squad={squad} stores={stores} />
 						</ContextMenuContent>
 					</ContextMenu>
 					{player.isLeader && <span className="text-xs text-muted-foreground">(SL)</span>}
@@ -620,25 +629,29 @@ const playerColumns = [
 ]
 
 function TeamPlayerTable(
-	props: { teamId: MH.NormedTeamId; searchQuery: string; filters: PlayerFilters; showSelected: boolean; className?: string },
+	props: {
+		teamId: MH.NormedTeamId
+		searchQuery: string
+		filters: PlayerFilters
+		showSelected: boolean
+		className?: string
+		stores: SquadServerFrame.KeyProp
+	},
 ) {
-	const rowSelection = Zus.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
-	const savedSwitches = Zus.useStore(TSWClient.Store, s => TSWClient.Select.localState(s).savedSwitches)
-	const setRowSelection = SquadServerClient.PlayerSelectionStore.getState().setSelection
+	const rowSelection = ZusUtils.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
+	const savedSwitches = ZusUtils.useStore(props.stores.squadServer!, s => TSWClient.Sel.localState(s).savedSwitches)
+	const setRowSelection = SquadServerClient.Actions.setSelection
 	const mouseDownRef = React.useRef<{ index: number; originalSelected: boolean } | null>(null)
 	const [sorting, setSorting] = React.useState<SortingState>([])
-	const match = MatchHistoryClient.useCurrentMatch()
+	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
 	const matchId = match?.historyEntryId ?? 0
 
-	const config = ConfigClient.useConfig()
+	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
 	const orgFlags = BattlemetricsClient.useOrgFlags()
-	const selectedModeId = Zus.useStore(BattlemetricsClient.Store, s => s.selectedModeId)
+	const modeIds = React.useMemo(() => BM.getGroupingModeIds(config?.playerFlagGroupings ?? []), [config])
+	const activeModeId = ZusUtils.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingModeId(modeIds))
 	const groupingColorByLabel = React.useMemo(() => {
 		const playerFlagGroupings = config?.playerFlagGroupings ?? []
-		const modeIds = BM.getGroupingModeIds(playerFlagGroupings)
-		const activeModeId = selectedModeId !== null && modeIds.includes(selectedModeId)
-			? selectedModeId
-			: modeIds[0] ?? null
 		if (!activeModeId) return new Map<string, string>()
 		const modeGroupings = playerFlagGroupings.filter(g => g.modeIds.includes(activeModeId))
 		const flagColorById = new Map<string, string>()
@@ -650,20 +663,20 @@ function TeamPlayerTable(
 			result.set(group.label, flagColorById.get(group.color) ?? group.color)
 		}
 		return result
-	}, [config, orgFlags, selectedModeId])
+	}, [config, orgFlags, activeModeId])
 
 	const players = ZusUtils.useStore(
-		SquadServerClient.ChatStore,
-		MatchHistoryClient.currentMatch$(),
+		props.stores.squadServer!,
+		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		BattlemetricsClient.playerBmData$,
 		BattlemetricsClient.Store,
-		ConfigClient.Store,
-		React.useCallback(TeamsPanelModels.Select.playersForTeam(props.teamId), [props.teamId]),
+		SettingsClient.PublicSettingsStore,
+		React.useCallback(TeamsPanelModels.Sel.playersForTeam(props.teamId), [props.teamId]),
 	)
 	const squads = ZusUtils.useStore(
-		SquadServerClient.ChatStore,
-		MatchHistoryClient.currentMatch$(),
-		React.useCallback(SquadServer.Select.squadsForTeam(props.teamId), [props.teamId]),
+		props.stores.squadServer!,
+		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
+		React.useCallback(ChatPrt.Sel.squadsForTeam(props.teamId), [props.teamId]),
 	)
 
 	const availableRoles = React.useMemo(
@@ -710,6 +723,7 @@ function TeamPlayerTable(
 			filters: props.filters,
 			availableRoles,
 			availableGroupings,
+			stores: props.stores,
 		} satisfies TeamPlayerTableMeta,
 	})
 
@@ -786,8 +800,8 @@ function TeamPlayerTable(
 							</ContextMenuTrigger>
 							<ContextMenuContent>
 								{isBulk
-									? <PlayerBulkContextMenuOptions playerIds={selectedIds} />
-									: <PlayerContextMenuOptions playerId={row.id} />}
+									? <PlayerBulkContextMenuOptions playerIds={selectedIds} stores={props.stores} />
+									: <PlayerContextMenuOptions playerId={row.id} stores={props.stores} />}
 							</ContextMenuContent>
 						</ContextMenu>
 					)
@@ -809,6 +823,7 @@ type CombinedTableMeta = {
 	availableRoles: string[]
 	availableGroupings: string[]
 	getFaction: (normedTeam: MH.NormedTeamId) => string
+	stores: SquadServerFrame.KeyProp
 }
 
 const combinedColumnHelper = createColumnHelper<CombinedPlayer>()
@@ -823,12 +838,13 @@ const combinedPlayerColumns = [
 				aria-label="Select all"
 			/>
 		),
-		cell: ({ row }) => (
+		cell: ({ row, table }) => (
 			<div onClick={e => e.stopPropagation()}>
 				<SelectOrSpinner
 					playerId={row.id}
 					checked={row.getIsSelected()}
 					onCheckedChange={checked => row.toggleSelected(!!checked)}
+					stores={(table.options.meta as CombinedTableMeta).stores}
 				/>
 			</div>
 		),
@@ -841,7 +857,13 @@ const combinedPlayerColumns = [
 	combinedColumnHelper.accessor(row => row.ids.usernameNoTag ?? row.ids.username ?? '', {
 		id: 'name',
 		header: 'Name',
-		cell: ({ row, table }) => <PlayerDisplay player={row.original} matchId={(table.options.meta as CombinedTableMeta).matchId} />,
+		cell: ({ row, table }) => (
+			<PlayerDisplay
+				stores={(table.options.meta as CombinedTableMeta).stores}
+				player={row.original}
+				matchId={(table.options.meta as CombinedTableMeta).matchId}
+			/>
+		),
 	}),
 	combinedColumnHelper.accessor('role', {
 		header: ({ table }) => {
@@ -903,7 +925,7 @@ const combinedPlayerColumns = [
 			)
 		},
 		cell: ({ row, table }) => {
-			const { squadsWithTeam, matchId, getFaction } = table.options.meta as CombinedTableMeta
+			const { squadsWithTeam, matchId, getFaction, stores } = table.options.meta as CombinedTableMeta
 			const player = row.original
 			const squadId = player.squadId
 			if (squadId === null) return ''
@@ -918,7 +940,7 @@ const combinedPlayerColumns = [
 				: (
 					<OpenWindowInteraction
 						windowId={WINDOW_ID.enum['squad-details']}
-						windowProps={{ uniqueSquadId: squad.uniqueId } satisfies SquadDetailsWindowProps}
+						windowProps={{ uniqueSquadId: squad.uniqueId, stores } satisfies SquadDetailsWindowProps}
 						preload="intent"
 						render={(
 							{ label, ref, onClick, ...rest }:
@@ -946,7 +968,7 @@ const combinedPlayerColumns = [
 					<ContextMenu>
 						<ContextMenuTrigger>{squadLabel}</ContextMenuTrigger>
 						<ContextMenuContent>
-							<SquadContextMenuOptions squad={squad} />
+							<SquadContextMenuOptions squad={squad} stores={stores} />
 						</ContextMenuContent>
 					</ContextMenu>
 					{player.isLeader && <span className="text-xs text-muted-foreground">(SL)</span>}
@@ -956,22 +978,29 @@ const combinedPlayerColumns = [
 	}),
 ]
 
-function CombinedPlayerTable(props: { searchQuery: string; filters: PlayerFilters; showSelected: boolean; className?: string }) {
-	const rowSelection = Zus.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
-	const savedSwitches = Zus.useStore(TSWClient.Store, s => TSWClient.Select.localState(s).savedSwitches)
-	const setRowSelection = SquadServerClient.PlayerSelectionStore.getState().setSelection
+function CombinedPlayerTable(
+	props: {
+		searchQuery: string
+		filters: PlayerFilters
+		showSelected: boolean
+		className?: string
+		stores: SquadServerFrame.KeyProp
+	},
+) {
+	const rowSelection = ZusUtils.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
+	const savedSwitches = ZusUtils.useStore(props.stores.squadServer!, s => TSWClient.Sel.localState(s).savedSwitches)
+	const setRowSelection = SquadServerClient.Actions.setSelection
 	const mouseDownRef = React.useRef<{ index: number; originalSelected: boolean } | null>(null)
 	const [sorting, setSorting] = React.useState<SortingState>([{ id: 'faction', desc: false }])
-	const match = MatchHistoryClient.useCurrentMatch()
+	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
 	const matchId = match?.historyEntryId ?? 0
 
-	const config = ConfigClient.useConfig()
+	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
 	const orgFlags = BattlemetricsClient.useOrgFlags()
-	const selectedModeId = Zus.useStore(BattlemetricsClient.Store, s => s.selectedModeId)
+	const modeIds = React.useMemo(() => BM.getGroupingModeIds(config?.playerFlagGroupings ?? []), [config])
+	const activeModeId = ZusUtils.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingModeId(modeIds))
 	const groupingColorByLabel = React.useMemo(() => {
 		const playerFlagGroupings = config?.playerFlagGroupings ?? []
-		const modeIds = BM.getGroupingModeIds(playerFlagGroupings)
-		const activeModeId = selectedModeId !== null && modeIds.includes(selectedModeId) ? selectedModeId : modeIds[0] ?? null
 		if (!activeModeId) return new Map<string, string>()
 		const modeGroupings = playerFlagGroupings.filter(g => g.modeIds.includes(activeModeId))
 		const flagColorById = new Map<string, string>()
@@ -983,35 +1012,43 @@ function CombinedPlayerTable(props: { searchQuery: string; filters: PlayerFilter
 			result.set(group.label, flagColorById.get(group.color) ?? group.color)
 		}
 		return result
-	}, [config, orgFlags, selectedModeId])
+	}, [config, orgFlags, activeModeId])
 
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	const selectorA = React.useCallback(TeamsPanelModels.Select.playersForTeam('A'), [])
+	const selectorA = React.useCallback(TeamsPanelModels.Sel.playersForTeam('A'), [])
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	const selectorB = React.useCallback(TeamsPanelModels.Select.playersForTeam('B'), [])
+	const selectorB = React.useCallback(TeamsPanelModels.Sel.playersForTeam('B'), [])
 	const playersA = ZusUtils.useStore(
-		SquadServerClient.ChatStore,
-		MatchHistoryClient.currentMatch$(),
+		props.stores.squadServer!,
+		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		BattlemetricsClient.playerBmData$,
 		BattlemetricsClient.Store,
-		ConfigClient.Store,
+		SettingsClient.PublicSettingsStore,
 		selectorA,
 	)
 	const playersB = ZusUtils.useStore(
-		SquadServerClient.ChatStore,
-		MatchHistoryClient.currentMatch$(),
+		props.stores.squadServer!,
+		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		BattlemetricsClient.playerBmData$,
 		BattlemetricsClient.Store,
-		ConfigClient.Store,
+		SettingsClient.PublicSettingsStore,
 		selectorB,
 	)
 
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	const squadsASelector = React.useCallback(SquadServer.Select.squadsForTeam('A'), [])
+	const squadsASelector = React.useCallback(ChatPrt.Sel.squadsForTeam('A'), [])
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	const squadsBSelector = React.useCallback(SquadServer.Select.squadsForTeam('B'), [])
-	const squadsA = ZusUtils.useStore(SquadServerClient.ChatStore, MatchHistoryClient.currentMatch$(), squadsASelector)
-	const squadsB = ZusUtils.useStore(SquadServerClient.ChatStore, MatchHistoryClient.currentMatch$(), squadsBSelector)
+	const squadsBSelector = React.useCallback(ChatPrt.Sel.squadsForTeam('B'), [])
+	const squadsA = ZusUtils.useStore(
+		props.stores.squadServer!,
+		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
+		squadsASelector,
+	)
+	const squadsB = ZusUtils.useStore(
+		props.stores.squadServer!,
+		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
+		squadsBSelector,
+	)
 	const squadsWithTeam = React.useMemo<SquadWithTeam[]>(() => [
 		...squadsA.map(squad => ({ squad, normedTeam: 'A' as const })),
 		...squadsB.map(squad => ({ squad, normedTeam: 'B' as const })),
@@ -1080,6 +1117,7 @@ function CombinedPlayerTable(props: { searchQuery: string; filters: PlayerFilter
 			availableRoles,
 			availableGroupings,
 			getFaction,
+			stores: props.stores,
 		} satisfies CombinedTableMeta,
 	})
 
@@ -1156,8 +1194,8 @@ function CombinedPlayerTable(props: { searchQuery: string; filters: PlayerFilter
 							</ContextMenuTrigger>
 							<ContextMenuContent>
 								{isBulk
-									? <PlayerBulkContextMenuOptions playerIds={selectedIds} />
-									: <PlayerContextMenuOptions playerId={row.id} />}
+									? <PlayerBulkContextMenuOptions playerIds={selectedIds} stores={props.stores} />
+									: <PlayerContextMenuOptions playerId={row.id} stores={props.stores} />}
 							</ContextMenuContent>
 						</ContextMenu>
 					)
@@ -1167,14 +1205,13 @@ function CombinedPlayerTable(props: { searchQuery: string; filters: PlayerFilter
 	)
 }
 
-function TeamsAfterSwap() {
+function TeamsAfterSwap(props: { stores: SquadServerFrame.KeyProp }) {
 	const { countA, countB } = ZusUtils.useStore(
-		TSWClient.Store,
-		SquadServerClient.ChatStore,
-		MatchHistoryClient.currentMatch$(),
-		(tswStore, chatStore, currentMatch) => {
-			const editedSwitches = TSWClient.Select.localState(tswStore).editedSwitches
-			const players = SquadServer.Select.chatState(chatStore).players
+		props.stores.squadServer!,
+		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
+		(frameState, currentMatch) => {
+			const editedSwitches = TSWClient.Sel.localState(frameState).editedSwitches
+			const players = ChatPrt.Sel.chatState(frameState).players
 			if (!currentMatch) return { countA: 0, countB: 0 }
 			let countA = 0
 			let countB = 0
@@ -1197,11 +1234,11 @@ function TeamsAfterSwap() {
 	)
 }
 
-function SwapsPanel({ className }: { className?: string }) {
-	const canExecute = Zus.useStore(TSWClient.Store, TSWClient.Select.canExecuteSavedTeamswitches)
-	const switchesModified = Zus.useStore(TSWClient.Store, TSWClient.Select.switchesModified)
-	const [isEditing, setIsEditing] = UPClient.useEditingTeamswitchesState()
-	const numEditors = Zus.useStore(UPClient.Store, s => s.teamswitchEditors.size)
+function SwapsPanel({ className, stores }: { className?: string; stores: SquadServerFrame.KeyProp }) {
+	const canExecute = ZusUtils.useStore(stores.squadServer!, TSWClient.Sel.canExecuteSavedTeamswitches)
+	const switchesModified = ZusUtils.useStore(stores.squadServer!, TSWClient.Sel.switchesModified)
+	const [isEditing, setIsEditing] = UPClient.useEditingTeamswitchesState(stores.squadServer!.serverId)
+	const numEditors = ZusUtils.useStore(UPClient.Store, s => s.teamswitchEditors.size)
 	const [forceSave, setForceSave] = React.useState(false)
 	const startEditingDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
 
@@ -1209,7 +1246,7 @@ function SwapsPanel({ className }: { className?: string }) {
 		const shouldSave = switchesModified && (numEditors <= 1 || forceSave)
 		setIsEditing(false)
 		if (shouldSave) {
-			TSWClient.Actions.save()
+			TSWClient.Actions.save(stores)
 		}
 		setForceSave(false)
 	}
@@ -1222,7 +1259,7 @@ function SwapsPanel({ className }: { className?: string }) {
 
 	return (
 		<div className={cn('grid grid-cols-[1fr_auto_1fr] items-start divide-x divide-border', className)}>
-			<TeamSwapsDisplay teamId="A" className="pr-2" />
+			<TeamSwapsDisplay teamId="A" className="pr-2" stores={stores} />
 			<div className="flex flex-col items-center gap-1 px-2">
 				<div className="flex items-center gap-1">
 					<Tooltip>
@@ -1232,7 +1269,7 @@ function SwapsPanel({ className }: { className?: string }) {
 								size="icon"
 								className="h-7 w-7"
 								disabled={!isEditing || !switchesModified}
-								onClick={() => TSWClient.Actions.revertToSaved()}
+								onClick={() => TSWClient.Actions.revertToSaved(stores)}
 							>
 								<Icons.Undo2 className="h-3.5 w-3.5" />
 							</Button>
@@ -1292,7 +1329,7 @@ function SwapsPanel({ className }: { className?: string }) {
 							</AlertDialogHeader>
 							<AlertDialogFooter>
 								<AlertDialogCancel>Cancel</AlertDialogCancel>
-								<AlertDialogAction onClick={() => TSWClient.Actions.executeTeamswitches()}>
+								<AlertDialogAction onClick={() => TSWClient.Actions.executeTeamswitches(stores)}>
 									Switch Now
 								</AlertDialogAction>
 							</AlertDialogFooter>
@@ -1309,20 +1346,20 @@ function SwapsPanel({ className }: { className?: string }) {
 						)}
 					/>
 				</div>
-				<TeamsAfterSwap />
+				<TeamsAfterSwap stores={stores} />
 			</div>
-			<TeamSwapsDisplay teamId="B" align="right" className="pl-2" />
+			<TeamSwapsDisplay teamId="B" align="right" className="pl-2" stores={stores} />
 		</div>
 	)
 }
 
-function TeamSwapsDisplay(props: { teamId: MH.NormedTeamId; align?: 'left' | 'right'; className?: string }) {
+function TeamSwapsDisplay(
+	props: { teamId: MH.NormedTeamId; align?: 'left' | 'right'; className?: string; stores: SquadServerFrame.KeyProp },
+) {
 	const switches = ZusUtils.useStore(
-		TSWClient.Store,
-		SquadServerClient.ChatStore,
+		props.stores.squadServer!,
 		React.useCallback(
-			(teamsSwitchesStore: TSWClient.Store, chatStore: SquadServer.ChatStore) =>
-				TSWClient.Select.switchesToTeamEnrichedWithMutations(teamsSwitchesStore, chatStore, props.teamId),
+			(frameState: TSWClient.Store & ChatPrt.Store) => TSWClient.Sel.switchesToTeamEnrichedWithMutations(frameState, props.teamId),
 			[props.teamId],
 		),
 	)
@@ -1333,18 +1370,18 @@ function TeamSwapsDisplay(props: { teamId: MH.NormedTeamId; align?: 'left' | 'ri
 	return (
 		<div className={cn('flex flex-col gap-0.5', isRight && 'items-end', props.className)}>
 			<h3 className="text-sm">
-				Swaps to current <MatchTeamDisplay teamId={props.teamId} showAltTeamIndicator={true} />
+				Swaps to current <MatchTeamDisplay teamId={props.teamId} showAltTeamIndicator={true} stores={props.stores} />
 			</h3>
 			<div className={cn('flex flex-wrap items-center gap-1', isRight && 'justify-end')}>
 				{switches.size > 0 && <span className="text-xs text-muted-foreground shrink-0">({switches.size})</span>}
 				{switches.size === 0 && <span className="text-muted-foreground text-sm">No swaps yet</span>}
-				{MapUtils.mapToArray(switches, (playerId, s) => <SwitchBadge switch={s} key={playerId} />)}
+				{MapUtils.mapToArray(switches, (playerId, s) => <SwitchBadge switch={s} key={playerId} stores={props.stores} />)}
 				{hasLocal && (
 					<Button
 						variant="ghost"
 						size="icon"
 						className="h-6 w-6 shrink-0"
-						onClick={() => TSWClient.Actions.clearTeamSwitches(props.teamId)}
+						onClick={() => TSWClient.Actions.clearTeamSwitches(props.stores, props.teamId)}
 						title="Clear all"
 					>
 						<Icons.Trash2 className="h-3 w-3" />
@@ -1355,7 +1392,7 @@ function TeamSwapsDisplay(props: { teamId: MH.NormedTeamId; align?: 'left' | 'ri
 	)
 }
 
-function SwitchBadge(props: { switch: TSWClient.Select.EnrichedTeamswitchWithMutation }) {
+function SwitchBadge(props: { switch: TSWClient.Sel.EnrichedTeamswitchWithMutation; stores: SquadServerFrame.KeyProp }) {
 	const { mutation } = props.switch
 	const playerId = SM.PlayerIds.getPlayerId(props.switch.player.ids)
 	const variant = mutation.added ? 'added' : mutation.removed ? 'removed' : 'secondary'
@@ -1368,7 +1405,7 @@ function SwitchBadge(props: { switch: TSWClient.Select.EnrichedTeamswitchWithMut
 			{!mutation.removed && (
 				<button
 					type="button"
-					onClick={() => TSWClient.Actions.removeSwitch([playerId])}
+					onClick={() => TSWClient.Actions.removeSwitch(props.stores, [playerId])}
 					className="ml-1 hover:text-destructive"
 				>
 					<Icons.X className="h-3 w-3" />

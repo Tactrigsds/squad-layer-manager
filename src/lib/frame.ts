@@ -7,7 +7,9 @@ import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 
 type FrameId = symbol
-export type RawInstanceKey<Props extends { [key: string]: any } = any> = Readonly<{ frameId: FrameId } & Props>
+// default Props is the loose index-signature shape rather than `any` -- `{ frameId } & any` would collapse
+// the whole key type to `any`, breaking type narrowing and inference on keys downstream
+export type RawInstanceKey<Props extends { [key: string]: any } = { [key: string]: any }> = Readonly<{ frameId: FrameId } & Props>
 
 // const KEYRING = Symbol('KEYRING')
 // export function createKeyring<Keys extends { [key: string]: RawInstanceKey }>(keys: Keys) {
@@ -32,6 +34,7 @@ export type KeyCollection<FT extends { [key: string]: FrameTypes } = { [key: str
 }
 
 export type InstanceKey<T extends FrameTypes> = T['key'] & Readonly<{ _: T }> // for inference
+export type InstanceKeyOfState<T extends NonNullable<object>> = InstanceKey<FrameTypes & { state: T }>
 
 // export type Keyring<Keys extends KeyCollection> = Keys & { [KEYRING]: true }
 
@@ -50,22 +53,25 @@ export type FrameTypes = {
 	// The state once the frame has been initialized
 	state: NonNullable<object>
 }
+export type FrameTypesOfState<T extends NonNullable<object>> = FrameTypes & { state: T }
 export type InputUpdater<T extends FrameTypes> = ((input: T['input']) => T['input']) | T['input']
 
 type FramesOfKeys<KC extends KeyCollection> = {
 	[k in keyof KC]: KC[k]['_']['deps'] extends KeyCollection ? FramesOfKeys<KC[k]['_']['deps']> : object
 }
 
-type StateWithDeps<T extends FrameTypes> =
+export type StateWithDeps<T extends FrameTypes> =
 	& T['state']
 	& (T['deps'] extends KeyCollection ? FramesOfKeys<T['deps']>[keyof T['deps']] : object)
 
 export type SetupArgs<
 	I extends FrameTypes['input'] = FrameTypes['input'],
 	State extends FrameTypes['state'] = FrameTypes['state'],
-	Readable extends FrameTypes['state'] = FrameTypes['state'],
+	Readable extends FrameTypes['state'] = State,
 > = {
 	input: I
+	// the instance's own key -- lets setup code call Actions/partial helpers that take keys
+	key: InstanceKeyOfState<Readable>
 	get: ZusUtils.Getter<Readable>
 	set: ZusUtils.Setter<State>
 	//                      current,  prev
@@ -215,6 +221,8 @@ export class FrameManager {
 			instance.get = () => this.frameInstances.get(directKey)!.readStore.getState()
 			instance.set = (update) => this.frameInstances.get(directKey)!.writeStore.setState(update)
 			this.frameInstances.set(directKey, instance)
+			// register before setup so key-based access (e.g. Actions) works from within setup itself
+			this.keys.set(directKey, directKey)
 
 			frame.setup({
 				get: instance.get as any,
@@ -222,6 +230,7 @@ export class FrameManager {
 				input: instance.input,
 				sub: instance.sub,
 				update$: instance.update$,
+				key: directKey as InstanceKeyOfState<StateWithDeps<T>>,
 			})
 		} else {
 			;[directKey, instance] = entry
@@ -252,27 +261,7 @@ export class FrameManager {
 
 export function createFrameHelpers(frameManager: FrameManager) {
 	return {
-		useFrameStore,
-		useNullableFrameStore,
 		useFrameLifecycle,
-		getFrameState,
-		getFrameReaderStore,
-	}
-
-	function useFrameStore<T extends FrameTypes, O>(key: InstanceKey<T>, selector: (state: StateWithDeps<T>) => O): O {
-		const instance = frameManager.getInstance(key)!
-		if (!instance) throw new Error(`Frame instance not found for key`)
-		return Zus.useStore(instance.readStore, selector as any)
-	}
-
-	function useNullableFrameStore<T extends FrameTypes, O>(
-		key: InstanceKey<T> | null | undefined,
-		selector: (state: StateWithDeps<T> | null) => O,
-	): O {
-		const placeholderStoreRef = React.useRef<Zus.StoreApi<unknown>>(Zus.createStore(() => null))
-
-		const store = key ? frameManager.getInstance(key)?.readStore ?? placeholderStoreRef.current : placeholderStoreRef.current
-		return Zus.useStore(store, state => store === placeholderStoreRef.current ? selector(null) : selector(state as StateWithDeps<T>))
 	}
 
 	type FrameLifecycleOptions<T extends FrameTypes> = {
@@ -301,15 +290,5 @@ export function createFrameHelpers(frameManager: FrameManager) {
 		)
 
 		return frameKey
-	}
-
-	function getFrameState<T extends FrameTypes>(key: InstanceKey<T>) {
-		const instance = frameManager.getInstance(key)!
-		return instance.readStore.getState() as StateWithDeps<T>
-	}
-
-	function getFrameReaderStore<T extends FrameTypes>(key: InstanceKey<T>) {
-		const instance = frameManager.getInstance(key)!
-		return instance.readStore as Zus.StoreApi<StateWithDeps<T>>
 	}
 }

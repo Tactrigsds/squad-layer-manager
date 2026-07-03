@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogFooter, HeadlessDialogHeader, HeadlessDialogTitle } from '@/components/ui/headless-dialog'
-import { useFrameLifecycle, useFrameStore } from '@/frames/frame-manager.ts'
+import { useFrameLifecycle } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react.ts'
@@ -20,14 +20,14 @@ export type EditLayerDialogProps = {
 	layerId?: L.LayerId
 	onSelectLayer: (layerId: L.LayerId) => void
 	cursor?: LL.Cursor
-	frames?: Partial<SelectLayersFrame.KeyProp>
+	stores?: Partial<SelectLayersFrame.KeyProp>
 }
 
 type EditLayerDialogContentProps = {
 	layerId?: L.LayerId
 	onSelectLayer: (layerId: L.LayerId) => void
 	cursor?: LL.Cursor
-	frames?: Partial<SelectLayersFrame.KeyProp>
+	stores?: Partial<SelectLayersFrame.KeyProp>
 	onClose: () => void
 }
 
@@ -46,14 +46,14 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 	const frameKey = useFrameLifecycle(
 		SelectLayersFrame.frame,
 		{
-			frameKey: props.frames?.selectLayers,
+			frameKey: props.stores?.selectLayers,
 			input: frameInputRef.current,
 			deps: undefined,
 			equalityFn: Obj.deepEqual,
 		},
 	)
 
-	const [initialLayerId, editedLayerId] = useFrameStore(
+	const [initialLayerId, editedLayerId] = ZusUtils.useStore(
 		frameKey,
 		ZusUtils.useShallow(s => [s.initialEditedLayerId, s.layerTable.selected[0]]),
 	)
@@ -73,17 +73,21 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 					<HeadlessDialogTitle>Edit Layer</HeadlessDialogTitle>
 				</div>
 				<div className="flex justify-end items-center space-x-2">
-					<AppliedFiltersPanel frameKey={frameKey} />
+					{
+						/* FIXME stage4: AppliedFiltersPanel's stores type also requires a squadServer key (see applied-filters-panel.tsx),
+					   which isn't available in this select-layers-only context. Left as-is (pre-existing before this migration pass). */
+					}
+					<AppliedFiltersPanel stores={{ appliedFilters: frameKey }} />
 				</div>
 			</HeadlessDialogHeader>
 
 			<div className="flex min-h-0 items-start space-x-2">
-				<LayerFilterMenu frameKey={frameKey} />
+				<LayerFilterMenu stores={{ filterMenu: frameKey }} />
 				<div className="flex flex-col space-y-2 justify-between h-full min-h-0">
 					<div className="flex h-full min-h-0">
 						<LayerTable
-							frameKey={frameKey}
-							extraPanelItems={<PoolCheckboxes frameKey={frameKey} />}
+							stores={{ layerTable: frameKey }}
+							extraPanelItems={<PoolCheckboxes stores={{ poolCheckboxes: frameKey }} />}
 							canChangeRowsPerPage={false}
 							canToggleColumns={false}
 							enableForceSelect
@@ -117,7 +121,7 @@ export default function EditLayerDialog(props: EditLayerDialogProps) {
 						layerId={props.layerId}
 						onSelectLayer={props.onSelectLayer}
 						cursor={props.cursor}
-						frames={props.frames}
+						stores={props.stores}
 						onClose={onClose}
 					/>
 				)}

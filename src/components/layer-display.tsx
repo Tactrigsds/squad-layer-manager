@@ -1,13 +1,14 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers.ts'
-import * as ReactRxHelpers from '@/lib/react-rxjs-helpers.ts'
 import { cn } from '@/lib/utils.ts'
+import * as ZusUtils from '@/lib/zustand'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as DndKit from '@/systems/dndkit.client'
 import * as LQYClient from '@/systems/layer-queries.client'
-import * as QD from '@/systems/queue-dashboard.client'
+import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import { ConstraintEvalTooltip } from './constraint-matches-indicator.tsx'
@@ -22,14 +23,17 @@ export default function LayerDisplay(
 		droppable?: boolean
 		className?: string
 		ref?: React.Ref<HTMLDivElement>
+		// only available when rendered within a servers/$serverId context (e.g. teams/queue/match-history panels) -- omit
+		// elsewhere (e.g. the filter editor) and queue-status badges/parity are simply not shown
+		stores?: Partial<SquadServerFrame.KeyProp>
 	},
 ) {
-	const teamParity = ReactRxHelpers.useStateObservableSelection(
-		QD.layerItemsState$,
-		React.useCallback((context) => LQY.getParityForLayerItem(context, props.item), [props.item]),
+	const teamParity = ZusUtils.useStore(
+		LayerQueueClient.layerItemsState$(props.stores?.squadServer?.serverId ?? ''),
+		React.useCallback((context: LQY.LayerItemsState) => LQY.getParityForLayerItem(context, props.item), [props.item]),
 	) ?? 0
 
-	const statusData = LQYClient.useLayerItemStatusData(props.item)
+	const statusData = LQYClient.useLayerItemStatusData(props.item, props.stores?.squadServer as SquadServerFrame.Key)
 	const badges: React.ReactNode[] = []
 
 	if (statusData) {

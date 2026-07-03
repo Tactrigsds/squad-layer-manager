@@ -1,119 +1,52 @@
-import { globalToast$ } from '@/hooks/use-global-toast'
-import { assertNever } from '@/lib/type-guards'
-import * as ZusUtils from '@/lib/zustand'
-import * as CHAT from '@/models/chat.models'
-import * as MH from '@/models/match-history.models'
-import * as SquadServer from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as Cookies from '@/systems/app-routes.client'
-import * as ConfigClient from '@/systems/config.client'
-import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 
 // TODO we probably don't need to "bind" multiple observables like this. we should create some helper "derive" which lets us derive one state observable from another
-export const [useLayersStatus, layersStatus$] = ReactRx.bind<SM.LayersStatusResExt>(
-	RPC.observe(() => RPC.orpc.squadServer.watchLayersStatus.call()),
+export const [useLayersStatus, layersStatus$] = ReactRx.bind(
+	(serverId: string) => RPC.observe(() => RPC.orpc.squadServer.watchLayersStatus.call({ serverId })),
+	undefined as unknown as SM.LayersStatusResExt,
 )
-export const [useServerInfoRes, serverInfoRes$] = ReactRx.bind<SM.ServerInfoRes>(
-	RPC.observe(() => RPC.orpc.squadServer.watchServerInfo.call()),
+export const [useServerInfoRes, serverInfoRes$] = ReactRx.bind(
+	(serverId: string) => RPC.observe(() => RPC.orpc.squadServer.watchServerInfo.call({ serverId })),
+	undefined as unknown as SM.ServerInfoRes,
 )
-export const [useServerInfo, serverInfo$] = ReactRx.bind<SM.ServerInfo | null>(
-	serverInfoRes$.pipe(
-		Rx.map(res => res.code === 'ok' ? res.data : null),
-	),
-	null,
-)
-
-export const [useServerRolling, serverRolling$] = ReactRx.bind<number | null>(
-	RPC.observe(() => RPC.orpc.squadServer.watchServerRolling.call()),
+export const [useServerInfo, serverInfo$] = ReactRx.bind(
+	(serverId: string) =>
+		serverInfoRes$(serverId).pipe(
+			Rx.map(res => res.code === 'ok' ? res.data : null),
+		),
+	null as SM.ServerInfo | null,
 )
 
-const chatDisconnected$ = new Rx.Subject<CHAT.ConnectionErrorEvent>()
-let previouslyConnected = false
-
-export const chatEvent$ = RPC.observe(
-	() => {
-		const serverId$ = Rx.combineLatest([
-			ZusUtils.toObservable(ChatStore),
-			ZusUtils.toObservable(SelectedServerStore),
-		])
-			.pipe(Rx.map(([[chatState], [selectedServerState]]) => chatState.loadedServerId ?? selectedServerState.selectedServerId))
-
-		return Promise.resolve(serverId$.pipe(
-			Rx.switchMap(async serverId => {
-				const eventBuffer = ChatStore.getState().chatState.eventBuffer
-				return await RPC.orpc.squadServer.watchChatEvents.call({ lastEventId: eventBuffer[eventBuffer.length - 1]?.id, serverId })
-			}),
-			Rx.concatAll(),
-		))
-	},
-	{
-		onError: () => {
-			chatDisconnected$.next({
-				type: 'CONNECTION_ERROR',
-				code: previouslyConnected ? 'CONNECTION_LOST' : 'RECONNECT_FAILED',
-				time: Date.now(),
-			})
-		},
-	},
-).pipe(Rx.tap({ next: () => (previouslyConnected = true) }), Rx.share())
-
-export const ChatStore = Zus.createStore<SquadServer.ChatStore>((set, get) => {
-	return {
-		chatState: CHAT.getInitialChatState(),
-		loadedServerId: null,
-		secondaryFilterState: 'DEFAULT',
-		eventGeneration: 0,
-		selectedMatchOrdinal: null,
-		setSecondaryFilterState(state) {
-			set({ secondaryFilterState: state })
-		},
-		async setSelectedMatchOrdinal(ordinal) {
-			const currentMatch = await MatchHistoryClient.currentMatch$().getValue()
-			set({ selectedMatchOrdinal: currentMatch?.ordinal === ordinal ? null : ordinal })
-		},
-		handleChatEvents(events) {
-			const config = ConfigClient.getConfig()
-			set(state => {
-				let chatState = state.chatState
-				// this is done to cache break the selectors
-				chatState.interpolatedState = CHAT.InterpolableState.clone(chatState.interpolatedState)
-				let loadedServerId = state.loadedServerId
-				for (const event of events) {
-					if (event.type === 'INIT') {
-						loadedServerId = event.serverId
-					}
-					CHAT.handleEvent(chatState, event, config?.chat)
-				}
-				return { chatState, eventGeneration: state.eventGeneration + 1, loadedServerId }
-			})
-		},
-	}
-})
+export const [useServerRolling, serverRolling$] = ReactRx.bind(
+	(serverId: string) => RPC.observe(() => RPC.orpc.squadServer.watchServerRolling.call({ serverId })),
+	null as number | null,
+)
 
 export function useEndMatch() {
 	return useMutation({
-		mutationFn: async () => {
-			return RPC.orpc.squadServer.endMatch.call()
+		mutationFn: async (serverId: string) => {
+			return RPC.orpc.squadServer.endMatch.call({ serverId })
 		},
 	})
 }
 
 export function useDisableFogOfWarMutation() {
 	return useMutation({
-		mutationFn: async () => {
-			return RPC.orpc.squadServer.toggleFogOfWar.call({ disabled: true })
+		mutationFn: async (serverId: string) => {
+			return RPC.orpc.squadServer.toggleFogOfWar.call({ serverId, disabled: true })
 		},
 	})
 }
 
 export function useWarnPlayerMutation() {
 	return useMutation({
-		mutationFn: async (input: { playerId: string; reason: string }) => {
+		mutationFn: async (input: { serverId: string; playerId: string; reason: string }) => {
 			return RPC.orpc.squadServer.warnPlayer.call(input)
 		},
 	})
@@ -121,15 +54,15 @@ export function useWarnPlayerMutation() {
 
 export function useDemoteCommanderMutation() {
 	return useMutation({
-		mutationFn: async (playerId: string) => {
-			return RPC.orpc.squadServer.demoteCommander.call({ playerId })
+		mutationFn: async (input: { serverId: string; playerId: string }) => {
+			return RPC.orpc.squadServer.demoteCommander.call(input)
 		},
 	})
 }
 
 export function useDisbandSquadMutation() {
 	return useMutation({
-		mutationFn: async (input: { teamId: 1 | 2; squadId: number }) => {
+		mutationFn: async (input: { serverId: string; teamId: 1 | 2; squadId: number }) => {
 			return RPC.orpc.squadServer.disbandSquad.call(input)
 		},
 	})
@@ -137,15 +70,15 @@ export function useDisbandSquadMutation() {
 
 export function useRemoveFromSquadMutation() {
 	return useMutation({
-		mutationFn: async (playerId: string) => {
-			return RPC.orpc.squadServer.removeFromSquad.call({ playerId })
+		mutationFn: async (input: { serverId: string; playerId: string }) => {
+			return RPC.orpc.squadServer.removeFromSquad.call(input)
 		},
 	})
 }
 
 export function useResetSquadNameMutation() {
 	return useMutation({
-		mutationFn: async (input: { teamId: 1 | 2; squadId: number }) => {
+		mutationFn: async (input: { serverId: string; teamId: 1 | 2; squadId: number }) => {
 			return RPC.orpc.squadServer.renameSquad.call(input)
 		},
 	})
@@ -153,75 +86,58 @@ export function useResetSquadNameMutation() {
 
 type PlayerSelectionStore = {
 	selection: Record<string, boolean>
-	setSelection: (updater: Record<string, boolean> | ((old: Record<string, boolean>) => Record<string, boolean>)) => void
-	selectSquad: (playerId: SM.PlayerId) => void
 }
 
-export const PlayerSelectionStore = Zus.createStore<PlayerSelectionStore>((set, get) => ({
+export const PlayerSelectionStore = Zus.createStore<PlayerSelectionStore>(() => ({
 	selection: {},
-	setSelection: (updater) => {
-		const next = typeof updater === 'function' ? updater(get().selection) : updater
-		set({ selection: next })
-	},
-	selectSquad: (playerId) => {
-		const players = SquadServer.Select.chatState(ChatStore.getState()).players
+}))
+
+export namespace Actions {
+	export function setSelection(updater: Record<string, boolean> | ((old: Record<string, boolean>) => Record<string, boolean>)) {
+		const next = typeof updater === 'function' ? updater(PlayerSelectionStore.getState().selection) : updater
+		PlayerSelectionStore.setState({ selection: next })
+	}
+
+	// players: the current squad's chat roster, e.g. `ChatPrt.Sel.chatState(frameState).players`
+	export function selectSquad(playerId: SM.PlayerId, players: SM.Player[]) {
 		const player = SM.PlayerIds.find(players, p => p.ids, playerId)
 		if (!player?.squadId || !player.teamId) return
 		const squadIds = players
 			.filter(p => p.squadId === player.squadId && p.teamId === player.teamId)
 			.map(p => SM.PlayerIds.getPlayerId(p.ids))
-		set({ selection: Object.fromEntries(squadIds.map(id => [id, true])) })
-	},
-}))
+		PlayerSelectionStore.setState({ selection: Object.fromEntries(squadIds.map(id => [id, true])) })
+	}
+}
 
 type SelectedServerStore = {
 	selectedServerId: string
-	setSelectedServer: (serverId: string) => Promise<void>
-	setAsDefaultServer: () => void
 }
 
 export let SelectedServerStore!: Zus.StoreApi<SelectedServerStore>
-export function useSelectedServerId() {
-	return Zus.useStore(SelectedServerStore, state => state.selectedServerId)
-}
 
-export function usePlayerCount() {
-	return Zus.useStore(
-		ChatStore,
-		state => (state.chatState.synced && !state.chatState.connectionError) ? state.chatState.interpolatedState.players.length : null,
-	)
+export namespace SelectedServerActions {
+	export function setSelectedServer(serverId: string) {
+		if (serverId === SelectedServerStore.getState().selectedServerId) return
+		Cookies.setCookie('default-server-id', serverId)
+		SelectedServerStore.setState({ selectedServerId: serverId })
+	}
+
+	export function setAsDefaultServer() {
+		Cookies.setCookie('default-server-id', SelectedServerStore.getState().selectedServerId)
+	}
 }
 
 export function setup() {
-	serverInfoRes$.subscribe()
-	layersStatus$.subscribe()
-	serverRolling$.subscribe()
-	Rx.merge(chatEvent$, chatDisconnected$.pipe(Rx.map(e => [e]))).subscribe(events => {
-		ChatStore.getState().handleChatEvents(events as (CHAT.Event | CHAT.LifecycleEvent)[])
-	})
-
 	// this cookie will always be set correctly according to the path on page load, which is the only time we expect setup() to be called
 	const cookieServerId = Cookies.getCookie('default-server-id')!
-
-	SelectedServerStore = Zus.createStore((set, get) => ({
+	SelectedServerStore = Zus.createStore(() => ({
 		selectedServerId: cookieServerId,
-		setSelectedServer: async (serverId: string) => {
-			if (serverId === get().selectedServerId) return
-			const res = await RPC.orpc.squadServer.setSelectedServer.call(serverId)
-			if (res.code === 'err:server-not-found') {
-				console.warn('Server not found', serverId)
-				return
-			} else if (res.code === 'ok') {
-				Cookies.setCookie('default-server-id', serverId)
-				return set({ selectedServerId: serverId })
-			} else {
-				assertNever(res)
-			}
-		},
-		setAsDefaultServer: () => {
-			Cookies.setCookie('default-server-id', get().selectedServerId)
-		},
 	}))
+}
 
-	return SelectedServerStore
+// keeps serverInfo/serverRolling/layersStatus hot for the given server's lifetime; called from the squadServer frame's setup
+export function watchServer(serverId: string, sub: Rx.Subscription) {
+	sub.add(serverInfoRes$(serverId).subscribe())
+	sub.add(layersStatus$(serverId).subscribe())
+	sub.add(serverRolling$(serverId).subscribe())
 }

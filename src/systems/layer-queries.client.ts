@@ -1,3 +1,4 @@
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import { toAsyncGenerator } from '@/lib/async'
 import * as Gen from '@/lib/generator'
@@ -11,6 +12,7 @@ import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
+import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems/config.client'
@@ -19,24 +21,16 @@ import type * as WorkerTypes from '@/systems/layer-queries.worker'
 import * as React from 'react'
 // oxlint-disable-next-line import/default
 import LQWorker from '@/systems/layer-queries.worker?worker'
-import * as QD from '@/systems/queue-dashboard.client'
-import * as ServerSettingsClient from '@/systems/server-settings.client'
 import * as UsersClient from '@/systems/users.client'
 import { experimental_streamedQuery as streamedQuery, queryOptions, useQuery } from '@tanstack/react-query'
 import * as Im from 'immer'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
-import { useShallow } from 'zustand/react/shallow'
-
-type LayerCtxModifiedCounters = CS.Ctx & { [k in keyof Omit<WorkerTypes.DynamicQueryCtx, keyof CS.Ctx>]: number }
 
 export type Store = {
-	counters: LayerCtxModifiedCounters
-	increment: (ctx: Partial<WorkerTypes.DynamicQueryCtx>) => void
-	extraQueryFilters: LQY.ExtraQueryFiltersState['extraFilters']
-	setExtraQueryFilters(db: (draft: Im.WritableDraft<LQY.ExtraQueryFiltersState['extraFilters']>) => void): void
+	filtersModifiedEpoch: number
+	incrementFiltersModifiedEpoch: () => void
 	hoveredConstraintItemId: string | null
-	setHoveredConstraintItemId(id: LQY.ItemId | null): void
 	status: 'uninitialized' | 'initializing' | 'downloading-layers' | 'ready' | 'error'
 	errorMessage: string | null
 	setStatus: (status: 'initializing' | 'downloading-layers' | 'ready' | 'error', errorMessage?: string) => void
@@ -44,54 +38,11 @@ export type Store = {
 
 // we don't want to use the entire query context as query state so instead we just increment these counters whenever one of them change and depend on that instead
 export const Store = Zus.createStore<Store>((set, get, store) => {
-	const extraQueryFilters = new Set(localStorage.getItem('extraQueryFilters:v2')?.split(',') ?? [])
-	if (extraQueryFilters.size === 0) {
-		void (async () => {
-			const config = await ConfigClient.fetchConfig()
-			const filterEntities = await FilterEntityClient.initializedFilterEntities$().getValue()
-			if (!config.layerTable.defaultExtraFilters) return
-
-			set({
-				extraQueryFilters: new Set(config.layerTable.defaultExtraFilters.filter(f => filterEntities.has(f))),
-			})
-		})()
-	}
-
-	store.subscribe((state, prev) => {
-		const extraFilters = Array.from(state.extraQueryFilters)
-		const prevExtraFilters = Array.from(prev.extraQueryFilters)
-		if (!Obj.deepEqual(extraFilters, prevExtraFilters)) {
-			localStorage.setItem('extraQueryFilters:v2', extraFilters.join(','))
-		}
-	})
-
 	return ({
-		counters: {
-			...CS.init(),
-			filters: 0,
-			layerItemsState: 0,
-		},
+		filtersModifiedEpoch: 0,
 		hoveredConstraintItemId: null,
-		extraQueryFilters,
-		setExtraQueryFilters(cb) {
-			set(state => {
-				const newState = Im.produce(state, draft => {
-					cb(draft.extraQueryFilters)
-				})
-				return newState
-			})
-		},
-		increment(ctx) {
-			for (const key of Obj.objKeys(ctx)) {
-				const currentCounters = get().counters
-				const val = currentCounters[key as unknown as keyof LayerCtxModifiedCounters]
-				if (typeof val === 'number') {
-					set({ counters: { ...currentCounters, [key]: val + 1 } })
-				}
-			}
-		},
-		setHoveredConstraintItemId(id: string | null) {
-			set({ hoveredConstraintItemId: id })
+		incrementFiltersModifiedEpoch() {
+			set({ filtersModifiedEpoch: get().filtersModifiedEpoch + 1 })
 		},
 		status: 'uninitialized',
 		errorMessage: null,
@@ -100,6 +51,12 @@ export const Store = Zus.createStore<Store>((set, get, store) => {
 		},
 	})
 })
+
+export namespace Actions {
+	export function setHoveredConstraintItemId(id: LQY.ItemId | null) {
+		Store.setState({ hoveredConstraintItemId: id as string | null })
+	}
+}
 
 function getIsLayerDisabled(layerData: RowData, canForceSelect: boolean, constraints: LQY.Constraint[]) {
 	return !canForceSelect && layerData.constraints.values?.some((v, i) => !v && constraints[i].type !== 'do-not-repeat')
@@ -153,6 +110,7 @@ export type QueryLayersPageData = {
 	pageCount: number
 	input: LQY.LayersQueryInput
 }
+
 export type QueryLayersInputOpts = {
 	cfg?: LQY.EffectiveColumnAndTableConfig
 	selectedLayers?: L.LayerId[]
@@ -170,9 +128,8 @@ export function getQueryLayersOptions(
 	// cringe but works for now. tanstack query makes it hard to get at the stream otherwise
 	packet$?: Rx.Subject<QueryLayersPacket>,
 	errorStore?: Zus.StoreApi<F.NodeValidationErrorStore>,
-	counters?: LayerCtxModifiedCounters,
 ) {
-	counters = counters ?? Store.getState().counters
+	const backgroundStateEpoch = Store.getState().filtersModifiedEpoch
 	async function* streamLayersQuery() {
 		try {
 			for await (const res of streamLayerQueriesResponse(input)) {
@@ -180,6 +137,8 @@ export function getQueryLayersOptions(
 					console.error('queryLayers: Invalid node error:', res.errors)
 					errorStore?.setState({ errors: res.errors })
 					throw new Error('Invalid node')
+				} else if (res.code === 'err:missing-item-states') {
+					throw new Error('err:missing-item-states')
 				} else {
 					errorStore?.setState({ errors: undefined })
 				}
@@ -248,7 +207,7 @@ export function getQueryLayersOptions(
 		}
 	}
 	return queryOptions({
-		queryKey: ['layers', '__queryLayers__', getDepKey(input, counters)],
+		queryKey: ['layers', '__queryLayers__', getDepKey(input, backgroundStateEpoch)],
 		queryFn: streamedQuery({ queryFn: streamLayersQuery }),
 		staleTime: Infinity,
 	})
@@ -325,13 +284,18 @@ export function useLayerComponents(
 	})
 }
 
-export function useLayerItemStatusConstraints() {
-	return ZusUtils.useStoreDeep(
-		ServerSettingsClient.Store,
-		state => QD.selectQueueStatusConstraints(state.saved),
-		{
-			dependencies: [],
-		},
+const emptySettings = SETTINGS.PublicServerSettingsSchema.parse({})
+
+// squadServerFrameKey is optional so this can be used from contexts with no active squad-server (e.g. the filter editor)
+export function useLayerItemStatusConstraints(squadServerFrameKey?: SquadServerFrame.Key) {
+	return ZusUtils.useStore(
+		squadServerFrameKey ?? null,
+		ZusUtils.useDeep(
+			React.useCallback(
+				(state: SquadServerFrame.State | undefined) => SETTINGS.getSettingsConstraints(state?.settings.saved ?? emptySettings),
+				[],
+			),
+		),
 	)
 }
 
@@ -361,16 +325,17 @@ export type LayerItemStatusData = {
 
 export function useLayerItemStatusData(
 	layerItem: LQY.LayerItem | LQY.ItemId,
+	squadServerFrameKey?: SquadServerFrame.Key,
 	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
 ): LayerItemStatusData | null {
-	const queriedConstraints = useLayerItemStatusConstraints()
-	const queryRes = useLayerItemStatuses(queriedConstraints, options)
+	const queriedConstraints = useLayerItemStatusConstraints(squadServerFrameKey)
+	const queryRes = useLayerItemStatuses(queriedConstraints, { ...options, listId: squadServerFrameKey?.serverId })
 	const itemId = LQY.resolveId(layerItem)
 
 	const allMatchDescriptors = queryRes.data?.matchDescriptors
 	const presentLayers = queryRes.data?.present
 
-	const highlightedMatchDescriptors = Zus.useStore(
+	const highlightedMatchDescriptors = ZusUtils.useStore(
 		Store,
 		ZusUtils.useDeep(React.useCallback((store) => {
 			if (!allMatchDescriptors) return
@@ -425,10 +390,9 @@ export function useLayerItemStatusData(
 // TODO prefetching
 export function useLayerItemStatuses(
 	constraints: LQY.Constraint[],
-	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
+	options: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore>; listId?: string },
 ) {
-	options ??= {}
-	const input: LQY.LayerItemStatusesInput = { constraints }
+	const input: LQY.LayerItemStatusesInput & { listId?: string } = { constraints, listId: options.listId }
 	return useQuery({
 		...options,
 		queryKey: [
@@ -442,7 +406,7 @@ export function useLayerItemStatuses(
 			// const counters = layerCtxVersionStore.getState().counters
 			// if the layer context changes we can't trust the parts anymore
 			// const layerContextUnchanged = Object.values(counters).every(c => c === 0)
-			// if (!QD.QDStore.getState().isEditing && layerContextUnchanged) {
+			// if (!isEditing && layerContextUnchanged) {
 			// 	return PartsSys.getServerLayerItemStatuses()
 			// }
 			const res = await sendWorkerRequest('getLayerItemStatuses', input)
@@ -450,6 +414,9 @@ export function useLayerItemStatuses(
 				console.error('getLayerItemStatuses: Invalid node error:', res.errors)
 				options?.errorStore?.setState({ errors: res.errors })
 				throw new Error('err:invalid-node: ' + JSON.stringify(res.errors))
+			}
+			if (res.code === 'err:missing-item-states') {
+				throw new Error('err:missing-item-states')
 			}
 			return res.statuses
 		},
@@ -467,22 +434,24 @@ export function useLayerExists(
 		placeholderData: options?.usePlaceholderData ? (d) => d : undefined,
 		queryKey: ['layers', 'layerExists', useDepKey(input)],
 		queryFn: async () => {
-			return await sendWorkerRequest('layerExists', input!)
+			const res = await sendWorkerRequest('layerExists', input!)
+			if (res.code === 'err:missing-item-states') throw new Error('err:missing-item-states')
+			return res.results
 		},
 		staleTime: Infinity,
 	})
 }
 
 export function useDepKey(input?: unknown) {
-	const ctxCounters = Zus.useStore(Store, useShallow(s => s.counters))
-	return getDepKey(input, ctxCounters)
+	const backgroundStateEpoch = ZusUtils.useStore(Store, ZusUtils.useShallow(s => s.filtersModifiedEpoch))
+	return getDepKey(input, backgroundStateEpoch)
 }
 
 // get context/input that may invalidate the query
-function getDepKey(input: unknown, ctxCounters: LayerCtxModifiedCounters) {
+function getDepKey(input: unknown, backgroundStateEpoch: number) {
 	return {
 		input,
-		ctxCounters,
+		backgroundStateEpoch,
 	}
 }
 
@@ -491,7 +460,7 @@ function getDepKey(input: unknown, ctxCounters: LayerCtxModifiedCounters) {
  * Lower numbers = higher priority (processed first).
  */
 export const QUERY_PRIORITIES: Record<WorkerTypes.RequestInner['type'], number> = {
-	'context-update': 5,
+	'filter-update': 5,
 	'init': 5,
 	getLayerItemStatuses: 4,
 	queryLayers: 3,
@@ -607,24 +576,15 @@ export async function ensureFullSetup() {
 
 async function setup() {
 	worker = new LQWorker({ name: 'layer-queries-worker' })
-	FilterEntityClient.filterEntityChanged$.subscribe(() => {
-		const extraFilters = Array.from(Store.getState().extraQueryFilters).filter(f => FilterEntityClient.filterEntities.has(f)).sort()
-		const currentExtraFilters = Array.from(Store.getState().extraQueryFilters).sort()
-		if (!Obj.deepEqual(extraFilters, currentExtraFilters)) {
-			Store.setState({ extraQueryFilters: new Set(extraFilters) })
-		}
-	})
 
 	const config = await ConfigClient.fetchConfig()
 
 	const filters = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
-	const itemsState = await Rx.firstValueFrom(QD.layerItemsState$)
 
 	const ctx: WorkerTypes.InitRequest['input'] = {
 		...CS.init(),
 		effectiveColsConfig: LC.getEffectiveColumnConfig(config.extraColumnsConfig),
 		filters,
-		layerItemsState: itemsState,
 	}
 
 	// set downloading-layers status when the worker signals that it has started a download
@@ -638,17 +598,15 @@ async function setup() {
 		}),
 		Rx.takeWhile(msg => msg.type !== 'init'),
 	).subscribe()
+
 	const initPromise = sendWorkerRequest('init', ctx)
 	// the follwing depends on the initPromise messages already having been sent during workerPool.initialize, otherwise we may send context-updates before initialization
-	const contextUpdate$ = Rx.merge(
-		FilterEntityClient.filterEntities$.pipe(Rx.map(filters => ({ filters }))),
-		QD.layerItemsState$.pipe(Rx.map(itemsState => ({ layerItemsState: itemsState }))),
-	)
 
-	contextUpdate$.pipe(Rx.observeOn(Rx.asyncScheduler)).subscribe(ctx => {
-		void sendWorkerRequest('context-update', ctx)
-		Store.getState().increment(ctx)
+	FilterEntityClient.filterEntities$.pipe(Rx.observeOn(Rx.asyncScheduler)).subscribe((filters) => {
+		void sendWorkerRequest('filter-update', filters)
+		Store.getState().incrementFiltersModifiedEpoch()
 	})
+
 	await initPromise
 	// Set up window focus handlers after successful initialization
 	// const focusHandlers = setupWindowFocusHandlers()

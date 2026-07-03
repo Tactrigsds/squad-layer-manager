@@ -91,12 +91,16 @@ export const PERMISSION_DEFINITION = {
 	...definePermission('squad-server:end-match', { description: 'End the current match on the server', scope: 'global' }),
 	...definePermission('squad-server:disable-slm-updates', { description: 'Disable updates from slm to the game-server', scope: 'global' }),
 	...definePermission('squad-server:turn-fog-off', { description: 'Disable fog-of-war for the current match', scope: 'global' }),
-	...definePermission('squad-server:manage-players', { description: 'Disband squads, remove players from squads, and manage team switches', scope: 'global' }),
+	...definePermission('squad-server:manage-players', {
+		description: 'Disband squads, remove players from squads, and manage team switches',
+		scope: 'global',
+	}),
 	...definePermission('squad-server:warn-players', { description: 'Send in-game warnings to players', scope: 'global' }),
 
 	...definePermission('battlemetrics:write-flags', { description: 'Add or remove BattleMetrics player flags', scope: 'global' }),
 
 	...definePermission('admin:manage-servers', { description: 'Enable or disable servers and edit server-level settings', scope: 'global' }),
+	...definePermission('admin:delete-servers', { description: 'Delete servers', scope: 'global' }),
 	...definePermission('admin:manage-global-settings', { description: 'Edit global settings', scope: 'global' }),
 }
 export type KnownPermission = (typeof PERMISSION_DEFINITION)[number]

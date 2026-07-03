@@ -1,7 +1,7 @@
 import type * as CS from '@/models/context-shared'
 import * as Logs from '@/models/logs'
 
-import type * as SS from '@/models/server-state.models'
+import type * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
 import * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
@@ -34,7 +34,7 @@ type Events = {
 
 export default class Rcon extends EventEmitter<Events> {
 	serverId: string
-	private settings: SS.ServerConnection['rcon']
+	private settings: SETTINGS.ServerConnection['rcon']
 	private client: net.Socket | null
 	private stream: Buffer
 	private type: {
@@ -46,7 +46,7 @@ export default class Rcon extends EventEmitter<Events> {
 	private soh: { size: number; id: number; type: number; body: string }
 
 	public get connected() {
-		return this.connected$.value
+		return this.connected$.closed ? false : this.connected$.value
 	}
 	public connected$ = new Rx.BehaviorSubject<boolean>(false)
 
@@ -54,7 +54,7 @@ export default class Rcon extends EventEmitter<Events> {
 	private msgId: number
 	private responseString: { id: number; body: string }
 
-	constructor(options: { serverId: string; settings: SS.ServerConnection['rcon']; autoReconnectDelay?: number }) {
+	constructor(options: { serverId: string; settings: SETTINGS.ServerConnection['rcon']; autoReconnectDelay?: number }) {
 		super()
 		for (const option of ['host', 'port', 'password']) {
 			if (!(option in options.settings)) throw new Error(`${option} must be specified.`)

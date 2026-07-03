@@ -1,8 +1,8 @@
 import { Input } from '@/components/ui/input'
-import type * as EditFrame from '@/frames/filter-editor.frame.ts'
-import { getFrameState, useFrameStore } from '@/frames/frame-manager'
+import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { useToast } from '@/hooks/use-toast'
 import { assertNever } from '@/lib/type-guards'
+import * as ZusUtils from '@/lib/zustand'
 import * as F from '@/models/filter.models'
 import { useFilterCreate } from '@/systems/filter-entity.client'
 import { invalidateLoggedInUser } from '@/systems/users.client'
@@ -29,7 +29,7 @@ type FormData = {
 	invertedEmoji: string | null
 }
 
-export default function FilterNew(props: { frameKey: EditFrame.Key }) {
+export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 	const { toast } = useToast()
 	const navigate = useNavigate()
 	const createFilterMutation = useFilterCreate()
@@ -45,7 +45,7 @@ export default function FilterNew(props: { frameKey: EditFrame.Key }) {
 			invertedEmoji: null as string | null,
 		},
 		onSubmit: async ({ value }) => {
-			const state = getFrameState(props.frameKey)
+			const state = ZusUtils.getState(props.stores.filterEditor)
 
 			if (!state.validatedFilter) {
 				toast({ title: 'Invalid filter', description: 'Please check filter configuration' })
@@ -76,7 +76,7 @@ export default function FilterNew(props: { frameKey: EditFrame.Key }) {
 		},
 	})
 
-	const isValidFilter = useFrameStore(props.frameKey, s => s.valid)
+	const isValidFilter = ZusUtils.useStore(props.stores.filterEditor, s => s.valid)
 
 	const submitBtn = React.useMemo(() => (
 		<form.Subscribe>
@@ -89,10 +89,10 @@ export default function FilterNew(props: { frameKey: EditFrame.Key }) {
 	), [form, isValidFilter])
 
 	const filterCard = React.useMemo(() => (
-		<FilterCard frameKey={props.frameKey}>
+		<FilterCard stores={props.stores}>
 			{submitBtn}
 		</FilterCard>
-	), [props.frameKey, submitBtn])
+	), [props.stores, submitBtn])
 
 	return (
 		<div className="container mx-auto flex flex-col gap-2">
@@ -301,9 +301,9 @@ export default function FilterNew(props: { frameKey: EditFrame.Key }) {
 				</form.Field>
 			</div>
 
-			<FilterValidationErrorDisplay frameKey={props.frameKey} />
+			<FilterValidationErrorDisplay stores={props.stores} />
 			{filterCard}
-			<LayerTable frameKey={props.frameKey} />
+			<LayerTable stores={{ layerTable: props.stores.filterEditor }} />
 		</div>
 	)
 }

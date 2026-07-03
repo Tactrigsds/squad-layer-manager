@@ -1,20 +1,15 @@
 import * as Arr from '@/lib/array'
-import { CleanupTasks, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { IsolatedSubject } from '@/lib/isolated-subject'
-import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
 import * as RbSyncState from '@/lib/rollback-synced-state'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
-import * as SLL from '@/models/shared-layer-list'
 import * as UP from '@/models/user-presence'
 import * as C from '@/server/context'
-import * as Db from '@/server/db'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
-import * as SquadServer from '@/systems/squad-server.server'
-import * as Teamswitches from '@/systems/teamswitches.server'
 import * as WSSessionSys from '@/systems/ws-session.server'
 import * as Rx from 'rxjs'
 
@@ -25,59 +20,31 @@ export type UserPresenceContext = {
 	}
 }
 
-export function initUserPresenceContext(ctx: C.ServerSliceCleanup & C.ServerId): UserPresenceContext['userPresence'] {
-	const serverId = ctx.serverId
-	const sideEffectQueue$ = new IsolatedSubject<[C.ServerSlice, UP.SideEffects]>()
-	ctx.cleanup.push(sideEffectQueue$)
-	const context: UserPresenceContext['userPresence'] = {
-		session: RbSyncState.Server.initSession(UP.initState(), {
-			onSideEffect: se => {
-				const ctx = resolveCtx(serverId)
-				sideEffectQueue$.next([ctx, se])
-			},
-		}),
-		op$: new IsolatedSubject<UP.Op[]>(),
-	}
-	ctx.cleanup.push(context.op$)
-	sideEffectQueue$.pipe(C.durableSub('onSideEffect', { module }, (args) => onSideEffect(...args))).subscribe()
-
-	return context
-}
+let globalUserPresence: UserPresenceContext['userPresence']
 
 const module = initModule('user-presence')
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
 
-// export function sendPresenceUpdate(ctx: C.UserPresence, update: UP.PresenceBroadcast) {
-// 	update = Obj.deepClone(update)
-// 	ctx.userPresence.update$.next(update)
-// }
-
 export const orpcRouter = {
-	watchUpdates: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
-		const updateForServer$ = SquadServer.selectedServerCtx$(context).pipe(
-			Rx.switchMap(ctx => {
-				if (!ctx) return Rx.EMPTY
-				const initial: UP.PresenceUpdate = {
-					code: 'init',
-					state: Obj.deepClone(ctx.userPresence.session.state),
-					ops: Obj.deepClone(ctx.userPresence.session.ops),
-				}
-				return ctx.userPresence.op$.pipe(
-					Rx.map((ops): UP.PresenceUpdate => ({ code: 'op', ops })),
-					Rx.startWith(initial),
-				)
-			}),
+	watchUpdates: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ signal }) {
+		const initial: UP.PresenceUpdate = {
+			code: 'init',
+			state: Obj.deepClone(globalUserPresence.session.state),
+			ops: Obj.deepClone(globalUserPresence.session.ops),
+		}
+		const update$ = globalUserPresence.op$.pipe(
+			Rx.map((ops): UP.PresenceUpdate => ({ code: 'op', ops })),
+			Rx.startWith(initial),
 			withAbortSignal(signal!),
 		)
-		yield* toAsyncGenerator(updateForServer$)
+		yield* toAsyncGenerator(update$)
 	}),
 
 	dispatchOp: orpcBase
 		.meta({ type: 'mutation', logLevel: 'debug' })
 		.input(UP.OpSchema)
-		.handler(async ({ context: _ctx, input: _op }) => {
-			const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
+		.handler(async ({ context: ctx, input: _op }) => {
 			if (!Arr.includesEnum(UP.CLIENT_OP_CODE.options, _op.code)) {
 				return { code: 'invalid-op:non-client' as const, msg: 'Tried to use non-client op code: ' + _op.code }
 			}
@@ -105,21 +72,21 @@ export const orpcRouter = {
 				}
 			}
 
-			dispatchOp(ctx, op)
+			dispatchOp(op)
 			return { code: 'ok' as const }
 		}),
 }
 
 const dispatchOp = C.spanOp(
 	'dispatchOp',
-	{ module, extraText: (ctx, ...ops) => ops.map(o => o.code).join(',') },
-	async (ctx: C.UserPresence, ...ops: UP.Op[]) => {
+	{ module, extraText: (...ops) => ops.map(o => o.code).join(',') },
+	async (...ops: UP.Op[]) => {
 		const sideEffects: UP.SideEffects[] = []
 		function onSideEffect(se: UP.SideEffects) {
 			sideEffects.push(se)
 		}
-		ctx.userPresence.session = RbSyncState.Server.applyOps(ctx.userPresence.session, ops, UP.reducer, { onSideEffect })
-		ctx.userPresence.op$.next(ops)
+		globalUserPresence.session = RbSyncState.Server.applyOps(globalUserPresence.session, ops, UP.reducer, { onSideEffect })
+		globalUserPresence.op$.next(ops)
 		for (const se of sideEffects) {
 			switch (se.code) {
 				case 'error':
@@ -139,8 +106,8 @@ const dispatchOp = C.spanOp(
 		}
 	},
 )
-export function dispatchEndAllTeamswitchEditing(ctx: C.UserPresence) {
-	dispatchOp(ctx, {
+export function dispatchEndAllTeamswitchEditing() {
+	dispatchOp({
 		code: 'broadcast-activity-update',
 		opId: UP.createOpId(),
 		time: Date.now(),
@@ -148,44 +115,30 @@ export function dispatchEndAllTeamswitchEditing(ctx: C.UserPresence) {
 	})
 }
 
-async function onSideEffect(ctx: C.UserPresence, effect: UP.SideEffects) {
-}
-
-function getBaseCtx() {
-	return C.initMutexStore(Db.addPooledDb(CS.init()))
-}
-
 export function setup() {
 	log = module.getLogger()
 
-	const cleanSub = Rx.interval(UP.DISPLAYED_AWAY_PRESENCE_WINDOW * 2).pipe(
-		Rx.map(() => getBaseCtx()),
-		C.durableSub('user-presence:clean-presence', { module }, async (baseCtx) => {
-			let numCleaned = 0
-			for (const slice of SquadServer.globalState.slices.values()) {
-				const ctx = { ...baseCtx, ...slice }
-				const clientIdsToRemove: string[] = []
-				const presenceState = ctx.userPresence.session.state.presence
-				for (const [wsClientId, presence] of Array.from(presenceState.entries())) {
-					// we don't want to remove presence instances that still might have an away indicator
-					const pastDisconnectTimeout = presence.lastSeen === null || (Date.now() - presence.lastSeen) > UP.DISPLAYED_AWAY_PRESENCE_WINDOW
-					if (
-						!WSSessionSys.wsSessions.has(wsClientId) && pastDisconnectTimeout
-					) {
-						clientIdsToRemove.push(wsClientId)
-					}
-				}
-				await dispatchOp(ctx, { code: 'clean-stale-presence', clientIdsToRemove, opId: UP.createOpId(), time: Date.now() })
-				numCleaned += clientIdsToRemove.length
-			}
+	globalUserPresence = {
+		session: RbSyncState.Server.initSession(UP.initState(), {}),
+		op$: new IsolatedSubject<UP.Op[]>(),
+	}
+	CleanupSys.register(() => globalUserPresence.op$.complete())
 
-			log.info(`Cleaned ${numCleaned} stale presence sessions`)
+	const cleanSub = Rx.interval(UP.DISPLAYED_AWAY_PRESENCE_WINDOW * 2).pipe(
+		C.durableSub('user-presence:clean-presence', { module }, async () => {
+			const clientIdsToRemove: string[] = []
+			const presenceState = globalUserPresence.session.state.presence
+			for (const [wsClientId, presence] of Array.from(presenceState.entries())) {
+				// we don't want to remove presence instances that still might have an away indicator
+				const pastDisconnectTimeout = presence.lastSeen === null || (Date.now() - presence.lastSeen) > UP.DISPLAYED_AWAY_PRESENCE_WINDOW
+				if (!WSSessionSys.wsSessions.has(wsClientId) && pastDisconnectTimeout) {
+					clientIdsToRemove.push(wsClientId)
+				}
+			}
+			await dispatchOp({ code: 'clean-stale-presence', clientIdsToRemove, opId: UP.createOpId(), time: Date.now() })
+			log.info(`Cleaned ${clientIdsToRemove.length} stale presence sessions`)
 			// no need to send these deletions to the client
 		}),
 	).subscribe()
 	CleanupSys.register(() => cleanSub.unsubscribe())
-}
-
-function resolveCtx(serverId: string) {
-	return SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 }
