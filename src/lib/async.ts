@@ -4,8 +4,86 @@ import type { MutexInterface } from 'async-mutex'
 import * as Rx from 'rxjs'
 import { assertNever } from './type-guards'
 
-export function sleep(ms: number) {
-	return new Promise((resolve) => setTimeout(resolve, ms))
+export function sleep(ms: number, signal?: AbortSignal) {
+	return new Promise<void>((resolve, reject) => {
+		if (signal?.aborted) return reject(signal.reason)
+		const onAbort = () => {
+			clearTimeout(timeout)
+			reject(signal!.reason)
+		}
+		const timeout = setTimeout(() => {
+			signal?.removeEventListener('abort', onAbort)
+			resolve()
+		}, ms)
+		signal?.addEventListener('abort', onAbort, { once: true })
+	})
+}
+
+/** Matches DOMExceptions from aborted signals/fetches, and anything else conventionally named AbortError. */
+export function isAbortError(error: unknown): boolean {
+	return error instanceof Error && error.name === 'AbortError'
+}
+
+/**
+ * Combines signals into one that aborts when any of them do. Skips undefined entries and avoids
+ * allocating a composite when zero or one signal is present.
+ */
+export function anySignal(...signals: (AbortSignal | undefined)[]): AbortSignal | undefined {
+	const present = signals.filter((s): s is AbortSignal => !!s)
+	if (present.length <= 1) return present[0]
+	return AbortSignal.any(present)
+}
+
+/**
+ * Like Rx.firstValueFrom, but if `signal` aborts first, unsubscribes from the source and rejects
+ * with `signal.reason`. Prefer this over `raceAbort(Rx.firstValueFrom(...))`, which would leave the
+ * subscription alive until the source emits.
+ */
+export function firstValueFrom<T>(observable: Rx.Observable<T>, signal?: AbortSignal): Promise<T> {
+	if (!signal) return Rx.firstValueFrom(observable)
+	if (signal.aborted) return Promise.reject(signal.reason)
+	return new Promise<T>((resolve, reject) => {
+		const sub = new Rx.Subscription()
+		const onAbort = () => {
+			sub.unsubscribe()
+			reject(signal.reason)
+		}
+		signal.addEventListener('abort', onAbort, { once: true })
+		sub.add(observable.pipe(Rx.first()).subscribe({
+			next: (value) => {
+				signal.removeEventListener('abort', onAbort)
+				resolve(value)
+			},
+			error: (err) => {
+				signal.removeEventListener('abort', onAbort)
+				reject(err)
+			},
+		}))
+	})
+}
+
+/**
+ * Resolves/rejects with `promise`, or rejects with `signal.reason` if the signal aborts first.
+ * Note: does not cancel the underlying work, only stops waiting on it. For observables, prefer
+ * `firstValueFrom(observable, signal)` which tears down the subscription on abort.
+ */
+export function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+	if (!signal) return promise
+	if (signal.aborted) return Promise.reject(signal.reason)
+	return new Promise<T>((resolve, reject) => {
+		const onAbort = () => reject(signal.reason)
+		signal.addEventListener('abort', onAbort, { once: true })
+		promise.then(
+			(v) => {
+				signal.removeEventListener('abort', onAbort)
+				resolve(v)
+			},
+			(e) => {
+				signal.removeEventListener('abort', onAbort)
+				reject(e)
+			},
+		)
+	})
 }
 
 export function distinctDeepEquals<T>() {
@@ -22,13 +100,14 @@ export function distinctDeepEquals<T>() {
 /**
  * Check roughly every iteration of the event loop for some condition to be met
  */
-export async function sleepUntil<T>(cb: () => T | undefined, maxRetries = 25) {
+export async function sleepUntil<T>(cb: () => T | undefined, maxRetries = 25, signal?: AbortSignal) {
 	let i = 0
 	while (i < maxRetries) {
+		signal?.throwIfAborted()
 		const v = cb()
 		if (v !== undefined) return v as T
 		i++
-		await sleep(0)
+		await sleep(0, signal)
 	}
 	console.trace('sleepUntil timed out')
 }
@@ -167,11 +246,19 @@ export class AsyncExclusiveTaskRunner {
 	}
 }
 
-export async function acquireInBlock(mutex: MutexInterface, opts?: { lock?: boolean; priority?: number }) {
+export async function acquireInBlock(mutex: MutexInterface, opts?: { lock?: boolean; priority?: number; signal?: AbortSignal }) {
 	const lock = opts?.lock ?? true
 	let release: (() => void) | undefined
 	if (lock) {
-		release = await mutex.acquire(opts?.priority)
+		opts?.signal?.throwIfAborted()
+		const acquire = mutex.acquire(opts?.priority)
+		try {
+			release = await raceAbort(acquire, opts?.signal)
+		} catch (err) {
+			// if we stopped waiting but the lock is still granted later, free it immediately
+			void acquire.then((release) => release(), () => {})
+			throw err
+		}
 	}
 	return {
 		[Symbol.dispose]() {

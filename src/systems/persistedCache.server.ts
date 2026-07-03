@@ -3,6 +3,7 @@ import { sleep } from '@/lib/async'
 import * as CS from '@/models/context-shared'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
+import * as CleanupSys from '@/systems/cleanup.server'
 import { eq, lt, sql } from 'drizzle-orm'
 import superjson from 'superjson'
 
@@ -17,8 +18,12 @@ export function setup() {
 }
 
 async function runCleanupLoop() {
-	while (true) {
-		await sleep(CLEANUP_INTERVAL_MS)
+	while (!CleanupSys.shutdownSignal.aborted) {
+		try {
+			await sleep(CLEANUP_INTERVAL_MS, CleanupSys.shutdownSignal)
+		} catch {
+			break
+		}
 		await module.tracer.startActiveSpan('persistedCache:cleanup', async (span) => {
 			try {
 				const result = await deleteExpiredRows()

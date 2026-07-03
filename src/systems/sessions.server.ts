@@ -10,6 +10,7 @@ import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import * as Env from '@/server/env'
 
+import * as CleanupSys from '@/systems/cleanup.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Users from '@/systems/users.server'
 import * as Otel from '@opentelemetry/api'
@@ -117,12 +118,16 @@ export async function setup() {
 	ENV = buildEnv()
 
 	// --------  load valid sessions into cache  --------
-	const ctx = DB.addPooledDb(CS.init())
+	const ctx = DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
 	await loadValidSessionsIntoCache(ctx)
 
 	// --------  cleanup old sessions  --------
-	while (true) {
-		await sleep(1000 * 60 * 60)
+	while (!ctx.signal.aborted) {
+		try {
+			await sleep(1000 * 60 * 60, ctx.signal)
+		} catch {
+			break
+		}
 		await module.tracer.startActiveSpan('sessions:cleanup', async (span) => {
 			const currentTime = new Date()
 

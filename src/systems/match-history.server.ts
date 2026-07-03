@@ -67,7 +67,8 @@ export function initMatchHistoryContext(event$: SquadServer.SquadServer['event$'
 
 	event$.pipe(
 		Rx.filter(([ctx, e]) => e.type === 'ROUND_ENDED'),
-		C.durableSub('onRoundEnded', { module }, async ([ctx, e]) => {
+		C.durableSub('onRoundEnded', { module }, async ([_ctx, e], signal) => {
+			const ctx = { ..._ctx, signal }
 			if (e.type !== 'ROUND_ENDED' || e.matchId !== (await getCurrentMatch(ctx)).historyEntryId) return
 			await finalizeCurrentMatch(ctx, e.outcome, new Date(e.time))
 		}),
@@ -90,7 +91,7 @@ export function getPublicMatchHistoryState(ctx: C.MatchHistory): MH.PublicMatchH
 export const loadState = C.spanOp(
 	'loadState',
 	{ module },
-	async (ctx: C.Db & C.MatchHistory, opts?: { startAtOrdinal?: number }) => {
+	async (ctx: C.Db & C.MatchHistory & CS.AbortSignal, opts?: { startAtOrdinal?: number }) => {
 		const state = ctx.matchHistory
 		const startAtOrdinal = opts?.startAtOrdinal ?? 0
 		const recentMatchesCte = ctx.db().$with('recent_matches').as(
@@ -164,7 +165,7 @@ export const getRecentMatches = C.spanOp('getRecentMatches', {
 	module,
 	levels: { event: 'trace' },
 	mutexes: (ctx) => ctx.matchHistory.mtx,
-}, async (ctx: C.MatchHistory) => {
+}, async (ctx: C.MatchHistory & CS.AbortSignal) => {
 	return ctx.matchHistory.recentMatches
 })
 
@@ -172,7 +173,7 @@ export const getCurrentMatch = C.spanOp('getCurrentMatch', {
 	module,
 	levels: { event: 'trace' },
 	mutexes: (ctx) => ctx.matchHistory.mtx,
-}, async (ctx: C.MatchHistory) => {
+}, async (ctx: C.MatchHistory & CS.AbortSignal) => {
 	return ctx.matchHistory.recentMatches[ctx.matchHistory.recentMatches.length - 1]
 })
 
@@ -180,7 +181,7 @@ export const getMatchById = C.spanOp('getMatchById', {
 	module,
 	levels: { event: 'trace' },
 	mutexes: (ctx) => ctx.matchHistory.mtx,
-}, async (ctx: C.MatchHistory, matchId: number) => {
+}, async (ctx: C.MatchHistory & CS.AbortSignal, matchId: number) => {
 	const match = ctx.matchHistory.recentMatches.find(m => m.historyEntryId === matchId)
 	if (!match) return null
 	return match
@@ -189,7 +190,7 @@ export const getMatchById = C.spanOp('getMatchById', {
 const loadCurrentMatch = C.spanOp(
 	'loadCurrentMatch',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.matchHistory.mtx },
-	async (ctx: C.Db & C.MatchHistory, _opts?: { forUpdate?: boolean }) => {
+	async (ctx: C.Db & C.MatchHistory & CS.AbortSignal, _opts?: { forUpdate?: boolean }) => {
 		const query = ctx.db().select().from(Schema.matchHistory).where(E.eq(Schema.matchHistory.serverId, ctx.serverId)).orderBy(
 			E.desc(Schema.matchHistory.ordinal),
 		).limit(1)
@@ -458,7 +459,7 @@ export const addNewCurrentMatch = C.spanOp(
 	'addNewCurrentMatch',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx] },
 	async (
-		ctx: C.Db & C.MatchHistory & C.SquadServer,
+		ctx: C.Db & C.MatchHistory & C.SquadServer & CS.AbortSignal,
 		entry: Omit<SchemaModels.NewMatchHistory, 'ordinal' | 'serverId'>,
 	) => {
 		await DB.runTransaction(ctx, async (ctx) => {
@@ -491,7 +492,7 @@ export const finalizeCurrentMatch = C.spanOp('finalizeCurrentMatch', {
 		currentLayerId,
 	}),
 }, async (
-	ctx: C.Db & C.MatchHistory,
+	ctx: C.Db & C.MatchHistory & CS.AbortSignal,
 	outcome: MH.MatchOutcome,
 	time: Date,
 ) => {
@@ -560,7 +561,7 @@ export const finalizeCurrentMatch = C.spanOp('finalizeCurrentMatch', {
 export const syncWithCurrentLayer = C.spanOp(
 	'syncWithCurrentLayer',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.matchHistory.mtx },
-	async (ctx: C.Db & C.MatchHistory & C.SquadServer, _currentLayerOnServer: L.UnvalidatedLayer | L.LayerId) => {
+	async (ctx: C.Db & C.MatchHistory & C.SquadServer & CS.AbortSignal, _currentLayerOnServer: L.UnvalidatedLayer | L.LayerId) => {
 		const currentLayerOnServer = L.toLayer(_currentLayerOnServer)
 		return await DB.runTransaction(ctx, async ctx => {
 			const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
@@ -603,7 +604,7 @@ export const syncWithCurrentLayer = C.spanOp(
 const getEventsForMatches = C.spanOp(
 	'getEventsForMatches',
 	{ module, levels: { event: 'trace' } },
-	async (ctx: C.Db & C.MatchHistory, ..._matches: number[]) => {
+	async (ctx: C.Db & C.MatchHistory & CS.AbortSignal, ..._matches: number[]) => {
 		const matches = _matches.toSorted((a, b) => a - b)
 
 		const ops = new Map<number, Promise<CHAT.EventEnriched[]>>()

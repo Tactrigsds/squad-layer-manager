@@ -1,6 +1,6 @@
 import type * as AR from '@/app-routes.ts'
 import type { AsyncResource, AsyncResourceInvocationOpts, ImmediateRefetchError } from '@/lib/async-resource.ts'
-import { sleep } from '@/lib/async.ts'
+import { anySignal, isAbortError, sleep } from '@/lib/async.ts'
 import * as Cleanup from '@/lib/cleanup.ts'
 import { LRUMap } from '@/lib/lru-map.ts'
 import { withAcquired } from '@/lib/nodejs-reentrant-mutexes.ts'
@@ -42,14 +42,14 @@ const CONTEXT_ATTR_MAPPING = [
 	},
 ] as const
 
-export type OtelCtx = {
+export type OtelCtx = CS.Ctx & {
 	otel: {
 		links: Otel.Link[]
 	}
 }
 
 // overrwrites other stored links
-export function storeLinkToActiveSpan<T extends object>(
+export function storeLinkToActiveSpan<T extends CS.Ctx>(
 	ctx: T,
 	type: ATTR.SpanLink.SourceType,
 ): T & OtelCtx {
@@ -284,7 +284,10 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 				} catch (error) {
 					const message = recordGenericError(error)
 					const extraTextPart = extraText ? ` : ${extraText.trim()}` : ''
-					if (error instanceof Error) {
+					if (isAbortError(error)) {
+						// expected cancellation (request dropped, slice destroyed, shutdown) -- not a failure
+						log?.debug(`${name}${extraTextPart} : aborted: ${message}`)
+					} else if (error instanceof Error) {
 						log?.error(error, `${name}${extraTextPart} : error: ${message}`)
 					} else {
 						log?.error(`${name}${extraTextPart} : error: ${message}`)
@@ -403,9 +406,9 @@ export type WSSession = CS.Ctx & {
 
 export type AuthedUser = User & AuthSession
 
-export type AttachedFastify = Db & Partial<ResolvedRoute>
+export type AttachedFastify = Db & Partial<ResolvedRoute> & CS.AbortSignal
 export type Websocket = CS.Ctx & { ws: ws.WebSocket }
-export type OrpcBase =
+export type OrpcSessionBase =
 	& CS.Ctx
 	& User
 	& AuthSession
@@ -413,6 +416,10 @@ export type OrpcBase =
 	& Websocket
 	& FastifyRequest
 	& Db
+
+export type OrpcBase =
+	& OrpcSessionBase
+	& CS.AbortSignal
 
 export type AsyncResourceInvocation = CS.Ctx & {
 	resOpts: AsyncResourceInvocationOpts
@@ -430,7 +437,7 @@ export type ServerId = CS.Ctx & {
 }
 
 export type AdminList = CS.Ctx & {
-	adminList: AsyncResource<SM.AdminList>
+	adminList: AsyncResource<SM.AdminList, CS.Ctx & CS.AbortSignal>
 } & ServerId
 
 export type SquadRcon = CS.Ctx & { server: SquadRconSys.SquadRcon } & Rcon & ServerId
@@ -478,6 +485,8 @@ export type ServerSlice =
 	& ServerSettings
 	& ServerSliceCleanup
 	& AdminList
+	// aborts when the slice is destroyed or the process shuts down
+	& CS.AbortSignal
 
 /**
  * Creates an operator that wraps an observable with retry logic and additional trace context.
@@ -496,6 +505,18 @@ export type ServerSlice =
  * - Handles errors by logging them and recording in traces
  * - Automatically retries failed operations with configurable delay and retry count
  */
+// pulls the signal off a ctx carried in a durableSub emission, using the same conventions as spanOp's ctx extraction
+function extractArgSignal(arg: unknown): AbortSignal | undefined {
+	let ctx: (CS.Ctx & Partial<CS.AbortSignal>) | undefined
+	if (CS.isCtx(arg)) {
+		ctx = arg
+	} else if (Array.isArray(arg)) {
+		if (CS.isCtx(arg[0])) ctx = arg[0]
+		else if (CS.isCtx(arg[arg.length - 1])) ctx = arg[arg.length - 1]
+	}
+	return ctx?.signal
+}
+
 export function durableSub<T, O>(
 	name: string,
 	opts: {
@@ -514,7 +535,8 @@ export function durableSub<T, O>(
 		attrs?: Record<string, any> | ((arg: T) => Record<string, any>)
 		mutexes?: (args: T) => MutexInterface[] | MutexInterface
 	},
-	cb: (value: T) => Promise<O>,
+	// the signal aborts when the task is torn down (unsubscribe, switch) or when the signal of a ctx carried in `value` aborts
+	cb: (value: T, signal: AbortSignal) => Promise<O>,
 ): (o: Rx.Observable<T>) => Rx.Observable<O> {
 	return (o) => {
 		const numDownstreamFailureBeforeErrorPropagation = opts.numOfUpstreamErrorsBeforePropagation ?? 10
@@ -540,18 +562,19 @@ export function durableSub<T, O>(
 		const log = LOG.getSubmoduleLogger(name, opts.module.getLogger())
 
 		const getTask = (arg: T): Rx.Observable<O> =>
-			// raw observable so the retry loop stops once the subscriber goes away; the
-			// in-flight taskOp invocation itself is not cancellable
+			// raw observable so the retry loop stops once the subscriber goes away. teardown aborts the task
+			// signal, cancelling the in-flight taskOp invocation if the cb consumes the signal
 			new Rx.Observable<O>((subscriber) => {
-				let cancelled = false
+				const taskAbort = new AbortController()
+				const signal = taskAbort.signal
 				;(async () => {
 					let attemptsLeft = numRetries + 1
-					while (!cancelled) {
+					while (!signal.aborted) {
 						try {
-							const res = await taskOp(arg)
+							const res = await taskOp(arg, signal)
 							if (retryOnValueError && (res as any).code !== 'ok') {
 								attemptsLeft--
-								if (attemptsLeft === 0 || cancelled) {
+								if (attemptsLeft === 0 || signal.aborted) {
 									subscriber.next(res)
 									subscriber.complete()
 									return
@@ -563,19 +586,30 @@ export function durableSub<T, O>(
 							subscriber.complete()
 							return
 						} catch (error) {
+							// cancellation is expected, not a failure: stop quietly instead of feeding the retry pipeline.
+							// isAbortError also covers ctx signals the cb resolved itself (e.g. via resolveSliceCtx)
+							if (signal.aborted || isAbortError(error)) {
+								subscriber.complete()
+								return
+							}
 							attemptsLeft--
 							if (attemptsLeft === 0) {
 								subscriber.error(error)
 								return
 							}
-							if (cancelled) return
 							log.warn(`retrying ${name} in ${opts.retryTimeoutMs ?? 0}ms`)
-							await sleep(opts.retryTimeoutMs ?? 0)
+							try {
+								await sleep(opts.retryTimeoutMs ?? 0, signal)
+							} catch {
+								subscriber.complete()
+								return
+							}
 						}
 					}
+					subscriber.complete()
 				})()
 				return () => {
-					cancelled = true
+					taskAbort.abort(new DOMException(`durable-sub task torn down: ${name}`, 'AbortError'))
 				}
 			})
 

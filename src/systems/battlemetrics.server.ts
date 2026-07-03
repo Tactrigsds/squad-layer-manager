@@ -1,4 +1,4 @@
-import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { raceAbort, sleep, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { FixedSizeMap } from '@/lib/lru-map'
 import * as BM from '@/models/battlemetrics.models'
@@ -233,15 +233,26 @@ meter.createObservableGauge(ATTRS.Battlemetrics.RateLimit.QUEUE_SIZE, {
 	result.observe(rateLimiter.queue.length)
 })
 
-function acquireRateSlot(): Promise<void> {
+function acquireRateSlot(signal?: AbortSignal): Promise<void> {
+	if (signal?.aborted) return Promise.reject(signal.reason)
 	const now = Date.now()
 	pruneTimestamps(now)
 	if (canDispatch(now)) {
 		rateLimiter.timestamps.push(now)
 		return Promise.resolve()
 	}
-	return new Promise<void>((resolve) => {
-		rateLimiter.queue.push(resolve)
+	return new Promise<void>((resolve, reject) => {
+		const entry = () => {
+			signal?.removeEventListener('abort', onAbort)
+			resolve()
+		}
+		const onAbort = () => {
+			const idx = rateLimiter.queue.indexOf(entry)
+			if (idx !== -1) rateLimiter.queue.splice(idx, 1)
+			reject(signal!.reason)
+		}
+		signal?.addEventListener('abort', onAbort, { once: true })
+		rateLimiter.queue.push(entry)
 		scheduleDrain()
 	})
 }
@@ -272,7 +283,7 @@ function isRetryable(status: number): boolean {
 }
 
 async function bmFetch<T = null>(
-	ctx: CS.Ctx,
+	ctx: CS.Ctx & CS.AbortSignal,
 	method: 'GET' | 'POST' | 'PUT' | 'DELETE',
 	path: string,
 	init?: Omit<RequestInit, 'body' | 'method'> & { body?: unknown; responseSchema?: z.ZodType<T>; passthroughCodes?: number[] },
@@ -280,7 +291,7 @@ async function bmFetch<T = null>(
 	return C.spanOp(
 		'bmFetch',
 		{ module, levels: { error: 'error', event: 'trace' }, attrs: () => ({ [ATTRS.Http.METHOD]: method, [ATTRS.Http.PATH]: path }) },
-		async (ctx: CS.Ctx) => {
+		async (ctx: CS.Ctx & CS.AbortSignal) => {
 			const url = `${ENV.BM_HOST}${path}`
 
 			const headers: Record<string, string> = {
@@ -297,19 +308,20 @@ async function bmFetch<T = null>(
 
 			let lastError!: Error
 			for (let attempt = 0; attempt < RETRY.maxAttempts; attempt++) {
-				await acquireRateSlot()
-				const res = await fetch(url, { method, headers, body }).catch((error) => {
+				await acquireRateSlot(ctx.signal)
+				const res = await fetch(url, { method, headers, body, signal: ctx.signal }).catch((error) => {
 					log.error(`${method} ${path}: ${error.message}`)
 					return error as Error
 				})
 
 				// network error
 				if (res instanceof Error) {
+					ctx.signal.throwIfAborted()
 					lastError = res
 					if (attempt < RETRY.maxAttempts - 1) {
 						const delay = RETRY.baseDelayMs * 2 ** attempt
 						log.warn(`${method} ${path}: network error, retrying in ${delay}ms (attempt ${attempt + 1}/${RETRY.maxAttempts})`)
-						await new Promise((r) => setTimeout(r, delay))
+						await sleep(delay, ctx.signal)
 						continue
 					}
 					throw lastError
@@ -321,7 +333,7 @@ async function bmFetch<T = null>(
 					if (attempt < RETRY.maxAttempts - 1) {
 						const delay = Math.max(RETRY.baseDelayMs * 2 ** attempt, rateLimiter.backoffUntil - Date.now())
 						log.warn(`${method} ${path}: 429 rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${RETRY.maxAttempts})`)
-						await new Promise((r) => setTimeout(r, delay))
+						await sleep(delay, ctx.signal)
 						continue
 					}
 					throw lastError
@@ -336,7 +348,7 @@ async function bmFetch<T = null>(
 					if (isRetryable(res.status) && attempt < RETRY.maxAttempts - 1) {
 						const delay = RETRY.baseDelayMs * 2 ** attempt
 						log.warn(`${method} ${path}: ${res.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${RETRY.maxAttempts})`)
-						await new Promise((r) => setTimeout(r, delay))
+						await sleep(delay, ctx.signal)
 						continue
 					}
 					log.error({ status: res.status, statusText: res.statusText, body: text }, `${method} ${path}: ${res.status} ${res.statusText}`)
@@ -386,12 +398,13 @@ const OrgFlagsResponse = z.object({
 export const getOrgFlags = C.spanOp(
 	'getOrgFlags',
 	{ module },
-	async (ctx: CS.Ctx): Promise<BM.PlayerFlag[]> => {
+	async (ctx: CS.Ctx & CS.AbortSignal): Promise<BM.PlayerFlag[]> => {
 		if (orgFlagsCache) return orgFlagsCache
 
 		if (!orgFlagsFetchPromise) {
+			// the fetch is shared between callers, so tie it to process shutdown rather than any single caller's signal
 			orgFlagsFetchPromise = (async () => {
-				const [data] = await bmFetch(ctx, 'GET', `/player-flags?page[size]=100`, {
+				const [data] = await bmFetch({ ...ctx, signal: CleanupSys.shutdownSignal }, 'GET', `/player-flags?page[size]=100`, {
 					responseSchema: OrgFlagsResponse,
 				})
 				return data.data.map((f) => ({ id: f.id, ...f.attributes }))
@@ -401,7 +414,7 @@ export const getOrgFlags = C.spanOp(
 			})
 		}
 
-		const flags = await orgFlagsFetchPromise
+		const flags = await raceAbort(orgFlagsFetchPromise, ctx.signal)
 		orgFlagsCache = flags
 		return flags
 	},
@@ -410,7 +423,7 @@ export const getOrgFlags = C.spanOp(
 export const addPlayerFlags = C.spanOp(
 	'addPlayerFlags',
 	{ module },
-	async (ctx: CS.Ctx, bmPlayerId: string, flagIds: string[]) => {
+	async (ctx: CS.Ctx & CS.AbortSignal, bmPlayerId: string, flagIds: string[]) => {
 		if (flagIds.length === 0) return { code: 'err:no-flags' as const }
 		const [_, res] = await bmFetch(ctx, 'POST', `/players/${bmPlayerId}/relationships/flags`, {
 			body: { data: flagIds.map((id) => ({ type: 'playerFlag', id })) },
@@ -424,7 +437,7 @@ export const addPlayerFlags = C.spanOp(
 export const removePlayerFlags = C.spanOp(
 	'removePlayerFlags',
 	{ module },
-	async (ctx: CS.Ctx, bmPlayerId: string, flagIds: string[]): Promise<('ok' | 'already-removed')[]> => {
+	async (ctx: CS.Ctx & CS.AbortSignal, bmPlayerId: string, flagIds: string[]): Promise<('ok' | 'already-removed')[]> => {
 		if (flagIds.length === 0) return []
 		return Promise.all(flagIds.map(async (flagId) => {
 			const [, res] = await bmFetch(ctx, 'DELETE', `/players/${bmPlayerId}/relationships/flags/${flagId}`, { passthroughCodes: [400] })
@@ -442,7 +455,7 @@ export const removePlayerFlags = C.spanOp(
 )
 
 async function fetchPlayerDetail(
-	ctx: CS.Ctx,
+	ctx: CS.Ctx & CS.AbortSignal,
 	eosId: string,
 	bmPlayerId: string,
 ): Promise<BM.PlayerFlagsAndProfile> {
@@ -526,7 +539,7 @@ const bulkFetchOnlinePlayers = C.spanOp(
 	},
 )
 
-export async function invalidateAndRefetchPlayer(ctx: CS.Ctx & C.ServerSlice, eosId: string): Promise<BM.PlayerFlagsAndProfile | null> {
+export async function invalidateAndRefetchPlayer(ctx: CS.Ctx & C.ServerSlice & CS.AbortSignal, eosId: string): Promise<BM.PlayerFlagsAndProfile | null> {
 	playerFlagsAndProfileCache.delete(eosId)
 	const updated = await fetchSinglePlayerBmData(ctx, SM.PlayerIds.queryFromPlayerId(eosId))
 	persistCache().catch((err) => log.warn({ err }, 'Failed to persist BM cache after flag update'))
@@ -536,7 +549,7 @@ export async function invalidateAndRefetchPlayer(ctx: CS.Ctx & C.ServerSlice, eo
 export const fetchSinglePlayerBmData = C.spanOp(
 	'fetchSinglePlayerBmData',
 	{ module, attrs: (_ctx, playerIds) => ({ eosId: playerIds.eos, steamId: playerIds.steam }) },
-	async (ctx: CS.Ctx, playerIds: SM.PlayerIds.IdQuery<'eos'>): Promise<BM.PlayerFlagsAndProfile | null> => {
+	async (ctx: CS.Ctx & CS.AbortSignal, playerIds: SM.PlayerIds.IdQuery<'eos'>): Promise<BM.PlayerFlagsAndProfile | null> => {
 		const eosId = playerIds.eos
 		const cached = getCachedPlayer(eosId)
 		if (cached) return cached
@@ -562,8 +575,8 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 	ctx.cleanup.push(
 		Rx.interval(POLL_INTERVAL_MS).pipe(
 			Rx.startWith(0),
-			C.durableSub('bm-bulk-poll', { module, root: true, taskScheduling: 'exhaust' }, async () => {
-				const sliceCtx = SquadServer.resolveSliceCtx({}, serverId)
+			C.durableSub('bm-bulk-poll', { module, root: true, taskScheduling: 'exhaust' }, async (_, signal) => {
+				const sliceCtx = SquadServer.resolveSliceCtx({ signal }, serverId)
 
 				const onlineEosIds = await bulkFetchOnlinePlayers(sliceCtx).catch((err) => {
 					log.warn({ err }, 'bulk fetch online players failed')
@@ -579,10 +592,10 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 		).subscribe(),
 		ctx.server.event$.pipe(
 			Rx.filter(([eventCtx, event]) => event.type === 'PLAYER_CONNECTED'),
-			C.durableSub('bm-on-player-connected', { module, root: true }, async ([eventCtx, event]) => {
+			C.durableSub('bm-on-player-connected', { module, root: true }, async ([eventCtx, event], signal) => {
 				if (event.type !== 'PLAYER_CONNECTED') return
 				const playerIds = event.player.ids
-				const sliceCtx = SquadServer.resolveSliceCtx(eventCtx, serverId)
+				const sliceCtx = SquadServer.resolveSliceCtx({ ...eventCtx, signal }, serverId)
 				fetchSinglePlayerBmData(sliceCtx, playerIds).catch((err) => {
 					log.warn({ err, playerIds }, 'failed to fetch bm data on player connect')
 				})

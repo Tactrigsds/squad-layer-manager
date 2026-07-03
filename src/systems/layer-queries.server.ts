@@ -42,7 +42,7 @@ export function resolveLayerQueryCtx<Ctx extends C.MatchHistory & C.LayerQueue>(
 	}
 }
 
-export async function resolveLayerItemsState(ctx: C.MatchHistory & C.LayerQueue): Promise<LQY.LayerItemsState> {
+export async function resolveLayerItemsState(ctx: C.MatchHistory & C.LayerQueue & CS.AbortSignal): Promise<LQY.LayerItemsState> {
 	return LQY.resolveLayerItemsState(
 		LayerQueue.getSavedQueue(ctx),
 		await MatchHistory.getRecentMatches(ctx),

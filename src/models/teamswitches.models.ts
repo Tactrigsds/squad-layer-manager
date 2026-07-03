@@ -533,4 +533,9 @@ export type UpdateForClient = {
 } | {
 	code: 'op'
 	ops: Op[]
+} | {
+	// ops are deterministic, so the originator only receives the ids of its own acked ops and
+	// replays its pending copies
+	code: 'ack'
+	opIds: string[]
 }

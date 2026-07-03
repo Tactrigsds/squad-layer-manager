@@ -3,6 +3,7 @@ import * as Arr from '@/lib/array'
 import { distinctDeepEquals, toCold, traceTag } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
+import * as RSel from '@/lib/reselect'
 import * as ZusUtils from '@/lib/zustand'
 import type * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
@@ -282,24 +283,31 @@ export namespace Sel {
 		return store.layerTable.maxSelected === 1 && store.layerTable.minSelected === 1
 	}
 
-	export const rowSelectionStatus = (rowId: L.LayerId) => (store: Store) => {
-		const table = store.layerTable
-		const row = table.pageData?.layers.find(r => r.id === rowId)
-		if (!row) return [false, false] as const
-		const isSelected = table.selected.includes(rowId)
-		const isRowDisabled = row.isRowDisabled
+	export const rowSelectionStatus = RSel.memoizeFactory((rowId: L.LayerId) =>
+		RSel.createDeepSelector(
+			[
+				(store: Store) => store.layerTable.pageData,
+				(store: Store) => store.layerTable.selected,
+				(store: Store) => store.layerTable.minSelected,
+			],
+			(pageData, selected, minSelected) => {
+				const row = pageData?.layers.find(r => r.id === rowId)
+				if (!row) return [false, false] as const
+				const isSelected = selected.includes(rowId)
 
-		// If row is already disabled, it's disabled
-		if (isRowDisabled) return [true, isSelected] as const
+				// If row is already disabled, it's disabled
+				if (row.isRowDisabled) return [true, isSelected] as const
 
-		// Check if unchecking would violate minSelected
-		if (isSelected) {
-			const wouldBeUnderMin = (table.minSelected ?? 0) > (table.selected.length - 1)
-			if (wouldBeUnderMin) return [true, isSelected] as const
-		}
+				// Check if unchecking would violate minSelected
+				if (isSelected) {
+					const wouldBeUnderMin = (minSelected ?? 0) > (selected.length - 1)
+					if (wouldBeUnderMin) return [true, isSelected] as const
+				}
 
-		return [false, isSelected] as const
-	}
+				return [false, isSelected] as const
+			},
+		)
+	)
 }
 
 export namespace Actions {

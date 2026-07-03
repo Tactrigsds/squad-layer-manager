@@ -14,6 +14,7 @@ import { initModule } from '@/server/logger'
 
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as CleanupSys from '@/systems/cleanup.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Users from '@/systems/users.server'
@@ -283,7 +284,7 @@ export async function* watchFilters(
 
 export async function setup() {
 	log = module.getLogger()
-	const ctx = DB.addPooledDb(CS.init())
+	const ctx = DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
 	const filterRows = (await ctx.db().select().from(Schema.filters)).map((row) => F.FilterEntitySchema.parse(row))
 	state = {
 		filters: new Map(filterRows.map(filter => [filter.id, filter])),

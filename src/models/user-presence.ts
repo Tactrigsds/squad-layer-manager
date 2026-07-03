@@ -17,36 +17,36 @@ export const DISCONNECT_TIMEOUT = 5_000
 // export const INTERACT_TIMEOUT = 5_000
 export const INTERACT_TIMEOUT = 30_000
 
-export const [ACTIVITIES] = (() => {
+export const [ACTIVITIES, ACTIVITIES_FLATTENED] = (() => {
 	const { variant, leaf, branch } = ST.Def
 
-	const activities = branch('ON_DASHBOARD', { serverId: SS.ServerIdSchema }, [
+	const ACTIVITIES = branch('ON_DASHBOARD', { serverId: SS.ServerIdSchema }, [
+		variant('EDITING_QUEUE', [
+			leaf('IDLE'),
+			leaf(
+				'ADDING_ITEM',
+				z.object({
+					cursor: LL.CursorSchema,
+					action: LQY.LAYER_ITEM_ACTION.prefault('add'),
+					title: z.string().optional(),
+					variant: z.enum(['toggle-position']).optional(),
+					selected: z.array(LL.ItemIdSchema).optional(),
+				}),
+			),
+			leaf('ADDING_ITEM_FROM_HISTORY'),
+
+			leaf('EDITING_ITEM', { itemId: LL.ItemIdSchema, cursor: LL.CursorSchema }),
+			leaf('MOVING_ITEM', { itemId: LL.ItemIdSchema }),
+			leaf('CONFIGURING_VOTE', { itemId: LL.ItemIdSchema }),
+			leaf('GENERATING_VOTE', { cursor: LL.CursorSchema }),
+			leaf('PASTE_ROTATION'),
+		]),
+		leaf('EDITING_TEAMSWITCHES'),
 		variant('ON_PRIMARY_PANEL', [
 			branch('VIEWING_QUEUE', [
 				branch('VIEWING_QUEUE_SETTINGS', [leaf('CHANGING_QUEUE_SETTINGS')]),
-				variant('EDITING_QUEUE', [
-					leaf('IDLE'),
-					leaf(
-						'ADDING_ITEM',
-						z.object({
-							cursor: LL.CursorSchema,
-							action: LQY.LAYER_ITEM_ACTION.prefault('add'),
-							title: z.string().optional(),
-							variant: z.enum(['toggle-position']).optional(),
-							selected: z.array(LL.ItemIdSchema).optional(),
-						}),
-					),
-					leaf('ADDING_ITEM_FROM_HISTORY'),
-
-					leaf('EDITING_ITEM', { itemId: LL.ItemIdSchema, cursor: LL.CursorSchema }),
-					leaf('MOVING_ITEM', { itemId: LL.ItemIdSchema }),
-					leaf('CONFIGURING_VOTE', { itemId: LL.ItemIdSchema }),
-					leaf('GENERATING_VOTE', { cursor: LL.CursorSchema }),
-					leaf('PASTE_ROTATION'),
-				]),
 			]),
 			branch('VIEWING_TEAMS', [
-				leaf('EDITING_TEAMSWITCHES'),
 				variant('PLAYER_DIALOGUE', [
 					leaf('SWITCHING_PLAYERS'),
 					leaf('WARNING_PLAYERS'),
@@ -59,7 +59,43 @@ export const [ACTIVITIES] = (() => {
 		]),
 	]) satisfies ST.Def.Node
 
-	return [activities] as const
+	const editingQueue = ACTIVITIES.child.EDITING_QUEUE
+	const onPrimaryPanel = ACTIVITIES.child.ON_PRIMARY_PANEL
+	const viewingQueue = onPrimaryPanel.child.VIEWING_QUEUE
+	const viewingTeams = onPrimaryPanel.child.VIEWING_TEAMS
+	const playerDialogue = viewingTeams.child.PLAYER_DIALOGUE
+
+	const ACTIVITIES_FLATTENED = {
+		ON_DASHBOARD: ACTIVITIES,
+
+		EDITING_QUEUE: editingQueue,
+		IDLE: editingQueue.child.IDLE,
+		ADDING_ITEM: editingQueue.child.ADDING_ITEM,
+		ADDING_ITEM_FROM_HISTORY: editingQueue.child.ADDING_ITEM_FROM_HISTORY,
+		EDITING_ITEM: editingQueue.child.EDITING_ITEM,
+		MOVING_ITEM: editingQueue.child.MOVING_ITEM,
+		CONFIGURING_VOTE: editingQueue.child.CONFIGURING_VOTE,
+		GENERATING_VOTE: editingQueue.child.GENERATING_VOTE,
+		PASTE_ROTATION: editingQueue.child.PASTE_ROTATION,
+
+		EDITING_TEAMSWITCHES: ACTIVITIES.child.EDITING_TEAMSWITCHES,
+
+		ON_PRIMARY_PANEL: onPrimaryPanel,
+		VIEWING_QUEUE: viewingQueue,
+		VIEWING_QUEUE_SETTINGS: viewingQueue.child.VIEWING_QUEUE_SETTINGS,
+		CHANGING_QUEUE_SETTINGS: viewingQueue.child.VIEWING_QUEUE_SETTINGS.child.CHANGING_QUEUE_SETTINGS,
+
+		VIEWING_TEAMS: viewingTeams,
+		PLAYER_DIALOGUE: playerDialogue,
+		SWITCHING_PLAYERS: playerDialogue.child.SWITCHING_PLAYERS,
+		WARNING_PLAYERS: playerDialogue.child.WARNING_PLAYERS,
+		REMOVING_FROM_SQUAD: playerDialogue.child.REMOVING_FROM_SQUAD,
+		DISBANDING_SQUAD: playerDialogue.child.DISBANDING_SQUAD,
+		RESETTING_SQUAD_NAME: playerDialogue.child.RESETTING_SQUAD_NAME,
+		DEMOTING_COMMANDER: playerDialogue.child.DEMOTING_COMMANDER,
+	}
+
+	return [ACTIVITIES, ACTIVITIES_FLATTENED] as const
 })()
 
 export const UserPresenceActivitySchema = ST.MatchUtils.createMatchSchema(ACTIVITIES)
@@ -329,7 +365,7 @@ export function anyLocksInaccessible(locks: ItemLocks, ids: LL.ItemId[], wsClien
 	return false
 }
 
-const _editingQueueVariants = ACTIVITIES.child.ON_PRIMARY_PANEL.child.VIEWING_QUEUE.child.EDITING_QUEUE.child
+const _editingQueueVariants = ACTIVITIES.child.EDITING_QUEUE.child
 type EditingQueueVariant = (typeof _editingQueueVariants)[keyof typeof _editingQueueVariants]['id']
 
 export type QueueEditingActivity<
@@ -440,7 +476,8 @@ export namespace Trans {
 
 	export const editingTeamswitches = (serverId: string) => ({
 		match: (root: RootActivity | undefined | null) => {
-			return viewingTeams(serverId).match(root)?.child.EDITING_TEAMSWITCHES ?? null
+			if (serverId && !onDashboard(serverId).match(root)) return null
+			return root?.child.EDITING_TEAMSWITCHES ?? null
 		},
 		create: (): ActivityUpdate => ({ code: 'set-editing-teamswitches' }),
 		destroy: (): ActivityUpdate => ({ code: 'clear-editing-teamswitches' }),
@@ -448,7 +485,8 @@ export namespace Trans {
 
 	export const editingQueue = (serverId: string) => ({
 		match: (root: RootActivity | undefined | null) => {
-			return viewingQueue(serverId).match(root)?.child.EDITING_QUEUE ?? null
+			if (serverId && !onDashboard(serverId).match(root)) return null
+			return root?.child.EDITING_QUEUE ?? null
 		},
 		create: (): ActivityUpdate => ({
 			code: 'set-editing-queue',
@@ -509,21 +547,13 @@ export function applyActivityUpdate(activity: RootActivity | null, update: Activ
 			return Im.produce(activity, draft => {
 				delete draft.child.ON_PRIMARY_PANEL
 			})
-		case 'set-editing-teamswitches': {
-			const withTeams = Trans.viewingTeams(serverId).match(activity)
-				? activity
-				: applyActivityUpdate(activity, { code: 'set-primary-panel', to: 'VIEWING_TEAMS' })
-			return Im.produce(withTeams, draft => {
-				const teamsNode = Trans.viewingTeams(serverId).match(draft)
-				if (!teamsNode) return
-				teamsNode.child.EDITING_TEAMSWITCHES = ST.Match.leaf('EDITING_TEAMSWITCHES', {})
+		case 'set-editing-teamswitches':
+			return Im.produce(activity, draft => {
+				draft.child.EDITING_TEAMSWITCHES = ST.Match.leaf('EDITING_TEAMSWITCHES', {})
 			})
-		}
 		case 'clear-editing-teamswitches':
 			return Im.produce(activity, draft => {
-				const teamsNode = Trans.viewingTeams(serverId).match(draft)
-				if (!teamsNode) return
-				delete teamsNode.child.EDITING_TEAMSWITCHES
+				delete draft.child.EDITING_TEAMSWITCHES
 			})
 		case 'set-player-dialogue': {
 			const withTeams = Trans.viewingTeams(serverId).match(activity)
@@ -548,9 +578,7 @@ export function applyActivityUpdate(activity: RootActivity | null, update: Activ
 			})
 		case 'set-editing-queue':
 			return Im.produce(activity, draft => {
-				const queueNode = Trans.viewingQueue(serverId).match(draft)
-				if (!queueNode) return
-				queueNode.child.EDITING_QUEUE = {
+				draft.child.EDITING_QUEUE = {
 					_tag: 'variant',
 					id: 'EDITING_QUEUE',
 					opts: {},
@@ -567,9 +595,7 @@ export function applyActivityUpdate(activity: RootActivity | null, update: Activ
 		}
 		case 'clear-editing-queue':
 			return Im.produce(activity, draft => {
-				const queueNode = Trans.viewingQueue(serverId).match(draft)
-				if (!queueNode) return
-				delete queueNode.child.EDITING_QUEUE
+				delete draft.child.EDITING_QUEUE
 			})
 		case 'set-viewing-queue-settings':
 			return Im.produce(activity, draft => {
@@ -639,6 +665,12 @@ export type PresenceUpdate =
 		code: 'op'
 		ops: Op[]
 	}
+	| {
+		// ops are deterministic, so the originator only receives the ids of its own acked ops and
+		// replays its pending copies
+		code: 'ack'
+		opIds: string[]
+	}
 
 // no presence instances older than this should be displayed
 export const DISPLAYED_AWAY_PRESENCE_WINDOW = 1000 * 60 * 10
@@ -683,9 +715,7 @@ export function resolveUserPresence(state: PresenceState) {
 export function clearQueueEditingActivity(activity: RootActivity | null | undefined): RootActivity | null {
 	if (!activity) return null
 	return Im.produce(activity, draft => {
-		const queueNode = Trans.viewingQueue(getServerId(activity)).match(draft)
-		if (!queueNode) return
-		delete queueNode.child.EDITING_QUEUE
+		delete draft.child.EDITING_QUEUE
 	})
 }
 
@@ -713,100 +743,100 @@ export function itemsToLockForActivity(list: LL.List, activity: RootActivity): L
 	return ids
 }
 
-export const getHumanReadableActivity = (activity: RootActivity, listOrIndex: LL.List | LL.ItemIndex, withItemName?: boolean) => {
-	if (Trans.editingTeamswitches(getServerId(activity)).match(activity)) {
-		return 'Editing Scheduled Teamswitches'
-	}
+export type AnyActivityNode = ST.Match.Node<(typeof ACTIVITIES_FLATTENED)[keyof typeof ACTIVITIES_FLATTENED]>
 
-	const playerDialogue = Trans.viewingTeams(activity.opts.serverId).match(activity)?.child.PLAYER_DIALOGUE
-	if (playerDialogue) {
-		switch (playerDialogue.chosen.id) {
-			case 'SWITCHING_PLAYERS':
-				return 'Switching players Now'
-			case 'WARNING_PLAYERS':
-				return 'Warning players'
-			case 'REMOVING_FROM_SQUAD':
-				return 'Removing from squad'
-			case 'DISBANDING_SQUAD':
-				return 'Disbanding squad'
-			case 'RESETTING_SQUAD_NAME':
-				return 'Resetting squad name'
-			case 'DEMOTING_COMMANDER':
-				return 'Demoting commander'
-		}
-	}
+type ActivityFormatCtx = { listOrIndex: LL.List | LL.ItemIndex; withItemName?: boolean }
 
-	const editingActivity = Trans.editingQueue(activity.opts.serverId).match(activity)
-	const settingsActivity = Trans.viewingSettings(activity.opts.serverId).match(activity)
+type ActivityMessageFormat = {
+	id: ActivityCode
+	format: string | ((node: ST.Match.Node, ctx: ActivityFormatCtx) => string | null)
+}
 
-	if (settingsActivity) {
-		if (settingsActivity.child.CHANGING_QUEUE_SETTINGS) {
-			return 'Changing Pool Settings'
-		}
-	}
-
-	if (!editingActivity) return null
-	if (editingActivity.chosen.id === 'IDLE') {
-		return `Editing Queue`
-	}
-	if (editingActivity.chosen.id === 'ADDING_ITEM') {
-		return 'Adding layers'
-	}
-	if (editingActivity.chosen.id === 'GENERATING_VOTE') {
-		return 'Generating vote'
-	}
-	if (editingActivity.chosen.id === 'ADDING_ITEM_FROM_HISTORY') {
-		return 'Adding layer from History'
-	}
-	if (editingActivity.chosen.id === 'PASTE_ROTATION') {
-		return 'Pasting rotation'
-	}
-	if (!withItemName) {
-		switch (editingActivity.chosen.id) {
-			case 'EDITING_ITEM':
-				return `Editing`
-			case 'CONFIGURING_VOTE':
-				return `Configuring vote`
-			case 'MOVING_ITEM':
-				return `Moving`
-			default:
-				assertNever(editingActivity.chosen)
-		}
-	}
-
+function resolveItemName(itemId: LL.ItemId, ctx: ActivityFormatCtx): string {
 	let index: LL.ItemIndex
-	if (Array.isArray(listOrIndex)) {
-		const foundIndex = Obj.destrNullable(LL.findItemById(listOrIndex, editingActivity.chosen.opts.itemId))?.index
+	if (Array.isArray(ctx.listOrIndex)) {
+		const foundIndex = Obj.destrNullable(LL.findItemById(ctx.listOrIndex, itemId))?.index
 		if (!foundIndex) {
-			console.warn(`Item ${editingActivity.chosen.opts.itemId} not found in list`, listOrIndex)
+			console.warn(`Item ${itemId} not found in list`, ctx.listOrIndex)
 			index = { outerIndex: 0, innerIndex: null }
 		} else {
 			index = foundIndex
 		}
 	} else {
-		index = listOrIndex
+		index = ctx.listOrIndex
+	}
+	return index ? LL.getItemNumber(index) : 'Item'
+}
+
+const fmt = <K extends keyof typeof ACTIVITIES_FLATTENED>(
+	id: K,
+	format: string | ((node: ST.Match.Node<(typeof ACTIVITIES_FLATTENED)[K]>, ctx: ActivityFormatCtx) => string | null),
+): ActivityMessageFormat => ({ id, format: format as ActivityMessageFormat['format'] })
+
+// lower index -> higher priority
+export const ACTIVITY_MESSAGE_FORMATS: ActivityMessageFormat[] = [
+	fmt('EDITING_TEAMSWITCHES', 'Editing Scheduled Teamswitches'),
+	fmt('SWITCHING_PLAYERS', 'Switching players Now'),
+	fmt('WARNING_PLAYERS', 'Warning players'),
+	fmt('REMOVING_FROM_SQUAD', 'Removing from squad'),
+	fmt('DISBANDING_SQUAD', 'Disbanding squad'),
+	fmt('RESETTING_SQUAD_NAME', 'Resetting squad name'),
+	fmt('DEMOTING_COMMANDER', 'Demoting commander'),
+	fmt('CHANGING_QUEUE_SETTINGS', 'Changing Pool Settings'),
+	fmt('ADDING_ITEM', 'Adding layers'),
+	fmt('GENERATING_VOTE', 'Generating vote'),
+	fmt('ADDING_ITEM_FROM_HISTORY', 'Adding layer from History'),
+	fmt('PASTE_ROTATION', 'Pasting rotation'),
+	fmt('EDITING_ITEM', (node, ctx) => ctx.withItemName ? `Editing ${resolveItemName(node.opts.itemId, ctx)}` : 'Editing'),
+	fmt(
+		'CONFIGURING_VOTE',
+		(node, ctx) => ctx.withItemName ? `Configuring vote for ${resolveItemName(node.opts.itemId, ctx)}` : 'Configuring vote',
+	),
+	fmt('MOVING_ITEM', (node, ctx) => ctx.withItemName ? `Moving ${resolveItemName(node.opts.itemId, ctx)}` : 'Moving'),
+	fmt('IDLE', 'Editing Queue'),
+]
+
+const ACTIVITY_FORMAT_PRIORITY: Map<string, number> = new Map(ACTIVITY_MESSAGE_FORMATS.map((f, i) => [f.id, i]))
+
+export const getHumanReadableActivity = (
+	activity: AnyActivityNode,
+	listOrIndex: LL.List | LL.ItemIndex,
+	withItemName?: boolean,
+) => {
+	let bestIdx = Infinity
+	let bestNode: ST.Match.Node | null = null
+
+	const stack: ST.Match.Node[] = [activity as ST.Match.Node]
+	while (stack.length > 0) {
+		const node = stack.pop()!
+		const idx = ACTIVITY_FORMAT_PRIORITY.get(node.id)
+		if (idx !== undefined && idx < bestIdx) {
+			bestIdx = idx
+			bestNode = node
+			if (idx === 0) break
+		}
+		if (node._tag === 'variant') {
+			stack.push(node.chosen)
+		} else if (node._tag === 'branch') {
+			for (const key in node.child) {
+				const child = node.child[key]
+				if (child) stack.push(child)
+			}
+		}
 	}
 
-	const itemName = index ? LL.getItemNumber(index) : 'Item'
-	switch (editingActivity.chosen.id) {
-		case 'EDITING_ITEM':
-			return `Editing ${itemName}`
-		case 'CONFIGURING_VOTE':
-			return ` Configuring vote for ${itemName}`
-		case 'MOVING_ITEM':
-			return `Moving ${itemName}`
-		default:
-			assertNever(editingActivity.chosen)
-	}
+	if (!bestNode) return null
+	const { format } = ACTIVITY_MESSAGE_FORMATS[bestIdx]
+	return typeof format === 'string' ? format : format(bestNode, { listOrIndex, withItemName })
 }
 
 export const getAttributedHumanReadableActivity = (
-	activity: RootActivity,
+	activity: AnyActivityNode,
 	listOrIndex: LL.List | LL.ItemIndex,
 	displayName: string,
 	withItemName?: boolean,
 ) => {
-	const activityText = getHumanReadableActivity(activity, listOrIndex)
+	const activityText = getHumanReadableActivity(activity, listOrIndex, withItemName)
 	if (!activityText) return null
 	return `${displayName} is ${activityText.toLowerCase()}`
 }

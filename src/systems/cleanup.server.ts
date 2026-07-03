@@ -10,12 +10,17 @@ let log!: CS.Logger
 const buildEnv = Env.getEnvBuilder({ ...Env.groups.general })
 let ENV!: ReturnType<typeof buildEnv>
 const taskRegistry: (Cleanup.Tasks | null)[] = []
+
+const shutdownController = new AbortController()
+// aborted when the process begins shutting down (SIGTERM), before cleanup tasks run. root/background contexts should carry this signal
+export const shutdownSignal = shutdownController.signal
+
 /**
  * Registers a function to run on SIGTERM
  */
 export function register(...tasks: Cleanup.Tasks) {
-	const idx = tasks.length
-	tasks.push(tasks)
+	const idx = taskRegistry.length
+	taskRegistry.push(tasks)
 
 	return idx
 }
@@ -32,6 +37,7 @@ export function setup() {
 	process.on(
 		'SIGTERM',
 		async () => {
+			shutdownController.abort(new DOMException('process shutting down', 'AbortError'))
 			for (const tasksList of taskRegistry.toReversed()) {
 				if (!tasksList) continue
 				await Cleanup.runCleanup(ctx, tasksList)

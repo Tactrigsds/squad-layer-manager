@@ -11,7 +11,9 @@ import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env.ts'
 
+import { anySignal } from '@/lib/async'
 import * as ORPCServer from '@/server/orpc-handler'
+import * as CleanupSys from '@/systems/cleanup.server'
 import * as Discord from '@/systems/discord.server'
 import * as LayerDb from '@/systems/layer-db.server'
 import * as Rbac from '@/systems/rbac.server'
@@ -56,6 +58,9 @@ export const setup = C.spanOp('setup', { module }, async () => {
 
 	// --------  logging --------
 	instance.log = log
+	instance.addHook('onRequestAbort', async (request) => {
+		;((request as any).ctxAbort as AbortController | undefined)?.abort(new DOMException('client disconnected', 'AbortError'))
+	})
 	instance.addHook('onRequest', async (request) => {
 		monkeyPatchContextAndLogs(request)
 		let level: 'info' | 'debug' = 'info'
@@ -113,7 +118,7 @@ export const setup = C.spanOp('setup', { module }, async () => {
 			access_token: string
 			token_type: string
 		}
-		const discordUser = await Discord.getOauthUser(token)
+		const discordUser = await Discord.getOauthUser(getPatchedCtx(req), token)
 		if (!discordUser) {
 			return reply.status(401).send('Failed to get user info from Discord')
 		}
@@ -175,7 +180,7 @@ export const setup = C.spanOp('setup', { module }, async () => {
 			log.trace('Proxying request to Discord CDN: %s', cdnUrl)
 
 			// Fetch from Discord CDN
-			const cdnResponse = await fetch(cdnUrl)
+			const cdnResponse = await fetch(cdnUrl, { signal: getPatchedCtx(req).signal })
 
 			if (!cdnResponse.ok) {
 				log.warn('Discord CDN returned error: %d for %s', cdnResponse.status, cdnUrl)
@@ -278,7 +283,8 @@ export const setup = C.spanOp('setup', { module }, async () => {
 	instance.register(fastifyWebsocket)
 	instance.register(async function(instance) {
 		instance.get(AR.route('/orpc'), { websocket: true }, async (connection, req) => {
-			const ctx = createOrpcBase(getAuthedCtx(req), connection)
+			// carries the connection-level signal; orpc middleware narrows it per-call
+			const ctx = createOrpcSessionBase(getAuthedCtx(req), connection)
 			void ORPCServer.orpcHandler.upgrade(connection, { context: ctx })
 		})
 	})
@@ -360,7 +366,7 @@ export async function authorizeRequest<
 }
 
 // With the websocket handler this will run once per connection.
-export function createOrpcBase(
+export function createOrpcSessionBase(
 	ctx: C.FastifyRequestFull & C.AuthedUser,
 	websocket: WebSocket,
 ): C.OrpcBase {
@@ -371,6 +377,7 @@ export function createOrpcBase(
 		...ctx,
 		ws: websocket,
 	}
+
 	WsSessionSys.registerClient(wsCtx)
 	return wsCtx
 }
@@ -392,9 +399,14 @@ function buildFastifyRequestContext(req: FastifyRequest): C.FastifyRequestFull {
 
 function monkeyPatchContextAndLogs(request: FastifyRequest) {
 	const route = AR.resolveRoute(request.url)
-	const ctx: C.AttachedFastify = DB.addPooledDb({ ...CS.init(), route: route ?? undefined })
+	// aborts if the client disconnects prematurely (see the onRequestAbort hook) or the process shuts down
+	const abort = new AbortController()
+	const signal = anySignal(CleanupSys.shutdownSignal, abort.signal)!
+	const ctx: C.AttachedFastify = DB.addPooledDb({ ...CS.init(), route: route ?? undefined, signal })
 	// @ts-expect-error monkey patching. we don't include the full request context to avoid circular references
 	request.ctx = ctx
+	// @ts-expect-error monkey patching
+	request.ctxAbort = abort
 }
 
 function getPatchedCtx(req: FastifyRequest): C.AttachedFastify {

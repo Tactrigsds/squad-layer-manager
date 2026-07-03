@@ -6,9 +6,9 @@ import type * as C from '@/server/context'
 
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { metrics } from '@opentelemetry/api'
-export const wsSessions = new Map<string, C.OrpcBase>()
-export const disconnect$ = new IsolatedSubject<C.OrpcBase>()
-export const connect$ = new IsolatedSubject<C.OrpcBase>()
+export const wsSessions = new Map<string, C.OrpcSessionBase>()
+export const disconnect$ = new IsolatedSubject<C.OrpcSessionBase>()
+export const connect$ = new IsolatedSubject<C.OrpcSessionBase>()
 
 const module = initModule('ws-session')
 let log!: CS.Logger
@@ -24,7 +24,7 @@ export function setup() {
 	log = module.getLogger()
 }
 
-export function registerClient(ctx: C.OrpcBase) {
+export function registerClient(ctx: C.OrpcSessionBase) {
 	if (wsSessions.has(ctx.wsClientId)) {
 		// should be impossible
 		throw new Error(`Client with id ${ctx.wsClientId} already exists`)
@@ -43,7 +43,7 @@ export function registerClient(ctx: C.OrpcBase) {
 export async function forceDisconnect(ids: { userId?: bigint; wsSessionId?: string; authSessionId?: string }) {
 	if (Object.keys(ids).length === 0) throw new Error('Must provide at least one id')
 
-	let sessions: C.OrpcBase[] | undefined
+	let sessions: C.OrpcSessionBase[] | undefined
 	if (ids.wsSessionId) {
 		const session = wsSessions.get(ids.wsSessionId)
 		if (session) {

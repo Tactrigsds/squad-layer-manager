@@ -4,7 +4,9 @@ import { Separator } from '@/components/ui/separator'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Typo from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
+import * as ZusUtils from '@/lib/zustand'
 import * as UP from '@/models/user-presence'
+import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 
 import React from 'react'
 
@@ -50,7 +52,8 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 		queue: UP.Trans.viewingQueue(serverId),
 		teams: UP.Trans.viewingTeams(serverId),
 	})
-	const tab = _tab ?? 'queue'
+	const persistedTab = ZusUtils.useStore(ClientOnlySettings.Store, s => s.primaryPanelTab)
+	const tab = _tab ?? (persistedTab === 'VIEWING_TEAMS' ? 'teams' : 'queue')
 
 	return (
 		<Card className="flex flex-col flex-1 min-h-0">
@@ -67,7 +70,8 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 									<UserPresencePanel
 										stores={props.stores}
 										sourcePresenceFn={sortEditingPresence}
-										matchActivity={UP.Trans.viewingQueue(serverId).match}
+										matchActivity={root => UP.Trans.viewingQueue(serverId).match(root) || UP.Trans.editingQueue(serverId).match(root)}
+										matchActivityForStatusText={UP.Trans.viewingQueue(serverId).match}
 										className="min-w-0"
 									/>
 								</div>
@@ -81,7 +85,9 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 									<UserPresencePanel
 										stores={props.stores}
 										sourcePresenceFn={sortEditingPresence}
-										matchActivity={UP.Trans.viewingTeams(serverId).match}
+										matchActivity={root =>
+											UP.Trans.viewingTeams(serverId).match(root) || UP.Trans.editingTeamswitches(serverId).match(root)}
+										matchActivityForStatusText={UP.Trans.viewingTeams(serverId).match}
 										className="min-w-0"
 									/>
 								</div>

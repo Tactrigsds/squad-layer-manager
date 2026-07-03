@@ -159,6 +159,114 @@ describe('optimistic update and reconciliation', () => {
 	})
 })
 
+describe('processAckedOps', () => {
+	it('advances syncedState by replaying the acked pending op', () => {
+		let session = Client.initSession<Op, State>([])
+		session = Client.processOutgoingOps(session, [op('a', 1)], reducer)
+		session = Client.processAckedOps(session, ['a'], reducer)
+		expect(session.syncedState).toEqual([1])
+		expect(session.syncedOps).toEqual([op('a', 1)])
+		expect(session.localState).toEqual([1])
+		expect(session.pendingOps).toEqual([])
+	})
+
+	it('preserves localState identity when the ack matches the optimistic state', () => {
+		let session = Client.initSession<Op, State>([])
+		session = Client.processOutgoingOps(session, [op('a', 1)], reducer)
+		const optimisticLocalState = session.localState
+		session = Client.processAckedOps(session, ['a'], reducer)
+		expect(session.localState).toBe(optimisticLocalState)
+	})
+
+	it('does not reconcile until all pending ops are confirmed', () => {
+		let session = Client.initSession<Op, State>([])
+		session = Client.processOutgoingOps(session, [op('a', 1)], reducer)
+		session = Client.processOutgoingOps(session, [op('b', 2)], reducer)
+		const optimisticLocalState = session.localState
+
+		session = Client.processAckedOps(session, ['a'], reducer)
+		expect(session.pendingOps).toEqual([op('b', 2)])
+		expect(session.syncedState).toEqual([1])
+		expect(session.localState).toBe(optimisticLocalState) // optimistic view untouched
+
+		session = Client.processAckedOps(session, ['b'], reducer)
+		expect(session.pendingOps).toEqual([])
+		expect(session.syncedState).toEqual([1, 2])
+		expect(session.localState).toBe(optimisticLocalState) // caught up + deep-equal -- reference preserved
+	})
+
+	it('snaps localState to server order when another clients op interleaved', () => {
+		let session = Client.initSession<Op, State>([])
+		session = Client.processOutgoingOps(session, [op('mine', 10)], reducer)
+		session = Client.processIncomingOps(session, [op('theirs', 99)], reducer)
+		const optimisticLocalState = session.localState
+
+		session = Client.processAckedOps(session, ['mine'], reducer)
+		expect(session.syncedState).toEqual([99, 10])
+		expect(session.localState).toEqual([99, 10])
+		expect(session.localState).not.toBe(optimisticLocalState) // diverged -- must be replaced
+		expect(session.pendingOps).toEqual([])
+	})
+
+	it('throws on empty ops', () => {
+		let session = Client.initSession<Op, State>([])
+		expect(() => Client.processAckedOps(session, [], reducer)).toThrow('No ops to process')
+	})
+
+	it('throws when the acked op is not pending', () => {
+		let session = Client.initSession<Op, State>([])
+		session = Client.processOutgoingOps(session, [op('a', 1)], reducer)
+		expect(() => Client.processAckedOps(session, ['b'], reducer)).toThrow('Acked ops not in pendingOps: b')
+	})
+})
+
+describe('processInit', () => {
+	it('adopts the snapshot when nothing is pending', () => {
+		let session = Client.initSession<Op, State>([])
+		session = Client.processInit(session, [1, 2], [op('a', 1), op('b', 2)], reducer)
+		expect(session.syncedState).toEqual([1, 2])
+		expect(session.localState).toEqual([1, 2])
+		expect(session.syncedOps).toEqual([op('a', 1), op('b', 2)])
+		expect(session.pendingOps).toEqual([])
+	})
+
+	it('rebases in-flight pending ops the snapshot does not include', () => {
+		let session = Client.initSession<Op, State>([])
+		session = Client.processOutgoingOps(session, [op('mine', 10)], reducer)
+
+		// init snapshot from a reconnect that raced our dispatch
+		session = Client.processInit(session, [1], [op('a', 1)], reducer)
+		expect(session.syncedState).toEqual([1])
+		expect(session.localState).toEqual([1, 10]) // pending op reapplied on top of the snapshot
+		expect(session.pendingOps).toEqual([op('mine', 10)])
+
+		// the ack that follows still resolves
+		session = Client.processAckedOps(session, ['mine'], reducer)
+		expect(session.syncedState).toEqual([1, 10])
+		expect(session.localState).toEqual([1, 10])
+		expect(session.pendingOps).toEqual([])
+	})
+
+	it('drops pending ops the snapshot already includes', () => {
+		let session = Client.initSession<Op, State>([])
+		session = Client.processOutgoingOps(session, [op('mine', 10)], reducer)
+
+		// snapshot was taken after the server applied our op -- no ack will follow
+		session = Client.processInit(session, [10], [op('mine', 10)], reducer)
+		expect(session.syncedState).toEqual([10])
+		expect(session.localState).toEqual([10])
+		expect(session.pendingOps).toEqual([])
+	})
+
+	it('preserves onSideEffect from the previous session', () => {
+		const sideEffects: undefined[] = []
+		let session = Client.initSession<Op, State>([], { onSideEffect: se => sideEffects.push(se) })
+		const onSideEffect = session.onSideEffect
+		session = Client.processInit(session, [], [], reducer)
+		expect(session.onSideEffect).toBe(onSideEffect)
+	})
+})
+
 describe('Server.initSession', () => {
 	it('initializes with provided state and empty ops', () => {
 		let session = Server.initSession<Op, State>([1, 2])

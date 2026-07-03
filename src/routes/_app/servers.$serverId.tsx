@@ -8,6 +8,7 @@ import * as Browser from '@/lib/browser'
 import * as FRM from '@/lib/frame'
 import * as ZusUtils from '@/lib/zustand'
 import * as UP from '@/models/user-presence'
+import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UPClient from '@/systems/user-presence.client'
@@ -41,7 +42,7 @@ export const Route = createFileRoute('/_app/servers/$serverId')({
 	onEnter({ params }) {
 		UPClient.Actions.updateActivity(
 			{ code: 'enter-server-dashboard', serverId: params.serverId },
-			{ code: 'set-primary-panel', to: 'VIEWING_QUEUE' },
+			{ code: 'set-primary-panel', to: ClientOnlySettings.Store.getState().primaryPanelTab },
 		)
 		SquadServerClient.SelectedServerActions.setSelectedServer(params.serverId)
 	},

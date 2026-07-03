@@ -67,7 +67,7 @@ await C.spanOp('main', { module }, async () => {
 	await Battlemetrics.setup()
 	Rbac.setup()
 	void Sessions.setup()
-	await Settings.setup(DB.addPooledDb(CS.init()))
+	await Settings.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 	await SquadLogsReceiver.setup()
 	await Promise.all([SquadServer.setup(), Discord.setup()])
 	const { serverClosed } = await Fastify.setup()

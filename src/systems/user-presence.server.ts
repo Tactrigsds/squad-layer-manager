@@ -17,7 +17,7 @@ import { z } from 'zod'
 export type UserPresenceContext = {
 	userPresence: {
 		session: RbSyncState.Server.Session<UP.Op, UP.State, UP.SideEffects>
-		op$: IsolatedSubject<UP.Op[]>
+		op$: IsolatedSubject<{ ops: UP.Op[]; sourceWsClientId?: string }>
 	}
 }
 
@@ -28,14 +28,19 @@ let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
 
 export const orpcRouter = {
-	watchUpdates: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ signal }) {
+	watchUpdates: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
 		const initial: UP.PresenceUpdate = {
 			code: 'init',
 			state: Obj.deepClone(globalUserPresence.session.state),
 			ops: Obj.deepClone(globalUserPresence.session.ops),
 		}
 		const update$ = globalUserPresence.op$.pipe(
-			Rx.map((ops): UP.PresenceUpdate => ({ code: 'op', ops })),
+			// the originator already has the ops in its pending set -- ack with just the ids
+			Rx.map(({ ops, sourceWsClientId }): UP.PresenceUpdate =>
+				sourceWsClientId !== undefined && sourceWsClientId === context.wsClientId
+					? { code: 'ack', opIds: ops.map(op => op.opId) }
+					: { code: 'op', ops }
+			),
 			Rx.startWith(initial),
 			withAbortSignal(signal!),
 		)
@@ -47,6 +52,7 @@ export const orpcRouter = {
 		.input(z.array(UP.OpSchema))
 		.handler(async ({ context: ctx, input: clientOps }) => {
 			const ops: UP.Op[] = []
+			let opsRewritten = false
 			for (const rawOp of clientOps) {
 				if (!Arr.includesEnum(UP.CLIENT_OP_CODE.options, rawOp.code)) {
 					return { code: 'invalid-op:non-client' as const, msg: 'Tried to use non-client op code: ' + rawOp.code }
@@ -74,26 +80,29 @@ export const orpcRouter = {
 						time: Date.now(),
 						opId: UP.createOpId(),
 					}
+					opsRewritten = true
 				}
 
 				ops.push(op)
 			}
 
-			dispatchOp(...ops)
+			// ack-by-id has the originator replay its own pending copies, which only works if the server
+			// applied them verbatim -- if we rewrote any op, fall back to echoing the full ops
+			dispatchOp(ops, opsRewritten ? undefined : { sourceWsClientId: ctx.wsClientId })
 			return { code: 'ok' as const }
 		}),
 }
 
 const dispatchOp = C.spanOp(
 	'dispatchOp',
-	{ module, extraText: (...ops) => ops.map(o => o.code).join(',') },
-	async (...ops: UP.Op[]) => {
+	{ module, extraText: (ops) => ops.map(o => o.code + (o.code === 'update-activity' ? ` (${o.update.code})` : '')).join(',') },
+	async (ops: UP.Op[], opts?: { sourceWsClientId?: string }) => {
 		const sideEffects: UP.SideEffects[] = []
 		function onSideEffect(se: UP.SideEffects) {
 			sideEffects.push(se)
 		}
 		globalUserPresence.session = RbSyncState.Server.applyOps(globalUserPresence.session, ops, UP.reducer, { onSideEffect })
-		globalUserPresence.op$.next(ops)
+		globalUserPresence.op$.next({ ops, sourceWsClientId: opts?.sourceWsClientId })
 		for (const se of sideEffects) {
 			switch (se.code) {
 				case 'error':
@@ -114,12 +123,12 @@ const dispatchOp = C.spanOp(
 	},
 )
 export function dispatchEndAllTeamswitchEditing() {
-	dispatchOp({
+	dispatchOp([{
 		code: 'broadcast-activity-update',
 		opId: UP.createOpId(),
 		time: Date.now(),
 		update: { code: 'clear-editing-teamswitches' },
-	})
+	}])
 }
 
 export function setup() {
@@ -127,7 +136,7 @@ export function setup() {
 
 	globalUserPresence = {
 		session: RbSyncState.Server.initSession(UP.initState(), {}),
-		op$: new IsolatedSubject<UP.Op[]>(),
+		op$: new IsolatedSubject<{ ops: UP.Op[]; sourceWsClientId?: string }>(),
 	}
 	CleanupSys.register(() => globalUserPresence.op$.complete())
 
@@ -142,7 +151,7 @@ export function setup() {
 					clientIdsToRemove.push(wsClientId)
 				}
 			}
-			await dispatchOp({ code: 'clean-stale-presence', clientIdsToRemove, opId: UP.createOpId(), time: Date.now() })
+			await dispatchOp([{ code: 'clean-stale-presence', clientIdsToRemove, opId: UP.createOpId(), time: Date.now() }])
 			log.info(`Cleaned ${clientIdsToRemove.length} stale presence sessions`)
 			// no need to send these deletions to the client
 		}),

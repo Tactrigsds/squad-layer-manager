@@ -1,4 +1,5 @@
 import type * as FRM from '@/lib/frame'
+import * as RSel from '@/lib/reselect'
 import * as ZusUtils from '@/lib/zustand'
 import * as CHAT from '@/models/chat.models'
 import * as MH from '@/models/match-history.models'
@@ -97,31 +98,41 @@ export namespace Sel {
 	export function selectedMatchOrdinal(store: Store) {
 		return store.chat.selectedMatchOrdinal
 	}
-	export function playersForTeam(maybeNormedTeamId: MH.NormedTeamId | SM.TeamId) {
-		return (store: Store, currentMatch: MH.MatchDetails | undefined): SM.Player[] => {
-			if (!currentMatch) return []
-			const teamId = MH.getDenormedTeamId(maybeNormedTeamId, currentMatch.ordinal)
-			return chatState(store).players.filter((p) => p.teamId === teamId)
-		}
-	}
-	export function squadsForTeam(maybeNormedTeamId: MH.NormedTeamId | SM.TeamId) {
-		return (store: Store, currentMatch: MH.MatchDetails | undefined): SM.UniqueSquad[] => {
-			if (!currentMatch) return []
-			const teamId = MH.getDenormedTeamId(maybeNormedTeamId, currentMatch.ordinal)
-			return chatState(store).squads.filter((s) => s.teamId === teamId)
-		}
-	}
-	export function teamPlayerCount(maybeNormedTeamId: MH.NormedTeamId | SM.TeamId) {
-		return (store: Store, currentMatch: MH.MatchDetails | undefined) => {
-			if (!currentMatch) return 0
-			const teamId = MH.getDenormedTeamId(maybeNormedTeamId, currentMatch.ordinal)
-			let count = 0
-			for (const player of chatState(store).players) {
-				if (player.teamId === teamId) count++
-			}
-			return count
-		}
-	}
+	const currentMatchArg = (_store: Store, currentMatch: MH.MatchDetails | undefined) => currentMatch
+	export const playersForTeam = RSel.memoizeFactory((maybeNormedTeamId: MH.NormedTeamId | SM.TeamId) =>
+		RSel.createDeepSelector(
+			[(store: Store) => chatState(store).players, currentMatchArg],
+			(players, currentMatch): SM.Player[] => {
+				if (!currentMatch) return []
+				const teamId = MH.getDenormedTeamId(maybeNormedTeamId, currentMatch.ordinal)
+				return players.filter((p) => p.teamId === teamId)
+			},
+		)
+	)
+	export const squadsForTeam = RSel.memoizeFactory((maybeNormedTeamId: MH.NormedTeamId | SM.TeamId) =>
+		RSel.createDeepSelector(
+			[(store: Store) => chatState(store).squads, currentMatchArg],
+			(squads, currentMatch): SM.UniqueSquad[] => {
+				if (!currentMatch) return []
+				const teamId = MH.getDenormedTeamId(maybeNormedTeamId, currentMatch.ordinal)
+				return squads.filter((s) => s.teamId === teamId)
+			},
+		)
+	)
+	export const teamPlayerCount = RSel.memoizeFactory((maybeNormedTeamId: MH.NormedTeamId | SM.TeamId) =>
+		RSel.createSelector(
+			[(store: Store) => chatState(store).players, currentMatchArg],
+			(players, currentMatch) => {
+				if (!currentMatch) return 0
+				const teamId = MH.getDenormedTeamId(maybeNormedTeamId, currentMatch.ordinal)
+				let count = 0
+				for (const player of players) {
+					if (player.teamId === teamId) count++
+				}
+				return count
+			},
+		)
+	)
 	export function overallKds(store: Store) {
 		const events = chatEvents(store)
 		let team1Kills = 0

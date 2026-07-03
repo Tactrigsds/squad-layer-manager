@@ -53,6 +53,7 @@
 		"pino": "^9.7.0",
 		"pino-abstract-transport": "^2.0.0",
 		"pino-opentelemetry-transport": "^1.0.1",
+		"reselect": "^5.2.0",
 		"sql-highlight": "^6.1.0",
 		"ssh2": "^1.16.0",
 		"superjson": "^2.2.6",

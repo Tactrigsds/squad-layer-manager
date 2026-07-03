@@ -21,6 +21,7 @@ import * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as CleanupSys from '@/systems/cleanup.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
@@ -59,7 +60,7 @@ type Session = RbSyncState.Server.Session<TSW.Op, TSW.State, TSW.SideEffect>
 export type TeamswitchContext = {
 	session: Session
 	// outgoing operations
-	op$: IsolatedSubject<TSW.Op[]>
+	op$: IsolatedSubject<{ ops: TSW.Op[]; sourceWsClientId?: string }>
 	dispatchMtx: MutexInterface
 	teamswitchExecutedAt: number | null
 	haveReadSavedSwitchesFromDb: boolean
@@ -72,7 +73,7 @@ export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 	const serverId = ctx.serverId
 	const context: TeamswitchContext = {
 		session: RbSyncState.Server.initSession(TSW.initState(), {}),
-		op$: new IsolatedSubject<TSW.Op[]>(),
+		op$: new IsolatedSubject<{ ops: TSW.Op[]; sourceWsClientId?: string }>(),
 		dispatchMtx: new Mutex(),
 		teamswitchExecutedAt: null,
 		haveReadSavedSwitchesFromDb: false,
@@ -83,7 +84,8 @@ export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 	ctx.cleanup.push(
 		ctx.server.event$.pipe(
 			Rx.filter(([ctx, e]) => Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type) || e.type === 'TEAMS_POLLED_UPDATE'),
-			C.durableSub('onTeamsModified', { module }, async ([ctx, e]) => {
+			C.durableSub('onTeamsModified', { module }, async ([_ctx, e], signal) => {
+				const ctx = { ..._ctx, signal }
 				const match = (await MatchHistory.getMatchById(ctx, e.matchId))!
 				if (!Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type) && e.type !== 'TEAMS_POLLED_UPDATE') return
 				function tryEndSwitching() {
@@ -177,7 +179,7 @@ export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 				}
 
 				if (ops.length > 0) {
-					await dispatchOp(ctx, ...ops)
+					await dispatchOp(ctx, ops)
 				}
 			}),
 		).subscribe(),
@@ -188,8 +190,8 @@ export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 		ctx.server.event$.pipe(
 			Rx.filter(([ctx, e]) => e.type === 'NEW_GAME'),
 			Rx.switchMap((arg) => Rx.timer(2000).pipe(Rx.map(() => arg))),
-			C.durableSub('performTeamswitches', { module }, async ([ctx]) => {
-				await dispatchOp(ctx, { opId: TSW.createOpId(), code: 'execute-teamswitches' })
+			C.durableSub('performTeamswitches', { module }, async ([ctx], signal) => {
+				await dispatchOp({ ...ctx, signal }, [{ opId: TSW.createOpId(), code: 'execute-teamswitches' }])
 			}),
 		).subscribe(),
 	)
@@ -243,7 +245,15 @@ export const orpcRouter = {
 					state: ctx.teamswitches.session.state,
 					ops: ctx.teamswitches.session.ops,
 				}
-				return ctx.teamswitches.op$.pipe(Rx.map((ops): TSW.UpdateForClient => ({ code: 'op', ops })), Rx.startWith(init))
+				return ctx.teamswitches.op$.pipe(
+					// the originator already has the ops in its pending set -- ack with just the ids
+					Rx.map(({ ops, sourceWsClientId }): TSW.UpdateForClient =>
+						sourceWsClientId !== undefined && sourceWsClientId === context.wsClientId
+							? { code: 'ack', opIds: ops.map(op => op.opId) }
+							: { code: 'op', ops }
+					),
+					Rx.startWith(init),
+				)
 			}),
 		)
 		yield* toAsyncGenerator(obs)
@@ -259,20 +269,20 @@ export const orpcRouter = {
 			}
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
 			if (denyRes) return denyRes
-			await dispatchOp(ctx, input)
+			await dispatchOp(ctx, [input], { sourceWsClientId: context.wsClientId })
 		},
 	),
 }
 
 const dispatchOp = C.spanOp(
 	'dispatchOp',
-	{ module, mutexes: (ctx) => ctx.teamswitches.dispatchMtx, extraText: (ctx, ...ops) => ops.map(o => o.code).join(',') },
-	async (ctx: C.Teamswitch & C.ServerSlice & C.Db, ...ops: TSW.Op[]) => {
+	{ module, mutexes: (ctx) => ctx.teamswitches.dispatchMtx, extraText: (ctx, ops) => ops.map(o => o.code).join(',') },
+	async (ctx: C.Teamswitch & C.ServerSlice & C.Db, ops: TSW.Op[], opts?: { sourceWsClientId?: string }) => {
 		const sideEffects: TSW.SideEffect[] = []
 		ctx.teamswitches.session = RbSyncState.Server.applyOps(ctx.teamswitches.session, ops, TSW.reducer, {
 			onSideEffect: (se) => sideEffects.push(se),
 		})
-		ctx.teamswitches.op$.next(ops)
+		ctx.teamswitches.op$.next({ ops, sourceWsClientId: opts?.sourceWsClientId })
 
 		const opErrors = new Map<string, (TSW.OpError | unknown)[]>()
 		const addError = (opId: string, error: TSW.OpError | unknown) => {
@@ -307,7 +317,7 @@ const dispatchOp = C.spanOp(
 								| (TSW.Op & { source: TSW.Teamswitch['source'] })
 								| undefined
 							if (isManual) {
-								sleep(500).then(() => SquadRcon.warnAll(ctx, toSwitch, WARNS.teamswitches.notifyManualSwitch))
+								sleep(500, ctx.signal).then(() => SquadRcon.warnAll(ctx, toSwitch, WARNS.teamswitches.notifyManualSwitch), () => {})
 							}
 							await switched$
 							ctx.teamswitches.teamswitchExecutedAt = Date.now()
@@ -424,7 +434,7 @@ const dispatchOp = C.spanOp(
 		}
 
 		for (const op of nextOps) {
-			const errors = await dispatchOp(ctx, op)
+			const errors = await dispatchOp(ctx, [op])
 			MapUtils.assign(opErrors, errors)
 		}
 
@@ -437,7 +447,7 @@ export async function dispatchRevertToSaved(ctx: C.Teamswitch & C.ServerSlice & 
 
 export async function dispatchClearSwitches(ctx: C.Teamswitch & C.ServerSlice & C.Db, source?: TSW.Teamswitch['source']) {
 	const opId = TSW.createOpId()
-	await dispatchOp(ctx, { opId, code: 'clear-teamswitches', save: true, source })
+	await dispatchOp(ctx, [{ opId, code: 'clear-teamswitches', save: true, source }])
 }
 
 export async function dispatchSwitchNow(
@@ -446,7 +456,7 @@ export async function dispatchSwitchNow(
 	source: TSW.Teamswitch['source'],
 ) {
 	const opId = TSW.createOpId()
-	const errors = await dispatchOp(ctx, { opId, code: 'switch-now', switches, source })
+	const errors = await dispatchOp(ctx, [{ opId, code: 'switch-now', switches, source }])
 	return errors.get(opId) ?? []
 }
 
@@ -462,7 +472,7 @@ export async function dispatchSwitchNext(
 		source,
 		saved: true,
 	}))
-	const allErrors = await dispatchOp(ctx, ...ops)
+	const allErrors = await dispatchOp(ctx, ops)
 	return ops.flatMap(op => allErrors.get(op.opId) ?? [])
 }
 
@@ -471,5 +481,5 @@ function resolveCtx(serverId: string) {
 }
 
 function getBaseCtx() {
-	return DB.addPooledDb(CS.init())
+	return DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
 }

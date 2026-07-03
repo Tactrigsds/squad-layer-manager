@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 
 import type { ComboBoxHandle, ComboBoxOption } from './combo-box.tsx'
 import { LOADING } from './constants.ts'
+import { normalizeOptions } from './options.ts'
 
 export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	className?: string
@@ -118,30 +119,17 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		}
 	}
 
-	let options: ComboBoxOption<T>[] | typeof LOADING
-	if (props.options === LOADING) {
-		options = LOADING
-	} else {
-		options = (props.options as (T | ComboBoxOption<T>)[]).map((item): ComboBoxOption<T> =>
-			typeof item === 'string' || item === null ? { value: item as T } : item
-		)
-
-		const values = options.map(o => o.value)
-		const duplicates = values.filter((v, i) => values.indexOf(v) !== i)
-		if (duplicates.length > 0) {
-			throw new Error(`ComboBoxMulti options contain duplicate values: ${duplicates.join(', ')}`)
+	const options = React.useMemo(
+		() => normalizeOptions('ComboBoxMulti', props.options, props.sort ?? true),
+		[props.options, props.sort],
+	)
+	const optionsByValue = React.useMemo(() => {
+		const map = new Map<T, ComboBoxOption<T>>()
+		if (options !== LOADING) {
+			for (const option of options) map.set(option.value, option)
 		}
-
-		const sort = props.sort ?? true
-		options.sort((a, b) => {
-			const disabledDiff = (a.disabled ? 1 : 0) - (b.disabled ? 1 : 0)
-			if (disabledDiff !== 0) return disabledDiff
-			if (!sort) return 0
-			const aKey = typeof a.label === 'string' ? a.label : (a.value ?? '')
-			const bKey = typeof b.label === 'string' ? b.label : (b.value ?? '')
-			return aKey.localeCompare(bKey)
-		})
-	}
+		return map
+	}, [options])
 
 	const displayValues = useInternalState ? internalValues : values
 
@@ -156,7 +144,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		if (displayValues.length > 0) {
 			const displayText = displayValues
 				.map((value) => {
-					const option = options !== LOADING && options.find((opt) => opt.value === value)
+					const option = optionsByValue.get(value)
 					const displayValue = option ? (option.label ?? option.value) : value
 					return typeof displayValue === 'object' ? JSON.stringify(displayValue) : String(displayValue)
 				})
@@ -192,179 +180,184 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 				)}
 			</PopoverTrigger>
 			<PopoverContent align="start" className="min-w-[600px] p-0 overflow-hidden">
-				<Command shouldFilter={!props.setInputValue} className="flex flex-col">
-					{/* Shared header row */}
-					<div className="flex border-b shrink-0">
-						{/* Left header: search input */}
-						<div className="flex-1 border-r">
-							<CommandInput value={props.inputValue} onValueChange={props.setInputValue} placeholder="Search options..." />
-						</div>
-						{/* Right header: selected count + action buttons */}
-						<div className="flex-1 flex items-center justify-between px-2 h-[41px]">
-							<span className="text-sm font-medium">
-								Selected {props.title ? props.title + 's ' : ''}({displayValues.length}
-								{selectionLimit ? `/${selectionLimit}` : ''})
-							</span>
-							<span className="flex items-center space-x-1">
-								{reset && (() => {
-									const resetToValues = Array.isArray(reset) ? reset : initialValues
-									const availableValues = options !== LOADING ? options.map(opt => opt.value) : []
-									const resetValues = resetToValues.filter(val => availableValues.includes(val))
-									const currentSet = new Set(displayValues)
-									const resetSet = new Set(resetValues)
-									const isIdentical = currentSet.size === resetSet.size && [...currentSet].every(val => resetSet.has(val))
-									return (
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => onSelect(resetValues)}
-											disabled={isIdentical}
-											className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
-											title="Reset to Initial"
-										>
-											<Undo2 className="h-4 w-4" />
-										</Button>
-									)
-								})()}
-								{options !== LOADING && options.length > 0 && displayValues.length < options.length && (
-									<Button
-										variant="ghost"
-										size="sm"
-										onClick={() => {
-											const allValues = options
-												.filter(opt => !opt.disabled)
-												.map(opt => opt.value)
-												.filter(val => !selectionLimit || displayValues.length + (displayValues.includes(val) ? 0 : 1) <= selectionLimit)
-											onSelect(allValues)
-										}}
-										className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-										title="Select All"
-									>
-										<CheckCheck className="h-4 w-4" />
-									</Button>
-								)}
-								{displayValues.length > 0 && (
-									<Button
-										variant="ghost"
-										size="sm"
-										onClick={() => onSelect([])}
-										className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-										title="Clear All"
-									>
-										<Trash2 className="h-4 w-4" />
-									</Button>
-								)}
-								{!props.confirm && (
-									<Button
-										variant="ghost"
-										size="sm"
-										onClick={() => setOpen(false)}
-										className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-										title="Close"
-									>
-										<X className="h-4 w-4" />
-									</Button>
-								)}
-							</span>
-						</div>
-					</div>
-
-					{/* Lists row */}
-					<div className="flex h-[340px]">
-						{/* Left — available options */}
-						<div className="flex-1 border-r overflow-hidden">
-							<CommandList className="max-h-[340px]">
-								<CommandEmpty>No results found.</CommandEmpty>
-								<CommandGroup>
-									{options === LOADING && (
-										<CommandItem>
-											<LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-											Loading...
-										</CommandItem>
-									)}
-									{options !== LOADING && options.map((option) => (
-										<CommandItem
-											key={option.value}
-											value={option.value === null ? NULL.current : option.value}
-											keywords={option.keywords}
-											disabled={option.disabled
-												|| (selectionLimit ? values.length >= selectionLimit && !values.includes(option.value) : false)}
-											onSelect={() => {
-												if (option.disabled) return
-												onSelect((prevValues) => {
-													if (prevValues.includes(option.value)) {
-														return prevValues.filter((v) => v !== option.value)
-													} else {
-														return [...prevValues, option.value]
-													}
-												})
-											}}
-										>
-											<Check className={cn('mr-2 h-4 w-4', displayValues.includes(option.value) ? 'opacity-100' : 'opacity-0')} />
-											{option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
-										</CommandItem>
-									))}
-								</CommandGroup>
-							</CommandList>
-						</div>
-
-						{/* Right — selected items */}
-						<div className="flex-1 overflow-y-auto p-2 space-y-1">
-							{displayValues.length === 0
-								? (
-									<div className="text-sm text-muted-foreground text-center py-8">
-										No items selected
-									</div>
-								)
-								: displayValues.map((value) => {
-									const option = options !== LOADING && options.find((opt) => opt.value === value)
-									const displayText = option ? (option.label ?? option.value) : value
-									return (
-										<div
-											key={value}
-											className="flex items-center justify-between p-2 bg-muted rounded-sm text-sm cursor-pointer"
-											onMouseDown={(e) => {
-												if (e.button === 1) {
-													e.preventDefault()
-													onSelect((prevValues) => prevValues.filter((v) => v !== value))
-												}
-											}}
-										>
-											<span className="flex-1 truncate">
-												{displayText === null ? DisplayHelpers.NULL_DISPLAY : displayText}
-											</span>
+				{
+					/* gate on open so the option elements aren't built on every render while closed --
+				    option lists can be thousands of entries long */
+				}
+				{open && (
+					<Command shouldFilter={!props.setInputValue} className="flex flex-col">
+						{/* Shared header row */}
+						<div className="flex border-b shrink-0">
+							{/* Left header: search input */}
+							<div className="flex-1 border-r">
+								<CommandInput value={props.inputValue} onValueChange={props.setInputValue} placeholder="Search options..." />
+							</div>
+							{/* Right header: selected count + action buttons */}
+							<div className="flex-1 flex items-center justify-between px-2 h-[41px]">
+								<span className="text-sm font-medium">
+									Selected {props.title ? props.title + 's ' : ''}({displayValues.length}
+									{selectionLimit ? `/${selectionLimit}` : ''})
+								</span>
+								<span className="flex items-center space-x-1">
+									{reset && (() => {
+										const resetToValues = Array.isArray(reset) ? reset : initialValues
+										const resetValues = resetToValues.filter(val => optionsByValue.has(val))
+										const currentSet = new Set(displayValues)
+										const resetSet = new Set(resetValues)
+										const isIdentical = currentSet.size === resetSet.size && [...currentSet].every(val => resetSet.has(val))
+										return (
 											<Button
 												variant="ghost"
 												size="sm"
-												onClick={() => onSelect((prevValues) => prevValues.filter((v) => v !== value))}
-												className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive ml-2"
+												onClick={() => onSelect(resetValues)}
+												disabled={isIdentical}
+												className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
+												title="Reset to Initial"
 											>
-												<X className="h-3 w-3" />
+												<Undo2 className="h-4 w-4" />
 											</Button>
+										)
+									})()}
+									{options !== LOADING && options.length > 0 && displayValues.length < options.length && (
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() => {
+												const allValues = options
+													.filter(opt => !opt.disabled)
+													.map(opt => opt.value)
+													.filter(val => !selectionLimit || displayValues.length + (displayValues.includes(val) ? 0 : 1) <= selectionLimit)
+												onSelect(allValues)
+											}}
+											className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+											title="Select All"
+										>
+											<CheckCheck className="h-4 w-4" />
+										</Button>
+									)}
+									{displayValues.length > 0 && (
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() => onSelect([])}
+											className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+											title="Clear All"
+										>
+											<Trash2 className="h-4 w-4" />
+										</Button>
+									)}
+									{!props.confirm && (
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() => setOpen(false)}
+											className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+											title="Close"
+										>
+											<X className="h-4 w-4" />
+										</Button>
+									)}
+								</span>
+							</div>
+						</div>
+
+						{/* Lists row */}
+						<div className="flex h-[340px]">
+							{/* Left — available options */}
+							<div className="flex-1 border-r overflow-hidden">
+								<CommandList className="max-h-[340px]">
+									<CommandEmpty>No results found.</CommandEmpty>
+									<CommandGroup>
+										{options === LOADING && (
+											<CommandItem>
+												<LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+												Loading...
+											</CommandItem>
+										)}
+										{options !== LOADING && options.map((option) => (
+											<CommandItem
+												key={option.value}
+												value={option.value === null ? NULL.current : option.value}
+												keywords={option.keywords}
+												disabled={option.disabled
+													|| (selectionLimit ? values.length >= selectionLimit && !values.includes(option.value) : false)}
+												onSelect={() => {
+													if (option.disabled) return
+													onSelect((prevValues) => {
+														if (prevValues.includes(option.value)) {
+															return prevValues.filter((v) => v !== option.value)
+														} else {
+															return [...prevValues, option.value]
+														}
+													})
+												}}
+											>
+												<Check className={cn('mr-2 h-4 w-4', displayValues.includes(option.value) ? 'opacity-100' : 'opacity-0')} />
+												{option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
+											</CommandItem>
+										))}
+									</CommandGroup>
+								</CommandList>
+							</div>
+
+							{/* Right — selected items */}
+							<div className="flex-1 overflow-y-auto p-2 space-y-1">
+								{displayValues.length === 0
+									? (
+										<div className="text-sm text-muted-foreground text-center py-8">
+											No items selected
 										</div>
 									)
-								})}
+									: displayValues.map((value) => {
+										const option = optionsByValue.get(value)
+										const displayText = option ? (option.label ?? option.value) : value
+										return (
+											<div
+												key={value}
+												className="flex items-center justify-between p-2 bg-muted rounded-sm text-sm cursor-pointer"
+												onMouseDown={(e) => {
+													if (e.button === 1) {
+														e.preventDefault()
+														onSelect((prevValues) => prevValues.filter((v) => v !== value))
+													}
+												}}
+											>
+												<span className="flex-1 truncate">
+													{displayText === null ? DisplayHelpers.NULL_DISPLAY : displayText}
+												</span>
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => onSelect((prevValues) => prevValues.filter((v) => v !== value))}
+													className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive ml-2"
+												>
+													<X className="h-3 w-3" />
+												</Button>
+											</div>
+										)
+									})}
+							</div>
 						</div>
-					</div>
 
-					{/* Full-width confirm button */}
-					{props.confirm && (
-						<div className="border-t shrink-0">
-							<Button
-								variant="ghost"
-								onClick={() => {
-									props.onConfirm?.(displayValues)
-									setOpen(false)
-								}}
-								disabled={!hasChanges}
-								className="w-full rounded-none h-9 text-primary hover:text-primary hover:bg-primary/10 flex items-center justify-center gap-2 disabled:opacity-40"
-							>
-								<SquareCheck className="h-4 w-4" />
-								<span className="text-sm">{typeof props.confirm === 'string' ? props.confirm : 'Confirm'}</span>
-							</Button>
-						</div>
-					)}
-				</Command>
+						{/* Full-width confirm button */}
+						{props.confirm && (
+							<div className="border-t shrink-0">
+								<Button
+									variant="ghost"
+									onClick={() => {
+										props.onConfirm?.(displayValues)
+										setOpen(false)
+									}}
+									disabled={!hasChanges}
+									className="w-full rounded-none h-9 text-primary hover:text-primary hover:bg-primary/10 flex items-center justify-center gap-2 disabled:opacity-40"
+								>
+									<SquareCheck className="h-4 w-4" />
+									<span className="text-sm">{typeof props.confirm === 'string' ? props.confirm : 'Confirm'}</span>
+								</Button>
+							</div>
+						)}
+					</Command>
+				)}
 			</PopoverContent>
 		</Popover>
 	)

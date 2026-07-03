@@ -1,4 +1,5 @@
 import * as Arr from '@/lib/array'
+import * as Obj from '@/lib/object'
 
 export type OpId = string
 export type BaseOp = {
@@ -99,6 +100,24 @@ export namespace Client {
 		} as Session<O, S, SE>
 	}
 
+	// re-initializes the session from a fresh server snapshot while preserving locally-dispatched
+	// ops that are still in flight -- an init can race the client's own dispatches (e.g. a stream
+	// (re)connect while a dispatch is on the wire), and discarding them would orphan the acks that
+	// follow. pending ops the snapshot already includes are dropped; the rest are rebased onto the
+	// new state
+	export function processInit<O extends BaseOp, S, SE extends SideEffectBase>(
+		session: Session<O, S, SE>,
+		state: S,
+		ops: O[],
+		reducer: Reducer<O, S, SE>,
+	): Session<O, S, SE> {
+		const syncedIds = new Set(ops.map(op => op.opId))
+		const pendingOps = session.pendingOps.filter(op => !syncedIds.has(op.opId))
+		const next = initSession<O, S, SE>(state, { onSideEffect: session.onSideEffect, ops })
+		if (pendingOps.length === 0) return next
+		return processOutgoingOps(next, pendingOps, reducer)
+	}
+
 	export function processIncomingOps<O extends BaseOp, S, SE extends SideEffectBase>(
 		session: Session<O, S, SE>,
 		ops: O[],
@@ -136,6 +155,45 @@ export namespace Client {
 			...session,
 			syncedState: newSyncedState,
 			syncedOps: truncatedNewSyncedOps,
+		}
+	}
+
+	// processes server acks for ops this client dispatched. the server only sends back opIds for the
+	// originator's own ops -- since ops are fully deterministic, we advance the synced history by
+	// replaying our own pending copies instead of receiving them over the wire again
+	export function processAckedOps<O extends BaseOp, S, SE extends SideEffectBase>(
+		session: Session<O, S, SE>,
+		opIds: OpId[],
+		reducer: Reducer<O, S, SE>,
+	): Session<O, S, SE> {
+		if (opIds.length === 0) throw new Error('No ops to process')
+		const ackedIdSet = new Set(opIds)
+		if (ackedIdSet.size !== opIds.length) throw new Error('Duplicate opIds in acked ops')
+		const ackedOps = session.pendingOps.filter(op => ackedIdSet.has(op.opId))
+		if (ackedOps.length !== opIds.length) {
+			const missing = opIds.filter(id => !session.pendingOps.some(op => op.opId === id))
+			throw new Error(`Acked ops not in pendingOps: ${missing.join(', ')}`)
+		}
+
+		const newSyncedState = reducer(session.syncedState, ackedOps, session.syncedOps, session.onSideEffect)
+		const newSyncedOps = OpHistory.concat(session.syncedOps, ackedOps)
+		const pendingOps = session.pendingOps.filter(op => !ackedIdSet.has(op.opId))
+
+		// same policy as processIncomingOps: don't reconcile diverging histories until the synced
+		// history has fully caught up to the local history
+		if (pendingOps.length > 0) {
+			return { ...session, syncedState: newSyncedState, syncedOps: newSyncedOps, pendingOps }
+		}
+
+		return {
+			syncedState: newSyncedState,
+			onSideEffect: session.onSideEffect,
+			syncedOps: newSyncedOps,
+			// deterministic replay means the canonical state normally equals the optimistic state we're
+			// already displaying -- keep the existing reference then, so downstream identity guards
+			// (derived store props, query dep keys) don't fire for a no-op update
+			localState: Obj.deepEqual(newSyncedState, session.localState) ? session.localState : newSyncedState,
+			pendingOps: [],
 		}
 	}
 

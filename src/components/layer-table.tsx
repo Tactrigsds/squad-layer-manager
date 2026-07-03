@@ -56,6 +56,12 @@ const formatFloat = (value: number) => {
 	if (numeric > 0) return `+${formatted}`
 	return formatted
 }
+// table-level display state shared by every cell. these values are identical across the whole
+// table, so cells read them from context instead of each holding its own store subscriptions
+// (~rows × cols of them) and recomputing team parity per cell
+type CellDisplayCtx = { teamParity: number; displayLayersNormalized: boolean }
+const LayerTableCellCtx = React.createContext<CellDisplayCtx>({ teamParity: 0, displayLayersNormalized: false })
+
 function buildColumn(
 	colDef: LC.ColumnDef,
 	isNumeric: boolean,
@@ -127,17 +133,8 @@ function buildColumn(
 			)
 		},
 		cell: function ValueColCell(info) {
-			const displayLayersNormalized = ZusUtils.useStore(GlobalSettings.GlobalSettingsStore, (state) => state.displayTeamsNormalized)
+			const { teamParity, displayLayersNormalized } = React.useContext(LayerTableCellCtx)
 			const matchDescriptors = info.row.original.matchDescriptors
-			const cursor = useTableFrame(table => table.pageData?.input.cursor)
-			const serverId = ZusUtils.useStore(SquadServerClient.SelectedServerStore, s => s.selectedServerId)
-			const teamParity = ZusUtils.useStore(
-				LayerQueueClient.layerItemsState$(serverId),
-				React.useCallback((state: LQY.LayerItemsState) => {
-					if (!cursor) return 0
-					return LQY.resolveTeamParityForCursor(state, LQY.fromLayerListCursor(state, cursor))
-				}, [cursor]),
-			)
 			if (colDef.name === 'Layer') {
 				return (
 					<div className="pl-4">
@@ -275,7 +272,7 @@ function buildColDefs(
 			cell: function SelectCell({ row }) {
 				const [isUnselectable, isSelected] = ZusUtils.useStore(
 					stores.layerTable,
-					ZusUtils.useShallow(LayerTablePrt.Sel.rowSelectionStatus(row.id)),
+					LayerTablePrt.Sel.rowSelectionStatus(row.id),
 				)
 
 				return (
@@ -330,15 +327,7 @@ function buildColDefs(
 		enableHiding: false,
 		size: 80,
 		cell: function FlagColCell({ row }) {
-			const cursor = useTableFrame(table => table.pageData?.input.cursor)
-			const serverId = ZusUtils.useStore(SquadServerClient.SelectedServerStore, s => s.selectedServerId)
-			const teamParity = ZusUtils.useStore(
-				LayerQueueClient.layerItemsState$(serverId),
-				React.useCallback((state: LQY.LayerItemsState) => {
-					if (!cursor) return 0
-					return LQY.resolveTeamParityForCursor(state, LQY.fromLayerListCursor(state, cursor))
-				}, [cursor]),
-			)
+			const { teamParity } = React.useContext(LayerTableCellCtx)
 			return (
 				<span
 					onClick={(e) => {
@@ -397,6 +386,22 @@ export default function LayerTable(props: {
 
 	const page = useTableFrame(table => table.pageData)
 
+	// shared display state for all cells -- see LayerTableCellCtx
+	const displayLayersNormalized = ZusUtils.useStore(GlobalSettings.GlobalSettingsStore, (state) => state.displayTeamsNormalized)
+	const cursor = useTableFrame(table => table.pageData?.input.cursor)
+	const serverId = ZusUtils.useStore(SquadServerClient.SelectedServerStore, s => s.selectedServerId)
+	const teamParity = ZusUtils.useStore(
+		LayerQueueClient.layerItemsState$(serverId),
+		React.useCallback((state: LQY.LayerItemsState) => {
+			if (!cursor) return 0
+			return LQY.resolveTeamParityForCursor(state, LQY.fromLayerListCursor(state, cursor))
+		}, [cursor]),
+	)
+	const cellDisplayCtx = React.useMemo(
+		(): CellDisplayCtx => ({ teamParity, displayLayersNormalized }),
+		[teamParity, displayLayersNormalized],
+	)
+
 	const table = useReactTable({
 		data: page?.layers ?? [],
 		columns: React.useMemo(() => buildColDefs(frameState.colConfig, props.stores), [frameState.colConfig, props.stores]),
@@ -450,33 +455,35 @@ export default function LayerTable(props: {
 	}
 
 	return (
-		<div className="space-y-2">
-			<div className="rounded-md border min-w-250">
-				<LayerTableControlPanel {...props} table={table} />
-				{/*--------- table ---------*/}
-				<Table>
-					<TableHeader>
-						{table.getHeaderGroups().map((headerGroup) => (
-							<TableRow key={headerGroup.id}>
-								{headerGroup.headers.map((header) => (
-									<TableHead
-										className="px-0"
-										key={header.id}
-										style={{ width: header.getSize() }}
-									>
-										{header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-									</TableHead>
-								))}
-							</TableRow>
-						))}
-					</TableHeader>
-					<TableBody>
-						{rowElts}
-					</TableBody>
-				</Table>
+		<LayerTableCellCtx.Provider value={cellDisplayCtx}>
+			<div className="space-y-2">
+				<div className="rounded-md border min-w-250">
+					<LayerTableControlPanel {...props} table={table} />
+					{/*--------- table ---------*/}
+					<Table>
+						<TableHeader>
+							{table.getHeaderGroups().map((headerGroup) => (
+								<TableRow key={headerGroup.id}>
+									{headerGroup.headers.map((header) => (
+										<TableHead
+											className="px-0"
+											key={header.id}
+											style={{ width: header.getSize() }}
+										>
+											{header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+										</TableHead>
+									))}
+								</TableRow>
+							))}
+						</TableHeader>
+						<TableBody>
+							{rowElts}
+						</TableBody>
+					</Table>
+				</div>
+				<LayerTablePaginationControls stores={props.stores} table={table} />
 			</div>
-			<LayerTablePaginationControls stores={props.stores} table={table} />
-		</div>
+		</LayerTableCellCtx.Provider>
 	)
 }
 
@@ -498,7 +505,7 @@ const LayerTableRow = React.memo(function LayerTableRow(props: { stores: LayerTa
 
 	const [isUnselectable, isSelected] = ZusUtils.useStore(
 		props.stores.layerTable,
-		ZusUtils.useShallow(LayerTablePrt.Sel.rowSelectionStatus(row.id)),
+		LayerTablePrt.Sel.rowSelectionStatus(row.id),
 	)
 	function toggleRow() {
 		if (isUnselectable) return

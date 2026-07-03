@@ -232,6 +232,15 @@ function handleIncomingPresenceUpdate(update: UP.PresenceUpdate) {
 	} else if (update.code === 'op') {
 		const newSession = RbSyncState.Client.processIncomingOps(Store.getState().session, update.ops, UP.reducer)
 		Store.setState({ session: newSession })
+	} else if (update.code === 'ack') {
+		// ops are deterministic, so the server only sends back the ids -- replay our pending copies
+		const session = Store.getState().session
+		const pendingIds = new Set(session.pendingOps.map(op => op.opId))
+		if (!update.opIds.every(id => pendingIds.has(id))) {
+			console.warn('received ack for unknown presence ops', update.opIds)
+			return
+		}
+		Store.setState({ session: RbSyncState.Client.processAckedOps(session, update.opIds, UP.reducer) })
 	}
 }
 
@@ -256,6 +265,9 @@ export namespace Actions {
 		}
 		const newSession = RbSyncState.Client.processOutgoingOps(Store.getState().session, ops, UP.reducer)
 		Store.setState({ session: newSession })
+		for (const op of ops) {
+			console.log('dispatch ', op.code, op.code === 'update-activity' ? op.update.code : null)
+		}
 		void RPC.orpc.userPresence.dispatchOp.call(ops)
 	}
 

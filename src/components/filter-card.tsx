@@ -713,12 +713,15 @@ type ApplyFilterProps = {
 
 function ApplyFilter(props: ApplyFilterProps) {
 	const filters = FilterEntityClient.useFilterEntities()
-	const options: ComboBoxOption<string>[] = []
-	for (const filter of filters.values()) {
-		if (props.editedFilterId && filter.id === props.editedFilterId) continue
+	const options = React.useMemo(() => {
+		const options: ComboBoxOption<string>[] = []
+		for (const filter of filters.values()) {
+			if (props.editedFilterId && filter.id === props.editedFilterId) continue
 
-		options.push({ label: <FilterEntityLabel filter={filter} />, value: filter.id })
-	}
+			options.push({ label: <FilterEntityLabel filter={filter} />, value: filter.id })
+		}
+		return options
+	}, [filters, props.editedFilterId])
 	const boxRef = React.useRef<ComboBoxHandle>(null)
 	React.useEffect(() => {
 		if (props.defaultEditing) {
@@ -756,37 +759,44 @@ export function StringEqConfig<T extends string | null>(
 	},
 ) {
 	const lockOnSingleOption = props.lockOnSingleOption ?? false
-	const options: ComboBoxOption<string>[] = []
-	for (const value of LC.groupByColumnDefaultValues(props.column)) {
-		if (value === null) continue
-		const matched = props.allowedValues?.includes(value as T) ?? true
-		let label: React.ReactNode
-		if (!matched && props.onSetAllValuesAllowed) {
-			label = (
-				<span
-					className="flex items-center gap-1 group w-full"
-					onClick={(e) => {
-						if (e.target !== e.currentTarget) return
-						e.stopPropagation()
-					}}
-				>
-					<span className="text-muted-foreground pointer-events-none">{value}</span>
-					<span title={props.onSetAllValuesAllowedLabel ?? 'deselect all other filters and select this one'}>
-						<Icons.Unlock
-							className="h-3 w-3 opacity-0 group-hover:opacity-100 cursor-pointer text-green-500 pointer-events-auto"
-							onClick={(e) => {
-								props.onSetAllValuesAllowed?.()
-							}}
-						/>
+	// keep the callback identity out of the options memo -- parents often pass a fresh closure each render
+	const onSetAllValuesAllowedRef = React.useRef(props.onSetAllValuesAllowed)
+	onSetAllValuesAllowedRef.current = props.onSetAllValuesAllowed
+	const hasUnlockAction = !!props.onSetAllValuesAllowed
+	const options = React.useMemo(() => {
+		const allowedSet = props.allowedValues ? new Set(props.allowedValues) : null
+		const options: ComboBoxOption<string>[] = []
+		for (const value of LC.groupByColumnDefaultValues(props.column)) {
+			if (value === null) continue
+			const matched = allowedSet?.has(value as T) ?? true
+			let label: React.ReactNode
+			if (!matched && hasUnlockAction) {
+				label = (
+					<span
+						className="flex items-center gap-1 group w-full"
+						onClick={(e) => {
+							if (e.target !== e.currentTarget) return
+							e.stopPropagation()
+						}}
+					>
+						<span className="text-muted-foreground pointer-events-none">{value}</span>
+						<span title={props.onSetAllValuesAllowedLabel ?? 'deselect all other filters and select this one'}>
+							<Icons.Unlock
+								className="h-3 w-3 opacity-0 group-hover:opacity-100 cursor-pointer text-green-500 pointer-events-auto"
+								onClick={() => {
+									onSetAllValuesAllowedRef.current?.()
+								}}
+							/>
+						</span>
 					</span>
-				</span>
-			)
-		} else {
-			label = value
+				)
+			} else {
+				label = value
+			}
+			options.push({ label, value, disabled: !matched && !hasUnlockAction })
 		}
-		options.push({ label, value, disabled: !matched && !props.onSetAllValuesAllowed })
-	}
-	options.sort((a, b) => props.allowedValues?.indexOf(b.value as T) ?? Infinity - (props.allowedValues?.indexOf(a.value as T) ?? Infinity))
+		return options
+	}, [props.column, props.allowedValues, hasUnlockAction, props.onSetAllValuesAllowedLabel])
 	return (
 		<ComboBox
 			ref={props.ref}
@@ -812,12 +822,16 @@ function StringInConfig(
 		restrictValueSize?: boolean
 	},
 ) {
-	const options: ComboBoxOption<string>[] = []
-	for (const value of LC.groupByColumnDefaultValues(props.column)) {
-		if (value === null) continue
-		const matched = props.allowedValues?.includes(value) ?? true
-		options.push({ label: value, value, disabled: !matched })
-	}
+	const options = React.useMemo(() => {
+		const allowedSet = props.allowedValues ? new Set(props.allowedValues) : null
+		const options: ComboBoxOption<string>[] = []
+		for (const value of LC.groupByColumnDefaultValues(props.column)) {
+			if (value === null) continue
+			const matched = allowedSet?.has(value) ?? true
+			options.push({ label: value, value, disabled: !matched })
+		}
+		return options
+	}, [props.column, props.allowedValues])
 	return (
 		<ComboBoxMulti
 			title={props.column}

@@ -120,13 +120,25 @@ export function initTeamswitches(args: Args) {
 			onUpdate(update) {
 				switch (update.code) {
 					case 'init':
+						// processInit rebases in-flight pending ops onto the snapshot so the acks that follow still resolve
 						set({
-							session: initSession(update.state, update.ops),
+							session: RbSyncState.Client.processInit(get().session, update.state, update.ops, TSW.reducer),
 						})
 						break
 					case 'op': {
 						const updated = RbSyncState.Client.processIncomingOps(get().session, update.ops, TSW.reducer)
 						set({ session: updated })
+						break
+					}
+					case 'ack': {
+						// ops are deterministic, so the server only sends back the ids -- replay our pending copies
+						const session = get().session
+						const pendingIds = new Set(session.pendingOps.map(op => op.opId))
+						if (!update.opIds.every(id => pendingIds.has(id))) {
+							console.warn('received ack for unknown teamswitch ops', update.opIds)
+							break
+						}
+						set({ session: RbSyncState.Client.processAckedOps(session, update.opIds, TSW.reducer) })
 						break
 					}
 					default:

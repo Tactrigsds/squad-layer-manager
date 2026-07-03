@@ -671,12 +671,12 @@ function TeamPlayerTable(
 		BattlemetricsClient.playerBmData$,
 		BattlemetricsClient.Store,
 		SettingsClient.PublicSettingsStore,
-		React.useCallback(TeamsPanelModels.Sel.playersForTeam(props.teamId), [props.teamId]),
+		TeamsPanelModels.Sel.playersForTeam(props.teamId),
 	)
 	const squads = ZusUtils.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
-		React.useCallback(ChatPrt.Sel.squadsForTeam(props.teamId), [props.teamId]),
+		ChatPrt.Sel.squadsForTeam(props.teamId),
 	)
 
 	const availableRoles = React.useMemo(
@@ -1014,17 +1014,13 @@ function CombinedPlayerTable(
 		return result
 	}, [config, orgFlags, activeModeId])
 
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	const selectorA = React.useCallback(TeamsPanelModels.Sel.playersForTeam('A'), [])
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	const selectorB = React.useCallback(TeamsPanelModels.Sel.playersForTeam('B'), [])
 	const playersA = ZusUtils.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		BattlemetricsClient.playerBmData$,
 		BattlemetricsClient.Store,
 		SettingsClient.PublicSettingsStore,
-		selectorA,
+		TeamsPanelModels.Sel.playersForTeam('A'),
 	)
 	const playersB = ZusUtils.useStore(
 		props.stores.squadServer!,
@@ -1032,22 +1028,18 @@ function CombinedPlayerTable(
 		BattlemetricsClient.playerBmData$,
 		BattlemetricsClient.Store,
 		SettingsClient.PublicSettingsStore,
-		selectorB,
+		TeamsPanelModels.Sel.playersForTeam('B'),
 	)
 
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	const squadsASelector = React.useCallback(ChatPrt.Sel.squadsForTeam('A'), [])
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	const squadsBSelector = React.useCallback(ChatPrt.Sel.squadsForTeam('B'), [])
 	const squadsA = ZusUtils.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
-		squadsASelector,
+		ChatPrt.Sel.squadsForTeam('A'),
 	)
 	const squadsB = ZusUtils.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
-		squadsBSelector,
+		ChatPrt.Sel.squadsForTeam('B'),
 	)
 	const squadsWithTeam = React.useMemo<SquadWithTeam[]>(() => [
 		...squadsA.map(squad => ({ squad, normedTeam: 'A' as const })),

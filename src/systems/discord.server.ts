@@ -60,9 +60,10 @@ export async function setup() {
 	return res
 }
 
-export async function getOauthUser(token: AccessToken) {
+export async function getOauthUser(ctx: Partial<CS.AbortSignal>, token: AccessToken) {
 	const fetchDiscordUserRes = await fetch('https://discord.com/api/users/@me', {
 		headers: { Authorization: `${token.token_type} ${token.access_token}` },
+		signal: ctx.signal,
 	})
 	if (!fetchDiscordUserRes.ok) {
 		return Promise.resolve(null)

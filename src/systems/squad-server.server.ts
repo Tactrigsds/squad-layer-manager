@@ -2,7 +2,7 @@ import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 import * as AR from '@/app-routes'
 import * as Arr from '@/lib/array'
-import { distinctDeepEquals, switchMapWithSignal, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { acquireInBlock, anySignal, distinctDeepEquals, firstValueFrom, switchMapWithSignal, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { AsyncResource } from '@/lib/async-resource'
 import * as Cleanup from '@/lib/cleanup'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
@@ -186,11 +186,12 @@ export const orpcRouter = {
 			Rx.filter((e) => e.type === 'ROUND_ENDED'),
 			Rx.endWith(null),
 		)
-		const result$ = Rx.firstValueFrom(
+		const result$ = firstValueFrom(
 			Rx.race(
 				matchEnded$,
 				Rx.timer(10_000).pipe(Rx.map(() => 'timeout' as const)),
 			),
+			ctx.signal,
 		)
 
 		SquadRcon.endMatch(ctx)
@@ -415,10 +416,19 @@ export function invalidateAdminList(serverId: string) {
 	slice.adminList.invalidate(getBaseCtx())
 }
 
-async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
+// lets destroyServer cancel a slice's in-flight work before its cleanup tasks run
+const sliceAbortControllers = new Map<string, AbortController>()
+
+async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerState) {
 	const serverId = serverState.id
 	const settings = serverState.settings
 	const cleanup: Cleanup.Tasks = []
+
+	const sliceAbort = new AbortController()
+	sliceAbortControllers.set(serverId, sliceAbort)
+	// aborts when the slice is destroyed or the process shuts down
+	const signal = anySignal(ctx.signal, sliceAbort.signal)!
+	ctx = { ...ctx, signal }
 
 	const rcon = new Rcon({ serverId, settings: settings.connections.rcon })
 	rcon.ensureConnected()
@@ -430,7 +440,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 		const adminListTTL = HumanTime.parse('1h')
 		// read adminListSources/adminIdentifyingPermissions fresh on every fetch (rather than closing over the setup-time settings)
 		// so that SquadServer.invalidateAdminList() picks up edits without needing a full slice restart
-		return new AsyncResource<SM.AdminList, CS.Ctx>(
+		return new AsyncResource<SM.AdminList, CS.Ctx & CS.AbortSignal>(
 			`${serverId}/adminLists`,
 			async (_ctx) => {
 				const currentSettings = await Settings.getServerSettings(getBaseCtx(), serverId)
@@ -441,7 +451,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 					else log.warn(`Admin list source "${key}" not found in global settings`)
 				}
 				// we are duplicating fetches here if two servers have the same source, but shouldn't matter
-				return fetchAdminLists(serverSources, currentSettings.adminIdentifyingPermissions)
+				return fetchAdminLists(serverSources, currentSettings.adminIdentifyingPermissions, _ctx.signal)
 			},
 			module,
 			{
@@ -512,6 +522,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 	const slice: C.ServerSlice = {
 		...CS.init(),
 		serverId,
+		signal,
 
 		rcon,
 		server,
@@ -632,8 +643,8 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 				C.durableSub(
 					'onRconConnectStatusChange',
 					{ module },
-					async (connected) => {
-						const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+					async (connected, signal) => {
+						const ctx = resolveSliceCtx(CS.addSignal(getBaseCtx(), signal), serverId)
 						const time = Date.now()
 						let layerStatus: SM.LayersStatusResExt | undefined
 						let layersData: SM.LayersStatusExt | undefined
@@ -667,8 +678,8 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 				C.durableSub(
 					'onRconEvent',
 					{ module, taskScheduling: 'parallel', levels: { event: 'trace' } },
-					async ([_ctx, event]) => {
-						const ctx = DB.addPooledDb(resolveSliceCtx(_ctx, serverId))
+					async ([_ctx, event], signal) => {
+						const ctx = DB.addPooledDb(resolveSliceCtx(CS.addSignal({ ..._ctx }, signal), serverId))
 						try {
 							if (event.type === 'CHAT_MESSAGE') {
 								if (event.message.startsWith(Settings.GLOBAL_SETTINGS.commandPrefix)) {
@@ -702,10 +713,10 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 				C.durableSub(
 					'onTeamsPolled',
 					{ module, numTaskRetries: 0, levels: { event: 'debug' } },
-					async (teamsRes) => {
+					async (teamsRes, signal) => {
 						if (teamsRes.code !== 'ok') return teamsRes
 						const time = Date.now()
-						const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+						const ctx = resolveSliceCtx(CS.addSignal(getBaseCtx(), signal), serverId)
 						await collectEvents(ctx, () => {
 							PendingEvents.onTeamsPolled(
 								server.eventState,
@@ -761,7 +772,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 	}
 }
 
-export async function pushAttribution(ctx: C.SquadServer & C.Db, attribution: Omit<PendingEvents.Attribution, 'time'>) {
+export async function pushAttribution(ctx: C.SquadServer & C.Db & CS.AbortSignal, attribution: Omit<PendingEvents.Attribution, 'time'>) {
 	await collectEvents(ctx, () => {
 		PendingEvents.pushAttribution(ctx.server.eventState, attribution)
 	})
@@ -770,6 +781,8 @@ export async function pushAttribution(ctx: C.SquadServer & C.Db, attribution: Om
 export async function destroyServer(ctx: C.ServerSlice) {
 	if (ctx.server.destroyed) return
 	ctx.server.destroyed = true
+	sliceAbortControllers.get(ctx.serverId)?.abort(new DOMException('server slice destroyed', 'AbortError'))
+	sliceAbortControllers.delete(ctx.serverId)
 	const cleanupId = ctx.server.cleanupId
 	if (cleanupId !== null) CleanupSys.unregister(cleanupId)
 	await Cleanup.runCleanup({ ...CS.init(), ...ctx, log }, ctx.cleanup)
@@ -793,22 +806,18 @@ export function getCurrTeams(ctx: C.SquadServer) {
 }
 
 async function collectEvents(
-	ctx: C.SquadServer & C.Db,
+	ctx: C.SquadServer & C.Db & CS.AbortSignal,
 	addEventsCb: () => void,
 ) {
-	const release = await ctx.server.processEventsMtx.acquire()
+	using _lock = await acquireInBlock(ctx.server.processEventsMtx, { signal: ctx.signal })
 	addEventsCb()
-	try {
-		for await (
-			const event of PendingEvents.process(
-				ctx.server.eventState,
-				Date.now(),
-			)
-		) {
-			ctx.server.event$.next([resolveSliceCtx(ctx, ctx.serverId), event])
-		}
-	} finally {
-		release()
+	for await (
+		const event of PendingEvents.process(
+			ctx.server.eventState,
+			Date.now(),
+		)
+	) {
+		ctx.server.event$.next([resolveSliceCtx(ctx, ctx.serverId), event])
 	}
 }
 
@@ -841,7 +850,7 @@ function getLayersStatusExt$(serverId: string) {
 }
 
 async function fetchLayersStatusExt(
-	ctx: C.SquadServer & C.Rcon & C.MatchHistory,
+	ctx: C.SquadServer & C.Rcon & C.MatchHistory & CS.AbortSignal,
 ) {
 	const statusRes = await ctx.server.layersStatus.get(ctx)
 	if (statusRes.code !== 'ok') return statusRes
@@ -923,9 +932,14 @@ export function resolveSliceCtx<T extends object>(ctx: T, serverId: string) {
 			message: 'Server slice not found: ' + serverId,
 		})
 	}
+	// cancel when either the caller (e.g. the originating request) or the slice is done. the slice signal
+	// already covers process shutdown, so don't allocate a composite for base ctxs on the hot event path
+	const callerSignal = (ctx as Partial<CS.AbortSignal>).signal
+	const signal = callerSignal === CleanupSys.shutdownSignal ? slice.signal : anySignal(callerSignal, slice.signal)!
 	return {
 		...ctx,
 		...slice,
+		signal,
 	}
 }
 
@@ -943,7 +957,7 @@ export function sliceCtx$(wsClientId: string, serverId: string) {
 }
 
 function getBaseCtx() {
-	return DB.addPooledDb(CS.init())
+	return DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
 }
 
 // registry data (identity/enabled/default/broken) lives in settings.server.ts; this only orchestrates the live slice around it
@@ -1281,13 +1295,14 @@ const onNewGameDuringRoll = (serverId: string): PendingEvents.State['hooks']['on
 	)()
 }
 
-export async function waitForSynced(ctx: C.SquadServer) {
+export async function waitForSynced(ctx: C.SquadServer & CS.AbortSignal) {
 	if (ctx.server.eventState.syncState.type === 'synced') return
-	await Rx.firstValueFrom(
+	await firstValueFrom(
 		ctx.server.event$.pipe(
 			Rx.filter(
 				([ctx, event]) => event.type === 'NEW_GAME' || event.type === 'RESET',
 			),
 		),
+		ctx.signal,
 	)
 }

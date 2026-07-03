@@ -9,6 +9,7 @@ import type { Clearable, Focusable } from '@/lib/react.ts'
 import { cn } from '@/lib/utils'
 
 import { LOADING } from './constants.ts'
+import { normalizeOptions } from './options.ts'
 
 export type ComboBoxHandle = Focusable & Clearable
 export type ComboBoxProps<T extends string | null = string | null> = {
@@ -35,31 +36,10 @@ export interface ComboBoxOption<T> {
 
 export default function ComboBox<T extends string | null>(props: ComboBoxProps<T>) {
 	const disabled = props.disabled ?? false
-	let options: ComboBoxOption<T>[] | typeof LOADING
-
-	if (props.options === LOADING) {
-		options = LOADING
-	} else {
-		options = (props.options as (T | ComboBoxOption<T>)[]).map((item): ComboBoxOption<T> =>
-			typeof item === 'string' || item === null ? { value: item as T } : item
-		)
-
-		const values = options.map(o => o.value)
-		const duplicates = values.filter((v, i) => values.indexOf(v) !== i)
-		if (duplicates.length > 0) {
-			throw new Error(`ComboBox options contain duplicate values: ${duplicates.join(', ')}`)
-		}
-
-		const sort = props.sort ?? true
-		options.sort((a, b) => {
-			const disabledDiff = (a.disabled ? 1 : 0) - (b.disabled ? 1 : 0)
-			if (disabledDiff !== 0) return disabledDiff
-			if (!sort) return 0
-			const aKey = typeof a.label === 'string' ? a.label : (a.value ?? '')
-			const bKey = typeof b.label === 'string' ? b.label : (b.value ?? '')
-			return aKey.localeCompare(bKey)
-		})
-	}
+	const options = React.useMemo(
+		() => normalizeOptions('ComboBox', props.options, props.sort ?? true),
+		[props.options, props.sort],
+	)
 
 	const btnRef = useRef<HTMLButtonElement | null>(null)
 	const inputRef = useRef<HTMLInputElement | null>(null)
@@ -83,7 +63,10 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 		_onSelect(value)
 	}
 
-	const selectedOption = (options === LOADING ? [] : options).find((o) => o.value === props.value)
+	const selectedOption = React.useMemo(
+		() => (options === LOADING ? [] : options).find((o) => o.value === props.value),
+		[options, props.value],
+	)
 	let selectedOptionDisplay: React.ReactNode
 	if (selectedOption?.value === null) {
 		selectedOptionDisplay = DH.MISSING_DISPLAY
@@ -112,46 +95,52 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 					)}
 			</PopoverTrigger>
 			<PopoverContent align="start" className="w-50 p-0">
-				<Command shouldFilter={!props.setInputValue}>
-					<CommandInput ref={inputRef} placeholder="Search..." value={props.inputValue} onValueChange={props.setInputValue} />
-					<CommandList>
-						<CommandEmpty>No {props.title} found.</CommandEmpty>
-						<CommandGroup>
-							{options === LOADING && (
-								<CommandItem>
-									<LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-								</CommandItem>
-							)}
-							{options !== LOADING && props.allowEmpty && (
-								<CommandItem
-									value={DH.MISSING_DISPLAY}
-									onSelect={() => {
-										if (!props.allowEmpty) return
-										onSelect(undefined)
-									}}
-								>
-									<Check className={cn('mr-2 h-4 w-4', props.value === undefined ? 'opacity-100' : 'opacity-0')} />
-									{DH.MISSING_DISPLAY}
-								</CommandItem>
-							)}
-							{options !== LOADING
-								&& options.map((option) => (
+				{
+					/* gate on open so the option elements aren't built on every render while closed --
+				    option lists can be thousands of entries long */
+				}
+				{open && (
+					<Command shouldFilter={!props.setInputValue}>
+						<CommandInput ref={inputRef} placeholder="Search..." value={props.inputValue} onValueChange={props.setInputValue} />
+						<CommandList>
+							<CommandEmpty>No {props.title} found.</CommandEmpty>
+							<CommandGroup>
+								{options === LOADING && (
+									<CommandItem>
+										<LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+									</CommandItem>
+								)}
+								{options !== LOADING && props.allowEmpty && (
 									<CommandItem
-										key={option.value}
-										value={option.value ?? undefined}
-										disabled={option.disabled}
+										value={DH.MISSING_DISPLAY}
 										onSelect={() => {
-											if (option.disabled) return
-											onSelect(option.value)
+											if (!props.allowEmpty) return
+											onSelect(undefined)
 										}}
 									>
-										<Check className={cn('mr-2 h-4 w-4', props.value === option.value ? 'opacity-100' : 'opacity-0')} />
-										{option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
+										<Check className={cn('mr-2 h-4 w-4', props.value === undefined ? 'opacity-100' : 'opacity-0')} />
+										{DH.MISSING_DISPLAY}
 									</CommandItem>
-								))}
-						</CommandGroup>
-					</CommandList>
-				</Command>
+								)}
+								{options !== LOADING
+									&& options.map((option) => (
+										<CommandItem
+											key={option.value}
+											value={option.value ?? undefined}
+											disabled={option.disabled}
+											onSelect={() => {
+												if (option.disabled) return
+												onSelect(option.value)
+											}}
+										>
+											<Check className={cn('mr-2 h-4 w-4', props.value === option.value ? 'opacity-100' : 'opacity-0')} />
+											{option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
+										</CommandItem>
+									))}
+							</CommandGroup>
+						</CommandList>
+					</Command>
+				)}
 			</PopoverContent>
 		</Popover>
 	)

@@ -68,6 +68,9 @@ importers:
       pino-opentelemetry-transport:
         specifier: ^1.0.1
         version: 1.0.1(@opentelemetry/api@1.9.0)(pino@9.7.0)
+      reselect:
+        specifier: ^5.2.0
+        version: 5.2.0
       sql-highlight:
         specifier: ^6.1.0
         version: 6.1.0
@@ -6084,6 +6087,9 @@ packages:
 
   requires-port@1.0.0:
     resolution: {integrity: sha512-KigOCHcocU3XODJxsu8i/j8T9tzT4adHiecwORRQ0ZZFcp7ahwXuRU1m+yuO90C5ZUyGeGfocHDI14M3L3yDAQ==}
+
+  reselect@5.2.0:
+    resolution: {integrity: sha512-AgZ3UOZm3YndfrJ4OYjgrT7bmCm/1iqkjvEfH/oYjzh6PD2qw4QuT3jjnXIrpdt4MTpMXclMT3lXbmRY+XRakw==}
 
   resolve-pkg-maps@1.0.0:
     resolution: {integrity: sha512-seS2Tj26TBVOC2NIc2rOe2y2ZO7efxITtLZcGSOnHHNOQ7CkiUBfw0Iw2ck6xkIhPwLhKNLS8BO+hEpngQlqzw==}
@@ -12829,6 +12835,8 @@ snapshots:
 
   requires-port@1.0.0:
     optional: true
+
+  reselect@5.2.0: {}
 
   resolve-pkg-maps@1.0.0: {}
 

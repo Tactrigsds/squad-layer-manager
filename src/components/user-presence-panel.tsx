@@ -62,6 +62,8 @@ export type UserPresencePanelProps = {
 	// users which have a matchng activity will be listed
 	className?: string
 	matchActivity?: UP.Resolver
+	// what activity to resolve the text status from, if any
+	matchActivityForStatusText?: UP.Resolver<UP.AnyActivityNode | null | undefined>
 	transitionMessages?: {
 		matchActivity: UP.Resolver
 		leaveMessage?: string
@@ -183,8 +185,14 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 
 	const groupedPresence = React.useMemo((): PresenceGroup[] => {
 		const entries: PresenceEntry[] = sortedUserPresence.map(({ user, presence }) => {
+			let activityText: string | null = null
 			const eventText = userEventText.get(user.discordId)
-			const activityText = eventText ?? (presence.activityState ? UP.getHumanReadableActivity(presence.activityState, layerList) : null)
+			const activityForText = props.matchActivityForStatusText?.(presence.activityState)
+			// const
+			if (eventText) activityText = eventText
+			else if (activityForText) {
+				activityText = UP.getHumanReadableActivity(activityForText, layerList)
+			}
 			return { user, presence, activityText }
 		})
 

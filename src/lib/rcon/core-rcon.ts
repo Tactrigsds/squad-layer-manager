@@ -1,6 +1,5 @@
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
 import * as Logs from '@/models/logs'
-
 import type * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
 import * as C from '@/server/context.ts'
@@ -9,7 +8,7 @@ import { initModule } from '@/server/logger'
 import { EventEmitter } from 'node:events'
 import net from 'node:net'
 import * as Rx from 'rxjs'
-import { filterTruthy } from '../async'
+import { filterTruthy, firstValueFrom } from '../async'
 
 export type DecodedPacket = {
 	type: number
@@ -128,16 +127,23 @@ export default class Rcon extends EventEmitter<Events> {
 			levels: { event: (body, opts) => opts?.level ?? 'trace' },
 			extraText: (body) => body,
 		},
-		async (body: string, _opts?: { level?: Logs.Level }): Promise<{ code: 'err:rcon'; msg: string } | { code: 'ok'; data: string }> => {
+		async (
+			body: string,
+			_opts?: { level?: Logs.Level; signal?: AbortSignal },
+		): Promise<{ code: 'err:rcon'; msg: string } | { code: 'ok'; data: string }> => {
 			if (typeof body !== 'string') {
 				throw new Error('Rcon.execute() body must be a string.')
 			}
+			_opts?.signal?.throwIfAborted()
 			if (!this.connected) {
 				const reconnected$ = this.connected$.pipe(Rx.filter(connected => connected), Rx.take(1))
-				const res = await Rx.firstValueFrom(Rx.race([
-					reconnected$,
-					Rx.timer(2_000).pipe(Rx.map(() => false)),
-				]))
+				const res = await firstValueFrom(
+					Rx.race([
+						reconnected$,
+						Rx.timer(2_000).pipe(Rx.map(() => false)),
+					]),
+					_opts?.signal,
+				)
 				if (!res) return ({ code: 'err:rcon' as const, msg: `Rcon response timed out` })
 			}
 			if (!this.connected) return { code: 'err:rcon' as const, msg: "Couldn't establish connection with server" }
@@ -154,7 +160,7 @@ export default class Rcon extends EventEmitter<Events> {
 				const response$ = Rx.fromEvent(this, listenerId).pipe(Rx.take(1), Rx.map(data => ({ code: 'ok' as const, data: data as string })))
 				this.#send(body, this.msgId)
 				this.msgId++
-				return await Rx.firstValueFrom(Rx.race(timeout$, response$))
+				return await firstValueFrom(Rx.race(timeout$, response$), _opts?.signal)
 			}
 		},
 	)
@@ -195,7 +201,7 @@ export default class Rcon extends EventEmitter<Events> {
 				log.trace(`Processing decoded packet: Size: ${packet.size}, ID: ${packet.id}, Type: ${packet.type}, Body: ${packet.body}`)
 			}
 			if (packet.type === this.type.response) this.#onResponse(packet)
-			else if (packet.type === this.type.server) this.emit('server', C.storeLinkToActiveSpan({}, 'event.emitter'), packet)
+			else if (packet.type === this.type.server) this.emit('server', C.storeLinkToActiveSpan(CS.init(), 'event.emitter'), packet)
 			else if (packet.type === this.type.command) this.emit('auth')
 		}
 	}

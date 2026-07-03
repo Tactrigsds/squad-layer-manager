@@ -62,7 +62,7 @@ export function LayerList(
 ) {
 	const queueItemIds = ZusUtils.useStore(
 		props.stores.squadServer,
-		ZusUtils.useShallow((s) => LayerQueuePrt.Sel.layerList(s).map((item) => item.itemId)),
+		LayerQueuePrt.Sel.queueItemIds,
 	)
 	const serverId = props.stores.squadServer.serverId
 
@@ -412,10 +412,12 @@ type LayerListItemProps = {
 	stores: SquadServerFrame.KeyProp
 }
 
-function LayerListItem(props: LayerListItemProps) {
+// memoized so LayerList re-renders (e.g. queueItemIds reordering on a move) don't cascade into
+// every item's subtree -- items re-render via their own store subscriptions instead
+const LayerListItem = React.memo(function LayerListItem(props: LayerListItemProps) {
 	const itemRes = ZusUtils.useStore(
 		props.stores.squadServer,
-		ZusUtils.useDeep(s => LL.findItemById(LayerQueuePrt.Sel.layerList(s), props.itemId)),
+		LayerQueuePrt.Sel.findItem(props.itemId),
 	)
 	if (!itemRes) return null
 	const { item } = itemRes
@@ -423,17 +425,17 @@ function LayerListItem(props: LayerListItemProps) {
 		return <VoteLayerListItem {...props} />
 	}
 	return <SingleLayerListItem {...props} />
-}
+})
 
-function SingleLayerListItem(props: LayerListItemProps) {
+const SingleLayerListItem = React.memo(function SingleLayerListItem(props: LayerListItemProps) {
 	const parentItem = ZusUtils.useStore(
 		props.stores.squadServer,
-		s => LL.findParentItem(LayerQueuePrt.Sel.layerList(s), props.itemId),
+		LayerQueuePrt.Sel.parentItem(props.itemId),
 	)
 
 	const [item, index, isLocallyLast, displayedMutation] = ZusUtils.useStore(
 		props.stores.squadServer,
-		ZusUtils.useDeep((llState) => {
+		ZusUtils.useShallow((llState) => {
 			const s = LayerQueuePrt.Sel.itemState(props.itemId)(llState)!
 			return [s.item, s.index, s.isLocallyLast, getDisplayedMutation(s.mutationState)]
 		}),
@@ -655,12 +657,12 @@ function SingleLayerListItem(props: LayerListItemProps) {
 			<QueueItemSeparator links={afterItemLinks} isAfterLast={isLocallyLast} disabled={!canEdit} />
 		</>
 	)
-}
+})
 
 function VoteLayerListItem(props: LayerListItemProps) {
 	const [item, index, displayedMutation, isLocallyLast, endingVoteState] = ZusUtils.useStore(
 		props.stores.squadServer,
-		ZusUtils.useDeep((llState) => {
+		ZusUtils.useShallow((llState) => {
 			const s = LayerQueuePrt.Sel.itemState(props.itemId)(llState)!
 			const voteItem = s.item as LL.VoteItem
 			return [voteItem, s.index, getDisplayedMutation(s.mutationState), s.isLocallyLast, voteItem.endingVoteState]
@@ -1126,12 +1128,12 @@ type SubDropdownState = 'add-before' | 'add-after' | 'create-vote'
 function ItemDropdown(props: ItemDropdownProps) {
 	const [item, index, lastLocalIndex] = ZusUtils.useStore(
 		props.stores.squadServer,
-		ZusUtils.useDeep((llStore) => {
+		ZusUtils.useShallow((llStore) => {
 			const itemState = LayerQueuePrt.Sel.itemState(props.itemId)(llStore)
 			return [
 				itemState.item,
 				itemState.index,
-				LL.getLastLocalIndexForItem(itemState.item.itemId, LayerQueuePrt.Sel.layerList(llStore)),
+				LayerQueuePrt.Sel.lastLocalIndex(props.itemId)(llStore),
 			] as const
 		}),
 	)

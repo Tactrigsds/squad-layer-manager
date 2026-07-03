@@ -18,6 +18,7 @@ import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as CleanupSys from '@/systems/cleanup.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
@@ -135,7 +136,7 @@ export const syncVoteStateWithQueueState = C.spanOp(
 	'syncVoteStateWithQueueState',
 	{ module, mutexes: (ctx) => ctx.vote.mtx },
 	async (
-		ctx: C.SquadServer & C.Vote & C.MatchHistory,
+		ctx: C.SquadServer & C.Vote & C.MatchHistory & CS.AbortSignal,
 		queue: LL.List,
 	) => {
 		const serverId = ctx.serverId
@@ -212,7 +213,8 @@ export const startVote = C.spanOp(
 			& C.LayerQueue
 			& C.MatchHistory
 			& C.AdminList
-			& C.ServerSettings,
+			& C.ServerSettings
+			& CS.AbortSignal,
 		opts: Omit<V.StartVoteInput, 'serverId'> & { initiator: USR.GuiOrChatUserId | 'autostart' },
 	) => {
 		if (ctx.user !== undefined) {
@@ -311,7 +313,7 @@ export const startVote = C.spanOp(
 export const handleVote = C.spanOp('handleVote', {
 	module,
 	attrs: (_, msg) => ({ messageId: msg.message, playerUsername: msg.playerIds.username }),
-}, (ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.Rcon & C.AdminList, msg: SM.RconEvents.ChatMessage) => {
+}, (ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.Rcon & C.AdminList & CS.AbortSignal, msg: SM.RconEvents.ChatMessage) => {
 	//
 	const choiceIdx = parseInt(msg.message.trim())
 	const voteState = ctx.vote.state
@@ -366,7 +368,7 @@ export const abortVote = C.spanOp(
 	'abortVote',
 	{ module, levels: { event: 'info' }, attrs: (_, opts) => opts, mutexes: ctx => ctx.vote.mtx },
 	async (
-		ctx: C.Db & C.Rcon & C.SquadServer & C.MatchHistory & C.Vote & C.LayerQueue & C.AdminList & C.ServerSettings,
+		ctx: C.Db & C.Rcon & C.SquadServer & C.MatchHistory & C.Vote & C.LayerQueue & C.AdminList & C.ServerSettings & CS.AbortSignal,
 		opts: { aborter: USR.GuiOrChatUserId },
 	) => {
 		const voteState = ctx.vote.state
@@ -452,8 +454,8 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 		Rx.interval(regularReminderInterval)
 			.pipe(
 				Rx.takeUntil(Rx.timer(finalReminderBuffer)),
-				C.durableSub('regular-vote-reminders', { module }, async () => {
-					const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
+				C.durableSub('regular-vote-reminders', { module }, async (_, signal) => {
+					const ctx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
 					if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
 					const timeLeft = ctx.vote.state.deadline - Date.now()
 					const serverState = await SquadServer.getServerState(ctx)
@@ -476,8 +478,8 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 	if (finalReminderWaitTime > 0) {
 		ctx.vote.voteEndTask.add(
 			Rx.timer(finalReminderWaitTime).pipe(
-				C.durableSub('final-vote-reminder', { module }, async () => {
-					const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
+				C.durableSub('final-vote-reminder', { module }, async (_, signal) => {
+					const ctx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
 					if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
 					const serverState = await SquadServer.getServerState(ctx)
 					const { item: voteItem } = Obj.destrNullable(LL.findItemById(serverState.layerQueue, ctx.vote.state.itemId))
@@ -518,7 +520,7 @@ export const endVote = C.spanOp(
 		attrs: (_, opts) => opts,
 	},
 	async (
-		ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.Rcon & C.AdminList & C.ServerSettings,
+		ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.Rcon & C.AdminList & C.ServerSettings & CS.AbortSignal,
 		opts: { reason: 'vote-timeout' } | { reason: 'ended-early'; endedBy: USR.GuiOrChatUserId },
 	) => {
 		if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') {
@@ -592,7 +594,7 @@ export const endVote = C.spanOp(
 )
 
 async function broadcastVoteUpdate(
-	ctx: C.SquadServer & C.Vote & C.AdminList & C.Rcon,
+	ctx: C.SquadServer & C.Vote & C.AdminList & C.Rcon & CS.AbortSignal,
 	voteState: V.VoteState | V.EndingVoteState,
 	msg: string,
 	opts?: { onlyNotifyNonVotingAdmins?: boolean; repeatWarn?: boolean },
@@ -654,5 +656,5 @@ function getVoteStateDiscordIds(state: V.VoteState) {
 }
 
 function getBaseCtx() {
-	return C.initMutexStore(DB.addPooledDb(CS.init()))
+	return C.initMutexStore(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 }

@@ -23,7 +23,7 @@ export function setup() {
 export default C.spanOp(
 	'fetchAdminLists',
 	{ module },
-	async (sources: SM.AdminListSource[], adminIdentifyingPerms: SM.PlayerPerm[]): Promise<SM.AdminList> => {
+	async (sources: SM.AdminListSource[], adminIdentifyingPerms: SM.PlayerPerm[], signal?: AbortSignal): Promise<SM.AdminList> => {
 		// maps groups to their permissions
 		const groups: OneToManyMap<string, string> = new Map()
 
@@ -36,7 +36,7 @@ export default C.spanOp(
 			try {
 				switch (source.type) {
 					case 'remote': {
-						const resp = await fetch(source.source)
+						const resp = await fetch(source.source, { signal })
 						data = await resp.text()
 						break
 					}
@@ -81,6 +81,7 @@ export default C.spanOp(
 					}
 				}
 			} catch (error) {
+				if (signal?.aborted) throw signal.reason
 				log.error(`Error fetching ${source.type} admin list: ${source.source}`, error)
 			}
 

@@ -41,7 +41,7 @@ export async function setup() {
 	const ctx = { log: baseLogger }
 	ctx.log.info('Setting up log receiver')
 
-	const dbCtx = DB.addPooledDb(CS.init())
+	const dbCtx = DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
 	const ids = (await dbCtx.db().select({ id: Schema.servers.id }).from(Schema.servers)).map(r => r.id)
 	const serverSettingsEntries = await Promise.all(
 		ids.map(async (id) => {

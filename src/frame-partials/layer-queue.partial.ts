@@ -1,6 +1,7 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
 import type * as FRM from '@/lib/frame'
 import * as ItemMut from '@/lib/item-mutations'
+import * as RSel from '@/lib/reselect'
 import * as RbSyncState from '@/lib/rollback-synced-state'
 import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
@@ -58,12 +59,26 @@ export function initLayerQueue(args: Args) {
 			handleServerUpdate(update) {
 				switch (update.code) {
 					case 'init': {
-						const newRbSession = RbSyncState.Client.initSession<SLL.Operation, SLL.State, SLL.SideEffect>(update.state)
+						// processInit rebases in-flight pending ops onto the snapshot so the acks that follow still resolve
+						const newRbSession = RbSyncState.Client.processInit(get().rbSession, update.state, update.ops, SLL.reducer)
 						set({ rbSession: newRbSession })
 						break
 					}
 					case 'op': {
 						get().writeIncomingOperations([update.op])
+						break
+					}
+					case 'ack': {
+						// ops are deterministic, so the server only sends back the id -- replay our pending copy
+						const session = get().rbSession
+						const ackedOp = session.pendingOps.find(op => op.opId === update.opId)
+						if (!ackedOp) {
+							// can happen if the session was reset by a reconnect 'init' while the op was in flight
+							console.warn(`received ack for unknown op ${update.opId}`)
+							break
+						}
+						set({ rbSession: RbSyncState.Client.processAckedOps(session, [update.opId], SLL.reducer) })
+						get().syncedOp$.next(ackedOp)
 						break
 					}
 					default:
@@ -117,22 +132,37 @@ export namespace Sel {
 		return store.queue.layerList
 	}
 
-	export const itemState = (itemId: string) => (store: Store): ItemState => {
-		const layerList = store.queue.layerList
+	export const queueItemIds = RSel.createDeepSelector([layerList], (list) => list.map((item) => item.itemId))
 
-		const res = LL.findItemById(layerList, itemId)
-		if (!res) throw new Error(`Item not found: ${itemId}`)
-		const parentItem = LL.findParentItem(layerList, itemId)
-		const { index, item } = res
-		const isLocallyLast = LL.isLocallyLastIndex(itemId, layerList)
+	// undefined when the item is no longer in the list
+	export const findItem = RSel.memoizeFactory((itemId: string) =>
+		RSel.createDeepSelector([layerList], (list) => LL.findItemById(list, itemId))
+	)
 
-		return {
-			index,
-			item,
-			mutationState: ItemMut.toItemMutationState(store.queue.mutations, itemId, parentItem?.layerId),
-			isLocallyLast,
-		}
-	}
+	export const parentItem = RSel.memoizeFactory((itemId: string) =>
+		RSel.createDeepSelector([layerList], (list) => LL.findParentItem(list, itemId))
+	)
+
+	export const lastLocalIndex = RSel.memoizeFactory((itemId: string) =>
+		RSel.createDeepSelector([layerList], (list) => LL.getLastLocalIndexForItem(itemId, list))
+	)
+
+	export const itemState = RSel.memoizeFactory((itemId: string) =>
+		RSel.createDeepSelector([layerList, mutations], (layerList, mutations): ItemState => {
+			const res = LL.findItemById(layerList, itemId)
+			if (!res) throw new Error(`Item not found: ${itemId}`)
+			const parentItem = LL.findParentItem(layerList, itemId)
+			const { index, item } = res
+			const isLocallyLast = LL.isLocallyLastIndex(itemId, layerList)
+
+			return {
+				index,
+				item,
+				mutationState: ItemMut.toItemMutationState(mutations, itemId, parentItem?.layerId),
+				isLocallyLast,
+			}
+		})
+	)
 	export function mutations(store: Store) {
 		return store.queue.mutations
 	}

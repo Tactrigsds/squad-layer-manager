@@ -1,3 +1,4 @@
+import { anySignal } from '@/lib/async'
 import { getChildModule, type OtelModule } from '@/lib/otel.ts'
 import { os } from '@orpc/server'
 import type Pino from 'pino'
@@ -19,7 +20,8 @@ export const getOrpcBase = (module: OtelModule) => {
 				attrs: (ctx, o) => ({ path: o.path.join('/') }),
 			},
 			async (ctx: Opts['context'], opts: Opts) => {
-				return opts.next({ context: ctx })
+				// narrow the connection-level signal to also abort with this particular call
+				return opts.next({ context: { ...ctx, signal: anySignal(ctx.signal, opts.signal)! } })
 			},
 		)(opts.context, opts)
 	})
