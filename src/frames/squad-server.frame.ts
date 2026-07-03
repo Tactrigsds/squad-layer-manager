@@ -3,18 +3,24 @@ import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
 import * as TeamswitchesPrt from '@/frame-partials/teamswitches.partial'
 import type * as FRM from '@/lib/frame'
+import * as ZusUtils from '@/lib/zustand'
 import { getState } from '@/lib/zustand'
+import * as LL from '@/models/layer-list.models'
+import * as LQY from '@/models/layer-queries.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as VoteClient from '@/systems/vote.client'
+import * as Rx from 'rxjs'
 
 import { frameManager } from './frame-manager'
 
 export type Input = { serverId: string }
 
-export type State = ChatPrt.Store & ServerSettingsPrt.Store & LayerQueuePrt.Store & TeamswitchesPrt.Store
+export type State = ChatPrt.Store & ServerSettingsPrt.Store & LayerQueuePrt.Store & TeamswitchesPrt.Store & {
+	layerItemsState: LQY.LayerItemsState
+}
 export type Types = {
 	name: 'squadServer'
 	key: FRM.RawInstanceKey<{ serverId: string }>
@@ -38,14 +44,40 @@ export const frame = frameManager.createFrame<Types>({
 		ServerSettingsPrt.initServerSettings(args)
 		LayerQueuePrt.initLayerQueue(args)
 		TeamswitchesPrt.initTeamswitches(args)
+
 		// keeps the read-only, per-server oRPC streams (serverInfo/serverRolling/layersStatus, vote state,
 		// match history, unexpected-next-layer) hot for the lifetime of this frame instance
 		SquadServerClient.watchServer(args.input.serverId, args.sub)
 		VoteClient.watchServer(args.input.serverId, args.sub)
 		MatchHistoryClient.watchServer(args.input.serverId, args.sub)
 		LayerQueueClient.watchServer(args.input.serverId, args.sub)
+		args.set({
+			layerItemsState: LQY.initLayerItemsState(),
+		})
+
+		Rx.combineLatest([
+			args.update$.pipe(
+				Rx.concatMap(([state, prev]): LL.List[] =>
+					state.queue.layerList === prev.queue.layerList
+						? []
+						: [state.queue.layerList]
+				),
+			),
+			MatchHistoryClient.recentMatches$(args.input.serverId),
+		])
+			.subscribe(([layerList, recentMatches]) => {
+				args.set({
+					layerItemsState: LQY.resolveLayerItemsState(layerList, recentMatches),
+				})
+			})
 	},
 })
+
+export function getLayerItemState$(squadServer: Key) {
+	const list$ = ZusUtils.toObservable(squadServer, true).pipe(Rx.map(([state]) => state.queue.layerList), Rx.distinctUntilChanged())
+	const history$ = MatchHistoryClient.recentMatches$(squadServer.serverId)
+	return Rx.combineLatest([list$, history$]).pipe(Rx.map(([list, history]) => LQY.resolveLayerItemsState(list, history)))
+}
 
 export namespace Sel {
 	export function settings(s: State) {

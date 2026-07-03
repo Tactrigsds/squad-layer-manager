@@ -191,7 +191,8 @@ function ValidationWarningsDisplay(
 
 function useQueueWarnings(stores: SquadServerFrame.KeyProp) {
 	const constraints = LayerQueriesClient.useLayerItemStatusConstraints(stores.squadServer)
-	const statuses = LayerQueriesClient.useLayerItemStatuses(constraints, { listId: stores.squadServer.serverId })?.data
+	const layerItemsState = ZusUtils.useStore(stores.squadServer, s => s.layerItemsState)
+	const statuses = LayerQueriesClient.useLayerItemStatuses({ constraints, list: layerItemsState })
 	const loggedInUser = UsersClient.useLoggedInUser()
 	const queueModifiedByUser = ZusUtils.useStore(
 		stores.squadServer!,
@@ -205,9 +206,9 @@ function useQueueWarnings(stores: SquadServerFrame.KeyProp) {
 
 	return React.useMemo(() => {
 		if (!statuses || !queueModifiedByUser) return null
-		return statuses.warns
+		return statuses.data?.warns
 	}, [
-		statuses,
+		statuses.data?.warns,
 		queueModifiedByUser,
 	])
 }
@@ -484,7 +485,12 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 								))}
 						</span>
 					</span>
-					<QueueControlPanel warnings={warnings} showWarnings={showWarnings} setShowWarnings={setShowWarnings} stores={props.stores} />
+					<QueueControlPanel
+						warnings={warnings ?? null}
+						showWarnings={showWarnings}
+						setShowWarnings={setShowWarnings}
+						stores={props.stores}
+					/>
 				</span>
 			</CardHeader>
 			<CardContent className="p-0 px-1">

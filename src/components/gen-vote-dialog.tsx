@@ -51,7 +51,6 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 	const frameKey = useFrameLifecycle(GenVoteFrame.frame, {
 		frameKey: props.stores.genVote,
 		input: frameInputRef.current,
-		deps: undefined,
 		equalityFn: Obj.deepEqual,
 	})
 	const genVoteStores: GenVoteFrame.KeyProp = React.useMemo(() => ({ genVote: frameKey }), [frameKey])
@@ -318,7 +317,6 @@ function ChoiceConstraintSelect(
 	const input = ZusUtils.useStore(
 		props.stores.genVote,
 		props.stores.squadServer,
-		props.stores.squadServer ? recentMatches$ : undefined,
 		ZusUtils.useDeep(GenVoteFrame.Sel.baseQueryInput),
 	)
 	const components = LayerQueriesClient.useLayerComponents({ ...input, column: column })

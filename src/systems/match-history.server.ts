@@ -28,8 +28,8 @@ import * as UsersClient from '@/systems/users.server'
 import { Mutex } from 'async-mutex'
 
 import { sql } from 'drizzle-orm'
-import * as E from 'drizzle-orm/expressions'
-import { alias } from 'drizzle-orm/mysql-core'
+import * as E from 'drizzle-orm'
+import { alias } from 'drizzle-orm/sqlite-core'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
 
@@ -149,12 +149,13 @@ export const loadState = C.spanOp(
 			state.recentMatches = state.recentMatches.slice(state.recentMatches.length - MH.MAX_RECENT_MATCHES, state.recentMatches.length)
 		}
 
-		// Prime matchEventsCache for all recent matches (skip current match)
-		for (const match of state.recentMatches) {
-			if (match.isCurrentMatch) continue // Skip current match - events are still being generated
-			if (state.matchEventsCache.has(match.historyEntryId)) continue
-			// Call getEventsForMatches to populate cache (it will set the cache internally)
-			void getEventsForMatches(ctx, match.historyEntryId)
+		// Prime matchEventsCache for all recent matches (skip current match - events are still being generated)
+		const matchIdsToPrime = state.recentMatches
+			.filter(match => !match.isCurrentMatch && !state.matchEventsCache.has(match.historyEntryId))
+			.map(match => match.historyEntryId)
+		if (matchIdsToPrime.length > 0) {
+			// getEventsForMatches populates the cache internally with a single batched query
+			void getEventsForMatches(ctx, ...matchIdsToPrime)
 		}
 	},
 )
@@ -188,13 +189,11 @@ export const getMatchById = C.spanOp('getMatchById', {
 const loadCurrentMatch = C.spanOp(
 	'loadCurrentMatch',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.matchHistory.mtx },
-	async (ctx: C.Db & C.MatchHistory, opts?: { forUpdate?: boolean }) => {
+	async (ctx: C.Db & C.MatchHistory, _opts?: { forUpdate?: boolean }) => {
 		const query = ctx.db().select().from(Schema.matchHistory).where(E.eq(Schema.matchHistory.serverId, ctx.serverId)).orderBy(
 			E.desc(Schema.matchHistory.ordinal),
 		).limit(1)
-		let match: SchemaModels.MatchHistory
-		if (opts?.forUpdate) [match] = await query.for('update')
-		else [match] = await query.execute()
+		const [match] = await query
 		if (!match) return null
 		return MH.matchHistoryEntryToMatchDetails(match, true)
 	},
@@ -536,7 +535,7 @@ export const finalizeCurrentMatch = C.spanOp('finalizeCurrentMatch', {
 				}
 				const [{ id }] = await ctx.db().insert(Schema.balanceTriggerEvents)
 					.values(superjsonify(Schema.balanceTriggerEvents, event))
-					.$returningId()
+					.returning({ id: Schema.balanceTriggerEvents.id })
 				log.info(
 					'Trigger %s fired: message: "%s"',
 					trig.id,
@@ -607,31 +606,53 @@ const getEventsForMatches = C.spanOp(
 	async (ctx: C.Db & C.MatchHistory, ..._matches: number[]) => {
 		const matches = _matches.toSorted((a, b) => a - b)
 
-		let ops: Promise<CHAT.EventEnriched[]>[] = []
+		const ops = new Map<number, Promise<CHAT.EventEnriched[]>>()
+		const uncached: number[] = []
 		for (const matchId of matches) {
 			const cachedEvents$ = ctx.matchHistory.matchEventsCache.get(matchId)
 			if (cachedEvents$) {
-				ops.push(cachedEvents$)
+				ops.set(matchId, cachedEvents$)
 				continue
 			}
-			const events$ = (async () => {
-				const it = ctx.db().select()
-					.from(Schema.serverEvents)
-					.where(E.inArray(Schema.serverEvents.matchId, matches))
-					.orderBy(E.asc(Schema.serverEvents.id)).iterator()
-
-				const state = CHAT.getInitialChatState()
-				for await (const rawEvent of it) {
-					const event = SE.fromEventRow(rawEvent)
-					CHAT.handleEvent(state, event)
-				}
-				return state.eventBuffer
-			})()
-			ctx.matchHistory.matchEventsCache.set(matchId, events$)
-			ops.push(events$)
+			uncached.push(matchId)
 		}
 
-		const allEvents = (await Promise.all(ops)).flat()
+		if (uncached.length > 0) {
+			const batch$ = (async () => {
+				const rawEvents = await ctx.db().select()
+					.from(Schema.serverEvents)
+					.where(E.inArray(Schema.serverEvents.matchId, uncached))
+					.orderBy(E.asc(Schema.serverEvents.id))
+
+				const rowsByMatch = new Map<number, typeof rawEvents>()
+				for (const rawEvent of rawEvents) {
+					let rows = rowsByMatch.get(rawEvent.matchId)
+					if (!rows) rowsByMatch.set(rawEvent.matchId, rows = [])
+					rows.push(rawEvent)
+				}
+
+				const eventsByMatch = new Map<number, CHAT.EventEnriched[]>()
+				for (const matchId of uncached) {
+					const state = CHAT.getInitialChatState()
+					for (const rawEvent of rowsByMatch.get(matchId) ?? []) {
+						const event = SE.fromEventRow(rawEvent)
+						CHAT.handleEvent(state, event)
+					}
+					eventsByMatch.set(matchId, state.eventBuffer)
+				}
+				return eventsByMatch
+			})()
+			batch$.catch(() => {
+				for (const matchId of uncached) ctx.matchHistory.matchEventsCache.delete(matchId)
+			})
+			for (const matchId of uncached) {
+				const events$ = batch$.then(eventsByMatch => eventsByMatch.get(matchId)!)
+				ctx.matchHistory.matchEventsCache.set(matchId, events$)
+				ops.set(matchId, events$)
+			}
+		}
+
+		const allEvents = (await Promise.all(matches.map(matchId => ops.get(matchId)!))).flat()
 		return allEvents
 	},
 )

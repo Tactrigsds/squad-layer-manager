@@ -145,14 +145,14 @@ export type Store = {
 	// derived: resolved per-user presence (latest session wins per userId)
 }
 
+// assigned during createPresenceStore -- module-level so Actions.preloadActivity can reach it
+let loaderCtx: Lifecycle.LoaderManagerContext<ConfiguredLoaderConfig, Store>
+
 const [_usePresenceUpdate, presenceUpdate$] = ReactRx.bind<UP.PresenceUpdate>(
 	RPC.observe(() => RPC.orpc.userPresence.watchUpdates.call()),
 )
 
 export const Store = createPresenceStore()
-
-// assigned during createPresenceStore -- module-level so Actions.preloadActivity can reach it
-let loaderCtx: Lifecycle.LoaderManagerContext<ConfiguredLoaderConfig, Store>
 
 function onSideEffect(_se: UP.SideEffects) {}
 
@@ -245,18 +245,22 @@ export namespace Actions {
 		Store.setState({ hoveredActivityUserId: userId })
 	}
 
-	export function dispatch(newOp: UP.NewClientOp) {
+	export function dispatch(...newOps: UP.NewClientOp[]) {
 		const userId = UsersClient.loggedInUserId
 		const config = ConfigClient.getConfig()
 		if (!config || !userId) return
-		const op: UP.ClientOp = { ...newOp, userId, clientId: config.wsClientId, time: Date.now(), opId: UP.createOpId() } as UP.ClientOp
-		const newSession = RbSyncState.Client.processOutgoingOps(Store.getState().session, [op], UP.reducer)
+		const ops: UP.ClientOp[] = []
+		for (const newOp of newOps) {
+			const op: UP.ClientOp = { ...newOp, userId, clientId: config.wsClientId, time: Date.now(), opId: UP.createOpId() } as UP.ClientOp
+			ops.push(op)
+		}
+		const newSession = RbSyncState.Client.processOutgoingOps(Store.getState().session, ops, UP.reducer)
 		Store.setState({ session: newSession })
-		void RPC.orpc.userPresence.dispatchOp.call(op)
+		void RPC.orpc.userPresence.dispatchOp.call(ops)
 	}
 
-	export function updateActivity(update: UP.ActivityUpdate) {
-		dispatch({ code: 'update-activity', update })
+	export function updateActivity(...updates: UP.ActivityUpdate[]) {
+		dispatch(...updates.map((update): UP.NewClientOp => ({ code: 'update-activity', update })))
 	}
 
 	export function preloadActivity(update: UP.ActivityUpdate) {

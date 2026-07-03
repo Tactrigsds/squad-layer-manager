@@ -126,7 +126,8 @@ export const frame: Frame = frameManager.createFrame<Types>({
 })
 
 export namespace Sel {
-	export function baseQueryInput(state: Store, squadServer?: SquadServerFrame.State, matchHistory?: MH.MatchDetails[]) {
+	const EMPTY_LAYER_ITEMS = LQY.initLayerItemsState()
+	export function baseQueryInput(state: Store, squadServer?: SquadServerFrame.State) {
 		const appliedConstraints = AppliedFiltersPrt.Sel.constraints(state)
 		const settings = SquadServerFrame.Sel.settingsOrDefault(squadServer)
 		const repeatRuleConstraints = PoolCheckboxesPrt.getToggledRepeatRuleConstraints(settings, state.poolCheckboxes.checkboxesState.dnr)
@@ -138,7 +139,7 @@ export namespace Sel {
 				...appliedConstraints,
 				...repeatRuleConstraints,
 			],
-			list: LQY.resolveLayerItemsState(squadServer?.queue.layerList ?? [], matchHistory ?? []),
+			list: squadServer?.layerItemsState ?? EMPTY_LAYER_ITEMS,
 		}
 		return base
 	}
@@ -146,10 +147,9 @@ export namespace Sel {
 	export function queryInput(
 		state: Store,
 		squadServer: SquadServerFrame.State | undefined,
-		matchHistory: MH.MatchDetails[] | undefined,
 		omitIndex: number,
 	): LQY.GenVote.Input {
-		const base = baseQueryInput(state, squadServer, matchHistory)
+		const base = baseQueryInput(state, squadServer)
 		const startingChoices = state.choices.map((c, i) => (omitIndex === undefined || i === omitIndex) ? ({ ...c, layerId: undefined }) : c)
 
 		return {
@@ -202,8 +202,7 @@ export namespace Actions {
 		const state = s.getState()
 		try {
 			const startingChoices = state.choices.map((c, i) => (onlyIndex === undefined || i === onlyIndex) ? ({ ...c, layerId: undefined }) : c)
-			const matchHistory = squadServer ? await MatchHistoryClient.recentMatches$(squadServer.serverId).getValue() : undefined
-			const base = Sel.baseQueryInput(state, ZusUtils.getState(squadServer), matchHistory)
+			const base = Sel.baseQueryInput(state, ZusUtils.getState(squadServer))
 
 			const res = await LayerQueriesClient.generateVote({
 				...base,

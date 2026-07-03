@@ -46,9 +46,19 @@ for (const event of events) {
 
 log.info(`Inserting ${rows.length} associations`)
 
-for (let i = 0; i < rows.length; i += 500) {
-	const batch = rows.slice(i, i + 500)
-	await ctx.db().insert(Schema.playerEventAssociations).values(batch).onDuplicateKeyUpdate({ set: { assocType: E.sql`assocType` } })
+const dedupedRows = Array.from(
+	new Map(rows.map((row) => [`${row.serverEventId}:${row.playerId}:${row.assocType}`, row])).values(),
+)
+
+for (let i = 0; i < dedupedRows.length; i += 500) {
+	const batch = dedupedRows.slice(i, i + 500)
+	await ctx.db().insert(Schema.playerEventAssociations).values(batch).onConflictDoNothing({
+		target: [
+			Schema.playerEventAssociations.serverEventId,
+			Schema.playerEventAssociations.playerId,
+			Schema.playerEventAssociations.assocType,
+		],
+	})
 }
 
 log.info('Done')

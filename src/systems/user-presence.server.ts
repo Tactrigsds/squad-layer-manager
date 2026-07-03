@@ -12,6 +12,7 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as WSSessionSys from '@/systems/ws-session.server'
 import * as Rx from 'rxjs'
+import { z } from 'zod'
 
 export type UserPresenceContext = {
 	userPresence: {
@@ -43,36 +44,42 @@ export const orpcRouter = {
 
 	dispatchOp: orpcBase
 		.meta({ type: 'mutation', logLevel: 'debug' })
-		.input(UP.OpSchema)
-		.handler(async ({ context: ctx, input: _op }) => {
-			if (!Arr.includesEnum(UP.CLIENT_OP_CODE.options, _op.code)) {
-				return { code: 'invalid-op:non-client' as const, msg: 'Tried to use non-client op code: ' + _op.code }
-			}
-			let op = _op as UP.ClientOp
-			if (op.clientId !== ctx.wsClientId) {
-				return {
-					code: 'err:invalid-op:different-client' as const,
-					msg: 'Tried to update presence for different client: ' + op.clientId + ' vs ' + ctx.wsClientId,
+		.input(z.array(UP.OpSchema))
+		.handler(async ({ context: ctx, input: clientOps }) => {
+			const ops: UP.Op[] = []
+			for (const rawOp of clientOps) {
+				if (!Arr.includesEnum(UP.CLIENT_OP_CODE.options, rawOp.code)) {
+					return { code: 'invalid-op:non-client' as const, msg: 'Tried to use non-client op code: ' + rawOp.code }
 				}
+				let op = rawOp as UP.ClientOp
+				if (op.clientId !== ctx.wsClientId) {
+					return {
+						code: 'err:invalid-op:different-client' as const,
+						msg: 'Tried to update presence for different client: ' + op.clientId + ' vs ' + ctx.wsClientId,
+					}
+				}
+
+				if (op.userId !== ctx.user.discordId) {
+					return {
+						code: 'err:invalid-op:different-user' as const,
+						msg: 'Tried to update presence for different user: ' + op.userId + ' vs ' + ctx.user.discordId,
+					}
+				}
+
+				// there some clients where the op time is in the future because their clocks are fucked up, so we need to update it to the current time.
+				// We need to create a new opId as well so that the client and server don't fall out of sync
+				if (op.time > Date.now()) {
+					op = {
+						...op,
+						time: Date.now(),
+						opId: UP.createOpId(),
+					}
+				}
+
+				ops.push(op)
 			}
 
-			if (op.userId !== ctx.user.discordId) {
-				return {
-					code: 'err:invalid-op:different-user' as const,
-					msg: 'Tried to update presence for different user: ' + op.userId + ' vs ' + ctx.user.discordId,
-				}
-			}
-			// there some clients where the op time is in the future because their clocks are fucked up, so we need to update it to the current time.
-			// We need to create a new opId as well so that the client and server don't fall out of sync
-			if (op.time > Date.now()) {
-				op = {
-					...op,
-					time: Date.now(),
-					opId: UP.createOpId(),
-				}
-			}
-
-			dispatchOp(op)
+			dispatchOp(...ops)
 			return { code: 'ok' as const }
 		}),
 }

@@ -19,7 +19,7 @@ import * as SquadServer from '@/systems/squad-server.server'
 import * as Users from '@/systems/users.server'
 import * as Orpc from '@orpc/server'
 import { aliasedTable } from 'drizzle-orm'
-import * as E from 'drizzle-orm/expressions'
+import * as E from 'drizzle-orm'
 import { z } from 'zod'
 
 const module = initModule('filter-entity')
@@ -130,8 +130,8 @@ export const filtersRouter = {
 					)
 			}
 
-			const [resultSet] = await query
-			if (resultSet.affectedRows === 0) {
+			const resultSet = await query
+			if (resultSet.changes === 0) {
 				return { code: 'err:not-found' as const }
 			}
 
@@ -162,8 +162,8 @@ export const filtersRouter = {
 		.input(z.tuple([F.FilterEntityIdSchema, F.UpdateFilterEntitySchema.partial()]))
 		.handler(async ({ input, context: ctx }) => {
 			const [id, update] = input
-			const res = await ctx.db().transaction(async (tx) => {
-				const [rawFilter] = await tx.select().from(Schema.filters).where(E.eq(Schema.filters.id, id)).for('update')
+			const res = await DB.runTransaction(ctx, async (ctx) => {
+				const [rawFilter] = await ctx.db().select().from(Schema.filters).where(E.eq(Schema.filters.id, id))
 				if (!rawFilter) {
 					return { code: 'err:not-found' as const }
 				}
@@ -171,9 +171,9 @@ export const filtersRouter = {
 				if (deniedRes) {
 					return deniedRes
 				}
-				const [updateResult] = await tx.update(Schema.filters).set(update).where(E.eq(Schema.filters.id, id))
+				const updateResult = await ctx.db().update(Schema.filters).set(update).where(E.eq(Schema.filters.id, id))
 
-				if (updateResult.affectedRows === 0) {
+				if (updateResult.changes === 0) {
 					throw new Orpc.ORPCError('INTERNAL_SERVER_ERROR', {
 						message: 'Unable to update filter',
 					})
@@ -221,13 +221,13 @@ export const filtersRouter = {
 			return { code: 'err:filter-in-use' as const, referencingFilters }
 		}
 
-		const res = await ctx.db().transaction(async (tx) => {
-			const [rawFilter] = await tx.select().from(Schema.filters).where(E.eq(Schema.filters.id, idToDelete)).for('update')
+		const res = await DB.runTransaction(ctx, async (ctx) => {
+			const [rawFilter] = await ctx.db().select().from(Schema.filters).where(E.eq(Schema.filters.id, idToDelete))
 			if (!rawFilter) {
 				return { code: 'err:filter-not-found' as const }
 			}
 			const filter = F.FilterEntitySchema.parse(rawFilter)
-			await tx.delete(Schema.filters).where(E.eq(Schema.filters.id, idToDelete))
+			await ctx.db().delete(Schema.filters).where(E.eq(Schema.filters.id, idToDelete))
 			return { code: 'ok' as const, filter }
 		})
 		if (res.code !== 'ok') {

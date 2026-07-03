@@ -2,7 +2,7 @@ import * as Schema from '$root/drizzle/schema.ts'
 import { toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
 import * as Cleanup from '@/lib/cleanup'
 import * as DH from '@/lib/display-helpers.ts'
-import { IsolatedSubject } from '@/lib/isolated-subject'
+import { IsolatedBehaviorSubject, IsolatedReplaySubject, IsolatedSubject } from '@/lib/isolated-subject'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import * as Obj from '@/lib/object'
 import * as RbSyncState from '@/lib/rollback-synced-state'
@@ -38,7 +38,7 @@ import * as SquadServer from '@/systems/squad-server.server'
 import * as Users from '@/systems/users.server'
 import * as VoteSys from '@/systems/vote.server'
 import { Mutex, MutexInterface } from 'async-mutex'
-import * as E from 'drizzle-orm/expressions'
+import * as E from 'drizzle-orm'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
 
@@ -65,8 +65,8 @@ export function initLayerQueueSlice(ctx: C.ServerSliceCleanup & C.ServerId, serv
 	const sllState = SLL.createNewState(serverState.layerQueue)
 	const sideEffect$ = new IsolatedSubject<SLL.SideEffect>()
 	const slice: LayerQueueSlice = {
-		unexpectedNextLayerSet$: new Rx.BehaviorSubject<L.LayerId | null>(null),
-		update$: new Rx.ReplaySubject(1),
+		unexpectedNextLayerSet$: new IsolatedBehaviorSubject<L.LayerId | null>(null),
+		update$: new IsolatedReplaySubject(1),
 
 		session: RbSyncState.Server.initSession<SLL.Operation, SLL.State, SLL.SideEffect>(sllState, {
 			onSideEffect: (e) => sideEffect$.next(e),

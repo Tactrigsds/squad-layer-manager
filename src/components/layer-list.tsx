@@ -241,9 +241,10 @@ function LoadedSelectLayersView({
 		UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
 	}, [])
 
-	const dialogStores = React.useMemo(() => ({
+	const dialogStores = {
 		selectLayers: data.selectLayersFrame,
-	}), [data.selectLayersFrame])
+		squadServer: stores.squadServer,
+	}
 
 	const addLayersTabsList = React.useMemo(() => (
 		<TabsList
@@ -587,6 +588,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 						</span>
 						<span className="rounded flex space-y-1 w-full flex-col">
 							<LayerDisplay
+								stores={props.stores}
 								droppable={true}
 								item={{ type: 'single-list-item', layerId: item.layerId, itemId: item.itemId }}
 								badges={badges}
@@ -794,7 +796,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	}
 
 	const serverInfoRes = SquadServerClient.useServerInfoRes(serverId)
-	const serverInfo = serverInfoRes.code === 'ok' ? serverInfoRes.data : undefined
+	const serverInfo = serverInfoRes?.code === 'ok' ? serverInfoRes?.data : undefined
 
 	const [voterType, setVoterType] = React.useState<V.VoterType>(voteState?.voterType ?? 'public')
 	const internalVoteCheckboxId = React.useId()

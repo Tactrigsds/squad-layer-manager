@@ -10,6 +10,8 @@ import { baseLogger } from '@/systems/logger.client'
 import { Mutex } from 'async-mutex'
 import { drizzle } from 'drizzle-orm/sql-js'
 import initSqlJs from 'sql.js'
+// must match the loader variant the bundler resolves for 'sql.js' (browser export condition)
+import sqlJsWasmUrl from 'sql.js/dist/sql-wasm-browser.wasm?url'
 
 export type ToWorker = RequestInner & Sequenced & Prioritized
 
@@ -116,7 +118,7 @@ onmessage = withErrorResponse(async (e) => {
 })
 
 async function init(initRequest: InitRequest) {
-	const SQL = await initSqlJs({ locateFile: (file) => `https://sql.js.org/dist/${file}` })
+	const SQL = await initSqlJs({ locateFile: () => sqlJsWasmUrl })
 
 	const buffer = await fetchDatabaseBuffer()
 	const driver = new SQL.Database(new Uint8Array(buffer))

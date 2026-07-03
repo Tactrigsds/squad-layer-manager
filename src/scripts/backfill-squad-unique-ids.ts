@@ -233,7 +233,7 @@ for (const event of events) {
 log.info(`Inserting/updating ${squadRows.length} squad rows`)
 for (let i = 0; i < squadRows.length; i += 500) {
 	await ctx.db().insert(Schema.squads).values(squadRows.slice(i, i + 500))
-		.onDuplicateKeyUpdate({ set: { id: E.sql`id` } })
+		.onConflictDoNothing({ target: Schema.squads.id })
 }
 
 const validSquadIds = new Set([...existingSquadIds, ...seenSquadIds])
@@ -244,7 +244,7 @@ if (skippedAssocs > 0) log.warn(`Skipping ${skippedAssocs} associations with mis
 log.info(`Inserting ${filteredAssocRows.length} squad associations`)
 for (let i = 0; i < filteredAssocRows.length; i += 500) {
 	await ctx.db().insert(Schema.squadEventAssociations).values(filteredAssocRows.slice(i, i + 500))
-		.onDuplicateKeyUpdate({ set: { squadId: E.sql`squadId` } })
+		.onConflictDoNothing({ target: [Schema.squadEventAssociations.serverEventId, Schema.squadEventAssociations.squadId] })
 }
 
 log.info(`Updating ${eventUpdates.length} event data blobs`)

@@ -35,7 +35,8 @@
 		"**/*-lock.yaml",
 		"**/routeTree.gen.ts",
 		".tanstack/**/*",
-		"./drizzle/**/*.json"
+		"./drizzle/**/*.json",
+		"./drizzle-sqlite/**/*.json"
 	],
 	"plugins": [
 		"https://plugins.dprint.dev/typescript-0.94.0.wasm",

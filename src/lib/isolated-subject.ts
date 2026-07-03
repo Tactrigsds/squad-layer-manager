@@ -20,6 +20,34 @@ export class IsolatedSubject<T> extends Rx.Subject<T> {
 	}
 }
 
+export class IsolatedBehaviorSubject<T> extends Rx.BehaviorSubject<T> {
+	next(value: T) {
+		rootContext(() => super.next(value))
+	}
+
+	error(err: any): void {
+		rootContext(() => super.error(err))
+	}
+
+	complete() {
+		rootContext(() => super.complete())
+	}
+}
+
+export class IsolatedReplaySubject<T> extends Rx.ReplaySubject<T> {
+	next(value: T) {
+		rootContext(() => super.next(value))
+	}
+
+	error(err: any): void {
+		rootContext(() => super.error(err))
+	}
+
+	complete() {
+		rootContext(() => super.complete())
+	}
+}
+
 export function isolateContext() {
 	return <T>(source: Rx.Observable<T>) =>
 		new Rx.Observable(subscriber => {

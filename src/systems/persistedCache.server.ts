@@ -22,7 +22,7 @@ async function runCleanupLoop() {
 		await module.tracer.startActiveSpan('persistedCache:cleanup', async (span) => {
 			try {
 				const result = await deleteExpiredRows()
-				log.debug('Deleted %d expired persistedCache rows', result[0].affectedRows)
+				log.debug('Deleted %d expired persistedCache rows', result.changes)
 			} catch (err) {
 				log.warn({ err }, 'Failed to clean up expired persistedCache rows')
 			} finally {
@@ -61,8 +61,12 @@ export async function load<T>(key: string): Promise<T | null> {
 export async function save<T>(key: string, value: T): Promise<void> {
 	const ctx = DB.addPooledDb(CS.init())
 	const serialized = superjson.serialize(value)
+	const updatedAt = new Date()
 	await ctx.db({ redactParams: true })
 		.insert(Schema.persistedCache)
-		.values({ key, value: serialized })
-		.onDuplicateKeyUpdate({ set: { value: sql`VALUES(value)`, updatedAt: sql`NOW()` } })
+		.values({ key, value: serialized, updatedAt })
+		.onConflictDoUpdate({
+			target: Schema.persistedCache.key,
+			set: { value: serialized, updatedAt },
+		})
 }

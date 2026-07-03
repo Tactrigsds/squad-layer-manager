@@ -28,7 +28,7 @@ import * as Users from '@/systems/users.server'
 import * as Otel from '@opentelemetry/api'
 import { Mutex, type MutexInterface, withTimeout } from 'async-mutex'
 import * as dateFns from 'date-fns'
-import * as E from 'drizzle-orm/expressions'
+import * as E from 'drizzle-orm'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
 

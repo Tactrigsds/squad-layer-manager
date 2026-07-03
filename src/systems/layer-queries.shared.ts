@@ -15,7 +15,7 @@ import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import type { SQL } from 'drizzle-orm'
 import { sql } from 'drizzle-orm'
-import * as E from 'drizzle-orm/expressions'
+import * as E from 'drizzle-orm'
 import seedrandom from 'seedrandom'
 
 // snapshot of the filter entities a query depends on, taken when its result is cached. null means the
@@ -33,6 +33,14 @@ let cachedSeed: string | null = null
 
 // Cache for non-random query results, invalidated when any filter entity the query depends on changes
 const queryResultCache = new LRUMap<string, { value: unknown; filterEntities: FilterEntitySnapshot }>(MAX_CACHED_QUERY_RESULTS)
+
+// Per-(filter entity, packed layer id) match results and per-layer existence for getLayerItemStatuses,
+// keyed by colsConfig identity so they reset with the layer DB. A filter's entry is dropped when the
+// filter entity chain it depends on changes; layer ids accumulate as they're queried, which stays small
+// in practice (only ids that appear in layer lists)
+type FilterMatchCacheEntry = { filterEntities: FilterEntitySnapshot; matches: Map<number, boolean> }
+const filterMatchCaches = new WeakMap<object, Map<F.FilterEntityId, FilterMatchCacheEntry>>()
+const layerExistenceCaches = new WeakMap<object, Map<number, boolean>>()
 
 function collectFilterNodeFilterIds(node: F.FilterNode, ids: Set<string>) {
 	if (node.type === 'apply-filter') ids.add(node.filterId)
@@ -662,20 +670,99 @@ export async function getLayerItemStatuses(args: {
 }) {
 	const ctx: CS.LayerQuery = { ...args.ctx }
 	const input = args.input
-	const cacheKey = queryCacheKey('getLayerItemStatuses', ctx, input)
-	const cachedRes = getCachedQueryResult<{ code: 'ok'; statuses: LQY.LayerItemStatuses }>(ctx, cacheKey)
-	if (cachedRes) return cachedRes
 	const constraints = input.constraints ?? []
-	const matchDescriptors: Map<LQY.ItemId, LQY.MatchDescriptor[]> = new Map()
-	const filterConditionResults: Map<string, SQL<unknown>> = new Map()
-	const matchedState: Map<LQY.ItemId, string> = new Map()
 	const list = input.list ?? LQY.initLayerItemsState()
 	const layerItems = list.layerItems
 
-	const selectExpr: any = { _id: LC.viewCol('id', ctx) }
+	let matchCache = filterMatchCaches.get(ctx.effectiveColsConfig)
+	if (!matchCache) {
+		matchCache = new Map()
+		filterMatchCaches.set(ctx.effectiveColsConfig, matchCache)
+	}
+	let existence = layerExistenceCaches.get(ctx.effectiveColsConfig)
+	if (!existence) {
+		existence = new Map()
+		layerExistenceCaches.set(ctx.effectiveColsConfig, existence)
+	}
+
+	const filterConstraints = constraints.filter((c): c is Extract<LQY.Constraint, { type: 'filter-entity' }> =>
+		c.type === 'filter-entity' && c.showIndicator !== 'disabled'
+	)
+	const filterEntries = new Map<F.FilterEntityId, FilterMatchCacheEntry>()
+	for (const constraint of filterConstraints) {
+		let entry = matchCache.get(constraint.filterId)
+		if (entry && relevantFilterEntitiesChanged(ctx, entry.filterEntities)) {
+			matchCache.delete(constraint.filterId)
+			entry = undefined
+		}
+		if (!entry) {
+			entry = { filterEntities: snapshotRelevantFilterEntities(ctx, [constraint]), matches: new Map() }
+			matchCache.set(constraint.filterId, entry)
+		}
+		filterEntries.set(constraint.filterId, entry)
+	}
+
+	const packedIds = new Map<L.LayerId, number>()
+	for (const layerId of LQY.getAllLayerIds(layerItems)) {
+		if (!packedIds.has(layerId) && L.isKnownLayer(layerId)) packedIds.set(layerId, LC.packId(layerId))
+	}
+
+	// query only the existence checks and (filter, layer) pairs we don't have cached
+	const idsToQuery = new Set<number>()
+	const filterIdsToQuery = new Set<F.FilterEntityId>()
+	for (const packed of packedIds.values()) {
+		if (!existence.has(packed)) idsToQuery.add(packed)
+	}
+	for (const [filterId, entry] of filterEntries) {
+		for (const packed of packedIds.values()) {
+			if (!entry.matches.has(packed)) {
+				idsToQuery.add(packed)
+				filterIdsToQuery.add(filterId)
+			}
+		}
+	}
+
+	if (idsToQuery.size > 0) {
+		const queriedFilterIds = Array.from(filterIdsToQuery)
+		const selectExpr: any = { _id: LC.viewCol('id', ctx) }
+		for (let i = 0; i < queriedFilterIds.length; i++) {
+			const res = getFilterNodeSQLConditions(ctx, FB.applyFilter(queriedFilterIds[i]), [queriedFilterIds[i]], [])
+			if (res.code !== 'ok') return res
+			selectExpr[`f_${i}`] = res.condition
+		}
+		const rows = await ctx
+			.layerDb()
+			.select(selectExpr)
+			.from(LC.layersView(ctx))
+			.where(E.inArray(LC.viewCol('id', ctx), Array.from(idsToQuery)))
+
+		const returned = new Set<number>()
+		for (const row of rows) {
+			const packed = Number(row._id)
+			returned.add(packed)
+			existence.set(packed, true)
+			for (let i = 0; i < queriedFilterIds.length; i++) {
+				filterEntries.get(queriedFilterIds[i])!.matches.set(packed, Number(row[`f_${i}`]) === 1)
+			}
+		}
+		// ids missing from the view don't exist and can't match anything; record that so they
+		// aren't requeried on every call
+		for (const packed of idsToQuery) {
+			if (returned.has(packed)) continue
+			existence.set(packed, false)
+			for (const filterId of queriedFilterIds) filterEntries.get(filterId)!.matches.set(packed, false)
+		}
+	}
+
+	const present = new Set<L.LayerId>()
+	for (const [layerId, packed] of packedIds) {
+		if (existence.get(packed)) present.add(layerId)
+	}
+
+	const matchDescriptors: Map<LQY.ItemId, LQY.MatchDescriptor[]> = new Map()
 	for (let i = 0; i < layerItems.length; i++) {
 		for (const item of LQY.coalesceLayerItems(layerItems[i])) {
-			const itemMatchDescriptors: LQY.MatchDescriptor[] = []
+			const itemDescriptors = MapUtils.defaultInsGet(matchDescriptors, item.itemId, [])
 			for (const constraint of constraints) {
 				if (constraint.showIndicator === 'disabled') continue
 				switch (constraint.type) {
@@ -688,18 +775,16 @@ export async function getLayerItemStatuses(args: {
 							item.layerId,
 							item.itemId,
 						)
-						if (descriptors) {
-							matchedState.set(item.itemId, constraint.id)
-							itemMatchDescriptors.push(...descriptors)
-						}
+						if (descriptors) itemDescriptors.push(...descriptors)
 						break
 					}
 
 					case 'filter-entity': {
-						const res = getFilterNodeSQLConditions(ctx, FB.applyFilter(constraint.filterId), [constraint.id], [])
-						if (res.code !== 'ok') return res
-						filterConditionResults.set(constraint.id, res.condition)
-						selectExpr[constraint.id] = res.condition
+						const packed = packedIds.get(item.layerId)
+						if (packed === undefined) break
+						if (filterEntries.get(constraint.filterId)!.matches.get(packed)) {
+							itemDescriptors.push({ type: 'filter-entity', constraintId: constraint.id, layerId: item.layerId, itemId: item.itemId })
+						}
 						break
 					}
 
@@ -708,48 +793,27 @@ export async function getLayerItemStatuses(args: {
 					}
 				}
 			}
-			matchDescriptors.set(item.itemId, itemMatchDescriptors)
 		}
 	}
 
-	const rows = await ctx
-		.layerDb()
-		.select(selectExpr)
-		.from(LC.layersView(ctx))
-		.where(E.inArray(LC.viewCol('id', ctx), LC.packValidLayers(LQY.getAllLayerIds(layerItems))))
-
 	const warns: LQY.QueueWarning[] = []
-	const present = new Set<L.LayerId>()
-	for (const row of rows) {
-		const layerId = LC.fromDbValue('id', row._id, ctx) as L.LayerId
-		present.add(layerId)
-		for (const { item } of LQY.iterItems(layerItems)) {
-			if (item.layerId !== layerId) continue
-			for (const [constraintId, isMatchedRaw] of Object.entries(row)) {
-				if (constraintId === '_id') continue
-				const matched = Number(isMatchedRaw) === 1
-				if (matched) {
-					let itemDescriptors = MapUtils.defaultInsGet(matchDescriptors, item.itemId, [])
-					itemDescriptors.push({ constraintId, type: 'filter-entity', layerId, itemId: item.itemId }!)
+	for (const { item } of LQY.iterItems(layerItems)) {
+		if (!LQY.isLayerListItem(item)) continue
+		if (!present.has(item.layerId)) continue
+		for (const constraint of constraints) {
+			const descriptors = matchDescriptors.get(item.itemId)?.filter(d => d.constraintId === constraint.id)
+			const matched = descriptors?.length !== undefined && descriptors.length > 0
+			if (constraint.type === 'filter-entity') {
+				if (constraint.warn === 'regular' && matched || constraint.warn === 'inverted' && !matched) {
+					warns.push({ itemId: item.itemId, type: 'filter-entity-warning', matched, constraintId: constraint.id })
 				}
-			}
-
-			if (!LQY.isLayerListItem(item)) continue
-			for (const constraint of constraints) {
-				const descriptors = matchDescriptors.get(item.itemId)?.filter(d => d.constraintId === constraint.id)
-				const matched = descriptors?.length !== undefined && descriptors.length > 0
-				if (constraint.type === 'filter-entity') {
-					if (constraint.warn === 'regular' && matched || constraint.warn === 'inverted' && !matched) {
-						warns.push({ itemId: item.itemId, type: 'filter-entity-warning', matched, constraintId: constraint.id })
-					}
-				} else if (constraint.type === 'do-not-repeat' && constraint.warn) {
-					if (matched) {
-						warns.push({
-							itemId: item.itemId,
-							type: 'repeat-rule-violation-warning',
-							descriptors: descriptors as LQY.RepeatMatchDescriptor[],
-						})
-					}
+			} else if (constraint.type === 'do-not-repeat' && constraint.warn) {
+				if (matched) {
+					warns.push({
+						itemId: item.itemId,
+						type: 'repeat-rule-violation-warning',
+						descriptors: descriptors as LQY.RepeatMatchDescriptor[],
+					})
 				}
 			}
 		}
@@ -761,12 +825,10 @@ export async function getLayerItemStatuses(args: {
 		warns,
 	}
 
-	const res = {
+	return {
 		code: 'ok' as const,
 		statuses,
 	}
-	setCachedQueryResult(ctx, cacheKey, res, input.constraints)
-	return res
 }
 
 function getisMatchedByRepeatRuleDirect(

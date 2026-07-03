@@ -9,23 +9,19 @@ import * as Zus from 'zustand'
 // TODO we probably don't need to "bind" multiple observables like this. we should create some helper "derive" which lets us derive one state observable from another
 export const [useLayersStatus, layersStatus$] = ReactRx.bind(
 	(serverId: string) => RPC.observe(() => RPC.orpc.squadServer.watchLayersStatus.call({ serverId })),
-	undefined as unknown as SM.LayersStatusResExt,
 )
 export const [useServerInfoRes, serverInfoRes$] = ReactRx.bind(
 	(serverId: string) => RPC.observe(() => RPC.orpc.squadServer.watchServerInfo.call({ serverId })),
-	undefined as unknown as SM.ServerInfoRes,
 )
 export const [useServerInfo, serverInfo$] = ReactRx.bind(
 	(serverId: string) =>
 		serverInfoRes$(serverId).pipe(
 			Rx.map(res => res.code === 'ok' ? res.data : null),
 		),
-	null as SM.ServerInfo | null,
 )
 
 export const [useServerRolling, serverRolling$] = ReactRx.bind(
 	(serverId: string) => RPC.observe(() => RPC.orpc.squadServer.watchServerRolling.call({ serverId })),
-	null as number | null,
 )
 
 export function useEndMatch() {
@@ -140,4 +136,5 @@ export function watchServer(serverId: string, sub: Rx.Subscription) {
 	sub.add(serverInfoRes$(serverId).subscribe())
 	sub.add(layersStatus$(serverId).subscribe())
 	sub.add(serverRolling$(serverId).subscribe())
+	sub.add(serverInfo$(serverId).subscribe())
 }

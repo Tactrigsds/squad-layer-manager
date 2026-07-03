@@ -65,9 +65,6 @@ export const VoteItemSchema = NewVoteItemSchema.extend({
 	source: SourceSchema,
 })
 	.refine((item): boolean => {
-		return item.choices.some((choice) => choice.layerId === item.layerId)
-	}, { error: 'The parent layerId must be included in the choices' })
-	.refine((item): boolean => {
 		if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') return true
 		return item.choices[0].layerId === item.layerId
 	}, { error: "if vote isn't complete, then the layerId should always be the first layer choice" })

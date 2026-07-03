@@ -14,7 +14,7 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as Rbac from '@/systems/rbac.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Orpc from '@orpc/server'
-import * as E from 'drizzle-orm/expressions'
+import * as E from 'drizzle-orm'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
 

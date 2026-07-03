@@ -29,11 +29,13 @@ export default function LayerDisplay(
 	},
 ) {
 	const teamParity = ZusUtils.useStore(
-		LayerQueueClient.layerItemsState$(props.stores?.squadServer?.serverId ?? ''),
-		React.useCallback((context: LQY.LayerItemsState) => LQY.getParityForLayerItem(context, props.item), [props.item]),
+		props.stores?.squadServer,
+		React.useCallback((s: SquadServerFrame.State | undefined) => s ? LQY.getParityForLayerItem(s.layerItemsState, props.item) : 0, [
+			props.item,
+		]),
 	) ?? 0
 
-	const statusData = LQYClient.useLayerItemStatusData(props.item, props.stores?.squadServer as SquadServerFrame.Key)
+	const statusData = LQYClient.useLayerItemStatusData(props.item, props.stores?.squadServer)
 	const badges: React.ReactNode[] = []
 
 	if (statusData) {
@@ -79,7 +81,7 @@ export default function LayerDisplay(
 					<Icons.ShieldOff className="text-red-500" />
 				</TooltipTrigger>
 				<TooltipContent>
-					<b>Layer is unknown</b>
+					<b>Layer Was parsed, but is unknown</b>
 				</TooltipContent>
 			</Tooltip>,
 		)

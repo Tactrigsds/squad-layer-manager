@@ -7,7 +7,7 @@ import * as DB from '@/server/db'
 import * as Env from '@/server/env.ts'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger.ts'
 import * as Cli from '@/systems/cli.server'
-import * as E from 'drizzle-orm/expressions'
+import * as E from 'drizzle-orm'
 import superjson from 'superjson'
 
 await Cli.ensureCliParsed()

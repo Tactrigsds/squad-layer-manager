@@ -14,7 +14,7 @@ import * as Rbac from '@/systems/rbac.server'
 import * as Users from '@/systems/users.server'
 import * as Otel from '@opentelemetry/api'
 import * as DateFns from 'date-fns'
-import * as E from 'drizzle-orm/expressions'
+import * as E from 'drizzle-orm'
 
 export const SESSION_MAX_AGE = 1000 * 60 * 60 * 24 * 7
 
@@ -126,9 +126,9 @@ export async function setup() {
 		await module.tracer.startActiveSpan('sessions:cleanup', async (span) => {
 			const currentTime = new Date()
 
-			await ctx.db().transaction(async (tx) => {
+			await DB.runTransaction(ctx, async (ctx) => {
 				// Delete all expired sessions from database
-				await tx.delete(Schema.sessions).where(E.lt(Schema.sessions.expiresAt, currentTime))
+				await ctx.db().delete(Schema.sessions).where(E.lt(Schema.sessions.expiresAt, currentTime))
 
 				// Remove expired sessions from cache
 				for (const [sessionId, session] of sessionCache.entries()) {
@@ -217,7 +217,6 @@ export async function logInUser(ctx: C.Db & C.FastifyRequest & C.FastifyReply, d
 			.select()
 			.from(Schema.users)
 			.where(E.eq(Schema.users.discordId, discordUser.id))
-			.for('update')
 		if (!user) {
 			await ctx.db().insert(Schema.users).values({
 				discordId: discordUser.id,
@@ -284,7 +283,7 @@ export const getUser = C.spanOp(
 			.where(E.eq(Schema.sessions.id, ctx.sessionId))
 			.leftJoin(Schema.users, E.eq(Schema.users.discordId, Schema.sessions.userId))
 
-		const [row] = opts.lock ? await q.for('update') : await q
+		const [row] = await q
 
 		if (row?.user) {
 			// Add back to cache if found

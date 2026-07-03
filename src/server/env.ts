@@ -9,6 +9,7 @@ export const groups = {
 	general: {
 		NODE_ENV: z.enum(['development', 'production', 'test']),
 		LOG_LEVEL_OVERRIDE: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),
+		OTEL_ENABLED: z.stringbool().default(true),
 		OTLP_COLLECTOR_ENDPOINT: NormedUrl.transform((url) => url.replace(/\/$/, '')).default('http://localhost:4318'),
 
 		PUBLIC_GIT_SHA: z.string().min(1).prefault('unknown'),

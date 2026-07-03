@@ -13,6 +13,7 @@ import { Spinner } from '@/components/ui/spinner'
 import UserPermissionsDialog from '@/components/user-permissions-dialog'
 import { frameManager } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
+import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { orUndef } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import * as USR from '@/models/users.models.ts'
@@ -37,7 +38,12 @@ export const Route = createFileRoute('/_app')({
 	loader: async () => {
 		void LayerQueriesClient.ensureFullSetup()
 		await Promise.all([ConfigClient.fetchConfig(), SettingsClient.fetchSettings()])
-		const input = SelectLayersFrame.createInput({ sharedInstanceId: EXPLORE_LAYERS_FRAME_INSTANCE_ID })
+		const selectedServerId = SquadServerClient.SelectedServerStore.getState().selectedServerId
+		let serverFrameKey: SquadServerFrame.Key | undefined
+		if (selectedServerId) {
+			serverFrameKey = frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(selectedServerId))
+		}
+		const input = SelectLayersFrame.createInput({ sharedInstanceId: EXPLORE_LAYERS_FRAME_INSTANCE_ID, squadServer: serverFrameKey })
 		const frameId = frameManager.ensureSetup(SelectLayersFrame.frame, input)
 		return { stores: { exploreLayers: frameId } }
 	},

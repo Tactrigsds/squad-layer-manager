@@ -1,6 +1,6 @@
 import type * as AR from '@/app-routes.ts'
 import type { AsyncResource, AsyncResourceInvocationOpts, ImmediateRefetchError } from '@/lib/async-resource.ts'
-import { sleep, toCold } from '@/lib/async.ts'
+import { sleep } from '@/lib/async.ts'
 import * as Cleanup from '@/lib/cleanup.ts'
 import { LRUMap } from '@/lib/lru-map.ts'
 import { withAcquired } from '@/lib/nodejs-reentrant-mutexes.ts'
@@ -522,16 +522,15 @@ export function durableSub<T, O>(
 		const retryOnValueError = opts.retryTaskOnValueError ?? false
 		const taskScheduling = opts.taskScheduling ?? ('sequential' as const)
 
-		const subSpan = opts.module.tracer.startSpan('durable-sub::' + name)
-		const initializerLink: Otel.Link = {
-			context: subSpan.spanContext(),
-			attributes: { 'slm.link-source': 'sub-initializer' },
-		}
+		let subSpan: Otel.Span | undefined
+		let subscriberCount = 0
+		// mutated in place when subSpan is (re)created; spanOp reads it on every task invocation
+		const initializerLinks: Otel.Link[] = []
 		const taskOp = spanOp(
 			name,
 			{
 				module: opts.module,
-				links: [initializerLink],
+				links: initializerLinks,
 				root: opts.root ?? true,
 				attrs: opts.attrs,
 				levels: opts.levels,
@@ -540,31 +539,45 @@ export function durableSub<T, O>(
 		)
 		const log = LOG.getSubmoduleLogger(name, opts.module.getLogger())
 
-		const getTask = (arg: T): Rx.Observable<O> => {
-			const task = async () => {
-				let attemptsLeft = numRetries + 1
-				while (true) {
-					try {
-						const res = await taskOp(arg)
-						if (retryOnValueError && (res as any).code !== 'ok') {
+		const getTask = (arg: T): Rx.Observable<O> =>
+			// raw observable so the retry loop stops once the subscriber goes away; the
+			// in-flight taskOp invocation itself is not cancellable
+			new Rx.Observable<O>((subscriber) => {
+				let cancelled = false
+				;(async () => {
+					let attemptsLeft = numRetries + 1
+					while (!cancelled) {
+						try {
+							const res = await taskOp(arg)
+							if (retryOnValueError && (res as any).code !== 'ok') {
+								attemptsLeft--
+								if (attemptsLeft === 0 || cancelled) {
+									subscriber.next(res)
+									subscriber.complete()
+									return
+								}
+								log.warn(`retrying ${name}`)
+								continue
+							}
+							subscriber.next(res)
+							subscriber.complete()
+							return
+						} catch (error) {
 							attemptsLeft--
-							if (attemptsLeft === 0) return res
-							log.warn(`retrying ${name}`)
-							continue
+							if (attemptsLeft === 0) {
+								subscriber.error(error)
+								return
+							}
+							if (cancelled) return
+							log.warn(`retrying ${name} in ${opts.retryTimeoutMs ?? 0}ms`)
+							await sleep(opts.retryTimeoutMs ?? 0)
 						}
-						return res
-					} catch (error) {
-						attemptsLeft--
-						if (attemptsLeft === 0) throw error
-						log.warn(`retrying ${name} in ${opts.retryTimeoutMs ?? 0}ms`)
-						await sleep(opts.retryTimeoutMs ?? 0)
 					}
+				})()
+				return () => {
+					cancelled = true
 				}
-			}
-
-			// ensure that we only start the task on subscription.
-			return toCold(task)
-		}
+			})
 
 		return o.pipe(
 			Rx.tap({
@@ -573,7 +586,7 @@ export function durableSub<T, O>(
 					activeSpan?.setStatus({ code: Otel.SpanStatusCode.ERROR })
 
 					const span = activeSpan ?? subSpan
-					span.recordException(error)
+					span?.recordException(error)
 					log.error(error)
 				},
 			}),
@@ -589,8 +602,26 @@ export function durableSub<T, O>(
 				delay: opts.retryTimeoutMs ?? 250,
 			}),
 			Rx.tap({
-				subscribe: () => subSpan.addEvent('subscribed'),
-				complete: () => subSpan.end(),
+				subscribe: () => {
+					if (subscriberCount === 0) {
+						subSpan = opts.module.tracer.startSpan('durable-sub::' + name)
+						initializerLinks.length = 0
+						initializerLinks.push({
+							context: subSpan.spanContext(),
+							attributes: { 'slm.link-source': 'sub-initializer' },
+						})
+					}
+					subscriberCount++
+					subSpan?.addEvent('subscribed')
+				},
+				// fires on complete, error, and unsubscribe
+				finalize: () => {
+					subscriberCount--
+					if (subscriberCount === 0) {
+						subSpan?.end()
+						subSpan = undefined
+					}
+				},
 			}),
 		)
 	}

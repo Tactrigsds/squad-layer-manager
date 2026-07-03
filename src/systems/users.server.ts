@@ -16,7 +16,7 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as Discord from '@/systems/discord.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
-import * as E from 'drizzle-orm/expressions'
+import * as E from 'drizzle-orm'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
 
@@ -103,9 +103,7 @@ export const orpcRouter = {
 
 	unlinkSteamAccount: orpcBase.meta({ type: 'mutation' }).handler(async ({ context }) => {
 		return await DB.runTransaction(context, async (context) => {
-			const [user] = await context.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, context.user.discordId)).for(
-				'update',
-			)
+			const [user] = await context.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, context.user.discordId))
 			if (!user) return { code: 'err:user-not-found' as const, msg: 'User not found.' }
 			if (!user.steam64Id) return { code: 'err:not-linked' as const, msg: 'No Steam account is currently linked.' }
 
@@ -120,9 +118,7 @@ export const orpcRouter = {
 		.input(z.string().max(64).optional())
 		.handler(async ({ context, input }) => {
 			return await DB.runTransaction(context, async (context) => {
-				const [user] = await context.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, context.user.discordId)).for(
-					'update',
-				)
+				const [user] = await context.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, context.user.discordId))
 				if (!user) return { code: 'err:user-not-found' as const, msg: 'User not found.' }
 
 				const nickname = input?.trim() || null
@@ -153,9 +149,20 @@ export async function completeSteamAccountLink(ctx: C.Db, code: string, steam64I
 		if (!linked) return { code: 'err:invalid-code' as const, msg: 'Your link code is invalid or has expired.' }
 		state.pendingSteamAccountLinks.delete(code)
 		linked.expirySub.unsubscribe()
-		;[user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, linked.discordId)).for('update')
+		;[user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, linked.discordId))
 		if (!user) return { code: 'err:discord-user-not-found' as const, msg: 'The Discord account that initiated this link was not found.' }
-		await ctx.db().update(Schema.users).set({ steam64Id }).where(E.eq(Schema.users.discordId, linked.discordId))
+		try {
+			await ctx.db().update(Schema.users).set({ steam64Id }).where(E.eq(Schema.users.discordId, linked.discordId))
+		} catch (err) {
+			const dbErr = err as { code?: string }
+			if (dbErr.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+				return {
+					code: 'err:already-linked' as const,
+					msg: ' This Steam account is already linked to another Discord account',
+				}
+			}
+			throw err
+		}
 		addReleaseTask(() => steamAccountLinkComplete$.next({ discordId: linked.discordId, steam64Id }))
 		return { code: 'ok' as const, linkedUsername: user.username }
 	})

@@ -21,6 +21,12 @@ export type Mutate<S, Ms> = number extends Ms['length' & keyof Ms] ? S
 export type Setter<T, Mis extends [StoreMutatorIdentifier, unknown][] = []> = Get<Mutate<StoreApi<T>, Mis>, 'setState', never>
 export type Getter<T, Mis extends [StoreMutatorIdentifier, unknown][] = []> = Get<Mutate<StoreApi<T>, Mis>, 'getState', never>
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+	if (typeof v !== 'object' || v === null) return false
+	const proto = Object.getPrototypeOf(v)
+	return proto === Object.prototype || proto === null
+}
+
 // returns a full setState-style setter scoped to property K of T -- supports value, partial-merge, updater fn, and the replace flag
 export function toPartialSetter<T, K extends keyof T>(store: StoreApi<T>, key: K): Setter<T[K]>
 export function toPartialSetter<T, K extends keyof T>(set: Setter<T>, key: K): Setter<T[K]>
@@ -30,7 +36,8 @@ export function toPartialSetter(a: StoreApi<any> | Setter<any>, key: any): any {
 		set((state: any) => {
 			const prev = state[key]
 			const resolved = typeof partial === 'function' ? partial(prev) : partial
-			const next = !replace && typeof prev === 'object' && prev !== null && typeof resolved === 'object' && resolved !== null
+			// merging only makes sense for plain objects -- spreading arrays/Maps/class instances would mangle them
+			const next = !replace && isPlainObject(prev) && isPlainObject(resolved)
 				? { ...prev, ...resolved }
 				: resolved
 			return { [key]: next }
@@ -55,7 +62,7 @@ type MaybeInput = AnyInput<any> | null | undefined
 type SyncSource<T> = StoreApi<T> | StateObservable<T>
 type ResolvedInput<T> = SyncSource<T> | QuerySource<T>
 type InputState<S> = S extends null | undefined ? undefined
-	: S extends Readonly<{ _: infer FT extends FRM.FrameTypes }> ? FRM.StateWithDeps<FT>
+	: S extends Readonly<{ _: infer FT extends FRM.FrameTypes }> ? FT['state']
 	: S extends StateObservable<infer T> ? T
 	: S extends StoreApi<infer T> ? T
 	: S extends QuerySource<infer T> ? T | undefined
@@ -71,7 +78,7 @@ function isFrameKey(s: unknown): s is FRM.InstanceKeyOfState<any> {
 }
 
 // injected by FRM.createFrameHelpers -- frame.ts imports this module at runtime, so we can't import the frame manager here
-type FrameStores = { readStore: StoreApi<any>; writeStore: StoreApi<any>; update$: Rx.Observable<any> }
+type FrameStores = { store: StoreApi<any>; update$: Rx.Observable<any> }
 let resolveFrameKeyStores: ((key: FRM.InstanceKeyOfState<any>) => FrameStores | undefined) | undefined
 export function registerFrameKeyResolver(resolve: (key: FRM.InstanceKeyOfState<any>) => FrameStores | undefined) {
 	resolveFrameKeyStores = resolve
@@ -84,16 +91,12 @@ function resolveFrameStores(key: FRM.InstanceKeyOfState<any>): FrameStores {
 }
 
 export function resolveReadStore<T extends NonNullable<object>>(store: AnyStore<T>): StoreApi<T> {
-	return isFrameKey(store) ? resolveFrameStores(store).readStore : store
-}
-
-function resolveWriteStore<T extends NonNullable<object>>(store: AnyStore<T>): StoreApi<T> {
-	return isFrameKey(store) ? resolveFrameStores(store).writeStore : store
+	return isFrameKey(store) ? resolveFrameStores(store).store : store
 }
 
 function resolveInput(input: MaybeInput): ResolvedInput<any> | null {
 	if (input == null) return null
-	if (isFrameKey(input)) return resolveFrameStores(input).readStore
+	if (isFrameKey(input)) return resolveFrameStores(input).store
 	return input
 }
 
@@ -142,6 +145,9 @@ export function useStore(...args: (MaybeInput | ((...states: any[]) => any))[]):
 
 	const queryResults = useQueries({ queries: querySources })
 
+	// when there's no selector and multiple inputs we pack states into a fresh array each compute,
+	// so equality checks must compare element-wise to avoid spurious re-renders
+	const packed = !selector && allInputs.length > 1
 	const compute = () => {
 		let qIdx = 0
 		const states = allInputs.map(input =>
@@ -149,21 +155,34 @@ export function useStore(...args: (MaybeInput | ((...states: any[]) => any))[]):
 		)
 		return selector ? selector(...states) : states.length === 1 ? states[0] : states
 	}
+	// latest compute lives in a ref so subscriptions see fresh selector/query data without
+	// re-subscribing when an inline selector changes identity every render
+	const computeRef = React.useRef(compute)
+	computeRef.current = compute
 
 	const [value, setValue] = React.useState(compute)
 
 	React.useEffect(() => {
-		const update = () => setValue(compute())
+		const update = () =>
+			setValue((prev: any) => {
+				const next = computeRef.current()
+				if (Object.is(prev, next)) return prev
+				if (packed && Array.isArray(prev) && prev.length === next.length && prev.every((v: any, i: number) => Object.is(v, next[i]))) {
+					return prev
+				}
+				return next
+			})
 		const unsubs = regularSources.map(s => subscribe(s as any, update))
+		// sync once: catches emissions between render and subscription, and query data changes
+		update()
 		return () => unsubs.forEach(unsub => unsub())
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [...regularSources, selector, ...queryResults.map(r => r.data)])
+	}, [...regularSources, ...queryResults.map(r => r.data)])
 
 	return value
 }
 
-// a live StoreApi view over the whole source store -- like toPartialStore but unscoped. reads/subscribes
-// go through the readStore, writes through the writeStore
+// a live StoreApi view over the whole source store -- like toPartialStore but unscoped
 export function resolveStore<T extends NonNullable<object>>(store: AnyStore<T>): StoreApi<T> {
 	if (!isFrameKey(store)) return store
 	return {
@@ -173,7 +192,7 @@ export function resolveStore<T extends NonNullable<object>>(store: AnyStore<T>):
 			// derived stores may not implement getInitialState
 			return (source.getInitialState ?? source.getState)()
 		},
-		setState: (partial: any, replace?: any) => resolveWriteStore(store).setState(partial, replace),
+		setState: (partial: any, replace?: any) => resolveReadStore(store).setState(partial, replace),
 		subscribe: (listener) => resolveReadStore(store).subscribe(listener),
 	}
 }
@@ -182,7 +201,7 @@ export function resolveStore<T extends NonNullable<object>>(store: AnyStore<T>):
 // access so the view stays valid if the frame instance is recreated. only notifies subscribers when the
 // slice itself changes (Object.is)
 export function toPartialStore<T extends NonNullable<object>, K extends keyof T>(store: AnyStore<T>, key: K): StoreApi<T[K]> {
-	const set: Setter<T> = (partial: any, replace?: any) => resolveWriteStore(store).setState(partial, replace)
+	const set: Setter<T> = (partial: any, replace?: any) => resolveReadStore(store).setState(partial, replace)
 	const setState = toPartialSetter(set, key)
 
 	return {
@@ -223,14 +242,16 @@ export function useDeep<S, U>(selector: (state: S) => U): (state: S) => U {
 export function toObservable<S extends NonNullable<object>, EmitCurrent extends boolean | undefined>(
 	store: AnyStore<S>,
 	emitCurrent?: EmitCurrent,
-): Rx.Observable<[S, EmitCurrent extends true ? null : S]> {
+): Rx.Observable<[S, EmitCurrent extends true ? S | null : S]> {
 	return new Rx.Observable(subscriber => {
-		if (emitCurrent) subscriber.next([getState(store), null as any])
-		let prev: S | null = null
+		// prev starts at the state as of subscription so the first update carries a real previous value
+		let prev: S = getState(store)
+		if (emitCurrent) subscriber.next([prev, null as any])
 		const unsub = subscribe(store, () => {
 			const state = getState(store)
-			subscriber.next([state, prev as any])
+			const temp = prev
 			prev = state
+			subscriber.next([state, temp])
 		})
 
 		return () => unsub()

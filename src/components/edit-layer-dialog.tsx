@@ -48,7 +48,6 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 		{
 			frameKey: props.stores?.selectLayers,
 			input: frameInputRef.current,
-			deps: undefined,
 			equalityFn: Obj.deepEqual,
 		},
 	)

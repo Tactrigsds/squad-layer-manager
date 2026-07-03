@@ -8,14 +8,20 @@ await Cli.ensureCliParsed()
 Env.ensureEnvSetup()
 await Config.ensureSetup()
 
-setupOtel()
+const ENV = Env.getEnvBuilder({ OTEL_ENABLED: Env.groups.general.OTEL_ENABLED })()
 
-process.on('beforeExit', async () => {
-	await otelSdk.shutdown()
-})
+if (ENV.OTEL_ENABLED) {
+	setupOtel()
 
-otelSdk.start()
+	process.on('beforeExit', async () => {
+		await otelSdk.shutdown()
+	})
 
-console.log('instrumentation setup complete')
+	otelSdk.start()
+
+	console.log('instrumentation setup complete')
+} else {
+	console.log('OpenTelemetry disabled via OTEL_ENABLED=false')
+}
 
 await import('./main.ts')

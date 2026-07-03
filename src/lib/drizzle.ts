@@ -5,9 +5,9 @@ export type Error = {
 	code: string
 }
 
-export async function returnInsertErrors<T>(runningQuery: Promise<T[]>) {
+export async function returnInsertErrors<T>(runningQuery: Promise<T>) {
 	try {
-		return { code: 'ok' as const, data: (await runningQuery)[0] }
+		return { code: 'ok' as const, data: await runningQuery }
 	} catch (_err: unknown) {
 		const err = _err as { code: string; message: string }
 		if (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY') {

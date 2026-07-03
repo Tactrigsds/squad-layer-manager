@@ -15,6 +15,7 @@ import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
 import * as ConfigClient from '@/systems/config.client'
+import { layerItemsState$ } from '@/systems/layer-queue.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as Rx from 'rxjs'
 import { frameManager } from './frame-manager'
@@ -72,7 +73,7 @@ type Primary = {
 	input: Input
 }
 
-type Store =
+type State =
 	& Primary
 	& AppliedFiltersPrt.Store
 	& PoolCheckboxesPrt.Store
@@ -86,7 +87,7 @@ export type Types = {
 	name: 'selectLayers'
 	key: FRM.RawInstanceKey<{ editedLayerId?: L.LayerId; instanceId: string }>
 	input: Input
-	state: Store
+	state: State
 }
 
 type Frame = FRM.Frame<Types>
@@ -141,14 +142,13 @@ const setup: Frame['setup'] = (args) => {
 
 	if (input.squadServer) {
 		baseQueryInput$ = Rx.combineLatest([
-			args.update$.pipe(Rx.startWith([get(), null as any])),
+			args.update$,
 			ZusUtils.toObservable(input.squadServer, true),
-			MatchHistoryClient.recentMatches$(input.squadServer.serverId),
-		]).pipe(Rx.map(([[state], [layerList], history]) => {
-			return Sel.baseQueryInput(state, layerList, history)
+		]).pipe(Rx.map(([[state], [squadServer]]) => {
+			return Sel.baseQueryInput(state, squadServer)
 		}))
 	} else {
-		baseQueryInput$ = args.update$.pipe(Rx.map(([state]) => Sel.baseQueryInput(state)))
+		baseQueryInput$ = args.update$.pipe(Rx.map(([state]) => Sel.baseQueryInput(state, undefined)))
 	}
 	args.sub.add(
 		baseQueryInput$.pipe(
@@ -191,10 +191,11 @@ export const frame = frameManager.createFrame<Types>({
 })
 
 export namespace Sel {
+	const EMPTY_LAYER_ITEMS = LQY.initLayerItemsState()
+
 	export function preMenuFilteredQueryInput(
-		state: Store,
+		state: State,
 		squadServer?: SquadServerFrame.State,
-		history?: MH.MatchDetails[],
 	): LQY.BaseQueryInput {
 		const appliedConstraints = AppliedFiltersPrt.Sel.constraints(state)
 
@@ -210,25 +211,20 @@ export namespace Sel {
 				...appliedConstraints,
 				...repeatRuleConstraints,
 			],
-			list: LQY.resolveLayerItemsState(squadServer?.queue.layerList ?? [], history ?? []),
+			list: squadServer?.layerItemsState ?? EMPTY_LAYER_ITEMS,
 		}
 	}
 
-	export function baseQueryInput(state: Store, squadServer?: SquadServerFrame.State, history?: MH.MatchDetails[]): LQY.BaseQueryInput {
-		const preFiltered = preMenuFilteredQueryInput(state)
+	export function baseQueryInput(state: State, squadServer: SquadServerFrame.State | undefined): LQY.BaseQueryInput {
+		const preFiltered = preMenuFilteredQueryInput(state, squadServer)
 		const filterMenuConstraints = LayerFilterMenuPrt.Sel.filterMenuConstraints(state)
-		const base = LQY.mergeBaseInputs(preFiltered, { constraints: filterMenuConstraints })
-		const itemsState = LQY.resolveLayerItemsState(squadServer?.queue.layerList ?? [], history ?? [])
-		return {
-			...base,
-			list: itemsState,
-		}
+		return LQY.mergeBaseInputs(preFiltered, { constraints: filterMenuConstraints })
 	}
 }
 
 export namespace Actions {
 	export function setCursor(stores: KeyProp, cursor: LL.Cursor | undefined) {
-		ZusUtils.resolveStore<Store>(stores.selectLayers).setState({ cursor })
+		ZusUtils.resolveStore<State>(stores.selectLayers).setState({ cursor })
 	}
 }
 

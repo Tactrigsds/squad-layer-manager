@@ -1,7 +1,7 @@
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
-import * as E from 'drizzle-orm/expressions'
+import * as E from 'drizzle-orm'
 import { index, int, numeric, real, sqliteTable, sqliteView, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import * as L from './layer'

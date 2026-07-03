@@ -28,11 +28,6 @@ function createFrameId(frame: { name: string }) {
 	return Symbol('frame-' + frame.name)
 }
 
-export type KeyCollection<FT extends { [key: string]: FrameTypes } = { [key: string]: FrameTypes }> = {
-	[k in keyof FT as FT[k]['name']]: k extends keyof FT ? InstanceKey<FT[k]>
-		: never
-}
-
 export type InstanceKey<T extends FrameTypes> = T['key'] & Readonly<{ _: T }> // for inference
 export type InstanceKeyOfState<T extends NonNullable<object>> = InstanceKey<FrameTypes & { state: T }>
 
@@ -47,22 +42,11 @@ export type FrameTypes = {
 
 	input: NonNullable<object>
 
-	// WIP
-	deps?: KeyCollection
-
 	// The state once the frame has been initialized
 	state: NonNullable<object>
 }
 export type FrameTypesOfState<T extends NonNullable<object>> = FrameTypes & { state: T }
 export type InputUpdater<T extends FrameTypes> = ((input: T['input']) => T['input']) | T['input']
-
-type FramesOfKeys<KC extends KeyCollection> = {
-	[k in keyof KC]: KC[k]['_']['deps'] extends KeyCollection ? FramesOfKeys<KC[k]['_']['deps']> : object
-}
-
-export type StateWithDeps<T extends FrameTypes> =
-	& T['state']
-	& (T['deps'] extends KeyCollection ? FramesOfKeys<T['deps']>[keyof T['deps']] : object)
 
 export type SetupArgs<
 	I extends FrameTypes['input'] = FrameTypes['input'],
@@ -82,11 +66,12 @@ export type SetupArgs<
 export type Frame<
 	T extends FrameTypes,
 > = {
+	readonly _?: T // for inference
 	name: T['name']
 	id: FrameId
 	createKey: (frameId: FrameId, input: T['input']) => T['key']
-	setup(args: SetupArgs<T['input'], T['state'], StateWithDeps<T>>): void
-	beforeTeardown?: (state: StateWithDeps<T>) => void
+	setup(args: SetupArgs<T['input'], T['state']>): void
+	beforeTeardown?: (state: T['state']) => void
 	canInitialize?: (input: T['input']) => boolean
 }
 
@@ -104,14 +89,12 @@ export type Partial<T extends FrameTypes['state']> = Frame<PartialType<T>>
 type FrameInstance = {
 	frameId: FrameId
 	refCount: number
-	writeStore: Zus.StoreApi<FrameTypes['state']>
-	readStore: Zus.StoreApi<StateWithDeps<FrameTypes>>
-	get: ZusUtils.Getter<StateWithDeps<FrameTypes>>
+	store: Zus.StoreApi<FrameTypes['state']>
+	get: ZusUtils.Getter<FrameTypes['state']>
 	set: ZusUtils.Setter<FrameTypes>
 	update$: Rx.Subject<any>
 	sub: Rx.Subscription
 	input: FrameTypes['input']
-	deps?: KeyCollection
 	lastUsed: number
 }
 
@@ -169,22 +152,10 @@ export class FrameManager {
 	ensureSetup<T extends FrameTypes>(
 		frameIdOrFrame: FrameId | Frame<T>,
 		input: T['input'],
-		opts?: { depKeys?: T['deps'] },
 	): InstanceKey<T> {
 		const frame = typeof frameIdOrFrame === 'symbol' ? this.frameMap.get(frameIdOrFrame) : frameIdOrFrame
 		const frameId = frame?.id ?? frameIdOrFrame as FrameId
 		if (!frame) throw new Error(`Frame ${frameId.toString()} not found`)
-		let depInstances: { [name: string]: FrameInstance } | undefined
-		if (opts?.depKeys) {
-			depInstances = {}
-			for (const [name, key] of Object.entries(opts.depKeys)) {
-				const entry = Gen.find(this.frameInstances.entries(), ([k]) => Obj.deepEqual(k, key))
-				if (!entry) {
-					throw new Error(`Dependency ${JSON.stringify(key)} not found`)
-				}
-				depInstances[name] = entry[1]
-			}
-		}
 		const key = frame.createKey(frameId, input)
 		const entry = Gen.find(this.frameInstances.entries(), ([k]) => Obj.deepEqual(key, k))
 		let directKey: DirectInstanceKey
@@ -192,34 +163,22 @@ export class FrameManager {
 		if (!entry) {
 			if (!frame.canInitialize?.(input)) throw new Error(`Frame cannot initialize with input ${JSON.stringify(input)}`)
 			directKey = frame.createKey(frameId, input)
-			const writeStore = Zus.createStore(() => ({}))
 			instance = {
 				frameId,
 				input: input,
 				refCount: 0,
-				writeStore: writeStore,
-				readStore: undefined!,
+				store: Zus.createStore(() => ({})),
 				sub: new Rx.Subscription(),
 				update$: new Rx.Subject(),
-				deps: opts?.depKeys,
 				get: undefined!,
 				set: undefined!,
 				lastUsed: Date.now(),
 			}
 
-			if (opts?.depKeys) {
-				instance.readStore = ZusUtils.deriveStores((get) => ({
-					...get(this.frameInstances.get(directKey)!.writeStore),
-					...Obj.map(opts!.depKeys!, (key) => get(this.frameInstances.get(this.keys.get(key)!)!.writeStore)),
-				}))
-			} else {
-				instance.readStore = instance.writeStore
-			}
-
 			// instance.update$ = subject.pipe(Rx.tap({ next: () => instance.lastUsed = Date.now() }))
-			instance.sub.add(ZusUtils.toObservable(instance.readStore).subscribe(instance.update$))
-			instance.get = () => this.frameInstances.get(directKey)!.readStore.getState()
-			instance.set = (update) => this.frameInstances.get(directKey)!.writeStore.setState(update)
+			instance.sub.add(ZusUtils.toObservable(instance.store).subscribe(instance.update$))
+			instance.get = () => this.frameInstances.get(directKey)!.store.getState()
+			instance.set = (update) => this.frameInstances.get(directKey)!.store.setState(update)
 			this.frameInstances.set(directKey, instance)
 			// register before setup so key-based access (e.g. Actions) works from within setup itself
 			this.keys.set(directKey, directKey)
@@ -230,7 +189,7 @@ export class FrameManager {
 				input: instance.input,
 				sub: instance.sub,
 				update$: instance.update$,
-				key: directKey as InstanceKeyOfState<StateWithDeps<T>>,
+				key: directKey as InstanceKeyOfState<T['state']>,
 			})
 		} else {
 			;[directKey, instance] = entry
@@ -255,7 +214,7 @@ export class FrameManager {
 	getState<T extends FrameTypes>(key: InstanceKey<T>) {
 		const instance = this.getInstance(key)
 		if (!instance) return
-		return instance.readStore.getState() as StateWithDeps<T>
+		return instance.store.getState() as T['state']
 	}
 }
 
@@ -267,7 +226,6 @@ export function createFrameHelpers(frameManager: FrameManager) {
 	type FrameLifecycleOptions<T extends FrameTypes> = {
 		input?: T['input']
 		frameKey?: InstanceKey<T>
-		deps?: T['deps']
 		equalityFn?: typeof Obj.shallowEquals<InstanceKey<T>>
 	}
 
@@ -280,7 +238,7 @@ export function createFrameHelpers(frameManager: FrameManager) {
 			(frameOrId, options) => {
 				if (options.frameKey) return options.frameKey
 				if (options.input) {
-					return frameManager.ensureSetup(frameOrId, options.input, options.deps)
+					return frameManager.ensureSetup(frameOrId, options.input)
 				} else {
 					throw new Error('Frame lifecycle options must include either input or frameKey')
 				}

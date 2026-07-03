@@ -39,7 +39,10 @@ export const Route = createFileRoute('/_app/servers/$serverId')({
 	}),
 
 	onEnter({ params }) {
-		UPClient.Actions.updateActivity({ code: 'enter-server-dashboard', serverId: params.serverId })
+		UPClient.Actions.updateActivity(
+			{ code: 'enter-server-dashboard', serverId: params.serverId },
+			{ code: 'set-primary-panel', to: 'VIEWING_QUEUE' },
+		)
 		SquadServerClient.SelectedServerActions.setSelectedServer(params.serverId)
 	},
 

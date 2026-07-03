@@ -329,7 +329,8 @@ export function useLayerItemStatusData(
 	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
 ): LayerItemStatusData | null {
 	const queriedConstraints = useLayerItemStatusConstraints(squadServerFrameKey)
-	const queryRes = useLayerItemStatuses(queriedConstraints, { ...options, listId: squadServerFrameKey?.serverId })
+	const layerItemsState = ZusUtils.useStore(squadServerFrameKey, s => s?.layerItemsState)
+	const queryRes = useLayerItemStatuses({ constraints: queriedConstraints, list: layerItemsState }, { ...options })
 	const itemId = LQY.resolveId(layerItem)
 
 	const allMatchDescriptors = queryRes.data?.matchDescriptors
@@ -389,10 +390,9 @@ export function useLayerItemStatusData(
 
 // TODO prefetching
 export function useLayerItemStatuses(
-	constraints: LQY.Constraint[],
-	options: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore>; listId?: string },
+	input: LQY.LayerItemStatusesInput,
+	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
 ) {
-	const input: LQY.LayerItemStatusesInput & { listId?: string } = { constraints, listId: options.listId }
 	return useQuery({
 		...options,
 		queryKey: [
@@ -447,8 +447,25 @@ export function useDepKey(input?: unknown) {
 	return getDepKey(input, backgroundStateEpoch)
 }
 
+// maps each distinct layerItems array reference to a small id so query keys compare the list shallowly
+// (by reference + parity) instead of stringifying ~100 layer items into every key on every render
+const layerItemsKeyIds = new WeakMap<object, number>()
+let layerItemsKeyIdCounter = 0
+function listDepKey(list: LQY.LayerItemsState) {
+	let id = layerItemsKeyIds.get(list.layerItems)
+	if (id === undefined) {
+		id = ++layerItemsKeyIdCounter
+		layerItemsKeyIds.set(list.layerItems, id)
+	}
+	return { layerItemsRef: id, firstLayerItemParity: list.firstLayerItemParity }
+}
+
 // get context/input that may invalidate the query
 function getDepKey(input: unknown, backgroundStateEpoch: number) {
+	const list = (input as LQY.BaseQueryInput | undefined)?.list
+	if (typeof input === 'object' && input !== null && list !== undefined) {
+		input = { ...(input as LQY.BaseQueryInput), list: listDepKey(list) }
+	}
 	return {
 		input,
 		backgroundStateEpoch,

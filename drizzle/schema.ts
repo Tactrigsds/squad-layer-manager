@@ -118,6 +118,7 @@ export const playerEventAssociations = sqliteTable(
 		playerIdIndex: index('playerIdIndex').on(table.playerId),
 		assocTypeIndex: index('assocTypeIndex').on(table.assocType),
 		serverEventIdIndex: index('serverEventIdIndex').on(table.serverEventId),
+		serverEventPlayerAssocUnique: unique('serverEventPlayerAssocUnique').on(table.serverEventId, table.playerId, table.assocType),
 	}),
 )
 
@@ -146,6 +147,7 @@ export const squadEventAssociations = sqliteTable(
 	},
 	(table) => ({
 		pk: primaryKey({ columns: [table.serverEventId, table.squadId] }),
+		squadIdIndex: index('squadEventAssociationsSquadIdIndex').on(table.squadId),
 	}),
 )
 
@@ -216,7 +218,7 @@ export const users = sqliteTable('users', {
 	discordId: bigintText('discordId')
 		.notNull()
 		.primaryKey(),
-	steam64Id: bigintText('steam64Id'),
+	steam64Id: bigintText('steam64Id').unique(),
 	// https://support.discord.com/hc/en-us/articles/12620128861463-New-Usernames-Display-Names#h_01GXPQAGG6W477HSC5SR053QG1
 	username: text('username').notNull(),
 	nickname: text('nickname'),
@@ -235,6 +237,7 @@ export const sessions = sqliteTable(
 	},
 	(table) => ({
 		expiresAtIndex: index('expiresAtIndex').on(table.expiresAt),
+		userIdIndex: index('sessionUserIdIndex').on(table.userId),
 	}),
 )
 
@@ -242,4 +245,6 @@ export const persistedCache = sqliteTable('persistedCache', {
 	key: text('key').primaryKey(),
 	value: json('value').notNull(),
 	updatedAt: timestamp('updatedAt').$defaultFn(() => new Date()).notNull(),
-})
+}, (table) => ({
+	updatedAtIndex: index('persistedCacheUpdatedAtIndex').on(table.updatedAt),
+}))

@@ -50,7 +50,7 @@ import * as WsSessionSys from '@/systems/ws-session.server'
 import * as Orpc from '@orpc/server'
 import { Mutex, type MutexInterface } from 'async-mutex'
 import { sql } from 'drizzle-orm'
-import * as E from 'drizzle-orm/expressions'
+import * as E from 'drizzle-orm'
 import * as Rx from 'rxjs'
 import superjson from 'superjson'
 import { z } from 'zod'
@@ -610,6 +610,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 				errors,
 			)
 		) {
+			if (logStreamAc.signal.aborted) break
 			const ctx = resolveSliceCtx(getBaseCtx(), serverId)
 			for (const error of errors) log.error(error)
 			errors.splice(0, errors.length)
@@ -783,9 +784,7 @@ export async function getFullServerState(ctx: C.Db & C.LayerQueue) {
 		.select()
 		.from(Schema.servers)
 		.where(E.eq(Schema.servers.id, ctx.serverId))
-	let serverRaw: any
-	if (ctx.tx) [serverRaw] = await query.for('update')
-	else [serverRaw] = await query
+	const [serverRaw] = await query
 	return SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
 }
 
@@ -985,9 +984,7 @@ export async function getServerState(ctx: C.Db & C.ServerId) {
 		.select()
 		.from(Schema.servers)
 		.where(E.eq(Schema.servers.id, ctx.serverId))
-	let serverRaw: any
-	if (ctx.tx) [serverRaw] = await query.for('update')
-	else [serverRaw] = await query
+	const [serverRaw] = await query
 	return SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
 }
 
@@ -1000,7 +997,7 @@ export async function updateServerState(
 	const serverState = await getServerState(ctx)
 	const newServerState = { ...serverState, ...changes }
 	await ctx
-		.db({ redactParams: true })
+		.db()
 		.update(Schema.servers)
 		.set(
 			superjsonify(Schema.servers, changes),
@@ -1149,12 +1146,12 @@ export const saveEvents = C.spanOp(
 					.db({ redactParams: true })
 					.insert(Schema.players)
 					.values(playerRows)
-					.onDuplicateKeyUpdate({
+					.onConflictDoUpdate({
+						target: Schema.players.eosId,
 						set: {
-							steamId: sql`VALUES(steamId)`,
-							eosId: sql`VALUES(eosId)`,
-							username: sql`VALUES(username)`,
-							modifiedAt: sql`IF(eosId != VALUES(eosId) OR username != VALUES(username) OR steamId != VALUES(steamId), NOW(), modifiedAt)`,
+							steamId: sql`excluded.steamId`,
+							username: sql`excluded.username`,
+							modifiedAt: new Date(),
 						},
 					})
 				playerRows = []
@@ -1189,6 +1186,13 @@ export const saveEvents = C.spanOp(
 						.db({ redactParams: true })
 						.insert(Schema.playerEventAssociations)
 						.values(validRows)
+						.onConflictDoNothing({
+							target: [
+								Schema.playerEventAssociations.serverEventId,
+								Schema.playerEventAssociations.playerId,
+								Schema.playerEventAssociations.assocType,
+							],
+						})
 				}
 			}
 
@@ -1197,12 +1201,13 @@ export const saveEvents = C.spanOp(
 					.db({ redactParams: true })
 					.insert(Schema.squads)
 					.values(squadRows)
-					.onDuplicateKeyUpdate({
+					.onConflictDoUpdate({
+						target: Schema.squads.id,
 						set: {
-							ingameSquadId: sql`VALUES(ingameSquadId)`,
-							teamId: sql`VALUES(teamId)`,
-							name: sql`VALUES(name)`,
-							creatorId: sql`VALUES(creatorId)`,
+							ingameSquadId: sql`excluded.ingameSquadId`,
+							teamId: sql`excluded.teamId`,
+							name: sql`excluded.name`,
+							creatorId: sql`excluded.creatorId`,
 						},
 					})
 			}
@@ -1211,6 +1216,9 @@ export const saveEvents = C.spanOp(
 					.db({ redactParams: true })
 					.insert(Schema.squadEventAssociations)
 					.values(squadAssociationRows)
+					.onConflictDoNothing({
+						target: [Schema.squadEventAssociations.serverEventId, Schema.squadEventAssociations.squadId],
+					})
 			}
 		}),
 )

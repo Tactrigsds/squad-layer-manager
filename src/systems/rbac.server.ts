@@ -9,7 +9,8 @@ import * as C from '@/server/context'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as Discord from '@/systems/discord.server'
 
-import * as E from 'drizzle-orm/expressions'
+import * as E from 'drizzle-orm'
+import { unionAll } from 'drizzle-orm/sqlite-core'
 
 let userDefinedRoles!: RBAC.Role[]
 let userDefinedPermissionExpressions!: Record<string, RBAC.GlobalPermissionTypeExpression[]>
@@ -101,10 +102,8 @@ export const getUserRbacPerms = C.spanOp(
 	{ module, levels: { event: 'trace' }, attrs: (_, userId) => ({ userId }) },
 	async (baseCtx: C.Db & C.UserId): Promise<RBAC.TracedPermission[]> => {
 		const userId = baseCtx.user.discordId
-		const ownedFiltersPromise = getOwnedFilters()
 		const roles = await getRolesForDiscordUser(baseCtx)
-		const userFilterContributorsPromise = getUserContributorFilters()
-		const roleFilterContributorsPromise = getRoleContributorFilters()
+		const filterRowsPromise = getFilterPermissionRows()
 
 		const perms: RBAC.TracedPermission[] = []
 		const allNegatingPerms: Set<RBAC.GlobalPermissionType> = new Set()
@@ -131,51 +130,50 @@ export const getUserRbacPerms = C.spanOp(
 			}
 		}
 
-		for (const filter of (await ownedFiltersPromise)) {
+		const negatedFiltersWrite = isNegated('filters:write')
+		for (const row of await filterRowsPromise) {
+			const source: RBAC.TracedPermission['allowedByRoles'][number] = row.source === 'owner'
+				? { type: 'filter-owner', filterId: row.filterId }
+				: row.source === 'user-contributor'
+				? { type: 'filter-user-contributor', filterId: row.filterId }
+				: { type: 'filter-role-contributor', filterId: row.filterId, roleId: row.roleId! }
 			RBAC.addTracedPerms(
 				perms,
-				RBAC.tracedPerm('filters:write', [{ type: 'filter-owner', filterId: filter.id }], { negated: isNegated('filters:write') }, {
-					filterId: filter.id,
-				}),
-			)
-		}
-		for (const filterId of (await userFilterContributorsPromise)) {
-			RBAC.addTracedPerms(
-				perms,
-				RBAC.tracedPerm('filters:write', [{ type: `filter-user-contributor`, filterId }], { negated: isNegated('filters:write') }, {
-					filterId: filterId,
-				}),
-			)
-		}
-
-		for (const { filterId, roleId } of (await roleFilterContributorsPromise)) {
-			RBAC.addTracedPerms(
-				perms,
-				RBAC.tracedPerm('filters:write', [{ type: 'filter-role-contributor', filterId, roleId }], { negated: isNegated('filters:write') }, {
-					filterId: filterId,
-				}),
+				RBAC.tracedPerm('filters:write', [source], { negated: negatedFiltersWrite }, { filterId: row.filterId }),
 			)
 		}
 		return perms
 
-		async function getOwnedFilters() {
-			return await baseCtx.db().select({ id: Schema.filters.id }).from(Schema.filters).where(E.eq(Schema.filters.owner, userId))
-		}
-		async function getRoleContributorFilters() {
-			const rows = await baseCtx
-				.db()
-				.select({ filterId: Schema.filterRoleContributors.filterId, roleId: Schema.filterRoleContributors.roleId })
-				.from(Schema.filterRoleContributors)
-				.where(E.inArray(Schema.filterRoleContributors.roleId, roles.map(r => r.type)))
-			return rows
-		}
-		async function getUserContributorFilters() {
-			const rows = await baseCtx
-				.db()
-				.select({ filterId: Schema.filterUserContributors.filterId })
+		// owned filters, user contributors and role contributors fetched as one UNION ALL round-trip
+		function getFilterPermissionRows() {
+			const db = baseCtx.db()
+			type Source = 'owner' | 'user-contributor' | 'role-contributor'
+			const ownedFilters = db
+				.select({
+					source: E.sql<Source>`'owner'`.as('source'),
+					filterId: Schema.filters.id,
+					roleId: E.sql<string | null>`null`.as('roleId'),
+				})
+				.from(Schema.filters)
+				.where(E.eq(Schema.filters.owner, userId))
+			const userContributors = db
+				.select({
+					source: E.sql<Source>`'user-contributor'`.as('source'),
+					filterId: Schema.filterUserContributors.filterId,
+					roleId: E.sql<string | null>`null`.as('roleId'),
+				})
 				.from(Schema.filterUserContributors)
 				.where(E.eq(Schema.filterUserContributors.userId, userId))
-			return rows.map((r) => r.filterId)
+			if (roles.length === 0) return unionAll(ownedFilters, userContributors)
+			const roleContributors = db
+				.select({
+					source: E.sql<Source>`'role-contributor'`.as('source'),
+					filterId: Schema.filterRoleContributors.filterId,
+					roleId: E.sql<string | null>`${Schema.filterRoleContributors.roleId}`.as('roleId'),
+				})
+				.from(Schema.filterRoleContributors)
+				.where(E.inArray(Schema.filterRoleContributors.roleId, roles.map(r => r.type)))
+			return unionAll(ownedFilters, userContributors, roleContributors)
 		}
 	},
 )

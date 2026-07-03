@@ -1,3 +1,4 @@
+import * as ServerSettingsPartial from '@/frame-partials/server-settings.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { sleep } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
@@ -23,7 +24,7 @@ export type Store = {
 	appliedFilters: AppliedFiltersSlice
 } & Predicates
 
-export type Predicates = SquadServerFrame.KeyProp
+export type Predicates = Partial<SquadServerFrame.KeyProp>
 
 export type Key = FRM.InstanceKeyOfState<Store>
 export type KeyProp = { appliedFilters: Key }
@@ -143,8 +144,10 @@ export namespace Actions {
 
 	export function selectExtraFilters(stores: KeyProp, update: React.SetStateAction<F.FilterEntityId[]>) {
 		let filterIds = typeof update === 'function' ? update(Array.from(ExtraFiltersStore.getState().extraFilters)) : update
-		const filterConfig = ZusUtils.getState(ZusUtils.getState(stores.appliedFilters).squadServer).settings.saved.queue.mainPool.filters
-		filterIds = filterIds.filter(id => !filterConfig.some(filterConfig => filterConfig.filterId === id))
+		const filterConfig = ZusUtils.getState(ZusUtils.getState(stores.appliedFilters).squadServer)?.settings.saved.queue.mainPool.filters
+		if (filterConfig) {
+			filterIds = filterIds.filter(id => !filterConfig.some(filterConfig => filterConfig.filterId === id))
+		}
 		ExtraFiltersStore.setState({
 			extraFilters: new Set(filterIds),
 		})

@@ -29,7 +29,7 @@ export type State = {
 	committing: boolean
 
 	// -------- derived properties --------
-	layerList: LL.Item[]
+	layerList: LL.List
 	mutations: ItemMut.Mutations
 	isModified: boolean
 }

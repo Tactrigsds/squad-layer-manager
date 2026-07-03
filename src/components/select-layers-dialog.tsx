@@ -50,12 +50,11 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 
 	const frameInputRef = useRefConstructor(() => {
 		if (props.stores?.selectLayers) return undefined
-		SelectLayersFrame.createInput({ cursor: props.cursor, selected: defaultSelectedRef.current })
+		SelectLayersFrame.createInput({ cursor: props.cursor })
 	})
 	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, {
 		frameKey: props.stores?.selectLayers,
 		input: frameInputRef.current,
-		deps: undefined,
 		equalityFn: Obj.deepEqual,
 	})
 
