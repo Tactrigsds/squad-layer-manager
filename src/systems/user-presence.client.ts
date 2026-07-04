@@ -280,6 +280,18 @@ export namespace Actions {
 		dispatch(...updates.map((update): UP.NewClientOp => ({ code: 'update-activity', update })))
 	}
 
+	// Wraps an async player-management flow: marks the given player dialogue active for presence, then
+	// clears it once the flow settles (resolves, rejects, or is cancelled). Callers should still call
+	// ensureViewingTeams() themselves before invoking, since not every flow needs it.
+	export async function withPlayerDialogue<T>(dialog: UP.PlayerDialogueId, fn: () => Promise<T>): Promise<T> {
+		updateActivity({ code: 'set-player-dialogue', dialog })
+		try {
+			return await fn()
+		} finally {
+			updateActivity({ code: 'clear-player-dialogue' })
+		}
+	}
+
 	export function preloadActivity(update: UP.ActivityUpdate) {
 		requestIdleCallback(() => {
 			const config = ConfigClient.getConfig()
@@ -324,7 +336,13 @@ export function useItemPresence(itemId: LL.ItemId) {
 	return [presence, userRes.data.user, activityHovered] as const
 }
 export namespace Sel {
-	export const isSllItemLocked = (itemId: string) => (state: Store) => state.session.localState.itemLocks.has(itemId)
+	// locked for the local client: a lock we hold ourselves (e.g. via CONFIGURING_VOTE) shouldn't block our own editing
+	export const isSllItemLocked = (itemId: string) => (state: Store) => {
+		const lockedClientId = state.session.localState.itemLocks.get(itemId)
+		if (!lockedClientId) return false
+		const config = ConfigClient.getConfig()
+		return !config || lockedClientId !== config.wsClientId
+	}
 
 	// config comes from ConfigClient.Store -- use with ZusUtils.useStore(ConfigClient.Store, UPClient.Store, Sel.clientPresence)
 	export function clientPresence(config: ReturnType<typeof ConfigClient.getConfig>, state: Store) {

@@ -24,7 +24,7 @@ import * as TSWClient from '@/systems/teamswitches.client'
 import * as UPClient from '@/systems/user-presence.client'
 
 import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table'
-import type { CellContext, ColumnDef, HeaderContext, SortingState } from '@tanstack/react-table'
+import type { CellContext, ColumnDef, ColumnHelper, HeaderContext, SortingState } from '@tanstack/react-table'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import PlayerBulkContextMenuOptions from './player-bulk-context-menu-options'
@@ -173,9 +173,8 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 						const matchedIds = players
 							.filter((_, i) => matched.has(i))
 							.map(p => SM.PlayerIds.getPlayerId(p.ids))
-						SquadServerClient.Actions.setSelection(
-							Object.fromEntries(matchedIds.map(id => [id, true])),
-						)
+						// additive, like every other selection action -- merge matches into the current selection
+						SquadServerClient.Actions.selectPlayers(matchedIds)
 					}}
 				/>
 				<div className="flex items-center gap-2 justify-center">
@@ -199,6 +198,14 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 						onCheckedChange={setHideSpoilers}
 					/>
 					<Label htmlFor={hideSpoilersId} className="text-sm whitespace-nowrap" title="Hide K/W/D and role columns">Hide Spoilers</Label>
+					{hideSpoilers && roleFilter !== null && (
+						<Badge variant="secondary" className="gap-1" title="Role filter is active but hidden with spoilers">
+							Role: {roleFilter}
+							<button type="button" className="hover:text-destructive" title="Clear role filter" onClick={() => setRoleFilter(null)}>
+								<Icons.X className="h-3 w-3" />
+							</button>
+						</Badge>
+					)}
 					<Button
 						variant="ghost"
 						size="icon"
@@ -384,16 +391,29 @@ type PlayerFilters = {
 	setSquad: (v: string | null) => void
 }
 
-type TeamPlayerTableMeta = {
+// shared across both table variants; each variant extends it with its squad-lookup shape
+type BasePlayerTableMeta = {
 	matchId: number
-	teamId: SM.TeamId
-	squads: SM.UniqueSquad[]
 	groupingColorByLabel: Map<string, string>
 	filters: PlayerFilters
 	availableRoles: string[]
 	availableGroupings: string[]
 	stores: SquadServerFrame.KeyProp
 	statsSort: StatsSortState
+}
+
+type TeamPlayerTableMeta = BasePlayerTableMeta & {
+	teamId: SM.TeamId
+	squads: SM.UniqueSquad[]
+}
+
+type CombinedPlayer = TeamsPanelModels.EnrichedPlayer & { normedTeam: MH.NormedTeamId }
+
+type SquadWithTeam = { squad: SM.UniqueSquad; normedTeam: MH.NormedTeamId }
+
+type CombinedTableMeta = BasePlayerTableMeta & {
+	squadsWithTeam: SquadWithTeam[]
+	getFaction: (normedTeam: MH.NormedTeamId) => string
 }
 
 const FILTERED_COLUMN_IDS = ['role', 'grouping', 'squad']
@@ -479,8 +499,10 @@ type StatsSortState = {
 	sorted: false | 'asc' | 'desc'
 }
 
-function statsSortedDir(sorting: SortingState): false | 'asc' | 'desc' {
-	const entry = sorting.find(s => s.id === 'stats')
+// derive sort direction from the sorting react state rather than column.getIsSorted(): the react
+// compiler memoizes on the stable column identity, so getIsSorted() calls in render go stale
+function sortDirFor(sorting: SortingState, columnId: string): false | 'asc' | 'desc' {
+	const entry = sorting.find(s => s.id === columnId)
 	return entry ? (entry.desc ? 'desc' : 'asc') : false
 }
 
@@ -591,54 +613,43 @@ function statsColumn<T extends TeamsPanelModels.EnrichedPlayer>(metric: StatsSor
 }
 
 const playerColumnHelper = createColumnHelper<TeamsPanelModels.EnrichedPlayer>()
+const combinedColumnHelper = createColumnHelper<CombinedPlayer>()
 
-const playerColumns = [
-	playerColumnHelper.display({
-		id: 'select',
-		header: ({ table }) => (
-			<Checkbox
-				checked={table.getIsAllRowsSelected()}
-				onCheckedChange={checked => table.toggleAllRowsSelected(!!checked)}
-				onClick={e => {
-					if (!e.shiftKey) return
-					e.preventDefault()
-					const { stores, teamId } = table.options.meta as TeamPlayerTableMeta
-					SquadServerClient.Actions.selectAllTeamPlayers(stores, e.ctrlKey ? undefined : teamId)
-				}}
-				title="Select all shown. Shift+click: select all on this team. Shift+Ctrl+click: both teams"
-				aria-label="Select all"
+// Shared cell/column builders used by both the per-team and combined tables. Each reads only the
+// fields on BasePlayerTableMeta so it works regardless of which variant's meta is attached; the
+// squad column, which differs between variants, is parameterized via squadColumn().
+
+function selectColumnCell<T extends TeamsPanelModels.EnrichedPlayer>({ row, table }: CellContext<T, unknown>) {
+	const { stores } = table.options.meta as BasePlayerTableMeta
+	return (
+		<div onClick={e => e.stopPropagation()}>
+			<SelectOrSpinner
+				playerId={row.id}
+				checked={row.getIsSelected()}
+				onCheckedChange={checked => row.toggleSelected(!!checked)}
+				stores={stores}
 			/>
-		),
-		cell: ({ row, table }) => {
-			const playerId = row.id
-			const { stores } = table.options.meta as TeamPlayerTableMeta
-			return (
-				<div onClick={e => e.stopPropagation()}>
-					<SelectOrSpinner
-						playerId={playerId}
-						checked={row.getIsSelected()}
-						onCheckedChange={checked => row.toggleSelected(!!checked)}
-						stores={stores}
-					/>
-				</div>
-			)
-		},
-	}),
-	playerColumnHelper.accessor(row => row.ids.usernameNoTag ?? row.ids.username ?? '', {
+		</div>
+	)
+}
+
+function nameColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>) {
+	return helper.accessor(row => row.ids.usernameNoTag ?? row.ids.username ?? '', {
 		id: 'name',
 		header: 'Name',
-		cell: ({ row, table }) => (
-			<PlayerDisplay
-				stores={(table.options.meta as TeamPlayerTableMeta).stores}
-				player={row.original}
-				matchId={(table.options.meta as TeamPlayerTableMeta).matchId}
-			/>
-		),
-	}),
-	playerColumnHelper.accessor(row => row.grouping ?? '', {
+		cell: ({ row, table }) => {
+			const meta = table.options.meta as BasePlayerTableMeta
+			// let the enclosing row context menu (bulk-aware) handle right-clicks on the name
+			return <PlayerDisplay stores={meta.stores} player={row.original} matchId={meta.matchId} disableContextMenu />
+		},
+	})
+}
+
+function groupingColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>) {
+	return helper.accessor(row => row.grouping ?? '', {
 		id: 'grouping',
 		header: ({ table }) => {
-			const { filters, availableGroupings } = table.options.meta as TeamPlayerTableMeta
+			const { filters, availableGroupings } = table.options.meta as BasePlayerTableMeta
 			return (
 				<span className="flex flex-col items-start">
 					Grouping
@@ -653,7 +664,7 @@ const playerColumns = [
 		cell: ({ row, table }) => {
 			const label = row.original.grouping
 			if (!label) return null
-			const { groupingColorByLabel } = table.options.meta as TeamPlayerTableMeta
+			const { groupingColorByLabel } = table.options.meta as BasePlayerTableMeta
 			const color = groupingColorByLabel.get(label)
 			return (
 				<span className="flex items-center gap-1">
@@ -662,77 +673,14 @@ const playerColumns = [
 				</span>
 			)
 		},
-	}),
-	playerColumnHelper.accessor(row => row.squadId ?? -1, {
-		id: 'squad',
+	})
+}
+
+function roleColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>) {
+	return helper.accessor(row => row.role ?? '', {
+		id: 'role',
 		header: ({ table }) => {
-			const { filters, squads } = table.options.meta as TeamPlayerTableMeta
-			const squadOptions = [
-				...squads.map(s => ({
-					value: String(s.squadId),
-					label: s.squadName === 'Command Squad' ? `CMD(${s.squadId})` : `${s.squadId} ${s.squadName}`,
-				})),
-				{ value: FILTER_NONE, label: 'Unassigned' },
-			]
-			return (
-				<span className="flex flex-col items-start">
-					Squad
-					<ColumnFilterSelect value={filters.squad} onChange={filters.setSquad} options={squadOptions} />
-				</span>
-			)
-		},
-		cell: ({ row, table }) => {
-			const { squads, stores } = table.options.meta as TeamPlayerTableMeta
-			const player = row.original
-			const squadId = player.squadId
-			if (squadId === null) return ''
-			const squad = squads.find(s => s.squadId === squadId)
-			if (!squad) return String(squadId)
-			const isCmd = squad.squadName === 'Command Squad'
-			const squadLabel = isCmd
-				? <span>CMD({squadId})</span>
-				: (
-					<OpenWindowInteraction
-						windowId={WINDOW_ID.enum['squad-details']}
-						windowProps={{ uniqueSquadId: squad.uniqueId, stores } satisfies SquadDetailsWindowProps}
-						preload="intent"
-						render={(
-							{ label, ref, onClick, ...rest }:
-								& { label: string; ref?: React.Ref<HTMLButtonElement>; onClick?: React.MouseEventHandler<HTMLButtonElement> }
-								& React.ButtonHTMLAttributes<HTMLButtonElement>,
-						) => (
-							<button
-								ref={ref}
-								type="button"
-								className="hover:underline cursor-pointer"
-								onClick={e => {
-									e.stopPropagation()
-									onClick?.(e)
-								}}
-								{...rest}
-							>
-								{label}
-							</button>
-						)}
-						label={String(squadId)}
-					/>
-				)
-			return (
-				<span className="inline-flex items-center gap-1">
-					<ContextMenu>
-						<ContextMenuTrigger>{squadLabel}</ContextMenuTrigger>
-						<ContextMenuContent>
-							<SquadContextMenuOptions squad={squad} stores={stores} />
-						</ContextMenuContent>
-					</ContextMenu>
-					{player.isLeader && <span className="text-xs text-muted-foreground">(SL)</span>}
-				</span>
-			)
-		},
-	}),
-	playerColumnHelper.accessor('role', {
-		header: ({ table }) => {
-			const { filters, availableRoles } = table.options.meta as TeamPlayerTableMeta
+			const { filters, availableRoles } = table.options.meta as BasePlayerTableMeta
 			return (
 				<span className="flex flex-col items-start">
 					Role
@@ -741,44 +689,216 @@ const playerColumns = [
 			)
 		},
 		enableSorting: false,
-	}),
-]
+	})
+}
 
-function TeamPlayerTable(
-	props: {
-		teamId: MH.NormedTeamId
-		searchQuery: string
-		filters: PlayerFilters
-		showSelected: boolean
-		adminsOnly: boolean
-		sorting: SortingState
-		setSorting: React.Dispatch<React.SetStateAction<SortingState>>
-		availableRoles: string[]
-		availableGroupings: string[]
-		hideSpoilers: boolean
-		className?: string
+// module-level render prop so its identity is stable across renders
+function squadButton(
+	{ label, ref, onClick, ...rest }:
+		& { label: string; ref?: React.Ref<HTMLButtonElement>; onClick?: React.MouseEventHandler<HTMLButtonElement> }
+		& React.ButtonHTMLAttributes<HTMLButtonElement>,
+) {
+	return (
+		<button
+			ref={ref}
+			type="button"
+			className="hover:underline cursor-pointer"
+			onClick={e => {
+				e.stopPropagation()
+				onClick?.(e)
+			}}
+			{...rest}
+		>
+			{label}
+		</button>
+	)
+}
+
+// Renders a squad label (command squads are plain text, others open the squad-details window) wrapped
+// in the squad context menu. `label` is precomputed by the caller so the two variants can format it
+// differently (e.g. "12" vs "USA:12").
+function SquadCell(
+	{ squad, label, isLeader, stores }: {
+		squad: SM.UniqueSquad
+		label: string
+		isLeader: boolean
 		stores: SquadServerFrame.KeyProp
 	},
 ) {
-	const rowSelection = ZusUtils.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
-	const savedSwitches = ZusUtils.useStore(props.stores.squadServer!, s => TSWClient.Sel.localState(s).savedSwitches)
-	const setRowSelection = SquadServerClient.Actions.setSelection
-	const mouseDownRef = React.useRef<{ index: number; originalSelected: boolean } | null>(null)
-	const { sorting, setSorting } = props
-	const [statsMetric, setStatsMetric] = React.useState<StatsSortMetric>('kills')
-	const [statsSortOpen, setStatsSortOpen] = React.useState(false)
-	const columns = React.useMemo(
-		() => [...playerColumns, statsColumn<TeamsPanelModels.EnrichedPlayer>(statsMetric)],
-		[statsMetric],
+	const isCmd = squad.squadName === 'Command Squad'
+	const squadLabel = isCmd
+		? <span>{label}</span>
+		: (
+			<OpenWindowInteraction
+				windowId={WINDOW_ID.enum['squad-details']}
+				windowProps={{ uniqueSquadId: squad.uniqueId, stores } satisfies SquadDetailsWindowProps}
+				preload="intent"
+				render={squadButton}
+				label={label}
+			/>
+		)
+	return (
+		<span className="inline-flex items-center gap-1">
+			<ContextMenu>
+				<ContextMenuTrigger>{squadLabel}</ContextMenuTrigger>
+				<ContextMenuContent>
+					<SquadContextMenuOptions squad={squad} stores={stores} />
+				</ContextMenuContent>
+			</ContextMenu>
+			{isLeader && <span className="text-xs text-muted-foreground">(SL)</span>}
+		</span>
 	)
-	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
-	const matchId = match?.historyEntryId ?? 0
+}
 
+function squadColumn<T extends TeamsPanelModels.EnrichedPlayer, M extends BasePlayerTableMeta>(
+	helper: ColumnHelper<T>,
+	opts: {
+		getSquad: (player: T, meta: M) => SM.UniqueSquad | undefined
+		squadLabel: (squad: SM.UniqueSquad, player: T, meta: M) => string
+		fallbackLabel: (player: T, meta: M) => string
+		filterOptions: (meta: M) => { value: string; label: string }[]
+	},
+) {
+	return helper.accessor(row => row.squadId ?? -1, {
+		id: 'squad',
+		header: ({ table }) => {
+			const meta = table.options.meta as M
+			return (
+				<span className="flex flex-col items-start">
+					Squad
+					<ColumnFilterSelect value={meta.filters.squad} onChange={meta.filters.setSquad} options={opts.filterOptions(meta)} />
+				</span>
+			)
+		},
+		cell: ({ row, table }) => {
+			const meta = table.options.meta as M
+			const player = row.original
+			if (player.squadId === null) return ''
+			const squad = opts.getSquad(player, meta)
+			if (!squad) return opts.fallbackLabel(player, meta)
+			return <SquadCell squad={squad} label={opts.squadLabel(squad, player, meta)} isLeader={!!player.isLeader} stores={meta.stores} />
+		},
+	})
+}
+
+const teamPlayerColumns: ColumnDef<TeamsPanelModels.EnrichedPlayer, any>[] = [
+	playerColumnHelper.display({
+		id: 'select',
+		header: ({ table }) => {
+			const { stores, teamId } = table.options.meta as TeamPlayerTableMeta
+			return (
+				<Checkbox
+					checked={table.getIsAllRowsSelected()}
+					onCheckedChange={checked => table.toggleAllRowsSelected(!!checked)}
+					onClick={e => {
+						if (e.altKey) {
+							e.preventDefault()
+							SquadServerClient.Actions.invertSelection(stores, e.ctrlKey ? undefined : teamId)
+							return
+						}
+						if (!e.shiftKey) return
+						e.preventDefault()
+						SquadServerClient.Actions.selectAllTeamPlayers(stores, e.ctrlKey ? undefined : teamId)
+					}}
+					title="Select all shown. Shift+click: select all on this team. Shift+Ctrl+click: both teams. Alt+click: invert selection on this team. Alt+Ctrl+click: invert on both teams"
+					aria-label="Select all"
+				/>
+			)
+		},
+		cell: selectColumnCell,
+	}),
+	nameColumn(playerColumnHelper),
+	groupingColumn(playerColumnHelper),
+	squadColumn<TeamsPanelModels.EnrichedPlayer, TeamPlayerTableMeta>(playerColumnHelper, {
+		getSquad: (player, meta) => meta.squads.find(s => s.squadId === player.squadId),
+		squadLabel: squad => squad.squadName === 'Command Squad' ? `CMD(${squad.squadId})` : String(squad.squadId),
+		fallbackLabel: player => String(player.squadId),
+		filterOptions: meta => [
+			...meta.squads.map(s => ({
+				value: String(s.squadId),
+				label: s.squadName === 'Command Squad' ? `CMD(${s.squadId})` : `${s.squadId} ${s.squadName}`,
+			})),
+			{ value: FILTER_NONE, label: 'Unassigned' },
+		],
+	}),
+	roleColumn(playerColumnHelper),
+]
+
+const combinedPlayerColumns: ColumnDef<CombinedPlayer, any>[] = [
+	combinedColumnHelper.display({
+		id: 'select',
+		header: ({ table }) => {
+			const { stores } = table.options.meta as CombinedTableMeta
+			return (
+				<Checkbox
+					checked={table.getIsAllRowsSelected()}
+					onCheckedChange={checked => table.toggleAllRowsSelected(!!checked)}
+					onClick={e => {
+						if (e.altKey) {
+							e.preventDefault()
+							SquadServerClient.Actions.invertSelection(stores)
+							return
+						}
+						if (!e.shiftKey) return
+						e.preventDefault()
+						SquadServerClient.Actions.selectAllTeamPlayers(stores)
+					}}
+					title="Select all shown. Shift+click: select all players on both teams. Alt+click: invert selection"
+					aria-label="Select all"
+				/>
+			)
+		},
+		cell: selectColumnCell,
+	}),
+	combinedColumnHelper.accessor(row => row.normedTeam, {
+		id: 'faction',
+		header: 'Faction',
+		cell: ({ row, table }) => {
+			const normedTeam = row.original.normedTeam
+			return (
+				<span className="font-semibold" style={{ color: DH.TEAM_COLORS[`team${normedTeam}`] }}>
+					{(table.options.meta as CombinedTableMeta).getFaction(normedTeam)}
+				</span>
+			)
+		},
+	}),
+	nameColumn(combinedColumnHelper),
+	groupingColumn(combinedColumnHelper),
+	squadColumn<CombinedPlayer, CombinedTableMeta>(combinedColumnHelper, {
+		getSquad: (player, meta) =>
+			meta.squadsWithTeam.find(({ squad: s, normedTeam }) => s.squadId === player.squadId && normedTeam === player.normedTeam)?.squad,
+		squadLabel: (squad, player, meta) => {
+			const faction = meta.getFaction(player.normedTeam)
+			return squad.squadName === 'Command Squad' ? `${faction}:CMD` : `${faction}:${squad.squadId}`
+		},
+		fallbackLabel: (player, meta) => `${meta.getFaction(player.normedTeam)}:${player.squadId}`,
+		filterOptions: meta => [
+			...meta.squadsWithTeam.map(({ squad: s, normedTeam }) => {
+				const faction = meta.getFaction(normedTeam)
+				const isCmd = s.squadName === 'Command Squad'
+				return {
+					value: `${normedTeam}:${s.squadId}`,
+					label: isCmd ? `${faction}:CMD` : `${faction}:${s.squadId} ${s.squadName}`,
+				}
+			}),
+			{ value: FILTER_NONE, label: 'Unassigned' },
+		],
+	}),
+	roleColumn(combinedColumnHelper),
+]
+
+const matchesTeamSquadFilter = (player: TeamsPanelModels.EnrichedPlayer, squadFilter: string) =>
+	squadFilter === FILTER_NONE ? player.squadId === null : player.squadId === Number(squadFilter)
+
+const matchesCombinedSquadFilter = (player: CombinedPlayer, squadFilter: string) =>
+	squadFilter === FILTER_NONE ? player.squadId === null : squadFilter === `${player.normedTeam}:${player.squadId}`
+
+function useGroupingColorByLabel(): Map<string, string> {
 	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
 	const orgFlags = BattlemetricsClient.useOrgFlags()
 	const modeIds = React.useMemo(() => BM.getGroupingModeIds(config?.playerFlagGroupings ?? []), [config])
 	const activeModeId = ZusUtils.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingModeId(modeIds))
-	const groupingColorByLabel = React.useMemo(() => {
+	return React.useMemo(() => {
 		const playerFlagGroupings = config?.playerFlagGroupings ?? []
 		if (!activeModeId) return new Map<string, string>()
 		const modeGroupings = playerFlagGroupings.filter(g => g.modeIds.includes(activeModeId))
@@ -792,95 +912,116 @@ function TeamPlayerTable(
 		}
 		return result
 	}, [config, orgFlags, activeModeId])
+}
 
-	const players = ZusUtils.useStore(
-		props.stores.squadServer!,
-		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
-		BattlemetricsClient.playerBmData$,
-		BattlemetricsClient.Store,
-		SettingsClient.PublicSettingsStore,
-		TeamsPanelModels.Sel.playersForTeam(props.teamId),
-	)
-	const squads = ZusUtils.useStore(
-		props.stores.squadServer!,
-		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
-		ChatPrt.Sel.squadsForTeam(props.teamId),
-	)
-
+// Applies search + role/grouping/squad/admin filters, then the "show selected" toggle. squad matching
+// differs between variants, so the predicate is passed in (must be a stable module-level reference).
+function useDisplayedPlayers<T extends TeamsPanelModels.EnrichedPlayer>(
+	players: T[],
+	filters: PlayerFilters,
+	searchQuery: string,
+	adminsOnly: boolean,
+	showSelected: boolean,
+	rowSelection: Record<string, boolean>,
+	matchesSquadFilter: (player: T, squadFilter: string) => boolean,
+): T[] {
 	const filteredPlayers = React.useMemo(() => {
 		let result = players
-		if (props.searchQuery.trim()) {
+		if (searchQuery.trim()) {
 			const names = players.map(p => p.ids.usernameNoTag ?? p.ids.username ?? '')
-			const matched = new Set(StrUtils.simpleStringMatch(names, props.searchQuery))
+			const matched = new Set(StrUtils.simpleStringMatch(names, searchQuery))
 			result = players.filter((_, i) => matched.has(i))
 		}
-		const { role, grouping, squad } = props.filters
-		if (role !== null) result = result.filter(p => p.role === role)
-		if (grouping !== null) result = result.filter(p => grouping === FILTER_NONE ? p.grouping == null : p.grouping === grouping)
-		if (squad !== null) result = result.filter(p => squad === FILTER_NONE ? p.squadId === null : p.squadId === Number(squad))
-		if (props.adminsOnly) result = result.filter(p => p.isAdmin)
+		if (filters.role !== null) result = result.filter(p => p.role === filters.role)
+		if (filters.grouping !== null) result = result.filter(p => filters.grouping === FILTER_NONE ? p.grouping == null : p.grouping === filters.grouping)
+		if (filters.squad !== null) result = result.filter(p => matchesSquadFilter(p, filters.squad!))
+		if (adminsOnly) result = result.filter(p => p.isAdmin)
 		return result
-	}, [players, props.searchQuery, props.filters, props.adminsOnly])
+	}, [players, searchQuery, filters, adminsOnly, matchesSquadFilter])
 
-	const displayedPlayers = React.useMemo(() => {
-		if (!props.showSelected) return filteredPlayers
+	return React.useMemo(() => {
+		if (!showSelected) return filteredPlayers
 		return filteredPlayers.filter(p => !!rowSelection[SM.PlayerIds.getPlayerId(p.ids)])
-	}, [filteredPlayers, props.showSelected, rowSelection])
+	}, [filteredPlayers, showSelected, rowSelection])
+}
 
-	const table = useReactTable({
-		data: displayedPlayers,
+// Generic table shell shared by both variants: owns row selection, drag-to-select, the stats-sort
+// popover state, header/body rendering and per-row context menus. Callers supply the data, the
+// variant's column list and the variant-specific meta (everything except statsSort, which lives here).
+function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
+	data: T[]
+	baseColumns: ColumnDef<T, any>[]
+	meta: Omit<BasePlayerTableMeta, 'statsSort'>
+	sorting: SortingState
+	setSorting: React.Dispatch<React.SetStateAction<SortingState>>
+	hideSpoilers: boolean
+	stores: SquadServerFrame.KeyProp
+	className?: string
+}) {
+	const rowSelection = ZusUtils.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
+	const savedSwitches = ZusUtils.useStore(props.stores.squadServer!, s => TSWClient.Sel.localState(s).savedSwitches)
+	const setRowSelection = SquadServerClient.Actions.setSelection
+	const mouseDownRef = React.useRef<{ index: number; originalSelected: boolean } | null>(null)
+	const { sorting, setSorting } = props
+	const [statsMetric, setStatsMetric] = React.useState<StatsSortMetric>('kills')
+	const [statsSortOpen, setStatsSortOpen] = React.useState(false)
+	const columns = React.useMemo(() => [...props.baseColumns, statsColumn<T>(statsMetric)], [props.baseColumns, statsMetric])
+	const columnVisibility = React.useMemo(() => ({ role: !props.hideSpoilers, stats: !props.hideSpoilers }), [props.hideSpoilers])
+
+	const table = useReactTable<T>({
+		data: props.data,
 		columns,
 		getCoreRowModel: getCoreRowModel(),
 		getSortedRowModel: getSortedRowModel(),
 		getRowId: row => SM.PlayerIds.getPlayerId(row.ids),
-		state: { rowSelection, sorting, columnVisibility: { role: !props.hideSpoilers, stats: !props.hideSpoilers } },
+		state: { rowSelection, sorting, columnVisibility },
 		onRowSelectionChange: setRowSelection,
 		onSortingChange: setSorting,
 		meta: {
-			matchId,
-			teamId: MH.getDenormedTeamId(props.teamId, match?.ordinal ?? 0),
-			squads,
-			groupingColorByLabel,
-			filters: props.filters,
-			availableRoles: props.availableRoles,
-			availableGroupings: props.availableGroupings,
-			stores: props.stores,
+			...props.meta,
 			statsSort: {
 				metric: statsMetric,
 				setMetric: setStatsMetric,
 				open: statsSortOpen,
 				setOpen: setStatsSortOpen,
-				sorted: statsSortedDir(sorting),
+				sorted: sortDirFor(sorting, 'stats'),
 			},
-		} satisfies TeamPlayerTableMeta,
+		} satisfies BasePlayerTableMeta,
 	})
+
+	// rows come from the sorted row model; drag-select ranges must index into these (not the source
+	// data) so dragging selects the visually adjacent rows even when a sort is active
+	const rows = table.getRowModel().rows
+	const selectedIds = Object.keys(rowSelection).filter(id => rowSelection[id])
 
 	return (
 		<Table className={props.className}>
 			<TableHeader>
 				{table.getHeaderGroups().map(headerGroup => (
 					<TableRow key={headerGroup.id}>
-						{headerGroup.headers.map(header => (
-							<TableHead
-								key={header.id}
-								onClick={header.column.getCanSort() && header.column.id !== 'stats' ? header.column.getToggleSortingHandler() : undefined}
-								className={cn('align-top pt-1.5', header.column.getCanSort() && 'cursor-pointer select-none')}
-								{...headerResetProps(header.column, props.filters)}
-							>
-								{header.isPlaceholder ? null : (
-									<span className="inline-flex items-start gap-0.5">
-										{flexRender(header.column.columnDef.header, header.getContext())}
-										{header.column.getIsSorted() === 'asc' ? ' ↑' : header.column.getIsSorted() === 'desc' ? ' ↓' : null}
-									</span>
-								)}
-							</TableHead>
-						))}
+						{headerGroup.headers.map(header => {
+							const sortDir = sortDirFor(sorting, header.column.id)
+							return (
+								<TableHead
+									key={header.id}
+									onClick={header.column.getCanSort() && header.column.id !== 'stats' ? header.column.getToggleSortingHandler() : undefined}
+									className={cn('align-top pt-1.5', header.column.getCanSort() && 'cursor-pointer select-none')}
+									{...headerResetProps(header.column, props.meta.filters)}
+								>
+									{header.isPlaceholder ? null : (
+										<span className="inline-flex items-start gap-0.5">
+											{flexRender(header.column.columnDef.header, header.getContext())}
+											{sortDir === 'asc' ? ' ↑' : sortDir === 'desc' ? ' ↓' : null}
+										</span>
+									)}
+								</TableHead>
+							)
+						})}
 					</TableRow>
 				))}
 			</TableHeader>
 			<TableBody>
-				{table.getRowModel().rows.map(row => {
-					const selectedIds = Object.keys(rowSelection)
+				{rows.map((row, visibleIndex) => {
 					const isBulk = selectedIds.length >= 2 && rowSelection[row.id]
 					return (
 						<ContextMenu key={row.id}>
@@ -896,7 +1037,7 @@ function TeamPlayerTable(
 									onClick={() => row.toggleSelected()}
 									onMouseDown={e => {
 										if (e.button !== 0) return
-										mouseDownRef.current = { index: row.index, originalSelected: !rowSelection[row.id] }
+										mouseDownRef.current = { index: visibleIndex, originalSelected: !rowSelection[row.id] }
 									}}
 									onMouseUp={() => {
 										mouseDownRef.current = null
@@ -904,10 +1045,10 @@ function TeamPlayerTable(
 									onMouseEnter={() => {
 										const md = mouseDownRef.current
 										if (!md) return
-										const [lo, hi] = [Math.min(md.index, row.index), Math.max(md.index, row.index)]
+										const [lo, hi] = [Math.min(md.index, visibleIndex), Math.max(md.index, visibleIndex)]
 										const current = { ...SquadServerClient.PlayerSelectionStore.getState().selection }
 										for (let i = lo; i <= hi; i++) {
-											const p = displayedPlayers[i]
+											const p = rows[i]?.original
 											if (!p) continue
 											const pid = SM.PlayerIds.getPlayerId(p.ids)
 											if (md.originalSelected) {
@@ -917,7 +1058,7 @@ function TeamPlayerTable(
 											}
 										}
 										setRowSelection(current)
-										mouseDownRef.current = { index: row.index, originalSelected: md.originalSelected }
+										mouseDownRef.current = { index: visibleIndex, originalSelected: md.originalSelected }
 									}}
 								>
 									{row.getVisibleCells().map(cell => (
@@ -940,190 +1081,75 @@ function TeamPlayerTable(
 	)
 }
 
-type CombinedPlayer = TeamsPanelModels.EnrichedPlayer & { normedTeam: MH.NormedTeamId }
+function TeamPlayerTable(
+	props: {
+		teamId: MH.NormedTeamId
+		searchQuery: string
+		filters: PlayerFilters
+		showSelected: boolean
+		adminsOnly: boolean
+		sorting: SortingState
+		setSorting: React.Dispatch<React.SetStateAction<SortingState>>
+		availableRoles: string[]
+		availableGroupings: string[]
+		hideSpoilers: boolean
+		className?: string
+		stores: SquadServerFrame.KeyProp
+	},
+) {
+	const rowSelection = ZusUtils.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
+	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
+	const matchId = match?.historyEntryId ?? 0
+	const groupingColorByLabel = useGroupingColorByLabel()
 
-type SquadWithTeam = { squad: SM.UniqueSquad; normedTeam: MH.NormedTeamId }
+	const players = ZusUtils.useStore(
+		props.stores.squadServer!,
+		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
+		BattlemetricsClient.playerBmData$,
+		BattlemetricsClient.Store,
+		SettingsClient.PublicSettingsStore,
+		TeamsPanelModels.Sel.playersForTeam(props.teamId),
+	)
+	const squads = ZusUtils.useStore(
+		props.stores.squadServer!,
+		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
+		ChatPrt.Sel.squadsForTeam(props.teamId),
+	)
 
-type CombinedTableMeta = {
-	matchId: number
-	squadsWithTeam: SquadWithTeam[]
-	groupingColorByLabel: Map<string, string>
-	filters: PlayerFilters
-	availableRoles: string[]
-	availableGroupings: string[]
-	getFaction: (normedTeam: MH.NormedTeamId) => string
-	stores: SquadServerFrame.KeyProp
-	statsSort: StatsSortState
+	const displayedPlayers = useDisplayedPlayers(
+		players,
+		props.filters,
+		props.searchQuery,
+		props.adminsOnly,
+		props.showSelected,
+		rowSelection,
+		matchesTeamSquadFilter,
+	)
+
+	const meta = {
+		matchId,
+		teamId: MH.getDenormedTeamId(props.teamId, match?.ordinal ?? 0),
+		squads,
+		groupingColorByLabel,
+		filters: props.filters,
+		availableRoles: props.availableRoles,
+		availableGroupings: props.availableGroupings,
+		stores: props.stores,
+	} satisfies Omit<TeamPlayerTableMeta, 'statsSort'>
+
+	return (
+		<PlayerTable
+			data={displayedPlayers}
+			baseColumns={teamPlayerColumns}
+			meta={meta}
+			sorting={props.sorting}
+			setSorting={props.setSorting}
+			hideSpoilers={props.hideSpoilers}
+			stores={props.stores}
+			className={props.className}
+		/>
+	)
 }
-
-const combinedColumnHelper = createColumnHelper<CombinedPlayer>()
-
-const combinedPlayerColumns = [
-	combinedColumnHelper.display({
-		id: 'select',
-		header: ({ table }) => (
-			<Checkbox
-				checked={table.getIsAllRowsSelected()}
-				onCheckedChange={checked => table.toggleAllRowsSelected(!!checked)}
-				onClick={e => {
-					if (!e.shiftKey) return
-					e.preventDefault()
-					const { stores } = table.options.meta as { stores: SquadServerFrame.KeyProp }
-					SquadServerClient.Actions.selectAllTeamPlayers(stores)
-				}}
-				title="Select all shown. Shift+click: select all players on both teams"
-				aria-label="Select all"
-			/>
-		),
-		cell: ({ row, table }) => (
-			<div onClick={e => e.stopPropagation()}>
-				<SelectOrSpinner
-					playerId={row.id}
-					checked={row.getIsSelected()}
-					onCheckedChange={checked => row.toggleSelected(!!checked)}
-					stores={(table.options.meta as CombinedTableMeta).stores}
-				/>
-			</div>
-		),
-	}),
-	combinedColumnHelper.accessor(row => row.normedTeam, {
-		id: 'faction',
-		header: 'Faction',
-		cell: ({ row, table }) => {
-			const normedTeam = row.original.normedTeam
-			return (
-				<span className="font-semibold" style={{ color: DH.TEAM_COLORS[`team${normedTeam}`] }}>
-					{(table.options.meta as CombinedTableMeta).getFaction(normedTeam)}
-				</span>
-			)
-		},
-	}),
-	combinedColumnHelper.accessor(row => row.ids.usernameNoTag ?? row.ids.username ?? '', {
-		id: 'name',
-		header: 'Name',
-		cell: ({ row, table }) => (
-			<PlayerDisplay
-				stores={(table.options.meta as CombinedTableMeta).stores}
-				player={row.original}
-				matchId={(table.options.meta as CombinedTableMeta).matchId}
-			/>
-		),
-	}),
-	combinedColumnHelper.accessor(row => row.grouping ?? '', {
-		id: 'grouping',
-		header: ({ table }) => {
-			const { filters, availableGroupings } = table.options.meta as CombinedTableMeta
-			return (
-				<span className="flex flex-col items-start">
-					Grouping
-					<ColumnFilterSelect
-						value={filters.grouping}
-						onChange={filters.setGrouping}
-						options={[...availableGroupings.map(g => ({ value: g, label: g })), { value: FILTER_NONE, label: 'Other' }]}
-					/>
-				</span>
-			)
-		},
-		cell: ({ row, table }) => {
-			const label = row.original.grouping
-			if (!label) return null
-			const { groupingColorByLabel } = table.options.meta as CombinedTableMeta
-			const color = groupingColorByLabel.get(label)
-			return (
-				<span className="flex items-center gap-1">
-					{color && <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: color }} />}
-					{label}
-				</span>
-			)
-		},
-	}),
-	combinedColumnHelper.accessor(row => row.squadId ?? -1, {
-		id: 'squad',
-		header: ({ table }) => {
-			const { filters, squadsWithTeam, getFaction } = table.options.meta as CombinedTableMeta
-			const squadOptions = [
-				...squadsWithTeam.map(({ squad: s, normedTeam }) => {
-					const faction = getFaction(normedTeam)
-					const isCmd = s.squadName === 'Command Squad'
-					return {
-						value: `${normedTeam}:${s.squadId}`,
-						label: isCmd ? `${faction}:CMD` : `${faction}:${s.squadId} ${s.squadName}`,
-					}
-				}),
-				{ value: FILTER_NONE, label: 'Unassigned' },
-			]
-			return (
-				<span className="flex flex-col items-start">
-					Squad
-					<ColumnFilterSelect value={filters.squad} onChange={filters.setSquad} options={squadOptions} />
-				</span>
-			)
-		},
-		cell: ({ row, table }) => {
-			const { squadsWithTeam, getFaction, stores } = table.options.meta as CombinedTableMeta
-			const player = row.original
-			const squadId = player.squadId
-			if (squadId === null) return ''
-			const entry = squadsWithTeam.find(({ squad: s, normedTeam }) => s.squadId === squadId && normedTeam === player.normedTeam)
-			if (!entry) return `${getFaction(player.normedTeam)}:${squadId}`
-			const { squad, normedTeam } = entry
-			const faction = getFaction(normedTeam)
-			const isCmd = squad.squadName === 'Command Squad'
-			const displayLabel = isCmd ? `${faction}:CMD` : `${faction}:${squadId}`
-			const squadLabel = isCmd
-				? <span>{displayLabel}</span>
-				: (
-					<OpenWindowInteraction
-						windowId={WINDOW_ID.enum['squad-details']}
-						windowProps={{ uniqueSquadId: squad.uniqueId, stores } satisfies SquadDetailsWindowProps}
-						preload="intent"
-						render={(
-							{ label, ref, onClick, ...rest }:
-								& { label: string; ref?: React.Ref<HTMLButtonElement>; onClick?: React.MouseEventHandler<HTMLButtonElement> }
-								& React.ButtonHTMLAttributes<HTMLButtonElement>,
-						) => (
-							<button
-								ref={ref}
-								type="button"
-								className="hover:underline cursor-pointer"
-								onClick={e => {
-									e.stopPropagation()
-									onClick?.(e)
-								}}
-								{...rest}
-							>
-								{label}
-							</button>
-						)}
-						label={displayLabel}
-					/>
-				)
-			return (
-				<span className="inline-flex items-center gap-1">
-					<ContextMenu>
-						<ContextMenuTrigger>{squadLabel}</ContextMenuTrigger>
-						<ContextMenuContent>
-							<SquadContextMenuOptions squad={squad} stores={stores} />
-						</ContextMenuContent>
-					</ContextMenu>
-					{player.isLeader && <span className="text-xs text-muted-foreground">(SL)</span>}
-				</span>
-			)
-		},
-	}),
-	combinedColumnHelper.accessor('role', {
-		header: ({ table }) => {
-			const { filters, availableRoles } = table.options.meta as CombinedTableMeta
-			return (
-				<span className="flex flex-col items-start">
-					Role
-					<ColumnFilterSelect value={filters.role} onChange={filters.setRole} options={availableRoles.map(r => ({ value: r, label: r }))} />
-				</span>
-			)
-		},
-		enableSorting: false,
-	}),
-]
 
 function CombinedPlayerTable(
 	props: {
@@ -1141,37 +1167,9 @@ function CombinedPlayerTable(
 	},
 ) {
 	const rowSelection = ZusUtils.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
-	const savedSwitches = ZusUtils.useStore(props.stores.squadServer!, s => TSWClient.Sel.localState(s).savedSwitches)
-	const setRowSelection = SquadServerClient.Actions.setSelection
-	const mouseDownRef = React.useRef<{ index: number; originalSelected: boolean } | null>(null)
-	const { sorting, setSorting } = props
-	const [statsMetric, setStatsMetric] = React.useState<StatsSortMetric>('kills')
-	const [statsSortOpen, setStatsSortOpen] = React.useState(false)
-	const columns = React.useMemo(
-		() => [...combinedPlayerColumns, statsColumn<CombinedPlayer>(statsMetric)],
-		[statsMetric],
-	)
 	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
 	const matchId = match?.historyEntryId ?? 0
-
-	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
-	const orgFlags = BattlemetricsClient.useOrgFlags()
-	const modeIds = React.useMemo(() => BM.getGroupingModeIds(config?.playerFlagGroupings ?? []), [config])
-	const activeModeId = ZusUtils.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingModeId(modeIds))
-	const groupingColorByLabel = React.useMemo(() => {
-		const playerFlagGroupings = config?.playerFlagGroupings ?? []
-		if (!activeModeId) return new Map<string, string>()
-		const modeGroupings = playerFlagGroupings.filter(g => g.modeIds.includes(activeModeId))
-		const flagColorById = new Map<string, string>()
-		for (const flag of orgFlags ?? []) {
-			if (flag.color) flagColorById.set(flag.id, flag.color)
-		}
-		const result = new Map<string, string>()
-		for (const group of modeGroupings) {
-			result.set(group.label, flagColorById.get(group.color) ?? group.color)
-		}
-		return result
-	}, [config, orgFlags, activeModeId])
+	const groupingColorByLabel = useGroupingColorByLabel()
 
 	const playersA = ZusUtils.useStore(
 		props.stores.squadServer!,
@@ -1189,7 +1187,6 @@ function CombinedPlayerTable(
 		SettingsClient.PublicSettingsStore,
 		TeamsPanelModels.Sel.playersForTeam('B'),
 	)
-
 	const squadsA = ZusUtils.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
@@ -1223,136 +1220,38 @@ function CombinedPlayerTable(
 		...playersB.map(p => ({ ...p, normedTeam: 'B' as const })),
 	], [playersA, playersB])
 
-	const filteredPlayers = React.useMemo(() => {
-		let result = players
-		if (props.searchQuery.trim()) {
-			const names = players.map(p => p.ids.usernameNoTag ?? p.ids.username ?? '')
-			const matched = new Set(StrUtils.simpleStringMatch(names, props.searchQuery))
-			result = players.filter((_, i) => matched.has(i))
-		}
-		const { role, grouping, squad } = props.filters
-		if (role !== null) result = result.filter(p => p.role === role)
-		if (grouping !== null) result = result.filter(p => grouping === FILTER_NONE ? p.grouping == null : p.grouping === grouping)
-		if (squad !== null) result = result.filter(p => squad === FILTER_NONE ? p.squadId === null : squad === `${p.normedTeam}:${p.squadId}`)
-		if (props.adminsOnly) result = result.filter(p => p.isAdmin)
-		return result
-	}, [players, props.searchQuery, props.filters, props.adminsOnly])
+	const displayedPlayers = useDisplayedPlayers(
+		players,
+		props.filters,
+		props.searchQuery,
+		props.adminsOnly,
+		props.showSelected,
+		rowSelection,
+		matchesCombinedSquadFilter,
+	)
 
-	const displayedPlayers = React.useMemo(() => {
-		if (!props.showSelected) return filteredPlayers
-		return filteredPlayers.filter(p => !!rowSelection[SM.PlayerIds.getPlayerId(p.ids)])
-	}, [filteredPlayers, props.showSelected, rowSelection])
-
-	const table = useReactTable({
-		data: displayedPlayers,
-		columns,
-		getCoreRowModel: getCoreRowModel(),
-		getSortedRowModel: getSortedRowModel(),
-		getRowId: row => SM.PlayerIds.getPlayerId(row.ids),
-		state: { rowSelection, sorting, columnVisibility: { role: !props.hideSpoilers, stats: !props.hideSpoilers } },
-		onRowSelectionChange: setRowSelection,
-		onSortingChange: setSorting,
-		meta: {
-			matchId,
-			squadsWithTeam,
-			groupingColorByLabel,
-			filters: props.filters,
-			availableRoles: props.availableRoles,
-			availableGroupings: props.availableGroupings,
-			getFaction,
-			stores: props.stores,
-			statsSort: {
-				metric: statsMetric,
-				setMetric: setStatsMetric,
-				open: statsSortOpen,
-				setOpen: setStatsSortOpen,
-				sorted: statsSortedDir(sorting),
-			},
-		} satisfies CombinedTableMeta,
-	})
+	const meta = {
+		matchId,
+		squadsWithTeam,
+		groupingColorByLabel,
+		filters: props.filters,
+		availableRoles: props.availableRoles,
+		availableGroupings: props.availableGroupings,
+		getFaction,
+		stores: props.stores,
+	} satisfies Omit<CombinedTableMeta, 'statsSort'>
 
 	return (
-		<Table className={props.className}>
-			<TableHeader>
-				{table.getHeaderGroups().map(headerGroup => (
-					<TableRow key={headerGroup.id}>
-						{headerGroup.headers.map(header => (
-							<TableHead
-								key={header.id}
-								onClick={header.column.getCanSort() && header.column.id !== 'stats' ? header.column.getToggleSortingHandler() : undefined}
-								className={cn('align-top pt-1.5', header.column.getCanSort() && 'cursor-pointer select-none')}
-								{...headerResetProps(header.column, props.filters)}
-							>
-								{header.isPlaceholder ? null : (
-									<span className="inline-flex items-start gap-0.5">
-										{flexRender(header.column.columnDef.header, header.getContext())}
-										{header.column.getIsSorted() === 'asc' ? ' ↑' : header.column.getIsSorted() === 'desc' ? ' ↓' : null}
-									</span>
-								)}
-							</TableHead>
-						))}
-					</TableRow>
-				))}
-			</TableHeader>
-			<TableBody>
-				{table.getRowModel().rows.map(row => {
-					const selectedIds = Object.keys(rowSelection)
-					const isBulk = selectedIds.length >= 2 && rowSelection[row.id]
-					return (
-						<ContextMenu key={row.id}>
-							<ContextMenuTrigger asChild>
-								<TableRow
-									className={cn(
-										'cursor-pointer select-none',
-										savedSwitches.has(row.id)
-											? 'bg-amber-500/20 hover:bg-amber-500/40 data-[state=selected]:bg-amber-500/50'
-											: undefined,
-									)}
-									data-state={row.getIsSelected() ? 'selected' : undefined}
-									onClick={() => row.toggleSelected()}
-									onMouseDown={e => {
-										if (e.button !== 0) return
-										mouseDownRef.current = { index: row.index, originalSelected: !rowSelection[row.id] }
-									}}
-									onMouseUp={() => {
-										mouseDownRef.current = null
-									}}
-									onMouseEnter={() => {
-										const md = mouseDownRef.current
-										if (!md) return
-										const [lo, hi] = [Math.min(md.index, row.index), Math.max(md.index, row.index)]
-										const current = { ...SquadServerClient.PlayerSelectionStore.getState().selection }
-										for (let i = lo; i <= hi; i++) {
-											const p = displayedPlayers[i]
-											if (!p) continue
-											const pid = SM.PlayerIds.getPlayerId(p.ids)
-											if (md.originalSelected) {
-												current[pid] = true
-											} else {
-												delete current[pid]
-											}
-										}
-										setRowSelection(current)
-										mouseDownRef.current = { index: row.index, originalSelected: md.originalSelected }
-									}}
-								>
-									{row.getVisibleCells().map(cell => (
-										<TableCell key={cell.id} {...shiftClickCellProps(cell.column.id, row.original, props.stores)}>
-											{flexRender(cell.column.columnDef.cell, cell.getContext())}
-										</TableCell>
-									))}
-								</TableRow>
-							</ContextMenuTrigger>
-							<ContextMenuContent>
-								{isBulk
-									? <PlayerBulkContextMenuOptions playerIds={selectedIds} stores={props.stores} />
-									: <PlayerContextMenuOptions playerId={row.id} stores={props.stores} />}
-							</ContextMenuContent>
-						</ContextMenu>
-					)
-				})}
-			</TableBody>
-		</Table>
+		<PlayerTable
+			data={displayedPlayers}
+			baseColumns={combinedPlayerColumns}
+			meta={meta}
+			sorting={props.sorting}
+			setSorting={props.setSorting}
+			hideSpoilers={props.hideSpoilers}
+			stores={props.stores}
+			className={props.className}
+		/>
 	)
 }
 
@@ -1390,7 +1289,6 @@ function SwapsPanel({ className, stores }: { className?: string; stores: SquadSe
 	const switchesModified = ZusUtils.useStore(stores.squadServer!, TSWClient.Sel.switchesModified)
 	const [isEditing, setIsEditing] = UPClient.useEditingTeamswitchesState(stores.squadServer!.serverId)
 	const numEditors = ZusUtils.useStore(UPClient.Store, s => s.teamswitchEditors.size)
-	console.log({ canExecute, numEditors })
 	const [forceSave, setForceSave] = React.useState(false)
 	const startEditingDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
 

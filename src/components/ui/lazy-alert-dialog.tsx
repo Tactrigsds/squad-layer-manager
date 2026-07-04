@@ -1,11 +1,12 @@
 import React, { useCallback, useContext } from 'react'
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import { buttonVariants } from '@/components/ui/button'
 
 type AlertDialogButton = {
 	id: string
 	label: string
-	variant?: 'default' | 'destructive' | 'outline-solid' | 'secondary' | 'ghost' | 'link'
+	variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
 }
 
 type AlertDialogOptions = {
@@ -35,6 +36,9 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
 
 	const openDialog = useCallback((opts: AlertDialogOptions): Promise<string> => {
 		return new Promise((resolve) => {
+			// settle any dialog still awaiting a result before replacing it, so its caller's
+			// finally-block runs (clearing presence activity, unsubscribing) instead of hanging forever
+			resolveRef.current?.('dismissed')
 			setOptions(opts)
 			setOpen(true)
 			resolveRef.current = resolve
@@ -96,7 +100,11 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
 					<AlertDialogFooter>
 						<AlertDialogCancel onClick={() => handleButtonClick('cancel')}>Cancel</AlertDialogCancel>
 						{options?.buttons?.map((button) => (
-							<AlertDialogAction key={button.id} onClick={() => handleButtonClick(button.id)}>
+							<AlertDialogAction
+								key={button.id}
+								className={button.variant ? buttonVariants({ variant: button.variant }) : undefined}
+								onClick={() => handleButtonClick(button.id)}
+							>
 								{button.label}
 							</AlertDialogAction>
 						))}

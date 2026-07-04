@@ -23,31 +23,37 @@ export interface PlayerDisplayProps {
 	className?: string
 	matchId: number
 	stores: SquadServerFrame.KeyProp
+	// when true, the name doesn't mount its own context menu so an enclosing one (e.g. the teams-panel
+	// row's bulk-aware menu) handles the right-click instead
+	disableContextMenu?: boolean
 }
 
 function PlayerButton(
-	{ username, stores, ref, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+	{ username, stores, ref, disableContextMenu, playerId, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
 		username: string
 		playerId: string
 		stores: SquadServerFrame.KeyProp
+		disableContextMenu?: boolean
 		ref?: React.Ref<HTMLButtonElement>
 	},
 ) {
+	const button = (
+		<button ref={ref} type="button" className="font-bold hover:underline cursor-pointer" {...props}>
+			{username}
+		</button>
+	)
+	if (disableContextMenu) return button
 	return (
 		<ContextMenu>
-			<ContextMenuTrigger asChild>
-				<button ref={ref} type="button" className="font-bold hover:underline cursor-pointer" {...props}>
-					{username}
-				</button>
-			</ContextMenuTrigger>
+			<ContextMenuTrigger asChild>{button}</ContextMenuTrigger>
 			<ContextMenuContent>
-				<PlayerContextMenuOptions playerId={props.playerId} stores={stores} />
+				<PlayerContextMenuOptions playerId={playerId} stores={stores} />
 			</ContextMenuContent>
 		</ContextMenu>
 	)
 }
 
-export function PlayerDisplay({ player, showTeam, showSquad, showRole, className, matchId, stores }: PlayerDisplayProps) {
+export function PlayerDisplay({ player, showTeam, showSquad, showRole, className, matchId, stores, disableContextMenu }: PlayerDisplayProps) {
 	const playerId = SM.PlayerIds.getPlayerId(player.ids)
 	const windowProps: PlayerDetailsWindowProps = { playerId, stores }
 	const flagColor = useGroupedPlayerFlagColor(playerId)
@@ -81,6 +87,7 @@ export function PlayerDisplay({ player, showTeam, showSquad, showRole, className
 				username={player.ids.username}
 				playerId={SM.PlayerIds.getPlayerId(player.ids)}
 				stores={stores}
+				disableContextMenu={disableContextMenu}
 				style={flagColor ? { color: flagColor } : undefined}
 			/>
 			{(showTeam && player.teamId !== null) || (showSquad && player.squadId !== null)

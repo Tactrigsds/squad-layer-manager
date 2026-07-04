@@ -144,6 +144,21 @@ export namespace Actions {
 		)
 	}
 
+	// teamId (raw): when given, only that team's players flip selected <-> unselected and the rest of
+	// the selection is preserved; without it every on-team player flips and stale entries are dropped
+	export function invertSelection(stores: SquadServerFrame.KeyProp, teamId?: SM.TeamId) {
+		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
+		const current = PlayerSelectionStore.getState().selection
+		const next: Record<string, boolean> = teamId == null ? {} : { ...current }
+		for (const player of players) {
+			if (player.teamId === null || (teamId != null && player.teamId !== teamId)) continue
+			const playerId = SM.PlayerIds.getPlayerId(player.ids)
+			if (current[playerId]) delete next[playerId]
+			else next[playerId] = true
+		}
+		PlayerSelectionStore.setState({ selection: next })
+	}
+
 	export function selectGrouping(stores: SquadServerFrame.KeyProp, grouping: string, teamId?: SM.TeamId) {
 		const enriched = getEnrichedPlayers(stores)
 		selectPlayers(
@@ -158,10 +173,7 @@ export namespace Actions {
 		const bmData = BattlemetricsClient.playerBmData$.getValue()
 		const bmStore = BattlemetricsClient.Store.getState()
 		const settings = SettingsClient.PublicSettingsStore.getState()
-		return [
-			...TeamsPanelModels.Sel.playersForTeam('A')(frameState, currentMatch, bmData, bmStore, settings),
-			...TeamsPanelModels.Sel.playersForTeam('B')(frameState, currentMatch, bmData, bmStore, settings),
-		]
+		return TeamsPanelModels.Sel.allEnrichedPlayers(frameState, currentMatch, bmData, bmStore, settings)
 	}
 }
 

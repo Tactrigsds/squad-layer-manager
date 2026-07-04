@@ -21,6 +21,16 @@ export namespace Sel {
 		bmStore: BM.StoreState,
 		settings: PublicSettings | undefined,
 	]
+	// Enriched players across both teams. Shared by call sites that need the whole roster (e.g. the
+	// grouping/selection actions) so the enrichment logic lives in one place.
+	export const allEnrichedPlayers = RSel.createDeepSelector(
+		[
+			(...args: Inputs) => playersForTeam('A')(...args),
+			(...args: Inputs) => playersForTeam('B')(...args),
+		],
+		(a, b) => [...a, ...b],
+	)
+
 	export const playersForTeam = RSel.memoizeFactory((teamId: MH.NormedTeamId | SM.TeamId) =>
 		RSel.createDeepSelector(
 			[

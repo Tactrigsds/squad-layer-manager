@@ -36,6 +36,110 @@ export const contextMenuSlots: MenuSlots = {
 	SubContent: ContextMenuSubContent,
 }
 
+type PlayerLinkIds = {
+	eos: SM.PlayerId
+	username?: string
+	steam?: string
+	epic?: string
+	bmProfileUrl?: string
+}
+
+// same fallback the player details window uses when no BM profile is cached
+function bmSearchUrl(eos: string) {
+	return `https://www.battlemetrics.com/rcon/players?filter%5Bsearch%5D=${eos}&filter%5Bservers%5D=false&filter%5BplayerFlags%5D=&sort=score&showServers=true&method=quick`
+}
+
+function usePlayerLinkIds(playerIds: SM.PlayerId[], stores: SquadServerFrame.KeyProp): PlayerLinkIds[] {
+	return ZusUtils.useStore(
+		stores.squadServer,
+		BattlemetricsClient.playerBmData$,
+		(chatStore: ChatPrt.Store, bmData: BM.PublicPlayerBmData): PlayerLinkIds[] =>
+			playerIds.map(playerId => {
+				const player = SM.PlayerIds.find(ChatPrt.Sel.chatState(chatStore).players, p => p.ids, playerId)
+				const bm = bmData[playerId]
+				return {
+					eos: playerId,
+					username: player?.ids.username,
+					steam: player?.ids.steam ?? bm?.playerIds.steam,
+					epic: player?.ids.epic,
+					bmProfileUrl: bm?.profileUrl,
+				}
+			}),
+	)
+}
+
+// appends "(n/total)" when only some of the selected players have the id backing an entry
+function partialCountSuffix(count: number, total: number) {
+	return total > 1 && count < total ? ` (${count}/${total})` : ''
+}
+
+export function PlayerOpenLinksSub(
+	{ playerIds, slots, stores }: { playerIds: SM.PlayerId[]; slots: MenuSlots; stores: SquadServerFrame.KeyProp },
+) {
+	const { Item, Sub, SubTrigger, SubContent } = slots
+	const players = usePlayerLinkIds(playerIds, stores)
+	const openAll = (urls: string[]) => {
+		for (const url of urls) window.open(url, '_blank', 'noopener,noreferrer')
+	}
+	const steamIds = players.map(p => p.steam).filter((s): s is string => s != null)
+	const bmUrls = players.map(p => p.bmProfileUrl ?? bmSearchUrl(p.eos))
+	const links: { label: string; urls: string[] }[] = [
+		{ label: 'Steam', urls: steamIds.map(id => `https://steamcommunity.com/profiles/${id}`) },
+		{ label: 'CBL', urls: steamIds.map(id => `https://communitybanlist.com/search/${id}`) },
+		{ label: 'MySquadStats', urls: steamIds.map(id => `https://mysquadstats.com/search/${id}#vanillaStats`) },
+		{ label: 'BattleMetrics', urls: bmUrls },
+	]
+	return (
+		<Sub>
+			<SubTrigger>Open</SubTrigger>
+			<SubContent>
+				{links.map(({ label, urls }) => (
+					<Item key={label} disabled={urls.length === 0} onClick={() => openAll(urls)}>
+						{label}
+						{partialCountSuffix(urls.length, players.length)}
+					</Item>
+				))}
+			</SubContent>
+		</Sub>
+	)
+}
+
+export function PlayerCopyIdsSub(
+	{ playerIds, slots, stores }: { playerIds: SM.PlayerId[]; slots: MenuSlots; stores: SquadServerFrame.KeyProp },
+) {
+	const { Item, Sub, SubTrigger, SubContent } = slots
+	const players = usePlayerLinkIds(playerIds, stores)
+	const { toast } = useToast()
+	const pickAll = (pick: (p: PlayerLinkIds) => string | undefined) => players.map(pick).filter((v): v is string => v != null)
+	const ids: { label: string; values: string[] }[] = [
+		{ label: 'Username', values: pickAll(p => p.username) },
+		{ label: 'EOS ID', values: pickAll(p => p.eos) },
+		{ label: 'Steam ID', values: pickAll(p => p.steam) },
+		{ label: 'Epic ID', values: pickAll(p => p.epic) },
+	]
+	const copyAll = (label: string, values: string[]) => {
+		void navigator.clipboard.writeText(values.join('\n'))
+		toast({
+			title: 'Copied',
+			description: values.length > 1 ? `${values.length} ${label}s copied to clipboard` : `${label} copied to clipboard`,
+		})
+	}
+	return (
+		<Sub>
+			<SubTrigger>Copy</SubTrigger>
+			<SubContent>
+				{ids.map(({ label, values }) => (
+					<Item key={label} disabled={values.length === 0} onClick={() => copyAll(label, values)}>
+						{label}
+						{playerIds.length > 1 ? 's' : ''}
+						{partialCountSuffix(values.length, players.length)}
+					</Item>
+				))}
+			</SubContent>
+		</Sub>
+	)
+}
+
 export function PlayerMenuItems(
 	{ playerId, slots, stores }: { playerId: SM.PlayerId; slots: MenuSlots; stores: SquadServerFrame.KeyProp },
 ) {
@@ -123,29 +227,28 @@ export function PlayerMenuItems(
 		const unsubscribe = ZusUtils.resolveReadStore(stores.squadServer).subscribe(state => {
 			if (TSWClient.Sel.localState(state).players.get(playerId) !== initialTeam) closeDialog()
 		})
-		UPClient.Actions.updateActivity({ code: 'set-player-dialogue', dialog: 'SWITCHING_PLAYERS' })
 		try {
-			const result = await openDialog({
-				title: 'Switch Player Now',
-				description: `Move this player to Team ${otherTeam} immediately?`,
-				buttons: [{ id: 'confirm', label: 'Switch Now' }],
+			await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
+				const result = await openDialog({
+					title: 'Switch Player Now',
+					description: `Move this player to Team ${otherTeam} immediately?`,
+					buttons: [{ id: 'confirm', label: 'Switch Now' }],
+				})
+				if (result === 'dismissed') {
+					toast({ title: 'Switch cancelled', description: 'Player changed teams', variant: 'destructive' })
+					return
+				}
+				if (result !== 'confirm') return
+				TSWClient.Actions.switchNow(stores, [playerId])
 			})
-			if (result === 'dismissed') {
-				toast({ title: 'Switch cancelled', description: 'Player changed teams', variant: 'destructive' })
-				return
-			}
-			if (result !== 'confirm') return
-			TSWClient.Actions.switchNow(stores, [playerId])
 		} finally {
 			unsubscribe()
-			UPClient.Actions.updateActivity({ code: 'clear-player-dialogue' })
 		}
 	}
 
 	async function warn() {
 		TSWClient.Actions.ensureViewingTeams(serverId)
-		UPClient.Actions.updateActivity({ code: 'set-player-dialogue', dialog: 'WARNING_PLAYERS' })
-		try {
+		await UPClient.Actions.withPlayerDialogue('WARNING_PLAYERS', async () => {
 			let reason = ''
 			const result = await openDialog({
 				title: `Warn ${playerInfo?.username ?? 'Player'}`,
@@ -163,9 +266,7 @@ export function PlayerMenuItems(
 			})
 			if (result !== 'confirm' || !reason.trim()) return
 			await warnMutation.mutateAsync({ serverId, playerId, reason: reason.trim() })
-		} finally {
-			UPClient.Actions.updateActivity({ code: 'clear-player-dialogue' })
-		}
+		})
 	}
 
 	function copyTeleportCommand() {
@@ -175,8 +276,7 @@ export function PlayerMenuItems(
 
 	async function removeFromSquad() {
 		TSWClient.Actions.ensureViewingTeams(serverId)
-		UPClient.Actions.updateActivity({ code: 'set-player-dialogue', dialog: 'REMOVING_FROM_SQUAD' })
-		try {
+		await UPClient.Actions.withPlayerDialogue('REMOVING_FROM_SQUAD', async () => {
 			const squadLabel = playerInfo?.squadName ? `"${playerInfo.squadName}"` : 'their squad'
 			const result = await openDialog({
 				title: 'Remove from Squad',
@@ -185,51 +285,44 @@ export function PlayerMenuItems(
 			})
 			if (result !== 'confirm') return
 			await removeFromSquadMutation.mutateAsync({ serverId, playerId })
-		} finally {
-			UPClient.Actions.updateActivity({ code: 'clear-player-dialogue' })
-		}
+		})
 	}
 
 	async function disbandSquad() {
 		TSWClient.Actions.ensureViewingTeams(serverId)
 		if (playerInfo?.squadId === null || playerInfo?.squadId === undefined || !playerInfo.teamId) return
-		UPClient.Actions.updateActivity({ code: 'set-player-dialogue', dialog: 'DISBANDING_SQUAD' })
-		try {
-			const squadLabel = playerInfo.squadName ? `"${playerInfo.squadName}"` : `squad ${playerInfo.squadId}`
+		const { squadId, teamId, squadName } = playerInfo
+		await UPClient.Actions.withPlayerDialogue('DISBANDING_SQUAD', async () => {
+			const squadLabel = squadName ? `"${squadName}"` : `squad ${squadId}`
 			const result = await openDialog({
 				title: 'Disband Squad',
-				description: `Disband ${squadLabel} on team ${playerInfo.teamId}?`,
+				description: `Disband ${squadLabel} on team ${teamId}?`,
 				buttons: [{ id: 'confirm', label: 'Disband' }],
 			})
 			if (result !== 'confirm') return
-			await disbandSquadMutation.mutateAsync({ serverId, teamId: playerInfo.teamId as 1 | 2, squadId: playerInfo.squadId })
-		} finally {
-			UPClient.Actions.updateActivity({ code: 'clear-player-dialogue' })
-		}
+			await disbandSquadMutation.mutateAsync({ serverId, teamId: teamId as 1 | 2, squadId })
+		})
 	}
 
 	async function resetSquadName() {
 		TSWClient.Actions.ensureViewingTeams(serverId)
 		if (playerInfo?.squadId === null || playerInfo?.squadId === undefined || !playerInfo.teamId) return
-		UPClient.Actions.updateActivity({ code: 'set-player-dialogue', dialog: 'RESETTING_SQUAD_NAME' })
-		try {
-			const squadLabel = playerInfo.squadName ? `"${playerInfo.squadName}"` : `squad ${playerInfo.squadId}`
+		const { squadId, teamId, squadName } = playerInfo
+		await UPClient.Actions.withPlayerDialogue('RESETTING_SQUAD_NAME', async () => {
+			const squadLabel = squadName ? `"${squadName}"` : `squad ${squadId}`
 			const result = await openDialog({
 				title: 'Reset Squad Name',
 				description: `Reset the name of ${squadLabel} to default?`,
 				buttons: [{ id: 'confirm', label: 'Reset' }],
 			})
 			if (result !== 'confirm') return
-			await resetSquadNameMutation.mutateAsync({ serverId, teamId: playerInfo.teamId as 1 | 2, squadId: playerInfo.squadId })
-		} finally {
-			UPClient.Actions.updateActivity({ code: 'clear-player-dialogue' })
-		}
+			await resetSquadNameMutation.mutateAsync({ serverId, teamId: teamId as 1 | 2, squadId })
+		})
 	}
 
 	async function demoteCommander() {
 		TSWClient.Actions.ensureViewingTeams(serverId)
-		UPClient.Actions.updateActivity({ code: 'set-player-dialogue', dialog: 'DEMOTING_COMMANDER' })
-		try {
+		await UPClient.Actions.withPlayerDialogue('DEMOTING_COMMANDER', async () => {
 			const result = await openDialog({
 				title: 'Demote Commander',
 				description: 'Demote this player from commander?',
@@ -237,9 +330,7 @@ export function PlayerMenuItems(
 			})
 			if (result !== 'confirm') return
 			await demoteCommanderMutation.mutateAsync({ serverId, playerId })
-		} finally {
-			UPClient.Actions.updateActivity({ code: 'clear-player-dialogue' })
-		}
+		})
 	}
 
 	const isOnServer = playerInfo !== null
@@ -318,6 +409,16 @@ export function PlayerMenuItems(
 					All Players
 					<ContextMenuShortcut>{sc('⇧+click select-all box', '⇧+Ctrl+click select-all box')}</ContextMenuShortcut>
 				</Item>
+				<Item
+					disabled={teamMissing}
+					onClick={() => {
+						TSWClient.Actions.ensureViewingTeams(serverId)
+						SquadServerClient.Actions.invertSelection(stores, teamId)
+					}}
+				>
+					Invert
+					<ContextMenuShortcut>{sc('Alt+click select-all box', 'Alt+Ctrl+click select-all box')}</ContextMenuShortcut>
+				</Item>
 			</>
 		)
 	}
@@ -346,7 +447,7 @@ export function PlayerMenuItems(
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item
 					onClick={() => TSWClient.Actions.removeSwitch(stores, [playerId])}
-					disabled={!!manageDenied || !existingSwitch || !canSwitchNow}
+					disabled={!!manageDenied || !existingSwitch}
 				>
 					Delete Switch
 				</Item>
@@ -360,6 +461,9 @@ export function PlayerMenuItems(
 			<Item onClick={copyTeleportCommand} disabled={!isOnServer}>
 				Copy Teleport Command
 			</Item>
+			<Separator />
+			<PlayerOpenLinksSub playerIds={[playerId]} slots={slots} stores={stores} />
+			<PlayerCopyIdsSub playerIds={[playerId]} slots={slots} stores={stores} />
 			<Separator />
 			<Sub>
 				<SubTrigger disabled={!isOnServer}>Select from Team</SubTrigger>
