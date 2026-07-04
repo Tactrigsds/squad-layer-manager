@@ -1,5 +1,5 @@
 import * as Obj from '@/lib/object'
-import type * as CS from '@/models/context-shared'
+
 import type { MutexInterface } from 'async-mutex'
 import * as Rx from 'rxjs'
 import { assertNever } from './type-guards'
@@ -49,16 +49,18 @@ export function firstValueFrom<T>(observable: Rx.Observable<T>, signal?: AbortSi
 			reject(signal.reason)
 		}
 		signal.addEventListener('abort', onAbort, { once: true })
-		sub.add(observable.pipe(Rx.first()).subscribe({
-			next: (value) => {
-				signal.removeEventListener('abort', onAbort)
-				resolve(value)
-			},
-			error: (err) => {
-				signal.removeEventListener('abort', onAbort)
-				reject(err)
-			},
-		}))
+		sub.add(
+			observable.pipe(Rx.first()).subscribe({
+				next: (value) => {
+					signal.removeEventListener('abort', onAbort)
+					resolve(value)
+				},
+				error: (err) => {
+					signal.removeEventListener('abort', onAbort)
+					reject(err)
+				},
+			}),
+		)
 	})
 }
 

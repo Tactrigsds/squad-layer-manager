@@ -1,13 +1,12 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import { toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
-import * as Cleanup from '@/lib/cleanup'
+
 import * as DH from '@/lib/display-helpers.ts'
 import { IsolatedBehaviorSubject, IsolatedReplaySubject, IsolatedSubject } from '@/lib/isolated-subject'
-import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
-import * as Obj from '@/lib/object'
+
 import * as RbSyncState from '@/lib/rollback-synced-state'
 import { assertNever } from '@/lib/type-guards.ts'
-import { DistributiveOmit } from '@/lib/types'
+
 import { HumanTime } from '@/lib/zod.ts'
 import * as Messages from '@/messages.ts'
 import * as BAL from '@/models/balance-triggers.models.ts'
@@ -20,10 +19,10 @@ import type * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list'
 import type * as SM from '@/models/squad.models.ts'
-import * as USR from '@/models/users.models'
-import * as V from '@/models/vote.models.ts'
+import type * as USR from '@/models/users.models'
+
 import * as RBAC from '@/rbac.models.ts'
-import { CONFIG } from '@/server/config.ts'
+
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { initModule } from '@/server/logger'
@@ -38,7 +37,8 @@ import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Users from '@/systems/users.server'
 import * as VoteSys from '@/systems/vote.server'
-import { Mutex, MutexInterface } from 'async-mutex'
+import { Mutex } from 'async-mutex'
+import type { MutexInterface } from 'async-mutex'
 import * as E from 'drizzle-orm'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
@@ -173,7 +173,6 @@ export const setupInstance = C.spanOp(
 				}),
 				C.durableSub('notify-unexpected-next-layer', { module }, async (unexpectedNextlayer, signal) => {
 					const ctx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
-					const serverState = await SquadServer.getServerState(ctx)
 					const expectedNextLayer = LL.getNextLayerId(getSavedQueue(ctx))!
 					if (!expectedNextLayer) return
 					const expectedLayerName = DH.toFullLayerNameFromId(expectedNextLayer)
@@ -309,13 +308,6 @@ export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.Serv
 // get the queue which is synced to the squad server
 export function getSavedQueue(ctx: C.LayerQueue) {
 	return ctx.layerQueue.session.state.savedList
-}
-
-async function onSideEffect(
-	ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon,
-	e: SLL.SideEffect,
-) {
-	// TODO implement
 }
 
 export async function saveQueueAndUpdateServer(
@@ -571,7 +563,7 @@ const handleSideEffect = C.spanOp(
 		extraText: (ctx, op, se) => `${op.op} -> Side Effect ${se.code}`,
 		attrs: (ctx, op, se) => ({ op: op.op, sideEffect: se.code }),
 	},
-	async <T>(
+	async (
 		ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.AdminList & C.ServerSettings & CS.AbortSignal,
 		op: SLL.Operation,
 		se: SLL.SideEffect,

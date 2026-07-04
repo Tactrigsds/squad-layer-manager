@@ -1,5 +1,5 @@
 import * as CS from '@/models/context-shared'
-import * as Logs from '@/models/logs'
+import type * as Logs from '@/models/logs'
 import type * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
 import * as C from '@/server/context.ts'

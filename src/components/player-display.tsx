@@ -41,7 +41,7 @@ function PlayerButton(
 				</button>
 			</ContextMenuTrigger>
 			<ContextMenuContent>
-				{<PlayerContextMenuOptions playerId={props.playerId} stores={stores} />}
+				<PlayerContextMenuOptions playerId={props.playerId} stores={stores} />
 			</ContextMenuContent>
 		</ContextMenu>
 	)

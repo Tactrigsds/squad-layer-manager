@@ -785,6 +785,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 
 	const [voterType, setVoterType] = React.useState<V.VoterType>(voteState?.voterType ?? 'public')
 	const internalVoteCheckboxId = React.useId()
+	// eslint-disable-next-line react-hooks/exhaustive-deps
 	const memoizedSelector = React.useCallback(
 		ZusUtils.useDeep((store: SquadServerFrame.Types['state']) => {
 			const canInitiateVote = V.canInitiateVote(

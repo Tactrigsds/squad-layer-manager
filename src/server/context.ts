@@ -1,7 +1,7 @@
 import type * as AR from '@/app-routes.ts'
 import type { AsyncResource, AsyncResourceInvocationOpts, ImmediateRefetchError } from '@/lib/async-resource.ts'
-import { anySignal, isAbortError, sleep } from '@/lib/async.ts'
-import * as Cleanup from '@/lib/cleanup.ts'
+import { isAbortError, sleep } from '@/lib/async.ts'
+import type * as Cleanup from '@/lib/cleanup.ts'
 import { LRUMap } from '@/lib/lru-map.ts'
 import { withAcquired } from '@/lib/nodejs-reentrant-mutexes.ts'
 import type { OtelModule } from '@/lib/otel'
@@ -505,18 +505,6 @@ export type ServerSlice =
  * - Handles errors by logging them and recording in traces
  * - Automatically retries failed operations with configurable delay and retry count
  */
-// pulls the signal off a ctx carried in a durableSub emission, using the same conventions as spanOp's ctx extraction
-function extractArgSignal(arg: unknown): AbortSignal | undefined {
-	let ctx: (CS.Ctx & Partial<CS.AbortSignal>) | undefined
-	if (CS.isCtx(arg)) {
-		ctx = arg
-	} else if (Array.isArray(arg)) {
-		if (CS.isCtx(arg[0])) ctx = arg[0]
-		else if (CS.isCtx(arg[arg.length - 1])) ctx = arg[arg.length - 1]
-	}
-	return ctx?.signal
-}
-
 export function durableSub<T, O>(
 	name: string,
 	opts: {
@@ -567,7 +555,7 @@ export function durableSub<T, O>(
 			new Rx.Observable<O>((subscriber) => {
 				const taskAbort = new AbortController()
 				const signal = taskAbort.signal
-				;(async () => {
+				void (async () => {
 					let attemptsLeft = numRetries + 1
 					while (!signal.aborted) {
 						try {

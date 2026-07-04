@@ -1,5 +1,5 @@
 import { Input } from '@/components/ui/input'
-import * as EditFrame from '@/frames/filter-editor.frame.ts'
+import type * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { useToast } from '@/hooks/use-toast'
 import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'

@@ -1,4 +1,4 @@
-import * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared'
 import type { MutexInterface } from 'async-mutex'
 import * as Rx from 'rxjs'
 

@@ -57,10 +57,6 @@ function logWarn(message: string, ...args: unknown[]) {
 	console.warn(message, ...args)
 }
 
-function logError(message: string, ...args: unknown[]) {
-	console.error(message, ...args)
-}
-
 function toBigInt(value: unknown): bigint | null {
 	if (value === null || value === undefined || value === '') return null
 	if (typeof value === 'bigint') return value

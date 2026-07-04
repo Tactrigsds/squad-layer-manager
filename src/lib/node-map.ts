@@ -1,5 +1,5 @@
 import * as ZusUtils from '@/lib/zustand'
-import * as Zus from 'zustand'
+import type * as Zus from 'zustand'
 export const DEFAULT_NODE_ID = Symbol('defaultNodeId')
 
 export type NodeId = string | symbol

@@ -1,6 +1,6 @@
 import { sleep } from '@/lib/async'
 import { AsyncResource } from '@/lib/async-resource'
-import * as Cleanup from '@/lib/cleanup'
+import type * as Cleanup from '@/lib/cleanup'
 import { matchLog } from '@/lib/log-parsing'
 import type { DecodedPacket } from '@/lib/rcon/core-rcon'
 import * as CS from '@/models/context-shared'
@@ -500,7 +500,10 @@ export function endMatch(ctx: C.Rcon) {
 	void ctx.rcon.execute('AdminEndMatch', { level: 'info' })
 }
 
-export async function switchPlayers(ctx: C.Rcon & C.SquadRcon & C.AdminList & CS.AbortSignal, players: SM.PlayerIds.EosIdQueryOrPlayerId[]) {
+export async function switchPlayers(
+	ctx: C.Rcon & C.SquadRcon & C.AdminList & CS.AbortSignal,
+	players: SM.PlayerIds.EosIdQueryOrPlayerId[],
+) {
 	const ops: Promise<unknown>[] = []
 	for (const ids of players) {
 		const id = SM.PlayerIds.normalizeToPlayerId(ids)

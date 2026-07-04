@@ -1,6 +1,6 @@
 import * as Schema from '$root/drizzle/schema'
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
-import * as Cleanup from '@/lib/cleanup'
+import type * as Cleanup from '@/lib/cleanup'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import * as Obj from '@/lib/object'

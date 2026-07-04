@@ -1,4 +1,4 @@
-import * as SquadServerFrame from '@/frames/squad-server.frame'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { withThrown } from '@/lib/error'
 import * as ZusUtils from '@/lib/zustand'
 import * as L from '@/models/layer'

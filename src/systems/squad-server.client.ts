@@ -1,7 +1,7 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as ZusUtils from '@/lib/zustand'
-import * as MH from '@/models/match-history.models'
+import type * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as TeamsPanelModels from '@/models/teams-panel.models'
 import * as RPC from '@/orpc.client'

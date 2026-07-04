@@ -7,7 +7,6 @@ import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogDescription, Headl
 import { useFrameLifecycle } from '@/frames/frame-manager'
 import * as GenVoteFrame from '@/frames/gen-vote.frame'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import * as MatchHistoryClient from '@/systems/match-history.client'
 
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react'
@@ -311,9 +310,7 @@ function ChoiceConstraintSelect(
 		GenVoteFrame.Actions.setChoiceConstraint(props.stores, index, key, value)
 	}
 	const column = props.constraintKey === 'Unit' ? 'Unit_1' : props.constraintKey
-	const recentMatches$ = React.useMemo(() => {
-		return props.stores.squadServer ? MatchHistoryClient.recentMatches$(props.stores.squadServer.serverId) : undefined
-	}, [props.stores.squadServer])
+
 	const input = ZusUtils.useStore(
 		props.stores.genVote,
 		props.stores.squadServer,

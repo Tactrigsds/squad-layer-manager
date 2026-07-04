@@ -50,8 +50,6 @@ type SelectLayersDialogContentProps = {
 }
 
 const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(function SelectLayersDialogContent(props) {
-	const defaultSelectedRef = React.useRef(props.defaultSelected)
-
 	const frameInputRef = useRefConstructor(() => {
 		if (props.stores?.selectLayers) return undefined
 		SelectLayersFrame.createInput({ cursor: props.cursor })

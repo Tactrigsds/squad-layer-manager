@@ -1,4 +1,4 @@
-import * as SETTINGS from '@/models/settings.models'
+import type * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import type { PublicSettings } from '@/systems/settings.server'
 import * as ReactRx from '@react-rxjs/core'

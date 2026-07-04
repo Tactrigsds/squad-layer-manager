@@ -13,10 +13,9 @@ import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
-import * as MH from '@/models/match-history.models'
+
 import * as ConfigClient from '@/systems/config.client'
-import { layerItemsState$ } from '@/systems/layer-queue.client'
-import * as MatchHistoryClient from '@/systems/match-history.client'
+
 import * as Rx from 'rxjs'
 import { frameManager } from './frame-manager'
 
@@ -93,7 +92,6 @@ export type Types = {
 type Frame = FRM.Frame<Types>
 
 const setup: Frame['setup'] = (args) => {
-	const get = args.get
 	const set = args.set
 	const input = args.input
 	const colConfig = input.colConfig

@@ -10,7 +10,7 @@ import * as ReactRx from '@react-rxjs/core'
 import { QueryClient } from '@tanstack/react-query'
 import { WebSocket } from 'partysocket'
 import * as Rx from 'rxjs'
-import { sleep, toCold, traceTag } from './lib/async'
+import { toCold, traceTag } from './lib/async'
 import { formatVersion } from './lib/versioning'
 
 const wsHostname = window.location.origin.replace(/^http/, 'ws').replace(/\/$/, '')

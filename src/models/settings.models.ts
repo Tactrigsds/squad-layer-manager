@@ -62,7 +62,7 @@ export const GlobalSettingsSchema = z.object({
 		.describe('Configures the trigger warning levels for balance calculations'),
 	playerFlagColorHierarchy: z.array(z.uuid()).optional(),
 	playerFlagsRequiringNote: z.array(z.uuid()).prefault([]).describe(
-		'Flags (by id) that require a reason to be given when added, which is included in the note posted to the player\'s BattleMetrics profile',
+		"Flags (by id) that require a reason to be given when added, which is included in the note posted to the player's BattleMetrics profile",
 	),
 	playerFlagGroupings: BM.PlayerFlagGroupingsSchema.optional(),
 	navLinks: NavLinkSchema.optional().describe('Global links to display in the navbar dropdown menu'),

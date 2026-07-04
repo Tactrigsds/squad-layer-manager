@@ -1,4 +1,3 @@
-import * as ServerSettingsPartial from '@/frame-partials/server-settings.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { sleep } from '@/lib/async'
 import type * as FRM from '@/lib/frame'

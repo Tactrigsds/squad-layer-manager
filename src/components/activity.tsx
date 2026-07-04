@@ -58,7 +58,10 @@ export function StartActivityInteraction<
 
 			UPClient.Actions.preloadActivity(props.createActivity())
 		},
-		[props.createActivity, isLoaded],
+		[
+			isLoaded,
+			props,
+		],
 	)
 
 	const [intentTimeout, setIntentTimeout] = React.useState<NodeJS.Timeout | null>(null)

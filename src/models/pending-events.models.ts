@@ -110,7 +110,7 @@ export function init(
 	}
 }
 
-export function pushAttribution(state: State, attribution: Omit<Attribution, 'time' | 'time'>) {
+export function pushAttribution(state: State, attribution: Omit<Attribution, 'time'>) {
 	state.attributions.push({ ...attribution, time: Date.now() })
 }
 

@@ -191,7 +191,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 				void ChatPrt.Actions.setSelectedMatchOrdinal({ chat: stores.squadServer! }, null)
 			}
 		}
-	}, [currentMatch?.historyEntryId])
+	}, [currentMatch?.historyEntryId, stores.squadServer])
 
 	// Determine which match to display - either selected or current
 	const displayMatch = React.useMemo(() => {

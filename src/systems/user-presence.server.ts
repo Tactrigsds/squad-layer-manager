@@ -4,7 +4,7 @@ import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as Obj from '@/lib/object'
 import * as RbSyncState from '@/lib/rollback-synced-state'
 import { assertNever } from '@/lib/type-guards'
-import * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared'
 import * as UP from '@/models/user-presence'
 import * as C from '@/server/context'
 import { initModule } from '@/server/logger'
@@ -88,7 +88,7 @@ export const orpcRouter = {
 
 			// ack-by-id has the originator replay its own pending copies, which only works if the server
 			// applied them verbatim -- if we rewrote any op, fall back to echoing the full ops
-			dispatchOp(ops, opsRewritten ? undefined : { sourceWsClientId: ctx.wsClientId })
+			dispatchOp(ops, opsRewritten ? undefined : { sourceWsClientId: ctx.wsClientId }).catch((error) => log.error(error))
 			return { code: 'ok' as const }
 		}),
 }
@@ -128,7 +128,7 @@ export function dispatchEndAllTeamswitchEditing() {
 		opId: UP.createOpId(),
 		time: Date.now(),
 		update: { code: 'clear-editing-teamswitches' },
-	}])
+	}]).catch((error) => log.error(error))
 }
 
 export function setup() {

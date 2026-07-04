@@ -8,7 +8,7 @@ import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as DndKit from '@/systems/dndkit.client'
 import * as LQYClient from '@/systems/layer-queries.client'
-import * as LayerQueueClient from '@/systems/layer-queue.client'
+
 import * as Icons from 'lucide-react'
 import React from 'react'
 import { ConstraintEvalTooltip } from './constraint-matches-indicator.tsx'

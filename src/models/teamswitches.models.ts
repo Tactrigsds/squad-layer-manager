@@ -6,7 +6,7 @@ import { assertNever } from '@/lib/type-guards'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as USR from '@/models/users.models'
-import { DistributiveOmit } from '@tanstack/react-query'
+import type { DistributiveOmit } from '@tanstack/react-query'
 import { z } from 'zod'
 
 export const TeamswitchStatusSchema = z.enum(['ready', 'player-disconnected', 'player-changed-teams'])
@@ -39,24 +39,6 @@ function getTeamswitchChanges(next: TeamswitchCollection, prev: TeamswitchCollec
 }
 
 export type PlayerCollection = Map<SM.PlayerId, MH.NormedTeamId>
-function getPlayerChanges(next: PlayerCollection, prev: PlayerCollection) {
-	const added: SM.PlayerId[] = []
-	const removed: SM.PlayerId[] = []
-	const changed: SM.PlayerId[] = []
-	const allPlayerIds = new Set([...next.keys(), ...prev.keys()])
-	for (const playerId of allPlayerIds) {
-		const nextPlayer = next.get(playerId)
-		const prevPlayer = prev.get(playerId)
-		if (!prevPlayer && nextPlayer) {
-			added.push(playerId)
-		} else if (prevPlayer && !nextPlayer) {
-			removed.push(playerId)
-		} else if (prevPlayer && nextPlayer && prevPlayer !== nextPlayer) {
-			changed.push(playerId)
-		}
-	}
-	return { added, removed, changed }
-}
 
 export type EnrichedTeamswitch = Teamswitch & { player: SM.Player }
 
@@ -193,8 +175,6 @@ export type NewClientOp = DistributiveOmit<Op, 'opId'>
 export function createOpId() {
 	return createId(6)
 }
-type O = ReturnType<Map<string, any>['keys']>
-
 type SwitchingMutationOp =
 	| 'remove-player-teamswitches'
 	| 'revert-to-saved'

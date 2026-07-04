@@ -4,7 +4,7 @@ import * as CS from '@/models/context-shared'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
-import { eq, lt, sql } from 'drizzle-orm'
+import { eq, lt } from 'drizzle-orm'
 import superjson from 'superjson'
 
 const module = initModule('persistedCache')

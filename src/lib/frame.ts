@@ -2,7 +2,7 @@ import * as Gen from '@/lib/generator'
 import * as Obj from '@/lib/object'
 import * as ReactUtils from '@/lib/react'
 import * as ZusUtils from '@/lib/zustand'
-import React from 'react'
+
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 

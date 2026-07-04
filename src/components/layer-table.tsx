@@ -68,7 +68,7 @@ export function getFullTableWidth(cfg: LQY.EffectiveColumnAndTableConfig, column
 	const ctx: CS.EffectiveColumnConfig = { ...CS.init(), effectiveColsConfig: cfg }
 	let width = SELECT_COLUMN_SIZE + CONSTRAINTS_COLUMN_SIZE
 	for (const name of Object.keys(cfg.defs)) {
-		if (columnVisibility[name] === false) continue
+		if (!columnVisibility[name]) continue
 		width += getColumnSize(name, LC.isNumericColumn(name, ctx))
 	}
 	return width
@@ -410,10 +410,12 @@ export default function LayerTable(props: {
 		return vis
 	}, [props.compact, frameState.columnVisibility])
 
+	// eslint-disable-next-line react-hooks/exhaustive-deps
 	const onColumnVisibilityChange = React.useCallback(
 		LayerTablePrt.Actions.onColumnVisibilityChange(props.stores),
 		[props.stores],
 	)
+	// eslint-disable-next-line react-hooks/exhaustive-deps
 	const onPaginationChange = React.useCallback(
 		LayerTablePrt.Actions.onPaginationChange(props.stores),
 		[props.stores],

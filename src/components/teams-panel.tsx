@@ -12,7 +12,7 @@ import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as TeamsPanelModels from '@/models/teams-panel.models'
-import * as TSW from '@/models/teamswitches.models'
+
 import * as RBAC from '@/rbac.models.ts'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
@@ -20,13 +20,10 @@ import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswitches.client'
-import * as ThemeClient from '@/systems/theme.client'
 import * as UPClient from '@/systems/user-presence.client'
-import * as UsersClient from '@/systems/users.client'
+
 import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table'
-import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
-import type { EChartsOption } from 'echarts'
-import ReactECharts from 'echarts-for-react'
+import type { ColumnDef, SortingState } from '@tanstack/react-table'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import PlayerBulkContextMenuOptions from './player-bulk-context-menu-options'
@@ -152,11 +149,11 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 		<div className={cn('flex w-full p-1 flex-col', props.className)}>
 			<div className="grid w-full grid-cols-[1fr_auto_1fr] gap-1">
 				<div>
-					<TeamTitle teamId={'A'} stores={props.stores} />
+					<TeamTitle teamId="A" stores={props.stores} />
 				</div>
 				<TeamPlayerCounts stores={props.stores} />
 				<div className="flex justify-end">
-					<TeamTitle teamId={'B'} stores={props.stores} />
+					<TeamTitle teamId="B" stores={props.stores} />
 				</div>
 				<div>
 				</div>
@@ -314,218 +311,6 @@ function ControlPanel() {
 			</Select>
 		</div>
 	)
-}
-
-type TeamBreakdownData = {
-	groupLabels: string[]
-	groupColors: string[]
-	teamACounts: number[]
-	teamBCounts: number[]
-	teamAPlayers: string[][]
-	teamBPlayers: string[][]
-	groupingModeIds: string[]
-	activeModeId: string
-	setSelectedModeId: (id: string | null) => void
-} | null
-
-function useTeamBreakdownData(stores: SquadServerFrame.KeyProp): TeamBreakdownData {
-	const match = MatchHistoryClient.useCurrentMatch(stores.squadServer!.serverId)
-	const teamAIsTeam1 = (match?.ordinal ?? 0) % 2 === 0
-
-	const livePlayers = ZusUtils.useStore(
-		stores.squadServer!,
-		ZusUtils.useDeep(s => {
-			if (!s.chat.chatState.synced) return null
-			return ChatPrt.Sel.chatState(s).players
-		}),
-	)
-
-	const bmData = BattlemetricsClient.usePlayerBmData()
-	const orgFlags = BattlemetricsClient.useOrgFlags()
-	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
-	const playerFlagGroupings = config?.playerFlagGroupings
-
-	const groupingModeIds = React.useMemo(
-		() => (playerFlagGroupings ? BM.getGroupingModeIds(playerFlagGroupings) : []),
-		[playerFlagGroupings],
-	)
-
-	const activeModeId = ZusUtils.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingModeId(groupingModeIds))
-	const slsOnly = ZusUtils.useStore(BattlemetricsClient.Store, s => s.slsOnly)
-	const setSelectedModeId = BattlemetricsClient.Actions.setSelectedModeId
-
-	return React.useMemo((): TeamBreakdownData => {
-		if (!playerFlagGroupings || !livePlayers || activeModeId === null) return null
-
-		const modeGroupings = playerFlagGroupings.filter(g => g.modeIds.includes(activeModeId))
-		const chartPlayers = slsOnly ? livePlayers.filter(p => p.isLeader) : livePlayers
-
-		const playerFlagPairs: [SM.PlayerId, BM.PlayerFlag[]][] = chartPlayers
-			.filter(p => p.ids.eos != null)
-			.map(p => {
-				const eosId = p.ids.eos!
-				const flagIds = bmData[eosId]?.flagIds ?? []
-				const flags = orgFlags ? BM.resolveFlags(flagIds, orgFlags) : []
-				return [eosId, flags]
-			})
-
-		const playerGroups = BM.resolvePlayerFlagGroups(playerFlagPairs, playerFlagGroupings, activeModeId)
-
-		const groupLabels = [...modeGroupings.map(g => g.label), 'Other']
-		const labelToIdx = new Map(groupLabels.map((label, i) => [label, i]))
-		const teamACounts = new Array<number>(groupLabels.length).fill(0)
-		const teamBCounts = new Array<number>(groupLabels.length).fill(0)
-		const teamAPlayers: string[][] = groupLabels.map(() => [])
-		const teamBPlayers: string[][] = groupLabels.map(() => [])
-		const otherIdx = groupLabels.length - 1
-
-		for (const player of chartPlayers) {
-			if (player.teamId === null) continue
-			const group = player.ids.eos != null ? playerGroups.get(player.ids.eos) : undefined
-			const idx = group != null ? (labelToIdx.get(group) ?? -1) : otherIdx
-			if (idx === -1) continue
-			const name = player.ids.usernameNoTag ?? player.ids.username ?? '?'
-			const isTeamA = teamAIsTeam1 ? player.teamId === 1 : player.teamId === 2
-			if (isTeamA) {
-				teamACounts[idx]++
-				teamAPlayers[idx].push(name)
-			} else {
-				teamBCounts[idx]++
-				teamBPlayers[idx].push(name)
-			}
-		}
-
-		const flagColorById = new Map<string, string>()
-		for (const flag of orgFlags ?? []) {
-			if (flag.color) flagColorById.set(flag.id, flag.color)
-		}
-
-		const groupColorByLabel = new Map(modeGroupings.map(g => [g.label, g.color]))
-		const groupColors = groupLabels.map(label => {
-			const raw = groupColorByLabel.get(label)
-			if (!raw) return '#888'
-			return flagColorById.get(raw) ?? raw
-		})
-
-		return {
-			groupLabels,
-			groupColors,
-			teamACounts,
-			teamBCounts,
-			teamAPlayers,
-			teamBPlayers,
-			groupingModeIds,
-			activeModeId,
-			setSelectedModeId,
-		}
-	}, [playerFlagGroupings, activeModeId, livePlayers, slsOnly, bmData, orgFlags, teamAIsTeam1, groupingModeIds, setSelectedModeId])
-}
-
-function createVerticalBreakdownChartOption(data: NonNullable<TeamBreakdownData>, isDark: boolean): EChartsOption {
-	const textColor = isDark ? '#e5e7eb' : '#111827'
-	const { groupLabels, groupColors, teamACounts, teamBCounts, teamAPlayers, teamBPlayers } = data
-	return {
-		animation: false,
-		grid: { left: 4, right: 4, top: 4, bottom: 4, containLabel: true },
-		xAxis: {
-			type: 'category',
-			data: ['A', 'B'],
-			axisLabel: { show: false },
-			axisTick: { show: false },
-			axisLine: { show: false },
-		},
-		yAxis: {
-			type: 'value',
-			minInterval: 1,
-			axisLabel: { color: textColor, fontSize: 10 },
-			splitLine: { lineStyle: { opacity: 0.3 } },
-		},
-		series: groupLabels.map((label, i) => ({
-			name: label,
-			type: 'bar' as const,
-			stack: 'total',
-			barMaxWidth: 20,
-			data: [teamACounts[i], teamBCounts[i]],
-			itemStyle: { color: groupColors[i] },
-			label: {
-				show: true,
-				color: '#fff',
-				fontWeight: 'bold',
-				textShadowBlur: isDark ? 0 : 3,
-				textShadowColor: '#0006',
-				formatter: (p: { value?: unknown }) => typeof p.value === 'number' && p.value > 0 ? String(p.value) : '',
-			},
-		})),
-		tooltip: {
-			trigger: 'item',
-			confine: true,
-			formatter: (params: unknown) => {
-				const item = params as { seriesIndex: number; seriesName: string; value: number | null; color: string; dataIndex: number }
-				if (!item.value) return ''
-				const teamLabel = item.dataIndex === 0 ? 'Team A' : 'Team B'
-				const playersByGroup = item.dataIndex === 0 ? teamAPlayers : teamBPlayers
-				const players = playersByGroup[item.seriesIndex]
-				let html = `<div style="font-weight:bold;margin-bottom:4px">${teamLabel}</div>`
-				html += `<div style="display:flex;align-items:center;gap:6px">`
-				html += `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${item.color}"></span>`
-				html += `<span><b>${item.seriesName}</b>: ${item.value}</span>`
-				html += '</div>'
-				if (players && players.length > 0) {
-					html += `<div style="margin-top:4px">${players.join(', ')}</div>`
-				}
-				return html
-			},
-		},
-	}
-}
-
-function TeamBreakdownLegend({ data }: { data: TeamBreakdownData }) {
-	if (!data) return null
-	const { groupLabels, groupColors, groupingModeIds, activeModeId, setSelectedModeId } = data
-	return (
-		<div className="flex flex-col gap-1 justify-center">
-			{groupingModeIds.length > 1 && (
-				<div className="flex gap-0.5">
-					{groupingModeIds.map(modeId => (
-						<button
-							type="button"
-							key={modeId}
-							onClick={() => setSelectedModeId(modeId)}
-							className={`text-xs px-2 py-0.5 rounded ${
-								activeModeId === modeId
-									? 'bg-primary text-primary-foreground'
-									: 'text-muted-foreground hover:text-foreground'
-							}`}
-						>
-							{modeId}
-						</button>
-					))}
-				</div>
-			)}
-			<div className="flex flex-wrap gap-x-2 gap-y-0.5">
-				{groupLabels.map((label, i) => (
-					<span key={label} className="flex items-center gap-1 text-xs">
-						<span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: groupColors[i] }} />
-						{label}
-					</span>
-				))}
-			</div>
-		</div>
-	)
-}
-
-function TeamBreakdownChart({ data }: { data: TeamBreakdownData }) {
-	const { resolvedTheme } = ThemeClient.useTheme()
-	const isDark = resolvedTheme === 'dark'
-
-	const chartOption = React.useMemo(() => {
-		if (!data) return null
-		return createVerticalBreakdownChartOption(data, isDark)
-	}, [data, isDark])
-
-	if (!chartOption) return null
-
-	return <ReactECharts option={chartOption} notMerge={true} style={{ height: '200px', width: '100px' }} />
 }
 
 function SelectOrSpinner({ playerId, checked, onCheckedChange, stores }: {
@@ -852,7 +637,7 @@ const playerColumns = [
 			)
 		},
 		cell: ({ row, table }) => {
-			const { squads, matchId, stores } = table.options.meta as TeamPlayerTableMeta
+			const { squads, stores } = table.options.meta as TeamPlayerTableMeta
 			const player = row.original
 			const squadId = player.squadId
 			if (squadId === null) return ''
@@ -1210,7 +995,7 @@ const combinedPlayerColumns = [
 			)
 		},
 		cell: ({ row, table }) => {
-			const { squadsWithTeam, matchId, getFaction, stores } = table.options.meta as CombinedTableMeta
+			const { squadsWithTeam, getFaction, stores } = table.options.meta as CombinedTableMeta
 			const player = row.original
 			const squadId = player.squadId
 			if (squadId === null) return ''

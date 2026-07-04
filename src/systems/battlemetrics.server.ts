@@ -555,7 +555,10 @@ const bulkFetchOnlinePlayers = C.spanOp(
 	},
 )
 
-export async function invalidateAndRefetchPlayer(ctx: CS.Ctx & C.ServerSlice & CS.AbortSignal, eosId: string): Promise<BM.PlayerFlagsAndProfile | null> {
+export async function invalidateAndRefetchPlayer(
+	ctx: CS.Ctx & C.ServerSlice & CS.AbortSignal,
+	eosId: string,
+): Promise<BM.PlayerFlagsAndProfile | null> {
 	playerFlagsAndProfileCache.delete(eosId)
 	const updated = await fetchSinglePlayerBmData(ctx, SM.PlayerIds.queryFromPlayerId(eosId))
 	persistCache().catch((err) => log.warn({ err }, 'Failed to persist BM cache after flag update'))

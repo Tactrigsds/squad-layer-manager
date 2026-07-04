@@ -161,7 +161,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 			}
 			timeouts.clear()
 		}
-	}, [])
+	}, [props.transitionMessages, showEventText])
 
 	const usersRes = UsersClient.useUsers(allUserIds, { enabled: allUserIds.size > 0 })
 	const loggedInUser = UsersClient.useLoggedInUser()
@@ -196,7 +196,11 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 		})
 
 		return props.sourcePresenceFn ? userPresenceList.sort(props.sourcePresenceFn) : userPresenceList
-	}, [matchingUserPresence, userMap])
+	}, [
+		matchingUserPresence,
+		userMap,
+		props.sourcePresenceFn,
+	])
 
 	const getUserInitials = (user: USR.User) => {
 		return user.displayName.slice(0, 2).toUpperCase()
@@ -236,7 +240,12 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 			}
 		}
 		return result
-	}, [sortedUserPresence, userEventText, layerList])
+	}, [
+		sortedUserPresence,
+		userEventText,
+		layerList,
+		props,
+	])
 
 	const actionCount = React.useMemo(() => {
 		return groupedPresence.reduce((count, group) => count + group.entries.filter(e => e.activityText !== null).length, 0)

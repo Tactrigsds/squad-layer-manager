@@ -6,7 +6,7 @@ import * as RbSyncState from '@/lib/rollback-synced-state'
 import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
-import * as LQY from '@/models/layer-queries.models'
+
 import * as SLL from '@/models/shared-layer-list'
 import type * as UP from '@/models/user-presence'
 import * as RPC from '@/orpc.client'

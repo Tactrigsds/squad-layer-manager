@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
+
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import type * as LL from '@/models/layer-list.models'

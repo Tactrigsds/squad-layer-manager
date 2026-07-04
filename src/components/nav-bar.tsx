@@ -11,9 +11,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Spinner } from '@/components/ui/spinner'
 import UserPermissionsDialog from '@/components/user-permissions-dialog'
 import { frameManager } from '@/frames/frame-manager.ts'
-import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
+
 import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
-import { orUndef } from '@/lib/types'
+
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as USR from '@/models/users.models.ts'
@@ -21,7 +21,7 @@ import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
-import * as LayerQueriesClient from '@/systems/layer-queries.client'
+
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'

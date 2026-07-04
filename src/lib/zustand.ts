@@ -6,10 +6,9 @@ import type { UseQueryOptions } from '@tanstack/react-query'
 import { derive } from 'derive-zustand'
 import * as React from 'react'
 import * as Rx from 'rxjs'
-import * as Zus from 'zustand'
+
 import type { StoreApi, StoreMutatorIdentifier, StoreMutators } from 'zustand'
 import { useShallow as useShallowImported } from 'zustand/react/shallow'
-import { useStoreWithEqualityFn } from 'zustand/traditional'
 
 // ripped from zustand types
 type Get<T, K, F> = K extends keyof T ? T[K] : F

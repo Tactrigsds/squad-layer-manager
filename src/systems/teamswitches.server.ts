@@ -1,21 +1,20 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import * as Arr from '@/lib/array'
 import { isAbortError, sleep, toAsyncGenerator, withAbortSignal } from '@/lib/async'
-import { withThrown, withThrownAsync } from '@/lib/error'
+import { withThrownAsync } from '@/lib/error'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as MapUtils from '@/lib/map'
-import * as Obj from '@/lib/object'
-import { destrNullable } from '@/lib/object'
+
 import * as RbSyncState from '@/lib/rollback-synced-state'
 import { assertNever } from '@/lib/type-guards'
 import { WARNS } from '@/messages'
-import * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswitches.models'
-import * as UP from '@/models/user-presence'
+
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
@@ -26,8 +25,9 @@ import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
-import * as UserPresence from '@/systems/user-presence.server'
-import { E_TIMEOUT, Mutex, MutexInterface, withTimeout } from 'async-mutex'
+
+import { Mutex } from 'async-mutex'
+import type { MutexInterface } from 'async-mutex'
 import * as E from 'drizzle-orm'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
@@ -70,7 +70,6 @@ export function setup() {
 }
 
 export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
-	const serverId = ctx.serverId
 	const context: TeamswitchContext = {
 		session: RbSyncState.Server.initSession(TSW.initState(), {}),
 		op$: new IsolatedSubject<{ ops: TSW.Op[]; sourceWsClientId?: string }>(),
@@ -284,8 +283,8 @@ const dispatchOp = C.spanOp(
 		})
 		ctx.teamswitches.op$.next({ ops, sourceWsClientId: opts?.sourceWsClientId })
 
-		const opErrors = new Map<string, (TSW.OpError | unknown)[]>()
-		const addError = (opId: string, error: TSW.OpError | unknown) => {
+		const opErrors = new Map<string, unknown[]>()
+		const addError = (opId: string, error: unknown) => {
 			const errors = MapUtils.defaultInsGet(opErrors, opId, [])
 			errors.push(error)
 			opErrors.set(opId, errors)
@@ -353,10 +352,13 @@ const dispatchOp = C.spanOp(
 							return { code: 'ok' as const }
 						})
 
+						const toMessage = (error: unknown) =>
+							error instanceof Error ? error.message : typeof error === 'string' ? error : JSON.stringify(error)
+
 						let message: string | undefined
 						let finalError: unknown
 						if (thrownError) {
-							message = (thrownError as any)?.message ?? String(thrownError)
+							message = (thrownError as any)?.message ?? toMessage(thrownError)
 							finalError = thrownError
 						} else if (res && res.code !== 'ok') {
 							message = res.msg ?? res.code
@@ -369,7 +371,7 @@ const dispatchOp = C.spanOp(
 							nextOps.push({
 								code: 'teamswitch-execution-failed',
 								reason: 'error',
-								message: message ?? String(finalError),
+								message: message ?? toMessage(finalError),
 								opId: TSW.createOpId(),
 							})
 						}
@@ -483,12 +485,4 @@ export async function dispatchSwitchNext(
 	}))
 	const allErrors = await dispatchOp(ctx, ops)
 	return ops.flatMap(op => allErrors.get(op.opId) ?? [])
-}
-
-function resolveCtx(serverId: string) {
-	return SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-}
-
-function getBaseCtx() {
-	return DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
 }

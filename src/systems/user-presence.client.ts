@@ -6,10 +6,10 @@ import * as Lifecycle from '@/lib/lifecycle'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
 import * as RbSyncState from '@/lib/rollback-synced-state'
-import * as ST from '@/lib/state-tree'
+import type * as ST from '@/lib/state-tree'
 import * as ZusUtils from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
-import type * as SLL from '@/models/shared-layer-list'
+
 import * as UP from '@/models/user-presence'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
@@ -17,7 +17,7 @@ import * as ConfigClient from '@/systems/config.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UsersClient from '@/systems/users.client'
 import * as ReactRx from '@react-rxjs/core'
-import * as Im from 'immer'
+import type * as Im from 'immer'
 import React from 'react'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
@@ -394,7 +394,6 @@ export function useActivityState<P>(opts: UP.ActivityTransitions<P>) {
 		}, [matchActivity])),
 	)
 	const setActive: React.Dispatch<React.SetStateAction<boolean>> = React.useCallback((update) => {
-		const storeState = Store.getState()
 		const config = ConfigClient.getConfig()
 		const state = config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined
 

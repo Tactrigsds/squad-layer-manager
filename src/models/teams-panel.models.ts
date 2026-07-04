@@ -3,7 +3,7 @@ import * as Obj from '@/lib/object'
 import * as RSel from '@/lib/reselect'
 import * as BM from '@/models/battlemetrics.models'
 import type * as CHAT from '@/models/chat.models'
-import * as MH from '@/models/match-history.models'
+import type * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import type { PublicSettings } from '@/systems/settings.server'
 

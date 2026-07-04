@@ -127,6 +127,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 			sub.unsubscribe()
 			unsub()
 		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [onChangeDebounced, props.stores])
 
 	React.useImperativeHandle(ref, () => ({

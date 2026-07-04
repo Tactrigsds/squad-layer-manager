@@ -1,15 +1,14 @@
-import * as Gen from '@/lib/generator'
 import { createId } from '@/lib/id'
 import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
-import * as RbSyncState from '@/lib/rollback-synced-state'
+import type * as RbSyncState from '@/lib/rollback-synced-state'
 import { assertNever } from '@/lib/type-guards'
-import { DistributiveOmit } from '@/lib/types'
+
 import * as LL from '@/models/layer-list.models'
-import * as UP from '@/models/user-presence'
+
 import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models'
-import seedrandom from 'seedrandom'
+
 import { z } from 'zod'
 import * as L from './layer'
 
@@ -271,7 +270,6 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 	// don't write to mutations if we're applying changes to the saved list, just throw them away instead
 	const mutations = session.mutations
 	const list = session.list
-	const startingWindowSeqId = session.editWindowSeqId
 
 	switch (newOp.op) {
 		case 'init': {
