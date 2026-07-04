@@ -56,13 +56,13 @@ export function PlayerDisplay({ player, showTeam, showSquad, showRole, className
 		<span className={cn('inline-flex items-baseline', className)}>
 			{player.isAdmin && (
 				<span
-					title="This player is an Admin. Shift+click: select all admins"
+					title="This player is an Admin. Shift+click: select this team's admins. Shift+Ctrl+click: both teams"
 					className="inline-block"
 					onClickCapture={e => {
 						if (!e.shiftKey) return
 						e.preventDefault()
 						e.stopPropagation()
-						SquadServerClient.Actions.selectAllAdmins(stores)
+						SquadServerClient.Actions.selectAllAdmins(stores, e.ctrlKey ? undefined : player.teamId ?? undefined)
 					}}
 				>
 					<Icons.ShieldCheckIcon className="h-[1em] w-[1em] text-background fill-blue-300" />

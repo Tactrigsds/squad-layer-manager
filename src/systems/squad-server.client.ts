@@ -119,29 +119,36 @@ export namespace Actions {
 		}))
 	}
 
-	export function selectAllAdmins(stores: SquadServerFrame.KeyProp) {
+	// teamId (raw): when given, only players on that team are selected
+	export function selectAllAdmins(stores: SquadServerFrame.KeyProp, teamId?: SM.TeamId) {
 		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
-		selectPlayers(players.filter(p => p.isAdmin).map(p => SM.PlayerIds.getPlayerId(p.ids)))
+		selectPlayers(players.filter(p => p.isAdmin && (teamId == null || p.teamId === teamId)).map(p => SM.PlayerIds.getPlayerId(p.ids)))
 	}
 
-	export function selectAllWithRole(stores: SquadServerFrame.KeyProp, role: string) {
+	export function selectAllWithRole(stores: SquadServerFrame.KeyProp, role: string, teamId?: SM.TeamId) {
 		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
-		selectPlayers(players.filter(p => p.role === role).map(p => SM.PlayerIds.getPlayerId(p.ids)))
+		selectPlayers(
+			players.filter(p => p.role === role && (teamId == null || p.teamId === teamId)).map(p => SM.PlayerIds.getPlayerId(p.ids)),
+		)
 	}
 
-	export function selectAllSquadLeaders(stores: SquadServerFrame.KeyProp) {
+	export function selectAllSquadLeaders(stores: SquadServerFrame.KeyProp, teamId?: SM.TeamId) {
 		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
-		selectPlayers(players.filter(p => p.isLeader).map(p => SM.PlayerIds.getPlayerId(p.ids)))
+		selectPlayers(players.filter(p => p.isLeader && (teamId == null || p.teamId === teamId)).map(p => SM.PlayerIds.getPlayerId(p.ids)))
 	}
 
-	export function selectAllTeamPlayers(stores: SquadServerFrame.KeyProp) {
+	export function selectAllTeamPlayers(stores: SquadServerFrame.KeyProp, teamId?: SM.TeamId) {
 		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
-		selectPlayers(players.filter(p => p.teamId !== null).map(p => SM.PlayerIds.getPlayerId(p.ids)))
+		selectPlayers(
+			players.filter(p => (teamId == null ? p.teamId !== null : p.teamId === teamId)).map(p => SM.PlayerIds.getPlayerId(p.ids)),
+		)
 	}
 
-	export function selectGrouping(stores: SquadServerFrame.KeyProp, grouping: string) {
+	export function selectGrouping(stores: SquadServerFrame.KeyProp, grouping: string, teamId?: SM.TeamId) {
 		const enriched = getEnrichedPlayers(stores)
-		selectPlayers(enriched.filter(p => p.grouping === grouping).map(p => SM.PlayerIds.getPlayerId(p.ids)))
+		selectPlayers(
+			enriched.filter(p => p.grouping === grouping && (teamId == null || p.teamId === teamId)).map(p => SM.PlayerIds.getPlayerId(p.ids)),
+		)
 	}
 
 	function getEnrichedPlayers(stores: SquadServerFrame.KeyProp): TeamsPanelModels.EnrichedPlayer[] {

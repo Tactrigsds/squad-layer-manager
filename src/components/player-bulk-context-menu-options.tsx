@@ -39,7 +39,7 @@ export default function PlayerBulkContextMenuOptions(
 			const result = await openDialog({
 				title: 'Switch Players Now',
 				description: `Move ${playerIds.length} players to the opposite team immediately?`,
-				buttons: [{ id: 'confirm', label: 'Switch Now' }],
+				buttons: [{ id: 'confirm', label: 'Switch Now', variant: 'destructive' }],
 			})
 			if (result === 'dismissed') {
 				toast({ title: 'Switch cancelled', description: 'One or more players changed teams', variant: 'destructive' })
@@ -109,7 +109,13 @@ export default function PlayerBulkContextMenuOptions(
 			</PermissionDeniedTooltip>
 			<ContextMenuSeparator />
 			<PermissionDeniedTooltip denied={manageDenied}>
-				<ContextMenuItem onClick={switchNow} disabled={!!manageDenied}>Switch Now</ContextMenuItem>
+				<ContextMenuItem
+					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
+					onClick={switchNow}
+					disabled={!!manageDenied}
+				>
+					Switch Now
+				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<ContextMenuItem onClick={() => TSWClient.Actions.removeSwitch(stores, playerIds)} disabled={!!manageDenied}>

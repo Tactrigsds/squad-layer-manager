@@ -350,24 +350,24 @@ function shiftClickCellProps(
 	if (columnId === 'role' && player.role != null) {
 		const role = player.role
 		return {
-			title: 'Shift+click: select all players with this role',
+			title: 'Shift+click: select teammates with this role. Shift+Ctrl+click: both teams',
 			onClickCapture: e => {
 				if (!e.shiftKey) return
 				e.preventDefault()
 				e.stopPropagation()
-				SquadServerClient.Actions.selectAllWithRole(stores, role)
+				SquadServerClient.Actions.selectAllWithRole(stores, role, e.ctrlKey ? undefined : player.teamId ?? undefined)
 			},
 		}
 	}
 	if (columnId === 'grouping' && player.grouping) {
 		const grouping = player.grouping
 		return {
-			title: 'Shift+click: select all players in this grouping',
+			title: 'Shift+click: select teammates in this grouping. Shift+Ctrl+click: both teams',
 			onClickCapture: e => {
 				if (!e.shiftKey) return
 				e.preventDefault()
 				e.stopPropagation()
-				SquadServerClient.Actions.selectGrouping(stores, grouping)
+				SquadServerClient.Actions.selectGrouping(stores, grouping, e.ctrlKey ? undefined : player.teamId ?? undefined)
 			},
 		}
 	}
@@ -385,6 +385,7 @@ type PlayerFilters = {
 
 type TeamPlayerTableMeta = {
 	matchId: number
+	teamId: SM.TeamId
 	squads: SM.UniqueSquad[]
 	groupingColorByLabel: Map<string, string>
 	filters: PlayerFilters
@@ -560,10 +561,10 @@ const playerColumns = [
 				onClick={e => {
 					if (!e.shiftKey) return
 					e.preventDefault()
-					const { stores } = table.options.meta as { stores: SquadServerFrame.KeyProp }
-					SquadServerClient.Actions.selectAllTeamPlayers(stores)
+					const { stores, teamId } = table.options.meta as TeamPlayerTableMeta
+					SquadServerClient.Actions.selectAllTeamPlayers(stores, e.ctrlKey ? undefined : teamId)
 				}}
-				title="Select all shown. Shift+click: select all players on both teams"
+				title="Select all shown. Shift+click: select all on this team. Shift+Ctrl+click: both teams"
 				aria-label="Select all"
 			/>
 		),
@@ -792,6 +793,7 @@ function TeamPlayerTable(
 		onSortingChange: setSorting,
 		meta: {
 			matchId,
+			teamId: MH.getDenormedTeamId(props.teamId, match?.ordinal ?? 0),
 			squads,
 			groupingColorByLabel,
 			filters: props.filters,
@@ -1395,7 +1397,7 @@ function SwapsPanel({ className, stores }: { className?: string; stores: SquadSe
 						)}
 					<AlertDialog>
 						<AlertDialogTrigger asChild>
-							<Button size="sm" disabled={!canExecute || numEditors > 0}>
+							<Button variant="destructive" size="sm" disabled={!canExecute || numEditors > 0}>
 								Switch Now
 							</Button>
 						</AlertDialogTrigger>
