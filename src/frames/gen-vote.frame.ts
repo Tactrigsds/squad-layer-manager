@@ -181,6 +181,25 @@ export namespace Actions {
 		})
 	}
 
+	export function setChoiceLayer(stores: KeyProp, index: number, layerId: L.LayerId) {
+		const s = store(stores)
+		const state = s.getState()
+		const choices = Im.produce(state.choices, draft => {
+			draft[index].layerId = layerId
+		})
+		const choiceErrors = Im.produce(state.choiceErrors, draft => {
+			draft[index] = undefined
+		})
+		let result: Store['result'] = null
+		if (choices.every(c => c.layerId)) {
+			result = {
+				choices: choices.map(c => c.layerId!),
+				voteConfig: state.voteConfig,
+			}
+		}
+		s.setState({ choices, choiceErrors, result })
+	}
+
 	export function addChoice(stores: KeyProp) {
 		const s = store(stores)
 		s.setState({ choices: [...s.getState().choices, V.GenVote.initChoice()] })
