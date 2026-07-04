@@ -464,67 +464,84 @@ type StatsSortColumn = {
 	clearSorting: () => void
 }
 
-function StatsColumnHeader({ column, metric, setMetric }: {
+// open state lives in the table component: picking a metric rebuilds the column def, which remounts
+// this header — local state would reset and close the popover mid-interaction
+function StatsColumnHeader({ column, metric, setMetric, open, setOpen }: {
 	column: StatsSortColumn
 	metric: StatsSortMetric
 	setMetric: (m: StatsSortMetric) => void
+	open: boolean
+	setOpen: (open: boolean) => void
 }) {
-	const [open, setOpen] = React.useState(false)
 	const sorted = column.getIsSorted()
 	return (
-		<span className="inline-flex items-center">
-			<span title={sorted ? `Sorted by ${metric}` : undefined}>
-				{STATS_SORT_METRICS.map(({ metric: m, short }, i) => (
-					<React.Fragment key={m}>
-						{i > 0 && <span className="text-muted-foreground">/</span>}
-						<span className={sorted && metric === m ? 'text-primary font-semibold' : undefined}>{short}</span>
-					</React.Fragment>
-				))}
-			</span>
-			<Popover open={open} onOpenChange={setOpen}>
-				<PopoverTrigger asChild>
-					<button
-						type="button"
-						onClick={e => e.stopPropagation()}
-						className="ml-1 text-muted-foreground hover:text-foreground"
-						title="Choose stat to sort by"
-					>
-						<Icons.ArrowUpDown className="h-3 w-3" />
-					</button>
-				</PopoverTrigger>
-				<PopoverContent align="start" className="w-auto p-1" onClick={e => e.stopPropagation()}>
-					<div className="flex flex-col">
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger asChild>
+				<button
+					type="button"
+					onClick={e => e.stopPropagation()}
+					className="inline-flex items-center"
+					title={sorted ? `Sorted by ${metric}` : 'Sort by kills/wounds/deaths'}
+				>
+					<span>
+						{STATS_SORT_METRICS.map(({ metric: m, short }, i) => (
+							<React.Fragment key={m}>
+								{i > 0 && <span className="text-muted-foreground">/</span>}
+								<span className={sorted && metric === m ? 'text-primary font-semibold' : undefined}>{short}</span>
+							</React.Fragment>
+						))}
+					</span>
+					<Icons.ArrowUpDown className="ml-1 h-3 w-3 text-muted-foreground" />
+				</button>
+			</PopoverTrigger>
+			<PopoverContent side="top" align="start" className="w-auto p-1" onClick={e => e.stopPropagation()}>
+				<div className="flex flex-col gap-0.5">
+					<div className="flex gap-0.5">
 						{STATS_SORT_METRICS.map(({ metric: m, label }) => (
 							<button
 								key={m}
 								type="button"
 								className={cn(
-									'rounded px-2 py-1 text-left text-sm hover:bg-accent',
-									sorted && metric === m && 'text-primary font-medium',
+									'text-xs px-2 py-0.5 rounded',
+									sorted && metric === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
 								)}
 								onClick={() => {
 									setMetric(m)
-									column.toggleSorting(true)
-									setOpen(false)
+									column.toggleSorting(sorted !== 'asc')
 								}}
 							>
 								{label}
 							</button>
 						))}
+					</div>
+					<div className="flex gap-0.5">
+						{(['desc', 'asc'] as const).map(dir => (
+							<button
+								key={dir}
+								type="button"
+								className={cn(
+									'text-xs px-2 py-0.5 rounded',
+									sorted === dir ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+								)}
+								onClick={() => column.toggleSorting(dir === 'desc')}
+							>
+								{dir === 'desc' ? 'Desc' : 'Asc'}
+							</button>
+						))}
 						<button
 							type="button"
-							className="rounded px-2 py-1 text-left text-sm text-muted-foreground hover:bg-accent"
+							className="text-xs px-2 py-0.5 rounded text-muted-foreground hover:text-foreground ml-auto"
 							onClick={() => {
 								column.clearSorting()
 								setOpen(false)
 							}}
 						>
-							Clear sort
+							Clear
 						</button>
 					</div>
-				</PopoverContent>
-			</Popover>
-		</span>
+				</div>
+			</PopoverContent>
+		</Popover>
 	)
 }
 
@@ -532,12 +549,14 @@ function StatsColumnHeader({ column, metric, setMetric }: {
 function statsColumn<T extends TeamsPanelModels.EnrichedPlayer>(
 	metric: StatsSortMetric,
 	setMetric: (m: StatsSortMetric) => void,
+	open: boolean,
+	setOpen: (open: boolean) => void,
 ): ColumnDef<T, number> {
 	return {
 		id: 'stats',
 		accessorFn: row => row.stats?.[metric] ?? 0,
 		sortDescFirst: true,
-		header: ({ column }) => <StatsColumnHeader column={column} metric={metric} setMetric={setMetric} />,
+		header: ({ column }) => <StatsColumnHeader column={column} metric={metric} setMetric={setMetric} open={open} setOpen={setOpen} />,
 		cell: ({ row }) => {
 			const s = row.original.stats
 			return (
@@ -722,9 +741,10 @@ function TeamPlayerTable(
 	const mouseDownRef = React.useRef<{ index: number; originalSelected: boolean } | null>(null)
 	const { sorting, setSorting } = props
 	const [statsMetric, setStatsMetric] = React.useState<StatsSortMetric>('kills')
+	const [statsSortOpen, setStatsSortOpen] = React.useState(false)
 	const columns = React.useMemo(
-		() => [...playerColumns, statsColumn<TeamsPanelModels.EnrichedPlayer>(statsMetric, setStatsMetric)],
-		[statsMetric],
+		() => [...playerColumns, statsColumn<TeamsPanelModels.EnrichedPlayer>(statsMetric, setStatsMetric, statsSortOpen, setStatsSortOpen)],
+		[statsMetric, statsSortOpen],
 	)
 	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
 	const matchId = match?.historyEntryId ?? 0
@@ -811,7 +831,7 @@ function TeamPlayerTable(
 						{headerGroup.headers.map(header => (
 							<TableHead
 								key={header.id}
-								onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
+								onClick={header.column.getCanSort() && header.column.id !== 'stats' ? header.column.getToggleSortingHandler() : undefined}
 								className={cn('align-top pt-1.5', header.column.getCanSort() && 'cursor-pointer select-none')}
 								{...headerResetProps(header.column, props.filters)}
 							>
@@ -1083,9 +1103,10 @@ function CombinedPlayerTable(
 	const mouseDownRef = React.useRef<{ index: number; originalSelected: boolean } | null>(null)
 	const { sorting, setSorting } = props
 	const [statsMetric, setStatsMetric] = React.useState<StatsSortMetric>('kills')
+	const [statsSortOpen, setStatsSortOpen] = React.useState(false)
 	const columns = React.useMemo(
-		() => [...combinedPlayerColumns, statsColumn<CombinedPlayer>(statsMetric, setStatsMetric)],
-		[statsMetric],
+		() => [...combinedPlayerColumns, statsColumn<CombinedPlayer>(statsMetric, setStatsMetric, statsSortOpen, setStatsSortOpen)],
+		[statsMetric, statsSortOpen],
 	)
 	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
 	const matchId = match?.historyEntryId ?? 0
@@ -1208,7 +1229,7 @@ function CombinedPlayerTable(
 						{headerGroup.headers.map(header => (
 							<TableHead
 								key={header.id}
-								onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
+								onClick={header.column.getCanSort() && header.column.id !== 'stats' ? header.column.getToggleSortingHandler() : undefined}
 								className={cn('align-top pt-1.5', header.column.getCanSort() && 'cursor-pointer select-none')}
 								{...headerResetProps(header.column, props.filters)}
 							>
