@@ -3,7 +3,8 @@ import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Badge } from '@/components/ui/badge.tsx'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { DropdownMenu, DropdownMenuContent, dropdownMenuItemClassesBase, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { ContextMenu, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Progress } from '@/components/ui/progress'
@@ -545,95 +546,97 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 	return (
 		<>
 			{(LL.isLocallyFirstIndex(index)) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!canEdit} />}
-			<li
-				ref={dragProps.ref}
-				className={cn(
-					Typo.LayerText,
-					'group/single-item flex data-[is-voting=true]:border-added  data-[is-voting=true]:bg-secondary data-[is-dragging=false]:w-full min-w-10 min-h-5 max items-center justify-between space-x-2 bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline-solid rounded-md bg-opacity-30 cursor-default data-[is-hovered=true]:outline-solid',
-				)}
-				data-mutation={displayedMutation}
-				data-is-dragging={dragProps.isDragging}
-				data-is-voting={voteState?.code === 'in-progress'}
-				data-is-hovered={activityHovered}
-			>
-				{dragProps.isDragging ? <span className="w-5 mx-auto">...</span> : (
-					<>
-						<span className="grid">
-							<span
-								data-mobile={isMobile}
-								data-viewing-queue={viewingQueue}
-								className="text-right m-auto font-mono text-s col-start-1 row-start-1 invisible data-[mobile=false]:data-[viewing-queue=true]:not-group-hover/single-item:visible"
-							>
-								{LL.getItemNumber(index)}
-							</span>
-							<GripElt className="col-start-1 row-start-1" />
-						</span>
-						<span className="rounded flex space-y-1 w-full flex-col">
-							<LayerDisplay
-								stores={props.stores}
-								droppable={true}
-								item={{ type: 'single-list-item', layerId: item.layerId, itemId: item.itemId }}
-								badges={badges}
-							/>
-							{itemChoiceTallyPercentage !== undefined && (
-								<span className="flex space-x-1 items-center">
-									<Progress
-										value={itemChoiceTallyPercentage}
-										className={cn('h-2', isVoteWinner && '[&>div]:bg-added')}
-									/>
-									<span>{voteCount}</span>
+			<ItemContextMenu stores={props.stores} itemId={props.itemId} disabled={!canEdit}>
+				<li
+					ref={dragProps.ref}
+					className={cn(
+						Typo.LayerText,
+						'group/single-item flex data-[is-voting=true]:border-added  data-[is-voting=true]:bg-secondary data-[is-dragging=false]:w-full min-w-10 min-h-5 max items-center justify-between space-x-2 bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline-solid rounded-md bg-opacity-30 cursor-default data-[is-hovered=true]:outline-solid',
+					)}
+					data-mutation={displayedMutation}
+					data-is-dragging={dragProps.isDragging}
+					data-is-voting={voteState?.code === 'in-progress'}
+					data-is-hovered={activityHovered}
+				>
+					{dragProps.isDragging ? <span className="w-5 mx-auto">...</span> : (
+						<>
+							<span className="grid">
+								<span
+									data-mobile={isMobile}
+									data-viewing-queue={viewingQueue}
+									className="text-right m-auto font-mono text-s col-start-1 row-start-1 invisible data-[mobile=false]:data-[viewing-queue=true]:not-group-hover/single-item:visible"
+								>
+									{LL.getItemNumber(index)}
 								</span>
+								<GripElt className="col-start-1 row-start-1" />
+							</span>
+							<span className="rounded flex space-y-1 w-full flex-col">
+								<LayerDisplay
+									stores={props.stores}
+									droppable={true}
+									item={{ type: 'single-list-item', layerId: item.layerId, itemId: item.itemId }}
+									badges={badges}
+								/>
+								{itemChoiceTallyPercentage !== undefined && (
+									<span className="flex space-x-1 items-center">
+										<Progress
+											value={itemChoiceTallyPercentage}
+											className={cn('h-2', isVoteWinner && '[&>div]:bg-added')}
+										/>
+										<span>{voteCount}</span>
+									</span>
+								)}
+							</span>
+							{sourceDisplay && (
+								<>
+									<Separator orientation="vertical" />
+									{sourceDisplay}
+								</>
 							)}
-						</span>
-						{sourceDisplay && (
-							<>
-								<Separator orientation="vertical" />
-								{sourceDisplay}
-							</>
-						)}
-						<StartActivityInteraction
-							loaderName="selectLayers"
-							createActivity={UP.createEditingQueueVariant(editActivity)}
-							matchKey={key => Obj.deepEqualStrict(key, { ...editActivity, serverId: props.stores.squadServer.serverId })}
-							preload="viewport"
-							render={Button}
-							variant="ghost"
-							size="icon"
-							title="Edit"
-							disabled={!isEditing}
-						>
-							<Icons.Pencil />
-						</StartActivityInteraction>
-						<Button
-							variant="ghost"
-							size="icon"
-							title="Swap Factions"
-							disabled={!canEdit || !L.swapFactions(item.layerId)}
-							onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })}
-						>
-							<Icons.ArrowLeftRight />
-						</Button>
-						<Button
-							variant="ghost"
-							size="icon"
-							title="Delete"
-							disabled={!canEdit}
-							onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
-						>
-							<Icons.X />
-						</Button>
-						<ItemDropdown {...dropdownProps}>
-							<Button
-								{...editButtonProps()}
+							<StartActivityInteraction
+								loaderName="selectLayers"
+								createActivity={UP.createEditingQueueVariant(editActivity)}
+								matchKey={key => Obj.deepEqualStrict(key, { ...editActivity, serverId: props.stores.squadServer.serverId })}
+								preload="viewport"
+								render={Button}
 								variant="ghost"
 								size="icon"
+								title="Edit"
+								disabled={!isEditing}
 							>
-								<Icons.EllipsisVertical />
+								<Icons.Pencil />
+							</StartActivityInteraction>
+							<Button
+								variant="ghost"
+								size="icon"
+								title="Swap Factions"
+								disabled={!canEdit || !L.swapFactions(item.layerId)}
+								onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })}
+							>
+								<Icons.ArrowLeftRight />
 							</Button>
-						</ItemDropdown>
-					</>
-				)}
-			</li>
+							<Button
+								variant="ghost"
+								size="icon"
+								title="Delete"
+								disabled={!canEdit}
+								onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
+							>
+								<Icons.X />
+							</Button>
+							<ItemDropdown {...dropdownProps}>
+								<Button
+									{...editButtonProps()}
+									variant="ghost"
+									size="icon"
+								>
+									<Icons.EllipsisVertical />
+								</Button>
+							</ItemDropdown>
+						</>
+					)}
+				</li>
+			</ItemContextMenu>
 			<QueueItemSeparator links={afterItemLinks} isAfterLast={isLocallyLast} disabled={!canEdit} />
 		</>
 	)
@@ -810,219 +813,221 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	return (
 		<>
 			{LL.isLocallyFirstIndex(index) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} />}
-			<li
-				ref={dragProps.ref}
-				className={cn(
-					'group/parent-item flex data-[is-dragging=false]:w-full min-w-10 min-h-5 items-center justify-between px-1 py-0 border-2 border-gray-400 rounded inset-2',
-					`data-[mutation=added]:border-added data-[mutation=moved]:border-moved data-[mutation=edited]:border-edited data-[is-dragging=true]:outline-solid cursor-default`,
-				)}
-				data-mutation={displayedMutation}
-				data-is-dragging={dragProps.isDragging}
-			>
-				{dragProps.isDragging
-					? <span className="mx-auto w-5">...</span>
-					: (
-						<div className="h-full flex flex-col grow">
-							<div className="p-1 space-x-2 flex items-center justify-between w-full">
-								<span className="flex items-center space-x-1">
-									<Button
-										ref={dragProps.handleRef}
-										{...editButtonProps('data-[can-edit=true]:cursor-grab')}
-										variant="ghost"
-										size="icon"
-									>
-										<Icons.GripHorizontal />
-									</Button>
-									<h3 className={cn(Typo.Label, 'bold')}>Vote</h3>
-									{voteAutostartTime && (
-										<>
-											<span>:</span>
-											<span className="whitespace-nowrap text-nowrap w-max text-sm flex flex-nowrap items-center space-x-2">
-												<span>starts in</span> <Timer deadline={voteAutostartTime.getTime()} />
-												<PermissionDeniedTooltip denied={manageVoteDenied}>
-													<Button
-														variant="ghost"
-														size="icon"
-														title="Cancel Autostart"
-														onClick={cancelAutostart}
-														{...manageVoteButtonProps()}
-													>
-														<Icons.X />
-													</Button>
-												</PermissionDeniedTooltip>
-											</span>
-										</>
-									)}
-									{voteState && voteState.code !== 'ready' && (
-										<div className="flex space-x-2 items-center">
-											<Icons.Dot width={20} height={20} />
-											<span>{statusCodeToTitleCase(voteState.code)}</span>
-											<Icons.Dot width={20} height={20} />
-											<span>
-												{voteTally && serverInfo && <span>{voteTally.totalVotes} of {serverInfo.playerCount} votes received</span>}
-											</span>
-											{voteState.code === 'in-progress' && (
-												<>
-													<Icons.Dot width={20} height={20} />
-													<Badge variant="outline">
-														<Timer
-															className="font-mono"
-															formatTime={ms => dateFns.format(new Date(ms), 'm:ss')}
-															deadline={voteState.deadline}
-															zeros
-														/>
-													</Badge>
-												</>
-											)}
-											{voteState.code === 'in-progress' && (
-												<PermissionDeniedTooltip denied={manageVoteDenied}>
-													<Button
-														title="End Vote Early"
-														variant="ghost"
-														size="icon"
-														onClick={endVoteEarly}
-														{...manageVoteButtonProps({ hideWhenNotHovering: false })}
-													>
-														<Icons.CheckCheck />
-													</Button>
-												</PermissionDeniedTooltip>
-											)}
-											{voteState.code === 'in-progress' && (
-												<PermissionDeniedTooltip denied={manageVoteDenied}>
-													<Button
-														title="Abort Vote"
-														variant="ghost"
-														size="icon"
-														onClick={abortVote}
-														{...manageVoteButtonProps({ hideWhenNotHovering: false })}
-													>
-														<Icons.Pause />
-													</Button>
-												</PermissionDeniedTooltip>
-											)}
-										</div>
-									)}
-								</span>
-								<span className="flex items-center space-x-1">
-									<PermissionDeniedTooltip denied={manageVoteDenied}>
-										<div
-											{...manageVoteButtonProps({ className: 'flex items-center space-x-2' })}
-										>
-											<Checkbox
-												{...manageVoteButtonProps()}
-												id={internalVoteCheckboxId}
-												disabled={!!manageVoteDenied || voteState?.code === 'in-progress'}
-												checked={voterType === 'internal'}
-												onCheckedChange={checked => setVoterType(checked ? 'internal' : 'public')}
-											/>
-											<Label
-												htmlFor={internalVoteCheckboxId}
-												className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-											>
-												Internal
-											</Label>
-										</div>
-									</PermissionDeniedTooltip>
-									<PermissionDeniedTooltip denied={manageVoteDenied}>
+			<ItemContextMenu stores={props.stores} itemId={props.itemId} disabled={!canEdit}>
+				<li
+					ref={dragProps.ref}
+					className={cn(
+						'group/parent-item flex data-[is-dragging=false]:w-full min-w-10 min-h-5 items-center justify-between px-1 py-0 border-2 border-gray-400 rounded inset-2',
+						`data-[mutation=added]:border-added data-[mutation=moved]:border-moved data-[mutation=edited]:border-edited data-[is-dragging=true]:outline-solid cursor-default`,
+					)}
+					data-mutation={displayedMutation}
+					data-is-dragging={dragProps.isDragging}
+				>
+					{dragProps.isDragging
+						? <span className="mx-auto w-5">...</span>
+						: (
+							<div className="h-full flex flex-col grow">
+								<div className="p-1 space-x-2 flex items-center justify-between w-full">
+									<span className="flex items-center space-x-1">
 										<Button
-											{...manageVoteButtonProps({ className: 'text-green-500 disabled:text-foreground' })}
+											ref={dragProps.handleRef}
+											{...editButtonProps('data-[can-edit=true]:cursor-grab')}
 											variant="ghost"
 											size="icon"
-											onClick={() => startVote()}
-											disabled={!!manageVoteDenied || canInitiateVote.code !== 'ok'}
-											title="Start Vote"
 										>
-											<Icons.Play />
+											<Icons.GripHorizontal />
 										</Button>
-									</PermissionDeniedTooltip>
-
-									{/* -------- add vote choices -------- */}
-									{inline(() => {
-										const activityTitle = 'Add Vote Choices'
-										return (
-											<StartActivityInteraction
-												loaderName="selectLayers"
-												preload="intent"
-												createActivity={UP.createEditingQueueVariant(
-													{
-														_tag: 'leaf',
-														id: 'ADDING_ITEM',
-														opts: {
-															cursor: {
-																type: 'index',
-																index: { outerIndex: index.outerIndex, innerIndex: item.choices.length },
-															},
-															action: 'add',
-															title: activityTitle,
-														},
-													},
+										<h3 className={cn(Typo.Label, 'bold')}>Vote</h3>
+										{voteAutostartTime && (
+											<>
+												<span>:</span>
+												<span className="whitespace-nowrap text-nowrap w-max text-sm flex flex-nowrap items-center space-x-2">
+													<span>starts in</span> <Timer deadline={voteAutostartTime.getTime()} />
+													<PermissionDeniedTooltip denied={manageVoteDenied}>
+														<Button
+															variant="ghost"
+															size="icon"
+															title="Cancel Autostart"
+															onClick={cancelAutostart}
+															{...manageVoteButtonProps()}
+														>
+															<Icons.X />
+														</Button>
+													</PermissionDeniedTooltip>
+												</span>
+											</>
+										)}
+										{voteState && voteState.code !== 'ready' && (
+											<div className="flex space-x-2 items-center">
+												<Icons.Dot width={20} height={20} />
+												<span>{statusCodeToTitleCase(voteState.code)}</span>
+												<Icons.Dot width={20} height={20} />
+												<span>
+													{voteTally && serverInfo && <span>{voteTally.totalVotes} of {serverInfo.playerCount} votes received</span>}
+												</span>
+												{voteState.code === 'in-progress' && (
+													<>
+														<Icons.Dot width={20} height={20} />
+														<Badge variant="outline">
+															<Timer
+																className="font-mono"
+																formatTime={ms => dateFns.format(new Date(ms), 'm:ss')}
+																deadline={voteState.deadline}
+																zeros
+															/>
+														</Badge>
+													</>
 												)}
-												matchKey={key => key.id === 'ADDING_ITEM' && key.opts.title === activityTitle}
-												render={Button}
+												{voteState.code === 'in-progress' && (
+													<PermissionDeniedTooltip denied={manageVoteDenied}>
+														<Button
+															title="End Vote Early"
+															variant="ghost"
+															size="icon"
+															onClick={endVoteEarly}
+															{...manageVoteButtonProps({ hideWhenNotHovering: false })}
+														>
+															<Icons.CheckCheck />
+														</Button>
+													</PermissionDeniedTooltip>
+												)}
+												{voteState.code === 'in-progress' && (
+													<PermissionDeniedTooltip denied={manageVoteDenied}>
+														<Button
+															title="Abort Vote"
+															variant="ghost"
+															size="icon"
+															onClick={abortVote}
+															{...manageVoteButtonProps({ hideWhenNotHovering: false })}
+														>
+															<Icons.Pause />
+														</Button>
+													</PermissionDeniedTooltip>
+												)}
+											</div>
+										)}
+									</span>
+									<span className="flex items-center space-x-1">
+										<PermissionDeniedTooltip denied={manageVoteDenied}>
+											<div
+												{...manageVoteButtonProps({ className: 'flex items-center space-x-2' })}
+											>
+												<Checkbox
+													{...manageVoteButtonProps()}
+													id={internalVoteCheckboxId}
+													disabled={!!manageVoteDenied || voteState?.code === 'in-progress'}
+													checked={voterType === 'internal'}
+													onCheckedChange={checked => setVoterType(checked ? 'internal' : 'public')}
+												/>
+												<Label
+													htmlFor={internalVoteCheckboxId}
+													className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+												>
+													Internal
+												</Label>
+											</div>
+										</PermissionDeniedTooltip>
+										<PermissionDeniedTooltip denied={manageVoteDenied}>
+											<Button
+												{...manageVoteButtonProps({ className: 'text-green-500 disabled:text-foreground' })}
 												variant="ghost"
 												size="icon"
-												title="Add Vote Choices"
-												{...editButtonProps()}
+												onClick={() => startVote()}
+												disabled={!!manageVoteDenied || canInitiateVote.code !== 'ok'}
+												title="Start Vote"
 											>
-												<Icons.Plus />
-											</StartActivityInteraction>
-										)
-									})}
+												<Icons.Play />
+											</Button>
+										</PermissionDeniedTooltip>
 
-									<VoteDisplayPropsPopover
-										open={voteDisplayPropsOpen}
-										onOpenChange={setVoteDisplayPropsOpen}
-										stores={props.stores}
-										itemId={props.itemId}
-										readonly={!canEdit || !!manageVoteDenied}
-									>
-										<Button variant="ghost" size="icon">
-											<Icons.Settings2 />
-										</Button>
-									</VoteDisplayPropsPopover>
-									<Button
-										variant="ghost"
-										size="icon"
-										title="Swap Factions"
-										disabled={!canEdit || !L.swapFactions(item.layerId)}
-										onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })}
-									>
-										<Icons.ArrowLeftRight />
-									</Button>
-									<Button
-										variant="ghost"
-										size="icon"
-										title="Delete"
-										disabled={!canEdit}
-										onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
-									>
-										<Icons.X />
-									</Button>
-									<ItemDropdown {...dropdownProps}>
+										{/* -------- add vote choices -------- */}
+										{inline(() => {
+											const activityTitle = 'Add Vote Choices'
+											return (
+												<StartActivityInteraction
+													loaderName="selectLayers"
+													preload="intent"
+													createActivity={UP.createEditingQueueVariant(
+														{
+															_tag: 'leaf',
+															id: 'ADDING_ITEM',
+															opts: {
+																cursor: {
+																	type: 'index',
+																	index: { outerIndex: index.outerIndex, innerIndex: item.choices.length },
+																},
+																action: 'add',
+																title: activityTitle,
+															},
+														},
+													)}
+													matchKey={key => key.id === 'ADDING_ITEM' && key.opts.title === activityTitle}
+													render={Button}
+													variant="ghost"
+													size="icon"
+													title="Add Vote Choices"
+													{...editButtonProps()}
+												>
+													<Icons.Plus />
+												</StartActivityInteraction>
+											)
+										})}
+
+										<VoteDisplayPropsPopover
+											open={voteDisplayPropsOpen}
+											onOpenChange={setVoteDisplayPropsOpen}
+											stores={props.stores}
+											itemId={props.itemId}
+											readonly={!canEdit || !!manageVoteDenied}
+										>
+											<Button variant="ghost" size="icon">
+												<Icons.Settings2 />
+											</Button>
+										</VoteDisplayPropsPopover>
 										<Button
 											variant="ghost"
 											size="icon"
-											{...editButtonProps()}
+											title="Swap Factions"
+											disabled={!canEdit || !L.swapFactions(item.layerId)}
+											onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })}
 										>
-											<Icons.EllipsisVertical />
+											<Icons.ArrowLeftRight />
 										</Button>
-									</ItemDropdown>
-								</span>
+										<Button
+											variant="ghost"
+											size="icon"
+											title="Delete"
+											disabled={!canEdit}
+											onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
+										>
+											<Icons.X />
+										</Button>
+										<ItemDropdown {...dropdownProps}>
+											<Button
+												variant="ghost"
+												size="icon"
+												{...editButtonProps()}
+											>
+												<Icons.EllipsisVertical />
+											</Button>
+										</ItemDropdown>
+									</span>
+								</div>
+								<ol className="flex flex-col items-start">
+									{item.choices!.map((choice) => {
+										return (
+											<SingleLayerListItem
+												key={choice.itemId}
+												itemId={choice.itemId}
+												stores={props.stores}
+											/>
+										)
+									})}
+								</ol>
 							</div>
-							<ol className="flex flex-col items-start">
-								{item.choices!.map((choice) => {
-									return (
-										<SingleLayerListItem
-											key={choice.itemId}
-											itemId={choice.itemId}
-											stores={props.stores}
-										/>
-									)
-								})}
-							</ol>
-						</div>
-					)}
-			</li>
+						)}
+				</li>
+			</ItemContextMenu>
 			<QueueItemSeparator links={afterItemLinks} isAfterLast={isLocallyLast} />
 		</>
 	)
@@ -1105,7 +1110,74 @@ type ItemDropdownProps = {
 
 type SubDropdownState = 'add-before' | 'add-after' | 'create-vote'
 
+// lets the same item menu render inside either a DropdownMenu or a ContextMenu
+type ItemMenuItemProps = {
+	children?: React.ReactNode
+	className?: string
+	disabled?: boolean
+	onClick?: React.MouseEventHandler
+	onMouseEnter?: React.MouseEventHandler
+	onMouseLeave?: React.MouseEventHandler
+}
+
+type ItemMenuComponents = {
+	Group: React.ComponentType<React.PropsWithChildren>
+	Item: React.FunctionComponent<ItemMenuItemProps>
+	Separator: React.ComponentType
+}
+
+const dropdownMenuComponents: ItemMenuComponents = {
+	Group: DropdownMenuGroup,
+	Item: DropdownMenuItem,
+	Separator: DropdownMenuSeparator,
+}
+
+const contextMenuComponents: ItemMenuComponents = {
+	Group: ContextMenuGroup,
+	Item: ContextMenuItem,
+	Separator: ContextMenuSeparator,
+}
+
 function ItemDropdown(props: ItemDropdownProps) {
+	return (
+		<DropdownMenu modal={false} open={props.open} onOpenChange={props.setOpen}>
+			<DropdownMenuTrigger asChild>{props.children}</DropdownMenuTrigger>
+			<DropdownMenuContent>
+				<ItemMenuItems stores={props.stores} itemId={props.itemId} menu={dropdownMenuComponents} />
+			</DropdownMenuContent>
+		</DropdownMenu>
+	)
+}
+
+function ItemContextMenu(props: {
+	children: React.ReactNode
+	stores: SquadServerFrame.KeyProp
+	itemId: LL.ItemId
+	disabled?: boolean
+}) {
+	return (
+		<ContextMenu modal={false}>
+			<ContextMenuTrigger
+				asChild
+				disabled={props.disabled}
+				// vote choice items are nested inside the vote item's trigger -- only open the innermost menu
+				onContextMenu={(e: React.MouseEvent) => e.stopPropagation()}
+			>
+				{props.children}
+			</ContextMenuTrigger>
+			<ContextMenuContent>
+				<ItemMenuItems stores={props.stores} itemId={props.itemId} menu={contextMenuComponents} />
+			</ContextMenuContent>
+		</ContextMenu>
+	)
+}
+
+function ItemMenuItems(props: {
+	stores: SquadServerFrame.KeyProp
+	itemId: LL.ItemId
+	menu: ItemMenuComponents
+}) {
+	const Menu = props.menu
 	const [item, index, lastLocalIndex] = ZusUtils.useStore(
 		props.stores.squadServer,
 		ZusUtils.useShallow((llStore) => {
@@ -1169,61 +1241,55 @@ function ItemDropdown(props: ItemDropdownProps) {
 
 	const user = UsersClient.useLoggedInUser()
 	return (
-		<DropdownMenu modal={false} open={props.open} onOpenChange={props.setOpen}>
-			<DropdownMenuTrigger asChild>{props.children}</DropdownMenuTrigger>
-			<DropdownMenuContent>
-				<DropdownMenuGroup>
-					<DropdownMenuItem
-						className=""
-						disabled={!isEditing || isLocked}
-						onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'clone', itemId: item.itemId })}
-					>
-						<Icons.Copy />Clone
-					</DropdownMenuItem>
-				</DropdownMenuGroup>
-				<DropdownMenuSeparator />
-				<DropdownMenuGroup>
-					<StartActivityInteraction
-						loaderName="selectLayers"
-						className={dropdownMenuItemClassesBase}
-						createActivity={UP.createEditingQueueVariant(activities['add-before'])}
-						matchKey={key => Obj.deepEqualStrict(key, { ...activities['add-before'], serverId: props.stores.squadServer.serverId })}
-						preload="viewport"
-						render={DropdownMenuItem}
-						disabled={!isEditing}
-					>
-						Add Layers Before
-					</StartActivityInteraction>
-					<StartActivityInteraction
-						loaderName="selectLayers"
-						className={dropdownMenuItemClassesBase}
-						createActivity={UP.createEditingQueueVariant(activities['add-after'])}
-						matchKey={key => Obj.deepEqualStrict(key, { ...activities['add-after'], serverId: props.stores.squadServer.serverId })}
-						preload="viewport"
-						render={DropdownMenuItem}
-						disabled={!isEditing}
-					>
-						Add Layers After
-					</StartActivityInteraction>
-				</DropdownMenuGroup>
+		<>
+			<Menu.Group>
+				<Menu.Item
+					disabled={!isEditing || isLocked}
+					onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'clone', itemId: item.itemId })}
+				>
+					<Icons.Copy />Clone
+				</Menu.Item>
+			</Menu.Group>
+			<Menu.Separator />
+			<Menu.Group>
+				<StartActivityInteraction
+					loaderName="selectLayers"
+					createActivity={UP.createEditingQueueVariant(activities['add-before'])}
+					matchKey={key => Obj.deepEqualStrict(key, { ...activities['add-before'], serverId: props.stores.squadServer.serverId })}
+					preload="viewport"
+					render={Menu.Item}
+					disabled={!isEditing}
+				>
+					Add Layers Before
+				</StartActivityInteraction>
+				<StartActivityInteraction
+					loaderName="selectLayers"
+					createActivity={UP.createEditingQueueVariant(activities['add-after'])}
+					matchKey={key => Obj.deepEqualStrict(key, { ...activities['add-after'], serverId: props.stores.squadServer.serverId })}
+					preload="viewport"
+					render={Menu.Item}
+					disabled={!isEditing}
+				>
+					Add Layers After
+				</StartActivityInteraction>
+			</Menu.Group>
 
-				<DropdownMenuSeparator />
-				<DropdownMenuGroup>
-					<DropdownMenuItem
-						disabled={!isEditing || (index.innerIndex ?? index.outerIndex) === 0 || isLocked}
-						onClick={sendToFront}
-					>
-						Send to Front
-					</DropdownMenuItem>
-					<DropdownMenuItem
-						disabled={!isEditing || lastLocalIndex && LL.indexesEqual(index, lastLocalIndex) || isLocked}
-						onClick={sendToBack}
-					>
-						Send to Back
-					</DropdownMenuItem>
-				</DropdownMenuGroup>
-			</DropdownMenuContent>
-		</DropdownMenu>
+			<Menu.Separator />
+			<Menu.Group>
+				<Menu.Item
+					disabled={!isEditing || (index.innerIndex ?? index.outerIndex) === 0 || isLocked}
+					onClick={sendToFront}
+				>
+					Send to Front
+				</Menu.Item>
+				<Menu.Item
+					disabled={!isEditing || lastLocalIndex && LL.indexesEqual(index, lastLocalIndex) || isLocked}
+					onClick={sendToBack}
+				>
+					Send to Back
+				</Menu.Item>
+			</Menu.Group>
+		</>
 	)
 }
 

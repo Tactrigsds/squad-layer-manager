@@ -362,6 +362,12 @@ export type Player = z.infer<typeof PlayerSchema>
 export const PlayerIdSchema = z.string()
 export type PlayerId = EosId
 export type PlayerAssoc<Type extends SchemaModels.ServerEventPlayerAssocType = 'player', Value = PlayerId> = { [key in Type]: Value }
+export function toDedupedRoleName(role: string): string {
+	const regex = /([A-Z]+)_([A-Za-z]+)(_(\d+))?/
+	const match = role.match(regex)
+	if (!match) return role
+	return match[2]
+}
 export namespace Players {
 	export type SquadGroup = { squadId: SquadId; teamId: TeamId; players: Player[] }
 	export function groupIntoSquads(players: Player[]) {

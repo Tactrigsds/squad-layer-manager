@@ -103,13 +103,13 @@ export default function PlayerBulkContextMenuOptions(
 			<ContextMenuLabel>{playerIds.length} players selected</ContextMenuLabel>
 			<ContextMenuSeparator />
 			<PermissionDeniedTooltip denied={manageDenied}>
-				<ContextMenuItem onClick={switchNow} disabled={!!manageDenied}>Switch Now</ContextMenuItem>
-			</PermissionDeniedTooltip>
-			<ContextMenuSeparator />
-			<PermissionDeniedTooltip denied={manageDenied}>
 				<ContextMenuItem onClick={() => TSWClient.Actions.switchNext(stores, playerIds)} disabled={!!manageDenied}>
 					Switch Next
 				</ContextMenuItem>
+			</PermissionDeniedTooltip>
+			<ContextMenuSeparator />
+			<PermissionDeniedTooltip denied={manageDenied}>
+				<ContextMenuItem onClick={switchNow} disabled={!!manageDenied}>Switch Now</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<ContextMenuItem onClick={() => TSWClient.Actions.removeSwitch(stores, playerIds)} disabled={!!manageDenied}>

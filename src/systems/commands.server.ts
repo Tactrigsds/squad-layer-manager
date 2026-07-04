@@ -264,45 +264,60 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 
 		case 'switchSquadNow':
 		case 'switchSquadNext': {
-			if (!args.team || !args.squad) {
-				return await showError('missing-arg', `Usage: /${cmd === 'switchSquadNow' ? 'switchsquadnow' : 'switchsquadnext'} <team> <squad>`)
+			// single-arg form: only a squad is given, team defaults to the caller's team
+			const teamInput = args.squad ? args.team : undefined
+			const squadInput = args.squad ?? args.team
+			if (!squadInput) {
+				return await showError(
+					'missing-arg',
+					`Usage: /${cmd === 'switchSquadNow' ? 'switchsquadnow' : 'switchsquadnext'} [team] <squad>`,
+				)
 			}
 			const teamsStateRes = await ctx.server.teams.get(ctx)
 			if (teamsStateRes.code !== 'ok') return teamsStateRes
 			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 
-			// resolve raw team ID (1|2) from input
-			const teamArg = args.team.toUpperCase()
+			// resolve raw team ID (1|2) from input, or fall back to the caller's team
 			let rawTeamId: SM.TeamId | null = null
-			if (teamArg === '1') {
-				rawTeamId = 1
-			} else if (teamArg === '2') {
-				rawTeamId = 2
-			} else if (teamArg === 'A' || teamArg === 'B') {
-				rawTeamId = MH.getDenormedTeamId(teamArg as MH.NormedTeamId, currentMatch.ordinal)
+			if (!teamInput) {
+				if (!player.teamId) return await showError('no-team', 'You are not on a team; specify one explicitly')
+				rawTeamId = player.teamId
 			} else {
-				const layer = L.toLayer(currentMatch.layerId)
-				if (layer.Faction_1?.toUpperCase() === teamArg) rawTeamId = 1
-				else if (layer.Faction_2?.toUpperCase() === teamArg) rawTeamId = 2
+				const teamArg = teamInput.toUpperCase()
+				if (teamArg === '1') {
+					rawTeamId = 1
+				} else if (teamArg === '2') {
+					rawTeamId = 2
+				} else if (teamArg === 'A' || teamArg === 'B') {
+					rawTeamId = MH.getDenormedTeamId(teamArg as MH.NormedTeamId, currentMatch.ordinal)
+				} else {
+					const layer = L.toLayer(currentMatch.layerId)
+					if (layer.Faction_1?.toUpperCase() === teamArg) rawTeamId = 1
+					else if (layer.Faction_2?.toUpperCase() === teamArg) rawTeamId = 2
+				}
+				if (!rawTeamId) {
+					return await showError('unknown-team', `Unknown team "${teamInput}". Use 1/2, A/B, or faction name.`)
+				}
 			}
-			if (!rawTeamId) {
-				return await showError('unknown-team', `Unknown team "${args.team}". Use 1/2, A/B, or faction name.`)
-			}
+			const teamLabel = teamInput ?? String(rawTeamId)
 
-			// resolve squad by number or name
+			// resolve squad by "cmd" alias, number or name
 			const squadsOnTeam = teamsStateRes.squads.filter(s => s.teamId === rawTeamId)
-			const squadNum = parseInt(args.squad)
+			const squadNum = parseInt(squadInput)
 			let matchedSquad: SM.Squad | null = null
-			if (!isNaN(squadNum)) {
+			if (squadInput.toLowerCase() === 'cmd') {
+				matchedSquad = squadsOnTeam.find(s => s.squadName === 'Command Squad') ?? null
+				if (!matchedSquad) return await showError('not-found', `No command squad found on team ${teamLabel}`)
+			} else if (!isNaN(squadNum)) {
 				matchedSquad = squadsOnTeam.find(s => s.squadId === squadNum) ?? null
-				if (!matchedSquad) return await showError('not-found', `No squad ${squadNum} found on team ${args.team}`)
+				if (!matchedSquad) return await showError('not-found', `No squad ${squadNum} found on team ${teamLabel}`)
 			} else {
-				const squadMatchRes = simpleUniqueStringMatch(squadsOnTeam.map(s => s.squadName.toLowerCase()), args.squad.toLowerCase())
+				const squadMatchRes = simpleUniqueStringMatch(squadsOnTeam.map(s => s.squadName.toLowerCase()), squadInput.toLowerCase())
 				if (squadMatchRes.code === 'err:not-found') {
-					return await showError('not-found', `No squad matches "${args.squad}" on team ${args.team}`)
+					return await showError('not-found', `No squad matches "${squadInput}" on team ${teamLabel}`)
 				}
 				if (squadMatchRes.code === 'err:multiple-matches') {
-					return await showError('multiple-matches', `${squadMatchRes.count} squads match "${args.squad}"`)
+					return await showError('multiple-matches', `${squadMatchRes.count} squads match "${squadInput}"`)
 				}
 				matchedSquad = squadsOnTeam[squadMatchRes.matched]
 			}
@@ -417,6 +432,13 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 			if (teamsStateRes.code !== 'ok') {
 				return teamsStateRes
 			}
+			if (!args.player) {
+				return await showError('missing-player', 'Please provide a player and a flag')
+			}
+
+			if (!args.flag) {
+				return await showError('missing-flag', 'Please provide a flag')
+			}
 			let matchedPlayerRes = SM.PlayerIds.fuzzyMatchIdentifierUniquely(teamsStateRes.players, p => p.ids, args.player)
 			if (matchedPlayerRes.code === 'err:not-found') {
 				return await showError('not-found', `No player matches found for "${args.player}.\nPlayer must be on the server."`)
@@ -439,6 +461,13 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 			}
 
 			const flagToUpdate = flags[matchedFlagRes.matched]
+			const reason = args.reason?.trim()
+			if (Settings.GLOBAL_SETTINGS.playerFlagsRequiringNote.includes(flagToUpdate.id) && !reason) {
+				return await showError(
+					'note-required',
+					`Flag "${flagToUpdate.name}" requires a reason: ${Settings.GLOBAL_SETTINGS.commandPrefix}flag ${args.player} ${args.flag} <reason>`,
+				)
+			}
 			const targetIds = matchedPlayerRes.matched.ids
 			const bmPlayerData = await Battlemetrics.fetchSinglePlayerBmData(ctx, targetIds)
 			if (!bmPlayerData) {
@@ -451,8 +480,21 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 				return await showError(res.code, `Player "${targetIds.username}" is already assigned flag "${flagToUpdate.name}"`)
 			}
 			if (res.code === 'ok') {
+				const note = [
+					`Flag "${flagToUpdate.name}" added by ${player.ids.username} (Steam ${player.ids.steam}) via SLM.`,
+					...(reason ? [`Reason: ${reason}`] : []),
+				].join('\n')
+				const noteAdded = await Battlemetrics.addPlayerNote(ctx, bmPlayerData.bmPlayerId, note).then(() => true).catch((err) => {
+					log.warn({ err, targetIds }, 'failed to post BM note after adding flag')
+					return false
+				})
 				await Battlemetrics.invalidateAndRefetchPlayer(ctx, targetIds.eos)
-				await SquadRcon.warn(ctx, msg.playerIds, `Added flag "${flagToUpdate.name}" to ${targetIds.username}'s BM profile`)
+				await SquadRcon.warn(
+					ctx,
+					msg.playerIds,
+					`Added flag "${flagToUpdate.name}" to ${targetIds.username}'s BM profile`
+						+ (noteAdded ? '' : ', but failed to post the accompanying note'),
+				)
 				return
 			}
 			assertNever(res)

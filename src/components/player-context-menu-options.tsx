@@ -17,20 +17,29 @@ import * as TSWClient from '@/systems/teamswitches.client'
 import * as UPClient from '@/systems/user-presence.client'
 import React from 'react'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
-import { ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut } from './ui/context-menu'
+import { ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger } from './ui/context-menu'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
 
 export type MenuSlots = {
 	Item: React.ComponentType<{ onClick?: () => void; disabled?: boolean; children?: React.ReactNode }>
 	Separator: React.ComponentType
+	Sub: React.ComponentType<{ children?: React.ReactNode }>
+	SubTrigger: React.ComponentType<{ children?: React.ReactNode }>
+	SubContent: React.ComponentType<{ children?: React.ReactNode }>
 }
 
-const contextMenuSlots: MenuSlots = { Item: ContextMenuItem, Separator: ContextMenuSeparator }
+const contextMenuSlots: MenuSlots = {
+	Item: ContextMenuItem,
+	Separator: ContextMenuSeparator,
+	Sub: ContextMenuSub,
+	SubTrigger: ContextMenuSubTrigger,
+	SubContent: ContextMenuSubContent,
+}
 
 export function PlayerMenuItems(
 	{ playerId, slots, stores }: { playerId: SM.PlayerId; slots: MenuSlots; stores: SquadServerFrame.KeyProp },
 ) {
-	const { Item, Separator } = slots
+	const { Item, Separator, Sub, SubTrigger, SubContent } = slots
 	const openDialog = useAlertDialog()
 	const closeDialog = useCloseAlertDialog()
 	const { toast } = useToast()
@@ -68,8 +77,10 @@ export function PlayerMenuItems(
 				squadId: player.squadId,
 				teamId: player.teamId,
 				username: player.ids.username,
+				role: player.role,
 				squadName: squad?.squadName ?? null,
-				isCommander: squad?.squadName === 'Command Squad',
+				isCommander: player.isLeader && squad?.squadName === 'Command Squad',
+				isLeader: player.isLeader,
 				isAdmin: player.isAdmin,
 			}
 		},
@@ -237,12 +248,6 @@ export function PlayerMenuItems(
 	return (
 		<>
 			<PermissionDeniedTooltip denied={manageDenied}>
-				<Item onClick={switchNow} disabled={!!manageDenied || !otherTeam || !canSwitchNow}>
-					Switch Now
-				</Item>
-			</PermissionDeniedTooltip>
-			<Separator />
-			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item
 					onClick={() => TSWClient.Actions.switchNext(stores, [playerId])}
 					disabled={!!manageDenied || !otherTeam || !canQueue}
@@ -250,19 +255,21 @@ export function PlayerMenuItems(
 					Switch Next
 				</Item>
 			</PermissionDeniedTooltip>
-			{existingSwitch && (
-				<>
-					<Separator />
-					<PermissionDeniedTooltip denied={manageDenied}>
-						<Item
-							onClick={() => TSWClient.Actions.removeSwitch(stores, [playerId])}
-							disabled={!!manageDenied || !canSwitchNow}
-						>
-							Delete Switch
-						</Item>
-					</PermissionDeniedTooltip>
-				</>
-			)}
+			<Separator />
+			<PermissionDeniedTooltip denied={manageDenied}>
+				<Item onClick={switchNow} disabled={!!manageDenied || !otherTeam || !canSwitchNow}>
+					Switch Now
+				</Item>
+			</PermissionDeniedTooltip>
+			<Separator />
+			<PermissionDeniedTooltip denied={manageDenied}>
+				<Item
+					onClick={() => TSWClient.Actions.removeSwitch(stores, [playerId])}
+					disabled={!!manageDenied || !existingSwitch || !canSwitchNow}
+				>
+					Delete Switch
+				</Item>
+			</PermissionDeniedTooltip>
 			<Separator />
 			<PermissionDeniedTooltip denied={warnDenied}>
 				<Item onClick={warn} disabled={!!warnDenied || !isOnServer}>
@@ -272,71 +279,90 @@ export function PlayerMenuItems(
 			<Item onClick={copyTeleportCommand} disabled={!isOnServer}>
 				Copy Teleport Command
 			</Item>
-			{(inSquad || grouping != null || playerInfo?.isAdmin) && <Separator />}
-			{inSquad && (
-				<Item
-					onClick={() => {
-						TSWClient.Actions.ensureViewingTeams(serverId)
-						const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer)).players
-						SquadServerClient.Actions.selectSquad(playerId, players)
-					}}
-				>
-					<span title="Shortcut: shift+click the player's Squad cell in the teams panel">Select Squad</span>
-					<ContextMenuShortcut>⇧+click squad cell</ContextMenuShortcut>
+			<Separator />
+			<Sub>
+				<SubTrigger>Select..</SubTrigger>
+				<SubContent>
+					<Item
+						disabled={!inSquad}
+						onClick={() => {
+							TSWClient.Actions.ensureViewingTeams(serverId)
+							const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer)).players
+							SquadServerClient.Actions.selectSquad(playerId, players)
+						}}
+					>
+						<span title="Shortcut: shift+click the player's Squad cell in the teams panel">Squad</span>
+						<ContextMenuShortcut>⇧+click squad cell</ContextMenuShortcut>
+					</Item>
+					<Item
+						disabled={playerInfo?.role == null}
+						onClick={() => {
+							if (playerInfo?.role == null) return
+							TSWClient.Actions.ensureViewingTeams(serverId)
+							SquadServerClient.Actions.selectAllWithRole(stores, playerInfo.role)
+						}}
+					>
+						<span title="Shortcut: shift+click the player's Role cell in the teams panel">
+							Role{playerInfo?.role != null ? ` (${playerInfo.role})` : ''}
+						</span>
+						<ContextMenuShortcut>⇧+click role cell</ContextMenuShortcut>
+					</Item>
+					<Item
+						disabled={grouping == null}
+						onClick={() => {
+							if (grouping == null) return
+							TSWClient.Actions.ensureViewingTeams(serverId)
+							SquadServerClient.Actions.selectGrouping(stores, grouping)
+						}}
+					>
+						<span title="Shortcut: shift+click the player's Grouping cell in the teams panel">
+							Grouping{grouping != null ? ` (${grouping})` : ''}
+						</span>
+						<ContextMenuShortcut>⇧+click grouping cell</ContextMenuShortcut>
+					</Item>
+					<Item
+						disabled={!playerInfo?.isLeader}
+						onClick={() => {
+							TSWClient.Actions.ensureViewingTeams(serverId)
+							SquadServerClient.Actions.selectAllSquadLeaders(stores)
+						}}
+					>
+						All Squad Leaders
+					</Item>
+					<Item
+						disabled={!playerInfo?.isAdmin}
+						onClick={() => {
+							TSWClient.Actions.ensureViewingTeams(serverId)
+							SquadServerClient.Actions.selectAllAdmins(stores)
+						}}
+					>
+						<span title="Shortcut: shift+click the shield badge next to an admin's name">All Admins</span>
+						<ContextMenuShortcut>⇧+click admin badge</ContextMenuShortcut>
+					</Item>
+				</SubContent>
+			</Sub>
+			<Separator />
+			<PermissionDeniedTooltip denied={manageDenied}>
+				<Item onClick={removeFromSquad} disabled={!!manageDenied || !inSquad}>
+					Remove from Squad
 				</Item>
-			)}
-			{grouping != null && (
-				<Item
-					onClick={() => {
-						TSWClient.Actions.ensureViewingTeams(serverId)
-						SquadServerClient.Actions.selectGrouping(stores, grouping)
-					}}
-				>
-					<span title="Shortcut: shift+click the player's Grouping cell in the teams panel">Select Grouping ({grouping})</span>
-					<ContextMenuShortcut>⇧+click grouping cell</ContextMenuShortcut>
+			</PermissionDeniedTooltip>
+			<PermissionDeniedTooltip denied={manageDenied}>
+				<Item onClick={disbandSquad} disabled={!!manageDenied || !inSquad}>
+					Disband Squad
 				</Item>
-			)}
-			{playerInfo?.isAdmin && (
-				<Item
-					onClick={() => {
-						TSWClient.Actions.ensureViewingTeams(serverId)
-						SquadServerClient.Actions.selectAllAdmins(stores)
-					}}
-				>
-					<span title="Shortcut: shift+click the shield badge next to an admin's name">Select All Admins</span>
-					<ContextMenuShortcut>⇧+click admin badge</ContextMenuShortcut>
+			</PermissionDeniedTooltip>
+			<PermissionDeniedTooltip denied={manageDenied}>
+				<Item onClick={resetSquadName} disabled={!!manageDenied || !inSquad}>
+					Reset Squad Name
 				</Item>
-			)}
-			{inSquad && (
-				<>
-					<Separator />
-					<PermissionDeniedTooltip denied={manageDenied}>
-						<Item onClick={removeFromSquad} disabled={!!manageDenied}>
-							Remove from Squad
-						</Item>
-					</PermissionDeniedTooltip>
-					<PermissionDeniedTooltip denied={manageDenied}>
-						<Item onClick={disbandSquad} disabled={!!manageDenied}>
-							Disband Squad
-						</Item>
-					</PermissionDeniedTooltip>
-					<PermissionDeniedTooltip denied={manageDenied}>
-						<Item onClick={resetSquadName} disabled={!!manageDenied}>
-							Reset Squad Name
-						</Item>
-					</PermissionDeniedTooltip>
-				</>
-			)}
-			{playerInfo?.isCommander && (
-				<>
-					<Separator />
-					<PermissionDeniedTooltip denied={manageDenied}>
-						<Item onClick={demoteCommander} disabled={!!manageDenied}>
-							Demote Commander
-						</Item>
-					</PermissionDeniedTooltip>
-				</>
-			)}
+			</PermissionDeniedTooltip>
+			<Separator />
+			<PermissionDeniedTooltip denied={manageDenied}>
+				<Item onClick={demoteCommander} disabled={!!manageDenied || !playerInfo?.isCommander}>
+					Demote Commander
+				</Item>
+			</PermissionDeniedTooltip>
 		</>
 	)
 }

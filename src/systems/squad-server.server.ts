@@ -693,18 +693,22 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 					async ([_ctx, event], signal) => {
 						const ctx = DB.addPooledDb(resolveSliceCtx(CS.addSignal({ ..._ctx }, signal), serverId))
 						try {
+							const opts: Promise<void>[] = []
 							if (event.type === 'CHAT_MESSAGE') {
 								if (event.message.startsWith(Settings.GLOBAL_SETTINGS.commandPrefix)) {
-									void Commands.handleCommand(ctx, event).then((res) => {
-										if (res?.code !== 'ok') log.error(res)
-									})
+									opts.push(
+										Commands.handleCommand(ctx, event).then((res) => {
+											if (res?.code !== 'ok') log.error(res)
+										}),
+									)
 								} else if (
 									event.message.trim().match(/^\d+$/)
 									&& ctx.vote.state?.code === 'in-progress'
 								) {
-									void Vote.handleVote(ctx, event)
+									opts.push(Vote.handleVote(ctx, event))
 								}
 							}
+							await Promise.all(opts)
 						} catch (err) {
 							log.error(err)
 						}

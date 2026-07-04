@@ -282,8 +282,8 @@ export const WARNS = {
 		},
 		notifyAdminManualSwitch: (name: string, count: number, factionLines?: string[]) =>
 			factionLines
-				? `${name} immediately switched ${count} player${count !== 1 ? 's' : ''}:\n${factionLines.join('\n')}`
-				: `${name} immediately switched ${count} player${count !== 1 ? 's' : ''} to the other team.`,
+				? `${name} switched ${count} player${count !== 1 ? 's' : ''}:\n${factionLines.join('\n')}`
+				: `${name} switched ${count} player${count !== 1 ? 's' : ''} to the other team.`,
 	},
 	permissionDenied(res: RBAC.PermissionDeniedResponse) {
 		return `Permission denied. You need ${res.check} of the following ${res.permits.map((p) => p.type).join(', ')}`
@@ -341,7 +341,7 @@ export const GENERAL = {
 			getSlmUpdatesEnabled: 'Check if SLM is allowed to set the next layer',
 			linkSteamAccount: 'Link your Steam account to your Discord account',
 			requestFeedback: 'Request feedback on a layer',
-			flag: "Flag a player's BM profile",
+			flag: "Flag a player's BM profile, optionally with a reason (some flags require one)",
 			removeFlag: "Remove a flag from a player's BM profile",
 			listFlags: 'List BM flags for a player, or all org flags if no player is given',
 			switchNow: 'Switch a player to the opposite team immediately',

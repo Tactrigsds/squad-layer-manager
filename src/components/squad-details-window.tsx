@@ -1,7 +1,7 @@
 import { PlayerDisplay } from '@/components/player-display'
 import { SquadMenuItems } from '@/components/squad-context-menu-options'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
@@ -24,7 +24,13 @@ import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle,
 import { Separator } from './ui/separator'
 import { Spinner } from './ui/spinner'
 
-const dropdownMenuSlots = { Item: DropdownMenuItem, Separator: DropdownMenuSeparator }
+const dropdownMenuSlots = {
+	Item: DropdownMenuItem,
+	Separator: DropdownMenuSeparator,
+	Sub: DropdownMenuSub,
+	SubTrigger: DropdownMenuSubTrigger,
+	SubContent: DropdownMenuSubContent,
+}
 
 DraggableWindowStore.getState().registerDefinition<SquadDetailsWindowProps, unknown>({
 	type: WINDOW_ID.enum['squad-details'],

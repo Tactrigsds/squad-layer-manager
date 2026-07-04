@@ -262,13 +262,22 @@ export type SideEffect =
 		opId: string
 		error: OpError
 	}
+	| {
+		code: 'op-outcome'
+		op: Op
+		success: boolean
+	}
 
 export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, ops, prevOps, onSideEffect) => {
 	let state = { ...oldState }
 	let skipEmitSave = false
 	let saveSource: USR.GuiOrChatUserId | undefined
 	for (const op of ops) {
-		const emitOpError = <T extends Op>(error: OpError<T['code']>) => onSideEffect?.({ code: 'error', opId: error.op.opId, error })
+		let opFailed = false
+		const emitOpError = <T extends Op>(error: OpError<T['code']>) => {
+			opFailed = true
+			onSideEffect?.({ code: 'error', opId: error.op.opId, error })
+		}
 		try {
 			// switch mutations
 			switch (op.code) {
@@ -511,6 +520,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 		} catch (e) {
 			emitOpError({ code: 'err:unexpected', error: e, op })
 		}
+		onSideEffect?.({ code: 'op-outcome', op, success: !opFailed })
 	}
 	if (state.savedSwitches !== oldState.savedSwitches && !skipEmitSave) {
 		const newSwitchingPlayers: SM.PlayerId[] = []

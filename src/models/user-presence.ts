@@ -390,7 +390,11 @@ export type PlayerDialogueActivity<
 export const ActivityUpdateSchema = z.discriminatedUnion('code', [
 	z.object({ code: z.literal('enter-server-dashboard'), serverId: SS.ServerIdSchema }),
 	z.object({ code: z.literal('leave-server-dashboard') }),
-	z.object({ code: z.literal('set-primary-panel'), to: z.enum(['VIEWING_QUEUE', 'VIEWING_TEAMS']) }),
+	z.object({
+		code: z.literal('set-primary-panel'),
+		to: z.enum(['VIEWING_QUEUE', 'VIEWING_TEAMS']),
+		serverId: SS.ServerIdSchema.optional(),
+	}),
 	z.object({ code: z.literal('clear-primary-panel') }),
 	z.object({ code: z.literal('set-editing-teamswitches') }),
 	z.object({ code: z.literal('clear-editing-teamswitches') }),
@@ -439,7 +443,7 @@ export namespace Trans {
 			if (primaryPanelChoice?.id === 'VIEWING_QUEUE') return primaryPanelChoice
 			return null
 		},
-		create: (): ActivityUpdate => ({ code: 'set-primary-panel', to: 'VIEWING_QUEUE' }),
+		create: (): ActivityUpdate => ({ code: 'set-primary-panel', to: 'VIEWING_QUEUE', serverId }),
 		destroy: (): ActivityUpdate => ({ code: 'clear-primary-panel' }),
 	} satisfies ActivityTransitions)
 
@@ -496,7 +500,8 @@ function getServerId(activity: RootActivity) {
 	return activity.opts.serverId
 }
 
-export function applyActivityUpdate(activity: RootActivity | null, update: ActivityUpdate): RootActivity | null {
+export function applyActivityUpdate(_activity: RootActivity | null, update: ActivityUpdate): RootActivity | null {
+	let activity = _activity
 	if (update.code === 'enter-server-dashboard') {
 		if (activity && activity.opts.serverId === update.serverId) return activity
 		return {
@@ -506,7 +511,18 @@ export function applyActivityUpdate(activity: RootActivity | null, update: Activ
 			child: {},
 		}
 	}
-	if (!activity) return null
+	checkActivity: if (!activity) {
+		if (update.code === 'set-primary-panel' && update.serverId) {
+			activity = {
+				_tag: 'branch',
+				id: 'ON_DASHBOARD',
+				opts: { serverId: update.serverId },
+				child: {},
+			}
+			break checkActivity
+		}
+		return null
+	}
 	const serverId = getServerId(activity)
 	switch (update.code) {
 		case 'leave-server-dashboard': {
@@ -823,6 +839,11 @@ export const PRESENCE_EVENT_TEXT = {
 	'discarded-queue-edits': 'Discarded queue edits',
 	'saved-teamswitches': 'Saved teamswitches',
 	'executed-teamswitches': 'Executed teamswitches',
+	'added-teamswitch': 'Added a teamswitch',
+	'removed-teamswitch': 'Removed a teamswitch',
+	'cleared-teamswitches': 'Cleared teamswitches',
+	'discarded-teamswitch-edits': 'Discarded teamswitch edits',
+	'switched-players-now': 'Switched players',
 } as const satisfies Record<string, string>
 export type PresenceEventAction = keyof typeof PRESENCE_EVENT_TEXT
 export type PresenceEvent = { userId: USR.UserId; action: PresenceEventAction }

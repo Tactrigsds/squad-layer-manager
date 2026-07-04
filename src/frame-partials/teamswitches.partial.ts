@@ -91,6 +91,36 @@ function onSideEffect(se: TSW.SideEffect, presenceEvent$: Rx.Subject<UP.Presence
 			break
 		}
 
+		// save/execute ops have dedicated side effects above; op-outcome covers the rest of the
+		// user-attributed ops
+		case 'op-outcome': {
+			if (!se.success) break
+			const op = se.op
+			let action: UP.PresenceEventAction
+			switch (op.code) {
+				case 'add-player-teamswitch':
+					action = 'added-teamswitch'
+					break
+				case 'remove-player-teamswitches':
+					action = 'removed-teamswitch'
+					break
+				case 'clear-teamswitches':
+					action = 'cleared-teamswitches'
+					break
+				case 'revert-to-saved':
+					action = 'discarded-teamswitch-edits'
+					break
+				case 'switch-now':
+					action = 'switched-players-now'
+					break
+				default:
+					return
+			}
+			const userId = 'source' in op ? op.source?.discordId : undefined
+			if (userId) presenceEvent$.next({ userId, action })
+			break
+		}
+
 		case 'teamswitches-executed': {
 			const { source, switchCount } = se
 			if (source?.discordId) presenceEvent$.next({ userId: source.discordId, action: 'executed-teamswitches' })

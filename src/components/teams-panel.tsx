@@ -54,6 +54,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 void import('@/components/squad-details-window')
 void import('@/components/teamswitches-help-window')
 
+const DEFAULT_COMBINED_SORTING: SortingState = [{ id: 'faction', desc: false }]
+
 export default function TeamsPanel(props: { className?: string; stores: SquadServerFrame.KeyProp }) {
 	const isDesktop = useIsDesktopSize()
 	const showSwapsPanel = ZusUtils.useStore(
@@ -70,6 +72,8 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 	}, [selectedCount, showSelected])
 	const [adminsOnly, setAdminsOnly] = React.useState(false)
 	const adminsOnlyId = React.useId()
+	const [hideSpoilers, setHideSpoilers] = React.useState(true)
+	const hideSpoilersId = React.useId()
 	const secondaryFilterState = ZusUtils.useStore(props.stores.squadServer!, ChatPrt.Sel.secondaryFilterState)
 	React.useEffect(() => {
 		if (secondaryFilterState === 'ADMIN') setAdminsOnly(true)
@@ -79,6 +83,47 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 	const [squadFilterA, setSquadFilterA] = React.useState<string | null>(null)
 	const [squadFilterB, setSquadFilterB] = React.useState<string | null>(null)
 	const [squadFilterCombined, setSquadFilterCombined] = React.useState<string | null>(null)
+	const [sortingA, setSortingA] = React.useState<SortingState>([])
+	const [sortingB, setSortingB] = React.useState<SortingState>([])
+	const [sortingCombined, setSortingCombined] = React.useState<SortingState>(DEFAULT_COMBINED_SORTING)
+	const allPlayersA = ZusUtils.useStore(
+		props.stores.squadServer!,
+		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
+		BattlemetricsClient.playerBmData$,
+		BattlemetricsClient.Store,
+		SettingsClient.PublicSettingsStore,
+		TeamsPanelModels.Sel.playersForTeam('A'),
+	)
+	const allPlayersB = ZusUtils.useStore(
+		props.stores.squadServer!,
+		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
+		BattlemetricsClient.playerBmData$,
+		BattlemetricsClient.Store,
+		SettingsClient.PublicSettingsStore,
+		TeamsPanelModels.Sel.playersForTeam('B'),
+	)
+	// filter options are drawn from both teams so the shared role/grouping filters offer every value
+	const availableRoles = React.useMemo(
+		() => [...new Set([...allPlayersA, ...allPlayersB].map(p => p.role).filter((r): r is string => r != null))].sort(),
+		[allPlayersA, allPlayersB],
+	)
+	const availableGroupings = React.useMemo(
+		() => [...new Set([...allPlayersA, ...allPlayersB].map(p => p.grouping).filter((g): g is string => g != null))].sort(),
+		[allPlayersA, allPlayersB],
+	)
+	const resetAll = () => {
+		SquadServerClient.Actions.setSelection({})
+		setSearchQuery('')
+		setAdminsOnly(false)
+		setRoleFilter(null)
+		setGroupingFilter(null)
+		setSquadFilterA(null)
+		setSquadFilterB(null)
+		setSquadFilterCombined(null)
+		setSortingA([])
+		setSortingB([])
+		setSortingCombined(DEFAULT_COMBINED_SORTING)
+	}
 	const filtersA: PlayerFilters = {
 		role: roleFilter,
 		setRole: setRoleFilter,
@@ -109,7 +154,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 				<div>
 					<TeamTitle teamId={'A'} stores={props.stores} />
 				</div>
-				<div></div>
+				<TeamPlayerCounts stores={props.stores} />
 				<div className="flex justify-end">
 					<TeamTitle teamId={'B'} stores={props.stores} />
 				</div>
@@ -150,13 +195,18 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 						onCheckedChange={setAdminsOnly}
 					/>
 					<Label htmlFor={adminsOnlyId} className="text-sm whitespace-nowrap">Admins Only</Label>
+					<Switch
+						id={hideSpoilersId}
+						checked={hideSpoilers}
+						onCheckedChange={setHideSpoilers}
+					/>
+					<Label htmlFor={hideSpoilersId} className="text-sm whitespace-nowrap" title="Hide K/W/D and role columns">Hide Spoilers</Label>
 					<Button
 						variant="ghost"
 						size="icon"
 						className="h-7 w-7"
-						disabled={selectedCount === 0}
-						title="Clear selected players"
-						onClick={() => SquadServerClient.Actions.setSelection({})}
+						title="Reset selections, filters, sorting and search"
+						onClick={resetAll}
 					>
 						<Icons.Trash className="h-4 w-4" />
 					</Button>
@@ -172,6 +222,11 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 							filters={filtersA}
 							showSelected={showSelected}
 							adminsOnly={adminsOnly}
+							sorting={sortingA}
+							setSorting={setSortingA}
+							availableRoles={availableRoles}
+							availableGroupings={availableGroupings}
+							hideSpoilers={hideSpoilers}
 							stores={props.stores}
 						/>
 						<TeamPlayerTable
@@ -180,6 +235,11 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 							filters={filtersB}
 							showSelected={showSelected}
 							adminsOnly={adminsOnly}
+							sorting={sortingB}
+							setSorting={setSortingB}
+							availableRoles={availableRoles}
+							availableGroupings={availableGroupings}
+							hideSpoilers={hideSpoilers}
 							className="pl-1"
 							stores={props.stores}
 						/>
@@ -191,6 +251,11 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 						filters={filtersC}
 						showSelected={showSelected}
 						adminsOnly={adminsOnly}
+						sorting={sortingCombined}
+						setSorting={setSortingCombined}
+						availableRoles={availableRoles}
+						availableGroupings={availableGroupings}
+						hideSpoilers={hideSpoilers}
 						stores={props.stores}
 					/>
 				)}
@@ -200,20 +265,27 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 
 function TeamTitle(props: { teamId: MH.NormedTeamId; stores: SquadServerFrame.KeyProp }) {
 	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
-	const playerCount = ZusUtils.useStore(
-		props.stores.squadServer!,
-		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
-		ChatPrt.Sel.teamPlayerCount(props.teamId),
-	)
-	const diffAfterSwitches = ZusUtils.useStore(
-		props.stores.squadServer!,
-		TSWClient.Sel.diffAfterSwitchesForTeam(props.teamId),
-	)
 	return (
 		<div>
-			<MatchTeamDisplay teamId={props.teamId} matchId={match?.historyEntryId} showAltTeamIndicator={true} stores={props.stores} />,{' '}
-			{playerCount}({diffAfterSwitches >= 0 ? '+' : ''}
-			{diffAfterSwitches}) players
+			<MatchTeamDisplay teamId={props.teamId} matchId={match?.historyEntryId} showAltTeamIndicator={true} stores={props.stores} />
+		</div>
+	)
+}
+
+function TeamPlayerCounts(props: { stores: SquadServerFrame.KeyProp }) {
+	const playerCountA = ZusUtils.useStore(
+		props.stores.squadServer!,
+		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
+		ChatPrt.Sel.teamPlayerCount('A'),
+	)
+	const playerCountB = ZusUtils.useStore(
+		props.stores.squadServer!,
+		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
+		ChatPrt.Sel.teamPlayerCount('B'),
+	)
+	return (
+		<div className="flex items-center justify-center whitespace-nowrap">
+			{playerCountA} vs {playerCountB}
 		</div>
 	)
 }
@@ -490,6 +562,18 @@ function shiftClickCellProps(
 			},
 		}
 	}
+	if (columnId === 'role' && player.role != null) {
+		const role = player.role
+		return {
+			title: 'Shift+click: select all players with this role',
+			onClickCapture: e => {
+				if (!e.shiftKey) return
+				e.preventDefault()
+				e.stopPropagation()
+				SquadServerClient.Actions.selectAllWithRole(stores, role)
+			},
+		}
+	}
 	if (columnId === 'grouping' && player.grouping) {
 		const grouping = player.grouping
 		return {
@@ -524,6 +608,35 @@ type TeamPlayerTableMeta = {
 	stores: SquadServerFrame.KeyProp
 }
 
+const FILTERED_COLUMN_IDS = ['role', 'grouping', 'squad']
+
+// middle-click on a header resets that column's sort and filter
+function headerResetProps(
+	column: { id: string; getCanSort: () => boolean; clearSorting: () => void },
+	filters: PlayerFilters,
+): Pick<React.ThHTMLAttributes<HTMLTableCellElement>, 'title' | 'onMouseDown' | 'onAuxClick'> {
+	const hasFilter = FILTERED_COLUMN_IDS.includes(column.id)
+	if (!column.getCanSort() && !hasFilter) return {}
+	return {
+		title: hasFilter
+			? column.getCanSort() ? 'Middle-click: reset sort and filter' : 'Middle-click: reset filter'
+			: 'Middle-click: reset sort',
+		// prevent middle-click autoscroll
+		onMouseDown: e => {
+			if (e.button === 1) e.preventDefault()
+		},
+		onAuxClick: e => {
+			if (e.button !== 1) return
+			column.clearSorting()
+			if (column.id === 'role') filters.setRole(null)
+			if (column.id === 'grouping') filters.setGrouping(null)
+			if (column.id === 'squad') filters.setSquad(null)
+		},
+	}
+}
+
+const FILTER_ALL = '__all__'
+
 function ColumnFilterSelect({ value, onChange, options }: {
 	value: string | null
 	onChange: (v: string | null) => void
@@ -531,18 +644,23 @@ function ColumnFilterSelect({ value, onChange, options }: {
 }) {
 	if (options.length === 0) return null
 	return (
-		<select
-			value={value ?? ''}
-			onChange={e => onChange(e.target.value || null)}
-			onClick={e => e.stopPropagation()}
-			className={cn(
-				'ml-1 text-xs bg-transparent border-none cursor-pointer outline-none',
-				value ? 'text-primary font-medium' : 'text-muted-foreground',
-			)}
-		>
-			<option value="">All</option>
-			{options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-		</select>
+		<Select value={value ?? FILTER_ALL} onValueChange={v => onChange(v === FILTER_ALL ? null : v)}>
+			<SelectTrigger
+				onClick={e => e.stopPropagation()}
+				className={cn(
+					'h-5 w-auto gap-0.5 border-none px-1 py-0 text-xs font-normal shadow-none focus:ring-0',
+					value
+						? 'bg-primary/20 text-primary font-semibold ring-1 ring-primary/50'
+						: 'bg-transparent text-muted-foreground',
+				)}
+			>
+				<SelectValue />
+			</SelectTrigger>
+			<SelectContent>
+				<SelectItem value={FILTER_ALL}>All</SelectItem>
+				{options.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+			</SelectContent>
+		</Select>
 	)
 }
 
@@ -695,7 +813,7 @@ const playerColumns = [
 		header: ({ table }) => {
 			const { filters, availableGroupings } = table.options.meta as TeamPlayerTableMeta
 			return (
-				<span className="inline-flex items-center">
+				<span className="flex flex-col items-start">
 					Grouping
 					<ColumnFilterSelect
 						value={filters.grouping}
@@ -727,7 +845,7 @@ const playerColumns = [
 				label: s.squadName === 'Command Squad' ? `CMD(${s.squadId})` : String(s.squadId),
 			}))
 			return (
-				<span className="inline-flex items-center">
+				<span className="flex flex-col items-start">
 					Squad
 					<ColumnFilterSelect value={filters.squad} onChange={filters.setSquad} options={squadOptions} />
 				</span>
@@ -786,7 +904,7 @@ const playerColumns = [
 		header: ({ table }) => {
 			const { filters, availableRoles } = table.options.meta as TeamPlayerTableMeta
 			return (
-				<span className="inline-flex items-center">
+				<span className="flex flex-col items-start">
 					Role
 					<ColumnFilterSelect value={filters.role} onChange={filters.setRole} options={availableRoles.map(r => ({ value: r, label: r }))} />
 				</span>
@@ -803,6 +921,11 @@ function TeamPlayerTable(
 		filters: PlayerFilters
 		showSelected: boolean
 		adminsOnly: boolean
+		sorting: SortingState
+		setSorting: React.Dispatch<React.SetStateAction<SortingState>>
+		availableRoles: string[]
+		availableGroupings: string[]
+		hideSpoilers: boolean
 		className?: string
 		stores: SquadServerFrame.KeyProp
 	},
@@ -811,7 +934,7 @@ function TeamPlayerTable(
 	const savedSwitches = ZusUtils.useStore(props.stores.squadServer!, s => TSWClient.Sel.localState(s).savedSwitches)
 	const setRowSelection = SquadServerClient.Actions.setSelection
 	const mouseDownRef = React.useRef<{ index: number; originalSelected: boolean } | null>(null)
-	const [sorting, setSorting] = React.useState<SortingState>([])
+	const { sorting, setSorting } = props
 	const [statsMetric, setStatsMetric] = React.useState<StatsSortMetric>('kills')
 	const columns = React.useMemo(
 		() => [...playerColumns, statsColumn<TeamsPanelModels.EnrichedPlayer>(statsMetric, setStatsMetric)],
@@ -853,15 +976,6 @@ function TeamPlayerTable(
 		ChatPrt.Sel.squadsForTeam(props.teamId),
 	)
 
-	const availableRoles = React.useMemo(
-		() => [...new Set(players.map(p => p.role).filter((r): r is string => r != null))].sort(),
-		[players],
-	)
-	const availableGroupings = React.useMemo(
-		() => [...new Set(players.map(p => p.grouping).filter((g): g is string => g != null))].sort(),
-		[players],
-	)
-
 	const filteredPlayers = React.useMemo(() => {
 		let result = players
 		if (props.searchQuery.trim()) {
@@ -888,7 +1002,7 @@ function TeamPlayerTable(
 		getCoreRowModel: getCoreRowModel(),
 		getSortedRowModel: getSortedRowModel(),
 		getRowId: row => SM.PlayerIds.getPlayerId(row.ids),
-		state: { rowSelection, sorting },
+		state: { rowSelection, sorting, columnVisibility: { role: !props.hideSpoilers, stats: !props.hideSpoilers } },
 		onRowSelectionChange: setRowSelection,
 		onSortingChange: setSorting,
 		meta: {
@@ -896,8 +1010,8 @@ function TeamPlayerTable(
 			squads,
 			groupingColorByLabel,
 			filters: props.filters,
-			availableRoles,
-			availableGroupings,
+			availableRoles: props.availableRoles,
+			availableGroupings: props.availableGroupings,
 			stores: props.stores,
 		} satisfies TeamPlayerTableMeta,
 	})
@@ -911,10 +1025,11 @@ function TeamPlayerTable(
 							<TableHead
 								key={header.id}
 								onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
-								className={header.column.getCanSort() ? 'cursor-pointer select-none' : undefined}
+								className={cn('align-top pt-1.5', header.column.getCanSort() && 'cursor-pointer select-none')}
+								{...headerResetProps(header.column, props.filters)}
 							>
 								{header.isPlaceholder ? null : (
-									<span className="inline-flex items-center gap-0.5">
+									<span className="inline-flex items-start gap-0.5">
 										{flexRender(header.column.columnDef.header, header.getContext())}
 										{header.column.getIsSorted() === 'asc' ? ' ↑' : header.column.getIsSorted() === 'desc' ? ' ↓' : null}
 									</span>
@@ -1052,7 +1167,7 @@ const combinedPlayerColumns = [
 		header: ({ table }) => {
 			const { filters, availableGroupings } = table.options.meta as CombinedTableMeta
 			return (
-				<span className="inline-flex items-center">
+				<span className="flex flex-col items-start">
 					Grouping
 					<ColumnFilterSelect
 						value={filters.grouping}
@@ -1088,7 +1203,7 @@ const combinedPlayerColumns = [
 				}
 			})
 			return (
-				<span className="inline-flex items-center">
+				<span className="flex flex-col items-start">
 					Squad
 					<ColumnFilterSelect value={filters.squad} onChange={filters.setSquad} options={squadOptions} />
 				</span>
@@ -1150,7 +1265,7 @@ const combinedPlayerColumns = [
 		header: ({ table }) => {
 			const { filters, availableRoles } = table.options.meta as CombinedTableMeta
 			return (
-				<span className="inline-flex items-center">
+				<span className="flex flex-col items-start">
 					Role
 					<ColumnFilterSelect value={filters.role} onChange={filters.setRole} options={availableRoles.map(r => ({ value: r, label: r }))} />
 				</span>
@@ -1166,6 +1281,11 @@ function CombinedPlayerTable(
 		filters: PlayerFilters
 		showSelected: boolean
 		adminsOnly: boolean
+		sorting: SortingState
+		setSorting: React.Dispatch<React.SetStateAction<SortingState>>
+		availableRoles: string[]
+		availableGroupings: string[]
+		hideSpoilers: boolean
 		className?: string
 		stores: SquadServerFrame.KeyProp
 	},
@@ -1174,7 +1294,7 @@ function CombinedPlayerTable(
 	const savedSwitches = ZusUtils.useStore(props.stores.squadServer!, s => TSWClient.Sel.localState(s).savedSwitches)
 	const setRowSelection = SquadServerClient.Actions.setSelection
 	const mouseDownRef = React.useRef<{ index: number; originalSelected: boolean } | null>(null)
-	const [sorting, setSorting] = React.useState<SortingState>([{ id: 'faction', desc: false }])
+	const { sorting, setSorting } = props
 	const [statsMetric, setStatsMetric] = React.useState<StatsSortMetric>('kills')
 	const columns = React.useMemo(
 		() => [...combinedPlayerColumns, statsColumn<CombinedPlayer>(statsMetric, setStatsMetric)],
@@ -1252,15 +1372,6 @@ function CombinedPlayerTable(
 		...playersB.map(p => ({ ...p, normedTeam: 'B' as const })),
 	], [playersA, playersB])
 
-	const availableRoles = React.useMemo(
-		() => [...new Set(players.map(p => p.role).filter((r): r is string => r != null))].sort(),
-		[players],
-	)
-	const availableGroupings = React.useMemo(
-		() => [...new Set(players.map(p => p.grouping).filter((g): g is string => g != null))].sort(),
-		[players],
-	)
-
 	const filteredPlayers = React.useMemo(() => {
 		let result = players
 		if (props.searchQuery.trim()) {
@@ -1287,7 +1398,7 @@ function CombinedPlayerTable(
 		getCoreRowModel: getCoreRowModel(),
 		getSortedRowModel: getSortedRowModel(),
 		getRowId: row => SM.PlayerIds.getPlayerId(row.ids),
-		state: { rowSelection, sorting },
+		state: { rowSelection, sorting, columnVisibility: { role: !props.hideSpoilers, stats: !props.hideSpoilers } },
 		onRowSelectionChange: setRowSelection,
 		onSortingChange: setSorting,
 		meta: {
@@ -1295,8 +1406,8 @@ function CombinedPlayerTable(
 			squadsWithTeam,
 			groupingColorByLabel,
 			filters: props.filters,
-			availableRoles,
-			availableGroupings,
+			availableRoles: props.availableRoles,
+			availableGroupings: props.availableGroupings,
 			getFaction,
 			stores: props.stores,
 		} satisfies CombinedTableMeta,
@@ -1311,10 +1422,11 @@ function CombinedPlayerTable(
 							<TableHead
 								key={header.id}
 								onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
-								className={header.column.getCanSort() ? 'cursor-pointer select-none' : undefined}
+								className={cn('align-top pt-1.5', header.column.getCanSort() && 'cursor-pointer select-none')}
+								{...headerResetProps(header.column, props.filters)}
 							>
 								{header.isPlaceholder ? null : (
-									<span className="inline-flex items-center gap-0.5">
+									<span className="inline-flex items-start gap-0.5">
 										{flexRender(header.column.columnDef.header, header.getContext())}
 										{header.column.getIsSorted() === 'asc' ? ' ↑' : header.column.getIsSorted() === 'desc' ? ' ↓' : null}
 									</span>
@@ -1580,7 +1692,19 @@ function SwitchBadge(props: { switch: TSWClient.Sel.EnrichedTeamswitchWithMutati
 	const variant = mutation.added ? 'added' : mutation.removed ? 'removed' : 'secondary'
 
 	return (
-		<Badge variant={variant} className="flex items-center gap-1">
+		<Badge
+			variant={variant}
+			className="flex items-center gap-1"
+			title={mutation.removed ? undefined : 'Middle-click: delete switch'}
+			onMouseDown={e => {
+				// prevent middle-click autoscroll
+				if (e.button === 1) e.preventDefault()
+			}}
+			onAuxClick={e => {
+				if (e.button !== 1 || mutation.removed) return
+				TSWClient.Actions.removeSwitch(props.stores, [playerId])
+			}}
+		>
 			<span className={mutation.removed ? 'line-through opacity-60' : undefined}>
 				{props.switch.player.ids.username}
 			</span>
@@ -1589,6 +1713,7 @@ function SwitchBadge(props: { switch: TSWClient.Sel.EnrichedTeamswitchWithMutati
 					type="button"
 					onClick={() => TSWClient.Actions.removeSwitch(props.stores, [playerId])}
 					className="ml-1 hover:text-destructive"
+					title="Delete switch"
 				>
 					<Icons.X className="h-3 w-3" />
 				</button>

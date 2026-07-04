@@ -434,6 +434,22 @@ export const addPlayerFlags = C.spanOp(
 	},
 )
 
+export const addPlayerNote = C.spanOp(
+	'addPlayerNote',
+	{ module },
+	async (ctx: CS.Ctx & CS.AbortSignal, bmPlayerId: string, note: string) => {
+		await bmFetch(ctx, 'POST', `/players/${bmPlayerId}/relationships/notes`, {
+			body: {
+				data: {
+					type: 'playerNote',
+					attributes: { note, shared: true },
+					relationships: { organization: { data: { type: 'organization', id: ENV.BM_ORG_ID } } },
+				},
+			},
+		})
+	},
+)
+
 export const removePlayerFlags = C.spanOp(
 	'removePlayerFlags',
 	{ module },

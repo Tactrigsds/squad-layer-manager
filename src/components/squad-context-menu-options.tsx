@@ -9,10 +9,16 @@ import * as TSWClient from '@/systems/teamswitches.client'
 import React from 'react'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import type { MenuSlots } from './player-context-menu-options'
-import { ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut } from './ui/context-menu'
+import { ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger } from './ui/context-menu'
 import { useAlertDialog } from './ui/lazy-alert-dialog'
 
-const contextMenuSlots: MenuSlots = { Item: ContextMenuItem, Separator: ContextMenuSeparator }
+const contextMenuSlots: MenuSlots = {
+	Item: ContextMenuItem,
+	Separator: ContextMenuSeparator,
+	Sub: ContextMenuSub,
+	SubTrigger: ContextMenuSubTrigger,
+	SubContent: ContextMenuSubContent,
+}
 
 export function SquadMenuItems(
 	{ squad, slots, stores }: {
@@ -73,35 +79,33 @@ export function SquadMenuItems(
 		<>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item
-					onClick={() => TSWClient.Actions.switchNow(stores, squadPlayerIds)}
-					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canSwitchNow}
-				>
-					Switch Squad Now
-				</Item>
-			</PermissionDeniedTooltip>
-			<PermissionDeniedTooltip denied={manageDenied}>
-				<Item
 					onClick={() => TSWClient.Actions.switchNext(stores, squadPlayerIds)}
 					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canQueue}
 				>
 					Switch Squad Next
 				</Item>
 			</PermissionDeniedTooltip>
-			{squadPlayerIds.length > 0 && (
-				<>
-					<Separator />
-					<Item
-						onClick={() => {
-							TSWClient.Actions.ensureViewingTeams(serverId)
-							const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer)).players
-							SquadServerClient.Actions.selectSquad(squadPlayerIds[0], players)
-						}}
-					>
-						<span title="Shortcut: shift+click the Squad cell in the teams panel">Select Squad</span>
-						<ContextMenuShortcut>⇧+click squad cell</ContextMenuShortcut>
-					</Item>
-				</>
-			)}
+			<PermissionDeniedTooltip denied={manageDenied}>
+				<Item
+					onClick={() => TSWClient.Actions.switchNow(stores, squadPlayerIds)}
+					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canSwitchNow}
+				>
+					Switch Squad Now
+				</Item>
+			</PermissionDeniedTooltip>
+			<Separator />
+			<Item
+				disabled={squadPlayerIds.length === 0}
+				onClick={() => {
+					if (squadPlayerIds.length === 0) return
+					TSWClient.Actions.ensureViewingTeams(serverId)
+					const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer)).players
+					SquadServerClient.Actions.selectSquad(squadPlayerIds[0], players)
+				}}
+			>
+				<span title="Shortcut: shift+click the Squad cell in the teams panel">Select Squad</span>
+				<ContextMenuShortcut>⇧+click squad cell</ContextMenuShortcut>
+			</Item>
 			<Separator />
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item onClick={disbandSquad} disabled={!!manageDenied || !squadExists}>

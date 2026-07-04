@@ -121,6 +121,16 @@ export namespace Actions {
 		selectPlayers(players.filter(p => p.isAdmin).map(p => SM.PlayerIds.getPlayerId(p.ids)))
 	}
 
+	export function selectAllWithRole(stores: SquadServerFrame.KeyProp, role: string) {
+		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
+		selectPlayers(players.filter(p => p.role === role).map(p => SM.PlayerIds.getPlayerId(p.ids)))
+	}
+
+	export function selectAllSquadLeaders(stores: SquadServerFrame.KeyProp) {
+		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
+		selectPlayers(players.filter(p => p.isLeader).map(p => SM.PlayerIds.getPlayerId(p.ids)))
+	}
+
 	export function selectAllTeamPlayers(stores: SquadServerFrame.KeyProp) {
 		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
 		selectPlayers(players.filter(p => p.teamId !== null).map(p => SM.PlayerIds.getPlayerId(p.ids)))

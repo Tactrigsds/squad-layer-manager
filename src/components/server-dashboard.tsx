@@ -45,8 +45,8 @@ export default function ServerDashboard(props: { stores: SquadServerFrame.KeyPro
 			{isDesktop && (
 				/* Desktop: Two column layout */
 				<div className="flex gap-2 h-full min-h-0 w-full justify-center">
-					{/* left column */}
-					<div className="flex flex-col gap-2 shrink-0 min-w-0">
+					{/* left column — grows into free space (capped) to give the teams grid more room */}
+					<div className="flex flex-col gap-2 shrink-0 min-w-0 grow max-w-[1250px]">
 						<PrimaryPanel stores={props.stores} />
 					</div>
 					{/* right column — explicit width matches SecondaryPanel max-w so justify-center works */}

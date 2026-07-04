@@ -154,6 +154,7 @@ async function fetchPlayers(ctx: C.Rcon & C.AdminList & CS.AbortSignal) {
 		data.isLeader = data.isLeader === 'True'
 		data.teamId = data.teamId !== 'N/A' ? +data.teamId : null
 		data.squadId = data.squadId !== 'N/A' && data.squadId !== null ? +data.squadId : null
+		data.role = SM.toDedupedRoleName(data.role)
 		const idsInput = { username: match.groups!.name, idsStr: match[2] }
 		let ids: SM.PlayerIds.Type
 		try {
@@ -500,10 +501,12 @@ export function endMatch(ctx: C.Rcon) {
 }
 
 export async function switchPlayers(ctx: C.Rcon & C.SquadRcon & C.AdminList & CS.AbortSignal, players: SM.PlayerIds.EosIdQueryOrPlayerId[]) {
+	const ops: Promise<unknown>[] = []
 	for (const ids of players) {
 		const id = SM.PlayerIds.normalizeToPlayerId(ids)
-		void ctx.rcon.execute(`AdminForceTeamChange ${id}`, { level: 'info', signal: ctx.signal })
+		ops.push(ctx.rcon.execute(`AdminForceTeamChange ${id}`, { level: 'info', signal: ctx.signal }))
 	}
+	await Promise.all(ops)
 	ctx.server.teams.invalidate(ctx)
 }
 

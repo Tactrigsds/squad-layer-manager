@@ -23,6 +23,8 @@ export type ArgDefinition<Name extends string = string> = {
 	name: Name
 	// default false
 	optional?: boolean
+	// captures the remainder of the message as a single value; only valid on the last arg
+	rest?: boolean
 } | Name
 
 function declareCommand<Id extends string, Args extends ArgDefinition[]>(
@@ -78,16 +80,19 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { scopes: ['admin'], strings: ['switchnext'], enabled: true },
 	}),
 	...declareCommand('switchSquadNow', {
-		args: ['team', 'squad'],
+		args: [{ name: 'team', optional: true }, 'squad'],
 		defaults: { scopes: ['admin'], strings: ['switchsquadnow'], enabled: true },
 	}),
 	...declareCommand('switchSquadNext', {
-		args: ['team', 'squad'],
+		args: [{ name: 'team', optional: true }, 'squad'],
 		defaults: { scopes: ['admin'], strings: ['switchsquadnext'], enabled: true },
 	}),
 	...declareCommand('swaps', { args: [], defaults: { scopes: ['admin'], strings: ['swaps'], enabled: true } }),
 	...declareCommand('clearSwitches', { args: [], defaults: { scopes: ['admin'], strings: ['clearswitches'], enabled: true } }),
-	...declareCommand('flag', { args: ['player', 'flag'], defaults: { scopes: ['admin'], strings: ['flag'], enabled: true } }),
+	...declareCommand('flag', {
+		args: ['player', 'flag', { name: 'reason', optional: true, rest: true }],
+		defaults: { scopes: ['admin'], strings: ['flag'], enabled: true },
+	}),
 	...declareCommand('removeFlag', {
 		args: ['player', 'flag'],
 		defaults: { scopes: ['admin'], strings: ['removeFlag', 'rf'], enabled: true },
@@ -158,12 +163,16 @@ function extractArgs(id: CommandId, words: string[]) {
 		return {}
 	}
 	const result: Record<string, string> = {}
-	words.slice(1).forEach((word, index) => {
-		if (config.args && config.args[index]) {
-			const name = typeof config.args[index] === 'string' ? config.args[index] : config.args[index].name
-			result[name] = word
+	const argWords = words.slice(1)
+	for (let index = 0; index < argWords.length; index++) {
+		const def: ArgDefinition | undefined = config.args[index]
+		if (!def) break
+		if (typeof def !== 'string' && def.rest) {
+			result[def.name] = argWords.slice(index).join(' ')
+			break
 		}
-	})
+		result[typeof def === 'string' ? def : def.name] = argWords[index]
+	}
 	return result
 }
 

@@ -25,7 +25,7 @@ import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 
-import type { ColumnDef, Row } from '@tanstack/react-table'
+import type { Column, ColumnDef, Row, VisibilityState } from '@tanstack/react-table'
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import type { Table as CoreTable } from '@tanstack/table-core'
 import * as Icons from 'lucide-react'
@@ -50,6 +50,30 @@ import type { CheckedState } from '@radix-ui/react-checkbox'
 
 const columnHelper = createColumnHelper<LayerQueriesClient.RowData>()
 
+const DEFAULT_COLUMN_SIZE = 150
+const SELECT_COLUMN_SIZE = 40
+const CONSTRAINTS_COLUMN_SIZE = 80
+
+function getColumnSize(name: string, isNumeric: boolean): number {
+	return ({ 'Size': 100, 'Faction_1': 40, 'Faction_2': 40 } as Record<string, number>)[name] ?? (isNumeric ? 50 : DEFAULT_COLUMN_SIZE)
+}
+
+// columns that stay visible in compact mode. the select and constraints(flag) columns aren't part
+// of columnVisibility state and always render
+export const COMPACT_VISIBLE_COLUMNS: string[] = ['Layer', 'Faction_1', 'Faction_2', 'Unit_1', 'Unit_2']
+
+// width the table wants when rendered with the given column visibility, derived from the same
+// size hints the column defs use. lets callers compute a compact-mode breakpoint parametrically
+export function getFullTableWidth(cfg: LQY.EffectiveColumnAndTableConfig, columnVisibility: VisibilityState): number {
+	const ctx: CS.EffectiveColumnConfig = { ...CS.init(), effectiveColsConfig: cfg }
+	let width = SELECT_COLUMN_SIZE + CONSTRAINTS_COLUMN_SIZE
+	for (const name of Object.keys(cfg.defs)) {
+		if (columnVisibility[name] === false) continue
+		width += getColumnSize(name, LC.isNumericColumn(name, ctx))
+	}
+	return width
+}
+
 const formatFloat = (value: number) => {
 	const formatted = value.toFixed(2)
 	const numeric = parseFloat(formatted)
@@ -73,7 +97,7 @@ function buildColumn(
 	return columnHelper.accessor(colDef.name, {
 		enableHiding: true,
 		enableSorting: false, // Disable default sorting, we'll handle it manually
-		size: ({ 'Size': 100, 'Faction_1': 40, 'Faction_2': 40 } as const)[colDef.name] ?? (isNumeric ? 50 : undefined),
+		size: getColumnSize(colDef.name, isNumeric),
 		minSize: colDef.name === 'Layer' ? 150 : undefined,
 		header: function ValueColHeader() {
 			const sortingState = useTableFrame(table => table.sort)
@@ -217,7 +241,7 @@ function buildColDefs(
 	const tableColDefs: ColumnDef<LayerQueriesClient.RowData>[] = [
 		{
 			id: 'select',
-			size: 40,
+			size: SELECT_COLUMN_SIZE,
 			header: function SelectHeader() {
 				const [selectState, disabled] = useTableFrame(ZusUtils.useShallow(table => {
 					if (table.pageData === null) return [null, true] as const
@@ -325,7 +349,7 @@ function buildColDefs(
 			</span>
 		),
 		enableHiding: false,
-		size: 80,
+		size: CONSTRAINTS_COLUMN_SIZE,
 		cell: function FlagColCell({ row }) {
 			const { teamParity } = React.useContext(LayerTableCellCtx)
 			return (
@@ -360,6 +384,8 @@ export default function LayerTable(props: {
 	enableForceSelect?: boolean
 	canChangeRowsPerPage?: boolean
 	canToggleColumns?: boolean
+	// hide all but COMPACT_VISIBLE_COLUMNS without touching stored visibility prefs
+	compact?: boolean
 }) {
 	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) =>
 		ZusUtils.useStore(props.stores.layerTable, s => selector(s.layerTable))
@@ -374,6 +400,15 @@ export default function LayerTable(props: {
 			pageIndex: table.pageIndex,
 		})),
 	)
+
+	const columnVisibility = React.useMemo((): VisibilityState => {
+		if (!props.compact) return frameState.columnVisibility
+		const vis: VisibilityState = { ...frameState.columnVisibility }
+		for (const name of Object.keys(vis)) {
+			if (!COMPACT_VISIBLE_COLUMNS.includes(name)) vis[name] = false
+		}
+		return vis
+	}, [props.compact, frameState.columnVisibility])
 
 	const onColumnVisibilityChange = React.useCallback(
 		LayerTablePrt.Actions.onColumnVisibilityChange(props.stores),
@@ -412,7 +447,7 @@ export default function LayerTable(props: {
 		pageCount: page?.pageCount ?? -1,
 		state: {
 			// sorting: tanstackState.tanstackSortingState,
-			columnVisibility: frameState.columnVisibility,
+			columnVisibility,
 			pagination: {
 				pageIndex: frameState.pageIndex,
 				pageSize: frameState.pageSize,
@@ -444,7 +479,7 @@ export default function LayerTable(props: {
 
 	for (let i = 0; i < frameState.pageSize; i++) {
 		if (rows[i]) {
-			rowElts.push(<LayerTableRow key={rows[i].id} row={rows[i]} stores={props.stores} />)
+			rowElts.push(<LayerTableRow key={rows[i].id} row={rows[i]} stores={props.stores} visibleColumns={columns} />)
 		} else {
 			rowElts.push(
 				<React.Fragment key={`placeholder-${i}`}>
@@ -457,7 +492,7 @@ export default function LayerTable(props: {
 	return (
 		<LayerTableCellCtx.Provider value={cellDisplayCtx}>
 			<div className="space-y-2">
-				<div className="rounded-md border min-w-250">
+				<div className={cn('rounded-md border', !props.compact && 'min-w-250')}>
 					<LayerTableControlPanel {...props} table={table} />
 					{/*--------- table ---------*/}
 					<Table>
@@ -496,8 +531,17 @@ function getMouseDownRowIndexStore(layerTableKey: LayerTablePrt.Key) {
 	return MouseDownRowIndexStoreMap.get(layerTableKey)!
 }
 
-const LayerTableRow = React.memo(function LayerTableRow(props: { stores: LayerTablePrt.KeyProp; row: Row<LayerQueriesClient.RowData> }) {
+const LayerTableRow = React.memo(function LayerTableRow(props: {
+	stores: LayerTablePrt.KeyProp
+	row: Row<LayerQueriesClient.RowData>
+	// row identity is stable across column visibility changes, so visibility has to flow in as a
+	// prop: it busts this React.memo, and cells must derive from it below — row.getVisibleCells()
+	// reads mutable table state the react compiler can't track and would serve stale cells
+	visibleColumns: Column<LayerQueriesClient.RowData, unknown>[]
+}) {
 	const { row } = props
+	const allCells = row.getAllCells()
+	const visibleCells = props.visibleColumns.map(column => allCells.find(cell => cell.column.id === column.id)!)
 	const id = row.original.id
 	const getStore = () => ZusUtils.getState(props.stores.layerTable)
 	const getTableFrame = () => ZusUtils.getState(props.stores.layerTable).layerTable
@@ -567,7 +611,7 @@ const LayerTableRow = React.memo(function LayerTableRow(props: { stores: LayerTa
 						setAllRowsSinceMouseDown()
 					}}
 				>
-					{row.getVisibleCells().map((cell) => (
+					{visibleCells.map((cell) => (
 						<TableCell
 							className={cell.column.id === 'select' ? 'pl-4 h-full' : 'h-full'}
 							key={cell.id}
@@ -619,6 +663,7 @@ export function LayerTableControlPanel(
 		table: CoreTable<LayerQueriesClient.RowData>
 		enableForceSelect?: boolean
 		extraPanelItems?: React.ReactNode
+		compact?: boolean
 	},
 ) {
 	const getTableFrame = () => ZusUtils.getState(props.stores.layerTable).layerTable
@@ -638,7 +683,8 @@ export function LayerTableControlPanel(
 
 	const showSelectedId = React.useId()
 
-	const canToggleColumns = props.canToggleColumns ?? true
+	// while compact mode overrides visibility, toggling stored prefs would have no visible effect
+	const canToggleColumns = (props.canToggleColumns ?? true) && !props.compact
 	// Compute default visible columns from config
 	const defaultVisibleColumns = React.useMemo(() => {
 		if (!frameState.colConfig) return []

@@ -1,6 +1,6 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import * as Arr from '@/lib/array'
-import { sleep, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { isAbortError, sleep, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { withThrown, withThrownAsync } from '@/lib/error'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as MapUtils from '@/lib/map'
@@ -317,7 +317,13 @@ const dispatchOp = C.spanOp(
 								| (TSW.Op & { source: TSW.Teamswitch['source'] })
 								| undefined
 							if (isManual) {
-								sleep(500, ctx.signal).then(() => SquadRcon.warnAll(ctx, toSwitch, WARNS.teamswitches.notifyManualSwitch), () => {})
+								// notifications should outlive this dispatch, so bind them to the shutdown signal rather than the task signal
+								const notifyCtx = { ...ctx, signal: CleanupSys.shutdownSignal }
+								sleep(500, notifyCtx.signal)
+									.then(() => SquadRcon.warnAll(notifyCtx, toSwitch, WARNS.teamswitches.notifyManualSwitch))
+									.catch((error) => {
+										if (!isAbortError(error)) log.error(error)
+									})
 							}
 							await switched$
 							ctx.teamswitches.teamswitchExecutedAt = Date.now()
@@ -331,11 +337,13 @@ const dispatchOp = C.spanOp(
 								const factionLines = toSwitch.length <= 8
 									? buildFactionLines(toSwitch, se.switches, teamsRes.players, layer, currentMatch.ordinal)
 									: undefined
-								void SquadRcon.warnAllAdmins(
-									ctx,
+								SquadRcon.warnAllAdmins(
+									{ ...ctx, signal: CleanupSys.shutdownSignal },
 									{ msg: WARNS.teamswitches.notifyAdminManualSwitch(name, toSwitch.length, factionLines) },
 									excludeSteamIds,
-								)
+								).catch((error) => {
+									if (!isAbortError(error)) log.error(error)
+								})
 							}
 
 							await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
@@ -421,6 +429,7 @@ const dispatchOp = C.spanOp(
 					}
 
 					case 'teamswitches-executed':
+					case 'op-outcome':
 						break
 
 					default:

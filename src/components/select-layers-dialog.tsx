@@ -13,11 +13,15 @@ import { useLoggedInUser } from '@/systems/users.client'
 import React from 'react'
 import AppliedFiltersPanel from './applied-filters-panel.tsx'
 import LayerFilterMenu from './layer-filter-menu.tsx'
-import LayerTable from './layer-table.tsx'
+import LayerTable, { getFullTableWidth } from './layer-table.tsx'
 import PoolCheckboxes from './pool-checkboxes.tsx'
 import TabsList from './ui/tabs-list.tsx'
 
 type SelectMode = 'vote' | 'layers'
+
+// horizontal space the dialog consumes around the filter menu + table: outer wrapper p-4 (32) +
+// panel p-6 (48) + space-x-2 gap (8)
+const DIALOG_HORIZONTAL_CHROME_PX = 175
 
 type SelectLayersDialogProps = {
 	title: string
@@ -83,6 +87,26 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 	const user = useLoggedInUser()
 	const [submitted, setSubmitted] = React.useState(false)
 
+	// collapse the table to its essential columns when the full set can't fit in the viewport.
+	// the breakpoint is derived from the table's own column sizes rather than hardcoded
+	const fullTableWidth = ZusUtils.useStore(frameKey, (s) => getFullTableWidth(s.layerTable.colConfig, s.layerTable.columnVisibility))
+	const filterMenuRef = React.useRef<HTMLDivElement>(null)
+	const [compactTable, setCompactTable] = React.useState(false)
+	React.useLayoutEffect(() => {
+		const check = () => {
+			const filterMenuWidth = filterMenuRef.current?.offsetWidth ?? 0
+			setCompactTable(window.innerWidth < fullTableWidth + filterMenuWidth + DIALOG_HORIZONTAL_CHROME_PX)
+		}
+		check()
+		window.addEventListener('resize', check)
+		const observer = new ResizeObserver(check)
+		if (filterMenuRef.current) observer.observe(filterMenuRef.current)
+		return () => {
+			window.removeEventListener('resize', check)
+			observer.disconnect()
+		}
+	}, [fullTableWidth])
+
 	const canSubmit = ZusUtils.useStore(frameKey, (s) => s.layerTable.selected.length > 0 && !submitted)
 
 	const submit = props.selectQueueItems
@@ -132,22 +156,25 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 				</div>
 			</HeadlessDialogHeader>
 
-			<div className="flex min-h-0 items-start space-x-2 ">
-				<LayerFilterMenu stores={{ filterMenu: frameKey }} />
-				<div className="flex flex-col space-y-2 justify-between h-full min-h-0">
-					<div className="flex h-full min-h-0">
+			<div className="flex shrink-0 items-start space-x-2 ">
+				<div ref={filterMenuRef} className="shrink-0">
+					<LayerFilterMenu stores={{ filterMenu: frameKey }} />
+				</div>
+				<div className="flex flex-col space-y-2 justify-between h-full">
+					<div className="flex h-full">
 						<LayerTable
 							extraPanelItems={<PoolCheckboxes stores={{ poolCheckboxes: frameKey }} />}
 							stores={{ layerTable: frameKey }}
 							canChangeRowsPerPage={false}
 							canToggleColumns
 							enableForceSelect
+							compact={compactTable}
 						/>
 					</div>
 				</div>
 			</div>
 
-			<HeadlessDialogFooter>
+			<HeadlessDialogFooter className="shrink-0">
 				<div className="flex items-center justify-end w-full space-x-2">
 					{props.footerAdditions}
 					{!props.pinMode && (

@@ -3,7 +3,7 @@ import EventFilterSelect from '@/components/event-filter-select'
 import { PlayerMenuItems } from '@/components/player-context-menu-options'
 import { MatchTeamDisplay } from '@/components/teams-display'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import * as ChatPrt from '@/frame-partials/chat.partial'
@@ -32,7 +32,13 @@ import { Separator } from './ui/separator'
 import { Spinner } from './ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
-const dropdownMenuSlots = { Item: DropdownMenuItem, Separator: DropdownMenuSeparator }
+const dropdownMenuSlots = {
+	Item: DropdownMenuItem,
+	Separator: DropdownMenuSeparator,
+	Sub: DropdownMenuSub,
+	SubTrigger: DropdownMenuSubTrigger,
+	SubContent: DropdownMenuSubContent,
+}
 
 DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unknown>({
 	type: WINDOW_ID.enum['player-details'],
