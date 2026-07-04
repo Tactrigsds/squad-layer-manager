@@ -24,7 +24,7 @@ import * as ThemeClient from '@/systems/theme.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table'
-import type { RowSelectionState, SortingState } from '@tanstack/react-table'
+import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
 import type { EChartsOption } from 'echarts'
 import ReactECharts from 'echarts-for-react'
 import * as Icons from 'lucide-react'
@@ -45,6 +45,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from './ui/contex
 import { OpenWindowInteraction } from './ui/draggable-window'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Switch } from './ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
@@ -545,6 +546,105 @@ function ColumnFilterSelect({ value, onChange, options }: {
 	)
 }
 
+type StatsSortMetric = 'kills' | 'wounds' | 'deaths'
+
+const STATS_SORT_METRICS: { metric: StatsSortMetric; short: string; label: string }[] = [
+	{ metric: 'kills', short: 'K', label: 'Kills' },
+	{ metric: 'wounds', short: 'W', label: 'Wounds' },
+	{ metric: 'deaths', short: 'D', label: 'Deaths' },
+]
+
+type StatsSortColumn = {
+	getIsSorted: () => false | 'asc' | 'desc'
+	toggleSorting: (desc?: boolean) => void
+	clearSorting: () => void
+}
+
+function StatsColumnHeader({ column, metric, setMetric }: {
+	column: StatsSortColumn
+	metric: StatsSortMetric
+	setMetric: (m: StatsSortMetric) => void
+}) {
+	const [open, setOpen] = React.useState(false)
+	const sorted = column.getIsSorted()
+	return (
+		<span className="inline-flex items-center">
+			<span title={sorted ? `Sorted by ${metric}` : undefined}>
+				{STATS_SORT_METRICS.map(({ metric: m, short }, i) => (
+					<React.Fragment key={m}>
+						{i > 0 && <span className="text-muted-foreground">/</span>}
+						<span className={sorted && metric === m ? 'text-primary font-semibold' : undefined}>{short}</span>
+					</React.Fragment>
+				))}
+			</span>
+			<Popover open={open} onOpenChange={setOpen}>
+				<PopoverTrigger asChild>
+					<button
+						type="button"
+						onClick={e => e.stopPropagation()}
+						className="ml-1 text-muted-foreground hover:text-foreground"
+						title="Choose stat to sort by"
+					>
+						<Icons.ArrowUpDown className="h-3 w-3" />
+					</button>
+				</PopoverTrigger>
+				<PopoverContent align="start" className="w-auto p-1" onClick={e => e.stopPropagation()}>
+					<div className="flex flex-col">
+						{STATS_SORT_METRICS.map(({ metric: m, label }) => (
+							<button
+								key={m}
+								type="button"
+								className={cn(
+									'rounded px-2 py-1 text-left text-sm hover:bg-accent',
+									sorted && metric === m && 'text-primary font-medium',
+								)}
+								onClick={() => {
+									setMetric(m)
+									column.toggleSorting(true)
+									setOpen(false)
+								}}
+							>
+								{label}
+							</button>
+						))}
+						<button
+							type="button"
+							className="rounded px-2 py-1 text-left text-sm text-muted-foreground hover:bg-accent"
+							onClick={() => {
+								column.clearSorting()
+								setOpen(false)
+							}}
+						>
+							Clear sort
+						</button>
+					</div>
+				</PopoverContent>
+			</Popover>
+		</span>
+	)
+}
+
+// the sort accessor depends on the metric picked in the header popover, so this column is built per-table via useMemo
+function statsColumn<T extends TeamsPanelModels.EnrichedPlayer>(
+	metric: StatsSortMetric,
+	setMetric: (m: StatsSortMetric) => void,
+): ColumnDef<T, number> {
+	return {
+		id: 'stats',
+		accessorFn: row => row.stats?.[metric] ?? 0,
+		sortDescFirst: true,
+		header: ({ column }) => <StatsColumnHeader column={column} metric={metric} setMetric={setMetric} />,
+		cell: ({ row }) => {
+			const s = row.original.stats
+			return (
+				<span className="font-mono text-xs whitespace-nowrap">
+					{s?.kills ?? 0}/{s?.wounds ?? 0}/{s?.deaths ?? 0}
+				</span>
+			)
+		},
+	}
+}
+
 const playerColumnHelper = createColumnHelper<TeamsPanelModels.EnrichedPlayer>()
 
 const playerColumns = [
@@ -589,18 +689,6 @@ const playerColumns = [
 				matchId={(table.options.meta as TeamPlayerTableMeta).matchId}
 			/>
 		),
-	}),
-	playerColumnHelper.accessor('role', {
-		header: ({ table }) => {
-			const { filters, availableRoles } = table.options.meta as TeamPlayerTableMeta
-			return (
-				<span className="inline-flex items-center">
-					Role
-					<ColumnFilterSelect value={filters.role} onChange={filters.setRole} options={availableRoles.map(r => ({ value: r, label: r }))} />
-				</span>
-			)
-		},
-		enableSorting: false,
 	}),
 	playerColumnHelper.accessor(row => row.grouping ?? '', {
 		id: 'grouping',
@@ -694,6 +782,18 @@ const playerColumns = [
 			)
 		},
 	}),
+	playerColumnHelper.accessor('role', {
+		header: ({ table }) => {
+			const { filters, availableRoles } = table.options.meta as TeamPlayerTableMeta
+			return (
+				<span className="inline-flex items-center">
+					Role
+					<ColumnFilterSelect value={filters.role} onChange={filters.setRole} options={availableRoles.map(r => ({ value: r, label: r }))} />
+				</span>
+			)
+		},
+		enableSorting: false,
+	}),
 ]
 
 function TeamPlayerTable(
@@ -712,6 +812,11 @@ function TeamPlayerTable(
 	const setRowSelection = SquadServerClient.Actions.setSelection
 	const mouseDownRef = React.useRef<{ index: number; originalSelected: boolean } | null>(null)
 	const [sorting, setSorting] = React.useState<SortingState>([])
+	const [statsMetric, setStatsMetric] = React.useState<StatsSortMetric>('kills')
+	const columns = React.useMemo(
+		() => [...playerColumns, statsColumn<TeamsPanelModels.EnrichedPlayer>(statsMetric, setStatsMetric)],
+		[statsMetric],
+	)
 	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
 	const matchId = match?.historyEntryId ?? 0
 
@@ -779,7 +884,7 @@ function TeamPlayerTable(
 
 	const table = useReactTable({
 		data: displayedPlayers,
-		columns: playerColumns,
+		columns,
 		getCoreRowModel: getCoreRowModel(),
 		getSortedRowModel: getSortedRowModel(),
 		getRowId: row => SM.PlayerIds.getPlayerId(row.ids),
@@ -942,18 +1047,6 @@ const combinedPlayerColumns = [
 			/>
 		),
 	}),
-	combinedColumnHelper.accessor('role', {
-		header: ({ table }) => {
-			const { filters, availableRoles } = table.options.meta as CombinedTableMeta
-			return (
-				<span className="inline-flex items-center">
-					Role
-					<ColumnFilterSelect value={filters.role} onChange={filters.setRole} options={availableRoles.map(r => ({ value: r, label: r }))} />
-				</span>
-			)
-		},
-		enableSorting: false,
-	}),
 	combinedColumnHelper.accessor(row => row.grouping ?? '', {
 		id: 'grouping',
 		header: ({ table }) => {
@@ -1053,6 +1146,18 @@ const combinedPlayerColumns = [
 			)
 		},
 	}),
+	combinedColumnHelper.accessor('role', {
+		header: ({ table }) => {
+			const { filters, availableRoles } = table.options.meta as CombinedTableMeta
+			return (
+				<span className="inline-flex items-center">
+					Role
+					<ColumnFilterSelect value={filters.role} onChange={filters.setRole} options={availableRoles.map(r => ({ value: r, label: r }))} />
+				</span>
+			)
+		},
+		enableSorting: false,
+	}),
 ]
 
 function CombinedPlayerTable(
@@ -1070,6 +1175,11 @@ function CombinedPlayerTable(
 	const setRowSelection = SquadServerClient.Actions.setSelection
 	const mouseDownRef = React.useRef<{ index: number; originalSelected: boolean } | null>(null)
 	const [sorting, setSorting] = React.useState<SortingState>([{ id: 'faction', desc: false }])
+	const [statsMetric, setStatsMetric] = React.useState<StatsSortMetric>('kills')
+	const columns = React.useMemo(
+		() => [...combinedPlayerColumns, statsColumn<CombinedPlayer>(statsMetric, setStatsMetric)],
+		[statsMetric],
+	)
 	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
 	const matchId = match?.historyEntryId ?? 0
 
@@ -1173,7 +1283,7 @@ function CombinedPlayerTable(
 
 	const table = useReactTable({
 		data: displayedPlayers,
-		columns: combinedPlayerColumns,
+		columns,
 		getCoreRowModel: getCoreRowModel(),
 		getSortedRowModel: getSortedRowModel(),
 		getRowId: row => SM.PlayerIds.getPlayerId(row.ids),

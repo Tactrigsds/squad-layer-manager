@@ -40,9 +40,19 @@ export type ReconnectedEvent = {
 
 export type LifecycleEvent = SyncedEvent | ConnectionErrorEvent | ReconnectedEvent | InitEvent
 
+export type PlayerStats = {
+	kills: number
+	wounds: number
+	deaths: number
+}
+
+export type PlayerStatsMap = Record<SM.PlayerId, PlayerStats>
+
 export type InterpolableState = {
 	players: SM.Player[]
 	squads: SM.UniqueSquad[]
+	// per-match combat stats, keyed by player id. kept separate from players rather than stored on them
+	playerStats: PlayerStatsMap
 }
 
 export namespace InterpolableState {
@@ -50,6 +60,7 @@ export namespace InterpolableState {
 		return {
 			players: state.players.map(p => ({ ...p, ids: { ...p.ids } })),
 			squads: [...state.squads],
+			playerStats: { ...state.playerStats },
 		}
 	}
 }
@@ -111,6 +122,7 @@ export function getInitialInterpolatedState(): InterpolableState {
 	return {
 		players: [],
 		squads: [],
+		playerStats: {},
 	}
 }
 
@@ -195,6 +207,7 @@ function interpolateEvent(
 		case 'MAP_SET':
 		case 'NEW_GAME':
 		case 'RESET': {
+			if (event.type === 'NEW_GAME' || event.type === 'RESET') state.playerStats = {}
 			applyEventTeamMutations(chatLog, state, event)
 			return event
 		}
@@ -452,6 +465,14 @@ function interpolateEvent(
 					} was involved in ${event.type} but was not found in the interpolated player list`,
 				)
 			}
+			if (event.type === 'PLAYER_DIED') {
+				bumpPlayerStat(state.playerStats, SM.PlayerIds.getPlayerId(victim.ids), 'deaths')
+				if (event.variant === 'normal') {
+					bumpPlayerStat(state.playerStats, SM.PlayerIds.getPlayerId(attacker.ids), 'kills')
+				}
+			} else if (event.variant === 'normal') {
+				bumpPlayerStat(state.playerStats, SM.PlayerIds.getPlayerId(attacker.ids), 'wounds')
+			}
 			return { ...event, victim, attacker }
 		}
 
@@ -468,6 +489,12 @@ function interpolateEvent(
 			originalEvent: event,
 		}
 	}
+}
+
+// stat objects are replaced rather than mutated so InterpolableState.clone can shallow-copy the map
+function bumpPlayerStat(stats: PlayerStatsMap, playerId: SM.PlayerId, key: keyof PlayerStats) {
+	const prev = stats[playerId] ?? { kills: 0, wounds: 0, deaths: 0 }
+	stats[playerId] = { ...prev, [key]: prev[key] + 1 }
 }
 
 export type PrimaryFilterState = null | {

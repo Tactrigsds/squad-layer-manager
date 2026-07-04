@@ -55,6 +55,18 @@ export function initLayerQueue(args: Args) {
 			case 'add':
 				presenceEvent$.next({ userId: op.userId, action: 'added-layers' })
 				break
+			case 'swap-factions':
+				presenceEvent$.next({ userId: op.userId, action: 'swapped-factions' })
+				break
+			case 'delete':
+				presenceEvent$.next({ userId: op.userId, action: 'deleted-item' })
+				break
+			case 'clone':
+				presenceEvent$.next({ userId: op.userId, action: 'cloned-item' })
+				break
+			case 'move':
+				presenceEvent$.next({ userId: op.userId, action: 'moved-item' })
+				break
 			case 'save':
 				presenceEvent$.next({ userId: op.userId, action: 'saved-queue' })
 				break

@@ -140,6 +140,16 @@ export function setup() {
 	}
 	CleanupSys.register(() => globalUserPresence.op$.complete())
 
+	// wsClientIds are generated per-connection, so a closed socket's id never comes back -- no reconnect check needed
+	const disconnectSub = WSSessionSys.disconnect$.pipe(
+		Rx.delay(UP.DISCONNECT_TIMEOUT),
+		C.durableSub('user-presence:disconnect-timeout', { module, taskScheduling: 'parallel' }, async (ctx) => {
+			if (!globalUserPresence.session.state.presence.has(ctx.wsClientId)) return
+			dispatchOp([{ code: 'disconnected-timeout', clientId: ctx.wsClientId, opId: UP.createOpId(), time: Date.now() }])
+		}),
+	).subscribe()
+	CleanupSys.register(() => disconnectSub.unsubscribe())
+
 	const cleanSub = Rx.interval(UP.DISPLAYED_AWAY_PRESENCE_WINDOW * 2).pipe(
 		C.durableSub('user-presence:clean-presence', { module }, async () => {
 			const clientIdsToRemove: string[] = []

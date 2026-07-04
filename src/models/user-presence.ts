@@ -156,11 +156,6 @@ export const OpSchema = z.discriminatedUnion('code', [
 
 	z.object({
 		...clientOpBase,
-		code: z.literal('disconnected-timeout'),
-	}),
-
-	z.object({
-		...clientOpBase,
 		code: z.literal('update-activity'),
 		update: z.lazy(() => ActivityUpdateSchema),
 	}),
@@ -168,6 +163,12 @@ export const OpSchema = z.discriminatedUnion('code', [
 	z.object({
 		...serverOpBase,
 		code: z.literal('sll:end-all-editing'),
+	}),
+
+	z.object({
+		...serverOpBase,
+		code: z.literal('disconnected-timeout'),
+		clientId: z.string(),
 	}),
 
 	z.object({
@@ -191,7 +192,6 @@ export const CLIENT_OP_CODE = z.enum([
 	'page-interaction',
 	'interaction-timeout',
 	'navigated-away',
-	'disconnected-timeout',
 	'update-activity',
 ])
 type ClientOpCode = z.infer<typeof CLIENT_OP_CODE>
@@ -221,7 +221,14 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffects> = (prevState, 
 	for (const op of ops) {
 		let success = false
 		try {
-			if (op.code === 'clean-stale-presence') {
+			if (op.code === 'disconnected-timeout') {
+				const clientState = state.presence.get(op.clientId)
+				if (clientState) {
+					state.presence.set(op.clientId, { ...clientState, away: true, activityState: null })
+				}
+				MapUtils.deleteByValue(state.itemLocks, op.clientId)
+				success = true
+			} else if (op.code === 'clean-stale-presence') {
 				for (const clientId of op.clientIdsToRemove) {
 					state.presence.delete(clientId)
 				}
@@ -286,17 +293,6 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffects> = (prevState, 
 					}
 
 					case 'navigated-away': {
-						newClientState = {
-							...clientState,
-							away: true,
-							activityState: null,
-						}
-						MapUtils.deleteByValue(state.itemLocks, op.clientId)
-						success = true
-						break
-					}
-
-					case 'disconnected-timeout': {
 						newClientState = {
 							...clientState,
 							away: true,
@@ -391,24 +387,7 @@ export type PlayerDialogueActivity<
 	Extract<(typeof _playerDialogueVariants)[keyof typeof _playerDialogueVariants], { id: K }>
 >
 
-export type ActivityUpdate =
-	| { code: 'enter-server-dashboard'; serverId: SS.ServerId }
-	| { code: 'leave-server-dashboard' }
-	| { code: 'set-primary-panel'; to: 'VIEWING_QUEUE' | 'VIEWING_TEAMS' }
-	| { code: 'clear-primary-panel' }
-	| { code: 'set-editing-teamswitches' }
-	| { code: 'clear-editing-teamswitches' }
-	| { code: 'set-player-dialogue'; dialog: PlayerDialogueId }
-	| { code: 'clear-player-dialogue' }
-	| { code: 'set-editing-queue'; variant: QueueEditingActivity }
-	| { code: 'set-editing-queue-idle-if'; currentIds: string[] }
-	| { code: 'clear-editing-queue' }
-	| { code: 'set-viewing-queue-settings' }
-	| { code: 'clear-viewing-queue-settings' }
-	| { code: 'set-changing-queue-settings' }
-	| { code: 'clear-changing-queue-settings' }
-
-export const ActivityUpdateSchema: z.ZodType<ActivityUpdate> = z.discriminatedUnion('code', [
+export const ActivityUpdateSchema = z.discriminatedUnion('code', [
 	z.object({ code: z.literal('enter-server-dashboard'), serverId: SS.ServerIdSchema }),
 	z.object({ code: z.literal('leave-server-dashboard') }),
 	z.object({ code: z.literal('set-primary-panel'), to: z.enum(['VIEWING_QUEUE', 'VIEWING_TEAMS']) }),
@@ -425,6 +404,7 @@ export const ActivityUpdateSchema: z.ZodType<ActivityUpdate> = z.discriminatedUn
 	z.object({ code: z.literal('set-changing-queue-settings') }),
 	z.object({ code: z.literal('clear-changing-queue-settings') }),
 ])
+export type ActivityUpdate = z.infer<typeof ActivityUpdateSchema>
 
 export function createEditingQueueVariant<K extends EditingQueueVariant>(
 	activity: QueueEditingActivity<K>,
@@ -835,6 +815,10 @@ export const getHumanReadableActivity = (
 // synced timeline; displayed briefly as event text next to the user's avatar
 export const PRESENCE_EVENT_TEXT = {
 	'added-layers': 'Added layers',
+	'swapped-factions': 'Swapped factions',
+	'deleted-item': 'Deleted an item',
+	'cloned-item': 'Cloned an item',
+	'moved-item': 'Moved an item',
 	'saved-queue': 'Saved the queue',
 	'discarded-queue-edits': 'Discarded queue edits',
 	'saved-teamswitches': 'Saved teamswitches',
