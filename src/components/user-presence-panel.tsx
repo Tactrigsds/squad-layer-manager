@@ -267,12 +267,6 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 		return () => observer.disconnect()
 	}, [])
 
-	let otherMatchingUsersCount = 0
-	for (const userId of allUserIds) {
-		if (userId === loggedInUser?.discordId) continue
-		otherMatchingUsersCount++
-	}
-
 	return (
 		<div ref={containerRef} className={cn('relative overflow-hidden min-h-6', props.className)}>
 			{isLoading && <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-current mx-auto"></div>}
@@ -340,9 +334,6 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 
 			{!isLoading && (
 				<div ref={normalContentRef} className={cn('flex flex-nowrap items-center gap-1', isCompact && 'invisible')}>
-					{otherMatchingUsersCount > 1 && (
-						<div className="text-sm text-muted-foreground pr-1">{otherMatchingUsersCount} other users editing queue</div>
-					)}
 					{groupedPresence.map((group) => {
 						const isGrouped = group.entries.length > 1
 						const key = group.activityText ?? group.entries[0].user.discordId.toString()

@@ -245,6 +245,83 @@ export function PlayerMenuItems(
 	const isOnServer = playerInfo !== null
 	const inSquad = isOnServer && playerInfo.squadId !== null
 
+	// Renders the flat list of select-type items for a given scope: 'team' selects only the
+	// clicked player's team, 'all' selects across both teams. The Squad item only appears under
+	// 'team' since a squad belongs to a single team.
+	function selectItems(scope: 'team' | 'all') {
+		const teamId = scope === 'team' ? (playerInfo?.teamId ?? undefined) : undefined
+		const teamMissing = scope === 'team' && playerInfo?.teamId == null
+		const sc = (team: string, all: string) => (scope === 'team' ? team : all)
+		return (
+			<>
+				{scope === 'team' && (
+					<Item
+						disabled={!inSquad}
+						onClick={() => {
+							TSWClient.Actions.ensureViewingTeams(serverId)
+							const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer)).players
+							SquadServerClient.Actions.selectSquad(playerId, players)
+						}}
+					>
+						Squad{playerInfo?.squadName ? ` (${playerInfo.squadName})` : ''}
+						<ContextMenuShortcut>⇧+click squad cell</ContextMenuShortcut>
+					</Item>
+				)}
+				<Item
+					disabled={playerInfo?.role == null || teamMissing}
+					onClick={() => {
+						if (playerInfo?.role == null) return
+						TSWClient.Actions.ensureViewingTeams(serverId)
+						SquadServerClient.Actions.selectAllWithRole(stores, playerInfo.role, teamId)
+					}}
+				>
+					Role{playerInfo?.role != null ? ` (${playerInfo.role})` : ''}
+					<ContextMenuShortcut>{sc('⇧+click role cell', '⇧+Ctrl+click role cell')}</ContextMenuShortcut>
+				</Item>
+				<Item
+					disabled={grouping == null || teamMissing}
+					onClick={() => {
+						if (grouping == null) return
+						TSWClient.Actions.ensureViewingTeams(serverId)
+						SquadServerClient.Actions.selectGrouping(stores, grouping, teamId)
+					}}
+				>
+					Grouping{grouping != null ? ` (${grouping})` : ''}
+					<ContextMenuShortcut>{sc('⇧+click grouping cell', '⇧+Ctrl+click grouping cell')}</ContextMenuShortcut>
+				</Item>
+				<Item
+					disabled={!playerInfo?.isLeader || teamMissing}
+					onClick={() => {
+						TSWClient.Actions.ensureViewingTeams(serverId)
+						SquadServerClient.Actions.selectAllSquadLeaders(stores, teamId)
+					}}
+				>
+					Squad Leaders
+				</Item>
+				<Item
+					disabled={!playerInfo?.isAdmin || teamMissing}
+					onClick={() => {
+						TSWClient.Actions.ensureViewingTeams(serverId)
+						SquadServerClient.Actions.selectAllAdmins(stores, teamId)
+					}}
+				>
+					Admins
+					<ContextMenuShortcut>{sc('⇧+click admin badge', '⇧+Ctrl+click admin badge')}</ContextMenuShortcut>
+				</Item>
+				<Item
+					disabled={!isOnServer || teamMissing}
+					onClick={() => {
+						TSWClient.Actions.ensureViewingTeams(serverId)
+						SquadServerClient.Actions.selectAllTeamPlayers(stores, teamId)
+					}}
+				>
+					All Players
+					<ContextMenuShortcut>{sc('⇧+click select-all box', '⇧+Ctrl+click select-all box')}</ContextMenuShortcut>
+				</Item>
+			</>
+		)
+	}
+
 	return (
 		<>
 			<PermissionDeniedTooltip denied={manageDenied}>
@@ -285,99 +362,12 @@ export function PlayerMenuItems(
 			</Item>
 			<Separator />
 			<Sub>
-				<SubTrigger>Select..</SubTrigger>
-				<SubContent>
-					<Item
-						disabled={!inSquad}
-						onClick={() => {
-							TSWClient.Actions.ensureViewingTeams(serverId)
-							const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer)).players
-							SquadServerClient.Actions.selectSquad(playerId, players)
-						}}
-					>
-						<span title="Shortcut: shift+click the player's Squad cell in the teams panel">Squad</span>
-						<ContextMenuShortcut>⇧+click squad cell</ContextMenuShortcut>
-					</Item>
-					<Sub>
-						<SubTrigger disabled={playerInfo?.role == null}>
-							Role{playerInfo?.role != null ? ` (${playerInfo.role})` : ''}
-						</SubTrigger>
-						<SubContent>
-							<ScopedSelectItems
-								slots={slots}
-								teamId={playerInfo?.teamId ?? null}
-								onSelect={teamId => {
-									if (playerInfo?.role == null) return
-									TSWClient.Actions.ensureViewingTeams(serverId)
-									SquadServerClient.Actions.selectAllWithRole(stores, playerInfo.role, teamId)
-								}}
-								teamShortcut="⇧+click role cell"
-								allShortcut="⇧+Ctrl+click role cell"
-							/>
-						</SubContent>
-					</Sub>
-					<Sub>
-						<SubTrigger disabled={grouping == null}>
-							Grouping{grouping != null ? ` (${grouping})` : ''}
-						</SubTrigger>
-						<SubContent>
-							<ScopedSelectItems
-								slots={slots}
-								teamId={playerInfo?.teamId ?? null}
-								onSelect={teamId => {
-									if (grouping == null) return
-									TSWClient.Actions.ensureViewingTeams(serverId)
-									SquadServerClient.Actions.selectGrouping(stores, grouping, teamId)
-								}}
-								teamShortcut="⇧+click grouping cell"
-								allShortcut="⇧+Ctrl+click grouping cell"
-							/>
-						</SubContent>
-					</Sub>
-					<Sub>
-						<SubTrigger disabled={!playerInfo?.isLeader}>Squad Leaders</SubTrigger>
-						<SubContent>
-							<ScopedSelectItems
-								slots={slots}
-								teamId={playerInfo?.teamId ?? null}
-								onSelect={teamId => {
-									TSWClient.Actions.ensureViewingTeams(serverId)
-									SquadServerClient.Actions.selectAllSquadLeaders(stores, teamId)
-								}}
-							/>
-						</SubContent>
-					</Sub>
-					<Sub>
-						<SubTrigger disabled={!playerInfo?.isAdmin}>Admins</SubTrigger>
-						<SubContent>
-							<ScopedSelectItems
-								slots={slots}
-								teamId={playerInfo?.teamId ?? null}
-								onSelect={teamId => {
-									TSWClient.Actions.ensureViewingTeams(serverId)
-									SquadServerClient.Actions.selectAllAdmins(stores, teamId)
-								}}
-								teamShortcut="⇧+click admin badge"
-								allShortcut="⇧+Ctrl+click admin badge"
-							/>
-						</SubContent>
-					</Sub>
-					<Sub>
-						<SubTrigger disabled={!isOnServer}>All Players</SubTrigger>
-						<SubContent>
-							<ScopedSelectItems
-								slots={slots}
-								teamId={playerInfo?.teamId ?? null}
-								onSelect={teamId => {
-									TSWClient.Actions.ensureViewingTeams(serverId)
-									SquadServerClient.Actions.selectAllTeamPlayers(stores, teamId)
-								}}
-								teamShortcut="⇧+click select-all box"
-								allShortcut="⇧+Ctrl+click select-all box"
-							/>
-						</SubContent>
-					</Sub>
-				</SubContent>
+				<SubTrigger disabled={!isOnServer}>Select from Team</SubTrigger>
+				<SubContent>{selectItems('team')}</SubContent>
+			</Sub>
+			<Sub>
+				<SubTrigger disabled={!isOnServer}>Select All</SubTrigger>
+				<SubContent>{selectItems('all')}</SubContent>
 			</Sub>
 			<Separator />
 			<PermissionDeniedTooltip denied={manageDenied}>
@@ -401,29 +391,6 @@ export function PlayerMenuItems(
 					Demote Commander
 				</Item>
 			</PermissionDeniedTooltip>
-		</>
-	)
-}
-
-// "This Team" / "Both Teams" pair for a scoped bulk-select action; teamId is the clicked player's raw team
-function ScopedSelectItems({ slots, teamId, onSelect, teamShortcut, allShortcut }: {
-	slots: MenuSlots
-	teamId: SM.TeamId | null
-	onSelect: (teamId?: SM.TeamId) => void
-	teamShortcut?: string
-	allShortcut?: string
-}) {
-	const { Item } = slots
-	return (
-		<>
-			<Item disabled={teamId == null} onClick={() => onSelect(teamId ?? undefined)}>
-				This Team
-				{teamShortcut && <ContextMenuShortcut>{teamShortcut}</ContextMenuShortcut>}
-			</Item>
-			<Item onClick={() => onSelect()}>
-				Both Teams
-				{allShortcut && <ContextMenuShortcut>{allShortcut}</ContextMenuShortcut>}
-			</Item>
 		</>
 	)
 }

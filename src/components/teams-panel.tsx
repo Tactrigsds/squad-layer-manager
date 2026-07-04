@@ -2,6 +2,7 @@ import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useIsDesktopSize } from '@/lib/browser'
+import * as DH from '@/lib/display-helpers'
 import * as MapUtils from '@/lib/map'
 import * as StrUtils from '@/lib/string'
 import { cn } from '@/lib/utils.ts'
@@ -23,7 +24,7 @@ import * as TSWClient from '@/systems/teamswitches.client'
 import * as UPClient from '@/systems/user-presence.client'
 
 import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table'
-import type { ColumnDef, SortingState } from '@tanstack/react-table'
+import type { CellContext, ColumnDef, HeaderContext, SortingState } from '@tanstack/react-table'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import PlayerBulkContextMenuOptions from './player-bulk-context-menu-options'
@@ -392,6 +393,7 @@ type TeamPlayerTableMeta = {
 	availableRoles: string[]
 	availableGroupings: string[]
 	stores: SquadServerFrame.KeyProp
+	statsSort: StatsSortState
 }
 
 const FILTERED_COLUMN_IDS = ['role', 'grouping', 'squad']
@@ -422,6 +424,8 @@ function headerResetProps(
 }
 
 const FILTER_ALL = '__all__'
+// sentinel filter value matching players with no grouping ("Other") or no squad ("Unassigned")
+const FILTER_NONE = '__none__'
 
 function ColumnFilterSelect({ value, onChange, options }: {
 	value: string | null
@@ -459,21 +463,32 @@ const STATS_SORT_METRICS: { metric: StatsSortMetric; short: string; label: strin
 ]
 
 type StatsSortColumn = {
-	getIsSorted: () => false | 'asc' | 'desc'
 	toggleSorting: (desc?: boolean) => void
 	clearSorting: () => void
 }
 
-// open state lives in the table component: picking a metric rebuilds the column def, which remounts
-// this header — local state would reset and close the popover mid-interaction
-function StatsColumnHeader({ column, metric, setMetric, open, setOpen }: {
-	column: StatsSortColumn
+// lives in the table component and flows in through table meta: picking a metric rebuilds the column
+// def, so anything captured in the column def's closures would go stale or remount the header.
+// `sorted` is derived from the sorting react state rather than read via column.getIsSorted() — the
+// react compiler memoizes on the (stable) column identity, so getIsSorted() calls in render go stale
+type StatsSortState = {
 	metric: StatsSortMetric
 	setMetric: (m: StatsSortMetric) => void
 	open: boolean
 	setOpen: (open: boolean) => void
+	sorted: false | 'asc' | 'desc'
+}
+
+function statsSortedDir(sorting: SortingState): false | 'asc' | 'desc' {
+	const entry = sorting.find(s => s.id === 'stats')
+	return entry ? (entry.desc ? 'desc' : 'asc') : false
+}
+
+function StatsColumnHeader({ column, statsSort }: {
+	column: StatsSortColumn
+	statsSort: StatsSortState
 }) {
-	const sorted = column.getIsSorted()
+	const { metric, setMetric, open, setOpen, sorted } = statsSort
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
@@ -545,26 +560,33 @@ function StatsColumnHeader({ column, metric, setMetric, open, setOpen }: {
 	)
 }
 
-// the sort accessor depends on the metric picked in the header popover, so this column is built per-table via useMemo
-function statsColumn<T extends TeamsPanelModels.EnrichedPlayer>(
-	metric: StatsSortMetric,
-	setMetric: (m: StatsSortMetric) => void,
-	open: boolean,
-	setOpen: (open: boolean) => void,
-): ColumnDef<T, number> {
+// module-level renderers so their identity is stable across column rebuilds — an inline closure would
+// be a new component type each rebuild, remounting the header and flickering the open popover
+function statsHeader<T extends TeamsPanelModels.EnrichedPlayer>({ column, table }: HeaderContext<T, number>) {
+	const { statsSort } = table.options.meta as { statsSort: StatsSortState }
+	return <StatsColumnHeader column={column} statsSort={statsSort} />
+}
+
+function statsCell<T extends TeamsPanelModels.EnrichedPlayer>({ row }: CellContext<T, number>) {
+	const s = row.original.stats
+	return (
+		<span className="font-mono text-xs whitespace-nowrap">
+			{s?.kills ?? 0}/{s?.wounds ?? 0}/{s?.deaths ?? 0}
+		</span>
+	)
+}
+
+// the sort depends on the metric picked in the header popover, so this column is built per-table via useMemo.
+// sortingFn reads row.original instead of the accessor value: tanstack caches accessor values per row
+// (row._valuesCache), so after a metric change accessor-based sorting would re-sort by the old metric
+function statsColumn<T extends TeamsPanelModels.EnrichedPlayer>(metric: StatsSortMetric): ColumnDef<T, number> {
 	return {
 		id: 'stats',
 		accessorFn: row => row.stats?.[metric] ?? 0,
+		sortingFn: (a, b) => (a.original.stats?.[metric] ?? 0) - (b.original.stats?.[metric] ?? 0),
 		sortDescFirst: true,
-		header: ({ column }) => <StatsColumnHeader column={column} metric={metric} setMetric={setMetric} open={open} setOpen={setOpen} />,
-		cell: ({ row }) => {
-			const s = row.original.stats
-			return (
-				<span className="font-mono text-xs whitespace-nowrap">
-					{s?.kills ?? 0}/{s?.wounds ?? 0}/{s?.deaths ?? 0}
-				</span>
-			)
-		},
+		header: statsHeader,
+		cell: statsCell,
 	}
 }
 
@@ -623,7 +645,7 @@ const playerColumns = [
 					<ColumnFilterSelect
 						value={filters.grouping}
 						onChange={filters.setGrouping}
-						options={availableGroupings.map(g => ({ value: g, label: g }))}
+						options={[...availableGroupings.map(g => ({ value: g, label: g })), { value: FILTER_NONE, label: 'Other' }]}
 					/>
 				</span>
 			)
@@ -645,10 +667,13 @@ const playerColumns = [
 		id: 'squad',
 		header: ({ table }) => {
 			const { filters, squads } = table.options.meta as TeamPlayerTableMeta
-			const squadOptions = squads.map(s => ({
-				value: String(s.squadId),
-				label: s.squadName === 'Command Squad' ? `CMD(${s.squadId})` : String(s.squadId),
-			}))
+			const squadOptions = [
+				...squads.map(s => ({
+					value: String(s.squadId),
+					label: s.squadName === 'Command Squad' ? `CMD(${s.squadId})` : `${s.squadId} ${s.squadName}`,
+				})),
+				{ value: FILTER_NONE, label: 'Unassigned' },
+			]
 			return (
 				<span className="flex flex-col items-start">
 					Squad
@@ -743,8 +768,8 @@ function TeamPlayerTable(
 	const [statsMetric, setStatsMetric] = React.useState<StatsSortMetric>('kills')
 	const [statsSortOpen, setStatsSortOpen] = React.useState(false)
 	const columns = React.useMemo(
-		() => [...playerColumns, statsColumn<TeamsPanelModels.EnrichedPlayer>(statsMetric, setStatsMetric, statsSortOpen, setStatsSortOpen)],
-		[statsMetric, statsSortOpen],
+		() => [...playerColumns, statsColumn<TeamsPanelModels.EnrichedPlayer>(statsMetric)],
+		[statsMetric],
 	)
 	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
 	const matchId = match?.historyEntryId ?? 0
@@ -791,8 +816,8 @@ function TeamPlayerTable(
 		}
 		const { role, grouping, squad } = props.filters
 		if (role !== null) result = result.filter(p => p.role === role)
-		if (grouping !== null) result = result.filter(p => (p.grouping ?? null) === grouping)
-		if (squad !== null) result = result.filter(p => p.squadId === Number(squad))
+		if (grouping !== null) result = result.filter(p => grouping === FILTER_NONE ? p.grouping == null : p.grouping === grouping)
+		if (squad !== null) result = result.filter(p => squad === FILTER_NONE ? p.squadId === null : p.squadId === Number(squad))
 		if (props.adminsOnly) result = result.filter(p => p.isAdmin)
 		return result
 	}, [players, props.searchQuery, props.filters, props.adminsOnly])
@@ -820,6 +845,13 @@ function TeamPlayerTable(
 			availableRoles: props.availableRoles,
 			availableGroupings: props.availableGroupings,
 			stores: props.stores,
+			statsSort: {
+				metric: statsMetric,
+				setMetric: setStatsMetric,
+				open: statsSortOpen,
+				setOpen: setStatsSortOpen,
+				sorted: statsSortedDir(sorting),
+			},
 		} satisfies TeamPlayerTableMeta,
 	})
 
@@ -921,6 +953,7 @@ type CombinedTableMeta = {
 	availableGroupings: string[]
 	getFaction: (normedTeam: MH.NormedTeamId) => string
 	stores: SquadServerFrame.KeyProp
+	statsSort: StatsSortState
 }
 
 const combinedColumnHelper = createColumnHelper<CombinedPlayer>()
@@ -956,7 +989,14 @@ const combinedPlayerColumns = [
 	combinedColumnHelper.accessor(row => row.normedTeam, {
 		id: 'faction',
 		header: 'Faction',
-		cell: ({ row, table }) => (table.options.meta as CombinedTableMeta).getFaction(row.original.normedTeam),
+		cell: ({ row, table }) => {
+			const normedTeam = row.original.normedTeam
+			return (
+				<span className="font-semibold" style={{ color: DH.TEAM_COLORS[`team${normedTeam}`] }}>
+					{(table.options.meta as CombinedTableMeta).getFaction(normedTeam)}
+				</span>
+			)
+		},
 	}),
 	combinedColumnHelper.accessor(row => row.ids.usernameNoTag ?? row.ids.username ?? '', {
 		id: 'name',
@@ -979,7 +1019,7 @@ const combinedPlayerColumns = [
 					<ColumnFilterSelect
 						value={filters.grouping}
 						onChange={filters.setGrouping}
-						options={availableGroupings.map(g => ({ value: g, label: g }))}
+						options={[...availableGroupings.map(g => ({ value: g, label: g })), { value: FILTER_NONE, label: 'Other' }]}
 					/>
 				</span>
 			)
@@ -1001,14 +1041,17 @@ const combinedPlayerColumns = [
 		id: 'squad',
 		header: ({ table }) => {
 			const { filters, squadsWithTeam, getFaction } = table.options.meta as CombinedTableMeta
-			const squadOptions = squadsWithTeam.map(({ squad: s, normedTeam }) => {
-				const faction = getFaction(normedTeam)
-				const isCmd = s.squadName === 'Command Squad'
-				return {
-					value: `${normedTeam}:${s.squadId}`,
-					label: isCmd ? `${faction}:CMD` : `${faction}:${s.squadId}`,
-				}
-			})
+			const squadOptions = [
+				...squadsWithTeam.map(({ squad: s, normedTeam }) => {
+					const faction = getFaction(normedTeam)
+					const isCmd = s.squadName === 'Command Squad'
+					return {
+						value: `${normedTeam}:${s.squadId}`,
+						label: isCmd ? `${faction}:CMD` : `${faction}:${s.squadId} ${s.squadName}`,
+					}
+				}),
+				{ value: FILTER_NONE, label: 'Unassigned' },
+			]
 			return (
 				<span className="flex flex-col items-start">
 					Squad
@@ -1105,8 +1148,8 @@ function CombinedPlayerTable(
 	const [statsMetric, setStatsMetric] = React.useState<StatsSortMetric>('kills')
 	const [statsSortOpen, setStatsSortOpen] = React.useState(false)
 	const columns = React.useMemo(
-		() => [...combinedPlayerColumns, statsColumn<CombinedPlayer>(statsMetric, setStatsMetric, statsSortOpen, setStatsSortOpen)],
-		[statsMetric, statsSortOpen],
+		() => [...combinedPlayerColumns, statsColumn<CombinedPlayer>(statsMetric)],
+		[statsMetric],
 	)
 	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
 	const matchId = match?.historyEntryId ?? 0
@@ -1189,8 +1232,8 @@ function CombinedPlayerTable(
 		}
 		const { role, grouping, squad } = props.filters
 		if (role !== null) result = result.filter(p => p.role === role)
-		if (grouping !== null) result = result.filter(p => (p.grouping ?? null) === grouping)
-		if (squad !== null) result = result.filter(p => squad === `${p.normedTeam}:${p.squadId}`)
+		if (grouping !== null) result = result.filter(p => grouping === FILTER_NONE ? p.grouping == null : p.grouping === grouping)
+		if (squad !== null) result = result.filter(p => squad === FILTER_NONE ? p.squadId === null : squad === `${p.normedTeam}:${p.squadId}`)
 		if (props.adminsOnly) result = result.filter(p => p.isAdmin)
 		return result
 	}, [players, props.searchQuery, props.filters, props.adminsOnly])
@@ -1218,6 +1261,13 @@ function CombinedPlayerTable(
 			availableGroupings: props.availableGroupings,
 			getFaction,
 			stores: props.stores,
+			statsSort: {
+				metric: statsMetric,
+				setMetric: setStatsMetric,
+				open: statsSortOpen,
+				setOpen: setStatsSortOpen,
+				sorted: statsSortedDir(sorting),
+			},
 		} satisfies CombinedTableMeta,
 	})
 
