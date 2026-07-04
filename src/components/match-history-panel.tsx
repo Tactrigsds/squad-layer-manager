@@ -1,6 +1,8 @@
+import { contextMenuSlots } from '@/components/player-context-menu-options'
+import { ServerActionMenuItems } from '@/components/server-actions-dropdown'
 import { getTeamsDisplay } from '@/components/teams-display'
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { ContextMenu, ContextMenuContent, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Table, TableBody, TableCell as ShadcnTableCell, TableHead as ShadcnTableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as ChatPrt from '@/frame-partials/chat.partial'
@@ -712,6 +714,12 @@ function MatchHistoryRow({
 				</TableRow>
 			</ContextMenuTrigger>
 			<ContextMenuContent>
+				{entry.isCurrentMatch && (
+					<>
+						<ServerActionMenuItems stores={stores} slots={contextMenuSlots} />
+						<ContextMenuSeparator />
+					</>
+				)}
 				<LayerContextMenuItems
 					selectedLayerIds={[entry.layerId]}
 					selectedHistoryEntryIds={[entry.historyEntryId]}

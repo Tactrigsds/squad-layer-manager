@@ -21,14 +21,14 @@ import { ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenu
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
 
 export type MenuSlots = {
-	Item: React.ComponentType<{ onClick?: () => void; disabled?: boolean; children?: React.ReactNode }>
+	Item: React.ComponentType<{ onClick?: () => void; disabled?: boolean; className?: string; children?: React.ReactNode }>
 	Separator: React.ComponentType
 	Sub: React.ComponentType<{ children?: React.ReactNode }>
 	SubTrigger: React.ComponentType<{ children?: React.ReactNode }>
 	SubContent: React.ComponentType<{ children?: React.ReactNode }>
 }
 
-const contextMenuSlots: MenuSlots = {
+export const contextMenuSlots: MenuSlots = {
 	Item: ContextMenuItem,
 	Separator: ContextMenuSeparator,
 	Sub: ContextMenuSub,

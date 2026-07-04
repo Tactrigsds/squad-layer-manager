@@ -1,10 +1,14 @@
 // WARNING: the ordering of imports  matters here unfortunately. be careful when changing
 import Ace from 'ace-builds'
 
+import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDebounced } from '@/hooks/use-debounce'
 import * as Obj from '@/lib/object'
 import * as Typography from '@/lib/typography.ts'
+import { cn } from '@/lib/utils.ts'
 import stringifyCompact from 'json-stringify-pretty-compact'
+import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Rx from 'rxjs'
 import type { z } from 'zod'
@@ -45,6 +49,8 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 	const errorViewRef = React.useRef<Editor>(null)
 	const lastValidRef = React.useRef<TOut | null>(null)
 	const lastSyncedValueRef = React.useRef<TIn>(props.value)
+
+	const [isFullscreen, setIsFullscreen] = React.useState(false)
 
 	const schemaRef = React.useRef(props.schema)
 	schemaRef.current = props.schema
@@ -143,6 +149,19 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 		errorViewRef.current?.setValue('')
 	}, [props.value])
 
+	// -------- exit fullscreen on Escape --------
+	React.useEffect(() => {
+		if (!isFullscreen) return
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') {
+				e.stopPropagation()
+				setIsFullscreen(false)
+			}
+		}
+		document.addEventListener('keydown', onKeyDown, true)
+		return () => document.removeEventListener('keydown', onKeyDown, true)
+	}, [isFullscreen])
+
 	React.useImperativeHandle(ref, () => ({
 		format: () => {
 			const value = editorRef.current!.getValue()
@@ -170,11 +189,28 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 
 	return (
 		<div
-			className="grid w-full grid-cols-[minmax(0,2fr)_minmax(0,1fr)] grid-rows-[min-content_auto] rounded-md"
-			style={{ height: props.minHeightPx ?? 400 }}
+			className={cn(
+				'relative grid w-full grid-cols-[minmax(0,2fr)_minmax(0,1fr)] grid-rows-[min-content_auto] rounded-md',
+				isFullscreen && 'fixed inset-0 z-50 h-screen w-screen bg-background p-4',
+			)}
+			style={isFullscreen ? undefined : { height: props.minHeightPx ?? 400 }}
 		>
 			<h3 className={Typography.Small + 'mb-2 ml-[45px]'}>{props.label ?? 'Settings'}</h3>
 			<h3 className={Typography.Small + 'mb-2 ml-[45px]'}>Errors</h3>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Button
+						type="button"
+						size="icon"
+						variant="ghost"
+						className="absolute top-0 right-0 z-10 h-7 w-7"
+						onClick={() => setIsFullscreen(v => !v)}
+					>
+						{isFullscreen ? <Icons.Minimize2 className="h-4 w-4" /> : <Icons.Maximize2 className="h-4 w-4" />}
+					</Button>
+				</TooltipTrigger>
+				<TooltipContent>{isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}</TooltipContent>
+			</Tooltip>
 			<div ref={editorEltRef}></div>
 			<div ref={errorViewEltRef}></div>
 		</div>

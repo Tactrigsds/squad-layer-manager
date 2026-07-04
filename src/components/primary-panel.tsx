@@ -82,7 +82,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 										sourcePresenceFn={sortEditingPresence}
 										matchActivity={root => UP.Trans.viewingQueue(serverId).match(root) || UP.Trans.editingQueue(serverId).match(root)}
 										matchActivityForStatusText={root =>
-											UP.Trans.viewingQueue(serverId).match(root) && UP.Trans.editingQueue(serverId).match(root)}
+											UP.Trans.editingQueue(serverId).match(root) || UP.Trans.viewingQueue(serverId).match(root)}
 										event$={queueEvent$}
 										transitionMessages={[
 											{
@@ -106,7 +106,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 										matchActivity={root =>
 											UP.Trans.viewingTeams(serverId).match(root) || UP.Trans.editingTeamswitches(serverId).match(root)}
 										matchActivityForStatusText={root =>
-											UP.Trans.viewingTeams(serverId).match(root) && UP.Trans.editingTeamswitches(serverId).match(root)}
+											UP.Trans.editingTeamswitches(serverId).match(root) || UP.Trans.viewingTeams(serverId).match(root)}
 										event$={teamswitchEvent$}
 										className="min-w-0"
 									/>

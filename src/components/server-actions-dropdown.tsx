@@ -1,11 +1,13 @@
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
+import type { MenuSlots } from '@/components/player-context-menu-options'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { useAlertDialog } from '@/components/ui/lazy-alert-dialog'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import { useToast } from '@/hooks/use-toast'
 import { assertNever } from '@/lib/type-guards.ts'
+import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
@@ -13,10 +15,32 @@ import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import { useMutation } from '@tanstack/react-query'
-import * as Icons from 'lucide-react'
-import React from 'react'
+
+const dropdownMenuSlots: MenuSlots = {
+	Item: DropdownMenuItem,
+	Separator: DropdownMenuSeparator,
+	Sub: DropdownMenuSub,
+	SubTrigger: DropdownMenuSubTrigger,
+	SubContent: DropdownMenuSubContent,
+}
 
 export function ServerActionsDropdown(props: { stores: SquadServerFrame.KeyProp }) {
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>
+				<Button variant="secondary" size="sm">
+					Server Actions
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent>
+				<ServerActionMenuItems stores={props.stores} slots={dropdownMenuSlots} />
+			</DropdownMenuContent>
+		</DropdownMenu>
+	)
+}
+
+export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp; slots: MenuSlots }) {
+	const { Item } = props.slots
 	const stores = props.stores
 	const serverId = stores.squadServer!.serverId
 	const playerCount = ZusUtils.useStore(
@@ -31,6 +55,9 @@ export function ServerActionsDropdown(props: { stores: SquadServerFrame.KeyProp 
 	const updatesToSquadServerDisabled = ZusUtils.useStore(stores.squadServer!, s => s.settings.saved?.updatesToSquadServerDisabled)
 	const { disableUpdates, enableUpdates } = LayerQueueClient.useToggleSquadServerUpdates(serverId)
 	const disableFogOfWarMutation = SquadServerClient.useDisableFogOfWarMutation()
+	const endMatchMutation = useMutation(RPC.orpc.squadServer.endMatch.mutationOptions({}))
+	const serverInfoRes = SquadServerClient.useServerInfoRes(serverId)
+	const openDialog = useAlertDialog()
 	const { toast } = useToast()
 
 	async function disableFogOfWar() {
@@ -52,72 +79,15 @@ export function ServerActionsDropdown(props: { stores: SquadServerFrame.KeyProp 
 		}
 	}
 
-	return (
-		<EndMatchDialog stores={stores}>
-			<DropdownMenu>
-				<DropdownMenuTrigger asChild>
-					<Button variant="secondary" size="sm">
-						Server Actions
-					</Button>
-				</DropdownMenuTrigger>
-				<DropdownMenuContent>
-					<PermissionDeniedTooltip denied={endMatchDenied}>
-						<DialogTrigger asChild>
-							<DropdownMenuItem
-								disabled={!!endMatchDenied || !hasPlayers}
-								className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600 data-noplayers:flex data-noplayers:flex-col"
-								data-noplayers={!hasPlayers || undefined}
-							>
-								<span>End Match</span>
-								{!hasPlayers && (
-									<small>
-										(disabled: Cannot end match when server is empty.)
-									</small>
-								)}
-							</DropdownMenuItem>
-						</DialogTrigger>
-					</PermissionDeniedTooltip>
-					{updatesToSquadServerDisabled
-						? (
-							<PermissionDeniedTooltip denied={disableUpdatesDenied}>
-								<DropdownMenuItem disabled={!!disableUpdatesDenied} onClick={enableUpdates}>Re-enable SLM Updates</DropdownMenuItem>
-							</PermissionDeniedTooltip>
-						)
-						: (
-							<PermissionDeniedTooltip denied={disableUpdatesDenied}>
-								<DropdownMenuItem
-									disabled={!!disableUpdatesDenied}
-									onClick={disableUpdates}
-								>
-									Disable SLM Updates
-								</DropdownMenuItem>
-							</PermissionDeniedTooltip>
-						)}
-					<PermissionDeniedTooltip denied={disableFogOfWarDenied}>
-						<DropdownMenuItem
-							disabled={!!disableFogOfWarDenied}
-							onClick={disableFogOfWar}
-						>
-							Disable Fog Of War
-						</DropdownMenuItem>
-					</PermissionDeniedTooltip>
-				</DropdownMenuContent>
-			</DropdownMenu>
-		</EndMatchDialog>
-	)
-}
-
-function EndMatchDialog(props: { children: React.ReactNode; stores: SquadServerFrame.KeyProp }) {
-	const [isOpen, setIsOpen] = React.useState(false)
-
-	const endMatchDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:end-match'))
-	const endMatchMutation = useMutation(RPC.orpc.squadServer.endMatch.mutationOptions({}))
-	const serverInfoRes = SquadServerClient.useServerInfoRes(props.stores.squadServer!.serverId)
-	if (!serverInfoRes || serverInfoRes?.code !== 'ok') return null
-	const serverInfo = serverInfoRes.data
-
 	async function endMatch() {
-		const res = await endMatchMutation.mutateAsync({ serverId: props.stores.squadServer!.serverId })
+		const serverName = serverInfoRes?.code === 'ok' ? serverInfoRes.data.name : serverId
+		const result = await openDialog({
+			title: 'End Match',
+			description: `Are you sure you want to end the match for ${serverName}?`,
+			buttons: [{ id: 'confirm', label: 'End Match', variant: 'destructive' }],
+		})
+		if (result !== 'confirm') return
+		const res = await endMatchMutation.mutateAsync({ serverId })
 		switch (res.code) {
 			case 'ok':
 				globalToast$.next({ title: 'Match ended!' })
@@ -132,37 +102,51 @@ function EndMatchDialog(props: { children: React.ReactNode; stores: SquadServerF
 			default:
 				assertNever(res)
 		}
-		setIsOpen(false)
 	}
 
 	return (
-		<Dialog open={isOpen} onOpenChange={setIsOpen}>
-			{props.children}
-			<DialogContent>
-				<DialogHeader>
-					<DialogTitle>End Match</DialogTitle>
-				</DialogHeader>
-				<DialogDescription>
-					Are you sure you want to end the match for <br />
-					<b>{serverInfo?.name}</b>?
-				</DialogDescription>
-				<DialogFooter>
-					<PermissionDeniedTooltip denied={endMatchDenied}>
-						<Button disabled={!!endMatchDenied || endMatchMutation.isPending} onClick={endMatch} variant="destructive">
-							{endMatchMutation.isPending && <Icons.Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-							End Match
-						</Button>
+		<>
+			<PermissionDeniedTooltip denied={endMatchDenied}>
+				<Item
+					disabled={!!endMatchDenied || !hasPlayers}
+					onClick={() => void endMatch()}
+					className={cn(
+						'bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600',
+						!hasPlayers && 'flex flex-col',
+					)}
+				>
+					<span>End Match</span>
+					{!hasPlayers && (
+						<small>
+							(disabled: Cannot end match when server is empty.)
+						</small>
+					)}
+				</Item>
+			</PermissionDeniedTooltip>
+			{updatesToSquadServerDisabled
+				? (
+					<PermissionDeniedTooltip denied={disableUpdatesDenied}>
+						<Item disabled={!!disableUpdatesDenied} onClick={enableUpdates}>Re-enable SLM Updates</Item>
 					</PermissionDeniedTooltip>
-					<Button
-						onClick={() => {
-							setIsOpen(false)
-						}}
-						variant="secondary"
-					>
-						Cancel
-					</Button>
-				</DialogFooter>
-			</DialogContent>
-		</Dialog>
+				)
+				: (
+					<PermissionDeniedTooltip denied={disableUpdatesDenied}>
+						<Item
+							disabled={!!disableUpdatesDenied}
+							onClick={disableUpdates}
+						>
+							Disable SLM Updates
+						</Item>
+					</PermissionDeniedTooltip>
+				)}
+			<PermissionDeniedTooltip denied={disableFogOfWarDenied}>
+				<Item
+					disabled={!!disableFogOfWarDenied}
+					onClick={disableFogOfWar}
+				>
+					Disable Fog Of War
+				</Item>
+			</PermissionDeniedTooltip>
+		</>
 	)
 }

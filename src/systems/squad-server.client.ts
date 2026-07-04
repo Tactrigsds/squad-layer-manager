@@ -109,11 +109,14 @@ export namespace Actions {
 		const squadIds = players
 			.filter(p => p.squadId === player.squadId && p.teamId === player.teamId)
 			.map(p => SM.PlayerIds.getPlayerId(p.ids))
-		PlayerSelectionStore.setState({ selection: Object.fromEntries(squadIds.map(id => [id, true])) })
+		selectPlayers(squadIds)
 	}
 
+	// additive: merges into the existing selection rather than replacing it
 	export function selectPlayers(playerIds: SM.PlayerId[]) {
-		PlayerSelectionStore.setState({ selection: Object.fromEntries(playerIds.map(id => [id, true])) })
+		PlayerSelectionStore.setState(s => ({
+			selection: { ...s.selection, ...Object.fromEntries(playerIds.map(id => [id, true])) },
+		}))
 	}
 
 	export function selectAllAdmins(stores: SquadServerFrame.KeyProp) {
