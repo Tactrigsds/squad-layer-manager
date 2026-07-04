@@ -10,6 +10,7 @@ import * as UsersClient from '@/systems/users.client'
 import * as DateFns from 'date-fns'
 import { Loader2 } from 'lucide-react'
 import React from 'react'
+import type * as Rx from 'rxjs'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
@@ -69,6 +70,8 @@ export type UserPresencePanelProps = {
 		leaveMessage?: string
 		joinMessage?: string
 	}[]
+	// emissions briefly display event text for the user (e.g. "Saved the queue")
+	event$?: Rx.Observable<UP.PresenceEvent>
 	sourcePresenceFn?: SortPresenceFn
 	stores?: SquadServerFrame.KeyProp
 }
@@ -91,6 +94,32 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 	// -------- Track temporary event text for users (e.g., "Finished editing") --------
 	const [userEventText, setUserEventText] = React.useState<Map<bigint, string>>(new Map())
 	const eventTextTimeouts = React.useRef<Map<bigint, ReturnType<typeof setTimeout>>>(new Map())
+
+	const showEventText = React.useCallback((userId: bigint, message: string) => {
+		setUserEventText(prev => new Map(prev).set(userId, message))
+		const existingTimeout = eventTextTimeouts.current.get(userId)
+		if (existingTimeout) {
+			clearTimeout(existingTimeout)
+		}
+		const timeout = setTimeout(() => {
+			eventTextTimeouts.current.delete(userId)
+			setUserEventText(prev => {
+				const next = new Map(prev)
+				next.delete(userId)
+				return next
+			})
+		}, EVENT_TEXT_DURATION)
+		eventTextTimeouts.current.set(userId, timeout)
+	}, [])
+
+	React.useEffect(() => {
+		if (!props.event$) return
+		const sub = props.event$.subscribe(event => {
+			showEventText(event.userId, UP.PRESENCE_EVENT_TEXT[event.action])
+		})
+		return () => sub.unsubscribe()
+	}, [props.event$, showEventText])
+
 	React.useEffect(() => {
 		const unsub = UPClient.Store.subscribe((state, prev) => {
 			if (state.userPresence === prev.userPresence) return
@@ -105,7 +134,6 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 
 					if (config.leaveMessage && !matched && prevMatched) {
 						message = config.leaveMessage
-						setUserEventText(prev => new Map(prev).set(userId, config.leaveMessage!))
 						break
 					} else if (config.joinMessage && matched && !prevMatched) {
 						message = config.joinMessage
@@ -116,20 +144,11 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 
 				if (!message) continue
 
-				setUserEventText(prev => new Map(prev).set(userId, message))
-				const existingTimeout = eventTextTimeouts.current.get(userId)
-				if (existingTimeout) {
-					clearTimeout(existingTimeout)
-				}
-				const timeout = setTimeout(() => {
-					eventTextTimeouts.current.delete(userId)
-					setUserEventText(prev => {
-						const next = new Map(prev)
-						next.delete(userId)
-						return next
-					})
-				}, EVENT_TEXT_DURATION)
-				eventTextTimeouts.current.set(userId, timeout)
+				// op events (event$) take priority: e.g. a queue save also ends the saver's editing
+				// session, and "Finished editing" shouldn't clobber "Saved the queue"
+				if (eventTextTimeouts.current.has(userId)) continue
+
+				showEventText(userId, message)
 			}
 		})
 

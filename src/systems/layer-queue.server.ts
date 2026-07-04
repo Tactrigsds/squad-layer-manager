@@ -578,6 +578,7 @@ const handleSideEffect = C.spanOp(
 	) => {
 		switch (se.code) {
 			case 'complete':
+			case 'op-outcome':
 				break
 			case 'error':
 				log.error(new Error('Error in side effect', { cause: se.error }))

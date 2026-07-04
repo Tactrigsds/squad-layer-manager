@@ -197,6 +197,26 @@ export namespace Client {
 		}
 	}
 
+	// tolerant wrapper over processAckedOps: around reconnects an ack can straddle an init snapshot
+	// that already incorporated some of the acked ops (processInit drops those from pendingOps) --
+	// those ids are skipped instead of throwing, and the rest of the batch is still acked. ids in
+	// neither pendingOps nor syncedOps indicate a genuine protocol problem and are returned as
+	// unknownOpIds for the caller to report
+	export function processAcks<O extends BaseOp, S, SE extends SideEffectBase>(
+		session: Session<O, S, SE>,
+		opIds: OpId[],
+		reducer: Reducer<O, S, SE>,
+	): { session: Session<O, S, SE>; ackedOps: O[]; unknownOpIds: OpId[] } {
+		const pendingIds = new Set(session.pendingOps.map(op => op.opId))
+		const syncedIds = new Set(session.syncedOps.map(op => op.opId))
+		const unknownOpIds = opIds.filter(id => !pendingIds.has(id) && !syncedIds.has(id))
+		const pendingAckedIds = opIds.filter(id => pendingIds.has(id))
+		if (pendingAckedIds.length === 0) return { session, ackedOps: [], unknownOpIds }
+		const pendingAckedIdSet = new Set(pendingAckedIds)
+		const ackedOps = session.pendingOps.filter(op => pendingAckedIdSet.has(op.opId))
+		return { session: processAckedOps(session, pendingAckedIds, reducer), ackedOps, unknownOpIds }
+	}
+
 	export function localOps<O extends BaseOp, S, SE extends SideEffectBase>(session: Session<O, S, SE>): O[] {
 		return [...session.syncedOps, ...session.pendingOps]
 	}

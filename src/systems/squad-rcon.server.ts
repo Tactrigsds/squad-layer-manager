@@ -28,7 +28,11 @@ export type SquadRcon = {
 	teams: AsyncResource<SM.TeamsRes, C.Rcon & C.AdminList & CS.AbortSignal>
 }
 
-export function initSquadRcon(ctx: C.Rcon & C.AdminList & CS.AbortSignal, cleanup: Cleanup.Tasks): SquadRcon {
+export function initSquadRcon(
+	ctx: C.Rcon & C.AdminList & CS.AbortSignal,
+	cleanup: Cleanup.Tasks,
+	opts?: { onFatalError?: (err: unknown) => void },
+): SquadRcon {
 	const rcon = ctx.rcon
 	const layersStatus: SquadRcon['layersStatus'] = new AsyncResource<SM.LayerStatusRes, C.Rcon & CS.AbortSignal>(
 		`serverStatus`,
@@ -40,6 +44,7 @@ export function initSquadRcon(ctx: C.Rcon & C.AdminList & CS.AbortSignal, cleanu
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.LayerStatusRes) => res.code !== 'ok',
 			log,
+			onFatalError: opts?.onFatalError,
 		},
 	)
 	cleanup.push(() => layersStatus.dispose())
@@ -54,6 +59,7 @@ export function initSquadRcon(ctx: C.Rcon & C.AdminList & CS.AbortSignal, cleanu
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.ServerInfoRes) => res.code !== 'ok',
 			log,
+			onFatalError: opts?.onFatalError,
 		},
 	)
 	cleanup.push(() => serverInfo.dispose())
@@ -68,6 +74,7 @@ export function initSquadRcon(ctx: C.Rcon & C.AdminList & CS.AbortSignal, cleanu
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.TeamsRes) => res.code !== 'ok',
 			log,
+			onFatalError: opts?.onFatalError,
 		},
 	)
 	cleanup.push(() => teams.dispose())

@@ -190,6 +190,12 @@ export type SideEffect =
 		code: 'request-queue-item-generation'
 	}
 	| {
+		// success is false when the op was skipped (stale edit window, pending generation)
+		code: 'op-outcome'
+		op: Operation
+		success: boolean
+	}
+	| {
 		// no more sideEffects for this reducer call
 		code: 'complete'
 	}
@@ -222,7 +228,8 @@ export function createOpId(): string {
 export const reducer: RbSyncState.Reducer<Operation, State, SideEffect> = (oldState, ops, prevOps, onSideEffect) => {
 	const state = Obj.deepClone(oldState)
 	for (const op of ops) {
-		applyOperation(state, op, onSideEffect)
+		const success = applyOperation(state, op, onSideEffect)
+		onSideEffect?.({ code: 'op-outcome', op, success })
 	}
 	const result = LL.ListSchema.safeParse(state.list)
 	if (!result.success) {
@@ -238,18 +245,19 @@ export const reducer: RbSyncState.Reducer<Operation, State, SideEffect> = (oldSt
 	return state
 }
 
-export function applyOperation(session: State, newOp: Operation, onSideEffect?: RbSyncState.OnSideEffect<SideEffect>) {
+// returns whether the op was applied (as opposed to skipped)
+export function applyOperation(session: State, newOp: Operation, onSideEffect?: RbSyncState.OnSideEffect<SideEffect>): boolean {
 	const opWindowSeqId = (newOp as { editWindowSeqId?: number })?.editWindowSeqId
 	if (opWindowSeqId && opWindowSeqId !== session.editWindowSeqId) {
-		return
+		return false
 	}
 	if (newOp.op === 'queue-item-generated') {
 		saveList(session, [newOp.item], onSideEffect)
 		session.requestingGeneratedQueueItem = false
-		return
+		return true
 	}
 	if (session.requestingGeneratedQueueItem) {
-		return
+		return false
 	}
 	let source: LL.Source
 	{
@@ -270,7 +278,7 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 			if (session.savedList.length === 0) {
 				session.requestingGeneratedQueueItem = true
 				onSideEffect?.({ code: 'request-queue-item-generation' })
-				return
+				return true
 			}
 			break
 		}
@@ -294,7 +302,7 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 
 		case 'set-vote-result': {
 			const { item: voteItem } = Obj.destrNullable(LL.findItemById(session.savedList, newOp.voteItemId))
-			if (!voteItem || !LL.isParentVoteItem(voteItem)) return
+			if (!voteItem || !LL.isParentVoteItem(voteItem)) return false
 			LL.setEndingVoteStateInPlace(voteItem, newOp.result)
 			saveList(session, session.savedList, onSideEffect)
 			break
@@ -412,6 +420,8 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 		default:
 			assertNever(newOp)
 	}
+
+	return true
 }
 
 function saveList(session: State, list: LL.List, onSideEffect: RbSyncState.OnSideEffect<SideEffect> | undefined) {

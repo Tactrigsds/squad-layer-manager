@@ -22,7 +22,7 @@ import * as React from 'react'
 // oxlint-disable-next-line import/default
 import LQWorker from '@/systems/layer-queries.worker?worker'
 import * as UsersClient from '@/systems/users.client'
-import { experimental_streamedQuery as streamedQuery, queryOptions, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import * as Im from 'immer'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
@@ -123,94 +123,100 @@ export type QueryLayersPacket =
 	| { code: 'layers-page' } & QueryLayersPageData
 	| { code: 'menu-item-possible-values'; values: Record<string, string[]> }
 
-export function getQueryLayersOptions(
-	input: LQY.LayersQueryInput,
-	// cringe but works for now. tanstack query makes it hard to get at the stream otherwise
-	packet$?: Rx.Subject<QueryLayersPacket>,
-	errorStore?: Zus.StoreApi<F.NodeValidationErrorStore>,
-) {
-	const backgroundStateEpoch = Store.getState().filtersModifiedEpoch
-	async function* streamLayersQuery() {
-		try {
-			for await (const res of streamLayerQueriesResponse(input)) {
-				if (res.code === 'err:invalid-node') {
-					console.error('queryLayers: Invalid node error:', res.errors)
-					errorStore?.setState({ errors: res.errors })
-					throw new Error('Invalid node')
-				} else if (res.code === 'err:missing-item-states') {
-					throw new Error('err:missing-item-states')
-				} else {
-					errorStore?.setState({ errors: undefined })
-				}
-				if (res.code === 'menu-item-possible-values') {
-					packet$?.next(res)
-					yield res
-					continue
-				}
+async function* streamQueryLayersPackets(input: LQY.LayersQueryInput): AsyncGenerator<QueryLayersPacket> {
+	for await (const res of streamLayerQueriesResponse(input)) {
+		if (res.code === 'err:invalid-node') {
+			console.error('queryLayers: Invalid node error:', res.errors)
+			throw new Error('Invalid node')
+		} else if (res.code === 'err:missing-item-states') {
+			throw new Error('err:missing-item-states')
+		}
+		if (res.code === 'menu-item-possible-values') {
+			yield res
+			continue
+		}
 
-				const user = await UsersClient.fetchLoggedInUser()
-				const userCanForceSelect = RBAC.rbacUserHasPerms(user, RBAC.perm('queue:force-write'))
-				let page = {
-					...res,
-					input,
+		const user = await UsersClient.fetchLoggedInUser()
+		const userCanForceSelect = RBAC.rbacUserHasPerms(user, RBAC.perm('queue:force-write'))
+		let page = {
+			...res,
+			input,
+		}
+		if (input.selectedLayers) {
+			const layerIdsForPage = input.selectedLayers.slice(
+				(input.pageIndex ?? 0) * input.pageSize,
+				((input.pageIndex ?? 0) * input.pageSize) + input.pageSize,
+			)
+			const selectedLayers: RowData[] = layerIdsForPage.map((id) => {
+				const layer = page!.layers.find(l => l.id === id)
+				if (layer) {
+					return layerToRowData(layer, userCanForceSelect, input.constraints ?? [])
 				}
-				if (input.selectedLayers) {
-					const layerIdsForPage = input.selectedLayers.slice(
-						(input.pageIndex ?? 0) * input.pageSize,
-						((input.pageIndex ?? 0) * input.pageSize) + input.pageSize,
-					)
-					const selectedLayers: RowData[] = layerIdsForPage.map((id) => {
-						const layer = page!.layers.find(l => l.id === id)
-						if (layer) {
-							return layerToRowData(layer, userCanForceSelect, input.constraints ?? [])
-						}
-						const newLayer: any = {
-							...L.toLayer(id),
-							constraints: Array(input.constraints?.length ?? 0).fill(false),
-							matchDescriptors: [],
-						}
-						return layerToRowData(newLayer, userCanForceSelect, input.constraints ?? [])
-					})
-					if (input.sort) {
-						;(selectedLayers as Record<string, any>[]).sort((a: any, b: any) => {
-							const sort = input.sort!
-							if (sort.type === 'random') {
-								// For random sort just shuffle the entries
-								return Math.random() - 0.5
-							} else if (sort.type === 'column') {
-								const column = sort.sortBy
-								const direction = sort.direction === 'ASC' ? 1 : -1
+				const newLayer: any = {
+					...L.toLayer(id),
+					constraints: Array(input.constraints?.length ?? 0).fill(false),
+					matchDescriptors: [],
+				}
+				return layerToRowData(newLayer, userCanForceSelect, input.constraints ?? [])
+			})
+			if (input.sort) {
+				;(selectedLayers as Record<string, any>[]).sort((a: any, b: any) => {
+					const sort = input.sort!
+					if (sort.type === 'random') {
+						// For random sort just shuffle the entries
+						return Math.random() - 0.5
+					} else if (sort.type === 'column') {
+						const column = sort.sortBy
+						const direction = sort.direction === 'ASC' ? 1 : -1
 
-								if (a[column] === b[column]) return 0
-								if (a[column] === null || a[column] === undefined) return direction
-								if (b[column] === null || b[column] === undefined) return -direction
+						if (a[column] === b[column]) return 0
+						if (a[column] === null || a[column] === undefined) return direction
+						if (b[column] === null || b[column] === undefined) return -direction
 
-								return a[column] < b[column] ? -direction : direction
-							} else {
-								assertNever(sort)
-							}
-						})
+						return a[column] < b[column] ? -direction : direction
+					} else {
+						assertNever(sort)
 					}
-					page = { ...page, layers: selectedLayers as any }
-				}
-				if (page) {
-					const packet = {
-						...page,
-						layers: page.layers?.map((layer: any) => layerToRowData(layer, userCanForceSelect, input.constraints ?? [])),
-					}
-					packet$?.next(packet)
-					yield packet
-				}
+				})
 			}
-		} finally {
-			packet$?.complete()
+			page = { ...page, layers: selectedLayers as any }
+		}
+		if (page) {
+			yield {
+				...page,
+				layers: page.layers?.map((layer: any) => layerToRowData(layer, userCanForceSelect, input.constraints ?? [])),
+			}
 		}
 	}
-	return queryOptions({
-		queryKey: ['layers', '__queryLayers__', getDepKey(input, backgroundStateEpoch)],
-		queryFn: streamedQuery({ queryFn: streamLayersQuery }),
-		staleTime: Infinity,
-	})
+}
+
+// replaces the react-query cache for layer page queries: each entry is a shareReplay'd packet stream, so
+// completed results replay synchronously and concurrent subscribers (e.g. prefetch + table) share one worker query
+const queryLayersCache = new Map<string, Rx.Observable<QueryLayersPacket>>()
+const QUERY_LAYERS_CACHE_MAX_ENTRIES = 50
+
+// starts the query eagerly on first call for a given input; the returned observable replays all packets
+export function queryLayers$(input: LQY.LayersQueryInput): Rx.Observable<QueryLayersPacket> {
+	const key = JSON.stringify(getDepKey(input, Store.getState().filtersModifiedEpoch))
+	let packet$ = queryLayersCache.get(key)
+	if (!packet$) {
+		packet$ = Rx.from(streamQueryLayersPackets(input)).pipe(Rx.shareReplay())
+		queryLayersCache.set(key, packet$)
+		// kick off the query immediately; drop failed queries so the next subscriber retries
+		packet$.subscribe({ error: () => queryLayersCache.delete(key) })
+		while (queryLayersCache.size > QUERY_LAYERS_CACHE_MAX_ENTRIES) {
+			queryLayersCache.delete(queryLayersCache.keys().next().value!)
+		}
+	} else {
+		// refresh the entry's insertion-order position so hot queries survive eviction
+		queryLayersCache.delete(key)
+		queryLayersCache.set(key, packet$)
+	}
+	return packet$
+}
+
+export function prefetchLayersQuery(input: LQY.LayersQueryInput) {
+	void queryLayers$(input)
 }
 
 export function getQueryLayersInput(baseInput: LQY.BaseQueryInput, _opts?: QueryLayersInputOpts): LQY.LayersQueryInput {
@@ -326,15 +332,13 @@ export type LayerItemStatusData = {
 export function useLayerItemStatusData(
 	layerItem: LQY.LayerItem | LQY.ItemId,
 	squadServerFrameKey?: SquadServerFrame.Key,
-	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
 ): LayerItemStatusData | null {
 	const queriedConstraints = useLayerItemStatusConstraints(squadServerFrameKey)
-	const layerItemsState = ZusUtils.useStore(squadServerFrameKey, s => s?.layerItemsState)
-	const queryRes = useLayerItemStatuses({ constraints: queriedConstraints, list: layerItemsState }, { ...options })
+	const statuses = ZusUtils.useStore(squadServerFrameKey, s => s?.layerItemStatuses)
 	const itemId = LQY.resolveId(layerItem)
 
-	const allMatchDescriptors = queryRes.data?.matchDescriptors
-	const presentLayers = queryRes.data?.present
+	const allMatchDescriptors = statuses?.matchDescriptors
+	const presentLayers = statuses?.present
 
 	const highlightedMatchDescriptors = ZusUtils.useStore(
 		Store,
@@ -388,40 +392,18 @@ export function useLayerItemStatusData(
 	])
 }
 
-// TODO prefetching
-export function useLayerItemStatuses(
-	input: LQY.LayerItemStatusesInput,
-	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
-) {
-	return useQuery({
-		...options,
-		queryKey: [
-			'layers',
-			'getLayerStatusesForLayerQueue',
-			useDepKey(input),
-		],
-		enabled: options?.enabled,
-		placeholderData: prev => prev,
-		queryFn: async () => {
-			// const counters = layerCtxVersionStore.getState().counters
-			// if the layer context changes we can't trust the parts anymore
-			// const layerContextUnchanged = Object.values(counters).every(c => c === 0)
-			// if (!isEditing && layerContextUnchanged) {
-			// 	return PartsSys.getServerLayerItemStatuses()
-			// }
-			const res = await sendWorkerRequest('getLayerItemStatuses', input)
-			if (res.code === 'err:invalid-node') {
-				console.error('getLayerItemStatuses: Invalid node error:', res.errors)
-				options?.errorStore?.setState({ errors: res.errors })
-				throw new Error('err:invalid-node: ' + JSON.stringify(res.errors))
-			}
-			if (res.code === 'err:missing-item-states') {
-				throw new Error('err:missing-item-states')
-			}
-			return res.statuses
-		},
-		staleTime: Infinity,
-	})
+// resolved reactively into the squad-server frame's layerItemStatuses state; not a query
+export async function fetchLayerItemStatuses(input: LQY.LayerItemStatusesInput): Promise<LQY.LayerItemStatuses | null> {
+	const res = await sendWorkerRequest('getLayerItemStatuses', input)
+	if (res.code === 'err:invalid-node') {
+		console.error('getLayerItemStatuses: Invalid node error:', res.errors)
+		return null
+	}
+	if (res.code === 'err:missing-item-states') {
+		console.error('getLayerItemStatuses: missing item states')
+		return null
+	}
+	return res.statuses
 }
 
 export function useLayerExists(

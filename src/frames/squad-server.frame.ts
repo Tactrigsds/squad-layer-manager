@@ -8,6 +8,7 @@ import { getState } from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SETTINGS from '@/models/settings.models'
+import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -20,6 +21,7 @@ export type Input = { serverId: string }
 
 export type State = ChatPrt.Store & ServerSettingsPrt.Store & LayerQueuePrt.Store & TeamswitchesPrt.Store & {
 	layerItemsState: LQY.LayerItemsState
+	layerItemStatuses: LQY.LayerItemStatuses | null
 }
 export type Types = {
 	name: 'squadServer'
@@ -53,6 +55,7 @@ export const frame = frameManager.createFrame<Types>({
 		LayerQueueClient.watchServer(args.input.serverId, args.sub)
 		args.set({
 			layerItemsState: LQY.initLayerItemsState(),
+			layerItemStatuses: null,
 		})
 
 		Rx.combineLatest([
@@ -70,6 +73,29 @@ export const frame = frameManager.createFrame<Types>({
 					layerItemsState: LQY.resolveLayerItemsState(layerList, recentMatches),
 				})
 			})
+
+		const state$ = ZusUtils.toObservable(args.key, true)
+		args.sub.add(
+			Rx.combineLatest([
+				state$.pipe(Rx.map(([state]) => state.layerItemsState), Rx.distinctUntilChanged()),
+				state$.pipe(Rx.map(([state]) => state.settings.saved), Rx.distinctUntilChanged()),
+				// filter edits invalidate previously computed statuses
+				ZusUtils.toObservable(LayerQueriesClient.Store, true).pipe(
+					Rx.map(([state]) => state.filtersModifiedEpoch),
+					Rx.distinctUntilChanged(),
+				),
+			]).pipe(
+				Rx.debounceTime(250),
+				Rx.switchMap(([list, settings]) =>
+					Rx.from(LayerQueriesClient.fetchLayerItemStatuses({
+						constraints: SETTINGS.getSettingsConstraints(settings),
+						list,
+					})).pipe(Rx.catchError(() => Rx.EMPTY))
+				),
+			).subscribe((layerItemStatuses) => {
+				if (layerItemStatuses) args.set({ layerItemStatuses })
+			}),
+		)
 	},
 })
 

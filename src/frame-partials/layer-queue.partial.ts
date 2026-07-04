@@ -8,6 +8,7 @@ import * as ZusUtils from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SLL from '@/models/shared-layer-list'
+import type * as UP from '@/models/user-presence'
 import * as RPC from '@/orpc.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as UsersClient from '@/systems/users.client'
@@ -27,6 +28,8 @@ export type State = {
 	writeIncomingOperations(ops: SLL.Operation[]): void
 
 	syncedOp$: Rx.Subject<SLL.Operation>
+	// user-attributed queue ops that landed on the synced timeline, for transient presence-panel event text
+	presenceEvent$: Rx.Subject<UP.PresenceEvent>
 	committing: boolean
 
 	// -------- derived properties --------
@@ -41,7 +44,28 @@ export function initLayerQueue(args: Args) {
 	const set = ZusUtils.toPartialSetter(args.set, 'queue')
 	const get = ZusUtils.toPartialGetter(args.get, 'queue')
 	const serverId = args.input.serverId
-	const initRbSession = RbSyncState.Client.initSession<SLL.Operation, SLL.State, SLL.SideEffect>(SLL.createNewState())
+	const presenceEvent$ = new Rx.Subject<UP.PresenceEvent>()
+	// side effects only fire when ops land on the synced timeline (incoming ops + acks of our own),
+	// so each op produces at most one presence event per client
+	const onSideEffect = (se: SLL.SideEffect) => {
+		if (se.code !== 'op-outcome' || !se.success) return
+		const op = se.op
+		if (!('userId' in op)) return
+		switch (op.op) {
+			case 'add':
+				presenceEvent$.next({ userId: op.userId, action: 'added-layers' })
+				break
+			case 'save':
+				presenceEvent$.next({ userId: op.userId, action: 'saved-queue' })
+				break
+			case 'reset-to-saved':
+				presenceEvent$.next({ userId: op.userId, action: 'discarded-queue-edits' })
+				break
+		}
+	}
+	const initRbSession = RbSyncState.Client.initSession<SLL.Operation, SLL.State, SLL.SideEffect>(SLL.createNewState(), {
+		onSideEffect,
+	})
 
 	set(
 		{
@@ -49,6 +73,7 @@ export function initLayerQueue(args: Args) {
 			rbSession: initRbSession,
 
 			syncedOp$: new Rx.Subject(),
+			presenceEvent$,
 
 			// derived
 			layerList: initRbSession.localState.list,
@@ -71,14 +96,12 @@ export function initLayerQueue(args: Args) {
 					case 'ack': {
 						// ops are deterministic, so the server only sends back the id -- replay our pending copy
 						const session = get().rbSession
-						const ackedOp = session.pendingOps.find(op => op.opId === update.opId)
-						if (!ackedOp) {
-							// can happen if the session was reset by a reconnect 'init' while the op was in flight
-							console.warn(`received ack for unknown op ${update.opId}`)
-							break
+						const res = RbSyncState.Client.processAcks(session, [update.opId], SLL.reducer)
+						if (res.unknownOpIds.length > 0) console.warn(`received ack for unknown op ${update.opId}`)
+						if (res.session !== session) {
+							set({ rbSession: res.session })
+							for (const ackedOp of res.ackedOps) get().syncedOp$.next(ackedOp)
 						}
-						set({ rbSession: RbSyncState.Client.processAckedOps(session, [update.opId], SLL.reducer) })
-						get().syncedOp$.next(ackedOp)
 						break
 					}
 					default:

@@ -67,6 +67,12 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 	React.useEffect(() => {
 		if (selectedCount === 0 && showSelected) setShowSelected(false)
 	}, [selectedCount, showSelected])
+	const [adminsOnly, setAdminsOnly] = React.useState(false)
+	const adminsOnlyId = React.useId()
+	const secondaryFilterState = ZusUtils.useStore(props.stores.squadServer!, ChatPrt.Sel.secondaryFilterState)
+	React.useEffect(() => {
+		if (secondaryFilterState === 'ADMIN') setAdminsOnly(true)
+	}, [secondaryFilterState])
 	const [roleFilter, setRoleFilter] = React.useState<string | null>(null)
 	const [groupingFilter, setGroupingFilter] = React.useState<string | null>(null)
 	const [squadFilterA, setSquadFilterA] = React.useState<string | null>(null)
@@ -137,6 +143,12 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 					/>
 					<Label htmlFor={showSelectedId} className="text-sm whitespace-nowrap">Show Selected</Label>
 					{selectedCount > 0 && <span className="text-xs text-muted-foreground">({selectedCount})</span>}
+					<Switch
+						id={adminsOnlyId}
+						checked={adminsOnly}
+						onCheckedChange={setAdminsOnly}
+					/>
+					<Label htmlFor={adminsOnlyId} className="text-sm whitespace-nowrap">Admins Only</Label>
 					<Button
 						variant="ghost"
 						size="icon"
@@ -153,18 +165,34 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 			{isDesktop
 				? (
 					<div className="grid w-full grid-cols-[1fr_1fr] divide-x divide-border">
-						<TeamPlayerTable teamId="A" searchQuery={searchQuery} filters={filtersA} showSelected={showSelected} stores={props.stores} />
+						<TeamPlayerTable
+							teamId="A"
+							searchQuery={searchQuery}
+							filters={filtersA}
+							showSelected={showSelected}
+							adminsOnly={adminsOnly}
+							stores={props.stores}
+						/>
 						<TeamPlayerTable
 							teamId="B"
 							searchQuery={searchQuery}
 							filters={filtersB}
 							showSelected={showSelected}
+							adminsOnly={adminsOnly}
 							className="pl-1"
 							stores={props.stores}
 						/>
 					</div>
 				)
-				: <CombinedPlayerTable searchQuery={searchQuery} filters={filtersC} showSelected={showSelected} stores={props.stores} />}
+				: (
+					<CombinedPlayerTable
+						searchQuery={searchQuery}
+						filters={filtersC}
+						showSelected={showSelected}
+						adminsOnly={adminsOnly}
+						stores={props.stores}
+					/>
+				)}
 		</div>
 	)
 }
@@ -443,6 +471,39 @@ function SelectOrSpinner({ playerId, checked, onCheckedChange, stores }: {
 	)
 }
 
+// shift+click anywhere in the squad/grouping cell selects the squad/grouping members
+function shiftClickCellProps(
+	columnId: string,
+	player: TeamsPanelModels.EnrichedPlayer,
+	stores: SquadServerFrame.KeyProp,
+): Pick<React.TdHTMLAttributes<HTMLTableCellElement>, 'onClickCapture' | 'title'> {
+	if (columnId === 'squad' && player.squadId !== null) {
+		return {
+			title: 'Shift+click: select all members of this squad',
+			onClickCapture: e => {
+				if (!e.shiftKey) return
+				e.preventDefault()
+				e.stopPropagation()
+				const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
+				SquadServerClient.Actions.selectSquad(SM.PlayerIds.getPlayerId(player.ids), players)
+			},
+		}
+	}
+	if (columnId === 'grouping' && player.grouping) {
+		const grouping = player.grouping
+		return {
+			title: 'Shift+click: select all players in this grouping',
+			onClickCapture: e => {
+				if (!e.shiftKey) return
+				e.preventDefault()
+				e.stopPropagation()
+				SquadServerClient.Actions.selectGrouping(stores, grouping)
+			},
+		}
+	}
+	return {}
+}
+
 type PlayerFilters = {
 	role: string | null
 	setRole: (v: string | null) => void
@@ -493,6 +554,13 @@ const playerColumns = [
 			<Checkbox
 				checked={table.getIsAllRowsSelected()}
 				onCheckedChange={checked => table.toggleAllRowsSelected(!!checked)}
+				onClick={e => {
+					if (!e.shiftKey) return
+					e.preventDefault()
+					const { stores } = table.options.meta as { stores: SquadServerFrame.KeyProp }
+					SquadServerClient.Actions.selectAllTeamPlayers(stores)
+				}}
+				title="Select all shown. Shift+click: select all players on both teams"
 				aria-label="Select all"
 			/>
 		),
@@ -634,6 +702,7 @@ function TeamPlayerTable(
 		searchQuery: string
 		filters: PlayerFilters
 		showSelected: boolean
+		adminsOnly: boolean
 		className?: string
 		stores: SquadServerFrame.KeyProp
 	},
@@ -699,8 +768,9 @@ function TeamPlayerTable(
 		if (role !== null) result = result.filter(p => p.role === role)
 		if (grouping !== null) result = result.filter(p => (p.grouping ?? null) === grouping)
 		if (squad !== null) result = result.filter(p => p.squadId === Number(squad))
+		if (props.adminsOnly) result = result.filter(p => p.isAdmin)
 		return result
-	}, [players, props.searchQuery, props.filters])
+	}, [players, props.searchQuery, props.filters, props.adminsOnly])
 
 	const displayedPlayers = React.useMemo(() => {
 		if (!props.showSelected) return filteredPlayers
@@ -792,7 +862,7 @@ function TeamPlayerTable(
 									}}
 								>
 									{row.getVisibleCells().map(cell => (
-										<TableCell key={cell.id}>
+										<TableCell key={cell.id} {...shiftClickCellProps(cell.column.id, row.original, props.stores)}>
 											{flexRender(cell.column.columnDef.cell, cell.getContext())}
 										</TableCell>
 									))}
@@ -835,6 +905,13 @@ const combinedPlayerColumns = [
 			<Checkbox
 				checked={table.getIsAllRowsSelected()}
 				onCheckedChange={checked => table.toggleAllRowsSelected(!!checked)}
+				onClick={e => {
+					if (!e.shiftKey) return
+					e.preventDefault()
+					const { stores } = table.options.meta as { stores: SquadServerFrame.KeyProp }
+					SquadServerClient.Actions.selectAllTeamPlayers(stores)
+				}}
+				title="Select all shown. Shift+click: select all players on both teams"
 				aria-label="Select all"
 			/>
 		),
@@ -983,6 +1060,7 @@ function CombinedPlayerTable(
 		searchQuery: string
 		filters: PlayerFilters
 		showSelected: boolean
+		adminsOnly: boolean
 		className?: string
 		stores: SquadServerFrame.KeyProp
 	},
@@ -1084,8 +1162,9 @@ function CombinedPlayerTable(
 		if (role !== null) result = result.filter(p => p.role === role)
 		if (grouping !== null) result = result.filter(p => (p.grouping ?? null) === grouping)
 		if (squad !== null) result = result.filter(p => squad === `${p.normedTeam}:${p.squadId}`)
+		if (props.adminsOnly) result = result.filter(p => p.isAdmin)
 		return result
-	}, [players, props.searchQuery, props.filters])
+	}, [players, props.searchQuery, props.filters, props.adminsOnly])
 
 	const displayedPlayers = React.useMemo(() => {
 		if (!props.showSelected) return filteredPlayers
@@ -1178,7 +1257,7 @@ function CombinedPlayerTable(
 									}}
 								>
 									{row.getVisibleCells().map(cell => (
-										<TableCell key={cell.id}>
+										<TableCell key={cell.id} {...shiftClickCellProps(cell.column.id, row.original, props.stores)}>
 											{flexRender(cell.column.columnDef.cell, cell.getContext())}
 										</TableCell>
 									))}
@@ -1231,6 +1310,7 @@ function SwapsPanel({ className, stores }: { className?: string; stores: SquadSe
 	const switchesModified = ZusUtils.useStore(stores.squadServer!, TSWClient.Sel.switchesModified)
 	const [isEditing, setIsEditing] = UPClient.useEditingTeamswitchesState(stores.squadServer!.serverId)
 	const numEditors = ZusUtils.useStore(UPClient.Store, s => s.teamswitchEditors.size)
+	console.log({ canExecute, numEditors })
 	const [forceSave, setForceSave] = React.useState(false)
 	const startEditingDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
 

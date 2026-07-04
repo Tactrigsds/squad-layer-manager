@@ -68,7 +68,7 @@ export const ACTIVITY_LOADER_CONFIGS = [
 		'selectLayers',
 		s => {
 			const node = UP.Trans.editingQueue(s.opts.serverId).match(s)?.chosen
-			if (node?.id === 'ADDING_ITEM' || node?.id === 'EDITING_ITEM') return node
+			if (node?.id === 'ADDING_ITEM' || node?.id === 'EDITING_ITEM') return { serverId: s.opts.serverId, ...node }
 			return undefined
 		},
 	)({
@@ -81,9 +81,12 @@ export const ACTIVITY_LOADER_CONFIGS = [
 				const { item } = Obj.destrNullable(LL.findItemById(layerList, args.key.opts.itemId))
 				if (item) editedLayerId = item.layerId
 			}
+			const squadServerInput = SquadServerFrame.createInput(args.key.serverId)
+			const squadServer = frameManager.ensureSetup(SquadServerFrame.frame, squadServerInput)
 			const input = SelectLayersFrame.createInput({
 				cursor: args.key.opts.cursor,
 				initialEditedLayerId: editedLayerId,
+				squadServer: squadServer,
 			})
 			const frameKey = frameManager.ensureSetup(SelectLayersFrame.frame, input)
 			return { selectLayersFrame: frameKey, activity: args.key }
@@ -102,13 +105,15 @@ export const ACTIVITY_LOADER_CONFIGS = [
 		'genVote',
 		s => {
 			const node = UP.Trans.editingQueue(s.opts.serverId).match(s)?.chosen
-			if (node?.id === 'GENERATING_VOTE') return node
+			if (node?.id === 'GENERATING_VOTE') return { serverId: s.opts.serverId, ...node }
 			return undefined
 		},
 	)({
 		unloadOnLeave: true,
 		load(args) {
-			const input = GenVoteFrame.createInput({ cursor: { type: 'start' }, server: getCurrentServerKey() })
+			const squadServerInput = SquadServerFrame.createInput(args.key.serverId)
+			const squadServer = frameManager.ensureSetup(SquadServerFrame.frame, squadServerInput)
+			const input = GenVoteFrame.createInput({ cursor: { type: 'start' }, server: squadServer })
 			const frameKey = frameManager.ensureSetup(GenVoteFrame.frame, input)
 			return { genVoteFrame: frameKey, activity: args.key }
 		},
@@ -227,7 +232,10 @@ function createPresenceStore() {
 
 function handleIncomingPresenceUpdate(update: UP.PresenceUpdate) {
 	if (update.code === 'init') {
-		const newSession = RbSyncState.Client.initSession(UP.initState(), { onSideEffect, ops: update.ops })
+		// apply the server snapshot and rebase in-flight pending ops onto it (e.g. the
+		// enter-server-dashboard dispatched by the route onEnter racing this init on page load) so
+		// they aren't wiped and the acks that follow still resolve
+		const newSession = RbSyncState.Client.processInit(Store.getState().session, update.state, update.ops, UP.reducer)
 		Store.setState({ session: newSession })
 	} else if (update.code === 'op') {
 		const newSession = RbSyncState.Client.processIncomingOps(Store.getState().session, update.ops, UP.reducer)
@@ -235,12 +243,9 @@ function handleIncomingPresenceUpdate(update: UP.PresenceUpdate) {
 	} else if (update.code === 'ack') {
 		// ops are deterministic, so the server only sends back the ids -- replay our pending copies
 		const session = Store.getState().session
-		const pendingIds = new Set(session.pendingOps.map(op => op.opId))
-		if (!update.opIds.every(id => pendingIds.has(id))) {
-			console.warn('received ack for unknown presence ops', update.opIds)
-			return
-		}
-		Store.setState({ session: RbSyncState.Client.processAckedOps(session, update.opIds, UP.reducer) })
+		const res = RbSyncState.Client.processAcks(session, update.opIds, UP.reducer)
+		if (res.unknownOpIds.length > 0) console.warn('received ack for unknown presence ops', res.unknownOpIds)
+		if (res.session !== session) Store.setState({ session: res.session })
 	}
 }
 

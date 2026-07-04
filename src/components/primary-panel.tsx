@@ -1,4 +1,5 @@
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
+import * as ChatPrt from '@/frame-partials/chat.partial'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
@@ -55,6 +56,14 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 	const persistedTab = ZusUtils.useStore(ClientOnlySettings.Store, s => s.primaryPanelTab)
 	const tab = _tab ?? (persistedTab === 'VIEWING_TEAMS' ? 'teams' : 'queue')
 
+	const queueLength = ZusUtils.useStore(props.stores.squadServer, s => s.queue.layerList.length)
+	const playerCount = ZusUtils.useStore(props.stores.squadServer, s => ChatPrt.Sel.chatState(s).players.length)
+
+	// subjects are created once per frame instance, so reading them outside a selector is fine
+	const frameState = ZusUtils.getState(props.stores.squadServer)
+	const queueEvent$ = frameState.queue.presenceEvent$
+	const teamswitchEvent$ = frameState.teamswitches.presenceEvent$
+
 	return (
 		<Card className="flex flex-col flex-1 min-h-0">
 			<ScrollArea className="flex-1">
@@ -66,12 +75,20 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 							value: 'queue',
 							label: (
 								<div className="flex justify-between">
-									<span>Queue</span>
+									<span>Queue ({queueLength})</span>
 									<UserPresencePanel
 										stores={props.stores}
 										sourcePresenceFn={sortEditingPresence}
 										matchActivity={root => UP.Trans.viewingQueue(serverId).match(root) || UP.Trans.editingQueue(serverId).match(root)}
-										matchActivityForStatusText={UP.Trans.viewingQueue(serverId).match}
+										matchActivityForStatusText={root =>
+											UP.Trans.viewingQueue(serverId).match(root) && UP.Trans.editingQueue(serverId).match(root)}
+										event$={queueEvent$}
+										transitionMessages={[
+											{
+												matchActivity: root => UP.Trans.editingQueue(serverId).match(root),
+												leaveMessage: 'Finished editing',
+											},
+										]}
 										className="min-w-0"
 									/>
 								</div>
@@ -81,13 +98,15 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 							value: 'teams',
 							label: (
 								<div className="flex justify-between">
-									<span>Teams</span>
+									<span>Teams ({playerCount})</span>
 									<UserPresencePanel
 										stores={props.stores}
 										sourcePresenceFn={sortEditingPresence}
 										matchActivity={root =>
 											UP.Trans.viewingTeams(serverId).match(root) || UP.Trans.editingTeamswitches(serverId).match(root)}
-										matchActivityForStatusText={UP.Trans.viewingTeams(serverId).match}
+										matchActivityForStatusText={root =>
+											UP.Trans.viewingTeams(serverId).match(root) && UP.Trans.editingTeamswitches(serverId).match(root)}
+										event$={teamswitchEvent$}
 										className="min-w-0"
 									/>
 								</div>

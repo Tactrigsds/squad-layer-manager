@@ -38,8 +38,7 @@ export async function filterEditPrefetch(filterId?: string) {
 			const colConfig = await ConfigClient.fetchEffectiveColConfig()
 			void RPC.queryClient.prefetchQuery(getFilterContributorsBase(filterId))
 			const input = LayerQueriesClient.getQueryLayersInput(LQY.getEditFilterPageBaseInput(entity.filter), { cfg: colConfig })
-			const options = LayerQueriesClient.getQueryLayersOptions(input)
-			void RPC.queryClient.prefetchQuery(options)
+			LayerQueriesClient.prefetchLayersQuery(input)
 		},
 	}
 }

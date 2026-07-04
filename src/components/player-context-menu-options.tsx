@@ -2,17 +2,22 @@ import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useToast } from '@/hooks/use-toast'
 import * as ZusUtils from '@/lib/zustand'
+import * as BM from '@/models/battlemetrics.models'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
+import * as TeamsPanelModels from '@/models/teams-panel.models'
 import * as RBAC from '@/rbac.models'
+import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as RbacClient from '@/systems/rbac.client'
+import * as SettingsClient from '@/systems/settings.client'
+import type { PublicSettings } from '@/systems/settings.server'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswitches.client'
 import * as UPClient from '@/systems/user-presence.client'
 import React from 'react'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
-import { ContextMenuItem, ContextMenuSeparator } from './ui/context-menu'
+import { ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut } from './ui/context-menu'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
 
 export type MenuSlots = {
@@ -65,7 +70,28 @@ export function PlayerMenuItems(
 				username: player.ids.username,
 				squadName: squad?.squadName ?? null,
 				isCommander: squad?.squadName === 'Command Squad',
+				isAdmin: player.isAdmin,
 			}
+		},
+	)
+
+	const grouping = ZusUtils.useStore(
+		stores.squadServer,
+		MatchHistoryClient.currentMatch$(serverId),
+		BattlemetricsClient.playerBmData$,
+		BattlemetricsClient.Store,
+		SettingsClient.PublicSettingsStore,
+		(
+			chatStore: ChatPrt.Store,
+			currentMatch: MH.MatchDetails | undefined,
+			bmData: BM.PublicPlayerBmData,
+			bmStore: BM.StoreState,
+			settings: PublicSettings | undefined,
+		): string | undefined => {
+			const player = SM.PlayerIds.find(ChatPrt.Sel.chatState(chatStore).players, p => p.ids, playerId)
+			if (player?.teamId == null) return undefined
+			const enriched = TeamsPanelModels.Sel.playersForTeam(player.teamId)(chatStore, currentMatch, bmData, bmStore, settings)
+			return SM.PlayerIds.find(enriched, p => p.ids, playerId)?.grouping
 		},
 	)
 
@@ -246,19 +272,40 @@ export function PlayerMenuItems(
 			<Item onClick={copyTeleportCommand} disabled={!isOnServer}>
 				Copy Teleport Command
 			</Item>
+			{(inSquad || grouping != null || playerInfo?.isAdmin) && <Separator />}
 			{inSquad && (
-				<>
-					<Separator />
-					<Item
-						onClick={() => {
-							TSWClient.Actions.ensureViewingTeams(serverId)
-							const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer)).players
-							SquadServerClient.Actions.selectSquad(playerId, players)
-						}}
-					>
-						Select Squad
-					</Item>
-				</>
+				<Item
+					onClick={() => {
+						TSWClient.Actions.ensureViewingTeams(serverId)
+						const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer)).players
+						SquadServerClient.Actions.selectSquad(playerId, players)
+					}}
+				>
+					<span title="Shortcut: shift+click the player's Squad cell in the teams panel">Select Squad</span>
+					<ContextMenuShortcut>⇧+click squad cell</ContextMenuShortcut>
+				</Item>
+			)}
+			{grouping != null && (
+				<Item
+					onClick={() => {
+						TSWClient.Actions.ensureViewingTeams(serverId)
+						SquadServerClient.Actions.selectGrouping(stores, grouping)
+					}}
+				>
+					<span title="Shortcut: shift+click the player's Grouping cell in the teams panel">Select Grouping ({grouping})</span>
+					<ContextMenuShortcut>⇧+click grouping cell</ContextMenuShortcut>
+				</Item>
+			)}
+			{playerInfo?.isAdmin && (
+				<Item
+					onClick={() => {
+						TSWClient.Actions.ensureViewingTeams(serverId)
+						SquadServerClient.Actions.selectAllAdmins(stores)
+					}}
+				>
+					<span title="Shortcut: shift+click the shield badge next to an admin's name">Select All Admins</span>
+					<ContextMenuShortcut>⇧+click admin badge</ContextMenuShortcut>
+				</Item>
 			)}
 			{inSquad && (
 				<>

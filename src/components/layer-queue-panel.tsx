@@ -190,9 +190,7 @@ function ValidationWarningsDisplay(
 }
 
 function useQueueWarnings(stores: SquadServerFrame.KeyProp) {
-	const constraints = LayerQueriesClient.useLayerItemStatusConstraints(stores.squadServer)
-	const layerItemsState = ZusUtils.useStore(stores.squadServer, s => s.layerItemsState)
-	const statuses = LayerQueriesClient.useLayerItemStatuses({ constraints, list: layerItemsState })
+	const warns = ZusUtils.useStore(stores.squadServer, s => s.layerItemStatuses?.warns)
 	const loggedInUser = UsersClient.useLoggedInUser()
 	const queueModifiedByUser = ZusUtils.useStore(
 		stores.squadServer!,
@@ -205,10 +203,10 @@ function useQueueWarnings(stores: SquadServerFrame.KeyProp) {
 	)
 
 	return React.useMemo(() => {
-		if (!statuses || !queueModifiedByUser) return null
-		return statuses.data?.warns
+		if (!warns || !queueModifiedByUser) return null
+		return warns
 	}, [
-		statuses.data?.warns,
+		warns,
 		queueModifiedByUser,
 	])
 }

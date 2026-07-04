@@ -6,8 +6,10 @@ import * as ZusUtils from '@/lib/zustand'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswitches.models'
+import type * as UP from '@/models/user-presence'
 import * as RPC from '@/orpc.client'
 import * as UsersClient from '@/systems/users.client'
+import * as Rx from 'rxjs'
 
 export type Store = {
 	teamswitches: TeamswitchSlice
@@ -17,6 +19,8 @@ export type KeyProp = { teamswitches: Key }
 export type TeamswitchSlice = {
 	serverId: string
 	session: RbSyncState.Client.Session<TSW.Op, TSW.State, TSW.SideEffect>
+	// user-attributed teamswitch ops that landed on the synced timeline, for transient presence-panel event text
+	presenceEvent$: Rx.Subject<UP.PresenceEvent>
 	onUpdate(update: TSW.UpdateForClient): void
 }
 
@@ -33,7 +37,7 @@ async function resolveDisplayName(source: TSW.Teamswitch['source'] | undefined):
 	}
 }
 
-function onSideEffect(se: TSW.SideEffect) {
+function onSideEffect(se: TSW.SideEffect, presenceEvent$: Rx.Subject<UP.PresenceEvent>) {
 	switch (se.code) {
 		case 'error': {
 			const userId = UsersClient.loggedInUserId
@@ -76,6 +80,7 @@ function onSideEffect(se: TSW.SideEffect) {
 		case 'save': {
 			if (!se.source) break
 			const { source, switches } = se
+			if (source.discordId) presenceEvent$.next({ userId: source.discordId, action: 'saved-teamswitches' })
 			void resolveDisplayName(source).then((name) => {
 				const count = switches.size
 				const description = count > 0
@@ -88,6 +93,7 @@ function onSideEffect(se: TSW.SideEffect) {
 
 		case 'teamswitches-executed': {
 			const { source, switchCount } = se
+			if (source?.discordId) presenceEvent$.next({ userId: source.discordId, action: 'executed-teamswitches' })
 			void resolveDisplayName(source).then((name) => {
 				const description = `${name} switched ${switchCount} player${switchCount !== 1 ? 's' : ''} to their assigned teams.`
 				toast({ title: 'Teamswitches executed', description })
@@ -100,9 +106,9 @@ function onSideEffect(se: TSW.SideEffect) {
 	}
 }
 
-function initSession(state?: TSW.State, ops?: TSW.Op[]) {
+function initSession(presenceEvent$: Rx.Subject<UP.PresenceEvent>, state?: TSW.State, ops?: TSW.Op[]) {
 	return RbSyncState.Client.initSession<TSW.Op, TSW.State, TSW.SideEffect>(state ?? TSW.initState(), {
-		onSideEffect,
+		onSideEffect: se => onSideEffect(se, presenceEvent$),
 		ops,
 	})
 }
@@ -111,11 +117,13 @@ export function initTeamswitches(args: Args) {
 	const set = ZusUtils.toPartialSetter(args.set, 'teamswitches')
 	const get = ZusUtils.toPartialGetter(args.get, 'teamswitches')
 	const serverId = args.input.serverId
+	const presenceEvent$ = new Rx.Subject<UP.PresenceEvent>()
 
 	set(
 		{
 			serverId,
-			session: initSession(),
+			session: initSession(presenceEvent$),
+			presenceEvent$,
 
 			onUpdate(update) {
 				switch (update.code) {
@@ -133,12 +141,9 @@ export function initTeamswitches(args: Args) {
 					case 'ack': {
 						// ops are deterministic, so the server only sends back the ids -- replay our pending copies
 						const session = get().session
-						const pendingIds = new Set(session.pendingOps.map(op => op.opId))
-						if (!update.opIds.every(id => pendingIds.has(id))) {
-							console.warn('received ack for unknown teamswitch ops', update.opIds)
-							break
-						}
-						set({ session: RbSyncState.Client.processAckedOps(session, update.opIds, TSW.reducer) })
+						const res = RbSyncState.Client.processAcks(session, update.opIds, TSW.reducer)
+						if (res.unknownOpIds.length > 0) console.warn('received ack for unknown teamswitch ops', res.unknownOpIds)
+						if (res.session !== session) set({ session: res.session })
 						break
 					}
 					default:

@@ -436,6 +436,17 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 
 	const layersStatusExt$: SquadServer['layersStatusExt$'] = getLayersStatusExt$(serverId)
 
+	// a resource that keeps failing after retries means the slice can't do its job -- tear the slice down instead of
+	// letting the error escalate to an unhandled rejection and crash the process
+	const onResourceFatalError = (err: unknown) => {
+		log.error(err, `Server ${serverId}: async resource failed permanently, destroying slice`)
+		const slice = globalState.slices.get(serverId)
+		if (!slice) return
+		void destroyServer({ ...getBaseCtx(), ...slice }).catch((destroyErr) => {
+			log.error(destroyErr, `Server ${serverId}: failed to destroy slice after fatal resource error`)
+		})
+	}
+
 	const adminList = (() => {
 		const adminListTTL = HumanTime.parse('1h')
 		// read adminListSources/adminIdentifyingPermissions fresh on every fetch (rather than closing over the setup-time settings)
@@ -459,6 +470,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 				retries: 3,
 				retryDelay: 1000,
 				log,
+				onFatalError: onResourceFatalError,
 			},
 		)
 	})()
@@ -508,7 +520,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 
 		savingEventsMtx: new Mutex(),
 
-		...SquadRcon.initSquadRcon({ ...ctx, rcon, adminList, serverId }, cleanup),
+		...SquadRcon.initSquadRcon({ ...ctx, rcon, adminList, serverId }, cleanup, { onFatalError: onResourceFatalError }),
 	}
 
 	cleanup.push(

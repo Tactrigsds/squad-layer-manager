@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import { useGroupedPlayerFlagColor } from '@/systems/battlemetrics.client'
+import * as SquadServerClient from '@/systems/squad-server.client'
 import { ContextMenu } from '@radix-ui/react-context-menu'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -54,7 +55,16 @@ export function PlayerDisplay({ player, showTeam, showSquad, showRole, className
 	return (
 		<span className={cn('inline-flex items-baseline', className)}>
 			{player.isAdmin && (
-				<span title="This player is an Admin" className="inline-block">
+				<span
+					title="This player is an Admin. Shift+click: select all admins"
+					className="inline-block"
+					onClickCapture={e => {
+						if (!e.shiftKey) return
+						e.preventDefault()
+						e.stopPropagation()
+						SquadServerClient.Actions.selectAllAdmins(stores)
+					}}
+				>
 					<Icons.ShieldCheckIcon className="h-[1em] w-[1em] text-background fill-blue-300" />
 				</span>
 			)}

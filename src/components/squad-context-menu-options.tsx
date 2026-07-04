@@ -9,7 +9,7 @@ import * as TSWClient from '@/systems/teamswitches.client'
 import React from 'react'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import type { MenuSlots } from './player-context-menu-options'
-import { ContextMenuItem, ContextMenuSeparator } from './ui/context-menu'
+import { ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut } from './ui/context-menu'
 import { useAlertDialog } from './ui/lazy-alert-dialog'
 
 const contextMenuSlots: MenuSlots = { Item: ContextMenuItem, Separator: ContextMenuSeparator }
@@ -97,7 +97,8 @@ export function SquadMenuItems(
 							SquadServerClient.Actions.selectSquad(squadPlayerIds[0], players)
 						}}
 					>
-						Select Squad
+						<span title="Shortcut: shift+click the Squad cell in the teams panel">Select Squad</span>
+						<ContextMenuShortcut>⇧+click squad cell</ContextMenuShortcut>
 					</Item>
 				</>
 			)}

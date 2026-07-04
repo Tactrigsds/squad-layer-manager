@@ -1,6 +1,6 @@
 import type * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial.ts'
 import * as Arr from '@/lib/array'
-import { distinctDeepEquals, toCold, traceTag } from '@/lib/async'
+import { distinctDeepEquals, traceTag } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
 import * as RSel from '@/lib/reselect'
@@ -8,7 +8,6 @@ import * as ZusUtils from '@/lib/zustand'
 import type * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
-import * as RPC from '@/orpc.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import type { OnChangeFn, PaginationState, RowSelectionState, VisibilityState } from '@tanstack/react-table'
 import type * as Im from 'immer'
@@ -182,21 +181,8 @@ export function initLayerTable(
 			}),
 			distinctDeepEquals(),
 			Rx.throttleTime(500, Rx.asyncScheduler, { leading: true, trailing: true }),
-			Rx.switchMap((input) => {
-				const packet$ = new Rx.Subject<LayerQueriesClient.QueryLayersPacket>()
-				const options = LayerQueriesClient.getQueryLayersOptions(input, packet$)
-				let o: Rx.Observable<LayerQueriesClient.QueryLayersPacket>
-
-				const data = RPC.queryClient.getQueryData(options.queryKey)
-				if (data) o = Rx.from(data)
-				else if (RPC.queryClient.isFetching(options)) {
-					o = toCold(() => RPC.queryClient.fetchQuery(options)).pipe(Rx.concatAll())
-				} else {
-					void RPC.queryClient.fetchQuery(options)
-					o = packet$
-				}
-
-				return o.pipe(
+			Rx.switchMap((input) =>
+				LayerQueriesClient.queryLayers$(input).pipe(
 					Rx.tap({
 						subscribe: () => {
 							set({ isFetching: true })
@@ -209,7 +195,7 @@ export function initLayerTable(
 						},
 					}),
 				)
-			}),
+			),
 			Rx.retry({
 				delay: (error, count) => {
 					console.error('error during query:', error)

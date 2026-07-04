@@ -9,9 +9,11 @@ import * as FRM from '@/lib/frame'
 import * as ZusUtils from '@/lib/zustand'
 import * as UP from '@/models/user-presence'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
+import * as ConfigClient from '@/systems/config.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UPClient from '@/systems/user-presence.client'
+import * as UsersClient from '@/systems/users.client'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { AlertCircle, Home } from 'lucide-react'
 import React from 'react'
@@ -40,10 +42,19 @@ export const Route = createFileRoute('/_app/servers/$serverId')({
 	}),
 
 	onEnter({ params }) {
-		UPClient.Actions.updateActivity(
-			{ code: 'enter-server-dashboard', serverId: params.serverId },
-			{ code: 'set-primary-panel', to: ClientOnlySettings.Store.getState().primaryPanelTab },
-		)
+		// dispatch silently drops ops until the config and logged-in user are known, which on a
+		// fresh page load can resolve after onEnter fires
+		void (async () => {
+			try {
+				await Promise.all([ConfigClient.fetchConfig(), UsersClient.fetchLoggedInUser()])
+			} catch {
+				return
+			}
+			UPClient.Actions.updateActivity(
+				{ code: 'enter-server-dashboard', serverId: params.serverId },
+				{ code: 'set-primary-panel', to: ClientOnlySettings.Store.getState().primaryPanelTab },
+			)
+		})()
 		SquadServerClient.SelectedServerActions.setSelectedServer(params.serverId)
 	},
 

@@ -1,6 +1,14 @@
+import * as ChatPrt from '@/frame-partials/chat.partial'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as ZusUtils from '@/lib/zustand'
+import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
+import * as TeamsPanelModels from '@/models/teams-panel.models'
 import * as RPC from '@/orpc.client'
 import * as Cookies from '@/systems/app-routes.client'
+import * as BattlemetricsClient from '@/systems/battlemetrics.client'
+import * as MatchHistoryClient from '@/systems/match-history.client'
+import * as SettingsClient from '@/systems/settings.client'
 import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
@@ -102,6 +110,38 @@ export namespace Actions {
 			.filter(p => p.squadId === player.squadId && p.teamId === player.teamId)
 			.map(p => SM.PlayerIds.getPlayerId(p.ids))
 		PlayerSelectionStore.setState({ selection: Object.fromEntries(squadIds.map(id => [id, true])) })
+	}
+
+	export function selectPlayers(playerIds: SM.PlayerId[]) {
+		PlayerSelectionStore.setState({ selection: Object.fromEntries(playerIds.map(id => [id, true])) })
+	}
+
+	export function selectAllAdmins(stores: SquadServerFrame.KeyProp) {
+		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
+		selectPlayers(players.filter(p => p.isAdmin).map(p => SM.PlayerIds.getPlayerId(p.ids)))
+	}
+
+	export function selectAllTeamPlayers(stores: SquadServerFrame.KeyProp) {
+		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
+		selectPlayers(players.filter(p => p.teamId !== null).map(p => SM.PlayerIds.getPlayerId(p.ids)))
+	}
+
+	export function selectGrouping(stores: SquadServerFrame.KeyProp, grouping: string) {
+		const enriched = getEnrichedPlayers(stores)
+		selectPlayers(enriched.filter(p => p.grouping === grouping).map(p => SM.PlayerIds.getPlayerId(p.ids)))
+	}
+
+	function getEnrichedPlayers(stores: SquadServerFrame.KeyProp): TeamsPanelModels.EnrichedPlayer[] {
+		const serverId = stores.squadServer!.serverId
+		const frameState = ZusUtils.getState(stores.squadServer!)
+		const currentMatch = MatchHistoryClient.currentMatch$(serverId).getValue() as MH.MatchDetails
+		const bmData = BattlemetricsClient.playerBmData$.getValue()
+		const bmStore = BattlemetricsClient.Store.getState()
+		const settings = SettingsClient.PublicSettingsStore.getState()
+		return [
+			...TeamsPanelModels.Sel.playersForTeam('A')(frameState, currentMatch, bmData, bmStore, settings),
+			...TeamsPanelModels.Sel.playersForTeam('B')(frameState, currentMatch, bmData, bmStore, settings),
+		]
 	}
 }
 

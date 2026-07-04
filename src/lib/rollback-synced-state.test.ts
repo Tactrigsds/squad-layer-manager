@@ -220,6 +220,50 @@ describe('processAckedOps', () => {
 	})
 })
 
+describe('processAcks', () => {
+	it('acks pending ops and returns them', () => {
+		let session = Client.initSession<Op, State>([])
+		session = Client.processOutgoingOps(session, [op('a', 1)], reducer)
+		const res = Client.processAcks(session, ['a'], reducer)
+		expect(res.session.syncedState).toEqual([1])
+		expect(res.session.pendingOps).toEqual([])
+		expect(res.ackedOps).toEqual([op('a', 1)])
+		expect(res.unknownOpIds).toEqual([])
+	})
+
+	it('skips ops an init snapshot already incorporated, keeping session identity', () => {
+		let session = Client.initSession<Op, State>([])
+		session = Client.processOutgoingOps(session, [op('mine', 10)], reducer)
+		// snapshot taken after the server applied our op -- processInit drops it from pendingOps
+		session = Client.processInit(session, [10], [op('mine', 10)], reducer)
+
+		const res = Client.processAcks(session, ['mine'], reducer)
+		expect(res.session).toBe(session)
+		expect(res.ackedOps).toEqual([])
+		expect(res.unknownOpIds).toEqual([])
+	})
+
+	it('reports ids in neither pendingOps nor syncedOps as unknown', () => {
+		let session = Client.initSession<Op, State>([])
+		const res = Client.processAcks(session, ['ghost'], reducer)
+		expect(res.session).toBe(session)
+		expect(res.unknownOpIds).toEqual(['ghost'])
+	})
+
+	it('acks the pending subset of a mixed batch', () => {
+		let session = Client.initSession<Op, State>([])
+		session = Client.processOutgoingOps(session, [op('a', 1), op('b', 2)], reducer)
+		// init incorporated 'a' but raced ahead of 'b'
+		session = Client.processInit(session, [1], [op('a', 1)], reducer)
+
+		const res = Client.processAcks(session, ['a', 'b', 'ghost'], reducer)
+		expect(res.session.syncedState).toEqual([1, 2])
+		expect(res.session.pendingOps).toEqual([])
+		expect(res.ackedOps).toEqual([op('b', 2)])
+		expect(res.unknownOpIds).toEqual(['ghost'])
+	})
+})
+
 describe('processInit', () => {
 	it('adopts the snapshot when nothing is pending', () => {
 		let session = Client.initSession<Op, State>([])

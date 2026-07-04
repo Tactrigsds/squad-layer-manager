@@ -16,6 +16,10 @@ type AsyncResourceOpts<T> = {
 	retryDelay: number
 	deferredTimeout: number
 	log: CS.Logger
+
+	// called when a fetch fails for real (non-abort, retries exhausted). without a handler the error escalates to an
+	// unhandled rejection and crashes the process, so long-lived resources should provide one (e.g. to tear down their owner)
+	onFatalError?: (err: unknown) => void
 }
 
 export type AsyncResourceInvocationOpts = {
@@ -82,7 +86,11 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 							if (!refetching) return true
 							// observers are already counted as subscribers, so skip get()'s registration
 							await this._get(ctx, { ttl: 0 })
-						})(ctx)
+						})(ctx).catch(() => {
+							// abort means the last subscriber was released and teardown already unsubscribed us; any real
+							// fetch error is escalated by fetchValue's rejection handler (onFatalError or unhandled rejection)
+							return true
+						})
 						if (shouldBreak) break
 					}
 				})()
@@ -141,6 +149,10 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 				if (this.state === state) this.state = null
 				// expected teardown: the last subscriber was released mid-fetch
 				if (abort.signal.aborted) return
+				if (this.opts.onFatalError) {
+					this.opts.onFatalError(err)
+					return
+				}
 				throw err
 			},
 		)
@@ -180,7 +192,8 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 	invalidate(ctx: Ctx) {
 		this.state = null
 		if (this.observerTTLs.length > 0) {
-			void this.fetchValue(AsyncResource.includeInvocationCtx(ctx, { ttl: 0 }))
+			// rejections (abort or fatal) are handled by fetchValue's rejection handler
+			this.fetchValue(AsyncResource.includeInvocationCtx(ctx, { ttl: 0 })).catch(() => {})
 		}
 	}
 
@@ -240,7 +253,8 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 				Rx.tap({
 					subscribe: () => {
 						releases.push(this.addSubscriber({ kind: 'observer', ttl: opts.ttl! }))
-						void this._get(ctx, { ttl: opts.ttl })
+						// rejections (abort or fatal) are handled by fetchValue's rejection handler
+						this._get(ctx, { ttl: opts.ttl }).catch(() => {})
 						if (this.refetchSub === null) {
 							this.setupRefetches(ctx)
 						}

@@ -189,8 +189,9 @@ export type BaseQueryInput = {
 
 export function mergeBaseInputs(a: BaseQueryInput, b: BaseQueryInput): BaseQueryInput {
 	return {
+		...a,
+		...b,
 		constraints: [...(a.constraints || []), ...(b.constraints || [])],
-		cursor: b.cursor || a.cursor,
 	}
 }
 

@@ -387,26 +387,6 @@ function LoadedPasteRotation({
 	)
 }
 
-export type QueueItemAction =
-	| {
-		code: 'move'
-		sourceId: string
-		destinationId: string
-	}
-	| {
-		code: 'edit'
-		item: LL.Item
-	}
-	| {
-		code: 'delete'
-		id: string
-	}
-	| {
-		code: 'add-after' | 'add-before'
-		items: LL.Item[]
-		id?: string
-	}
-
 type LayerListItemProps = {
 	itemId: string
 	stores: SquadServerFrame.KeyProp
@@ -614,7 +594,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 						<StartActivityInteraction
 							loaderName="selectLayers"
 							createActivity={UP.createEditingQueueVariant(editActivity)}
-							matchKey={key => Obj.deepEqualStrict(key, editActivity)}
+							matchKey={key => Obj.deepEqualStrict(key, { ...editActivity, serverId: props.stores.squadServer.serverId })}
 							preload="viewport"
 							render={Button}
 							variant="ghost"
@@ -1207,7 +1187,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 						loaderName="selectLayers"
 						className={dropdownMenuItemClassesBase}
 						createActivity={UP.createEditingQueueVariant(activities['add-before'])}
-						matchKey={key => Obj.deepEqualStrict(key, activities['add-before'])}
+						matchKey={key => Obj.deepEqualStrict(key, { ...activities['add-before'], serverId: props.stores.squadServer.serverId })}
 						preload="viewport"
 						render={DropdownMenuItem}
 						disabled={!isEditing}
@@ -1218,7 +1198,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 						loaderName="selectLayers"
 						className={dropdownMenuItemClassesBase}
 						createActivity={UP.createEditingQueueVariant(activities['add-after'])}
-						matchKey={key => Obj.deepEqualStrict(key, activities['add-after'])}
+						matchKey={key => Obj.deepEqualStrict(key, { ...activities['add-after'], serverId: props.stores.squadServer.serverId })}
 						preload="viewport"
 						render={DropdownMenuItem}
 						disabled={!isEditing}

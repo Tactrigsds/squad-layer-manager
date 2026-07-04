@@ -830,6 +830,19 @@ export const getHumanReadableActivity = (
 	return typeof format === 'string' ? format : format(bestNode, { listOrIndex, withItemName })
 }
 
+// -------- transient presence events --------
+// fed to the presence panel by the SLL/teamswitch onSideEffect handlers when an op lands on the
+// synced timeline; displayed briefly as event text next to the user's avatar
+export const PRESENCE_EVENT_TEXT = {
+	'added-layers': 'Added layers',
+	'saved-queue': 'Saved the queue',
+	'discarded-queue-edits': 'Discarded queue edits',
+	'saved-teamswitches': 'Saved teamswitches',
+	'executed-teamswitches': 'Executed teamswitches',
+} as const satisfies Record<string, string>
+export type PresenceEventAction = keyof typeof PRESENCE_EVENT_TEXT
+export type PresenceEvent = { userId: USR.UserId; action: PresenceEventAction }
+
 export const getAttributedHumanReadableActivity = (
 	activity: AnyActivityNode,
 	listOrIndex: LL.List | LL.ItemIndex,
