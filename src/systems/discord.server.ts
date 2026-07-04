@@ -1,9 +1,11 @@
 import { resToOptional } from '@/lib/types'
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
 import { toNormalizedEmoji } from '@/models/discord.models'
+import * as RBAC from '@/rbac.models'
 import { initModule } from '@/server/logger'
 
 import { CONFIG } from '@/server/config'
+import * as DB from '@/server/db'
 import * as Env from '@/server/env'
 
 import { getOrpcBase } from '@/server/orpc-base'
@@ -57,7 +59,40 @@ export async function setup() {
 	if (res.code !== 'ok') {
 		throw new Error(`Could not find Discord server ${CONFIG.homeDiscordGuildId}`)
 	}
+
+	await res.guild.commands.set([
+		{ name: RESTART_SLM_COMMAND, description: 'Kill the SLM process so its container manager restarts it' },
+	])
+	client.on('interactionCreate', (interaction) => void handleInteraction(interaction))
+
 	return res
+}
+
+const RESTART_SLM_COMMAND = 'restart-slm'
+// how long to wait for graceful shutdown before forcing the exit
+const RESTART_FORCE_EXIT_TIMEOUT = 10_000
+
+async function handleInteraction(interaction: D.Interaction) {
+	if (!interaction.isChatInputCommand() || interaction.commandName !== RESTART_SLM_COMMAND) return
+	try {
+		// dynamic import: rbac.server statically imports this module
+		const Rbac = await import('@/systems/rbac.server')
+		const ctx = DB.addPooledDb({ ...CS.init(), user: { discordId: BigInt(interaction.user.id) } })
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:restart-slm'))
+		if (denyRes) {
+			await interaction.reply({ content: 'You are not authorized to restart SLM.', flags: D.MessageFlags.Ephemeral })
+			return
+		}
+		await interaction.reply({ content: 'Shutting down SLM. It should be restarted shortly.' })
+		log.warn('restart-slm invoked by %s (%s), shutting down', interaction.user.username, interaction.user.id)
+		setTimeout(() => process.exit(1), RESTART_FORCE_EXIT_TIMEOUT)
+		process.kill(process.pid, 'SIGTERM')
+	} catch (err) {
+		log.error({ err }, 'Failed to handle %s command', RESTART_SLM_COMMAND)
+		if (interaction.isRepliable() && !interaction.replied) {
+			await interaction.reply({ content: 'Something went wrong.', flags: D.MessageFlags.Ephemeral }).catch(() => {})
+		}
+	}
 }
 
 export async function getOauthUser(ctx: Partial<CS.AbortSignal>, token: AccessToken) {

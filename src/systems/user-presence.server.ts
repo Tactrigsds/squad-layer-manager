@@ -145,7 +145,7 @@ export function setup() {
 		Rx.delay(UP.DISCONNECT_TIMEOUT),
 		C.durableSub('user-presence:disconnect-timeout', { module, taskScheduling: 'parallel' }, async (ctx) => {
 			if (!globalUserPresence.session.state.presence.has(ctx.wsClientId)) return
-			dispatchOp([{ code: 'disconnected-timeout', clientId: ctx.wsClientId, opId: UP.createOpId(), time: Date.now() }])
+			await dispatchOp([{ code: 'disconnected-timeout', clientId: ctx.wsClientId, opId: UP.createOpId(), time: Date.now() }])
 		}),
 	).subscribe()
 	CleanupSys.register(() => disconnectSub.unsubscribe())

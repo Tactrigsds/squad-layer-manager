@@ -608,11 +608,13 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 		).subscribe(),
 		ctx.server.event$.pipe(
 			Rx.filter(([eventCtx, event]) => event.type === 'PLAYER_CONNECTED'),
-			C.durableSub('bm-on-player-connected', { module, root: true }, async ([eventCtx, event], signal) => {
+			// parallel so one player's fetch doesn't queue behind another's; the task signal aborts as soon as
+			// the callback resolves, so the fetch must be awaited or it gets cancelled immediately
+			C.durableSub('bm-on-player-connected', { module, root: true, taskScheduling: 'parallel' }, async ([eventCtx, event], signal) => {
 				if (event.type !== 'PLAYER_CONNECTED') return
 				const playerIds = event.player.ids
 				const sliceCtx = SquadServer.resolveSliceCtx({ ...eventCtx, signal }, serverId)
-				fetchSinglePlayerBmData(sliceCtx, playerIds).catch((err) => {
+				await fetchSinglePlayerBmData(sliceCtx, playerIds).catch((err) => {
 					log.warn({ err, playerIds }, 'failed to fetch bm data on player connect')
 				})
 			}),

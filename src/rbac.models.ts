@@ -102,6 +102,7 @@ export const PERMISSION_DEFINITION = {
 	...definePermission('admin:manage-servers', { description: 'Enable or disable servers and edit server-level settings', scope: 'global' }),
 	...definePermission('admin:delete-servers', { description: 'Delete servers', scope: 'global' }),
 	...definePermission('admin:manage-global-settings', { description: 'Edit global settings', scope: 'global' }),
+	...definePermission('admin:restart-slm', { description: 'Restart the SLM application', scope: 'global' }),
 }
 export type KnownPermission = (typeof PERMISSION_DEFINITION)[number]
 export type PermissionType = KnownPermission['type']
