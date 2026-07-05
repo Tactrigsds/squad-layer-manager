@@ -31,6 +31,7 @@ function warnAppEvent(targets: SM.PlayerId[], message = 'stop'): CHAT.AppFeedEve
 			serverId: 's1',
 			matchId: 1,
 			causeId: null,
+			instanceId: null,
 			message,
 			targets,
 		} satisfies AppEvents.PlayerWarned,
@@ -101,6 +102,7 @@ describe('chat.models application-event collapse', () => {
 				serverId: 's1',
 				matchId: 1,
 				causeId: null,
+				instanceId: null,
 				targets: ['eos-1'],
 			} satisfies AppEvents.TeamChangeForced,
 		}
@@ -135,6 +137,7 @@ describe('chat.models application-event collapse', () => {
 				serverId: 's1',
 				matchId: 1,
 				causeId: null,
+				instanceId: null,
 				teamId: 1,
 				squadId: 3,
 				squadName: 'Alpha',

@@ -15,6 +15,13 @@
       "when": 1783229541099,
       "tag": "0001_brainy_night_nurse",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1783269996206,
+      "tag": "0002_clumsy_nova",
+      "breakpoints": true
     }
   ]
 }

@@ -24,6 +24,10 @@ const getCollectorEndpoint = (path: string) => {
 
 export let sdk!: NodeSDK
 
+// a unique id for this SLM process (otel's service.instance.id). exported so app events can record which instance
+// emitted them, and so restart detection can correlate by instance rather than by timestamp.
+export const instanceId = `${Date.now()}-${randomBytes(4).toString('hex')}`
+
 // doesn't start the SDK
 export function setupOtel() {
 	ENV = envBuilder()
@@ -36,7 +40,7 @@ export function setupOtel() {
 		[ATTR_SERVICE_NAME]: 'squad-layer-manager',
 		[ATTR_SERVICE_VERSION]: formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA),
 		// ATTR_SERVICE_INSTANCE_ID seems to be broken
-		['service.instance.id']: `${Date.now()}-${randomBytes(4).toString('hex')}`,
+		['service.instance.id']: instanceId,
 	}
 
 	sdk = new NodeSDK({

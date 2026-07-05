@@ -37,6 +37,9 @@ export type Base = {
 	matchId: number | null
 	// provenance chain: the app event that caused this one (COMMAND_INVOKED -> VOTE_STARTED -> NEXT_LAYER_SET)
 	causeId: AppEventId | null
+	// the SLM process (otel service.instance.id) that emitted this event; stamped at persist time. null on events
+	// created before this was introduced.
+	instanceId: string | null
 }
 
 // ---- discriminated payloads, one per action ----
@@ -275,19 +278,20 @@ export function describeAppEvent(e: AppEvent): string {
 	}
 }
 
-// constructs an app event, allocating its id and defaulting its time
-export function create<E extends AppEvent>(fields: Omit<E, 'id' | 'time'> & { time?: number }): E {
+// constructs an app event, allocating its id and defaulting its time. instanceId is stamped later, at persist time.
+export function create<E extends AppEvent>(fields: Omit<E, 'id' | 'time' | 'instanceId'> & { time?: number }): E {
 	return {
 		...fields,
 		id: createAppEventId(),
 		time: fields.time ?? Date.now(),
+		instanceId: null,
 	} as unknown as E
 }
 
 // ---- persistence (appEvents table); actor is flattened into columns, payload goes in the data blob ----
 
 export function toRow(e: AppEvent): SchemaModels.NewAppEvent {
-	const { id, type, time, actor, serverId, matchId, causeId, ...payload } = e
+	const { id, type, time, actor, serverId, matchId, causeId, instanceId, ...payload } = e
 	return {
 		id,
 		type,
@@ -298,6 +302,7 @@ export function toRow(e: AppEvent): SchemaModels.NewAppEvent {
 		serverId,
 		matchId,
 		causeId,
+		instanceId,
 		data: superjson.serialize(payload) as any,
 	}
 }
@@ -317,5 +322,6 @@ export function fromRow(row: SchemaModels.AppEvent): AppEvent {
 		serverId: row.serverId,
 		matchId: row.matchId,
 		causeId: row.causeId,
+		instanceId: row.instanceId,
 	}
 }

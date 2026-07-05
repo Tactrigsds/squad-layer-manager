@@ -107,6 +107,8 @@ export const appEvents = sqliteTable(
 		matchId: integer('matchId').references(() => matchHistory.id, { onDelete: 'cascade' }),
 		// provenance chain parent; app-level FK, not enforced at the DB
 		causeId: text('causeId'),
+		// the SLM process (otel service.instance.id) that emitted this event
+		instanceId: text('instanceId'),
 		version: integer('version').default(1),
 		data: json('data').notNull(),
 	},

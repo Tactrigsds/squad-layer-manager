@@ -5,6 +5,7 @@ import type * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as Otel from '@/systems/otel.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as E from 'drizzle-orm'
 import { z } from 'zod'
@@ -15,6 +16,8 @@ const orpcBase = getOrpcBase(module)
 // persists an app event to the audit log. server-scoped events additionally flow through SquadServer.emitAppEvent
 // (which pushes them into the live activity feed); global (serverId=null) events are audit-only and call this directly.
 export async function persistAppEvent(ctx: C.Db, appEvent: AppEvents.AppEvent) {
+	// stamp the emitting process so events can be grouped by run, and restart detection can correlate by instance
+	appEvent.instanceId = Otel.instanceId
 	await ctx.db().insert(Schema.appEvents).values(AppEvents.toRow(appEvent))
 }
 
@@ -24,18 +27,24 @@ export async function persistAppEvent(ctx: C.Db, appEvent: AppEvents.AppEvent) {
 export let restartInfo: { userId: bigint; name: string } | null = null
 
 export async function detectRestartAtBoot(ctx: C.Db) {
-	const [lastStart] = await ctx.db().select({ time: Schema.appEvents.time }).from(Schema.appEvents)
+	// the instance that ran immediately before this one (our own APP_STARTED isn't persisted yet at this point)
+	const [lastStart] = await ctx.db().select({ instanceId: Schema.appEvents.instanceId }).from(Schema.appEvents)
 		.where(E.eq(Schema.appEvents.type, 'APP_STARTED')).orderBy(E.desc(Schema.appEvents.time)).limit(1)
-	const [lastRestart] = await ctx.db().select({ time: Schema.appEvents.time, actorUserId: Schema.appEvents.actorUserId })
-		.from(Schema.appEvents).where(E.eq(Schema.appEvents.type, 'APP_RESTARTED')).orderBy(E.desc(Schema.appEvents.time)).limit(1)
-
-	if (!lastRestart || lastRestart.actorUserId == null || (lastStart && lastRestart.time.getTime() <= lastStart.time.getTime())) {
+	if (!lastStart?.instanceId) {
+		restartInfo = null
+		return
+	}
+	// did that exact instance restart itself (as opposed to crashing / being replaced)? correlating by instanceId is
+	// clock-independent and can't be fooled by an older, unrelated restart.
+	const [restart] = await ctx.db().select({ actorUserId: Schema.appEvents.actorUserId }).from(Schema.appEvents)
+		.where(E.and(E.eq(Schema.appEvents.type, 'APP_RESTARTED'), E.eq(Schema.appEvents.instanceId, lastStart.instanceId))).limit(1)
+	if (!restart?.actorUserId) {
 		restartInfo = null
 		return
 	}
 	const [user] = await ctx.db().select({ username: Schema.users.username, nickname: Schema.users.nickname })
-		.from(Schema.users).where(E.eq(Schema.users.discordId, lastRestart.actorUserId)).limit(1)
-	restartInfo = { userId: lastRestart.actorUserId, name: user?.nickname ?? user?.username ?? 'someone' }
+		.from(Schema.users).where(E.eq(Schema.users.discordId, restart.actorUserId)).limit(1)
+	restartInfo = { userId: restart.actorUserId, name: user?.nickname ?? user?.username ?? 'someone' }
 }
 
 export const router = {

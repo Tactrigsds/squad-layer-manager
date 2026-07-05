@@ -1,0 +1,1 @@
+ALTER TABLE `appEvents` ADD `instanceId` text;
