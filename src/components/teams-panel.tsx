@@ -361,6 +361,8 @@ function shiftClickCellProps(
 			title: 'Shift+click: select all members of this squad',
 			onClickCapture: e => {
 				if (!e.shiftKey) return
+				// the (SL) indicator has its own shift+click handler (select squad leaders); let it win
+				if ((e.target as HTMLElement).closest('[data-select-squad-leaders]')) return
 				e.preventDefault()
 				e.stopPropagation()
 				const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
@@ -731,10 +733,11 @@ function squadButton(
 // in the squad context menu. `label` is precomputed by the caller so the two variants can format it
 // differently (e.g. "12" vs "USA:12").
 function SquadCell(
-	{ squad, label, isLeader, stores }: {
+	{ squad, label, isLeader, teamId, stores }: {
 		squad: SM.UniqueSquad
 		label: string
 		isLeader: boolean
+		teamId?: SM.TeamId
 		stores: SquadServerFrame.KeyProp
 	},
 ) {
@@ -758,7 +761,21 @@ function SquadCell(
 					<SquadContextMenuOptions squad={squad} stores={stores} />
 				</ContextMenuContent>
 			</ContextMenu>
-			{isLeader && <span className="text-xs text-muted-foreground">(SL)</span>}
+			{isLeader && (
+				<span
+					data-select-squad-leaders
+					className="text-xs text-muted-foreground hover:text-primary hover:underline cursor-pointer"
+					title="Shift+click: select squad leaders on this team. Shift+Ctrl+click: both teams"
+					onClickCapture={e => {
+						if (!e.shiftKey) return
+						e.preventDefault()
+						e.stopPropagation()
+						SquadServerClient.Actions.selectAllSquadLeaders(stores, e.ctrlKey ? undefined : teamId)
+					}}
+				>
+					(SL)
+				</span>
+			)}
 		</span>
 	)
 }
@@ -789,7 +806,15 @@ function squadColumn<T extends TeamsPanelModels.EnrichedPlayer, M extends BasePl
 			if (player.squadId === null) return ''
 			const squad = opts.getSquad(player, meta)
 			if (!squad) return opts.fallbackLabel(player, meta)
-			return <SquadCell squad={squad} label={opts.squadLabel(squad, player, meta)} isLeader={!!player.isLeader} stores={meta.stores} />
+			return (
+				<SquadCell
+					squad={squad}
+					label={opts.squadLabel(squad, player, meta)}
+					isLeader={!!player.isLeader}
+					teamId={player.teamId ?? undefined}
+					stores={meta.stores}
+				/>
+			)
 		},
 	})
 }
