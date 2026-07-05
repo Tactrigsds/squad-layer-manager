@@ -10,6 +10,8 @@ When branching on unions(especially discriminated unions), generally use assertN
 
 Unit tests should be reserved for complex and self-contained behavior that we want to isolate. we will be introducing integration tests at a later time.
 
+Use namespace imports for all nontrivial modules, unless established convention for that module contradicts this. Make sure that the chosen namespace is consistent and unique across the app, except for special cases like things imported into context.ts or context-shared.ts. Use convenient abbreviations or acronyms for commonly used lib modules, model modules, and imported packages
+
 # Server side
 
 Significant actions taken by the user or by the system need to be logged via app events (see src/models/app-events.models.ts)
