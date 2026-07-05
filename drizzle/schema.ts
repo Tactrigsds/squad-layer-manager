@@ -1,7 +1,7 @@
 import { enumTupleOptions } from '@/lib/zod'
 import { customType, index, integer, primaryKey, sqliteTable, text, unique } from 'drizzle-orm/sqlite-core'
 import superjson from 'superjson'
-import { BALANCE_TRIGGER_LEVEL, SERVER_EVENT_PLAYER_ASSOC_TYPE, SERVER_EVENT_TYPE } from './enums'
+import { APP_EVENT_ACTOR_TYPE, APP_EVENT_TYPE, BALANCE_TRIGGER_LEVEL, SERVER_EVENT_PLAYER_ASSOC_TYPE, SERVER_EVENT_TYPE } from './enums'
 
 // 64-bit ids (discord/steam) are stored as TEXT: sqlite INTEGER is signed 64-bit and better-sqlite3
 // returns plain (lossy) JS numbers, so text keeps precision while preserving `bigint` app-facing types.
@@ -75,6 +75,9 @@ export const serverEvents = sqliteTable(
 		type: text('type', { enum: enumTupleOptions(SERVER_EVENT_TYPE) }).notNull(),
 		time: timestamp('time').notNull(),
 		matchId: integer('matchId').references(() => matchHistory.id, { onDelete: 'cascade' }).notNull(),
+		// links this server event to the SLM app (audit) event that caused it, if any. queryable projection
+		// of the event's `source` when source.type === 'event'.
+		appEventId: text('appEventId').references(() => appEvents.id, { onDelete: 'set null' }),
 		// TODO right now code just assumes one version, this is here for forwards compatibility
 		version: integer('version').default(1),
 		data: json('data').notNull(),
@@ -83,6 +86,36 @@ export const serverEvents = sqliteTable(
 		typeIndex: index('typeIndex').on(table.type),
 		timeIndex: index('timeIndex').on(table.time),
 		matchIdIndex: index('matchIdIndex').on(table.matchId),
+		appEventIdIndex: index('appEventIdIndex').on(table.appEventId),
+	}),
+)
+
+// SLM's audit log. See src/models/app-events.models.ts.
+export const appEvents = sqliteTable(
+	'appEvents',
+	{
+		// synchronously-allocated string id (createAppEventId) -- referenced by serverEvents.appEventId
+		id: text('id').primaryKey(),
+		type: text('type', { enum: enumTupleOptions(APP_EVENT_TYPE) }).notNull(),
+		time: timestamp('time').notNull(),
+		// actor, flattened for querying ("all actions by user X / player Y")
+		actorType: text('actorType', { enum: enumTupleOptions(APP_EVENT_ACTOR_TYPE) }).notNull(),
+		actorUserId: bigintText('actorUserId'),
+		actorPlayerId: text('actorPlayerId'),
+		// scope: null for global (audit-only) actions
+		serverId: text('serverId').references(() => servers.id, { onDelete: 'cascade' }),
+		matchId: integer('matchId').references(() => matchHistory.id, { onDelete: 'cascade' }),
+		// provenance chain parent; app-level FK, not enforced at the DB
+		causeId: text('causeId'),
+		version: integer('version').default(1),
+		data: json('data').notNull(),
+	},
+	(table) => ({
+		appEventTypeIndex: index('appEventTypeIndex').on(table.type),
+		appEventTimeIndex: index('appEventTimeIndex').on(table.time),
+		appEventServerIdIndex: index('appEventServerIdIndex').on(table.serverId),
+		appEventMatchIdIndex: index('appEventMatchIdIndex').on(table.matchId),
+		appEventActorUserIdIndex: index('appEventActorUserIdIndex').on(table.actorUserId),
 	}),
 )
 

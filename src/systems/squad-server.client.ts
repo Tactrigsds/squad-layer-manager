@@ -56,6 +56,14 @@ export function useWarnPlayerMutation() {
 	})
 }
 
+export function useWarnPlayersMutation() {
+	return useMutation({
+		mutationFn: async (input: { serverId: string; playerIds: string[]; reason: string }) => {
+			return RPC.orpc.squadServer.warnPlayers.call(input)
+		},
+	})
+}
+
 export function useDemoteCommanderMutation() {
 	return useMutation({
 		mutationFn: async (input: { serverId: string; playerId: string }) => {

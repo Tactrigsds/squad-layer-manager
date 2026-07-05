@@ -63,7 +63,7 @@ export function initChat(args: Args) {
 		() => {
 			const eventBuffer = get().chatState.eventBuffer
 			return RPC.orpc.squadServer.watchChatEvents.call({
-				lastEventId: eventBuffer[eventBuffer.length - 1]?.id,
+				lastEventId: CHAT.lastServerEventId(eventBuffer),
 				serverId,
 			})
 		},

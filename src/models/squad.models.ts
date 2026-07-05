@@ -1217,6 +1217,82 @@ export namespace LogEvents {
 		}),
 	})
 
+	// AdminForceTeamChange. The log doesn't state the destination team (it's a swap), so the handler derives it.
+	export const ForcedTeamChangeDef = eventDef('ADMIN_FORCED_TEAM_CHANGE', {
+		...BaseEventProperties,
+		playerIds: PlayerIds.IdFields('username', 'eos'),
+		source: ActionSourceSchema,
+	})
+	export type ForcedTeamChange = z.infer<typeof ForcedTeamChangeDef['schema']>
+	export const ForcedTeamChangeMatcher = createLogMatcher({
+		event: ForcedTeamChangeDef,
+		regex: new RegExp(
+			String
+				.raw`^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Forced team change for player \d+\. \[Online IDs=\s*([^\]]+)\]\s+(.+?) from ${ACTION_SOURCE_REGEX_SRC}`,
+		),
+		onMatch: (args) => {
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
+				playerIds: PlayerIds.parse({ username: args[4], idsStr: args[3] }),
+				source: parseActionSource(args),
+			}
+		},
+	})
+
+	// AdminDisbandSquad
+	export const SquadDisbandedDef = eventDef('ADMIN_DISBANDED_SQUAD', {
+		...BaseEventProperties,
+		squadId: z.number(),
+		teamId: TeamIdSchema,
+		squadName: z.string(),
+		source: ActionSourceSchema,
+	})
+	export type SquadDisbanded = z.infer<typeof SquadDisbandedDef['schema']>
+	export const SquadDisbandedMatcher = createLogMatcher({
+		event: SquadDisbandedDef,
+		regex: new RegExp(
+			String
+				.raw`^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Remote admin disbanded squad (\d+) on team (\d+), named "(.*)" from ${ACTION_SOURCE_REGEX_SRC}`,
+		),
+		onMatch: (args) => {
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
+				squadId: Number(args[3]),
+				teamId: parseInt(args[4]) as 1 | 2,
+				squadName: args[5],
+				source: parseActionSource(args),
+			}
+		},
+	})
+
+	// AdminRemovePlayerFromSquad. The log only carries the display name (no online ids), so the handler resolves by username.
+	export const PlayerRemovedFromSquadDef = eventDef('ADMIN_REMOVED_FROM_SQUAD', {
+		...BaseEventProperties,
+		playerIds: PlayerIds.IdFields('username'),
+		source: ActionSourceSchema,
+	})
+	export type PlayerRemovedFromSquad = z.infer<typeof PlayerRemovedFromSquadDef['schema']>
+	export const PlayerRemovedFromSquadMatcher = createLogMatcher({
+		event: PlayerRemovedFromSquadDef,
+		regex: new RegExp(
+			String
+				.raw`^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Player\s+(.+?) was removed from squad from ${ACTION_SOURCE_REGEX_SRC}`,
+		),
+		onMatch: (args) => {
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
+				playerIds: PlayerIds.parse({ username: args[3] }),
+				source: parseActionSource(args),
+			}
+		},
+	})
+
 	const UnknownEventDef = eventDef('UNKNOWN', {
 		...BaseEventProperties,
 	})
@@ -1254,6 +1330,9 @@ export namespace LogEvents {
 		PlayerKickedMatcher,
 		PlayerAddedToTeamMatcher,
 		PlayerRestartedMatcher,
+		ForcedTeamChangeMatcher,
+		SquadDisbandedMatcher,
+		PlayerRemovedFromSquadMatcher,
 		UnknownEventMatcher,
 	] as const
 
@@ -1283,6 +1362,9 @@ export namespace LogEvents {
 		| PlayerKicked
 		| PlayerAddedToTeam
 		| PlayerRestarted
+		| ForcedTeamChange
+		| SquadDisbanded
+		| PlayerRemovedFromSquad
 		| UnknownEvent
 
 	function parseTimestamp(raw: string) {

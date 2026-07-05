@@ -39,6 +39,19 @@ export const SERVER_EVENT_TYPE = z.enum([
 
 export type ServerEventType = z.infer<typeof SERVER_EVENT_TYPE>
 
+// application (audit-log) events. APPEND ONLY.
+export const APP_EVENT_TYPE = z.enum([
+	'PLAYER_WARNED',
+])
+export type AppEventType = z.infer<typeof APP_EVENT_TYPE>
+
+export const APP_EVENT_ACTOR_TYPE = z.enum([
+	'slm-user',
+	'ingame-user',
+	'system',
+])
+export type AppEventActorType = z.infer<typeof APP_EVENT_ACTOR_TYPE>
+
 export const SERVER_EVENT_PLAYER_ASSOC_TYPE = z.enum([
 	'player', // default
 	'attacker',
