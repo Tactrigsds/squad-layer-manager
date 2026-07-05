@@ -13,6 +13,8 @@ import * as L from '@/models/layer'
 
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
+import * as PartsSys from '@/systems/parts.client'
+import * as UsersClient from '@/systems/users.client'
 import * as Icons from 'lucide-react'
 
 const CHANNEL_STYLES = {
@@ -297,6 +299,92 @@ function PlayerWarnedEvent(
 	)
 }
 
+// concise text for a warn's target grouping; null means "no grouping -- just show the count"
+function warnSummaryDescriptor(summary: CHAT.WarnSummary): string | null {
+	switch (summary.type) {
+		case 'everyone':
+			return 'the entire server'
+		case 'all-admins':
+			return 'all admins'
+		case 'teams':
+			return summary.teamIds.length === 2 ? 'both teams' : `everyone on Team ${summary.teamIds[0]}`
+		case 'squads': {
+			const names = summary.squads.map(s => s.squadName).join(', ')
+			if (summary.otherPlayerCount > 0) {
+				return `${names} and ${summary.otherPlayerCount} other ${summary.otherPlayerCount === 1 ? 'player' : 'players'}`
+			}
+			return names
+		}
+		case 'players':
+			return null
+	}
+}
+
+// an app (audit) event, e.g. a warnAll that aggregates its individual PLAYER_WARNED server events into one
+// expandable entry. Uses a native <details> so no local state is needed.
+function AppEventEntry(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'APP_EVENT' }>; stores: SquadServerFrame.KeyProp },
+) {
+	const appEvent = event.appEvent
+	// resolve the acting user's display name (hooks must run before any early return)
+	const actorUserId = appEvent.actor.type === 'slm-user' ? appEvent.actor.userId : undefined
+	const loggedInUser = UsersClient.useLoggedInUser()
+	const userPartial = actorUserId ? PartsSys.findUser(actorUserId) : undefined
+	const isMe = !!actorUserId && actorUserId === loggedInUser?.discordId
+	const userRes = UsersClient.useUser(actorUserId, { enabled: !!actorUserId && !userPartial && !isMe })
+	const actorUser = (userRes.data?.code === 'ok' ? userRes.data.user : undefined) ?? userPartial ?? (isMe ? loggedInUser : undefined)
+
+	if (appEvent.type !== 'PLAYER_WARNED') return null
+	const actorLabel = appEvent.actor.type === 'slm-user'
+		? (actorUser?.displayName ?? 'An admin')
+		: appEvent.actor.type === 'system'
+		? 'SLM'
+		: 'A player'
+	const count = appEvent.targets.length
+	const plural = count === 1 ? 'player' : 'players'
+	const descriptor = warnSummaryDescriptor(event.warnSummary)
+
+	// few enough targets: name them inline instead of grouping/collapsing (but still show the count)
+	if (count <= 4 && event.matchId !== null && event.targetPlayers.length === count) {
+		return (
+			<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
+				<EventTime time={event.time} variant="small" />
+				<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
+				<div className="grow min-w-0">
+					{actorLabel} warned {event.targetPlayers.map((player, i) => (
+						<span key={player.ids.eos}>
+							{i > 0 ? ', ' : ''}
+							<PlayerDisplay showTeam player={player} matchId={event.matchId!} stores={stores} />
+						</span>
+					))}
+					{count > 1 ? <>{' '}({count} {plural})</> : ''}: "<span className="wrap-break-word">{appEvent.message}</span>"
+				</div>
+			</div>
+		)
+	}
+
+	return (
+		<details className="py-1 text-xs text-muted-foreground w-full min-w-0">
+			<summary className="flex gap-2 items-baseline cursor-pointer">
+				<EventTime time={event.time} variant="small" />
+				<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
+				<span className="grow min-w-0 wrap-break-word">
+					{actorLabel} warned {descriptor
+						? (count > 1 ? `${descriptor} (${count} ${plural})` : descriptor)
+						: (count === 1 ? 'a player' : `${count} ${plural}`)}: "{appEvent.message}"
+				</span>
+			</summary>
+			{event.matchId !== null && event.targetPlayers.length > 0 && (
+				<div className="pl-6 pt-1 flex flex-col gap-0.5">
+					{event.targetPlayers.map((player) => (
+						<PlayerDisplay key={player.ids.eos} showTeam player={player} matchId={event.matchId!} stores={stores} />
+					))}
+				</div>
+			)}
+		</details>
+	)
+}
+
 function NewGameEvent({ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'NEW_GAME' }>; stores: SquadServerFrame.KeyProp }) {
 	const match = MatchHistoryClient.useRecentMatches(stores.squadServer.serverId).find(m => m.historyEntryId === event.matchId)
 	const currentMatch = MatchHistoryClient.useCurrentMatch(stores.squadServer.serverId)
@@ -368,7 +456,13 @@ function RoundEndedEvent(
 				</span>
 			)
 		} else {
-			assertNever(source)
+			// SLM-originated (application-event link or system fallback) -- MVP renders a generic label;
+			// richer actor display arrives with the audit UI
+			sourceName = (
+				<span>
+					via <b>SLM</b>
+				</span>
+			)
 		}
 		let nextLayerText: React.ReactNode = null
 		if (event.action.type === 'AdminChangeLayer') {
@@ -657,6 +751,8 @@ export function ServerEvent({ event, stores }: { event: CHAT.EventEnriched; stor
 			return <PlayerBannedEvent event={event} stores={stores} />
 		case 'PLAYER_WARNED':
 			return <PlayerWarnedEvent event={event} stores={stores} />
+		case 'APP_EVENT':
+			return <AppEventEntry event={event} stores={stores} />
 		case 'NEW_GAME':
 			return <NewGameEvent event={event} stores={stores} />
 		case 'RESET':

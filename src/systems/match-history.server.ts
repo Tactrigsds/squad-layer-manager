@@ -374,7 +374,7 @@ export const matchHistoryRouter = {
 				: { status: 'offline', lastSeen: null }
 
 		return {
-			events: state.eventBuffer.filter((event) => shownEventIds.has(event.id)),
+			events: state.eventBuffer.filter((event) => typeof event.id === 'number' && shownEventIds.has(event.id)),
 			connectionStatus,
 		}
 	}),
@@ -450,7 +450,7 @@ export const matchHistoryRouter = {
 
 		return {
 			squad: squadRow,
-			events: state.eventBuffer.filter((event) => shownEventIds.has(event.id)),
+			events: state.eventBuffer.filter((event) => typeof event.id === 'number' && shownEventIds.has(event.id)),
 		}
 	}),
 }

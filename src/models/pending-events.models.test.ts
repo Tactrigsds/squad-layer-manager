@@ -705,6 +705,80 @@ describe('PendingEvents', () => {
 		return state
 	}
 
+	describe('application-event attribution (warn expectations)', () => {
+		function warnEvent(reason: string, username: string, time: number): SM.RconEvents.Event {
+			return { type: 'PLAYER_WARNED', time, reason, playerIds: { username } }
+		}
+
+		it('stamps a matching PLAYER_WARNED with the armed source and consumes the expectation', async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
+			PendingEvents.expectWarn(state, { playerId: 'eos-001', reason: 'stop', source: { type: 'event', id: 'app-1' } })
+			PendingEvents.onRconEvent(state, warnEvent('stop', 'eos-001', 200))
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
+			const events = await collect(state)
+
+			const warn = events.find(e => e.type === 'PLAYER_WARNED') as SE.PlayerWarned
+			expect(warn).toBeDefined()
+			expect(warn.source).toEqual({ type: 'event', id: 'app-1' })
+			expect(state.expectations).toHaveLength(0)
+		})
+
+		it('does not attribute when the reason does not match, and leaves the expectation armed', async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
+			PendingEvents.expectWarn(state, { playerId: 'eos-001', reason: 'stop teamkilling', source: { type: 'event', id: 'app-1' } })
+			PendingEvents.onRconEvent(state, warnEvent('a different message', 'eos-001', 200))
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
+			const events = await collect(state)
+
+			const warn = events.find(e => e.type === 'PLAYER_WARNED') as SE.PlayerWarned
+			expect(warn.source).toBeUndefined()
+			expect(state.expectations).toHaveLength(1)
+		})
+
+		it('does not attribute a warn for a different player', async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1), makePlayer('eos-002', 1)], [])
+			PendingEvents.expectWarn(state, { playerId: 'eos-002', reason: 'stop', source: { type: 'event', id: 'app-1' } })
+			PendingEvents.onRconEvent(state, warnEvent('stop', 'eos-001', 200))
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
+			const events = await collect(state)
+
+			const warn = events.find(e => e.type === 'PLAYER_WARNED') as SE.PlayerWarned
+			expect(warn.source).toBeUndefined()
+		})
+
+		it('attributes each of a repeated warn via one consume-once expectation apiece (warnAll aggregation)', async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
+			const source = { type: 'event' as const, id: 'app-1' }
+			PendingEvents.expectWarn(state, { playerId: 'eos-001', reason: 'stop', source })
+			PendingEvents.expectWarn(state, { playerId: 'eos-001', reason: 'stop', source })
+			PendingEvents.onRconEvent(state, warnEvent('stop', 'eos-001', 200))
+			PendingEvents.onRconEvent(state, warnEvent('stop', 'eos-001', 201))
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(202))
+			const events = await collect(state)
+
+			const warns = events.filter(e => e.type === 'PLAYER_WARNED') as SE.PlayerWarned[]
+			expect(warns).toHaveLength(2)
+			expect(warns.every(w => w.source?.type === 'event' && w.source.id === 'app-1')).toBe(true)
+			expect(state.expectations).toHaveLength(0)
+		})
+
+		it('prunes an expired expectation without attributing', async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
+			PendingEvents.pushExpectation(state, {
+				match: { type: 'PLAYER_WARNED', playerId: 'eos-001', reason: 'stop' },
+				source: { type: 'event', id: 'app-1' },
+				expiresAt: -1,
+			})
+			PendingEvents.onRconEvent(state, warnEvent('stop', 'eos-001', 200))
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
+			const events = await collect(state)
+
+			const warn = events.find(e => e.type === 'PLAYER_WARNED') as SE.PlayerWarned
+			expect(warn.source).toBeUndefined()
+			expect(state.expectations).toHaveLength(0)
+		})
+	})
+
 	describe('TEAMS_UPDATE reconciliation (complex simultaneous changes)', () => {
 		it('squad merge: leader and squadmate both leave squad1 and join squad2', async () => {
 			const p1 = makePlayer('eos-001', 1, { squadId: 1, isLeader: true })
@@ -945,6 +1019,135 @@ describe('PendingEvents', () => {
 			for (let i = 1; i < allEvents.length; i++) {
 				expect(allEvents[i].id).toBeGreaterThan(allEvents[i - 1].id)
 			}
+		})
+	})
+
+	describe('admin command log events (attribution + poll idempotency)', () => {
+		it('forced team change: the log records an attribution but emits nothing; the next poll carries it', async () => {
+			const state = makeSyncedState([makePlayer('eos-1', 1)], [])
+
+			PendingEvents.onLogEvent(state, {
+				type: 'ADMIN_FORCED_TEAM_CHANGE',
+				time: 2000,
+				chainID: 0,
+				raw: '',
+				playerIds: { eos: 'eos-1', username: 'eos-1' },
+				source: { type: 'rcon' },
+			})
+			const fromLog = await collect(state)
+			// the log itself emits nothing -- the poll is the source of truth for the team change
+			expect(fromLog.find(e => e.type === 'PLAYER_CHANGED_TEAM')).toBeUndefined()
+
+			// the poll reflects team 2 and picks up the recorded attribution
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-1', 2)], []), 3000)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(3000))
+			const fromPoll = await collect(state)
+			expect(fromPoll.find(e => e.type === 'PLAYER_CHANGED_TEAM')).toMatchObject({
+				player: 'eos-1',
+				newTeamId: 2,
+				source: { type: 'rcon' },
+			})
+			// the marker was consumed
+			expect(state.forcedTeamChanges.size).toBe(0)
+		})
+
+		it('forced team change: attribution is wiped on the next poll even when unused (no stale attribution later)', async () => {
+			const state = makeSyncedState([makePlayer('eos-1', 1)], [])
+
+			PendingEvents.onLogEvent(state, {
+				type: 'ADMIN_FORCED_TEAM_CHANGE',
+				time: 2000,
+				chainID: 0,
+				raw: '',
+				playerIds: { eos: 'eos-1', username: 'eos-1' },
+				source: { type: 'rcon' },
+			})
+			await collect(state)
+
+			// a poll with no team change for that player discards the unused marker
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-1', 1)], []), 3000)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(3000))
+			await collect(state)
+			expect(state.forcedTeamChanges.size).toBe(0)
+
+			// a later organic switch must NOT carry the stale attribution
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-1', 2)], []), 4000)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(4000))
+			const events = await collect(state)
+			const changed = events.find(e => e.type === 'PLAYER_CHANGED_TEAM')
+			expect(changed).toMatchObject({ player: 'eos-1', newTeamId: 2 })
+			expect((changed as SE.PlayerChangedTeam).source).toBeUndefined()
+		})
+
+		it('disband: emits attributed PLAYER_LEFT_SQUAD + SQUAD_DISBANDED; a following poll does not re-fire', async () => {
+			const player = makePlayer('eos-1', 1, { squadId: 1, isLeader: true })
+			const state = makeSyncedState([player], [makeSquad(1, 1, 'eos-1', 101)])
+
+			PendingEvents.onLogEvent(state, {
+				type: 'ADMIN_DISBANDED_SQUAD',
+				time: 2000,
+				chainID: 0,
+				raw: '',
+				squadId: 1,
+				teamId: 1,
+				squadName: 'Squad 1',
+				source: { type: 'rcon' },
+			})
+			const events = await collect(state)
+
+			expect(events.find(e => e.type === 'PLAYER_LEFT_SQUAD')).toMatchObject({
+				player: 'eos-1',
+				uniqueId: 101,
+				source: { type: 'rcon' },
+			})
+			expect(events.find(e => e.type === 'SQUAD_DISBANDED')).toMatchObject({
+				uniqueId: 101,
+				source: { type: 'rcon' },
+			})
+			expect(state.currTeams!.squads).toHaveLength(0)
+
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-1', 1)], []), 3000)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(3000))
+			const after = await collect(state)
+			expect(after.find(e => e.type === 'SQUAD_DISBANDED')).toBeUndefined()
+		})
+
+		it('remove from squad: resolves the target by username and emits an attributed PLAYER_LEFT_SQUAD', async () => {
+			const removed = makePlayer('eos-removed', 1, { squadId: 1 })
+			const leader = makePlayer('eos-leader', 1, { squadId: 1, isLeader: true })
+			const state = makeSyncedState([removed, leader], [makeSquad(1, 1, 'eos-leader', 101)])
+
+			PendingEvents.onLogEvent(state, {
+				type: 'ADMIN_REMOVED_FROM_SQUAD',
+				time: 2000,
+				chainID: 0,
+				raw: '',
+				playerIds: { username: 'eos-removed' },
+				source: { type: 'rcon' },
+			})
+			const events = await collect(state)
+
+			expect(events.find(e => e.type === 'PLAYER_LEFT_SQUAD')).toMatchObject({
+				player: 'eos-removed',
+				uniqueId: 101,
+				source: { type: 'rcon' },
+			})
+			expect(state.currTeams!.players.find(p => p.ids.eos === 'eos-removed')).toMatchObject({ squadId: null })
+		})
+
+		it('remove from squad: unknown username is skipped so the teams poll can reconcile organically', async () => {
+			const state = makeSyncedState([makePlayer('eos-1', 1, { squadId: 1 })], [makeSquad(1, 1, 'eos-1', 101)])
+
+			PendingEvents.onLogEvent(state, {
+				type: 'ADMIN_REMOVED_FROM_SQUAD',
+				time: 2000,
+				chainID: 0,
+				raw: '',
+				playerIds: { username: 'nobody' },
+				source: { type: 'rcon' },
+			})
+			const events = await collect(state)
+			expect(events.find(e => e.type === 'PLAYER_LEFT_SQUAD')).toBeUndefined()
 		})
 	})
 })

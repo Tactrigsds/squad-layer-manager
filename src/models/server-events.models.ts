@@ -113,6 +113,8 @@ export type PlayerChangedTeam<P = SM.PlayerId> =
 	& {
 		type: 'PLAYER_CHANGED_TEAM'
 		newTeamId: SM.TeamId | null
+		// present when an admin forced the change (parsed from the log); absent for organic switches inferred from team polling
+		source?: ActionSource
 	}
 	& SM.PlayerAssoc<'player', P>
 	& Base
@@ -123,6 +125,8 @@ export type PlayerLeftSquad<P = SM.PlayerId> =
 	& {
 		type: 'PLAYER_LEFT_SQUAD'
 		uniqueId: number
+		// present when an admin removed the player / disbanded their squad (parsed from the log); absent for organic leaves inferred from team polling
+		source?: ActionSource
 	}
 	& SM.PlayerAssoc<'player', P>
 	& Base
@@ -132,6 +136,8 @@ export const PLAYER_LEFT_SQUAD_META = meta({ players: [{ assocType: 'player' }],
 export type SquadDisbanded = {
 	type: 'SQUAD_DISBANDED'
 	uniqueId: number
+	// present when an admin disbanded the squad (parsed from the log); absent when inferred from team polling
+	source?: ActionSource
 } & Base
 export const SQUAD_DISBANDED_META = meta({ squads: ['$.uniqueId'] })
 
@@ -207,7 +213,10 @@ export const UNPOSSESSED_ADMIN_CAMERA_META = meta({ players: [{ assocType: 'play
 export type PlayerBanned<P = SM.PlayerId> = { type: 'PLAYER_BANNED'; interval: string } & SM.PlayerAssoc<'player', P> & Base
 export const PLAYER_BANNED_META = meta({ players: [{ assocType: 'player' }] })
 
-export type PlayerWarned<P = SM.PlayerId> = { type: 'PLAYER_WARNED'; reason: string } & SM.PlayerAssoc<'player', P> & Base
+export type PlayerWarned<P = SM.PlayerId> =
+	& { type: 'PLAYER_WARNED'; reason: string; source?: ActionSource }
+	& SM.PlayerAssoc<'player', P>
+	& Base
 export const PLAYER_WARNED_META = meta({ players: [{ assocType: 'player' }] })
 
 export type PlayerDied<P = SM.PlayerId> =

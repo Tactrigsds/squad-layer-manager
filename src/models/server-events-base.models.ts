@@ -1,4 +1,5 @@
 import type { ServerEventPlayerAssocType } from '$root/drizzle/enums'
+import type { AppEventId } from '@/models/app-events.models'
 import type * as SM from '@/models/squad.models'
 
 export type Base = {
@@ -17,8 +18,14 @@ export type EventMeta = {
 	squads: string[]
 }
 
-export type ActionSource = SM.LogEvents.ActionSource
-// | { type: 'slm-user'; userId: USR.UserId }
+export type ActionSource =
+	// native, log-parsed provenance -- external to SLM (an outside RCON tool or an in-game admin action)
+	| SM.LogEvents.ActionSource
+	// link to an SLM app event (audit log). the normal SLM-originated case; upgrades over rcon/player
+	// in place when SLM recognizes its own action
+	| { type: 'event'; id: AppEventId }
+	// SLM-caused but with no dedicated app event yet (fallback)
+	| { type: 'system'; reason?: string }
 
 export function meta(opts?: Partial<EventMeta>) {
 	return {

@@ -1,6 +1,7 @@
 import * as Arr from '@/lib/array'
 import * as Gen from '@/lib/generator'
 import { assertNever } from '@/lib/type-guards'
+import type * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
 import { applyEventTeamMutations } from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
@@ -65,10 +66,40 @@ export namespace InterpolableState {
 	}
 }
 
-export type Event = SE.Event
+// an app (audit) event wrapped for the feed. wrapped so its inner type (e.g. PLAYER_WARNED, which collides
+// with the server event of the same name) doesn't clash with the SE.Event `type` discriminant.
+export type AppFeedEvent = { type: 'APP_EVENT'; appEvent: AppEvents.AppEvent }
+
+export type Event = SE.Event | AppFeedEvent
+
+// a structured description of who a warn targeted, computed against the interpolated state so the UI can render a
+// concise summary ("all admins", "everyone on Team 1", "Squad Alpha, Bravo and 3 other players") instead of a raw count
+export type WarnSummary =
+	| { type: 'everyone' }
+	| { type: 'all-admins' }
+	| { type: 'teams'; teamIds: SM.TeamId[] }
+	| { type: 'squads'; squads: { uniqueId: number; squadName: string; teamId: SM.TeamId }[]; otherPlayerCount: number }
+	| { type: 'players' } // no meaningful grouping; render an inline name list or a plain count
+
+// a feed entry for an app event, enriched with resolved players and the collapsed server events attributed
+// to it (e.g. the individual PLAYER_WARNED server events aggregated under one warnAll entry)
+export type EnrichedAppEvent = {
+	type: 'APP_EVENT'
+	id: AppEvents.AppEventId
+	time: number
+	matchId: number | null
+	appEvent: AppEvents.AppEvent
+	// resolved from appEvent.targets against the interpolated state (best-effort)
+	targetPlayers: SM.Player[]
+	// structured grouping of the targets for the summary line (PLAYER_WARNED only; else 'players')
+	warnSummary: WarnSummary
+	// collapsed individual server PLAYER_WARNED events attributed to this app event
+	warns: SE.PlayerWarned<SM.Player>[]
+}
 
 // event enriched with relevant data
 export type EventEnriched =
+	| EnrichedAppEvent
 	| NoopEvent
 	| SE.MapSet
 	| SE.NewGame
@@ -168,8 +199,97 @@ export function handleEvent(
 		return
 	}
 
+	if (event.type === 'APP_EVENT') {
+		state.eventBuffer.push(enrichAppEvent(state.interpolatedState, event.appEvent))
+		return
+	}
+
 	const enriched = interpolateEvent(state.interpolatedState, event, opts)
+	// collapse a server warn attributed to an app event into that app event's entry, so a messy set of
+	// warns renders as one expandable summary. Falls back to a standalone entry if the app event isn't buffered.
+	if (enriched.type === 'PLAYER_WARNED' && enriched.source?.type === 'event') {
+		const attributedTo = enriched.source.id
+		const appEntry = state.eventBuffer.find(
+			(e): e is EnrichedAppEvent => e.type === 'APP_EVENT' && e.id === attributedTo,
+		)
+		if (appEntry) {
+			appEntry.warns.push(enriched)
+			return
+		}
+	}
 	state.eventBuffer.push(enriched)
+}
+
+// the id of the most recent server event in the buffer (skips app events, which have string ids and no
+// numeric resume cursor). used to resume the chat stream on reconnect.
+export function lastServerEventId(buffer: EventEnriched[]): number | undefined {
+	for (let i = buffer.length - 1; i >= 0; i--) {
+		const id = buffer[i].id
+		if (typeof id === 'number') return id
+	}
+	return undefined
+}
+
+function enrichAppEvent(state: InterpolableState, appEvent: AppEvents.AppEvent): EnrichedAppEvent {
+	const targetPlayers = appEvent.type === 'PLAYER_WARNED'
+		? appEvent.targets
+			.map(id => SM.PlayerIds.find(state.players, p => p.ids, { eos: id }))
+			.filter((p): p is SM.Player => !!p)
+		: []
+	return {
+		type: 'APP_EVENT',
+		id: appEvent.id,
+		time: appEvent.time,
+		matchId: appEvent.matchId,
+		appEvent,
+		targetPlayers,
+		warnSummary: summarizeWarnTargets(state, targetPlayers),
+		warns: [],
+	}
+}
+
+// classifies who a warn targeted against the current interpolated state, most-specific first. The renderer still
+// prefers naming players directly for small sets; this drives the summary for larger ones.
+function summarizeWarnTargets(state: InterpolableState, targets: SM.Player[]): WarnSummary {
+	if (targets.length === 0) return { type: 'players' }
+	const idOf = (p: SM.Player) => SM.PlayerIds.getPlayerId(p.ids)
+	const targetIds = new Set(targets.map(idOf))
+	const players = state.players
+
+	// everyone currently on the server
+	if (players.length > 0 && players.every(p => targetIds.has(idOf(p)))) return { type: 'everyone' }
+
+	// exactly the set of admins present
+	const admins = players.filter(p => p.isAdmin)
+	if (admins.length > 0 && targets.length === admins.length && admins.every(p => targetIds.has(idOf(p)))) {
+		return { type: 'all-admins' }
+	}
+
+	// one or both teams warned in full, with no targets outside those teams
+	const fullTeams: SM.TeamId[] = []
+	for (const teamId of [1, 2] as SM.TeamId[]) {
+		const teamPlayers = players.filter(p => p.teamId === teamId)
+		if (teamPlayers.length > 0 && teamPlayers.every(p => targetIds.has(idOf(p)))) fullTeams.push(teamId)
+	}
+	if (fullTeams.length > 0 && targets.every(p => p.teamId !== null && fullTeams.includes(p.teamId))) {
+		return { type: 'teams', teamIds: fullTeams }
+	}
+
+	// squads warned in full, plus however many loose players remain
+	const fullSquads: { uniqueId: number; squadName: string; teamId: SM.TeamId }[] = []
+	let coveredBySquads = 0
+	for (const squad of state.squads) {
+		const members = players.filter(p => p.squadId === squad.squadId && p.teamId === squad.teamId)
+		if (members.length > 0 && members.every(p => targetIds.has(idOf(p)))) {
+			fullSquads.push({ uniqueId: squad.uniqueId, squadName: squad.squadName, teamId: squad.teamId })
+			coveredBySquads += members.length
+		}
+	}
+	if (fullSquads.length > 0) {
+		return { type: 'squads', squads: fullSquads, otherPlayerCount: Math.max(0, targets.length - coveredBySquads) }
+	}
+
+	return { type: 'players' }
 }
 
 const compiledPatternMap = new WeakMap<string[], RegExp[]>()
@@ -200,7 +320,7 @@ type InterpolationOptions = {
 
 function interpolateEvent(
 	state: InterpolableState,
-	event: Event,
+	event: SE.Event,
 	opts?: InterpolationOptions,
 ): EventEnriched {
 	switch (event.type) {
@@ -516,6 +636,10 @@ export type ChatViewOptionsStore = {
 }
 
 export function isEventFilteredBySecondary(event: EventEnriched, filterState: SecondaryFilterState): boolean {
+	// app (audit) events are admin actions: visible everywhere except the pure-chat view
+	if (event.type === 'APP_EVENT') {
+		return filterState === 'CHAT'
+	}
 	// Always show new game and round ended events
 	if (
 		['NEW_GAME', 'ROUND_ENDED', 'RESET', 'RCON_CONNECTED', 'RCON_DISCONNECTED'].includes(event.type)
@@ -550,6 +674,12 @@ export function isEventFilteredBySecondary(event: EventEnriched, filterState: Se
 
 export function* iterAssocPlayers(event: EventEnriched, playerId?: SM.PlayerId) {
 	if (event.type === 'NOOP') return
+	if (event.type === 'APP_EVENT') {
+		for (const player of event.targetPlayers) {
+			if (!playerId || SM.PlayerIds.getPlayerId(player.ids) === playerId) yield [player, 'player'] as const
+		}
+		return
+	}
 	if (!event) {
 		yield* SE.iterAssocPlayers(event)
 		return

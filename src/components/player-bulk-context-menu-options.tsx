@@ -21,7 +21,7 @@ export default function PlayerBulkContextMenuOptions(
 	const closeDialog = useCloseAlertDialog()
 	const { toast } = useToast()
 
-	const warnMutation = SquadServerClient.useWarnPlayerMutation()
+	const warnPlayersMutation = SquadServerClient.useWarnPlayersMutation()
 	const removeFromSquadMutation = SquadServerClient.useRemoveFromSquadMutation()
 	const serverId = stores.squadServer.serverId
 
@@ -92,7 +92,12 @@ export default function PlayerBulkContextMenuOptions(
 			})
 			if (result !== 'confirm' || !reason.trim()) return
 			const trimmed = reason.trim()
-			await runForEach('Warn', playerId => warnMutation.mutateAsync({ serverId, playerId, reason: trimmed }))
+			// one call for the whole batch: the server aggregates the resulting warns under a single app event
+			try {
+				await warnPlayersMutation.mutateAsync({ serverId, playerIds, reason: trimmed })
+			} catch {
+				toast({ title: 'Warn failed', description: `Failed to warn ${playerIds.length} players`, variant: 'destructive' })
+			}
 		})
 	}
 

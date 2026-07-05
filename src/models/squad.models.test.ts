@@ -94,6 +94,12 @@ const ADMIN_BROADCAST_MULTILINE =
 const PLAYER_WOUNDED =
 	'[2026.04.27-23.33.47:250][332]LogSquadTrace: [DedicatedServer]Wound(): Player:RaT I Gangry KillingDamage=0.000000 from BP_PlayerController_C_2146093177 (Online IDs: EOS: 00029ce874284d2ba0199af5dd36a199 steam: 76561198397430155 | Controller ID: BP_PlayerController_C_2146093177) caused by BP_Soldier_USMC_Rifleman1_Woodland_C'
 
+const ADMIN_FORCED_TEAM_CHANGE =
+	'[2026.07.05-02.11.35:542][495]LogSquad: ADMIN COMMAND: Forced team change for player 0. [Online IDs= EOS: 000249a430574933aefd9bbc9a8f2f37 steam: 76561198052229202]  grey275 from RCON'
+const ADMIN_DISBANDED_SQUAD =
+	'[2026.07.05-02.16.44:450][194]LogSquad: ADMIN COMMAND: Remote admin disbanded squad 1 on team 1, named "Squad 1" from RCON'
+const ADMIN_REMOVED_FROM_SQUAD = '[2026.07.05-02.18.39:536][533]LogSquad: ADMIN COMMAND: Player  grey275 was removed from squad from RCON'
+
 // --- Tests ---
 
 describe('LogEvents.parse', () => {
@@ -146,6 +152,44 @@ describe('LogEvents.parse', () => {
 					playerController: 'BP_PlayerController_C_2146093177',
 				}),
 				victimIds: expect.objectContaining({ username: 'RaT I Gangry' }),
+			})
+		})
+	})
+
+	describe('admin squad/team commands', () => {
+		it('parses a forced team change with target online ids and RCON source', async () => {
+			const events = await collect([ADMIN_FORCED_TEAM_CHANGE, NEXT_TICK_EVENT].join('\n'))
+			expect(events).toHaveLength(1)
+			expect(events[0]).toMatchObject({
+				type: 'ADMIN_FORCED_TEAM_CHANGE',
+				playerIds: expect.objectContaining({
+					eos: '000249a430574933aefd9bbc9a8f2f37',
+					steam: '76561198052229202',
+					username: 'grey275',
+				}),
+				source: { type: 'rcon' },
+			})
+		})
+
+		it('parses a squad disband with squad/team ids and name', async () => {
+			const events = await collect([ADMIN_DISBANDED_SQUAD, NEXT_TICK_EVENT].join('\n'))
+			expect(events).toHaveLength(1)
+			expect(events[0]).toMatchObject({
+				type: 'ADMIN_DISBANDED_SQUAD',
+				squadId: 1,
+				teamId: 1,
+				squadName: 'Squad 1',
+				source: { type: 'rcon' },
+			})
+		})
+
+		it('parses a remove-from-squad by username (no online ids in the log)', async () => {
+			const events = await collect([ADMIN_REMOVED_FROM_SQUAD, NEXT_TICK_EVENT].join('\n'))
+			expect(events).toHaveLength(1)
+			expect(events[0]).toMatchObject({
+				type: 'ADMIN_REMOVED_FROM_SQUAD',
+				playerIds: expect.objectContaining({ username: 'grey275' }),
+				source: { type: 'rcon' },
 			})
 		})
 	})

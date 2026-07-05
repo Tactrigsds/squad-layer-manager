@@ -16,6 +16,7 @@ import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod'
 import * as Messages from '@/messages.ts'
+import * as AppEvents from '@/models/app-events.models'
 import type * as BAL from '@/models/balance-triggers.models'
 import * as CHAT from '@/models/chat.models.ts'
 import * as CS from '@/models/context-shared'
@@ -85,6 +86,10 @@ export type SquadServer = {
 	// TODO we should slim down the context we provide here so that we're just transmitting span & logging info, and leave the listener to construct everything else
 	event$: Rx.Subject<[C.Db & C.ServerSlice, SE.Event]>
 	eventState: PendingEvents.State
+
+	// SLM app (audit) events for this server, and the live channel that feeds them into the activity panel
+	emittedAppEvents: AppEvents.AppEvent[]
+	appEvent$: Rx.Subject<[C.Db & C.ServerSlice, AppEvents.AppEvent]>
 
 	chatState: CHAT.ChatState
 
@@ -221,7 +226,7 @@ export const orpcRouter = {
 			z.object({ lastEventId: z.number().optional(), serverId: z.string() }),
 		)
 		.handler(async function*({ context, signal, input }) {
-			const obs: Rx.Observable<(SE.Event | CHAT.LifecycleEvent)[]> = sliceCtx$(context.wsClientId, input.serverId).pipe(
+			const obs: Rx.Observable<(SE.Event | CHAT.AppFeedEvent | CHAT.LifecycleEvent)[]> = sliceCtx$(context.wsClientId, input.serverId).pipe(
 				Rx.switchMap((_ctx) => {
 					if (!_ctx) return Rx.EMPTY
 					const ctx = _ctx
@@ -234,7 +239,7 @@ export const orpcRouter = {
 						}
 
 						let allEvents: SE.Event[] = ctx.server.emittedEvents
-						let events: (SE.Event | CHAT.LifecycleEvent)[] = []
+						let events: (SE.Event | CHAT.AppFeedEvent | CHAT.LifecycleEvent)[] = []
 
 						if (input.lastEventId === undefined) {
 							events.push({
@@ -242,7 +247,7 @@ export const orpcRouter = {
 								time: Date.now(),
 								serverId: ctx.serverId,
 							})
-							events.push(...allEvents)
+							events.push(...mergeEventsByTime(allEvents, ctx.server.emittedAppEvents))
 							events.push(sync)
 						} else {
 							let lastEventIndex = allEvents.findIndex(
@@ -255,7 +260,12 @@ export const orpcRouter = {
 								resumedEventId: lastEventIndex === -1 ? null : input!.lastEventId!,
 							})
 							// if last event was not found it'll be -1, which works nicely here because we just need to resend all events
-							events.push(...allEvents.slice(lastEventIndex + 1))
+							events.push(
+								...mergeEventsByTime(
+									allEvents.slice(lastEventIndex + 1),
+									ctx.server.emittedAppEvents.filter((a) => lastEventIndex === -1 || a.time >= allEvents[lastEventIndex].time),
+								),
+							)
 							events.push(sync)
 						}
 
@@ -263,8 +273,11 @@ export const orpcRouter = {
 					}
 					const initial$ = Rx.from(getInitialEvents()).pipe(Rx.concatAll())
 
-					const upcoming$ = ctx.server.event$.pipe(
-						Rx.map(([_, event]): SE.Event[] => [event]),
+					const upcoming$ = Rx.merge(
+						ctx.server.event$.pipe(Rx.map(([_, e]): SE.Event | CHAT.AppFeedEvent => e)),
+						ctx.server.appEvent$.pipe(Rx.map(([_, appEvent]): SE.Event | CHAT.AppFeedEvent => ({ type: 'APP_EVENT', appEvent }))),
+					).pipe(
+						Rx.map((event): (SE.Event | CHAT.AppFeedEvent)[] => [event]),
 					)
 
 					return Rx.concat(initial$, upcoming$).pipe(
@@ -306,7 +319,17 @@ export const orpcRouter = {
 			const ctx = resolveSliceCtx(_ctx, input.serverId)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players'))
 			if (denyRes) return denyRes
-			await SquadRcon.warn(ctx, input.playerId, input.reason)
+			await warnPlayers(ctx, [input.playerId], input.reason, { type: 'slm-user', userId: ctx.user.discordId })
+			return { code: 'ok' as const }
+		}),
+
+	warnPlayers: orpcBase
+		.input(z.object({ serverId: z.string(), playerIds: z.array(SM.PlayerIdSchema).min(1), reason: z.string().min(1) }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctx = resolveSliceCtx(_ctx, input.serverId)
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players'))
+			if (denyRes) return denyRes
+			await warnPlayers(ctx, input.playerIds, input.reason, { type: 'slm-user', userId: ctx.user.discordId })
 			return { code: 'ok' as const }
 		}),
 
@@ -510,12 +533,14 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		serverRolling$: new Rx.BehaviorSubject(null as number | null),
 
 		event$: new IsolatedSubject(),
+		appEvent$: new IsolatedSubject(),
 		processEventsMtx: new Mutex(),
 
 		eventState: eventState,
 
 		chatState: CHAT.getInitialChatState(),
 		emittedEvents: [],
+		emittedAppEvents: [],
 		lastSavedEventId: null,
 		destroyed: false,
 		cleanupId: null,
@@ -529,6 +554,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		() => server.postRollEventsSub,
 		server.serverRolling$,
 		server.event$,
+		server.appEvent$,
 		server.savingEventsMtx,
 		server.processEventsMtx,
 	)
@@ -794,6 +820,54 @@ export async function pushAttribution(ctx: C.SquadServer & C.Db & CS.AbortSignal
 	await collectEvents(ctx, () => {
 		PendingEvents.pushAttribution(ctx.server.eventState, attribution)
 	})
+}
+
+// persists an SLM app (audit) event and streams it into this server's activity feed. Persist happens before
+// the push (and before any server event that links to it via appEventId is later saved), satisfying the FK.
+export async function emitAppEvent(ctx: C.SquadServer & C.Db & CS.AbortSignal, appEvent: AppEvents.AppEvent) {
+	await ctx.db().insert(Schema.appEvents).values(AppEvents.toRow(appEvent))
+	ctx.server.emittedAppEvents.push(appEvent)
+	ctx.server.appEvent$.next([resolveSliceCtx(ctx, ctx.serverId), appEvent])
+}
+
+// warns players through an app event: creates the PLAYER_WARNED app event (so the feed can aggregate the
+// resulting warns under one entry), arms the pending-events machine to attribute each landing PLAYER_WARNED server
+// event to it, then issues the warns. Emit (persist) precedes arming and the warns so the app event exists before
+// any server event referencing it is saved.
+export async function warnPlayers(
+	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & C.MatchHistory & CS.AbortSignal,
+	targets: SM.PlayerId[],
+	reason: string,
+	actor: AppEvents.Actor,
+) {
+	if (targets.length === 0) return
+	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+	const appEvent = AppEvents.create<AppEvents.PlayerWarned>({
+		type: 'PLAYER_WARNED',
+		actor,
+		serverId: ctx.serverId,
+		matchId: currentMatch.historyEntryId,
+		causeId: null,
+		message: reason,
+		targets,
+	})
+	await emitAppEvent(ctx, appEvent)
+	const source = { type: 'event' as const, id: appEvent.id }
+	await collectEvents(ctx, () => {
+		for (const target of targets) {
+			PendingEvents.expectWarn(ctx.server.eventState, { playerId: target, reason, source })
+		}
+	})
+	await SquadRcon.warnAll(ctx, targets, reason)
+}
+
+// interleaves server events and app events by time for the activity feed. app events sort before server events on
+// ties (placed first + stable sort) so a warn's aggregating app event is already in the client buffer when its
+// collapsed server events arrive. app events are wrapped for the wire (see CHAT.AppFeedEvent).
+function mergeEventsByTime(serverEvents: SE.Event[], appEvents: AppEvents.AppEvent[]): (SE.Event | CHAT.AppFeedEvent)[] {
+	const wrapped: CHAT.AppFeedEvent[] = appEvents.map((appEvent) => ({ type: 'APP_EVENT', appEvent }))
+	const timeOf = (e: SE.Event | CHAT.AppFeedEvent) => e.type === 'APP_EVENT' ? e.appEvent.time : e.time
+	return [...wrapped, ...serverEvents].sort((a, b) => timeOf(a) - timeOf(b))
 }
 
 export async function destroyServer(ctx: C.ServerSlice) {
@@ -1070,6 +1144,16 @@ const loadSavedEvents = C.spanOp(
 		const events = rowsRaw.map((r) => SE.fromEventRow(r.event))
 		server.lastSavedEventId = events[events.length - 1]?.id ?? null
 		server.emittedEvents = events
+
+		const appEventRows = lastMatch
+			? await ctx
+				.db()
+				.select()
+				.from(Schema.appEvents)
+				.where(E.eq(Schema.appEvents.matchId, lastMatch.id))
+				.orderBy(E.asc(Schema.appEvents.time))
+			: []
+		server.emittedAppEvents = appEventRows.map((r) => AppEvents.fromRow(r))
 	},
 )
 
@@ -1118,11 +1202,14 @@ export const saveEvents = C.spanOp(
 
 			for (const event of events) {
 				const persisted = Obj.omit(event, ['id', 'type', 'time', 'matchId'])
+				// queryable projection of source when it links to an app event
+				const source = (event as { source?: { type: string; id?: string } }).source
 				eventRows.push({
 					id: event.id,
 					type: event.type,
 					time: new Date(event.time),
 					matchId: event.matchId,
+					appEventId: source?.type === 'event' ? source.id! : null,
 					data: superjson.serialize(persisted),
 				})
 

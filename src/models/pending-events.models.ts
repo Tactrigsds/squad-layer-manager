@@ -5,11 +5,26 @@ import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
+import type { ActionSource } from '@/models/server-events-base.models'
 import type * as SE from '@/models/server-events.models'
 import * as SM from '@/models/squad.models'
 import { z } from 'zod'
 type TeamsUpdateEvent = { type: 'TEAMS_UPDATE'; id: number; teams: SM.Teams; time: number }
 export type Attribution = { type: 'MAP_SET_ATTRIBUTION'; itemId: string; layerId: L.LayerId; time: number }
+
+// how long an armed expectation lives before it's GC'd if its event never lands (RCON error, player left).
+// matched expectations are consumed immediately, so this is only a safety net -- NOT the matching window.
+export const DEFAULT_EXPECTATION_TTL_MS = 60_000
+
+// SLM arms an expectation (before issuing an action's RCON command) so that when a matching server event is later
+// produced, process() stamps its `source` -- linking it to the SLM app event that caused it -- and consumes
+// the expectation. See squad-rcon.server.ts warn/warnAll.
+export type ArmedActionSource = Extract<ActionSource, { type: 'event' } | { type: 'system' }>
+export type EventExpectation = {
+	match: { type: 'PLAYER_WARNED'; playerId: SM.PlayerId; reason?: string }
+	source: ArmedActionSource
+	expiresAt: number
+}
 export type State = {
 	lastKnownLogEventTime: number | null
 	eventBufs: {
@@ -23,6 +38,13 @@ export type State = {
 	}
 
 	attributions: Attribution[]
+
+	// players an admin forced to change teams (keyed by player id) -> the admin action source ("why").
+	// consumed by the next teams poll's PLAYER_CHANGED_TEAM, then wiped -- a marker is valid for exactly one poll.
+	forcedTeamChanges: Map<SM.PlayerId, SM.LogEvents.ActionSource>
+
+	// SLM-armed expectations: match an upcoming server event and stamp its `source` (see EventExpectation)
+	expectations: EventExpectation[]
 
 	// players from the last =<2 matches
 	nextLayerId: L.LayerId | null
@@ -99,6 +121,8 @@ export function init(
 			teamsUpdates: [],
 		},
 		attributions: [],
+		forcedTeamChanges: new Map(),
+		expectations: [],
 		nextLayerId: null,
 		currentMatch: opts.currentMatch,
 		syncState: { type: 'desynced' },
@@ -112,6 +136,36 @@ export function init(
 
 export function pushAttribution(state: State, attribution: Omit<Attribution, 'time'>) {
 	state.attributions.push({ ...attribution, time: Date.now() })
+}
+
+export function pushExpectation(state: State, expectation: EventExpectation) {
+	state.expectations.push(expectation)
+}
+
+// arm an expectation that the next matching PLAYER_WARNED server event should be attributed to `source`
+export function expectWarn(
+	state: State,
+	opts: { playerId: SM.PlayerId; reason?: string; source: ArmedActionSource; ttlMs?: number },
+) {
+	state.expectations.push({
+		match: { type: 'PLAYER_WARNED', playerId: opts.playerId, reason: opts.reason },
+		source: opts.source,
+		expiresAt: Date.now() + (opts.ttlMs ?? DEFAULT_EXPECTATION_TTL_MS),
+	})
+}
+
+// stamps an emitted event with a matching armed expectation's source (consume-once). mutates the event in place.
+function applyExpectations(state: State, event: SE.Event) {
+	if (event.type !== 'PLAYER_WARNED') return
+	for (let i = 0; i < state.expectations.length; i++) {
+		const exp = state.expectations[i]
+		if (exp.match.type !== 'PLAYER_WARNED') continue
+		if (event.player !== exp.match.playerId) continue
+		if (exp.match.reason !== undefined && exp.match.reason !== event.reason) continue
+		event.source = exp.source
+		state.expectations.splice(i, 1)
+		return
+	}
 }
 
 export function onRconConnected(state: State, time: number, nextLayerId: L.LayerId | null, currentLayerId: L.LayerId) {
@@ -149,6 +203,8 @@ export async function* process(
 	time: number,
 ): AsyncGenerator<SE.Event> {
 	const log = state.log
+	// GC expectations whose event never landed (matched ones are consumed on match, so this only drops stale arms)
+	state.expectations = state.expectations.filter(e => e.expiresAt >= time)
 	const toProcess: PendingEvent[] = []
 	const comparator = (a: PendingEvent, b: PendingEvent) => a.time - b.time
 
@@ -198,6 +254,7 @@ export async function* process(
 				if (state.currTeams) {
 					applyEventTeamMutations(ctx, state.currTeams, event)
 				}
+				applyExpectations(state, event)
 				yield event
 			}
 		} catch (err) {
@@ -432,6 +489,8 @@ async function* processPendingEvent(
 			state.syncState = { type: 'desynced' }
 		}
 		state.currTeams = null
+		// team state is gone; any pending forced-team-change attribution can no longer be matched to a poll
+		state.forcedTeamChanges.clear()
 		if (state.currentMatch !== 'PENDING') {
 			yield {
 				type: 'RCON_DISCONNECTED',
@@ -877,9 +936,68 @@ async function* processPendingEvent(
 			break
 		}
 
+		case 'ADMIN_FORCED_TEAM_CHANGE': {
+			// The log doesn't state the destination team, and firing early races the teams poll -- which is the real
+			// source of truth for the new team and the implied squad-leave. So just record the admin attribution;
+			// the next teams poll's PLAYER_CHANGED_TEAM picks it up. See reconcileTeamsUpdate / the TEAMS_UPDATE case,
+			// which wipes forcedTeamChanges after every poll (used or not).
+			state.forcedTeamChanges.set(SM.PlayerIds.getPlayerId(pendingEvent.playerIds), pendingEvent.source)
+			break
+		}
+
+		case 'ADMIN_DISBANDED_SQUAD': {
+			const squad = state.currTeams.squads.find(s => s.squadId === pendingEvent.squadId && s.teamId === pendingEvent.teamId)
+			if (!squad) {
+				log.warn('Disband for unknown squad: squadId=%d, teamId=%d', pendingEvent.squadId, pendingEvent.teamId)
+				break
+			}
+			for (const player of state.currTeams.players) {
+				if (!SM.Squads.idsEqual(player, squad)) continue
+				yield {
+					type: 'PLAYER_LEFT_SQUAD',
+					id: Gen.next(state.counters.eventId),
+					player: SM.PlayerIds.getPlayerId(player.ids),
+					uniqueId: squad.uniqueId,
+					matchId: state.currentMatch.historyEntryId,
+					time: pendingEvent.time,
+					source: pendingEvent.source,
+				}
+			}
+			yield {
+				type: 'SQUAD_DISBANDED',
+				...base,
+				uniqueId: squad.uniqueId,
+				source: pendingEvent.source,
+			}
+			break
+		}
+
+		case 'ADMIN_REMOVED_FROM_SQUAD': {
+			// the log only carries a display name, so resolution is by username; if it's ambiguous/unknown we skip and
+			// let the teams poll reconcile the leave organically (without attribution)
+			const player = SM.PlayerIds.find(state.currTeams.players, p => p.ids, pendingEvent.playerIds)
+			if (!player) {
+				log.warn('Remove from squad for unknown player: %s', SM.PlayerIds.prettyPrint(pendingEvent.playerIds))
+				break
+			}
+			if (!player.squadId) {
+				log.warn('Remove from squad for player not in a squad: %s', SM.PlayerIds.prettyPrint(player.ids))
+				break
+			}
+			const squad = state.currTeams.squads.find(s => SM.Squads.idsEqual(s, player))
+			if (!squad) {
+				log.warn("Remove from squad but player's squad not found in currTeams: %s", SM.PlayerIds.prettyPrint(player.ids))
+				break
+			}
+			yield* emitLeaveSquadEvents(state as StateWithCurrentMatchAndPlayers, pendingEvent.time, player, squad.uniqueId, pendingEvent.source)
+			break
+		}
+
 		case 'TEAMS_UPDATE': {
 			const events = Array.from(reconcileTeamsUpdate(state, pendingEvent))
 			yield* events
+			// a forced-team-change attribution is valid for exactly one poll -- discard whatever wasn't consumed
+			state.forcedTeamChanges.clear()
 			break
 		}
 
@@ -1062,6 +1180,8 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 				type: 'PLAYER_CHANGED_TEAM',
 				player: playerId,
 				newTeamId: nextPlayer.teamId,
+				// attributed if an admin forced this change (recorded from the log); undefined for organic switches
+				source: state.forcedTeamChanges.get(playerId),
 				...base,
 			}
 		}
@@ -1136,6 +1256,7 @@ function* emitLeaveSquadEvents(
 	time: number,
 	player: SM.Player,
 	squadUniqueId: number,
+	source?: SM.LogEvents.ActionSource,
 ): Generator<SE.Event> {
 	if (player.squadId) {
 		yield {
@@ -1145,6 +1266,7 @@ function* emitLeaveSquadEvents(
 			uniqueId: squadUniqueId,
 			time,
 			matchId: state.currentMatch.historyEntryId,
+			source,
 		}
 		let otherPlayerCount = 0
 		for (const otherPlayer of state.currTeams.players) {
@@ -1160,6 +1282,7 @@ function* emitLeaveSquadEvents(
 				uniqueId: squadUniqueId,
 				time,
 				matchId: state.currentMatch.historyEntryId,
+				source,
 			}
 		} else if (otherPlayerCount === 1) {
 			if (player.isLeader) {
