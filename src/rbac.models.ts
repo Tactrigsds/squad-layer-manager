@@ -96,6 +96,7 @@ export const PERMISSION_DEFINITION = {
 		scope: 'global',
 	}),
 	...definePermission('squad-server:warn-players', { description: 'Send in-game warnings to players', scope: 'global' }),
+	...definePermission('squad-server:broadcast', { description: 'Send server-wide broadcast messages', scope: 'global' }),
 
 	...definePermission('battlemetrics:write-flags', { description: 'Add or remove BattleMetrics player flags', scope: 'global' }),
 

@@ -23,6 +23,7 @@ import { MatchTeamDisplay } from './teams-display'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
 import { Separator } from './ui/separator'
 import { Spinner } from './ui/spinner'
+import WarnChatBox from './warn-chat-box'
 
 const dropdownMenuSlots = {
 	Item: DropdownMenuItem,
@@ -135,7 +136,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 							</button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent style={{ zIndex: zIndex + 10 }}>
-							<SquadMenuItems squad={liveSquad} slots={dropdownMenuSlots} stores={stores} />
+							<SquadMenuItems squad={liveSquad} slots={dropdownMenuSlots} stores={stores} omitWarn />
 						</DropdownMenuContent>
 					</DropdownMenu>
 				)}
@@ -208,6 +209,17 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 					</div>
 				</div>
 			</div>
+			{liveSquad && currentPlayers.length > 0 && (
+				<div className="px-3 py-2 border-t border-border/50">
+					<WarnChatBox
+						serverId={serverId}
+						playerIds={currentPlayers.map(p => SM.PlayerIds.getPlayerId(p.ids))}
+						bodyPrefix={`@Squad${ingameSquadId}`}
+						focusTarget={{ kind: 'squad', uniqueSquadId }}
+						placeholder={`Warn ${displayName}…`}
+					/>
+				</div>
+			)}
 		</div>
 	)
 }

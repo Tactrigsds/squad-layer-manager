@@ -3,6 +3,7 @@ import { CheckIcon, ChevronRightIcon, DotFilledIcon } from '@radix-ui/react-icon
 import * as React from 'react'
 
 import { cn } from '@/lib/utils'
+import * as WarnChat from '@/systems/warn-chat.client'
 import { useDraggableWindowContext } from './draggable-window'
 
 const ContextMenu = ContextMenuPrimitive.Root
@@ -56,7 +57,7 @@ ContextMenuSubContent.displayName = ContextMenuPrimitive.SubContent.displayName
 const ContextMenuContent = React.forwardRef<
 	React.ElementRef<typeof ContextMenuPrimitive.Content>,
 	React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Content>
->(({ className, style, ...props }, ref) => {
+>(({ className, style, onCloseAutoFocus, ...props }, ref) => {
 	const draggableWindow = useDraggableWindowContext()
 	const zIndexStyle = draggableWindow ? { zIndex: draggableWindow.zIndex + 1, ...style } : style
 
@@ -64,6 +65,16 @@ const ContextMenuContent = React.forwardRef<
 		<ContextMenuPrimitive.Portal>
 			<ContextMenuPrimitive.Content
 				ref={ref}
+				// when a menu item just handed focus to a warn box: (1) don't let the closing menu restore focus
+				// to its trigger, and (2) re-fire the focus now that the menu's focus trap has been released,
+				// since focusing while the trap was still mounted (during the exit animation) doesn't stick.
+				onCloseAutoFocus={e => {
+					if (WarnChat.warnFocusJustRequested()) {
+						e.preventDefault()
+						WarnChat.refireWarnFocus()
+					}
+					onCloseAutoFocus?.(e)
+				}}
 				className={cn(
 					'z-50 min-w-32 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
 					className,

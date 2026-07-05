@@ -40,7 +40,7 @@ process.stdin.on('end', () => {
 		console.log('✅ Format check passed\n')
 
 		console.log('🔎 Type checking...')
-		execSync('pnpm run check', { stdio: 'inherit' })
+		execSync('pnpm run check --force', { stdio: 'inherit' })
 		console.log('✅ Type check passed\n')
 
 		console.log('🔎 Running linter...')

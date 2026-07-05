@@ -32,6 +32,7 @@ import PlayerContextMenuOptions from './player-context-menu-options'
 import { PlayerDisplay } from './player-display'
 import SquadContextMenuOptions from './squad-context-menu-options'
 import type { SquadDetailsWindowProps } from './squad-details-window.helpers'
+import { SquadDisplay } from './squad-display'
 import { MatchTeamDisplay } from './teams-display'
 import type { TeamswitchesHelpWindowProps } from './teamswitches-help-window.helpers'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog'
@@ -1045,12 +1046,7 @@ function SquadGroupHeaderRow(props: {
 	const labelContent = (
 		<>
 			{squad
-				? (
-					<>
-						<span className="font-semibold">Squad {squad.squadId}</span>
-						{squad.squadName !== `Squad ${squad.squadId}` && <span className="font-medium">{squad.squadName}</span>}
-					</>
-				)
+				? <SquadDisplay stores={props.stores} squad={squad} matchId={0} showMenu={false} />
 				: <span className="font-semibold">Unassigned</span>}
 			<span className="text-muted-foreground">
 				{props.playerIds.length} {props.playerIds.length === 1 ? 'player' : 'players'}

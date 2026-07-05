@@ -1,4 +1,5 @@
 import EventFilterSelect from '@/components/event-filter-select'
+import ServerChatBox from '@/components/server-chat-box'
 import { ServerEvent } from '@/components/server-event'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
@@ -374,15 +375,18 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 				</div>
 				<ServerCounts stores={stores} />
 			</CardHeader>
-			<CardContent className="flex-1 overflow-hidden min-h-0">
-				<ServerChatEvents
-					className="min-w-[350px] h-full"
-					filteredEvents={finalFilteredEvents}
-					connectionError={connectionError}
-					synced={synced}
-					isLoadingHistorical={historicalEventsQuery.isLoading}
-					stores={stores}
-				/>
+			<CardContent className="flex-1 overflow-hidden min-h-0 flex flex-col">
+				<div className="flex-1 min-h-0">
+					<ServerChatEvents
+						className="min-w-[350px] h-full"
+						filteredEvents={finalFilteredEvents}
+						connectionError={connectionError}
+						synced={synced}
+						isLoadingHistorical={historicalEventsQuery.isLoading}
+						stores={stores}
+					/>
+				</div>
+				{selectedMatchOrdinal === null && <ServerChatBox stores={stores} />}
 			</CardContent>
 		</Card>
 	)

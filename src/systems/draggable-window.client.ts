@@ -293,6 +293,29 @@ export function buildUseOpenWindow<TProps>(id: string) {
 	}
 }
 
+// Opens the window if it isn't already open, otherwise raises the existing one to the front. Safe to call
+// imperatively (e.g. from a menu action) — reads the current store state rather than a hook.
+export function openOrFocusWindow<TProps>(type: string, props: TProps, outletKey?: unknown, anchor?: HTMLElement | null) {
+	const store = DraggableWindowStore.getState()
+	const def = store.definitions.find(d => d.type === type)
+	if (!def) {
+		console.warn(`DraggableWindow: No definition found for id "${type}"`)
+		return
+	}
+	const windowId = def.getId(props)
+	if (store.windows.some(w => w.id === windowId)) store.bringToFront(windowId)
+	else store.openWindow(type, props, anchor, outletKey)
+}
+
+// Hook variant that resolves the current outlet so the window opens in the right panel.
+export function useOpenOrFocusWindow() {
+	const outletKey = useOutletKey()
+	return React.useCallback(
+		<TProps>(type: string, props: TProps, anchor?: HTMLElement | null) => openOrFocusWindow(type, props, outletKey, anchor),
+		[outletKey],
+	)
+}
+
 export function useCloseWindow() {
 	return Zus.useStore(DraggableWindowStore, (s) => s.closeWindow)
 }

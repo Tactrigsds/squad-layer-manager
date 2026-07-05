@@ -319,14 +319,24 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 					</div>
 				</div>
 			</HeadlessDialogContent>
-			{/* rendered after the content so it stacks above the gen-vote dialog (same z-index, later in DOM) */}
-			<EditLayerDialog
-				open={editingChoiceIndex !== undefined}
-				onOpenChange={handleEditDialogOpenChange}
-				layerId={editingChoiceIndex !== undefined ? choices[editingChoiceIndex]?.layerId : undefined}
-				onSelectLayer={handleEditedChoiceLayer}
-				cursor={cursor}
-			/>
+			{
+				/*
+				Only mount while editing. Both dialogs portal to #headlessui-portal-root as z-50 siblings, so stacking
+				is decided by DOM order. EditLayerDialog uses unmount={false}, so if it were always mounted its portal
+				wrapper would be pinned into the root before the gen-vote wrapper and paint *behind* it. Mounting it on
+				open appends its wrapper last, so it stacks above the gen-vote dialog — without a z-index bump that would
+				break its own z-50 combo-box poppers.
+			*/
+			}
+			{editingChoiceIndex !== undefined && (
+				<EditLayerDialog
+					open
+					onOpenChange={handleEditDialogOpenChange}
+					layerId={choices[editingChoiceIndex]?.layerId}
+					onSelectLayer={handleEditedChoiceLayer}
+					cursor={cursor}
+				/>
+			)}
 		</>
 	)
 })

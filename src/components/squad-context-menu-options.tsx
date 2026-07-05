@@ -1,11 +1,14 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as ZusUtils from '@/lib/zustand'
+import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
+import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswitches.client'
+import * as WarnChat from '@/systems/warn-chat.client'
 import React from 'react'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import type { MenuSlots } from './player-context-menu-options'
@@ -21,37 +24,50 @@ const contextMenuSlots: MenuSlots = {
 }
 
 export function SquadMenuItems(
-	{ squad, slots, stores }: {
+	{ squad, slots, stores, omitWarn }: {
 		squad: Pick<SM.Squad, 'squadId' | 'teamId' | 'squadName'>
 		slots: MenuSlots
 		stores: SquadServerFrame.KeyProp
+		// hidden inside the squad details window, which has its own warn box at the bottom
+		omitWarn?: boolean
 	},
 ) {
 	const { Item, Separator } = slots
 	const openDialog = useAlertDialog()
+	const openOrFocusWindow = useOpenOrFocusWindow()
 
 	const disbandSquadMutation = SquadServerClient.useDisbandSquadMutation()
 	const resetSquadNameMutation = SquadServerClient.useResetSquadNameMutation()
 
-	const { squadPlayerIds, squadExists } = ZusUtils.useStore(
+	// uniqueId isn't on the passed-in squad prop, so resolve it (and live membership) from chat state; it's
+	// null when the squad isn't currently live, in which case there's nothing to warn
+	const { squadPlayerIds, squadExists, uniqueId } = ZusUtils.useStore(
 		stores.squadServer,
 		(chatStore: ChatPrt.Store) => {
 			const state = ChatPrt.Sel.chatState(chatStore)
-			const squadExists = state.squads.some(s => s.squadId === squad.squadId && s.teamId === squad.teamId)
+			const liveSquad = state.squads.find(s => s.squadId === squad.squadId && s.teamId === squad.teamId)
 			const squadPlayerIds = state.players
 				.filter(p => p.squadId === squad.squadId && p.teamId === squad.teamId)
 				.map(p => SM.PlayerIds.getPlayerId(p.ids))
-			return { squadPlayerIds, squadExists }
+			return { squadPlayerIds, squadExists: !!liveSquad, uniqueId: liveSquad?.uniqueId ?? null }
 		},
 	)
 
 	const canSwitchNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwitchNow(squadPlayerIds))
 	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canQueue(squadPlayerIds))
 	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
+	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
 
 	const squadLabel = `"${squad.squadName}"`
 	const teamId = squad.teamId as 1 | 2
 	const serverId = stores.squadServer.serverId
+
+	// open (or raise) the squad's details window and focus its warn box (which prefixes @Squad<id>)
+	function warn() {
+		if (uniqueId === null) return
+		openOrFocusWindow(WINDOW_ID.enum['squad-details'], { uniqueSquadId: uniqueId, stores })
+		WarnChat.requestWarnFocus({ kind: 'squad', uniqueSquadId: uniqueId })
+	}
 
 	async function disbandSquad() {
 		TSWClient.Actions.ensureViewingTeams(serverId)
@@ -106,6 +122,16 @@ export function SquadMenuItems(
 				<span title="Shortcut: shift+click the Squad cell in the teams panel">Select Squad</span>
 				<ContextMenuShortcut>⇧+click squad cell</ContextMenuShortcut>
 			</Item>
+			{!omitWarn && (
+				<>
+					<Separator />
+					<PermissionDeniedTooltip denied={warnDenied}>
+						<Item onClick={warn} disabled={!!warnDenied || uniqueId === null || squadPlayerIds.length === 0}>
+							Warn Squad
+						</Item>
+					</PermissionDeniedTooltip>
+				</>
+			)}
 			<Separator />
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item onClick={disbandSquad} disabled={!!manageDenied || !squadExists}>

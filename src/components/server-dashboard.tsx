@@ -2,6 +2,7 @@ import React from 'react'
 
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useIsDesktopSize } from '@/lib/browser.ts'
+import * as WarnChat from '@/systems/warn-chat.client'
 
 import PrimaryPanel from './primary-panel.tsx'
 import SecondaryPanel from './secondary-panel.tsx'
@@ -10,6 +11,10 @@ import TabsList from './ui/tabs-list.tsx'
 export default function ServerDashboard(props: { stores: SquadServerFrame.KeyProp }) {
 	const [activeTab, setActiveTab] = React.useState<'layers' | 'secondary'>('layers')
 	const isDesktop = useIsDesktopSize()
+
+	// "warn selected" routes to the server activity panel; in single-column mode that panel lives behind a
+	// tab, so bring it forward (harmless in desktop, where both panels are always visible)
+	WarnChat.useWarnFocusRequest(t => t.kind === 'server-activity', () => setActiveTab('secondary'))
 
 	return (
 		<div className="w-full h-full flex flex-col overflow-x-auto">

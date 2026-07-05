@@ -3,11 +3,13 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useToast } from '@/hooks/use-toast'
 import * as ZusUtils from '@/lib/zustand'
 import type * as BM from '@/models/battlemetrics.models'
+import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as TeamsPanelModels from '@/models/teams-panel.models'
 import * as RBAC from '@/rbac.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
+import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -15,6 +17,7 @@ import type { PublicSettings } from '@/systems/settings.server'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswitches.client'
 import * as UPClient from '@/systems/user-presence.client'
+import * as WarnChat from '@/systems/warn-chat.client'
 import React from 'react'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger } from './ui/context-menu'
@@ -141,14 +144,20 @@ export function PlayerCopyIdsSub(
 }
 
 export function PlayerMenuItems(
-	{ playerId, slots, stores }: { playerId: SM.PlayerId; slots: MenuSlots; stores: SquadServerFrame.KeyProp },
+	{ playerId, slots, stores, omitWarn }: {
+		playerId: SM.PlayerId
+		slots: MenuSlots
+		stores: SquadServerFrame.KeyProp
+		// hidden inside the player details window, which has its own warn box at the bottom
+		omitWarn?: boolean
+	},
 ) {
 	const { Item, Separator, Sub, SubTrigger, SubContent } = slots
 	const openDialog = useAlertDialog()
 	const closeDialog = useCloseAlertDialog()
 	const { toast } = useToast()
+	const openOrFocusWindow = useOpenOrFocusWindow()
 
-	const warnMutation = SquadServerClient.useWarnPlayerMutation()
 	const demoteCommanderMutation = SquadServerClient.useDemoteCommanderMutation()
 	const disbandSquadMutation = SquadServerClient.useDisbandSquadMutation()
 	const removeFromSquadMutation = SquadServerClient.useRemoveFromSquadMutation()
@@ -246,27 +255,10 @@ export function PlayerMenuItems(
 		}
 	}
 
-	async function warn() {
-		TSWClient.Actions.ensureViewingTeams(serverId)
-		await UPClient.Actions.withPlayerDialogue('WARNING_PLAYERS', async () => {
-			let reason = ''
-			const result = await openDialog({
-				title: `Warn ${playerInfo?.username ?? 'Player'}`,
-				content: (
-					<input
-						className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-						placeholder="Warn reason"
-						autoFocus
-						onChange={e => {
-							reason = e.target.value
-						}}
-					/>
-				),
-				buttons: [{ id: 'confirm', label: 'Send Warning' }],
-			})
-			if (result !== 'confirm' || !reason.trim()) return
-			await warnMutation.mutateAsync({ serverId, playerId, reason: reason.trim() })
-		})
+	// open (or raise) the player's details window and focus its warn box, rather than a one-off dialog
+	function warn() {
+		openOrFocusWindow(WINDOW_ID.enum['player-details'], { playerId, stores })
+		WarnChat.requestWarnFocus({ kind: 'player', playerId })
 	}
 
 	function copyTeleportCommand() {
@@ -453,11 +445,13 @@ export function PlayerMenuItems(
 				</Item>
 			</PermissionDeniedTooltip>
 			<Separator />
-			<PermissionDeniedTooltip denied={warnDenied}>
-				<Item onClick={warn} disabled={!!warnDenied || !isOnServer}>
-					Warn
-				</Item>
-			</PermissionDeniedTooltip>
+			{!omitWarn && (
+				<PermissionDeniedTooltip denied={warnDenied}>
+					<Item onClick={warn} disabled={!!warnDenied || !isOnServer}>
+						Warn
+					</Item>
+				</PermissionDeniedTooltip>
+			)}
 			<Item onClick={copyTeleportCommand} disabled={!isOnServer}>
 				Copy Teleport Command
 			</Item>

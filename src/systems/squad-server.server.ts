@@ -355,6 +355,32 @@ export const orpcRouter = {
 			return { code: 'ok' as const }
 		}),
 
+	warnAdmins: orpcBase
+		.input(z.object({ serverId: z.string(), message: z.string().min(1) }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctx = resolveSliceCtx(_ctx, input.serverId)
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players'))
+			if (denyRes) return denyRes
+			const [adminList, teamsRes] = await Promise.all([ctx.adminList.get(ctx), ctx.server.teams.get(ctx)])
+			if (teamsRes.code !== 'ok') return teamsRes
+			const admins = teamsRes.players
+				.filter(p => p.ids.steam && adminList.admins.has(p.ids.steam))
+				.map(p => SM.PlayerIds.getPlayerId(p.ids))
+			if (admins.length === 0) return { code: 'err:no-admins-online' as const }
+			await warnPlayers(ctx, admins, input.message, { type: 'slm-user', userId: ctx.user.discordId })
+			return { code: 'ok' as const }
+		}),
+
+	broadcast: orpcBase
+		.input(z.object({ serverId: z.string(), message: z.string().min(1) }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctx = resolveSliceCtx(_ctx, input.serverId)
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:broadcast'))
+			if (denyRes) return denyRes
+			await SquadRcon.broadcast(ctx, input.message)
+			return { code: 'ok' as const }
+		}),
+
 	demoteCommander: orpcBase
 		.input(z.object({ serverId: z.string(), playerId: SM.PlayerIdSchema }))
 		.handler(async ({ context: _ctx, input }) => {

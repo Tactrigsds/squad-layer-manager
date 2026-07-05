@@ -23,6 +23,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
 import { ServerEvent } from './server-event'
+import WarnChatBox from './warn-chat-box'
 
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import * as RBAC from '@/rbac.models'
@@ -173,7 +174,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 							</button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent style={{ zIndex: zIndex + 10 }}>
-							<PlayerMenuItems playerId={playerId} slots={dropdownMenuSlots} stores={stores} />
+							<PlayerMenuItems playerId={playerId} slots={dropdownMenuSlots} stores={stores} omitWarn />
 						</DropdownMenuContent>
 					</DropdownMenu>
 				</div>
@@ -229,6 +230,16 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 					)}
 				</ScrollArea>
 			</div>
+			{connectionStatus?.status === 'online' && (
+				<div className="px-3 py-2 border-t border-border/50">
+					<WarnChatBox
+						serverId={serverId}
+						playerIds={[playerId]}
+						focusTarget={{ kind: 'player', playerId }}
+						placeholder={`Warn ${player?.ids.username ?? 'player'}…`}
+					/>
+				</div>
+			)}
 		</div>
 	)
 }
