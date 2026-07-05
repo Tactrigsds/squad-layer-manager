@@ -438,13 +438,15 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 
 	// a resource that keeps failing after retries means the slice can't do its job -- tear the slice down instead of
 	// letting the error escalate to an unhandled rejection and crash the process
-	const onResourceFatalError = (err: unknown) => {
+	const onResourceFatalError = async (err: unknown) => {
 		log.error(err, `Server ${serverId}: async resource failed permanently, destroying slice`)
 		const slice = globalState.slices.get(serverId)
 		if (!slice) return
-		void destroyServer({ ...getBaseCtx(), ...slice }).catch((destroyErr) => {
+		try {
+			await destroyServer({ ...getBaseCtx(), ...slice })
+		} catch (destroyErr) {
 			log.error(destroyErr, `Server ${serverId}: failed to destroy slice after fatal resource error`)
-		})
+		}
 	}
 
 	const adminList = (() => {

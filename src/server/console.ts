@@ -3,7 +3,7 @@ import * as DH from '@/lib/display-helpers'
 import * as ItemMut from '@/lib/item-mutations'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
-import * as RbSyncState from '@/lib/rollback-synced-state'
+import * as ODSM from '@/lib/odsm'
 import * as SetUtils from '@/lib/set'
 import * as BAL from '@/models/balance-triggers.models'
 import * as BM from '@/models/battlemetrics.models'
@@ -122,7 +122,7 @@ const namespaces = {
 	ItemMut,
 	MapUtils,
 	Obj,
-	RbSyncState,
+	ODSM,
 	SetUtils,
 
 	// misc

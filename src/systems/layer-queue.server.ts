@@ -4,7 +4,7 @@ import { toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { IsolatedBehaviorSubject, IsolatedReplaySubject, IsolatedSubject } from '@/lib/isolated-subject'
 
-import * as RbSyncState from '@/lib/rollback-synced-state'
+import * as ODSM from '@/lib/odsm'
 import { assertNever } from '@/lib/type-guards.ts'
 
 import { HumanTime } from '@/lib/zod.ts'
@@ -49,7 +49,7 @@ export type LayerQueueSlice = {
 	// TODO we should fold this into the server events
 	update$: Rx.ReplaySubject<[SS.LQStateUpdate, C.Db & C.ServerId]>
 
-	session: RbSyncState.Server.Session<SLL.Operation, SLL.State, SLL.SideEffect>
+	session: ODSM.Server.Session<SLL.Operation, SLL.State>
 	op$: Rx.Subject<{ op: SLL.Operation; sourceWsClientId?: string }>
 	updateLayerMtx: MutexInterface
 }
@@ -64,14 +64,11 @@ export function setup() {
 
 export function initLayerQueueSlice(ctx: C.ServerSliceCleanup & C.ServerId, serverState: SS.ServerState) {
 	const sllState = SLL.createNewState(serverState.layerQueue)
-	const sideEffect$ = new IsolatedSubject<SLL.SideEffect>()
 	const slice: LayerQueueSlice = {
 		unexpectedNextLayerSet$: new IsolatedBehaviorSubject<L.LayerId | null>(null),
 		update$: new IsolatedReplaySubject(1),
 
-		session: RbSyncState.Server.initSession<SLL.Operation, SLL.State, SLL.SideEffect>(sllState, {
-			onSideEffect: (e) => sideEffect$.next(e),
-		}),
+		session: ODSM.Server.initSession<SLL.Operation, SLL.State>(sllState),
 		op$: new IsolatedSubject<{ op: SLL.Operation; sourceWsClientId?: string }>(),
 		updateLayerMtx: new Mutex(),
 	}
@@ -542,15 +539,17 @@ export const dispatchOp = C.spanOp(
 		// set for ops arriving via the dispatchOp rpc; the originating client gets an ack instead of the full op
 		opts?: { sourceWsClientId?: string },
 	) => {
-		// we're doing this in a slightly weird way so it's clear that all side effect processing happens in an uninterrupted async context
-		const sideEffects: SLL.SideEffect[] = []
-		function onSideEffect(se: SLL.SideEffect) {
-			sideEffects.push(se)
-		}
-
-		ctx.layerQueue.session = RbSyncState.Server.applyOps(ctx.layerQueue.session, [op], SLL.reducer, { onSideEffect })
+		const applied = ODSM.Server.applyOps(ctx.layerQueue.session, [op], SLL.reducer)
+		ctx.layerQueue.session = applied.session
 		ctx.layerQueue.op$.next({ op, sourceWsClientId: opts?.sourceWsClientId })
-		for (const se of sideEffects) {
+		if (applied.rejected) {
+			const rejection = applied.error.data as SLL.Rejection
+			if (rejection.code === 'op-skipped') log.debug('layer queue op skipped: %s', op.op)
+			else log.error(new Error('layer queue op produced invalid state', { cause: applied.error }))
+			return
+		}
+		// all side effect processing happens here in an uninterrupted async context
+		for (const se of applied.sideEffects) {
 			await handleSideEffect(ctx, op, se)
 		}
 	},
@@ -571,9 +570,6 @@ const handleSideEffect = C.spanOp(
 		switch (se.code) {
 			case 'complete':
 			case 'op-outcome':
-				break
-			case 'error':
-				log.error(new Error('Error in side effect', { cause: se.error }))
 				break
 			case 'request-queue-item-generation': {
 				const serverState = await SquadServer.getServerState(ctx)

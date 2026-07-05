@@ -1,8 +1,8 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
 import type * as FRM from '@/lib/frame'
 import * as ItemMut from '@/lib/item-mutations'
+import * as ODSM from '@/lib/odsm'
 import * as RSel from '@/lib/reselect'
-import * as RbSyncState from '@/lib/rollback-synced-state'
 import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
@@ -22,7 +22,7 @@ export type KeyProp = { queue: Key }
 
 export type State = {
 	serverId: string
-	rbSession: RbSyncState.Client.Session<SLL.Operation, SLL.State, SLL.SideEffect>
+	rbSession: ODSM.Client.Session<SLL.Operation, SLL.State>
 
 	handleServerUpdate(update: SLL.Update): void
 	writeIncomingOperations(ops: SLL.Operation[]): void
@@ -75,9 +75,7 @@ export function initLayerQueue(args: Args) {
 				break
 		}
 	}
-	const initRbSession = RbSyncState.Client.initSession<SLL.Operation, SLL.State, SLL.SideEffect>(SLL.createNewState(), {
-		onSideEffect,
-	})
+	const initRbSession = ODSM.Client.initSession<SLL.Operation, SLL.State>(SLL.createNewState())
 
 	set(
 		{
@@ -97,7 +95,7 @@ export function initLayerQueue(args: Args) {
 				switch (update.code) {
 					case 'init': {
 						// processInit rebases in-flight pending ops onto the snapshot so the acks that follow still resolve
-						const newRbSession = RbSyncState.Client.processInit(get().rbSession, update.state, update.ops, SLL.reducer)
+						const newRbSession = ODSM.Client.processInit(get().rbSession, update.state, update.ops, SLL.reducer)
 						set({ rbSession: newRbSession })
 						break
 					}
@@ -108,10 +106,11 @@ export function initLayerQueue(args: Args) {
 					case 'ack': {
 						// ops are deterministic, so the server only sends back the id -- replay our pending copy
 						const session = get().rbSession
-						const res = RbSyncState.Client.processAcks(session, [update.opId], SLL.reducer)
+						const res = ODSM.Client.processAcks(session, [update.opId], SLL.reducer)
 						if (res.unknownOpIds.length > 0) console.warn(`received ack for unknown op ${update.opId}`)
 						if (res.session !== session) {
 							set({ rbSession: res.session })
+							if (!res.rejected) { for (const se of res.sideEffects) onSideEffect(se) }
 							for (const ackedOp of res.ackedOps) get().syncedOp$.next(ackedOp)
 						}
 						break
@@ -122,8 +121,9 @@ export function initLayerQueue(args: Args) {
 			},
 
 			writeIncomingOperations(ops: SLL.Operation[]) {
-				const newRbSession = RbSyncState.Client.processIncomingOps(get().rbSession, ops, SLL.reducer)
-				set({ rbSession: newRbSession })
+				const res = ODSM.Client.processIncomingOps(get().rbSession, ops, SLL.reducer)
+				set({ rbSession: res.session })
+				if (!res.rejected) { for (const se of res.sideEffects) onSideEffect(se) }
 				for (const op of ops) {
 					get().syncedOp$.next(op)
 				}
@@ -239,7 +239,15 @@ export namespace Actions {
 			}
 		}
 
-		slice.setState({ rbSession: RbSyncState.Client.processOutgoingOps(slice.getState().rbSession, [op], SLL.reducer) })
+		const prev = slice.getState().rbSession
+		const outgoing = ODSM.Client.processOutgoingOps(prev, [op], SLL.reducer)
+		if (outgoing.rejected) {
+			// op is a no-op against local state (stale edit window, pending generation, invalid result);
+			// drop it without sending
+			console.debug('layer queue op rejected:', (outgoing.error.data as SLL.Rejection).code)
+			return
+		}
+		slice.setState({ rbSession: outgoing.session })
 
 		const res = await RPC.orpc.layerQueue.dispatchOp.call({ serverId: slice.getState().serverId, op })
 		if (res.code === 'err:permission-denied') {

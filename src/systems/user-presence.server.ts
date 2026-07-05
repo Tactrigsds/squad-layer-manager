@@ -2,8 +2,7 @@ import * as Arr from '@/lib/array'
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as Obj from '@/lib/object'
-import * as RbSyncState from '@/lib/rollback-synced-state'
-import { assertNever } from '@/lib/type-guards'
+import * as ODSM from '@/lib/odsm'
 import type * as CS from '@/models/context-shared'
 import * as UP from '@/models/user-presence'
 import * as C from '@/server/context'
@@ -16,7 +15,7 @@ import { z } from 'zod'
 
 export type UserPresenceContext = {
 	userPresence: {
-		session: RbSyncState.Server.Session<UP.Op, UP.State, UP.SideEffects>
+		session: ODSM.Server.Session<UP.Op, UP.State>
 		op$: IsolatedSubject<{ ops: UP.Op[]; sourceWsClientId?: string }>
 	}
 }
@@ -97,28 +96,18 @@ const dispatchOp = C.spanOp(
 	'dispatchOp',
 	{ module, extraText: (ops) => ops.map(o => o.code + (o.code === 'update-activity' ? ` (${o.update.code})` : '')).join(',') },
 	async (ops: UP.Op[], opts?: { sourceWsClientId?: string }) => {
-		const sideEffects: UP.SideEffects[] = []
-		function onSideEffect(se: UP.SideEffects) {
-			sideEffects.push(se)
-		}
-		globalUserPresence.session = RbSyncState.Server.applyOps(globalUserPresence.session, ops, UP.reducer, { onSideEffect })
+		const applied = ODSM.Server.applyOps(globalUserPresence.session, ops, UP.reducer)
+		globalUserPresence.session = applied.session
 		globalUserPresence.op$.next({ ops, sourceWsClientId: opts?.sourceWsClientId })
-		for (const se of sideEffects) {
-			switch (se.code) {
-				case 'error':
-					log.error(se.error)
-					break
-				case 'op-outcome': {
-					log.debug('op outcome', se.op, se.success)
-
-					// TODO handle start-editing and finish-editing on SLL side once that code is converted to use RbSyncState
-					//
-					// /if (op.code === '')
-					break
-				}
-				default:
-					assertNever(se)
-			}
+		if (applied.rejected) {
+			const rejection = applied.error.data as UP.Rejection
+			if (rejection.code === 'op-error') log.error(rejection.error, 'presence op errored')
+			return
+		}
+		for (const se of applied.sideEffects) {
+			// op-outcome is currently the only side effect
+			// TODO handle start-editing and finish-editing on SLL side once that code is converted to use ODSM
+			log.debug('op outcome', se.op, se.success)
 		}
 	},
 )
@@ -135,7 +124,7 @@ export function setup() {
 	log = module.getLogger()
 
 	globalUserPresence = {
-		session: RbSyncState.Server.initSession(UP.initState(), {}),
+		session: ODSM.Server.initSession(UP.initState()),
 		op$: new IsolatedSubject<{ ops: UP.Op[]; sourceWsClientId?: string }>(),
 	}
 	CleanupSys.register(() => globalUserPresence.op$.complete())

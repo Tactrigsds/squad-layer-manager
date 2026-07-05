@@ -12,9 +12,9 @@ import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
+import * as ODSM from '@/lib/odsm'
 import { cn } from '@/lib/utils.ts'
 
-import * as RbSyncState from '@/lib/rollback-synced-state'
 import * as ZusUtils from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -195,7 +195,7 @@ function useQueueWarnings(stores: SquadServerFrame.KeyProp) {
 		stores.squadServer!,
 		s =>
 			s.queue.isModified && !!loggedInUser && SLL.hasUserMutations(
-				RbSyncState.Client.localOps(s.queue.rbSession),
+				ODSM.Client.localOps(s.queue.rbSession),
 				s.queue.rbSession.localState,
 				loggedInUser.discordId,
 			),

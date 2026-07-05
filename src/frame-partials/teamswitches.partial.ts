@@ -1,6 +1,6 @@
 import { toast } from '@/hooks/use-toast'
 import type * as FRM from '@/lib/frame'
-import * as RbSyncState from '@/lib/rollback-synced-state'
+import * as ODSM from '@/lib/odsm'
 import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
 import * as MH from '@/models/match-history.models'
@@ -18,7 +18,7 @@ export type Key = FRM.InstanceKeyOfState<Store>
 export type KeyProp = { teamswitches: Key }
 export type TeamswitchSlice = {
 	serverId: string
-	session: RbSyncState.Client.Session<TSW.Op, TSW.State, TSW.SideEffect>
+	session: ODSM.Client.Session<TSW.Op, TSW.State>
 	// user-attributed teamswitch ops that landed on the synced timeline, for transient presence-panel event text
 	presenceEvent$: Rx.Subject<UP.PresenceEvent>
 	onUpdate(update: TSW.UpdateForClient): void
@@ -37,46 +37,43 @@ async function resolveDisplayName(source: TSW.Teamswitch['source'] | undefined):
 	}
 }
 
+// surfaces a rejected teamswitch op to the user. called at dispatch time with the rejection the
+// reducer threw, so it already runs on the originating client -- no need to filter by user
+function toastOpError(error: TSW.OpError) {
+	let title: string
+	let description: string | undefined
+	switch (error.code) {
+		case 'err:currently-switching':
+			title = 'Switch in progress'
+			description = 'Cannot modify switches while a team switch is being executed.'
+			break
+		case 'err:switches-not-saved':
+			title = 'Switches not saved'
+			description = 'Save your switches before executing.'
+			break
+		case 'err:pending-switch':
+			title = 'Player switch pending'
+			description = `A switch for this player is already pending execution.`
+			break
+		case 'err:teamswitch-execution-failed':
+			title = 'Team switch failed'
+			description = error.reason === 'not-all-players-switched'
+				? 'Some players could not be switched to their assigned teams.'
+				: 'An error occurred while executing the team switch.'
+			break
+		case 'err:currently-not-switching':
+		case 'err:unexpected':
+			title = 'Unexpected error'
+			description = 'An unexpected error occurred with the team switch system.'
+			break
+		default:
+			return
+	}
+	toast({ variant: 'destructive', title, description })
+}
+
 function onSideEffect(se: TSW.SideEffect, presenceEvent$: Rx.Subject<UP.PresenceEvent>) {
 	switch (se.code) {
-		case 'error': {
-			const userId = UsersClient.loggedInUserId
-			if (!userId) return
-			if ((se.error.op as any).source?.discordId !== userId) return
-			const { error } = se
-			let title: string
-			let description: string | undefined
-			switch (error.code) {
-				case 'err:currently-switching':
-					title = 'Switch in progress'
-					description = 'Cannot modify switches while a team switch is being executed.'
-					break
-				case 'err:switches-not-saved':
-					title = 'Switches not saved'
-					description = 'Save your switches before executing.'
-					break
-				case 'err:pending-switch':
-					title = 'Player switch pending'
-					description = `A switch for this player is already pending execution.`
-					break
-				case 'err:teamswitch-execution-failed':
-					title = 'Team switch failed'
-					description = error.reason === 'not-all-players-switched'
-						? 'Some players could not be switched to their assigned teams.'
-						: 'An error occurred while executing the team switch.'
-					break
-				case 'err:currently-not-switching':
-				case 'err:unexpected':
-					title = 'Unexpected error'
-					description = 'An unexpected error occurred with the team switch system.'
-					break
-				default:
-					return
-			}
-			toast({ variant: 'destructive', title, description })
-			break
-		}
-
 		case 'save': {
 			if (!se.source) break
 			const { source, switches } = se
@@ -136,11 +133,8 @@ function onSideEffect(se: TSW.SideEffect, presenceEvent$: Rx.Subject<UP.Presence
 	}
 }
 
-function initSession(presenceEvent$: Rx.Subject<UP.PresenceEvent>, state?: TSW.State, ops?: TSW.Op[]) {
-	return RbSyncState.Client.initSession<TSW.Op, TSW.State, TSW.SideEffect>(state ?? TSW.initState(), {
-		onSideEffect: se => onSideEffect(se, presenceEvent$),
-		ops,
-	})
+function initSession(state?: TSW.State, ops?: TSW.Op[]) {
+	return ODSM.Client.initSession<TSW.Op, TSW.State>(state ?? TSW.initState(), { ops })
 }
 
 export function initTeamswitches(args: Args) {
@@ -152,7 +146,7 @@ export function initTeamswitches(args: Args) {
 	set(
 		{
 			serverId,
-			session: initSession(presenceEvent$),
+			session: initSession(),
 			presenceEvent$,
 
 			onUpdate(update) {
@@ -160,20 +154,24 @@ export function initTeamswitches(args: Args) {
 					case 'init':
 						// processInit rebases in-flight pending ops onto the snapshot so the acks that follow still resolve
 						set({
-							session: RbSyncState.Client.processInit(get().session, update.state, update.ops, TSW.reducer),
+							session: ODSM.Client.processInit(get().session, update.state, update.ops, TSW.reducer),
 						})
 						break
 					case 'op': {
-						const updated = RbSyncState.Client.processIncomingOps(get().session, update.ops, TSW.reducer)
-						set({ session: updated })
+						const res = ODSM.Client.processIncomingOps(get().session, update.ops, TSW.reducer)
+						set({ session: res.session })
+						if (!res.rejected) { for (const se of res.sideEffects) onSideEffect(se, presenceEvent$) }
 						break
 					}
 					case 'ack': {
 						// ops are deterministic, so the server only sends back the ids -- replay our pending copies
 						const session = get().session
-						const res = RbSyncState.Client.processAcks(session, update.opIds, TSW.reducer)
+						const res = ODSM.Client.processAcks(session, update.opIds, TSW.reducer)
 						if (res.unknownOpIds.length > 0) console.warn('received ack for unknown teamswitch ops', res.unknownOpIds)
-						if (res.session !== session) set({ session: res.session })
+						if (res.session !== session) {
+							set({ session: res.session })
+							if (!res.rejected) { for (const se of res.sideEffects) onSideEffect(se, presenceEvent$) }
+						}
 						break
 					}
 					default:
@@ -194,8 +192,16 @@ export namespace Actions {
 	export function dispatch(stores: KeyProp, newOp: TSW.NewClientOp) {
 		const slice = ZusUtils.toPartialStore(stores.teamswitches, 'teamswitches')
 		const op = { ...newOp, opId: TSW.createOpId() }
-		const updated = RbSyncState.Client.processOutgoingOps(slice.getState().session, [op], TSW.reducer)
-		slice.setState({ session: updated })
+		const prev = slice.getState().session
+		const res = ODSM.Client.processOutgoingOps(prev, [op], TSW.reducer)
+		if (res.rejected) {
+			// the op was rejected against local state; surface a real failure to the user and drop it
+			// without sending. a 'noop' rejection changed nothing and has nothing to report
+			const rejection = res.error.data as TSW.Rejection
+			if (rejection.code !== 'noop') toastOpError(rejection)
+			return
+		}
+		slice.setState({ session: res.session })
 		void RPC.orpc.teamswitches.dispatchOp.call({ serverId: slice.getState().serverId, op })
 	}
 }

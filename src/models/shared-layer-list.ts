@@ -1,7 +1,7 @@
 import { createId } from '@/lib/id'
 import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
-import type * as RbSyncState from '@/lib/rollback-synced-state'
+import * as ODSM from '@/lib/odsm'
 import { assertNever } from '@/lib/type-guards'
 
 import * as LL from '@/models/layer-list.models'
@@ -177,8 +177,15 @@ export type State = {
 	requestingGeneratedQueueItem: boolean
 }
 
+// the typed payload carried by a RejectedError thrown from the reducer, for the dispatcher to surface
+// or log. an op is skipped when it is stale (edit window changed, pending generation); the schema
+// variants indicate the op would have produced structurally invalid state
+export type Rejection =
+	| { code: 'op-skipped'; op: Operation }
+	| { code: 'invalid-list'; error: z.ZodError }
+	| { code: 'invalid-saved-list'; error: z.ZodError }
+
 export type SideEffect =
-	| { code: 'error'; error: unknown }
 	| {
 		// saved list has changed, and needs to be written to the database and/or published to the squad server
 		code: 'request-list-save'
@@ -224,28 +231,37 @@ export function createOpId(): string {
 	return createId(16)
 }
 
-export const reducer: RbSyncState.Reducer<Operation, State, SideEffect> = (oldState, ops, prevOps, onSideEffect) => {
+export const reducer: ODSM.Reducer<Operation, State, SideEffect> = (oldState, ops, _prevOps) => {
 	const state = Obj.deepClone(oldState)
+	const sideEffects: SideEffect[] = []
+	const emit = (se: SideEffect) => sideEffects.push(se)
+	// ops in a batch are dependent, so a single skipped op rejects the whole batch (RejectedError)
+	// rather than applying a partial result
 	for (const op of ops) {
-		const success = applyOperation(state, op, onSideEffect)
-		onSideEffect?.({ code: 'op-outcome', op, success })
+		const success = applyOperation(state, op, emit)
+		emit({ code: 'op-outcome', op, success })
+		if (!success) throw new ODSM.RejectedError<Rejection>({ code: 'op-skipped', op }, { message: `operation ${op.op} skipped` })
 	}
 	const result = LL.ListSchema.safeParse(state.list)
 	if (!result.success) {
-		onSideEffect?.({ code: 'error', error: result.error })
-		return oldState
+		throw new ODSM.RejectedError<Rejection>({ code: 'invalid-list', error: result.error }, {
+			message: 'list failed schema validation',
+			cause: result.error,
+		})
 	}
 	const savedResult = LL.ListSchema.safeParse(state.savedList)
 	if (!savedResult.success) {
-		onSideEffect?.({ code: 'error', error: savedResult.error })
-		return oldState
+		throw new ODSM.RejectedError<Rejection>({ code: 'invalid-saved-list', error: savedResult.error }, {
+			message: 'savedList failed schema validation',
+			cause: savedResult.error,
+		})
 	}
-	onSideEffect?.({ code: 'complete' })
-	return state
+	emit({ code: 'complete' })
+	return [state, sideEffects]
 }
 
 // returns whether the op was applied (as opposed to skipped)
-export function applyOperation(session: State, newOp: Operation, onSideEffect?: RbSyncState.OnSideEffect<SideEffect>): boolean {
+export function applyOperation(session: State, newOp: Operation, onSideEffect?: ODSM.OnSideEffect<SideEffect>): boolean {
 	const opWindowSeqId = (newOp as { editWindowSeqId?: number })?.editWindowSeqId
 	if (opWindowSeqId && opWindowSeqId !== session.editWindowSeqId) {
 		return false
@@ -422,7 +438,7 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 	return true
 }
 
-function saveList(session: State, list: LL.List, onSideEffect: RbSyncState.OnSideEffect<SideEffect> | undefined) {
+function saveList(session: State, list: LL.List, onSideEffect: ODSM.OnSideEffect<SideEffect> | undefined) {
 	session.saving = true
 	if (list.length === 0) {
 		session.requestingGeneratedQueueItem = true

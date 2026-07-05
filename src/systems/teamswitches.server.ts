@@ -5,7 +5,7 @@ import { withThrownAsync } from '@/lib/error'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as MapUtils from '@/lib/map'
 
-import * as RbSyncState from '@/lib/rollback-synced-state'
+import * as ODSM from '@/lib/odsm'
 import { assertNever } from '@/lib/type-guards'
 import { WARNS } from '@/messages'
 import type * as CS from '@/models/context-shared'
@@ -55,7 +55,7 @@ async function resolveSourceName(
 	return 'Admin'
 }
 
-type Session = RbSyncState.Server.Session<TSW.Op, TSW.State, TSW.SideEffect>
+type Session = ODSM.Server.Session<TSW.Op, TSW.State>
 
 export type TeamswitchContext = {
 	session: Session
@@ -71,7 +71,7 @@ export function setup() {
 
 export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 	const context: TeamswitchContext = {
-		session: RbSyncState.Server.initSession(TSW.initState(), {}),
+		session: ODSM.Server.initSession(TSW.initState()),
 		op$: new IsolatedSubject<{ ops: TSW.Op[]; sourceWsClientId?: string }>(),
 		dispatchMtx: new Mutex(),
 		teamswitchExecutedAt: null,
@@ -277,10 +277,8 @@ const dispatchOp = C.spanOp(
 	'dispatchOp',
 	{ module, mutexes: (ctx) => ctx.teamswitches.dispatchMtx, extraText: (ctx, ops) => ops.map(o => o.code).join(',') },
 	async (ctx: C.Teamswitch & C.ServerSlice & C.Db, ops: TSW.Op[], opts?: { sourceWsClientId?: string }) => {
-		const sideEffects: TSW.SideEffect[] = []
-		ctx.teamswitches.session = RbSyncState.Server.applyOps(ctx.teamswitches.session, ops, TSW.reducer, {
-			onSideEffect: (se) => sideEffects.push(se),
-		})
+		const applied = ODSM.Server.applyOps(ctx.teamswitches.session, ops, TSW.reducer)
+		ctx.teamswitches.session = applied.session
 		ctx.teamswitches.op$.next({ ops, sourceWsClientId: opts?.sourceWsClientId })
 
 		const opErrors = new Map<string, unknown[]>()
@@ -290,8 +288,25 @@ const dispatchOp = C.spanOp(
 			opErrors.set(opId, errors)
 		}
 
+		// a rejected batch failed (or was a no-op) and produced no side effects. surface a real op
+		// failure to the rpc caller via opErrors and log it; a 'noop' rejection has nothing to report
+		if (applied.rejected) {
+			const rejection = applied.error.data as TSW.Rejection
+			if (rejection.code !== 'noop') {
+				if (rejection.code === 'err:unexpected') {
+					log.error('op error while executing operation: %s op: %o', rejection.code, rejection.op)
+					C.recordGenericError(rejection)
+					C.setSpanStatus('error')
+				} else {
+					log.warn('op was not succesful: %s op: %o', rejection.code, rejection.op)
+				}
+				addError(rejection.op.opId, rejection)
+			}
+			return opErrors
+		}
+
 		const nextOps: TSW.Op[] = []
-		for (const se of sideEffects) {
+		for (const se of applied.sideEffects) {
 			log.debug(se, 'side effect: %s', se.code)
 			try {
 				switch (se.code) {
@@ -379,19 +394,6 @@ const dispatchOp = C.spanOp(
 						break
 					}
 
-					case 'error': {
-						const op = ops.find(op => op.opId === se.opId)
-						if (se.error.code === 'err:unexpected') {
-							log.error('op error while executing operation: %s op: %o', se.error.code, op)
-							C.recordGenericError(se.error)
-							C.setSpanStatus('error')
-						} else {
-							log.warn('op was not succesful: %s op: %o', se.error.code, op)
-						}
-						addError(se.opId, se.error)
-						break
-					}
-
 					case 'save': {
 						const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 						const saved = se.switches.size > 0
@@ -475,14 +477,19 @@ export async function dispatchSwitchNext(
 	ctx: C.Teamswitch & C.ServerSlice & C.Db,
 	switches: TSW.TeamswitchCollection,
 ) {
-	const ops = Array.from(switches.entries()).map(([playerId, { toTeam, source }]) => ({
-		opId: TSW.createOpId(),
-		code: 'add-player-teamswitch' as const,
-		playerId,
-		toTeam,
-		source,
-		saved: true,
-	}))
-	const allErrors = await dispatchOp(ctx, ops)
-	return ops.flatMap(op => allErrors.get(op.opId) ?? [])
+	// dispatch each add on its own -- a batch is all-or-nothing (a rejection discards the whole batch),
+	// so batching would let one already-marked player block switching everyone else
+	const errors: unknown[] = []
+	for (const [playerId, { toTeam, source }] of switches.entries()) {
+		const opErrors = await dispatchOp(ctx, [{
+			opId: TSW.createOpId(),
+			code: 'add-player-teamswitch',
+			playerId,
+			toTeam,
+			source,
+			saved: true,
+		}])
+		for (const errs of opErrors.values()) errors.push(...errs)
+	}
+	return errors
 }

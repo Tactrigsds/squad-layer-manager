@@ -1,7 +1,7 @@
 import { createId } from '@/lib/id'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
-import type * as RbSyncState from '@/lib/rollback-synced-state'
+import * as ODSM from '@/lib/odsm'
 import { assertNever } from '@/lib/type-guards'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
@@ -212,6 +212,10 @@ export type OpError<OpCode extends Op['code'] = Op['code']> =
 			: never)
 	)
 
+// the typed payload carried by a RejectedError thrown from the reducer: either a specific op failure
+// the dispatcher should surface, or a benign no-op that changed nothing (nothing to report)
+export type Rejection = OpError | { code: 'noop' }
+
 export type SideEffect =
 	| {
 		code: 'notify-upcoming-teamswitches'
@@ -238,25 +242,24 @@ export type SideEffect =
 		source?: USR.GuiOrChatUserId
 	}
 	| {
-		code: 'error'
-		opId: string
-		error: OpError
-	}
-	| {
 		code: 'op-outcome'
 		op: Op
 		success: boolean
 	}
 
-export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, ops, prevOps, onSideEffect) => {
+export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _prevOps) => {
 	let state = { ...oldState }
+	const sideEffects: SideEffect[] = []
+	const emit = (se: SideEffect) => sideEffects.push(se)
+	// the first per-op failure rejects the whole (dependent) batch; recorded here and thrown below
+	let firstError: OpError | undefined
 	let skipEmitSave = false
 	let saveSource: USR.GuiOrChatUserId | undefined
 	for (const op of ops) {
 		let opFailed = false
 		const emitOpError = <T extends Op>(error: OpError<T['code']>) => {
 			opFailed = true
-			onSideEffect?.({ code: 'error', opId: error.op.opId, error })
+			firstError ??= error
 		}
 		try {
 			// switch mutations
@@ -313,7 +316,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 					if (op.saved) {
 						state.savedSwitches = new Map(state.savedSwitches)
 						if (state.savedSwitches.has(op.playerId)) {
-							onSideEffect?.({ code: 'notify-teamswitches-cancelled', players: [op.playerId] })
+							emit({ code: 'notify-teamswitches-cancelled', players: [op.playerId] })
 						}
 						state.savedSwitches.delete(op.playerId)
 					} else {
@@ -339,7 +342,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 					}
 					if (op.save) {
 						const playerIds = Array.from(state.savedSwitches.keys())
-						if (playerIds.length > 0) onSideEffect?.({ code: 'notify-teamswitches-cancelled', players: playerIds })
+						if (playerIds.length > 0) emit({ code: 'notify-teamswitches-cancelled', players: playerIds })
 						state.savedSwitches = state.editedSwitches = initTeamswitchCollection()
 						if (op.source) saveSource = op.source
 					} else {
@@ -364,7 +367,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 					state.pendingSwitches = state.savedSwitches
 					const switches = state.savedSwitches
 					state.savedSwitches = state.editedSwitches = initTeamswitchCollection()
-					onSideEffect?.({ code: 'execute-teamswitches', opId: op.opId, switches })
+					emit({ code: 'execute-teamswitches', opId: op.opId, switches })
 					break
 				}
 
@@ -377,7 +380,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 					const executionSource = state.pendingSwitches.values().next().value?.source
 					state.switching = false
 					state.pendingSwitches = initTeamswitchCollection()
-					onSideEffect?.({ code: 'teamswitches-executed', switchCount, source: executionSource })
+					emit({ code: 'teamswitches-executed', switchCount, source: executionSource })
 					break
 				}
 
@@ -459,8 +462,8 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 					const { added, removed } = getTeamswitchChanges(state.editedSwitches, state.savedSwitches)
 					state.savedSwitches = state.editedSwitches
 					saveSource = op.source
-					if (added.length > 0) onSideEffect?.({ code: 'notify-upcoming-teamswitches', players: added })
-					if (removed.length > 0) onSideEffect?.({ code: 'notify-teamswitches-cancelled', players: removed })
+					if (added.length > 0) emit({ code: 'notify-upcoming-teamswitches', players: added })
+					if (removed.length > 0) emit({ code: 'notify-teamswitches-cancelled', players: removed })
 					break
 				}
 
@@ -489,7 +492,7 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 
 					state.pendingSwitches = op.switches
 					state.switching = true
-					onSideEffect?.({ code: 'execute-teamswitches', opId: op.opId, switches: op.switches })
+					emit({ code: 'execute-teamswitches', opId: op.opId, switches: op.switches })
 
 					break
 				}
@@ -500,8 +503,12 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 		} catch (e) {
 			emitOpError({ code: 'err:unexpected', error: e, op })
 		}
-		onSideEffect?.({ code: 'op-outcome', op, success: !opFailed })
+		emit({ code: 'op-outcome', op, success: !opFailed })
 	}
+	// a failing op rejects the whole dependent batch, carrying the (typed) error as the rejection data
+	// for the dispatcher to surface; the partially-mutated state is discarded
+	if (firstError) throw new ODSM.RejectedError<Rejection>(firstError)
+
 	if (state.savedSwitches !== oldState.savedSwitches && !skipEmitSave) {
 		const newSwitchingPlayers: SM.PlayerId[] = []
 		for (const [playerId, _switch] of state.savedSwitches.entries()) {
@@ -509,11 +516,21 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffect> = (oldState, op
 			if (!toTeam || toTeam !== _switch.toTeam) continue
 			newSwitchingPlayers.push(playerId)
 		}
-		onSideEffect?.({ code: 'save', switches: state.savedSwitches, prevSaved: oldState.savedSwitches, source: saveSource })
-		if (newSwitchingPlayers.length > 0) onSideEffect?.({ code: 'notify-upcoming-teamswitches', players: newSwitchingPlayers })
+		emit({ code: 'save', switches: state.savedSwitches, prevSaved: oldState.savedSwitches, source: saveSource })
+		if (newSwitchingPlayers.length > 0) emit({ code: 'notify-upcoming-teamswitches', players: newSwitchingPlayers })
 	}
 
-	return state
+	// the reducer mutates a shallow copy, reassigning a field only when it actually changes it, so
+	// reference-equal fields mean the batch produced no net change -- a benign no-op we reject so it's
+	// dropped rather than broadcast.
+	const unchanged = state.editedSwitches === oldState.editedSwitches
+		&& state.savedSwitches === oldState.savedSwitches
+		&& state.pendingSwitches === oldState.pendingSwitches
+		&& state.players === oldState.players
+		&& state.switching === oldState.switching
+	if (unchanged) throw new ODSM.RejectedError<Rejection>({ code: 'noop' })
+
+	return [state, sideEffects]
 }
 
 export type UpdateForClient = {

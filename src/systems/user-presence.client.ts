@@ -5,7 +5,7 @@ import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Lifecycle from '@/lib/lifecycle'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
-import * as RbSyncState from '@/lib/rollback-synced-state'
+import * as ODSM from '@/lib/odsm'
 import type * as ST from '@/lib/state-tree'
 import * as ZusUtils from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
@@ -142,7 +142,7 @@ export type Store = {
 
 	activityLoaderCache: LoaderCacheEntry<ConfiguredLoaderConfig>[]
 
-	session: RbSyncState.Client.Session<UP.Op, UP.State, UP.SideEffects>
+	session: ODSM.Client.Session<UP.Op, UP.State>
 
 	presence: UP.PresenceState
 	editors: Set<USR.UserId>
@@ -158,8 +158,6 @@ const [_usePresenceUpdate, presenceUpdate$] = ReactRx.bind<UP.PresenceUpdate>(
 )
 
 export const Store = createPresenceStore()
-
-function onSideEffect(_se: UP.SideEffects) {}
 
 function createPresenceStore() {
 	const store = Zus.createStore<Store>((set, get, store) => {
@@ -214,7 +212,7 @@ function createPresenceStore() {
 			Lifecycle.checkAndUnloadStaleEntries(loaderCtx, state)
 		})
 
-		const session = RbSyncState.Client.initSession<UP.Op, UP.State, UP.SideEffects>(UP.initState(), { onSideEffect })
+		const session = ODSM.Client.initSession<UP.Op, UP.State>(UP.initState())
 		return {
 			session,
 			presence: session.localState.presence,
@@ -235,15 +233,16 @@ function handleIncomingPresenceUpdate(update: UP.PresenceUpdate) {
 		// apply the server snapshot and rebase in-flight pending ops onto it (e.g. the
 		// enter-server-dashboard dispatched by the route onEnter racing this init on page load) so
 		// they aren't wiped and the acks that follow still resolve
-		const newSession = RbSyncState.Client.processInit(Store.getState().session, update.state, update.ops, UP.reducer)
+		const newSession = ODSM.Client.processInit(Store.getState().session, update.state, update.ops, UP.reducer)
 		Store.setState({ session: newSession })
 	} else if (update.code === 'op') {
-		const newSession = RbSyncState.Client.processIncomingOps(Store.getState().session, update.ops, UP.reducer)
-		Store.setState({ session: newSession })
+		// presence has no client-side side effects, so the returned sideEffects are ignored
+		const res = ODSM.Client.processIncomingOps(Store.getState().session, update.ops, UP.reducer)
+		Store.setState({ session: res.session })
 	} else if (update.code === 'ack') {
 		// ops are deterministic, so the server only sends back the ids -- replay our pending copies
 		const session = Store.getState().session
-		const res = RbSyncState.Client.processAcks(session, update.opIds, UP.reducer)
+		const res = ODSM.Client.processAcks(session, update.opIds, UP.reducer)
 		if (res.unknownOpIds.length > 0) console.warn('received ack for unknown presence ops', res.unknownOpIds)
 		if (res.session !== session) Store.setState({ session: res.session })
 	}
@@ -268,8 +267,15 @@ export namespace Actions {
 			const op: UP.ClientOp = { ...newOp, userId, clientId: config.wsClientId, time: Date.now(), opId: UP.createOpId() } as UP.ClientOp
 			ops.push(op)
 		}
-		const newSession = RbSyncState.Client.processOutgoingOps(Store.getState().session, ops, UP.reducer)
-		Store.setState({ session: newSession })
+		const prev = Store.getState().session
+		const res = ODSM.Client.processOutgoingOps(prev, ops, UP.reducer)
+		if (res.rejected) {
+			// batch is a no-op (or an op threw) against local state; drop it without sending
+			const rejection = res.error.data as UP.Rejection
+			if (rejection.code === 'op-error') console.error('presence op errored:', rejection.error)
+			return
+		}
+		Store.setState({ session: res.session })
 		for (const op of ops) {
 			console.log('dispatch ', op.code, op.code === 'update-activity' ? op.update.code : null)
 		}

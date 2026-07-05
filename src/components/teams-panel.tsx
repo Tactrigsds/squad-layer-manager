@@ -189,7 +189,14 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 					<Switch
 						id={adminsOnlyId}
 						checked={adminsOnly}
-						onCheckedChange={setAdminsOnly}
+						onCheckedChange={(checked) => {
+							setAdminsOnly(checked)
+							if (checked) {
+								ChatPrt.Actions.setSecondaryFilterState({ chat: props.stores.squadServer! }, 'ADMIN')
+							} else if (secondaryFilterState === 'ADMIN') {
+								ChatPrt.Actions.setSecondaryFilterState({ chat: props.stores.squadServer! }, 'DEFAULT')
+							}
+						}}
 					/>
 					<Label htmlFor={adminsOnlyId} className="text-sm whitespace-nowrap">Admins Only</Label>
 					<Switch
@@ -201,7 +208,13 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 					{hideSpoilers && roleFilter !== null && (
 						<Badge variant="secondary" className="gap-1" title="Role filter is active but hidden with spoilers">
 							Role: {roleFilter}
-							<button type="button" className="hover:text-destructive" title="Clear role filter" onClick={() => setRoleFilter(null)}>
+							<button
+								type="button"
+								className="hover:text-destructive"
+								title="Clear role filter"
+								onClick={() =>
+									setRoleFilter(null)}
+							>
 								<Icons.X className="h-3 w-3" />
 							</button>
 						</Badge>
@@ -933,7 +946,9 @@ function useDisplayedPlayers<T extends TeamsPanelModels.EnrichedPlayer>(
 			result = players.filter((_, i) => matched.has(i))
 		}
 		if (filters.role !== null) result = result.filter(p => p.role === filters.role)
-		if (filters.grouping !== null) result = result.filter(p => filters.grouping === FILTER_NONE ? p.grouping == null : p.grouping === filters.grouping)
+		if (filters.grouping !== null) {
+			result = result.filter(p => filters.grouping === FILTER_NONE ? p.grouping == null : p.grouping === filters.grouping)
+		}
 		if (filters.squad !== null) result = result.filter(p => matchesSquadFilter(p, filters.squad!))
 		if (adminsOnly) result = result.filter(p => p.isAdmin)
 		return result

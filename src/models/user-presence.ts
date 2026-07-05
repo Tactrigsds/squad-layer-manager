@@ -1,7 +1,7 @@
 import { createId } from '@/lib/id'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
-import type * as RbSyncState from '@/lib/rollback-synced-state'
+import * as ODSM from '@/lib/odsm'
 import * as ST from '@/lib/state-tree'
 import { assertNever } from '@/lib/type-guards'
 import type { DistributiveOmit } from '@/lib/types'
@@ -200,7 +200,11 @@ export type Op = z.infer<typeof OpSchema>
 export type ClientOp = Extract<Op, { code: ClientOpCode }>
 export type NewClientOp = DistributiveOmit<Op, 'userId' | 'clientId' | 'opId' | 'time'>
 
-export type SideEffects = { code: 'error'; error: unknown } | { code: 'op-outcome'; op: Op; success: boolean }
+export type SideEffects = { code: 'op-outcome'; op: Op; success: boolean }
+
+// the typed payload carried by a RejectedError thrown from the reducer: an op that threw while being
+// applied, or a benign no-op batch that changed nothing
+export type Rejection = { code: 'op-error'; op: Op; error: unknown } | { code: 'noop' }
 
 export type ItemLocks = Map<LL.ItemId, string>
 
@@ -212,11 +216,15 @@ export function initState(): State {
 	}
 }
 
-export const reducer: RbSyncState.Reducer<Op, State, SideEffects> = (prevState, ops, prevOps, onSideEffect) => {
+export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _prevOps) => {
 	const state: State = {
 		presence: new Map(prevState.presence),
 		itemLocks: new Map(prevState.itemLocks),
 	}
+	const sideEffects: SideEffects[] = []
+	const emit = (se: SideEffects) => sideEffects.push(se)
+	// the first op that throws rejects the whole (dependent) batch; recorded here and thrown below
+	let firstError: Rejection | undefined
 
 	for (const op of ops) {
 		let success = false
@@ -346,11 +354,16 @@ export const reducer: RbSyncState.Reducer<Op, State, SideEffects> = (prevState, 
 				if (newClientState) state.presence.set(op.clientId, newClientState)
 			}
 		} catch (e) {
-			onSideEffect?.({ code: 'error', error: e })
+			firstError ??= { code: 'op-error', op, error: e }
 		}
-		onSideEffect?.({ code: 'op-outcome', op, success })
+		emit({ code: 'op-outcome', op, success })
 	}
-	return state
+	// an op that threw rejects the whole dependent batch, carrying the error for the dispatcher to log
+	if (firstError) throw new ODSM.RejectedError<Rejection>(firstError)
+	// the reducer always allocates fresh maps, so compare contents to tell whether the batch changed
+	// anything; a batch that changed nothing is a benign no-op we reject so it's dropped, not broadcast
+	if (Obj.deepEqual(state, prevState)) throw new ODSM.RejectedError<Rejection>({ code: 'noop' })
+	return [state, sideEffects]
 }
 
 export function anyLocksInaccessible(locks: ItemLocks, ids: LL.ItemId[], wsClientId: string): boolean {

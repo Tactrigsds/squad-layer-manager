@@ -53,7 +53,9 @@ function PlayerButton(
 	)
 }
 
-export function PlayerDisplay({ player, showTeam, showSquad, showRole, className, matchId, stores, disableContextMenu }: PlayerDisplayProps) {
+export function PlayerDisplay(
+	{ player, showTeam, showSquad, showRole, className, matchId, stores, disableContextMenu }: PlayerDisplayProps,
+) {
 	const playerId = SM.PlayerIds.getPlayerId(player.ids)
 	const windowProps: PlayerDetailsWindowProps = { playerId, stores }
 	const flagColor = useGroupedPlayerFlagColor(playerId)
