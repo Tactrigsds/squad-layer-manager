@@ -1,5 +1,6 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import { createId } from '@/lib/id'
+import type * as L from '@/models/layer'
 import type * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import superjson from 'superjson'
@@ -88,6 +89,21 @@ export type MatchEnded = {
 	type: 'MATCH_ENDED'
 } & Base
 
+export type VoteStarted = {
+	type: 'VOTE_STARTED'
+	choiceCount: number
+} & Base
+
+export type VoteEnded = {
+	type: 'VOTE_ENDED'
+	reason: 'vote-timeout' | 'ended-early'
+	winnerLayerId: L.LayerId | null
+} & Base
+
+export type VoteAborted = {
+	type: 'VOTE_ABORTED'
+} & Base
+
 export type AppEvent =
 	| PlayerWarned
 	| SquadDisbanded
@@ -97,6 +113,9 @@ export type AppEvent =
 	| CommanderDemoted
 	| FogOfWarToggled
 	| MatchEnded
+	| VoteStarted
+	| VoteEnded
+	| VoteAborted
 
 export type AppEventType = AppEvent['type']
 
@@ -114,6 +133,9 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 		case 'SQUAD_RENAMED':
 		case 'FOG_OF_WAR_TOGGLED':
 		case 'MATCH_ENDED':
+		case 'VOTE_STARTED':
+		case 'VOTE_ENDED':
+		case 'VOTE_ABORTED':
 			return []
 	}
 }

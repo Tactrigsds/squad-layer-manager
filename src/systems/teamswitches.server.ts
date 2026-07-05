@@ -8,7 +8,6 @@ import * as MapUtils from '@/lib/map'
 import * as ODSM from '@/lib/odsm'
 import { assertNever } from '@/lib/type-guards'
 import { WARNS } from '@/messages'
-import type * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
@@ -331,14 +330,7 @@ const dispatchOp = C.spanOp(
 								| (TSW.Op & { source: TSW.Teamswitch['source'] })
 								| undefined
 							// attribute the resulting PLAYER_CHANGED_TEAM events to whoever triggered the switch
-							let switchActor: AppEvents.Actor = { type: 'system' }
-							if (isManual?.source.discordId) {
-								switchActor = { type: 'slm-user', userId: isManual.source.discordId }
-							} else if (isManual?.source.steamId) {
-								const sourcePlayer = SM.PlayerIds.find(teamsRes.players, p => p.ids, { steam: isManual.source.steamId })
-								if (sourcePlayer) switchActor = { type: 'ingame-user', playerId: SM.PlayerIds.getPlayerId(sourcePlayer.ids) }
-							}
-							await SquadServer.forceTeamChangeAppEvent(ctx, toSwitch, switchActor)
+							await SquadServer.forceTeamChangeAppEvent(ctx, toSwitch, SquadServer.actorFromUser(ctx, isManual?.source))
 							const switched$ = SquadRcon.switchPlayers(ctx, toSwitch)
 							if (isManual) {
 								// notifications should outlive this dispatch, so bind them to the shutdown signal rather than the task signal

@@ -24,6 +24,7 @@ import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
+import * as AppEvents from '@/models/app-events.models'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Users from '@/systems/users.server'
 import * as Otel from '@opentelemetry/api'
@@ -306,6 +307,18 @@ export const startVote = C.spanOp(
 			),
 		)
 
+		await SquadServer.emitAppEvent(
+			ctx,
+			AppEvents.create<AppEvents.VoteStarted>({
+				type: 'VOTE_STARTED',
+				actor: SquadServer.actorFromUser(ctx, opts.initiator),
+				serverId: ctx.serverId,
+				matchId: currentMatch.historyEntryId,
+				causeId: null,
+				choiceCount: item.choices.length,
+			}),
+		)
+
 		return { code: 'ok' as const, voteStateUpdate: update }
 	},
 )
@@ -404,6 +417,17 @@ export const abortVote = C.spanOp(
 			result: newVoteState,
 			opId: SLL.createOpId(),
 		})
+
+		await SquadServer.emitAppEvent(
+			ctx,
+			AppEvents.create<AppEvents.VoteAborted>({
+				type: 'VOTE_ABORTED',
+				actor: SquadServer.actorFromUser(ctx, opts.aborter),
+				serverId: ctx.serverId,
+				matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
+				causeId: null,
+			}),
+		)
 
 		return { code: 'ok' as const }
 	},
@@ -588,6 +612,18 @@ export const endVote = C.spanOp(
 				repeatWarn: false,
 			})
 		}
+		await SquadServer.emitAppEvent(
+			ctx,
+			AppEvents.create<AppEvents.VoteEnded>({
+				type: 'VOTE_ENDED',
+				actor: SquadServer.actorFromUser(ctx, opts.reason === 'ended-early' ? opts.endedBy : undefined),
+				serverId: ctx.serverId,
+				matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
+				causeId: null,
+				reason: opts.reason,
+				winnerLayerId: endingVoteState.code === 'ended:winner' ? listItem.layerId : null,
+			}),
+		)
 		addReleaseTask(() => ctx.vote.update$.next(update))
 		return { code: 'ok' as const, endingVoteState, tally }
 	},

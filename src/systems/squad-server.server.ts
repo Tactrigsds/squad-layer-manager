@@ -1061,6 +1061,18 @@ export function getCurrTeams(ctx: C.SquadServer) {
 	return ctx.server.eventState.currTeams
 }
 
+// maps a GUI/chat user id (or an automated marker) to an app-event actor, resolving in-game (steam) senders against
+// the current teams. Shared by the vote/teamswitch attribution paths.
+export function actorFromUser(ctx: C.SquadServer, source: USR.GuiOrChatUserId | 'autostart' | undefined | null): AppEvents.Actor {
+	if (!source || source === 'autostart') return { type: 'system' }
+	if (source.discordId) return { type: 'slm-user', userId: source.discordId }
+	if (source.steamId) {
+		const player = SM.PlayerIds.find(getCurrTeams(ctx)?.players ?? [], p => p.ids, { steam: source.steamId })
+		if (player) return { type: 'ingame-user', playerId: SM.PlayerIds.getPlayerId(player.ids) }
+	}
+	return { type: 'system' }
+}
+
 async function collectEvents(
 	ctx: C.SquadServer & C.Db & CS.AbortSignal,
 	addEventsCb: () => void,

@@ -412,6 +412,30 @@ function AppEventEntry(
 			</AppEventLine>
 		)
 	}
+	if (appEvent.type === 'VOTE_STARTED') {
+		return (
+			<AppEventLine time={event.time} icon={<Icons.Vote className="h-4 w-4 text-blue-500 shrink-0" />}>
+				{actorLabel} started a vote ({appEvent.choiceCount} {appEvent.choiceCount === 1 ? 'option' : 'options'})
+			</AppEventLine>
+		)
+	}
+	if (appEvent.type === 'VOTE_ENDED') {
+		return (
+			<AppEventLine time={event.time} icon={<Icons.ListChecks className="h-4 w-4 text-green-500 shrink-0" />}>
+				{appEvent.reason === 'ended-early' ? `${actorLabel} ended the vote early` : 'The vote ended'}
+				{appEvent.winnerLayerId
+					? <> — <ShortLayerName layerId={appEvent.winnerLayerId} /> won</>
+					: ' (no winner)'}
+			</AppEventLine>
+		)
+	}
+	if (appEvent.type === 'VOTE_ABORTED') {
+		return (
+			<AppEventLine time={event.time} icon={<Icons.Ban className="h-4 w-4 text-red-500 shrink-0" />}>
+				{actorLabel} aborted the vote
+			</AppEventLine>
+		)
+	}
 
 	// PLAYER_WARNED / PLAYER_REMOVED_FROM_SQUAD / TEAM_CHANGE_FORCED: "{actor} {verb} {targets}{suffix}"
 	const count = appEvent.targets.length
