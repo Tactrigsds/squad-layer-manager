@@ -464,10 +464,17 @@ function AppEventEntry(
 		].filter(Boolean)
 		const isRoll = appEvent.ops.some(o => o.op === 'shift-first-saved-layer')
 		const headline = isRoll ? 'Queue advanced on map change' : `${actorLabel} updated the queue`
+		const nextBefore = LL.getNextLayerId(appEvent.prevList)
+		const nextAfter = LL.getNextLayerId(appEvent.list)
 		return (
 			<AppEventLine time={event.time} icon={<Icons.ListOrdered className="h-4 w-4 text-indigo-500 shrink-0" />}>
 				{headline}
 				{parts.length > 0 ? ` (${parts.join(', ')})` : ''}
+				{nextAfter !== null && nextAfter !== nextBefore && (
+					<span className="inline-flex items-baseline gap-1">
+						{' '}— next layer set to <ShortLayerName layerId={nextAfter} />
+					</span>
+				)}
 			</AppEventLine>
 		)
 	}

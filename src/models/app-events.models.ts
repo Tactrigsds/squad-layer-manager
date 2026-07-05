@@ -1,7 +1,8 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
+import * as DH from '@/lib/display-helpers'
 import { createId } from '@/lib/id'
 import type * as L from '@/models/layer'
-import type * as LL from '@/models/layer-list.models'
+import * as LL from '@/models/layer-list.models'
 import type * as SLL from '@/models/shared-layer-list'
 import type * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
@@ -249,8 +250,13 @@ export function describeAppEvent(e: AppEvent): string {
 			return e.reason === 'ended-early' ? 'ended a vote early' : 'a vote ended'
 		case 'VOTE_ABORTED':
 			return 'aborted a vote'
-		case 'QUEUE_UPDATED':
-			return 'updated the queue'
+		case 'QUEUE_UPDATED': {
+			const nextBefore = LL.getNextLayerId(e.prevList)
+			const nextAfter = LL.getNextLayerId(e.list)
+			return nextAfter !== null && nextAfter !== nextBefore
+				? `updated the queue — set next layer to ${DH.toShortLayerNameFromId(nextAfter)}`
+				: 'updated the queue'
+		}
 		case 'SETTINGS_UPDATED':
 			return e.serverId ? 'updated server settings' : 'updated global settings'
 		case 'SERVER_REGISTRY_CHANGED': {
