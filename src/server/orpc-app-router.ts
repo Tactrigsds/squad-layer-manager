@@ -1,4 +1,5 @@
 import * as Config from '@/server/config'
+import * as AppEvents from '@/systems/app-events.server'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as Discord from '@/systems/discord.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
@@ -30,4 +31,5 @@ export const orpcAppRouter = {
 	rbac: Rbac.orpcRouter,
 	users: Users.orpcRouter,
 	teamswitches: Teamswitches.orpcRouter,
+	appEvents: AppEvents.router,
 }

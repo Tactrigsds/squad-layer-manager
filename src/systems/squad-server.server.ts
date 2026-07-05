@@ -18,6 +18,7 @@ import { HumanTime } from '@/lib/zod'
 import * as Messages from '@/messages.ts'
 import * as AppEvents from '@/models/app-events.models'
 import type * as BAL from '@/models/balance-triggers.models'
+import * as AppEventsSys from '@/systems/app-events.server'
 import * as CHAT from '@/models/chat.models.ts'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
@@ -856,7 +857,7 @@ export async function pushAttribution(ctx: C.SquadServer & C.Db & CS.AbortSignal
 // persists an SLM app (audit) event and streams it into this server's activity feed. Persist happens before
 // the push (and before any server event that links to it via appEventId is later saved), satisfying the FK.
 export async function emitAppEvent(ctx: C.SquadServer & C.Db & CS.AbortSignal, appEvent: AppEvents.AppEvent) {
-	await ctx.db().insert(Schema.appEvents).values(AppEvents.toRow(appEvent))
+	await AppEventsSys.persistAppEvent(ctx, appEvent)
 	ctx.server.emittedAppEvents.push(appEvent)
 	ctx.server.appEvent$.next([resolveSliceCtx(ctx, ctx.serverId), appEvent])
 }

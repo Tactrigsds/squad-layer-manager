@@ -470,6 +470,15 @@ function AppEventEntry(
 			</AppEventLine>
 		)
 	}
+	if (appEvent.type === 'SETTINGS_UPDATED') {
+		// global (serverId=null) settings events are audit-only and don't reach a server feed, but the union still
+		// needs a branch here
+		return (
+			<AppEventLine time={event.time} icon={<Icons.Settings className="h-4 w-4 text-slate-400 shrink-0" />}>
+				{actorLabel} {appEvent.serverId ? 'updated server settings' : 'updated global settings'}
+			</AppEventLine>
+		)
+	}
 
 	// PLAYER_WARNED / PLAYER_REMOVED_FROM_SQUAD / TEAM_CHANGE_FORCED: "{actor} {verb} {targets}{suffix}"
 	const count = appEvent.targets.length

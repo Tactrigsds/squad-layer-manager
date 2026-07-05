@@ -12,6 +12,8 @@ import * as DB from '@/server/db.ts'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as Rbac from '@/systems/rbac.server'
+import * as AppEvents from '@/models/app-events.models'
+import * as AppEventsSys from '@/systems/app-events.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Orpc from '@orpc/server'
 import * as E from 'drizzle-orm'
@@ -400,7 +402,20 @@ const globalRouter = {
 			const ctx = DB.addPooledDb(_ctx as any)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-global-settings'))
 			if (denyRes) return denyRes
-			return await updateGlobalSettings(ctx, input)
+			const res = await updateGlobalSettings(ctx, input)
+			if (res.code === 'ok') {
+				await AppEventsSys.persistAppEvent(
+					ctx,
+					AppEvents.create<AppEvents.SettingsUpdated>({
+						type: 'SETTINGS_UPDATED',
+						actor: { type: 'slm-user', userId: ctx.user.discordId },
+						serverId: null,
+						matchId: null,
+						causeId: null,
+					}),
+				)
+			}
+			return res
 		}),
 }
 
@@ -429,7 +444,7 @@ const serverRouter = {
 					throw new Orpc.ORPCError('FORBIDDEN', { message: 'err:trying-to-edit-connection-settings' })
 				}
 			}
-			return await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
+			const updateRes = await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 				const state = await SquadServer.getServerState(ctx)
 				SETTINGS.applySettingMutations(state.settings, input.ops)
 				const res = SETTINGS.ServerSettingsSchema.safeParse(state.settings)
@@ -443,6 +458,19 @@ const serverRouter = {
 					event: 'edit-settings',
 				})
 			})
+			if (!updateRes) {
+				await AppEventsSys.persistAppEvent(
+					ctx,
+					AppEvents.create<AppEvents.SettingsUpdated>({
+						type: 'SETTINGS_UPDATED',
+						actor: { type: 'slm-user', userId: ctx.user.discordId },
+						serverId: input.serverId,
+						matchId: null,
+						causeId: null,
+					}),
+				)
+			}
+			return updateRes
 		}),
 }
 

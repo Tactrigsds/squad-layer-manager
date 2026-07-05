@@ -10,12 +10,14 @@ import { Switch } from '@/components/ui/switch'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Obj from '@/lib/object'
 import * as ZusUtils from '@/lib/zustand'
+import * as AppEvents from '@/models/app-events.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
+import * as UsersClient from '@/systems/users.client'
 import * as ReactRx from '@react-rxjs/core'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
@@ -45,7 +47,49 @@ function RouteComponent() {
 				{!manageServersDenied && <ServerManagementSection />}
 				{!manageGlobalDenied && <GlobalSettingsSection />}
 			</ReactRx.Subscribe>
+			{!manageGlobalDenied && <AuditLogSection />}
 		</div>
+	)
+}
+
+function AuditLogSection() {
+	const { data } = useQuery(RPC.orpc.appEvents.list.queryOptions({ input: { limit: 100 } }))
+	const events: AppEvents.AppEvent[] = data?.code === 'ok' ? data.events : []
+	const userIds = [...new Set(events.flatMap(e => e.actor.type === 'slm-user' ? [e.actor.userId] : []))]
+	const usersRes = UsersClient.useUsers(userIds, { enabled: userIds.length > 0 })
+	const userMap = new Map((usersRes.data?.code === 'ok' ? usersRes.data.users : []).map(u => [u.discordId, u]))
+
+	function actorName(actor: AppEvents.Actor): string {
+		if (actor.type === 'slm-user') return userMap.get(actor.userId)?.displayName ?? 'Admin'
+		if (actor.type === 'ingame-user') return 'A player'
+		return 'System'
+	}
+
+	return (
+		<Card>
+			<CardHeader>
+				<CardTitle>Audit Log</CardTitle>
+				<CardDescription>Recent actions taken across SLM.</CardDescription>
+			</CardHeader>
+			<CardContent>
+				{events.length === 0
+					? <p className="text-sm text-muted-foreground">No events yet.</p>
+					: (
+						<div className="max-h-[32rem] overflow-y-auto">
+							{events.map(e => (
+								<div key={e.id} className="flex gap-2 items-baseline text-sm border-b py-1 last:border-0">
+									<span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+										{new Date(e.time).toLocaleString()}
+									</span>
+									<span className="font-medium whitespace-nowrap">{actorName(e.actor)}</span>
+									<span className="text-muted-foreground grow min-w-0 wrap-break-word">{AppEvents.describeAppEvent(e)}</span>
+									{e.serverId && <span className="text-xs text-muted-foreground whitespace-nowrap">{e.serverId}</span>}
+								</div>
+							))}
+						</div>
+					)}
+			</CardContent>
+		</Card>
 	)
 }
 

@@ -106,6 +106,11 @@ export type VoteAborted = {
 	type: 'VOTE_ABORTED'
 } & Base
 
+// a global (or per-server) settings change. global when serverId is null, per-server otherwise. audit-only.
+export type SettingsUpdated = {
+	type: 'SETTINGS_UPDATED'
+} & Base
+
 export type QueueUpdated = {
 	type: 'QUEUE_UPDATED'
 	// all shared-layer-list operations since the last save (the opId span carried by request-list-save)
@@ -128,6 +133,7 @@ export type AppEvent =
 	| VoteEnded
 	| VoteAborted
 	| QueueUpdated
+	| SettingsUpdated
 
 export type AppEventType = AppEvent['type']
 
@@ -149,7 +155,42 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 		case 'VOTE_ENDED':
 		case 'VOTE_ABORTED':
 		case 'QUEUE_UPDATED':
+		case 'SETTINGS_UPDATED':
 			return []
+	}
+}
+
+// a short human-readable description of the action, WITHOUT the actor (the caller prepends the actor's name).
+// used by the audit log; the activity feed has its own richer per-type renderers.
+export function describeAppEvent(e: AppEvent): string {
+	const players = (n: number) => `${n} ${n === 1 ? 'player' : 'players'}`
+	switch (e.type) {
+		case 'PLAYER_WARNED':
+			return `warned ${players(e.targets.length)}: "${e.message}"`
+		case 'SQUAD_DISBANDED':
+			return `disbanded ${e.squadName} (Team ${e.teamId})`
+		case 'PLAYER_REMOVED_FROM_SQUAD':
+			return `removed ${players(e.targets.length)} from squad`
+		case 'TEAM_CHANGE_FORCED':
+			return `switched ${players(e.targets.length)} to the other team`
+		case 'SQUAD_RENAMED':
+			return `renamed ${e.squadName} (Team ${e.teamId})`
+		case 'COMMANDER_DEMOTED':
+			return 'demoted a commander'
+		case 'FOG_OF_WAR_TOGGLED':
+			return `turned fog of war ${e.enabled ? 'on' : 'off'}`
+		case 'MATCH_ENDED':
+			return 'ended the match'
+		case 'VOTE_STARTED':
+			return `started a vote (${e.choiceCount} ${e.choiceCount === 1 ? 'option' : 'options'})`
+		case 'VOTE_ENDED':
+			return e.reason === 'ended-early' ? 'ended a vote early' : 'a vote ended'
+		case 'VOTE_ABORTED':
+			return 'aborted a vote'
+		case 'QUEUE_UPDATED':
+			return 'updated the queue'
+		case 'SETTINGS_UPDATED':
+			return e.serverId ? 'updated server settings' : 'updated global settings'
 	}
 }
 
