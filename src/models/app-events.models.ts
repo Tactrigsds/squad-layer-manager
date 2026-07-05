@@ -140,6 +140,9 @@ export type UserAccountChanged = {
 export type PlayerFlagsUpdated = {
 	type: 'PLAYER_FLAGS_UPDATED'
 	playerId: SM.PlayerId
+	// the flags added and removed by this action (id + name resolved from the org's flag list)
+	added: { id: string; name: string }[]
+	removed: { id: string; name: string }[]
 } & Base
 
 export type QueueUpdated = {
@@ -247,8 +250,10 @@ export function describeAppEvent(e: AppEvent): string {
 				: e.action === 'steam-unlinked'
 				? 'unlinked their Steam account'
 				: 'updated their nickname'
-		case 'PLAYER_FLAGS_UPDATED':
-			return `updated Battlemetrics flags for player ${e.playerId}`
+		case 'PLAYER_FLAGS_UPDATED': {
+			const changes = [...e.added.map(f => `+${f.name}`), ...e.removed.map(f => `−${f.name}`)].join(', ')
+			return `updated Battlemetrics flags for player ${e.playerId}${changes ? `: ${changes}` : ''}`
+		}
 	}
 }
 

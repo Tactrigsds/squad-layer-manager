@@ -678,11 +678,15 @@ export const router = {
 		// Persist immediately so DB doesn't serve stale flags on next startup
 		persistCache().catch((err) => log.warn({ err }, 'Failed to persist BM cache after flag update'))
 
+		const orgFlags = await getOrgFlags(ctx)
+		const flagInfo = (ids: string[]) => BM.resolveFlags(ids, orgFlags).map((f) => ({ id: f.id, name: f.name }))
 		await AppEventsSys.persistAppEvent(
 			ctx,
 			AppEvents.create<AppEvents.PlayerFlagsUpdated>({
 				type: 'PLAYER_FLAGS_UPDATED',
 				playerId: input.playerId,
+				added: flagInfo(toAdd),
+				removed: flagInfo(toRemove),
 				actor: { type: 'slm-user', userId: ctx.user.discordId },
 				serverId: null,
 				matchId: null,
