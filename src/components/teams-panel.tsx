@@ -179,33 +179,44 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 					}}
 				/>
 				<div className="flex items-center gap-2 justify-center">
-					<Switch
-						id={showSelectedId}
-						checked={showSelected}
-						disabled={selectedCount === 0}
-						onCheckedChange={() => setShowSelected(v => !v)}
-					/>
-					<Label htmlFor={showSelectedId} className="text-sm whitespace-nowrap">Show Selected</Label>
-					{selectedCount > 0 && <span className="text-xs text-muted-foreground">({selectedCount})</span>}
-					<Switch
-						id={adminsOnlyId}
-						checked={adminsOnly}
-						onCheckedChange={(checked) => {
-							setAdminsOnly(checked)
-							if (checked) {
-								ChatPrt.Actions.setSecondaryFilterState({ chat: props.stores.squadServer! }, 'ADMIN')
-							} else if (secondaryFilterState === 'ADMIN') {
-								ChatPrt.Actions.setSecondaryFilterState({ chat: props.stores.squadServer! }, 'DEFAULT')
-							}
-						}}
-					/>
-					<Label htmlFor={adminsOnlyId} className="text-sm whitespace-nowrap">Admins Only</Label>
-					<Switch
-						id={hideSpoilersId}
-						checked={hideSpoilers}
-						onCheckedChange={setHideSpoilers}
-					/>
-					<Label htmlFor={hideSpoilersId} className="text-sm whitespace-nowrap" title="Hide K/W/D and role columns">Hide Spoilers</Label>
+					<div className="flex items-center gap-2">
+						<Switch
+							id={showSelectedId}
+							checked={showSelected}
+							disabled={selectedCount === 0}
+							onCheckedChange={() => setShowSelected(v => !v)}
+						/>
+						<Label htmlFor={showSelectedId} className="text-sm whitespace-nowrap">Show Selected</Label>
+						<span
+							className="min-w-[3ch] text-xs text-muted-foreground tabular-nums data-[hide=true]:invisible"
+							data-hide={selectedCount === 0}
+						>
+							({selectedCount})
+						</span>
+					</div>
+					<div className="flex items-center gap-2">
+						<Switch
+							id={adminsOnlyId}
+							checked={adminsOnly}
+							onCheckedChange={(checked) => {
+								setAdminsOnly(checked)
+								if (checked) {
+									ChatPrt.Actions.setSecondaryFilterState({ chat: props.stores.squadServer! }, 'ADMIN')
+								} else if (secondaryFilterState === 'ADMIN') {
+									ChatPrt.Actions.setSecondaryFilterState({ chat: props.stores.squadServer! }, 'DEFAULT')
+								}
+							}}
+						/>
+						<Label htmlFor={adminsOnlyId} className="text-sm whitespace-nowrap">Admins Only</Label>
+					</div>
+					<div className="flex items-center gap-2">
+						<Switch
+							id={hideSpoilersId}
+							checked={hideSpoilers}
+							onCheckedChange={setHideSpoilers}
+						/>
+						<Label htmlFor={hideSpoilersId} className="text-sm whitespace-nowrap" title="Hide K/W/D and role columns">Hide Spoilers</Label>
+					</div>
 					{hideSpoilers && roleFilter !== null && (
 						<Badge variant="secondary" className="gap-1" title="Role filter is active but hidden with spoilers">
 							Role: {roleFilter}
@@ -1099,6 +1110,15 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	// data) so dragging selects the visually adjacent rows even when a sort is active
 	const rows = table.getRowModel().rows
 	const selectedIds = Object.keys(rowSelection).filter(id => rowSelection[id])
+
+	// publish this table's currently-visible (post-filter) rows so selection-adding actions only draw
+	// on what's on screen. Keyed by a stable per-instance id so team A/B/combined tables coexist.
+	const visibleKey = React.useId()
+	const displayedIds = React.useMemo(() => props.data.map(p => SM.PlayerIds.getPlayerId(p.ids)), [props.data])
+	React.useEffect(() => {
+		SquadServerClient.VisiblePlayersActions.setVisible(visibleKey, displayedIds)
+	}, [visibleKey, displayedIds])
+	React.useEffect(() => () => SquadServerClient.VisiblePlayersActions.clearVisible(visibleKey), [visibleKey])
 
 	const renderPlayerRow = (row: Row<T>, visibleIndex: number) => {
 		const isBulk = selectedIds.length >= 2 && rowSelection[row.id]
