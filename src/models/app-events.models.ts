@@ -106,6 +106,16 @@ export type VoteAborted = {
 	type: 'VOTE_ABORTED'
 } & Base
 
+// SLM process lifecycle. APP_STARTED fires on every boot (system actor); APP_RESTARTED is the intentional
+// restart-slm admin action recorded before shutdown (slm-user actor).
+export type AppStarted = {
+	type: 'APP_STARTED'
+} & Base
+
+export type AppRestarted = {
+	type: 'APP_RESTARTED'
+} & Base
+
 // a global (or per-server) settings change. global when serverId is null, per-server otherwise. audit-only.
 export type SettingsUpdated = {
 	type: 'SETTINGS_UPDATED'
@@ -173,6 +183,8 @@ export type AppEvent =
 	| FilterContributorChanged
 	| UserAccountChanged
 	| PlayerFlagsUpdated
+	| AppStarted
+	| AppRestarted
 
 export type AppEventType = AppEvent['type']
 
@@ -199,6 +211,8 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 		case 'FILTER_CHANGED':
 		case 'FILTER_CONTRIBUTOR_CHANGED':
 		case 'USER_ACCOUNT_CHANGED':
+		case 'APP_STARTED':
+		case 'APP_RESTARTED':
 			return []
 		case 'PLAYER_FLAGS_UPDATED':
 			return [e.playerId]
@@ -254,6 +268,10 @@ export function describeAppEvent(e: AppEvent): string {
 			const changes = [...e.added.map(f => `+${f.name}`), ...e.removed.map(f => `−${f.name}`)].join(', ')
 			return `updated Battlemetrics flags for player ${e.playerId}${changes ? `: ${changes}` : ''}`
 		}
+		case 'APP_STARTED':
+			return 'SLM started'
+		case 'APP_RESTARTED':
+			return 'restarted SLM'
 	}
 }
 

@@ -1,5 +1,7 @@
 import { resToOptional } from '@/lib/types'
+import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
+import * as AppEventsSys from '@/systems/app-events.server'
 import { toNormalizedEmoji } from '@/models/discord.models'
 import * as RBAC from '@/rbac.models'
 import { initModule } from '@/server/logger'
@@ -85,6 +87,16 @@ async function handleInteraction(interaction: D.Interaction) {
 		}
 		await interaction.reply({ content: 'Shutting down SLM. It should be restarted shortly.' })
 		log.warn('restart-slm invoked by %s (%s), shutting down', interaction.user.username, interaction.user.id)
+		await AppEventsSys.persistAppEvent(
+			ctx,
+			AppEvents.create<AppEvents.AppRestarted>({
+				type: 'APP_RESTARTED',
+				actor: { type: 'slm-user', userId: ctx.user.discordId },
+				serverId: null,
+				matchId: null,
+				causeId: null,
+			}),
+		)
 		setTimeout(() => process.exit(1), RESTART_FORCE_EXIT_TIMEOUT)
 		process.kill(process.pid, 'SIGTERM')
 	} catch (err) {

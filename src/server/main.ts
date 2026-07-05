@@ -3,6 +3,8 @@ import * as CoreRcon from '@/lib/rcon/core-rcon'
 import * as FetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import { formatVersion } from '@/lib/versioning.ts'
 
+import * as AppEvents from '@/models/app-events.models'
+import * as AppEventsSys from '@/systems/app-events.server'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Cli from '@/systems/cli.server'
@@ -70,6 +72,16 @@ await C.spanOp('main', { module }, async () => {
 	await Settings.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 	await SquadLogsReceiver.setup()
 	await Promise.all([SquadServer.setup(), Discord.setup()])
+	await AppEventsSys.persistAppEvent(
+		DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }),
+		AppEvents.create<AppEvents.AppStarted>({
+			type: 'APP_STARTED',
+			actor: { type: 'system' },
+			serverId: null,
+			matchId: null,
+			causeId: null,
+		}),
+	)
 	const { serverClosed } = await Fastify.setup()
 	if (ENV.NODE_ENV === 'development') {
 		void import('./console.ts')
