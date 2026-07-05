@@ -373,7 +373,7 @@ function AppEventEntry(
 					<EventTime time={event.time} variant="small" />
 					<Icons.Users className="h-4 w-4 text-red-500 shrink-0" />
 					<span className="grow min-w-0 wrap-break-word">
-						{actorLabel} disbanded {appEvent.squadName} (Team {appEvent.teamId}){n > 0 ? ` — ${n} ${n === 1 ? 'player' : 'players'}` : ''}
+						{actorLabel} disbanded {appEvent.squadName} (Team {appEvent.teamId}){n > 0 ? `, ${n} ${n === 1 ? 'player' : 'players'}` : ''}
 					</span>
 				</summary>
 				{targetList}
@@ -426,7 +426,7 @@ function AppEventEntry(
 			<AppEventLine time={event.time} icon={<Icons.ListChecks className="h-4 w-4 text-green-500 shrink-0" />}>
 				{appEvent.reason === 'ended-early' ? `${actorLabel} ended the vote early` : 'The vote ended'}
 				{appEvent.winnerLayerId
-					? <> — <ShortLayerName layerId={appEvent.winnerLayerId} /> won</>
+					? <>: <ShortLayerName layerId={appEvent.winnerLayerId} /> won</>
 					: ' (no winner)'}
 			</AppEventLine>
 		)
@@ -472,7 +472,7 @@ function AppEventEntry(
 				{parts.length > 0 ? ` (${parts.join(', ')})` : ''}
 				{nextAfter !== null && nextAfter !== nextBefore && (
 					<span className="inline-flex items-baseline gap-1">
-						{' '}— next layer set to <ShortLayerName layerId={nextAfter} />
+						, next layer set to <ShortLayerName layerId={nextAfter} />
 					</span>
 				)}
 			</AppEventLine>

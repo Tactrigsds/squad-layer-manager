@@ -254,7 +254,7 @@ export function describeAppEvent(e: AppEvent): string {
 			const nextBefore = LL.getNextLayerId(e.prevList)
 			const nextAfter = LL.getNextLayerId(e.list)
 			return nextAfter !== null && nextAfter !== nextBefore
-				? `updated the queue — set next layer to ${DH.toShortLayerNameFromId(nextAfter)}`
+				? `updated the queue, next layer set to ${DH.toShortLayerNameFromId(nextAfter)}`
 				: 'updated the queue'
 		}
 		case 'SETTINGS_UPDATED':
