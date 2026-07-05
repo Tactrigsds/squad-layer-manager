@@ -120,6 +120,14 @@ export function dispatchEndAllTeamswitchEditing() {
 	}]).catch((error) => log.error(error))
 }
 
+export function dispatchEndAllLayerQueueEditing() {
+	dispatchOp([{
+		code: 'sll:end-all-editing',
+		opId: UP.createOpId(),
+		time: Date.now(),
+	}]).catch((error) => log.error(error))
+}
+
 export function setup() {
 	log = module.getLogger()
 

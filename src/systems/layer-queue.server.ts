@@ -1,5 +1,6 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import { toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
+import * as UserPresenceSys from '@/systems/user-presence.server'
 
 import * as DH from '@/lib/display-helpers.ts'
 import { IsolatedBehaviorSubject, IsolatedReplaySubject, IsolatedSubject } from '@/lib/isolated-subject'
@@ -711,6 +712,7 @@ const handleSideEffect = C.spanOp(
 				await SquadServer.emitAppEvent(ctx, queueUpdated)
 				await saveQueueAndUpdateServer(ctx, se.list, queueUpdated.id)
 				await dispatchOp(ctx, { op: 'save-completed', opId: SLL.createOpId() })
+				UserPresenceSys.dispatchEndAllLayerQueueEditing()
 				break
 			}
 			default:
