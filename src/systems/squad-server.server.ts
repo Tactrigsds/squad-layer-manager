@@ -844,7 +844,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	})
 	log.info('Initialized server %s', serverId)
 	if (Settings.GLOBAL_SETTINGS.warnOnSlmStart) {
-		await SquadRcon.warnAllAdmins({ ...ctx, ...slice }, Messages.WARNS.slmStarted)
+		await SquadRcon.warnAllAdmins({ ...ctx, ...slice }, Messages.WARNS.slmStarted(AppEventsSys.restartInfo?.name))
 	}
 }
 

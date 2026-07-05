@@ -18,6 +18,26 @@ export async function persistAppEvent(ctx: C.Db, appEvent: AppEvents.AppEvent) {
 	await ctx.db().insert(Schema.appEvents).values(AppEvents.toRow(appEvent))
 }
 
+// set once at boot (before this instance's APP_STARTED is persisted): the user who restarted SLM, if this boot
+// followed a restart-slm command, else null. A restart is detected when the most recent APP_RESTARTED is newer than
+// the previous instance's APP_STARTED. Read by the "SLM started/restarted" admin warn.
+export let restartInfo: { userId: bigint; name: string } | null = null
+
+export async function detectRestartAtBoot(ctx: C.Db) {
+	const [lastStart] = await ctx.db().select({ time: Schema.appEvents.time }).from(Schema.appEvents)
+		.where(E.eq(Schema.appEvents.type, 'APP_STARTED')).orderBy(E.desc(Schema.appEvents.time)).limit(1)
+	const [lastRestart] = await ctx.db().select({ time: Schema.appEvents.time, actorUserId: Schema.appEvents.actorUserId })
+		.from(Schema.appEvents).where(E.eq(Schema.appEvents.type, 'APP_RESTARTED')).orderBy(E.desc(Schema.appEvents.time)).limit(1)
+
+	if (!lastRestart || lastRestart.actorUserId == null || (lastStart && lastRestart.time.getTime() <= lastStart.time.getTime())) {
+		restartInfo = null
+		return
+	}
+	const [user] = await ctx.db().select({ username: Schema.users.username, nickname: Schema.users.nickname })
+		.from(Schema.users).where(E.eq(Schema.users.discordId, lastRestart.actorUserId)).limit(1)
+	restartInfo = { userId: lastRestart.actorUserId, name: user?.nickname ?? user?.username ?? 'someone' }
+}
+
 export const router = {
 	// the audit log: most-recent-first, cursor-paginated by time
 	list: orpcBase

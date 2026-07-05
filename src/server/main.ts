@@ -71,6 +71,9 @@ await C.spanOp('main', { module }, async () => {
 	void Sessions.setup()
 	await Settings.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 	await SquadLogsReceiver.setup()
+	// detect (before this instance's APP_STARTED is persisted) whether we came up via a restart-slm command, so the
+	// per-server "SLM started/restarted" admin warn (sent during SquadServer.setup) can name who restarted it
+	await AppEventsSys.detectRestartAtBoot(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 	await Promise.all([SquadServer.setup(), Discord.setup()])
 	await AppEventsSys.persistAppEvent(
 		DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }),

@@ -294,7 +294,7 @@ export const WARNS = {
 	slmUpdatesStatus(enabled: boolean) {
 		return `Updates from SLM are ${enabled ? 'enabled' : 'disabled'}.`
 	},
-	slmStarted: `SLM has been started.`,
+	slmStarted: (restartedBy?: string) => restartedBy ? `SLM has been restarted by ${restartedBy}.` : `SLM has been started.`,
 } satisfies WarnNode
 
 export const GENERAL = {
