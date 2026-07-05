@@ -35,3 +35,12 @@ Deployment is generally done through docker. See example script at
 ## Logging
 
 Logging and traces are managed with the otel-ltm stack, see [docker-compose.yaml](docker-compose.yaml) for details.
+
+## Battlemetrics
+
+TODO double-check some of this
+BM_PAT should be set to a personal access token for Battlemetrics. It needs permissions for:
+
+- player flags (add/remove player flags. don't need to add new flags)
+- player notes(read & createe)
+- rcon(read, unclear why we need this one tbqh but experimentally we do)
