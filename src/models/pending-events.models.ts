@@ -10,7 +10,14 @@ import type * as SE from '@/models/server-events.models'
 import * as SM from '@/models/squad.models'
 import { z } from 'zod'
 type TeamsUpdateEvent = { type: 'TEAMS_UPDATE'; id: number; teams: SM.Teams; time: number }
-export type Attribution = { type: 'MAP_SET_ATTRIBUTION'; itemId: string; layerId: L.LayerId; time: number }
+export type Attribution = {
+	type: 'MAP_SET_ATTRIBUTION'
+	itemId: string
+	layerId: L.LayerId
+	time: number
+	// when set, the resulting MAP_SET links to this QUEUE_UPDATED app event instead of the bespoke layer-queue source
+	appEventId?: string
+}
 
 // how long an armed expectation lives before it's GC'd if its event never lands (RCON error, player left).
 // matched expectations are consumed immediately, so this is only a safety net -- NOT the matching window.
@@ -667,7 +674,9 @@ async function* processPendingEvent(
 			if (attributionIndex !== -1) {
 				const attribution = state.attributions[attributionIndex]
 				if (L.areLayersCompatible(attribution.layerId, layer.id)) {
-					source = { type: 'layer-queue', itemId: attribution.itemId }
+					source = attribution.appEventId
+						? { type: 'event', id: attribution.appEventId }
+						: { type: 'layer-queue', itemId: attribution.itemId }
 				}
 				state.attributions.splice(attributionIndex, 1)
 			}

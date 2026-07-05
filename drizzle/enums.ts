@@ -52,6 +52,7 @@ export const APP_EVENT_TYPE = z.enum([
 	'VOTE_STARTED',
 	'VOTE_ENDED',
 	'VOTE_ABORTED',
+	'QUEUE_UPDATED',
 ])
 export type AppEventType = z.infer<typeof APP_EVENT_TYPE>
 

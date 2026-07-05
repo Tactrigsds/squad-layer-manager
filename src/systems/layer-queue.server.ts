@@ -19,6 +19,7 @@ import type * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list'
 import type * as SM from '@/models/squad.models.ts'
+import * as AppEvents from '@/models/app-events.models'
 import type * as USR from '@/models/users.models'
 
 import * as RBAC from '@/rbac.models.ts'
@@ -310,6 +311,8 @@ export function getSavedQueue(ctx: C.LayerQueue) {
 export async function saveQueueAndUpdateServer(
 	ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.AdminList & C.ServerSettings & CS.AbortSignal,
 	list: LL.List,
+	// links the resulting MAP_SET (if the next layer changed) to the QUEUE_UPDATED app event for this save
+	mapSetAppEventId?: string,
 ) {
 	await VoteSys.syncVoteStateWithQueueState(ctx, list)
 	return await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
@@ -325,7 +328,7 @@ export async function saveQueueAndUpdateServer(
 			}
 		}
 		if (nextLayerId && nextItemId) {
-			await syncNextLayerToServer(ctx, serverState.settings, nextLayerId, nextItemId)
+			await syncNextLayerToServer(ctx, serverState.settings, nextLayerId, nextItemId, mapSetAppEventId)
 		} else {
 			log.error('No next layer to sync to server')
 		}
@@ -376,6 +379,8 @@ export const syncNextLayerToServer = C.spanOp('syncNextLayerToServer', { module,
 	settings: SETTINGS.ServerSettings,
 	nextQueuedLayerId: L.LayerId,
 	itemId: string,
+	// when this set-next resulted from a queue save, links the resulting MAP_SET back to that QUEUE_UPDATED app event
+	mapSetAppEventId?: string,
 ) => {
 	if (settings.updatesToSquadServerDisabled) return
 	const currentStatusRes = await ctx.server.layersStatus.get(ctx)
@@ -391,7 +396,12 @@ export const syncNextLayerToServer = C.spanOp('syncNextLayerToServer', { module,
 		case 'ok':
 			ctx.layerQueue.unexpectedNextLayerSet$.next(null)
 			// awaiting this will cause a deadlock on map roll
-			void SquadServer.pushAttribution(ctx, { type: 'MAP_SET_ATTRIBUTION', itemId: itemId, layerId: nextQueuedLayerId })
+			void SquadServer.pushAttribution(ctx, {
+					type: 'MAP_SET_ATTRIBUTION',
+					itemId: itemId,
+					layerId: nextQueuedLayerId,
+					appEventId: mapSetAppEventId,
+				})
 			break
 		default:
 			assertNever(res)
@@ -620,7 +630,25 @@ const handleSideEffect = C.spanOp(
 				break
 			}
 			case 'request-list-save': {
-				await saveQueueAndUpdateServer(ctx, se.list)
+				// the ops that make up this save: the span (lastSaveOpId, opId] from the session's op log
+					const allOps = ctx.layerQueue.session.ops
+					const startIdx = se.lastSaveOpId == null ? 0 : allOps.findIndex(o => o.opId === se.lastSaveOpId) + 1
+					const endIdx = allOps.findIndex(o => o.opId === se.opId)
+					const ops = endIdx === -1 ? [] : allOps.slice(startIdx, endIdx + 1)
+					// the op that triggered the save attributes it (system for server-generated ops like a roll)
+					const triggerUserId = (allOps[endIdx] as { userId?: USR.UserId } | undefined)?.userId
+					const queueUpdated = AppEvents.create<AppEvents.QueueUpdated>({
+						type: 'QUEUE_UPDATED',
+						actor: triggerUserId ? { type: 'slm-user', userId: triggerUserId } : { type: 'system' },
+						serverId: ctx.serverId,
+						matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
+						causeId: null,
+						ops,
+						prevList: se.prevList,
+						list: se.list,
+					})
+					await SquadServer.emitAppEvent(ctx, queueUpdated)
+					await saveQueueAndUpdateServer(ctx, se.list, queueUpdated.id)
 				await dispatchOp(ctx, { op: 'save-completed', opId: SLL.createOpId() })
 				break
 			}

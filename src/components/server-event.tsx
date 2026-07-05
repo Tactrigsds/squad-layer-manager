@@ -10,6 +10,7 @@ import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
+import * as LL from '@/models/layer-list.models'
 
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
@@ -433,6 +434,39 @@ function AppEventEntry(
 		return (
 			<AppEventLine time={event.time} icon={<Icons.Ban className="h-4 w-4 text-red-500 shrink-0" />}>
 				{actorLabel} aborted the vote
+			</AppEventLine>
+		)
+	}
+	if (appEvent.type === 'QUEUE_UPDATED') {
+		// net change to the saved queue -- the "relevant" default view; the full op log is available for the audit page
+		const layerOf = (item: { itemId: string }) => ('layerId' in item ? (item as { layerId: string }).layerId : 'vote')
+		const prev = new Map<string, string>()
+		for (const { item } of LL.iterItems(appEvent.prevList)) prev.set(item.itemId, layerOf(item))
+		const next = new Map<string, string>()
+		for (const { item } of LL.iterItems(appEvent.list)) next.set(item.itemId, layerOf(item))
+		let added = 0
+		let changed = 0
+		for (const [id, layerId] of next) {
+			if (!prev.has(id)) added++
+			else if (prev.get(id) !== layerId) changed++
+		}
+		let removed = 0
+		for (const id of prev.keys()) if (!next.has(id)) removed++
+		const commonPrev = [...prev.keys()].filter(id => next.has(id))
+		const commonNext = [...next.keys()].filter(id => prev.has(id))
+		const reordered = commonPrev.length === commonNext.length && commonPrev.some((id, i) => id !== commonNext[i])
+		const parts = [
+			added > 0 ? `+${added}` : null,
+			removed > 0 ? `−${removed}` : null,
+			changed > 0 ? `${changed} changed` : null,
+			reordered ? 'reordered' : null,
+		].filter(Boolean)
+		const isRoll = appEvent.ops.some(o => o.op === 'shift-first-saved-layer')
+		const headline = isRoll ? 'Queue advanced on map change' : `${actorLabel} updated the queue`
+		return (
+			<AppEventLine time={event.time} icon={<Icons.ListOrdered className="h-4 w-4 text-indigo-500 shrink-0" />}>
+				{headline}
+				{parts.length > 0 ? ` (${parts.join(', ')})` : ''}
 			</AppEventLine>
 		)
 	}

@@ -175,6 +175,7 @@ export type State = {
 	saving: boolean
 	mutations: ItemMut.Mutations
 	requestingGeneratedQueueItem: boolean
+	lastSaveOpId: null | string
 }
 
 // the typed payload carried by a RejectedError thrown from the reducer, for the dispatcher to surface
@@ -190,6 +191,10 @@ export type SideEffect =
 		// saved list has changed, and needs to be written to the database and/or published to the squad server
 		code: 'request-list-save'
 		list: LL.List
+		// the saved list before this save -- diffed against `list` for the QUEUE_UPDATED app event
+		prevList: LL.List
+		opId: string
+		lastSaveOpId: null | string
 	}
 	| {
 		// requests that a queue item be generated before the list is saved. happens when the saved list would be empty
@@ -204,6 +209,7 @@ export type SideEffect =
 	| {
 		// no more sideEffects for this reducer call
 		code: 'complete'
+		opId: string
 	}
 
 export type Update =
@@ -256,7 +262,7 @@ export const reducer: ODSM.Reducer<Operation, State, SideEffect> = (oldState, op
 			cause: savedResult.error,
 		})
 	}
-	emit({ code: 'complete' })
+	emit({ code: 'complete', opId: ops.at(-1)?.opId ?? '' })
 	return [state, sideEffects]
 }
 
@@ -267,7 +273,7 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 		return false
 	}
 	if (newOp.op === 'queue-item-generated') {
-		saveList(session, [newOp.item], onSideEffect)
+		saveList(session, newOp, [newOp.item], onSideEffect)
 		session.requestingGeneratedQueueItem = false
 		return true
 	}
@@ -298,27 +304,30 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 		}
 
 		case 'shift-first-saved-layer': {
+			const prevList = Obj.deepClone(session.savedList)
 			LL.splice(session.savedList, { outerIndex: 0, innerIndex: null }, 1)
-			saveList(session, session.savedList, onSideEffect)
+			saveList(session, newOp, session.savedList, onSideEffect, prevList)
 			break
 		}
 
 		case 'unshift-first-saved-layer': {
+			const prevList = Obj.deepClone(session.savedList)
 			LL.addItemsDeterministic(session.savedList, newOp.itemSource, { outerIndex: 0, innerIndex: null }, {
 				type: 'single-list-item',
 				itemId: newOp.itemId,
 				layerId: newOp.layerId,
 				source: newOp.itemSource,
 			})
-			saveList(session, session.savedList, onSideEffect)
+			saveList(session, newOp, session.savedList, onSideEffect, prevList)
 			break
 		}
 
 		case 'set-vote-result': {
 			const { item: voteItem } = Obj.destrNullable(LL.findItemById(session.savedList, newOp.voteItemId))
 			if (!voteItem || !LL.isParentVoteItem(voteItem)) return false
+			const prevList = Obj.deepClone(session.savedList)
 			LL.setEndingVoteStateInPlace(voteItem, newOp.result)
-			saveList(session, session.savedList, onSideEffect)
+			saveList(session, newOp, session.savedList, onSideEffect, prevList)
 			break
 		}
 
@@ -415,12 +424,18 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 			break
 
 		case 'save': {
-			saveList(session, session.list, onSideEffect)
+			// a save with no net changes shouldn't request a DB write or emit a QUEUE_UPDATED. this guard lives here
+			// (not in saveList) because in-place system ops -- rolls, vote results -- mutate savedList before saving,
+			// so they can't be compared inside saveList; they always save.
+			if (Obj.deepEqual(session.list, session.savedList)) break
+			saveList(session, newOp, session.list, onSideEffect)
 			break
 		}
 
 		case 'save-completed': {
 			session.saving = false
+			// advance the save cursor so the next QUEUE_UPDATED spans only the ops after this save
+			session.lastSaveOpId = newOp.opId
 			break
 		}
 
@@ -438,7 +453,16 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 	return true
 }
 
-function saveList(session: State, list: LL.List, onSideEffect: ODSM.OnSideEffect<SideEffect> | undefined) {
+// prevList is the saved list before this save, for the QUEUE_UPDATED app event to diff against. it defaults to the
+// current savedList (correct for the `save` op, where savedList is still the last-saved list), but in-place system
+// ops mutate savedList before calling saveList, so they pass a snapshot taken before their mutation.
+function saveList(
+	session: State,
+	op: Operation,
+	list: LL.List,
+	onSideEffect: ODSM.OnSideEffect<SideEffect> | undefined,
+	prevList: LL.List = session.savedList,
+) {
 	session.saving = true
 	if (list.length === 0) {
 		session.requestingGeneratedQueueItem = true
@@ -449,7 +473,7 @@ function saveList(session: State, list: LL.List, onSideEffect: ODSM.OnSideEffect
 	session.savedList = list === session.savedList && list !== session.list ? list : Obj.deepClone(list)
 	session.mutations = ItemMut.initMutations()
 	session.editWindowSeqId++
-	onSideEffect?.({ code: 'request-list-save', list: session.savedList })
+	onSideEffect?.({ code: 'request-list-save', list: session.savedList, prevList, opId: op.opId, lastSaveOpId: session.lastSaveOpId })
 }
 
 export function mergeMutations(base: ItemMut.Mutations, additions: ItemMut.Mutations): ItemMut.Mutations {
@@ -474,6 +498,7 @@ export function createNewState(list?: LL.List): State {
 		mutations: ItemMut.initMutations(),
 		savedList: list ? Obj.deepClone(list) : [],
 		requestingGeneratedQueueItem: false,
+		lastSaveOpId: null,
 	}
 }
 

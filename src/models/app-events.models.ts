@@ -1,6 +1,8 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import { createId } from '@/lib/id'
 import type * as L from '@/models/layer'
+import type * as LL from '@/models/layer-list.models'
+import type * as SLL from '@/models/shared-layer-list'
 import type * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import superjson from 'superjson'
@@ -104,6 +106,15 @@ export type VoteAborted = {
 	type: 'VOTE_ABORTED'
 } & Base
 
+export type QueueUpdated = {
+	type: 'QUEUE_UPDATED'
+	// all shared-layer-list operations since the last save (the opId span carried by request-list-save)
+	ops: SLL.Operation[]
+	// the saved queue before and after this save -- diffed to show the net change
+	prevList: LL.List
+	list: LL.List
+} & Base
+
 export type AppEvent =
 	| PlayerWarned
 	| SquadDisbanded
@@ -116,6 +127,7 @@ export type AppEvent =
 	| VoteStarted
 	| VoteEnded
 	| VoteAborted
+	| QueueUpdated
 
 export type AppEventType = AppEvent['type']
 
@@ -136,6 +148,7 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 		case 'VOTE_STARTED':
 		case 'VOTE_ENDED':
 		case 'VOTE_ABORTED':
+		case 'QUEUE_UPDATED':
 			return []
 	}
 }
