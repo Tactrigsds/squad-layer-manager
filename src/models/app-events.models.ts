@@ -52,8 +52,7 @@ export type Base = z.infer<z.ZodObject<typeof baseShape>>
 // ---- discriminated payloads, one per action. types are inferred from the schemas so persisted data can be
 // validated on read (see fromRow) with the type as the single source of truth. ----
 
-const event = <T extends string, S extends z.ZodRawShape>(type: T, shape: S) =>
-	z.object({ ...baseShape, type: z.literal(type), ...shape })
+const event = <T extends string, S extends z.ZodRawShape>(type: T, shape: S) => z.object({ ...baseShape, type: z.literal(type), ...shape })
 
 export const PlayerWarnedSchema = event('PLAYER_WARNED', {
 	message: z.string(),

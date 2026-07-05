@@ -9,6 +9,7 @@ import { assertNever } from '@/lib/type-guards.ts'
 
 import { HumanTime } from '@/lib/zod.ts'
 import * as Messages from '@/messages.ts'
+import * as AppEvents from '@/models/app-events.models'
 import * as BAL from '@/models/balance-triggers.models.ts'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
@@ -20,9 +21,8 @@ import type * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as SM from '@/models/squad.models.ts'
-import * as AppEvents from '@/models/app-events.models'
-import * as AppEventsSys from '@/systems/app-events.server'
 import type * as USR from '@/models/users.models'
+import * as AppEventsSys from '@/systems/app-events.server'
 
 import * as RBAC from '@/rbac.models.ts'
 
@@ -441,7 +441,12 @@ export const syncNextLayerToServer = C.spanOp('syncNextLayerToServer', { module,
 				mapSetAppEventId = mapSet.id
 			}
 			// awaiting this will cause a deadlock on map roll
-			void SquadServer.pushAttribution(ctx, { type: 'MAP_SET_ATTRIBUTION', itemId, layerId: nextQueuedLayerId, appEventId: mapSetAppEventId })
+			void SquadServer.pushAttribution(ctx, {
+				type: 'MAP_SET_ATTRIBUTION',
+				itemId,
+				layerId: nextQueuedLayerId,
+				appEventId: mapSetAppEventId,
+			})
 			break
 		}
 		default:
@@ -672,39 +677,39 @@ const handleSideEffect = C.spanOp(
 			}
 			case 'request-list-save': {
 				// the ops that make up this save: the span (lastSaveOpId, opId] from the session's op log
-					const allOps = ctx.layerQueue.session.ops
-					const startIdx = se.lastSaveOpId == null ? 0 : allOps.findIndex(o => o.opId === se.lastSaveOpId) + 1
-					const endIdx = allOps.findIndex(o => o.opId === se.opId)
-					const ops = endIdx === -1 ? [] : allOps.slice(startIdx, endIdx + 1)
-					// classify the save by the op that triggered it, so we don't credit SLM for reacting to outside changes:
-					//  - shift-first-saved-layer  -> the map rolled
-					//  - unshift-first-saved-layer -> reconciling to a layer set outside SLM (attribute to that actor)
-					//  - otherwise                 -> an SLM user edit (or an internal op like a vote result)
-					const triggerOp = allOps[endIdx] as (SLL.Operation & { userId?: USR.UserId }) | undefined
-					const { trigger, actor } = ((): { trigger: AppEvents.QueueUpdated['trigger']; actor: AppEvents.Actor } => {
-						if (triggerOp?.op === 'shift-first-saved-layer') return { trigger: 'roll', actor: { type: 'system' } }
-						if (triggerOp?.op === 'unshift-first-saved-layer') {
-							const ext = triggerOp.externalSource
-							return {
-								trigger: 'external-layer-change',
-								actor: ext?.type === 'player' ? { type: 'ingame-user', playerId: ext.playerId } : { type: 'system' },
-							}
+				const allOps = ctx.layerQueue.session.ops
+				const startIdx = se.lastSaveOpId == null ? 0 : allOps.findIndex(o => o.opId === se.lastSaveOpId) + 1
+				const endIdx = allOps.findIndex(o => o.opId === se.opId)
+				const ops = endIdx === -1 ? [] : allOps.slice(startIdx, endIdx + 1)
+				// classify the save by the op that triggered it, so we don't credit SLM for reacting to outside changes:
+				//  - shift-first-saved-layer  -> the map rolled
+				//  - unshift-first-saved-layer -> reconciling to a layer set outside SLM (attribute to that actor)
+				//  - otherwise                 -> an SLM user edit (or an internal op like a vote result)
+				const triggerOp = allOps[endIdx] as (SLL.Operation & { userId?: USR.UserId }) | undefined
+				const { trigger, actor } = ((): { trigger: AppEvents.QueueUpdated['trigger']; actor: AppEvents.Actor } => {
+					if (triggerOp?.op === 'shift-first-saved-layer') return { trigger: 'roll', actor: { type: 'system' } }
+					if (triggerOp?.op === 'unshift-first-saved-layer') {
+						const ext = triggerOp.externalSource
+						return {
+							trigger: 'external-layer-change',
+							actor: ext?.type === 'player' ? { type: 'ingame-user', playerId: ext.playerId } : { type: 'system' },
 						}
-						return { trigger: 'user-edit', actor: triggerOp?.userId ? { type: 'slm-user', userId: triggerOp.userId } : { type: 'system' } }
-					})()
-					const queueUpdated = AppEvents.create<AppEvents.QueueUpdated>({
-						type: 'QUEUE_UPDATED',
-						actor,
-						serverId: ctx.serverId,
-						matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
-						causeId: null,
-						trigger,
-						ops,
-						prevList: se.prevList,
-						list: se.list,
-					})
-					await SquadServer.emitAppEvent(ctx, queueUpdated)
-					await saveQueueAndUpdateServer(ctx, se.list, queueUpdated.id)
+					}
+					return { trigger: 'user-edit', actor: triggerOp?.userId ? { type: 'slm-user', userId: triggerOp.userId } : { type: 'system' } }
+				})()
+				const queueUpdated = AppEvents.create<AppEvents.QueueUpdated>({
+					type: 'QUEUE_UPDATED',
+					actor,
+					serverId: ctx.serverId,
+					matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
+					causeId: null,
+					trigger,
+					ops,
+					prevList: se.prevList,
+					list: se.list,
+				})
+				await SquadServer.emitAppEvent(ctx, queueUpdated)
+				await saveQueueAndUpdateServer(ctx, se.list, queueUpdated.id)
 				await dispatchOp(ctx, { op: 'save-completed', opId: SLL.createOpId() })
 				break
 			}

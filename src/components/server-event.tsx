@@ -393,8 +393,7 @@ function AppEventEntry(
 		const target = event.targetPlayers[0]
 		return (
 			<AppEventLine time={event.time} icon={<Icons.ShieldOff className="h-4 w-4 text-orange-500 shrink-0" />}>
-				{actorLabel} demoted{' '}
-				{target && matchId !== null
+				{actorLabel} demoted {target && matchId !== null
 					? <PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} />
 					: 'the commander'}
 			</AppEventLine>
@@ -426,7 +425,11 @@ function AppEventEntry(
 			<AppEventLine time={event.time} icon={<Icons.ListChecks className="h-4 w-4 text-green-500 shrink-0" />}>
 				{appEvent.reason === 'ended-early' ? `${actorLabel} ended the vote early` : 'The vote ended'}
 				{appEvent.winnerLayerId
-					? <>: <ShortLayerName layerId={appEvent.winnerLayerId} /> won</>
+					? (
+						<>
+							: <ShortLayerName layerId={appEvent.winnerLayerId} /> won
+						</>
+					)
 					: ' (no winner)'}
 			</AppEventLine>
 		)
@@ -469,8 +472,7 @@ function AppEventEntry(
 			: appEvent.trigger === 'external-layer-change'
 			? (
 				<>
-					Queue synced to an external layer change by{' '}
-					{appEvent.actor.type === 'ingame-user' && event.actorPlayer && matchId !== null
+					Queue synced to an external layer change by {appEvent.actor.type === 'ingame-user' && event.actorPlayer && matchId !== null
 						? <PlayerDisplay showTeam player={event.actorPlayer} matchId={matchId} stores={stores} />
 						: appEvent.actor.type === 'ingame-user'
 						? 'an in-game admin'
@@ -537,7 +539,11 @@ function AppEventEntry(
 	if (appEvent.type === 'PLAYER_WARNED') {
 		verb = 'warned'
 		icon = <Icons.AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
-		suffix = <>: "<span className="wrap-break-word">{appEvent.message}</span>"</>
+		suffix = (
+			<>
+				: "<span className="wrap-break-word">{appEvent.message}</span>"
+			</>
+		)
 		descriptor = warnSummaryDescriptor(event.warnSummary)
 	} else if (appEvent.type === 'PLAYER_REMOVED_FROM_SQUAD') {
 		verb = 'removed'
@@ -564,7 +570,8 @@ function AppEventEntry(
 							<PlayerDisplay showTeam player={player} matchId={matchId} stores={stores} />
 						</span>
 					))}
-					{count > 1 ? <>{' '}({count} {plural})</> : ''}{suffix}
+					{count > 1 ? <>{' '}({count} {plural})</> : ''}
+					{suffix}
 				</div>
 			</div>
 		)
@@ -578,7 +585,8 @@ function AppEventEntry(
 				<span className="grow min-w-0 wrap-break-word">
 					{actorLabel} {verb} {descriptor
 						? (count > 1 ? `${descriptor} (${count} ${plural})` : descriptor)
-						: (count === 1 ? 'a player' : `${count} ${plural}`)}{suffix}
+						: (count === 1 ? 'a player' : `${count} ${plural}`)}
+					{suffix}
 				</span>
 			</summary>
 			{targetList}

@@ -1,10 +1,10 @@
 import { resToOptional } from '@/lib/types'
 import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
-import * as AppEventsSys from '@/systems/app-events.server'
 import { toNormalizedEmoji } from '@/models/discord.models'
 import * as RBAC from '@/rbac.models'
 import { initModule } from '@/server/logger'
+import * as AppEventsSys from '@/systems/app-events.server'
 
 import { CONFIG } from '@/server/config'
 import * as DB from '@/server/db'

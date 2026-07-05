@@ -858,7 +858,14 @@ describe('PendingEvents', () => {
 			const squad = makeSquad(1, 1, 'eos-001', 100)
 			const state = makeSyncedState([p1], [squad])
 			PendingEvents.armExpectation(state, { type: 'SQUAD_RENAMED', teamId: 1, squadId: 1 }, { type: 'event', id: 'app-1' })
-			PendingEvents.onRconEvent(state, { type: 'SQUAD_RENAMED', time: 200, squadId: 1, teamId: 1, oldSquadName: 'Alpha', newSquadName: 'Squad 1' })
+			PendingEvents.onRconEvent(state, {
+				type: 'SQUAD_RENAMED',
+				time: 200,
+				squadId: 1,
+				teamId: 1,
+				oldSquadName: 'Alpha',
+				newSquadName: 'Squad 1',
+			})
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 
