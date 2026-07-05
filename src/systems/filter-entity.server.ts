@@ -8,7 +8,9 @@ import * as F from '@/models/filter.models'
 
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
+import * as AppEvents from '@/models/app-events.models'
 import * as C from '@/server/context'
+import * as AppEventsSys from '@/systems/app-events.server'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 
@@ -34,6 +36,36 @@ const ToggleFilterContributorInputSchema = z
 		error: 'Either userId or role must be provided',
 	})
 export type ToggleFilterContributorInput = z.infer<typeof ToggleFilterContributorInputSchema>
+
+async function recordFilterChange(ctx: C.Db & C.UserId, action: AppEvents.FilterChanged['action'], filterId: string) {
+	await AppEventsSys.persistAppEvent(
+		ctx,
+		AppEvents.create<AppEvents.FilterChanged>({
+			type: 'FILTER_CHANGED',
+			action,
+			filterId,
+			actor: { type: 'slm-user', userId: ctx.user.discordId },
+			serverId: null,
+			matchId: null,
+			causeId: null,
+		}),
+	)
+}
+
+async function recordFilterContributor(ctx: C.Db & C.UserId, action: AppEvents.FilterContributorChanged['action'], filterId: string) {
+	await AppEventsSys.persistAppEvent(
+		ctx,
+		AppEvents.create<AppEvents.FilterContributorChanged>({
+			type: 'FILTER_CONTRIBUTOR_CHANGED',
+			action,
+			filterId,
+			actor: { type: 'slm-user', userId: ctx.user.discordId },
+			serverId: null,
+			matchId: null,
+			causeId: null,
+		}),
+	)
+}
 
 export const filtersRouter = {
 	getFilterContributors: orpcBase.input(F.FilterEntityIdSchema).handler(async ({ input, context: ctx }) => {
@@ -86,6 +118,7 @@ export const filtersRouter = {
 					case 'err:already-exists':
 						return { code: 'err:already-exists' as const }
 					case 'ok':
+						await recordFilterContributor(ctx, 'added', input.filterId)
 						return { code: 'ok' as const }
 					default:
 						assertNever(res)
@@ -101,6 +134,7 @@ export const filtersRouter = {
 					case 'err:already-exists':
 						return { code: 'err:already-exists' as const }
 					case 'ok':
+						await recordFilterContributor(ctx, 'added', input.filterId)
 						return { code: 'ok' as const }
 					default:
 						assertNever(res)
@@ -136,6 +170,7 @@ export const filtersRouter = {
 				return { code: 'err:not-found' as const }
 			}
 
+			await recordFilterContributor(ctx, 'removed', input.filterId)
 			return { code: 'ok' as const }
 		},
 	),
@@ -153,6 +188,7 @@ export const filtersRouter = {
 				username: ctx.user.username,
 				displayName: ctx.user.displayName,
 			}])
+			await recordFilterChange(ctx, 'created', newFilterEntity.id)
 		}
 		return {
 			code: 'ok' as const,
@@ -191,6 +227,7 @@ export const filtersRouter = {
 					username: ctx.user.username,
 					displayName: ctx.user.displayName,
 				}])
+				await recordFilterChange(ctx, 'updated', id)
 			}
 			return res
 		}),
@@ -241,6 +278,7 @@ export const filtersRouter = {
 			displayName: ctx.user.displayName,
 			value: res.filter,
 		}])
+		await recordFilterChange(ctx, 'deleted', idToDelete)
 		return { code: 'ok' as const }
 	}),
 	watchFilters: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {

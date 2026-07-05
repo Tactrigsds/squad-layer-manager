@@ -6,7 +6,9 @@ import type * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
+import * as AppEvents from '@/models/app-events.models'
 import * as C from '@/server/context'
+import * as AppEventsSys from '@/systems/app-events.server'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
@@ -675,6 +677,18 @@ export const router = {
 
 		// Persist immediately so DB doesn't serve stale flags on next startup
 		persistCache().catch((err) => log.warn({ err }, 'Failed to persist BM cache after flag update'))
+
+		await AppEventsSys.persistAppEvent(
+			ctx,
+			AppEvents.create<AppEvents.PlayerFlagsUpdated>({
+				type: 'PLAYER_FLAGS_UPDATED',
+				playerId: input.playerId,
+				actor: { type: 'slm-user', userId: ctx.user.discordId },
+				serverId: null,
+				matchId: null,
+				causeId: null,
+			}),
+		)
 
 		return { code: 'ok' as const, data: updated }
 	}),

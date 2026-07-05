@@ -8,6 +8,7 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
+import * as AppEvents from '@/models/app-events.models'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
@@ -470,12 +471,16 @@ function AppEventEntry(
 			</AppEventLine>
 		)
 	}
-	if (appEvent.type === 'SETTINGS_UPDATED') {
-		// global (serverId=null) settings events are audit-only and don't reach a server feed, but the union still
-		// needs a branch here
+	if (
+		appEvent.type === 'SETTINGS_UPDATED' || appEvent.type === 'SERVER_REGISTRY_CHANGED'
+		|| appEvent.type === 'FILTER_CHANGED' || appEvent.type === 'FILTER_CONTRIBUTOR_CHANGED'
+		|| appEvent.type === 'USER_ACCOUNT_CHANGED' || appEvent.type === 'PLAYER_FLAGS_UPDATED'
+	) {
+		// global/audit-only types -- they never reach a server activity feed (matchId null), but the union needs a
+		// branch. rendered generically via describeAppEvent (the audit log is where these actually show up).
 		return (
-			<AppEventLine time={event.time} icon={<Icons.Settings className="h-4 w-4 text-slate-400 shrink-0" />}>
-				{actorLabel} {appEvent.serverId ? 'updated server settings' : 'updated global settings'}
+			<AppEventLine time={event.time} icon={<Icons.ScrollText className="h-4 w-4 text-slate-400 shrink-0" />}>
+				{actorLabel} {AppEvents.describeAppEvent(appEvent)}
 			</AppEventLine>
 		)
 	}

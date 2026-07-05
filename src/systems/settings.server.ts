@@ -474,6 +474,25 @@ const serverRouter = {
 		}),
 }
 
+async function recordServerRegistry(
+	ctx: C.Db & C.UserId,
+	action: AppEvents.ServerRegistryChanged['action'],
+	targetServerId: string,
+) {
+	await AppEventsSys.persistAppEvent(
+		ctx,
+		AppEvents.create<AppEvents.ServerRegistryChanged>({
+			type: 'SERVER_REGISTRY_CHANGED',
+			action,
+			targetServerId,
+			actor: { type: 'slm-user', userId: ctx.user.discordId },
+			serverId: null,
+			matchId: null,
+			causeId: null,
+		}),
+	)
+}
+
 // requires admin:manage-servers (or admin:delete-servers for deleteServer): server registry management and raw per-server settings repair
 const adminRouter = {
 	enableServer: orpcBase
@@ -483,7 +502,9 @@ const adminRouter = {
 			const ctx = DB.addPooledDb(_ctx as any)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-servers'))
 			if (denyRes) return denyRes
-			return await SquadServer.enableServer(input.serverId)
+			const res = await SquadServer.enableServer(input.serverId)
+			if (res.code === 'ok') await recordServerRegistry(ctx, 'enabled', input.serverId)
+			return res
 		}),
 
 	disableServer: orpcBase
@@ -493,7 +514,9 @@ const adminRouter = {
 			const ctx = DB.addPooledDb(_ctx as any)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-servers'))
 			if (denyRes) return denyRes
-			return await SquadServer.disableServer(input.serverId)
+			const res = await SquadServer.disableServer(input.serverId)
+			if (res.code === 'ok') await recordServerRegistry(ctx, 'disabled', input.serverId)
+			return res
 		}),
 
 	createServer: orpcBase
@@ -509,7 +532,9 @@ const adminRouter = {
 			const ctx = DB.addPooledDb(_ctx as any)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-servers'))
 			if (denyRes) return denyRes
-			return await createServerEntry(ctx, input)
+			const res = await createServerEntry(ctx, input)
+			if (res.code === 'ok') await recordServerRegistry(ctx, 'created', input.id)
+			return res
 		}),
 
 	deleteServer: orpcBase
@@ -519,7 +544,9 @@ const adminRouter = {
 			const ctx = DB.addPooledDb(_ctx as any)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:delete-servers'))
 			if (denyRes) return denyRes
-			return await SquadServer.deleteServer(input.serverId)
+			const res = await SquadServer.deleteServer(input.serverId)
+			if (res.code === 'ok') await recordServerRegistry(ctx, 'deleted', input.serverId)
+			return res
 		}),
 
 	setDefaultServer: orpcBase
@@ -529,7 +556,9 @@ const adminRouter = {
 			const ctx = DB.addPooledDb(_ctx as any)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-servers'))
 			if (denyRes) return denyRes
-			return await setDefaultServerEntry(ctx, input.serverId)
+			const res = await setDefaultServerEntry(ctx, input.serverId)
+			if (res.code === 'ok') await recordServerRegistry(ctx, 'set-default', input.serverId)
+			return res
 		}),
 
 	getRawSettings: orpcBase

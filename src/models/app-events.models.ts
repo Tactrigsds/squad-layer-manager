@@ -111,6 +111,37 @@ export type SettingsUpdated = {
 	type: 'SETTINGS_UPDATED'
 } & Base
 
+// server registry admin action. targetServerId (not serverId) so the servers FK cascade can't delete a
+// SERVER_REGISTRY_CHANGED(deleted) event along with the server it records.
+export type ServerRegistryChanged = {
+	type: 'SERVER_REGISTRY_CHANGED'
+	action: 'enabled' | 'disabled' | 'created' | 'deleted' | 'set-default'
+	targetServerId: string
+} & Base
+
+export type FilterChanged = {
+	type: 'FILTER_CHANGED'
+	action: 'created' | 'updated' | 'deleted'
+	filterId: string
+} & Base
+
+export type FilterContributorChanged = {
+	type: 'FILTER_CONTRIBUTOR_CHANGED'
+	action: 'added' | 'removed'
+	filterId: string
+} & Base
+
+// a user acting on their own account
+export type UserAccountChanged = {
+	type: 'USER_ACCOUNT_CHANGED'
+	action: 'steam-linked' | 'steam-unlinked' | 'nickname-updated'
+} & Base
+
+export type PlayerFlagsUpdated = {
+	type: 'PLAYER_FLAGS_UPDATED'
+	playerId: SM.PlayerId
+} & Base
+
 export type QueueUpdated = {
 	type: 'QUEUE_UPDATED'
 	// all shared-layer-list operations since the last save (the opId span carried by request-list-save)
@@ -134,6 +165,11 @@ export type AppEvent =
 	| VoteAborted
 	| QueueUpdated
 	| SettingsUpdated
+	| ServerRegistryChanged
+	| FilterChanged
+	| FilterContributorChanged
+	| UserAccountChanged
+	| PlayerFlagsUpdated
 
 export type AppEventType = AppEvent['type']
 
@@ -156,7 +192,13 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 		case 'VOTE_ABORTED':
 		case 'QUEUE_UPDATED':
 		case 'SETTINGS_UPDATED':
+		case 'SERVER_REGISTRY_CHANGED':
+		case 'FILTER_CHANGED':
+		case 'FILTER_CONTRIBUTOR_CHANGED':
+		case 'USER_ACCOUNT_CHANGED':
 			return []
+		case 'PLAYER_FLAGS_UPDATED':
+			return [e.playerId]
 	}
 }
 
@@ -191,6 +233,22 @@ export function describeAppEvent(e: AppEvent): string {
 			return 'updated the queue'
 		case 'SETTINGS_UPDATED':
 			return e.serverId ? 'updated server settings' : 'updated global settings'
+		case 'SERVER_REGISTRY_CHANGED': {
+			const verb = e.action === 'set-default' ? 'set default' : e.action
+			return `${verb} server "${e.targetServerId}"`
+		}
+		case 'FILTER_CHANGED':
+			return `${e.action} filter ${e.filterId}`
+		case 'FILTER_CONTRIBUTOR_CHANGED':
+			return `${e.action === 'added' ? 'added a contributor to' : 'removed a contributor from'} filter ${e.filterId}`
+		case 'USER_ACCOUNT_CHANGED':
+			return e.action === 'steam-linked'
+				? 'linked their Steam account'
+				: e.action === 'steam-unlinked'
+				? 'unlinked their Steam account'
+				: 'updated their nickname'
+		case 'PLAYER_FLAGS_UPDATED':
+			return `updated Battlemetrics flags for player ${e.playerId}`
 	}
 }
 

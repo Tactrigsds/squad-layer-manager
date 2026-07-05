@@ -9,7 +9,9 @@ import type * as CS from '@/models/context-shared'
 import * as USR from '@/models/users.models'
 import type * as RBAC from '@/rbac.models'
 import { CONFIG } from '@/server/config'
+import * as AppEvents from '@/models/app-events.models'
 import type * as C from '@/server/context'
+import * as AppEventsSys from '@/systems/app-events.server'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
@@ -33,6 +35,20 @@ const orpcBase = getOrpcBase(module)
 
 export function setup() {
 	log = module.getLogger()
+}
+
+async function recordUserAccount(ctx: C.Db, userId: bigint, action: AppEvents.UserAccountChanged['action']) {
+	await AppEventsSys.persistAppEvent(
+		ctx,
+		AppEvents.create<AppEvents.UserAccountChanged>({
+			type: 'USER_ACCOUNT_CHANGED',
+			action,
+			actor: { type: 'slm-user', userId },
+			serverId: null,
+			matchId: null,
+			causeId: null,
+		}),
+	)
 }
 
 export const orpcRouter = {
@@ -109,6 +125,7 @@ export const orpcRouter = {
 
 			await context.db().update(Schema.users).set({ steam64Id: null }).where(E.eq(Schema.users.discordId, context.user.discordId))
 			context.user.steam64Id = null
+			await recordUserAccount(context, context.user.discordId, 'steam-unlinked')
 			return { code: 'ok' as const, msg: 'Steam account unlinked successfully.' }
 		})
 	}),
@@ -126,6 +143,7 @@ export const orpcRouter = {
 				if (nickname) context.user.displayName = nickname
 				invalidateUsers$.next()
 				await context.db().update(Schema.users).set({ nickname }).where(E.eq(Schema.users.discordId, context.user.discordId))
+				await recordUserAccount(context, context.user.discordId, 'nickname-updated')
 
 				return { code: 'ok' as const, msg: 'Nickname updated successfully.' }
 			})
@@ -163,6 +181,7 @@ export async function completeSteamAccountLink(ctx: C.Db, code: string, steam64I
 			}
 			throw err
 		}
+		await recordUserAccount(ctx, linked.discordId, 'steam-linked')
 		addReleaseTask(() => steamAccountLinkComplete$.next({ discordId: linked.discordId, steam64Id }))
 		return { code: 'ok' as const, linkedUsername: user.username }
 	})
