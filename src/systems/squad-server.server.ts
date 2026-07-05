@@ -1330,7 +1330,7 @@ const loadSavedEvents = C.spanOp(
 				.where(E.eq(Schema.appEvents.matchId, lastMatch.id))
 				.orderBy(E.asc(Schema.appEvents.time))
 			: []
-		server.emittedAppEvents = appEventRows.map((r) => AppEvents.fromRow(r))
+		server.emittedAppEvents = appEventRows.map((r) => AppEvents.fromRow(r)).filter((e): e is AppEvents.AppEvent => e !== null)
 	},
 )
 

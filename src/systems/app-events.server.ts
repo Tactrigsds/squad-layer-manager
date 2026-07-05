@@ -62,6 +62,10 @@ export const router = {
 				.where(input.before !== undefined ? E.lt(Schema.appEvents.time, new Date(input.before)) : undefined)
 				.orderBy(E.desc(Schema.appEvents.time))
 				.limit(input.limit)
-			return { code: 'ok' as const, events: rows.map(AppEvents.fromRow) }
+			const events = rows.map(AppEvents.fromRow).filter((e: AppEvents.AppEvent | null): e is AppEvents.AppEvent => e !== null)
+			if (events.length < rows.length) {
+				module.getLogger().warn('dropped %d unparseable app-event row(s) from audit list', rows.length - events.length)
+			}
+			return { code: 'ok' as const, events }
 		}),
 }

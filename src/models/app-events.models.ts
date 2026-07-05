@@ -1,12 +1,13 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as DH from '@/lib/display-helpers'
 import { createId } from '@/lib/id'
-import type * as L from '@/models/layer'
+import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
-import type * as SLL from '@/models/shared-layer-list'
-import type * as SM from '@/models/squad.models'
-import type * as USR from '@/models/users.models'
+import * as SLL from '@/models/shared-layer-list'
+import * as SM from '@/models/squad.models'
+import * as USR from '@/models/users.models'
 import superjson from 'superjson'
+import { z } from 'zod'
 
 // Application events are SLM's audit log: they record actions SLM (or one of its users) takes.
 // A server event's `source` can link back to the app event that caused it (see server-events-base ActionSource),
@@ -23,189 +24,188 @@ export function createAppEventId(): AppEventId {
 }
 
 // who initiated the action
-export type Actor =
-	| { type: 'slm-user'; userId: USR.UserId } // web/orpc operator
-	| { type: 'ingame-user'; playerId: SM.PlayerId } // chat-command sender (eos)
-	| { type: 'system' } // automated: roll, balance, schedule, startup
+export const ActorSchema = z.discriminatedUnion('type', [
+	z.object({ type: z.literal('slm-user'), userId: USR.UserIdSchema }), // web/orpc operator
+	z.object({ type: z.literal('ingame-user'), playerId: SM.PlayerIdSchema }), // chat-command sender (eos)
+	z.object({ type: z.literal('system') }), // automated: roll, balance, schedule, startup
+])
+export type Actor = z.infer<typeof ActorSchema>
 
-export type Base = {
-	id: AppEventId
-	time: number
-	actor: Actor
+// the envelope every app event carries. spread into each event schema so the union stays a discriminatedUnion.
+// most of it is reconstructed from typed columns on read (see fromRow); the payload blob is what the schemas guard.
+const baseShape = {
+	id: z.string(),
+	time: z.number(),
+	actor: ActorSchema,
 	// the server this action targets; null for global actions (settings/filters/users)
-	serverId: string | null
+	serverId: z.string().nullable(),
 	// feed replay/join key; null for global (never enters a server activity feed)
-	matchId: number | null
+	matchId: z.number().nullable(),
 	// provenance chain: the app event that caused this one (COMMAND_INVOKED -> VOTE_STARTED -> NEXT_LAYER_SET)
-	causeId: AppEventId | null
+	causeId: z.string().nullable(),
 	// the SLM process (otel service.instance.id) that emitted this event; stamped at persist time. null on events
 	// created before this was introduced.
-	instanceId: string | null
+	instanceId: z.string().nullable(),
 }
+export type Base = z.infer<z.ZodObject<typeof baseShape>>
 
-// ---- discriminated payloads, one per action ----
+// ---- discriminated payloads, one per action. types are inferred from the schemas so persisted data can be
+// validated on read (see fromRow) with the type as the single source of truth. ----
 
-export type PlayerWarned = {
-	type: 'PLAYER_WARNED'
-	message: string
+const event = <T extends string, S extends z.ZodRawShape>(type: T, shape: S) =>
+	z.object({ ...baseShape, type: z.literal(type), ...shape })
+
+export const PlayerWarnedSchema = event('PLAYER_WARNED', {
+	message: z.string(),
 	// the players this warn action targeted (eos ids)
-	targets: SM.PlayerId[]
-} & Base
+	targets: z.array(SM.PlayerIdSchema),
+})
+export type PlayerWarned = z.infer<typeof PlayerWarnedSchema>
 
-export type SquadDisbanded = {
-	type: 'SQUAD_DISBANDED'
-	teamId: SM.TeamId
+export const SquadDisbandedSchema = event('SQUAD_DISBANDED', {
+	teamId: SM.TeamIdSchema,
 	// in-game squad id (not the unique/db id)
-	squadId: number
-	squadName: string
+	squadId: z.number(),
+	squadName: z.string(),
 	// the players who were in the squad when it was disbanded (eos ids)
-	members: SM.PlayerId[]
-} & Base
+	members: z.array(SM.PlayerIdSchema),
+})
+export type SquadDisbanded = z.infer<typeof SquadDisbandedSchema>
 
-export type PlayerRemovedFromSquad = {
-	type: 'PLAYER_REMOVED_FROM_SQUAD'
-	targets: SM.PlayerId[]
-} & Base
+export const PlayerRemovedFromSquadSchema = event('PLAYER_REMOVED_FROM_SQUAD', { targets: z.array(SM.PlayerIdSchema) })
+export type PlayerRemovedFromSquad = z.infer<typeof PlayerRemovedFromSquadSchema>
 
-export type TeamChangeForced = {
-	type: 'TEAM_CHANGE_FORCED'
-	targets: SM.PlayerId[]
-} & Base
+export const TeamChangeForcedSchema = event('TEAM_CHANGE_FORCED', { targets: z.array(SM.PlayerIdSchema) })
+export type TeamChangeForced = z.infer<typeof TeamChangeForcedSchema>
 
-export type SquadRenamed = {
-	type: 'SQUAD_RENAMED'
-	teamId: SM.TeamId
-	squadId: number
+export const SquadRenamedSchema = event('SQUAD_RENAMED', {
+	teamId: SM.TeamIdSchema,
+	squadId: z.number(),
 	// the squad's name at the time of the action (the rename resets it to the game default)
-	squadName: string
-} & Base
+	squadName: z.string(),
+})
+export type SquadRenamed = z.infer<typeof SquadRenamedSchema>
 
 // pure-audit actions with no attributable server event
-export type CommanderDemoted = {
-	type: 'COMMANDER_DEMOTED'
-	target: SM.PlayerId
-} & Base
+export const CommanderDemotedSchema = event('COMMANDER_DEMOTED', { target: SM.PlayerIdSchema })
+export type CommanderDemoted = z.infer<typeof CommanderDemotedSchema>
 
-export type FogOfWarToggled = {
-	type: 'FOG_OF_WAR_TOGGLED'
-	enabled: boolean
-} & Base
+export const FogOfWarToggledSchema = event('FOG_OF_WAR_TOGGLED', { enabled: z.boolean() })
+export type FogOfWarToggled = z.infer<typeof FogOfWarToggledSchema>
 
-export type MatchEnded = {
-	type: 'MATCH_ENDED'
-} & Base
+export const MatchEndedSchema = event('MATCH_ENDED', {})
+export type MatchEnded = z.infer<typeof MatchEndedSchema>
 
-export type VoteStarted = {
-	type: 'VOTE_STARTED'
-	choiceCount: number
-} & Base
+export const VoteStartedSchema = event('VOTE_STARTED', { choiceCount: z.number() })
+export type VoteStarted = z.infer<typeof VoteStartedSchema>
 
-export type VoteEnded = {
-	type: 'VOTE_ENDED'
-	reason: 'vote-timeout' | 'ended-early'
-	winnerLayerId: L.LayerId | null
-} & Base
+export const VoteEndedSchema = event('VOTE_ENDED', {
+	reason: z.enum(['vote-timeout', 'ended-early']),
+	winnerLayerId: L.LayerIdSchema.nullable(),
+})
+export type VoteEnded = z.infer<typeof VoteEndedSchema>
 
-export type VoteAborted = {
-	type: 'VOTE_ABORTED'
-} & Base
+export const VoteAbortedSchema = event('VOTE_ABORTED', {})
+export type VoteAborted = z.infer<typeof VoteAbortedSchema>
 
 // SLM process lifecycle. APP_STARTED fires on every boot (system actor); APP_RESTARTED is the intentional
 // restart-slm admin action recorded before shutdown (slm-user actor).
-export type AppStarted = {
-	type: 'APP_STARTED'
-} & Base
+export const AppStartedSchema = event('APP_STARTED', {})
+export type AppStarted = z.infer<typeof AppStartedSchema>
 
-export type AppRestarted = {
-	type: 'APP_RESTARTED'
-} & Base
+export const AppRestartedSchema = event('APP_RESTARTED', {})
+export type AppRestarted = z.infer<typeof AppRestartedSchema>
 
 // a global (or per-server) settings change. global when serverId is null, per-server otherwise. audit-only.
-export type SettingsUpdated = {
-	type: 'SETTINGS_UPDATED'
-} & Base
+export const SettingsUpdatedSchema = event('SETTINGS_UPDATED', {})
+export type SettingsUpdated = z.infer<typeof SettingsUpdatedSchema>
 
 // server registry admin action. targetServerId (not serverId) so the servers FK cascade can't delete a
 // SERVER_REGISTRY_CHANGED(deleted) event along with the server it records.
-export type ServerRegistryChanged = {
-	type: 'SERVER_REGISTRY_CHANGED'
-	action: 'enabled' | 'disabled' | 'created' | 'deleted' | 'set-default'
-	targetServerId: string
-} & Base
+export const ServerRegistryChangedSchema = event('SERVER_REGISTRY_CHANGED', {
+	action: z.enum(['enabled', 'disabled', 'created', 'deleted', 'set-default']),
+	targetServerId: z.string(),
+})
+export type ServerRegistryChanged = z.infer<typeof ServerRegistryChangedSchema>
 
-export type FilterChanged = {
-	type: 'FILTER_CHANGED'
-	action: 'created' | 'updated' | 'deleted'
-	filterId: string
-} & Base
+export const FilterChangedSchema = event('FILTER_CHANGED', {
+	action: z.enum(['created', 'updated', 'deleted']),
+	filterId: z.string(),
+})
+export type FilterChanged = z.infer<typeof FilterChangedSchema>
 
-export type FilterContributorChanged = {
-	type: 'FILTER_CONTRIBUTOR_CHANGED'
-	action: 'added' | 'removed'
-	filterId: string
-} & Base
+export const FilterContributorChangedSchema = event('FILTER_CONTRIBUTOR_CHANGED', {
+	action: z.enum(['added', 'removed']),
+	filterId: z.string(),
+})
+export type FilterContributorChanged = z.infer<typeof FilterContributorChangedSchema>
 
 // a user acting on their own account
-export type UserAccountChanged = {
-	type: 'USER_ACCOUNT_CHANGED'
-	action: 'steam-linked' | 'steam-unlinked' | 'nickname-updated'
-} & Base
+export const UserAccountChangedSchema = event('USER_ACCOUNT_CHANGED', {
+	action: z.enum(['steam-linked', 'steam-unlinked', 'nickname-updated']),
+})
+export type UserAccountChanged = z.infer<typeof UserAccountChangedSchema>
 
-export type PlayerFlagsUpdated = {
-	type: 'PLAYER_FLAGS_UPDATED'
-	playerId: SM.PlayerId
+export const PlayerFlagsUpdatedSchema = event('PLAYER_FLAGS_UPDATED', {
+	playerId: SM.PlayerIdSchema,
 	// the flags added and removed by this action (id + name resolved from the org's flag list)
-	added: { id: string; name: string }[]
-	removed: { id: string; name: string }[]
-} & Base
+	added: z.array(z.object({ id: z.string(), name: z.string() })),
+	removed: z.array(z.object({ id: z.string(), name: z.string() })),
+})
+export type PlayerFlagsUpdated = z.infer<typeof PlayerFlagsUpdatedSchema>
 
-export type QueueUpdated = {
-	type: 'QUEUE_UPDATED'
+export const QueueUpdatedSchema = event('QUEUE_UPDATED', {
 	// what drove the queue change:
 	//  - 'user-edit': an SLM user (or an internal SLM op like a vote result) changed the queue
 	//  - 'roll': the map rolled and the queue advanced
 	//  - 'external-layer-change': SLM reconciled its queue to a layer set outside SLM (in-game admin / other RCON)
-	trigger: 'user-edit' | 'roll' | 'external-layer-change'
+	trigger: z.enum(['user-edit', 'roll', 'external-layer-change']),
 	// all shared-layer-list operations since the last save (the opId span carried by request-list-save)
-	ops: SLL.Operation[]
+	ops: z.array(SLL.OperationSchema),
 	// the saved queue before and after this save -- diffed to show the net change
-	prevList: LL.List
-	list: LL.List
-} & Base
+	prevList: LL.ListSchema,
+	list: LL.ListSchema,
+})
+export type QueueUpdated = z.infer<typeof QueueUpdatedSchema>
 
 // SLM set the next layer on the server. reason 'queue-updated' folds into its cause (the QUEUE_UPDATED linked via
 // causeId) and is audit-only; reason 'override' is when SLM set the layer back over an external set, and gets a feed
 // entry naming who it overrode.
-export type MapSet = {
-	type: 'MAP_SET'
-	layerId: L.LayerId
-	reason: 'queue-updated' | 'override'
+export const MapSetSchema = event('MAP_SET', {
+	layerId: L.LayerIdSchema,
+	reason: z.enum(['queue-updated', 'override']),
 	// for reason 'override': the external actor whose set SLM overrode
-	overrode?: { type: 'player'; playerId: SM.PlayerId } | { type: 'rcon' }
-} & Base
+	overrode: z.discriminatedUnion('type', [
+		z.object({ type: z.literal('player'), playerId: SM.PlayerIdSchema }),
+		z.object({ type: z.literal('rcon') }),
+	]).optional(),
+})
+export type MapSet = z.infer<typeof MapSetSchema>
 
-export type AppEvent =
-	| PlayerWarned
-	| SquadDisbanded
-	| PlayerRemovedFromSquad
-	| TeamChangeForced
-	| SquadRenamed
-	| CommanderDemoted
-	| FogOfWarToggled
-	| MatchEnded
-	| VoteStarted
-	| VoteEnded
-	| VoteAborted
-	| QueueUpdated
-	| SettingsUpdated
-	| ServerRegistryChanged
-	| FilterChanged
-	| FilterContributorChanged
-	| UserAccountChanged
-	| PlayerFlagsUpdated
-	| AppStarted
-	| AppRestarted
-	| MapSet
+export const AppEventSchema = z.discriminatedUnion('type', [
+	PlayerWarnedSchema,
+	SquadDisbandedSchema,
+	PlayerRemovedFromSquadSchema,
+	TeamChangeForcedSchema,
+	SquadRenamedSchema,
+	CommanderDemotedSchema,
+	FogOfWarToggledSchema,
+	MatchEndedSchema,
+	VoteStartedSchema,
+	VoteEndedSchema,
+	VoteAbortedSchema,
+	QueueUpdatedSchema,
+	SettingsUpdatedSchema,
+	ServerRegistryChangedSchema,
+	FilterChangedSchema,
+	FilterContributorChangedSchema,
+	UserAccountChangedSchema,
+	PlayerFlagsUpdatedSchema,
+	AppStartedSchema,
+	AppRestartedSchema,
+	MapSetSchema,
+])
+export type AppEvent = z.infer<typeof AppEventSchema>
 
 export type AppEventType = AppEvent['type']
 
@@ -330,6 +330,9 @@ export function create<E extends AppEvent>(fields: Omit<E, 'id' | 'time' | 'inst
 
 // ---- persistence (appEvents table); actor is flattened into columns, payload goes in the data blob ----
 
+// bump when a payload changes shape in a way old rows can't satisfy; pair with per-type upgrades in fromRow.
+export const CURRENT_APP_EVENT_VERSION = 1
+
 export function toRow(e: AppEvent): SchemaModels.NewAppEvent {
 	const { id, type, time, actor, serverId, matchId, causeId, instanceId, ...payload } = e
 	return {
@@ -343,18 +346,28 @@ export function toRow(e: AppEvent): SchemaModels.NewAppEvent {
 		matchId,
 		causeId,
 		instanceId,
+		version: CURRENT_APP_EVENT_VERSION,
 		data: superjson.serialize(payload) as any,
 	}
 }
 
-export function fromRow(row: SchemaModels.AppEvent): AppEvent {
-	const actor: Actor = row.actorType === 'slm-user'
-		? { type: 'slm-user', userId: row.actorUserId! }
+// reconstructs an app event from a row and validates the payload blob against its schema. returns null (rather than
+// throwing) for rows that don't parse -- an append-only audit log accumulates old-shaped rows across schema changes,
+// and one bad row shouldn't break the whole feed/list. callers filter nulls (and may log the drop).
+export function fromRow(row: SchemaModels.AppEvent): AppEvent | null {
+	let payload: unknown
+	try {
+		payload = superjson.deserialize(row.data as any)
+	} catch {
+		return null
+	}
+	const actor = row.actorType === 'slm-user'
+		? { type: 'slm-user', userId: row.actorUserId }
 		: row.actorType === 'ingame-user'
-		? { type: 'ingame-user', playerId: row.actorPlayerId! }
+		? { type: 'ingame-user', playerId: row.actorPlayerId }
 		: { type: 'system' }
-	return {
-		...(superjson.deserialize(row.data as any) as any),
+	const candidate = {
+		...(payload as object),
 		id: row.id,
 		type: row.type,
 		time: row.time.getTime(),
@@ -364,4 +377,6 @@ export function fromRow(row: SchemaModels.AppEvent): AppEvent {
 		causeId: row.causeId,
 		instanceId: row.instanceId,
 	}
+	const parsed = AppEventSchema.safeParse(candidate)
+	return parsed.success ? parsed.data : null
 }
