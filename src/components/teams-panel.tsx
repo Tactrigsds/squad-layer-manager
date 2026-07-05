@@ -444,11 +444,14 @@ type CombinedTableMeta = BasePlayerTableMeta & {
 }
 
 // Describes the squad-group a player belongs to, used to render the group-separator header rows when
-// the table is sorted by squad. `key` identifies a contiguous group of same-squad rows.
+// the table is sorted by squad. `key` identifies a contiguous group of same-squad rows. A null `squad`
+// is the catch-all group for players not in any squad ("Unassigned"). `faction`, when set (combined
+// table only), renders in its own cell aligned with the faction column.
 type SquadGroupInfo = {
 	key: string
-	squad: SM.UniqueSquad
+	squad: SM.UniqueSquad | null
 	creatorName: string | null
+	faction: { label: string; color: string } | null
 }
 
 const FILTERED_COLUMN_IDS = ['role', 'grouping', 'squad']
@@ -1008,7 +1011,7 @@ function useDisplayedPlayers<T extends TeamsPanelModels.EnrichedPlayer>(
 
 // Separator row rendered above each squad's players when the table is sorted by squad. Shows the squad
 // id/name, member count and creator, wraps the squad context menu, and its checkbox selects/deselects
-// every (visible) member of the squad.
+// every (visible) member of the squad. The "Unassigned" group (null squad) has no context menu.
 function SquadGroupHeaderRow(props: {
 	info: SquadGroupInfo
 	playerIds: string[]
@@ -1029,30 +1032,59 @@ function SquadGroupHeaderRow(props: {
 		}
 		SquadServerClient.Actions.setSelection(current)
 	}
-	const { squad, creatorName } = props.info
+	const { squad, creatorName, faction } = props.info
+	const checkbox = (
+		<div onClick={e => e.stopPropagation()}>
+			<Checkbox
+				checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+				onCheckedChange={toggle}
+				aria-label={squad ? `Select squad ${squad.squadId}` : 'Select unassigned players'}
+			/>
+		</div>
+	)
+	const labelContent = (
+		<>
+			{squad
+				? (
+					<>
+						<span className="font-semibold">Squad {squad.squadId}</span>
+						{squad.squadName !== `Squad ${squad.squadId}` && <span className="font-medium">{squad.squadName}</span>}
+					</>
+				)
+				: <span className="font-semibold">Unassigned</span>}
+			<span className="text-muted-foreground">
+				{props.playerIds.length} {props.playerIds.length === 1 ? 'player' : 'players'}
+			</span>
+			{creatorName && <span className="text-muted-foreground">· created by {creatorName}</span>}
+		</>
+	)
+	// combined table: keep the faction in its own cell so it lines up under the faction column
+	const row = faction
+		? (
+			<TableRow className="bg-muted/60 hover:bg-muted">
+				<TableCell className="py-1">{checkbox}</TableCell>
+				<TableCell className="py-1">
+					<span className="text-xs font-semibold" style={{ color: faction.color }}>{faction.label}</span>
+				</TableCell>
+				<TableCell colSpan={props.colSpan - 2} className="py-1">
+					<div className="flex items-center gap-2 text-xs">{labelContent}</div>
+				</TableCell>
+			</TableRow>
+		)
+		: (
+			<TableRow className="bg-muted/60 hover:bg-muted">
+				<TableCell colSpan={props.colSpan} className="py-1">
+					<div className="flex items-center gap-2 text-xs">
+						{checkbox}
+						{labelContent}
+					</div>
+				</TableCell>
+			</TableRow>
+		)
+	if (!squad) return row
 	return (
 		<ContextMenu>
-			<ContextMenuTrigger asChild>
-				<TableRow className="bg-muted/60 hover:bg-muted">
-					<TableCell colSpan={props.colSpan} className="py-1">
-						<div className="flex items-center gap-2 text-xs">
-							<div onClick={e => e.stopPropagation()}>
-								<Checkbox
-									checked={allSelected ? true : someSelected ? 'indeterminate' : false}
-									onCheckedChange={toggle}
-									aria-label={`Select squad ${squad.squadId}`}
-								/>
-							</div>
-							<span className="font-semibold">Squad {squad.squadId}</span>
-							{squad.squadName !== `Squad ${squad.squadId}` && <span className="font-medium">{squad.squadName}</span>}
-							<span className="text-muted-foreground">
-								{props.playerIds.length} {props.playerIds.length === 1 ? 'player' : 'players'}
-							</span>
-							{creatorName && <span className="text-muted-foreground">· created by {creatorName}</span>}
-						</div>
-					</TableCell>
-				</TableRow>
-			</ContextMenuTrigger>
+			<ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
 			<ContextMenuContent>
 				<SquadContextMenuOptions squad={squad} stores={props.stores} />
 			</ContextMenuContent>
@@ -1071,8 +1103,11 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	setSorting: React.Dispatch<React.SetStateAction<SortingState>>
 	hideSpoilers: boolean
 	stores: SquadServerFrame.KeyProp
-	// when provided and the table is sorted by squad, players are grouped under squad-separator headers
+	// when provided and enableSquadGroups is set, players are grouped under squad-separator headers.
+	// enableSquadGroups is variant-specific: it must only be true when the sort keeps same-squad rows
+	// contiguous (squad-primary for per-team, faction-then-squad for the combined table).
 	getSquadGroup?: (player: T) => SquadGroupInfo | null
+	enableSquadGroups?: boolean
 	className?: string
 }) {
 	const rowSelection = ZusUtils.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
@@ -1180,7 +1215,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	// SquadGroupHeaderRow before each such run. `visibleIndex` passed to renderPlayerRow stays the row's
 	// index within `rows` so drag-select ranges remain correct across the injected header rows.
 	const bodyRows: React.ReactNode[] = []
-	const groupHeadersEnabled = !!props.getSquadGroup && sorting[0]?.id === 'squad'
+	const groupHeadersEnabled = !!props.getSquadGroup && !!props.enableSquadGroups
 	if (groupHeadersEnabled) {
 		const colSpan = table.getVisibleLeafColumns().length
 		let i = 0
@@ -1294,10 +1329,10 @@ function TeamPlayerTable(
 		return m
 	}, [players])
 	const getSquadGroup = React.useCallback((player: TeamsPanelModels.EnrichedPlayer): SquadGroupInfo | null => {
-		if (player.squadId === null) return null
+		if (player.squadId === null) return { key: 'unassigned', squad: null, creatorName: null, faction: null }
 		const squad = squads.find(s => s.squadId === player.squadId)
 		if (!squad) return null
-		return { key: String(squad.squadId), squad, creatorName: creatorNameByEosId.get(squad.creator) || null }
+		return { key: String(squad.squadId), squad, creatorName: creatorNameByEosId.get(squad.creator) || null, faction: null }
 	}, [squads, creatorNameByEosId])
 
 	const meta = {
@@ -1321,6 +1356,7 @@ function TeamPlayerTable(
 			hideSpoilers={props.hideSpoilers}
 			stores={props.stores}
 			getSquadGroup={getSquadGroup}
+			enableSquadGroups={props.sorting[0]?.id === 'squad'}
 			className={props.className}
 		/>
 	)
@@ -1405,6 +1441,27 @@ function CombinedPlayerTable(
 		matchesCombinedSquadFilter,
 	)
 
+	// resolve squad creator eos ids to display names for the group-header rows
+	const creatorNameByEosId = React.useMemo(() => {
+		const m = new Map<string, string>()
+		for (const p of players) m.set(SM.PlayerIds.getPlayerId(p.ids), p.ids.usernameNoTag ?? p.ids.username ?? '')
+		return m
+	}, [players])
+
+	const getSquadGroup = React.useCallback((player: CombinedPlayer): SquadGroupInfo | null => {
+		const faction = { label: getFaction(player.normedTeam), color: DH.TEAM_COLORS[`team${player.normedTeam}`] }
+		if (player.squadId === null) return { key: `${player.normedTeam}:unassigned`, squad: null, creatorName: null, faction }
+		const squad = squadsWithTeam
+			.find(({ squad: s, normedTeam }) => s.squadId === player.squadId && normedTeam === player.normedTeam)?.squad
+		if (!squad) return null
+		return {
+			key: `${player.normedTeam}:${squad.squadId}`,
+			squad,
+			creatorName: creatorNameByEosId.get(squad.creator) || null,
+			faction,
+		}
+	}, [squadsWithTeam, getFaction, creatorNameByEosId])
+
 	const meta = {
 		matchId,
 		squadsWithTeam,
@@ -1425,6 +1482,8 @@ function CombinedPlayerTable(
 			setSorting={props.setSorting}
 			hideSpoilers={props.hideSpoilers}
 			stores={props.stores}
+			getSquadGroup={getSquadGroup}
+			enableSquadGroups={props.sorting[0]?.id === 'faction' && props.sorting[1]?.id === 'squad'}
 			className={props.className}
 		/>
 	)
