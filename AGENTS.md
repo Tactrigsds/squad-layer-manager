@@ -22,8 +22,12 @@ Functions should only specify the minimal amount of context that they need in th
 
 # Client side
 
-- in components, prefer modifying or adding selectors over computing intermediate state in the component body with useMemo.
-- use the established convention of `Sel` namespaces for selectors
-- useEffects should be rare, and should be used mainly for subscribing to dom events. Using them to call setState when one of the dependencies change is heavily discouraged.
-- generally speaking, actions by the user should be handled at the top level by a function in the relevant system/frame's `Actions` namespace. Avoid closing over or passing state from the component body to the action handler unless it's indirect state, like a store or any other variant of ZusUtils.AnyInput
-- pass `ZusUtils.AnyInut` instances via the `stores` prop through components(conventionally they should have a KeyProp or a StoreProp defined to standardize what property they should be put on in `props.stores`), and avoid using react context to pass stores and similar
+In components, prefer modifying or adding selectors over computing intermediate state in the component body with useMemo. `ZusUtils.useStore` is helpful here, as it allows you to merge multiple data sources together for use in a single selector.
+
+Use the established convention of `Sel` namespaces for selectors.
+
+useEffects should be rare, and should be used mainly for subscribing to dom events. Using them to call setState when one of the dependencies change is heavily discouraged.
+
+Generally speaking, actions by the user should be handled at the top level by a function in the relevant system/frame's `Actions` namespace. Avoid closing over or passing state from the component body to the action handler unless it's indirect state, like a store or any other variant of `ZusUtils.AnyInput`.
+
+Pass `ZusUtils.AnyInut` instances via the `stores` prop through components(conventionally they should have a KeyProp or a StoreProp defined to standardize what property they should be put on in `props.stores`), and avoid using react context to pass stores or other data sources.
