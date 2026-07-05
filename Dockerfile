@@ -54,6 +54,7 @@ COPY --from=builder /app/dist-server ./dist-server
 
 # Copy necessary runtime files
 COPY --from=builder /app/drizzle ./drizzle
+COPY --from=builder /app/drizzle-sqlite ./drizzle-sqlite
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
 
 # Set runtime environment
