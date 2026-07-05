@@ -64,6 +64,10 @@ export namespace Sel {
 		return (store: Store) => TSW.allCanQueue(localState(store), playerIds)
 	}
 
+	export function someCanQueue(playerIds: SM.PlayerId[]): (store: Store) => boolean {
+		return (store: Store) => TSW.someCanQueue(localState(store), playerIds)
+	}
+
 	export function isSwitchPending(playerId: SM.PlayerId): (store: Store) => boolean {
 		return (store: Store) => TSW.isSwitchPending(localState(store), playerId)
 	}
@@ -147,7 +151,9 @@ export namespace Actions {
 
 	export function switchNext(stores: SquadServerFrame.KeyProp, playerIds: SM.PlayerId[]) {
 		const source = { discordId: UsersClient.loggedInUserId }
+		const state = Sel.localState(ZusUtils.getState(stores.squadServer))
 		for (const playerId of playerIds) {
+			if (!TSW.canQueue(state, playerId)) continue
 			const toTeam = getPlayerOppositeTeam(stores, playerId)
 			if (!toTeam) continue
 			TSWPrt.Actions.dispatch({ teamswitches: stores.squadServer }, {

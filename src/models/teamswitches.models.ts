@@ -62,6 +62,10 @@ export function allCanQueue(state: State, playerIds: SM.PlayerId[]): boolean {
 	return playerIds.every(id => canQueue(state, id))
 }
 
+export function someCanQueue(state: State, playerIds: SM.PlayerId[]): boolean {
+	return playerIds.some(id => canQueue(state, id))
+}
+
 export function canExecuteSavedTeamswitches(state: State): boolean {
 	return (
 		state.editedSwitches === state.savedSwitches

@@ -24,7 +24,7 @@ import * as TSWClient from '@/systems/teamswitches.client'
 import * as UPClient from '@/systems/user-presence.client'
 
 import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table'
-import type { CellContext, ColumnDef, ColumnHelper, HeaderContext, SortingState } from '@tanstack/react-table'
+import type { CellContext, ColumnDef, ColumnHelper, HeaderContext, Row, SortingState } from '@tanstack/react-table'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import PlayerBulkContextMenuOptions from './player-bulk-context-menu-options'
@@ -52,7 +52,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 void import('@/components/squad-details-window')
 void import('@/components/teamswitches-help-window')
 
-const DEFAULT_COMBINED_SORTING: SortingState = [{ id: 'faction', desc: false }]
+const DEFAULT_TEAM_SORTING: SortingState = [{ id: 'squad', desc: false }]
+const DEFAULT_COMBINED_SORTING: SortingState = [{ id: 'faction', desc: false }, { id: 'squad', desc: false }]
 
 export default function TeamsPanel(props: { className?: string; stores: SquadServerFrame.KeyProp }) {
 	const isDesktop = useIsDesktopSize()
@@ -81,8 +82,8 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 	const [squadFilterA, setSquadFilterA] = React.useState<string | null>(null)
 	const [squadFilterB, setSquadFilterB] = React.useState<string | null>(null)
 	const [squadFilterCombined, setSquadFilterCombined] = React.useState<string | null>(null)
-	const [sortingA, setSortingA] = React.useState<SortingState>([])
-	const [sortingB, setSortingB] = React.useState<SortingState>([])
+	const [sortingA, setSortingA] = React.useState<SortingState>(DEFAULT_TEAM_SORTING)
+	const [sortingB, setSortingB] = React.useState<SortingState>(DEFAULT_TEAM_SORTING)
 	const [sortingCombined, setSortingCombined] = React.useState<SortingState>(DEFAULT_COMBINED_SORTING)
 	const allPlayersA = ZusUtils.useStore(
 		props.stores.squadServer!,
@@ -118,8 +119,8 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 		setSquadFilterA(null)
 		setSquadFilterB(null)
 		setSquadFilterCombined(null)
-		setSortingA([])
-		setSortingB([])
+		setSortingA(DEFAULT_TEAM_SORTING)
+		setSortingB(DEFAULT_TEAM_SORTING)
 		setSortingCombined(DEFAULT_COMBINED_SORTING)
 	}
 	const filtersA: PlayerFilters = {
@@ -429,6 +430,14 @@ type SquadWithTeam = { squad: SM.UniqueSquad; normedTeam: MH.NormedTeamId }
 type CombinedTableMeta = BasePlayerTableMeta & {
 	squadsWithTeam: SquadWithTeam[]
 	getFaction: (normedTeam: MH.NormedTeamId) => string
+}
+
+// Describes the squad-group a player belongs to, used to render the group-separator header rows when
+// the table is sorted by squad. `key` identifies a contiguous group of same-squad rows.
+type SquadGroupInfo = {
+	key: string
+	squad: SM.UniqueSquad
+	creatorName: string | null
 }
 
 const FILTERED_COLUMN_IDS = ['role', 'grouping', 'squad']
@@ -789,7 +798,8 @@ function squadColumn<T extends TeamsPanelModels.EnrichedPlayer, M extends BasePl
 		filterOptions: (meta: M) => { value: string; label: string }[]
 	},
 ) {
-	return helper.accessor(row => row.squadId ?? -1, {
+	// unsquadded players get MAX_SAFE_INTEGER so they sort after real squads when ascending
+	return helper.accessor(row => row.squadId ?? Number.MAX_SAFE_INTEGER, {
 		id: 'squad',
 		header: ({ table }) => {
 			const meta = table.options.meta as M
@@ -985,6 +995,60 @@ function useDisplayedPlayers<T extends TeamsPanelModels.EnrichedPlayer>(
 	}, [filteredPlayers, showSelected, rowSelection])
 }
 
+// Separator row rendered above each squad's players when the table is sorted by squad. Shows the squad
+// id/name, member count and creator, wraps the squad context menu, and its checkbox selects/deselects
+// every (visible) member of the squad.
+function SquadGroupHeaderRow(props: {
+	info: SquadGroupInfo
+	playerIds: string[]
+	colSpan: number
+	stores: SquadServerFrame.KeyProp
+}) {
+	const selectedCount = ZusUtils.useStore(
+		SquadServerClient.PlayerSelectionStore,
+		s => props.playerIds.filter(id => s.selection[id]).length,
+	)
+	const allSelected = props.playerIds.length > 0 && selectedCount === props.playerIds.length
+	const someSelected = selectedCount > 0 && !allSelected
+	const toggle = (checked: boolean) => {
+		const current = { ...SquadServerClient.PlayerSelectionStore.getState().selection }
+		for (const id of props.playerIds) {
+			if (checked) current[id] = true
+			else delete current[id]
+		}
+		SquadServerClient.Actions.setSelection(current)
+	}
+	const { squad, creatorName } = props.info
+	return (
+		<ContextMenu>
+			<ContextMenuTrigger asChild>
+				<TableRow className="bg-muted/60 hover:bg-muted">
+					<TableCell colSpan={props.colSpan} className="py-1">
+						<div className="flex items-center gap-2 text-xs">
+							<div onClick={e => e.stopPropagation()}>
+								<Checkbox
+									checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+									onCheckedChange={toggle}
+									aria-label={`Select squad ${squad.squadId}`}
+								/>
+							</div>
+							<span className="font-semibold">Squad {squad.squadId}</span>
+							{squad.squadName !== `Squad ${squad.squadId}` && <span className="font-medium">{squad.squadName}</span>}
+							<span className="text-muted-foreground">
+								{props.playerIds.length} {props.playerIds.length === 1 ? 'player' : 'players'}
+							</span>
+							{creatorName && <span className="text-muted-foreground">· created by {creatorName}</span>}
+						</div>
+					</TableCell>
+				</TableRow>
+			</ContextMenuTrigger>
+			<ContextMenuContent>
+				<SquadContextMenuOptions squad={squad} stores={props.stores} />
+			</ContextMenuContent>
+		</ContextMenu>
+	)
+}
+
 // Generic table shell shared by both variants: owns row selection, drag-to-select, the stats-sort
 // popover state, header/body rendering and per-row context menus. Callers supply the data, the
 // variant's column list and the variant-specific meta (everything except statsSort, which lives here).
@@ -996,6 +1060,8 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	setSorting: React.Dispatch<React.SetStateAction<SortingState>>
 	hideSpoilers: boolean
 	stores: SquadServerFrame.KeyProp
+	// when provided and the table is sorted by squad, players are grouped under squad-separator headers
+	getSquadGroup?: (player: T) => SquadGroupInfo | null
 	className?: string
 }) {
 	const rowSelection = ZusUtils.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
@@ -1034,6 +1100,95 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	const rows = table.getRowModel().rows
 	const selectedIds = Object.keys(rowSelection).filter(id => rowSelection[id])
 
+	const renderPlayerRow = (row: Row<T>, visibleIndex: number) => {
+		const isBulk = selectedIds.length >= 2 && rowSelection[row.id]
+		return (
+			<ContextMenu key={row.id}>
+				<ContextMenuTrigger asChild>
+					<TableRow
+						className={cn(
+							'cursor-pointer select-none',
+							savedSwitches.has(row.id)
+								? 'bg-amber-500/20 hover:bg-amber-500/40 data-[state=selected]:bg-amber-500/50'
+								: undefined,
+						)}
+						data-state={row.getIsSelected() ? 'selected' : undefined}
+						onClick={() => row.toggleSelected()}
+						onMouseDown={e => {
+							if (e.button !== 0) return
+							mouseDownRef.current = { index: visibleIndex, originalSelected: !rowSelection[row.id] }
+						}}
+						onMouseUp={() => {
+							mouseDownRef.current = null
+						}}
+						onMouseEnter={() => {
+							const md = mouseDownRef.current
+							if (!md) return
+							const [lo, hi] = [Math.min(md.index, visibleIndex), Math.max(md.index, visibleIndex)]
+							const current = { ...SquadServerClient.PlayerSelectionStore.getState().selection }
+							for (let i = lo; i <= hi; i++) {
+								const p = rows[i]?.original
+								if (!p) continue
+								const pid = SM.PlayerIds.getPlayerId(p.ids)
+								if (md.originalSelected) {
+									current[pid] = true
+								} else {
+									delete current[pid]
+								}
+							}
+							setRowSelection(current)
+							mouseDownRef.current = { index: visibleIndex, originalSelected: md.originalSelected }
+						}}
+					>
+						{row.getVisibleCells().map(cell => (
+							<TableCell key={cell.id} {...shiftClickCellProps(cell.column.id, row.original, props.stores)}>
+								{flexRender(cell.column.columnDef.cell, cell.getContext())}
+							</TableCell>
+						))}
+					</TableRow>
+				</ContextMenuTrigger>
+				<ContextMenuContent>
+					{isBulk
+						? <PlayerBulkContextMenuOptions playerIds={selectedIds} stores={props.stores} />
+						: <PlayerContextMenuOptions playerId={row.id} stores={props.stores} />}
+				</ContextMenuContent>
+			</ContextMenu>
+		)
+	}
+
+	// When sorting by squad, players of the same squad are contiguous; walk the sorted rows and emit a
+	// SquadGroupHeaderRow before each such run. `visibleIndex` passed to renderPlayerRow stays the row's
+	// index within `rows` so drag-select ranges remain correct across the injected header rows.
+	const bodyRows: React.ReactNode[] = []
+	const groupHeadersEnabled = !!props.getSquadGroup && sorting[0]?.id === 'squad'
+	if (groupHeadersEnabled) {
+		const colSpan = table.getVisibleLeafColumns().length
+		let i = 0
+		while (i < rows.length) {
+			const info = props.getSquadGroup!(rows[i].original)
+			if (!info) {
+				bodyRows.push(renderPlayerRow(rows[i], i))
+				i++
+				continue
+			}
+			let j = i
+			while (j < rows.length && props.getSquadGroup!(rows[j].original)?.key === info.key) j++
+			bodyRows.push(
+				<SquadGroupHeaderRow
+					key={`squad-header-${info.key}`}
+					info={info}
+					playerIds={rows.slice(i, j).map(r => r.id)}
+					colSpan={colSpan}
+					stores={props.stores}
+				/>,
+			)
+			for (let k = i; k < j; k++) bodyRows.push(renderPlayerRow(rows[k], k))
+			i = j
+		}
+	} else {
+		rows.forEach((row, visibleIndex) => bodyRows.push(renderPlayerRow(row, visibleIndex)))
+	}
+
 	return (
 		<Table className={props.className}>
 			<TableHeader>
@@ -1061,61 +1216,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 				))}
 			</TableHeader>
 			<TableBody>
-				{rows.map((row, visibleIndex) => {
-					const isBulk = selectedIds.length >= 2 && rowSelection[row.id]
-					return (
-						<ContextMenu key={row.id}>
-							<ContextMenuTrigger asChild>
-								<TableRow
-									className={cn(
-										'cursor-pointer select-none',
-										savedSwitches.has(row.id)
-											? 'bg-amber-500/20 hover:bg-amber-500/40 data-[state=selected]:bg-amber-500/50'
-											: undefined,
-									)}
-									data-state={row.getIsSelected() ? 'selected' : undefined}
-									onClick={() => row.toggleSelected()}
-									onMouseDown={e => {
-										if (e.button !== 0) return
-										mouseDownRef.current = { index: visibleIndex, originalSelected: !rowSelection[row.id] }
-									}}
-									onMouseUp={() => {
-										mouseDownRef.current = null
-									}}
-									onMouseEnter={() => {
-										const md = mouseDownRef.current
-										if (!md) return
-										const [lo, hi] = [Math.min(md.index, visibleIndex), Math.max(md.index, visibleIndex)]
-										const current = { ...SquadServerClient.PlayerSelectionStore.getState().selection }
-										for (let i = lo; i <= hi; i++) {
-											const p = rows[i]?.original
-											if (!p) continue
-											const pid = SM.PlayerIds.getPlayerId(p.ids)
-											if (md.originalSelected) {
-												current[pid] = true
-											} else {
-												delete current[pid]
-											}
-										}
-										setRowSelection(current)
-										mouseDownRef.current = { index: visibleIndex, originalSelected: md.originalSelected }
-									}}
-								>
-									{row.getVisibleCells().map(cell => (
-										<TableCell key={cell.id} {...shiftClickCellProps(cell.column.id, row.original, props.stores)}>
-											{flexRender(cell.column.columnDef.cell, cell.getContext())}
-										</TableCell>
-									))}
-								</TableRow>
-							</ContextMenuTrigger>
-							<ContextMenuContent>
-								{isBulk
-									? <PlayerBulkContextMenuOptions playerIds={selectedIds} stores={props.stores} />
-									: <PlayerContextMenuOptions playerId={row.id} stores={props.stores} />}
-							</ContextMenuContent>
-						</ContextMenu>
-					)
-				})}
+				{bodyRows}
 			</TableBody>
 		</Table>
 	)
@@ -1166,6 +1267,19 @@ function TeamPlayerTable(
 		matchesTeamSquadFilter,
 	)
 
+	// resolve squad creator eos ids to display names for the group-header rows
+	const creatorNameByEosId = React.useMemo(() => {
+		const m = new Map<string, string>()
+		for (const p of players) m.set(SM.PlayerIds.getPlayerId(p.ids), p.ids.usernameNoTag ?? p.ids.username ?? '')
+		return m
+	}, [players])
+	const getSquadGroup = React.useCallback((player: TeamsPanelModels.EnrichedPlayer): SquadGroupInfo | null => {
+		if (player.squadId === null) return null
+		const squad = squads.find(s => s.squadId === player.squadId)
+		if (!squad) return null
+		return { key: String(squad.squadId), squad, creatorName: creatorNameByEosId.get(squad.creator) || null }
+	}, [squads, creatorNameByEosId])
+
 	const meta = {
 		matchId,
 		teamId: MH.getDenormedTeamId(props.teamId, match?.ordinal ?? 0),
@@ -1186,6 +1300,7 @@ function TeamPlayerTable(
 			setSorting={props.setSorting}
 			hideSpoilers={props.hideSpoilers}
 			stores={props.stores}
+			getSquadGroup={getSquadGroup}
 			className={props.className}
 		/>
 	)

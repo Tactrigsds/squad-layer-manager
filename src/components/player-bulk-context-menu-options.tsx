@@ -28,7 +28,7 @@ export default function PlayerBulkContextMenuOptions(
 	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
 	const canSwitchNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwitchNow(playerIds))
-	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canQueue(playerIds))
+	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.someCanQueue(playerIds))
 
 	// Run per-player server mutations without one failure aborting the rest, then summarize.
 	async function runForEach(action: string, run: (playerId: SM.PlayerId) => Promise<unknown>) {
