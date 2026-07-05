@@ -15,11 +15,13 @@ import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as MH from '@/models/match-history.models'
+import * as SE from '@/models/server-events.models'
 import type * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list'
-import type * as SM from '@/models/squad.models.ts'
+import * as SM from '@/models/squad.models.ts'
 import * as AppEvents from '@/models/app-events.models'
+import * as AppEventsSys from '@/systems/app-events.server'
 import type * as USR from '@/models/users.models'
 
 import * as RBAC from '@/rbac.models.ts'
@@ -191,27 +193,38 @@ export const setupInstance = C.spanOp(
 					{ module, mutexes: ([ctx]) => ctx.layerQueue.updateLayerMtx },
 					async ([_ctx, event], signal) => {
 						const ctx = { ..._ctx, signal }
-						if (event.type !== 'MAP_SET' || event.source?.type === 'layer-queue') return
+						// skip map sets SLM itself caused (queue save, app-event set-next, or other internal
+						// set-next) -- the saved queue is already in sync, so unshifting would duplicate the layer.
+						// only organic sets (in-game admin, external RCON tool, unattributed) should unshift.
+						if (event.type !== 'MAP_SET' || SE.mapSetIsSlmOriginated(event.source)) return
 						const queue = getSavedQueue(ctx)
 						// this case will be dealt with in handleNewGame, so can ignore it here
 						if (ctx.server.serverRolling$.value) return
 						const savedNextLayerId = LL.getNextLayerId(queue)
 						const savedNextItemId = queue[0]?.itemId || null
 						if (savedNextLayerId && L.areLayersCompatible(event.layerId, savedNextLayerId)) return
+						// the external actor whose set we're reacting to (post-guard, source is player / rcon / unattributed)
+						const external: { type: 'player'; playerId: string } | { type: 'rcon' } = event.source?.type === 'player'
+							? { type: 'player', playerId: SM.PlayerIds.getPlayerId(event.source.playerIds) }
+							: { type: 'rcon' }
 						if (ctx.serverSettings.settings.overrideAdminSetNextLayer) {
 							const serverState = await SquadServer.getServerState(ctx)
 							if (savedNextLayerId === null) {
 								log.warn('no next layer to sync after map set')
 								return
 							}
-							await syncNextLayerToServer(ctx, serverState.settings, savedNextLayerId, savedNextItemId!)
+							await syncNextLayerToServer(ctx, serverState.settings, savedNextLayerId, savedNextItemId!, {
+								reason: 'override',
+								overrode: external,
+							})
 						} else {
 							const op: SLL.Operation = {
 								opId: SLL.createOpId(),
 								op: 'unshift-first-saved-layer',
 								itemId: LL.createItemId(),
-								itemSource: { type: event.source?.type === 'player' ? 'gameserver' : 'unknown' },
+								itemSource: { type: external.type === 'player' ? 'gameserver' : 'unknown' },
 								layerId: event.layerId,
+								externalSource: external,
 							}
 							await dispatchOp(ctx, op)
 						}
@@ -227,14 +240,16 @@ export const setupInstance = C.spanOp(
 				C.durableSub('syncAdminChangeLayer', { module }, async ([_ctx, event], signal) => {
 					const ctx = { ..._ctx, signal }
 					if (event.type !== 'ROUND_ENDED' || event.action?.type !== 'AdminChangeLayer') return
+					const external: { type: 'player'; playerId: string } | { type: 'rcon' } = event.action.source.type === 'player'
+						? { type: 'player', playerId: SM.PlayerIds.getPlayerId(event.action.source.playerIds) }
+						: { type: 'rcon' }
 					const op: SLL.Operation = {
 						opId: SLL.createOpId(),
 						op: 'unshift-first-saved-layer',
 						itemId: LL.createItemId(),
-						itemSource: {
-							type: event.action?.type === 'AdminChangeLayer' && event.action.source.type === 'player' ? 'gameserver' : 'unknown',
-						},
+						itemSource: { type: external.type === 'player' ? 'gameserver' : 'unknown' },
 						layerId: event.action.layerId,
+						externalSource: external,
 					}
 
 					await dispatchOp(ctx, op)
@@ -311,8 +326,8 @@ export function getSavedQueue(ctx: C.LayerQueue) {
 export async function saveQueueAndUpdateServer(
 	ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.AdminList & C.ServerSettings & CS.AbortSignal,
 	list: LL.List,
-	// links the resulting MAP_SET (if the next layer changed) to the QUEUE_UPDATED app event for this save
-	mapSetAppEventId?: string,
+	// the QUEUE_UPDATED for this save; the resulting MAP_SET app event (if the next layer changed) links back to it
+	queueUpdatedId?: string,
 ) {
 	await VoteSys.syncVoteStateWithQueueState(ctx, list)
 	return await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
@@ -328,7 +343,13 @@ export async function saveQueueAndUpdateServer(
 			}
 		}
 		if (nextLayerId && nextItemId) {
-			await syncNextLayerToServer(ctx, serverState.settings, nextLayerId, nextItemId, mapSetAppEventId)
+			await syncNextLayerToServer(
+				ctx,
+				serverState.settings,
+				nextLayerId,
+				nextItemId,
+				queueUpdatedId ? { reason: 'queue-updated', causeId: queueUpdatedId } : undefined,
+			)
 		} else {
 			log.error('No next layer to sync to server')
 		}
@@ -375,12 +396,15 @@ export async function warnShowNext(
  * sets next layer on server according to the current queue, generating a new queue item if needed. modifies serverState in place.
  */
 export const syncNextLayerToServer = C.spanOp('syncNextLayerToServer', { module, mutexes: (ctx) => ctx.layerQueue.updateLayerMtx }, async (
-	ctx: C.SquadServer & C.Rcon & C.LayerQueue & C.Db & CS.AbortSignal,
+	ctx: C.SquadServer & C.Rcon & C.LayerQueue & C.Db & C.MatchHistory & CS.AbortSignal,
 	settings: SETTINGS.ServerSettings,
 	nextQueuedLayerId: L.LayerId,
 	itemId: string,
-	// when this set-next resulted from a queue save, links the resulting MAP_SET back to that QUEUE_UPDATED app event
-	mapSetAppEventId?: string,
+	// why SLM is setting the layer. queue-driven sets fold into their QUEUE_UPDATED (audit-only MAP_SET); override sets
+	// react to a non-SLM set and get a feed entry. absent -> no MAP_SET app event (still attributes the server event).
+	mapSetCause?:
+		| { reason: 'queue-updated'; causeId: string }
+		| { reason: 'override'; overrode?: { type: 'player'; playerId: string } | { type: 'rcon' } },
 ) => {
 	if (settings.updatesToSquadServerDisabled) return
 	const currentStatusRes = await ctx.server.layersStatus.get(ctx)
@@ -393,16 +417,33 @@ export const syncNextLayerToServer = C.spanOp('syncNextLayerToServer', { module,
 			ctx.layerQueue.unexpectedNextLayerSet$.next(res.unexpectedLayerId)
 			break
 		case 'err:rcon':
-		case 'ok':
 			ctx.layerQueue.unexpectedNextLayerSet$.next(null)
-			// awaiting this will cause a deadlock on map roll
-			void SquadServer.pushAttribution(ctx, {
-					type: 'MAP_SET_ATTRIBUTION',
-					itemId: itemId,
-					layerId: nextQueuedLayerId,
-					appEventId: mapSetAppEventId,
-				})
+			void SquadServer.pushAttribution(ctx, { type: 'MAP_SET_ATTRIBUTION', itemId, layerId: nextQueuedLayerId })
 			break
+		case 'ok': {
+			ctx.layerQueue.unexpectedNextLayerSet$.next(null)
+			// SLM actually set the layer -> record a MAP_SET app event (SLM-originated only), and link the resulting
+			// MAP_SET server event to it via the attribution
+			let mapSetAppEventId: string | undefined
+			if (mapSetCause) {
+				const mapSet = AppEvents.create<AppEvents.MapSet>({
+					type: 'MAP_SET',
+					layerId: nextQueuedLayerId,
+					reason: mapSetCause.reason,
+					overrode: mapSetCause.reason === 'override' ? mapSetCause.overrode : undefined,
+					actor: { type: 'system' },
+					serverId: ctx.serverId,
+					matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
+					causeId: mapSetCause.reason === 'queue-updated' ? mapSetCause.causeId : null,
+				})
+				if (mapSetCause.reason === 'override') await SquadServer.emitAppEvent(ctx, mapSet)
+				else await AppEventsSys.persistAppEvent(ctx, mapSet)
+				mapSetAppEventId = mapSet.id
+			}
+			// awaiting this will cause a deadlock on map roll
+			void SquadServer.pushAttribution(ctx, { type: 'MAP_SET_ATTRIBUTION', itemId, layerId: nextQueuedLayerId, appEventId: mapSetAppEventId })
+			break
+		}
 		default:
 			assertNever(res)
 	}
@@ -635,14 +676,29 @@ const handleSideEffect = C.spanOp(
 					const startIdx = se.lastSaveOpId == null ? 0 : allOps.findIndex(o => o.opId === se.lastSaveOpId) + 1
 					const endIdx = allOps.findIndex(o => o.opId === se.opId)
 					const ops = endIdx === -1 ? [] : allOps.slice(startIdx, endIdx + 1)
-					// the op that triggered the save attributes it (system for server-generated ops like a roll)
-					const triggerUserId = (allOps[endIdx] as { userId?: USR.UserId } | undefined)?.userId
+					// classify the save by the op that triggered it, so we don't credit SLM for reacting to outside changes:
+					//  - shift-first-saved-layer  -> the map rolled
+					//  - unshift-first-saved-layer -> reconciling to a layer set outside SLM (attribute to that actor)
+					//  - otherwise                 -> an SLM user edit (or an internal op like a vote result)
+					const triggerOp = allOps[endIdx] as (SLL.Operation & { userId?: USR.UserId }) | undefined
+					const { trigger, actor } = ((): { trigger: AppEvents.QueueUpdated['trigger']; actor: AppEvents.Actor } => {
+						if (triggerOp?.op === 'shift-first-saved-layer') return { trigger: 'roll', actor: { type: 'system' } }
+						if (triggerOp?.op === 'unshift-first-saved-layer') {
+							const ext = triggerOp.externalSource
+							return {
+								trigger: 'external-layer-change',
+								actor: ext?.type === 'player' ? { type: 'ingame-user', playerId: ext.playerId } : { type: 'system' },
+							}
+						}
+						return { trigger: 'user-edit', actor: triggerOp?.userId ? { type: 'slm-user', userId: triggerOp.userId } : { type: 'system' } }
+					})()
 					const queueUpdated = AppEvents.create<AppEvents.QueueUpdated>({
 						type: 'QUEUE_UPDATED',
-						actor: triggerUserId ? { type: 'slm-user', userId: triggerUserId } : { type: 'system' },
+						actor,
 						serverId: ctx.serverId,
 						matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
 						causeId: null,
+						trigger,
 						ops,
 						prevList: se.prevList,
 						list: se.list,

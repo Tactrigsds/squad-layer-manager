@@ -150,6 +150,31 @@ describe('chat.models application-event collapse', () => {
 		if (entry.type !== 'APP_EVENT') throw new Error('expected APP_EVENT')
 		expect(entry.targetPlayers.map(p => p.ids.eos)).toEqual(['eos-1', 'eos-2'])
 	})
+
+	it('resolves actorPlayer for an in-game-user actor (external queue sync)', () => {
+		const state = seededState([makePlayer('eos-1')])
+		const appEvent: CHAT.AppFeedEvent = {
+			type: 'APP_EVENT',
+			appEvent: {
+				type: 'QUEUE_UPDATED',
+				id: 'app-q',
+				time: 100,
+				actor: { type: 'ingame-user', playerId: 'eos-1' },
+				serverId: 's1',
+				matchId: 1,
+				causeId: null,
+				instanceId: null,
+				trigger: 'external-layer-change',
+				ops: [],
+				prevList: [],
+				list: [],
+			} satisfies AppEvents.QueueUpdated,
+		}
+		CHAT.handleEvent(state, appEvent)
+		const entry = state.eventBuffer[0]
+		if (entry.type !== 'APP_EVENT') throw new Error('expected APP_EVENT')
+		expect(entry.actorPlayer?.ids.eos).toBe('eos-1')
+	})
 })
 
 describe('warn target summary grouping', () => {

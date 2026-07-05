@@ -462,19 +462,53 @@ function AppEventEntry(
 			changed > 0 ? `${changed} changed` : null,
 			reordered ? 'reordered' : null,
 		].filter(Boolean)
-		const isRoll = appEvent.ops.some(o => o.op === 'shift-first-saved-layer')
-		const headline = isRoll ? 'Queue advanced on map change' : `${actorLabel} updated the queue`
 		const nextBefore = LL.getNextLayerId(appEvent.prevList)
 		const nextAfter = LL.getNextLayerId(appEvent.list)
+		const headline: React.ReactNode = appEvent.trigger === 'roll'
+			? 'Queue advanced on map change'
+			: appEvent.trigger === 'external-layer-change'
+			? (
+				<>
+					Queue synced to an external layer change by{' '}
+					{appEvent.actor.type === 'ingame-user' && event.actorPlayer && matchId !== null
+						? <PlayerDisplay showTeam player={event.actorPlayer} matchId={matchId} stores={stores} />
+						: appEvent.actor.type === 'ingame-user'
+						? 'an in-game admin'
+						: 'another RCON tool'}
+				</>
+			)
+			: `${actorLabel} updated the queue`
 		return (
 			<AppEventLine time={event.time} icon={<Icons.ListOrdered className="h-4 w-4 text-indigo-500 shrink-0" />}>
 				{headline}
 				{parts.length > 0 ? ` (${parts.join(', ')})` : ''}
 				{nextAfter !== null && nextAfter !== nextBefore && (
 					<span className="inline-flex items-baseline gap-1">
-						, next layer set to <ShortLayerName layerId={nextAfter} />
+						, next layer {appEvent.trigger === 'external-layer-change' ? 'now' : 'set to'} <ShortLayerName layerId={nextAfter} />
 					</span>
 				)}
+			</AppEventLine>
+		)
+	}
+	if (appEvent.type === 'MAP_SET') {
+		// only override sets reach the feed; queue-driven MAP_SETs fold into their QUEUE_UPDATED (audit-only)
+		if (appEvent.reason === 'queue-updated') {
+			return (
+				<AppEventLine time={event.time} icon={<Icons.RefreshCw className="h-4 w-4 text-amber-500 shrink-0" />}>
+					Next layer set to <ShortLayerName layerId={appEvent.layerId} />
+				</AppEventLine>
+			)
+		}
+		// the overridden player (if any) is resolved into targetPlayers via involvedPlayerIds
+		const overrodePlayer = event.targetPlayers[0]
+		const who = appEvent.overrode?.type === 'player' && overrodePlayer && matchId !== null
+			? <PlayerDisplay showTeam player={overrodePlayer} matchId={matchId} stores={stores} />
+			: appEvent.overrode?.type === 'player'
+			? 'an in-game admin'
+			: 'another RCON tool'
+		return (
+			<AppEventLine time={event.time} icon={<Icons.RefreshCw className="h-4 w-4 text-amber-500 shrink-0" />}>
+				SLM overrode a layer set by {who}, next layer set to <ShortLayerName layerId={appEvent.layerId} />
 			</AppEventLine>
 		)
 	}

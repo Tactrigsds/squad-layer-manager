@@ -91,6 +91,8 @@ export type EnrichedAppEvent = {
 	appEvent: AppEvents.AppEvent
 	// resolved from appEvent.targets against the interpolated state (best-effort)
 	targetPlayers: SM.Player[]
+	// resolved acting player when the actor is an in-game user (e.g. an external admin who changed the layer)
+	actorPlayer?: SM.Player
 	// structured grouping of the targets for the summary line (PLAYER_WARNED only; else 'players')
 	warnSummary: WarnSummary
 	// individual server events attributed to this app event, collapsed under it (e.g. the PLAYER_WARNED /
@@ -236,6 +238,9 @@ function enrichAppEvent(state: InterpolableState, appEvent: AppEvents.AppEvent):
 	const targetPlayers = AppEvents.involvedPlayerIds(appEvent)
 		.map(id => SM.PlayerIds.find(state.players, p => p.ids, { eos: id }))
 		.filter((p): p is SM.Player => !!p)
+	const actorPlayer = appEvent.actor.type === 'ingame-user'
+		? SM.PlayerIds.find(state.players, p => p.ids, { eos: appEvent.actor.playerId }) ?? undefined
+		: undefined
 	return {
 		type: 'APP_EVENT',
 		id: appEvent.id,
@@ -243,6 +248,7 @@ function enrichAppEvent(state: InterpolableState, appEvent: AppEvents.AppEvent):
 		matchId: appEvent.matchId,
 		appEvent,
 		targetPlayers,
+		actorPlayer,
 		warnSummary: appEvent.type === 'PLAYER_WARNED' ? summarizeWarnTargets(state, targetPlayers) : { type: 'players' },
 		collapsed: [],
 	}

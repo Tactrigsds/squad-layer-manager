@@ -13,6 +13,15 @@ export type MapSet = {
 } & Base
 export const MAP_SET_META = meta()
 
+// True when SLM itself caused this map set: a queue save (`layer-queue`), an app-event-attributed
+// set-next (`event`, e.g. a QUEUE_UPDATED), or another internal set-next (`system`). Organic sets --
+// an in-game admin (`player`), an external RCON tool (`rcon`), or an unattributed one (undefined) --
+// return false. Used to avoid reacting to our own layer changes (e.g. unshifting a duplicate queue item).
+export function mapSetIsSlmOriginated(source: MapSet['source']): boolean {
+	if (!source) return false
+	return source.type === 'layer-queue' || source.type === 'event' || source.type === 'system'
+}
+
 export type NewGame = {
 	type: 'NEW_GAME'
 	source: 'slm-started' | 'rcon-reconnected' | 'server-roll' | 'new-game-detected'

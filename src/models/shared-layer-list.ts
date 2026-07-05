@@ -101,6 +101,12 @@ function buildOperationSchema<
 			layerId: L.LayerIdSchema,
 			itemSource: LL.SourceSchema,
 			itemId: LL.ItemIdSchema,
+			// the external actor whose layer change triggered this reconciliation (used to attribute the QUEUE_UPDATED);
+			// absent for internal/unattributed sources
+			externalSource: z.discriminatedUnion('type', [
+				z.object({ type: z.literal('player'), playerId: z.string() }),
+				z.object({ type: z.literal('rcon') }),
+			]).optional(),
 		}),
 		z.object({
 			...baseProps,

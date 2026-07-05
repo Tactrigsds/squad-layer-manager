@@ -161,11 +161,27 @@ export type PlayerFlagsUpdated = {
 
 export type QueueUpdated = {
 	type: 'QUEUE_UPDATED'
+	// what drove the queue change:
+	//  - 'user-edit': an SLM user (or an internal SLM op like a vote result) changed the queue
+	//  - 'roll': the map rolled and the queue advanced
+	//  - 'external-layer-change': SLM reconciled its queue to a layer set outside SLM (in-game admin / other RCON)
+	trigger: 'user-edit' | 'roll' | 'external-layer-change'
 	// all shared-layer-list operations since the last save (the opId span carried by request-list-save)
 	ops: SLL.Operation[]
 	// the saved queue before and after this save -- diffed to show the net change
 	prevList: LL.List
 	list: LL.List
+} & Base
+
+// SLM set the next layer on the server. reason 'queue-updated' folds into its cause (the QUEUE_UPDATED linked via
+// causeId) and is audit-only; reason 'override' is when SLM set the layer back over an external set, and gets a feed
+// entry naming who it overrode.
+export type MapSet = {
+	type: 'MAP_SET'
+	layerId: L.LayerId
+	reason: 'queue-updated' | 'override'
+	// for reason 'override': the external actor whose set SLM overrode
+	overrode?: { type: 'player'; playerId: SM.PlayerId } | { type: 'rcon' }
 } & Base
 
 export type AppEvent =
@@ -189,6 +205,7 @@ export type AppEvent =
 	| PlayerFlagsUpdated
 	| AppStarted
 	| AppRestarted
+	| MapSet
 
 export type AppEventType = AppEvent['type']
 
@@ -220,6 +237,8 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 			return []
 		case 'PLAYER_FLAGS_UPDATED':
 			return [e.playerId]
+		case 'MAP_SET':
+			return e.overrode?.type === 'player' ? [e.overrode.playerId] : []
 	}
 }
 
@@ -251,11 +270,26 @@ export function describeAppEvent(e: AppEvent): string {
 		case 'VOTE_ABORTED':
 			return 'aborted a vote'
 		case 'QUEUE_UPDATED': {
+			const verb = e.trigger === 'roll'
+				? 'advanced the queue on map change'
+				: e.trigger === 'external-layer-change'
+				? 'synced the queue to an external layer change'
+				: 'updated the queue'
+			// user-edit / roll saves have a companion MAP_SET row that states the next layer; external syncs don't
+			if (e.trigger !== 'external-layer-change') return verb
 			const nextBefore = LL.getNextLayerId(e.prevList)
 			const nextAfter = LL.getNextLayerId(e.list)
 			return nextAfter !== null && nextAfter !== nextBefore
-				? `updated the queue, next layer set to ${DH.toShortLayerNameFromId(nextAfter)}`
-				: 'updated the queue'
+				? `${verb}, next layer now ${DH.toShortLayerNameFromId(nextAfter)}`
+				: verb
+		}
+		case 'MAP_SET': {
+			const layer = DH.toShortLayerNameFromId(e.layerId)
+			if (e.reason === 'override') {
+				const who = e.overrode?.type === 'player' ? ' by an in-game admin' : e.overrode?.type === 'rcon' ? ' by another RCON tool' : ''
+				return `overrode an external layer set${who}, next layer set to ${layer}`
+			}
+			return `set next layer to ${layer}`
 		}
 		case 'SETTINGS_UPDATED':
 			return e.serverId ? 'updated server settings' : 'updated global settings'

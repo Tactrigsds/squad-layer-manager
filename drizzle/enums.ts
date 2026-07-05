@@ -61,6 +61,7 @@ export const APP_EVENT_TYPE = z.enum([
 	'PLAYER_FLAGS_UPDATED',
 	'APP_STARTED',
 	'APP_RESTARTED',
+	'MAP_SET',
 ])
 export type AppEventType = z.infer<typeof APP_EVENT_TYPE>
 
