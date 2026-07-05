@@ -18,7 +18,6 @@ import { HumanTime } from '@/lib/zod'
 import * as Messages from '@/messages.ts'
 import * as AppEvents from '@/models/app-events.models'
 import type * as BAL from '@/models/balance-triggers.models'
-import * as AppEventsSys from '@/systems/app-events.server'
 import * as CHAT from '@/models/chat.models.ts'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
@@ -29,6 +28,7 @@ import * as SE from '@/models/server-events.models'
 import * as SS from '@/models/server-state.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as SM from '@/models/squad.models'
+import * as AppEventsSys from '@/systems/app-events.server'
 
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
@@ -195,7 +195,7 @@ export const orpcRouter = {
 		const result$ = firstValueFrom(
 			Rx.race(
 				matchEnded$,
-				Rx.timer(10_000).pipe(Rx.map(() => 'timeout' as const)),
+				Rx.timer(20_000).pipe(Rx.map(() => 'timeout' as const)),
 			),
 			ctx.signal,
 		)
