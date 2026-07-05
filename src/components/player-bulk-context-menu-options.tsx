@@ -22,26 +22,13 @@ export default function PlayerBulkContextMenuOptions(
 	const { toast } = useToast()
 
 	const warnPlayersMutation = SquadServerClient.useWarnPlayersMutation()
-	const removeFromSquadMutation = SquadServerClient.useRemoveFromSquadMutation()
+	const removePlayersFromSquadMutation = SquadServerClient.useRemovePlayersFromSquadMutation()
 	const serverId = stores.squadServer.serverId
 
 	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
 	const canSwitchNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwitchNow(playerIds))
 	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.someCanQueue(playerIds))
-
-	// Run per-player server mutations without one failure aborting the rest, then summarize.
-	async function runForEach(action: string, run: (playerId: SM.PlayerId) => Promise<unknown>) {
-		const results = await Promise.allSettled(playerIds.map(run))
-		const failed = results.filter(r => r.status === 'rejected').length
-		if (failed > 0) {
-			toast({
-				title: `${action} partially failed`,
-				description: `${playerIds.length - failed} of ${playerIds.length} succeeded, ${failed} failed`,
-				variant: 'destructive',
-			})
-		}
-	}
 
 	async function switchNow() {
 		const initialState = TSWClient.Sel.localState(ZusUtils.getState(stores.squadServer))
@@ -110,7 +97,12 @@ export default function PlayerBulkContextMenuOptions(
 				buttons: [{ id: 'confirm', label: 'Remove' }],
 			})
 			if (result !== 'confirm') return
-			await runForEach('Remove from squad', playerId => removeFromSquadMutation.mutateAsync({ serverId, playerId }))
+			// one call for the whole batch: the server aggregates the resulting squad-leaves under a single app event
+			try {
+				await removePlayersFromSquadMutation.mutateAsync({ serverId, playerIds })
+			} catch {
+				toast({ title: 'Remove from squad failed', description: `Failed to remove ${playerIds.length} players`, variant: 'destructive' })
+			}
 		})
 	}
 

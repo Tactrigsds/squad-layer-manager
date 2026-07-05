@@ -1,7 +1,7 @@
 import * as Arr from '@/lib/array'
 import * as Gen from '@/lib/generator'
 import { assertNever } from '@/lib/type-guards'
-import type * as AppEvents from '@/models/app-events.models'
+import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
 import { applyEventTeamMutations } from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
@@ -93,8 +93,9 @@ export type EnrichedAppEvent = {
 	targetPlayers: SM.Player[]
 	// structured grouping of the targets for the summary line (PLAYER_WARNED only; else 'players')
 	warnSummary: WarnSummary
-	// collapsed individual server PLAYER_WARNED events attributed to this app event
-	warns: SE.PlayerWarned<SM.Player>[]
+	// individual server events attributed to this app event, collapsed under it (e.g. the PLAYER_WARNED /
+	// PLAYER_LEFT_SQUAD / PLAYER_CHANGED_TEAM events a bulk action fanned out into)
+	collapsed: EventEnriched[]
 }
 
 // event enriched with relevant data
@@ -205,15 +206,16 @@ export function handleEvent(
 	}
 
 	const enriched = interpolateEvent(state.interpolatedState, event, opts)
-	// collapse a server warn attributed to an app event into that app event's entry, so a messy set of
-	// warns renders as one expandable summary. Falls back to a standalone entry if the app event isn't buffered.
-	if (enriched.type === 'PLAYER_WARNED' && enriched.source?.type === 'event') {
-		const attributedTo = enriched.source.id
+	// collapse any server event attributed to an app event (source={type:'event'}) into that app event's entry, so a
+	// bulk action renders as one expandable summary. Falls back to a standalone entry if the app event isn't buffered.
+	const src = (enriched as { source?: { type: string; id?: AppEvents.AppEventId } }).source
+	if (src?.type === 'event' && src.id !== undefined) {
+		const attributedTo = src.id
 		const appEntry = state.eventBuffer.find(
 			(e): e is EnrichedAppEvent => e.type === 'APP_EVENT' && e.id === attributedTo,
 		)
 		if (appEntry) {
-			appEntry.warns.push(enriched)
+			appEntry.collapsed.push(enriched)
 			return
 		}
 	}
@@ -231,11 +233,9 @@ export function lastServerEventId(buffer: EventEnriched[]): number | undefined {
 }
 
 function enrichAppEvent(state: InterpolableState, appEvent: AppEvents.AppEvent): EnrichedAppEvent {
-	const targetPlayers = appEvent.type === 'PLAYER_WARNED'
-		? appEvent.targets
-			.map(id => SM.PlayerIds.find(state.players, p => p.ids, { eos: id }))
-			.filter((p): p is SM.Player => !!p)
-		: []
+	const targetPlayers = AppEvents.involvedPlayerIds(appEvent)
+		.map(id => SM.PlayerIds.find(state.players, p => p.ids, { eos: id }))
+		.filter((p): p is SM.Player => !!p)
 	return {
 		type: 'APP_EVENT',
 		id: appEvent.id,
@@ -243,8 +243,8 @@ function enrichAppEvent(state: InterpolableState, appEvent: AppEvents.AppEvent):
 		matchId: appEvent.matchId,
 		appEvent,
 		targetPlayers,
-		warnSummary: summarizeWarnTargets(state, targetPlayers),
-		warns: [],
+		warnSummary: appEvent.type === 'PLAYER_WARNED' ? summarizeWarnTargets(state, targetPlayers) : { type: 'players' },
+		collapsed: [],
 	}
 }
 

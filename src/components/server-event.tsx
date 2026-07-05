@@ -299,6 +299,17 @@ function PlayerWarnedEvent(
 	)
 }
 
+// a single-line app-event feed entry (time + icon + text)
+function AppEventLine({ time, icon, children }: { time: number; icon: React.ReactNode; children: React.ReactNode }) {
+	return (
+		<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
+			<EventTime time={time} variant="small" />
+			{icon}
+			<div className="grow min-w-0">{children}</div>
+		</div>
+	)
+}
+
 // concise text for a warn's target grouping; null means "no grouping -- just show the count"
 function warnSummaryDescriptor(summary: CHAT.WarnSummary): string | null {
 	switch (summary.type) {
@@ -334,30 +345,112 @@ function AppEventEntry(
 	const userRes = UsersClient.useUser(actorUserId, { enabled: !!actorUserId && !userPartial && !isMe })
 	const actorUser = (userRes.data?.code === 'ok' ? userRes.data.user : undefined) ?? userPartial ?? (isMe ? loggedInUser : undefined)
 
-	if (appEvent.type !== 'PLAYER_WARNED') return null
 	const actorLabel = appEvent.actor.type === 'slm-user'
 		? (actorUser?.displayName ?? 'An admin')
 		: appEvent.actor.type === 'system'
 		? 'SLM'
 		: 'A player'
+	const matchId = event.matchId
+
+	// expandable list of the players involved (targets, or a disbanded squad's members)
+	const targetList = matchId !== null && event.targetPlayers.length > 0
+		? (
+			<div className="pl-6 pt-1 flex flex-col gap-0.5">
+				{event.targetPlayers.map((player) => (
+					<PlayerDisplay key={player.ids.eos} showTeam player={player} matchId={matchId} stores={stores} />
+				))}
+			</div>
+		)
+		: null
+
+	if (appEvent.type === 'SQUAD_DISBANDED') {
+		const n = appEvent.members.length
+		return (
+			<details className="py-1 text-xs text-muted-foreground w-full min-w-0">
+				<summary className="flex gap-2 items-baseline cursor-pointer">
+					<EventTime time={event.time} variant="small" />
+					<Icons.Users className="h-4 w-4 text-red-500 shrink-0" />
+					<span className="grow min-w-0 wrap-break-word">
+						{actorLabel} disbanded {appEvent.squadName} (Team {appEvent.teamId}){n > 0 ? ` — ${n} ${n === 1 ? 'player' : 'players'}` : ''}
+					</span>
+				</summary>
+				{targetList}
+			</details>
+		)
+	}
+
+	// pure-audit / single-line entries with no target-count summary
+	if (appEvent.type === 'SQUAD_RENAMED') {
+		return (
+			<AppEventLine time={event.time} icon={<Icons.PencilLine className="h-4 w-4 text-cyan-500 shrink-0" />}>
+				{actorLabel} renamed {appEvent.squadName} (Team {appEvent.teamId})
+			</AppEventLine>
+		)
+	}
+	if (appEvent.type === 'COMMANDER_DEMOTED') {
+		const target = event.targetPlayers[0]
+		return (
+			<AppEventLine time={event.time} icon={<Icons.ShieldOff className="h-4 w-4 text-orange-500 shrink-0" />}>
+				{actorLabel} demoted{' '}
+				{target && matchId !== null
+					? <PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} />
+					: 'the commander'}
+			</AppEventLine>
+		)
+	}
+	if (appEvent.type === 'FOG_OF_WAR_TOGGLED') {
+		return (
+			<AppEventLine time={event.time} icon={<Icons.CloudFog className="h-4 w-4 text-slate-400 shrink-0" />}>
+				{actorLabel} turned fog of war {appEvent.enabled ? 'on' : 'off'}
+			</AppEventLine>
+		)
+	}
+	if (appEvent.type === 'MATCH_ENDED') {
+		return (
+			<AppEventLine time={event.time} icon={<Icons.Flag className="h-4 w-4 text-red-500 shrink-0" />}>
+				{actorLabel} ended the match
+			</AppEventLine>
+		)
+	}
+
+	// PLAYER_WARNED / PLAYER_REMOVED_FROM_SQUAD / TEAM_CHANGE_FORCED: "{actor} {verb} {targets}{suffix}"
 	const count = appEvent.targets.length
 	const plural = count === 1 ? 'player' : 'players'
-	const descriptor = warnSummaryDescriptor(event.warnSummary)
+	let verb: string
+	let icon: React.ReactNode
+	let suffix: React.ReactNode
+	let descriptor: string | null
+	if (appEvent.type === 'PLAYER_WARNED') {
+		verb = 'warned'
+		icon = <Icons.AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
+		suffix = <>: "<span className="wrap-break-word">{appEvent.message}</span>"</>
+		descriptor = warnSummaryDescriptor(event.warnSummary)
+	} else if (appEvent.type === 'PLAYER_REMOVED_FROM_SQUAD') {
+		verb = 'removed'
+		icon = <Icons.UserMinus className="h-4 w-4 text-orange-500 shrink-0" />
+		suffix = ' from their squad'
+		descriptor = null
+	} else {
+		verb = 'switched'
+		icon = <Icons.ArrowLeftRight className="h-4 w-4 text-blue-500 shrink-0" />
+		suffix = ' to the other team'
+		descriptor = null
+	}
 
 	// few enough targets: name them inline instead of grouping/collapsing (but still show the count)
-	if (count <= 4 && event.matchId !== null && event.targetPlayers.length === count) {
+	if (count <= 4 && matchId !== null && event.targetPlayers.length === count) {
 		return (
 			<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
 				<EventTime time={event.time} variant="small" />
-				<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
+				{icon}
 				<div className="grow min-w-0">
-					{actorLabel} warned {event.targetPlayers.map((player, i) => (
+					{actorLabel} {verb} {event.targetPlayers.map((player, i) => (
 						<span key={player.ids.eos}>
 							{i > 0 ? ', ' : ''}
-							<PlayerDisplay showTeam player={player} matchId={event.matchId!} stores={stores} />
+							<PlayerDisplay showTeam player={player} matchId={matchId} stores={stores} />
 						</span>
 					))}
-					{count > 1 ? <>{' '}({count} {plural})</> : ''}: "<span className="wrap-break-word">{appEvent.message}</span>"
+					{count > 1 ? <>{' '}({count} {plural})</> : ''}{suffix}
 				</div>
 			</div>
 		)
@@ -367,20 +460,14 @@ function AppEventEntry(
 		<details className="py-1 text-xs text-muted-foreground w-full min-w-0">
 			<summary className="flex gap-2 items-baseline cursor-pointer">
 				<EventTime time={event.time} variant="small" />
-				<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
+				{icon}
 				<span className="grow min-w-0 wrap-break-word">
-					{actorLabel} warned {descriptor
+					{actorLabel} {verb} {descriptor
 						? (count > 1 ? `${descriptor} (${count} ${plural})` : descriptor)
-						: (count === 1 ? 'a player' : `${count} ${plural}`)}: "{appEvent.message}"
+						: (count === 1 ? 'a player' : `${count} ${plural}`)}{suffix}
 				</span>
 			</summary>
-			{event.matchId !== null && event.targetPlayers.length > 0 && (
-				<div className="pl-6 pt-1 flex flex-col gap-0.5">
-					{event.targetPlayers.map((player) => (
-						<PlayerDisplay key={player.ids.eos} showTeam player={player} matchId={event.matchId!} stores={stores} />
-					))}
-				</div>
-			)}
+			{targetList}
 		</details>
 	)
 }

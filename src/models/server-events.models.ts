@@ -155,6 +155,8 @@ export type SquadRenamed = {
 	uniqueId: number
 	oldSquadName: string
 	newSquadName: string
+	// present when an admin renamed the squad through SLM (links to an app event); absent otherwise
+	source?: ActionSource
 } & Base
 export const SQUAD_RENAMED_META = meta({ squads: ['$.uniqueId'] })
 

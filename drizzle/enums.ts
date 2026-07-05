@@ -42,6 +42,13 @@ export type ServerEventType = z.infer<typeof SERVER_EVENT_TYPE>
 // application (audit-log) events. APPEND ONLY.
 export const APP_EVENT_TYPE = z.enum([
 	'PLAYER_WARNED',
+	'SQUAD_DISBANDED',
+	'PLAYER_REMOVED_FROM_SQUAD',
+	'TEAM_CHANGE_FORCED',
+	'SQUAD_RENAMED',
+	'COMMANDER_DEMOTED',
+	'FOG_OF_WAR_TOGGLED',
+	'MATCH_ENDED',
 ])
 export type AppEventType = z.infer<typeof APP_EVENT_TYPE>
 

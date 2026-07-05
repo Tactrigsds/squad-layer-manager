@@ -36,7 +36,7 @@ export type Base = {
 	causeId: AppEventId | null
 }
 
-// ---- discriminated payloads, one per action (MVP: PLAYER_WARNED only) ----
+// ---- discriminated payloads, one per action ----
 
 export type PlayerWarned = {
 	type: 'PLAYER_WARNED'
@@ -45,9 +45,78 @@ export type PlayerWarned = {
 	targets: SM.PlayerId[]
 } & Base
 
-export type AppEvent = PlayerWarned
+export type SquadDisbanded = {
+	type: 'SQUAD_DISBANDED'
+	teamId: SM.TeamId
+	// in-game squad id (not the unique/db id)
+	squadId: number
+	squadName: string
+	// the players who were in the squad when it was disbanded (eos ids)
+	members: SM.PlayerId[]
+} & Base
+
+export type PlayerRemovedFromSquad = {
+	type: 'PLAYER_REMOVED_FROM_SQUAD'
+	targets: SM.PlayerId[]
+} & Base
+
+export type TeamChangeForced = {
+	type: 'TEAM_CHANGE_FORCED'
+	targets: SM.PlayerId[]
+} & Base
+
+export type SquadRenamed = {
+	type: 'SQUAD_RENAMED'
+	teamId: SM.TeamId
+	squadId: number
+	// the squad's name at the time of the action (the rename resets it to the game default)
+	squadName: string
+} & Base
+
+// pure-audit actions with no attributable server event
+export type CommanderDemoted = {
+	type: 'COMMANDER_DEMOTED'
+	target: SM.PlayerId
+} & Base
+
+export type FogOfWarToggled = {
+	type: 'FOG_OF_WAR_TOGGLED'
+	enabled: boolean
+} & Base
+
+export type MatchEnded = {
+	type: 'MATCH_ENDED'
+} & Base
+
+export type AppEvent =
+	| PlayerWarned
+	| SquadDisbanded
+	| PlayerRemovedFromSquad
+	| TeamChangeForced
+	| SquadRenamed
+	| CommanderDemoted
+	| FogOfWarToggled
+	| MatchEnded
 
 export type AppEventType = AppEvent['type']
+
+// the players involved in an app event (targets, or a disbanded squad's members) as eos ids
+export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
+	switch (e.type) {
+		case 'PLAYER_WARNED':
+		case 'PLAYER_REMOVED_FROM_SQUAD':
+		case 'TEAM_CHANGE_FORCED':
+			return e.targets
+		case 'SQUAD_DISBANDED':
+			return e.members
+		case 'COMMANDER_DEMOTED':
+			return [e.target]
+		case 'SQUAD_RENAMED':
+		case 'FOG_OF_WAR_TOGGLED':
+		case 'MATCH_ENDED':
+			return []
+	}
+}
 
 // constructs an app event, allocating its id and defaulting its time
 export function create<E extends AppEvent>(fields: Omit<E, 'id' | 'time'> & { time?: number }): E {

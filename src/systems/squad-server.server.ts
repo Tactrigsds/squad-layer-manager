@@ -199,6 +199,16 @@ export const orpcRouter = {
 			ctx.signal,
 		)
 
+		await emitAppEvent(
+			ctx,
+			AppEvents.create<AppEvents.MatchEnded>({
+				type: 'MATCH_ENDED',
+				actor: { type: 'slm-user', userId: ctx.user.discordId },
+				serverId: ctx.serverId,
+				matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
+				causeId: null,
+			}),
+		)
 		SquadRcon.endMatch(ctx)
 
 		const result = await result$
@@ -307,6 +317,17 @@ export const orpcRouter = {
 			const serverStatusRes = await ctx.server.layersStatus.get(ctx)
 			if (serverStatusRes.code !== 'ok') return serverStatusRes
 			await SquadRcon.setFogOfWar(ctx, input.disabled ? 'off' : 'on')
+			await emitAppEvent(
+				ctx,
+				AppEvents.create<AppEvents.FogOfWarToggled>({
+					type: 'FOG_OF_WAR_TOGGLED',
+					actor: { type: 'slm-user', userId: ctx.user.discordId },
+					serverId: ctx.serverId,
+					matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
+					causeId: null,
+					enabled: !input.disabled,
+				}),
+			)
 			if (input.disabled) {
 				await SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
 			}
@@ -339,7 +360,7 @@ export const orpcRouter = {
 			const ctx = resolveSliceCtx(_ctx, input.serverId)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
 			if (denyRes) return denyRes
-			await SquadRcon.demoteCommander(ctx, input.playerId)
+			await demoteCommanderAction(ctx, input.playerId, { type: 'slm-user', userId: ctx.user.discordId })
 			return { code: 'ok' as const }
 		}),
 
@@ -349,7 +370,7 @@ export const orpcRouter = {
 			const ctx = resolveSliceCtx(_ctx, input.serverId)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
 			if (denyRes) return denyRes
-			await SquadRcon.disbandSquad(ctx, input.teamId, input.squadId)
+			await disbandSquadAction(ctx, input.teamId, input.squadId, { type: 'slm-user', userId: ctx.user.discordId })
 			return { code: 'ok' as const }
 		}),
 
@@ -359,7 +380,17 @@ export const orpcRouter = {
 			const ctx = resolveSliceCtx(_ctx, input.serverId)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
 			if (denyRes) return denyRes
-			await SquadRcon.removeFromSquad(ctx, input.playerId)
+			await removePlayersFromSquad(ctx, [input.playerId], { type: 'slm-user', userId: ctx.user.discordId })
+			return { code: 'ok' as const }
+		}),
+
+	removePlayersFromSquad: orpcBase
+		.input(z.object({ serverId: z.string(), playerIds: z.array(SM.PlayerIdSchema).min(1) }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctx = resolveSliceCtx(_ctx, input.serverId)
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
+			if (denyRes) return denyRes
+			await removePlayersFromSquad(ctx, input.playerIds, { type: 'slm-user', userId: ctx.user.discordId })
 			return { code: 'ok' as const }
 		}),
 
@@ -369,7 +400,7 @@ export const orpcRouter = {
 			const ctx = resolveSliceCtx(_ctx, input.serverId)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
 			if (denyRes) return denyRes
-			await SquadRcon.adminRenameSquad(ctx, input.teamId, input.squadId)
+			await renameSquadAction(ctx, input.teamId, input.squadId, { type: 'slm-user', userId: ctx.user.discordId })
 			return { code: 'ok' as const }
 		}),
 }
@@ -859,6 +890,139 @@ export async function warnPlayers(
 		}
 	})
 	await SquadRcon.warnAll(ctx, targets, reason)
+}
+
+// disbands a squad through an app event: records the squad + its members, arms the machine to attribute the
+// resulting SQUAD_DISBANDED server event to the acting user, then issues the disband.
+export async function disbandSquadAction(
+	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & C.MatchHistory & CS.AbortSignal,
+	teamId: SM.TeamId,
+	squadId: SM.SquadId,
+	actor: AppEvents.Actor,
+) {
+	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+	const teams = getCurrTeams(ctx)
+	const squad = teams?.squads.find(s => s.teamId === teamId && s.squadId === squadId)
+	const members = teams?.players
+		.filter(p => p.teamId === teamId && p.squadId === squadId)
+		.map(p => SM.PlayerIds.getPlayerId(p.ids)) ?? []
+	const appEvent = AppEvents.create<AppEvents.SquadDisbanded>({
+		type: 'SQUAD_DISBANDED',
+		actor,
+		serverId: ctx.serverId,
+		matchId: currentMatch.historyEntryId,
+		causeId: null,
+		teamId,
+		squadId,
+		squadName: squad?.squadName ?? `Squad ${squadId}`,
+		members,
+	})
+	await emitAppEvent(ctx, appEvent)
+	const source = { type: 'event' as const, id: appEvent.id }
+	await collectEvents(ctx, () => {
+		PendingEvents.armExpectation(ctx.server.eventState, { type: 'SQUAD_DISBANDED', teamId, squadId }, source)
+	})
+	await SquadRcon.disbandSquad(ctx, teamId, squadId)
+}
+
+// removes players from their squads through an app event, attributing each resulting PLAYER_LEFT_SQUAD server event
+export async function removePlayersFromSquad(
+	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & C.MatchHistory & CS.AbortSignal,
+	targets: SM.PlayerId[],
+	actor: AppEvents.Actor,
+) {
+	if (targets.length === 0) return
+	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+	const appEvent = AppEvents.create<AppEvents.PlayerRemovedFromSquad>({
+		type: 'PLAYER_REMOVED_FROM_SQUAD',
+		actor,
+		serverId: ctx.serverId,
+		matchId: currentMatch.historyEntryId,
+		causeId: null,
+		targets,
+	})
+	await emitAppEvent(ctx, appEvent)
+	const source = { type: 'event' as const, id: appEvent.id }
+	await collectEvents(ctx, () => {
+		for (const target of targets) {
+			PendingEvents.armExpectation(ctx.server.eventState, { type: 'PLAYER_LEFT_SQUAD', playerId: target }, source)
+		}
+	})
+	await Promise.all(targets.map(target => SquadRcon.removeFromSquad(ctx, target)))
+}
+
+// records a forced team change as an app event and arms attribution for the resulting PLAYER_CHANGED_TEAM server
+// events (which arrive via the next teams poll). The caller (teamswitches) still issues the actual switch.
+export async function forceTeamChangeAppEvent(
+	ctx: C.SquadServer & C.Db & C.MatchHistory & CS.AbortSignal,
+	targets: SM.PlayerId[],
+	actor: AppEvents.Actor,
+) {
+	if (targets.length === 0) return
+	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+	const appEvent = AppEvents.create<AppEvents.TeamChangeForced>({
+		type: 'TEAM_CHANGE_FORCED',
+		actor,
+		serverId: ctx.serverId,
+		matchId: currentMatch.historyEntryId,
+		causeId: null,
+		targets,
+	})
+	await emitAppEvent(ctx, appEvent)
+	const source = { type: 'event' as const, id: appEvent.id }
+	await collectEvents(ctx, () => {
+		for (const target of targets) {
+			PendingEvents.armExpectation(ctx.server.eventState, { type: 'PLAYER_CHANGED_TEAM', playerId: target }, source)
+		}
+	})
+}
+
+// renames (resets) a squad through an app event, attributing the resulting SQUAD_RENAMED server event
+export async function renameSquadAction(
+	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & C.MatchHistory & CS.AbortSignal,
+	teamId: SM.TeamId,
+	squadId: SM.SquadId,
+	actor: AppEvents.Actor,
+) {
+	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+	const squad = getCurrTeams(ctx)?.squads.find(s => s.teamId === teamId && s.squadId === squadId)
+	const appEvent = AppEvents.create<AppEvents.SquadRenamed>({
+		type: 'SQUAD_RENAMED',
+		actor,
+		serverId: ctx.serverId,
+		matchId: currentMatch.historyEntryId,
+		causeId: null,
+		teamId,
+		squadId,
+		squadName: squad?.squadName ?? `Squad ${squadId}`,
+	})
+	await emitAppEvent(ctx, appEvent)
+	const source = { type: 'event' as const, id: appEvent.id }
+	await collectEvents(ctx, () => {
+		PendingEvents.armExpectation(ctx.server.eventState, { type: 'SQUAD_RENAMED', teamId, squadId }, source)
+	})
+	await SquadRcon.adminRenameSquad(ctx, teamId, squadId)
+}
+
+// demoting a commander has no attributable server event, so this is a pure audit-feed entry
+export async function demoteCommanderAction(
+	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & C.MatchHistory & CS.AbortSignal,
+	playerId: SM.PlayerId,
+	actor: AppEvents.Actor,
+) {
+	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+	await emitAppEvent(
+		ctx,
+		AppEvents.create<AppEvents.CommanderDemoted>({
+			type: 'COMMANDER_DEMOTED',
+			actor,
+			serverId: ctx.serverId,
+			matchId: currentMatch.historyEntryId,
+			causeId: null,
+			target: playerId,
+		}),
+	)
+	await SquadRcon.demoteCommander(ctx, playerId)
 }
 
 // interleaves server events and app events by time for the activity feed. app events sort before server events on

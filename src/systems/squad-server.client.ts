@@ -88,6 +88,14 @@ export function useRemoveFromSquadMutation() {
 	})
 }
 
+export function useRemovePlayersFromSquadMutation() {
+	return useMutation({
+		mutationFn: async (input: { serverId: string; playerIds: string[] }) => {
+			return RPC.orpc.squadServer.removePlayersFromSquad.call(input)
+		},
+	})
+}
+
 export function useResetSquadNameMutation() {
 	return useMutation({
 		mutationFn: async (input: { serverId: string; teamId: 1 | 2; squadId: number }) => {

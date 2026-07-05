@@ -57,7 +57,7 @@ describe('chat.models application-event collapse', () => {
 		const entry = state.eventBuffer[0]
 		expect(entry.type).toBe('APP_EVENT')
 		if (entry.type !== 'APP_EVENT') throw new Error('unreachable')
-		expect(entry.warns).toHaveLength(1)
+		expect(entry.collapsed).toHaveLength(1)
 		expect(entry.targetPlayers.map(p => p.ids.eos)).toEqual(['eos-1'])
 	})
 
@@ -70,7 +70,7 @@ describe('chat.models application-event collapse', () => {
 		expect(state.eventBuffer).toHaveLength(1)
 		const entry = state.eventBuffer[0]
 		if (entry.type !== 'APP_EVENT') throw new Error('expected APP_EVENT')
-		expect(entry.warns).toHaveLength(2)
+		expect(entry.collapsed).toHaveLength(2)
 	})
 
 	it('renders a warn standalone when it has no app-event source', () => {
@@ -87,6 +87,65 @@ describe('chat.models application-event collapse', () => {
 
 		expect(state.eventBuffer).toHaveLength(1)
 		expect(state.eventBuffer[0].type).toBe('PLAYER_WARNED')
+	})
+
+	it('collapses a non-warn attributed event (PLAYER_CHANGED_TEAM) into its app entry', () => {
+		const state = seededState([makePlayer('eos-1')])
+		const appEvent: CHAT.AppFeedEvent = {
+			type: 'APP_EVENT',
+			appEvent: {
+				type: 'TEAM_CHANGE_FORCED',
+				id: 'app-1',
+				time: 100,
+				actor: { type: 'slm-user', userId: 1n },
+				serverId: 's1',
+				matchId: 1,
+				causeId: null,
+				targets: ['eos-1'],
+			} satisfies AppEvents.TeamChangeForced,
+		}
+		CHAT.handleEvent(state, appEvent)
+		const changed: SE.PlayerChangedTeam = {
+			type: 'PLAYER_CHANGED_TEAM',
+			id: 1,
+			time: 101,
+			matchId: 1,
+			player: 'eos-1',
+			newTeamId: 2,
+			source: { type: 'event', id: 'app-1' },
+		}
+		CHAT.handleEvent(state, changed)
+
+		expect(state.eventBuffer).toHaveLength(1)
+		const entry = state.eventBuffer[0]
+		if (entry.type !== 'APP_EVENT') throw new Error('expected APP_EVENT')
+		expect(entry.collapsed).toHaveLength(1)
+		expect(entry.targetPlayers.map(p => p.ids.eos)).toEqual(['eos-1'])
+	})
+
+	it('enriches a SQUAD_DISBANDED app event with its members as targetPlayers', () => {
+		const state = seededState([makePlayer('eos-1'), makePlayer('eos-2')])
+		const appEvent: CHAT.AppFeedEvent = {
+			type: 'APP_EVENT',
+			appEvent: {
+				type: 'SQUAD_DISBANDED',
+				id: 'app-1',
+				time: 100,
+				actor: { type: 'system' },
+				serverId: 's1',
+				matchId: 1,
+				causeId: null,
+				teamId: 1,
+				squadId: 3,
+				squadName: 'Alpha',
+				members: ['eos-1', 'eos-2'],
+			} satisfies AppEvents.SquadDisbanded,
+		}
+		CHAT.handleEvent(state, appEvent)
+
+		const entry = state.eventBuffer[0]
+		if (entry.type !== 'APP_EVENT') throw new Error('expected APP_EVENT')
+		expect(entry.targetPlayers.map(p => p.ids.eos)).toEqual(['eos-1', 'eos-2'])
 	})
 })
 

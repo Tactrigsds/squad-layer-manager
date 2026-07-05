@@ -20,8 +20,16 @@ export const DEFAULT_EXPECTATION_TTL_MS = 60_000
 // produced, process() stamps its `source` -- linking it to the SLM app event that caused it -- and consumes
 // the expectation. See squad-rcon.server.ts warn/warnAll.
 export type ArmedActionSource = Extract<ActionSource, { type: 'event' } | { type: 'system' }>
+// how to recognize the server event an armed action should be attributed to. player-keyed for actions whose server
+// events carry a `player`; squad-keyed (by in-game teamId/squadId, resolved via currTeams) for disbands.
+export type ExpectationMatch =
+	| { type: 'PLAYER_WARNED'; playerId: SM.PlayerId; reason?: string }
+	| { type: 'PLAYER_LEFT_SQUAD'; playerId: SM.PlayerId }
+	| { type: 'PLAYER_CHANGED_TEAM'; playerId: SM.PlayerId }
+	| { type: 'SQUAD_DISBANDED'; teamId: SM.TeamId; squadId: number }
+	| { type: 'SQUAD_RENAMED'; teamId: SM.TeamId; squadId: number }
 export type EventExpectation = {
-	match: { type: 'PLAYER_WARNED'; playerId: SM.PlayerId; reason?: string }
+	match: ExpectationMatch
 	source: ArmedActionSource
 	expiresAt: number
 }
@@ -142,30 +150,63 @@ export function pushExpectation(state: State, expectation: EventExpectation) {
 	state.expectations.push(expectation)
 }
 
-// arm an expectation that the next matching PLAYER_WARNED server event should be attributed to `source`
+// arm an expectation that the next matching server event should be attributed to `source`
+export function armExpectation(state: State, match: ExpectationMatch, source: ArmedActionSource, ttlMs?: number) {
+	state.expectations.push({ match, source, expiresAt: Date.now() + (ttlMs ?? DEFAULT_EXPECTATION_TTL_MS) })
+}
+
+// convenience wrapper for the warn case (matches on message text too, since a warnAll fans out many warns)
 export function expectWarn(
 	state: State,
 	opts: { playerId: SM.PlayerId; reason?: string; source: ArmedActionSource; ttlMs?: number },
 ) {
-	state.expectations.push({
-		match: { type: 'PLAYER_WARNED', playerId: opts.playerId, reason: opts.reason },
-		source: opts.source,
-		expiresAt: Date.now() + (opts.ttlMs ?? DEFAULT_EXPECTATION_TTL_MS),
-	})
+	armExpectation(state, { type: 'PLAYER_WARNED', playerId: opts.playerId, reason: opts.reason }, opts.source, opts.ttlMs)
+}
+
+function expectationMatches(state: State, match: ExpectationMatch, event: SE.Event): boolean {
+	switch (match.type) {
+		case 'PLAYER_WARNED':
+			// warns have no organic equivalent (players don't warn each other) and never carry a native source,
+			// so match on player + message text alone
+			return event.type === 'PLAYER_WARNED' && event.player === match.playerId
+				&& (match.reason === undefined || match.reason === event.reason)
+		case 'PLAYER_LEFT_SQUAD':
+			// squad-leaves / team-changes happen organically too (inferred from team polling, source undefined). only
+			// attribute an event the game already marked admin-caused -- i.e. upgrade its native source, never stamp
+			// an organic one. See eventIsAdminCaused.
+			return event.type === 'PLAYER_LEFT_SQUAD' && event.player === match.playerId && eventIsAdminCaused(event)
+		case 'PLAYER_CHANGED_TEAM':
+			return event.type === 'PLAYER_CHANGED_TEAM' && event.player === match.playerId && eventIsAdminCaused(event)
+		case 'SQUAD_DISBANDED': {
+			if (event.type !== 'SQUAD_DISBANDED' || !eventIsAdminCaused(event)) return false
+			// the emitted event only carries the unique squad id; resolve it back to the in-game (teamId, squadId).
+			// applyExpectations runs before applyEventTeamMutations so the squad is still in currTeams here.
+			const squad = state.currTeams?.squads.find(s => s.uniqueId === event.uniqueId)
+			return !!squad && squad.teamId === match.teamId && squad.squadId === match.squadId
+		}
+		case 'SQUAD_RENAMED': {
+			// renames only ever come from an admin command (no organic path, no native source), so no gate
+			if (event.type !== 'SQUAD_RENAMED') return false
+			const squad = state.currTeams?.squads.find(s => s.uniqueId === event.uniqueId)
+			return !!squad && squad.teamId === match.teamId && squad.squadId === match.squadId
+		}
+	}
+}
+
+// true when the game attributed this event to an admin action (it already carries a source), as opposed to an
+// organic change inferred from team polling (source undefined). Guards against a stale/racing expectation stamping
+// an organic squad-leave / team-change / disband. See the source assignments in the ADMIN_* handlers + reconcileTeamsUpdate.
+function eventIsAdminCaused(event: SE.Event): boolean {
+	return (event as { source?: ActionSource }).source !== undefined
 }
 
 // stamps an emitted event with a matching armed expectation's source (consume-once). mutates the event in place.
+// runs before applyEventTeamMutations so SQUAD_DISBANDED can still resolve its squad in currTeams.
 function applyExpectations(state: State, event: SE.Event) {
-	if (event.type !== 'PLAYER_WARNED') return
-	for (let i = 0; i < state.expectations.length; i++) {
-		const exp = state.expectations[i]
-		if (exp.match.type !== 'PLAYER_WARNED') continue
-		if (event.player !== exp.match.playerId) continue
-		if (exp.match.reason !== undefined && exp.match.reason !== event.reason) continue
-		event.source = exp.source
-		state.expectations.splice(i, 1)
-		return
-	}
+	const idx = state.expectations.findIndex(exp => expectationMatches(state, exp.match, event))
+	if (idx === -1) return
+	;(event as { source?: ActionSource }).source = state.expectations[idx].source
+	state.expectations.splice(idx, 1)
 }
 
 export function onRconConnected(state: State, time: number, nextLayerId: L.LayerId | null, currentLayerId: L.LayerId) {
@@ -251,10 +292,11 @@ export async function* process(
 				if (event.type === 'NEW_GAME' || event.type === 'RESET' && !state.currTeams) {
 					state.currTeams = initUniqueTeams(state, { players: [], squads: [] })
 				}
+				// stamp attribution before mutating teams -- SQUAD_DISBANDED matching needs the squad still in currTeams
+				applyExpectations(state, event)
 				if (state.currTeams) {
 					applyEventTeamMutations(ctx, state.currTeams, event)
 				}
-				applyExpectations(state, event)
 				yield event
 			}
 		} catch (err) {

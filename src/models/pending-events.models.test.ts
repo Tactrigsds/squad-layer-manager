@@ -777,6 +777,95 @@ describe('PendingEvents', () => {
 			expect(warn.source).toBeUndefined()
 			expect(state.expectations).toHaveLength(0)
 		})
+
+		it('attributes an admin-caused PLAYER_CHANGED_TEAM to an armed team-change expectation (switchPlayers)', async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
+			PendingEvents.armExpectation(state, { type: 'PLAYER_CHANGED_TEAM', playerId: 'eos-001' }, { type: 'event', id: 'app-1' })
+			// the admin-command log marks the switch, so the poll's PLAYER_CHANGED_TEAM is admin-caused (has a source)
+			PendingEvents.onLogEvent(state, {
+				type: 'ADMIN_FORCED_TEAM_CHANGE',
+				time: 2000,
+				chainID: 0,
+				raw: '',
+				playerIds: { eos: 'eos-001', username: 'eos-001' },
+				source: { type: 'rcon' },
+			})
+			await collect(state)
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 2)], []), 3000)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(3000))
+			const events = await collect(state)
+
+			const changed = events.find(e => e.type === 'PLAYER_CHANGED_TEAM') as SE.PlayerChangedTeam
+			expect(changed?.source).toEqual({ type: 'event', id: 'app-1' })
+			expect(state.expectations).toHaveLength(0)
+		})
+
+		it('does NOT attribute an organic (poll-inferred) PLAYER_CHANGED_TEAM, leaving the expectation armed', async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
+			PendingEvents.armExpectation(state, { type: 'PLAYER_CHANGED_TEAM', playerId: 'eos-001' }, { type: 'event', id: 'app-1' })
+			// no admin-command log -> the poll event has no native source -> it's organic, not SLM's switch
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 2)], []), 500)
+			const events = await collect(state)
+
+			const changed = events.find(e => e.type === 'PLAYER_CHANGED_TEAM') as SE.PlayerChangedTeam
+			expect(changed?.source).toBeUndefined()
+			expect(state.expectations).toHaveLength(1)
+		})
+
+		it('attributes an admin-caused PLAYER_LEFT_SQUAD to an armed remove expectation (removeFromSquad)', async () => {
+			const removed = makePlayer('eos-removed', 1, { squadId: 1 })
+			const leader = makePlayer('eos-leader', 1, { squadId: 1, isLeader: true })
+			const state = makeSyncedState([removed, leader], [makeSquad(1, 1, 'eos-leader', 101)])
+			PendingEvents.armExpectation(state, { type: 'PLAYER_LEFT_SQUAD', playerId: 'eos-removed' }, { type: 'event', id: 'app-1' })
+			PendingEvents.onLogEvent(state, {
+				type: 'ADMIN_REMOVED_FROM_SQUAD',
+				time: 2000,
+				chainID: 0,
+				raw: '',
+				playerIds: { username: 'eos-removed' },
+				source: { type: 'rcon' },
+			})
+			const events = await collect(state)
+
+			const left = events.find(e => e.type === 'PLAYER_LEFT_SQUAD') as SE.PlayerLeftSquad
+			expect(left?.source).toEqual({ type: 'event', id: 'app-1' })
+			expect(state.expectations).toHaveLength(0)
+		})
+
+		it('attributes an admin-caused SQUAD_DISBANDED to an armed disband expectation, resolving uniqueId->teamId/squadId', async () => {
+			const player = makePlayer('eos-1', 1, { squadId: 1, isLeader: true })
+			const state = makeSyncedState([player], [makeSquad(1, 1, 'eos-1', 101)])
+			PendingEvents.armExpectation(state, { type: 'SQUAD_DISBANDED', teamId: 1, squadId: 1 }, { type: 'event', id: 'app-1' })
+			PendingEvents.onLogEvent(state, {
+				type: 'ADMIN_DISBANDED_SQUAD',
+				time: 2000,
+				chainID: 0,
+				raw: '',
+				squadId: 1,
+				teamId: 1,
+				squadName: 'Squad 1',
+				source: { type: 'rcon' },
+			})
+			const events = await collect(state)
+
+			const disbanded = events.find(e => e.type === 'SQUAD_DISBANDED') as SE.SquadDisbanded
+			expect(disbanded?.source).toEqual({ type: 'event', id: 'app-1' })
+			expect(state.expectations).toHaveLength(0)
+		})
+
+		it('attributes a SQUAD_RENAMED to an armed rename expectation', async () => {
+			const p1 = makePlayer('eos-001', 1, { squadId: 1 })
+			const squad = makeSquad(1, 1, 'eos-001', 100)
+			const state = makeSyncedState([p1], [squad])
+			PendingEvents.armExpectation(state, { type: 'SQUAD_RENAMED', teamId: 1, squadId: 1 }, { type: 'event', id: 'app-1' })
+			PendingEvents.onRconEvent(state, { type: 'SQUAD_RENAMED', time: 200, squadId: 1, teamId: 1, oldSquadName: 'Alpha', newSquadName: 'Squad 1' })
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
+			const events = await collect(state)
+
+			const renamed = events.find(e => e.type === 'SQUAD_RENAMED') as SE.SquadRenamed
+			expect(renamed?.source).toEqual({ type: 'event', id: 'app-1' })
+			expect(state.expectations).toHaveLength(0)
+		})
 	})
 
 	describe('TEAMS_UPDATE reconciliation (complex simultaneous changes)', () => {
