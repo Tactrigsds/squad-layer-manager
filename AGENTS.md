@@ -19,3 +19,11 @@ Significant actions taken by the user or by the system need to be logged via app
 Commonly passed pieces of state should passed via the ctx object, which should always be the first argument, or in the case of observables, always the first element of the observable's data's tuple. Always check what's already available in context.ts and context-shared.ts before expanding it
 
 Functions should only specify the minimal amount of context that they need in the ctx parameter type signature.
+
+# Client side
+
+- in components, prefer modifying or adding selectors over computing intermediate state in the component body with useMemo.
+- use the established convention of `Sel` namespaces for selectors
+- useEffects should be rare, and should be used mainly for subscribing to dom events. Using them to call setState when one of the dependencies change is heavily discouraged.
+- generally speaking, actions by the user should be handled at the top level by a function in the relevant system/frame's `Actions` namespace. Avoid closing over or passing state from the component body to the action handler unless it's indirect state, like a store or any other variant of ZusUtils.AnyInput
+- pass `ZusUtils.AnyInut` instances via the `stores` prop through components(conventionally they should have a KeyProp or a StoreProp defined to standardize what property they should be put on in `props.stores`), and avoid using react context to pass stores and similar
