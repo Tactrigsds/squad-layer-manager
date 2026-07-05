@@ -135,11 +135,6 @@ export const OpSchema = z.discriminatedUnion('code', [
 	// ------ basic presence tracking ------
 	z.object({
 		...clientOpBase,
-		code: z.literal('page-loaded'),
-	}),
-
-	z.object({
-		...clientOpBase,
 
 		code: z.literal('page-interaction'),
 	}),
@@ -188,7 +183,6 @@ export function createOpId(): string {
 }
 
 export const CLIENT_OP_CODE = z.enum([
-	'page-loaded',
 	'page-interaction',
 	'interaction-timeout',
 	'navigated-away',
@@ -271,16 +265,6 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 					?? { userId: op.userId, away: true, activityState: null, lastSeen: null }
 				let newClientState: ClientPresence | undefined
 				opSwitch: switch (op.code) {
-					case 'page-loaded': {
-						newClientState = {
-							...clientState,
-							away: false,
-							activityState: null,
-						}
-						success = true
-						break
-					}
-
 					case 'page-interaction': {
 						newClientState = {
 							...clientState,
@@ -638,6 +622,39 @@ export function applyActivityUpdate(_activity: RootActivity | null, update: Acti
 		default:
 			assertNever(update)
 	}
+}
+
+// Serializes a resolved activity tree back into the sequence of ActivityUpdates that rebuilds it
+// from scratch (applyActivityUpdate(null, ...) applied in order reproduces `activity`). Used to
+// re-establish presence after a websocket reconnect, where a fresh wsClientId is minted and our
+// prior activity is only known client-side.
+export function activityToUpdates(activity: RootActivity): ActivityUpdate[] {
+	const serverId = activity.opts.serverId
+	const updates: ActivityUpdate[] = [{ code: 'enter-server-dashboard', serverId }]
+
+	const primaryPanel = activity.child.ON_PRIMARY_PANEL?.chosen
+	if (primaryPanel?.id === 'VIEWING_QUEUE') {
+		updates.push({ code: 'set-primary-panel', to: 'VIEWING_QUEUE', serverId })
+		if (primaryPanel.child.VIEWING_QUEUE_SETTINGS) {
+			updates.push({ code: 'set-viewing-queue-settings' })
+			if (primaryPanel.child.VIEWING_QUEUE_SETTINGS.child.CHANGING_QUEUE_SETTINGS) {
+				updates.push({ code: 'set-changing-queue-settings' })
+			}
+		}
+	} else if (primaryPanel?.id === 'VIEWING_TEAMS') {
+		updates.push({ code: 'set-primary-panel', to: 'VIEWING_TEAMS', serverId })
+		const dialogue = primaryPanel.child.PLAYER_DIALOGUE?.chosen
+		if (dialogue) updates.push({ code: 'set-player-dialogue', dialog: dialogue.id })
+	}
+
+	if (activity.child.EDITING_QUEUE) {
+		updates.push({ code: 'set-editing-queue', variant: activity.child.EDITING_QUEUE.chosen })
+	}
+	if (activity.child.EDITING_TEAMSWITCHES) {
+		updates.push({ code: 'set-editing-teamswitches' })
+	}
+
+	return updates
 }
 
 export type ActivityCode = ST.Def.NodeIds<typeof ACTIVITIES>

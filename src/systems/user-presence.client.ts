@@ -153,6 +153,9 @@ export type Store = {
 // assigned during createPresenceStore -- module-level so Actions.preloadActivity can reach it
 let loaderCtx: Lifecycle.LoaderManagerContext<ConfiguredLoaderConfig, Store>
 
+// our own last-known activity, tracked as presence changes and replayed on reconnect (see setup())
+let lastLocalActivity: UP.RootActivity | null = null
+
 const [_usePresenceUpdate, presenceUpdate$] = ReactRx.bind<UP.PresenceUpdate>(
 	RPC.observe(() => RPC.orpc.userPresence.watchUpdates.call()),
 )
@@ -185,6 +188,11 @@ function createPresenceStore() {
 					if (prevClientActivityState !== clientActivityState) {
 						Lifecycle.dispatchLoaderEvents(loaderCtx, clientActivityState, prevClientActivityState, false)
 					}
+					// remember our own activity so it can be replayed under a fresh wsClientId after a
+					// reconnect (see the ConfigClient.Store subscription in setup()). Only track while we
+					// actually hold a presence entry, so the empty state right after a reconnect init
+					// (before we've re-registered) doesn't clobber the activity we need to restore.
+					if (presence.has(wsClientId)) lastLocalActivity = clientActivityState
 				}
 				const editors = new Set<USR.UserId>()
 				const teamswitchEditors = new Set<USR.UserId>()
@@ -514,6 +522,25 @@ export async function setup() {
 	// Subscribe to presence broadcast stream
 	presenceUpdate$.subscribe(update => {
 		handleIncomingPresenceUpdate(update)
+	})
+
+	// Re-establish presence after a websocket reconnect. The server mints a fresh wsClientId per
+	// connection, so on reconnect our config's wsClientId changes and our prior presence (keyed by
+	// the old id) gets cleaned up server-side. Nothing else re-registers us -- the route onEnter only
+	// runs on navigation, not on reconnect -- so replay our last-known activity under the new id.
+	let knownWsClientId: string | undefined
+	ConfigClient.Store.subscribe((config) => {
+		if (!config) return
+		const wsClientId = config.wsClientId
+		if (knownWsClientId === undefined) {
+			knownWsClientId = wsClientId
+			return
+		}
+		if (knownWsClientId === wsClientId) return
+		knownWsClientId = wsClientId
+		const activity = lastLocalActivity
+		if (!activity) return
+		Actions.updateActivity(...UP.activityToUpdates(activity))
 	})
 
 	const settingsModified$ = ZusUtils.toObservable(SquadServerClient.SelectedServerStore, true).pipe(
