@@ -301,6 +301,56 @@ function PlayerWarnedEvent(
 	)
 }
 
+// several standalone warns sharing the same text + source, collapsed into one entry. Few targets are named inline;
+// larger groups use an expandable <details> listing everyone warned.
+function WarnsAggregatedEvent(
+	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'WARNS_AGGREGATED' }>; stores: SquadServerFrame.KeyProp },
+) {
+	const count = event.warns.length
+	const plural = count === 1 ? 'player' : 'players'
+	const matchId = event.matchId
+	const icon = <Icons.AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
+	const reason = (
+		<>
+			: "<span className="wrap-break-word">{event.reason}</span>"
+		</>
+	)
+
+	if (count <= 4) {
+		return (
+			<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
+				<EventTime time={event.time} variant="small" />
+				{icon}
+				<div className="grow min-w-0">
+					{event.warns.map((warn, i) => (
+						<span key={`${warn.player.ids.eos}-${i}`}>
+							{i > 0 ? ', ' : ''}
+							<PlayerDisplay showTeam player={warn.player} matchId={matchId} stores={stores} />
+						</span>
+					))} were warned{reason}
+				</div>
+			</div>
+		)
+	}
+
+	return (
+		<details className="py-1 text-xs text-muted-foreground w-full min-w-0">
+			<summary className="flex gap-2 items-baseline cursor-pointer">
+				<EventTime time={event.time} variant="small" />
+				{icon}
+				<span className="grow min-w-0 wrap-break-word">
+					{count} {plural} were warned{reason}
+				</span>
+			</summary>
+			<div className="pl-6 pt-1 flex flex-col gap-0.5">
+				{event.warns.map((warn, i) => (
+					<PlayerDisplay key={`${warn.player.ids.eos}-${i}`} showTeam player={warn.player} matchId={matchId} stores={stores} />
+				))}
+			</div>
+		</details>
+	)
+}
+
 // a single-line app-event feed entry (time + icon + text)
 function AppEventLine({ time, icon, children }: { time: number; icon: React.ReactNode; children: React.ReactNode }) {
 	return (
@@ -960,6 +1010,8 @@ export function ServerEvent({ event, stores }: { event: CHAT.EventEnriched; stor
 			return <PlayerBannedEvent event={event} stores={stores} />
 		case 'PLAYER_WARNED':
 			return <PlayerWarnedEvent event={event} stores={stores} />
+		case 'WARNS_AGGREGATED':
+			return <WarnsAggregatedEvent event={event} stores={stores} />
 		case 'APP_EVENT':
 			return <AppEventEntry event={event} stores={stores} />
 		case 'NEW_GAME':

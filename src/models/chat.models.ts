@@ -131,6 +131,7 @@ export type EventEnriched =
 	| (SE.AdminBroadcast & { player?: SM.Player })
 	| SE.PlayerDied<SM.Player>
 	| SE.PlayerWounded<SM.Player>
+	| AggregatedWarns
 
 export type NoopEvent = {
 	type: 'NOOP'
@@ -139,6 +140,22 @@ export type NoopEvent = {
 	time: number
 	matchId: number
 	originalEvent: Event
+}
+
+// several standalone PLAYER_WARNED server events (i.e. ones NOT attributed to an app event, which are collapsed
+// under their app-event entry instead) sharing the same warn text and acting source, merged into one feed entry.
+// See mergeOrPushWarn: only warns arriving within WARN_AGGREGATION_WINDOW_MS of each other are grouped.
+export type AggregatedWarns = {
+	type: 'WARNS_AGGREGATED'
+	// tracks the latest absorbed warn's id (server ids are monotonic) so the resume cursor stays sensible
+	id: number
+	// anchored to the first warn's time, keeping the entry in its original buffer position
+	time: number
+	matchId: number
+	reason: string
+	source: SE.PlayerWarned['source']
+	// individual enriched warns, in arrival order (always length >= 2)
+	warns: SE.PlayerWarned<SM.Player>[]
 }
 
 export type ChatState = {
@@ -221,7 +238,57 @@ export function handleEvent(
 			return
 		}
 	}
+	// standalone warns (not folded into an app event above) get deduplicated by text+source into burst groups
+	if (enriched.type === 'PLAYER_WARNED') {
+		mergeOrPushWarn(state.eventBuffer, enriched)
+		return
+	}
 	state.eventBuffer.push(enriched)
+}
+
+// warns arriving within this window of an existing matching group are merged into it; anything further apart
+// starts a fresh entry (so unrelated warns that happen to share text stay separate)
+const WARN_AGGREGATION_WINDOW_MS = 5000
+
+// dedup key: identical warn text AND the same acting source (a specific in-game admin, RCON, etc.)
+function warnDedupKey(reason: string, source: SE.PlayerWarned['source']): string {
+	const actor = !source
+		? 'none'
+		: source.type === 'player'
+		? `player:${SM.PlayerIds.getPlayerId(source.playerIds)}`
+		: source.type === 'event'
+		? `event:${source.id}`
+		: source.type
+	return `${actor} ${reason}`
+}
+
+// merge a standalone warn into a recent matching group, upgrading a lone prior warn in place if needed; else append.
+// scans back past interleaving events until the burst window is exceeded (buffer is time-ordered).
+function mergeOrPushWarn(buffer: EventEnriched[], warn: SE.PlayerWarned<SM.Player>) {
+	const key = warnDedupKey(warn.reason, warn.source)
+	const cutoff = warn.time - WARN_AGGREGATION_WINDOW_MS
+	for (let i = buffer.length - 1; i >= 0; i--) {
+		const entry = buffer[i]
+		if (entry.time < cutoff) break
+		if (entry.type === 'WARNS_AGGREGATED' && warnDedupKey(entry.reason, entry.source) === key) {
+			entry.warns.push(warn)
+			entry.id = warn.id
+			return
+		}
+		if (entry.type === 'PLAYER_WARNED' && warnDedupKey(entry.reason, entry.source) === key) {
+			buffer[i] = {
+				type: 'WARNS_AGGREGATED',
+				id: warn.id,
+				time: entry.time,
+				matchId: entry.matchId,
+				reason: entry.reason,
+				source: entry.source,
+				warns: [entry, warn],
+			}
+			return
+		}
+	}
+	buffer.push(warn)
 }
 
 // the id of the most recent server event in the buffer (skips app events, which have string ids and no
@@ -680,6 +747,12 @@ export function isEventFilteredBySecondary(event: EventEnriched, filterState: Se
 
 export function* iterAssocPlayers(event: EventEnriched, playerId?: SM.PlayerId) {
 	if (event.type === 'NOOP') return
+	if (event.type === 'WARNS_AGGREGATED') {
+		for (const warn of event.warns) {
+			if (!playerId || SM.PlayerIds.getPlayerId(warn.player.ids) === playerId) yield [warn.player, 'player'] as const
+		}
+		return
+	}
 	if (event.type === 'APP_EVENT') {
 		for (const player of event.targetPlayers) {
 			if (!playerId || SM.PlayerIds.getPlayerId(player.ids) === playerId) yield [player, 'player'] as const

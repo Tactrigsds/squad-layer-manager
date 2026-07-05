@@ -177,6 +177,98 @@ describe('chat.models application-event collapse', () => {
 	})
 })
 
+describe('standalone warn burst aggregation', () => {
+	function seededState(players: SM.Player[]): CHAT.ChatState {
+		const state = CHAT.getInitialChatState()
+		state.interpolatedState.players = players
+		return state
+	}
+	const rcon = { type: 'rcon' } as const
+	const admin = (eos: string): SE.PlayerWarned['source'] => ({ type: 'player', playerIds: { eos, username: eos, steam: eos } })
+
+	it('merges same-text same-source warns within the window into one WARNS_AGGREGATED entry', () => {
+		const state = seededState([makePlayer('eos-1'), makePlayer('eos-2')])
+		CHAT.handleEvent(state, warnServerEvent('eos-1', 'stop', 1, rcon))
+		CHAT.handleEvent(state, warnServerEvent('eos-2', 'stop', 2, rcon))
+
+		expect(state.eventBuffer).toHaveLength(1)
+		const entry = state.eventBuffer[0]
+		if (entry.type !== 'WARNS_AGGREGATED') throw new Error('expected WARNS_AGGREGATED')
+		expect(entry.warns.map(w => w.player.ids.eos)).toEqual(['eos-1', 'eos-2'])
+		// tracks the latest absorbed warn's id; time anchored to the first
+		expect(entry.id).toBe(2)
+		expect(entry.time).toBe(101)
+	})
+
+	it('appends a third matching warn to the existing group', () => {
+		const state = seededState([makePlayer('eos-1'), makePlayer('eos-2'), makePlayer('eos-3')])
+		CHAT.handleEvent(state, warnServerEvent('eos-1', 'stop', 1, rcon))
+		CHAT.handleEvent(state, warnServerEvent('eos-2', 'stop', 2, rcon))
+		CHAT.handleEvent(state, warnServerEvent('eos-3', 'stop', 3, rcon))
+
+		expect(state.eventBuffer).toHaveLength(1)
+		const entry = state.eventBuffer[0]
+		if (entry.type !== 'WARNS_AGGREGATED') throw new Error('expected WARNS_AGGREGATED')
+		expect(entry.warns).toHaveLength(3)
+		expect(entry.id).toBe(3)
+	})
+
+	it('keeps warns with different text separate', () => {
+		const state = seededState([makePlayer('eos-1'), makePlayer('eos-2')])
+		CHAT.handleEvent(state, warnServerEvent('eos-1', 'stop', 1, rcon))
+		CHAT.handleEvent(state, warnServerEvent('eos-2', 'go', 2, rcon))
+
+		expect(state.eventBuffer.map(e => e.type)).toEqual(['PLAYER_WARNED', 'PLAYER_WARNED'])
+	})
+
+	it('keeps same-text warns from different sources separate', () => {
+		const state = seededState([makePlayer('eos-1'), makePlayer('eos-2')])
+		CHAT.handleEvent(state, warnServerEvent('eos-1', 'stop', 1, admin('adminA')))
+		CHAT.handleEvent(state, warnServerEvent('eos-2', 'stop', 2, admin('adminB')))
+
+		expect(state.eventBuffer.map(e => e.type)).toEqual(['PLAYER_WARNED', 'PLAYER_WARNED'])
+	})
+
+	it('does not merge warns further apart than the aggregation window', () => {
+		const state = seededState([makePlayer('eos-1'), makePlayer('eos-2')])
+		const first: SE.PlayerWarned = { type: 'PLAYER_WARNED', id: 1, time: 1000, matchId: 1, reason: 'stop', player: 'eos-1', source: rcon }
+		const late: SE.PlayerWarned = {
+			type: 'PLAYER_WARNED',
+			id: 2,
+			time: 1000 + 6000,
+			matchId: 1,
+			reason: 'stop',
+			player: 'eos-2',
+			source: rcon,
+		}
+		CHAT.handleEvent(state, first)
+		CHAT.handleEvent(state, late)
+
+		expect(state.eventBuffer.map(e => e.type)).toEqual(['PLAYER_WARNED', 'PLAYER_WARNED'])
+	})
+
+	it('merges across an interleaving non-warn event within the window', () => {
+		const state = seededState([makePlayer('eos-1'), makePlayer('eos-2')])
+		CHAT.handleEvent(state, warnServerEvent('eos-1', 'stop', 1, rcon))
+		const chat: SE.ChatMessage = {
+			type: 'CHAT_MESSAGE',
+			id: 2,
+			time: 102,
+			matchId: 1,
+			player: 'eos-1',
+			message: 'hi',
+			channel: { type: 'ChatAll' },
+		}
+		CHAT.handleEvent(state, chat)
+		CHAT.handleEvent(state, warnServerEvent('eos-2', 'stop', 3, rcon))
+
+		expect(state.eventBuffer.map(e => e.type)).toEqual(['WARNS_AGGREGATED', 'CHAT_MESSAGE'])
+		const entry = state.eventBuffer[0]
+		if (entry.type !== 'WARNS_AGGREGATED') throw new Error('expected WARNS_AGGREGATED')
+		expect(entry.warns).toHaveLength(2)
+	})
+})
+
 describe('warn target summary grouping', () => {
 	function summaryFor(players: SM.Player[], squads: SM.UniqueSquad[], targets: SM.PlayerId[]): CHAT.WarnSummary {
 		const state = CHAT.getInitialChatState()
