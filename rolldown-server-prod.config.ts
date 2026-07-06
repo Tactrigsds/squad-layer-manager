@@ -22,9 +22,6 @@ console.log('External modules (not bundled):', externalModules)
 export default defineConfig({
 	input: {
 		'main-instrumented': 'src/server/main-instrumented.ts',
-		// One-shot MySQL -> SQLite data migration. Bundled so it can run inside the
-		// slim production image (no src tree / tsx). mysql2 stays external via prod deps.
-		'scripts/migrate-mysql-to-sqlite': 'src/scripts/migrate-mysql-to-sqlite.ts',
 		// Schema (.sql) + data (.ts) migration runner. Bundled so the statically-imported
 		// .ts migration registry ships in the slim prod image; .sql files are read at
 		// runtime from the copied drizzle-sqlite/ folder.
