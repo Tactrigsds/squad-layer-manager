@@ -561,77 +561,77 @@ function StatsColumnHeader({ column, statsSort, mayBeInaccurate }: {
 						<Icons.AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0" />
 					</TooltipTrigger>
 					<TooltipContent className="max-w-[220px]">
-						Stats may be inaccurate: SLM was restarted during this match, so events before the restart were not counted.
+						Stats may be inaccurate: SLM was not active at some points during this match, so events during those periods were not counted.
 					</TooltipContent>
 				</Tooltip>
 			)}
 			<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<button
-					type="button"
-					onClick={e => e.stopPropagation()}
-					className="inline-flex items-center"
-					title={sorted ? `Sorted by ${metric}` : 'Sort by kills/wounds/deaths'}
-				>
-					<span>
-						{STATS_SORT_METRICS.map(({ metric: m, short }, i) => (
-							<React.Fragment key={m}>
-								{i > 0 && <span className="text-muted-foreground">/</span>}
-								<span className={sorted && metric === m ? 'text-primary font-semibold' : undefined}>{short}</span>
-							</React.Fragment>
-						))}
-					</span>
-					<Icons.ArrowUpDown className="ml-1 h-3 w-3 text-muted-foreground" />
-				</button>
-			</PopoverTrigger>
-			<PopoverContent side="top" align="start" className="w-auto p-1" onClick={e => e.stopPropagation()}>
-				<div className="flex flex-col gap-0.5">
-					<div className="flex gap-0.5">
-						{STATS_SORT_METRICS.map(({ metric: m, label }) => (
+				<PopoverTrigger asChild>
+					<button
+						type="button"
+						onClick={e => e.stopPropagation()}
+						className="inline-flex items-center"
+						title={sorted ? `Sorted by ${metric}` : 'Sort by kills/wounds/deaths'}
+					>
+						<span>
+							{STATS_SORT_METRICS.map(({ metric: m, short }, i) => (
+								<React.Fragment key={m}>
+									{i > 0 && <span className="text-muted-foreground">/</span>}
+									<span className={sorted && metric === m ? 'text-primary font-semibold' : undefined}>{short}</span>
+								</React.Fragment>
+							))}
+						</span>
+						<Icons.ArrowUpDown className="ml-1 h-3 w-3 text-muted-foreground" />
+					</button>
+				</PopoverTrigger>
+				<PopoverContent side="top" align="start" className="w-auto p-1" onClick={e => e.stopPropagation()}>
+					<div className="flex flex-col gap-0.5">
+						<div className="flex gap-0.5">
+							{STATS_SORT_METRICS.map(({ metric: m, label }) => (
+								<button
+									key={m}
+									type="button"
+									className={cn(
+										'text-xs px-2 py-0.5 rounded',
+										sorted && metric === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+									)}
+									onClick={() => {
+										setMetric(m)
+										column.toggleSorting(sorted !== 'asc')
+									}}
+								>
+									{label}
+								</button>
+							))}
+						</div>
+						<div className="flex gap-0.5">
+							{(['desc', 'asc'] as const).map(dir => (
+								<button
+									key={dir}
+									type="button"
+									className={cn(
+										'text-xs px-2 py-0.5 rounded',
+										sorted === dir ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+									)}
+									onClick={() => column.toggleSorting(dir === 'desc')}
+								>
+									{dir === 'desc' ? 'Desc' : 'Asc'}
+								</button>
+							))}
 							<button
-								key={m}
 								type="button"
-								className={cn(
-									'text-xs px-2 py-0.5 rounded',
-									sorted && metric === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
-								)}
+								className="text-xs px-2 py-0.5 rounded text-muted-foreground hover:text-foreground ml-auto"
 								onClick={() => {
-									setMetric(m)
-									column.toggleSorting(sorted !== 'asc')
+									column.clearSorting()
+									setOpen(false)
 								}}
 							>
-								{label}
+								Clear
 							</button>
-						))}
+						</div>
 					</div>
-					<div className="flex gap-0.5">
-						{(['desc', 'asc'] as const).map(dir => (
-							<button
-								key={dir}
-								type="button"
-								className={cn(
-									'text-xs px-2 py-0.5 rounded',
-									sorted === dir ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
-								)}
-								onClick={() => column.toggleSorting(dir === 'desc')}
-							>
-								{dir === 'desc' ? 'Desc' : 'Asc'}
-							</button>
-						))}
-						<button
-							type="button"
-							className="text-xs px-2 py-0.5 rounded text-muted-foreground hover:text-foreground ml-auto"
-							onClick={() => {
-								column.clearSorting()
-								setOpen(false)
-							}}
-						>
-							Clear
-						</button>
-					</div>
-				</div>
-			</PopoverContent>
-		</Popover>
+				</PopoverContent>
+			</Popover>
 		</span>
 	)
 }
