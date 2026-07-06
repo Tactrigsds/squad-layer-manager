@@ -234,7 +234,8 @@ export type PlayerDied<P = SM.PlayerId> =
 	& {
 		type: 'PLAYER_DIED'
 		damage: number
-		weapon: string
+		// null when the killing weapon was logged as `caused by nullptr`
+		weapon: string | null
 		variant: PlayerWoundedOrDiedVariant
 	}
 	& SM.PlayerAssoc<'victim', P>
@@ -249,7 +250,8 @@ export type PlayerWounded<P = SM.PlayerId> =
 	& {
 		type: 'PLAYER_WOUNDED'
 		damage: number
-		weapon: string
+		// null when the wounding weapon was logged as `caused by nullptr`
+		weapon: string | null
 		variant: PlayerWoundedOrDiedVariant
 	}
 	& SM.PlayerAssoc<'victim', P>

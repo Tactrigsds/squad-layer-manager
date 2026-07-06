@@ -1003,7 +1003,8 @@ export namespace LogEvents {
 	export const PlayerDiedDef = eventDef('PLAYER_DIED', {
 		...BaseEventProperties,
 		damage: z.number(),
-		weapon: z.string(),
+		// null when the log records `caused by nullptr` (the killing weapon actor was already gone), even though the attacker is known
+		weapon: z.string().nullable(),
 		attackerIds: PlayerIds.IdFields('eos', 'playerController'),
 		victimIds: PlayerIds.IdFields('username'),
 	})
@@ -1012,7 +1013,7 @@ export namespace LogEvents {
 	export const PlayerDiedMatcher = createLogMatcher({
 		event: PlayerDiedDef,
 		regex:
-			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer](?:ASQSoldier::)?Die\(\): Player:(.+) KillingDamage=(?:-)*([0-9.]+) from ([A-z_0-9]+) \(Online IDs:([^)|]+)\| Contoller ID: ([\w\d]+)\) caused by ([A-z_0-9-]+)_C/,
+			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer](?:ASQSoldier::)?Die\(\): Player:(.+) KillingDamage=(?:-)*([0-9.]+) from ([A-z_0-9]+) \(Online IDs:([^)|]+)\| Contoller ID: ([\w\d]+)\) caused by (\S+)/,
 		onMatch: (args) => {
 			// Bail if invalid IDs
 			if (args[6].includes('INVALID')) return null
@@ -1025,7 +1026,7 @@ export namespace LogEvents {
 				damage: parseFloat(args[4]),
 				attackerPlayerController: args[5],
 				attackerIds: PlayerIds.parse({ idsStr: args[6], playerController: args[7] }),
-				weapon: args[8],
+				weapon: normalizeWeapon(args[8]),
 			}
 		},
 	})
@@ -1033,7 +1034,8 @@ export namespace LogEvents {
 	export const PlayerWoundedDef = eventDef('PLAYER_WOUNDED', {
 		...BaseEventProperties,
 		damage: z.number(),
-		weapon: z.string(),
+		// null when the log records `caused by nullptr` (the wounding weapon actor was already gone), even though the attacker is known
+		weapon: z.string().nullable(),
 		attackerIds: PlayerIds.IdFields('eos', 'playerController'),
 		victimIds: PlayerIds.IdFields('username'),
 	})
@@ -1041,7 +1043,7 @@ export namespace LogEvents {
 	export const PlayerWoundedMatcher = createLogMatcher({
 		event: PlayerWoundedDef,
 		regex:
-			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer](?:ASQSoldier::)?Wound\(\): Player:(.+) KillingDamage=(?:-)*([0-9.]+) from ([A-z_0-9]+) \(Online IDs:([^)|]+)\| Controller ID: ([\w\d]+)\) caused by ([A-z_0-9-]+)_C/,
+			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer](?:ASQSoldier::)?Wound\(\): Player:(.+) KillingDamage=(?:-)*([0-9.]+) from ([A-z_0-9]+) \(Online IDs:([^)|]+)\| Controller ID: ([\w\d]+)\) caused by (\S+)/,
 		onMatch: (args) => {
 			// Bail if invalid IDs
 			if (args[6].includes('INVALID')) return null
@@ -1053,7 +1055,7 @@ export namespace LogEvents {
 				victimIds: PlayerIds.parse({ username: args[3] }),
 				damage: parseFloat(args[4]),
 				attackerIds: PlayerIds.parse({ idsStr: args[6], playerController: args[7] }),
-				weapon: args[8],
+				weapon: normalizeWeapon(args[8]),
 			}
 		},
 	})
@@ -1374,6 +1376,14 @@ export namespace LogEvents {
 			new Date(),
 		)
 		return date.getTime()
+	}
+
+	// Normalizes the `caused by <token>` weapon from Die()/Wound() lines.
+	// `nullptr` (weapon actor already destroyed) -> null; blueprint instances `<Name>_C` / `<Name>_C_<instanceId>` -> `<Name>`; anything else kept verbatim.
+	function normalizeWeapon(token: string): string | null {
+		if (token === 'nullptr') return null
+		const match = token.match(/^(.+)_C(?:_\d+)?$/)
+		return match ? match[1] : token
 	}
 
 	type ChainItemOptions = { primary?: boolean; optional?: boolean }

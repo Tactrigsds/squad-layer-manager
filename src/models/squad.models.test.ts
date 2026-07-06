@@ -94,6 +94,18 @@ const ADMIN_BROADCAST_MULTILINE =
 const PLAYER_WOUNDED =
 	'[2026.04.27-23.33.47:250][332]LogSquadTrace: [DedicatedServer]Wound(): Player:RaT I Gangry KillingDamage=0.000000 from BP_PlayerController_C_2146093177 (Online IDs: EOS: 00029ce874284d2ba0199af5dd36a199 steam: 76561198397430155 | Controller ID: BP_PlayerController_C_2146093177) caused by BP_Soldier_USMC_Rifleman1_Woodland_C'
 
+// Deployable/fortification weapon token with no _C suffix (attacker INVALID here, but exercises the verbatim-token path)
+const WOUND_FENCE =
+	'[2026.07.02-22.36.19:324][287]LogSquadTrace: [DedicatedServer]Wound(): Player:  vicctoorr KillingDamage=7.000000 from BP_PlayerController_C_2146099999 (Online IDs: EOS: 00029ce874284d2ba0199af5dd36a199 steam: 76561198397430155 | Controller ID: BP_PlayerController_C_2146099999) caused by Fence58_229'
+
+// Outright kill with a known attacker but the killing weapon actor already gone (`caused by nullptr`)
+const DIED_NULLPTR_WEAPON =
+	'[2026.07.02-12.51.55:354][635]LogSquadTrace: [DedicatedServer]Die(): Player: WildChildCao KillingDamage=100.000000 from BP_PlayerController_C_2147443815 (Online IDs: EOS: 0002560453594f53ba3e3f6d3b1e296a steam: 76561199557617668 | Contoller ID: BP_PlayerController_C_2147443815) caused by nullptr'
+
+// nullptr death with no attacker (bled out) -- must still be dropped
+const DIED_NULLPTR_INVALID =
+	'[2026.07.02-12.19.51:267][953]LogSquadTrace: [DedicatedServer]Die(): Player:Lt.  mech1312 KillingDamage=100.000000 from nullptr (Online IDs: INVALID | Contoller ID: None) caused by nullptr'
+
 const ADMIN_FORCED_TEAM_CHANGE =
 	'[2026.07.05-02.11.35:542][495]LogSquad: ADMIN COMMAND: Forced team change for player 0. [Online IDs= EOS: 000249a430574933aefd9bbc9a8f2f37 steam: 76561198052229202]  grey275 from RCON'
 const ADMIN_DISBANDED_SQUAD =
@@ -153,6 +165,34 @@ describe('LogEvents.parse', () => {
 				}),
 				victimIds: expect.objectContaining({ username: 'RaT I Gangry' }),
 			})
+		})
+
+		it('parses a wound whose weapon is a deployable without a _C suffix, keeping the token verbatim', async () => {
+			const events = await collect([WOUND_FENCE, NEXT_TICK_EVENT].join('\n'))
+			expect(events).toHaveLength(1)
+			expect(events[0]).toMatchObject({ type: 'PLAYER_WOUNDED', weapon: 'Fence58_229' })
+		})
+	})
+
+	describe('PLAYER_DIED', () => {
+		it('parses a death whose killing weapon is nullptr but the attacker is known, with weapon null', async () => {
+			const events = await collect([DIED_NULLPTR_WEAPON, NEXT_TICK_EVENT].join('\n'))
+			expect(events).toHaveLength(1)
+			expect(events[0]).toMatchObject({
+				type: 'PLAYER_DIED',
+				weapon: null,
+				damage: 100,
+				attackerIds: expect.objectContaining({
+					eos: '0002560453594f53ba3e3f6d3b1e296a',
+					playerController: 'BP_PlayerController_C_2147443815',
+				}),
+				victimIds: expect.objectContaining({ username: 'WildChildCao' }),
+			})
+		})
+
+		it('drops a nullptr death when the attacker IDs are INVALID (bled out / no attacker)', async () => {
+			const events = await collect([DIED_NULLPTR_INVALID, NEXT_TICK_EVENT].join('\n'))
+			expect(events.filter(e => e.type === 'PLAYER_DIED')).toHaveLength(0)
 		})
 	})
 
