@@ -18,6 +18,7 @@ import * as Discord from '@/systems/discord.server'
 import * as LayerDb from '@/systems/layer-db.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sessions from '@/systems/sessions.server'
+import * as SquadServer from '@/systems/squad-server.server'
 import * as WsSessionSys from '@/systems/ws-session.server'
 import fastifyCookie from '@fastify/cookie'
 import fastifyFormBody from '@fastify/formbody'
@@ -294,7 +295,9 @@ export const setup = C.spanOp('setup', { module }, async () => {
 		for (const [key, value] of Object.entries(BASE_HEADERS)) {
 			res.header(key, value)
 		}
-		// SquadServer.manageDefaultServerIdForRequest(ctx)
+		// resolves the default-server-id cookie for this page load: sets it to the default/first available server, or
+		// clears it when no server is available, so the '/' route can redirect to /servers instead of /servers/undefined
+		SquadServer.manageDefaultServerIdForRequest(buildHttpRequestContext(req, res))
 		switch (ENV.NODE_ENV) {
 			case 'development': {
 				// --------  dev server proxy setup --------

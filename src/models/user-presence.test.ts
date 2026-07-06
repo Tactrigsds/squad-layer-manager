@@ -54,3 +54,41 @@ describe('activityToUpdates', () => {
 		expect(rebuild(activity)).toEqual(activity)
 	})
 })
+
+describe('reducer enabled-server gating', () => {
+	const clientOp = (op: Partial<UP.Op> & { code: UP.Op['code'] }): UP.Op =>
+		({ opId: 'op-' + Math.random(), time: Date.now(), clientId: 'client-1', userId: 1n, ...op }) as UP.Op
+
+	const stateWith = (enabled: string[]): UP.State => ({ ...UP.initState(), enabledServers: new Set(enabled) })
+
+	it('collapses presence to null when a client enters a non-enabled server', () => {
+		const [next] = UP.reducer(
+			stateWith(['server-1']),
+			[clientOp({ code: 'update-activity', update: { code: 'enter-server-dashboard', serverId: 'server-2' } })],
+			[],
+		)
+		expect(next.presence.get('client-1')?.activityState).toBeNull()
+	})
+
+	it('keeps presence when a client enters an enabled server', () => {
+		const [next] = UP.reducer(
+			stateWith(['server-1']),
+			[clientOp({ code: 'update-activity', update: { code: 'enter-server-dashboard', serverId: 'server-1' } })],
+			[],
+		)
+		expect(next.presence.get('client-1')?.activityState?.opts.serverId).toBe('server-1')
+	})
+
+	it('nulls existing presence when its server is disabled via set-enabled-servers', () => {
+		let state = stateWith(['server-1'])
+		;[state] = UP.reducer(
+			state,
+			[clientOp({ code: 'update-activity', update: { code: 'enter-server-dashboard', serverId: 'server-1' } })],
+			[],
+		)
+		expect(state.presence.get('client-1')?.activityState?.opts.serverId).toBe('server-1')
+		;[state] = UP.reducer(state, [{ opId: 'disable', time: Date.now(), code: 'set-enabled-servers', serverIds: [] }], [])
+		expect(state.presence.get('client-1')?.activityState).toBeNull()
+		expect(state.enabledServers.size).toBe(0)
+	})
+})

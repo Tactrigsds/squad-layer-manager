@@ -70,10 +70,14 @@ export default function NavBar() {
 	const selectedServerId = ZusUtils.useStore(SquadServerClient.SelectedServerStore, s => s.selectedServerId)
 	const selectedServer = settings?.servers.find(server => server.id === selectedServerId)
 	// NavBar isn't a descendant of the servers/$serverId route, so it can't receive the frame via props --
-	// ensureSetup just dedupes onto the instance the route already created.
+	// ensureSetup just dedupes onto the instance the route already created. Only set up a frame for a usable server;
+	// building one for a disabled/missing server would spam subscription errors against a slice that doesn't exist.
 	const squadServerKey = React.useMemo(
-		() => frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(selectedServerId)),
-		[selectedServerId],
+		() =>
+			SettingsClient.isServerUsable(selectedServer)
+				? frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(selectedServer.id))
+				: undefined,
+		[selectedServer],
 	)
 
 	return (
@@ -82,16 +86,16 @@ export default function NavBar() {
 			style={{ backgroundColor: settings?.topBarColor ?? undefined }}
 		>
 			<div className="flex items-start space-x-3 sm:space-x-6">
-				{selectedServerId
+				{selectedServer
 					? (
 						<NavLink
-							params={{ serverId: selectedServerId }}
+							params={{ serverId: selectedServer.id }}
 							to="/servers/$serverId"
 						>
 							Server
 						</NavLink>
 					)
-					: <NavLink to="/servers" />}
+					: <NavLink to="/servers">Server</NavLink>}
 				<NavLink to="/filters">
 					Filters
 				</NavLink>
@@ -133,7 +137,7 @@ export default function NavBar() {
 						{config.wsClientId}
 					</span>
 				)}
-				{isOnServerDashboard && selectedServer && <ServerActionsDropdown stores={{ squadServer: squadServerKey }} />}
+				{isOnServerDashboard && squadServerKey && <ServerActionsDropdown stores={{ squadServer: squadServerKey }} />}
 				{settings && <NavLinksDropdown globalLinks={settings.navLinks} />}
 				{isOnServerDashboard && selectedServer && settings && (() => {
 					const servers = settings.servers

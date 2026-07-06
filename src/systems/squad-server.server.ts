@@ -1194,20 +1194,18 @@ export function manageDefaultServerIdForRequest<Ctx extends C.HttpRequest>(
 	}
 
 	const defaultServerId = ctx.cookies['default-server-id']
-	let serverId: string | undefined
-	if (ctx.route?.id === AR.route('/servers/:id')) {
-		// we don't want to validate that this server exists because we want the client to render a 404
+	let serverId: string
+	if (ctx.route?.id === AR.route('/servers/:id') && servers.some((s) => s.id === ctx.route!.params.id)) {
+		// keep the default in sync with the server being viewed -- but only when it's a real server. An invalid id (e.g.
+		// /servers/undefined) still renders a client-side 404, we just must not persist it as the default server.
 		serverId = ctx.route.params.id
-	} else if (defaultServerId) {
+	} else if (defaultServerId && servers.some((s) => s.id === defaultServerId)) {
 		serverId = defaultServerId
-		if (!servers.some((s) => s.id === serverId)) {
-			serverId = servers[0].id
-		}
 	} else {
 		serverId = servers[0].id
 	}
 
-	if (!defaultServerId || serverId !== defaultServerId) {
+	if (serverId !== defaultServerId) {
 		res.cookie(AR.COOKIE_KEY.enum['default-server-id'], serverId, {
 			...AR.COOKIE_DEFAULTS,
 			httpOnly: false,

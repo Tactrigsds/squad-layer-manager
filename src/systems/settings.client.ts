@@ -14,6 +14,14 @@ export function getSettings() {
 	return PublicSettingsStore.getState()
 }
 
+// a server is only usable when the backend has a live slice for it, which happens exactly for enabled, non-broken servers.
+// disabled/broken servers still appear in the registry (e.g. for admin UI) but their dashboard can't be loaded.
+export function isServerUsable(
+	entry: PublicSettings['servers'][number] | undefined,
+): entry is PublicSettings['servers'][number] {
+	return !!entry && entry.enabled && !entry.broken
+}
+
 export async function fetchSettings() {
 	const settings = PublicSettingsStore.getState()
 	if (settings) return settings

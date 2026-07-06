@@ -25,11 +25,11 @@ export const Route = createFileRoute('/_app/servers/$serverId')({
 	loader: async ({ params }) => {
 		const settings = await SettingsClient.fetchSettings()
 		const serverConfig = settings.servers.find(s => s.id === params.serverId)
-		const serverFound = serverConfig !== undefined
+		// only spin up a frame for a server that actually has a live backend slice; disabled/broken/missing servers
+		// render the "unavailable" view instead (see RouteComponent, which recomputes this reactively)
 		return {
 			displayName: serverConfig?.displayName ?? params.serverId,
-			serverFound,
-			squadServerFrameKey: serverFound
+			squadServerFrameKey: SettingsClient.isServerUsable(serverConfig)
 				? frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(params.serverId))
 				: undefined,
 		}
@@ -65,10 +65,14 @@ export const Route = createFileRoute('/_app/servers/$serverId')({
 
 function RouteComponent() {
 	const serverId = Route.useParams().serverId
-	const { serverFound, squadServerFrameKey } = Route.useLoaderData()
+	const { squadServerFrameKey } = Route.useLoaderData()
 	const settings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
+	const serverConfig = settings?.servers.find(s => s.id === serverId)
+	// derived from the live settings store so disabling the server mid-session flips this to the unavailable view. we also
+	// need the frame the loader created; if the server was re-enabled after nav there's no frame yet, so fall back to the card.
+	const canRenderDashboard = SettingsClient.isServerUsable(serverConfig) && squadServerFrameKey !== undefined
 	React.useEffect(() => {
-		if (!serverFound) {
+		if (!canRenderDashboard) {
 			return
 		}
 		// -------- schedule presence updates, keep default server id up-to-date --------
@@ -97,15 +101,17 @@ function RouteComponent() {
 		return () => {
 			sub.unsubscribe()
 		}
-	}, [serverFound])
+	}, [canRenderDashboard])
 
-	if (!serverFound) {
+	if (!canRenderDashboard) {
 		return (
 			<div className="flex items-center justify-center min-h-screen p-4 w-full">
 				<Card className="w-full max-w-lg">
 					<CardHeader className="text-center pb-4">
 						<CardTitle className="text-2xl">
-							Server "{serverId}" Not Found
+							{serverConfig
+								? <>Server "{serverConfig.displayName}" Unavailable</>
+								: <>Server "{serverId}" Not Found</>}
 						</CardTitle>
 					</CardHeader>
 					<CardContent className="space-y-4">
@@ -113,15 +119,17 @@ function RouteComponent() {
 							<AlertCircle className="h-4 w-4" />
 							<AlertTitle>What happened?</AlertTitle>
 							<AlertDescription>
-								This server may have been removed from the configuration or the server ID is incorrect.
+								{serverConfig
+									? 'This server is currently disabled and can\'t be loaded right now.'
+									: 'This server may have been removed from the configuration or the server ID is incorrect.'}
 							</AlertDescription>
 						</Alert>
-						{settings && settings.servers.some(s => s.enabled)
+						{settings && settings.servers.some(s => SettingsClient.isServerUsable(s))
 							? (
 								<div className="space-y-3">
 									<div className="text-sm font-medium text-muted-foreground">Available servers:</div>
 									<div className="space-y-2">
-										{settings.servers.filter(s => s.enabled).map((server) => (
+										{settings.servers.filter(s => SettingsClient.isServerUsable(s)).map((server) => (
 											<Link key={server.id} to="/servers/$serverId" params={{ serverId: server.id }}>
 												<Button variant="outline" className="w-full justify-start" size="lg">
 													<Home className="mr-2 h-4 w-4" />

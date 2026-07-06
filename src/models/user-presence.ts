@@ -177,6 +177,12 @@ export const OpSchema = z.discriminatedUnion('code', [
 		code: z.literal('broadcast-activity-update'),
 		update: z.lazy(() => ActivityUpdateSchema),
 	}),
+
+	z.object({
+		...serverOpBase,
+		code: z.literal('set-enabled-servers'),
+		serverIds: z.array(SS.ServerIdSchema),
+	}),
 ])
 export function createOpId(): string {
 	return createId(24)
@@ -202,18 +208,28 @@ export type Rejection = { code: 'op-error'; op: Op; error: unknown } | { code: '
 
 export type ItemLocks = Map<LL.ItemId, string>
 
-export type State = { presence: PresenceState; itemLocks: ItemLocks }
+// the set of servers that currently have a live slice (enabled + non-broken). a client can only be present on one of
+// these; presence for any other server is collapsed to null. kept in sync by the server via 'set-enabled-servers' ops.
+export type State = { presence: PresenceState; itemLocks: ItemLocks; enabledServers: Set<string> }
 export function initState(): State {
 	return {
 		presence: new Map(),
 		itemLocks: new Map(),
+		enabledServers: new Set(),
 	}
+}
+
+// collapses an activity to null when its server isn't currently enabled -- users can't be present on a server with no live slice
+function gateActivityToEnabled(activity: RootActivity | null, enabledServers: Set<string>): RootActivity | null {
+	if (activity && !enabledServers.has(activity.opts.serverId)) return null
+	return activity
 }
 
 export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _prevOps) => {
 	const state: State = {
 		presence: new Map(prevState.presence),
 		itemLocks: new Map(prevState.itemLocks),
+		enabledServers: new Set(prevState.enabledServers),
 	}
 	const sideEffects: SideEffects[] = []
 	const emit = (se: SideEffects) => sideEffects.push(se)
@@ -244,10 +260,20 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 				}
 				success = true
 				break
+			} else if (op.code === 'set-enabled-servers') {
+				state.enabledServers = new Set(op.serverIds)
+				// any user sitting on a server that just lost its slice is no longer meaningfully present there
+				for (const [clientId, clientState] of state.presence.entries()) {
+					const gated = gateActivityToEnabled(clientState.activityState, state.enabledServers)
+					if (gated === clientState.activityState) continue
+					state.presence.set(clientId, { ...clientState, activityState: gated })
+					MapUtils.deleteByValue(state.itemLocks, clientId)
+				}
+				success = true
 			} else if (op.code === 'broadcast-activity-update') {
 				for (const [clientId, clientState] of state.presence.entries()) {
 					const prevActivity = clientState.activityState ?? null
-					const newActivity = applyActivityUpdate(prevActivity, op.update)
+					const newActivity = gateActivityToEnabled(applyActivityUpdate(prevActivity, op.update), state.enabledServers)
 					if (newActivity === prevActivity) continue
 					const prevEditingSll = prevActivity ? Trans.editingQueue(prevActivity.opts.serverId).match(prevActivity) : null
 					const sllEditNode = newActivity ? Trans.editingQueue(newActivity.opts.serverId).match(newActivity) : null
@@ -297,7 +323,8 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 
 					case 'update-activity': {
 						const prevActivity = clientState.activityState
-						const newActivity = applyActivityUpdate(prevActivity, op.update)
+						// gate here so any op that would put the client ON_DASHBOARD of a non-enabled server collapses to null instead
+						const newActivity = gateActivityToEnabled(applyActivityUpdate(prevActivity, op.update), state.enabledServers)
 
 						const prevEditingSll = prevActivity ? Trans.editingQueue(prevActivity.opts.serverId).match(prevActivity) : null
 						const sllEditNode = newActivity ? Trans.editingQueue(newActivity.opts.serverId).match(newActivity) : null

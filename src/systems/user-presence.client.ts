@@ -14,6 +14,7 @@ import * as UP from '@/models/user-presence'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems/config.client'
+import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UsersClient from '@/systems/users.client'
 import * as ReactRx from '@react-rxjs/core'
@@ -42,11 +43,15 @@ export type LoaderCacheKey<Config extends ActivityLoaderConfig> = Lifecycle.Load
 // already being alive (set up by the servers/$serverId route loader) -- ensureSetup just dedupes onto it.
 function getCurrentServerKey() {
 	const serverId = SquadServerClient.SelectedServerStore.getState().selectedServerId
-	return frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(serverId))
+	const serverConfig = SettingsClient.getSettings()?.servers.find(s => s.id === serverId)
+	// don't build a frame for a server with no live slice -- it would just spam subscription errors
+	if (!SettingsClient.isServerUsable(serverConfig)) return undefined
+	return frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(serverConfig.id))
 }
 
 function getCurrentLayerList(): LL.Item[] {
-	return frameManager.getState(getCurrentServerKey())?.queue.layerList ?? []
+	const key = getCurrentServerKey()
+	return key ? frameManager.getState(key)?.queue.layerList ?? [] : []
 }
 
 export type ConfiguredLoaders = typeof ACTIVITY_LOADER_CONFIGS
@@ -543,11 +548,16 @@ export async function setup() {
 		Actions.updateActivity(...UP.activityToUpdates(activity))
 	})
 
-	const settingsModified$ = ZusUtils.toObservable(SquadServerClient.SelectedServerStore, true).pipe(
-		Rx.map(([s]) => s.selectedServerId),
+	const settingsModified$ = Rx.combineLatest([
+		ZusUtils.toObservable(SquadServerClient.SelectedServerStore, true).pipe(Rx.map(([s]) => s.selectedServerId)),
+		toStream(SettingsClient.PublicSettingsStore),
+	]).pipe(
+		Rx.map(([serverId, settings]) => settings?.servers.find(s => s.id === serverId)),
 		Rx.distinctUntilChanged(),
-		Rx.switchMap(serverId => {
-			const key = frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(serverId))
+		Rx.switchMap(serverConfig => {
+			// only track settings-modified for a usable server; otherwise there's no frame to read and no edits to flush
+			if (!SettingsClient.isServerUsable(serverConfig)) return Rx.of(false)
+			const key = frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(serverConfig.id))
 			return toStream(ZusUtils.resolveReadStore(key)).pipe(Rx.map(s => s.settings.modified), Rx.distinctUntilChanged())
 		}),
 	)

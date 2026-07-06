@@ -19,10 +19,9 @@ import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as RBAC from '@/rbac.models'
 import * as GlobalSettings from '@/systems/client-only-settings.client'
+import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
-import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as RbacClient from '@/systems/rbac.client'
-import * as SquadServerClient from '@/systems/squad-server.client'
 import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 
 import type { Column, ColumnDef, Row, VisibilityState } from '@tanstack/react-table'
@@ -378,7 +377,8 @@ function buildColDefs(
 }
 
 export default function LayerTable(props: {
-	stores: LayerTablePrt.KeyProp
+	// squadServer is optional: supplied when rendered within a server context (for team-parity display), omitted elsewhere
+	stores: LayerTablePrt.KeyProp & Partial<SquadServerFrame.KeyProp>
 	extraPanelItems?: React.ReactNode
 
 	enableForceSelect?: boolean
@@ -426,14 +426,15 @@ export default function LayerTable(props: {
 	// shared display state for all cells -- see LayerTableCellCtx
 	const displayLayersNormalized = ZusUtils.useStore(GlobalSettings.GlobalSettingsStore, (state) => state.displayTeamsNormalized)
 	const cursor = useTableFrame(table => table.pageData?.input.cursor)
-	const serverId = ZusUtils.useStore(SquadServerClient.SelectedServerStore, s => s.selectedServerId)
+	// read parity from the server frame store (safe getState) passed via props, rather than the layerItemsState$
+	// observable which throws when no frame is hot. omitted outside a server context (e.g. filter editor) -> parity 0
 	const teamParity = ZusUtils.useStore(
-		LayerQueueClient.layerItemsState$(serverId),
-		React.useCallback((state: LQY.LayerItemsState) => {
-			if (!cursor) return 0
-			return LQY.resolveTeamParityForCursor(state, LQY.fromLayerListCursor(state, cursor))
+		props.stores.squadServer,
+		React.useCallback((s: SquadServerFrame.State | undefined) => {
+			if (!s || !cursor) return 0
+			return LQY.resolveTeamParityForCursor(s.layerItemsState, LQY.fromLayerListCursor(s.layerItemsState, cursor))
 		}, [cursor]),
-	)
+	) ?? 0
 	const cellDisplayCtx = React.useMemo(
 		(): CellDisplayCtx => ({ teamParity, displayLayersNormalized }),
 		[teamParity, displayLayersNormalized],

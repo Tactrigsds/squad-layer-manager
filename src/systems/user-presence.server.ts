@@ -9,6 +9,7 @@ import * as C from '@/server/context'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
+import * as SettingsSys from '@/systems/settings.server'
 import * as WSSessionSys from '@/systems/ws-session.server'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
@@ -136,6 +137,17 @@ export function setup() {
 		op$: new IsolatedSubject<{ ops: UP.Op[]; sourceWsClientId?: string }>(),
 	}
 	CleanupSys.register(() => globalUserPresence.op$.complete())
+
+	// keep the presence state's notion of enabled servers in sync with the registry; disabling/removing a server
+	// dispatches an op that both updates the set and collapses any presence sitting on that server to null
+	const enabledServersSub = SettingsSys.publicSettings$.pipe(
+		Rx.map((settings) => settings.servers.filter((s) => s.enabled && !s.broken).map((s) => s.id)),
+		Rx.distinctUntilChanged((a, b) => a.length === b.length && a.every((id) => b.includes(id))),
+	).subscribe((serverIds) => {
+		dispatchOp([{ code: 'set-enabled-servers', serverIds, opId: UP.createOpId(), time: Date.now() }])
+			.catch((error) => log.error(error))
+	})
+	CleanupSys.register(() => enabledServersSub.unsubscribe())
 
 	// wsClientIds are generated per-connection, so a closed socket's id never comes back -- no reconnect check needed
 	const disconnectSub = WSSessionSys.disconnect$.pipe(

@@ -261,19 +261,34 @@ type SelectedServerStore = {
 export let SelectedServerStore!: Zus.StoreApi<SelectedServerStore>
 
 export namespace SelectedServerActions {
+	// only ids that map to a real server may be persisted as the default -- otherwise landing on an invalid route like
+	// /servers/undefined (which renders a client 404) would poison the default-server-id cookie and the store
+	function isKnownServer(serverId: string | undefined): serverId is string {
+		if (!serverId) return false
+		const settings = SettingsClient.PublicSettingsStore.getState()
+		// if settings haven't loaded yet we can't validate, so don't drop a legitimate id
+		if (!settings) return true
+		// only a usable (enabled, non-broken) server should become the default -- otherwise the backend just clears it again
+		return settings.servers.some((s) => s.id === serverId && SettingsClient.isServerUsable(s))
+	}
+
 	export function setSelectedServer(serverId: string) {
 		if (serverId === SelectedServerStore.getState().selectedServerId) return
+		if (!isKnownServer(serverId)) return
 		Cookies.setCookie('default-server-id', serverId)
 		SelectedServerStore.setState({ selectedServerId: serverId })
 	}
 
 	export function setAsDefaultServer() {
-		Cookies.setCookie('default-server-id', SelectedServerStore.getState().selectedServerId)
+		const serverId = SelectedServerStore.getState().selectedServerId
+		if (!isKnownServer(serverId)) return
+		Cookies.setCookie('default-server-id', serverId)
 	}
 }
 
 export function setup() {
-	// this cookie will always be set correctly according to the path on page load, which is the only time we expect setup() to be called
+	// this cookie is set correctly by the backend according to the path on page load (the only time we expect setup() to be
+	// called); it may be absent when there are no enabled servers to default to, in which case '/' redirects to /servers
 	const cookieServerId = Cookies.getCookie('default-server-id')!
 	SelectedServerStore = Zus.createStore(() => ({
 		selectedServerId: cookieServerId,
