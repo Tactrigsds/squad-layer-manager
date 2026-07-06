@@ -1,4 +1,5 @@
-import SchemaJsonEditor, { type SchemaJsonEditorHandle } from '@/components/schema-json-editor'
+import type SchemaJsonEditorComponent from '@/components/schema-json-editor'
+import type { SchemaJsonEditorHandle } from '@/components/schema-json-editor.types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -24,6 +25,12 @@ import { createFileRoute } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import { z } from 'zod'
+
+// lazily loaded so the CodeMirror editor bundle isn't paid for until an editor is actually shown.
+// the `as` casts restore the generic component signature that React.lazy erases.
+const SchemaJsonEditor = React.lazy(
+	() => import('@/components/schema-json-editor') as unknown as Promise<{ default: React.FC<any> }>,
+) as unknown as typeof SchemaJsonEditorComponent
 
 export const Route = createFileRoute('/_app/settings')({
 	component: RouteComponent,
@@ -258,14 +265,16 @@ function RawSettingsEditor({ serverId, onDone }: { serverId: string; onDone: () 
 			{isLoading
 				? <p className="text-sm text-muted-foreground">Loading…</p>
 				: (
-					<SchemaJsonEditor
-						ref={editorRef}
-						schema={SETTINGS.ServerSettingsSchema}
-						value={data!.settings as SETTINGS.ServerSettings}
-						onValidChange={setValidDraft}
-						minHeightPx={350}
-						label="Server Settings"
-					/>
+					<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
+						<SchemaJsonEditor
+							ref={editorRef}
+							schema={SETTINGS.ServerSettingsSchema}
+							value={data!.settings as SETTINGS.ServerSettings}
+							onValidChange={setValidDraft}
+							minHeightPx={350}
+							label="Server Settings"
+						/>
+					</React.Suspense>
 				)}
 			<div className="flex justify-end gap-2">
 				<Button variant="outline" onClick={() => editorRef.current?.format()}>
@@ -454,14 +463,16 @@ function GlobalSettingsSection() {
 				<CardDescription>Edit the global settings for this SLM instance.</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
-				<SchemaJsonEditor
-					ref={editorRef}
-					schema={SETTINGS.GlobalSettingsSchema}
-					value={settings}
-					onValidChange={setValidDraft}
-					minHeightPx={450}
-					label="Global Settings"
-				/>
+				<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
+					<SchemaJsonEditor
+						ref={editorRef}
+						schema={SETTINGS.GlobalSettingsSchema}
+						value={settings}
+						onValidChange={setValidDraft}
+						minHeightPx={450}
+						label="Global Settings"
+					/>
+				</React.Suspense>
 				<div className="flex justify-end gap-2">
 					<Button variant="outline" onClick={() => editorRef.current?.format()}>
 						<Icons.Braces className="h-4 w-4" />

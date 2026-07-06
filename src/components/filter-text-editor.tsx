@@ -1,9 +1,7 @@
-// WARNING: the ordering of imports  matters here unfortunately. be careful when changing
-import Ace from 'ace-builds'
-
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { useDebounced } from '@/hooks/use-debounce'
 import { useToast } from '@/hooks/use-toast'
+import * as CM from '@/lib/codemirror'
 import * as Obj from '@/lib/object'
 import * as Typography from '@/lib/typography.ts'
 import * as ZusUtils from '@/lib/zustand'
@@ -11,30 +9,12 @@ import * as F from '@/models/filter.models'
 import stringifyCompact from 'json-stringify-pretty-compact'
 import React from 'react'
 import * as Rx from 'rxjs'
+import type { FilterTextEditorProps } from './filter-text-editor.types'
 
-export type FilterTextEditorHandle = {
-	format: () => void
-	focus: () => void
-}
-
-type Editor = Ace.Ace.Editor
-export interface FilterTextEditorProps {
-	stores: EditFrame.KeyProp
-	ref?: React.Ref<FilterTextEditorHandle>
-}
-let pluginsLoading$: Promise<unknown> | false = Promise.all([
-	import('ace-builds/src-noconflict/mode-json'),
-	import('ace-builds/src-noconflict/theme-dracula'),
-]).then(
-	() => (pluginsLoading$ = false),
-)
 export default function FilterTextEditor(props: FilterTextEditorProps) {
-	if (pluginsLoading$) throw pluginsLoading$
 	const editorEltRef = React.useRef<HTMLDivElement>(null)
-	const errorViewEltRef = React.useRef<HTMLDivElement>(null)
-	const ref = props.ref
-	const editorRef = React.useRef<Editor>(null)
-	const errorViewRef = React.useRef<Editor>(null)
+	const viewRef = React.useRef<CM.EditorView | null>(null)
+	const [errorText, setErrorText] = React.useState('')
 
 	const getState = () => ZusUtils.getState(props.stores.filterEditor)
 
@@ -44,22 +24,20 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 			try {
 				obj = JSON.parse(value)
 			} catch (err) {
-				if (err instanceof SyntaxError) {
-					errorViewRef.current!.setValue(stringifyCompact(err.message))
-				}
+				if (err instanceof SyntaxError) setErrorText(stringifyCompact(err.message))
 				return
 			}
 			const res = F.FilterNodeSchema.safeParse(obj)
 			if (!res.success) {
-				errorViewRef.current!.setValue(stringifyCompact(res.error.issues))
+				setErrorText(stringifyCompact(res.error.issues))
 				return
 			}
 			if (!F.isBlockType(res.data.type)) {
-				errorViewRef.current!.setValue(stringifyCompact(`root node must be a block node: (${F.BLOCK_TYPES.join(', ')})`))
+				setErrorText(stringifyCompact(`root node must be a block node: (${F.BLOCK_TYPES.join(', ')})`))
 				return
 			}
 
-			errorViewRef.current!.setValue('')
+			setErrorText('')
 			const valueChanged = !Obj.deepEqual(res.data, F.treeToFilterNode(getState().tree))
 			if (valueChanged) EditFrame.Actions.updateRoot(props.stores, res.data)
 		},
@@ -74,68 +52,48 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 	})
 
 	const toaster = useToast()
-	// -------- setup editor, handle events coming from editor, resizing --------
+	// -------- setup editor, sync from store, handle change events --------
 	React.useEffect(() => {
-		const editor = Ace.edit(editorEltRef.current!, {
-			value: '',
-			mode: 'ace/mode/json',
-			theme: 'ace/theme/dracula',
-			useWorker: false,
-			wrap: true,
+		const schemaJson = CM.toJsonSchema(F.FilterNodeSchema)
+		const view = new CM.EditorView({
+			parent: editorEltRef.current!,
+			doc: stringifyCompact(F.treeToFilterNode(getState().tree)),
+			extensions: [
+				...CM.jsonEditorExtensions(schemaJson),
+				CM.EditorView.updateListener.of((u) => {
+					if (u.docChanged) onChangeDebounced(u.state.doc.toString())
+				}),
+			],
 		})
-		const errorView = Ace.edit(errorViewEltRef.current!, {
-			focusTimeout: 0,
-			value: '',
-			mode: 'ace/mode/json',
-			theme: 'ace/theme/dracula',
-			useWorker: false,
-			readOnly: true,
-			wrap: true,
-		})
-		const ro = new ResizeObserver(() => {
-			editor.resize()
-			errorView.resize()
-		})
+		viewRef.current = view
 
+		// remeasure when returning to a hidden tab, matching the old resize-on-visibility behavior
 		const sub = Rx.fromEvent(document, 'visibilitychange').subscribe(() => {
-			if (document.hidden) return
-			editor.resize()
-			errorView.resize()
-		})
-
-		editor.on('change', () => {
-			onChangeDebounced(editor.getValue())
+			if (!document.hidden) view.requestMeasure()
 		})
 
 		let first = true
 		const unsub = ZusUtils.resolveReadStore(props.stores.filterEditor).subscribe((frameState, prevFrameState) => {
 			if (!first && frameState.tree === prevFrameState.tree) return
 			first = false
-			editor.setValue(stringifyCompact(F.treeToFilterNode(frameState.tree)))
+			CM.setDoc(view, stringifyCompact(F.treeToFilterNode(frameState.tree)))
 		})
 
-		editorRef.current = editor
-		errorViewRef.current = errorView
-		{
-			const tree = getState().tree
-			editor.setValue(stringifyCompact(F.treeToFilterNode(tree)))
-		}
-
 		return () => {
-			editor.destroy()
-			ro.disconnect()
+			view.destroy()
+			viewRef.current = null
 			sub.unsubscribe()
 			unsub()
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [onChangeDebounced, props.stores])
 
-	React.useImperativeHandle(ref, () => ({
+	React.useImperativeHandle(props.ref, () => ({
 		format: () => {
-			const value = editorRef.current!.getValue()
+			const view = viewRef.current!
 			let obj: any
 			try {
-				obj = JSON.parse(value)
+				obj = JSON.parse(view.state.doc.toString())
 			} catch (err) {
 				if (err instanceof SyntaxError) {
 					toaster.toast({
@@ -145,20 +103,17 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 				}
 				return
 			}
-			editorRef.current!.setValue(stringifyCompact(obj))
+			CM.setDoc(view, stringifyCompact(obj))
 		},
-		focus: () => {
-			// for some reason the value is out of date when swapping tabs unless we include this line
-			editorRef.current!.setValue(editorRef.current!.getValue())
-			editorRef.current!.focus()
-		},
+		focus: () => viewRef.current!.focus(),
 	}))
+
 	return (
-		<div className="grid h-[500px] w-full grid-cols-[auto_600px] grid-rows-[min-content_auto] rounded-md">
+		<div className="grid h-[500px] w-full grid-cols-[auto_600px] grid-rows-[min-content_minmax(0,1fr)] gap-2 rounded-md">
 			<h3 className={Typography.Small + 'mb-2 ml-[45px]'}>Filter</h3>
-			<h3 className={Typography.Small + 'mb-2 ml-[45px]'}>Errors</h3>
-			<div ref={editorEltRef}></div>
-			<div ref={errorViewEltRef}></div>
+			<h3 className={Typography.Small + 'mb-2'}>Errors</h3>
+			<div ref={editorEltRef} className="min-h-0 overflow-hidden rounded-md border"></div>
+			<pre className="min-h-0 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">{errorText}</pre>
 		</div>
 	)
 }

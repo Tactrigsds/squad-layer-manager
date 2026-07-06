@@ -198,7 +198,8 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 						}}
 					/>
 				</div>
-				<ScrollArea ref={scrollAreaRef} className="h-75">
+				<div className="relative">
+					<ScrollArea ref={scrollAreaRef} className="h-75">
 					<div ref={contentRef} className="flex flex-col gap-0.5 min-h-0 w-full max-w-175">
 						{isDetailsPending && filteredEvents.length === 0 && (
 							<div className="flex items-center justify-center py-6">
@@ -215,6 +216,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 						))}
 					</div>
 					<div ref={bottomRef} />
+					</ScrollArea>
 					{showScrollButton && (
 						<Button
 							onClick={() => scrollToBottom()}
@@ -226,7 +228,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 							<span className="text-xs">Scroll to bottom</span>
 						</Button>
 					)}
-				</ScrollArea>
+				</div>
 			</div>
 			{connectionStatus?.status === 'online' && (
 				<div className="px-3 py-2 border-t border-border/50">

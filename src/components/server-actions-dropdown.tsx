@@ -15,6 +15,7 @@ import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import { useMutation } from '@tanstack/react-query'
+import * as Icons from 'lucide-react'
 
 const dropdownMenuSlots: MenuSlots = {
 	Item: DropdownMenuItem,

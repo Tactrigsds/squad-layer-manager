@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button'
 import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogFooter, HeadlessDialogHeader, HeadlessDialogTitle } from '@/components/ui/headless-dialog'
 import { useFrameLifecycle } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
+import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react.ts'
 import * as ZusUtils from '@/lib/zustand'
@@ -20,14 +21,14 @@ export type EditLayerDialogProps = {
 	layerId?: L.LayerId
 	onSelectLayer: (layerId: L.LayerId) => void
 	cursor?: LL.Cursor
-	stores?: Partial<SelectLayersFrame.KeyProp>
+	stores?: Partial<SelectLayersFrame.KeyProp & SquadServerFrame.KeyProp>
 }
 
 type EditLayerDialogContentProps = {
 	layerId?: L.LayerId
 	onSelectLayer: (layerId: L.LayerId) => void
 	cursor?: LL.Cursor
-	stores?: Partial<SelectLayersFrame.KeyProp>
+	stores?: Partial<SelectLayersFrame.KeyProp & SquadServerFrame.KeyProp>
 	onClose: () => void
 }
 
@@ -41,6 +42,7 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 				selected: defaultLayerIdRef.current ? [defaultLayerIdRef.current] : [],
 				maxSelected: 1,
 				minSelected: defaultLayerIdRef.current ? 1 : 0,
+				squadServer: props.stores?.squadServer,
 			}),
 	)
 	const frameKey = useFrameLifecycle(
@@ -76,7 +78,7 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 						/* FIXME stage4: AppliedFiltersPanel's stores type also requires a squadServer key (see applied-filters-panel.tsx),
 					   which isn't available in this select-layers-only context. Left as-is (pre-existing before this migration pass). */
 					}
-					<AppliedFiltersPanel stores={{ appliedFilters: frameKey }} />
+					<AppliedFiltersPanel stores={{ appliedFilters: frameKey, squadServer: props.stores?.squadServer }} />
 				</div>
 			</HeadlessDialogHeader>
 
@@ -85,7 +87,7 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 				<div className="flex flex-col space-y-2 justify-between h-full min-h-0">
 					<div className="flex h-full min-h-0">
 						<LayerTable
-							stores={{ layerTable: frameKey }}
+							stores={{ layerTable: frameKey, squadServer: props.stores?.squadServer }}
 							extraPanelItems={<PoolCheckboxes stores={{ poolCheckboxes: frameKey }} />}
 							canChangeRowsPerPage={false}
 							canToggleColumns={false}

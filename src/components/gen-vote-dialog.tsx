@@ -335,6 +335,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 					layerId={choices[editingChoiceIndex]?.layerId}
 					onSelectLayer={handleEditedChoiceLayer}
 					cursor={cursor}
+					stores={props.stores}
 				/>
 			)}
 		</>

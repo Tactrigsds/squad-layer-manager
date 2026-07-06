@@ -1,4 +1,5 @@
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
+import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import * as Arr from '@/lib/array.ts'
 import * as DH from '@/lib/display-helpers'
@@ -28,7 +29,7 @@ import ComboBox from './combo-box/combo-box.tsx'
 import { LOADING } from './combo-box/constants.ts'
 import EditLayerDialog from './edit-layer-dialog.tsx'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
-import type { FilterTextEditorHandle } from './filter-text-editor'
+import type { FilterTextEditorHandle } from './filter-text-editor.types'
 import { NodePortal, StoredParentNode } from './node-map.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
 import { Button, buttonVariants } from './ui/button'
@@ -116,7 +117,9 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 					<StoredParentNode nodeId={rootNodeId} store={nodeStore} />
 				</div>
 				<div className={activeTab === 'text' ? '' : 'hidden'}>
-					<FilterTextEditor ref={editorRef} stores={props.stores} />
+					<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
+						<FilterTextEditor ref={editorRef} stores={props.stores} />
+					</React.Suspense>
 				</div>
 			</div>
 			{/* -------- toolbar -------- */}
@@ -451,6 +454,7 @@ export function Comparison(props: {
 	highlight?: boolean
 	columnLabel?: string
 	ref?: React.ForwardedRef<ComparisonHandle>
+	stores?: Partial<SquadServerFrame.KeyProp>
 }) {
 	const showValueDropdown = props.showValueDropdown ?? true
 	const lockOnSingleOption = props.lockOnSingleOption ?? false
@@ -573,6 +577,7 @@ export function Comparison(props: {
 				valueBox = (
 					<LayerEqConfig
 						value={comp.value as string | null ?? null}
+						stores={props.stores}
 						setValue={(update) => {
 							let value: string | null
 							if (typeof update === 'function') {
@@ -904,6 +909,7 @@ export function LayerEqConfig(
 		value: string | null
 		setValue: React.Dispatch<React.SetStateAction<string | null>>
 		baseQueryInput?: LQY.BaseQueryInput
+		stores?: Partial<SquadServerFrame.KeyProp>
 	},
 ) {
 	const [open, setOpen] = React.useState(false)
@@ -919,6 +925,7 @@ export function LayerEqConfig(
 				onOpenChange={setOpen}
 				layerId={props.value ?? undefined}
 				onSelectLayer={(v) => props.setValue(v)}
+				stores={props.stores}
 			/>
 		</div>
 	)

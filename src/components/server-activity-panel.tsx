@@ -121,20 +121,20 @@ function ServerChatEvents(
 					)}
 				</div>
 				<div ref={bottomRef} />
-				{showScrollButton && (
-					<Button
-						onClick={() => scrollToBottom()}
-						variant="secondary"
-						className="absolute bottom-0 left-0 right-0 w-full h-8 shadow-lg flex items-center justify-center gap-2 z-10 bg-opacity-20! rounded-none backdrop-blur-sm"
-						title="Scroll to bottom"
-					>
-						<Icons.ChevronDown className="h-4 w-4" />
-						<span className="text-xs">
-							{newMessageCount > 0 ? `${newMessageCount} new event${newMessageCount === 1 ? '' : 's'}` : 'Scroll to bottom'}
-						</span>
-					</Button>
-				)}
 			</ScrollArea>
+			{showScrollButton && (
+				<Button
+					onClick={() => scrollToBottom()}
+					variant="secondary"
+					className="absolute bottom-0 left-0 right-0 w-full h-8 shadow-lg flex items-center justify-center gap-2 z-10 bg-opacity-20! rounded-none backdrop-blur-sm"
+					title="Scroll to bottom"
+				>
+					<Icons.ChevronDown className="h-4 w-4" />
+					<span className="text-xs">
+						{newMessageCount > 0 ? `${newMessageCount} new event${newMessageCount === 1 ? '' : 's'}` : 'Scroll to bottom'}
+					</span>
+				</Button>
+			)}
 		</div>
 	)
 }
