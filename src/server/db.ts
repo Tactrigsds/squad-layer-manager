@@ -1,3 +1,4 @@
+import { tsMigrations } from '@/migrations/registry'
 import type * as CS from '@/models/context-shared'
 import { initModule } from '@/server/logger'
 import DatabaseConstructor, { type Database } from 'better-sqlite3'
@@ -9,6 +10,7 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import type * as C from './context.ts'
 import * as Env from './env.ts'
+import * as Migrate from './migrate.ts'
 
 export type Db = BetterSQLite3Database<Record<string, never>>
 
@@ -22,7 +24,7 @@ let ENV!: ReturnType<typeof envBuilder>
 let db: Db
 let dbRedactParams: Db
 
-export async function setup() {
+export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 	log = module.getLogger()
 	ENV = envBuilder()
 
@@ -30,9 +32,34 @@ export async function setup() {
 	driver = new DatabaseConstructor(ENV.DB_PATH)
 	driver.pragma('journal_mode = WAL')
 	driver.pragma('synchronous = NORMAL')
-	// mysql enforced the schema's FK cascades; sqlite only does so with this pragma (per-connection)
-	driver.pragma('foreign_keys = ON')
 	driver.pragma('busy_timeout = 5000')
+
+	// Schema-vs-code guard, run while foreign_keys is still at its default (OFF) — same as the
+	// standalone `pnpm db:migrate`, since drizzle-kit's table-rebuild migrations require FK
+	// enforcement off. By default migrations are applied out-of-band and boot merely refuses to run
+	// against a DB that's behind (never taking a write lock or mutating the DB here). With
+	// DB_AUTOMIGRATE on, boot applies pending migrations itself instead — enable only once the new
+	// migration system is trusted, and never with more than one instance running. Scripts that
+	// intentionally run pre-migration pass skipMigrationCheck.
+	if (!opts?.skipMigrationCheck) {
+		const migrateOpts = { sqlDir: path.resolve(process.cwd(), 'drizzle-sqlite'), tsMigrations }
+		if (ENV.DB_AUTOMIGRATE) {
+			const { applied } = await Migrate.runMigrations(driver, { ...migrateOpts, log: (msg) => log.info(msg) })
+			if (applied.length > 0) log.info('DB_AUTOMIGRATE applied %d migration(s)', applied.length)
+		} else {
+			const pending = Migrate.getPendingMigrations(driver, migrateOpts)
+			if (pending.length > 0) {
+				throw new Error(
+					`Refusing to start: ${pending.length} pending database migration(s): ${pending.join(', ')}. `
+						+ `Run \`pnpm db:migrate\` (prod: \`pnpm db:migrate:prod\`) before starting, or set DB_AUTOMIGRATE=true.`,
+				)
+			}
+		}
+	}
+
+	// mysql enforced the schema's FK cascades; sqlite only does so with this pragma (per-connection).
+	// Set after migrations so table-rebuild migrations run with enforcement off (see above).
+	driver.pragma('foreign_keys = ON')
 
 	db = drizzle(driver, {
 		logger: {

@@ -26,6 +26,10 @@ export const groups = {
 
 	db: {
 		DB_PATH: z.string().min(1).prefault('./data/main.sqlite3'),
+		// When true, the server applies pending migrations itself at boot instead of refusing to
+		// start (see db.ts setup()). Off by default: migrations run out-of-band via `pnpm db:migrate`
+		// until the new migration system is proven. Unsafe to enable while another app instance runs.
+		DB_AUTOMIGRATE: z.stringbool().default(false),
 	},
 
 	// only needed when running integration tests for the rcon modules
