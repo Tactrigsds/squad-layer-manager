@@ -200,22 +200,22 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 				</div>
 				<div className="relative">
 					<ScrollArea ref={scrollAreaRef} className="h-75">
-					<div ref={contentRef} className="flex flex-col gap-0.5 min-h-0 w-full max-w-175">
-						{isDetailsPending && filteredEvents.length === 0 && (
-							<div className="flex items-center justify-center py-6">
-								<Spinner className="size-5" />
-							</div>
-						)}
-						{groupEventsByDate(filteredEvents).map(([dateKey, events]) => (
-							<div key={dateKey}>
-								<div className="sticky top-0 z-10 bg-background/90 backdrop-blur-sm px-2 py-0.5 text-[10px] text-muted-foreground font-medium border-b border-border/50">
-									{formatDateLabel(dateKey)}
+						<div ref={contentRef} className="flex flex-col gap-0.5 min-h-0 w-full max-w-175">
+							{isDetailsPending && filteredEvents.length === 0 && (
+								<div className="flex items-center justify-center py-6">
+									<Spinner className="size-5" />
 								</div>
-								{events.map(e => <ServerEvent key={e.id} event={e} stores={stores} />)}
-							</div>
-						))}
-					</div>
-					<div ref={bottomRef} />
+							)}
+							{groupEventsByDate(filteredEvents).map(([dateKey, events]) => (
+								<div key={dateKey}>
+									<div className="sticky top-0 z-10 bg-background/90 backdrop-blur-sm px-2 py-0.5 text-[10px] text-muted-foreground font-medium border-b border-border/50">
+										{formatDateLabel(dateKey)}
+									</div>
+									{events.map(e => <ServerEvent key={e.id} event={e} stores={stores} />)}
+								</div>
+							))}
+						</div>
+						<div ref={bottomRef} />
 					</ScrollArea>
 					{showScrollButton && (
 						<Button

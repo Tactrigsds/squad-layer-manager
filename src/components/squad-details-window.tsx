@@ -168,15 +168,15 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 					<h3 className="text-xs font-medium py-0.5">Squad Events</h3>
 					<div className="relative">
 						<ScrollArea ref={scrollAreaRef} className="h-75">
-						<div ref={contentRef} className="flex flex-col gap-0.5 min-h-0 w-full max-w-175">
-							{isPending && allEvents.length === 0 && (
-								<div className="flex items-center justify-center py-6">
-									<Spinner className="size-5" />
-								</div>
-							)}
-							{allEvents.map(e => <ServerEvent key={e.id} event={e} stores={stores} />)}
-						</div>
-						<div ref={bottomRef} />
+							<div ref={contentRef} className="flex flex-col gap-0.5 min-h-0 w-full max-w-175">
+								{isPending && allEvents.length === 0 && (
+									<div className="flex items-center justify-center py-6">
+										<Spinner className="size-5" />
+									</div>
+								)}
+								{allEvents.map(e => <ServerEvent key={e.id} event={e} stores={stores} />)}
+							</div>
+							<div ref={bottomRef} />
 						</ScrollArea>
 						{showScrollButton && (
 							<Button

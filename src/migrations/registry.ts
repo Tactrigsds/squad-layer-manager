@@ -1,4 +1,4 @@
-import { type TsMigration } from '@/server/migrate'
+import type { TsMigration } from '@/server/migrate'
 
 // Ordered registry of hand-written `.ts` data migrations. Each entry is statically
 // imported here (not globbed) so the rolldown server bundle includes it in prod.

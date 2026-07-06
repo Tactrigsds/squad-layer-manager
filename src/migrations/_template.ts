@@ -1,4 +1,4 @@
-import { type MigrationDriver } from '@/server/migrate'
+import type { MigrationDriver } from '@/server/migrate'
 
 // Template for a hand-written data migration. Copy to NNNN_description.ts and register
 // it in src/migrations/registry.ts.

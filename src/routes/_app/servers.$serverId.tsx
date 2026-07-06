@@ -120,7 +120,7 @@ function RouteComponent() {
 							<AlertTitle>What happened?</AlertTitle>
 							<AlertDescription>
 								{serverConfig
-									? 'This server is currently disabled and can\'t be loaded right now.'
+									? "This server is currently disabled and can't be loaded right now."
 									: 'This server may have been removed from the configuration or the server ID is incorrect.'}
 							</AlertDescription>
 						</Alert>
