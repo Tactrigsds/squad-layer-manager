@@ -65,8 +65,7 @@ await C.spanOp('main', { module }, async () => {
 	WsSession.setup()
 	// resolves its config synchronously but opens the db in the background, so it stays off the
 	// critical path; we await `LayerDb.ready` below, right before the db can first be queried
-	const layerDbReady = LayerDb.setup()
-	layerDbReady.catch(() => {}) // real handling happens at the await below; avoid an unhandledRejection in the meantime
+	await LayerDb.setup()
 	await Promise.all([Config.ensureSetup(), DB.setup(), FilterEntity.setup()])
 	Config.pushPublicConfig()
 	PersistedCache.setup()
@@ -78,8 +77,6 @@ await C.spanOp('main', { module }, async () => {
 	// detect (before this instance's APP_STARTED is persisted) whether we came up via a restart-slm command, so the
 	// per-server "SLM started/restarted" admin warn (sent during SquadServer.setup) can name who restarted it
 	await AppEventsSys.detectRestartAtBoot(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
-	// SquadServer connects RCON, which can trigger layer-generation queries, so the db must be ready by now
-	await layerDbReady
 	await Promise.all([SquadServer.setup(), Discord.setup()])
 	await AppEventsSys.persistAppEvent(
 		DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }),
