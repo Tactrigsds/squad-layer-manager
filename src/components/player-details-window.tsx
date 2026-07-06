@@ -129,6 +129,20 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 				)}
 				{flags && flags.length > 0 && <PlayerFlagsList flags={flags} zIndex={zIndex} />}
 				<EditFlagsButton playerId={playerId} currentFlagIds={bmData?.flagIds ?? []} zIndex={zIndex} />
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild>
+						<button
+							type="button"
+							className="inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+							title="Player actions"
+						>
+							<Icons.Ellipsis className="h-3.5 w-3.5" />
+						</button>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent style={{ zIndex: zIndex + 10 }}>
+						<PlayerMenuItems playerId={playerId} slots={dropdownMenuSlots} stores={stores} omitWarn />
+					</DropdownMenuContent>
+				</DropdownMenu>
 				<DraggableWindowPinToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
@@ -142,41 +156,25 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 					{player?.ids.epic && <CopyIdButton label="epic" id={player.ids.epic} zIndex={zIndex} />}
 				</div>
 				<div className="flex items-center gap-2 text-muted-foreground">
-					<div className="flex items-center gap-2 flex-1">
-						{(player?.ids.steam ?? profile?.playerIds.steam)
-							? (
-								<>
-									<ExtLink href={`https://steamcommunity.com/profiles/${player?.ids.steam ?? profile?.playerIds.steam}`}>Steam</ExtLink>
-									<ExtLink href={`https://communitybanlist.com/search/${player?.ids.steam ?? profile?.playerIds.steam}`}>CBL</ExtLink>
-									<ExtLink href={`https://mysquadstats.com/search/${player?.ids.steam ?? profile?.playerIds.steam}#vanillaStats`}>
-										MySquadStats
-									</ExtLink>
-								</>
-							)
-							: <span className="italic">(no steam id)</span>}
-						<ExtLink
-							href={profile
-								? profile.profileUrl
-								: `https://www.battlemetrics.com/rcon/players?filter%5Bsearch%5D=${playerId}&filter%5Bservers%5D=false&filter%5BplayerFlags%5D=&sort=score&showServers=true&method=quick`}
-						>
-							BattleMetrics
-						</ExtLink>
-						{!!profile?.hoursPlayed && <span title="Hours played on this org's servers">{profile.hoursPlayed}h</span>}
-					</div>
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<button
-								type="button"
-								className="inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors shrink-0"
-								title="Player actions"
-							>
-								<Icons.Ellipsis className="h-3.5 w-3.5" />
-							</button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent style={{ zIndex: zIndex + 10 }}>
-							<PlayerMenuItems playerId={playerId} slots={dropdownMenuSlots} stores={stores} omitWarn />
-						</DropdownMenuContent>
-					</DropdownMenu>
+					{(player?.ids.steam ?? profile?.playerIds.steam)
+						? (
+							<>
+								<ExtLink href={`https://steamcommunity.com/profiles/${player?.ids.steam ?? profile?.playerIds.steam}`}>Steam</ExtLink>
+								<ExtLink href={`https://communitybanlist.com/search/${player?.ids.steam ?? profile?.playerIds.steam}`}>CBL</ExtLink>
+								<ExtLink href={`https://mysquadstats.com/search/${player?.ids.steam ?? profile?.playerIds.steam}#vanillaStats`}>
+									MySquadStats
+								</ExtLink>
+							</>
+						)
+						: <span className="italic">(no steam id)</span>}
+					<ExtLink
+						href={profile
+							? profile.profileUrl
+							: `https://www.battlemetrics.com/rcon/players?filter%5Bsearch%5D=${playerId}&filter%5Bservers%5D=false&filter%5BplayerFlags%5D=&sort=score&showServers=true&method=quick`}
+					>
+						BattleMetrics
+					</ExtLink>
+					{!!profile?.hoursPlayed && <span title="Hours played on this org's servers">{profile.hoursPlayed}h</span>}
 				</div>
 			</div>
 			<Separator />

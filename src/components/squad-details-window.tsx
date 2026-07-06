@@ -9,7 +9,6 @@ import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import * as ZusUtils from '@/lib/zustand'
 import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
-import * as SE from '@/models/server-events.models'
 import * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
@@ -66,8 +65,8 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 			!currentMatch
 				? []
 				: ChatPrt.Sel.chatEvents(s).filter(e => {
-					if (e.matchId !== currentMatch.historyEntryId || e.type === 'NOOP') return false
-					return Array.from(SE.iterAssocSquadUniqueIds(e as SE.Event)).some(k => k === uniqueSquadId)
+					if (e.matchId !== currentMatch.historyEntryId) return false
+					return CHAT.hasAssocSquad(e, uniqueSquadId)
 				})
 		),
 	)

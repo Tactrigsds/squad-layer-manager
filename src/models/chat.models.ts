@@ -773,6 +773,24 @@ export function hasAssocPlayer(event: EventEnriched, playerId: SM.PlayerId): boo
 	return Gen.hasValues(iterAssocPlayers(event, playerId))
 }
 
+// squad-association equivalent of iterAssocPlayers: handles the enriched-only event variants (which have no entry in
+// SE.EVENT_META) before delegating to the raw server-event iterator.
+export function* iterAssocSquadUniqueIds(event: EventEnriched): Generator<number> {
+	if (event.type === 'NOOP' || event.type === 'WARNS_AGGREGATED') return
+	if (event.type === 'APP_EVENT') {
+		if (event.warnSummary.type === 'squads') {
+			for (const squad of event.warnSummary.squads) yield squad.uniqueId
+		}
+		for (const collapsed of event.collapsed) yield* iterAssocSquadUniqueIds(collapsed)
+		return
+	}
+	yield* SE.iterAssocSquadUniqueIds(event as SE.Event)
+}
+
+export function hasAssocSquad(event: EventEnriched, uniqueSquadId: number): boolean {
+	return Gen.some(iterAssocSquadUniqueIds(event), id => id === uniqueSquadId)
+}
+
 export function findLastPlayerInstance(events: EventEnriched[], playerId: SM.PlayerId): SM.Player | undefined {
 	for (const event of Arr.revIter(events)) {
 		for (const [player] of iterAssocPlayers(event, playerId)) {
