@@ -9,11 +9,13 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Spinner } from '@/components/ui/spinner'
+import TabsList from '@/components/ui/tabs-list'
 import UserPermissionsDialog from '@/components/user-permissions-dialog'
 import { frameManager } from '@/frames/frame-manager.ts'
 
 import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 
+import { useIsDesktopSize, useIsSmallViewport } from '@/lib/browser.ts'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as USR from '@/models/users.models.ts'
@@ -41,6 +43,12 @@ export default function NavBar() {
 
 	// Check if we're on the server dashboard route
 	const isOnServerDashboard = TSR.useMatch({ from: '/_app/servers/$serverId', shouldThrow: false })
+	const isDesktop = useIsDesktopSize()
+	// below sm the nav links + user-avatar options all collapse into a single hamburger menu
+	const isSmall = useIsSmallViewport()
+	const activeDashboardTab = ZusUtils.useStore(SquadServerClient.DashboardTabStore, s => s.activeTab)
+	// in single-column mode the dashboard has no room for its own tab cluster, so the switcher takes over the "Server" nav slot
+	const showDashboardTabs = !!isOnServerDashboard && !isDesktop
 
 	const [openState, setDropdownState] = React.useState<'primary' | 'permissions' | 'commands' | 'steam-link' | 'nickname' | 'about' | null>(
 		null,
@@ -80,35 +88,132 @@ export default function NavBar() {
 		[selectedServer],
 	)
 
+	const showSettingsLink = !RbacClient.usePermsCheck({
+		check: 'any',
+		permits: [RBAC.perm('admin:manage-servers'), RBAC.perm('admin:delete-servers'), RBAC.perm('admin:manage-global-settings')],
+	})
+	const [exploreLayersOpen, setExploreLayersOpen] = React.useState(false)
+
+	// the user-avatar menu items, shared between the avatar dropdown (>= sm) and the hamburger (< sm). Rendered in exactly one
+	// of those two places (gated by isSmall) so the controlled dialogs below aren't mounted twice.
+	const userMenuContent = user && (
+		<>
+			<DropdownMenuLabel className="truncate max-w-50">{user.displayName}</DropdownMenuLabel>
+			{simulateRoles && (
+				<DropdownMenuItem onClick={() => setSimulateRoles(false)} className="sm:hidden text-sm">
+					<Icons.X className="mr-2 h-4 w-4" />
+					Stop Simulating Roles
+				</DropdownMenuItem>
+			)}
+			{wsStatus === 'closed' && (
+				<DropdownMenuItem disabled className="md:hidden text-destructive text-sm">
+					<Icons.WifiOff className="mr-2 h-4 w-4" />
+					Websocket Disconnected
+				</DropdownMenuItem>
+			)}
+			<DropdownMenuSub>
+				<DropdownMenuSubTrigger className="text-sm" chevronLeft>
+					Theme
+				</DropdownMenuSubTrigger>
+				<DropdownMenuSubContent>
+					<DropdownMenuRadioGroup value={theme} onValueChange={(value) => setTheme(value as 'dark' | 'light' | 'system')}>
+						<DropdownMenuRadioItem value="light" className="text-sm">
+							<Icons.Sun className="mr-2 h-4 w-4" />
+							Light
+						</DropdownMenuRadioItem>
+						<DropdownMenuRadioItem value="dark" className="text-sm">
+							<Icons.Moon className="mr-2 h-4 w-4" />
+							Dark
+						</DropdownMenuRadioItem>
+						<DropdownMenuRadioItem value="system" className="text-sm">
+							<Icons.Monitor className="mr-2 h-4 w-4" />
+							System
+						</DropdownMenuRadioItem>
+					</DropdownMenuRadioGroup>
+				</DropdownMenuSubContent>
+			</DropdownMenuSub>
+			<DropdownMenuSeparator />
+			<NicknameDialog onOpenChange={onNicknameOpenChange} open={openState === 'nickname'}>
+				<DropdownMenuItem onClick={() => setDropdownState('nickname')} className="text-sm">
+					<Icons.User className="mr-2 h-4 w-4" />
+					Set Nickname
+				</DropdownMenuItem>
+			</NicknameDialog>
+			<UserPermissionsDialog onOpenChange={onPermissionsOpenChange} open={openState === 'permissions'}>
+				<DropdownMenuItem onClick={() => setDropdownState('permissions')} className="text-sm">
+					<Icons.Shield className="mr-2 h-4 w-4" />
+					Permissions
+				</DropdownMenuItem>
+			</UserPermissionsDialog>
+			<CommandsHelpDialog onOpenChange={onCommandsHelpOpenChange} open={openState === 'commands'}>
+				<DropdownMenuItem onClick={() => setDropdownState('commands')} className="text-sm">
+					<Icons.HelpCircle className="mr-2 h-4 w-4" />
+					Commands
+				</DropdownMenuItem>
+			</CommandsHelpDialog>
+			<AboutDialog onOpenChange={onAboutOpenChange} open={openState === 'about'}>
+				<DropdownMenuItem onClick={() => setDropdownState('about')} className="text-sm">
+					<Icons.Info className="mr-2 h-4 w-4" />
+					About
+				</DropdownMenuItem>
+			</AboutDialog>
+			<DropdownMenuSeparator />
+			<form action={AR.route('/logout')} method="POST">
+				<DropdownMenuItem asChild>
+					<button className="w-full text-sm" type="submit">
+						<Icons.LogOut className="mr-2 h-4 w-4" />
+						Log Out
+					</button>
+				</DropdownMenuItem>
+			</form>
+		</>
+	)
+
 	return (
 		<nav
 			className="flex h-16 shrink-0 items-center justify-between border-b px-2 sm:px-4"
 			style={{ backgroundColor: settings?.topBarColor ?? undefined }}
 		>
-			<div className="flex items-start space-x-3 sm:space-x-6">
-				{selectedServer
-					? (
-						<NavLink
-							params={{ serverId: selectedServer.id }}
-							to="/servers/$serverId"
-						>
-							Server
-						</NavLink>
-					)
-					: <NavLink to="/servers">Server</NavLink>}
-				<NavLink to="/filters">
-					Filters
-				</NavLink>
-				{!RbacClient.usePermsCheck({
-					check: 'any',
-					permits: [RBAC.perm('admin:manage-servers'), RBAC.perm('admin:delete-servers'), RBAC.perm('admin:manage-global-settings')],
-				}) && (
-					<NavLink to="/settings">
-						Settings
-					</NavLink>
+			<div className="flex items-center space-x-3 sm:space-x-6">
+				{/* below sm the nav links (and the avatar menu) don't fit, so collapse them into one hamburger; tabs stay beside it */}
+				{isSmall && (
+					<MobileNavMenu
+						open={openState !== null}
+						onOpenChange={onPrimaryDropdownOpenChange}
+						showServerLink={!showDashboardTabs}
+						selectedServerId={selectedServer?.id}
+						showSettingsLink={showSettingsLink}
+						onExploreLayers={() => setExploreLayersOpen(true)}
+					>
+						{userMenuContent}
+					</MobileNavMenu>
 				)}
-				<ExploreLayersDialog />
+				{/* on the dashboard's single-column layout the tab switcher takes over the "Server" nav slot at every width */}
+				{showDashboardTabs && (
+					<TabsList
+						options={[
+							{ value: 'layers', label: 'Layers & Teams' },
+							{ value: 'secondary', label: 'Server Activity' },
+						]}
+						active={activeDashboardTab}
+						setActive={SquadServerClient.DashboardTabActions.setActiveTab}
+					/>
+				)}
+				{!isSmall && (
+					<div className="flex items-center space-x-3 sm:space-x-6">
+						{/* the tab switcher already covers "Server" in single-column mode, so only show the link when tabs aren't shown */}
+						{!showDashboardTabs && (
+							selectedServer
+								? <NavLink params={{ serverId: selectedServer.id }} to="/servers/$serverId">Server</NavLink>
+								: <NavLink to="/servers">Server</NavLink>
+						)}
+						<NavLink to="/filters">Filters</NavLink>
+						{showSettingsLink && <NavLink to="/settings">Settings</NavLink>}
+						<Button variant="secondary" size="sm" onClick={() => setExploreLayersOpen(true)}>Explore Layers</Button>
+					</div>
+				)}
 			</div>
+			<ExploreLayersDialog open={exploreLayersOpen} onOpenChange={setExploreLayersOpen} />
 			<div className="flex h-max min-h-0 flex-row items-center space-x-1 sm:space-x-3 overflow-hidden">
 				{simulateRoles && (
 					<div className="hidden sm:flex items-center space-x-1 shrink-0">
@@ -164,116 +269,98 @@ export default function NavBar() {
 						)
 				})()}
 				{user && (
-					<DropdownMenu modal={false} open={openState !== null} onOpenChange={onPrimaryDropdownOpenChange}>
-						<DropdownMenuTrigger asChild>
+					// below sm the avatar's options live in the hamburger, so the avatar is just a (non-interactive) identity marker
+					isSmall
+						? (
 							<Avatar
 								style={{ backgroundColor: user.displayHexColor ?? undefined }}
-								className="hover:cursor-pointer select-none h-8 w-8 sm:h-10 sm:w-10 shrink-0"
+								className="select-none h-8 w-8 shrink-0"
 							>
 								<AvatarImage src={avatarUrl} crossOrigin="anonymous" />
-								<AvatarFallback className="text-xs sm:text-sm">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
+								<AvatarFallback className="text-xs">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
 							</Avatar>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end">
-							<DropdownMenuLabel className="truncate max-w-50">{user.displayName}</DropdownMenuLabel>
-							{simulateRoles && (
-								<DropdownMenuItem onClick={() => setSimulateRoles(false)} className="sm:hidden text-sm">
-									<Icons.X className="mr-2 h-4 w-4" />
-									Stop Simulating Roles
-								</DropdownMenuItem>
-							)}
-							{wsStatus === 'closed' && (
-								<DropdownMenuItem disabled className="md:hidden text-destructive text-sm">
-									<Icons.WifiOff className="mr-2 h-4 w-4" />
-									Websocket Disconnected
-								</DropdownMenuItem>
-							)}
-							<DropdownMenuSub>
-								<DropdownMenuSubTrigger className="text-sm" chevronLeft>
-									Theme
-								</DropdownMenuSubTrigger>
-								<DropdownMenuSubContent>
-									<DropdownMenuRadioGroup value={theme} onValueChange={(value) => setTheme(value as 'dark' | 'light' | 'system')}>
-										<DropdownMenuRadioItem value="light" className="text-sm">
-											<Icons.Sun className="mr-2 h-4 w-4" />
-											Light
-										</DropdownMenuRadioItem>
-										<DropdownMenuRadioItem value="dark" className="text-sm">
-											<Icons.Moon className="mr-2 h-4 w-4" />
-											Dark
-										</DropdownMenuRadioItem>
-										<DropdownMenuRadioItem value="system" className="text-sm">
-											<Icons.Monitor className="mr-2 h-4 w-4" />
-											System
-										</DropdownMenuRadioItem>
-									</DropdownMenuRadioGroup>
-								</DropdownMenuSubContent>
-							</DropdownMenuSub>
-							<DropdownMenuSeparator />
-							<NicknameDialog onOpenChange={onNicknameOpenChange} open={openState === 'nickname'}>
-								<DropdownMenuItem onClick={() => setDropdownState('nickname')} className="text-sm">
-									<Icons.User className="mr-2 h-4 w-4" />
-									Set Nickname
-								</DropdownMenuItem>
-							</NicknameDialog>
-							<UserPermissionsDialog onOpenChange={onPermissionsOpenChange} open={openState === 'permissions'}>
-								<DropdownMenuItem onClick={() => setDropdownState('permissions')} className="text-sm">
-									<Icons.Shield className="mr-2 h-4 w-4" />
-									Permissions
-								</DropdownMenuItem>
-							</UserPermissionsDialog>
-							<CommandsHelpDialog onOpenChange={onCommandsHelpOpenChange} open={openState === 'commands'}>
-								<DropdownMenuItem onClick={() => setDropdownState('commands')} className="text-sm">
-									<Icons.HelpCircle className="mr-2 h-4 w-4" />
-									Commands
-								</DropdownMenuItem>
-							</CommandsHelpDialog>
-							<AboutDialog onOpenChange={onAboutOpenChange} open={openState === 'about'}>
-								<DropdownMenuItem onClick={() => setDropdownState('about')} className="text-sm">
-									<Icons.Info className="mr-2 h-4 w-4" />
-									About
-								</DropdownMenuItem>
-							</AboutDialog>
-							<DropdownMenuSeparator />
-							<form action={AR.route('/logout')} method="POST">
-								<DropdownMenuItem asChild>
-									<button className="w-full text-sm" type="submit">
-										<Icons.LogOut className="mr-2 h-4 w-4" />
-										Log Out
-									</button>
-								</DropdownMenuItem>
-							</form>
-							{
-								/*<LinkSteamAccountDialog onOpenChange={onSteamLinkOpenChange} open={openState === 'steam-link'}>
-									<DropdownMenuItem onClick={() => setDropdownState('steam-link')} className="text-sm">
-										<Icons.Link className="mr-2 h-4 w-4" />
-										Linked Accounts
-									</DropdownMenuItem>
-								</LinkSteamAccountDialog>*/
-							}
-						</DropdownMenuContent>
-					</DropdownMenu>
+						)
+						: (
+							<DropdownMenu modal={false} open={openState !== null} onOpenChange={onPrimaryDropdownOpenChange}>
+								<DropdownMenuTrigger asChild>
+									<Avatar
+										style={{ backgroundColor: user.displayHexColor ?? undefined }}
+										className="hover:cursor-pointer select-none h-8 w-8 sm:h-10 sm:w-10 shrink-0"
+									>
+										<AvatarImage src={avatarUrl} crossOrigin="anonymous" />
+										<AvatarFallback className="text-xs sm:text-sm">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
+									</Avatar>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="end">
+									{userMenuContent}
+								</DropdownMenuContent>
+							</DropdownMenu>
+						)
 				)}
 			</div>
 		</nav>
 	)
 }
 
-function ExploreLayersDialog() {
-	const [open, setOpen] = React.useState(false)
+function ExploreLayersDialog(props: { open: boolean; onOpenChange: (open: boolean) => void }) {
 	const data = TSR.useLoaderData({ from: '/_app' })
 
 	return (
-		<>
-			<Button variant="secondary" size="sm" onClick={() => setOpen(true)}>Explore Layers</Button>
-			<SelectLayersDialog
-				stores={{ selectLayers: data.stores.exploreLayers }}
-				open={open}
-				onOpenChange={setOpen}
-				title="Layers"
-				pinMode="layers"
-			/>
-		</>
+		<SelectLayersDialog
+			stores={{ selectLayers: data.stores.exploreLayers }}
+			open={props.open}
+			onOpenChange={props.onOpenChange}
+			title="Layers"
+			pinMode="layers"
+		/>
+	)
+}
+
+// below sm the primary nav links AND the user-avatar options collapse into this one hamburger menu; the dashboard tab
+// switcher stays inline beside it. Controlled by the shared openState so the appended user-menu dialogs keep it open.
+function MobileNavMenu(props: {
+	open: boolean
+	onOpenChange: (open: boolean) => void
+	showServerLink: boolean
+	selectedServerId?: string
+	showSettingsLink: boolean
+	onExploreLayers: () => void
+	children?: React.ReactNode
+}) {
+	return (
+		<DropdownMenu modal={false} open={props.open} onOpenChange={props.onOpenChange}>
+			<DropdownMenuTrigger asChild>
+				<Button variant="ghost" size="icon" className="shrink-0">
+					<Icons.Menu className="h-5 w-5" />
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="start">
+				{props.showServerLink && (
+					<DropdownMenuItem asChild className="cursor-pointer">
+						{props.selectedServerId
+							? <TSR.Link to="/servers/$serverId" params={{ serverId: props.selectedServerId }}>Server</TSR.Link>
+							: <TSR.Link to="/servers">Server</TSR.Link>}
+					</DropdownMenuItem>
+				)}
+				<DropdownMenuItem asChild className="cursor-pointer">
+					<TSR.Link to="/filters">Filters</TSR.Link>
+				</DropdownMenuItem>
+				{props.showSettingsLink && (
+					<DropdownMenuItem asChild className="cursor-pointer">
+						<TSR.Link to="/settings">Settings</TSR.Link>
+					</DropdownMenuItem>
+				)}
+				<DropdownMenuItem className="cursor-pointer" onClick={props.onExploreLayers}>
+					Explore Layers
+				</DropdownMenuItem>
+				{props.children && (
+					<>
+						<DropdownMenuSeparator />
+						{props.children}
+					</>
+				)}
+			</DropdownMenuContent>
+		</DropdownMenu>
 	)
 }
 

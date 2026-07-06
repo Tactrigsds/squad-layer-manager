@@ -58,3 +58,21 @@ export function useIsDesktopSize() {
 	}, [])
 	return isDesktop
 }
+
+// true below the Tailwind `sm` breakpoint (640px) -- the width at which the navbar collapses its links into a hamburger
+export function useIsSmallViewport() {
+	const [isSmall, setIsSmall] = React.useState(false)
+
+	React.useEffect(() => {
+		const mediaQuery = window.matchMedia('(max-width: 639.98px)')
+		setIsSmall(mediaQuery.matches)
+
+		const handleChange = (e: MediaQueryListEvent) => {
+			setIsSmall(e.matches)
+		}
+
+		mediaQuery.addEventListener('change', handleChange)
+		return () => mediaQuery.removeEventListener('change', handleChange)
+	}, [])
+	return isSmall
+}

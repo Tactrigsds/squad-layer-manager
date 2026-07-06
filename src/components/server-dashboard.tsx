@@ -2,39 +2,26 @@ import React from 'react'
 
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useIsDesktopSize } from '@/lib/browser.ts'
+import * as ZusUtils from '@/lib/zustand'
+import * as SquadServerClient from '@/systems/squad-server.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 
 import PrimaryPanel from './primary-panel.tsx'
 import SecondaryPanel from './secondary-panel.tsx'
-import TabsList from './ui/tabs-list.tsx'
 
 export default function ServerDashboard(props: { stores: SquadServerFrame.KeyProp }) {
-	const [activeTab, setActiveTab] = React.useState<'layers' | 'secondary'>('layers')
+	const activeTab = ZusUtils.useStore(SquadServerClient.DashboardTabStore, s => s.activeTab)
 	const isDesktop = useIsDesktopSize()
 
 	// "warn selected" routes to the server activity panel; in single-column mode that panel lives behind a
 	// tab, so bring it forward (harmless in desktop, where both panels are always visible)
-	WarnChat.useWarnFocusRequest(t => t.kind === 'server-activity', () => setActiveTab('secondary'))
+	WarnChat.useWarnFocusRequest(t => t.kind === 'server-activity', () => SquadServerClient.DashboardTabActions.setActiveTab('secondary'))
 
 	return (
 		<div className="w-full h-full flex flex-col overflow-x-auto">
 			{!isDesktop && (
-				/* Mobile/tablet: Single column with tabs */
+				/* Mobile/tablet: single column; the tab switcher lives in the NavBar */
 				<div className="flex flex-col gap-2 h-full min-h-0">
-					{/* Top line - always visible */}
-					<div className="justify-between flex items-center shrink-0">
-						<div className="flex items-center gap-2">
-							<TabsList
-								options={[
-									{ value: 'layers', label: 'Layers & Teams' },
-									{ value: 'secondary', label: 'Server Activity' },
-								]}
-								active={activeTab}
-								setActive={setActiveTab}
-							/>
-						</div>
-					</div>
-
 					<div className="flex-1 min-h-0" style={{ display: activeTab === 'layers' ? 'flex' : 'none' }}>
 						<PrimaryPanel stores={props.stores} />
 					</div>

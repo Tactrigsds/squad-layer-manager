@@ -286,6 +286,18 @@ export namespace SelectedServerActions {
 	}
 }
 
+export type DashboardTab = 'layers' | 'secondary'
+
+// active tab for the server dashboard's single-column layout. Lives here (rather than in the component) so the NavBar can
+// drive it -- in single-column mode the tab switcher replaces the "Server" nav item instead of rendering as its own cluster.
+export const DashboardTabStore = Zus.createStore<{ activeTab: DashboardTab }>(() => ({ activeTab: 'layers' }))
+
+export namespace DashboardTabActions {
+	export function setActiveTab(tab: DashboardTab) {
+		DashboardTabStore.setState({ activeTab: tab })
+	}
+}
+
 export function setup() {
 	// this cookie is set correctly by the backend according to the path on page load (the only time we expect setup() to be
 	// called); it may be absent when there are no enabled servers to default to, in which case '/' redirects to /servers
