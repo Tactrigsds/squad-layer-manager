@@ -31,3 +31,5 @@ useEffects should be rare, and should be used mainly for subscribing to dom even
 Generally speaking, actions by the user should be handled at the top level by a function in the relevant system/frame's `Actions` namespace. Avoid closing over or passing state from the component body to the action handler unless it's indirect state, like a store or any other variant of `ZusUtils.AnyInput`.
 
 Pass `ZusUtils.AnyInut` instances via the `stores` prop through components(conventionally they should have a KeyProp or a StoreProp defined to standardize what property they should be put on in `props.stores`), and avoid using react context to pass stores or other data sources.
+
+Never export non-components from .tsx files, as it breaks hot module replacement.
