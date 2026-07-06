@@ -78,8 +78,8 @@ export interface FileRoutesByFullPath {
   '/filters/new': typeof AppFiltersNewRoute
   '/servers/$serverId': typeof AppServersServerIdRoute
   '/layers/$layerId/$tab': typeof LayersLayerIdTabRoute
-  '/filters': typeof AppFiltersIndexRoute
-  '/servers': typeof AppServersIndexRoute
+  '/filters/': typeof AppFiltersIndexRoute
+  '/servers/': typeof AppServersIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -115,8 +115,8 @@ export interface FileRouteTypes {
     | '/filters/new'
     | '/servers/$serverId'
     | '/layers/$layerId/$tab'
-    | '/filters'
-    | '/servers'
+    | '/filters/'
+    | '/servers/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -154,7 +154,7 @@ declare module '@tanstack/react-router' {
     '/_app': {
       id: '/_app'
       path: ''
-      fullPath: ''
+      fullPath: '/'
       preLoaderRoute: typeof AppRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
@@ -182,14 +182,14 @@ declare module '@tanstack/react-router' {
     '/_app/servers/': {
       id: '/_app/servers/'
       path: '/servers'
-      fullPath: '/servers'
+      fullPath: '/servers/'
       preLoaderRoute: typeof AppServersIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/_app/filters/': {
       id: '/_app/filters/'
       path: '/filters'
-      fullPath: '/filters'
+      fullPath: '/filters/'
       preLoaderRoute: typeof AppFiltersIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
