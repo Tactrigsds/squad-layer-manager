@@ -428,6 +428,8 @@ type BasePlayerTableMeta = {
 	availableGroupings: string[]
 	stores: SquadServerFrame.KeyProp
 	statsSort: StatsSortState
+	// SLM was restarted mid-match, so combat stats are incomplete -- surfaced as a disclaimer on the stats header
+	statsMayBeInaccurate: boolean
 }
 
 type TeamPlayerTableMeta = BasePlayerTableMeta & {
@@ -545,13 +547,25 @@ function sortDirFor(sorting: SortingState, columnId: string): false | 'asc' | 'd
 	return entry ? (entry.desc ? 'desc' : 'asc') : false
 }
 
-function StatsColumnHeader({ column, statsSort }: {
+function StatsColumnHeader({ column, statsSort, mayBeInaccurate }: {
 	column: StatsSortColumn
 	statsSort: StatsSortState
+	mayBeInaccurate: boolean
 }) {
 	const { metric, setMetric, open, setOpen, sorted } = statsSort
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
+		<span className="inline-flex items-center gap-1">
+			{mayBeInaccurate && (
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Icons.AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0" />
+					</TooltipTrigger>
+					<TooltipContent className="max-w-[220px]">
+						Stats may be inaccurate: SLM was restarted during this match, so events before the restart were not counted.
+					</TooltipContent>
+				</Tooltip>
+			)}
+			<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<button
 					type="button"
@@ -618,14 +632,15 @@ function StatsColumnHeader({ column, statsSort }: {
 				</div>
 			</PopoverContent>
 		</Popover>
+		</span>
 	)
 }
 
 // module-level renderers so their identity is stable across column rebuilds — an inline closure would
 // be a new component type each rebuild, remounting the header and flickering the open popover
 function statsHeader<T extends TeamsPanelModels.EnrichedPlayer>({ column, table }: HeaderContext<T, number>) {
-	const { statsSort } = table.options.meta as { statsSort: StatsSortState }
-	return <StatsColumnHeader column={column} statsSort={statsSort} />
+	const { statsSort, statsMayBeInaccurate } = table.options.meta as BasePlayerTableMeta
+	return <StatsColumnHeader column={column} statsSort={statsSort} mayBeInaccurate={statsMayBeInaccurate} />
 }
 
 function statsCell<T extends TeamsPanelModels.EnrichedPlayer>({ row }: CellContext<T, number>) {
@@ -1307,6 +1322,11 @@ function TeamPlayerTable(
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		ChatPrt.Sel.squadsForTeam(props.teamId),
 	)
+	const statsMayBeInaccurate = ZusUtils.useStore(
+		props.stores.squadServer!,
+		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
+		ChatPrt.Sel.statsMayBeInaccurate,
+	)
 
 	const displayedPlayers = useDisplayedPlayers(
 		players,
@@ -1340,6 +1360,7 @@ function TeamPlayerTable(
 		availableRoles: props.availableRoles,
 		availableGroupings: props.availableGroupings,
 		stores: props.stores,
+		statsMayBeInaccurate,
 	} satisfies Omit<TeamPlayerTableMeta, 'statsSort'>
 
 	return (
@@ -1408,6 +1429,11 @@ function CombinedPlayerTable(
 		...squadsA.map(squad => ({ squad, normedTeam: 'A' as const })),
 		...squadsB.map(squad => ({ squad, normedTeam: 'B' as const })),
 	], [squadsA, squadsB])
+	const statsMayBeInaccurate = ZusUtils.useStore(
+		props.stores.squadServer!,
+		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
+		ChatPrt.Sel.statsMayBeInaccurate,
+	)
 
 	const layer = React.useMemo(() => {
 		if (!match?.layerId) return null
@@ -1467,6 +1493,7 @@ function CombinedPlayerTable(
 		availableGroupings: props.availableGroupings,
 		getFaction,
 		stores: props.stores,
+		statsMayBeInaccurate,
 	} satisfies Omit<CombinedTableMeta, 'statsSort'>
 
 	return (

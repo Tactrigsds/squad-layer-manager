@@ -133,6 +133,18 @@ export namespace Sel {
 			},
 		)
 	)
+	// true when SLM (re)started mid-match: a fresh RCON connection (reconnected === false) within the current
+	// match means we missed the events preceding the restart, so per-player combat stats are incomplete.
+	// not memoized on the buffer ref (it's mutated in place); the caller re-runs it on every store change.
+	export function statsMayBeInaccurate(store: Store, currentMatch: MH.MatchDetails | undefined): boolean {
+		if (!currentMatch) return false
+		for (const event of chatEvents(store)) {
+			if (event.type === 'RCON_CONNECTED' && !event.reconnected && event.matchId === currentMatch.historyEntryId) {
+				return true
+			}
+		}
+		return false
+	}
 	export function overallKds(store: Store) {
 		const events = chatEvents(store)
 		let team1Kills = 0
