@@ -16,7 +16,6 @@
 		"style": "off"
 	},
 	"rules": {
-		"@typescript-eslint/no-implicit-any": "off",
 		"no-constant-condition": "off",
 		"@typescript-eslint/no-explicit-any": "off",
 		"@typescript-eslint/no-namespace": "off",
@@ -58,7 +57,6 @@
 		"@typescript-eslint/explicit-module-boundary-types": "off",
 		"@typescript-eslint/consistent-type-definitions": "off",
 		"@typescript-eslint/no-unsafe-type-assertion": "off",
-		"@typescript-eslint/use-unknown-in-catch-fallback-variable": "off",
 		"@typescript-eslint/no-unnecessary-type-assertion": "off",
 		"@typescript-eslint/unbound-method": "off",
 		"@typescript-eslint/promise-function-async": "off",

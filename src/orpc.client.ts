@@ -18,7 +18,10 @@ const wsUrl = `${wsHostname}${AR.route('/orpc')}`
 const websocket = new WebSocket(wsUrl)
 
 const orpcLink = new RPCLink({
-	websocket,
+	// partysocket's WebSocket is a drop-in replacement, but types its readyState as
+	// `number` rather than the DOM WebSocket's `0 | 1 | 2 | 3` literal union that
+	// RPCLink expects. Cast to bridge the (behaviorally compatible) gap.
+	websocket: websocket as unknown as globalThis.WebSocket,
 	clientInterceptors: [
 		onError(error => {
 			// AbortErrors happen whenever an unsubscribe happens, we can safely ignore them
