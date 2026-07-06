@@ -9,13 +9,16 @@ import crypto from 'crypto'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import Mustache from 'mustache'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
+import { pipeline } from 'node:stream/promises'
 import { promisify } from 'node:util'
 import zlib from 'node:zlib'
 import * as semver from 'semver'
 const gunzip = promisify(zlib.gunzip)
 const gzip = promisify(zlib.gzip)
 import { initModule } from '@/server/logger'
+import * as CleanupSys from '@/systems/cleanup.server'
 
 import { z } from 'zod'
 
@@ -32,7 +35,12 @@ let ENV!: ReturnType<typeof envBuilder>
 export let hash!: string
 export let layersVersion!: string
 export let driver!: Database
+// resolves once the layer db has been opened (and hashed). `db`, `hash` and `driver` are only
+// populated once this settles, so callers must await it before touching the layer db.
+export let ready!: Promise<void>
 let dbPath!: string
+// path to the decompressed temp copy opened in read mode for a gzipped source; removed on shutdown
+let tempDbPath: string | null = null
 
 let mode!: 'populate' | 'read'
 
@@ -64,7 +72,11 @@ export function setupExtraColsConfig() {
 	}
 }
 
-export async function setup(_opts?: { skipHash?: boolean; mode?: 'populate' | 'read'; logging?: boolean; dbPath?: string }) {
+// Resolves the config synchronously (so `LAYER_DB_CONFIG`/`layersVersion` are available immediately)
+// and kicks off opening the db in the background. The returned promise (also exposed as `ready`)
+// settles once `db`/`hash`/`driver` are populated, so it does not block the startup procedure —
+// callers await `ready` right before they need the layer db.
+export function setup(_opts?: { skipHash?: boolean; mode?: 'populate' | 'read'; logging?: boolean; dbPath?: string }): Promise<void> {
 	log = module.getLogger()
 	const opts = _opts ?? {}
 	opts.mode ??= 'read'
@@ -73,21 +85,42 @@ export async function setup(_opts?: { skipHash?: boolean; mode?: 'populate' | 'r
 	ENV = envBuilder()
 	setupExtraColsConfig()
 	;[dbPath, layersVersion] = opts.dbPath ? [opts.dbPath, 'unknown'] : getVersionTemplatedPath(ENV.LAYERS_DB_PATH)
-	let fileBuffer = await fs.promises.readFile(dbPath)
+	ready = load(opts)
+	return ready
+}
 
-	let dbBuffer: Buffer
-	// Decompress if the file is gzipped
-	if (dbPath.endsWith('.gz')) {
-		dbBuffer = await gunzip(fileBuffer)
-	} else {
-		dbBuffer = fileBuffer
-	}
-
-	driver = new DatabaseConstructor(dbBuffer, { readonly: opts.mode === 'read' })
-	driver.pragma('optimize')
+async function load(opts: { skipHash?: boolean; mode?: 'populate' | 'read'; logging?: boolean }) {
 	if (opts.mode === 'populate') {
+		// populate mutates the db and then backs it up, so it needs a writable, in-memory
+		// deserialized database. Memory isn't a concern for the one-off preprocess script.
+		const fileBuffer = await fs.promises.readFile(dbPath)
+		const dbBuffer = dbPath.endsWith('.gz') ? await gunzip(fileBuffer) : fileBuffer
+		driver = new DatabaseConstructor(dbBuffer, { readonly: false })
+		driver.pragma('optimize')
 		// this doesn't actually help much currently because we're doing the preprocessing syncronously
 		driver.pragma('journal_mode = WAL')
+	} else {
+		// read mode: open the file disk-backed so RSS doesn't scale with the db size.
+		// gzipped dbs can't be opened directly by sqlite, so stream-decompress to a temp
+		// file first (streaming keeps the decompressed bytes off the JS heap).
+		let openPath = dbPath
+		if (dbPath.endsWith('.gz')) {
+			openPath = await decompressToTemp(dbPath)
+			tempDbPath = openPath
+		}
+		driver = new DatabaseConstructor(openPath, { readonly: true })
+		driver.pragma('mmap_size = 268435456') // 256MiB of memory-mapped reads
+		CleanupSys.register(() => {
+			driver?.close()
+			if (tempDbPath) {
+				try {
+					fs.unlinkSync(tempDbPath)
+				} catch (err) {
+					log.warn(err, 'failed to remove temp layer db %s', tempDbPath)
+				}
+				tempDbPath = null
+			}
+		})
 	}
 
 	// IMPORTANT: While the pattern for running queries with this object appears async, it's actually synchronous/blocking. If this becomes an issue on the server we'll need to address it, but for now we're only running queries to autogenerate layers when the queue is empty.
@@ -99,10 +132,25 @@ export async function setup(_opts?: { skipHash?: boolean; mode?: 'populate' | 'r
 		},
 	})
 	if (!opts?.skipHash) {
-		hash = crypto.createHash('sha256').update(fileBuffer).digest('hex')
+		// hash the on-disk bytes (compressed, if gzipped) so the served ETag is unchanged
+		hash = await hashFile(dbPath)
 		log.info('hash for %s: %s', dbPath, hash)
 	}
 	log.info('Loaded layer database from %s', dbPath)
+}
+
+// stream-decompress a gzipped db to a temp file so sqlite can open it disk-backed
+async function decompressToTemp(gzPath: string): Promise<string> {
+	const tmpPath = path.join(os.tmpdir(), `layer-db-${crypto.randomUUID()}.sqlite3`)
+	await pipeline(fs.createReadStream(gzPath), zlib.createGunzip(), fs.createWriteStream(tmpPath))
+	return tmpPath
+}
+
+// hash a file's contents without holding it in memory
+async function hashFile(filePath: string): Promise<string> {
+	const hasher = crypto.createHash('sha256')
+	await pipeline(fs.createReadStream(filePath), hasher)
+	return hasher.digest('hex')
 }
 
 export function readFilestream() {

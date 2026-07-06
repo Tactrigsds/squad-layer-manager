@@ -150,6 +150,7 @@ export const setup = C.spanOp('setup', { module }, async () => {
 		for (const [key, value] of Object.entries(BASE_HEADERS)) {
 			res = res.header(key, value)
 		}
+		await LayerDb.ready
 		const ifNoneMatch = req.headers['if-none-match']
 		const etag = `"${LayerDb.hash}"`
 		res.header('ETag', etag)
