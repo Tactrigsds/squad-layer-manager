@@ -66,7 +66,8 @@ await C.spanOp('main', { module }, async () => {
 	// resolves its config synchronously but opens the db in the background, so it stays off the
 	// critical path; we await `LayerDb.ready` below, right before the db can first be queried
 	await LayerDb.setup()
-	await Promise.all([Config.ensureSetup(), DB.setup(), FilterEntity.setup()])
+	await DB.setup()
+	await Promise.all([Config.ensureSetup(), FilterEntity.setup()])
 	Config.pushPublicConfig()
 	PersistedCache.setup()
 	await Battlemetrics.setup()
