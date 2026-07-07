@@ -528,18 +528,6 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 		)
 	}
 
-	const GripElt = (props: { className?: string }) => (
-		<Button
-			ref={dragProps.handleRef}
-			variant="ghost"
-			size="icon"
-			{...editButtonProps(
-				cn('data-[can-edit=true]:cursor-grab data-[mobile=false]:not-group-hover/single-item:invisible', props.className),
-			)}
-		>
-			<Icons.GripVertical />
-		</Button>
-	)
 	const beforeItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'before', itemId: item.itemId }]
 	const afterItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'after', itemId: item.itemId }]
 
@@ -568,7 +556,19 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 								>
 									{LL.getItemNumber(index)}
 								</span>
-								<GripElt className="col-start-1 row-start-1" />
+								<Button
+									ref={dragProps.handleRef}
+									variant="ghost"
+									size="icon"
+									{...editButtonProps(
+										cn(
+											'data-[can-edit=true]:cursor-grab data-[mobile=false]:not-group-hover/single-item:invisible',
+											'col-start-1 row-start-1',
+										),
+									)}
+								>
+									<Icons.GripVertical />
+								</Button>
 							</span>
 							<span className="rounded flex space-y-1 w-full flex-col">
 								<LayerDisplay
