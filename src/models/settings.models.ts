@@ -58,6 +58,14 @@ export const GlobalSettingsSchema = z.object({
 		sftpMaxReconnectAttempts: z.int().min(1).prefault(10).describe(
 			'How many consecutive SFTP failures to tolerate (reconnecting between each) before tearing down the server slice',
 		),
+		tickRateThresholds: z.object({
+			good: z.number().positive().prefault(60).describe(
+				'At or above this tick rate the live server tick rate displays as good (green)',
+			),
+			warning: z.number().positive().prefault(50).describe(
+				'At or above this tick rate (but below the good threshold) the tick rate displays as a warning (yellow); below it, as unhealthy (red)',
+			),
+		}).prefault({}).describe('Thresholds for coloring the live server tick rate display'),
 	}).prefault({}),
 	steamLinkCodeExpiry: HumanTime.prefault('15m').describe('Duration of a steam account link code'),
 	balanceTriggerLevels: z.partialRecord(BAL.TRIGGER_IDS, BAL.TRIGGER_LEVEL)

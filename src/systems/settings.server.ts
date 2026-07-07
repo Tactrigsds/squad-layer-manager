@@ -336,6 +336,7 @@ export type PublicSettings = {
 	vote: { voteDuration: number; voteDisplayProps: SETTINGS.GlobalSettings['vote']['voteDisplayProps'] }
 	servers: ServerEntry[]
 	playerFlagGroupings: SETTINGS.GlobalSettings['playerFlagGroupings']
+	squadServer: { tickRateThresholds: SETTINGS.GlobalSettings['squadServer']['tickRateThresholds'] }
 }
 
 function buildPublicSettings(): PublicSettings {
@@ -353,6 +354,7 @@ function buildPublicSettings(): PublicSettings {
 		},
 		servers: listServerEntries(),
 		playerFlagGroupings: GLOBAL_SETTINGS.playerFlagGroupings,
+		squadServer: { tickRateThresholds: GLOBAL_SETTINGS.squadServer.tickRateThresholds },
 	}
 }
 

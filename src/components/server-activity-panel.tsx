@@ -16,6 +16,7 @@ import * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
 import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
+import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import { useQuery } from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
@@ -146,14 +147,34 @@ function ServerCounts(props: { stores: SquadServerFrame.KeyProp }) {
 		props.stores.squadServer!,
 		s => (s.chat.chatState.synced && !s.chat.chatState.connectionError) ? s.chat.chatState.interpolatedState.players.length : null,
 	)
+	const tickRate = SquadServerClient.useTickRate(serverId)
+	const tickRateThresholds = ZusUtils.useStore(
+		SettingsClient.PublicSettingsStore,
+		s => s?.squadServer.tickRateThresholds,
+	)
 
 	if (serverInfoStatusRes.code !== 'ok') return <ServerUnreachable statusRes={serverInfoStatusRes} />
 
 	const serverInfo = serverInfoStatusRes.data
+	// flag degraded tick rate with color, using the admin-configured thresholds
+	const tickRateColor = tickRate == null || !tickRateThresholds
+		? undefined
+		: tickRate >= tickRateThresholds.good
+		? 'text-green-500'
+		: tickRate >= tickRateThresholds.warning
+		? 'text-yellow-500'
+		: 'text-red-500'
 
 	return (
 		<div className="inline-flex text-muted-foreground space-x-2 items-baseline text-sm">
-			{playerCount ?? '<unknown>'} / {serverInfo.maxPlayerCount} online, {serverInfo.queueLength} / {serverInfo.maxQueueLength} in queue
+			<span>
+				{playerCount ?? '<unknown>'} / {serverInfo.maxPlayerCount} online, {serverInfo.queueLength} / {serverInfo.maxQueueLength} in queue
+			</span>
+			{tickRate != null && (
+				<span title="Server tick rate">
+					· <span className={tickRateColor}>{tickRate.toFixed(1)}</span> tick
+				</span>
+			)}
 		</div>
 	)
 }

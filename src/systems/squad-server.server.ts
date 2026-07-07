@@ -80,6 +80,9 @@ export type SquadServer = {
 
 	serverRolling$: Rx.BehaviorSubject<number | null>
 
+	// latest "Server Tick Rate" reported in the game logs; null until the first sample is seen
+	tickRate$: Rx.BehaviorSubject<number | null>
+
 	// if null, we haven't saved yet in this instantiation of the server
 	lastSavedEventId: number | null
 
@@ -161,6 +164,19 @@ export const orpcRouter = {
 			Rx.switchMap((ctx) => {
 				if (!ctx) return Rx.EMPTY
 				return ctx.server.serverRolling$
+			}),
+			withAbortSignal(signal!),
+		)
+		yield* toAsyncGenerator(obs)
+	}),
+
+	watchTickRate: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
+		{ context, signal, input },
+	) {
+		const obs = sliceCtx$(context.wsClientId, input.serverId).pipe(
+			Rx.switchMap((ctx) => {
+				if (!ctx) return Rx.EMPTY
+				return ctx.server.tickRate$.pipe(distinctDeepEquals())
 			}),
 			withAbortSignal(signal!),
 		)
@@ -599,6 +615,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		postRollEventsSub: null,
 
 		serverRolling$: new Rx.BehaviorSubject(null as number | null),
+		tickRate$: new Rx.BehaviorSubject(null as number | null),
 
 		event$: new IsolatedSubject(),
 		appEvent$: new IsolatedSubject(),
@@ -621,6 +638,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	cleanup.push(
 		() => server.postRollEventsSub,
 		server.serverRolling$,
+		server.tickRate$,
 		server.event$,
 		server.appEvent$,
 		server.savingEventsMtx,
@@ -730,6 +748,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			const event of SM.LogEvents.parseLogStream(
 				toAsyncGenerator(chunk$.pipe(withAbortSignal(logStreamAc.signal))),
 				errors,
+				(rate) => server.tickRate$.next(rate),
 			)
 		) {
 			if (logStreamAc.signal.aborted) break

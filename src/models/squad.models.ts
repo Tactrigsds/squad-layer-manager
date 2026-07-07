@@ -694,7 +694,23 @@ export namespace LogEvents {
 	const logStartRegex = /^([[0-9.:-]+]\[[ 0-9]*]).+$/
 	export type ParseOutputEvent = AnyChainEvent | NonChainEvent
 
-	export async function* parseLogStream(chunk$: AsyncGenerator<string>, errors: Error[]) {
+	// e.g. "[2026.07.02-08.27.38:836][686]LogSquad: USQGameState: Server Tick Rate: 63.77". Reported periodically
+	// rather than as a discrete event, so it's scanned for a live gauge instead of routed through the event pipeline.
+	const tickRateRegex = /^\[[0-9.:-]+]\[[ 0-9]*]LogSquad: USQGameState: Server Tick Rate: ([0-9.]+)/
+	export function parseTickRate(line: string): number | null {
+		const match = line.match(tickRateRegex)
+		if (!match) return null
+		const rate = Number(match[1])
+		return Number.isFinite(rate) ? rate : null
+	}
+
+	export async function* parseLogStream(
+		chunk$: AsyncGenerator<string>,
+		errors: Error[],
+		// Tick rate is a periodic gauge rather than a discrete event, so it's surfaced via this callback instead of
+		// being routed through the event pipeline. We should follow this pattern for other other gauge-style logs in future
+		onTickRate?: (rate: number) => void,
+	) {
 		let foundLogStart: boolean = false
 		let lineBuffer: string[] = []
 		let chainState: { chainID: number; events: Event[] } | null = null
@@ -756,6 +772,10 @@ export namespace LogEvents {
 			carry = lines.pop() ?? ''
 			if (lines.length === 0) continue
 			for (const line of lines) {
+				if (onTickRate) {
+					const rate = parseTickRate(line)
+					if (rate !== null) onTickRate(rate)
+				}
 				const match = line.match(logStartRegex)
 				if (!match) {
 					if (foundLogStart && lineBuffer.length <= MAX_CONTINUATION_LINES) lineBuffer.push(line)

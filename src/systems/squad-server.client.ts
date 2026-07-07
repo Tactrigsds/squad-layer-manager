@@ -32,6 +32,10 @@ export const [useServerRolling, serverRolling$] = ReactRx.bind(
 	(serverId: string) => RPC.observe(() => RPC.orpc.squadServer.watchServerRolling.call({ serverId })),
 )
 
+export const [useTickRate, tickRate$] = ReactRx.bind(
+	(serverId: string) => RPC.observe(() => RPC.orpc.squadServer.watchTickRate.call({ serverId })),
+)
+
 export function useEndMatch() {
 	return useMutation({
 		mutationFn: async (serverId: string) => {
@@ -280,5 +284,6 @@ export function watchServer(serverId: string, sub: Rx.Subscription) {
 	sub.add(serverInfoRes$(serverId).subscribe())
 	sub.add(layersStatus$(serverId).subscribe())
 	sub.add(serverRolling$(serverId).subscribe())
+	sub.add(tickRate$(serverId).subscribe())
 	sub.add(serverInfo$(serverId).subscribe())
 }

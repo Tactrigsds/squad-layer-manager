@@ -664,12 +664,10 @@ function AppEventEntry(
 	let verb: string
 	let icon: React.ReactNode
 	let suffix: React.ReactNode
-	let descriptor: string | null
 	if (appEvent.type === 'PLAYER_REMOVED_FROM_SQUAD') {
 		verb = 'removed'
 		icon = <Icons.UserMinus className="h-4 w-4 text-orange-500 shrink-0" />
 		suffix = ' from their squad'
-		descriptor = null
 	} else if (appEvent.type === 'PLAYER_KILLED') {
 		verb = 'killed'
 		icon = <Icons.Skull className="h-4 w-4 text-red-500 shrink-0" />
@@ -680,12 +678,10 @@ function AppEventEntry(
 				</>
 			)
 			: null
-		descriptor = null
 	} else {
 		verb = 'switched'
 		icon = <Icons.ArrowLeftRight className="h-4 w-4 text-blue-500 shrink-0" />
 		suffix = ' to the other team'
-		descriptor = null
 	}
 
 	// few enough targets: name them inline instead of grouping/collapsing (but still show the count)
@@ -714,9 +710,7 @@ function AppEventEntry(
 				<EventTime time={event.time} variant="small" />
 				{icon}
 				<span className="grow min-w-0 wrap-break-word">
-					{actorLabel} {verb} {descriptor
-						? (count > 1 ? `${descriptor} (${count} ${plural})` : descriptor)
-						: (count === 1 ? 'a player' : `${count} ${plural}`)}
+					{actorLabel} {verb} {count === 1 ? 'a player' : `${count} ${plural}`}
 					{suffix}
 				</span>
 			</summary>
