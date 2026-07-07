@@ -15,8 +15,11 @@ export default function LayerFilterMenu(props: { stores: LayerFilterMenuPrt.Pred
 		ZusUtils.useShallow((s) => Object.keys(s.filterMenu.menuItems)),
 	)
 
+	// [&_button[role=combobox]]:w-full forces every combobox trigger (operator + value selects) to fill its
+	// grid cell so a column's controls are uniformly sized; the column-select cells are spans, so unaffected.
+	// px-2 trims the trigger padding to keep the menu compact
 	return (
-		<div className="grid h-full grid-cols-[auto_min-content_auto_auto] gap-2">
+		<div className="grid h-full w-fit grid-cols-[auto_min-content_auto_auto] gap-2 [&_button[role=combobox]]:w-full [&_button[role=combobox]]:px-2">
 			{fields.map((field) => (
 				<LayerFilterMenuItem
 					key={field}
@@ -91,6 +94,7 @@ function LayerFilterMenuItem(
 			<Comparison
 				ref={ref}
 				columnEditable={false}
+				numericValueClassName="w-[72px]"
 				highlight={F.editableCompHasValue(comp)}
 				node={comp}
 				allowedEnumValues={possibleValues}

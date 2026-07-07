@@ -51,6 +51,11 @@ export type FilterCardProps = {
 
 const triggerClass =
 	'inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm'
+
+// standard compact display for the operator (comparison-type) select: its options are short symbols
+// (=, [..], not in), so it gets tight padding, a collapsed chevron gap, and a smaller chevron. px-1 is
+// important so container padding rules (e.g. the filter menu grid) can't stretch it back out.
+const operatorSelectClass = 'px-1! gap-0.5 [&_svg]:ml-0 [&_svg]:size-3'
 export default function FilterCard(props: FilterCardProps & { children: React.ReactNode }) {
 	const [activeTab, setActiveTab] = React.useState('builder' as 'builder' | 'text')
 	const editorRef = React.useRef<FilterTextEditorHandle>(null)
@@ -490,6 +495,9 @@ export function Comparison(props: {
 	defaultEditing?: boolean
 	highlight?: boolean
 	columnLabel?: string
+	// overrides the numeric value input's width wrapper (default w-[100px]); used to keep the compact
+	// filter menu's range inputs from stretching the whole value column
+	numericValueClassName?: string
 	ref?: React.ForwardedRef<ComparisonHandle>
 	stores?: Partial<SquadServerFrame.KeyProp>
 }) {
@@ -647,7 +655,7 @@ export function Comparison(props: {
 	const codeBox = (
 		<ComboBox
 			allowEmpty={false}
-			className={componentStyles}
+			className={cn(operatorSelectClass, componentStyles)}
 			title=""
 			value={F.compOpSelectionKey(node)}
 			options={opOptions.map((o) => ({ value: o.key, label: o.label }))}
@@ -869,7 +877,7 @@ export function Comparison(props: {
 		}
 		// number
 		return withToggle(
-			<div className="w-[100px]">
+			<div className={cn('w-[100px]', props.numericValueClassName)}>
 				<NumericValueConfig
 					ref={ref as React.ForwardedRef<Focusable & Clearable>}
 					className={componentStyles}
