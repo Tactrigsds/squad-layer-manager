@@ -4,16 +4,26 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useAlertDialog } from '@/components/ui/lazy-alert-dialog'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards.ts'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
+import * as Messages from '@/messages'
 import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
+import * as UsersClient from '@/systems/users.client'
 import { useMutation } from '@tanstack/react-query'
-import { toast } from 'sonner'
+
+// Permission checks gate these menu items, so a denial at call time is a race. Surface it the same
+// way handlePermissionDenied would (refresh perms + user-facing message), but as a thrown error so a
+// wrapping toast.promise renders a single error toast instead of double-toasting.
+function permissionDeniedError(res: RBAC.PermissionDeniedResponse) {
+	UsersClient.invalidateLoggedInUser()
+	return new Error(Messages.WARNS.permissionDenied(res))
+}
 
 const dropdownMenuSlots: MenuSlots = {
 	Item: DropdownMenuItem,
@@ -58,20 +68,27 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 	const serverInfoRes = SquadServerClient.useServerInfoRes(serverId)
 	const openDialog = useAlertDialog()
 
-	async function disableFogOfWar() {
-		const res = await disableFogOfWarMutation.mutateAsync(serverId)
-		switch (res.code) {
-			case 'err:rcon':
-				break
-			case 'err:permission-denied':
-				RbacClient.handlePermissionDenied(res)
-				break
-			case 'ok':
-				toast('Fog of War disabled for current match')
-				break
-			default:
-				assertNever(res)
-		}
+	function disableFogOfWar() {
+		toast.promise(
+			(async () => {
+				const res = await disableFogOfWarMutation.mutateAsync(serverId)
+				switch (res.code) {
+					case 'ok':
+						return res
+					case 'err:permission-denied':
+						throw permissionDeniedError(res)
+					case 'err:rcon':
+						throw new Error('Failed to disable Fog of War (RCON error)')
+					default:
+						assertNever(res)
+				}
+			})(),
+			{
+				loading: 'Disabling Fog of War...',
+				success: 'Fog of War disabled for current match',
+				error: (e: Error) => ({ message: e.message, richColors: true }),
+			},
+		)
 	}
 
 	async function endMatch() {
@@ -82,21 +99,27 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 			buttons: [{ id: 'confirm', label: 'End Match', variant: 'destructive' }],
 		})
 		if (result !== 'confirm') return
-		const res = await endMatchMutation.mutateAsync({ serverId })
-		switch (res.code) {
-			case 'ok':
-				toast('Match ended!')
-				break
-			case 'err:permission-denied':
-				RbacClient.handlePermissionDenied(res)
-				break
-			case 'err:timeout':
-			case 'err:unknown':
-				toast.error(res.message)
-				break
-			default:
-				assertNever(res)
-		}
+		toast.promise(
+			(async () => {
+				const res = await endMatchMutation.mutateAsync({ serverId })
+				switch (res.code) {
+					case 'ok':
+						return res
+					case 'err:permission-denied':
+						throw permissionDeniedError(res)
+					case 'err:timeout':
+					case 'err:unknown':
+						throw new Error(res.message)
+					default:
+						assertNever(res)
+				}
+			})(),
+			{
+				loading: `Ending match on ${serverName}...`,
+				success: 'Match ended!',
+				error: (e: Error) => ({ message: e.message, richColors: true }),
+			},
+		)
 	}
 
 	return (

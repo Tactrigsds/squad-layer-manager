@@ -1,5 +1,5 @@
+import { toast } from '@/lib/toast'
 import * as L from '@/models/layer'
-import { toast } from 'sonner'
 
 /** eslint-disable react-refresh/only-export-components */
 export function copyAdminSetNextLayerCommand(selectedLayerIds: L.LayerId[]) {

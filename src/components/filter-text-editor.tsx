@@ -2,13 +2,13 @@ import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { useDebounced } from '@/hooks/use-debounce'
 import * as CM from '@/lib/codemirror'
 import * as Obj from '@/lib/object'
+import { toast } from '@/lib/toast'
 import * as Typography from '@/lib/typography.ts'
 import * as ZusUtils from '@/lib/zustand'
 import * as F from '@/models/filter.models'
 import stringifyCompact from 'json-stringify-pretty-compact'
 import React from 'react'
 import * as Rx from 'rxjs'
-import { toast } from 'sonner'
 import type { FilterTextEditorProps } from './filter-text-editor.types'
 
 export default function FilterTextEditor(props: FilterTextEditorProps) {
@@ -95,7 +95,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 				obj = JSON.parse(view.state.doc.toString())
 			} catch (err) {
 				if (err instanceof SyntaxError) {
-					toast('Unable to format: invalid json', { description: err.message })
+					toast.error('Unable to format: invalid json', { description: err.message })
 				}
 				return
 			}

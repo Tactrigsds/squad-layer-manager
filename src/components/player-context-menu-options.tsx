@@ -1,5 +1,6 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
 import type * as BM from '@/models/battlemetrics.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
@@ -18,7 +19,6 @@ import * as TSWClient from '@/systems/teamswitches.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 import React from 'react'
-import { toast } from 'sonner'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger } from './ui/context-menu'
 import { Input } from './ui/input'
@@ -248,7 +248,7 @@ export function PlayerMenuItems(
 					buttons: [{ id: 'confirm', label: 'Switch Now' }],
 				})
 				if (result === 'dismissed') {
-					toast.error('Switch cancelled', { description: 'Player changed teams' })
+					toast.warning('Switch cancelled', { description: 'Player changed teams' })
 					return
 				}
 				if (result !== 'confirm') return

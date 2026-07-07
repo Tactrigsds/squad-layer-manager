@@ -166,7 +166,7 @@ function ServerCounts(props: { stores: SquadServerFrame.KeyProp }) {
 		: 'text-red-500'
 
 	return (
-		<div className="inline-flex text-muted-foreground space-x-2 items-baseline text-sm">
+		<div className="inline-flex text-muted-foreground space-x-2 items-baseline text-sm tabular-nums">
 			<span>
 				{playerCount ?? '<unknown>'} / {serverInfo.maxPlayerCount} online, {serverInfo.queueLength} / {serverInfo.maxQueueLength} in queue
 			</span>

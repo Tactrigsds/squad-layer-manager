@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
+import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
@@ -9,7 +10,6 @@ import * as UsersClient from '@/systems/users.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import { toast } from 'sonner'
 
 function warnTargetsEqual(a: WarnChat.WarnFocusTarget, b: WarnChat.WarnFocusTarget) {
 	if (a.kind === 'player' && b.kind === 'player') return a.playerId === b.playerId

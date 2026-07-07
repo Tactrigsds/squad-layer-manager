@@ -2,13 +2,13 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 
+import { toast } from '@/lib/toast'
 import { formatVersion } from '@/lib/versioning'
 import * as ZusUtils from '@/lib/zustand'
 import * as ConfigClient from '@/systems/config.client'
 import * as UsersClient from '@/systems/users.client'
 import { Copy, Info } from 'lucide-react'
 import * as React from 'react'
-import { toast } from 'sonner'
 
 interface AboutDialogProps {
 	children?: React.ReactNode

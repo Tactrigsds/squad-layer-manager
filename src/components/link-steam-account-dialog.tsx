@@ -1,6 +1,7 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as RPC from '@/orpc.client'
 import * as UsersClient from '@/systems/users.client'
@@ -8,7 +9,6 @@ import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import { toast } from 'sonner'
 
 interface LinkSteamAccountDialogProps {
 	children: React.ReactNode

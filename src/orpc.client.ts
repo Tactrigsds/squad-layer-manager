@@ -1,4 +1,5 @@
 import * as AR from '@/app-routes'
+import { toast } from '@/lib/toast'
 import type { OrpcAppRouter } from '@/server/orpc-app-router'
 import * as ConfigClient from '@/systems/config.client'
 import { createORPCClient, onError } from '@orpc/client'
@@ -9,7 +10,6 @@ import * as ReactRx from '@react-rxjs/core'
 import { QueryClient } from '@tanstack/react-query'
 import { WebSocket } from 'partysocket'
 import * as Rx from 'rxjs'
-import { toast } from 'sonner'
 import { toCold, traceTag } from './lib/async'
 import { formatVersion } from './lib/versioning'
 

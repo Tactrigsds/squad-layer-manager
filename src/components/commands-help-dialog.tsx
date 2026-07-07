@@ -2,13 +2,13 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
 import * as Messages from '@/messages'
 import * as CMD from '@/models/command.models'
 import * as SettingsClient from '@/systems/settings.client'
 import { Copy, HelpCircle } from 'lucide-react'
 import * as React from 'react'
-import { toast } from 'sonner'
 
 interface CommandsHelpDialogProps {
 	children?: React.ReactNode

@@ -1,10 +1,10 @@
 import * as Obj from '@/lib/object'
+import { toast } from '@/lib/toast'
 import * as Messages from '@/messages'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as UsersClient from '@/systems/users.client'
 import { useQuery } from '@tanstack/react-query'
-import { toast } from 'sonner'
 import * as Zus from 'zustand'
 
 export function handlePermissionDenied(res: RBAC.PermissionDeniedResponse) {

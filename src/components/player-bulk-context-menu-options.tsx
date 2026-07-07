@@ -1,5 +1,6 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
@@ -11,7 +12,6 @@ import * as TSWClient from '@/systems/teamswitches.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 import React from 'react'
-import { toast } from 'sonner'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { contextMenuSlots, PlayerCopyIdsSub, PlayerOpenLinksSub } from './player-context-menu-options'
 import { ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuShortcut } from './ui/context-menu'
@@ -99,7 +99,7 @@ export default function PlayerBulkContextMenuOptions(
 					buttons: [{ id: 'confirm', label: 'Switch Now' }],
 				})
 				if (result === 'dismissed') {
-					toast.error('Switch cancelled', { description: 'One or more players changed teams' })
+					toast.warning('Switch cancelled', { description: 'One or more players changed teams' })
 					return
 				}
 				if (result !== 'confirm') return
@@ -136,11 +136,13 @@ export default function PlayerBulkContextMenuOptions(
 			})
 			if (result !== 'confirm') return
 			const reason = killReasonRef.current.trim() || undefined
-			try {
-				await killMutation.mutateAsync({ serverId, playerIds, reason })
-			} catch {
-				toast.error('Kill failed', { description: `Failed to kill ${playerIds.length} players` })
-			}
+			// unwrap() so the presence dialogue stays open until the kill settles; the toast already surfaces
+			// any error, so swallow the rejection here
+			await toast.promise(killMutation.mutateAsync({ serverId, playerIds, reason }), {
+				loading: `Killing ${playerIds.length} players...`,
+				success: `Killed ${playerIds.length} players`,
+				error: { message: 'Kill failed', description: `Failed to kill ${playerIds.length} players`, richColors: true },
+			}).unwrap().catch(() => {})
 		})
 	}
 
@@ -165,11 +167,12 @@ export default function PlayerBulkContextMenuOptions(
 			})
 			if (result !== 'confirm') return
 			// one call for the whole batch: the server aggregates the resulting squad-leaves under a single app event
-			try {
-				await removePlayersFromSquadMutation.mutateAsync({ serverId, playerIds })
-			} catch {
-				toast.error('Remove from squad failed', { description: `Failed to remove ${playerIds.length} players` })
-			}
+			// unwrap() keeps the presence dialogue open until it settles; the toast surfaces any error
+			await toast.promise(removePlayersFromSquadMutation.mutateAsync({ serverId, playerIds }), {
+				loading: `Removing ${playerIds.length} players from their squads...`,
+				success: `Removed ${playerIds.length} players from their squads`,
+				error: { message: 'Remove from squad failed', description: `Failed to remove ${playerIds.length} players`, richColors: true },
+			}).unwrap().catch(() => {})
 		})
 	}
 

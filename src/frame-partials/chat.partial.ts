@@ -3,7 +3,7 @@ import * as RSel from '@/lib/reselect'
 import * as ZusUtils from '@/lib/zustand'
 import * as CHAT from '@/models/chat.models'
 import * as MH from '@/models/match-history.models'
-import type * as SM from '@/models/squad.models'
+import * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -109,6 +109,11 @@ export namespace Sel {
 			},
 		)
 	)
+
+	export function player(playerId: SM.PlayerId) {
+		return (store: Store) => SM.PlayerIds.find(chatState(store).players, p => p.ids, playerId)
+	}
+
 	export const squadsForTeam = RSel.memoizeFactory((maybeNormedTeamId: MH.NormedTeamId | SM.TeamId) =>
 		RSel.createDeepSelector(
 			[(store: Store) => chatState(store).squads, currentMatchArg],

@@ -1,5 +1,6 @@
 import type * as FRM from '@/lib/frame'
 import * as ODSM from '@/lib/odsm'
+import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
 import * as MH from '@/models/match-history.models'
@@ -9,7 +10,6 @@ import type * as UP from '@/models/user-presence'
 import * as RPC from '@/orpc.client'
 import * as UsersClient from '@/systems/users.client'
 import * as Rx from 'rxjs'
-import { toast } from 'sonner'
 
 export type Store = {
 	teamswitches: TeamswitchSlice

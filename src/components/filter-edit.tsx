@@ -2,6 +2,7 @@ import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescript
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
+import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
@@ -21,7 +22,6 @@ import * as Icons from 'lucide-react'
 import { useState } from 'react'
 import React from 'react'
 import Markdown from 'react-markdown'
-import { toast } from 'sonner'
 
 import EmojiDisplay from './emoji-display'
 import { EmojiPickerPopover } from './emoji-picker-popover'
@@ -133,7 +133,7 @@ export function FilterEdit(
 					assertNever(res)
 			}
 
-			toast(`Failed to delete filter "${props.entity.name} : ${blurb}"`)
+			toast.error(`Failed to delete filter "${props.entity.name} : ${blurb}"`)
 		}
 	}, [deleteFilterMutation, navigate, props.entity])
 

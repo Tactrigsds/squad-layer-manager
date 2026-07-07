@@ -88,8 +88,10 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 		(s) => ChatPrt.Sel.chatState(s).players.find((p) => p.ids.steam === playerId) ?? null,
 	)
 	const player = livePlayer ?? CHAT.findLastPlayerInstance(allEvents, playerId)
+
 	const connectionStatus = data?.connectionStatus ?? null
 	const elapsed = useElapsed(connectionStatus?.status === 'online' ? connectionStatus.connectedSince : null)
+	const isOnline = !!ZusUtils.useStore(squadServerFrameKey, ChatPrt.Sel.player(playerId))
 	const globalFilterState = ZusUtils.useStore(squadServerFrameKey, ChatPrt.Sel.secondaryFilterState)
 	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>(globalFilterState)
 	const filteredEvents = allEvents.filter(e => !CHAT.isEventFilteredBySecondary(e, filterState))
@@ -230,7 +232,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 					)}
 				</div>
 			</div>
-			{connectionStatus?.status === 'online' && (
+			{isOnline && (
 				<div className="px-3 py-2 border-t border-border/50">
 					<WarnChatBox
 						serverId={serverId}

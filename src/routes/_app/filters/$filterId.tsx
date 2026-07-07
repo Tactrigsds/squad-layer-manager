@@ -1,6 +1,7 @@
 import { FilterEdit } from '@/components/filter-edit'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { frameManager } from '@/frames/frame-manager'
+import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
 import * as F from '@/models/filter.models'
 import * as RPC from '@/orpc.client'
@@ -11,7 +12,6 @@ import * as UsersClient from '@/systems/users.client'
 import { createFileRoute } from '@tanstack/react-router'
 import React from 'react'
 import * as Rx from 'rxjs'
-import { toast } from 'sonner'
 
 export const Route = createFileRoute('/_app/filters/$filterId')({
 	component: RouteComponent,
