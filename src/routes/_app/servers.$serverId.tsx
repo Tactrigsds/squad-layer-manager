@@ -150,7 +150,7 @@ function RouteComponent() {
 							<AlertTitle>What happened?</AlertTitle>
 							<AlertDescription>
 								{serverConfig
-									? "This server is currently disabled and can't be loaded right now."
+									? "This server is currently disabled and can't be loaded right now. If you have access, first please enable it in the settings page."
 									: 'This server may have been removed from the configuration or the server ID is incorrect.'}
 							</AlertDescription>
 						</Alert>
@@ -175,7 +175,7 @@ function RouteComponent() {
 									<Link to="/" className="block">
 										<Button className="w-full" size="lg">
 											<Home className="mr-2 h-4 w-4" />
-											Go Back Home
+											Go Back to Servers List
 										</Button>
 									</Link>
 								</div>
