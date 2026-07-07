@@ -13,7 +13,6 @@ import React from 'react'
 
 import { MatchHistoryPanelContent } from './match-history-panel'
 
-import * as UserPresenceClient from '@/systems/user-presence.client.ts'
 import { QueuePanelContent, SlmUpdatesDisabledAlert } from './layer-queue-panel.tsx'
 import TeamsPanel from './teams-panel.tsx'
 import UserPresencePanel, { sortEditingPresence } from './user-presence-panel.tsx'
@@ -50,12 +49,9 @@ function TabBar<T extends string>({
 
 export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }) {
 	const serverId = props.stores.squadServer.serverId
-	const [_tab, setTab] = UserPresenceClient.useVariantActivityState({
-		queue: UP.Trans.viewingQueue(serverId),
-		teams: UP.Trans.viewingTeams(serverId),
-	})
-	const persistedTab = ZusUtils.useStore(ClientOnlySettings.Store, s => s.primaryPanelTab)
-	const tab = _tab ?? (persistedTab === 'VIEWING_TEAMS' ? 'teams' : 'queue')
+	// the visible panel is client-only state; presence mirrors it while the client is engaged (see the
+	// dashboard route effect). tab switches persist and drive display without needing a presence entry.
+	const tab = ZusUtils.useStore(ClientOnlySettings.Store, s => s.primaryPanelTab === 'VIEWING_TEAMS' ? 'teams' : 'queue')
 
 	const queueLength = ZusUtils.useStore(props.stores.squadServer, s => s.queue.layerList.length)
 	const playerCount = ZusUtils.useStore(props.stores.squadServer, s => ChatPrt.Sel.chatState(s).players.length)
@@ -115,7 +111,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 						},
 					]}
 					value={tab}
-					onChange={setTab}
+					onChange={(value) => ClientOnlySettings.Actions.setPrimaryPanelTab(value === 'teams' ? 'VIEWING_TEAMS' : 'VIEWING_QUEUE')}
 				/>
 				<Separator />
 				<div className="grid">

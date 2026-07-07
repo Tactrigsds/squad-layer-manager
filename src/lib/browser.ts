@@ -25,18 +25,30 @@ const significantMouseMove$ = Rx.fromEvent(document, 'mousemove').pipe(
 	Rx.share(),
 )
 
-export const userIsActive$ = (function createPageActivityObservable(): Rx.Observable<true> {
-	const userActions$ = Rx.merge(
-		significantMouseMove$,
+// Deliberate user interaction: a click, key press, scroll, or touch. Passive mouse movement is
+// excluded on purpose -- moving the cursor is enough to keep an active session alive (see
+// userIsActive$) but should never be what starts one.
+export const userInteracted$ = (function createInteractionObservable(): Rx.Observable<true> {
+	return Rx.merge(
 		Rx.fromEvent(document, 'click'),
 		Rx.fromEvent(document, 'contextmenu'),
 		Rx.fromEvent(document, 'keydown'),
 		Rx.fromEvent(document, 'scroll'),
 		Rx.fromEvent(document, 'touchstart'),
-	)
-
-	return userActions$.pipe(
+	).pipe(
 		Rx.throttleTime(300, Rx.asyncScheduler, { leading: true, trailing: true }),
+		Rx.map((): true => true),
+		Rx.share(),
+	)
+})()
+
+// Any sign of life, including sustained mouse movement. Broader than userInteracted$ -- use this to
+// keep an already-active session from timing out, not to decide whether the user is engaged.
+export const userIsActive$ = (function createPageActivityObservable(): Rx.Observable<true> {
+	return Rx.merge(
+		significantMouseMove$,
+		userInteracted$,
+	).pipe(
 		Rx.map((): true => true),
 		Rx.share(),
 	)

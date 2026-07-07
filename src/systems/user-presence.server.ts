@@ -23,6 +23,16 @@ export type UserPresenceContext = {
 
 let globalUserPresence: UserPresenceContext['userPresence']
 
+// pending "interrupted -> disconnected" timers, keyed by wsClientId so they can be superseded when the
+// same id is reclaimed or closes again (see setup)
+const pendingDisconnects = new Map<string, ReturnType<typeof setTimeout>>()
+function clearPendingDisconnect(wsClientId: string) {
+	const timer = pendingDisconnects.get(wsClientId)
+	if (timer === undefined) return
+	clearTimeout(timer)
+	pendingDisconnects.delete(wsClientId)
+}
+
 const module = initModule('user-presence')
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
@@ -112,6 +122,29 @@ const dispatchOp = C.spanOp(
 		}
 	},
 )
+// Called at connection time (see createOrpcSessionBase): if this user has a client whose socket was
+// interrupted, hand the new connection that same wsClientId so its held activity and locks carry over
+// untouched, and mark it live again. Returns the reclaimed id, or undefined to mint a fresh one.
+export function reclaimInterruptedClientId(userId: bigint): string | undefined {
+	let reclaimedId: string | undefined
+	let bestSeen = -Infinity
+	for (const [clientId, presence] of globalUserPresence.session.state.presence) {
+		if (presence.userId !== userId) continue
+		if (presence.connectionState !== 'connection-interrupted') continue
+		const seen = presence.lastSeen ?? 0
+		if (seen >= bestSeen) {
+			bestSeen = seen
+			reclaimedId = clientId
+		}
+	}
+	if (reclaimedId === undefined) return undefined
+	// the reconnecting socket owns this id now; cancel the pending disconnect and mark it live
+	clearPendingDisconnect(reclaimedId)
+	dispatchOp([{ code: 'connection-restored', clientId: reclaimedId, opId: UP.createOpId(), time: Date.now() }])
+		.catch((error) => log.error(error))
+	return reclaimedId
+}
+
 export function dispatchEndAllTeamswitchEditing() {
 	dispatchOp([{
 		code: 'broadcast-activity-update',
@@ -149,15 +182,36 @@ export function setup() {
 	})
 	CleanupSys.register(() => enabledServersSub.unsubscribe())
 
-	// wsClientIds are generated per-connection, so a closed socket's id never comes back -- no reconnect check needed
-	const disconnectSub = WSSessionSys.disconnect$.pipe(
-		Rx.delay(UP.DISCONNECT_TIMEOUT),
-		C.durableSub('user-presence:disconnect-timeout', { module, taskScheduling: 'parallel' }, async (ctx) => {
-			if (!globalUserPresence.session.state.presence.has(ctx.wsClientId)) return
-			await dispatchOp([{ code: 'disconnected-timeout', clientId: ctx.wsClientId, opId: UP.createOpId(), time: Date.now() }])
-		}),
-	).subscribe()
-	CleanupSys.register(() => disconnectSub.unsubscribe())
+	// On close, either the client cleanly left (drop it now) or the socket was interrupted (keep its
+	// activity + locks so a reconnecting socket can reclaim this id, and show a spinner meanwhile). An
+	// interrupted client that isn't reclaimed within DISCONNECT_TIMEOUT is gone for good. The timer is
+	// tracked per id and superseded on each close/reclaim, since ids are reused across reconnects and a
+	// disconnect->reconnect->disconnect flap must not let a stale timer disconnect a fresh interruption.
+	const disconnectSub = WSSessionSys.disconnect$.subscribe(({ ctx, interrupted }) => {
+		const wsClientId = ctx.wsClientId
+		clearPendingDisconnect(wsClientId)
+		if (!interrupted) {
+			dispatchOp([{ code: 'client-disconnected', clientId: wsClientId, opId: UP.createOpId(), time: Date.now() }])
+				.catch((error) => log.error(error))
+			return
+		}
+		dispatchOp([{ code: 'connection-interrupted', clientId: wsClientId, opId: UP.createOpId(), time: Date.now() }])
+			.catch((error) => log.error(error))
+		const timer = setTimeout(() => {
+			pendingDisconnects.delete(wsClientId)
+			// reclaim flips it back to 'connected'; only disconnect if it's still interrupted
+			const clientState = globalUserPresence.session.state.presence.get(wsClientId)
+			if (clientState?.connectionState !== 'connection-interrupted') return
+			dispatchOp([{ code: 'client-disconnected', clientId: wsClientId, opId: UP.createOpId(), time: Date.now() }])
+				.catch((error) => log.error(error))
+		}, UP.DISCONNECT_TIMEOUT)
+		pendingDisconnects.set(wsClientId, timer)
+	})
+	CleanupSys.register(() => {
+		disconnectSub.unsubscribe()
+		for (const timer of pendingDisconnects.values()) clearTimeout(timer)
+		pendingDisconnects.clear()
+	})
 
 	const cleanSub = Rx.interval(UP.DISPLAYED_AWAY_PRESENCE_WINDOW * 2).pipe(
 		C.durableSub('user-presence:clean-presence', { module }, async () => {

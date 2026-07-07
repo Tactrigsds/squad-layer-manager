@@ -19,6 +19,7 @@ import * as LayerDb from '@/systems/layer-db.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sessions from '@/systems/sessions.server'
 import * as SquadServer from '@/systems/squad-server.server'
+import * as UserPresenceSys from '@/systems/user-presence.server'
 import * as WsSessionSys from '@/systems/ws-session.server'
 import fastifyCookie from '@fastify/cookie'
 import fastifyFormBody from '@fastify/formbody'
@@ -373,7 +374,9 @@ export function createOrpcSessionBase(
 	ctx: C.FastifyRequestFull & C.AuthedUser,
 	websocket: WebSocket,
 ): C.OrpcBase {
-	const wsClientId = createId(32)
+	// reuse the id of an interrupted session for this user if there is one, so the reconnecting socket
+	// picks up its held presence (activity + locks) with no visible break; otherwise mint a fresh id
+	const wsClientId = UserPresenceSys.reclaimInterruptedClientId(ctx.user.discordId) ?? createId(32)
 
 	const wsCtx: C.OrpcBase = {
 		wsClientId,

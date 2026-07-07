@@ -7,8 +7,15 @@ import type * as C from '@/server/context'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { metrics } from '@opentelemetry/api'
 export const wsSessions = new Map<string, C.OrpcSessionBase>()
-export const disconnect$ = new IsolatedSubject<C.OrpcSessionBase>()
+// `interrupted` is true when the socket closed without a clean handshake (the client never
+// communicated intent to leave), e.g. a network drop -- distinct from a normal/going-away close.
+export const disconnect$ = new IsolatedSubject<{ ctx: C.OrpcSessionBase; interrupted: boolean }>()
 export const connect$ = new IsolatedSubject<C.OrpcSessionBase>()
+
+// WebSocket close codes that indicate the peer communicated intent to close: 1000 (normal) and
+// 1001 (going away, e.g. tab close / navigation). Anything else -- notably 1006 (abnormal, no close
+// frame) -- is treated as an interruption the client may recover from.
+const CLEAN_CLOSE_CODES = new Set([1000, 1001])
 
 const module = initModule('ws-session')
 let log!: CS.Logger
@@ -31,9 +38,10 @@ export function registerClient(ctx: C.OrpcSessionBase) {
 	}
 
 	wsSessions.set(ctx.wsClientId, ctx)
-	ctx.ws.on('close', () => {
-		log.info('%s has disconnected (%s)', ctx.user.username, ctx.wsClientId)
-		disconnect$.next(ctx)
+	ctx.ws.on('close', (code) => {
+		const interrupted = !CLEAN_CLOSE_CODES.has(code)
+		log.info('%s has disconnected (%s) code=%d interrupted=%s', ctx.user.username, ctx.wsClientId, code, interrupted)
+		disconnect$.next({ ctx, interrupted })
 		wsSessions.delete(ctx.wsClientId)
 	})
 	log.info('%s has connected (%s)', ctx.user.username, ctx.wsClientId)

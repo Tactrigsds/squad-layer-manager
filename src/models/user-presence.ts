@@ -155,14 +155,40 @@ export const OpSchema = z.discriminatedUnion('code', [
 		update: z.lazy(() => ActivityUpdateSchema),
 	}),
 
+	// remotely reset one of the dispatching user's other clients (clears its activity, marks it away).
+	// the reducer enforces that targetClientId belongs to the same user as the dispatching client.
+	z.object({
+		...clientOpBase,
+		code: z.literal('reset-client'),
+		targetClientId: z.string(),
+	}),
+
 	z.object({
 		...serverOpBase,
 		code: z.literal('sll:end-all-editing'),
 	}),
 
+	// the socket dropped without a clean close -- hold the client's activity (and locks) so a
+	// reconnecting client can steal it; a spinner is shown until it resolves
 	z.object({
 		...serverOpBase,
-		code: z.literal('disconnected-timeout'),
+		code: z.literal('connection-interrupted'),
+		clientId: z.string(),
+	}),
+
+	// the client is gone for good (clean close, or interrupted past DISCONNECT_TIMEOUT): clear its
+	// activity and release its locks
+	z.object({
+		...serverOpBase,
+		code: z.literal('client-disconnected'),
+		clientId: z.string(),
+	}),
+
+	// a reconnecting socket reclaimed this interrupted client's id, so its activity and locks carry over
+	// untouched -- just mark it live again
+	z.object({
+		...serverOpBase,
+		code: z.literal('connection-restored'),
 		clientId: z.string(),
 	}),
 
@@ -193,6 +219,7 @@ export const CLIENT_OP_CODE = z.enum([
 	'interaction-timeout',
 	'navigated-away',
 	'update-activity',
+	'reset-client',
 ])
 type ClientOpCode = z.infer<typeof CLIENT_OP_CODE>
 
@@ -219,6 +246,25 @@ export function initState(): State {
 	}
 }
 
+// applies an activity update to a single client's entry, changing only its activityState and releasing
+// any SLL item lock it no longer justifies. does NOT touch away/lastSeen/connectionState -- used where
+// the affected client isn't the one interacting (server broadcasts, cross-client fan-out).
+function applyActivityUpdateToClient(state: State, clientId: string, update: ActivityUpdate): void {
+	const clientState = state.presence.get(clientId)
+	if (!clientState) return
+	const prevActivity = clientState.activityState ?? null
+	const newActivity = gateActivityToEnabled(applyActivityUpdate(prevActivity, update), state.enabledServers)
+	if (newActivity === prevActivity) return
+	const prevEditingSll = prevActivity ? Trans.editingQueue(prevActivity.opts.serverId).match(prevActivity) : null
+	const sllEditNode = newActivity ? Trans.editingQueue(newActivity.opts.serverId).match(newActivity) : null
+	if (!sllEditNode && prevEditingSll) {
+		MapUtils.deleteByValue(state.itemLocks, clientId)
+	} else if (sllEditNode && !isItemOwnedActivity(sllEditNode.chosen)) {
+		MapUtils.deleteByValue(state.itemLocks, clientId)
+	}
+	state.presence.set(clientId, { ...clientState, activityState: newActivity })
+}
+
 // collapses an activity to null when its server isn't currently enabled -- users can't be present on a server with no live slice
 function gateActivityToEnabled(activity: RootActivity | null, enabledServers: Set<string>): RootActivity | null {
 	if (activity && !enabledServers.has(activity.opts.serverId)) return null
@@ -239,12 +285,31 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 	for (const op of ops) {
 		let success = false
 		try {
-			if (op.code === 'disconnected-timeout') {
+			if (op.code === 'connection-interrupted') {
 				const clientState = state.presence.get(op.clientId)
 				if (clientState) {
-					state.presence.set(op.clientId, { ...clientState, away: true, activityState: null })
+					// keep activityState and locks -- a reconnecting client of the same user can steal them back
+					state.presence.set(op.clientId, { ...clientState, connectionState: 'connection-interrupted' })
+				}
+				success = true
+			} else if (op.code === 'client-disconnected') {
+				const clientState = state.presence.get(op.clientId)
+				if (clientState) {
+					state.presence.set(op.clientId, {
+						...clientState,
+						connectionState: 'disconnected',
+						away: true,
+						activityState: null,
+					})
 				}
 				MapUtils.deleteByValue(state.itemLocks, op.clientId)
+				success = true
+			} else if (op.code === 'connection-restored') {
+				const clientState = state.presence.get(op.clientId)
+				// activityState and locks were held through the interruption, so nothing to move -- just relive it
+				if (clientState) {
+					state.presence.set(op.clientId, { ...clientState, connectionState: 'connected' })
+				}
 				success = true
 			} else if (op.code === 'clean-stale-presence') {
 				for (const clientId of op.clientIdsToRemove) {
@@ -271,29 +336,21 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 				}
 				success = true
 			} else if (op.code === 'broadcast-activity-update') {
-				for (const [clientId, clientState] of state.presence.entries()) {
-					const prevActivity = clientState.activityState ?? null
-					const newActivity = gateActivityToEnabled(applyActivityUpdate(prevActivity, op.update), state.enabledServers)
-					if (newActivity === prevActivity) continue
-					const prevEditingSll = prevActivity ? Trans.editingQueue(prevActivity.opts.serverId).match(prevActivity) : null
-					const sllEditNode = newActivity ? Trans.editingQueue(newActivity.opts.serverId).match(newActivity) : null
-					if (!sllEditNode && prevEditingSll) {
-						MapUtils.deleteByValue(state.itemLocks, clientId)
-					} else if (sllEditNode && !isItemOwnedActivity(sllEditNode.chosen)) {
-						MapUtils.deleteByValue(state.itemLocks, clientId)
-					}
-					state.presence.set(clientId, { ...clientState, activityState: newActivity })
+				for (const clientId of [...state.presence.keys()]) {
+					applyActivityUpdateToClient(state, clientId, op.update)
 				}
 				success = true
 			} else {
 				// client ops
 				const clientState: ClientPresence = state.presence.get(op.clientId)
-					?? { userId: op.userId, away: true, activityState: null, lastSeen: null }
+					?? { userId: op.userId, away: true, connectionState: 'connected', activityState: null, lastSeen: null }
 				let newClientState: ClientPresence | undefined
+				// any op from a client means its socket is live, so it's connected
 				opSwitch: switch (op.code) {
 					case 'page-interaction': {
 						newClientState = {
 							...clientState,
+							connectionState: 'connected',
 							away: false,
 							lastSeen: op.time,
 						}
@@ -304,6 +361,7 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 					case 'interaction-timeout': {
 						newClientState = {
 							...clientState,
+							connectionState: 'connected',
 							away: true,
 						}
 						success = true
@@ -313,11 +371,22 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 					case 'navigated-away': {
 						newClientState = {
 							...clientState,
+							connectionState: 'connected',
 							away: true,
 							activityState: null,
 						}
 						MapUtils.deleteByValue(state.itemLocks, op.clientId)
 						success = true
+						break
+					}
+
+					case 'reset-client': {
+						const targetState = state.presence.get(op.targetClientId)
+						if (targetState && targetState.userId === op.userId) {
+							state.presence.set(op.targetClientId, { ...targetState, away: true, activityState: null })
+							MapUtils.deleteByValue(state.itemLocks, op.targetClientId)
+							success = true
+						}
 						break
 					}
 
@@ -351,6 +420,7 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 
 						newClientState = {
 							...clientState,
+							connectionState: 'connected',
 							away: false,
 							activityState: newActivity,
 							lastSeen: op.time,
@@ -363,6 +433,18 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 						assertNever(op)
 				}
 				if (newClientState) state.presence.set(op.clientId, newClientState)
+
+				// ending queue/teamswitch editing is a user-level intent: clear it on this user's other
+				// clients (tabs / reconnects) too, so all of their sessions leave editing together
+				if (
+					op.code === 'update-activity'
+					&& (op.update.code === 'clear-editing-queue' || op.update.code === 'clear-editing-teamswitches')
+				) {
+					for (const [otherClientId, otherState] of [...state.presence]) {
+						if (otherClientId === op.clientId || otherState.userId !== op.userId) continue
+						applyActivityUpdateToClient(state, otherClientId, op.update)
+					}
+				}
 			}
 		} catch (e) {
 			firstError ??= { code: 'op-error', op, error: e }
@@ -695,9 +777,17 @@ export function isItemOwnedActivity(activity: QueueEditingActivity): activity is
 	return (ITEM_OWNED_ACTIVITY_CODE.options as string[]).includes(activity.id)
 }
 
+// 'connected': a live socket. 'connection-interrupted': the socket dropped without a clean close
+// (network blip) -- we keep the activityState around so a reconnecting client can steal it, and show a
+// spinner meanwhile. 'disconnected': cleanly closed, or interrupted past DISCONNECT_TIMEOUT; activity
+// is cleared.
+export const ConnectionStateSchema = z.enum(['connected', 'connection-interrupted', 'disconnected'])
+export type ConnectionState = z.infer<typeof ConnectionStateSchema>
+
 export const ClientPresenceSchema = z.object({
 	userId: USR.UserIdSchema,
 	away: z.boolean(),
+	connectionState: ConnectionStateSchema,
 	lastSeen: z.number().positive().nullable(),
 	activityState: UserPresenceActivitySchema.nullable(),
 })

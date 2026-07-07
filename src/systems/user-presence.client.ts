@@ -158,9 +158,6 @@ export type Store = {
 // assigned during createPresenceStore -- module-level so Actions.preloadActivity can reach it
 let loaderCtx: Lifecycle.LoaderManagerContext<ConfiguredLoaderConfig, Store>
 
-// our own last-known activity, tracked as presence changes and replayed on reconnect (see setup())
-let lastLocalActivity: UP.RootActivity | null = null
-
 const [_usePresenceUpdate, presenceUpdate$] = ReactRx.bind<UP.PresenceUpdate>(
 	RPC.observe(() => RPC.orpc.userPresence.watchUpdates.call()),
 )
@@ -190,14 +187,12 @@ function createPresenceStore() {
 					const wsClientId = config.wsClientId
 					const prevClientActivityState = prev.presence.get(wsClientId)?.activityState ?? null
 					const clientActivityState = presence.get(wsClientId)?.activityState ?? null
-					if (prevClientActivityState !== clientActivityState) {
+					// compare by value, not reference: a reconnect re-inits from a fresh server snapshot, so an
+					// activityState preserved through a connection interruption comes back as a new (deep-equal)
+					// object. Reference equality would spuriously re-fire loader events and reload the frames.
+					if (!Obj.deepEqual(prevClientActivityState, clientActivityState)) {
 						Lifecycle.dispatchLoaderEvents(loaderCtx, clientActivityState, prevClientActivityState, false)
 					}
-					// remember our own activity so it can be replayed under a fresh wsClientId after a
-					// reconnect (see the ConfigClient.Store subscription in setup()). Only track while we
-					// actually hold a presence entry, so the empty state right after a reconnect init
-					// (before we've re-registered) doesn't clobber the activity we need to restore.
-					if (presence.has(wsClientId)) lastLocalActivity = clientActivityState
 				}
 				const editors = new Set<USR.UserId>()
 				const teamswitchEditors = new Set<USR.UserId>()
@@ -299,6 +294,45 @@ export namespace Actions {
 		dispatch(...updates.map((update): UP.NewClientOp => ({ code: 'update-activity', update })))
 	}
 
+	// remotely reset one of the current user's OTHER clients (clears its activity, marks it away). the
+	// reducer enforces same-user ownership.
+	export function resetClient(targetClientId: string) {
+		dispatch({ code: 'reset-client', targetClientId })
+	}
+
+	// reset every one of the current user's clients except this one
+	export function resetOtherClients() {
+		const config = ConfigClient.getConfig()
+		const userId = UsersClient.loggedInUserId
+		if (!config || !userId) return
+		const ops: UP.NewClientOp[] = []
+		for (const [clientId, presence] of Store.getState().presence) {
+			if (presence.userId !== userId || clientId === config.wsClientId) continue
+			ops.push({ code: 'reset-client', targetClientId: clientId })
+		}
+		if (ops.length > 0) dispatch(...ops)
+	}
+
+	// Establishes (or corrects) the local client's dashboard presence so it reflects the panel they're
+	// viewing. Idempotent: only dispatches when the dashboard or panel differs, so it never clobbers a
+	// sub-activity (queue settings, player dialogue) when the panel is already correct. Used by the
+	// dashboard route once the client is engaged (navigated in, or has interacted).
+	export function ensureViewingPanel(serverId: string, panel: 'VIEWING_QUEUE' | 'VIEWING_TEAMS') {
+		const config = ConfigClient.getConfig()
+		if (!config) return
+		const activity = Store.getState().presence.get(config.wsClientId)?.activityState ?? null
+		const onDashboard = !!UP.Trans.onDashboard(serverId).match(activity)
+		const currentPanel = UP.Trans.viewingQueue(serverId).match(activity)
+			? 'VIEWING_QUEUE'
+			: UP.Trans.viewingTeams(serverId).match(activity)
+			? 'VIEWING_TEAMS'
+			: null
+		const updates: UP.ActivityUpdate[] = []
+		if (!onDashboard) updates.push({ code: 'enter-server-dashboard', serverId })
+		if (currentPanel !== panel) updates.push({ code: 'set-primary-panel', to: panel, serverId })
+		if (updates.length > 0) updateActivity(...updates)
+	}
+
 	// Wraps an async player-management flow: marks the given player dialogue active for presence, then
 	// clears it once the flow settles (resolves, rejects, or is cancelled). Callers should still call
 	// ensureViewingTeams() themselves before invoking, since not every flow needs it.
@@ -366,6 +400,18 @@ export namespace Sel {
 	// config comes from ConfigClient.Store -- use with ZusUtils.useStore(ConfigClient.Store, UPClient.Store, Sel.clientPresence)
 	export function clientPresence(config: ReturnType<typeof ConfigClient.getConfig>, state: Store) {
 		return config ? state.presence.get(config.wsClientId) : undefined
+	}
+
+	// count of the user's OTHER clients (excluding `exceptClientId`) that are actively present --
+	// connected and not away. drives the "reset my other sessions" toast, shown while this is > 0.
+	export const activeOtherClientCount = (userId: USR.UserId | undefined, exceptClientId: string | undefined) => (state: Store) => {
+		if (!userId) return 0
+		let count = 0
+		for (const [clientId, presence] of state.presence) {
+			if (presence.userId !== userId || clientId === exceptClientId) continue
+			if (presence.connectionState === 'connected' && !presence.away) count++
+		}
+		return count
 	}
 
 	export const userPresence = (userId: USR.UserId) => (store: Store) => {
@@ -458,51 +504,6 @@ export function useActivityMatch<P>(matchActivity: (prev: UP.RootActivity | null
 	)
 }
 
-export function useVariantActivityState<Variants extends Record<string, UP.ActivityTransitions>>(
-	variants: Variants,
-) {
-	const variantsRef = React.useRef(variants)
-	variantsRef.current = variants
-
-	const currentVariant = ZusUtils.useStore(
-		Store,
-		ZusUtils.useDeep(React.useCallback((): keyof Variants | null => {
-			const config = ConfigClient.getConfig()
-			const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? null
-			for (const key of Object.keys(variantsRef.current) as (keyof Variants)[]) {
-				if (variantsRef.current[key].match(state)) return key
-			}
-			return null
-		}, [])),
-	)
-
-	const setVariant = React.useCallback((newVariant: keyof Variants | null) => {
-		const config = ConfigClient.getConfig()
-		if (!config) return
-		const storeState = Store.getState()
-		const state = storeState.presence.get(config?.wsClientId)?.activityState ?? null
-
-		let currentKey: keyof Variants | null = null
-		for (const key of Object.keys(variantsRef.current) as (keyof Variants)[]) {
-			if (variantsRef.current[key].match(state)) {
-				currentKey = key
-				break
-			}
-		}
-
-		if (currentKey === newVariant) return
-
-		if (currentKey !== null) {
-			Actions.updateActivity(variantsRef.current[currentKey].destroy())
-		}
-		if (newVariant !== null) {
-			Actions.updateActivity(variantsRef.current[newVariant].create())
-		}
-	}, [])
-
-	return [currentVariant, setVariant] as [keyof Variants | null, (variant: keyof Variants | null) => void]
-}
-
 export function useActivityLoaderData<Loader extends ConfiguredLoaderConfig, O = LoaderCacheEntry<Loader>['data']>(opts: {
 	loaderName: Loader['name']
 	matchKey?: (predicate: LoaderCacheKey<Loader>) => boolean
@@ -529,24 +530,10 @@ export async function setup() {
 		handleIncomingPresenceUpdate(update)
 	})
 
-	// Re-establish presence after a websocket reconnect. The server mints a fresh wsClientId per
-	// connection, so on reconnect our config's wsClientId changes and our prior presence (keyed by
-	// the old id) gets cleaned up server-side. Nothing else re-registers us -- the route onEnter only
-	// runs on navigation, not on reconnect -- so replay our last-known activity under the new id.
-	let knownWsClientId: string | undefined
-	ConfigClient.Store.subscribe((config) => {
-		if (!config) return
-		const wsClientId = config.wsClientId
-		if (knownWsClientId === undefined) {
-			knownWsClientId = wsClientId
-			return
-		}
-		if (knownWsClientId === wsClientId) return
-		knownWsClientId = wsClientId
-		const activity = lastLocalActivity
-		if (!activity) return
-		Actions.updateActivity(...UP.activityToUpdates(activity))
-	})
+	// Presence after a websocket reconnect is re-established server-side: an abnormal socket close
+	// leaves our prior presence in 'connection-interrupted' with its activity intact, and when our new
+	// connection registers the server steals that activity onto the fresh wsClientId (see
+	// user-presence.server.ts). So there's nothing to replay from the client here.
 
 	const settingsModified$ = Rx.combineLatest([
 		ZusUtils.toObservable(SquadServerClient.SelectedServerStore, true).pipe(Rx.map(([s]) => s.selectedServerId)),

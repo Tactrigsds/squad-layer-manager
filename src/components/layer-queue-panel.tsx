@@ -234,6 +234,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				setShowWarnings(true)
 				return
 			}
+			// clears queue editing across all of this user's clients via the presence reducer fan-out
 			setIsEditing(false)
 			setForceSave(false)
 			setShowWarnings(false)

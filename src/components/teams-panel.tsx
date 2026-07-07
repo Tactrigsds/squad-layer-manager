@@ -1551,6 +1551,7 @@ function SwapsPanel({ className, stores }: { className?: string; stores: SquadSe
 
 	const handleFinishOrSave = () => {
 		const shouldSave = switchesModified && (numEditors <= 1 || forceSave)
+		// clears teamswitch editing across all of this user's clients via the presence reducer fan-out
 		setIsEditing(false)
 		if (shouldSave) {
 			TSWClient.Actions.save(stores)
