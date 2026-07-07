@@ -19,7 +19,7 @@ import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { Link } from '@tanstack/react-router'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
-import { Braces, EqualNot, ExternalLink, Minus, Plus, Undo2 } from 'lucide-react'
+import { Braces, Columns3, EqualNot, ExternalLink, Minus, Plus, TextCursorInput, Undo2 } from 'lucide-react'
 import React from 'react'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import type { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
@@ -30,7 +30,7 @@ import type { FilterTextEditorHandle } from './filter-text-editor.types'
 import { NodePortal, StoredParentNode } from './node-map.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
 import { Button, buttonVariants } from './ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
+import { ButtonGroup } from './ui/button-group'
 import { Input } from './ui/input'
 import { Separator } from './ui/separator.tsx'
 import { Toggle } from './ui/toggle.tsx'
@@ -239,6 +239,51 @@ function FilterNodeDisplay(props: FilterCardProps & { nodeId: string }) {
 	)
 }
 
+type InlineAddAction = { label: React.ReactNode; onSelect: () => void } | 'separator'
+
+// a "+" button that reveals its actions inline to the right when opened, and collapses once focus
+// leaves the widget. replaces a popover/dropdown so a freshly added node's auto-opened editor isn't
+// slammed shut by the menu's focus-restore.
+function InlineAddButton(props: { actions: InlineAddAction[]; className?: string }) {
+	const [expanded, setExpanded] = React.useState(false)
+	return (
+		<div
+			className={cn('flex items-center space-x-1', props.className)}
+			onBlur={(e) => {
+				// collapse only once focus has left the whole control, not when moving between its buttons
+				if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setExpanded(false)
+			}}
+		>
+			<Button className="min-h-0" size="icon" variant="outline" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
+				<Plus />
+			</Button>
+			{expanded && (
+				<div className="flex items-center space-x-1 overflow-x-auto">
+					{props.actions.map((action, i) => {
+						// actions are a static, non-reordered config; a positional key is stable here
+						const key = action === 'separator' ? `sep-${i}` : (typeof action.label === 'string' ? action.label : `action-${i}`)
+						if (action === 'separator') return <Separator key={key} orientation="vertical" className="h-6" />
+						return (
+							<Button
+								key={key}
+								size="sm"
+								variant="outline"
+								className="whitespace-nowrap"
+								onClick={() => {
+									action.onSelect()
+									setExpanded(false)
+								}}
+							>
+								{action.label}
+							</Button>
+						)
+					})}
+				</div>
+			)}
+		</div>
+	)
+}
+
 function BlockNodeControlPanel(props: NodeProps) {
 	const node = ZusUtils.useStore(props.stores.filterEditor, EditFrame.Sel.node(props.nodeId)) as F.ShallowEditableFilterNodeOfType<
 		F.BlockType
@@ -260,24 +305,15 @@ function BlockNodeControlPanel(props: NodeProps) {
 				options={blockTypeOptions}
 				onSelect={(v) => setBlockType(v as F.BlockType)}
 			/>
-			<DropdownMenu>
-				<DropdownMenuTrigger asChild>
-					<Button className="min-h-0" size="icon" variant="outline">
-						<Plus />
-					</Button>
-				</DropdownMenuTrigger>
-				{
-					/* don't let Radix yank focus back to this trigger as the menu closes -- a freshly added
-				    comparison auto-opens its column picker, and the focus-restore would slam it shut */
-				}
-				<DropdownMenuContent onCloseAutoFocus={(e) => e.preventDefault()}>
-					<DropdownMenuItem onClick={() => addChild('eq')}>comparison</DropdownMenuItem>
-					<DropdownMenuItem onClick={() => addChild('apply-filter')}>apply existing filter</DropdownMenuItem>
-					<DropdownMenuSeparator />
-					<DropdownMenuItem onClick={() => addChild('and')}>and block</DropdownMenuItem>
-					<DropdownMenuItem onClick={() => addChild('or')}>or block</DropdownMenuItem>
-				</DropdownMenuContent>
-			</DropdownMenu>
+			<InlineAddButton
+				actions={[
+					{ label: 'comparison', onSelect: () => addChild('eq') },
+					{ label: 'apply existing filter', onSelect: () => addChild('apply-filter') },
+					'separator',
+					{ label: 'and block', onSelect: () => addChild('and') },
+					{ label: 'or block', onSelect: () => addChild('or') },
+				]}
+			/>
 			{!isRootNode
 				&& (
 					<Button size="icon" variant="ghost" onClick={deleteNode}>
@@ -371,8 +407,6 @@ export function LeafFilterNode(props: NodeProps) {
 	const depth = nodePath.length
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
 
-	const negationToggle = <NegationToggle stores={props.stores} nodeId={props.nodeId} node={node} />
-
 	const opCluster = depth > 0 && (
 		<Button
 			size="icon"
@@ -397,7 +431,13 @@ export function LeafFilterNode(props: NodeProps) {
 	if (node.type === 'apply-filter') {
 		return (
 			<NodeWrapper path={nodePath} className="flex items-center space-x-1" nodeId={props.nodeId}>
-				{negationToggle}
+				<ComboBox
+					allowEmpty={false}
+					title="mode"
+					value={String(node.neg)}
+					options={[{ value: 'false', label: 'included in' }, { value: 'true', label: 'excluded from' }]}
+					onSelect={(v) => actions.common.setNegation(v === 'true')}
+				/>
 				<ApplyFilter
 					filterId={node.filterId}
 					editedFilterId={editedFilterId}
@@ -507,16 +547,40 @@ export function Comparison(props: {
 	// editor has mounted (see the effect below). The initial subject-open is handled separately on mount.
 	const [focusRequest, setFocusRequest] = React.useState<'advance' | 'operator' | null>(null)
 
+	// team-generic columns are encoded as `team:<quantifier>:<column>` so the either/both choice lives
+	// directly in the column select rather than a separate dropdown
 	const TEAM_PREFIX = 'team:'
+	const teamColumnValue = (column: F.TeamColumn, quantifier: F.TeamQuantifier) => `${TEAM_PREFIX}${quantifier}:${column}`
 	const baseCols = cfg ? Object.keys(cfg.defs) : LC.COLUMN_KEYS
-	const columnOptions: ComboBoxOption<string>[] =
-		(props.allowedColumns ? props.allowedColumns.filter((c) => baseCols.includes(c)) : baseCols)
-			.map((c) => ({ value: c, label: LC.getColumnDef(c, cfg)?.displayName ?? c }))
+	const allowedBaseCols = props.allowedColumns ? props.allowedColumns.filter((c) => baseCols.includes(c)) : baseCols
+	const baseOption = (c: string): ComboBoxOption<string> & { label: string } => ({
+		value: c,
+		label: LC.getColumnDef(c, cfg)?.displayName ?? c,
+	})
+	const byLabel = (a: { label: string }, b: { label: string }) => a.label.localeCompare(b.label)
+
+	// team columns are kept together at the top: each family (Alliance/Faction/Unit) in order
+	// (T1, T2, Both, Either). the concrete T1/T2 columns are pulled out of the alphabetical list into
+	// their family group. because the order is bespoke, the column select opts out of ComboBox's default
+	// label sort (sort={false}).
+	let columnOptions: ComboBoxOption<string>[]
 	if (props.teamColumnsAvailable) {
-		for (const tc of F.TEAM_COLUMNS) columnOptions.unshift({ value: TEAM_PREFIX + tc, label: `${tc} (either/both team)` })
+		const teamBaseCols = new Set(F.TEAM_COLUMNS.flatMap((tc) => [F.resolveTeamColumn(tc, 1), F.resolveTeamColumn(tc, 2)]))
+		// label the concrete T1/T2 columns consistently within the group (some base display names, e.g.
+		// Faction's, omit the family prefix) so the four variants read uniformly
+		const teamGroup = F.TEAM_COLUMNS.flatMap((tc): ComboBoxOption<string>[] => [
+			...(allowedBaseCols.includes(F.resolveTeamColumn(tc, 1)) ? [{ value: F.resolveTeamColumn(tc, 1), label: `${tc} T1` }] : []),
+			...(allowedBaseCols.includes(F.resolveTeamColumn(tc, 2)) ? [{ value: F.resolveTeamColumn(tc, 2), label: `${tc} T2` }] : []),
+			{ value: teamColumnValue(tc, 'both'), label: `${tc} (Both)` },
+			{ value: teamColumnValue(tc, 'either'), label: `${tc} (Either)` },
+		])
+		const rest = allowedBaseCols.filter((c) => !teamBaseCols.has(c)).map(baseOption).sort(byLabel)
+		columnOptions = [...teamGroup, ...rest]
+	} else {
+		columnOptions = allowedBaseCols.map(baseOption).sort(byLabel)
 	}
 
-	const currentColumnValue = anchorTeamColumn ? TEAM_PREFIX + anchorTeamColumn : anchorColumn
+	const currentColumnValue = anchorTeamColumn ? teamColumnValue(anchorTeamColumn, anchorQuantifier) : anchorColumn
 
 	// reshape the node's args for a newly selected anchor, keeping the operator if the new domain supports it
 	function selectAnchor(newAnchor: F.EditableScalarArg) {
@@ -531,23 +595,6 @@ export function Comparison(props: {
 		})
 	}
 
-	// either/both selector shown when the subject is a team-generic column
-	const quantifierBox = anchorTeamColumn
-		? (
-			<ComboBox
-				allowEmpty={false}
-				className={props.highlight ? 'bg-accent' : undefined}
-				title="team"
-				value={anchorQuantifier}
-				options={[{ value: 'either', label: 'either team' }, { value: 'both', label: 'both teams' }]}
-				onSelect={(q) =>
-					setNode(Im.produce((c) => {
-						if (c.args[0]?.type === 'team-column') c.args[0].quantifier = q as F.TeamQuantifier
-					}))}
-			/>
-		)
-		: null
-
 	const columnDef = optionsColumn ? LC.getColumnDef(optionsColumn, cfg) : undefined
 	const componentStyles = props.highlight ? 'bg-accent' : undefined
 
@@ -559,15 +606,29 @@ export function Comparison(props: {
 				allowEmpty
 				value={currentColumnValue}
 				options={columnOptions}
+				// options are pre-ordered (team families grouped, rest alphabetical); keep that order
+				sort={false}
 				ref={columnBoxRef}
 				// selecting a column always resets and reopens the next argument, so hand focus onward on
 				// selection (ComboBox still restores focus on a plain dismiss)
 				preventCloseAutoFocus
 				onSelect={(value) => {
 					if (!value) return setNode(() => ({ type: 'eq', neg: false, args: [{ type: 'column' }, { type: 'value' }] }))
-					const newAnchor: F.EditableScalarArg = value.startsWith(TEAM_PREFIX)
-						? { type: 'team-column', column: value.slice(TEAM_PREFIX.length) as F.TeamColumn, quantifier: anchorQuantifier }
-						: { type: 'column', column: value }
+					if (value.startsWith(TEAM_PREFIX)) {
+						const [quantifier, column] = value.slice(TEAM_PREFIX.length).split(':') as [F.TeamQuantifier, F.TeamColumn]
+						// changing only the quantifier on the same column keeps the operator and value(s)
+						if (column === anchorTeamColumn) {
+							setNode(Im.produce((c) => {
+								if (c.args[0]?.type === 'team-column') c.args[0].quantifier = quantifier
+							}))
+							return
+						}
+						selectAnchor({ type: 'team-column', column, quantifier })
+						// team columns are enum-domained, so advance straight to the value
+						setFocusRequest('advance')
+						return
+					}
+					const newAnchor: F.EditableScalarArg = { type: 'column', column: value }
 					selectAnchor(newAnchor)
 					// numeric subjects: the operator matters (eq/lt/gt/inrange), so send focus to the operator
 					// select; everything else advances straight to the value
@@ -651,23 +712,35 @@ export function Comparison(props: {
 			})
 			.map((c) => ({ value: c, label: LC.getColumnDef(c, cfg)?.displayName ?? c }))
 	}
-	// button to flip a slot between a constant and a column reference
-	const operandKindToggle = (index: number, isColumn: boolean) =>
-		allowColumnOperand
-			? (
+	// segmented control to pick whether a slot compares against a constant value or another column
+	const operandKindSelector = (index: number, isColumn: boolean) => {
+		if (!allowColumnOperand) return null
+		const setKind = (kind: 'value' | 'column') =>
+			setNode(Im.produce((c) => {
+				// no-op if already that kind, so re-picking the active segment preserves the current value
+				if (c.args[index]?.type !== kind) c.args[index] = { type: kind }
+			}))
+		return (
+			<ButtonGroup>
+				<Button
+					size="icon"
+					variant={!isColumn ? 'secondary' : 'ghost'}
+					title="Compare to a constant value"
+					onClick={() => setKind('value')}
+				>
+					<TextCursorInput className="h-4 w-4" />
+				</Button>
 				<Button
 					size="icon"
 					variant={isColumn ? 'secondary' : 'ghost'}
-					title={isColumn ? 'Compare to a constant value' : 'Compare to another column'}
-					onClick={() =>
-						setNode(Im.produce((c) => {
-							c.args[index] = isColumn ? { type: 'value' } : { type: 'column' }
-						}))}
+					title="Compare to another column"
+					onClick={() => setKind('column')}
 				>
-					<Braces className="h-4 w-4" />
+					<Columns3 className="h-4 w-4" />
 				</Button>
-			)
-			: null
+			</ButtonGroup>
+		)
+	}
 
 	// enum columns surface null as a "(none)" option in their own value dropdown, so the generic
 	// null affordance (chip + toggle) is only for non-enum columns
@@ -699,6 +772,7 @@ export function Comparison(props: {
 		if (arg?.type === 'column') {
 			return (
 				<div className="flex items-center space-x-1">
+					{operandKindSelector(index, true)}
 					<ComboBox
 						allowEmpty
 						className={componentStyles}
@@ -710,7 +784,6 @@ export function Comparison(props: {
 								c.args[index] = { type: 'column', column: v || undefined }
 							}))}
 					/>
-					{operandKindToggle(index, true)}
 					{nullToggle(index, false)}
 				</div>
 			)
@@ -741,8 +814,8 @@ export function Comparison(props: {
 		if (isNullValue && !enumSubject) {
 			return (
 				<div className="flex items-center space-x-1">
+					{operandKindSelector(index, false)}
 					<span className={cn(buttonVariants({ variant: 'outline' }), 'pointer-events-none', componentStyles)}>null</span>
-					{operandKindToggle(index, false)}
 					{nullToggle(index, true)}
 				</div>
 			)
@@ -750,8 +823,8 @@ export function Comparison(props: {
 		const value = arg?.type === 'value' ? arg.value : undefined
 		const withToggle = (editor: React.ReactNode) => (
 			<div className="flex items-center space-x-1">
+				{operandKindSelector(index, false)}
 				{editor}
-				{operandKindToggle(index, false)}
 				{nullToggle(index, false)}
 			</div>
 		)
@@ -865,7 +938,6 @@ export function Comparison(props: {
 	return (
 		<>
 			{columnBox}
-			{quantifierBox}
 			{codeBox}
 			{valueBox}
 		</>
@@ -877,7 +949,6 @@ type ApplyFilterProps = {
 	setFilterId: (filterId: string) => void
 	// the id of the filter entity currently being edited
 	editedFilterId?: string
-	defaultEditing?: boolean
 }
 
 function ApplyFilter(props: ApplyFilterProps) {
@@ -892,25 +963,25 @@ function ApplyFilter(props: ApplyFilterProps) {
 		return options
 	}, [filters, props.editedFilterId])
 	const boxRef = React.useRef<ComboBoxHandle>(null)
+	// auto-open the filter picker for a freshly added (filter-less) node, mirroring how a new comparison
+	// opens its column picker. rAF + cancel avoids a race with the portal remount (see node-map.tsx).
 	React.useEffect(() => {
-		if (props.defaultEditing) {
-			boxRef.current?.focus()
-		}
+		if (props.filterId) return
+		const raf = requestAnimationFrame(() => boxRef.current?.focus())
+		return () => cancelAnimationFrame(raf)
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
 	return (
-		<>
-			<span>Apply</span>
-			<ComboBox
-				title="Filter"
-				options={options}
-				allowEmpty
-				value={props.filterId}
-				onSelect={(v) => {
-					return props.setFilterId(v as string)
-				}}
-			/>
-		</>
+		<ComboBox
+			ref={boxRef}
+			title="Filter"
+			options={options}
+			allowEmpty
+			value={props.filterId}
+			onSelect={(v) => {
+				return props.setFilterId(v as string)
+			}}
+		/>
 	)
 }
 
@@ -1073,7 +1144,8 @@ function InListConfig(
 			{props.allowColumns && addableColumns.length > 0 && (
 				<ComboBox
 					allowEmpty
-					title="+ column"
+					title="Column"
+					placeholder="+ column"
 					value={undefined}
 					options={addableColumns}
 					onSelect={(v) => v && addColumn(v)}

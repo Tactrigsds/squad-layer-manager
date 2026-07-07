@@ -16,6 +16,8 @@ export type ComboBoxProps<T extends string | null = string | null> = {
 	allowEmpty?: boolean
 	className?: string
 	title: string
+	// text shown on the trigger when nothing is selected; defaults to `Select {title}...`
+	placeholder?: string
 	inputValue?: string
 	setInputValue?: (value: string) => void
 	value: T | undefined
@@ -82,7 +84,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 	} else if (selectedOption) {
 		selectedOptionDisplay = selectedOption.label ?? selectedOption.value
 	} else {
-		selectedOptionDisplay = props.value ?? `Select ${props.title}...`
+		selectedOptionDisplay = props.value ?? props.placeholder ?? `Select ${props.title}...`
 	}
 
 	return (
