@@ -1048,6 +1048,9 @@ function SquadGroupHeaderRow(props: {
 		}
 		SquadServerClient.Actions.setSelection(current)
 	}
+	// clicking anywhere on the header row toggles the whole squad's selection (interactive children like
+	// the squad-details button and checkbox stop propagation so they keep their own behavior)
+	const toggleAll = () => toggle(!allSelected)
 	const { squad, creatorName, faction } = props.info
 	const checkbox = (
 		<div onClick={e => e.stopPropagation()}>
@@ -1061,7 +1064,11 @@ function SquadGroupHeaderRow(props: {
 	const labelContent = (
 		<>
 			{squad
-				? <SquadDisplay stores={props.stores} squad={squad} matchId={0} showMenu={false} />
+				? (
+					<span onClick={e => e.stopPropagation()}>
+						<SquadDisplay stores={props.stores} squad={squad} matchId={0} showMenu={false} />
+					</span>
+				)
 				: <span className="font-semibold">Unassigned</span>}
 			<span className="text-muted-foreground">
 				{props.playerIds.length} {props.playerIds.length === 1 ? 'player' : 'players'}
@@ -1072,7 +1079,7 @@ function SquadGroupHeaderRow(props: {
 	// combined table: keep the faction in its own cell so it lines up under the faction column
 	const row = faction
 		? (
-			<TableRow className="bg-muted/60 hover:bg-muted">
+			<TableRow className="bg-muted/60 hover:bg-muted cursor-pointer" onClick={toggleAll}>
 				<TableCell className="py-1">{checkbox}</TableCell>
 				<TableCell className="py-1">
 					<span className="text-xs font-semibold" style={{ color: faction.color }}>{faction.label}</span>
@@ -1083,7 +1090,7 @@ function SquadGroupHeaderRow(props: {
 			</TableRow>
 		)
 		: (
-			<TableRow className="bg-muted/60 hover:bg-muted">
+			<TableRow className="bg-muted/60 hover:bg-muted cursor-pointer" onClick={toggleAll}>
 				<TableCell colSpan={props.colSpan} className="py-1">
 					<div className="flex items-center gap-2 text-xs">
 						{checkbox}
