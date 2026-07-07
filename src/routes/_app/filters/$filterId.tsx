@@ -1,7 +1,6 @@
 import { FilterEdit } from '@/components/filter-edit'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { frameManager } from '@/frames/frame-manager'
-import { globalToast$ } from '@/hooks/use-global-toast'
 import { assertNever } from '@/lib/type-guards'
 import * as F from '@/models/filter.models'
 import * as RPC from '@/orpc.client'
@@ -12,6 +11,7 @@ import * as UsersClient from '@/systems/users.client'
 import { createFileRoute } from '@tanstack/react-router'
 import React from 'react'
 import * as Rx from 'rxjs'
+import { toast } from 'sonner'
 
 export const Route = createFileRoute('/_app/filters/$filterId')({
 	component: RouteComponent,
@@ -66,16 +66,12 @@ function RouteComponent() {
 							break
 						case 'update': {
 							if (mutation.username === loggedInUser?.username) return
-							globalToast$.next({
-								title: `Filter ${mutation.value.name} was updated by ${mutation.displayName}`,
-							})
+							toast(`Filter ${mutation.value.name} was updated by ${mutation.displayName}`)
 							break
 						}
 						case 'delete': {
 							if (mutation.username === loggedInUser?.username) return
-							globalToast$.next({
-								title: `Filter ${mutation.value.name} was deleted by ${mutation.displayName}`,
-							})
+							toast(`Filter ${mutation.value.name} was deleted by ${mutation.displayName}`)
 							void rootRouter.navigate({ to: '/filters' })
 							break
 						}

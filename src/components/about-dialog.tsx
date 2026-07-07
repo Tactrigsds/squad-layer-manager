@@ -1,7 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
-import { globalToast$ } from '@/hooks/use-global-toast'
 
 import { formatVersion } from '@/lib/versioning'
 import * as ZusUtils from '@/lib/zustand'
@@ -9,6 +8,7 @@ import * as ConfigClient from '@/systems/config.client'
 import * as UsersClient from '@/systems/users.client'
 import { Copy, Info } from 'lucide-react'
 import * as React from 'react'
+import { toast } from 'sonner'
 
 interface AboutDialogProps {
 	children?: React.ReactNode
@@ -90,10 +90,7 @@ export default function AboutDialog({ children, open, onOpenChange }: AboutDialo
 								className="absolute top-1 right-1 h-6 w-6"
 								onClick={async () => {
 									await navigator.clipboard.writeText(versionText)
-									globalToast$.next({
-										title: 'Copied to clipboard',
-										description: 'Version information has been copied',
-									})
+									toast('Copied to clipboard', { description: 'Version information has been copied' })
 								}}
 							>
 								<Copy className="h-3 w-3" />

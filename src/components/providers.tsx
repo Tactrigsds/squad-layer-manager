@@ -1,6 +1,5 @@
 import { ResetOtherSessionsManager } from '@/components/reset-other-sessions-manager'
-import { Toaster } from '@/components/ui/toaster'
-import { useGlobalToast } from '@/hooks/use-global-toast'
+import { Toaster } from '@/components/ui/sonner'
 import * as ZusUtils from '@/lib/zustand'
 import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems/config.client'
@@ -25,7 +24,6 @@ export function Providers(props: { children: ReactNode }) {
 }
 
 function ProvidersInner(props: { children: ReactNode }) {
-	useGlobalToast()
 	const slmConfig = ZusUtils.useStore(ConfigClient.Store)
 	const flags = FeatureFlagClient.useFeatureFlags()
 

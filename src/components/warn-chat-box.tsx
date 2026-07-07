@@ -1,7 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
-import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
@@ -10,6 +9,7 @@ import * as UsersClient from '@/systems/users.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
+import { toast } from 'sonner'
 
 function warnTargetsEqual(a: WarnChat.WarnFocusTarget, b: WarnChat.WarnFocusTarget) {
 	if (a.kind === 'player' && b.kind === 'player') return a.playerId === b.playerId
@@ -35,7 +35,6 @@ export default function WarnChatBox({
 	focusTarget?: WarnChat.WarnFocusTarget
 	className?: string
 }) {
-	const { toast } = useToast()
 	const [message, setMessage] = React.useState('')
 	const [prefixName, setPrefixName] = React.useState(false)
 	const textareaRef = React.useRef<HTMLTextAreaElement>(null)
@@ -60,13 +59,13 @@ export default function WarnChatBox({
 		try {
 			const res = await warnPlayersMutation.mutateAsync({ serverId, playerIds, reason: composed })
 			if (res.code !== 'ok') {
-				toast({ title: 'Failed to send', description: res.code, variant: 'destructive' })
+				toast.error('Failed to send', { description: res.code })
 				return
 			}
 			setMessage('')
 		} catch (e) {
 			console.error(e)
-			toast({ title: 'Failed to send', variant: 'destructive' })
+			toast.error('Failed to send')
 		}
 	}
 

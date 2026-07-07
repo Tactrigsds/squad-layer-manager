@@ -1,5 +1,4 @@
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import { globalToast$ } from '@/hooks/use-global-toast'
 import { toAsyncGenerator } from '@/lib/async'
 import * as Gen from '@/lib/generator'
 
@@ -23,6 +22,7 @@ import * as React from 'react'
 import LQWorker from '@/systems/layer-queries.worker?worker'
 import * as UsersClient from '@/systems/users.client'
 import { useQuery } from '@tanstack/react-query'
+import { toast } from 'sonner'
 
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
@@ -498,13 +498,13 @@ async function sendWorkerRequest<T extends WorkerTypes.ToWorker['type']>(
 
 		if (response.type === 'worker-error') {
 			const error = new Error('error from worker: ' + response.error)
-			globalToast$.next({ variant: 'destructive', description: error.message })
+			toast.error(error.message)
 			throw error
 		}
 
 		if (response.type !== type) {
 			const error = new Error(`Unexpected response type: ${response.type}`)
-			globalToast$.next({ variant: 'destructive', description: error.message })
+			toast.error(error.message)
 			throw error
 		}
 
@@ -537,13 +537,13 @@ async function* streamLayerQueriesResponse(input: LQY.LayersQueryInput) {
 
 			if (response.type === 'worker-error') {
 				const error = new Error('error from worker: ' + response.error)
-				globalToast$.next({ variant: 'destructive', description: error.message })
+				toast.error(error.message)
 				throw error
 			}
 
 			if (response.type !== 'queryLayers') {
 				const error = new Error(`Unexpected response type: ${response.type}`)
-				globalToast$.next({ variant: 'destructive', description: error.message })
+				toast.error(error.message)
 				throw error
 			}
 

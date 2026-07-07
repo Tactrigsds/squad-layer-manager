@@ -1,4 +1,3 @@
-import { globalToast$ } from '@/hooks/use-global-toast'
 import type * as FRM from '@/lib/frame'
 import * as ItemMut from '@/lib/item-mutations'
 import * as ODSM from '@/lib/odsm'
@@ -13,6 +12,7 @@ import * as RPC from '@/orpc.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as UsersClient from '@/systems/users.client'
 import * as Rx from 'rxjs'
+import { toast } from 'sonner'
 
 export type Store = {
 	queue: State
@@ -254,7 +254,7 @@ export namespace Actions {
 			RbacClient.handlePermissionDenied(res)
 			return
 		} else if (res.code !== 'ok') {
-			globalToast$.next({ variant: 'destructive', title: res.msg })
+			toast.error(res.msg)
 		}
 	}
 

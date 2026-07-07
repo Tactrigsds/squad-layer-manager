@@ -1,6 +1,5 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import { useToast } from '@/hooks/use-toast'
 import * as ZusUtils from '@/lib/zustand'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
@@ -12,6 +11,7 @@ import * as TSWClient from '@/systems/teamswitches.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 import React from 'react'
+import { toast } from 'sonner'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { contextMenuSlots, PlayerCopyIdsSub, PlayerOpenLinksSub } from './player-context-menu-options'
 import { ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuShortcut } from './ui/context-menu'
@@ -42,7 +42,6 @@ export default function PlayerBulkContextMenuOptions(
 ) {
 	const openDialog = useAlertDialog()
 	const closeDialog = useCloseAlertDialog()
-	const { toast } = useToast()
 
 	const removePlayersFromSquadMutation = SquadServerClient.useRemovePlayersFromSquadMutation()
 	const serverId = stores.squadServer.serverId
@@ -78,7 +77,7 @@ export default function PlayerBulkContextMenuOptions(
 					buttons: [{ id: 'confirm', label: 'Switch Now', variant: 'destructive' }],
 				})
 				if (result === 'dismissed') {
-					toast({ title: 'Switch cancelled', description: 'One or more players changed teams', variant: 'destructive' })
+					toast.error('Switch cancelled', { description: 'One or more players changed teams' })
 					return
 				}
 				if (result !== 'confirm') return
@@ -113,7 +112,7 @@ export default function PlayerBulkContextMenuOptions(
 			try {
 				await removePlayersFromSquadMutation.mutateAsync({ serverId, playerIds })
 			} catch {
-				toast({ title: 'Remove from squad failed', description: `Failed to remove ${playerIds.length} players`, variant: 'destructive' })
+				toast.error('Remove from squad failed', { description: `Failed to remove ${playerIds.length} players` })
 			}
 		})
 	}

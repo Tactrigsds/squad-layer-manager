@@ -1,10 +1,9 @@
-import { ToastAction } from '@/components/ui/toast'
-import { toast } from '@/hooks/use-toast'
 import * as ZusUtils from '@/lib/zustand'
 import * as ConfigClient from '@/systems/config.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 import React from 'react'
+import { toast } from 'sonner'
 
 // Renders nothing; while the current user has other actively-present clients (tabs / devices), shows a
 // persistent, dismissable toast offering to reset them (clear their activity, mark them away). The
@@ -17,29 +16,24 @@ export function ResetOtherSessionsManager() {
 		UPClient.Sel.activeOtherClientCount(loggedInUser?.discordId, myClientId),
 	)
 
-	const toastRef = React.useRef<ReturnType<typeof toast> | null>(null)
+	const toastIdRef = React.useRef<string | number | null>(null)
 
 	React.useEffect(() => {
 		if (activeOtherCount <= 0) {
-			toastRef.current?.dismiss()
-			toastRef.current = null
+			if (toastIdRef.current !== null) toast.dismiss(toastIdRef.current)
+			toastIdRef.current = null
 			return
 		}
 		const description = `You're active in ${activeOtherCount} other session${activeOtherCount > 1 ? 's' : ''}.`
-		if (toastRef.current) {
-			toastRef.current.update({ id: toastRef.current.id, description })
-			return
-		}
-		toastRef.current = toast({
-			title: 'Other sessions active',
+		toastIdRef.current = toast('Other sessions active', {
+			id: toastIdRef.current ?? undefined,
 			description,
 			// infinite duration -- it stays until dismissed or the other sessions become inactive
 			duration: Infinity,
-			action: (
-				<ToastAction altText="Reset my other sessions" onClick={() => UPClient.Actions.resetOtherClients()}>
-					Reset them
-				</ToastAction>
-			),
+			action: {
+				label: 'Reset them',
+				onClick: () => UPClient.Actions.resetOtherClients(),
+			},
 		})
 	}, [activeOtherCount])
 

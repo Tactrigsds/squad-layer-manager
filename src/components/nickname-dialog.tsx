@@ -2,43 +2,32 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useToast } from '@/hooks/use-toast'
 import * as RPC from '@/orpc.client'
 import * as UsersClient from '@/systems/users.client'
 import { invalidateLoggedInUser, useLoggedInUser } from '@/systems/users.client'
 import { useMutation } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
+import { toast } from 'sonner'
 
 export default function NicknameDialog(
 	props: { children: React.ReactNode; open?: boolean; onOpenChange?: (newState: boolean) => void },
 ) {
 	const user = useLoggedInUser()
 	const [nickname, setNickname] = React.useState('')
-	const { toast } = useToast()
 	const updateNicknameMutation = useMutation(RPC.orpc.users.updateNickname.mutationOptions({
 		onSuccess: (result) => {
 			if (result.code === 'ok') {
 				UsersClient.invalidateLoggedInUser()
-				toast({
-					title: 'Nickname updated successfully!',
-				})
+				toast('Nickname updated successfully!')
 				invalidateLoggedInUser()
 				props.onOpenChange?.(false)
 			} else {
-				toast({
-					title: 'Error updating nickname',
-					description: result.msg,
-					variant: 'destructive',
-				})
+				toast.error('Error updating nickname', { description: result.msg })
 			}
 		},
 		onError: (error) => {
-			toast({
-				title: 'Failed to update nickname',
-				description: 'An unexpected error occurred',
-				variant: 'destructive',
-			})
+			toast.error('Failed to update nickname', { description: 'An unexpected error occurred' })
 			console.error('Error updating nickname:', error)
 		},
 	}))

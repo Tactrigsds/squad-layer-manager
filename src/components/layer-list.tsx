@@ -13,7 +13,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import type * as GenVoteFrame from '@/frames/gen-vote.frame.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
-import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import { useIsMobile } from '@/hooks/use-is-mobile.ts'
 
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
@@ -47,6 +46,7 @@ import * as RQ from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
+import { toast } from 'sonner'
 import { StartActivityInteraction } from './activity.tsx'
 import EditLayerDialog from './edit-layer-dialog.tsx'
 import GenVoteDialog from './gen-vote-dialog.tsx'
@@ -726,10 +726,10 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				RbacClient.handlePermissionDenied(res)
 				break
 			case 'ok':
-				globalToast$.next({ title: 'Vote started!' })
+				toast('Vote started!')
 				break
 			default:
-				globalToast$.next({ variant: 'destructive', title: res.msg })
+				toast.error(res.msg)
 		}
 	}
 
@@ -741,10 +741,10 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				RbacClient.handlePermissionDenied(res)
 				break
 			case 'ok':
-				globalToast$.next({ title: 'Vote aborted!' })
+				toast('Vote aborted!')
 				break
 			default:
-				globalToast$.next({ variant: 'destructive', title: res.msg })
+				toast.error(res.msg)
 		}
 	}
 
@@ -756,10 +756,10 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				RbacClient.handlePermissionDenied(res)
 				break
 			case 'ok':
-				globalToast$.next({ title: 'Vote ended early!' })
+				toast('Vote ended early!')
 				break
 			default:
-				globalToast$.next({ variant: 'destructive', title: res.msg })
+				toast.error(res.msg)
 		}
 	}
 
@@ -771,13 +771,13 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				RbacClient.handlePermissionDenied(res)
 				break
 			case 'ok':
-				globalToast$.next({ title: 'Vote aborted!' })
+				toast('Vote aborted!')
 				break
 			default:
-				globalToast$.next({ variant: 'destructive', title: res.msg })
+				toast.error(res.msg)
 		}
 
-		globalToast$.next({ title: 'Vote autostart cancelled!' })
+		toast('Vote autostart cancelled!')
 	}
 
 	const serverInfoRes = SquadServerClient.useServerInfoRes(serverId)

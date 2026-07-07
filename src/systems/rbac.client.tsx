@@ -1,18 +1,15 @@
-import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Obj from '@/lib/object'
 import * as Messages from '@/messages'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as UsersClient from '@/systems/users.client'
 import { useQuery } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import * as Zus from 'zustand'
 
 export function handlePermissionDenied(res: RBAC.PermissionDeniedResponse) {
 	UsersClient.invalidateLoggedInUser()
-	globalToast$.next({
-		variant: 'destructive',
-		title: Messages.WARNS.permissionDenied(res),
-	})
+	toast.error(Messages.WARNS.permissionDenied(res))
 }
 
 export function usePermsCheck<T extends RBAC.PermissionType>(

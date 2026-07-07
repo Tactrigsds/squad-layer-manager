@@ -1,4 +1,3 @@
-import { toast } from '@/hooks/use-toast'
 import type * as FRM from '@/lib/frame'
 import * as ODSM from '@/lib/odsm'
 import { assertNever } from '@/lib/type-guards'
@@ -10,6 +9,7 @@ import type * as UP from '@/models/user-presence'
 import * as RPC from '@/orpc.client'
 import * as UsersClient from '@/systems/users.client'
 import * as Rx from 'rxjs'
+import { toast } from 'sonner'
 
 export type Store = {
 	teamswitches: TeamswitchSlice
@@ -69,7 +69,7 @@ function toastOpError(error: TSW.OpError) {
 		default:
 			return
 	}
-	toast({ variant: 'destructive', title, description })
+	toast.error(title, { description })
 }
 
 function onSideEffect(se: TSW.SideEffect, presenceEvent$: Rx.Subject<UP.PresenceEvent>) {
@@ -83,7 +83,7 @@ function onSideEffect(se: TSW.SideEffect, presenceEvent$: Rx.Subject<UP.Presence
 				const description = count > 0
 					? `${name} saved ${count} teamswitch${count !== 1 ? 'es' : ''}.`
 					: `${name} cleared the saved teamswitches.`
-				toast({ title: 'Teamswitches saved', description })
+				toast('Teamswitches saved', { description })
 			})
 			break
 		}
@@ -123,7 +123,7 @@ function onSideEffect(se: TSW.SideEffect, presenceEvent$: Rx.Subject<UP.Presence
 			if (source?.discordId) presenceEvent$.next({ userId: source.discordId, action: 'executed-teamswitches' })
 			void resolveDisplayName(source).then((name) => {
 				const description = `${name} switched ${switchCount} player${switchCount !== 1 ? 's' : ''} to their assigned teams.`
-				toast({ title: 'Teamswitches executed', description })
+				toast('Teamswitches executed', { description })
 			})
 			break
 		}

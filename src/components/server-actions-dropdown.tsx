@@ -4,8 +4,6 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useAlertDialog } from '@/components/ui/lazy-alert-dialog'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import { globalToast$ } from '@/hooks/use-global-toast.ts'
-import { useToast } from '@/hooks/use-toast'
 import { assertNever } from '@/lib/type-guards.ts'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
@@ -15,6 +13,7 @@ import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import { useMutation } from '@tanstack/react-query'
+import { toast } from 'sonner'
 
 const dropdownMenuSlots: MenuSlots = {
 	Item: DropdownMenuItem,
@@ -58,7 +57,6 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 	const endMatchMutation = useMutation(RPC.orpc.squadServer.endMatch.mutationOptions({}))
 	const serverInfoRes = SquadServerClient.useServerInfoRes(serverId)
 	const openDialog = useAlertDialog()
-	const { toast } = useToast()
 
 	async function disableFogOfWar() {
 		const res = await disableFogOfWarMutation.mutateAsync(serverId)
@@ -69,10 +67,7 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 				RbacClient.handlePermissionDenied(res)
 				break
 			case 'ok':
-				toast({
-					title: 'Fog of War disabled for current match',
-					variant: 'default',
-				})
+				toast('Fog of War disabled for current match')
 				break
 			default:
 				assertNever(res)
@@ -90,14 +85,14 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 		const res = await endMatchMutation.mutateAsync({ serverId })
 		switch (res.code) {
 			case 'ok':
-				globalToast$.next({ title: 'Match ended!' })
+				toast('Match ended!')
 				break
 			case 'err:permission-denied':
 				RbacClient.handlePermissionDenied(res)
 				break
 			case 'err:timeout':
 			case 'err:unknown':
-				globalToast$.next({ title: res.message, variant: 'destructive' })
+				toast.error(res.message)
 				break
 			default:
 				assertNever(res)

@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label'
 import { useAlertDialog } from '@/components/ui/lazy-alert-dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Obj from '@/lib/object'
 import * as ZusUtils from '@/lib/zustand'
 import * as AppEvents from '@/models/app-events.models'
@@ -24,6 +23,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
+import { toast } from 'sonner'
 import { z } from 'zod'
 
 // lazily loaded so the CodeMirror editor bundle isn't paid for until an editor is actually shown.
@@ -241,11 +241,11 @@ function RawSettingsEditor({ serverId, onDone }: { serverId: string; onDone: () 
 			if (res.code === 'err:permission-denied') {
 				RbacClient.handlePermissionDenied(res)
 			} else if (res.code === 'err:invalid-settings') {
-				globalToast$.next({ variant: 'destructive', title: 'Invalid settings', description: res.message })
+				toast.error('Invalid settings', { description: res.message })
 			} else if (res.code === 'err:server-not-found') {
-				globalToast$.next({ variant: 'destructive', title: 'Server not found' })
+				toast.error('Server not found')
 			} else if (res.code === 'ok') {
-				globalToast$.next({ variant: 'default', title: 'Server settings saved' })
+				toast('Server settings saved')
 				onDone()
 			}
 		},
@@ -317,11 +317,11 @@ function CreateServerForm({ onDone }: { onDone: () => void }) {
 			if (res.code === 'err:permission-denied') {
 				RbacClient.handlePermissionDenied(res)
 			} else if (res.code === 'err:server-already-exists') {
-				globalToast$.next({ variant: 'destructive', title: 'A server with that ID already exists' })
+				toast.error('A server with that ID already exists')
 			} else if (res.code === 'err:invalid-settings') {
-				globalToast$.next({ variant: 'destructive', title: 'Invalid settings', description: res.message })
+				toast.error('Invalid settings', { description: res.message })
 			} else if (res.code === 'ok') {
-				globalToast$.next({ variant: 'default', title: 'Server created' })
+				toast('Server created')
 				onDone()
 			}
 		},
@@ -332,11 +332,7 @@ function CreateServerForm({ onDone }: { onDone: () => void }) {
 			adminIdentifyingPermissions.split(',').map(s => s.trim()).filter(Boolean),
 		)
 		if (!permsRes.success) {
-			globalToast$.next({
-				variant: 'destructive',
-				title: 'Invalid admin identifying permissions',
-				description: z.prettifyError(permsRes.error),
-			})
+			toast.error('Invalid admin identifying permissions', { description: z.prettifyError(permsRes.error) })
 			return
 		}
 
@@ -443,9 +439,9 @@ function GlobalSettingsSection() {
 			if (res.code === 'err:permission-denied') {
 				RbacClient.handlePermissionDenied(res)
 			} else if (res.code === 'err:invalid-settings') {
-				globalToast$.next({ variant: 'destructive', title: 'Invalid settings', description: res.message })
+				toast.error('Invalid settings', { description: res.message })
 			} else if (res.code === 'ok') {
-				globalToast$.next({ variant: 'default', title: 'Settings saved' })
+				toast('Settings saved')
 			}
 		},
 	}))

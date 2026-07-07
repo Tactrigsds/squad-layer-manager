@@ -1,5 +1,4 @@
 import * as AR from '@/app-routes'
-import { globalToast$ } from '@/hooks/use-global-toast'
 import type { OrpcAppRouter } from '@/server/orpc-app-router'
 import * as ConfigClient from '@/systems/config.client'
 import { createORPCClient, onError } from '@orpc/client'
@@ -10,6 +9,7 @@ import * as ReactRx from '@react-rxjs/core'
 import { QueryClient } from '@tanstack/react-query'
 import { WebSocket } from 'partysocket'
 import * as Rx from 'rxjs'
+import { toast } from 'sonner'
 import { toCold, traceTag } from './lib/async'
 import { formatVersion } from './lib/versioning'
 
@@ -28,17 +28,9 @@ const orpcLink = new RPCLink({
 			if (error instanceof Error && error.name === 'AbortError') return
 			console.error(error)
 			if (error instanceof Error) {
-				globalToast$.next({
-					title: 'Transport Error',
-					description: error.message,
-					variant: 'destructive',
-				})
+				toast.error('Transport Error', { description: error.message })
 			} else {
-				globalToast$.next({
-					title: 'Transport Error',
-					description: 'Unknown error',
-					variant: 'destructive',
-				})
+				toast.error('Transport Error', { description: 'Unknown error' })
 			}
 		}),
 	],
@@ -102,7 +94,7 @@ ConfigClient.Store.subscribe(config => {
 		previousSha = config.PUBLIC_GIT_SHA
 		console.log(`%cSLM version ${formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)}`, 'color: limegreen')
 	} else if (previousSha !== config.PUBLIC_GIT_SHA) {
-		globalToast$.next({ variant: 'info', title: 'SLM is being upgraded, window will refresh shortly...' })
+		toast.info('SLM is being upgraded, window will refresh shortly...')
 		setTimeout(async () => {
 			console.warn(`Version skew detected (${previousSha} -> ${config.PUBLIC_GIT_SHA}), reloading window`)
 			window.location.reload()
@@ -144,11 +136,7 @@ export function observe<T>(task: () => Promise<Rx.ObservableInput<T>>, opts?: { 
 
 				console.error(error)
 				if (count > 2) {
-					globalToast$.next({
-						title: 'Remote Subscription Error',
-						description: error.message,
-						variant: 'destructive',
-					})
+					toast.error('Remote Subscription Error', { description: error.message })
 				}
 
 				return backoff$

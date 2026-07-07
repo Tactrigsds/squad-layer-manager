@@ -1,5 +1,5 @@
-import { globalToast$ } from '@/hooks/use-global-toast'
 import * as L from '@/models/layer'
+import { toast } from 'sonner'
 
 /** eslint-disable react-refresh/only-export-components */
 export function copyAdminSetNextLayerCommand(selectedLayerIds: L.LayerId[]) {
@@ -9,7 +9,5 @@ export function copyAdminSetNextLayerCommand(selectedLayerIds: L.LayerId[]) {
 		text += L.getLayerCommand(layerId, 'set-next')
 	}
 	void navigator.clipboard.writeText(text)
-	globalToast$.next({
-		title: 'Copied AdminSetNextLayer Command',
-	})
+	toast('Copied AdminSetNextLayer Command')
 }

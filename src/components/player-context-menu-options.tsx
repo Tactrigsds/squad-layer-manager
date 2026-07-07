@@ -1,6 +1,5 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import { useToast } from '@/hooks/use-toast'
 import * as ZusUtils from '@/lib/zustand'
 import type * as BM from '@/models/battlemetrics.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
@@ -19,6 +18,7 @@ import * as TSWClient from '@/systems/teamswitches.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 import React from 'react'
+import { toast } from 'sonner'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger } from './ui/context-menu'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
@@ -112,7 +112,6 @@ export function PlayerCopyIdsSub(
 ) {
 	const { Item, Sub, SubTrigger, SubContent } = slots
 	const players = usePlayerLinkIds(playerIds, stores)
-	const { toast } = useToast()
 	const pickAll = (pick: (p: PlayerLinkIds) => string | undefined) => players.map(pick).filter((v): v is string => v != null)
 	const ids: { label: string; values: string[] }[] = [
 		{ label: 'Username', values: pickAll(p => p.username) },
@@ -122,8 +121,7 @@ export function PlayerCopyIdsSub(
 	]
 	const copyAll = (label: string, values: string[]) => {
 		void navigator.clipboard.writeText(values.join('\n'))
-		toast({
-			title: 'Copied',
+		toast('Copied', {
 			description: values.length > 1 ? `${values.length} ${label}s copied to clipboard` : `${label} copied to clipboard`,
 		})
 	}
@@ -155,7 +153,6 @@ export function PlayerMenuItems(
 	const { Item, Separator, Sub, SubTrigger, SubContent } = slots
 	const openDialog = useAlertDialog()
 	const closeDialog = useCloseAlertDialog()
-	const { toast } = useToast()
 	const openOrFocusWindow = useOpenOrFocusWindow()
 
 	const demoteCommanderMutation = SquadServerClient.useDemoteCommanderMutation()
@@ -244,7 +241,7 @@ export function PlayerMenuItems(
 					buttons: [{ id: 'confirm', label: 'Switch Now' }],
 				})
 				if (result === 'dismissed') {
-					toast({ title: 'Switch cancelled', description: 'Player changed teams', variant: 'destructive' })
+					toast.error('Switch cancelled', { description: 'Player changed teams' })
 					return
 				}
 				if (result !== 'confirm') return
@@ -263,7 +260,7 @@ export function PlayerMenuItems(
 
 	function copyTeleportCommand() {
 		void navigator.clipboard.writeText(`AdminTeleportToPlayer ${playerId}`)
-		toast({ title: 'Copied', description: 'Teleport command copied to clipboard' })
+		toast('Copied', { description: 'Teleport command copied to clipboard' })
 	}
 
 	async function removeFromSquad() {

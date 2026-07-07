@@ -2,7 +2,6 @@ import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescript
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
-import { useToast } from '@/hooks/use-toast'
 import { assertNever } from '@/lib/type-guards'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
@@ -22,6 +21,7 @@ import * as Icons from 'lucide-react'
 import { useState } from 'react'
 import React from 'react'
 import Markdown from 'react-markdown'
+import { toast } from 'sonner'
 
 import EmojiDisplay from './emoji-display'
 import { EmojiPickerPopover } from './emoji-picker-popover'
@@ -42,7 +42,6 @@ export function FilterEdit(
 ) {
 	const stores = props.stores
 	// fix refetches wiping out edited state, probably via fast deep equals or w/e
-	const { toast } = useToast()
 	const frameState = () => ZusUtils.getState(stores.filterEditor)
 	const useFrame = <O,>(selector: (table: EditFrame.FilterEditor) => O) => ZusUtils.useStore(stores.filterEditor, selector)
 
@@ -80,11 +79,11 @@ export function FilterEdit(
 					break
 
 				case 'err:not-found':
-					toast({ title: 'Unable to save: Filter Not Found' })
+					toast('Unable to save: Filter Not Found')
 					break
 
 				case 'ok':
-					toast({ title: 'Filter saved' })
+					toast('Filter saved')
 					EditFrame.Actions.reset(stores, res.filter.filter)
 					void router.invalidate()
 					formApi.reset({
@@ -113,9 +112,7 @@ export function FilterEdit(
 		}
 		const res = await deleteFilterMutation.mutateAsync(props.entity.id)
 		if (res.code === 'ok') {
-			toast({
-				title: `Filter "${props.entity.name}" deleted`,
-			})
+			toast(`Filter "${props.entity.name}" deleted`)
 			void navigate({ to: '/filters' })
 		} else {
 			let blurb: string
@@ -136,11 +133,9 @@ export function FilterEdit(
 					assertNever(res)
 			}
 
-			toast({
-				title: `Failed to delete filter "${props.entity.name} : ${blurb}"`,
-			})
+			toast(`Failed to delete filter "${props.entity.name} : ${blurb}"`)
 		}
-	}, [deleteFilterMutation, navigate, props.entity, toast])
+	}, [deleteFilterMutation, navigate, props.entity])
 
 	const loggedInUserRole: 'owner' | 'contributor' | 'none' | 'write-all' = (() => {
 		if (!loggedInUser) return 'none'
@@ -470,14 +465,13 @@ function FilterContributors(props: {
 	contributors: { users: USR.User[]; roles: string[] }
 	children: React.ReactNode
 }) {
-	const { toast } = useToast()
 	const addMutation = useMutation(RPC.orpc.filters.addFilterContributor.mutationOptions({
 		onSuccess: (res) => {
 			switch (res.code) {
 				case 'err:permission-denied':
 					return RbacClient.handlePermissionDenied(res)
 				case 'err:already-exists':
-					return toast({ title: 'Contributor already added' })
+					return toast('Contributor already added')
 				case 'ok':
 					break
 				default:
@@ -486,7 +480,7 @@ function FilterContributors(props: {
 			FilterEntityClient.invalidateQueriesForFilter(props.filterId)
 		},
 		onError: (err) => {
-			toast({ title: 'Failed to add contributor', description: err.message })
+			toast.error('Failed to add contributor', { description: err.message })
 		},
 	}))
 	const removeMutation = useMutation(RPC.orpc.filters.removeFilterContributor.mutationOptions({
@@ -495,7 +489,7 @@ function FilterContributors(props: {
 				case 'err:permission-denied':
 					return RbacClient.handlePermissionDenied(res)
 				case 'err:not-found':
-					return toast({ title: 'Contributor not found' })
+					return toast('Contributor not found')
 				case 'ok':
 					break
 				default:

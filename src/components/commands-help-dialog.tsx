@@ -2,13 +2,13 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { useToast } from '@/hooks/use-toast'
 import * as ZusUtils from '@/lib/zustand'
 import * as Messages from '@/messages'
 import * as CMD from '@/models/command.models'
 import * as SettingsClient from '@/systems/settings.client'
 import { Copy, HelpCircle } from 'lucide-react'
 import * as React from 'react'
+import { toast } from 'sonner'
 
 interface CommandsHelpDialogProps {
 	children?: React.ReactNode
@@ -18,7 +18,6 @@ interface CommandsHelpDialogProps {
 
 export default function CommandsHelpDialog({ children, open, onOpenChange }: CommandsHelpDialogProps) {
 	const settings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
-	const { toast } = useToast()
 
 	if (!settings) {
 		return null
@@ -32,16 +31,9 @@ export default function CommandsHelpDialog({ children, open, onOpenChange }: Com
 
 		try {
 			await navigator.clipboard.writeText(consoleCommand)
-			toast({
-				title: 'Copied to clipboard',
-				description: consoleCommand,
-			})
+			toast('Copied to clipboard', { description: consoleCommand })
 		} catch {
-			toast({
-				title: 'Failed to copy',
-				description: 'Could not copy command to clipboard',
-				variant: 'destructive',
-			})
+			toast.error('Failed to copy', { description: 'Could not copy command to clipboard' })
 		}
 	}
 

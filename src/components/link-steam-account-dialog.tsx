@@ -1,7 +1,6 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { globalToast$ } from '@/hooks/use-global-toast'
 import { cn } from '@/lib/utils'
 import * as RPC from '@/orpc.client'
 import * as UsersClient from '@/systems/users.client'
@@ -9,6 +8,7 @@ import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
+import { toast } from 'sonner'
 
 interface LinkSteamAccountDialogProps {
 	children: React.ReactNode
@@ -48,10 +48,7 @@ function LinkSteamAccountDialog({ children, open, onOpenChange }: LinkSteamAccou
 			setCopyStatus('idle')
 			UsersClient.invalidateLoggedInUser()
 			if (result.code === 'ok') {
-				globalToast$.next({
-					title: 'Steam account linking cancelled',
-					variant: 'default',
-				})
+				toast('Steam account linking cancelled')
 			}
 		},
 		onError: (error) => {
@@ -63,23 +60,14 @@ function LinkSteamAccountDialog({ children, open, onOpenChange }: LinkSteamAccou
 		onSuccess: (result) => {
 			UsersClient.invalidateLoggedInUser()
 			if (result.code === 'ok') {
-				globalToast$.next({
-					title: 'Steam account unlinked successfully',
-					variant: 'default',
-				})
+				toast('Steam account unlinked successfully')
 			} else {
-				globalToast$.next({
-					title: result.msg || 'Failed to unlink Steam account',
-					variant: 'destructive',
-				})
+				toast.error(result.msg || 'Failed to unlink Steam account')
 			}
 		},
 		onError: (error) => {
 			console.error('Failed to unlink steam account:', error)
-			globalToast$.next({
-				title: 'Failed to unlink Steam account',
-				variant: 'destructive',
-			})
+			toast.error('Failed to unlink Steam account')
 		},
 	}))
 
@@ -125,10 +113,7 @@ function LinkSteamAccountDialog({ children, open, onOpenChange }: LinkSteamAccou
 
 	React.useEffect(() => {
 		const sub = UsersClient.steamAccountLinkCompleted$.subscribe(() => {
-			globalToast$.next({
-				variant: 'default',
-				title: 'Steam account linked successfully!',
-			})
+			toast('Steam account linked successfully!')
 			handleDialogOpenChange(false)
 		})
 		return () => {

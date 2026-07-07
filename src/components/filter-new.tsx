@@ -1,6 +1,5 @@
 import { Input } from '@/components/ui/input'
 import type * as EditFrame from '@/frames/filter-editor.frame.ts'
-import { useToast } from '@/hooks/use-toast'
 import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
 import * as F from '@/models/filter.models'
@@ -9,6 +8,7 @@ import { invalidateLoggedInUser } from '@/systems/users.client'
 import * as Form from '@tanstack/react-form'
 import { useNavigate } from '@tanstack/react-router'
 import React from 'react'
+import { toast } from 'sonner'
 import { z } from 'zod'
 import { EmojiPickerPopover } from './emoji-picker-popover'
 import FilterCard from './filter-card'
@@ -30,7 +30,6 @@ type FormData = {
 }
 
 export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
-	const { toast } = useToast()
 	const navigate = useNavigate()
 	const createFilterMutation = useFilterCreate()
 
@@ -48,7 +47,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 			const state = ZusUtils.getState(props.stores.filterEditor)
 
 			if (!state.validatedFilter) {
-				toast({ title: 'Invalid filter', description: 'Please check filter configuration' })
+				toast('Invalid filter', { description: 'Please check filter configuration' })
 				return
 			}
 
@@ -66,7 +65,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 			switch (res.code) {
 				case 'ok':
 					invalidateLoggedInUser()
-					toast({ title: 'Filter created' })
+					toast('Filter created')
 					void navigate({ to: `/filters/$filterId`, params: { filterId: value.id } })
 					break
 

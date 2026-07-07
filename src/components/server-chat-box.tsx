@@ -3,7 +3,6 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as RBAC from '@/rbac.models'
@@ -13,6 +12,7 @@ import * as UsersClient from '@/systems/users.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
+import { toast } from 'sonner'
 
 type Channel = 'warn-admins' | 'broadcast' | 'warn-selected'
 
@@ -45,7 +45,6 @@ const CHANNEL_CFG: Record<Channel, {
 
 export default function ServerChatBox({ stores }: { stores: SquadServerFrame.KeyProp }) {
 	const serverId = stores.squadServer.serverId
-	const { toast } = useToast()
 	const initialChannel: Channel = hasSelection(SquadServerClient.PlayerSelectionStore.getState().selection)
 		? 'warn-selected'
 		: 'warn-admins'
@@ -117,13 +116,13 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 				res = await warnPlayersMutation.mutateAsync({ serverId, playerIds, reason: composed })
 			}
 			if (res.code !== 'ok') {
-				toast({ title: 'Failed to send', description: res.code, variant: 'destructive' })
+				toast.error('Failed to send', { description: res.code })
 				return
 			}
 			setMessage('')
 		} catch (e) {
 			console.error(e)
-			toast({ title: 'Failed to send', variant: 'destructive' })
+			toast.error('Failed to send')
 		}
 	}
 

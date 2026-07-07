@@ -1,4 +1,3 @@
-import { globalToast$ } from '@/hooks/use-global-toast'
 import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
 import { devValidate } from '@/lib/zod.dev'
@@ -8,6 +7,7 @@ import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as Im from 'immer'
+import { toast } from 'sonner'
 import { z } from 'zod'
 
 export type Store = {
@@ -73,7 +73,7 @@ export function initServerSettings(args: Args) {
 			const updated = Obj.structuralMerge(get().saved, settings)
 			set({ saved: updated, edited: updated, ops: [] })
 			if (source) {
-				globalToast$.next({ title: SS.printSource(source) })
+				toast(SS.printSource(source))
 			}
 		}),
 	)
@@ -115,11 +115,7 @@ export namespace Actions {
 				RbacClient.handlePermissionDenied(res)
 				return false
 			} else if (res?.code === 'err:invalid-settings') {
-				globalToast$.next({
-					variant: 'destructive',
-					title: 'Error while saving settings:',
-					description: res.message,
-				})
+				toast.error('Error while saving settings:', { description: res.message })
 				return false
 			}
 			return true
