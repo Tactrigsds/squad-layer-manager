@@ -2,6 +2,7 @@ import type * as CS from '@/models/context-shared'
 import * as LOG from '@/models/logs'
 import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
+import { Mutex, type MutexInterface } from 'async-mutex'
 import * as Rx from 'rxjs'
 import { sleep, traceTag } from './async'
 import { withThrownAsync } from './error'
@@ -55,6 +56,10 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 
 	opts: AsyncResourceOpts<T>
 	state: AsyncValueState<T> | null = null
+	// serializes the underlying fetch callback. Callers can hold this to block refetches for the duration of
+	// an external operation that transiently invalidates the fetched state (e.g. the mid-kill double team
+	// switch), so no refetch observes the intermediate state before the operation completes.
+	readonly fetchMtx: MutexInterface = new Mutex()
 	private valueSubject = new IsolatedSubject<{ invokerSpanId: string | null; value: T }>()
 	private setupRefetches: (ctx: Ctx) => void
 	private log?: CS.Logger
@@ -112,7 +117,12 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 				let retriesLeft = opts?.retries ?? this.opts.retries
 				while (true) {
 					abort.signal.throwIfAborted()
-					const [res, error] = await withThrownAsync(() => this.cb(fetchCtx))
+					// serialize behind fetchMtx: a holder (e.g. an in-progress double team switch) blocks the fetch
+					// until it completes, so we never observe transient state
+					const [res, error] = await this.fetchMtx.runExclusive(() => {
+						abort.signal.throwIfAborted()
+						return withThrownAsync(() => this.cb(fetchCtx))
+					})
 					if (error !== null || this.opts.isErrorResponse(res!)) {
 						if (retriesLeft === 0) {
 							if (error) throw error

@@ -21,6 +21,8 @@ import React from 'react'
 import { toast } from 'sonner'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger } from './ui/context-menu'
+import { Input } from './ui/input'
+import { Label } from './ui/label'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
 
 export type MenuSlots = {
@@ -154,8 +156,12 @@ export function PlayerMenuItems(
 	const openDialog = useAlertDialog()
 	const closeDialog = useCloseAlertDialog()
 	const openOrFocusWindow = useOpenOrFocusWindow()
+	// holds the latest kill-reason input value; the alert dialog only resolves a button id, so we read the
+	// reason from here rather than the (unmounting) DOM input when the dialog confirms
+	const killReasonRef = React.useRef('')
 
 	const demoteCommanderMutation = SquadServerClient.useDemoteCommanderMutation()
+	const killMutation = SquadServerClient.useKillMutation()
 	const disbandSquadMutation = SquadServerClient.useDisbandSquadMutation()
 	const removeFromSquadMutation = SquadServerClient.useRemoveFromSquadMutation()
 	const resetSquadNameMutation = SquadServerClient.useResetSquadNameMutation()
@@ -237,7 +243,8 @@ export function PlayerMenuItems(
 			await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
 				const result = await openDialog({
 					title: 'Switch Player Now',
-					description: `Move this player to Team ${otherTeam} immediately?`,
+					variant: 'destructive',
+					description: `Move ${playerInfo?.username ?? 'this player'} to Team ${otherTeam} immediately?`,
 					buttons: [{ id: 'confirm', label: 'Switch Now' }],
 				})
 				if (result === 'dismissed') {
@@ -250,6 +257,35 @@ export function PlayerMenuItems(
 		} finally {
 			unsubscribe()
 		}
+	}
+
+	async function kill() {
+		if (!otherTeam) return
+		killReasonRef.current = ''
+		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
+			const result = await openDialog({
+				title: 'Kill Player',
+				variant: 'destructive',
+				description: `Kill ${
+					playerInfo?.username ?? 'this player'
+				}? They will be force-switched teams twice in quick succession to trigger a respawn, ending back on their current team.`,
+				content: (
+					<div className="grid gap-2 py-2">
+						<Label htmlFor="kill-reason">Reason (optional)</Label>
+						<Input
+							id="kill-reason"
+							autoComplete="off"
+							placeholder="Shown to the player in a warning"
+							onChange={e => (killReasonRef.current = e.target.value)}
+						/>
+					</div>
+				),
+				buttons: [{ id: 'confirm', label: 'Kill' }],
+			})
+			if (result !== 'confirm') return
+			const reason = killReasonRef.current.trim() || undefined
+			await killMutation.mutateAsync({ serverId, playerIds: [playerId], reason })
+		})
 	}
 
 	// open (or raise) the player's details window and focus its warn box, rather than a one-off dialog
@@ -430,6 +466,15 @@ export function PlayerMenuItems(
 					disabled={!!manageDenied || !otherTeam || !canSwitchNow}
 				>
 					Switch Now
+				</Item>
+			</PermissionDeniedTooltip>
+			<PermissionDeniedTooltip denied={manageDenied}>
+				<Item
+					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
+					onClick={kill}
+					disabled={!!manageDenied || !otherTeam || !canSwitchNow}
+				>
+					Kill
 				</Item>
 			</PermissionDeniedTooltip>
 			<Separator />

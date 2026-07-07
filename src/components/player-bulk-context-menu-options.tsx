@@ -15,6 +15,8 @@ import { toast } from 'sonner'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { contextMenuSlots, PlayerCopyIdsSub, PlayerOpenLinksSub } from './player-context-menu-options'
 import { ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuShortcut } from './ui/context-menu'
+import { Input } from './ui/input'
+import { Label } from './ui/label'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
 
 // When the selection is exactly one squad's full membership (and nothing else), returns that squad so the
@@ -44,8 +46,12 @@ export default function PlayerBulkContextMenuOptions(
 	const closeDialog = useCloseAlertDialog()
 
 	const removePlayersFromSquadMutation = SquadServerClient.useRemovePlayersFromSquadMutation()
+	const killMutation = SquadServerClient.useKillMutation()
 	const serverId = stores.squadServer.serverId
 	const openOrFocusWindow = useOpenOrFocusWindow()
+	// holds the latest kill-reason input value; the alert dialog only resolves a button id, so we read the
+	// reason from here rather than the (unmounting) DOM input when the dialog confirms
+	const killReasonRef = React.useRef('')
 
 	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
@@ -62,6 +68,20 @@ export default function PlayerBulkContextMenuOptions(
 		},
 	)
 
+	// scrollable list of the selected players' usernames, shown in the switch/kill confirmation dialogs so
+	// the admin can see exactly who is affected
+	function selectedPlayerList() {
+		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer)).players
+		return (
+			<ul className="max-h-48 space-y-0.5 overflow-y-auto rounded border bg-muted/30 p-2 text-sm">
+				{playerIds.map(id => {
+					const p = SM.PlayerIds.find(players, p => p.ids, id)
+					return <li key={id} className="truncate">{p?.ids.usernameNoTag ?? p?.ids.username ?? id}</li>
+				})}
+			</ul>
+		)
+	}
+
 	async function switchNow() {
 		const initialState = TSWClient.Sel.localState(ZusUtils.getState(stores.squadServer))
 		const initialTeams = new Map(playerIds.map(id => [id, initialState.players.get(id)]))
@@ -73,8 +93,10 @@ export default function PlayerBulkContextMenuOptions(
 			await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
 				const result = await openDialog({
 					title: 'Switch Players Now',
-					description: `Move ${playerIds.length} players to the opposite team immediately?`,
-					buttons: [{ id: 'confirm', label: 'Switch Now', variant: 'destructive' }],
+					variant: 'destructive',
+					description: `Move these ${playerIds.length} players to the opposite team immediately?`,
+					content: selectedPlayerList(),
+					buttons: [{ id: 'confirm', label: 'Switch Now' }],
 				})
 				if (result === 'dismissed') {
 					toast.error('Switch cancelled', { description: 'One or more players changed teams' })
@@ -86,6 +108,40 @@ export default function PlayerBulkContextMenuOptions(
 		} finally {
 			unsubscribe()
 		}
+	}
+
+	async function kill() {
+		killReasonRef.current = ''
+		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
+			const result = await openDialog({
+				title: 'Kill Players',
+				variant: 'destructive',
+				description:
+					`Kill these ${playerIds.length} players? They will be force-switched teams twice in quick succession to trigger a respawn, ending back on their current team.`,
+				content: (
+					<div className="grid gap-3 py-2">
+						{selectedPlayerList()}
+						<div className="grid gap-2">
+							<Label htmlFor="bulk-kill-reason">Reason (optional)</Label>
+							<Input
+								id="bulk-kill-reason"
+								autoComplete="off"
+								placeholder="Shown to the players in a warning"
+								onChange={e => (killReasonRef.current = e.target.value)}
+							/>
+						</div>
+					</div>
+				),
+				buttons: [{ id: 'confirm', label: 'Kill' }],
+			})
+			if (result !== 'confirm') return
+			const reason = killReasonRef.current.trim() || undefined
+			try {
+				await killMutation.mutateAsync({ serverId, playerIds, reason })
+			} catch {
+				toast.error('Kill failed', { description: `Failed to kill ${playerIds.length} players` })
+			}
+		})
 	}
 
 	// a full-squad selection warns via the squad details window (prefixed @Squad); anything else routes to the
@@ -138,6 +194,15 @@ export default function PlayerBulkContextMenuOptions(
 					disabled={!!manageDenied || !canSwitchNow}
 				>
 					Switch Now
+				</ContextMenuItem>
+			</PermissionDeniedTooltip>
+			<PermissionDeniedTooltip denied={manageDenied}>
+				<ContextMenuItem
+					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
+					onClick={kill}
+					disabled={!!manageDenied || !canSwitchNow}
+				>
+					Kill
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>

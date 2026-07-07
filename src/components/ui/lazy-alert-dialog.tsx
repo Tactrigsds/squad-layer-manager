@@ -1,7 +1,9 @@
+import { AlertTriangle } from 'lucide-react'
 import React, { useCallback, useContext } from 'react'
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 type AlertDialogButton = {
 	id: string
@@ -14,6 +16,9 @@ type AlertDialogOptions = {
 	description?: string
 	content?: React.ReactNode
 	buttons?: AlertDialogButton[]
+	// 'destructive' accents the dialog (title color + icon, border) and defaults action buttons to the
+	// destructive button variant, to match a destructive triggering action
+	variant?: 'default' | 'destructive'
 	onOpenChange?: (open: boolean) => void
 	onOpen?: () => void
 	onClose?: () => void
@@ -73,19 +78,27 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
 
 	const contextValue = React.useMemo(() => ({ openDialog, closeDialog }), [openDialog, closeDialog])
 
+	const isDestructive = options?.variant === 'destructive'
+
 	return (
 		<AlertDialogContext.Provider value={contextValue}>
 			{children}
 			<AlertDialog open={open} onOpenChange={handleOpenChange}>
 				<AlertDialogContent
+					className={cn(isDestructive && 'border-destructive/50')}
 					onOpenAutoFocus={e => {
-						if (!options?.content) return
+						// only steal focus for content that has a text input; otherwise let the default (confirm button) win
+						const input = options?.content ? (e.currentTarget as HTMLElement).querySelector('input') : null
+						if (!input) return
 						e.preventDefault()
-						;(e.currentTarget as HTMLElement).querySelector('input')?.focus()
+						input.focus()
 					}}
 				>
 					<AlertDialogHeader>
-						<AlertDialogTitle>{options?.title}</AlertDialogTitle>
+						<AlertDialogTitle className={cn(isDestructive && 'flex items-center gap-2 text-destructive')}>
+							{isDestructive && <AlertTriangle className="h-5 w-5 shrink-0" />}
+							{options?.title}
+						</AlertDialogTitle>
 						{options?.description && <AlertDialogDescription>{options.description}</AlertDialogDescription>}
 					</AlertDialogHeader>
 					{options?.content && (
@@ -101,15 +114,18 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
 					)}
 					<AlertDialogFooter>
 						<AlertDialogCancel onClick={() => handleButtonClick('cancel')}>Cancel</AlertDialogCancel>
-						{options?.buttons?.map((button) => (
-							<AlertDialogAction
-								key={button.id}
-								className={button.variant ? buttonVariants({ variant: button.variant }) : undefined}
-								onClick={() => handleButtonClick(button.id)}
-							>
-								{button.label}
-							</AlertDialogAction>
-						))}
+						{options?.buttons?.map((button) => {
+							const variant = button.variant ?? (isDestructive ? 'destructive' : undefined)
+							return (
+								<AlertDialogAction
+									key={button.id}
+									className={variant ? buttonVariants({ variant }) : undefined}
+									onClick={() => handleButtonClick(button.id)}
+								>
+									{button.label}
+								</AlertDialogAction>
+							)
+						})}
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>

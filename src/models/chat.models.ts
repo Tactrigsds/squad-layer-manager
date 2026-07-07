@@ -45,6 +45,7 @@ export type PlayerStats = {
 	kills: number
 	wounds: number
 	deaths: number
+	teamkills: number
 }
 
 export type PlayerStatsMap = Record<SM.PlayerId, PlayerStats>
@@ -662,6 +663,8 @@ function interpolateEvent(
 				bumpPlayerStat(state.playerStats, SM.PlayerIds.getPlayerId(victim.ids), 'deaths')
 				if (event.variant === 'normal') {
 					bumpPlayerStat(state.playerStats, SM.PlayerIds.getPlayerId(attacker.ids), 'kills')
+				} else if (event.variant === 'teamkill') {
+					bumpPlayerStat(state.playerStats, SM.PlayerIds.getPlayerId(attacker.ids), 'teamkills')
 				}
 			} else if (event.variant === 'normal') {
 				bumpPlayerStat(state.playerStats, SM.PlayerIds.getPlayerId(attacker.ids), 'wounds')
@@ -686,7 +689,7 @@ function interpolateEvent(
 
 // stat objects are replaced rather than mutated so InterpolableState.clone can shallow-copy the map
 function bumpPlayerStat(stats: PlayerStatsMap, playerId: SM.PlayerId, key: keyof PlayerStats) {
-	const prev = stats[playerId] ?? { kills: 0, wounds: 0, deaths: 0 }
+	const prev = stats[playerId] ?? { kills: 0, wounds: 0, deaths: 0, teamkills: 0 }
 	stats[playerId] = { ...prev, [key]: prev[key] + 1 }
 }
 

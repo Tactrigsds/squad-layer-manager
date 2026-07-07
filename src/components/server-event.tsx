@@ -583,7 +583,7 @@ function AppEventEntry(
 		)
 	}
 
-	// PLAYER_WARNED / PLAYER_REMOVED_FROM_SQUAD / TEAM_CHANGE_FORCED: "{actor} {verb} {targets}{suffix}"
+	// PLAYER_WARNED / PLAYER_REMOVED_FROM_SQUAD / TEAM_CHANGE_FORCED / PLAYER_KILLED: "{actor} {verb} {targets}{suffix}"
 	const count = appEvent.targets.length
 	const plural = count === 1 ? 'player' : 'players'
 	let verb: string
@@ -603,6 +603,17 @@ function AppEventEntry(
 		verb = 'removed'
 		icon = <Icons.UserMinus className="h-4 w-4 text-orange-500 shrink-0" />
 		suffix = ' from their squad'
+		descriptor = null
+	} else if (appEvent.type === 'PLAYER_KILLED') {
+		verb = 'killed'
+		icon = <Icons.Skull className="h-4 w-4 text-red-500 shrink-0" />
+		suffix = appEvent.reason
+			? (
+				<>
+					: "<span className="wrap-break-word">{appEvent.reason}</span>"
+				</>
+			)
+			: null
 		descriptor = null
 	} else {
 		verb = 'switched'

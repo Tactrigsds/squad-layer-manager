@@ -3,6 +3,7 @@ import { AsyncResource } from '@/lib/async-resource'
 import type * as Cleanup from '@/lib/cleanup'
 import { matchLog } from '@/lib/log-parsing'
 import type { DecodedPacket } from '@/lib/rcon/core-rcon'
+import { WARNS } from '@/messages'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 
@@ -511,6 +512,34 @@ export async function switchPlayers(
 	}
 	await Promise.all(ops)
 	ctx.server.teams.invalidate(ctx)
+}
+
+// "Kill" trick: AdminForceTeamChange toggles a player's team and forces a respawn (death), so issuing it
+// twice ~1s apart kills the player while returning them to their original team. Unlike the teamswitch flow
+// this doesn't broadcast switch notifications to admins, only warns the killed player, and invalidates
+// teams once after both switches complete so the intermediate (swapped) team state is never surfaced.
+export async function killPlayers(
+	ctx: C.Rcon & C.SquadRcon & C.AdminList & CS.AbortSignal,
+	players: SM.PlayerIds.EosIdQueryOrPlayerId[],
+	reason?: string,
+) {
+	const ids = players.map(p => SM.PlayerIds.normalizeToPlayerId(p))
+	if (ids.length === 0) return
+	log.info(`Killing players via double team switch: %o`, ids)
+	// The two force-switches (and the wait between them) are atomic and deliberately ignore ctx.signal:
+	// once the first switch fires, aborting must not skip the second, or the player is left stranded on the
+	// opposite team instead of dead on their own.
+	const forceSwitch = () => Promise.all(ids.map(id => ctx.rcon.execute(`AdminForceTeamChange ${id}`, { level: 'info' })))
+	// hold the teams fetch mutex across the double switch so no poll/refetch observes the player mid-swap
+	// (on the opposite team). We invalidate only after releasing, triggering one fresh fetch of the settled
+	// (back-to-original) state.
+	await ctx.server.teams.fetchMtx.runExclusive(async () => {
+		await forceSwitch()
+		await sleep(1000)
+		await forceSwitch()
+	})
+	ctx.server.teams.invalidate(ctx)
+	await warnAll(ctx, ids, WARNS.kill.notifyKilled(reason))
 }
 
 export async function demoteCommander(ctx: C.Rcon & C.SquadRcon & C.AdminList & CS.AbortSignal, ids: SM.PlayerIds.EosIdQueryOrPlayerId) {

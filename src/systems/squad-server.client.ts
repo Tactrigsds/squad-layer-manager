@@ -49,75 +49,43 @@ export function useDisableFogOfWarMutation() {
 }
 
 export function useWarnPlayerMutation() {
-	return useMutation({
-		mutationFn: async (input: { serverId: string; playerId: string; reason: string }) => {
-			return RPC.orpc.squadServer.warnPlayer.call(input)
-		},
-	})
+	return useMutation(RPC.orpc.squadServer.warnPlayer.mutationOptions())
 }
 
 export function useWarnPlayersMutation() {
-	return useMutation({
-		mutationFn: async (input: { serverId: string; playerIds: string[]; reason: string }) => {
-			return RPC.orpc.squadServer.warnPlayers.call(input)
-		},
-	})
+	return useMutation(RPC.orpc.squadServer.warnPlayers.mutationOptions())
 }
 
 export function useWarnAdminsMutation() {
-	return useMutation({
-		mutationFn: async (input: { serverId: string; message: string }) => {
-			return RPC.orpc.squadServer.warnAdmins.call(input)
-		},
-	})
+	return useMutation(RPC.orpc.squadServer.warnAdmins.mutationOptions())
 }
 
 export function useBroadcastMutation() {
-	return useMutation({
-		mutationFn: async (input: { serverId: string; message: string }) => {
-			return RPC.orpc.squadServer.broadcast.call(input)
-		},
-	})
+	return useMutation(RPC.orpc.squadServer.broadcast.mutationOptions())
 }
 
 export function useDemoteCommanderMutation() {
-	return useMutation({
-		mutationFn: async (input: { serverId: string; playerId: string }) => {
-			return RPC.orpc.squadServer.demoteCommander.call(input)
-		},
-	})
+	return useMutation(RPC.orpc.squadServer.demoteCommander.mutationOptions())
+}
+
+export function useKillMutation() {
+	return useMutation(RPC.orpc.squadServer.kill.mutationOptions())
 }
 
 export function useDisbandSquadMutation() {
-	return useMutation({
-		mutationFn: async (input: { serverId: string; teamId: 1 | 2; squadId: number }) => {
-			return RPC.orpc.squadServer.disbandSquad.call(input)
-		},
-	})
+	return useMutation(RPC.orpc.squadServer.disbandSquad.mutationOptions())
 }
 
 export function useRemoveFromSquadMutation() {
-	return useMutation({
-		mutationFn: async (input: { serverId: string; playerId: string }) => {
-			return RPC.orpc.squadServer.removeFromSquad.call(input)
-		},
-	})
+	return useMutation(RPC.orpc.squadServer.removeFromSquad.mutationOptions())
 }
 
 export function useRemovePlayersFromSquadMutation() {
-	return useMutation({
-		mutationFn: async (input: { serverId: string; playerIds: string[] }) => {
-			return RPC.orpc.squadServer.removePlayersFromSquad.call(input)
-		},
-	})
+	return useMutation(RPC.orpc.squadServer.removePlayersFromSquad.mutationOptions())
 }
 
 export function useResetSquadNameMutation() {
-	return useMutation({
-		mutationFn: async (input: { serverId: string; teamId: 1 | 2; squadId: number }) => {
-			return RPC.orpc.squadServer.renameSquad.call(input)
-		},
-	})
+	return useMutation(RPC.orpc.squadServer.renameSquad.mutationOptions())
 }
 
 type PlayerSelectionStore = {

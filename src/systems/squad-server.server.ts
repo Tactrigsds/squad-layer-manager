@@ -421,6 +421,16 @@ export const orpcRouter = {
 			return { code: 'ok' as const }
 		}),
 
+	kill: orpcBase
+		.input(z.object({ serverId: z.string(), playerIds: z.array(SM.PlayerIdSchema).min(1), reason: z.string().trim().min(1).optional() }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctx = resolveSliceCtx(_ctx, input.serverId)
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
+			if (denyRes) return denyRes
+			await killPlayersAction(ctx, input.playerIds, { type: 'slm-user', userId: ctx.user.discordId }, input.reason)
+			return { code: 'ok' as const }
+		}),
+
 	renameSquad: orpcBase
 		.input(z.object({ serverId: z.string(), teamId: SM.TeamIdSchema, squadId: z.number().int().positive() }))
 		.handler(async ({ context: _ctx, input }) => {
@@ -1007,7 +1017,46 @@ export async function forceTeamChangeAppEvent(
 	})
 }
 
-// renames (resets) a squad through an app event, attributing the resulting SQUAD_RENAMED server event
+// records a kill as an app event and arms attribution for any resulting PLAYER_CHANGED_TEAM server events. The
+// double switch nets zero, so a settled teams poll usually emits none; arming keeps parity with the forced-switch
+// path in case a poll observes an intermediate state.
+export async function killPlayersAppEvent(
+	ctx: C.SquadServer & C.Db & C.MatchHistory & CS.AbortSignal,
+	targets: SM.PlayerId[],
+	actor: AppEvents.Actor,
+	reason?: string,
+) {
+	if (targets.length === 0) return
+	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+	const appEvent = AppEvents.create<AppEvents.PlayerKilled>({
+		type: 'PLAYER_KILLED',
+		actor,
+		serverId: ctx.serverId,
+		matchId: currentMatch.historyEntryId,
+		causeId: null,
+		targets,
+		reason,
+	})
+	await emitAppEvent(ctx, appEvent)
+	const source = { type: 'event' as const, id: appEvent.id }
+	await collectEvents(ctx, () => {
+		for (const target of targets) {
+			PendingEvents.armExpectation(ctx.server.eventState, { type: 'PLAYER_CHANGED_TEAM', playerId: target }, source)
+		}
+	})
+}
+
+export async function killPlayersAction(
+	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & C.MatchHistory & CS.AbortSignal,
+	targets: SM.PlayerId[],
+	actor: AppEvents.Actor,
+	reason?: string,
+) {
+	if (targets.length === 0) return
+	await killPlayersAppEvent(ctx, targets, actor, reason)
+	await SquadRcon.killPlayers(ctx, targets, reason)
+}
+
 export async function renameSquadAction(
 	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & C.MatchHistory & CS.AbortSignal,
 	teamId: SM.TeamId,

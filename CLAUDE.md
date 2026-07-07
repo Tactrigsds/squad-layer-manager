@@ -12,6 +12,8 @@ Unit tests should be reserved for complex and self-contained behavior that we wa
 
 Use namespace imports for all nontrivial modules, unless established convention for that module contradicts this. Make sure that the chosen namespace is consistent and unique across the app, except for special cases like things imported into context.ts or context-shared.ts. Use convenient abbreviations or acronyms for commonly used lib modules, model modules, and imported packages
 
+Avoid comments which trivially explain what a function does. Only leave a comment if there's something non-obvious going on, or to explain why a particular approach was taken.
+
 # Editing
 
 Run `pnpm run format` and `pnpm run check`(or some subset to typecheck your specific changes) before reporting your changes to the user.

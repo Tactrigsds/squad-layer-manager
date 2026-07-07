@@ -77,6 +77,10 @@ export type PlayerRemovedFromSquad = z.infer<typeof PlayerRemovedFromSquadSchema
 export const TeamChangeForcedSchema = event('TEAM_CHANGE_FORCED', { targets: z.array(SM.PlayerIdSchema) })
 export type TeamChangeForced = z.infer<typeof TeamChangeForcedSchema>
 
+// an admin killing players via a double forced team-switch. reason is the optional message shown to the players.
+export const PlayerKilledSchema = event('PLAYER_KILLED', { targets: z.array(SM.PlayerIdSchema), reason: z.string().optional() })
+export type PlayerKilled = z.infer<typeof PlayerKilledSchema>
+
 export const SquadRenamedSchema = event('SQUAD_RENAMED', {
 	teamId: SM.TeamIdSchema,
 	squadId: z.number(),
@@ -186,6 +190,7 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	SquadDisbandedSchema,
 	PlayerRemovedFromSquadSchema,
 	TeamChangeForcedSchema,
+	PlayerKilledSchema,
 	SquadRenamedSchema,
 	CommanderDemotedSchema,
 	FogOfWarToggledSchema,
@@ -214,6 +219,7 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 		case 'PLAYER_WARNED':
 		case 'PLAYER_REMOVED_FROM_SQUAD':
 		case 'TEAM_CHANGE_FORCED':
+		case 'PLAYER_KILLED':
 			return e.targets
 		case 'SQUAD_DISBANDED':
 			return e.members
@@ -254,6 +260,8 @@ export function describeAppEvent(e: AppEvent): string {
 			return `removed ${players(e.targets.length)} from squad`
 		case 'TEAM_CHANGE_FORCED':
 			return `switched ${players(e.targets.length)} to the other team`
+		case 'PLAYER_KILLED':
+			return `killed ${players(e.targets.length)}${e.reason ? `: "${e.reason}"` : ''}`
 		case 'SQUAD_RENAMED':
 			return `renamed ${e.squadName} (Team ${e.teamId})`
 		case 'COMMANDER_DEMOTED':

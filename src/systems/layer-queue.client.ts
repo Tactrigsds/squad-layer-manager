@@ -39,9 +39,7 @@ export function watchServer(serverId: string, sub: Rx.Subscription) {
 }
 
 export function useToggleSquadServerUpdates(serverId: string) {
-	const saveChangesMutation = useMutation({
-		mutationFn: (input: { serverId: string; disabled: boolean }) => RPC.orpc.layerQueue.toggleUpdatesToSquadServer.call(input),
-	})
+	const saveChangesMutation = useMutation(RPC.orpc.layerQueue.toggleUpdatesToSquadServer.mutationOptions())
 
 	return {
 		disableUpdates: () => {

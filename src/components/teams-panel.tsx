@@ -488,10 +488,11 @@ const FILTER_ALL = '__all__'
 // sentinel filter value matching players with no grouping ("Other") or no squad ("Unassigned")
 const FILTER_NONE = '__none__'
 
-function ColumnFilterSelect({ value, onChange, options }: {
+function ColumnFilterSelect({ value, onChange, options, triggerClassName }: {
 	value: string | null
 	onChange: (v: string | null) => void
 	options: { value: string; label: string }[]
+	triggerClassName?: string
 }) {
 	if (options.length === 0) return null
 	return (
@@ -500,6 +501,7 @@ function ColumnFilterSelect({ value, onChange, options }: {
 				onClick={e => e.stopPropagation()}
 				className={cn(
 					'h-5 w-auto gap-0.5 border-none px-1 py-0 text-xs font-normal shadow-none focus:ring-0',
+					triggerClassName,
 					value
 						? 'bg-primary/20 text-primary font-semibold ring-1 ring-primary/50'
 						: 'bg-transparent text-muted-foreground',
@@ -705,12 +707,13 @@ function groupingColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: Colum
 		header: ({ table }) => {
 			const { filters, availableGroupings } = table.options.meta as BasePlayerTableMeta
 			return (
-				<span className="flex flex-col items-start">
+				<span className="flex flex-col items-start max-w-24">
 					Grouping
 					<ColumnFilterSelect
 						value={filters.grouping}
 						onChange={filters.setGrouping}
 						options={[...availableGroupings.map(g => ({ value: g, label: g })), { value: FILTER_NONE, label: 'Other' }]}
+						triggerClassName="max-w-24"
 					/>
 				</span>
 			)
@@ -721,9 +724,9 @@ function groupingColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: Colum
 			const { groupingColorByLabel } = table.options.meta as BasePlayerTableMeta
 			const color = groupingColorByLabel.get(label)
 			return (
-				<span className="flex items-center gap-1">
+				<span className="flex items-center gap-1 max-w-24">
 					{color && <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: color }} />}
-					{label}
+					<span className="truncate" title={label}>{label}</span>
 				</span>
 			)
 		},
@@ -743,6 +746,19 @@ function roleColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHel
 			)
 		},
 		enableSorting: false,
+	})
+}
+
+// team kills. Not gated behind hideSpoilers -- teamkills are always shown so admins can act on them.
+function tksColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>) {
+	return helper.accessor(row => row.stats?.teamkills ?? 0, {
+		id: 'tks',
+		header: () => <span title="Team kills">TKs</span>,
+		sortDescFirst: true,
+		cell: ({ row }) => {
+			const tks = row.original.stats?.teamkills ?? 0
+			return <span className={cn('font-mono text-xs tabular-nums', tks > 0 && 'text-destructive font-semibold')}>{tks}</span>
+		},
 	})
 }
 
@@ -900,6 +916,7 @@ const teamPlayerColumns: ColumnDef<TeamsPanelModels.EnrichedPlayer, any>[] = [
 		],
 	}),
 	roleColumn(playerColumnHelper),
+	tksColumn(playerColumnHelper),
 ]
 
 const combinedPlayerColumns: ColumnDef<CombinedPlayer, any>[] = [
@@ -963,6 +980,7 @@ const combinedPlayerColumns: ColumnDef<CombinedPlayer, any>[] = [
 		],
 	}),
 	roleColumn(combinedColumnHelper),
+	tksColumn(combinedColumnHelper),
 ]
 
 const matchesTeamSquadFilter = (player: TeamsPanelModels.EnrichedPlayer, squadFilter: string) =>

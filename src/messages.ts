@@ -285,6 +285,9 @@ export const WARNS = {
 				? `${name} switched ${count} player${count !== 1 ? 's' : ''}:\n${factionLines.join('\n')}`
 				: `${name} switched ${count} player${count !== 1 ? 's' : ''} to the other team.`,
 	},
+	kill: {
+		notifyKilled: (reason?: string) => reason ? `You have been killed by an admin. Reason: ${reason}` : 'You have been killed by an admin.',
+	},
 	permissionDenied(res: RBAC.PermissionDeniedResponse) {
 		return `Permission denied. You need ${res.check} of the following ${res.permits.map((p) => p.type).join(', ')}`
 	},
