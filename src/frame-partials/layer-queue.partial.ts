@@ -169,32 +169,68 @@ export namespace Sel {
 
 	export const queueItemIds = RSel.createDeepSelector([layerList], (list) => list.map((item) => item.itemId))
 
-	// undefined when the item is no longer in the list
-	export const findItem = RSel.memoizeFactory((itemId: string) =>
-		RSel.createDeepSelector([layerList], (list) => LL.findItemById(list, itemId))
-	)
+	export const nextLayerId = RSel.createDeepSelector([layerList], (list) => LL.getNextLayerId(list))
 
-	export const parentItem = RSel.memoizeFactory((itemId: string) =>
-		RSel.createDeepSelector([layerList], (list) => LL.findParentItem(list, itemId))
-	)
+	export type ItemEntry = {
+		index: LL.ItemIndex
+		item: LL.Item
+		parentItem: LL.VoteItem | undefined
+		isLocallyLast: boolean
+		lastLocalIndex: LL.ItemIndex
+	}
 
-	export const lastLocalIndex = RSel.memoizeFactory((itemId: string) =>
-		RSel.createDeepSelector([layerList], (list) => LL.getLastLocalIndexForItem(itemId, list))
+	// Single O(N) pass that resolves per-item structural data (position, parent, local-last-ness) for the
+	// whole list at once. Per-item selectors below read from this map in O(1) instead of each re-scanning the
+	// full list, so a layerList mutation costs O(N) total rather than O(N^2) across all mounted rows.
+	// Ref-memoized only (no deep result check): layerList is copy-on-write, so its ref changes only on a real
+	// mutation, and the per-item selectors provide their own deep result stability.
+	const itemIndex = RSel.createSelector([layerList], (list): Map<LL.ItemId, ItemEntry> => {
+		const map = new Map<LL.ItemId, ItemEntry>()
+		const lastTopLevelIndex: LL.ItemIndex = { outerIndex: list.length - 1, innerIndex: null }
+		for (let outerIndex = 0; outerIndex < list.length; outerIndex++) {
+			const item = list[outerIndex]
+			map.set(item.itemId, {
+				index: { outerIndex, innerIndex: null },
+				item,
+				parentItem: undefined,
+				isLocallyLast: outerIndex === list.length - 1,
+				lastLocalIndex: lastTopLevelIndex,
+			})
+			if (LL.isVoteItem(item)) {
+				const lastChoiceIndex = item.choices.length - 1
+				const lastChoiceLocalIndex: LL.ItemIndex = { outerIndex, innerIndex: lastChoiceIndex }
+				for (let innerIndex = 0; innerIndex < item.choices.length; innerIndex++) {
+					const choice = item.choices[innerIndex]
+					map.set(choice.itemId, {
+						index: { outerIndex, innerIndex },
+						item: choice,
+						parentItem: item,
+						isLocallyLast: innerIndex === lastChoiceIndex,
+						lastLocalIndex: lastChoiceLocalIndex,
+					})
+				}
+			}
+		}
+		return map
+	})
+
+	// Structural per-item read (position, parent, local-last-ness); undefined when the item is no longer in the
+	// list. O(1) lookup into itemIndex, deep-checked for render stability. Consumers destructure what they need.
+	// mutation state is kept out of here (see itemState) so structural-only consumers don't re-render on mutation
+	// changes.
+	export const itemEntry = RSel.memoizeFactory((itemId: string) =>
+		RSel.createDeepSelector([itemIndex], (index): ItemEntry | undefined => index.get(itemId))
 	)
 
 	export const itemState = RSel.memoizeFactory((itemId: string) =>
-		RSel.createDeepSelector([layerList, mutations], (layerList, mutations): ItemState => {
-			const res = LL.findItemById(layerList, itemId)
-			if (!res) throw new Error(`Item not found: ${itemId}`)
-			const parentItem = LL.findParentItem(layerList, itemId)
-			const { index, item } = res
-			const isLocallyLast = LL.isLocallyLastIndex(itemId, layerList)
-
+		RSel.createDeepSelector([itemIndex, mutations], (index, mutations): ItemState => {
+			const entry = index.get(itemId)
+			if (!entry) throw new Error(`Item not found: ${itemId}`)
 			return {
-				index,
-				item,
-				mutationState: ItemMut.toItemMutationState(mutations, itemId, parentItem?.layerId),
-				isLocallyLast,
+				index: entry.index,
+				item: entry.item,
+				mutationState: ItemMut.toItemMutationState(mutations, itemId, entry.parentItem?.layerId),
+				isLocallyLast: entry.isLocallyLast,
 			}
 		})
 	)

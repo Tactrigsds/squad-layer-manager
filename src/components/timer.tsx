@@ -41,7 +41,8 @@ export function Timer(props: {
 		return () => clearInterval(intervalId)
 	}, [props.start, props.deadline, formatTime])
 
-	return <div ref={eltRef} className={props.className} />
+	// tabular-nums keeps digit width stable so the ticking text doesn't jitter
+	return <div ref={eltRef} className={props.className} style={{ fontVariantNumeric: 'tabular-nums' }} />
 }
 
 export function formatTimeLeft(timeLeft: number) {

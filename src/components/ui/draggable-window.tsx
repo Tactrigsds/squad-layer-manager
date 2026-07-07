@@ -367,8 +367,12 @@ export function DraggableWindowOutlet(
 	}, [])
 
 	const element = props.getElement?.() ?? document.body
+	const outletContextValue = React.useMemo(
+		() => ({ outletKey: props.outletKey, getElement: props.getElement }),
+		[props.outletKey, props.getElement],
+	)
 	return (
-		<DraggableWindowOutletContext.Provider value={{ outletKey: props.outletKey, getElement: props.getElement }}>
+		<DraggableWindowOutletContext.Provider value={outletContextValue}>
 			{createPortal(
 				<React.Suspense fallback={null}>
 					{openWindows.map((windowState) => {

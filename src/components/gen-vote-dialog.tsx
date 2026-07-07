@@ -203,6 +203,9 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 								const constraints = choice.layerId ? chosenLayers[choice.layerId]?.constraints : undefined
 								const error = choiceErrors[index]
 								return (
+									// choices are positional slots tracked by index across the component (regeneratingIndex,
+									// editingChoiceIndex); regenerating a slot swaps its layerId but the slot identity is the index
+									// oxlint-disable-next-line react/no-array-index-key
 									<div key={`choice-${index}`} className="flex flex-col gap-2 p-4 border rounded-lg">
 										<div className="flex items-center justify-between mb-2">
 											<div className="flex items-center gap-2">

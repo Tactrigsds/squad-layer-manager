@@ -323,6 +323,8 @@ function WarnsAggregatedEvent(
 				{icon}
 				<div className="grow min-w-0">
 					{event.warns.map((warn, i) => (
+						// index disambiguates: the same player can appear more than once in an aggregated warn entry
+						// oxlint-disable-next-line react/no-array-index-key
 						<span key={`${warn.player.ids.eos}-${i}`}>
 							{i > 0 ? ', ' : ''}
 							<PlayerDisplay showTeam player={warn.player} matchId={matchId} stores={stores} />
@@ -344,6 +346,8 @@ function WarnsAggregatedEvent(
 			</summary>
 			<div className="pl-6 pt-1 flex flex-col gap-0.5">
 				{event.warns.map((warn, i) => (
+					// index disambiguates: the same player can appear more than once in an aggregated warn entry
+					// oxlint-disable-next-line react/no-array-index-key
 					<PlayerDisplay key={`${warn.player.ids.eos}-${i}`} showTeam player={warn.player} matchId={matchId} stores={stores} />
 				))}
 			</div>

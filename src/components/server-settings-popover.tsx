@@ -122,8 +122,8 @@ export default function ServerSettingsPopover(
 				</div>
 				<div className="flex justify-end gap-2 pt-4 border-t">
 					<div className="flex flex-col gap-2">
-						{validationErrors && validationErrors.map((error, index) => (
-							<Alert key={error + index} variant="destructive">
+						{validationErrors && validationErrors.map((error) => (
+							<Alert key={error} variant="destructive">
 								<AlertDescription>{error}</AlertDescription>
 							</Alert>
 						))}

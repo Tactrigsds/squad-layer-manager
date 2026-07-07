@@ -7,8 +7,8 @@ export function FilterValidationErrorDisplay(props: { stores: EditFrame.KeyProp 
 	if (!extraErrors) return null
 	return (
 		<div className="mt-4 space-y-2">
-			{extraErrors.map((error, index) => (
-				<Alert key={`${error.msg}${index}`} variant="destructive">
+			{extraErrors.map((error) => (
+				<Alert key={`${error.path.join('.')}:${error.msg}`} variant="destructive">
 					<AlertTitle>{error.path.slice(1).join('.')}</AlertTitle>
 					<AlertDescription>{error.msg}</AlertDescription>
 				</Alert>

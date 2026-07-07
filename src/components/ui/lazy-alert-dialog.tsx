@@ -71,8 +71,10 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
 		setOpen(false)
 	}
 
+	const contextValue = React.useMemo(() => ({ openDialog, closeDialog }), [openDialog, closeDialog])
+
 	return (
-		<AlertDialogContext.Provider value={{ openDialog, closeDialog }}>
+		<AlertDialogContext.Provider value={contextValue}>
 			{children}
 			<AlertDialog open={open} onOpenChange={handleOpenChange}>
 				<AlertDialogContent

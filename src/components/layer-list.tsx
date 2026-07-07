@@ -396,13 +396,12 @@ type LayerListItemProps = {
 // memoized so LayerList re-renders (e.g. queueItemIds reordering on a move) don't cascade into
 // every item's subtree -- items re-render via their own store subscriptions instead
 const LayerListItem = React.memo(function LayerListItem(props: LayerListItemProps) {
-	const itemRes = ZusUtils.useStore(
+	const entry = ZusUtils.useStore(
 		props.stores.squadServer,
-		LayerQueuePrt.Sel.findItem(props.itemId),
+		LayerQueuePrt.Sel.itemEntry(props.itemId),
 	)
-	if (!itemRes) return null
-	const { item } = itemRes
-	if (LL.isVoteItem(item)) {
+	if (!entry) return null
+	if (LL.isVoteItem(entry.item)) {
 		return <VoteLayerListItem {...props} />
 	}
 	return <SingleLayerListItem {...props} />
@@ -411,7 +410,7 @@ const LayerListItem = React.memo(function LayerListItem(props: LayerListItemProp
 const SingleLayerListItem = React.memo(function SingleLayerListItem(props: LayerListItemProps) {
 	const parentItem = ZusUtils.useStore(
 		props.stores.squadServer,
-		LayerQueuePrt.Sel.parentItem(props.itemId),
+		(store) => LayerQueuePrt.Sel.itemEntry(props.itemId)(store)?.parentItem,
 	)
 
 	const [item, index, isLocallyLast, displayedMutation] = ZusUtils.useStore(
@@ -438,7 +437,10 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 		?? parentItem?.endingVoteState
 
 	const draggableItem = LL.layerItemToDragItem(item)
-	const dragProps = DndKit.useDraggable(draggableItem, { feedback: 'move', disabled: !isEditing })
+	// 'default' (clone) not 'move': with 'move' dnd-kit drags the real element and animates it into its final
+	// slot over a 250ms drop animation, so the item visibly lags behind the mouse release. 'default' drags a
+	// throwaway clone and places the real item instantly. Matches vote items (below) and the filter editor.
+	const dragProps = DndKit.useDraggable(draggableItem, { feedback: 'default', disabled: !isEditing })
 
 	const itemStores = { queue: props.stores.squadServer }
 
@@ -493,10 +495,8 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 	const itemChoiceTallyPercentage = (isVoteChoice && voteState) ? tally?.percentages?.get(item.itemId) : undefined
 	const isVoteWinner = isVoteChoice && voteState?.code === 'ended:winner' && voteState?.winnerId === item.itemId
 	const voteCount = (isVoteChoice && voteState) ? tally?.totals?.get(item.itemId) : undefined
-	const isFirstQueuedLayer = ZusUtils.useStore(
-		props.stores.squadServer,
-		s => index.innerIndex === 0 && LL.getNextLayerId(LayerQueuePrt.Sel.layerList(s)) === item.layerId,
-	)
+	const nextLayerId = ZusUtils.useStore(props.stores.squadServer, LayerQueuePrt.Sel.nextLayerId)
+	const isFirstQueuedLayer = index.innerIndex === 0 && nextLayerId === item.layerId
 	const viewingQueue = UPClient.useActivityMatch(UP.Trans.viewingQueue(props.stores.squadServer.serverId).match)
 
 	if (index.innerIndex === 0 && voteState?.code !== 'ended:winner') {
@@ -533,111 +533,107 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 
 	return (
 		<>
-			{(LL.isLocallyFirstIndex(index)) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!canEdit} />}
+			{(LL.isLocallyFirstIndex(index)) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!isEditing} />}
 			<ItemContextMenu stores={props.stores} itemId={props.itemId} disabled={!canEdit}>
 				<li
 					ref={dragProps.ref}
 					className={cn(
 						Typo.LayerText,
-						'group/single-item flex data-[is-voting=true]:border-added  data-[is-voting=true]:bg-secondary data-[is-dragging=false]:w-full min-w-10 min-h-5 max items-center justify-between space-x-2 bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline-solid rounded-md bg-opacity-30 cursor-default data-[is-hovered=true]:outline-solid',
+						'group/single-item flex data-[is-voting=true]:border-added  data-[is-voting=true]:bg-secondary w-full min-w-10 min-h-5 max items-center justify-between space-x-2 bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline-2 data-[is-dragging=true]:outline-solid data-[is-dragging=true]:outline-white data-[is-dragging=true]:bg-transparent! [&[data-is-dragging=true]>*]:invisible rounded-md bg-opacity-30 cursor-default data-[is-hovered=true]:outline-solid',
 					)}
 					data-mutation={displayedMutation}
 					data-is-dragging={dragProps.isDragging}
 					data-is-voting={voteState?.code === 'in-progress'}
 					data-is-hovered={activityHovered}
 				>
-					{dragProps.isDragging ? <span className="w-5 mx-auto">...</span> : (
-						<>
-							<span className="grid">
-								<span
-									data-mobile={isMobile}
-									data-viewing-queue={viewingQueue}
-									className="text-right m-auto font-mono text-s col-start-1 row-start-1 invisible data-[mobile=false]:data-[viewing-queue=true]:not-group-hover/single-item:visible"
-								>
-									{LL.getItemNumber(index)}
-								</span>
-								<Button
-									ref={dragProps.handleRef}
-									variant="ghost"
-									size="icon"
-									{...editButtonProps(
-										cn(
-											'data-[can-edit=true]:cursor-grab data-[mobile=false]:not-group-hover/single-item:invisible',
-											'col-start-1 row-start-1',
-										),
-									)}
-								>
-									<Icons.GripVertical />
-								</Button>
-							</span>
-							<span className="rounded flex space-y-1 w-full flex-col">
-								<LayerDisplay
-									stores={props.stores}
-									droppable={true}
-									item={{ type: 'single-list-item', layerId: item.layerId, itemId: item.itemId }}
-									badges={badges}
-								/>
-								{itemChoiceTallyPercentage !== undefined && (
-									<span className="flex space-x-1 items-center">
-										<Progress
-											value={itemChoiceTallyPercentage}
-											className={cn('h-2', isVoteWinner && '[&>div]:bg-added')}
-										/>
-										<span>{voteCount}</span>
-									</span>
-								)}
-							</span>
-							{sourceDisplay && (
-								<>
-									<Separator orientation="vertical" />
-									{sourceDisplay}
-								</>
+					<span className="grid">
+						<span
+							data-mobile={isMobile}
+							data-viewing-queue={viewingQueue}
+							className="text-right m-auto font-mono text-s col-start-1 row-start-1 invisible data-[mobile=false]:data-[viewing-queue=true]:not-group-hover/single-item:visible"
+						>
+							{LL.getItemNumber(index)}
+						</span>
+						<Button
+							ref={dragProps.handleRef}
+							variant="ghost"
+							size="icon"
+							{...editButtonProps(
+								cn(
+									'data-[can-edit=true]:cursor-grab data-[mobile=false]:not-group-hover/single-item:invisible',
+									'col-start-1 row-start-1',
+								),
 							)}
-							<StartActivityInteraction
-								loaderName="selectLayers"
-								createActivity={UP.createEditingQueueVariant(editActivity)}
-								matchKey={key => Obj.deepEqualStrict(key, { ...editActivity, serverId: props.stores.squadServer.serverId })}
-								preload="viewport"
-								render={Button}
-								variant="ghost"
-								size="icon"
-								title="Edit"
-								disabled={!isEditing}
-							>
-								<Icons.Pencil />
-							</StartActivityInteraction>
-							<Button
-								variant="ghost"
-								size="icon"
-								title="Swap Factions"
-								disabled={!canEdit || !L.swapFactions(item.layerId)}
-								onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })}
-							>
-								<Icons.ArrowLeftRight />
-							</Button>
-							<Button
-								variant="ghost"
-								size="icon"
-								title="Delete"
-								disabled={!canEdit}
-								onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
-							>
-								<Icons.X />
-							</Button>
-							<ItemDropdown {...dropdownProps}>
-								<Button
-									{...editButtonProps()}
-									variant="ghost"
-									size="icon"
-								>
-									<Icons.EllipsisVertical />
-								</Button>
-							</ItemDropdown>
+						>
+							<Icons.GripVertical />
+						</Button>
+					</span>
+					<span className="rounded flex space-y-1 w-full flex-col">
+						<LayerDisplay
+							stores={props.stores}
+							droppable={true}
+							item={{ type: 'single-list-item', layerId: item.layerId, itemId: item.itemId }}
+							badges={badges}
+						/>
+						{itemChoiceTallyPercentage !== undefined && (
+							<span className="flex space-x-1 items-center">
+								<Progress
+									value={itemChoiceTallyPercentage}
+									className={cn('h-2', isVoteWinner && '[&>div]:bg-added')}
+								/>
+								<span>{voteCount}</span>
+							</span>
+						)}
+					</span>
+					{sourceDisplay && (
+						<>
+							<Separator orientation="vertical" />
+							{sourceDisplay}
 						</>
 					)}
+					<StartActivityInteraction
+						loaderName="selectLayers"
+						createActivity={UP.createEditingQueueVariant(editActivity)}
+						matchKey={key => Obj.deepEqualStrict(key, { ...editActivity, serverId: props.stores.squadServer.serverId })}
+						preload="viewport"
+						render={Button}
+						variant="ghost"
+						size="icon"
+						title="Edit"
+						disabled={!isEditing}
+					>
+						<Icons.Pencil />
+					</StartActivityInteraction>
+					<Button
+						variant="ghost"
+						size="icon"
+						title="Swap Factions"
+						disabled={!canEdit || !L.swapFactions(item.layerId)}
+						onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })}
+					>
+						<Icons.ArrowLeftRight />
+					</Button>
+					<Button
+						variant="ghost"
+						size="icon"
+						title="Delete"
+						disabled={!canEdit}
+						onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
+					>
+						<Icons.X />
+					</Button>
+					<ItemDropdown {...dropdownProps}>
+						<Button
+							{...editButtonProps()}
+							variant="ghost"
+							size="icon"
+						>
+							<Icons.EllipsisVertical />
+						</Button>
+					</ItemDropdown>
 				</li>
 			</ItemContextMenu>
-			<QueueItemSeparator links={afterItemLinks} isAfterLast={isLocallyLast} disabled={!canEdit} />
+			<QueueItemSeparator links={afterItemLinks} isAfterLast={isLocallyLast} disabled={!isEditing} />
 		</>
 	)
 })
@@ -813,7 +809,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 
 	return (
 		<>
-			{LL.isLocallyFirstIndex(index) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} />}
+			{LL.isLocallyFirstIndex(index) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!isEditing} />}
 			<ItemContextMenu stores={props.stores} itemId={props.itemId} disabled={!canEdit}>
 				<li
 					ref={dragProps.ref}
@@ -1029,7 +1025,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 						)}
 				</li>
 			</ItemContextMenu>
-			<QueueItemSeparator links={afterItemLinks} isAfterLast={isLocallyLast} />
+			<QueueItemSeparator links={afterItemLinks} isAfterLast={isLocallyLast} disabled={!isEditing} />
 		</>
 	)
 }
@@ -1186,7 +1182,7 @@ function ItemMenuItems(props: {
 			return [
 				itemState.item,
 				itemState.index,
-				LayerQueuePrt.Sel.lastLocalIndex(props.itemId)(llStore),
+				LayerQueuePrt.Sel.itemEntry(props.itemId)(llStore)?.lastLocalIndex,
 			] as const
 		}),
 	)
@@ -1305,7 +1301,11 @@ function QueueItemSeparator(props: {
 	return (
 		<Separator
 			ref={ref}
-			className="w-full min-w-0 bg-transparent h-2 data-[is-last=true]:invisible data-[is-over=true]:bg-primary" // data-is-last={props.isAfterLast && !isOver}
+			// taller (bigger drop target) while editing so items are easier to drag between; collapses when not editable
+			className={cn(
+				'w-full min-w-0 bg-transparent data-[is-last=true]:invisible data-[is-over=true]:bg-primary/30',
+				disabled ? 'h-2' : 'h-6',
+			)} // data-is-last={props.isAfterLast && !isOver}
 			data-is-over={!disabled && isDropTarget}
 		/>
 	)
