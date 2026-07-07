@@ -59,6 +59,19 @@ export async function setup() {
 
 	const res = await fetchGuild(CONFIG.homeDiscordGuildId)
 	if (res.code !== 'ok') {
+		// the bot can only fetch guilds it's a member of, so UnknownGuild here means the SLM application
+		// hasn't been added to the configured guild (as opposed to a transient/permissions failure)
+		if (res.errCode === D.RESTJSONErrorCodes.UnknownGuild) {
+			const app = await client.application?.fetch().catch(() => null)
+			const appName = app?.name ?? client.user?.username ?? 'unknown'
+			log.fatal(
+				'The "%s" Discord application is not installed in the configured guild (homeDiscordGuildId=%s). '
+					+ 'Invite the bot to that server and restart SLM.',
+				appName,
+				CONFIG.homeDiscordGuildId,
+			)
+			process.exit(1)
+		}
 		throw new Error(`Could not find Discord server ${CONFIG.homeDiscordGuildId}`)
 	}
 

@@ -17,7 +17,7 @@
 		"build:server": "rolldown build -c rolldown-server-prod.config.ts",
 		"build:prod": "pnpm run build:client && pnpm run build:server",
 		"server:prod": "NODE_ENV=production node --enable-source-maps dist-server/main-instrumented.js",
-		"server:dev": "NODE_OPTIONS=--use-openssl-ca NODE_ENV=development tsx watch  --inspect --include=./slm-config.jsonc --include=./.env --tsconfig tsconfig.node.json src/server/main-instrumented.ts",
+		"server:dev": "NODE_ENV=development tsx watch --inspect --include=./slm-config.jsonc --include=./.env --tsconfig tsconfig.node.json src/server/main-instrumented.ts",
 		"__run-script:comment__": "run a script, just specify the script path as the last arg aka pnpm run run-script ./src/scripts/my-script.ts",
 		"script": "tsx --tsconfig tsconfig.node.json",
 		"preprocess": "LOG_LEVEL_OVERRIDE=info tsx --tsconfig tsconfig.node.json src/scripts/preprocess.ts",
