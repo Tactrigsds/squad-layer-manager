@@ -543,14 +543,21 @@ function compileCompForTeam(
 		if (r.kind === 'null') return null
 		return r.value
 	}
+	// null test for an operand. On a float column NaN counts as null (it's a missing/invalid value, and
+	// eq on floats is a null test): `col <> col` is true only for NaN, so it catches NaN alongside SQL NULL.
+	const nullTest = (r: ResolvedScalar): SQL => {
+		const expr = operand(r)
+		if (r.kind === 'column' && F.isFloatDomain(r.domain)) return E.or(E.isNull(expr), E.ne(expr, expr))!
+		return E.isNull(expr)!
+	}
 
 	switch (node.type) {
 		case 'eq': {
 			const a = resolveScalar(node.args[0])
 			const b = resolveScalar(node.args[1])
-			// null on either side becomes an IS NULL test on the other operand
-			if (a?.kind === 'null' && b && b.kind !== 'null') return E.isNull(operand(b))
-			if (b?.kind === 'null' && a && a.kind !== 'null') return E.isNull(operand(a))
+			// null on either side becomes an IS NULL test on the other operand (NaN counts as null on floats)
+			if (a?.kind === 'null' && b && b.kind !== 'null') return nullTest(b)
+			if (b?.kind === 'null' && a && a.kind !== 'null') return nullTest(a)
 			if (a?.kind === 'null' && b?.kind === 'null') return sql`1 = 1`
 			checkColumnColumnDomains(a, b, path, errors)
 			return E.eq(operand(a), operand(b))
@@ -616,6 +623,11 @@ function compileCompForTeam(
 				return sql`0 = 1`
 			}
 			checkColumnColumnDomains(a, b, path, errors)
+			// null and NaN subjects are excluded implicitly: SQLite stores NaN as SQL NULL, and any
+			// comparison against NULL is NULL (excluded), which survives the outer negation too (NOT NULL is
+			// NULL). So the negated forms (>=, <=) also drop null/NaN rows. Do NOT add an explicit validity
+			// guard here: since neg is applied outside as NOT(condition), a guard would let nulls through the
+			// negated forms.
 			return node.type === 'lt' ? E.lt(operand(a), operand(b)) : E.gt(operand(a), operand(b))
 		}
 		case 'inrange': {
@@ -626,6 +638,8 @@ function compileCompForTeam(
 				errors.push({ type: 'invalid-node', path, msg: 'Range comparison cannot use null' })
 				return sql`0 = 1`
 			}
+			// null/NaN subjects are excluded implicitly (NaN is stored as SQL NULL, and NULL comparisons are
+			// NULL), including under the negated ![..] form. See the lt/gt note above for why no explicit guard.
 			// forgive reversed constant bounds, matching the legacy inrange behavior
 			let loOp = operand(lo)
 			let hiOp = operand(hi)

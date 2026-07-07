@@ -272,7 +272,7 @@ export function domainsCompatible(a: ValueDomain, b: ValueDomain): boolean {
 	return Obj.deepEqual(a, b)
 }
 
-function isFloatDomain(domain: ValueDomain | undefined): boolean {
+export function isFloatDomain(domain: ValueDomain | undefined): boolean {
 	return domain?.kind === 'number' && !domain.integral
 }
 
@@ -328,7 +328,9 @@ export function compOpSelectOptions(domain: ValueDomain | undefined): CompOpSele
 	return options
 }
 
-// true when a float column's eq should be constrained to null-only (numeric equality is unreliable)
+// true when a float column's eq should be constrained to null-only (numeric equality is unreliable).
+// For floats this eq is a null test, and NaN (a missing/invalid float) counts as null (see the SQL
+// compilation, which matches NaN alongside SQL NULL).
 export function isFloatEqNullOnly(domain: ValueDomain | undefined, type: CompType): boolean {
 	return type === 'eq' && isFloatDomain(domain)
 }
