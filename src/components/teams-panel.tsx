@@ -680,7 +680,7 @@ function selectColumnCell<T extends TeamsPanelModels.EnrichedPlayer>({ row, tabl
 			<SelectOrSpinner
 				playerId={row.id}
 				checked={row.getIsSelected()}
-				onCheckedChange={checked => row.toggleSelected(!!checked)}
+				onCheckedChange={checked => row.toggleSelected(checked)}
 				stores={stores}
 			/>
 		</div>
@@ -850,7 +850,7 @@ function squadColumn<T extends TeamsPanelModels.EnrichedPlayer, M extends BasePl
 				<SquadCell
 					squad={squad}
 					label={opts.squadLabel(squad, player, meta)}
-					isLeader={!!player.isLeader}
+					isLeader={player.isLeader}
 					teamId={player.teamId ?? undefined}
 					stores={meta.stores}
 				/>
@@ -1021,7 +1021,7 @@ function useDisplayedPlayers<T extends TeamsPanelModels.EnrichedPlayer>(
 
 	return React.useMemo(() => {
 		if (!showSelected) return filteredPlayers
-		return filteredPlayers.filter(p => !!rowSelection[SM.PlayerIds.getPlayerId(p.ids)])
+		return filteredPlayers.filter(p => rowSelection[SM.PlayerIds.getPlayerId(p.ids)])
 	}, [filteredPlayers, showSelected, rowSelection])
 }
 

@@ -79,7 +79,7 @@ export const GROUP_BY_COLUMNS = [
 ] as const satisfies L.LayerColumnKey[]
 export type GroupByColumn = typeof GROUP_BY_COLUMNS[number]
 
-export function groupByColumnDefaultValues<C extends GroupByColumn>(column: C, components = L.StaticLayerComponents) {
+export function groupByColumnDefaultValues(column: GroupByColumn, components = L.StaticLayerComponents) {
 	switch (column) {
 		case 'Map':
 			return components.maps

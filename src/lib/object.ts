@@ -192,10 +192,10 @@ export function trimUndefined<T extends object>(obj: T) {
 
 export function deepMemo() {
 	let stored: any = null
-	return <T>(obj: T) => {
+	return (obj: unknown) => {
 		if (deepEqual(stored, obj)) return stored
 		stored = obj
-		return stored as T
+		return stored as unknown
 	}
 }
 

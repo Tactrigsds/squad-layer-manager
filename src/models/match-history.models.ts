@@ -164,7 +164,7 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 
 		case 'manual': {
 			if (!entry.setByUserId) throw new Error("Invalid match history: match setByUserId is null but type is 'manual'")
-			layerSource = { type: entry.setByType, userId: BigInt(entry.setByUserId) }
+			layerSource = { type: entry.setByType, userId: entry.setByUserId }
 			break
 		}
 		default: {

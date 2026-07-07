@@ -11,7 +11,10 @@ import type { TsMigration } from '@/server/migrate'
 // The runner merges these with the `.sql` files in drizzle-sqlite/ and applies all
 // of them in filename order, so `name` MUST match the file's numeric prefix and be
 // unique across both `.sql` and `.ts` migrations.
+import * as m0062 from './0062_filter_nodes_operator_model'
+import * as m0063 from './0063_filter_team_scopes_to_and_or'
+
 export const tsMigrations: TsMigration[] = [
-	// import * as m0062 from './0062_backfill_foo'
-	// { name: '0062_backfill_foo', up: m0062.up },
+	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
+	{ name: '0063_filter_team_scopes_to_and_or', up: m0063.up },
 ]

@@ -85,7 +85,7 @@ function defRoute<T extends string, Params extends ParamsBase, Handle extends 'p
 		}
 		if (paramSegments.length !== params.length) throw new Error(`Invalid number of parameters for route ${str}`)
 		for (let i = 0; i < params.length; i++) {
-			segments[paramSegments[i]] = params[i].toString()
+			segments[paramSegments[i]] = params[i]
 		}
 		return segments.join('/')
 	})

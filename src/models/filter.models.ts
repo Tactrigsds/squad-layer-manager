@@ -1,4 +1,6 @@
-// TODO rats nest from manic debugging, need to straighten out naming conventions & break out some modules
+// Filter nodes form a small expression AST. Every node's `type` is an operator: block operators
+// ('and', 'or', team scopes) take child nodes, comparison operators take argument terms (columns,
+// constants, team-generic columns), and 'apply-filter' references another filter entity.
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object'
@@ -8,92 +10,182 @@ import type { SQL } from 'drizzle-orm'
 import { z } from 'zod'
 import * as LC from './layer-columns'
 
-export type ComparisonType = {
-	coltype: LC.ColumnType
-	code: string
+// -------- values & argument terms --------
+
+export const ValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()])
+export type Value = z.infer<typeof ValueSchema>
+
+// columns that exist as a _1/_2 pair. A 'team-column' arg references the pair team-generically; its
+// `quantifier` expands the comparison over both teams: 'either' => team1-cond OR team2-cond,
+// 'both' => team1-cond AND team2-cond
+export const TEAM_COLUMN_PAIRS = {
+	Alliance: ['Alliance_1', 'Alliance_2'],
+	Faction: ['Faction_1', 'Faction_2'],
+	Unit: ['Unit_1', 'Unit_2'],
+} as const
+
+export const TeamColumnSchema = z.enum(['Alliance', 'Faction', 'Unit'])
+export type TeamColumn = z.infer<typeof TeamColumnSchema>
+export const TEAM_COLUMNS = TeamColumnSchema.options
+
+export const TeamQuantifierSchema = z.enum(['either', 'both'])
+export type TeamQuantifier = z.infer<typeof TeamQuantifierSchema>
+
+export function resolveTeamColumn(column: TeamColumn, team: 1 | 2): string {
+	return TEAM_COLUMN_PAIRS[column][team - 1]
+}
+
+export const ColumnArgSchema = z.object({ type: z.literal('column'), column: z.string() })
+export const TeamColumnArgSchema = z.object({ type: z.literal('team-column'), column: TeamColumnSchema, quantifier: TeamQuantifierSchema })
+export const ValueArgSchema = z.object({ type: z.literal('value'), value: ValueSchema })
+
+// an item in an `in` operator's list: a constant value or a reference to another column. bare
+// primitives (the historical shape) stay valid, so existing `in` nodes need no migration.
+export const InListItemSchema = z.union([ValueSchema, ColumnArgSchema])
+export const ValuesArgSchema = z.object({ type: z.literal('values'), values: z.array(InListItemSchema) })
+
+export const ScalarArgSchema = z.discriminatedUnion('type', [ColumnArgSchema, TeamColumnArgSchema, ValueArgSchema])
+
+// the first operand of every comparison (the "subject") must be a column, never a bare constant: the
+// builder models arg[0] as the subject column, so value-first or all-constant comparisons (e.g. two
+// constants) are unrepresentable there. Constraining it structurally keeps both validation paths in sync
+// and loses no expressiveness -- a value-first comparison always has a column-first equivalent (symmetric
+// for eq/in; flip the operator for lt/gt).
+export const SubjectArgSchema = z.discriminatedUnion('type', [ColumnArgSchema, TeamColumnArgSchema])
+
+export type ColumnArg = z.infer<typeof ColumnArgSchema>
+export type TeamColumnArg = z.infer<typeof TeamColumnArgSchema>
+export type ValueArg = z.infer<typeof ValueArgSchema>
+export type InListItem = z.infer<typeof InListItemSchema>
+export type ValuesArg = z.infer<typeof ValuesArgSchema>
+export type ScalarArg = z.infer<typeof ScalarArgSchema>
+export type SubjectArg = z.infer<typeof SubjectArgSchema>
+export type Arg = ScalarArg | ValuesArg
+
+// distinguishes a column reference from a constant value within an `in` list
+export function isColumnListItem(item: InListItem): item is ColumnArg {
+	return typeof item === 'object' && item !== null && (item as ColumnArg).type === 'column'
+}
+
+// -------- operators --------
+
+export const COMP_TYPES = ['eq', 'in', 'lt', 'gt', 'inrange'] as const
+export type CompType = (typeof COMP_TYPES)[number]
+
+export type CompTypeDef = {
 	displayName: string
-	default?: boolean
+	negDisplayName: string
+	// domain kind the anchor column must support
+	domain: 'any' | 'number'
+	argSlots: ('scalar' | 'values')[]
 }
 
-export const COMPARISON_TYPES = [
-	{ coltype: 'float', code: 'lt', displayName: '<' },
-	{ coltype: 'float', code: 'gt', displayName: '>' },
-	{ coltype: 'float', code: 'inrange', displayName: '[..]' },
-	{ coltype: 'float', code: 'isnull', displayName: 'is null' },
-	{ coltype: 'float', code: 'notnull', displayName: 'is not null' },
-	{ coltype: 'string', code: 'in', displayName: 'in' },
-	{ coltype: 'string', code: 'notin', displayName: 'not in' },
-	{ coltype: 'string', code: 'eq', displayName: '=' },
-	{ coltype: 'string', code: 'neq', displayName: '!=' },
-	{ coltype: 'boolean', code: 'is-true', displayName: 'true' },
-] as const satisfies ComparisonType[]
-
-export const DEFAULT_COMPARISONS = {
-	float: 'inrange',
-	string: 'eq',
-	boolean: 'is-true',
-} satisfies Record<
-	Exclude<LC.ColumnType, 'integer'>,
-	ComparisonCode
->
-export function getColumnTypeWithComposite(column: string, cfg = LC.BASE_COLUMN_CONFIG) {
-	const colDef = LC.getColumnDef(column, cfg)
-	if (!colDef) return undefined
-	return colDef.type
+export const COMP_TYPE_DEFS: Record<CompType, CompTypeDef> = {
+	eq: { displayName: '=', negDisplayName: '!=', domain: 'any', argSlots: ['scalar', 'scalar'] },
+	in: { displayName: 'in', negDisplayName: 'not in', domain: 'any', argSlots: ['scalar', 'values'] },
+	lt: { displayName: '<', negDisplayName: '>=', domain: 'number', argSlots: ['scalar', 'scalar'] },
+	gt: { displayName: '>', negDisplayName: '<=', domain: 'number', argSlots: ['scalar', 'scalar'] },
+	inrange: { displayName: '[..]', negDisplayName: '![..]', domain: 'number', argSlots: ['scalar', 'scalar', 'scalar'] },
 }
 
-export function getDefaultComparison(
-	columnType: LC.ColumnType,
-) {
-	const result = DEFAULT_COMPARISONS[columnType as keyof typeof DEFAULT_COMPARISONS]
-	if (!result) throw new Error(`No default comparison for ${columnType}`)
-	return result
+export const BLOCK_TYPES = ['and', 'or'] as const
+export type BlockType = (typeof BLOCK_TYPES)[number]
+
+export const BLOCK_TYPE_DISPLAY_NAMES: Record<BlockType, string> = {
+	'and': 'and',
+	'or': 'or',
 }
 
-export type Comparison = z.infer<typeof ComparisonSchema>
+// -------- nodes --------
+
+export type CompNode =
+	| { type: 'eq' | 'lt' | 'gt'; neg: boolean; args: [SubjectArg, ScalarArg] }
+	| { type: 'in'; neg: boolean; args: [SubjectArg, ValuesArg] }
+	// [subject, min, max] (inclusive)
+	| { type: 'inrange'; neg: boolean; args: [SubjectArg, ScalarArg, ScalarArg] }
+
 export type FilterNode =
-	| {
-		type: 'and'
-		neg: boolean
-		children: FilterNode[]
-	}
-	| {
-		type: 'or'
-		neg: boolean
-		children: FilterNode[]
-	}
-	| {
-		type: 'comp'
-		neg: boolean
-		comp: Comparison
-	}
-	| {
-		type: 'apply-filter'
-		neg: boolean
-		filterId: string
-	}
-	| {
-		type: 'allow-matchups'
-		allowMatchups: FactionsAllowMatchups
-		neg: boolean
-	}
+	| { type: BlockType; neg: boolean; children: FilterNode[] }
+	| CompNode
+	| { type: 'apply-filter'; neg: boolean; filterId: string }
+
+export type NodeType = FilterNode['type']
+
+const NegSchema = z.boolean().prefault(false)
+
+export const EqNodeSchema = z.object({ type: z.literal('eq'), neg: NegSchema, args: z.tuple([SubjectArgSchema, ScalarArgSchema]) })
+export const LtNodeSchema = z.object({ type: z.literal('lt'), neg: NegSchema, args: z.tuple([SubjectArgSchema, ScalarArgSchema]) })
+export const GtNodeSchema = z.object({ type: z.literal('gt'), neg: NegSchema, args: z.tuple([SubjectArgSchema, ScalarArgSchema]) })
+export const InNodeSchema = z.object({ type: z.literal('in'), neg: NegSchema, args: z.tuple([SubjectArgSchema, ValuesArgSchema]) })
+export const InRangeNodeSchema = z.object({
+	type: z.literal('inrange'),
+	neg: NegSchema,
+	args: z.tuple([SubjectArgSchema, ScalarArgSchema, ScalarArgSchema]),
+})
+
+export const CompNodeSchema = z.discriminatedUnion('type', [
+	EqNodeSchema,
+	InNodeSchema,
+	LtNodeSchema,
+	GtNodeSchema,
+	InRangeNodeSchema,
+])
+
+export const ApplyFilterNodeSchema = z.object({
+	type: z.literal('apply-filter'),
+	neg: NegSchema,
+	filterId: z.lazy(() => FilterEntityIdSchema),
+})
+
+const ChildrenSchema = z.lazy(() => z.array(FilterNodeSchema))
+export const AndNodeSchema = z.object({ type: z.literal('and'), neg: NegSchema, children: ChildrenSchema })
+export const OrNodeSchema = z.object({ type: z.literal('or'), neg: NegSchema, children: ChildrenSchema })
+
+export const FilterNodeSchema: z.ZodType<FilterNode> = z.lazy(() =>
+	z.discriminatedUnion('type', [
+		EqNodeSchema,
+		InNodeSchema,
+		LtNodeSchema,
+		GtNodeSchema,
+		InRangeNodeSchema,
+		ApplyFilterNodeSchema,
+		AndNodeSchema,
+		OrNodeSchema,
+	])
+) as z.ZodType<FilterNode>
+
+export const RootFilterNodeSchema = FilterNodeSchema.refine(
+	(root) => isBlockNode(root),
+	{ error: 'Root node must be a block type' },
+)
+
+// -------- editable (partial) nodes --------
+
+export type EditableScalarArg =
+	| { type: 'column'; column?: string }
+	| { type: 'team-column'; column?: TeamColumn; quantifier?: TeamQuantifier }
+	| { type: 'value'; value?: Value }
+export type EditableValuesArg = { type: 'values'; values?: InListItem[] }
+export type EditableArg = EditableScalarArg | EditableValuesArg
+
+export const EditableArgSchema = z.discriminatedUnion('type', [
+	z.object({ type: z.literal('column'), column: z.string().optional() }),
+	z.object({ type: z.literal('team-column'), column: TeamColumnSchema.optional(), quantifier: TeamQuantifierSchema.optional() }),
+	z.object({ type: z.literal('value'), value: ValueSchema.optional() }),
+	z.object({ type: z.literal('values'), values: z.array(InListItemSchema).optional() }),
+])
+
+export type EditableCompNode = { type: CompType; neg: boolean; args: EditableArg[] }
+
+export const EditableCompNodeSchema = z.object({
+	type: z.enum(COMP_TYPES),
+	neg: NegSchema,
+	args: z.array(EditableArgSchema),
+}) satisfies z.ZodType<EditableCompNode, unknown>
 
 export type EditableFilterNodeCommon =
-	| {
-		type: 'comp'
-		neg: boolean
-		comp: EditableComparison
-	}
-	| {
-		type: 'apply-filter'
-		neg: boolean
-		filterId?: string
-	}
-	| {
-		type: 'allow-matchups'
-		allowMatchups: FactionsAllowMatchups
-		neg: boolean
-	}
+	| EditableCompNode
+	| { type: 'apply-filter'; neg: boolean; filterId?: string }
 
 export type EditableFilterNode = EditableFilterNodeCommon | {
 	type: BlockType
@@ -104,15 +196,10 @@ export type EditableFilterNode = EditableFilterNodeCommon | {
 export type ShallowEditableFilterNode = EditableFilterNodeCommon | { type: BlockType; neg: boolean }
 
 export type ShallowEditableFilterNodeOfType<T extends NodeType> = Extract<ShallowEditableFilterNode, { type: T }>
+export type EditableFilterNodeOfType<T extends NodeType> = Extract<EditableFilterNode, { type: T }>
+export type EditableBlockNode = Extract<EditableFilterNode, { type: BlockType }>
 
-export type BlockTypeEditableFilterNode = Extract<
-	EditableFilterNode,
-	{ type: BlockType }
->
-
-export const BLOCK_TYPES = ['and', 'or'] as const
-export const VALUE_TYPES = ['comp', 'apply-filter', 'allow-matchups'] as const
-export type NodeType = FilterNode['type']
+// -------- type guards --------
 
 export function isBlockType(type: string): type is BlockType {
 	return BLOCK_TYPES.includes(type as BlockType)
@@ -122,210 +209,285 @@ export function isBlockNode<T extends FilterNode>(
 ): node is Extract<T, { type: BlockType }> {
 	return BLOCK_TYPES.includes(node.type as BlockType)
 }
-
-// --------  numeric --------
-export const LessThanComparison = z.object({
-	code: z.literal('lt'),
-	value: z.number(),
-	column: z.string(),
-})
-export type LessThanComparison = z.infer<typeof LessThanComparison>
-
-export const GreaterThanComparison = z.object({
-	code: z.literal('gt'),
-	value: z.number(),
-	column: z.string(),
-})
-export type GreaterThanComparison = z.infer<typeof GreaterThanComparison>
-
-export const InRangeComparisonSchema = z
-	.object({
-		code: z.literal('inrange'),
-		range: z
-			.tuple([z.number().optional(), z.number().optional()])
-			.describe(
-				"smallest value is always the start of the range, even if it's larger",
-			)
-			.refine(
-				(range) => {
-					return range.some((value) => value !== undefined)
-				},
-				{
-					error: 'Range must have at least one value',
-				},
-			),
-		column: z.string(),
-	})
-	.describe('Inclusive Range')
-
-export type InRangeComparison = z.infer<typeof InRangeComparisonSchema>
-
-export const IsNullComparisonSchema = z
-	.object({
-		code: z.literal('isnull'),
-		column: z.string(),
-	})
-	.describe('Is Null')
-
-export type IsNullComparison = z.infer<typeof IsNullComparisonSchema>
-
-export const IsNotNullComparisonSchema = z
-	.object({
-		code: z.literal('notnull'),
-		column: z.string(),
-	})
-	.describe('Is Not Null')
-
-export type IsNotNullComparison = z.infer<typeof IsNotNullComparisonSchema>
-
-export type NumericComparison =
-	| LessThanComparison
-	| GreaterThanComparison
-	| InRangeComparison
-	| IsNullComparison
-	| IsNotNullComparison
-
-// --------  numeric end --------
-
-// --------  string --------
-export const InComparison = z.object({
-	code: z.literal('in'),
-	values: z.array(z.string().nullable()),
-	column: z.string(),
-})
-export type InComparison = z.infer<typeof InComparison>
-
-export const NotInComparison = z.object({
-	code: z.literal('notin'),
-	values: z.array(z.string().nullable()),
-	column: z.string(),
-})
-export type NotInComparison = z.infer<typeof NotInComparison>
-
-export const EqualComparison = z.object({
-	code: z.literal('eq'),
-	value: z.string().nullable(),
-	column: z.string(),
-})
-export type EqualComparison = z.infer<typeof EqualComparison>
-
-export const NotEqualComparison = z.object({
-	code: z.literal('neq'),
-	value: z.string().nullable(),
-	column: z.string(),
-})
-export type NotEqualComparison = z.infer<typeof NotEqualComparison>
-
-export type StringComparison = InComparison | EqualComparison
-// --------  string end --------
-
-const IsTrueComparison = z.object({
-	code: z.literal('is-true'),
-	column: z.string(),
-})
-
-export const FactionMaskSchema = z.object({
-	// null is only semantically different for edit state
-	alliance: z.array(z.string()).nullable().optional(),
-	faction: z.array(z.string()).nullable().optional(),
-	unit: z.array(z.string()).nullable().optional(),
-})
-export type FactionMask = z.infer<typeof FactionMaskSchema>
-
-export const FACTION_MODE = z.enum(['split', 'both', 'either'])
-export type FactionMaskMode = z.infer<typeof FACTION_MODE>
-
-// --------  factions --------
-export const FactionsAllowMatchupsSchema = z.object({
-	allMasks: z
-		.array(z.array(FactionMaskSchema))
-		.refine((teams) => teams.length > 0 && teams.length <= 2, {
-			error: 'At least one team is required and at most two teams are allowed',
-		}),
-	// default either
-	mode: FACTION_MODE.optional(),
-})
-
-export type FactionsAllowMatchups = z.infer<typeof FactionsAllowMatchupsSchema>
-
-// --------  factionsend --------
-
-// Combine into the final ComparisonSchema
-export const ComparisonSchema = z
-	.discriminatedUnion('code', [
-		LessThanComparison,
-		GreaterThanComparison,
-		InRangeComparisonSchema,
-		IsNullComparisonSchema,
-		IsNotNullComparisonSchema,
-		InComparison,
-		NotInComparison,
-		EqualComparison,
-		NotEqualComparison,
-		IsTrueComparison,
-	])
-	.refine((comp) => COMPARISON_TYPES.some((type) => type.code === comp.code), {
-		error: 'Invalid comparison type',
-	})
-
-// TODO add 'not'
-export const BaseFilterNodeSchema = z.object({
-	type: z.union([
-		z.literal('and'),
-		z.literal('or'),
-		z.literal('comp'),
-		z.literal('apply-filter'),
-		z.literal('allow-matchups'),
-	]),
-	comp: ComparisonSchema.optional(),
-	// negations
-	neg: z.boolean().prefault(false),
-	filterId: z.lazy(() => FilterEntityIdSchema).optional(),
-	allowMatchups: FactionsAllowMatchupsSchema.optional(),
-})
-
-export function isValidComparison(
-	comp: EditableComparison,
-): comp is Comparison {
-	const res = ComparisonSchema.safeParse(comp)
-	return res.success
+export function isEditableBlockNode<T extends { type: NodeType }>(
+	node: T,
+): node is Extract<T, { type: BlockType }> {
+	return BLOCK_TYPES.includes(node.type as BlockType)
 }
+
+export function isCompType(type: string): type is CompType {
+	return COMP_TYPES.includes(type as CompType)
+}
+export function isCompNode(node: FilterNode): node is CompNode
+export function isCompNode(node: EditableFilterNode | ShallowEditableFilterNode): node is EditableCompNode
+export function isCompNode(node: { type: string }): boolean {
+	return isCompType(node.type)
+}
+
+// -------- value domains --------
+// the "data type" of an argument. enum-mapped columns are stored as int codes per mapping, so two
+// columns are only comparable when their domains are equal (same mapping / same primitive kind)
+
+export type ValueDomain =
+	| { kind: 'enum'; mapping: string }
+	// `integral` distinguishes integer columns (exact) from float columns (stored as IEEE-754 REAL).
+	// Exact-equality operators (eq/neq/in) are unreliable on floats, so they're not offered for them.
+	| { kind: 'number'; integral: boolean }
+	| { kind: 'string' }
+	| { kind: 'boolean' }
+	| { kind: 'layer-id' }
+
+export function columnValueDomain(column: string, cfg = LC.BASE_COLUMN_CONFIG): ValueDomain | undefined {
+	if (column === 'id') return { kind: 'layer-id' }
+	const def = LC.getColumnDef(column, cfg)
+	if (!def) return undefined
+	switch (def.type) {
+		case 'string':
+			return def.enumMapping ? { kind: 'enum', mapping: def.enumMapping } : { kind: 'string' }
+		case 'integer':
+			return { kind: 'number', integral: true }
+		case 'float':
+			return { kind: 'number', integral: false }
+		case 'boolean':
+			return { kind: 'boolean' }
+		default:
+			assertNever(def)
+	}
+}
+
+export function teamColumnValueDomain(column: TeamColumn, cfg = LC.BASE_COLUMN_CONFIG): ValueDomain | undefined {
+	return columnValueDomain(TEAM_COLUMN_PAIRS[column][0], cfg)
+}
+
+export function argValueDomain(arg: EditableArg | Arg, cfg = LC.BASE_COLUMN_CONFIG): ValueDomain | undefined {
+	if (arg.type === 'column' && arg.column) return columnValueDomain(arg.column, cfg)
+	if (arg.type === 'team-column' && arg.column) return teamColumnValueDomain(arg.column, cfg)
+	return undefined
+}
+
+export function domainsCompatible(a: ValueDomain, b: ValueDomain): boolean {
+	// all numbers are mutually comparable (SQLite compares int/float numerically); integral only
+	// gates which operators are offered, not comparability
+	if (a.kind === 'number' && b.kind === 'number') return true
+	return Obj.deepEqual(a, b)
+}
+
+function isFloatDomain(domain: ValueDomain | undefined): boolean {
+	return domain?.kind === 'number' && !domain.integral
+}
+
+export function domainSupportsCompType(domain: ValueDomain, type: CompType): boolean {
+	// floats support ordering plus eq (which, for floats, only tests against null) — but not `in`
+	if (isFloatDomain(domain)) return type === 'eq' || type === 'lt' || type === 'gt' || type === 'inrange'
+	if (COMP_TYPE_DEFS[type].domain === 'any') return true
+	return domain.kind === 'number'
+}
+
+// the operator a fresh comparison should default to for a given subject domain
+export function defaultCompType(domain: ValueDomain | undefined): CompType {
+	return isFloatDomain(domain) ? 'inrange' : 'eq'
+}
+
+// -------- operator selection --------
+// what the operator dropdown offers: each entry maps to a (comp type, neg) pair, so negated forms
+// (!=, not in, >=, ...) and null tests (eq against the constant null) need no operators of their own
+
+export type CompOpSelectOption = {
+	key: string
+	label: string
+	type: CompType
+	neg: boolean
+}
+
+export function compOpSelectOptions(domain: ValueDomain | undefined): CompOpSelectOption[] {
+	const floatDomain = isFloatDomain(domain)
+	// eq/neq are always available; on floats they only compare against null (IS [NOT] NULL), since
+	// exact equality against a numeric constant is unreliable. There are no dedicated null-test
+	// operators — null is selected as a value.
+	const options: CompOpSelectOption[] = [
+		{ key: 'eq', label: '=', type: 'eq', neg: false },
+		{ key: 'neq', label: '!=', type: 'eq', neg: true },
+	]
+	// `in` uses exact equality, so skip it for floats (and it's redundant for booleans)
+	if (!floatDomain && (!domain || domain.kind !== 'boolean')) {
+		options.push(
+			{ key: 'in', label: 'in', type: 'in', neg: false },
+			{ key: 'notin', label: 'not in', type: 'in', neg: true },
+		)
+	}
+	if (!domain || domain.kind === 'number') {
+		options.push(
+			{ key: 'lt', label: '<', type: 'lt', neg: false },
+			{ key: 'gt', label: '>', type: 'gt', neg: false },
+			{ key: 'lte', label: '<=', type: 'gt', neg: true },
+			{ key: 'gte', label: '>=', type: 'lt', neg: true },
+			{ key: 'inrange', label: '[..]', type: 'inrange', neg: false },
+			{ key: 'outrange', label: '![..]', type: 'inrange', neg: true },
+		)
+	}
+	return options
+}
+
+// true when a float column's eq should be constrained to null-only (numeric equality is unreliable)
+export function isFloatEqNullOnly(domain: ValueDomain | undefined, type: CompType): boolean {
+	return type === 'eq' && isFloatDomain(domain)
+}
+
+export function compOpSelectionKey(node: EditableCompNode): string {
+	switch (node.type) {
+		case 'eq':
+			return node.neg ? 'neq' : 'eq'
+		case 'in':
+			return node.neg ? 'notin' : 'in'
+		case 'lt':
+			return node.neg ? 'gte' : 'lt'
+		case 'gt':
+			return node.neg ? 'lte' : 'gt'
+		case 'inrange':
+			return node.neg ? 'outrange' : 'inrange'
+		default:
+			assertNever(node.type)
+	}
+}
+
+// reshapes args to the selected operator's slots, carrying compatible args over
+export function applyCompOpSelection(node: EditableCompNode, option: CompOpSelectOption): EditableCompNode {
+	const def = COMP_TYPE_DEFS[option.type]
+	const prevArgs = node.args
+	const args = def.argSlots.map((slot, i): EditableArg => {
+		if (i === 0) return prevArgs[0] ?? { type: 'column' }
+		const prev = prevArgs[i] as EditableArg | undefined
+		if (slot === 'values') {
+			if (prev?.type === 'values') return prev
+			if (prev?.type === 'value' && prev.value !== undefined && prev.value !== null) return { type: 'values', values: [prev.value] }
+			return { type: 'values' }
+		}
+		if (prev?.type === 'column' || prev?.type === 'team-column') return prev
+		if (prev?.type === 'value' && prev.value !== null) return prev
+		if (prev?.type === 'values' && prev.values?.length === 1) {
+			const only = prev.values[0]
+			if (isColumnListItem(only)) return { type: 'column', column: only.column }
+			if (only !== null) return { type: 'value', value: only }
+		}
+		return { type: 'value' }
+	})
+	return { type: option.type, neg: option.neg, args }
+}
+
+// -------- comp node accessors --------
+// these read across both editable and validated nodes, so treat args structurally
+
+type AnyArg = { type: string; column?: string; value?: Value; values?: InListItem[] }
+function anyArgs(node: EditableCompNode | CompNode): AnyArg[] {
+	return node.args as AnyArg[]
+}
+
+export function compAnchorArg(node: EditableCompNode | CompNode): AnyArg | undefined {
+	return anyArgs(node).find((arg) => arg.type === 'column' || arg.type === 'team-column')
+}
+
+export function compAnchorColumn(node: EditableCompNode | CompNode): string | undefined {
+	const arg = compAnchorArg(node)
+	return arg?.type === 'column' ? (arg.column as string | undefined) : undefined
+}
+
+// the constant on the value side of a simple comparison (used by locked-column UIs like the filter menu)
+export function compValue(node: EditableCompNode | CompNode): Value | undefined {
+	return anyArgs(node).find((arg) => arg.type === 'value')?.value
+}
+
+export function setCompValue(node: EditableCompNode, value: Value | undefined) {
+	node.args[1] = { type: 'value', value }
+}
+
+export function compValues(node: EditableCompNode | CompNode): InListItem[] | undefined {
+	return anyArgs(node).find((arg) => arg.type === 'values')?.values
+}
+
+export function editableCompHasValue(node: EditableCompNode): boolean {
+	return anyArgs(node).some((arg, i) => {
+		if (i === 0) return false
+		if (arg.type === 'value') return arg.value !== undefined
+		if (arg.type === 'values') return (arg.values?.length ?? 0) > 0
+		// a column on the value side counts as configured
+		return arg.column !== undefined
+	})
+}
+
+// -------- legacy compatibility --------
+// The pre-rearchitecture "comparison" shape ({ column, code, value, values, range }). Still appears in
+// operators' config files (extraLayerSelectMenuItems), so we upgrade it to an EditableCompNode on read.
+// Persisted filter *entities* are upgraded separately by a data migration.
+export type LegacyEditableComparison = {
+	column?: string
+	code?: string
+	value?: string | number | boolean | null
+	values?: (string | null)[]
+	range?: [number?, number?]
+}
+
+export function isLegacyEditableComparison(obj: unknown): obj is LegacyEditableComparison {
+	return typeof obj === 'object' && obj !== null && !('args' in obj) && !('type' in obj) && ('code' in obj || 'column' in obj)
+}
+
+export function upgradeLegacyEditableComparison(legacy: LegacyEditableComparison): EditableCompNode {
+	const column = legacy.column
+	const colArg: EditableScalarArg = { type: 'column', column }
+	const value = (v: Value | undefined): EditableCompNode => ({
+		type: 'eq',
+		neg: false,
+		args: [colArg, { type: 'value', value: v ?? undefined }],
+	})
+	switch (legacy.code) {
+		case 'eq':
+			return value(legacy.value)
+		case 'neq':
+			return { type: 'eq', neg: true, args: [colArg, { type: 'value', value: legacy.value ?? undefined }] }
+		case 'in':
+			return { type: 'in', neg: false, args: [colArg, { type: 'values', values: legacy.values ?? undefined }] }
+		case 'notin':
+			return { type: 'in', neg: true, args: [colArg, { type: 'values', values: legacy.values ?? undefined }] }
+		case 'lt':
+			return { type: 'lt', neg: false, args: [colArg, { type: 'value', value: legacy.value ?? undefined }] }
+		case 'gt':
+			return { type: 'gt', neg: false, args: [colArg, { type: 'value', value: legacy.value ?? undefined }] }
+		case 'inrange': {
+			const [lo, hi] = legacy.range ?? []
+			if (lo !== undefined && hi !== undefined) {
+				return { type: 'inrange', neg: false, args: [colArg, { type: 'value', value: lo }, { type: 'value', value: hi }] }
+			}
+			if (lo !== undefined) return { type: 'lt', neg: true, args: [colArg, { type: 'value', value: lo }] } // >= lo
+			if (hi !== undefined) return { type: 'gt', neg: true, args: [colArg, { type: 'value', value: hi }] } // <= hi
+			return { type: 'inrange', neg: false, args: [colArg, { type: 'value' }, { type: 'value' }] }
+		}
+		case 'isnull':
+			return { type: 'eq', neg: false, args: [colArg, { type: 'value', value: null }] }
+		case 'notnull':
+			return { type: 'eq', neg: true, args: [colArg, { type: 'value', value: null }] }
+		case 'is-true':
+			return { type: 'eq', neg: false, args: [colArg, { type: 'value', value: true }] }
+		default:
+			return value(legacy.value)
+	}
+}
+
+// z.preprocess input: upgrades a legacy comparison to the new node shape, passes new-shape items through
+export function coerceEditableCompNode(input: unknown): unknown {
+	if (isLegacyEditableComparison(input)) return upgradeLegacyEditableComparison(input)
+	return input
+}
+
+// -------- validity --------
+
+export function isValidCompNode(node: EditableCompNode): node is CompNode {
+	return CompNodeSchema.safeParse(node).success
+}
+
 export function isValidApplyFilterNode(
 	node: EditableFilterNode & { type: 'apply-filter' },
 ): node is FilterNode & { type: 'apply-filter' } {
 	return !!node.filterId
 }
-
-// TODO Implement isValidAllowMatchupsNode
-export function isValidAllowMatchupsNode(
-	node: EditableFilterNode & { type: 'allow-matchups' },
-): node is FilterNode & { type: 'allow-matchups' } {
-	return !!node.allowMatchups
-}
-
-export const FilterNodeSchema = BaseFilterNodeSchema.extend({
-	children: z.lazy(() => FilterNodeSchema.array().optional()),
-})
-	.refine((node) => node.type !== 'comp' || node.comp !== undefined, {
-		error: 'comp must be defined for type "comp"',
-	})
-	.refine((node) => node.type !== 'comp' || node.children === undefined, {
-		error: 'children must not be defined for type "comp"',
-	})
-	.refine(
-		(node) => node.type !== 'apply-filter' || typeof node.filterId === 'string',
-		{
-			error: 'filterId must be defined for type "apply-filter"',
-		},
-	)
-	.refine((node) => !(['and', 'or'].includes(node.type) && !node.children), {
-		error: 'children must be defined for type "and" or "or"',
-	}) as z.ZodType<FilterNode>
-
-export const RootFilterNodeSchema = FilterNodeSchema.refine(
-	(root) => isBlockNode(root),
-	{ error: 'Root node must be a block type' },
-)
 
 export function isValidFilterNode(
 	node: EditableFilterNode,
@@ -336,67 +498,12 @@ export function isValidFilterNode(
 // excludes children
 export function isLocallyValidFilterNode(node: EditableFilterNode) {
 	if (isEditableBlockNode(node)) return true
-	if (node.type === 'comp') return isValidComparison(node.comp)
+	if (isCompNode(node)) return isValidCompNode(node)
 	if (node.type === 'apply-filter') return isValidApplyFilterNode(node)
-	if (node.type === 'allow-matchups') return isValidAllowMatchupsNode(node)
 	assertNever(node)
 }
 
-export function isEditableBlockNode<T extends { type: NodeType }>(
-	node: T,
-): node is Extract<T, { type: BlockType }> {
-	return BLOCK_TYPES.includes(node.type as BlockType)
-}
-
-export type BlockType = (typeof BLOCK_TYPES)[number]
-export type ValueType = (typeof VALUE_TYPES)[number]
-
-export const getComparisonTypesForColumn = LC.coalesceLookupErrors(
-	(column: string, cfg = LC.BASE_COLUMN_CONFIG) => {
-		const colType = LC.getColumnDef(column, cfg)!.type
-		return {
-			code: 'ok' as const,
-			comparisonTypes: COMPARISON_TYPES.filter(
-				(type) => type.coltype === colType,
-			),
-		}
-	},
-)
-export const EditableComparisonSchema = z.object({
-	column: z.string().optional(),
-	code: z
-		.enum(
-			COMPARISON_TYPES.map((type) => type.code) as [
-				ComparisonCode,
-				...ComparisonCode[],
-			],
-		)
-		.optional(),
-	value: z.union([z.number(), z.string(), z.null()]).optional(),
-	values: z.array(z.string().nullable()).optional(),
-	range: z.tuple([z.number().optional(), z.number().optional()]).optional(),
-	allMasks: z.array(z.array(FactionMaskSchema)).optional(),
-	mode: z.enum(['split', 'both', 'either']).optional(),
-})
-export type EditableComparison = z.infer<typeof EditableComparisonSchema>
-export type EditableBlockNode = Extract<EditableFilterNode, { type: BlockType }>
-export type EditableValueNode = Extract<EditableFilterNode, { type: 'value' }>
-export type EditableFilterNodeOfType<T extends NodeType> = Extract<EditableFilterNode, { type: T }>
-
-export function isEditableValueNode(node: EditableFilterNode): node is EditableValueNode {
-	return VALUE_TYPES.includes(node.type as ValueType)
-}
-
-export function editableComparisonHasValue(comp: EditableComparison) {
-	return (
-		comp.code === 'is-true'
-		|| comp.value !== undefined
-		|| comp.values !== undefined
-		|| (comp.range !== undefined
-			&& !Obj.deepEqual(comp.range, [undefined, undefined]))
-		|| comp.allMasks?.some((side) => side.length > 0)
-	)
-}
+// -------- filter entities --------
 
 export const FilterEntityIdSchema = z
 	.string()
@@ -428,31 +535,14 @@ export const BaseFilterEntitySchema = z.object({
 	invertedEmoji: z.string().nullable(),
 })
 
-export type ComparisonCode = (typeof COMPARISON_TYPES)[number]['code']
-export const COMPARISON_CODES = z.enum(
-	COMPARISON_TYPES.map((type) => type.code) as [
-		ComparisonCode,
-		...ComparisonCode[],
-	],
-)
-
 export function filterContainsId(id: string, node: FilterNode): boolean {
-	switch (node.type) {
-		case 'and':
-		case 'or':
-			return node.children.some((n) => filterContainsId(id, n))
-		case 'comp':
-		case 'allow-matchups':
-			return false
-		case 'apply-filter':
-			return node.filterId === id
-		default:
-			assertNever(node)
-	}
+	if (isBlockNode(node)) return node.children.some((n) => filterContainsId(id, n))
+	if (node.type === 'apply-filter') return node.filterId === id
+	return false
 }
 
 export const FilterEntitySchema = BaseFilterEntitySchema
-	// this refinement does not deal with mutual recustion
+	// this refinement does not deal with mutual recursion
 	.refine((e) => !filterContainsId(e.id, e.filter), {
 		error: 'filter cannot be recursive',
 	}) satisfies z.ZodType<SchemaModels.Filter>
@@ -467,6 +557,8 @@ export const NewFilterEntitySchema = BaseFilterEntitySchema.omit({
 
 export type FilterEntityUpdate = z.infer<typeof UpdateFilterEntitySchema>
 export type FilterEntity = z.infer<typeof FilterEntitySchema>
+
+// -------- validation errors --------
 
 export type InvalidFilterNodeResult = { code: 'err:invalid-node'; errors: NodeValidationError[] }
 export type SQLConditionsResult = { code: 'ok'; condition: SQL } | InvalidFilterNodeResult
@@ -487,11 +579,15 @@ export type NodeValidationError =
 		type: 'recursive-filter' | 'unknown-filter'
 		filterId: string
 	}
+	// semantic problems: incompatible arg domains, team columns outside a team scope, nested scopes, ...
+	| ErrorBase & { type: 'invalid-node' }
 
 export type NodeValidationErrorStore = {
 	errors?: NodeValidationError[]
 	setErrors: (errors: NodeValidationError[] | undefined) => void
 }
+
+// -------- node tree utilities --------
 
 export function buildNodePath(parent: Sparse.NodePath, childIndex: number) {
 	return parent.concat(childIndex)
@@ -713,16 +809,4 @@ export function deleteTreeNode(tree: FilterNodeTree, targetId: string): void {
 	let sparseTree = treeToSparseTree(tree, parentPath)
 	sparseTree = Sparse.deleteNode(sparseTree, targetPath.slice(parentPath.length))
 	upsertTreeInPlaceFromSparse(sparseTree, parentPath, tree)
-}
-
-export function areFilterNodesLocallyEqual(a: EditableFilterNode, b: EditableFilterNode): boolean {
-	if (isEditableBlockNode(a) && isEditableBlockNode(b)) {
-		return a.children.length === b.children.length
-	}
-	if (a.type === 'comp' && b.type === 'comp') return a.comp === b.comp
-	if (a.type === 'apply-filter' && b.type === 'apply-filter') return a.filterId === b.filterId
-	if (a.type === 'allow-matchups' && b.type === 'allow-matchups') {
-		return a.allowMatchups.allMasks === b.allowMatchups.allMasks && a.allowMatchups.mode === b.allowMatchups.mode
-	}
-	return false
 }

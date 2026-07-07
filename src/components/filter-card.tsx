@@ -1,6 +1,5 @@
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
-import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import * as Arr from '@/lib/array.ts'
 import * as DH from '@/lib/display-helpers'
 import * as Obj from '@/lib/object.ts'
@@ -17,7 +16,6 @@ import type * as LQY from '@/models/layer-queries.models.ts'
 import * as ConfigClient from '@/systems/config.client'
 import * as DndKit from '@/systems/dndkit.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
-import { useLayerComponents as useLayerComponent } from '@/systems/layer-queries.client'
 import { Link } from '@tanstack/react-router'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
@@ -26,7 +24,6 @@ import React from 'react'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import type { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
-import { LOADING } from './combo-box/constants.ts'
 import EditLayerDialog from './edit-layer-dialog.tsx'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
 import type { FilterTextEditorHandle } from './filter-text-editor.types'
@@ -35,8 +32,6 @@ import SelectLayersDialog from './select-layers-dialog.tsx'
 import { Button, buttonVariants } from './ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { Input } from './ui/input'
-import { Label } from './ui/label.tsx'
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.tsx'
 import { Separator } from './ui/separator.tsx'
 import { Toggle } from './ui/toggle.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
@@ -254,6 +249,7 @@ function BlockNodeControlPanel(props: NodeProps) {
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
 	const { delete: deleteNode } = actions.common
 	const { addChild, setBlockType } = actions.block
+	const blockTypeOptions = F.BLOCK_TYPES.map((t) => ({ value: t, label: F.BLOCK_TYPE_DISPLAY_NAMES[t] }))
 	return (
 		<div className="flex items-center space-x-1">
 			<NegationToggle stores={props.stores} nodeId={props.nodeId} node={node} />
@@ -261,7 +257,7 @@ function BlockNodeControlPanel(props: NodeProps) {
 				className="w-min"
 				title="Block Type"
 				value={node.type}
-				options={['and', 'or']}
+				options={blockTypeOptions}
 				onSelect={(v) => setBlockType(v as F.BlockType)}
 			/>
 			<DropdownMenu>
@@ -270,10 +266,13 @@ function BlockNodeControlPanel(props: NodeProps) {
 						<Plus />
 					</Button>
 				</DropdownMenuTrigger>
-				<DropdownMenuContent>
-					<DropdownMenuItem onClick={() => addChild('comp')}>comparison</DropdownMenuItem>
+				{
+					/* don't let Radix yank focus back to this trigger as the menu closes -- a freshly added
+				    comparison auto-opens its column picker, and the focus-restore would slam it shut */
+				}
+				<DropdownMenuContent onCloseAutoFocus={(e) => e.preventDefault()}>
+					<DropdownMenuItem onClick={() => addChild('eq')}>comparison</DropdownMenuItem>
 					<DropdownMenuItem onClick={() => addChild('apply-filter')}>apply existing filter</DropdownMenuItem>
-					<DropdownMenuItem onClick={() => addChild('allow-matchups')}>Allow Matchups</DropdownMenuItem>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem onClick={() => addChild('and')}>and block</DropdownMenuItem>
 					<DropdownMenuItem onClick={() => addChild('or')}>or block</DropdownMenuItem>
@@ -386,15 +385,11 @@ export function LeafFilterNode(props: NodeProps) {
 		</Button>
 	)
 
-	if (node.type === 'comp') {
+	if (F.isCompNode(node)) {
+		// team-generic columns (Alliance/Faction/Unit) are selectable only within a team scope
 		return (
 			<NodeWrapper path={nodePath} className="flex items-center space-x-1" nodeId={props.nodeId}>
-				{negationToggle}
-				<Comparison
-					comp={node.comp!}
-					setComp={update => actions.comp.setComp(update)}
-					restrictValueSize={false}
-				/>
+				<CompNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
 				{opCluster}
 			</NodeWrapper>
 		)
@@ -420,30 +415,32 @@ export function LeafFilterNode(props: NodeProps) {
 			</NodeWrapper>
 		)
 	}
+	// block nodes are rendered by BlockNodeControlPanel, not here
+	return null
+}
 
-	if (node.type === 'allow-matchups') {
-		return (
-			<NodeWrapper path={nodePath} className="flex items-center space-x-1" nodeId={props.nodeId}>
-				{negationToggle}
-				<FactionsAllowMatchupsConfig
-					masks={node.allowMatchups.allMasks}
-					mode={node.allowMatchups.mode}
-					setMasks={actions.allowMatchups.setMasks}
-					setMode={actions.allowMatchups.setMode}
-				/>
-				{opCluster}
-			</NodeWrapper>
-		)
-	}
+function CompNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node: F.EditableCompNode }) {
+	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
+	return (
+		<Comparison
+			node={props.node}
+			setNode={update => actions.comp.setNode(update)}
+			teamColumnsAvailable
+			restrictValueSize={false}
+		/>
+	)
 }
 
 export type ComparisonHandle = Clearable & Focusable
+
+// A single comparison node: [anchor column] [operator] [value(s)]. The anchor (args[0]) determines
+// the value domain, which in turn drives the operator options and the value editor.
 export function Comparison(props: {
-	comp: F.EditableComparison
-	setComp: React.Dispatch<React.SetStateAction<F.EditableComparison>>
+	node: F.EditableCompNode
+	setNode: React.Dispatch<React.SetStateAction<F.EditableCompNode>>
 	columnEditable?: boolean
+	teamColumnsAvailable?: boolean
 	allowedColumns?: string[]
-	allowedComparisonCodes?: F.ComparisonCode[]
 	restrictValueSize?: boolean
 	allowedEnumValues?: string[]
 	onSetAllValuesAllowed?: () => void
@@ -458,9 +455,8 @@ export function Comparison(props: {
 }) {
 	const showValueDropdown = props.showValueDropdown ?? true
 	const lockOnSingleOption = props.lockOnSingleOption ?? false
-	const { comp, setComp } = props
-	let { columnEditable } = props
-	columnEditable ??= true
+	const { node, setNode } = props
+	const columnEditable = props.columnEditable ?? true
 	const columnBoxRef = React.useRef<ComboBoxHandle>(null)
 	const codeBoxRef = React.useRef<ComboBoxHandle>(null)
 	const valueBoxRef = React.useRef<Focusable & Clearable>(null)
@@ -478,59 +474,105 @@ export function Comparison(props: {
 		},
 	}))
 
-	const alreadyOpenedRef = React.useRef(false)
 	const cfg = ConfigClient.useEffectiveColConfig()
-	React.useEffect(() => {
-		if (props.defaultEditing && !columnBoxRef.current!.isFocused && !alreadyOpenedRef.current) {
-			columnBoxRef.current?.focus()
-			alreadyOpenedRef.current = true
-		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [])
 
+	const anchor = node.args[0] as F.EditableScalarArg | undefined
+	const anchorColumn = anchor?.type === 'column' ? anchor.column : undefined
+	const anchorTeamColumn = anchor?.type === 'team-column' ? anchor.column : undefined
+	const anchorQuantifier: F.TeamQuantifier = (anchor?.type === 'team-column' ? anchor.quantifier : undefined) ?? 'either'
+	// the concrete column used to source enum options / value rendering (team columns resolve to team 1)
+	const optionsColumn = anchorColumn ?? (anchorTeamColumn ? F.resolveTeamColumn(anchorTeamColumn, 1) : undefined)
+	const domain = anchor ? F.argValueDomain(anchor, cfg) : undefined
+
+	const hasSubject = !!(anchorColumn || anchorTeamColumn)
+	// whether the value slot(s) still need input, so we only jump focus forward when there's a blank to fill
+	const valueSlotEmpty = ((): boolean => {
+		if (node.type === 'in') {
+			const valuesArg = node.args[1]
+			return ((valuesArg?.type === 'values' ? valuesArg.values : undefined) ?? []).length === 0
+		}
+		const arg = node.args[1]
+		if (!arg) return true
+		if (arg.type === 'value') return arg.value === undefined
+		if (arg.type === 'column') return !arg.column
+		return false
+	})()
+	// once a subject is chosen with a blank value, focus is handed off to the value editor (or, for numeric
+	// subjects, the operator select) -- and only then do we suppress a closing select's focus-restore.
+	// Otherwise (no subject, or value already filled) the good behavior is the normal restore.
+	const handOffFocusToValue = hasSubject && valueSlotEmpty
+
+	// pending auto-focus for a user selection. `advance` opens the lowest empty argument (subject, then first
+	// empty value slot); `operator` opens the operator select. Queued on selection, consumed once the target
+	// editor has mounted (see the effect below). The initial subject-open is handled separately on mount.
+	const [focusRequest, setFocusRequest] = React.useState<'advance' | 'operator' | null>(null)
+
+	const TEAM_PREFIX = 'team:'
 	const baseCols = cfg ? Object.keys(cfg.defs) : LC.COLUMN_KEYS
-	const columnOptions = (props.allowedColumns ? props.allowedColumns.filter((c) => baseCols.includes(c)) : baseCols).map((c) => ({
-		value: c,
-	}))
-
-	let codeOptions: ComboBoxOption<string>[] = []
-	if (comp.column && cfg) {
-		const res = F.getComparisonTypesForColumn(comp.column, cfg)
-		if (res.code !== 'ok') {
-			return <div>{comp.column} {comp.code} : {res.code} : {res.message}</div>
-		}
-		codeOptions = res.comparisonTypes.map((c) => ({ value: c.code, label: c.displayName }))
+	const columnOptions: ComboBoxOption<string>[] =
+		(props.allowedColumns ? props.allowedColumns.filter((c) => baseCols.includes(c)) : baseCols)
+			.map((c) => ({ value: c, label: LC.getColumnDef(c, cfg)?.displayName ?? c }))
+	if (props.teamColumnsAvailable) {
+		for (const tc of F.TEAM_COLUMNS) columnOptions.unshift({ value: TEAM_PREFIX + tc, label: `${tc} (either/both team)` })
 	}
 
-	if (props.allowedComparisonCodes) {
-		codeOptions = codeOptions.filter((c) => Arr.includes(props.allowedComparisonCodes!, c.value))
+	const currentColumnValue = anchorTeamColumn ? TEAM_PREFIX + anchorTeamColumn : anchorColumn
+
+	// reshape the node's args for a newly selected anchor, keeping the operator if the new domain supports it
+	function selectAnchor(newAnchor: F.EditableScalarArg) {
+		const newDomain = F.argValueDomain(newAnchor, cfg)
+		setNode((c) => {
+			const keepOp = newDomain ? F.domainSupportsCompType(newDomain, c.type) : true
+			const type = keepOp ? c.type : F.defaultCompType(newDomain)
+			const neg = keepOp ? c.neg : false
+			const slots = F.COMP_TYPE_DEFS[type].argSlots
+			const args = slots.map((slot, i): F.EditableArg => i === 0 ? newAnchor : (slot === 'values' ? { type: 'values' } : { type: 'value' }))
+			return { type, neg, args }
+		})
 	}
 
+	// either/both selector shown when the subject is a team-generic column
+	const quantifierBox = anchorTeamColumn
+		? (
+			<ComboBox
+				allowEmpty={false}
+				className={props.highlight ? 'bg-accent' : undefined}
+				title="team"
+				value={anchorQuantifier}
+				options={[{ value: 'either', label: 'either team' }, { value: 'both', label: 'both teams' }]}
+				onSelect={(q) =>
+					setNode(Im.produce((c) => {
+						if (c.args[0]?.type === 'team-column') c.args[0].quantifier = q as F.TeamQuantifier
+					}))}
+			/>
+		)
+		: null
+
+	const columnDef = optionsColumn ? LC.getColumnDef(optionsColumn, cfg) : undefined
 	const componentStyles = props.highlight ? 'bg-accent' : undefined
 
-	const columnDef = comp.column ? LC.getColumnDef(comp.column, cfg) : undefined
 	const columnBox = columnEditable
 		? (
 			<ComboBox
 				title={props.columnLabel ?? columnDef?.displayName ?? 'Column'}
 				className={componentStyles}
 				allowEmpty
-				value={comp.column}
+				value={currentColumnValue}
 				options={columnOptions}
 				ref={columnBoxRef}
-				onSelect={(column) => {
-					if (!column) return setComp(() => ({ column: undefined }))
-					const colType = F.getColumnTypeWithComposite(column, cfg)
-					if (!colType) {
-						throw new Error('Unknown column ' + column)
-					}
-					const defaultComparisonType = F.getDefaultComparison(colType)
-					setComp((c) => {
-						return { column, code: c.code ?? defaultComparisonType }
-					})
-					// sleepUntil(() => valueBoxRef.current).then((handle) => {
-					// 	return handle?.focus()
-					// })
+				// selecting a column always resets and reopens the next argument, so hand focus onward on
+				// selection (ComboBox still restores focus on a plain dismiss)
+				preventCloseAutoFocus
+				onSelect={(value) => {
+					if (!value) return setNode(() => ({ type: 'eq', neg: false, args: [{ type: 'column' }, { type: 'value' }] }))
+					const newAnchor: F.EditableScalarArg = value.startsWith(TEAM_PREFIX)
+						? { type: 'team-column', column: value.slice(TEAM_PREFIX.length) as F.TeamColumn, quantifier: anchorQuantifier }
+						: { type: 'column', column: value }
+					selectAnchor(newAnchor)
+					// numeric subjects: the operator matters (eq/lt/gt/inrange), so send focus to the operator
+					// select; everything else advances straight to the value
+					const newDomain = F.argValueDomain(newAnchor, cfg)
+					setFocusRequest(newDomain?.kind === 'number' ? 'operator' : 'advance')
 				}}
 			/>
 		)
@@ -539,169 +581,291 @@ export function Comparison(props: {
 				{props.columnLabel ?? columnDef?.displayName}
 			</span>
 		)
-	if (!comp.column) return columnBox
-
+	// operator options come from the subject's domain once one is set, otherwise the full set is offered
+	const opOptions = F.compOpSelectOptions(domain)
 	const codeBox = (
 		<ComboBox
-			allowEmpty
+			allowEmpty={false}
 			className={componentStyles}
 			title=""
-			value={comp.code}
-			options={codeOptions}
+			value={F.compOpSelectionKey(node)}
+			options={opOptions.map((o) => ({ value: o.key, label: o.label }))}
 			ref={codeBoxRef}
-			onSelect={(_code) => {
-				const code = _code as typeof comp.code
-				// instead of doing this cringe sleepUntil thing we could buffer events to send to newly created Config components and send them on mount, but I thought of that after coming up with this solution ¯\_(ツ)_/¯. flushSync is also an option but I don't think blocking this event on a react rerender is a good idea
-				// if (code !== undefined) {
-				// 	sleepUntil(() => valueBoxRef.current).then((handle) => handle?.focus())
-				// }
-				return setComp((c) => ({ ...c, code: code ?? undefined }))
+			// like the subject, hand focus onward to the value editor once an operator is picked
+			preventCloseAutoFocus={handOffFocusToValue}
+			onSelect={(key) => {
+				const option = opOptions.find((o) => o.key === key)
+				if (!option) return
+				setNode((c) => {
+					const next = F.applyCompOpSelection(c, option)
+					// a float's eq only compares against null, so seed the value as null
+					if (F.isFloatEqNullOnly(domain, next.type)) return { ...next, args: [next.args[0], { type: 'value', value: null }] }
+					return next
+				})
+				// advance to the lowest empty argument (the value slot); no-ops if the operator kept a value
+				setFocusRequest('advance')
 			}}
 		/>
 	)
 
-	if (!showValueDropdown) {
-		return (
-			<>
-				{columnBox}
-				{codeBox}
-			</>
+	// -------- auto-focus flow --------
+	// open the subject picker for a freshly created (subject-less) comparison. Deferred to the next frame and
+	// cancelled on unmount: leaf nodes are portaled and remount when the portal re-targets from its hidden
+	// placeholder to the real container (see node-map.tsx), so a synchronous open races that remount -- the
+	// placeholder mount's frame is cancelled when it unmounts, and only the stable mount's frame fires.
+	React.useEffect(() => {
+		if (!(columnEditable && (props.defaultEditing || !hasSubject))) return
+		const raf = requestAnimationFrame(() => columnBoxRef.current?.focus())
+		return () => cancelAnimationFrame(raf)
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [])
+
+	// consume a queued focus request once the relevant editor has mounted for the current node state
+	React.useEffect(() => {
+		if (!focusRequest) return
+		if (focusRequest === 'operator') {
+			codeBoxRef.current?.focus()
+		} else {
+			// advance to the lowest empty argument: the subject if unset, else the first empty value slot
+			if (!hasSubject) columnBoxRef.current?.focus()
+			else if (valueSlotEmpty) valueBoxRef.current?.focus()
+		}
+		setFocusRequest(null)
+	}, [focusRequest, hasSubject, valueSlotEmpty])
+
+	// -------- value editor(s) --------
+	const setSlotValue = (index: number, value: F.Value | undefined) =>
+		setNode(Im.produce((c) => {
+			c.args[index] = { type: 'value', value }
+		}))
+
+	// a scalar value slot may instead reference another column of the same value domain (column-vs-column).
+	// offered only in the full editor, not the locked filter menu.
+	const allowColumnOperand = columnEditable && !!domain
+	const comparableColumnOptions = (): ComboBoxOption<string>[] => {
+		const cols = cfg ? Object.keys(cfg.defs) : LC.COLUMN_KEYS
+		return cols
+			.filter((c) => {
+				const d = F.columnValueDomain(c, cfg)
+				return d && domain && F.domainsCompatible(d, domain)
+			})
+			.map((c) => ({ value: c, label: LC.getColumnDef(c, cfg)?.displayName ?? c }))
+	}
+	// button to flip a slot between a constant and a column reference
+	const operandKindToggle = (index: number, isColumn: boolean) =>
+		allowColumnOperand
+			? (
+				<Button
+					size="icon"
+					variant={isColumn ? 'secondary' : 'ghost'}
+					title={isColumn ? 'Compare to a constant value' : 'Compare to another column'}
+					onClick={() =>
+						setNode(Im.produce((c) => {
+							c.args[index] = isColumn ? { type: 'value' } : { type: 'column' }
+						}))}
+				>
+					<Braces className="h-4 w-4" />
+				</Button>
+			)
+			: null
+
+	// enum columns surface null as a "(none)" option in their own value dropdown, so the generic
+	// null affordance (chip + toggle) is only for non-enum columns
+	const enumSubject = domain?.kind === 'enum'
+	// button to set a slot to null (IS NULL) / clear it back to an empty constant; only for `eq`, where
+	// null is meaningful. On floats, eq is null-only so the value is fixed to null (no toggle).
+	const nullToggle = (index: number, isNull: boolean) =>
+		(columnEditable && node.type === 'eq' && !enumSubject && !F.isFloatEqNullOnly(domain, node.type))
+			? (
+				<Button
+					size="icon"
+					variant={isNull ? 'secondary' : 'ghost'}
+					title={isNull ? 'Clear null' : 'Compare to null'}
+					onClick={() =>
+						setNode(Im.produce((c) => {
+							c.args[index] = { type: 'value', value: isNull ? undefined : null }
+						}))}
+				>
+					<Icons.Ban className="h-4 w-4" />
+				</Button>
+			)
+			: null
+
+	// renders the editor for a single scalar value slot: a column picker when it references a column,
+	// a "null" indicator when the value is null, otherwise a constant editor chosen by the anchor's domain
+	const scalarSlot = (index: number, ref?: React.Ref<Focusable & Clearable>): React.ReactNode => {
+		const arg = node.args[index]
+		const isNullValue = arg?.type === 'value' && arg.value === null
+		if (arg?.type === 'column') {
+			return (
+				<div className="flex items-center space-x-1">
+					<ComboBox
+						allowEmpty
+						className={componentStyles}
+						title="Column"
+						value={arg.column}
+						options={comparableColumnOptions()}
+						onSelect={(v) =>
+							setNode(Im.produce((c) => {
+								c.args[index] = { type: 'column', column: v || undefined }
+							}))}
+					/>
+					{operandKindToggle(index, true)}
+					{nullToggle(index, false)}
+				</div>
+			)
+		}
+		// a float eq only compares against null; render a static null indicator plus a "?" explaining why
+		if (F.isFloatEqNullOnly(domain, node.type)) {
+			return (
+				<div className="flex items-center space-x-1">
+					<span className={cn(buttonVariants({ variant: 'outline' }), 'pointer-events-none', componentStyles)}>null</span>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Why only null?">
+								<Icons.CircleHelp className="h-4 w-4" />
+							</button>
+						</TooltipTrigger>
+						<TooltipContent className="max-w-xs">
+							<p>
+								This column holds decimal (floating-point) values, which can't be matched with exact equality. Tiny rounding differences
+								make <code>=</code> unreliable, so use a range (<code>[..]</code>) or <code>&lt;</code>/<code>&gt;</code>{' '}
+								to compare magnitudes; <code>=</code> only checks whether the value is null.
+							</p>
+						</TooltipContent>
+					</Tooltip>
+				</div>
+			)
+		}
+		// enum columns render null via their own "(none)" dropdown option, not the generic chip
+		if (isNullValue && !enumSubject) {
+			return (
+				<div className="flex items-center space-x-1">
+					<span className={cn(buttonVariants({ variant: 'outline' }), 'pointer-events-none', componentStyles)}>null</span>
+					{operandKindToggle(index, false)}
+					{nullToggle(index, true)}
+				</div>
+			)
+		}
+		const value = arg?.type === 'value' ? arg.value : undefined
+		const withToggle = (editor: React.ReactNode) => (
+			<div className="flex items-center space-x-1">
+				{editor}
+				{operandKindToggle(index, false)}
+				{nullToggle(index, false)}
+			</div>
+		)
+		if (optionsColumn === 'id') {
+			return withToggle(
+				<LayerEqConfig
+					value={(value as string | null) ?? null}
+					stores={props.stores}
+					setValue={(update) => {
+						const v = typeof update === 'function' ? update((value as string | null) ?? null) : update
+						setSlotValue(index, v)
+					}}
+				/>,
+			)
+		}
+		if (!domain || domain.kind === 'enum' || domain.kind === 'string') {
+			return withToggle(
+				<StringEqConfig
+					ref={ref as React.ForwardedRef<ComboBoxHandle>}
+					lockOnSingleOption={lockOnSingleOption}
+					className={componentStyles}
+					allowedValues={props.allowedEnumValues}
+					onSetAllValuesAllowed={props.onSetAllValuesAllowed}
+					onSetAllValuesAllowedLabel={props.onSetAllValuesAllowedLabel}
+					column={optionsColumn as LC.GroupByColumn}
+					value={value as string | undefined | null}
+					setValue={(v) => setSlotValue(index, v)}
+				/>,
+			)
+		}
+		if (domain.kind === 'boolean') {
+			return withToggle(
+				<ComboBox
+					allowEmpty
+					className={componentStyles}
+					title="value"
+					value={value === undefined || value === null ? undefined : String(value)}
+					options={[{ value: 'true', label: 'true' }, { value: 'false', label: 'false' }]}
+					onSelect={(v) => setSlotValue(index, v === undefined ? undefined : v === 'true')}
+				/>,
+			)
+		}
+		// number
+		return withToggle(
+			<div className="w-[100px]">
+				<NumericValueConfig
+					ref={ref as React.ForwardedRef<Focusable & Clearable>}
+					className={componentStyles}
+					value={value as number | undefined}
+					setValue={(v) => setSlotValue(index, v)}
+				/>
+			</div>,
 		)
 	}
 
-	let valueBox: React.ReactNode = undefined
-	switch (comp.code) {
-		case 'neq':
-		case 'eq': {
-			if (comp.column === 'id') {
-				valueBox = (
-					<LayerEqConfig
-						value={comp.value as string | null ?? null}
-						stores={props.stores}
-						setValue={(update) => {
-							let value: string | null
-							if (typeof update === 'function') {
-								value = update(comp.value as string | undefined ?? null)
-							} else {
-								value = update as string | null
-							}
-							setComp((c) => ({ ...c, value }))
-						}}
-					/>
-				)
-			} else {
-				valueBox = (
-					<StringEqConfig
-						ref={valueBoxRef}
-						lockOnSingleOption={lockOnSingleOption}
-						className={componentStyles}
-						allowedValues={props.allowedEnumValues}
-						onSetAllValuesAllowed={props.onSetAllValuesAllowed}
-						onSetAllValuesAllowedLabel={props.onSetAllValuesAllowedLabel}
-						column={comp.column as LC.GroupByColumn}
-						value={comp.value as string | undefined | null}
-						setValue={(value) => {
-							return setComp((c) => ({ ...c, value }))
-						}}
-					/>
-				)
-			}
-			break
-		}
-
-		case 'notin':
-		case 'in': {
-			if (comp.column === 'id') {
+	// value editors need a subject to source their domain, so they only appear once one is chosen
+	let valueBox: React.ReactNode = null
+	if (hasSubject && showValueDropdown) {
+		if (node.type === 'in') {
+			const valuesArg = node.args[1]
+			const items = (valuesArg?.type === 'values' ? valuesArg.values : undefined) ?? []
+			const setItems = (update: React.SetStateAction<F.InListItem[]>) =>
+				setNode(Im.produce((c) => {
+					const prev = (c.args[1]?.type === 'values' ? c.args[1].values : undefined) ?? []
+					const next = typeof update === 'function' ? update(prev) : update
+					c.args[1] = { type: 'values', values: next.length === 0 ? undefined : next }
+				}))
+			if (optionsColumn === 'id') {
+				// layer-id lists are constant-only (there is only one id column)
+				const setValues = (update: React.SetStateAction<(string | null)[]>) =>
+					setItems((prev) => {
+						const primitives = prev.filter((i) => !F.isColumnListItem(i)) as (string | null)[]
+						return typeof update === 'function' ? update(primitives) : update
+					})
 				valueBox = (
 					<LayersInConfig
-						values={comp.values ?? []}
-						setValues={(update) => {
-							if (typeof update === 'function') {
-								return setComp((c) => ({ ...c, values: update(c.values ?? []) }))
-							}
-							return setComp((c) => ({ ...c, values: update }))
-						}}
+						values={items.filter((i) => !F.isColumnListItem(i)) as (string | null)[]}
+						setValues={setValues}
 						className={componentStyles}
 					/>
 				)
 			} else {
 				valueBox = (
-					<StringInConfig
+					<InListConfig
 						className={componentStyles}
-						ref={valueBoxRef}
-						column={comp.column as LC.GroupByColumn}
-						allowedValues={props.allowedEnumValues}
+						ref={valueBoxRef as React.ForwardedRef<ComboBoxHandle>}
+						column={optionsColumn as LC.GroupByColumn}
+						allowedEnumValues={props.allowedEnumValues}
 						restrictValueSize={restrictValueSize}
-						values={(comp.values ?? []) as string[]}
-						setValues={(action) => {
-							setComp(
-								Im.produce((c) => {
-									const values = typeof action === 'function' ? action(c.values ?? []) : action
-									c.values = values.length === 0 ? undefined : values
-								}),
-							)
-						}}
+						items={items}
+						setItems={setItems}
+						comparableColumns={comparableColumnOptions()}
+						allowColumns={columnEditable}
 					/>
 				)
 			}
-			break
-		}
-		case 'gt':
-		case 'lt': {
+		} else if (node.type === 'inrange') {
 			valueBox = (
-				<div className="w-[100px]">
-					<NumericValueConfig
-						ref={valueBoxRef}
-						className={componentStyles}
-						value={comp.value as number | undefined}
-						setValue={(value) => {
-							return setComp((c) => ({ ...c, value }))
-						}}
-					/>
+				<div className="flex items-center space-x-2">
+					{scalarSlot(1, valueBoxRef)}
+					<span>to</span>
+					{scalarSlot(2)}
 				</div>
 			)
-			break
+		} else {
+			valueBox = scalarSlot(1, valueBoxRef)
 		}
-
-		case 'inrange': {
-			valueBox = (
-				<NumericRangeConfig
-					className={componentStyles}
-					ref={valueBoxRef}
-					range={comp.range ?? [undefined, undefined]}
-					setValues={(update) => {
-						if (typeof update === 'function') {
-							update = update(comp.range ?? [undefined, undefined])
-						}
-						setComp((c) => ({ ...c, range: update }))
-					}}
-				/>
-			)
-			break
-		}
-
-		case 'is-true': {
-			valueBox = <span />
-			break
-		}
-
-		case 'isnull': {
-			valueBox = <span />
-			break
-		}
-
-		case 'notnull': {
-			valueBox = <span />
-			break
-		}
-
-		default:
-			comp.code satisfies undefined
-			valueBox = <span />
 	}
+
+	// infix order: subject, operator (in the middle), then value(s)
 	return (
 		<>
 			{columnBox}
+			{quantifierBox}
 			{codeBox}
 			{valueBox}
 		</>
@@ -770,10 +934,14 @@ export function StringEqConfig<T extends string | null>(
 	const hasUnlockAction = !!props.onSetAllValuesAllowed
 	const options = React.useMemo(() => {
 		const allowedSet = props.allowedValues ? new Set(props.allowedValues) : null
-		const options: ComboBoxOption<string>[] = []
+		const options: ComboBoxOption<string | null>[] = []
 		for (const value of LC.groupByColumnDefaultValues(props.column)) {
-			if (value === null) continue
 			const matched = allowedSet?.has(value as T) ?? true
+			// null is a real enum value for some columns (e.g. LayerVersion "no version"); surface it
+			if (value === null) {
+				options.push({ label: '(none)', value: null, disabled: !matched && !hasUnlockAction })
+				continue
+			}
 			let label: React.ReactNode
 			if (!matched && hasUnlockAction) {
 				label = (
@@ -807,7 +975,7 @@ export function StringEqConfig<T extends string | null>(
 			ref={props.ref}
 			allowEmpty
 			className={props.className}
-			title={props.column}
+			title={LC.getColumnDef(props.column)?.displayName ?? props.column}
 			disabled={lockOnSingleOption && options.length === 1}
 			value={(lockOnSingleOption && options.length === 1) ? options[0].value : props.value}
 			options={options}
@@ -829,17 +997,20 @@ function StringInConfig(
 ) {
 	const options = React.useMemo(() => {
 		const allowedSet = props.allowedValues ? new Set(props.allowedValues) : null
-		const options: ComboBoxOption<string>[] = []
+		const options: ComboBoxOption<string | null>[] = []
 		for (const value of LC.groupByColumnDefaultValues(props.column)) {
-			if (value === null) continue
 			const matched = allowedSet?.has(value) ?? true
+			if (value === null) {
+				options.push({ label: '(none)', value: null, disabled: !matched })
+				continue
+			}
 			options.push({ label: value, value, disabled: !matched })
 		}
 		return options
 	}, [props.column, props.allowedValues])
 	return (
 		<ComboBoxMulti
-			title={props.column}
+			title={LC.getColumnDef(props.column)?.displayName ?? props.column}
 			ref={props.ref}
 			values={props.values}
 			options={options}
@@ -847,6 +1018,68 @@ function StringInConfig(
 			className={props.className}
 			restrictValueSize={props.restrictValueSize}
 		/>
+	)
+}
+
+// value list for an `in` operator: a constant multi-select plus (in the editor) removable column references
+function InListConfig(
+	props: {
+		items: F.InListItem[]
+		setItems: (update: React.SetStateAction<F.InListItem[]>) => void
+		column: LC.GroupByColumn
+		allowedEnumValues?: string[]
+		comparableColumns: ComboBoxOption<string>[]
+		allowColumns: boolean
+		restrictValueSize?: boolean
+		className?: string
+		ref?: React.ForwardedRef<ComboBoxHandle>
+	},
+) {
+	const cfg = ConfigClient.useEffectiveColConfig()
+	const primitives = props.items.filter((i) => !F.isColumnListItem(i)) as (string | null)[]
+	const columns = props.items.filter(F.isColumnListItem)
+
+	const setPrimitives: React.Dispatch<React.SetStateAction<(string | null)[]>> = (update) =>
+		props.setItems((prev) => {
+			const prevPrimitives = prev.filter((i) => !F.isColumnListItem(i)) as (string | null)[]
+			const prevColumns = prev.filter(F.isColumnListItem)
+			const next = typeof update === 'function' ? update(prevPrimitives) : update
+			return [...next, ...prevColumns]
+		})
+	const addColumn = (column: string) =>
+		props.setItems((prev) => prev.some((i) => F.isColumnListItem(i) && i.column === column) ? prev : [...prev, { type: 'column', column }])
+	const removeColumn = (column: string) => props.setItems((prev) => prev.filter((i) => !(F.isColumnListItem(i) && i.column === column)))
+
+	const addableColumns = props.comparableColumns.filter((o) => !columns.some((c) => c.column === o.value))
+
+	return (
+		<div className={cn(props.className, 'flex items-center space-x-1')}>
+			<StringInConfig
+				ref={props.ref}
+				column={props.column}
+				allowedValues={props.allowedEnumValues}
+				restrictValueSize={props.restrictValueSize}
+				values={primitives}
+				setValues={setPrimitives}
+			/>
+			{columns.map((c) => (
+				<span key={c.column} className="flex items-center px-2 py-1 bg-secondary rounded-md text-sm">
+					{LC.getColumnDef(c.column, cfg)?.displayName ?? c.column}
+					<button type="button" onClick={() => removeColumn(c.column)} className="ml-1">
+						<Icons.X className="h-3 w-3" />
+					</button>
+				</span>
+			))}
+			{props.allowColumns && addableColumns.length > 0 && (
+				<ComboBox
+					allowEmpty
+					title="+ column"
+					value={undefined}
+					options={addableColumns}
+					onSelect={(v) => v && addColumn(v)}
+				/>
+			)}
+		</div>
 	)
 }
 
@@ -962,542 +1195,5 @@ function NumericValueConfig(
 				return props.setValue(value === '' ? undefined : parseFloat(value))
 			}}
 		/>
-	)
-}
-
-function NumericRangeConfig(
-	props: {
-		range: [(number | undefined)?, (number | undefined)?]
-		setValues: React.Dispatch<React.SetStateAction<[(number | undefined)?, (number | undefined)?]>>
-		className?: string
-		ref?: React.ForwardedRef<Focusable & Clearable>
-	},
-) {
-	function setFirst(value: number | undefined) {
-		props.setValues((values) => [value, values[1]])
-	}
-	function setSecond(value: number | undefined) {
-		props.setValues((values) => [values[0], value])
-	}
-	const secondValueRef = React.useRef<Focusable & Clearable>(null)
-	const firstValueRef = React.useRef<Focusable & Clearable>(null)
-	React.useImperativeHandle(props.ref, () => ({
-		isFocused: false,
-		clear: (ephemeral) => {
-			firstValueRef.current?.clear(true)
-			secondValueRef.current?.clear(true)
-			if (!ephemeral) props.setValues([undefined, undefined])
-		},
-		focus: () => firstValueRef.current?.focus(),
-	}))
-
-	return (
-		<div className={cn(props.className, 'flex w-[200px] items-center space-x-2')}>
-			<NumericValueConfig ref={firstValueRef} value={props.range[0]} setValue={setFirst} />
-			<span>to</span>
-			<NumericValueConfig ref={secondValueRef} value={props.range[1]} setValue={setSecond} />
-		</div>
-	)
-}
-
-function FactionsAllowMatchupsConfig(props: {
-	masks?: F.FactionMask[][]
-	setMasks: React.Dispatch<React.SetStateAction<F.FactionMask[][]>>
-	mode?: 'split' | 'both' | 'either'
-	setMode?: (mode: 'split' | 'both' | 'either') => void
-	baseQueryInput?: LQY.BaseQueryInput
-	className?: string
-	ref?: React.ForwardedRef<Focusable & Clearable>
-}) {
-	const innerRef = React.useRef<Focusable>(null)
-	React.useImperativeHandle(props.ref, () => ({
-		clear: (ephemeral) => {
-			if (ephemeral) return
-			props.setMasks([])
-			props.setMode?.('either')
-		},
-		focus() {
-			innerRef.current?.focus()
-		},
-		get isFocused() {
-			return innerRef.current?.isFocused ?? false
-		},
-	}))
-
-	const masks = props.masks ?? []
-	const [isEditOpen, setIsEditOpen] = React.useState(false)
-
-	// Helper function to check if a mask is empty
-	function isMaskEmpty(mask: F.FactionMask): boolean {
-		return !mask.alliance && !mask.faction && !mask.unit
-	}
-
-	// Helper function to clean up empty masks
-	function cleanupEmptyMasks() {
-		const cleanedMasks = masks.map(team => team.filter(mask => !isMaskEmpty(mask)))
-		// Only update if there are changes
-		const hasChanges = cleanedMasks.some((team, index) =>
-			team.length !== masks[index]?.length
-			|| team.some((mask, maskIndex) => mask !== masks[index]?.[maskIndex])
-		)
-		if (hasChanges) {
-			props.setMasks(cleanedMasks.filter(team => team.length > 0))
-		}
-	}
-
-	// Handle popover close with cleanup
-	function handlePopoverOpenChange(open: boolean) {
-		if (!open) {
-			cleanupEmptyMasks()
-		}
-		setIsEditOpen(open)
-	}
-
-	// Helper function to format mask for display
-	function formatMask(mask: F.FactionMask): string {
-		const parts = []
-		if (mask.alliance && mask.alliance.length > 0) parts.push(mask.alliance.join(', '))
-		if (mask.faction && mask.faction.length > 0) parts.push(mask.faction.join(', '))
-		if (mask.unit && mask.unit.length > 0) parts.push(mask.unit.join(', '))
-		return parts.join(' / ')
-	}
-
-	// Helper function to format team for display
-	function formatTeam(team: F.FactionMask[]): string {
-		if (team.length === 0) return 'No masks'
-		return team.map(formatMask).join(', ')
-	}
-
-	// Display component
-	const DisplayMode = () => (
-		<div className={cn(props.className, 'flex items-center space-x-2')}>
-			<div className="flex-1 min-w-0">
-				<div className="space-y-1">
-					<div className="text-sm">
-						<span className="font-medium">Allow Matchups:</span> (mode <span className="font-mono">{props.mode ?? 'either'}</span>)
-					</div>
-					{masks.length === 0
-						? <span className="text-sm text-muted-foreground italic">No faction masks configured</span>
-						: masks.length === 1
-						? <span className="text-sm">{formatTeam(masks[0])}</span>
-						: (
-							<div className="space-y-1">
-								<div className="text-sm">
-									<span className="font-medium">Team 1:</span> {formatTeam(masks[0])}
-								</div>
-								<div className="text-sm">
-									<span className="font-medium">Team 2:</span> {formatTeam(masks[1])}
-								</div>
-							</div>
-						)}
-				</div>
-			</div>
-			<Button
-				variant="outline"
-				size="sm"
-				onClick={() => setIsEditOpen(true)}
-				className="shrink-0"
-			>
-				<Icons.Edit />
-			</Button>
-		</div>
-	)
-
-	// Edit component
-	const EditMode = () => {
-		const currentMode = props.mode ?? 'either'
-		const isSplitMode = currentMode === 'split'
-
-		// Helper function to get team masks
-		function getTeam1Masks(): F.FactionMask[] | undefined {
-			return masks[0]
-		}
-
-		function getTeam2Masks(): F.FactionMask[] | undefined {
-			return masks[1]
-		}
-
-		// Helper function to update team masks
-		function updateTeam(teamIndex: 1 | 2, newMasks: React.SetStateAction<F.FactionMask[] | undefined>) {
-			props.setMasks(currentMasks => {
-				const resolvedNewMasks = typeof newMasks === 'function' ? newMasks(currentMasks?.[teamIndex - 1]) : newMasks
-
-				if (isSplitMode) {
-					const newTeams = [...(currentMasks ?? [])]
-
-					if (teamIndex === 1) {
-						if (resolvedNewMasks) {
-							newTeams[0] = resolvedNewMasks
-						} else {
-							newTeams.splice(0, 1)
-						}
-						return newTeams.length > 0 ? newTeams : []
-					} else {
-						// Ensure team 1 exists
-						if (newTeams.length === 0) newTeams.push([])
-
-						if (resolvedNewMasks) {
-							newTeams[1] = resolvedNewMasks
-						} else if (newTeams.length > 1) {
-							newTeams.splice(1, 1)
-						}
-						return newTeams
-					}
-				} else if (teamIndex === 1) {
-					// Single team mode - just set the masks directly
-					return resolvedNewMasks ? [resolvedNewMasks] : []
-				}
-
-				return currentMasks
-			})
-		}
-
-		// Handle mode change
-		function handleModeChange(newMode: 'split' | 'both' | 'either') {
-			if (props.setMode) {
-				props.setMode(newMode)
-			}
-
-			if (newMode === 'split') {
-				// Split into two teams
-				props.setMasks(currentMasks => {
-					const team1 = currentMasks?.[0] ?? []
-					return [team1, []]
-				})
-			} else {
-				// Merge into one team
-				props.setMasks(currentMasks => {
-					return [(currentMasks ?? []).flat()]
-				})
-			}
-		}
-
-		const modeSelectId = React.useId()
-
-		return (
-			<div className="flex flex-col space-y-4 w-max">
-				<div className="flex items-center justify-between">
-					<div className="flex items-center space-x-2">
-						<Label htmlFor={modeSelectId} className="text-sm font-medium">
-							Mode:
-						</Label>
-						<ComboBox
-							allowEmpty={false}
-							className="w-32"
-							title="Mode"
-							value={currentMode}
-							options={[
-								{ value: 'split', label: 'Split' },
-								{ value: 'both', label: 'Both' },
-								{ value: 'either', label: 'Either' },
-							]}
-							onSelect={(v) => handleModeChange(v as 'split' | 'both' | 'either')}
-						/>
-					</div>
-					<div className="flex items-center justify-between">
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => setIsEditOpen(false)}
-						>
-							Done
-						</Button>
-					</div>
-				</div>
-
-				{isSplitMode
-					? (
-						<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-							<div className="space-y-2">
-								<h4 className="text-sm font-medium">Team 1</h4>
-								<FactionMaskListConfig
-									ref={innerRef}
-									value={getTeam1Masks()}
-									setValue={update => updateTeam(1, update)}
-									queryContext={props.baseQueryInput}
-									className="w-full"
-									onSwitchMaskTeam={(mask, index) => {
-										props.setMasks(currentMasks => {
-											// Remove from team 1
-											const newTeam1 = [...(currentMasks?.[0] ?? [])]
-											newTeam1.splice(index, 1)
-											// Add to team 2
-											const newTeam2 = [...(currentMasks?.[1] ?? []), mask]
-											return [newTeam1, newTeam2]
-										})
-									}}
-									showTeamSwitch={isSplitMode}
-									currentTeam={1}
-								/>
-							</div>
-							<div className="space-y-2">
-								<h4 className="text-sm font-medium">Team 2</h4>
-								<FactionMaskListConfig
-									value={getTeam2Masks()}
-									setValue={update => updateTeam(2, update)}
-									queryContext={props.baseQueryInput}
-									className="w-full"
-									onSwitchMaskTeam={(mask, index) => {
-										props.setMasks(currentMasks => {
-											// Remove from team 2
-											const newTeam2 = [...(currentMasks?.[1] ?? [])]
-											newTeam2.splice(index, 1)
-											// Add to team 1
-											const newTeam1 = [...(currentMasks?.[0] ?? []), mask]
-											return [newTeam1, newTeam2]
-										})
-									}}
-									showTeamSwitch={isSplitMode}
-									currentTeam={2}
-								/>
-							</div>
-						</div>
-					)
-					: (
-						<div className="space-y-2">
-							<FactionMaskListConfig
-								value={getTeam1Masks()}
-								setValue={update => updateTeam(1, update)}
-								queryContext={props.baseQueryInput}
-								className="w-full"
-							/>
-						</div>
-					)}
-			</div>
-		)
-	}
-
-	return (
-		<Popover open={isEditOpen} onOpenChange={handlePopoverOpenChange}>
-			<PopoverTrigger asChild>
-				<div>
-					<DisplayMode />
-				</div>
-			</PopoverTrigger>
-			<PopoverContent className="w-auto p-4" side="bottom" align="start">
-				<EditMode />
-			</PopoverContent>
-		</Popover>
-	)
-}
-
-function FactionMaskConfig(props: {
-	value: F.FactionMask | undefined
-	setValue: React.Dispatch<React.SetStateAction<F.FactionMask | undefined>>
-	queryContext?: LQY.BaseQueryInput
-	className?: string
-	ref?: React.ForwardedRef<Focusable>
-}) {
-	const responses = {
-		alliance1Res: useLayerComponent({ ...(props.queryContext ?? {}), column: 'Alliance_1' }),
-		alliance2Res: useLayerComponent({ ...(props.queryContext ?? {}), column: 'Alliance_2' }),
-		faction1Res: useLayerComponent({ ...(props.queryContext ?? {}), column: 'Faction_1' }),
-		faction2Res: useLayerComponent({ ...(props.queryContext ?? {}), column: 'Faction_2' }),
-		unit1Res: useLayerComponent({ ...(props.queryContext ?? {}), column: 'Unit_1' }),
-		unit2Res: useLayerComponent({ ...(props.queryContext ?? {}), column: 'Unit_2' }),
-	}
-
-	const mask = props.value ?? {}
-
-	const allPopulated = Object.values(responses).every(res => !!res)
-
-	// Get available options from the query context
-	const { alliances, factions, units } = React.useMemo(() => {
-		const coalesceErrors = (data: ReturnType<typeof useLayerComponent>['data']) => {
-			if (!Array.isArray(data)) return []
-			return data
-		}
-		if (!allPopulated) return { alliances: [], factions: [], units: [] }
-		return {
-			alliances: Arr.union(coalesceErrors(responses.alliance1Res.data), coalesceErrors(responses.alliance2Res.data)),
-			factions: Arr.union(coalesceErrors(responses.faction1Res.data), coalesceErrors(responses.faction2Res.data)),
-			units: Arr.union(coalesceErrors(responses.unit1Res.data), coalesceErrors(responses.unit2Res.data)),
-		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [...Object.values(responses), allPopulated])
-
-	// Helper function to update the mask
-	function updateMask(field: keyof F.FactionMask, update: React.SetStateAction<(string | null)[]>) {
-		props.setValue((prev) => {
-			const currentValue = prev?.[field] ?? undefined
-			let value = typeof update === 'function' ? update(currentValue ?? []) : update
-			value = value.filter((v) => v !== null)
-
-			const newPrev = prev ?? {}
-
-			if (value && value.length > 0) {
-				return { ...newPrev, [field]: value }
-			} else {
-				const { [field]: _, ...rest } = newPrev
-				return rest
-			}
-		})
-	}
-
-	// Right now we're setting the selectOnClose flag because otherwise the mask selection is slow/will auto-close the dialog due to component remounting. There are probably better solutions.
-
-	return (
-		<div className={cn(props.className, 'flex flex-col space-y-2 w-[300px]')}>
-			<div className="flex items-center space-x-2">
-				<span className="text-sm font-medium min-w-[60px]">Alliance:</span>
-				<ComboBoxMulti
-					className="flex-1"
-					title="Alliance"
-					selectOnClose
-					values={mask.alliance ?? []}
-					options={allPopulated ? alliances : LOADING}
-					onSelect={(v) => updateMask('alliance', v as string[])}
-				/>
-			</div>
-			<div className="flex items-center space-x-2">
-				<span className="text-sm font-medium min-w-[60px]">Faction:</span>
-				<ComboBoxMulti
-					className="flex-1"
-					title="Faction"
-					selectOnClose
-					values={mask.faction ?? []}
-					options={allPopulated ? factions : LOADING}
-					onSelect={(v) => updateMask('faction', v as string[])}
-				/>
-			</div>
-			<div className="flex items-center space-x-2">
-				<span className="text-sm font-medium min-w-[60px]">Unit:</span>
-				<ComboBoxMulti
-					className="flex-1"
-					title="Unit"
-					selectOnClose
-					values={mask.unit ?? []}
-					options={allPopulated ? units : LOADING}
-					onSelect={(v) => updateMask('unit', v as string[])}
-				/>
-			</div>
-		</div>
-	)
-}
-
-function FactionMaskListConfig(props: {
-	value: F.FactionMask[] | undefined
-	setValue: React.Dispatch<React.SetStateAction<F.FactionMask[] | undefined>>
-	queryContext?: LQY.BaseQueryInput
-	className?: string
-	onSwitchMaskTeam?: (mask: F.FactionMask, index: number) => void
-	showTeamSwitch?: boolean
-	currentTeam?: 1 | 2
-	ref?: React.ForwardedRef<Focusable>
-}) {
-	const maskIds = React.useMemo(() => {
-		return props.value?.map(mask => JSON.stringify(mask))
-	}, [props.value])
-	const masks = props.value ?? []
-	function checkNoDuplicates(newMask: F.FactionMask, masks: F.FactionMask[]) {
-		newMask = Obj.map(newMask, (value) => value ?? undefined)
-		for (let mask of masks) {
-			mask = Obj.map(mask, (value) => value ?? undefined)
-			if (Obj.deepEqual(mask, newMask)) {
-				globalToast$.next({
-					variant: 'destructive',
-					title: 'Duplicate Faction Mask',
-					description: 'A faction mask with the same content already exists.',
-				})
-				return false
-			}
-		}
-		return true
-	}
-
-	function updateMask(index: number, mask: React.SetStateAction<F.FactionMask | undefined>) {
-		props.setValue(currentMasks => {
-			const newMasks = [...(currentMasks ?? [])]
-			const resolvedMask = typeof mask === 'function' ? mask((currentMasks ?? [])[index]) : mask
-			if (resolvedMask) {
-				if (!checkNoDuplicates(resolvedMask, currentMasks ?? [])) return currentMasks
-				newMasks[index] = resolvedMask
-			} else {
-				newMasks.splice(index, 1)
-			}
-
-			if (newMasks.length === 0) {
-				return undefined
-			} else {
-				return newMasks
-			}
-		})
-	}
-
-	// Helper function to add a new mask
-	function addMask() {
-		if (!checkNoDuplicates({}, masks)) return
-		props.setValue([...masks, {}])
-	}
-
-	// Helper function to remove a mask
-	function removeMask(index: number) {
-		const newMasks = masks.filter((_, i) => i !== index)
-		if (newMasks.length === 0) {
-			props.setValue(undefined)
-		} else {
-			props.setValue(newMasks)
-		}
-	}
-
-	return (
-		<div className={cn(props.className, 'flex flex-col space-y-3 w-[350px]')}>
-			<div className="flex items-center justify-between">
-				<span className="text-sm font-medium">Faction Masks</span>
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={addMask}
-					className="h-8 w-8 p-0"
-				>
-					<Plus className="h-4 w-4" />
-				</Button>
-			</div>
-
-			{masks.length === 0
-				? (
-					<div className="text-sm text-muted-foreground italic">
-						No faction masks configured. Click + to add one.
-					</div>
-				)
-				: (
-					<div className="space-y-2">
-						{masks.map((mask, index) => (
-							<div className="flex items-start space-x-2 p-2 border rounded-md" key={maskIds![index]}>
-								<div className="flex-1">
-									<FactionMaskConfig
-										ref={index === 0 ? props.ref : undefined}
-										value={mask}
-										setValue={(newMask) => updateMask(index, newMask)}
-										queryContext={props.queryContext}
-										className="w-full"
-									/>
-								</div>
-								<div>
-									<Button
-										variant="ghost"
-										size="sm"
-										onClick={() => removeMask(index)}
-										className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-									>
-										<Minus className="h-4 w-4" />
-									</Button>
-									{props.showTeamSwitch && (
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => props.onSwitchMaskTeam?.(mask, index)}
-											className="h-6 px-2 text-xs"
-											title={`Move to Team ${props.currentTeam === 1 ? 2 : 1}`}
-										>
-											<Icons.ArrowLeftRight className="h-3 w-3" />
-										</Button>
-									)}
-								</div>
-							</div>
-						))}
-					</div>
-				)}
-		</div>
 	)
 }

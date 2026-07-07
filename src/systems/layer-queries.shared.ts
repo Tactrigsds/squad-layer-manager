@@ -12,7 +12,6 @@ import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
-import type * as SM from '@/models/squad.models'
 import type { SQL } from 'drizzle-orm'
 import { sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm'
@@ -109,14 +108,14 @@ function queryCacheKey(name: string, ctx: CS.LayerQuery, input: object) {
 	return `${simpleHash(str)}:${str.length}`
 }
 
-function getCachedQueryResult<V>(ctx: CS.Filters, key: string): V | undefined {
+function getCachedQueryResult(ctx: CS.Filters, key: string): unknown {
 	const entry = queryResultCache.get(key)
 	if (!entry) return undefined
 	if (relevantFilterEntitiesChanged(ctx, entry.filterEntities)) {
 		queryResultCache.delete(key)
 		return undefined
 	}
-	return entry.value as V
+	return entry.value as unknown
 }
 
 function setCachedQueryResult(ctx: CS.Filters, key: string, value: unknown, constraints: LQY.Constraint[] | undefined) {
@@ -345,8 +344,8 @@ export async function queryLayerComponent(args: {
 	return res as string[]
 }
 
-// reentrantFilterIds are IDs that cannot be present in this node,
-// as their presence would cause infinite recursion
+// reentrantFilterIds are IDs that cannot be present in this node, as their presence would cause
+// infinite recursion. Team-generic column args expand within their own comparison (see compileCompNode).
 export function getFilterNodeSQLConditions(
 	ctx: CS.Log & CS.Filters & CS.LayerDb,
 	node: F.FilterNode,
@@ -355,155 +354,9 @@ export function getFilterNodeSQLConditions(
 ): F.SQLConditionsResult {
 	const errors: F.NodeValidationError[] = []
 	let condition: SQL | undefined
-	if (node.type === 'comp') {
-		path = [...path, 'comp']
-		const comp = node.comp!
-		const dbVal = (v: LC.InputValue) => {
-			let dbValue = LC.dbValue(comp.column, v, ctx)
-			if (LC.isUnmappedDbValue(dbValue)) {
-				errors.push({
-					type: 'unmapped-value',
-					path,
-					column: comp.column,
-					value: v,
-					msg: `Value ${v} is not mapped for column ${comp.column}`,
-				})
-				dbValue = null
-			}
-			return dbValue as LC.DbValue
-		}
-		const dbVals = (vs: (string | number | boolean | null)[]) => {
-			const dbValues: LC.DbValueResult[] = []
-			for (const v of vs) {
-				const res = LC.dbValue(comp.column, v, ctx)
-				if (LC.isUnmappedDbValue(res)) {
-					errors.push({
-						type: 'unmapped-value',
-						path,
-						column: comp.column,
-						value: v,
-						msg: `Value ${v} is not mapped for column ${comp.column}`,
-					})
-				} else {
-					dbValues.push(res)
-				}
-			}
-			return dbValues
-		}
-		const colDef = LC.getColumnDef(comp.column, ctx.effectiveColsConfig)
-		if (!colDef) {
-			errors.push({ type: 'unmapped-column', column: comp.column, path, msg: `Column ${comp.column} is not mapped` })
-			return {
-				code: 'err:invalid-node',
-				errors,
-			}
-		}
-		const column = LC.viewCol(comp.column, ctx)
-		switch (comp.code) {
-			case 'eq': {
-				condition = E.eq(column, dbVal(comp.value))!
-				break
-			}
-			case 'neq': {
-				condition = E.ne(column, dbVal(comp.value))!
-				break
-			}
-			case 'in': {
-				condition = E.inArray(column, dbVals(comp.values))!
-				break
-			}
-			case 'notin': {
-				condition = E.notInArray(column, dbVals(comp.values))!
-				break
-			}
-			case 'gt': {
-				condition = E.gt(column, dbVal(comp.value))!
-				break
-			}
-			case 'lt': {
-				condition = E.lt(column, dbVal(comp.value))!
-				break
-			}
-			case 'inrange': {
-				if (comp.range[0] === undefined) condition = E.lte(column, comp.range[1]!)
-				else if (comp.range[1] === undefined) condition = E.gte(column, comp.range[0]!)
-				else {
-					const [min, max] = [...comp.range].sort((a, b) => a! - b!)
-					condition = E.and(E.gte(column, min), E.lte(column, max))!
-				}
-				break
-			}
-			case 'is-true': {
-				condition = E.eq(column, 1)!
-				break
-			}
-			case 'isnull': {
-				condition = E.isNull(column)!
-				break
-			}
-			case 'notnull': {
-				condition = E.isNotNull(column)!
-				break
-			}
-			default:
-				assertNever(comp)
-		}
-	}
-	if (node.type === 'allow-matchups') {
-		const config = node.allowMatchups
-		path = [...path, 'allowMatchups']
-		const mode = config.mode ?? 'either' as const
-		switch (mode) {
-			case 'both': {
-				if (config.allMasks[0].length > 0) {
-					condition = E.or(
-						...config.allMasks[0].map(mask =>
-							E.and(
-								factionMaskToSqlCondition(mask, 1, path, errors, ctx),
-								factionMaskToSqlCondition(mask, 2, path, errors, ctx),
-							)
-						),
-					)
-				} else {
-					condition = sql`1 = 1`
-				}
-				break
-			}
-			case 'either': {
-				if (config.allMasks[0].length > 0) {
-					condition = E.or(
-						...config.allMasks[0].map(mask =>
-							E.or(
-								factionMaskToSqlCondition(mask, 1, path, errors, ctx),
-								factionMaskToSqlCondition(mask, 2, path, errors, ctx),
-							)
-						),
-					)
-				} else {
-					condition = sql`1 = 1`
-				}
-				break
-			}
-			case 'split': {
-				if (config.allMasks[0].length > 0 && config.allMasks[1].length > 0) {
-					condition = E.or(
-						E.and(
-							E.or(...config.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 1, path, errors, ctx))),
-							E.or(...config.allMasks[1].map(mask => factionMaskToSqlCondition(mask, 2, path, errors, ctx))),
-						),
-						E.and(
-							E.or(...config.allMasks[1].map(mask => factionMaskToSqlCondition(mask, 1, path, errors, ctx))),
-							E.or(...config.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 2, path, errors, ctx))),
-						),
-					)
-				} else {
-					condition = sql`1 = 1`
-				}
-				break
-			}
-			default:
-				assertNever(mode)
-		}
+
+	if (F.isCompNode(node)) {
+		condition = compileCompNode(ctx, node, path, errors)
 	}
 
 	if (node.type === 'apply-filter') {
@@ -534,20 +387,17 @@ export function getFilterNodeSQLConditions(
 	}
 
 	if (F.isBlockNode(node)) {
+		const childrenPath = [...path, 'children']
 		const childConditions: SQL<unknown>[] = []
-		path = [...path, 'children']
-		const childResults = node.children.map((node, i) => getFilterNodeSQLConditions(ctx, node, [...path, i.toString()], reentrantFilterIds))
-		for (const childResult of childResults) {
-			if (childResult.code !== 'ok') {
-				errors.push(...childResult.errors)
-			} else {
-				childConditions.push(childResult.condition)
-			}
+		for (let i = 0; i < node.children.length; i++) {
+			const res = getFilterNodeSQLConditions(ctx, node.children[i], [...childrenPath, i.toString()], reentrantFilterIds)
+			if (res.code !== 'ok') errors.push(...res.errors)
+			else childConditions.push(res.condition)
 		}
 		if (node.type === 'and') {
-			condition = E.and(...childConditions)!
-		} else if (node.type === 'or') {
-			condition = E.or(...childConditions)!
+			condition = childConditions.length > 0 ? E.and(...childConditions) : sql`1 = 1`
+		} else {
+			condition = childConditions.length > 0 ? E.or(...childConditions) : sql`0 = 1`
 		}
 	}
 
@@ -560,6 +410,246 @@ export function getFilterNodeSQLConditions(
 
 	if (node.neg) condition = E.not(condition!)
 	return { code: 'ok' as const, condition: condition! }
+}
+
+// resolves a scalar arg to either a drizzle column expression or a raw db value.
+// anchorColumn (if provided) supplies the enum mapping used to convert value args.
+type ResolvedScalar =
+	| { kind: 'column'; expr: any; column: string; domain: F.ValueDomain | undefined }
+	| { kind: 'value'; value: LC.DbValue }
+	| { kind: 'null' }
+
+// If `column` is a string-enum column whose mapping contains null (so a null value is stored as a
+// concrete enum index rather than SQL NULL), returns that index; otherwise undefined (meaning null
+// should be treated as SQL NULL).
+function enumNullDbValue(ctx: CS.EffectiveColumnConfig, column: string | undefined): LC.DbValue | undefined {
+	if (column === undefined) return undefined
+	const def = LC.getColumnDef(column, ctx.effectiveColsConfig)
+	if (def?.type !== 'string' || !def.enumMapping) return undefined
+	const mapped = LC.dbValue(column, null, ctx)
+	return LC.isUnmappedDbValue(mapped) ? undefined : mapped
+}
+
+function resolveScalarArg(
+	ctx: CS.EffectiveColumnConfig,
+	arg: F.ScalarArg,
+	anchorColumn: string | undefined,
+	team: 1 | 2 | undefined,
+	path: string[],
+	errors: F.NodeValidationError[],
+): ResolvedScalar | undefined {
+	switch (arg.type) {
+		case 'column':
+		case 'team-column': {
+			let column: string
+			if (arg.type === 'team-column') {
+				if (team === undefined) {
+					errors.push({ type: 'invalid-node', path, msg: `Team column "${arg.column}" could not be resolved to a team` })
+					return undefined
+				}
+				column = F.resolveTeamColumn(arg.column, team)
+			} else {
+				column = arg.column
+			}
+			const colDef = LC.getColumnDef(column, ctx.effectiveColsConfig)
+			if (!colDef) {
+				errors.push({ type: 'unmapped-column', column, path, msg: `Column ${column} is not mapped` })
+				return undefined
+			}
+			return { kind: 'column', expr: LC.viewCol(column, ctx), column, domain: F.columnValueDomain(column, ctx.effectiveColsConfig) }
+		}
+		case 'value': {
+			if (arg.value === null) {
+				// for an enum column that includes null as a mapped value (e.g. LayerVersion's "no version"),
+				// a null value is a concrete enum index in the stored data, not SQL NULL
+				const idx = enumNullDbValue(ctx, anchorColumn)
+				if (idx !== undefined) return { kind: 'value', value: idx }
+				return { kind: 'null' }
+			}
+			if (anchorColumn === undefined) {
+				errors.push({ type: 'invalid-node', path, msg: 'Comparison requires at least one column operand' })
+				return undefined
+			}
+			const dbValue = LC.dbValue(anchorColumn, arg.value, ctx)
+			if (LC.isUnmappedDbValue(dbValue)) {
+				errors.push({
+					type: 'unmapped-value',
+					path,
+					column: anchorColumn,
+					value: arg.value,
+					msg: `Value ${arg.value} is not mapped for column ${anchorColumn}`,
+				})
+				return { kind: 'value', value: null }
+			}
+			return { kind: 'value', value: dbValue }
+		}
+		default:
+			assertNever(arg)
+	}
+}
+
+// A comparison that references any team-generic column expands over both teams, combining the two
+// per-team conditions with OR ('either') or AND ('both') per the team column's quantifier.
+function compileCompNode(
+	ctx: CS.EffectiveColumnConfig,
+	node: F.CompNode,
+	path: string[],
+	errors: F.NodeValidationError[],
+): SQL | undefined {
+	// the subject (arg[0]) must be a column: value-first / all-constant comparisons aren't representable in
+	// the builder (see SubjectArgSchema). Flag it here so text-editor-authored nodes get a clear message.
+	const subject = node.args[0] as F.Arg | undefined
+	if (subject?.type !== 'column' && subject?.type !== 'team-column') {
+		errors.push({ type: 'invalid-node', path, msg: "A comparison's first operand must be a column" })
+		return undefined
+	}
+	const teamArg = (node.args as F.Arg[]).find((a) => a.type === 'team-column') as F.TeamColumnArg | undefined
+	if (!teamArg) return compileCompForTeam(ctx, node, path, undefined, errors)
+	const c1 = compileCompForTeam(ctx, node, path, 1, errors)
+	// team 1 and team 2 resolve to columns of the same enum mapping, so they produce identical
+	// validation errors; discard team 2's to avoid duplicating them in the error list
+	const c2 = compileCompForTeam(ctx, node, path, 2, [])
+	return teamArg.quantifier === 'both' ? E.and(c1, c2) : E.or(c1, c2)
+}
+
+function compileCompForTeam(
+	ctx: CS.EffectiveColumnConfig,
+	node: F.CompNode,
+	path: string[],
+	team: 1 | 2 | undefined,
+	errors: F.NodeValidationError[],
+): SQL | undefined {
+	const anchor = F.compAnchorArg(node)
+	const anchorColumn = anchor
+		? (anchor.type === 'column'
+			? (anchor.column as string | undefined)
+			: (anchor.type === 'team-column' && team !== undefined && anchor.column
+				? F.resolveTeamColumn(anchor.column as F.TeamColumn, team)
+				: undefined))
+		: undefined
+
+	// bail on an unmapped anchor column before resolving value operands: value conversion goes through
+	// LC.dbValue(anchorColumn, ...), which throws on a column that isn't in the effective config
+	if (anchorColumn !== undefined && !LC.getColumnDef(anchorColumn, ctx.effectiveColsConfig)) {
+		errors.push({ type: 'unmapped-column', column: anchorColumn, path, msg: `Column ${anchorColumn} is not mapped` })
+		return undefined
+	}
+
+	const resolveScalar = (arg: F.ScalarArg) => resolveScalarArg(ctx, arg, anchorColumn, team, path, errors)
+	// operand expression for a resolved scalar (a drizzle column, a raw value, or SQL NULL)
+	const operand = (r: ResolvedScalar | undefined): any => {
+		if (!r) return null
+		if (r.kind === 'column') return r.expr
+		if (r.kind === 'null') return null
+		return r.value
+	}
+
+	switch (node.type) {
+		case 'eq': {
+			const a = resolveScalar(node.args[0])
+			const b = resolveScalar(node.args[1])
+			// null on either side becomes an IS NULL test on the other operand
+			if (a?.kind === 'null' && b && b.kind !== 'null') return E.isNull(operand(b))
+			if (b?.kind === 'null' && a && a.kind !== 'null') return E.isNull(operand(a))
+			if (a?.kind === 'null' && b?.kind === 'null') return sql`1 = 1`
+			checkColumnColumnDomains(a, b, path, errors)
+			return E.eq(operand(a), operand(b))
+		}
+		case 'in': {
+			// the list may mix constant values and column references; each column becomes a `subject = column`
+			// disjunct alongside the `subject IN (constants)` term
+			const subject = resolveScalar(node.args[0])
+			const subjectExpr = operand(subject)
+			const constants: LC.DbValue[] = []
+			const parts: SQL[] = []
+			let hasNull = false
+			for (const item of node.args[1].values) {
+				if (item === null) {
+					// on an enum column that maps null to an index, a null list item is that concrete index
+					const idx = enumNullDbValue(ctx, anchorColumn)
+					if (idx !== undefined) constants.push(idx)
+					else hasNull = true
+					continue
+				}
+				if (F.isColumnListItem(item)) {
+					const colDef = LC.getColumnDef(item.column, ctx.effectiveColsConfig)
+					if (!colDef) {
+						errors.push({ type: 'unmapped-column', column: item.column, path, msg: `Column ${item.column} is not mapped` })
+						continue
+					}
+					const itemDomain = F.columnValueDomain(item.column, ctx.effectiveColsConfig)
+					if (subject?.kind === 'column' && subject.domain && itemDomain && !F.domainsCompatible(subject.domain, itemDomain)) {
+						errors.push({
+							type: 'invalid-node',
+							path,
+							msg: `Columns ${subject.column} and ${item.column} are not comparable (different data types)`,
+						})
+						continue
+					}
+					parts.push(E.eq(subjectExpr, LC.viewCol(item.column, ctx))!)
+					continue
+				}
+				const dbValue = LC.dbValue(anchorColumn ?? '', item, ctx)
+				if (LC.isUnmappedDbValue(dbValue)) {
+					errors.push({
+						type: 'unmapped-value',
+						path,
+						column: anchorColumn ?? '',
+						value: item,
+						msg: `Value ${item} is not mapped for column ${anchorColumn}`,
+					})
+					continue
+				}
+				constants.push(dbValue)
+			}
+			if (constants.length > 0) parts.unshift(E.inArray(subjectExpr, constants)!)
+			if (hasNull) parts.push(E.isNull(subjectExpr)!)
+			if (parts.length === 0) return sql`0 = 1`
+			return E.or(...parts)!
+		}
+		case 'lt':
+		case 'gt': {
+			const a = resolveScalar(node.args[0])
+			const b = resolveScalar(node.args[1])
+			if (a?.kind === 'null' || b?.kind === 'null') {
+				errors.push({ type: 'invalid-node', path, msg: 'Ordered comparison cannot use null' })
+				return sql`0 = 1`
+			}
+			checkColumnColumnDomains(a, b, path, errors)
+			return node.type === 'lt' ? E.lt(operand(a), operand(b)) : E.gt(operand(a), operand(b))
+		}
+		case 'inrange': {
+			const subject = resolveScalar(node.args[0])
+			const lo = resolveScalar(node.args[1])
+			const hi = resolveScalar(node.args[2])
+			if (subject?.kind === 'null' || lo?.kind === 'null' || hi?.kind === 'null') {
+				errors.push({ type: 'invalid-node', path, msg: 'Range comparison cannot use null' })
+				return sql`0 = 1`
+			}
+			// forgive reversed constant bounds, matching the legacy inrange behavior
+			let loOp = operand(lo)
+			let hiOp = operand(hi)
+			if (
+				lo?.kind === 'value' && hi?.kind === 'value' && typeof lo.value === 'number' && typeof hi.value === 'number' && lo.value > hi.value
+			) {
+				;[loOp, hiOp] = [hiOp, loOp]
+			}
+			return E.and(E.gte(operand(subject), loOp), E.lte(operand(subject), hiOp))
+		}
+		default:
+			assertNever(node)
+	}
+}
+
+function checkColumnColumnDomains(
+	a: ResolvedScalar | undefined,
+	b: ResolvedScalar | undefined,
+	path: string[],
+	errors: F.NodeValidationError[],
+) {
+	if (a?.kind === 'column' && b?.kind === 'column' && a.domain && b.domain && !F.domainsCompatible(a.domain, b.domain)) {
+		errors.push({ type: 'invalid-node', path, msg: `Columns ${a.column} and ${b.column} are not comparable (different data types)` })
+	}
 }
 
 function buildQueryInputSqlCondition(
@@ -1086,7 +1176,7 @@ async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	}
 
 	// Include page index in the seed for different results per page
-	const rng = seedrandom(seed.toString() + pageIndex.toString())
+	const rng = seedrandom(seed + pageIndex.toString())
 
 	const baseLayersQuery = ctx.layerDb()
 		.select(LC.selectViewCols([...LC.GROUP_BY_COLUMNS, 'id'], ctx))
@@ -1254,46 +1344,6 @@ export const queries = {
 	getLayerItemStatuses,
 	getLayerInfo,
 	genVote,
-}
-
-function factionMaskToSqlCondition(
-	mask: F.FactionMask,
-	team: SM.TeamId,
-	path: string[],
-	errors: F.NodeValidationError[],
-	ctx: CS.EffectiveColumnConfig,
-) {
-	const getVals = (column: string, values: string[]) => {
-		const dbValues = LC.dbValues(column, values, ctx)
-		for (let i = 0; i < values.length; i++) {
-			if (LC.isUnmappedDbValue(dbValues[i])) {
-				errors.push({
-					column,
-					type: 'unmapped-value',
-					msg: `Invalid value for ${column}: ${values[i]}`,
-					value: values[i],
-					path,
-				})
-				dbValues[i] = -1
-			}
-		}
-		return dbValues as number[]
-	}
-	const conditions: (SQL<unknown> | undefined)[] = []
-	if (mask.alliance && mask.alliance.length > 0) {
-		const colName = `Alliance_${team}`
-		conditions.push(E.inArray(LC.viewCol(colName, ctx), getVals(colName, mask.alliance)))
-	}
-	if (mask.faction && mask.faction.length > 0) {
-		const colName = `Faction_${team}`
-		conditions.push(E.inArray(LC.viewCol(colName, ctx), getVals(colName, mask.faction)))
-	}
-	if (mask.unit && mask.unit.length > 0) {
-		const colName = `Unit_${team}`
-		conditions.push(E.inArray(LC.viewCol(colName, ctx), getVals(colName, mask.unit)))
-	}
-
-	return conditions.length > 0 ? E.and(...conditions) : sql`1=1`
 }
 
 export async function getLayerInfo({ ctx, input }: { ctx: CS.LayerDb; input: { layerId: L.LayerId } }) {

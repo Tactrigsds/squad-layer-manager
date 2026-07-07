@@ -1,16 +1,25 @@
 # General Guidelines
 
-Any breaking changes to persisted data structures on either the frontend(localStorage) or the backend(database,config,environment variables) need to be explicitely flagged to the user so they can be dealt with.
+Any breaking changes to persisted data structures or configuration on either the frontend(localStorage) or the backend(database,config,environment variables) need to be explicitely flagged to the user so they can be dealt with.
 
 Prefer copy-on-write in most cases unless it's proven to be safe to do so, or is in a hot codepath.
 
 Async functions should by-default have the option to pass a signal to cancel an operation. if it's a non-lib function, the signal should be passed via the ctx object (see src/models/context-shared.ts). The client is not yet converted to this pattern, so use your best judgement on when to upgrade a function.
 
-When branching on unions(especially discriminated unions), generally use assertNever() from src/lib/type-guards.ts to cover off the default case so that type errors are raised if we add new members to the union.
+When branching on unions(especially discriminated unions), generally use `assertNever()` from src/lib/type-guards.ts to cover off the default case so that type errors are raised if we add new members to the union.
 
-Unit tests should be reserved for complex and self-contained behavior that we want to isolate. we will be introducing integration tests at a later time.
+Unit tests should be reserved for complex and self-contained behavior that we want to isolate. we will be introducing integration tests at a later time. Use `vitest`
 
 Use namespace imports for all nontrivial modules, unless established convention for that module contradicts this. Make sure that the chosen namespace is consistent and unique across the app, except for special cases like things imported into context.ts or context-shared.ts. Use convenient abbreviations or acronyms for commonly used lib modules, model modules, and imported packages
+
+# Editing
+
+Run `pnpm run format` and `pnpm run check`(or some subset to typecheck your specific changes) before reporting your changes to the user.
+If we've completed a goal or feature, then run `pnpm run lint:fix` and fix all lint errors as a cleanup step.
+
+# Documentation, prose and app text
+
+No emdashes.
 
 # Server side
 
@@ -33,3 +42,7 @@ Generally speaking, actions by the user should be handled at the top level by a 
 Pass `ZusUtils.AnyInut` instances via the `stores` prop through components(conventionally they should have a KeyProp or a StoreProp defined to standardize what property they should be put on in `props.stores`), and avoid using react context to pass stores or other data sources.
 
 Never export non-components from .tsx files, as it breaks hot module replacement.
+
+# Migrations
+
+Data migrations applied via a custom runner `pnpm db:migrate`. (see ./src/server/migrate.ts) it is backwards-compatible with `drizzle-kit`.

@@ -1,27 +1,19 @@
+// Builders for EditableFilterNodes (nodes with possibly-incomplete args), used by the editor UI.
 import { assertNever } from '@/lib/type-guards'
 import * as F from './filter.models'
 
-// claude likes curry I guess
 export const createBlock = <T extends F.BlockType>(type: T) => {
-	return <C extends F.EditableFilterNode[]>(children?: C, options: { neg?: boolean } = {}) => {
+	return (children?: F.EditableFilterNode[], options: { neg?: boolean } = {}) => {
 		return {
 			type: type,
-			children: children ?? ([] as unknown as C),
+			children: children ?? ([] as unknown as F.EditableFilterNode[]),
 			neg: options.neg ?? false,
 		} as Extract<F.EditableFilterNode, { type: T }>
 	}
 }
 
-// beta type assertions, weird issues with EditableFilterNode type and generics
 export const and = createBlock('and')
 export const or = createBlock('or')
-
-export const comp = <T extends F.EditableComparison>(comparison?: T, options: { neg?: boolean } = {}) =>
-	({
-		type: 'comp' as const,
-		comp: comparison ?? ({} as T),
-		neg: options.neg ?? false,
-	}) satisfies F.EditableFilterNode
 
 export const applyFilter = (filterId?: F.FilterEntityId, options: { neg?: boolean } = {}) =>
 	({
@@ -30,72 +22,52 @@ export const applyFilter = (filterId?: F.FilterEntityId, options: { neg?: boolea
 		filterId,
 	}) satisfies F.EditableFilterNode
 
-export const lt = (column?: string, value?: number) =>
-	({
-		code: 'lt' as const,
-		column,
-		value,
-	}) satisfies F.EditableComparison
+// -------- comparison builders --------
 
-export const gt = (column?: string, value?: number) =>
-	({
-		code: 'gt' as const,
-		column,
-		value,
-	}) satisfies F.EditableComparison
+const colArg = (column?: string): F.EditableScalarArg => ({ type: 'column', column })
 
-export const inrange = (column?: string, first?: number, second?: number) =>
-	({
-		code: 'inrange' as const,
-		column,
-		range: [first, second],
-	}) satisfies F.EditableComparison
+export const eq = (column?: string, value?: F.Value): F.EditableCompNode => ({
+	type: 'eq',
+	neg: false,
+	args: [colArg(column), { type: 'value', value }],
+})
 
-export const inValues = (column?: string, values?: string[]) =>
-	({
-		code: 'in' as const,
-		column,
-		values,
-	}) satisfies F.EditableComparison
+export const neq = (column?: string, value?: F.Value): F.EditableCompNode => ({
+	type: 'eq',
+	neg: true,
+	args: [colArg(column), { type: 'value', value }],
+})
 
-export const eq = (column?: string, value?: string) =>
-	({
-		code: 'eq' as const,
-		column,
-		value,
-	}) satisfies F.EditableComparison
+export const inValues = (column?: string, values?: F.Value[]): F.EditableCompNode => ({
+	type: 'in',
+	neg: false,
+	args: [colArg(column), { type: 'values', values }],
+})
 
-export const neq = (column?: string, value?: string) =>
-	({
-		code: 'neq' as const,
-		column,
-		value,
-	}) satisfies F.EditableComparison
+export const lt = (column?: string, value?: F.Value): F.EditableCompNode => ({
+	type: 'lt',
+	neg: false,
+	args: [colArg(column), { type: 'value', value }],
+})
 
-export const allowMatchups = (allMasks?: F.FactionMask[][], mode?: F.FactionMaskMode, neg?: boolean): F.EditableFilterNode =>
-	({
-		type: 'allow-matchups' as const,
-		neg: neg ?? false,
-		allowMatchups: {
-			allMasks: allMasks ?? [[]],
-			mode,
-		},
-	}) satisfies F.EditableFilterNode
+export const gt = (column?: string, value?: F.Value): F.EditableCompNode => ({
+	type: 'gt',
+	neg: false,
+	args: [colArg(column), { type: 'value', value }],
+})
 
-export const CODE_TO_EFB = {
-	lt,
-	gt,
-	inrange,
-	inValues,
-	eq,
-	neq,
-	in: inValues,
-}
+export const inrange = (column?: string, min?: F.Value, max?: F.Value): F.EditableCompNode => ({
+	type: 'inrange',
+	neg: false,
+	args: [colArg(column), { type: 'value', value: min }, { type: 'value', value: max }],
+})
 
-export function nodeOfType(type: F.NodeType) {
-	if (type === 'comp') return comp()
+// a bare comparison node, seeded to `eq` on the given column (used when adding a comparison in the UI)
+export const comp = (column?: string): F.EditableCompNode => eq(column)
+
+export function nodeOfType(type: F.NodeType): F.EditableFilterNode {
+	if (F.isCompType(type)) return { type, neg: false, args: [colArg(), { type: 'value' }] } as F.EditableCompNode
 	if (type === 'apply-filter') return applyFilter()
-	if (type === 'allow-matchups') return allowMatchups()
 	if (F.isBlockType(type)) return createBlock(type)()
 	assertNever(type)
 }

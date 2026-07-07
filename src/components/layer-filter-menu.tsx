@@ -91,18 +91,18 @@ function LayerFilterMenuItem(
 			<Comparison
 				ref={ref}
 				columnEditable={false}
-				highlight={F.editableComparisonHasValue(comp)}
-				comp={comp}
+				highlight={F.editableCompHasValue(comp)}
+				node={comp}
 				allowedEnumValues={possibleValues}
 				onSetAllValuesAllowed={unlockAllValues}
 				onSetAllValuesAllowedLabel="Remove all other filters and select this one"
-				setComp={(update) => {
+				setNode={(update) => {
 					return LayerFilterMenuPrt.Actions.setComparison(props.stores, props.field, update)
 				}}
 				lockOnSingleOption
 			/>
 			<Button
-				disabled={!F.editableComparisonHasValue(comp)}
+				disabled={!F.editableCompHasValue(comp)}
 				variant="ghost"
 				size="icon"
 				onClick={() => {

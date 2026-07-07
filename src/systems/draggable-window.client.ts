@@ -63,8 +63,8 @@ interface DraggableWindowStore extends DraggableWindowStoreState {
 	// Actions
 	registerDefinition: <TProps, TData>(def: WindowDefinition<TProps, TData>) => void
 	unregisterDefinition: (type: string) => void
-	preloadWindow: <TProps>(type: string, props: TProps, outletKey?: unknown) => void
-	openWindow: <TProps>(type: string, props: TProps, anchor?: HTMLElement | null, outletKey?: unknown) => void
+	preloadWindow: (type: string, props: unknown, outletKey?: unknown) => void
+	openWindow: (type: string, props: unknown, anchor?: HTMLElement | null, outletKey?: unknown) => void
 	closeWindow: (id: string) => void
 	bringToFront: (id: string) => void
 	setIsPinned: (id: string, pinned: boolean) => void
@@ -285,8 +285,8 @@ export function useOutletBaseZIndex() {
 	return isNaN(parsed) ? 0 : parsed + 1
 }
 
-export function buildUseOpenWindow<TProps>(id: string) {
-	return (props: TProps) => {
+export function buildUseOpenWindow(id: string) {
+	return (props: unknown) => {
 		const store = Zus.useStore(DraggableWindowStore)
 		const outletKey = useOutletKey()
 		return (anchor?: HTMLElement | null) => store.openWindow(id, props, anchor, outletKey)
@@ -295,7 +295,7 @@ export function buildUseOpenWindow<TProps>(id: string) {
 
 // Opens the window if it isn't already open, otherwise raises the existing one to the front. Safe to call
 // imperatively (e.g. from a menu action) — reads the current store state rather than a hook.
-export function openOrFocusWindow<TProps>(type: string, props: TProps, outletKey?: unknown, anchor?: HTMLElement | null) {
+export function openOrFocusWindow(type: string, props: unknown, outletKey?: unknown, anchor?: HTMLElement | null) {
 	const store = DraggableWindowStore.getState()
 	const def = store.definitions.find(d => d.type === type)
 	if (!def) {
@@ -311,7 +311,7 @@ export function openOrFocusWindow<TProps>(type: string, props: TProps, outletKey
 export function useOpenOrFocusWindow() {
 	const outletKey = useOutletKey()
 	return React.useCallback(
-		<TProps>(type: string, props: TProps, anchor?: HTMLElement | null) => openOrFocusWindow(type, props, outletKey, anchor),
+		(type: string, props: unknown, anchor?: HTMLElement | null) => openOrFocusWindow(type, props, outletKey, anchor),
 		[outletKey],
 	)
 }
@@ -336,10 +336,10 @@ function findLoaderEntry(loaderCache: Lifecycle.LoaderCacheEntry<WindowLoaderCon
  * Hook to access loader data for a specific window.
  * Returns undefined if the window is not open or data hasn't loaded yet.
  */
-export function useWindowLoaderData<TData>(windowId: string): TData | undefined {
+export function useWindowLoaderData(windowId: string): unknown {
 	return Zus.useStore(DraggableWindowStore, (s) => {
 		const entry = findLoaderEntry(s.loaderCache, windowId)
-		return entry?.data as TData | undefined
+		return entry?.data as unknown
 	})
 }
 

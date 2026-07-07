@@ -269,6 +269,7 @@ export type CurrentStreak = {
  */
 export function getCurrentStreak(matches: MH.MatchDetails[]): CurrentStreak | null {
 	return null
+	/* oxlint-disable no-unreachable -- streak feature intentionally disabled (see "disable current streak"), body kept for re-enabling */
 	const session = resolveMatchSession(matches, true)
 	if (!session.length) return null
 
@@ -293,4 +294,5 @@ export function getCurrentStreak(matches: MH.MatchDetails[]): CurrentStreak | nu
 		team: streaker!,
 		length: streakLength,
 	}
+	/* oxlint-enable no-unreachable */
 }

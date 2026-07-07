@@ -52,7 +52,7 @@ export function upsert<T>(arr: T[], item: T, predicate?: (existing: T, item: T) 
 	arr.push(item)
 }
 
-export function upsertOn<T, K extends keyof T>(arr: T[], item: T, key: K): void {
+export function upsertOn<T>(arr: T[], item: T, key: keyof T): void {
 	for (let i = 0; i < arr.length; i++) {
 		if (arr[i][key] === item[key]) {
 			arr[i] = item

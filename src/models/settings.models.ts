@@ -314,7 +314,7 @@ export function checkPublicSettingsPath(path: SettingsPath) {
 	return true
 }
 
-export function derefSettingsValue<T extends PublicServerSettings>(settings: T, path: SettingsPath) {
+export function derefSettingsValue(settings: PublicServerSettings, path: SettingsPath) {
 	let current = settings as any
 	for (const key of path) {
 		current = (current as any)[key]
@@ -323,8 +323,8 @@ export function derefSettingsValue<T extends PublicServerSettings>(settings: T, 
 	return current as unknown
 }
 
-export function applySettingMutation<T extends PublicServerSettings>(settings: T, path: SettingsPath, value: any): void
-export function applySettingMutation<T extends PublicServerSettings>(settings: T, mutation: SettingMutation): void
+export function applySettingMutation(settings: PublicServerSettings, path: SettingsPath, value: any): void
+export function applySettingMutation(settings: PublicServerSettings, mutation: SettingMutation): void
 export function applySettingMutation<T extends PublicServerSettings>(
 	settings: T,
 	pathOrMutation: SettingsPath | SettingMutation,
@@ -341,7 +341,7 @@ export function applySettingMutation<T extends PublicServerSettings>(
 	}
 	current[path[path.length - 1]] = resolvedValue
 }
-export function applySettingMutations<T extends PublicServerSettings>(settings: T, mutations: SettingMutation[]) {
+export function applySettingMutations(settings: PublicServerSettings, mutations: SettingMutation[]) {
 	for (const mutation of mutations) {
 		applySettingMutation(settings, mutation.path, mutation.value)
 	}

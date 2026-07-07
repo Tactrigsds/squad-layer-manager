@@ -1,90 +1,87 @@
+// Builders for validated FilterNodes. Comparison builders accept either raw values (coerced to
+// value args) or explicit Arg objects, so `eq('Map', 'Narva')` and `eq(col('Faction_1'), col('Faction_2'))`
+// both work.
 import type * as F from './filter.models'
 
-export const and = <T extends F.FilterNode>(children: T[], options: { neg?: boolean } = {}) => {
-	return {
-		type: 'and' as const,
-		children,
-		neg: options.neg ?? false,
-	} satisfies F.FilterNode
+// -------- arg helpers --------
+
+export const col = (column: string): F.ColumnArg => ({ type: 'column', column })
+export const teamCol = (column: F.TeamColumn, quantifier: F.TeamQuantifier = 'either'): F.TeamColumnArg => ({
+	type: 'team-column',
+	column,
+	quantifier,
+})
+export const val = (value: F.Value): F.ValueArg => ({ type: 'value', value })
+export const vals = (values: F.Value[]): F.ValuesArg => ({ type: 'values', values })
+
+type ScalarInput = F.ScalarArg | F.Value
+type ColumnInput = F.ColumnArg | F.TeamColumnArg | string
+
+function toScalarArg(input: ScalarInput): F.ScalarArg {
+	if (input !== null && typeof input === 'object' && 'type' in input) return input
+	return { type: 'value', value: input }
+}
+function toColumnArg(input: ColumnInput): F.ColumnArg | F.TeamColumnArg {
+	if (typeof input === 'string') return { type: 'column', column: input }
+	return input
 }
 
-export const or = <T extends F.FilterNode>(children: T[], options: { neg?: boolean } = {}) => {
-	return {
-		type: 'or' as const,
-		children,
-		neg: options.neg ?? false,
-	} satisfies F.FilterNode
-}
+// -------- block builders --------
 
-export const comp = <T extends F.Comparison>(comparison: T, options: { neg?: boolean } = {}) =>
-	({
-		type: 'comp' as const,
-		comp: comparison,
-		neg: options.neg ?? false,
-	}) satisfies F.FilterNode
+export const and = (children: F.FilterNode[], options: { neg?: boolean } = {}): F.FilterNode => ({
+	type: 'and',
+	children,
+	neg: options.neg ?? false,
+})
 
-export const applyFilter = (filterId: string, options: { neg?: boolean } = {}) =>
-	({
-		type: 'apply-filter' as const,
-		neg: options.neg ?? false,
-		filterId,
-	}) satisfies F.FilterNode
+export const or = (children: F.FilterNode[], options: { neg?: boolean } = {}): F.FilterNode => ({
+	type: 'or',
+	children,
+	neg: options.neg ?? false,
+})
 
-export const lt = (column: string, value: number) =>
-	({
-		code: 'lt' as const,
-		column,
-		value,
-	}) satisfies F.Comparison
+export const applyFilter = (filterId: string, options: { neg?: boolean } = {}): F.FilterNode => ({
+	type: 'apply-filter',
+	neg: options.neg ?? false,
+	filterId,
+})
 
-export const gt = (column: string, value: number) =>
-	({
-		code: 'gt' as const,
-		column,
-		value,
-	}) satisfies F.Comparison
+// -------- comparison builders --------
 
-export const inrange = (column: string, first: number, second: number) =>
-	({
-		code: 'inrange' as const,
-		column,
-		range: [first, second],
-	}) satisfies F.Comparison
+export const eq = (column: ColumnInput, value: ScalarInput, options: { neg?: boolean } = {}): F.FilterNode => ({
+	type: 'eq',
+	neg: options.neg ?? false,
+	args: [toColumnArg(column), toScalarArg(value)],
+})
 
-export const inValues = (column: string, values: string[]) =>
-	({
-		code: 'in' as const,
-		column,
-		values,
-	}) satisfies F.Comparison
+export const neq = (column: ColumnInput, value: ScalarInput): F.FilterNode => eq(column, value, { neg: true })
 
-export const eq = (column: string, value: string) =>
-	({
-		code: 'eq' as const,
-		column,
-		value,
-	}) satisfies F.Comparison
+export const inValues = (column: ColumnInput, values: F.Value[], options: { neg?: boolean } = {}): F.FilterNode => ({
+	type: 'in',
+	neg: options.neg ?? false,
+	args: [toColumnArg(column), { type: 'values', values }],
+})
 
-export const neq = (column: string, value: string) =>
-	({
-		code: 'neq' as const,
-		column,
-		value,
-	}) satisfies F.Comparison
+export const notInValues = (column: ColumnInput, values: F.Value[]): F.FilterNode => inValues(column, values, { neg: true })
 
-export const isTrue = (column: string) =>
-	({
-		code: 'is-true' as const,
-		column,
-	}) satisfies F.Comparison
+export const lt = (column: ColumnInput, value: ScalarInput, options: { neg?: boolean } = {}): F.FilterNode => ({
+	type: 'lt',
+	neg: options.neg ?? false,
+	args: [toColumnArg(column), toScalarArg(value)],
+})
 
-export function allowMatchups(mode: F.FactionMaskMode, allMasks: F.FactionMask[][], neg?: boolean): F.FilterNode {
-	return {
-		type: 'allow-matchups',
-		allowMatchups: {
-			mode,
-			allMasks,
-		},
-		neg: neg ?? false,
-	}
-}
+export const gt = (column: ColumnInput, value: ScalarInput, options: { neg?: boolean } = {}): F.FilterNode => ({
+	type: 'gt',
+	neg: options.neg ?? false,
+	args: [toColumnArg(column), toScalarArg(value)],
+})
+
+export const inrange = (column: ColumnInput, min: ScalarInput, max: ScalarInput, options: { neg?: boolean } = {}): F.FilterNode => ({
+	type: 'inrange',
+	neg: options.neg ?? false,
+	args: [toColumnArg(column), toScalarArg(min), toScalarArg(max)],
+})
+
+export const isNull = (column: ColumnInput, options: { neg?: boolean } = {}): F.FilterNode => eq(column, null, options)
+
+export const isTrue = (column: ColumnInput): F.FilterNode => eq(column, true)

@@ -157,7 +157,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 					spanAttrs[attr] = value
 					// Also add to baggage if it's in MAPPED_ATTRS
 					if (LOG.MAPPED_ATTRS.includes(attr)) {
-						baggageEntries[attr] = { value: String(value) }
+						baggageEntries[attr] = { value: value }
 					}
 				}
 			}
@@ -324,7 +324,7 @@ export function recordGenericError(error: unknown, setStatus = true) {
 	if (error instanceof Error || typeof error === 'string') {
 		span.recordException(error)
 		if (setStatus) {
-			const message = error instanceof Error ? error.message : String(error)
+			const message = error instanceof Error ? error.message : error
 			setSpanStatus(Otel.SpanStatusCode.ERROR, message)
 			return message
 		}

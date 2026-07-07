@@ -257,9 +257,9 @@ export function showLogEvent(
 	// Root span + trace ID use trace color; current span + span ID use span color
 	let traceSegment = ''
 	if (traceId && spanId) {
-		const traceColor = getTraceColor(String(traceId))
-		const shortTrace = String(traceId).slice(-4)
-		const shortSpan = String(spanId).slice(-4)
+		const traceColor = getTraceColor(traceId)
+		const shortTrace = traceId.slice(-4)
+		const shortSpan = spanId.slice(-4)
 		if (rootSpanName && rootSpanName !== spanName) {
 			const spanColor = getSpanColor(spanName ?? '')
 			traceSegment = ` ${traceColor}${rootSpanName}-${shortTrace}${dimColor}/${resetColor}${spanColor}${spanName}-${shortSpan}${resetColor}`

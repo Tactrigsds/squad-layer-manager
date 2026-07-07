@@ -196,7 +196,6 @@ export function traceTag<T>(tag: string): Rx.OperatorFunction<T, T> {
 	// surely this prevents all potential RCEs right???
 	if (!/^[a-zA-Z_$][0-9a-zA-Z_$]*$/.test(tag)) {
 		throw new Error(`traceTag: tag "${tag}" is not a valid function name`)
-		return (o: Rx.Observable<T>) => o
 	}
 	// oxlint-disable-next-line typescript-eslint/no-implied-eval
 	const fn = new Function(

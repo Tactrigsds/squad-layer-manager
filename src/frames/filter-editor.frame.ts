@@ -151,16 +151,11 @@ export type BlockNodeActions = {
 }
 
 export type CompNodeActions = {
-	setComp: React.Dispatch<React.SetStateAction<F.EditableComparison>>
+	setNode: React.Dispatch<React.SetStateAction<F.EditableCompNode>>
 }
 
 export type ApplyFilterNodeActions = {
 	setFilterId: (filterId: F.FilterEntityId) => void
-}
-
-export type AllowMatchupsNodeActions = {
-	setMasks: React.Dispatch<React.SetStateAction<F.FactionMask[][]>>
-	setMode: React.Dispatch<React.SetStateAction<F.FactionMaskMode>>
 }
 
 export type NodeActions = {
@@ -168,7 +163,6 @@ export type NodeActions = {
 	block: BlockNodeActions
 	comp: CompNodeActions
 	applyFilter: ApplyFilterNodeActions
-	allowMatchups: AllowMatchupsNodeActions
 }
 
 type UpdateNodeFn = (cb: (draft: Im.Draft<F.ShallowEditableFilterNode>) => void) => void
@@ -261,10 +255,15 @@ export function getNodeActions(stores: KeyProp, id: string): NodeActions {
 			},
 		},
 		comp: {
-			setComp(update) {
+			setNode(update) {
 				updateNode(draft => {
-					if (draft.type !== 'comp') return
-					draft.comp = typeof update === 'function' ? update(draft.comp) : update
+					if (!F.isCompNode(draft)) return
+					const next = typeof update === 'function' ? update(draft as F.EditableCompNode) : update
+					// replace whole node contents (args count varies by operator), keeping only the new keys
+					for (const key of Object.keys(draft)) {
+						if (!(key in next)) delete (draft as any)[key]
+					}
+					Object.assign(draft, next)
 				})
 			},
 		},
@@ -273,20 +272,6 @@ export function getNodeActions(stores: KeyProp, id: string): NodeActions {
 				updateNode(draft => {
 					if (draft.type !== 'apply-filter') return
 					draft.filterId = filterId
-				})
-			},
-		},
-		allowMatchups: {
-			setMasks(update) {
-				updateNode(draft => {
-					if (draft.type !== 'allow-matchups') return
-					draft.allowMatchups.allMasks = typeof update === 'function' ? update(draft.allowMatchups.allMasks) : update
-				})
-			},
-			setMode(update) {
-				updateNode(draft => {
-					if (draft.type !== 'allow-matchups') return
-					draft.allowMatchups.mode = typeof update === 'function' ? update(draft.allowMatchups.mode ?? 'either') : update
 				})
 			},
 		},

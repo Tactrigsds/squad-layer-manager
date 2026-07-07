@@ -63,7 +63,7 @@ export async function load<T>(key: string): Promise<T | null> {
 	return superjson.deserialize(rows[0].value as ReturnType<typeof superjson.serialize>, { inPlace: true })
 }
 
-export async function save<T>(key: string, value: T): Promise<void> {
+export async function save(key: string, value: unknown): Promise<void> {
 	const ctx = DB.addPooledDb(CS.init())
 	const serialized = superjson.serialize(value)
 	const updatedAt = new Date()

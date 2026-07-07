@@ -61,6 +61,14 @@
 		"@typescript-eslint/unbound-method": "off",
 		"@typescript-eslint/promise-function-async": "off",
 		"@typescript-eslint/no-unnecessary-type-arguments": "off",
+		"@typescript-eslint/consistent-return": "off",
+		"@typescript-eslint/no-unnecessary-type-parameters": "off",
+
+		"eslint/no-shadow": "off",
+		"eslint/no-underscore-dangle": "off",
+		"eslint/no-unmodified-loop-condition": "off",
+
+		"react/no-unstable-nested-components": "error",
 
 		"react/jsx-handler-names": "off",
 		"react/react-in-jsx-scope": "off",

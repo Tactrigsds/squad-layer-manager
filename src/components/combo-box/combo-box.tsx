@@ -23,6 +23,9 @@ export type ComboBoxProps<T extends string | null = string | null> = {
 	onSelect: (value: T | undefined) => void
 	disabled?: boolean
 	sort?: boolean
+	// when set, Radix won't restore focus to the trigger as the popover closes. Use when a selection
+	// hands focus off to another element (e.g. the next argument), so the restore doesn't steal it back.
+	preventCloseAutoFocus?: boolean
 	children?: React.ReactNode
 	ref?: React.ForwardedRef<ComboBoxHandle>
 }
@@ -43,11 +46,15 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 
 	const btnRef = useRef<HTMLButtonElement | null>(null)
 	const inputRef = useRef<HTMLInputElement | null>(null)
+	// records whether the pending close was caused by a selection (vs. a dismiss). Reset on open, so it never
+	// races the close callback. Only consulted when preventCloseAutoFocus is set.
+	const selectionInitiatedRef = useRef(false)
 
 	const [open, setOpen] = useState(false)
 	const _onSelect = props.onSelect
 	useImperativeHandle(props.ref, () => ({
 		focus: () => {
+			selectionInitiatedRef.current = false
 			setOpen(true)
 		},
 		get isFocused() {
@@ -59,6 +66,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 		},
 	}), [_onSelect, open])
 	function onSelect(value: T | undefined) {
+		selectionInitiatedRef.current = true
 		setOpen(false)
 		_onSelect(value)
 	}
@@ -69,7 +77,8 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 	)
 	let selectedOptionDisplay: React.ReactNode
 	if (selectedOption?.value === null) {
-		selectedOptionDisplay = DH.MISSING_DISPLAY
+		// prefer the option's own label (e.g. "(none)"), matching how the list renders it
+		selectedOptionDisplay = selectedOption.label ?? DH.MISSING_DISPLAY
 	} else if (selectedOption) {
 		selectedOptionDisplay = selectedOption.label ?? selectedOption.value
 	} else {
@@ -77,7 +86,13 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 	}
 
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
+		<Popover
+			open={open}
+			onOpenChange={(next) => {
+				if (next) selectionInitiatedRef.current = false
+				setOpen(next)
+			}}
+		>
 			<PopoverTrigger asChild>
 				{props.children
 					? props.children
@@ -94,7 +109,17 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 						</Button>
 					)}
 			</PopoverTrigger>
-			<PopoverContent align="start" className="w-50 p-0">
+			<PopoverContent
+				align="start"
+				className="w-50 p-0"
+				onCloseAutoFocus={(e) => {
+					if (!props.preventCloseAutoFocus) return
+					// take full control of close-focus: Radix never restores. On a dismiss we reproduce the
+					// default by focusing the trigger ourselves; on a selection we leave focus for the hand-off.
+					e.preventDefault()
+					if (!selectionInitiatedRef.current) btnRef.current?.focus()
+				}}
+			>
 				{
 					/* gate on open so the option elements aren't built on every render while closed --
 				    option lists can be thousands of entries long */

@@ -74,7 +74,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 	const player = playerRes.player
 	if (!player.ids.steam) return
 
-	const user: USR.GuiOrChatUserId = { steamId: player.ids.steam.toString() }
+	const user: USR.GuiOrChatUserId = { steamId: player.ids.steam }
 	switch (cmd) {
 		case 'startVote': {
 			const res = await Vote.startVote(ctx, { initiator: user })
@@ -112,7 +112,6 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 					return
 				}
 			}
-			break
 		}
 
 		case 'endVoteEarly': {
@@ -217,7 +216,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 			const targetNormedTeam = MH.getNormedTeamId(target.teamId, currentMatch.ordinal)
 			const toTeam: MH.NormedTeamId = targetNormedTeam === 'A' ? 'B' : 'A'
-			const source: USR.GuiOrChatUserId = { steamId: player.ids.steam?.toString() }
+			const source: USR.GuiOrChatUserId = { steamId: player.ids.steam }
 			const playerId = SM.PlayerIds.getPlayerId(target.ids)
 			const errors = await Teamswitches.dispatchSwitchNow(ctx, new Map([[playerId, { toTeam, source }]]), source)
 			if (errors.length > 0) {
@@ -246,7 +245,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 			const targetNormedTeam = MH.getNormedTeamId(target.teamId, currentMatch.ordinal)
 			const toTeam: MH.NormedTeamId = targetNormedTeam === 'A' ? 'B' : 'A'
-			const source: USR.GuiOrChatUserId = { steamId: player.ids.steam?.toString() }
+			const source: USR.GuiOrChatUserId = { steamId: player.ids.steam }
 			const playerId = SM.PlayerIds.getPlayerId(target.ids)
 			const errors = await Teamswitches.dispatchSwitchNext(ctx, new Map([[playerId, { toTeam, source }]]))
 			if (errors.length > 0) {
@@ -327,7 +326,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 				return await showError('empty-squad', `Squad "${matchedSquad.squadName}" has no players`)
 			}
 
-			const source: USR.GuiOrChatUserId = { steamId: player.ids.steam?.toString() }
+			const source: USR.GuiOrChatUserId = { steamId: player.ids.steam }
 			if (cmd === 'switchSquadNow') {
 				const switches: Map<SM.PlayerId, { toTeam: MH.NormedTeamId; source: USR.GuiOrChatUserId }> = new Map()
 				for (const p of squadPlayers) {
@@ -421,7 +420,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 				await SquadRcon.warn(ctx, msg.playerIds, 'No teamswitches queued')
 				return { code: 'ok' as const }
 			}
-			const source: USR.GuiOrChatUserId = { steamId: player.ids.steam?.toString() }
+			const source: USR.GuiOrChatUserId = { steamId: player.ids.steam }
 			await Teamswitches.dispatchClearSwitches(ctx, source)
 			await SquadRcon.warn(ctx, msg.playerIds, `Cleared ${prevCount} queued teamswitch${prevCount !== 1 ? 'es' : ''}`)
 			return { code: 'ok' as const }

@@ -234,9 +234,7 @@ export function getQueryLayersInput(baseInput: LQY.BaseQueryInput, _opts?: Query
 	}
 
 	if (selectedLayers) {
-		const filter = FB.comp(
-			FB.inValues('id', selectedLayers.filter(layer => LC.isKnownAndValidLayer(layer, opts.cfg))),
-		)
+		const filter = FB.inValues('id', selectedLayers.filter(layer => LC.isKnownAndValidLayer(layer, opts.cfg)))
 		baseInput = {
 			...baseInput,
 			constraints: [

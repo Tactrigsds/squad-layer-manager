@@ -189,68 +189,88 @@
           "items": {
             "type": "object",
             "properties": {
-              "column": {"type": "string"},
-              "code": {
+              "type": {
                 "type": "string",
-                "enum": [
-                  "lt",
-                  "gt",
-                  "inrange",
-                  "isnull",
-                  "notnull",
-                  "in",
-                  "notin",
-                  "eq",
-                  "neq",
-                  "is-true"
-                ]
+                "enum": ["eq", "in", "lt", "gt", "inrange"]
               },
-              "value": {
-                "anyOf": [
-                  {"type": "number"},
-                  {"type": "string"},
-                  {"type": "null"}
-                ]
-              },
-              "values": {
-                "type": "array",
-                "items": {"anyOf": [{"type": "string"}, {"type": "null"}]}
-              },
-              "range": {
-                "type": "array",
-                "prefixItems": [{"type": "number"}, {"type": "number"}]
-              },
-              "allMasks": {
+              "neg": {"type": "boolean"},
+              "args": {
                 "type": "array",
                 "items": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "alliance": {
-                        "anyOf": [
-                          {"type": "array", "items": {"type": "string"}},
-                          {"type": "null"}
-                        ]
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {"type": "string", "const": "column"},
+                        "column": {"type": "string"}
                       },
-                      "faction": {
-                        "anyOf": [
-                          {"type": "array", "items": {"type": "string"}},
-                          {"type": "null"}
-                        ]
+                      "required": ["type"]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {"type": "string", "const": "team-column"},
+                        "column": {
+                          "type": "string",
+                          "enum": ["Alliance", "Faction", "Unit"]
+                        },
+                        "quantifier": {
+                          "type": "string",
+                          "enum": ["either", "both"]
+                        }
                       },
-                      "unit": {
-                        "anyOf": [
-                          {"type": "array", "items": {"type": "string"}},
-                          {"type": "null"}
-                        ]
-                      }
+                      "required": ["type"]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {"type": "string", "const": "value"},
+                        "value": {
+                          "anyOf": [
+                            {"type": "string"},
+                            {"type": "number"},
+                            {"type": "boolean"},
+                            {"type": "null"}
+                          ]
+                        }
+                      },
+                      "required": ["type"]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {"type": "string", "const": "values"},
+                        "values": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {"type": "string"},
+                                  {"type": "number"},
+                                  {"type": "boolean"},
+                                  {"type": "null"}
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {"type": "string", "const": "column"},
+                                  "column": {"type": "string"}
+                                },
+                                "required": ["type", "column"]
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "required": ["type"]
                     }
-                  }
+                  ]
                 }
-              },
-              "mode": {"type": "string", "enum": ["split", "both", "either"]}
-            }
+              }
+            },
+            "required": ["type", "args"]
           }
         },
         "defaultExtraFilters": {

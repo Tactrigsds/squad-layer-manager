@@ -11,8 +11,8 @@ export class CoalescedError<Res extends { code: string }> extends Error {
 		this.name = 'CoalescedError'
 	}
 }
-export function withType<T>() {
-	return undefined as unknown as T
+export function withType() {
+	return undefined as unknown as unknown
 }
 
 export function withThrownErrorResults<

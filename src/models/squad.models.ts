@@ -294,7 +294,7 @@ export namespace PlayerIds {
 
 	// gets generic id for use in commands(ex warns)
 	export function resolvePlayerId(ids: Type): string {
-		return (ids.eos?.toString() ?? ids.eos?.toString())!
+		return (ids.eos ?? ids.eos)!
 	}
 
 	export function prettyPrint(id: IdQueryOrPlayerId) {

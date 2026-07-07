@@ -316,11 +316,10 @@ export namespace Match {
 
 	export function variant<
 		Id extends string,
-		Opts extends NodeOptions | undefined,
 		Child extends Match.Node,
 	>(
 		id: Id,
-		opts: Opts,
+		opts: NodeOptions | undefined,
 		child: Child,
 	) {
 		return {
@@ -397,7 +396,7 @@ export namespace Match {
 		return variant.chosen.id === choice
 	}
 
-	export function hasChild<B extends Match.Branch, K extends string>(childId: K, branch: B): boolean {
+	export function hasChild<K extends string>(childId: K, branch: Match.Branch): boolean {
 		return childId in branch.child && branch.child[childId] !== undefined
 	}
 
@@ -442,11 +441,11 @@ export namespace Match {
 		return mapper(leaf.opts)
 	}
 
-	export function hasNonEmptyOpts<N extends Match.Node>(node: N): boolean {
+	export function hasNonEmptyOpts(node: Match.Node): boolean {
 		return node.opts !== undefined && Object.keys(node.opts).length > 0
 	}
 
-	export function getNodePath<N extends Match.Node>(node: N): string {
+	export function getNodePath(node: Match.Node): string {
 		if (isVariant(node)) {
 			return node.chosen.id
 		}
@@ -581,22 +580,22 @@ export namespace DefUtils {
  * Additional Match utility functions
  */
 export namespace MatchUtils {
-	export function isFullyBuilt<B extends Match.Branch>(branch: B): boolean {
+	export function isFullyBuilt(branch: Match.Branch): boolean {
 		// Check if all possible children from the definition are present
 		// This would need the original definition to compare against
 		return Object.keys(branch.child).length > 0
 	}
 
-	export function getChildCount<B extends Match.Branch>(branch: B): number {
+	export function getChildCount(branch: Match.Branch): number {
 		return Object.values(branch.child).filter(child => child !== undefined).length
 	}
 
-	export function hasAnyChildren<B extends Match.Branch>(branch: B): boolean {
+	export function hasAnyChildren(branch: Match.Branch): boolean {
 		return MatchUtils.getChildCount(branch) > 0
 	}
 
-	export function mapBranchChildren<B extends Match.Branch, R>(
-		branch: B,
+	export function mapBranchChildren<R>(
+		branch: Match.Branch,
 		mapper: (child: Match.Node, id: string) => R,
 	): Record<string, R> {
 		const result: Record<string, R> = {}

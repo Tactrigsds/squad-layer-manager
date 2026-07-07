@@ -120,14 +120,14 @@ export namespace GenVote {
 		for (const [key, colKey] of V.GenVote.iterChoiceCols()) {
 			if (!choice.choiceConstraints[key]) continue
 			const constraint = choice.choiceConstraints[key]
-			nodes.push(FB.comp(FB.eq(colKey, constraint as string)))
+			nodes.push(FB.eq(colKey, constraint as string))
 		}
 
 		for (let i = 0; i < choices.length; i++) {
 			if (index === i) continue
 			const otherChoice = choices[i]
 			if (otherChoice.layerId) {
-				nodes.push(FB.comp(FB.neq('id', otherChoice.layerId)))
+				nodes.push(FB.neq('id', otherChoice.layerId))
 			}
 
 			const layer = otherChoice.layerId ? L.toLayer(otherChoice.layerId) : null
@@ -144,7 +144,7 @@ export namespace GenVote {
 						continue
 					}
 
-					nodes.push(FB.comp(FB.neq(colKey, value)))
+					nodes.push(FB.neq(colKey, value))
 				}
 			}
 		}
@@ -323,7 +323,6 @@ export function resolveLayerPropertyForRepeatDescriptorField(descriptor: RepeatM
 			return MH.getTeamNormalizedAllianceProp(teamParity, 'A')
 		case 'Alliance_B':
 			return MH.getTeamNormalizedAllianceProp(teamParity, 'B')
-			break
 		default:
 			assertNever(descriptor.field)
 	}
@@ -599,7 +598,8 @@ export const LayerTableConfigSchema = z.object({
 		z.object({ name: z.string(), visible: z.boolean().optional().describe('default true') }),
 	),
 	defaultSortBy: LayersQuerySortSchema,
-	extraLayerSelectMenuItems: z.array(F.EditableComparisonSchema).optional(),
+	// legacy comparison shapes in existing config files are upgraded to the new node shape on read
+	extraLayerSelectMenuItems: z.array(z.preprocess(F.coerceEditableCompNode, F.EditableCompNodeSchema)).optional(),
 	defaultExtraFilters: z.array(F.FilterEntityIdSchema).optional(),
 })
 

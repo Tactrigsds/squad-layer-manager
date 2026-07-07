@@ -450,7 +450,7 @@ export async function setup() {
 		.orderBy(E.desc(Schema.serverEvents.id))
 		.limit(1)
 	// driver sometimes returns strings so just to be safe
-	const nextEventId = lastEventRes.length > 0 ? Number(lastEventRes[0].id) + 1 : 0
+	const nextEventId = lastEventRes.length > 0 ? lastEventRes[0].id + 1 : 0
 	globalState.serverEventIdCounter = Gen.counter(nextEventId)
 
 	const lastSquadRes = await ctx
@@ -459,7 +459,7 @@ export async function setup() {
 		.from(Schema.squads)
 		.orderBy(E.desc(Schema.squads.id))
 		.limit(1)
-	const nextSquadId = lastSquadRes.length > 0 ? Number(lastSquadRes[0].id) + 1 : 0
+	const nextSquadId = lastSquadRes.length > 0 ? lastSquadRes[0].id + 1 : 0
 	globalState.squadIdCounter = Gen.counter(nextSquadId)
 
 	// Settings.setup() has already loaded the registry by this point (see main.ts); boot a slice for every server that should have one

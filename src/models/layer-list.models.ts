@@ -306,7 +306,7 @@ export function isChildItem(itemId: ItemId, voteItemId: ItemId, layerList: List)
 	return !!parentItem && parentItem.itemId === voteItemId
 }
 
-export function resolveParentItemIndex<T extends SparseItem>(itemId: ItemId, layerQueue: T[]): number | undefined {
+export function resolveParentItemIndex(itemId: ItemId, layerQueue: SparseItem[]): number | undefined {
 	const index = layerQueue.findIndex((layer) => (isVoteItem(layer) && layer.choices.some(l => l.itemId === itemId)))
 	if (index === -1) return undefined
 	return index
@@ -318,7 +318,7 @@ export function findParentItem<T extends SparseItem>(layerQueue: T[], itemId: It
 	return layerQueue[index] as Extract<T, { choices: any[] }>
 }
 
-export function getAllItemLayerIds<T extends SparseItem>(item: T, opts?: { excludeVoteChoices?: boolean }) {
+export function getAllItemLayerIds(item: SparseItem, opts?: { excludeVoteChoices?: boolean }) {
 	const ids = new Set<L.LayerId>()
 	if (item.layerId) {
 		ids.add(item.layerId)
@@ -382,7 +382,7 @@ export function findItemById<T extends SparseItem>(layerQueue: T[], itemId: T['i
 	}
 }
 
-export function getItemIndex<T extends SparseItem>(list: T[], itemId: ItemId): ItemIndex | undefined {
+export function getItemIndex(list: SparseItem[], itemId: ItemId): ItemIndex | undefined {
 	for (const { item, index } of iterItems(...list)) {
 		if (index.innerIndex === null) continue
 		if (item.itemId === itemId) return index
@@ -696,7 +696,7 @@ export function swapFactionsInPlace(list: List, id: ItemId, newSource?: Source):
 	return true
 }
 
-export function isLocallyLastIndex<T extends SparseItem>(itemId: ItemId, list: T[]) {
+export function isLocallyLastIndex(itemId: ItemId, list: SparseItem[]) {
 	const { index } = Obj.destrNullable(findItemById(list, itemId))
 	if (!index) return false
 	if (index.innerIndex != null) {
@@ -760,7 +760,7 @@ export function indexesEqual(a: ItemIndex, b: ItemIndex) {
 	return a.outerIndex === b.outerIndex && a.innerIndex === b.innerIndex
 }
 
-export function getLastLocalIndexForItem<T extends SparseItem>(itemId: ItemId, layerList: T[]): ItemIndex | undefined {
+export function getLastLocalIndexForItem(itemId: ItemId, layerList: SparseItem[]): ItemIndex | undefined {
 	const { index } = Obj.destrNullable(findItemById(layerList, itemId))
 	if (!index) return undefined
 	const outerItem = layerList[index.outerIndex]

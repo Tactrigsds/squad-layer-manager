@@ -151,6 +151,6 @@ export async function runTransaction<T extends C.Db, V>(
 	} finally {
 		release()
 	}
-	await Promise.all(unlockTasks.map((task) => task()))
+	await Promise.all(unlockTasks.map(async (task) => task()))
 	return res
 }
