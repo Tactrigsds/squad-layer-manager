@@ -341,6 +341,11 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 				}
 				success = true
 			} else {
+				const otherClients = MapUtils.filter(
+					state.presence,
+					(k, v) => v.userId === op.userId && k !== op.clientId && !!v.activityState,
+				)
+
 				// client ops
 				const clientState: ClientPresence = state.presence.get(op.clientId)
 					?? { userId: op.userId, away: true, connectionState: 'connected', activityState: null, lastSeen: null }
@@ -348,6 +353,11 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 				// any op from a client means its socket is live, so it's connected
 				opSwitch: switch (op.code) {
 					case 'page-interaction': {
+						// reset  all other clients for this user if they're away
+						for (const [otherClientId, otherClient] of otherClients) {
+							if (!otherClient.away && otherClient.activityState) continue
+							state.presence.set(otherClientId, { ...otherClient, away: true, activityState: null })
+						}
 						newClientState = {
 							...clientState,
 							connectionState: 'connected',
@@ -359,9 +369,18 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 					}
 
 					case 'interaction-timeout': {
+						let hasOtherActiveClient = false
+						for (const [, otherClient] of otherClients) {
+							if (!otherClient.away && otherClient.activityState) {
+								hasOtherActiveClient = true
+								break
+							}
+						}
 						newClientState = {
 							...clientState,
 							connectionState: 'connected',
+							// if there are other active clients, disappear instead of simply going to "away"
+							activityState: hasOtherActiveClient ? null : clientState.activityState,
 							away: true,
 						}
 						success = true
