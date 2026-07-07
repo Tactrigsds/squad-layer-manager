@@ -48,7 +48,7 @@ export const groups = {
 	httpServer: {
 		PORT: ParsedIntSchema.default(3000),
 		HOST: z.string().prefault('127.0.0.1'),
-		ORIGIN: NormedUrl.default('https://localhost:5173'),
+		ORIGIN: NormedUrl.default('http://localhost:5173'),
 	},
 
 	squadLogsReceiver: {

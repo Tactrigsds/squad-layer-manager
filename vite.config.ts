@@ -1,7 +1,6 @@
 import babel from '@rolldown/plugin-babel'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import react, { reactCompilerPreset } from '@vitejs/plugin-react'
-import fs from 'node:fs'
 import path from 'node:path'
 import type { CommonServerOptions, UserConfig } from 'vite'
 import { defineConfig } from 'vite'
@@ -118,10 +117,6 @@ function buildDevServerConfig(): UserConfig['server'] {
 	}
 	return {
 		proxy,
-		https: {
-			key: fs.readFileSync(path.resolve('.', 'certs/localhost-key.pem')),
-			cert: fs.readFileSync(path.join('.', 'certs/localhost.pem')),
-		},
 		headers: {
 			// required for sqlocal
 			'Cross-Origin-Embedder-Policy': 'credentialless',
