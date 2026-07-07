@@ -55,6 +55,9 @@ export const GlobalSettingsSchema = z.object({
 	squadServer: z.object({
 		sftpPollInterval: HumanTime.prefault('1s'),
 		sftpReconnectInterval: HumanTime.prefault('5s'),
+		sftpMaxReconnectAttempts: z.int().min(1).prefault(10).describe(
+			'How many consecutive SFTP failures to tolerate (reconnecting between each) before tearing down the server slice',
+		),
 	}).prefault({}),
 	steamLinkCodeExpiry: HumanTime.prefault('15m').describe('Duration of a steam account link code'),
 	balanceTriggerLevels: z.partialRecord(BAL.TRIGGER_IDS, BAL.TRIGGER_LEVEL)

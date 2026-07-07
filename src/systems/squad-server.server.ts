@@ -696,9 +696,12 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 				password: settings.connections!.logs.password,
 				pollInterval: Settings.GLOBAL_SETTINGS.squadServer.sftpPollInterval,
 				reconnectInterval: Settings.GLOBAL_SETTINGS.squadServer.sftpReconnectInterval,
+				maxReconnectAttempts: Settings.GLOBAL_SETTINGS.squadServer.sftpMaxReconnectAttempts,
+				// reconnection attempts exhausted: tear the slice down rather than letting the error crash the process
+				onFatalError: onResourceFatalError,
 				parentModule: module,
 			})
-			cleanup.push(() => sftpReader.disconnect())
+			cleanup.push(() => sftpReader.unwatch())
 			sftpReader.watch()
 
 			chunk$ = Rx.fromEvent(sftpReader, 'chunk').pipe(

@@ -16,6 +16,12 @@ export type SftpTailOptions = {
 	filePath: string
 	pollInterval: number
 	reconnectInterval: number
+	// how many consecutive failures (each followed by a reconnect attempt) to tolerate before giving up
+	maxReconnectAttempts: number
+	// invoked when reconnection attempts are exhausted. the fetch loop stops itself before this fires, so the
+	// handler is responsible for tearing down whatever owns this tail. we deliberately do NOT emit an 'error'
+	// event for this: an EventEmitter 'error' with no listener crashes the process.
+	onFatalError: (err: unknown) => void | Promise<void>
 
 	parentModule: OtelModule
 }
@@ -33,12 +39,14 @@ type FullSftpTailOptions = {
 	}
 	fetchInterval: number
 	reconnectInterval: number
+	maxReconnectAttempts: number
+	onFatalError: (err: unknown) => void | Promise<void>
 	tailLastBytes: number
 }
 
 export class SftpTail extends EventEmitter {
 	private options: FullSftpTailOptions
-	private client: Client
+	private client: Client | null = null
 	private sftp: SFTPWrapper | null = null
 	private filePath: string | null = null
 	private lastByteReceived: number | null = null
@@ -46,6 +54,7 @@ export class SftpTail extends EventEmitter {
 	private fetchLoopPromise: Promise<void> | null = null
 	private tmpFilePath: string | null = null
 	private isConnected = false
+	private consecutiveFailures = 0
 	private log: CS.Logger
 
 	constructor(
@@ -59,10 +68,10 @@ export class SftpTail extends EventEmitter {
 			fetchInterval: options.pollInterval,
 			tailLastBytes: 0,
 			reconnectInterval: options.reconnectInterval,
+			maxReconnectAttempts: options.maxReconnectAttempts,
+			onFatalError: options.onFatalError,
 		}
 
-		// Setup ssh2 client
-		this.client = new Client({ captureRejections: true })
 		this.filePath = options.filePath
 		this.lastByteReceived = null
 		this.fetchLoopActive = false
@@ -93,18 +102,13 @@ export class SftpTail extends EventEmitter {
 		this.fetchLoopActive = false
 		await this.fetchLoopPromise
 	}
+
 	async _tryRead() {
 		// Store the start time of the loop.
 		const fetchStartTime = Date.now()
-		// C.setSpanOpAttrs({'
 
-		try {
-			await this.connect()
-		} catch (err) {
-			this.log.error(err, 'Failed to connect to SFTP server: %s', (err as any)?.message)
-			await this.sleep(this.options.reconnectInterval)
-			return
-		}
+		// Connection failures are handled by the fetch loop's retry/reconnect logic, so let them propagate.
+		await this.connect()
 
 		// Get the size of the file on the SFTP server.
 		this.log.trace('Fetching size of file...')
@@ -159,8 +163,40 @@ export class SftpTail extends EventEmitter {
 		while (this.fetchLoopActive) {
 			try {
 				await this._tryRead()
+				this.consecutiveFailures = 0
 			} catch (err) {
-				this.emit('error', err)
+				this.consecutiveFailures++
+				// tear down the dead connection so the next iteration reconnects from scratch
+				this.resetClient()
+
+				if (this.consecutiveFailures >= this.options.maxReconnectAttempts) {
+					this.log.error(
+						err,
+						'SFTP tail failed %d times consecutively, giving up.',
+						this.consecutiveFailures,
+					)
+					this.fetchLoopActive = false
+					// hand off to the owner to tear things down. we can't await it: the owner's teardown typically
+					// calls unwatch(), which awaits this very loop. fire-and-forget, and guard against a throwing or
+					// rejecting handler so we don't resurrect the very crash we're trying to prevent.
+					try {
+						void Promise.resolve(this.options.onFatalError(err)).catch((handlerErr) => {
+							this.log.error(handlerErr, 'SFTP tail onFatalError handler rejected.')
+						})
+					} catch (handlerErr) {
+						this.log.error(handlerErr, 'SFTP tail onFatalError handler threw.')
+					}
+					break
+				}
+
+				this.log.warn(
+					err,
+					'SFTP tail error (attempt %d/%d), reconnecting in %d ms...',
+					this.consecutiveFailures,
+					this.options.maxReconnectAttempts,
+					this.options.reconnectInterval,
+				)
+				await this.sleep(this.options.reconnectInterval)
 			}
 		}
 
@@ -173,89 +209,152 @@ export class SftpTail extends EventEmitter {
 	}
 
 	async connect() {
-		if (this.isConnected) return
+		if (this.isConnected && this.client && this.sftp) return
+
+		// clear out any half-open state from a previous attempt before starting a fresh one
+		this.resetClient()
 
 		this.log.info('Connecting to SFTP server...')
 
-		return new Promise<void>((resolve, reject) => {
-			this.client.on('ready', () => {
-				this.client.sftp((err, sftp) => {
-					if (err) {
-						reject(err)
-						return
-					}
+		const client = new Client({ captureRejections: true })
+		this.client = client
 
-					this.sftp = sftp
-					this.isConnected = true
-					this.emit('connected')
-					this.log.info('Connected to SFTP server.')
-					resolve()
+		try {
+			await new Promise<void>((resolve, reject) => {
+				const onConnectError = (err: Error) => reject(err)
+				client.once('error', onConnectError)
+				client.once('ready', () => {
+					client.sftp((err, sftp) => {
+						if (err) {
+							reject(err)
+							return
+						}
+						// swap the connect-phase error handler for a persistent one: a socket error after we're
+						// connected drops the channel, so reset our state and let the fetch loop reconnect.
+						client.removeListener('error', onConnectError)
+						client.on('error', (e) => {
+							this.log.warn(e, 'SFTP connection error, will reconnect.')
+							this.resetClient()
+						})
+						this.sftp = sftp
+						this.isConnected = true
+						resolve()
+					})
+				})
+
+				client.connect({
+					host: this.options.ftp.host,
+					port: this.options.ftp.port,
+					username: this.options.ftp.username,
+					password: this.options.ftp.password,
+					readyTimeout: this.options.ftp.timeout,
 				})
 			})
+		} catch (err) {
+			this.resetClient()
+			throw err
+		}
 
-			this.client.on('error', (err) => {
-				this.isConnected = false
-				reject(err)
-			})
+		this.emit('connected')
+		this.log.info('Connected to SFTP server.')
+	}
 
-			this.client.connect({
-				host: this.options.ftp.host,
-				port: this.options.ftp.port,
-				username: this.options.ftp.username,
-				password: this.options.ftp.password,
-				readyTimeout: this.options.ftp.timeout,
-			})
-		})
+	// tears down the underlying ssh2 client and clears connection state without emitting a 'disconnect' event.
+	// safe to call repeatedly and when already disconnected.
+	private resetClient() {
+		const client = this.client
+		this.client = null
+		this.sftp = null
+		this.isConnected = false
+		if (client) {
+			client.removeAllListeners()
+			// keep a no-op 'error' listener so a late socket error emitted during teardown doesn't become an
+			// unhandled 'error' event and crash the process.
+			client.on('error', () => {})
+			try {
+				client.end()
+			} catch {
+				// client may already be torn down; nothing to do
+			}
+		}
 	}
 
 	async disconnect() {
-		if (!this.isConnected) return
+		if (!this.isConnected && !this.client) return
 
 		this.log.info('Disconnecting from SFTP server...')
-		this.client.end()
-		this.isConnected = false
+		this.resetClient()
 		this.emit('disconnect')
 		this.log.info('Disconnected from SFTP server.')
 	}
 
 	async getFileStats(remotePath: string): Promise<fs.Stats> {
-		return new Promise((resolve, reject) => {
-			if (!this.sftp) {
-				return reject(new Error('SFTP not connected'))
-			}
-
-			this.sftp.stat(remotePath, (err, stats) => {
-				if (err) {
-					reject(err)
-				} else {
-					resolve(stats as unknown as fs.Stats)
-				}
-			})
-		})
+		const sftp = this.sftp
+		if (!sftp) throw new Error('SFTP not connected')
+		return this.withTimeout(
+			'stat',
+			new Promise<fs.Stats>((resolve, reject) => {
+				sftp.stat(remotePath, (err, stats) => {
+					if (err) {
+						reject(err)
+					} else {
+						resolve(stats as unknown as fs.Stats)
+					}
+				})
+			}),
+		)
 	}
 
 	async downloadToFile(localPath: string, remotePath: string, startPosition: number): Promise<void> {
+		const sftp = this.sftp
+		if (!sftp) throw new Error('SFTP not connected')
+
 		return new Promise((resolve, reject) => {
-			if (!this.sftp) {
-				return reject(new Error('SFTP not connected'))
+			const writeStream = fs.createWriteStream(localPath, { flags: 'w' })
+			const readStream = sftp.createReadStream(remotePath, { start: startPosition })
+
+			let settled = false
+			const finish = (err?: Error) => {
+				if (settled) return
+				settled = true
+				clearTimeout(timer)
+				if (err) {
+					readStream.destroy()
+					writeStream.destroy()
+					reject(err)
+				} else {
+					resolve()
+				}
 			}
 
-			const writeStream = fs.createWriteStream(localPath, { flags: 'w' })
+			// a hung transfer would otherwise block the fetch loop until the channel closes ("No response from
+			// server"); bound it so we can reconnect instead.
+			const timer = setTimeout(
+				() => finish(new Error(`SFTP download timed out after ${this.options.ftp.timeout} ms`)),
+				this.options.ftp.timeout,
+			)
 
-			this.sftp.createReadStream(remotePath, { start: startPosition })
-				.on('error', (err: any) => {
-					writeStream.close()
-					reject(err)
-				})
-				.pipe(writeStream)
-				.on('error', (err) => {
-					writeStream.close()
-					reject(err)
-				})
-				.on('finish', () => {
-					resolve()
-				})
+			readStream.on('error', (err: Error) => finish(err))
+			writeStream.on('error', (err) => finish(err))
+			writeStream.on('finish', () => finish())
+			readStream.pipe(writeStream)
 		})
+	}
+
+	// bounds a pending SFTP operation so a hung request rejects instead of hanging until the channel closes.
+	private async withTimeout<T>(op: string, p: Promise<T>): Promise<T> {
+		let timer: NodeJS.Timeout | undefined
+		const timeout = new Promise<never>((_, reject) => {
+			timer = setTimeout(
+				() => reject(new Error(`SFTP operation "${op}" timed out after ${this.options.ftp.timeout} ms`)),
+				this.options.ftp.timeout,
+			)
+		})
+		try {
+			return await Promise.race([p, timeout])
+		} finally {
+			if (timer) clearTimeout(timer)
+		}
 	}
 
 	async sleep(ms: number) {
