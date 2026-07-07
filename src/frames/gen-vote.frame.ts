@@ -113,6 +113,9 @@ const setup: Frame['setup'] = (args) => {
 		} satisfies Primary,
 	)
 
+	// the applied-filters partial reads squadServer from state to seed the pool's configured filters; without
+	// this its predicate is unset and pool filters never apply in the gen-vote dialog
+	set({ squadServer: args.input.server } satisfies AppliedFiltersPrt.Predicates)
 	AppliedFiltersPrt.initAppliedFiltersStore({ ...args, input: { poolDefaultDisabled: false } })
 	PoolCheckboxesPrt.initNewPoolCheckboxes({ ...args, input: { defaultState: { dnr: 'inverted' } } })
 }

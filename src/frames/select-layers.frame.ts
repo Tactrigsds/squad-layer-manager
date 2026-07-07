@@ -104,6 +104,10 @@ const setup: Frame['setup'] = (args) => {
 		} satisfies Primary,
 	)
 
+	// the applied-filters partial reads squadServer from state to seed the pool's configured filters; without
+	// this its predicate is unset and pool filters never apply in the select-layers dialog
+	set({ squadServer: input.squadServer } satisfies AppliedFiltersPrt.Predicates)
+
 	set(
 		{
 			baseQueryInput: undefined,
