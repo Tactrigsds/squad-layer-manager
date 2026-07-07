@@ -27,6 +27,15 @@ const CHANNEL_STYLES = {
 	Broadcast: { color: 'rgb(234, 179, 8)', gradientColor: 'rgba(234, 179, 8, 0.1)' }, // yellow-500
 } as const
 
+// warns render like chat messages, keyed by who was targeted. `admins` mirrors ChatAdmin (just a different channel
+// name); `single`/`selection` inherit WarnChatBox's warm warn accent, split into two tones so a warn aimed at one
+// player reads distinctly from a bulk warn against a whole selection.
+const WARN_CHANNEL_STYLES = {
+	admins: CHANNEL_STYLES.ChatAdmin,
+	single: { color: 'rgb(251, 146, 60)', gradientColor: 'rgba(251, 146, 60, 0.1)' }, // orange-400, WarnChatBox targeted-warn accent
+	selection: { color: 'rgb(245, 158, 11)', gradientColor: 'rgba(245, 158, 11, 0.1)' }, // amber-500, a bulk/group warn
+} as const
+
 function ChatMessageEvent(
 	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'CHAT_MESSAGE' | 'ADMIN_BROADCAST' }>; stores: SquadServerFrame.KeyProp },
 ) {
@@ -583,23 +592,80 @@ function AppEventEntry(
 		)
 	}
 
-	// PLAYER_WARNED / PLAYER_REMOVED_FROM_SQUAD / TEAM_CHANGE_FORCED / PLAYER_KILLED: "{actor} {verb} {targets}{suffix}"
+	// warns render message-style (colored channel + border + gradient) like a chat message, with the channel
+	// naming who was warned rather than a chat scope
+	if (appEvent.type === 'PLAYER_WARNED') {
+		const warnCount = appEvent.targets.length
+		const summary = event.warnSummary
+		const single = summary.type === 'players' && warnCount === 1 && matchId !== null && event.targetPlayers.length === 1
+		const styleKey = summary.type === 'all-admins' ? 'admins' : single ? 'single' : 'selection'
+		const style = WARN_CHANNEL_STYLES[styleKey]
+
+		const channel: React.ReactNode = single
+			? (
+				<span
+					className="inline-flex items-baseline gap-1 flex-nowrap whitespace-nowrap"
+					style={{ color: style.color }}
+				>
+					(warning <PlayerDisplay showTeam player={event.targetPlayers[0]} matchId={matchId!} stores={stores} />)
+				</span>
+			)
+			: (
+				<span style={{ color: style.color }} title="the players this warning was sent to">
+					({(() => {
+						if (summary.type === 'all-admins') return 'warning admins'
+						const descriptor = warnSummaryDescriptor(summary)
+						if (!descriptor) return `warning ${warnCount} ${warnCount === 1 ? 'player' : 'players'}`
+						return warnCount > 1 ? `warning ${descriptor} (${warnCount} players)` : `warning ${descriptor}`
+					})()})
+				</span>
+			)
+
+		const header = (
+			<>
+				<EventTime time={event.time} />
+				<div className="grow min-w-0">
+					<span className="inline-block whitespace-nowrap">
+						{channel} {actorLabel}
+					</span>
+					: "<span className="wrap-break-word">{appEvent.message}</span>"
+				</div>
+			</>
+		)
+
+		const containerStyle = {
+			borderRightColor: style.color,
+			backgroundImage: `linear-gradient(to left, ${style.gradientColor}, transparent)`,
+		}
+		// a single/named-target warn is a flat line; a bulk warn keeps an expandable list of everyone warned
+		if (single || !targetList) {
+			return (
+				<div
+					className="flex gap-2 py-1 text-xs w-full min-w-0 border-r-2 bg-linear-to-l to-transparent items-baseline"
+					style={containerStyle}
+				>
+					{header}
+				</div>
+			)
+		}
+		return (
+			<details className="py-1 text-xs w-full min-w-0 border-r-2 bg-linear-to-l to-transparent" style={containerStyle}>
+				<summary className="flex gap-2 items-baseline cursor-pointer">
+					{header}
+				</summary>
+				{targetList}
+			</details>
+		)
+	}
+
+	// PLAYER_REMOVED_FROM_SQUAD / TEAM_CHANGE_FORCED / PLAYER_KILLED: "{actor} {verb} {targets}{suffix}"
 	const count = appEvent.targets.length
 	const plural = count === 1 ? 'player' : 'players'
 	let verb: string
 	let icon: React.ReactNode
 	let suffix: React.ReactNode
 	let descriptor: string | null
-	if (appEvent.type === 'PLAYER_WARNED') {
-		verb = 'warned'
-		icon = <Icons.AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
-		suffix = (
-			<>
-				: "<span className="wrap-break-word">{appEvent.message}</span>"
-			</>
-		)
-		descriptor = warnSummaryDescriptor(event.warnSummary)
-	} else if (appEvent.type === 'PLAYER_REMOVED_FROM_SQUAD') {
+	if (appEvent.type === 'PLAYER_REMOVED_FROM_SQUAD') {
 		verb = 'removed'
 		icon = <Icons.UserMinus className="h-4 w-4 text-orange-500 shrink-0" />
 		suffix = ' from their squad'
