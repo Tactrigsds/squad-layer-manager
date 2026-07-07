@@ -1,5 +1,6 @@
+import babel from '@rolldown/plugin-babel'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
-import react from '@vitejs/plugin-react'
+import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { CommonServerOptions, UserConfig } from 'vite'
@@ -20,11 +21,8 @@ export default defineConfig({
 		ViteEjsPlugin({
 			NODE_ENV: ENV.NODE_ENV,
 		}),
-		react({
-			babel: {
-				plugins: ['babel-plugin-react-compiler'],
-			},
-		}),
+		react(),
+		babel({ presets: [reactCompilerPreset()] }),
 		{
 			name: 'html-proxy-middleware',
 			configureServer(server) {

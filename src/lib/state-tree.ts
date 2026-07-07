@@ -377,7 +377,7 @@ export namespace Match {
 		return node._tag === 'variant'
 	}
 
-	export function isBranch<N extends Match.Node>(node: N): node is Extract<N, Tagged<'branch'>> {
+	export function isBranch<N extends Match.Node>(node: N): node is N & Match.Branch {
 		return node._tag === 'branch'
 	}
 

@@ -108,14 +108,14 @@ function queryCacheKey(name: string, ctx: CS.LayerQuery, input: object) {
 	return `${simpleHash(str)}:${str.length}`
 }
 
-function getCachedQueryResult(ctx: CS.Filters, key: string): unknown {
+function getCachedQueryResult<T>(ctx: CS.Filters, key: string): T | undefined {
 	const entry = queryResultCache.get(key)
 	if (!entry) return undefined
 	if (relevantFilterEntitiesChanged(ctx, entry.filterEntities)) {
 		queryResultCache.delete(key)
 		return undefined
 	}
-	return entry.value as unknown
+	return entry.value as T
 }
 
 function setCachedQueryResult(ctx: CS.Filters, key: string, value: unknown, constraints: LQY.Constraint[] | undefined) {

@@ -285,8 +285,8 @@ export function useOutletBaseZIndex() {
 	return isNaN(parsed) ? 0 : parsed + 1
 }
 
-export function buildUseOpenWindow(id: string) {
-	return (props: unknown) => {
+export function buildUseOpenWindow<Props = unknown>(id: string) {
+	return (props: Props) => {
 		const store = Zus.useStore(DraggableWindowStore)
 		const outletKey = useOutletKey()
 		return (anchor?: HTMLElement | null) => store.openWindow(id, props, anchor, outletKey)
