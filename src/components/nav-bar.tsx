@@ -107,8 +107,10 @@ export default function NavBar() {
 			)}
 			{wsStatus === 'closed' && (
 				<DropdownMenuItem disabled className="md:hidden text-destructive text-sm">
-					<Icons.WifiOff className="mr-2 h-4 w-4" />
-					Websocket Disconnected
+					<span className="flex space-x-2 items-center">
+						<Spinner className="h-4 w-4" />
+						<AlertTitle className="text-xs font-medium">Disconnected from server</AlertTitle>
+					</span>
 				</DropdownMenuItem>
 			)}
 			<DropdownMenuSub>
@@ -224,11 +226,15 @@ export default function NavBar() {
 					</div>
 				)}
 
-				{wsStatus === 'closed' && (
-					<Alert variant="destructive" className="hidden w-max md:flex items-center space-x-2 py-1 px-2">
-						<AlertTitle className="text-xs font-medium">WebSocket Disconnected</AlertTitle>
-					</Alert>
-				)}
+				{wsStatus === 'closed'
+					|| (
+						<Alert variant="destructive" className="hidden md:flex space-x-2 py-1 px-2">
+							<span className="flex space-x-2 items-center">
+								<Spinner className="h-4 w-4" />
+								<AlertTitle className="text-xs font-medium">Disconnected from server</AlertTitle>
+							</span>
+						</Alert>
+					)}
 				{(wsStatus === 'reconnecting' || wsStatus === 'pending') && (
 					<div title="Connecting to server...">
 						<Spinner />
