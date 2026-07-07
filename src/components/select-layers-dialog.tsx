@@ -3,6 +3,7 @@ import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogDescription, Headl
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
 import { useFrameLifecycle } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
+import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react.ts'
 import * as ZusUtils from '@/lib/zustand'
@@ -29,7 +30,7 @@ type SelectLayersDialogProps = {
 	pinMode?: SelectMode
 	selectQueueItems?: (queueItems: LL.NewItem[]) => void
 	defaultSelected?: L.LayerId[]
-	stores?: Partial<SelectLayersFrame.KeyProp>
+	stores?: Partial<SelectLayersFrame.KeyProp & SquadServerFrame.KeyProp>
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
 	footerAdditions?: React.ReactNode
@@ -43,7 +44,7 @@ type SelectLayersDialogContentProps = {
 	pinMode?: SelectMode
 	selectQueueItems?: (queueItems: LL.NewItem[]) => void
 	defaultSelected: L.LayerId[]
-	stores?: Partial<SelectLayersFrame.KeyProp>
+	stores?: Partial<SelectLayersFrame.KeyProp & SquadServerFrame.KeyProp>
 	footerAdditions?: React.ReactNode
 	cursor?: LL.Cursor
 	onClose: () => void
@@ -146,11 +147,7 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 					{props.description && <HeadlessDialogDescription>{props.description}</HeadlessDialogDescription>}
 				</div>
 				<div className="flex justify-end items-center space-x-2">
-					{
-						/* FIXME stage4: AppliedFiltersPanel's stores type also requires a squadServer key (see applied-filters-panel.tsx),
-					   which isn't available in this select-layers-only context. Left as-is (pre-existing before this migration pass). */
-					}
-					<AppliedFiltersPanel stores={{ appliedFilters: frameKey }} />
+					<AppliedFiltersPanel stores={{ appliedFilters: frameKey, squadServer: props.stores?.squadServer }} />
 				</div>
 			</HeadlessDialogHeader>
 
