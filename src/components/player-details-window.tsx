@@ -17,7 +17,7 @@ import * as RPC from '@/orpc.client'
 import { sortFlagsByHierarchy, useOrgFlags } from '@/systems/battlemetrics.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -50,6 +50,7 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 		const serverId = props.stores.squadServer.serverId
 		await Promise.all([
 			RPC.queryClient.fetchQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { serverId, playerId: props.playerId } })),
+			RPC.queryClient.fetchInfiniteQuery(playerEventsInfiniteOptions(serverId, props.playerId)),
 			RPC.queryClient.fetchQuery(
 				RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId: props.playerId }, staleTime: Infinity }),
 			),
@@ -60,9 +61,10 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	const squadServerFrameKey = stores.squadServer
 	const serverId = squadServerFrameKey.serverId
-	const { data, isPending: isDetailsPending } = useQuery(
+	const { data } = useQuery(
 		RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { serverId, playerId } }),
 	)
+	const eventsQuery = useInfiniteQuery(playerEventsInfiniteOptions(serverId, playerId))
 	const { data: bmData } = useQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId }, staleTime: Infinity }))
 	const orgFlags = useOrgFlags()
 	const rawFlags = bmData && orgFlags ? BM.resolveFlags(bmData.flagIds, orgFlags) : null
@@ -73,16 +75,17 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	const currentMatchEvents = ZusUtils.useStore(
 		squadServerFrameKey,
 		ZusUtils.useShallow(s =>
-			ChatPrt.Sel.chatEvents(s).filter(e =>
-				currentMatch && e.matchId === currentMatch?.historyEntryId && (CHAT.hasAssocPlayer(e, playerId))
-			)
+			currentMatch
+				? ChatPrt.Sel.chatEvents(s).filter(e =>
+					e.matchId === currentMatch.historyEntryId && (e.type === 'NEW_GAME' || CHAT.hasAssocPlayer(e, playerId))
+				)
+				: []
 		),
 	)
 
-	const allEvents = [
-		...(data?.events ?? []),
-		...(currentMatchEvents.some(e => CHAT.hasAssocPlayer(e, playerId)) ? currentMatchEvents : []),
-	]
+	// pages arrive most-recent-match first; reverse to interleave chronologically ahead of the live current-match events
+	const historicalEvents = (eventsQuery.data?.pages ?? []).slice().reverse().flatMap(p => p.events)
+	const allEvents = [...historicalEvents, ...currentMatchEvents]
 	const livePlayer = ZusUtils.useStore(
 		squadServerFrameKey,
 		(s) => ChatPrt.Sel.chatState(s).players.find((p) => p.ids.steam === playerId) ?? null,
@@ -94,8 +97,8 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	const isOnline = !!ZusUtils.useStore(squadServerFrameKey, ChatPrt.Sel.player(playerId))
 	const globalFilterState = ZusUtils.useStore(squadServerFrameKey, ChatPrt.Sel.secondaryFilterState)
 	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>(globalFilterState)
-	const filteredEvents = allEvents.filter(e => !CHAT.isEventFilteredBySecondary(e, filterState))
-	const { scrollAreaRef, contentRef, bottomRef, showScrollButton, scrollToBottom } = useTailingScroll()
+	const filteredEvents = allEvents.filter(e => CHAT.isRenderableInFeed(e) && !CHAT.isEventFilteredBySecondary(e, filterState))
+	const { scrollAreaRef, contentRef, bottomRef, showScrollButton, isAtTop, scrollToBottom, anchorForPrepend } = useTailingScroll()
 	const { setIsPinned, zIndex } = useDraggableWindow()
 
 	return (
@@ -203,22 +206,35 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 				<div className="relative">
 					<ScrollArea ref={scrollAreaRef} className="h-75">
 						<div ref={contentRef} className="flex flex-col gap-0.5 min-h-0 w-full max-w-175">
-							{isDetailsPending && filteredEvents.length === 0 && (
+							{eventsQuery.isPending && filteredEvents.length === 0 && (
 								<div className="flex items-center justify-center py-6">
 									<Spinner className="size-5" />
 								</div>
 							)}
-							{groupEventsByDate(filteredEvents).map(([dateKey, events]) => (
-								<div key={dateKey}>
-									<div className="sticky top-0 z-10 bg-background/90 backdrop-blur-sm px-2 py-0.5 text-[10px] text-muted-foreground font-medium border-b border-border/50">
-										{formatDateLabel(dateKey)}
-									</div>
-									{events.map(e => <ServerEvent key={e.id} event={e} stores={stores} />)}
-								</div>
+							{filteredEvents.map((e, i) => (
+								<React.Fragment key={e.id}>
+									<EventSeparator time={e.time} prevTime={i > 0 ? filteredEvents[i - 1].time : null} />
+									<ServerEvent event={e} stores={stores} />
+								</React.Fragment>
 							))}
 						</div>
 						<div ref={bottomRef} />
 					</ScrollArea>
+					{eventsQuery.hasNextPage && isAtTop && (
+						<Button
+							onClick={() => {
+								anchorForPrepend()
+								void eventsQuery.fetchNextPage()
+							}}
+							disabled={eventsQuery.isFetchingNextPage}
+							variant="secondary"
+							className="absolute top-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center z-10 bg-opacity-20! rounded-none backdrop-blur-sm"
+							title="Load older events"
+						>
+							{eventsQuery.isFetchingNextPage ? <Spinner className="h-3 w-3" /> : <Icons.ChevronUp className="h-3 w-3" />}
+							<span className="text-xs">Load older events</span>
+						</Button>
+					)}
 					{showScrollButton && (
 						<Button
 							onClick={() => scrollToBottom()}
@@ -306,25 +322,65 @@ function useElapsed(since: number | null): string | null {
 	return dateFns.formatDistanceToNow(since)
 }
 
-function groupEventsByDate(events: CHAT.EventEnriched[]): [string, CHAT.EventEnriched[]][] {
-	const groups = new Map<string, CHAT.EventEnriched[]>()
-	for (const event of events) {
-		const key = dateFns.format(event.time, 'yyyy-MM-dd')
-		let group = groups.get(key)
-		if (!group) {
-			group = []
-			groups.set(key, group)
-		}
-		group.push(event)
-	}
-	return Array.from(groups.entries())
+// events span many matches over potentially days, so rather than a raw timeline we punctuate it: a full
+// date+time header before the first event, a date line whenever we cross a day boundary, and a "picked up N later"
+// marker for any gap larger than this threshold within the same day.
+const TIME_JUMP_THRESHOLD_MS = 15 * 60 * 1000
+
+function playerEventsInfiniteOptions(serverId: string, playerId: string) {
+	return RPC.orpc.matchHistory.getPlayerEvents.infiniteOptions({
+		input: (cursor: number | undefined) => ({ serverId, playerId, cursor }),
+		initialPageParam: undefined as number | undefined,
+		getNextPageParam: (lastPage) => lastPage.nextCursor,
+	})
 }
 
-function formatDateLabel(dateKey: string): string {
-	const date = dateFns.parseISO(dateKey)
-	if (dateFns.isToday(date)) return 'Today'
-	if (dateFns.isYesterday(date)) return 'Yesterday'
-	return dateFns.format(date, 'EEE, MMM d')
+function formatDateLabel(time: number): string {
+	if (dateFns.isToday(time)) return 'Today'
+	if (dateFns.isYesterday(time)) return 'Yesterday'
+	return dateFns.format(time, 'EEEE, MMMM d')
+}
+
+function formatGap(ms: number): string {
+	const mins = Math.round(ms / 60_000)
+	if (mins < 60) return `${mins}m`
+	const hours = Math.floor(mins / 60)
+	if (hours < 24) {
+		const remMins = mins % 60
+		return remMins ? `${hours}h ${remMins}m` : `${hours}h`
+	}
+	const days = Math.floor(hours / 24)
+	const remHours = hours % 24
+	return remHours ? `${days}d ${remHours}h` : `${days}d`
+}
+
+function EventSeparator({ time, prevTime }: { time: number; prevTime: number | null }) {
+	if (prevTime === null) {
+		return (
+			<div className="flex flex-col items-center py-1 text-[10px] text-muted-foreground font-medium leading-tight">
+				<span>{dateFns.format(time, 'EEEE, MMMM d, yyyy')}</span>
+				<span className="font-mono">{dateFns.format(time, 'h:mm:ss a')}</span>
+			</div>
+		)
+	}
+	if (!dateFns.isSameDay(time, prevTime)) {
+		return (
+			<div className="flex items-center gap-2 px-2 py-1 text-[10px] text-muted-foreground font-medium">
+				<div className="flex-1 h-px bg-border/50" />
+				<span>{formatDateLabel(time)}</span>
+				<div className="flex-1 h-px bg-border/50" />
+			</div>
+		)
+	}
+	if (time - prevTime > TIME_JUMP_THRESHOLD_MS) {
+		return (
+			<div className="flex items-center justify-center gap-1 px-2 py-0.5 text-[10px] text-muted-foreground italic">
+				<Icons.ChevronsDown className="h-3 w-3 shrink-0" />
+				<span>{formatGap(time - prevTime)} later, resuming {dateFns.format(time, 'h:mm a')}</span>
+			</div>
+		)
+	}
+	return null
 }
 
 interface PlayerFlagsListProps {

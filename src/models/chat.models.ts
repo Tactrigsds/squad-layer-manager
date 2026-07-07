@@ -748,6 +748,16 @@ export function isEventFilteredBySecondary(event: EventEnriched, filterState: Se
 	return false
 }
 
+// event types the feed renderer (ServerEvent) always renders as nothing. Callers that inject separators/markers
+// between events (e.g. the player details window) must drop these first, else an invisible event still produces a
+// leading separator, showing up as an empty gap or two markers in a row.
+export function isRenderableInFeed(event: EventEnriched): boolean {
+	return event.type !== 'RESET'
+		&& event.type !== 'PLAYER_DETAILS_CHANGED'
+		&& event.type !== 'TEAMS_POLLED_UPDATE'
+		&& event.type !== 'NOOP'
+}
+
 export function* iterAssocPlayers(event: EventEnriched, playerId?: SM.PlayerId) {
 	if (event.type === 'NOOP') return
 	if (event.type === 'WARNS_AGGREGATED') {
