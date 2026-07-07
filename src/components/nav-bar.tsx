@@ -226,15 +226,14 @@ export default function NavBar() {
 					</div>
 				)}
 
-				{wsStatus === 'closed'
-					|| (
-						<Alert variant="destructive" className="hidden md:flex space-x-2 py-1 px-2">
-							<span className="flex space-x-2 items-center">
-								<Spinner className="h-4 w-4" />
-								<AlertTitle className="text-xs font-medium">Disconnected from server</AlertTitle>
-							</span>
-						</Alert>
-					)}
+				{wsStatus === 'closed' && (
+					<Alert variant="destructive" className="hidden md:flex space-x-2 py-1 px-2">
+						<span className="flex space-x-2 items-center">
+							<Spinner className="h-4 w-4" />
+							<AlertTitle className="text-xs font-medium">Disconnected from server</AlertTitle>
+						</span>
+					</Alert>
+				)}
 				{(wsStatus === 'reconnecting' || wsStatus === 'pending') && (
 					<div title="Connecting to server...">
 						<Spinner />
