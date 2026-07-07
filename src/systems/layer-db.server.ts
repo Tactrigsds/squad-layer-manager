@@ -9,7 +9,6 @@ import crypto from 'crypto'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import Mustache from 'mustache'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { promisify } from 'node:util'
@@ -39,8 +38,6 @@ export let driver!: Database
 // populated once this settles, so callers must await it before touching the layer db.
 export let ready!: Promise<void>
 let dbPath!: string
-// path to the decompressed temp copy opened in read mode for a gzipped source; removed on shutdown
-let tempDbPath: string | null = null
 
 let mode!: 'populate' | 'read'
 
@@ -85,11 +82,13 @@ export function setup(_opts?: { skipHash?: boolean; mode?: 'populate' | 'read'; 
 	ENV = envBuilder()
 	setupExtraColsConfig()
 	;[dbPath, layersVersion] = opts.dbPath ? [opts.dbPath, 'unknown'] : getVersionTemplatedPath(ENV.LAYERS_DB_PATH)
-	ready = load(opts)
+	// abort the setup I/O (decompression, hashing) if the process starts shutting down mid-startup
+	const ctx: CS.AbortSignal = { signal: CleanupSys.shutdownSignal }
+	ready = load(ctx, opts)
 	return ready
 }
 
-async function load(opts: { skipHash?: boolean; mode?: 'populate' | 'read'; logging?: boolean }) {
+async function load(ctx: CS.AbortSignal, opts: { skipHash?: boolean; mode?: 'populate' | 'read'; logging?: boolean }) {
 	if (opts.mode === 'populate') {
 		// populate mutates the db and then backs it up, so it needs a writable, in-memory
 		// deserialized database. Memory isn't a concern for the one-off preprocess script.
@@ -101,25 +100,23 @@ async function load(opts: { skipHash?: boolean; mode?: 'populate' | 'read'; logg
 		driver.pragma('journal_mode = WAL')
 	} else {
 		// read mode: open the file disk-backed so RSS doesn't scale with the db size.
-		// gzipped dbs can't be opened directly by sqlite, so stream-decompress to a temp
-		// file first (streaming keeps the decompressed bytes off the JS heap).
 		let openPath = dbPath
 		if (dbPath.endsWith('.gz')) {
-			openPath = await decompressToTemp(dbPath)
-			tempDbPath = openPath
+			// gzipped dbs can't be opened directly by sqlite, so we stream-decompress to a copy
+			// (streaming keeps the decompressed bytes off the JS heap). The copy is content-addressed
+			// by the source hash so identical sources reuse the same file across restarts (skipping
+			// re-decompression) and stale copies are swept on startup. This bounds ./data/decompressed
+			// to a single file no matter how prior processes exited: SIGTERM cleanup alone leaks the
+			// copy on crash/OOM/SIGKILL. Assumes a single server process per data dir.
+			hash = await hashFile(ctx, dbPath)
+			openPath = await ensureDecompressed(ctx, dbPath, hash)
 		}
 		driver = new DatabaseConstructor(openPath, { readonly: true })
 		driver.pragma('mmap_size = 268435456') // 256MiB of memory-mapped reads
+		// leave the decompressed copy in place on shutdown so the next boot of the same version can
+		// reuse it; startup sweep in ensureDecompressed reclaims it once the version changes.
 		CleanupSys.register(() => {
 			driver?.close()
-			if (tempDbPath) {
-				try {
-					fs.unlinkSync(tempDbPath)
-				} catch (err) {
-					log.warn(err, 'failed to remove temp layer db %s', tempDbPath)
-				}
-				tempDbPath = null
-			}
 		})
 	}
 
@@ -132,24 +129,90 @@ async function load(opts: { skipHash?: boolean; mode?: 'populate' | 'read'; logg
 		},
 	})
 	if (!opts?.skipHash) {
-		// hash the on-disk bytes (compressed, if gzipped) so the served ETag is unchanged
-		hash = await hashFile(dbPath)
+		// hash the on-disk bytes (compressed, if gzipped) so the served ETag is unchanged.
+		// the gz read path already hashed the source above to name its decompressed copy.
+		hash ??= await hashFile(ctx, dbPath)
 		log.info('hash for %s: %s', dbPath, hash)
 	}
 	log.info('Loaded layer database from %s', dbPath)
 }
 
-// stream-decompress a gzipped db to a temp file so sqlite can open it disk-backed
-async function decompressToTemp(gzPath: string): Promise<string> {
-	const tmpPath = path.join(os.tmpdir(), `layer-db-${crypto.randomUUID()}.sqlite3`)
-	await pipeline(fs.createReadStream(gzPath), zlib.createGunzip(), fs.createWriteStream(tmpPath))
-	return tmpPath
+// stream-decompress a gzipped db to a stable, content-addressed copy so sqlite can open it
+// disk-backed. Written under ./data/decompressed (on the regular disk) rather than os.tmpdir(),
+// which on some hosts is a size- or quota-limited tmpfs that can't hold the decompressed db.
+// Reuses an existing copy for the same source hash, and sweeps every other layer-db-* file (stale
+// versions, or copies/partials orphaned by a crash) so the directory holds at most one copy.
+async function ensureDecompressed(ctx: CS.AbortSignal, gzPath: string, sourceHash: string): Promise<string> {
+	const dir = path.join(Paths.DATA, 'decompressed')
+	await fs.promises.mkdir(dir, { recursive: true })
+	await writeDecompressedInfoFile(ctx, dir)
+	const targetName = `layer-db-${sourceHash}.sqlite3`
+	const targetPath = path.join(dir, targetName)
+
+	// sweep every prior copy/partial except the one we're about to (re)use
+	for (const entry of await fs.promises.readdir(dir)) {
+		if (entry === targetName || !/^layer-db-.*\.(sqlite3|tmp)$/.test(entry)) continue
+		try {
+			await fs.promises.unlink(path.join(dir, entry))
+		} catch (err) {
+			log.warn(err, 'failed to remove stale decompressed layer db %s', entry)
+		}
+	}
+
+	// reuse an already-decompressed copy for this source
+	try {
+		if ((await fs.promises.stat(targetPath)).size > 0) {
+			log.info('reusing decompressed layer db %s', targetPath)
+			return targetPath
+		}
+	} catch {
+		// not present; fall through to decompress
+	}
+
+	// decompress to a uuid-suffixed temp then atomically rename, so a crash mid-decompress never
+	// leaves a truncated file that a later boot would mistake for a complete copy
+	const tmpPath = path.join(dir, `layer-db-${sourceHash}.${crypto.randomUUID()}.tmp`)
+	await pipeline(fs.createReadStream(gzPath), zlib.createGunzip(), fs.createWriteStream(tmpPath), { signal: ctx.signal })
+	await fs.promises.rename(tmpPath, targetPath)
+	log.info('decompressed layer db to %s', targetPath)
+	return targetPath
+}
+
+const DECOMPRESSED_INFO_FILENAME = 'INFO.txt'
+const DECOMPRESSED_INFO_TEXT = `This directory is managed automatically by the server (src/systems/layer-db.server.ts).
+
+The layer database ships gzipped (data/layers_v*.sqlite3.gz). sqlite cannot open a gzipped file, so
+on startup the server decompresses the active version to a disk-backed copy here and opens it read-only
+(disk-backed so process memory does not scale with the database size).
+
+Each copy is named layer-db-<sha256-of-source>.sqlite3 and is content-addressed by the source hash,
+so the same source is reused across restarts. On every startup the server sweeps every other
+layer-db-* file in this directory, so it holds at most one copy for the current version.
+
+These files are regenerated on demand. It is safe to delete anything in this directory while the
+server is stopped. Do not edit the copies by hand; they are treated as disposable.
+`
+
+// keep an INFO.txt in the decompressed dir explaining what the machine-generated files are.
+// rewritten only when its contents drift, so we don't churn its mtime on every boot.
+async function writeDecompressedInfoFile(ctx: CS.AbortSignal, dir: string): Promise<void> {
+	const infoPath = path.join(dir, DECOMPRESSED_INFO_FILENAME)
+	try {
+		if (await fs.promises.readFile(infoPath, { encoding: 'utf-8', signal: ctx.signal }) === DECOMPRESSED_INFO_TEXT) return
+	} catch {
+		// missing or unreadable; (re)write below
+	}
+	try {
+		await fs.promises.writeFile(infoPath, DECOMPRESSED_INFO_TEXT, { signal: ctx.signal })
+	} catch (err) {
+		log.warn(err, 'failed to write %s in decompressed layer db dir', DECOMPRESSED_INFO_FILENAME)
+	}
 }
 
 // hash a file's contents without holding it in memory
-async function hashFile(filePath: string): Promise<string> {
+async function hashFile(ctx: CS.AbortSignal, filePath: string): Promise<string> {
 	const hasher = crypto.createHash('sha256')
-	await pipeline(fs.createReadStream(filePath), hasher)
+	await pipeline(fs.createReadStream(filePath), hasher, { signal: ctx.signal })
 	return hasher.digest('hex')
 }
 
