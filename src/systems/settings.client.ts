@@ -1,4 +1,3 @@
-import type * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import type { PublicSettings } from '@/systems/settings.server'
 import * as ReactRx from '@react-rxjs/core'
@@ -30,11 +29,11 @@ export async function fetchSettings() {
 
 // ============================== global settings: full object, admin:manage-global-settings only ==============================
 
-// the encoded (pre-decode) form, e.g. HumanTime fields as '5m' strings rather than milliseconds -- meant for display/editing
+// the encoded (pre-decode) form, e.g. HumanTime fields as '5m' strings rather than milliseconds -- meant for display/editing.
+// the deny response is kept in the stream (not filtered) so the Suspense boundary always resolves; a denied user (e.g. after an
+// rbac change left their session with stale perms) is handled by the consumer instead of hanging forever.
 export const [useGlobalSettings, globalSettings$] = ReactRx.bind(
-	RPC.observe(() => RPC.orpc.settings.global.watchSettings.call()).pipe(
-		Rx.filter((value): value is SETTINGS.GlobalSettingsInput => !('code' in value)),
-	),
+	RPC.observe(() => RPC.orpc.settings.global.watchSettings.call()),
 )
 
 // per-server settings (EditSettingsStore) now live on the squadServer frame's server-settings partial, see @/frame-partials/server-settings.partial

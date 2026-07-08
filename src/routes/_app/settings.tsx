@@ -1,5 +1,7 @@
 import type SchemaJsonEditorComponent from '@/components/schema-json-editor'
 import type { SchemaJsonEditorHandle } from '@/components/schema-json-editor.types'
+import SettingsForm from '@/components/settings-form'
+import SettingsToc from '@/components/settings-toc'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -39,6 +41,8 @@ export const Route = createFileRoute('/_app/settings')({
 function RouteComponent() {
 	const manageServersDenied = RbacClient.usePermsCheck(RBAC.perm('admin:manage-servers'))
 	const manageGlobalDenied = RbacClient.usePermsCheck(RBAC.perm('admin:manage-global-settings'))
+	// lifted so the TOC can drop the field subtree in JSON mode (those anchors only exist in the GUI editor)
+	const [globalMode, setGlobalMode] = React.useState<'gui' | 'json'>('gui')
 
 	if (manageServersDenied && manageGlobalDenied) {
 		return (
@@ -49,12 +53,33 @@ function RouteComponent() {
 	}
 
 	return (
-		<div className="w-full max-w-[67rem] mx-auto py-6 space-y-6">
-			<ReactRx.Subscribe source$={SettingsClient.globalSettings$}>
-				{!manageServersDenied && <ServerManagementSection />}
-				{!manageGlobalDenied && <GlobalSettingsSection />}
-			</ReactRx.Subscribe>
-			{!manageGlobalDenied && <AuditLogSection />}
+		// bounded to the viewport (navbar h-16 + outlet p-4 = 6rem) so the two columns can scroll independently;
+		// the outlet wrapper is overflow-hidden, which would otherwise break sticky/independent scrolling
+		<div className="flex gap-4 w-full max-w-[84rem] mx-auto h-[calc(100dvh-6rem)]">
+			<aside className="w-60 shrink-0 overflow-y-auto border-r pr-2 py-2">
+				<SettingsToc showServers={!manageServersDenied} showGlobal={!manageGlobalDenied} globalMode={globalMode} />
+			</aside>
+			<main className="flex-1 min-w-0 overflow-y-auto pr-2 py-2 space-y-6">
+				{/* ServerManagement reads PublicSettingsStore, not globalSettings$, so it must not sit behind the global-settings Suspense */}
+				{!manageServersDenied && (
+					<div id="section:servers" className="scroll-mt-2">
+						<ServerManagementSection />
+					</div>
+				)}
+				{!manageGlobalDenied && (
+					<ReactRx.Subscribe
+						source$={SettingsClient.globalSettings$}
+						fallback={<p className="text-sm text-muted-foreground">Loading global settings…</p>}
+					>
+						<div id="section:global" className="scroll-mt-2">
+							<GlobalSettingsSection mode={globalMode} onModeChange={setGlobalMode} />
+						</div>
+						<div id="section:audit" className="scroll-mt-2">
+							<AuditLogSection />
+						</div>
+					</ReactRx.Subscribe>
+				)}
+			</main>
 		</div>
 	)
 }
@@ -425,14 +450,68 @@ function CreateServerForm({ onDone }: { onDone: () => void }) {
 	)
 }
 
-function GlobalSettingsSection() {
-	const settings = SettingsClient.useGlobalSettings()
-	const [validDraft, setValidDraft] = React.useState<SETTINGS.GlobalSettings | null>(() => {
-		const res = SETTINGS.GlobalSettingsSchema.safeParse(settings)
-		return res.success ? res.data : null
-	})
+type SettingChange = { path: string; from: unknown; to: unknown }
+
+// leaf-level diff of two settings objects (input/encoded shape) keyed by json path; objects recurse, arrays/scalars are leaves
+function diffSettings(from: any, to: any, path: string[] = [], out: SettingChange[] = []): SettingChange[] {
+	const isPlainObj = (v: any) => v !== null && typeof v === 'object' && !Array.isArray(v)
+	if (isPlainObj(from) && isPlainObj(to)) {
+		for (const key of new Set([...Object.keys(from), ...Object.keys(to)])) {
+			diffSettings(from[key], to[key], [...path, key], out)
+		}
+	} else if (!Obj.deepEqual(from, to)) {
+		out.push({ path: path.join('.'), from, to })
+	}
+	return out
+}
+
+function formatChangeValue(v: unknown): string {
+	if (v === undefined) return '(unset)'
+	if (v === null) return 'null'
+	if (typeof v === 'string') return v === '' ? '(empty)' : v
+	if (typeof v === 'boolean' || typeof v === 'number') return String(v)
+	const s = JSON.stringify(v)
+	return s.length > 200 ? s.slice(0, 200) + '…' : s
+}
+
+function SettingsChangeList({ changes }: { changes: SettingChange[] }) {
+	return (
+		<div className="max-h-[50vh] space-y-2 overflow-y-auto text-sm">
+			{changes.map((c) => (
+				<div key={c.path} className="border-b pb-1.5 last:border-0">
+					<code className="text-xs text-muted-foreground">{c.path}</code>
+					<div className="mt-0.5 flex flex-wrap items-center gap-2">
+						<span className="text-muted-foreground line-through break-all">{formatChangeValue(c.from)}</span>
+						<Icons.ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+						<span className="break-all">{formatChangeValue(c.to)}</span>
+					</div>
+				</div>
+			))}
+		</div>
+	)
+}
+
+function GlobalSettingsSection({ mode, onModeChange }: { mode: 'gui' | 'json'; onModeChange: (mode: 'gui' | 'json') => void }) {
+	const raw = SettingsClient.useGlobalSettings()
+	// the server denies the watch when the user lacks admin:manage-global-settings (e.g. stale perms after an rbac change)
+	const denied = !!raw && typeof raw === 'object' && 'code' in raw
+	const settings = denied ? undefined : (raw as SETTINGS.GlobalSettingsInput | undefined)
+
+	// the live GUI draft, held in the encoded/input shape (same shape as `settings`)
+	const [draft, setDraft] = React.useState<SETTINGS.GlobalSettingsInput | undefined>(settings)
+	// the latest valid, decoded value from the JSON editor while in JSON mode
+	const [jsonValid, setJsonValid] = React.useState<SETTINGS.GlobalSettings | null>(null)
 	const editorRef = React.useRef<SchemaJsonEditorHandle>(null)
 
+	// initialize the draft once settings first become available (set-in-render, runs once)
+	if (draft === undefined && settings !== undefined) setDraft(settings)
+
+	// a deny here means our cached perms are stale; refetch the logged-in user so the route re-gates correctly
+	React.useEffect(() => {
+		if (denied) RbacClient.handlePermissionDenied(raw as RBAC.PermissionDeniedResponse)
+	}, [denied, raw])
+
+	const openDialog = useAlertDialog()
 	const saveMutation = useMutation(RPC.orpc.settings.global.updateSettings.mutationOptions({
 		onSuccess: (res) => {
 			if (!res) return
@@ -446,45 +525,112 @@ function GlobalSettingsSection() {
 		},
 	}))
 
-	if (!settings) return null
+	// the pending value in the encoded/input shape (same shape as `settings`), for diffing against the current settings
+	const nextEnc = React.useMemo(
+		() => mode === 'gui' ? draft : (jsonValid ? SETTINGS.GlobalSettingsSchema.encode(jsonValid) : undefined),
+		[mode, draft, jsonValid],
+	)
+	const changes = React.useMemo(
+		() => (settings && nextEnc ? diffSettings(settings, nextEnc) : []),
+		[settings, nextEnc],
+	)
 
-	const parsedSettingsRes = SETTINGS.GlobalSettingsSchema.safeParse(settings)
-	const currentSettings = parsedSettingsRes.success ? parsedSettingsRes.data : null
-	const modified = validDraft !== null && !Obj.deepEqual(validDraft, currentSettings)
+	if (denied) {
+		return (
+			<Card>
+				<CardHeader>
+					<CardTitle>Global Settings</CardTitle>
+					<CardDescription>You don't have permission to view global settings.</CardDescription>
+				</CardHeader>
+			</Card>
+		)
+	}
+
+	if (!settings || draft === undefined) return null
+
+	const guiRes = SETTINGS.GlobalSettingsSchema.safeParse(draft)
+	const validDraft = mode === 'json' ? jsonValid : (guiRes.success ? guiRes.data : null)
+	const modified = changes.length > 0
+	const canSave = modified && validDraft !== null && !saveMutation.isPending
+
+	async function handleSave() {
+		if (!validDraft) return
+		const result = await openDialog({
+			title: 'Save global settings?',
+			content: <SettingsChangeList changes={changes} />,
+			buttons: [{ id: 'save', label: 'Save' }],
+		})
+		if (result === 'save') saveMutation.mutate(validDraft)
+	}
+
+	function switchMode(next: 'gui' | 'json') {
+		if (next === mode) return
+		if (next === 'json') {
+			// seed the JSON editor's notion of validity from the current gui draft
+			setJsonValid(guiRes.success ? guiRes.data : null)
+		} else if (jsonValid) {
+			// carry JSON edits back into the gui draft (re-encode to the input shape)
+			setDraft(SETTINGS.GlobalSettingsSchema.encode(jsonValid))
+		}
+		onModeChange(next)
+	}
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Global Settings</CardTitle>
-				<CardDescription>Edit the global settings for this SLM instance.</CardDescription>
-			</CardHeader>
-			<CardContent className="space-y-4">
-				<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
-					<SchemaJsonEditor
-						ref={editorRef}
-						schema={SETTINGS.GlobalSettingsSchema}
-						value={settings}
-						onValidChange={setValidDraft}
-						minHeightPx={450}
-						label="Global Settings"
-					/>
-				</React.Suspense>
-				<div className="flex justify-end gap-2">
-					<Button variant="outline" onClick={() => editorRef.current?.format()}>
-						<Icons.Braces className="h-4 w-4" />
-						Format
-					</Button>
-					<Button variant="outline" onClick={() => editorRef.current?.reset()}>
-						Reset
-					</Button>
-					<Button
-						disabled={!modified || saveMutation.isPending}
-						onClick={() => saveMutation.mutate(validDraft!)}
-					>
+		<>
+			<Card>
+				<CardHeader>
+					<div className="flex items-center justify-between gap-2">
+						<div>
+							<CardTitle>Global Settings</CardTitle>
+							<CardDescription>Edit the global settings for this SLM instance.</CardDescription>
+						</div>
+						<div className="flex items-center rounded-md border p-0.5">
+							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>GUI</Button>
+							<Button size="sm" variant={mode === 'json' ? 'secondary' : 'ghost'} onClick={() => switchMode('json')}>JSON</Button>
+						</div>
+					</div>
+				</CardHeader>
+				<CardContent className="space-y-4">
+					{mode === 'gui'
+						? <SettingsForm schema={SETTINGS.GlobalSettingsSchema} value={draft} onChange={setDraft} />
+						: (
+							<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
+								<SchemaJsonEditor
+									ref={editorRef}
+									schema={SETTINGS.GlobalSettingsSchema}
+									value={draft}
+									onValidChange={setJsonValid}
+									minHeightPx={450}
+									label="Global Settings"
+								/>
+							</React.Suspense>
+						)}
+					{/* GUI mode uses the floating control panel below; JSON mode keeps an inline toolbar */}
+					{mode === 'json' && (
+						<div className="flex justify-end gap-2">
+							<Button variant="outline" onClick={() => editorRef.current?.format()}>
+								<Icons.Braces className="h-4 w-4" />
+								Format
+							</Button>
+							<Button variant="outline" onClick={() => editorRef.current?.reset()}>Reset</Button>
+							<Button disabled={!canSave} onClick={handleSave}>
+								{saveMutation.isPending ? 'Saving…' : 'Save'}
+							</Button>
+						</div>
+					)}
+				</CardContent>
+			</Card>
+			{mode === 'gui' && modified && (
+				<div className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-background px-4 py-2 shadow-lg">
+					<span className="text-sm">
+						<span className="font-medium">{changes.length}</span> {changes.length === 1 ? 'setting' : 'settings'} changed
+					</span>
+					<Button variant="outline" size="sm" onClick={() => setDraft(settings)}>Reset</Button>
+					<Button size="sm" disabled={!canSave} onClick={handleSave}>
 						{saveMutation.isPending ? 'Saving…' : 'Save'}
 					</Button>
 				</div>
-			</CardContent>
-		</Card>
+			)}
+		</>
 	)
 }

@@ -180,6 +180,32 @@ export async function fetchGuildRoles() {
 	return { code: 'ok' as const, roles: Object.keys(rolesMap) }
 }
 
+// roles with display info, for the settings role-assignment picker
+export async function listGuildRolesDetailed() {
+	const res = await fetchGuild(CONFIG.homeDiscordGuildId)
+	if (res.code !== 'ok') return res
+	const rolesMap = await res.guild.roles.fetch()
+	const roles = [...rolesMap.values()]
+		.filter((r) => r.id !== res.guild.id) // drop @everyone (its id equals the guild id)
+		.sort((a, b) => b.position - a.position)
+		.map((r) => ({ id: r.id, name: r.name, color: r.color === 0 ? null : r.hexColor }))
+	return { code: 'ok' as const, roles }
+}
+
+// prefix search across all guild members (username/nickname), for the settings user-assignment picker
+export async function searchGuildMembers(query: string, limit = 25) {
+	const res = await fetchGuild(CONFIG.homeDiscordGuildId)
+	if (res.code !== 'ok') return res
+	const membersMap = await res.guild.members.search({ query, limit })
+	const members = [...membersMap.values()].map((m) => ({
+		id: m.id,
+		displayName: m.displayName,
+		username: m.user.username,
+		avatarUrl: m.displayAvatarURL({ size: 32 }),
+	}))
+	return { code: 'ok' as const, members }
+}
+
 export const orpcRouter = {
 	getGuildEmojis: orpcBase
 		.input(z.object({}).optional())

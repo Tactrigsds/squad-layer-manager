@@ -2,7 +2,6 @@ import * as Paths from '$root/paths'
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { ParsedBigIntSchema } from '@/lib/zod'
 import * as LQY from '@/models/layer-queries.models.ts'
-import * as RBAC from '@/rbac.models'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base.ts'
 import * as Cli from '@/systems/cli.server'
@@ -22,14 +21,10 @@ export const ConfigSchema = z.object({
 	homeDiscordGuildId: ParsedBigIntSchema,
 	repoUrl: z.url().optional().describe('URL of the repository'),
 	issuesUrl: z.url().optional().describe('URL of the issues page'),
-	globalRolePermissions: z
-		.record(z.string(), z.array(RBAC.GLOBAL_PERMISSION_TYPE_EXPRESSION))
-		.describe('Configures what roles have what permissions. (globally scoped permissions only)'),
-	roleAssignments: z.object({
-		'discord-role': z.array(z.object({ discordRoleId: ParsedBigIntSchema, roles: z.array(RBAC.UserDefinedRoleIdSchema) })).optional(),
-		'discord-user': z.array(z.object({ userId: ParsedBigIntSchema, roles: z.array(RBAC.UserDefinedRoleIdSchema) })).optional(),
-		'discord-server-member': z.array(z.object({ roles: z.array(RBAC.UserDefinedRoleIdSchema) })).optional(),
-	}),
+	// role/permission configuration now lives in admin-editable global settings (see GlobalSettingsSchema.rbac).
+	// these two arrays are the deploy-time bootstrap that always receives every permission, so an admin can never be locked out.
+	superUsers: z.array(ParsedBigIntSchema).prefault([]).describe('Discord user ids that are always granted all permissions'),
+	superRoles: z.array(ParsedBigIntSchema).prefault([]).describe('Discord role ids whose members are always granted all permissions'),
 	layerTable: LQY.LayerTableConfigSchema.prefault({
 		orderedColumns: [
 			{ name: 'id', visible: false },

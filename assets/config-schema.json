@@ -18,113 +18,24 @@
       "type": "string",
       "format": "uri"
     },
-    "globalRolePermissions": {
-      "description": "Configures what roles have what permissions. (globally scoped permissions only)",
-      "type": "object",
-      "propertyNames": {"type": "string"},
-      "additionalProperties": {
-        "type": "array",
-        "items": {
-          "anyOf": [
-            {
-              "type": "string",
-              "enum": [
-                "site:authorized",
-                "queue:write",
-                "queue:force-write",
-                "settings:write",
-                "vote:manage",
-                "filters:write-all",
-                "squad-server:end-match",
-                "squad-server:disable-slm-updates",
-                "squad-server:turn-fog-off",
-                "squad-server:manage-players",
-                "squad-server:warn-players",
-                "squad-server:broadcast",
-                "battlemetrics:write-flags",
-                "admin:manage-servers",
-                "admin:delete-servers",
-                "admin:manage-global-settings",
-                "admin:restart-slm"
-              ]
-            },
-            {"description": "include all", "type": "string", "const": "*"},
-            {
-              "description": "negated permissions. takes precedence wherever present for a user",
-              "type": "string",
-              "pattern": "^!"
-            }
-          ]
-        }
+    "superUsers": {
+      "description": "Discord user ids that are always granted all permissions",
+      "default": [],
+      "type": "array",
+      "items": {
+        "description": "A string representation of a big integer that is parsed to a BigInt",
+        "type": "string",
+        "pattern": "^-?\\d+$"
       }
     },
-    "roleAssignments": {
-      "type": "object",
-      "properties": {
-        "discord-role": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "discordRoleId": {
-                "description": "A string representation of a big integer that is parsed to a BigInt",
-                "type": "string",
-                "pattern": "^-?\\d+$"
-              },
-              "roles": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 3,
-                  "maxLength": 32,
-                  "pattern": "^[a-z0-9-]+$"
-                }
-              }
-            },
-            "required": ["discordRoleId", "roles"]
-          }
-        },
-        "discord-user": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "userId": {
-                "description": "A string representation of a big integer that is parsed to a BigInt",
-                "type": "string",
-                "pattern": "^-?\\d+$"
-              },
-              "roles": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 3,
-                  "maxLength": 32,
-                  "pattern": "^[a-z0-9-]+$"
-                }
-              }
-            },
-            "required": ["userId", "roles"]
-          }
-        },
-        "discord-server-member": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "roles": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 3,
-                  "maxLength": 32,
-                  "pattern": "^[a-z0-9-]+$"
-                }
-              }
-            },
-            "required": ["roles"]
-          }
-        }
+    "superRoles": {
+      "description": "Discord role ids whose members are always granted all permissions",
+      "default": [],
+      "type": "array",
+      "items": {
+        "description": "A string representation of a big integer that is parsed to a BigInt",
+        "type": "string",
+        "pattern": "^-?\\d+$"
       }
     },
     "layerTable": {
@@ -286,5 +197,5 @@
       "required": ["orderedColumns", "defaultSortBy"]
     }
   },
-  "required": ["homeDiscordGuildId", "globalRolePermissions", "roleAssignments"]
+  "required": ["homeDiscordGuildId"]
 }

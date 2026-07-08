@@ -54,6 +54,7 @@ async function loadGlobalSettings(ctx: C.Db) {
 		}
 		log.info('Loaded global settings from DB')
 	}
+	Rbac.applyRbacSettings(GLOBAL_SETTINGS.rbac)
 	settings$.next({ scope: 'global', settings: GLOBAL_SETTINGS })
 }
 
@@ -68,6 +69,7 @@ export async function updateGlobalSettings(ctx: C.Db, input: Record<string, unkn
 	await ctx.db({ redactParams: true })
 		.update(Schema.globalSettings)
 		.set(superjsonify(Schema.globalSettings, { settings: SETTINGS.GlobalSettingsSchema.encode(GLOBAL_SETTINGS) }))
+	Rbac.applyRbacSettings(GLOBAL_SETTINGS.rbac)
 	settings$.next({ scope: 'global', settings: GLOBAL_SETTINGS })
 	log.info('Global settings updated')
 	return { code: 'ok' as const }

@@ -1,50 +1,68 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import { objKeys } from '@/lib/object'
+import * as SETTINGS from '@/models/settings.models'
 import { initModule } from '@/server/logger'
 
 import * as RBAC from '@/rbac.models'
 import { CONFIG } from '@/server/config'
 import * as C from '@/server/context'
+import * as DB from '@/server/db'
 
 import { getOrpcBase } from '@/server/orpc-base'
 import * as Discord from '@/systems/discord.server'
 
 import * as E from 'drizzle-orm'
 import { unionAll } from 'drizzle-orm/sqlite-core'
+import { z } from 'zod'
 
-let userDefinedRoles!: RBAC.Role[]
-let userDefinedPermissionExpressions!: Record<string, RBAC.GlobalPermissionTypeExpression[]>
-let roleAssignments!: RBAC.RoleAssignment[]
+// the role type attributed to permissions granted by the config-level superUsers/superRoles bootstrap
+const SUPER_ROLE: RBAC.Role = { type: 'super' }
+
+let userDefinedRoles: RBAC.Role[] = []
+let userDefinedPermissionExpressions: Record<string, RBAC.GlobalPermissionTypeExpression[]> = {}
+let roleAssignments: RBAC.RoleAssignment[] = []
+let superUserIds = new Set<bigint>()
+let superRoleIds = new Set<bigint>()
+
 export function setup() {
+	// role config comes from admin-editable global settings and is pushed in via applyRbacSettings() once settings load;
+	// start from empty defaults so we never reference an unset binding
+	applyRbacSettings(SETTINGS.RbacSettingsSchema.parse({}))
+	superUserIds = new Set(CONFIG.superUsers)
+	superRoleIds = new Set(CONFIG.superRoles)
+}
+
+// called by settings.server whenever global settings are (re)loaded so role/permission changes take effect without a restart
+export function applyRbacSettings(rbac: SETTINGS.RbacSettings) {
 	userDefinedPermissionExpressions = {}
 	userDefinedRoles = []
 
-	for (const roleType of objKeys(CONFIG.globalRolePermissions)) {
+	for (const roleType of objKeys(rbac.globalRolePermissions)) {
 		userDefinedRoles.push(RBAC.userDefinedRole(roleType))
-		userDefinedPermissionExpressions[roleType] = CONFIG.globalRolePermissions[roleType]
+		userDefinedPermissionExpressions[roleType] = rbac.globalRolePermissions[roleType]
 	}
 
 	roleAssignments = []
 
-	for (const assignment of CONFIG.roleAssignments?.['discord-role'] ?? []) {
+	for (const assignment of rbac.roleAssignments['discord-role']) {
 		for (const roleType of assignment.roles) {
 			roleAssignments.push({
 				type: 'discord-role',
 				role: RBAC.userDefinedRole(roleType),
-				discordRoleId: assignment.discordRoleId,
+				discordRoleId: BigInt(assignment.discordRoleId),
 			})
 		}
 	}
-	for (const assignment of CONFIG.roleAssignments?.['discord-user'] ?? []) {
+	for (const assignment of rbac.roleAssignments['discord-user']) {
 		for (const roleType of assignment.roles) {
 			roleAssignments.push({
 				type: 'discord-user',
 				role: RBAC.userDefinedRole(roleType),
-				discordUserId: assignment.userId,
+				discordUserId: BigInt(assignment.userId),
 			})
 		}
 	}
-	for (const assignment of CONFIG.roleAssignments?.['discord-server-member'] ?? []) {
+	for (const assignment of rbac.roleAssignments['discord-server-member']) {
 		for (const roleType of assignment.roles) {
 			roleAssignments.push({
 				type: 'discord-server-member',
@@ -54,6 +72,19 @@ export function setup() {
 	}
 
 	// TODO add preflight checks to make sure the remote references in role assignments are valid
+}
+
+// superUsers/superRoles from the deploy-time config always receive every permission -- the anti-lockout bootstrap
+async function isSuperUser(baseCtx: C.UserId): Promise<boolean> {
+	const userId = baseCtx.user.discordId
+	if (superUserIds.has(userId)) return true
+	if (superRoleIds.size === 0) return false
+	const memberRes = await Discord.fetchMember(CONFIG.homeDiscordGuildId, userId)
+	if (memberRes.code !== 'ok') return false
+	for (const roleId of superRoleIds) {
+		if (memberRes.member.roles.cache.has(roleId.toString())) return true
+	}
+	return false
 }
 
 // TODO error visibility
@@ -102,11 +133,20 @@ export const getUserRbacPerms = C.spanOp(
 	{ module, levels: { event: 'trace' }, attrs: (_, userId) => ({ userId }) },
 	async (baseCtx: C.Db & C.UserId): Promise<RBAC.TracedPermission[]> => {
 		const userId = baseCtx.user.discordId
-		const roles = await getRolesForDiscordUser(baseCtx)
+		const rolesPromise = getRolesForDiscordUser(baseCtx)
+		const superPromise = isSuperUser(baseCtx)
+		const roles = await rolesPromise
 		const filterRowsPromise = getFilterPermissionRows()
 
 		const perms: RBAC.TracedPermission[] = []
 		const allNegatingPerms: Set<RBAC.GlobalPermissionType> = new Set()
+
+		// super users/roles are granted every global permission, overriding any negations
+		if (await superPromise) {
+			for (const permType of RBAC.GLOBAL_PERMISSION_TYPE.options) {
+				RBAC.addTracedPerms(perms, RBAC.tracedPerm(permType, [SUPER_ROLE], { negated: false }))
+			}
+		}
 		for (const role of roles) {
 			for (const permExpr of userDefinedPermissionExpressions[role.type]) {
 				const perm = RBAC.parseNegatingPermissionType(permExpr)
@@ -211,5 +251,23 @@ export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
 export const orpcRouter = {
 	getUserDefinedRoles: orpcBase.handler(() => {
 		return userDefinedRoles
+	}),
+
+	// guild role/member lookups powering the settings role-assignment pickers; gated behind global-settings editing
+	// since they surface guild role names and member identities
+	listGuildRoles: orpcBase.handler(async ({ context: _ctx }) => {
+		const ctx = DB.addPooledDb(_ctx as any)
+		const denyRes = await tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-global-settings'))
+		if (denyRes) return denyRes
+		return Discord.listGuildRolesDetailed()
+	}),
+
+	searchGuildMembers: orpcBase.input(z.object({ query: z.string() })).handler(async ({ context: _ctx, input }) => {
+		const ctx = DB.addPooledDb(_ctx as any)
+		const denyRes = await tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-global-settings'))
+		if (denyRes) return denyRes
+		const query = input.query.trim()
+		if (query.length === 0) return { code: 'ok' as const, members: [] }
+		return Discord.searchGuildMembers(query)
 	}),
 }

@@ -1,6 +1,6 @@
 import * as DH from '@/lib/display-helpers.ts'
 import * as Obj from '@/lib/object'
-import { BasicStrNoWhitespace, HumanTime } from '@/lib/zod'
+import { BasicStrNoWhitespace, HumanTime, ParsableBigIntSchema } from '@/lib/zod'
 import * as BAL from '@/models/balance-triggers.models.ts'
 import * as BM from '@/models/battlemetrics.models.ts'
 import * as CHAT from '@/models/chat.models.ts'
@@ -9,7 +9,26 @@ import * as CB from '@/models/constraint-builders'
 import * as F from '@/models/filter.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SM from '@/models/squad.models'
+import * as RBAC from '@/rbac.models'
 import { z } from 'zod'
+
+// ============================== rbac (moved out of the deploy-time config so it's admin-editable at runtime) ==============================
+
+// discord ids are kept as strings here (not bigint) so they round-trip cleanly through the JSON settings editor / settings GUI;
+// rbac.server converts them to bigint at the boundary
+export const RbacSettingsSchema = z.object({
+	globalRolePermissions: z
+		.record(RBAC.UserDefinedRoleIdSchema, z.array(RBAC.GLOBAL_PERMISSION_TYPE_EXPRESSION))
+		.prefault({})
+		.describe('What roles have what permissions. (globally scoped permissions only)'),
+	roleAssignments: z.object({
+		'discord-role': z.array(z.object({ discordRoleId: ParsableBigIntSchema, roles: z.array(RBAC.UserDefinedRoleIdSchema) })).prefault([]),
+		'discord-user': z.array(z.object({ userId: ParsableBigIntSchema, roles: z.array(RBAC.UserDefinedRoleIdSchema) })).prefault([]),
+		'discord-server-member': z.array(z.object({ roles: z.array(RBAC.UserDefinedRoleIdSchema) })).prefault([]),
+	}).prefault({}).describe('Which discord roles/users/members are granted which roles'),
+}).prefault({})
+
+export type RbacSettings = z.infer<typeof RbacSettingsSchema>
 
 export const NavLinkSchema = z.array(z.object({
 	label: z.string(),
@@ -81,6 +100,7 @@ export const GlobalSettingsSchema = z.object({
 	adminListSources: z.record(z.string(), SM.AdminListSourceSchema).prefault({}).describe('Named admin list sources'),
 	commandPrefix: BasicStrNoWhitespace.prefault('!').describe('Prefix character for in-game commands'),
 	commands: CMD.AllCommandConfigSchema,
+	rbac: RbacSettingsSchema,
 })
 
 export type GlobalSettings = z.infer<typeof GlobalSettingsSchema>
