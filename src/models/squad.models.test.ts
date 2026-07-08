@@ -87,6 +87,11 @@ const ADMIN_LAYER_CHANGED_PLAYER_CHAIN = `
 const PLAYER_DISCONNECTED =
 	'[2026.04.17-18.35.14:535][115]LogNet: UChannel::Close: Sending CloseBunch. ChIndex == 0. Name: [UChannel] ChIndex: 0, Closing: 0 [UNetConnection] RemoteAddr: 75.155.191.37:51909, Name: RedpointEOSIpNetConnection_2147440814, Driver: Name:GameNetDriver Def:GameNetDriver RedpointEOSNetDriver_2147482371, IsServer: YES, PC: BP_PlayerController_C_2147440788, Owner: BP_PlayerController_C_2147440788, UniqueId: RedpointEOS:000249a430574933aefd9bbc9a8f2f37'
 
+// Same CloseBunch shape but on a BeaconNetDriver (join-queue) connection: PC NULL, SQJoinBeaconClient owner.
+// Must NOT be parsed as a real disconnect.
+const BEACON_DISCONNECT =
+	'[2026.07.07-01.18.54:947][379]LogNet: UChannel::Close: Sending CloseBunch. ChIndex == 0. Name: [UChannel] ChIndex: 0, Closing: 0 [UNetConnection] RemoteAddr: 216.232.38.246:51687, Name: RedpointEOSIpNetConnection_2145110902, Driver: Name:RedpointEOSNetDriver_2145311439 Def:BeaconNetDriver RedpointEOSNetDriver_2145311439, IsServer: YES, PC: NULL, Owner: SQJoinBeaconClient_2145110896, UniqueId: RedpointEOS:00026f3bb7554da784fb6c8f55344076'
+
 const ADMIN_BROADCAST_SINGLE = '[2025.11.19-18.18.26:151][549]LogSquad: ADMIN COMMAND: Message broadcasted <Hello world> from RCON'
 const ADMIN_BROADCAST_MULTILINE =
 	'[2025.11.19-18.18.26:151][549]LogSquad: ADMIN COMMAND: Message broadcasted <Hello world\nFactions: RGF+CombinedArms AFU+CombinedArms> from RCON'
@@ -127,6 +132,15 @@ describe('LogEvents.parse', () => {
 					playerController: 'BP_PlayerController_C_2147440788',
 				}),
 			})
+		})
+
+		it('does not treat a beacon-queue (BeaconNetDriver) connection close as a disconnect', async () => {
+			const errors: Error[] = []
+			const events = await collect([BEACON_DISCONNECT, NEXT_TICK_EVENT].join('\n'), errors)
+			expect(events.filter(e => e.type === 'PLAYER_DISCONNECTED')).toHaveLength(0)
+			expect(events).toHaveLength(1)
+			expect(events[0]).toMatchObject({ type: 'UNKNOWN' })
+			expect(errors).toHaveLength(0)
 		})
 	})
 
