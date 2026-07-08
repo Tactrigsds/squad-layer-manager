@@ -1438,187 +1438,218 @@ const loadSavedEvents = C.spanOp(
 
 let prevEvents: Set<number> = new Set()
 
+type EventInsertRows = {
+	eventRow: SchemaModels.NewServerEvent
+	playerRows: SchemaModels.NewPlayer[]
+	playerAssociationRows: SchemaModels.NewPlayerEventAssociation[]
+	squadRows: SchemaModels.NewSquad[]
+	squadAssociationRows: SchemaModels.NewSquadEventAssociation[]
+}
+
+function buildEventRows(event: SE.Event): EventInsertRows {
+	const persisted = Obj.omit(event, ['id', 'type', 'time', 'matchId'])
+	// queryable projection of source when it links to an app event
+	const source = (event as { source?: { type: string; id?: string } }).source
+	const eventRow: SchemaModels.NewServerEvent = {
+		id: event.id,
+		type: event.type,
+		time: new Date(event.time),
+		matchId: event.matchId,
+		appEventId: source?.type === 'event' ? source.id! : null,
+		data: superjson.serialize(persisted),
+	}
+
+	const playerRows: SchemaModels.NewPlayer[] = []
+	const playerAssociationRows: SchemaModels.NewPlayerEventAssociation[] = []
+	for (const [player, assocType] of SE.iterAssocPlayers(event)) {
+		let playerId: SM.PlayerId
+		if (typeof player === 'object') {
+			playerRows.push({
+				steamId: player.ids.steam ? BigInt(player.ids.steam) : null,
+				eosId: player.ids.eos,
+				username: player.ids.username,
+				epicId: player.ids.epic,
+			})
+			playerId = SM.PlayerIds.getPlayerId(player.ids)
+		} else {
+			playerId = player
+		}
+		playerAssociationRows.push({ assocType, playerId, serverEventId: event.id })
+	}
+
+	const squadRows: SchemaModels.NewSquad[] = []
+	const squadAssociationRows: SchemaModels.NewSquadEventAssociation[] = []
+	for (const squad of SE.iterAssocUniqueSquads(event)) {
+		let uniqueSquadId: number
+		if (typeof squad === 'object') {
+			squadRows.push({
+				id: squad.uniqueId,
+				ingameSquadId: squad.squadId,
+				name: squad.squadName,
+				creatorId: squad.creator,
+				teamId: squad.teamId,
+			})
+			uniqueSquadId = squad.uniqueId
+		} else {
+			uniqueSquadId = squad
+		}
+		squadAssociationRows.push({ squadId: uniqueSquadId, serverEventId: event.id })
+	}
+
+	return { eventRow, playerRows, playerAssociationRows, squadRows, squadAssociationRows }
+}
+
+// Persists the rows for a single event. Kept as one unit so a caller can wrap it in a per-event transaction:
+// any statement here that throws (a constraint violation, a bad steamId, an unknown-player FK) aborts only this
+// event, letting the caller log it and move on rather than rolling back an entire batch.
+async function insertEventRows(ctx: C.Db, rows: EventInsertRows) {
+	await ctx
+		.db()
+		.insert(Schema.serverEvents)
+		.values([rows.eventRow])
+
+	if (rows.playerRows.length > 0) {
+		await ctx
+			.db()
+			.insert(Schema.players)
+			.values(rows.playerRows)
+			.onConflictDoUpdate({
+				target: Schema.players.eosId,
+				set: {
+					steamId: sql`excluded.steamId`,
+					username: sql`excluded.username`,
+					modifiedAt: new Date(),
+				},
+			})
+	}
+
+	if (rows.playerAssociationRows.length > 0) {
+		const insertedEosIds = new Set(rows.playerRows.map((p) => p.eosId))
+		const playersToLookup = [
+			...new Set(rows.playerAssociationRows.map((r) => r.playerId).filter((id) => !insertedEosIds.has(id))),
+		]
+		let existingIds = new Set<SM.PlayerId>()
+		if (playersToLookup.length > 0) {
+			const existingPlayers = await ctx
+				.db()
+				.select({ eosId: Schema.players.eosId })
+				.from(Schema.players)
+				.where(E.inArray(Schema.players.eosId, playersToLookup))
+			existingIds = new Set(existingPlayers.map((p) => p.eosId))
+		}
+		const validRows = rows.playerAssociationRows.filter((r) => {
+			if (insertedEosIds.has(r.playerId)) return true
+			if (existingIds.has(r.playerId)) return true
+			log.error(
+				'skipping playerEventAssociation for unknown player %s (event %d)',
+				r.playerId,
+				r.serverEventId,
+			)
+			return false
+		})
+		if (validRows.length > 0) {
+			await ctx
+				.db()
+				.insert(Schema.playerEventAssociations)
+				.values(validRows)
+				.onConflictDoNothing({
+					target: [
+						Schema.playerEventAssociations.serverEventId,
+						Schema.playerEventAssociations.playerId,
+						Schema.playerEventAssociations.assocType,
+					],
+				})
+		}
+	}
+
+	if (rows.squadRows.length > 0) {
+		await ctx
+			.db()
+			.insert(Schema.squads)
+			.values(rows.squadRows)
+			.onConflictDoUpdate({
+				target: Schema.squads.id,
+				set: {
+					ingameSquadId: sql`excluded.ingameSquadId`,
+					teamId: sql`excluded.teamId`,
+					name: sql`excluded.name`,
+					creatorId: sql`excluded.creatorId`,
+				},
+			})
+	}
+
+	if (rows.squadAssociationRows.length > 0) {
+		await ctx
+			.db()
+			.insert(Schema.squadEventAssociations)
+			.values(rows.squadAssociationRows)
+			.onConflictDoNothing({
+				target: [Schema.squadEventAssociations.serverEventId, Schema.squadEventAssociations.squadId],
+			})
+	}
+}
+
+// Persists buffered events one at a time, each in its own transaction. If any row insert for an event throws
+// (a constraint violation, a malformed steamId, etc.) the event is logged in full and skipped, so a single bad
+// event can neither roll back the rest of the batch nor silently drop it. The in-memory cursor advances only
+// after each event is dealt with, keeping it in step with the DB even across a crash mid-batch.
+//
+// NOTE: a failing event is skipped (its cursor advances) after being logged, so its data is dropped on purpose
+// rather than becoming a poison pill that blocks every later event. The error log is the record of what was lost.
 export const saveEvents = C.spanOp(
 	'saveEvents',
 	{ module, mutexes: (ctx) => ctx.server.savingEventsMtx },
-	async (ctx: C.SquadServer & C.Db) =>
-		await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-			const server = ctx.server
+	async (ctx: C.SquadServer & C.Db) => {
+		const server = ctx.server
 
-			let events: SE.Event[] = []
-			if (server.lastSavedEventId === null) {
-				events = server.emittedEvents.slice()
-			} else {
-				const lastSavedIndex = server.emittedEvents.findIndex(
-					(e) => e.id === server.lastSavedEventId,
+		let events: SE.Event[] = []
+		if (server.lastSavedEventId === null) {
+			events = server.emittedEvents.slice()
+		} else {
+			const lastSavedIndex = server.emittedEvents.findIndex((e) => e.id === server.lastSavedEventId)
+			if (lastSavedIndex === -1) {
+				throw new Error(`CRITICAL: Unable to resolve last saved event ${server.lastSavedEventId}`)
+			}
+			events = server.emittedEvents.slice(lastSavedIndex + 1)
+		}
+
+		if (events.length === 0) {
+			log.debug('No events to save')
+			return
+		}
+
+		let savedCount = 0
+		let failedCount = 0
+		for (const event of events) {
+			if (prevEvents.has(event.id)) {
+				log.error('saveEvents: duplicate event id %d (%s), skipping', event.id, event.type)
+				server.lastSavedEventId = event.id
+				continue
+			}
+
+			const rows = buildEventRows(event)
+			try {
+				await DB.runTransaction(ctx, { redactParams: true }, (txCtx) => insertEventRows(txCtx, rows))
+				savedCount++
+			} catch (err) {
+				failedCount++
+				log.error(
+					'saveEvents: failed to persist event %d (%s); skipping it so the rest of the batch is not lost. full info: %o',
+					event.id,
+					event.type,
+					{ err, event, playerRows: rows.playerRows, squadRows: rows.squadRows },
 				)
-				if (lastSavedIndex === -1) {
-					throw new Error(
-						`CRITICAL: Unable to resolve last saved event ${server.lastSavedEventId}`,
-					)
-				}
-				events = server.emittedEvents.slice(lastSavedIndex + 1)
 			}
-			for (const event of events) {
-				if (prevEvents.has(event.id)) {
-					throw new Error(
-						`Duplicate event id: ${event.id} ${JSON.stringify(event)}`,
-					)
-				}
-				prevEvents.add(event.id)
-			}
+			// Advance past the event whether it committed or failed. Leaving the cursor behind a failed event would
+			// re-fail it on every flush and block every later event from ever being saved.
+			prevEvents.add(event.id)
+			server.lastSavedEventId = event.id
+		}
 
-			if (events.length === 0) {
-				log.debug('No events to save')
-				return
-			}
-
-			let eventRows: SchemaModels.NewServerEvent[] = []
-			let playerRows: SchemaModels.NewPlayer[] = []
-			let playerAssociationRows: SchemaModels.NewPlayerEventAssociation[] = []
-			let squadRows: SchemaModels.NewSquad[] = []
-			let squadAssociationRows: SchemaModels.NewSquadEventAssociation[] = []
-
-			for (const event of events) {
-				const persisted = Obj.omit(event, ['id', 'type', 'time', 'matchId'])
-				// queryable projection of source when it links to an app event
-				const source = (event as { source?: { type: string; id?: string } }).source
-				eventRows.push({
-					id: event.id,
-					type: event.type,
-					time: new Date(event.time),
-					matchId: event.matchId,
-					appEventId: source?.type === 'event' ? source.id! : null,
-					data: superjson.serialize(persisted),
-				})
-
-				for (const [player, assocType] of SE.iterAssocPlayers(event)) {
-					let playerId: SM.PlayerId
-					if (typeof player === 'object') {
-						playerRows.push({
-							steamId: player.ids.steam ? BigInt(player.ids.steam) : null,
-							eosId: player.ids.eos,
-							username: player.ids.username,
-							epicId: player.ids.epic,
-						})
-						playerId = SM.PlayerIds.getPlayerId(player.ids)
-					} else {
-						playerId = player
-					}
-					playerAssociationRows.push({
-						assocType: assocType,
-						playerId,
-						serverEventId: event.id,
-					})
-				}
-
-				for (const squad of SE.iterAssocUniqueSquads(event)) {
-					let uniqueSquadId: number
-					if (typeof squad === 'object') {
-						squadRows.push({
-							id: squad.uniqueId,
-							ingameSquadId: squad.squadId,
-							name: squad.squadName,
-							creatorId: squad.creator,
-							teamId: squad.teamId,
-						})
-						uniqueSquadId = squad.uniqueId
-					} else {
-						uniqueSquadId = squad
-					}
-					squadAssociationRows.push({
-						squadId: uniqueSquadId,
-						serverEventId: event.id,
-					})
-				}
-			}
-
-			await ctx
-				.db({ redactParams: true })
-				.insert(Schema.serverEvents)
-				.values(eventRows)
-			server.lastSavedEventId = eventRows[eventRows.length - 1].id!
-
-			if (playerRows.length > 0) {
-				await ctx
-					.db({ redactParams: true })
-					.insert(Schema.players)
-					.values(playerRows)
-					.onConflictDoUpdate({
-						target: Schema.players.eosId,
-						set: {
-							steamId: sql`excluded.steamId`,
-							username: sql`excluded.username`,
-							modifiedAt: new Date(),
-						},
-					})
-				playerRows = []
-			}
-
-			if (playerAssociationRows.length > 0) {
-				const playersToLookup = [
-					...new Set(
-						playerAssociationRows
-							.map((r) => r.playerId)
-							.filter((r) => !playerRows.some((p) => p.eosId === r)),
-					),
-				]
-				const existingPlayers = await ctx
-					.db()
-					.select({ eosId: Schema.players.eosId })
-					.from(Schema.players)
-					.where(E.inArray(Schema.players.eosId, playersToLookup))
-				const existingIds = new Set(existingPlayers.map((p) => p.eosId))
-				const validRows = playerAssociationRows.filter((r) => {
-					if (!playersToLookup.includes(r.playerId)) return true
-					if (existingIds.has(r.playerId)) return true
-					log.error(
-						'skipping playerEventAssociation for unknown player %s (event %d)',
-						r.playerId,
-						r.serverEventId,
-					)
-					return false
-				})
-				if (validRows.length > 0) {
-					await ctx
-						.db({ redactParams: true })
-						.insert(Schema.playerEventAssociations)
-						.values(validRows)
-						.onConflictDoNothing({
-							target: [
-								Schema.playerEventAssociations.serverEventId,
-								Schema.playerEventAssociations.playerId,
-								Schema.playerEventAssociations.assocType,
-							],
-						})
-				}
-			}
-
-			if (squadRows.length > 0) {
-				await ctx
-					.db({ redactParams: true })
-					.insert(Schema.squads)
-					.values(squadRows)
-					.onConflictDoUpdate({
-						target: Schema.squads.id,
-						set: {
-							ingameSquadId: sql`excluded.ingameSquadId`,
-							teamId: sql`excluded.teamId`,
-							name: sql`excluded.name`,
-							creatorId: sql`excluded.creatorId`,
-						},
-					})
-			}
-			if (squadAssociationRows.length > 0) {
-				await ctx
-					.db({ redactParams: true })
-					.insert(Schema.squadEventAssociations)
-					.values(squadAssociationRows)
-					.onConflictDoNothing({
-						target: [Schema.squadEventAssociations.serverEventId, Schema.squadEventAssociations.squadId],
-					})
-			}
-		}),
+		if (failedCount > 0) {
+			log.warn('saveEvents: persisted %d event(s), %d failed and were skipped', savedCount, failedCount)
+		}
+	},
 )
 
 const onNewGameDuringSync = (serverId: string): PendingEvents.State['hooks']['onNewGameDuringSync'] => async (currentLayerId, _time) => {
