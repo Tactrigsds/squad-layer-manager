@@ -56,6 +56,19 @@ void import('@/components/teamswitches-help-window')
 const DEFAULT_TEAM_SORTING: SortingState = [{ id: 'squad', desc: false }]
 const DEFAULT_COMBINED_SORTING: SortingState = [{ id: 'faction', desc: false }, { id: 'squad', desc: false }]
 
+// Player search: incremental/substring match on usernames, strict (exact whole-value) match on every
+// other identifier (steam/eos/epic/playerController). Returns the set of matched indices in `players`.
+function matchPlayersBySearch<T extends { ids: SM.PlayerIds.Type }>(players: T[], searchQuery: string): Set<number> {
+	const names = players.map(p => p.ids.usernameNoTag ?? p.ids.username ?? '')
+	const matched = new Set(StrUtils.simpleStringMatch(names, searchQuery))
+	if (searchQuery.trim()) {
+		for (let i = 0; i < players.length; i++) {
+			if (!matched.has(i) && SM.PlayerIds.matchesStrictSearch(players[i].ids, searchQuery)) matched.add(i)
+		}
+	}
+	return matched
+}
+
 export default function TeamsPanel(props: { className?: string; stores: SquadServerFrame.KeyProp }) {
 	const isDesktop = useIsDesktopSize()
 	const showSwapsPanel = ZusUtils.useStore(
@@ -170,8 +183,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 					onKeyDown={e => {
 						if (e.key !== 'Enter' || !searchQuery.trim()) return
 						const { players } = ChatPrt.Sel.chatState(ZusUtils.getState(props.stores.squadServer!))
-						const names = players.map(p => p.ids.usernameNoTag ?? p.ids.username ?? '')
-						const matched = new Set(StrUtils.simpleStringMatch(names, searchQuery))
+						const matched = matchPlayersBySearch(players, searchQuery)
 						const matchedIds = players
 							.filter((_, i) => matched.has(i))
 							.map(p => SM.PlayerIds.getPlayerId(p.ids))
@@ -1056,8 +1068,7 @@ function useDisplayedPlayers<T extends TeamsPanelModels.EnrichedPlayer>(
 	const filteredPlayers = React.useMemo(() => {
 		let result = players
 		if (searchQuery.trim()) {
-			const names = players.map(p => p.ids.usernameNoTag ?? p.ids.username ?? '')
-			const matched = new Set(StrUtils.simpleStringMatch(names, searchQuery))
+			const matched = matchPlayersBySearch(players, searchQuery)
 			result = players.filter((_, i) => matched.has(i))
 		}
 		if (filters.role !== null) result = result.filter(p => p.role === filters.role)

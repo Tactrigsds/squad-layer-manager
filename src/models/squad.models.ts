@@ -284,6 +284,21 @@ export namespace PlayerIds {
 		return false
 	}
 
+	// Identifier fields matched by exact whole-value equality in free-text player search. Usernames are
+	// deliberately excluded: they use incremental substring matching instead.
+	const STRICT_SEARCH_FIELDS = ['steam', 'eos', 'epic', 'playerController'] as const satisfies readonly Fields[]
+
+	export function matchesStrictSearch(id: IdQueryOrPlayerId, query: string): boolean {
+		const target = query.trim().toLowerCase()
+		if (!target) return false
+		const ids = normalizeIdQuery(id)
+		for (const field of STRICT_SEARCH_FIELDS) {
+			const value = ids[field]
+			if (value !== undefined && value.toLowerCase() === target) return true
+		}
+		return false
+	}
+
 	const ID_MATCHER = /\s*(?<name>[^\s:]+)\s*:\s*(?<id>[^\s]+)/g
 
 	function* matchAllIds(idsStr: string) {
