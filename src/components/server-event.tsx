@@ -1071,6 +1071,9 @@ export function ServerEvent({ event, stores }: { event: CHAT.EventEnriched; stor
 			return <ChatMessageEvent event={event} stores={stores} />
 		case 'PLAYER_CONNECTED':
 			return <PlayerConnectedEvent event={event} stores={stores} />
+		case 'PLAYER_RECONCILED':
+			// roster backfill from the teams poll -- not surfaced to the user
+			return null
 		case 'PLAYER_DISCONNECTED':
 			return <PlayerDisconnectedEvent event={event} stores={stores} />
 		case 'POSSESSED_ADMIN_CAMERA':

@@ -26,20 +26,43 @@ export type NewGame = {
 	type: 'NEW_GAME'
 	source: 'slm-started' | 'rcon-reconnected' | 'server-roll' | 'new-game-detected'
 	layerId: L.LayerId
-	state: SM.UniqueTeams
+	// DEPRECATED payload. NEW_GAME is now a roster-less match-boundary marker; the definitive roster arrives on the
+	// following RESET (the first teams poll after the boundary). Kept optional for backward compatibility: matches
+	// recorded before the split carry the roster here and are still replayed correctly. Read rosters via
+	// getInitialRoster / eventRoster rather than this field directly. Do not populate it on newly emitted events.
+	state?: SM.UniqueTeams
 } & Base
 export const NEW_GAME_META = meta({
 	players: [{ assocType: 'game-participant', path: '$.state.players[*]' }],
 	squads: ['$.state.squads[*]'],
 })
 
+// RESET carries the definitive team roster: "the roster is now exactly this". Emitted on the first teams poll after
+// a match boundary (a NEW_GAME / server roll) and on a same-match RCON reconnect.
 export type Reset = {
 	type: 'RESET'
-	source: 'slm-started' | 'rcon-reconnected'
+	source: 'slm-started' | 'rcon-reconnected' | 'server-roll'
 	state: SM.UniqueTeams
 } & Base
 
 export const RESET_META = meta({ players: [{ assocType: 'game-participant', path: '$.state.players[*]' }], squads: ['$.state.squads[*]'] })
+
+// Canonical, backward-compatible accessor for the roster an event carries, if any. RESET always carries one;
+// NEW_GAME carries one only for pre-split (legacy) matches. Centralizes the "which events seed the roster" rule.
+export function eventRoster(event: { type: string; state?: SM.UniqueTeams }): SM.UniqueTeams | undefined {
+	return event.type === 'NEW_GAME' || event.type === 'RESET' ? event.state : undefined
+}
+
+// The first definitive team roster for a match, from its events in chronological order. For post-split matches this
+// is the roster on the first RESET; for legacy matches it is the roster that was stored on NEW_GAME. Use this to
+// answer "what was the starting roster" without caring which event carries it.
+export function getInitialRoster(events: Iterable<{ type: string; state?: SM.UniqueTeams }>): SM.UniqueTeams | undefined {
+	for (const event of events) {
+		const roster = eventRoster(event)
+		if (roster) return roster
+	}
+	return undefined
+}
 
 export type RconConnected = {
 	type: 'RCON_CONNECTED'
@@ -73,6 +96,18 @@ export type PlayerConnected<P = SM.Player> =
 	& SM.PlayerAssoc<'player', P>
 	& Base
 export const PLAYER_CONNECTED_META = meta({ players: [{ assocType: 'player' }] })
+
+// Emitted by the teams-poll reconciler for a player RCON reports as present but who was missing from our roster
+// (e.g. their PLAYER_CONNECTED landed during a round roll and was dropped). Semantically distinct from
+// PLAYER_CONNECTED -- it is a roster backfill, not a fresh join -- so join-only consumers (feed card, battlemetrics,
+// connection indicator, teamswitch tracking) ignore it. Carries the full player so saveEvents registers them.
+export type PlayerReconciled<P = SM.Player> =
+	& {
+		type: 'PLAYER_RECONCILED'
+	}
+	& SM.PlayerAssoc<'player', P>
+	& Base
+export const PLAYER_RECONCILED_META = meta({ players: [{ assocType: 'player' }] })
 
 export type PlayerDisconnected<P = SM.PlayerId> =
 	& {
@@ -279,6 +314,7 @@ export type Event<P = SM.PlayerId> =
 	| RconDisconnected
 	| RoundEnded
 	| PlayerConnected<SM.Player>
+	| PlayerReconciled<SM.Player>
 	| PlayerDisconnected<P>
 	| SquadCreated
 	| ChatMessage<P>
@@ -310,6 +346,7 @@ export const EVENT_META = {
 	RCON_DISCONNECTED: RCON_DISCONNECTED_META,
 	ROUND_ENDED: ROUND_ENDED_META,
 	PLAYER_CONNECTED: PLAYER_CONNECTED_META,
+	PLAYER_RECONCILED: PLAYER_RECONCILED_META,
 	PLAYER_DISCONNECTED: PLAYER_DISCONNECTED_META,
 	SQUAD_CREATED: SQUAD_CREATED_META,
 	CHAT_MESSAGE: CHAT_MESSAGE_META,

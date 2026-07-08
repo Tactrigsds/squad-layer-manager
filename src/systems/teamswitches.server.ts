@@ -12,6 +12,7 @@ import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import * as PendingEvents from '@/models/pending-events.models'
+import * as SE from '@/models/server-events.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswitches.models'
 
@@ -121,7 +122,9 @@ export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 					}
 				}
 				const ops: TSW.Op[] = []
-				if (e.type === 'PLAYER_CONNECTED') {
+				// PLAYER_RECONCILED is a roster backfill but still means the player is present on a team, so it is
+				// tracked as a join here just like PLAYER_CONNECTED.
+				if (e.type === 'PLAYER_CONNECTED' || e.type === 'PLAYER_RECONCILED') {
 					if (e.player.teamId === null) return
 					const team = MH.getNormedTeamId(e.player.teamId, match.ordinal)
 					ops.push({
@@ -131,28 +134,33 @@ export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 						team,
 					})
 				} else if (e.type === 'NEW_GAME' || e.type === 'RESET') {
-					const players = new Map<string, MH.NormedTeamId>()
-					for (const p of e.state.players) {
-						if (p.teamId == null) throw new Error(`Player ${SM.PlayerIds.getPlayerId(p.ids)} has no teamId`)
-						players.set(SM.PlayerIds.getPlayerId(p.ids), MH.getNormedTeamId(p.teamId, match.ordinal))
-					}
-					ops.push({
-						opId: TSW.createOpId(),
-						code: 'reset-players',
-						players,
-					})
-					tryEndSwitching()
-					restoreSavedBlock: if (!ctx.teamswitches.haveReadSavedSwitchesFromDb) {
-						ctx.teamswitches.haveReadSavedSwitchesFromDb = true
-						const serverState = await SquadServer.getServerState(ctx)
-						if (!serverState.teamswitches) break restoreSavedBlock
-						const { matchHistoryEntryId, switches } = serverState.teamswitches
-						if (matchHistoryEntryId === match.historyEntryId) {
-							ops.push({
-								opId: TSW.createOpId(),
-								code: 'init-saved-teamswitches',
-								switches,
-							})
+					// A roster-less NEW_GAME is just the match-boundary marker; the roster (and thus reset-players)
+					// arrives on the following RESET. Only act on the roster-bearing event.
+					const roster = SE.eventRoster(e)
+					if (roster) {
+						const players = new Map<string, MH.NormedTeamId>()
+						for (const p of roster.players) {
+							if (p.teamId == null) throw new Error(`Player ${SM.PlayerIds.getPlayerId(p.ids)} has no teamId`)
+							players.set(SM.PlayerIds.getPlayerId(p.ids), MH.getNormedTeamId(p.teamId, match.ordinal))
+						}
+						ops.push({
+							opId: TSW.createOpId(),
+							code: 'reset-players',
+							players,
+						})
+						tryEndSwitching()
+						restoreSavedBlock: if (!ctx.teamswitches.haveReadSavedSwitchesFromDb) {
+							ctx.teamswitches.haveReadSavedSwitchesFromDb = true
+							const serverState = await SquadServer.getServerState(ctx)
+							if (!serverState.teamswitches) break restoreSavedBlock
+							const { matchHistoryEntryId, switches } = serverState.teamswitches
+							if (matchHistoryEntryId === match.historyEntryId) {
+								ops.push({
+									opId: TSW.createOpId(),
+									code: 'init-saved-teamswitches',
+									switches,
+								})
+							}
 						}
 					}
 				} else if (e.type === 'PLAYER_CHANGED_TEAM') {
@@ -184,18 +192,51 @@ export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 		).subscribe(),
 	)
 
-	// schedule teamswitches on map roll
+	// Schedule teamswitches on map roll. Wait until the new match's roster has settled (every player assigned to a
+	// team) before executing the saved switches, so they land on faithful team data. NEW_GAME is now a roster-less
+	// boundary that precedes the roster, and players load in during staging, so a fixed delay is not enough --
+	// waitForSettledRoster polls RCON until settled or a timeout. taskScheduling 'switch' aborts a pending wait if
+	// another match boundary arrives first.
 	ctx.cleanup.push(
 		ctx.server.event$.pipe(
-			Rx.filter(([ctx, e]) => e.type === 'NEW_GAME'),
-			Rx.switchMap((arg) => Rx.timer(2000).pipe(Rx.map(() => arg))),
-			C.durableSub('performTeamswitches', { module }, async ([ctx], signal) => {
+			Rx.filter(([, e]) => e.type === 'NEW_GAME'),
+			C.durableSub('performTeamswitches', { module, taskScheduling: 'switch' }, async ([ctx], signal) => {
+				const settled = await waitForSettledRoster({ ...ctx, signal }, SETTLED_ROSTER_TIMEOUT_MS)
+				if (signal.aborted) return
+				if (!settled) {
+					log.warn('roster did not settle within timeout after new game; skipping scheduled teamswitches')
+					return
+				}
 				await dispatchOp({ ...ctx, signal }, [{ opId: TSW.createOpId(), code: 'execute-teamswitches' }])
 			}),
 		).subscribe(),
 	)
 
 	return context
+}
+
+// generous enough to cover the staging period while players load into the new match and get assigned teams
+const SETTLED_ROSTER_TIMEOUT_MS = 10_000
+
+// Wait until the current match's roster has settled -- every player assigned to a team -- then return it, or null
+// on timeout/abort. Observes live RCON ListPlayers (not the teamed-only currTeams snapshot) so it sees players who
+// are still loading, and only trusts a poll once we're 'synced' (the RESET has landed) so it reflects the new
+// match rather than a stale transitional / previous-match roster.
+function waitForSettledRoster(
+	ctx: C.SquadServer & C.Rcon & C.AdminList & CS.AbortSignal,
+	timeoutMs: number,
+): Promise<SM.Player[] | null> {
+	return Rx.firstValueFrom(
+		ctx.server.teams.observe(ctx, { ttl: 1000 }).pipe(
+			Rx.filter((res): res is Extract<SM.TeamsRes, { code: 'ok' }> =>
+				res.code === 'ok' && ctx.server.eventState.syncState.type === 'synced' && SM.allPlayersTeamed(res.players)
+			),
+			Rx.map(res => res.players),
+			Rx.takeUntil(Rx.timer(timeoutMs)),
+			withAbortSignal(ctx.signal),
+		),
+		{ defaultValue: null },
+	)
 }
 
 function getState(ctx: C.Teamswitch) {
@@ -312,7 +353,10 @@ const dispatchOp = C.spanOp(
 				switch (se.code) {
 					case 'execute-teamswitches': {
 						const [res, thrownError] = await withThrownAsync(async () => {
-							// TODO get first valid team with timeout
+							// The scheduled (map-roll) trigger waits for the roster to settle before dispatching, so in the
+							// common path no target is team-less here. As a safety net for other dispatch paths (e.g. a manual
+							// switch issued mid-staging), skip a team-less target rather than throwing: we can't faithfully
+							// place a player who has no team yet, and a later poll's PLAYER_CHANGED_TEAM will reconcile them.
 							const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 							const teamsRes = await ctx.server.teams.get(ctx, { ttl: 300 })
 							if (teamsRes.code === 'err:rcon') return teamsRes
@@ -321,7 +365,10 @@ const dispatchOp = C.spanOp(
 							for (const [playerId, _switch] of se.switches.entries()) {
 								const player = SM.PlayerIds.find(teamsRes.players, p => p.ids, playerId)
 								if (!player) continue
-								if (player.teamId == null) throw new Error(`player ${playerId} has no teamId`)
+								if (player.teamId == null) {
+									log.warn('skipping teamswitch for team-less (unsettled) player %s', playerId)
+									continue
+								}
 								const playerNormedTeamId = MH.getNormedTeamId(player.teamId, currentMatch.ordinal)
 								if (playerNormedTeamId === _switch.toTeam) continue
 								toSwitch.push(playerId)

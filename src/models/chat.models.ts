@@ -124,6 +124,7 @@ export type EventEnriched =
 	| SE.RconDisconnected
 	| SE.RoundEnded
 	| SE.PlayerConnected<SM.Player>
+	| SE.PlayerReconciled<SM.Player>
 	| (SE.PlayerDisconnected<SM.Player>)
 	| (SE.PlayerDetailsChanged<SM.Player>)
 	| (SE.SquadDetailsChanged & { squad: SM.UniqueSquad; prevDetails: SE.SquadDetailsChanged['details'] })
@@ -447,6 +448,16 @@ function interpolateEvent(
 		case 'PLAYER_CONNECTED': {
 			if (SM.PlayerIds.find(state.players, p => p.ids, event.player.ids)) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player.ids)} connected but was already in the player list`)
+			}
+			applyEventTeamMutations(chatLog, state, event)
+			return { ...event, player: event.player }
+		}
+
+		// roster backfill from the teams poll -- adds the player to client state like a connect, but is not
+		// rendered in the feed (see isRenderableInFeed / ServerEvent).
+		case 'PLAYER_RECONCILED': {
+			if (SM.PlayerIds.find(state.players, p => p.ids, event.player.ids)) {
+				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player.ids)} reconciled but was already in the player list`)
 			}
 			applyEventTeamMutations(chatLog, state, event)
 			return { ...event, player: event.player }
@@ -787,6 +798,7 @@ export function isRenderableInFeed(event: EventEnriched): boolean {
 	return event.type !== 'RESET'
 		&& event.type !== 'PLAYER_DETAILS_CHANGED'
 		&& event.type !== 'TEAMS_POLLED_UPDATE'
+		&& event.type !== 'PLAYER_RECONCILED'
 		&& event.type !== 'NOOP'
 }
 

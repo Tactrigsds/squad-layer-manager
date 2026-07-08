@@ -6,7 +6,7 @@ import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
 import type { ActionSource } from '@/models/server-events-base.models'
-import type * as SE from '@/models/server-events.models'
+import * as SE from '@/models/server-events.models'
 import * as SM from '@/models/squad.models'
 import { z } from 'zod'
 type TeamsUpdateEvent = { type: 'TEAMS_UPDATE'; id: number; teams: SM.Teams; time: number }
@@ -22,6 +22,17 @@ export type Attribution = {
 // how long an armed expectation lives before it's GC'd if its event never lands (RCON error, player left).
 // matched expectations are consumed immediately, so this is only a safety net -- NOT the matching window.
 export const DEFAULT_EXPECTATION_TTL_MS = 60_000
+
+// number of consecutive teams polls a player in currTeams must be absent from RCON ListPlayers before we cull
+// them. 2 == one grace poll, so a single dropped/partial poll never evicts a still-connected player. At the ~5s
+// teams TTL this is a ~10s window; a real disconnect is normally removed far sooner by its log line, so culling
+// only fires for disconnects whose log line was missed.
+export const POLL_ABSENCE_CULL_THRESHOLD = 2
+
+// how long we tolerate being stuck mid-sync ('syncing'/'rolling') before the watchdog force-resyncs from RCON. A
+// normal roll/sync completes within seconds (first teamed poll after the boundary), so this only fires when the
+// state machine is genuinely wedged -- e.g. a roll whose real-layer NEW_GAME log never arrived.
+export const SYNC_WATCHDOG_TIMEOUT_MS = 90_000
 
 // SLM arms an expectation (before issuing an action's RCON command) so that when a matching server event is later
 // produced, process() stamps its `source` -- linking it to the SLM app event that caused it -- and consumes
@@ -70,16 +81,34 @@ export type State = {
 		layerId: L.LayerId
 	} | 'PENDING'
 
-	// 'rolling' means we're expecting a NEW_GAME event soon
+	// Sync/roll lifecycle. In both 'syncing' and 'rolling' we've established the match boundary (and emitted a
+	// roster-less NEW_GAME for new matches) and are awaiting the first teams poll timestamped after `boundaryTime`;
+	// that poll produces the RESET carrying the definitive roster and flips us to 'synced'. Polls at or before
+	// `boundaryTime` are stale (previous match / pre-boundary) and discarded. 'rolling' additionally waits for the
+	// real-layer NEW_GAME log (`newGameEvent`) after the TransitionMap before its boundary is known.
 	syncState:
 		| { type: 'desynced' }
-		| { type: 'syncing'; isNewMatch: boolean }
+		| { type: 'syncing'; isNewMatch: boolean; boundaryTime: number }
 		| { type: 'rolling'; newGameEvent?: SM.LogEvents.NewGame & { id: number } }
 		| { type: 'synced' }
+
+	// wall-clock time we entered a mid-sync state ('syncing'/'rolling'), for the roll watchdog. While non-synced
+	// every event is dropped, so a roll whose real-layer NEW_GAME log never arrives would wedge us indefinitely;
+	// the watchdog force-resyncs from RCON once this exceeds SYNC_WATCHDOG_TIMEOUT_MS. Null while synced/desynced.
+	nonSyncedSince: number | null
 
 	isFirstConnection: boolean | null
 	admins: Set<string>
 	currTeams: SM.UniqueTeams | null
+	// consecutive teams polls in which a player currently in currTeams was absent from RCON ListPlayers. Used to
+	// debounce poll-driven culling (see reconcileTeamsUpdate) so a single dropped/partial poll doesn't evict a
+	// still-connected player. Only ever holds currently-absent, not-yet-culled players; entries self-prune.
+	pollAbsenceStreaks: Map<SM.PlayerId, number>
+
+	// players RCON currently reports without a team (still loading / unassigned). currTeams stays teamed-only, so
+	// these aren't in it yet. When one later appears teamed we recognize it as a backfill of a player we were
+	// already aware of (PLAYER_RECONCILED) rather than a fresh arrival (PLAYER_CONNECTED). Rebuilt every poll.
+	unassignedPlayers: Set<SM.PlayerId>
 	counters: {
 		eventId: Generator<number, never, unknown>
 		squadId: Generator<number, never, unknown>
@@ -110,6 +139,7 @@ export const TeamModifyingEventTypes = z.enum(
 		'NEW_GAME',
 		'RESET',
 		'PLAYER_CONNECTED',
+		'PLAYER_RECONCILED',
 		'PLAYER_DISCONNECTED',
 		'PLAYER_CHANGED_TEAM',
 	] satisfies SE.Event['type'][],
@@ -128,6 +158,9 @@ export function init(
 		lastKnownLogEventTime: null,
 		admins: new Set(),
 		currTeams: null,
+		pollAbsenceStreaks: new Map(),
+		unassignedPlayers: new Set(),
+		nonSyncedSince: null,
 		expectedNewLayerId: null,
 		eventBufs: {
 			rconEmittedEvents: [],
@@ -246,13 +279,70 @@ export function onTeamsPolled(state: State, teams: SM.Teams, time: number) {
 	state.eventBufs.teamsUpdates.push({ type: 'TEAMS_UPDATE', id: Gen.next(state.counters.pendingEventId), teams, time })
 }
 
+// Fold an emitted event into `state`: seed an empty roster if a roster-bearing event needs one, stamp expectation
+// attribution before mutating teams (SQUAD_DISBANDED matching needs the squad still present), then apply team
+// mutations. Shared by the main processing loop and the watchdog resync.
+function applyEventToState(state: State, ctx: CS.Log, event: SE.Event) {
+	if (SE.eventRoster(event) && !state.currTeams) {
+		state.currTeams = initUniqueTeams(state, { players: [], squads: [] })
+	}
+	applyExpectations(state, event)
+	if (state.currTeams) {
+		applyEventTeamMutations(ctx, state.currTeams, event)
+	}
+}
+
+// Watchdog recovery: re-establish sync from RCON's current layer when the log-driven roll/sync got wedged. Mirrors
+// the RCON_CONNECTED sync-begin (resolve the match, enter 'syncing', emit a roster-less NEW_GAME for a new match)
+// so the next teams poll produces the RESET that reseeds the roster.
+async function* forceResync(state: State, time: number): AsyncGenerator<SE.Event> {
+	const layersStatus = await state.hooks.fetchLayersStatus()
+	if (!layersStatus) {
+		state.log.warn('sync watchdog fired but fetchLayersStatus returned null; cannot force resync')
+		return
+	}
+	const currentLayerId = layersStatus.currentLayer.id
+	const { match, isNewMatch } = await state.hooks.onNewGameDuringSync(currentLayerId, time)
+	state.log.warn('sync watchdog: forcing resync (stuck non-synced); layer=%s isNewMatch=%s', currentLayerId, isNewMatch)
+	state.currentMatch = { historyEntryId: match.historyEntryId, layerId: match.layerId }
+	state.syncState = { type: 'syncing', isNewMatch, boundaryTime: time }
+	if (isNewMatch) {
+		yield {
+			type: 'NEW_GAME',
+			id: Gen.next(state.counters.eventId),
+			layerId: state.currentMatch.layerId,
+			matchId: state.currentMatch.historyEntryId,
+			source: 'new-game-detected',
+			time,
+		}
+	}
+}
+
 export async function* process(
 	state: State,
 	time: number,
 ): AsyncGenerator<SE.Event> {
 	const log = state.log
+	const ctx = { log, ...CS.init() }
 	// GC expectations whose event never landed (matched ones are consumed on match, so this only drops stale arms)
 	state.expectations = state.expectations.filter(e => e.expiresAt >= time)
+
+	// Roll/sync watchdog. While non-synced every event is dropped (see the synced gate), so a roll whose real-layer
+	// NEW_GAME log never arrived would wedge us in 'rolling' indefinitely. If we've been mid-sync past the timeout,
+	// force a resync from RCON's current layer; the next poll then produces the RESET that reseeds the roster.
+	if (state.syncState.type === 'syncing' || state.syncState.type === 'rolling') {
+		state.nonSyncedSince ??= time
+		if (time - state.nonSyncedSince >= SYNC_WATCHDOG_TIMEOUT_MS) {
+			state.nonSyncedSince = time // reset the clock so a failed resync retries after another full timeout, not every poll
+			for await (const event of forceResync(state, time)) {
+				applyEventToState(state, ctx, event)
+				yield event
+			}
+		}
+	} else {
+		state.nonSyncedSince = null
+	}
+
 	const toProcess: PendingEvent[] = []
 	const comparator = (a: PendingEvent, b: PendingEvent) => a.time - b.time
 
@@ -291,19 +381,11 @@ export async function* process(
 	}
 
 	const processedEventIds = new Set<number>()
-	const ctx = { log, ...CS.init() }
 	for (let i = 0; i < toProcess.length; i++) {
 		const pendingEvent = toProcess[i]
 		try {
 			for await (const event of processPendingEvent(state, processedEventIds, time, pendingEvent)) {
-				if (event.type === 'NEW_GAME' || event.type === 'RESET' && !state.currTeams) {
-					state.currTeams = initUniqueTeams(state, { players: [], squads: [] })
-				}
-				// stamp attribution before mutating teams -- SQUAD_DISBANDED matching needs the squad still in currTeams
-				applyExpectations(state, event)
-				if (state.currTeams) {
-					applyEventTeamMutations(ctx, state.currTeams, event)
-				}
+				applyEventToState(state, ctx, event)
 				yield event
 			}
 		} catch (err) {
@@ -322,8 +404,12 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.UniqueTeams, even
 	switch (event.type) {
 		case 'NEW_GAME':
 		case 'RESET': {
-			teams.players.splice(0, teams.players.length, ...event.state.players)
-			teams.squads.splice(0, teams.squads.length, ...event.state.squads)
+			// A roster-less NEW_GAME (post-split boundary marker) leaves the roster untouched -- the following RESET
+			// reseeds it. RESET, and legacy NEW_GAME-with-state, replace the roster wholesale.
+			const roster = SE.eventRoster(event)
+			if (!roster) break
+			teams.players.splice(0, teams.players.length, ...roster.players)
+			teams.squads.splice(0, teams.squads.length, ...roster.squads)
 			teams.squads.sort((a, b) => a.squadId - b.squadId)
 			break
 		}
@@ -458,10 +544,12 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.UniqueTeams, even
 			break
 		}
 
-		case 'PLAYER_CONNECTED': {
+		case 'PLAYER_CONNECTED':
+		// PLAYER_RECONCILED is a roster backfill (from the teams poll) and mutates the roster identically to a connect.
+		case 'PLAYER_RECONCILED': {
 			const existingPlayerIndex = SM.PlayerIds.indexOf(teams.players, p => p.ids, event.player.ids)
 			if (existingPlayerIndex !== -1) {
-				log.warn(`Player ${SM.PlayerIds.prettyPrint(event.player.ids)} connected but was already in the player list`)
+				log.warn(`Player ${SM.PlayerIds.prettyPrint(event.player.ids)} ${event.type} but was already in the player list`)
 				teams.players[existingPlayerIndex] = event.player
 			} else {
 				teams.players.push(event.player)
@@ -504,7 +592,7 @@ async function* processPendingEvent(
 			pendingEvent.currentLayerId,
 			pendingEvent.time,
 		)
-		state.syncState = { type: 'syncing', isNewMatch }
+		state.syncState = { type: 'syncing', isNewMatch, boundaryTime: pendingEvent.time }
 		state.currentMatch = {
 			historyEntryId: match.historyEntryId,
 			layerId: match.layerId,
@@ -531,6 +619,19 @@ async function* processPendingEvent(
 				time: Date.now(),
 			}
 		}
+
+		// Roster-less boundary marker for a genuinely new match; the roster follows on the first post-boundary poll
+		// (RESET). A same-match reconnect (isNewMatch=false) emits no NEW_GAME -- just the RESET reseed.
+		if (isNewMatch) {
+			yield {
+				type: 'NEW_GAME',
+				id: Gen.next(state.counters.eventId),
+				layerId: state.currentMatch.layerId,
+				matchId: state.currentMatch.historyEntryId,
+				source: state.isFirstConnection ? 'slm-started' : 'rcon-reconnected',
+				time: pendingEvent.time,
+			}
+		}
 	}
 
 	if (pendingEvent.type === 'RCON_DISCONNECTED') {
@@ -540,6 +641,8 @@ async function* processPendingEvent(
 		state.currTeams = null
 		// team state is gone; any pending forced-team-change attribution can no longer be matched to a poll
 		state.forcedTeamChanges.clear()
+		state.pollAbsenceStreaks.clear()
+		state.unassignedPlayers.clear()
 		if (state.currentMatch !== 'PENDING') {
 			yield {
 				type: 'RCON_DISCONNECTED',
@@ -552,32 +655,26 @@ async function* processPendingEvent(
 
 	outerIf: if (pendingEvent.type === 'TEAMS_UPDATE' && state.syncState.type === 'syncing') {
 		if (state.currentMatch === 'PENDING') throw new Error('Unexpected missing current match')
-		for (const player of pendingEvent.teams.players) {
-			if (player.teamId == null) {
-				break outerIf
-			}
-		}
-		const teams = initUniqueTeams(state, pendingEvent.teams)
+		// Discard polls captured before the boundary (a previous match / pre-connect snapshot).
+		if (pendingEvent.time < state.syncState.boundaryTime) break outerIf
+		// Snapshot only players already assigned to a team. We used to require EVERY listed player to be teamed,
+		// which let a single still-loading/spectating straggler defer sync indefinitely and widen the window in
+		// which connects are dropped. Team-less stragglers are instead added later by reconcileTeamsUpdate as they
+		// get sorted onto a team. Only defer a poll that has players but none teamed yet (a purely transitional
+		// snapshot); an empty server (no players at all) still syncs.
+		const teamedPlayers = pendingEvent.teams.players.filter(p => p.teamId != null)
+		if (pendingEvent.teams.players.length > 0 && teamedPlayers.length === 0) break outerIf
+		const teams = initUniqueTeams(state, { players: teamedPlayers, squads: pendingEvent.teams.squads })
 
-		if (state.syncState.isNewMatch) {
-			yield {
-				type: 'NEW_GAME',
-				id: Gen.next(state.counters.eventId),
-				layerId: state.currentMatch.layerId,
-				matchId: state.currentMatch.historyEntryId,
-				source: state.isFirstConnection ? 'slm-started' : 'rcon-reconnected',
-				state: teams,
-				time: pendingEvent.time,
-			}
-		} else {
-			yield {
-				type: 'RESET',
-				matchId: state.currentMatch.historyEntryId,
-				state: teams,
-				time: pendingEvent.time,
-				id: Gen.next(state.counters.eventId),
-				source: state.isFirstConnection ? 'slm-started' : 'rcon-reconnected',
-			}
+		// The definitive roster always arrives via RESET. For a new match the roster-less NEW_GAME boundary was
+		// already emitted at RCON_CONNECTED; a same-match reconnect emits only this RESET.
+		yield {
+			type: 'RESET',
+			matchId: state.currentMatch.historyEntryId,
+			state: teams,
+			time: pendingEvent.time,
+			id: Gen.next(state.counters.eventId),
+			source: state.isFirstConnection ? 'slm-started' : 'rcon-reconnected',
 		}
 		state.syncState = { type: 'synced' }
 	}
@@ -587,22 +684,19 @@ async function* processPendingEvent(
 		&& state.syncState.newGameEvent.time < pendingEvent.time
 		&& state.currentMatch !== 'PENDING'
 	) {
-		for (const player of pendingEvent.teams.players) {
-			if (player.teamId == null) {
-				break outerIf
-			}
-		}
+		// See the syncing branch above: snapshot the teamed players, don't stall on team-less stragglers.
+		const teamedPlayers = pendingEvent.teams.players.filter(p => p.teamId != null)
+		if (pendingEvent.teams.players.length > 0 && teamedPlayers.length === 0) break outerIf
 
-		state.currTeams = initUniqueTeams(state, pendingEvent.teams)
-
-		const event = state.syncState.newGameEvent
+		const teams = initUniqueTeams(state, { players: teamedPlayers, squads: pendingEvent.teams.squads })
+		// The roster-less NEW_GAME(server-roll) boundary was emitted when the real-layer NEW_GAME log arrived; this
+		// first post-boundary poll carries the definitive roster as a RESET. The reducer applies it to currTeams.
 		yield {
-			type: 'NEW_GAME',
+			type: 'RESET',
 			id: Gen.next(state.counters.eventId),
-			time: event.time,
+			time: pendingEvent.time,
 			matchId: state.currentMatch.historyEntryId,
-			layerId: state.currentMatch.layerId,
-			state: Obj.deepClone(state.currTeams),
+			state: teams,
 			source: 'server-roll',
 		}
 		state.syncState = { type: 'synced' }
@@ -611,12 +705,20 @@ async function* processPendingEvent(
 	if (pendingEvent.type === 'NEW_GAME') {
 		if (pendingEvent.layerClassname === 'TransitionMap') {
 			state.syncState = { type: 'rolling' }
-			state.currTeams = null
+			// Keep the prior roster as a stale fallback through the roll instead of nulling it. syncState==='rolling'
+			// is the staleness marker, and the post-roll NEW_GAME snapshot replaces it wholesale once sync completes.
+			// This preserves attribution lookups (getCurrTeams) across the loading screen and avoids a total blackout
+			// if the roll never completes. The absence streaks and unassigned set belong to the outgoing roster, reset them.
+			state.pollAbsenceStreaks.clear()
+			state.unassignedPlayers.clear()
 			state.expectedNewLayerId = state.nextLayerId
 		} else {
+			// Enter 'rolling' but do NOT commit `newGameEvent` yet. The rolling TEAMS_UPDATE branch keys off
+			// `newGameEvent` (and only guards `currentMatch !== 'PENDING'`), so committing it before we've resolved
+			// the new match would let the next poll complete the roll against the stale (previous) match.
+			state.syncState = { type: 'rolling' }
 			let newLayerId = state.expectedNewLayerId
 			state.expectedNewLayerId = null
-			state.syncState = { type: 'rolling', newGameEvent: pendingEvent }
 			if (!newLayerId || !L.layerMatchesIngameLayerClassname(newLayerId, pendingEvent.layerClassname)) {
 				if (pendingEvent.layerClassname) {
 					log.error(`layerClassname mismatch: expected ${newLayerId}, got ${pendingEvent.layerClassname}`)
@@ -625,7 +727,9 @@ async function* processPendingEvent(
 				}
 				const layersStatus = await state.hooks.fetchLayersStatus()
 				if (!layersStatus) {
-					log.warn('fetchLayersStatus returned null')
+					// Couldn't resolve the new layer. Stay in plain 'rolling' (no newGameEvent) so the roll can't
+					// complete against a stale match; the sync watchdog force-resyncs from RCON if this persists.
+					log.warn('fetchLayersStatus returned null; staying in rolling for the watchdog to recover')
 					processedEventIds.add(pendingEvent.id)
 					return
 				}
@@ -637,10 +741,22 @@ async function* processPendingEvent(
 				historyEntryId: match.historyEntryId,
 				layerId: match.layerId,
 			}
-			state.expectedNewLayerId = null
 			if (nextLayerId !== null) {
 				// we don't emit a MAP_SET event here as we've assumd the caller has already handled this logic in onNewGameDuringRoll
 				state.nextLayerId = nextLayerId
+			}
+			// Match resolved: now commit newGameEvent so the next post-boundary poll produces the RESET.
+			state.syncState = { type: 'rolling', newGameEvent: pendingEvent }
+
+			// Roster-less boundary marker, emitted promptly at the real-layer log. The roster follows on the first
+			// teams poll timestamped after this (see the rolling TEAMS_UPDATE branch), as a RESET.
+			yield {
+				type: 'NEW_GAME',
+				id: Gen.next(state.counters.eventId),
+				layerId: state.currentMatch.layerId,
+				matchId: state.currentMatch.historyEntryId,
+				source: 'server-roll',
+				time: pendingEvent.time,
 			}
 		}
 	}
@@ -1156,6 +1272,70 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 	const base = { matchId: state.currentMatch.historyEntryId, time: event.time }
 	const log = state.log
 
+	let emittedEvent = false
+
+	// RCON ListPlayers is authoritative on presence, so it drives both add and remove here. Log connect/disconnect
+	// lines still handle the common case with precise timing; this reconcile is the backstop that keeps currTeams
+	// converged with reality when a log line is missed, malformed, or dropped (e.g. a connect that landed during a
+	// round roll while currTeams was null, or a disconnect whose log line never arrived). Both loops run before the
+	// squad-match early-return so presence recovery is never blocked by a not-yet-created squad.
+
+	// ADD: a polled player absent from currTeams is added here. currTeams stays teamed-only, so team-less players
+	// aren't added yet -- they're tracked in `unassignedPlayers` (rebuilt below) and added on the poll where they
+	// first appear teamed, which also avoids a spurious PLAYER_CHANGED_TEAM. A newly-teamed player we had already
+	// seen team-less is a backfill of someone we were tracking -> PLAYER_RECONCILED (not surfaced as a fresh join);
+	// one we had never seen genuinely connected while we weren't watching (e.g. their connect log dropped during a
+	// roll) -> PLAYER_CONNECTED. Squad/leader state is then established by the reconciliation loops below.
+	const prevUnassigned = state.unassignedPlayers
+	const nextUnassigned = new Set<SM.PlayerId>()
+	for (const nextPlayer of nextTeams.players) {
+		const playerId = SM.PlayerIds.getPlayerId(nextPlayer.ids)
+		const inCurrTeams = !!SM.PlayerIds.find(state.currTeams.players, p => p.ids, nextPlayer.ids)
+		if (nextPlayer.teamId == null) {
+			if (!inCurrTeams) nextUnassigned.add(playerId)
+			continue
+		}
+		if (inCurrTeams) continue
+		emittedEvent = true
+		yield {
+			type: prevUnassigned.has(playerId) ? 'PLAYER_RECONCILED' : 'PLAYER_CONNECTED',
+			id: Gen.next(state.counters.eventId),
+			player: {
+				ids: nextPlayer.ids,
+				teamId: nextPlayer.teamId,
+				squadId: null,
+				isLeader: false,
+				isAdmin: nextPlayer.isAdmin,
+				role: nextPlayer.role,
+			},
+			...base,
+		}
+	}
+	state.unassignedPlayers = nextUnassigned
+
+	// REMOVE: a player in currTeams absent from the poll has a missed disconnect. Debounce across polls
+	// (POLL_ABSENCE_CULL_THRESHOLD) so a single dropped/partial poll never evicts a still-connected player.
+	for (const player of state.currTeams.players) {
+		const playerId = SM.PlayerIds.getPlayerId(player.ids)
+		if (SM.PlayerIds.find(nextTeams.players, p => p.ids, player.ids)) {
+			state.pollAbsenceStreaks.delete(playerId)
+			continue
+		}
+		const streak = (state.pollAbsenceStreaks.get(playerId) ?? 0) + 1
+		if (streak < POLL_ABSENCE_CULL_THRESHOLD) {
+			state.pollAbsenceStreaks.set(playerId, streak)
+			continue
+		}
+		state.pollAbsenceStreaks.delete(playerId)
+		emittedEvent = true
+		yield {
+			type: 'PLAYER_DISCONNECTED',
+			id: Gen.next(state.counters.eventId),
+			player: playerId,
+			...base,
+		}
+	}
+
 	for (const squad of nextTeams.squads) {
 		const prevSquad = state.currTeams.squads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
 		if (!prevSquad) {
@@ -1168,8 +1348,6 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 			uniqueId: prevSquad.uniqueId,
 		})
 	}
-
-	let emittedEvent = false
 
 	for (const nextPlayer of nextTeams.players) {
 		const playerId = SM.PlayerIds.getPlayerId(nextPlayer.ids)

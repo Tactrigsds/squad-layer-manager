@@ -11,6 +11,9 @@ export const SERVER_EVENT_TYPE = z.enum([
 	'ROUND_ENDED',
 	'PLAYER_CONNECTED',
 	'PLAYER_DISCONNECTED',
+	// a player RCON reported as present but who was missing from our roster, backfilled by the teams-poll
+	// reconciler (see reconcileTeamsUpdate). Distinct from PLAYER_CONNECTED, which means an actual join.
+	'PLAYER_RECONCILED',
 	'SQUAD_CREATED',
 	'CHAT_MESSAGE',
 	'ADMIN_BROADCAST',

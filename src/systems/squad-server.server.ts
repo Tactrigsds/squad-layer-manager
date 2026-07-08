@@ -597,8 +597,15 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			onNewGameDuringSync: onNewGameDuringSync(serverId),
 			fetchLayersStatus: async () => {
 				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-				const res = await ctx.server.layersStatus.get(ctx)
-				if (res.code === 'ok') return res.data
+				const data = await Rx.firstValueFrom(
+					ctx.server.layersStatus.observe(ctx, { ttl: 2_000 }).pipe(
+						Rx.concatMap((s): SM.LayersStatus[] => s.code === 'ok' ? [s.data] : []),
+						Rx.takeUntil(Rx.timer(8_000)),
+					),
+					{ defaultValue: null },
+				)
+
+				if (data) return data
 				return null
 			},
 		},

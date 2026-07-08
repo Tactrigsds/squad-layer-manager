@@ -612,11 +612,12 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 			}),
 		).subscribe(),
 		ctx.server.event$.pipe(
-			Rx.filter(([eventCtx, event]) => event.type === 'PLAYER_CONNECTED'),
+			// PLAYER_RECONCILED included: a backfilled player is one we became aware of and should fetch BM data for.
+			Rx.filter(([eventCtx, event]) => event.type === 'PLAYER_CONNECTED' || event.type === 'PLAYER_RECONCILED'),
 			// parallel so one player's fetch doesn't queue behind another's; the task signal aborts as soon as
 			// the callback resolves, so the fetch must be awaited or it gets cancelled immediately
 			C.durableSub('bm-on-player-connected', { module, root: true, taskScheduling: 'parallel' }, async ([eventCtx, event], signal) => {
-				if (event.type !== 'PLAYER_CONNECTED') return
+				if (event.type !== 'PLAYER_CONNECTED' && event.type !== 'PLAYER_RECONCILED') return
 				const playerIds = event.player.ids
 				const sliceCtx = SquadServer.resolveSliceCtx({ ...eventCtx, signal }, serverId)
 				await fetchSinglePlayerBmData(sliceCtx, playerIds).catch((err) => {

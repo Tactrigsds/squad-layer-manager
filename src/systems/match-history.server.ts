@@ -274,7 +274,8 @@ export const matchHistoryRouter = {
 		const ctx = SquadServer.resolveSliceCtx(_ctx, input.serverId)
 		const playerId = input.playerId
 
-		// Most recent PLAYER_CONNECTED / PLAYER_DISCONNECTED, for the connection status indicator
+		// Most recent connection event, for the connection status indicator. PLAYER_RECONCILED counts as a
+		// connection: the player is present (backfilled from the teams poll) even if we never saw their join log.
 		const connectionRows = await ctx.db()
 			.select({ type: Schema.serverEvents.type, time: Schema.serverEvents.time })
 			.from(Schema.serverEvents)
@@ -285,13 +286,13 @@ export const matchHistoryRouter = {
 					E.eq(Schema.playerEventAssociations.playerId, playerId),
 				),
 			)
-			.where(E.inArray(Schema.serverEvents.type, ['PLAYER_CONNECTED', 'PLAYER_DISCONNECTED']))
+			.where(E.inArray(Schema.serverEvents.type, ['PLAYER_CONNECTED', 'PLAYER_RECONCILED', 'PLAYER_DISCONNECTED']))
 			.orderBy(E.desc(Schema.serverEvents.time))
 			.limit(1)
 
 		const lastConnectionEvent = connectionRows[0]
 		const connectionStatus: { status: 'online'; connectedSince: number } | { status: 'offline'; lastSeen: number | null } =
-			lastConnectionEvent?.type === 'PLAYER_CONNECTED'
+			lastConnectionEvent?.type === 'PLAYER_CONNECTED' || lastConnectionEvent?.type === 'PLAYER_RECONCILED'
 				? { status: 'online', connectedSince: lastConnectionEvent.time.getTime() }
 				: lastConnectionEvent?.type === 'PLAYER_DISCONNECTED'
 				? { status: 'offline', lastSeen: lastConnectionEvent.time.getTime() }

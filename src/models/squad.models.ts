@@ -376,6 +376,13 @@ export const PlayerSchema = z.object({
 export type Player = z.infer<typeof PlayerSchema>
 export const PlayerIdSchema = z.string()
 export type PlayerId = EosId
+
+// A roster is "settled" when every player has been assigned to a team -- i.e. no one is still loading / unassigned.
+// Canonical gate for operations that need faithful team data (e.g. executing configured team switches): acting on a
+// roster with team-less players would compute moves / balance against an incomplete picture.
+export function allPlayersTeamed(players: Pick<Player, 'teamId'>[]): boolean {
+	return players.every(p => p.teamId != null)
+}
 export type PlayerAssoc<Type extends SchemaModels.ServerEventPlayerAssocType = 'player', Value = PlayerId> = { [key in Type]: Value }
 export function toDedupedRoleName(role: string): string {
 	const regex = /([A-Z]+)_([A-Za-z]+)(_(\d+))?/

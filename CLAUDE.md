@@ -8,7 +8,7 @@ Async functions should by-default have the option to pass a signal to cancel an 
 
 When branching on unions(especially discriminated unions), generally use `assertNever()` from src/lib/type-guards.ts to cover off the default case so that type errors are raised if we add new members to the union.
 
-Unit tests should be reserved for complex and self-contained behavior that we want to isolate. we will be introducing integration tests at a later time. Use `vitest`
+Unit tests should be reserved for code with two properties: being actually complex, and being largely self-contained, or at least isolatable. We will be introducing integration tests at a later time. Use `vitest`. Tests that are harder to judge the correctness of than the code they test are largely useless.
 
 Use namespace imports for all nontrivial modules, unless established convention for that module contradicts this. Make sure that the chosen namespace is consistent and unique across the app, except for special cases like things imported into context.ts or context-shared.ts. Use convenient abbreviations or acronyms for commonly used lib modules, model modules, and imported packages
 
