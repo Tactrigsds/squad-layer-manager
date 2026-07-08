@@ -146,7 +146,9 @@ async function populateExtraColsTable(ctx: CS.LayerDb, csvPath: string, componen
 				schema = z.stringbool().transform(v => Number(v))
 				break
 			case 'float':
-				schema = ParsedNullableFloat
+				// persist floats as ints scaled by 10^precision to shrink the table and its index;
+				// read back via LC.fromScaledDbFloat
+				schema = ParsedNullableFloat.transform(v => LC.toScaledDbFloat(col, v))
 				break
 			default:
 				throw new Error(`Unsupported column type: ${(col as any).type}`)

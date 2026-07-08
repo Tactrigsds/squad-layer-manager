@@ -2,7 +2,7 @@ import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
 import * as E from 'drizzle-orm'
-import { index, int, numeric, real, sqliteTable, sqliteView, text } from 'drizzle-orm/sqlite-core'
+import { index, int, numeric, sqliteTable, sqliteView, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import * as L from './layer'
 export const COLUMN_TYPE = z.enum(['float', 'string', 'integer', 'boolean'])
@@ -163,7 +163,8 @@ function _extraColsSchema(ctx: CS.EffectiveColumnConfig) {
 				columns[c.name] = text(c.name)
 				break
 			case 'float':
-				columns[c.name] = real(c.name)
+				// stored as an int scaled by 10^precision (see floatDbScale); read back via fromScaledDbFloat
+				columns[c.name] = int(c.name)
 				break
 			case 'integer':
 				columns[c.name] = int(c.name)
@@ -299,6 +300,30 @@ export function assertedEnumDbValue(
 	return result
 }
 
+// Default decimal places retained for float columns that don't specify `precision`. Float values
+// are persisted as ints scaled by 10^precision; see the `precision` field on ColumnDefSchema.
+export const DEFAULT_FLOAT_PRECISION = 3
+
+// The positive integer scale a float column's values are multiplied by before being stored as an
+// int (and divided by on read). Undefined for non-float columns.
+export function floatDbScale(def: CombinedColumnDef | ColumnDef | undefined): number | undefined {
+	if (!def || def.type !== 'float') return undefined
+	return 10 ** (def.precision ?? DEFAULT_FLOAT_PRECISION)
+}
+
+// null/NaN stay null (SQLite has no int NaN; missing floats are already normalized to null on ingest).
+export function toScaledDbFloat(def: CombinedColumnDef | ColumnDef | undefined, value: number | null): number | null {
+	if (value === null || value === undefined || Number.isNaN(value)) return null
+	const scale = floatDbScale(def)
+	return scale === undefined ? value : Math.round(value * scale)
+}
+
+export function fromScaledDbFloat<T extends number | null | undefined>(def: CombinedColumnDef | ColumnDef | undefined, value: T): T {
+	if (value === null || value === undefined) return value
+	const scale = floatDbScale(def)
+	return (scale === undefined ? value : (value as number) / scale) as T
+}
+
 export function dbValue(
 	columnName: string,
 	value: InputValue,
@@ -328,8 +353,9 @@ export function dbValue(
 			}
 		}
 		case 'integer':
-		case 'float':
 			return value
+		case 'float':
+			return toScaledDbFloat(def, value as number | null)
 		case 'boolean':
 			return Number(value)
 		default:
@@ -363,8 +389,9 @@ export function fromDbValue(
 			}
 		}
 		case 'integer':
-		case 'float':
 			return value
+		case 'float':
+			return fromScaledDbFloat(columnDef, value as number | null)
 		case 'boolean':
 			return Boolean(value)
 		default:
@@ -581,6 +608,11 @@ export const ColumnDefSchema = z.discriminatedUnion('type', [
 	}),
 	z.object({
 		type: z.literal('float'),
+		// Number of decimal places to retain. Float columns are stored as integers scaled by
+		// 10^precision (see floatDbScale) to keep the db compact: an 8-byte REAL becomes a varint
+		// int a few bytes wide, in both the table and its index. Ordering and range semantics are
+		// preserved because the scale is a positive constant. Defaults to DEFAULT_FLOAT_PRECISION.
+		precision: z.number().int().nonnegative().optional(),
 		...baseProperties,
 	}),
 	z.object({

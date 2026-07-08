@@ -42,6 +42,11 @@
                 "type": "string",
                 "const": "float"
               },
+              "precision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
               "name": {
                 "type": "string"
               },

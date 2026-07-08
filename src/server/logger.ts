@@ -4,9 +4,9 @@ import { assertNever } from '@/lib/type-guards'
 import type * as CS from '@/models/context-shared'
 import * as LOG from '@/models/logs'
 import * as ATTRS from '@/models/otel-attrs'
-import { sdk as otelSdk } from '@/systems/otel.server'
 import * as Otel from '@opentelemetry/api'
 import type { Logger as OtelLogger, LoggerProvider } from '@opentelemetry/api-logs'
+import type { NodeSDK } from '@opentelemetry/sdk-node'
 import type { LoggerOptions } from 'pino'
 import pino from 'pino'
 import format from 'quick-format-unescaped'
@@ -22,6 +22,15 @@ export function initModule(name: string): OtelModule {
 }
 
 let otelLogger: OtelLogger | undefined
+
+// The otel SDK is pushed in by otel.server's setupOtel (via setOtelSdk) rather than imported, so
+// that this widely-imported module stays a leaf: a value import of otel.server created a
+// logger -> otel.server -> cleanup.server -> logger cycle whose init order (under Node's ESM loader)
+// left esbuild's keepNames `__name` helper unassigned when cleanup's top-level initModule ran.
+let otelSdk: NodeSDK | undefined
+export function setOtelSdk(sdk: NodeSDK) {
+	otelSdk = sdk
+}
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
 let ENV!: ReturnType<typeof envBuilder>

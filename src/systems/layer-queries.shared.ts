@@ -1394,7 +1394,8 @@ async function getRangeForExtraCol({ input, ctx }: { input: { colDef: LC.Combine
 		.where(E.isNotNull(LC.viewCol(input.colDef.name, ctx)))
 
 	const [{ min, max }] = result
-	return { min, max }
+	// stored floats are scaled ints; unscale back to the app-facing float domain for the slider
+	return { min: LC.fromScaledDbFloat(input.colDef, min), max: LC.fromScaledDbFloat(input.colDef, max) }
 }
 
 // Simple FNV-1a hash function for creating cache keys

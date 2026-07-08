@@ -1,6 +1,7 @@
 import { formatVersion } from '@/lib/versioning.ts'
 
 import * as Env from '@/server/env'
+import * as Logger from '@/server/logger'
 import * as Cleanup from '@/systems/cleanup.server'
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node'
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-proto'
@@ -55,5 +56,6 @@ export function setupOtel() {
 		],
 	})
 
+	Logger.setOtelSdk(sdk)
 	Cleanup.register(() => sdk.shutdown())
 }

@@ -68,7 +68,7 @@
 		"ssh2": "^1.16.0",
 		"superjson": "^2.2.6",
 		"thememirror": "^2.0.1",
-		"tsx": "^4.21.0",
+		"tsx": "^4.23.0",
 		"utf-8-validate": "^6.0.4"
 	},
 	"devDependencies": {
