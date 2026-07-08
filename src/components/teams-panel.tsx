@@ -835,6 +835,27 @@ function SquadCell(
 	)
 }
 
+// Secondary sort priority applied within a squad when sorting by squad: squad leadership roles first,
+// then the heavy/light anti-tank and engineer roles, then everything else alphabetically. Keyed by the
+// deduped role name (see SM.toDedupedRoleName), e.g. "USMC_SLln_01" -> "SLCrewman".
+const ROLE_SORT_PRIORITY: Record<string, number> = {
+	SL: 0,
+	SLCrewman: 0,
+	SLPilot: 0,
+	HAT: 1,
+	LAT: 2,
+	Engineer: 3,
+}
+
+function compareRolesForSort(roleA: string, roleB: string): number {
+	const dedupedA = SM.toDedupedRoleName(roleA)
+	const dedupedB = SM.toDedupedRoleName(roleB)
+	const priorityA = ROLE_SORT_PRIORITY[dedupedA] ?? Number.MAX_SAFE_INTEGER
+	const priorityB = ROLE_SORT_PRIORITY[dedupedB] ?? Number.MAX_SAFE_INTEGER
+	if (priorityA !== priorityB) return priorityA - priorityB
+	return dedupedA.localeCompare(dedupedB)
+}
+
 function squadColumn<T extends TeamsPanelModels.EnrichedPlayer, M extends BasePlayerTableMeta>(
 	helper: ColumnHelper<T>,
 	opts: {
@@ -847,6 +868,14 @@ function squadColumn<T extends TeamsPanelModels.EnrichedPlayer, M extends BasePl
 	// unsquadded players get MAX_SAFE_INTEGER so they sort after real squads when ascending
 	return helper.accessor(row => row.squadId ?? Number.MAX_SAFE_INTEGER, {
 		id: 'squad',
+		// sort by squad, then role within the squad; reads row.original so the role tiebreaker isn't
+		// limited to the squadId accessor value cached by tanstack
+		sortingFn: (a, b) => {
+			const squadA = a.original.squadId ?? Number.MAX_SAFE_INTEGER
+			const squadB = b.original.squadId ?? Number.MAX_SAFE_INTEGER
+			if (squadA !== squadB) return squadA - squadB
+			return compareRolesForSort(a.original.role, b.original.role)
+		},
 		header: ({ table }) => {
 			const meta = table.options.meta as M
 			return (
