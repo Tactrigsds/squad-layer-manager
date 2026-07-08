@@ -99,7 +99,19 @@ export type EnrichedAppEvent = {
 	// individual server events attributed to this app event, collapsed under it (e.g. the PLAYER_WARNED /
 	// PLAYER_LEFT_SQUAD / PLAYER_CHANGED_TEAM events a bulk action fanned out into)
 	collapsed: EventEnriched[]
+	// unique (instance) ids of the squads this action targeted, resolved at event time from the target players' squads
+	// (plus the squad a squad-typed action, e.g. disband/rename, names directly). Lets the squad feed attribute an
+	// admin action to the exact squad instance rather than by flat player membership.
+	targetSquadIds: number[]
 }
+
+// a chat message enriched with the resolved author and, when the author was in a squad at send time, that squad's
+// unique (instance) id. Squad-channel messages are already tied to a squad via channel.uniqueId; this covers team/all
+// chat so the squad feed can attribute it to the exact squad the author belonged to at that moment.
+export type EnrichedChatMessage = SE.ChatMessage<SM.Player> & { authorSquadId?: number }
+
+// a warn enriched with the resolved player and, when that player was in a squad at warn time, that squad's unique id.
+export type EnrichedWarn = SE.PlayerWarned<SM.Player> & { targetSquadId?: number }
 
 // event enriched with relevant data
 export type EventEnriched =
@@ -123,12 +135,12 @@ export type EventEnriched =
 	| (SE.SquadDisbanded & { squad: SM.UniqueSquad })
 	| (SE.PlayerLeftSquad<SM.Player> & { wasLeader: boolean; squad: SM.UniqueSquad })
 	| (SE.SquadCreated & { creator: SM.Player; squad: SM.UniqueSquad })
-	| SE.PlayerWarned<SM.Player>
+	| EnrichedWarn
 	| SE.PlayerBanned<SM.Player>
 	| SE.PlayerKicked<SM.Player>
 	| SE.PossessedAdminCamera<SM.Player>
 	| SE.UnpossessedAdminCamera<SM.Player>
-	| SE.ChatMessage<SM.Player>
+	| EnrichedChatMessage
 	| (SE.AdminBroadcast & { player?: SM.Player })
 	| SE.PlayerDied<SM.Player>
 	| SE.PlayerWounded<SM.Player>
@@ -156,7 +168,7 @@ export type AggregatedWarns = {
 	reason: string
 	source: SE.PlayerWarned['source']
 	// individual enriched warns, in arrival order (always length >= 2)
-	warns: SE.PlayerWarned<SM.Player>[]
+	warns: EnrichedWarn[]
 }
 
 export type ChatState = {
@@ -302,6 +314,12 @@ export function lastServerEventId(buffer: EventEnriched[]): number | undefined {
 	return undefined
 }
 
+// the unique (instance) id of the squad a player is in per the interpolated state, or undefined if squadless
+function playerSquadUniqueId(state: InterpolableState, player: SM.Player): number | undefined {
+	if (player.squadId === null || player.teamId === null) return undefined
+	return state.squads.find(s => s.squadId === player.squadId && s.teamId === player.teamId)?.uniqueId
+}
+
 function enrichAppEvent(state: InterpolableState, appEvent: AppEvents.AppEvent): EnrichedAppEvent {
 	const targetPlayers = AppEvents.involvedPlayerIds(appEvent)
 		.map(id => SM.PlayerIds.find(state.players, p => p.ids, { eos: id }))
@@ -309,6 +327,19 @@ function enrichAppEvent(state: InterpolableState, appEvent: AppEvents.AppEvent):
 	const actorPlayer = appEvent.actor.type === 'ingame-user'
 		? SM.PlayerIds.find(state.players, p => p.ids, { eos: appEvent.actor.playerId }) ?? undefined
 		: undefined
+
+	const targetSquadIds = new Set<number>()
+	// squad-typed actions name an in-game squad + team directly; resolve to the live instance (it still exists when the
+	// action is recorded, as the resulting server events arrive afterwards)
+	if (appEvent.type === 'SQUAD_DISBANDED' || appEvent.type === 'SQUAD_RENAMED') {
+		const squad = state.squads.find(s => s.squadId === appEvent.squadId && s.teamId === appEvent.teamId)
+		if (squad) targetSquadIds.add(squad.uniqueId)
+	}
+	for (const player of targetPlayers) {
+		const uniqueId = playerSquadUniqueId(state, player)
+		if (uniqueId !== undefined) targetSquadIds.add(uniqueId)
+	}
+
 	return {
 		type: 'APP_EVENT',
 		id: appEvent.id,
@@ -319,6 +350,7 @@ function enrichAppEvent(state: InterpolableState, appEvent: AppEvents.AppEvent):
 		actorPlayer,
 		warnSummary: appEvent.type === 'PLAYER_WARNED' ? summarizeWarnTargets(state, targetPlayers) : { type: 'players' },
 		collapsed: [],
+		targetSquadIds: [...targetSquadIds],
 	}
 }
 
@@ -570,7 +602,7 @@ function interpolateEvent(
 					} was involved in ${event.type} but was not found in the interpolated player list`,
 				)
 			}
-			return { ...event, player }
+			return { ...event, player, targetSquadId: playerSquadUniqueId(state, player) }
 		}
 
 		case 'PLAYER_BANNED':
@@ -600,7 +632,7 @@ function interpolateEvent(
 					} was involved in ${event.type} but was not found in the interpolated player list`,
 				)
 			}
-			return { ...event, player }
+			return { ...event, player, authorSquadId: playerSquadUniqueId(state, player) }
 		}
 
 		case 'ADMIN_BROADCAST': {
@@ -802,6 +834,34 @@ export function* iterAssocSquadUniqueIds(event: EventEnriched): Generator<number
 
 export function hasAssocSquad(event: EventEnriched, uniqueSquadId: number): boolean {
 	return Gen.some(iterAssocSquadUniqueIds(event), id => id === uniqueSquadId)
+}
+
+// does this event belong in a specific squad instance's detail feed?
+// Beyond the events directly associated with the squad (creation, joins/leaves, renames, squad-channel chat), the feed
+// also surfaces team/all chat authored by squad members, warns targeting them, and admin actions (disband, remove from
+// squad, kick, force team change, ...) that targeted squad members. Those broadened events are attributed by the squad
+// unique (instance) id resolved at event time (authorSquadId / targetSquadId / targetSquadIds), so events from a prior
+// squad that reused the same in-game id never leak into a later instance. When `squadMessagesOnly` is set, member chat
+// outside the squad channel is excluded (warns, admin actions and squad lifecycle events still show).
+export function isSquadFeedEvent(
+	event: EventEnriched,
+	uniqueSquadId: number,
+	squadMessagesOnly: boolean,
+): boolean {
+	if (hasAssocSquad(event, uniqueSquadId)) return true
+
+	switch (event.type) {
+		case 'CHAT_MESSAGE':
+			return !squadMessagesOnly && event.authorSquadId === uniqueSquadId
+		case 'PLAYER_WARNED':
+			return event.targetSquadId === uniqueSquadId
+		case 'WARNS_AGGREGATED':
+			return event.warns.some(w => w.targetSquadId === uniqueSquadId)
+		case 'APP_EVENT':
+			return event.targetSquadIds.includes(uniqueSquadId)
+		default:
+			return false
+	}
 }
 
 export function findLastPlayerInstance(events: EventEnriched[], playerId: SM.PlayerId): SM.Player | undefined {

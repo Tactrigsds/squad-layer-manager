@@ -45,6 +45,10 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 	type: WINDOW_ID.enum['player-details'],
 	component: PlayerDetailsWindow,
 	initialPosition: 'left',
+	resizable: true,
+	minWidth: 340,
+	minHeight: 320,
+	defaultHeight: 660,
 	getId: (props) => props.playerId,
 	loadAsync: async ({ props }) => {
 		const serverId = props.stores.squadServer.serverId
@@ -102,7 +106,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	const { setIsPinned, zIndex } = useDraggableWindow()
 
 	return (
-		<div className="min-w-0 min-h-0 flex flex-col">
+		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
 			<DraggableWindowDragBar>
 				<DraggableWindowTitle style={flagColor ? { color: flagColor } : undefined}>
 					{player?.ids.username ?? 'Player Details'}
@@ -183,7 +187,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 				</div>
 			</div>
 			<Separator />
-			<div className="px-3 py-0.5">
+			<div className="px-3 py-0.5 flex-1 min-h-0 flex flex-col">
 				<div className="inline-flex items-baseline gap-1 justify-between w-full">
 					<h3 className="inline">
 						Server Activity
@@ -203,8 +207,8 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 						}}
 					/>
 				</div>
-				<div className="relative">
-					<ScrollArea ref={scrollAreaRef} className="h-75">
+				<div className="relative flex-1 min-h-0">
+					<ScrollArea ref={scrollAreaRef} className="h-full">
 						<div ref={contentRef} className="flex flex-col gap-0.5 min-h-0 w-full max-w-175">
 							{eventsQuery.isPending && filteredEvents.length === 0 && (
 								<div className="flex items-center justify-center py-6">

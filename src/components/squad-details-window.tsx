@@ -1,6 +1,7 @@
 import { PlayerDisplay } from '@/components/player-display'
 import { SquadMenuItems } from '@/components/squad-context-menu-options'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import * as ChatPrt from '@/frame-partials/chat.partial'
@@ -36,6 +37,11 @@ DraggableWindowStore.getState().registerDefinition<SquadDetailsWindowProps, unkn
 	type: WINDOW_ID.enum['squad-details'],
 	component: SquadDetailsWindow,
 	initialPosition: 'left',
+	resizable: true,
+	minWidth: 420,
+	minHeight: 320,
+	defaultWidth: 650,
+	defaultHeight: 560,
 	getId: (props) => String(props.uniqueSquadId),
 	loadAsync: async ({ props }) => {
 		const squadServerFrameKey = props.stores.squadServer
@@ -64,14 +70,13 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 		ZusUtils.useShallow(s =>
 			!currentMatch
 				? []
-				: ChatPrt.Sel.chatEvents(s).filter(e => {
-					if (e.matchId !== currentMatch.historyEntryId) return false
-					return CHAT.hasAssocSquad(e, uniqueSquadId)
-				})
+				: ChatPrt.Sel.chatEvents(s).filter(e => e.matchId === currentMatch.historyEntryId && CHAT.isSquadFeedEvent(e, uniqueSquadId, false))
 		),
 	)
 
 	const isCurrentMatchSquad = currentMatchEvents.length > 0
+
+	const [squadMessagesOnly, setSquadMessagesOnly] = React.useState(false)
 
 	const { data, isPending } = useQuery({
 		...RPC.orpc.matchHistory.getSquadDetails.queryOptions({ input: { serverId, uniqueSquadId } }),
@@ -89,9 +94,13 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 		),
 	)
 
-	const allEvents = React.useMemo(() => (isCurrentMatchSquad
-		? currentMatchEvents
-		: (data?.events ?? [])), [isCurrentMatchSquad, currentMatchEvents, data?.events])
+	const allEvents = React.useMemo(() => {
+		const events = isCurrentMatchSquad ? currentMatchEvents : (data?.events ?? [])
+		// the events are already scoped to this squad instance; the toggle just hides member chat outside the squad
+		// channel, i.e. any chat message not directly associated with the squad (team/all chat).
+		if (!squadMessagesOnly) return events
+		return events.filter(e => !(e.type === 'CHAT_MESSAGE' && !CHAT.hasAssocSquad(e, uniqueSquadId)))
+	}, [isCurrentMatchSquad, currentMatchEvents, data?.events, squadMessagesOnly, uniqueSquadId])
 
 	const { scrollAreaRef, contentRef, bottomRef, showScrollButton, scrollToBottom } = useTailingScroll()
 	const { zIndex } = useDraggableWindow()
@@ -108,7 +117,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 	const displayName = liveSquad?.squadName ?? (ingameSquadId != null ? `Squad ${ingameSquadId}` : 'Squad Details')
 
 	return (
-		<div className="min-w-0 min-h-0 flex flex-col">
+		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
 			<DraggableWindowDragBar>
 				<DraggableWindowTitle>
 					{isDefaultName
@@ -164,10 +173,20 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 			<Separator />
 
 			<div className="flex min-h-0 flex-1">
-				<div className="flex-1 px-3 py-0.5 min-w-0">
-					<h3 className="text-xs font-medium py-0.5">Squad Events</h3>
-					<div className="relative">
-						<ScrollArea ref={scrollAreaRef} className="h-75">
+				<div className="flex-1 px-3 py-0.5 min-w-0 flex flex-col">
+					<div className="flex items-center justify-between gap-2 py-0.5">
+						<h3 className="text-xs font-medium">Squad Events</h3>
+						<label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+							<Checkbox
+								className="h-3.5 w-3.5"
+								checked={squadMessagesOnly}
+								onCheckedChange={checked => setSquadMessagesOnly(checked === true)}
+							/>
+							Hide team/allchat
+						</label>
+					</div>
+					<div className="relative flex-1 min-h-0">
+						<ScrollArea ref={scrollAreaRef} className="h-full">
 							<div ref={contentRef} className="flex flex-col gap-0.5 min-h-0 w-full max-w-175">
 								{isPending && allEvents.length === 0 && (
 									<div className="flex items-center justify-center py-6">
@@ -194,9 +213,9 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 
 				<Separator orientation="vertical" />
 
-				<div className="w-36 shrink-0 px-2 py-0.5">
+				<div className="w-36 shrink-0 px-2 py-0.5 flex flex-col min-h-0">
 					<h3 className="text-xs font-medium py-0.5">Players ({currentPlayers.length})</h3>
-					<div className="flex flex-col gap-1">
+					<div className="flex flex-col gap-1 overflow-y-auto min-h-0">
 						{[...currentPlayers].sort((a, b) => Number(b.isLeader) - Number(a.isLeader)).map(player => (
 							<PlayerDisplay
 								key={SM.PlayerIds.getPlayerId(player.ids)}

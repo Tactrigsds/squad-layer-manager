@@ -394,10 +394,8 @@ export const matchHistoryRouter = {
 			.orderBy(E.desc(Schema.serverEvents.time))
 
 		const otherPlayers = new Set<string>()
-		const shownEventIds = new Set<number>()
 		for (const row of rawEventRows) {
 			if (row.playerAssoc) otherPlayers.add(row.playerAssoc)
-			shownEventIds.add(row.eventId)
 		}
 		if (squadRow.creatorId) otherPlayers.add(squadRow.creatorId)
 
@@ -436,7 +434,7 @@ export const matchHistoryRouter = {
 
 		return {
 			squad: squadRow,
-			events: state.eventBuffer.filter((event) => typeof event.id === 'number' && shownEventIds.has(event.id)),
+			events: state.eventBuffer.filter((event) => CHAT.isSquadFeedEvent(event, input.uniqueSquadId, false)),
 		}
 	}),
 }

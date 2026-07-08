@@ -20,6 +20,16 @@ export interface WindowDefinition<TProps = any, TData = any> {
 	defaultPinned?: boolean
 	offset?: number
 	collisionPadding?: number
+	/** Allow the user to resize the window by dragging its edges/corners. Size is session-only (resets on reopen). */
+	resizable?: boolean
+	/** Minimum width in px when resizable. Defaults to 240. */
+	minWidth?: number
+	/** Minimum height in px when resizable. Defaults to 160. */
+	minHeight?: number
+	/** Initial width in px when resizable. When omitted the window sizes to its content. */
+	defaultWidth?: number
+	/** Initial height in px when resizable. When omitted the window sizes to its content. */
+	defaultHeight?: number
 	/** Synchronous loader - called when window opens */
 	load?: (opts: { props: TProps; state: DraggableWindowStoreState }) => TData
 	/** Async loader - called when window opens */

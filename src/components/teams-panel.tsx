@@ -37,7 +37,7 @@ import { MatchTeamDisplay } from './teams-display'
 import type { TeamswitchesHelpWindowProps } from './teamswitches-help-window.helpers'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog'
 import { Badge } from './ui/badge'
-import { Button } from './ui/button'
+import { Button, buttonVariants } from './ui/button'
 import { ButtonGroup } from './ui/button-group'
 import { Checkbox } from './ui/checkbox'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from './ui/context-menu'
@@ -1662,7 +1662,10 @@ function SwapsPanel({ className, stores }: { className?: string; stores: SquadSe
 							</AlertDialogHeader>
 							<AlertDialogFooter>
 								<AlertDialogCancel>Cancel</AlertDialogCancel>
-								<AlertDialogAction onClick={() => TSWClient.Actions.executeTeamswitches(stores)}>
+								<AlertDialogAction
+									className={buttonVariants({ variant: 'destructive' })}
+									onClick={() => TSWClient.Actions.executeTeamswitches(stores)}
+								>
 									Switch Now
 								</AlertDialogAction>
 							</AlertDialogFooter>

@@ -102,6 +102,20 @@ function getInitialPosition(
 // Window Instance
 // ============================================================================
 
+type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
+
+// Edge strips (thin) and corner squares (on top), positioned absolutely within the fixed content box.
+const RESIZE_HANDLES: { dir: ResizeDir; className: string }[] = [
+	{ dir: 'n', className: 'top-0 left-0 right-0 h-1 cursor-ns-resize' },
+	{ dir: 's', className: 'bottom-0 left-0 right-0 h-1 cursor-ns-resize' },
+	{ dir: 'e', className: 'top-0 bottom-0 right-0 w-1 cursor-ew-resize' },
+	{ dir: 'w', className: 'top-0 bottom-0 left-0 w-1 cursor-ew-resize' },
+	{ dir: 'nw', className: 'top-0 left-0 h-2 w-2 cursor-nwse-resize' },
+	{ dir: 'se', className: 'bottom-0 right-0 h-2 w-2 cursor-nwse-resize' },
+	{ dir: 'ne', className: 'top-0 right-0 h-2 w-2 cursor-nesw-resize' },
+	{ dir: 'sw', className: 'bottom-0 left-0 h-2 w-2 cursor-nesw-resize' },
+]
+
 interface DraggableWindowInstanceProps {
 	window: WindowState
 	definition: WindowDefinition
@@ -113,6 +127,7 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 	const positionRef = React.useRef<{ x: number; y: number } | null>(null)
 	const dragStartRef = React.useRef<{ mouseX: number; mouseY: number; elementX: number; elementY: number } | null>(null)
 	const isDraggingRef = React.useRef(false)
+	const isResizingRef = React.useRef(false)
 	const [dragBarNode, setDragBarNode] = React.useState<HTMLElement | null>(null)
 
 	const offset = definition.offset ?? 8
@@ -133,7 +148,7 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 	const clampToViewport = React.useCallback(() => {
 		const content = contentRef.current
 		const currentPos = positionRef.current
-		if (!content || !currentPos) return
+		if (!content || !currentPos || isResizingRef.current) return
 
 		const contentRect = content.getBoundingClientRect()
 		const viewport = {
@@ -182,11 +197,25 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 		const content = contentRef.current
 		if (!content) return
 
+		if (definition.resizable) {
+			if (definition.defaultWidth) content.style.width = `${definition.defaultWidth}px`
+			if (definition.defaultHeight) content.style.height = `${definition.defaultHeight}px`
+		}
+
 		const contentRect = content.getBoundingClientRect()
 		const pos = getInitialPosition(windowState.anchorRect, contentRect, initialPosition, offset, collisionPadding)
 
 		applyPosition(pos)
-	}, [windowState.anchorRect, initialPosition, offset, collisionPadding, applyPosition])
+	}, [
+		windowState.anchorRect,
+		initialPosition,
+		offset,
+		collisionPadding,
+		applyPosition,
+		definition.resizable,
+		definition.defaultWidth,
+		definition.defaultHeight,
+	])
 
 	// Handle click outside
 	React.useEffect(() => {
@@ -309,6 +338,61 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 		bringToFront()
 	}, [bringToFront])
 
+	// Imperative edge/corner resizing. Mirrors the drag effect: no React state during the gesture, position/size
+	// are written straight to the DOM. Size is session-only (lives on the DOM node for the window's lifetime).
+	const minWidth = definition.minWidth ?? 240
+	const minHeight = definition.minHeight ?? 160
+	const beginResize = React.useCallback(
+		(e: React.MouseEvent, dir: ResizeDir) => {
+			const content = contentRef.current
+			const pos = positionRef.current
+			if (!content || !pos || e.button !== 0) return
+
+			e.preventDefault()
+			e.stopPropagation()
+			bringToFront()
+			isResizingRef.current = true
+			content.classList.add('select-none')
+
+			const rect = content.getBoundingClientRect()
+			const start = { mouseX: e.clientX, mouseY: e.clientY, width: rect.width, height: rect.height, x: pos.x, y: pos.y }
+
+			const onMove = (ev: MouseEvent) => {
+				const dx = ev.clientX - start.mouseX
+				const dy = ev.clientY - start.mouseY
+				let { width, height, x, y } = start
+				if (dir.includes('e')) width = Math.max(minWidth, start.width + dx)
+				if (dir.includes('w')) {
+					width = Math.max(minWidth, start.width - dx)
+					x = start.x + start.width - width
+				}
+				if (dir.includes('s')) height = Math.max(minHeight, start.height + dy)
+				if (dir.includes('n')) {
+					height = Math.max(minHeight, start.height - dy)
+					y = start.y + start.height - height
+				}
+				content.style.width = `${width}px`
+				content.style.height = `${height}px`
+				content.style.left = `${x}px`
+				content.style.top = `${y}px`
+				positionRef.current = { x, y }
+			}
+
+			const onUp = () => {
+				isResizingRef.current = false
+				content.classList.remove('select-none')
+				setIsPinned(true)
+				clampToViewport()
+				document.removeEventListener('mousemove', onMove)
+				document.removeEventListener('mouseup', onUp)
+			}
+
+			document.addEventListener('mousemove', onMove)
+			document.addEventListener('mouseup', onUp)
+		},
+		[bringToFront, setIsPinned, clampToViewport, minWidth, minHeight],
+	)
+
 	const Component = definition.component
 	const outletBaseZIndex = useOutletBaseZIndex()
 	const effectiveZIndex = outletBaseZIndex + windowState.zIndex
@@ -333,10 +417,21 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 				role="dialog"
 				tabIndex={-1}
 				onMouseDown={handleMouseDown}
-				className="fixed rounded-md border bg-popover text-popover-foreground shadow-lg outline-none invisible"
+				className={cn(
+					'fixed rounded-md border bg-popover text-popover-foreground shadow-lg outline-none invisible',
+					definition.resizable && 'flex flex-col overflow-hidden',
+				)}
 				style={{ zIndex: effectiveZIndex }}
 			>
 				<Component {...windowState.props} />
+				{definition.resizable
+					&& RESIZE_HANDLES.map((h) => (
+						<div
+							key={h.dir}
+							onMouseDown={(e) => beginResize(e, h.dir)}
+							className={cn('absolute z-10', h.className)}
+						/>
+					))}
 			</div>
 		</DraggableWindowContext.Provider>
 	)
