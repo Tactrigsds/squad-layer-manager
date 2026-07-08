@@ -3,7 +3,7 @@ import { LRUMap } from '@/lib/lru-map'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
-import { shuffled, weightedRandomSelection } from '@/lib/random'
+import { weightedRandomSelection } from '@/lib/random'
 import { assertNever } from '@/lib/type-guards'
 import type * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
@@ -40,6 +40,19 @@ const queryResultCache = new LRUMap<string, { value: unknown; filterEntities: Fi
 type FilterMatchCacheEntry = { filterEntities: FilterEntitySnapshot; matches: Map<number, boolean> }
 const filterMatchCaches = new WeakMap<object, Map<F.FilterEntityId, FilterMatchCacheEntry>>()
 const layerExistenceCaches = new WeakMap<object, Map<number, boolean>>()
+
+// filter entities are replaced copy-on-write when they change, so entity identity is a safe key for
+// memoizing the (expensive) zod parse of their filter tree. getFilterNodeSQLConditions re-parses on
+// every apply-filter, and that runs many times per query and per filter in getLayerItemStatuses
+const parsedEntityFilters = new WeakMap<object, F.FilterNode>()
+function parseEntityFilter(entity: F.FilterEntity): F.FilterNode {
+	let parsed = parsedEntityFilters.get(entity)
+	if (parsed === undefined) {
+		parsed = F.FilterNodeSchema.parse(entity.filter)
+		parsedEntityFilters.set(entity, parsed)
+	}
+	return parsed
+}
 
 function collectFilterNodeFilterIds(node: F.FilterNode, ids: Set<string>) {
 	if (node.type === 'apply-filter') ids.add(node.filterId)
@@ -378,7 +391,7 @@ export function getFilterNodeSQLConditions(
 					msg: `Filter ${node.filterId} doesn't exist`,
 				})
 			} else {
-				const filter = F.FilterNodeSchema.parse(entity.filter)
+				const filter = parseEntityFilter(entity)
 				const res = getFilterNodeSQLConditions(ctx, filter, path, [...reentrantFilterIds, node.filterId])
 				if (res.code !== 'ok') return res
 				condition = res.condition
@@ -672,7 +685,7 @@ function buildQueryInputSqlCondition(
 ) {
 	const baseConditions: SQL<unknown>[] = []
 	const selectProperties: any = {}
-	const constraints = [...(input.constraints ?? [])]
+	const constraints = input.constraints ?? []
 	const list = input.list ?? LQY.initLayerItemsState()
 
 	let cursorIndex: LQY.ItemIndex | null = null
@@ -1214,37 +1227,34 @@ async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 
 	for (let i = 0; i < numLayers; i++) {
 		const filtered = new Set<number>(selectedIndexes)
-		function pickLayerIndex() {
-			if (filtered.size === indexedBaseLayers.length) return
-			for (const layer of shuffled(indexedBaseLayers, rng)) {
-				if (!filtered.has(layer.index)) {
-					return layer.index
-				}
-			}
+		// pick a uniformly random layer among those not yet filtered out. layer.index is the layer's
+		// position in indexedBaseLayers, so we can sample [0, n) directly. this is only ever called for the
+		// initial pick, where `filtered` (prior selections) is sparse relative to n, so rejection sampling
+		// terminates in ~1 draw on average. picking uniformly over unfiltered indices is distributionally
+		// identical to taking the first unfiltered element of a full shuffle, which is what this replaced
+		const total = indexedBaseLayers.length
+		const pickLayerIndex = () => {
+			if (filtered.size >= total) return undefined
+			let idx = Math.floor(rng() * total)
+			while (filtered.has(idx)) idx = Math.floor(rng() * total)
+			return idx
 		}
 		let currentSelectedIndex = pickLayerIndex()
 		for (let j = 0; j < ctx.effectiveColsConfig.generation.columnOrder.length; j++) {
 			if (filtered.size === indexedBaseLayers.length) break
 			const columnName = ctx.effectiveColsConfig.generation.columnOrder[j]
 			const valuesMap: OneToMany.OneToManyMap<number | null, number> = new Map()
-			const weightsMap = new Map<number | null, number>()
-			const weightsForCol = ctx.effectiveColsConfig.generation.weights[columnName as LC.WeightColumn]
-				?.map(w => ({
-					value: LC.dbValue(columnName, w.value),
-					weight: w.weight,
-				})) ?? []
+			const colWeights = new Map<LC.DbValueResult, number>()
+			for (const w of ctx.effectiveColsConfig.generation.weights[columnName as LC.WeightColumn] ?? []) {
+				colWeights.set(LC.dbValue(columnName, w.value), w.weight)
+			}
 			for (const layer of indexedBaseLayers) {
 				if (filtered.has(layer.index)) continue
-				const value = layer[columnName] as number | null
-				OneToMany.set(valuesMap, value, layer.index)
-				weightsMap.set(
-					value,
-					weightsForCol.find(w => w.value === (value ?? null))?.weight ?? .1,
-				)
+				OneToMany.set(valuesMap, layer[columnName] as number | null, layer.index)
 			}
 			if (valuesMap.size === 0) break
 			const values = Array.from(valuesMap.keys())
-			const weights = values.map(value => weightsMap.get(value)!)
+			const weights = values.map(value => colWeights.get(value ?? null) ?? .1)
 			const selected = weightedRandomSelection(values, weights, rng)
 			for (const [value, indexes] of valuesMap.entries()) {
 				if (value === selected) continue
@@ -1252,7 +1262,10 @@ async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 					filtered.add(index)
 				}
 			}
-			currentSelectedIndex = pickLayerIndex()
+			// the layers still unfiltered after this column are exactly those matching the selected value,
+			// so draw from that set directly rather than rescanning every candidate
+			const survivors = Array.from(valuesMap.get(selected)!)
+			currentSelectedIndex = survivors[Math.floor(rng() * survivors.length)]
 		}
 		if (currentSelectedIndex !== undefined) {
 			selectedIndexes.push(currentSelectedIndex)
@@ -1302,20 +1315,28 @@ function postProcessLayers(
 		cursorIndex = LQY.resolveCursorIndex(list, cursor)
 	}
 	const constraints = baseInput.constraints ?? []
+	// every row carries the same select columns, so classify the keys once instead of running Object.keys
+	// and a regex per key on every row
+	const colKeys: string[] = []
+	const constraintKeys: { key: string; idx: number }[] = []
+	for (const key of layers.length > 0 ? Object.keys(layers[0]) : []) {
+		if (key in ctx.effectiveColsConfig.defs) {
+			colKeys.push(key)
+			continue
+		}
+		const constraintResultMatch = key.match(/^constraint_(\d+)$/)
+		if (constraintResultMatch) constraintKeys.push({ key, idx: Number(constraintResultMatch[1]) })
+	}
 	return layers.map((layer) => {
 		// default to true because missing means the constraint is applied via a where condition
 		const constraintResults: boolean[] = new Array(constraints.length).fill(false)
 		const matchDescriptors: LQY.MatchDescriptor[] = []
 		const strId = LC.unpackId(layer.id)
 		const layersConverted: Record<string, string | number | boolean> = {}
-		for (const key of Object.keys(layer)) {
-			if (key in ctx.effectiveColsConfig.defs) {
-				layersConverted[key] = LC.fromDbValue(key, layer[key], ctx)!
-				continue
-			}
-			const constraintResultMatch = key.match(/^constraint_(\d+)$/)
-			if (!constraintResultMatch) continue
-			const constraintIdx = Number(constraintResultMatch[1])
+		for (const key of colKeys) {
+			layersConverted[key] = LC.fromDbValue(key, layer[key], ctx)!
+		}
+		for (const { key, idx: constraintIdx } of constraintKeys) {
 			const constraint = constraints[constraintIdx]
 			switch (constraint.type) {
 				case 'do-not-repeat': {
