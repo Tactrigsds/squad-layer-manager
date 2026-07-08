@@ -847,9 +847,12 @@ const ROLE_SORT_PRIORITY: Record<string, number> = {
 	Engineer: 3,
 }
 
-function compareRolesForSort(roleA: string, roleB: string): number {
-	const dedupedA = SM.toDedupedRoleName(roleA)
-	const dedupedB = SM.toDedupedRoleName(roleB)
+// squad leaders sort ahead of everyone regardless of role: the SL might not have picked up the SL kit
+// yet, so isLeader is the source of truth for who leads the squad
+function compareRolesForSort(a: TeamsPanelModels.EnrichedPlayer, b: TeamsPanelModels.EnrichedPlayer): number {
+	if (a.isLeader !== b.isLeader) return a.isLeader ? -1 : 1
+	const dedupedA = SM.toDedupedRoleName(a.role)
+	const dedupedB = SM.toDedupedRoleName(b.role)
 	const priorityA = ROLE_SORT_PRIORITY[dedupedA] ?? Number.MAX_SAFE_INTEGER
 	const priorityB = ROLE_SORT_PRIORITY[dedupedB] ?? Number.MAX_SAFE_INTEGER
 	if (priorityA !== priorityB) return priorityA - priorityB
@@ -874,7 +877,7 @@ function squadColumn<T extends TeamsPanelModels.EnrichedPlayer, M extends BasePl
 			const squadA = a.original.squadId ?? Number.MAX_SAFE_INTEGER
 			const squadB = b.original.squadId ?? Number.MAX_SAFE_INTEGER
 			if (squadA !== squadB) return squadA - squadB
-			return compareRolesForSort(a.original.role, b.original.role)
+			return compareRolesForSort(a.original, b.original)
 		},
 		header: ({ table }) => {
 			const meta = table.options.meta as M
