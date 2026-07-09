@@ -107,7 +107,7 @@ export namespace PlayerIds {
 	export type Type = z.infer<typeof Schema>
 
 	// in order of lookup preference
-	const LOOKUP_PROPS = ['eos', 'steam', 'epic', 'playerController', 'username'] as const
+	const LOOKUP_PROPS = ['eos', 'steam', 'epic', 'playerController', 'usernameNoTag', 'username'] as const
 
 	// expected to be unique in a collection of PlayerIds. maybe playerController is unique too, not sure
 	const UNIQUE_PROPS = ['steam', 'eos', 'epic'] as const
@@ -123,8 +123,11 @@ export namespace PlayerIds {
 			}
 		}
 		if (opts.username && opts.usernameNoTag) {
-			;[ids.usernameNoTag, ids.tag] = opts.username.split(/\s+/, 2)
-			if (!ids.tag) throw new Error('No tag-denoting whitespace in parsed username ' + opts.username)
+			const lenDiff = Math.max(opts.username.length - opts.usernameNoTag.length, 0)
+			const tag = opts.username.slice(0, lenDiff).trim() || undefined
+			if (tag) {
+				ids.tag = tag
+			}
 		}
 		return Obj.trimUndefined({
 			...ids,
@@ -145,11 +148,9 @@ export namespace PlayerIds {
 		if (typeof cbOrId === 'function') {
 			const cb = cbOrId
 			const searchId = normalizeIdQuery(id!)
-			for (const prop of LOOKUP_PROPS) {
-				if (!searchId[prop]) continue
-				for (const item of elts as T[]) {
-					if (cb(item)[prop] === searchId[prop]) return item
-				}
+			for (const item of elts as T[]) {
+				const itemIds = cb(item)
+				if (match(itemIds, searchId)) return item
 			}
 			return undefined
 		}
@@ -158,7 +159,7 @@ export namespace PlayerIds {
 		for (const prop of LOOKUP_PROPS) {
 			if (!searchId[prop]) continue
 			for (const item of elts as Type[]) {
-				if (item[prop] === searchId[prop]) return item
+				if (match(item, searchId)) return item
 			}
 		}
 	}
@@ -173,21 +174,17 @@ export namespace PlayerIds {
 		if (typeof cbOrId === 'function') {
 			const cb = cbOrId
 			const searchId = normalizeIdQuery(id!)
-			for (const prop of LOOKUP_PROPS) {
-				if (!searchId[prop]) continue
-				for (let i = 0; i < (elts as T[]).length; i++) {
-					if (cb((elts as T[])[i])[prop] === searchId[prop]) return i
-				}
+			for (let i = 0; i < (elts as T[]).length; i++) {
+				const eltIds = cb((elts as T[])[i])
+				if (match(eltIds, searchId)) return i
 			}
 			return -1
 		}
 
 		const searchId = normalizeIdQuery(cbOrId!)
-		for (const prop of LOOKUP_PROPS) {
-			if (!searchId[prop]) continue
-			for (let i = 0; i < (elts as Type[]).length; i++) {
-				if ((elts as Type[])[i][prop] === searchId[prop]) return i
-			}
+		for (let i = 0; i < (elts as Type[]).length; i++) {
+			const elt = (elts as Type[])[i]
+			if (match(elt, searchId)) return i
 		}
 		return -1
 	}
@@ -281,6 +278,8 @@ export namespace PlayerIds {
 		for (const prop of LOOKUP_PROPS) {
 			if (aNorm[prop] && bNorm[prop] && aNorm[prop] === bNorm[prop]) return true
 		}
+		if (aNorm.username && bNorm.usernameNoTag?.includes(aNorm.username)) return true
+		if (bNorm.username && aNorm.usernameNoTag?.includes(bNorm.username)) return true
 		return false
 	}
 

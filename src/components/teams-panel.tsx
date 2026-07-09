@@ -33,6 +33,7 @@ import { PlayerDisplay } from './player-display'
 import SquadContextMenuOptions from './squad-context-menu-options'
 import type { SquadDetailsWindowProps } from './squad-details-window.helpers'
 import { SquadDisplay } from './squad-display'
+import { StickyGroup } from './sticky-group.tsx'
 import { MatchTeamDisplay } from './teams-display'
 import type { TeamswitchesHelpWindowProps } from './teamswitches-help-window.helpers'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog'
@@ -70,6 +71,7 @@ function matchPlayersBySearch<T extends { ids: SM.PlayerIds.Type }>(players: T[]
 }
 
 export default function TeamsPanel(props: { className?: string; stores: SquadServerFrame.KeyProp }) {
+	const headerRef = React.useRef<HTMLDivElement>(null)
 	const isDesktop = useIsDesktopSize()
 	const showSwapsPanel = ZusUtils.useStore(
 		props.stores.squadServer!,
@@ -163,145 +165,151 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 	}
 	return (
 		<div className={cn('flex w-full p-1 flex-col', props.className)}>
-			<div className="grid w-full grid-cols-[1fr_auto_1fr] gap-1">
-				<div>
-					<TeamTitle teamId="A" stores={props.stores} />
-				</div>
-				<TeamPlayerCounts stores={props.stores} />
-				<div className="flex justify-end">
-					<TeamTitle teamId="B" stores={props.stores} />
-				</div>
-				<div>
-				</div>
-			</div>
-			{showSwapsPanel && <SwapsPanel className="my-1 rounded-md border bg-muted/40 px-2 py-1.5" stores={props.stores} />}
-			<div className="grid w-full grid-cols-[1fr_auto_1fr] gap-1">
-				<Input
-					placeholder="Search Players..."
-					value={searchQuery}
-					onChange={e => setSearchQuery(e.target.value)}
-					onKeyDown={e => {
-						if (e.key !== 'Enter' || !searchQuery.trim()) return
-						const { players } = ChatPrt.Sel.chatState(ZusUtils.getState(props.stores.squadServer!))
-						const matched = matchPlayersBySearch(players, searchQuery)
-						const matchedIds = players
-							.filter((_, i) => matched.has(i))
-							.map(p => SM.PlayerIds.getPlayerId(p.ids))
-						// additive, like every other selection action -- merge matches into the current selection
-						SquadServerClient.Actions.selectPlayers(matchedIds)
-					}}
-				/>
-				<div className="flex items-center gap-2 justify-center">
-					<div className="flex items-center gap-2">
-						<Switch
-							id={showSelectedId}
-							checked={showSelected}
-							disabled={selectedCount === 0}
-							onCheckedChange={() => setShowSelected(v => !v)}
-						/>
-						<Label htmlFor={showSelectedId} className="text-sm whitespace-nowrap">Show Selected</Label>
-						<span
-							className="min-w-[3ch] text-xs text-muted-foreground tabular-nums data-[hide=true]:invisible"
-							data-hide={selectedCount === 0}
-						>
-							({selectedCount})
-						</span>
+			<div ref={headerRef} className="flex w-full p-1 flex-col bg-background">
+				<div className="grid w-full grid-cols-[1fr_auto_1fr] gap-1">
+					<div>
+						<TeamTitle teamId="A" stores={props.stores} />
 					</div>
-					<div className="flex items-center gap-2">
-						<Switch
-							id={adminsOnlyId}
-							checked={adminsOnly}
-							onCheckedChange={(checked) => {
-								setAdminsOnly(checked)
-								if (checked) {
-									ChatPrt.Actions.setSecondaryFilterState({ chat: props.stores.squadServer! }, 'ADMIN')
-								} else if (secondaryFilterState === 'ADMIN') {
-									ChatPrt.Actions.setSecondaryFilterState({ chat: props.stores.squadServer! }, 'DEFAULT')
-								}
-							}}
-						/>
-						<Label htmlFor={adminsOnlyId} className="text-sm whitespace-nowrap">Admins Only</Label>
+					<TeamPlayerCounts stores={props.stores} />
+					<div className="flex justify-end">
+						<TeamTitle teamId="B" stores={props.stores} />
 					</div>
-					<div className="flex items-center gap-2">
-						<Switch
-							id={hideSpoilersId}
-							checked={hideSpoilers}
-							onCheckedChange={setHideSpoilers}
-						/>
-						<Label htmlFor={hideSpoilersId} className="text-sm whitespace-nowrap" title="Hide K/W/D and role columns">Hide Spoilers</Label>
+					<div>
 					</div>
-					{hideSpoilers && roleFilter !== null && (
-						<Badge variant="secondary" className="gap-1" title="Role filter is active but hidden with spoilers">
-							Role: {roleFilter}
-							<button
-								type="button"
-								className="hover:text-destructive"
-								title="Clear role filter"
-								onClick={() =>
-									setRoleFilter(null)}
-							>
-								<Icons.X className="h-3 w-3" />
-							</button>
-						</Badge>
-					)}
-					<Button
-						variant="ghost"
-						size="icon"
-						className="h-7 w-7"
-						title="Reset selections, filters, sorting and search"
-						onClick={resetAll}
-					>
-						<Icons.Trash className="h-4 w-4" />
-					</Button>
 				</div>
-				<ControlPanel />
-			</div>
-			{isDesktop
-				? (
-					<div className="grid w-full grid-cols-[1fr_1fr] divide-x divide-border">
-						<TeamPlayerTable
-							teamId="A"
-							searchQuery={searchQuery}
-							filters={filtersA}
-							showSelected={showSelected}
-							adminsOnly={adminsOnly}
-							sorting={sortingA}
-							setSorting={setSortingA}
-							availableRoles={availableRoles}
-							availableGroupings={availableGroupings}
-							hideSpoilers={hideSpoilers}
-							stores={props.stores}
-						/>
-						<TeamPlayerTable
-							teamId="B"
-							searchQuery={searchQuery}
-							filters={filtersB}
-							showSelected={showSelected}
-							adminsOnly={adminsOnly}
-							sorting={sortingB}
-							setSorting={setSortingB}
-							availableRoles={availableRoles}
-							availableGroupings={availableGroupings}
-							hideSpoilers={hideSpoilers}
-							className="pl-1"
-							stores={props.stores}
-						/>
-					</div>
-				)
-				: (
-					<CombinedPlayerTable
-						searchQuery={searchQuery}
-						filters={filtersC}
-						showSelected={showSelected}
-						adminsOnly={adminsOnly}
-						sorting={sortingCombined}
-						setSorting={setSortingCombined}
-						availableRoles={availableRoles}
-						availableGroupings={availableGroupings}
-						hideSpoilers={hideSpoilers}
-						stores={props.stores}
+				{showSwapsPanel && <SwapsPanel className="my-1 rounded-md border bg-muted/40 px-2 py-1.5" stores={props.stores} />}
+				<div className="grid w-full grid-cols-[1fr_auto_1fr] gap-1">
+					<Input
+						placeholder="Search Players..."
+						value={searchQuery}
+						onChange={e => setSearchQuery(e.target.value)}
+						onKeyDown={e => {
+							if (e.key !== 'Enter' || !searchQuery.trim()) return
+							const { players } = ChatPrt.Sel.chatState(ZusUtils.getState(props.stores.squadServer!))
+							const matched = matchPlayersBySearch(players, searchQuery)
+							const matchedIds = players
+								.filter((_, i) => matched.has(i))
+								.map(p => SM.PlayerIds.getPlayerId(p.ids))
+							// additive, like every other selection action -- merge matches into the current selection
+							SquadServerClient.Actions.selectPlayers(matchedIds)
+						}}
 					/>
-				)}
+					<div className="flex items-center gap-2 justify-center">
+						<div className="flex items-center gap-2">
+							<Switch
+								id={showSelectedId}
+								checked={showSelected}
+								disabled={selectedCount === 0}
+								onCheckedChange={() => setShowSelected(v => !v)}
+							/>
+							<Label htmlFor={showSelectedId} className="text-sm whitespace-nowrap">Show Selected</Label>
+							<span
+								className="min-w-[3ch] text-xs text-muted-foreground tabular-nums data-[hide=true]:invisible"
+								data-hide={selectedCount === 0}
+							>
+								({selectedCount})
+							</span>
+						</div>
+						<div className="flex items-center gap-2">
+							<Switch
+								id={adminsOnlyId}
+								checked={adminsOnly}
+								onCheckedChange={(checked) => {
+									setAdminsOnly(checked)
+									if (checked) {
+										ChatPrt.Actions.setSecondaryFilterState({ chat: props.stores.squadServer! }, 'ADMIN')
+									} else if (secondaryFilterState === 'ADMIN') {
+										ChatPrt.Actions.setSecondaryFilterState({ chat: props.stores.squadServer! }, 'DEFAULT')
+									}
+								}}
+							/>
+							<Label htmlFor={adminsOnlyId} className="text-sm whitespace-nowrap">Admins Only</Label>
+						</div>
+						<div className="flex items-center gap-2">
+							<Switch
+								id={hideSpoilersId}
+								checked={hideSpoilers}
+								onCheckedChange={setHideSpoilers}
+							/>
+							<Label htmlFor={hideSpoilersId} className="text-sm whitespace-nowrap" title="Hide K/W/D and role columns">
+								Hide Spoilers
+							</Label>
+						</div>
+						{hideSpoilers && roleFilter !== null && (
+							<Badge variant="secondary" className="gap-1" title="Role filter is active but hidden with spoilers">
+								Role: {roleFilter}
+								<button
+									type="button"
+									className="hover:text-destructive"
+									title="Clear role filter"
+									onClick={() =>
+										setRoleFilter(null)}
+								>
+									<Icons.X className="h-3 w-3" />
+								</button>
+							</Badge>
+						)}
+						<Button
+							variant="ghost"
+							size="icon"
+							className="h-7 w-7"
+							title="Reset selections, filters, sorting and search"
+							onClick={resetAll}
+						>
+							<Icons.Trash className="h-4 w-4" />
+						</Button>
+					</div>
+					<ControlPanel />
+				</div>
+			</div>
+			<StickyGroup stickyRef={headerRef}>
+				{isDesktop
+					? (
+						<div className="grid w-full grid-cols-[1fr_1fr] divide-x divide-border">
+							<TeamPlayerTable
+								teamId="A"
+								searchQuery={searchQuery}
+								filters={filtersA}
+								showSelected={showSelected}
+								adminsOnly={adminsOnly}
+								sorting={sortingA}
+								setSorting={setSortingA}
+								availableRoles={availableRoles}
+								availableGroupings={availableGroupings}
+								hideSpoilers={hideSpoilers}
+								stores={props.stores}
+							/>
+							<TeamPlayerTable
+								teamId="B"
+								searchQuery={searchQuery}
+								filters={filtersB}
+								showSelected={showSelected}
+								adminsOnly={adminsOnly}
+								sorting={sortingB}
+								setSorting={setSortingB}
+								availableRoles={availableRoles}
+								availableGroupings={availableGroupings}
+								hideSpoilers={hideSpoilers}
+								className="pl-1"
+								stores={props.stores}
+							/>
+						</div>
+					)
+					: (
+						<CombinedPlayerTable
+							searchQuery={searchQuery}
+							filters={filtersC}
+							showSelected={showSelected}
+							adminsOnly={adminsOnly}
+							sorting={sortingCombined}
+							setSorting={setSortingCombined}
+							availableRoles={availableRoles}
+							availableGroupings={availableGroupings}
+							hideSpoilers={hideSpoilers}
+							stores={props.stores}
+						/>
+					)}
+			</StickyGroup>
 		</div>
 	)
 }
@@ -708,7 +716,11 @@ function nameColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHel
 		cell: ({ row, table }) => {
 			const meta = table.options.meta as BasePlayerTableMeta
 			// let the enclosing row context menu (bulk-aware) handle right-clicks on the name
-			return <PlayerDisplay stores={meta.stores} player={row.original} matchId={meta.matchId} disableContextMenu />
+			return (
+				<span onClick={e => e.stopPropagation()}>
+					<PlayerDisplay stores={meta.stores} player={row.original} matchId={meta.matchId} disableContextMenu />
+				</span>
+			)
 		},
 	})
 }
@@ -1189,6 +1201,8 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	enableSquadGroups?: boolean
 	className?: string
 }) {
+	const headersRef = React.useRef<HTMLTableSectionElement>(null)
+
 	const rowSelection = ZusUtils.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
 	const savedSwitches = ZusUtils.useStore(props.stores.squadServer!, s => TSWClient.Sel.localState(s).savedSwitches)
 	const setRowSelection = SquadServerClient.Actions.setSelection
@@ -1324,35 +1338,39 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	}
 
 	return (
-		<Table className={props.className}>
-			<TableHeader>
-				{table.getHeaderGroups().map(headerGroup => (
-					<TableRow key={headerGroup.id}>
-						{headerGroup.headers.map(header => {
-							const sortDir = sortDirFor(sorting, header.column.id)
-							return (
-								<TableHead
-									key={header.id}
-									onClick={header.column.getCanSort() && header.column.id !== 'stats' ? header.column.getToggleSortingHandler() : undefined}
-									className={cn('align-top pt-1.5', header.column.getCanSort() && 'cursor-pointer select-none')}
-									{...headerResetProps(header.column, props.meta.filters)}
-								>
-									{header.isPlaceholder ? null : (
-										<span className="inline-flex items-start gap-0.5">
-											{flexRender(header.column.columnDef.header, header.getContext())}
-											{sortDir === 'asc' ? ' ↑' : sortDir === 'desc' ? ' ↓' : null}
-										</span>
-									)}
-								</TableHead>
-							)
-						})}
-					</TableRow>
-				))}
-			</TableHeader>
-			<TableBody>
-				{bodyRows}
-			</TableBody>
-		</Table>
+		<StickyGroup stickyRef={headersRef}>
+			<Table className={props.className}>
+				<TableHeader ref={headersRef} className="bg-background">
+					{table.getHeaderGroups().map(headerGroup => (
+						<TableRow key={headerGroup.id}>
+							{headerGroup.headers.map(header => {
+								const sortDir = sortDirFor(sorting, header.column.id)
+								return (
+									<TableHead
+										key={header.id}
+										onClick={header.column.getCanSort() && header.column.id !== 'stats'
+											? header.column.getToggleSortingHandler()
+											: undefined}
+										className={cn('align-top pt-1.5', header.column.getCanSort() && 'cursor-pointer select-none')}
+										{...headerResetProps(header.column, props.meta.filters)}
+									>
+										{header.isPlaceholder ? null : (
+											<span className="inline-flex items-start gap-0.5">
+												{flexRender(header.column.columnDef.header, header.getContext())}
+												{sortDir === 'asc' ? ' ↑' : sortDir === 'desc' ? ' ↓' : null}
+											</span>
+										)}
+									</TableHead>
+								)
+							})}
+						</TableRow>
+					))}
+				</TableHeader>
+				<TableBody>
+					{bodyRows}
+				</TableBody>
+			</Table>
+		</StickyGroup>
 	)
 }
 

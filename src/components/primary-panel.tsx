@@ -14,6 +14,7 @@ import React from 'react'
 import { MatchHistoryPanelContent } from './match-history-panel'
 
 import { QueuePanelContent, SlmUpdatesDisabledAlert } from './layer-queue-panel.tsx'
+import { StickyGroup } from './sticky-group.tsx'
 import TeamsPanel from './teams-panel.tsx'
 import UserPresencePanel, { sortEditingPresence } from './user-presence-panel.tsx'
 
@@ -21,13 +22,17 @@ function TabBar<T extends string>({
 	tabs,
 	value,
 	onChange,
+	className,
+	ref,
 }: {
 	tabs: { value: T; label: React.ReactNode }[]
 	value: T | null
 	onChange: (value: T) => void
+	className?: string
+	ref?: React.RefObject<HTMLDivElement>
 }) {
 	return (
-		<div className="grid divide-x" style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)` }}>
+		<div ref={ref} className={cn('grid divide-x', className)} style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)` }}>
 			{tabs.map(tab => (
 				<button
 					key={tab.value}
@@ -61,68 +66,74 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 	const queueEvent$ = frameState.queue.presenceEvent$
 	const teamswitchEvent$ = frameState.teamswitches.presenceEvent$
 
+	const headerRef = React.useRef<HTMLDivElement>(null)
+
 	return (
 		<Card className="flex flex-col flex-1 min-h-0">
 			<ScrollArea className="flex-1">
 				<MatchHistoryPanelContent stores={props.stores} />
 				<Separator />
-				<TabBar
-					tabs={[
-						{
-							value: 'queue',
-							label: (
-								<div className="flex justify-between">
-									<span>Queue ({queueLength})</span>
-									<UserPresencePanel
-										stores={props.stores}
-										sourcePresenceFn={sortEditingPresence}
-										matchActivity={root => UP.Trans.viewingQueue(serverId).match(root) || UP.Trans.editingQueue(serverId).match(root)}
-										matchActivityForStatusText={root =>
-											UP.Trans.editingQueue(serverId).match(root) || UP.Trans.viewingQueue(serverId).match(root)}
-										event$={queueEvent$}
-										transitionMessages={[
-											{
-												matchActivity: root => UP.Trans.editingQueue(serverId).match(root),
-												leaveMessage: 'Finished editing',
-											},
-										]}
-										className="min-w-0"
-									/>
-								</div>
-							),
-						},
-						{
-							value: 'teams',
-							label: (
-								<div className="flex justify-between">
-									<span>Teams ({playerCount})</span>
-									<UserPresencePanel
-										stores={props.stores}
-										sourcePresenceFn={sortEditingPresence}
-										matchActivity={root =>
-											UP.Trans.viewingTeams(serverId).match(root) || UP.Trans.editingTeamswitches(serverId).match(root)}
-										matchActivityForStatusText={root =>
-											UP.Trans.editingTeamswitches(serverId).match(root) || UP.Trans.viewingTeams(serverId).match(root)}
-										event$={teamswitchEvent$}
-										className="min-w-0"
-									/>
-								</div>
-							),
-						},
-					]}
-					value={tab}
-					onChange={(value) => ClientOnlySettings.Actions.setPrimaryPanelTab(value === 'teams' ? 'VIEWING_TEAMS' : 'VIEWING_QUEUE')}
-				/>
-				<Separator />
-				<div className="grid">
-					<div className={cn('[grid-area:1/1]', tab !== 'queue' && 'invisible -z-20')}>
-						<SlmUpdatesDisabledAlert stores={props.stores} />
-						<QueuePanelContent stores={props.stores} />
-					</div>
-					<div className={cn('[grid-area:1/1]', tab !== 'teams' && 'invisible -z-20')}>
-						<TeamsPanel stores={props.stores} />
-					</div>
+				<div className="bg-background" ref={headerRef}>
+					<TabBar
+						tabs={[
+							{
+								value: 'queue',
+								label: (
+									<div className="flex justify-between">
+										<span>Queue ({queueLength})</span>
+										<UserPresencePanel
+											stores={props.stores}
+											sourcePresenceFn={sortEditingPresence}
+											matchActivity={root => UP.Trans.viewingQueue(serverId).match(root) || UP.Trans.editingQueue(serverId).match(root)}
+											matchActivityForStatusText={root =>
+												UP.Trans.editingQueue(serverId).match(root) || UP.Trans.viewingQueue(serverId).match(root)}
+											event$={queueEvent$}
+											transitionMessages={[
+												{
+													matchActivity: root => UP.Trans.editingQueue(serverId).match(root),
+													leaveMessage: 'Finished editing',
+												},
+											]}
+											className="min-w-0"
+										/>
+									</div>
+								),
+							},
+							{
+								value: 'teams',
+								label: (
+									<div className="flex justify-between">
+										<span>Teams ({playerCount})</span>
+										<UserPresencePanel
+											stores={props.stores}
+											sourcePresenceFn={sortEditingPresence}
+											matchActivity={root =>
+												UP.Trans.viewingTeams(serverId).match(root) || UP.Trans.editingTeamswitches(serverId).match(root)}
+											matchActivityForStatusText={root =>
+												UP.Trans.editingTeamswitches(serverId).match(root) || UP.Trans.viewingTeams(serverId).match(root)}
+											event$={teamswitchEvent$}
+											className="min-w-0"
+										/>
+									</div>
+								),
+							},
+						]}
+						value={tab}
+						onChange={(value) => ClientOnlySettings.Actions.setPrimaryPanelTab(value === 'teams' ? 'VIEWING_TEAMS' : 'VIEWING_QUEUE')}
+					/>
+					<Separator />
 				</div>
+				<StickyGroup stickyRef={headerRef}>
+					<div className="grid">
+						<div className={cn('[grid-area:1/1]', tab !== 'queue' && 'invisible -z-20')}>
+							<SlmUpdatesDisabledAlert stores={props.stores} />
+							<QueuePanelContent stores={props.stores} />
+						</div>
+						<div className={cn('[grid-area:1/1]', tab !== 'teams' && 'invisible -z-20')}>
+							<TeamsPanel stores={props.stores} />
+						</div>
+					</div>
+				</StickyGroup>
 			</ScrollArea>
 		</Card>
 	)

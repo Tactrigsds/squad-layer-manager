@@ -18,7 +18,7 @@ sqlite3 "$DB" "SELECT settings FROM globalSettings WHERE id = 1" > "$raw"
 jq .json "$raw" > "$edit"
 
 while true; do
-	vim "$edit"
+    "${EDITOR:-vim}" "$edit"
 
 	if ! jq -e . "$edit" > /dev/null 2>&1; then
 		read -rp "invalid JSON; re-edit? [Y/n] " ans

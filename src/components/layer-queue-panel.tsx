@@ -41,6 +41,7 @@ import ShortLayerName from './short-layer-name.tsx'
 import { assertNever } from '@/lib/type-guards.ts'
 import EmojiDisplay from './emoji-display.tsx'
 import { FilterEntityLink } from './filter-entity-select.tsx'
+import { StickyGroup } from './sticky-group.tsx'
 
 function ValidationWarningsDisplay(
 	props: {
@@ -424,6 +425,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 
 export function QueuePanelContent(props: { className?: string; stores: SquadServerFrame.KeyProp }) {
 	const isModified = ZusUtils.useStore(props.stores.squadServer!, s => s.queue.isModified)
+	const headerRef = React.useRef<HTMLDivElement>(null)
 
 	const queueLength = ZusUtils.useStore(props.stores.squadServer!, (s) => s.queue.layerList.length)
 	const maxQueueSize = ZusUtils.useStore(SettingsClient.PublicSettingsStore)?.layerQueue.maxQueueSize
@@ -445,7 +447,7 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 				setShowWarnings={setShowWarnings}
 				stores={props.stores}
 			/>
-			<CardHeader className={cn('flex flex-row items-center justify-between', props.className)}>
+			<CardHeader ref={headerRef} className={cn('flex flex-row items-center justify-between bg-background', props.className)}>
 				<span className="flex items-center space-x-1 w-full">
 					<span className="flex flex-col gap-0.5">
 						<span className="flex items-center space-x-1">
@@ -491,9 +493,11 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 					/>
 				</span>
 			</CardHeader>
-			<CardContent className="p-0 px-1">
-				<LayerList stores={props.stores} />
-			</CardContent>
+			<StickyGroup stickyRef={headerRef}>
+				<CardContent className="p-0 px-1">
+					<LayerList stores={props.stores} />
+				</CardContent>
+			</StickyGroup>
 		</>
 	)
 }

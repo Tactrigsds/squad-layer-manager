@@ -45,6 +45,8 @@ Pass `ZusUtils.AnyInut` instances via the `stores` prop through components(conve
 
 Never export non-components from .tsx files, as it breaks hot module replacement.
 
+Avoid controlled inputs and textareas (don't set `value`). Do the same for other fields that are latency-sensitive. make sure we debounce inputs which may otherwise cause frequent re-renders.
+
 # Migrations
 
 Data migrations applied via a custom runner `pnpm db:migrate`. (see ./src/server/migrate.ts) it is backwards-compatible with `drizzle-kit`.
