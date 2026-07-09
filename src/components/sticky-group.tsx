@@ -1,5 +1,3 @@
-'use client'
-
 import { createContext, type ReactNode, type RefObject, useContext, useLayoutEffect, useRef } from 'react'
 import { createStore, type StoreApi } from 'zustand/vanilla'
 
@@ -134,13 +132,18 @@ export function StickyGroup<T extends HTMLElement = HTMLElement>({
 	}
 	const ownStore = ownStoreRef.current
 
-	// Plain mutable ref rather than state — updated on every resize, but
-	// updating it should never by itself trigger a React render.
-	const stickyHeightRef = useRef(0)
-
 	useLayoutEffect(() => {
 		const el = stickyRef.current
 		if (!el) return
+
+		// getBoundingClientRect() reports the border-box size (content +
+		// padding + border) — the actual space the element occupies in flow.
+		// This is deliberately NOT ResizeObserver's `contentRect`, which
+		// excludes padding and border and would under-report the offset
+		// descendants need by however much padding/border this element has.
+		function measure() {
+			return el!.getBoundingClientRect().height
+		}
 
 		function applyStyles() {
 			const { offset, depth } = parentStore.getState()
@@ -151,22 +154,26 @@ export function StickyGroup<T extends HTMLElement = HTMLElement>({
 
 			// Tell any nested <StickyGroup> what offset/depth to build on.
 			ownStore.setState({
-				offset: offset + stickyHeightRef.current,
+				offset: offset + measure(),
 				depth: depth + 1,
 			})
 		}
 
+		// Measured synchronously so the correct (padding-inclusive) offset is
+		// published on first paint, rather than waiting for ResizeObserver's
+		// first async callback — avoiding a one-frame jump as headers settle
+		// into their correct stacked position.
 		applyStyles()
 
 		// Re-run if an ancestor's offset or depth changes (e.g. an ancestor
 		// header's height changed, shifting everything below it).
 		const unsubscribeParent = parentStore.subscribe(applyStyles)
 
-		// Re-run if this element's own height changes.
-		const resizeObserver = new ResizeObserver((entries) => {
-			stickyHeightRef.current = entries[0].contentRect.height
-			applyStyles()
-		})
+		// Re-run if this element's own height changes. We ignore the
+		// observer's own contentRect and just re-measure via
+		// getBoundingClientRect() inside applyStyles for the same
+		// border-box-accuracy reason as above.
+		const resizeObserver = new ResizeObserver(applyStyles)
 		resizeObserver.observe(el)
 
 		return () => {
