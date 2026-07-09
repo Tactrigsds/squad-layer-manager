@@ -103,7 +103,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 		return events.filter(e => !(e.type === 'CHAT_MESSAGE' && !CHAT.hasAssocSquad(e, uniqueSquadId)))
 	}, [isCurrentMatchSquad, currentMatchEvents, data?.events, squadMessagesOnly, uniqueSquadId])
 
-	const { scrollAreaRef, contentRef, bottomRef, showScrollButton, scrollToBottom } = useTailingScroll()
+	const { scrollAreaRef, contentRef, showScrollButton, scrollToBottom } = useTailingScroll()
 
 	const creatorId = liveSquad?.creator ?? squad?.creatorId ?? null
 	const creatorPlayer = creatorId
@@ -197,7 +197,6 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 								)}
 								{allEvents.map(e => <ServerEvent key={e.id} event={e} stores={stores} />)}
 							</div>
-							<div ref={bottomRef} />
 						</ScrollArea>
 						{showScrollButton && (
 							<Button

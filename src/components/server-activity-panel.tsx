@@ -48,7 +48,7 @@ function ServerChatEvents(
 		return recentMatches.find(m => m.ordinal === selectedMatchOrdinal)
 	}, [selectedMatchOrdinal, currentMatch, recentMatches])
 
-	const { scrollAreaRef, contentRef: eventsContainerRef, bottomRef, showScrollButton, scrollToBottom } = useTailingScroll()
+	const { scrollAreaRef, contentRef: eventsContainerRef, showScrollButton, scrollToBottom } = useTailingScroll()
 	const [newMessageCount, setNewMessageCount] = React.useState(0)
 	const synced = props.synced
 	const connectionError = props.connectionError
@@ -131,7 +131,6 @@ function ServerChatEvents(
 						</div>
 					)}
 				</div>
-				<div ref={bottomRef} />
 			</ScrollArea>
 			{showScrollButton && (
 				<Button

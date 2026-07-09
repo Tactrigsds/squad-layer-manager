@@ -103,7 +103,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	const globalFilterState = ZusUtils.useStore(squadServerFrameKey, ChatPrt.Sel.secondaryFilterState)
 	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>(globalFilterState)
 	const filteredEvents = allEvents.filter(e => CHAT.isRenderableInFeed(e) && !CHAT.isEventFilteredBySecondary(e, filterState))
-	const { scrollAreaRef, contentRef, bottomRef, showScrollButton, isAtTop, scrollToBottom, anchorForPrepend } = useTailingScroll()
+	const { scrollAreaRef, contentRef, showScrollButton, isAtTop, scrollToBottom, anchorForPrepend } = useTailingScroll()
 	const { setIsPinned } = useDraggableWindow()
 	const aboveChatZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 
@@ -222,7 +222,6 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 								</React.Fragment>
 							))}
 						</div>
-						<div ref={bottomRef} />
 					</ScrollArea>
 					{eventsQuery.hasNextPage && isAtTop && (
 						<Button
