@@ -1,25 +1,86 @@
 import { BmFlagMultiSelect, BmFlagOrColorSelect, BmFlagOrderedList, FlagPriorityMap } from '@/components/bm-flag-picker'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { DiscordMemberSelect, DiscordRoleSelect } from '@/components/discord-picker'
+import { StickyGroup } from '@/components/sticky-group'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { useDebounced } from '@/hooks/use-debounce'
 import * as Obj from '@/lib/object'
 import { settingLabel } from '@/lib/settings-labels'
+import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
 import * as RBAC from '@/rbac.models'
 import * as Icons from 'lucide-react'
 import React from 'react'
+import * as Rx from 'rxjs'
 import { z } from 'zod'
 
 // The form is driven off the JSON-Schema projection of a Zod schema (input mode), edited in the encoded/input shape
 // (e.g. HumanTime fields as '5m' strings). Custom widgets are matched by path for the flag + rbac config.
+//
+// Data flow is inverted from a plain controlled form: instead of a `value` prop we hand each field a `value$`
+// (a BehaviorSubject-like state observable it reads via `.getValue()`) and a `reset$` signal. Native text/number
+// inputs stay *uncontrolled* (seeded from `value$.getValue()`, edits debounced upward) so typing never round-trips
+// through React state; `reset$` is emitted after any structural or programmatic change so those uncontrolled inputs
+// re-read their current value. Composite widgets (selects, switches, pickers) render controlled off a small local
+// mirror of `value$` that only re-syncs on emissions/`reset$`.
 
 type Node = any
 type Path = (string | number)[]
+
+// a BehaviorSubject-like handle: subscribable, plus a synchronous `.getValue()` for the current value
+type ValueState<T = any> = Rx.Observable<T> & { getValue: () => T }
+
+const DEBOUNCE_MS = 250
+
+// -------- state plumbing --------
+
+// derive a child value-state scoped to `key` of the parent. distinctUntilChanged keeps copy-on-write siblings quiet.
+function scopeValue(parent$: ValueState, key: string | number): ValueState {
+	const child$ = parent$.pipe(Rx.map((v: any) => v?.[key]), Rx.distinctUntilChanged()) as ValueState
+	child$.getValue = () => (parent$.getValue() as any)?.[key]
+	return child$
+}
+
+// current value of a field, re-read on both emissions and reset$. For widgets that render controlled.
+function useFieldValue<T>(value$: ValueState<T>, reset$: Rx.Observable<void>): T {
+	const [v, setV] = React.useState<T>(() => value$.getValue())
+	React.useEffect(() => {
+		const sub = new Rx.Subscription()
+		sub.add(value$.subscribe(setV))
+		sub.add(reset$.subscribe(() => setV(value$.getValue())))
+		return () => sub.unsubscribe()
+	}, [value$, reset$])
+	return v
+}
+
+// cheap "differs from default" flag for section headers: only flips (not per-keystroke), so sections don't
+// re-render (and cascade) on every descendant edit.
+function useIsModified(value$: ValueState, reset$: Rx.Observable<void>, def: { has: boolean; value: unknown }): boolean {
+	const compute = React.useCallback(() => def.has && !Obj.deepEqual(value$.getValue(), def.value), [value$, def])
+	const [mod, setMod] = React.useState(compute)
+	React.useEffect(() => {
+		const sub = new Rx.Subscription()
+		sub.add(value$.pipe(Rx.map(() => compute()), Rx.distinctUntilChanged()).subscribe(setMod))
+		sub.add(reset$.subscribe(() => setMod(compute())))
+		return () => sub.unsubscribe()
+	}, [value$, reset$, compute])
+	return mod
+}
+
+// run `fn` whenever reset$ fires (used by uncontrolled inputs to re-read their DOM value)
+function useReset(reset$: Rx.Observable<void>, fn: () => void) {
+	const fnRef = React.useRef(fn)
+	fnRef.current = fn
+	React.useEffect(() => {
+		const sub = reset$.subscribe(() => fnRef.current())
+		return () => sub.unsubscribe()
+	}, [reset$])
+}
 
 // -------- schema helpers --------
 
@@ -109,52 +170,239 @@ function PermissionExpressionEditor({ value, onChange }: { value: string[] | und
 	)
 }
 
+// -------- rbac cross-field wiring --------
+
+// `roles` (rbac.roles) is the source of truth for which roles exist; assignment role pickers are keyed to it and each
+// role shows a warning when nothing assigns it. Both need data from sibling branches, shared here via context.
+type RbacInfo = { roleIds: string[]; assignedRoleIds: Set<string> }
+const RbacContext = React.createContext<RbacInfo>({ roleIds: [], assignedRoleIds: new Set() })
+
+function readRbacInfo(root: any): RbacInfo {
+	const rbac = root?.rbac
+	const ra = rbac?.roleAssignments
+	const roleIds = Object.keys(rbac?.roles ?? {})
+	const assignedRoleIds = new Set<string>()
+	// discord-role/discord-user are id-keyed lists of { roles }; discord-server-member is a flat list of roles
+	for (const type of ['discord-role', 'discord-user'] as const) {
+		for (const a of ra?.[type] ?? []) for (const r of a.roles ?? []) assignedRoleIds.add(r)
+	}
+	for (const r of ra?.['discord-server-member'] ?? []) assignedRoleIds.add(r)
+	return { roleIds, assignedRoleIds }
+}
+
+function sameRbacInfo(a: RbacInfo, b: RbacInfo): boolean {
+	if (a.roleIds.length !== b.roleIds.length || a.assignedRoleIds.size !== b.assignedRoleIds.size) return false
+	return a.roleIds.every((r, i) => r === b.roleIds[i]) && [...a.assignedRoleIds].every((r) => b.assignedRoleIds.has(r))
+}
+
+function useRbacInfo(value$: ValueState): RbacInfo {
+	const [info, setInfo] = React.useState(() => readRbacInfo(value$.getValue()))
+	React.useEffect(() => {
+		const sub = value$.subscribe((v) =>
+			setInfo((prev) => {
+				const next = readRbacInfo(v)
+				return sameRbacInfo(prev, next) ? prev : next
+			})
+		)
+		return () => sub.unsubscribe()
+	}, [value$])
+	return info
+}
+
+// when a role is deleted from rbac.roles, prune it from every assignment so the config never dangles (which the schema
+// would otherwise reject). Runs off the root value$/onChange since it spans both branches.
+function useRoleCascade(value$: ValueState, onChange: (v: any) => void) {
+	const prevRoles = React.useRef<string[] | null>(null)
+	React.useEffect(() => {
+		const sub = value$.subscribe((v: any) => {
+			const roleIds = Object.keys(v?.rbac?.roles ?? {})
+			const prev = prevRoles.current
+			prevRoles.current = roleIds
+			if (prev === null) return
+			const removed = prev.filter((r) => !roleIds.includes(r))
+			if (removed.length === 0) return
+			const ra = v.rbac.roleAssignments
+			let changed = false
+			const nextRa: any = {}
+			for (const type of ['discord-role', 'discord-user'] as const) {
+				nextRa[type] = (ra[type] ?? []).map((a: any) => {
+					const roles = (a.roles ?? []).filter((r: string) => !removed.includes(r))
+					if (roles.length !== (a.roles?.length ?? 0)) changed = true
+					return { ...a, roles }
+				})
+			}
+			const memberRoles = (ra['discord-server-member'] ?? []).filter((r: string) => !removed.includes(r))
+			if (memberRoles.length !== (ra['discord-server-member']?.length ?? 0)) changed = true
+			nextRa['discord-server-member'] = memberRoles
+			// defer to avoid re-entrant BehaviorSubject.next while this emission is still being delivered
+			if (changed) queueMicrotask(() => onChange({ ...value$.getValue(), rbac: { ...value$.getValue().rbac, roleAssignments: nextRa } }))
+		})
+		return () => sub.unsubscribe()
+	}, [value$, onChange])
+}
+
 // -------- override widgets (matched by path) --------
 
-function overrideFor(path: Path): React.FC<{ value: any; onChange: (v: any) => void }> | undefined {
+type OverrideProps = { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void; path: Path }
+
+function FlagOrderedListField({ value$, reset$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$, reset$)
+	return <BmFlagOrderedList value={value ?? []} onChange={onChange} />
+}
+function FlagMultiSelectField({ value$, reset$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$, reset$)
+	return <BmFlagMultiSelect value={value ?? []} onChange={onChange} />
+}
+function FlagOrColorField({ value$, reset$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$, reset$)
+	return <BmFlagOrColorSelect value={value ?? ''} onChange={onChange} />
+}
+function FlagPriorityMapField({ value$, reset$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$, reset$)
+	return <FlagPriorityMap value={value ?? {}} onChange={onChange} />
+}
+function DiscordRoleField({ value$, reset$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$, reset$)
+	return <DiscordRoleSelect value={value ?? ''} onChange={onChange} />
+}
+function DiscordMemberField({ value$, reset$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$, reset$)
+	return <DiscordMemberSelect value={value ?? ''} onChange={onChange} />
+}
+// a defined role's permission expression, plus a warning when nothing assigns the role
+function RolePermissionField({ value$, reset$, onChange, path }: OverrideProps) {
+	const value = useFieldValue(value$, reset$)
+	const { assignedRoleIds } = React.useContext(RbacContext)
+	const roleId = String(path[path.length - 1])
+	return (
+		<div className="space-y-1.5">
+			<PermissionExpressionEditor value={value} onChange={onChange} />
+			{!assignedRoleIds.has(roleId) && (
+				<p className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500">
+					<Icons.TriangleAlert className="h-3 w-3 shrink-0" />
+					This role has no role assignments, so it is never granted to anyone.
+				</p>
+			)}
+		</div>
+	)
+}
+// role picker for an assignment, keyed to the defined roles (rbac.roles) rather than free text
+function AssignmentRolesField({ value$, reset$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$, reset$) as string[]
+	const { roleIds } = React.useContext(RbacContext)
+	return (
+		<ComboBoxMulti
+			title="Role"
+			values={value ?? []}
+			options={roleIds}
+			onSelect={(next) => onChange(typeof next === 'function' ? next(value ?? []) : next)}
+		/>
+	)
+}
+
+function overrideFor(path: Path): React.FC<OverrideProps> | undefined {
 	const last = path[path.length - 1]
-	if (path.length === 1 && last === 'playerFlagColorHierarchy') {
-		return ({ value, onChange }) => <BmFlagOrderedList value={value ?? []} onChange={onChange} />
-	}
-	if (path.length === 1 && last === 'playerFlagsRequiringNote') {
-		return ({ value, onChange }) => <BmFlagMultiSelect value={value ?? []} onChange={onChange} />
-	}
-	if (path[0] === 'playerFlagGroupings' && typeof path[1] === 'number' && last === 'color') {
-		return ({ value, onChange }) => <BmFlagOrColorSelect value={value ?? ''} onChange={onChange} />
-	}
-	if (path[0] === 'playerFlagGroupings' && typeof path[1] === 'number' && last === 'associations') {
-		return ({ value, onChange }) => <FlagPriorityMap value={value ?? {}} onChange={onChange} />
-	}
-	if (path[0] === 'rbac' && path[1] === 'globalRolePermissions' && path.length === 3) {
-		return PermissionExpressionEditor
+	if (path.length === 1 && last === 'playerFlagColorHierarchy') return FlagOrderedListField
+	if (path.length === 1 && last === 'playerFlagsRequiringNote') return FlagMultiSelectField
+	if (path[0] === 'playerFlagGroupings' && typeof path[1] === 'number' && last === 'color') return FlagOrColorField
+	if (path[0] === 'playerFlagGroupings' && typeof path[1] === 'number' && last === 'associations') return FlagPriorityMapField
+	if (path[0] === 'rbac' && path[1] === 'roles' && path.length === 3) return RolePermissionField
+	// the per-assignment `roles` lists, plus the flat "every member" list, are all role pickers keyed to defined roles
+	if (path[0] === 'rbac' && path[1] === 'roleAssignments' && (last === 'roles' || last === 'discord-server-member')) {
+		return AssignmentRolesField
 	}
 	// searchable Discord role/account pickers for the role-assignment editor, keyed to the raw-id fields
-	if (path[0] === 'rbac' && path[1] === 'roleAssignments' && path[2] === 'discord-role' && last === 'discordRoleId') {
-		return ({ value, onChange }) => <DiscordRoleSelect value={value ?? ''} onChange={onChange} />
-	}
-	if (path[0] === 'rbac' && path[1] === 'roleAssignments' && path[2] === 'discord-user' && last === 'userId') {
-		return ({ value, onChange }) => <DiscordMemberSelect value={value ?? ''} onChange={onChange} />
-	}
+	if (path[0] === 'rbac' && path[1] === 'roleAssignments' && path[2] === 'discord-role' && last === 'discordRoleId') return DiscordRoleField
+	if (path[0] === 'rbac' && path[1] === 'roleAssignments' && path[2] === 'discord-user' && last === 'userId') return DiscordMemberField
 	return undefined
 }
 
-// -------- field renderers --------
+// -------- leaf controls --------
 
-function NullableWrap(
-	{ nullable, value, empty, onChange, children }: {
-		nullable: boolean
-		value: unknown
-		empty: unknown
-		onChange: (v: unknown) => void
+// uncontrolled text/number input: seeded from value$, edits debounced upward, re-read on reset$
+function TextInputField(
+	{ value$, reset$, onChange, numeric }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void; numeric: boolean },
+) {
+	const ref = React.useRef<HTMLInputElement>(null)
+	const format = (v: any) => v === null || v === undefined ? '' : String(v)
+	const push = useDebounced<any>({ delay: DEBOUNCE_MS, onChange })
+	useReset(reset$, () => {
+		const cur = value$.getValue()
+		const formatted = format(cur)
+		// only touch the DOM when it actually diverges (an in-flight edit, or a value changed elsewhere). Re-pushing the
+		// current value supersedes any pending debounced edit so a reset can't be resurrected by a late-firing keystroke.
+		if (ref.current && ref.current.value !== formatted) {
+			ref.current.value = formatted
+			push(numeric ? (formatted === '' ? '' : Number(formatted)) : formatted)
+		}
+	})
+	return (
+		<Input
+			ref={ref}
+			type={numeric ? 'number' : 'text'}
+			defaultValue={format(value$.getValue())}
+			onChange={(e) => push(numeric ? (e.currentTarget.value === '' ? '' : e.currentTarget.valueAsNumber) : e.currentTarget.value)}
+		/>
+	)
+}
+
+function SelectField(
+	{ value$, reset$, onChange, options }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void; options: string[] },
+) {
+	const value = useFieldValue(value$, reset$)
+	return (
+		<Select value={value ?? ''} onValueChange={onChange}>
+			<SelectTrigger className="w-full">
+				<SelectValue />
+			</SelectTrigger>
+			<SelectContent>
+				{options.map((opt) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+			</SelectContent>
+		</Select>
+	)
+}
+
+function SwitchField({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void }) {
+	const value = useFieldValue(value$, reset$)
+	return <Switch checked={!!value} onCheckedChange={onChange} />
+}
+
+function EnumArrayField(
+	{ value$, reset$, onChange, options }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void; options: string[] },
+) {
+	const value = useFieldValue(value$, reset$) as any[]
+	return (
+		<ComboBoxMulti
+			title="Value"
+			values={value ?? []}
+			options={options}
+			onSelect={(next) => onChange(typeof next === 'function' ? next(value ?? []) : next)}
+		/>
+	)
+}
+
+// nullable scalar: an "unset" checkbox toggles between null and the field's empty value; the inner control reads value$
+function NullableField(
+	{ inner, value$, reset$, onChange, children }: {
+		inner: Node
+		value$: ValueState
+		reset$: Rx.Subject<void>
+		onChange: (v: any) => void
 		children: React.ReactNode
 	},
-): React.ReactNode {
-	if (!nullable) return children
+) {
+	const value = useFieldValue(value$, reset$)
 	const isNull = value === null || value === undefined
 	return (
 		<div className="flex items-center gap-2">
 			<label className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
-				<Checkbox checked={isNull} onCheckedChange={(c) => onChange(c ? null : empty)} />
+				<Checkbox
+					checked={isNull}
+					onCheckedChange={(c) => {
+						onChange(c ? null : emptyValue(inner))
+						reset$.next()
+					}}
+				/>
 				unset
 			</label>
 			{!isNull && <div className="flex-1 min-w-0">{children}</div>}
@@ -162,126 +410,151 @@ function NullableWrap(
 	)
 }
 
-function FieldControl({ node, path, value, onChange }: { node: Node; path: Path; value: any; onChange: (v: any) => void }) {
+function wrapNullable(
+	nullable: boolean,
+	child: React.ReactNode,
+	inner: Node,
+	value$: ValueState,
+	reset$: Rx.Subject<void>,
+	onChange: (v: any) => void,
+): React.ReactNode {
+	if (!nullable) return child
+	return (
+		<NullableField inner={inner} value$={value$} reset$={reset$} onChange={onChange}>
+			{child}
+		</NullableField>
+	)
+}
+
+function FieldControl(
+	{ node, path, value$, reset$, onChange }: {
+		node: Node
+		path: Path
+		value$: ValueState
+		reset$: Rx.Subject<void>
+		onChange: (v: any) => void
+	},
+) {
 	const Override = overrideFor(path)
-	if (Override) return <Override value={value} onChange={onChange} />
+	if (Override) return <Override value$={value$} reset$={reset$} onChange={onChange} path={path} />
 
 	const { inner, nullable } = stripNullable(node)
-	const empty = emptyValue(inner)
 
 	// enum -> select
 	if (inner.enum && inner.type !== 'array') {
-		return (
-			<NullableWrap nullable={nullable} value={value} empty={empty} onChange={onChange}>
-				<Select value={value ?? ''} onValueChange={onChange}>
-					<SelectTrigger className="w-full">
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						{inner.enum.map((opt: string) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
-					</SelectContent>
-				</Select>
-			</NullableWrap>
+		return wrapNullable(
+			nullable,
+			<SelectField value$={value$} reset$={reset$} onChange={onChange} options={inner.enum} />,
+			inner,
+			value$,
+			reset$,
+			onChange,
 		)
 	}
 
 	// string | number (HumanTime etc.) -> text input
 	if (isStringOrNumber(inner)) {
-		return (
-			<NullableWrap nullable={nullable} value={value} empty={empty} onChange={onChange}>
-				<Input value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
-			</NullableWrap>
+		return wrapNullable(
+			nullable,
+			<TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric={false} />,
+			inner,
+			value$,
+			reset$,
+			onChange,
 		)
 	}
 
 	if (inner.type === 'boolean') {
-		return <Switch checked={!!value} onCheckedChange={onChange} />
+		return <SwitchField value$={value$} reset$={reset$} onChange={onChange} />
 	}
 
 	if (inner.type === 'integer' || inner.type === 'number') {
-		return (
-			<NullableWrap nullable={nullable} value={value} empty={empty} onChange={onChange}>
-				<Input
-					type="number"
-					value={typeof value === 'number' ? value : ''}
-					onChange={(e) => onChange(e.target.value === '' ? '' : e.target.valueAsNumber)}
-				/>
-			</NullableWrap>
+		return wrapNullable(
+			nullable,
+			<TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric />,
+			inner,
+			value$,
+			reset$,
+			onChange,
 		)
 	}
 
 	if (inner.type === 'string') {
-		return (
-			<NullableWrap nullable={nullable} value={value} empty={empty} onChange={onChange}>
-				<Input value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
-			</NullableWrap>
+		return wrapNullable(
+			nullable,
+			<TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric={false} />,
+			inner,
+			value$,
+			reset$,
+			onChange,
 		)
 	}
 
 	if (inner.type === 'array') {
-		return <ArrayField node={inner} path={path} value={value ?? []} onChange={onChange} />
+		return <ArrayField node={inner} path={path} value$={value$} reset$={reset$} onChange={onChange} />
 	}
 
 	if (inner.type === 'object') {
 		if (inner.additionalProperties && typeof inner.additionalProperties === 'object') {
-			return <RecordField node={inner} path={path} value={value ?? {}} onChange={onChange} />
+			return <RecordField node={inner} path={path} value$={value$} reset$={reset$} onChange={onChange} />
 		}
-		return <ObjectField node={inner} path={path} value={value ?? {}} onChange={onChange} />
+		return <ObjectField node={inner} path={path} value$={value$} reset$={reset$} onChange={onChange} />
 	}
 
 	// fallback for anything the walker can't render structurally
-	return <JsonFallback value={value} onChange={onChange} />
+	return <JsonFallback value$={value$} reset$={reset$} onChange={onChange} />
 }
 
-function ArrayField({ node, path, value, onChange }: { node: Node; path: Path; value: any[]; onChange: (v: any[]) => void }) {
+function ArrayField(
+	{ node, path, value$, reset$, onChange }: {
+		node: Node
+		path: Path
+		value$: ValueState
+		reset$: Rx.Subject<void>
+		onChange: (v: any[]) => void
+	},
+) {
 	const items: Node = node.items ?? {}
 	const { inner } = stripNullable(items)
 
 	// array of enum -> multi-select
 	if (inner.enum && inner.type !== 'array' && inner.type !== 'object') {
-		return (
-			<ComboBoxMulti
-				title="Value"
-				values={value}
-				options={inner.enum}
-				onSelect={(next) => onChange(typeof next === 'function' ? next(value) : next)}
-			/>
-		)
+		return <EnumArrayField value$={value$} reset$={reset$} onChange={onChange} options={inner.enum} />
 	}
 
+	const value = (useFieldValue(value$, reset$) as any[]) ?? []
 	const isPrimitive = inner.type === 'string' || inner.type === 'integer' || inner.type === 'number' || isStringOrNumber(inner)
+
+	// structural edits emit reset$ so uncontrolled item inputs re-read after re-indexing
+	function structural(next: any[]) {
+		onChange(next)
+		reset$.next()
+	}
 
 	return (
 		<div className="space-y-1.5">
 			{value.length === 0 && <p className="text-xs text-muted-foreground">Empty.</p>}
-			{value.map((item, idx) => (
+			{value.map((_, idx) => (
 				// list items have no stable id (primitives / freshly-added objects), so index is the pragmatic key here
-				// oxlint-disable-next-line no-array-index-key
-				<div key={idx} className={cn('flex gap-2', isPrimitive ? 'items-center' : 'items-start')}>
-					<div className={cn('flex-1 min-w-0', !isPrimitive && 'border rounded-md p-2')}>
-						<FieldControl
-							node={items}
-							path={[...path, idx]}
-							value={item}
-							onChange={(v) => {
-								const next = [...value]
-								next[idx] = v
-								onChange(next)
-							}}
-						/>
-					</div>
-					<Button
-						type="button"
-						size="icon"
-						variant="ghost"
-						className="h-8 w-8 text-destructive shrink-0"
-						onClick={() => onChange(value.filter((_, i) => i !== idx))}
-					>
-						<Icons.X className="h-4 w-4" />
-					</Button>
-				</div>
+				<ArrayItem
+					// oxlint-disable-next-line no-array-index-key
+					key={idx}
+					items={items}
+					path={path}
+					idx={idx}
+					parent$={value$}
+					reset$={reset$}
+					parentOnChange={onChange}
+					isPrimitive={isPrimitive}
+					onRemove={() => structural(((value$.getValue() as any[]) ?? []).filter((_, i) => i !== idx))}
+				/>
 			))}
-			<Button type="button" size="sm" variant="outline" onClick={() => onChange([...value, emptyValue(items)])}>
+			<Button
+				type="button"
+				size="sm"
+				variant="outline"
+				onClick={() => structural([...((value$.getValue() as any[]) ?? []), emptyValue(items)])}
+			>
 				<Icons.Plus className="h-4 w-4" />
 				Add
 			</Button>
@@ -289,27 +562,78 @@ function ArrayField({ node, path, value, onChange }: { node: Node; path: Path; v
 	)
 }
 
+function ArrayItem(
+	{ items, path, idx, parent$, reset$, parentOnChange, isPrimitive, onRemove }: {
+		items: Node
+		path: Path
+		idx: number
+		parent$: ValueState
+		reset$: Rx.Subject<void>
+		parentOnChange: (v: any[]) => void
+		isPrimitive: boolean
+		onRemove: () => void
+	},
+) {
+	const value$ = React.useMemo(() => scopeValue(parent$, idx), [parent$, idx])
+	const onChange = React.useCallback((v: any) => {
+		const arr = [...((parent$.getValue() as any[]) ?? [])]
+		arr[idx] = v
+		parentOnChange(arr)
+	}, [parentOnChange, parent$, idx])
+	return (
+		<div className={cn('flex gap-2', isPrimitive ? 'items-center' : 'items-start')}>
+			<div className={cn('flex-1 min-w-0', !isPrimitive && 'border rounded-md p-2')}>
+				<FieldControl node={items} path={[...path, idx]} value$={value$} reset$={reset$} onChange={onChange} />
+			</div>
+			<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive shrink-0" onClick={onRemove}>
+				<Icons.X className="h-4 w-4" />
+			</Button>
+		</div>
+	)
+}
+
 function RecordField(
-	{ node, path, value, onChange }: { node: Node; path: Path; value: Record<string, any>; onChange: (v: Record<string, any>) => void },
+	{ node, path, value$, reset$, onChange }: {
+		node: Node
+		path: Path
+		value$: ValueState
+		reset$: Rx.Subject<void>
+		onChange: (v: Record<string, any>) => void
+	},
 ) {
 	const valueNode: Node = node.additionalProperties
 	// when the schema constrains keys to a known set (z.partialRecord / propertyNames enum), the key becomes a fixed picker
 	// rather than free text, so only known keys can be added
 	const keyEnum: string[] | undefined = node.propertyNames?.enum
 	const [newKey, setNewKey] = React.useState('')
+	const value = (useFieldValue(value$, reset$) as Record<string, any>) ?? {}
 	const entries = Object.entries(value)
 
-	function rename(oldKey: string, nextKey: string) {
-		if (nextKey === oldKey || nextKey in value) return
-		const next: Record<string, any> = {}
-		for (const [k, v] of Object.entries(value)) next[k === oldKey ? nextKey : k] = v
+	// structural edits emit reset$ so uncontrolled entry inputs re-read
+	function structural(next: Record<string, any>) {
 		onChange(next)
+		reset$.next()
+	}
+
+	function rename(oldKey: string, nextKey: string) {
+		const cur = (value$.getValue() as Record<string, any>) ?? {}
+		if (nextKey === oldKey || nextKey in cur) return
+		const next: Record<string, any> = {}
+		for (const [k, v] of Object.entries(cur)) next[k === oldKey ? nextKey : k] = v
+		structural(next)
 	}
 
 	function add(key: string) {
-		if (!key || key in value) return
-		onChange({ ...value, [key]: emptyValue(valueNode) })
+		const cur = (value$.getValue() as Record<string, any>) ?? {}
+		if (!key || key in cur) return
+		structural({ ...cur, [key]: emptyValue(valueNode) })
 		setNewKey('')
+	}
+
+	function remove(key: string) {
+		const next = { ...((value$.getValue() as Record<string, any>) ?? {}) }
+		delete next[key]
+		structural(next)
 	}
 
 	const remainingKeys = keyEnum?.filter((k) => !(k in value)) ?? []
@@ -317,39 +641,19 @@ function RecordField(
 	return (
 		<div className="space-y-2">
 			{entries.length === 0 && <p className="text-xs text-muted-foreground">No entries.</p>}
-			{entries.map(([key, val]) => (
-				<div key={key} className="border rounded-md p-2 space-y-1.5">
-					<div className="flex items-center gap-2">
-						{keyEnum
-							? <span className="font-mono text-sm">{key}</span>
-							: (
-								<Input
-									className="font-mono h-8 max-w-[16rem]"
-									defaultValue={key}
-									onBlur={(e) => rename(key, e.target.value.trim())}
-								/>
-							)}
-						<Button
-							type="button"
-							size="icon"
-							variant="ghost"
-							className="h-8 w-8 text-destructive ml-auto"
-							onClick={() => {
-								const next = { ...value }
-								delete next[key]
-								onChange(next)
-							}}
-						>
-							<Icons.X className="h-4 w-4" />
-						</Button>
-					</div>
-					<FieldControl
-						node={valueNode}
-						path={[...path, key]}
-						value={val}
-						onChange={(v) => onChange({ ...value, [key]: v })}
-					/>
-				</div>
+			{entries.map(([key]) => (
+				<RecordEntry
+					key={key}
+					valueNode={valueNode}
+					path={path}
+					entryKey={key}
+					keyEnum={keyEnum}
+					parent$={value$}
+					reset$={reset$}
+					parentOnChange={onChange}
+					onRename={(next) => rename(key, next)}
+					onRemove={() => remove(key)}
+				/>
 			))}
 			{keyEnum
 				? (remainingKeys.length > 0 && (
@@ -386,21 +690,59 @@ function RecordField(
 	)
 }
 
+function RecordEntry(
+	{ valueNode, path, entryKey, keyEnum, parent$, reset$, parentOnChange, onRename, onRemove }: {
+		valueNode: Node
+		path: Path
+		entryKey: string
+		keyEnum: string[] | undefined
+		parent$: ValueState
+		reset$: Rx.Subject<void>
+		parentOnChange: (v: Record<string, any>) => void
+		onRename: (next: string) => void
+		onRemove: () => void
+	},
+) {
+	const value$ = React.useMemo(() => scopeValue(parent$, entryKey), [parent$, entryKey])
+	const onChange = React.useCallback(
+		(v: any) => parentOnChange({ ...((parent$.getValue() as Record<string, any>) ?? {}), [entryKey]: v }),
+		[parentOnChange, parent$, entryKey],
+	)
+	return (
+		<div className="border rounded-md p-2 space-y-1.5">
+			<div className="flex items-center gap-2">
+				{keyEnum
+					? <span className="font-mono text-sm">{entryKey}</span>
+					: (
+						<Input
+							className="font-mono h-8 max-w-[16rem]"
+							defaultValue={entryKey}
+							onBlur={(e) => onRename(e.target.value.trim())}
+						/>
+					)}
+				<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive ml-auto" onClick={onRemove}>
+					<Icons.X className="h-4 w-4" />
+				</Button>
+			</div>
+			<FieldControl node={valueNode} path={[...path, entryKey]} value$={value$} reset$={reset$} onChange={onChange} />
+		</div>
+	)
+}
+
 function ObjectField(
-	{ node, path, value, onChange }: { node: Node; path: Path; value: Record<string, any>; onChange: (v: Record<string, any>) => void },
+	{ node, path, value$, reset$, onChange }: {
+		node: Node
+		path: Path
+		value$: ValueState
+		reset$: Rx.Subject<void>
+		onChange: (v: Record<string, any>) => void
+	},
 ) {
 	const props: Record<string, Node> = node.properties ?? {}
 	return (
 		<div className="space-y-3">
 			{Object.entries(props).map(([key, childNode]) => (
-				<Field
-					key={key}
-					name={key}
-					node={childNode}
-					path={[...path, key]}
-					value={value?.[key]}
-					onChange={(v) => onChange({ ...value, [key]: v })}
-				/>
+				<Field key={key} name={key} node={childNode} path={[...path, key]} parent$={value$} parentOnChange={onChange} reset$={reset$} />
 			))}
 		</div>
 	)
@@ -463,47 +805,108 @@ function ResetButton({ onClick }: { onClick: () => void }) {
 	)
 }
 
-// a single labeled field; nested objects render as titled sections. `id` anchors it for the table-of-contents nav.
-function Field({ name, node, path, value, onChange }: { name: string; node: Node; path: Path; value: any; onChange: (v: any) => void }) {
+// an anchor to this field's fragment; shown on hover of its labeled row (the row carries `group`)
+function AnchorLink({ domId }: { domId: string }) {
+	return (
+		<a
+			href={`#${domId}`}
+			className="shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
+			title="Link to this setting"
+			aria-label="Link to this setting"
+			onClick={(e) => {
+				e.preventDefault()
+				SettingsNav.navigateToAnchor(domId)
+			}}
+		>
+			<Icons.Link className="h-3 w-3" />
+		</a>
+	)
+}
+
+// a nested object section: titled fieldset. `useIsModified` keeps the reset affordance live without re-rendering
+// the whole subtree on every descendant edit.
+function SectionField(
+	{ name, node, path, value$, reset$, onChange }: {
+		name: string
+		node: Node
+		path: Path
+		value$: ValueState
+		reset$: Rx.Subject<void>
+		onChange: (v: any) => void
+	},
+) {
 	const { inner } = stripNullable(node)
 	const description: string | undefined = node.description ?? inner.description
 	const pathStr = path.join('.')
-	const domId = `setting:${pathStr}`
-	const hasOverride = !!overrideFor(path)
-	const isSection = !hasOverride
-		&& inner.type === 'object'
-		&& !!inner.properties
-		&& !(inner.additionalProperties && typeof inner.additionalProperties === 'object')
-
 	const def = effectiveDefault(node)
-	const canReset = def.has && !Obj.deepEqual(value, def.value)
-	const resetBtn = canReset ? <ResetButton onClick={() => onChange(structuredClone(def.value))} /> : null
-
-	if (isSection) {
-		return (
-			<fieldset id={domId} className="border rounded-md p-3 space-y-3 scroll-mt-2">
-				<div className="flex items-center gap-2">
+	const modified = useIsModified(value$, reset$, def)
+	// the header pins to the top of the scroll column (stacking under any ancestor section headers) while this section
+	// is in view. StickyGroup handles the offset math + z-index; the ref'd element must sit before the section body.
+	const headerRef = React.useRef<HTMLDivElement>(null)
+	return (
+		<fieldset id={`setting:${pathStr}`} className="border rounded-md px-3 pb-3 pt-0 space-y-3 scroll-mt-2">
+			<StickyGroup stickyRef={headerRef}>
+				<div ref={headerRef} className="group flex items-center gap-2 -mx-3 rounded-t-md border-b bg-card px-3 py-2">
 					<legend className="px-1 text-sm font-semibold">{settingLabel(path, name)}</legend>
 					<code className="text-[10px] text-muted-foreground">{pathStr}</code>
-					{resetBtn}
+					<AnchorLink domId={`setting:${pathStr}`} />
+					{modified && (
+						<ResetButton
+							onClick={() => {
+								onChange(structuredClone(def.value))
+								reset$.next()
+							}}
+						/>
+					)}
 				</div>
-				{description && <p className="text-xs text-muted-foreground -mt-1">{description}</p>}
-				<FieldControl node={node} path={path} value={value} onChange={onChange} />
-			</fieldset>
+				{description && <p className="text-xs text-muted-foreground">{description}</p>}
+				<FieldControl node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />
+			</StickyGroup>
+		</fieldset>
+	)
+}
+
+// a single labeled leaf field (scalar, array, record, or override widget).
+function LeafField(
+	{ name, node, path, value$, reset$, onChange, hasOverride }: {
+		name: string
+		node: Node
+		path: Path
+		value$: ValueState
+		reset$: Rx.Subject<void>
+		onChange: (v: any) => void
+		hasOverride: boolean
+	},
+) {
+	const { inner } = stripNullable(node)
+	const description: string | undefined = node.description ?? inner.description
+	const pathStr = path.join('.')
+	const value = useFieldValue(value$, reset$)
+	const def = effectiveDefault(node)
+	const canReset = def.has && !Obj.deepEqual(value, def.value)
+	const resetBtn = canReset
+		? (
+			<ResetButton
+				onClick={() => {
+					onChange(structuredClone(def.value))
+					reset$.next()
+				}}
+			/>
 		)
-	}
+		: null
 
 	const isBoolean = inner.type === 'boolean'
 	const showDefaultText = !hasOverride && def.has && isScalarNode(inner)
 	return (
 		<div
-			id={domId}
+			id={`setting:${pathStr}`}
 			className={cn('space-y-1 scroll-mt-2', isBoolean && 'flex items-center justify-between space-y-0 gap-4')}
 		>
 			<div className={cn(isBoolean && 'min-w-0')}>
-				<div className="flex items-center gap-1.5">
+				<div className="group flex items-center gap-1.5">
 					<Label className="text-sm">{settingLabel(path, name)}</Label>
 					<code className="text-[10px] text-muted-foreground">{pathStr}</code>
+					<AnchorLink domId={`setting:${pathStr}`} />
 					{!isBoolean && resetBtn}
 				</div>
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
@@ -511,15 +914,46 @@ function Field({ name, node, path, value, onChange }: { name: string; node: Node
 			</div>
 			<div className={cn(isBoolean && 'shrink-0 flex items-center gap-1')}>
 				{isBoolean && resetBtn}
-				<FieldControl node={node} path={path} value={value} onChange={onChange} />
+				<FieldControl node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />
 			</div>
 		</div>
 	)
 }
 
-function JsonFallback({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
-	const [text, setText] = React.useState(() => JSON.stringify(value, null, 2))
+// dispatches a schema property to a section or leaf renderer, deriving its scoped value$ + onChange.
+function Field(
+	{ name, node, path, parent$, parentOnChange, reset$ }: {
+		name: string
+		node: Node
+		path: Path
+		parent$: ValueState
+		parentOnChange: (v: Record<string, any>) => void
+		reset$: Rx.Subject<void>
+	},
+) {
+	const value$ = React.useMemo(() => scopeValue(parent$, name), [parent$, name])
+	const onChange = React.useCallback(
+		(v: any) => parentOnChange({ ...((parent$.getValue() as Record<string, any>) ?? {}), [name]: v }),
+		[parentOnChange, parent$, name],
+	)
+	const { inner } = stripNullable(node)
+	const hasOverride = !!overrideFor(path)
+	const isSection = !hasOverride
+		&& inner.type === 'object'
+		&& !!inner.properties
+		&& !(inner.additionalProperties && typeof inner.additionalProperties === 'object')
+
+	if (isSection) return <SectionField name={name} node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />
+	return <LeafField name={name} node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} hasOverride={hasOverride} />
+}
+
+function JsonFallback({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: unknown) => void }) {
+	const [text, setText] = React.useState(() => JSON.stringify(value$.getValue(), null, 2))
 	const [error, setError] = React.useState('')
+	useReset(reset$, () => {
+		setText(JSON.stringify(value$.getValue(), null, 2))
+		setError('')
+	})
 	return (
 		<div className="space-y-1">
 			<textarea
@@ -540,7 +974,22 @@ function JsonFallback({ value, onChange }: { value: unknown; onChange: (v: unkno
 	)
 }
 
-export default function SettingsForm({ schema, value, onChange }: { schema: z.ZodType; value: any; onChange: (next: any) => void }) {
+export default function SettingsForm(
+	{ schema, value$, reset$, onChange }: {
+		schema: z.ZodType
+		value$: Rx.Observable<any> & { getValue: () => any }
+		reset$: Rx.Subject<void>
+		onChange: (next: any) => void
+	},
+) {
 	const jsonSchema = React.useMemo(() => z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' }) as Node, [schema])
-	return <ObjectField node={jsonSchema} path={[]} value={value ?? {}} onChange={onChange} />
+	// stable so the form subtree stays memoized when only rbacInfo (context) changes
+	const rootPath = React.useMemo<Path>(() => [], [])
+	const rbacInfo = useRbacInfo(value$)
+	useRoleCascade(value$, onChange)
+	return (
+		<RbacContext.Provider value={rbacInfo}>
+			<ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />
+		</RbacContext.Provider>
+	)
 }

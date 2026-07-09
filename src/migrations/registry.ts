@@ -13,8 +13,10 @@ import type { TsMigration } from '@/server/migrate'
 // unique across both `.sql` and `.ts` migrations.
 import * as m0062 from './0062_filter_nodes_operator_model'
 import * as m0063 from './0063_filter_team_scopes_to_and_or'
+import * as m0064 from './0064_rbac_roles_rename_and_flatten_member_roles'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
 	{ name: '0063_filter_team_scopes_to_and_or', up: m0063.up },
+	{ name: '0064_rbac_roles_rename_and_flatten_member_roles', up: m0064.up },
 ]

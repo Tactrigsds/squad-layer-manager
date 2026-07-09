@@ -184,3 +184,12 @@ export function partition<T>(arr: T[], predicate: (item: T) => boolean): [T[], T
 	}
 	return [truthy, falsy]
 }
+
+export function shallowEquals<T>(arr: T[], other: T[]): boolean {
+	if (arr === other) return true
+	if (arr.length !== other.length) return false
+	for (let i = 0; i < arr.length; i++) {
+		if (arr[i] !== other[i]) return false
+	}
+	return true
+}

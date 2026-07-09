@@ -3,6 +3,9 @@
 // display-name overrides keyed by dotted settings path; falls back to humanize() otherwise
 const LABEL_OVERRIDES: Record<string, string> = {
 	rbac: 'Permissions & Roles',
+	'rbac.roleAssignments.discord-role': 'By Discord Role',
+	'rbac.roleAssignments.discord-user': 'Specific User',
+	'rbac.roleAssignments.discord-server-member': 'All Server Members',
 }
 
 export function humanize(key: string): string {

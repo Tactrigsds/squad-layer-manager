@@ -15,7 +15,6 @@ export default function EventFilterSelect(props: {
 	value: CHAT.SecondaryFilterState
 	onValueChange: (value: CHAT.SecondaryFilterState) => void
 	variant?: 'default' | 'outline' | 'ghost' | 'link'
-	zIndex?: number
 	open?: boolean
 	onOpenChange?: (open: boolean) => void
 }) {
@@ -28,7 +27,7 @@ export default function EventFilterSelect(props: {
 					<Icons.ChevronDown className="h-3 w-3 ml-1" />
 				</Button>
 			</DropdownMenuTrigger>
-			<DropdownMenuContent style={{ zIndex: props.zIndex }} align="end">
+			<DropdownMenuContent align="end">
 				<DropdownMenuRadioGroup value={props.value} onValueChange={props.onValueChange as (value: string) => void}>
 					{Object.entries(labels).map(([key, label]) => (
 						<DropdownMenuRadioItem key={key} value={key}>

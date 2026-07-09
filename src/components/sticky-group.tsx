@@ -1,3 +1,4 @@
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import { createContext, type ReactNode, type RefObject, useContext, useLayoutEffect, useRef } from 'react'
 import { createStore, type StoreApi } from 'zustand/vanilla'
 
@@ -114,15 +115,15 @@ export interface StickyGroupProps<T extends HTMLElement = HTMLElement> {
 	 * through the ref, it never renders or clones it.
 	 */
 	stickyRef: RefObject<T | null>
-	baseHeaderZIndex?: number
 }
 
 export function StickyGroup<T extends HTMLElement = HTMLElement>({
 	children,
 	stickyRef,
-	baseHeaderZIndex: baseZIndex,
 }: StickyGroupProps<T>) {
 	const parentStore = useContext(StickyStoreContext)
+	const stickyCeiling = useZIndex(ZI_OFFSETS.STICKYGROUP_CEILING)
+	const stickyFloor = useZIndex(ZI_OFFSETS.STICKYGROUP_FLOOR)
 
 	// Created once per component instance and never reassigned, so this
 	// object's identity is stable across re-renders. That stability is what
@@ -152,7 +153,8 @@ export function StickyGroup<T extends HTMLElement = HTMLElement>({
 
 			el!.style.position = 'sticky'
 			el!.style.top = `${offset}px`
-			el!.style.zIndex = String(baseZIndex ?? 1000 - depth)
+			// deeper stickies pin below their ancestors, so they must also paint below them
+			el!.style.zIndex = String(Math.max(stickyCeiling - depth, stickyFloor))
 
 			// Tell any nested <StickyGroup> what offset/depth to build on.
 			ownStore.setState({
@@ -185,7 +187,7 @@ export function StickyGroup<T extends HTMLElement = HTMLElement>({
 			el!.style.top = ''
 			el!.style.zIndex = ''
 		}
-	}, [stickyRef, parentStore, ownStore, baseZIndex])
+	}, [stickyRef, parentStore, ownStore, stickyCeiling, stickyFloor])
 
 	return (
 		<StickyStoreContext.Provider value={ownStore}>

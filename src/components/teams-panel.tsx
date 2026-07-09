@@ -1201,8 +1201,6 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	enableSquadGroups?: boolean
 	className?: string
 }) {
-	const headersRef = React.useRef<HTMLTableSectionElement>(null)
-
 	const rowSelection = ZusUtils.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
 	const savedSwitches = ZusUtils.useStore(props.stores.squadServer!, s => TSWClient.Sel.localState(s).savedSwitches)
 	const setRowSelection = SquadServerClient.Actions.setSelection
@@ -1247,6 +1245,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 		SquadServerClient.VisiblePlayersActions.setVisible(visibleKey, displayedIds)
 	}, [visibleKey, displayedIds])
 	React.useEffect(() => () => SquadServerClient.VisiblePlayersActions.clearVisible(visibleKey), [visibleKey])
+	const headersRef = React.useRef<HTMLTableSectionElement | null>(null)
 
 	const renderPlayerRow = (row: Row<T>, visibleIndex: number) => {
 		const isBulk = selectedIds.length >= 2 && rowSelection[row.id]

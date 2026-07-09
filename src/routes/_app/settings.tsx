@@ -2,6 +2,7 @@ import type SchemaJsonEditorComponent from '@/components/schema-json-editor'
 import type { SchemaJsonEditorHandle } from '@/components/schema-json-editor.types'
 import SettingsForm from '@/components/settings-form'
 import SettingsToc from '@/components/settings-toc'
+import { StickyGroup } from '@/components/sticky-group'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -11,11 +12,14 @@ import { useAlertDialog } from '@/components/ui/lazy-alert-dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import * as Obj from '@/lib/object'
+import { useRefConstructor } from '@/lib/react'
+import * as SettingsNav from '@/lib/settings-nav'
 import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
 import * as AppEvents from '@/models/app-events.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
@@ -26,7 +30,18 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
+import * as Rx from 'rxjs'
 import { z } from 'zod'
+
+// subscribe a component to a BehaviorSubject-like state observable (mirrors it into render state)
+function useObservableValue<T>(obs$: Rx.Observable<T> & { getValue: () => T }): T {
+	const [v, setV] = React.useState<T>(() => obs$.getValue())
+	React.useEffect(() => {
+		const sub = obs$.subscribe(setV)
+		return () => sub.unsubscribe()
+	}, [obs$])
+	return v
+}
 
 // lazily loaded so the CodeMirror editor bundle isn't paid for until an editor is actually shown.
 // the `as` casts restore the generic component signature that React.lazy erases.
@@ -44,6 +59,30 @@ function RouteComponent() {
 	// lifted so the TOC can drop the field subtree in JSON mode (those anchors only exist in the GUI editor)
 	const [globalMode, setGlobalMode] = React.useState<'gui' | 'json'>('gui')
 
+	// scroll to the URL fragment on load (retrying until the target renders, since the form loads async) and on later
+	// hash changes (a pasted/edited link). In-app clicks use replaceState, which fires no hashchange, so no double-scroll.
+	React.useEffect(() => {
+		const onHash = () => {
+			const id = SettingsNav.currentAnchor()
+			if (id) SettingsNav.scrollToAnchor(id)
+		}
+		window.addEventListener('hashchange', onHash)
+		const id = SettingsNav.currentAnchor()
+		let raf = 0
+		if (id) {
+			let tries = 0
+			const attempt = () => {
+				if (document.getElementById(id)) SettingsNav.scrollToAnchor(id)
+				else if (tries++ < 90) raf = requestAnimationFrame(attempt)
+			}
+			raf = requestAnimationFrame(attempt)
+		}
+		return () => {
+			window.removeEventListener('hashchange', onHash)
+			if (raf) cancelAnimationFrame(raf)
+		}
+	}, [])
+
 	if (manageServersDenied && manageGlobalDenied) {
 		return (
 			<div className="w-full h-full grid place-items-center">
@@ -56,10 +95,11 @@ function RouteComponent() {
 		// bounded to the viewport (navbar h-16 + outlet p-4 = 6rem) so the two columns can scroll independently;
 		// the outlet wrapper is overflow-hidden, which would otherwise break sticky/independent scrolling
 		<div className="flex gap-4 w-full max-w-[84rem] mx-auto h-[calc(100dvh-6rem)]">
-			<aside className="w-60 shrink-0 overflow-y-auto border-r pr-2 py-2">
+			<aside className="w-60 shrink-0 overflow-hidden border-r pr-2 py-2">
 				<SettingsToc showServers={!manageServersDenied} showGlobal={!manageGlobalDenied} globalMode={globalMode} />
 			</aside>
-			<main className="flex-1 min-w-0 overflow-y-auto pr-2 py-2 space-y-6">
+			{/* no top padding: sticky section headers pin flush to the top, otherwise scrolled content bleeds into the gap */}
+			<main className="flex-1 min-w-0 overflow-y-auto pr-2 pb-2 space-y-6">
 				{/* ServerManagement reads PublicSettingsStore, not globalSettings$, so it must not sit behind the global-settings Suspense */}
 				{!manageServersDenied && (
 					<div id="section:servers" className="scroll-mt-2">
@@ -97,30 +137,34 @@ function AuditLogSection() {
 		return 'System'
 	}
 
+	const headerRef = React.useRef<HTMLDivElement>(null)
+
 	return (
 		<Card>
-			<CardHeader>
-				<CardTitle>Audit Log</CardTitle>
-				<CardDescription>Recent actions taken across SLM.</CardDescription>
-			</CardHeader>
-			<CardContent>
-				{events.length === 0
-					? <p className="text-sm text-muted-foreground">No events yet.</p>
-					: (
-						<div className="max-h-[32rem] overflow-y-auto">
-							{events.map(e => (
-								<div key={e.id} className="flex gap-2 items-baseline text-sm border-b py-1 last:border-0">
-									<span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-										{new Date(e.time).toLocaleString()}
-									</span>
-									<span className="font-medium whitespace-nowrap">{actorName(e.actor)}</span>
-									<span className="text-muted-foreground grow min-w-0 wrap-break-word">{AppEvents.describeAppEvent(e)}</span>
-									{e.serverId && <span className="text-xs text-muted-foreground whitespace-nowrap">{e.serverId}</span>}
-								</div>
-							))}
-						</div>
-					)}
-			</CardContent>
+			<StickyGroup stickyRef={headerRef}>
+				<CardHeader ref={headerRef} className="rounded-t-xl border-b bg-card">
+					<CardTitle>Audit Log</CardTitle>
+					<CardDescription>Recent actions taken across SLM.</CardDescription>
+				</CardHeader>
+				<CardContent>
+					{events.length === 0
+						? <p className="text-sm text-muted-foreground">No events yet.</p>
+						: (
+							<div className="max-h-[32rem] overflow-y-auto">
+								{events.map(e => (
+									<div key={e.id} className="flex gap-2 items-baseline text-sm border-b py-1 last:border-0">
+										<span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+											{new Date(e.time).toLocaleString()}
+										</span>
+										<span className="font-medium whitespace-nowrap">{actorName(e.actor)}</span>
+										<span className="text-muted-foreground grow min-w-0 wrap-break-word">{AppEvents.describeAppEvent(e)}</span>
+										{e.serverId && <span className="text-xs text-muted-foreground whitespace-nowrap">{e.serverId}</span>}
+									</div>
+								))}
+							</div>
+						)}
+				</CardContent>
+			</StickyGroup>
 		</Card>
 	)
 }
@@ -141,6 +185,7 @@ function ServerManagementSection() {
 	const openDialog = useAlertDialog()
 	const [showCreateForm, setShowCreateForm] = React.useState(false)
 	const [editingServerId, setEditingServerId] = React.useState<string | null>(null)
+	const headerRef = React.useRef<HTMLDivElement>(null)
 
 	const enableMutation = useMutation(RPC.orpc.settings.admin.enableServer.mutationOptions({
 		onSuccess: (res) => {
@@ -181,76 +226,78 @@ function ServerManagementSection() {
 
 	return (
 		<Card>
-			<CardHeader>
-				<CardTitle>Servers</CardTitle>
-				<CardDescription>Add, remove, and configure servers.</CardDescription>
-			</CardHeader>
-			<CardContent className="space-y-4">
-				{servers.length === 0 && <p className="text-sm text-muted-foreground">No servers configured.</p>}
-				{servers.map(server => (
-					<div key={server.id} className="space-y-2">
-						<div className="flex items-center justify-between gap-2">
-							<div>
-								<p className="font-medium text-sm">{server.displayName}</p>
-								<p className="text-xs text-muted-foreground">{server.id}</p>
-								{server.broken && <p className="text-xs text-destructive">Settings failed validation and need to be repaired</p>}
-							</div>
-							<div className="flex items-center gap-2">
-								{server.broken
-									? (
-										<Button
-											size="sm"
-											variant="destructive"
-											onClick={() => setEditingServerId(editingServerId === server.id ? null : server.id)}
-										>
-											Fix Settings
-										</Button>
-									)
-									: (
-										<Button
-											size="icon"
-											variant="ghost"
-											disabled={busy}
-											onClick={() => setEditingServerId(editingServerId === server.id ? null : server.id)}
-										>
-											<Icons.Pencil className="h-4 w-4" />
-										</Button>
-									)}
-								<div className="flex items-center gap-1.5">
-									<Checkbox
-										id={`default-${server.id}`}
-										checked={server.defaultServer}
-										disabled={busy || server.defaultServer}
+			<StickyGroup stickyRef={headerRef}>
+				<CardHeader ref={headerRef} className="rounded-t-xl border-b bg-card">
+					<CardTitle>Servers</CardTitle>
+					<CardDescription>Add, remove, and configure servers.</CardDescription>
+				</CardHeader>
+				<CardContent className="space-y-4">
+					{servers.length === 0 && <p className="text-sm text-muted-foreground">No servers configured.</p>}
+					{servers.map(server => (
+						<div key={server.id} className="space-y-2">
+							<div className="flex items-center justify-between gap-2">
+								<div>
+									<p className="font-medium text-sm">{server.displayName}</p>
+									<p className="text-xs text-muted-foreground">{server.id}</p>
+									{server.broken && <p className="text-xs text-destructive">Settings failed validation and need to be repaired</p>}
+								</div>
+								<div className="flex items-center gap-2">
+									{server.broken
+										? (
+											<Button
+												size="sm"
+												variant="destructive"
+												onClick={() => setEditingServerId(editingServerId === server.id ? null : server.id)}
+											>
+												Fix Settings
+											</Button>
+										)
+										: (
+											<Button
+												size="icon"
+												variant="ghost"
+												disabled={busy}
+												onClick={() => setEditingServerId(editingServerId === server.id ? null : server.id)}
+											>
+												<Icons.Pencil className="h-4 w-4" />
+											</Button>
+										)}
+									<div className="flex items-center gap-1.5">
+										<Checkbox
+											id={`default-${server.id}`}
+											checked={server.defaultServer}
+											disabled={busy || server.defaultServer}
+											onCheckedChange={(checked) => {
+												if (checked) setDefaultMutation.mutate({ serverId: server.id })
+											}}
+										/>
+										<Label htmlFor={`default-${server.id}`} className="text-sm font-normal cursor-pointer">
+											Default
+										</Label>
+									</div>
+									<Switch
+										checked={server.enabled}
+										disabled={busy || server.broken}
 										onCheckedChange={(checked) => {
-											if (checked) setDefaultMutation.mutate({ serverId: server.id })
+											if (checked) enableMutation.mutate({ serverId: server.id })
+											else disableMutation.mutate({ serverId: server.id })
 										}}
 									/>
-									<Label htmlFor={`default-${server.id}`} className="text-sm font-normal cursor-pointer">
-										Default
-									</Label>
+									{!deleteServersDenied && (
+										<Button size="icon" variant="ghost" disabled={busy} onClick={() => handleDelete(server)}>
+											<Icons.Trash2 className="h-4 w-4" />
+										</Button>
+									)}
 								</div>
-								<Switch
-									checked={server.enabled}
-									disabled={busy || server.broken}
-									onCheckedChange={(checked) => {
-										if (checked) enableMutation.mutate({ serverId: server.id })
-										else disableMutation.mutate({ serverId: server.id })
-									}}
-								/>
-								{!deleteServersDenied && (
-									<Button size="icon" variant="ghost" disabled={busy} onClick={() => handleDelete(server)}>
-										<Icons.Trash2 className="h-4 w-4" />
-									</Button>
-								)}
 							</div>
+							{editingServerId === server.id && <RawSettingsEditor serverId={server.id} onDone={() => setEditingServerId(null)} />}
 						</div>
-						{editingServerId === server.id && <RawSettingsEditor serverId={server.id} onDone={() => setEditingServerId(null)} />}
-					</div>
-				))}
-				{showCreateForm
-					? <CreateServerForm onDone={() => setShowCreateForm(false)} />
-					: <Button variant="outline" onClick={() => setShowCreateForm(true)}>Add Server</Button>}
-			</CardContent>
+					))}
+					{showCreateForm
+						? <CreateServerForm onDone={() => setShowCreateForm(false)} />
+						: <Button variant="outline" onClick={() => setShowCreateForm(true)}>Add Server</Button>}
+				</CardContent>
+			</StickyGroup>
 		</Card>
 	)
 }
@@ -497,14 +544,24 @@ function GlobalSettingsSection({ mode, onModeChange }: { mode: 'gui' | 'json'; o
 	const denied = !!raw && typeof raw === 'object' && 'code' in raw
 	const settings = denied ? undefined : (raw as SETTINGS.GlobalSettingsInput | undefined)
 
-	// the live GUI draft, held in the encoded/input shape (same shape as `settings`)
-	const [draft, setDraft] = React.useState<SETTINGS.GlobalSettingsInput | undefined>(settings)
+	// the live GUI draft, held in the encoded/input shape (same shape as `settings`). It lives in a BehaviorSubject
+	// (not React state) so the form can read it via `value$.getValue()` and keep its inputs uncontrolled; edits are
+	// debounced into it by the leaf fields. `reset$` tells uncontrolled fields to re-read after a structural or
+	// programmatic change (reset-to-default, reset-all, mode switch).
+	const draft$ = useRefConstructor(() => new Rx.BehaviorSubject<SETTINGS.GlobalSettingsInput | undefined>(settings)).current
+	const reset$ = useRefConstructor(() => new Rx.Subject<void>()).current
+	const draft = useObservableValue(draft$)
+	const onFormChange = React.useCallback((v: SETTINGS.GlobalSettingsInput) => draft$.next(v), [draft$])
+	// seed the draft if settings only became available after mount (e.g. deny recovered to granted)
+	React.useEffect(() => {
+		if (settings !== undefined && draft$.getValue() === undefined) draft$.next(settings)
+	}, [settings, draft$])
+
 	// the latest valid, decoded value from the JSON editor while in JSON mode
 	const [jsonValid, setJsonValid] = React.useState<SETTINGS.GlobalSettings | null>(null)
 	const editorRef = React.useRef<SchemaJsonEditorHandle>(null)
-
-	// initialize the draft once settings first become available (set-in-render, runs once)
-	if (draft === undefined && settings !== undefined) setDraft(settings)
+	// the card header pins to the top of the scroll column; the form's section headers stack beneath it
+	const cardHeaderRef = React.useRef<HTMLDivElement>(null)
 
 	// a deny here means our cached perms are stale; refetch the logged-in user so the route re-gates correctly
 	React.useEffect(() => {
@@ -552,6 +609,7 @@ function GlobalSettingsSection({ mode, onModeChange }: { mode: 'gui' | 'json'; o
 	const validDraft = mode === 'json' ? jsonValid : (guiRes.success ? guiRes.data : null)
 	const modified = changes.length > 0
 	const canSave = modified && validDraft !== null && !saveMutation.isPending
+	const saveBarZIndex = useZIndex(ZI_OFFSETS.STICKYGROUP_CEILING)
 
 	async function handleSave() {
 		if (!validDraft) return
@@ -569,8 +627,9 @@ function GlobalSettingsSection({ mode, onModeChange }: { mode: 'gui' | 'json'; o
 			// seed the JSON editor's notion of validity from the current gui draft
 			setJsonValid(guiRes.success ? guiRes.data : null)
 		} else if (jsonValid) {
-			// carry JSON edits back into the gui draft (re-encode to the input shape)
-			setDraft(SETTINGS.GlobalSettingsSchema.encode(jsonValid))
+			// carry JSON edits back into the gui draft (re-encode to the input shape); reset$ makes the gui re-read
+			draft$.next(SETTINGS.GlobalSettingsSchema.encode(jsonValid))
+			reset$.next()
 		}
 		onModeChange(next)
 	}
@@ -578,54 +637,68 @@ function GlobalSettingsSection({ mode, onModeChange }: { mode: 'gui' | 'json'; o
 	return (
 		<>
 			<Card>
-				<CardHeader>
-					<div className="flex items-center justify-between gap-2">
-						<div>
-							<CardTitle>Global Settings</CardTitle>
-							<CardDescription>Edit the global settings for this SLM instance.</CardDescription>
+				<StickyGroup stickyRef={cardHeaderRef}>
+					<CardHeader ref={cardHeaderRef} className="rounded-t-xl border-b bg-card">
+						<div className="flex items-center justify-between gap-2">
+							<div>
+								<CardTitle>Global Settings</CardTitle>
+								<CardDescription>Edit the global settings for this SLM instance.</CardDescription>
+							</div>
+							<div className="flex items-center rounded-md border p-0.5">
+								<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>GUI</Button>
+								<Button size="sm" variant={mode === 'json' ? 'secondary' : 'ghost'} onClick={() => switchMode('json')}>JSON</Button>
+							</div>
 						</div>
-						<div className="flex items-center rounded-md border p-0.5">
-							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>GUI</Button>
-							<Button size="sm" variant={mode === 'json' ? 'secondary' : 'ghost'} onClick={() => switchMode('json')}>JSON</Button>
-						</div>
-					</div>
-				</CardHeader>
-				<CardContent className="space-y-4">
-					{mode === 'gui'
-						? <SettingsForm schema={SETTINGS.GlobalSettingsSchema} value={draft} onChange={setDraft} />
-						: (
-							<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
-								<SchemaJsonEditor
-									ref={editorRef}
-									schema={SETTINGS.GlobalSettingsSchema}
-									value={draft}
-									onValidChange={setJsonValid}
-									minHeightPx={450}
-									label="Global Settings"
-								/>
-							</React.Suspense>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						{mode === 'gui'
+							? <SettingsForm schema={SETTINGS.GlobalSettingsSchema} value$={draft$} reset$={reset$} onChange={onFormChange} />
+							: (
+								<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
+									<SchemaJsonEditor
+										ref={editorRef}
+										schema={SETTINGS.GlobalSettingsSchema}
+										value={draft}
+										onValidChange={setJsonValid}
+										minHeightPx={450}
+										label="Global Settings"
+									/>
+								</React.Suspense>
+							)}
+						{/* GUI mode uses the floating control panel below; JSON mode keeps an inline toolbar */}
+						{mode === 'json' && (
+							<div className="flex justify-end gap-2">
+								<Button variant="outline" onClick={() => editorRef.current?.format()}>
+									<Icons.Braces className="h-4 w-4" />
+									Format
+								</Button>
+								<Button variant="outline" onClick={() => editorRef.current?.reset()}>Reset</Button>
+								<Button disabled={!canSave} onClick={handleSave}>
+									{saveMutation.isPending ? 'Saving…' : 'Save'}
+								</Button>
+							</div>
 						)}
-					{/* GUI mode uses the floating control panel below; JSON mode keeps an inline toolbar */}
-					{mode === 'json' && (
-						<div className="flex justify-end gap-2">
-							<Button variant="outline" onClick={() => editorRef.current?.format()}>
-								<Icons.Braces className="h-4 w-4" />
-								Format
-							</Button>
-							<Button variant="outline" onClick={() => editorRef.current?.reset()}>Reset</Button>
-							<Button disabled={!canSave} onClick={handleSave}>
-								{saveMutation.isPending ? 'Saving…' : 'Save'}
-							</Button>
-						</div>
-					)}
-				</CardContent>
+					</CardContent>
+				</StickyGroup>
 			</Card>
 			{mode === 'gui' && modified && (
-				<div className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-background px-4 py-2 shadow-lg">
+				<div
+					style={{ zIndex: saveBarZIndex }}
+					className="fixed bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-background px-4 py-2 shadow-lg"
+				>
 					<span className="text-sm">
 						<span className="font-medium">{changes.length}</span> {changes.length === 1 ? 'setting' : 'settings'} changed
 					</span>
-					<Button variant="outline" size="sm" onClick={() => setDraft(settings)}>Reset</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => {
+							draft$.next(settings)
+							reset$.next()
+						}}
+					>
+						Reset
+					</Button>
 					<Button size="sm" disabled={!canSave} onClick={handleSave}>
 						{saveMutation.isPending ? 'Saving…' : 'Save'}
 					</Button>

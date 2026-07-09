@@ -2,7 +2,8 @@ import * as PopoverPrimitive from '@radix-ui/react-popover'
 import * as React from 'react'
 
 import { cn } from '@/lib/utils'
-import { DraggableWindowOutlet, useDraggableWindowContext } from './draggable-window'
+import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { DraggableWindowOutlet } from './draggable-window'
 
 const Popover = PopoverPrimitive.Root
 
@@ -14,9 +15,8 @@ const PopoverContent = React.forwardRef<
 	React.ElementRef<typeof PopoverPrimitive.Content>,
 	React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
 >(({ className, align = 'center', sideOffset = 4, children, style, ...props }, ref) => {
-	const outletKey = React.useId()
+	const draggableWindowOutletKey = React.useId()
 	const contentRef = React.useRef<HTMLDivElement | null>(null)
-	const draggableWindow = useDraggableWindowContext()
 
 	const combinedRef = React.useCallback(
 		(node: HTMLDivElement | null) => {
@@ -30,7 +30,7 @@ const PopoverContent = React.forwardRef<
 		[ref],
 	)
 
-	const zIndexStyle = draggableWindow ? { zIndex: draggableWindow.zIndex + 1, ...style } : style
+	const contentZIndex = useZIndex(ZI_OFFSETS.POPOVER)
 
 	return (
 		<PopoverPrimitive.Portal>
@@ -39,15 +39,17 @@ const PopoverContent = React.forwardRef<
 				align={align}
 				sideOffset={sideOffset}
 				className={cn(
-					'z-50 w-72 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
+					'w-72 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
 					className,
 				)}
-				style={zIndexStyle}
+				style={{ zIndex: contentZIndex, ...style }}
 				{...props}
 			>
-				<DraggableWindowOutlet outletKey={outletKey} getElement={() => contentRef.current}>
-					{children}
-				</DraggableWindowOutlet>
+				<BaseZIndexContext.Provider value={contentZIndex}>
+					<DraggableWindowOutlet outletKey={draggableWindowOutletKey} getElement={() => contentRef.current}>
+						{children}
+					</DraggableWindowOutlet>
+				</BaseZIndexContext.Provider>
 			</PopoverPrimitive.Content>
 		</PopoverPrimitive.Portal>
 	)

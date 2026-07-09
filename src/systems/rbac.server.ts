@@ -37,9 +37,9 @@ export function applyRbacSettings(rbac: SETTINGS.RbacSettings) {
 	userDefinedPermissionExpressions = {}
 	userDefinedRoles = []
 
-	for (const roleType of objKeys(rbac.globalRolePermissions)) {
+	for (const roleType of objKeys(rbac.roles)) {
 		userDefinedRoles.push(RBAC.userDefinedRole(roleType))
-		userDefinedPermissionExpressions[roleType] = rbac.globalRolePermissions[roleType]
+		userDefinedPermissionExpressions[roleType] = rbac.roles[roleType]
 	}
 
 	roleAssignments = []
@@ -62,13 +62,11 @@ export function applyRbacSettings(rbac: SETTINGS.RbacSettings) {
 			})
 		}
 	}
-	for (const assignment of rbac.roleAssignments['discord-server-member']) {
-		for (const roleType of assignment.roles) {
-			roleAssignments.push({
-				type: 'discord-server-member',
-				role: RBAC.userDefinedRole(roleType),
-			})
-		}
+	for (const roleType of rbac.roleAssignments['discord-server-member']) {
+		roleAssignments.push({
+			type: 'discord-server-member',
+			role: RBAC.userDefinedRole(roleType),
+		})
 	}
 
 	// TODO add preflight checks to make sure the remote references in role assignments are valid

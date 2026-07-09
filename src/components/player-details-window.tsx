@@ -26,6 +26,7 @@ import { ServerEvent } from './server-event'
 import WarnChatBox from './warn-chat-box'
 
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
@@ -103,7 +104,8 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>(globalFilterState)
 	const filteredEvents = allEvents.filter(e => CHAT.isRenderableInFeed(e) && !CHAT.isEventFilteredBySecondary(e, filterState))
 	const { scrollAreaRef, contentRef, bottomRef, showScrollButton, isAtTop, scrollToBottom, anchorForPrepend } = useTailingScroll()
-	const { setIsPinned, zIndex } = useDraggableWindow()
+	const { setIsPinned } = useDraggableWindow()
+	const aboveChatZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 
 	return (
 		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
@@ -136,8 +138,8 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 							/>
 						)
 				)}
-				{flags && flags.length > 0 && <PlayerFlagsList flags={flags} zIndex={zIndex} />}
-				<EditFlagsButton playerId={playerId} currentFlagIds={bmData?.flagIds ?? []} zIndex={zIndex} />
+				{flags && flags.length > 0 && <PlayerFlagsList flags={flags} />}
+				<EditFlagsButton playerId={playerId} currentFlagIds={bmData?.flagIds ?? []} />
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
 						<button
@@ -148,7 +150,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 							<Icons.Ellipsis className="h-3.5 w-3.5" />
 						</button>
 					</DropdownMenuTrigger>
-					<DropdownMenuContent style={{ zIndex: zIndex + 10 }}>
+					<DropdownMenuContent>
 						<PlayerMenuItems playerId={playerId} slots={dropdownMenuSlots} stores={stores} omitWarn />
 					</DropdownMenuContent>
 				</DropdownMenu>
@@ -158,11 +160,11 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 			<div className="px-3 py-2 space-y-1.5 text-xs border-b border-border/50">
 				<div className="inline-flex gap-1 items-baseline">
 					{player?.role && <div className="text-muted-foreground">{player.role}</div>}
-					<CopyIdButton label="eos" id={playerId} zIndex={zIndex} />
+					<CopyIdButton label="eos" id={playerId} />
 					{(player?.ids.steam ?? profile?.playerIds.steam) && (
-						<CopyIdButton label="steam" id={(player?.ids.steam ?? profile?.playerIds.steam)!} zIndex={zIndex} />
+						<CopyIdButton label="steam" id={(player?.ids.steam ?? profile?.playerIds.steam)!} />
 					)}
-					{player?.ids.epic && <CopyIdButton label="epic" id={player.ids.epic} zIndex={zIndex} />}
+					{player?.ids.epic && <CopyIdButton label="epic" id={player.ids.epic} />}
 				</div>
 				<div className="flex items-center gap-2 text-muted-foreground">
 					{(player?.ids.steam ?? profile?.playerIds.steam)
@@ -192,9 +194,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 					<h3 className="inline">
 						Server Activity
 					</h3>
-					{/* explicitely setting zIndex here is another hack to get around bad interations between draggable windows and other kinds of floating elements TODO probably just need to find a nice way to set portals correctly on sleemnts inside drag windows */}
 					<EventFilterSelect
-						zIndex={zIndex + 10}
 						variant="ghost"
 						value={filterState}
 						onOpenChange={(open) => {
@@ -232,7 +232,8 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 							}}
 							disabled={eventsQuery.isFetchingNextPage}
 							variant="secondary"
-							className="absolute top-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center z-10 bg-opacity-20! rounded-none backdrop-blur-sm"
+							style={{ zIndex: aboveChatZIndex }}
+							className="absolute top-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
 							title="Load older events"
 						>
 							{eventsQuery.isFetchingNextPage ? <Spinner className="h-3 w-3" /> : <Icons.ChevronUp className="h-3 w-3" />}
@@ -243,7 +244,8 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 						<Button
 							onClick={() => scrollToBottom()}
 							variant="secondary"
-							className="absolute bottom-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center z-10 bg-opacity-20! rounded-none backdrop-blur-sm"
+							style={{ zIndex: aboveChatZIndex }}
+							className="absolute bottom-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
 							title="Scroll to bottom"
 						>
 							<Icons.ChevronDown className="h-3 w-3" />
@@ -280,7 +282,7 @@ function ExtLink({ href, children }: { href: string; children: React.ReactNode }
 	)
 }
 
-function CopyIdButton({ label, id, zIndex }: { label: string; id: string; zIndex: number }) {
+function CopyIdButton({ label, id }: { label: string; id: string }) {
 	const [open, setOpen] = React.useState(false)
 	const timeoutRef = React.useRef<ReturnType<typeof setTimeout>>(null)
 
@@ -309,7 +311,7 @@ function CopyIdButton({ label, id, zIndex }: { label: string; id: string; zIndex
 					<Icons.Copy className="h-3 w-3" />
 				</button>
 			</TooltipTrigger>
-			<TooltipContent style={{ zIndex: zIndex + 10 }}>Copied!</TooltipContent>
+			<TooltipContent>Copied!</TooltipContent>
 		</Tooltip>
 	)
 }
@@ -389,10 +391,9 @@ function EventSeparator({ time, prevTime }: { time: number; prevTime: number | n
 
 interface PlayerFlagsListProps {
 	flags: NonNullable<ReturnType<typeof sortFlagsByHierarchy>>
-	zIndex: number
 }
 
-function PlayerFlagsList({ flags, zIndex }: PlayerFlagsListProps) {
+function PlayerFlagsList({ flags }: PlayerFlagsListProps) {
 	const containerRef = React.useRef<HTMLDivElement>(null)
 	const [visibleCount, setVisibleCount] = React.useState(flags.length)
 	const [isPopoverOpen, setIsPopoverOpen] = React.useState(false)
@@ -450,7 +451,7 @@ function PlayerFlagsList({ flags, zIndex }: PlayerFlagsListProps) {
 							<Icons.MoreHorizontal className="h-3 w-3" />
 						</button>
 					</PopoverTrigger>
-					<PopoverContent style={{ zIndex: zIndex + 10 }} className="w-auto max-w-md p-2">
+					<PopoverContent className="w-auto max-w-md p-2">
 						<div className="flex flex-wrap gap-1">
 							{flags.map((flag) => (
 								<span
@@ -486,10 +487,9 @@ function PlayerFlagsList({ flags, zIndex }: PlayerFlagsListProps) {
 interface EditFlagsButtonProps {
 	playerId: string
 	currentFlagIds: string[]
-	zIndex: number
 }
 
-function EditFlagsButton({ playerId, currentFlagIds, zIndex }: EditFlagsButtonProps) {
+function EditFlagsButton({ playerId, currentFlagIds }: EditFlagsButtonProps) {
 	const denied = RbacClient.usePermsCheck(RBAC.perm('battlemetrics:write-flags'))
 	const { data: orgFlags } = useQuery(RPC.orpc.battlemetrics.listOrgFlags.queryOptions({ staleTime: Infinity }))
 	const mutation = useMutation(RPC.orpc.battlemetrics.updatePlayerFlags.mutationOptions())

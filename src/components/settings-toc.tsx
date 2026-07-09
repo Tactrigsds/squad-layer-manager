@@ -1,5 +1,7 @@
+import { StickyGroup } from '@/components/sticky-group'
 import { Input } from '@/components/ui/input'
 import { settingLabel } from '@/lib/settings-labels'
+import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
 import * as SETTINGS from '@/models/settings.models'
 import * as Icons from 'lucide-react'
@@ -44,14 +46,6 @@ function filterNode(node: TocNode, query: string): TocNode | null {
 	return null
 }
 
-function scrollToId(id: string) {
-	let el = document.getElementById(id)
-	// the target field only exists in the GUI editor; fall back to the global-settings card (e.g. while in JSON mode)
-	if (!el && id.startsWith('setting:')) el = document.getElementById('section:global')
-	// instant, not smooth: a smooth programmatic scroll across the very tall form gets canceled mid-animation in Chrome
-	el?.scrollIntoView({ behavior: 'auto', block: 'start' })
-}
-
 function TocItem(
 	{ node, depth, expanded, toggle, forceOpen, activeId }: {
 		node: TocNode
@@ -65,40 +59,59 @@ function TocItem(
 	const hasChildren = node.children.length > 0
 	const isOpen = forceOpen || expanded.has(node.id)
 	const isActive = node.id === activeId
+	// parent rows pin (and stack under their own ancestors) while their children scroll past; leaf rows never pin
+	const headerRef = React.useRef<HTMLDivElement>(null)
+	const header = (
+		<div
+			ref={headerRef}
+			className={cn('flex items-center gap-0.5', hasChildren && 'bg-background')}
+			style={{ paddingLeft: depth * 12 }}
+		>
+			{hasChildren
+				? (
+					<button
+						type="button"
+						className="p-0.5 text-muted-foreground hover:text-foreground shrink-0"
+						onClick={() => toggle(node.id)}
+						aria-label={isOpen ? 'Collapse' : 'Expand'}
+					>
+						<Icons.ChevronRight className={cn('h-3.5 w-3.5 transition-transform', isOpen && 'rotate-90')} />
+					</button>
+				)
+				: <span className="w-[18px] shrink-0" />}
+			<a
+				href={`#${node.id}`}
+				className={cn(
+					'block truncate text-left text-sm py-0.5 px-1 rounded w-full hover:text-foreground',
+					isActive ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground',
+				)}
+				title={node.label}
+				onClick={(e) => {
+					e.preventDefault()
+					SettingsNav.navigateToAnchor(node.id)
+				}}
+			>
+				{node.label}
+			</a>
+		</div>
+	)
+	const children = isOpen && hasChildren && (
+		<ul>
+			{node.children.map((c) => (
+				<TocItem key={c.id} node={c} depth={depth + 1} expanded={expanded} toggle={toggle} forceOpen={forceOpen} activeId={activeId} />
+			))}
+		</ul>
+	)
 	return (
 		<li data-toc-id={node.id}>
-			<div className="flex items-center gap-0.5" style={{ paddingLeft: depth * 12 }}>
-				{hasChildren
-					? (
-						<button
-							type="button"
-							className="p-0.5 text-muted-foreground hover:text-foreground shrink-0"
-							onClick={() => toggle(node.id)}
-							aria-label={isOpen ? 'Collapse' : 'Expand'}
-						>
-							<Icons.ChevronRight className={cn('h-3.5 w-3.5 transition-transform', isOpen && 'rotate-90')} />
-						</button>
-					)
-					: <span className="w-[18px] shrink-0" />}
-				<button
-					type="button"
-					className={cn(
-						'truncate text-left text-sm py-0.5 px-1 rounded w-full hover:text-foreground',
-						isActive ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground',
-					)}
-					title={node.label}
-					onClick={() => scrollToId(node.id)}
-				>
-					{node.label}
-				</button>
-			</div>
-			{isOpen && hasChildren && (
-				<ul>
-					{node.children.map((c) => (
-						<TocItem key={c.id} node={c} depth={depth + 1} expanded={expanded} toggle={toggle} forceOpen={forceOpen} activeId={activeId} />
-					))}
-				</ul>
-			)}
+			{hasChildren
+				? (
+					<StickyGroup stickyRef={headerRef}>
+						{header}
+						{children}
+					</StickyGroup>
+				)
+				: header}
 		</li>
 	)
 }
@@ -112,12 +125,21 @@ function useActiveAnchor(deps: unknown): string | null {
 		let raf = 0
 		const compute = () => {
 			raf = 0
+			const mainTop = main.getBoundingClientRect().top
+			// push the fold line below any currently-pinned sticky headers, so the section visible beneath the pinned
+			// stack wins (a header is "pinned" when its top has reached its sticky offset)
+			let fold = mainTop + 12
+			for (const s of main.querySelectorAll<HTMLElement>('[style*="position: sticky"]')) {
+				const offset = parseFloat(getComputedStyle(s).top) || 0
+				const r = s.getBoundingClientRect()
+				if (Math.abs(r.top - (mainTop + offset)) < 2) fold = Math.max(fold, r.bottom)
+			}
 			const anchors = main.querySelectorAll<HTMLElement>('[id^="setting:"],[id^="section:"]')
-			const top = main.getBoundingClientRect().top
 			let current: string | null = null
-			// anchors are in document order (top-to-bottom); the last one above the fold is the active one
+			// anchors are in document order (top-to-bottom); the last one above the fold is the active one. the tolerance
+			// covers the small breathing gap scrollToId leaves between a navigated target and the pinned stack above it.
 			for (const el of anchors) {
-				if (el.getBoundingClientRect().top <= top + 12) current = el.id
+				if (el.getBoundingClientRect().top <= fold + 12) current = el.id
 			}
 			if (!current && anchors.length > 0) current = anchors[0].id
 			setActiveId(current)
@@ -216,8 +238,9 @@ export default function SettingsToc(
 	}
 
 	return (
-		<div ref={containerRef} className="flex flex-col h-full">
-			<div className="sticky top-0 bg-background pb-2 z-10">
+		<div ref={containerRef} className="flex flex-col h-full min-h-0">
+			{/* search stays fixed above the independently-scrolling tree */}
+			<div className="shrink-0 bg-background pb-2">
 				<div className="relative">
 					<Icons.Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
 					<Input
@@ -228,7 +251,7 @@ export default function SettingsToc(
 					/>
 				</div>
 			</div>
-			<nav className="min-h-0">
+			<nav className="flex-1 min-h-0 overflow-y-auto">
 				{visible.length === 0
 					? <p className="text-sm text-muted-foreground px-1">No matches.</p>
 					: (

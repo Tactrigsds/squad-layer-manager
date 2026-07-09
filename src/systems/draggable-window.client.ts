@@ -1,5 +1,7 @@
 import * as Lifecycle from '@/lib/lifecycle'
 import type { DraggableWindowContextValue } from '@/models/draggable-windows.models'
+import * as DW from '@/models/draggable-windows.models'
+import { DRAGGABLE_WINDOW_STACK_LIMIT } from '@/models/zindex'
 
 import * as Im from 'immer'
 import React from 'react'
@@ -45,7 +47,8 @@ export interface WindowDefinition<TProps = any, TData = any> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type WindowState<TProps = any> = {
 	anchorRect: DOMRect | null
-	zIndex: number
+	/** dense ordinal within this window's outlet; resolved against the base z-index at render time */
+	stackOrder: number
 	isPinned: boolean
 	id: string
 	type: string
@@ -66,7 +69,6 @@ export interface DraggableWindowStoreState {
 	definitions: WindowDefinition[]
 	windows: WindowState[]
 	loaderCache: Lifecycle.LoaderCacheEntry<WindowLoaderConfig>[]
-	zIndexCounter: number
 }
 
 interface DraggableWindowStore extends DraggableWindowStoreState {
@@ -87,7 +89,6 @@ interface DraggableWindowOutletContextValue {
 
 export const DraggableWindowOutletContext = React.createContext<DraggableWindowOutletContextValue | null>(null)
 const DEFAULT_OUTLET_KEY = 'default'
-const BASE_Z_INDEX = 0
 
 function defToLoaderConfig(def: WindowDefinition): WindowLoaderConfig {
 	return {
@@ -144,7 +145,6 @@ export const DraggableWindowStore = (() => {
 			definitions: [],
 			windows: [],
 			loaderCache: [],
-			zIndexCounter: BASE_Z_INDEX,
 
 			registerDefinition: (def) => {
 				const idx = loaderConfigs.findIndex(c => c.name === def.type)
@@ -190,7 +190,7 @@ export const DraggableWindowStore = (() => {
 			},
 
 			openWindow: (id, props, anchor, outletKey) => {
-				const { definitions, windows, zIndexCounter } = get()
+				const { definitions, windows } = get()
 				const def = definitions.find((d) => d.type === id)
 				if (!def) {
 					console.warn(`DraggableWindow: No definition found for id "${id}"`)
@@ -209,14 +209,16 @@ export const DraggableWindowStore = (() => {
 					type: id,
 					props,
 					anchorRect,
-					zIndex: zIndexCounter + 1,
+					stackOrder: windows.length,
 					isPinned: def.defaultPinned ?? false,
 					outletKey: resolvedOutletKey,
 				}
 
 				loaderCtx.set(Im.produce<DraggableWindowStoreState>((draft) => {
-					draft.windows = [...draft.windows, openState]
-					draft.zIndexCounter += 1
+					draft.windows = DW.normalizeStackOrder([...draft.windows, openState])
+					if (draft.windows.length > DRAGGABLE_WINDOW_STACK_LIMIT) {
+						console.warn(`Too many draggable windows open, giving up on maintaining a stable window ordering`)
+					}
 					if (config) {
 						Lifecycle.loadCacheEntry(loaderCtx as any, config, key, draft)
 					}
@@ -232,20 +234,19 @@ export const DraggableWindowStore = (() => {
 				if (config) {
 					const key: WindowLoaderKey = { type: window.type, windowId: window.id, props: window.props, outletKey: window.outletKey }
 					loaderCtx.set(Im.produce<DraggableWindowStoreState>((draft) => {
-						draft.windows = draft.windows.filter((w) => w.id !== id)
+						draft.windows = DW.normalizeStackOrder(draft.windows.filter((w) => w.id !== id))
 						Lifecycle.closeCacheEntry(loaderCtx as any, config, key, draft)
 					}))
 				} else {
 					set((s) => ({
-						windows: s.windows.filter((w) => w.id !== id),
+						windows: DW.normalizeStackOrder(s.windows.filter((w) => w.id !== id)),
 					}))
 				}
 			},
 
 			bringToFront: (id) =>
 				set((s) => ({
-					windows: s.windows.map((w) => w.id === id ? { ...w, zIndex: s.zIndexCounter + 1 } : w),
-					zIndexCounter: s.zIndexCounter + 1,
+					windows: DW.normalizeStackOrder(s.windows.map((w) => w.id === id ? { ...w, stackOrder: s.windows.length } : w)),
 				})),
 
 			setIsPinned: (id, isPinned) =>
@@ -285,14 +286,6 @@ export function useDraggableWindowContext() {
 export function useOutletKey() {
 	const ctx = React.useContext(DraggableWindowOutletContext)
 	return ctx?.outletKey ?? DEFAULT_OUTLET_KEY
-}
-
-export function useOutletBaseZIndex() {
-	const ctx = React.useContext(DraggableWindowOutletContext)
-	const element = ctx?.getElement?.()
-	if (!element) return 0
-	const parsed = parseInt(getComputedStyle(element).zIndex)
-	return isNaN(parsed) ? 0 : parsed + 1
 }
 
 export function buildUseOpenWindow<Props = unknown>(id: string) {

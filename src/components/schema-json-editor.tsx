@@ -5,6 +5,7 @@ import * as CM from '@/lib/codemirror'
 import * as Obj from '@/lib/object'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
+import { BaseZIndexContext, ZI_OFFSETS } from '@/models/zindex'
 import stringifyCompact from 'json-stringify-pretty-compact'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -126,33 +127,39 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 			onValidChangeRef.current(lastValidRef.current)
 		},
 	}))
+	// going fullscreen turns the editor into a dialog-level surface, so its own content re-bases onto it
+	const baseZIndex = React.useContext(BaseZIndexContext)
+	const contentBaseZIndex = isFullscreen ? baseZIndex + ZI_OFFSETS.DIALOG : baseZIndex
 
 	return (
-		<div
-			className={cn(
-				'relative grid w-full grid-cols-[minmax(0,2fr)_minmax(0,1fr)] grid-rows-[min-content_minmax(0,1fr)] gap-2 rounded-md',
-				isFullscreen && 'fixed inset-0 z-50 h-screen w-screen bg-background p-4',
-			)}
-			style={isFullscreen ? undefined : { height: props.minHeightPx ?? 400 }}
-		>
-			<h3 className={Typography.Small + 'mb-2 ml-[45px]'}>{props.label ?? 'Settings'}</h3>
-			<h3 className={Typography.Small + 'mb-2'}>Errors</h3>
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<Button
-						type="button"
-						size="icon"
-						variant="ghost"
-						className="absolute top-0 right-0 z-10 h-7 w-7"
-						onClick={() => setIsFullscreen(v => !v)}
-					>
-						{isFullscreen ? <Icons.Minimize2 className="h-4 w-4" /> : <Icons.Maximize2 className="h-4 w-4" />}
-					</Button>
-				</TooltipTrigger>
-				<TooltipContent>{isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}</TooltipContent>
-			</Tooltip>
-			<div ref={editorEltRef} className="min-h-0 overflow-hidden rounded-md border"></div>
-			<pre className="min-h-0 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">{errorText}</pre>
-		</div>
+		<BaseZIndexContext.Provider value={contentBaseZIndex}>
+			<div
+				className={cn(
+					'relative grid w-full grid-cols-[minmax(0,2fr)_minmax(0,1fr)] grid-rows-[min-content_minmax(0,1fr)] gap-2 rounded-md',
+					isFullscreen && 'fixed inset-0 h-screen w-screen bg-background p-4',
+				)}
+				style={isFullscreen ? { zIndex: contentBaseZIndex } : { height: props.minHeightPx ?? 400 }}
+			>
+				<h3 className={Typography.Small + 'mb-2 ml-[45px]'}>{props.label ?? 'Settings'}</h3>
+				<h3 className={Typography.Small + 'mb-2'}>Errors</h3>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							type="button"
+							size="icon"
+							variant="ghost"
+							className="absolute top-0 right-0 h-7 w-7"
+							style={{ zIndex: contentBaseZIndex + ZI_OFFSETS.MINOR_CEILING }}
+							onClick={() => setIsFullscreen(v => !v)}
+						>
+							{isFullscreen ? <Icons.Minimize2 className="h-4 w-4" /> : <Icons.Maximize2 className="h-4 w-4" />}
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent>{isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}</TooltipContent>
+				</Tooltip>
+				<div ref={editorEltRef} className="min-h-0 overflow-hidden rounded-md border"></div>
+				<pre className="min-h-0 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">{errorText}</pre>
+			</div>
+		</BaseZIndexContext.Provider>
 	)
 }

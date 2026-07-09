@@ -54,6 +54,13 @@ export function useStableReferenceDeepEquals<T>(value: T) {
 	}
 	return ref.current
 }
+export function useStable<T>(value: T, compare: (a: T, b: T) => boolean = Obj.deepEqual) {
+	const ref = React.useRef<T>(value)
+	if (!compare(value, ref.current)) {
+		ref.current = value
+	}
+	return ref.current
+}
 
 export function useStableValue<Deps extends [] | [unknown, ...unknown[]], O>(
 	cb: (...args: Deps) => O,

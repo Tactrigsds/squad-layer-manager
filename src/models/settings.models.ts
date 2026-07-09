@@ -16,16 +16,32 @@ import { z } from 'zod'
 
 // discord ids are kept as strings here (not bigint) so they round-trip cleanly through the JSON settings editor / settings GUI;
 // rbac.server converts them to bigint at the boundary
+// `roles` is the source of truth for which roles exist; every role referenced in `roleAssignments` must be defined there
+// (enforced by the check below, mirrored in the GUI by keying the assignment role pickers to the defined roles).
 export const RbacSettingsSchema = z.object({
-	globalRolePermissions: z
+	roles: z
 		.record(RBAC.UserDefinedRoleIdSchema, z.array(RBAC.GLOBAL_PERMISSION_TYPE_EXPRESSION))
 		.prefault({})
-		.describe('What roles have what permissions. (globally scoped permissions only)'),
+		.describe('Defined roles and their globally-scoped permissions. The source of truth for which roles exist.'),
 	roleAssignments: z.object({
 		'discord-role': z.array(z.object({ discordRoleId: ParsableBigIntSchema, roles: z.array(RBAC.UserDefinedRoleIdSchema) })).prefault([]),
 		'discord-user': z.array(z.object({ userId: ParsableBigIntSchema, roles: z.array(RBAC.UserDefinedRoleIdSchema) })).prefault([]),
-		'discord-server-member': z.array(z.object({ roles: z.array(RBAC.UserDefinedRoleIdSchema) })).prefault([]),
+		// there is only one "every member" bucket, so this is a flat list of roles rather than a keyed, repeatable list
+		'discord-server-member': z.array(RBAC.UserDefinedRoleIdSchema).prefault([]).describe(
+			'Roles granted to every member of the Discord server',
+		),
 	}).prefault({}).describe('Which discord roles/users/members are granted which roles'),
+}).superRefine((val, ctx) => {
+	const defined = new Set(Object.keys(val.roles ?? {}))
+	const checkRole = (role: string, path: (string | number)[]) => {
+		if (!defined.has(role)) ctx.addIssue({ code: 'custom', message: `Role "${role}" is not defined in Roles`, path })
+	}
+	for (const type of ['discord-role', 'discord-user'] as const) {
+		val.roleAssignments[type].forEach((assignment, i) => {
+			assignment.roles.forEach((role, j) => checkRole(role, ['roleAssignments', type, i, 'roles', j]))
+		})
+	}
+	val.roleAssignments['discord-server-member'].forEach((role, j) => checkRole(role, ['roleAssignments', 'discord-server-member', j]))
 }).prefault({})
 
 export type RbacSettings = z.infer<typeof RbacSettingsSchema>

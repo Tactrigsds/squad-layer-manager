@@ -5,6 +5,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import * as ChatPrt from '@/frame-partials/chat.partial'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import * as ZusUtils from '@/lib/zustand'
@@ -20,7 +21,7 @@ import React from 'react'
 import { ServerEvent } from './server-event'
 import type { SquadDetailsWindowProps } from './squad-details-window.helpers'
 import { MatchTeamDisplay } from './teams-display'
-import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
+import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle } from './ui/draggable-window'
 import { Separator } from './ui/separator'
 import { Spinner } from './ui/spinner'
 import WarnChatBox from './warn-chat-box'
@@ -103,7 +104,6 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 	}, [isCurrentMatchSquad, currentMatchEvents, data?.events, squadMessagesOnly, uniqueSquadId])
 
 	const { scrollAreaRef, contentRef, bottomRef, showScrollButton, scrollToBottom } = useTailingScroll()
-	const { zIndex } = useDraggableWindow()
 
 	const creatorId = liveSquad?.creator ?? squad?.creatorId ?? null
 	const creatorPlayer = creatorId
@@ -115,6 +115,8 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 	const ingameSquadId = liveSquad?.squadId ?? squad?.ingameSquadId
 	const isDefaultName = !liveSquad || liveSquad.squadName === `Squad ${ingameSquadId}`
 	const displayName = liveSquad?.squadName ?? (ingameSquadId != null ? `Squad ${ingameSquadId}` : 'Squad Details')
+
+	const aboveChatZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 
 	return (
 		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
@@ -143,7 +145,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 								<Icons.Ellipsis className="h-3.5 w-3.5" />
 							</button>
 						</DropdownMenuTrigger>
-						<DropdownMenuContent style={{ zIndex: zIndex + 10 }}>
+						<DropdownMenuContent>
 							<SquadMenuItems squad={liveSquad} slots={dropdownMenuSlots} stores={stores} omitWarn />
 						</DropdownMenuContent>
 					</DropdownMenu>
@@ -201,7 +203,8 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 							<Button
 								onClick={() => scrollToBottom()}
 								variant="secondary"
-								className="absolute bottom-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center z-10 bg-opacity-20! rounded-none backdrop-blur-sm"
+								style={{ zIndex: aboveChatZIndex }}
+								className="absolute bottom-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
 								title="Scroll to bottom"
 							>
 								<Icons.ChevronDown className="h-3 w-3" />

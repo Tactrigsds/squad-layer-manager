@@ -1,10 +1,12 @@
+import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import { CloseButton, Description, Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react'
+
 import { Cross2Icon } from '@radix-ui/react-icons'
 import * as React from 'react'
 
 import { useIsMobile } from '@/hooks/use-is-mobile'
 import { cn } from '@/lib/utils'
-import { DraggableWindowOutlet, useDraggableWindowContext } from './draggable-window'
+import { DraggableWindowOutlet } from './draggable-window'
 
 interface DialogProps {
 	open: boolean
@@ -15,7 +17,7 @@ interface DialogProps {
 
 const HeadlessDialog = ({ open, onOpenChange, children, unmount }: DialogProps) => {
 	return (
-		<Dialog open={open} onClose={() => onOpenChange(false)} className="relative z-50" unmount={unmount}>
+		<Dialog open={open} onClose={() => onOpenChange(false)} className="relative" unmount={unmount}>
 			{children}
 		</Dialog>
 	)
@@ -31,7 +33,6 @@ const HeadlessDialogContent = React.forwardRef<
 	const isMobile = useIsMobile()
 	const outletKey = React.useId()
 	const panelRef = React.useRef<HTMLDivElement | null>(null)
-	const draggableWindow = useDraggableWindowContext()
 
 	const combinedRef = React.useCallback(
 		(node: HTMLDivElement | null) => {
@@ -45,18 +46,18 @@ const HeadlessDialogContent = React.forwardRef<
 		[ref],
 	)
 
-	const zIndex = draggableWindow ? draggableWindow.zIndex + 1 : undefined
+	const zIndex = useZIndex(ZI_OFFSETS.DIALOG)
 
 	return (
 		<>
 			<DialogBackdrop
-				className="fixed inset-0 z-50 bg-black/80 transition-opacity duration-200 ease-out data-closed:opacity-0"
-				style={zIndex !== undefined ? { zIndex } : undefined}
+				className="fixed inset-0 bg-black/80 transition-opacity duration-200 ease-out data-closed:opacity-0"
+				style={{ zIndex }}
 				transition
 			/>
 			<div
-				className="fixed inset-0 z-50 flex w-screen items-center justify-center p-4"
-				style={zIndex !== undefined ? { zIndex: zIndex + 1 } : undefined}
+				className="fixed inset-0 flex w-screen items-center justify-center p-4"
+				style={{ zIndex }}
 			>
 				<DialogPanel
 					ref={combinedRef}
@@ -68,13 +69,15 @@ const HeadlessDialogContent = React.forwardRef<
 						isMobile && 'fixed top-0 left-0 right-0 translate-x-0 translate-y-0 max-w-none rounded-none border-0',
 						className,
 					)}
-					style={zIndex !== undefined ? { zIndex: zIndex + 1, ...style } : style}
+					style={style}
 					transition
 					{...props}
 				>
-					<DraggableWindowOutlet outletKey={outletKey} getElement={() => panelRef.current}>
-						{children}
-					</DraggableWindowOutlet>
+					<BaseZIndexContext.Provider value={zIndex}>
+						<DraggableWindowOutlet outletKey={outletKey} getElement={() => panelRef.current}>
+							{children}
+						</DraggableWindowOutlet>
+					</BaseZIndexContext.Provider>
 					{showCloseButton && (
 						<CloseButton className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background hover:opacity-100 focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-hover:bg-accent data-hover:text-muted-foreground">
 							<Cross2Icon className="h-4 w-4" />

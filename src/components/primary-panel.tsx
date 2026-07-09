@@ -3,7 +3,6 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as UP from '@/models/user-presence'
@@ -123,7 +122,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 					/>
 					<Separator />
 				</div>
-				<StickyGroup stickyRef={headerRef} baseHeaderZIndex={3}>
+				<StickyGroup stickyRef={headerRef}>
 					<div className="grid">
 						<div className={cn('[grid-area:1/1]', tab !== 'queue' && 'invisible -z-20')}>
 							<SlmUpdatesDisabledAlert stores={props.stores} />

@@ -14,6 +14,7 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as ZusUtils from '@/lib/zustand'
 import * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex.ts'
 import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -78,16 +79,25 @@ function ServerChatEvents(
 			setNewMessageCount(0)
 		}
 	}, [showScrollButton])
+	// the loading overlay covers the scroll affordance, not the other way round
+	const loaderZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
+	const scrollToBottomZIndex = loaderZIndex - 1
 
 	return (
 		<div className={cn(props.className, 'h-full relative @container')}>
 			{!synced && selectedMatchOrdinal === null && (
-				<div className="absolute inset-0 z-30 bg-background/80 backdrop-blur-sm flex items-center justify-center">
+				<div
+					style={{ zIndex: loaderZIndex }}
+					className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center"
+				>
 					<Icons.Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
 				</div>
 			)}
 			{selectedMatchOrdinal !== null && props.isLoadingHistorical && (
-				<div className="absolute inset-0 z-30 bg-background/80 backdrop-blur-sm flex items-center justify-center">
+				<div
+					style={{ zIndex: loaderZIndex }}
+					className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center"
+				>
 					<Icons.Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
 				</div>
 			)}
@@ -127,7 +137,8 @@ function ServerChatEvents(
 				<Button
 					onClick={() => scrollToBottom()}
 					variant="secondary"
-					className="absolute bottom-0 left-0 right-0 w-full h-8 shadow-lg flex items-center justify-center gap-2 z-10 bg-opacity-20! rounded-none backdrop-blur-sm"
+					style={{ zIndex: scrollToBottomZIndex }}
+					className="absolute bottom-0 left-0 right-0 w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-sm"
 					title="Scroll to bottom"
 				>
 					<Icons.ChevronDown className="h-4 w-4" />

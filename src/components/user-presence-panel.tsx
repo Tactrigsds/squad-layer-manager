@@ -139,7 +139,7 @@ const PresenceAvatar = React.forwardRef<
 >(function PresenceAvatar({ user, presence, size, badge, badgeCurrent, avatarClassName, fallbackClassName, ...rest }, ref) {
 	const interrupted = presence.connectionState === 'connection-interrupted'
 	return (
-		<span ref={ref} className={cn('relative inline-flex shrink-0', size)} {...rest}>
+		<span ref={ref} className={cn('relative isolate inline-flex shrink-0', size)} {...rest}>
 			{interrupted && (
 				<Loader2 className="pointer-events-none absolute -inset-[3px] h-[calc(100%+6px)] w-[calc(100%+6px)] animate-spin text-primary" />
 			)}

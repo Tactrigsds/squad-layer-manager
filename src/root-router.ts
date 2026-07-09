@@ -13,6 +13,9 @@ export const rootRouter = TSR.createRouter({
 	routeTree,
 	defaultPreload: 'intent',
 	scrollRestoration: true,
+	// the settings page manages hash scrolling itself (custom scroll container + sticky-header offset, see settings-nav.ts),
+	// so disable the router's native hash scroll which would otherwise fight it on load
+	defaultHashScrollIntoView: false,
 })
 
 export const newRoute$ = new Rx.Observable<string>(observer => {

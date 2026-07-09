@@ -1,10 +1,11 @@
+import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { Cross2Icon } from '@radix-ui/react-icons'
 import * as React from 'react'
 
 import { useIsMobile } from '@/hooks/use-is-mobile'
 import { cn } from '@/lib/utils'
-import { DraggableWindowOutlet, useDraggableWindowContext } from './draggable-window'
+import { DraggableWindowOutlet } from './draggable-window'
 
 const Dialog = DialogPrimitive.Root
 
@@ -14,21 +15,19 @@ const DialogPortal = DialogPrimitive.Portal
 
 const DialogClose = DialogPrimitive.Close
 
-const DialogZIndexContext = React.createContext<number | undefined>(undefined)
-
 const DialogOverlay = React.forwardRef<
 	React.ElementRef<typeof DialogPrimitive.Overlay>,
 	React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
 >(({ className, style, ...props }, ref) => {
-	const zIndex = React.useContext(DialogZIndexContext)
+	const zIndex = useZIndex(ZI_OFFSETS.DIALOG)
 	return (
 		<DialogPrimitive.Overlay
 			ref={ref}
 			className={cn(
-				'fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+				'fixed inset-0 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
 				className,
 			)}
-			style={zIndex !== undefined ? { zIndex, ...style } : style}
+			style={{ zIndex, ...style }}
 			{...props}
 		/>
 	)
@@ -42,7 +41,6 @@ const DialogContent = React.forwardRef<
 	const isMobile = useIsMobile()
 	const outletKey = React.useId()
 	const contentRef = React.useRef<HTMLDivElement | null>(null)
-	const draggableWindow = useDraggableWindowContext()
 
 	const combinedRef = React.useCallback(
 		(node: HTMLDivElement | null) => {
@@ -56,23 +54,23 @@ const DialogContent = React.forwardRef<
 		[ref],
 	)
 
-	const zIndex = draggableWindow ? draggableWindow.zIndex + 1 : undefined
-	const zIndexStyle = zIndex !== undefined ? { zIndex, ...style } : style
+	const zIndex = useZIndex(ZI_OFFSETS.DIALOG)
+	const zIndexStyle = { zIndex, ...style }
 
 	return (
-		<DialogZIndexContext.Provider value={zIndex}>
-			<DialogPortal>
-				<DialogOverlay />
-				<DialogPrimitive.Content
-					ref={combinedRef}
-					data-mobile={isMobile}
-					className={cn(
-						'fixed left-[50%] top-[50%] data-[mobile=true]:top-[0%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] data-[mobile=true]:translate-y-[0%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg',
-						className,
-					)}
-					style={zIndexStyle}
-					{...props}
-				>
+		<DialogPortal>
+			<DialogOverlay />
+			<DialogPrimitive.Content
+				ref={combinedRef}
+				data-mobile={isMobile}
+				className={cn(
+					'fixed left-[50%] top-[50%] data-[mobile=true]:top-[0%] grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] data-[mobile=true]:translate-y-[0%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg',
+					className,
+				)}
+				style={zIndexStyle}
+				{...props}
+			>
+				<BaseZIndexContext.Provider value={zIndex}>
 					<DraggableWindowOutlet outletKey={outletKey} getElement={() => contentRef.current}>
 						{children}
 					</DraggableWindowOutlet>
@@ -80,9 +78,9 @@ const DialogContent = React.forwardRef<
 						<Cross2Icon className="h-4 w-4" />
 						<span className="sr-only">Close</span>
 					</DialogPrimitive.Close>
-				</DialogPrimitive.Content>
-			</DialogPortal>
-		</DialogZIndexContext.Provider>
+				</BaseZIndexContext.Provider>
+			</DialogPrimitive.Content>
+		</DialogPortal>
 	)
 })
 DialogContent.displayName = DialogPrimitive.Content.displayName

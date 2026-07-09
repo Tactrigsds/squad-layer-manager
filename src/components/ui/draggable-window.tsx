@@ -1,6 +1,7 @@
 import * as Obj from '@/lib/object'
 import { cn } from '@/lib/utils'
-import { DraggableWindowContext, type DraggableWindowContextValue, DraggableWindowOutletContext, DraggableWindowStore, type InitialPosition, useDraggableWindow, useDraggableWindowContext, useOpenWindows, useOutletBaseZIndex, useOutletKey, useWindowDefinitions, type WindowDefinition, type WindowState } from '@/systems/draggable-window.client'
+import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { DraggableWindowContext, type DraggableWindowContextValue, DraggableWindowOutletContext, DraggableWindowStore, type InitialPosition, useDraggableWindow, useDraggableWindowContext, useOpenWindows, useOutletKey, useWindowDefinitions, type WindowDefinition, type WindowState } from '@/systems/draggable-window.client'
 
 export { useDraggableWindow, useDraggableWindowContext }
 import { Cross2Icon, DrawingPinFilledIcon, DrawingPinIcon } from '@radix-ui/react-icons'
@@ -394,8 +395,7 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 	)
 
 	const Component = definition.component
-	const outletBaseZIndex = useOutletBaseZIndex()
-	const effectiveZIndex = outletBaseZIndex + windowState.zIndex
+	const effectiveZIndex = useZIndex(ZI_OFFSETS.DRAGGABLE_WINDOW_FLOOR + windowState.stackOrder)
 
 	const contextValue = React.useMemo<DraggableWindowContextValue>(
 		() => ({
@@ -423,13 +423,16 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 				)}
 				style={{ zIndex: effectiveZIndex }}
 			>
-				<Component {...windowState.props} />
+				<BaseZIndexContext.Provider value={effectiveZIndex}>
+					<Component {...windowState.props} />
+				</BaseZIndexContext.Provider>
 				{definition.resizable
 					&& RESIZE_HANDLES.map((h) => (
 						<div
 							key={h.dir}
 							onMouseDown={(e) => beginResize(e, h.dir)}
-							className={cn('absolute z-10', h.className)}
+							className={cn('absolute ', h.className)}
+							style={{ zIndex: effectiveZIndex + ZI_OFFSETS.MINOR_CEILING }}
 						/>
 					))}
 			</div>
