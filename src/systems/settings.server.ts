@@ -5,7 +5,6 @@ import * as Obj from '@/lib/object'
 import * as AppEvents from '@/models/app-events.models'
 import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
-import * as SM from '@/models/squad.models'
 import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models.ts'
 import type * as C from '@/server/context.ts'
@@ -137,18 +136,12 @@ async function loadServerRegistry(ctx: C.Db) {
 export async function createServerEntry(ctx: C.Db, input: {
 	id: SS.ServerId
 	displayName: string
-	connections: SETTINGS.ServerConnection
-	adminListSources: string[]
-	adminIdentifyingPermissions: SM.PlayerPerm[]
+	settings: unknown
 }) {
 	if (serverRegistry.has(input.id)) {
 		return { code: 'err:server-already-exists' as const }
 	}
-	const settingsRes = SETTINGS.ServerSettingsSchema.safeParse({
-		connections: input.connections,
-		adminListSources: input.adminListSources,
-		adminIdentifyingPermissions: input.adminIdentifyingPermissions,
-	})
+	const settingsRes = SETTINGS.ServerSettingsSchema.safeParse(input.settings)
 	if (!settingsRes.success) {
 		return { code: 'err:invalid-settings' as const, message: settingsRes.error.message }
 	}
@@ -528,9 +521,7 @@ const adminRouter = {
 		.input(z.object({
 			id: SS.ServerIdSchema,
 			displayName: z.string().min(1).max(256),
-			connections: SETTINGS.ServerConnectionSchema,
-			adminListSources: z.array(z.string()),
-			adminIdentifyingPermissions: z.array(SM.PLAYER_PERM),
+			settings: SETTINGS.ServerSettingsSchema,
 		}))
 		.handler(async ({ context: _ctx, input }) => {
 			const ctx = DB.addPooledDb(_ctx as any)

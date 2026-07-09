@@ -6,6 +6,10 @@ const LABEL_OVERRIDES: Record<string, string> = {
 	'rbac.roleAssignments.discord-role': 'By Discord Role',
 	'rbac.roleAssignments.discord-user': 'Specific User',
 	'rbac.roleAssignments.discord-server-member': 'All Server Members',
+	// per-server settings
+	connections: 'Connections',
+	'connections.rcon': 'RCON',
+	'connections.logs': 'Log Source',
 }
 
 export function humanize(key: string): string {

@@ -22,18 +22,20 @@ function stripNullable(node: Node): Node {
 	return node
 }
 
-function buildChildren(node: Node, path: (string | number)[]): TocNode[] {
+// idPrefix scopes anchor ids so per-server subtrees (`setting:server:<id>:*`) don't collide with global (`setting:*`);
+// it must match what SettingsForm emits for the same schema.
+function buildChildren(node: Node, path: (string | number)[], idPrefix: string): TocNode[] {
 	const props: Record<string, Node> | undefined = node?.properties
 	if (!props) return []
 	return Object.keys(props).map((key): TocNode => {
 		const inner = stripNullable(props[key])
 		const childPath = [...path, key]
 		return {
-			id: `setting:${childPath.join('.')}`,
+			id: `${idPrefix}${childPath.join('.')}`,
 			label: settingLabel(childPath, key),
 			path: childPath.join('.'),
 			// only static object sections recurse; records/arrays are dynamic and stay leaf nodes
-			children: inner.type === 'object' && inner.properties ? buildChildren(inner, childPath) : [],
+			children: inner.type === 'object' && inner.properties ? buildChildren(inner, childPath, idPrefix) : [],
 		}
 	})
 }
@@ -166,30 +168,61 @@ function buildParentMap(nodes: TocNode[], parentId: string | null, map: Map<stri
 }
 
 export default function SettingsToc(
-	{ showServers, showGlobal, globalMode }: { showServers: boolean; showGlobal: boolean; globalMode: 'gui' | 'json' },
+	{ showServers, showGlobal, globalMode, servers, serverModes, creatingServer, newServerMode }: {
+		showServers: boolean
+		showGlobal: boolean
+		globalMode: 'gui' | 'json'
+		servers: { id: string; displayName: string }[]
+		serverModes: Record<string, 'gui' | 'json'>
+		creatingServer: boolean
+		newServerMode: 'gui' | 'json'
+	},
 ) {
 	const [query, setQuery] = React.useState('')
-	const [expanded, setExpanded] = React.useState<Set<string>>(new Set(['section:global']))
+	const [expanded, setExpanded] = React.useState<Set<string>>(new Set(['section:servers', 'section:global']))
 	const containerRef = React.useRef<HTMLDivElement>(null)
 
-	// the field anchors only exist in the GUI editor; in JSON mode "Global Settings" collapses to a single leaf
+	// the field anchors only exist in the GUI editor; in JSON mode a section collapses to a single leaf
 	const globalChildren = React.useMemo(
 		() =>
 			globalMode === 'json'
 				? []
-				: buildChildren(z.toJSONSchema(SETTINGS.GlobalSettingsSchema, { io: 'input', unrepresentable: 'any' }) as Node, []),
+				: buildChildren(z.toJSONSchema(SETTINGS.GlobalSettingsSchema, { io: 'input', unrepresentable: 'any' }) as Node, [], 'setting:'),
 		[globalMode],
 	)
 
+	const serverJsonSchema = React.useMemo(
+		() => z.toJSONSchema(SETTINGS.ServerSettingsSchema, { io: 'input', unrepresentable: 'any' }) as Node,
+		[],
+	)
+
+	const serverNodes = React.useMemo(() => {
+		const nodes: TocNode[] = servers.map((s) => ({
+			id: `section:server:${s.id}`,
+			label: s.displayName,
+			path: '',
+			children: (serverModes[s.id] ?? 'gui') === 'json' ? [] : buildChildren(serverJsonSchema, [], `setting:server:${s.id}:`),
+		}))
+		if (creatingServer) {
+			nodes.push({
+				id: 'section:server:__new__',
+				label: 'New Server',
+				path: '',
+				children: newServerMode === 'json' ? [] : buildChildren(serverJsonSchema, [], 'setting:server:__new__:'),
+			})
+		}
+		return nodes
+	}, [servers, serverModes, creatingServer, newServerMode, serverJsonSchema])
+
 	const nodes = React.useMemo(() => {
 		const roots: TocNode[] = []
-		if (showServers) roots.push({ id: 'section:servers', label: 'Servers', path: '', children: [] })
+		if (showServers) roots.push({ id: 'section:servers', label: 'Servers', path: '', children: serverNodes })
 		if (showGlobal) {
 			roots.push({ id: 'section:global', label: 'Global Settings', path: '', children: globalChildren })
 			roots.push({ id: 'section:audit', label: 'Audit Log', path: '', children: [] })
 		}
 		return roots
-	}, [showServers, showGlobal, globalChildren])
+	}, [showServers, showGlobal, globalChildren, serverNodes])
 
 	const parentById = React.useMemo(() => {
 		const map = new Map<string, string | null>()
@@ -201,8 +234,11 @@ export default function SettingsToc(
 	const forceOpen = q.length > 0
 	const visible = q ? nodes.map((n) => filterNode(n, q)).filter((n): n is TocNode => n !== null) : nodes
 
-	// re-run scroll-spy when the anchor set changes (gui/json switch)
-	const activeAnchorId = useActiveAnchor(globalMode)
+	// re-run scroll-spy when the anchor set changes (gui/json switch, servers added/removed, per-server mode)
+	const anchorSetSig = `${globalMode}|${servers.map((s) => `${s.id}:${serverModes[s.id] ?? 'gui'}`).join(',')}|${
+		creatingServer ? newServerMode : ''
+	}`
+	const activeAnchorId = useActiveAnchor(anchorSetSig)
 
 	// if the active anchor sits inside a collapsed branch, highlight the deepest ancestor that's actually visible
 	const activeId = React.useMemo(() => {

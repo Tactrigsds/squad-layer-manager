@@ -1,6 +1,7 @@
 import { BmFlagMultiSelect, BmFlagOrColorSelect, BmFlagOrderedList, FlagPriorityMap } from '@/components/bm-flag-picker'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { DiscordMemberSelect, DiscordRoleSelect } from '@/components/discord-picker'
+import FilterEntitySelect from '@/components/filter-entity-select'
 import { StickyGroup } from '@/components/sticky-group'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -102,11 +103,27 @@ function isStringOrNumber(node: Node): boolean {
 	return types.has('string') && types.has('number')
 }
 
+// a discriminated union (Zod z.discriminatedUnion) projects to `oneOf`/`anyOf` of object branches that each pin one
+// property to a `const` (the discriminator). Returns those branches + the discriminator key so we can render a variant
+// picker instead of falling back to a raw-json editor.
+function discriminatedUnion(node: Node): { branches: Node[]; discriminator: string } | null {
+	const branches: Node[] | undefined = node?.oneOf ?? node?.anyOf
+	if (!branches || branches.length < 2) return null
+	if (!branches.every((b: Node) => b?.type === 'object' && b.properties)) return null
+	const constKeys = Object.keys(branches[0].properties).filter((k) => branches[0].properties[k]?.const !== undefined)
+	const discriminator = constKeys.find((k) => branches.every((b: Node) => b.properties?.[k]?.const !== undefined))
+	if (!discriminator) return null
+	return { branches, discriminator }
+}
+
 function emptyValue(node: Node): unknown {
 	const { inner, nullable } = stripNullable(node)
 	if (nullable) return null
+	if (inner.const !== undefined) return inner.const
 	if (inner.default !== undefined) return structuredClone(inner.default)
 	if (inner.enum) return inner.enum[0]
+	const du = discriminatedUnion(inner)
+	if (du) return emptyValue(du.branches[0])
 	if (isStringOrNumber(inner)) return '0s'
 	switch (inner.type) {
 		case 'string':
@@ -176,6 +193,10 @@ function PermissionExpressionEditor({ value, onChange }: { value: string[] | und
 // role shows a warning when nothing assigns it. Both need data from sibling branches, shared here via context.
 type RbacInfo = { roleIds: string[]; assignedRoleIds: Set<string> }
 const RbacContext = React.createContext<RbacInfo>({ roleIds: [], assignedRoleIds: new Set() })
+
+// per-form options. `idPrefix` scopes the DOM ids / URL-fragment anchors so multiple forms on the settings page (global
+// settings + one per server) don't collide; it stays `setting:*` so the TOC scroll-spy and hash nav still match.
+const FormOptionsContext = React.createContext<{ idPrefix: string }>({ idPrefix: 'setting:' })
 
 function readRbacInfo(root: any): RbacInfo {
 	const rbac = root?.rbac
@@ -265,6 +286,14 @@ function DiscordRoleField({ value$, reset$, onChange }: OverrideProps) {
 	const value = useFieldValue(value$, reset$)
 	return <DiscordRoleSelect value={value ?? ''} onChange={onChange} />
 }
+// filter-pool config references a filter entity by id; pick it from the known filters rather than typing the id
+function FilterIdField({ value$, reset$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$, reset$)
+	return <FilterEntitySelect className="w-full" filterId={value ?? null} allowEmpty={false} onSelect={(id) => onChange(id ?? '')} />
+}
+function PasswordField({ value$, reset$, onChange }: OverrideProps) {
+	return <TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric={false} secret />
+}
 function DiscordMemberField({ value$, reset$, onChange }: OverrideProps) {
 	const value = useFieldValue(value$, reset$)
 	return <DiscordMemberSelect value={value ?? ''} onChange={onChange} />
@@ -314,6 +343,9 @@ function overrideFor(path: Path): React.FC<OverrideProps> | undefined {
 	// searchable Discord role/account pickers for the role-assignment editor, keyed to the raw-id fields
 	if (path[0] === 'rbac' && path[1] === 'roleAssignments' && path[2] === 'discord-role' && last === 'discordRoleId') return DiscordRoleField
 	if (path[0] === 'rbac' && path[1] === 'roleAssignments' && path[2] === 'discord-user' && last === 'userId') return DiscordMemberField
+	// server settings: filter-pool entries reference a filter by id; connection passwords are masked
+	if (last === 'filterId') return FilterIdField
+	if (last === 'password') return PasswordField
 	return undefined
 }
 
@@ -321,7 +353,13 @@ function overrideFor(path: Path): React.FC<OverrideProps> | undefined {
 
 // uncontrolled text/number input: seeded from value$, edits debounced upward, re-read on reset$
 function TextInputField(
-	{ value$, reset$, onChange, numeric }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void; numeric: boolean },
+	{ value$, reset$, onChange, numeric, secret }: {
+		value$: ValueState
+		reset$: Rx.Subject<void>
+		onChange: (v: any) => void
+		numeric: boolean
+		secret?: boolean
+	},
 ) {
 	const ref = React.useRef<HTMLInputElement>(null)
 	const format = (v: any) => v === null || v === undefined ? '' : String(v)
@@ -339,7 +377,7 @@ function TextInputField(
 	return (
 		<Input
 			ref={ref}
-			type={numeric ? 'number' : 'text'}
+			type={secret ? 'password' : numeric ? 'number' : 'text'}
 			defaultValue={format(value$.getValue())}
 			onChange={(e) => push(numeric ? (e.currentTarget.value === '' ? '' : e.currentTarget.valueAsNumber) : e.currentTarget.value)}
 		/>
@@ -365,6 +403,52 @@ function SelectField(
 function SwitchField({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void }) {
 	const value = useFieldValue(value$, reset$)
 	return <Switch checked={!!value} onCheckedChange={onChange} />
+}
+
+// discriminated union: a variant picker keyed to the discriminator const, plus the active branch's object fields
+// (the discriminator field itself is chosen by the picker, so it isn't rendered as an editable property).
+function DiscriminatedUnionField(
+	{ path, value$, reset$, onChange, branches, discriminator }: {
+		path: Path
+		value$: ValueState
+		reset$: Rx.Subject<void>
+		onChange: (v: any) => void
+		branches: Node[]
+		discriminator: string
+	},
+) {
+	const value = useFieldValue(value$, reset$) as any
+	const branchFor = (constVal: string) => branches.find((b) => String(b.properties[discriminator].const) === constVal)
+	const active = value?.[discriminator]
+	const branch = branchFor(String(active)) ?? branches[0]
+	// hide the discriminator from the rendered fields; it's set by the picker (and carried in the value)
+	const branchProps = Object.fromEntries(Object.entries(branch.properties).filter(([k]) => k !== discriminator))
+	const branchNode: Node = { ...branch, properties: branchProps }
+	return (
+		<div className="space-y-2">
+			<Select
+				value={String(active ?? '')}
+				onValueChange={(next) => {
+					const b = branchFor(next)
+					if (b) {
+						onChange(emptyValue(b))
+						reset$.next()
+					}
+				}}
+			>
+				<SelectTrigger className="w-full">
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent>
+					{branches.map((b) => {
+						const opt = String(b.properties[discriminator].const)
+						return <SelectItem key={opt} value={opt}>{settingLabel([...path, discriminator, opt], opt)}</SelectItem>
+					})}
+				</SelectContent>
+			</Select>
+			<ObjectField node={branchNode} path={path} value$={value$} reset$={reset$} onChange={onChange} />
+		</div>
+	)
 }
 
 function EnumArrayField(
@@ -439,6 +523,21 @@ function FieldControl(
 	if (Override) return <Override value$={value$} reset$={reset$} onChange={onChange} path={path} />
 
 	const { inner, nullable } = stripNullable(node)
+
+	// discriminated union -> variant picker + active branch fields
+	const du = discriminatedUnion(inner)
+	if (du) {
+		return (
+			<DiscriminatedUnionField
+				path={path}
+				value$={value$}
+				reset$={reset$}
+				onChange={onChange}
+				branches={du.branches}
+				discriminator={du.discriminator}
+			/>
+		)
+	}
 
 	// enum -> select
 	if (inner.enum && inner.type !== 'array') {
@@ -838,18 +937,20 @@ function SectionField(
 	const { inner } = stripNullable(node)
 	const description: string | undefined = node.description ?? inner.description
 	const pathStr = path.join('.')
+	const { idPrefix } = React.useContext(FormOptionsContext)
+	const domId = `${idPrefix}${pathStr}`
 	const def = effectiveDefault(node)
 	const modified = useIsModified(value$, reset$, def)
 	// the header pins to the top of the scroll column (stacking under any ancestor section headers) while this section
 	// is in view. StickyGroup handles the offset math + z-index; the ref'd element must sit before the section body.
 	const headerRef = React.useRef<HTMLDivElement>(null)
 	return (
-		<fieldset id={`setting:${pathStr}`} className="border rounded-md px-3 pb-3 pt-0 space-y-3 scroll-mt-2">
+		<fieldset id={domId} className="border rounded-md px-3 pb-3 pt-0 space-y-3 scroll-mt-2">
 			<StickyGroup stickyRef={headerRef}>
 				<div ref={headerRef} className="group flex items-center gap-2 -mx-3 rounded-t-md border-b bg-card px-3 py-2">
 					<legend className="px-1 text-sm font-semibold">{settingLabel(path, name)}</legend>
 					<code className="text-[10px] text-muted-foreground">{pathStr}</code>
-					<AnchorLink domId={`setting:${pathStr}`} />
+					<AnchorLink domId={domId} />
 					{modified && (
 						<ResetButton
 							onClick={() => {
@@ -881,6 +982,8 @@ function LeafField(
 	const { inner } = stripNullable(node)
 	const description: string | undefined = node.description ?? inner.description
 	const pathStr = path.join('.')
+	const { idPrefix } = React.useContext(FormOptionsContext)
+	const domId = `${idPrefix}${pathStr}`
 	const value = useFieldValue(value$, reset$)
 	const def = effectiveDefault(node)
 	const canReset = def.has && !Obj.deepEqual(value, def.value)
@@ -899,14 +1002,14 @@ function LeafField(
 	const showDefaultText = !hasOverride && def.has && isScalarNode(inner)
 	return (
 		<div
-			id={`setting:${pathStr}`}
+			id={domId}
 			className={cn('space-y-1 scroll-mt-2', isBoolean && 'flex items-center justify-between space-y-0 gap-4')}
 		>
 			<div className={cn(isBoolean && 'min-w-0')}>
 				<div className="group flex items-center gap-1.5">
 					<Label className="text-sm">{settingLabel(path, name)}</Label>
 					<code className="text-[10px] text-muted-foreground">{pathStr}</code>
-					<AnchorLink domId={`setting:${pathStr}`} />
+					<AnchorLink domId={domId} />
 					{!isBoolean && resetBtn}
 				</div>
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
@@ -975,21 +1078,26 @@ function JsonFallback({ value$, reset$, onChange }: { value$: ValueState; reset$
 }
 
 export default function SettingsForm(
-	{ schema, value$, reset$, onChange }: {
+	{ schema, value$, reset$, onChange, idPrefix = 'setting:' }: {
 		schema: z.ZodType
 		value$: Rx.Observable<any> & { getValue: () => any }
 		reset$: Rx.Subject<void>
 		onChange: (next: any) => void
+		// scopes field DOM ids / URL anchors; defaults to `setting:` (global settings). Server forms pass `setting:server:<id>:`
+		idPrefix?: string
 	},
 ) {
 	const jsonSchema = React.useMemo(() => z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' }) as Node, [schema])
 	// stable so the form subtree stays memoized when only rbacInfo (context) changes
 	const rootPath = React.useMemo<Path>(() => [], [])
+	const formOptions = React.useMemo(() => ({ idPrefix }), [idPrefix])
 	const rbacInfo = useRbacInfo(value$)
 	useRoleCascade(value$, onChange)
 	return (
-		<RbacContext.Provider value={rbacInfo}>
-			<ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />
-		</RbacContext.Provider>
+		<FormOptionsContext.Provider value={formOptions}>
+			<RbacContext.Provider value={rbacInfo}>
+				<ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />
+			</RbacContext.Provider>
+		</FormOptionsContext.Provider>
 	)
 }

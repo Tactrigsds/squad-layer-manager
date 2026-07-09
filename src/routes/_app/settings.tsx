@@ -1,6 +1,8 @@
 import type SchemaJsonEditorComponent from '@/components/schema-json-editor'
 import type { SchemaJsonEditorHandle } from '@/components/schema-json-editor.types'
 import SettingsForm from '@/components/settings-form'
+import type { SettingsEditorStore } from '@/components/settings-save-panel'
+import { createSettingsEditorStore, SettingsChangeList, SettingsSavePanel, useRegisterSettingsSection } from '@/components/settings-save-panel'
 import SettingsToc from '@/components/settings-toc'
 import { StickyGroup } from '@/components/sticky-group'
 import { Button } from '@/components/ui/button'
@@ -9,17 +11,16 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAlertDialog } from '@/components/ui/lazy-alert-dialog'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react'
+import { diffSettings } from '@/lib/settings-diff'
 import * as SettingsNav from '@/lib/settings-nav'
 import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
 import * as AppEvents from '@/models/app-events.models'
+import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
-import * as SM from '@/models/squad.models'
-import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
@@ -31,7 +32,6 @@ import { createFileRoute } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Rx from 'rxjs'
-import { z } from 'zod'
 
 // subscribe a component to a BehaviorSubject-like state observable (mirrors it into render state)
 function useObservableValue<T>(obs$: Rx.Observable<T> & { getValue: () => T }): T {
@@ -58,6 +58,17 @@ function RouteComponent() {
 	const manageGlobalDenied = RbacClient.usePermsCheck(RBAC.perm('admin:manage-global-settings'))
 	// lifted so the TOC can drop the field subtree in JSON mode (those anchors only exist in the GUI editor)
 	const [globalMode, setGlobalMode] = React.useState<'gui' | 'json'>('gui')
+	// per-server GUI/JSON mode (default gui), lifted so the TOC drops a server's subtree while it's in JSON mode
+	const [serverModes, setServerModes] = React.useState<Record<string, 'gui' | 'json'>>({})
+	const [creating, setCreating] = React.useState(false)
+	const [newServerMode, setNewServerMode] = React.useState<'gui' | 'json'>('gui')
+	const setServerMode = React.useCallback((id: string, mode: 'gui' | 'json') => setServerModes((m) => ({ ...m, [id]: mode })), [])
+
+	// one shared Save/Reset controller for every editable section on the page (global + each server + new server)
+	const editorStore = useRefConstructor(() => createSettingsEditorStore()).current
+
+	const publicSettings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
+	const servers = manageServersDenied ? [] : (publicSettings?.servers ?? [])
 
 	// scroll to the URL fragment on load (retrying until the target renders, since the form loads async) and on later
 	// hash changes (a pasted/edited link). In-app clicks use replaceState, which fires no hashchange, so no double-scroll.
@@ -83,6 +94,22 @@ function RouteComponent() {
 		}
 	}, [])
 
+	// when the user clicks "Add Server", scroll the new-server config into view once it mounts (the section renders on
+	// the next frame). Existing servers scroll via the pencil/Fix buttons in the management card.
+	React.useEffect(() => {
+		if (!creating) return
+		let raf = 0
+		let tries = 0
+		const attempt = () => {
+			if (document.getElementById('section:server:__new__')) SettingsNav.scrollToAnchor('section:server:__new__')
+			else if (tries++ < 60) raf = requestAnimationFrame(attempt)
+		}
+		raf = requestAnimationFrame(attempt)
+		return () => {
+			if (raf) cancelAnimationFrame(raf)
+		}
+	}, [creating])
+
 	if (manageServersDenied && manageGlobalDenied) {
 		return (
 			<div className="w-full h-full grid place-items-center">
@@ -96,15 +123,45 @@ function RouteComponent() {
 		// the outlet wrapper is overflow-hidden, which would otherwise break sticky/independent scrolling
 		<div className="flex gap-4 w-full max-w-[84rem] mx-auto h-[calc(100dvh-6rem)]">
 			<aside className="w-60 shrink-0 overflow-hidden border-r pr-2 py-2">
-				<SettingsToc showServers={!manageServersDenied} showGlobal={!manageGlobalDenied} globalMode={globalMode} />
+				<SettingsToc
+					showServers={!manageServersDenied}
+					showGlobal={!manageGlobalDenied}
+					globalMode={globalMode}
+					servers={servers}
+					serverModes={serverModes}
+					creatingServer={creating}
+					newServerMode={newServerMode}
+				/>
 			</aside>
 			{/* no top padding: sticky section headers pin flush to the top, otherwise scrolled content bleeds into the gap */}
 			<main className="flex-1 min-w-0 overflow-y-auto pr-2 pb-2 space-y-6">
 				{/* ServerManagement reads PublicSettingsStore, not globalSettings$, so it must not sit behind the global-settings Suspense */}
 				{!manageServersDenied && (
-					<div id="section:servers" className="scroll-mt-2">
-						<ServerManagementSection />
-					</div>
+					<>
+						<div id="section:servers" className="scroll-mt-2">
+							<ServerManagementSection onAddServer={() => setCreating(true)} creating={creating} />
+						</div>
+						{servers.map((server) => (
+							<div key={server.id} id={`section:server:${server.id}`} className="scroll-mt-2">
+								<ServerSettingsSection
+									server={server}
+									editorStore={editorStore}
+									mode={serverModes[server.id] ?? 'gui'}
+									onModeChange={(m) => setServerMode(server.id, m)}
+								/>
+							</div>
+						))}
+						{creating && (
+							<div id="section:server:__new__" className="scroll-mt-2">
+								<CreateServerSection
+									editorStore={editorStore}
+									mode={newServerMode}
+									onModeChange={setNewServerMode}
+									onDone={() => setCreating(false)}
+								/>
+							</div>
+						)}
+					</>
 				)}
 				{!manageGlobalDenied && (
 					<ReactRx.Subscribe
@@ -112,7 +169,7 @@ function RouteComponent() {
 						fallback={<p className="text-sm text-muted-foreground">Loading global settings…</p>}
 					>
 						<div id="section:global" className="scroll-mt-2">
-							<GlobalSettingsSection mode={globalMode} onModeChange={setGlobalMode} />
+							<GlobalSettingsSection editorStore={editorStore} mode={globalMode} onModeChange={setGlobalMode} />
 						</div>
 						<div id="section:audit" className="scroll-mt-2">
 							<AuditLogSection />
@@ -120,6 +177,7 @@ function RouteComponent() {
 					</ReactRx.Subscribe>
 				)}
 			</main>
+			<SettingsSavePanel store={editorStore} />
 		</div>
 	)
 }
@@ -179,12 +237,10 @@ function LabeledInput({ label, ...props }: { label: string } & React.ComponentPr
 	)
 }
 
-function ServerManagementSection() {
+function ServerManagementSection({ onAddServer, creating }: { onAddServer: () => void; creating: boolean }) {
 	const settings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
 	const deleteServersDenied = RbacClient.usePermsCheck(RBAC.perm('admin:delete-servers'))
 	const openDialog = useAlertDialog()
-	const [showCreateForm, setShowCreateForm] = React.useState(false)
-	const [editingServerId, setEditingServerId] = React.useState<string | null>(null)
 	const headerRef = React.useRef<HTMLDivElement>(null)
 
 	const enableMutation = useMutation(RPC.orpc.settings.admin.enableServer.mutationOptions({
@@ -247,7 +303,7 @@ function ServerManagementSection() {
 											<Button
 												size="sm"
 												variant="destructive"
-												onClick={() => setEditingServerId(editingServerId === server.id ? null : server.id)}
+												onClick={() => SettingsNav.navigateToAnchor(`section:server:${server.id}`)}
 											>
 												Fix Settings
 											</Button>
@@ -256,8 +312,8 @@ function ServerManagementSection() {
 											<Button
 												size="icon"
 												variant="ghost"
-												disabled={busy}
-												onClick={() => setEditingServerId(editingServerId === server.id ? null : server.id)}
+												title="Edit settings"
+												onClick={() => SettingsNav.navigateToAnchor(`section:server:${server.id}`)}
 											>
 												<Icons.Pencil className="h-4 w-4" />
 											</Button>
@@ -290,255 +346,311 @@ function ServerManagementSection() {
 									)}
 								</div>
 							</div>
-							{editingServerId === server.id && <RawSettingsEditor serverId={server.id} onDone={() => setEditingServerId(null)} />}
 						</div>
 					))}
-					{showCreateForm
-						? <CreateServerForm onDone={() => setShowCreateForm(false)} />
-						: <Button variant="outline" onClick={() => setShowCreateForm(true)}>Add Server</Button>}
+					<Button variant="outline" disabled={creating} onClick={onAddServer}>Add Server</Button>
 				</CardContent>
 			</StickyGroup>
 		</Card>
 	)
 }
 
-function RawSettingsEditor({ serverId, onDone }: { serverId: string; onDone: () => void }) {
-	const { data, isLoading } = useQuery(RPC.orpc.settings.admin.getRawSettings.queryOptions({ input: { serverId } }))
-	const [validDraft, setValidDraft] = React.useState<SETTINGS.ServerSettings | null>(null)
+// GUI/JSON editor for one server's full settings, always mounted so the TOC + scroll-spy can resolve its anchors. GUI
+// mode routes save/reset through the shared bottom panel; JSON mode keeps its own inline toolbar (a power-user escape
+// hatch). Server settings have no codec transforms, so the edit/input shape equals the stored shape (no encode step).
+function ServerSettingsSection(
+	{ server, editorStore, mode, onModeChange }: {
+		server: { id: string; displayName: string; broken: boolean }
+		editorStore: SettingsEditorStore
+		mode: 'gui' | 'json'
+		onModeChange: (mode: 'gui' | 'json') => void
+	},
+) {
+	const { data, isLoading } = useQuery(RPC.orpc.settings.admin.getRawSettings.queryOptions({ input: { serverId: server.id } }))
+	const loadFailed = data && data.code !== 'ok' ? data.code : null
+	const initial = data?.code === 'ok' ? (data.settings as SETTINGS.ServerSettings) : undefined
+
+	const draft$ = useRefConstructor(() => new Rx.BehaviorSubject<SETTINGS.ServerSettings | undefined>(undefined)).current
+	const reset$ = useRefConstructor(() => new Rx.Subject<void>()).current
+	const draft = useObservableValue(draft$)
+	const onFormChange = React.useCallback((v: any) => draft$.next(v), [draft$])
+	const [jsonValid, setJsonValid] = React.useState<SETTINGS.ServerSettings | null>(null)
 	const editorRef = React.useRef<SchemaJsonEditorHandle>(null)
+	const headerRef = React.useRef<HTMLDivElement>(null)
+	const openDialog = useAlertDialog()
+
+	React.useEffect(() => {
+		if (initial !== undefined && draft$.getValue() === undefined) draft$.next(initial)
+	}, [initial, draft$])
 
 	const saveMutation = useMutation(RPC.orpc.settings.admin.updateRawSettings.mutationOptions({
 		onSuccess: (res) => {
 			if (!res) return
-			if (res.code === 'err:permission-denied') {
-				RbacClient.handlePermissionDenied(res)
-			} else if (res.code === 'err:invalid-settings') {
-				toast.error('Invalid settings', { description: res.message })
-			} else if (res.code === 'err:server-not-found') {
-				toast.error('Server not found')
-			} else if (res.code === 'ok') {
-				toast('Server settings saved')
-				onDone()
-			}
+			if (res.code === 'err:permission-denied') RbacClient.handlePermissionDenied(res)
+			else if (res.code === 'err:invalid-settings') toast.error('Invalid settings', { description: res.message })
+			else if (res.code === 'err:server-not-found') toast.error('Server not found')
+			else if (res.code === 'ok') toast('Server settings saved')
 		},
 	}))
 
-	if (data && data.code !== 'ok') {
-		return <p className="text-sm text-destructive">Failed to load settings: {data.code}</p>
+	const nextEnc = mode === 'gui' ? draft : (jsonValid ?? undefined)
+	const changes = React.useMemo(() => (initial && nextEnc ? diffSettings(initial, nextEnc) : []), [initial, nextEnc])
+	const guiRes = draft !== undefined ? SETTINGS.ServerSettingsSchema.safeParse(draft) : undefined
+	const validDraft = mode === 'json' ? jsonValid : (guiRes && guiRes.success ? guiRes.data : null)
+
+	const save = React.useCallback(async () => {
+		const v = SETTINGS.ServerSettingsSchema.safeParse(draft$.getValue())
+		if (!v.success) return
+		await saveMutation.mutateAsync({ serverId: server.id, settings: v.data })
+	}, [draft$, saveMutation, server.id])
+	const reset = React.useCallback(() => {
+		if (initial !== undefined) {
+			draft$.next(initial)
+			reset$.next()
+		}
+	}, [initial, draft$, reset$])
+
+	useRegisterSettingsSection(editorStore, {
+		key: `server:${server.id}`,
+		label: server.displayName,
+		changedCount: mode === 'gui' ? changes.length : 0,
+		valid: validDraft !== null,
+		saving: saveMutation.isPending,
+		getChanges: () => changes,
+		save,
+		reset,
+	})
+
+	function switchMode(next: 'gui' | 'json') {
+		if (next === mode) return
+		if (next === 'json') setJsonValid(guiRes && guiRes.success ? guiRes.data : null)
+		else if (jsonValid) {
+			draft$.next(jsonValid)
+			reset$.next()
+		}
+		onModeChange(next)
 	}
 
-	const initialParseRes = data?.code === 'ok' ? SETTINGS.ServerSettingsSchema.safeParse(data.settings) : undefined
-	const initialSettings = initialParseRes?.success ? initialParseRes.data : null
-	const modified = validDraft !== null && !Obj.deepEqual(validDraft, initialSettings)
+	async function handleJsonSave() {
+		if (!validDraft) return
+		const result = await openDialog({
+			title: `Save ${server.displayName} settings?`,
+			content: <SettingsChangeList changes={changes} />,
+			buttons: [{ id: 'save', label: 'Save' }],
+		})
+		if (result === 'save') saveMutation.mutate({ serverId: server.id, settings: validDraft })
+	}
+
+	const ready = !loadFailed && !isLoading && draft !== undefined
 
 	return (
-		<div className="border rounded-md p-4 space-y-3">
-			<Label>Raw Settings JSON</Label>
-			{isLoading
-				? <p className="text-sm text-muted-foreground">Loading…</p>
-				: (
-					<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
-						<SchemaJsonEditor
-							ref={editorRef}
-							schema={SETTINGS.ServerSettingsSchema}
-							value={data!.settings as SETTINGS.ServerSettings}
-							onValidChange={setValidDraft}
-							minHeightPx={350}
-							label="Server Settings"
-						/>
-					</React.Suspense>
-				)}
-			<div className="flex justify-end gap-2">
-				<Button variant="outline" onClick={() => editorRef.current?.format()}>
-					<Icons.Braces className="h-4 w-4" />
-					Format
-				</Button>
-				<Button variant="outline" onClick={onDone}>{modified ? 'Cancel' : 'Hide'}</Button>
-				<Button
-					disabled={!validDraft || saveMutation.isPending}
-					onClick={() => saveMutation.mutate({ serverId, settings: validDraft })}
-				>
-					{saveMutation.isPending ? 'Saving…' : 'Save'}
-				</Button>
-			</div>
-		</div>
+		<Card>
+			<StickyGroup stickyRef={headerRef}>
+				<CardHeader ref={headerRef} className="rounded-t-xl border-b bg-card">
+					<div className="flex items-center justify-between gap-2">
+						<div>
+							<CardTitle>{server.displayName}</CardTitle>
+							<CardDescription>
+								<span className="font-mono">{server.id}</span>
+								{server.broken && <span className="ml-2 text-destructive">Settings failed validation and need repair</span>}
+							</CardDescription>
+						</div>
+						<div className="flex items-center rounded-md border p-0.5">
+							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>GUI</Button>
+							<Button size="sm" variant={mode === 'json' ? 'secondary' : 'ghost'} onClick={() => switchMode('json')}>JSON</Button>
+						</div>
+					</div>
+				</CardHeader>
+				<CardContent className="space-y-4">
+					{loadFailed
+						? <p className="text-sm text-destructive">Failed to load settings: {loadFailed}</p>
+						: !ready
+						? <p className="text-sm text-muted-foreground">Loading…</p>
+						: mode === 'gui'
+						? (
+							<SettingsForm
+								schema={SETTINGS.ServerSettingsSchema}
+								value$={draft$}
+								reset$={reset$}
+								onChange={onFormChange}
+								idPrefix={`setting:server:${server.id}:`}
+							/>
+						)
+						: (
+							<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
+								<SchemaJsonEditor
+									ref={editorRef}
+									schema={SETTINGS.ServerSettingsSchema}
+									value={draft}
+									onValidChange={setJsonValid}
+									minHeightPx={350}
+									label="Server Settings"
+								/>
+							</React.Suspense>
+						)}
+					{ready && mode === 'json' && (
+						<div className="flex justify-end gap-2">
+							<Button variant="outline" onClick={() => editorRef.current?.format()}>
+								<Icons.Braces className="h-4 w-4" />
+								Format
+							</Button>
+							<Button variant="outline" onClick={() => editorRef.current?.reset()}>Reset</Button>
+							<Button disabled={changes.length === 0 || validDraft === null || saveMutation.isPending} onClick={handleJsonSave}>
+								{saveMutation.isPending ? 'Saving…' : 'Save'}
+							</Button>
+						</div>
+					)}
+				</CardContent>
+			</StickyGroup>
+		</Card>
 	)
 }
 
-const LOG_TYPES = ['log-receiver', 'sftp'] as const
+// minimal input-shape seed for a brand-new server: the required-without-default fields (connections + admin lists).
+// prefaulted fields (queue, public settings) are filled in by ServerSettingsSchema at save time.
+const NEW_SERVER_DRAFT: SETTINGS.ServerSettings = {
+	connections: {
+		rcon: { host: '', port: 21114, password: '' },
+		logs: { type: 'log-receiver', token: 'dev' },
+	},
+	adminListSources: [],
+	adminIdentifyingPermissions: ['canseeadminchat'],
+} as unknown as SETTINGS.ServerSettings
 
-function CreateServerForm({ onDone }: { onDone: () => void }) {
+// create a new server on the same generic form; id + displayName sit above the settings form. Registered with the
+// shared panel so it saves via the one bottom control (creating the server), consistent with editing.
+function CreateServerSection(
+	{ editorStore, mode, onModeChange, onDone }: {
+		editorStore: SettingsEditorStore
+		mode: 'gui' | 'json'
+		onModeChange: (mode: 'gui' | 'json') => void
+		onDone: () => void
+	},
+) {
 	const [id, setId] = React.useState('')
 	const [displayName, setDisplayName] = React.useState('')
-	const [rconHost, setRconHost] = React.useState('')
-	const [rconPort, setRconPort] = React.useState('21114')
-	const [rconPassword, setRconPassword] = React.useState('')
-	const [logsType, setLogsType] = React.useState<typeof LOG_TYPES[number]>('log-receiver')
-	const [logsToken, setLogsToken] = React.useState('')
-	const [sftpHost, setSftpHost] = React.useState('')
-	const [sftpPort, setSftpPort] = React.useState('8022')
-	const [sftpUsername, setSftpUsername] = React.useState('')
-	const [sftpPassword, setSftpPassword] = React.useState('')
-	const [sftpLogFile, setSftpLogFile] = React.useState('')
-	const [adminListSources, setAdminListSources] = React.useState('')
-	const [adminIdentifyingPermissions, setAdminIdentifyingPermissions] = React.useState('canseeadminchat')
+	const draft$ = useRefConstructor(() => new Rx.BehaviorSubject<SETTINGS.ServerSettings>(Obj.deepClone(NEW_SERVER_DRAFT))).current
+	const reset$ = useRefConstructor(() => new Rx.Subject<void>()).current
+	const draft = useObservableValue(draft$)
+	const onFormChange = React.useCallback((v: any) => draft$.next(v), [draft$])
+	const [jsonValid, setJsonValid] = React.useState<SETTINGS.ServerSettings | null>(Obj.deepClone(NEW_SERVER_DRAFT))
+	const editorRef = React.useRef<SchemaJsonEditorHandle>(null)
+	const headerRef = React.useRef<HTMLDivElement>(null)
 
 	const createMutation = useMutation(RPC.orpc.settings.admin.createServer.mutationOptions({
 		onSuccess: (res) => {
 			if (!res) return
-			if (res.code === 'err:permission-denied') {
-				RbacClient.handlePermissionDenied(res)
-			} else if (res.code === 'err:server-already-exists') {
-				toast.error('A server with that ID already exists')
-			} else if (res.code === 'err:invalid-settings') {
-				toast.error('Invalid settings', { description: res.message })
-			} else if (res.code === 'ok') {
+			if (res.code === 'err:permission-denied') RbacClient.handlePermissionDenied(res)
+			else if (res.code === 'err:server-already-exists') toast.error('A server with that ID already exists')
+			else if (res.code === 'err:invalid-settings') toast.error('Invalid settings', { description: res.message })
+			else if (res.code === 'ok') {
 				toast('Server created')
 				onDone()
 			}
 		},
 	}))
 
-	function handleCreate() {
-		const permsRes = z.array(SM.PLAYER_PERM).safeParse(
-			adminIdentifyingPermissions.split(',').map(s => s.trim()).filter(Boolean),
-		)
-		if (!permsRes.success) {
-			toast.error('Invalid admin identifying permissions', { description: z.prettifyError(permsRes.error) })
-			return
-		}
+	const guiRes = SETTINGS.ServerSettingsSchema.safeParse(draft)
+	const validSettings = mode === 'json' ? jsonValid : (guiRes.success ? guiRes.data : null)
+	const idRes = SS.ServerIdSchema.safeParse(id)
+	const valid = idRes.success && displayName.trim().length > 0 && validSettings !== null
 
-		createMutation.mutate({
-			id,
-			displayName,
-			connections: {
-				rcon: { host: rconHost, port: Number(rconPort), password: rconPassword },
-				logs: logsType === 'log-receiver'
-					? { type: 'log-receiver' as const, token: logsToken || 'dev' }
-					: {
-						type: 'sftp' as const,
-						host: sftpHost,
-						port: Number(sftpPort),
-						username: sftpUsername,
-						password: sftpPassword,
-						logFile: sftpLogFile,
-					},
-			},
-			adminListSources: adminListSources.split(',').map(s => s.trim()).filter(Boolean),
-			adminIdentifyingPermissions: permsRes.data,
-		})
+	const save = React.useCallback(async () => {
+		const v = SETTINGS.ServerSettingsSchema.safeParse(draft$.getValue())
+		if (!idRes.success || !displayName.trim() || !v.success) return
+		await createMutation.mutateAsync({ id, displayName: displayName.trim(), settings: v.data })
+	}, [draft$, idRes.success, id, displayName, createMutation])
+	const reset = React.useCallback(() => {
+		setId('')
+		setDisplayName('')
+		draft$.next(Obj.deepClone(NEW_SERVER_DRAFT))
+		reset$.next()
+		onDone()
+	}, [draft$, reset$, onDone])
+
+	// while the create section is mounted there's a pending new server, so it always contributes to the panel
+	useRegisterSettingsSection(editorStore, {
+		key: 'server:__new__',
+		label: displayName.trim() || 'New Server',
+		changedCount: mode === 'gui' ? 1 : 0,
+		valid,
+		saving: createMutation.isPending,
+		getChanges: () => diffSettings({}, { id, displayName, ...(validSettings ?? {}) }),
+		save,
+		reset,
+	})
+
+	function switchMode(next: 'gui' | 'json') {
+		if (next === mode) return
+		if (next === 'json') setJsonValid(guiRes.success ? guiRes.data : null)
+		else if (jsonValid) {
+			draft$.next(jsonValid)
+			reset$.next()
+		}
+		onModeChange(next)
 	}
 
 	return (
-		<div className="border rounded-md p-4 space-y-3">
-			<div className="grid grid-cols-2 gap-3">
-				<LabeledInput label="Server ID" value={id} onChange={e => setId(e.target.value)} />
-				<LabeledInput label="Display Name" value={displayName} onChange={e => setDisplayName(e.target.value)} />
-			</div>
-			<div className="grid grid-cols-3 gap-3">
-				<LabeledInput label="RCON Host" value={rconHost} onChange={e => setRconHost(e.target.value)} />
-				<LabeledInput label="RCON Port" value={rconPort} onChange={e => setRconPort(e.target.value)} />
-				<LabeledInput
-					label="RCON Password"
-					type="password"
-					value={rconPassword}
-					onChange={e => setRconPassword(e.target.value)}
-				/>
-			</div>
-			<div className="space-y-1">
-				<Label>Log Source</Label>
-				<Select value={logsType} onValueChange={v => setLogsType(v as typeof LOG_TYPES[number])}>
-					<SelectTrigger>
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="log-receiver">Log Receiver</SelectItem>
-						<SelectItem value="sftp">SFTP</SelectItem>
-					</SelectContent>
-				</Select>
-			</div>
-			{logsType === 'log-receiver'
-				? <LabeledInput label="Log Receiver Token" value={logsToken} onChange={e => setLogsToken(e.target.value)} />
-				: (
+		<Card>
+			<StickyGroup stickyRef={headerRef}>
+				<CardHeader ref={headerRef} className="rounded-t-xl border-b bg-card">
+					<div className="flex items-center justify-between gap-2">
+						<div>
+							<CardTitle>New Server</CardTitle>
+							<CardDescription>Configure a new server. Save from the panel below, or cancel.</CardDescription>
+						</div>
+						<div className="flex items-center gap-2">
+							<div className="flex items-center rounded-md border p-0.5">
+								<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>GUI</Button>
+								<Button size="sm" variant={mode === 'json' ? 'secondary' : 'ghost'} onClick={() => switchMode('json')}>JSON</Button>
+							</div>
+							<Button size="sm" variant="outline" onClick={reset}>Cancel</Button>
+						</div>
+					</div>
+				</CardHeader>
+				<CardContent className="space-y-4">
 					<div className="grid grid-cols-2 gap-3">
-						<LabeledInput label="SFTP Host" value={sftpHost} onChange={e => setSftpHost(e.target.value)} />
-						<LabeledInput label="SFTP Port" value={sftpPort} onChange={e => setSftpPort(e.target.value)} />
-						<LabeledInput label="SFTP Username" value={sftpUsername} onChange={e => setSftpUsername(e.target.value)} />
-						<LabeledInput
-							label="SFTP Password"
-							type="password"
-							value={sftpPassword}
-							onChange={e => setSftpPassword(e.target.value)}
-						/>
-						<LabeledInput label="SFTP Log File Path" value={sftpLogFile} onChange={e => setSftpLogFile(e.target.value)} />
+						<div className="space-y-1">
+							<LabeledInput label="Server ID" defaultValue={id} onChange={(e) => setId(e.target.value)} />
+							{id.length > 0 && !idRes.success && <p className="text-xs text-destructive">Invalid server id</p>}
+						</div>
+						<LabeledInput label="Display Name" defaultValue={displayName} onChange={(e) => setDisplayName(e.target.value)} />
 					</div>
-				)}
-			<LabeledInput
-				label="Admin List Sources (comma-separated)"
-				value={adminListSources}
-				onChange={e => setAdminListSources(e.target.value)}
-				placeholder="e.g. main, community"
-			/>
-			<LabeledInput
-				label="Admin Identifying Permissions (comma-separated)"
-				value={adminIdentifyingPermissions}
-				onChange={e => setAdminIdentifyingPermissions(e.target.value)}
-			/>
-			<div className="flex justify-end gap-2">
-				<Button variant="outline" onClick={onDone}>Cancel</Button>
-				<Button
-					disabled={createMutation.isPending || !id || !displayName || !rconHost || !rconPassword}
-					onClick={handleCreate}
-				>
-					{createMutation.isPending ? 'Creating…' : 'Create'}
-				</Button>
-			</div>
-		</div>
+					{mode === 'gui'
+						? (
+							<SettingsForm
+								schema={SETTINGS.ServerSettingsSchema}
+								value$={draft$}
+								reset$={reset$}
+								onChange={onFormChange}
+								idPrefix="setting:server:__new__:"
+							/>
+						)
+						: (
+							<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
+								<SchemaJsonEditor
+									ref={editorRef}
+									schema={SETTINGS.ServerSettingsSchema}
+									value={draft}
+									onValidChange={setJsonValid}
+									minHeightPx={350}
+									label="Server Settings"
+								/>
+							</React.Suspense>
+						)}
+				</CardContent>
+			</StickyGroup>
+		</Card>
 	)
 }
 
-type SettingChange = { path: string; from: unknown; to: unknown }
-
-// leaf-level diff of two settings objects (input/encoded shape) keyed by json path; objects recurse, arrays/scalars are leaves
-function diffSettings(from: any, to: any, path: string[] = [], out: SettingChange[] = []): SettingChange[] {
-	const isPlainObj = (v: any) => v !== null && typeof v === 'object' && !Array.isArray(v)
-	if (isPlainObj(from) && isPlainObj(to)) {
-		for (const key of new Set([...Object.keys(from), ...Object.keys(to)])) {
-			diffSettings(from[key], to[key], [...path, key], out)
-		}
-	} else if (!Obj.deepEqual(from, to)) {
-		out.push({ path: path.join('.'), from, to })
-	}
-	return out
-}
-
-function formatChangeValue(v: unknown): string {
-	if (v === undefined) return '(unset)'
-	if (v === null) return 'null'
-	if (typeof v === 'string') return v === '' ? '(empty)' : v
-	if (typeof v === 'boolean' || typeof v === 'number') return String(v)
-	const s = JSON.stringify(v)
-	return s.length > 200 ? s.slice(0, 200) + '…' : s
-}
-
-function SettingsChangeList({ changes }: { changes: SettingChange[] }) {
-	return (
-		<div className="max-h-[50vh] space-y-2 overflow-y-auto text-sm">
-			{changes.map((c) => (
-				<div key={c.path} className="border-b pb-1.5 last:border-0">
-					<code className="text-xs text-muted-foreground">{c.path}</code>
-					<div className="mt-0.5 flex flex-wrap items-center gap-2">
-						<span className="text-muted-foreground line-through break-all">{formatChangeValue(c.from)}</span>
-						<Icons.ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-						<span className="break-all">{formatChangeValue(c.to)}</span>
-					</div>
-				</div>
-			))}
-		</div>
-	)
-}
-
-function GlobalSettingsSection({ mode, onModeChange }: { mode: 'gui' | 'json'; onModeChange: (mode: 'gui' | 'json') => void }) {
+function GlobalSettingsSection(
+	{ editorStore, mode, onModeChange }: {
+		editorStore: SettingsEditorStore
+		mode: 'gui' | 'json'
+		onModeChange: (mode: 'gui' | 'json') => void
+	},
+) {
 	const raw = SettingsClient.useGlobalSettings()
 	// the server denies the watch when the user lacks admin:manage-global-settings (e.g. stale perms after an rbac change)
 	const denied = !!raw && typeof raw === 'object' && 'code' in raw
@@ -592,6 +704,34 @@ function GlobalSettingsSection({ mode, onModeChange }: { mode: 'gui' | 'json'; o
 		[settings, nextEnc],
 	)
 
+	// computed before the early returns so the register hook below always runs in the same order
+	const guiRes = React.useMemo(() => (draft !== undefined ? SETTINGS.GlobalSettingsSchema.safeParse(draft) : undefined), [draft])
+	const validDraft = mode === 'json' ? jsonValid : (guiRes && guiRes.success ? guiRes.data : null)
+
+	const save = React.useCallback(async () => {
+		const parsed = SETTINGS.GlobalSettingsSchema.safeParse(draft$.getValue())
+		if (!parsed.success) return
+		await saveMutation.mutateAsync(parsed.data)
+	}, [draft$, saveMutation])
+	const resetDraft = React.useCallback(() => {
+		if (settings !== undefined) {
+			draft$.next(settings)
+			reset$.next()
+		}
+	}, [settings, draft$, reset$])
+
+	// GUI mode routes save/reset through the shared bottom panel; JSON mode keeps its own inline toolbar
+	useRegisterSettingsSection(editorStore, {
+		key: 'global',
+		label: 'Global Settings',
+		changedCount: mode === 'gui' ? changes.length : 0,
+		valid: validDraft !== null,
+		saving: saveMutation.isPending,
+		getChanges: () => changes,
+		save,
+		reset: resetDraft,
+	})
+
 	if (denied) {
 		return (
 			<Card>
@@ -603,15 +743,9 @@ function GlobalSettingsSection({ mode, onModeChange }: { mode: 'gui' | 'json'; o
 		)
 	}
 
-	if (!settings || draft === undefined) return null
+	if (!settings || draft === undefined || guiRes === undefined) return null
 
-	const guiRes = SETTINGS.GlobalSettingsSchema.safeParse(draft)
-	const validDraft = mode === 'json' ? jsonValid : (guiRes.success ? guiRes.data : null)
-	const modified = changes.length > 0
-	const canSave = modified && validDraft !== null && !saveMutation.isPending
-	const saveBarZIndex = useZIndex(ZI_OFFSETS.STICKYGROUP_CEILING)
-
-	async function handleSave() {
+	async function handleJsonSave() {
 		if (!validDraft) return
 		const result = await openDialog({
 			title: 'Save global settings?',
@@ -625,7 +759,7 @@ function GlobalSettingsSection({ mode, onModeChange }: { mode: 'gui' | 'json'; o
 		if (next === mode) return
 		if (next === 'json') {
 			// seed the JSON editor's notion of validity from the current gui draft
-			setJsonValid(guiRes.success ? guiRes.data : null)
+			setJsonValid(guiRes!.success ? guiRes!.data : null)
 		} else if (jsonValid) {
 			// carry JSON edits back into the gui draft (re-encode to the input shape); reset$ makes the gui re-read
 			draft$.next(SETTINGS.GlobalSettingsSchema.encode(jsonValid))
@@ -635,75 +769,50 @@ function GlobalSettingsSection({ mode, onModeChange }: { mode: 'gui' | 'json'; o
 	}
 
 	return (
-		<>
-			<Card>
-				<StickyGroup stickyRef={cardHeaderRef}>
-					<CardHeader ref={cardHeaderRef} className="rounded-t-xl border-b bg-card">
-						<div className="flex items-center justify-between gap-2">
-							<div>
-								<CardTitle>Global Settings</CardTitle>
-								<CardDescription>Edit the global settings for this SLM instance.</CardDescription>
-							</div>
-							<div className="flex items-center rounded-md border p-0.5">
-								<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>GUI</Button>
-								<Button size="sm" variant={mode === 'json' ? 'secondary' : 'ghost'} onClick={() => switchMode('json')}>JSON</Button>
-							</div>
+		<Card>
+			<StickyGroup stickyRef={cardHeaderRef}>
+				<CardHeader ref={cardHeaderRef} className="rounded-t-xl border-b bg-card">
+					<div className="flex items-center justify-between gap-2">
+						<div>
+							<CardTitle>Global Settings</CardTitle>
+							<CardDescription>Edit the global settings for this SLM instance.</CardDescription>
 						</div>
-					</CardHeader>
-					<CardContent className="space-y-4">
-						{mode === 'gui'
-							? <SettingsForm schema={SETTINGS.GlobalSettingsSchema} value$={draft$} reset$={reset$} onChange={onFormChange} />
-							: (
-								<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
-									<SchemaJsonEditor
-										ref={editorRef}
-										schema={SETTINGS.GlobalSettingsSchema}
-										value={draft}
-										onValidChange={setJsonValid}
-										minHeightPx={450}
-										label="Global Settings"
-									/>
-								</React.Suspense>
-							)}
-						{/* GUI mode uses the floating control panel below; JSON mode keeps an inline toolbar */}
-						{mode === 'json' && (
-							<div className="flex justify-end gap-2">
-								<Button variant="outline" onClick={() => editorRef.current?.format()}>
-									<Icons.Braces className="h-4 w-4" />
-									Format
-								</Button>
-								<Button variant="outline" onClick={() => editorRef.current?.reset()}>Reset</Button>
-								<Button disabled={!canSave} onClick={handleSave}>
-									{saveMutation.isPending ? 'Saving…' : 'Save'}
-								</Button>
-							</div>
+						<div className="flex items-center rounded-md border p-0.5">
+							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>GUI</Button>
+							<Button size="sm" variant={mode === 'json' ? 'secondary' : 'ghost'} onClick={() => switchMode('json')}>JSON</Button>
+						</div>
+					</div>
+				</CardHeader>
+				<CardContent className="space-y-4">
+					{mode === 'gui'
+						? <SettingsForm schema={SETTINGS.GlobalSettingsSchema} value$={draft$} reset$={reset$} onChange={onFormChange} />
+						: (
+							<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
+								<SchemaJsonEditor
+									ref={editorRef}
+									schema={SETTINGS.GlobalSettingsSchema}
+									value={draft}
+									onValidChange={setJsonValid}
+									minHeightPx={450}
+									label="Global Settings"
+								/>
+							</React.Suspense>
 						)}
-					</CardContent>
-				</StickyGroup>
-			</Card>
-			{mode === 'gui' && modified && (
-				<div
-					style={{ zIndex: saveBarZIndex }}
-					className="fixed bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-background px-4 py-2 shadow-lg"
-				>
-					<span className="text-sm">
-						<span className="font-medium">{changes.length}</span> {changes.length === 1 ? 'setting' : 'settings'} changed
-					</span>
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => {
-							draft$.next(settings)
-							reset$.next()
-						}}
-					>
-						Reset
-					</Button>
-					<Button size="sm" disabled={!canSave} onClick={handleSave}>
-						{saveMutation.isPending ? 'Saving…' : 'Save'}
-					</Button>
-				</div>
-			)}
-		</>
+					{/* GUI mode uses the shared bottom control panel; JSON mode keeps an inline toolbar */}
+					{mode === 'json' && (
+						<div className="flex justify-end gap-2">
+							<Button variant="outline" onClick={() => editorRef.current?.format()}>
+								<Icons.Braces className="h-4 w-4" />
+								Format
+							</Button>
+							<Button variant="outline" onClick={() => editorRef.current?.reset()}>Reset</Button>
+							<Button disabled={changes.length === 0 || validDraft === null || saveMutation.isPending} onClick={handleJsonSave}>
+								{saveMutation.isPending ? 'Saving…' : 'Save'}
+							</Button>
+						</div>
+					)}
+				</CardContent>
+			</StickyGroup>
+		</Card>
 	)
 }
