@@ -1339,7 +1339,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 
 	return (
 		<StickyGroup stickyRef={headersRef}>
-			<Table className={props.className}>
+			<Table className={cn(props.className, 'h-[6000px]')}>
 				<TableHeader ref={headersRef} className="bg-background">
 					{table.getHeaderGroups().map(headerGroup => (
 						<TableRow key={headerGroup.id}>

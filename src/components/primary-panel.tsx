@@ -123,7 +123,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 					/>
 					<Separator />
 				</div>
-				<StickyGroup stickyRef={headerRef}>
+				<StickyGroup stickyRef={headerRef} baseHeaderZIndex={3}>
 					<div className="grid">
 						<div className={cn('[grid-area:1/1]', tab !== 'queue' && 'invisible -z-20')}>
 							<SlmUpdatesDisabledAlert stores={props.stores} />

@@ -114,11 +114,13 @@ export interface StickyGroupProps<T extends HTMLElement = HTMLElement> {
 	 * through the ref, it never renders or clones it.
 	 */
 	stickyRef: RefObject<T | null>
+	baseHeaderZIndex?: number
 }
 
 export function StickyGroup<T extends HTMLElement = HTMLElement>({
 	children,
 	stickyRef,
+	baseHeaderZIndex: baseZIndex,
 }: StickyGroupProps<T>) {
 	const parentStore = useContext(StickyStoreContext)
 
@@ -150,7 +152,7 @@ export function StickyGroup<T extends HTMLElement = HTMLElement>({
 
 			el!.style.position = 'sticky'
 			el!.style.top = `${offset}px`
-			el!.style.zIndex = String(1000 - depth)
+			el!.style.zIndex = String(baseZIndex ?? 1000 - depth)
 
 			// Tell any nested <StickyGroup> what offset/depth to build on.
 			ownStore.setState({
@@ -183,7 +185,7 @@ export function StickyGroup<T extends HTMLElement = HTMLElement>({
 			el!.style.top = ''
 			el!.style.zIndex = ''
 		}
-	}, [stickyRef, parentStore, ownStore])
+	}, [stickyRef, parentStore, ownStore, baseZIndex])
 
 	return (
 		<StickyStoreContext.Provider value={ownStore}>

@@ -493,7 +493,7 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 					/>
 				</span>
 			</CardHeader>
-			<StickyGroup stickyRef={headerRef}>
+			<StickyGroup stickyRef={headerRef} baseHeaderZIndex={3}>
 				<CardContent className="p-0 px-1">
 					<LayerList stores={props.stores} />
 				</CardContent>
