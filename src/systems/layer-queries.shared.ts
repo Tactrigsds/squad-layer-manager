@@ -55,7 +55,7 @@ function parseEntityFilter(entity: F.FilterEntity): F.FilterNode {
 }
 
 function collectFilterNodeFilterIds(node: F.FilterNode, ids: Set<string>) {
-	if (node.type === 'apply-filter') ids.add(node.filterId)
+	if (F.isApplyFilterNode(node)) ids.add(node.filterId)
 	if (F.isBlockNode(node)) {
 		for (const child of node.children) collectFilterNodeFilterIds(child, ids)
 	}
@@ -372,7 +372,7 @@ export function getFilterNodeSQLConditions(
 		condition = compileCompNode(ctx, node, path, errors)
 	}
 
-	if (node.type === 'apply-filter') {
+	if (F.isApplyFilterNode(node)) {
 		path = [...path, 'filterId']
 		if (reentrantFilterIds.includes(node.filterId)) {
 			errors.push({
@@ -394,7 +394,8 @@ export function getFilterNodeSQLConditions(
 				const filter = parseEntityFilter(entity)
 				const res = getFilterNodeSQLConditions(ctx, filter, path, [...reentrantFilterIds, node.filterId])
 				if (res.code !== 'ok') return res
-				condition = res.condition
+				// 'excluded-from' means the layer must NOT match the referenced filter
+				condition = F.APPLY_FILTER_TYPE_NEGATED[node.type] ? E.not(res.condition) : res.condition
 			}
 		}
 	}
@@ -407,11 +408,11 @@ export function getFilterNodeSQLConditions(
 			if (res.code !== 'ok') errors.push(...res.errors)
 			else childConditions.push(res.condition)
 		}
-		if (node.type === 'and') {
-			condition = childConditions.length > 0 ? E.and(...childConditions) : sql`1 = 1`
-		} else {
-			condition = childConditions.length > 0 ? E.or(...childConditions) : sql`0 = 1`
-		}
+		const sem = F.BLOCK_TYPE_SEMANTICS[node.type]
+		const base = sem.conjunction
+			? (childConditions.length > 0 ? E.and(...childConditions)! : sql`1 = 1`)
+			: (childConditions.length > 0 ? E.or(...childConditions)! : sql`0 = 1`)
+		condition = sem.negated ? E.not(base) : base
 	}
 
 	if (errors.length > 0) {
@@ -421,7 +422,9 @@ export function getFilterNodeSQLConditions(
 		}
 	}
 
-	if (node.neg) condition = E.not(condition!)
+	// block and apply-filter operators fold their own negation into the type; only comp nodes carry a
+	// `neg` flag
+	if (F.isCompNode(node) && node.neg) condition = E.not(condition!)
 	return { code: 'ok' as const, condition: condition! }
 }
 
@@ -706,7 +709,7 @@ function buildQueryInputSqlCondition(
 			case 'filter-entity':
 				res = getFilterNodeSQLConditions(
 					ctx,
-					FB.applyFilter(constraint.filterId),
+					FB.includedIn(constraint.filterId),
 					[i.toString()],
 					[],
 				)
@@ -843,7 +846,7 @@ export async function getLayerItemStatuses(args: {
 		const queriedFilterIds = Array.from(filterIdsToQuery)
 		const selectExpr: any = { _id: LC.viewCol('id', ctx) }
 		for (let i = 0; i < queriedFilterIds.length; i++) {
-			const res = getFilterNodeSQLConditions(ctx, FB.applyFilter(queriedFilterIds[i]), [queriedFilterIds[i]], [])
+			const res = getFilterNodeSQLConditions(ctx, FB.includedIn(queriedFilterIds[i]), [queriedFilterIds[i]], [])
 			if (res.code !== 'ok') return res
 			selectExpr[`f_${i}`] = res.condition
 		}

@@ -19,7 +19,7 @@ import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { Link } from '@tanstack/react-router'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
-import { Braces, Columns3, EqualNot, ExternalLink, Minus, Plus, TextCursorInput, Undo2 } from 'lucide-react'
+import { Braces, Columns3, ExternalLink, Minus, Plus, TextCursorInput, Undo2 } from 'lucide-react'
 import React from 'react'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import type { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
@@ -33,7 +33,6 @@ import { Button, buttonVariants } from './ui/button'
 import { ButtonGroup } from './ui/button-group'
 import { Input } from './ui/input'
 import { Separator } from './ui/separator.tsx'
-import { Toggle } from './ui/toggle.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 
 const FilterTextEditor = React.lazy(() => import('./filter-text-editor'))
@@ -185,21 +184,6 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 	return <>{rendered} {leafNodes}</>
 }
 
-function NegationToggle(props: { stores: EditFrame.KeyProp; nodeId: string; node: F.ShallowEditableFilterNode }) {
-	const { setNegation } = EditFrame.getNodeActions(props.stores, props.nodeId).common
-	return (
-		<Toggle
-			aria-label="negate"
-			pressed={props.node.neg}
-			onPressedChange={setNegation}
-			variant="default"
-			className="h-9 px-2 hover:bg-destructive/90 data-[state=on]:bg-destructive data-[state=on]:text-destructive-foreground"
-		>
-			<EqualNot className="w-4" />
-		</Toggle>
-	)
-}
-
 function FilterNodeDisplay(props: FilterCardProps & { nodeId: string }) {
 	const [nodeType, nodeMapStore] = ZusUtils.useStore(
 		props.stores.filterEditor,
@@ -302,10 +286,9 @@ function BlockNodeControlPanel(props: NodeProps) {
 	const blockTypeOptions = F.BLOCK_TYPES.map((t) => ({ value: t, label: F.BLOCK_TYPE_DISPLAY_NAMES[t] }))
 	return (
 		<div className="flex items-center space-x-1">
-			<NegationToggle stores={props.stores} nodeId={props.nodeId} node={node} />
 			<ComboBox
 				className="w-min"
-				title="Block Type"
+				title="Operator"
 				value={node.type}
 				options={blockTypeOptions}
 				onSelect={(v) => setBlockType(v as F.BlockType)}
@@ -313,10 +296,12 @@ function BlockNodeControlPanel(props: NodeProps) {
 			<InlineAddButton
 				actions={[
 					{ label: 'comparison', onSelect: () => addChild('eq') },
-					{ label: 'apply existing filter', onSelect: () => addChild('apply-filter') },
+					{ label: 'apply existing filter', onSelect: () => addChild('included-in') },
 					'separator',
-					{ label: 'and block', onSelect: () => addChild('and') },
-					{ label: 'or block', onSelect: () => addChild('or') },
+					...F.BLOCK_TYPES.map((t): InlineAddAction => ({
+						label: `${F.BLOCK_TYPE_DISPLAY_NAMES[t]} block`,
+						onSelect: () => addChild(t),
+					})),
 				]}
 			/>
 			{!isRootNode
@@ -433,15 +418,15 @@ export function LeafFilterNode(props: NodeProps) {
 			</NodeWrapper>
 		)
 	}
-	if (node.type === 'apply-filter') {
+	if (F.isApplyFilterNode(node)) {
 		return (
 			<NodeWrapper path={nodePath} className="flex items-center space-x-1" nodeId={props.nodeId}>
 				<ComboBox
 					allowEmpty={false}
 					title="mode"
-					value={String(node.neg)}
-					options={[{ value: 'false', label: 'included in' }, { value: 'true', label: 'excluded from' }]}
-					onSelect={(v) => actions.common.setNegation(v === 'true')}
+					value={node.type}
+					options={F.APPLY_FILTER_TYPES.map((t) => ({ value: t, label: F.APPLY_FILTER_TYPE_DISPLAY_NAMES[t] }))}
+					onSelect={(v) => actions.applyFilter.setType(v as F.ApplyFilterType)}
 				/>
 				<ApplyFilter
 					filterId={node.filterId}

@@ -1,5 +1,7 @@
 import { up as migrateFilterNodes } from '@/migrations/0062_filter_nodes_operator_model'
 import { up as migrateTeamScopes } from '@/migrations/0063_filter_team_scopes_to_and_or'
+import { up as migrateBlockOperators } from '@/migrations/0065_filter_block_operators'
+import { up as migrateApplyOperators } from '@/migrations/0066_filter_apply_operators'
 import * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
@@ -179,6 +181,46 @@ describe('getFilterNodeSQLConditions validation', () => {
 		}
 	})
 
+	// the four block operators fold the old (and/or) x negation matrix: all=AND, some=OR, none=NOT OR,
+	// notall=NOT AND. verify each compiles to the expected boolean structure.
+	it('compiles block operators to the right and/or/not structure', () => {
+		const kids = [FB.isNull('Map'), FB.isNull('Gamemode')]
+		const sqlFor = (node: F.FilterNode) => {
+			const res = getFilterNodeSQLConditions(testCtx(), node, [], [])
+			expect(res.code).toBe('ok')
+			return res.code === 'ok' ? new SQLiteSyncDialect().sqlToQuery(res.condition).sql.toLowerCase() : ''
+		}
+		const all = sqlFor(FB.all(kids))
+		expect(all).toContain(' and ')
+		expect(all).not.toContain('not ')
+
+		const some = sqlFor(FB.some(kids))
+		expect(some).toContain(' or ')
+		expect(some).not.toContain('not ')
+
+		const none = sqlFor(FB.none(kids))
+		expect(none).toContain('not ')
+		expect(none).toContain(' or ')
+
+		const notall = sqlFor(FB.notAll(kids))
+		expect(notall).toContain('not ')
+		expect(notall).toContain(' and ')
+	})
+
+	// apply-filter folds its old `neg` into the operator: included-in applies the referenced filter's
+	// condition directly, excluded-from wraps it in NOT.
+	it('compiles apply-filter operators with the right negation', () => {
+		const ctx = testCtx()
+		ctx.filters.set('ref', { id: 'ref', filter: FB.isNull('Map') } as any)
+		const sqlFor = (node: F.FilterNode) => {
+			const res = getFilterNodeSQLConditions(ctx, node, [], [])
+			expect(res.code).toBe('ok')
+			return res.code === 'ok' ? new SQLiteSyncDialect().sqlToQuery(res.condition).sql.toLowerCase() : ''
+		}
+		expect(sqlFor(FB.includedIn('ref'))).not.toContain('not ')
+		expect(sqlFor(FB.excludedFrom('ref'))).toContain('not ')
+	})
+
 	// LayerVersion's enum mapping includes null ("no version"), stored as the enum index (4), not SQL NULL
 	it('eq against null on an enum column that maps null resolves to the enum index, not IS NULL', () => {
 		const res = getFilterNodeSQLConditions(testCtx(), FB.eq('LayerVersion', null), [], [])
@@ -214,13 +256,14 @@ async function runMigrations(filter: unknown, ups: ((db: any) => Promise<void>)[
 	return JSON.parse(row.filter)
 }
 
-// legacy filter through 0062 only
+// legacy filter through 0062 then the operator-folding migrations (0065 blocks, 0066 apply-filter),
+// yielding the current shape
 function migrateOne(legacyFilter: unknown): Promise<any> {
-	return runMigrations(legacyFilter, [migrateFilterNodes])
+	return runMigrations(legacyFilter, [migrateFilterNodes, migrateBlockOperators, migrateApplyOperators])
 }
-// intermediate scope-block filter through 0063 only
+// intermediate scope-block filter through 0063 then the operator-folding migrations, yielding the current shape
 function migrateScopes(scopeFilter: unknown): Promise<any> {
-	return runMigrations(scopeFilter, [migrateTeamScopes])
+	return runMigrations(scopeFilter, [migrateTeamScopes, migrateBlockOperators, migrateApplyOperators])
 }
 
 describe('migration 0062 (legacy filter -> operator model)', () => {
@@ -287,9 +330,9 @@ describe('migration 0062 (legacy filter -> operator model)', () => {
 		const migrated = await migrateOne(legacy)
 		expect(F.FilterNodeSchema.safeParse(migrated).success).toBe(true)
 		// single 2-field mask, either => OR of [ and(F1,U1), and(F2,U2) ] over concrete columns
-		expect(migrated.type).toBe('or')
+		expect(migrated.type).toBe('some')
 		expect(migrated.children).toHaveLength(2)
-		expect(migrated.children[0].type).toBe('and')
+		expect(migrated.children[0].type).toBe('all')
 		const cols = migrated.children[0].children.map((c: any) => c.args[0].column).sort()
 		expect(cols).toEqual(['Faction_1', 'Unit_1'])
 	})
@@ -301,15 +344,15 @@ describe('migration 0062 (legacy filter -> operator model)', () => {
 			neg: false,
 			allowMatchups: { mode: 'both', allMasks: [[{ faction: ['USA'] }]] },
 		})
-		expect(both.type).toBe('and')
+		expect(both.type).toBe('all')
 		expect(both.children.map((c: any) => c.args[0].column).sort()).toEqual(['Faction_1', 'Faction_2'])
-		// split => OR of the two team assignments
+		// split => "some" (OR) of the two team assignments
 		const split = await migrateOne({
 			type: 'allow-matchups',
 			neg: false,
 			allowMatchups: { mode: 'split', allMasks: [[{ faction: ['USA'] }], [{ faction: ['RGF'] }]] },
 		})
-		expect(split.type).toBe('or')
+		expect(split.type).toBe('some')
 		expect(split.children).toHaveLength(2)
 		expect(F.FilterNodeSchema.safeParse(split).success).toBe(true)
 	})
@@ -327,7 +370,7 @@ describe('migration 0062 (legacy filter -> operator model)', () => {
 })
 
 // migration 0063 rescues DBs that ran an earlier revision of 0062 (which emitted team-scope blocks)
-describe('migration 0063 (team scopes -> and/or over concrete columns)', () => {
+describe('migration 0063 (team scopes -> some/all over concrete columns)', () => {
 	const teamCol = (column: string) => ({ type: 'team-column', column })
 	const eqTeam = (column: string, value: string) => ({ type: 'eq', neg: false, args: [teamCol(column), { type: 'value', value }] })
 
@@ -336,8 +379,7 @@ describe('migration 0063 (team scopes -> and/or over concrete columns)', () => {
 		const out = await migrateScopes(scoped)
 		expect(F.RootFilterNodeSchema.safeParse(out).success).toBe(true)
 		expect(out.children[0]).toEqual({
-			type: 'or',
-			neg: false,
+			type: 'some',
 			children: [
 				{ type: 'eq', neg: false, args: [{ type: 'column', column: 'Unit_1' }, { type: 'value', value: 'Armored' }] },
 				{ type: 'eq', neg: false, args: [{ type: 'column', column: 'Unit_2' }, { type: 'value', value: 'Armored' }] },
@@ -347,18 +389,17 @@ describe('migration 0063 (team scopes -> and/or over concrete columns)', () => {
 
 	it('expands every-team into an AND and teams-split into the two team assignments', async () => {
 		const every = await migrateScopes({ type: 'every-team', neg: false, children: [eqTeam('Faction', 'USA')] })
-		expect(every.type).toBe('and')
+		expect(every.type).toBe('all')
 		expect(every.children.map((c: any) => c.args[0].column).sort()).toEqual(['Faction_1', 'Faction_2'])
 
 		const split = await migrateScopes({ type: 'teams-split', neg: false, children: [eqTeam('Faction', 'USA'), eqTeam('Faction', 'RGF')] })
-		expect(split.type).toBe('or')
+		expect(split.type).toBe('some')
 		expect(F.FilterNodeSchema.safeParse(split).success).toBe(true)
 	})
 
 	it('leaves already-final filters unchanged (no scope blocks present)', async () => {
 		const final = {
-			type: 'and',
-			neg: false,
+			type: 'all',
 			children: [{ type: 'eq', neg: false, args: [{ type: 'column', column: 'Map' }, { type: 'value', value: 'Narva' }] }],
 		}
 		const out = await migrateScopes(final)

@@ -1,6 +1,7 @@
 // Filter nodes form a small expression AST. Every node's `type` is an operator: block operators
-// ('and', 'or', team scopes) take child nodes, comparison operators take argument terms (columns,
-// constants, team-generic columns), and 'apply-filter' references another filter entity.
+// (all/some/none/notall) take child nodes, comparison operators take argument terms (columns,
+// constants, team-generic columns), and apply-filter operators (included-in/excluded-from) reference
+// another filter entity.
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object'
@@ -88,12 +89,44 @@ export const COMP_TYPE_DEFS: Record<CompType, CompTypeDef> = {
 	inrange: { displayName: '[..]', negDisplayName: '![..]', domain: 'number', argSlots: ['scalar', 'scalar', 'scalar'] },
 }
 
-export const BLOCK_TYPES = ['and', 'or'] as const
+// Block operators fold the old (and/or) x negation matrix into four named quantifiers over their
+// children: all = every child matches (AND), some = at least one matches (OR), none = no child
+// matches (NOT OR), notall = not every child matches (NOT AND). They carry no separate `neg` flag,
+// negation is intrinsic to the operator, and the set is closed under negation (all<->notall,
+// some<->none).
+export const BLOCK_TYPES = ['all', 'some', 'none', 'notall'] as const
 export type BlockType = (typeof BLOCK_TYPES)[number]
 
 export const BLOCK_TYPE_DISPLAY_NAMES: Record<BlockType, string> = {
-	'and': 'and',
-	'or': 'or',
+	all: 'all',
+	some: 'some',
+	none: 'none',
+	notall: 'not all',
+}
+
+// how each block operator compiles: `conjunction` picks AND (true) vs OR (false) over the child
+// conditions, `negated` wraps the combined result in NOT.
+export const BLOCK_TYPE_SEMANTICS: Record<BlockType, { conjunction: boolean; negated: boolean }> = {
+	all: { conjunction: true, negated: false },
+	notall: { conjunction: true, negated: true },
+	some: { conjunction: false, negated: false },
+	none: { conjunction: false, negated: true },
+}
+
+// Apply-filter operators reference another filter entity, folding the old apply-filter `neg` flag into
+// the operator: included-in = the layer matches the referenced filter, excluded-from = it does not.
+export const APPLY_FILTER_TYPES = ['included-in', 'excluded-from'] as const
+export type ApplyFilterType = (typeof APPLY_FILTER_TYPES)[number]
+
+export const APPLY_FILTER_TYPE_DISPLAY_NAMES: Record<ApplyFilterType, string> = {
+	'included-in': 'included in',
+	'excluded-from': 'excluded from',
+}
+
+// 'excluded-from' compiles as the negation of the referenced filter's condition
+export const APPLY_FILTER_TYPE_NEGATED: Record<ApplyFilterType, boolean> = {
+	'included-in': false,
+	'excluded-from': true,
 }
 
 // -------- nodes --------
@@ -104,10 +137,12 @@ export type CompNode =
 	// [subject, min, max] (inclusive)
 	| { type: 'inrange'; neg: boolean; args: [SubjectArg, ScalarArg, ScalarArg] }
 
+export type ApplyFilterNode = { type: ApplyFilterType; filterId: string }
+
 export type FilterNode =
-	| { type: BlockType; neg: boolean; children: FilterNode[] }
+	| { type: BlockType; children: FilterNode[] }
 	| CompNode
-	| { type: 'apply-filter'; neg: boolean; filterId: string }
+	| ApplyFilterNode
 
 export type NodeType = FilterNode['type']
 
@@ -131,15 +166,17 @@ export const CompNodeSchema = z.discriminatedUnion('type', [
 	InRangeNodeSchema,
 ])
 
-export const ApplyFilterNodeSchema = z.object({
-	type: z.literal('apply-filter'),
-	neg: NegSchema,
-	filterId: z.lazy(() => FilterEntityIdSchema),
-})
+const applyFilterNodeSchema = <T extends ApplyFilterType>(type: T) =>
+	z.object({ type: z.literal(type), filterId: z.lazy(() => FilterEntityIdSchema) })
+export const IncludedInNodeSchema = applyFilterNodeSchema('included-in')
+export const ExcludedFromNodeSchema = applyFilterNodeSchema('excluded-from')
 
 const ChildrenSchema = z.lazy(() => z.array(FilterNodeSchema))
-export const AndNodeSchema = z.object({ type: z.literal('and'), neg: NegSchema, children: ChildrenSchema })
-export const OrNodeSchema = z.object({ type: z.literal('or'), neg: NegSchema, children: ChildrenSchema })
+const blockNodeSchema = <T extends BlockType>(type: T) => z.object({ type: z.literal(type), children: ChildrenSchema })
+export const AllNodeSchema = blockNodeSchema('all')
+export const SomeNodeSchema = blockNodeSchema('some')
+export const NoneNodeSchema = blockNodeSchema('none')
+export const NotAllNodeSchema = blockNodeSchema('notall')
 
 export const FilterNodeSchema: z.ZodType<FilterNode> = z.lazy(() =>
 	z.discriminatedUnion('type', [
@@ -148,9 +185,12 @@ export const FilterNodeSchema: z.ZodType<FilterNode> = z.lazy(() =>
 		LtNodeSchema,
 		GtNodeSchema,
 		InRangeNodeSchema,
-		ApplyFilterNodeSchema,
-		AndNodeSchema,
-		OrNodeSchema,
+		IncludedInNodeSchema,
+		ExcludedFromNodeSchema,
+		AllNodeSchema,
+		SomeNodeSchema,
+		NoneNodeSchema,
+		NotAllNodeSchema,
 	])
 ) as z.ZodType<FilterNode>
 
@@ -183,17 +223,18 @@ export const EditableCompNodeSchema = z.object({
 	args: z.array(EditableArgSchema),
 }) satisfies z.ZodType<EditableCompNode, unknown>
 
+export type EditableApplyFilterNode = { type: ApplyFilterType; filterId?: string }
+
 export type EditableFilterNodeCommon =
 	| EditableCompNode
-	| { type: 'apply-filter'; neg: boolean; filterId?: string }
+	| EditableApplyFilterNode
 
 export type EditableFilterNode = EditableFilterNodeCommon | {
 	type: BlockType
-	neg: boolean
 	children: EditableFilterNode[]
 }
 
-export type ShallowEditableFilterNode = EditableFilterNodeCommon | { type: BlockType; neg: boolean }
+export type ShallowEditableFilterNode = EditableFilterNodeCommon | { type: BlockType }
 
 export type ShallowEditableFilterNodeOfType<T extends NodeType> = Extract<ShallowEditableFilterNode, { type: T }>
 export type EditableFilterNodeOfType<T extends NodeType> = Extract<EditableFilterNode, { type: T }>
@@ -222,6 +263,15 @@ export function isCompNode(node: FilterNode): node is CompNode
 export function isCompNode(node: EditableFilterNode | ShallowEditableFilterNode): node is EditableCompNode
 export function isCompNode(node: { type: string }): boolean {
 	return isCompType(node.type)
+}
+
+export function isApplyFilterType(type: string): type is ApplyFilterType {
+	return APPLY_FILTER_TYPES.includes(type as ApplyFilterType)
+}
+export function isApplyFilterNode(node: FilterNode): node is ApplyFilterNode
+export function isApplyFilterNode(node: EditableFilterNode | ShallowEditableFilterNode): node is EditableApplyFilterNode
+export function isApplyFilterNode(node: { type: string }): boolean {
+	return isApplyFilterType(node.type)
 }
 
 // -------- value domains --------
@@ -486,8 +536,8 @@ export function isValidCompNode(node: EditableCompNode): node is CompNode {
 }
 
 export function isValidApplyFilterNode(
-	node: EditableFilterNode & { type: 'apply-filter' },
-): node is FilterNode & { type: 'apply-filter' } {
+	node: EditableApplyFilterNode,
+): node is ApplyFilterNode {
 	return !!node.filterId
 }
 
@@ -501,7 +551,7 @@ export function isValidFilterNode(
 export function isLocallyValidFilterNode(node: EditableFilterNode) {
 	if (isEditableBlockNode(node)) return true
 	if (isCompNode(node)) return isValidCompNode(node)
-	if (node.type === 'apply-filter') return isValidApplyFilterNode(node)
+	if (isApplyFilterNode(node)) return isValidApplyFilterNode(node)
 	assertNever(node)
 }
 
@@ -539,7 +589,7 @@ export const BaseFilterEntitySchema = z.object({
 
 export function filterContainsId(id: string, node: FilterNode): boolean {
 	if (isBlockNode(node)) return node.children.some((n) => filterContainsId(id, n))
-	if (node.type === 'apply-filter') return node.filterId === id
+	if (isApplyFilterNode(node)) return node.filterId === id
 	return false
 }
 

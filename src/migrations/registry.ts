@@ -14,9 +14,13 @@ import type { TsMigration } from '@/server/migrate'
 import * as m0062 from './0062_filter_nodes_operator_model'
 import * as m0063 from './0063_filter_team_scopes_to_and_or'
 import * as m0064 from './0064_rbac_roles_rename_and_flatten_member_roles'
+import * as m0065 from './0065_filter_block_operators'
+import * as m0066 from './0066_filter_apply_operators'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
 	{ name: '0063_filter_team_scopes_to_and_or', up: m0063.up },
 	{ name: '0064_rbac_roles_rename_and_flatten_member_roles', up: m0064.up },
+	{ name: '0065_filter_block_operators', up: m0065.up },
+	{ name: '0066_filter_apply_operators', up: m0066.up },
 ]

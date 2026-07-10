@@ -3,24 +3,25 @@ import { assertNever } from '@/lib/type-guards'
 import * as F from './filter.models'
 
 export const createBlock = <T extends F.BlockType>(type: T) => {
-	return (children?: F.EditableFilterNode[], options: { neg?: boolean } = {}) => {
+	return (children?: F.EditableFilterNode[]) => {
 		return {
 			type: type,
 			children: children ?? ([] as unknown as F.EditableFilterNode[]),
-			neg: options.neg ?? false,
 		} as Extract<F.EditableFilterNode, { type: T }>
 	}
 }
 
-export const and = createBlock('and')
-export const or = createBlock('or')
+export const all = createBlock('all')
+export const some = createBlock('some')
+export const none = createBlock('none')
+export const notAll = createBlock('notall')
 
-export const applyFilter = (filterId?: F.FilterEntityId, options: { neg?: boolean } = {}) =>
-	({
-		type: 'apply-filter' as const,
-		neg: options.neg ?? false,
-		filterId,
-	}) satisfies F.EditableFilterNode
+export const createApplyFilter = <T extends F.ApplyFilterType>(type: T) => {
+	return (filterId?: F.FilterEntityId) => ({ type, filterId }) as Extract<F.EditableFilterNode, { type: T }>
+}
+
+export const includedIn = createApplyFilter('included-in')
+export const excludedFrom = createApplyFilter('excluded-from')
 
 // -------- comparison builders --------
 
@@ -67,7 +68,7 @@ export const comp = (column?: string): F.EditableCompNode => eq(column)
 
 export function nodeOfType(type: F.NodeType): F.EditableFilterNode {
 	if (F.isCompType(type)) return { type, neg: false, args: [colArg(), { type: 'value' }] } as F.EditableCompNode
-	if (type === 'apply-filter') return applyFilter()
+	if (F.isApplyFilterType(type)) return createApplyFilter(type)()
 	if (F.isBlockType(type)) return createBlock(type)()
 	assertNever(type)
 }

@@ -6,7 +6,7 @@ import type * as F from '@/models/filter.models'
 import * as ConfigClient from '@/systems/config.client'
 import { createFileRoute } from '@tanstack/react-router'
 
-const DEFAULT_FILTER: F.EditableFilterNode = EFB.and()
+const DEFAULT_FILTER: F.EditableFilterNode = EFB.all()
 
 export const Route = createFileRoute('/_app/filters/new')({
 	component: RouteComponent,

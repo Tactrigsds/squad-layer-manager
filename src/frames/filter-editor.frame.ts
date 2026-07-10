@@ -75,7 +75,7 @@ const setup: Frame['setup'] = (args) => {
 	const set = args.set
 
 	const editedFilterEntity = args.input.editedFilterId ? FilterEntityClient.filterEntities.get(args.input.editedFilterId) : null
-	const savedFilter: F.EditableFilterNode = args.input.startingFilter ?? editedFilterEntity?.filter ?? EFB.and()
+	const savedFilter: F.EditableFilterNode = args.input.startingFilter ?? editedFilterEntity?.filter ?? EFB.all()
 
 	set(
 		{
@@ -142,7 +142,6 @@ export namespace Sel {
 
 export type CommonNodeActions = {
 	delete(): void
-	setNegation(negative: boolean): void
 }
 
 export type BlockNodeActions = {
@@ -155,6 +154,7 @@ export type CompNodeActions = {
 }
 
 export type ApplyFilterNodeActions = {
+	setType: (type: F.ApplyFilterType) => void
 	setFilterId: (filterId: F.FilterEntityId) => void
 }
 
@@ -238,11 +238,6 @@ export function getNodeActions(stores: KeyProp, id: string): NodeActions {
 	return {
 		common: {
 			delete: () => Actions.deleteNode(stores, id),
-			setNegation(neg: boolean) {
-				updateNode(draft => {
-					draft.neg = neg
-				})
-			},
 		},
 		block: {
 			setBlockType(type) {
@@ -268,9 +263,15 @@ export function getNodeActions(stores: KeyProp, id: string): NodeActions {
 			},
 		},
 		applyFilter: {
+			setType(type) {
+				updateNode(draft => {
+					if (!F.isApplyFilterNode(draft)) return
+					draft.type = type
+				})
+			},
 			setFilterId(filterId) {
 				updateNode(draft => {
-					if (draft.type !== 'apply-filter') return
+					if (!F.isApplyFilterNode(draft)) return
 					draft.filterId = filterId
 				})
 			},
