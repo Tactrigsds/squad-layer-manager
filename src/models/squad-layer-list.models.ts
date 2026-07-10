@@ -1,7 +1,7 @@
 import * as Obj from '@/lib/object'
 import { z } from 'zod'
 
-// do not expose these enums, use layer-components.json instead
+// do not expose these enums, use the loaded layer data (L.StaticLayerComponents) instead
 const FACTION_ID = z.string().transform(fixFactions).pipe(
 	z.enum([
 		'ADF',

@@ -15,6 +15,7 @@ import { anySignal } from '@/lib/async'
 import * as ORPCServer from '@/server/orpc-handler'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Discord from '@/systems/discord.server'
+import * as LayerData from '@/systems/layer-data.server'
 import * as LayerDb from '@/systems/layer-db.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sessions from '@/systems/sessions.server'
@@ -162,6 +163,24 @@ export const setup = C.spanOp('setup', { module }, async () => {
 		const [stream, contentType] = LayerDb.readFilestream()
 		res.header('Content-Type', contentType)
 		return res.send(stream)
+	})
+
+	instance.get(AR.route('/layer-data.json'), async (req, res) => {
+		for (const [key, value] of Object.entries(BASE_HEADERS)) {
+			res = res.header(key, value)
+		}
+		const etag = `"${LayerData.hash}"`
+		res.header('ETag', etag)
+		res.header('Cache-Control', 'no-cache')
+		if (req.headers['if-none-match'] === etag) {
+			return res.code(304).send()
+		}
+		res.header('Content-Type', 'application/json')
+		if (req.headers['accept-encoding']?.includes('gzip')) {
+			res.header('Content-Encoding', 'gzip')
+			return res.send(LayerData.gzipped)
+		}
+		return res.send(LayerData.raw)
 	})
 
 	instance.get(AR.route('/check-auth'), async (req, res) => {

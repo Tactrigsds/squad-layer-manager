@@ -100,6 +100,22 @@ export function revLookup<T extends { [key: string]: any }>(obj: T, key: T[keyof
 	return undefined as unknown as keyof T
 }
 
+const revLookupCache = new WeakMap<object, Map<any, string>>()
+
+// revLookup for objects that are never mutated after creation (e.g. generated abbreviation maps).
+// keeps revLookup's first-match semantics for duplicate values.
+export function revLookupCached<T extends { [key: string]: any }>(obj: T, key: T[keyof T]): keyof T {
+	let map = revLookupCache.get(obj)
+	if (!map) {
+		map = new Map()
+		for (const [k, v] of Object.entries(obj)) {
+			if (!map.has(v)) map.set(v, k)
+		}
+		revLookupCache.set(obj, map)
+	}
+	return map.get(key) as keyof T
+}
+
 export function flattenObjToAttrs(obj: any, delimiter: string = '_', maxDepth?: number): Record<string, string> {
 	const output: Record<string, string> = {}
 	const stack: Array<[any, string, number]> = [[obj, '', 0]]

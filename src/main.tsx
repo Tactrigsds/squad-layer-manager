@@ -8,6 +8,7 @@ import './index.css'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import * as LayerDataClient from '@/systems/layer-data.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as ThemeSys from '@/systems/theme.client'
 import * as UserPresenceClient from '@/systems/user-presence.client'
@@ -17,6 +18,10 @@ import { rootRouter } from './root-router.ts'
 
 // Enable Map and Set support in Immer
 enableMapSet()
+
+// components/factionunit configs are read synchronously throughout the component tree, so nothing
+// can render before they're loaded
+await LayerDataClient.setup()
 ;(function setupClientSystems() {
 	console.debug('running system initialization')
 	ThemeSys.setup()

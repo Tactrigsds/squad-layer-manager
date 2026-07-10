@@ -17,6 +17,7 @@ import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import * as LayerDataClient from '@/systems/layer-data.client'
 import type * as WorkerTypes from '@/systems/layer-queries.worker'
 import * as React from 'react'
 // oxlint-disable-next-line import/default
@@ -577,11 +578,13 @@ async function setup() {
 	const config = await ConfigClient.fetchConfig()
 
 	const filters = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
+	const layerData = await LayerDataClient.setup()
 
 	const ctx: WorkerTypes.InitRequest['input'] = {
 		...CS.init(),
 		effectiveColsConfig: LC.getEffectiveColumnConfig(config.extraColumnsConfig),
 		filters,
+		layerData,
 	}
 
 	// set downloading-layers status when the worker signals that it has started a download

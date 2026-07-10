@@ -12,6 +12,7 @@ import * as Commands from '@/systems/commands.server'
 import * as Discord from '@/systems/discord.server'
 import * as Fastify from '@/systems/fastify.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
+import * as LayerData from '@/systems/layer-data.server'
 import * as LayerDb from '@/systems/layer-db.server'
 import * as LayerQueries from '@/systems/layer-queries.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
@@ -50,6 +51,9 @@ await C.spanOp('main', { module }, async () => {
 	// Use provided env file path if available
 	log.info('-------- Starting SLM version %s --------', formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA))
 	CleanupSys.setup()
+	// layer components/factionunit configs are consumed synchronously all over the app (including
+	// while parsing config), so they load before everything else
+	await LayerData.setup()
 	// Initialize all module loggers
 	CoreRcon.setup()
 	FetchAdminLists.setup()

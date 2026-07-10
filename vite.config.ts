@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import babel from '@rolldown/plugin-babel'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import react, { reactCompilerPreset } from '@vitejs/plugin-react'
@@ -96,6 +97,10 @@ export default defineConfig({
 			'@': path.resolve(__dirname, 'src'),
 			'$root': path.resolve(__dirname),
 		},
+	},
+	test: {
+		// layer data is loaded at runtime rather than bundled, so tests need it loaded up-front
+		setupFiles: ['./src/vitest-setup.ts'],
 	},
 })
 

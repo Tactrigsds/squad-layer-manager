@@ -2,6 +2,7 @@ import * as AR from '@/app-routes'
 import { acquireInBlock } from '@/lib/async'
 import * as CS from '@/models/context-shared'
 import type * as F from '@/models/filter.models'
+import * as L from '@/models/layer'
 import type { LayerDb } from '@/models/layer-db'
 import type * as LQY from '@/models/layer-queries.models'
 import * as ATTRS from '@/models/otel-attrs'
@@ -45,7 +46,9 @@ export type QueryLayersResponse = {
 
 export type InitRequest = {
 	type: 'init'
-	input: CS.EffectiveColumnConfig & BackgroundQueryState
+	// the worker doesn't share module state with the main thread, so layer data is passed along
+	// rather than fetched a second time
+	input: CS.EffectiveColumnConfig & BackgroundQueryState & { layerData: L.LayerData }
 }
 
 export type InitResponse = {
@@ -118,6 +121,7 @@ onmessage = withErrorResponse(async (e) => {
 })
 
 async function init(initRequest: InitRequest) {
+	L.setLayerData(initRequest.input.layerData)
 	const SQL = await initSqlJs({ locateFile: () => sqlJsWasmUrl })
 
 	const buffer = await fetchDatabaseBuffer()

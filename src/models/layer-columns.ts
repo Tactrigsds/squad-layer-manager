@@ -324,6 +324,29 @@ export function fromScaledDbFloat<T extends number | null | undefined>(def: Comb
 	return (scale === undefined ? value : (value as number) / scale) as T
 }
 
+type EnumIndexCacheEntry = { builtAtLength: number; map: Map<unknown, number> }
+const enumIndexCache = new WeakMap<unknown[], EnumIndexCacheEntry>()
+
+// indexOf over the enum arrays shows up hot in bulk paths (preprocess, packing). the cache is keyed
+// on array identity and rebuilt if the array has grown, since preprocess appends to these arrays
+// while building components.
+export function enumIndexOf(arr: readonly unknown[], value: unknown): number {
+	let entry = enumIndexCache.get(arr as unknown[])
+	if (!entry || entry.builtAtLength !== arr.length) {
+		const map = new Map<unknown, number>()
+		for (let i = 0; i < arr.length; i++) {
+			if (!map.has(arr[i])) map.set(arr[i], i)
+		}
+		entry = { builtAtLength: arr.length, map }
+		enumIndexCache.set(arr as unknown[], entry)
+	}
+	return entry.map.get(value) ?? -1
+}
+
+export function enumIncludes(arr: readonly unknown[], value: unknown): boolean {
+	return enumIndexOf(arr, value) !== -1
+}
+
 export function dbValue(
 	columnName: string,
 	value: InputValue,
@@ -342,7 +365,7 @@ export function dbValue(
 			if (def.enumMapping) {
 				const targetArray = components[def.enumMapping as keyof typeof components]! as string[]
 
-				const index = targetArray.indexOf(value as string)
+				const index = enumIndexOf(targetArray, value)
 				if (index === -1) {
 					return UnmappedDbValue
 				}
@@ -589,6 +612,27 @@ export type LayerComponents = BaseLayerComponents & {
 	backwardsCompat: L.BackwardsCompatMappings
 	collections: string[]
 	collectionAbbreviations: Record<string, string | null>
+}
+
+const BASE_LAYER_COMPONENT_KEYS = [
+	'maps',
+	'alliances',
+	'gamemodes',
+	'layers',
+	'versions',
+	'size',
+	'mapLayers',
+	'factions',
+	'units',
+	'allianceToFaction',
+	'factionToAlliance',
+	'factionToUnit',
+	'factionUnitToUnitFullName',
+	'layerFactionAvailability',
+] as const satisfies (keyof BaseLayerComponents)[]
+
+export function toBaseLayerComponents(components: LayerComponents): BaseLayerComponents {
+	return Obj.selectProps(components, BASE_LAYER_COMPONENT_KEYS)
 }
 
 const baseProperties = {

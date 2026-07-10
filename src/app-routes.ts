@@ -37,6 +37,7 @@ export const routes = [
 	defRoute('/login/callback', [], 'custom', { authed: false }),
 	defRoute('/logout', [], 'custom'),
 	defRoute('/layers.sqlite3', [], 'custom'),
+	defRoute('/layer-data.json', [], 'custom'),
 	defRoute('/check-auth', [], 'custom'),
 
 	defRoute('/discord-cdn/*', ['*'], 'custom'),

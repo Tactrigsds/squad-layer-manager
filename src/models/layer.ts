@@ -1,53 +1,37 @@
-import _StaticFactionunitConfigs from '$root/assets/factionunit-configs.json'
-import _StaticLayerComponents from '$root/assets/layer-components.json'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as LC from '@/models/layer-columns'
 import type * as SLL from '@/models/squad-layer-list.models'
 import * as z from 'zod'
 
-export let StaticLayerComponents = _StaticLayerComponents as unknown as LC.LayerComponents
-
-// lock static layer components so we can verify that we're not using them while preprocessing
-export function lockStaticLayerComponents() {
-	Object.keys(StaticLayerComponents).forEach((key) => {
-		Object.defineProperty(
-			StaticLayerComponents,
-			key as keyof typeof StaticLayerComponents,
-			{
-				get() {
-					throw new Error(
-						`Static layer component '${key}' was accessed after being cleared`,
-					)
-				},
-				configurable: true,
-			},
-		)
-	})
+// fully derived layer data, loaded at startup by layer-data.server/layer-data.client (or built
+// directly during preprocessing). models are supposed to be inert, so this state living here is a
+// concession to how widely the data is consumed via default parameters.
+export type LayerData = {
+	components: LC.LayerComponents
+	factionUnits: FactionUnitConfigMapping
 }
 
-export function setStaticLayerComponents(components: LC.LayerComponents) {
-	StaticLayerComponents = components
+// the on-disk/wire shape of assets/layer-data.json. derived parts of LayerComponents come from
+// constants in code (LC.buildFullLayerComponents), so only the base components are persisted.
+export type LayerDataFile = {
+	components: LC.BaseLayerComponents
+	factionUnits: FactionUnitConfigMapping
 }
 
-export const StaticFactionunitConfigs = _StaticFactionunitConfigs as unknown as FactionUnitConfigMapping
+function unloadedLayerDataProxy<T extends object>(name: string): T {
+	const fail = (): never => {
+		throw new Error(`${name} was accessed before layer data was loaded (setLayerData)`)
+	}
+	return new Proxy({} as T, { get: fail, has: fail, ownKeys: fail })
+}
 
-// lock Factionunit Configs so we can verify that they aren't being used while preprocessing
-export function lockStaticFactionUnitConfigs() {
-	Object.keys(StaticFactionunitConfigs).forEach((key) => {
-		Object.defineProperty(
-			StaticFactionunitConfigs,
-			key as keyof typeof StaticFactionunitConfigs,
-			{
-				get() {
-					throw new Error(
-						`Static factionunit config '${key}' was accessed after being cleared`,
-					)
-				},
-				configurable: true,
-			},
-		)
-	})
+export let StaticLayerComponents: LC.LayerComponents = unloadedLayerDataProxy('StaticLayerComponents')
+export let StaticFactionunitConfigs: FactionUnitConfigMapping = unloadedLayerDataProxy('StaticFactionunitConfigs')
+
+export function setLayerData(data: LayerData) {
+	StaticLayerComponents = data.components
+	StaticFactionunitConfigs = data.factionUnits
 }
 
 export const ASYMM_GAMEMODES = ['Invasion', 'Destruction', 'Insurgency']
@@ -123,25 +107,24 @@ export type UnvalidatedLayer = Partial<KnownLayer> & {
 const knownLayerIdRegex =
 	/^(?<mapPart>[A-Za-z]+)-(?<gamemodePart>[A-Za-z]+)(?:-(?<versionOrCollectionPart1>[A-Za-z0-9]+))?(?:-(?<versionOrCollectionPart2>[A-Za-z0-9]+))?:(?<faction1>[A-Za-z]+)(?:-(?<unit1Abbr>[A-Za-z]+))?:(?<faction2>[A-Za-z]+)(?:-(?<unit2Abbr>[A-Za-z]+))?$/
 
-// these two schemas should probably be kept internal to this module
-const LayerIdArgsSchema = z.object({
-	Map: z.string(),
-	Gamemode: z.string(),
-	LayerVersion: z.string().nullable(),
-	Faction_1: z.string(),
-	Faction_2: z.string(),
-	Unit_1: z.string(),
-	Unit_2: z.string(),
-	Collection: z.string(),
-})
+// hand-rolled shape checks rather than zod schemas: these run once per layer in bulk paths
+// (preprocess, id packing) where zod parsing showed up hot
+function isStr(v: unknown): v is string {
+	return typeof v === 'string'
+}
 
-const KnownLayerSchema = z.object({
-	// known layers can now have raw layer ids
-	id: z.string(),
-	...LayerIdArgsSchema.shape,
-	Alliance_1: z.string(),
-	Alliance_2: z.string(),
-})
+function hasLayerIdArgsShape(layer: Partial<LayerIdArgs>) {
+	return isStr(layer.Map) && isStr(layer.Gamemode)
+		&& (layer.LayerVersion === null || isStr(layer.LayerVersion))
+		&& isStr(layer.Faction_1) && isStr(layer.Faction_2)
+		&& isStr(layer.Unit_1) && isStr(layer.Unit_2)
+		&& isStr(layer.Collection)
+}
+
+// known layers can now have raw layer ids
+function hasKnownLayerShape(layer: Partial<KnownLayer>) {
+	return isStr(layer.id) && hasLayerIdArgsShape(layer) && isStr(layer.Alliance_1) && isStr(layer.Alliance_2)
+}
 
 // expects and backwards compat mappings to be applied already
 export function isKnownLayer(
@@ -149,27 +132,22 @@ export function isKnownLayer(
 	components = StaticLayerComponents,
 ): layer is KnownLayer {
 	layer = toLayer(layer, components)
-	if (!KnownLayerSchema.safeParse(layer).success) return false
-	const mapping = {
-		Map: components.maps,
-		Size: components.size,
-		Layer: components.layers,
-		Gamemode: components.gamemodes,
-		LayerVersion: components.versions,
-		Collection: components.collections,
-		Faction_1: components.factions,
-		Faction_2: components.factions,
-		Unit_1: components.units,
-		Unit_2: components.units,
-		Alliance_1: components.alliances,
-		Alliance_2: components.alliances,
-	}
-
-	for (const [key] of Obj.objEntries(mapping)) {
-		// @ts-expect-error idgaf
-		if (!mapping[key].includes(layer[key])) {
-			return false
-		}
+	if (!hasKnownLayerShape(layer)) return false
+	if (
+		!LC.enumIncludes(components.maps, layer.Map)
+		|| !LC.enumIncludes(components.size, layer.Size)
+		|| !LC.enumIncludes(components.layers, layer.Layer)
+		|| !LC.enumIncludes(components.gamemodes, layer.Gamemode)
+		|| !LC.enumIncludes(components.versions, layer.LayerVersion)
+		|| !LC.enumIncludes(components.collections, layer.Collection)
+		|| !LC.enumIncludes(components.factions, layer.Faction_1)
+		|| !LC.enumIncludes(components.factions, layer.Faction_2)
+		|| !LC.enumIncludes(components.units, layer.Unit_1)
+		|| !LC.enumIncludes(components.units, layer.Unit_2)
+		|| !LC.enumIncludes(components.alliances, layer.Alliance_1)
+		|| !LC.enumIncludes(components.alliances, layer.Alliance_2)
+	) {
+		return false
 	}
 
 	const knownLayer = layer as KnownLayer
@@ -199,33 +177,31 @@ export function areLayerIdArgsValid(
 	layer: LayerIdArgs,
 	components = StaticLayerComponents,
 ) {
-	if (!LayerIdArgsSchema.safeParse(layer).success) {
+	if (!hasLayerIdArgsShape(layer)) {
 		return false
 	}
 	if (
 		!components.mapAbbreviations[layer.Map]
-		&& !Object.values(components.mapAbbreviations).includes(layer.Map)
+		&& Obj.revLookupCached(components.mapAbbreviations, layer.Map) === undefined
 	) {
 		return false
 	}
 
 	if (
 		!components.gamemodeAbbreviations[layer.Gamemode]
-		&& !Object.values(components.gamemodeAbbreviations).includes(
-			layer.Gamemode,
-		)
+		&& Obj.revLookupCached(components.gamemodeAbbreviations, layer.Gamemode) === undefined
 	) {
 		return false
 	}
 
-	if (!components.factions.includes(layer.Faction_1)) {
+	if (!LC.enumIncludes(components.factions, layer.Faction_1)) {
 		return false
 	}
-	if (!components.factions.includes(layer.Faction_2)) {
+	if (!LC.enumIncludes(components.factions, layer.Faction_2)) {
 		return false
 	}
 
-	if (!components.collections.includes(layer.Collection)) {
+	if (!LC.enumIncludes(components.collections, layer.Collection)) {
 		return false
 	}
 
@@ -410,20 +386,20 @@ export function parseLayerId(id: string, components = StaticLayerComponents) {
 		}
 	}
 
-	const gamemode = Obj.revLookup(
+	const gamemode = Obj.revLookupCached(
 		components.gamemodeAbbreviations,
 		gamemodePart,
 	) as string | undefined
-	const map = Obj.revLookup(components.mapAbbreviations, mapPart) as
+	const map = Obj.revLookupCached(components.mapAbbreviations, mapPart) as
 		| string
 		| undefined
-	const unit1 = Obj.revLookup(components.unitAbbreviations, unit1Abbr) as
+	const unit1 = Obj.revLookupCached(components.unitAbbreviations, unit1Abbr) as
 		| string
 		| undefined
-	const unit2 = Obj.revLookup(components.unitAbbreviations, unit2Abbr) as
+	const unit2 = Obj.revLookupCached(components.unitAbbreviations, unit2Abbr) as
 		| string
 		| undefined
-	const collection = Obj.revLookup(
+	const collection = Obj.revLookupCached(
 		components.collectionAbbreviations,
 		collectionPart,
 	)
@@ -824,7 +800,7 @@ export function parseLayerStringSegment<
 	const version = versionRaw?.slice(1)
 	const collection = !components
 		? null
-		: (Obj.revLookup(
+		: (Obj.revLookupCached(
 			components.collectionAbbreviations,
 			collectionRaw?.slice(1) ?? null,
 		) ?? getDefaultCollection(components))
@@ -846,17 +822,9 @@ export function parseTeamString(
 	return {
 		faction,
 		subfac: subfac
-			? Obj.revLookup(components.unitAbbreviations, subfac)
+			? Obj.revLookupCached(components.unitAbbreviations, subfac)
 			: null,
 	}
-}
-
-export function subfacFullNameToAbbr(
-	fullName: string,
-	components = StaticLayerComponents,
-) {
-	// @ts-expect-error idc
-	return Obj.revLookup(components.subfactionFullNames, fullName)!
 }
 
 export function getFactionIdForFactionNameInexact(
