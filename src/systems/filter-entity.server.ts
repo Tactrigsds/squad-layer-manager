@@ -52,6 +52,14 @@ async function recordFilterChange(ctx: C.Db & C.UserId, action: AppEvents.Filter
 	)
 }
 
+// managing who can contribute to a filter is an ownership concern, so it's restricted to the filter owner (or
+// anyone with blanket write access), rather than any contributor who merely has filters:write for the filter.
+async function denyUnlessFilterOwner(ctx: C.Db & C.UserId, filterId: F.FilterEntityId) {
+	const [filter] = await ctx.db().select({ owner: Schema.filters.owner }).from(Schema.filters).where(E.eq(Schema.filters.id, filterId))
+	if (filter && filter.owner === ctx.user.discordId) return null
+	return Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('filters:write-all'))
+}
+
 async function recordFilterContributor(ctx: C.Db & C.UserId, action: AppEvents.FilterContributorChanged['action'], filterId: string) {
 	await AppEventsSys.persistAppEvent(
 		ctx,
@@ -99,10 +107,7 @@ export const filtersRouter = {
 
 	addFilterContributor: orpcBase.meta({ type: 'mutation' }).input(ToggleFilterContributorInputSchema).handler(
 		async ({ input, context: ctx }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, [
-				RBAC.perm('filters:write', { filterId: input.filterId }),
-				RBAC.perm('filters:write-all'),
-			])
+			const denyRes = await denyUnlessFilterOwner(ctx, input.filterId)
 			if (denyRes) {
 				return denyRes
 			}
@@ -144,7 +149,7 @@ export const filtersRouter = {
 	),
 	removeFilterContributor: orpcBase.meta({ type: 'mutation' }).input(ToggleFilterContributorInputSchema).handler(
 		async ({ input, context: ctx }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.getWritePermReqForFilterEntity(input.filterId))
+			const denyRes = await denyUnlessFilterOwner(ctx, input.filterId)
 			if (denyRes) {
 				return denyRes
 			}
@@ -175,6 +180,10 @@ export const filtersRouter = {
 		},
 	),
 	createFilter: orpcBase.meta({ type: 'mutation' }).input(F.NewFilterEntitySchema).handler(async ({ input, context: ctx }) => {
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('filters:create'))
+		if (denyRes) {
+			return denyRes
+		}
 		const newFilterEntity: F.FilterEntity = {
 			...input,
 			owner: ctx.user.discordId,

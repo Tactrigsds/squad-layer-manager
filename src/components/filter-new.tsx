@@ -1,10 +1,13 @@
+import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Input } from '@/components/ui/input'
 import type * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
 import * as F from '@/models/filter.models'
+import * as RBAC from '@/rbac.models'
 import { useFilterCreate } from '@/systems/filter-entity.client'
+import * as RbacClient from '@/systems/rbac.client'
 import { invalidateLoggedInUser } from '@/systems/users.client'
 import * as Form from '@tanstack/react-form'
 import { useNavigate } from '@tanstack/react-router'
@@ -69,23 +72,30 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 					void navigate({ to: `/filters/$filterId`, params: { filterId: value.id } })
 					break
 
+				case 'err:permission-denied':
+					RbacClient.handlePermissionDenied(res)
+					break
+
 				default:
-					assertNever(res.code)
+					assertNever(res)
 			}
 		},
 	})
 
 	const isValidFilter = ZusUtils.useStore(props.stores.filterEditor, s => s.valid)
+	const createDenied = RbacClient.usePermsCheck(RBAC.perm('filters:create'))
 
 	const submitBtn = React.useMemo(() => (
 		<form.Subscribe>
 			{(f) => (
-				<Button onClick={form.handleSubmit} disabled={!f.canSubmit || !isValidFilter}>
-					Create
-				</Button>
+				<PermissionDeniedTooltip denied={createDenied}>
+					<Button onClick={form.handleSubmit} disabled={!f.canSubmit || !isValidFilter || !!createDenied}>
+						Create
+					</Button>
+				</PermissionDeniedTooltip>
 			)}
 		</form.Subscribe>
-	), [form, isValidFilter])
+	), [form, isValidFilter, createDenied])
 
 	const filterCard = React.useMemo(() => (
 		<FilterCard stores={props.stores}>

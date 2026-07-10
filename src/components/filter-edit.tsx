@@ -144,7 +144,9 @@ export function FilterEdit(
 		for (const perm of loggedInUser.perms) {
 			if (
 				perm.type === 'filters:write' && perm.args!.filterId === props.entity.id
-				&& perm.allowedByRoles.some(r => RBAC.isInferredRoleType(r) && r.type === 'filter-role-contributor')
+				&& perm.allowedByRoles.some(r =>
+					RBAC.isInferredRoleType(r) && (r.type === 'filter-role-contributor' || r.type === 'filter-user-contributor')
+				)
 			) {
 				return 'contributor'
 			}
@@ -247,7 +249,11 @@ export function FilterEdit(
 											You have write access to all filters
 										</Badge>
 									)}
-									<FilterContributors filterId={props.entity.id} contributors={props.contributors}>
+									<FilterContributors
+										filterId={props.entity.id}
+										contributors={props.contributors}
+										canManage={loggedInUserRole === 'owner' || loggedInUserRole === 'write-all'}
+									>
 										<Button disabled={loggedInUserRole === 'none'} variant="outline">
 											Show Contributors
 										</Button>
@@ -463,6 +469,8 @@ export function FilterEdit(
 function FilterContributors(props: {
 	filterId: F.FilterEntityId
 	contributors: { users: USR.User[]; roles: string[] }
+	// managing contributors is an ownership concern; contributors can view the list but not edit it
+	canManage: boolean
 	children: React.ReactNode
 }) {
 	const addMutation = useMutation(RPC.orpc.filters.addFilterContributor.mutationOptions({
@@ -514,19 +522,23 @@ function FilterContributors(props: {
 					<div>
 						<div className="flex items-center space-x-2">
 							<h4 className="leading-none">Users</h4>
-							<SelectUserPopover selectUser={addUser}>
-								<Button variant="outline" size="icon">
-									<Icons.Plus />
-								</Button>
-							</SelectUserPopover>
+							{props.canManage && (
+								<SelectUserPopover selectUser={addUser}>
+									<Button variant="outline" size="icon">
+										<Icons.Plus />
+									</Button>
+								</SelectUserPopover>
+							)}
 						</div>
 						<ul>
 							{props.contributors.users.map((user) => (
 								<li key={user.discordId} className="flex items-center space-x-1">
-									<Icons.Minus
-										onClick={() => removeMutation.mutate({ filterId: props.filterId, userId: user.discordId })}
-										className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-									/>
+									{props.canManage && (
+										<Icons.Minus
+											onClick={() => removeMutation.mutate({ filterId: props.filterId, userId: user.discordId })}
+											className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+										/>
+									)}
 									<Badge>{user.displayName}</Badge>
 								</li>
 							))}
@@ -535,19 +547,23 @@ function FilterContributors(props: {
 					<div id="roles">
 						<div>
 							<Label htmlFor="roles">Roles</Label>
-							<SelectUserDefinedRolePopover selectRole={(role) => addMutation.mutate({ filterId: props.filterId, roleId: role.type })}>
-								<Button variant="outline" size="icon">
-									<Icons.Plus />
-								</Button>
-							</SelectUserDefinedRolePopover>
+							{props.canManage && (
+								<SelectUserDefinedRolePopover selectRole={(role) => addMutation.mutate({ filterId: props.filterId, roleId: role.type })}>
+									<Button variant="outline" size="icon">
+										<Icons.Plus />
+									</Button>
+								</SelectUserDefinedRolePopover>
+							)}
 						</div>
 						<ul>
 							{props.contributors.roles.map((role) => (
 								<li key={role} className="flex items-center space-x-1">
-									<Icons.Minus
-										onClick={() => removeMutation.mutate({ filterId: props.filterId, roleId: role })}
-										className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-									/>
+									{props.canManage && (
+										<Icons.Minus
+											onClick={() => removeMutation.mutate({ filterId: props.filterId, roleId: role })}
+											className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+										/>
+									)}
 									<Badge>{role}</Badge>
 								</li>
 							))}

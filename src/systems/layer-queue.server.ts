@@ -575,10 +575,50 @@ export const router = {
 				}
 			}
 
+			// adding or setting a layer that isn't in the configured pool additionally requires queue:force-write.
+			// only checked when the op introduces layers and the user lacks force-write, to keep the common path cheap.
+			const forceWriteCandidates = getForceWriteCandidateLayerIds(ctx.layerQueue.session.state, op)
+			if (forceWriteCandidates.length > 0) {
+				const forceWriteDenied = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:force-write'))
+				if (forceWriteDenied) {
+					const serverState = await SquadServer.getServerState(ctx)
+					const poolConstraints = SETTINGS.getPoolMembershipConstraints(serverState.settings)
+					const layerCtx = LayerQueriesServer.resolveLayerQueryCtx(ctx)
+					const poolRes = await LayerQueries.getLayersOutOfPool({
+						ctx: layerCtx,
+						input: { layerIds: forceWriteCandidates, constraints: poolConstraints },
+					})
+					if (poolRes.code !== 'ok') {
+						// a broken pool filter shouldn't block all queue edits, so fail open and surface the misconfiguration
+						log.error('force-write pool check failed to build pool constraints: %o', poolRes)
+					} else if (poolRes.outOfPool.length > 0) {
+						return forceWriteDenied
+					}
+				}
+			}
+
 			await dispatchOp(ctx, op, { sourceWsClientId: _ctx.wsClientId })
 
 			return { code: 'ok' as const }
 		}),
+}
+
+// layer ids an op would introduce into the queue that are subject to the pool/force-write gate. move, delete, clone
+// and server-sourced ops (generation, vote results) preserve or source-validate their layers, so they aren't checked.
+function getForceWriteCandidateLayerIds(state: SLL.State, op: SLL.Operation): L.LayerId[] {
+	switch (op.op) {
+		case 'add':
+			return op.items.flatMap((item) => Array.from(LL.getAllItemLayerIds(item)))
+		case 'edit-layer':
+			return [op.newLayerId]
+		case 'swap-factions': {
+			const found = LL.findItemById(state.list, op.itemId)
+			if (!found) return []
+			return Array.from(LL.getAllItemLayerIds(found.item)).map((id) => L.swapFactionsInId(id))
+		}
+		default:
+			return []
+	}
 }
 
 export const dispatchOp = C.spanOp(

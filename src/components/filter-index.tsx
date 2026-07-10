@@ -1,12 +1,15 @@
+import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Item, ItemContent, ItemDescription, ItemFooter, ItemMedia, ItemTitle } from '@/components/ui/item'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import type * as F from '@/models/filter.models'
 import type * as LQY from '@/models/layer-queries.models'
 import * as USR from '@/models/users.models'
+import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as PartsSys from '@/systems/parts.client'
+import * as RbacClient from '@/systems/rbac.client'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
@@ -78,6 +81,7 @@ function FilterEntityCard({ entity, cfg }: FilterEntityCardProps) {
 
 export default function FiltersIndex() {
 	const cfg = ConfigClient.useEffectiveColConfig()
+	const createDenied = RbacClient.usePermsCheck(RBAC.perm('filters:create'))
 
 	const filterEntities = FilterEntityClient.useFilterEntities()
 	const filters = Array.from(filterEntities.values()).sort((a, b) => {
@@ -90,10 +94,21 @@ export default function FiltersIndex() {
 		<div className="container mx-auto py-8">
 			<div className="mb-4 flex justify-between">
 				<h2 className={Typo.H2}>Filters</h2>
-				<Link className={buttonVariants({ variant: 'secondary' })} to="/filters/new">
-					<Icons.Plus />
-					<span>New Filter</span>
-				</Link>
+				{createDenied
+					? (
+						<PermissionDeniedTooltip denied={createDenied}>
+							<span className={cn(buttonVariants({ variant: 'secondary' }), 'pointer-events-none opacity-50')}>
+								<Icons.Plus />
+								<span>New Filter</span>
+							</span>
+						</PermissionDeniedTooltip>
+					)
+					: (
+						<Link className={buttonVariants({ variant: 'secondary' })} to="/filters/new">
+							<Icons.Plus />
+							<span>New Filter</span>
+						</Link>
+					)}
 			</div>
 			<ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 				{filters.map((entity) => <FilterEntityCard key={entity.id} entity={entity} cfg={cfg} />)}

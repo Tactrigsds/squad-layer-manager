@@ -195,12 +195,13 @@ function PoolFiltersConfigurationPanel(props: { stores: SquadServerFrame.KeyProp
 			<div className="border rounded-md p-3">
 				<div
 					className="grid gap-2 items-center"
-					style={{ gridTemplateColumns: 'minmax(0, auto) max-content max-content max-content max-content' }}
+					style={{ gridTemplateColumns: 'minmax(0, auto) max-content max-content max-content max-content max-content' }}
 				>
 					{/* Header Row */}
 					<div className="contents text-sm font-medium text-muted-foreground">
 						<div>Filter</div>
 						<div>Layer Default Select</div>
+						<div>In Pool</div>
 						<div>Indicate</div>
 						<div>Warn</div>
 						<div></div>
@@ -247,6 +248,11 @@ function PoolFiltersConfigurationPanel(props: { stores: SquadServerFrame.KeyProp
 							inverted: 'Warn when a layer NOT matching this filter is queued or about to be played',
 							disabled: 'No warning',
 						}
+						const inPoolDescriptions: { [k in SETTINGS.PoolFilterApplyAs]: string } = {
+							regular: 'Layers must match this filter to be in the pool',
+							inverted: 'Layers must NOT match this filter to be in the pool',
+							disabled: 'Does not define the pool',
+						}
 						const canWarn = !!filterConfig.showIndicator && filterConfig.showIndicator !== 'disabled'
 						const handleIndicateMatchesChanged = (_newValue: LQY.IndicatorState | undefined) => {
 							const newValue = _newValue ?? 'disabled'
@@ -266,6 +272,12 @@ function PoolFiltersConfigurationPanel(props: { stores: SquadServerFrame.KeyProp
 						}
 						const handleWarnChanged = (newWarn: SETTINGS.PoolFilterApplyAs) => {
 							ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, { path: [...filterPath, 'warn'], value: newWarn })
+						}
+						const handleInPoolChanged = (_newValue: SETTINGS.PoolFilterApplyAs | undefined) => {
+							ServerSettingsPrt.Actions.set({ settings: stores.squadServer! }, {
+								path: [...filterPath, 'inPool'],
+								value: _newValue ?? 'disabled',
+							})
 						}
 
 						return (
@@ -288,6 +300,13 @@ function PoolFiltersConfigurationPanel(props: { stores: SquadServerFrame.KeyProp
 									value={filterConfig.defaultApplyDuringLayerSelection ?? 'disabled'}
 									allowEmpty={false}
 									onSelect={handleDefaultApplyChanged}
+								/>
+								<ComboBox
+									title="In Pool"
+									options={SETTINGS.POOL_FILTER_APPLY_AS.options.map(v => ({ value: v, label: inPoolDescriptions[v] }))}
+									value={filterConfig.inPool ?? 'disabled'}
+									allowEmpty={false}
+									onSelect={handleInPoolChanged}
 								/>
 								<ComboBox
 									title="Indicator State"

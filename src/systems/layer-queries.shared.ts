@@ -784,6 +784,38 @@ function buildQueryInputSqlCondition(
 	return { code: 'ok' as const, conditions, selectProperties, filterMenuItemPossibleValueConditions }
 }
 
+// given a set of layer ids, returns those that fall outside the pool defined by `constraints` (a layer is out of pool
+// if it fails an active constraint or does not exist in the layer db). used to gate queue:force-write. with no
+// constraints nothing is out of pool, so the check is inert until an admin marks filters as inPool.
+export async function getLayersOutOfPool(args: {
+	ctx: CS.LayerQuery
+	input: { layerIds: L.LayerId[]; constraints: LQY.Constraint[] }
+}): Promise<{ code: 'ok'; outOfPool: L.LayerId[] } | Exclude<F.SQLConditionsResult, { code: 'ok' }>> {
+	const { ctx } = args
+	const { layerIds, constraints } = args.input
+	if (constraints.length === 0 || layerIds.length === 0) return { code: 'ok' as const, outOfPool: [] }
+
+	const condRes = buildQueryInputSqlCondition(ctx, { constraints })
+	if (condRes.code !== 'ok') return condRes
+
+	const packedById = new Map<L.LayerId, number>()
+	for (const id of layerIds) {
+		// ids not in the canonical layer format can never be in the pool
+		if (L.isKnownLayer(id)) packedById.set(id, LC.packId(id))
+	}
+
+	const inPool = new Set<L.LayerId>()
+	if (packedById.size > 0) {
+		const rows = await ctx.layerDb()
+			.select({ _id: LC.viewCol('id', ctx) })
+			.from(LC.layersView(ctx))
+			.where(E.and(E.inArray(LC.viewCol('id', ctx), Array.from(packedById.values())), ...condRes.conditions))
+		for (const row of rows) inPool.add(LC.unpackId(Number(row._id)))
+	}
+
+	return { code: 'ok' as const, outOfPool: layerIds.filter((id) => !inPool.has(id)) }
+}
+
 export async function getLayerItemStatuses(args: {
 	ctx: CS.LayerQuery
 	input: LQY.LayerItemStatusesInput
