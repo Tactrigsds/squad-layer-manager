@@ -167,6 +167,10 @@ export const PoolFilterConfigSchema = z.object({
 		description: 'How to apply this filter during layer selection by default',
 	})
 		.optional(),
+	inPool: POOL_FILTER_APPLY_AS.optional().meta({
+		description:
+			'Whether this filter defines main-pool membership. Layers that fail an active inPool filter can only be added to or set in the queue by users with the queue:force-write permission. Invert to require that pool layers do NOT match this filter. Defaults to disabled (this filter does not gate the pool).',
+	}).optional(),
 	warn: POOL_FILTER_APPLY_AS.optional().meta({
 		description:
 			"How users should be warned if a layer matching this filter is about to be played, or when it is added to the queue. Invert if you want warnings for layers which *DON't match this filter",
@@ -330,6 +334,19 @@ export function getSettingsConstraints(
 		}
 	}
 
+	return constraints
+}
+
+// constraints describing which layers belong to the main pool, used to gate queue:force-write. only mainPool filters
+// with an active `inPool` apply-state participate; if none are configured the pool is unconstrained (force-write inert).
+export function getPoolMembershipConstraints(settings: PublicServerSettings): LQY.Constraint[] {
+	const constraints: LQY.Constraint[] = []
+	for (const { filterId, inPool } of settings.queue.mainPool.filters) {
+		if (!inPool || inPool === 'disabled') continue
+		constraints.push(
+			CB.filterEntity(getFilterEntityConstraintId('mainPool', { filterId }), filterId, { filterApplState: inPool }),
+		)
+	}
 	return constraints
 }
 

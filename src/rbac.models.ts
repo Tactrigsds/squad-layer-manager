@@ -77,7 +77,6 @@ export const PERMISSION_DEFINITION = {
 	...definePermission('site:authorized', { description: 'Access the site', scope: 'global' }),
 
 	...definePermission('queue:write', { description: 'Add, remove, edit or reorder layers in the queue', scope: 'global' }),
-	// TODO implement
 	...definePermission('queue:force-write', {
 		description: "Add, remove, edit or reorder layers in the queue, even if the layer isn't in the pool",
 		scope: 'global',
@@ -85,6 +84,7 @@ export const PERMISSION_DEFINITION = {
 	...definePermission('settings:write', { description: 'Change settings like the configured layer pool filter', scope: 'global' }),
 	...definePermission('vote:manage', { description: 'Start and abort votes', scope: 'global' }),
 
+	...definePermission('filters:create', { description: 'Create new filters', scope: 'global' }),
 	...definePermission('filters:write-all', { description: 'Delete or modify any filter', scope: 'global' }),
 	...definePermission('filters:write', { description: 'Modify a filter', scope: 'filter' }),
 
