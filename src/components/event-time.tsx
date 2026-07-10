@@ -11,7 +11,7 @@ export function EventTime({ time }: EventTimeProps) {
 
 	return (
 		<Tooltip>
-			<TooltipTrigger>
+			<TooltipTrigger className="shrink-0">
 				<span className="text-muted-foreground font-mono text-xs">{formattedTime}</span>
 			</TooltipTrigger>
 			<TooltipContent>

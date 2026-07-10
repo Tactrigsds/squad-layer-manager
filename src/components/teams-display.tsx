@@ -119,7 +119,7 @@ export function TeamFactionDisplay(
 	if (!faction) return
 
 	return (
-		<span className={cn('inline-block whitespace-nowrap-nowrap', props.className)}>
+		<span className={cn('inline-block whitespace-nowrap', props.className)}>
 			<span title={attrs[0].title} style={{ color: attrs[0].color }} className="font-semibold">
 				<span className={cn(allianceStyles, factionStyles)}>
 					{faction}

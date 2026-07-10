@@ -7,6 +7,7 @@ import { MatchTeamDisplay } from '@/components/teams-display'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
+import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CHAT from '@/models/chat.models'
@@ -35,6 +36,33 @@ const WARN_CHANNEL_STYLES = {
 	single: { color: 'rgb(251, 146, 60)', gradientColor: 'rgba(251, 146, 60, 0.1)' }, // orange-400, WarnChatBox targeted-warn accent
 	selection: { color: 'rgb(245, 158, 11)', gradientColor: 'rgba(245, 158, 11, 0.1)' }, // amber-500, a bulk/group warn
 } as const
+
+// Shared layout for a feed entry: a non-shrinking time + icon gutter, then a text column that wraps.
+// The text column has to stay a block rather than a flex row -- a flex row can't break between its
+// items, which is what pinned entries to a single line and forced the feed to scroll horizontally.
+// Inline atoms (player/squad/team/layer displays) keep themselves intact via their own nowrap, so
+// lines break between them rather than through them.
+//
+// wrap-anywhere rather than wrap-break-word: radix sizes the scroll viewport's content as a table,
+// so the feed's width follows its max-content width. Only `anywhere` shrinks an element's min-content
+// contribution, so it's what stops one long username or unbroken message from widening the whole feed.
+function EventLine(
+	{ time, icon, className, style, children }: {
+		time: number
+		icon?: React.ReactNode
+		className?: string
+		style?: React.CSSProperties
+		children: React.ReactNode
+	},
+) {
+	return (
+		<div className={cn('flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline', className)} style={style}>
+			<EventTime time={time} variant="small" />
+			{icon}
+			<div className="grow min-w-0 wrap-anywhere">{children}</div>
+		</div>
+	)
+}
 
 function ChatMessageEvent(
 	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'CHAT_MESSAGE' | 'ADMIN_BROADCAST' }>; stores: SquadServerFrame.KeyProp },
@@ -168,12 +196,9 @@ function ChatMessageEvent(
 			}}
 		>
 			<EventTime time={event.time} />
-			<div className="grow min-w-0">
-				<span className="inline-block whitespace-nowrap">
-					{channelLabel}
-					{fromDisplay}
-				</span>
-				: <span className="wrap-break-word">{event.message}</span>
+			<div className="grow min-w-0 wrap-anywhere">
+				{channelLabel}
+				{fromDisplay}: {event.message}
 			</div>
 		</div>
 	)
@@ -183,20 +208,14 @@ function PlayerConnectedEvent(
 	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_CONNECTED' }>; stores: SquadServerFrame.KeyProp },
 ) {
 	return (
-		<div className="flex items-start gap-2 py-1 text-muted-foreground">
-			<EventTime time={event.time} variant="small" />
-			<Icons.UserPlus className="h-4 w-4 text-green-500" />
-			<span className="text-xs flex items-center gap-1 ">
-				<span>
-					<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> connected,
-				</span>
-				{event.player.teamId && (
-					<>
-						joining <MatchTeamDisplay stores={stores} teamId={event.player.teamId} matchId={event.matchId} />
-					</>
-				)}
-			</span>
-		</div>
+		<EventLine time={event.time} icon={<Icons.UserPlus className="h-4 w-4 text-green-500 shrink-0" />}>
+			<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> connected
+			{event.player.teamId && (
+				<>
+					, joining <MatchTeamDisplay stores={stores} teamId={event.player.teamId} matchId={event.matchId} />
+				</>
+			)}
+		</EventLine>
 	)
 }
 
@@ -204,13 +223,9 @@ function PlayerDisconnectedEvent(
 	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_DISCONNECTED' }>; stores: SquadServerFrame.KeyProp },
 ) {
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
-			<EventTime time={event.time} variant="small" />
-			<Icons.UserMinus className="h-4 w-4 text-red-500" />
-			<span className="text-xs flex items-center gap-1 whitespace-nowrap">
-				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> disconnected
-			</span>
-		</div>
+		<EventLine time={event.time} icon={<Icons.UserMinus className="h-4 w-4 text-red-500 shrink-0" />}>
+			<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> disconnected
+		</EventLine>
 	)
 }
 
@@ -218,13 +233,9 @@ function PossessedAdminCameraEvent(
 	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'POSSESSED_ADMIN_CAMERA' }>; stores: SquadServerFrame.KeyProp },
 ) {
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
-			<EventTime time={event.time} variant="small" />
-			<Icons.Camera className="h-4 w-4 text-purple-500" />
-			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> entered admin camera
-			</span>
-		</div>
+		<EventLine time={event.time} icon={<Icons.Camera className="h-4 w-4 text-purple-500 shrink-0" />}>
+			<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> entered admin camera
+		</EventLine>
 	)
 }
 
@@ -232,13 +243,9 @@ function UnpossessedAdminCameraEvent(
 	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'UNPOSSESSED_ADMIN_CAMERA' }>; stores: SquadServerFrame.KeyProp },
 ) {
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
-			<EventTime time={event.time} variant="small" />
-			<Icons.CameraOff className="h-4 w-4 text-purple-500" />
-			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> exited admin camera
-			</span>
-		</div>
+		<EventLine time={event.time} icon={<Icons.CameraOff className="h-4 w-4 text-purple-500 shrink-0" />}>
+			<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> exited admin camera
+		</EventLine>
 	)
 }
 
@@ -246,14 +253,10 @@ function PlayerKickedEvent(
 	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_KICKED' }>; stores: SquadServerFrame.KeyProp },
 ) {
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
-			<EventTime time={event.time} variant="small" />
-			<Icons.UserX className="h-4 w-4 text-orange-500" />
-			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> was kicked
-				{event.reason && <span className="text-muted-foreground/70">- {event.reason}</span>}
-			</span>
-		</div>
+		<EventLine time={event.time} icon={<Icons.UserX className="h-4 w-4 text-orange-500 shrink-0" />}>
+			<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> was kicked
+			{event.reason && <span className="text-muted-foreground/70">{' '}- {event.reason}</span>}
+		</EventLine>
 	)
 }
 
@@ -261,18 +264,14 @@ function SquadCreatedEvent(
 	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'SQUAD_CREATED' }>; stores: SquadServerFrame.KeyProp },
 ) {
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
-			<EventTime time={event.time} variant="small" />
-			<Icons.Users className="h-4 w-4 text-blue-500" />
-			<span className="text-xs flex items-center gap-1 whitespace-nowrap">
-				<PlayerDisplay player={event.creator} matchId={event.matchId} stores={stores} /> created{' '}
-				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={false} stores={stores} /> on{' '}
-				<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={event.squad.teamId} />
-				{event.squad.locked
-					? <Icons.Lock className="h-3 w-3 text-red-600" />
-					: null}
-			</span>
-		</div>
+		<EventLine time={event.time} icon={<Icons.Users className="h-4 w-4 text-blue-500 shrink-0" />}>
+			<PlayerDisplay player={event.creator} matchId={event.matchId} stores={stores} /> created{' '}
+			<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={false} stores={stores} /> on{' '}
+			<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={event.squad.teamId} />
+			{event.squad.locked
+				? <Icons.Lock className="h-3 w-3 text-red-600 inline-block ml-1" />
+				: null}
+		</EventLine>
 	)
 }
 
@@ -280,16 +279,9 @@ function PlayerBannedEvent(
 	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_BANNED' }>; stores: SquadServerFrame.KeyProp },
 ) {
 	return (
-		<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
-			<EventTime time={event.time} variant="small" />
-			<Icons.Ban className="h-4 w-4 text-red-500 shrink-0" />
-			<div className="grow min-w-0">
-				<span className="inline-block whitespace-nowrap">
-					<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> was banned
-				</span>
-				reason: "<span className="words">{event.interval}</span>"
-			</div>
-		</div>
+		<EventLine time={event.time} icon={<Icons.Ban className="h-4 w-4 text-red-500 shrink-0" />}>
+			<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> was banned reason: "{event.interval}"
+		</EventLine>
 	)
 }
 
@@ -297,16 +289,9 @@ function PlayerWarnedEvent(
 	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_WARNED' }>; stores: SquadServerFrame.KeyProp },
 ) {
 	return (
-		<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
-			<EventTime time={event.time} variant="small" />
-			<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
-			<div className="grow min-w-0">
-				<span className="inline-block whitespace-nowrap">
-					<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> was warned
-				</span>
-				: "<span className="wrap-break-word">{event.reason}</span>"
-			</div>
-		</div>
+		<EventLine time={event.time} icon={<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />}>
+			<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> was warned: "{event.reason}"
+		</EventLine>
 	)
 }
 
@@ -319,28 +304,20 @@ function WarnsAggregatedEvent(
 	const plural = count === 1 ? 'player' : 'players'
 	const matchId = event.matchId
 	const icon = <Icons.AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
-	const reason = (
-		<>
-			: "<span className="wrap-break-word">{event.reason}</span>"
-		</>
-	)
+	const reason = <>: "{event.reason}"</>
 
 	if (count <= 4) {
 		return (
-			<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
-				<EventTime time={event.time} variant="small" />
-				{icon}
-				<div className="grow min-w-0">
-					{event.warns.map((warn, i) => (
-						// index disambiguates: the same player can appear more than once in an aggregated warn entry
-						// oxlint-disable-next-line react/no-array-index-key
-						<span key={`${warn.player.ids.eos}-${i}`}>
-							{i > 0 ? ', ' : ''}
-							<PlayerDisplay showTeam player={warn.player} matchId={matchId} stores={stores} />
-						</span>
-					))} were warned{reason}
-				</div>
-			</div>
+			<EventLine time={event.time} icon={icon}>
+				{event.warns.map((warn, i) => (
+					// index disambiguates: the same player can appear more than once in an aggregated warn entry
+					// oxlint-disable-next-line react/no-array-index-key
+					<span key={`${warn.player.ids.eos}-${i}`}>
+						{i > 0 ? ', ' : ''}
+						<PlayerDisplay showTeam player={warn.player} matchId={matchId} stores={stores} />
+					</span>
+				))} were warned{reason}
+			</EventLine>
 		)
 	}
 
@@ -349,7 +326,7 @@ function WarnsAggregatedEvent(
 			<summary className="flex gap-2 items-baseline cursor-pointer">
 				<EventTime time={event.time} variant="small" />
 				{icon}
-				<span className="grow min-w-0 wrap-break-word">
+				<span className="grow min-w-0 wrap-anywhere">
 					{count} {plural} were warned{reason}
 				</span>
 			</summary>
@@ -361,17 +338,6 @@ function WarnsAggregatedEvent(
 				))}
 			</div>
 		</details>
-	)
-}
-
-// a single-line app-event feed entry (time + icon + text)
-function AppEventLine({ time, icon, children }: { time: number; icon: React.ReactNode; children: React.ReactNode }) {
-	return (
-		<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
-			<EventTime time={time} variant="small" />
-			{icon}
-			<div className="grow min-w-0">{children}</div>
-		</div>
 	)
 }
 
@@ -435,7 +401,7 @@ function AppEventEntry(
 				<summary className="flex gap-2 items-baseline cursor-pointer">
 					<EventTime time={event.time} variant="small" />
 					<Icons.Users className="h-4 w-4 text-red-500 shrink-0" />
-					<span className="grow min-w-0 wrap-break-word">
+					<span className="grow min-w-0 wrap-anywhere">
 						{actorLabel} disbanded {appEvent.squadName} (Team {appEvent.teamId}){n > 0 ? `, ${n} ${n === 1 ? 'player' : 'players'}` : ''}
 					</span>
 				</summary>
@@ -447,45 +413,45 @@ function AppEventEntry(
 	// pure-audit / single-line entries with no target-count summary
 	if (appEvent.type === 'SQUAD_RENAMED') {
 		return (
-			<AppEventLine time={event.time} icon={<Icons.PencilLine className="h-4 w-4 text-cyan-500 shrink-0" />}>
+			<EventLine time={event.time} icon={<Icons.PencilLine className="h-4 w-4 text-cyan-500 shrink-0" />}>
 				{actorLabel} renamed {appEvent.squadName} (Team {appEvent.teamId})
-			</AppEventLine>
+			</EventLine>
 		)
 	}
 	if (appEvent.type === 'COMMANDER_DEMOTED') {
 		const target = event.targetPlayers[0]
 		return (
-			<AppEventLine time={event.time} icon={<Icons.ShieldOff className="h-4 w-4 text-orange-500 shrink-0" />}>
+			<EventLine time={event.time} icon={<Icons.ShieldOff className="h-4 w-4 text-orange-500 shrink-0" />}>
 				{actorLabel} demoted {target && matchId !== null
 					? <PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} />
 					: 'the commander'}
-			</AppEventLine>
+			</EventLine>
 		)
 	}
 	if (appEvent.type === 'FOG_OF_WAR_TOGGLED') {
 		return (
-			<AppEventLine time={event.time} icon={<Icons.CloudFog className="h-4 w-4 text-slate-400 shrink-0" />}>
+			<EventLine time={event.time} icon={<Icons.CloudFog className="h-4 w-4 text-slate-400 shrink-0" />}>
 				{actorLabel} turned fog of war {appEvent.enabled ? 'on' : 'off'}
-			</AppEventLine>
+			</EventLine>
 		)
 	}
 	if (appEvent.type === 'MATCH_ENDED') {
 		return (
-			<AppEventLine time={event.time} icon={<Icons.Flag className="h-4 w-4 text-red-500 shrink-0" />}>
+			<EventLine time={event.time} icon={<Icons.Flag className="h-4 w-4 text-red-500 shrink-0" />}>
 				{actorLabel} ended the match
-			</AppEventLine>
+			</EventLine>
 		)
 	}
 	if (appEvent.type === 'VOTE_STARTED') {
 		return (
-			<AppEventLine time={event.time} icon={<Icons.Vote className="h-4 w-4 text-blue-500 shrink-0" />}>
+			<EventLine time={event.time} icon={<Icons.Vote className="h-4 w-4 text-blue-500 shrink-0" />}>
 				{actorLabel} started a vote ({appEvent.choiceCount} {appEvent.choiceCount === 1 ? 'option' : 'options'})
-			</AppEventLine>
+			</EventLine>
 		)
 	}
 	if (appEvent.type === 'VOTE_ENDED') {
 		return (
-			<AppEventLine time={event.time} icon={<Icons.ListChecks className="h-4 w-4 text-green-500 shrink-0" />}>
+			<EventLine time={event.time} icon={<Icons.ListChecks className="h-4 w-4 text-green-500 shrink-0" />}>
 				{appEvent.reason === 'ended-early' ? `${actorLabel} ended the vote early` : 'The vote ended'}
 				{appEvent.winnerLayerId
 					? (
@@ -494,14 +460,14 @@ function AppEventEntry(
 						</>
 					)
 					: ' (no winner)'}
-			</AppEventLine>
+			</EventLine>
 		)
 	}
 	if (appEvent.type === 'VOTE_ABORTED') {
 		return (
-			<AppEventLine time={event.time} icon={<Icons.Ban className="h-4 w-4 text-red-500 shrink-0" />}>
+			<EventLine time={event.time} icon={<Icons.Ban className="h-4 w-4 text-red-500 shrink-0" />}>
 				{actorLabel} aborted the vote
-			</AppEventLine>
+			</EventLine>
 		)
 	}
 	if (appEvent.type === 'QUEUE_UPDATED') {
@@ -544,7 +510,7 @@ function AppEventEntry(
 			)
 			: `${actorLabel} updated the queue`
 		return (
-			<AppEventLine time={event.time} icon={<Icons.ListOrdered className="h-4 w-4 text-indigo-500 shrink-0" />}>
+			<EventLine time={event.time} icon={<Icons.ListOrdered className="h-4 w-4 text-indigo-500 shrink-0" />}>
 				{headline}
 				{parts.length > 0 ? ` (${parts.join(', ')})` : ''}
 				{nextAfter !== null && nextAfter !== nextBefore && (
@@ -552,16 +518,16 @@ function AppEventEntry(
 						, next layer {appEvent.trigger === 'external-layer-change' ? 'now' : 'set to'} <ShortLayerName layerId={nextAfter} />
 					</span>
 				)}
-			</AppEventLine>
+			</EventLine>
 		)
 	}
 	if (appEvent.type === 'MAP_SET') {
 		// only override sets reach the feed; queue-driven MAP_SETs fold into their QUEUE_UPDATED (audit-only)
 		if (appEvent.reason === 'queue-updated') {
 			return (
-				<AppEventLine time={event.time} icon={<Icons.RefreshCw className="h-4 w-4 text-amber-500 shrink-0" />}>
+				<EventLine time={event.time} icon={<Icons.RefreshCw className="h-4 w-4 text-amber-500 shrink-0" />}>
 					Next layer set to <ShortLayerName layerId={appEvent.layerId} />
-				</AppEventLine>
+				</EventLine>
 			)
 		}
 		// the overridden player (if any) is resolved into targetPlayers via involvedPlayerIds
@@ -572,9 +538,9 @@ function AppEventEntry(
 			? 'an in-game admin'
 			: 'another RCON tool'
 		return (
-			<AppEventLine time={event.time} icon={<Icons.RefreshCw className="h-4 w-4 text-amber-500 shrink-0" />}>
+			<EventLine time={event.time} icon={<Icons.RefreshCw className="h-4 w-4 text-amber-500 shrink-0" />}>
 				SLM overrode a layer set by {who}, next layer set to <ShortLayerName layerId={appEvent.layerId} />
-			</AppEventLine>
+			</EventLine>
 		)
 	}
 	if (
@@ -586,9 +552,9 @@ function AppEventEntry(
 		// global/audit-only types -- they never reach a server activity feed (matchId null), but the union needs a
 		// branch. rendered generically via describeAppEvent (the audit log is where these actually show up).
 		return (
-			<AppEventLine time={event.time} icon={<Icons.ScrollText className="h-4 w-4 text-slate-400 shrink-0" />}>
+			<EventLine time={event.time} icon={<Icons.ScrollText className="h-4 w-4 text-slate-400 shrink-0" />}>
 				{actorLabel} {AppEvents.describeAppEvent(appEvent)}
-			</AppEventLine>
+			</EventLine>
 		)
 	}
 
@@ -624,11 +590,8 @@ function AppEventEntry(
 		const header = (
 			<>
 				<EventTime time={event.time} />
-				<div className="grow min-w-0">
-					<span className="inline-block whitespace-nowrap">
-						{channel} {actorLabel}
-					</span>
-					: "<span className="wrap-break-word">{appEvent.message}</span>"
+				<div className="grow min-w-0 wrap-anywhere">
+					{channel} {actorLabel}: "{appEvent.message}"
 				</div>
 			</>
 		)
@@ -674,7 +637,7 @@ function AppEventEntry(
 		suffix = appEvent.reason
 			? (
 				<>
-					: "<span className="wrap-break-word">{appEvent.reason}</span>"
+					: "{appEvent.reason}"
 				</>
 			)
 			: null
@@ -687,20 +650,16 @@ function AppEventEntry(
 	// few enough targets: name them inline instead of grouping/collapsing (but still show the count)
 	if (count <= 4 && matchId !== null && event.targetPlayers.length === count) {
 		return (
-			<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
-				<EventTime time={event.time} variant="small" />
-				{icon}
-				<div className="grow min-w-0">
-					{actorLabel} {verb} {event.targetPlayers.map((player, i) => (
-						<span key={player.ids.eos}>
-							{i > 0 ? ', ' : ''}
-							<PlayerDisplay showTeam player={player} matchId={matchId} stores={stores} />
-						</span>
-					))}
-					{count > 1 ? <>{' '}({count} {plural})</> : ''}
-					{suffix}
-				</div>
-			</div>
+			<EventLine time={event.time} icon={icon}>
+				{actorLabel} {verb} {event.targetPlayers.map((player, i) => (
+					<span key={player.ids.eos}>
+						{i > 0 ? ', ' : ''}
+						<PlayerDisplay showTeam player={player} matchId={matchId} stores={stores} />
+					</span>
+				))}
+				{count > 1 ? <>{' '}({count} {plural})</> : ''}
+				{suffix}
+			</EventLine>
 		)
 	}
 
@@ -709,7 +668,7 @@ function AppEventEntry(
 			<summary className="flex gap-2 items-baseline cursor-pointer">
 				<EventTime time={event.time} variant="small" />
 				{icon}
-				<span className="grow min-w-0 wrap-break-word">
+				<span className="grow min-w-0 wrap-anywhere">
 					{actorLabel} {verb} {count === 1 ? 'a player' : `${count} ${plural}`}
 					{suffix}
 				</span>
@@ -744,14 +703,10 @@ function NewGameEvent({ event, stores }: { event: Extract<CHAT.EventEnriched, { 
 
 	return (
 		<div className="border-t border-green-500 pt-0.5 mt-1 w-full">
-			<div className="flex gap-2 py-0.5 text-muted-foreground items-center w-full">
-				<EventTime time={event.time} variant="small" />
-				<Icons.Play className="h-4 w-4 text-green-500 shrink-0" />
-				<span className="text-xs inline-flex flex-wrap items-center gap-1 grow whitespace-nowrap">
-					<span>{label} ({visibleMatchIndex === 0 ? 'Current Match' : visibleMatchIndex}):</span>
-					{match && <ShortLayerName layerId={match.layerId} teamParity={match.ordinal % 2} className="text-xs" />}
-				</span>
-			</div>
+			<EventLine time={event.time} icon={<Icons.Play className="h-4 w-4 text-green-500 shrink-0" />} className="py-0.5">
+				{label} ({visibleMatchIndex === 0 ? 'Current Match' : visibleMatchIndex}):{' '}
+				{match && <ShortLayerName layerId={match.layerId} teamParity={match.ordinal % 2} className="text-xs" />}
+			</EventLine>
 		</div>
 	)
 }
@@ -810,25 +765,18 @@ function RoundEndedEvent(
 	}
 
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground items-center">
-			<EventTime time={event.time} variant="small" />
-			<Icons.Flag className="h-4 w-4 text-blue-500" />
-			<span className="text-xs inline-flex flex-wrap items-center gap-1">
-				<span>Round ended</span>
-				<span>
-					(<MapLayerDisplay layer={L.toLayer(match.layerId).Layer} className="text-xs font-semibold" />)
-				</span>
-				{winnerId === null && <span className="text-yellow-400">Draw</span>}
-				{winnerId !== null && (
-					<>
-						<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={winnerId} /> won
-						<span className="font-semibold">{winnerTickets} to {loserTickets}</span>
-						against <MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={loserId} />
-					</>
-				)}
-				{actionElt}
-			</span>
-		</div>
+		<EventLine time={event.time} icon={<Icons.Flag className="h-4 w-4 text-blue-500 shrink-0" />}>
+			Round ended (<MapLayerDisplay layer={L.toLayer(match.layerId).Layer} className="text-xs font-semibold" />){' '}
+			{winnerId === null && <span className="text-yellow-400">Draw</span>}
+			{winnerId !== null && (
+				<>
+					<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={winnerId} /> won{' '}
+					<span className="font-semibold">{winnerTickets} to {loserTickets}</span> against{' '}
+					<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={loserId} />
+				</>
+			)}
+			{actionElt && <>{' '}{actionElt}</>}
+		</EventLine>
 	)
 }
 
@@ -838,14 +786,10 @@ function PlayerChangedTeamEvent(
 	// don't render unassigned, and if the player was previously unassigned that means we're swapping teams after the match, so no need to render
 	if (event.newTeamId === null || event.prevTeamId === null) return
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
-			<EventTime time={event.time} variant="small" />
-			<Icons.Repeat className="h-4 w-4 text-purple-400" />
-			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> changed to{' '}
-				<MatchTeamDisplay stores={stores} teamId={event.player.teamId!} matchId={event.matchId} />
-			</span>
-		</div>
+		<EventLine time={event.time} icon={<Icons.Repeat className="h-4 w-4 text-purple-400 shrink-0" />}>
+			<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> changed to{' '}
+			<MatchTeamDisplay stores={stores} teamId={event.player.teamId!} matchId={event.matchId} />
+		</EventLine>
 	)
 }
 
@@ -853,21 +797,17 @@ function PlayerLeftSquadEvent(
 	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_LEFT_SQUAD' }>; stores: SquadServerFrame.KeyProp },
 ) {
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
-			<EventTime time={event.time} variant="small" />
-			<Icons.LogOut className="h-4 w-4 text-orange-400" />
-			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> left{' '}
-				<SquadDisplay
-					squad={event.squad}
-					matchId={event.matchId}
-					showName={false}
-					showTeam={true}
-					stores={stores}
-				/>{' '}
-				{event.wasLeader ? '(was leader)' : ''}
-			</span>
-		</div>
+		<EventLine time={event.time} icon={<Icons.LogOut className="h-4 w-4 text-orange-400 shrink-0" />}>
+			<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> left{' '}
+			<SquadDisplay
+				squad={event.squad}
+				matchId={event.matchId}
+				showName={false}
+				showTeam={true}
+				stores={stores}
+			/>
+			{event.wasLeader ? ' (was leader)' : ''}
+		</EventLine>
 	)
 }
 
@@ -875,13 +815,9 @@ function SquadDisbandedEvent(
 	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'SQUAD_DISBANDED' }>; stores: SquadServerFrame.KeyProp },
 ) {
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
-			<EventTime time={event.time} variant="small" />
-			<Icons.UsersRound className="h-4 w-4 text-red-400" />
-			<span className="text-xs flex items-center gap-1">
-				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={true} stores={stores} /> was disbanded
-			</span>
-		</div>
+		<EventLine time={event.time} icon={<Icons.UsersRound className="h-4 w-4 text-red-400 shrink-0" />}>
+			<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={true} stores={stores} /> was disbanded
+		</EventLine>
 	)
 }
 
@@ -892,14 +828,15 @@ function SquadDetailsChangedEvent(
 	const prevLocked = event.prevDetails.locked
 	if (locked === prevLocked || locked === undefined) return null
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
-			<EventTime time={event.time} variant="small" />
-			{locked ? <Icons.Lock className="h-4 w-4 text-yellow-500" /> : <Icons.LockOpen className="h-4 w-4 text-green-500" />}
-			<span className="text-xs flex items-center gap-1">
-				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={true} stores={stores} />{' '}
-				{locked ? 'locked' : 'unlocked'}
-			</span>
-		</div>
+		<EventLine
+			time={event.time}
+			icon={locked
+				? <Icons.Lock className="h-4 w-4 text-yellow-500 shrink-0" />
+				: <Icons.LockOpen className="h-4 w-4 text-green-500 shrink-0" />}
+		>
+			<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={true} stores={stores} />{' '}
+			{locked ? 'locked' : 'unlocked'}
+		</EventLine>
 	)
 }
 
@@ -907,21 +844,16 @@ function SquadRenamedEvent(
 	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'SQUAD_RENAMED' }>; stores: SquadServerFrame.KeyProp },
 ) {
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
-			<EventTime time={event.time} variant="small" />
-			<Icons.Pencil className="h-4 w-4 text-cyan-400" />
-			<span className="text-xs flex items-center gap-1">
-				<SquadDisplay
-					squad={{ ...event.squad, squadName: event.oldSquadName }}
-					matchId={event.matchId}
-					showName={true}
-					showTeam={true}
-					stores={stores}
-				/>{' '}
-				renamed to
-				<span className="font-medium text-foreground">"{event.newSquadName}"</span>
-			</span>
-		</div>
+		<EventLine time={event.time} icon={<Icons.Pencil className="h-4 w-4 text-cyan-400 shrink-0" />}>
+			<SquadDisplay
+				squad={{ ...event.squad, squadName: event.oldSquadName }}
+				matchId={event.matchId}
+				showName={true}
+				showTeam={true}
+				stores={stores}
+			/>{' '}
+			renamed to <span className="font-medium text-foreground">"{event.newSquadName}"</span>
+		</EventLine>
 	)
 }
 
@@ -929,19 +861,15 @@ function PlayerJoinedSquadEvent(
 	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_JOINED_SQUAD' }>; stores: SquadServerFrame.KeyProp },
 ) {
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
-			<EventTime time={event.time} variant="small" />
-			<Icons.LogIn className="h-4 w-4 text-green-400" />
-			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> joined{' '}
-				<SquadDisplay
-					squad={event.squad}
-					matchId={event.matchId}
-					showTeam={true}
-					stores={stores}
-				/>
-			</span>
-		</div>
+		<EventLine time={event.time} icon={<Icons.LogIn className="h-4 w-4 text-green-400 shrink-0" />}>
+			<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> joined{' '}
+			<SquadDisplay
+				squad={event.squad}
+				matchId={event.matchId}
+				showTeam={true}
+				stores={stores}
+			/>
+		</EventLine>
 	)
 }
 
@@ -949,14 +877,10 @@ function PlayerPromotedToLeaderEvent(
 	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_PROMOTED_TO_LEADER' }>; stores: SquadServerFrame.KeyProp },
 ) {
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
-			<EventTime time={event.time} variant="small" />
-			<Icons.Crown className="h-4 w-4 text-yellow-400" />
-			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay showTeam={true} showSquad={true} player={event.player} matchId={event.matchId} stores={stores} />{' '}
-				promoted to squad leader
-			</span>
-		</div>
+		<EventLine time={event.time} icon={<Icons.Crown className="h-4 w-4 text-yellow-400 shrink-0" />}>
+			<PlayerDisplay showTeam={true} showSquad={true} player={event.player} matchId={event.matchId} stores={stores} />{' '}
+			promoted to squad leader
+		</EventLine>
 	)
 }
 
@@ -967,23 +891,25 @@ function PlayerWoundedOrDiedEvent(
 		if (event.type === 'PLAYER_DIED') {
 			switch (event.variant) {
 				case 'suicide':
-					return <Icons.Skull className="h-4 w-4 text-orange-400" />
+					return <Icons.Skull className="h-4 w-4 text-orange-400 shrink-0" />
 				case 'teamkill':
-					return <Icons.Skull className="h-4 w-4 text-red-500" />
+					return <Icons.Skull className="h-4 w-4 text-red-500 shrink-0" />
 				case 'normal':
-					return <Icons.Skull className="h-4 w-4 text-foreground" />
+					return <Icons.Skull className="h-4 w-4 text-foreground shrink-0" />
 			}
 		}
 
 		switch (event.variant) {
 			case 'suicide':
-				return <Icons.HeartPulse className="h-4 w-4 text-orange-400" />
+				return <Icons.HeartPulse className="h-4 w-4 text-orange-400 shrink-0" />
 			case 'teamkill':
-				return <Icons.HeartPulse className="h-4 w-4 text-red-500" />
+				return <Icons.HeartPulse className="h-4 w-4 text-red-500 shrink-0" />
 			case 'normal':
 				return null
 		}
 	}
+
+	const weaponSuffix = event.weapon && <span className="text-muted-foreground/70">{' '}with {event.weapon}</span>
 
 	const getMessage = () => {
 		switch (event.variant) {
@@ -992,7 +918,7 @@ function PlayerWoundedOrDiedEvent(
 					<>
 						<PlayerDisplay showTeam showSquad={true} player={event.victim} matchId={event.matchId} stores={stores} />{' '}
 						{event.type === 'PLAYER_WOUNDED' ? 'wounded themselves' : 'killed themselves'}
-						{event.weapon && <span className="text-muted-foreground/70">with {event.weapon}</span>}
+						{weaponSuffix}
 					</>
 				)
 			case 'teamkill':
@@ -1000,39 +926,29 @@ function PlayerWoundedOrDiedEvent(
 					<>
 						<PlayerDisplay showTeam showSquad={true} player={event.victim} matchId={event.matchId} stores={stores} /> teamkilled by{' '}
 						<PlayerDisplay showTeam showSquad={true} player={event.attacker} matchId={event.matchId} stores={stores} />
-						{event.weapon && <span className="text-muted-foreground/70">with {event.weapon}</span>}
+						{weaponSuffix}
 					</>
 				)
 			case 'normal':
 				return (
 					<>
 						<PlayerDisplay showTeam player={event.victim} matchId={event.matchId} stores={stores} />{' '}
-						{event.type === 'PLAYER_WOUNDED' ? 'wounded by' : 'killed by'}
+						{event.type === 'PLAYER_WOUNDED' ? 'wounded by' : 'killed by'}{' '}
 						<PlayerDisplay showTeam={true} player={event.attacker} matchId={event.matchId} stores={stores} />
-						{event.weapon && <span className="text-muted-foreground/70">with {event.weapon}</span>}
+						{weaponSuffix}
 					</>
 				)
 		}
 	}
 
-	return (
-		<div className="flex gap-2 py-1 text-muted-foreground whitespace-nowrap">
-			<EventTime time={event.time} variant="small" />
-			{getIcon()}
-			<span className="text-xs flex items-center gap-1">{getMessage()}</span>
-		</div>
-	)
+	return <EventLine time={event.time} icon={getIcon()}>{getMessage()}</EventLine>
 }
 
 function MapSetEvent({ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'MAP_SET' }>; stores: SquadServerFrame.KeyProp }) {
 	return (
-		<div className="flex gap-2 py-0.5 text-muted-foreground items-center">
-			<EventTime time={event.time} variant="small" />
-			<Icons.Map className="h-4 w-4 text-blue-400" />
-			<span className="text-xs inline-flex items-center gap-1 grow whitespace-nowrap">
-				Next layer set to <ShortLayerName layerId={event.layerId} teamParity={0} className="text-xs" />
-			</span>
-		</div>
+		<EventLine time={event.time} icon={<Icons.Map className="h-4 w-4 text-blue-400 shrink-0" />} className="py-0.5">
+			Next layer set to <ShortLayerName layerId={event.layerId} teamParity={0} className="text-xs" />
+		</EventLine>
 	)
 }
 
@@ -1040,13 +956,9 @@ function RconConnectedEvent(
 	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'RCON_CONNECTED' }>; stores: SquadServerFrame.KeyProp },
 ) {
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
-			<EventTime time={event.time} variant="small" />
-			<Icons.Plug className="h-4 w-4 text-green-500" />
-			<span className="text-xs">
-				{event.reconnected ? 'RCON reconnected' : 'Application started, RCON connection established'}
-			</span>
-		</div>
+		<EventLine time={event.time} icon={<Icons.Plug className="h-4 w-4 text-green-500 shrink-0" />}>
+			{event.reconnected ? 'RCON reconnected' : 'Application started, RCON connection established'}
+		</EventLine>
 	)
 }
 
@@ -1054,13 +966,9 @@ function RconDisconnectedEvent(
 	{ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'RCON_DISCONNECTED' }>; stores: SquadServerFrame.KeyProp },
 ) {
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
-			<EventTime time={event.time} variant="small" />
-			<Icons.Unplug className="h-4 w-4 text-red-500" />
-			<span className="text-xs">
-				RCON disconnected
-			</span>
-		</div>
+		<EventLine time={event.time} icon={<Icons.Unplug className="h-4 w-4 text-red-500 shrink-0" />}>
+			RCON disconnected
+		</EventLine>
 	)
 }
 

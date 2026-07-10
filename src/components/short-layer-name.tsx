@@ -94,8 +94,10 @@ export default function ShortLayerName(
 			extraStyles,
 		)
 	}
+	// flex-wrap so a long "Map_Gamemode_v1 . FactionA vs FactionB" can break across lines in a narrow
+	// container; each segment stays intact because it carries its own nowrap
 	const content = (
-		<span className={cn('inline-flex items-baseline', className)} ref={ref}>
+		<span className={cn('inline-flex flex-wrap items-baseline', className)} ref={ref}>
 			{partialLayer.Layer && <MapLayerDisplay layer={partialLayer.Layer} extraLayerStyles={extraStyles} />}
 			{partialLayer.Faction_1 && partialLayer.Faction_2 && (
 				<>
