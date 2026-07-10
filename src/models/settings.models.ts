@@ -117,6 +117,25 @@ export const GlobalSettingsSchema = z.object({
 	commandPrefix: BasicStrNoWhitespace.prefault('!').describe('Prefix character for in-game commands'),
 	commands: CMD.AllCommandConfigSchema,
 	rbac: RbacSettingsSchema,
+	layerTable: LQY.LayerTableConfigSchema.prefault({
+		orderedColumns: [
+			{ name: 'id', visible: false },
+			{ name: 'Size' },
+			{ name: 'Layer' },
+			{ name: 'Map', visible: false },
+			{ name: 'Gamemode', visible: false },
+			{ name: 'LayerVersion', visible: false },
+
+			{ name: 'Faction_1' },
+			{ name: 'Unit_1' },
+			{ name: 'Alliance_1', visible: false },
+
+			{ name: 'Faction_2' },
+			{ name: 'Unit_2' },
+			{ name: 'Alliance_2', visible: false },
+		],
+		defaultSortBy: { type: 'random' },
+	}).describe('Configures the columns, default sort, and extra menu items of the layer table'),
 })
 
 export type GlobalSettings = z.infer<typeof GlobalSettingsSchema>

@@ -1,32 +1,25 @@
 import * as Cli from '@/systems/cli.server'
 import * as D from 'discord.js'
 import dotenv from 'dotenv'
-import { parse as parseJsonc } from 'jsonc-parser'
-import fs from 'node:fs/promises'
-import { z } from 'zod'
 
 // Clears every application command registered for the SLM Discord app, both the home-guild-scoped
 // commands and any global ones. The app re-registers its guild commands on the next boot (see
 // discord.server.ts setup()), so this is the way to fix a stale/duplicated command list.
 //
-// Run with `pnpm run discord:reset-commands` (respects --env-file / --config). Deliberately reads
-// env + config directly instead of importing @/server/config, to stay off the logger/OTel chain
-// that isn't loadable outside the instrumented server entrypoint.
+// Run with `pnpm run discord:reset-commands` (respects --env-file). Deliberately reads env directly
+// instead of importing @/server/config.server, to stay off the logger/OTel chain that isn't loadable
+// outside the instrumented server entrypoint.
 
 await Cli.ensureCliParsed()
 dotenv.config({ path: Cli.options!.envFile })
 
 const token = process.env.DISCORD_BOT_TOKEN
 const appId = process.env.DISCORD_CLIENT_ID
-if (!token || !appId) {
-	console.error('DISCORD_BOT_TOKEN and DISCORD_CLIENT_ID must both be set')
+const guildId = process.env.HOME_DISCORD_GUILD_ID
+if (!token || !appId || !guildId) {
+	console.error('DISCORD_BOT_TOKEN, DISCORD_CLIENT_ID and HOME_DISCORD_GUILD_ID must all be set')
 	process.exit(1)
 }
-
-const raw = await fs.readFile(Cli.options!.config, 'utf-8')
-const { homeDiscordGuildId: guildId } = z
-	.object({ homeDiscordGuildId: z.string().min(1) })
-	.parse(parseJsonc(raw))
 
 const rest = new D.REST().setToken(token)
 

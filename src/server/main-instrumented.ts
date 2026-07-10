@@ -1,12 +1,10 @@
 import { sdk as otelSdk, setupOtel } from '@/systems/otel.server'
 
 import * as Cli from '@/systems/cli.server'
-import * as Config from './config.ts'
 import * as Env from './env.ts'
 
 await Cli.ensureCliParsed()
 Env.ensureEnvSetup()
-await Config.ensureSetup()
 
 const ENV = Env.getEnvBuilder({ OTEL_ENABLED: Env.groups.general.OTEL_ENABLED })()
 

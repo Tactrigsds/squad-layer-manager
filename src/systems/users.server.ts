@@ -9,9 +9,9 @@ import * as CMD from '@/models/command.models'
 import type * as CS from '@/models/context-shared'
 import * as USR from '@/models/users.models'
 import type * as RBAC from '@/rbac.models'
-import { CONFIG } from '@/server/config'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
+import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
@@ -33,8 +33,12 @@ const module = initModule('users')
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
 
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.discord })
+let ENV!: ReturnType<typeof envBuilder>
+
 export function setup() {
 	log = module.getLogger()
+	ENV = envBuilder()
 }
 
 async function recordUserAccount(ctx: C.Db, userId: bigint, action: AppEvents.UserAccountChanged['action']) {
@@ -199,7 +203,7 @@ function selectBestDisplayName(options: (string | null | undefined)[]): string {
 }
 
 export async function buildUser(dbUser: Schema.User): Promise<USR.User> {
-	const memberRes = await Discord.fetchMember(CONFIG.homeDiscordGuildId, dbUser.discordId)
+	const memberRes = await Discord.fetchMember(ENV.DISCORD_HOME_GUILD_ID, dbUser.discordId)
 	if (memberRes.code !== 'ok') {
 		log.warn(`Failed to fetch member for Discord ID ${dbUser.discordId}: ${memberRes.errCode} : ${memberRes.err}`)
 		return {

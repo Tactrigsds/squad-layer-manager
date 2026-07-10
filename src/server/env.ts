@@ -2,8 +2,11 @@ import * as dotenv from 'dotenv'
 import path from 'node:path'
 import { z } from 'zod'
 import * as Paths from '../../paths.ts'
-import { NormedUrl, ParsedIntSchema, PathSegment } from '../lib/zod'
+import { NormedUrl, ParsedBigIntSchema, ParsedIntSchema, PathSegment } from '../lib/zod'
 import * as Cli from '../systems/cli.server'
+
+// comma-separated list of Discord snowflake ids parsed to bigints (e.g. SUPER_USERS="123,456")
+const BigIntListSchema = z.string().default('').transform((val) => val.split(',').map((s) => s.trim()).filter(Boolean).map(BigInt))
 
 export const groups = {
 	general: {
@@ -18,10 +21,20 @@ export const groups = {
 		QUERY_PARAM_AUTH_BYPASS: z.stringbool().optional(),
 
 		LOG_EXCLUDE_CONTEXT_PARAMS: z.string().default('').transform(val => new Set(val.split(',').map(s => s.trim()).filter(Boolean))),
+
+		PUBLIC_REPO_URL: z.url().optional(),
+		PUBLIC_ISSUES_URL: z.url().optional(),
 	},
 
 	squadcalc: {
 		PUBLIC_SQUADCALC_URL: NormedUrl.default('https://squadcalc.app'),
+	},
+
+	rbac: {
+		// Discord user/role ids that are always granted every permission (deploy-time bootstrap so an admin can never be locked out).
+		// role/permission configuration otherwise lives in admin-editable global settings (see GlobalSettingsSchema.rbac).
+		SUPER_USERS: BigIntListSchema,
+		SUPER_ROLES: BigIntListSchema,
 	},
 
 	db: {
@@ -43,6 +56,7 @@ export const groups = {
 		DISCORD_CLIENT_ID: z.string().min(1),
 		DISCORD_CLIENT_SECRET: z.string().min(1),
 		DISCORD_BOT_TOKEN: z.string().min(1),
+		DISCORD_HOME_GUILD_ID: ParsedBigIntSchema,
 	},
 
 	httpServer: {

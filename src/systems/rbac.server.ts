@@ -4,9 +4,9 @@ import * as SETTINGS from '@/models/settings.models'
 import { initModule } from '@/server/logger'
 
 import * as RBAC from '@/rbac.models'
-import { CONFIG } from '@/server/config'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
+import * as Env from '@/server/env'
 
 import { getOrpcBase } from '@/server/orpc-base'
 import * as Discord from '@/systems/discord.server'
@@ -15,8 +15,11 @@ import * as E from 'drizzle-orm'
 import { unionAll } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 
-// the role type attributed to permissions granted by the config-level superUsers/superRoles bootstrap
+// the role type attributed to permissions granted by the env-level SUPER_USERS/SUPER_ROLES bootstrap
 const SUPER_ROLE: RBAC.Role = { type: 'super' }
+
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.rbac, ...Env.groups.discord })
+let ENV!: ReturnType<typeof envBuilder>
 
 let userDefinedRoles: RBAC.Role[] = []
 let userDefinedPermissionExpressions: Record<string, RBAC.GlobalPermissionTypeExpression[]> = {}
@@ -25,11 +28,12 @@ let superUserIds = new Set<bigint>()
 let superRoleIds = new Set<bigint>()
 
 export function setup() {
+	ENV = envBuilder()
 	// role config comes from admin-editable global settings and is pushed in via applyRbacSettings() once settings load;
 	// start from empty defaults so we never reference an unset binding
 	applyRbacSettings(SETTINGS.RbacSettingsSchema.parse({}))
-	superUserIds = new Set(CONFIG.superUsers)
-	superRoleIds = new Set(CONFIG.superRoles)
+	superUserIds = new Set(ENV.SUPER_USERS)
+	superRoleIds = new Set(ENV.SUPER_ROLES)
 }
 
 // called by settings.server whenever global settings are (re)loaded so role/permission changes take effect without a restart
@@ -77,7 +81,7 @@ async function isSuperUser(baseCtx: C.UserId): Promise<boolean> {
 	const userId = baseCtx.user.discordId
 	if (superUserIds.has(userId)) return true
 	if (superRoleIds.size === 0) return false
-	const memberRes = await Discord.fetchMember(CONFIG.homeDiscordGuildId, userId)
+	const memberRes = await Discord.fetchMember(ENV.DISCORD_HOME_GUILD_ID, userId)
 	if (memberRes.code !== 'ok') return false
 	for (const roleId of superRoleIds) {
 		if (memberRes.member.roles.cache.has(roleId.toString())) return true
@@ -104,13 +108,13 @@ export const getRolesForDiscordUser = C.spanOp(
 			tasks.push(
 				(async () => {
 					if (assignment.type === 'discord-server-member') {
-						const memberRes = await Discord.fetchMember(CONFIG.homeDiscordGuildId, userId)
+						const memberRes = await Discord.fetchMember(ENV.DISCORD_HOME_GUILD_ID, userId)
 						if (memberRes.code === 'ok') {
 							roles.push(assignment.role)
 						}
 					}
 					if (assignment.type === 'discord-role') {
-						const memberRes = await Discord.fetchMember(CONFIG.homeDiscordGuildId, userId)
+						const memberRes = await Discord.fetchMember(ENV.DISCORD_HOME_GUILD_ID, userId)
 						if (memberRes.code === 'ok') {
 							const member = memberRes.member
 							if (member.roles.cache.has(assignment.discordRoleId.toString())) {

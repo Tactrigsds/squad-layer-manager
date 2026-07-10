@@ -46,11 +46,16 @@ async function loadGlobalSettings(ctx: C.Db) {
 		const raw = unsuperjsonify(Schema.globalSettings, rows[0]) as any
 		const parseRes = SETTINGS.GlobalSettingsSchema.safeParse(raw.settings)
 		if (!parseRes.success) {
-			log.warn(parseRes.error, 'Global settings in DB failed validation, falling back to defaults')
-			GLOBAL_SETTINGS = SETTINGS.GlobalSettingsSchema.parse({})
-		} else {
-			GLOBAL_SETTINGS = parseRes.data
+			// refuse to start rather than silently reset to defaults: a validation failure means either a bad manual
+			// edit or a breaking schema change with a missing/incorrect migration, and booting on defaults would quietly
+			// discard the real config (and can mask downstream .encode() failures, see the layerTable codec regression)
+			log.fatal(
+				parseRes.error,
+				'Global settings in DB failed schema validation; refusing to start. Repair the globalSettings row or add a migration.',
+			)
+			throw new Error('Global settings in DB failed schema validation', { cause: parseRes.error })
 		}
+		GLOBAL_SETTINGS = parseRes.data
 		log.info('Loaded global settings from DB')
 	}
 	Rbac.applyRbacSettings(GLOBAL_SETTINGS.rbac)

@@ -2,6 +2,7 @@ import { BmFlagMultiSelect, BmFlagOrColorSelect, BmFlagOrderedList, FlagPriority
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { DiscordMemberSelect, DiscordRoleSelect } from '@/components/discord-picker'
 import FilterEntitySelect from '@/components/filter-entity-select'
+import LayerTableConfigEditor from '@/components/layer-table-config-editor'
 import { StickyGroup } from '@/components/sticky-group'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -9,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDebounced } from '@/hooks/use-debounce'
 import * as Obj from '@/lib/object'
 import { settingLabel } from '@/lib/settings-labels'
@@ -57,20 +59,6 @@ function useFieldValue<T>(value$: ValueState<T>, reset$: Rx.Observable<void>): T
 		return () => sub.unsubscribe()
 	}, [value$, reset$])
 	return v
-}
-
-// cheap "differs from default" flag for section headers: only flips (not per-keystroke), so sections don't
-// re-render (and cascade) on every descendant edit.
-function useIsModified(value$: ValueState, reset$: Rx.Observable<void>, def: { has: boolean; value: unknown }): boolean {
-	const compute = React.useCallback(() => def.has && !Obj.deepEqual(value$.getValue(), def.value), [value$, def])
-	const [mod, setMod] = React.useState(compute)
-	React.useEffect(() => {
-		const sub = new Rx.Subscription()
-		sub.add(value$.pipe(Rx.map(() => compute()), Rx.distinctUntilChanged()).subscribe(setMod))
-		sub.add(reset$.subscribe(() => setMod(compute())))
-		return () => sub.unsubscribe()
-	}, [value$, reset$, compute])
-	return mod
 }
 
 // run `fn` whenever reset$ fires (used by uncontrolled inputs to re-read their DOM value)
@@ -198,6 +186,20 @@ const RbacContext = React.createContext<RbacInfo>({ roleIds: [], assignedRoleIds
 // settings + one per server) don't collide; it stays `setting:*` so the TOC scroll-spy and hash nav still match.
 const FormOptionsContext = React.createContext<{ idPrefix: string }>({ idPrefix: 'setting:' })
 
+// the last-saved (persisted) baseline the draft was seeded from, so any field can offer "reset to saved" alongside
+// "reset to default". Held at the root and indexed per-field by path (see `getAtPath`); only changes on save/refetch, so
+// per-keystroke edits don't churn it. `undefined` while the settings are still loading.
+const SavedRootContext = React.createContext<{ saved: any }>({ saved: undefined })
+
+function getAtPath(root: any, path: Path): unknown {
+	let cur = root
+	for (const key of path) {
+		if (cur === null || cur === undefined) return undefined
+		cur = cur[key as any]
+	}
+	return cur
+}
+
 function readRbacInfo(root: any): RbacInfo {
 	const rbac = root?.rbac
 	const ra = rbac?.roleAssignments
@@ -298,6 +300,17 @@ function DiscordMemberField({ value$, reset$, onChange }: OverrideProps) {
 	const value = useFieldValue(value$, reset$)
 	return <DiscordMemberSelect value={value ?? ''} onChange={onChange} />
 }
+// bespoke editor for the layer-table config (column order/visibility, default sort, extra menu items, default filters)
+function LayerTableField({ value$, reset$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$, reset$)
+	return (
+		<LayerTableConfigEditor
+			value={value ?? { orderedColumns: [], defaultSortBy: { type: 'random' } }}
+			onChange={onChange}
+			reset$={reset$}
+		/>
+	)
+}
 // a defined role's permission expression, plus a warning when nothing assigns the role
 function RolePermissionField({ value$, reset$, onChange, path }: OverrideProps) {
 	const value = useFieldValue(value$, reset$)
@@ -331,6 +344,7 @@ function AssignmentRolesField({ value$, reset$, onChange }: OverrideProps) {
 
 function overrideFor(path: Path): React.FC<OverrideProps> | undefined {
 	const last = path[path.length - 1]
+	if (path.length === 1 && last === 'layerTable') return LayerTableField
 	if (path.length === 1 && last === 'playerFlagColorHierarchy') return FlagOrderedListField
 	if (path.length === 1 && last === 'playerFlagsRequiringNote') return FlagMultiSelectField
 	if (path[0] === 'playerFlagGroupings' && typeof path[1] === 'number' && last === 'color') return FlagOrColorField
@@ -889,18 +903,88 @@ function isScalarNode(inner: Node): boolean {
 	return inner?.type === 'string' || inner?.type === 'number' || inner?.type === 'integer' || inner?.type === 'boolean'
 }
 
-function ResetButton({ onClick }: { onClick: () => void }) {
+// a ghost icon button with a tooltip that still shows when the button is disabled: the wrapping span keeps receiving
+// hover events even though the disabled button sets `pointer-events-none`.
+function TooltipButton(
+	{ disabled, tooltip, onClick, children }: {
+		disabled: boolean
+		tooltip: string
+		onClick: () => void
+		children: React.ReactNode
+	},
+) {
 	return (
-		<Button
-			type="button"
-			size="icon"
-			variant="ghost"
-			className="h-6 w-6 shrink-0 text-muted-foreground"
-			title="Reset to default"
-			onClick={onClick}
-		>
-			<Icons.RotateCcw className="h-3.5 w-3.5" />
-		</Button>
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<span className="inline-flex">
+					<Button
+						type="button"
+						size="icon"
+						variant="ghost"
+						className="h-6 w-6 shrink-0 text-muted-foreground"
+						disabled={disabled}
+						onClick={onClick}
+					>
+						{children}
+					</Button>
+				</span>
+			</TooltipTrigger>
+			<TooltipContent>{tooltip}</TooltipContent>
+		</Tooltip>
+	)
+}
+
+// the per-field reset affordances: reset-to-saved (undo local edits back to the persisted baseline) and, when the field
+// has a schema default, a "default: <value>" hint plus reset-to-default. Both buttons stay mounted and disable when the
+// current value already matches their target, so the affordance is discoverable and its tooltip explains the state.
+function FieldResetControls(
+	{ value$, reset$, onChange, node, path, showDefaultLabel }: {
+		value$: ValueState
+		reset$: Rx.Subject<void>
+		onChange: (v: any) => void
+		node: Node
+		path: Path
+		showDefaultLabel: boolean
+	},
+) {
+	const value = useFieldValue(value$, reset$)
+	const { saved } = React.useContext(SavedRootContext)
+	const def = effectiveDefault(node)
+	const savedValue = getAtPath(saved, path)
+	const canResetSaved = saved !== undefined && !Obj.deepEqual(value, savedValue)
+	const canResetDefault = def.has && !Obj.deepEqual(value, def.value)
+
+	function resetTo(v: unknown) {
+		onChange(structuredClone(v))
+		reset$.next()
+	}
+
+	return (
+		<div className="flex items-center gap-1 shrink-0">
+			<TooltipButton
+				disabled={!canResetSaved}
+				tooltip={canResetSaved ? 'Reset to saved value' : 'Already matches the saved value'}
+				onClick={() => resetTo(savedValue)}
+			>
+				<Icons.RotateCcw className="h-3.5 w-3.5" />
+			</TooltipButton>
+			{def.has && (
+				<>
+					{showDefaultLabel && (
+						<span className="text-xs text-muted-foreground max-w-[12rem] truncate" title={formatDefaultValue(def.value)}>
+							default: {formatDefaultValue(def.value)}
+						</span>
+					)}
+					<TooltipButton
+						disabled={!canResetDefault}
+						tooltip={canResetDefault ? `Reset to default (${formatDefaultValue(def.value)})` : 'Already matches the default'}
+						onClick={() => resetTo(def.value)}
+					>
+						<Icons.CornerDownLeft className="h-3.5 w-3.5" />
+					</TooltipButton>
+				</>
+			)}
+		</div>
 	)
 }
 
@@ -939,8 +1023,6 @@ function SectionField(
 	const pathStr = path.join('.')
 	const { idPrefix } = React.useContext(FormOptionsContext)
 	const domId = `${idPrefix}${pathStr}`
-	const def = effectiveDefault(node)
-	const modified = useIsModified(value$, reset$, def)
 	// the header pins to the top of the scroll column (stacking under any ancestor section headers) while this section
 	// is in view. StickyGroup handles the offset math + z-index; the ref'd element must sit before the section body.
 	const headerRef = React.useRef<HTMLDivElement>(null)
@@ -950,15 +1032,9 @@ function SectionField(
 				<div ref={headerRef} className="group flex items-center gap-2 -mx-3 rounded-t-md border-b bg-card px-3 py-2">
 					<legend className="px-1 text-sm font-semibold">{settingLabel(path, name)}</legend>
 					<code className="text-[10px] text-muted-foreground">{pathStr}</code>
+					{/* a whole section's default is usually a bulky object, so omit the inline "default:" hint (tooltip carries it) */}
+					<FieldResetControls value$={value$} reset$={reset$} onChange={onChange} node={node} path={path} showDefaultLabel={false} />
 					<AnchorLink domId={domId} />
-					{modified && (
-						<ResetButton
-							onClick={() => {
-								onChange(structuredClone(def.value))
-								reset$.next()
-							}}
-						/>
-					)}
 				</div>
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
 				<FieldControl node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />
@@ -984,22 +1060,13 @@ function LeafField(
 	const pathStr = path.join('.')
 	const { idPrefix } = React.useContext(FormOptionsContext)
 	const domId = `${idPrefix}${pathStr}`
-	const value = useFieldValue(value$, reset$)
-	const def = effectiveDefault(node)
-	const canReset = def.has && !Obj.deepEqual(value, def.value)
-	const resetBtn = canReset
-		? (
-			<ResetButton
-				onClick={() => {
-					onChange(structuredClone(def.value))
-					reset$.next()
-				}}
-			/>
-		)
-		: null
 
 	const isBoolean = inner.type === 'boolean'
-	const showDefaultText = !hasOverride && def.has && isScalarNode(inner)
+	// the inline "default: <value>" hint only reads well for scalars; complex/override fields still get the reset buttons
+	const showDefaultLabel = !hasOverride && isScalarNode(inner)
+	const controls = (
+		<FieldResetControls value$={value$} reset$={reset$} onChange={onChange} node={node} path={path} showDefaultLabel={showDefaultLabel} />
+	)
 	return (
 		<div
 			id={domId}
@@ -1009,14 +1076,13 @@ function LeafField(
 				<div className="group flex items-center gap-1.5">
 					<Label className="text-sm">{settingLabel(path, name)}</Label>
 					<code className="text-[10px] text-muted-foreground">{pathStr}</code>
+					{!isBoolean && controls}
 					<AnchorLink domId={domId} />
-					{!isBoolean && resetBtn}
 				</div>
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
-				{showDefaultText && <p className="text-xs text-muted-foreground">Default: {formatDefaultValue(def.value)}</p>}
 			</div>
 			<div className={cn(isBoolean && 'shrink-0 flex items-center gap-1')}>
-				{isBoolean && resetBtn}
+				{isBoolean && controls}
 				<FieldControl node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />
 			</div>
 		</div>
@@ -1078,11 +1144,14 @@ function JsonFallback({ value$, reset$, onChange }: { value$: ValueState; reset$
 }
 
 export default function SettingsForm(
-	{ schema, value$, reset$, onChange, idPrefix = 'setting:' }: {
+	{ schema, value$, reset$, onChange, saved, idPrefix = 'setting:' }: {
 		schema: z.ZodType
 		value$: Rx.Observable<any> & { getValue: () => any }
 		reset$: Rx.Subject<void>
 		onChange: (next: any) => void
+		// the last-saved baseline the draft was seeded from; powers each field's "reset to saved" button. May be
+		// undefined while the settings are still loading.
+		saved?: any
 		// scopes field DOM ids / URL anchors; defaults to `setting:` (global settings). Server forms pass `setting:server:<id>:`
 		idPrefix?: string
 	},
@@ -1091,13 +1160,16 @@ export default function SettingsForm(
 	// stable so the form subtree stays memoized when only rbacInfo (context) changes
 	const rootPath = React.useMemo<Path>(() => [], [])
 	const formOptions = React.useMemo(() => ({ idPrefix }), [idPrefix])
+	const savedCtx = React.useMemo(() => ({ saved }), [saved])
 	const rbacInfo = useRbacInfo(value$)
 	useRoleCascade(value$, onChange)
 	return (
 		<FormOptionsContext.Provider value={formOptions}>
-			<RbacContext.Provider value={rbacInfo}>
-				<ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />
-			</RbacContext.Provider>
+			<SavedRootContext.Provider value={savedCtx}>
+				<RbacContext.Provider value={rbacInfo}>
+					<ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />
+				</RbacContext.Provider>
+			</SavedRootContext.Provider>
 		</FormOptionsContext.Provider>
 	)
 }

@@ -15,6 +15,10 @@ export type DragItem = {
 } | {
 	type: 'history-entry'
 	id: number
+} | {
+	// a column in the layer-table config editor (id = column name)
+	type: 'layer-table-column'
+	id: string
 }
 
 {

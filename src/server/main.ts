@@ -31,7 +31,7 @@ import * as Vote from '@/systems/vote.server'
 import * as WsSession from '@/systems/ws-session.server'
 
 import * as CS from '@/models/context-shared'
-import * as Config from './config.ts'
+import * as Config from './config.server.ts'
 import * as C from './context.ts'
 import * as DB from './db'
 import * as Env from './env.ts'
@@ -71,13 +71,14 @@ await C.spanOp('main', { module }, async () => {
 	// critical path; we await `LayerDb.ready` below, right before the db can first be queried
 	await LayerDb.setup()
 	await DB.setup()
-	await Promise.all([Config.ensureSetup(), FilterEntity.setup()])
-	Config.pushPublicConfig()
+	await FilterEntity.setup()
 	PersistedCache.setup()
 	await Battlemetrics.setup()
 	Rbac.setup()
 	void Sessions.setup()
 	await Settings.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
+	// after Settings.setup so GLOBAL_SETTINGS.layerTable exists; also subscribes to settings changes to re-push
+	Config.setup()
 	await SquadLogsReceiver.setup()
 	// detect (before this instance's APP_STARTED is persisted) whether we came up via a restart-slm command, so the
 	// per-server "SLM started/restarted" admin warn (sent during SquadServer.setup) can name who restarted it

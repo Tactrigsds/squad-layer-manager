@@ -6,7 +6,6 @@ import * as RBAC from '@/rbac.models'
 import { initModule } from '@/server/logger'
 import * as AppEventsSys from '@/systems/app-events.server'
 
-import { CONFIG } from '@/server/config'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env'
 
@@ -57,7 +56,7 @@ export async function setup() {
 		void client.login(ENV.DISCORD_BOT_TOKEN)
 	})
 
-	const res = await fetchGuild(CONFIG.homeDiscordGuildId)
+	const res = await fetchGuild(ENV.DISCORD_HOME_GUILD_ID)
 	if (res.code !== 'ok') {
 		// the bot can only fetch guilds it's a member of, so UnknownGuild here means the SLM application
 		// hasn't been added to the configured guild (as opposed to a transient/permissions failure)
@@ -68,11 +67,11 @@ export async function setup() {
 				'The "%s" Discord application is not installed in the configured guild (homeDiscordGuildId=%s). '
 					+ 'Invite the bot to that server and restart SLM.',
 				appName,
-				CONFIG.homeDiscordGuildId,
+				ENV.DISCORD_HOME_GUILD_ID,
 			)
 			process.exit(1)
 		}
-		throw new Error(`Could not find Discord server ${CONFIG.homeDiscordGuildId}`)
+		throw new Error(`Could not find Discord server ${ENV.DISCORD_HOME_GUILD_ID}`)
 	}
 
 	await res.guild.commands.set([
@@ -172,7 +171,7 @@ export async function fetchMember(guildId: bigint, memberId: bigint) {
 }
 
 export async function fetchGuildRoles() {
-	const res = await fetchGuild(CONFIG.homeDiscordGuildId)
+	const res = await fetchGuild(ENV.DISCORD_HOME_GUILD_ID)
 	if (res.code !== 'ok') {
 		return res
 	}
@@ -182,7 +181,7 @@ export async function fetchGuildRoles() {
 
 // roles with display info, for the settings role-assignment picker
 export async function listGuildRolesDetailed() {
-	const res = await fetchGuild(CONFIG.homeDiscordGuildId)
+	const res = await fetchGuild(ENV.DISCORD_HOME_GUILD_ID)
 	if (res.code !== 'ok') return res
 	const rolesMap = await res.guild.roles.fetch()
 	const roles = [...rolesMap.values()]
@@ -194,7 +193,7 @@ export async function listGuildRolesDetailed() {
 
 // prefix search across all guild members (username/nickname), for the settings user-assignment picker
 export async function searchGuildMembers(query: string, limit = 25) {
-	const res = await fetchGuild(CONFIG.homeDiscordGuildId)
+	const res = await fetchGuild(ENV.DISCORD_HOME_GUILD_ID)
 	if (res.code !== 'ok') return res
 	const membersMap = await res.guild.members.search({ query, limit })
 	const members = [...membersMap.values()].map((m) => ({
@@ -210,7 +209,7 @@ export const orpcRouter = {
 	getGuildEmojis: orpcBase
 		.input(z.object({}).optional())
 		.handler(async () => {
-			const guildRes = await fetchGuild(CONFIG.homeDiscordGuildId)
+			const guildRes = await fetchGuild(ENV.DISCORD_HOME_GUILD_ID)
 			const guild = resToOptional(guildRes)!.guild
 			let emojis = await guild.emojis.fetch()
 

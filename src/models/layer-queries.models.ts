@@ -598,8 +598,9 @@ export const LayerTableConfigSchema = z.object({
 		z.object({ name: z.string(), visible: z.boolean().optional().describe('default true') }),
 	),
 	defaultSortBy: LayersQuerySortSchema,
-	// legacy comparison shapes in existing config files are upgraded to the new node shape on read
-	extraLayerSelectMenuItems: z.array(z.preprocess(F.coerceEditableCompNode, F.EditableCompNodeSchema)).optional(),
+	// must stay bidirectionally codec-able (no z.preprocess/one-way transforms): the settings system round-trips
+	// GlobalSettings through .encode() for the editor form, which throws on a unidirectional transform
+	extraLayerSelectMenuItems: z.array(F.EditableCompNodeSchema).optional(),
 	defaultExtraFilters: z.array(F.FilterEntityIdSchema).optional(),
 })
 

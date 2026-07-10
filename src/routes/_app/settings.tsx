@@ -473,6 +473,7 @@ function ServerSettingsSection(
 								value$={draft$}
 								reset$={reset$}
 								onChange={onFormChange}
+								saved={initial}
 								idPrefix={`setting:server:${server.id}:`}
 							/>
 						)
@@ -623,6 +624,7 @@ function CreateServerSection(
 								value$={draft$}
 								reset$={reset$}
 								onChange={onFormChange}
+								saved={NEW_SERVER_DRAFT}
 								idPrefix="setting:server:__new__:"
 							/>
 						)
@@ -785,7 +787,15 @@ function GlobalSettingsSection(
 				</CardHeader>
 				<CardContent className="space-y-4">
 					{mode === 'gui'
-						? <SettingsForm schema={SETTINGS.GlobalSettingsSchema} value$={draft$} reset$={reset$} onChange={onFormChange} />
+						? (
+							<SettingsForm
+								schema={SETTINGS.GlobalSettingsSchema}
+								value$={draft$}
+								reset$={reset$}
+								onChange={onFormChange}
+								saved={settings}
+							/>
+						)
 						: (
 							<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
 								<SchemaJsonEditor

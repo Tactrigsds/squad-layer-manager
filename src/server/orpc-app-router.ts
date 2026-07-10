@@ -1,4 +1,4 @@
-import * as Config from '@/server/config'
+import * as Config from '@/server/config.server'
 import * as AppEvents from '@/systems/app-events.server'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as Discord from '@/systems/discord.server'
