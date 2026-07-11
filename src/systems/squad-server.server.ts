@@ -880,7 +880,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 					'onRconEvent',
 					{ module, taskScheduling: 'parallel', levels: { event: 'trace' } },
 					async ([_ctx, event], signal) => {
-						const ctx = DB.addPooledDb(resolveSliceCtx(CS.addSignal({ ..._ctx }, signal), serverId))
+						const ctx = CS.initDeferred(DB.addPooledDb(resolveSliceCtx(CS.addSignal({ ..._ctx }, signal), serverId)))
 						try {
 							const opts: Promise<void>[] = []
 							if (event.type === 'CHAT_MESSAGE') {
@@ -905,6 +905,10 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 						await collectEvents(ctx, () => {
 							PendingEvents.onRconEvent(ctx.server.eventState, event)
 						})
+
+						// drain best-effort side work (e.g. vote-cast warns) scheduled by the handlers above, so it
+						// finishes inside this task's lifetime and signal instead of leaking as a floating promise
+						for (const err of await CS.awaitDeferred(ctx)) log.error(err)
 					},
 				),
 			)

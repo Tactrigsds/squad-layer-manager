@@ -1,5 +1,5 @@
 import * as Schema from '$root/drizzle/schema'
-import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { isAbortError, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import type * as Cleanup from '@/lib/cleanup'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
@@ -191,7 +191,9 @@ export const syncVoteStateWithQueueState = C.spanOp(
 				log.info('scheduling autostart vote to %s for %s', newVoteState.autostartTime.toISOString(), newVoteState.itemId)
 				vote.autostartVoteSub = Rx.of(1).pipe(Rx.delay(dateFns.differenceInMilliseconds(newVoteState.autostartTime, Date.now()))).subscribe(
 					() => {
-						void startVote(SquadServer.resolveSliceCtx(getBaseCtx(), serverId), { initiator: 'autostart' })
+						startVote(SquadServer.resolveSliceCtx(getBaseCtx(), serverId), { initiator: 'autostart' }).catch((err) => {
+							if (!isAbortError(err)) log.error(err)
+						})
 					},
 				)
 			}
@@ -296,7 +298,7 @@ export const startVote = C.spanOp(
 		ctx.vote.state = updatedVoteState
 		addReleaseTask(() => ctx.vote.update$.next(update))
 		registerVoteDeadlineAndReminder$(ctx)
-		void broadcastVoteUpdate(
+		await broadcastVoteUpdate(
 			ctx,
 			updatedVoteState,
 			Messages.BROADCASTS.vote.started(
@@ -323,59 +325,69 @@ export const startVote = C.spanOp(
 	},
 )
 
-export const handleVote = C.spanOp('handleVote', {
-	module,
-	attrs: (_, msg) => ({ messageId: msg.message, playerUsername: msg.playerIds.username }),
-}, (ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.Rcon & C.AdminList & CS.AbortSignal, msg: SM.RconEvents.ChatMessage) => {
-	//
-	const choiceIdx = parseInt(msg.message.trim())
-	const voteState = ctx.vote.state
-	if (!voteState) {
-		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'No vote in progress')
-		return
-	}
-	if (voteState.voterType === 'internal' && msg.channelType !== 'ChatAdmin') {
-		void SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.wrongChat('AdminChat'))
-		return
-	}
-	if (choiceIdx <= 0 || choiceIdx > voteState.choiceIds.length) {
-		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Invalid choice')
-		void SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.invalidChoice)
-		return
-	}
-	if (voteState.code !== 'in-progress') {
-		void SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.noVoteInProgress)
-		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Vote not in progress')
-		return
-	}
+export const handleVote = C.spanOp(
+	'handleVote',
+	{
+		module,
+		attrs: (_, msg) => ({ messageId: msg.message, playerUsername: msg.playerIds.username }),
+	},
+	(
+		ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.Rcon & C.AdminList & CS.AbortSignal & CS.Deferred,
+		msg: SM.RconEvents.ChatMessage,
+	) => {
+		//
+		const choiceIdx = parseInt(msg.message.trim())
+		const voteState = ctx.vote.state
+		if (!voteState) {
+			C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'No vote in progress')
+			return
+		}
+		if (voteState.voterType === 'internal' && msg.channelType !== 'ChatAdmin') {
+			CS.defer(ctx, SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.wrongChat('AdminChat')))
+			return
+		}
+		if (choiceIdx <= 0 || choiceIdx > voteState.choiceIds.length) {
+			C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Invalid choice')
+			CS.defer(ctx, SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.invalidChoice))
+			return
+		}
+		if (voteState.code !== 'in-progress') {
+			CS.defer(ctx, SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.noVoteInProgress))
+			C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Vote not in progress')
+			return
+		}
 
-	const choiceItemId = voteState.choiceIds[choiceIdx - 1]
-	SM.PlayerIds.upsert(voteState.votes, ({ playerIds }) => playerIds, { playerIds: msg.playerIds, choice: choiceItemId })
-	// voteState.votes[msg.playerIds] = choice
-	const update: V.VoteStateUpdate = {
-		state: voteState,
-		source: {
-			type: 'manual',
-			event: 'vote',
-			user: { steamId: msg.playerIds?.steam?.toString() },
-		},
-	}
+		const choiceItemId = voteState.choiceIds[choiceIdx - 1]
+		SM.PlayerIds.upsert(voteState.votes, ({ playerIds }) => playerIds, { playerIds: msg.playerIds, choice: choiceItemId })
+		// voteState.votes[msg.playerIds] = choice
+		const update: V.VoteStateUpdate = {
+			state: voteState,
+			source: {
+				type: 'manual',
+				event: 'vote',
+				user: { steamId: msg.playerIds?.steam?.toString() },
+			},
+		}
 
-	ctx.vote.update$.next(update)
-	void (async () => {
-		const layerQueue = LayerQueue.getSavedQueue(ctx)
-		const { item: voteItem } = Obj.destrNullable(LL.findItemById(layerQueue, voteState.itemId))
-		if (!voteItem || !LL.isVoteItem(voteItem)) return
-		const choiceLayerId = LL.findItemById(voteItem.choices, choiceItemId)?.item.layerId
-		if (!choiceLayerId) return
-		void SquadRcon.warn(
+		ctx.vote.update$.next(update)
+		CS.defer(
 			ctx,
-			msg.playerIds,
-			Messages.WARNS.vote.voteCast(choiceLayerId, voteItem?.voteConfig?.displayProps ?? Settings.GLOBAL_SETTINGS.vote.voteDisplayProps),
+			(async () => {
+				const layerQueue = LayerQueue.getSavedQueue(ctx)
+				const { item: voteItem } = Obj.destrNullable(LL.findItemById(layerQueue, voteState.itemId))
+				if (!voteItem || !LL.isVoteItem(voteItem)) return
+				const choiceLayerId = LL.findItemById(voteItem.choices, choiceItemId)?.item.layerId
+				if (!choiceLayerId) return
+				await SquadRcon.warn(
+					ctx,
+					msg.playerIds,
+					Messages.WARNS.vote.voteCast(choiceLayerId, voteItem?.voteConfig?.displayProps ?? Settings.GLOBAL_SETTINGS.vote.voteDisplayProps),
+				)
+			})(),
 		)
-	})()
-	C.setSpanStatus(Otel.SpanStatusCode.OK)
-})
+		C.setSpanStatus(Otel.SpanStatusCode.OK)
+	},
+)
 
 export const abortVote = C.spanOp(
 	'abortVote',

@@ -491,19 +491,17 @@ export type ServerSlice =
 /**
  * Creates an operator that wraps an observable with retry logic and additional trace context.
  *
+ * The returned operator fully owns error handling: neither a torn-down/aborted task nor a failing
+ * source will ever propagate to the subscriber, so callers subscribe with a bare `.subscribe()` and
+ * the subscription keeps listening for events for its whole lifetime. Errors are logged, recorded in
+ * traces, and retried (per-task via `numTaskRetries`, then the source indefinitely, paced by
+ * `retryTimeoutMs`). The task signal aborts on teardown (unsubscribe, switch) or when a ctx signal
+ * carried in the emitted value aborts; abort errors stop that one task quietly.
+ *
  * @param name - Identifier for the subscription used in logs and traces
- * @param opts - Configuration options including:
- *               - ctx: Logging context
- *               - tracer: OpenTelemetry tracer instance
- *               - retryTimeoutMs: Delay between retries (default: 250ms)
- *               - numRetries: Maximum retry attempts (default: 3)
+ * @param opts - Configuration options (module, levels, taskScheduling, retryTimeoutMs, etc.)
  * @param cb - Async callback function to process each emitted value
  * @returns An RxJS operator that transforms the source observable
- *
- * The returned operator:
- * - Creates spans for tracing execution
- * - Handles errors by logging them and recording in traces
- * - Automatically retries failed operations with configurable delay and retry count
  */
 export function durableSub<T, O>(
 	name: string,
@@ -516,7 +514,6 @@ export function durableSub<T, O>(
 		}
 		numTaskRetries?: number
 		retryTaskOnValueError?: boolean
-		numOfUpstreamErrorsBeforePropagation?: number
 		retryTimeoutMs?: number
 		taskScheduling?: 'switch' | 'parallel' | 'sequential' | 'exhaust'
 		root?: boolean
@@ -527,7 +524,6 @@ export function durableSub<T, O>(
 	cb: (value: T, signal: AbortSignal) => Promise<O>,
 ): (o: Rx.Observable<T>) => Rx.Observable<O> {
 	return (o) => {
-		const numDownstreamFailureBeforeErrorPropagation = opts.numOfUpstreamErrorsBeforePropagation ?? 10
 		const numRetries = Math.max(opts.numTaskRetries ?? 0, 0)
 		const retryOnValueError = opts.retryTaskOnValueError ?? false
 		const taskScheduling = opts.taskScheduling ?? ('sequential' as const)
@@ -618,9 +614,13 @@ export function durableSub<T, O>(
 				switch: Rx.switchMap(getTask),
 				exhaust: Rx.exhaustMap(getTask),
 			}[taskScheduling],
+			// durableSub owns all error handling: a torn-down/aborted task or a failing source must never
+			// escape to the (deliberately handler-less) subscriber, where RxJS would report it as an
+			// uncaught error and crash the process. Retry the source indefinitely (paced by delay) so the
+			// subscription keeps listening for events instead of tearing down.
 			Rx.retry({
 				resetOnSuccess: true,
-				count: numDownstreamFailureBeforeErrorPropagation,
+				count: Infinity,
 				delay: opts.retryTimeoutMs ?? 250,
 			}),
 			Rx.tap({

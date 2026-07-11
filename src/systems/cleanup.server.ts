@@ -1,3 +1,4 @@
+import { isAbortError } from '@/lib/async'
 import * as Cleanup from '@/lib/cleanup'
 import * as CS from '@/models/context-shared'
 
@@ -32,6 +33,19 @@ export function unregister(idx: number) {
 export function setup() {
 	ENV = buildEnv()
 	log = module.getLogger()
+
+	// Last-resort backstop: a floating promise (e.g. a best-effort admin warn whose task-scoped signal
+	// aborted) must never take down a live server. Abort rejections are benign cancellations, logged at
+	// debug so a leaked one is still traceable without alarming; anything else is a real error. Either
+	// way the process keeps running. This is a net, not a substitute for observing promises at source.
+	process.on('unhandledRejection', (reason) => {
+		if (isAbortError(reason)) {
+			log.debug(reason, 'unhandledRejection: aborted')
+			return
+		}
+		log.error(reason, 'unhandledRejection')
+	})
+
 	if (ENV.NODE_ENV === 'development') return
 	const ctx = { ...CS.init(), log }
 	process.on(

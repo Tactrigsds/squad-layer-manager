@@ -462,11 +462,14 @@ const dispatchOp = C.spanOp(
 							const factionLines = se.switches.size <= 8
 								? buildFactionLines(Array.from(se.switches.keys()), se.switches, currPlayers, layer, currentMatch.ordinal)
 								: undefined
-							void SquadRcon.warnAllAdmins(
-								ctx,
+							// notification should outlive this dispatch, so bind it to the shutdown signal rather than the task signal
+							SquadRcon.warnAllAdmins(
+								{ ...ctx, signal: CleanupSys.shutdownSignal },
 								{ msg: WARNS.teamswitches.notifyAdminSwitchesSaved(name, se.switches.size, se.prevSaved.size, factionLines) },
 								excludeSteamIds,
-							)
+							).catch((error) => {
+								if (!isAbortError(error)) log.error(error)
+							})
 						}
 						break
 					}

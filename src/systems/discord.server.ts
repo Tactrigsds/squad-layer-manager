@@ -53,7 +53,8 @@ export async function setup() {
 		client.once('error', (err) => {
 			reject(err)
 		})
-		void client.login(ENV.DISCORD_BOT_TOKEN)
+		// a login failure that doesn't surface as an 'error' event would otherwise reject unobserved; route it to the connect promise
+		client.login(ENV.DISCORD_BOT_TOKEN).catch(reject)
 	})
 
 	const res = await fetchGuild(ENV.DISCORD_HOME_GUILD_ID)

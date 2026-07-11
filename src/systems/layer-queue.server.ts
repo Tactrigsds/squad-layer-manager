@@ -1,5 +1,5 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import { toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
+import { isAbortError, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
 import * as UserPresenceSys from '@/systems/user-presence.server'
 
 import * as DH from '@/lib/display-helpers.ts'
@@ -274,7 +274,7 @@ export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.Serv
 			Rx.timer(Settings.GLOBAL_SETTINGS.fogOffDelay).subscribe(async () => {
 				const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 				await SquadRcon.setFogOfWar(ctx, 'off')
-				void SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
+				await SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
 			}),
 		)
 	}
@@ -294,7 +294,7 @@ export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.Serv
 
 		announcementTasks.push(toCold(async () => {
 			const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-			void warnShowNext(ctx, 'all-admins')
+			await warnShowNext(ctx, 'all-admins')
 		}))
 
 		announcementTasks.push(toCold(async () => {
@@ -419,7 +419,10 @@ export const syncNextLayerToServer = C.spanOp('syncNextLayerToServer', { module,
 			break
 		case 'err:rcon':
 			ctx.layerQueue.unexpectedNextLayerSet$.next(null)
-			void SquadServer.pushAttribution(ctx, { type: 'MAP_SET_ATTRIBUTION', itemId, layerId: nextQueuedLayerId })
+			// deliberately detached (see below): observe the rejection instead of awaiting
+			SquadServer.pushAttribution(ctx, { type: 'MAP_SET_ATTRIBUTION', itemId, layerId: nextQueuedLayerId }).catch((err) => {
+				if (!isAbortError(err)) log.error(err)
+			})
 			break
 		case 'ok': {
 			ctx.layerQueue.unexpectedNextLayerSet$.next(null)
@@ -441,12 +444,14 @@ export const syncNextLayerToServer = C.spanOp('syncNextLayerToServer', { module,
 				else await AppEventsSys.persistAppEvent(ctx, mapSet)
 				mapSetAppEventId = mapSet.id
 			}
-			// awaiting this will cause a deadlock on map roll
-			void SquadServer.pushAttribution(ctx, {
+			// awaiting this will cause a deadlock on map roll, so it stays detached; observe its rejection
+			SquadServer.pushAttribution(ctx, {
 				type: 'MAP_SET_ATTRIBUTION',
 				itemId,
 				layerId: nextQueuedLayerId,
 				appEventId: mapSetAppEventId,
+			}).catch((err) => {
+				if (!isAbortError(err)) log.error(err)
 			})
 			break
 		}
