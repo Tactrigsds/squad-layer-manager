@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogFooter, HeadlessDialogHeader, HeadlessDialogTitle } from '@/components/ui/headless-dialog'
-import { useFrameLifecycle } from '@/frames/frame-manager.ts'
+import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Obj from '@/lib/object'
@@ -53,6 +53,8 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 			equalityFn: Obj.deepEqual,
 		},
 	)
+	// a frame this dialog provisioned itself dies with it; one handed in via stores belongs to its provider
+	useFrameTeardownOnUnmount(frameKey, !props.stores?.selectLayers)
 
 	const [initialLayerId, editedLayerId] = ZusUtils.useStore(
 		frameKey,

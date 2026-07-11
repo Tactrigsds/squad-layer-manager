@@ -65,6 +65,11 @@ export const PERM_SCOPE_ARGS = {
 	filter: z.object({ filterId: F.FilterEntityIdSchema }),
 	// null = unlimited (Infinity doesn't serialize and zod rejects it)
 	timeout: z.object({ maxDurationMs: z.number().int().positive().nullable() }),
+	// null serverId = all servers
+	'server-settings': z.object({ serverId: z.string().nullable() }),
+	// paths are dotted setting-path prefixes (e.g. "queue.mainPool"); null = all non-sensitive settings
+	'server-settings-write': z.object({ serverId: z.string().nullable(), paths: z.array(z.string()).nullable() }),
+	'global-settings-write': z.object({ paths: z.array(z.string()).nullable() }),
 }
 
 type PermScope = keyof typeof PERM_SCOPE_ARGS
@@ -83,8 +88,25 @@ export const PERMISSION_DEFINITION = {
 		description: "Add, remove, edit or reorder layers in the queue, even if the layer isn't in the pool",
 		scope: 'global',
 	}),
-	...definePermission('settings:write', { description: 'Change settings like the configured layer pool filter', scope: 'global' }),
 	...definePermission('vote:manage', { description: 'Start and abort votes', scope: 'global' }),
+
+	...definePermission('global-settings:read', { description: 'View global settings and the audit log', scope: 'global' }),
+	...definePermission('global-settings:write', {
+		description: 'Edit global settings, optionally restricted to specific setting paths. Implies global-settings:read',
+		scope: 'global-settings-write',
+	}),
+	...definePermission('server-settings:read', {
+		description: 'View server settings. Never includes the RCON/SFTP connection details',
+		scope: 'server-settings',
+	}),
+	...definePermission('server-settings:write', {
+		description: 'Edit non-sensitive server settings, optionally restricted to specific setting paths. Implies server-settings:read',
+		scope: 'server-settings-write',
+	}),
+	...definePermission('server-settings:write-sensitive', {
+		description: 'View and edit the RCON/SFTP connection details of a server',
+		scope: 'server-settings',
+	}),
 
 	...definePermission('filters:create', { description: 'Create new filters', scope: 'global' }),
 	...definePermission('filters:write-all', { description: 'Delete or modify any filter', scope: 'global' }),
@@ -106,9 +128,11 @@ export const PERMISSION_DEFINITION = {
 
 	...definePermission('battlemetrics:write-flags', { description: 'Add or remove BattleMetrics player flags', scope: 'global' }),
 
-	...definePermission('admin:manage-servers', { description: 'Enable or disable servers and edit server-level settings', scope: 'global' }),
+	...definePermission('admin:manage-servers', {
+		description: 'Manage the server registry: create servers, start/stop them and set the default server',
+		scope: 'global',
+	}),
 	...definePermission('admin:delete-servers', { description: 'Delete servers', scope: 'global' }),
-	...definePermission('admin:manage-global-settings', { description: 'Edit global settings', scope: 'global' }),
 	...definePermission('admin:restart-slm', { description: 'Restart the SLM application', scope: 'global' }),
 }
 export type KnownPermission = (typeof PERMISSION_DEFINITION)[number]
@@ -124,15 +148,47 @@ export const GLOBAL_PERMISSION_TYPE = z.enum(
 	],
 )
 
-export const NEGATED_GLOBAL_PERMISSION_TYPE = GLOBAL_PERMISSION_TYPE.options.map((perm) => `!${perm}` as const)
+// permissions grantable as bare expressions in role definitions. Global-scope perms plus the settings perms, which a
+// bare expression grants unrestricted (all servers / all paths); restricted settings grants live in the rbac settings'
+// globalSettingsGrants/serverSettingsGrants maps instead.
+const ROLE_GRANTABLE_SCOPED_PERMISSION_TYPES = [
+	'global-settings:write',
+	'server-settings:read',
+	'server-settings:write',
+	'server-settings:write-sensitive',
+] as const satisfies PermissionType[]
 
-export function isGlobalPermissionType(expr: GlobalPermissionTypeExpression): expr is GlobalPermissionType {
-	return GLOBAL_PERMISSION_TYPE.safeParse(expr).success
+export type RoleGrantablePermissionType = GlobalPermissionType | (typeof ROLE_GRANTABLE_SCOPED_PERMISSION_TYPES)[number]
+
+export const ROLE_GRANTABLE_PERMISSION_TYPE = z.enum(
+	[...GLOBAL_PERMISSION_TYPE.options, ...ROLE_GRANTABLE_SCOPED_PERMISSION_TYPES] as unknown as [
+		RoleGrantablePermissionType,
+		...RoleGrantablePermissionType[],
+	],
+)
+
+// the scope args a bare role expression grants for one of the grantable settings perms: unrestricted everything
+export function unrestrictedRoleGrantArgs<T extends RoleGrantablePermissionType>(type: T): PermArgs<T> {
+	switch (type as RoleGrantablePermissionType) {
+		case 'global-settings:write':
+			return { paths: null } as PermArgs<T>
+		case 'server-settings:read':
+		case 'server-settings:write-sensitive':
+			return { serverId: null } as PermArgs<T>
+		case 'server-settings:write':
+			return { serverId: null, paths: null } as PermArgs<T>
+		default:
+			return undefined as PermArgs<T>
+	}
 }
-export function parseNegatingPermissionType(expr: string): GlobalPermissionType | undefined {
+
+export function isRoleGrantablePermissionType(expr: RolePermissionExpression): expr is RoleGrantablePermissionType {
+	return ROLE_GRANTABLE_PERMISSION_TYPE.safeParse(expr).success
+}
+export function parseNegatingPermissionType(expr: string): RoleGrantablePermissionType | undefined {
 	if (!expr.startsWith('!')) return undefined
 	const perm = expr.slice(1)
-	if (!isGlobalPermissionType(perm)) return undefined
+	if (!isRoleGrantablePermissionType(perm)) return undefined
 	return perm
 }
 
@@ -153,15 +209,15 @@ export function recalculateNegations(perms: TracedPermission[]) {
 	return recalculated
 }
 
-export const GLOBAL_PERMISSION_TYPE_EXPRESSION = z.union([
-	GLOBAL_PERMISSION_TYPE,
+export const ROLE_PERMISSION_EXPRESSION = z.union([
+	ROLE_GRANTABLE_PERMISSION_TYPE,
 	z.literal('*').describe('include all'),
-	z.string().regex(/^!/).refine((str) => GLOBAL_PERMISSION_TYPE.safeParse(str.slice(1)).success, {
-		error: 'Negated permission must be a valid global permission type',
+	z.string().regex(/^!/).refine((str) => ROLE_GRANTABLE_PERMISSION_TYPE.safeParse(str.slice(1)).success, {
+		error: 'Negated permission must be a valid role-grantable permission type',
 	}).describe('negated permissions. takes precedence wherever present for a user'),
 ])
 
-export type GlobalPermissionTypeExpression = z.infer<typeof GLOBAL_PERMISSION_TYPE_EXPRESSION>
+export type RolePermissionExpression = z.infer<typeof ROLE_PERMISSION_EXPRESSION>
 
 export type PermArgs<T extends PermissionType> = z.infer<(typeof PERMISSION_DEFINITION)[T]['scopeArgs']>
 
@@ -326,6 +382,97 @@ export function maxTimeoutDurationMs(perms: Permission[]): number | null | undef
 		if (max === undefined || args.maxDurationMs > max) max = args.maxDurationMs
 	}
 	return max
+}
+
+// ============================== settings access ==============================
+// Settings write grants are prefix-matched against setting paths and server ids ("covers", not "equals"), so like
+// timeouts they bypass the equality-matched permission path and get aggregated here instead.
+
+export type SettingsWriteAccess =
+	| { kind: 'none' }
+	| { kind: 'all' }
+	// dotted setting-path prefixes the grant is limited to
+	| { kind: 'paths'; paths: string[] }
+
+export function dottedSettingsPath(path: string | (string | number)[]): string {
+	return typeof path === 'string' ? path : path.join('.')
+}
+
+// PermArgs<T> resolves imprecisely on the merged PERMISSION_DEFINITION, so the readers below type args
+// straight off PERM_SCOPE_ARGS (same approach as maxTimeoutDurationMs)
+type ServerScopeArgs = z.infer<(typeof PERM_SCOPE_ARGS)['server-settings']>
+type ServerWriteArgs = z.infer<(typeof PERM_SCOPE_ARGS)['server-settings-write']>
+type GlobalWriteArgs = z.infer<(typeof PERM_SCOPE_ARGS)['global-settings-write']>
+
+function serverIdMatches(args: { serverId: string | null } | undefined, serverId: string): boolean {
+	// missing args = a legacy/defensive grant; treat as unrestricted
+	return !args || args.serverId === null || args.serverId === serverId
+}
+
+function collectWriteAccess(pathSets: (string[] | null)[]): SettingsWriteAccess {
+	if (pathSets.length === 0) return { kind: 'none' }
+	const paths: string[] = []
+	for (const set of pathSets) {
+		if (set === null) return { kind: 'all' }
+		paths.push(...set)
+	}
+	return paths.length > 0 ? { kind: 'paths', paths } : { kind: 'none' }
+}
+
+export function globalSettingsWriteAccess(perms: Permission[]): SettingsWriteAccess {
+	const pathSets: (string[] | null)[] = []
+	for (const p of perms) {
+		if (p.type !== 'global-settings:write') continue
+		const args = p.args as GlobalWriteArgs | undefined
+		pathSets.push(args ? args.paths : null)
+	}
+	return collectWriteAccess(pathSets)
+}
+
+export function canReadGlobalSettings(perms: Permission[]): boolean {
+	return perms.some((p) => p.type === 'global-settings:read') || globalSettingsWriteAccess(perms).kind !== 'none'
+}
+
+export function serverSettingsWriteAccess(perms: Permission[], serverId: string): SettingsWriteAccess {
+	const pathSets: (string[] | null)[] = []
+	for (const p of perms) {
+		if (p.type !== 'server-settings:write') continue
+		const args = p.args as ServerWriteArgs | undefined
+		if (!serverIdMatches(args, serverId)) continue
+		pathSets.push(args ? args.paths : null)
+	}
+	return collectWriteAccess(pathSets)
+}
+
+export function canWriteSensitiveServerSettings(perms: Permission[], serverId: string): boolean {
+	return perms.some((p) =>
+		p.type === 'server-settings:write-sensitive'
+		&& serverIdMatches(p.args as ServerScopeArgs | undefined, serverId)
+	)
+}
+
+export function canReadServerSettings(perms: Permission[], serverId: string): boolean {
+	if (perms.some((p) => p.type === 'server-settings:read' && serverIdMatches(p.args as ServerScopeArgs | undefined, serverId))) {
+		return true
+	}
+	return serverSettingsWriteAccess(perms, serverId).kind !== 'none' || canWriteSensitiveServerSettings(perms, serverId)
+}
+
+// strict check used for enforcement: the written path must sit at or below one of the granted prefixes
+export function settingsPathAllowed(access: SettingsWriteAccess, path: string | (string | number)[]): boolean {
+	if (access.kind === 'all') return true
+	if (access.kind === 'none') return false
+	const dotted = dottedSettingsPath(path)
+	return access.paths.some((p) => dotted === p || dotted.startsWith(p + '.'))
+}
+
+// loose check used for UI gating of a whole subtree: true when anything under `path` is potentially writable
+// (a granted prefix covers the subtree, or points somewhere inside it)
+export function settingsPathOverlaps(access: SettingsWriteAccess, path: string | (string | number)[]): boolean {
+	if (access.kind === 'all') return true
+	if (access.kind === 'none') return false
+	const dotted = dottedSettingsPath(path)
+	return access.paths.some((p) => dotted === p || dotted.startsWith(p + '.') || p.startsWith(dotted + '.'))
 }
 
 export function getPermissionsByRole(permissions: TracedPermission[]): [Role, TracedPermission[]][] {

@@ -13,6 +13,10 @@ import { createFileRoute } from '@tanstack/react-router'
 import React from 'react'
 import * as Rx from 'rxjs'
 
+// editor frames minted by the loader, per filter id. Each loader run creates a fresh instance (and a post-save
+// router.invalidate() re-runs the loader), so several can accumulate before the route is left; onLeave sweeps them.
+const activeFrameKeys = new Map<string, EditFrame.Key[]>()
+
 export const Route = createFileRoute('/_app/filters/$filterId')({
 	component: RouteComponent,
 
@@ -25,6 +29,15 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 	},
 	staleTime: Infinity,
 	preloadStaleTime: Infinity,
+	// the match param is typed explicitly: letting it infer makes the route type (and thus loaderData) circular
+	onLeave: (match: { params: { filterId: F.FilterEntityId } }) => {
+		const keys = activeFrameKeys.get(match.params.filterId)
+		if (!keys) return
+		activeFrameKeys.delete(match.params.filterId)
+		void requestIdleCallback(() => {
+			for (const k of keys) frameManager.dropKey(k)
+		})
+	},
 	loader: async ({ params }) => {
 		const filterContributorsRes = await RPC.queryClient.fetchQuery(FilterEntityClient.getFilterContributorsBase(params.filterId))
 		const filterEntities = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
@@ -35,10 +48,13 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 		const colConfig = await ConfigClient.fetchEffectiveColConfig()
 		const frameInput = EditFrame.createInput({ editedFilterId: params.filterId, startingFilter: filterEntity.filter, colConfig })
 		const frameKey = frameManager.ensureSetup(EditFrame.frame, frameInput)
+		activeFrameKeys.set(params.filterId, [...(activeFrameKeys.get(params.filterId) ?? []), frameKey])
 
 		return {
 			entity: filterEntity,
 			frameKey,
+			// kept so the component can revive the frame when cached loaderData outlives it (see useLiveFrameKey)
+			frameInput,
 			contributors: filterContributorsRes,
 			owner: ownerRes.user,
 		}
@@ -51,9 +67,27 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 	}),
 })
 
+// the router can serve cached loaderData whose frame was dropped by a previous visit's onLeave (staleTime/preload
+// caching); when that happens, recreate the frame from the loader's input (a fresh editor, matching leave semantics)
+// and re-register it for the next sweep
+function useLiveFrameKey(
+	filterId: F.FilterEntityId,
+	frameKey: EditFrame.Key | undefined,
+	frameInput: EditFrame.Types['input'] | undefined,
+): EditFrame.Key | undefined {
+	return React.useMemo(() => {
+		if (!frameKey || !frameInput) return undefined
+		if (frameManager.getInstance(frameKey)) return frameKey
+		const revived = frameManager.ensureSetup(EditFrame.frame, frameInput)
+		activeFrameKeys.set(filterId, [...(activeFrameKeys.get(filterId) ?? []), revived])
+		return revived
+	}, [filterId, frameKey, frameInput])
+}
+
 function RouteComponent() {
 	const loaderData = Route.useLoaderData()
 	const params = Route.useParams()
+	const frameKey = useLiveFrameKey(params.filterId, loaderData?.frameKey, loaderData?.frameInput)
 
 	React.useEffect(() => {
 		const sub = FilterEntityClient.filterMutation$.pipe()
@@ -83,13 +117,13 @@ function RouteComponent() {
 		return () => sub.unsubscribe()
 	}, [params.filterId])
 
-	if (!loaderData) return <p>Something went wrong</p>
+	if (!loaderData || !frameKey) return <p>Something went wrong</p>
 	return (
 		<FilterEdit
 			entity={loaderData.entity}
 			contributors={loaderData.contributors}
 			owner={loaderData.owner}
-			stores={{ filterEditor: loaderData.frameKey }}
+			stores={{ filterEditor: frameKey }}
 		/>
 	)
 }

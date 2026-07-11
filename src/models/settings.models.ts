@@ -20,11 +20,19 @@ import { z } from 'zod'
 // rbac.server converts them to bigint at the boundary
 // `roles` is the source of truth for which roles exist; every role referenced in `roleAssignments` must be defined there
 // (enforced by the check below, mirrored in the GUI by keying the assignment role pickers to the defined roles).
+// dotted path into a settings document, e.g. "vote.voteDuration" or just "vote" for the whole section
+const SettingsGrantPathSchema = z.string().trim().min(1).regex(/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/, {
+	error: 'Must be a dotted setting path, e.g. "vote.voteDuration"',
+})
+
 export const RbacSettingsSchema = z.object({
 	roles: z
-		.record(RBAC.UserDefinedRoleIdSchema, z.array(RBAC.GLOBAL_PERMISSION_TYPE_EXPRESSION))
+		.record(RBAC.UserDefinedRoleIdSchema, z.array(RBAC.ROLE_PERMISSION_EXPRESSION))
 		.prefault({})
-		.describe('Defined roles and their globally-scoped permissions. The source of truth for which roles exist.'),
+		.describe(
+			'Defined roles and their permissions. The source of truth for which roles exist. '
+				+ 'Settings permissions granted here are unrestricted (all servers / all settings); use the settings-grants maps below for restricted grants.',
+		),
 	roleAssignments: z.object({
 		'discord-role': z.array(z.object({ discordRoleId: ParsableBigIntSchema, roles: z.array(RBAC.UserDefinedRoleIdSchema) })).prefault([]),
 		'discord-user': z.array(z.object({ userId: ParsableBigIntSchema, roles: z.array(RBAC.UserDefinedRoleIdSchema) })).prefault([]),
@@ -38,6 +46,27 @@ export const RbacSettingsSchema = z.object({
 	maxTimeouts: z.record(RBAC.UserDefinedRoleIdSchema, HumanTime).prefault({}).describe(
 		'Per-role maximum kick-timeout duration (e.g. "2h"). Roles absent here cannot issue timeouts. Super users/roles are unlimited.',
 	),
+	// restricted settings grants, like maxTimeouts these carry arguments the expression grammar can't: they let a role
+	// edit only specific settings (and for servers, only specific servers). Unrestricted access is granted via `roles`.
+	globalSettingsGrants: z.record(RBAC.UserDefinedRoleIdSchema, z.array(SettingsGrantPathSchema)).prefault({}).describe(
+		'Per-role restricted global-settings write grants: dotted setting paths the role may edit (e.g. "vote.voteDuration", or "vote" for the whole section). '
+			+ 'Any grant also lets the role view global settings. A "!global-settings:write" denial in Roles overrides these.',
+	),
+	serverSettingsGrants: z.record(
+		RBAC.UserDefinedRoleIdSchema,
+		z.array(z.object({
+			access: z.enum(['read', 'write', 'write-sensitive']).prefault('write').describe(
+				'read = view settings (never connection details); write = edit non-sensitive settings; write-sensitive = view and edit the RCON/SFTP connection details',
+			),
+			serverIds: z.array(z.string()).prefault([]).describe('Server ids this grant applies to; empty = all servers'),
+			paths: z.array(SettingsGrantPathSchema).prefault([]).describe(
+				'Write grants only: dotted setting paths to restrict the grant to (e.g. "queue.mainPool"); empty = all non-sensitive settings',
+			),
+		})),
+	).prefault({}).describe(
+		"Per-role restricted server-settings grants. Any grant also lets the role view the server's (non-sensitive) settings. "
+			+ 'Matching "!server-settings:*" denials in Roles override these.',
+	),
 }).superRefine((val, ctx) => {
 	const defined = new Set(Object.keys(val.roles ?? {}))
 	const checkRole = (role: string, path: (string | number)[]) => {
@@ -50,7 +79,48 @@ export const RbacSettingsSchema = z.object({
 	}
 	val.roleAssignments['discord-server-member'].forEach((role, j) => checkRole(role, ['roleAssignments', 'discord-server-member', j]))
 	for (const role of Object.keys(val.maxTimeouts ?? {})) checkRole(role, ['maxTimeouts', role])
+	// only the first path segment is validated (deeper segments that don't resolve simply never match a write)
+	for (const [role, paths] of Object.entries(val.globalSettingsGrants ?? {})) {
+		checkRole(role, ['globalSettingsGrants', role])
+		paths.forEach((p, i) => {
+			const head = p.split('.')[0]
+			if (!globalSettingsTopLevelKeys().includes(head)) {
+				ctx.addIssue({ code: 'custom', message: `"${head}" is not a global setting`, path: ['globalSettingsGrants', role, i] })
+			}
+		})
+	}
+	for (const [role, grants] of Object.entries(val.serverSettingsGrants ?? {})) {
+		checkRole(role, ['serverSettingsGrants', role])
+		grants.forEach((grant, i) => {
+			if (grant.access !== 'write' && grant.paths.length > 0) {
+				ctx.addIssue({
+					code: 'custom',
+					message: 'Paths only apply to write grants',
+					path: ['serverSettingsGrants', role, i, 'paths'],
+				})
+			}
+			grant.paths.forEach((p, j) => {
+				const head = p.split('.')[0]
+				if (!serverSettingsGrantableTopLevelKeys().includes(head)) {
+					ctx.addIssue({
+						code: 'custom',
+						message: `"${head}" is not a grantable server setting`,
+						path: ['serverSettingsGrants', role, i, 'paths', j],
+					})
+				}
+			})
+		})
+	}
 }).prefault({})
+
+// hoisted so the RbacSettingsSchema refine above can call them at parse time (the schemas are declared further down)
+export function globalSettingsTopLevelKeys(): string[] {
+	return Object.keys(GlobalSettingsSchema.shape)
+}
+// connections are deliberately excluded: they're only reachable via server-settings:write-sensitive, never a path grant
+export function serverSettingsGrantableTopLevelKeys(): string[] {
+	return Object.keys(ServerSettingsSchema.shape).filter((k) => k !== 'connections')
+}
 
 export type RbacSettings = z.infer<typeof RbacSettingsSchema>
 
@@ -325,6 +395,11 @@ export const ServerSettingsSchema = PublicServerSettingsSchema.extend({
 })
 
 export type ServerSettings = z.infer<typeof ServerSettingsSchema>
+
+// what a server-settings:read (without write-sensitive) user sees and edits: everything but the connection details
+export const ServerSettingsNoConnectionsSchema = ServerSettingsSchema.omit({ connections: true })
+export type ServerSettingsNoConnections = z.infer<typeof ServerSettingsNoConnectionsSchema>
+
 export type Changed<T> = {
 	[K in keyof T]: T[K] extends object ? Changed<T[K]> : boolean
 }

@@ -34,7 +34,7 @@ export async function fetchSettings() {
 	return await Rx.firstValueFrom(toStream(PublicSettingsStore).pipe(Rx.filter(Boolean)))
 }
 
-// ============================== global settings: full object, admin:manage-global-settings only ==============================
+// ============================== global settings: full object, needs global-settings read access ==============================
 
 // the encoded (pre-decode) form, e.g. HumanTime fields as '5m' strings rather than milliseconds -- meant for display/editing.
 // the deny response is kept in the stream (not filtered) so the Suspense boundary always resolves; a denied user (e.g. after an

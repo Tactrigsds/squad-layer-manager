@@ -2,6 +2,7 @@ import * as Schema from '$root/drizzle/schema.ts'
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Obj from '@/lib/object'
+import { diffSettings } from '@/lib/settings-diff'
 import * as AppEvents from '@/models/app-events.models'
 import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
@@ -62,11 +63,26 @@ async function loadGlobalSettings(ctx: C.Db) {
 	settings$.next({ scope: 'global', settings: GLOBAL_SETTINGS })
 }
 
-export async function updateGlobalSettings(ctx: C.Db, input: Record<string, unknown>) {
+export async function updateGlobalSettings(
+	ctx: C.Db,
+	input: Record<string, unknown>,
+	access: RBAC.SettingsWriteAccess = { kind: 'all' },
+) {
 	const merged = { ...GLOBAL_SETTINGS, ...input }
 	const parseRes = SETTINGS.GlobalSettingsSchema.safeParse(merged)
 	if (!parseRes.success) {
 		return { code: 'err:invalid-settings' as const, message: parseRes.error.message }
+	}
+
+	// path-restricted writers may only change settings under their granted prefixes; the denied paths ride
+	// along in the permit args so the caller can see exactly what was out of bounds
+	if (access.kind !== 'all') {
+		const deniedPaths = diffSettings(GLOBAL_SETTINGS, parseRes.data)
+			.map((c) => c.path)
+			.filter((p) => !RBAC.settingsPathAllowed(access, p))
+		if (deniedPaths.length > 0) {
+			return RBAC.permissionDenied({ check: 'all' as const, permits: [RBAC.perm('global-settings:write', { paths: deniedPaths })] })
+		}
 	}
 
 	GLOBAL_SETTINGS = parseRes.data
@@ -276,19 +292,55 @@ export async function getRawServerSettings(ctx: C.Db, serverId: SS.ServerId) {
 // SquadServer.invalidateAdminList) since it now reads them fresh on every fetch.
 const ADMIN_LIST_AFFECTING_FIELDS = ['adminListSources', 'adminIdentifyingPermissions'] as const
 
-export async function updateRawServerSettings(ctx: C.Db, serverId: SS.ServerId, rawSettings: unknown, user: USR.MiniUser) {
+export async function updateRawServerSettings(
+	ctx: C.Db,
+	serverId: SS.ServerId,
+	rawSettings: unknown,
+	user: USR.MiniUser,
+	opts: { access: RBAC.SettingsWriteAccess; canWriteSensitive: boolean } = { access: { kind: 'all' }, canWriteSensitive: true },
+) {
 	const entry = serverRegistry.get(serverId)
 	if (!entry) return { code: 'err:server-not-found' as const }
 	const wasBroken = entry.broken
+
+	const priorRawRes = await getRawServerSettings(ctx, serverId)
+	const priorParseRes = priorRawRes.code === 'ok' ? SETTINGS.ServerSettingsSchema.safeParse(priorRawRes.settings) : undefined
+	const priorBroken = !priorParseRes?.success
+
+	// non-sensitive writers get connections redacted on read, so whatever they send back is ignored: the stored
+	// connections are carried over verbatim before validation
+	if (!opts.canWriteSensitive) {
+		if (rawSettings && typeof rawSettings === 'object') {
+			const priorConnections = priorRawRes.code === 'ok' && priorRawRes.settings && typeof priorRawRes.settings === 'object'
+				? (priorRawRes.settings as Record<string, unknown>).connections
+				: undefined
+			;(rawSettings as Record<string, unknown>).connections = priorConnections
+		}
+	}
 
 	const parseRes = SETTINGS.ServerSettingsSchema.safeParse(rawSettings)
 	if (!parseRes.success) {
 		return { code: 'err:invalid-settings' as const, message: parseRes.error.message }
 	}
 
-	const priorRawRes = await getRawServerSettings(ctx, serverId)
-	const priorParseRes = priorRawRes.code === 'ok' ? SETTINGS.ServerSettingsSchema.safeParse(priorRawRes.settings) : undefined
-	const priorBroken = !priorParseRes?.success
+	if (opts.access.kind !== 'all') {
+		// a path-restricted writer can't repair broken settings: without a valid prior value there's no diff to check
+		if (priorBroken) {
+			return RBAC.permissionDenied({ check: 'all' as const, permits: [RBAC.perm('server-settings:write', { serverId, paths: null })] })
+		}
+		const deniedPaths = diffSettings(priorParseRes.data, parseRes.data)
+			.map((c) => c.path)
+			// connection changes are governed by write-sensitive, not by path grants
+			.filter((p) => !(p === 'connections' || p.startsWith('connections.')))
+			.filter((p) => !RBAC.settingsPathAllowed(opts.access, p))
+		if (deniedPaths.length > 0) {
+			return RBAC.permissionDenied({
+				check: 'all' as const,
+				permits: [RBAC.perm('server-settings:write', { serverId, paths: deniedPaths })],
+			})
+		}
+	}
+
 	const connectionsChanged = priorBroken || !Obj.deepEqual(priorParseRes.data.connections, parseRes.data.connections)
 	const adminListFieldsChanged = priorBroken || !Obj.deepEqual(
 		Obj.selectProps(priorParseRes.data, ADMIN_LIST_AFFECTING_FIELDS),
@@ -387,12 +439,12 @@ const publicRouter = {
 	}),
 }
 
-// requires admin:manage-global-settings: full global settings object, for editing
+// requires global-settings:read (or any global-settings:write grant): full global settings object, for editing
 const globalRouter = {
 	// streams the encoded (pre-decode) form, e.g. HumanTime fields as '5m' rather than milliseconds, since this is meant for display/editing
 	watchSettings: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context: _ctx, signal }) {
 		const ctx = DB.addPooledDb(_ctx as any)
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-global-settings'))
+		const denyRes = await Rbac.tryDenyGlobalSettingsRead(ctx)
 		if (denyRes) {
 			yield denyRes
 			return
@@ -413,9 +465,11 @@ const globalRouter = {
 		.input(z.record(z.string(), z.unknown()))
 		.handler(async ({ context: _ctx, input }) => {
 			const ctx = DB.addPooledDb(_ctx as any)
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-global-settings'))
-			if (denyRes) return denyRes
-			const res = await updateGlobalSettings(ctx, input)
+			const access = RBAC.globalSettingsWriteAccess(await Rbac.getUserPermissions(ctx))
+			if (access.kind === 'none') {
+				return RBAC.permissionDenied({ check: 'all' as const, permits: [RBAC.perm('global-settings:write', { paths: null })] })
+			}
+			const res = await updateGlobalSettings(ctx, input, access)
 			if (res.code === 'ok') {
 				await AppEventsSys.persistAppEvent(
 					ctx,
@@ -432,7 +486,7 @@ const globalRouter = {
 		}),
 }
 
-// requires settings:write (given serverId); connections are always excluded
+// requires server-settings:write for the given serverId; connections are always excluded
 const serverRouter = {
 	watchSettings: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
 		{ context: _ctx, signal, input },
@@ -450,12 +504,26 @@ const serverRouter = {
 		.input(z.object({ serverId: z.string(), ops: z.array(SETTINGS.SettingMutationSchema) }))
 		.handler(async ({ context: _ctx, input }) => {
 			const ctx = SquadServer.resolveSliceCtx(_ctx, input.serverId)
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('settings:write'))
-			if (denyRes) return denyRes
+			const access = RBAC.serverSettingsWriteAccess(await Rbac.getUserPermissions(ctx), input.serverId)
+			if (access.kind === 'none') {
+				return RBAC.permissionDenied({
+					check: 'all' as const,
+					permits: [RBAC.perm('server-settings:write', { serverId: input.serverId, paths: null })],
+				})
+			}
 			for (const mut of input.ops) {
 				if (mut.path[0] === 'connections') {
 					throw new Orpc.ORPCError('FORBIDDEN', { message: 'err:trying-to-edit-connection-settings' })
 				}
+			}
+			const deniedPaths = input.ops
+				.map((op) => RBAC.dottedSettingsPath(op.path))
+				.filter((p) => !RBAC.settingsPathAllowed(access, p))
+			if (deniedPaths.length > 0) {
+				return RBAC.permissionDenied({
+					check: 'all' as const,
+					permits: [RBAC.perm('server-settings:write', { serverId: input.serverId, paths: deniedPaths })],
+				})
 			}
 			const updateRes = await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 				const state = await SquadServer.getServerState(ctx)
@@ -506,7 +574,8 @@ async function recordServerRegistry(
 	)
 }
 
-// requires admin:manage-servers (or admin:delete-servers for deleteServer): server registry management and raw per-server settings repair
+// registry management requires admin:manage-servers (admin:delete-servers for deleteServer); the raw per-server
+// settings endpoints are gated by the server-settings:* permissions instead
 const adminRouter = {
 	enableServer: orpcBase
 		.meta({ type: 'mutation' })
@@ -543,6 +612,15 @@ const adminRouter = {
 			const ctx = DB.addPooledDb(_ctx as any)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-servers'))
 			if (denyRes) return denyRes
+			// creating a server means supplying its connection details, so it additionally requires a
+			// write-sensitive grant covering the new server id
+			const perms = await Rbac.getUserPermissions(ctx)
+			if (!RBAC.canWriteSensitiveServerSettings(perms, input.id)) {
+				return RBAC.permissionDenied({
+					check: 'all' as const,
+					permits: [RBAC.perm('server-settings:write-sensitive', { serverId: input.id })],
+				})
+			}
 			const res = await createServerEntry(ctx, input)
 			if (res.code === 'ok') await recordServerRegistry(ctx, 'created', input.id)
 			return res
@@ -572,13 +650,22 @@ const adminRouter = {
 			return res
 		}),
 
+	// requires server-settings:read for the server; the rcon/sftp connection details are redacted unless the
+	// caller holds server-settings:write-sensitive
 	getRawSettings: orpcBase
 		.input(z.object({ serverId: z.string() }))
 		.handler(async ({ context: _ctx, input }) => {
 			const ctx = DB.addPooledDb(_ctx as any)
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-servers'))
-			if (denyRes) return denyRes
-			return await getRawServerSettings(ctx, input.serverId)
+			const perms = await Rbac.getUserPermissions(ctx)
+			if (!RBAC.canReadServerSettings(perms, input.serverId)) {
+				return RBAC.permissionDenied({ check: 'all' as const, permits: [RBAC.perm('server-settings:read', { serverId: input.serverId })] })
+			}
+			const res = await getRawServerSettings(ctx, input.serverId)
+			if (res.code !== 'ok') return res
+			if (RBAC.canWriteSensitiveServerSettings(perms, input.serverId)) return { ...res, sensitiveOmitted: false as const }
+			const settings = res.settings
+			if (settings && typeof settings === 'object') delete (settings as Record<string, unknown>).connections
+			return { code: 'ok' as const, settings, sensitiveOmitted: true as const }
 		}),
 
 	updateRawSettings: orpcBase
@@ -586,9 +673,31 @@ const adminRouter = {
 		.input(z.object({ serverId: z.string(), settings: z.unknown() }))
 		.handler(async ({ context: _ctx, input }) => {
 			const ctx = DB.addPooledDb(_ctx as any)
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-servers'))
-			if (denyRes) return denyRes
-			return await updateRawServerSettings(ctx, input.serverId, input.settings, USR.toMiniUser(_ctx.user))
+			const perms = await Rbac.getUserPermissions(ctx)
+			const access = RBAC.serverSettingsWriteAccess(perms, input.serverId)
+			if (access.kind === 'none') {
+				return RBAC.permissionDenied({
+					check: 'all' as const,
+					permits: [RBAC.perm('server-settings:write', { serverId: input.serverId, paths: null })],
+				})
+			}
+			const res = await updateRawServerSettings(ctx, input.serverId, input.settings, USR.toMiniUser(_ctx.user), {
+				access,
+				canWriteSensitive: RBAC.canWriteSensitiveServerSettings(perms, input.serverId),
+			})
+			if (res.code === 'ok') {
+				await AppEventsSys.persistAppEvent(
+					ctx,
+					AppEvents.create<AppEvents.SettingsUpdated>({
+						type: 'SETTINGS_UPDATED',
+						actor: { type: 'slm-user', userId: ctx.user.discordId },
+						serverId: input.serverId,
+						matchId: null,
+						causeId: null,
+					}),
+				)
+			}
+			return res
 		}),
 }
 

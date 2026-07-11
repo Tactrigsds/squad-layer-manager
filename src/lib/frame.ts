@@ -3,6 +3,7 @@ import * as Obj from '@/lib/object'
 import * as ReactUtils from '@/lib/react'
 import * as ZusUtils from '@/lib/zustand'
 
+import * as React from 'react'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 
@@ -136,6 +137,17 @@ export class FrameManager {
 		this.frameInstances.delete(directKey)
 	}
 
+	// eagerly releases one key's reference to its instance; the instance is torn down only when this was the last
+	// one (the same accounting the FinalizationRegistry applies lazily when a key is collected). Use this instead of
+	// teardown() whenever other systems might hold references to the same instance.
+	dropKey(key: RawInstanceKey) {
+		const directKey = this.keys.get(key)
+		this.keys.delete(key)
+		this.registry.unregister(key)
+		if (!directKey) return
+		this.cleanupReference(directKey)
+	}
+
 	createFrame<Types extends FrameTypes>(
 		opts: FrameOps<Types>,
 	) {
@@ -196,7 +208,9 @@ export class FrameManager {
 			instance.lastUsed = Date.now()
 		}
 		this.keys.set(key, directKey)
-		this.registry.register(key, directKey)
+		// the key doubles as the unregister token so an eager dropKey/teardown can cancel the pending GC callback,
+		// which would otherwise release the same reference a second time when the key is eventually collected
+		this.registry.register(key, directKey, key)
 		instance.refCount++
 
 		return key
@@ -221,6 +235,32 @@ export class FrameManager {
 export function createFrameHelpers(frameManager: FrameManager) {
 	return {
 		useFrameLifecycle,
+		useFrameTeardownOnUnmount,
+	}
+
+	// drops the component's reference to a frame when it unmounts, for component-provisioned instances (instances
+	// handed in from elsewhere should be left to their owner; pass `enabled: false` for those). Without this, unused
+	// instances are only reclaimed whenever the FinalizationRegistry gets around to them. Uses dropKey rather than
+	// teardown so an instance shared with other systems survives. The drop is deferred to an idle callback and
+	// cancelled on a same-key re-setup so StrictMode's simulated remount doesn't kill an instance the still-mounted
+	// tree references.
+	function useFrameTeardownOnUnmount(key: RawInstanceKey | undefined, enabled = true) {
+		const ctl = React.useRef<{ pending: { key: RawInstanceKey; id: number } | null }>({ pending: null })
+		React.useEffect(() => {
+			if (!enabled || !key) return
+			const c = ctl.current
+			if (c.pending?.key === key) {
+				cancelIdleCallback(c.pending.id)
+				c.pending = null
+			}
+			return () => {
+				const id = requestIdleCallback(() => {
+					c.pending = null
+					frameManager.dropKey(key)
+				})
+				c.pending = { key, id }
+			}
+		}, [key, enabled])
 	}
 
 	type FrameLifecycleOptions<T extends FrameTypes> = {

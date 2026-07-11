@@ -1,11 +1,14 @@
 import { StickyGroup } from '@/components/sticky-group'
 import { Input } from '@/components/ui/input'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { SettingsGroup } from '@/lib/settings-groups'
 import { GLOBAL_SETTINGS_GROUPS, splitByGroups, TOC_LEAF_PATHS } from '@/lib/settings-groups'
 import { settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
 import * as SETTINGS from '@/models/settings.models'
+import * as RBAC from '@/rbac.models'
+import * as RbacClient from '@/systems/rbac.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import { z } from 'zod'
@@ -14,7 +17,13 @@ import { z } from 'zod'
 // matching field (anchored by `setting:<path>` ids emitted by SettingsForm) into view within the main scroll column.
 
 type Node = any
-type TocNode = { id: string; label: string; path: string; children: TocNode[] }
+// `writable`: the user's write grant overlaps this node's subtree. Rendered as a pencil marker (only when some
+// restriction exists on the page), so a path-restricted user can drill down to their editable settings even from a
+// fully collapsed tree.
+type TocNode = { id: string; label: string; path: string; writable: boolean; children: TocNode[] }
+
+const WRITE_ALL: RBAC.SettingsWriteAccess = { kind: 'all' }
+const WRITE_NONE: RBAC.SettingsWriteAccess = { kind: 'none' }
 
 function stripNullable(node: Node): Node {
 	if (node?.anyOf) {
@@ -26,7 +35,7 @@ function stripNullable(node: Node): Node {
 
 // idPrefix scopes anchor ids so per-server subtrees (`setting:server:<id>:*`) don't collide with global (`setting:*`);
 // it must match what SettingsForm emits for the same schema.
-function buildChildren(node: Node, path: (string | number)[], idPrefix: string): TocNode[] {
+function buildChildren(node: Node, path: (string | number)[], idPrefix: string, access: RBAC.SettingsWriteAccess): TocNode[] {
 	const props: Record<string, Node> | undefined = node?.properties
 	if (!props) return []
 	return Object.keys(props).map((key): TocNode => {
@@ -40,7 +49,8 @@ function buildChildren(node: Node, path: (string | number)[], idPrefix: string):
 			id: `${idPrefix}${pathStr}`,
 			label: settingLabel(childPath, key),
 			path: pathStr,
-			children: recurse ? buildChildren(inner, childPath, idPrefix) : [],
+			writable: RBAC.settingsPathOverlaps(access, childPath),
+			children: recurse ? buildChildren(inner, childPath, idPrefix, access) : [],
 		}
 	})
 }
@@ -51,12 +61,16 @@ function groupTocNodes(children: TocNode[], groups: SettingsGroup[], idPrefix: s
 	const byKey = new Map(children.map((c) => [c.path, c]))
 	const { groups: grouped, ungrouped } = splitByGroups(children.map((c) => c.path), groups)
 	return [
-		...grouped.map(({ group, keys }): TocNode => ({
-			id: `${idPrefix}group:${group.slug}`,
-			label: group.label,
-			path: `group:${group.slug}`,
-			children: keys.map((k) => byKey.get(k)!),
-		})),
+		...grouped.map(({ group, keys }): TocNode => {
+			const children = keys.map((k) => byKey.get(k)!)
+			return {
+				id: `${idPrefix}group:${group.slug}`,
+				label: group.label,
+				path: `group:${group.slug}`,
+				writable: children.some((c) => c.writable),
+				children,
+			}
+		}),
 		...ungrouped.map((k) => byKey.get(k)!),
 	]
 }
@@ -70,13 +84,14 @@ function filterNode(node: TocNode, query: string): TocNode | null {
 }
 
 function TocItem(
-	{ node, depth, expanded, toggle, forceOpen, activeId }: {
+	{ node, depth, expanded, toggle, forceOpen, activeId, showMarkers }: {
 		node: TocNode
 		depth: number
 		expanded: Set<string>
 		toggle: (id: string) => void
 		forceOpen: boolean
 		activeId: string | null
+		showMarkers: boolean
 	},
 ) {
 	const hasChildren = node.children.length > 0
@@ -105,7 +120,7 @@ function TocItem(
 			<a
 				href={`#${node.id}`}
 				className={cn(
-					'block truncate text-left text-sm py-0.5 px-1 rounded w-full hover:text-foreground',
+					'block truncate text-left text-sm py-0.5 px-1 rounded flex-1 min-w-0 hover:text-foreground',
 					isActive ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground',
 				)}
 				title={node.label}
@@ -116,12 +131,29 @@ function TocItem(
 			>
 				{node.label}
 			</a>
+			{showMarkers && node.writable && (
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Icons.Pencil className="mr-1 h-3 w-3 shrink-0 text-muted-foreground" />
+					</TooltipTrigger>
+					<TooltipContent>Contains settings you can modify</TooltipContent>
+				</Tooltip>
+			)}
 		</div>
 	)
 	const children = isOpen && hasChildren && (
 		<ul>
 			{node.children.map((c) => (
-				<TocItem key={c.id} node={c} depth={depth + 1} expanded={expanded} toggle={toggle} forceOpen={forceOpen} activeId={activeId} />
+				<TocItem
+					key={c.id}
+					node={c}
+					depth={depth + 1}
+					expanded={expanded}
+					toggle={toggle}
+					forceOpen={forceOpen}
+					activeId={activeId}
+					showMarkers={showMarkers}
+				/>
 			))}
 		</ul>
 	)
@@ -203,17 +235,37 @@ export default function SettingsToc(
 	const [expanded, setExpanded] = React.useState<Set<string>>(new Set(['section:servers', 'section:global']))
 	const containerRef = React.useRef<HTMLDivElement>(null)
 
+	const perms = RbacClient.useLoggedInPerms()
+	const globalWrite = React.useMemo(() => RBAC.globalSettingsWriteAccess(perms), [perms])
+	// same widening as the settings form: write-sensitive permits connections edits regardless of path grants
+	const serverWriteById = React.useMemo(() => {
+		const map = new Map<string, RBAC.SettingsWriteAccess>()
+		for (const s of servers) {
+			let write = RBAC.serverSettingsWriteAccess(perms, s.id)
+			if (write.kind === 'paths' && RBAC.canWriteSensitiveServerSettings(perms, s.id)) {
+				write = { kind: 'paths', paths: [...write.paths, 'connections'] }
+			}
+			map.set(s.id, write)
+		}
+		return map
+	}, [perms, servers])
+
 	// the field anchors only exist in the GUI editor; in JSON mode a section collapses to a single leaf
 	const globalChildren = React.useMemo(
 		() =>
 			globalMode === 'json'
 				? []
 				: groupTocNodes(
-					buildChildren(z.toJSONSchema(SETTINGS.GlobalSettingsSchema, { io: 'input', unrepresentable: 'any' }) as Node, [], 'setting:'),
+					buildChildren(
+						z.toJSONSchema(SETTINGS.GlobalSettingsSchema, { io: 'input', unrepresentable: 'any' }) as Node,
+						[],
+						'setting:',
+						globalWrite,
+					),
 					GLOBAL_SETTINGS_GROUPS,
 					'setting:',
 				),
-		[globalMode],
+		[globalMode, globalWrite],
 	)
 
 	const serverJsonSchema = React.useMemo(
@@ -222,32 +274,55 @@ export default function SettingsToc(
 	)
 
 	const serverNodes = React.useMemo(() => {
-		const nodes: TocNode[] = servers.map((s) => ({
-			id: `section:server:${s.id}`,
-			label: s.displayName,
-			path: '',
-			children: (serverModes[s.id] ?? 'gui') === 'json' ? [] : buildChildren(serverJsonSchema, [], `setting:server:${s.id}:`),
-		}))
+		const nodes: TocNode[] = servers.map((s) => {
+			const write = serverWriteById.get(s.id) ?? WRITE_NONE
+			return {
+				id: `section:server:${s.id}`,
+				label: s.displayName,
+				path: '',
+				writable: write.kind !== 'none',
+				children: (serverModes[s.id] ?? 'gui') === 'json' ? [] : buildChildren(serverJsonSchema, [], `setting:server:${s.id}:`, write),
+			}
+		})
 		if (creatingServer) {
 			nodes.push({
 				id: 'section:server:__new__',
 				label: 'New Server',
 				path: '',
-				children: newServerMode === 'json' ? [] : buildChildren(serverJsonSchema, [], 'setting:server:__new__:'),
+				writable: true,
+				children: newServerMode === 'json' ? [] : buildChildren(serverJsonSchema, [], 'setting:server:__new__:', WRITE_ALL),
 			})
 		}
 		return nodes
-	}, [servers, serverModes, creatingServer, newServerMode, serverJsonSchema])
+	}, [servers, serverModes, creatingServer, newServerMode, serverJsonSchema, serverWriteById])
 
 	const nodes = React.useMemo(() => {
 		const roots: TocNode[] = []
-		if (showServers) roots.push({ id: 'section:servers', label: 'Servers', path: '', children: serverNodes })
+		if (showServers) {
+			roots.push({
+				id: 'section:servers',
+				label: 'Servers',
+				path: '',
+				writable: serverNodes.some((n) => n.writable),
+				children: serverNodes,
+			})
+		}
 		if (showGlobal) {
-			roots.push({ id: 'section:global', label: 'Global Settings', path: '', children: globalChildren })
-			roots.push({ id: 'section:audit', label: 'Audit Log', path: '', children: [] })
+			roots.push({
+				id: 'section:global',
+				label: 'Global Settings',
+				path: '',
+				writable: globalWrite.kind !== 'none',
+				children: globalChildren,
+			})
+			roots.push({ id: 'section:audit', label: 'Audit Log', path: '', writable: false, children: [] })
 		}
 		return roots
-	}, [showServers, showGlobal, globalChildren, serverNodes])
+	}, [showServers, showGlobal, globalChildren, serverNodes, globalWrite])
+
+	// markers only add signal when something on the page is write-restricted; a fully-unrestricted admin sees none
+	const showMarkers = (showGlobal && globalWrite.kind !== 'all')
+		|| servers.some((s) => (serverWriteById.get(s.id) ?? WRITE_NONE).kind !== 'all')
 
 	const parentById = React.useMemo(() => {
 		const map = new Map<string, string | null>()
@@ -318,7 +393,16 @@ export default function SettingsToc(
 					: (
 						<ul>
 							{visible.map((n) => (
-								<TocItem key={n.id} node={n} depth={0} expanded={expanded} toggle={toggle} forceOpen={forceOpen} activeId={activeId} />
+								<TocItem
+									key={n.id}
+									node={n}
+									depth={0}
+									expanded={expanded}
+									toggle={toggle}
+									forceOpen={forceOpen}
+									activeId={activeId}
+									showMarkers={showMarkers}
+								/>
 							))}
 						</ul>
 					)}

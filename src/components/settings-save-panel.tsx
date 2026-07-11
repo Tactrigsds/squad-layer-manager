@@ -1,85 +1,19 @@
 import { Button } from '@/components/ui/button'
 import { useAlertDialog } from '@/components/ui/lazy-alert-dialog'
+import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import type { SettingChange } from '@/lib/settings-diff'
 import { formatChangeValue } from '@/lib/settings-diff'
 import * as SettingsNav from '@/lib/settings-nav'
 import * as ZusUtils from '@/lib/zustand'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import * as RbacClient from '@/systems/rbac.client'
+import * as SettingsClient from '@/systems/settings.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import * as Zus from 'zustand'
 
-// A single Save/Reset control panel shared by every editable settings section (global settings + each server). Each
-// section registers a lightweight entry; the panel aggregates their pending changes, commits every dirty section on
-// Save (each via its own mutation), and resets them all on Reset. This lets one floating panel serve the whole page
-// even when more than one section is dirty at once.
-
-export type SettingsSectionEntry = {
-	key: string
-	label: string
-	// reactive: drive the panel's summary + enabled state
-	changedCount: number
-	// schema issues in the section's current draft (0 in JSON mode, which validates inline)
-	errorCount: number
-	valid: boolean
-	saving: boolean
-	// stable callbacks, read imperatively by the panel (kept out of the reactive selector)
-	getChanges: () => SettingChange[]
-	save: () => Promise<void>
-	reset: () => void
-}
-
-export type SettingsEditorState = { sections: Record<string, SettingsSectionEntry> }
-export type SettingsEditorStore = Zus.StoreApi<SettingsEditorState>
-
-export function createSettingsEditorStore(): SettingsEditorStore {
-	return Zus.createStore<SettingsEditorState>(() => ({ sections: {} }))
-}
-
-// register a section into the shared store on mount (keyed by `entry.key`) and keep its reactive fields in sync.
-// The registered save/reset/getChanges delegate to the latest `entry` via a ref, so they never go stale.
-export function useRegisterSettingsSection(store: SettingsEditorStore, entry: SettingsSectionEntry) {
-	const ref = React.useRef(entry)
-	ref.current = entry
-	const { key, label, changedCount, errorCount, valid, saving } = entry
-
-	React.useEffect(() => {
-		store.setState((s) => ({
-			sections: {
-				...s.sections,
-				[key]: {
-					key,
-					label: ref.current.label,
-					changedCount: ref.current.changedCount,
-					errorCount: ref.current.errorCount,
-					valid: ref.current.valid,
-					saving: ref.current.saving,
-					getChanges: () => ref.current.getChanges(),
-					save: () => ref.current.save(),
-					reset: () => ref.current.reset(),
-				},
-			},
-		}))
-		return () =>
-			store.setState((s) => {
-				const next = { ...s.sections }
-				delete next[key]
-				return { sections: next }
-			})
-	}, [store, key])
-
-	React.useEffect(() => {
-		store.setState((s) => {
-			const cur = s.sections[key]
-			if (!cur) return s
-			if (
-				cur.label === label && cur.changedCount === changedCount && cur.errorCount === errorCount && cur.valid === valid
-				&& cur.saving === saving
-			) return s
-			return { sections: { ...s.sections, [key]: { ...cur, label, changedCount, errorCount, valid, saving } } }
-		})
-	}, [store, key, label, changedCount, errorCount, valid, saving])
-}
+// A single Save/Reset control panel shared by every editable settings section (global settings + each server + the
+// new-server form). Sections are settings-editor frame instances; the panel derives everything it shows straight from
+// their stores, and commits every dirty GUI-mode section on Save (JSON mode keeps its own inline toolbar).
 
 // secrets (rcon/sftp passwords, log-receiver token) must not be shown in plain text in the save confirmation. Redact by
 // key name so it also covers object-level diffs (e.g. the whole `connections` object added when creating a server).
@@ -123,26 +57,55 @@ export function SettingsChangeList({ changes }: { changes: SettingChange[] }) {
 	)
 }
 
-export function SettingsSavePanel({ store }: { store: SettingsEditorStore }) {
+// what the panel needs to know about one section, derived per render from its frame state
+type SectionView = {
+	key: SettingsEditorFrame.Key
+	state: SettingsEditorFrame.SettingsEditor
+	label: string
+	// only GUI-mode sections route through the panel; JSON mode saves inline
+	changedCount: number
+	deniedIds: string[]
+}
+
+export function SettingsSavePanel({ sectionKeys }: { sectionKeys: SettingsEditorFrame.Key[] }) {
 	const openDialog = useAlertDialog()
 	const zIndex = useZIndex(ZI_OFFSETS.STICKYGROUP_CEILING)
-	const summary = ZusUtils.useStore(
-		store,
-		ZusUtils.useShallow((s: SettingsEditorState) => {
-			let totalChanges = 0
-			let totalErrors = 0
-			let anyInvalid = false
-			let anySaving = false
-			for (const e of Object.values(s.sections)) {
-				totalErrors += e.errorCount
-				if (e.changedCount === 0) continue
-				totalChanges += e.changedCount
-				if (!e.valid) anyInvalid = true
-				if (e.saving) anySaving = true
-			}
-			return { totalChanges, totalErrors, anyInvalid, anySaving }
-		}),
-	)
+	const states = SettingsEditorFrame.useSectionStates(sectionKeys)
+	const perms = RbacClient.useLoggedInPerms()
+	const servers = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers)
+
+	const sections: SectionView[] = React.useMemo(() => {
+		const nameById = new Map((servers ?? []).map((s) => [s.id, s.displayName]))
+		return sectionKeys.map((key, i): SectionView => {
+			const state = states[i]
+			const gui = state.mode === 'gui'
+			const label = state.kind === 'global'
+				? 'Global Settings'
+				: state.kind === 'server'
+				? nameById.get(state.serverId!) ?? state.serverId!
+				: state.newDisplayName.trim() || 'New Server'
+			// a new-server section always counts as one pending change while open; once created it no longer participates
+			const changedCount = !gui ? 0 : state.kind === 'new-server' ? (state.created ? 0 : 1) : state.changes.length
+			const deniedIds = gui
+				? SettingsEditorFrame.deniedSettingPaths(state, perms).map((p) => `${SettingsEditorFrame.Sel.idPrefix(state)}${p}`)
+				: []
+			return { key, state, label, changedCount, deniedIds }
+		})
+	}, [sectionKeys, states, perms, servers])
+
+	let totalChanges = 0
+	let totalErrors = 0
+	let totalDenied = 0
+	let anyInvalid = false
+	let anySaving = false
+	for (const s of sections) {
+		totalErrors += s.state.issues.length
+		if (s.changedCount === 0) continue
+		totalChanges += s.changedCount
+		totalDenied += s.deniedIds.length
+		if (!s.state.valid) anyInvalid = true
+		if (s.state.saving) anySaving = true
+	}
 
 	// cycles through the fields currently flagged with a validation error (document order); each step navigates the
 	// anchor so the target scrolls into view and picks up the fragment highlight
@@ -155,44 +118,63 @@ export function SettingsSavePanel({ store }: { store: SettingsEditorStore }) {
 		if (el.id) SettingsNav.navigateToAnchor(el.id)
 	}
 
+	// cycles through the fields whose pending changes fall outside the user's write grant. A denied change path is a
+	// diff leaf, which can sit below the field that renders it (e.g. inside an override widget), so walk up the dotted
+	// path until an anchored element exists.
+	const deniedIdx = React.useRef(-1)
+	function navigateDenied(dir: 1 | -1) {
+		const ids = sections.flatMap((s) => s.deniedIds)
+		if (ids.length === 0) return
+		deniedIdx.current = (deniedIdx.current + dir + ids.length) % ids.length
+		let cur = ids[deniedIdx.current]
+		while (!document.getElementById(cur)) {
+			const i = cur.lastIndexOf('.')
+			if (i === -1) return
+			cur = cur.slice(0, i)
+		}
+		SettingsNav.navigateToAnchor(cur)
+	}
+
 	async function handleSave() {
-		const dirty = Object.values(store.getState().sections).filter((e) => e.changedCount > 0)
-		if (dirty.length === 0 || dirty.some((e) => !e.valid)) return
+		const dirty = sections.filter((s) => s.changedCount > 0)
+		if (dirty.length === 0 || dirty.some((s) => !s.state.valid || s.deniedIds.length > 0)) return
 		const result = await openDialog({
 			title: 'Save settings?',
 			content: (
 				<div className="space-y-4">
-					{dirty.map((e) => (
-						<div key={e.key}>
-							{dirty.length > 1 && <p className="mb-1 text-sm font-semibold">{e.label}</p>}
-							<SettingsChangeList changes={e.getChanges()} />
+					{dirty.map((s) => (
+						<div key={SettingsEditorFrame.Sel.idPrefix(s.state)}>
+							{dirty.length > 1 && <p className="mb-1 text-sm font-semibold">{s.label}</p>}
+							<SettingsChangeList changes={s.state.changes} />
 						</div>
 					))}
 				</div>
 			),
 			buttons: [{ id: 'save', label: 'Save' }],
 		})
-		if (result === 'save') await Promise.all(dirty.map((e) => e.save()))
+		if (result === 'save') {
+			await Promise.all(dirty.map((s) => SettingsEditorFrame.Actions.save({ settingsEditor: s.key })))
+		}
 	}
 
 	function handleReset() {
-		for (const e of Object.values(store.getState().sections)) {
-			if (e.changedCount > 0) e.reset()
+		for (const s of sections) {
+			if (s.changedCount > 0) SettingsEditorFrame.Actions.resetDraft({ settingsEditor: s.key })
 		}
 	}
 
 	// the panel must stay reachable while multiple errors need chasing down, even with nothing to save yet
-	if (summary.totalChanges === 0 && summary.totalErrors <= 1) return null
+	if (totalChanges === 0 && totalErrors <= 1) return null
 
 	return (
 		<div
 			style={{ zIndex }}
 			className="fixed bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-background px-4 py-2 shadow-lg"
 		>
-			{summary.totalErrors > 0 && (
+			{totalErrors > 0 && (
 				<span className="flex items-center gap-0.5 text-sm font-medium text-destructive">
 					<Icons.CircleAlert className="mr-1 h-4 w-4" />
-					{summary.totalErrors} {summary.totalErrors === 1 ? 'error' : 'errors'}
+					{totalErrors} {totalErrors === 1 ? 'error' : 'errors'}
 					<Button
 						variant="ghost"
 						size="icon"
@@ -213,12 +195,39 @@ export function SettingsSavePanel({ store }: { store: SettingsEditorStore }) {
 					</Button>
 				</span>
 			)}
+			{totalDenied > 0 && (
+				<span
+					className="flex items-center gap-0.5 text-sm font-medium text-amber-500"
+					title="These changes are outside the settings you're allowed to modify"
+				>
+					<Icons.ShieldAlert className="mr-1 h-4 w-4" />
+					{totalDenied} not permitted
+					<Button
+						variant="ghost"
+						size="icon"
+						className="ml-1 h-6 w-6 text-amber-500"
+						title="Previous denied change"
+						onClick={() => navigateDenied(-1)}
+					>
+						<Icons.ChevronUp className="h-4 w-4" />
+					</Button>
+					<Button
+						variant="ghost"
+						size="icon"
+						className="h-6 w-6 text-amber-500"
+						title="Next denied change"
+						onClick={() => navigateDenied(1)}
+					>
+						<Icons.ChevronDown className="h-4 w-4" />
+					</Button>
+				</span>
+			)}
 			<span className="text-sm">
-				<span className="font-medium">{summary.totalChanges}</span> {summary.totalChanges === 1 ? 'setting' : 'settings'} changed
+				<span className="font-medium">{totalChanges}</span> {totalChanges === 1 ? 'setting' : 'settings'} changed
 			</span>
 			<Button variant="outline" size="sm" onClick={handleReset}>Reset</Button>
-			<Button size="sm" disabled={summary.anyInvalid || summary.anySaving} onClick={handleSave}>
-				{summary.anySaving ? 'Saving…' : 'Save'}
+			<Button size="sm" disabled={anyInvalid || anySaving || totalDenied > 0} onClick={handleSave}>
+				{anySaving ? 'Saving…' : 'Save'}
 			</Button>
 		</div>
 	)

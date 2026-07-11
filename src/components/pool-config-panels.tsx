@@ -158,6 +158,7 @@ export function MainPoolFiltersPanel({ api }: { api: PoolConfigApi }) {
 									value={filterConfig.defaultApplyDuringLayerSelection ?? 'disabled'}
 									allowEmpty={false}
 									onSelect={handleDefaultApplyChanged}
+									disabled={!!api.writeDenied}
 								/>
 								<ComboBox
 									title="In Pool"
@@ -165,6 +166,7 @@ export function MainPoolFiltersPanel({ api }: { api: PoolConfigApi }) {
 									value={filterConfig.inPool ?? 'disabled'}
 									allowEmpty={false}
 									onSelect={handleInPoolChanged}
+									disabled={!!api.writeDenied}
 								/>
 								<ComboBox
 									title="Indicator State"
@@ -172,12 +174,13 @@ export function MainPoolFiltersPanel({ api }: { api: PoolConfigApi }) {
 									value={filterConfig.showIndicator ?? 'disabled' as const}
 									allowEmpty={false}
 									onSelect={handleIndicateMatchesChanged}
+									disabled={!!api.writeDenied}
 								/>
 								<div className="border border-input rounded-md flex items-center justify-center">
 									<TriStateCheckbox
 										checked={filterConfig.warn}
 										onCheckedChange={handleWarnChanged}
-										disabled={!canWarn}
+										disabled={!canWarn || !!api.writeDenied}
 										title={canWarn ? warnDescriptions[filterConfig.warn ?? 'disabled'] : 'Enable "Indicate" first'}
 									/>
 								</div>

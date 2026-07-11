@@ -6,6 +6,6 @@ export const frameManager = new FRM.FrameManager()
 // lets ZusUtils.useStore & co accept frame instance keys as inputs
 ZusUtils.registerFrameKeyResolver((key) => frameManager.getInstance(key))
 
-export const { useFrameLifecycle } = FRM.createFrameHelpers(
+export const { useFrameLifecycle, useFrameTeardownOnUnmount } = FRM.createFrameHelpers(
 	frameManager,
 )

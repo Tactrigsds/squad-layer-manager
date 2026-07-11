@@ -4,7 +4,7 @@ import { StringEqConfig } from '@/components/filter-card'
 import PoolCheckboxes from '@/components/pool-checkboxes.tsx'
 import ShortLayerName from '@/components/short-layer-name'
 import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogDescription, HeadlessDialogHeader, HeadlessDialogTitle } from '@/components/ui/headless-dialog'
-import { useFrameLifecycle } from '@/frames/frame-manager'
+import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager'
 import * as GenVoteFrame from '@/frames/gen-vote.frame'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 
@@ -54,6 +54,8 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		input: frameInputRef.current,
 		equalityFn: Obj.deepEqual,
 	})
+	// a frame this dialog provisioned itself dies with it; one handed in via stores belongs to its provider
+	useFrameTeardownOnUnmount(frameKey, !props.stores.genVote)
 	const genVoteStores: GenVoteFrame.KeyProp = React.useMemo(() => ({ genVote: frameKey }), [frameKey])
 
 	const {

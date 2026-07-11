@@ -38,6 +38,9 @@ export default function ServerSettingsPopover(
 
 	const mainPoolApi = useStorePoolConfigApi(stores.squadServer!, ['queue', 'mainPool'])
 	const generationPoolApi = useStorePoolConfigApi(stores.squadServer!, ['queue', 'generationPool'])
+	// with no write access to either pool the popover is a read-only viewer: the panels disable their controls, and
+	// the save/reset affordances disappear (pool config itself is public data, so viewing stays available)
+	const readOnly = !!mainPoolApi.writeDenied && !!generationPoolApi.writeDenied
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
@@ -48,7 +51,10 @@ export default function ServerSettingsPopover(
 				align="start"
 			>
 				<div className="flex items-center justify-between border-b pb-3">
-					<h3 className="text-lg font-semibold">Pool Configuration</h3>
+					<h3 className="text-lg font-semibold flex items-center gap-2">
+						Pool Configuration
+						{readOnly && <span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">Read-only</span>}
+					</h3>
 					<div className="flex items-center space-x-2">
 						<TabsList
 							options={[
@@ -58,23 +64,25 @@ export default function ServerSettingsPopover(
 							active={poolId}
 							setActive={setPoolId}
 						/>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Button
-									size="icon"
-									variant="ghost"
-									disabled={!settingsChanged || saving}
-									onClick={() => {
-										ServerSettingsPrt.Actions.reset({ settings: stores.squadServer! })
-									}}
-								>
-									<Icons.Trash className="h-4 w-4" />
-								</Button>
-							</TooltipTrigger>
-							<TooltipContent>
-								<p>Reset changes</p>
-							</TooltipContent>
-						</Tooltip>
+						{!readOnly && (
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<Button
+										size="icon"
+										variant="ghost"
+										disabled={!settingsChanged || saving}
+										onClick={() => {
+											ServerSettingsPrt.Actions.reset({ settings: stores.squadServer! })
+										}}
+									>
+										<Icons.Trash className="h-4 w-4" />
+									</Button>
+								</TooltipTrigger>
+								<TooltipContent>
+									<p>Reset changes</p>
+								</TooltipContent>
+							</Tooltip>
+						)}
 					</div>
 				</div>
 				<div className="space-y-6">
@@ -106,18 +114,20 @@ export default function ServerSettingsPopover(
 					>
 						Close
 					</Button>
-					<Button
-						disabled={!settingsChanged || saving || !!validationErrors}
-						onClick={async () => {
-							const saved = await ServerSettingsPrt.Actions.save({ settings: stores.squadServer! })
-							if (saved) _setOpen(false)
-						}}
-						className="min-w-30"
-					>
-						<Spinner className="invisible data-[saving=true]:visible" data-saving={saving} />
-						Save Changes
-						<Spinner className="invisible" />
-					</Button>
+					{!readOnly && (
+						<Button
+							disabled={!settingsChanged || saving || !!validationErrors}
+							onClick={async () => {
+								const saved = await ServerSettingsPrt.Actions.save({ settings: stores.squadServer! })
+								if (saved) _setOpen(false)
+							}}
+							className="min-w-30"
+						>
+							<Spinner className="invisible data-[saving=true]:visible" data-saving={saving} />
+							Save Changes
+							<Spinner className="invisible" />
+						</Button>
+					)}
 				</div>
 			</PopoverContent>
 		</Popover>

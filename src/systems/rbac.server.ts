@@ -22,10 +22,13 @@ const envBuilder = Env.getEnvBuilder({ ...Env.groups.rbac, ...Env.groups.discord
 let ENV!: ReturnType<typeof envBuilder>
 
 let userDefinedRoles: RBAC.Role[] = []
-let userDefinedPermissionExpressions: Record<string, RBAC.GlobalPermissionTypeExpression[]> = {}
+let userDefinedPermissionExpressions: Record<string, RBAC.RolePermissionExpression[]> = {}
 let roleAssignments: RBAC.RoleAssignment[] = []
 // role -> max kick-timeout duration in ms (rbac.maxTimeouts; HumanTime decodes to ms)
 let roleMaxTimeouts: Record<string, number> = {}
+// restricted settings grants (rbac.globalSettingsGrants / rbac.serverSettingsGrants)
+let roleGlobalSettingsGrants: SETTINGS.RbacSettings['globalSettingsGrants'] = {}
+let roleServerSettingsGrants: SETTINGS.RbacSettings['serverSettingsGrants'] = {}
 let superUserIds = new Set<bigint>()
 let superRoleIds = new Set<bigint>()
 
@@ -49,6 +52,8 @@ export function applyRbacSettings(rbac: SETTINGS.RbacSettings) {
 	}
 
 	roleMaxTimeouts = { ...rbac.maxTimeouts }
+	roleGlobalSettingsGrants = { ...rbac.globalSettingsGrants }
+	roleServerSettingsGrants = { ...rbac.serverSettingsGrants }
 
 	roleAssignments = []
 
@@ -145,13 +150,13 @@ export const getUserRbacPerms = C.spanOp(
 		const filterRowsPromise = getFilterPermissionRows()
 
 		const perms: RBAC.TracedPermission[] = []
-		const allNegatingPerms: Set<RBAC.GlobalPermissionType> = new Set()
+		const allNegatingPerms: Set<RBAC.RoleGrantablePermissionType> = new Set()
 
-		// super users/roles are granted every global permission, overriding any negations. timeout grants are
-		// not global-scoped, so the unlimited grant is added explicitly
+		// super users/roles are granted every role-grantable permission (unrestricted), overriding any negations.
+		// timeout grants are not expression-grantable, so the unlimited grant is added explicitly
 		if (await superPromise) {
-			for (const permType of RBAC.GLOBAL_PERMISSION_TYPE.options) {
-				RBAC.addTracedPerms(perms, RBAC.tracedPerm(permType, [SUPER_ROLE], { negated: false }))
+			for (const permType of RBAC.ROLE_GRANTABLE_PERMISSION_TYPE.options) {
+				RBAC.addTracedPerms(perms, RBAC.tracedPerm(permType, [SUPER_ROLE], { negated: false }, RBAC.unrestrictedRoleGrantArgs(permType)))
 			}
 			RBAC.addTracedPerms(
 				perms,
@@ -163,27 +168,66 @@ export const getUserRbacPerms = C.spanOp(
 				const perm = RBAC.parseNegatingPermissionType(permExpr)
 				if (!perm) continue
 				allNegatingPerms.add(perm)
-				perms.push(RBAC.tracedPerm(perm, [role], { negated: true, negating: true }))
+				perms.push(RBAC.tracedPerm(perm, [role], { negated: true, negating: true }, RBAC.unrestrictedRoleGrantArgs(perm)))
 			}
 		}
 
-		const isNegated = (perm: RBAC.PermissionType) => allNegatingPerms.has(perm as RBAC.GlobalPermissionType)
+		const isNegated = (perm: RBAC.PermissionType) => allNegatingPerms.has(perm as RBAC.RoleGrantablePermissionType)
 
 		for (const role of roles) {
 			if (userDefinedPermissionExpressions[role.type].includes('*')) {
-				for (const permType of RBAC.GLOBAL_PERMISSION_TYPE.options) {
-					perms.push(RBAC.tracedPerm(permType, [role], { negated: allNegatingPerms.has(permType) }))
+				for (const permType of RBAC.ROLE_GRANTABLE_PERMISSION_TYPE.options) {
+					perms.push(
+						RBAC.tracedPerm(permType, [role], { negated: allNegatingPerms.has(permType) }, RBAC.unrestrictedRoleGrantArgs(permType)),
+					)
 				}
 			}
 			for (const permExpr of userDefinedPermissionExpressions[role.type]) {
-				if (!RBAC.isGlobalPermissionType(permExpr)) continue
-				RBAC.addTracedPerms(perms, RBAC.tracedPerm(permExpr, [role], { negated: allNegatingPerms.has(permExpr) }))
+				if (!RBAC.isRoleGrantablePermissionType(permExpr)) continue
+				RBAC.addTracedPerms(
+					perms,
+					RBAC.tracedPerm(permExpr, [role], { negated: allNegatingPerms.has(permExpr) }, RBAC.unrestrictedRoleGrantArgs(permExpr)),
+				)
 			}
 			if (roleMaxTimeouts[role.type] !== undefined) {
 				RBAC.addTracedPerms(
 					perms,
 					RBAC.tracedPerm('squad-server:timeout-players', [role], {}, { maxDurationMs: roleMaxTimeouts[role.type] }),
 				)
+			}
+			// restricted settings grants; a matching negation in any role's expressions wins over these too
+			const globalPaths = roleGlobalSettingsGrants[role.type]
+			if (globalPaths && globalPaths.length > 0) {
+				RBAC.addTracedPerms(
+					perms,
+					RBAC.tracedPerm('global-settings:write', [role], { negated: isNegated('global-settings:write') }, { paths: [...globalPaths] }),
+				)
+			}
+			for (const grant of roleServerSettingsGrants[role.type] ?? []) {
+				const serverIds: (string | null)[] = grant.serverIds.length > 0 ? grant.serverIds : [null]
+				for (const serverId of serverIds) {
+					if (grant.access === 'read') {
+						RBAC.addTracedPerms(
+							perms,
+							RBAC.tracedPerm('server-settings:read', [role], { negated: isNegated('server-settings:read') }, { serverId }),
+						)
+					} else if (grant.access === 'write') {
+						RBAC.addTracedPerms(
+							perms,
+							RBAC.tracedPerm('server-settings:write', [role], { negated: isNegated('server-settings:write') }, {
+								serverId,
+								paths: grant.paths.length > 0 ? [...grant.paths] : null,
+							}),
+						)
+					} else {
+						RBAC.addTracedPerms(
+							perms,
+							RBAC.tracedPerm('server-settings:write-sensitive', [role], { negated: isNegated('server-settings:write-sensitive') }, {
+								serverId,
+							}),
+						)
+					}
+				}
 			}
 		}
 
@@ -265,6 +309,23 @@ export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
 	return RBAC.tryDenyPermissionForUser(userId, perms, req)
 }
 
+// for the aggregate (non-equality) checks: settings access, timeouts
+export async function getUserPermissions(ctx: C.Db & C.UserId): Promise<RBAC.Permission[]> {
+	return RBAC.fromTracedPermissions(await getUserRbacPerms(ctx))
+}
+
+// viewing global settings is granted by global-settings:read or any global-settings:write grant (incl. restricted ones)
+export async function tryDenyGlobalSettingsRead(
+	ctx: C.Db & C.UserId,
+): Promise<RBAC.PermissionDeniedResponse<'global-settings:read' | 'global-settings:write'> | null> {
+	const perms = await getUserPermissions(ctx)
+	if (RBAC.canReadGlobalSettings(perms)) return null
+	return RBAC.permissionDenied({
+		check: 'any',
+		permits: [RBAC.perm('global-settings:read'), RBAC.perm('global-settings:write', { paths: null })],
+	})
+}
+
 // "up to N" timeout checks bypass the equality-matched permission path (see RBAC.maxTimeoutDurationMs)
 export async function tryDenyTimeoutForUser(
 	ctx: C.Db & C.UserId,
@@ -301,7 +362,7 @@ export const orpcRouter = {
 	// ids as strings so the snowflakes survive JSON
 	getSuperConfig: orpcBase.handler(async ({ context: _ctx }) => {
 		const ctx = DB.addPooledDb(_ctx as any)
-		const denyRes = await tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-global-settings'))
+		const denyRes = await tryDenyGlobalSettingsRead(ctx)
 		if (denyRes) return denyRes
 		return {
 			code: 'ok' as const,
@@ -314,14 +375,14 @@ export const orpcRouter = {
 	// since they surface guild role names and member identities
 	listGuildRoles: orpcBase.handler(async ({ context: _ctx }) => {
 		const ctx = DB.addPooledDb(_ctx as any)
-		const denyRes = await tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-global-settings'))
+		const denyRes = await tryDenyGlobalSettingsRead(ctx)
 		if (denyRes) return denyRes
 		return Discord.listGuildRolesDetailed()
 	}),
 
 	searchGuildMembers: orpcBase.input(z.object({ query: z.string() })).handler(async ({ context: _ctx, input }) => {
 		const ctx = DB.addPooledDb(_ctx as any)
-		const denyRes = await tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-global-settings'))
+		const denyRes = await tryDenyGlobalSettingsRead(ctx)
 		if (denyRes) return denyRes
 		const query = input.query.trim()
 		if (query.length === 0) return { code: 'ok' as const, members: [] }

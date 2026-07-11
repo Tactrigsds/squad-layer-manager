@@ -93,10 +93,14 @@ export default function NavBar() {
 		[selectedServer],
 	)
 
-	const showSettingsLink = !RbacClient.usePermsCheck({
+	const registryDenied = RbacClient.usePermsCheck({
 		check: 'any',
-		permits: [RBAC.perm('admin:manage-servers'), RBAC.perm('admin:delete-servers'), RBAC.perm('admin:manage-global-settings')],
+		permits: [RBAC.perm('admin:manage-servers'), RBAC.perm('admin:delete-servers')],
 	})
+	const loggedInPerms = RbacClient.useLoggedInPerms()
+	const showSettingsLink = !registryDenied
+		|| RBAC.canReadGlobalSettings(loggedInPerms)
+		|| (settings?.servers ?? []).some((s) => RBAC.canReadServerSettings(loggedInPerms, s.id))
 	const [exploreLayersOpen, setExploreLayersOpen] = React.useState(false)
 
 	// the user-avatar menu items, shared between the avatar dropdown (>= sm) and the hamburger (< sm). Rendered in exactly one

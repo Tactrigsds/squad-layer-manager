@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogDescription, HeadlessDialogFooter, HeadlessDialogHeader, HeadlessDialogTitle } from '@/components/ui/headless-dialog'
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
-import { useFrameLifecycle } from '@/frames/frame-manager.ts'
+import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Obj from '@/lib/object'
@@ -53,13 +53,15 @@ type SelectLayersDialogContentProps = {
 const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(function SelectLayersDialogContent(props) {
 	const frameInputRef = useRefConstructor(() => {
 		if (props.stores?.selectLayers) return undefined
-		SelectLayersFrame.createInput({ cursor: props.cursor })
+		return SelectLayersFrame.createInput({ cursor: props.cursor })
 	})
 	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, {
 		frameKey: props.stores?.selectLayers,
 		input: frameInputRef.current,
 		equalityFn: Obj.deepEqual,
 	})
+	// a frame this dialog provisioned itself dies with it; one handed in via stores belongs to its provider
+	useFrameTeardownOnUnmount(frameKey, !props.stores?.selectLayers)
 
 	const [selectMode, _setSelectMode] = React.useState<SelectMode>(props.pinMode ?? 'layers')
 	const setSelectedLayers = React.useCallback(

@@ -1,4 +1,5 @@
 import { BmFlagMultiSelect, BmFlagOrColorSelect, BmFlagOrderedList, FlagPriorityMap } from '@/components/bm-flag-picker'
+import ComboBox, { type ComboBoxOption } from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { DiscordMemberSelect, DiscordRoleSelect } from '@/components/discord-picker'
 import LayerTableConfigEditor from '@/components/layer-table-config-editor'
@@ -25,6 +26,7 @@ import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as AAR from '@/models/admin-action-reasons.models'
 import type * as LP from '@/models/labeled-presets.models'
+import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as SettingsClient from '@/systems/settings.client'
@@ -149,8 +151,8 @@ function emptyValue(node: Node): unknown {
 }
 
 // granted permissions include the "*" wildcard; denials are stored with a "!" prefix but edited without it in a separate select
-const GRANT_PERM_OPTIONS: string[] = ['*', ...RBAC.GLOBAL_PERMISSION_TYPE.options]
-const DENY_PERM_OPTIONS: string[] = [...RBAC.GLOBAL_PERMISSION_TYPE.options]
+const GRANT_PERM_OPTIONS: string[] = ['*', ...RBAC.ROLE_GRANTABLE_PERMISSION_TYPE.options]
+const DENY_PERM_OPTIONS: string[] = [...RBAC.ROLE_GRANTABLE_PERMISSION_TYPE.options]
 
 // editor for a role's permission expression list: granted perms and denied perms (!-prefixed) in two separate selects
 function PermissionExpressionEditor({ value, onChange }: { value: string[] | undefined; onChange: (v: string[]) => void }) {
@@ -221,6 +223,10 @@ function useMessageVars(value$: ValueState): Record<string, string> {
 // per-form options. `idPrefix` scopes the DOM ids / URL-fragment anchors so multiple forms on the settings page (global
 // settings + one per server) don't collide; it stays `setting:*` so the TOC scroll-spy and hash nav still match.
 const FormOptionsContext = React.createContext<{ idPrefix: string }>({ idPrefix: 'setting:' })
+
+// the user's write grant over the settings being edited; leaves outside it render dimmed + inert (see LeafField)
+const WRITE_ACCESS_ALL: RBAC.SettingsWriteAccess = { kind: 'all' }
+const WriteAccessContext = React.createContext<RBAC.SettingsWriteAccess>(WRITE_ACCESS_ALL)
 
 // the current draft's schema issues, normalized to dotted path strings. Each leaf field claims the issues at or below
 // its own path (below-leaf paths -- array items, record entries -- have no dedicated field UI of their own).
@@ -951,7 +957,7 @@ function usePoolConfigApi({ value$, reset$, onChange }: OverrideProps): PoolConf
 		useValue: (path) => usePathValue(value$, reset$, path),
 		getValue: (path) => getAtPath(value$.getValue(), path),
 		set: (path, value) => onChange(setAtPath(value$.getValue(), path, value)),
-		// the settings page is already gated by admin:manage-servers; per-field write perms don't apply here
+		// the settings page gates edit access via the server-settings:* perms; out-of-grant writes are rejected server-side
 		writeDenied: null,
 		resetKey,
 	}
@@ -1000,6 +1006,80 @@ function GenerationPoolField(props: OverrideProps) {
 	)
 }
 
+// -------- rbac settings-grant pickers --------
+
+// every dotted object path in a settings schema, in declaration order: the paths a settings grant may address.
+// Stops at arrays/records since grants target the static object tree, not indices or dynamic keys.
+function enumerateGrantPaths(node: Node, prefix = ''): string[] {
+	const { inner } = stripNullable(node)
+	if (inner?.type !== 'object' || !inner.properties || (inner.additionalProperties && typeof inner.additionalProperties === 'object')) {
+		return []
+	}
+	const out: string[] = []
+	for (const [key, child] of Object.entries(inner.properties as Record<string, Node>)) {
+		const p = prefix ? `${prefix}.${key}` : key
+		out.push(p, ...enumerateGrantPaths(child, p))
+	}
+	return out
+}
+
+let cachedGlobalGrantPaths: string[] | undefined
+function globalGrantPathOptions(): string[] {
+	cachedGlobalGrantPaths ??= enumerateGrantPaths(z.toJSONSchema(SETTINGS.GlobalSettingsSchema, { io: 'input', unrepresentable: 'any' }))
+	return cachedGlobalGrantPaths
+}
+
+// connections is excluded: it's gated by server-settings:write-sensitive, never by path grants
+let cachedServerGrantPaths: string[] | undefined
+function serverGrantPathOptions(): string[] {
+	cachedServerGrantPaths ??= enumerateGrantPaths(z.toJSONSchema(SETTINGS.ServerSettingsSchema, { io: 'input', unrepresentable: 'any' }))
+		.filter((p) => p !== 'connections' && !p.startsWith('connections.'))
+	return cachedServerGrantPaths
+}
+
+function GrantPathField({ value$, reset$, onChange, options }: OverrideProps & { options: string[] }) {
+	const value = (useFieldValue(value$, reset$) as string | undefined) ?? ''
+	// stale/unknown paths stay selectable so they remain visible and removable
+	const opts = !value || options.includes(value) ? options : [value, ...options]
+	return (
+		<ComboBox
+			title="setting path"
+			className="w-full max-w-[24rem] font-mono"
+			value={value || undefined}
+			options={opts}
+			sort={false}
+			onSelect={(v) => onChange(v ?? '')}
+		/>
+	)
+}
+function GlobalGrantPathField(props: OverrideProps) {
+	return <GrantPathField {...props} options={globalGrantPathOptions()} />
+}
+function ServerGrantPathField(props: OverrideProps) {
+	return <GrantPathField {...props} options={serverGrantPathOptions()} />
+}
+
+// server ids picked from the registry; stale ids stay selectable so they remain visible and removable
+function GrantServerIdField({ value$, reset$, onChange }: OverrideProps) {
+	const value = (useFieldValue(value$, reset$) as string | undefined) ?? ''
+	const servers = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers) ?? []
+	const options: ComboBoxOption<string>[] = servers.map((s) => ({
+		value: s.id,
+		label: `${s.displayName} (${s.id})`,
+		keywords: [s.displayName],
+	}))
+	if (value && !servers.some((s) => s.id === value)) options.unshift({ value })
+	return (
+		<ComboBox
+			title="server"
+			className="w-full max-w-[24rem]"
+			value={value || undefined}
+			options={options}
+			onSelect={(v) => onChange(v ?? '')}
+		/>
+	)
+}
+
 function overrideFor(path: Path, node: Node): React.FC<OverrideProps> | undefined {
 	const last = path[path.length - 1]
 	// the global `adminListSources` is a name-keyed record of source definitions (rendered generically); the
@@ -1016,6 +1096,10 @@ function overrideFor(path: Path, node: Node): React.FC<OverrideProps> | undefine
 	if (path[0] === 'playerFlagGroupings' && typeof path[1] === 'number' && last === 'associations') return FlagPriorityMapField
 	if (path[0] === 'rbac' && path[1] === 'roles' && path.length === 3) return RolePermissionField
 	if (path[0] === 'rbac' && path.length === 2 && last === 'maxTimeouts') return MaxTimeoutsField
+	// path-scoped settings grants: pickers over the schemas' dotted paths / the server registry, instead of free text
+	if (path[0] === 'rbac' && path[1] === 'globalSettingsGrants' && path.length === 4) return GlobalGrantPathField
+	if (path[0] === 'rbac' && path[1] === 'serverSettingsGrants' && path.length === 6 && path[4] === 'paths') return ServerGrantPathField
+	if (path[0] === 'rbac' && path[1] === 'serverSettingsGrants' && path.length === 6 && path[4] === 'serverIds') return GrantServerIdField
 	// the per-assignment `roles` lists, plus the flat "every member" list, are all role pickers keyed to defined roles
 	if (path[0] === 'rbac' && path[1] === 'roleAssignments' && (last === 'roles' || last === 'discord-server-member')) {
 		return AssignmentRolesField
@@ -1409,6 +1493,10 @@ function RecordField(
 	// when the schema constrains keys to a known set (z.partialRecord / propertyNames enum), the key becomes a fixed picker
 	// rather than free text, so only known keys can be added
 	const keyEnum: string[] | undefined = node.propertyNames?.enum
+	// the settings-grant maps are keyed by role id: keys come from the roles defined in the draft, not free text
+	const roleKeyed = path[0] === 'rbac' && path.length === 2
+		&& (path[1] === 'globalSettingsGrants' || path[1] === 'serverSettingsGrants')
+	const { roleIds } = React.useContext(RbacContext)
 	const [newKey, setNewKey] = React.useState('')
 	const value = (useFieldValue(value$, reset$) as Record<string, any>) ?? {}
 	const entries = Object.entries(value)
@@ -1451,7 +1539,7 @@ function RecordField(
 					valueNode={valueNode}
 					path={path}
 					entryKey={key}
-					keyEnum={keyEnum}
+					fixedKey={!!keyEnum || roleKeyed}
 					parent$={value$}
 					reset$={reset$}
 					parentOnChange={onChange}
@@ -1470,6 +1558,17 @@ function RecordField(
 						</SelectContent>
 					</Select>
 				))
+				: roleKeyed
+				? (
+					<ComboBox
+						title="role"
+						placeholder="Add role…"
+						className="h-8 max-w-[16rem]"
+						value={undefined}
+						options={roleIds.filter((r) => !(r in value))}
+						onSelect={(r) => r && add(r)}
+					/>
+				)
 				: (
 					<div className="flex items-center gap-2">
 						<Input
@@ -1495,11 +1594,11 @@ function RecordField(
 }
 
 function RecordEntry(
-	{ valueNode, path, entryKey, keyEnum, parent$, reset$, parentOnChange, onRename, onRemove }: {
+	{ valueNode, path, entryKey, fixedKey, parent$, reset$, parentOnChange, onRename, onRemove }: {
 		valueNode: Node
 		path: Path
 		entryKey: string
-		keyEnum: string[] | undefined
+		fixedKey: boolean
 		parent$: ValueState
 		reset$: Rx.Subject<void>
 		parentOnChange: (v: Record<string, any>) => void
@@ -1515,7 +1614,7 @@ function RecordEntry(
 	return (
 		<div className="border rounded-md p-2 space-y-1.5">
 			<div className="flex items-center gap-2">
-				{keyEnum
+				{fixedKey
 					? <span className="font-mono text-sm">{entryKey}</span>
 					: (
 						<Input
@@ -1720,6 +1819,8 @@ function SectionField(
 	// only issues sitting exactly at the section path (object-level refines) -- descendants are claimed by their leaves
 	const sectionIssues = React.useContext(ValidationContext).filter((i) => i.path === pathStr)
 	const SectionExtra = sectionExtraFor(path)
+	// leaves dim themselves individually; the section only needs its own bulk-reset controls neutralized
+	const writable = RBAC.settingsPathOverlaps(React.useContext(WriteAccessContext), path)
 	return (
 		<fieldset
 			id={domId}
@@ -1731,7 +1832,9 @@ function SectionField(
 					<legend className="px-1 text-sm font-semibold">{settingLabel(path, name)}</legend>
 					<code className="text-[10px] text-muted-foreground">{pathStr}</code>
 					{/* a whole section's default is usually a bulky object, so omit the inline "default:" hint (tooltip carries it) */}
-					<FieldResetControls value$={value$} reset$={reset$} onChange={onChange} node={node} path={path} showDefaultLabel={false} />
+					<span className="contents" inert={!writable}>
+						<FieldResetControls value$={value$} reset$={reset$} onChange={onChange} node={node} path={path} showDefaultLabel={false} />
+					</span>
 					<AnchorLink domId={domId} />
 				</div>
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
@@ -1764,10 +1867,15 @@ function LeafField(
 	const isBoolean = inner.type === 'boolean'
 	const fieldIssues = issuesForField(React.useContext(ValidationContext), pathStr)
 	const hasError = fieldIssues.length > 0
+	// loose overlap: a grant pointing inside this field's subtree still permits editing part of it, so the field stays
+	// active and the save panel's exact per-path check flags anything outside the grant
+	const writable = RBAC.settingsPathOverlaps(React.useContext(WriteAccessContext), path)
 	// the inline "default: <value>" hint only reads well for scalars; complex/override fields still get the reset buttons
 	const showDefaultLabel = !hasOverride && isScalarNode(inner)
 	const controls = (
-		<FieldResetControls value$={value$} reset$={reset$} onChange={onChange} node={node} path={path} showDefaultLabel={showDefaultLabel} />
+		<span className="contents" inert={!writable}>
+			<FieldResetControls value$={value$} reset$={reset$} onChange={onChange} node={node} path={path} showDefaultLabel={showDefaultLabel} />
+		</span>
 	)
 	return (
 		<div
@@ -1779,19 +1887,28 @@ function LeafField(
 				'space-y-1 scroll-mt-2 rounded-md -mx-2 px-2 py-1.5',
 				isBoolean && 'flex items-center justify-between space-y-0 gap-4',
 				hasError && 'border-l-2 border-destructive',
+				!writable && 'opacity-60',
 			)}
 		>
 			<div className={cn(isBoolean && 'min-w-0')}>
 				<div className="group flex items-center gap-1.5">
 					<Label className={cn('text-sm', hasError && 'text-destructive')}>{settingLabel(path, name)}</Label>
 					<code className="text-[10px] text-muted-foreground">{pathStr}</code>
+					{!writable && (
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Icons.Lock className="h-3 w-3 text-muted-foreground" />
+							</TooltipTrigger>
+							<TooltipContent>You are not permitted to modify this setting</TooltipContent>
+						</Tooltip>
+					)}
 					{!isBoolean && controls}
 					<AnchorLink domId={domId} />
 				</div>
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
 				<FieldIssues issues={fieldIssues} pathStr={pathStr} />
 			</div>
-			<div className={cn(isBoolean && 'shrink-0 flex items-center gap-1')}>
+			<div className={cn(isBoolean && 'shrink-0 flex items-center gap-1')} inert={!writable}>
 				{isBoolean && controls}
 				<FieldControl node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />
 			</div>
@@ -1902,7 +2019,7 @@ function JsonFallback({ value$, reset$, onChange }: { value$: ValueState; reset$
 }
 
 export default function SettingsForm(
-	{ schema, value$, reset$, onChange, saved, idPrefix = 'setting:', groups, issues }: {
+	{ schema, value$, reset$, onChange, saved, idPrefix = 'setting:', groups, issues, writeAccess = WRITE_ACCESS_ALL }: {
 		schema: z.ZodType
 		value$: Rx.Observable<any> & { getValue: () => any }
 		reset$: Rx.Subject<void>
@@ -1916,6 +2033,8 @@ export default function SettingsForm(
 		groups?: SettingsGroup[]
 		// schema issues for the current draft (input-shape safeParse); each leaf field displays the issues under its path
 		issues?: readonly z.core.$ZodIssue[]
+		// the user's write grant; fields with no overlap render read-only. Defaults to unrestricted.
+		writeAccess?: RBAC.SettingsWriteAccess
 	},
 ) {
 	const jsonSchema = React.useMemo(() => z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' }) as Node, [schema])
@@ -1932,17 +2051,19 @@ export default function SettingsForm(
 	)
 	return (
 		<FormOptionsContext.Provider value={formOptions}>
-			<SavedRootContext.Provider value={savedCtx}>
-				<RbacContext.Provider value={rbacInfo}>
-					<MessageVarsContext.Provider value={messageVars}>
-						<ValidationContext.Provider value={normIssues}>
-							{groups
-								? <GroupedRootFields node={jsonSchema} groups={groups} value$={value$} reset$={reset$} onChange={onChange} />
-								: <ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />}
-						</ValidationContext.Provider>
-					</MessageVarsContext.Provider>
-				</RbacContext.Provider>
-			</SavedRootContext.Provider>
+			<WriteAccessContext.Provider value={writeAccess}>
+				<SavedRootContext.Provider value={savedCtx}>
+					<RbacContext.Provider value={rbacInfo}>
+						<MessageVarsContext.Provider value={messageVars}>
+							<ValidationContext.Provider value={normIssues}>
+								{groups
+									? <GroupedRootFields node={jsonSchema} groups={groups} value$={value$} reset$={reset$} onChange={onChange} />
+									: <ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />}
+							</ValidationContext.Provider>
+						</MessageVarsContext.Provider>
+					</RbacContext.Provider>
+				</SavedRootContext.Provider>
+			</WriteAccessContext.Provider>
 		</FormOptionsContext.Provider>
 	)
 }
