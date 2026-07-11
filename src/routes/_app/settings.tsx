@@ -137,49 +137,40 @@ function RouteComponent() {
 		},
 	})
 
-	// scroll to the URL fragment on load (retrying until the target renders, since the form loads async) and on later
-	// hash changes (a pasted/edited link). In-app clicks use replaceState, which fires no hashchange, so no double-scroll.
+	// the fragment to scroll to on load, captured once. Handled lazily below once its owning section has rendered, since
+	// the sections load async (per-server fetch, global-settings Suspense) and a `setting:*` field only exists after its
+	// section mounts.
+	const initialAnchor = useRefConstructor(() => ({ id: SettingsNav.currentAnchor(), handled: false }))
+
+	// initial page-load fragment: gate on the owning section actually being in the DOM (re-checked as sections stream in
+	// via sectionStates), then hand off to the exact same navigateToAnchor path a TOC click uses. `handled` latches so
+	// later sectionStates changes (form edits) don't re-trigger it; the settle loop self-terminates on unmount.
+	React.useEffect(() => {
+		const st = initialAnchor.current
+		if (st.handled || !st.id) return
+		const section = SettingsNav.sectionForAnchor(st.id)
+		// wait until the owning section has rendered; an unrecognized anchor (section === null) is handled immediately
+		if (section && !document.getElementById(section)) return
+		st.handled = true
+		SettingsNav.navigateToAnchor(st.id)
+	}, [sectionStates, initialAnchor])
+
+	// later hash changes from a pasted/edited link (in-app clicks use replaceState, which fires no hashchange, so no
+	// double-scroll) route through the same path
 	React.useEffect(() => {
 		const onHash = () => {
 			const id = SettingsNav.currentAnchor()
-			if (id) {
-				SettingsNav.scrollToAnchor(id)
-				SettingsNav.highlightAnchor(id)
-			}
+			if (id) SettingsNav.navigateToAnchor(id)
 		}
 		window.addEventListener('hashchange', onHash)
-		const id = SettingsNav.currentAnchor()
-		let raf = 0
-		if (id) {
-			let tries = 0
-			const attempt = () => {
-				if (document.getElementById(id)) {
-					SettingsNav.scrollToAnchor(id)
-					SettingsNav.highlightAnchor(id)
-				} else if (tries++ < 90) raf = requestAnimationFrame(attempt)
-			}
-			raf = requestAnimationFrame(attempt)
-		}
-		return () => {
-			window.removeEventListener('hashchange', onHash)
-			if (raf) cancelAnimationFrame(raf)
-		}
+		return () => window.removeEventListener('hashchange', onHash)
 	}, [])
 
 	// when the user clicks "Add Server", scroll the new-server config into view once it mounts (the section renders on
 	// the next frame). Existing servers scroll via the pencil/Fix buttons in the management card.
 	React.useEffect(() => {
 		if (!creating) return
-		let raf = 0
-		let tries = 0
-		const attempt = () => {
-			if (document.getElementById('section:server:__new__')) SettingsNav.scrollToAnchor('section:server:__new__')
-			else if (tries++ < 60) raf = requestAnimationFrame(attempt)
-		}
-		raf = requestAnimationFrame(attempt)
-		return () => {
-			if (raf) cancelAnimationFrame(raf)
-		}
+		return SettingsNav.scrollToAnchorSettled('section:server:__new__', { deadlineMs: 1500 })
 	}, [creating])
 
 	if (manageServersDenied && !globalAccess.canRead && servers.length === 0) {
