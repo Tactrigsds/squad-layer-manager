@@ -148,8 +148,9 @@ export function PlayerCopyIdsSub(
 }
 
 // the Kick dialog body: the timeout input is kept in state (in addition to the ref the confirm handler reads) so the
-// ReasonPicker's message preview can resolve {{duration}} live as the admin types
-function KickDialogContent(
+// ReasonPicker's message preview can resolve {{duration}} live as the admin types. Shared with the bulk and squad
+// kick dialogs.
+export function KickDialogContent(
 	{ durationRef, customReasonRef, presetReasonRef, maxTimeout, required }: {
 		durationRef: React.MutableRefObject<string>
 		customReasonRef: React.MutableRefObject<string>
@@ -338,7 +339,12 @@ export function PlayerMenuItems(
 				customRef: customReasonRef,
 			})
 			if (!input) return
-			await killMutation.mutateAsync({ serverId, playerIds: [playerId], ...input })
+			const res = await killMutation.mutateAsync({ serverId, playerIds: [playerId], ...input })
+			if (res.code !== 'ok') {
+				toast.error('Kill failed', { description: 'msg' in res && res.msg ? res.msg : res.code })
+				return
+			}
+			toast(`Killed ${playerInfo?.username ?? 'player'}`)
 		})
 	}
 

@@ -11,11 +11,12 @@ import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswitches.client'
+import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 import React from 'react'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
-import { contextMenuSlots, PlayerCopyIdsSub, PlayerOpenLinksSub } from './player-context-menu-options'
+import { contextMenuSlots, KickDialogContent, PlayerCopyIdsSub, PlayerOpenLinksSub } from './player-context-menu-options'
 import { ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuShortcut } from './ui/context-menu'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
 import { ReasonPicker, WarnReasonsSub } from './warn-reasons-sub'
@@ -48,8 +49,11 @@ export default function PlayerBulkContextMenuOptions(
 
 	const removePlayersFromSquadMutation = SquadServerClient.useRemovePlayersFromSquadMutation()
 	const killMutation = SquadServerClient.useKillMutation()
+	const kickMutation = TimeoutsClient.useKickPlayerMutation()
 	const warnPlayersMutation = SquadServerClient.useWarnPlayersMutation()
+	const maxTimeout = TimeoutsClient.useMaxTimeout()
 	const killReasonRequired = SettingsClient.useReasonRequired('kill')
+	const kickReasonRequired = SettingsClient.useReasonRequired('kick')
 	const removeReasonRequired = SettingsClient.useReasonRequired('remove-from-squad')
 	const serverId = stores.squadServer.serverId
 	const openOrFocusWindow = useOpenOrFocusWindow()
@@ -58,9 +62,15 @@ export default function PlayerBulkContextMenuOptions(
 	const customReasonRef = React.useRef('')
 	// same mechanism for the preset-reason pick in the action confirmation dialogs; reset on each dialog open
 	const presetReasonRef = React.useRef('')
+	const kickDurationRef = React.useRef('')
 
 	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
+	// timeout grants are comparator-matched (see useMaxTimeout), so the denial is synthesized rather than
+	// coming from usePermsCheck
+	const kickDenied = maxTimeout === undefined
+		? RBAC.permissionDenied({ check: 'all', permits: [RBAC.perm('squad-server:timeout-players', { maxDurationMs: null })] })
+		: null
 	const canSwitchNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwitchNow(playerIds))
 	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.someCanQueue(playerIds))
 
@@ -141,13 +151,55 @@ export default function PlayerBulkContextMenuOptions(
 				customRef: customReasonRef,
 			})
 			if (!input) return
-			// unwrap() so the presence dialogue stays open until the kill settles; the toast already surfaces
-			// any error, so swallow the rejection here
-			await toast.promise(killMutation.mutateAsync({ serverId, playerIds, ...input }), {
-				loading: `Killing ${playerIds.length} players...`,
-				success: `Killed ${playerIds.length} players`,
-				error: { message: 'Kill failed', description: `Failed to kill ${playerIds.length} players`, richColors: true },
-			}).unwrap().catch(() => {})
+			// awaited inside withPlayerDialogue so the presence dialogue stays open until the kill settles
+			const res = await killMutation.mutateAsync({ serverId, playerIds, ...input })
+			if (res.code !== 'ok') {
+				toast.error('Kill failed', { description: 'msg' in res && res.msg ? res.msg : res.code })
+				return
+			}
+			toast(`Killed ${playerIds.length} players`)
+		})
+	}
+
+	async function kick() {
+		kickDurationRef.current = ''
+		customReasonRef.current = ''
+		presetReasonRef.current = ''
+		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
+			const result = await openDialog({
+				title: 'Kick Players',
+				variant: 'destructive',
+				description:
+					`Kick these ${playerIds.length} players? They will be re-kicked on join from any SLM-managed server until the timeout expires.`,
+				content: (
+					<div className="grid gap-3 py-2">
+						{selectedPlayerList()}
+						<KickDialogContent
+							durationRef={kickDurationRef}
+							customReasonRef={customReasonRef}
+							presetReasonRef={presetReasonRef}
+							maxTimeout={maxTimeout}
+							required={kickReasonRequired}
+						/>
+					</div>
+				),
+				buttons: [{ id: 'confirm', label: 'Kick' }],
+			})
+			if (result !== 'confirm') return
+			const input = SquadServerClient.readReasonInput({
+				action: 'kick',
+				required: kickReasonRequired,
+				presetRef: presetReasonRef,
+				customRef: customReasonRef,
+			})
+			if (!input) return
+			await TimeoutsClient.kickPlayers(kickMutation.mutateAsync, {
+				serverId,
+				playerIds,
+				durationText: kickDurationRef.current,
+				maxTimeout,
+				...input,
+			})
 		})
 	}
 
@@ -244,6 +296,15 @@ export default function PlayerBulkContextMenuOptions(
 					disabled={!!manageDenied || !canSwitchNow}
 				>
 					Kill
+				</ContextMenuItem>
+			</PermissionDeniedTooltip>
+			<PermissionDeniedTooltip denied={kickDenied}>
+				<ContextMenuItem
+					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
+					onClick={kick}
+					disabled={!!kickDenied || playerIds.length === 0}
+				>
+					Kick
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>

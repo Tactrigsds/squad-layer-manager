@@ -11,12 +11,14 @@ import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswitches.client'
+import * as TimeoutsClient from '@/systems/timeouts.client'
+import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 import React from 'react'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
-import type { MenuSlots } from './player-context-menu-options'
+import { KickDialogContent, type MenuSlots } from './player-context-menu-options'
 import { ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger } from './ui/context-menu'
-import { useAlertDialog } from './ui/lazy-alert-dialog'
+import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
 import { ReasonPicker, WarnReasonsSub } from './warn-reasons-sub'
 
 const contextMenuSlots: MenuSlots = {
@@ -38,15 +40,23 @@ export function SquadMenuItems(
 ) {
 	const { Item, Separator } = slots
 	const openDialog = useAlertDialog()
+	const closeDialog = useCloseAlertDialog()
 	const openOrFocusWindow = useOpenOrFocusWindow()
-	// holds the preset-reason pick in the disband dialog; the alert dialog only resolves a button id and
+	// holds the preset-reason pick in the disband/kill/kick dialogs; the alert dialog only resolves a button id and
 	// unmounts its content on confirm, so the pick is read from here
 	const presetReasonRef = React.useRef('')
+	const customReasonRef = React.useRef('')
+	const kickDurationRef = React.useRef('')
 
 	const disbandReasonRequired = SettingsClient.useReasonRequired('disband-squad')
+	const killReasonRequired = SettingsClient.useReasonRequired('kill')
+	const kickReasonRequired = SettingsClient.useReasonRequired('kick')
 	const disbandSquadMutation = SquadServerClient.useDisbandSquadMutation()
 	const resetSquadNameMutation = SquadServerClient.useResetSquadNameMutation()
 	const warnPlayersMutation = SquadServerClient.useWarnPlayersMutation()
+	const killMutation = SquadServerClient.useKillMutation()
+	const kickMutation = TimeoutsClient.useKickPlayerMutation()
+	const maxTimeout = TimeoutsClient.useMaxTimeout()
 
 	// uniqueId isn't on the passed-in squad prop, so resolve it (and live membership) from chat state; it's
 	// null when the squad isn't currently live, in which case there's nothing to warn
@@ -66,10 +76,46 @@ export function SquadMenuItems(
 	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canQueue(squadPlayerIds))
 	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
+	// timeout grants are comparator-matched (see useMaxTimeout), so the denial is synthesized rather than
+	// coming from usePermsCheck
+	const kickDenied = maxTimeout === undefined
+		? RBAC.permissionDenied({ check: 'all', permits: [RBAC.perm('squad-server:timeout-players', { maxDurationMs: null })] })
+		: null
 
 	const squadLabel = `"${squad.squadName}"`
 	const teamId = squad.teamId as 1 | 2
 	const serverId = stores.squadServer.serverId
+
+	// mirrors the player/bulk Switch Now flow: confirm, then switch. The dialog auto-closes if any member changes
+	// teams while it's open (their switch would be a no-op or wrong), warning the admin the selection went stale.
+	async function switchNow() {
+		if (squadPlayerIds.length === 0) return
+		const initialTeams = new Map(
+			squadPlayerIds.map(id => [id, TSWClient.Sel.localState(ZusUtils.getState(stores.squadServer)).players.get(id)]),
+		)
+		const unsubscribe = ZusUtils.resolveReadStore(stores.squadServer).subscribe(state => {
+			const current = TSWClient.Sel.localState(state)
+			if (squadPlayerIds.some(id => current.players.get(id) !== initialTeams.get(id))) closeDialog()
+		})
+		try {
+			await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
+				const result = await openDialog({
+					title: 'Switch Squad Now',
+					variant: 'destructive',
+					description: `Move the ${squadPlayerIds.length} members of squad ${squadLabel} to the opposite team immediately?`,
+					buttons: [{ id: 'confirm', label: 'Switch Now' }],
+				})
+				if (result === 'dismissed') {
+					toast.warning('Switch cancelled', { description: 'One or more players changed teams' })
+					return
+				}
+				if (result !== 'confirm') return
+				TSWClient.Actions.switchNow(stores, squadPlayerIds)
+			})
+		} finally {
+			unsubscribe()
+		}
+	}
 
 	// open (or raise) the squad's details window and focus its warn box (which prefixes @Squad<id>)
 	function warn() {
@@ -99,39 +145,118 @@ export function SquadMenuItems(
 		toast(`Warned squad ${squadLabel} for ${reason.label}`)
 	}
 
+	async function killSquad() {
+		if (squadPlayerIds.length === 0) return
+		customReasonRef.current = ''
+		presetReasonRef.current = ''
+		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
+			const result = await openDialog({
+				title: 'Kill Squad',
+				variant: 'destructive',
+				description:
+					`Kill the ${squadPlayerIds.length} members of squad ${squadLabel}? They will be force-switched teams twice in quick succession to trigger a respawn, ending back on their current team.`,
+				content: (
+					<div className="grid gap-3 py-2">
+						<ReasonPicker action="kill" presetRef={presetReasonRef} customRef={customReasonRef} required={killReasonRequired} />
+					</div>
+				),
+				buttons: [{ id: 'confirm', label: 'Kill' }],
+			})
+			if (result !== 'confirm') return
+			const input = SquadServerClient.readReasonInput({
+				action: 'kill',
+				required: killReasonRequired,
+				presetRef: presetReasonRef,
+				customRef: customReasonRef,
+			})
+			if (!input) return
+			// awaited inside withPlayerDialogue so the presence dialogue stays open until the kill settles
+			const res = await killMutation.mutateAsync({ serverId, playerIds: squadPlayerIds, ...input })
+			if (res.code !== 'ok') {
+				toast.error('Kill failed', { description: 'msg' in res && res.msg ? res.msg : res.code })
+				return
+			}
+			toast(`Killed squad ${squadLabel}`)
+		})
+	}
+
+	async function kickSquad() {
+		if (squadPlayerIds.length === 0) return
+		kickDurationRef.current = ''
+		customReasonRef.current = ''
+		presetReasonRef.current = ''
+		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
+			const result = await openDialog({
+				title: 'Kick Squad',
+				variant: 'destructive',
+				description:
+					`Kick the ${squadPlayerIds.length} members of squad ${squadLabel}? They will be re-kicked on join from any SLM-managed server until the timeout expires.`,
+				content: (
+					<KickDialogContent
+						durationRef={kickDurationRef}
+						customReasonRef={customReasonRef}
+						presetReasonRef={presetReasonRef}
+						maxTimeout={maxTimeout}
+						required={kickReasonRequired}
+					/>
+				),
+				buttons: [{ id: 'confirm', label: 'Kick' }],
+			})
+			if (result !== 'confirm') return
+			const input = SquadServerClient.readReasonInput({
+				action: 'kick',
+				required: kickReasonRequired,
+				presetRef: presetReasonRef,
+				customRef: customReasonRef,
+			})
+			if (!input) return
+			await TimeoutsClient.kickPlayers(kickMutation.mutateAsync, {
+				serverId,
+				playerIds: squadPlayerIds,
+				durationText: kickDurationRef.current,
+				maxTimeout,
+				...input,
+			})
+		})
+	}
+
 	async function disbandSquad() {
 		TSWClient.Actions.ensureViewingTeams(serverId)
 		presetReasonRef.current = ''
-		const result = await openDialog({
-			title: 'Disband Squad',
-			description: `Disband squad ${squadLabel}?`,
-			content: <ReasonPicker action="disband-squad" presetRef={presetReasonRef} required={disbandReasonRequired} />,
-			buttons: [{ id: 'confirm', label: 'Disband' }],
-		})
-		if (result !== 'confirm') return
-		const input = SquadServerClient.readReasonInput({
-			action: 'disband-squad',
-			required: disbandReasonRequired,
-			presetRef: presetReasonRef,
-		})
-		if (!input) return
-		await disbandSquadMutation.mutateAsync({
-			serverId,
-			teamId,
-			squadId: squad.squadId,
-			presetReasonLabel: input.presetReasonLabel,
+		await UPClient.Actions.withPlayerDialogue('DISBANDING_SQUAD', async () => {
+			const result = await openDialog({
+				title: 'Disband Squad',
+				description: `Disband squad ${squadLabel}?`,
+				content: <ReasonPicker action="disband-squad" presetRef={presetReasonRef} required={disbandReasonRequired} />,
+				buttons: [{ id: 'confirm', label: 'Disband' }],
+			})
+			if (result !== 'confirm') return
+			const input = SquadServerClient.readReasonInput({
+				action: 'disband-squad',
+				required: disbandReasonRequired,
+				presetRef: presetReasonRef,
+			})
+			if (!input) return
+			await disbandSquadMutation.mutateAsync({
+				serverId,
+				teamId,
+				squadId: squad.squadId,
+				presetReasonLabel: input.presetReasonLabel,
+			})
 		})
 	}
 
 	async function resetSquadName() {
 		TSWClient.Actions.ensureViewingTeams(serverId)
-		const result = await openDialog({
-			title: 'Reset Squad Name',
-			description: `Reset the name of squad ${squadLabel} to default?`,
-			buttons: [{ id: 'confirm', label: 'Reset' }],
+		await UPClient.Actions.withPlayerDialogue('RESETTING_SQUAD_NAME', async () => {
+			const result = await openDialog({
+				title: 'Reset Squad Name',
+				description: `Reset the name of squad ${squadLabel} to default?`,
+				buttons: [{ id: 'confirm', label: 'Reset' }],
+			})
+			if (result !== 'confirm') return
+			await resetSquadNameMutation.mutateAsync({ serverId, teamId, squadId: squad.squadId })
 		})
-		if (result !== 'confirm') return
-		await resetSquadNameMutation.mutateAsync({ serverId, teamId, squadId: squad.squadId })
 	}
 
 	return (
@@ -146,10 +271,29 @@ export function SquadMenuItems(
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item
-					onClick={() => TSWClient.Actions.switchNow(stores, squadPlayerIds)}
+					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
+					onClick={switchNow}
 					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canSwitchNow}
 				>
 					Switch Squad Now
+				</Item>
+			</PermissionDeniedTooltip>
+			<PermissionDeniedTooltip denied={manageDenied}>
+				<Item
+					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
+					onClick={killSquad}
+					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canSwitchNow}
+				>
+					Kill Squad
+				</Item>
+			</PermissionDeniedTooltip>
+			<PermissionDeniedTooltip denied={kickDenied}>
+				<Item
+					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
+					onClick={kickSquad}
+					disabled={!!kickDenied || squadPlayerIds.length === 0}
+				>
+					Kick Squad
 				</Item>
 			</PermissionDeniedTooltip>
 			<Separator />
