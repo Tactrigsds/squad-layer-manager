@@ -200,8 +200,10 @@ describe('usage strings', () => {
 	it('formats signatures per kind', () => {
 		expect(CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS.warn.args)).toBe('<player> <reason|message>')
 		expect(CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS.kill.args)).toBe('<player> [reason|message]')
-		expect(CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS.disbandSquad.args)).toBe('[team] <squad> [reason]')
+		expect(CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS.disbandSquad.args)).toBe('[team] <squad> [reason|message]')
 		expect(CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS.broadcast.args)).toBe('<preset|message>')
+		// requireReasonFor forces an otherwise-optional reason arg to render as required
+		expect(CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS.kill.args, ['kill'])).toBe('<player> <reason|message>')
 	})
 
 	it('formatUsage uses the first configured string', () => {

@@ -155,15 +155,15 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { scopes: ['admin'], strings: ['killsquad'], enabled: true },
 	}),
 	...declareCommand('removeFromSquad', {
-		args: [{ kind: 'player', name: 'player' }, { kind: 'preset-reason', name: 'reason', action: 'remove-from-squad', optional: true }],
+		args: [{ kind: 'player', name: 'player' }, { kind: 'reason', name: 'reason', action: 'remove-from-squad', optional: true }],
 		defaults: { scopes: ['admin'], strings: ['rfs', 'removefromsquad'], enabled: true },
 	}),
 	...declareCommand('disbandSquad', {
-		args: [{ kind: 'squad', name: 'squad' }, { kind: 'preset-reason', name: 'reason', action: 'disband-squad', optional: true }],
+		args: [{ kind: 'squad', name: 'squad' }, { kind: 'reason', name: 'reason', action: 'disband-squad', optional: true }],
 		defaults: { scopes: ['admin'], strings: ['disband'], enabled: true },
 	}),
 	...declareCommand('demoteCommander', {
-		args: [{ kind: 'player', name: 'player' }, { kind: 'preset-reason', name: 'reason', action: 'demote-commander', optional: true }],
+		args: [{ kind: 'player', name: 'player' }, { kind: 'reason', name: 'reason', action: 'demote-commander', optional: true }],
 		defaults: { scopes: ['admin'], strings: ['demote'], enabled: true },
 	}),
 	...declareCommand('broadcast', {
@@ -443,24 +443,30 @@ export function resolveBroadcastArg(
 	return { code: 'ok', value: { type: 'custom', text: tokens.join(' ') } }
 }
 
-export function formatArgSignature(args: readonly ArgDef[]): string {
-	return args.map((def) => {
-		const optional = def.kind !== 'squad' && def.kind !== 'broadcast' && def.optional
-		let inner: string
-		switch (def.kind) {
-			case 'squad':
-				return '[team] <squad>'
-			case 'reason':
-				inner = `${def.name}|message`
-				break
-			case 'broadcast':
-				inner = 'preset|message'
-				break
-			default:
-				inner = def.name
-		}
-		return optional ? `[${inner}]` : `<${inner}>`
-	}).join(' ').trim()
+// renders a single arg's usage token. `requiredReasonActions` (typically GlobalSettings.requireReasonFor) forces a
+// reason/preset-reason arg to render as required (<...>) even when its declaration marks it optional, so signatures
+// reflect the configured requirement. `reason` accepts free text (shown as `name|message`); `preset-reason` is preset-only.
+export function formatArg(def: ArgDef, requiredReasonActions: readonly AAR.AdminActionType[] = []): string {
+	const reasonRequired = (def.kind === 'reason' || def.kind === 'preset-reason') && requiredReasonActions.includes(def.action)
+	const optional = !reasonRequired && def.kind !== 'squad' && def.kind !== 'broadcast' && def.optional
+	let inner: string
+	switch (def.kind) {
+		case 'squad':
+			return '[team] <squad>'
+		case 'reason':
+			inner = `${def.name}|message`
+			break
+		case 'broadcast':
+			inner = 'preset|message'
+			break
+		default:
+			inner = def.name
+	}
+	return optional ? `[${inner}]` : `<${inner}>`
+}
+
+export function formatArgSignature(args: readonly ArgDef[], requiredReasonActions: readonly AAR.AdminActionType[] = []): string {
+	return args.map((def) => formatArg(def, requiredReasonActions)).join(' ').trim()
 }
 
 export function formatUsage(id: CommandId, config: CommandConfig, prefix: string): string {

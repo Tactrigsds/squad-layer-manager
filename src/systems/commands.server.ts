@@ -721,9 +721,9 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		if (target.squadId == null) return await h.error('not-in-squad', `Player "${target.ids.username}" is not in a squad`)
 		const g = await requireReasonGuard(h, 'remove-from-squad', !!args.reason)
 		if (g) return g
-		const applied = args.reason && AAR.applyReason('remove-from-squad', args.reason, SquadServer.messageVars())
-		await SquadServer.removePlayersFromSquad(h.ctx, [SM.PlayerIds.getPlayerId(target.ids)], ingameActor(h.sender), applied)
-		await h.reply(`Removed ${target.ids.username} from their squad${args.reason ? ` for ${args.reason.label}` : ''}`)
+		const applied = args.reason && CMD.applyResolvedReason('remove-from-squad', args.reason, SquadServer.messageVars())
+		await SquadServer.removePlayersFromSquad(h.ctx, [SM.PlayerIds.getPlayerId(target.ids)], ingameActor(h.sender), applied || undefined)
+		await h.reply(`Removed ${target.ids.username} from their squad${applied?.label ? ` for ${applied.label}` : ''}`)
 		return { code: 'ok' }
 	},
 
@@ -731,9 +731,9 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const g = await requireReasonGuard(h, 'disband-squad', !!args.reason)
 		if (g) return g
 		const { squad, teamLabel } = args.squad
-		const applied = args.reason && AAR.applyReason('disband-squad', args.reason, SquadServer.messageVars())
-		await SquadServer.disbandSquadAction(h.ctx, args.squad.teamId, squad.squadId, ingameActor(h.sender), applied)
-		await h.reply(`Disbanded "${squad.squadName}" on team ${teamLabel}${args.reason ? ` for ${args.reason.label}` : ''}`)
+		const applied = args.reason && CMD.applyResolvedReason('disband-squad', args.reason, SquadServer.messageVars())
+		await SquadServer.disbandSquadAction(h.ctx, args.squad.teamId, squad.squadId, ingameActor(h.sender), applied || undefined)
+		await h.reply(`Disbanded "${squad.squadName}" on team ${teamLabel}${applied?.label ? ` for ${applied.label}` : ''}`)
 		return { code: 'ok' }
 	},
 
@@ -741,9 +741,9 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const g = await requireReasonGuard(h, 'demote-commander', !!args.reason)
 		if (g) return g
 		const target = args.player
-		const applied = args.reason && AAR.applyReason('demote-commander', args.reason, SquadServer.messageVars())
-		await SquadServer.demoteCommanderAction(h.ctx, SM.PlayerIds.getPlayerId(target.ids), ingameActor(h.sender), applied)
-		await h.reply(`Demoted ${target.ids.username}${args.reason ? ` for ${args.reason.label}` : ''}`)
+		const applied = args.reason && CMD.applyResolvedReason('demote-commander', args.reason, SquadServer.messageVars())
+		await SquadServer.demoteCommanderAction(h.ctx, SM.PlayerIds.getPlayerId(target.ids), ingameActor(h.sender), applied || undefined)
+		await h.reply(`Demoted ${target.ids.username}${applied?.label ? ` for ${applied.label}` : ''}`)
 		return { code: 'ok' }
 	},
 

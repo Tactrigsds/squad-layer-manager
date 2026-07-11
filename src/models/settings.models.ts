@@ -242,13 +242,32 @@ export const GlobalSettingsSchema = z.object({
 }).superRefine((val, ctx) => {
 	// command strings and timeout-alias strings share one namespace: a real command always wins on collision, so
 	// a timeout alias that clashes is unreachable (and vice versa). matching is case-insensitive, like dispatch.
+	const prefix = val.commandPrefix ?? '!'
 	const commandOwner = new Map<string, string>()
 	for (const [id, cmd] of Object.entries(val.commands ?? {})) {
-		for (const s of cmd.strings ?? []) commandOwner.set(s.toLowerCase(), id)
+		// strings are stored without the prefix (dispatch strips one prefix char before matching), so a string that
+		// bakes in the prefix would only ever trigger on a doubled prefix. reject it to prevent that misconfiguration.
+		;(cmd.strings ?? []).forEach((s, j) => {
+			if (prefix && s.startsWith(prefix)) {
+				ctx.addIssue({
+					code: 'custom',
+					message: `Command string "${s}" must not include the command prefix "${prefix}"`,
+					path: ['commands', id, 'strings', j],
+				})
+			}
+			commandOwner.set(s.toLowerCase(), id)
+		})
 	}
 	const seenAlias = new Set<string>()
 	val.timeoutCommandAliases?.forEach((alias, i) => {
 		const key = alias.string.toLowerCase()
+		if (prefix && alias.string.startsWith(prefix)) {
+			ctx.addIssue({
+				code: 'custom',
+				message: `Timeout alias "${alias.string}" must not include the command prefix "${prefix}"`,
+				path: ['timeoutCommandAliases', i, 'string'],
+			})
+		}
 		const owner = commandOwner.get(key)
 		if (owner) {
 			ctx.addIssue({
