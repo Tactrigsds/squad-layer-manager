@@ -297,6 +297,19 @@ export const orpcRouter = {
 		return userDefinedRoles
 	}),
 
+	// the env-configured SUPER_USERS/SUPER_ROLES bootstrap, surfaced read-only in the settings rbac section.
+	// ids as strings so the snowflakes survive JSON
+	getSuperConfig: orpcBase.handler(async ({ context: _ctx }) => {
+		const ctx = DB.addPooledDb(_ctx as any)
+		const denyRes = await tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-global-settings'))
+		if (denyRes) return denyRes
+		return {
+			code: 'ok' as const,
+			superUsers: [...superUserIds].map(String),
+			superRoles: [...superRoleIds].map(String),
+		}
+	}),
+
 	// guild role/member lookups powering the settings role-assignment pickers; gated behind global-settings editing
 	// since they surface guild role names and member identities
 	listGuildRoles: orpcBase.handler(async ({ context: _ctx }) => {

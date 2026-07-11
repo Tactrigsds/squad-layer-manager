@@ -25,8 +25,11 @@ import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as AAR from '@/models/admin-action-reasons.models'
 import type * as LP from '@/models/labeled-presets.models'
+import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as SettingsClient from '@/systems/settings.client'
+import * as UsersClient from '@/systems/users.client'
+import { useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Rx from 'rxjs'
@@ -342,6 +345,69 @@ function useRoleCascade(value$: ValueState, onChange: (v: any) => void) {
 		})
 		return () => sub.unsubscribe()
 	}, [value$, onChange])
+}
+
+// the env-configured SUPER_USERS/SUPER_ROLES bootstrap: shown read-only at the top of the rbac section so admins know
+// these grants exist, and that they can only be changed via the environment, not from this page
+function RbacSuperCallout() {
+	const superRes = useQuery(RPC.orpc.rbac.getSuperConfig.queryOptions({ staleTime: Infinity }))
+	const superConfig = superRes.data?.code === 'ok' ? superRes.data : undefined
+	const rolesRes = useQuery(RPC.orpc.rbac.listGuildRoles.queryOptions({ staleTime: Infinity }))
+	const guildRoles = rolesRes.data?.code === 'ok' ? rolesRes.data.roles : []
+	const userIds = (superConfig?.superUsers ?? []).map(BigInt)
+	const usersRes = UsersClient.useUsers(userIds, { enabled: userIds.length > 0 })
+	const userMap = new Map((usersRes.data?.code === 'ok' ? usersRes.data.users : []).map((u) => [String(u.discordId), u]))
+
+	if (!superConfig || (superConfig.superUsers.length === 0 && superConfig.superRoles.length === 0)) return null
+
+	return (
+		<div className="space-y-2 rounded-md border border-info/40 bg-info/10 p-3">
+			<p className="flex items-center gap-1.5 text-sm font-medium">
+				<Icons.ShieldCheck className="h-4 w-4 shrink-0" />
+				Super users & roles
+			</p>
+			<p className="text-xs text-muted-foreground">
+				Configured through the SUPER_USERS / SUPER_ROLES environment variables. They always hold every permission (including unlimited kick
+				timeouts) and cannot be modified from this page.
+			</p>
+			{superConfig.superUsers.length > 0 && (
+				<div className="flex flex-wrap items-center gap-1.5">
+					<span className="text-xs text-muted-foreground">Users:</span>
+					{superConfig.superUsers.map((id) => (
+						<span key={id} className="rounded border bg-background px-1.5 py-0.5 text-xs" title={id}>
+							{userMap.get(id)?.displayName ?? <span className="font-mono">{id}</span>}
+						</span>
+					))}
+				</div>
+			)}
+			{superConfig.superRoles.length > 0 && (
+				<div className="flex flex-wrap items-center gap-1.5">
+					<span className="text-xs text-muted-foreground">Discord roles:</span>
+					{superConfig.superRoles.map((id) => {
+						const role = guildRoles.find((r) => r.id === id)
+						return (
+							<span key={id} className="flex items-center gap-1.5 rounded border bg-background px-1.5 py-0.5 text-xs" title={id}>
+								{role
+									? (
+										<>
+											<span className="h-2 w-2 shrink-0 rounded-full border" style={{ backgroundColor: role.color ?? 'transparent' }} />
+											{role.name}
+										</>
+									)
+									: <span className="font-mono">{id}</span>}
+							</span>
+						)
+					})}
+				</div>
+			)}
+		</div>
+	)
+}
+
+// extra read-only content injected at the top of specific sections (below the description, above the fields)
+function sectionExtraFor(path: Path): React.FC | undefined {
+	if (path.length === 1 && path[0] === 'rbac') return RbacSuperCallout
+	return undefined
 }
 
 // -------- override widgets (matched by path) --------
@@ -1653,6 +1719,7 @@ function SectionField(
 	const headerRef = React.useRef<HTMLDivElement>(null)
 	// only issues sitting exactly at the section path (object-level refines) -- descendants are claimed by their leaves
 	const sectionIssues = React.useContext(ValidationContext).filter((i) => i.path === pathStr)
+	const SectionExtra = sectionExtraFor(path)
 	return (
 		<fieldset
 			id={domId}
@@ -1668,6 +1735,7 @@ function SectionField(
 					<AnchorLink domId={domId} />
 				</div>
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
+				{SectionExtra && <SectionExtra />}
 				<FieldIssues issues={sectionIssues} pathStr={pathStr} />
 				<FieldControl node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />
 			</StickyGroup>

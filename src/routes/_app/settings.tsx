@@ -11,13 +11,14 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAlertDialog } from '@/components/ui/lazy-alert-dialog'
-import { Switch } from '@/components/ui/switch'
+import { Spinner } from '@/components/ui/spinner'
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react'
 import { diffSettings } from '@/lib/settings-diff'
 import { GLOBAL_SETTINGS_GROUPS } from '@/lib/settings-groups'
 import * as SettingsNav from '@/lib/settings-nav'
 import { toast } from '@/lib/toast'
+import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
 import * as AppEvents from '@/models/app-events.models'
 import * as SS from '@/models/server-state.models'
@@ -246,6 +247,44 @@ function LabeledInput({ label, ...props }: { label: string } & React.ComponentPr
 	)
 }
 
+type ServerLifecycleState = 'running' | 'stopped' | 'starting' | 'stopping' | 'broken'
+
+function ServerStatusBadge({ state }: { state: ServerLifecycleState }) {
+	switch (state) {
+		case 'running':
+			return (
+				<span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
+					<span className="h-2 w-2 rounded-full bg-added" />
+					Running
+				</span>
+			)
+		case 'stopped':
+			return (
+				<span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
+					<span className="h-2 w-2 rounded-full border border-muted-foreground/60" />
+					Stopped
+				</span>
+			)
+		case 'starting':
+		case 'stopping':
+			return (
+				<span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
+					<Spinner className="size-3" />
+					{state === 'starting' ? 'Starting…' : 'Stopping…'}
+				</span>
+			)
+		case 'broken':
+			return (
+				<span className="flex items-center gap-1 text-xs font-normal text-destructive">
+					<Icons.TriangleAlert className="h-3 w-3" />
+					Broken
+				</span>
+			)
+		default:
+			assertNever(state)
+	}
+}
+
 function ServerManagementSection({ onAddServer, creating }: { onAddServer: () => void; creating: boolean }) {
 	const settings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
 	const deleteServersDenied = RbacClient.usePermsCheck(RBAC.perm('admin:delete-servers'))
@@ -298,65 +337,92 @@ function ServerManagementSection({ onAddServer, creating }: { onAddServer: () =>
 				</CardHeader>
 				<CardContent className="space-y-4">
 					{servers.length === 0 && <p className="text-sm text-muted-foreground">No servers configured.</p>}
-					{servers.map(server => (
-						<div key={server.id} className="space-y-2">
-							<div className="flex items-center justify-between gap-2">
-								<div>
-									<p className="font-medium text-sm">{server.displayName}</p>
-									<p className="text-xs text-muted-foreground">{server.id}</p>
-									{server.broken && <p className="text-xs text-destructive">Settings failed validation and need to be repaired</p>}
-								</div>
-								<div className="flex items-center gap-2">
-									{server.broken
-										? (
+					{servers.map(server => {
+						// the start/stop RPCs only resolve once the server slice is fully spun up / torn down, so the
+						// mutation's in-flight window is exactly the transitional period
+						const starting = enableMutation.isPending && enableMutation.variables?.serverId === server.id
+						const stopping = disableMutation.isPending && disableMutation.variables?.serverId === server.id
+						const state: ServerLifecycleState = server.broken
+							? 'broken'
+							: starting
+							? 'starting'
+							: stopping
+							? 'stopping'
+							: server.enabled
+							? 'running'
+							: 'stopped'
+						return (
+							<div key={server.id} className="space-y-2">
+								<div className="flex items-center justify-between gap-2">
+									<div>
+										<p className="flex items-center gap-2 font-medium text-sm">
+											{server.displayName}
+											<ServerStatusBadge state={state} />
+										</p>
+										<p className="text-xs text-muted-foreground">{server.id}</p>
+										{server.broken && <p className="text-xs text-destructive">Settings failed validation and need to be repaired</p>}
+									</div>
+									<div className="flex items-center gap-2">
+										{server.broken
+											? (
+												<Button
+													size="sm"
+													variant="destructive"
+													onClick={() => SettingsNav.navigateToAnchor(`section:server:${server.id}`)}
+												>
+													Fix Settings
+												</Button>
+											)
+											: (
+												<Button
+													size="icon"
+													variant="ghost"
+													title="Edit settings"
+													onClick={() => SettingsNav.navigateToAnchor(`section:server:${server.id}`)}
+												>
+													<Icons.Pencil className="h-4 w-4" />
+												</Button>
+											)}
+										<div className="flex items-center gap-1.5">
+											<Checkbox
+												id={`default-${server.id}`}
+												checked={server.defaultServer}
+												disabled={busy || server.defaultServer}
+												onCheckedChange={(checked) => {
+													if (checked) setDefaultMutation.mutate({ serverId: server.id })
+												}}
+											/>
+											<Label htmlFor={`default-${server.id}`} className="text-sm font-normal cursor-pointer">
+												Default
+											</Label>
+										</div>
+										{!server.broken && (
 											<Button
 												size="sm"
-												variant="destructive"
-												onClick={() => SettingsNav.navigateToAnchor(`section:server:${server.id}`)}
+												variant="outline"
+												className="w-16"
+												disabled={busy}
+												title={server.enabled
+													? 'Stop the server. It stays off across SLM restarts.'
+													: 'Start the server. It will also start automatically with SLM.'}
+												onClick={() => {
+													if (server.enabled) disableMutation.mutate({ serverId: server.id })
+													else enableMutation.mutate({ serverId: server.id })
+												}}
 											>
-												Fix Settings
-											</Button>
-										)
-										: (
-											<Button
-												size="icon"
-												variant="ghost"
-												title="Edit settings"
-												onClick={() => SettingsNav.navigateToAnchor(`section:server:${server.id}`)}
-											>
-												<Icons.Pencil className="h-4 w-4" />
+												{server.enabled ? 'Stop' : 'Start'}
 											</Button>
 										)}
-									<div className="flex items-center gap-1.5">
-										<Checkbox
-											id={`default-${server.id}`}
-											checked={server.defaultServer}
-											disabled={busy || server.defaultServer}
-											onCheckedChange={(checked) => {
-												if (checked) setDefaultMutation.mutate({ serverId: server.id })
-											}}
-										/>
-										<Label htmlFor={`default-${server.id}`} className="text-sm font-normal cursor-pointer">
-											Default
-										</Label>
+										{!deleteServersDenied && (
+											<Button size="icon" variant="ghost" disabled={busy} onClick={() => handleDelete(server)}>
+												<Icons.Trash2 className="h-4 w-4" />
+											</Button>
+										)}
 									</div>
-									<Switch
-										checked={server.enabled}
-										disabled={busy || server.broken}
-										onCheckedChange={(checked) => {
-											if (checked) enableMutation.mutate({ serverId: server.id })
-											else disableMutation.mutate({ serverId: server.id })
-										}}
-									/>
-									{!deleteServersDenied && (
-										<Button size="icon" variant="ghost" disabled={busy} onClick={() => handleDelete(server)}>
-											<Icons.Trash2 className="h-4 w-4" />
-										</Button>
-									)}
 								</div>
 							</div>
-						</div>
-					))}
+						)
+					})}
 					<Button variant="outline" disabled={creating} onClick={onAddServer}>Add Server</Button>
 				</CardContent>
 			</StickyGroup>
