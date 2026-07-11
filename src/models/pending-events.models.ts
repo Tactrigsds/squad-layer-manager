@@ -42,6 +42,7 @@ export type ArmedActionSource = Extract<ActionSource, { type: 'event' } | { type
 // events carry a `player`; squad-keyed (by in-game teamId/squadId, resolved via currTeams) for disbands.
 export type ExpectationMatch =
 	| { type: 'PLAYER_WARNED'; playerId: SM.PlayerId; reason?: string }
+	| { type: 'PLAYER_KICKED'; playerId: SM.PlayerId }
 	| { type: 'PLAYER_LEFT_SQUAD'; playerId: SM.PlayerId }
 	| { type: 'PLAYER_CHANGED_TEAM'; playerId: SM.PlayerId }
 	| { type: 'SQUAD_DISBANDED'; teamId: SM.TeamId; squadId: number }
@@ -210,6 +211,9 @@ function expectationMatches(state: State, match: ExpectationMatch, event: SE.Eve
 			// so match on player + message text alone
 			return event.type === 'PLAYER_WARNED' && event.player === match.playerId
 				&& (match.reason === undefined || match.reason === event.reason)
+		case 'PLAYER_KICKED':
+			// kicks never carry a native source either; match on player alone
+			return event.type === 'PLAYER_KICKED' && event.player === match.playerId
 		case 'PLAYER_LEFT_SQUAD':
 			// squad-leaves / team-changes happen organically too (inferred from team polling, source undefined). only
 			// attribute an event the game already marked admin-caused -- i.e. upgrade its native source, never stamp

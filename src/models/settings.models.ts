@@ -1,12 +1,14 @@
 import * as DH from '@/lib/display-helpers.ts'
 import * as Obj from '@/lib/object'
 import { BasicStrNoWhitespace, HumanTime, ParsableBigIntSchema } from '@/lib/zod'
+import * as AAR from '@/models/admin-action-reasons.models.ts'
 import * as BAL from '@/models/balance-triggers.models.ts'
 import * as BM from '@/models/battlemetrics.models.ts'
 import * as CHAT from '@/models/chat.models.ts'
 import * as CMD from '@/models/command.models.ts'
 import * as CB from '@/models/constraint-builders'
 import * as F from '@/models/filter.models'
+import * as LP from '@/models/labeled-presets.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
@@ -31,6 +33,11 @@ export const RbacSettingsSchema = z.object({
 			'Roles granted to every member of the Discord server',
 		),
 	}).prefault({}).describe('Which discord roles/users/members are granted which roles'),
+	// "up to N" comparisons can't ride the permission-expression grammar (grants are equality-matched),
+	// so per-role timeout caps live in their own map. Negation doesn't apply: remove the entry instead.
+	maxTimeouts: z.record(RBAC.UserDefinedRoleIdSchema, HumanTime).prefault({}).describe(
+		'Per-role maximum kick-timeout duration (e.g. "2h"). Roles absent here cannot issue timeouts. Super users/roles are unlimited.',
+	),
 }).superRefine((val, ctx) => {
 	const defined = new Set(Object.keys(val.roles ?? {}))
 	const checkRole = (role: string, path: (string | number)[]) => {
@@ -42,6 +49,7 @@ export const RbacSettingsSchema = z.object({
 		})
 	}
 	val.roleAssignments['discord-server-member'].forEach((role, j) => checkRole(role, ['roleAssignments', 'discord-server-member', j]))
+	for (const role of Object.keys(val.maxTimeouts ?? {})) checkRole(role, ['maxTimeouts', role])
 }).prefault({})
 
 export type RbacSettings = z.infer<typeof RbacSettingsSchema>
@@ -55,7 +63,27 @@ export const NavLinkSchema = z.array(z.object({
 
 export const GlobalSettingsSchema = z.object({
 	topBarColor: z.string().prefault('green').nullable().describe('set to null for production'),
-	warnPrefix: z.string().nullable().prefault('SLM: ').describe('Prefix to use for warnings'),
+	warnPrefix: z.string().nullable().prefault('SLM: ').describe(
+		'Prefix applied to admin-directed warns (admin notifications and in-game command feedback). Never applied to warns delivered to affected players.',
+	),
+	adminActionReasons: AAR.AdminActionReasonsSchema.describe(
+		'Preset reasons admins can pick when performing actions against players. Each reason has a warn text and separate text per action it applies to; a reason is available for an action only if it has text for that action. Text is sent verbatim to the affected player(s) in-game and supports {{variables}}. '
+			+ 'Available: {{label}}, {{duration}} (kicks only), plus any Message Variables below.',
+	),
+	broadcasts: LP.BroadcastPresetsSchema.describe(
+		'Preset broadcast messages selectable by label or alias via the in-game broadcast command. Messages support {{variables}}: {{label}} plus any Message Variables below.',
+	),
+	requireReasonFor: z.array(AAR.ADMIN_ACTION_TYPE).prefault([]).describe(
+		'Actions that require a reason (a preset or custom text). Performing one of these without a reason is rejected.',
+	),
+	messageVariables: z.array(z.object({
+		name: z.string().trim().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, {
+			error: 'Letters, digits and underscore only; must not start with a digit',
+		}),
+		value: z.string(),
+	})).prefault([]).describe(
+		'Custom variables usable in reason and broadcast messages as {{name}} (e.g. name "discord", value "discord.gg/xyz").',
+	),
 	postRollAnnouncementsTimeout: HumanTime.prefault('5m').describe('How long to wait before sending post-roll reminders'),
 	fogOffDelay: HumanTime.prefault('25s').describe('Delay before fog is automatically turned off'),
 	chat: CHAT.ChatConfigSchema.prefault({}),
@@ -102,7 +130,6 @@ export const GlobalSettingsSchema = z.object({
 			),
 		}).prefault({}).describe('Thresholds for coloring the live server tick rate display'),
 	}).prefault({}),
-	steamLinkCodeExpiry: HumanTime.prefault('15m').describe('Duration of a steam account link code'),
 	balanceTriggerLevels: z.partialRecord(BAL.TRIGGER_IDS, BAL.TRIGGER_LEVEL)
 		.prefault({ '150x2': 'warn' })
 		.describe('Configures the trigger warning levels for balance calculations'),
@@ -115,6 +142,12 @@ export const GlobalSettingsSchema = z.object({
 	warnOnSlmStart: z.boolean().prefault(false),
 	adminListSources: z.record(z.string(), SM.AdminListSourceSchema).prefault({}).describe('Named admin list sources'),
 	commandPrefix: BasicStrNoWhitespace.prefault('!').describe('Prefix character for in-game commands'),
+	timeoutCommandAliases: z.array(z.object({
+		string: BasicStrNoWhitespace.describe('Command string (without the prefix)'),
+		duration: HumanTime.describe('Fixed timeout duration this alias kicks with'),
+	})).prefault([]).describe(
+		'Extra admin-chat commands that kick with a fixed timeout, e.g. yeet = 2h. Real command strings win on collision.',
+	),
 	commands: CMD.AllCommandConfigSchema,
 	rbac: RbacSettingsSchema,
 	layerTable: LQY.LayerTableConfigSchema.prefault({
@@ -136,6 +169,29 @@ export const GlobalSettingsSchema = z.object({
 		],
 		defaultSortBy: { type: 'random' },
 	}).describe('Configures the columns, default sort, and extra menu items of the layer table'),
+}).superRefine((val, ctx) => {
+	// command strings and timeout-alias strings share one namespace: a real command always wins on collision, so
+	// a timeout alias that clashes is unreachable (and vice versa). matching is case-insensitive, like dispatch.
+	const commandOwner = new Map<string, string>()
+	for (const [id, cmd] of Object.entries(val.commands ?? {})) {
+		for (const s of cmd.strings ?? []) commandOwner.set(s.toLowerCase(), id)
+	}
+	const seenAlias = new Set<string>()
+	val.timeoutCommandAliases?.forEach((alias, i) => {
+		const key = alias.string.toLowerCase()
+		const owner = commandOwner.get(key)
+		if (owner) {
+			ctx.addIssue({
+				code: 'custom',
+				message: `Timeout alias "${alias.string}" clashes with the command "${owner}". Pick a different string.`,
+				path: ['timeoutCommandAliases', i, 'string'],
+			})
+		}
+		if (seenAlias.has(key)) {
+			ctx.addIssue({ code: 'custom', message: `Duplicate timeout alias "${alias.string}"`, path: ['timeoutCommandAliases', i, 'string'] })
+		}
+		seenAlias.add(key)
+	})
 })
 
 export type GlobalSettings = z.infer<typeof GlobalSettingsSchema>

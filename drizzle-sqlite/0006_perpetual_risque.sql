@@ -1,0 +1,1 @@
+ALTER TABLE `timeouts` DROP COLUMN `reasonMessage`;

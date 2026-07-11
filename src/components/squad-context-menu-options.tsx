@@ -1,11 +1,14 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
+import type * as AAR from '@/models/admin-action-reasons.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
 import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
 import * as RbacClient from '@/systems/rbac.client'
+import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswitches.client'
 import * as WarnChat from '@/systems/warn-chat.client'
@@ -14,6 +17,7 @@ import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import type { MenuSlots } from './player-context-menu-options'
 import { ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger } from './ui/context-menu'
 import { useAlertDialog } from './ui/lazy-alert-dialog'
+import { ReasonPicker, WarnReasonsSub } from './warn-reasons-sub'
 
 const contextMenuSlots: MenuSlots = {
 	Item: ContextMenuItem,
@@ -35,9 +39,14 @@ export function SquadMenuItems(
 	const { Item, Separator } = slots
 	const openDialog = useAlertDialog()
 	const openOrFocusWindow = useOpenOrFocusWindow()
+	// holds the preset-reason pick in the disband dialog; the alert dialog only resolves a button id and
+	// unmounts its content on confirm, so the pick is read from here
+	const presetReasonRef = React.useRef('')
 
+	const disbandReasonRequired = SettingsClient.useReasonRequired('disband-squad')
 	const disbandSquadMutation = SquadServerClient.useDisbandSquadMutation()
 	const resetSquadNameMutation = SquadServerClient.useResetSquadNameMutation()
+	const warnPlayersMutation = SquadServerClient.useWarnPlayersMutation()
 
 	// uniqueId isn't on the passed-in squad prop, so resolve it (and live membership) from chat state; it's
 	// null when the squad isn't currently live, in which case there's nothing to warn
@@ -69,15 +78,49 @@ export function SquadMenuItems(
 		WarnChat.requestWarnFocus({ kind: 'squad', uniqueSquadId: uniqueId })
 	}
 
+	// preset warns hit the whole squad, so confirm before sending (bulk-action rule)
+	async function warnSquadPreset(reason: AAR.AdminActionReason) {
+		const result = await openDialog({
+			title: 'Warn Squad',
+			description: `Warn the ${squadPlayerIds.length} members of squad ${squadLabel} for ${reason.label}?`,
+			buttons: [{ id: 'confirm', label: 'Warn' }],
+		})
+		if (result !== 'confirm') return
+		const res = await warnPlayersMutation.mutateAsync({
+			serverId,
+			playerIds: squadPlayerIds,
+			presetReasonLabel: reason.label,
+			taggedSquad: { squadId: squad.squadId, squadName: squad.squadName, teamId: squad.teamId },
+		})
+		if (res.code !== 'ok') {
+			toast.error('Warn failed', { description: 'msg' in res ? res.msg : res.code })
+			return
+		}
+		toast(`Warned squad ${squadLabel} for ${reason.label}`)
+	}
+
 	async function disbandSquad() {
 		TSWClient.Actions.ensureViewingTeams(serverId)
+		presetReasonRef.current = ''
 		const result = await openDialog({
 			title: 'Disband Squad',
 			description: `Disband squad ${squadLabel}?`,
+			content: <ReasonPicker action="disband-squad" presetRef={presetReasonRef} required={disbandReasonRequired} />,
 			buttons: [{ id: 'confirm', label: 'Disband' }],
 		})
 		if (result !== 'confirm') return
-		await disbandSquadMutation.mutateAsync({ serverId, teamId, squadId: squad.squadId })
+		const input = SquadServerClient.readReasonInput({
+			action: 'disband-squad',
+			required: disbandReasonRequired,
+			presetRef: presetReasonRef,
+		})
+		if (!input) return
+		await disbandSquadMutation.mutateAsync({
+			serverId,
+			teamId,
+			squadId: squad.squadId,
+			presetReasonLabel: input.presetReasonLabel,
+		})
 	}
 
 	async function resetSquadName() {
@@ -125,11 +168,14 @@ export function SquadMenuItems(
 			{!omitWarn && (
 				<>
 					<Separator />
-					<PermissionDeniedTooltip denied={warnDenied}>
-						<Item onClick={warn} disabled={!!warnDenied || uniqueId === null || squadPlayerIds.length === 0}>
-							Warn Squad
-						</Item>
-					</PermissionDeniedTooltip>
+					<WarnReasonsSub
+						slots={slots}
+						denied={warnDenied}
+						disabled={uniqueId === null || squadPlayerIds.length === 0}
+						label="Warn Squad"
+						onCustom={warn}
+						onPreset={warnSquadPreset}
+					/>
 				</>
 			)}
 			<Separator />

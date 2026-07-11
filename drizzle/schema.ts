@@ -140,6 +140,31 @@ export const players = sqliteTable(
 	}),
 )
 
+// active-kick timeouts. A row is active while cancelled=false and expiresAt > now; enforced globally on
+// every SLM-managed server (players with an active timeout are kicked on connect / roster reset).
+export const timeouts = sqliteTable(
+	'timeouts',
+	{
+		id: text('id').primaryKey(),
+		playerId: text('playerId').notNull().references(() => players.eosId, { onDelete: 'cascade' }),
+		expiresAt: timestamp('expiresAt').notNull(),
+		cancelled: boolean('cancelled').notNull().default(false),
+		createdAt: timestamp('createdAt').$defaultFn(() => new Date()).notNull(),
+		// the PLAYER_TIMED_OUT app event recorded at creation; enforcement kicks attribute to it
+		appEventId: text('appEventId').references(() => appEvents.id, { onDelete: 'set null' }),
+		issuedServerId: text('issuedServerId').references(() => servers.id, { onDelete: 'set null' }),
+		reasonLabel: text('reasonLabel'),
+		// the unrendered reason text plus the variable values snapshotted at kick time (see AAR.AppliedReason).
+		// rendered on demand: with the original duration for display, with the REMAINING duration for reconnect kicks.
+		reasonTemplate: text('reasonTemplate'),
+		reasonVars: json('reasonVars'),
+	},
+	(table) => ({
+		timeoutsPlayerActiveIndex: index('timeoutsPlayerActiveIndex').on(table.playerId, table.cancelled, table.expiresAt),
+		timeoutsExpiresAtIndex: index('timeoutsExpiresAtIndex').on(table.expiresAt),
+	}),
+)
+
 export const playerEventAssociations = sqliteTable(
 	'playerEventAssociations',
 	{
@@ -253,13 +278,22 @@ export const users = sqliteTable('users', {
 	discordId: bigintText('discordId')
 		.notNull()
 		.primaryKey(),
-	steam64Id: bigintText('steam64Id').unique(),
 	// https://support.discord.com/hc/en-us/articles/12620128861463-New-Usernames-Display-Names#h_01GXPQAGG6W477HSC5SR053QG1
 	username: text('username').notNull(),
 	nickname: text('nickname'),
 })
 
 export type User = typeof users.$inferSelect
+
+// steam accounts a user has self-linked. steam64Id is the pk (globally unique), so a steam account belongs to
+// at most one discord user. Deliberately no FK to `players`: admins may link accounts not present on any server.
+export const linkedSteamAccounts = sqliteTable('linkedSteamAccounts', {
+	steam64Id: bigintText('steam64Id').primaryKey(),
+	discordId: bigintText('discordId').notNull().references(() => users.discordId, { onDelete: 'cascade' }),
+	createdAt: timestamp('createdAt').$defaultFn(() => new Date()).notNull(),
+}, (table) => ({
+	linkedSteamDiscordIdIndex: index('linkedSteamDiscordIdIndex').on(table.discordId),
+}))
 
 export const sessions = sqliteTable(
 	'sessions',

@@ -1,6 +1,7 @@
 import * as AR from '@/app-routes.ts'
 import AboutDialog from '@/components/about-dialog'
 import CommandsHelpDialog from '@/components/commands-help-dialog'
+import LinkSteamAccountDialog from '@/components/link-steam-account-dialog'
 import NicknameDialog from '@/components/nickname-dialog'
 import SelectLayersDialog from '@/components/select-layers-dialog'
 import { ServerActionsDropdown } from '@/components/server-actions-dropdown'
@@ -66,6 +67,10 @@ export default function NavBar() {
 
 	const onNicknameOpenChange = (newState: boolean) => {
 		setDropdownState(newState ? 'nickname' : null)
+	}
+
+	const onSteamLinkOpenChange = (newState: boolean) => {
+		setDropdownState(newState ? 'steam-link' : null)
 	}
 
 	const onAboutOpenChange = (newState: boolean) => {
@@ -141,6 +146,12 @@ export default function NavBar() {
 					Set Nickname
 				</DropdownMenuItem>
 			</NicknameDialog>
+			<LinkSteamAccountDialog onOpenChange={onSteamLinkOpenChange} open={openState === 'steam-link'}>
+				<DropdownMenuItem onClick={() => setDropdownState('steam-link')} className="text-sm">
+					<Icons.Link className="mr-2 h-4 w-4" />
+					Linked Steam Accounts
+				</DropdownMenuItem>
+			</LinkSteamAccountDialog>
 			<UserPermissionsDialog onOpenChange={onPermissionsOpenChange} open={openState === 'permissions'}>
 				<DropdownMenuItem onClick={() => setDropdownState('permissions')} className="text-sm">
 					<Icons.Shield className="mr-2 h-4 w-4" />

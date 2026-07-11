@@ -46,7 +46,7 @@ export default function UserPermissionsDialog(
 
 	const formatPermissionScope = (perm: RBAC.TracedPermission) => {
 		if (perm.scope === 'global') return 'Global'
-		if (perm.scope === 'filter' && perm.args?.filterId) {
+		if (perm.scope === 'filter' && perm.args && 'filterId' in perm.args) {
 			return `Filter: ${perm.args.filterId}`
 		}
 		return perm.scope

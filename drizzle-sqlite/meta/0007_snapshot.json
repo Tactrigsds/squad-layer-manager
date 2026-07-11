@@ -1,0 +1,1488 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "9602ca46-b400-41df-8b45-b9c2c6c47b32",
+  "prevId": "9fe07290-bca4-4255-ba3d-5474e1814a17",
+  "tables": {
+    "appEvents": {
+      "name": "appEvents",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "time": {
+          "name": "time",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actorType": {
+          "name": "actorType",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actorUserId": {
+          "name": "actorUserId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "actorPlayerId": {
+          "name": "actorPlayerId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "serverId": {
+          "name": "serverId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "matchId": {
+          "name": "matchId",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "causeId": {
+          "name": "causeId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "instanceId": {
+          "name": "instanceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": 1
+        },
+        "data": {
+          "name": "data",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "appEventTypeIndex": {
+          "name": "appEventTypeIndex",
+          "columns": [
+            "type"
+          ],
+          "isUnique": false
+        },
+        "appEventTimeIndex": {
+          "name": "appEventTimeIndex",
+          "columns": [
+            "time"
+          ],
+          "isUnique": false
+        },
+        "appEventServerIdIndex": {
+          "name": "appEventServerIdIndex",
+          "columns": [
+            "serverId"
+          ],
+          "isUnique": false
+        },
+        "appEventMatchIdIndex": {
+          "name": "appEventMatchIdIndex",
+          "columns": [
+            "matchId"
+          ],
+          "isUnique": false
+        },
+        "appEventActorUserIdIndex": {
+          "name": "appEventActorUserIdIndex",
+          "columns": [
+            "actorUserId"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "appEvents_serverId_servers_id_fk": {
+          "name": "appEvents_serverId_servers_id_fk",
+          "tableFrom": "appEvents",
+          "tableTo": "servers",
+          "columnsFrom": [
+            "serverId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "appEvents_matchId_matchHistory_id_fk": {
+          "name": "appEvents_matchId_matchHistory_id_fk",
+          "tableFrom": "appEvents",
+          "tableTo": "matchHistory",
+          "columnsFrom": [
+            "matchId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "balanceTriggerEvents": {
+      "name": "balanceTriggerEvents",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "triggerId": {
+          "name": "triggerId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "triggerVersion": {
+          "name": "triggerVersion",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "matchTriggeredId": {
+          "name": "matchTriggeredId",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "strongerTeam": {
+          "name": "strongerTeam",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "level": {
+          "name": "level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "evaluationResult": {
+          "name": "evaluationResult",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "balanceTriggerEvents_matchTriggeredId_matchHistory_id_fk": {
+          "name": "balanceTriggerEvents_matchTriggeredId_matchHistory_id_fk",
+          "tableFrom": "balanceTriggerEvents",
+          "tableTo": "matchHistory",
+          "columnsFrom": [
+            "matchTriggeredId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "filterRoleContributors": {
+      "name": "filterRoleContributors",
+      "columns": {
+        "filterId": {
+          "name": "filterId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "roleId": {
+          "name": "roleId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "filterRoleContributors_filterId_filters_id_fk": {
+          "name": "filterRoleContributors_filterId_filters_id_fk",
+          "tableFrom": "filterRoleContributors",
+          "tableTo": "filters",
+          "columnsFrom": [
+            "filterId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "filterRoleContributors_filterId_roleId_pk": {
+          "columns": [
+            "filterId",
+            "roleId"
+          ],
+          "name": "filterRoleContributors_filterId_roleId_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "filterUserContributors": {
+      "name": "filterUserContributors",
+      "columns": {
+        "filterId": {
+          "name": "filterId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "userId": {
+          "name": "userId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "filterUserContributors_filterId_filters_id_fk": {
+          "name": "filterUserContributors_filterId_filters_id_fk",
+          "tableFrom": "filterUserContributors",
+          "tableTo": "filters",
+          "columnsFrom": [
+            "filterId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "filterUserContributors_userId_users_discordId_fk": {
+          "name": "filterUserContributors_userId_users_discordId_fk",
+          "tableFrom": "filterUserContributors",
+          "tableTo": "users",
+          "columnsFrom": [
+            "userId"
+          ],
+          "columnsTo": [
+            "discordId"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "filterUserContributors_filterId_userId_pk": {
+          "columns": [
+            "filterId",
+            "userId"
+          ],
+          "name": "filterUserContributors_filterId_userId_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "filters": {
+      "name": "filters",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "filter": {
+          "name": "filter",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner": {
+          "name": "owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "alertMessage": {
+          "name": "alertMessage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "emoji": {
+          "name": "emoji",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "invertedAlertMessage": {
+          "name": "invertedAlertMessage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "invertedEmoji": {
+          "name": "invertedEmoji",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "filters_emoji_unique": {
+          "name": "filters_emoji_unique",
+          "columns": [
+            "emoji"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "filters_owner_users_discordId_fk": {
+          "name": "filters_owner_users_discordId_fk",
+          "tableFrom": "filters",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner"
+          ],
+          "columnsTo": [
+            "discordId"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "globalSettings": {
+      "name": "globalSettings",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "settings": {
+          "name": "settings",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{\"json\":{}}'"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "linkedSteamAccounts": {
+      "name": "linkedSteamAccounts",
+      "columns": {
+        "steam64Id": {
+          "name": "steam64Id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "discordId": {
+          "name": "discordId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "linkedSteamDiscordIdIndex": {
+          "name": "linkedSteamDiscordIdIndex",
+          "columns": [
+            "discordId"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "linkedSteamAccounts_discordId_users_discordId_fk": {
+          "name": "linkedSteamAccounts_discordId_users_discordId_fk",
+          "tableFrom": "linkedSteamAccounts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "discordId"
+          ],
+          "columnsTo": [
+            "discordId"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "matchHistory": {
+      "name": "matchHistory",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "serverId": {
+          "name": "serverId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ordinal": {
+          "name": "ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "layerId": {
+          "name": "layerId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rawLayerCommandText": {
+          "name": "rawLayerCommandText",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lqItemId": {
+          "name": "lqItemId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "startTime": {
+          "name": "startTime",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "endTime": {
+          "name": "endTime",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "team1Tickets": {
+          "name": "team1Tickets",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "team2Tickets": {
+          "name": "team2Tickets",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "setByType": {
+          "name": "setByType",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "setByUserId": {
+          "name": "setByUserId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "layerIdIndex": {
+          "name": "layerIdIndex",
+          "columns": [
+            "layerId"
+          ],
+          "isUnique": false
+        },
+        "startTimeIndex": {
+          "name": "startTimeIndex",
+          "columns": [
+            "startTime"
+          ],
+          "isUnique": false
+        },
+        "endTimeIndex": {
+          "name": "endTimeIndex",
+          "columns": [
+            "endTime"
+          ],
+          "isUnique": false
+        },
+        "userIndex": {
+          "name": "userIndex",
+          "columns": [
+            "setByUserId"
+          ],
+          "isUnique": false
+        },
+        "serverOrdinalUnique": {
+          "name": "serverOrdinalUnique",
+          "columns": [
+            "serverId",
+            "ordinal"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "matchHistory_serverId_servers_id_fk": {
+          "name": "matchHistory_serverId_servers_id_fk",
+          "tableFrom": "matchHistory",
+          "tableTo": "servers",
+          "columnsFrom": [
+            "serverId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "persistedCache": {
+      "name": "persistedCache",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "persistedCacheUpdatedAtIndex": {
+          "name": "persistedCacheUpdatedAtIndex",
+          "columns": [
+            "updatedAt"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "playerEventAssociations": {
+      "name": "playerEventAssociations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "serverEventId": {
+          "name": "serverEventId",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "playerId": {
+          "name": "playerId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "assocType": {
+          "name": "assocType",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "playerIdIndex": {
+          "name": "playerIdIndex",
+          "columns": [
+            "playerId"
+          ],
+          "isUnique": false
+        },
+        "assocTypeIndex": {
+          "name": "assocTypeIndex",
+          "columns": [
+            "assocType"
+          ],
+          "isUnique": false
+        },
+        "serverEventIdIndex": {
+          "name": "serverEventIdIndex",
+          "columns": [
+            "serverEventId"
+          ],
+          "isUnique": false
+        },
+        "serverEventPlayerAssocUnique": {
+          "name": "serverEventPlayerAssocUnique",
+          "columns": [
+            "serverEventId",
+            "playerId",
+            "assocType"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "playerEventAssociations_serverEventId_serverEvents_id_fk": {
+          "name": "playerEventAssociations_serverEventId_serverEvents_id_fk",
+          "tableFrom": "playerEventAssociations",
+          "tableTo": "serverEvents",
+          "columnsFrom": [
+            "serverEventId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "playerEventAssociations_playerId_players_eosId_fk": {
+          "name": "playerEventAssociations_playerId_players_eosId_fk",
+          "tableFrom": "playerEventAssociations",
+          "tableTo": "players",
+          "columnsFrom": [
+            "playerId"
+          ],
+          "columnsTo": [
+            "eosId"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "players": {
+      "name": "players",
+      "columns": {
+        "eosId": {
+          "name": "eosId",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "steamId": {
+          "name": "steamId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "epicId": {
+          "name": "epicId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "username": {
+          "name": "username",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "usernameNoTag": {
+          "name": "usernameNoTag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "modifiedAt": {
+          "name": "modifiedAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "players_steamId_unique": {
+          "name": "players_steamId_unique",
+          "columns": [
+            "steamId"
+          ],
+          "isUnique": true
+        },
+        "players_epicId_unique": {
+          "name": "players_epicId_unique",
+          "columns": [
+            "epicId"
+          ],
+          "isUnique": true
+        },
+        "eosIdIndex": {
+          "name": "eosIdIndex",
+          "columns": [
+            "eosId"
+          ],
+          "isUnique": false
+        },
+        "usernameIndex": {
+          "name": "usernameIndex",
+          "columns": [
+            "username"
+          ],
+          "isUnique": false
+        },
+        "createdAtIndex": {
+          "name": "createdAtIndex",
+          "columns": [
+            "createdAt"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "serverEvents": {
+      "name": "serverEvents",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "time": {
+          "name": "time",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "matchId": {
+          "name": "matchId",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "appEventId": {
+          "name": "appEventId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": 1
+        },
+        "data": {
+          "name": "data",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "typeIndex": {
+          "name": "typeIndex",
+          "columns": [
+            "type"
+          ],
+          "isUnique": false
+        },
+        "timeIndex": {
+          "name": "timeIndex",
+          "columns": [
+            "time"
+          ],
+          "isUnique": false
+        },
+        "matchIdIndex": {
+          "name": "matchIdIndex",
+          "columns": [
+            "matchId"
+          ],
+          "isUnique": false
+        },
+        "appEventIdIndex": {
+          "name": "appEventIdIndex",
+          "columns": [
+            "appEventId"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "serverEvents_matchId_matchHistory_id_fk": {
+          "name": "serverEvents_matchId_matchHistory_id_fk",
+          "tableFrom": "serverEvents",
+          "tableTo": "matchHistory",
+          "columnsFrom": [
+            "matchId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "serverEvents_appEventId_appEvents_id_fk": {
+          "name": "serverEvents_appEventId_appEvents_id_fk",
+          "tableFrom": "serverEvents",
+          "tableTo": "appEvents",
+          "columnsFrom": [
+            "appEventId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "servers": {
+      "name": "servers",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "displayName": {
+          "name": "displayName",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "defaultServer": {
+          "name": "defaultServer",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "layerQueue": {
+          "name": "layerQueue",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{\"json\":[]}'"
+        },
+        "teamswitches": {
+          "name": "teamswitches",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{\"json\":[],\"meta\":{\"values\":[\"map\"],\"v\":1}}'"
+        },
+        "settings": {
+          "name": "settings",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": "'{\"json\":{}}'"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "sessions": {
+      "name": "sessions",
+      "columns": {
+        "session": {
+          "name": "session",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "userId": {
+          "name": "userId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expiresAt": {
+          "name": "expiresAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "expiresAtIndex": {
+          "name": "expiresAtIndex",
+          "columns": [
+            "expiresAt"
+          ],
+          "isUnique": false
+        },
+        "sessionUserIdIndex": {
+          "name": "sessionUserIdIndex",
+          "columns": [
+            "userId"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "sessions_userId_users_discordId_fk": {
+          "name": "sessions_userId_users_discordId_fk",
+          "tableFrom": "sessions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "userId"
+          ],
+          "columnsTo": [
+            "discordId"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "squadEventAssociations": {
+      "name": "squadEventAssociations",
+      "columns": {
+        "serverEventId": {
+          "name": "serverEventId",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "squadId": {
+          "name": "squadId",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "squadEventAssociationsSquadIdIndex": {
+          "name": "squadEventAssociationsSquadIdIndex",
+          "columns": [
+            "squadId"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "squadEventAssociations_serverEventId_serverEvents_id_fk": {
+          "name": "squadEventAssociations_serverEventId_serverEvents_id_fk",
+          "tableFrom": "squadEventAssociations",
+          "tableTo": "serverEvents",
+          "columnsFrom": [
+            "serverEventId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "squadEventAssociations_squadId_squads_id_fk": {
+          "name": "squadEventAssociations_squadId_squads_id_fk",
+          "tableFrom": "squadEventAssociations",
+          "tableTo": "squads",
+          "columnsFrom": [
+            "squadId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "squadEventAssociations_serverEventId_squadId_pk": {
+          "columns": [
+            "serverEventId",
+            "squadId"
+          ],
+          "name": "squadEventAssociations_serverEventId_squadId_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "squads": {
+      "name": "squads",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ingameSquadId": {
+          "name": "ingameSquadId",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "teamId": {
+          "name": "teamId",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "creatorId": {
+          "name": "creatorId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "nameIndex": {
+          "name": "nameIndex",
+          "columns": [
+            "name"
+          ],
+          "isUnique": false
+        },
+        "creatorIdIndex": {
+          "name": "creatorIdIndex",
+          "columns": [
+            "creatorId"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "squads_creatorId_players_eosId_fk": {
+          "name": "squads_creatorId_players_eosId_fk",
+          "tableFrom": "squads",
+          "tableTo": "players",
+          "columnsFrom": [
+            "creatorId"
+          ],
+          "columnsTo": [
+            "eosId"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "timeouts": {
+      "name": "timeouts",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "playerId": {
+          "name": "playerId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expiresAt": {
+          "name": "expiresAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cancelled": {
+          "name": "cancelled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "appEventId": {
+          "name": "appEventId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "issuedServerId": {
+          "name": "issuedServerId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "reasonLabel": {
+          "name": "reasonLabel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "reasonTemplate": {
+          "name": "reasonTemplate",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "reasonVars": {
+          "name": "reasonVars",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "timeoutsPlayerActiveIndex": {
+          "name": "timeoutsPlayerActiveIndex",
+          "columns": [
+            "playerId",
+            "cancelled",
+            "expiresAt"
+          ],
+          "isUnique": false
+        },
+        "timeoutsExpiresAtIndex": {
+          "name": "timeoutsExpiresAtIndex",
+          "columns": [
+            "expiresAt"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "timeouts_playerId_players_eosId_fk": {
+          "name": "timeouts_playerId_players_eosId_fk",
+          "tableFrom": "timeouts",
+          "tableTo": "players",
+          "columnsFrom": [
+            "playerId"
+          ],
+          "columnsTo": [
+            "eosId"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "timeouts_appEventId_appEvents_id_fk": {
+          "name": "timeouts_appEventId_appEvents_id_fk",
+          "tableFrom": "timeouts",
+          "tableTo": "appEvents",
+          "columnsFrom": [
+            "appEventId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "timeouts_issuedServerId_servers_id_fk": {
+          "name": "timeouts_issuedServerId_servers_id_fk",
+          "tableFrom": "timeouts",
+          "tableTo": "servers",
+          "columnsFrom": [
+            "issuedServerId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "users": {
+      "name": "users",
+      "columns": {
+        "discordId": {
+          "name": "discordId",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "username": {
+          "name": "username",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "nickname": {
+          "name": "nickname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

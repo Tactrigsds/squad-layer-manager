@@ -235,6 +235,7 @@ export type PlayerKicked<P = SM.PlayerId> =
 	& {
 		type: 'PLAYER_KICKED'
 		reason?: string
+		source?: ActionSource
 	}
 	& SM.PlayerAssoc<'player', P>
 	& Base

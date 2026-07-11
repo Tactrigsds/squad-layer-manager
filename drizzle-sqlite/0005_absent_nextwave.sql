@@ -1,0 +1,1 @@
+ALTER TABLE `timeouts` ADD `reasonTemplate` text;

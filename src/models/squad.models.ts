@@ -418,6 +418,24 @@ export const SquadSchema = z.object({
 export type Squad = z.infer<typeof SquadSchema>
 export const SQUAD_DETAILS = ['locked'] as const
 
+// the in-game name Squad gives the commander's squad
+export const COMMAND_SQUAD_NAME = 'Command Squad'
+export function isCommandSquad(squad: Pick<Squad, 'squadName'>): boolean {
+	return squad.squadName === COMMAND_SQUAD_NAME
+}
+
+// the text tag prepended to a squad-directed warn so members see who it's aimed at. command squads read as
+// "@cmdSquad" since their squad number isn't a meaningful reference.
+export function squadWarnTag(squad: Pick<Squad, 'squadId' | 'squadName'>): string {
+	return isCommandSquad(squad) ? '@cmdSquad' : `@Squad${squad.squadId}`
+}
+
+// admin-facing squad identifier including faction, e.g. "Squad1 (PLA)" (or "cmdSquad (PLA)" for the command squad)
+export function squadAdminLabel(squad: Pick<Squad, 'squadId' | 'squadName'>, faction?: string): string {
+	const base = isCommandSquad(squad) ? 'cmdSquad' : `Squad${squad.squadId}`
+	return faction ? `${base} (${faction})` : base
+}
+
 // Squad with a server-assigned uniqueId that is stable for the lifetime of the squad instance
 export const UniqueSquadSchema = SquadSchema.extend({
 	uniqueId: z.number(),

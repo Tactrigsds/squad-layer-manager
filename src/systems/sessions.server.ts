@@ -241,7 +241,6 @@ export async function logInUser(ctx: C.Db & C.FastifyRequest & C.FastifyReply, d
 			user: await Users.buildUser({
 				discordId: discordUser.id,
 				username: discordUser.username,
-				steam64Id: user?.steam64Id || null,
 				nickname: null,
 			}),
 		})

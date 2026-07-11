@@ -2,11 +2,13 @@ import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
+import type * as AAR from '@/models/admin-action-reasons.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
 import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
 import * as RbacClient from '@/systems/rbac.client'
+import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswitches.client'
 import * as UPClient from '@/systems/user-presence.client'
@@ -15,9 +17,8 @@ import React from 'react'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { contextMenuSlots, PlayerCopyIdsSub, PlayerOpenLinksSub } from './player-context-menu-options'
 import { ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuShortcut } from './ui/context-menu'
-import { Input } from './ui/input'
-import { Label } from './ui/label'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
+import { ReasonPicker, WarnReasonsSub } from './warn-reasons-sub'
 
 // When the selection is exactly one squad's full membership (and nothing else), returns that squad so the
 // warn action can route to the squad details window; otherwise null (mixed/partial selection).
@@ -47,11 +48,16 @@ export default function PlayerBulkContextMenuOptions(
 
 	const removePlayersFromSquadMutation = SquadServerClient.useRemovePlayersFromSquadMutation()
 	const killMutation = SquadServerClient.useKillMutation()
+	const warnPlayersMutation = SquadServerClient.useWarnPlayersMutation()
+	const killReasonRequired = SettingsClient.useReasonRequired('kill')
+	const removeReasonRequired = SettingsClient.useReasonRequired('remove-from-squad')
 	const serverId = stores.squadServer.serverId
 	const openOrFocusWindow = useOpenOrFocusWindow()
-	// holds the latest kill-reason input value; the alert dialog only resolves a button id, so we read the
+	// holds the latest custom-reason input value; the alert dialog only resolves a button id, so we read the
 	// reason from here rather than the (unmounting) DOM input when the dialog confirms
-	const killReasonRef = React.useRef('')
+	const customReasonRef = React.useRef('')
+	// same mechanism for the preset-reason pick in the action confirmation dialogs; reset on each dialog open
+	const presetReasonRef = React.useRef('')
 
 	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
@@ -111,7 +117,8 @@ export default function PlayerBulkContextMenuOptions(
 	}
 
 	async function kill() {
-		killReasonRef.current = ''
+		customReasonRef.current = ''
+		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
 			const result = await openDialog({
 				title: 'Kill Players',
@@ -121,24 +128,22 @@ export default function PlayerBulkContextMenuOptions(
 				content: (
 					<div className="grid gap-3 py-2">
 						{selectedPlayerList()}
-						<div className="grid gap-2">
-							<Label htmlFor="bulk-kill-reason">Reason (optional)</Label>
-							<Input
-								id="bulk-kill-reason"
-								autoComplete="off"
-								placeholder="Shown to the players in a warning"
-								onChange={e => (killReasonRef.current = e.target.value)}
-							/>
-						</div>
+						<ReasonPicker action="kill" presetRef={presetReasonRef} customRef={customReasonRef} required={killReasonRequired} />
 					</div>
 				),
 				buttons: [{ id: 'confirm', label: 'Kill' }],
 			})
 			if (result !== 'confirm') return
-			const reason = killReasonRef.current.trim() || undefined
+			const input = SquadServerClient.readReasonInput({
+				action: 'kill',
+				required: killReasonRequired,
+				presetRef: presetReasonRef,
+				customRef: customReasonRef,
+			})
+			if (!input) return
 			// unwrap() so the presence dialogue stays open until the kill settles; the toast already surfaces
 			// any error, so swallow the rejection here
-			await toast.promise(killMutation.mutateAsync({ serverId, playerIds, reason }), {
+			await toast.promise(killMutation.mutateAsync({ serverId, playerIds, ...input }), {
 				loading: `Killing ${playerIds.length} players...`,
 				success: `Killed ${playerIds.length} players`,
 				error: { message: 'Kill failed', description: `Failed to kill ${playerIds.length} players`, richColors: true },
@@ -159,21 +164,54 @@ export default function PlayerBulkContextMenuOptions(
 
 	async function removeFromSquad() {
 		TSWClient.Actions.ensureViewingTeams(serverId)
+		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('REMOVING_FROM_SQUAD', async () => {
 			const result = await openDialog({
 				title: 'Remove from Squad',
 				description: `Remove ${playerIds.length} players from their squads?`,
+				content: <ReasonPicker action="remove-from-squad" presetRef={presetReasonRef} required={removeReasonRequired} />,
 				buttons: [{ id: 'confirm', label: 'Remove' }],
 			})
 			if (result !== 'confirm') return
+			const input = SquadServerClient.readReasonInput({
+				action: 'remove-from-squad',
+				required: removeReasonRequired,
+				presetRef: presetReasonRef,
+			})
+			if (!input) return
 			// one call for the whole batch: the server aggregates the resulting squad-leaves under a single app event
 			// unwrap() keeps the presence dialogue open until it settles; the toast surfaces any error
-			await toast.promise(removePlayersFromSquadMutation.mutateAsync({ serverId, playerIds }), {
-				loading: `Removing ${playerIds.length} players from their squads...`,
-				success: `Removed ${playerIds.length} players from their squads`,
-				error: { message: 'Remove from squad failed', description: `Failed to remove ${playerIds.length} players`, richColors: true },
-			}).unwrap().catch(() => {})
+			await toast.promise(
+				removePlayersFromSquadMutation.mutateAsync({ serverId, playerIds, presetReasonLabel: input.presetReasonLabel }),
+				{
+					loading: `Removing ${playerIds.length} players from their squads...`,
+					success: `Removed ${playerIds.length} players from their squads`,
+					error: { message: 'Remove from squad failed', description: `Failed to remove ${playerIds.length} players`, richColors: true },
+				},
+			).unwrap().catch(() => {})
 		})
+	}
+
+	// preset warns for a multi-selection get a confirmation dialog (bulk-action rule) instead of sending immediately
+	async function warnPreset(reason: AAR.AdminActionReason) {
+		const result = await openDialog({
+			title: fullSquad ? 'Warn Squad' : 'Warn Players',
+			description: `Warn these ${playerIds.length} players for ${reason.label}?`,
+			content: selectedPlayerList(),
+			buttons: [{ id: 'confirm', label: 'Warn' }],
+		})
+		if (result !== 'confirm') return
+		const res = await warnPlayersMutation.mutateAsync({
+			serverId,
+			playerIds,
+			presetReasonLabel: reason.label,
+			taggedSquad: fullSquad ? { squadId: fullSquad.squadId, squadName: fullSquad.squadName, teamId: fullSquad.teamId } : undefined,
+		})
+		if (res.code !== 'ok') {
+			toast.error('Warn failed', { description: 'msg' in res ? res.msg : res.code })
+			return
+		}
+		toast(`Warned ${playerIds.length} players for ${reason.label}`)
 	}
 
 	return (
@@ -217,9 +255,13 @@ export default function PlayerBulkContextMenuOptions(
 			<PlayerOpenLinksSub playerIds={playerIds} slots={contextMenuSlots} stores={stores} />
 			<PlayerCopyIdsSub playerIds={playerIds} slots={contextMenuSlots} stores={stores} />
 			<ContextMenuSeparator />
-			<PermissionDeniedTooltip denied={warnDenied}>
-				<ContextMenuItem onClick={warn} disabled={!!warnDenied}>{fullSquad ? 'Warn Squad' : 'Warn'}</ContextMenuItem>
-			</PermissionDeniedTooltip>
+			<WarnReasonsSub
+				slots={contextMenuSlots}
+				denied={warnDenied}
+				label={fullSquad ? 'Warn Squad' : 'Warn'}
+				onCustom={warn}
+				onPreset={warnPreset}
+			/>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<ContextMenuItem onClick={removeFromSquad} disabled={!!manageDenied}>Remove from Squad</ContextMenuItem>
 			</PermissionDeniedTooltip>

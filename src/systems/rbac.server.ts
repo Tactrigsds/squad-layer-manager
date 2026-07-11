@@ -24,6 +24,8 @@ let ENV!: ReturnType<typeof envBuilder>
 let userDefinedRoles: RBAC.Role[] = []
 let userDefinedPermissionExpressions: Record<string, RBAC.GlobalPermissionTypeExpression[]> = {}
 let roleAssignments: RBAC.RoleAssignment[] = []
+// role -> max kick-timeout duration in ms (rbac.maxTimeouts; HumanTime decodes to ms)
+let roleMaxTimeouts: Record<string, number> = {}
 let superUserIds = new Set<bigint>()
 let superRoleIds = new Set<bigint>()
 
@@ -45,6 +47,8 @@ export function applyRbacSettings(rbac: SETTINGS.RbacSettings) {
 		userDefinedRoles.push(RBAC.userDefinedRole(roleType))
 		userDefinedPermissionExpressions[roleType] = rbac.roles[roleType]
 	}
+
+	roleMaxTimeouts = { ...rbac.maxTimeouts }
 
 	roleAssignments = []
 
@@ -143,11 +147,16 @@ export const getUserRbacPerms = C.spanOp(
 		const perms: RBAC.TracedPermission[] = []
 		const allNegatingPerms: Set<RBAC.GlobalPermissionType> = new Set()
 
-		// super users/roles are granted every global permission, overriding any negations
+		// super users/roles are granted every global permission, overriding any negations. timeout grants are
+		// not global-scoped, so the unlimited grant is added explicitly
 		if (await superPromise) {
 			for (const permType of RBAC.GLOBAL_PERMISSION_TYPE.options) {
 				RBAC.addTracedPerms(perms, RBAC.tracedPerm(permType, [SUPER_ROLE], { negated: false }))
 			}
+			RBAC.addTracedPerms(
+				perms,
+				RBAC.tracedPerm('squad-server:timeout-players', [SUPER_ROLE], { negated: false }, { maxDurationMs: null }),
+			)
 		}
 		for (const role of roles) {
 			for (const permExpr of userDefinedPermissionExpressions[role.type]) {
@@ -169,6 +178,12 @@ export const getUserRbacPerms = C.spanOp(
 			for (const permExpr of userDefinedPermissionExpressions[role.type]) {
 				if (!RBAC.isGlobalPermissionType(permExpr)) continue
 				RBAC.addTracedPerms(perms, RBAC.tracedPerm(permExpr, [role], { negated: allNegatingPerms.has(permExpr) }))
+			}
+			if (roleMaxTimeouts[role.type] !== undefined) {
+				RBAC.addTracedPerms(
+					perms,
+					RBAC.tracedPerm('squad-server:timeout-players', [role], {}, { maxDurationMs: roleMaxTimeouts[role.type] }),
+				)
 			}
 		}
 
@@ -248,6 +263,33 @@ export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
 
 	const userId = ctx.user.discordId
 	return RBAC.tryDenyPermissionForUser(userId, perms, req)
+}
+
+// "up to N" timeout checks bypass the equality-matched permission path (see RBAC.maxTimeoutDurationMs)
+export async function tryDenyTimeoutForUser(
+	ctx: C.Db & C.UserId,
+	requestedDurationMs: number,
+): Promise<RBAC.PermissionDeniedResponse<'squad-server:timeout-players'> | null> {
+	const perms = RBAC.fromTracedPermissions(await getUserRbacPerms(ctx))
+	const max = RBAC.maxTimeoutDurationMs(perms)
+	if (max === null) return null
+	if (max !== undefined && requestedDurationMs <= max) return null
+	return RBAC.permissionDenied({
+		check: 'all',
+		permits: [RBAC.perm('squad-server:timeout-players', { maxDurationMs: requestedDurationMs })],
+	})
+}
+
+// gate for cancelling timeouts: any timeout grant (of any length) qualifies
+export async function tryDenyAnyTimeoutGrant(
+	ctx: C.Db & C.UserId,
+): Promise<RBAC.PermissionDeniedResponse<'squad-server:timeout-players'> | null> {
+	const perms = RBAC.fromTracedPermissions(await getUserRbacPerms(ctx))
+	if (RBAC.maxTimeoutDurationMs(perms) !== undefined) return null
+	return RBAC.permissionDenied({
+		check: 'all',
+		permits: [RBAC.perm('squad-server:timeout-players', { maxDurationMs: null })],
+	})
 }
 
 export const orpcRouter = {

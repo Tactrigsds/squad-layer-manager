@@ -369,7 +369,7 @@ export async function saveQueueAndUpdateServer(
 export async function warnShowNext(
 	ctx: C.Db & C.SquadServer & C.LayerQueue & C.Rcon & C.AdminList & CS.AbortSignal,
 	playerIds: 'all-admins' | SM.PlayerIds.Type,
-	opts?: { repeat?: number; updated?: boolean },
+	opts?: { updated?: boolean },
 ) {
 	const layerQueue = getSavedQueue(ctx)
 	const parts: USR.UserPart = { users: [] }
@@ -382,13 +382,13 @@ export async function warnShowNext(
 	if (playerIds === 'all-admins') {
 		await SquadRcon.warnAllAdmins(
 			ctx,
-			Messages.WARNS.queue.showNext(layerQueue, parts, { repeat: opts?.repeat ?? 1, updated: opts?.updated }),
+			Messages.WARNS.queue.showNext(layerQueue, parts, { updated: opts?.updated }),
 		)
 	} else {
 		await SquadRcon.warn(
 			ctx,
 			playerIds,
-			Messages.WARNS.queue.showNext(layerQueue, parts, { repeat: opts?.repeat ?? 1, updated: opts?.updated }),
+			Messages.WARNS.queue.showNext(layerQueue, parts, { updated: opts?.updated }),
 		)
 	}
 }

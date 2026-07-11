@@ -21,6 +21,7 @@ import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswitches.client'
+import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
 
 import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table'
@@ -36,6 +37,7 @@ import { SquadDisplay } from './squad-display'
 import { StickyGroup } from './sticky-group.tsx'
 import { MatchTeamDisplay } from './teams-display'
 import type { TeamswitchesHelpWindowProps } from './teamswitches-help-window.helpers'
+import type { TimeoutsWindowProps } from './timeouts-window.helpers'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog'
 import { Badge } from './ui/badge'
 import { Button, buttonVariants } from './ui/button'
@@ -53,6 +55,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 
 void import('@/components/squad-details-window')
 void import('@/components/teamswitches-help-window')
+void import('@/components/timeouts-window')
 
 const DEFAULT_TEAM_SORTING: SortingState = [{ id: 'squad', desc: false }]
 const DEFAULT_COMBINED_SORTING: SortingState = [{ id: 'faction', desc: false }, { id: 'squad', desc: false }]
@@ -349,20 +352,44 @@ function ControlPanel() {
 		[playerFlagGroupings],
 	)
 	const activeModeId = ZusUtils.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingModeId(groupingModeIds))
-
-	if (groupingModeIds.length === 0) return null
+	// distinct players with an active timeout; the expiry check trims rows the server hasn't swept yet
+	const timedOutCount = new Set(
+		TimeoutsClient.useActiveTimeouts()
+			.filter(t => !t.cancelled && t.expiresAt.getTime() > Date.now())
+			.map(t => t.playerId),
+	).size
 
 	return (
 		<div className="flex justify-end items-center gap-1">
-			<span className="text-sm text-muted-foreground">Group by</span>
-			<Select value={activeModeId ?? ''} onValueChange={(value) => BattlemetricsClient.Actions.setSelectedModeId(value || null)}>
-				<SelectTrigger className="h-7 w-auto text-sm">
-					<SelectValue />
-				</SelectTrigger>
-				<SelectContent>
-					{groupingModeIds.map(id => <SelectItem key={id} value={id}>{id}</SelectItem>)}
-				</SelectContent>
-			</Select>
+			<OpenWindowInteraction
+				windowId={WINDOW_ID.enum['timeouts']}
+				windowProps={{} satisfies TimeoutsWindowProps}
+				preload="intent"
+				render={({ ref, ...props }: { ref?: React.Ref<HTMLButtonElement> } & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+					<Button ref={ref} variant="ghost" size="sm" className="h-7" title="Show active kick timeouts" {...props}>
+						<Icons.UserX className="h-3.5 w-3.5" />
+						Timeouts
+						{timedOutCount > 0 && (
+							<Badge variant="destructive" className="ml-0.5 h-4 min-w-4 justify-center px-1 text-[10px] leading-none">
+								{timedOutCount}
+							</Badge>
+						)}
+					</Button>
+				)}
+			/>
+			{groupingModeIds.length > 0 && (
+				<>
+					<span className="text-sm text-muted-foreground">Group by</span>
+					<Select value={activeModeId ?? ''} onValueChange={(value) => BattlemetricsClient.Actions.setSelectedModeId(value || null)}>
+						<SelectTrigger className="h-7 w-auto text-sm">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{groupingModeIds.map(id => <SelectItem key={id} value={id}>{id}</SelectItem>)}
+						</SelectContent>
+					</Select>
+				</>
+			)}
 		</div>
 	)
 }

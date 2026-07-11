@@ -322,7 +322,6 @@ export async function broadcast(ctx: C.Rcon & CS.AbortSignal, message: string) {
 export type WarnOptionsBase =
 	| {
 		msg: string | string[]
-		repeat?: number
 		// whether to include GLOBAL_SETTINGS.warnPrefix
 		prefix?: boolean
 	}
@@ -330,6 +329,18 @@ export type WarnOptionsBase =
 	| string[]
 // returning undefined indicates warning should be skipped
 export type WarnOptions = WarnOptionsBase | ((ctx: C.Player) => WarnOptionsBase | undefined)
+
+// normalizes any WarnOptions form to carry the admin-directed warnPrefix flag. Only admin-directed sends
+// (warnAllAdmins, admin-chat command feedback) go through this; player-directed warns stay unprefixed.
+export function withPrefixFlag(options: WarnOptions, prefix = true): WarnOptions {
+	const apply = (o: WarnOptionsBase | undefined): WarnOptionsBase | undefined => {
+		if (o === undefined) return undefined
+		if (typeof o === 'string' || Array.isArray(o)) return { msg: o, prefix }
+		return { prefix, ...o }
+	}
+	if (typeof options === 'function') return (pctx) => apply(options(pctx))
+	return apply(options)!
+}
 
 export async function getPlayer(ctx: C.SquadRcon & C.AdminList & CS.AbortSignal, query: SM.PlayerIds.IdQuery, opts?: { ttl?: number }) {
 	const playersRes = await ctx.server.teams.get(ctx, opts)
@@ -352,7 +363,6 @@ export async function warn(ctx: C.SquadRcon & C.AdminList & CS.AbortSignal, ids:
 		opts = _opts
 	}
 
-	let repeatCount = 1
 	let prefix: boolean = false
 	let msgArr: string[]
 	if (typeof opts === 'string') {
@@ -361,7 +371,6 @@ export async function warn(ctx: C.SquadRcon & C.AdminList & CS.AbortSignal, ids:
 		msgArr = opts
 	} else {
 		msgArr = Array.isArray(opts.msg) ? opts.msg : [opts.msg]
-		repeatCount = opts.repeat || 1
 		prefix = opts.prefix ?? prefix
 	}
 	if (msgArr[0] && Settings.GLOBAL_SETTINGS.warnPrefix && prefix) {
@@ -369,11 +378,8 @@ export async function warn(ctx: C.SquadRcon & C.AdminList & CS.AbortSignal, ids:
 	}
 
 	log.info(`Warning player: %s: %s`, SM.PlayerIds.prettyPrint(ids), msgArr)
-	for (let i = 0; i < repeatCount; i++) {
-		if (i !== 0) await sleep(5000, ctx.signal)
-		for (const msg of msgArr) {
-			await ctx.rcon.execute(`AdminWarn "${SM.PlayerIds.normalizeToPlayerId(ids)}" ${msg}`, { level: 'debug', signal: ctx.signal })
-		}
+	for (const msg of msgArr) {
+		await ctx.rcon.execute(`AdminWarn "${SM.PlayerIds.normalizeToPlayerId(ids)}" ${msg}`, { level: 'debug', signal: ctx.signal })
 	}
 }
 
@@ -394,6 +400,8 @@ export const warnAllAdmins = C.spanOp(
 	'warnAllAdmins',
 	{ module, levels: { event: 'info' } },
 	async (ctx: C.SquadRcon & C.AdminList & CS.AbortSignal, options: WarnOptions, excludeSteamIds?: Set<string>) => {
+		// admin-directed messages carry the configured warnPrefix; this covers every warnAllAdmins call site
+		options = withPrefixFlag(options)
 		const [currentAdminList, teamsRes] = await Promise.all([
 			ctx.adminList.get(ctx),
 			ctx.server.teams.get(ctx),
@@ -552,6 +560,17 @@ export async function demoteCommander(ctx: C.Rcon & C.SquadRcon & C.AdminList & 
 export async function disbandSquad(ctx: C.Rcon & C.SquadRcon & C.AdminList & CS.AbortSignal, teamId: SM.TeamId, squadId: SM.SquadId) {
 	log.info(`Disbanding squad %d on team %d`, squadId, teamId)
 	await ctx.rcon.execute(`AdminDisbandSquad ${teamId} ${squadId}`, { level: 'info', signal: ctx.signal })
+	ctx.server.teams.invalidate(ctx)
+}
+
+export async function kickPlayer(
+	ctx: C.Rcon & C.SquadRcon & C.AdminList & CS.AbortSignal,
+	ids: SM.PlayerIds.EosIdQueryOrPlayerId,
+	reason?: string,
+) {
+	const id = SM.PlayerIds.normalizeToPlayerId(ids)
+	log.info(`Kicking player %s`, id)
+	await ctx.rcon.execute(`AdminKick "${id}" ${reason ?? ''}`.trim(), { level: 'info', signal: ctx.signal })
 	ctx.server.teams.invalidate(ctx)
 }
 

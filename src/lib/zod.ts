@@ -38,6 +38,13 @@ export function parseHumanTime(val: string | number) {
 	return num * unitMs
 }
 
+// the strict token form parseHumanTime itself matches (HumanTimeFormat additionally allows underscores/raw
+// numbers). shared by command args and the web kick dialog so they accept exactly the same inputs.
+const STRICT_HUMAN_TIME_REGEX = /^[0-9.]+(s|m|h|d|w|ms)$/
+export function tryParseHumanTimeToken(token: string): number | undefined {
+	return STRICT_HUMAN_TIME_REGEX.test(token) ? parseHumanTime(token) : undefined
+}
+
 // finds the largest unit that divides the given milliseconds evenly, e.g. 300_000 -> '5m' rather than '300s'
 export function formatHumanTime(ms: number) {
 	if (ms === 0) return '0ms'
@@ -47,6 +54,24 @@ export function formatHumanTime(ms: number) {
 		}
 	}
 	return `${ms}ms`
+}
+
+// approximate human duration for display of an arbitrary (non-round) span, e.g. remaining timeout time. shows
+// the two coarsest nonzero units, rounded up to the next second so it never reads as "0s" while time remains.
+// e.g. 5_398_000 -> '1h 29m', 90_000 -> '1m 30s', 45_000 -> '45s'
+export function formatDurationApprox(ms: number): string {
+	if (ms <= 0) return '0s'
+	let remaining = Math.ceil(ms / 1000) * 1000
+	const parts: string[] = []
+	// weeks are omitted; a coarser unit than days is overkill for timeout displays, and 'ms' never shows here
+	for (const [unit, unitMs] of HUMAN_TIME_UNITS.filter(([u]) => u !== 'w' && u !== 'ms')) {
+		if (remaining >= unitMs) {
+			parts.push(`${Math.floor(remaining / unitMs)}${unit}`)
+			remaining %= unitMs
+			if (parts.length === 2) break
+		}
+	}
+	return parts.join(' ')
 }
 
 export const ParsedIntSchema = z
@@ -87,6 +112,12 @@ export const NormedUrl = z
 	.url()
 	.overwrite((url) => url.replace(/\/$/, ''))
 	.meta({ description: 'A URL with trailing slashes removed' })
+
+export const Steam64IdSchema = z
+	.string()
+	.trim()
+	.regex(/^\d{17}$/, { error: 'Must be a 17-digit Steam64 ID' })
+	.meta({ description: 'A 17-digit Steam64 ID' })
 
 export const BasicStrNoWhitespace = z
 	.string()

@@ -1,3 +1,5 @@
+import * as ZusUtils from '@/lib/zustand'
+import type * as AAR from '@/models/admin-action-reasons.models'
 import * as RPC from '@/orpc.client'
 import type { PublicSettings } from '@/systems/settings.server'
 import * as ReactRx from '@react-rxjs/core'
@@ -11,6 +13,11 @@ export const PublicSettingsStore = Zus.createStore<PublicSettings | undefined>((
 
 export function getSettings() {
 	return PublicSettingsStore.getState()
+}
+
+// whether the given admin action is configured to require a reason (enforced server-side; used to gate web dialogs)
+export function useReasonRequired(action: AAR.AdminActionType): boolean {
+	return ZusUtils.useStore(PublicSettingsStore, s => s?.requireReasonFor.includes(action) ?? false)
 }
 
 // a server is only usable when the backend has a live slice for it, which happens exactly for enabled, non-broken servers.

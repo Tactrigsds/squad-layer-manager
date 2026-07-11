@@ -1,6 +1,8 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as DH from '@/lib/display-helpers'
 import { createId } from '@/lib/id'
+import { formatHumanTime } from '@/lib/zod'
+import * as AAR from '@/models/admin-action-reasons.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as SLL from '@/models/shared-layer-list'
@@ -54,10 +56,18 @@ export type Base = z.infer<z.ZodObject<typeof baseShape>>
 
 const event = <T extends string, S extends z.ZodRawShape>(type: T, shape: S) => z.object({ ...baseShape, type: z.literal(type), ...shape })
 
+// an admin-action reason snapshotted at action time (template + variable values; see AAR.AppliedReason), so
+// renaming/deleting the preset or editing message variables later doesn't corrupt history. The delivered text
+// is AAR.renderAppliedReason(reason) -- re-renderable, e.g. with a substituted remaining timeout duration.
+const AppliedActionReasonSchema = AAR.AppliedReasonSchema
+export type AppliedActionReason = AAR.AppliedReason
+
 export const PlayerWarnedSchema = event('PLAYER_WARNED', {
 	message: z.string(),
 	// the players this warn action targeted (eos ids)
 	targets: z.array(SM.PlayerIdSchema),
+	// set when the message came from a preset admin-action reason
+	reasonLabel: z.string().optional(),
 })
 export type PlayerWarned = z.infer<typeof PlayerWarnedSchema>
 
@@ -68,17 +78,26 @@ export const SquadDisbandedSchema = event('SQUAD_DISBANDED', {
 	squadName: z.string(),
 	// the players who were in the squad when it was disbanded (eos ids)
 	members: z.array(SM.PlayerIdSchema),
+	reason: AppliedActionReasonSchema.optional(),
 })
 export type SquadDisbanded = z.infer<typeof SquadDisbandedSchema>
 
-export const PlayerRemovedFromSquadSchema = event('PLAYER_REMOVED_FROM_SQUAD', { targets: z.array(SM.PlayerIdSchema) })
+export const PlayerRemovedFromSquadSchema = event('PLAYER_REMOVED_FROM_SQUAD', {
+	targets: z.array(SM.PlayerIdSchema),
+	reason: AppliedActionReasonSchema.optional(),
+})
 export type PlayerRemovedFromSquad = z.infer<typeof PlayerRemovedFromSquadSchema>
 
 export const TeamChangeForcedSchema = event('TEAM_CHANGE_FORCED', { targets: z.array(SM.PlayerIdSchema) })
 export type TeamChangeForced = z.infer<typeof TeamChangeForcedSchema>
 
 // an admin killing players via a double forced team-switch. reason is the optional message shown to the players.
-export const PlayerKilledSchema = event('PLAYER_KILLED', { targets: z.array(SM.PlayerIdSchema), reason: z.string().optional() })
+export const PlayerKilledSchema = event('PLAYER_KILLED', {
+	targets: z.array(SM.PlayerIdSchema),
+	reason: z.string().optional(),
+	// set when the reason came from a preset admin-action reason
+	reasonLabel: z.string().optional(),
+})
 export type PlayerKilled = z.infer<typeof PlayerKilledSchema>
 
 export const SquadRenamedSchema = event('SQUAD_RENAMED', {
@@ -90,11 +109,39 @@ export const SquadRenamedSchema = event('SQUAD_RENAMED', {
 export type SquadRenamed = z.infer<typeof SquadRenamedSchema>
 
 // pure-audit actions with no attributable server event
-export const CommanderDemotedSchema = event('COMMANDER_DEMOTED', { target: SM.PlayerIdSchema })
+export const CommanderDemotedSchema = event('COMMANDER_DEMOTED', {
+	target: SM.PlayerIdSchema,
+	reason: AppliedActionReasonSchema.optional(),
+})
 export type CommanderDemoted = z.infer<typeof CommanderDemotedSchema>
 
 export const FogOfWarToggledSchema = event('FOG_OF_WAR_TOGGLED', { enabled: z.boolean() })
 export type FogOfWarToggled = z.infer<typeof FogOfWarToggledSchema>
+
+export const BroadcastSentSchema = event('BROADCAST_SENT', {
+	message: z.string(),
+	// set when the message came from a configured broadcast preset
+	presetLabel: z.string().optional(),
+})
+export type BroadcastSent = z.infer<typeof BroadcastSentSchema>
+
+// a kick with an attached timeout: the player is re-kicked on join from any SLM server until expiresAt.
+// enforcement kicks attribute their PLAYER_KICKED server events to this event (no per-enforcement app event).
+export const PlayerTimedOutSchema = event('PLAYER_TIMED_OUT', {
+	target: SM.PlayerIdSchema,
+	timeoutId: z.string(),
+	durationMs: z.number(),
+	expiresAt: z.number(),
+	// snapshot of the applied reason; custom reasons have no label
+	reason: AppliedActionReasonSchema.optional(),
+})
+export type PlayerTimedOut = z.infer<typeof PlayerTimedOutSchema>
+
+export const TimeoutCancelledSchema = event('TIMEOUT_CANCELLED', {
+	target: SM.PlayerIdSchema,
+	timeoutId: z.string(),
+})
+export type TimeoutCancelled = z.infer<typeof TimeoutCancelledSchema>
 
 export const MatchEndedSchema = event('MATCH_ENDED', {})
 export type MatchEnded = z.infer<typeof MatchEndedSchema>
@@ -194,6 +241,9 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	SquadRenamedSchema,
 	CommanderDemotedSchema,
 	FogOfWarToggledSchema,
+	BroadcastSentSchema,
+	PlayerTimedOutSchema,
+	TimeoutCancelledSchema,
 	MatchEndedSchema,
 	VoteStartedSchema,
 	VoteEndedSchema,
@@ -224,9 +274,12 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 		case 'SQUAD_DISBANDED':
 			return e.members
 		case 'COMMANDER_DEMOTED':
+		case 'PLAYER_TIMED_OUT':
+		case 'TIMEOUT_CANCELLED':
 			return [e.target]
 		case 'SQUAD_RENAMED':
 		case 'FOG_OF_WAR_TOGGLED':
+		case 'BROADCAST_SENT':
 		case 'MATCH_ENDED':
 		case 'VOTE_STARTED':
 		case 'VOTE_ENDED':
@@ -251,23 +304,33 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 // used by the audit log; the activity feed has its own richer per-type renderers.
 export function describeAppEvent(e: AppEvent): string {
 	const players = (n: number) => `${n} ${n === 1 ? 'player' : 'players'}`
+	const forReason = (reason: AppliedActionReason | undefined) => reason?.label ? ` for ${reason.label}` : ''
 	switch (e.type) {
 		case 'PLAYER_WARNED':
+			// preset-reason warns embed the label in the delivered message, so it isn't repeated here
 			return `warned ${players(e.targets.length)}: "${e.message}"`
 		case 'SQUAD_DISBANDED':
-			return `disbanded ${e.squadName} (Team ${e.teamId})`
+			return `disbanded ${e.squadName} (Team ${e.teamId})${forReason(e.reason)}`
 		case 'PLAYER_REMOVED_FROM_SQUAD':
-			return `removed ${players(e.targets.length)} from squad`
+			return `removed ${players(e.targets.length)} from squad${forReason(e.reason)}`
 		case 'TEAM_CHANGE_FORCED':
 			return `switched ${players(e.targets.length)} to the other team`
 		case 'PLAYER_KILLED':
+			// preset-reason kills embed the label in the delivered reason, so it isn't repeated here
 			return `killed ${players(e.targets.length)}${e.reason ? `: "${e.reason}"` : ''}`
 		case 'SQUAD_RENAMED':
 			return `renamed ${e.squadName} (Team ${e.teamId})`
 		case 'COMMANDER_DEMOTED':
-			return 'demoted a commander'
+			return `demoted a commander${forReason(e.reason)}`
 		case 'FOG_OF_WAR_TOGGLED':
 			return `turned fog of war ${e.enabled ? 'on' : 'off'}`
+		case 'BROADCAST_SENT':
+			// preset broadcasts embed nothing extra; the label is implicit in the configured message
+			return `broadcast: "${e.message}"`
+		case 'PLAYER_TIMED_OUT':
+			return `kicked 1 player with a ${formatHumanTime(e.durationMs)} timeout${e.reason?.label ? ` for ${e.reason.label}` : ''}`
+		case 'TIMEOUT_CANCELLED':
+			return `cancelled a player's timeout`
 		case 'MATCH_ENDED':
 			return 'ended the match'
 		case 'VOTE_STARTED':

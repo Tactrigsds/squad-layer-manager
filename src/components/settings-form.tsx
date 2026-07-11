@@ -8,19 +8,25 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDebounced } from '@/hooks/use-debounce'
 import * as Obj from '@/lib/object'
 import { settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
+import * as AAR from '@/models/admin-action-reasons.models'
+import type * as LP from '@/models/labeled-presets.models'
 import * as RBAC from '@/rbac.models'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
+import { MessagePreviewBox } from './warn-reasons-sub'
 
 // The form is driven off the JSON-Schema projection of a Zod schema (input mode), edited in the encoded/input shape
 // (e.g. HumanTime fields as '5m' strings). Custom widgets are matched by path for the flag + rbac config.
@@ -182,6 +188,28 @@ function PermissionExpressionEditor({ value, onChange }: { value: string[] | und
 type RbacInfo = { roleIds: string[]; assignedRoleIds: Set<string> }
 const RbacContext = React.createContext<RbacInfo>({ roleIds: [], assignedRoleIds: new Set() })
 
+// the draft's custom message variables (rbac-style sibling read), so the reason preview can render templates
+const MessageVarsContext = React.createContext<Record<string, string>>({})
+
+function useMessageVars(value$: ValueState): Record<string, string> {
+	const read = (v: any): Record<string, string> =>
+		Object.fromEntries(
+			((v?.messageVariables ?? []) as { name?: string; value?: string }[]).flatMap(mv => mv.name ? [[mv.name, mv.value ?? '']] : []),
+		)
+	const [vars, setVars] = React.useState(() => read(value$.getValue()))
+	React.useEffect(() => {
+		const sub = value$.subscribe((v) =>
+			setVars((prev) => {
+				const next = read(v)
+				const same = Object.keys(prev).length === Object.keys(next).length && Object.entries(next).every(([k, val]) => prev[k] === val)
+				return same ? prev : next
+			})
+		)
+		return () => sub.unsubscribe()
+	}, [value$])
+	return vars
+}
+
 // per-form options. `idPrefix` scopes the DOM ids / URL-fragment anchors so multiple forms on the settings page (global
 // settings + one per server) don't collide; it stays `setting:*` so the TOC scroll-spy and hash nav still match.
 const FormOptionsContext = React.createContext<{ idPrefix: string }>({ idPrefix: 'setting:' })
@@ -257,8 +285,23 @@ function useRoleCascade(value$: ValueState, onChange: (v: any) => void) {
 			const memberRoles = (ra['discord-server-member'] ?? []).filter((r: string) => !removed.includes(r))
 			if (memberRoles.length !== (ra['discord-server-member']?.length ?? 0)) changed = true
 			nextRa['discord-server-member'] = memberRoles
+			// maxTimeouts is keyed by role too; dangling keys would fail the schema's superRefine
+			const nextMaxTimeouts: Record<string, unknown> = { ...(v.rbac.maxTimeouts ?? {}) }
+			for (const r of removed) {
+				if (r in nextMaxTimeouts) {
+					delete nextMaxTimeouts[r]
+					changed = true
+				}
+			}
 			// defer to avoid re-entrant BehaviorSubject.next while this emission is still being delivered
-			if (changed) queueMicrotask(() => onChange({ ...value$.getValue(), rbac: { ...value$.getValue().rbac, roleAssignments: nextRa } }))
+			if (changed) {
+				queueMicrotask(() =>
+					onChange({
+						...value$.getValue(),
+						rbac: { ...value$.getValue().rbac, roleAssignments: nextRa, maxTimeouts: nextMaxTimeouts },
+					})
+				)
+			}
 		})
 		return () => sub.unsubscribe()
 	}, [value$, onChange])
@@ -328,6 +371,80 @@ function RolePermissionField({ value$, reset$, onChange, path }: OverrideProps) 
 		</div>
 	)
 }
+// per-role max kick-timeout durations (rbac.maxTimeouts): role picker keyed to the defined roles,
+// HumanTime text input (edited in the encoded string form, e.g. "2h")
+function MaxTimeoutsField({ value$, reset$, onChange }: OverrideProps) {
+	const { roleIds } = React.useContext(RbacContext)
+	const value = (useFieldValue(value$, reset$) as Record<string, string> | undefined) ?? {}
+	const entries = Object.keys(value)
+	const remaining = roleIds.filter((r) => !(r in value))
+
+	function structural(next: Record<string, unknown>) {
+		onChange(next)
+		reset$.next()
+	}
+
+	return (
+		<div className="space-y-2">
+			{entries.length === 0 && <p className="text-xs text-muted-foreground">No roles may issue kick timeouts.</p>}
+			{entries.map((roleId) => (
+				<MaxTimeoutEntry
+					key={roleId}
+					roleId={roleId}
+					parent$={value$}
+					reset$={reset$}
+					parentOnChange={onChange}
+					onRemove={() => {
+						const next = { ...((value$.getValue() as Record<string, unknown>) ?? {}) }
+						delete next[roleId]
+						structural(next)
+					}}
+				/>
+			))}
+			{remaining.length > 0 && (
+				<Select
+					value=""
+					onValueChange={(roleId) => structural({ ...((value$.getValue() as Record<string, unknown>) ?? {}), [roleId]: '1h' })}
+				>
+					<SelectTrigger className="h-8 max-w-[16rem]">
+						<SelectValue placeholder="Add role…" />
+					</SelectTrigger>
+					<SelectContent>
+						{remaining.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+					</SelectContent>
+				</Select>
+			)}
+		</div>
+	)
+}
+
+function MaxTimeoutEntry(
+	{ roleId, parent$, reset$, parentOnChange, onRemove }: {
+		roleId: string
+		parent$: ValueState
+		reset$: Rx.Subject<void>
+		parentOnChange: (v: any) => void
+		onRemove: () => void
+	},
+) {
+	const value$ = React.useMemo(() => scopeValue(parent$, roleId), [parent$, roleId])
+	const onChange = React.useCallback(
+		(v: any) => parentOnChange({ ...((parent$.getValue() as Record<string, unknown>) ?? {}), [roleId]: v }),
+		[parent$, parentOnChange, roleId],
+	)
+	return (
+		<div className="flex items-center gap-2">
+			<span className="w-40 truncate text-sm font-mono">{roleId}</span>
+			<div className="w-32">
+				<TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric={false} />
+			</div>
+			<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={onRemove}>
+				<Icons.X className="h-4 w-4" />
+			</Button>
+		</div>
+	)
+}
+
 // role picker for an assignment, keyed to the defined roles (rbac.roles) rather than free text
 function AssignmentRolesField({ value$, reset$, onChange }: OverrideProps) {
 	const value = useFieldValue(value$, reset$) as string[]
@@ -342,14 +459,377 @@ function AssignmentRolesField({ value$, reset$, onChange }: OverrideProps) {
 	)
 }
 
+// shared table shell for label/message/aliases preset lists (admin action reasons, broadcasts)
+type PresetRowProps = {
+	idx: number
+	parent$: ValueState
+	reset$: Rx.Subject<void>
+	parentOnChange: (v: any[]) => void
+	onRemove: () => void
+}
+
+function PresetTableField(
+	{ value$, reset$, onChange, headers, newRow, Row }: {
+		value$: ValueState
+		reset$: Rx.Subject<void>
+		onChange: (v: any[]) => void
+		headers: React.ReactNode
+		newRow: () => object
+		Row: React.ComponentType<PresetRowProps>
+	},
+) {
+	const value = (useFieldValue(value$, reset$) as object[] | undefined) ?? []
+
+	// structural edits emit reset$ so the rows' uncontrolled inputs re-read after re-indexing
+	function structural(next: object[]) {
+		onChange(next)
+		reset$.next()
+	}
+
+	return (
+		<div className="space-y-1.5">
+			{value.length > 0 && (
+				<Table>
+					<TableHeader>
+						<TableRow>{headers}</TableRow>
+					</TableHeader>
+					<TableBody>
+						{value.map((_, idx) => (
+							<Row
+								// rows have no stable id, same as ArrayField items
+								// oxlint-disable-next-line no-array-index-key
+								key={idx}
+								idx={idx}
+								parent$={value$}
+								reset$={reset$}
+								parentOnChange={onChange}
+								onRemove={() => structural(((value$.getValue() as object[]) ?? []).filter((_, i) => i !== idx))}
+							/>
+						))}
+					</TableBody>
+				</Table>
+			)}
+			<Button
+				type="button"
+				size="sm"
+				variant="outline"
+				onClick={() => structural([...((value$.getValue() as object[]) ?? []), newRow()])}
+			>
+				<Icons.Plus className="h-4 w-4" />
+				Add
+			</Button>
+		</div>
+	)
+}
+
+function AdminActionReasonsField({ value$, reset$, onChange }: OverrideProps) {
+	return (
+		<PresetTableField
+			value$={value$}
+			reset$={reset$}
+			onChange={onChange}
+			headers={
+				<>
+					<TableHead className="w-[11rem]">Label</TableHead>
+					<TableHead>Texts</TableHead>
+					<TableHead className="w-[10rem]">Aliases</TableHead>
+					<TableHead className="w-8" />
+				</>
+			}
+			newRow={() => ({ label: '', message: '', aliases: [], actionTexts: {} })}
+			Row={AdminActionReasonRow}
+		/>
+	)
+}
+
+function BroadcastsField({ value$, reset$, onChange }: OverrideProps) {
+	return (
+		<PresetTableField
+			value$={value$}
+			reset$={reset$}
+			onChange={onChange}
+			headers={
+				<>
+					<TableHead className="w-[11rem]">Label</TableHead>
+					<TableHead>Message</TableHead>
+					<TableHead className="w-[10rem]">Aliases</TableHead>
+					<TableHead className="w-8" />
+				</>
+			}
+			newRow={() => ({ label: '', message: '', aliases: [] })}
+			Row={BroadcastRow}
+		/>
+	)
+}
+
+function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetRowProps) {
+	const row$ = React.useMemo(() => scopeValue(parent$, idx), [parent$, idx])
+	const label$ = React.useMemo(() => scopeValue(row$, 'label'), [row$])
+	const message$ = React.useMemo(() => scopeValue(row$, 'message'), [row$])
+	const aliases$ = React.useMemo(() => scopeValue(row$, 'aliases'), [row$])
+	const actionTexts$ = React.useMemo(() => scopeValue(row$, 'actionTexts'), [row$])
+	// the set of actions this reason carries text for; keys are added/removed structurally (emits reset$)
+	const actionTexts = (useFieldValue(actionTexts$, reset$) as Partial<Record<AAR.ExecutableAdminActionType, string>> | undefined) ?? {}
+	const presentActions = AAR.EXECUTABLE_ADMIN_ACTION_TYPE.options.filter((a) => actionTexts[a] !== undefined)
+	const remainingActions = AAR.EXECUTABLE_ADMIN_ACTION_TYPE.options.filter((a) => actionTexts[a] === undefined)
+
+	const setField = (key: keyof AAR.AdminActionReason) => (v: any) => {
+		const arr = [...((parent$.getValue() as AAR.AdminActionReason[]) ?? [])]
+		arr[idx] = { ...arr[idx], [key]: v }
+		parentOnChange(arr)
+	}
+	// non-structural: text edit within an existing action key (no reset$; the textarea stays mounted)
+	const setActionText = (action: AAR.ExecutableAdminActionType) => (v: string) => {
+		const arr = [...((parent$.getValue() as AAR.AdminActionReason[]) ?? [])]
+		arr[idx] = { ...arr[idx], actionTexts: { ...arr[idx].actionTexts, [action]: v } }
+		parentOnChange(arr)
+	}
+	// structural: adding/removing an action key mounts/unmounts a textarea, so re-seed uncontrolled inputs via reset$
+	const addAction = (action: AAR.ExecutableAdminActionType) => {
+		const arr = [...((parent$.getValue() as AAR.AdminActionReason[]) ?? [])]
+		arr[idx] = { ...arr[idx], actionTexts: { ...arr[idx].actionTexts, [action]: '' } }
+		parentOnChange(arr)
+		reset$.next()
+	}
+	const removeAction = (action: AAR.ExecutableAdminActionType) => {
+		const arr = [...((parent$.getValue() as AAR.AdminActionReason[]) ?? [])]
+		const nextTexts = { ...arr[idx].actionTexts }
+		delete nextTexts[action]
+		arr[idx] = { ...arr[idx], actionTexts: nextTexts }
+		parentOnChange(arr)
+		reset$.next()
+	}
+
+	return (
+		<TableRow>
+			<TableCell className="align-top">
+				<TextInputField value$={label$} reset$={reset$} onChange={setField('label')} numeric={false} />
+			</TableCell>
+			<TableCell className="align-top">
+				<div className="space-y-1.5">
+					<div className="rounded-md border">
+						<div className="px-2 pt-1 text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">Warn</div>
+						<TextAreaCell value$={message$} reset$={reset$} onChange={setField('message')} placeholder="Sent when warning a player" />
+					</div>
+					{presentActions.map((action) => {
+						const text$ = scopeValue(actionTexts$, action)
+						return (
+							<div key={action} className="rounded-md border">
+								<div className="flex items-center justify-between px-2 pt-1">
+									<span className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
+										{AAR.ADMIN_ACTIONS[action].displayName}
+									</span>
+									<Button
+										type="button"
+										size="icon"
+										variant="ghost"
+										className="h-5 w-5 text-destructive"
+										title={`Remove ${AAR.ADMIN_ACTIONS[action].displayName} text (this reason will no longer be available for that action)`}
+										onClick={() => removeAction(action)}
+									>
+										<Icons.X className="h-3.5 w-3.5" />
+									</Button>
+								</div>
+								<TextAreaCell
+									value$={text$}
+									reset$={reset$}
+									onChange={setActionText(action)}
+									placeholder={`Sent when performing ${AAR.ADMIN_ACTIONS[action].displayName}`}
+								/>
+							</div>
+						)
+					})}
+					{remainingActions.length > 0 && (
+						<Select value="" onValueChange={(a) => addAction(a as AAR.ExecutableAdminActionType)}>
+							<SelectTrigger className="h-8">
+								<SelectValue placeholder="Add action text…" />
+							</SelectTrigger>
+							<SelectContent>
+								{remainingActions.map((a) => <SelectItem key={a} value={a}>{AAR.ADMIN_ACTIONS[a].displayName}</SelectItem>)}
+							</SelectContent>
+						</Select>
+					)}
+				</div>
+			</TableCell>
+			<TableCell className="align-top">
+				<AliasesCell value$={aliases$} reset$={reset$} onChange={setField('aliases')} />
+			</TableCell>
+			<TableCell className="align-top">
+				<div className="flex flex-col gap-1">
+					<ReasonPreviewButton row$={row$} reset$={reset$} />
+					<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={onRemove}>
+						<Icons.X className="h-4 w-4" />
+					</Button>
+				</div>
+			</TableCell>
+		</TableRow>
+	)
+}
+
+// the verbatim rendered text each applicable context delivers in-game (squad contexts get the @Squad1 tag),
+// with the given custom message variables applied. kicks are shown both with a 2h sample timeout and with no
+// timeout (empty {{duration}}) so {{#duration}} sections can be checked both ways
+function reasonPreviewEntries(reason: AAR.AdminActionReason, customVars: Record<string, string>): { context: string; text: string }[] {
+	const applied = (action: AAR.AdminActionType, opts?: { squadTag?: string; duration?: string }) =>
+		AAR.formatAppliedReason(action, reason, {
+			squadTag: opts?.squadTag,
+			vars: { ...customVars, ...(action === 'kick' ? { duration: opts?.duration ?? '' } : {}) },
+		})
+	const entries = [
+		{ context: 'Warn', text: applied('warn') },
+		{ context: 'Warn squad', text: applied('warn', { squadTag: '@Squad1' }) },
+	]
+	// one entry per action the reason carries text for; squad-directed actions get the @Squad1 tag
+	for (const action of AAR.EXECUTABLE_ADMIN_ACTION_TYPE.options) {
+		if (reason.actionTexts[action] === undefined) continue
+		if (action === 'kick') {
+			entries.push({ context: 'Kick (timeout)', text: applied('kick', { duration: '2h' }) })
+			entries.push({ context: 'Kick (no timeout)', text: applied('kick', { duration: '' }) })
+			continue
+		}
+		const squadTag = AAR.ADMIN_ACTIONS[action].targetKind === 'squad' ? '@Squad1' : undefined
+		entries.push({ context: AAR.ADMIN_ACTIONS[action].displayName, text: applied(action, { squadTag }) })
+	}
+	return entries
+}
+
+function ReasonPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Subject<void> }) {
+	const raw = useFieldValue(row$, reset$) as Partial<AAR.AdminActionReason> | undefined
+	const customVars = React.useContext(MessageVarsContext)
+	// tolerate incomplete draft rows so the preview shows the message shape while it's being written
+	const actionTexts = Object.fromEntries(
+		Object.entries(raw?.actionTexts ?? {}).map(([action, text]) => [action, (text ?? '').trim() || '<action text>']),
+	) as Partial<Record<AAR.ExecutableAdminActionType, string>>
+	const reason: AAR.AdminActionReason = {
+		label: raw?.label?.trim() || '<label>',
+		message: raw?.message?.trim() || '<warn text>',
+		aliases: raw?.aliases ?? [],
+		actionTexts,
+	}
+	return (
+		<Popover>
+			<PopoverTrigger asChild>
+				<Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Preview the delivered in-game messages">
+					<Icons.Eye className="h-4 w-4" />
+				</Button>
+			</PopoverTrigger>
+			<PopoverContent className="w-96 space-y-2" align="end">
+				<p className="text-xs text-muted-foreground">
+					In-game text delivered for each applicable action (kicks shown with a 2h sample timeout and with none).
+				</p>
+				{reasonPreviewEntries(reason, customVars).map((entry) => (
+					<div key={entry.context} className="space-y-1">
+						<p className="text-xs font-medium">{entry.context}</p>
+						<MessagePreviewBox>{entry.text}</MessagePreviewBox>
+					</div>
+				))}
+			</PopoverContent>
+		</Popover>
+	)
+}
+
+function BroadcastRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetRowProps) {
+	const row$ = React.useMemo(() => scopeValue(parent$, idx), [parent$, idx])
+	const label$ = React.useMemo(() => scopeValue(row$, 'label'), [row$])
+	const message$ = React.useMemo(() => scopeValue(row$, 'message'), [row$])
+	const aliases$ = React.useMemo(() => scopeValue(row$, 'aliases'), [row$])
+
+	const setField = (key: 'label' | 'message' | 'aliases') => (v: any) => {
+		const arr = [...((parent$.getValue() as LP.BroadcastPreset[]) ?? [])]
+		arr[idx] = { ...arr[idx], [key]: v }
+		parentOnChange(arr)
+	}
+
+	return (
+		<TableRow>
+			<TableCell className="align-top">
+				<TextInputField value$={label$} reset$={reset$} onChange={setField('label')} numeric={false} />
+			</TableCell>
+			<TableCell className="align-top">
+				<div className="rounded-md border">
+					<TextAreaCell value$={message$} reset$={reset$} onChange={setField('message')} />
+				</div>
+			</TableCell>
+			<TableCell className="align-top">
+				<AliasesCell value$={aliases$} reset$={reset$} onChange={setField('aliases')} />
+			</TableCell>
+			<TableCell className="align-top">
+				<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={onRemove}>
+					<Icons.X className="h-4 w-4" />
+				</Button>
+			</TableCell>
+		</TableRow>
+	)
+}
+
+// minimally-styled uncontrolled textarea cell: seeded from value$, edits debounced upward, re-read on reset$
+function TextAreaCell(
+	{ value$, reset$, onChange, placeholder }: {
+		value$: ValueState
+		reset$: Rx.Subject<void>
+		onChange: (v: string) => void
+		placeholder?: string
+	},
+) {
+	const ref = React.useRef<HTMLTextAreaElement>(null)
+	const format = (v: any) => v === null || v === undefined ? '' : String(v)
+	const push = useDebounced<string>({ delay: DEBOUNCE_MS, onChange })
+	useReset(reset$, () => {
+		const formatted = format(value$.getValue())
+		if (ref.current && ref.current.value !== formatted) {
+			ref.current.value = formatted
+			push(formatted)
+		}
+	})
+	return (
+		<Textarea
+			ref={ref}
+			rows={2}
+			placeholder={placeholder}
+			className="min-h-9 resize-y rounded-none border-0 shadow-none focus-visible:ring-0 px-2 py-1 font-mono text-xs"
+			defaultValue={format(value$.getValue())}
+			onChange={(e) => push(e.currentTarget.value)}
+		/>
+	)
+}
+
+// aliases are edited as space/comma-separated text in a single cell and stored as string[] (aliases can't
+// contain whitespace, so the separators are unambiguous)
+function AliasesCell(
+	{ value$, reset$, onChange }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: string[]) => void },
+) {
+	const ref = React.useRef<HTMLInputElement>(null)
+	const format = (v: string[] | undefined) => (v ?? []).join(' ')
+	const parse = (text: string) => text.split(/[,\s]+/).filter(Boolean)
+	const push = useDebounced<string[]>({ delay: DEBOUNCE_MS, onChange })
+	useReset(reset$, () => {
+		const formatted = format(value$.getValue())
+		if (ref.current && ref.current.value !== formatted) {
+			ref.current.value = formatted
+			push(parse(formatted))
+		}
+	})
+	return (
+		<Input
+			ref={ref}
+			defaultValue={format(value$.getValue())}
+			placeholder="tk afk"
+			onChange={(e) => push(parse(e.currentTarget.value))}
+		/>
+	)
+}
+
 function overrideFor(path: Path): React.FC<OverrideProps> | undefined {
 	const last = path[path.length - 1]
+	if (path.length === 1 && last === 'adminActionReasons') return AdminActionReasonsField
+	if (path.length === 1 && last === 'broadcasts') return BroadcastsField
 	if (path.length === 1 && last === 'layerTable') return LayerTableField
 	if (path.length === 1 && last === 'playerFlagColorHierarchy') return FlagOrderedListField
 	if (path.length === 1 && last === 'playerFlagsRequiringNote') return FlagMultiSelectField
 	if (path[0] === 'playerFlagGroupings' && typeof path[1] === 'number' && last === 'color') return FlagOrColorField
 	if (path[0] === 'playerFlagGroupings' && typeof path[1] === 'number' && last === 'associations') return FlagPriorityMapField
 	if (path[0] === 'rbac' && path[1] === 'roles' && path.length === 3) return RolePermissionField
+	if (path[0] === 'rbac' && path.length === 2 && last === 'maxTimeouts') return MaxTimeoutsField
 	// the per-assignment `roles` lists, plus the flat "every member" list, are all role pickers keyed to defined roles
 	if (path[0] === 'rbac' && path[1] === 'roleAssignments' && (last === 'roles' || last === 'discord-server-member')) {
 		return AssignmentRolesField
@@ -1162,12 +1642,15 @@ export default function SettingsForm(
 	const formOptions = React.useMemo(() => ({ idPrefix }), [idPrefix])
 	const savedCtx = React.useMemo(() => ({ saved }), [saved])
 	const rbacInfo = useRbacInfo(value$)
+	const messageVars = useMessageVars(value$)
 	useRoleCascade(value$, onChange)
 	return (
 		<FormOptionsContext.Provider value={formOptions}>
 			<SavedRootContext.Provider value={savedCtx}>
 				<RbacContext.Provider value={rbacInfo}>
-					<ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />
+					<MessageVarsContext.Provider value={messageVars}>
+						<ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />
+					</MessageVarsContext.Provider>
 				</RbacContext.Provider>
 			</SavedRootContext.Provider>
 		</FormOptionsContext.Provider>

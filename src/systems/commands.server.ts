@@ -1,10 +1,13 @@
 import * as Arr from '@/lib/array'
 import { simpleUniqueStringMatch } from '@/lib/string'
 import { assertNever } from '@/lib/type-guards'
+import { formatHumanTime } from '@/lib/zod'
 import * as Messages from '@/messages.ts'
+import * as AAR from '@/models/admin-action-reasons.models'
 import type * as BM from '@/models/battlemetrics.models'
 import * as CMD from '@/models/command.models.ts'
 import type * as CS from '@/models/context-shared'
+import * as LP from '@/models/labeled-presets.models'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
@@ -15,9 +18,12 @@ import { initModule } from '@/server/logger'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
+import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
+import * as SquadServer from '@/systems/squad-server.server'
 import * as Teamswitches from '@/systems/teamswitches.server'
+import * as Timeouts from '@/systems/timeouts.server'
 import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
 
@@ -27,29 +33,64 @@ let log!: CS.Logger
 export function setup() {
 	log = module.getLogger()
 }
+
+type HandlerResult = { code: string; msg?: string } | undefined
+
+type HandlerCtx = {
+	ctx: C.Db & C.ServerSlice
+	msg: SM.RconEvents.ChatMessage
+	// the resolved chat sender (steam id guaranteed)
+	sender: SM.Player
+	user: USR.GuiOrChatUserId
+	reply: (opts: SquadRcon.WarnOptions) => Promise<void>
+	error: <T extends string>(reason: T, msg: string) => Promise<{ code: `err:${T}`; msg: string }>
+}
+
 export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvents.ChatMessage) {
-	if (!SM.CHAT_CHANNEL_TYPE.safeParse(msg.channelType)) {
+	if (!SM.CHAT_CHANNEL_TYPE.safeParse(msg.channelType).success) {
 		return {
 			code: 'err:invalid-chat-channel' as const,
 			msg: 'Invalid chat channel',
 		}
 	}
 
-	async function showError<T extends string>(reason: T, errorMessage: string) {
-		await SquadRcon.warn(ctx, msg.playerIds, errorMessage)
+	// all command feedback goes through reply(); admin-chat feedback carries the configured warnPrefix,
+	// feedback to public chats (and all player-directed warns elsewhere) stays unprefixed
+	const isAdminChat = msg.channelType === 'ChatAdmin'
+	async function reply(opts: SquadRcon.WarnOptions) {
+		await SquadRcon.warn(ctx, msg.playerIds, isAdminChat ? SquadRcon.withPrefixFlag(opts) : opts)
+	}
+	async function error<T extends string>(reason: T, errorMessage: string) {
+		await reply(errorMessage)
 		return {
 			code: `err:${reason}` as const,
 			msg: errorMessage,
 		}
 	}
 
+	// sender resolution happens before parsing so timeout aliases (which dispatch on unknown commands) share it
+	const playerRes = await SquadRcon.getPlayer(ctx, msg.playerIds)
+	if (playerRes.code === 'err:rcon') {
+		return await error('rcon-error', 'RCON error')
+	}
+	if (playerRes.code === 'err:player-not-found') {
+		return await error('player-not-found', 'Player not found')
+	}
+	const sender = playerRes.player
+	if (!sender.ids.steam) return { code: 'ok' as const }
+
+	const user: USR.GuiOrChatUserId = { steamId: sender.ids.steam }
+	const h: HandlerCtx = { ctx, msg, sender, user, reply, error }
+
 	const parseRes = CMD.parseCommand(msg, Settings.GLOBAL_SETTINGS.commands, Settings.GLOBAL_SETTINGS.commandPrefix)
 	if (parseRes.code === 'err:unknown-command') {
-		await SquadRcon.warn(ctx, msg.playerIds, parseRes.msg)
-		return
+		// real command strings win by construction: aliases are only consulted after parseCommand misses
+		const aliasRes = await tryTimeoutAlias(h)
+		if (aliasRes) return aliasRes
+		return await error('unknown-command', parseRes.msg)
 	}
 
-	const { cmd, args } = parseRes
+	const { cmd, tokens } = parseRes
 
 	log.info('Command received: %s', cmd)
 
@@ -57,534 +98,767 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 	if (!CMD.chatInScope(cmdConfig.scopes, msg.channelType)) {
 		const scopes = CMD.getScopesForChat(msg.channelType)
 		const correctChats = scopes.flatMap((s) => CMD.CHAT_SCOPE_MAPPINGS[s])
-		await SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.commands.wrongChat(correctChats))
-		return
+		return await error('wrong-chat', Messages.WARNS.commands.wrongChat(correctChats))
 	}
 
 	if (!cmdConfig.enabled) {
-		return await showError('command-disabled', `Command "${cmd}" is disabled`)
+		return await error('command-disabled', `Command "${cmd}" is disabled`)
 	}
-	const playerRes = await SquadRcon.getPlayer(ctx, msg.playerIds)
-	if (playerRes.code === 'err:rcon') {
-		return await showError('rcon-error', 'RCON error')
+
+	const resolved = await resolveArgs(ctx, cmd, cmdConfig, tokens, sender)
+	if (resolved.code !== 'ok') {
+		return await error('invalid-args', resolved.msg)
 	}
-	if (playerRes.code === 'err:player-not-found') {
-		return await showError('player-not-found', 'Player not found')
+
+	// TS cannot correlate handlers[cmd] with CommandArgs<typeof cmd> across the union, so the args
+	// are cast at this single dispatch point; each handler's signature is still fully typed
+	return await handlers[cmd](h, resolved.args as never)
+}
+
+// configurable fixed-duration kick aliases (e.g. !yeet = kick with 2h). Admin chat only.
+async function tryTimeoutAlias(h: HandlerCtx): Promise<HandlerResult | undefined> {
+	if (h.msg.channelType !== 'ChatAdmin') return undefined
+	const words = h.msg.message.split(/\s+/)
+	const token = words[0].slice(1).toLowerCase()
+	const alias = Settings.GLOBAL_SETTINGS.timeoutCommandAliases.find(a => a.string.toLowerCase() === token)
+	if (!alias) return undefined
+	log.info('Timeout alias received: %s', alias.string)
+	const resolved = await resolveArgDefs(h.ctx, CMD.TIMEOUT_ALIAS_ARG_DEFS, words.slice(1), h.sender)
+	if (resolved.code === 'err:missing-arg') {
+		return await h.error(
+			'invalid-args',
+			`Usage: ${Settings.GLOBAL_SETTINGS.commandPrefix}${alias.string} ${CMD.formatArgSignature(CMD.TIMEOUT_ALIAS_ARG_DEFS)}`,
+		)
 	}
-	const player = playerRes.player
-	if (!player.ids.steam) return
+	if (resolved.code !== 'ok') return await h.error('invalid-args', resolved.msg)
+	const args = resolved.args as CMD.ResolvedArgs<typeof CMD.TIMEOUT_ALIAS_ARG_DEFS>
+	return await executeKick(h, [args.player], alias.duration, args.reason, args.player.ids.username)
+}
 
-	const user: USR.GuiOrChatUserId = { steamId: player.ids.steam }
-	switch (cmd) {
-		case 'startVote': {
-			const res = await Vote.startVote(ctx, { initiator: user })
-			switch (res.code) {
-				case 'err:permission-denied': {
-					return await showError('permission-denied', Messages.WARNS.permissionDenied(res))
-				}
-				case 'err:invalid-item-type':
-				case 'err:public-vote-not-first':
-				case 'err:vote-not-allowed':
-				case 'err:item-not-found':
-				case 'err:vote-in-progress':
-				case 'err:editing-in-progress': {
-					return await showError('vote-error', res.msg)
-				}
-				case 'err:rcon': {
-					throw new Error(`RCON error`)
-				}
-				case 'ok':
-					return { code: 'ok' as const }
-				default:
-					assertNever(res)
-					return
-			}
+// resolves a chat team token: 1|2, normalized A|B, or the faction name of the current layer
+function resolveTeamToken(currentMatch: MH.MatchDetails, token: string): SM.TeamId | null {
+	const teamArg = token.toUpperCase()
+	if (teamArg === '1') return 1
+	if (teamArg === '2') return 2
+	if (teamArg === 'A' || teamArg === 'B') return MH.getDenormedTeamId(teamArg as MH.NormedTeamId, currentMatch.ordinal)
+	const layer = L.toLayer(currentMatch.layerId)
+	if (layer.Faction_1?.toUpperCase() === teamArg) return 1
+	if (layer.Faction_2?.toUpperCase() === teamArg) return 2
+	return null
+}
+
+type TeamsState = { players: SM.Player[]; squads: SM.Squad[] }
+
+// resolves a [team] <squad> token window: team falls back to the caller's team; squad by "cmd" alias,
+// in-game number, or unique name substring
+function resolveSquadArg(
+	teamsState: TeamsState,
+	currentMatch: MH.MatchDetails,
+	sender: SM.Player,
+	window: string[],
+): { code: 'ok'; value: CMD.ResolvedSquadArg } | { code: 'err'; msg: string } {
+	const teamInput = window.length === 2 ? window[0] : undefined
+	const squadInput = window.length === 2 ? window[1] : window[0]
+
+	let rawTeamId: SM.TeamId | null = null
+	if (!teamInput) {
+		if (!sender.teamId) return { code: 'err', msg: 'You are not on a team; specify one explicitly' }
+		rawTeamId = sender.teamId
+	} else {
+		rawTeamId = resolveTeamToken(currentMatch, teamInput)
+		if (!rawTeamId) {
+			return { code: 'err', msg: `Unknown team "${teamInput}". Use 1/2, A/B, or faction name.` }
 		}
-		case 'abortVote': {
-			const res = await Vote.abortVote(ctx, { aborter: user })
-			switch (res.code) {
-				case 'ok':
-					return { code: 'ok' as const }
-				case 'err:no-vote-in-progress':
-					return await showError('no-vote-in-progress', Messages.WARNS.vote.noVoteInProgress)
-				default: {
-					assertNever(res)
-					return
-				}
-			}
+	}
+	const teamLabel = teamInput ?? String(rawTeamId)
+
+	const squadsOnTeam = teamsState.squads.filter(s => s.teamId === rawTeamId)
+	const squadNum = parseInt(squadInput)
+	let matchedSquad: SM.Squad | null = null
+	if (squadInput.toLowerCase() === 'cmd') {
+		matchedSquad = squadsOnTeam.find(s => SM.isCommandSquad(s)) ?? null
+		if (!matchedSquad) return { code: 'err', msg: `No command squad found on team ${teamLabel}` }
+	} else if (!isNaN(squadNum)) {
+		matchedSquad = squadsOnTeam.find(s => s.squadId === squadNum) ?? null
+		if (!matchedSquad) return { code: 'err', msg: `No squad ${squadNum} found on team ${teamLabel}` }
+	} else {
+		const squadMatchRes = simpleUniqueStringMatch(squadsOnTeam.map(s => s.squadName.toLowerCase()), squadInput.toLowerCase())
+		if (squadMatchRes.code === 'err:not-found') {
+			return { code: 'err', msg: `No squad matches "${squadInput}" on team ${teamLabel}` }
 		}
-
-		case 'endVoteEarly': {
-			const res = await Vote.endVote(ctx, { reason: 'ended-early', endedBy: user })
-			switch (res.code) {
-				case 'ok':
-					return { code: 'ok' as const }
-				case 'err:no-vote-in-progress':
-					return await showError('no-vote-in-progress', Messages.WARNS.vote.noVoteInProgress)
-				case 'err:rcon':
-					return await showError('rcon', res.msg)
-				default: {
-					assertNever(res)
-					return
-				}
-			}
+		if (squadMatchRes.code === 'err:multiple-matches') {
+			return { code: 'err', msg: `${squadMatchRes.count} squads match "${squadInput}"` }
 		}
+		matchedSquad = squadsOnTeam[squadMatchRes.matched]
+	}
 
-		case 'help': {
-			await SquadRcon.warn(
-				ctx,
-				msg.playerIds,
-				Messages.WARNS.commands.help(Settings.GLOBAL_SETTINGS.commands, Settings.GLOBAL_SETTINGS.commandPrefix),
-			)
-			return { code: 'ok' as const }
+	const players = teamsState.players.filter(p => p.teamId === rawTeamId && p.squadId === matchedSquad.squadId)
+	return { code: 'ok', value: { teamId: rawTeamId, teamLabel, squad: matchedSquad, players } }
+}
+
+// central arg resolution: token windows via the declared arg kinds, then per-kind resolution.
+// every failure surfaces as a single message the caller sends back to the sender.
+async function resolveArgs<Id extends CMD.CommandId>(
+	ctx: C.Db & C.ServerSlice,
+	cmd: Id,
+	cmdConfig: CMD.CommandConfig,
+	tokens: string[],
+	sender: SM.Player,
+): Promise<{ code: 'ok'; args: CMD.CommandArgs<Id> } | { code: 'err'; msg: string }> {
+	const defs = CMD.COMMAND_DECLARATIONS[cmd].args as readonly CMD.ArgDef[]
+	const res = await resolveArgDefs(ctx, defs, tokens, sender)
+	if (res.code === 'err:missing-arg') {
+		return { code: 'err', msg: CMD.formatUsage(cmd, cmdConfig, Settings.GLOBAL_SETTINGS.commandPrefix) }
+	}
+	if (res.code !== 'ok') return res
+	return { code: 'ok', args: res.args as CMD.CommandArgs<Id> }
+}
+
+async function resolveArgDefs(
+	ctx: C.Db & C.ServerSlice,
+	defs: readonly CMD.ArgDef[],
+	tokens: string[],
+	sender: SM.Player,
+): Promise<
+	{ code: 'ok'; args: Record<string, unknown> } | { code: 'err'; msg: string } | { code: 'err:missing-arg'; argName: string }
+> {
+	let teamsState: TeamsState | undefined
+	let currentMatch: MH.MatchDetails | undefined
+	if (defs.some(d => d.kind === 'player' || d.kind === 'squad')) {
+		const teamsRes = await ctx.server.teams.get(ctx)
+		if (teamsRes.code !== 'ok') return { code: 'err', msg: 'Failed to fetch the current teams (RCON error)' }
+		teamsState = teamsRes
+		currentMatch = await MatchHistory.getCurrentMatch(ctx)
+	}
+
+	const preds: CMD.AssignPredicates = {
+		isTeamToken: t => (currentMatch ? resolveTeamToken(currentMatch, t) !== null : false),
+		isPresetToken: (action, t) => !!LP.findByLabelOrAlias(AAR.reasonsForAction(Settings.GLOBAL_SETTINGS.adminActionReasons, action), t),
+	}
+	const assignRes = CMD.assignArgTokens(defs, tokens, preds)
+	if (assignRes.code === 'err:missing-arg') return assignRes
+
+	const out: Record<string, unknown> = {}
+	for (const def of defs) {
+		const window = assignRes.windows[def.name]
+		if (window === undefined) {
+			out[def.name] = undefined
+			continue
 		}
-		case 'showNext': {
-			await LayerQueue.warnShowNext(ctx, msg.playerIds, { repeat: 3 })
-			return { code: 'ok' as const }
-		}
-		case 'disableSlmUpdates':
-		case 'enableSlmUpdates': {
-			const res = await LayerQueue.toggleUpdatesToSquadServer({ ctx, input: { disabled: cmd === 'disableSlmUpdates' } })
-			switch (res.code) {
-				case 'ok':
-					return { code: 'ok' as const }
-				case 'err:permission-denied':
-					await SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.permissionDenied(res))
-					return res
-				default:
-					assertNever(res)
-					return res
-			}
-		}
-		case 'getSlmUpdatesEnabled': {
-			const res = await LayerQueue.getSlmUpdatesEnabled(ctx)
-			await SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.slmUpdatesStatus(res.enabled))
-			return { code: 'ok' as const }
-		}
-		case 'linkSteamAccount': {
-			if (!msg.playerIds.steam) {
-				await SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.commands.missingSteamId())
-				return { code: 'err:missing-steam-id' as const }
-			}
-			const res = await Users.completeSteamAccountLink(ctx, args.code, BigInt(msg.playerIds.steam))
-			switch (res.code) {
-				case 'ok':
-					await SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.commands.steamAccountLinked(res.linkedUsername))
-					return { code: 'ok' as const }
-				case 'err:invalid-code':
-				case 'err:already-linked':
-				case 'err:discord-user-not-found':
-					await SquadRcon.warn(ctx, msg.playerIds, res.msg)
-					return res
-				default:
-					assertNever(res)
-					// return needed for typechecking the outer switch Sadge
-					return res
-			}
-		}
-		case 'requestFeedback': {
-			const res = await LayerQueue.requestFeedback(ctx, player.ids.username, args.number)
-			switch (res.code) {
-				case 'err:empty':
-				case 'err:not-found': {
-					await SquadRcon.warn(ctx, msg.playerIds, 'Item not found')
-					return { code: 'err:not-found' as const }
-				}
-				case 'ok':
-					break
-				default: {
-					assertNever(res)
-					return res
-				}
-			}
-			break
-		}
-
-		case 'switchNow': {
-			if (!args.player) return await showError('missing-arg', 'Usage: /switchnow <player>')
-			const teamsStateRes = await ctx.server.teams.get(ctx)
-			if (teamsStateRes.code !== 'ok') return teamsStateRes
-			const matchedPlayerRes = SM.PlayerIds.fuzzyMatchIdentifierUniquely(teamsStateRes.players, p => p.ids, args.player)
-			if (matchedPlayerRes.code === 'err:not-found') {
-				return await showError('not-found', `No player matches found for "${args.player}"`)
-			}
-			if (matchedPlayerRes.code === 'err:multiple-matches') {
-				return await showError('multiple-matches', `${matchedPlayerRes.count} players match "${args.player}"`)
-			}
-			const target = matchedPlayerRes.matched
-			if (!target.teamId) return await showError('no-team', `Player "${target.ids.username}" is not on a team`)
-			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-			const targetNormedTeam = MH.getNormedTeamId(target.teamId, currentMatch.ordinal)
-			const toTeam: MH.NormedTeamId = targetNormedTeam === 'A' ? 'B' : 'A'
-			const source: USR.GuiOrChatUserId = { steamId: player.ids.steam }
-			const playerId = SM.PlayerIds.getPlayerId(target.ids)
-			const errors = await Teamswitches.dispatchSwitchNow(ctx, new Map([[playerId, { toTeam, source }]]), source)
-			if (errors.length > 0) {
-				const err = errors[0] as TSW.OpError
-				if (err.code === 'err:currently-switching') {
-					return await showError('currently-switching', 'A team switch is currently in progress')
-				}
-			}
-			await SquadRcon.warn(ctx, msg.playerIds, `Switching ${target.ids.username} to team ${toTeam} now`)
-			return { code: 'ok' as const }
-		}
-
-		case 'switchNext': {
-			if (!args.player) return await showError('missing-arg', 'Usage: /switchnext <player>')
-			const teamsStateRes = await ctx.server.teams.get(ctx)
-			if (teamsStateRes.code !== 'ok') return teamsStateRes
-			const matchedPlayerRes = SM.PlayerIds.fuzzyMatchIdentifierUniquely(teamsStateRes.players, p => p.ids, args.player)
-			if (matchedPlayerRes.code === 'err:not-found') {
-				return await showError('not-found', `No player matches found for "${args.player}"`)
-			}
-			if (matchedPlayerRes.code === 'err:multiple-matches') {
-				return await showError('multiple-matches', `${matchedPlayerRes.count} players match "${args.player}"`)
-			}
-			const target = matchedPlayerRes.matched
-			if (!target.teamId) return await showError('no-team', `Player "${target.ids.username}" is not on a team`)
-			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-			const targetNormedTeam = MH.getNormedTeamId(target.teamId, currentMatch.ordinal)
-			const toTeam: MH.NormedTeamId = targetNormedTeam === 'A' ? 'B' : 'A'
-			const source: USR.GuiOrChatUserId = { steamId: player.ids.steam }
-			const playerId = SM.PlayerIds.getPlayerId(target.ids)
-			const errors = await Teamswitches.dispatchSwitchNext(ctx, new Map([[playerId, { toTeam, source }]]))
-			if (errors.length > 0) {
-				const err = errors[0] as TSW.OpError
-				if (err.code === 'err:currently-switching') {
-					return await showError('currently-switching', 'A team switch is currently in progress')
-				}
-				if (err.code === 'err:already-marked') {
-					return await showError('already-marked', `${target.ids.username} is already marked for teamswitching`)
-				}
-			}
-			await SquadRcon.warn(ctx, msg.playerIds, `Queued ${target.ids.username} to switch teams on next map`)
-			return { code: 'ok' as const }
-		}
-
-		case 'switchSquadNow':
-		case 'switchSquadNext': {
-			// single-arg form: only a squad is given, team defaults to the caller's team
-			const teamInput = args.squad ? args.team : undefined
-			const squadInput = args.squad ?? args.team
-			if (!squadInput) {
-				return await showError(
-					'missing-arg',
-					`Usage: /${cmd === 'switchSquadNow' ? 'switchsquadnow' : 'switchsquadnext'} [team] <squad>`,
-				)
-			}
-			const teamsStateRes = await ctx.server.teams.get(ctx)
-			if (teamsStateRes.code !== 'ok') return teamsStateRes
-			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-
-			// resolve raw team ID (1|2) from input, or fall back to the caller's team
-			let rawTeamId: SM.TeamId | null = null
-			if (!teamInput) {
-				if (!player.teamId) return await showError('no-team', 'You are not on a team; specify one explicitly')
-				rawTeamId = player.teamId
-			} else {
-				const teamArg = teamInput.toUpperCase()
-				if (teamArg === '1') {
-					rawTeamId = 1
-				} else if (teamArg === '2') {
-					rawTeamId = 2
-				} else if (teamArg === 'A' || teamArg === 'B') {
-					rawTeamId = MH.getDenormedTeamId(teamArg as MH.NormedTeamId, currentMatch.ordinal)
-				} else {
-					const layer = L.toLayer(currentMatch.layerId)
-					if (layer.Faction_1?.toUpperCase() === teamArg) rawTeamId = 1
-					else if (layer.Faction_2?.toUpperCase() === teamArg) rawTeamId = 2
-				}
-				if (!rawTeamId) {
-					return await showError('unknown-team', `Unknown team "${teamInput}". Use 1/2, A/B, or faction name.`)
-				}
-			}
-			const teamLabel = teamInput ?? String(rawTeamId)
-
-			// resolve squad by "cmd" alias, number or name
-			const squadsOnTeam = teamsStateRes.squads.filter(s => s.teamId === rawTeamId)
-			const squadNum = parseInt(squadInput)
-			let matchedSquad: SM.Squad | null = null
-			if (squadInput.toLowerCase() === 'cmd') {
-				matchedSquad = squadsOnTeam.find(s => s.squadName === 'Command Squad') ?? null
-				if (!matchedSquad) return await showError('not-found', `No command squad found on team ${teamLabel}`)
-			} else if (!isNaN(squadNum)) {
-				matchedSquad = squadsOnTeam.find(s => s.squadId === squadNum) ?? null
-				if (!matchedSquad) return await showError('not-found', `No squad ${squadNum} found on team ${teamLabel}`)
-			} else {
-				const squadMatchRes = simpleUniqueStringMatch(squadsOnTeam.map(s => s.squadName.toLowerCase()), squadInput.toLowerCase())
-				if (squadMatchRes.code === 'err:not-found') {
-					return await showError('not-found', `No squad matches "${squadInput}" on team ${teamLabel}`)
-				}
-				if (squadMatchRes.code === 'err:multiple-matches') {
-					return await showError('multiple-matches', `${squadMatchRes.count} squads match "${squadInput}"`)
-				}
-				matchedSquad = squadsOnTeam[squadMatchRes.matched]
-			}
-
-			const squadPlayers = teamsStateRes.players.filter(p => p.teamId === rawTeamId && p.squadId === matchedSquad!.squadId)
-			if (squadPlayers.length === 0) {
-				return await showError('empty-squad', `Squad "${matchedSquad.squadName}" has no players`)
-			}
-
-			const source: USR.GuiOrChatUserId = { steamId: player.ids.steam }
-			if (cmd === 'switchSquadNow') {
-				const switches: Map<SM.PlayerId, { toTeam: MH.NormedTeamId; source: USR.GuiOrChatUserId }> = new Map()
-				for (const p of squadPlayers) {
-					const normed = MH.getNormedTeamId(p.teamId!, currentMatch.ordinal)
-					const toTeam: MH.NormedTeamId = normed === 'A' ? 'B' : 'A'
-					switches.set(SM.PlayerIds.getPlayerId(p.ids), { toTeam, source })
-				}
-				const errors = await Teamswitches.dispatchSwitchNow(ctx, switches, source)
-				if (errors.length > 0) {
-					const err = errors[0] as TSW.OpError
-					if (err.code === 'err:currently-switching') {
-						return await showError('currently-switching', 'A team switch is currently in progress')
-					}
-				}
-				await SquadRcon.warn(
-					ctx,
-					msg.playerIds,
-					`Switching ${squadPlayers.length} players from "${matchedSquad.squadName}" to the opposite team now`,
-				)
-			} else {
-				const nextSwitches: TSW.TeamswitchCollection = new Map(
-					squadPlayers.map(p => {
-						const normed = MH.getNormedTeamId(p.teamId!, currentMatch.ordinal)
-						const toTeam: MH.NormedTeamId = normed === 'A' ? 'B' : 'A'
-						return [SM.PlayerIds.getPlayerId(p.ids), { toTeam, source }] as const
-					}),
-				)
-				const errors = await Teamswitches.dispatchSwitchNext(ctx, nextSwitches)
-				const alreadyMarked = errors.filter(e => (e as TSW.OpError).code === 'err:already-marked').length
-				if (alreadyMarked === nextSwitches.size) {
-					return await showError('already-marked', `All players in "${matchedSquad.squadName}" are already marked for teamswitching`)
-				}
-				if (errors.some(e => (e as TSW.OpError).code === 'err:currently-switching')) {
-					return await showError('currently-switching', 'A team switch is currently in progress')
-				}
-				const queued = nextSwitches.size - alreadyMarked
-				await SquadRcon.warn(ctx, msg.playerIds, `Queued ${queued} players from "${matchedSquad.squadName}" to switch teams on next map`)
-			}
-			return { code: 'ok' as const }
-		}
-
-		case 'swaps': {
-			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-			const layer = L.toLayer(currentMatch.layerId)
-			const switches = ctx.teamswitches.session.state.savedSwitches
-
-			if (switches.size === 0) {
-				await SquadRcon.warn(ctx, msg.playerIds, 'No swaps queued')
-				return { code: 'ok' as const }
-			}
-
-			const factionA = layer[MH.getTeamNormalizedFactionProp(currentMatch.ordinal, 'A')] ?? 'Team A'
-			const factionB = layer[MH.getTeamNormalizedFactionProp(currentMatch.ordinal, 'B')] ?? 'Team B'
-
-			const toA: SM.PlayerId[] = []
-			const toB: SM.PlayerId[] = []
-			for (const [playerId, sw] of switches) {
-				if (sw.toTeam === 'A') toA.push(playerId)
-				else toB.push(playerId)
-			}
-
-			const parts = [
-				toA.length > 0 ? `${toA.length} to current ${factionA}` : null,
-				toB.length > 0 ? `${toB.length} to current ${factionB}` : null,
-			].filter(Boolean)
-			const header = `Swaps: ${parts.join(', ')}`
-
-			if (switches.size <= 8) {
-				const teamsStateRes = await ctx.server.teams.get(ctx)
-				const players = teamsStateRes.code === 'ok' ? teamsStateRes.players : []
-				const getName = (playerId: SM.PlayerId) => SM.PlayerIds.find(players, p => p.ids, playerId)?.ids.username ?? playerId
-				const lines = [header]
-				if (toA.length > 0) {
-					lines.push(`\nto ${factionA}:`)
-					for (const id of toA) lines.push(getName(id))
-				}
-				if (toB.length > 0) {
-					lines.push(`\nto ${factionB}:`)
-					for (const id of toB) lines.push(getName(id))
-				}
-				await SquadRcon.warn(ctx, msg.playerIds, lines.join('\n'))
-			} else {
-				await SquadRcon.warn(ctx, msg.playerIds, header)
-			}
-			return { code: 'ok' as const }
-		}
-
-		case 'clearSwitches': {
-			const prevCount = ctx.teamswitches.session.state.savedSwitches.size
-			if (prevCount === 0) {
-				await SquadRcon.warn(ctx, msg.playerIds, 'No teamswitches queued')
-				return { code: 'ok' as const }
-			}
-			const source: USR.GuiOrChatUserId = { steamId: player.ids.steam }
-			await Teamswitches.dispatchClearSwitches(ctx, source)
-			await SquadRcon.warn(ctx, msg.playerIds, `Cleared ${prevCount} queued teamswitch${prevCount !== 1 ? 'es' : ''}`)
-			return { code: 'ok' as const }
-		}
-
-		case 'flag': {
-			const teamsStateRes = await ctx.server.teams.get(ctx)
-			if (teamsStateRes.code !== 'ok') {
-				return teamsStateRes
-			}
-			if (!args.player) {
-				return await showError('missing-player', 'Please provide a player and a flag')
-			}
-
-			if (!args.flag) {
-				return await showError('missing-flag', 'Please provide a flag')
-			}
-			let matchedPlayerRes = SM.PlayerIds.fuzzyMatchIdentifierUniquely(teamsStateRes.players, p => p.ids, args.player)
-			if (matchedPlayerRes.code === 'err:not-found') {
-				return await showError('not-found', `No player matches found for "${args.player}.\nPlayer must be on the server."`)
-			}
-
-			if (matchedPlayerRes.code === 'err:multiple-matches') {
-				return await showError('multiple-matches', `Multiple(${matchedPlayerRes.count}) player matches found for "${args.player}".`)
-			}
-
-			const flags = await Battlemetrics.getOrgFlags(ctx)
-
-			const matchedFlagRes = simpleUniqueStringMatch(flags.map(f => f.name), args.flag)
-
-			if (matchedFlagRes.code === 'err:not-found') {
-				return await showError('not-found', `No flag matches found for "${args.flag}"`)
-			}
-
-			if (matchedFlagRes.code === 'err:multiple-matches') {
-				return await showError('multiple-matches', `Multiple(${matchedFlagRes.count}) flag matches found for "${args.flag}".`)
-			}
-
-			const flagToUpdate = flags[matchedFlagRes.matched]
-			const reason = args.reason?.trim()
-			if (Settings.GLOBAL_SETTINGS.playerFlagsRequiringNote.includes(flagToUpdate.id) && !reason) {
-				return await showError(
-					'note-required',
-					`Flag "${flagToUpdate.name}" requires a reason: ${Settings.GLOBAL_SETTINGS.commandPrefix}flag ${args.player} ${args.flag} <reason>`,
-				)
-			}
-			const targetIds = matchedPlayerRes.matched.ids
-			const bmPlayerData = await Battlemetrics.fetchSinglePlayerBmData(ctx, targetIds)
-			if (!bmPlayerData) {
-				return await showError('not-in-battlemetrics', `Unable to resolve player "${args.player}" in battlemetrics`)
-			}
-
-			const res = await Battlemetrics.addPlayerFlags(ctx, bmPlayerData.bmPlayerId, [flagToUpdate.id])
-			if (res.code === 'err:no-flags') return
-			if (res.code === 'player-already-has-flag') {
-				return await showError(res.code, `Player "${targetIds.username}" is already assigned flag "${flagToUpdate.name}"`)
-			}
-			if (res.code === 'ok') {
-				const note = [
-					`Flag "${flagToUpdate.name}" added by ${player.ids.username} (Steam ${player.ids.steam}) via SLM.`,
-					...(reason ? [`Reason: ${reason}`] : []),
-				].join('\n')
-				const noteAdded = await Battlemetrics.addPlayerNote(ctx, bmPlayerData.bmPlayerId, note).then(() => true).catch((err) => {
-					log.warn({ err, targetIds }, 'failed to post BM note after adding flag')
-					return false
-				})
-				await Battlemetrics.invalidateAndRefetchPlayer(ctx, targetIds.eos)
-				await SquadRcon.warn(
-					ctx,
-					msg.playerIds,
-					`Added flag "${flagToUpdate.name}" to ${targetIds.username}'s BM profile`
-						+ (noteAdded ? '' : ', but failed to post the accompanying note'),
-				)
-				return
-			}
-			assertNever(res)
-			break
-		}
-
-		case 'removeFlag': {
-			const teamsStateRes = await ctx.server.teams.get(ctx)
-			if (teamsStateRes.code !== 'ok') {
-				return teamsStateRes
-			}
-			const matchedPlayerRes = SM.PlayerIds.fuzzyMatchIdentifierUniquely(teamsStateRes.players, p => p.ids, args.player)
-			if (matchedPlayerRes.code === 'err:not-found') {
-				return await showError('not-found', `No player matches found for "${args.player}.\nPlayer must be on server."`)
-			}
-			if (matchedPlayerRes.code === 'err:multiple-matches') {
-				return await showError('multiple-matches', `Multiple(${matchedPlayerRes.count}) player matches found for "${args.player}".`)
-			}
-
-			const flags = await Battlemetrics.getOrgFlags(ctx)
-			const matchedFlagRes = simpleUniqueStringMatch(flags.map(f => f.name), args.flag)
-			if (matchedFlagRes.code === 'err:not-found') {
-				return await showError('not-found', `No flag matches found for "${args.flag}"`)
-			}
-			if (matchedFlagRes.code === 'err:multiple-matches') {
-				return await showError('multiple-matches', `Multiple(${matchedFlagRes.count}) flag matches found for "${args.flag}".`)
-			}
-
-			const flagToRemove = flags[matchedFlagRes.matched]
-			const bmPlayerData = await Battlemetrics.fetchSinglePlayerBmData(ctx, matchedPlayerRes.matched.ids)
-			if (!bmPlayerData) {
-				return await showError('not-in-battlemetrics', `Unable to resolve player "${args.player}" in battlemetrics`)
-			}
-			if (!bmPlayerData.flagIds.includes(flagToRemove.id)) {
-				return await showError('not-found', `Player "${matchedPlayerRes.matched.ids.username}" does not have flag "${flagToRemove.name}".`)
-			}
-
-			const [status] = await Battlemetrics.removePlayerFlags(ctx, bmPlayerData.bmPlayerId, [flagToRemove.id])
-			if (status === 'already-removed') {
-				return await showError(
-					'already-removed',
-					`Flag "${flagToRemove.name}" is already removed from ${matchedPlayerRes.matched.ids.username}'s BM profile`,
-				)
-			}
-			await Battlemetrics.invalidateAndRefetchPlayer(ctx, matchedPlayerRes.matched.ids.eos)
-			await SquadRcon.warn(
-				ctx,
-				msg.playerIds,
-				`Removed flag "${flagToRemove.name}" from ${matchedPlayerRes.matched.ids.username}'s BM profile`,
-			)
-			break
-		}
-
-		case 'listFlags': {
-			function formatFlagList(flags: BM.PlayerFlag[]) {
-				if (flags.length === 0) {
-					return 'none'
-				}
-				return Arr.paged(flags.map(f => f.name), 4).map(g => g.join('\n'))
-			}
-			const flags = await Battlemetrics.getOrgFlags(ctx)
-
-			if (!args.player) {
-				await SquadRcon.warn(ctx, msg.playerIds, formatFlagList(flags))
+		switch (def.kind) {
+			case 'string':
+				out[def.name] = window[0]
+				break
+			case 'int': {
+				const res = CMD.coerceIntArg(def.name, window[0])
+				if (res.code !== 'ok') return { code: 'err', msg: res.msg }
+				out[def.name] = res.value
 				break
 			}
+			case 'duration': {
+				const res = CMD.resolveDurationArg(def.name, window[0])
+				if (res.code !== 'ok') return { code: 'err', msg: res.msg }
+				out[def.name] = res.value
+				break
+			}
+			case 'text':
+				out[def.name] = window.join(' ')
+				break
+			case 'player': {
+				const res = SM.PlayerIds.fuzzyMatchIdentifierUniquely(teamsState!.players, p => p.ids, window[0])
+				if (res.code === 'err:not-found') return { code: 'err', msg: `No player matches found for "${window[0]}"` }
+				if (res.code === 'err:multiple-matches') return { code: 'err', msg: `${res.count} players match "${window[0]}"` }
+				out[def.name] = res.matched
+				break
+			}
+			case 'squad': {
+				const res = resolveSquadArg(teamsState!, currentMatch!, sender, window)
+				if (res.code !== 'ok') return res
+				out[def.name] = res.value
+				break
+			}
+			case 'reason': {
+				const res = CMD.resolveReasonArg(Settings.GLOBAL_SETTINGS.adminActionReasons, def.action, window)
+				if (res.code !== 'ok') return { code: 'err', msg: res.msg }
+				out[def.name] = res.value
+				break
+			}
+			case 'preset-reason': {
+				const res = CMD.resolveReasonToken(Settings.GLOBAL_SETTINGS.adminActionReasons, def.action, window[0])
+				if (res.code !== 'ok') return { code: 'err', msg: res.msg }
+				out[def.name] = res.reason
+				break
+			}
+			case 'broadcast': {
+				const res = CMD.resolveBroadcastArg(Settings.GLOBAL_SETTINGS.broadcasts, window)
+				if (res.code !== 'ok') return { code: 'err', msg: res.msg }
+				out[def.name] = res.value
+				break
+			}
+			default:
+				def satisfies never
+		}
+	}
+	return { code: 'ok', args: out }
+}
 
-			const teamsStateRes = await ctx.server.teams.get(ctx)
-			if (teamsStateRes.code !== 'ok') {
-				return teamsStateRes
-			}
-			const matchedPlayerRes = SM.PlayerIds.fuzzyMatchIdentifierUniquely(teamsStateRes.players, p => p.ids, args.player)
-			if (matchedPlayerRes.code === 'err:not-found') {
-				return await showError('not-found', `No player matches found for "${args.player}"`)
-			}
-			if (matchedPlayerRes.code === 'err:multiple-matches') {
-				return await showError('multiple-matches', `Multiple(${matchedPlayerRes.count}) player matches found for "${args.player}".`)
-			}
+function ingameActor(sender: SM.Player): { type: 'ingame-user'; playerId: SM.PlayerId } {
+	return { type: 'ingame-user', playerId: SM.PlayerIds.getPlayerId(sender.ids) }
+}
 
-			const bmPlayerData = await Battlemetrics.fetchSinglePlayerBmData(ctx, matchedPlayerRes.matched.ids)
-			if (!bmPlayerData) {
-				return await showError('not-in-battlemetrics', `Unable to resolve player "${args.player}" in battlemetrics`)
-			}
-			const playerFlags = flags.filter(f => bmPlayerData.flagIds.includes(f.id))
+// switching players to the other team is expressed relative to the current match ordinal
+function oppositeNormedTeam(currentMatch: MH.MatchDetails, teamId: SM.TeamId): MH.NormedTeamId {
+	return MH.getNormedTeamId(teamId, currentMatch.ordinal) === 'A' ? 'B' : 'A'
+}
 
-			await SquadRcon.warn(ctx, msg.playerIds, formatFlagList(playerFlags))
-			break
+// exhaustive by construction: a new CommandId without a handler is a compile error
+const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<Id>) => Promise<HandlerResult> } = {
+	help: async (h) => {
+		await h.reply(
+			Messages.WARNS.commands.help(
+				Settings.GLOBAL_SETTINGS.commands,
+				Settings.GLOBAL_SETTINGS.commandPrefix,
+				Settings.GLOBAL_SETTINGS.timeoutCommandAliases,
+			),
+		)
+		return { code: 'ok' }
+	},
+
+	startVote: async (h) => {
+		const res = await Vote.startVote(h.ctx, { initiator: h.user })
+		switch (res.code) {
+			case 'err:permission-denied':
+				return await h.error('permission-denied', Messages.WARNS.permissionDenied(res))
+			case 'err:invalid-item-type':
+			case 'err:public-vote-not-first':
+			case 'err:vote-not-allowed':
+			case 'err:item-not-found':
+			case 'err:vote-in-progress':
+			case 'err:editing-in-progress':
+				return await h.error('vote-error', res.msg)
+			case 'err:rcon':
+				throw new Error(`RCON error`)
+			case 'ok':
+				return { code: 'ok' }
+			default:
+				assertNever(res)
+		}
+	},
+
+	abortVote: async (h) => {
+		const res = await Vote.abortVote(h.ctx, { aborter: h.user })
+		switch (res.code) {
+			case 'ok':
+				return { code: 'ok' }
+			case 'err:no-vote-in-progress':
+				return await h.error('no-vote-in-progress', Messages.WARNS.vote.noVoteInProgress)
+			default:
+				assertNever(res)
+		}
+	},
+
+	endVoteEarly: async (h) => {
+		const res = await Vote.endVote(h.ctx, { reason: 'ended-early', endedBy: h.user })
+		switch (res.code) {
+			case 'ok':
+				return { code: 'ok' }
+			case 'err:no-vote-in-progress':
+				return await h.error('no-vote-in-progress', Messages.WARNS.vote.noVoteInProgress)
+			case 'err:rcon':
+				return await h.error('rcon', res.msg)
+			default:
+				assertNever(res)
+		}
+	},
+
+	showNext: async (h) => {
+		await LayerQueue.warnShowNext(h.ctx, h.msg.playerIds)
+		return { code: 'ok' }
+	},
+
+	enableSlmUpdates: (h) => toggleSlmUpdates(h, false),
+	disableSlmUpdates: (h) => toggleSlmUpdates(h, true),
+
+	getSlmUpdatesEnabled: async (h) => {
+		const res = await LayerQueue.getSlmUpdatesEnabled(h.ctx)
+		await h.reply(Messages.WARNS.slmUpdatesStatus(res.enabled))
+		return { code: 'ok' }
+	},
+
+	requestFeedback: async (h, args) => {
+		const res = await LayerQueue.requestFeedback(h.ctx, h.sender.ids.username, args.number)
+		switch (res.code) {
+			case 'err:empty':
+			case 'err:not-found':
+				return await h.error('not-found', 'Item not found')
+			case 'ok':
+				return { code: 'ok' }
+			default:
+				assertNever(res)
+		}
+	},
+
+	switchNow: async (h, args) => {
+		const target = args.player
+		if (!target.teamId) return await h.error('no-team', `Player "${target.ids.username}" is not on a team`)
+		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
+		const toTeam = oppositeNormedTeam(currentMatch, target.teamId)
+		const playerId = SM.PlayerIds.getPlayerId(target.ids)
+		const errors = await Teamswitches.dispatchSwitchNow(h.ctx, new Map([[playerId, { toTeam, source: h.user }]]), h.user)
+		if (errors.length > 0) {
+			const err = errors[0] as TSW.OpError
+			if (err.code === 'err:currently-switching') {
+				return await h.error('currently-switching', 'A team switch is currently in progress')
+			}
+		}
+		await h.reply(`Switching ${target.ids.username} to team ${toTeam} now`)
+		return { code: 'ok' }
+	},
+
+	switchNext: async (h, args) => {
+		const target = args.player
+		if (!target.teamId) return await h.error('no-team', `Player "${target.ids.username}" is not on a team`)
+		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
+		const toTeam = oppositeNormedTeam(currentMatch, target.teamId)
+		const playerId = SM.PlayerIds.getPlayerId(target.ids)
+		const errors = await Teamswitches.dispatchSwitchNext(h.ctx, new Map([[playerId, { toTeam, source: h.user }]]))
+		if (errors.length > 0) {
+			const err = errors[0] as TSW.OpError
+			if (err.code === 'err:currently-switching') {
+				return await h.error('currently-switching', 'A team switch is currently in progress')
+			}
+			if (err.code === 'err:already-marked') {
+				return await h.error('already-marked', `${target.ids.username} is already marked for teamswitching`)
+			}
+		}
+		await h.reply(`Queued ${target.ids.username} to switch teams on next map`)
+		return { code: 'ok' }
+	},
+
+	switchSquadNow: async (h, args) => {
+		const { squad, players } = args.squad
+		if (players.length === 0) return await h.error('empty-squad', `Squad "${squad.squadName}" has no players`)
+		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
+		const switches: Map<SM.PlayerId, { toTeam: MH.NormedTeamId; source: USR.GuiOrChatUserId }> = new Map()
+		for (const p of players) {
+			switches.set(SM.PlayerIds.getPlayerId(p.ids), { toTeam: oppositeNormedTeam(currentMatch, p.teamId!), source: h.user })
+		}
+		const errors = await Teamswitches.dispatchSwitchNow(h.ctx, switches, h.user)
+		if (errors.length > 0) {
+			const err = errors[0] as TSW.OpError
+			if (err.code === 'err:currently-switching') {
+				return await h.error('currently-switching', 'A team switch is currently in progress')
+			}
+		}
+		await h.reply(`Switching ${players.length} players from "${squad.squadName}" to the opposite team now`)
+		return { code: 'ok' }
+	},
+
+	switchSquadNext: async (h, args) => {
+		const { squad, players } = args.squad
+		if (players.length === 0) return await h.error('empty-squad', `Squad "${squad.squadName}" has no players`)
+		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
+		const nextSwitches: TSW.TeamswitchCollection = new Map(
+			players.map(p => [SM.PlayerIds.getPlayerId(p.ids), { toTeam: oppositeNormedTeam(currentMatch, p.teamId!), source: h.user }] as const),
+		)
+		const errors = await Teamswitches.dispatchSwitchNext(h.ctx, nextSwitches)
+		const alreadyMarked = errors.filter(e => (e as TSW.OpError).code === 'err:already-marked').length
+		if (alreadyMarked === nextSwitches.size) {
+			return await h.error('already-marked', `All players in "${squad.squadName}" are already marked for teamswitching`)
+		}
+		if (errors.some(e => (e as TSW.OpError).code === 'err:currently-switching')) {
+			return await h.error('currently-switching', 'A team switch is currently in progress')
+		}
+		const queued = nextSwitches.size - alreadyMarked
+		await h.reply(`Queued ${queued} players from "${squad.squadName}" to switch teams on next map`)
+		return { code: 'ok' }
+	},
+
+	swaps: async (h) => {
+		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
+		const layer = L.toLayer(currentMatch.layerId)
+		const switches = h.ctx.teamswitches.session.state.savedSwitches
+
+		if (switches.size === 0) {
+			await h.reply('No swaps queued')
+			return { code: 'ok' }
 		}
 
-		default: {
-			assertNever(cmd)
+		const factionA = layer[MH.getTeamNormalizedFactionProp(currentMatch.ordinal, 'A')] ?? 'Team A'
+		const factionB = layer[MH.getTeamNormalizedFactionProp(currentMatch.ordinal, 'B')] ?? 'Team B'
+
+		const toA: SM.PlayerId[] = []
+		const toB: SM.PlayerId[] = []
+		for (const [playerId, sw] of switches) {
+			if (sw.toTeam === 'A') toA.push(playerId)
+			else toB.push(playerId)
 		}
+
+		const parts = [
+			toA.length > 0 ? `${toA.length} to current ${factionA}` : null,
+			toB.length > 0 ? `${toB.length} to current ${factionB}` : null,
+		].filter(Boolean)
+		const header = `Swaps: ${parts.join(', ')}`
+
+		if (switches.size <= 8) {
+			const teamsStateRes = await h.ctx.server.teams.get(h.ctx)
+			const players = teamsStateRes.code === 'ok' ? teamsStateRes.players : []
+			const getName = (playerId: SM.PlayerId) => SM.PlayerIds.find(players, p => p.ids, playerId)?.ids.username ?? playerId
+			const lines = [header]
+			if (toA.length > 0) {
+				lines.push(`\nto ${factionA}:`)
+				for (const id of toA) lines.push(getName(id))
+			}
+			if (toB.length > 0) {
+				lines.push(`\nto ${factionB}:`)
+				for (const id of toB) lines.push(getName(id))
+			}
+			await h.reply(lines.join('\n'))
+		} else {
+			await h.reply(header)
+		}
+		return { code: 'ok' }
+	},
+
+	clearSwitches: async (h) => {
+		const prevCount = h.ctx.teamswitches.session.state.savedSwitches.size
+		if (prevCount === 0) {
+			await h.reply('No teamswitches queued')
+			return { code: 'ok' }
+		}
+		await Teamswitches.dispatchClearSwitches(h.ctx, h.user)
+		await h.reply(`Cleared ${prevCount} queued teamswitch${prevCount !== 1 ? 'es' : ''}`)
+		return { code: 'ok' }
+	},
+
+	flag: async (h, args) => {
+		const target = args.player
+		const flags = await Battlemetrics.getOrgFlags(h.ctx)
+		const matchedFlagRes = simpleUniqueStringMatch(flags.map(f => f.name), args.flag)
+		if (matchedFlagRes.code === 'err:not-found') {
+			return await h.error('not-found', `No flag matches found for "${args.flag}"`)
+		}
+		if (matchedFlagRes.code === 'err:multiple-matches') {
+			return await h.error('multiple-matches', `Multiple(${matchedFlagRes.count}) flag matches found for "${args.flag}".`)
+		}
+
+		const flagToUpdate = flags[matchedFlagRes.matched]
+		const reason = args.reason?.trim()
+		if (Settings.GLOBAL_SETTINGS.playerFlagsRequiringNote.includes(flagToUpdate.id) && !reason) {
+			return await h.error(
+				'note-required',
+				`Flag "${flagToUpdate.name}" requires a reason: ${
+					CMD.formatUsage('flag', Settings.GLOBAL_SETTINGS.commands.flag, Settings.GLOBAL_SETTINGS.commandPrefix)
+				}`,
+			)
+		}
+		const targetIds = target.ids
+		const bmPlayerData = await Battlemetrics.fetchSinglePlayerBmData(h.ctx, targetIds)
+		if (!bmPlayerData) {
+			return await h.error('not-in-battlemetrics', `Unable to resolve player "${targetIds.username}" in battlemetrics`)
+		}
+
+		const res = await Battlemetrics.addPlayerFlags(h.ctx, bmPlayerData.bmPlayerId, [flagToUpdate.id])
+		if (res.code === 'err:no-flags') return { code: 'ok' }
+		if (res.code === 'player-already-has-flag') {
+			return await h.error(res.code, `Player "${targetIds.username}" is already assigned flag "${flagToUpdate.name}"`)
+		}
+		if (res.code === 'ok') {
+			const note = [
+				`Flag "${flagToUpdate.name}" added by ${h.sender.ids.username} (Steam ${h.sender.ids.steam}) via SLM.`,
+				...(reason ? [`Reason: ${reason}`] : []),
+			].join('\n')
+			const noteAdded = await Battlemetrics.addPlayerNote(h.ctx, bmPlayerData.bmPlayerId, note).then(() => true).catch((err) => {
+				log.warn({ err, targetIds }, 'failed to post BM note after adding flag')
+				return false
+			})
+			await Battlemetrics.invalidateAndRefetchPlayer(h.ctx, targetIds.eos)
+			await h.reply(
+				`Added flag "${flagToUpdate.name}" to ${targetIds.username}'s BM profile`
+					+ (noteAdded ? '' : ', but failed to post the accompanying note'),
+			)
+			return { code: 'ok' }
+		}
+		assertNever(res)
+	},
+
+	removeFlag: async (h, args) => {
+		const target = args.player
+		const flags = await Battlemetrics.getOrgFlags(h.ctx)
+		const matchedFlagRes = simpleUniqueStringMatch(flags.map(f => f.name), args.flag)
+		if (matchedFlagRes.code === 'err:not-found') {
+			return await h.error('not-found', `No flag matches found for "${args.flag}"`)
+		}
+		if (matchedFlagRes.code === 'err:multiple-matches') {
+			return await h.error('multiple-matches', `Multiple(${matchedFlagRes.count}) flag matches found for "${args.flag}".`)
+		}
+
+		const flagToRemove = flags[matchedFlagRes.matched]
+		const bmPlayerData = await Battlemetrics.fetchSinglePlayerBmData(h.ctx, target.ids)
+		if (!bmPlayerData) {
+			return await h.error('not-in-battlemetrics', `Unable to resolve player "${target.ids.username}" in battlemetrics`)
+		}
+		if (!bmPlayerData.flagIds.includes(flagToRemove.id)) {
+			return await h.error('not-found', `Player "${target.ids.username}" does not have flag "${flagToRemove.name}".`)
+		}
+
+		const [status] = await Battlemetrics.removePlayerFlags(h.ctx, bmPlayerData.bmPlayerId, [flagToRemove.id])
+		if (status === 'already-removed') {
+			return await h.error(
+				'already-removed',
+				`Flag "${flagToRemove.name}" is already removed from ${target.ids.username}'s BM profile`,
+			)
+		}
+		await Battlemetrics.invalidateAndRefetchPlayer(h.ctx, target.ids.eos)
+		await h.reply(`Removed flag "${flagToRemove.name}" from ${target.ids.username}'s BM profile`)
+		return { code: 'ok' }
+	},
+
+	listFlags: async (h, args) => {
+		function formatFlagList(flags: BM.PlayerFlag[]) {
+			if (flags.length === 0) {
+				return 'none'
+			}
+			return Arr.paged(flags.map(f => f.name), 4).map(g => g.join('\n'))
+		}
+		const flags = await Battlemetrics.getOrgFlags(h.ctx)
+
+		if (!args.player) {
+			await h.reply(formatFlagList(flags))
+			return { code: 'ok' }
+		}
+
+		const bmPlayerData = await Battlemetrics.fetchSinglePlayerBmData(h.ctx, args.player.ids)
+		if (!bmPlayerData) {
+			return await h.error('not-in-battlemetrics', `Unable to resolve player "${args.player.ids.username}" in battlemetrics`)
+		}
+		const playerFlags = flags.filter(f => bmPlayerData.flagIds.includes(f.id))
+
+		await h.reply(formatFlagList(playerFlags))
+		return { code: 'ok' }
+	},
+
+	warn: async (h, args) => {
+		const target = args.player
+		const targetId = SM.PlayerIds.getPlayerId(target.ids)
+		const applied = CMD.applyResolvedReason('warn', args.reason, SquadServer.messageVars())
+		const message = AAR.renderAppliedReason(applied)
+		await SquadServer.warnPlayers(h.ctx, [targetId], message, ingameActor(h.sender), { reasonLabel: applied.label })
+		// echo the exact delivered text so the admin sees what the player got (preset labels are embedded in it)
+		await h.reply(`Warned ${target.ids.username}: "${message}"`)
+		return { code: 'ok' }
+	},
+
+	listWarnReasons: async (h) => {
+		const reasons = Settings.GLOBAL_SETTINGS.adminActionReasons
+		if (reasons.length === 0) {
+			await h.reply('No admin action reasons are configured')
+			return { code: 'ok' }
+		}
+		// label + aliases + the actions each reason is set up for (every reason is implicitly a warn reason); the
+		// texts themselves are looked up at use time
+		const actionsFor = (r: AAR.AdminActionReason) => {
+			const labels = [AAR.ADMIN_ACTIONS.warn.displayName]
+			for (const a of AAR.EXECUTABLE_ADMIN_ACTION_TYPE.options) {
+				if (r.actionTexts[a] !== undefined) labels.push(AAR.ADMIN_ACTIONS[a].displayName)
+			}
+			return labels.join(', ')
+		}
+		const entries = reasons.map(r => {
+			const head = r.aliases.length > 0 ? `${r.label} (${r.aliases.join(', ')})` : r.label
+			return `${head}\n${actionsFor(r)}`
+		})
+		// each reason is a 2-line block (label, then its actions); blank line between blocks
+		await h.reply(Arr.paged(entries, 3).map(g => g.join('\n\n')))
+		return { code: 'ok' }
+	},
+
+	warnSquad: async (h, args) => {
+		const { squad, players } = args.squad
+		if (players.length === 0) return await h.error('empty-squad', `Squad "${squad.squadName}" has no players`)
+		const targetIds = players.map(p => SM.PlayerIds.getPlayerId(p.ids))
+		const applied = CMD.applyResolvedReason('warn', args.reason, SquadServer.messageVars())
+		// squad warns carry the same @Squad tag the web squad warn box prepends
+		const message = AAR.renderAppliedReason(applied, { squadTag: SM.squadWarnTag(squad) })
+		await SquadServer.warnPlayers(h.ctx, targetIds, message, ingameActor(h.sender), { reasonLabel: applied.label })
+		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
+		const squadLabel = SM.squadAdminLabel(squad, MH.getTeamFaction(currentMatch, args.squad.teamId))
+		await h.reply(`Warned ${squadLabel}: "${message}"`)
+		return { code: 'ok' }
+	},
+
+	kill: async (h, args) => {
+		const g = await requireReasonGuard(h, 'kill', !!args.reason)
+		if (g) return g
+		const target = args.player
+		const applied = args.reason && CMD.applyResolvedReason('kill', args.reason, SquadServer.messageVars())
+		// the kill notify delivers the rendered reason verbatim (see WARNS.kill.notifyKilled)
+		const reason = applied && AAR.renderAppliedReason(applied)
+		await SquadServer.killPlayersAction(h.ctx, [SM.PlayerIds.getPlayerId(target.ids)], ingameActor(h.sender), reason, applied?.label)
+		await h.reply(applied?.label ? `Killed ${target.ids.username} for ${applied.label}` : `Killed ${target.ids.username}`)
+		return { code: 'ok' }
+	},
+
+	killSquad: async (h, args) => {
+		const { squad, players } = args.squad
+		if (players.length === 0) return await h.error('empty-squad', `Squad "${squad.squadName}" has no players`)
+		const g = await requireReasonGuard(h, 'kill', !!args.reason)
+		if (g) return g
+		const targetIds = players.map(p => SM.PlayerIds.getPlayerId(p.ids))
+		const applied = args.reason && CMD.applyResolvedReason('kill', args.reason, SquadServer.messageVars())
+		const reason = applied && AAR.renderAppliedReason(applied)
+		await SquadServer.killPlayersAction(h.ctx, targetIds, ingameActor(h.sender), reason, applied?.label)
+		await h.reply(
+			`Killed "${squad.squadName}" (${players.length} player${players.length !== 1 ? 's' : ''})${
+				applied?.label ? ` for ${applied.label}` : ''
+			}`,
+		)
+		return { code: 'ok' }
+	},
+
+	removeFromSquad: async (h, args) => {
+		const target = args.player
+		if (target.squadId == null) return await h.error('not-in-squad', `Player "${target.ids.username}" is not in a squad`)
+		const g = await requireReasonGuard(h, 'remove-from-squad', !!args.reason)
+		if (g) return g
+		const applied = args.reason && AAR.applyReason('remove-from-squad', args.reason, SquadServer.messageVars())
+		await SquadServer.removePlayersFromSquad(h.ctx, [SM.PlayerIds.getPlayerId(target.ids)], ingameActor(h.sender), applied)
+		await h.reply(`Removed ${target.ids.username} from their squad${args.reason ? ` for ${args.reason.label}` : ''}`)
+		return { code: 'ok' }
+	},
+
+	disbandSquad: async (h, args) => {
+		const g = await requireReasonGuard(h, 'disband-squad', !!args.reason)
+		if (g) return g
+		const { squad, teamLabel } = args.squad
+		const applied = args.reason && AAR.applyReason('disband-squad', args.reason, SquadServer.messageVars())
+		await SquadServer.disbandSquadAction(h.ctx, args.squad.teamId, squad.squadId, ingameActor(h.sender), applied)
+		await h.reply(`Disbanded "${squad.squadName}" on team ${teamLabel}${args.reason ? ` for ${args.reason.label}` : ''}`)
+		return { code: 'ok' }
+	},
+
+	demoteCommander: async (h, args) => {
+		const g = await requireReasonGuard(h, 'demote-commander', !!args.reason)
+		if (g) return g
+		const target = args.player
+		const applied = args.reason && AAR.applyReason('demote-commander', args.reason, SquadServer.messageVars())
+		await SquadServer.demoteCommanderAction(h.ctx, SM.PlayerIds.getPlayerId(target.ids), ingameActor(h.sender), applied)
+		await h.reply(`Demoted ${target.ids.username}${args.reason ? ` for ${args.reason.label}` : ''}`)
+		return { code: 'ok' }
+	},
+
+	broadcast: async (h, args) => {
+		if (args.message.type === 'preset') {
+			await SquadServer.broadcastAction(h.ctx, args.message.preset.message, ingameActor(h.sender), {
+				presetLabel: args.message.preset.label,
+			})
+		} else {
+			await SquadServer.broadcastAction(h.ctx, args.message.text, ingameActor(h.sender))
+		}
+		await h.reply('Broadcast sent')
+		return { code: 'ok' }
+	},
+
+	kick: async (h, args) => {
+		return await executeKick(h, [args.player], args.duration, args.reason, args.player.ids.username)
+	},
+
+	kickSquad: async (h, args) => {
+		const { squad, players } = args.squad
+		if (players.length === 0) return await h.error('empty-squad', `Squad "${squad.squadName}" has no players`)
+		const label = `"${squad.squadName}" (${players.length} player${players.length !== 1 ? 's' : ''})`
+		return await executeKick(h, players, args.duration, args.reason, label)
+	},
+
+	clearTimeout: async (h, args) => {
+		const linkedRes = await resolveLinkedSender(h)
+		if (linkedRes.code !== 'ok') return linkedRes.res
+		const denyRes = await Rbac.tryDenyAnyTimeoutGrant({ ...h.ctx, user: { discordId: linkedRes.discordId } })
+		if (denyRes) return await h.error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
+
+		// the target may be offline, so match against players holding active timeouts rather than the roster
+		const active = await Timeouts.listActiveTimeouts(h.ctx)
+		const token = args.player
+		let matches = active.filter(t => t.playerId === token || t.steamId?.toString() === token)
+		if (matches.length === 0) {
+			const lower = token.toLowerCase()
+			matches = active.filter(t => (t.username ?? '').toLowerCase().includes(lower))
+		}
+		const matchedPlayerIds = new Set(matches.map(t => t.playerId))
+		if (matchedPlayerIds.size === 0) return await h.error('not-found', `No active timeout matches "${token}"`)
+		if (matchedPlayerIds.size > 1) return await h.error('multiple-matches', `${matchedPlayerIds.size} timed-out players match "${token}"`)
+		for (const timeout of matches) {
+			await Timeouts.cancelTimeout(h.ctx, { timeoutId: timeout.id, actor: ingameActor(h.sender), sliceCtx: h.ctx })
+		}
+		await h.reply(`Cancelled ${matches.length === 1 ? 'the timeout' : `${matches.length} timeouts`} for ${matches[0].username ?? token}`)
+		return { code: 'ok' }
+	},
+}
+
+// resolves the chat sender's linked SLM account for RBAC-gated commands
+async function resolveLinkedSender(
+	h: HandlerCtx,
+): Promise<{ code: 'ok'; discordId: bigint } | { code: 'err'; res: HandlerResult }> {
+	if (!h.sender.ids.steam) return { code: 'err', res: await h.error('missing-steam-id', Messages.WARNS.commands.missingSteamId()) }
+	const linked = await Users.findUserBySteam64Id(h.ctx, BigInt(h.sender.ids.steam))
+	if (!linked) return { code: 'err', res: await h.error('not-linked', Messages.WARNS.commands.steamAccountNotLinked()) }
+	return { code: 'ok', discordId: linked.discordId }
+}
+
+// shared by the kick command and the fixed-duration timeout aliases
+// enforces the per-action "require a reason" setting; returns the error handler-result to short-circuit, or null
+async function requireReasonGuard(h: HandlerCtx, action: AAR.AdminActionType, hasReason: boolean): Promise<HandlerResult | null> {
+	const rr = SquadServer.reasonRequirementError(action, hasReason)
+	return rr ? await h.error('reason-required', rr.msg) : null
+}
+
+async function executeKick(
+	h: HandlerCtx,
+	targets: SM.Player[],
+	durationMs: number,
+	resolvedReason: CMD.ResolvedReasonArg | undefined,
+	subjectLabel: string,
+): Promise<HandlerResult> {
+	const g = await requireReasonGuard(h, 'kick', !!resolvedReason)
+	if (g) return g
+	const linkedRes = await resolveLinkedSender(h)
+	if (linkedRes.code !== 'ok') return linkedRes.res
+	const denyRes = await Rbac.tryDenyTimeoutForUser({ ...h.ctx, user: { discordId: linkedRes.discordId } }, durationMs)
+	if (denyRes) return await h.error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
+	// empty (not "0ms") on a zero-duration kick so `{{#duration}}...{{/duration}}` sections hide the rejoin phrase
+	const vars = SquadServer.messageVars({ duration: durationMs > 0 ? formatHumanTime(durationMs) : '' })
+	const reason = resolvedReason && CMD.applyResolvedReason('kick', resolvedReason, vars)
+	const skipped: string[] = []
+	let lastErrMsg = ''
+	for (const target of targets) {
+		const res = await Timeouts.kickWithTimeout(h.ctx, { target, durationMs, actor: ingameActor(h.sender), reason })
+		if (res.code === 'err:already-timed-out') {
+			skipped.push(target.ids.username ?? SM.PlayerIds.getPlayerId(target.ids))
+			lastErrMsg = res.msg
+		}
+	}
+	if (skipped.length === targets.length) {
+		return await h.error(
+			'already-timed-out',
+			targets.length === 1 ? lastErrMsg : `All ${targets.length} players already have active timeouts`,
+		)
+	}
+	await h.reply([
+		`Kicked ${subjectLabel} with a ${formatHumanTime(durationMs)} timeout${reason?.label ? ` for ${reason.label}` : ''}`,
+		...(skipped.length > 0 ? [`Skipped (already timed out): ${skipped.join(', ')}`] : []),
+	].join('\n'))
+	return { code: 'ok' }
+}
+
+async function toggleSlmUpdates(h: HandlerCtx, disabled: boolean): Promise<HandlerResult> {
+	const res = await LayerQueue.toggleUpdatesToSquadServer({ ctx: h.ctx, input: { disabled } })
+	switch (res.code) {
+		case 'ok':
+			return { code: 'ok' }
+		case 'err:permission-denied':
+			await h.reply(Messages.WARNS.permissionDenied(res))
+			return res
+		default:
+			assertNever(res)
 	}
 }

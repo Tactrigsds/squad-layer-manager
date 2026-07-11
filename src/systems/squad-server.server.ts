@@ -12,10 +12,12 @@ import * as Obj from '@/lib/object'
 import Rcon from '@/lib/rcon/core-rcon'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import { SftpTail } from '@/lib/sftp-tail'
+import * as Templating from '@/lib/templating'
 import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod'
 import * as Messages from '@/messages.ts'
+import * as AAR from '@/models/admin-action-reasons.models'
 import * as AppEvents from '@/models/app-events.models'
 import type * as BAL from '@/models/balance-triggers.models'
 import * as CHAT from '@/models/chat.models.ts'
@@ -47,6 +49,7 @@ import * as Settings from '@/systems/settings.server'
 import * as SquadLogsReceiver from '@/systems/squad-logs-receiver.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as TeamSwitchesSys from '@/systems/teamswitches.server'
+import * as Timeouts from '@/systems/timeouts.server'
 import * as Vote from '@/systems/vote.server'
 import * as WsSessionSys from '@/systems/ws-session.server'
 import * as Orpc from '@orpc/server'
@@ -351,23 +354,43 @@ export const orpcRouter = {
 			return { code: 'ok' as const }
 		}),
 
-	warnPlayer: orpcBase
-		.input(z.object({ serverId: z.string(), playerId: SM.PlayerIdSchema, reason: z.string().min(1) }))
-		.handler(async ({ context: _ctx, input }) => {
-			const ctx = resolveSliceCtx(_ctx, input.serverId)
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players'))
-			if (denyRes) return denyRes
-			await warnPlayers(ctx, [input.playerId], input.reason, { type: 'slm-user', userId: ctx.user.discordId })
-			return { code: 'ok' as const }
-		}),
-
 	warnPlayers: orpcBase
-		.input(z.object({ serverId: z.string(), playerIds: z.array(SM.PlayerIdSchema).min(1), reason: z.string().min(1) }))
+		.input(
+			z.object({
+				serverId: z.string(),
+				playerIds: z.array(SM.PlayerIdSchema).min(1),
+				reason: z.string().min(1).optional(),
+				presetReasonLabel: z.string().min(1).optional(),
+				// when a warn targets a whole squad the message gets a "@Squad<id>" (or "@cmdSquad") tag
+				taggedSquad: z.object({
+					squadId: z.number().int().positive(),
+					squadName: z.string().min(1),
+					teamId: SM.TeamIdSchema,
+				}).optional(),
+			}).refine(i => !!i.reason !== !!i.presetReasonLabel, { error: 'Exactly one of reason or presetReasonLabel must be provided' }),
+		)
 		.handler(async ({ context: _ctx, input }) => {
 			const ctx = resolveSliceCtx(_ctx, input.serverId)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players'))
 			if (denyRes) return denyRes
-			await warnPlayers(ctx, input.playerIds, input.reason, { type: 'slm-user', userId: ctx.user.discordId })
+			const reasonRes = resolveReasonInput('warn', input)
+			if (reasonRes.code !== 'ok') return reasonRes
+			// the input refine guarantees a reason was provided; narrow without asserting
+			if (!reasonRes.applied) return { code: 'err:reason-required' as const, msg: 'A reason is required to warn.' }
+			const message = AAR.renderAppliedReason(reasonRes.applied, {
+				squadTag: input.taggedSquad ? SM.squadWarnTag(input.taggedSquad) : undefined,
+			})
+			// squad warns name the squad + faction (e.g. "warned Squad1 (PLA): ...") in the admin notification
+			let adminNotifyDescription: string | undefined
+			if (input.taggedSquad) {
+				const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+				const squadLabel = SM.squadAdminLabel(input.taggedSquad, MH.getTeamFaction(currentMatch, input.taggedSquad.teamId))
+				adminNotifyDescription = `warned ${squadLabel}: "${message}"`
+			}
+			await warnPlayers(ctx, input.playerIds, message, { type: 'slm-user', userId: ctx.user.discordId }, {
+				reasonLabel: reasonRes.applied.label,
+				adminNotifyDescription,
+			})
 			return { code: 'ok' as const }
 		}),
 
@@ -383,7 +406,7 @@ export const orpcRouter = {
 				.filter(p => p.ids.steam && adminList.admins.has(p.ids.steam))
 				.map(p => SM.PlayerIds.getPlayerId(p.ids))
 			if (admins.length === 0) return { code: 'err:no-admins-online' as const }
-			await warnPlayers(ctx, admins, input.message, { type: 'slm-user', userId: ctx.user.discordId })
+			await warnPlayers(ctx, admins, input.message, { type: 'slm-user', userId: ctx.user.discordId }, { suppressAdminNotify: true })
 			return { code: 'ok' as const }
 		}),
 
@@ -393,57 +416,81 @@ export const orpcRouter = {
 			const ctx = resolveSliceCtx(_ctx, input.serverId)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:broadcast'))
 			if (denyRes) return denyRes
-			await SquadRcon.broadcast(ctx, input.message)
+			await broadcastAction(ctx, input.message, { type: 'slm-user', userId: ctx.user.discordId })
 			return { code: 'ok' as const }
 		}),
 
 	demoteCommander: orpcBase
-		.input(z.object({ serverId: z.string(), playerId: SM.PlayerIdSchema }))
+		.input(z.object({ serverId: z.string(), playerId: SM.PlayerIdSchema, presetReasonLabel: z.string().min(1).optional() }))
 		.handler(async ({ context: _ctx, input }) => {
 			const ctx = resolveSliceCtx(_ctx, input.serverId)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
 			if (denyRes) return denyRes
-			await demoteCommanderAction(ctx, input.playerId, { type: 'slm-user', userId: ctx.user.discordId })
+			const reasonRes = resolveReasonInput('demote-commander', input)
+			if (reasonRes.code !== 'ok') return reasonRes
+			await demoteCommanderAction(ctx, input.playerId, { type: 'slm-user', userId: ctx.user.discordId }, reasonRes.applied)
 			return { code: 'ok' as const }
 		}),
 
 	disbandSquad: orpcBase
-		.input(z.object({ serverId: z.string(), teamId: SM.TeamIdSchema, squadId: z.number().int().positive() }))
+		.input(z.object({
+			serverId: z.string(),
+			teamId: SM.TeamIdSchema,
+			squadId: z.number().int().positive(),
+			presetReasonLabel: z.string().min(1).optional(),
+		}))
 		.handler(async ({ context: _ctx, input }) => {
 			const ctx = resolveSliceCtx(_ctx, input.serverId)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
 			if (denyRes) return denyRes
-			await disbandSquadAction(ctx, input.teamId, input.squadId, { type: 'slm-user', userId: ctx.user.discordId })
+			const reasonRes = resolveReasonInput('disband-squad', input)
+			if (reasonRes.code !== 'ok') return reasonRes
+			await disbandSquadAction(ctx, input.teamId, input.squadId, { type: 'slm-user', userId: ctx.user.discordId }, reasonRes.applied)
 			return { code: 'ok' as const }
 		}),
 
 	removeFromSquad: orpcBase
-		.input(z.object({ serverId: z.string(), playerId: SM.PlayerIdSchema }))
+		.input(z.object({ serverId: z.string(), playerId: SM.PlayerIdSchema, presetReasonLabel: z.string().min(1).optional() }))
 		.handler(async ({ context: _ctx, input }) => {
 			const ctx = resolveSliceCtx(_ctx, input.serverId)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
 			if (denyRes) return denyRes
-			await removePlayersFromSquad(ctx, [input.playerId], { type: 'slm-user', userId: ctx.user.discordId })
+			const reasonRes = resolveReasonInput('remove-from-squad', input)
+			if (reasonRes.code !== 'ok') return reasonRes
+			await removePlayersFromSquad(ctx, [input.playerId], { type: 'slm-user', userId: ctx.user.discordId }, reasonRes.applied)
 			return { code: 'ok' as const }
 		}),
 
 	removePlayersFromSquad: orpcBase
-		.input(z.object({ serverId: z.string(), playerIds: z.array(SM.PlayerIdSchema).min(1) }))
+		.input(
+			z.object({ serverId: z.string(), playerIds: z.array(SM.PlayerIdSchema).min(1), presetReasonLabel: z.string().min(1).optional() }),
+		)
 		.handler(async ({ context: _ctx, input }) => {
 			const ctx = resolveSliceCtx(_ctx, input.serverId)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
 			if (denyRes) return denyRes
-			await removePlayersFromSquad(ctx, input.playerIds, { type: 'slm-user', userId: ctx.user.discordId })
+			const reasonRes = resolveReasonInput('remove-from-squad', input)
+			if (reasonRes.code !== 'ok') return reasonRes
+			await removePlayersFromSquad(ctx, input.playerIds, { type: 'slm-user', userId: ctx.user.discordId }, reasonRes.applied)
 			return { code: 'ok' as const }
 		}),
 
 	kill: orpcBase
-		.input(z.object({ serverId: z.string(), playerIds: z.array(SM.PlayerIdSchema).min(1), reason: z.string().trim().min(1).optional() }))
+		.input(z.object({
+			serverId: z.string(),
+			playerIds: z.array(SM.PlayerIdSchema).min(1),
+			reason: z.string().trim().min(1).optional(),
+			presetReasonLabel: z.string().min(1).optional(),
+		}))
 		.handler(async ({ context: _ctx, input }) => {
 			const ctx = resolveSliceCtx(_ctx, input.serverId)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
 			if (denyRes) return denyRes
-			await killPlayersAction(ctx, input.playerIds, { type: 'slm-user', userId: ctx.user.discordId }, input.reason)
+			const reasonRes = resolveReasonInput('kill', input)
+			if (reasonRes.code !== 'ok') return reasonRes
+			// the kill notify delivers the rendered reason verbatim (see SquadRcon.killPlayers / WARNS.kill.notifyKilled)
+			const reason = reasonRes.applied && AAR.renderAppliedReason(reasonRes.applied)
+			await killPlayersAction(ctx, input.playerIds, { type: 'slm-user', userId: ctx.user.discordId }, reason, reasonRes.applied?.label)
 			return { code: 'ok' as const }
 		}),
 
@@ -717,6 +764,23 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 					.where(E.eq(Schema.players.eosId, event.player))
 			}),
 		)
+		.subscribe()
+
+	// kick-timeout enforcement: fresh connects and full roster reseeds. PLAYER_RECONCILED (roster backfill of an
+	// already-present player) is deliberately excluded. RESET fires on every roll, doubling as a periodic sweep.
+	server.event$
+		.pipe(
+			Rx.filter(([_, event]) => event.type === 'PLAYER_CONNECTED' || event.type === 'RESET'),
+			C.durableSub('onPlayerConnectedEnforceTimeouts', { module }, async ([ctx, event], signal) => {
+				const playerIds = event.type === 'PLAYER_CONNECTED'
+					? [SM.PlayerIds.getPlayerId(event.player.ids)]
+					: event.type === 'RESET'
+					? SE.eventRoster(event)?.players.map(p => SM.PlayerIds.getPlayerId(p.ids)) ?? []
+					: []
+				if (playerIds.length === 0) return
+				await Timeouts.enforceTimeouts(CS.addSignal(ctx, signal), playerIds)
+			}),
+		)
 		.subscribe() // -------- process log events --------
 	const logStreamAc = new AbortController()
 	cleanup.push(logStreamAc)
@@ -927,6 +991,130 @@ export async function emitAppEvent(ctx: C.SquadServer & C.Db & CS.AbortSignal, a
 	ctx.server.appEvent$.next([resolveSliceCtx(ctx, ctx.serverId), appEvent])
 }
 
+// resolves a preset admin-action reason against the current global settings. handlers call this before executing
+// anything so a stale preset (deleted/retargeted since the client loaded it) fails the whole action.
+export function resolvePresetReason(action: AAR.AdminActionType, presetReasonLabel: string) {
+	return AAR.resolveReason(Settings.GLOBAL_SETTINGS.adminActionReasons, action, presetReasonLabel)
+}
+
+// the variable context for reason/broadcast message templates: the admin-configured custom variables,
+// overlaid with any per-call standard variables (e.g. duration)
+export function messageVars(extra?: Record<string, string>): Record<string, string> {
+	const custom = Object.fromEntries(Settings.GLOBAL_SETTINGS.messageVariables.map(v => [v.name, v.value]))
+	return { ...custom, ...extra }
+}
+
+// enforces the per-action "require a reason" setting; returns an error result when the action needs a reason
+// and none was provided, else null
+export function reasonRequirementError(
+	action: AAR.AdminActionType,
+	hasReason: boolean,
+): { code: 'err:reason-required'; msg: string } | null {
+	if (Settings.GLOBAL_SETTINGS.requireReasonFor.includes(action) && !hasReason) {
+		return { code: 'err:reason-required', msg: `A reason is required for ${AAR.ADMIN_ACTIONS[action].displayName}.` }
+	}
+	return null
+}
+
+// resolves a web action's reason input into an AppliedReason snapshot: enforces the require-reason setting,
+// resolves preset labels against current settings (a stale preset fails the whole action), and snapshots the
+// message variables so custom and preset text render identically everywhere. `applied` is undefined only when
+// no reason was given and the action doesn't require one.
+export function resolveReasonInput(
+	action: AAR.AdminActionType,
+	input: { reason?: string; presetReasonLabel?: string },
+	extraVars?: Record<string, string>,
+):
+	| { code: 'ok'; applied?: AAR.AppliedReason }
+	| { code: 'err:reason-required'; msg: string }
+	| Exclude<AAR.ResolveReasonRes, { code: 'ok' }>
+{
+	const rr = reasonRequirementError(action, !!(input.reason || input.presetReasonLabel))
+	if (rr) return rr
+	if (input.presetReasonLabel) {
+		const res = resolvePresetReason(action, input.presetReasonLabel)
+		if (res.code !== 'ok') return res
+		return { code: 'ok', applied: AAR.applyReason(action, res.reason, messageVars(extraVars)) }
+	}
+	if (input.reason) return { code: 'ok', applied: AAR.applyCustomReason(input.reason, messageVars(extraVars)) }
+	return { code: 'ok' }
+}
+
+// warns every in-game admin of a web-initiated admin action so they see activity they'd otherwise only find in
+// the web feed. In-game commands already echo to the invoking admin via reply() (and warn the target), so this
+// fires only for slm-user (web) actors; ingame-user/system actions no-op.
+export async function notifyAdminsOfWebAction(
+	ctx: C.SquadRcon & C.AdminList & C.Db & CS.AbortSignal,
+	appEvent: AppEvents.AppEvent,
+	// override the default describeAppEvent phrasing (e.g. squad warns name the squad + faction)
+	description?: string,
+) {
+	if (appEvent.actor.type !== 'slm-user') return
+	const [user] = await ctx.db()
+		.select({ nickname: Schema.users.nickname, username: Schema.users.username })
+		.from(Schema.users)
+		.where(E.eq(Schema.users.discordId, appEvent.actor.userId))
+	const name = user?.nickname || user?.username || 'An admin'
+	await SquadRcon.warnAllAdmins(ctx, `${name} ${description ?? AppEvents.describeAppEvent(appEvent)}`)
+}
+
+// delivers a preset reason's message to the affected players as an in-game warn, attributing the landing
+// PLAYER_WARNED server events to the originating action's app event (so they collapse under it in the feed
+// rather than emitting a separate PLAYER_WARNED app event).
+async function sendReasonFollowUpWarn(
+	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & CS.AbortSignal,
+	appEventId: AppEvents.AppEventId,
+	targets: SM.PlayerId[],
+	message: string,
+) {
+	if (targets.length === 0) return
+	const source = { type: 'event' as const, id: appEventId }
+	await collectEvents(ctx, () => {
+		for (const target of targets) {
+			PendingEvents.expectWarn(ctx.server.eventState, { playerId: target, reason: message, source })
+		}
+	})
+	await SquadRcon.warnAll(ctx, targets, message)
+}
+
+// kicks a player, attributing the resulting PLAYER_KICKED server event to `source` (the timeout's app event
+// for timeout kicks). No app event of its own: PLAYER_TIMED_OUT is the audit record.
+export async function kickPlayerAction(
+	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & CS.AbortSignal,
+	target: SM.PlayerId,
+	source: PendingEvents.ArmedActionSource,
+	reason?: string,
+) {
+	await collectEvents(ctx, () => {
+		PendingEvents.armExpectation(ctx.server.eventState, { type: 'PLAYER_KICKED', playerId: target }, source)
+	})
+	await SquadRcon.kickPlayer(ctx, target, reason)
+}
+
+export async function broadcastAction(
+	ctx: C.SquadServer & C.Rcon & C.Db & CS.AbortSignal,
+	message: string,
+	actor: AppEvents.Actor,
+	opts?: { presetLabel?: string },
+) {
+	// render {{var}} templating; the rendered text is what's broadcast and what the audit records
+	const rendered = Templating.renderTemplate(message, messageVars({ label: opts?.presetLabel ?? '' }))
+	const appEvent = AppEvents.create<AppEvents.BroadcastSent>({
+		type: 'BROADCAST_SENT',
+		actor,
+		serverId: ctx.serverId,
+		// audit-log only (matchId null): the ADMIN_BROADCAST server event already renders the broadcast in the
+		// activity feed, and pending-events has no broadcast expectation to collapse the two, so a feed-visible
+		// app event would duplicate every broadcast line
+		matchId: null,
+		causeId: null,
+		message: rendered,
+		presetLabel: opts?.presetLabel,
+	})
+	await emitAppEvent(ctx, appEvent)
+	await SquadRcon.broadcast(ctx, rendered)
+}
+
 // warns players through an app event: creates the PLAYER_WARNED app event (so the feed can aggregate the
 // resulting warns under one entry), arms the pending-events machine to attribute each landing PLAYER_WARNED server
 // event to it, then issues the warns. Emit (persist) precedes arming and the warns so the app event exists before
@@ -936,6 +1124,9 @@ export async function warnPlayers(
 	targets: SM.PlayerId[],
 	reason: string,
 	actor: AppEvents.Actor,
+	// suppressAdminNotify: the "warn admins" feature already targets every admin, so skip the meta-notification there.
+	// adminNotifyDescription: override the admin-notification phrasing (squad warns name the squad + faction)
+	opts?: { reasonLabel?: string; suppressAdminNotify?: boolean; adminNotifyDescription?: string },
 ) {
 	if (targets.length === 0) return
 	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
@@ -947,6 +1138,7 @@ export async function warnPlayers(
 		causeId: null,
 		message: reason,
 		targets,
+		reasonLabel: opts?.reasonLabel,
 	})
 	await emitAppEvent(ctx, appEvent)
 	const source = { type: 'event' as const, id: appEvent.id }
@@ -956,6 +1148,7 @@ export async function warnPlayers(
 		}
 	})
 	await SquadRcon.warnAll(ctx, targets, reason)
+	if (!opts?.suppressAdminNotify) await notifyAdminsOfWebAction(ctx, appEvent, opts?.adminNotifyDescription)
 }
 
 // disbands a squad through an app event: records the squad + its members, arms the machine to attribute the
@@ -965,6 +1158,7 @@ export async function disbandSquadAction(
 	teamId: SM.TeamId,
 	squadId: SM.SquadId,
 	actor: AppEvents.Actor,
+	reason?: AAR.AppliedReason,
 ) {
 	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 	const teams = getCurrTeams(ctx)
@@ -982,6 +1176,7 @@ export async function disbandSquadAction(
 		squadId,
 		squadName: squad?.squadName ?? `Squad ${squadId}`,
 		members,
+		reason,
 	})
 	await emitAppEvent(ctx, appEvent)
 	const source = { type: 'event' as const, id: appEvent.id }
@@ -989,6 +1184,17 @@ export async function disbandSquadAction(
 		PendingEvents.armExpectation(ctx.server.eventState, { type: 'SQUAD_DISBANDED', teamId, squadId }, source)
 	})
 	await SquadRcon.disbandSquad(ctx, teamId, squadId)
+	if (reason) {
+		await sendReasonFollowUpWarn(
+			ctx,
+			appEvent.id,
+			members,
+			AAR.renderAppliedReason(reason, { squadTag: squad ? SM.squadWarnTag(squad) : `@Squad${squadId}` }),
+		)
+	}
+	// name the squad + faction consistently with squad warns (e.g. "disbanded Squad1 (PLA)")
+	const squadLabel = squad ? SM.squadAdminLabel(squad, MH.getTeamFaction(currentMatch, teamId)) : `Squad${squadId}`
+	await notifyAdminsOfWebAction(ctx, appEvent, `disbanded ${squadLabel}${reason?.label ? ` for ${reason.label}` : ''}`)
 }
 
 // removes players from their squads through an app event, attributing each resulting PLAYER_LEFT_SQUAD server event
@@ -996,6 +1202,7 @@ export async function removePlayersFromSquad(
 	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & C.MatchHistory & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
+	reason?: AAR.AppliedReason,
 ) {
 	if (targets.length === 0) return
 	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
@@ -1006,6 +1213,7 @@ export async function removePlayersFromSquad(
 		matchId: currentMatch.historyEntryId,
 		causeId: null,
 		targets,
+		reason,
 	})
 	await emitAppEvent(ctx, appEvent)
 	const source = { type: 'event' as const, id: appEvent.id }
@@ -1015,6 +1223,10 @@ export async function removePlayersFromSquad(
 		}
 	})
 	await Promise.all(targets.map(target => SquadRcon.removeFromSquad(ctx, target)))
+	if (reason) {
+		await sendReasonFollowUpWarn(ctx, appEvent.id, targets, AAR.renderAppliedReason(reason))
+	}
+	await notifyAdminsOfWebAction(ctx, appEvent)
 }
 
 // records a forced team change as an app event and arms attribution for the resulting PLAYER_CHANGED_TEAM server
@@ -1051,7 +1263,8 @@ export async function killPlayersAppEvent(
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: string,
-) {
+	reasonLabel?: string,
+): Promise<AppEvents.PlayerKilled | undefined> {
 	if (targets.length === 0) return
 	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 	const appEvent = AppEvents.create<AppEvents.PlayerKilled>({
@@ -1062,6 +1275,7 @@ export async function killPlayersAppEvent(
 		causeId: null,
 		targets,
 		reason,
+		reasonLabel,
 	})
 	await emitAppEvent(ctx, appEvent)
 	const source = { type: 'event' as const, id: appEvent.id }
@@ -1070,6 +1284,7 @@ export async function killPlayersAppEvent(
 			PendingEvents.armExpectation(ctx.server.eventState, { type: 'PLAYER_CHANGED_TEAM', playerId: target }, source)
 		}
 	})
+	return appEvent
 }
 
 export async function killPlayersAction(
@@ -1077,10 +1292,12 @@ export async function killPlayersAction(
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: string,
+	reasonLabel?: string,
 ) {
 	if (targets.length === 0) return
-	await killPlayersAppEvent(ctx, targets, actor, reason)
+	const appEvent = await killPlayersAppEvent(ctx, targets, actor, reason, reasonLabel)
 	await SquadRcon.killPlayers(ctx, targets, reason)
+	if (appEvent) await notifyAdminsOfWebAction(ctx, appEvent)
 }
 
 export async function renameSquadAction(
@@ -1114,20 +1331,24 @@ export async function demoteCommanderAction(
 	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & C.MatchHistory & CS.AbortSignal,
 	playerId: SM.PlayerId,
 	actor: AppEvents.Actor,
+	reason?: AAR.AppliedReason,
 ) {
 	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-	await emitAppEvent(
-		ctx,
-		AppEvents.create<AppEvents.CommanderDemoted>({
-			type: 'COMMANDER_DEMOTED',
-			actor,
-			serverId: ctx.serverId,
-			matchId: currentMatch.historyEntryId,
-			causeId: null,
-			target: playerId,
-		}),
-	)
+	const appEvent = AppEvents.create<AppEvents.CommanderDemoted>({
+		type: 'COMMANDER_DEMOTED',
+		actor,
+		serverId: ctx.serverId,
+		matchId: currentMatch.historyEntryId,
+		causeId: null,
+		target: playerId,
+		reason,
+	})
+	await emitAppEvent(ctx, appEvent)
 	await SquadRcon.demoteCommander(ctx, playerId)
+	if (reason) {
+		await sendReasonFollowUpWarn(ctx, appEvent.id, [playerId], AAR.renderAppliedReason(reason))
+	}
+	await notifyAdminsOfWebAction(ctx, appEvent)
 }
 
 // interleaves server events and app events by time for the activity feed. app events sort before server events on

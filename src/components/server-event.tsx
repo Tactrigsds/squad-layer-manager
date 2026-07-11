@@ -8,6 +8,7 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
+import { formatHumanTime } from '@/lib/zod'
 import * as ZusUtils from '@/lib/zustand'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CHAT from '@/models/chat.models'
@@ -402,7 +403,9 @@ function AppEventEntry(
 					<EventTime time={event.time} variant="small" />
 					<Icons.Users className="h-4 w-4 text-red-500 shrink-0" />
 					<span className="grow min-w-0 wrap-anywhere">
-						{actorLabel} disbanded {appEvent.squadName} (Team {appEvent.teamId}){n > 0 ? `, ${n} ${n === 1 ? 'player' : 'players'}` : ''}
+						{actorLabel} disbanded {appEvent.squadName} (Team{' '}
+						{appEvent.teamId}){appEvent.reason?.label ? ` for ${appEvent.reason.label}` : ''}
+						{n > 0 ? `, ${n} ${n === 1 ? 'player' : 'players'}` : ''}
 					</span>
 				</summary>
 				{targetList}
@@ -425,6 +428,7 @@ function AppEventEntry(
 				{actorLabel} demoted {target && matchId !== null
 					? <PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} />
 					: 'the commander'}
+				{appEvent.reason?.label ? ` for ${appEvent.reason.label}` : ''}
 			</EventLine>
 		)
 	}
@@ -432,6 +436,35 @@ function AppEventEntry(
 		return (
 			<EventLine time={event.time} icon={<Icons.CloudFog className="h-4 w-4 text-slate-400 shrink-0" />}>
 				{actorLabel} turned fog of war {appEvent.enabled ? 'on' : 'off'}
+			</EventLine>
+		)
+	}
+	// audit-only today (matchId is null so it never enters the feed), but the branch keeps the union narrowing sound
+	if (appEvent.type === 'BROADCAST_SENT') {
+		return (
+			<EventLine time={event.time} icon={<Icons.Megaphone className="h-4 w-4 text-amber-500 shrink-0" />}>
+				{actorLabel} broadcast "{appEvent.message}"
+			</EventLine>
+		)
+	}
+	if (appEvent.type === 'PLAYER_TIMED_OUT') {
+		const target = event.targetPlayers[0]
+		return (
+			<EventLine time={event.time} icon={<Icons.UserX className="h-4 w-4 text-red-500 shrink-0" />}>
+				{actorLabel} kicked {target && matchId !== null
+					? <PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} />
+					: 'a player'} with a {formatHumanTime(appEvent.durationMs)} timeout
+				{appEvent.reason?.label ? ` for ${appEvent.reason.label}` : ''}
+			</EventLine>
+		)
+	}
+	if (appEvent.type === 'TIMEOUT_CANCELLED') {
+		const target = event.targetPlayers[0]
+		return (
+			<EventLine time={event.time} icon={<Icons.UserCheck className="h-4 w-4 text-green-500 shrink-0" />}>
+				{actorLabel} cancelled {target && matchId !== null
+					? <PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} />
+					: 'a player'}'s timeout
 			</EventLine>
 		)
 	}
@@ -630,7 +663,7 @@ function AppEventEntry(
 	if (appEvent.type === 'PLAYER_REMOVED_FROM_SQUAD') {
 		verb = 'removed'
 		icon = <Icons.UserMinus className="h-4 w-4 text-orange-500 shrink-0" />
-		suffix = ' from their squad'
+		suffix = appEvent.reason?.label ? ` from their squad for ${appEvent.reason.label}` : ' from their squad'
 	} else if (appEvent.type === 'PLAYER_KILLED') {
 		verb = 'killed'
 		icon = <Icons.Skull className="h-4 w-4 text-red-500 shrink-0" />

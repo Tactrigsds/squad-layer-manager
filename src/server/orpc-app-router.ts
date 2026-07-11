@@ -10,6 +10,7 @@ import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Teamswitches from '@/systems/teamswitches.server'
+import * as Timeouts from '@/systems/timeouts.server'
 import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
@@ -32,4 +33,5 @@ export const orpcAppRouter = {
 	users: Users.orpcRouter,
 	teamswitches: Teamswitches.orpcRouter,
 	appEvents: AppEvents.router,
+	timeouts: Timeouts.router,
 }

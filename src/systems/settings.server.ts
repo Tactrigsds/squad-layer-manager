@@ -333,10 +333,14 @@ export type PublicSettings = {
 	chat: SETTINGS.GlobalSettings['chat']
 	commands: SETTINGS.GlobalSettings['commands']
 	commandPrefix: string
+	timeoutCommandAliases: SETTINGS.GlobalSettings['timeoutCommandAliases']
 	vote: { voteDuration: number; voteDisplayProps: SETTINGS.GlobalSettings['vote']['voteDisplayProps'] }
 	servers: ServerEntry[]
 	playerFlagGroupings: SETTINGS.GlobalSettings['playerFlagGroupings']
 	squadServer: { tickRateThresholds: SETTINGS.GlobalSettings['squadServer']['tickRateThresholds'] }
+	adminActionReasons: SETTINGS.GlobalSettings['adminActionReasons']
+	requireReasonFor: SETTINGS.GlobalSettings['requireReasonFor']
+	messageVariables: SETTINGS.GlobalSettings['messageVariables']
 }
 
 function buildPublicSettings(): PublicSettings {
@@ -348,6 +352,7 @@ function buildPublicSettings(): PublicSettings {
 		chat: GLOBAL_SETTINGS.chat,
 		commands: GLOBAL_SETTINGS.commands,
 		commandPrefix: GLOBAL_SETTINGS.commandPrefix,
+		timeoutCommandAliases: GLOBAL_SETTINGS.timeoutCommandAliases,
 		vote: {
 			voteDuration: GLOBAL_SETTINGS.vote.voteDuration,
 			voteDisplayProps: GLOBAL_SETTINGS.vote.voteDisplayProps,
@@ -355,6 +360,9 @@ function buildPublicSettings(): PublicSettings {
 		servers: listServerEntries(),
 		playerFlagGroupings: GLOBAL_SETTINGS.playerFlagGroupings,
 		squadServer: { tickRateThresholds: GLOBAL_SETTINGS.squadServer.tickRateThresholds },
+		adminActionReasons: GLOBAL_SETTINGS.adminActionReasons,
+		requireReasonFor: GLOBAL_SETTINGS.requireReasonFor,
+		messageVariables: GLOBAL_SETTINGS.messageVariables,
 	}
 }
 

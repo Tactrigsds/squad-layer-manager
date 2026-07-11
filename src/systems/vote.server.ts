@@ -515,7 +515,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 						true,
 						voteItem.voteConfig?.displayProps ?? Settings.GLOBAL_SETTINGS.vote.voteDisplayProps,
 					)
-					await broadcastVoteUpdate(ctx, ctx.vote.state, msg, { onlyNotifyNonVotingAdmins: true, repeatWarn: false })
+					await broadcastVoteUpdate(ctx, ctx.vote.state, msg, { onlyNotifyNonVotingAdmins: true })
 				}),
 			).subscribe(),
 		)
@@ -602,15 +602,10 @@ export const endVote = C.spanOp(
 				ctx,
 				endingVoteState,
 				Messages.BROADCASTS.vote.winnerSelected(tally!, listItem, endingVoteState.winnerId, displayProps, opts.reason === 'ended-early'),
-				{
-					repeatWarn: false,
-				},
 			)
 		}
 		if (endingVoteState.code === 'ended:insufficient-votes') {
-			await broadcastVoteUpdate(ctx, endingVoteState, Messages.BROADCASTS.vote.insufficientVotes(listItem, displayProps), {
-				repeatWarn: false,
-			})
+			await broadcastVoteUpdate(ctx, endingVoteState, Messages.BROADCASTS.vote.insufficientVotes(listItem, displayProps))
 		}
 		await SquadServer.emitAppEvent(
 			ctx,
@@ -633,7 +628,7 @@ async function broadcastVoteUpdate(
 	ctx: C.SquadServer & C.Vote & C.AdminList & C.Rcon & CS.AbortSignal,
 	voteState: V.VoteState | V.EndingVoteState,
 	msg: string,
-	opts?: { onlyNotifyNonVotingAdmins?: boolean; repeatWarn?: boolean },
+	opts?: { onlyNotifyNonVotingAdmins?: boolean },
 ) {
 	switch (voteState.voterType) {
 		case 'public':

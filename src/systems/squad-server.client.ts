@@ -1,6 +1,8 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
+import * as AAR from '@/models/admin-action-reasons.models'
 import type * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as TeamsPanelModels from '@/models/teams-panel.models'
@@ -11,6 +13,7 @@ import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
+import type * as React from 'react'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 
@@ -52,12 +55,26 @@ export function useDisableFogOfWarMutation() {
 	})
 }
 
-export function useWarnPlayerMutation() {
-	return useMutation(RPC.orpc.squadServer.warnPlayer.mutationOptions())
-}
-
 export function useWarnPlayersMutation() {
 	return useMutation(RPC.orpc.squadServer.warnPlayers.mutationOptions())
+}
+
+// reads an action dialog's reason refs on confirm, enforcing the "require a reason" setting (mirrors the
+// server-side check so the dialog can fail fast with a toast). Returns null when blocked; otherwise the
+// mutation inputs (at most one of the two set).
+export function readReasonInput(opts: {
+	action: AAR.AdminActionType
+	required: boolean
+	presetRef: React.MutableRefObject<string>
+	customRef?: React.MutableRefObject<string>
+}): { reason?: string; presetReasonLabel?: string } | null {
+	const presetReasonLabel = opts.presetRef.current || undefined
+	const reason = presetReasonLabel ? undefined : opts.customRef?.current.trim() || undefined
+	if (opts.required && !presetReasonLabel && !reason) {
+		toast.error('Reason required', { description: `A reason is required for ${AAR.ADMIN_ACTIONS[opts.action].displayName}.` })
+		return null
+	}
+	return { reason, presetReasonLabel }
 }
 
 export function useWarnAdminsMutation() {

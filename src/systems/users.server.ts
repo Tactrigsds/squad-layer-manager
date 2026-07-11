@@ -1,11 +1,8 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
-import { createId } from '@/lib/id'
 import { IsolatedSubject } from '@/lib/isolated-subject'
-import * as MapUtils from '@/lib/map'
-import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
+import { Steam64IdSchema } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
-import * as CMD from '@/models/command.models'
 import type * as CS from '@/models/context-shared'
 import * as USR from '@/models/users.models'
 import type * as RBAC from '@/rbac.models'
@@ -17,16 +14,9 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as Discord from '@/systems/discord.server'
 import * as Rbac from '@/systems/rbac.server'
-import * as Settings from '@/systems/settings.server'
 import * as E from 'drizzle-orm'
-import * as Rx from 'rxjs'
 import { z } from 'zod'
 
-const state = {
-	// linking code -> discordId
-	pendingSteamAccountLinks: new Map<string, { discordId: bigint; expirySub: Rx.Subscription }>(),
-}
-const steamAccountLinkComplete$ = new IsolatedSubject<{ discordId: bigint; steam64Id: bigint }>()
 const invalidateUsers$ = new IsolatedSubject<void>()
 
 const module = initModule('users')
@@ -81,58 +71,70 @@ export const orpcRouter = {
 			return { code: 'ok' as const, users }
 		}),
 
-	beginSteamAccountLink: orpcBase.meta({ type: 'mutation' }).handler(async ({ context }) => {
-		const discordId = context.user.discordId
-		const code = createId(9)
-		const sub = scheduleCodeExpiry(code)
-		const pending = [...MapUtils.filter(state.pendingSteamAccountLinks, (key, value) => value.discordId === value.discordId).keys()]
-		for (const code of pending) {
-			state.pendingSteamAccountLinks.get(code)?.expirySub.unsubscribe()
-			state.pendingSteamAccountLinks.delete(code)
-		}
-		state.pendingSteamAccountLinks.set(code, { discordId, expirySub: sub })
-		return {
-			code: 'ok' as const,
-			command: CMD.buildCommand('linkSteamAccount', { code }, Settings.GLOBAL_SETTINGS.commands, Settings.GLOBAL_SETTINGS.commandPrefix)[0],
-		}
+	getMyLinkedSteamAccounts: orpcBase.handler(async ({ context }) => {
+		const rows = await context.db()
+			.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id })
+			.from(Schema.linkedSteamAccounts)
+			.where(E.eq(Schema.linkedSteamAccounts.discordId, context.user.discordId))
+		return { code: 'ok' as const, steamIds: rows.map(r => r.steam64Id.toString()) }
 	}),
 
-	cancelSteamAccountLinks: orpcBase.meta({ type: 'mutation' }).handler(async ({ context }) => {
-		let found = false
-		for (const [code, { discordId, expirySub }] of state.pendingSteamAccountLinks.entries()) {
-			if (discordId === context.user.discordId) {
-				state.pendingSteamAccountLinks.delete(code)
-				expirySub.unsubscribe()
-				found = true
+	// replaces the caller's full set of linked steam ids; rejects any id already owned by another discord user
+	updateLinkedSteamAccounts: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.array(z.string()))
+		.handler(async ({ context, input }) => {
+			const parsed: bigint[] = []
+			const seen = new Set<string>()
+			for (const raw of input) {
+				const res = Steam64IdSchema.safeParse(raw)
+				if (!res.success) return { code: 'err:invalid-steam-id' as const, steamId: raw, msg: `"${raw}" is not a valid Steam64 ID` }
+				if (seen.has(res.data)) continue
+				seen.add(res.data)
+				parsed.push(BigInt(res.data))
 			}
-		}
-		if (found) return { code: 'ok' as const }
-		return { code: 'err:not-found' as const, msg: 'No pending link found for your Discord account.' }
-	}),
+			return await DB.runTransaction(context, async (context) => {
+				const discordId = context.user.discordId
+				if (parsed.length > 0) {
+					const [taken] = await context.db()
+						.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id })
+						.from(Schema.linkedSteamAccounts)
+						.where(E.and(
+							E.inArray(Schema.linkedSteamAccounts.steam64Id, parsed),
+							E.ne(Schema.linkedSteamAccounts.discordId, discordId),
+						))
+						.limit(1)
+					if (taken) {
+						return {
+							code: 'err:steam-already-linked' as const,
+							steamId: taken.steam64Id.toString(),
+							msg: `Steam ID ${taken.steam64Id} is already linked to another account`,
+						}
+					}
+				}
+				const currentRows = await context.db()
+					.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id })
+					.from(Schema.linkedSteamAccounts)
+					.where(E.eq(Schema.linkedSteamAccounts.discordId, discordId))
+				const current = new Set(currentRows.map(r => r.steam64Id))
+				const next = new Set(parsed)
+				const added = parsed.filter(id => !current.has(id))
+				const removed = [...current].filter(id => !next.has(id))
 
-	watchSteamAccountLinkCompletion: orpcBase.handler(async function*({ context, signal }) {
-		const completeForUser$ = steamAccountLinkComplete$.pipe(
-			Rx.filter(user => user.discordId === context.user.discordId),
-			withAbortSignal(signal!),
-		)
-		for await (const user of toAsyncGenerator(completeForUser$)) {
-			context.user.steam64Id = user.steam64Id
-			yield user
-		}
-	}),
-
-	unlinkSteamAccount: orpcBase.meta({ type: 'mutation' }).handler(async ({ context }) => {
-		return await DB.runTransaction(context, async (context) => {
-			const [user] = await context.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, context.user.discordId))
-			if (!user) return { code: 'err:user-not-found' as const, msg: 'User not found.' }
-			if (!user.steam64Id) return { code: 'err:not-linked' as const, msg: 'No Steam account is currently linked.' }
-
-			await context.db().update(Schema.users).set({ steam64Id: null }).where(E.eq(Schema.users.discordId, context.user.discordId))
-			context.user.steam64Id = null
-			await recordUserAccount(context, context.user.discordId, 'steam-unlinked')
-			return { code: 'ok' as const, msg: 'Steam account unlinked successfully.' }
-		})
-	}),
+				if (removed.length > 0) {
+					await context.db().delete(Schema.linkedSteamAccounts).where(
+						E.and(E.eq(Schema.linkedSteamAccounts.discordId, discordId), E.inArray(Schema.linkedSteamAccounts.steam64Id, removed)),
+					)
+				}
+				if (added.length > 0) {
+					await context.db().insert(Schema.linkedSteamAccounts).values(added.map(steam64Id => ({ steam64Id, discordId })))
+				}
+				if (added.length > 0) await recordUserAccount(context, discordId, 'steam-linked')
+				if (removed.length > 0) await recordUserAccount(context, discordId, 'steam-unlinked')
+				invalidateUsers$.next()
+				return { code: 'ok' as const, steamIds: parsed.map(id => id.toString()) }
+			})
+		}),
 
 	updateNickname: orpcBase
 		.meta({ type: 'mutation' })
@@ -158,43 +160,15 @@ export const orpcRouter = {
 	}),
 }
 
-export async function completeSteamAccountLink(ctx: C.Db, code: string, steam64Id: bigint) {
-	return await DB.runTransaction(ctx, async (ctx) => {
-		let [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.steam64Id, steam64Id))
-		if (user) {
-			return {
-				code: 'err:already-linked' as const,
-				msg: ` This Steam account is already linked to another Discord account with username ${user.username} (id: ${user.discordId})`,
-			}
-		}
-		const linked = state.pendingSteamAccountLinks.get(code)
-		if (!linked) return { code: 'err:invalid-code' as const, msg: 'Your link code is invalid or has expired.' }
-		state.pendingSteamAccountLinks.delete(code)
-		linked.expirySub.unsubscribe()
-		;[user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, linked.discordId))
-		if (!user) return { code: 'err:discord-user-not-found' as const, msg: 'The Discord account that initiated this link was not found.' }
-		try {
-			await ctx.db().update(Schema.users).set({ steam64Id }).where(E.eq(Schema.users.discordId, linked.discordId))
-		} catch (err) {
-			const dbErr = err as { code?: string }
-			if (dbErr.code === 'SQLITE_CONSTRAINT_UNIQUE') {
-				return {
-					code: 'err:already-linked' as const,
-					msg: ' This Steam account is already linked to another Discord account',
-				}
-			}
-			throw err
-		}
-		await recordUserAccount(ctx, linked.discordId, 'steam-linked')
-		addReleaseTask(() => steamAccountLinkComplete$.next({ discordId: linked.discordId, steam64Id }))
-		return { code: 'ok' as const, linkedUsername: user.username }
-	})
-}
-
-function scheduleCodeExpiry(code: string) {
-	return Rx.of(1).pipe(Rx.delay(Settings.GLOBAL_SETTINGS.steamLinkCodeExpiry)).subscribe(() => {
-		state.pendingSteamAccountLinks.delete(code)
-	})
+// resolves an in-game (chat) sender's linked SLM account, e.g. for RBAC checks on chat-initiated actions
+export async function findUserBySteam64Id(ctx: C.Db, steam64Id: bigint) {
+	const [link] = await ctx.db()
+		.select({ discordId: Schema.linkedSteamAccounts.discordId })
+		.from(Schema.linkedSteamAccounts)
+		.where(E.eq(Schema.linkedSteamAccounts.steam64Id, steam64Id))
+	if (!link) return undefined
+	const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, link.discordId))
+	return user
 }
 
 function selectBestDisplayName(options: (string | null | undefined)[]): string {

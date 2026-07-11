@@ -7,9 +7,8 @@ import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as PartSys from '@/systems/parts.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as ReactRx from '@react-rxjs/core'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import * as React from 'react'
-import * as Rx from 'rxjs'
 import superjson from 'superjson'
 
 export let loggedInUserId: bigint | undefined
@@ -107,10 +106,20 @@ export function setup() {
 	})
 }
 
-export const [useSteamAccountLinkCompleted, steamAccountLinkCompleted$] = ReactRx.bind<{ discordId: bigint }>(
-	RPC.observe(() => RPC.orpc.users.watchSteamAccountLinkCompletion.call()).pipe(Rx.tap<{ discordId: bigint }>({
-		next: () => {
-			return invalidateLoggedInUser()
+const myLinkedSteamAccountsQuery = {
+	queryKey: ['users', 'getMyLinkedSteamAccounts'],
+	queryFn: async () => RPC.orpc.users.getMyLinkedSteamAccounts.call(),
+}
+
+export function useMyLinkedSteamAccounts() {
+	return useQuery(myLinkedSteamAccountsQuery)
+}
+
+export function useUpdateLinkedSteamAccountsMutation() {
+	return useMutation({
+		...RPC.orpc.users.updateLinkedSteamAccounts.mutationOptions(),
+		onSuccess: (res) => {
+			if (res.code === 'ok') void RPC.queryClient.invalidateQueries({ queryKey: myLinkedSteamAccountsQuery.queryKey })
 		},
-	})),
-)
+	})
+}

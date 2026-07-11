@@ -1,5 +1,7 @@
+import * as Arr from '@/lib/array'
 import * as DH from '@/lib/display-helpers'
 import * as Obj from '@/lib/object'
+import { formatHumanTime } from '@/lib/zod'
 import * as BAL from '@/models/balance-triggers.models'
 import * as CMD from '@/models/command.models'
 import * as L from '@/models/layer'
@@ -122,9 +124,8 @@ export const WARNS = {
 		},
 	},
 	balanceTrigger: {
-		showEvent(event: BAL.BalanceTriggerEvent, match: MH.MatchDetails, opts?: { repeat?: number; isCurrent?: boolean }) {
+		showEvent(event: BAL.BalanceTriggerEvent, match: MH.MatchDetails, opts?: { isCurrent?: boolean }) {
 			return {
-				repeat: opts?.repeat ?? 1,
 				msg: GENERAL.balanceTrigger.showEvent(event, match, !!opts?.isCurrent),
 			}
 		},
@@ -161,7 +162,7 @@ export const WARNS = {
 		},
 
 		empty: `WARNING: Queue is empty. Please populate it`,
-		showNext: (layerQueue: LL.List, parts: USR.UserPart, opts?: { repeat?: number; updated?: boolean }) => (ctx: C.Player) => {
+		showNext: (layerQueue: LL.List, parts: USR.UserPart, opts?: { updated?: boolean }) => (ctx: C.Player) => {
 			const item = layerQueue[0]
 			let setByDisplay: string
 			switch (item?.source.type) {
@@ -186,10 +187,7 @@ export const WARNS = {
 			}
 
 			const extraDisplay = setByDisplay
-			const getOptions = (msg: string | string[]) => ({
-				msg,
-				repeat: opts?.repeat ?? 1,
-			})
+			const getOptions = (msg: string | string[]) => ({ msg })
 
 			const playerNextTeamId = isNullOrUndef(ctx.player.teamId) ? undefined : ctx.player.teamId === 1 ? 2 : 1
 
@@ -233,7 +231,6 @@ export const WARNS = {
 				`${playerName} has requested feedback for`,
 				LL.displayLayerListItem(item, index),
 			].join('\n'),
-			repeat: 3,
 		}),
 	},
 	commands: {
@@ -241,28 +238,29 @@ export const WARNS = {
 			return `Unknown: ${cmdText}.\nDid you mean "${closestMatch}"?`
 		},
 		wrongChat: (correctChats: string[]) => `Command not available in this chat. Try using ${correctChats.join(' or ')}`,
-		help(commands: Record<CMD.CommandId, CMD.CommandConfig>, prefix: string) {
+		help(
+			commands: Record<CMD.CommandId, CMD.CommandConfig>,
+			prefix: string,
+			timeoutAliases: readonly { string: string; duration: number }[] = [],
+		) {
 			const commandLines = Obj.objEntries(commands).filter(([_, cmd]) => cmd.enabled).map(([id, cmd]) => {
 				const sortedStrings = cmd.strings.sort((a, b) => a.length - b.length).map((s) => `${prefix}${s}`)
-				return `[${sortedStrings.join(', ')}]: ${GENERAL.command.descriptions[id]}`
+				const signature = CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS[id].args)
+				return `[${sortedStrings.join(', ')}]${signature ? ` ${signature}` : ''}: ${GENERAL.command.descriptions[id]}`
 			})
-			const groups: string[][] = []
-			let currentGroup: string[] = []
-			groups.push(currentGroup)
-			for (const config of commandLines) {
-				if (currentGroup.length >= 3) {
-					currentGroup = []
-					groups.push(currentGroup)
-				}
-				currentGroup.push(config)
-			}
+			// fixed-duration kick aliases aren't in COMMAND_DECLARATIONS; append them with a generated description
+			const aliasSignature = CMD.formatArgSignature(CMD.TIMEOUT_ALIAS_ARG_DEFS)
+			const aliasLines = timeoutAliases.map((a) =>
+				`[${prefix}${a.string}]${aliasSignature ? ` ${aliasSignature}` : ''}: ${GENERAL.command.timeoutAliasDescription(a.duration)}`
+			)
+			const groups = Arr.paged([...commandLines, ...aliasLines], 3)
+			if (groups.length === 0) groups.push([])
 			groups[0].unshift(`Available commands:`)
-			const groupsJoined = groups.map((g) => g.join('\n'))
-
-			return { msg: groupsJoined, repeat: 3 }
+			return groups.map((g) => g.join('\n'))
 		},
 		missingSteamId: () => `You are not signed in as a Steam user.`,
-		steamAccountLinked: (username: string) => `Your Steam account has been linked to discord user ${username}.`,
+		steamAccountNotLinked: () =>
+			`This command requires a linked SLM account. Link your Steam ID on the SLM website (account menu > Linked Steam Accounts).`,
 	},
 	teamswitches: {
 		notifyPlayerOfUpcomingTeamswitch: 'You have been marked for teamswitching on mapchange. '
@@ -286,7 +284,8 @@ export const WARNS = {
 				: `${name} switched ${count} player${count !== 1 ? 's' : ''} to the other team.`,
 	},
 	kill: {
-		notifyKilled: (reason?: string) => reason ? `You have been killed by an admin. Reason: ${reason}` : 'You have been killed by an admin.',
+		// a supplied reason is already the fully-rendered verbatim message; only the no-reason case gets a default
+		notifyKilled: (reason?: string) => reason || 'You have been killed by an admin.',
 	},
 	permissionDenied(res: RBAC.PermissionDeniedResponse) {
 		return `Permission denied. You need ${res.check} of the following ${res.permits.map((p) => p.type).join(', ')}`
@@ -342,7 +341,6 @@ export const GENERAL = {
 			enableSlmUpdates: 'Allow SLM to set the next layer',
 			disableSlmUpdates: 'Prevent SLM from setting the next layer',
 			getSlmUpdatesEnabled: 'Check if SLM is allowed to set the next layer',
-			linkSteamAccount: 'Link your Steam account to your Discord account',
 			requestFeedback: 'Request feedback on a layer',
 			flag: "Flag a player's BM profile, optionally with a reason (some flags require one)",
 			removeFlag: "Remove a flag from a player's BM profile",
@@ -353,7 +351,21 @@ export const GENERAL = {
 			switchSquadNext: 'Queue an entire squad to switch teams on the next map',
 			swaps: 'Show a summary of queued team swaps',
 			clearSwitches: 'Clear all queued teamswitches',
-		},
+			warn: 'Warn a player: one word picks a preset reason, more words send a custom message',
+			listWarnReasons: 'List the configured admin action reasons and their aliases',
+			warnSquad: 'Warn every member of a squad: one word picks a preset reason, more words send a custom message',
+			kill: 'Kill a player, optionally with a preset reason (one word) or custom message',
+			killSquad: 'Kill every member of a squad, optionally with a preset reason (one word) or custom message',
+			removeFromSquad: 'Remove a player from their squad, optionally with a preset reason',
+			disbandSquad: 'Disband a squad, optionally with a preset reason',
+			demoteCommander: 'Demote a player from commander, optionally with a preset reason',
+			broadcast: 'Send an admin broadcast: one word picks a preset, more words broadcast the message verbatim',
+			kick: 'Kick a player with a timeout (e.g. 2h); they are re-kicked on any SLM server until it expires',
+			kickSquad: 'Kick every member of a squad with a timeout (e.g. 2h)',
+			clearTimeout: "Cancel a player's active kick timeout (works for offline players)",
+		} satisfies Record<CMD.CommandId, string>,
+		// configurable fixed-duration kick aliases; shared by the in-game help and the web help dialog
+		timeoutAliasDescription: (durationMs: number) => `Kick with a ${formatHumanTime(durationMs)} timeout`,
 	},
 }
 

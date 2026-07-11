@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
+import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
 import * as BM from '@/models/battlemetrics.models'
 import * as CHAT from '@/models/chat.models'
@@ -17,10 +18,12 @@ import * as RPC from '@/orpc.client'
 import { sortFlagsByHierarchy, useOrgFlags } from '@/systems/battlemetrics.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
+import * as TimeoutsClient from '@/systems/timeouts.client'
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
+import { CopyIdButton } from './copy-id-button'
 import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
 import { ServerEvent } from './server-event'
 import WarnChatBox from './warn-chat-box'
@@ -32,7 +35,6 @@ import * as RbacClient from '@/systems/rbac.client'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
 import { Separator } from './ui/separator'
 import { Spinner } from './ui/spinner'
-import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 const dropdownMenuSlots = {
 	Item: DropdownMenuItem,
@@ -158,6 +160,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
 			<div className="px-3 py-2 space-y-1.5 text-xs border-b border-border/50">
+				<PlayerTimeoutStatus playerId={playerId} />
 				<div className="inline-flex gap-1 items-baseline">
 					{player?.role && <div className="text-muted-foreground">{player.role}</div>}
 					<CopyIdButton label="eos" id={playerId} />
@@ -267,6 +270,38 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	)
 }
 
+// active kick-timeout badge + cancel; rendered regardless of connection status since timeouts outlive the session
+function PlayerTimeoutStatus({ playerId }: { playerId: string }) {
+	const timeout = TimeoutsClient.useActiveTimeouts().find(t => t.playerId === playerId && !t.cancelled)
+	const canCancel = TimeoutsClient.useMaxTimeout() !== undefined
+	const cancelMutation = TimeoutsClient.useCancelTimeoutMutation()
+	if (!timeout) return null
+	return (
+		<div className="flex items-center gap-2 rounded border border-red-500/40 bg-red-500/10 px-2 py-1">
+			<Icons.UserX className="h-3.5 w-3.5 text-red-500 shrink-0" />
+			<span className="min-w-0 truncate">
+				Timed out until {dateFns.format(timeout.expiresAt, 'PPp')}
+				{timeout.reasonLabel ? ` (${timeout.reasonLabel})` : ''}
+			</span>
+			{canCancel && (
+				<Button
+					size="sm"
+					variant="ghost"
+					className="h-6 px-2 ml-auto shrink-0"
+					title="Cancel this timeout"
+					onClick={async () => {
+						const res = await cancelMutation.mutateAsync({ timeoutId: timeout.id })
+						if (res.code !== 'ok') toast.error('Cancel failed', { description: 'msg' in res && res.msg ? res.msg : res.code })
+						else toast('Timeout cancelled')
+					}}
+				>
+					Cancel
+				</Button>
+			)}
+		</div>
+	)
+}
+
 function ExtLink({ href, children }: { href: string; children: React.ReactNode }) {
 	return (
 		<a
@@ -278,40 +313,6 @@ function ExtLink({ href, children }: { href: string; children: React.ReactNode }
 			{children}
 			<Icons.ExternalLink className="h-2.5 w-2.5" />
 		</a>
-	)
-}
-
-function CopyIdButton({ label, id }: { label: string; id: string }) {
-	const [open, setOpen] = React.useState(false)
-	const timeoutRef = React.useRef<ReturnType<typeof setTimeout>>(null)
-
-	const handleClick = () => {
-		void navigator.clipboard.writeText(id)
-		setOpen(true)
-		if (timeoutRef.current) clearTimeout(timeoutRef.current)
-		timeoutRef.current = setTimeout(() => setOpen(false), 1500)
-	}
-
-	React.useEffect(() => () => {
-		if (timeoutRef.current) clearTimeout(timeoutRef.current)
-	}, [])
-
-	return (
-		<Tooltip open={open}>
-			<TooltipTrigger asChild>
-				<button
-					type="button"
-					className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer"
-					title={`Copy ${label} ID`}
-					onClick={handleClick}
-				>
-					<span className="font-mono text-muted-foreground">{label}:</span>
-					<span className="font-mono">{id}</span>
-					<Icons.Copy className="h-3 w-3" />
-				</button>
-			</TooltipTrigger>
-			<TooltipContent>Copied!</TooltipContent>
-		</Tooltip>
 	)
 }
 

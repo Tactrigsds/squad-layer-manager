@@ -2,6 +2,8 @@
 
 // display-name overrides keyed by dotted settings path; falls back to humanize() otherwise
 const LABEL_OVERRIDES: Record<string, string> = {
+	messageVariables: 'Message Variables',
+	requireReasonFor: 'Require a Reason',
 	rbac: 'Permissions & Roles',
 	'rbac.roleAssignments.discord-role': 'By Discord Role',
 	'rbac.roleAssignments.discord-user': 'Specific User',

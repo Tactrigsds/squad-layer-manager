@@ -143,7 +143,7 @@ export function FilterEdit(
 
 		for (const perm of loggedInUser.perms) {
 			if (
-				perm.type === 'filters:write' && perm.args!.filterId === props.entity.id
+				perm.type === 'filters:write' && (perm.args as { filterId: string }).filterId === props.entity.id
 				&& perm.allowedByRoles.some(r =>
 					RBAC.isInferredRoleType(r) && (r.type === 'filter-role-contributor' || r.type === 'filter-user-contributor')
 				)

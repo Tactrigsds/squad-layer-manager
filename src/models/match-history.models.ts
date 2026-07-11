@@ -299,6 +299,12 @@ export function getTeamNormalizedAllianceProp(offset: number, team: NormedTeamId
 	return props[(offset + Number(normedTeam === 'B')) % 2]
 }
 
+// the faction the given in-game (denormalized) team is playing in this match, e.g. "PLA"
+export function getTeamFaction(match: Pick<MatchDetails, 'ordinal' | 'layerId'>, teamId: SM.TeamId): string | undefined {
+	const prop = getTeamNormalizedFactionProp(match.ordinal, getNormedTeamId(teamId, match.ordinal))
+	return L.toLayer(match.layerId)[prop] ?? undefined
+}
+
 export function getNormedTeamId(teamId: SM.TeamId, parity: number) {
 	const normIds = ['A', 'B'] as const
 	return normIds[(parity + teamId - 1) % 2]

@@ -63,6 +63,8 @@ export const ROLE_ASSIGNMENT_TYPES = ['discord-role', 'discord-user', 'discord-s
 export const PERM_SCOPE_ARGS = {
 	global: z.undefined(),
 	filter: z.object({ filterId: F.FilterEntityIdSchema }),
+	// null = unlimited (Infinity doesn't serialize and zod rejects it)
+	timeout: z.object({ maxDurationMs: z.number().int().positive().nullable() }),
 }
 
 type PermScope = keyof typeof PERM_SCOPE_ARGS
@@ -97,6 +99,10 @@ export const PERMISSION_DEFINITION = {
 	}),
 	...definePermission('squad-server:warn-players', { description: 'Send in-game warnings to players', scope: 'global' }),
 	...definePermission('squad-server:broadcast', { description: 'Send server-wide broadcast messages', scope: 'global' }),
+	...definePermission('squad-server:timeout-players', {
+		description: 'Kick players with a timeout, up to the granted maximum duration',
+		scope: 'timeout',
+	}),
 
 	...definePermission('battlemetrics:write-flags', { description: 'Add or remove BattleMetrics player flags', scope: 'global' }),
 
@@ -305,6 +311,21 @@ export function getWritePermReqForFilterEntity(id: F.FilterEntityId): Permission
 		check: 'any',
 		permits: [perm('filters:write', { filterId: id }), perm('filters:write-all')],
 	}
+}
+
+// the effective max kick-timeout duration a set of perms grants: undefined = no grant at all,
+// null = unlimited, number = max ms. Deliberately not routed through arePermsEqual: "up to N" is a
+// comparator, not an equality match.
+export function maxTimeoutDurationMs(perms: Permission[]): number | null | undefined {
+	let max: number | undefined = undefined
+	for (const p of perms) {
+		if (p.type !== 'squad-server:timeout-players') continue
+		const args = p.args as z.infer<(typeof PERM_SCOPE_ARGS)['timeout']> | undefined
+		if (!args) continue
+		if (args.maxDurationMs === null) return null
+		if (max === undefined || args.maxDurationMs > max) max = args.maxDurationMs
+	}
+	return max
 }
 
 export function getPermissionsByRole(permissions: TracedPermission[]): [Role, TracedPermission[]][] {

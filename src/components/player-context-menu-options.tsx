@@ -1,7 +1,9 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
+import * as ZodLib from '@/lib/zod'
 import * as ZusUtils from '@/lib/zustand'
+import type * as AAR from '@/models/admin-action-reasons.models'
 import type * as BM from '@/models/battlemetrics.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as MH from '@/models/match-history.models'
@@ -16,6 +18,7 @@ import * as SettingsClient from '@/systems/settings.client'
 import type { PublicSettings } from '@/systems/settings.server'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswitches.client'
+import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 import React from 'react'
@@ -24,6 +27,7 @@ import { ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenu
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
+import { ReasonPicker, WarnReasonsSub } from './warn-reasons-sub'
 
 export type MenuSlots = {
 	Item: React.ComponentType<{ onClick?: () => void; disabled?: boolean; className?: string; children?: React.ReactNode }>
@@ -143,6 +147,39 @@ export function PlayerCopyIdsSub(
 	)
 }
 
+// the Kick dialog body: the timeout input is kept in state (in addition to the ref the confirm handler reads) so the
+// ReasonPicker's message preview can resolve {{duration}} live as the admin types
+function KickDialogContent(
+	{ durationRef, customReasonRef, presetReasonRef, maxTimeout, required }: {
+		durationRef: React.MutableRefObject<string>
+		customReasonRef: React.MutableRefObject<string>
+		presetReasonRef: React.MutableRefObject<string>
+		maxTimeout: number | null | undefined
+		required?: boolean
+	},
+) {
+	const [durationText, setDurationText] = React.useState(() => durationRef.current)
+	const durationMs = ZodLib.tryParseHumanTimeToken(durationText.trim())
+	return (
+		<div className="grid gap-3 py-2">
+			<div className="grid gap-2">
+				<Label htmlFor="kick-duration">Timeout duration</Label>
+				<Input
+					id="kick-duration"
+					autoComplete="off"
+					placeholder={maxTimeout == null ? 'e.g. 30m, 2h, 1d' : `e.g. 30m, 2h (max ${ZodLib.formatHumanTime(maxTimeout)})`}
+					defaultValue={durationRef.current}
+					onChange={e => {
+						durationRef.current = e.target.value
+						setDurationText(e.target.value)
+					}}
+				/>
+			</div>
+			<ReasonPicker action="kick" presetRef={presetReasonRef} customRef={customReasonRef} required={required} durationMs={durationMs} />
+		</div>
+	)
+}
+
 export function PlayerMenuItems(
 	{ playerId, slots, stores, omitWarn }: {
 		playerId: SM.PlayerId
@@ -156,10 +193,21 @@ export function PlayerMenuItems(
 	const openDialog = useAlertDialog()
 	const closeDialog = useCloseAlertDialog()
 	const openOrFocusWindow = useOpenOrFocusWindow()
-	// holds the latest kill-reason input value; the alert dialog only resolves a button id, so we read the
-	// reason from here rather than the (unmounting) DOM input when the dialog confirms
-	const killReasonRef = React.useRef('')
+	// holds the latest custom-reason input value (kill + kick dialogs); the alert dialog only resolves a button
+	// id, so we read the reason from here rather than the (unmounting) DOM input when the dialog confirms
+	const customReasonRef = React.useRef('')
+	// same mechanism for the preset-reason pick in the action confirmation dialogs; reset on each dialog open
+	const presetReasonRef = React.useRef('')
+	const kickDurationRef = React.useRef('')
 
+	const warnPlayersMutation = SquadServerClient.useWarnPlayersMutation()
+	const kickMutation = TimeoutsClient.useKickPlayerMutation()
+	const maxTimeout = TimeoutsClient.useMaxTimeout()
+	const killReasonRequired = SettingsClient.useReasonRequired('kill')
+	const kickReasonRequired = SettingsClient.useReasonRequired('kick')
+	const removeReasonRequired = SettingsClient.useReasonRequired('remove-from-squad')
+	const disbandReasonRequired = SettingsClient.useReasonRequired('disband-squad')
+	const demoteReasonRequired = SettingsClient.useReasonRequired('demote-commander')
 	const demoteCommanderMutation = SquadServerClient.useDemoteCommanderMutation()
 	const killMutation = SquadServerClient.useKillMutation()
 	const disbandSquadMutation = SquadServerClient.useDisbandSquadMutation()
@@ -232,6 +280,11 @@ export function PlayerMenuItems(
 
 	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
+	// timeout grants are comparator-matched (see useMaxTimeout), so the denial is synthesized rather than
+	// coming from usePermsCheck
+	const kickDenied = maxTimeout === undefined
+		? RBAC.permissionDenied({ check: 'all', permits: [RBAC.perm('squad-server:timeout-players', { maxDurationMs: null })] })
+		: null
 
 	async function switchNow() {
 		if (!otherTeam) return
@@ -261,7 +314,8 @@ export function PlayerMenuItems(
 
 	async function kill() {
 		if (!otherTeam) return
-		killReasonRef.current = ''
+		customReasonRef.current = ''
+		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
 			const result = await openDialog({
 				title: 'Kill Player',
@@ -270,21 +324,69 @@ export function PlayerMenuItems(
 					playerInfo?.username ?? 'this player'
 				}? They will be force-switched teams twice in quick succession to trigger a respawn, ending back on their current team.`,
 				content: (
-					<div className="grid gap-2 py-2">
-						<Label htmlFor="kill-reason">Reason (optional)</Label>
-						<Input
-							id="kill-reason"
-							autoComplete="off"
-							placeholder="Shown to the player in a warning"
-							onChange={e => (killReasonRef.current = e.target.value)}
-						/>
+					<div className="grid gap-3 py-2">
+						<ReasonPicker action="kill" presetRef={presetReasonRef} customRef={customReasonRef} required={killReasonRequired} />
 					</div>
 				),
 				buttons: [{ id: 'confirm', label: 'Kill' }],
 			})
 			if (result !== 'confirm') return
-			const reason = killReasonRef.current.trim() || undefined
-			await killMutation.mutateAsync({ serverId, playerIds: [playerId], reason })
+			const input = SquadServerClient.readReasonInput({
+				action: 'kill',
+				required: killReasonRequired,
+				presetRef: presetReasonRef,
+				customRef: customReasonRef,
+			})
+			if (!input) return
+			await killMutation.mutateAsync({ serverId, playerIds: [playerId], ...input })
+		})
+	}
+
+	async function kick() {
+		kickDurationRef.current = ''
+		customReasonRef.current = ''
+		presetReasonRef.current = ''
+		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
+			const result = await openDialog({
+				title: 'Kick Player',
+				variant: 'destructive',
+				description: `Kick ${
+					playerInfo?.username ?? 'this player'
+				}? They will be re-kicked on join from any SLM-managed server until the timeout expires.`,
+				content: (
+					<KickDialogContent
+						durationRef={kickDurationRef}
+						customReasonRef={customReasonRef}
+						presetReasonRef={presetReasonRef}
+						maxTimeout={maxTimeout}
+						required={kickReasonRequired}
+					/>
+				),
+				buttons: [{ id: 'confirm', label: 'Kick' }],
+			})
+			if (result !== 'confirm') return
+			const durationMs = ZodLib.tryParseHumanTimeToken(kickDurationRef.current.trim())
+			if (durationMs === undefined) {
+				toast.error('Invalid duration', { description: 'Use a duration like 30m, 2h or 1d' })
+				return
+			}
+			if (typeof maxTimeout === 'number' && durationMs > maxTimeout) {
+				toast.error('Duration too long', { description: `Your maximum timeout is ${ZodLib.formatHumanTime(maxTimeout)}` })
+				return
+			}
+			const input = SquadServerClient.readReasonInput({
+				action: 'kick',
+				required: kickReasonRequired,
+				presetRef: presetReasonRef,
+				customRef: customReasonRef,
+			})
+			if (!input) return
+			const res = await kickMutation.mutateAsync({ serverId, playerId, durationMs, ...input })
+			if (res.code !== 'ok') {
+				toast.error('Kick failed', { description: 'msg' in res && res.msg ? res.msg : res.code })
+				return
+			}
+			toast(`Kicked ${playerInfo?.username ?? 'player'} with a ${ZodLib.formatHumanTime(durationMs)} timeout`)
 		})
 	}
 
@@ -294,6 +396,16 @@ export function PlayerMenuItems(
 		WarnChat.requestWarnFocus({ kind: 'player', playerId })
 	}
 
+	// preset warns skip the warn box and send immediately (single target)
+	async function sendPresetWarn(reason: AAR.AdminActionReason) {
+		const res = await warnPlayersMutation.mutateAsync({ serverId, playerIds: [playerId], presetReasonLabel: reason.label })
+		if (res.code !== 'ok') {
+			toast.error('Warn failed', { description: 'msg' in res ? res.msg : res.code })
+			return
+		}
+		toast(`Warned ${playerInfo?.username ?? 'player'} for ${reason.label}`)
+	}
+
 	function copyTeleportCommand() {
 		void navigator.clipboard.writeText(`AdminTeleportToPlayer ${playerId}`)
 		toast('Copied', { description: 'Teleport command copied to clipboard' })
@@ -301,15 +413,23 @@ export function PlayerMenuItems(
 
 	async function removeFromSquad() {
 		TSWClient.Actions.ensureViewingTeams(serverId)
+		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('REMOVING_FROM_SQUAD', async () => {
 			const squadLabel = playerInfo?.squadName ? `"${playerInfo.squadName}"` : 'their squad'
 			const result = await openDialog({
 				title: 'Remove from Squad',
 				description: `Remove this player from ${squadLabel}?`,
+				content: <ReasonPicker action="remove-from-squad" presetRef={presetReasonRef} required={removeReasonRequired} />,
 				buttons: [{ id: 'confirm', label: 'Remove' }],
 			})
 			if (result !== 'confirm') return
-			await removeFromSquadMutation.mutateAsync({ serverId, playerId })
+			const input = SquadServerClient.readReasonInput({
+				action: 'remove-from-squad',
+				required: removeReasonRequired,
+				presetRef: presetReasonRef,
+			})
+			if (!input) return
+			await removeFromSquadMutation.mutateAsync({ serverId, playerId, presetReasonLabel: input.presetReasonLabel })
 		})
 	}
 
@@ -317,15 +437,28 @@ export function PlayerMenuItems(
 		TSWClient.Actions.ensureViewingTeams(serverId)
 		if (playerInfo?.squadId === null || playerInfo?.squadId === undefined || !playerInfo.teamId) return
 		const { squadId, teamId, squadName } = playerInfo
+		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('DISBANDING_SQUAD', async () => {
 			const squadLabel = squadName ? `"${squadName}"` : `squad ${squadId}`
 			const result = await openDialog({
 				title: 'Disband Squad',
 				description: `Disband ${squadLabel} on team ${teamId}?`,
+				content: <ReasonPicker action="disband-squad" presetRef={presetReasonRef} required={disbandReasonRequired} />,
 				buttons: [{ id: 'confirm', label: 'Disband' }],
 			})
 			if (result !== 'confirm') return
-			await disbandSquadMutation.mutateAsync({ serverId, teamId: teamId as 1 | 2, squadId })
+			const input = SquadServerClient.readReasonInput({
+				action: 'disband-squad',
+				required: disbandReasonRequired,
+				presetRef: presetReasonRef,
+			})
+			if (!input) return
+			await disbandSquadMutation.mutateAsync({
+				serverId,
+				teamId: teamId as 1 | 2,
+				squadId,
+				presetReasonLabel: input.presetReasonLabel,
+			})
 		})
 	}
 
@@ -347,14 +480,22 @@ export function PlayerMenuItems(
 
 	async function demoteCommander() {
 		TSWClient.Actions.ensureViewingTeams(serverId)
+		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('DEMOTING_COMMANDER', async () => {
 			const result = await openDialog({
 				title: 'Demote Commander',
 				description: 'Demote this player from commander?',
+				content: <ReasonPicker action="demote-commander" presetRef={presetReasonRef} required={demoteReasonRequired} />,
 				buttons: [{ id: 'confirm', label: 'Demote' }],
 			})
 			if (result !== 'confirm') return
-			await demoteCommanderMutation.mutateAsync({ serverId, playerId })
+			const input = SquadServerClient.readReasonInput({
+				action: 'demote-commander',
+				required: demoteReasonRequired,
+				presetRef: presetReasonRef,
+			})
+			if (!input) return
+			await demoteCommanderMutation.mutateAsync({ serverId, playerId, presetReasonLabel: input.presetReasonLabel })
 		})
 	}
 
@@ -477,6 +618,15 @@ export function PlayerMenuItems(
 					Kill
 				</Item>
 			</PermissionDeniedTooltip>
+			<PermissionDeniedTooltip denied={kickDenied}>
+				<Item
+					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
+					onClick={kick}
+					disabled={!!kickDenied || !isOnServer}
+				>
+					Kick
+				</Item>
+			</PermissionDeniedTooltip>
 			<Separator />
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item
@@ -487,13 +637,7 @@ export function PlayerMenuItems(
 				</Item>
 			</PermissionDeniedTooltip>
 			<Separator />
-			{!omitWarn && (
-				<PermissionDeniedTooltip denied={warnDenied}>
-					<Item onClick={warn} disabled={!!warnDenied || !isOnServer}>
-						Warn
-					</Item>
-				</PermissionDeniedTooltip>
-			)}
+			{!omitWarn && <WarnReasonsSub slots={slots} denied={warnDenied} disabled={!isOnServer} onCustom={warn} onPreset={sendPresetWarn} />}
 			<Item onClick={copyTeleportCommand} disabled={!isOnServer}>
 				Copy Teleport Command
 			</Item>
