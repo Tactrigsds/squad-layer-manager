@@ -798,6 +798,21 @@ function reasonPreviewEntries(reason: AAR.AdminActionReason, customVars: Record<
 	return entries
 }
 
+// message templates are rendered with Mustache (see src/lib/templating.ts); link to its syntax so authors know which
+// {{...}} features are actually supported (plain variable substitution, not Handlebars helpers/expressions)
+const TEMPLATE_SYNTAX_URL = 'https://mustache.github.io/mustache.5.html'
+
+function TemplateSyntaxHint() {
+	return (
+		<p className="text-xs text-muted-foreground">
+			Supports{' '}
+			<a href={TEMPLATE_SYNTAX_URL} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+				{'{{variable}}'} syntax
+			</a>.
+		</p>
+	)
+}
+
 function ReasonPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Subject<void> }) {
 	const raw = useFieldValue(row$, reset$) as Partial<AAR.AdminActionReason> | undefined
 	const customVars = React.useContext(MessageVarsContext)
@@ -822,6 +837,7 @@ function ReasonPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Su
 				<p className="text-xs text-muted-foreground">
 					In-game text delivered for each applicable action (kicks shown with a 2h sample timeout and with none).
 				</p>
+				<TemplateSyntaxHint />
 				{reasonPreviewEntries(reason, customVars).map((entry) => (
 					<div key={entry.context} className="space-y-1">
 						<p className="text-xs font-medium">{entry.context}</p>
@@ -886,6 +902,7 @@ function BroadcastPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx
 			</PopoverTrigger>
 			<PopoverContent className="w-96 space-y-2" align="end">
 				<p className="text-xs text-muted-foreground">Broadcast text delivered to all players.</p>
+				<TemplateSyntaxHint />
 				<MessagePreviewBox>{rendered}</MessagePreviewBox>
 			</PopoverContent>
 		</Popover>

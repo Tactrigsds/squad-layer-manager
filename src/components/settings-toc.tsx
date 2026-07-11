@@ -237,13 +237,14 @@ export default function SettingsToc(
 
 	const perms = RbacClient.useLoggedInPerms()
 	const globalWrite = React.useMemo(() => RBAC.globalSettingsWriteAccess(perms), [perms])
-	// same widening as the settings form: write-sensitive permits connections edits regardless of path grants
+	// same widening as the settings form: write-sensitive permits connections edits independent of any general write grant
 	const serverWriteById = React.useMemo(() => {
 		const map = new Map<string, RBAC.SettingsWriteAccess>()
 		for (const s of servers) {
 			let write = RBAC.serverSettingsWriteAccess(perms, s.id)
-			if (write.kind === 'paths' && RBAC.canWriteSensitiveServerSettings(perms, s.id)) {
-				write = { kind: 'paths', paths: [...write.paths, 'connections'] }
+			if (write.kind !== 'all' && RBAC.canWriteSensitiveServerSettings(perms, s.id)) {
+				const paths = write.kind === 'paths' ? write.paths : []
+				write = { kind: 'paths', paths: [...paths, 'connections'] }
 			}
 			map.set(s.id, write)
 		}

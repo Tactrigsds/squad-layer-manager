@@ -451,6 +451,15 @@ export function canWriteSensitiveServerSettings(perms: Permission[], serverId: s
 	)
 }
 
+// creating a server means supplying its connection details, which is gated by write-sensitive. A grant scoped to a
+// specific server id can't authorize a brand-new id, so creation requires an unscoped (all-servers) write-sensitive grant.
+export function canCreateServers(perms: Permission[]): boolean {
+	return perms.some((p) =>
+		p.type === 'server-settings:write-sensitive'
+		&& ((p.args as ServerScopeArgs | undefined)?.serverId ?? null) === null
+	)
+}
+
 export function canReadServerSettings(perms: Permission[], serverId: string): boolean {
 	if (perms.some((p) => p.type === 'server-settings:read' && serverIdMatches(p.args as ServerScopeArgs | undefined, serverId))) {
 		return true

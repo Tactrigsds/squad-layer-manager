@@ -675,7 +675,10 @@ const adminRouter = {
 			const ctx = DB.addPooledDb(_ctx as any)
 			const perms = await Rbac.getUserPermissions(ctx)
 			const access = RBAC.serverSettingsWriteAccess(perms, input.serverId)
-			if (access.kind === 'none') {
+			const canWriteSensitive = RBAC.canWriteSensitiveServerSettings(perms, input.serverId)
+			// write-sensitive is self-sufficient for the connections: a holder can save connection edits even with no
+			// general write grant. updateRawServerSettings still denies any non-connection change they can't make.
+			if (access.kind === 'none' && !canWriteSensitive) {
 				return RBAC.permissionDenied({
 					check: 'all' as const,
 					permits: [RBAC.perm('server-settings:write', { serverId: input.serverId, paths: null })],
@@ -683,7 +686,7 @@ const adminRouter = {
 			}
 			const res = await updateRawServerSettings(ctx, input.serverId, input.settings, USR.toMiniUser(_ctx.user), {
 				access,
-				canWriteSensitive: RBAC.canWriteSensitiveServerSettings(perms, input.serverId),
+				canWriteSensitive,
 			})
 			if (res.code === 'ok') {
 				await AppEventsSys.persistAppEvent(

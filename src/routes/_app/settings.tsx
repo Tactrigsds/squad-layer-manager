@@ -50,6 +50,8 @@ function RouteComponent() {
 	const manageServersDenied = RbacClient.usePermsCheck(RBAC.perm('admin:manage-servers'))
 	const globalAccess = RbacClient.useGlobalSettingsAccess()
 	const loggedInPerms = RbacClient.useLoggedInPerms()
+	// creating a server requires supplying its connection details, so it needs write-sensitive in addition to manage-servers
+	const canCreateServers = React.useMemo(() => RBAC.canCreateServers(loggedInPerms), [loggedInPerms])
 	// scopes this visit's frame instances: a fresh pageId per mount means fresh drafts + a fresh raw-settings fetch
 	const pageId = useRefConstructor(() => createId(4)).current
 	// non-null while the new-server form is open; a fresh nonce per "Add Server" click yields a clean frame instance
@@ -69,14 +71,14 @@ function RouteComponent() {
 		for (const s of servers) {
 			keys.push(frameManager.ensureSetup(SettingsEditorFrame.frame, { kind: 'server', serverId: s.id, pageId }))
 		}
-		if (!manageServersDenied && creatingNonce !== null) {
+		if (!manageServersDenied && canCreateServers && creatingNonce !== null) {
 			keys.push(frameManager.ensureSetup(SettingsEditorFrame.frame, { kind: 'new-server', nonce: creatingNonce, pageId }))
 		}
 		if (globalAccess.canRead) {
 			keys.push(frameManager.ensureSetup(SettingsEditorFrame.frame, { kind: 'global', pageId }))
 		}
 		return keys
-	}, [servers, creatingNonce, globalAccess.canRead, manageServersDenied, pageId])
+	}, [servers, creatingNonce, globalAccess.canRead, manageServersDenied, canCreateServers, pageId])
 
 	// frame instances are otherwise reclaimed only when the FinalizationRegistry gets around to it, which can leave
 	// the global watch subscription and per-section drafts alive long after leaving the page (and every visit mints
@@ -208,7 +210,11 @@ function RouteComponent() {
 				{/* ServerManagement reads PublicSettingsStore, not globalSettings$, so it must not sit behind the global-settings Suspense */}
 				{!manageServersDenied && (
 					<div id="section:servers" className="scroll-mt-2 rounded-xl">
-						<ServerManagementSection onAddServer={() => setCreatingNonce(createId(4))} creating={creating} />
+						<ServerManagementSection
+							onAddServer={() => setCreatingNonce(createId(4))}
+							creating={creating}
+							canCreate={canCreateServers}
+						/>
 					</div>
 				)}
 				{servers.map((server) => {
@@ -220,7 +226,7 @@ function RouteComponent() {
 						</div>
 					)
 				})}
-				{!manageServersDenied && creating && (() => {
+				{!manageServersDenied && canCreateServers && creating && (() => {
 					const key = sectionKeys.find((k) => k.kind === 'new-server')
 					if (!key) return null
 					return (
@@ -345,7 +351,9 @@ function ServerStatusBadge({ state }: { state: ServerLifecycleState }) {
 	}
 }
 
-function ServerManagementSection({ onAddServer, creating }: { onAddServer: () => void; creating: boolean }) {
+function ServerManagementSection(
+	{ onAddServer, creating, canCreate }: { onAddServer: () => void; creating: boolean; canCreate: boolean },
+) {
 	const settings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
 	const deleteServersDenied = RbacClient.usePermsCheck(RBAC.perm('admin:delete-servers'))
 	const openDialog = useAlertDialog()
@@ -483,7 +491,7 @@ function ServerManagementSection({ onAddServer, creating }: { onAddServer: () =>
 							</div>
 						)
 					})}
-					<Button variant="outline" disabled={creating} onClick={onAddServer}>Add Server</Button>
+					{canCreate && <Button variant="outline" disabled={creating} onClick={onAddServer}>Add Server</Button>}
 				</CardContent>
 			</StickyGroup>
 		</Card>
@@ -518,10 +526,12 @@ function ServerSettingsSection(
 	// mirror of the server-side grant check so out-of-grant edits surface before save
 	const deniedPaths = SettingsEditorFrame.deniedSettingPaths(state, perms)
 
-	// write-sensitive permits editing connections regardless of path grants; widen the form's gating to match
+	// write-sensitive permits editing connections independent of any general write grant; widen the form's gating so a
+	// sensitive user can edit connections even with no (or only path-restricted) write access
 	const formWriteAccess: RBAC.SettingsWriteAccess = React.useMemo(() => {
-		if (access.write.kind !== 'paths' || !access.sensitive) return access.write
-		return { kind: 'paths', paths: [...access.write.paths, 'connections'] }
+		if (!access.sensitive || access.write.kind === 'all') return access.write
+		const paths = access.write.kind === 'paths' ? access.write.paths : []
+		return { kind: 'paths', paths: [...paths, 'connections'] }
 	}, [access.write, access.sensitive])
 
 	async function handleJsonSave() {
