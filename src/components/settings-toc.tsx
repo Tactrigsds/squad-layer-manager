@@ -1,5 +1,7 @@
 import { StickyGroup } from '@/components/sticky-group'
 import { Input } from '@/components/ui/input'
+import type { SettingsGroup } from '@/lib/settings-groups'
+import { GLOBAL_SETTINGS_GROUPS, splitByGroups, TOC_LEAF_PATHS } from '@/lib/settings-groups'
 import { settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
@@ -30,14 +32,33 @@ function buildChildren(node: Node, path: (string | number)[], idPrefix: string):
 	return Object.keys(props).map((key): TocNode => {
 		const inner = stripNullable(props[key])
 		const childPath = [...path, key]
+		const pathStr = childPath.join('.')
+		// only static object sections recurse; records/arrays are dynamic, and override-rendered sections
+		// (TOC_LEAF_PATHS) emit no per-property anchors, so both stay leaf nodes
+		const recurse = inner.type === 'object' && inner.properties && !TOC_LEAF_PATHS.has(pathStr)
 		return {
-			id: `${idPrefix}${childPath.join('.')}`,
+			id: `${idPrefix}${pathStr}`,
 			label: settingLabel(childPath, key),
-			path: childPath.join('.'),
-			// only static object sections recurse; records/arrays are dynamic and stay leaf nodes
-			children: inner.type === 'object' && inner.properties ? buildChildren(inner, childPath, idPrefix) : [],
+			path: pathStr,
+			children: recurse ? buildChildren(inner, childPath, idPrefix) : [],
 		}
 	})
+}
+
+// mirror the form's presentation-level grouping: wrap the top-level nodes into group nodes (anchored to the group
+// headers the form emits), leaving ungrouped keys at the top level after them
+function groupTocNodes(children: TocNode[], groups: SettingsGroup[], idPrefix: string): TocNode[] {
+	const byKey = new Map(children.map((c) => [c.path, c]))
+	const { groups: grouped, ungrouped } = splitByGroups(children.map((c) => c.path), groups)
+	return [
+		...grouped.map(({ group, keys }): TocNode => ({
+			id: `${idPrefix}group:${group.slug}`,
+			label: group.label,
+			path: `group:${group.slug}`,
+			children: keys.map((k) => byKey.get(k)!),
+		})),
+		...ungrouped.map((k) => byKey.get(k)!),
+	]
 }
 
 function filterNode(node: TocNode, query: string): TocNode | null {
@@ -187,7 +208,11 @@ export default function SettingsToc(
 		() =>
 			globalMode === 'json'
 				? []
-				: buildChildren(z.toJSONSchema(SETTINGS.GlobalSettingsSchema, { io: 'input', unrepresentable: 'any' }) as Node, [], 'setting:'),
+				: groupTocNodes(
+					buildChildren(z.toJSONSchema(SETTINGS.GlobalSettingsSchema, { io: 'input', unrepresentable: 'any' }) as Node, [], 'setting:'),
+					GLOBAL_SETTINGS_GROUPS,
+					'setting:',
+				),
 		[globalMode],
 	)
 

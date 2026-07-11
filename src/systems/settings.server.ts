@@ -341,6 +341,8 @@ export type PublicSettings = {
 	adminActionReasons: SETTINGS.GlobalSettings['adminActionReasons']
 	requireReasonFor: SETTINGS.GlobalSettings['requireReasonFor']
 	messageVariables: SETTINGS.GlobalSettings['messageVariables']
+	// names only (no source urls/paths): lets the server-settings GUI offer a picker over the defined sources
+	adminListSourceNames: string[]
 }
 
 function buildPublicSettings(): PublicSettings {
@@ -363,6 +365,7 @@ function buildPublicSettings(): PublicSettings {
 		adminActionReasons: GLOBAL_SETTINGS.adminActionReasons,
 		requireReasonFor: GLOBAL_SETTINGS.requireReasonFor,
 		messageVariables: GLOBAL_SETTINGS.messageVariables,
+		adminListSourceNames: Object.keys(GLOBAL_SETTINGS.adminListSources),
 	}
 }
 

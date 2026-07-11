@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button'
 import { useAlertDialog } from '@/components/ui/lazy-alert-dialog'
 import type { SettingChange } from '@/lib/settings-diff'
 import { formatChangeValue } from '@/lib/settings-diff'
+import * as SettingsNav from '@/lib/settings-nav'
 import * as ZusUtils from '@/lib/zustand'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as Icons from 'lucide-react'
@@ -18,6 +19,8 @@ export type SettingsSectionEntry = {
 	label: string
 	// reactive: drive the panel's summary + enabled state
 	changedCount: number
+	// schema issues in the section's current draft (0 in JSON mode, which validates inline)
+	errorCount: number
 	valid: boolean
 	saving: boolean
 	// stable callbacks, read imperatively by the panel (kept out of the reactive selector)
@@ -38,7 +41,7 @@ export function createSettingsEditorStore(): SettingsEditorStore {
 export function useRegisterSettingsSection(store: SettingsEditorStore, entry: SettingsSectionEntry) {
 	const ref = React.useRef(entry)
 	ref.current = entry
-	const { key, label, changedCount, valid, saving } = entry
+	const { key, label, changedCount, errorCount, valid, saving } = entry
 
 	React.useEffect(() => {
 		store.setState((s) => ({
@@ -48,6 +51,7 @@ export function useRegisterSettingsSection(store: SettingsEditorStore, entry: Se
 					key,
 					label: ref.current.label,
 					changedCount: ref.current.changedCount,
+					errorCount: ref.current.errorCount,
 					valid: ref.current.valid,
 					saving: ref.current.saving,
 					getChanges: () => ref.current.getChanges(),
@@ -68,10 +72,13 @@ export function useRegisterSettingsSection(store: SettingsEditorStore, entry: Se
 		store.setState((s) => {
 			const cur = s.sections[key]
 			if (!cur) return s
-			if (cur.label === label && cur.changedCount === changedCount && cur.valid === valid && cur.saving === saving) return s
-			return { sections: { ...s.sections, [key]: { ...cur, label, changedCount, valid, saving } } }
+			if (
+				cur.label === label && cur.changedCount === changedCount && cur.errorCount === errorCount && cur.valid === valid
+				&& cur.saving === saving
+			) return s
+			return { sections: { ...s.sections, [key]: { ...cur, label, changedCount, errorCount, valid, saving } } }
 		})
-	}, [store, key, label, changedCount, valid, saving])
+	}, [store, key, label, changedCount, errorCount, valid, saving])
 }
 
 // secrets (rcon/sftp passwords, log-receiver token) must not be shown in plain text in the save confirmation. Redact by
@@ -123,17 +130,30 @@ export function SettingsSavePanel({ store }: { store: SettingsEditorStore }) {
 		store,
 		ZusUtils.useShallow((s: SettingsEditorState) => {
 			let totalChanges = 0
+			let totalErrors = 0
 			let anyInvalid = false
 			let anySaving = false
 			for (const e of Object.values(s.sections)) {
+				totalErrors += e.errorCount
 				if (e.changedCount === 0) continue
 				totalChanges += e.changedCount
 				if (!e.valid) anyInvalid = true
 				if (e.saving) anySaving = true
 			}
-			return { totalChanges, anyInvalid, anySaving }
+			return { totalChanges, totalErrors, anyInvalid, anySaving }
 		}),
 	)
+
+	// cycles through the fields currently flagged with a validation error (document order); each step navigates the
+	// anchor so the target scrolls into view and picks up the fragment highlight
+	const errIdx = React.useRef(-1)
+	function navigateErrors(dir: 1 | -1) {
+		const els = Array.from(document.querySelectorAll<HTMLElement>('main [data-settings-error]'))
+		if (els.length === 0) return
+		errIdx.current = (errIdx.current + dir + els.length) % els.length
+		const el = els[errIdx.current]
+		if (el.id) SettingsNav.navigateToAnchor(el.id)
+	}
 
 	async function handleSave() {
 		const dirty = Object.values(store.getState().sections).filter((e) => e.changedCount > 0)
@@ -161,13 +181,38 @@ export function SettingsSavePanel({ store }: { store: SettingsEditorStore }) {
 		}
 	}
 
-	if (summary.totalChanges === 0) return null
+	// the panel must stay reachable while multiple errors need chasing down, even with nothing to save yet
+	if (summary.totalChanges === 0 && summary.totalErrors <= 1) return null
 
 	return (
 		<div
 			style={{ zIndex }}
 			className="fixed bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-background px-4 py-2 shadow-lg"
 		>
+			{summary.totalErrors > 0 && (
+				<span className="flex items-center gap-0.5 text-sm font-medium text-destructive">
+					<Icons.CircleAlert className="mr-1 h-4 w-4" />
+					{summary.totalErrors} {summary.totalErrors === 1 ? 'error' : 'errors'}
+					<Button
+						variant="ghost"
+						size="icon"
+						className="ml-1 h-6 w-6 text-destructive"
+						title="Previous error"
+						onClick={() => navigateErrors(-1)}
+					>
+						<Icons.ChevronUp className="h-4 w-4" />
+					</Button>
+					<Button
+						variant="ghost"
+						size="icon"
+						className="h-6 w-6 text-destructive"
+						title="Next error"
+						onClick={() => navigateErrors(1)}
+					>
+						<Icons.ChevronDown className="h-4 w-4" />
+					</Button>
+				</span>
+			)}
 			<span className="text-sm">
 				<span className="font-medium">{summary.totalChanges}</span> {summary.totalChanges === 1 ? 'setting' : 'settings'} changed
 			</span>

@@ -22,11 +22,19 @@ export function scrollToAnchor(id: string): void {
 	main.scrollTo({ top, behavior: 'auto' })
 }
 
+// mark the element the URL fragment points at (styled via [data-anchor-highlight] in index.css). The marker is
+// exclusive and persists until the next navigation, so the anchored setting stays visually identifiable.
+export function highlightAnchor(id: string): void {
+	for (const el of document.querySelectorAll('[data-anchor-highlight]')) el.removeAttribute('data-anchor-highlight')
+	document.getElementById(id)?.setAttribute('data-anchor-highlight', 'true')
+}
+
 // update the URL hash (so the location is shareable/bookmarkable) without triggering the browser's native jump, then
 // scroll with our offset logic. replaceState keeps the history stack clean while browsing the table of contents.
 export function navigateToAnchor(id: string): void {
 	history.replaceState(history.state, '', `#${id}`)
 	scrollToAnchor(id)
+	highlightAnchor(id)
 }
 
 // the anchor id currently in the URL hash, or null

@@ -199,3 +199,21 @@
 		@apply bg-background text-foreground;
 	}
 }
+
+/* the settings field/section the URL fragment points at (see settings-nav highlightAnchor); a brief flash draws the
+   eye on arrival, then a steady ring keeps the target identifiable until the next navigation. The ring follows the
+   element's own border-radius, so every highlightable element must carry a radius + padding of its own (leaf fields
+   and group sections use a negative-margin gutter so the ring clears their content without shifting layout). */
+[data-anchor-highlight] {
+	box-shadow: 0 0 0 2px hsl(var(--ring) / 0.55);
+	animation: anchor-highlight-flash 1.2s ease-out;
+}
+
+@keyframes anchor-highlight-flash {
+	0% {
+		box-shadow: 0 0 0 3px hsl(var(--ring)), 0 0 14px 3px hsl(var(--ring) / 0.5);
+	}
+	100% {
+		box-shadow: 0 0 0 2px hsl(var(--ring) / 0.55);
+	}
+}

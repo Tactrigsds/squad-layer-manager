@@ -12,6 +12,7 @@ const LABEL_OVERRIDES: Record<string, string> = {
 	connections: 'Connections',
 	'connections.rcon': 'RCON',
 	'connections.logs': 'Log Source',
+	'queue.generationPool': 'Autogeneration Pool',
 }
 
 export function humanize(key: string): string {

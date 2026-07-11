@@ -1,8 +1,9 @@
 import { BmFlagMultiSelect, BmFlagOrColorSelect, BmFlagOrderedList, FlagPriorityMap } from '@/components/bm-flag-picker'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { DiscordMemberSelect, DiscordRoleSelect } from '@/components/discord-picker'
-import FilterEntitySelect from '@/components/filter-entity-select'
 import LayerTableConfigEditor from '@/components/layer-table-config-editor'
+import { GenerationPoolFiltersPanel, MainPoolFiltersPanel, RepeatRulesPanel } from '@/components/pool-config-panels'
+import type { PoolConfigApi } from '@/components/pool-config-panels.helpers'
 import { StickyGroup } from '@/components/sticky-group'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -16,12 +17,16 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDebounced } from '@/hooks/use-debounce'
 import * as Obj from '@/lib/object'
-import { settingLabel } from '@/lib/settings-labels'
+import type { SettingsGroup } from '@/lib/settings-groups'
+import { splitByGroups } from '@/lib/settings-groups'
+import { humanize, settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
+import * as ZusUtils from '@/lib/zustand'
 import * as AAR from '@/models/admin-action-reasons.models'
 import type * as LP from '@/models/labeled-presets.models'
 import * as RBAC from '@/rbac.models'
+import * as SettingsClient from '@/systems/settings.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Rx from 'rxjs'
@@ -214,6 +219,38 @@ function useMessageVars(value$: ValueState): Record<string, string> {
 // settings + one per server) don't collide; it stays `setting:*` so the TOC scroll-spy and hash nav still match.
 const FormOptionsContext = React.createContext<{ idPrefix: string }>({ idPrefix: 'setting:' })
 
+// the current draft's schema issues, normalized to dotted path strings. Each leaf field claims the issues at or below
+// its own path (below-leaf paths -- array items, record entries -- have no dedicated field UI of their own).
+type NormalizedIssue = { path: string; message: string }
+const ValidationContext = React.createContext<NormalizedIssue[]>([])
+
+function issuesForField(all: NormalizedIssue[], pathStr: string): NormalizedIssue[] {
+	return all.filter((i) => i.path === pathStr || i.path.startsWith(pathStr + '.'))
+}
+
+const MAX_SHOWN_FIELD_ISSUES = 5
+
+function FieldIssues({ issues, pathStr }: { issues: NormalizedIssue[]; pathStr: string }) {
+	if (issues.length === 0) return null
+	return (
+		<div className="space-y-0.5 pt-0.5">
+			{issues.slice(0, MAX_SHOWN_FIELD_ISSUES).map((iss, i) => (
+				// oxlint-disable-next-line no-array-index-key
+				<p key={i} className="flex items-start gap-1 text-xs font-medium text-destructive">
+					<Icons.CircleAlert className="mt-0.5 h-3 w-3 shrink-0" />
+					<span className="min-w-0 wrap-break-word">
+						{iss.path !== pathStr && <code className="mr-1 text-[10px] opacity-70">{iss.path.slice(pathStr.length + 1)}</code>}
+						{iss.message}
+					</span>
+				</p>
+			))}
+			{issues.length > MAX_SHOWN_FIELD_ISSUES && (
+				<p className="text-xs text-destructive/80">+{issues.length - MAX_SHOWN_FIELD_ISSUES} more</p>
+			)}
+		</div>
+	)
+}
+
 // the last-saved (persisted) baseline the draft was seeded from, so any field can offer "reset to saved" alongside
 // "reset to default". Held at the root and indexed per-field by path (see `getAtPath`); only changes on save/refetch, so
 // per-keystroke edits don't churn it. `undefined` while the settings are still loading.
@@ -331,13 +368,8 @@ function DiscordRoleField({ value$, reset$, onChange }: OverrideProps) {
 	const value = useFieldValue(value$, reset$)
 	return <DiscordRoleSelect value={value ?? ''} onChange={onChange} />
 }
-// filter-pool config references a filter entity by id; pick it from the known filters rather than typing the id
-function FilterIdField({ value$, reset$, onChange }: OverrideProps) {
-	const value = useFieldValue(value$, reset$)
-	return <FilterEntitySelect className="w-full" filterId={value ?? null} allowEmpty={false} onSelect={(id) => onChange(id ?? '')} />
-}
 function PasswordField({ value$, reset$, onChange }: OverrideProps) {
-	return <TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric={false} secret />
+	return <TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric={false} secret placeholder="Password" />
 }
 function DiscordMemberField({ value$, reset$, onChange }: OverrideProps) {
 	const value = useFieldValue(value$, reset$)
@@ -436,7 +468,7 @@ function MaxTimeoutEntry(
 		<div className="flex items-center gap-2">
 			<span className="w-40 truncate text-sm font-mono">{roleId}</span>
 			<div className="w-32">
-				<TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric={false} />
+				<TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric={false} placeholder="2h" />
 			</div>
 			<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={onRemove}>
 				<Icons.X className="h-4 w-4" />
@@ -603,7 +635,7 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 	return (
 		<TableRow>
 			<TableCell className="align-top">
-				<TextInputField value$={label$} reset$={reset$} onChange={setField('label')} numeric={false} />
+				<TextInputField value$={label$} reset$={reset$} onChange={setField('label')} numeric={false} placeholder="Label" />
 			</TableCell>
 			<TableCell className="align-top">
 				<div className="space-y-1.5">
@@ -743,11 +775,11 @@ function BroadcastRow({ idx, parent$, reset$, parentOnChange, onRemove }: Preset
 	return (
 		<TableRow>
 			<TableCell className="align-top">
-				<TextInputField value$={label$} reset$={reset$} onChange={setField('label')} numeric={false} />
+				<TextInputField value$={label$} reset$={reset$} onChange={setField('label')} numeric={false} placeholder="Label" />
 			</TableCell>
 			<TableCell className="align-top">
 				<div className="rounded-md border">
-					<TextAreaCell value$={message$} reset$={reset$} onChange={setField('message')} />
+					<TextAreaCell value$={message$} reset$={reset$} onChange={setField('message')} placeholder="Broadcast text sent to all players" />
 				</div>
 			</TableCell>
 			<TableCell className="align-top">
@@ -819,8 +851,96 @@ function AliasesCell(
 	)
 }
 
-function overrideFor(path: Path): React.FC<OverrideProps> | undefined {
+// copy-on-write set at a nested path (arrays stay arrays)
+function setAtPath(root: any, path: Path, value: unknown): any {
+	if (path.length === 0) return value
+	const [head, ...rest] = path
+	const base = root ?? (typeof head === 'number' ? [] : {})
+	const copy: any = Array.isArray(base) ? [...base] : { ...base }
+	copy[head as any] = setAtPath(base?.[head as any], rest, value)
+	return copy
+}
+
+// hook: current value at a nested path of value$, kept in sync on emissions and reset$
+function usePathValue(value$: ValueState, reset$: Rx.Observable<void>, path: Path): unknown {
+	const key = JSON.stringify(path)
+	const [v, setV] = React.useState<unknown>(() => getAtPath(value$.getValue(), path))
+	React.useEffect(() => {
+		const p = JSON.parse(key) as Path
+		const sub = new Rx.Subscription()
+		sub.add(value$.subscribe((root) => setV(getAtPath(root, p))))
+		sub.add(reset$.subscribe(() => setV(getAtPath(value$.getValue(), p))))
+		return () => sub.unsubscribe()
+	}, [value$, reset$, key])
+	return v
+}
+
+// PoolConfigApi over the form's draft observable, so the settings page renders the same pool-configuration UI as the
+// dashboard popover. Paths are relative to the pool object this override is mounted on (queue.mainPool / generationPool).
+function usePoolConfigApi({ value$, reset$, onChange }: OverrideProps): PoolConfigApi {
+	const [resetKey, setResetKey] = React.useState(0)
+	useReset(reset$, () => setResetKey((k) => k + 1))
+	return {
+		// oxlint-disable-next-line rules-of-hooks -- stable call site inside the panel components
+		useValue: (path) => usePathValue(value$, reset$, path),
+		getValue: (path) => getAtPath(value$.getValue(), path),
+		set: (path, value) => onChange(setAtPath(value$.getValue(), path, value)),
+		// the settings page is already gated by admin:manage-servers; per-field write perms don't apply here
+		writeDenied: null,
+		resetKey,
+	}
+}
+
+// server settings reference the global settings' named admin list sources; pick from the defined names instead of
+// typing them. Unknown/stale names stay selectable so they remain visible and removable.
+function AdminListSourceNamesField({ value$, reset$, onChange }: OverrideProps) {
+	const value = (useFieldValue(value$, reset$) as string[] | undefined) ?? []
+	const names = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.adminListSourceNames) ?? []
+	const options = [...new Set([...names, ...value])]
+	return (
+		<div className="space-y-1">
+			<ComboBoxMulti
+				title="Admin list source"
+				values={value}
+				options={options}
+				onSelect={(next) => onChange(typeof next === 'function' ? next(value) : next)}
+			/>
+			{names.length === 0 && (
+				<p className="text-xs text-muted-foreground">
+					No named sources are defined yet; add them under Global Settings → Admin List Sources.
+				</p>
+			)}
+		</div>
+	)
+}
+
+function MainPoolField(props: OverrideProps) {
+	const api = usePoolConfigApi(props)
+	return (
+		<div className="space-y-6">
+			<MainPoolFiltersPanel api={api} />
+			<RepeatRulesPanel poolId="mainPool" api={api} />
+		</div>
+	)
+}
+
+function GenerationPoolField(props: OverrideProps) {
+	const api = usePoolConfigApi(props)
+	return (
+		<div className="space-y-6">
+			<GenerationPoolFiltersPanel api={api} />
+			<RepeatRulesPanel poolId="generationPool" api={api} />
+		</div>
+	)
+}
+
+function overrideFor(path: Path, node: Node): React.FC<OverrideProps> | undefined {
 	const last = path[path.length - 1]
+	// the global `adminListSources` is a name-keyed record of source definitions (rendered generically); the
+	// per-server one is an array of names referencing it, which gets the picker
+	if (path.length === 1 && last === 'adminListSources' && stripNullable(node).inner.type === 'array') {
+		return AdminListSourceNamesField
+	}
 	if (path.length === 1 && last === 'adminActionReasons') return AdminActionReasonsField
 	if (path.length === 1 && last === 'broadcasts') return BroadcastsField
 	if (path.length === 1 && last === 'layerTable') return LayerTableField
@@ -837,8 +957,9 @@ function overrideFor(path: Path): React.FC<OverrideProps> | undefined {
 	// searchable Discord role/account pickers for the role-assignment editor, keyed to the raw-id fields
 	if (path[0] === 'rbac' && path[1] === 'roleAssignments' && path[2] === 'discord-role' && last === 'discordRoleId') return DiscordRoleField
 	if (path[0] === 'rbac' && path[1] === 'roleAssignments' && path[2] === 'discord-user' && last === 'userId') return DiscordMemberField
-	// server settings: filter-pool entries reference a filter by id; connection passwords are masked
-	if (last === 'filterId') return FilterIdField
+	// server settings: the pool configuration reuses the dashboard popover's panels; connection passwords are masked
+	if (path.length === 2 && path[0] === 'queue' && last === 'mainPool') return MainPoolField
+	if (path.length === 2 && path[0] === 'queue' && last === 'generationPool') return GenerationPoolField
 	if (last === 'password') return PasswordField
 	return undefined
 }
@@ -847,12 +968,13 @@ function overrideFor(path: Path): React.FC<OverrideProps> | undefined {
 
 // uncontrolled text/number input: seeded from value$, edits debounced upward, re-read on reset$
 function TextInputField(
-	{ value$, reset$, onChange, numeric, secret }: {
+	{ value$, reset$, onChange, numeric, secret, placeholder }: {
 		value$: ValueState
 		reset$: Rx.Subject<void>
 		onChange: (v: any) => void
 		numeric: boolean
 		secret?: boolean
+		placeholder?: string
 	},
 ) {
 	const ref = React.useRef<HTMLInputElement>(null)
@@ -872,6 +994,7 @@ function TextInputField(
 		<Input
 			ref={ref}
 			type={secret ? 'password' : numeric ? 'number' : 'text'}
+			placeholder={placeholder}
 			defaultValue={format(value$.getValue())}
 			onChange={(e) => push(numeric ? (e.currentTarget.value === '' ? '' : e.currentTarget.valueAsNumber) : e.currentTarget.value)}
 		/>
@@ -1004,6 +1127,16 @@ function wrapNullable(
 	)
 }
 
+// placeholder for a text/number input: the schema default when there is one (doubles as a format hint, e.g. '5m'),
+// an example duration for HumanTime fields without one, otherwise the humanized field name
+function placeholderFor(node: Node, inner: Node, path: Path): string | undefined {
+	const def = effectiveDefault(node)
+	if (def.has && def.value !== '' && (typeof def.value === 'string' || typeof def.value === 'number')) return String(def.value)
+	if (isStringOrNumber(inner)) return 'e.g. 30m'
+	const last = path[path.length - 1]
+	return typeof last === 'string' ? humanize(last) : undefined
+}
+
 function FieldControl(
 	{ node, path, value$, reset$, onChange }: {
 		node: Node
@@ -1013,7 +1146,7 @@ function FieldControl(
 		onChange: (v: any) => void
 	},
 ) {
-	const Override = overrideFor(path)
+	const Override = overrideFor(path, node)
 	if (Override) return <Override value$={value$} reset$={reset$} onChange={onChange} path={path} />
 
 	const { inner, nullable } = stripNullable(node)
@@ -1049,7 +1182,13 @@ function FieldControl(
 	if (isStringOrNumber(inner)) {
 		return wrapNullable(
 			nullable,
-			<TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric={false} />,
+			<TextInputField
+				value$={value$}
+				reset$={reset$}
+				onChange={onChange}
+				numeric={false}
+				placeholder={placeholderFor(node, inner, path)}
+			/>,
 			inner,
 			value$,
 			reset$,
@@ -1064,7 +1203,7 @@ function FieldControl(
 	if (inner.type === 'integer' || inner.type === 'number') {
 		return wrapNullable(
 			nullable,
-			<TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric />,
+			<TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric placeholder={placeholderFor(node, inner, path)} />,
 			inner,
 			value$,
 			reset$,
@@ -1075,7 +1214,13 @@ function FieldControl(
 	if (inner.type === 'string') {
 		return wrapNullable(
 			nullable,
-			<TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric={false} />,
+			<TextInputField
+				value$={value$}
+				reset$={reset$}
+				onChange={onChange}
+				numeric={false}
+				placeholder={placeholderFor(node, inner, path)}
+			/>,
 			inner,
 			value$,
 			reset$,
@@ -1506,8 +1651,14 @@ function SectionField(
 	// the header pins to the top of the scroll column (stacking under any ancestor section headers) while this section
 	// is in view. StickyGroup handles the offset math + z-index; the ref'd element must sit before the section body.
 	const headerRef = React.useRef<HTMLDivElement>(null)
+	// only issues sitting exactly at the section path (object-level refines) -- descendants are claimed by their leaves
+	const sectionIssues = React.useContext(ValidationContext).filter((i) => i.path === pathStr)
 	return (
-		<fieldset id={domId} className="border rounded-md px-3 pb-3 pt-0 space-y-3 scroll-mt-2">
+		<fieldset
+			id={domId}
+			data-settings-error={sectionIssues.length > 0 || undefined}
+			className={cn('border rounded-md px-3 pb-3 pt-0 space-y-3 scroll-mt-2', sectionIssues.length > 0 && 'border-destructive')}
+		>
 			<StickyGroup stickyRef={headerRef}>
 				<div ref={headerRef} className="group flex items-center gap-2 -mx-3 rounded-t-md border-b bg-card px-3 py-2">
 					<legend className="px-1 text-sm font-semibold">{settingLabel(path, name)}</legend>
@@ -1517,6 +1668,7 @@ function SectionField(
 					<AnchorLink domId={domId} />
 				</div>
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
+				<FieldIssues issues={sectionIssues} pathStr={pathStr} />
 				<FieldControl node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />
 			</StickyGroup>
 		</fieldset>
@@ -1542,6 +1694,8 @@ function LeafField(
 	const domId = `${idPrefix}${pathStr}`
 
 	const isBoolean = inner.type === 'boolean'
+	const fieldIssues = issuesForField(React.useContext(ValidationContext), pathStr)
+	const hasError = fieldIssues.length > 0
 	// the inline "default: <value>" hint only reads well for scalars; complex/override fields still get the reset buttons
 	const showDefaultLabel = !hasOverride && isScalarNode(inner)
 	const controls = (
@@ -1550,16 +1704,24 @@ function LeafField(
 	return (
 		<div
 			id={domId}
-			className={cn('space-y-1 scroll-mt-2', isBoolean && 'flex items-center justify-between space-y-0 gap-4')}
+			data-settings-error={hasError || undefined}
+			className={cn(
+				// the -mx-2/px-2 gutter + vertical padding give the anchor-highlight ring consistent breathing room on
+				// every side without shifting the content column
+				'space-y-1 scroll-mt-2 rounded-md -mx-2 px-2 py-1.5',
+				isBoolean && 'flex items-center justify-between space-y-0 gap-4',
+				hasError && 'border-l-2 border-destructive',
+			)}
 		>
 			<div className={cn(isBoolean && 'min-w-0')}>
 				<div className="group flex items-center gap-1.5">
-					<Label className="text-sm">{settingLabel(path, name)}</Label>
+					<Label className={cn('text-sm', hasError && 'text-destructive')}>{settingLabel(path, name)}</Label>
 					<code className="text-[10px] text-muted-foreground">{pathStr}</code>
 					{!isBoolean && controls}
 					<AnchorLink domId={domId} />
 				</div>
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
+				<FieldIssues issues={fieldIssues} pathStr={pathStr} />
 			</div>
 			<div className={cn(isBoolean && 'shrink-0 flex items-center gap-1')}>
 				{isBoolean && controls}
@@ -1586,7 +1748,7 @@ function Field(
 		[parentOnChange, parent$, name],
 	)
 	const { inner } = stripNullable(node)
-	const hasOverride = !!overrideFor(path)
+	const hasOverride = !!overrideFor(path, node)
 	const isSection = !hasOverride
 		&& inner.type === 'object'
 		&& !!inner.properties
@@ -1594,6 +1756,54 @@ function Field(
 
 	if (isSection) return <SectionField name={name} node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />
 	return <LeafField name={name} node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} hasOverride={hasOverride} />
+}
+
+// a presentation-only grouping of top-level fields: a prominent sticky header + anchor, no value/reset semantics of
+// its own (the persisted shape is untouched; see settings-groups.ts)
+function GroupSection({ slug, label, children }: { slug: string; label: string; children: React.ReactNode }) {
+	const { idPrefix } = React.useContext(FormOptionsContext)
+	const domId = `${idPrefix}group:${slug}`
+	const headerRef = React.useRef<HTMLDivElement>(null)
+	return (
+		<section id={domId} className="scroll-mt-2 rounded-md -mx-2 px-2 pb-2">
+			<StickyGroup stickyRef={headerRef}>
+				<div ref={headerRef} className="group flex items-center gap-2 border-b bg-background px-1 py-2">
+					<h3 className="text-base font-semibold">{label}</h3>
+					<AnchorLink domId={domId} />
+				</div>
+				<div className="space-y-3 pt-3">{children}</div>
+			</StickyGroup>
+		</section>
+	)
+}
+
+// root fields partitioned into the given groups (schema order within each group is the group's key order); keys not
+// covered by any group render ungrouped afterwards
+function GroupedRootFields(
+	{ node, groups, value$, reset$, onChange }: {
+		node: Node
+		groups: SettingsGroup[]
+		value$: ValueState
+		reset$: Rx.Subject<void>
+		onChange: (v: Record<string, any>) => void
+	},
+) {
+	const props: Record<string, Node> = node.properties ?? {}
+	const { groups: grouped, ungrouped } = splitByGroups(Object.keys(props), groups)
+	return (
+		<div className="space-y-6">
+			{grouped.map(({ group, keys }) => (
+				<GroupSection key={group.slug} slug={group.slug} label={group.label}>
+					{keys.map((key) => (
+						<Field key={key} name={key} node={props[key]} path={[key]} parent$={value$} parentOnChange={onChange} reset$={reset$} />
+					))}
+				</GroupSection>
+			))}
+			{ungrouped.map((key) => (
+				<Field key={key} name={key} node={props[key]} path={[key]} parent$={value$} parentOnChange={onChange} reset$={reset$} />
+			))}
+		</div>
+	)
 }
 
 function JsonFallback({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: unknown) => void }) {
@@ -1624,7 +1834,7 @@ function JsonFallback({ value$, reset$, onChange }: { value$: ValueState; reset$
 }
 
 export default function SettingsForm(
-	{ schema, value$, reset$, onChange, saved, idPrefix = 'setting:' }: {
+	{ schema, value$, reset$, onChange, saved, idPrefix = 'setting:', groups, issues }: {
 		schema: z.ZodType
 		value$: Rx.Observable<any> & { getValue: () => any }
 		reset$: Rx.Subject<void>
@@ -1634,6 +1844,10 @@ export default function SettingsForm(
 		saved?: any
 		// scopes field DOM ids / URL anchors; defaults to `setting:` (global settings). Server forms pass `setting:server:<id>:`
 		idPrefix?: string
+		// presentation-level grouping of the top-level keys (see settings-groups.ts); ungrouped keys render after the groups
+		groups?: SettingsGroup[]
+		// schema issues for the current draft (input-shape safeParse); each leaf field displays the issues under its path
+		issues?: readonly z.core.$ZodIssue[]
 	},
 ) {
 	const jsonSchema = React.useMemo(() => z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' }) as Node, [schema])
@@ -1644,12 +1858,20 @@ export default function SettingsForm(
 	const rbacInfo = useRbacInfo(value$)
 	const messageVars = useMessageVars(value$)
 	useRoleCascade(value$, onChange)
+	const normIssues = React.useMemo(
+		() => (issues ?? []).map((i): NormalizedIssue => ({ path: i.path.map(String).join('.'), message: i.message })),
+		[issues],
+	)
 	return (
 		<FormOptionsContext.Provider value={formOptions}>
 			<SavedRootContext.Provider value={savedCtx}>
 				<RbacContext.Provider value={rbacInfo}>
 					<MessageVarsContext.Provider value={messageVars}>
-						<ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />
+						<ValidationContext.Provider value={normIssues}>
+							{groups
+								? <GroupedRootFields node={jsonSchema} groups={groups} value$={value$} reset$={reset$} onChange={onChange} />
+								: <ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />}
+						</ValidationContext.Provider>
 					</MessageVarsContext.Provider>
 				</RbacContext.Provider>
 			</SavedRootContext.Provider>

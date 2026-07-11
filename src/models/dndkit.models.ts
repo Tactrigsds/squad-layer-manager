@@ -19,6 +19,10 @@ export type DragItem = {
 	// a column in the layer-table config editor (id = column name)
 	type: 'layer-table-column'
 	id: string
+} | {
+	// a flag in an ordered BattleMetrics flag list, e.g. the player flag color hierarchy (id = flag id)
+	type: 'bm-flag'
+	id: string
 }
 
 {

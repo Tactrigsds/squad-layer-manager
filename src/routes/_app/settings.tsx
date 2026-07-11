@@ -15,6 +15,7 @@ import { Switch } from '@/components/ui/switch'
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react'
 import { diffSettings } from '@/lib/settings-diff'
+import { GLOBAL_SETTINGS_GROUPS } from '@/lib/settings-groups'
 import * as SettingsNav from '@/lib/settings-nav'
 import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
@@ -32,6 +33,9 @@ import { createFileRoute } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Rx from 'rxjs'
+
+// stable empty-issues reference so sections without validation errors don't churn the form's ValidationContext
+const NO_ISSUES: never[] = []
 
 // subscribe a component to a BehaviorSubject-like state observable (mirrors it into render state)
 function useObservableValue<T>(obs$: Rx.Observable<T> & { getValue: () => T }): T {
@@ -75,7 +79,10 @@ function RouteComponent() {
 	React.useEffect(() => {
 		const onHash = () => {
 			const id = SettingsNav.currentAnchor()
-			if (id) SettingsNav.scrollToAnchor(id)
+			if (id) {
+				SettingsNav.scrollToAnchor(id)
+				SettingsNav.highlightAnchor(id)
+			}
 		}
 		window.addEventListener('hashchange', onHash)
 		const id = SettingsNav.currentAnchor()
@@ -83,8 +90,10 @@ function RouteComponent() {
 		if (id) {
 			let tries = 0
 			const attempt = () => {
-				if (document.getElementById(id)) SettingsNav.scrollToAnchor(id)
-				else if (tries++ < 90) raf = requestAnimationFrame(attempt)
+				if (document.getElementById(id)) {
+					SettingsNav.scrollToAnchor(id)
+					SettingsNav.highlightAnchor(id)
+				} else if (tries++ < 90) raf = requestAnimationFrame(attempt)
 			}
 			raf = requestAnimationFrame(attempt)
 		}
@@ -134,15 +143,15 @@ function RouteComponent() {
 				/>
 			</aside>
 			{/* no top padding: sticky section headers pin flush to the top, otherwise scrolled content bleeds into the gap */}
-			<main className="flex-1 min-w-0 overflow-y-auto pr-2 pb-2 space-y-6">
+			<main className="flex-1 min-w-0 overflow-y-auto px-2 pb-2 space-y-6">
 				{/* ServerManagement reads PublicSettingsStore, not globalSettings$, so it must not sit behind the global-settings Suspense */}
 				{!manageServersDenied && (
 					<>
-						<div id="section:servers" className="scroll-mt-2">
+						<div id="section:servers" className="scroll-mt-2 rounded-xl">
 							<ServerManagementSection onAddServer={() => setCreating(true)} creating={creating} />
 						</div>
 						{servers.map((server) => (
-							<div key={server.id} id={`section:server:${server.id}`} className="scroll-mt-2">
+							<div key={server.id} id={`section:server:${server.id}`} className="scroll-mt-2 rounded-xl">
 								<ServerSettingsSection
 									server={server}
 									editorStore={editorStore}
@@ -152,7 +161,7 @@ function RouteComponent() {
 							</div>
 						))}
 						{creating && (
-							<div id="section:server:__new__" className="scroll-mt-2">
+							<div id="section:server:__new__" className="scroll-mt-2 rounded-xl">
 								<CreateServerSection
 									editorStore={editorStore}
 									mode={newServerMode}
@@ -168,10 +177,10 @@ function RouteComponent() {
 						source$={SettingsClient.globalSettings$}
 						fallback={<p className="text-sm text-muted-foreground">Loading global settings…</p>}
 					>
-						<div id="section:global" className="scroll-mt-2">
+						<div id="section:global" className="scroll-mt-2 rounded-xl">
 							<GlobalSettingsSection editorStore={editorStore} mode={globalMode} onModeChange={setGlobalMode} />
 						</div>
-						<div id="section:audit" className="scroll-mt-2">
+						<div id="section:audit" className="scroll-mt-2 rounded-xl">
 							<AuditLogSection />
 						</div>
 					</ReactRx.Subscribe>
@@ -397,6 +406,7 @@ function ServerSettingsSection(
 	const changes = React.useMemo(() => (initial && nextEnc ? diffSettings(initial, nextEnc) : []), [initial, nextEnc])
 	const guiRes = draft !== undefined ? SETTINGS.ServerSettingsSchema.safeParse(draft) : undefined
 	const validDraft = mode === 'json' ? jsonValid : (guiRes && guiRes.success ? guiRes.data : null)
+	const guiIssues = mode === 'gui' && guiRes && !guiRes.success ? guiRes.error.issues : NO_ISSUES
 
 	const save = React.useCallback(async () => {
 		const v = SETTINGS.ServerSettingsSchema.safeParse(draft$.getValue())
@@ -414,6 +424,7 @@ function ServerSettingsSection(
 		key: `server:${server.id}`,
 		label: server.displayName,
 		changedCount: mode === 'gui' ? changes.length : 0,
+		errorCount: guiIssues.length,
 		valid: validDraft !== null,
 		saving: saveMutation.isPending,
 		getChanges: () => changes,
@@ -475,6 +486,7 @@ function ServerSettingsSection(
 								onChange={onFormChange}
 								saved={initial}
 								idPrefix={`setting:server:${server.id}:`}
+								issues={guiIssues}
 							/>
 						)
 						: (
@@ -553,6 +565,7 @@ function CreateServerSection(
 
 	const guiRes = SETTINGS.ServerSettingsSchema.safeParse(draft)
 	const validSettings = mode === 'json' ? jsonValid : (guiRes.success ? guiRes.data : null)
+	const guiIssues = mode === 'gui' && !guiRes.success ? guiRes.error.issues : NO_ISSUES
 	const idRes = SS.ServerIdSchema.safeParse(id)
 	const valid = idRes.success && displayName.trim().length > 0 && validSettings !== null
 
@@ -574,6 +587,7 @@ function CreateServerSection(
 		key: 'server:__new__',
 		label: displayName.trim() || 'New Server',
 		changedCount: mode === 'gui' ? 1 : 0,
+		errorCount: guiIssues.length,
 		valid,
 		saving: createMutation.isPending,
 		getChanges: () => diffSettings({}, { id, displayName, ...(validSettings ?? {}) }),
@@ -612,10 +626,15 @@ function CreateServerSection(
 				<CardContent className="space-y-4">
 					<div className="grid grid-cols-2 gap-3">
 						<div className="space-y-1">
-							<LabeledInput label="Server ID" defaultValue={id} onChange={(e) => setId(e.target.value)} />
+							<LabeledInput label="Server ID" placeholder="my-server-1" defaultValue={id} onChange={(e) => setId(e.target.value)} />
 							{id.length > 0 && !idRes.success && <p className="text-xs text-destructive">Invalid server id</p>}
 						</div>
-						<LabeledInput label="Display Name" defaultValue={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+						<LabeledInput
+							label="Display Name"
+							placeholder="My Squad Server"
+							defaultValue={displayName}
+							onChange={(e) => setDisplayName(e.target.value)}
+						/>
 					</div>
 					{mode === 'gui'
 						? (
@@ -626,6 +645,7 @@ function CreateServerSection(
 								onChange={onFormChange}
 								saved={NEW_SERVER_DRAFT}
 								idPrefix="setting:server:__new__:"
+								issues={guiIssues}
 							/>
 						)
 						: (
@@ -709,6 +729,7 @@ function GlobalSettingsSection(
 	// computed before the early returns so the register hook below always runs in the same order
 	const guiRes = React.useMemo(() => (draft !== undefined ? SETTINGS.GlobalSettingsSchema.safeParse(draft) : undefined), [draft])
 	const validDraft = mode === 'json' ? jsonValid : (guiRes && guiRes.success ? guiRes.data : null)
+	const guiIssues = mode === 'gui' && guiRes && !guiRes.success ? guiRes.error.issues : NO_ISSUES
 
 	const save = React.useCallback(async () => {
 		const parsed = SETTINGS.GlobalSettingsSchema.safeParse(draft$.getValue())
@@ -727,6 +748,7 @@ function GlobalSettingsSection(
 		key: 'global',
 		label: 'Global Settings',
 		changedCount: mode === 'gui' ? changes.length : 0,
+		errorCount: guiIssues.length,
 		valid: validDraft !== null,
 		saving: saveMutation.isPending,
 		getChanges: () => changes,
@@ -794,6 +816,8 @@ function GlobalSettingsSection(
 								reset$={reset$}
 								onChange={onFormChange}
 								saved={settings}
+								groups={GLOBAL_SETTINGS_GROUPS}
+								issues={guiIssues}
 							/>
 						)
 						: (
