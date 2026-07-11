@@ -22,6 +22,7 @@ import type { SettingsGroup } from '@/lib/settings-groups'
 import { splitByGroups } from '@/lib/settings-groups'
 import { humanize, settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
+import * as Templating from '@/lib/templating'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as AAR from '@/models/admin-action-reasons.models'
@@ -858,11 +859,36 @@ function BroadcastRow({ idx, parent$, reset$, parentOnChange, onRemove }: Preset
 				<AliasesCell value$={aliases$} reset$={reset$} onChange={setField('aliases')} />
 			</TableCell>
 			<TableCell className="align-top">
-				<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={onRemove}>
-					<Icons.X className="h-4 w-4" />
-				</Button>
+				<div className="flex flex-col gap-1">
+					<BroadcastPreviewButton row$={row$} reset$={reset$} />
+					<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={onRemove}>
+						<Icons.X className="h-4 w-4" />
+					</Button>
+				</div>
 			</TableCell>
 		</TableRow>
+	)
+}
+
+// previews the broadcast as delivered in-game, rendering {{label}} plus the draft's custom message variables the
+// same way broadcastAction does at runtime
+function BroadcastPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Subject<void> }) {
+	const raw = useFieldValue(row$, reset$) as Partial<LP.BroadcastPreset> | undefined
+	const customVars = React.useContext(MessageVarsContext)
+	const message = raw?.message?.trim() || '<broadcast text>'
+	const rendered = Templating.renderTemplate(message, { ...customVars, label: raw?.label?.trim() ?? '' })
+	return (
+		<Popover>
+			<PopoverTrigger asChild>
+				<Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Preview the delivered in-game broadcast">
+					<Icons.Eye className="h-4 w-4" />
+				</Button>
+			</PopoverTrigger>
+			<PopoverContent className="w-96 space-y-2" align="end">
+				<p className="text-xs text-muted-foreground">Broadcast text delivered to all players.</p>
+				<MessagePreviewBox>{rendered}</MessagePreviewBox>
+			</PopoverContent>
+		</Popover>
 	)
 }
 
