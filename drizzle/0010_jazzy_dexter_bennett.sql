@@ -1,1 +1,0 @@
-ALTER TABLE `servers` RENAME COLUMN `fog` TO `fogDisabled`;

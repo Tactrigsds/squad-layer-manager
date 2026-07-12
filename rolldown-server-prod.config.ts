@@ -26,6 +26,10 @@ export default defineConfig({
 		// .ts migration registry ships in the slim prod image; .sql files are read at
 		// runtime from the copied drizzle-sqlite/ folder.
 		'scripts/migrate': 'src/scripts/migrate.ts',
+		// Layer-db (re)build pipeline. Bundled so it can run in the slim prod image against a
+		// mounted /app/data volume; it builds the layer db schema in-process (no drizzle-kit),
+		// so no config/src tree is needed at runtime. Run via `pnpm run preprocess:prod`.
+		'scripts/preprocess': 'src/scripts/preprocess.ts',
 	},
 	tsconfig: path.resolve(__dirname, 'tsconfig.node.json'),
 	platform: 'node',

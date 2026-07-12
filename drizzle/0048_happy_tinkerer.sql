@@ -1,1 +1,0 @@
-ALTER TABLE `squads` ADD `teamId` int NOT NULL;

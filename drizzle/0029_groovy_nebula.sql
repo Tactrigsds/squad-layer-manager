@@ -1,1 +1,0 @@
-ALTER TABLE `matchHistory` RENAME COLUMN `rawLayerId` TO `rawLayerCommandText`;

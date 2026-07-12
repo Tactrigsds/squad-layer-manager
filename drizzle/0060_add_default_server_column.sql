@@ -1,1 +1,0 @@
-ALTER TABLE `servers` ADD `defaultServer` boolean DEFAULT false NOT NULL;

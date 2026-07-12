@@ -1,1 +1,0 @@
-ALTER TABLE `servers` ADD `fog` boolean DEFAULT false NOT NULL;

@@ -7,6 +7,7 @@ import * as Env from '@/server/env'
 import DatabaseConstructor, { type Database } from 'better-sqlite3'
 import crypto from 'crypto'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
+import { getTableConfig, getViewConfig, SQLiteSyncDialect, type SQLiteTable } from 'drizzle-orm/sqlite-core'
 import Mustache from 'mustache'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -268,6 +269,51 @@ export function getVersionTemplatedPath(filePath: string): [string, string] {
 	}
 
 	return [Mustache.render(filePath, { LAYERS_VERSION: ENV.LAYERS_VERSION }), ENV.LAYERS_VERSION]
+}
+
+const ddlDialect = new SQLiteSyncDialect()
+
+function tableDDL(table: SQLiteTable): string[] {
+	const cfg = getTableConfig(table)
+	const cols = cfg.columns.map((c) => {
+		let line = `\`${c.name}\` ${c.getSQLType()}`
+		if (c.primary) line += ' PRIMARY KEY'
+		if (c.notNull) line += ' NOT NULL'
+		return line
+	})
+	const stmts = [`CREATE TABLE \`${cfg.name}\` (\n\t${cols.join(',\n\t')}\n)`]
+	for (const idx of cfg.indexes) {
+		const { name, columns, unique } = idx.config
+		const colList = columns.map((col) => `\`${(col as { name: string }).name}\``).join(', ')
+		stmts.push(`CREATE ${unique ? 'UNIQUE INDEX' : 'INDEX'} \`${name}\` ON \`${cfg.name}\` (${colList})`)
+	}
+	return stmts
+}
+
+// DDL for a fresh layer db: the layers + extra-cols tables (with their single-column indexes) and
+// the joined view. Generated from the drizzle schema so it tracks the config-driven extra columns.
+// Replaces spawning `drizzle-kit push`, which needs the src tree + config that the slim prod image
+// doesn't ship; keeping this in-process lets the bundled preprocess script be self-contained.
+export function getSchemaStatements(ctx: CS.EffectiveColumnConfig): string[] {
+	const viewCfg = getViewConfig(LC.layersView(ctx))
+	const viewSql = ddlDialect.sqlToQuery(viewCfg.query!).sql
+	return [
+		...tableDDL(LC.layers),
+		...tableDDL(LC.extraColsSchema(ctx)),
+		`CREATE VIEW \`${viewCfg.name}\` AS ${viewSql}`,
+	]
+}
+
+// Creates a fresh db file at `dbPath` containing only the layer db schema. Left in the default
+// (rollback-journal) mode so the schema lands in the main file, which `setup({ mode: 'populate' })`
+// then reads back in full.
+export function createSchemaFile(ctx: CS.EffectiveColumnConfig, dbPath: string) {
+	const schemaDriver = new DatabaseConstructor(dbPath)
+	try {
+		for (const stmt of getSchemaStatements(ctx)) schemaDriver.exec(stmt)
+	} finally {
+		schemaDriver.close()
+	}
 }
 
 export async function writePopulated(dbPath: string) {

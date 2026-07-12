@@ -1,1 +1,0 @@
-ALTER TABLE `balanceTriggerEvents` DROP COLUMN `input`;

@@ -17,7 +17,6 @@ import http from 'follow-redirects'
 import * as fs from 'fs'
 import * as fsPromise from 'fs/promises'
 import { glob } from 'glob'
-import childProcess from 'node:child_process'
 import { promisify } from 'node:util'
 import zlib from 'node:zlib'
 import path from 'path'
@@ -84,25 +83,11 @@ async function main() {
 			fs.rmSync(file, { force: true })
 		}
 
-		const args = ['drizzle-kit', 'push', '--force', '--config', path.join(Paths.PROJECT_ROOT, 'drizzle-layersdb.config.ts')]
-		const env = { ...process.env, LAYERS_DB_PATH: dbPath }
-		log.info(`executing pnpm ${args.join(' ')} with env: %O`, { LAYERS_DB_PATH: dbPath })
-		const res = childProcess.spawnSync('pnpm', args, { env })
-		const stdout = res.stdout?.toString()
-		if (stdout) {
-			for (const line of stdout.split('\n')) {
-				if (line.trim()) log.info('stdout: %s', line)
-			}
-		}
-		const stderr = res.stderr?.toString()
-		if (stderr) {
-			for (const line of stderr.split('\n')) {
-				if (line.trim()) log.info('stderr: %s', line)
-			}
-		}
-		if (res.status !== 0) {
-			throw new Error(`drizzle-kit push failed with status ${res.status}`)
-		}
+		// create the schema in-process rather than shelling out to `drizzle-kit push`: that needs the
+		// src tree + a drizzle-kit config, neither of which ships in the slim prod image. setup()
+		// below reads this file back in populate mode.
+		log.info('Creating layer db schema at %s', dbPath)
+		LayerDb.createSchemaFile(ctx, dbPath)
 
 		await LayerDb.setup({ skipHash: true, mode: 'populate', logging: false, dbPath })
 		const outerCtx = ctx

@@ -1,1 +1,0 @@
-ALTER TABLE `serverEvents` MODIFY COLUMN `id` int NOT NULL;

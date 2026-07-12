@@ -1,1 +1,0 @@
-ALTER TABLE `matchHistory` ADD CONSTRAINT `matchHistory_ordinal_unique` UNIQUE(`ordinal`);

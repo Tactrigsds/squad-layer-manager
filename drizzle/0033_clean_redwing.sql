@@ -1,1 +1,0 @@
-ALTER TABLE `filters` ADD `emoji` varchar(64);
