@@ -116,14 +116,65 @@ export function revLookupCached<T extends { [key: string]: any }>(obj: T, key: T
 	return map.get(key) as keyof T
 }
 
-export function flattenObjToAttrs(obj: any, delimiter: string = '_', maxDepth?: number): Record<string, string> {
-	const output: Record<string, string> = {}
+// An otel attribute value. Anything else has to be coerced to one of these or dropped, or the SDK
+// silently discards the attribute.
+export type AttrValue = string | number | boolean
+
+// Only plain objects and arrays get walked. Dates, Errors, Maps and class instances have no own
+// enumerable keys worth flattening (a Date would previously walk to zero keys and vanish entirely),
+// so they are coerced to a leaf value instead.
+function isTraversable(v: unknown): boolean {
+	if (v === null || typeof v !== 'object') return false
+	if (Array.isArray(v)) return true
+	const proto = Object.getPrototypeOf(v)
+	return proto === Object.prototype || proto === null
+}
+
+function toAttrValue(v: unknown): AttrValue | undefined {
+	switch (typeof v) {
+		case 'string':
+		case 'boolean':
+			return v
+		// NaN/Infinity aren't representable in OTLP, so they'd be dropped: keep them as text
+		case 'number':
+			return Number.isFinite(v) ? v : String(v)
+		case 'bigint':
+			return v.toString()
+		case 'undefined':
+			return undefined
+		case 'object': {
+			if (v === null) return undefined
+			if (v instanceof Date) return v.toISOString()
+			if (v instanceof Error) return v.stack ?? v.message
+			// reachable when a plain object/array sits at maxDepth, or for a Map/Set/class instance at any
+			// depth. JSON is lossy but legible; the previous String() here is what produced a literal
+			// "[object Object]". Object.prototype.toString at least names the type when JSON can't cope
+			// (circular refs, BigInt members).
+			try {
+				return JSON.stringify(v) ?? Object.prototype.toString.call(v)
+			} catch {
+				return Object.prototype.toString.call(v)
+			}
+		}
+		// a function or symbol in a log object is a mistake rather than data: name it, don't inline its source
+		case 'function':
+			return `[Function: ${v.name || 'anonymous'}]`
+		case 'symbol':
+			return v.toString()
+		default:
+			return undefined
+	}
+}
+
+export function flattenObjToAttrs(obj: any, delimiter: string = '_', maxDepth?: number): Record<string, AttrValue> {
+	const output: Record<string, AttrValue> = {}
 	const stack: Array<[any, string, number]> = [[obj, '', 0]]
 
 	while (stack.length > 0) {
 		const [current, prefix, depth] = stack.pop()!
+		const atDepthLimit = maxDepth !== undefined && depth >= maxDepth
 
-		if (current && typeof current === 'object' && (maxDepth === undefined || depth < maxDepth)) {
+		if (isTraversable(current) && !atDepthLimit) {
 			if (Array.isArray(current)) {
 				for (let i = current.length - 1; i >= 0; i--) {
 					stack.push([current[i], prefix ? `${prefix}${delimiter}${i}` : String(i), depth + 1])
@@ -133,9 +184,13 @@ export function flattenObjToAttrs(obj: any, delimiter: string = '_', maxDepth?: 
 					stack.push([current[key], prefix ? `${prefix}${delimiter}${key}` : key, depth + 1])
 				}
 			}
-		} else {
-			output[prefix] = String(current)
+			continue
 		}
+
+		const value = toAttrValue(current)
+		// undefined/null attributes are dropped by the SDK anyway; omitting them keeps the console output
+		// (which renders this same object) free of noise
+		if (value !== undefined) output[prefix] = value
 	}
 
 	return output

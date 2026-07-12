@@ -10,6 +10,7 @@ import * as Messages from '@/messages.ts'
 import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
 import * as LL from '@/models/layer-list.models'
+import * as ATTRS from '@/models/otel-attrs'
 import * as SLL from '@/models/shared-layer-list'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
@@ -205,7 +206,16 @@ export const syncVoteStateWithQueueState = C.spanOp(
 
 export const startVote = C.spanOp(
 	'startVote',
-	{ module, levels: { event: 'info' }, attrs: (_, opts) => opts, mutexes: (ctx) => ctx.vote.mtx },
+	{
+		module,
+		levels: { event: 'info' },
+		attrs: (_, opts) => ({
+			[ATTRS.Vote.INITIATOR]: ATTRS.formatUserId(opts.initiator),
+			[ATTRS.Vote.ITEM_ID]: opts.itemId,
+			[ATTRS.Vote.VOTER_TYPE]: opts.voterType,
+		}),
+		mutexes: (ctx) => ctx.vote.mtx,
+	},
 	async (
 		ctx:
 			& C.Db
@@ -391,7 +401,12 @@ export const handleVote = C.spanOp(
 
 export const abortVote = C.spanOp(
 	'abortVote',
-	{ module, levels: { event: 'info' }, attrs: (_, opts) => opts, mutexes: ctx => ctx.vote.mtx },
+	{
+		module,
+		levels: { event: 'info' },
+		attrs: (_, opts) => ({ [ATTRS.Vote.ABORTER]: ATTRS.formatUserId(opts.aborter) }),
+		mutexes: ctx => ctx.vote.mtx,
+	},
 	async (
 		ctx: C.Db & C.Rcon & C.SquadServer & C.MatchHistory & C.Vote & C.LayerQueue & C.AdminList & C.ServerSettings & CS.AbortSignal,
 		opts: { aborter: USR.GuiOrChatUserId },
@@ -447,7 +462,11 @@ export const abortVote = C.spanOp(
 
 export const cancelVoteAutostart = C.spanOp(
 	'cancelVoteAutostart',
-	{ module, attrs: (_, opts) => opts, mutexes: (ctx) => ctx.vote.mtx },
+	{
+		module,
+		attrs: (_, opts) => ({ [ATTRS.Vote.CANCELLED_BY]: ATTRS.formatUserId(opts.user) }),
+		mutexes: (ctx) => ctx.vote.mtx,
+	},
 	async (ctx: C.Vote, opts: { user: USR.GuiOrChatUserId }) => {
 		if (ctx.vote.state?.autostartCancelled) {
 			return { code: 'err:autostart-already-cancelled' as const, msg: 'Vote is already cancelled' }
@@ -553,7 +572,10 @@ export const endVote = C.spanOp(
 		module,
 		levels: { event: 'info' },
 		mutexes: (ctx) => ctx.vote.mtx,
-		attrs: (_, opts) => opts,
+		attrs: (_, opts) => ({
+			[ATTRS.Vote.END_REASON]: opts.reason,
+			[ATTRS.Vote.ENDED_BY]: opts.reason === 'ended-early' ? ATTRS.formatUserId(opts.endedBy) : undefined,
+		}),
 	},
 	async (
 		ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.Rcon & C.AdminList & C.ServerSettings & CS.AbortSignal,

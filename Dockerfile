@@ -52,6 +52,10 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/dist-server ./dist-server
 
+# Registers the OTel import-in-the-middle loader hook; `server:prod` loads it via `node --import`.
+# Without it the auto-instrumentations load but patch nothing (see register-otel.mjs).
+COPY --from=builder /app/register-otel.mjs ./register-otel.mjs
+
 # Copy necessary runtime files
 COPY --from=builder /app/drizzle-sqlite ./drizzle-sqlite
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts

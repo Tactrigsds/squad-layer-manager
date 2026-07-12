@@ -35,7 +35,8 @@ const CONTEXT_ATTR_MAPPING = [
 		ctxPath: (ctx: Partial<ServerId>) => ctx?.serverId,
 		attr: ATTR.SquadServer.ID,
 	},
-	{ ctxPath: (ctx: Partial<User>) => ctx?.user?.username, attr: ATTR.User.ID },
+	{ ctxPath: (ctx: Partial<User>) => ctx?.user?.discordId?.toString(), attr: ATTR.User.ID },
+	{ ctxPath: (ctx: Partial<User>) => ctx?.user?.username, attr: ATTR.User.NAME },
 	{
 		ctxPath: (ctx: Partial<WSSession>) => ctx?.wsClientId,
 		attr: ATTR.WebSocket.CLIENT_ID,
@@ -85,11 +86,35 @@ const spanStatusMap = new LRUMap<
 	{ code: Otel.SpanStatusCode; message?: string }
 >(500)
 
+// Every op records here, which is what turns the spans we already emit into rate/error/duration
+// without needing a spanmetrics connector in the collector. Lazily resolved: the global meter provider
+// is a no-op until NodeSDK.start(), and this module is imported long before that.
+let opDuration: Otel.Histogram | undefined
+function getOpDurationHistogram() {
+	opDuration ??= Otel.metrics.getMeter('squad-layer-manager').createHistogram(ATTR.Op.DURATION, {
+		description: 'Duration of a spanOp, by op name and outcome',
+		unit: 's',
+		advice: {
+			// Must be given explicitly. The SDK's default boundaries are [0, 5, 10, 25 ... 10000], which are
+			// sized for milliseconds; feeding seconds into them puts nearly every op in the first [0, 5)
+			// bucket and makes any quantile a straight-line interpolation across it (every op reads as
+			// ~4.75s). These span sub-millisecond state reads through to the 2s rcon response timeout and
+			// the retries stacked on top of it.
+			explicitBucketBoundaries: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60],
+		},
+	})
+	return opDuration
+}
+
 export function spanOp<Cb extends (...args: any[]) => any>(
 	name: string,
 	opts: {
 		module: OtelModule
 		links?: Otel.Link[]
+		// defaults to INTERNAL. Set CLIENT on egress (rcon, http, sftp) and SERVER on ingress: span kind
+		// is what Tempo's service graph and any spanmetrics connector key off, so leaving everything
+		// INTERNAL means we get neither out of spans we're already paying to export.
+		kind?: Otel.SpanKind
 		levels?: {
 			event?: Pino.Level | ((...args: Parameters<Cb>) => Pino.Level)
 			error?: Pino.Level | ((...args: Parameters<Cb>) => Pino.Level)
@@ -126,7 +151,10 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 		const fullName = `${opts.module.name}:${name}`
 
 		const spanAttrs: Record<string, any> = {}
+		const baggageEntries: Record<string, Otel.BaggageEntry> = {}
 
+		// Only the ctx-derived attrs and stored links need a ctx; opts.attrs and the baggage merge must
+		// run regardless, or a spanOp whose callback doesn't take a ctx silently loses all its attributes.
 		if (ctx) {
 			if (ctx.otel) {
 				for (const link of flushOtelLinksInPlace(ctx as OtelCtx)) {
@@ -144,12 +172,6 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 				}
 			}
 
-			const baggageEntries: Record<string, Otel.BaggageEntry> = {}
-
-			if (opts.root || !Otel.trace.getActiveSpan()) {
-				baggageEntries[ATTR.Span.ROOT_NAME] = { value: fullName }
-			}
-
 			// Extract attributes from context using the mapping
 			for (const { ctxPath, attr } of CONTEXT_ATTR_MAPPING) {
 				const value = ctxPath(ctx)
@@ -161,66 +183,52 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 					}
 				}
 			}
+		}
 
-			// Add any custom attrs
-			let customAttrs = opts.attrs
-			if (typeof customAttrs === 'function') {
-				customAttrs = customAttrs(...(args as Parameters<Cb>))
+		if (opts.root || !Otel.trace.getActiveSpan()) {
+			baggageEntries[ATTR.Span.ROOT_NAME] = { value: fullName }
+		}
+
+		// Add any custom attrs
+		let customAttrs = opts.attrs
+		if (typeof customAttrs === 'function') {
+			customAttrs = customAttrs(...(args as Parameters<Cb>))
+		}
+		if (customAttrs) {
+			for (const [key, value] of Object.entries(customAttrs)) {
+				spanAttrs[key] = value
+				// Add to baggage if it's in MAPPED_ATTRS
+				if (LOG.MAPPED_ATTRS.includes(key)) {
+					baggageEntries[key] = { value: String(value) }
+				}
 			}
-			if (customAttrs) {
-				for (const [key, value] of Object.entries(customAttrs)) {
-					spanAttrs[key] = value
-					// Add to baggage if it's in MAPPED_ATTRS
-					if (LOG.MAPPED_ATTRS.includes(key)) {
-						baggageEntries[key] = { value: String(value) }
+		}
+
+		if (Object.keys(baggageEntries).length > 0) {
+			const currentBaggage = Otel.propagation.getBaggage(spanContext)
+			const newBaggageObj: Record<string, Otel.BaggageEntry> = {
+				...baggageEntries,
+			}
+
+			// Merge with existing baggage
+			if (currentBaggage) {
+				for (const [k, v] of currentBaggage.getAllEntries()) {
+					if (!(k in newBaggageObj)) {
+						newBaggageObj[k] = v
 					}
 				}
 			}
 
-			if (Object.keys(baggageEntries).length > 0) {
-				const currentBaggage = Otel.propagation.getBaggage(spanContext)
-				const newBaggageObj: Record<string, Otel.BaggageEntry> = {
-					...baggageEntries,
-				}
-
-				// Merge with existing baggage
-				if (currentBaggage) {
-					for (const [k, v] of currentBaggage.getAllEntries()) {
-						if (!(k in newBaggageObj)) {
-							newBaggageObj[k] = v
-						}
-					}
-				}
-
-				const newBaggage = Otel.propagation.createBaggage(newBaggageObj)
-				spanContext = Otel.propagation.setBaggage(spanContext, newBaggage)
-			}
+			const newBaggage = Otel.propagation.createBaggage(newBaggageObj)
+			spanContext = Otel.propagation.setBaggage(spanContext, newBaggage)
 		}
 
 		const tracer = opts.module.tracer
 		return await tracer.startActiveSpan(
 			fullName,
-			{ root: opts.root, links },
+			{ root: opts.root, links, kind: opts.kind },
 			spanContext,
 			async (span) => {
-				let ctx: any
-				const links: Otel.Link[] = [
-					{
-						context: span.spanContext(),
-						attributes: { ['slm.link-source']: 'upstream' },
-					},
-				]
-				if (args[0]?.otelCtx) {
-					ctx = args[0]
-					args = [{ ...ctx, upstreamLinks: links }, ...args.slice(1)]
-				} else if (args[0]?.[0]?.otelCtx) {
-					ctx = args[0][0]
-					args = [
-						[{ ...ctx, upstreamLinks: links }, ...args[0].slice(1)],
-						...args.slice(1),
-					]
-				}
-
 				// Set all collected attributes on the span
 				if (Object.keys(spanAttrs).length > 0) {
 					setSpanOpAttrs(spanAttrs)
@@ -236,12 +244,18 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 				const extraText = opts.extraText
 					? `${opts.extraText(...(args as Parameters<Cb>))} `
 					: ''
+				const startedAt = performance.now()
+				let metricOutcome: ATTR.Op.Outcome = 'ok'
 				try {
 					const result = await withAcquired(
 						opts.mutexes ?? (() => []),
 						cb as Cb,
 					)(...(args as Parameters<Cb>))
-					let statusString: string
+					let statusString: string | undefined
+					// a returned `err:*` code. Captured rather than logged here so the op produces exactly one
+					// record: it used to emit an `OP : ... : value-error : <msg>` line and then fall through
+					// and emit an `op : ... : <code>` line for the same failure.
+					let valueError: { message: string; cause?: unknown } | undefined
 					if (
 						result !== null
 						&& typeof result === 'object'
@@ -255,15 +269,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 							const message = result.msg
 								? `${result.code}: ${result.msg}`
 								: result.code
-							const extraTextPart = extraText ? ` : ${extraText.trim()}` : ''
-							const logArgs = [
-								`OP : ${fullName}${extraTextPart} : value-error : ${message}`,
-							]
-							if (result.error || result.err) {
-								logArgs.unshift(result.error || result.err)
-							}
-							// @ts-expect-error idgaf
-							log?.[resolveLevel(opts.levels?.valueError, 'warn')](...logArgs)
+							valueError = { message, cause: result.error || result.err }
 							setSpanStatus(Otel.SpanStatusCode.ERROR, message)
 						}
 					}
@@ -272,18 +278,28 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 						spanStatus = { code: Otel.SpanStatusCode.OK }
 						span.setStatus({ code: Otel.SpanStatusCode.OK })
 					}
-					const logLevel = spanStatus.code === Otel.SpanStatusCode.ERROR
+					const isError = spanStatus.code === Otel.SpanStatusCode.ERROR
+					metricOutcome = valueError ? 'value-error' : isError ? 'error' : 'ok'
+					const logLevel = valueError
+						? resolveLevel(opts.levels?.valueError, 'warn')
+						: isError
 						? resolveLevel(opts.levels?.error, 'warn')
 						: resolveLevel(opts.levels?.event, 'debug')
-					statusString ??= spanStatus.code === Otel.SpanStatusCode.ERROR
-						? (spanStatus?.message ?? 'error')
-						: 'ok'
+					statusString ??= isError ? (spanStatus?.message ?? 'error') : 'ok'
 					const extraTextPart = extraText ? ` : ${extraText.trim()}` : ''
-					log?.[logLevel](`op : ${fullName}${extraTextPart} : ${statusString}`)
+					// the value-error message carries the code plus its detail, so prefer it over the bare code
+					const outcome = valueError?.message ?? statusString
+					const opMsg = `op : ${fullName}${extraTextPart} : ${outcome}`
+					if (valueError?.cause) {
+						log?.[logLevel](valueError.cause as Error, opMsg)
+					} else {
+						log?.[logLevel](opMsg)
+					}
 					return result as Awaited<ReturnType<Cb>>
 				} catch (error) {
 					const message = recordGenericError(error)
 					const extraTextPart = extraText ? ` : ${extraText.trim()}` : ''
+					metricOutcome = isAbortError(error) ? 'aborted' : 'error'
 					if (isAbortError(error)) {
 						// expected cancellation (request dropped, slice destroyed, shutdown) -- not a failure
 						log?.debug(`${name}${extraTextPart} : aborted: ${message}`)
@@ -294,6 +310,12 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 					}
 					throw error
 				} finally {
+					getOpDurationHistogram().record((performance.now() - startedAt) / 1000, {
+						[ATTR.Op.NAME]: fullName,
+						[ATTR.Op.OUTCOME]: metricOutcome,
+						// already resolved from ctx by CONTEXT_ATTR_MAPPING above; bounded by the number of servers
+						...(spanAttrs[ATTR.SquadServer.ID] ? { [ATTR.SquadServer.ID]: spanAttrs[ATTR.SquadServer.ID] } : {}),
+					})
 					spanStatusMap.delete(span.spanContext().spanId)
 					span.end()
 				}

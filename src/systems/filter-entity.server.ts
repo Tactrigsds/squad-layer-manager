@@ -5,6 +5,7 @@ import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
 import * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
+import * as ATTRS from '@/models/otel-attrs'
 
 import * as AppEvents from '@/models/app-events.models'
 import type * as USR from '@/models/users.models'
@@ -227,7 +228,9 @@ export const filtersRouter = {
 				const filter = F.FilterEntitySchema.parse(rawFilter)
 				return { code: 'ok' as const, filter: { ...filter, ...update } }
 			})
-			log.info(res, 'Updated filter %d', id)
+			// res carries the whole filter entity (AST included); flattening that into attributes wrote a key
+			// per node of the filter tree on every update, at info level
+			log.info({ [ATTRS.Filter.ID]: id, [ATTRS.Filter.OUTCOME]: res.code }, 'Updated filter %s: %s', id, res.code)
 			if (res.code === 'ok') {
 				filterMutation$.next([C.storeLinkToActiveSpan(ctx, 'event.emitter'), {
 					type: 'update',

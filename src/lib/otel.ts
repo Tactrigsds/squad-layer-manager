@@ -10,9 +10,12 @@ export type OtelModule = {
 
 export function getChildModule(module: OtelModule, submoduleName: string) {
 	const name = `${module.name}:${submoduleName}`
+	// memoized: spanOp calls getLogger() on every invocation, and each pino child allocation also
+	// invalidates the bindings cache that the otel bridge in server/logger.ts keys off the instance.
+	let log: pino.Logger | undefined
 	return {
 		name: name,
-		getLogger: () => module.getLogger().child({ [ATTRS.Module.NAME]: name }),
+		getLogger: () => log ??= module.getLogger().child({ [ATTRS.Module.NAME]: name }),
 		tracer: Otel.trace.getTracer(name),
 	}
 }

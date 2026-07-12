@@ -1,0 +1,236 @@
+{
+	"uid": "slm-ops",
+	"title": "SLM / Ops (RED)",
+	"description": "Rate, errors and duration for every C.spanOp in the app, plus Node runtime health. Backed by the slm.op.duration histogram recorded in spanOp's finally block (src/server/context.ts), so a new spanOp shows up here with no extra wiring.",
+	"tags": ["slm"],
+	"timezone": "browser",
+	"editable": true,
+	"schemaVersion": 39,
+	"refresh": "30s",
+	"time": { "from": "now-6h", "to": "now" },
+	"templating": {
+		"list": [
+			{
+				"name": "op",
+				"label": "Op",
+				"type": "query",
+				"datasource": { "type": "prometheus", "uid": "prometheus" },
+				"query": "label_values(slm_op_duration_seconds_count, slm_op_name)",
+				"refresh": 2,
+				"includeAll": true,
+				"multi": true,
+				"current": { "text": "All", "value": "$__all" }
+			}
+		]
+	},
+	"panels": [
+		{
+			"type": "row",
+			"title": "Rate / Errors / Duration",
+			"gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+		},
+		{
+			"type": "timeseries",
+			"title": "Op rate",
+			"description": "Ops per second by name. `aborted` is excluded from the error panels but included here, since a cancelled op still did work.",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "sum by (slm_op_name) (rate(slm_op_duration_seconds_count{slm_op_name=~\"$op\"}[$__rate_interval]))",
+					"legendFormat": "{{slm_op_name}}"
+				}
+			],
+			"fieldConfig": {
+				"defaults": { "min": 0, "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1 } },
+				"overrides": []
+			},
+			"options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"], "showLegend": true } }
+		},
+		{
+			"type": "timeseries",
+			"title": "Error rate",
+			"description": "Ops per second that ended in a thrown error or a returned err:* code. `value-error` is an expected, handled failure (an err:* return); `error` is a thrown exception. Both are worth watching, but a spike in `error` is the one that means something is broken.",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "sum by (slm_op_name, slm_op_outcome) (rate(slm_op_duration_seconds_count{slm_op_name=~\"$op\", slm_op_outcome=~\"error|value-error\"}[$__rate_interval]))",
+					"legendFormat": "{{slm_op_name}} ({{slm_op_outcome}})"
+				}
+			],
+			"fieldConfig": {
+				"defaults": { "min": 0, "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 1 } },
+				"overrides": []
+			},
+			"options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"], "showLegend": true } }
+		},
+		{
+			"type": "timeseries",
+			"title": "Duration p95",
+			"description": "95th percentile op duration. core-rcon:execute sitting at ~2s is the rcon response timeout, not a slow call.",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "histogram_quantile(0.95, sum by (le, slm_op_name) (rate(slm_op_duration_seconds_bucket{slm_op_name=~\"$op\"}[$__rate_interval])))",
+					"legendFormat": "{{slm_op_name}}"
+				}
+			],
+			"fieldConfig": {
+				"defaults": { "min": 0, "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 0, "lineWidth": 1 } },
+				"overrides": []
+			},
+			"options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"], "showLegend": true } }
+		},
+		{
+			"type": "table",
+			"title": "Slowest ops (p95, last 1h)",
+			"description": "Ranked so a regression in a rarely-called op is still visible.",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "topk(15, histogram_quantile(0.95, sum by (le, slm_op_name) (rate(slm_op_duration_seconds_bucket[1h]))))",
+					"format": "table",
+					"instant": true
+				}
+			],
+			"transformations": [
+				{ "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "slm_op_name": "Op", "Value": "p95 (s)" } } },
+				{ "id": "sortBy", "options": { "fields": {}, "sort": [{ "field": "p95 (s)", "desc": true }] } }
+			],
+			"fieldConfig": {
+				"defaults": { "unit": "s" },
+				"overrides": []
+			}
+		},
+		{
+			"type": "row",
+			"title": "Errors by op",
+			"gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 }
+		},
+		{
+			"type": "table",
+			"title": "Error ratio by op (last 1h)",
+			"description": "Fraction of each op's calls that failed. Sorted worst-first. An op at 1.0 is failing every single time it runs.",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 9, "w": 12, "x": 0, "y": 18 },
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "sum by (slm_op_name) (rate(slm_op_duration_seconds_count{slm_op_outcome=~\"error|value-error\"}[1h])) / sum by (slm_op_name) (rate(slm_op_duration_seconds_count[1h])) > 0",
+					"format": "table",
+					"instant": true
+				}
+			],
+			"transformations": [
+				{
+					"id": "organize",
+					"options": { "excludeByName": { "Time": true }, "renameByName": { "slm_op_name": "Op", "Value": "Error ratio" } }
+				},
+				{ "id": "sortBy", "options": { "fields": {}, "sort": [{ "field": "Error ratio", "desc": true }] } }
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "percentunit",
+					"custom": { "cellOptions": { "type": "color-background" } },
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{ "color": "green", "value": null },
+							{ "color": "yellow", "value": 0.05 },
+							{ "color": "red", "value": 0.25 }
+						]
+					}
+				},
+				"overrides": []
+			}
+		},
+		{
+			"type": "logs",
+			"title": "Op failures",
+			"description": "The log line each failing op emits. spanOp writes exactly one record per op, so this is 1:1 with the error rate above.",
+			"datasource": { "type": "loki", "uid": "loki" },
+			"gridPos": { "h": 9, "w": 12, "x": 12, "y": 18 },
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "{service_name=\"squad-layer-manager\"} |= `op : ` | severity_text =~ `WARN|ERROR|FATAL`",
+					"queryType": "range"
+				}
+			],
+			"options": {
+				"showTime": true,
+				"showLabels": false,
+				"showCommonLabels": false,
+				"wrapLogMessage": true,
+				"enableLogDetails": true,
+				"dedupStrategy": "none",
+				"sortOrder": "Descending"
+			}
+		},
+		{
+			"type": "row",
+			"title": "Node runtime",
+			"gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 }
+		},
+		{
+			"type": "timeseries",
+			"title": "Event loop",
+			"description": "Utilization ratio and delay p99. Sustained utilization near 1 means the loop is saturated and every op's latency is really queueing time.",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 8, "w": 8, "x": 0, "y": 28 },
+			"targets": [
+				{ "refId": "A", "expr": "nodejs_eventloop_utilization_ratio", "legendFormat": "utilization" },
+				{ "refId": "B", "expr": "nodejs_eventloop_delay_p99_seconds", "legendFormat": "delay p99" }
+			],
+			"fieldConfig": {
+				"defaults": { "min": 0, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1 } },
+				"overrides": [
+					{
+						"matcher": { "id": "byName", "options": "delay p99" },
+						"properties": [{ "id": "unit", "value": "s" }, { "id": "custom.axisPlacement", "value": "right" }]
+					}
+				]
+			}
+		},
+		{
+			"type": "timeseries",
+			"title": "Heap",
+			"description": "v8js.memory.heap.used against the limit. A used line that ratchets up and never falls back after GC is a leak.",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 8, "w": 8, "x": 8, "y": 28 },
+			"targets": [
+				{ "refId": "A", "expr": "v8js_memory_heap_used_bytes", "legendFormat": "used" },
+				{ "refId": "B", "expr": "v8js_memory_heap_limit_bytes", "legendFormat": "limit" }
+			],
+			"fieldConfig": {
+				"defaults": { "min": 0, "unit": "bytes", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1 } },
+				"overrides": []
+			}
+		},
+		{
+			"type": "timeseries",
+			"title": "GC pause p95",
+			"description": "v8js.gc.duration by collection type. Long major GC pauses stall every op in flight.",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 8, "w": 8, "x": 16, "y": 28 },
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "histogram_quantile(0.95, sum by (le, v8js_gc_type) (rate(v8js_gc_duration_seconds_bucket[$__rate_interval])))",
+					"legendFormat": "{{v8js_gc_type}}"
+				}
+			],
+			"fieldConfig": {
+				"defaults": { "min": 0, "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1 } },
+				"overrides": []
+			}
+		}
+	]
+}

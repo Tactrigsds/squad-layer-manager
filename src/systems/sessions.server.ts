@@ -3,6 +3,7 @@ import * as AR from '@/app-routes'
 import { sleep } from '@/lib/async'
 import { createId } from '@/lib/id'
 import * as CS from '@/models/context-shared'
+import * as ATTRS from '@/models/otel-attrs'
 import { initModule } from '@/server/logger'
 
 import * as RBAC from '@/rbac.models'
@@ -268,7 +269,7 @@ export function clearInvalidSession(ctx: C.FastifyReply) {
 
 export const getUser = C.spanOp(
 	'getUser',
-	{ module, levels: { event: 'trace' }, attrs: ({ lock }) => ({ lock }) },
+	{ module, levels: { event: 'trace' }, attrs: ({ lock }) => ({ [ATTRS.Session.LOCK]: lock ?? false }) },
 	async (opts: { lock?: boolean }, ctx: C.AuthedUser & C.HttpRequest & C.Db) => {
 		opts.lock ??= false
 

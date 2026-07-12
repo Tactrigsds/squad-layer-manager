@@ -287,7 +287,9 @@ async function fetchTeams(ctx: C.Rcon & C.AdminList & C.AsyncResourceInvocation 
 		}
 	} catch (e) {
 		log.warn(e, 'Received error while validating players and squads.')
-		log.warn({ playersRes, squadsRes }, 'Parsed responses:')
+		// kept in the message rather than as attributes: as an object these two exploded into one key per
+		// player and per squad, at warn level. As a body it stays a single (large, but rare) line.
+		log.warn('Parsed responses: players=%o squads=%o', playersRes, squadsRes)
 		throw e
 	}
 

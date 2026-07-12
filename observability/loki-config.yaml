@@ -1,0 +1,70 @@
+# Overrides /otel-lgtm/loki-config.yaml in the grafana/otel-lgtm image. Everything outside the
+# `limits_config` and `compactor` blocks is the image's own config, reproduced verbatim: mounting this
+# file replaces the original wholesale, so dropping a section here would silently un-configure it.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /data/loki
+  storage:
+    filesystem:
+      chunks_directory: /data/loki/chunks
+      rules_directory: /data/loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  # 2 week log retention. Longer than traces because logs are what you go back to when someone asks
+  # "what happened to my queue last Tuesday" -- the trace is long gone by then, but the log line that
+  # carries its trace_id is not.
+  retention_period: 336h
+
+  # Loki promotes only a small allowlist of resource attributes to index labels and puts everything
+  # else in structured metadata (not indexed), which is what keeps our stream count at 2 despite
+  # per-record span_id/trace_id. Left at the default deliberately: promoting slm_module_name to a
+  # label would multiply streams by the number of modules for no query benefit, since structured
+  # metadata is filterable without an index.
+  allow_structured_metadata: true
+
+# Retention is only actually enforced if the compactor is told to do it. Without this block the
+# retention_period above is inert and Loki keeps every chunk forever.
+compactor:
+  working_directory: /data/loki/compactor
+  delete_request_store: filesystem
+  retention_enabled: true
+  compaction_interval: 10m
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 150
+
+ruler:
+  alertmanager_url: http://127.0.0.1:9093
+
+pattern_ingester:
+  lifecycler:
+    min_ready_duration: 1s
+
+ingester:
+  lifecycler:
+    min_ready_duration: 1s
+
+frontend:
+  scheduler_dns_lookup_period: 1s
+  address: 127.0.0.1
+
+query_scheduler:
+  use_scheduler_ring: false

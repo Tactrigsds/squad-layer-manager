@@ -1,0 +1,74 @@
+# Overrides the otel-lgtm image's datasource provisioning. The URLs are loopback because Grafana,
+# Prometheus, Loki and Tempo all run inside the single otel-lgtm container.
+#
+# The cross-links are the point of this file. They are what make a Loki line clickable through to its
+# Tempo trace and back again, which only works because server/logger.ts stamps trace_id/span_id onto
+# every record (see LOG.mapSpanAttrs).
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    url: http://127.0.0.1:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      timeInterval: 60s
+      # lets a spike in a RED panel be clicked straight through to an exemplar trace
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+          urlDisplayLabel: "Trace: $${__value.raw}"
+
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    url: http://127.0.0.1:3200
+    editable: true
+    jsonData:
+      # trace -> the logs emitted inside it
+      tracesToLogsV2:
+        customQuery: true
+        datasourceUid: "loki"
+        query: '{service_name="squad-layer-manager"} | trace_id = "$${__trace.traceId}"'
+        tags:
+          - key: "service.name"
+            value: "service_name"
+      # trace -> the op RED metrics for the same op name
+      tracesToMetrics:
+        datasourceUid: "prometheus"
+        queries:
+          - name: "Op duration p95"
+            query: 'histogram_quantile(0.95, sum by (le) (rate(slm_op_duration_seconds_bucket{slm_op_name="$${__span.name}"}[5m])))'
+      serviceMap:
+        datasourceUid: "prometheus"
+      search:
+        hide: false
+      nodeGraph:
+        enabled: true
+      lokiSearch:
+        datasourceUid: "loki"
+
+  - name: Loki
+    type: loki
+    uid: loki
+    url: http://127.0.0.1:3100
+    editable: true
+    jsonData:
+      # log line -> the trace it was emitted inside. matcherType `label` reads trace_id out of the
+      # structured metadata rather than regexing the body, which is why the body doesn't need to
+      # carry the id.
+      derivedFields:
+        - name: "trace_id"
+          matcherType: "label"
+          matcherRegex: "trace_id"
+          url: "$${__value.raw}"
+          datasourceUid: "tempo"
+          urlDisplayLabel: "Trace: $${__value.raw}"
+
+  - name: Pyroscope
+    type: grafana-pyroscope-datasource
+    uid: pyroscope
+    url: http://127.0.0.1:4040
+    editable: true

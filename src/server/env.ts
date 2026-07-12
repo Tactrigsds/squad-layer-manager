@@ -14,6 +14,9 @@ export const groups = {
 		LOG_LEVEL_OVERRIDE: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),
 		OTEL_ENABLED: z.stringbool().default(true),
 		OTLP_COLLECTOR_ENDPOINT: NormedUrl.transform((url) => url.replace(/\/$/, '')).default('http://localhost:4318'),
+		// Head sampling ratio for traces we root ourselves. Defaults to 1 (sample everything, the prior
+		// behaviour); lower it if span volume from high-frequency ops becomes a problem.
+		OTEL_TRACE_SAMPLE_RATIO: z.coerce.number().min(0).max(1).default(1),
 
 		PUBLIC_GIT_SHA: z.string().min(1).prefault('unknown'),
 		PUBLIC_GIT_BRANCH: z.string().min(1).prefault('unknown'),
@@ -52,6 +55,7 @@ export const groups = {
 		TEST_RCON_PASSWORD: z.string().min(1).prefault('test'),
 	},
 
+	//
 	discord: {
 		DISCORD_CLIENT_ID: z.string().min(1),
 		DISCORD_CLIENT_SECRET: z.string().min(1),
@@ -76,6 +80,7 @@ export const groups = {
 	},
 
 	preprocess: {
+		// The spreadsheet of OWI's layer spreadsheet. This is only used for layer sizes at the momenet
 		SPREADSHEET_ID: z.string().prefault('1UXEgkUMBxhmYyEkaMSUd1Ko_I7s--7krCdyshZ076pU'),
 		SPREADSHEET_MAP_LAYERS_GID: z.number().prefault(1212962563),
 		EXTRA_COLS_CSV_PATH: z.string().prefault(path.join(Paths.DATA, 'layers_v{{LAYERS_VERSION}}.csv')),
@@ -83,8 +88,17 @@ export const groups = {
 
 	battlemetrics: {
 		BM_HOST: z.url().prefault('https://api.battlemetrics.com'),
-		// BM_ORG_ID: z.string(),
-		BM_PAT: z.string(),
+
+		// Battlemetrics API Token.
+		// Required permissions are:
+		// - player flags (add/remove player flags. don't need to add new flags)
+		// - player notes(read & createe)
+		// - rcon(read, unclear why we need this one tbqh but experimentally seem to)
+		BM_PAT: z.string({}).meta({
+			description: `
+                        `.trim(),
+		}),
+
 		BM_ORG_ID: z.string(),
 	},
 } satisfies { [key: string]: Record<string, z.ZodType> }

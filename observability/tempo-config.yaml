@@ -1,0 +1,68 @@
+# Overrides /otel-lgtm/tempo-config.yaml in the grafana/otel-lgtm image. Everything outside the
+# `compactor` block is the image's own config, reproduced verbatim: mounting this file replaces the
+# original wholesale, so dropping a section here would silently un-configure it.
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9096
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "127.0.0.1:4417"
+        http:
+          endpoint: "127.0.0.1:4418"
+
+ingester:
+  trace_idle_period: 1s
+  max_block_duration: 1s
+  flush_check_period: 1s
+  lifecycler:
+    address: 127.0.0.1
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
+    min_ready_duration: 1s
+
+querier:
+  frontend_worker:
+    frontend_address: 127.0.0.1:9096
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /data/tempo/wal
+    local:
+      path: /data/tempo/blocks
+
+# 3 day trace retention. Tempo's default is 336h; traces are by far the highest-volume signal we emit
+# (one span per spanOp, plus auto-instrumented http/rcon/dns spans underneath each), so they get the
+# shortest window. The RED metrics derived from them by the metrics_generator below live in Prometheus
+# and outlive the spans themselves, so long-range trend queries still work after the traces age out.
+compactor:
+  compaction:
+    block_retention: 72h
+    compacted_block_retention: 1h
+
+metrics_generator:
+  processor:
+    local_blocks:
+      filter_server_spans: false
+    span_metrics:
+      dimensions:
+        - service_name
+        - operation
+        - status_code
+  traces_storage:
+    path: /data/tempo/generator/traces
+  storage:
+    path: /data/tempo/generator/wal
+    remote_write:
+      - url: http://127.0.0.1:9090/api/v1/write
+        send_exemplars: true
+
+overrides:
+  metrics_generator_processors: [service-graphs, local-blocks, span-metrics]

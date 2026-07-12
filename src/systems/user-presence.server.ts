@@ -4,6 +4,7 @@ import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as Obj from '@/lib/object'
 import * as ODSM from '@/lib/odsm'
 import type * as CS from '@/models/context-shared'
+import * as ATTRS from '@/models/otel-attrs'
 import * as UP from '@/models/user-presence'
 import * as C from '@/server/context'
 import { initModule } from '@/server/logger'
@@ -118,7 +119,15 @@ const dispatchOp = C.spanOp(
 		for (const se of applied.sideEffects) {
 			// op-outcome is currently the only side effect
 			// TODO handle start-editing and finish-editing on SLL side once that code is converted to use ODSM
-			log.debug('op outcome', se.op, se.success)
+			log.debug(
+				{
+					[ATTRS.UserPresence.OP_CODE]: se.op.code,
+					[ATTRS.UserPresence.OP_ID]: se.op.opId,
+					[ATTRS.UserPresence.OP_SUCCESS]: se.success,
+				},
+				'op outcome: %s',
+				se.op.code,
+			)
 		}
 	},
 )

@@ -10,6 +10,14 @@ services:
       - 4318:4318
     volumes:
       - otel_data:/data
+      # Retention (3d traces, 14d logs) and the SLM dashboards. Each of these replaces a file the image
+      # ships, so the files under ./observability reproduce the image's own config in full rather than
+      # only the parts we change. See the header comment in each.
+      - ./observability/tempo-config.yaml:/otel-lgtm/tempo-config.yaml:ro
+      - ./observability/loki-config.yaml:/otel-lgtm/loki-config.yaml:ro
+      - ./observability/grafana/provisioning/datasources:/otel-lgtm/grafana/conf/provisioning/datasources:ro
+      - ./observability/grafana/provisioning/dashboards:/otel-lgtm/grafana/conf/provisioning/dashboards:ro
+      - ./observability/grafana/dashboards:/etc/grafana/slm-dashboards:ro
 
 volumes:
   db_data:

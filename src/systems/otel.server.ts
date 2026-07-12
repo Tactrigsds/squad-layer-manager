@@ -8,10 +8,10 @@ import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-proto'
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-proto'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto'
 
-import { Resource } from '@opentelemetry/resources'
+import { defaultResource, resourceFromAttributes } from '@opentelemetry/resources'
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
 import { logs, NodeSDK, tracing } from '@opentelemetry/sdk-node'
-import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions'
+import { ATTR_SERVICE_INSTANCE_ID, ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions'
 import { ORPCInstrumentation } from '@orpc/otel'
 import { randomBytes } from 'crypto'
 
@@ -33,25 +33,44 @@ export const instanceId = `${Date.now()}-${randomBytes(4).toString('hex')}`
 export function setupOtel() {
 	ENV = envBuilder()
 	console.log('Setting up OpenTelemetry...')
+
+	// Without this the http instrumentation emits both generations of the semconv at once: every span
+	// carries http.method *and* http.request.method, and every duration is recorded twice, once as
+	// http.*.duration (ms, deprecated) and once as http.*.request.duration (s, stable). Set here rather
+	// than in the deploy env so it can't be forgotten; the instrumentations read it when constructed
+	// just below. ??= so an operator can still override it.
+	process.env.OTEL_SEMCONV_STABILITY_OPT_IN ??= 'http'
+
 	const traceExporter = new OTLPTraceExporter({ url: getCollectorEndpoint('/v1/traces') })
 	const metricExporter = new OTLPMetricExporter({ url: getCollectorEndpoint('/v1/metrics') })
 	const logExporter = new OTLPLogExporter({ url: getCollectorEndpoint('/v1/logs') })
 
-	const resourceAttrs = {
+	const resource = defaultResource().merge(resourceFromAttributes({
 		[ATTR_SERVICE_NAME]: 'squad-layer-manager',
 		[ATTR_SERVICE_VERSION]: formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA),
-		// ATTR_SERVICE_INSTANCE_ID seems to be broken
-		['service.instance.id']: instanceId,
-	}
+		[ATTR_SERVICE_INSTANCE_ID]: instanceId,
+	}))
 
 	sdk = new NodeSDK({
-		resource: new Resource(resourceAttrs),
+		resource,
+		// ParentBased so a sampled parent (e.g. an inbound traced request) keeps its whole subtree; the
+		// ratio only applies to traces we root ourselves.
+		sampler: new tracing.ParentBasedSampler({
+			root: new tracing.TraceIdRatioBasedSampler(ENV.OTEL_TRACE_SAMPLE_RATIO),
+		}),
 		traceExporter: traceExporter,
 		spanProcessor: new tracing.BatchSpanProcessor(traceExporter),
 		metricReader: new PeriodicExportingMetricReader({ exporter: metricExporter }),
-		logRecordProcessors: [new logs.BatchLogRecordProcessor(logExporter)],
+		logRecordProcessors: [new logs.BatchLogRecordProcessor({ exporter: logExporter })],
 		instrumentations: [
-			getNodeAutoInstrumentations(),
+			getNodeAutoInstrumentations({
+				// server/logger.ts already bridges every pino record to the Logs API from its `logMethod`
+				// hook (where it can also attach span/baggage attrs), and LOG.mapSpanAttrs already stamps
+				// trace_id/span_id onto each record. Leaving the instrumentation's log-sending on would
+				// export every record twice; leaving its correlation on would re-add trace ids plus a
+				// trace_flags field that showLogEvent doesn't know about, so it prints on every line.
+				'@opentelemetry/instrumentation-pino': { disableLogSending: true, disableLogCorrelation: true },
+			}),
 			new ORPCInstrumentation(),
 		],
 	})

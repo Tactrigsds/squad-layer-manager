@@ -1,5 +1,6 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import { objKeys } from '@/lib/object'
+import * as ATTRS from '@/models/otel-attrs'
 import * as SETTINGS from '@/models/settings.models'
 import { initModule } from '@/server/logger'
 
@@ -105,7 +106,7 @@ const orpcBase = getOrpcBase(module)
 
 export const getRolesForDiscordUser = C.spanOp(
 	'getRolesForDiscordUser',
-	{ module, levels: { event: 'trace' }, attrs: (_, userId) => ({ userId }) },
+	{ module, levels: { event: 'trace' }, attrs: (ctx: C.UserId) => ({ [ATTRS.User.ID]: String(ctx.user.discordId) }) },
 	async (baseCtx: C.UserId) => {
 		const userId = baseCtx.user.discordId
 		const roles: RBAC.Role[] = []
@@ -141,7 +142,7 @@ export const getRolesForDiscordUser = C.spanOp(
 
 export const getUserRbacPerms = C.spanOp(
 	'getUserRbacPerms',
-	{ module, levels: { event: 'trace' }, attrs: (_, userId) => ({ userId }) },
+	{ module, levels: { event: 'trace' }, attrs: (ctx: C.UserId) => ({ [ATTRS.User.ID]: String(ctx.user.discordId) }) },
 	async (baseCtx: C.Db & C.UserId): Promise<RBAC.TracedPermission[]> => {
 		const userId = baseCtx.user.discordId
 		const rolesPromise = getRolesForDiscordUser(baseCtx)

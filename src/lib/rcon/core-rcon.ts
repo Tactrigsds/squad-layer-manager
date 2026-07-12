@@ -1,9 +1,11 @@
 import * as CS from '@/models/context-shared'
 import type * as Logs from '@/models/logs'
+import * as ATTRS from '@/models/otel-attrs'
 import type * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
 import * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
+import * as Otel from '@opentelemetry/api'
 
 import { EventEmitter } from 'node:events'
 import net from 'node:net'
@@ -123,7 +125,8 @@ export default class Rcon extends EventEmitter<Events> {
 		'execute',
 		{
 			module,
-			attrs: (body) => ({ body }),
+			kind: Otel.SpanKind.CLIENT,
+			attrs: (body) => ({ [ATTRS.Rcon.COMMAND]: body }),
 			levels: { event: (body, opts) => opts?.level ?? 'trace' },
 			extraText: (body) => body,
 		},

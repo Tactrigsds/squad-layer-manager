@@ -1,5 +1,6 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import { isAbortError, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
+import * as ATTRS from '@/models/otel-attrs'
 import * as UserPresenceSys from '@/systems/user-presence.server'
 
 import * as DH from '@/lib/display-helpers.ts'
@@ -632,7 +633,7 @@ export const dispatchOp = C.spanOp(
 		module,
 		mutexes: (ctx) => ctx.layerQueue.updateLayerMtx,
 		levels: { event: 'info' },
-		attrs: (ctx, op) => ({ op: op.op, opId: op.opId }),
+		attrs: (ctx, op) => ({ [ATTRS.LayerQueue.OP]: op.op, [ATTRS.LayerQueue.OP_ID]: op.opId }),
 		extraText: (ctx, op) => `Dispatch op ${op.op} (${op.opId})`,
 	},
 	async (
@@ -662,7 +663,7 @@ const handleSideEffect = C.spanOp(
 	{
 		module,
 		extraText: (ctx, op, se) => `${op.op} -> Side Effect ${se.code}`,
-		attrs: (ctx, op, se) => ({ op: op.op, sideEffect: se.code }),
+		attrs: (ctx, op, se) => ({ [ATTRS.LayerQueue.OP]: op.op, [ATTRS.LayerQueue.SIDE_EFFECT]: se.code }),
 	},
 	async (
 		ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.AdminList & C.ServerSettings & CS.AbortSignal,

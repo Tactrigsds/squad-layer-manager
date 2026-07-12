@@ -15,6 +15,7 @@ import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LOG from '@/models/logs'
 import * as MH from '@/models/match-history.models'
+import * as ATTRS from '@/models/otel-attrs'
 import * as SE from '@/models/server-events.models'
 
 import type * as USR from '@/models/users.models'
@@ -474,7 +475,7 @@ export const finalizeCurrentMatch = C.spanOp('finalizeCurrentMatch', {
 	levels: { event: 'info' },
 	mutexes: (ctx) => ctx.matchHistory.mtx,
 	attrs: (_, currentLayerId) => ({
-		currentLayerId,
+		[ATTRS.MatchHistory.CURRENT_LAYER_ID]: currentLayerId,
 	}),
 }, async (
 	ctx: C.Db & C.MatchHistory & CS.AbortSignal,

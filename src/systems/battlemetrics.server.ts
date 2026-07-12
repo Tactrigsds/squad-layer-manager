@@ -16,7 +16,7 @@ import * as CleanupSys from '@/systems/cleanup.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as SquadServer from '@/systems/squad-server.server'
-import { metrics } from '@opentelemetry/api'
+import * as Otel from '@opentelemetry/api'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
 
@@ -211,7 +211,7 @@ function drainQueue() {
 	scheduleDrain()
 }
 
-const meter = metrics.getMeter('battlemetrics')
+const meter = Otel.metrics.getMeter('battlemetrics')
 
 meter.createObservableGauge(ATTRS.Battlemetrics.RateLimit.PER_SECOND, {
 	description: 'Number of BattleMetrics API requests in the last 1s window',
@@ -292,7 +292,12 @@ async function bmFetch<T = null>(
 ): Promise<readonly [T, Response]> {
 	return C.spanOp(
 		'bmFetch',
-		{ module, levels: { error: 'error', event: 'trace' }, attrs: () => ({ [ATTRS.Http.METHOD]: method, [ATTRS.Http.PATH]: path }) },
+		{
+			module,
+			kind: Otel.SpanKind.CLIENT,
+			levels: { error: 'error', event: 'trace' },
+			attrs: () => ({ [ATTRS.Http.METHOD]: method, [ATTRS.Http.PATH]: path }),
+		},
 		async (ctx: CS.Ctx & CS.AbortSignal) => {
 			const url = `${ENV.BM_HOST}${path}`
 
@@ -569,7 +574,7 @@ export async function invalidateAndRefetchPlayer(
 
 export const fetchSinglePlayerBmData = C.spanOp(
 	'fetchSinglePlayerBmData',
-	{ module, attrs: (_ctx, playerIds) => ({ eosId: playerIds.eos, steamId: playerIds.steam }) },
+	{ module, attrs: (_ctx, playerIds) => ({ [ATTRS.Player.EOS_ID]: playerIds.eos, [ATTRS.Player.STEAM_ID]: playerIds.steam }) },
 	async (ctx: CS.Ctx & CS.AbortSignal, playerIds: SM.PlayerIds.IdQuery<'eos'>): Promise<BM.PlayerFlagsAndProfile | null> => {
 		const eosId = playerIds.eos
 		const cached = getCachedPlayer(eosId)

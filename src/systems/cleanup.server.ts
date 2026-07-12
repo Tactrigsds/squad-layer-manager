@@ -5,7 +5,7 @@ import * as CS from '@/models/context-shared'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 
-const module = initModule('layer-queue')
+const module = initModule('cleanup')
 let log!: CS.Logger
 
 const buildEnv = Env.getEnvBuilder({ ...Env.groups.general })

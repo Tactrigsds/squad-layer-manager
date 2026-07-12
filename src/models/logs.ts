@@ -37,6 +37,7 @@ export const MAPPED_ATTRS = [
 	ATTRS.Module.NAME,
 	ATTRS.SquadServer.ID,
 	ATTRS.User.ID,
+	ATTRS.User.NAME,
 	ATTRS.WebSocket.CLIENT_ID,
 	ATTRS.Span.ROOT_NAME,
 ]
@@ -97,9 +98,18 @@ const MAX_MODULE_NAME_LENGTH = 14
 let maxModuleNameLength = 0
 let maxPrefixLength = 0
 
+// oxlint-disable-next-line no-control-regex
+const ANSI_ESCAPE = /\x1b\[[0-9;]*m/g
+
+// Colour is a terminal-presentation concern, but some call sites bake it into the message itself
+// (db.ts highlights SQL), and that message is also the body we ship to the log backend. Strip on the
+// way out rather than at each call site, so no future caller can leak escapes into Loki.
+export function stripAnsi(s: string): string {
+	return s.replace(ANSI_ESCAPE, '')
+}
+
 function visibleLength(s: string): number {
-	// oxlint-disable-next-line no-control-regex
-	return s.replace(/\x1b\[[0-9;]*m/g, '').length
+	return stripAnsi(s).length
 }
 
 function getTraceColor(traceId: string): string {
@@ -149,14 +159,9 @@ export function mapSpanAttrs(span: Otel.Span, record: Record<string, any>) {
 	if (!('span_name' in record) && sdkSpan.name) {
 		record.span_name = sdkSpan.name
 	}
-
-	// Include root span name if available in baggage
-	if (baggage) {
-		const rootSpanEntry = baggage.getEntry(ATTRS.Span.ROOT_NAME)
-		if (rootSpanEntry?.value) {
-			record.root_span_name = rootSpanEntry.value
-		}
-	}
+	// the root span name is already copied out of baggage by the MAPPED_ATTRS loop above, under
+	// ATTRS.Span.ROOT_NAME. It used to also be written to `root_span_name`, which meant every record
+	// carried the same value under two keys.
 }
 
 export function showLogEvent(
@@ -222,10 +227,10 @@ export function showLogEvent(
 		span_name: rawSpanName,
 		span_id: rawSpanId,
 		[ATTRS.Span.ROOT_NAME]: rawRootSpanName,
-		root_span_name: rawRootSpanName2,
 		[ATTRS.Module.NAME]: rawModuleName,
 		[ATTRS.SquadServer.ID]: rawServerId,
 		[ATTRS.User.ID]: rawUserId,
+		[ATTRS.User.NAME]: rawUserName,
 		[ATTRS.WebSocket.CLIENT_ID]: rawWsClientId,
 		trace_id: rawTraceId,
 		...props
@@ -233,11 +238,12 @@ export function showLogEvent(
 
 	const moduleName = rawModuleName as string | undefined
 	const spanName = rawSpanName as string | undefined
-	const rootSpanName = (rawRootSpanName ?? rawRootSpanName2) as string | undefined
+	const rootSpanName = rawRootSpanName as string | undefined
 	const traceId = rawTraceId as string | undefined
 	const spanId = rawSpanId as string | undefined
 	const serverId = rawServerId as string | undefined
-	const userId = rawUserId as string | undefined
+	// prefer the username for the console; user.id is the discord snowflake, which is unreadable here
+	const userId = (rawUserName ?? rawUserId) as string | undefined
 	const wsClientId = rawWsClientId as string | undefined
 
 	// Build main bracket with level (padded) and module (padded to longest seen)

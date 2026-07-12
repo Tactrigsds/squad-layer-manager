@@ -17,6 +17,7 @@ import * as LayerDb from '@/systems/layer-db.server'
 import * as LayerQueries from '@/systems/layer-queries.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
+import * as Metrics from '@/systems/metrics.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sessions from '@/systems/sessions.server'
@@ -84,6 +85,9 @@ await C.spanOp('main', { module }, async () => {
 	// per-server "SLM started/restarted" admin warn (sent during SquadServer.setup) can name who restarted it
 	await AppEventsSys.detectRestartAtBoot(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 	await Promise.all([SquadServer.setup(), Discord.setup()])
+
+	// after SquadServer.setup, since its gauges read SquadServer.globalState
+	Metrics.setup()
 	await AppEventsSys.persistAppEvent(
 		DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }),
 		AppEvents.create<AppEvents.AppStarted>({

@@ -9,11 +9,10 @@ Env.ensureEnvSetup()
 const ENV = Env.getEnvBuilder({ OTEL_ENABLED: Env.groups.general.OTEL_ENABLED })()
 
 if (ENV.OTEL_ENABLED) {
+	// setupOtel registers sdk.shutdown() with cleanup.server, which runs it on SIGTERM. A 'beforeExit'
+	// handler used to do the same, but beforeExit never fires on a signal or an explicit exit, so it was
+	// only ever a duplicate of the cleanup path in the cases where it fired at all.
 	setupOtel()
-
-	process.on('beforeExit', async () => {
-		await otelSdk.shutdown()
-	})
 
 	otelSdk.start()
 

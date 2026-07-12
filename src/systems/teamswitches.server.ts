@@ -4,6 +4,7 @@ import { isAbortError, sleep, toAsyncGenerator, withAbortSignal } from '@/lib/as
 import { withThrownAsync } from '@/lib/error'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as MapUtils from '@/lib/map'
+import * as ATTRS from '@/models/otel-attrs'
 
 import * as ODSM from '@/lib/odsm'
 import { assertNever } from '@/lib/type-guards'
@@ -36,6 +37,37 @@ import { z } from 'zod'
 export const module = initModule('teamswitches')
 
 let log!: CS.Logger
+
+// The side effect used to be logged as-is, which flattened its whole payload into attributes: a
+// `save` carries two full TeamswitchCollections, so every save wrote a key per switch per collection.
+// Only the identifying, bounded fields belong on the record; the payload itself is already in op$.
+function sideEffectAttrs(se: TSW.SideEffect): Record<string, unknown> {
+	const attrs: Record<string, unknown> = { [ATTRS.Teamswitch.SIDE_EFFECT]: se.code }
+	switch (se.code) {
+		case 'op-outcome':
+			attrs[ATTRS.Teamswitch.OP_CODE] = se.op.code
+			attrs[ATTRS.Teamswitch.OP_ID] = se.op.opId
+			attrs[ATTRS.Teamswitch.OP_SUCCESS] = se.success
+			break
+		case 'notify-upcoming-teamswitches':
+		case 'notify-teamswitches-cancelled':
+			attrs[ATTRS.Teamswitch.PLAYER_COUNT] = se.players.length
+			break
+		case 'execute-teamswitches':
+			attrs[ATTRS.Teamswitch.OP_ID] = se.opId
+			attrs[ATTRS.Teamswitch.SWITCH_COUNT] = se.switches.size
+			break
+		case 'teamswitches-executed':
+			attrs[ATTRS.Teamswitch.SWITCH_COUNT] = se.switchCount
+			break
+		case 'save':
+			attrs[ATTRS.Teamswitch.SWITCH_COUNT] = se.switches.size
+			break
+		default:
+			assertNever(se)
+	}
+	return attrs
+}
 
 async function resolveSourceName(
 	ctx: C.Db,
@@ -287,7 +319,12 @@ export const orpcRouter = {
 
 const dispatchOp = C.spanOp(
 	'dispatchOp',
-	{ module, mutexes: (ctx) => ctx.teamswitches.dispatchMtx, extraText: (ctx, ops) => ops.map(o => o.code).join(',') },
+	{
+		module,
+		mutexes: (ctx) => ctx.teamswitches.dispatchMtx,
+		attrs: (ctx, ops) => ({ [ATTRS.Teamswitch.OP_CODES]: ops.map(o => o.code).join(',') }),
+		extraText: (ctx, ops) => ops.map(o => o.code).join(','),
+	},
 	async (ctx: C.Teamswitch & C.ServerSlice & C.Db, ops: TSW.Op[], opts?: { sourceWsClientId?: string }) => {
 		const applied = ODSM.Server.applyOps(ctx.teamswitches.session, ops, TSW.reducer)
 		ctx.teamswitches.session = applied.session
@@ -319,7 +356,7 @@ const dispatchOp = C.spanOp(
 
 		const nextOps: TSW.Op[] = []
 		for (const se of applied.sideEffects) {
-			log.debug(se, 'side effect: %s', se.code)
+			log.debug(sideEffectAttrs(se), 'side effect: %s', se.code)
 			try {
 				switch (se.code) {
 					case 'execute-teamswitches': {
