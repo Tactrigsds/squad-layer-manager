@@ -4,7 +4,7 @@ Any breaking changes to persisted data structures or configuration on either the
 
 Prefer copy-on-write in most cases unless it's proven to be safe to do so, or is in a hot codepath.
 
-Async functions should by-default have the option to pass a signal to cancel an operation. if it's a non-lib function, the signal should be passed via the ctx object (see src/models/context-shared.ts). The client is not yet converted to this pattern, so use your best judgement on when to upgrade a function.
+Async functions should by-default have the option to pass a signal to cancel an operation. if it's a non-lib function, the signal should be passed via the ctx object (see src/models/context-shared.ts). The client is not yet converted to this pattern, so use your best judgement on when to upgrade a function. Always avoid dangling promises.
 
 When branching on unions(especially discriminated unions), generally use `assertNever()` from src/lib/type-guards.ts to cover off the default case so that type errors are raised if we add new members to the union.
 
@@ -12,7 +12,7 @@ Unit tests should be reserved for code with two properties: being actually compl
 
 Use namespace imports for all nontrivial modules, unless established convention for that module contradicts this. Make sure that the chosen namespace is consistent and unique across the app, except for special cases like things imported into context.ts or context-shared.ts. Use convenient abbreviations or acronyms for commonly used lib modules, model modules, and imported packages
 
-Avoid comments which trivially explain what a function does. Only leave a comment if there's something non-obvious going on, or to explain why a particular approach was taken.
+Avoid comments which trivially explain what a piece of code does. Only leave a comment if there's something non-obvious going on, or to explain why a particular approach was taken.
 
 # Editing
 
@@ -27,21 +27,26 @@ No emdashes.
 
 Significant actions taken by the user or by the system need to be logged via app events (see src/models/app-events.models.ts)
 
-Commonly passed pieces of state should passed via the ctx object, which should always be the first argument, or in the case of observables, always the first element of the observable's data's tuple. Always check what's already available in context.ts and context-shared.ts before expanding it
+Commonly passed pieces of state should passed via the ctx object, which should always be the first argument, or in the case of observables, always the first element of the observable's data's tuple. Always check what's already available in context.ts and context-shared.ts before expanding it.
 
 Functions should only specify the minimal amount of context that they need in the ctx parameter type signature.
 
 # Client side
 
+Stores / frames should be used, at minimum, whenever:
+
+- a component's state is dependent on mutable props. In this case, the component should be passed some variant of ZusUtils.AnyInput<T> in the `stores` prop instead. that input could be contain a derifed state or event sream from some other store, or the store itself.
+- We have significant interdependencies between different pieces of state. stores/frames have good facilities for dealing with more reactive state, so use that instead of a useEffect/useState pattern, which should always be a codesmell.
+
+Frames should be used instead of raw zustand stores where the state is non-global and the store may be created and destroyed. Frames can and should directly query and subscribe to async data sources.
+
+Pass any `ZusUtils.AnyInut` instances via the `stores` prop through components(conventionally they should have a KeyProp or a StoreProp defined to standardize what property they should be put on in `props.stores`), and avoid using react context to pass stores or other data sources.
+
 In components, prefer modifying or adding selectors over computing intermediate state in the component body with useMemo. `ZusUtils.useStore` is helpful here, as it allows you to merge multiple data sources together for use in a single selector.
 
 Use the established convention of `Sel` namespaces for selectors.
 
-useEffects should be rare, and should be used mainly for subscribing to dom events. Using them to call setState when one of the dependencies change is heavily discouraged.
-
-Generally speaking, actions by the user should be handled at the top level by a function in the relevant system/frame's `Actions` namespace. Avoid closing over or passing state from the component body to the action handler unless it's indirect state, like a store or any other variant of `ZusUtils.AnyInput`.
-
-Pass `ZusUtils.AnyInut` instances via the `stores` prop through components(conventionally they should have a KeyProp or a StoreProp defined to standardize what property they should be put on in `props.stores`), and avoid using react context to pass stores or other data sources.
+Generally speaking, actions by the user should be handled at the top level by a function in the relevant system/frame's `Actions` namespace. Avoid closing over or passing state from the component body to the action handler unless it's indirect state, like a store or any other variant of `ZusUtils.AnyInput`, unless absolutely necessary.
 
 Never export non-components from .tsx files, as it breaks hot module replacement.
 
@@ -49,4 +54,4 @@ Avoid controlled inputs and textareas (don't set `value`). Do the same for other
 
 # Migrations
 
-Data migrations applied via a custom runner `pnpm db:migrate`. (see ./src/server/migrate.ts) it is backwards-compatible with `drizzle-kit`.
+Data migrations applied via a custom runner `pnpm db:migrate`. (see ./src/server/migrate.ts) it is backwards-compatible with `drizzle-kit generate`.
