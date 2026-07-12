@@ -328,6 +328,8 @@ export const startVote = C.spanOp(
 				matchId: currentMatch.historyEntryId,
 				causeId: null,
 				choiceCount: item.choices.length,
+				choices: item.choices.map(choice => choice.layerId),
+				durationMs: duration,
 			}),
 		)
 
@@ -651,6 +653,12 @@ export const endVote = C.spanOp(
 				causeId: null,
 				reason: opts.reason,
 				winnerLayerId: endingVoteState.code === 'ended:winner' ? listItem.layerId : null,
+				// the tally is keyed by queue item id, which means nothing once the item is gone: resolve it to layers
+				tally: tally
+					? listItem.choices.map(choice => ({ layerId: choice.layerId, votes: tally!.totals.get(choice.itemId) ?? 0 }))
+					: undefined,
+				totalVotes: tally?.totalVotes,
+				turnoutPercentage: tally?.turnoutPercentage,
 			}),
 		)
 		addReleaseTask(() => ctx.vote.update$.next(update))

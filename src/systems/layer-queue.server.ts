@@ -744,6 +744,11 @@ const handleSideEffect = C.spanOp(
 					}
 					return { trigger: 'user-edit', actor: triggerOp?.userId ? { type: 'slm-user', userId: triggerOp.userId } : { type: 'system' } }
 				})()
+				// who the saver overrode: the users still mid-edit when the save landed. the saver's own editing presence is
+				// cleared alongside the save, so exclude them rather than race the two ops.
+				const save = triggerOp?.op === 'save'
+					? { force: triggerOp.force ?? false, overrodeEditors: UserPresenceSys.getQueueEditors(ctx.serverId, triggerOp.userId) }
+					: undefined
 				const queueUpdated = AppEvents.create<AppEvents.QueueUpdated>({
 					type: 'QUEUE_UPDATED',
 					actor,
@@ -754,6 +759,7 @@ const handleSideEffect = C.spanOp(
 					ops,
 					prevList: se.prevList,
 					list: se.list,
+					save,
 				})
 				await SquadServer.emitAppEvent(ctx, queueUpdated)
 				await saveQueueAndUpdateServer(ctx, se.list, queueUpdated.id)

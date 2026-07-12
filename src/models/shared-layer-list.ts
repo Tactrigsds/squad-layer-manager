@@ -133,6 +133,9 @@ function buildOperationSchema<
 			...editWindowProps,
 			// uses "source" to determine what user finished editing
 			op: z.literal('save'),
+			// the user saved while others were still editing, bypassing the usual "last editor out saves" rule.
+			// carried so the QUEUE_UPDATED app event can record who was overridden.
+			force: z.boolean().optional(),
 		}),
 		z.object({
 			...baseProps,

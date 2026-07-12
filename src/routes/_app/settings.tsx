@@ -276,21 +276,33 @@ function AuditLogSection() {
 						? <p className="text-sm text-muted-foreground">No events yet.</p>
 						: (
 							<div className="max-h-[32rem] overflow-y-auto">
-								{events.map(e => (
-									<div key={e.id} className="flex gap-2 items-baseline text-sm border-b py-1 last:border-0">
-										<span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-											{new Date(e.time).toLocaleString()}
-										</span>
-										<span className="font-medium whitespace-nowrap">{actorName(e.actor)}</span>
-										<span className="text-muted-foreground grow min-w-0 wrap-break-word">{AppEvents.describeAppEvent(e)}</span>
-										{e.serverId && <span className="text-xs text-muted-foreground whitespace-nowrap">{e.serverId}</span>}
-									</div>
-								))}
+								{events.map(e => <AuditLogEntry key={e.id} event={e} actorName={actorName(e.actor)} />)}
 							</div>
 						)}
 				</CardContent>
 			</StickyGroup>
 		</Card>
+	)
+}
+
+// one audit row: a summary line, expandable to the event's full payload. bigints (user ids) aren't JSON-serializable,
+// so they're stringified rather than dropped.
+function AuditLogEntry({ event, actorName }: { event: AppEvents.AppEvent; actorName: string }) {
+	return (
+		<details className="border-b py-1 last:border-0 group">
+			<summary className="flex gap-2 items-baseline text-sm cursor-pointer list-none">
+				<Icons.ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+				<span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+					{new Date(event.time).toLocaleString()}
+				</span>
+				<span className="font-medium whitespace-nowrap">{actorName}</span>
+				<span className="text-muted-foreground grow min-w-0 wrap-break-word">{AppEvents.describeAppEvent(event)}</span>
+				{event.serverId && <span className="text-xs text-muted-foreground whitespace-nowrap">{event.serverId}</span>}
+			</summary>
+			<pre className="mt-1 ml-5 max-h-96 overflow-auto rounded-md bg-muted p-2 text-xs">
+				{JSON.stringify(event, (_key, value) => typeof value === 'bigint' ? value.toString() : value, 2)}
+			</pre>
+		</details>
 	)
 }
 

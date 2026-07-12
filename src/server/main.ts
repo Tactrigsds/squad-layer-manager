@@ -96,6 +96,7 @@ await C.spanOp('main', { module }, async () => {
 			serverId: null,
 			matchId: null,
 			causeId: null,
+			version: formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA),
 		}),
 	)
 	const { serverClosed } = await Fastify.setup()

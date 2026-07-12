@@ -14,6 +14,7 @@ import * as AppEvents from '@/models/app-events.models'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
+import type * as USR from '@/models/users.models'
 
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
@@ -363,6 +364,156 @@ function warnSummaryDescriptor(summary: CHAT.WarnSummary): string | null {
 	}
 }
 
+function joinNames(names: string[]) {
+	if (names.length <= 1) return names[0] ?? ''
+	return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
+// display names for the SLM users an event attributes work to. Users already in the parts store (or the viewer
+// themselves) need no fetch; the rest are fetched in one batch.
+function useUserLabels(userIds: USR.UserId[]) {
+	const loggedInUser = UsersClient.useLoggedInUser()
+	const unresolved = userIds.filter(id => !PartsSys.findUser(id) && id !== loggedInUser?.discordId)
+	const res = UsersClient.useUsers(unresolved, { enabled: unresolved.length > 0 })
+	const fetched = new Map((res.data?.code === 'ok' ? res.data.users : []).map(u => [u.discordId, u.displayName]))
+	return (userId: USR.UserId) => {
+		if (userId === loggedInUser?.discordId) return loggedInUser.displayName
+		return PartsSys.findUser(userId)?.displayName ?? fetched.get(userId) ?? 'An admin'
+	}
+}
+
+function QueueChangeLayers({ layerIds }: { layerIds: L.LayerId[] }) {
+	const shown = layerIds.slice(0, 3)
+	return (
+		<span className="inline-flex items-baseline gap-1 flex-wrap">
+			{shown.map((layerId, i) => (
+				<span key={layerId} className="inline-flex items-baseline">
+					<ShortLayerName layerId={layerId} />
+					{i < shown.length - 1 ? ',' : ''}
+				</span>
+			))}
+			{layerIds.length > shown.length && <span>and {layerIds.length - shown.length} more</span>}
+		</span>
+	)
+}
+
+function QueueChangeLine({ change, labelFor }: { change: AppEvents.QueueChange; labelFor: (userId: USR.UserId) => string }) {
+	const who = change.actor.type === 'slm-user' ? labelFor(change.actor.userId) : change.actor.type === 'system' ? 'SLM' : 'An in-game admin'
+	const layers = <QueueChangeLayers layerIds={change.layerIds} />
+	const vote = change.isVote ? `a vote (${change.layerIds.length} ${change.layerIds.length === 1 ? 'choice' : 'choices'}): ` : null
+
+	const [marker, markerClass, body] = ((): [string, string, React.ReactNode] => {
+		switch (change.kind) {
+			case 'added':
+				return ['+', 'text-added', <>{who} added {vote}{layers}</>]
+			case 'removed':
+				return ['−', 'text-destructive', <>{who} removed {vote}{layers}</>]
+			case 'edited':
+				return [
+					'~',
+					'text-amber-500',
+					(
+						<>
+							{who} changed <QueueChangeLayers layerIds={change.prevLayerIds} /> to {layers}
+						</>
+					),
+				]
+			case 'moved':
+				return ['↕', 'text-indigo-400', <>{who} moved {layers} from #{change.fromIndex + 1} to #{change.toIndex + 1}</>]
+			default:
+				assertNever(change)
+		}
+	})()
+
+	return (
+		<div className="flex gap-2 items-baseline text-xs text-muted-foreground">
+			<span className={cn('font-mono shrink-0', markerClass)}>{marker}</span>
+			<span className="grow min-w-0 wrap-anywhere">{body}</span>
+		</div>
+	)
+}
+
+// a save of the layer queue. The summary names who saved and the net effect; expanding attributes each surviving
+// change to the user who made it, which is the part a shared queue actually needs (several admins edit at once).
+function QueueUpdatedEvent(
+	{ event, appEvent, actorLabel, stores }: {
+		event: Extract<CHAT.EventEnriched, { type: 'APP_EVENT' }>
+		appEvent: AppEvents.QueueUpdated
+		actorLabel: string
+		stores: SquadServerFrame.KeyProp
+	},
+) {
+	const changes = AppEvents.summarizeQueueChanges(appEvent)
+	const contributors = changes.flatMap(c => c.actor.type === 'slm-user' ? [c.actor.userId] : [])
+	const labelFor = useUserLabels([...new Set([...contributors, ...(appEvent.save?.overrodeEditors ?? [])])])
+	const matchId = event.matchId
+
+	const counts = {
+		added: changes.filter(c => c.kind === 'added').length,
+		removed: changes.filter(c => c.kind === 'removed').length,
+		edited: changes.filter(c => c.kind === 'edited').length,
+		moved: changes.filter(c => c.kind === 'moved').length,
+	}
+	const parts = [
+		counts.added > 0 ? `+${counts.added}` : null,
+		counts.removed > 0 ? `−${counts.removed}` : null,
+		counts.edited > 0 ? `${counts.edited} changed` : null,
+		counts.moved > 0 ? 'reordered' : null,
+	].filter(Boolean)
+
+	const overrode = appEvent.save?.overrodeEditors ?? []
+	const headline: React.ReactNode = appEvent.trigger === 'roll'
+		? 'Queue advanced on map change'
+		: appEvent.trigger === 'external-layer-change'
+		? (
+			<>
+				Queue synced to an external layer change by {appEvent.actor.type === 'ingame-user' && event.actorPlayer && matchId !== null
+					? <PlayerDisplay showTeam player={event.actorPlayer} matchId={matchId} stores={stores} />
+					: appEvent.actor.type === 'ingame-user'
+					? 'an in-game admin'
+					: 'another RCON tool'}
+			</>
+		)
+		: (
+			<>
+				{actorLabel} {appEvent.save?.force ? 'force-saved' : 'saved'} the queue
+				{overrode.length > 0 && `, overriding ${joinNames(overrode.map(labelFor))}`}
+			</>
+		)
+
+	const nextBefore = LL.getNextLayerId(appEvent.prevList)
+	const nextAfter = LL.getNextLayerId(appEvent.list)
+	const summary = (
+		<>
+			{headline}
+			{parts.length > 0 ? ` (${parts.join(', ')})` : ''}
+			{nextAfter !== null && nextAfter !== nextBefore && (
+				<span className="inline-flex items-baseline gap-1">
+					, next layer {appEvent.trigger === 'external-layer-change' ? 'now' : 'set to'} <ShortLayerName layerId={nextAfter} />
+				</span>
+			)}
+		</>
+	)
+	const icon = <Icons.ListOrdered className="h-4 w-4 text-indigo-500 shrink-0" />
+
+	if (changes.length === 0) {
+		return <EventLine time={event.time} icon={icon}>{summary}</EventLine>
+	}
+
+	return (
+		<details className="py-1 text-xs text-muted-foreground w-full min-w-0">
+			<summary className="flex gap-2 items-baseline cursor-pointer">
+				<EventTime time={event.time} variant="small" />
+				{icon}
+				<span className="grow min-w-0 wrap-anywhere">{summary}</span>
+			</summary>
+			<div className="pl-6 pt-1 flex flex-col gap-0.5">
+				{changes.map(change => <QueueChangeLine key={`${change.kind}:${change.itemId}`} change={change} labelFor={labelFor} />)}
+			</div>
+		</details>
+	)
+}
+
 // an app (audit) event, e.g. a warnAll that aggregates its individual PLAYER_WARNED server events into one
 // expandable entry. Uses a native <details> so no local state is needed.
 function AppEventEntry(
@@ -504,55 +655,7 @@ function AppEventEntry(
 		)
 	}
 	if (appEvent.type === 'QUEUE_UPDATED') {
-		// net change to the saved queue -- the "relevant" default view; the full op log is available for the audit page
-		const layerOf = (item: { itemId: string }) => ('layerId' in item ? (item as { layerId: string }).layerId : 'vote')
-		const prev = new Map<string, string>()
-		for (const { item } of LL.iterItems(appEvent.prevList)) prev.set(item.itemId, layerOf(item))
-		const next = new Map<string, string>()
-		for (const { item } of LL.iterItems(appEvent.list)) next.set(item.itemId, layerOf(item))
-		let added = 0
-		let changed = 0
-		for (const [id, layerId] of next) {
-			if (!prev.has(id)) added++
-			else if (prev.get(id) !== layerId) changed++
-		}
-		let removed = 0
-		for (const id of prev.keys()) if (!next.has(id)) removed++
-		const commonPrev = [...prev.keys()].filter(id => next.has(id))
-		const commonNext = [...next.keys()].filter(id => prev.has(id))
-		const reordered = commonPrev.length === commonNext.length && commonPrev.some((id, i) => id !== commonNext[i])
-		const parts = [
-			added > 0 ? `+${added}` : null,
-			removed > 0 ? `−${removed}` : null,
-			changed > 0 ? `${changed} changed` : null,
-			reordered ? 'reordered' : null,
-		].filter(Boolean)
-		const nextBefore = LL.getNextLayerId(appEvent.prevList)
-		const nextAfter = LL.getNextLayerId(appEvent.list)
-		const headline: React.ReactNode = appEvent.trigger === 'roll'
-			? 'Queue advanced on map change'
-			: appEvent.trigger === 'external-layer-change'
-			? (
-				<>
-					Queue synced to an external layer change by {appEvent.actor.type === 'ingame-user' && event.actorPlayer && matchId !== null
-						? <PlayerDisplay showTeam player={event.actorPlayer} matchId={matchId} stores={stores} />
-						: appEvent.actor.type === 'ingame-user'
-						? 'an in-game admin'
-						: 'another RCON tool'}
-				</>
-			)
-			: `${actorLabel} updated the queue`
-		return (
-			<EventLine time={event.time} icon={<Icons.ListOrdered className="h-4 w-4 text-indigo-500 shrink-0" />}>
-				{headline}
-				{parts.length > 0 ? ` (${parts.join(', ')})` : ''}
-				{nextAfter !== null && nextAfter !== nextBefore && (
-					<span className="inline-flex items-baseline gap-1">
-						, next layer {appEvent.trigger === 'external-layer-change' ? 'now' : 'set to'} <ShortLayerName layerId={nextAfter} />
-					</span>
-				)}
-			</EventLine>
-		)
+		return <QueueUpdatedEvent event={event} appEvent={appEvent} actorLabel={actorLabel} stores={stores} />
 	}
 	if (appEvent.type === 'MAP_SET') {
 		// only override sets reach the feed; queue-driven MAP_SETs fold into their QUEUE_UPDATED (audit-only)

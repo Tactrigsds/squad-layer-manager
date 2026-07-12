@@ -6,6 +6,7 @@ import * as ODSM from '@/lib/odsm'
 import type * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
 import * as UP from '@/models/user-presence'
+import type * as USR from '@/models/users.models'
 import * as C from '@/server/context'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
@@ -152,6 +153,19 @@ export function reclaimInterruptedClientId(userId: bigint): string | undefined {
 	dispatchOp([{ code: 'connection-restored', clientId: reclaimedId, opId: UP.createOpId(), time: Date.now() }])
 		.catch((error) => log.error(error))
 	return reclaimedId
+}
+
+// the users currently editing the given server's layer queue, minus `exclude` (typically the user whose save is
+// being processed). Snapshotted when a force save lands, so the QUEUE_UPDATED can name who it overrode.
+export function getQueueEditors(serverId: string, exclude?: USR.UserId): USR.UserId[] {
+	const editors = new Set<USR.UserId>()
+	for (const client of globalUserPresence.session.state.presence.values()) {
+		const activity = client.activityState
+		if (!activity || !UP.Trans.editingQueue(serverId).match(activity)) continue
+		if (exclude !== undefined && client.userId === exclude) continue
+		editors.add(client.userId)
+	}
+	return [...editors]
 }
 
 export function dispatchEndAllTeamswitchEditing(serverId: string) {

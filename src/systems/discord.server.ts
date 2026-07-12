@@ -1,4 +1,5 @@
 import { resToOptional } from '@/lib/types'
+import { formatVersion } from '@/lib/versioning.ts'
 import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
 import { toNormalizedEmoji } from '@/models/discord.models'
@@ -108,6 +109,7 @@ async function handleInteraction(interaction: D.Interaction) {
 				serverId: null,
 				matchId: null,
 				causeId: null,
+				version: formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA),
 			}),
 		)
 		setTimeout(() => process.exit(1), RESTART_FORCE_EXIT_TIMEOUT)

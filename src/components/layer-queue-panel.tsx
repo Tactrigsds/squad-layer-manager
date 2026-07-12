@@ -243,7 +243,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			const isModified = ZusUtils.getState(props.stores.squadServer!).queue.isModified
 
 			if (isModified && (editorCount === 0 || forceSave)) {
-				await LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer! }, { op: 'save' })
+				await LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer! }, { op: 'save', force: forceSave })
 			}
 		}
 	}

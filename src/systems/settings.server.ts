@@ -2,7 +2,7 @@ import * as Schema from '$root/drizzle/schema.ts'
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Obj from '@/lib/object'
-import { diffSettings } from '@/lib/settings-diff'
+import { diffSettings, type SettingChange } from '@/lib/settings-diff'
 import * as AppEvents from '@/models/app-events.models'
 import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
@@ -74,10 +74,12 @@ export async function updateGlobalSettings(
 		return { code: 'err:invalid-settings' as const, message: parseRes.error.message }
 	}
 
+	const changes = diffSettings(GLOBAL_SETTINGS, parseRes.data)
+
 	// path-restricted writers may only change settings under their granted prefixes; the denied paths ride
 	// along in the permit args so the caller can see exactly what was out of bounds
 	if (access.kind !== 'all') {
-		const deniedPaths = diffSettings(GLOBAL_SETTINGS, parseRes.data)
+		const deniedPaths = changes
 			.map((c) => c.path)
 			.filter((p) => !RBAC.settingsPathAllowed(access, p))
 		if (deniedPaths.length > 0) {
@@ -92,7 +94,14 @@ export async function updateGlobalSettings(
 	Rbac.applyRbacSettings(GLOBAL_SETTINGS.rbac)
 	settings$.next({ scope: 'global', settings: GLOBAL_SETTINGS })
 	log.info('Global settings updated')
-	return { code: 'ok' as const }
+	return { code: 'ok' as const, changes }
+}
+
+// what the audit log is allowed to remember about a settings change: everything except the values of the rcon/sftp
+// credentials. toRow redacts these again on the way to the table; doing it here as well keeps the in-flight event
+// (which gets logged and traced) clean too.
+function auditableSettingChanges(changes: SettingChange[]): AppEvents.SettingsUpdated['changes'] {
+	return AppEvents.redactSettingChanges(changes)
 }
 
 // ============================== server registry: identity + enabled/default/broken status for every known server ==============================
@@ -351,6 +360,9 @@ export async function updateRawServerSettings(
 		await updateServerSettings({ ...ctx, serverId }, parseRes.data, { type: 'manual', user, event: 'edit-settings' })
 	})
 
+	// a repair has no valid prior state to diff against, so every field reads as newly set
+	const changes = diffSettings(priorParseRes?.success ? priorParseRes.data : {}, parseRes.data)
+
 	entry.broken = false
 	settings$.next({ scope: 'registry' })
 	log.info(wasBroken ? 'Server %s settings repaired' : 'Server %s settings updated', serverId)
@@ -361,7 +373,7 @@ export async function updateRawServerSettings(
 		await SquadServer.ensureSliceRunning(serverId)
 		if (adminListFieldsChanged) SquadServer.invalidateAdminList(serverId)
 	}
-	return { code: 'ok' as const }
+	return { code: 'ok' as const, changes }
 }
 
 // ============================== unified settings bus ==============================
@@ -470,19 +482,19 @@ const globalRouter = {
 				return RBAC.permissionDenied({ check: 'all' as const, permits: [RBAC.perm('global-settings:write', { paths: null })] })
 			}
 			const res = await updateGlobalSettings(ctx, input, access)
-			if (res.code === 'ok') {
-				await AppEventsSys.persistAppEvent(
-					ctx,
-					AppEvents.create<AppEvents.SettingsUpdated>({
-						type: 'SETTINGS_UPDATED',
-						actor: { type: 'slm-user', userId: ctx.user.discordId },
-						serverId: null,
-						matchId: null,
-						causeId: null,
-					}),
-				)
-			}
-			return res
+			if (res.code !== 'ok') return res
+			await AppEventsSys.persistAppEvent(
+				ctx,
+				AppEvents.create<AppEvents.SettingsUpdated>({
+					type: 'SETTINGS_UPDATED',
+					actor: { type: 'slm-user', userId: ctx.user.discordId },
+					serverId: null,
+					matchId: null,
+					causeId: null,
+					changes: auditableSettingChanges(res.changes),
+				}),
+			)
+			return { code: 'ok' as const }
 		}),
 }
 
@@ -525,13 +537,17 @@ const serverRouter = {
 					permits: [RBAC.perm('server-settings:write', { serverId: input.serverId, paths: deniedPaths })],
 				})
 			}
+			// the mutations are applied in place, so the before-state has to be taken first to have anything to diff
+			let changes: SettingChange[] = []
 			const updateRes = await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 				const state = await SquadServer.getServerState(ctx)
+				const prior = Obj.deepClone(state.settings)
 				SETTINGS.applySettingMutations(state.settings, input.ops)
 				const res = SETTINGS.ServerSettingsSchema.safeParse(state.settings)
 				if (!res.success) {
 					return { code: 'err:invalid-settings' as const, message: res.error.message }
 				}
+				changes = diffSettings(prior, res.data)
 
 				await updateServerSettings(ctx, res.data, {
 					type: 'manual',
@@ -548,6 +564,7 @@ const serverRouter = {
 						serverId: input.serverId,
 						matchId: null,
 						causeId: null,
+						changes: auditableSettingChanges(changes),
 					}),
 				)
 			}
@@ -559,6 +576,8 @@ async function recordServerRegistry(
 	ctx: C.Db & C.UserId,
 	action: AppEvents.ServerRegistryChanged['action'],
 	targetServerId: string,
+	// a deleted server is already out of the registry by the time this runs, so its name has to be passed in
+	targetServerName = serverRegistry.get(targetServerId)?.displayName,
 ) {
 	await AppEventsSys.persistAppEvent(
 		ctx,
@@ -566,6 +585,7 @@ async function recordServerRegistry(
 			type: 'SERVER_REGISTRY_CHANGED',
 			action,
 			targetServerId,
+			targetServerName,
 			actor: { type: 'slm-user', userId: ctx.user.discordId },
 			serverId: null,
 			matchId: null,
@@ -633,8 +653,9 @@ const adminRouter = {
 			const ctx = DB.addPooledDb(_ctx as any)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:delete-servers'))
 			if (denyRes) return denyRes
+			const deletedName = serverRegistry.get(input.serverId)?.displayName
 			const res = await SquadServer.deleteServer(input.serverId)
-			if (res.code === 'ok') await recordServerRegistry(ctx, 'deleted', input.serverId)
+			if (res.code === 'ok') await recordServerRegistry(ctx, 'deleted', input.serverId, deletedName)
 			return res
 		}),
 
@@ -688,19 +709,20 @@ const adminRouter = {
 				access,
 				canWriteSensitive,
 			})
-			if (res.code === 'ok') {
-				await AppEventsSys.persistAppEvent(
-					ctx,
-					AppEvents.create<AppEvents.SettingsUpdated>({
-						type: 'SETTINGS_UPDATED',
-						actor: { type: 'slm-user', userId: ctx.user.discordId },
-						serverId: input.serverId,
-						matchId: null,
-						causeId: null,
-					}),
-				)
-			}
-			return res
+			if (res.code !== 'ok') return res
+			await AppEventsSys.persistAppEvent(
+				ctx,
+				AppEvents.create<AppEvents.SettingsUpdated>({
+					type: 'SETTINGS_UPDATED',
+					actor: { type: 'slm-user', userId: ctx.user.discordId },
+					serverId: input.serverId,
+					matchId: null,
+					causeId: null,
+					changes: auditableSettingChanges(res.changes),
+				}),
+			)
+			// the diff is for the audit event only: it carries the raw connection values, so it must not be echoed back
+			return { code: 'ok' as const }
 		}),
 }
 

@@ -31,12 +31,18 @@ export function setup() {
 	ENV = envBuilder()
 }
 
-async function recordUserAccount(ctx: C.Db, userId: bigint, action: AppEvents.UserAccountChanged['action']) {
+async function recordUserAccount(
+	ctx: C.Db,
+	userId: bigint,
+	action: AppEvents.UserAccountChanged['action'],
+	details?: Pick<AppEvents.UserAccountChanged, 'steamIds' | 'prevNickname' | 'nickname'>,
+) {
 	await AppEventsSys.persistAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.UserAccountChanged>({
 			type: 'USER_ACCOUNT_CHANGED',
 			action,
+			...details,
 			actor: { type: 'slm-user', userId },
 			serverId: null,
 			matchId: null,
@@ -129,8 +135,12 @@ export const orpcRouter = {
 				if (added.length > 0) {
 					await context.db().insert(Schema.linkedSteamAccounts).values(added.map(steam64Id => ({ steam64Id, discordId })))
 				}
-				if (added.length > 0) await recordUserAccount(context, discordId, 'steam-linked')
-				if (removed.length > 0) await recordUserAccount(context, discordId, 'steam-unlinked')
+				if (added.length > 0) {
+					await recordUserAccount(context, discordId, 'steam-linked', { steamIds: added.map(id => id.toString()) })
+				}
+				if (removed.length > 0) {
+					await recordUserAccount(context, discordId, 'steam-unlinked', { steamIds: removed.map(id => id.toString()) })
+				}
 				invalidateUsers$.next()
 				return { code: 'ok' as const, steamIds: parsed.map(id => id.toString()) }
 			})
@@ -149,7 +159,7 @@ export const orpcRouter = {
 				if (nickname) context.user.displayName = nickname
 				invalidateUsers$.next()
 				await context.db().update(Schema.users).set({ nickname }).where(E.eq(Schema.users.discordId, context.user.discordId))
-				await recordUserAccount(context, context.user.discordId, 'nickname-updated')
+				await recordUserAccount(context, context.user.discordId, 'nickname-updated', { prevNickname: user.nickname, nickname })
 
 				return { code: 'ok' as const, msg: 'Nickname updated successfully.' }
 			})

@@ -1,6 +1,7 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { returnInsertErrors } from '@/lib/drizzle'
+import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
 import * as CS from '@/models/context-shared'
@@ -38,13 +39,20 @@ const ToggleFilterContributorInputSchema = z
 	})
 export type ToggleFilterContributorInput = z.infer<typeof ToggleFilterContributorInputSchema>
 
-async function recordFilterChange(ctx: C.Db & C.UserId, action: AppEvents.FilterChanged['action'], filterId: string) {
+async function recordFilterChange(
+	ctx: C.Db & C.UserId,
+	action: AppEvents.FilterChanged['action'],
+	filterId: string,
+	details?: { filterName?: string; changedFields?: string[] },
+) {
 	await AppEventsSys.persistAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.FilterChanged>({
 			type: 'FILTER_CHANGED',
 			action,
 			filterId,
+			filterName: details?.filterName,
+			changedFields: details?.changedFields,
 			actor: { type: 'slm-user', userId: ctx.user.discordId },
 			serverId: null,
 			matchId: null,
@@ -61,13 +69,23 @@ async function denyUnlessFilterOwner(ctx: C.Db & C.UserId, filterId: F.FilterEnt
 	return Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('filters:write-all'))
 }
 
-async function recordFilterContributor(ctx: C.Db & C.UserId, action: AppEvents.FilterContributorChanged['action'], filterId: string) {
+async function recordFilterContributor(
+	ctx: C.Db & C.UserId,
+	action: AppEvents.FilterContributorChanged['action'],
+	filterId: string,
+	input: ToggleFilterContributorInput,
+) {
+	const [filter] = await ctx.db().select({ name: Schema.filters.name }).from(Schema.filters).where(E.eq(Schema.filters.id, filterId))
 	await AppEventsSys.persistAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.FilterContributorChanged>({
 			type: 'FILTER_CONTRIBUTOR_CHANGED',
 			action,
 			filterId,
+			filterName: filter?.name,
+			contributor: input.userId !== undefined
+				? { type: 'user', userId: input.userId }
+				: { type: 'role', roleId: input.roleId! },
 			actor: { type: 'slm-user', userId: ctx.user.discordId },
 			serverId: null,
 			matchId: null,
@@ -124,7 +142,7 @@ export const filtersRouter = {
 					case 'err:already-exists':
 						return { code: 'err:already-exists' as const }
 					case 'ok':
-						await recordFilterContributor(ctx, 'added', input.filterId)
+						await recordFilterContributor(ctx, 'added', input.filterId, input)
 						return { code: 'ok' as const }
 					default:
 						assertNever(res)
@@ -140,7 +158,7 @@ export const filtersRouter = {
 					case 'err:already-exists':
 						return { code: 'err:already-exists' as const }
 					case 'ok':
-						await recordFilterContributor(ctx, 'added', input.filterId)
+						await recordFilterContributor(ctx, 'added', input.filterId, input)
 						return { code: 'ok' as const }
 					default:
 						assertNever(res)
@@ -176,7 +194,7 @@ export const filtersRouter = {
 				return { code: 'err:not-found' as const }
 			}
 
-			await recordFilterContributor(ctx, 'removed', input.filterId)
+			await recordFilterContributor(ctx, 'removed', input.filterId, input)
 			return { code: 'ok' as const }
 		},
 	),
@@ -198,7 +216,7 @@ export const filtersRouter = {
 				username: ctx.user.username,
 				displayName: ctx.user.displayName,
 			}])
-			await recordFilterChange(ctx, 'created', newFilterEntity.id)
+			await recordFilterChange(ctx, 'created', newFilterEntity.id, { filterName: newFilterEntity.name })
 		}
 		return {
 			code: 'ok' as const,
@@ -226,7 +244,7 @@ export const filtersRouter = {
 					})
 				}
 				const filter = F.FilterEntitySchema.parse(rawFilter)
-				return { code: 'ok' as const, filter: { ...filter, ...update } }
+				return { code: 'ok' as const, filter: { ...filter, ...update }, prevFilter: filter }
 			})
 			// res carries the whole filter entity (AST included); flattening that into attributes wrote a key
 			// per node of the filter tree on every update, at info level
@@ -239,7 +257,11 @@ export const filtersRouter = {
 					username: ctx.user.username,
 					displayName: ctx.user.displayName,
 				}])
-				await recordFilterChange(ctx, 'updated', id)
+				// the update is a partial, and a field resubmitted unchanged isn't a change worth recording
+				const changedFields = Object.keys(update).filter(
+					(field) => !Obj.deepEqual((res.prevFilter as Record<string, unknown>)[field], (update as Record<string, unknown>)[field]),
+				)
+				await recordFilterChange(ctx, 'updated', id, { filterName: res.filter.name, changedFields })
 			}
 			return res
 		}),
@@ -290,7 +312,7 @@ export const filtersRouter = {
 			displayName: ctx.user.displayName,
 			value: res.filter,
 		}])
-		await recordFilterChange(ctx, 'deleted', idToDelete)
+		await recordFilterChange(ctx, 'deleted', idToDelete, { filterName: res.filter.name })
 		return { code: 'ok' as const }
 	}),
 	watchFilters: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
