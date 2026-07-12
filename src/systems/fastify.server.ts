@@ -90,9 +90,10 @@ export const setup = C.spanOp('setup', { module }, async () => {
 			})
 			break
 		case 'development':
-			break
+		// like development: the frontend is served elsewhere (vite dev server / Playwright web server);
+		// fastify only provides the API + websocket surface
 		case 'test':
-			throw new Error('test environment not supported')
+			break
 		default:
 			assertNever(ENV.NODE_ENV)
 	}
@@ -334,7 +335,7 @@ export const setup = C.spanOp('setup', { module }, async () => {
 				return res.sendFile('index.html')
 			}
 			case 'test': {
-				throw new Error('Not implemented')
+				return res.type('text/html').send('')
 			}
 			default:
 				assertNever(ENV.NODE_ENV)
