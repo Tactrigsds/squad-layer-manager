@@ -163,9 +163,18 @@ export const OpSchema = z.discriminatedUnion('code', [
 		targetClientId: z.string(),
 	}),
 
+	// the server's layer queue / teamswitches were saved (or otherwise resolved), so nobody is editing them
+	// anymore. scoped to the server whose state was resolved: clients on other servers are untouched
 	z.object({
 		...serverOpBase,
 		code: z.literal('sll:end-all-editing'),
+		serverId: z.string(),
+	}),
+
+	z.object({
+		...serverOpBase,
+		code: z.literal('teamswitches:end-all-editing'),
+		serverId: z.string(),
 	}),
 
 	// the socket dropped without a clean close -- hold the client's activity (and locks) so a
@@ -196,12 +205,6 @@ export const OpSchema = z.discriminatedUnion('code', [
 		...serverOpBase,
 		code: z.literal('clean-stale-presence'),
 		clientIdsToRemove: z.array(z.string()),
-	}),
-
-	z.object({
-		...serverOpBase,
-		code: z.literal('broadcast-activity-update'),
-		update: z.lazy(() => ActivityUpdateSchema),
 	}),
 
 	z.object({
@@ -319,12 +322,25 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 				MapUtils.deleteByValue(state.itemLocks, ...op.clientIdsToRemove)
 				success = true
 			} else if (op.code === 'sll:end-all-editing') {
-				state.itemLocks.clear()
+				// the queue that was just saved belongs to one server, so only its editors are done editing and only
+				// their item locks are stale. clients editing another server's queue keep their activity and locks
 				for (const [clientId, clientState] of state.presence.entries()) {
+					if (clientState.activityState?.opts.serverId !== op.serverId) continue
+					MapUtils.deleteByValue(state.itemLocks, clientId)
 					state.presence.set(clientId, { ...clientState, activityState: clearQueueEditingActivity(clientState.activityState) })
 				}
 				success = true
-				break
+			} else if (op.code === 'teamswitches:end-all-editing') {
+				// editedSwitches is shared, so resolving it (save, revert, clear, execute) resolves it for every client
+				// on that server at once, and none of them have pending edits left to be editing
+				for (const [clientId, clientState] of state.presence.entries()) {
+					if (clientState.activityState?.opts.serverId !== op.serverId) continue
+					state.presence.set(clientId, {
+						...clientState,
+						activityState: clearTeamswitchEditingActivity(clientState.activityState),
+					})
+				}
+				success = true
 			} else if (op.code === 'set-enabled-servers') {
 				state.enabledServers = new Set(op.serverIds)
 				// any user sitting on a server that just lost its slice is no longer meaningfully present there
@@ -333,11 +349,6 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 					if (gated === clientState.activityState) continue
 					state.presence.set(clientId, { ...clientState, activityState: gated })
 					MapUtils.deleteByValue(state.itemLocks, clientId)
-				}
-				success = true
-			} else if (op.code === 'broadcast-activity-update') {
-				for (const clientId of [...state.presence.keys()]) {
-					applyActivityUpdateToClient(state, clientId, op.update)
 				}
 				success = true
 			} else {
@@ -878,6 +889,13 @@ export function clearQueueEditingActivity(activity: RootActivity | null | undefi
 	if (!activity) return null
 	return Im.produce(activity, draft => {
 		delete draft.child.EDITING_QUEUE
+	})
+}
+
+export function clearTeamswitchEditingActivity(activity: RootActivity | null | undefined): RootActivity | null {
+	if (!activity) return null
+	return Im.produce(activity, draft => {
+		delete draft.child.EDITING_TEAMSWITCHES
 	})
 }
 

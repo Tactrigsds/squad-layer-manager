@@ -154,20 +154,21 @@ export function reclaimInterruptedClientId(userId: bigint): string | undefined {
 	return reclaimedId
 }
 
-export function dispatchEndAllTeamswitchEditing() {
+export function dispatchEndAllTeamswitchEditing(serverId: string) {
 	dispatchOp([{
-		code: 'broadcast-activity-update',
+		code: 'teamswitches:end-all-editing',
 		opId: UP.createOpId(),
 		time: Date.now(),
-		update: { code: 'clear-editing-teamswitches' },
+		serverId,
 	}]).catch((error) => log.error(error))
 }
 
-export function dispatchEndAllLayerQueueEditing() {
+export function dispatchEndAllLayerQueueEditing(serverId: string) {
 	dispatchOp([{
 		code: 'sll:end-all-editing',
 		opId: UP.createOpId(),
 		time: Date.now(),
+		serverId,
 	}]).catch((error) => log.error(error))
 }
 

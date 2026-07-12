@@ -27,6 +27,7 @@ import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
+import * as UserPresenceSys from '@/systems/user-presence.server'
 
 import { Mutex } from 'async-mutex'
 import type { MutexInterface } from 'async-mutex'
@@ -62,6 +63,8 @@ function sideEffectAttrs(se: TSW.SideEffect): Record<string, unknown> {
 			break
 		case 'save':
 			attrs[ATTRS.Teamswitch.SWITCH_COUNT] = se.switches.size
+			break
+		case 'end-all-teamswitch-editing':
 			break
 		default:
 			assertNever(se)
@@ -381,11 +384,14 @@ const dispatchOp = C.spanOp(
 								if (playerNormedTeamId === _switch.toTeam) continue
 								toSwitch.push(playerId)
 							}
-							const isManual = ops.find(o => o.opId === se.opId && (o as any).source) as
+							const manualOp = ops.find(o => o.opId === se.opId && (o as any).source) as
 								| (TSW.Op & { source: TSW.Teamswitch['source'] })
 								| undefined
+							// every target may already be on its destination team, in which case there's nothing to
+							// announce to anyone
+							const isManual = manualOp && toSwitch.length > 0 ? manualOp : undefined
 							// attribute the resulting PLAYER_CHANGED_TEAM events to whoever triggered the switch
-							await SquadServer.forceTeamChangeAppEvent(ctx, toSwitch, SquadServer.actorFromUser(ctx, isManual?.source))
+							await SquadServer.forceTeamChangeAppEvent(ctx, toSwitch, SquadServer.actorFromUser(ctx, manualOp?.source))
 							const switched$ = SquadRcon.switchPlayers(ctx, toSwitch)
 							if (isManual) {
 								// notifications should outlive this dispatch, so bind them to the shutdown signal rather than the task signal
@@ -470,10 +476,13 @@ const dispatchOp = C.spanOp(
 							const factionLines = se.switches.size <= 8
 								? buildFactionLines(Array.from(se.switches.keys()), se.switches, currPlayers, layer, currentMatch.ordinal)
 								: undefined
+							const { added, removed } = TSW.getTeamswitchChanges(se.switches, se.prevSaved)
 							// notification should outlive this dispatch, so bind it to the shutdown signal rather than the task signal
 							SquadRcon.warnAllAdmins(
 								{ ...ctx, signal: CleanupSys.shutdownSignal },
-								{ msg: WARNS.teamswitches.notifyAdminSwitchesSaved(name, se.switches.size, se.prevSaved.size, factionLines) },
+								{
+									msg: WARNS.teamswitches.notifyAdminSwitchesSaved(name, se.switches.size, added.length, removed.length, factionLines),
+								},
 								excludeSteamIds,
 							).catch((error) => {
 								if (!isAbortError(error)) log.error(error)
@@ -489,6 +498,11 @@ const dispatchOp = C.spanOp(
 
 					case 'notify-teamswitches-cancelled': {
 						await SquadRcon.warnAll(ctx, se.players, WARNS.teamswitches.notifyTeamswitchCancelled)
+						break
+					}
+
+					case 'end-all-teamswitch-editing': {
+						UserPresenceSys.dispatchEndAllTeamswitchEditing(ctx.serverId)
 						break
 					}
 
@@ -520,7 +534,8 @@ export async function dispatchRevertToSaved(ctx: C.Teamswitch & C.ServerSlice & 
 
 export async function dispatchClearSwitches(ctx: C.Teamswitch & C.ServerSlice & C.Db, source?: TSW.Teamswitch['source']) {
 	const opId = TSW.createOpId()
-	await dispatchOp(ctx, [{ opId, code: 'clear-teamswitches', save: true, source }])
+	const errors = await dispatchOp(ctx, [{ opId, code: 'clear-teamswitches', save: true, source }])
+	return errors.get(opId) ?? []
 }
 
 export async function dispatchSwitchNow(

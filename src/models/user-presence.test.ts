@@ -79,6 +79,45 @@ describe('reducer enabled-server gating', () => {
 		expect(next.presence.get('client-1')?.activityState?.opts.serverId).toBe('server-1')
 	})
 
+	it('ends editing (and drops locks) only for clients on the saved server', () => {
+		const editQueue = (clientId: string, sid: string, itemId: string): UP.Op[] => [
+			{ ...clientOp({ code: 'update-activity', update: { code: 'enter-server-dashboard', serverId: sid } }), clientId } as UP.Op,
+			{
+				...clientOp({
+					code: 'update-activity',
+					update: {
+						code: 'set-editing-queue',
+						variant: ST.Match.leaf('EDITING_ITEM', { itemId, cursor: { type: 'start' } }) as UP.QueueEditingActivity,
+					},
+				}),
+				clientId,
+			} as UP.Op,
+		]
+
+		let state = stateWith(['server-1', 'server-2'])
+		;[state] = UP.reducer(state, [...editQueue('client-1', 'server-1', 'item-1'), ...editQueue('client-2', 'server-2', 'item-2')], [])
+		expect(state.itemLocks.size).toBe(2)
+		;[state] = UP.reducer(state, [{ opId: 'end', time: Date.now(), code: 'sll:end-all-editing', serverId: 'server-1' }], [])
+
+		expect(UP.Trans.editingQueue('server-1').match(state.presence.get('client-1')!.activityState!)).toBeFalsy()
+		expect(UP.Trans.editingQueue('server-2').match(state.presence.get('client-2')!.activityState!)).toBeTruthy()
+		expect([...state.itemLocks.keys()]).toEqual(['item-2'])
+	})
+
+	it('ends teamswitch editing only for clients on the saved server', () => {
+		const editTeamswitches = (clientId: string, sid: string): UP.Op[] => [
+			{ ...clientOp({ code: 'update-activity', update: { code: 'enter-server-dashboard', serverId: sid } }), clientId } as UP.Op,
+			{ ...clientOp({ code: 'update-activity', update: { code: 'set-editing-teamswitches' } }), clientId } as UP.Op,
+		]
+
+		let state = stateWith(['server-1', 'server-2'])
+		;[state] = UP.reducer(state, [...editTeamswitches('client-1', 'server-1'), ...editTeamswitches('client-2', 'server-2')], [])
+		;[state] = UP.reducer(state, [{ opId: 'end', time: Date.now(), code: 'teamswitches:end-all-editing', serverId: 'server-1' }], [])
+
+		expect(UP.Trans.editingTeamswitches('server-1').match(state.presence.get('client-1')!.activityState!)).toBeFalsy()
+		expect(UP.Trans.editingTeamswitches('server-2').match(state.presence.get('client-2')!.activityState!)).toBeTruthy()
+	})
+
 	it('nulls existing presence when its server is disabled via set-enabled-servers', () => {
 		let state = stateWith(['server-1'])
 		;[state] = UP.reducer(

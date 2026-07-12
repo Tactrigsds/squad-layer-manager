@@ -758,7 +758,7 @@ const handleSideEffect = C.spanOp(
 				await SquadServer.emitAppEvent(ctx, queueUpdated)
 				await saveQueueAndUpdateServer(ctx, se.list, queueUpdated.id)
 				await dispatchOp(ctx, { op: 'save-completed', opId: SLL.createOpId() })
-				UserPresenceSys.dispatchEndAllLayerQueueEditing()
+				UserPresenceSys.dispatchEndAllLayerQueueEditing(ctx.serverId)
 				break
 			}
 			default:

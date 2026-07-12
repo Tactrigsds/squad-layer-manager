@@ -521,13 +521,21 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	},
 
 	clearSwitches: async (h) => {
-		const prevCount = h.ctx.teamswitches.session.state.savedSwitches.size
-		if (prevCount === 0) {
-			await h.reply('No teamswitches queued')
-			return { code: 'ok' }
+		// what's queued is only settled once the op is applied under the dispatch mutex, so the reply is driven by
+		// the op's outcome rather than a pre-read of the state
+		const errors = await Teamswitches.dispatchClearSwitches(h.ctx, h.user)
+		if (errors.length > 0) {
+			const err = errors[0] as TSW.OpError
+			if (err.code === 'err:nothing-queued') {
+				await h.reply('No teamswitches queued')
+				return { code: 'ok' }
+			}
+			if (err.code === 'err:currently-switching' || err.code === 'err:pending-switch') {
+				return await h.error('currently-switching', 'A team switch is currently in progress')
+			}
+			return await h.error('unexpected', 'Failed to clear queued teamswitches')
 		}
-		await Teamswitches.dispatchClearSwitches(h.ctx, h.user)
-		await h.reply(`Cleared ${prevCount} queued teamswitch${prevCount !== 1 ? 'es' : ''}`)
+		await h.reply('Cleared all queued teamswitches')
 		return { code: 'ok' }
 	},
 

@@ -21,7 +21,7 @@ export type Teamswitch = z.infer<typeof TeamswitchSchema>
 export const TeamswitchCollectionSchema = z.map(SM.PlayerIdSchema, TeamswitchSchema)
 export type TeamswitchCollection = z.infer<typeof TeamswitchCollectionSchema>
 
-function getTeamswitchChanges(next: TeamswitchCollection, prev: TeamswitchCollection) {
+export function getTeamswitchChanges(next: TeamswitchCollection, prev: TeamswitchCollection) {
 	const allPlayerIds = new Set([...next.keys(), ...prev.keys()])
 	const added: SM.PlayerId[] = []
 	const removed: SM.PlayerId[] = []
@@ -36,6 +36,22 @@ function getTeamswitchChanges(next: TeamswitchCollection, prev: TeamswitchCollec
 	}
 
 	return { added, removed }
+}
+
+// A write straight to the saved set (chat commands) commits immediately, but editedSwitches is shared state that
+// GUI clients may have unsaved work in. Rather than discarding that work, apply the same mutation to the edit set
+// so the committed change lands there too and the rest of the pending edits survive. An edit set that was already
+// in sync stays in sync (and so stays reference-equal, which is how the rest of the model detects "not dirty").
+function writeToSaved(state: State, mutate: (switches: TeamswitchCollection) => void) {
+	const synced = state.editedSwitches === state.savedSwitches
+	state.savedSwitches = new Map(state.savedSwitches)
+	mutate(state.savedSwitches)
+	if (synced) {
+		state.editedSwitches = state.savedSwitches
+		return
+	}
+	state.editedSwitches = new Map(state.editedSwitches)
+	mutate(state.editedSwitches)
 }
 
 export type PlayerCollection = Map<SM.PlayerId, MH.NormedTeamId>
@@ -193,6 +209,7 @@ namespace OpErrors {
 	export type PendingSwitch = { code: 'err:pending-switch'; playerId: SM.PlayerId }
 	export type AlreadyMarked = { code: 'err:already-marked'; playerId: SM.PlayerId }
 	export type SwitchesNotSaved = { code: 'err:switches-not-saved' }
+	export type NothingQueued = { code: 'err:nothing-queued' }
 
 	export type TeamswitchExecutionFailed = {
 		code: 'err:teamswitch-execution-failed'
@@ -207,6 +224,7 @@ export type OpError<OpCode extends Op['code'] = Op['code']> =
 	& (
 		| OpErrors.Unexpected
 		| (OpCode extends 'add-player-teamswitch' ? (OpErrors.CurrentlySwitching | OpErrors.AlreadyMarked)
+			: OpCode extends 'clear-teamswitches' ? (OpErrors.CurrentlySwitching | OpErrors.PendingSwitch | OpErrors.NothingQueued)
 			: OpCode extends SwitchingMutationOp ? (OpErrors.CurrentlySwitching | OpErrors.PendingSwitch)
 			: OpCode extends 'teamswitch-execution-failed' ? (OpErrors.TeamswitchExecutionFailed)
 			: OpCode extends 'teamswitch-execution-completed' ? (OpErrors.CurrentlyNotSwitching)
@@ -246,6 +264,9 @@ export type SideEffect =
 		source?: USR.GuiOrChatUserId
 	}
 	| {
+		code: 'end-all-teamswitch-editing'
+	}
+	| {
 		code: 'op-outcome'
 		op: Op
 		success: boolean
@@ -258,6 +279,10 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 	// the first per-op failure rejects the whole (dependent) batch; recorded here and thrown below
 	let firstError: OpError | undefined
 	let skipEmitSave = false
+	// restoring saved switches from the db isn't a new marking -- those players were already warned before the
+	// restart. no op that can be batched alongside init-saved-teamswitches adds saved switches, so suppressing
+	// for the whole batch loses nothing.
+	let skipNotifyUpcoming = false
 	let saveSource: USR.GuiOrChatUserId | undefined
 	for (const op of ops) {
 		let opFailed = false
@@ -273,15 +298,16 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 						emitOpError({ code: 'err:currently-switching', op })
 						break
 					}
-					if (state.editedSwitches.has(op.playerId)) {
+					// a saved write is only in conflict with what's actually queued: another client's unsaved mark for
+					// this player isn't a switch yet, so it mustn't fail an admin's chat command
+					const marked = op.saved ? state.savedSwitches : state.editedSwitches
+					if (marked.has(op.playerId)) {
 						emitOpError({ code: 'err:already-marked', playerId: op.playerId, op })
 						break
 					}
 					const switchEntry = { toTeam: op.toTeam, source: op.source }
 					if (op.saved) {
-						state.savedSwitches = new Map(state.savedSwitches)
-						state.savedSwitches.set(op.playerId, switchEntry)
-						state.editedSwitches = state.savedSwitches
+						writeToSaved(state, switches => switches.set(op.playerId, switchEntry))
 					} else {
 						state.editedSwitches = new Map(state.editedSwitches)
 						state.editedSwitches.set(op.playerId, switchEntry)
@@ -296,6 +322,7 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 					}
 					state.savedSwitches = new Map(state.savedSwitches)
 					skipEmitSave = true
+					skipNotifyUpcoming = true
 					for (const [playerId, switchEntry] of op.switches.entries()) {
 						const team = state.players.get(playerId)
 						if (team && team !== switchEntry.toTeam) state.savedSwitches.set(playerId, switchEntry)
@@ -318,11 +345,12 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 					}
 
 					if (op.saved) {
-						state.savedSwitches = new Map(state.savedSwitches)
 						if (state.savedSwitches.has(op.playerId)) {
 							emit({ code: 'notify-teamswitches-cancelled', players: [op.playerId] })
 						}
-						state.savedSwitches.delete(op.playerId)
+						// the delete has to reach editedSwitches too, or the player stays marked there and can never be
+						// re-added (add-player-teamswitch would reject them as already-marked)
+						writeToSaved(state, switches => switches.delete(op.playerId))
 					} else {
 						state.editedSwitches = new Map(state.editedSwitches)
 						state.editedSwitches.delete(op.playerId)
@@ -345,9 +373,15 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 						break
 					}
 					if (op.save) {
+						// clearing the queue only clears what's queued: unsaved marks another client is still working on
+						// were never switches, so they're left in the edit set rather than discarded
 						const playerIds = Array.from(state.savedSwitches.keys())
-						if (playerIds.length > 0) emit({ code: 'notify-teamswitches-cancelled', players: playerIds })
-						state.savedSwitches = state.editedSwitches = initTeamswitchCollection()
+						if (playerIds.length === 0) {
+							emitOpError({ code: 'err:nothing-queued', op })
+							break
+						}
+						emit({ code: 'notify-teamswitches-cancelled', players: playerIds })
+						writeToSaved(state, switches => MapUtils.bulkDelete(switches, ...playerIds))
 						if (op.source) saveSource = op.source
 					} else {
 						state.editedSwitches = initTeamswitchCollection()
@@ -463,10 +497,11 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 						emitOpError({ code: 'err:currently-switching', op })
 						break
 					}
-					const { added, removed } = getTeamswitchChanges(state.editedSwitches, state.savedSwitches)
+					// newly marked players are notified by the generic savedSwitches diff below; cancellations are
+					// per-op, since a switch dropped because the player left or already changed teams shouldn't warn
+					const { removed } = getTeamswitchChanges(state.editedSwitches, state.savedSwitches)
 					state.savedSwitches = state.editedSwitches
 					saveSource = op.source
-					if (added.length > 0) emit({ code: 'notify-upcoming-teamswitches', players: added })
 					if (removed.length > 0) emit({ code: 'notify-teamswitches-cancelled', players: removed })
 					break
 				}
@@ -488,11 +523,9 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 						break
 					}
 
-					state.savedSwitches = new Map(state.savedSwitches)
-					MapUtils.bulkDelete(state.savedSwitches, ...op.switches.keys())
-
-					state.editedSwitches = new Map(state.editedSwitches)
-					MapUtils.bulkDelete(state.editedSwitches, ...op.switches.keys())
+					// switching a player now takes them out of the queue on both sets, but leaves the rest of an
+					// in-flight edit (and its in-sync-ness) intact
+					writeToSaved(state, switches => MapUtils.bulkDelete(switches, ...op.switches.keys()))
 
 					state.pendingSwitches = op.switches
 					state.switching = true
@@ -514,14 +547,26 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 	if (firstError) throw new ODSM.RejectedError<Rejection>(firstError)
 
 	if (state.savedSwitches !== oldState.savedSwitches && !skipEmitSave) {
+		// only players who weren't already marked for this team are newly switching. every mutation of
+		// savedSwitches lands here, including prunes (player-left, player-changed-team, reset-players) and
+		// switch-now, so warning anything but the actual diff re-warns players who are already marked.
 		const newSwitchingPlayers: SM.PlayerId[] = []
 		for (const [playerId, _switch] of state.savedSwitches.entries()) {
-			const toTeam = oldState.savedSwitches.get(playerId)?.toTeam
-			if (!toTeam || toTeam !== _switch.toTeam) continue
+			const prevToTeam = oldState.savedSwitches.get(playerId)?.toTeam
+			if (prevToTeam === _switch.toTeam) continue
 			newSwitchingPlayers.push(playerId)
 		}
 		emit({ code: 'save', switches: state.savedSwitches, prevSaved: oldState.savedSwitches, source: saveSource })
-		if (newSwitchingPlayers.length > 0) emit({ code: 'notify-upcoming-teamswitches', players: newSwitchingPlayers })
+		if (!skipNotifyUpcoming && newSwitchingPlayers.length > 0) {
+			emit({ code: 'notify-upcoming-teamswitches', players: newSwitchingPlayers })
+		}
+	}
+
+	// editedSwitches is shared server state, so resolving it (save, revert, clear, execute) resolves it for
+	// everyone at once: nobody is left with pending edits, and so nobody is left editing. reference equality is
+	// the established synced signal (see canExecuteSavedTeamswitches)
+	if (state.editedSwitches === state.savedSwitches && oldState.editedSwitches !== oldState.savedSwitches) {
+		emit({ code: 'end-all-teamswitch-editing' })
 	}
 
 	// the reducer mutates a shallow copy, reassigning a field only when it actually changes it, so
