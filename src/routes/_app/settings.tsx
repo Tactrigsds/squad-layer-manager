@@ -3,6 +3,7 @@ import type { SchemaJsonEditorHandle } from '@/components/schema-json-editor.typ
 import SettingsForm from '@/components/settings-form'
 import { SettingsChangeList, SettingsSavePanel } from '@/components/settings-save-panel'
 import SettingsToc from '@/components/settings-toc'
+import { StateBoundary } from '@/components/state-boundary'
 import { StickyGroup } from '@/components/sticky-group'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -229,18 +230,19 @@ function RouteComponent() {
 				{globalAccess.canRead && (() => {
 					const key = sectionKeys.find((k) => k.kind === 'global')
 					if (!key) return null
+					// Subscribe has no fallback of its own: the suspension is handed to StateBoundary, which also
+					// catches the first-emit timeout if global settings never arrive
 					return (
-						<ReactRx.Subscribe
-							source$={SettingsClient.globalSettings$}
-							fallback={<p className="text-sm text-muted-foreground">Loading global settings…</p>}
-						>
-							<div id="section:global" className="scroll-mt-2 rounded-xl">
-								<GlobalSettingsSection stores={{ settingsEditor: key }} />
-							</div>
-							<div id="section:audit" className="scroll-mt-2 rounded-xl">
-								<AuditLogSection />
-							</div>
-						</ReactRx.Subscribe>
+						<StateBoundary label="global settings">
+							<ReactRx.Subscribe source$={SettingsClient.globalSettings$}>
+								<div id="section:global" className="scroll-mt-2 rounded-xl">
+									<GlobalSettingsSection stores={{ settingsEditor: key }} />
+								</div>
+								<div id="section:audit" className="scroll-mt-2 rounded-xl">
+									<AuditLogSection />
+								</div>
+							</ReactRx.Subscribe>
+						</StateBoundary>
 					)
 				})()}
 			</main>

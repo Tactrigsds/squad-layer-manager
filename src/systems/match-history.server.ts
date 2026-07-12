@@ -205,26 +205,23 @@ export const matchHistoryRouter = {
 	watchMatchHistoryState: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
 		{ signal, context: _ctx, input },
 	) {
-		const server$ = SquadServer.sliceCtx$(_ctx.wsClientId, input.serverId).pipe(withAbortSignal(signal!))
-		const state$ = server$.pipe(
-			Rx.switchMap(async function*(ctx) {
-				if (!ctx) return
-				const serverId = ctx.serverId
+		const state$ = SquadServer.sliceStream$(_ctx.wsClientId, input.serverId, (ctx) =>
+			Rx.from((async function*() {
 				yield getPublicMatchHistoryState(ctx)
 				const historyUpdate$ = ctx.matchHistory.update$.pipe(withAbortSignal(signal!))
 				for await (const _ of toAsyncGenerator(historyUpdate$)) {
-					yield getPublicMatchHistoryState(SquadServer.resolveSliceCtx({}, serverId))
+					yield getPublicMatchHistoryState(ctx)
 				}
-			}),
-			withAbortSignal(signal!),
-		)
+			})())).pipe(withAbortSignal(signal!))
 
 		yield* toAsyncGenerator(state$)
 	}),
 
 	getMatchEvents: orpcBase.input(z.object({ serverId: z.string(), ordinal: z.number() })).handler(async ({ input, context: _ctx }) => {
 		const ordinal = input.ordinal
-		const ctx = SquadServer.resolveSliceCtx(_ctx, input.serverId)
+		const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+		if (ctxRes.code !== 'ok') return ctxRes
+		const ctx = ctxRes.ctx
 
 		// Check if trying to get events for current match - this should never happen
 		const currentMatch = await getCurrentMatch(ctx)
@@ -272,7 +269,9 @@ export const matchHistoryRouter = {
 		serverId: z.string(),
 		playerId: z.string(),
 	})).handler(async ({ input, context: _ctx }) => {
-		const ctx = SquadServer.resolveSliceCtx(_ctx, input.serverId)
+		const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+		if (ctxRes.code !== 'ok') return ctxRes
+		const ctx = ctxRes.ctx
 		const playerId = input.playerId
 
 		// Most recent connection event, for the connection status indicator. PLAYER_RECONCILED counts as a
@@ -312,7 +311,9 @@ export const matchHistoryRouter = {
 		cursor: z.number().optional(),
 		pageSize: z.number().positive().default(100),
 	})).handler(async ({ input, context: _ctx }) => {
-		const ctx = SquadServer.resolveSliceCtx(_ctx, input.serverId)
+		const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+		if (ctxRes.code !== 'ok') return ctxRes
+		const ctx = ctxRes.ctx
 		const currentMatch = await getCurrentMatch(ctx)
 		const playerId = input.playerId
 
@@ -371,7 +372,9 @@ export const matchHistoryRouter = {
 		serverId: z.string(),
 		uniqueSquadId: z.number(),
 	})).handler(async ({ input, context: _ctx }) => {
-		const ctx = SquadServer.resolveSliceCtx(_ctx, input.serverId)
+		const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+		if (ctxRes.code !== 'ok') return ctxRes
+		const ctx = ctxRes.ctx
 
 		const [squadRow] = await ctx.db().select().from(Schema.squads).where(E.eq(Schema.squads.id, input.uniqueSquadId))
 		if (!squadRow) throw new Error(`Squad ${input.uniqueSquadId} not found`)

@@ -31,7 +31,7 @@ export async function fetchConfig() {
 }
 
 export function setup() {
-	RPC.observe(() => RPC.orpc.config.watchConfig.call()).subscribe(config => {
+	RPC.observe('config.watchConfig', () => RPC.orpc.config.watchConfig.call()).subscribe(config => {
 		Store.setState(config)
 	})
 }

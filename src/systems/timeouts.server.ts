@@ -233,7 +233,9 @@ export const router = {
 			}).refine(i => !(i.reason && i.presetReasonLabel), { error: 'At most one of reason or presetReasonLabel may be provided' }),
 		)
 		.handler(async ({ context: _ctx, input }) => {
-			const ctx = SquadServer.resolveSliceCtx(_ctx, input.serverId)
+			const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyTimeoutForUser(ctx, input.durationMs)
 			if (denyRes) return denyRes
 			const reasonRes = SquadServer.resolveReasonInput('kick', input, { duration: formatHumanTime(input.durationMs) })

@@ -56,12 +56,16 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(V.StartVoteInputSchema)
 		.handler(async ({ input, context: _ctx }) => {
-			const ctx = SquadServer.resolveSliceCtx(_ctx, input.serverId)
+			const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
 			return startVote(ctx, { ...input, initiator: { discordId: ctx.user.discordId } })
 		}),
 
 	endVoteEarly: orpcBase.meta({ type: 'mutation' }).input(z.object({ serverId: z.string() })).handler(async ({ context: _ctx, input }) => {
-		const ctx = SquadServer.resolveSliceCtx(_ctx, input.serverId)
+		const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+		if (ctxRes.code !== 'ok') return ctxRes
+		const ctx = ctxRes.ctx
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage'))
 		if (denyRes) return denyRes
 		return await endVote(ctx, {
@@ -71,7 +75,9 @@ export const router = {
 	}),
 
 	abortVote: orpcBase.meta({ type: 'mutation' }).input(z.object({ serverId: z.string() })).handler(async ({ context: _ctx, input }) => {
-		const ctx = SquadServer.resolveSliceCtx(_ctx, input.serverId)
+		const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+		if (ctxRes.code !== 'ok') return ctxRes
+		const ctx = ctxRes.ctx
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage'))
 		if (denyRes) return denyRes
 		return await abortVote(ctx, { aborter: { discordId: ctx.user.discordId } })
@@ -79,7 +85,9 @@ export const router = {
 
 	cancelVoteAutostart: orpcBase.meta({ type: 'mutation' }).input(z.object({ serverId: z.string() })).handler(
 		async ({ context: _ctx, input }) => {
-			const ctx = SquadServer.resolveSliceCtx(_ctx, input.serverId)
+			const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage'))
 			if (denyRes) return denyRes
 			return await cancelVoteAutostart(ctx, { user: { discordId: ctx.user.discordId } })
@@ -89,9 +97,8 @@ export const router = {
 	watchUpdates: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
 		{ context, signal, input },
 	) {
-		const obs = SquadServer.sliceCtx$(context.wsClientId, input.serverId).pipe(
-			Rx.switchMap(async function*(ctx) {
-				if (!ctx) return
+		const obs = SquadServer.sliceStream$(context.wsClientId, input.serverId, (ctx) =>
+			Rx.from((async function*() {
 				let initialState: (V.VoteState & Parts<USR.UserPart>) | null = null
 				const voteState = ctx.vote.state
 				if (voteState) {
@@ -106,9 +113,7 @@ export const router = {
 					const withParts = await includeVoteStateUpdatePart(getBaseCtx(), update)
 					yield { code: 'update' as const, update: withParts } satisfies V.VoteStateUpdateOrInitialWithParts
 				}
-			}),
-			withAbortSignal(signal!),
-		)
+			})())).pipe(withAbortSignal(signal!))
 
 		yield* toAsyncGenerator(obs)
 	}),

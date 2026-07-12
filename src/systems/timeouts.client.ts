@@ -8,7 +8,7 @@ import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 
 export const [useActiveTimeouts, activeTimeouts$] = ReactRx.bind(
-	RPC.observe(() => RPC.orpc.timeouts.watchActiveTimeouts.call()),
+	RPC.observe('timeouts.watchActiveTimeouts', () => RPC.orpc.timeouts.watchActiveTimeouts.call()),
 	[],
 )
 

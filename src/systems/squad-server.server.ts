@@ -140,20 +140,41 @@ export type MatchHistoryState = {
 } & Parts<USR.UserPart>
 
 export const orpcRouter = {
+	// which servers currently have a live slice. This is runtime state, not registry config: a server can be enabled and
+	// non-broken yet have no slice (still booting, or torn down by a fatal resource error), and everything served per-server
+	// needs one. The client gates the dashboard on this so it renders "unavailable" instead of hanging on silent streams.
+	watchLoadedServers: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ signal }) {
+		const obs = globalState.sliceLifecycleUpdate$.pipe(
+			Rx.startWith(null),
+			Rx.map(() => [...globalState.slices.keys()]),
+			distinctDeepEquals(),
+			withAbortSignal(signal!),
+		)
+		yield* toAsyncGenerator(obs)
+	}),
+
 	watchLayersStatus: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
 		{ context, signal, input },
 	) {
-		const obs = sliceCtx$(context.wsClientId, input.serverId).pipe(
-			withAbortSignal(signal!),
-			Rx.switchMap((sliceCtx) => {
-				if (!sliceCtx) {
-					return Rx.of({ code: 'server-disabled' as const } satisfies SM.LayersStatusResExt)
-				}
-				return new Rx.Observable<SM.LayersStatusResExt>((subscriber) => {
-					const ac = new AbortController()
-					;(async () => {
-						const currentMatch = await MatchHistory.getCurrentMatch(sliceCtx)
-						const nextLayerId = sliceCtx.server.eventState.nextLayerId
+		const obs = sliceStream$(context.wsClientId, input.serverId, (sliceCtx) =>
+			new Rx.Observable<SM.LayersStatusResExt>((subscriber) => {
+				const ac = new AbortController()
+				;(async () => {
+					const currentMatch = await MatchHistory.getCurrentMatch(sliceCtx)
+					const nextLayerId = sliceCtx.server.eventState.nextLayerId
+					subscriber.next({
+						code: 'ok',
+						data: {
+							currentLayer: L.toLayer(currentMatch.layerId),
+							nextLayer: nextLayerId ? L.toLayer(nextLayerId) : null,
+							currentMatch,
+						},
+					})
+					const event$ = sliceCtx.server.event$.pipe(withAbortSignal(ac.signal))
+					for await (const [ctx, event] of toAsyncGenerator(event$)) {
+						if (!['NEW_GAME', 'MAP_SET', 'RESET'].includes(event.type)) continue
+						const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+						const nextLayerId = ctx.server.eventState.nextLayerId
 						subscriber.next({
 							code: 'ok',
 							data: {
@@ -162,37 +183,18 @@ export const orpcRouter = {
 								currentMatch,
 							},
 						})
-						const event$ = sliceCtx.server.event$.pipe(withAbortSignal(ac.signal))
-						for await (const [ctx, event] of toAsyncGenerator(event$)) {
-							if (!['NEW_GAME', 'MAP_SET', 'RESET'].includes(event.type)) continue
-							const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-							const nextLayerId = ctx.server.eventState.nextLayerId
-							subscriber.next({
-								code: 'ok',
-								data: {
-									currentLayer: L.toLayer(currentMatch.layerId),
-									nextLayer: nextLayerId ? L.toLayer(nextLayerId) : null,
-									currentMatch,
-								},
-							})
-						}
-						subscriber.complete()
-					})().catch((err) => subscriber.error(err))
-					return () => ac.abort()
-				})
-			}),
-		)
+					}
+					subscriber.complete()
+				})().catch((err) => subscriber.error(err))
+				return () => ac.abort()
+			})).pipe(withAbortSignal(signal!))
 		yield* toAsyncGenerator(obs)
 	}),
 
 	watchServerRolling: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
 		{ context, signal, input },
 	) {
-		const obs = sliceCtx$(context.wsClientId, input.serverId).pipe(
-			Rx.switchMap((ctx) => {
-				if (!ctx) return Rx.EMPTY
-				return ctx.server.serverRolling$
-			}),
+		const obs = sliceStream$(context.wsClientId, input.serverId, (ctx) => ctx.server.serverRolling$).pipe(
 			withAbortSignal(signal!),
 		)
 		yield* toAsyncGenerator(obs)
@@ -201,11 +203,7 @@ export const orpcRouter = {
 	watchTickRate: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
 		{ context, signal, input },
 	) {
-		const obs = sliceCtx$(context.wsClientId, input.serverId).pipe(
-			Rx.switchMap((ctx) => {
-				if (!ctx) return Rx.EMPTY
-				return ctx.server.tickRate$.pipe(distinctDeepEquals())
-			}),
+		const obs = sliceStream$(context.wsClientId, input.serverId, (ctx) => ctx.server.tickRate$.pipe(distinctDeepEquals())).pipe(
 			withAbortSignal(signal!),
 		)
 		yield* toAsyncGenerator(obs)
@@ -214,18 +212,15 @@ export const orpcRouter = {
 	watchServerInfo: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
 		{ context, signal, input },
 	) {
-		const obs = sliceCtx$(context.wsClientId, input.serverId).pipe(
-			Rx.switchMap((ctx) => {
-				if (!ctx) return Rx.EMPTY
-				return ctx.server.serverInfo.observe(ctx).pipe(distinctDeepEquals())
-			}),
-			withAbortSignal(signal!),
-		)
+		const obs = sliceStream$(context.wsClientId, input.serverId, (ctx) => ctx.server.serverInfo.observe(ctx).pipe(distinctDeepEquals()))
+			.pipe(withAbortSignal(signal!))
 		yield* toAsyncGenerator(obs)
 	}),
 
 	endMatch: orpcBase.input(z.object({ serverId: z.string() })).handler(async ({ context: _ctx, input }) => {
-		const ctx = resolveSliceCtx(_ctx, input.serverId)
+		const ctxRes = trySliceCtx(_ctx, input.serverId)
+		if (ctxRes.code !== 'ok') return ctxRes
+		const ctx = ctxRes.ctx
 		const deniedRes = await Rbac.tryDenyPermissionsForUser(
 			ctx,
 			RBAC.perm('squad-server:end-match'),
@@ -281,65 +276,62 @@ export const orpcRouter = {
 			z.object({ lastEventId: z.number().optional(), serverId: z.string() }),
 		)
 		.handler(async function*({ context, signal, input }) {
-			const obs: Rx.Observable<(SE.Event | CHAT.AppFeedEvent | CHAT.LifecycleEvent)[]> = sliceCtx$(context.wsClientId, input.serverId).pipe(
-				Rx.switchMap((_ctx) => {
-					if (!_ctx) return Rx.EMPTY
-					const ctx = _ctx
-					async function getInitialEvents() {
-						const sync: CHAT.SyncedEvent = {
-							type: 'SYNCED' as const,
-							time: Date.now(),
-							matchId: (await MatchHistory.getCurrentMatch(ctx))
-								.historyEntryId,
-						}
-
-						let allEvents: SE.Event[] = ctx.server.emittedEvents
-						let events: (SE.Event | CHAT.AppFeedEvent | CHAT.LifecycleEvent)[] = []
-
-						if (input.lastEventId === undefined) {
-							events.push({
-								type: 'INIT',
-								time: Date.now(),
-								serverId: ctx.serverId,
-							})
-							events.push(...mergeEventsByTime(allEvents, ctx.server.emittedAppEvents))
-							events.push(sync)
-						} else {
-							let lastEventIndex = allEvents.findIndex(
-								(e) => e.id === input!.lastEventId!,
-							)
-
-							// let the client know that we are reconnecting from their last known event id
-							events.push({
-								type: 'CHAT_RECONNECTED',
-								resumedEventId: lastEventIndex === -1 ? null : input!.lastEventId!,
-							})
-							// if last event was not found it'll be -1, which works nicely here because we just need to resend all events
-							events.push(
-								...mergeEventsByTime(
-									allEvents.slice(lastEventIndex + 1),
-									ctx.server.emittedAppEvents.filter((a) => lastEventIndex === -1 || a.time >= allEvents[lastEventIndex].time),
-								),
-							)
-							events.push(sync)
-						}
-
-						return Arr.paged(events, 512)
+			const obs = sliceStream$(context.wsClientId, input.serverId, (ctx) => {
+				async function getInitialEvents() {
+					const sync: CHAT.SyncedEvent = {
+						type: 'SYNCED' as const,
+						time: Date.now(),
+						matchId: (await MatchHistory.getCurrentMatch(ctx))
+							.historyEntryId,
 					}
-					const initial$ = Rx.from(getInitialEvents()).pipe(Rx.concatAll())
 
-					const upcoming$ = Rx.merge(
-						ctx.server.event$.pipe(Rx.map(([_, e]): SE.Event | CHAT.AppFeedEvent => e)),
-						ctx.server.appEvent$.pipe(Rx.map(([_, appEvent]): SE.Event | CHAT.AppFeedEvent => ({ type: 'APP_EVENT', appEvent }))),
-					).pipe(
-						Rx.map((event): (SE.Event | CHAT.AppFeedEvent)[] => [event]),
-					)
+					let allEvents: SE.Event[] = ctx.server.emittedEvents
+					let events: (SE.Event | CHAT.AppFeedEvent | CHAT.LifecycleEvent)[] = []
 
-					return Rx.concat(initial$, upcoming$).pipe(
-						// orpc will break without this
-						Rx.observeOn(Rx.asyncScheduler),
-					)
-				}),
+					if (input.lastEventId === undefined) {
+						events.push({
+							type: 'INIT',
+							time: Date.now(),
+							serverId: ctx.serverId,
+						})
+						events.push(...mergeEventsByTime(allEvents, ctx.server.emittedAppEvents))
+						events.push(sync)
+					} else {
+						let lastEventIndex = allEvents.findIndex(
+							(e) => e.id === input!.lastEventId!,
+						)
+
+						// let the client know that we are reconnecting from their last known event id
+						events.push({
+							type: 'CHAT_RECONNECTED',
+							resumedEventId: lastEventIndex === -1 ? null : input!.lastEventId!,
+						})
+						// if last event was not found it'll be -1, which works nicely here because we just need to resend all events
+						events.push(
+							...mergeEventsByTime(
+								allEvents.slice(lastEventIndex + 1),
+								ctx.server.emittedAppEvents.filter((a) => lastEventIndex === -1 || a.time >= allEvents[lastEventIndex].time),
+							),
+						)
+						events.push(sync)
+					}
+
+					return Arr.paged(events, 512)
+				}
+				const initial$ = Rx.from(getInitialEvents()).pipe(Rx.concatAll())
+
+				const upcoming$ = Rx.merge(
+					ctx.server.event$.pipe(Rx.map(([_, e]): SE.Event | CHAT.AppFeedEvent => e)),
+					ctx.server.appEvent$.pipe(Rx.map(([_, appEvent]): SE.Event | CHAT.AppFeedEvent => ({ type: 'APP_EVENT', appEvent }))),
+				).pipe(
+					Rx.map((event): (SE.Event | CHAT.AppFeedEvent)[] => [event]),
+				)
+
+				return Rx.concat(initial$, upcoming$).pipe(
+					// orpc will break without this
+					Rx.observeOn(Rx.asyncScheduler),
+				)
+			}).pipe(
 				Rx.tap({
 					error: (err) => {
 						log.error(err, 'Error in watchChatEvents')
@@ -353,7 +345,9 @@ export const orpcRouter = {
 	toggleFogOfWar: orpcBase
 		.input(z.object({ serverId: z.string(), disabled: z.boolean() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctx = resolveSliceCtx(_ctx, input.serverId)
+			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(
 				ctx,
 				RBAC.perm('squad-server:turn-fog-off'),
@@ -395,7 +389,9 @@ export const orpcRouter = {
 			}).refine(i => !!i.reason !== !!i.presetReasonLabel, { error: 'Exactly one of reason or presetReasonLabel must be provided' }),
 		)
 		.handler(async ({ context: _ctx, input }) => {
-			const ctx = resolveSliceCtx(_ctx, input.serverId)
+			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players'))
 			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('warn', input)
@@ -422,7 +418,9 @@ export const orpcRouter = {
 	warnAdmins: orpcBase
 		.input(z.object({ serverId: z.string(), message: z.string().min(1) }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctx = resolveSliceCtx(_ctx, input.serverId)
+			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players'))
 			if (denyRes) return denyRes
 			const [adminList, teamsRes] = await Promise.all([ctx.adminList.get(ctx), ctx.server.teams.get(ctx)])
@@ -438,7 +436,9 @@ export const orpcRouter = {
 	broadcast: orpcBase
 		.input(z.object({ serverId: z.string(), message: z.string().min(1) }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctx = resolveSliceCtx(_ctx, input.serverId)
+			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:broadcast'))
 			if (denyRes) return denyRes
 			await broadcastAction(ctx, input.message, { type: 'slm-user', userId: ctx.user.discordId })
@@ -448,7 +448,9 @@ export const orpcRouter = {
 	demoteCommander: orpcBase
 		.input(z.object({ serverId: z.string(), playerId: SM.PlayerIdSchema, presetReasonLabel: z.string().min(1).optional() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctx = resolveSliceCtx(_ctx, input.serverId)
+			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
 			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('demote-commander', input)
@@ -465,7 +467,9 @@ export const orpcRouter = {
 			presetReasonLabel: z.string().min(1).optional(),
 		}))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctx = resolveSliceCtx(_ctx, input.serverId)
+			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
 			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('disband-squad', input)
@@ -477,7 +481,9 @@ export const orpcRouter = {
 	removeFromSquad: orpcBase
 		.input(z.object({ serverId: z.string(), playerId: SM.PlayerIdSchema, presetReasonLabel: z.string().min(1).optional() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctx = resolveSliceCtx(_ctx, input.serverId)
+			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
 			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('remove-from-squad', input)
@@ -491,7 +497,9 @@ export const orpcRouter = {
 			z.object({ serverId: z.string(), playerIds: z.array(SM.PlayerIdSchema).min(1), presetReasonLabel: z.string().min(1).optional() }),
 		)
 		.handler(async ({ context: _ctx, input }) => {
-			const ctx = resolveSliceCtx(_ctx, input.serverId)
+			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
 			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('remove-from-squad', input)
@@ -508,7 +516,9 @@ export const orpcRouter = {
 			presetReasonLabel: z.string().min(1).optional(),
 		}))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctx = resolveSliceCtx(_ctx, input.serverId)
+			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
 			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('kill', input)
@@ -522,7 +532,9 @@ export const orpcRouter = {
 	renameSquad: orpcBase
 		.input(z.object({ serverId: z.string(), teamId: SM.TeamIdSchema, squadId: z.number().int().positive() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctx = resolveSliceCtx(_ctx, input.serverId)
+			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
 			if (denyRes) return denyRes
 			await renameSquadAction(ctx, input.teamId, input.squadId, { type: 'slm-user', userId: ctx.user.discordId })
@@ -1572,13 +1584,7 @@ export function manageDefaultServerIdForRequest<Ctx extends C.HttpRequest>(
 	}
 }
 
-export function resolveSliceCtx<T extends object>(ctx: T, serverId: string) {
-	const slice = globalState.slices.get(serverId)
-	if (!slice) {
-		throw new Orpc.ORPCError('BAD_REQUEST', {
-			message: 'Server slice not found: ' + serverId,
-		})
-	}
+function withSliceSignal<T extends object>(ctx: T, slice: C.ServerSlice) {
 	// cancel when either the caller (e.g. the originating request) or the slice is done. the slice signal
 	// already covers process shutdown, so don't allocate a composite for base ctxs on the hot event path
 	const callerSignal = (ctx as Partial<CS.AbortSignal>).signal
@@ -1590,6 +1596,28 @@ export function resolveSliceCtx<T extends object>(ctx: T, serverId: string) {
 	}
 }
 
+// throws when the slice is missing. Only for callers running inside the slice's own lifecycle (setup loops, timers,
+// event handlers), where a missing slice is a bug rather than a state the caller has to render. oRPC handlers should
+// use trySliceCtx / sliceStream$ instead, so the client gets a code it can act on.
+export function resolveSliceCtx<T extends object>(ctx: T, serverId: string) {
+	const slice = globalState.slices.get(serverId)
+	if (!slice) {
+		throw new Orpc.ORPCError('BAD_REQUEST', {
+			message: 'Server slice not found: ' + serverId,
+		})
+	}
+	return withSliceSignal(ctx, slice)
+}
+
+export function trySliceCtx<T extends object>(
+	ctx: T,
+	serverId: string,
+): { code: 'ok'; ctx: ReturnType<typeof withSliceSignal<T>> } | SM.ServerNotLoaded {
+	const slice = globalState.slices.get(serverId)
+	if (!slice) return SM.serverNotLoaded(serverId)
+	return { code: 'ok', ctx: withSliceSignal(ctx, slice) }
+}
+
 // like selectedServerCtx$, but keyed by an explicit serverId instead of a wsClientId's session selection
 export function sliceCtx$(wsClientId: string, serverId: string) {
 	return globalState.sliceLifecycleUpdate$.pipe(
@@ -1599,6 +1627,24 @@ export function sliceCtx$(wsClientId: string, serverId: string) {
 			const slice = globalState.slices.get(serverId)
 			if (!slice) return null
 			return { ...getBaseCtx(), ...WsSessionSys.wsSessions.get(wsClientId)!, ...slice }
+		}),
+	)
+}
+
+export type SliceCtx = NonNullable<Rx.ObservedValueOf<ReturnType<typeof sliceCtx$>>>
+
+// the only way an oRPC stream should resolve a slice. While the slice is absent the stream emits err:server-not-loaded
+// rather than going silent (a silent stream leaves the client suspended forever), and it switches over to the real
+// source as soon as the slice appears -- so a server being enabled, or coming back after a crash, self-heals.
+export function sliceStream$<T>(
+	wsClientId: string,
+	serverId: string,
+	project: (ctx: SliceCtx) => Rx.Observable<T>,
+): Rx.Observable<T | SM.ServerNotLoaded> {
+	return sliceCtx$(wsClientId, serverId).pipe(
+		Rx.switchMap((ctx): Rx.Observable<T | SM.ServerNotLoaded> => {
+			if (!ctx) return Rx.of(SM.serverNotLoaded(serverId))
+			return project(ctx)
 		}),
 	)
 }

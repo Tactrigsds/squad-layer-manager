@@ -370,33 +370,31 @@ export const orpcRouter = {
 	watchUpdates: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function* watchOps(
 		{ context, signal, input },
 	) {
-		const obs = SquadServer.sliceCtx$(context.wsClientId, input.serverId).pipe(
-			withAbortSignal(signal!),
-			Rx.switchMap((ctx) => {
-				if (!ctx) return Rx.EMPTY
-				const init: TSW.UpdateForClient = {
-					code: 'init',
-					state: ctx.teamswitches.session.state,
-					ops: ctx.teamswitches.session.ops,
-				}
-				return ctx.teamswitches.op$.pipe(
-					// the originator already has the ops in its pending set -- ack with just the ids
-					Rx.map(({ ops, sourceWsClientId }): TSW.UpdateForClient =>
-						sourceWsClientId !== undefined && sourceWsClientId === context.wsClientId
-							? { code: 'ack', opIds: ops.map(op => op.opId) }
-							: { code: 'op', ops }
-					),
-					Rx.startWith(init),
-				)
-			}),
-		)
+		const obs = SquadServer.sliceStream$(context.wsClientId, input.serverId, (ctx) => {
+			const init: TSW.UpdateForClient = {
+				code: 'init',
+				state: ctx.teamswitches.session.state,
+				ops: ctx.teamswitches.session.ops,
+			}
+			return ctx.teamswitches.op$.pipe(
+				// the originator already has the ops in its pending set -- ack with just the ids
+				Rx.map(({ ops, sourceWsClientId }): TSW.UpdateForClient =>
+					sourceWsClientId !== undefined && sourceWsClientId === context.wsClientId
+						? { code: 'ack', opIds: ops.map(op => op.opId) }
+						: { code: 'op', ops }
+				),
+				Rx.startWith(init),
+			)
+		}).pipe(withAbortSignal(signal!))
 		yield* toAsyncGenerator(obs)
 	}),
 
 	// TODO we need to filter errors back to the client that might have occured while handling side-effects
 	dispatchOp: orpcBase.meta({ type: 'mutation' }).input(z.object({ serverId: z.string(), op: TSW.OpSchema })).handler(
 		async ({ context, input: { serverId, op: input } }) => {
-			const ctx = SquadServer.resolveSliceCtx(context, serverId)
+			const ctxRes = SquadServer.trySliceCtx(context, serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
 			const source = 'source' in input ? input.source : undefined
 			if (!source?.discordId || source.discordId !== ctx.user.discordId) {
 				return { code: 'err:invalid-source' as const }

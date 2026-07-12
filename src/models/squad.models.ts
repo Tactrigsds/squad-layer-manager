@@ -56,10 +56,20 @@ export type LayersStatusExt = LayersStatus & {
 }
 
 export type RconError = { code: 'err:rcon'; msg: string }
-export type ServerDisabled = { code: 'server-disabled' }
+
+// the server has no live slice for this id: it's disabled, broken, still booting, or was torn down by a fatal
+// resource error. Every per-server endpoint can return this instead of throwing or (worse) going silent.
+export type ServerNotLoaded = { code: 'err:server-not-loaded'; serverId: string; msg: string }
+export function serverNotLoaded(serverId: string): ServerNotLoaded {
+	return { code: 'err:server-not-loaded', serverId, msg: `Server "${serverId}" is not currently loaded` }
+}
+export function isServerNotLoaded(value: unknown): value is ServerNotLoaded {
+	return typeof value === 'object' && value !== null && (value as ServerNotLoaded).code === 'err:server-not-loaded'
+}
+
 export type ServerInfoRes = { code: 'ok'; data: ServerInfo } | RconError
 export type LayerStatusRes = { code: 'ok'; data: LayersStatus } | RconError
-export type LayersStatusResExt = { code: 'ok'; data: LayersStatusExt } | RconError | ServerDisabled
+export type LayersStatusResExt = { code: 'ok'; data: LayersStatusExt } | RconError
 
 export const TeamIdSchema = z.union([z.literal(1), z.literal(2)])
 export type TeamId = z.infer<typeof TeamIdSchema>

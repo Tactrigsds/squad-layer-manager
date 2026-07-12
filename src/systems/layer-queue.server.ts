@@ -516,11 +516,7 @@ export const router = {
 	watchUnexpectedNextLayer: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
 		{ context, signal, input },
 	) {
-		const obs = SquadServer.sliceCtx$(context.wsClientId, input.serverId).pipe(
-			Rx.switchMap(ctx => {
-				if (!ctx) return Rx.EMPTY
-				return ctx.layerQueue.unexpectedNextLayerSet$
-			}),
+		const obs = SquadServer.sliceStream$(context.wsClientId, input.serverId, (ctx) => ctx.layerQueue.unexpectedNextLayerSet$).pipe(
 			withAbortSignal(signal!),
 		)
 		yield* toAsyncGenerator(obs)
@@ -530,7 +526,9 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string(), disabled: z.boolean() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctx = SquadServer.resolveSliceCtx(_ctx, input.serverId)
+			const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
 			return await toggleUpdatesToSquadServer({ ctx, input })
 		}),
 
@@ -538,29 +536,25 @@ export const router = {
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function*({ context, input, signal }) {
-			const updateForServer$ = SquadServer.sliceCtx$(context.wsClientId, input.serverId).pipe(
-				Rx.switchMap(ctx => {
-					if (!ctx) return Rx.EMPTY
-					const initial: SLL.Update = {
-						code: 'init',
-						state: ctx.layerQueue.session.state,
-						ops: ctx.layerQueue.session.ops,
-					}
-					const updateForClient$: Rx.Observable<SLL.Update> = ctx.layerQueue.op$.pipe(
-						// the originator already has the op in its pending set -- ack with just the id
-						Rx.map(({ op, sourceWsClientId }): SLL.Update =>
-							sourceWsClientId !== undefined && sourceWsClientId === context.wsClientId
-								? { code: 'ack' as const, opId: op.opId }
-								: { code: 'op' as const, op }
-						),
-						Rx.startWith(initial),
-						// if we don't do this then the orpcWs breaks
-						Rx.observeOn(Rx.asyncScheduler),
-					)
-					return updateForClient$
-				}),
-				withAbortSignal(signal!),
-			)
+			const updateForServer$ = SquadServer.sliceStream$(context.wsClientId, input.serverId, (ctx) => {
+				const initial: SLL.Update = {
+					code: 'init',
+					state: ctx.layerQueue.session.state,
+					ops: ctx.layerQueue.session.ops,
+				}
+				const updateForClient$: Rx.Observable<SLL.Update> = ctx.layerQueue.op$.pipe(
+					// the originator already has the op in its pending set -- ack with just the id
+					Rx.map(({ op, sourceWsClientId }): SLL.Update =>
+						sourceWsClientId !== undefined && sourceWsClientId === context.wsClientId
+							? { code: 'ack' as const, opId: op.opId }
+							: { code: 'op' as const, op }
+					),
+					Rx.startWith(initial),
+					// if we don't do this then the orpcWs breaks
+					Rx.observeOn(Rx.asyncScheduler),
+				)
+				return updateForClient$
+			}).pipe(withAbortSignal(signal!))
 
 			yield* toAsyncGenerator(updateForServer$)
 		}),
@@ -569,7 +563,9 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string(), op: SLL.OperationSchema }))
 		.handler(async ({ context: _ctx, input: { serverId, op } }) => {
-			const ctx = SquadServer.resolveSliceCtx(_ctx, serverId)
+			const ctxRes = SquadServer.trySliceCtx(_ctx, serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
 			const authRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write'))
 			if (authRes) return authRes
 
