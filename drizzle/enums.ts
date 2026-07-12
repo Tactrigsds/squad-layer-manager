@@ -69,6 +69,7 @@ export const APP_EVENT_TYPE = z.enum([
 	'BROADCAST_SENT',
 	'PLAYER_TIMED_OUT',
 	'TIMEOUT_CANCELLED',
+	'TEAMSWITCHES_UPDATED',
 ])
 export type AppEventType = z.infer<typeof APP_EVENT_TYPE>
 

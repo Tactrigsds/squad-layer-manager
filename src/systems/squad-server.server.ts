@@ -244,6 +244,7 @@ export const orpcRouter = {
 			ctx.signal,
 		)
 
+		await SquadRcon.endMatch(ctx)
 		await emitAppEvent(
 			ctx,
 			AppEvents.create<AppEvents.MatchEnded>({
@@ -254,7 +255,6 @@ export const orpcRouter = {
 				causeId: null,
 			}),
 		)
-		SquadRcon.endMatch(ctx)
 
 		const result = await result$
 		if (result === 'timeout') {

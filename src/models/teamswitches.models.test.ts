@@ -128,6 +128,109 @@ describe('reducer end-all-teamswitch-editing', () => {
 	})
 })
 
+describe('reducer execution attribution', () => {
+	const executed = (sideEffects: TSW.SideEffect[]) => sideEffects.find(se => se.code === 'teamswitches-executed')
+
+	// the queued switches carry the source of whoever queued each player, which is not who executed them
+	function queuedByAdmin() {
+		const state = stateWith([['a', 'A']], [['a', 'B']])
+		state.savedSwitches = new Map([['a', { toTeam: 'B', source: SOURCE }]])
+		state.editedSwitches = state.savedSwitches
+		return state
+	}
+
+	it('attributes a manual execution to whoever executed it', () => {
+		const executor = { discordId: 2n }
+		const started = apply(queuedByAdmin(), op({ code: 'execute-teamswitches', source: executor }))
+		const { sideEffects } = apply(started.state, op({ code: 'teamswitch-execution-completed' }))
+		expect(executed(sideEffects)?.source).toEqual(executor)
+	})
+
+	it('leaves a map-roll execution unattributed', () => {
+		const started = apply(queuedByAdmin(), op({ code: 'execute-teamswitches' }))
+		const { sideEffects } = apply(started.state, op({ code: 'teamswitch-execution-completed' }))
+		expect(executed(sideEffects)?.source).toBeUndefined()
+	})
+
+	// watchExecution reads switchingOpId to tell "the execution I fired is still pending" from "it already
+	// resolved", which is what stops a late watcher from failing a newer execution
+	it('tracks the op that started the execution until it resolves', () => {
+		const start = op({ code: 'execute-teamswitches' })
+		const started = apply(queuedByAdmin(), start)
+		expect(started.state.switchingOpId).toBe(start.opId)
+		const done = apply(started.state, op({ code: 'teamswitch-execution-completed' }))
+		expect(done.state.switchingOpId).toBeNull()
+	})
+
+	// an op error rejects the batch, and a rejected batch changes no state, so reporting the failure that way would
+	// leave the switches it cancels pending forever. this is what the stuck-pending bug was.
+	it('cancels the pending switches when an execution fails, and reports it as a side effect', () => {
+		const started = apply(queuedByAdmin(), op({ code: 'execute-teamswitches' }))
+		expect(started.state.pendingSwitches.size).toBe(1)
+
+		const failed = apply(started.state, op({ code: 'teamswitch-execution-failed', reason: 'timeout' }))
+		expect(failed.state.switching).toBe(false)
+		expect(failed.state.pendingSwitches.size).toBe(0)
+		expect(failed.state.switchingOpId).toBeNull()
+		const se = failed.sideEffects.find(se => se.code === 'teamswitch-execution-failed')
+		expect(se?.reason).toBe('timeout')
+	})
+
+	it('reports the players who never switched', () => {
+		const started = apply(queuedByAdmin(), op({ code: 'execute-teamswitches' }))
+		const { sideEffects } = apply(
+			started.state,
+			op({ code: 'teamswitch-execution-failed', reason: 'not-all-players-switched', playerIds: ['a'] }),
+		)
+		const se = sideEffects.find(se => se.code === 'teamswitch-execution-failed')
+		expect(se?.playerIds).toEqual(['a'])
+	})
+
+	it('ignores a failure for an execution that already resolved', () => {
+		const started = apply(queuedByAdmin(), op({ code: 'execute-teamswitches' }))
+		const done = apply(started.state, op({ code: 'teamswitch-execution-completed' }))
+		const rejection = rejectionOf(() => apply(done.state, op({ code: 'teamswitch-execution-failed', reason: 'timeout' })))
+		expect(rejection.code).toBe('noop')
+	})
+})
+
+describe('reducer save trigger', () => {
+	const triggerOf = (sideEffects: TSW.SideEffect[]) => sideEffects.find(se => se.code === 'save')?.trigger
+
+	it('marks an admin save as a user edit', () => {
+		const state = stateWith([['a', 'A']])
+		state.editedSwitches = new Map([['a', { toTeam: 'B', source: SOURCE }]])
+		expect(triggerOf(apply(state, op({ code: 'save', source: SOURCE })).sideEffects)).toBe('user-edit')
+	})
+
+	it('marks a map-roll execution as executed, with nobody to attribute it to', () => {
+		const state = stateWith([['a', 'A']], [['a', 'B']])
+		const save = apply(state, op({ code: 'execute-teamswitches' })).sideEffects.find(se => se.code === 'save')
+		expect(save?.trigger).toBe('executed')
+		expect(save?.source).toBeUndefined()
+	})
+
+	it('attributes a manual execution to the admin who fired it', () => {
+		const state = stateWith([['a', 'A']], [['a', 'B']])
+		const save = apply(state, op({ code: 'execute-teamswitches', source: SOURCE })).sideEffects.find(se => se.code === 'save')
+		expect(save?.trigger).toBe('executed')
+		expect(save?.source).toEqual(SOURCE)
+	})
+
+	// an immediate switch is a TEAM_CHANGE_FORCED, not a queue execution: the server skips the app event for it, so
+	// it doesn't double-log the same switch
+	it('marks an immediate switch of a queued player as switched-now', () => {
+		const state = stateWith([['a', 'A']], [['a', 'B']])
+		const switches: TSW.TeamswitchCollection = new Map([['a', { toTeam: 'B' as MH.NormedTeamId, source: SOURCE }]])
+		expect(triggerOf(apply(state, op({ code: 'switch-now', switches, source: SOURCE })).sideEffects)).toBe('switched-now')
+	})
+
+	it('marks a switch dropped by a disconnect as a roster change', () => {
+		const state = stateWith([['a', 'A']], [['a', 'B']])
+		expect(triggerOf(apply(state, op({ code: 'player-left', playerId: 'a' })).sideEffects)).toBe('roster-change')
+	})
+})
+
 describe('reducer saved-set writes', () => {
 	it('re-syncs the edit set when a saved switch is removed, so the player can be re-added', () => {
 		const state = stateWith([['a', 'A']], [['a', 'B']])

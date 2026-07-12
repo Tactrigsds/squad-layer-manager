@@ -102,6 +102,7 @@ export namespace Teamswitch {
 	export const PLAYER_COUNT = 'slm.teamswitch.player_count'
 	export const PENDING_SWITCHES = 'slm.teamswitch.pending_switches'
 	export const SWITCHING = 'slm.teamswitch.switching'
+	export const FAILURE_REASON = 'slm.teamswitch.failure_reason'
 }
 
 export namespace UserPresence {

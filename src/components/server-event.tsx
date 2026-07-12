@@ -514,6 +514,84 @@ function QueueUpdatedEvent(
 	)
 }
 
+// a change to the teamswitches queued for the next map. The summary names who changed it and the net effect;
+// expanding lists each switch, attributed to whoever queued that player (a save commits every admin's pending marks).
+function TeamswitchesUpdatedEvent(
+	{ event, appEvent, actorLabel, stores }: {
+		event: Extract<CHAT.EventEnriched, { type: 'APP_EVENT' }>
+		appEvent: AppEvents.TeamswitchesUpdated
+		actorLabel: string
+		stores: SquadServerFrame.KeyProp
+	},
+) {
+	const changes = AppEvents.summarizeTeamswitchChanges(appEvent)
+	const queuedBy = changes.flatMap(c => c.kind === 'added' && c.byUserId ? [c.byUserId] : [])
+	const labelFor = useUserLabels([...new Set(queuedBy)])
+	const matchId = event.matchId
+	const playerFor = (playerId: string) => event.targetPlayers.find(p => p.ids.eos === playerId)
+
+	const added = changes.filter(c => c.kind === 'added').length
+	const removed = changes.filter(c => c.kind === 'removed').length
+	const queued = appEvent.switches.size
+
+	const players = `${removed} ${removed === 1 ? 'player' : 'players'}`
+	const summary: React.ReactNode = appEvent.trigger === 'executed' || appEvent.trigger === 'switched-now'
+		// an execution with no actor is the map roll firing the queue; a manual one names the admin who fired it
+		? appEvent.actor.type === 'system'
+			? `Queued teamswitches executed on map change (${players})`
+			: <>{actorLabel} executed the queued teamswitches ({players})</>
+		: appEvent.trigger === 'roster-change'
+		? `${removed} queued teamswitch${removed === 1 ? '' : 'es'} dropped, ${
+			removed === 1 ? 'the player' : 'those players'
+		} left or changed teams`
+		: queued === 0
+		? <>{actorLabel} cleared the queued teamswitches</>
+		: (
+			<>
+				{actorLabel} updated the queued teamswitches ({[added > 0 ? `+${added}` : null, removed > 0 ? `−${removed}` : null]
+					.filter(Boolean).join(', ')}), {queued} queued for next map
+			</>
+		)
+	const icon = <Icons.ArrowLeftRight className="h-4 w-4 text-cyan-500 shrink-0" />
+
+	if (changes.length === 0 || matchId === null) {
+		return <EventLine time={event.time} icon={icon}>{summary}</EventLine>
+	}
+
+	return (
+		<details className="py-1 text-xs text-muted-foreground w-full min-w-0">
+			<summary className="flex gap-2 items-baseline cursor-pointer">
+				<EventTime time={event.time} variant="small" />
+				{icon}
+				<span className="grow min-w-0 wrap-anywhere">{summary}</span>
+			</summary>
+			<div className="pl-6 pt-1 flex flex-col gap-0.5">
+				{changes.map(change => {
+					const player = playerFor(change.playerId)
+					// the switch's own actor is only worth naming when it wasn't the admin this event is attributed to
+					const by = change.kind === 'added' && change.byUserId
+							&& !(appEvent.actor.type === 'slm-user' && appEvent.actor.userId === change.byUserId)
+						? ` (queued by ${labelFor(change.byUserId)})`
+						: ''
+					return (
+						<div key={`${change.kind}:${change.playerId}`} className="flex gap-2 items-baseline text-xs text-muted-foreground">
+							<span className={cn('font-mono shrink-0', change.kind === 'added' ? 'text-emerald-400' : 'text-rose-400')}>
+								{change.kind === 'added' ? '+' : '−'}
+							</span>
+							<span className="grow min-w-0 wrap-anywhere">
+								{player ? <PlayerDisplay showTeam player={player} matchId={matchId} stores={stores} /> : change.playerId}
+								{' to '}
+								<MatchTeamDisplay matchId={matchId} teamId={change.toTeam} stores={stores} />
+								{by}
+							</span>
+						</div>
+					)
+				})}
+			</div>
+		</details>
+	)
+}
+
 // an app (audit) event, e.g. a warnAll that aggregates its individual PLAYER_WARNED server events into one
 // expandable entry. Uses a native <details> so no local state is needed.
 function AppEventEntry(
@@ -656,6 +734,9 @@ function AppEventEntry(
 	}
 	if (appEvent.type === 'QUEUE_UPDATED') {
 		return <QueueUpdatedEvent event={event} appEvent={appEvent} actorLabel={actorLabel} stores={stores} />
+	}
+	if (appEvent.type === 'TEAMSWITCHES_UPDATED') {
+		return <TeamswitchesUpdatedEvent event={event} appEvent={appEvent} actorLabel={actorLabel} stores={stores} />
 	}
 	if (appEvent.type === 'MAP_SET') {
 		// only override sets reach the feed; queue-driven MAP_SETs fold into their QUEUE_UPDATED (audit-only)

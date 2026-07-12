@@ -7,8 +7,10 @@ import { formatHumanTime } from '@/lib/zod'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
+import type * as MH from '@/models/match-history.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as SM from '@/models/squad.models'
+import * as TSW from '@/models/teamswitches.models'
 import * as USR from '@/models/users.models'
 import superjson from 'superjson'
 import { z } from 'zod'
@@ -281,6 +283,16 @@ export const QueueUpdatedSchema = event('QUEUE_UPDATED', {
 })
 export type QueueUpdated = z.infer<typeof QueueUpdatedSchema>
 
+// the queued (saved) teamswitches changed. like QUEUE_UPDATED, the before/after collections are carried and diffed
+// rather than the ops, so churn that cancelled out before the save produces no change at all. the source on each
+// switch attributes it to whoever queued that player, which is not necessarily whoever saved.
+export const TeamswitchesUpdatedSchema = event('TEAMSWITCHES_UPDATED', {
+	trigger: TSW.SaveTriggerSchema,
+	prevSwitches: TSW.TeamswitchCollectionSchema,
+	switches: TSW.TeamswitchCollectionSchema,
+})
+export type TeamswitchesUpdated = z.infer<typeof TeamswitchesUpdatedSchema>
+
 // SLM set the next layer on the server. reason 'queue-updated' folds into its cause (the QUEUE_UPDATED linked via
 // causeId) and is audit-only; reason 'override' is when SLM set the layer back over an external set, and gets a feed
 // entry naming who it overrode.
@@ -312,6 +324,7 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	VoteEndedSchema,
 	VoteAbortedSchema,
 	QueueUpdatedSchema,
+	TeamswitchesUpdatedSchema,
 	SettingsUpdatedSchema,
 	ServerRegistryChangedSchema,
 	FilterChangedSchema,
@@ -358,6 +371,8 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 			return []
 		case 'PLAYER_FLAGS_UPDATED':
 			return [e.playerId]
+		case 'TEAMSWITCHES_UPDATED':
+			return summarizeTeamswitchChanges(e).map(c => c.playerId)
 		case 'MAP_SET':
 			return e.overrode?.type === 'player' ? [e.overrode.playerId] : []
 	}
@@ -421,6 +436,19 @@ export function describeAppEvent(e: AppEvent): string {
 			return nextAfter !== null && nextAfter !== nextBefore
 				? `${verb}, next layer now ${DH.toShortLayerNameFromId(nextAfter)}`
 				: verb
+		}
+		case 'TEAMSWITCHES_UPDATED': {
+			const changes = summarizeTeamswitchChanges(e)
+			const added = changes.filter(c => c.kind === 'added').length
+			const removed = changes.filter(c => c.kind === 'removed').length
+			// the caller prepends the actor, which is 'SLM' when the map roll fired the queue
+			if (e.trigger === 'executed' || e.trigger === 'switched-now') {
+				return `executed the queued teamswitches (${players(removed)})`
+			}
+			if (e.trigger === 'roster-change') return `dropped ${removed} queued teamswitch${removed === 1 ? '' : 'es'} (roster changed)`
+			if (e.switches.size === 0) return 'cleared the queued teamswitches'
+			const parts = [added > 0 ? `+${added}` : null, removed > 0 ? `−${removed}` : null].filter(Boolean)
+			return `updated the queued teamswitches (${parts.join(', ')})`
 		}
 		case 'MAP_SET': {
 			const layer = DH.toShortLayerNameFromId(e.layerId)
@@ -601,6 +629,33 @@ export function summarizeQueueChanges(e: QueueUpdated): QueueChange[] {
 	for (const [itemId, { item }] of prev) {
 		if (next.has(itemId)) continue
 		changes.push({ kind: 'removed', itemId, layerIds: itemLayerIds(item), isVote: LL.isVoteItem(item), actor: actorFor(itemId) })
+	}
+	return changes
+}
+
+// ---- TEAMSWITCHES_UPDATED change attribution ----
+
+// a net change the save made to the queued teamswitches. only an added switch carries an actor: the switch records
+// who queued that player (which is not necessarily whoever saved), while nothing records who removed one.
+export type TeamswitchChange =
+	& { playerId: SM.PlayerId; toTeam: MH.NormedTeamId }
+	& (
+		| { kind: 'added'; byUserId?: USR.UserId }
+		| { kind: 'removed' }
+	)
+
+// a player queued for a different team than before reads as an add (to the new team); the stale destination is not
+// worth a line of its own
+export function summarizeTeamswitchChanges(e: TeamswitchesUpdated): TeamswitchChange[] {
+	const changes: TeamswitchChange[] = []
+	for (const [playerId, _switch] of e.switches) {
+		const prev = e.prevSwitches.get(playerId)
+		if (prev?.toTeam === _switch.toTeam) continue
+		changes.push({ kind: 'added', playerId, toTeam: _switch.toTeam, byUserId: _switch.source.discordId })
+	}
+	for (const [playerId, _switch] of e.prevSwitches) {
+		if (e.switches.has(playerId)) continue
+		changes.push({ kind: 'removed', playerId, toTeam: _switch.toTeam })
 	}
 	return changes
 }

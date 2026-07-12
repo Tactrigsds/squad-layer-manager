@@ -55,11 +55,9 @@ function toastOpError(error: TSW.OpError) {
 			title = 'Player switch pending'
 			description = `A switch for this player is already pending execution.`
 			break
-		case 'err:teamswitch-execution-failed':
-			title = 'Team switch failed'
-			description = error.reason === 'not-all-players-switched'
-				? 'Some players could not be switched to their assigned teams.'
-				: 'An error occurred while executing the team switch.'
+		case 'err:nothing-queued':
+			title = 'No teamswitches queued'
+			description = 'There is nothing to clear.'
 			break
 		case 'err:currently-not-switching':
 		case 'err:unexpected':
@@ -118,12 +116,28 @@ function onSideEffect(se: TSW.SideEffect, presenceEvent$: Rx.Subject<UP.Presence
 			break
 		}
 
+		case 'teamswitch-execution-failed': {
+			const description = se.reason === 'not-all-players-switched'
+				? `${se.playerIds?.length ?? 0} player${se.playerIds?.length === 1 ? '' : 's'} could not be switched to their assigned team.`
+				: se.reason === 'timeout'
+				? 'The switch never took effect on the server.'
+				: se.message ?? 'An error occurred while executing the team switch.'
+			toast.error('Team switch failed', { description: `${description} The pending switches have been cancelled.` })
+			break
+		}
+
 		case 'teamswitches-executed': {
 			const { source, switchCount } = se
-			if (source?.discordId) presenceEvent$.next({ userId: source.discordId, action: 'executed-teamswitches' })
+			const players = `${switchCount} player${switchCount !== 1 ? 's' : ''}`
+			// no source means the map roll executed the queue: it's nobody's action, so it isn't attributed to a
+			// user and doesn't put an event on anyone in the presence panel
+			if (!source) {
+				toast('Teamswitches executed', { description: `${players} switched to their assigned teams on map change.` })
+				break
+			}
+			if (source.discordId) presenceEvent$.next({ userId: source.discordId, action: 'executed-teamswitches' })
 			void resolveDisplayName(source).then((name) => {
-				const description = `${name} switched ${switchCount} player${switchCount !== 1 ? 's' : ''} to their assigned teams.`
-				toast('Teamswitches executed', { description })
+				toast('Teamswitches executed', { description: `${name} switched ${players} to their assigned teams.` })
 			})
 			break
 		}

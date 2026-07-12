@@ -503,12 +503,9 @@ export function setFogOfWar(ctx: C.Rcon & CS.AbortSignal, mode: 'on' | 'off') {
 	return ctx.rcon.execute(`AdminSetFogOfWar ${mode}`, { level: 'info', signal: ctx.signal })
 }
 
-export function processChatPacket(decodedPacket: DecodedPacket) {
-}
-
-export function endMatch(ctx: C.Rcon) {
+export async function endMatch(ctx: C.Rcon) {
 	log.info(`Ending match`)
-	void ctx.rcon.execute('AdminEndMatch', { level: 'info' })
+	await ctx.rcon.execute('AdminEndMatch', { level: 'info' })
 }
 
 export async function switchPlayers(

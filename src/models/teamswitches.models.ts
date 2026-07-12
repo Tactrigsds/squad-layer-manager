@@ -106,6 +106,12 @@ export type State = {
 	savedSwitches: TeamswitchCollection
 	pendingSwitches: TeamswitchCollection
 	switching: boolean
+	// who triggered the in-flight execution, null when it was the map roll (or nothing is executing). the sources on
+	// the switches themselves say who *queued* each player, which is a different question and a different admin
+	switchingSource: USR.GuiOrChatUserId | null
+	// the op that started the in-flight execution. lets a background watcher tell "the execution I started is still
+	// pending" from "it already resolved, or a different one is running now"
+	switchingOpId: string | null
 }
 
 export function initState(savedSwitches?: TeamswitchCollection): State {
@@ -115,6 +121,8 @@ export function initState(savedSwitches?: TeamswitchCollection): State {
 		pendingSwitches: initTeamswitchCollection(),
 		players: new Map(),
 		switching: false,
+		switchingSource: null,
+		switchingOpId: null,
 	}
 }
 
@@ -186,6 +194,8 @@ export const OpSchema = z.discriminatedUnion('code', [
 			reason: z.literal('not-all-players-switched'),
 			playerIds: z.array(z.string()),
 		}),
+		// the execution never resolved: the switches were fired but the teams never came back showing them applied
+		z.object({ opId: z.string(), code: z.literal('teamswitch-execution-failed'), reason: z.literal('timeout') }),
 	]),
 ])
 
@@ -211,11 +221,6 @@ namespace OpErrors {
 	export type SwitchesNotSaved = { code: 'err:switches-not-saved' }
 	export type NothingQueued = { code: 'err:nothing-queued' }
 
-	export type TeamswitchExecutionFailed = {
-		code: 'err:teamswitch-execution-failed'
-		reason: 'timeout' | 'error' | 'not-all-players-switched'
-	}
-
 	export type Unexpected = { code: 'err:unexpected'; error: unknown }
 }
 
@@ -226,7 +231,8 @@ export type OpError<OpCode extends Op['code'] = Op['code']> =
 		| (OpCode extends 'add-player-teamswitch' ? (OpErrors.CurrentlySwitching | OpErrors.AlreadyMarked)
 			: OpCode extends 'clear-teamswitches' ? (OpErrors.CurrentlySwitching | OpErrors.PendingSwitch | OpErrors.NothingQueued)
 			: OpCode extends SwitchingMutationOp ? (OpErrors.CurrentlySwitching | OpErrors.PendingSwitch)
-			: OpCode extends 'teamswitch-execution-failed' ? (OpErrors.TeamswitchExecutionFailed)
+			// teamswitch-execution-failed never errors: it reports through a side effect, since rejecting the batch
+			// would discard the very state change (cancelling the pending switches) that it exists to make
 			: OpCode extends 'teamswitch-execution-completed' ? (OpErrors.CurrentlyNotSwitching)
 			: OpCode extends 'execute-teamswitches' ? (OpErrors.CurrentlySwitching | OpErrors.SwitchesNotSaved)
 			: OpCode extends 'switch-now' ? OpErrors.CurrentlySwitching
@@ -237,6 +243,15 @@ export type OpError<OpCode extends Op['code'] = Op['code']> =
 // the typed payload carried by a RejectedError thrown from the reducer: either a specific op failure
 // the dispatcher should surface, or a benign no-op that changed nothing (nothing to report)
 export type Rejection = OpError | { code: 'noop' }
+
+// what drove a change to the saved (queued) teamswitches:
+//  - 'user-edit': an admin saved, queued, or cleared switches (gui or chat command)
+//  - 'executed': the saved queue was executed and drained (map roll, or a manual execute)
+//  - 'switched-now': a player was switched immediately, which drops them from the queue if they were in it. the
+//    switch itself is the action here, not the queue change, and it's already recorded as a TEAM_CHANGE_FORCED
+//  - 'roster-change': a queued player left or changed teams on their own, so their switch no longer applies
+export const SaveTriggerSchema = z.enum(['user-edit', 'executed', 'switched-now', 'roster-change'])
+export type SaveTrigger = z.infer<typeof SaveTriggerSchema>
 
 export type SideEffect =
 	| {
@@ -257,10 +272,20 @@ export type SideEffect =
 		switches: TeamswitchCollection
 		prevSaved: TeamswitchCollection
 		source?: USR.GuiOrChatUserId
+		trigger: SaveTrigger
 	}
 	| {
 		code: 'teamswitches-executed'
 		switchCount: number
+		source?: USR.GuiOrChatUserId
+	}
+	| {
+		code: 'teamswitch-execution-failed'
+		reason: 'error' | 'not-all-players-switched' | 'timeout'
+		// for 'error'
+		message?: string
+		// for 'not-all-players-switched': the players still on the wrong team
+		playerIds?: SM.PlayerId[]
 		source?: USR.GuiOrChatUserId
 	}
 	| {
@@ -284,6 +309,9 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 	// for the whole batch loses nothing.
 	let skipNotifyUpcoming = false
 	let saveSource: USR.GuiOrChatUserId | undefined
+	// what drove the change to savedSwitches, for the TEAMSWITCHES_UPDATED app event. set by every op that mutates
+	// it; a batch only ever mixes ops of one kind (a roster event, or one user action)
+	let saveTrigger: SaveTrigger | undefined
 	for (const op of ops) {
 		let opFailed = false
 		const emitOpError = <T extends Op>(error: OpError<T['code']>) => {
@@ -308,6 +336,8 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 					const switchEntry = { toTeam: op.toTeam, source: op.source }
 					if (op.saved) {
 						writeToSaved(state, switches => switches.set(op.playerId, switchEntry))
+						saveSource = op.source
+						saveTrigger = 'user-edit'
 					} else {
 						state.editedSwitches = new Map(state.editedSwitches)
 						state.editedSwitches.set(op.playerId, switchEntry)
@@ -323,6 +353,9 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 					state.savedSwitches = new Map(state.savedSwitches)
 					skipEmitSave = true
 					skipNotifyUpcoming = true
+					// a switch that's no longer applicable (the player left, or is already on the target team) is
+					// dropped, and dropping any means the pruned collection has to be re-saved
+					saveTrigger = 'roster-change'
 					for (const [playerId, switchEntry] of op.switches.entries()) {
 						const team = state.players.get(playerId)
 						if (team && team !== switchEntry.toTeam) state.savedSwitches.set(playerId, switchEntry)
@@ -351,6 +384,8 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 						// the delete has to reach editedSwitches too, or the player stays marked there and can never be
 						// re-added (add-player-teamswitch would reject them as already-marked)
 						writeToSaved(state, switches => switches.delete(op.playerId))
+						saveSource = op.source
+						saveTrigger = 'user-edit'
 					} else {
 						state.editedSwitches = new Map(state.editedSwitches)
 						state.editedSwitches.delete(op.playerId)
@@ -383,6 +418,7 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 						emit({ code: 'notify-teamswitches-cancelled', players: playerIds })
 						writeToSaved(state, switches => MapUtils.bulkDelete(switches, ...playerIds))
 						if (op.source) saveSource = op.source
+						saveTrigger = 'user-edit'
 					} else {
 						state.editedSwitches = initTeamswitchCollection()
 					}
@@ -402,9 +438,13 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 						break
 					}
 					state.switching = true
+					state.switchingSource = op.source ?? null
+					state.switchingOpId = op.opId
 					state.pendingSwitches = state.savedSwitches
 					const switches = state.savedSwitches
 					state.savedSwitches = state.editedSwitches = initTeamswitchCollection()
+					saveTrigger = 'executed'
+					saveSource = op.source
 					emit({ code: 'execute-teamswitches', opId: op.opId, switches })
 					break
 				}
@@ -415,7 +455,9 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 						break
 					}
 					const switchCount = state.pendingSwitches.size
-					const executionSource = state.pendingSwitches.values().next().value?.source
+					const executionSource = state.switchingSource ?? undefined
+					state.switchingSource = null
+					state.switchingOpId = null
 					state.switching = false
 					state.pendingSwitches = initTeamswitchCollection()
 					emit({ code: 'teamswitches-executed', switchCount, source: executionSource })
@@ -445,6 +487,7 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 					if (savedSwitch && savedSwitch.toTeam === op.toTeam) {
 						state.savedSwitches = new Map(state.savedSwitches)
 						state.savedSwitches.delete(op.playerId)
+						saveTrigger = 'roster-change'
 					}
 
 					break
@@ -461,6 +504,7 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 					if (savedSwitch) {
 						state.savedSwitches = new Map(state.savedSwitches)
 						state.savedSwitches.delete(op.playerId)
+						saveTrigger = 'roster-change'
 					}
 					break
 				}
@@ -486,7 +530,10 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 							newSwitches.delete(playerId)
 						}
 					}
-					if (newSavedSwitches !== undefined) state.savedSwitches = newSavedSwitches
+					if (newSavedSwitches !== undefined) {
+						state.savedSwitches = newSavedSwitches
+						saveTrigger = 'roster-change'
+					}
 					if (newSwitches !== undefined) state.editedSwitches = newSwitches
 					state.players = op.players
 					break
@@ -502,17 +549,27 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 					const { removed } = getTeamswitchChanges(state.editedSwitches, state.savedSwitches)
 					state.savedSwitches = state.editedSwitches
 					saveSource = op.source
+					saveTrigger = 'user-edit'
 					if (removed.length > 0) emit({ code: 'notify-teamswitches-cancelled', players: removed })
 					break
 				}
 
 				case 'teamswitch-execution-failed': {
+					// a failure is reported as a side effect rather than an op error on purpose: an op error rejects the
+					// batch, and a rejected batch changes no state (see ODSM.Applied), so the pending switches this op
+					// exists to cancel would survive it and stay pending forever
+					if (!state.switching) break
+					const source = state.switchingSource ?? undefined
 					state.pendingSwitches = initTeamswitchCollection()
 					state.switching = false
-					emitOpError({
-						code: 'err:teamswitch-execution-failed',
+					state.switchingSource = null
+					state.switchingOpId = null
+					emit({
+						code: 'teamswitch-execution-failed',
 						reason: op.reason,
-						op,
+						message: op.reason === 'error' ? op.message : undefined,
+						playerIds: op.reason === 'not-all-players-switched' ? op.playerIds : undefined,
+						source,
 					})
 					break
 				}
@@ -526,9 +583,13 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 					// switching a player now takes them out of the queue on both sets, but leaves the rest of an
 					// in-flight edit (and its in-sync-ness) intact
 					writeToSaved(state, switches => MapUtils.bulkDelete(switches, ...op.switches.keys()))
+					saveTrigger = 'switched-now'
+					saveSource = op.source
 
 					state.pendingSwitches = op.switches
 					state.switching = true
+					state.switchingSource = op.source
+					state.switchingOpId = op.opId
 					emit({ code: 'execute-teamswitches', opId: op.opId, switches: op.switches })
 
 					break
@@ -556,7 +617,13 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 			if (prevToTeam === _switch.toTeam) continue
 			newSwitchingPlayers.push(playerId)
 		}
-		emit({ code: 'save', switches: state.savedSwitches, prevSaved: oldState.savedSwitches, source: saveSource })
+		emit({
+			code: 'save',
+			switches: state.savedSwitches,
+			prevSaved: oldState.savedSwitches,
+			source: saveSource,
+			trigger: saveTrigger ?? 'user-edit',
+		})
 		if (!skipNotifyUpcoming && newSwitchingPlayers.length > 0) {
 			emit({ code: 'notify-upcoming-teamswitches', players: newSwitchingPlayers })
 		}
