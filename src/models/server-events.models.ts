@@ -1,5 +1,6 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Obj from '@/lib/object'
+import type * as CS from '@/models/context-shared'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
@@ -120,6 +121,10 @@ export const PLAYER_DISCONNECTED_META = meta({ players: [{ assocType: 'player' }
 export type SquadCreated = {
 	type: 'SQUAD_CREATED'
 	squad: SM.UniqueSquad
+	// present when the creation log never made it (missed/unparseable/dropped) and the squad was instead synthesized
+	// from an RCON teams poll (see reconcileTeamsUpdate). membership/leadership for synthesized squads is established
+	// by the join/promote events reconciled from the same poll rather than by this event.
+	synthesized?: true
 } & Base
 
 export const SQUAD_CREATED_META = meta({ squads: ['$.squad'], players: [{ assocType: 'player', path: '$.squad.creator' }] })
@@ -409,7 +414,10 @@ export function* iterAssocPlayerIds(event: Event<SM.Player | SM.PlayerId>) {
 	}
 }
 
-export function* iterAssocUniqueSquads(event: Event): Generator<SM.UniqueSquad | number> {
+// ctx is null on display-only paths (client selectors) that have no logger; persistence paths must pass one so a
+// dropped squad object is never silent (its squads row would never be written, and every later event referencing
+// its uniqueId would fail its FK).
+export function* iterAssocUniqueSquads(ctx: CS.Log | null, event: Event): Generator<SM.UniqueSquad | number> {
 	const meta = EVENT_META[event.type]
 	for (const path of meta.squads) {
 		const results = Obj.queryPath<unknown>(path, event)
@@ -419,14 +427,22 @@ export function* iterAssocUniqueSquads(event: Event): Generator<SM.UniqueSquad |
 				continue
 			}
 			const parseRes = SM.UniqueSquadSchema.safeParse(result)
-			if (!parseRes.success) continue
+			if (!parseRes.success) {
+				ctx?.log.error(
+					{ err: parseRes.error, value: result },
+					'iterAssocUniqueSquads: dropping squad that failed UniqueSquadSchema parse (event %d %s)',
+					event.id,
+					event.type,
+				)
+				continue
+			}
 			yield parseRes.data
 		}
 	}
 }
 
-export function* iterAssocSquadUniqueIds(event: Event): Generator<number> {
-	for (const squad of iterAssocUniqueSquads(event)) {
+export function* iterAssocSquadUniqueIds(ctx: CS.Log | null, event: Event): Generator<number> {
+	for (const squad of iterAssocUniqueSquads(ctx, event)) {
 		if (typeof squad === 'object') {
 			yield squad.uniqueId
 		} else {

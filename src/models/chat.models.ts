@@ -841,7 +841,7 @@ export function* iterAssocSquadUniqueIds(event: EventEnriched): Generator<number
 		for (const collapsed of event.collapsed) yield* iterAssocSquadUniqueIds(collapsed)
 		return
 	}
-	yield* SE.iterAssocSquadUniqueIds(event as SE.Event)
+	yield* SE.iterAssocSquadUniqueIds(null, event as SE.Event)
 }
 
 export function hasAssocSquad(event: EventEnriched, uniqueSquadId: number): boolean {

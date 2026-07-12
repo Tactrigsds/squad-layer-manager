@@ -4,7 +4,7 @@ import { createLogMatcher, eventDef, type EventSchema, matchLog } from '@/lib/lo
 
 import * as Obj from '@/lib/object'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
-import { simpleUniqueStringMatch } from '@/lib/string'
+import { normalizeForMatch, simpleUniqueStringMatch } from '@/lib/string'
 import * as ZodUtils from '@/lib/zod'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
@@ -122,17 +122,19 @@ export namespace PlayerIds {
 				ids[key] = value
 			}
 		}
-		if (opts.username && opts.usernameNoTag) {
-			const lenDiff = Math.max(opts.username.length - opts.usernameNoTag.length, 0)
-			const tag = opts.username.slice(0, lenDiff).trim() || undefined
+		const username = opts.username?.trim()
+		const usernameNoTag = opts.usernameNoTag?.trim()
+		if (username && usernameNoTag) {
+			const lenDiff = Math.max(username.length - usernameNoTag.length, 0)
+			const tag = username.slice(0, lenDiff).trim() || undefined
 			if (tag) {
 				ids.tag = tag
 			}
 		}
 		return Obj.trimUndefined({
 			...ids,
-			usernameNoTag: opts.usernameNoTag?.trim(),
-			username: opts.username?.trim(),
+			usernameNoTag,
+			username,
 			playerController: opts.playerController?.trim(),
 			eos: opts.eos?.trim() ?? ids.eos,
 		})
@@ -306,9 +308,24 @@ export namespace PlayerIds {
 		}
 	}
 
-	// gets generic id for use in commands(ex warns)
-	export function resolvePlayerId(ids: Type): string {
-		return (ids.eos ?? ids.eos)!
+	// Resolves a player from a bare display name (e.g. a Die()/Wound() log line, which carries no online ids for the
+	// victim). Exact matching is find()'s job; this adds tolerance for tag/whitespace/unicode differences between log
+	// and RCON names via normalized containment in either direction, requiring the match to be unique. A unique-but-wrong
+	// containment is possible when the real player isn't in the list, so only use this as a fallback after find().
+	export function findByUsernameLoose<T>(players: T[], cb: (item: T) => Type, username: string): T | undefined {
+		const names = players.map(p => cb(p).username ?? '')
+		const res = simpleUniqueStringMatch(names, username)
+		if (res.code === 'ok') return players[res.matched]
+		// the log name may carry a tag the RCON name lacks; try the reverse direction
+		const target = normalizeForMatch(username)
+		if (!target) return undefined
+		const reverseMatches: number[] = []
+		for (let i = 0; i < names.length; i++) {
+			const name = normalizeForMatch(names[i])
+			if (name && target.includes(name)) reverseMatches.push(i)
+		}
+		if (reverseMatches.length === 1) return players[reverseMatches[0]]
+		return undefined
 	}
 
 	export function prettyPrint(id: IdQueryOrPlayerId) {

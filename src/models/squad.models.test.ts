@@ -547,3 +547,22 @@ describe('RconEvents', () => {
 		})
 	})
 })
+
+describe('PlayerIds.findByUsernameLoose', () => {
+	const player = (eos: string, username: string) => ({ ids: { eos, username } })
+
+	it('matches when the roster name contains the target (tag/whitespace tolerant)', () => {
+		const players = [player('a', '『LiQ』  HoneyBooBoo rides again'), player('b', 'Hopeless')]
+		expect(SM.PlayerIds.findByUsernameLoose(players, p => p.ids, 'HoneyBooBoo rides again')).toBe(players[0])
+	})
+
+	it('matches in reverse when the log name carries a tag the roster name lacks', () => {
+		const players = [player('a', 'HoneyBooBoo rides again'), player('b', 'Hopeless')]
+		expect(SM.PlayerIds.findByUsernameLoose(players, p => p.ids, '[LiQ] HoneyBooBoo rides again')).toBe(players[0])
+	})
+
+	it('returns undefined when the match is ambiguous', () => {
+		const players = [player('a', 'AAA alpha'), player('b', 'beta AAA')]
+		expect(SM.PlayerIds.findByUsernameLoose(players, p => p.ids, 'AAA')).toBeUndefined()
+	})
+})

@@ -29,6 +29,11 @@ export const DEFAULT_EXPECTATION_TTL_MS = 60_000
 // only fires for disconnects whose log line was missed.
 export const POLL_ABSENCE_CULL_THRESHOLD = 2
 
+// consecutive teams polls an unknown squad is tolerated before we give up waiting on its SQUAD_CREATED log and
+// synthesize the event from poll data. Must comfortably exceed ordinary log-vs-poll lag (the driver already holds
+// back TEAMS_UPDATE processing by minSafeLeadTimeForOtherEventsSinceLog, so this is extra margin on a heuristic).
+export const UNKNOWN_SQUAD_SYNTHESIS_THRESHOLD = 3
+
 // how long we tolerate being stuck mid-sync ('syncing'/'rolling') before the watchdog force-resyncs from RCON. A
 // normal roll/sync completes within seconds (first teamed poll after the boundary), so this only fires when the
 // state machine is genuinely wedged -- e.g. a roll whose real-layer NEW_GAME log never arrived.
@@ -106,6 +111,16 @@ export type State = {
 	// still-connected player. Only ever holds currently-absent, not-yet-culled players; entries self-prune.
 	pollAbsenceStreaks: Map<SM.PlayerId, number>
 
+	// consecutive teams polls in which a polled squad had no match in currTeams (keyed by team-squadId:creator).
+	// Once a streak reaches UNKNOWN_SQUAD_SYNTHESIS_THRESHOLD we assume the SQUAD_CREATED log was missed and
+	// synthesize the event from poll data instead of blocking team updates until the next RESET. Self-pruning.
+	unknownSquadStreaks: Map<string, number>
+
+	// the roster at the moment of the last RCON disconnect. When the reconnect resolves to the SAME match, the
+	// reseeding RESET reuses these squads' uniqueIds (an RCON blip shouldn't make every squad look recreated) and
+	// backfills name-derived player ids (usernameNoTag) that polls can't provide. Consumed on the next sync.
+	staleTeamsFromDisconnect: { matchId: number; teams: SM.UniqueTeams } | null
+
 	// players RCON currently reports without a team (still loading / unassigned). currTeams stays teamed-only, so
 	// these aren't in it yet. When one later appears teamed we recognize it as a backfill of a player we were
 	// already aware of (PLAYER_RECONCILED) rather than a fresh arrival (PLAYER_CONNECTED). Rebuilt every poll.
@@ -160,6 +175,8 @@ export function init(
 		admins: new Set(),
 		currTeams: null,
 		pollAbsenceStreaks: new Map(),
+		unknownSquadStreaks: new Map(),
+		staleTeamsFromDisconnect: null,
 		unassignedPlayers: new Set(),
 		nonSyncedSince: null,
 		expectedNewLayerId: null,
@@ -425,6 +442,17 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.UniqueTeams, even
 				break
 			}
 			const squad: SM.UniqueSquad = event.squad
+			const insertIndex = teams.squads.findIndex(s => s.squadId > squad.squadId)
+			if (insertIndex === -1) {
+				teams.squads.push(squad)
+			} else {
+				teams.squads.splice(insertIndex, 0, squad)
+			}
+			// a synthesized event carries no creation-time membership info; the join/promote events reconciled from
+			// the same poll establish it instead
+			if (event.synthesized) break
+			// the squad is tracked even when the creator can't be resolved (they may have already left) -- refusing to
+			// track it would deadlock poll reconciliation on the unknown squad. We just can't establish membership.
 			const creatorIndex = SM.PlayerIds.indexOf(teams.players, p => p.ids, event.squad.creator)
 			if (creatorIndex === -1) {
 				log.warn(
@@ -440,12 +468,6 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.UniqueTeams, even
 					`Creator ${SM.PlayerIds.prettyPrint(creator.ids)} is not in the same team as the squad they created ${SM.Squads.printKey(squad)}`,
 				)
 				break
-			}
-			const insertIndex = teams.squads.findIndex(s => s.squadId > squad.squadId)
-			if (insertIndex === -1) {
-				teams.squads.push(squad)
-			} else {
-				teams.squads.splice(insertIndex, 0, squad)
 			}
 			teams.players[creatorIndex] = { ...creator, isLeader: true, squadId: squad.squadId }
 			break
@@ -642,10 +664,14 @@ async function* processPendingEvent(
 		if (state.syncState.type !== 'rolling') {
 			state.syncState = { type: 'desynced' }
 		}
+		if (state.currTeams && state.currentMatch !== 'PENDING') {
+			state.staleTeamsFromDisconnect = { matchId: state.currentMatch.historyEntryId, teams: state.currTeams }
+		}
 		state.currTeams = null
 		// team state is gone; any pending forced-team-change attribution can no longer be matched to a poll
 		state.forcedTeamChanges.clear()
 		state.pollAbsenceStreaks.clear()
+		state.unknownSquadStreaks.clear()
 		state.unassignedPlayers.clear()
 		if (state.currentMatch !== 'PENDING') {
 			yield {
@@ -668,7 +694,10 @@ async function* processPendingEvent(
 		// snapshot); an empty server (no players at all) still syncs.
 		const teamedPlayers = pendingEvent.teams.players.filter(p => p.teamId != null)
 		if (pendingEvent.teams.players.length > 0 && teamedPlayers.length === 0) break outerIf
-		const teams = initUniqueTeams(state, { players: teamedPlayers, squads: pendingEvent.teams.squads })
+		const stale = state.staleTeamsFromDisconnect
+		state.staleTeamsFromDisconnect = null
+		const prior = stale ? { teams: stale.teams, sameMatch: stale.matchId === state.currentMatch.historyEntryId } : undefined
+		const teams = initUniqueTeams(state, { players: teamedPlayers, squads: pendingEvent.teams.squads }, prior)
 
 		// The definitive roster always arrives via RESET. For a new match the roster-less NEW_GAME boundary was
 		// already emitted at RCON_CONNECTED; a same-match reconnect emits only this RESET.
@@ -692,7 +721,9 @@ async function* processPendingEvent(
 		const teamedPlayers = pendingEvent.teams.players.filter(p => p.teamId != null)
 		if (pendingEvent.teams.players.length > 0 && teamedPlayers.length === 0) break outerIf
 
-		const teams = initUniqueTeams(state, { players: teamedPlayers, squads: pendingEvent.teams.squads })
+		// the stale pre-roll roster is a different match (never reuse squad ids), but its name-derived player ids carry over
+		const prior = state.currTeams ? { teams: state.currTeams, sameMatch: false } : undefined
+		const teams = initUniqueTeams(state, { players: teamedPlayers, squads: pendingEvent.teams.squads }, prior)
 		// The roster-less NEW_GAME(server-roll) boundary was emitted when the real-layer NEW_GAME log arrived; this
 		// first post-boundary poll carries the definitive roster as a RESET. The reducer applies it to currTeams.
 		yield {
@@ -714,6 +745,7 @@ async function* processPendingEvent(
 			// This preserves attribution lookups (getCurrTeams) across the loading screen and avoids a total blackout
 			// if the roll never completes. The absence streaks and unassigned set belong to the outgoing roster, reset them.
 			state.pollAbsenceStreaks.clear()
+			state.unknownSquadStreaks.clear()
 			state.unassignedPlayers.clear()
 			state.expectedNewLayerId = state.nextLayerId
 		} else {
@@ -996,7 +1028,7 @@ async function* processPendingEvent(
 		case 'SQUAD_CREATED': {
 			const factionId = L.getFactionIdForFactionNameInexact(pendingEvent.teamName)
 			if (!factionId) {
-				log.error(`unable to resolve faction id for team name ${pendingEvent.teamName}`)
+				log.error(`unable to resolve faction id for team name ${pendingEvent.teamName}; the squad will be synthesized from a teams poll`)
 				break
 			}
 			const layer = L.toLayer(state.currentMatch.layerId)
@@ -1007,7 +1039,9 @@ async function* processPendingEvent(
 			} else if (layer.Faction_2 && layer.Faction_2 === factionId) {
 				teamId = 2
 			} else {
-				log.error(`unable to resolve team id for squad created with team name ${pendingEvent.teamName} (factionId=${factionId})`)
+				log.error(
+					`unable to resolve team id for squad created with team name ${pendingEvent.teamName} (factionId=${factionId}); the squad will be synthesized from a teams poll`,
+				)
 				break
 			}
 
@@ -1022,9 +1056,6 @@ async function* processPendingEvent(
 			}
 
 			const player = SM.PlayerIds.find(state.currTeams?.players, p => p.ids, pendingEvent.creatorIds)
-			if (!player) {
-				break
-			}
 			const existingSquad = state.currTeams.squads.find(s => SM.Squads.idsEqual(s, squad))
 			if (existingSquad) {
 				for (const player of state.currTeams.players) {
@@ -1033,7 +1064,7 @@ async function* processPendingEvent(
 						type: 'PLAYER_LEFT_SQUAD',
 						id: Gen.next(state.counters.eventId),
 						player: SM.PlayerIds.getPlayerId(player.ids),
-						uniqueId: squad.uniqueId,
+						uniqueId: existingSquad.uniqueId,
 						matchId: state.currentMatch.historyEntryId,
 						time: pendingEvent.time,
 					}
@@ -1042,25 +1073,43 @@ async function* processPendingEvent(
 				yield {
 					type: 'SQUAD_DISBANDED',
 					id: Gen.next(state.counters.eventId),
-					uniqueId: squad.uniqueId,
+					uniqueId: existingSquad.uniqueId,
 					matchId: state.currentMatch.historyEntryId,
 					time: pendingEvent.time,
 				}
 			}
 
-			if (player.squadId && (!existingSquad || !SM.Squads.idsEqual(player, existingSquad))) {
-				yield* emitLeaveSquadEvents(state as StateWithCurrentMatchAndPlayers, pendingEvent.time, player, squad.uniqueId)
-			}
-
-			if (player.teamId !== teamId) {
-				yield {
-					type: 'PLAYER_CHANGED_TEAM',
-					id: Gen.next(state.counters.eventId),
-					player: SM.PlayerIds.getPlayerId(player.ids),
-					newTeamId: teamId,
-					time: pendingEvent.time,
-					matchId: state.currentMatch.historyEntryId,
+			if (player) {
+				if (player.squadId && (!existingSquad || !SM.Squads.idsEqual(player, existingSquad))) {
+					const playerSquad = state.currTeams.squads.find(s => SM.Squads.idsEqual(s, player))
+					if (playerSquad) {
+						yield* emitLeaveSquadEvents(state as StateWithCurrentMatchAndPlayers, pendingEvent.time, player, playerSquad.uniqueId)
+					} else {
+						log.warn(
+							`Player ${
+								SM.PlayerIds.prettyPrint(player.ids)
+							} is in a squad (${player.squadId}) but no squad was found in the current teams`,
+						)
+					}
 				}
+
+				if (player.teamId !== teamId) {
+					yield {
+						type: 'PLAYER_CHANGED_TEAM',
+						id: Gen.next(state.counters.eventId),
+						player: SM.PlayerIds.getPlayerId(player.ids),
+						newTeamId: teamId,
+						time: pendingEvent.time,
+						matchId: state.currentMatch.historyEntryId,
+					}
+				}
+			} else {
+				// the creator not being in currTeams yet (e.g. their connect was missed) is no reason to drop the
+				// squad; emit without the membership side effects and let poll reconciliation establish them
+				log.warn(
+					'SQUAD_CREATED: creator %s not found in currTeams; emitting without membership side effects',
+					SM.PlayerIds.prettyPrint(pendingEvent.creatorIds),
+				)
 			}
 
 			yield {
@@ -1077,7 +1126,12 @@ async function* processPendingEvent(
 			const player = SM.PlayerIds.find(state.currTeams.players, p => p.ids, pendingEvent.playerIds)
 			if (player) {
 				if (player.squadId) {
-					yield* emitLeaveSquadEvents(state as StateWithCurrentMatchAndPlayers, pendingEvent.time, player, player.squadId)
+					const squad = state.currTeams.squads.find(s => SM.Squads.idsEqual(s, player))
+					if (squad) {
+						yield* emitLeaveSquadEvents(state as StateWithCurrentMatchAndPlayers, pendingEvent.time, player, squad.uniqueId)
+					} else {
+						log.warn(`Squad not found for disconnecting player: ${SM.PlayerIds.prettyPrint(player.ids)}`)
+					}
 				}
 			} else {
 				log.warn(`Player not found on disconnect: ${SM.PlayerIds.prettyPrint(pendingEvent.playerIds)}`)
@@ -1174,7 +1228,20 @@ async function* processPendingEvent(
 
 		case 'PLAYER_DIED':
 		case 'PLAYER_WOUNDED': {
-			const victim = SM.PlayerIds.find(state.currTeams.players, p => p.ids, pendingEvent.victimIds)
+			// the log identifies the victim by display name only, which can diverge from the RCON roster name
+			// (tag/whitespace/unicode); fall back to a loose unique match rather than dropping the event
+			let victim = SM.PlayerIds.find(state.currTeams.players, p => p.ids, pendingEvent.victimIds)
+			if (!victim && pendingEvent.victimIds.username) {
+				victim = SM.PlayerIds.findByUsernameLoose(state.currTeams.players, p => p.ids, pendingEvent.victimIds.username)
+				if (victim) {
+					log.debug(
+						'resolved %s victim "%s" via loose username match -> %s',
+						pendingEvent.type,
+						pendingEvent.victimIds.username,
+						SM.PlayerIds.prettyPrint(victim.ids),
+					)
+				}
+			}
 			const attacker = SM.PlayerIds.find(state.currTeams.players, p => p.ids, pendingEvent.attackerIds)
 			if (!victim || !attacker) {
 				const missing: string[] = []
@@ -1340,18 +1407,52 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 		}
 	}
 
+	// we want the SQUAD_CREATED event to have always landed before attempting to process teams updates, so an unknown
+	// squad skips the cycle for a few polls to give the log pipeline time to deliver it. If it still hasn't landed
+	// (missed/unparseable/dropped log), the poll is authoritative at that point: synthesize the SQUAD_CREATED from
+	// poll data rather than blocking all team updates until the next RESET.
+	const currentUnknownSquadKeys = new Set<string>()
+	let awaitingSquadCreated = false
 	for (const squad of nextTeams.squads) {
 		const prevSquad = state.currTeams.squads.find(s => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
-		if (!prevSquad) {
-			// we want the SQUAD_CREATED event to have always landed before attempting to process teams updates
-			log.debug('Squad not found for update: %s, skipping update cycle', SM.Squads.printKey(squad))
-			return
+		if (prevSquad) {
+			nextSquads.push({
+				...squad,
+				uniqueId: prevSquad.uniqueId,
+			})
+			continue
 		}
-		nextSquads.push({
-			...squad,
-			uniqueId: prevSquad.uniqueId,
-		})
+		const key = `${SM.Squads.printKey(squad)}:${squad.creator}`
+		currentUnknownSquadKeys.add(key)
+		const streak = (state.unknownSquadStreaks.get(key) ?? 0) + 1
+		if (streak < UNKNOWN_SQUAD_SYNTHESIS_THRESHOLD) {
+			state.unknownSquadStreaks.set(key, streak)
+			log.debug('Squad not found for update: %s (streak %d), skipping update cycle', SM.Squads.printKey(squad), streak)
+			awaitingSquadCreated = true
+			continue
+		}
+		state.unknownSquadStreaks.delete(key)
+		const uniqueSquad: SM.UniqueSquad = { ...Obj.deepClone(squad), uniqueId: Gen.next(state.counters.squadId) }
+		log.warn(
+			'No SQUAD_CREATED landed for squad %s after %d polls; synthesizing it from the teams poll',
+			SM.Squads.printKey(squad),
+			UNKNOWN_SQUAD_SYNTHESIS_THRESHOLD,
+		)
+		emittedEvent = true
+		yield {
+			type: 'SQUAD_CREATED',
+			id: Gen.next(state.counters.eventId),
+			squad: uniqueSquad,
+			synthesized: true,
+			...base,
+		}
+		nextSquads.push(uniqueSquad)
 	}
+	// entries for squads that matched or vanished this poll are stale
+	for (const key of state.unknownSquadStreaks.keys()) {
+		if (!currentUnknownSquadKeys.has(key)) state.unknownSquadStreaks.delete(key)
+	}
+	if (awaitingSquadCreated) return
 
 	for (const nextPlayer of nextTeams.players) {
 		const playerId = SM.PlayerIds.getPlayerId(nextPlayer.ids)
@@ -1501,14 +1602,13 @@ function* emitLeaveSquadEvents(
 			matchId: state.currentMatch.historyEntryId,
 			source,
 		}
-		let otherPlayerCount = 0
+		const otherPlayers: SM.Player[] = []
 		for (const otherPlayer of state.currTeams.players) {
 			if (SM.Squads.idsEqual(otherPlayer, player) && !SM.PlayerIds.match(player.ids, otherPlayer.ids)) {
-				break
+				otherPlayers.push(otherPlayer)
 			}
-			otherPlayerCount++
 		}
-		if (otherPlayerCount === 0) {
+		if (otherPlayers.length === 0) {
 			yield {
 				type: 'SQUAD_DISBANDED',
 				id: Gen.next(state.counters.eventId),
@@ -1517,12 +1617,13 @@ function* emitLeaveSquadEvents(
 				matchId: state.currentMatch.historyEntryId,
 				source,
 			}
-		} else if (otherPlayerCount === 1) {
+		} else if (otherPlayers.length === 1) {
+			const otherPlayer = otherPlayers[0]
 			if (player.isLeader) {
 				yield {
 					type: 'PLAYER_PROMOTED_TO_LEADER',
 					id: Gen.next(state.counters.eventId),
-					player: SM.PlayerIds.getPlayerId(player.ids),
+					player: SM.PlayerIds.getPlayerId(otherPlayer.ids),
 					uniqueId: squadUniqueId,
 					time,
 					matchId: state.currentMatch.historyEntryId,
@@ -1532,11 +1633,25 @@ function* emitLeaveSquadEvents(
 	}
 }
 
-function initUniqueTeams(state: State, teams: SM.Teams) {
-	const uniqueSquads: SM.UniqueSquad[] = teams.squads.map(s => ({
-		...Obj.deepClone(s),
-		uniqueId: Gen.next(state.counters.squadId),
-	}))
-	const uniqueTeams: SM.UniqueTeams = { ...teams, squads: Obj.deepClone(uniqueSquads) }
+// `prior` (when available) carries identity across a reseed that RCON polls can't provide: usernameNoTag gathered
+// from join logs, and, for a same-match reseed (RCON blip), squad uniqueIds -- so a reconnect doesn't make every
+// squad look recreated.
+function initUniqueTeams(state: State, teams: SM.Teams, prior?: { teams: SM.UniqueTeams; sameMatch: boolean }) {
+	const players = teams.players.map(p => {
+		const prev = prior && SM.PlayerIds.find(prior.teams.players, pp => pp.ids, p.ids)
+		// only trust the cached name-derived id if the username is unchanged
+		if (!prev?.ids.usernameNoTag || prev.ids.username !== p.ids.username) return p
+		return { ...p, ids: { usernameNoTag: prev.ids.usernameNoTag, ...p.ids } }
+	})
+	const uniqueSquads: SM.UniqueSquad[] = teams.squads.map(s => {
+		const prev = prior?.sameMatch
+			? prior.teams.squads.find(ps => SM.Squads.idsEqual(ps, s) && ps.creator === s.creator)
+			: undefined
+		return {
+			...Obj.deepClone(s),
+			uniqueId: prev?.uniqueId ?? Gen.next(state.counters.squadId),
+		}
+	})
+	const uniqueTeams: SM.UniqueTeams = { ...teams, players, squads: Obj.deepClone(uniqueSquads) }
 	return uniqueTeams
 }

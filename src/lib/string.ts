@@ -37,7 +37,7 @@ export namespace StrPatterns {
 	export const PATH_SEGMENT = /[^/]+/
 }
 
-function normalizeForMatch(s: string) {
+export function normalizeForMatch(s: string) {
 	return s.replace(/[^\x20-\x7E]|\s/g, '').toLowerCase()
 }
 export function simpleStringMatch(names: string[], target: string) {

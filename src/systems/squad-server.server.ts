@@ -89,6 +89,10 @@ export type SquadServer = {
 	// if null, we haven't saved yet in this instantiation of the server
 	lastSavedEventId: number | null
 
+	// ids saveEvents has already processed (saved or skipped); guards against double-persisting an event id.
+	// Pruned alongside the emittedEvents rotation on match rollover.
+	savedEventIds: Set<number>
+
 	emittedEvents: SE.Event[]
 	// TODO we should slim down the context we provide here so that we're just transmitting span & logging info, and leave the listener to construct everything else
 	event$: Rx.Subject<[C.Db & C.ServerSlice, SE.Event]>
@@ -681,6 +685,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		emittedEvents: [],
 		emittedAppEvents: [],
 		lastSavedEventId: null,
+		savedEventIds: new Set(),
 		destroyed: false,
 		cleanupId: null,
 
@@ -1648,6 +1653,7 @@ const loadSavedEvents = C.spanOp(
 		const events = rowsRaw.map((r) => SE.fromEventRow(r.event))
 		server.lastSavedEventId = events[events.length - 1]?.id ?? null
 		server.emittedEvents = events
+		server.savedEventIds = new Set(events.map((e) => e.id))
 
 		const appEventRows = lastMatch
 			? await ctx
@@ -1661,8 +1667,6 @@ const loadSavedEvents = C.spanOp(
 	},
 )
 
-let prevEvents: Set<number> = new Set()
-
 type EventInsertRows = {
 	eventRow: SchemaModels.NewServerEvent
 	playerRows: SchemaModels.NewPlayer[]
@@ -1671,7 +1675,7 @@ type EventInsertRows = {
 	squadAssociationRows: SchemaModels.NewSquadEventAssociation[]
 }
 
-function buildEventRows(event: SE.Event): EventInsertRows {
+function buildEventRows(ctx: CS.Log, event: SE.Event): EventInsertRows {
 	const persisted = Obj.omit(event, ['id', 'type', 'time', 'matchId'])
 	// queryable projection of source when it links to an app event
 	const source = (event as { source?: { type: string; id?: string } }).source
@@ -1704,7 +1708,7 @@ function buildEventRows(event: SE.Event): EventInsertRows {
 
 	const squadRows: SchemaModels.NewSquad[] = []
 	const squadAssociationRows: SchemaModels.NewSquadEventAssociation[] = []
-	for (const squad of SE.iterAssocUniqueSquads(event)) {
+	for (const squad of SE.iterAssocUniqueSquads(ctx, event)) {
 		let uniqueSquadId: number
 		if (typeof squad === 'object') {
 			squadRows.push({
@@ -1788,10 +1792,30 @@ async function insertEventRows(ctx: C.Db, rows: EventInsertRows) {
 	}
 
 	if (rows.squadRows.length > 0) {
+		// creatorId references players.eosId, but the creator may have left before we ever persisted them (e.g. a
+		// squad snapshotted or synthesized from a poll). Null the reference out rather than failing the whole event.
+		const insertedEosIds = new Set(rows.playerRows.map((p) => p.eosId))
+		const creatorsToLookup = [
+			...new Set(rows.squadRows.map((s) => s.creatorId).filter((id): id is string => !!id && !insertedEosIds.has(id))),
+		]
+		let knownCreatorIds = new Set<string>()
+		if (creatorsToLookup.length > 0) {
+			const existingPlayers = await ctx
+				.db()
+				.select({ eosId: Schema.players.eosId })
+				.from(Schema.players)
+				.where(E.inArray(Schema.players.eosId, creatorsToLookup))
+			knownCreatorIds = new Set(existingPlayers.map((p) => p.eosId))
+		}
+		const squadRows = rows.squadRows.map((s) => {
+			if (!s.creatorId || insertedEosIds.has(s.creatorId) || knownCreatorIds.has(s.creatorId)) return s
+			log.warn('squad %d creator %s not in players table; inserting with null creatorId', s.id, s.creatorId)
+			return { ...s, creatorId: null }
+		})
 		await ctx
 			.db()
 			.insert(Schema.squads)
-			.values(rows.squadRows)
+			.values(squadRows)
 			.onConflictDoUpdate({
 				target: Schema.squads.id,
 				set: {
@@ -1846,33 +1870,51 @@ export const saveEvents = C.spanOp(
 		let savedCount = 0
 		let failedCount = 0
 		for (const event of events) {
-			if (prevEvents.has(event.id)) {
+			if (server.savedEventIds.has(event.id)) {
 				log.error('saveEvents: duplicate event id %d (%s), skipping', event.id, event.type)
 				server.lastSavedEventId = event.id
 				continue
 			}
 
-			const rows = buildEventRows(event)
+			const rows = buildEventRows({ ...CS.init(), log }, event)
 			try {
 				await DB.runTransaction(ctx, { redactParams: true }, (txCtx) => insertEventRows(txCtx, rows))
 				savedCount++
 			} catch (err) {
 				failedCount++
+				// err in the merge object so pino's error serializer includes message/stack (a %o format drops
+				// non-enumerable Error props, leaving just the code)
 				log.error(
-					'saveEvents: failed to persist event %d (%s); skipping it so the rest of the batch is not lost. full info: %o',
+					{ err, event, playerRows: rows.playerRows, squadRows: rows.squadRows },
+					'saveEvents: failed to persist event %d (%s); skipping it so the rest of the batch is not lost',
 					event.id,
 					event.type,
-					{ err, event, playerRows: rows.playerRows, squadRows: rows.squadRows },
 				)
 			}
 			// Advance past the event whether it committed or failed. Leaving the cursor behind a failed event would
 			// re-fail it on every flush and block every later event from ever being saved.
-			prevEvents.add(event.id)
+			server.savedEventIds.add(event.id)
 			server.lastSavedEventId = event.id
 		}
 
 		if (failedCount > 0) {
 			log.warn('saveEvents: persisted %d event(s), %d failed and were skipped', savedCount, failedCount)
+		}
+
+		// Everything before the current match is persisted and no longer served from memory; rotate it out so
+		// emittedEvents (and the duplicate-id set) don't grow for the life of the process. Mirrors what
+		// loadEventState keeps on slice boot. The cut is bounded by the save cursor: events can land for a NEW
+		// match while this flush's inserts are in flight, and cutting past the cursor would strand it (the next
+		// flush resolves lastSavedEventId by index).
+		const currentMatchId = server.emittedEvents[server.emittedEvents.length - 1]?.matchId
+		if (currentMatchId !== undefined && server.lastSavedEventId !== null) {
+			const firstCurrentIdx = server.emittedEvents.findIndex((e) => e.matchId === currentMatchId)
+			const cursorIdx = server.emittedEvents.findIndex((e) => e.id === server.lastSavedEventId)
+			const cutoff = Math.min(firstCurrentIdx, cursorIdx)
+			if (cutoff > 0) {
+				const dropped = server.emittedEvents.splice(0, cutoff)
+				for (const e of dropped) server.savedEventIds.delete(e.id)
+			}
 		}
 	},
 )

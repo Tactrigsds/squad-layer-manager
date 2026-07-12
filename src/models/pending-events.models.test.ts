@@ -1003,6 +1003,139 @@ describe('PendingEvents', () => {
 		return state
 	}
 
+	describe('unknown-squad SQUAD_CREATED synthesis', () => {
+		// Poll a roster where eos-001 is in squad 1, whose creator ('eos-ghost') already left the server, advancing the clock.
+		function pollWithUnknownSquad(state: PendingEvents.State, time: number, extraPlayers: SM.Player[] = []): Promise<SE.Event[]> {
+			const squad: SM.Squad = { squadId: 1, teamId: 1, creator: 'eos-ghost', squadName: 'Alpha', locked: false }
+			PendingEvents.onTeamsPolled(
+				state,
+				makeTeams([makePlayer('eos-001', 1, { squadId: 1, isLeader: true }), ...extraPlayers], [squad]),
+				time,
+			)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(time + 1))
+			return collect(state)
+		}
+
+		it('synthesizes SQUAD_CREATED once the unknown-squad poll streak reaches the threshold', async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
+
+			// polls 1-2: cycle held awaiting the creation log; no squad events yet
+			const batch1 = await pollWithUnknownSquad(state, 200)
+			expect(batch1.some(e => e.type === 'SQUAD_CREATED')).toBe(false)
+			// presence recovery still runs during held cycles
+			const batch2 = await pollWithUnknownSquad(state, 300, [makePlayer('eos-002', 2)])
+			expect(batch2.some(e => e.type === 'SQUAD_CREATED')).toBe(false)
+			expect(batch2.some(e => e.type === 'PLAYER_CONNECTED')).toBe(true)
+
+			// poll 3: threshold reached -> synthesized SQUAD_CREATED, with membership established from the same poll
+			const batch3 = await pollWithUnknownSquad(state, 400, [makePlayer('eos-002', 2)])
+			const created = batch3.find(e => e.type === 'SQUAD_CREATED') as SE.SquadCreated
+			expect(created).toMatchObject({
+				synthesized: true,
+				squad: expect.objectContaining({ squadId: 1, teamId: 1, creator: 'eos-ghost', squadName: 'Alpha' }),
+			})
+			expect(batch3.find(e => e.type === 'PLAYER_JOINED_SQUAD')).toMatchObject({
+				player: 'eos-001',
+				uniqueId: created.squad.uniqueId,
+			})
+			expect(batch3.some(e => e.type === 'PLAYER_PROMOTED_TO_LEADER')).toBe(true)
+
+			// the squad is tracked in currTeams despite the unresolvable creator
+			expect(state.currTeams?.squads.find(s => s.uniqueId === created.squad.uniqueId)).toBeDefined()
+			expect(state.currTeams?.players.find(p => p.ids.eos === 'eos-001')?.squadId).toBe(1)
+
+			// poll 4: the squad now matches normally; no re-synthesis
+			const batch4 = await pollWithUnknownSquad(state, 500, [makePlayer('eos-002', 2)])
+			expect(batch4.some(e => e.type === 'SQUAD_CREATED')).toBe(false)
+		})
+
+		it('resets the streak when the unknown squad disappears from a poll', async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
+
+			await pollWithUnknownSquad(state, 200)
+			await pollWithUnknownSquad(state, 300)
+
+			// squad vanishes -> streak entry pruned
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1)]), 400)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(401))
+			await collect(state)
+
+			// reappears: a fresh threshold's worth of polls is required again
+			const batch = await pollWithUnknownSquad(state, 500)
+			expect(batch.some(e => e.type === 'SQUAD_CREATED')).toBe(false)
+		})
+	})
+
+	describe('reconnect roster reseed', () => {
+		const rosterTeams = () =>
+			makeTeams(
+				[makePlayer('eos-001', 1, { squadId: 1, isLeader: true })],
+				[{ squadId: 1, teamId: 1, creator: 'eos-001', squadName: 'Alpha', locked: false }],
+			)
+
+		it('preserves squad uniqueIds when the reconnect resolves to the same match', async () => {
+			const { state } = makeState({ isNewMatch: false })
+			const events1 = await syncUp(state, { teams: rosterTeams() })
+			const reset1 = events1.find(e => e.type === 'RESET') as SE.Reset
+			const originalUniqueId = reset1.state.squads[0].uniqueId
+
+			PendingEvents.onRconDisconnected(state, 300)
+			await collect(state)
+
+			PendingEvents.onRconConnected(state, 400, LAYER_A, LAYER_A)
+			PendingEvents.onTeamsPolled(state, rosterTeams(), 410)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(411))
+			const events2 = await collect(state)
+			const reset2 = events2.find(e => e.type === 'RESET') as SE.Reset
+			expect(reset2.state.squads[0].uniqueId).toBe(originalUniqueId)
+		})
+
+		it('mints fresh uniqueIds when the reconnect resolves to a different match', async () => {
+			const { state, hooks } = makeState({ isNewMatch: false })
+			const events1 = await syncUp(state, { teams: rosterTeams() })
+			const reset1 = events1.find(e => e.type === 'RESET') as SE.Reset
+			const originalUniqueId = reset1.state.squads[0].uniqueId
+
+			PendingEvents.onRconDisconnected(state, 300)
+			await collect(state)
+			;(hooks.onNewGameDuringSync as ReturnType<typeof vi.fn>).mockResolvedValue({
+				match: makeMatchDetails(99, LAYER_A),
+				isNewMatch: true,
+			})
+			PendingEvents.onRconConnected(state, 400, LAYER_A, LAYER_A)
+			PendingEvents.onTeamsPolled(state, rosterTeams(), 410)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(411))
+			const events2 = await collect(state)
+			const reset2 = events2.find(e => e.type === 'RESET') as SE.Reset
+			expect(reset2.state.squads[0].uniqueId).not.toBe(originalUniqueId)
+		})
+	})
+
+	describe('died/wounded victim resolution', () => {
+		it('resolves a victim whose log name diverges from the RCON name via loose username match', async () => {
+			const victim = makePlayer('eos-vic', 1)
+			victim.ids.username = '『LiQ』  HoneyBooBoo rides again'
+			const attacker = makePlayer('eos-atk', 2)
+			const state = makeSyncedState([victim, attacker], [])
+
+			PendingEvents.onLogEvent(state, {
+				type: 'PLAYER_DIED',
+				time: 1100,
+				chainID: 1,
+				raw: '',
+				damage: 300,
+				weapon: 'BP_Soldier',
+				victimIds: { username: 'HoneyBooBoo rides again' },
+				attackerIds: { eos: 'eos-atk', playerController: 'ctrl_eos-atk' },
+			})
+			const events = await collect(state)
+			const died = events.find(e => e.type === 'PLAYER_DIED') as SE.PlayerDied
+			expect(died).toBeDefined()
+			expect(died.victim).toBe('eos-vic')
+			expect(died.attacker).toBe('eos-atk')
+		})
+	})
+
 	describe('application-event attribution (warn expectations)', () => {
 		function warnEvent(reason: string, username: string, time: number): SM.RconEvents.Event {
 			return { type: 'PLAYER_WARNED', time, reason, playerIds: { username } }
