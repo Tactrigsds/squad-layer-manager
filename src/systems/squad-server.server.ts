@@ -1409,8 +1409,9 @@ function mergeEventsByTime(serverEvents: SE.Event[], appEvents: AppEvents.AppEve
 	return [...wrapped, ...serverEvents].sort((a, b) => timeOf(a) - timeOf(b))
 }
 
-export async function destroyServer(ctx: C.ServerSlice) {
+const destroyServer = C.spanOp('destroyServer', { module, levels: { event: 'info' } }, async (ctx: C.ServerSlice) => {
 	if (ctx.server.destroyed) return
+	log.info(`destroying server slice ${ctx.serverId}`)
 	ctx.server.destroyed = true
 	sliceAbortControllers.get(ctx.serverId)?.abort(new DOMException('server slice destroyed', 'AbortError'))
 	sliceAbortControllers.delete(ctx.serverId)
@@ -1420,7 +1421,7 @@ export async function destroyServer(ctx: C.ServerSlice) {
 	// we're not dealing with mutexes yet Sadge
 	globalState.slices.delete(ctx.serverId)
 	globalState.sliceLifecycleUpdate$.next(ctx.serverId)
-}
+})
 
 export async function getFullServerState(ctx: C.Db & C.LayerQueue) {
 	const query = ctx
