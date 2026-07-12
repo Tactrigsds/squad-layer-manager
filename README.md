@@ -2,39 +2,23 @@
 
 A Tool for managing the upcoming layers of a squad server.
 
-## Configuration
+## Deployment
 
-Configuration is done via two files: `.env` and `config.json`.
+Deployment is done via docker.
+
+An image reflecting the `main` branch of the repository is available at `ghcr.io/tactrigsds/squad-layer-manager:latest`. the /app/data folder is expected to be bind-mounted for persistence
+
+## Configuration
 
 - `.env` contains sensitive secrets, and can be overridden by environment
   variables. Reference [src/server/env.ts](src/server/env.ts) for available
   options.
-- `config.json` contains various configuration options for the server. Reference
-  [src/server/config.ts](src/server/config.ts) for available options.
-  `config.json` has a generated schema file at `assets/config-schema.json`. This
-  file can be used to validate the configuration file in an editor like VSCode
-  by including a reference to the schema definition:
 
-```json5
-{
-    "$schema": "assets/config-schema.json",
-    // ... rest of configuration
-}
-```
-
-if using the docker compose for dev, the otel container will fill up your disk space . // TODO this should be fixed
-
-The application must be fully restarted to before changes to the configuration
-take effect.
-
-## Deployment
-
-Deployment is generally done through docker. See example script at
-[src/scripts/docker-run.sh](src/scripts/docker-run.sh).
+- The rest of the configuration is done via the app, though there is a script included `edit-global-settings.sh` if you need to manage it from outside the app
 
 ## Logging
 
-Logging and traces are managed with the otel-ltm stack, see [docker-compose.yaml](docker-compose.yaml) for details.
+Logging and traces can be managed via the otel-ltm stack, see [docker-compose.yaml](docker-compose.yaml) for an example.
 
 ## Battlemetrics
 
