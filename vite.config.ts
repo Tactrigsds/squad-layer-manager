@@ -101,6 +101,8 @@ export default defineConfig({
 	test: {
 		// layer data is loaded at runtime rather than bundled, so tests need it loaded up-front
 		setupFiles: ['./src/vitest-setup.ts'],
+		// integration tests boot the whole app; they run via `pnpm test:integration` (vitest.integration.config.ts)
+		exclude: ['**/node_modules/**', 'test/integration/**'],
 	},
 })
 
