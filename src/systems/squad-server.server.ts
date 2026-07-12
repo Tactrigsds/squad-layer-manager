@@ -25,12 +25,14 @@ import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as MH from '@/models/match-history.models'
+import * as ATTRS from '@/models/otel-attrs'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
 import * as SS from '@/models/server-state.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as SM from '@/models/squad.models'
 import * as AppEventsSys from '@/systems/app-events.server'
+import * as Otel from '@opentelemetry/api'
 
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
@@ -61,6 +63,25 @@ import superjson from 'superjson'
 import { z } from 'zod'
 
 const module = initModule('squad-server')
+
+const meter = Otel.metrics.getMeter('squad-server')
+
+const logLineCounter = meter.createCounter(ATTRS.SquadLogs.LINES, {
+	description: 'Squad log lines ingested, by server and log source',
+})
+
+const logIoCounter = meter.createCounter(ATTRS.SquadLogs.IO, {
+	description: 'Bytes of squad log data ingested, by server and log source',
+	unit: 'By',
+})
+
+const logEventCounter = meter.createCounter(ATTRS.SquadLogs.EVENTS, {
+	description: 'Squad log events successfully parsed out of the log stream, by server and log source',
+})
+
+const serverEventCounter = meter.createCounter(ATTRS.ServerEvent.EMITTED, {
+	description: 'Server events emitted on event$, by server and event type',
+})
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
 
@@ -819,10 +840,27 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			assertNever(settings.connections.logs)
 		}
 
+		// Counted on the way in, at the one point both log sources (sftp poll and log-receiver push)
+		// funnel through, so the numbers mean the same thing regardless of which one a server uses. A
+		// chunk is not line-aligned, so lines are counted by newline rather than by split length: a
+		// chunk that splits a line in half would otherwise count it twice.
+		const logSource = settings.connections.logs.type satisfies ATTRS.SquadLogs.Source
+		const countedChunk$ = chunk$.pipe(
+			Rx.tap((chunk) => {
+				const attrs = { [ATTRS.SquadServer.ID]: serverId, [ATTRS.SquadLogs.SOURCE]: logSource }
+				logIoCounter.add(Buffer.byteLength(chunk, 'utf8'), attrs)
+				let lines = 0
+				for (let i = 0; i < chunk.length; i++) {
+					if (chunk[i] === '\n') lines++
+				}
+				if (lines > 0) logLineCounter.add(lines, attrs)
+			}),
+		)
+
 		const errors: Error[] = []
 		for await (
 			const event of SM.LogEvents.parseLogStream(
-				toAsyncGenerator(chunk$.pipe(withAbortSignal(logStreamAc.signal))),
+				toAsyncGenerator(countedChunk$.pipe(withAbortSignal(logStreamAc.signal))),
 				errors,
 				(rate) => server.tickRate$.next(rate),
 			)
@@ -836,6 +874,8 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 				log.warn('No log event to process')
 				return
 			}
+
+			logEventCounter.add(1, { [ATTRS.SquadServer.ID]: serverId, [ATTRS.SquadLogs.SOURCE]: logSource })
 
 			await collectEvents(ctx, () => {
 				PendingEvents.onLogEvent(ctx.server.eventState, event)
@@ -1420,6 +1460,11 @@ async function collectEvents(
 			Date.now(),
 		)
 	) {
+		// the single funnel for every server event, whatever produced it
+		serverEventCounter.add(1, {
+			[ATTRS.SquadServer.ID]: ctx.serverId,
+			[ATTRS.ServerEvent.TYPE]: event.type,
+		})
 		ctx.server.event$.next([resolveSliceCtx(ctx, ctx.serverId), event])
 	}
 }

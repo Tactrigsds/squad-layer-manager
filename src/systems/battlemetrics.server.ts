@@ -213,7 +213,7 @@ function drainQueue() {
 
 const meter = Otel.metrics.getMeter('battlemetrics')
 
-meter.createObservableGauge(ATTRS.Battlemetrics.RateLimit.PER_SECOND, {
+meter.createObservableGauge(ATTRS.Battlemetrics.REQUESTS_PER_SECOND, {
 	description: 'Number of BattleMetrics API requests in the last 1s window',
 }).addCallback((result) => {
 	const now = Date.now()
@@ -221,7 +221,7 @@ meter.createObservableGauge(ATTRS.Battlemetrics.RateLimit.PER_SECOND, {
 	result.observe(countInWindow(now, 1_000))
 })
 
-meter.createObservableGauge(ATTRS.Battlemetrics.RateLimit.PER_MINUTE, {
+meter.createObservableGauge(ATTRS.Battlemetrics.REQUESTS_PER_MINUTE, {
 	description: 'Number of BattleMetrics API requests in the last 60s window',
 }).addCallback((result) => {
 	const now = Date.now()
@@ -229,7 +229,7 @@ meter.createObservableGauge(ATTRS.Battlemetrics.RateLimit.PER_MINUTE, {
 	result.observe(countInWindow(now, 60_000))
 })
 
-meter.createObservableGauge(ATTRS.Battlemetrics.RateLimit.QUEUE_SIZE, {
+meter.createObservableGauge(ATTRS.Battlemetrics.QUEUE_SIZE, {
 	description: 'Number of queued BattleMetrics API requests waiting for a rate limit slot',
 }).addCallback((result) => {
 	result.observe(rateLimiter.queue.length)

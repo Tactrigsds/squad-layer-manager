@@ -29,6 +29,9 @@ export namespace Module {
 export namespace WebSocket {
 	export const CLIENT_ID = 'slm.websocket.client_id'
 	export const CONNECTED_CLIENTS = 'slm.websocket.connected_clients'
+	export const CONNECTIONS = 'slm.websocket.connections'
+	export const MESSAGES = 'slm.websocket.messages'
+	export const IO = 'slm.websocket.io'
 }
 
 export namespace Span {
@@ -48,9 +51,37 @@ export namespace Orpc {
 	export const PATH = 'slm.orpc.path'
 }
 
+// Shared by every byte/message counter, so throughput can be summed or split by direction uniformly.
+export namespace IO {
+	export const DIRECTION = 'slm.io.direction'
+	export type Direction = 'sent' | 'received'
+}
+
 export namespace Rcon {
+	// The command verb only (`ListPlayers`, `AdminKick`, ...). Bounded, so it is safe as a metric
+	// dimension and useful to group by in TraceQL. The full command text goes on BODY instead: it
+	// carries player names and kick reasons, which would be unbounded as a metric label.
 	export const COMMAND = 'slm.rcon.command'
+	export const BODY = 'slm.rcon.body'
 	export const CONNECTED = 'slm.rcon.connected'
+	export const REQUESTS = 'slm.rcon.requests'
+	export const IO = 'slm.rcon.io'
+}
+
+export namespace SquadLogs {
+	export const SOURCE = 'slm.squad_logs.source'
+	export type Source = 'sftp' | 'log-receiver'
+	export const LINES = 'slm.squad_logs.lines'
+	export const IO = 'slm.squad_logs.io'
+	export const EVENTS = 'slm.squad_logs.events'
+}
+
+// Server events are the app's own domain events, downstream of both log parsing and rcon polling, so
+// this is deliberately not the same number as SquadLogs.EVENTS: one parsed log event can fan out into
+// several server events, and some server events have no log line behind them at all.
+export namespace ServerEvent {
+	export const EMITTED = 'slm.server_events'
+	export const TYPE = 'slm.server_event.type'
 }
 
 export namespace LayerQueue {
@@ -119,12 +150,13 @@ export function formatUserId(id: { discordId?: bigint; steamId?: string } | 'aut
 	return undefined
 }
 
+// These are the BattleMetrics metrics, not a "rate limit" subsystem: the request counts happen to be
+// the thing the rate limiter shapes, but they are the useful numbers regardless of whether we are
+// anywhere near a limit. Also the only metrics we had that were not under the slm.* prefix.
 export namespace Battlemetrics {
-	export namespace RateLimit {
-		export const PER_SECOND = 'battlemetrics.rate_limit.per_second'
-		export const PER_MINUTE = 'battlemetrics.rate_limit.per_minute'
-		export const QUEUE_SIZE = 'battlemetrics.rate_limit.queue_size'
-	}
+	export const REQUESTS_PER_SECOND = 'slm.battlemetrics.requests_per_second'
+	export const REQUESTS_PER_MINUTE = 'slm.battlemetrics.requests_per_minute'
+	export const QUEUE_SIZE = 'slm.battlemetrics.queue_size'
 }
 
 export namespace SpanLink {

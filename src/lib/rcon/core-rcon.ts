@@ -26,6 +26,24 @@ export function setup() {
 	log = module.getLogger()
 }
 
+const meter = Otel.metrics.getMeter('core-rcon')
+
+const requestCounter = meter.createCounter(ATTRS.Rcon.REQUESTS, {
+	description: 'RCON commands issued, by server, command verb and outcome',
+})
+
+const ioCounter = meter.createCounter(ATTRS.Rcon.IO, {
+	description: 'Bytes moved over the RCON socket, by server and direction',
+	unit: 'By',
+})
+
+// The verb, not the whole command. `AdminKick "7656..." being a dick` is unique per invocation, so
+// using the raw body as a metric dimension would mint a new series per kick.
+function commandVerb(body: string): string {
+	const verb = body.trim().split(/\s+/, 1)[0]
+	return verb || 'unknown'
+}
+
 type Events = {
 	server: [C.OtelCtx, DecodedPacket]
 	auth: []
@@ -126,7 +144,7 @@ export default class Rcon extends EventEmitter<Events> {
 		{
 			module,
 			kind: Otel.SpanKind.CLIENT,
-			attrs: (body) => ({ [ATTRS.Rcon.COMMAND]: body }),
+			attrs: (body) => ({ [ATTRS.Rcon.COMMAND]: commandVerb(body), [ATTRS.Rcon.BODY]: body }),
 			levels: { event: (body, opts) => opts?.level ?? 'trace' },
 			extraText: (body) => body,
 		},
@@ -137,6 +155,15 @@ export default class Rcon extends EventEmitter<Events> {
 			if (typeof body !== 'string') {
 				throw new Error('Rcon.execute() body must be a string.')
 			}
+			// counted here rather than in #write: one logical request is two socket writes (the command
+			// plus a terminator), and a request that never reaches the socket (disconnected, oversize)
+			// still needs to show up as an attempt.
+			const recordOutcome = (outcome: ATTRS.Op.Outcome) =>
+				requestCounter.add(1, {
+					[ATTRS.SquadServer.ID]: this.serverId,
+					[ATTRS.Rcon.COMMAND]: commandVerb(body),
+					[ATTRS.Op.OUTCOME]: outcome,
+				})
 			_opts?.signal?.throwIfAborted()
 			if (!this.connected) {
 				const reconnected$ = this.connected$.pipe(Rx.filter(connected => connected), Rx.take(1))
@@ -147,14 +174,22 @@ export default class Rcon extends EventEmitter<Events> {
 					]),
 					_opts?.signal,
 				)
-				if (!res) return ({ code: 'err:rcon' as const, msg: `Rcon response timed out` })
+				if (!res) {
+					recordOutcome('error')
+					return ({ code: 'err:rcon' as const, msg: `Rcon response timed out` })
+				}
 			}
-			if (!this.connected) return { code: 'err:rcon' as const, msg: "Couldn't establish connection with server" }
+			if (!this.connected) {
+				recordOutcome('error')
+				return { code: 'err:rcon' as const, msg: "Couldn't establish connection with server" }
+			}
 			if (!this.client?.writable) {
+				recordOutcome('error')
 				return { code: 'err:rcon' as const, msg: 'Unable to write to node:net socket.' }
 			}
 			const length = Buffer.from(body).length
 			if (length > SM.RCON_MAX_BUF_LEN) {
+				recordOutcome('error')
 				return { code: 'err:rcon' as const, msg: `Oversize, "" > ${SM.RCON_MAX_BUF_LEN}.` }
 			} else {
 				if (this.msgId > 80) this.msgId = 20
@@ -163,7 +198,9 @@ export default class Rcon extends EventEmitter<Events> {
 				const response$ = Rx.fromEvent(this, listenerId).pipe(Rx.take(1), Rx.map(data => ({ code: 'ok' as const, data: data as string })))
 				this.#send(body, this.msgId)
 				this.msgId++
-				return await firstValueFrom(Rx.race(timeout$, response$), _opts?.signal)
+				const result = await firstValueFrom(Rx.race(timeout$, response$), _opts?.signal)
+				recordOutcome(result.code === 'ok' ? 'ok' : 'error')
+				return result
 			}
 		},
 	)
@@ -171,7 +208,7 @@ export default class Rcon extends EventEmitter<Events> {
 	#sendAuth(): void {
 		log.trace(`Sending Token to: ${this.settings.host}:${this.settings.port}`)
 		log.trace(`Writing packet with type "${this.type.auth}" and body "${this.settings.password}".`)
-		this.client?.write(this.#encode(this.type.auth, 2147483647, this.settings.password).toString('binary'), 'binary')
+		this.#writeBuf(this.#encode(this.type.auth, 2147483647, this.settings.password))
 	}
 
 	#send(body: string, id = 99): void {
@@ -181,7 +218,18 @@ export default class Rcon extends EventEmitter<Events> {
 
 	#write(type: number, id: number, body?: string): void {
 		log.trace(`Writing packet with type "${type}", id "${id}" and body "${body || ''}".`)
-		this.client?.write(this.#encode(type, id, body).toString('binary'), 'binary')
+		this.#writeBuf(this.#encode(type, id, body))
+	}
+
+	// the one place bytes leave the socket, so the auth handshake is counted too rather than only
+	// command traffic. The payload is written as latin1, which is one byte per char, so the buffer's
+	// byteLength is what actually goes on the wire.
+	#writeBuf(buf: Buffer): void {
+		ioCounter.add(buf.byteLength, {
+			[ATTRS.SquadServer.ID]: this.serverId,
+			[ATTRS.IO.DIRECTION]: 'sent' satisfies ATTRS.IO.Direction,
+		})
+		this.client?.write(buf.toString('binary'), 'binary')
 	}
 
 	#encode(type: number, id: number, body = ''): Buffer {
@@ -196,6 +244,10 @@ export default class Rcon extends EventEmitter<Events> {
 	}
 
 	#onData(data: Buffer): void {
+		ioCounter.add(data.byteLength, {
+			[ATTRS.SquadServer.ID]: this.serverId,
+			[ATTRS.IO.DIRECTION]: 'received' satisfies ATTRS.IO.Direction,
+		})
 		this.stream = Buffer.concat([this.stream, data], this.stream.byteLength + data.byteLength)
 		while (this.stream.byteLength >= 7) {
 			const packet = this.#decode()
