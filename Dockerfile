@@ -59,9 +59,6 @@ COPY --from=builder /app/register-otel.mjs ./register-otel.mjs
 # Copy necessary runtime files
 COPY --from=builder /app/drizzle-sqlite ./drizzle-sqlite
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
-# Default extra-cols config, read by both the server and `pnpm run preprocess:prod`
-# (LAYER_DB_CONFIG_PATH, default ./layer-db.json). A runtime override still takes precedence.
-COPY --from=builder /app/layer-db.json ./layer-db.json
 
 # Set runtime environment
 ENV NODE_ENV=production
