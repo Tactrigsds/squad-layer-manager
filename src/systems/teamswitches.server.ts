@@ -200,43 +200,14 @@ export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 	ctx.cleanup.push(
 		ctx.server.event$.pipe(
 			Rx.filter(([, e]) => e.type === 'NEW_GAME'),
+			Rx.delay(2000),
 			C.durableSub('performTeamswitches', { module, taskScheduling: 'switch' }, async ([ctx], signal) => {
-				const settled = await waitForSettledRoster({ ...ctx, signal }, SETTLED_ROSTER_TIMEOUT_MS)
-				if (signal.aborted) return
-				if (!settled) {
-					log.warn('roster did not settle within timeout after new game; skipping scheduled teamswitches')
-					return
-				}
 				await dispatchOp({ ...ctx, signal }, [{ opId: TSW.createOpId(), code: 'execute-teamswitches' }])
 			}),
 		).subscribe(),
 	)
 
 	return context
-}
-
-// generous enough to cover the staging period while players load into the new match and get assigned teams
-const SETTLED_ROSTER_TIMEOUT_MS = 10_000
-
-// Wait until the current match's roster has settled -- every player assigned to a team -- then return it, or null
-// on timeout/abort. Observes live RCON ListPlayers (not the teamed-only currTeams snapshot) so it sees players who
-// are still loading, and only trusts a poll once we're 'synced' (the RESET has landed) so it reflects the new
-// match rather than a stale transitional / previous-match roster.
-function waitForSettledRoster(
-	ctx: C.SquadServer & C.Rcon & C.AdminList & CS.AbortSignal,
-	timeoutMs: number,
-): Promise<SM.Player[] | null> {
-	return Rx.firstValueFrom(
-		ctx.server.teams.observe(ctx, { ttl: 1000 }).pipe(
-			Rx.filter((res): res is Extract<SM.TeamsRes, { code: 'ok' }> =>
-				res.code === 'ok' && ctx.server.eventState.syncState.type === 'synced' && SM.allPlayersTeamed(res.players)
-			),
-			Rx.map(res => res.players),
-			Rx.takeUntil(Rx.timer(timeoutMs)),
-			withAbortSignal(ctx.signal),
-		),
-		{ defaultValue: null },
-	)
 }
 
 function getState(ctx: C.Teamswitch) {
