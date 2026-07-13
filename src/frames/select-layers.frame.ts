@@ -237,7 +237,7 @@ function getFilterMenuDefaultFields(editedLayerId: L.LayerId | undefined, colCon
 		if (layer.Gamemode === 'Training') {
 			defaults = { Gamemode: 'Training' }
 		} else {
-			defaults = Obj.exclude(layer, ['Alliance_1', 'Alliance_2', 'id', 'Size'])
+			defaults = Obj.exclude(layer, ['Alliance_1', 'Alliance_2', 'id', 'Size', 'Collection'])
 			for (const [key, value] of Obj.objEntries(defaults)) {
 				if (value === undefined) continue
 				const colDef = LC.getColumnDef(key)
