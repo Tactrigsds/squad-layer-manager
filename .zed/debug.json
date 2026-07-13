@@ -1,0 +1,23 @@
+// Project-local debug tasks
+//
+// For more documentation on how to configure debug tasks,
+// see: https://zed.dev/docs/debugger
+[
+	{
+		"adapter": "JavaScript",
+		"label": "SLM Client",
+		"type": "chrome",
+		"request": "launch",
+		"url": "http://localhost:5173",
+		"console": "integratedTerminal",
+		"skipFiles": ["<node_internals>/**"]
+	},
+	{
+		"adapter": "JavaScript",
+		"label": "SLM Server",
+		"type": "node",
+		"request": "attach",
+		"port": 9229,
+		"sourceMaps": true
+	}
+]
