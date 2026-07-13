@@ -7,9 +7,6 @@ Prefer copy-on-write in most cases unless it's proven to be safe to do so, or is
 Async functions should by-default have the option to pass a signal to cancel an operation. if it's a non-lib function, the signal should be passed via the ctx object (see src/models/context-shared.ts). The client is not yet converted to this pattern, so use your best judgement on when to upgrade a function. Always avoid dangling promises.
 
 When branching on unions(especially discriminated unions), generally use `assertNever()` from src/lib/type-guards.ts to cover off the default case so that type errors are raised if we add new members to the union.
-
-Unit tests should be reserved for code with two properties: being actually complex, and being largely self-contained, or at least isolatable. We will be introducing integration tests at a later time. Use `vitest`. Tests that are harder to judge the correctness of than the code they test are largely useless.
-
 Use namespace imports for all nontrivial modules, unless established convention for that module contradicts this. Make sure that the chosen namespace is consistent and unique across the app, except for special cases like things imported into context.ts or context-shared.ts. Use convenient abbreviations or acronyms for commonly used lib modules, model modules, and imported packages
 
 Avoid comments which trivially explain what a piece of code does. Only leave a comment if there's something non-obvious going on, or to explain why a particular approach was taken.
@@ -51,6 +48,11 @@ Generally speaking, actions by the user should be handled at the top level by a 
 Never export non-components from .tsx files, as it breaks hot module replacement.
 
 Avoid controlled inputs and textareas (don't set `value`). Do the same for other fields that are latency-sensitive. make sure we debounce inputs which may otherwise cause frequent re-renders.
+
+# Testing
+
+Unit tests should be reserved for code with two properties: being actually complex, and being largely self-contained, or at least isolatable. Do not write unit tests for trivial code.
+Most complex features should be instead covered by integration/e2e tests. Don't try to exhaustively excerise all codepaths -- focus on particularly tricky ones. If convenient, semantic html tags that make the playwright code(and accessibility as a side-effect) better.
 
 # Migrations
 
