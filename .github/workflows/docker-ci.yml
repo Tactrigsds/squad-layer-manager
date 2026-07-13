@@ -137,9 +137,15 @@ jobs:
       - name: Run tests
         run: pnpm run test
 
+  # the integration/e2e suites, called as a job so that tagging and deploying can gate on them
+  integration-tests:
+    uses: ./.github/workflows/integration-tests.yml
+    permissions:
+      contents: read
+
   tag-latest:
     runs-on: ubuntu-latest
-    needs: [build, quality-checks]
+    needs: [build, quality-checks, integration-tests]
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Login to GitHub Container Registry
@@ -160,7 +166,7 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    needs: [build, quality-checks, tag-latest]
+    needs: [build, quality-checks, integration-tests, tag-latest]
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Run deployment script from variable

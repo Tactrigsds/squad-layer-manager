@@ -4,9 +4,10 @@ name: SLM Integration Tests
 # the same client build, and the same server bundle the deployment runs (the tests spawn it). What's
 # added is a browser, the test sources, and dev dependencies. See the Dockerfile's test stage.
 
+# On pushes to main/dev this runs as a called job of the Docker CI workflow, so that tagging :latest and
+# deploying can depend on it (`needs` can't cross workflow boundaries). On PRs it runs on its own.
 on:
-  push:
-    branches: ["main", "dev"]
+  workflow_call:
   pull_request:
 
 permissions:
