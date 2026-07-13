@@ -15,8 +15,9 @@ export function getSettings() {
 	return PublicSettingsStore.getState()
 }
 
-// whether the given admin action is configured to require a reason (enforced server-side; used to gate web dialogs)
-export function useReasonRequired(action: AAR.AdminActionType): boolean {
+// whether the given admin action is configured to require a reason (enforced server-side; used to gate web dialogs).
+// warns aren't configurable here: they always require one.
+export function useReasonRequired(action: AAR.RequirableAdminActionType): boolean {
 	return ZusUtils.useStore(PublicSettingsStore, s => s?.requireReasonFor.includes(action) ?? false)
 }
 

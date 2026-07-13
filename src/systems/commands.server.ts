@@ -13,6 +13,7 @@ import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import type * as TSW from '@/models/teamswitches.models'
 import type * as USR from '@/models/users.models'
+import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
@@ -115,7 +116,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 	return await handlers[cmd](h, resolved.args as never)
 }
 
-// configurable fixed-duration kick aliases (e.g. !yeet = kick with 2h). Admin chat only.
+// configurable fixed-duration timeout aliases (e.g. !yeet = timeout with 2h). Admin chat only.
 async function tryTimeoutAlias(h: HandlerCtx): Promise<HandlerResult | undefined> {
 	if (h.msg.channelType !== 'ChatAdmin') return undefined
 	const words = h.msg.message.split(/\s+/)
@@ -132,7 +133,7 @@ async function tryTimeoutAlias(h: HandlerCtx): Promise<HandlerResult | undefined
 	}
 	if (resolved.code !== 'ok') return await h.error('invalid-args', resolved.msg)
 	const args = resolved.args as CMD.ResolvedArgs<typeof CMD.TIMEOUT_ALIAS_ARG_DEFS>
-	return await executeKick(h, [args.player], alias.duration, args.reason, args.player.ids.username)
+	return await executeTimeout(h, [args.player], alias.duration, args.reason, args.player.ids.username)
 }
 
 // resolves a chat team token: 1|2, normalized A|B, or the faction name of the current layer
@@ -663,15 +664,12 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			await h.reply('No admin action reasons are configured')
 			return { code: 'ok' }
 		}
-		// label + aliases + the actions each reason is set up for (every reason is implicitly a warn reason); the
-		// texts themselves are looked up at use time
-		const actionsFor = (r: AAR.AdminActionReason) => {
-			const labels = [AAR.ADMIN_ACTIONS.warn.displayName]
-			for (const a of AAR.EXECUTABLE_ADMIN_ACTION_TYPE.options) {
-				if (r.actionTexts[a] !== undefined) labels.push(AAR.ADMIN_ACTIONS[a].displayName)
-			}
-			return labels.join(', ')
-		}
+		// label + aliases + the actions each reason is set up for; the texts themselves are looked up at use time
+		const actionsFor = (r: AAR.AdminActionReason) =>
+			AAR.ADMIN_ACTION_TYPE.options
+				.filter((a) => r.actionTexts[a] !== undefined)
+				.map((a) => AAR.ADMIN_ACTIONS[a].displayName)
+				.join(', ')
 		const entries = reasons.map(r => {
 			const head = r.aliases.length > 0 ? `${r.label} (${r.aliases.join(', ')})` : r.label
 			return `${head}\n${actionsFor(r)}`
@@ -768,14 +766,23 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	},
 
 	kick: async (h, args) => {
-		return await executeKick(h, [args.player], args.duration, args.reason, args.player.ids.username)
+		return await executeKick(h, [args.player], args.reason, args.player.ids.username)
 	},
 
 	kickSquad: async (h, args) => {
 		const { squad, players } = args.squad
 		if (players.length === 0) return await h.error('empty-squad', `Squad "${squad.squadName}" has no players`)
-		const label = `"${squad.squadName}" (${players.length} player${players.length !== 1 ? 's' : ''})`
-		return await executeKick(h, players, args.duration, args.reason, label)
+		return await executeKick(h, players, args.reason, squadSubjectLabel(squad.squadName, players.length))
+	},
+
+	timeout: async (h, args) => {
+		return await executeTimeout(h, [args.player], args.duration, args.reason, args.player.ids.username)
+	},
+
+	timeoutSquad: async (h, args) => {
+		const { squad, players } = args.squad
+		if (players.length === 0) return await h.error('empty-squad', `Squad "${squad.squadName}" has no players`)
+		return await executeTimeout(h, players, args.duration, args.reason, squadSubjectLabel(squad.squadName, players.length))
 	},
 
 	clearTimeout: async (h, args) => {
@@ -813,17 +820,19 @@ async function resolveLinkedSender(
 	return { code: 'ok', discordId: linked.discordId }
 }
 
-// shared by the kick command and the fixed-duration timeout aliases
 // enforces the per-action "require a reason" setting; returns the error handler-result to short-circuit, or null
 async function requireReasonGuard(h: HandlerCtx, action: AAR.AdminActionType, hasReason: boolean): Promise<HandlerResult | null> {
 	const rr = SquadServer.reasonRequirementError(action, hasReason)
 	return rr ? await h.error('reason-required', rr.msg) : null
 }
 
+function squadSubjectLabel(squadName: string, playerCount: number) {
+	return `"${squadName}" (${playerCount} player${playerCount !== 1 ? 's' : ''})`
+}
+
 async function executeKick(
 	h: HandlerCtx,
 	targets: SM.Player[],
-	durationMs: number,
 	resolvedReason: CMD.ResolvedReasonArg | undefined,
 	subjectLabel: string,
 ): Promise<HandlerResult> {
@@ -831,11 +840,38 @@ async function executeKick(
 	if (g) return g
 	const linkedRes = await resolveLinkedSender(h)
 	if (linkedRes.code !== 'ok') return linkedRes.res
+	const denyRes = await Rbac.tryDenyPermissionsForUser(
+		{ ...h.ctx, user: { discordId: linkedRes.discordId } },
+		RBAC.perm('squad-server:kick-players'),
+	)
+	if (denyRes) return await h.error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
+	const reason = resolvedReason && CMD.applyResolvedReason('kick', resolvedReason, SquadServer.messageVars())
+	await SquadServer.kickPlayersAction(
+		h.ctx,
+		targets.map(t => SM.PlayerIds.getPlayerId(t.ids)),
+		ingameActor(h.sender),
+		reason || undefined,
+	)
+	await h.reply(`Kicked ${subjectLabel}${reason?.label ? ` for ${reason.label}` : ''}`)
+	return { code: 'ok' }
+}
+
+// shared by the timeout commands and the fixed-duration timeout aliases
+async function executeTimeout(
+	h: HandlerCtx,
+	targets: SM.Player[],
+	durationMs: number,
+	resolvedReason: CMD.ResolvedReasonArg | undefined,
+	subjectLabel: string,
+): Promise<HandlerResult> {
+	const g = await requireReasonGuard(h, 'timeout', !!resolvedReason)
+	if (g) return g
+	const linkedRes = await resolveLinkedSender(h)
+	if (linkedRes.code !== 'ok') return linkedRes.res
 	const denyRes = await Rbac.tryDenyTimeoutForUser({ ...h.ctx, user: { discordId: linkedRes.discordId } }, durationMs)
 	if (denyRes) return await h.error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
-	// empty (not "0ms") on a zero-duration kick so `{{#duration}}...{{/duration}}` sections hide the rejoin phrase
-	const vars = SquadServer.messageVars({ duration: durationMs > 0 ? formatHumanTime(durationMs) : '' })
-	const reason = resolvedReason && CMD.applyResolvedReason('kick', resolvedReason, vars)
+	const vars = SquadServer.messageVars({ duration: formatHumanTime(durationMs) })
+	const reason = resolvedReason && CMD.applyResolvedReason('timeout', resolvedReason, vars)
 	const skipped: string[] = []
 	let lastErrMsg = ''
 	for (const target of targets) {
@@ -852,7 +888,7 @@ async function executeKick(
 		)
 	}
 	await h.reply([
-		`Kicked ${subjectLabel} with a ${formatHumanTime(durationMs)} timeout${reason?.label ? ` for ${reason.label}` : ''}`,
+		`Timed out ${subjectLabel} for ${formatHumanTime(durationMs)}${reason?.label ? ` for ${reason.label}` : ''}`,
 		...(skipped.length > 0 ? [`Skipped (already timed out): ${skipped.join(', ')}`] : []),
 	].join('\n'))
 	return { code: 'ok' }

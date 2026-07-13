@@ -2,7 +2,7 @@ import * as AAR from '@/models/admin-action-reasons.models'
 import { describe, expect, it } from 'vitest'
 
 function reason(label: string, opts: Partial<AAR.AdminActionReason> = {}): AAR.AdminActionReason {
-	return { label, message: `${label} message`, aliases: [], actionTexts: {}, ...opts }
+	return { label, aliases: [], actionTexts: { warn: `${label} warn text` }, ...opts }
 }
 
 describe('AdminActionReasonsSchema', () => {
@@ -29,7 +29,7 @@ describe('AdminActionReasonsSchema', () => {
 		expect(res.error!.issues[0].path).toEqual([1, 'aliases', 0])
 	})
 
-	it('rejects aliases colliding with labels', () => {
+	it("rejects aliases colliding with another reason's label", () => {
 		const res = AAR.AdminActionReasonsSchema.safeParse([
 			reason('Teamkilling'),
 			reason('Trolling', { aliases: ['teamkilling'] }),
@@ -37,38 +37,36 @@ describe('AdminActionReasonsSchema', () => {
 		expect(res.success).toBe(false)
 	})
 
-	it('requires a non-empty warn text', () => {
-		const res = AAR.AdminActionReasonsSchema.safeParse([{ label: 'Teamkilling', message: '', aliases: [], actionTexts: {} }])
-		expect(res.success).toBe(false)
+	it("accepts an alias matching its own reason's label", () => {
+		const res = AAR.AdminActionReasonsSchema.safeParse([reason('Teamkilling', { aliases: ['teamkilling'] })])
+		expect(res.success).toBe(true)
 	})
 
-	it('defaults actionTexts to an empty record', () => {
-		const decoded = AAR.AdminActionReasonsSchema.parse([{ label: 'Mic', message: 'm', aliases: [] }])
-		expect(decoded[0]!.actionTexts).toEqual({})
+	it('requires text for at least one action', () => {
+		const res = AAR.AdminActionReasonsSchema.safeParse([{ label: 'Teamkilling', aliases: [], actionTexts: {} }])
+		expect(res.success).toBe(false)
 	})
 })
 
 describe('reason applicability and text', () => {
 	const reasons = [
-		reason('Teamkilling', { aliases: ['tk'], actionTexts: { kill: 'Teamkilling action text' } }),
+		reason('Teamkilling', { aliases: ['tk'], actionTexts: { warn: 'Teamkilling warn text', kill: 'Teamkilling kill text' } }),
 		reason('AFK', { actionTexts: { 'remove-from-squad': 'AFK rfs text' } }),
-		reason('Mic', {}),
+		reason('Mic', { actionTexts: { warn: 'Mic warn text' } }),
 	]
 
-	it('every reason is implicitly a warn reason', () => {
-		expect(AAR.reasonsForAction(reasons, 'warn')).toHaveLength(3)
-		expect(AAR.resolveReason(reasons, 'warn', 'Mic').code).toBe('ok')
-	})
-
-	it('executable actions filter by presence of action text', () => {
+	it('an action only offers the reasons carrying text for it', () => {
+		expect(AAR.reasonsForAction(reasons, 'warn').map(r => r.label)).toEqual(['Teamkilling', 'Mic'])
 		expect(AAR.reasonsForAction(reasons, 'kill').map(r => r.label)).toEqual(['Teamkilling'])
 		expect(AAR.resolveReason(reasons, 'kill', 'AFK').code).toBe('err:reason-not-applicable')
+		expect(AAR.resolveReason(reasons, 'warn', 'AFK').code).toBe('err:reason-not-applicable')
 	})
 
-	it('kick participates like any other executable action', () => {
-		const kickReasons = [reason('Toxicity', { actionTexts: { kick: 'Toxicity kick text' } }), reason('AFK')]
-		expect(AAR.reasonsForAction(kickReasons, 'kick').map(r => r.label)).toEqual(['Toxicity'])
-		expect(AAR.resolveReason(kickReasons, 'kick', 'AFK').code).toBe('err:reason-not-applicable')
+	it('kick and timeout are independent actions', () => {
+		const kickOnly = reason('Toxicity', { actionTexts: { kick: 'Toxicity kick text' } })
+		expect(AAR.reasonsForAction([kickOnly], 'kick').map(r => r.label)).toEqual(['Toxicity'])
+		expect(AAR.reasonsForAction([kickOnly], 'timeout')).toEqual([])
+		expect(AAR.resolveReason([kickOnly], 'timeout', 'Toxicity').code).toBe('err:reason-not-applicable')
 	})
 
 	it('resolves by alias case-insensitively', () => {
@@ -81,43 +79,39 @@ describe('reason applicability and text', () => {
 		expect(AAR.resolveReason(reasons, 'warn', 'Ghosting').code).toBe('err:reason-not-found')
 	})
 
-	it('reasonText picks the per-action text for executable actions and falls back to the warn text', () => {
-		const withActionText = reasons[0]
-		expect(AAR.reasonText('warn', withActionText)).toBe('Teamkilling message')
-		expect(AAR.reasonText('kill', withActionText)).toBe('Teamkilling action text')
-		const warnOnly = reasons[2]
-		expect(AAR.reasonText('kill', warnOnly)).toBe('Mic message')
+	it('reasonText picks the per-action text', () => {
+		expect(AAR.reasonText('warn', reasons[0])).toBe('Teamkilling warn text')
+		expect(AAR.reasonText('kill', reasons[0])).toBe('Teamkilling kill text')
 	})
 
 	it('formatAppliedReason renders the per-action text verbatim (no wrapper), tagging squads', () => {
 		const r = reason('Teamkilling', { actionTexts: { 'disband-squad': 'Teamkilling disband text' } })
-		expect(AAR.formatAppliedReason('warn', r)).toBe('Teamkilling message')
 		expect(AAR.formatAppliedReason('disband-squad', r, { squadTag: '@Squad3' })).toBe('@Squad3 Teamkilling disband text')
 	})
 
 	it('formatAppliedReason exposes label + duration + custom template variables', () => {
 		const templated = reason('Teamkilling', {
-			actionTexts: { kick: 'Kicked for {{label}} ({{duration}}). See {{discord}}.' },
+			actionTexts: { timeout: 'Kicked for {{label}} ({{duration}}). See {{discord}}.' },
 		})
-		expect(AAR.formatAppliedReason('kick', templated, { vars: { duration: '2h', discord: 'discord.gg/x' } }))
+		expect(AAR.formatAppliedReason('timeout', templated, { vars: { duration: '2h', discord: 'discord.gg/x' } }))
 			.toBe('Kicked for Teamkilling (2h). See discord.gg/x.')
 	})
 })
 
 describe('applied reason snapshots', () => {
-	const kickReason = reason('Toxicity', {
-		actionTexts: { kick: 'Kicked for {{label}}. See {{discord}}.{{#duration}} Able to rejoin in {{duration}}.{{/duration}}' },
+	const timeoutReason = reason('Toxicity', {
+		actionTexts: { timeout: 'Kicked for {{label}}. See {{discord}}.{{#duration}} Able to rejoin in {{duration}}.{{/duration}}' },
 	})
 
 	it('applyReason snapshots the template and vars; render uses the snapshot, not current settings', () => {
-		const applied = AAR.applyReason('kick', kickReason, { duration: '2h', discord: 'discord.gg/x' })
+		const applied = AAR.applyReason('timeout', timeoutReason, { duration: '2h', discord: 'discord.gg/x' })
 		expect(applied.label).toBe('Toxicity')
 		expect(applied.template).toContain('{{discord}}')
 		expect(AAR.renderAppliedReason(applied)).toBe('Kicked for Toxicity. See discord.gg/x. Able to rejoin in 2h.')
 	})
 
 	it('renderAppliedReason substitutes extraVars over the snapshot (remaining timeout duration)', () => {
-		const applied = AAR.applyReason('kick', kickReason, { duration: '2h', discord: 'discord.gg/x' })
+		const applied = AAR.applyReason('timeout', timeoutReason, { duration: '2h', discord: 'discord.gg/x' })
 		expect(AAR.renderAppliedReason(applied, { extraVars: { duration: '1h 29m' } }))
 			.toBe('Kicked for Toxicity. See discord.gg/x. Able to rejoin in 1h 29m.')
 		// empty duration drops the {{#duration}} section entirely

@@ -137,14 +137,14 @@ export const GlobalSettingsSchema = z.object({
 		'Prefix applied to admin-directed warns (admin notifications and in-game command feedback). Never applied to warns delivered to affected players.',
 	),
 	adminActionReasons: AAR.AdminActionReasonsSchema.describe(
-		'Preset reasons admins can pick when performing actions against players. Each reason has a warn text and separate text per action it applies to; a reason is available for an action only if it has text for that action. Text is sent verbatim to the affected player(s) in-game and supports {{variables}}. '
-			+ 'Available: {{label}}, {{duration}} (kicks only), plus any Message Variables below.',
+		'Preset reasons admins can pick when performing actions against players. Each reason carries separate text per action it applies to, and is available for an action only if it has text for that action (so every reason needs at least one action text). Text is sent verbatim to the affected player(s) in-game and supports {{variables}}. '
+			+ 'Available: {{label}}, {{duration}} (timeouts only), plus any Message Variables below.',
 	),
 	broadcasts: LP.BroadcastPresetsSchema.describe(
 		'Preset broadcast messages selectable by label or alias via the in-game broadcast command. Messages support {{variables}}: {{label}} plus any Message Variables below.',
 	),
-	requireReasonFor: z.array(AAR.ADMIN_ACTION_TYPE).prefault([]).describe(
-		'Actions that require a reason (a preset or custom text). Performing one of these without a reason is rejected.',
+	requireReasonFor: z.array(AAR.REQUIRABLE_ADMIN_ACTION_TYPE).prefault([]).describe(
+		'Actions that require a reason (a preset or custom text). Performing one of these without a reason is rejected. Warns always require a reason, so they are not listed here.',
 	),
 	messageVariables: z.array(z.object({
 		name: z.string().trim().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, {

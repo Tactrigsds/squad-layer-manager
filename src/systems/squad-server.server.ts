@@ -529,6 +529,26 @@ export const orpcRouter = {
 			return { code: 'ok' as const }
 		}),
 
+	// a plain kick; timeouts (which bar the player from rejoining) go through timeouts.timeoutPlayer
+	kickPlayers: orpcBase
+		.input(z.object({
+			serverId: z.string(),
+			playerIds: z.array(SM.PlayerIdSchema).min(1),
+			reason: z.string().trim().min(1).optional(),
+			presetReasonLabel: z.string().min(1).optional(),
+		}))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:kick-players'))
+			if (denyRes) return denyRes
+			const reasonRes = resolveReasonInput('kick', input)
+			if (reasonRes.code !== 'ok') return reasonRes
+			await kickPlayersAction(ctx, input.playerIds, { type: 'slm-user', userId: ctx.user.discordId }, reasonRes.applied)
+			return { code: 'ok' as const }
+		}),
+
 	renameSquad: orpcBase
 		.input(z.object({ serverId: z.string(), teamId: SM.TeamIdSchema, squadId: z.number().int().positive() }))
 		.handler(async ({ context: _ctx, input }) => {
@@ -1066,14 +1086,15 @@ export function messageVars(extra?: Record<string, string>): Record<string, stri
 }
 
 // enforces the per-action "require a reason" setting; returns an error result when the action needs a reason
-// and none was provided, else null
+// and none was provided, else null. A warn is nothing but its reason, so one is always required (which is why
+// warn isn't configurable in requireReasonFor).
 export function reasonRequirementError(
 	action: AAR.AdminActionType,
 	hasReason: boolean,
 ): { code: 'err:reason-required'; msg: string } | null {
-	if (Settings.GLOBAL_SETTINGS.requireReasonFor.includes(action) && !hasReason) {
-		return { code: 'err:reason-required', msg: `A reason is required for ${AAR.ADMIN_ACTIONS[action].displayName}.` }
-	}
+	if (hasReason) return null
+	const required = action === 'warn' || Settings.GLOBAL_SETTINGS.requireReasonFor.some((a) => a === action)
+	if (required) return { code: 'err:reason-required', msg: `A reason is required for ${AAR.ADMIN_ACTIONS[action].displayName}.` }
 	return null
 }
 
@@ -1138,8 +1159,9 @@ async function sendReasonFollowUpWarn(
 	await SquadRcon.warnAll(ctx, targets, message)
 }
 
-// kicks a player, attributing the resulting PLAYER_KICKED server event to `source` (the timeout's app event
-// for timeout kicks). No app event of its own: PLAYER_TIMED_OUT is the audit record.
+// kicks a single player, attributing the resulting PLAYER_KICKED server event to `source` (the app event that
+// caused it: PLAYER_TIMED_OUT for timeout kicks and their later enforcement, PLAYER_KICKED for plain kicks).
+// The primitive both kick paths bottom out in; it emits no app event of its own.
 export async function kickPlayerAction(
 	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & CS.AbortSignal,
 	target: SM.PlayerId,
@@ -1150,6 +1172,36 @@ export async function kickPlayerAction(
 		PendingEvents.armExpectation(ctx.server.eventState, { type: 'PLAYER_KICKED', playerId: target }, source)
 	})
 	await SquadRcon.kickPlayer(ctx, target, reason)
+}
+
+// the delivered kick message when no reason was given
+const DEFAULT_KICK_TEXT = 'You have been kicked by an admin.'
+
+// a plain kick (no timeout): the players are removed and may rejoin immediately. One app event covers the whole
+// batch, and each kick's server event is attributed to it.
+export async function kickPlayersAction(
+	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & C.MatchHistory & CS.AbortSignal,
+	targets: SM.PlayerId[],
+	actor: AppEvents.Actor,
+	reason?: AAR.AppliedReason,
+) {
+	if (targets.length === 0) return
+	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+	const appEvent = AppEvents.create<AppEvents.PlayerKicked>({
+		type: 'PLAYER_KICKED',
+		actor,
+		serverId: ctx.serverId,
+		matchId: currentMatch.historyEntryId,
+		causeId: null,
+		targets,
+		reason,
+	})
+	await emitAppEvent(ctx, appEvent)
+	const message = reason ? AAR.renderAppliedReason(reason) : DEFAULT_KICK_TEXT
+	for (const target of targets) {
+		await kickPlayerAction(ctx, target, { type: 'event', id: appEvent.id }, message)
+	}
+	await notifyAdminsOfWebAction(ctx, appEvent)
 }
 
 export async function broadcastAction(

@@ -141,6 +141,11 @@ export function useDemoteCommanderMutation() {
 	return useMutation(RPC.orpc.squadServer.demoteCommander.mutationOptions())
 }
 
+// a plain kick (no timeout); timeouts go through TimeoutsClient
+export function useKickPlayersMutation() {
+	return useMutation(RPC.orpc.squadServer.kickPlayers.mutationOptions())
+}
+
 export function useKillMutation() {
 	return useMutation(RPC.orpc.squadServer.kill.mutationOptions())
 }
