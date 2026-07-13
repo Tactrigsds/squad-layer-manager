@@ -39,7 +39,7 @@ to do it, which is what the `compactor` block in `loki-config.yaml` is for.
 ## Dashboards
 
 - **SLM / Overview** (`slm-overview`) is the domain view: rcon liveness, layer queue depth, votes in
-  progress, pending teamswitches, BattleMetrics rate-limit headroom, and a warn/error log panel. It is
+  progress, pending teamswaps, BattleMetrics rate-limit headroom, and a warn/error log panel. It is
   backed by the observable gauges in `src/systems/metrics.server.ts`.
 - **SLM / Ops (RED)** (`slm-ops`) is rate/errors/duration for every `C.spanOp` in the app, plus Node
   runtime health (event loop, heap, GC). It is backed by the `slm.op.duration` histogram recorded in

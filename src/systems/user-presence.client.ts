@@ -151,7 +151,7 @@ export type Store = {
 
 	presence: UP.PresenceState
 	editors: Set<USR.UserId>
-	teamswitchEditors: Set<USR.UserId>
+	teamswapEditors: Set<USR.UserId>
 	// derived: resolved per-user presence (latest session wins per userId)
 }
 
@@ -197,21 +197,21 @@ function createPresenceStore() {
 					}
 				}
 				const editors = new Set<USR.UserId>()
-				const teamswitchEditors = new Set<USR.UserId>()
+				const teamswapEditors = new Set<USR.UserId>()
 				for (const client of presence.values()) {
 					const activity = client.activityState
 					if (activity && UP.Trans.editingQueue(activity.opts.serverId).match(activity)) {
 						editors.add(client.userId)
 					}
-					if (activity && UP.Trans.editingTeamswitches(activity.opts.serverId).match(activity)) {
-						teamswitchEditors.add(client.userId)
+					if (activity && UP.Trans.editingTeamswaps(activity.opts.serverId).match(activity)) {
+						teamswapEditors.add(client.userId)
 					}
 				}
 				if (!Obj.deepEqual(editors, state.editors)) {
 					toUpdate.editors = editors
 				}
-				if (!Obj.deepEqual(teamswitchEditors, state.teamswitchEditors)) {
-					toUpdate.teamswitchEditors = teamswitchEditors
+				if (!Obj.deepEqual(teamswapEditors, state.teamswapEditors)) {
+					toUpdate.teamswapEditors = teamswapEditors
 				}
 			}
 
@@ -227,7 +227,7 @@ function createPresenceStore() {
 			session,
 			presence: session.localState.presence,
 			editors: new Set(),
-			teamswitchEditors: new Set(),
+			teamswapEditors: new Set(),
 			userPresence: new Map(),
 			activityLoaderCache: [],
 
@@ -452,8 +452,8 @@ export function useEditingQueueState(serverId: string) {
 	return useActivityState(UP.Trans.editingQueue(serverId))
 }
 
-export function useEditingTeamswitchesState(serverId: string) {
-	return useActivityState(UP.Trans.editingTeamswitches(serverId))
+export function useEditingTeamswapsState(serverId: string) {
+	return useActivityState(UP.Trans.editingTeamswaps(serverId))
 }
 
 export function useIsEditing() {

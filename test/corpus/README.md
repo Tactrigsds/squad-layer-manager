@@ -106,7 +106,7 @@ From the follow-up capture (`capture-2026-07-12T20-58-19-152Z.json`, same window
 
 Still missing real samples (gaps to fill later): `CHAT_MESSAGE` on ChatAll,
 `POSSESSED/UNPOSSESSED_ADMIN_CAMERA` (player lacked in-game camera perms), `PLAYER_BANNED`,
-self-teamswitch (produced no distinct log line in the window).
+self-teamswap (produced no distinct log line in the window).
 
 ### In-game capture checklist (single player)
 

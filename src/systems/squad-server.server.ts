@@ -51,7 +51,7 @@ import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadLogsReceiver from '@/systems/squad-logs-receiver.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
-import * as TeamSwitchesSys from '@/systems/teamswitches.server'
+import * as TeamswapsSys from '@/systems/teamswaps.server'
 import * as Timeouts from '@/systems/timeouts.server'
 import * as Vote from '@/systems/vote.server'
 import * as WsSessionSys from '@/systems/ws-session.server'
@@ -772,7 +772,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 
 		matchHistory: MatchHistory.initMatchHistoryContext(server.event$, cleanup),
 
-		teamswitches: TeamSwitchesSys.initContext({
+		teamswaps: TeamswapsSys.initContext({
 			...ctx,
 			serverId,
 			cleanup,
@@ -1361,7 +1361,7 @@ export async function removePlayersFromSquad(
 }
 
 // records a forced team change as an app event and arms attribution for the resulting PLAYER_CHANGED_TEAM server
-// events (which arrive via the next teams poll). The caller (teamswitches) still issues the actual switch.
+// events (which arrive via the next teams poll). The caller (teamswaps) still issues the actual switch.
 export async function forceTeamChangeAppEvent(
 	ctx: C.SquadServer & C.Db & C.MatchHistory & CS.AbortSignal,
 	targets: SM.PlayerId[],
@@ -1520,7 +1520,7 @@ export function getCurrTeams(ctx: C.SquadServer) {
 }
 
 // maps a GUI/chat user id (or an automated marker) to an app-event actor, resolving in-game (steam) senders against
-// the current teams. Shared by the vote/teamswitch attribution paths.
+// the current teams. Shared by the vote/teamswap attribution paths.
 export function actorFromUser(ctx: C.SquadServer, source: USR.GuiOrChatUserId | 'autostart' | undefined | null): AppEvents.Actor {
 	if (!source || source === 'autostart') return { type: 'system' }
 	if (source.discordId) return { type: 'slm-user', userId: source.discordId }

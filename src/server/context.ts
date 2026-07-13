@@ -17,7 +17,7 @@ import type * as MatchHistorySys from '@/systems/match-history.server'
 import type * as SettingsSys from '@/systems/settings.server'
 import type * as SquadRconSys from '@/systems/squad-rcon.server'
 import type * as SquadServerSys from '@/systems/squad-server.server'
-import type * as TeamswitchSys from '@/systems/teamswitches.server'
+import type * as TeamswapSys from '@/systems/teamswaps.server'
 import type * as UserPresenceSys from '@/systems/user-presence.server'
 import type * as VoteSys from '@/systems/vote.server'
 import * as Otel from '@opentelemetry/api'
@@ -481,8 +481,8 @@ export type SquadServer =
 	& { server: SquadServerSys.SquadServer }
 	& ServerId
 
-export type Teamswitch = CS.Ctx & {
-	teamswitches: TeamswitchSys.TeamswitchContext
+export type Teamswap = CS.Ctx & {
+	teamswaps: TeamswapSys.TeamswapContext
 } & ServerId
 
 export type UserPresence =
@@ -503,7 +503,7 @@ export type ServerSlice =
 	& Vote
 	& LayerQueue
 	& MatchHistory
-	& Teamswitch
+	& Teamswap
 	& ServerSettings
 	& ServerSliceCleanup
 	& AdminList

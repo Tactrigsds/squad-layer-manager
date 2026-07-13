@@ -17,7 +17,7 @@ import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import type { PublicSettings } from '@/systems/settings.server'
 import * as SquadServerClient from '@/systems/squad-server.client'
-import * as TSWClient from '@/systems/teamswitches.client'
+import * as TSWClient from '@/systems/teamswaps.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
@@ -279,12 +279,12 @@ export function PlayerMenuItems(
 		},
 	)
 
-	const existingSwitch = ZusUtils.useStore(
+	const existingSwap = ZusUtils.useStore(
 		stores.squadServer,
-		s => TSWClient.Sel.localState(s).editedSwitches.get(playerId) ?? null,
+		s => TSWClient.Sel.localState(s).editedSwaps.get(playerId) ?? null,
 	)
 
-	const canSwitchNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwitchNow([playerId]))
+	const canSwapNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwapNow([playerId]))
 	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canQueue([playerId]))
 
 	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
@@ -296,7 +296,7 @@ export function PlayerMenuItems(
 		? RBAC.permissionDenied({ check: 'all', permits: [RBAC.perm('squad-server:timeout-players', { maxDurationMs: null })] })
 		: null
 
-	async function switchNow() {
+	async function swapNow() {
 		if (!otherTeam) return
 		const initialTeam = TSWClient.Sel.localState(ZusUtils.getState(stores.squadServer)).players.get(playerId)
 		const unsubscribe = ZusUtils.resolveReadStore(stores.squadServer).subscribe(state => {
@@ -305,17 +305,17 @@ export function PlayerMenuItems(
 		try {
 			await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
 				const result = await openDialog({
-					title: 'Switch Player Now',
+					title: 'Swap Player Now',
 					variant: 'destructive',
 					description: `Move ${playerInfo?.username ?? 'this player'} to Team ${otherTeam} immediately?`,
-					buttons: [{ id: 'confirm', label: 'Switch Now' }],
+					buttons: [{ id: 'confirm', label: 'Swap Now' }],
 				})
 				if (result === 'dismissed') {
-					toast.warning('Switch cancelled', { description: 'Player changed teams' })
+					toast.warning('Swap cancelled', { description: 'Player changed teams' })
 					return
 				}
 				if (result !== 'confirm') return
-				TSWClient.Actions.switchNow(stores, [playerId])
+				TSWClient.Actions.swapNow(stores, [playerId])
 			})
 		} finally {
 			unsubscribe()
@@ -640,27 +640,27 @@ export function PlayerMenuItems(
 		<>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item
-					onClick={() => TSWClient.Actions.switchNext(stores, [playerId])}
+					onClick={() => TSWClient.Actions.swapNext(stores, [playerId])}
 					disabled={!!manageDenied || !otherTeam || !canQueue}
 				>
-					Switch Next
+					Swap Next
 				</Item>
 			</PermissionDeniedTooltip>
 			<Separator />
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item
 					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
-					onClick={switchNow}
-					disabled={!!manageDenied || !otherTeam || !canSwitchNow}
+					onClick={swapNow}
+					disabled={!!manageDenied || !otherTeam || !canSwapNow}
 				>
-					Switch Now
+					Swap Now
 				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item
 					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
 					onClick={kill}
-					disabled={!!manageDenied || !otherTeam || !canSwitchNow}
+					disabled={!!manageDenied || !otherTeam || !canSwapNow}
 				>
 					Kill
 				</Item>
@@ -686,10 +686,10 @@ export function PlayerMenuItems(
 			<Separator />
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item
-					onClick={() => TSWClient.Actions.removeSwitch(stores, [playerId])}
-					disabled={!!manageDenied || !existingSwitch}
+					onClick={() => TSWClient.Actions.removeSwap(stores, [playerId])}
+					disabled={!!manageDenied || !existingSwap}
 				>
-					Delete Switch
+					Delete Swap
 				</Item>
 			</PermissionDeniedTooltip>
 			<Separator />

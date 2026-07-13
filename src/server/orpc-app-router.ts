@@ -9,7 +9,7 @@ import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
-import * as Teamswitches from '@/systems/teamswitches.server'
+import * as Teamswaps from '@/systems/teamswaps.server'
 import * as Timeouts from '@/systems/timeouts.server'
 import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
@@ -31,7 +31,7 @@ export const orpcAppRouter = {
 	filters: FilterEntity.filtersRouter,
 	rbac: Rbac.orpcRouter,
 	users: Users.orpcRouter,
-	teamswitches: Teamswitches.orpcRouter,
+	teamswaps: Teamswaps.orpcRouter,
 	appEvents: AppEvents.router,
 	timeouts: Timeouts.router,
 }

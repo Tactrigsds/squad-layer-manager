@@ -11,7 +11,7 @@ import * as LP from '@/models/labeled-presets.models'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
-import type * as TSW from '@/models/teamswitches.models'
+import type * as TSW from '@/models/teamswaps.models'
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context.ts'
@@ -23,7 +23,7 @@ import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
-import * as Teamswitches from '@/systems/teamswitches.server'
+import * as Teamswaps from '@/systems/teamswaps.server'
 import * as Timeouts from '@/systems/timeouts.server'
 import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
@@ -307,7 +307,7 @@ function ingameActor(sender: SM.Player): { type: 'ingame-user'; playerId: SM.Pla
 	return { type: 'ingame-user', playerId: SM.PlayerIds.getPlayerId(sender.ids) }
 }
 
-// switching players to the other team is expressed relative to the current match ordinal
+// swapping players to the other team is expressed relative to the current match ordinal
 function oppositeNormedTeam(currentMatch: MH.MatchDetails, teamId: SM.TeamId): MH.NormedTeamId {
 	return MH.getNormedTeamId(teamId, currentMatch.ordinal) === 'A' ? 'B' : 'A'
 }
@@ -399,88 +399,88 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		}
 	},
 
-	switchNow: async (h, args) => {
+	swapNow: async (h, args) => {
 		const target = args.player
 		if (!target.teamId) return await h.error('no-team', `Player "${target.ids.username}" is not on a team`)
 		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
 		const toTeam = oppositeNormedTeam(currentMatch, target.teamId)
 		const playerId = SM.PlayerIds.getPlayerId(target.ids)
-		const errors = await Teamswitches.dispatchSwitchNow(h.ctx, new Map([[playerId, { toTeam, source: h.user }]]), h.user)
+		const errors = await Teamswaps.dispatchSwapNow(h.ctx, new Map([[playerId, { toTeam, source: h.user }]]), h.user)
 		if (errors.length > 0) {
 			const err = errors[0] as TSW.OpError
-			if (err.code === 'err:currently-switching') {
-				return await h.error('currently-switching', 'A team switch is currently in progress')
+			if (err.code === 'err:currently-swapping') {
+				return await h.error('currently-swapping', 'A team swap is currently in progress')
 			}
 		}
-		await h.reply(`Switching ${target.ids.username} to team ${toTeam} now`)
+		await h.reply(`Swapping ${target.ids.username} to team ${toTeam} now`)
 		return { code: 'ok' }
 	},
 
-	switchNext: async (h, args) => {
+	swapNext: async (h, args) => {
 		const target = args.player
 		if (!target.teamId) return await h.error('no-team', `Player "${target.ids.username}" is not on a team`)
 		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
 		const toTeam = oppositeNormedTeam(currentMatch, target.teamId)
 		const playerId = SM.PlayerIds.getPlayerId(target.ids)
-		const errors = await Teamswitches.dispatchSwitchNext(h.ctx, new Map([[playerId, { toTeam, source: h.user }]]))
+		const errors = await Teamswaps.dispatchSwapNext(h.ctx, new Map([[playerId, { toTeam, source: h.user }]]))
 		if (errors.length > 0) {
 			const err = errors[0] as TSW.OpError
-			if (err.code === 'err:currently-switching') {
-				return await h.error('currently-switching', 'A team switch is currently in progress')
+			if (err.code === 'err:currently-swapping') {
+				return await h.error('currently-swapping', 'A team swap is currently in progress')
 			}
 			if (err.code === 'err:already-marked') {
-				return await h.error('already-marked', `${target.ids.username} is already marked for teamswitching`)
+				return await h.error('already-marked', `${target.ids.username} is already marked to swap teams`)
 			}
 		}
-		await h.reply(`Queued ${target.ids.username} to switch teams on next map`)
+		await h.reply(`Queued ${target.ids.username} to swap teams on next map`)
 		return { code: 'ok' }
 	},
 
-	switchSquadNow: async (h, args) => {
+	swapSquadNow: async (h, args) => {
 		const { squad, players } = args.squad
 		if (players.length === 0) return await h.error('empty-squad', `Squad "${squad.squadName}" has no players`)
 		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
-		const switches: Map<SM.PlayerId, { toTeam: MH.NormedTeamId; source: USR.GuiOrChatUserId }> = new Map()
+		const swaps: Map<SM.PlayerId, { toTeam: MH.NormedTeamId; source: USR.GuiOrChatUserId }> = new Map()
 		for (const p of players) {
-			switches.set(SM.PlayerIds.getPlayerId(p.ids), { toTeam: oppositeNormedTeam(currentMatch, p.teamId!), source: h.user })
+			swaps.set(SM.PlayerIds.getPlayerId(p.ids), { toTeam: oppositeNormedTeam(currentMatch, p.teamId!), source: h.user })
 		}
-		const errors = await Teamswitches.dispatchSwitchNow(h.ctx, switches, h.user)
+		const errors = await Teamswaps.dispatchSwapNow(h.ctx, swaps, h.user)
 		if (errors.length > 0) {
 			const err = errors[0] as TSW.OpError
-			if (err.code === 'err:currently-switching') {
-				return await h.error('currently-switching', 'A team switch is currently in progress')
+			if (err.code === 'err:currently-swapping') {
+				return await h.error('currently-swapping', 'A team swap is currently in progress')
 			}
 		}
-		await h.reply(`Switching ${players.length} players from "${squad.squadName}" to the opposite team now`)
+		await h.reply(`Swapping ${players.length} players from "${squad.squadName}" to the opposite team now`)
 		return { code: 'ok' }
 	},
 
-	switchSquadNext: async (h, args) => {
+	swapSquadNext: async (h, args) => {
 		const { squad, players } = args.squad
 		if (players.length === 0) return await h.error('empty-squad', `Squad "${squad.squadName}" has no players`)
 		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
-		const nextSwitches: TSW.TeamswitchCollection = new Map(
+		const nextSwaps: TSW.TeamswapCollection = new Map(
 			players.map(p => [SM.PlayerIds.getPlayerId(p.ids), { toTeam: oppositeNormedTeam(currentMatch, p.teamId!), source: h.user }] as const),
 		)
-		const errors = await Teamswitches.dispatchSwitchNext(h.ctx, nextSwitches)
+		const errors = await Teamswaps.dispatchSwapNext(h.ctx, nextSwaps)
 		const alreadyMarked = errors.filter(e => (e as TSW.OpError).code === 'err:already-marked').length
-		if (alreadyMarked === nextSwitches.size) {
-			return await h.error('already-marked', `All players in "${squad.squadName}" are already marked for teamswitching`)
+		if (alreadyMarked === nextSwaps.size) {
+			return await h.error('already-marked', `All players in "${squad.squadName}" are already marked to swap teams`)
 		}
-		if (errors.some(e => (e as TSW.OpError).code === 'err:currently-switching')) {
-			return await h.error('currently-switching', 'A team switch is currently in progress')
+		if (errors.some(e => (e as TSW.OpError).code === 'err:currently-swapping')) {
+			return await h.error('currently-swapping', 'A team swap is currently in progress')
 		}
-		const queued = nextSwitches.size - alreadyMarked
-		await h.reply(`Queued ${queued} players from "${squad.squadName}" to switch teams on next map`)
+		const queued = nextSwaps.size - alreadyMarked
+		await h.reply(`Queued ${queued} players from "${squad.squadName}" to swap teams on next map`)
 		return { code: 'ok' }
 	},
 
 	swaps: async (h) => {
 		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
 		const layer = L.toLayer(currentMatch.layerId)
-		const switches = h.ctx.teamswitches.session.state.savedSwitches
+		const swaps = h.ctx.teamswaps.session.state.savedSwaps
 
-		if (switches.size === 0) {
+		if (swaps.size === 0) {
 			await h.reply('No swaps queued')
 			return { code: 'ok' }
 		}
@@ -490,7 +490,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 
 		const toA: SM.PlayerId[] = []
 		const toB: SM.PlayerId[] = []
-		for (const [playerId, sw] of switches) {
+		for (const [playerId, sw] of swaps) {
 			if (sw.toTeam === 'A') toA.push(playerId)
 			else toB.push(playerId)
 		}
@@ -501,7 +501,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		].filter(Boolean)
 		const header = `Swaps: ${parts.join(', ')}`
 
-		if (switches.size <= 8) {
+		if (swaps.size <= 8) {
 			const teamsStateRes = await h.ctx.server.teams.get(h.ctx)
 			const players = teamsStateRes.code === 'ok' ? teamsStateRes.players : []
 			const getName = (playerId: SM.PlayerId) => SM.PlayerIds.find(players, p => p.ids, playerId)?.ids.username ?? playerId
@@ -521,22 +521,22 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		return { code: 'ok' }
 	},
 
-	clearSwitches: async (h) => {
+	clearSwaps: async (h) => {
 		// what's queued is only settled once the op is applied under the dispatch mutex, so the reply is driven by
 		// the op's outcome rather than a pre-read of the state
-		const errors = await Teamswitches.dispatchClearSwitches(h.ctx, h.user)
+		const errors = await Teamswaps.dispatchClearSwaps(h.ctx, h.user)
 		if (errors.length > 0) {
 			const err = errors[0] as TSW.OpError
 			if (err.code === 'err:nothing-queued') {
-				await h.reply('No teamswitches queued')
+				await h.reply('No teamswaps queued')
 				return { code: 'ok' }
 			}
-			if (err.code === 'err:currently-switching' || err.code === 'err:pending-switch') {
-				return await h.error('currently-switching', 'A team switch is currently in progress')
+			if (err.code === 'err:currently-swapping' || err.code === 'err:pending-swap') {
+				return await h.error('currently-swapping', 'A team swap is currently in progress')
 			}
-			return await h.error('unexpected', 'Failed to clear queued teamswitches')
+			return await h.error('unexpected', 'Failed to clear queued teamswaps')
 		}
-		await h.reply('Cleared all queued teamswitches')
+		await h.reply('Cleared all queued teamswaps')
 		return { code: 'ok' }
 	},
 

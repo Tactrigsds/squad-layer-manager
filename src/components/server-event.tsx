@@ -514,17 +514,17 @@ function QueueUpdatedEvent(
 	)
 }
 
-// a change to the teamswitches queued for the next map. The summary names who changed it and the net effect;
-// expanding lists each switch, attributed to whoever queued that player (a save commits every admin's pending marks).
-function TeamswitchesUpdatedEvent(
+// a change to the teamswaps queued for the next map. The summary names who changed it and the net effect;
+// expanding lists each swap, attributed to whoever queued that player (a save commits every admin's pending marks).
+function TeamswapsUpdatedEvent(
 	{ event, appEvent, actorLabel, stores }: {
 		event: Extract<CHAT.EventEnriched, { type: 'APP_EVENT' }>
-		appEvent: AppEvents.TeamswitchesUpdated
+		appEvent: AppEvents.TeamswapsUpdated
 		actorLabel: string
 		stores: SquadServerFrame.KeyProp
 	},
 ) {
-	const changes = AppEvents.summarizeTeamswitchChanges(appEvent)
+	const changes = AppEvents.summarizeTeamswapChanges(appEvent)
 	const queuedBy = changes.flatMap(c => c.kind === 'added' && c.byUserId ? [c.byUserId] : [])
 	const labelFor = useUserLabels([...new Set(queuedBy)])
 	const matchId = event.matchId
@@ -532,23 +532,23 @@ function TeamswitchesUpdatedEvent(
 
 	const added = changes.filter(c => c.kind === 'added').length
 	const removed = changes.filter(c => c.kind === 'removed').length
-	const queued = appEvent.switches.size
+	const queued = appEvent.swaps.size
 
 	const players = `${removed} ${removed === 1 ? 'player' : 'players'}`
-	const summary: React.ReactNode = appEvent.trigger === 'executed' || appEvent.trigger === 'switched-now'
+	const summary: React.ReactNode = appEvent.trigger === 'executed' || appEvent.trigger === 'swapped-now'
 		// an execution with no actor is the map roll firing the queue; a manual one names the admin who fired it
 		? appEvent.actor.type === 'system'
-			? `Queued teamswitches executed on map change (${players})`
-			: <>{actorLabel} executed the queued teamswitches ({players})</>
+			? `Queued teamswaps executed on map change (${players})`
+			: <>{actorLabel} executed the queued teamswaps ({players})</>
 		: appEvent.trigger === 'roster-change'
-		? `${removed} queued teamswitch${removed === 1 ? '' : 'es'} dropped, ${
+		? `${removed} queued teamswap${removed === 1 ? '' : 's'} dropped, ${
 			removed === 1 ? 'the player' : 'those players'
 		} left or changed teams`
 		: queued === 0
-		? <>{actorLabel} cleared the queued teamswitches</>
+		? <>{actorLabel} cleared the queued teamswaps</>
 		: (
 			<>
-				{actorLabel} updated the queued teamswitches ({[added > 0 ? `+${added}` : null, removed > 0 ? `−${removed}` : null]
+				{actorLabel} updated the queued teamswaps ({[added > 0 ? `+${added}` : null, removed > 0 ? `−${removed}` : null]
 					.filter(Boolean).join(', ')}), {queued} queued for next map
 			</>
 		)
@@ -568,7 +568,7 @@ function TeamswitchesUpdatedEvent(
 			<div className="pl-6 pt-1 flex flex-col gap-0.5">
 				{changes.map(change => {
 					const player = playerFor(change.playerId)
-					// the switch's own actor is only worth naming when it wasn't the admin this event is attributed to
+					// the swap's own actor is only worth naming when it wasn't the admin this event is attributed to
 					const by = change.kind === 'added' && change.byUserId
 							&& !(appEvent.actor.type === 'slm-user' && appEvent.actor.userId === change.byUserId)
 						? ` (queued by ${labelFor(change.byUserId)})`
@@ -735,8 +735,8 @@ function AppEventEntry(
 	if (appEvent.type === 'QUEUE_UPDATED') {
 		return <QueueUpdatedEvent event={event} appEvent={appEvent} actorLabel={actorLabel} stores={stores} />
 	}
-	if (appEvent.type === 'TEAMSWITCHES_UPDATED') {
-		return <TeamswitchesUpdatedEvent event={event} appEvent={appEvent} actorLabel={actorLabel} stores={stores} />
+	if (appEvent.type === 'TEAMSWAPS_UPDATED') {
+		return <TeamswapsUpdatedEvent event={event} appEvent={appEvent} actorLabel={actorLabel} stores={stores} />
 	}
 	if (appEvent.type === 'MAP_SET') {
 		// only override sets reach the feed; queue-driven MAP_SETs fold into their QUEUE_UPDATED (audit-only)
@@ -863,7 +863,7 @@ function AppEventEntry(
 			)
 			: null
 	} else {
-		verb = 'switched'
+		verb = 'swapped'
 		icon = <Icons.ArrowLeftRight className="h-4 w-4 text-blue-500 shrink-0" />
 		suffix = ' to the other team'
 	}

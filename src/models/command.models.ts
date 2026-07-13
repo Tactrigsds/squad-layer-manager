@@ -100,24 +100,24 @@ export const COMMAND_DECLARATIONS = {
 	...declareCommand('enableSlmUpdates', { args: [], defaults: { scopes: ['admin'], strings: ['enableslm'], enabled: true } }),
 	...declareCommand('disableSlmUpdates', { args: [], defaults: { scopes: ['admin'], strings: ['disableslm'], enabled: true } }),
 	...declareCommand('getSlmUpdatesEnabled', { args: [], defaults: { scopes: ['admin'], strings: ['slmstatus'], enabled: true } }),
-	...declareCommand('switchNow', {
+	...declareCommand('swapNow', {
 		args: [{ kind: 'player', name: 'player' }],
-		defaults: { scopes: ['admin'], strings: ['switchnow'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['swapnow'], enabled: true },
 	}),
-	...declareCommand('switchNext', {
+	...declareCommand('swapNext', {
 		args: [{ kind: 'player', name: 'player' }],
-		defaults: { scopes: ['admin'], strings: ['switchnext'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['swapnext'], enabled: true },
 	}),
-	...declareCommand('switchSquadNow', {
+	...declareCommand('swapSquadNow', {
 		args: [{ kind: 'squad', name: 'squad' }],
-		defaults: { scopes: ['admin'], strings: ['switchsquadnow'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['swapsquadnow'], enabled: true },
 	}),
-	...declareCommand('switchSquadNext', {
+	...declareCommand('swapSquadNext', {
 		args: [{ kind: 'squad', name: 'squad' }],
-		defaults: { scopes: ['admin'], strings: ['switchsquadnext'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['swapsquadnext'], enabled: true },
 	}),
 	...declareCommand('swaps', { args: [], defaults: { scopes: ['admin'], strings: ['swaps'], enabled: true } }),
-	...declareCommand('clearSwitches', { args: [], defaults: { scopes: ['admin'], strings: ['clearswitches'], enabled: true } }),
+	...declareCommand('clearSwaps', { args: [], defaults: { scopes: ['admin'], strings: ['clearswaps'], enabled: true } }),
 	...declareCommand('flag', {
 		args: [
 			{ kind: 'player', name: 'player' },
@@ -352,7 +352,7 @@ export function assignArgTokens(
 				}
 				let windowLen: number
 				if (a === args.length - 1) {
-					// squad is the final arg (e.g. switchsquad): the whole remainder is the "[team] <squad>" spec
+					// squad is the final arg (e.g. swapsquadnow): the whole remainder is the "[team] <squad>" spec
 					windowLen = Math.min(2, candidates.length)
 				} else {
 					// more args follow (duration, reason, ...), so a bare number is ambiguous (team or squad). Only take

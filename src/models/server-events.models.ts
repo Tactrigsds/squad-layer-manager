@@ -101,7 +101,7 @@ export const PLAYER_CONNECTED_META = meta({ players: [{ assocType: 'player' }] }
 // Emitted by the teams-poll reconciler for a player RCON reports as present but who was missing from our roster
 // (e.g. their PLAYER_CONNECTED landed during a round roll and was dropped). Semantically distinct from
 // PLAYER_CONNECTED -- it is a roster backfill, not a fresh join -- so join-only consumers (feed card, battlemetrics,
-// connection indicator, teamswitch tracking) ignore it. Carries the full player so saveEvents registers them.
+// connection indicator, teamswap tracking) ignore it. Carries the full player so saveEvents registers them.
 export type PlayerReconciled<P = SM.Player> =
 	& {
 		type: 'PLAYER_RECONCILED'

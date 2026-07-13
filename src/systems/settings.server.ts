@@ -182,7 +182,7 @@ export async function createServerEntry(ctx: C.Db, input: {
 		enabled: false,
 		defaultServer: false,
 		layerQueue: [],
-		teamswitches: null,
+		teamswaps: null,
 		settings: settingsRes.data,
 	}
 	await ctx.db({ redactParams: true }).insert(Schema.servers).values(superjsonify(Schema.servers, newServer))

@@ -41,7 +41,7 @@ export const [ACTIVITIES, ACTIVITIES_FLATTENED] = (() => {
 			leaf('GENERATING_VOTE', { cursor: LL.CursorSchema }),
 			leaf('PASTE_ROTATION'),
 		]),
-		leaf('EDITING_TEAMSWITCHES'),
+		leaf('EDITING_TEAMSWAPS'),
 		variant('ON_PRIMARY_PANEL', [
 			branch('VIEWING_QUEUE', [
 				branch('VIEWING_QUEUE_SETTINGS', [leaf('CHANGING_QUEUE_SETTINGS')]),
@@ -78,7 +78,7 @@ export const [ACTIVITIES, ACTIVITIES_FLATTENED] = (() => {
 		GENERATING_VOTE: editingQueue.child.GENERATING_VOTE,
 		PASTE_ROTATION: editingQueue.child.PASTE_ROTATION,
 
-		EDITING_TEAMSWITCHES: ACTIVITIES.child.EDITING_TEAMSWITCHES,
+		EDITING_TEAMSWAPS: ACTIVITIES.child.EDITING_TEAMSWAPS,
 
 		ON_PRIMARY_PANEL: onPrimaryPanel,
 		VIEWING_QUEUE: viewingQueue,
@@ -163,7 +163,7 @@ export const OpSchema = z.discriminatedUnion('code', [
 		targetClientId: z.string(),
 	}),
 
-	// the server's layer queue / teamswitches were saved (or otherwise resolved), so nobody is editing them
+	// the server's layer queue / teamswaps were saved (or otherwise resolved), so nobody is editing them
 	// anymore. scoped to the server whose state was resolved: clients on other servers are untouched
 	z.object({
 		...serverOpBase,
@@ -173,7 +173,7 @@ export const OpSchema = z.discriminatedUnion('code', [
 
 	z.object({
 		...serverOpBase,
-		code: z.literal('teamswitches:end-all-editing'),
+		code: z.literal('teamswaps:end-all-editing'),
 		serverId: z.string(),
 	}),
 
@@ -330,14 +330,14 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 					state.presence.set(clientId, { ...clientState, activityState: clearQueueEditingActivity(clientState.activityState) })
 				}
 				success = true
-			} else if (op.code === 'teamswitches:end-all-editing') {
-				// editedSwitches is shared, so resolving it (save, revert, clear, execute) resolves it for every client
+			} else if (op.code === 'teamswaps:end-all-editing') {
+				// editedSwaps is shared, so resolving it (save, revert, clear, execute) resolves it for every client
 				// on that server at once, and none of them have pending edits left to be editing
 				for (const [clientId, clientState] of state.presence.entries()) {
 					if (clientState.activityState?.opts.serverId !== op.serverId) continue
 					state.presence.set(clientId, {
 						...clientState,
-						activityState: clearTeamswitchEditingActivity(clientState.activityState),
+						activityState: clearTeamswapEditingActivity(clientState.activityState),
 					})
 				}
 				success = true
@@ -464,11 +464,11 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 				}
 				if (newClientState) state.presence.set(op.clientId, newClientState)
 
-				// ending queue/teamswitch editing is a user-level intent: clear it on this user's other
+				// ending queue/teamswap editing is a user-level intent: clear it on this user's other
 				// clients (tabs / reconnects) too, so all of their sessions leave editing together
 				if (
 					op.code === 'update-activity'
-					&& (op.update.code === 'clear-editing-queue' || op.update.code === 'clear-editing-teamswitches')
+					&& (op.update.code === 'clear-editing-queue' || op.update.code === 'clear-editing-teamswaps')
 				) {
 					for (const [otherClientId, otherState] of [...state.presence]) {
 						if (otherClientId === op.clientId || otherState.userId !== op.userId) continue
@@ -532,8 +532,8 @@ export const ActivityUpdateSchema = z.discriminatedUnion('code', [
 		serverId: SS.ServerIdSchema.optional(),
 	}),
 	z.object({ code: z.literal('clear-primary-panel') }),
-	z.object({ code: z.literal('set-editing-teamswitches') }),
-	z.object({ code: z.literal('clear-editing-teamswitches') }),
+	z.object({ code: z.literal('set-editing-teamswaps') }),
+	z.object({ code: z.literal('clear-editing-teamswaps') }),
 	z.object({ code: z.literal('set-player-dialogue'), dialog: PLAYER_DIALOGUE_ID }),
 	z.object({ code: z.literal('clear-player-dialogue') }),
 	z.object({ code: z.literal('set-editing-queue'), variant: z.any() }),
@@ -594,13 +594,13 @@ export namespace Trans {
 		destroy: (): ActivityUpdate => ({ code: 'clear-primary-panel' }),
 	} satisfies ActivityTransitions)
 
-	export const editingTeamswitches = (serverId: string) => ({
+	export const editingTeamswaps = (serverId: string) => ({
 		match: (root: RootActivity | undefined | null) => {
 			if (serverId && !onDashboard(serverId).match(root)) return null
-			return root?.child.EDITING_TEAMSWITCHES ?? null
+			return root?.child.EDITING_TEAMSWAPS ?? null
 		},
-		create: (): ActivityUpdate => ({ code: 'set-editing-teamswitches' }),
-		destroy: (): ActivityUpdate => ({ code: 'clear-editing-teamswitches' }),
+		create: (): ActivityUpdate => ({ code: 'set-editing-teamswaps' }),
+		destroy: (): ActivityUpdate => ({ code: 'clear-editing-teamswaps' }),
 	} satisfies ActivityTransitions)
 
 	export const editingQueue = (serverId: string) => ({
@@ -679,13 +679,13 @@ export function applyActivityUpdate(_activity: RootActivity | null, update: Acti
 			return Im.produce(activity, draft => {
 				delete draft.child.ON_PRIMARY_PANEL
 			})
-		case 'set-editing-teamswitches':
+		case 'set-editing-teamswaps':
 			return Im.produce(activity, draft => {
-				draft.child.EDITING_TEAMSWITCHES = ST.Match.leaf('EDITING_TEAMSWITCHES', {})
+				draft.child.EDITING_TEAMSWAPS = ST.Match.leaf('EDITING_TEAMSWAPS', {})
 			})
-		case 'clear-editing-teamswitches':
+		case 'clear-editing-teamswaps':
 			return Im.produce(activity, draft => {
-				delete draft.child.EDITING_TEAMSWITCHES
+				delete draft.child.EDITING_TEAMSWAPS
 			})
 		case 'set-player-dialogue': {
 			const withTeams = Trans.viewingTeams(serverId).match(activity)
@@ -789,8 +789,8 @@ export function activityToUpdates(activity: RootActivity): ActivityUpdate[] {
 	if (activity.child.EDITING_QUEUE) {
 		updates.push({ code: 'set-editing-queue', variant: activity.child.EDITING_QUEUE.chosen })
 	}
-	if (activity.child.EDITING_TEAMSWITCHES) {
-		updates.push({ code: 'set-editing-teamswitches' })
+	if (activity.child.EDITING_TEAMSWAPS) {
+		updates.push({ code: 'set-editing-teamswaps' })
 	}
 
 	return updates
@@ -892,10 +892,10 @@ export function clearQueueEditingActivity(activity: RootActivity | null | undefi
 	})
 }
 
-export function clearTeamswitchEditingActivity(activity: RootActivity | null | undefined): RootActivity | null {
+export function clearTeamswapEditingActivity(activity: RootActivity | null | undefined): RootActivity | null {
 	if (!activity) return null
 	return Im.produce(activity, draft => {
-		delete draft.child.EDITING_TEAMSWITCHES
+		delete draft.child.EDITING_TEAMSWAPS
 	})
 }
 
@@ -955,7 +955,7 @@ const fmt = <K extends keyof typeof ACTIVITIES_FLATTENED>(
 
 // lower index -> higher priority
 export const ACTIVITY_MESSAGE_FORMATS: ActivityMessageFormat[] = [
-	fmt('EDITING_TEAMSWITCHES', 'Editing Scheduled Teamswitches'),
+	fmt('EDITING_TEAMSWAPS', 'Editing Scheduled Teamswaps'),
 	fmt('SWITCHING_PLAYERS', 'Switching players Now'),
 	fmt('WARNING_PLAYERS', 'Warning players'),
 	fmt('REMOVING_FROM_SQUAD', 'Removing from squad'),
@@ -1011,7 +1011,7 @@ export const getHumanReadableActivity = (
 }
 
 // -------- transient presence events --------
-// fed to the presence panel by the SLL/teamswitch onSideEffect handlers when an op lands on the
+// fed to the presence panel by the SLL/teamswap onSideEffect handlers when an op lands on the
 // synced timeline; displayed briefly as event text next to the user's avatar
 export const PRESENCE_EVENT_TEXT = {
 	'added-layers': 'Added layers',
@@ -1021,13 +1021,13 @@ export const PRESENCE_EVENT_TEXT = {
 	'moved-item': 'Moved an item',
 	'saved-queue': 'Saved the queue',
 	'discarded-queue-edits': 'Discarded queue edits',
-	'saved-teamswitches': 'Saved teamswitches',
-	'executed-teamswitches': 'Executed teamswitches',
-	'added-teamswitch': 'Added a teamswitch',
-	'removed-teamswitch': 'Removed a teamswitch',
-	'cleared-teamswitches': 'Cleared teamswitches',
-	'discarded-teamswitch-edits': 'Discarded teamswitch edits',
-	'switched-players-now': 'Switched players',
+	'saved-teamswaps': 'Saved teamswaps',
+	'executed-teamswaps': 'Executed teamswaps',
+	'added-teamswap': 'Added a teamswap',
+	'removed-teamswap': 'Removed a teamswap',
+	'cleared-teamswaps': 'Cleared teamswaps',
+	'discarded-teamswap-edits': 'Discarded teamswap edits',
+	'swapped-players-now': 'Swapped players',
 } as const satisfies Record<string, string>
 export type PresenceEventAction = keyof typeof PRESENCE_EVENT_TEXT
 export type PresenceEvent = { userId: USR.UserId; action: PresenceEventAction }
