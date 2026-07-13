@@ -316,7 +316,10 @@ export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.Serv
 			}
 		}
 
-		ctx.server.postRollEventsSub.add(Rx.concat(Rx.from(withWaits)).subscribe())
+		// concat over the observables themselves, not over an observable *of* them: Rx.from(withWaits)
+		// emits each task as a value and never subscribes to it, so every post-roll announcement was
+		// silently skipped
+		ctx.server.postRollEventsSub.add(Rx.concat(...withWaits).subscribe())
 	}
 }
 
