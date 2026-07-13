@@ -20,7 +20,7 @@ import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
-import * as TSWClient from '@/systems/teamswitches.client'
+import * as TSWClient from '@/systems/teamswaps.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
 
@@ -36,7 +36,7 @@ import type { SquadDetailsWindowProps } from './squad-details-window.helpers'
 import { SquadDisplay } from './squad-display'
 import { StickyGroup } from './sticky-group.tsx'
 import { MatchTeamDisplay } from './teams-display'
-import type { TeamswitchesHelpWindowProps } from './teamswitches-help-window.helpers'
+import type { TeamswapsHelpWindowProps } from './teamswaps-help-window.helpers'
 import type { TimeoutsWindowProps } from './timeouts-window.helpers'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog'
 import { Badge } from './ui/badge'
@@ -54,7 +54,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 
 void import('@/components/squad-details-window')
-void import('@/components/teamswitches-help-window')
+void import('@/components/teamswaps-help-window')
 void import('@/components/timeouts-window')
 
 const DEFAULT_TEAM_SORTING: SortingState = [{ id: 'squad', desc: false }]
@@ -79,7 +79,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 	const showSwapsPanel = ZusUtils.useStore(
 		props.stores.squadServer!,
 		UPClient.Store,
-		(tswStore, upStore) => TSWClient.Sel.hasSwitches(tswStore) || upStore.teamswitchEditors.size > 0,
+		(tswStore, upStore) => TSWClient.Sel.hasSwaps(tswStore) || upStore.teamswapEditors.size > 0,
 	)
 	const [searchQuery, setSearchQuery] = React.useState('')
 	const [showSelected, setShowSelected] = React.useState(false)
@@ -400,7 +400,7 @@ function SelectOrSpinner({ playerId, checked, onCheckedChange, stores }: {
 	onCheckedChange: (checked: boolean) => void
 	stores: SquadServerFrame.KeyProp
 }) {
-	const isPending = ZusUtils.useStore(stores.squadServer!, TSWClient.Sel.isSwitchPending(playerId))
+	const isPending = ZusUtils.useStore(stores.squadServer!, TSWClient.Sel.isSwapPending(playerId))
 	return (
 		<div className="h-4 w-4 flex items-center justify-center shrink-0">
 			{isPending
@@ -1229,7 +1229,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	className?: string
 }) {
 	const rowSelection = ZusUtils.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
-	const savedSwitches = ZusUtils.useStore(props.stores.squadServer!, s => TSWClient.Sel.localState(s).savedSwitches)
+	const savedSwaps = ZusUtils.useStore(props.stores.squadServer!, s => TSWClient.Sel.localState(s).savedSwaps)
 	const setRowSelection = SquadServerClient.Actions.setSelection
 	const mouseDownRef = React.useRef<{ index: number; originalSelected: boolean } | null>(null)
 	const { sorting, setSorting } = props
@@ -1282,7 +1282,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 					<TableRow
 						className={cn(
 							'cursor-pointer select-none',
-							savedSwitches.has(row.id)
+							savedSwaps.has(row.id)
 								? 'bg-amber-500/20 hover:bg-amber-500/40 data-[state=selected]:bg-amber-500/50'
 								: undefined,
 						)}
@@ -1629,7 +1629,7 @@ function TeamsAfterSwap(props: { stores: SquadServerFrame.KeyProp }) {
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		(frameState, currentMatch) => {
-			const editedSwitches = TSWClient.Sel.localState(frameState).editedSwitches
+			const editedSwaps = TSWClient.Sel.localState(frameState).editedSwaps
 			const players = ChatPrt.Sel.chatState(frameState).players
 			if (!currentMatch) return { countA: 0, countB: 0 }
 			let countA = 0
@@ -1637,7 +1637,7 @@ function TeamsAfterSwap(props: { stores: SquadServerFrame.KeyProp }) {
 			for (const player of players) {
 				if (player.teamId === null) continue
 				const playerId = SM.PlayerIds.getPlayerId(player.ids)
-				const sw = editedSwitches.get(playerId)
+				const sw = editedSwaps.get(playerId)
 				const destTeam = sw?.toTeam ?? MH.getNormedTeamId(player.teamId, currentMatch.ordinal)
 				if (destTeam === 'A') countA++
 				else countB++
@@ -1654,16 +1654,16 @@ function TeamsAfterSwap(props: { stores: SquadServerFrame.KeyProp }) {
 }
 
 function SwapsPanel({ className, stores }: { className?: string; stores: SquadServerFrame.KeyProp }) {
-	const canExecute = ZusUtils.useStore(stores.squadServer!, TSWClient.Sel.canExecuteSavedTeamswitches)
-	const switchesModified = ZusUtils.useStore(stores.squadServer!, TSWClient.Sel.switchesModified)
-	const [isEditing, setIsEditing] = UPClient.useEditingTeamswitchesState(stores.squadServer!.serverId)
-	const numEditors = ZusUtils.useStore(UPClient.Store, s => s.teamswitchEditors.size)
+	const canExecute = ZusUtils.useStore(stores.squadServer!, TSWClient.Sel.canExecuteSavedTeamswaps)
+	const swapsModified = ZusUtils.useStore(stores.squadServer!, TSWClient.Sel.swapsModified)
+	const [isEditing, setIsEditing] = UPClient.useEditingTeamswapsState(stores.squadServer!.serverId)
+	const numEditors = ZusUtils.useStore(UPClient.Store, s => s.teamswapEditors.size)
 	const [forceSave, setForceSave] = React.useState(false)
 	const startEditingDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
 
 	const handleFinishOrSave = () => {
-		const shouldSave = switchesModified && (numEditors <= 1 || forceSave)
-		// clears teamswitch editing across all of this user's clients via the presence reducer fan-out
+		const shouldSave = swapsModified && (numEditors <= 1 || forceSave)
+		// clears teamswap editing across all of this user's clients via the presence reducer fan-out
 		setIsEditing(false)
 		if (shouldSave) {
 			TSWClient.Actions.save(stores)
@@ -1673,7 +1673,7 @@ function SwapsPanel({ className, stores }: { className?: string; stores: SquadSe
 
 	const saveButtonLabel = forceSave
 		? 'Force Save'
-		: (numEditors <= 1 && switchesModified)
+		: (numEditors <= 1 && swapsModified)
 		? 'Save'
 		: 'Finish Editing'
 
@@ -1688,7 +1688,7 @@ function SwapsPanel({ className, stores }: { className?: string; stores: SquadSe
 								variant="ghost"
 								size="icon"
 								className="h-7 w-7"
-								disabled={!isEditing || !switchesModified}
+								disabled={!isEditing || !swapsModified}
 								onClick={() => TSWClient.Actions.revertToSaved(stores)}
 							>
 								<Icons.Undo2 className="h-3.5 w-3.5" />
@@ -1737,12 +1737,12 @@ function SwapsPanel({ className, stores }: { className?: string; stores: SquadSe
 					<AlertDialog>
 						<AlertDialogTrigger asChild>
 							<Button variant="destructive" size="sm" disabled={!canExecute || numEditors > 0}>
-								Switch Now
+								Swap Now
 							</Button>
 						</AlertDialogTrigger>
 						<AlertDialogContent>
 							<AlertDialogHeader>
-								<AlertDialogTitle>Execute team switches?</AlertDialogTitle>
+								<AlertDialogTitle>Execute team swaps?</AlertDialogTitle>
 								<AlertDialogDescription>
 									This will immediately move all queued players to their assigned teams.
 								</AlertDialogDescription>
@@ -1751,16 +1751,16 @@ function SwapsPanel({ className, stores }: { className?: string; stores: SquadSe
 								<AlertDialogCancel>Cancel</AlertDialogCancel>
 								<AlertDialogAction
 									className={buttonVariants({ variant: 'destructive' })}
-									onClick={() => TSWClient.Actions.executeTeamswitches(stores)}
+									onClick={() => TSWClient.Actions.executeTeamswaps(stores)}
 								>
-									Switch Now
+									Swap Now
 								</AlertDialogAction>
 							</AlertDialogFooter>
 						</AlertDialogContent>
 					</AlertDialog>
 					<OpenWindowInteraction
-						windowId={WINDOW_ID.enum['teamswitches-help']}
-						windowProps={{} satisfies TeamswitchesHelpWindowProps}
+						windowId={WINDOW_ID.enum['teamswaps-help']}
+						windowProps={{} satisfies TeamswapsHelpWindowProps}
 						preload="intent"
 						render={({ ref, ...props }: { ref?: React.Ref<HTMLButtonElement> } & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
 							<Button ref={ref} variant="ghost" size="icon" className="h-7 w-7" title="Help" {...props}>
@@ -1779,15 +1779,15 @@ function SwapsPanel({ className, stores }: { className?: string; stores: SquadSe
 function TeamSwapsDisplay(
 	props: { teamId: MH.NormedTeamId; align?: 'left' | 'right'; className?: string; stores: SquadServerFrame.KeyProp },
 ) {
-	const switches = ZusUtils.useStore(
+	const swaps = ZusUtils.useStore(
 		props.stores.squadServer!,
 		React.useCallback(
-			(frameState: TSWClient.Store & ChatPrt.Store) => TSWClient.Sel.switchesToTeamEnrichedWithMutations(frameState, props.teamId),
+			(frameState: TSWClient.Store & ChatPrt.Store) => TSWClient.Sel.swapsToTeamEnrichedWithMutations(frameState, props.teamId),
 			[props.teamId],
 		),
 	)
 
-	const hasLocal = [...switches.values()].some(s => !s.mutation.removed)
+	const hasLocal = [...swaps.values()].some(s => !s.mutation.removed)
 	const isRight = props.align === 'right'
 
 	return (
@@ -1796,15 +1796,15 @@ function TeamSwapsDisplay(
 				Swaps to current <MatchTeamDisplay teamId={props.teamId} showAltTeamIndicator={true} stores={props.stores} />
 			</h3>
 			<div className={cn('flex flex-wrap items-center gap-1', isRight && 'justify-end')}>
-				{switches.size > 0 && <span className="text-xs text-muted-foreground shrink-0">({switches.size})</span>}
-				{switches.size === 0 && <span className="text-muted-foreground text-sm">No swaps yet</span>}
-				{MapUtils.mapToArray(switches, (playerId, s) => <SwitchBadge switch={s} key={playerId} stores={props.stores} />)}
+				{swaps.size > 0 && <span className="text-xs text-muted-foreground shrink-0">({swaps.size})</span>}
+				{swaps.size === 0 && <span className="text-muted-foreground text-sm">No swaps yet</span>}
+				{MapUtils.mapToArray(swaps, (playerId, s) => <SwapBadge swap={s} key={playerId} stores={props.stores} />)}
 				{hasLocal && (
 					<Button
 						variant="ghost"
 						size="icon"
 						className="h-6 w-6 shrink-0"
-						onClick={() => TSWClient.Actions.clearTeamSwitches(props.stores, props.teamId)}
+						onClick={() => TSWClient.Actions.clearTeamSwaps(props.stores, props.teamId)}
 						title="Clear all"
 					>
 						<Icons.Trash2 className="h-3 w-3" />
@@ -1815,34 +1815,34 @@ function TeamSwapsDisplay(
 	)
 }
 
-function SwitchBadge(props: { switch: TSWClient.Sel.EnrichedTeamswitchWithMutation; stores: SquadServerFrame.KeyProp }) {
-	const { mutation } = props.switch
-	const playerId = SM.PlayerIds.getPlayerId(props.switch.player.ids)
+function SwapBadge(props: { swap: TSWClient.Sel.EnrichedTeamswapWithMutation; stores: SquadServerFrame.KeyProp }) {
+	const { mutation } = props.swap
+	const playerId = SM.PlayerIds.getPlayerId(props.swap.player.ids)
 	const variant = mutation.added ? 'added' : mutation.removed ? 'removed' : 'secondary'
 
 	return (
 		<Badge
 			variant={variant}
 			className="flex items-center gap-1"
-			title={mutation.removed ? undefined : 'Middle-click: delete switch'}
+			title={mutation.removed ? undefined : 'Middle-click: delete swap'}
 			onMouseDown={e => {
 				// prevent middle-click autoscroll
 				if (e.button === 1) e.preventDefault()
 			}}
 			onAuxClick={e => {
 				if (e.button !== 1 || mutation.removed) return
-				TSWClient.Actions.removeSwitch(props.stores, [playerId])
+				TSWClient.Actions.removeSwap(props.stores, [playerId])
 			}}
 		>
 			<span className={mutation.removed ? 'line-through opacity-60' : undefined}>
-				{props.switch.player.ids.username}
+				{props.swap.player.ids.username}
 			</span>
 			{!mutation.removed && (
 				<button
 					type="button"
-					onClick={() => TSWClient.Actions.removeSwitch(props.stores, [playerId])}
+					onClick={() => TSWClient.Actions.removeSwap(props.stores, [playerId])}
 					className="ml-1 hover:text-destructive"
-					title="Delete switch"
+					title="Delete swap"
 				>
 					<Icons.X className="h-3 w-3" />
 				</button>

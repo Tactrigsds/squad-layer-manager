@@ -168,9 +168,9 @@ export function getQueueEditors(serverId: string, exclude?: USR.UserId): USR.Use
 	return [...editors]
 }
 
-export function dispatchEndAllTeamswitchEditing(serverId: string) {
+export function dispatchEndAllTeamswapEditing(serverId: string) {
 	dispatchOp([{
-		code: 'teamswitches:end-all-editing',
+		code: 'teamswaps:end-all-editing',
 		opId: UP.createOpId(),
 		time: Date.now(),
 		serverId,

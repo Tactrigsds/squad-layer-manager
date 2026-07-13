@@ -53,19 +53,19 @@ export function setup() {
 		}
 	})
 
-	meter.createObservableGauge(ATTRS.Teamswitch.PENDING_SWITCHES, {
-		description: 'Number of team switches saved and waiting to be executed',
+	meter.createObservableGauge(ATTRS.Teamswap.PENDING_SWAPS, {
+		description: 'Number of team swaps saved and waiting to be executed',
 	}).addCallback((result) => {
 		for (const [serverId, slice] of SquadServer.globalState.slices) {
-			result.observe(slice.teamswitches.session.state.pendingSwitches.size, { [ATTRS.SquadServer.ID]: serverId })
+			result.observe(slice.teamswaps.session.state.pendingSwaps.size, { [ATTRS.SquadServer.ID]: serverId })
 		}
 	})
 
-	meter.createObservableGauge(ATTRS.Teamswitch.SWITCHING, {
-		description: 'Whether a team switch execution is currently in flight',
+	meter.createObservableGauge(ATTRS.Teamswap.SWAPPING, {
+		description: 'Whether a team swap execution is currently in flight',
 	}).addCallback((result) => {
 		for (const [serverId, slice] of SquadServer.globalState.slices) {
-			result.observe(slice.teamswitches.session.state.switching ? 1 : 0, { [ATTRS.SquadServer.ID]: serverId })
+			result.observe(slice.teamswaps.session.state.swapping ? 1 : 0, { [ATTRS.SquadServer.ID]: serverId })
 		}
 	})
 }

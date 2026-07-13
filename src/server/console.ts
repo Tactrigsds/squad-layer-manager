@@ -24,7 +24,7 @@ import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as SM from '@/models/squad.models'
-import * as TSW from '@/models/teamswitches.models'
+import * as TSW from '@/models/teamswaps.models'
 import * as UP from '@/models/user-presence'
 import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models'
@@ -49,7 +49,7 @@ import * as Settings from '@/systems/settings.server'
 import * as SquadLogsReceiver from '@/systems/squad-logs-receiver.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
-import * as Teamswitches from '@/systems/teamswitches.server'
+import * as Teamswaps from '@/systems/teamswaps.server'
 import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
@@ -85,7 +85,7 @@ const namespaces = {
 	SquadLogsReceiver,
 	SquadRcon,
 	SquadServer,
-	Teamswitches,
+	Teamswaps,
 	UserPresence,
 	Users,
 	Vote,

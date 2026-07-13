@@ -101,7 +101,7 @@ export class World {
 	fogOfWar: 'on' | 'off' = 'on'
 	// A roll reassigns players to the other team index. This is what SLM's team model assumes: it
 	// norms team ids to sides A/B keyed on the match ordinal's parity, so a player's side is only
-	// stable across matches if their raw team flips with it. Teamswitches queued for the next map
+	// stable across matches if their raw team flips with it. Teamswaps queued for the next map
 	// depend on it -- without the swap the app finds them already on the side they asked for.
 	swapTeamsOnRoll = true
 

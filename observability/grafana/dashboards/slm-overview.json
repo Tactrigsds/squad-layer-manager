@@ -366,23 +366,23 @@
 			}
 		},
 
-		{ "type": "row", "title": "Teamswitches and BattleMetrics", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 50 } },
+		{ "type": "row", "title": "Teamswaps and BattleMetrics", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 50 } },
 		{
 			"type": "timeseries",
-			"title": "Pending team switches",
-			"description": "Switches saved and waiting to execute, with the in-flight flag overlaid.",
+			"title": "Pending team swaps",
+			"description": "Swaps saved and waiting to execute, with the in-flight flag overlaid.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
 			"gridPos": { "h": 7, "w": 12, "x": 0, "y": 51 },
 			"targets": [
 				{
 					"refId": "A",
-					"expr": "slm_teamswitch_pending_switches{slm_squad_server_id=~\"$server\"}",
+					"expr": "slm_teamswap_pending_swaps{slm_squad_server_id=~\"$server\"}",
 					"legendFormat": "pending {{slm_squad_server_id}}"
 				},
 				{
 					"refId": "B",
-					"expr": "slm_teamswitch_switching{slm_squad_server_id=~\"$server\"}",
-					"legendFormat": "switching {{slm_squad_server_id}}"
+					"expr": "slm_teamswap_swapping{slm_squad_server_id=~\"$server\"}",
+					"legendFormat": "swapping {{slm_squad_server_id}}"
 				}
 			],
 			"fieldConfig": {

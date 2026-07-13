@@ -79,7 +79,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 	// subjects are created once per frame instance, so reading them outside a selector is fine
 	const frameState = ZusUtils.getState(props.stores.squadServer)
 	const queueEvent$ = frameState.queue.presenceEvent$
-	const teamswitchEvent$ = frameState.teamswitches.presenceEvent$
+	const teamswapEvent$ = frameState.teamswaps.presenceEvent$
 
 	const headerRef = React.useRef<HTMLDivElement>(null)
 
@@ -122,11 +122,10 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 										<UserPresencePanel
 											stores={props.stores}
 											sourcePresenceFn={sortEditingPresence}
-											matchActivity={root =>
-												UP.Trans.viewingTeams(serverId).match(root) || UP.Trans.editingTeamswitches(serverId).match(root)}
+											matchActivity={root => UP.Trans.viewingTeams(serverId).match(root) || UP.Trans.editingTeamswaps(serverId).match(root)}
 											matchActivityForStatusText={root =>
-												UP.Trans.editingTeamswitches(serverId).match(root) || UP.Trans.viewingTeams(serverId).match(root)}
-											event$={teamswitchEvent$}
+												UP.Trans.editingTeamswaps(serverId).match(root) || UP.Trans.viewingTeams(serverId).match(root)}
+											event$={teamswapEvent$}
 											className="min-w-0"
 										/>
 									</div>

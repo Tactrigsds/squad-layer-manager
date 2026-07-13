@@ -14,9 +14,9 @@ export const COMMAND_GROUPS: CommandGroup[] = [
 		ids: ['startVote', 'abortVote', 'endVoteEarly', 'enableSlmUpdates', 'disableSlmUpdates', 'getSlmUpdatesEnabled'],
 	},
 	{
-		slug: 'teamswitches',
-		label: 'Teamswitches',
-		ids: ['switchNow', 'switchNext', 'switchSquadNow', 'switchSquadNext', 'swaps', 'clearSwitches'],
+		slug: 'teamswaps',
+		label: 'Teamswaps',
+		ids: ['swapNow', 'swapNext', 'swapSquadNow', 'swapSquadNext', 'swaps', 'clearSwaps'],
 	},
 	{ slug: 'flags', label: 'Player Flags', ids: ['flag', 'removeFlag', 'listFlags'] },
 	{

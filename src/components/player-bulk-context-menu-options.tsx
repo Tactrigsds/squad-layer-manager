@@ -10,7 +10,7 @@ import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
-import * as TSWClient from '@/systems/teamswitches.client'
+import * as TSWClient from '@/systems/teamswaps.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
@@ -74,7 +74,7 @@ export default function PlayerBulkContextMenuOptions(
 	const timeoutDenied = maxTimeout === undefined
 		? RBAC.permissionDenied({ check: 'all', permits: [RBAC.perm('squad-server:timeout-players', { maxDurationMs: null })] })
 		: null
-	const canSwitchNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwitchNow(playerIds))
+	const canSwapNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwapNow(playerIds))
 	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.someCanQueue(playerIds))
 
 	// when the selection is exactly one full squad, the warn action targets the squad details window and the
@@ -87,7 +87,7 @@ export default function PlayerBulkContextMenuOptions(
 		},
 	)
 
-	// scrollable list of the selected players' usernames, shown in the switch/kill confirmation dialogs so
+	// scrollable list of the selected players' usernames, shown in the swap/kill confirmation dialogs so
 	// the admin can see exactly who is affected
 	function selectedPlayerList() {
 		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer)).players
@@ -101,7 +101,7 @@ export default function PlayerBulkContextMenuOptions(
 		)
 	}
 
-	async function switchNow() {
+	async function swapNow() {
 		const initialState = TSWClient.Sel.localState(ZusUtils.getState(stores.squadServer))
 		const initialTeams = new Map(playerIds.map(id => [id, initialState.players.get(id)]))
 		const unsubscribe = ZusUtils.resolveReadStore(stores.squadServer).subscribe(state => {
@@ -111,18 +111,18 @@ export default function PlayerBulkContextMenuOptions(
 		try {
 			await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
 				const result = await openDialog({
-					title: 'Switch Players Now',
+					title: 'Swap Players Now',
 					variant: 'destructive',
 					description: `Move these ${playerIds.length} players to the opposite team immediately?`,
 					content: selectedPlayerList(),
-					buttons: [{ id: 'confirm', label: 'Switch Now' }],
+					buttons: [{ id: 'confirm', label: 'Swap Now' }],
 				})
 				if (result === 'dismissed') {
-					toast.warning('Switch cancelled', { description: 'One or more players changed teams' })
+					toast.warning('Swap cancelled', { description: 'One or more players changed teams' })
 					return
 				}
 				if (result !== 'confirm') return
-				TSWClient.Actions.switchNow(stores, playerIds)
+				TSWClient.Actions.swapNow(stores, playerIds)
 			})
 		} finally {
 			unsubscribe()
@@ -311,25 +311,25 @@ export default function PlayerBulkContextMenuOptions(
 			</ContextMenuItem>
 			<ContextMenuSeparator />
 			<PermissionDeniedTooltip denied={manageDenied}>
-				<ContextMenuItem onClick={() => TSWClient.Actions.switchNext(stores, playerIds)} disabled={!!manageDenied || !canQueue}>
-					Switch Next
+				<ContextMenuItem onClick={() => TSWClient.Actions.swapNext(stores, playerIds)} disabled={!!manageDenied || !canQueue}>
+					Swap Next
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<ContextMenuSeparator />
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<ContextMenuItem
 					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
-					onClick={switchNow}
-					disabled={!!manageDenied || !canSwitchNow}
+					onClick={swapNow}
+					disabled={!!manageDenied || !canSwapNow}
 				>
-					Switch Now
+					Swap Now
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<ContextMenuItem
 					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
 					onClick={kill}
-					disabled={!!manageDenied || !canSwitchNow}
+					disabled={!!manageDenied || !canSwapNow}
 				>
 					Kill
 				</ContextMenuItem>
@@ -353,8 +353,8 @@ export default function PlayerBulkContextMenuOptions(
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
-				<ContextMenuItem onClick={() => TSWClient.Actions.removeSwitch(stores, playerIds)} disabled={!!manageDenied}>
-					Delete Switches
+				<ContextMenuItem onClick={() => TSWClient.Actions.removeSwap(stores, playerIds)} disabled={!!manageDenied}>
+					Delete Swaps
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<ContextMenuSeparator />

@@ -404,7 +404,7 @@ export const PlayerIdSchema = z.string()
 export type PlayerId = EosId
 
 // A roster is "settled" when every player has been assigned to a team -- i.e. no one is still loading / unassigned.
-// Canonical gate for operations that need faithful team data (e.g. executing configured team switches): acting on a
+// Canonical gate for operations that need faithful team data (e.g. executing configured team swaps): acting on a
 // roster with team-less players would compute moves / balance against an incomplete picture.
 export function allPlayersTeamed(players: Pick<Player, 'teamId'>[]): boolean {
 	return players.every(p => p.teamId != null)

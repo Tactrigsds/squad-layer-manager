@@ -10,7 +10,7 @@ import * as LL from '@/models/layer-list.models'
 import type * as MH from '@/models/match-history.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as SM from '@/models/squad.models'
-import * as TSW from '@/models/teamswitches.models'
+import * as TSW from '@/models/teamswaps.models'
 import * as USR from '@/models/users.models'
 import superjson from 'superjson'
 import { z } from 'zod'
@@ -291,15 +291,15 @@ export const QueueUpdatedSchema = event('QUEUE_UPDATED', {
 })
 export type QueueUpdated = z.infer<typeof QueueUpdatedSchema>
 
-// the queued (saved) teamswitches changed. like QUEUE_UPDATED, the before/after collections are carried and diffed
+// the queued (saved) teamswaps changed. like QUEUE_UPDATED, the before/after collections are carried and diffed
 // rather than the ops, so churn that cancelled out before the save produces no change at all. the source on each
-// switch attributes it to whoever queued that player, which is not necessarily whoever saved.
-export const TeamswitchesUpdatedSchema = event('TEAMSWITCHES_UPDATED', {
+// swap attributes it to whoever queued that player, which is not necessarily whoever saved.
+export const TeamswapsUpdatedSchema = event('TEAMSWAPS_UPDATED', {
 	trigger: TSW.SaveTriggerSchema,
-	prevSwitches: TSW.TeamswitchCollectionSchema,
-	switches: TSW.TeamswitchCollectionSchema,
+	prevSwaps: TSW.TeamswapCollectionSchema,
+	swaps: TSW.TeamswapCollectionSchema,
 })
-export type TeamswitchesUpdated = z.infer<typeof TeamswitchesUpdatedSchema>
+export type TeamswapsUpdated = z.infer<typeof TeamswapsUpdatedSchema>
 
 // SLM set the next layer on the server. reason 'queue-updated' folds into its cause (the QUEUE_UPDATED linked via
 // causeId) and is audit-only; reason 'override' is when SLM set the layer back over an external set, and gets a feed
@@ -333,7 +333,7 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	VoteEndedSchema,
 	VoteAbortedSchema,
 	QueueUpdatedSchema,
-	TeamswitchesUpdatedSchema,
+	TeamswapsUpdatedSchema,
 	SettingsUpdatedSchema,
 	ServerRegistryChangedSchema,
 	FilterChangedSchema,
@@ -381,8 +381,8 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 			return []
 		case 'PLAYER_FLAGS_UPDATED':
 			return [e.playerId]
-		case 'TEAMSWITCHES_UPDATED':
-			return summarizeTeamswitchChanges(e).map(c => c.playerId)
+		case 'TEAMSWAPS_UPDATED':
+			return summarizeTeamswapChanges(e).map(c => c.playerId)
 		case 'MAP_SET':
 			return e.overrode?.type === 'player' ? [e.overrode.playerId] : []
 	}
@@ -402,7 +402,7 @@ export function describeAppEvent(e: AppEvent): string {
 		case 'PLAYER_REMOVED_FROM_SQUAD':
 			return `removed ${players(e.targets.length)} from squad${forReason(e.reason)}`
 		case 'TEAM_CHANGE_FORCED':
-			return `switched ${players(e.targets.length)} to the other team`
+			return `swapped ${players(e.targets.length)} to the other team`
 		case 'PLAYER_KILLED':
 			// preset-reason kills embed the label in the delivered reason, so it isn't repeated here
 			return `killed ${players(e.targets.length)}${e.reason ? `: "${e.reason}"` : ''}`
@@ -449,18 +449,18 @@ export function describeAppEvent(e: AppEvent): string {
 				? `${verb}, next layer now ${DH.toShortLayerNameFromId(nextAfter)}`
 				: verb
 		}
-		case 'TEAMSWITCHES_UPDATED': {
-			const changes = summarizeTeamswitchChanges(e)
+		case 'TEAMSWAPS_UPDATED': {
+			const changes = summarizeTeamswapChanges(e)
 			const added = changes.filter(c => c.kind === 'added').length
 			const removed = changes.filter(c => c.kind === 'removed').length
 			// the caller prepends the actor, which is 'SLM' when the map roll fired the queue
-			if (e.trigger === 'executed' || e.trigger === 'switched-now') {
-				return `executed the queued teamswitches (${players(removed)})`
+			if (e.trigger === 'executed' || e.trigger === 'swapped-now') {
+				return `executed the queued teamswaps (${players(removed)})`
 			}
-			if (e.trigger === 'roster-change') return `dropped ${removed} queued teamswitch${removed === 1 ? '' : 'es'} (roster changed)`
-			if (e.switches.size === 0) return 'cleared the queued teamswitches'
+			if (e.trigger === 'roster-change') return `dropped ${removed} queued teamswap${removed === 1 ? '' : 's'} (roster changed)`
+			if (e.swaps.size === 0) return 'cleared the queued teamswaps'
 			const parts = [added > 0 ? `+${added}` : null, removed > 0 ? `−${removed}` : null].filter(Boolean)
-			return `updated the queued teamswitches (${parts.join(', ')})`
+			return `updated the queued teamswaps (${parts.join(', ')})`
 		}
 		case 'MAP_SET': {
 			const layer = DH.toShortLayerNameFromId(e.layerId)
@@ -645,11 +645,11 @@ export function summarizeQueueChanges(e: QueueUpdated): QueueChange[] {
 	return changes
 }
 
-// ---- TEAMSWITCHES_UPDATED change attribution ----
+// ---- TEAMSWAPS_UPDATED change attribution ----
 
-// a net change the save made to the queued teamswitches. only an added switch carries an actor: the switch records
+// a net change the save made to the queued teamswaps. only an added swap carries an actor: the swap records
 // who queued that player (which is not necessarily whoever saved), while nothing records who removed one.
-export type TeamswitchChange =
+export type TeamswapChange =
 	& { playerId: SM.PlayerId; toTeam: MH.NormedTeamId }
 	& (
 		| { kind: 'added'; byUserId?: USR.UserId }
@@ -658,16 +658,16 @@ export type TeamswitchChange =
 
 // a player queued for a different team than before reads as an add (to the new team); the stale destination is not
 // worth a line of its own
-export function summarizeTeamswitchChanges(e: TeamswitchesUpdated): TeamswitchChange[] {
-	const changes: TeamswitchChange[] = []
-	for (const [playerId, _switch] of e.switches) {
-		const prev = e.prevSwitches.get(playerId)
-		if (prev?.toTeam === _switch.toTeam) continue
-		changes.push({ kind: 'added', playerId, toTeam: _switch.toTeam, byUserId: _switch.source.discordId })
+export function summarizeTeamswapChanges(e: TeamswapsUpdated): TeamswapChange[] {
+	const changes: TeamswapChange[] = []
+	for (const [playerId, _swap] of e.swaps) {
+		const prev = e.prevSwaps.get(playerId)
+		if (prev?.toTeam === _swap.toTeam) continue
+		changes.push({ kind: 'added', playerId, toTeam: _swap.toTeam, byUserId: _swap.source.discordId })
 	}
-	for (const [playerId, _switch] of e.prevSwitches) {
-		if (e.switches.has(playerId)) continue
-		changes.push({ kind: 'removed', playerId, toTeam: _switch.toTeam })
+	for (const [playerId, _swap] of e.prevSwaps) {
+		if (e.swaps.has(playerId)) continue
+		changes.push({ kind: 'removed', playerId, toTeam: _swap.toTeam })
 	}
 	return changes
 }

@@ -1,7 +1,7 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
-import * as TeamswitchesPrt from '@/frame-partials/teamswitches.partial'
+import * as TeamswapsPrt from '@/frame-partials/teamswaps.partial'
 import type * as FRM from '@/lib/frame'
 import * as ZusUtils from '@/lib/zustand'
 
@@ -19,7 +19,7 @@ import { frameManager } from './frame-manager'
 
 export type Input = { serverId: string }
 
-export type State = ChatPrt.Store & ServerSettingsPrt.Store & LayerQueuePrt.Store & TeamswitchesPrt.Store & {
+export type State = ChatPrt.Store & ServerSettingsPrt.Store & LayerQueuePrt.Store & TeamswapsPrt.Store & {
 	layerItemsState: LQY.LayerItemsState
 	layerItemStatuses: LQY.LayerItemStatuses | null
 }
@@ -45,7 +45,7 @@ export const frame = frameManager.createFrame<Types>({
 		ChatPrt.initChat(args)
 		ServerSettingsPrt.initServerSettings(args)
 		LayerQueuePrt.initLayerQueue(args)
-		TeamswitchesPrt.initTeamswitches(args)
+		TeamswapsPrt.initTeamswaps(args)
 
 		// keeps the read-only, per-server oRPC streams (serverInfo/serverRolling/layersStatus, vote state,
 		// match history, unexpected-next-layer) hot for the lifetime of this frame instance

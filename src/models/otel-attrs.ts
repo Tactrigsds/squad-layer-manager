@@ -92,17 +92,17 @@ export namespace LayerQueue {
 	export const UNSAVED = 'slm.layer_queue.unsaved'
 }
 
-export namespace Teamswitch {
-	export const OP_CODES = 'slm.teamswitch.op_codes'
-	export const OP_CODE = 'slm.teamswitch.op.code'
-	export const OP_ID = 'slm.teamswitch.op.id'
-	export const OP_SUCCESS = 'slm.teamswitch.op.success'
-	export const SIDE_EFFECT = 'slm.teamswitch.side_effect'
-	export const SWITCH_COUNT = 'slm.teamswitch.switch_count'
-	export const PLAYER_COUNT = 'slm.teamswitch.player_count'
-	export const PENDING_SWITCHES = 'slm.teamswitch.pending_switches'
-	export const SWITCHING = 'slm.teamswitch.switching'
-	export const FAILURE_REASON = 'slm.teamswitch.failure_reason'
+export namespace Teamswap {
+	export const OP_CODES = 'slm.teamswap.op_codes'
+	export const OP_CODE = 'slm.teamswap.op.code'
+	export const OP_ID = 'slm.teamswap.op.id'
+	export const OP_SUCCESS = 'slm.teamswap.op.success'
+	export const SIDE_EFFECT = 'slm.teamswap.side_effect'
+	export const SWAP_COUNT = 'slm.teamswap.swap_count'
+	export const PLAYER_COUNT = 'slm.teamswap.player_count'
+	export const PENDING_SWAPS = 'slm.teamswap.pending_swaps'
+	export const SWAPPING = 'slm.teamswap.swapping'
+	export const FAILURE_REASON = 'slm.teamswap.failure_reason'
 }
 
 export namespace UserPresence {

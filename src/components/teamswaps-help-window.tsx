@@ -1,22 +1,22 @@
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as Icons from 'lucide-react'
-import type { TeamswitchesHelpWindowProps } from './teamswitches-help-window.helpers'
+import type { TeamswapsHelpWindowProps } from './teamswaps-help-window.helpers'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
 
-DraggableWindowStore.getState().registerDefinition<TeamswitchesHelpWindowProps, unknown>({
-	type: WINDOW_ID.enum['teamswitches-help'],
-	component: TeamswitchesHelpWindow,
+DraggableWindowStore.getState().registerDefinition<TeamswapsHelpWindowProps, unknown>({
+	type: WINDOW_ID.enum['teamswaps-help'],
+	component: TeamswapsHelpWindow,
 	initialPosition: 'left',
-	getId: () => 'teamswitches-help',
+	getId: () => 'teamswaps-help',
 })
 
-function TeamswitchesHelpWindow() {
+function TeamswapsHelpWindow() {
 	useDraggableWindow()
 	return (
 		<div className="min-w-0 min-h-0 flex flex-col w-80">
 			<DraggableWindowDragBar>
-				<DraggableWindowTitle>Team Switches Help</DraggableWindowTitle>
+				<DraggableWindowTitle>Team Swaps Help</DraggableWindowTitle>
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
 			<div className="px-4 py-3 text-sm space-y-3 text-muted-foreground">
@@ -25,14 +25,14 @@ function TeamswitchesHelpWindow() {
 				</p>
 				<ol className="list-decimal list-inside space-y-2">
 					<li>
-						Right-click a player and choose <strong className="text-foreground">Switch Next</strong> to queue them.
+						Right-click a player and choose <strong className="text-foreground">Swap Next</strong> to queue them.
 					</li>
 					<li>
 						Click <strong className="text-foreground">Save</strong>{' '}
 						to commit your queue. Players are notified in-game that they will be swapped at the start of the next round.
 					</li>
 					<li>
-						Click <strong className="text-foreground">Switch Now</strong> to immediately execute all saved switches.
+						Click <strong className="text-foreground">Swap Now</strong> to immediately execute all saved swaps.
 					</li>
 				</ol>
 				<ul className="space-y-2">

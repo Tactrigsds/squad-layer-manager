@@ -10,7 +10,7 @@ import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
-import * as TSWClient from '@/systems/teamswitches.client'
+import * as TSWClient from '@/systems/teamswaps.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
@@ -74,7 +74,7 @@ export function SquadMenuItems(
 		},
 	)
 
-	const canSwitchNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwitchNow(squadPlayerIds))
+	const canSwapNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwapNow(squadPlayerIds))
 	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canQueue(squadPlayerIds))
 	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
@@ -89,9 +89,9 @@ export function SquadMenuItems(
 	const teamId = squad.teamId as 1 | 2
 	const serverId = stores.squadServer.serverId
 
-	// mirrors the player/bulk Switch Now flow: confirm, then switch. The dialog auto-closes if any member changes
-	// teams while it's open (their switch would be a no-op or wrong), warning the admin the selection went stale.
-	async function switchNow() {
+	// mirrors the player/bulk Swap Now flow: confirm, then swap. The dialog auto-closes if any member changes
+	// teams while it's open (their swap would be a no-op or wrong), warning the admin the selection went stale.
+	async function swapNow() {
 		if (squadPlayerIds.length === 0) return
 		const initialTeams = new Map(
 			squadPlayerIds.map(id => [id, TSWClient.Sel.localState(ZusUtils.getState(stores.squadServer)).players.get(id)]),
@@ -103,17 +103,17 @@ export function SquadMenuItems(
 		try {
 			await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
 				const result = await openDialog({
-					title: 'Switch Squad Now',
+					title: 'Swap Squad Now',
 					variant: 'destructive',
 					description: `Move the ${squadPlayerIds.length} members of squad ${squadLabel} to the opposite team immediately?`,
-					buttons: [{ id: 'confirm', label: 'Switch Now' }],
+					buttons: [{ id: 'confirm', label: 'Swap Now' }],
 				})
 				if (result === 'dismissed') {
-					toast.warning('Switch cancelled', { description: 'One or more players changed teams' })
+					toast.warning('Swap cancelled', { description: 'One or more players changed teams' })
 					return
 				}
 				if (result !== 'confirm') return
-				TSWClient.Actions.switchNow(stores, squadPlayerIds)
+				TSWClient.Actions.swapNow(stores, squadPlayerIds)
 			})
 		} finally {
 			unsubscribe()
@@ -299,26 +299,26 @@ export function SquadMenuItems(
 		<>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item
-					onClick={() => TSWClient.Actions.switchNext(stores, squadPlayerIds)}
+					onClick={() => TSWClient.Actions.swapNext(stores, squadPlayerIds)}
 					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canQueue}
 				>
-					Switch Squad Next
+					Swap Squad Next
 				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item
 					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
-					onClick={switchNow}
-					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canSwitchNow}
+					onClick={swapNow}
+					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canSwapNow}
 				>
-					Switch Squad Now
+					Swap Squad Now
 				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item
 					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
 					onClick={killSquad}
-					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canSwitchNow}
+					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canSwapNow}
 				>
 					Kill Squad
 				</Item>

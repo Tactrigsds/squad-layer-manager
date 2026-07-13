@@ -522,7 +522,7 @@ export async function switchPlayers(
 }
 
 // "Kill" trick: AdminForceTeamChange toggles a player's team and forces a respawn (death), so issuing it
-// twice ~1s apart kills the player while returning them to their original team. Unlike the teamswitch flow
+// twice ~1s apart kills the player while returning them to their original team. Unlike the teamswap flow
 // this doesn't broadcast switch notifications to admins, only warns the killed player, and invalidates
 // teams once after both switches complete so the intermediate (swapped) team state is never surfaced.
 export async function killPlayers(

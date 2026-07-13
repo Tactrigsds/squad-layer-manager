@@ -262,26 +262,26 @@ export const WARNS = {
 		steamAccountNotLinked: () =>
 			`This command requires a linked SLM account. Link your Steam ID on the SLM website (account menu > Linked Steam Accounts).`,
 	},
-	teamswitches: {
-		notifyPlayerOfUpcomingTeamswitch: 'You have been marked for teamswitching on mapchange. '
+	teamswaps: {
+		notifyPlayerOfUpcomingTeamswap: 'You have been marked for a team swap on mapchange. '
 			+ 'Thank you for helping with team balance and contact admins if you have issues.',
-		notifyTeamswitchCancelled: 'You will no longer be switched to the other team on map roll.',
-		notifyManualSwitch: 'You have been switched to the other team by an admin.',
-		// added/removed are the real per-player diff against the previously saved switches, not the net change in
+		notifyTeamswapCancelled: 'You will no longer be swapped to the other team on map roll.',
+		notifyManualSwap: 'You have been swapped to the other team by an admin.',
+		// added/removed are the real per-player diff against the previously saved swaps, not the net change in
 		// size: a save that adds 3 and removes 1 is not "added 2"
-		notifyAdminSwitchesSaved: (name: string, count: number, added: number, removed: number, factionLines?: string[]) => {
-			if (count === 0) return `${name} cleared all queued teamswitches for next map.`
+		notifyAdminSwapsSaved: (name: string, count: number, added: number, removed: number, factionLines?: string[]) => {
+			if (count === 0) return `${name} cleared all queued teamswaps for next map.`
 			const parts: string[] = []
 			if (added > 0) parts.push(`added ${added}`)
 			if (removed > 0) parts.push(`removed ${removed}`)
 			const changeSummary = parts.length > 0 ? ` (${parts.join(', ')})` : ''
-			const base = `${name} queued ${count} teamswitch${count !== 1 ? 'es' : ''} for next map${changeSummary}`
+			const base = `${name} queued ${count} teamswap${count !== 1 ? 's' : ''} for next map${changeSummary}`
 			return factionLines?.length ? `${base}:\n${factionLines.join('\n')}` : `${base}.`
 		},
-		notifyAdminManualSwitch: (name: string, count: number, factionLines?: string[]) =>
+		notifyAdminManualSwap: (name: string, count: number, factionLines?: string[]) =>
 			factionLines?.length
-				? `${name} switched ${count} player${count !== 1 ? 's' : ''}:\n${factionLines.join('\n')}`
-				: `${name} switched ${count} player${count !== 1 ? 's' : ''} to the other team.`,
+				? `${name} swapped ${count} player${count !== 1 ? 's' : ''}:\n${factionLines.join('\n')}`
+				: `${name} swapped ${count} player${count !== 1 ? 's' : ''} to the other team.`,
 	},
 	kill: {
 		// a supplied reason is already the fully-rendered verbatim message; only the no-reason case gets a default
@@ -345,12 +345,12 @@ export const GENERAL = {
 			flag: "Flag a player's BM profile, optionally with a reason (some flags require one)",
 			removeFlag: "Remove a flag from a player's BM profile",
 			listFlags: 'List BM flags for a player, or all org flags if no player is given',
-			switchNow: 'Switch a player to the opposite team immediately',
-			switchNext: 'Queue a player to switch teams on the next map',
-			switchSquadNow: 'Switch an entire squad to the opposite team immediately',
-			switchSquadNext: 'Queue an entire squad to switch teams on the next map',
+			swapNow: 'Swap a player to the opposite team immediately',
+			swapNext: 'Queue a player to swap teams on the next map',
+			swapSquadNow: 'Swap an entire squad to the opposite team immediately',
+			swapSquadNext: 'Queue an entire squad to swap teams on the next map',
 			swaps: 'Show a summary of queued team swaps',
-			clearSwitches: 'Clear all queued teamswitches',
+			clearSwaps: 'Clear all queued teamswaps',
 			warn: 'Warn a player',
 			listWarnReasons: 'List the configured admin action reasons and their aliases',
 			warnSquad: 'Warn every member of a squad',

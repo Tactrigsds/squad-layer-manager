@@ -116,7 +116,7 @@ export const PERMISSION_DEFINITION = {
 	...definePermission('squad-server:disable-slm-updates', { description: 'Disable updates from slm to the game-server', scope: 'global' }),
 	...definePermission('squad-server:turn-fog-off', { description: 'Disable fog-of-war for the current match', scope: 'global' }),
 	...definePermission('squad-server:manage-players', {
-		description: 'Disband squads, remove players from squads, and manage team switches',
+		description: 'Disband squads, remove players from squads, and manage team swaps',
 		scope: 'global',
 	}),
 	...definePermission('squad-server:warn-players', { description: 'Send in-game warnings to players', scope: 'global' }),
