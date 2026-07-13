@@ -92,7 +92,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 COPY src ./src
 COPY test ./test
 COPY drizzle ./drizzle
-COPY paths.ts tsconfig.json tsconfig.app.json tsconfig.node.json ./
+COPY paths.ts tsconfig.json tsconfig.paths.json tsconfig.app.json tsconfig.node.json ./
 COPY vite.config.ts vitest.integration.config.ts playwright.config.ts index.html ./
 
 # Only the headless shell, not the full chromium: `playwright install chromium` fetches both (646MB),
