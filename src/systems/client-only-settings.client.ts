@@ -23,9 +23,6 @@ export const Store = Zus.createStore<ClientOnlySettingsStore>()(ZusMiddle.persis
 	storage: ZusMiddle.createJSONStorage(() => localStorage),
 }))
 
-// we're just hardcoding this to true for now
-Store.setState({ displayTeamsNormalized: true })
-
 export namespace Actions {
 	export function setDisplayTeamsNormalized(value: boolean) {
 		Store.setState({ displayTeamsNormalized: value })

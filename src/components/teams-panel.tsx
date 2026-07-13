@@ -16,6 +16,7 @@ import * as TeamsPanelModels from '@/models/teams-panel.models'
 
 import * as RBAC from '@/rbac.models.ts'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
+import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -76,6 +77,11 @@ function matchPlayersBySearch<T extends { ids: SM.PlayerIds.Type }>(players: T[]
 export default function TeamsPanel(props: { className?: string; stores: SquadServerFrame.KeyProp }) {
 	const headerRef = React.useRef<HTMLDivElement>(null)
 	const isDesktop = useIsDesktopSize()
+	const currentMatch = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
+	const displayTeamsNormalized = ZusUtils.useStore(ClientOnlySettings.Store, s => s.displayTeamsNormalized)
+	// per-team state below stays keyed by normed team id, so a team keeps its filters and sorting when the
+	// displayed order flips
+	const [leftTeam, rightTeam] = MH.getDisplayedTeamOrder(currentMatch?.ordinal ?? 0, displayTeamsNormalized)
 	const showSwapsPanel = ZusUtils.useStore(
 		props.stores.squadServer!,
 		UPClient.Store,
@@ -142,21 +148,31 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 		setSortingB(DEFAULT_TEAM_SORTING)
 		setSortingCombined(DEFAULT_COMBINED_SORTING)
 	}
-	const filtersA: PlayerFilters = {
-		role: roleFilter,
-		setRole: setRoleFilter,
-		grouping: groupingFilter,
-		setGrouping: setGroupingFilter,
-		squad: squadFilterA,
-		setSquad: setSquadFilterA,
-	}
-	const filtersB: PlayerFilters = {
-		role: roleFilter,
-		setRole: setRoleFilter,
-		grouping: groupingFilter,
-		setGrouping: setGroupingFilter,
-		squad: squadFilterB,
-		setSquad: setSquadFilterB,
+	const teamPanes: Record<MH.NormedTeamId, { filters: PlayerFilters; sorting: SortingState; setSorting: SetSorting }> = {
+		A: {
+			filters: {
+				role: roleFilter,
+				setRole: setRoleFilter,
+				grouping: groupingFilter,
+				setGrouping: setGroupingFilter,
+				squad: squadFilterA,
+				setSquad: setSquadFilterA,
+			},
+			sorting: sortingA,
+			setSorting: setSortingA,
+		},
+		B: {
+			filters: {
+				role: roleFilter,
+				setRole: setRoleFilter,
+				grouping: groupingFilter,
+				setGrouping: setGroupingFilter,
+				squad: squadFilterB,
+				setSquad: setSquadFilterB,
+			},
+			sorting: sortingB,
+			setSorting: setSortingB,
+		},
 	}
 	const filtersC: PlayerFilters = {
 		role: roleFilter,
@@ -171,16 +187,23 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 			<div ref={headerRef} className="flex w-full p-1 flex-col bg-background">
 				<div className="grid w-full grid-cols-[1fr_auto_1fr] gap-1">
 					<div>
-						<TeamTitle teamId="A" stores={props.stores} />
+						<TeamTitle teamId={leftTeam} stores={props.stores} />
 					</div>
-					<TeamPlayerCounts stores={props.stores} />
+					<TeamPlayerCounts leftTeam={leftTeam} rightTeam={rightTeam} stores={props.stores} />
 					<div className="flex justify-end">
-						<TeamTitle teamId="B" stores={props.stores} />
+						<TeamTitle teamId={rightTeam} stores={props.stores} />
 					</div>
 					<div>
 					</div>
 				</div>
-				{showSwapsPanel && <SwapsPanel className="my-1 rounded-md border bg-muted/40 px-2 py-1.5" stores={props.stores} />}
+				{showSwapsPanel && (
+					<SwapsPanel
+						className="my-1 rounded-md border bg-muted/40 px-2 py-1.5"
+						leftTeam={leftTeam}
+						rightTeam={rightTeam}
+						stores={props.stores}
+					/>
+				)}
 				<div className="grid w-full grid-cols-[1fr_auto_1fr] gap-1">
 					<Input
 						placeholder="Search Players..."
@@ -269,33 +292,24 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 				{isDesktop
 					? (
 						<div className="grid w-full grid-cols-[1fr_1fr] divide-x divide-border">
-							<TeamPlayerTable
-								teamId="A"
-								searchQuery={searchQuery}
-								filters={filtersA}
-								showSelected={showSelected}
-								adminsOnly={adminsOnly}
-								sorting={sortingA}
-								setSorting={setSortingA}
-								availableRoles={availableRoles}
-								availableGroupings={availableGroupings}
-								hideSpoilers={hideSpoilers}
-								stores={props.stores}
-							/>
-							<TeamPlayerTable
-								teamId="B"
-								searchQuery={searchQuery}
-								filters={filtersB}
-								showSelected={showSelected}
-								adminsOnly={adminsOnly}
-								sorting={sortingB}
-								setSorting={setSortingB}
-								availableRoles={availableRoles}
-								availableGroupings={availableGroupings}
-								hideSpoilers={hideSpoilers}
-								className="pl-1"
-								stores={props.stores}
-							/>
+							{([leftTeam, rightTeam] as const).map((teamId, i) => (
+								// keyed by team so a table's own state (stats metric, popovers) follows its team across a flip
+								<TeamPlayerTable
+									key={teamId}
+									teamId={teamId}
+									searchQuery={searchQuery}
+									filters={teamPanes[teamId].filters}
+									showSelected={showSelected}
+									adminsOnly={adminsOnly}
+									sorting={teamPanes[teamId].sorting}
+									setSorting={teamPanes[teamId].setSorting}
+									availableRoles={availableRoles}
+									availableGroupings={availableGroupings}
+									hideSpoilers={hideSpoilers}
+									className={i === 1 ? 'pl-1' : undefined}
+									stores={props.stores}
+								/>
+							))}
 						</div>
 					)
 					: (
@@ -326,20 +340,20 @@ function TeamTitle(props: { teamId: MH.NormedTeamId; stores: SquadServerFrame.Ke
 	)
 }
 
-function TeamPlayerCounts(props: { stores: SquadServerFrame.KeyProp }) {
-	const playerCountA = ZusUtils.useStore(
+function TeamPlayerCounts(props: { leftTeam: MH.NormedTeamId; rightTeam: MH.NormedTeamId; stores: SquadServerFrame.KeyProp }) {
+	const leftCount = ZusUtils.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
-		ChatPrt.Sel.teamPlayerCount('A'),
+		ChatPrt.Sel.teamPlayerCount(props.leftTeam),
 	)
-	const playerCountB = ZusUtils.useStore(
+	const rightCount = ZusUtils.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
-		ChatPrt.Sel.teamPlayerCount('B'),
+		ChatPrt.Sel.teamPlayerCount(props.rightTeam),
 	)
 	return (
 		<div className="flex items-center justify-center whitespace-nowrap">
-			{playerCountA} vs {playerCountB}
+			{leftCount} vs {rightCount}
 		</div>
 	)
 }
@@ -466,6 +480,8 @@ type PlayerFilters = {
 	setSquad: (v: string | null) => void
 }
 
+type SetSorting = React.Dispatch<React.SetStateAction<SortingState>>
+
 // shared across both table variants; each variant extends it with its squad-lookup shape
 type BasePlayerTableMeta = {
 	matchId: number
@@ -484,13 +500,16 @@ type TeamPlayerTableMeta = BasePlayerTableMeta & {
 	squads: SM.UniqueSquad[]
 }
 
-type CombinedPlayer = TeamsPanelModels.EnrichedPlayer & { normedTeam: MH.NormedTeamId }
+// displayIndex is the team's left-to-right position, so the faction column sorts into the same order the
+// teams are laid out in (see MH.getDisplayedTeamOrder)
+type CombinedPlayer = TeamsPanelModels.EnrichedPlayer & { normedTeam: MH.NormedTeamId; displayIndex: number }
 
 type SquadWithTeam = { squad: SM.UniqueSquad; normedTeam: MH.NormedTeamId }
 
 type CombinedTableMeta = BasePlayerTableMeta & {
 	squadsWithTeam: SquadWithTeam[]
 	getFaction: (normedTeam: MH.NormedTeamId) => string
+	getTeamColor: (normedTeam: MH.NormedTeamId) => string
 }
 
 // Describes the squad-group a player belongs to, used to render the group-separator header rows when
@@ -1028,14 +1047,15 @@ const combinedPlayerColumns: ColumnDef<CombinedPlayer, any>[] = [
 		},
 		cell: selectColumnCell,
 	}),
-	combinedColumnHelper.accessor(row => row.normedTeam, {
+	combinedColumnHelper.accessor(row => row.displayIndex, {
 		id: 'faction',
 		header: 'Faction',
 		cell: ({ row, table }) => {
 			const normedTeam = row.original.normedTeam
+			const meta = table.options.meta as CombinedTableMeta
 			return (
-				<span className="font-semibold" style={{ color: DH.TEAM_COLORS[`team${normedTeam}`] }}>
-					{(table.options.meta as CombinedTableMeta).getFaction(normedTeam)}
+				<span className="font-semibold" style={{ color: meta.getTeamColor(normedTeam) }}>
+					{meta.getFaction(normedTeam)}
 				</span>
 			)
 		},
@@ -1537,10 +1557,14 @@ function CombinedPlayerTable(
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		ChatPrt.Sel.squadsForTeam('B'),
 	)
-	const squadsWithTeam = React.useMemo<SquadWithTeam[]>(() => [
-		...squadsA.map(squad => ({ squad, normedTeam: 'A' as const })),
-		...squadsB.map(squad => ({ squad, normedTeam: 'B' as const })),
-	], [squadsA, squadsB])
+	const displayTeamsNormalized = ZusUtils.useStore(ClientOnlySettings.Store, s => s.displayTeamsNormalized)
+	const ordinal = match?.ordinal ?? 0
+	const teamOrder = MH.getDisplayedTeamOrder(ordinal, displayTeamsNormalized)
+	const [leftTeam, rightTeam] = teamOrder
+	const squadsWithTeam = React.useMemo<SquadWithTeam[]>(
+		() => [leftTeam, rightTeam].flatMap(normedTeam => (normedTeam === 'A' ? squadsA : squadsB).map(squad => ({ squad, normedTeam }))),
+		[squadsA, squadsB, leftTeam, rightTeam],
+	)
 	const statsMayBeInaccurate = ZusUtils.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
@@ -1552,7 +1576,7 @@ function CombinedPlayerTable(
 		const l = L.toLayer(match.layerId)
 		return L.isKnownLayer(l) ? l : null
 	}, [match?.layerId])
-	const teamAIsTeam1 = (match?.ordinal ?? 0) % 2 === 0
+	const teamAIsTeam1 = ordinal % 2 === 0
 
 	const getFaction = React.useCallback((normedTeam: MH.NormedTeamId): string => {
 		if (!layer) return normedTeam
@@ -1560,10 +1584,20 @@ function CombinedPlayerTable(
 		return isTeam1 ? layer.Faction_1 : layer.Faction_2
 	}, [layer, teamAIsTeam1])
 
-	const players = React.useMemo<CombinedPlayer[]>(() => [
-		...playersA.map(p => ({ ...p, normedTeam: 'A' as const })),
-		...playersB.map(p => ({ ...p, normedTeam: 'B' as const })),
-	], [playersA, playersB])
+	// matches the team indicator colors used by the layer/team displays: normed (A/B) colors when normalized,
+	// in-game (1/2) colors otherwise
+	const getTeamColor = React.useCallback(
+		(normedTeam: MH.NormedTeamId) => DH.getTeamColor(MH.getDenormedTeamId(normedTeam, ordinal), ordinal, displayTeamsNormalized),
+		[ordinal, displayTeamsNormalized],
+	)
+
+	const players = React.useMemo<CombinedPlayer[]>(
+		() =>
+			[leftTeam, rightTeam].flatMap((normedTeam, displayIndex) =>
+				(normedTeam === 'A' ? playersA : playersB).map(p => ({ ...p, normedTeam, displayIndex }))
+			),
+		[playersA, playersB, leftTeam, rightTeam],
+	)
 
 	const displayedPlayers = useDisplayedPlayers(
 		players,
@@ -1583,7 +1617,7 @@ function CombinedPlayerTable(
 	}, [players])
 
 	const getSquadGroup = React.useCallback((player: CombinedPlayer): SquadGroupInfo | null => {
-		const faction = { label: getFaction(player.normedTeam), color: DH.TEAM_COLORS[`team${player.normedTeam}`] }
+		const faction = { label: getFaction(player.normedTeam), color: getTeamColor(player.normedTeam) }
 		if (player.squadId === null) return { key: `${player.normedTeam}:unassigned`, squad: null, creatorName: null, faction }
 		const squad = squadsWithTeam
 			.find(({ squad: s, normedTeam }) => s.squadId === player.squadId && normedTeam === player.normedTeam)?.squad
@@ -1594,7 +1628,7 @@ function CombinedPlayerTable(
 			creatorName: creatorNameByEosId.get(squad.creator) || null,
 			faction,
 		}
-	}, [squadsWithTeam, getFaction, creatorNameByEosId])
+	}, [squadsWithTeam, getFaction, getTeamColor, creatorNameByEosId])
 
 	const meta = {
 		matchId,
@@ -1604,6 +1638,7 @@ function CombinedPlayerTable(
 		availableRoles: props.availableRoles,
 		availableGroupings: props.availableGroupings,
 		getFaction,
+		getTeamColor,
 		stores: props.stores,
 		statsMayBeInaccurate,
 	} satisfies Omit<CombinedTableMeta, 'statsSort'>
@@ -1624,36 +1659,41 @@ function CombinedPlayerTable(
 	)
 }
 
-function TeamsAfterSwap(props: { stores: SquadServerFrame.KeyProp }) {
-	const { countA, countB } = ZusUtils.useStore(
+function TeamsAfterSwap(props: { leftTeam: MH.NormedTeamId; rightTeam: MH.NormedTeamId; stores: SquadServerFrame.KeyProp }) {
+	const counts = ZusUtils.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		(frameState, currentMatch) => {
+			const counts: Record<MH.NormedTeamId, number> = { A: 0, B: 0 }
+			if (!currentMatch) return counts
 			const editedSwaps = TSWClient.Sel.localState(frameState).editedSwaps
 			const players = ChatPrt.Sel.chatState(frameState).players
-			if (!currentMatch) return { countA: 0, countB: 0 }
-			let countA = 0
-			let countB = 0
 			for (const player of players) {
 				if (player.teamId === null) continue
 				const playerId = SM.PlayerIds.getPlayerId(player.ids)
 				const sw = editedSwaps.get(playerId)
 				const destTeam = sw?.toTeam ?? MH.getNormedTeamId(player.teamId, currentMatch.ordinal)
-				if (destTeam === 'A') countA++
-				else countB++
+				counts[destTeam]++
 			}
-			return { countA, countB }
+			return counts
 		},
 	)
 	return (
 		<div className="flex flex-col items-center">
 			<span className="text-xs text-muted-foreground">Teams After Swap</span>
-			<span className="text-sm font-mono">{countA}v{countB}</span>
+			<span className="text-sm font-mono">{counts[props.leftTeam]}v{counts[props.rightTeam]}</span>
 		</div>
 	)
 }
 
-function SwapsPanel({ className, stores }: { className?: string; stores: SquadServerFrame.KeyProp }) {
+function SwapsPanel(
+	{ className, leftTeam, rightTeam, stores }: {
+		className?: string
+		leftTeam: MH.NormedTeamId
+		rightTeam: MH.NormedTeamId
+		stores: SquadServerFrame.KeyProp
+	},
+) {
 	const canExecute = ZusUtils.useStore(stores.squadServer!, TSWClient.Sel.canExecuteSavedTeamswaps)
 	const swapsModified = ZusUtils.useStore(stores.squadServer!, TSWClient.Sel.swapsModified)
 	const [isEditing, setIsEditing] = UPClient.useEditingTeamswapsState(stores.squadServer!.serverId)
@@ -1679,7 +1719,7 @@ function SwapsPanel({ className, stores }: { className?: string; stores: SquadSe
 
 	return (
 		<div className={cn('grid grid-cols-[1fr_auto_1fr] items-start divide-x divide-border', className)}>
-			<TeamSwapsDisplay teamId="A" className="pr-2" stores={stores} />
+			<TeamSwapsDisplay teamId={leftTeam} className="pr-2" stores={stores} />
 			<div className="flex flex-col items-center gap-1 px-2">
 				<div className="flex items-center gap-1">
 					<Tooltip>
@@ -1769,9 +1809,9 @@ function SwapsPanel({ className, stores }: { className?: string; stores: SquadSe
 						)}
 					/>
 				</div>
-				<TeamsAfterSwap stores={stores} />
+				<TeamsAfterSwap leftTeam={leftTeam} rightTeam={rightTeam} stores={stores} />
 			</div>
-			<TeamSwapsDisplay teamId="B" align="right" className="pl-2" stores={stores} />
+			<TeamSwapsDisplay teamId={rightTeam} align="right" className="pl-2" stores={stores} />
 		</div>
 	)
 }

@@ -305,6 +305,13 @@ export function getTeamFaction(match: Pick<MatchDetails, 'ordinal' | 'layerId'>,
 	return L.toLayer(match.layerId)[prop] ?? undefined
 }
 
+// The left-to-right order teams should be laid out in. Normalized display keeps team A on the left across
+// matches, denormalized display keeps in-game team 1 on the left.
+export function getDisplayedTeamOrder(parity: number, displayTeamsNormalized: boolean): [NormedTeamId, NormedTeamId] {
+	if (displayTeamsNormalized) return ['A', 'B']
+	return [getNormedTeamId(1, parity), getNormedTeamId(2, parity)]
+}
+
 export function getNormedTeamId(teamId: SM.TeamId, parity: number) {
 	const normIds = ['A', 'B'] as const
 	return normIds[(parity + teamId - 1) % 2]

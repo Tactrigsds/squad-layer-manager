@@ -25,29 +25,20 @@ export function getTeamsDisplay(
 ) {
 	const teamParity = _teamParity ?? 0
 
-	const teams = [
-		<TeamFactionDisplay
-			key="1"
-			parity={teamParity ?? 0}
-			includeUnits={includeUnits}
-			layer={_partialLayer}
-			team={1}
-			showAltTeamIndicator={true}
-			extraStyles={extraStyles}
-		/>,
-		<TeamFactionDisplay
-			key="2"
-			parity={teamParity ?? 0}
-			includeUnits={includeUnits}
-			layer={_partialLayer}
-			team={2}
-			showAltTeamIndicator={true}
-			extraStyles={extraStyles}
-		/>,
-	]
-
-	if (teamParity % 2 === 1 && displayLayersNormalized) teams.reverse()
-	return teams
+	return MH.getDisplayedTeamOrder(teamParity, displayLayersNormalized).map(normedTeam => {
+		const team = MH.getDenormedTeamId(normedTeam, teamParity)
+		return (
+			<TeamFactionDisplay
+				key={team}
+				parity={teamParity}
+				includeUnits={includeUnits}
+				layer={_partialLayer}
+				team={team}
+				showAltTeamIndicator={true}
+				extraStyles={extraStyles}
+			/>
+		)
+	})
 }
 
 export function TeamFactionDisplay(
