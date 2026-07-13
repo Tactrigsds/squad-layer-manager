@@ -98,6 +98,24 @@ export class Emulator {
 		return this.rcon.expectCommand(pattern, opts)
 	}
 
+	// -------- fault injection --------
+
+	// the squad server drops its rcon connections (restart, network blip) and comes back on the same
+	// port. The app should reconnect and resume on its own.
+	async cycleRcon(opts?: { downMs?: number }): Promise<void> {
+		const port = this.rconPort
+		await this.rcon.goOffline()
+		await new Promise((resolve) => setTimeout(resolve, opts?.downMs ?? 500))
+		await this.rcon.goOnline(port)
+	}
+
+	// the game rotates its log: the file is truncated and written from the top again. A tail holding a
+	// byte offset into the old file has to notice and start over rather than waiting for the file to
+	// grow back past where it was.
+	rotateLog() {
+		this.logFile?.rotate()
+	}
+
 	dispose() {
 		for (const timer of this.#timers) clearTimeout(timer)
 		this.#timers.clear()

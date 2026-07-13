@@ -63,6 +63,29 @@ export class RconServer {
 		this.#server.close()
 	}
 
+	// -------- fault injection --------
+
+	// drops every connection without closing the listener, as a server does when it restarts its RCON
+	// or the network blips. Clients have to notice and reconnect.
+	dropConnections() {
+		for (const conn of this.#conns) conn.socket.destroy()
+		this.#conns.clear()
+	}
+
+	// while unreachable, connection attempts are refused: the listener is closed and only comes back
+	// when `listen` is called again on the same port
+	async goOffline(): Promise<void> {
+		this.dropConnections()
+		await new Promise<void>((resolve) => this.#server.close(() => resolve()))
+	}
+
+	async goOnline(port: number, host = '127.0.0.1'): Promise<void> {
+		await new Promise<void>((resolve, reject) => {
+			this.#server.once('error', reject)
+			this.#server.listen(port, host, () => resolve())
+		})
+	}
+
 	broadcastChatPacket(body: string) {
 		for (const conn of this.#conns) {
 			if (conn.authed) conn.socket.write(encode(TYPE.server, 0, body))

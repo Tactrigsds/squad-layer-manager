@@ -67,7 +67,14 @@ function freePort(): Promise<number> {
 
 // steamIds link this user to in-game players (linkedSteamAccounts), which is how a chat command's
 // sender is resolved back to an SLM user for permission checks
-export type TestUser = { discordId: bigint; username: string; steamIds?: string[] }
+export type TestUser = {
+	discordId: bigint
+	username: string
+	steamIds?: string[]
+	// grants every permission via the SUPER_USERS bootstrap. Off by default for seeded users, so a test
+	// can have someone the permission checks actually say no to.
+	superUser?: boolean
+}
 
 export type AppFixtureOptions = {
 	serverId?: string
@@ -271,7 +278,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		BM_PAT: 'stub-token',
 		BM_ORG_ID: 'stub-org',
 		QUERY_PARAM_AUTH_BYPASS: 'true',
-		SUPER_USERS: String(ADMIN_USER.discordId),
+		SUPER_USERS: users.filter((u) => u.superUser ?? u.discordId === ADMIN_USER.discordId).map((u) => String(u.discordId)).join(','),
 		LAYERS_DB_PATH: layersDbPath,
 		LAYER_DB_CONFIG_PATH: layerDbConfigPath,
 		...opts.env,
