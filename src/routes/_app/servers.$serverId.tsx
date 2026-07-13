@@ -11,6 +11,7 @@ import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UPClient from '@/systems/user-presence.client'
+import * as ReactRx from '@react-rxjs/core'
 import { createFileRoute } from '@tanstack/react-router'
 import React from 'react'
 import * as Rx from 'rxjs'
@@ -46,8 +47,19 @@ export const Route = createFileRoute('/_app/servers/$serverId')({
 // state to the component directly, and it only ever runs immediately before the matching mount.
 let enteredViaNavigation = false
 
+// availability is read outside the squadServer frame (it's what decides whether the frame exists at all), so nothing else
+// holds its stream open -- this boundary is the subscriber. Suspension while it waits for its first emit is handled by the
+// route's pending component.
 function RouteComponent() {
 	const serverId = Route.useParams().serverId
+	return (
+		<ReactRx.Subscribe source$={SquadServerClient.serverAvailability$(serverId)}>
+			<ServerRoute serverId={serverId} />
+		</ReactRx.Subscribe>
+	)
+}
+
+function ServerRoute({ serverId }: { serverId: string }) {
 	// tracks both the registry (enabled/broken) and the backend's live slices, so enabling, disabling, or losing a server
 	// mid-session swaps between the dashboard and the unavailable view without a reload
 	const availability = SquadServerClient.useServerAvailability(serverId)

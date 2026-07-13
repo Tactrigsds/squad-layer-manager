@@ -37,8 +37,12 @@ export const [useServerAvailability, serverAvailability$] = RxHelpers.bind(
 	'squadServer.serverAvailability',
 	(serverId: string) =>
 		Rx.combineLatest([
-			// suspend rather than briefly claiming the server doesn't exist while settings are still in flight
-			toStream(SettingsClient.PublicSettingsStore).pipe(Rx.filter((settings) => !!settings)),
+			// suspend rather than briefly claiming the server doesn't exist while settings are still in flight.
+			// fireImmediately: settings are normally already loaded by the time anything subscribes, and without the
+			// current value replayed combineLatest would sit waiting on a settings *change* that never comes
+			toStream(SettingsClient.PublicSettingsStore, undefined, { fireImmediately: true }).pipe(
+				Rx.filter((settings) => !!settings),
+			),
 			loadedServerIds$,
 		]).pipe(
 			Rx.map(([settings, loadedIds]): ServerAvailability => {

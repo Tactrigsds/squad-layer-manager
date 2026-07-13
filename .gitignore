@@ -46,6 +46,7 @@ docker/logs
 docker/squad-dedicated
 
 .tanstack/
+.claude/
 
 dist-server/
 
