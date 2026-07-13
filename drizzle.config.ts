@@ -6,7 +6,7 @@ import { defineConfig } from 'drizzle-kit'
 // the source tree nor devDeps). In dev DB_PATH is unset and falls back to the
 // default below; in prod it is provided via `docker run --env-file`. Keep this
 // default in sync with the `db` group default in src/server/env.ts.
-const DB_PATH = process.env.DB_PATH ?? './data/main.sqlite3'
+const DB_PATH = process.env.DB_PATH ?? './data/db.sqlite3'
 
 // ensure that the database exists
 const driver = Database(DB_PATH, { fileMustExist: false })

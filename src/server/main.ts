@@ -5,6 +5,7 @@ import { formatVersion } from '@/lib/versioning.ts'
 
 import * as AppEvents from '@/models/app-events.models'
 import * as AppEventsSys from '@/systems/app-events.server'
+import * as Backups from '@/systems/backups.server'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Cli from '@/systems/cli.server'
@@ -72,6 +73,8 @@ await C.spanOp('main', { module }, async () => {
 	// critical path; we await `LayerDb.ready` below, right before the db can first be queried
 	await LayerDb.setup()
 	await DB.setup()
+	// starts its own background loop; nothing else depends on it, but it needs the db open
+	Backups.setup()
 	await FilterEntity.setup()
 	PersistedCache.setup()
 	await Battlemetrics.setup()

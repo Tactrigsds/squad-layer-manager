@@ -193,6 +193,20 @@ export type AppStarted = z.infer<typeof AppStartedSchema>
 export const AppRestartedSchema = event('APP_RESTARTED', versionShape)
 export type AppRestarted = z.infer<typeof AppRestartedSchema>
 
+// a periodic database backup (see backups.server.ts). audit-only: it records the snapshot that was taken, whether it
+// made it to the configured offsite target, and what the event-history prune that ran alongside it deleted -- the one
+// place in the app that destroys history, so it needs to be accounted for.
+export const BackupCreatedSchema = event('BACKUP_CREATED', {
+	fileName: z.string(),
+	sizeBytes: z.number(),
+	durationMs: z.number(),
+	// absent when no sftp target is configured; false when the upload failed (the local backup still exists)
+	uploaded: z.boolean().optional(),
+	// the prune that ran before the snapshot was taken. absent when event-history retention is disabled.
+	pruned: z.object({ events: z.number(), matches: z.number() }).optional(),
+})
+export type BackupCreated = z.infer<typeof BackupCreatedSchema>
+
 // a settings value as it appeared in the audit log. Credentials (the rcon/sftp `connections` block) are recorded as
 // having changed but their values are replaced with a marker, so the log never becomes a place to read secrets from.
 // This matters beyond tidiness: the audit log is readable with global-settings:read, while the connection details
@@ -342,6 +356,7 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	PlayerFlagsUpdatedSchema,
 	AppStartedSchema,
 	AppRestartedSchema,
+	BackupCreatedSchema,
 	MapSetSchema,
 ])
 export type AppEvent = z.infer<typeof AppEventSchema>
@@ -378,6 +393,7 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 		case 'USER_ACCOUNT_CHANGED':
 		case 'APP_STARTED':
 		case 'APP_RESTARTED':
+		case 'BACKUP_CREATED':
 			return []
 		case 'PLAYER_FLAGS_UPDATED':
 			return [e.playerId]
@@ -508,6 +524,14 @@ export function describeAppEvent(e: AppEvent): string {
 			return `SLM started${e.version ? ` (${e.version})` : ''}`
 		case 'APP_RESTARTED':
 			return 'restarted SLM'
+		case 'BACKUP_CREATED': {
+			const size = `${(e.sizeBytes / 1024 / 1024).toFixed(1)} MB`
+			const upload = e.uploaded === undefined ? '' : e.uploaded ? ', uploaded offsite' : ', offsite upload FAILED'
+			const pruned = e.pruned && e.pruned.events > 0
+				? `, pruned ${e.pruned.events} events from ${e.pruned.matches} ${e.pruned.matches === 1 ? 'match' : 'matches'}`
+				: ''
+			return `backed up the database to ${e.fileName} (${size})${upload}${pruned}`
+		}
 	}
 }
 
