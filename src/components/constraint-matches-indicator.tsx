@@ -134,6 +134,8 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 	return (
 		<Tooltip delayDuration={250}>
 			<TooltipTrigger
+				// the trigger is a row of emoji/icons, so it has no text of its own to be named by
+				aria-label="Layer indicators"
 				className={cn('flex -space-x-2 items-center flex-nowrap overflow-hidden', props.className)}
 				style={{ height: `${height}px` }}
 				onMouseOver={itemId ? onMouseOver : undefined}

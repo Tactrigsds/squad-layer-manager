@@ -101,7 +101,7 @@ export default defineConfig({
 	test: {
 		// layer data is loaded at runtime rather than bundled, so tests need it loaded up-front
 		setupFiles: ['./src/vitest-setup.ts'],
-		// integration tests boot the whole app (`pnpm test:integration`) and e2e specs run under playwright
+		// integration tests boot the whole app (`pnpm test:integration`) and e2e tests run under playwright
 		// (`pnpm test:e2e`); neither belongs to the unit run
 		exclude: ['**/node_modules/**', 'test/integration/**', 'test/e2e/**'],
 	},

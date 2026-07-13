@@ -6,7 +6,7 @@ import { type AppFixture, createAppFixture, setCurrentTestLabel } from '../harne
 // the emulator's received RCON commands, and the app's database.
 
 export const test = base.extend<{ app: AppFixture; freshApp: AppFixture; labelTelemetry: void }, { workerApp: AppFixture }>({
-	// so that every app built during a test -- including the ones specs build themselves -- exports its
+	// so that every app built during a test -- including the ones test files build themselves -- exports its
 	// telemetry under that test's name (see SLM_TEST_OTEL)
 	// eslint-disable-next-line no-empty-pattern -- playwright's fixture signature requires the deps arg
 	labelTelemetry: [async ({}, use, testInfo) => {

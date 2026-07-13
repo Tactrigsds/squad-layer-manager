@@ -641,7 +641,7 @@ export function Comparison(props: {
 		<ComboBox
 			allowEmpty={false}
 			className={cn(operatorSelectClass, componentStyles)}
-			title=""
+			title="Operator"
 			value={F.compOpSelectionKey(node)}
 			options={opOptions.map((o) => ({ value: o.key, label: o.label }))}
 			ref={codeBoxRef}

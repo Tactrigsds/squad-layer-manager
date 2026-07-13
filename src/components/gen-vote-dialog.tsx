@@ -201,89 +201,91 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 					</div>
 					<div className="flex gap-4">
 						<div className="flex flex-col gap-4 flex-1">
-							{choices.map((choice, index) => {
-								const constraints = choice.layerId ? chosenLayers[choice.layerId]?.constraints : undefined
-								const error = choiceErrors[index]
-								return (
-									// choices are positional slots tracked by index across the component (regeneratingIndex,
-									// editingChoiceIndex); regenerating a slot swaps its layerId but the slot identity is the index
-									// oxlint-disable-next-line react/no-array-index-key
-									<div key={`choice-${index}`} className="flex flex-col gap-2 p-4 border rounded-lg">
-										<div className="flex items-center justify-between mb-2">
-											<div className="flex items-center gap-2">
-												<span className="font-semibold text-lg">{index + 1}.</span>
-												<div>
-													{choice.layerId
-														? (
-															<div className="flex gap-1 items-center text-sm">
-																<ShortLayerName
-																	layerId={choice.layerId}
-																	matchDescriptors={constraints?.matchDescriptors}
-																/>
-																{constraints && (
-																	<ConstraintEvalTooltip
-																		matchDescriptors={constraints.matchDescriptors}
-																		queriedConstraints={constraints.queriedConstraints}
-																		itemParity={teamParity}
+							<ol className="flex flex-col gap-4 list-none">
+								{choices.map((choice, index) => {
+									const constraints = choice.layerId ? chosenLayers[choice.layerId]?.constraints : undefined
+									const error = choiceErrors[index]
+									return (
+										// choices are positional slots tracked by index across the component (regeneratingIndex,
+										// editingChoiceIndex); regenerating a slot swaps its layerId but the slot identity is the index
+										// oxlint-disable-next-line react/no-array-index-key
+										<li key={`choice-${index}`} className="flex flex-col gap-2 p-4 border rounded-lg">
+											<div className="flex items-center justify-between mb-2">
+												<div className="flex items-center gap-2">
+													<span className="font-semibold text-lg">{index + 1}.</span>
+													<div>
+														{choice.layerId
+															? (
+																<div className="flex gap-1 items-center text-sm">
+																	<ShortLayerName
 																		layerId={choice.layerId}
+																		matchDescriptors={constraints?.matchDescriptors}
 																	/>
-																)}
-															</div>
-														)
-														: error
-														? (
-															<Alert variant="destructive" className="py-2">
-																<Icons.AlertCircle className="h-4 w-4" />
-																<AlertTitle>{error}</AlertTitle>
-															</Alert>
-														)
-														: <span className="text-muted-foreground">No layer selected</span>}
+																	{constraints && (
+																		<ConstraintEvalTooltip
+																			matchDescriptors={constraints.matchDescriptors}
+																			queriedConstraints={constraints.queriedConstraints}
+																			itemParity={teamParity}
+																			layerId={choice.layerId}
+																		/>
+																	)}
+																</div>
+															)
+															: error
+															? (
+																<Alert variant="destructive" className="py-2">
+																	<Icons.AlertCircle className="h-4 w-4" />
+																	<AlertTitle>{error}</AlertTitle>
+																</Alert>
+															)
+															: <span className="text-muted-foreground">No layer selected</span>}
+													</div>
 												</div>
+												<ButtonGroup>
+													<Button
+														size="sm"
+														variant="ghost"
+														onClick={() => setEditingChoiceIndex(index)}
+														disabled={generating}
+														title="Edit this choice"
+													>
+														<Icons.Pencil />
+													</Button>
+													<Button
+														size="sm"
+														variant="ghost"
+														onClick={() => handleRegen(index)}
+														disabled={generating}
+														title={choice.layerId ? 'Regenerate this choice' : 'Generate this choice'}
+													>
+														<Icons.RefreshCw className={regeneratingIndex === 'all' || regeneratingIndex === index ? 'animate-spin' : ''} />
+													</Button>
+													<Button
+														size="sm"
+														variant="ghost"
+														onClick={() => GenVoteFrame.Actions.removeChoice(genVoteStores, index)}
+														disabled={generating || choices.length <= 2}
+														title="Remove this choice (minimum 2 required)"
+													>
+														<Icons.X />
+													</Button>
+												</ButtonGroup>
 											</div>
-											<ButtonGroup>
-												<Button
-													size="sm"
-													variant="ghost"
-													onClick={() => setEditingChoiceIndex(index)}
-													disabled={generating}
-													title="Edit this choice"
-												>
-													<Icons.Pencil />
-												</Button>
-												<Button
-													size="sm"
-													variant="ghost"
-													onClick={() => handleRegen(index)}
-													disabled={generating}
-													title={choice.layerId ? 'Regenerate this choice' : 'Generate this choice'}
-												>
-													<Icons.RefreshCw className={regeneratingIndex === 'all' || regeneratingIndex === index ? 'animate-spin' : ''} />
-												</Button>
-												<Button
-													size="sm"
-													variant="ghost"
-													onClick={() => GenVoteFrame.Actions.removeChoice(genVoteStores, index)}
-													disabled={generating || choices.length <= 2}
-													title="Remove this choice (minimum 2 required)"
-												>
-													<Icons.X />
-												</Button>
-											</ButtonGroup>
-										</div>
-										<div className="flex flex-col gap-2">
-											{includedConstraintKeys.map((key) => (
-												<ChoiceConstraintSelect
-													stores={genVoteStores}
-													key={key}
-													constraintKey={key}
-													index={index}
-													value={choice.choiceConstraints[key] as string | undefined}
-												/>
-											))}
-										</div>
-									</div>
-								)
-							})}
+											<div className="flex flex-col gap-2">
+												{includedConstraintKeys.map((key) => (
+													<ChoiceConstraintSelect
+														stores={genVoteStores}
+														key={key}
+														constraintKey={key}
+														index={index}
+														value={choice.choiceConstraints[key] as string | undefined}
+													/>
+												))}
+											</div>
+										</li>
+									)
+								})}
+							</ol>
 							<Button
 								size="sm"
 								variant="outline"

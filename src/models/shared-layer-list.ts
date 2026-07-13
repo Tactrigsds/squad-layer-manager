@@ -515,16 +515,17 @@ export function hasMutations(session: State): boolean {
 	return ItemMut.hasMutations(session.mutations)
 }
 
+// `in` rather than a cast: the op union only carries editWindowSeqId/userId on the client-issued ops, and
+// narrowing on the real union is what makes a rename of either field a compile error here rather than a
+// silently-always-false check.
 export function hasUserMutations(ops: Operation[], state: State, userId: USR.UserId): boolean {
 	const windowSeqId = state.editWindowSeqId
 	for (let i = ops.length - 1; i >= 0; i--) {
 		const op = ops[i]
 		if (op.op === 'save') continue
-		const currWindowSeqId = (op as { windowSeqId?: number })?.windowSeqId
-		if (currWindowSeqId === undefined) continue
-		if (windowSeqId !== currWindowSeqId) break
-		const opUserId = (op as { userId?: USR.UserId })?.userId
-		if (opUserId && opUserId === userId) return true
+		if (!('editWindowSeqId' in op)) continue
+		if (windowSeqId !== op.editWindowSeqId) break
+		if ('userId' in op && op.userId === userId) return true
 	}
 	return false
 }
