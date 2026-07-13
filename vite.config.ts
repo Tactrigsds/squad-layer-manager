@@ -124,6 +124,11 @@ function buildDevServerConfig(): UserConfig['server'] {
 		}
 	}
 	return {
+		port: ENV.CLIENT_PORT,
+		// ORIGIN is pinned to this port, as is any port mapping in front of it. Quietly falling through to
+		// the next free one would serve the client somewhere nothing else expects it, so fail where it can
+		// be seen instead. Set CLIENT_PORT to run a second instance beside a running one.
+		strictPort: true,
 		proxy,
 		headers: {
 			// required for sqlocal
