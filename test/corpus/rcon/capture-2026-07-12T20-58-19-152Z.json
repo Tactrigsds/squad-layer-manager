@@ -1,0 +1,726 @@
+{
+	"capturedAt": "2026-07-12T20:58:19.152Z",
+	"host": "203.0.113.1",
+	"note": "raw RCON capture for emulator corpus. See capture-rcon-corpus.ts",
+	"captures": [
+		{
+			"command": "AdminWarn \"000249a430574933aefd9bbc9a8f2f37\" SLM corpus test warn via eos id",
+			"sentId": 20,
+			"packets": [
+				{
+					"direction": "received",
+					"time": 1783889806430,
+					"size": 96,
+					"id": 20,
+					"type": 0,
+					"body": "Remote admin has warned player  grey275. Message was \"SLM corpus test warn via eos id\"",
+					"hex": "60000000140000000000000052656d6f74652061646d696e20686173207761726e656420706c617965722020677265793237352e204d657373616765207761732022534c4d20636f727075732074657374207761726e2076696120656f73206964220000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889806540,
+					"size": 96,
+					"id": 0,
+					"type": 1,
+					"body": "Remote admin has warned player  grey275. Message was \"SLM corpus test warn via eos id\"",
+					"hex": "60000000000000000100000052656d6f74652061646d696e20686173207761726e656420706c617965722020677265793237352e204d657373616765207761732022534c4d20636f727075732074657374207761726e2076696120656f73206964220000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889806540,
+					"size": 10,
+					"id": 22,
+					"type": 0,
+					"body": "",
+					"hex": "0a00000016000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889806540,
+					"size": 10,
+					"id": 22,
+					"type": 0,
+					"body": "",
+					"hex": "0a00000016000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889806540,
+					"size": 7,
+					"id": 0,
+					"type": 0,
+					"body": "",
+					"hex": "00010000000000",
+					"note": "SOH-7-byte-sequence"
+				}
+			],
+			"assembledBody": "Remote admin has warned player  grey275. Message was \"SLM corpus test warn via eos id\"",
+			"durationMs": 500
+		},
+		{
+			"command": "AdminWarn \"grey275\" SLM corpus test warn via name",
+			"sentId": 24,
+			"packets": [
+				{
+					"direction": "received",
+					"time": 1783889806931,
+					"size": 94,
+					"id": 24,
+					"type": 0,
+					"body": "Remote admin has warned player  grey275. Message was \"SLM corpus test warn via name\"",
+					"hex": "5e000000180000000000000052656d6f74652061646d696e20686173207761726e656420706c617965722020677265793237352e204d657373616765207761732022534c4d20636f727075732074657374207761726e20766961206e616d65220000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889807004,
+					"size": 94,
+					"id": 0,
+					"type": 1,
+					"body": "Remote admin has warned player  grey275. Message was \"SLM corpus test warn via name\"",
+					"hex": "5e000000000000000100000052656d6f74652061646d696e20686173207761726e656420706c617965722020677265793237352e204d657373616765207761732022534c4d20636f727075732074657374207761726e20766961206e616d65220000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889807004,
+					"size": 10,
+					"id": 26,
+					"type": 0,
+					"body": "",
+					"hex": "0a0000001a000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889807004,
+					"size": 10,
+					"id": 26,
+					"type": 0,
+					"body": "",
+					"hex": "0a0000001a000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889807004,
+					"size": 7,
+					"id": 0,
+					"type": 0,
+					"body": "",
+					"hex": "00010000000000",
+					"note": "SOH-7-byte-sequence"
+				}
+			],
+			"assembledBody": "Remote admin has warned player  grey275. Message was \"SLM corpus test warn via name\"",
+			"durationMs": 464
+		},
+		{
+			"command": "AdminRenameSquad 2 1",
+			"sentId": 28,
+			"packets": [
+				{
+					"direction": "received",
+					"time": 1783889807399,
+					"size": 149,
+					"id": 28,
+					"type": 0,
+					"body": "Remote admin renamed squad 1 on team 2, named \"A SQUAD\", to \"Squad 1\"\nRemote admin renamed squad 1 on team 2, named \"A SQUAD\", to \"Squad 1\"",
+					"hex": "950000001c0000000000000052656d6f74652061646d696e2072656e616d65642073717561642031206f6e207465616d20322c206e616d6564202241205351554144222c20746f202253717561642031220a52656d6f74652061646d696e2072656e616d65642073717561642031206f6e207465616d20322c206e616d6564202241205351554144222c20746f202253717561642031220000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889807470,
+					"size": 79,
+					"id": 0,
+					"type": 1,
+					"body": "Remote admin renamed squad 1 on team 2, named \"A SQUAD\", to \"Squad 1\"",
+					"hex": "4f000000000000000100000052656d6f74652061646d696e2072656e616d65642073717561642031206f6e207465616d20322c206e616d6564202241205351554144222c20746f202253717561642031220000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889807470,
+					"size": 10,
+					"id": 30,
+					"type": 0,
+					"body": "",
+					"hex": "0a0000001e000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889807470,
+					"size": 10,
+					"id": 30,
+					"type": 0,
+					"body": "",
+					"hex": "0a0000001e000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889807470,
+					"size": 7,
+					"id": 0,
+					"type": 0,
+					"body": "",
+					"hex": "00010000000000",
+					"note": "SOH-7-byte-sequence"
+				}
+			],
+			"assembledBody": "Remote admin renamed squad 1 on team 2, named \"A SQUAD\", to \"Squad 1\"\nRemote admin renamed squad 1 on team 2, named \"A SQUAD\", to \"Squad 1\"",
+			"durationMs": 466
+		},
+		{
+			"command": "ListSquads",
+			"sentId": 32,
+			"packets": [
+				{
+					"direction": "received",
+					"time": 1783889807855,
+					"size": 279,
+					"id": 32,
+					"type": 0,
+					"body": "----- Active Squads -----\nTeam ID: 1 (205th Separate Motor Rifle Brigade)\nTeam ID: 2 (161st Air Assault Brigade)\nID: 1 | Name: Squad 1 | Size: 1 | Locked: False | Creator Name: grey275 | Creator Online IDs: EOS: 000249a430574933aefd9bbc9a8f2f37 steam: 76561198052229202",
+					"hex": "1701000020000000000000002d2d2d2d2d2041637469766520537175616473202d2d2d2d2d0a5465616d2049443a203120283230357468205365706172617465204d6f746f72205269666c652042726967616465290a5465616d2049443a203220283136317374204169722041737361756c742042726967616465290a49443a2031207c204e616d653a2053717561642031207c2053697a653a2031207c204c6f636b65643a2046616c7365207c2043726561746f72204e616d653a2067726579323735207c2043726561746f72204f6e6c696e65204944733a20454f533a20303030323439613433303537343933336165666439626263396138663266333720737465616d3a2037363536313139383035323232393230320000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889807925,
+					"size": 10,
+					"id": 34,
+					"type": 0,
+					"body": "",
+					"hex": "0a00000022000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889807925,
+					"size": 10,
+					"id": 34,
+					"type": 0,
+					"body": "",
+					"hex": "0a00000022000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889807925,
+					"size": 7,
+					"id": 0,
+					"type": 0,
+					"body": "",
+					"hex": "00010000000000",
+					"note": "SOH-7-byte-sequence"
+				}
+			],
+			"assembledBody": "----- Active Squads -----\nTeam ID: 1 (205th Separate Motor Rifle Brigade)\nTeam ID: 2 (161st Air Assault Brigade)\nID: 1 | Name: Squad 1 | Size: 1 | Locked: False | Creator Name: grey275 | Creator Online IDs: EOS: 000249a430574933aefd9bbc9a8f2f37 steam: 76561198052229202",
+			"durationMs": 456
+		},
+		{
+			"command": "AdminChangeLayer Sumari_Seed_v1",
+			"sentId": 36,
+			"packets": [
+				{
+					"direction": "received",
+					"time": 1783889808318,
+					"size": 40,
+					"id": 36,
+					"type": 0,
+					"body": "Change layer to Sumari_Seed_v1",
+					"hex": "2800000024000000000000004368616e6765206c6179657220746f2053756d6172695f536565645f76310000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889808388,
+					"size": 10,
+					"id": 38,
+					"type": 0,
+					"body": "",
+					"hex": "0a00000026000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889808388,
+					"size": 10,
+					"id": 38,
+					"type": 0,
+					"body": "",
+					"hex": "0a00000026000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889808388,
+					"size": 7,
+					"id": 0,
+					"type": 0,
+					"body": "",
+					"hex": "00010000000000",
+					"note": "SOH-7-byte-sequence"
+				}
+			],
+			"assembledBody": "Change layer to Sumari_Seed_v1",
+			"durationMs": 462
+		},
+		{
+			"command": "ShowCurrentMap",
+			"sentId": 40,
+			"packets": [
+				{
+					"direction": "received",
+					"time": 1783889808772,
+					"size": 96,
+					"id": 40,
+					"type": 0,
+					"body": "Current level is Harju, layer is Harju_RAAS_v1, factions RGF+Mechanized PLA+AirAssault",
+					"hex": "60000000280000000000000043757272656e74206c6576656c206973204861726a752c206c61796572206973204861726a755f524141535f76312c2066616374696f6e73205247462b4d656368616e697a656420504c412b41697241737361756c740000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889808847,
+					"size": 10,
+					"id": 42,
+					"type": 0,
+					"body": "",
+					"hex": "0a0000002a000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889808847,
+					"size": 10,
+					"id": 42,
+					"type": 0,
+					"body": "",
+					"hex": "0a0000002a000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889808847,
+					"size": 7,
+					"id": 0,
+					"type": 0,
+					"body": "",
+					"hex": "00010000000000",
+					"note": "SOH-7-byte-sequence"
+				}
+			],
+			"assembledBody": "Current level is Harju, layer is Harju_RAAS_v1, factions RGF+Mechanized PLA+AirAssault",
+			"durationMs": 459
+		}
+	],
+	"serverPackets": [
+		{
+			"direction": "received",
+			"time": 1783889806540,
+			"size": 96,
+			"id": 0,
+			"type": 1,
+			"body": "Remote admin has warned player  grey275. Message was \"SLM corpus test warn via eos id\"",
+			"hex": "60000000000000000100000052656d6f74652061646d696e20686173207761726e656420706c617965722020677265793237352e204d657373616765207761732022534c4d20636f727075732074657374207761726e2076696120656f73206964220000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889807004,
+			"size": 94,
+			"id": 0,
+			"type": 1,
+			"body": "Remote admin has warned player  grey275. Message was \"SLM corpus test warn via name\"",
+			"hex": "5e000000000000000100000052656d6f74652061646d696e20686173207761726e656420706c617965722020677265793237352e204d657373616765207761732022534c4d20636f727075732074657374207761726e20766961206e616d65220000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889807470,
+			"size": 79,
+			"id": 0,
+			"type": 1,
+			"body": "Remote admin renamed squad 1 on team 2, named \"A SQUAD\", to \"Squad 1\"",
+			"hex": "4f000000000000000100000052656d6f74652061646d696e2072656e616d65642073717561642031206f6e207465616d20322c206e616d6564202241205351554144222c20746f202253717561642031220000"
+		}
+	],
+	"sessionLog": [
+		{
+			"direction": "sent",
+			"time": 1783889806182,
+			"size": 29,
+			"id": 2147483647,
+			"type": 3,
+			"body": "<REDACTED>",
+			"hex": "19000000ffffff7f03000000<REDACTED>0000",
+			"note": "auth"
+		},
+		{
+			"direction": "received",
+			"time": 1783889806261,
+			"size": 10,
+			"id": 2147483647,
+			"type": 0,
+			"body": "",
+			"hex": "0a000000ffffff7f000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889806340,
+			"size": 10,
+			"id": 2147483647,
+			"type": 2,
+			"body": "",
+			"hex": "0a000000ffffff7f020000000000"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889806341,
+			"size": 90,
+			"id": 20,
+			"type": 2,
+			"body": "AdminWarn \"000249a430574933aefd9bbc9a8f2f37\" SLM corpus test warn via eos id",
+			"hex": "56000000140000000200000041646d696e5761726e202230303032343961343330353734393333616566643962626339613866326633372220534c4d20636f727075732074657374207761726e2076696120656f732069640000"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889806341,
+			"size": 14,
+			"id": 22,
+			"type": 2,
+			"body": "",
+			"hex": "0a00000016000000020000000000",
+			"note": "empty-probe"
+		},
+		{
+			"direction": "received",
+			"time": 1783889806430,
+			"size": 96,
+			"id": 20,
+			"type": 0,
+			"body": "Remote admin has warned player  grey275. Message was \"SLM corpus test warn via eos id\"",
+			"hex": "60000000140000000000000052656d6f74652061646d696e20686173207761726e656420706c617965722020677265793237352e204d657373616765207761732022534c4d20636f727075732074657374207761726e2076696120656f73206964220000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889806540,
+			"size": 96,
+			"id": 0,
+			"type": 1,
+			"body": "Remote admin has warned player  grey275. Message was \"SLM corpus test warn via eos id\"",
+			"hex": "60000000000000000100000052656d6f74652061646d696e20686173207761726e656420706c617965722020677265793237352e204d657373616765207761732022534c4d20636f727075732074657374207761726e2076696120656f73206964220000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889806540,
+			"size": 10,
+			"id": 22,
+			"type": 0,
+			"body": "",
+			"hex": "0a00000016000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889806540,
+			"size": 10,
+			"id": 22,
+			"type": 0,
+			"body": "",
+			"hex": "0a00000016000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889806540,
+			"size": 7,
+			"id": 0,
+			"type": 0,
+			"body": "",
+			"hex": "00010000000000",
+			"note": "SOH-7-byte-sequence"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889806840,
+			"size": 63,
+			"id": 24,
+			"type": 2,
+			"body": "AdminWarn \"grey275\" SLM corpus test warn via name",
+			"hex": "3b000000180000000200000041646d696e5761726e2022677265793237352220534c4d20636f727075732074657374207761726e20766961206e616d650000"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889806840,
+			"size": 14,
+			"id": 26,
+			"type": 2,
+			"body": "",
+			"hex": "0a0000001a000000020000000000",
+			"note": "empty-probe"
+		},
+		{
+			"direction": "received",
+			"time": 1783889806931,
+			"size": 94,
+			"id": 24,
+			"type": 0,
+			"body": "Remote admin has warned player  grey275. Message was \"SLM corpus test warn via name\"",
+			"hex": "5e000000180000000000000052656d6f74652061646d696e20686173207761726e656420706c617965722020677265793237352e204d657373616765207761732022534c4d20636f727075732074657374207761726e20766961206e616d65220000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889807004,
+			"size": 94,
+			"id": 0,
+			"type": 1,
+			"body": "Remote admin has warned player  grey275. Message was \"SLM corpus test warn via name\"",
+			"hex": "5e000000000000000100000052656d6f74652061646d696e20686173207761726e656420706c617965722020677265793237352e204d657373616765207761732022534c4d20636f727075732074657374207761726e20766961206e616d65220000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889807004,
+			"size": 10,
+			"id": 26,
+			"type": 0,
+			"body": "",
+			"hex": "0a0000001a000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889807004,
+			"size": 10,
+			"id": 26,
+			"type": 0,
+			"body": "",
+			"hex": "0a0000001a000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889807004,
+			"size": 7,
+			"id": 0,
+			"type": 0,
+			"body": "",
+			"hex": "00010000000000",
+			"note": "SOH-7-byte-sequence"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889807305,
+			"size": 34,
+			"id": 28,
+			"type": 2,
+			"body": "AdminRenameSquad 2 1",
+			"hex": "1e0000001c0000000200000041646d696e52656e616d655371756164203220310000"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889807305,
+			"size": 14,
+			"id": 30,
+			"type": 2,
+			"body": "",
+			"hex": "0a0000001e000000020000000000",
+			"note": "empty-probe"
+		},
+		{
+			"direction": "received",
+			"time": 1783889807399,
+			"size": 149,
+			"id": 28,
+			"type": 0,
+			"body": "Remote admin renamed squad 1 on team 2, named \"A SQUAD\", to \"Squad 1\"\nRemote admin renamed squad 1 on team 2, named \"A SQUAD\", to \"Squad 1\"",
+			"hex": "950000001c0000000000000052656d6f74652061646d696e2072656e616d65642073717561642031206f6e207465616d20322c206e616d6564202241205351554144222c20746f202253717561642031220a52656d6f74652061646d696e2072656e616d65642073717561642031206f6e207465616d20322c206e616d6564202241205351554144222c20746f202253717561642031220000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889807470,
+			"size": 79,
+			"id": 0,
+			"type": 1,
+			"body": "Remote admin renamed squad 1 on team 2, named \"A SQUAD\", to \"Squad 1\"",
+			"hex": "4f000000000000000100000052656d6f74652061646d696e2072656e616d65642073717561642031206f6e207465616d20322c206e616d6564202241205351554144222c20746f202253717561642031220000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889807470,
+			"size": 10,
+			"id": 30,
+			"type": 0,
+			"body": "",
+			"hex": "0a0000001e000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889807470,
+			"size": 10,
+			"id": 30,
+			"type": 0,
+			"body": "",
+			"hex": "0a0000001e000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889807470,
+			"size": 7,
+			"id": 0,
+			"type": 0,
+			"body": "",
+			"hex": "00010000000000",
+			"note": "SOH-7-byte-sequence"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889807770,
+			"size": 24,
+			"id": 32,
+			"type": 2,
+			"body": "ListSquads",
+			"hex": "1400000020000000020000004c6973745371756164730000"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889807770,
+			"size": 14,
+			"id": 34,
+			"type": 2,
+			"body": "",
+			"hex": "0a00000022000000020000000000",
+			"note": "empty-probe"
+		},
+		{
+			"direction": "received",
+			"time": 1783889807855,
+			"size": 279,
+			"id": 32,
+			"type": 0,
+			"body": "----- Active Squads -----\nTeam ID: 1 (205th Separate Motor Rifle Brigade)\nTeam ID: 2 (161st Air Assault Brigade)\nID: 1 | Name: Squad 1 | Size: 1 | Locked: False | Creator Name: grey275 | Creator Online IDs: EOS: 000249a430574933aefd9bbc9a8f2f37 steam: 76561198052229202",
+			"hex": "1701000020000000000000002d2d2d2d2d2041637469766520537175616473202d2d2d2d2d0a5465616d2049443a203120283230357468205365706172617465204d6f746f72205269666c652042726967616465290a5465616d2049443a203220283136317374204169722041737361756c742042726967616465290a49443a2031207c204e616d653a2053717561642031207c2053697a653a2031207c204c6f636b65643a2046616c7365207c2043726561746f72204e616d653a2067726579323735207c2043726561746f72204f6e6c696e65204944733a20454f533a20303030323439613433303537343933336165666439626263396138663266333720737465616d3a2037363536313139383035323232393230320000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889807925,
+			"size": 10,
+			"id": 34,
+			"type": 0,
+			"body": "",
+			"hex": "0a00000022000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889807925,
+			"size": 10,
+			"id": 34,
+			"type": 0,
+			"body": "",
+			"hex": "0a00000022000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889807925,
+			"size": 7,
+			"id": 0,
+			"type": 0,
+			"body": "",
+			"hex": "00010000000000",
+			"note": "SOH-7-byte-sequence"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889808226,
+			"size": 45,
+			"id": 36,
+			"type": 2,
+			"body": "AdminChangeLayer Sumari_Seed_v1",
+			"hex": "29000000240000000200000041646d696e4368616e67654c617965722053756d6172695f536565645f76310000"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889808226,
+			"size": 14,
+			"id": 38,
+			"type": 2,
+			"body": "",
+			"hex": "0a00000026000000020000000000",
+			"note": "empty-probe"
+		},
+		{
+			"direction": "received",
+			"time": 1783889808318,
+			"size": 40,
+			"id": 36,
+			"type": 0,
+			"body": "Change layer to Sumari_Seed_v1",
+			"hex": "2800000024000000000000004368616e6765206c6179657220746f2053756d6172695f536565645f76310000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889808388,
+			"size": 10,
+			"id": 38,
+			"type": 0,
+			"body": "",
+			"hex": "0a00000026000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889808388,
+			"size": 10,
+			"id": 38,
+			"type": 0,
+			"body": "",
+			"hex": "0a00000026000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889808388,
+			"size": 7,
+			"id": 0,
+			"type": 0,
+			"body": "",
+			"hex": "00010000000000",
+			"note": "SOH-7-byte-sequence"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889808689,
+			"size": 28,
+			"id": 40,
+			"type": 2,
+			"body": "ShowCurrentMap",
+			"hex": "18000000280000000200000053686f7743757272656e744d61700000"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889808689,
+			"size": 14,
+			"id": 42,
+			"type": 2,
+			"body": "",
+			"hex": "0a0000002a000000020000000000",
+			"note": "empty-probe"
+		},
+		{
+			"direction": "received",
+			"time": 1783889808772,
+			"size": 96,
+			"id": 40,
+			"type": 0,
+			"body": "Current level is Harju, layer is Harju_RAAS_v1, factions RGF+Mechanized PLA+AirAssault",
+			"hex": "60000000280000000000000043757272656e74206c6576656c206973204861726a752c206c61796572206973204861726a755f524141535f76312c2066616374696f6e73205247462b4d656368616e697a656420504c412b41697241737361756c740000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889808847,
+			"size": 10,
+			"id": 42,
+			"type": 0,
+			"body": "",
+			"hex": "0a0000002a000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889808847,
+			"size": 10,
+			"id": 42,
+			"type": 0,
+			"body": "",
+			"hex": "0a0000002a000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889808847,
+			"size": 7,
+			"id": 0,
+			"type": 0,
+			"body": "",
+			"hex": "00010000000000",
+			"note": "SOH-7-byte-sequence"
+		}
+	]
+}

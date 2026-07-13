@@ -149,9 +149,11 @@ export function initLayerQueue(args: Args) {
 	)
 
 	args.sub.add(
-		RPC.observe(() => RPC.orpc.layerQueue.watchOps.call({ serverId })).subscribe(update => {
-			get().handleServerUpdate(update)
-		}),
+		RPC.observe('layerQueue.watchOps', () => RPC.orpc.layerQueue.watchOps.call({ serverId })).pipe(RPC.dropServerNotLoaded()).subscribe(
+			update => {
+				get().handleServerUpdate(update)
+			},
+		),
 	)
 }
 

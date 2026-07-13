@@ -1,4 +1,3 @@
-import { resToOptional } from '@/lib/types'
 import { formatVersion } from '@/lib/versioning.ts'
 import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
@@ -43,6 +42,10 @@ let ENV!: ReturnType<typeof envBuilder>
 export async function setup() {
 	log = module.getLogger()
 	ENV = envBuilder()
+	if (!ENV.DISCORD_ENABLED) {
+		log.warn('Discord integration is disabled (DISCORD_ENABLED=false); guild lookups will resolve as errors')
+		return
+	}
 	client = new D.Client({
 		intents: [D.GatewayIntentBits.Guilds, D.GatewayIntentBits.GuildMembers],
 	})
@@ -136,6 +139,9 @@ export async function getOauthUser(ctx: Partial<CS.AbortSignal>, token: AccessTo
 }
 
 async function fetchGuild(guildId: bigint) {
+	if (!ENV.DISCORD_ENABLED) {
+		return { code: 'err:discord' as const, msg: 'discord integration disabled', err: 'discord integration disabled', errCode: undefined }
+	}
 	try {
 		const guild = await client.guilds.fetch(guildId.toString())
 		return { code: 'ok' as const, guild }
@@ -213,7 +219,8 @@ export const orpcRouter = {
 		.input(z.object({}).optional())
 		.handler(async () => {
 			const guildRes = await fetchGuild(ENV.DISCORD_HOME_GUILD_ID)
-			const guild = resToOptional(guildRes)!.guild
+			if (guildRes.code !== 'ok') return []
+			const guild = guildRes.guild
 			let emojis = await guild.emojis.fetch()
 
 			if (ENV.NODE_ENV === 'development') {

@@ -30,6 +30,11 @@ const significantMouseMove$ = Rx.fromEvent(document, 'mousemove').pipe(
 // userIsActive$) but should never be what starts one.
 export const userInteracted$ = (function createInteractionObservable(): Rx.Observable<true> {
 	return Rx.merge(
+		// pointerdown, not just click: engagement is what establishes presence, and presence is the state
+		// an action like "start editing" builds on. A document-level click listener runs *after* React's
+		// onClick, so a first click that starts an activity would dispatch it before the presence it
+		// depends on exists, and be dropped -- the user had to click twice.
+		Rx.fromEvent(document, 'pointerdown'),
 		Rx.fromEvent(document, 'click'),
 		Rx.fromEvent(document, 'contextmenu'),
 		Rx.fromEvent(document, 'keydown'),

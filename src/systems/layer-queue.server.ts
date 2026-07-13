@@ -316,7 +316,10 @@ export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.Serv
 			}
 		}
 
-		ctx.server.postRollEventsSub.add(Rx.concat(Rx.from(withWaits)).subscribe())
+		// concat over the observables themselves, not over an observable *of* them: Rx.from(withWaits)
+		// emits each task as a value and never subscribes to it, so every post-roll announcement was
+		// silently skipped
+		ctx.server.postRollEventsSub.add(Rx.concat(...withWaits).subscribe())
 	}
 }
 
@@ -397,69 +400,77 @@ export async function warnShowNext(
 /**
  * sets next layer on server according to the current queue, generating a new queue item if needed. modifies serverState in place.
  */
-export const syncNextLayerToServer = C.spanOp('syncNextLayerToServer', { module, mutexes: (ctx) => ctx.layerQueue.updateLayerMtx }, async (
-	ctx: C.SquadServer & C.Rcon & C.LayerQueue & C.Db & C.MatchHistory & CS.AbortSignal,
-	settings: SETTINGS.ServerSettings,
-	nextQueuedLayerId: L.LayerId,
-	itemId: string,
-	// why SLM is setting the layer. queue-driven sets fold into their QUEUE_UPDATED (audit-only MAP_SET); override sets
-	// react to a non-SLM set and get a feed entry. absent -> no MAP_SET app event (still attributes the server event).
-	mapSetCause?:
-		| { reason: 'queue-updated'; causeId: string }
-		| { reason: 'override'; overrode?: { type: 'player'; playerId: string } | { type: 'rcon' } },
-) => {
-	if (settings.updatesToSquadServerDisabled) return
-	const currentStatusRes = await ctx.server.layersStatus.get(ctx)
-	if (currentStatusRes.code !== 'ok') return currentStatusRes
-	if (currentStatusRes.data.nextLayer && L.areLayersCompatible(currentStatusRes.data.nextLayer.id, nextQueuedLayerId)) return
-	const res = await SquadRcon.setNextLayer(ctx, nextQueuedLayerId)
-	// we do this so we can stay in this async context so we hold on to the mutex that we acquired
-	switch (res.code) {
-		case 'err:unable-to-set-next-layer':
-			ctx.layerQueue.unexpectedNextLayerSet$.next(res.unexpectedLayerId)
-			break
-		case 'err:rcon':
-			ctx.layerQueue.unexpectedNextLayerSet$.next(null)
-			// deliberately detached (see below): observe the rejection instead of awaiting
-			SquadServer.pushAttribution(ctx, { type: 'MAP_SET_ATTRIBUTION', itemId, layerId: nextQueuedLayerId }).catch((err) => {
-				if (!isAbortError(err)) log.error(err)
-			})
-			break
-		case 'ok': {
-			ctx.layerQueue.unexpectedNextLayerSet$.next(null)
-			// SLM actually set the layer -> record a MAP_SET app event (SLM-originated only), and link the resulting
-			// MAP_SET server event to it via the attribution
-			let mapSetAppEventId: string | undefined
-			if (mapSetCause) {
-				const mapSet = AppEvents.create<AppEvents.MapSet>({
-					type: 'MAP_SET',
-					layerId: nextQueuedLayerId,
-					reason: mapSetCause.reason,
-					overrode: mapSetCause.reason === 'override' ? mapSetCause.overrode : undefined,
-					actor: { type: 'system' },
-					serverId: ctx.serverId,
-					matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
-					causeId: mapSetCause.reason === 'queue-updated' ? mapSetCause.causeId : null,
+// matchHistory.mtx is declared here (rather than acquired lazily by the nested getCurrentMatch call
+// below) so that every op taking both locks takes them as one ordered set. Acquiring updateLayerMtx
+// first and matchHistory.mtx later deadlocks against onNewGameDuringRoll, which takes them together.
+export const syncNextLayerToServer = C.spanOp(
+	'syncNextLayerToServer',
+	{ module, mutexes: (ctx) => [ctx.layerQueue.updateLayerMtx, ctx.matchHistory.mtx] },
+	async (
+		ctx: C.SquadServer & C.Rcon & C.LayerQueue & C.Db & C.MatchHistory & CS.AbortSignal,
+		settings: SETTINGS.ServerSettings,
+		nextQueuedLayerId: L.LayerId,
+		itemId: string,
+		// why SLM is setting the layer. queue-driven sets fold into their QUEUE_UPDATED (audit-only MAP_SET); override sets
+		// react to a non-SLM set and get a feed entry. absent -> no MAP_SET app event (still attributes the server event).
+		mapSetCause?:
+			| { reason: 'queue-updated'; causeId: string }
+			| { reason: 'override'; overrode?: { type: 'player'; playerId: string } | { type: 'rcon' } },
+	) => {
+		if (settings.updatesToSquadServerDisabled) return
+		const currentStatusRes = await ctx.server.layersStatus.get(ctx)
+		if (currentStatusRes.code !== 'ok') return currentStatusRes
+		if (currentStatusRes.data.nextLayer && L.areLayersCompatible(currentStatusRes.data.nextLayer.id, nextQueuedLayerId)) return
+		const res = await SquadRcon.setNextLayer(ctx, nextQueuedLayerId)
+		// we do this so we can stay in this async context so we hold on to the mutex that we acquired
+		switch (res.code) {
+			case 'err:unable-to-set-next-layer':
+				ctx.layerQueue.unexpectedNextLayerSet$.next(res.unexpectedLayerId)
+				break
+			case 'err:rcon':
+				ctx.layerQueue.unexpectedNextLayerSet$.next(null)
+				// deliberately detached (see below): observe the rejection instead of awaiting
+				SquadServer.pushAttribution(ctx, { type: 'MAP_SET_ATTRIBUTION', itemId, layerId: nextQueuedLayerId }).catch((err) => {
+					if (!isAbortError(err)) log.error(err)
 				})
-				if (mapSetCause.reason === 'override') await SquadServer.emitAppEvent(ctx, mapSet)
-				else await AppEventsSys.persistAppEvent(ctx, mapSet)
-				mapSetAppEventId = mapSet.id
+				break
+			case 'ok': {
+				ctx.layerQueue.unexpectedNextLayerSet$.next(null)
+				// SLM actually set the layer -> record a MAP_SET app event (SLM-originated only), and link the resulting
+				// MAP_SET server event to it via the attribution
+				let mapSetAppEventId: string | undefined
+				if (mapSetCause) {
+					const mapSet = AppEvents.create<AppEvents.MapSet>({
+						type: 'MAP_SET',
+						layerId: nextQueuedLayerId,
+						reason: mapSetCause.reason,
+						overrode: mapSetCause.reason === 'override' ? mapSetCause.overrode : undefined,
+						actor: { type: 'system' },
+						serverId: ctx.serverId,
+						// no current match yet on a freshly-registered server (first sync hasn't run)
+						matchId: (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null,
+						causeId: mapSetCause.reason === 'queue-updated' ? mapSetCause.causeId : null,
+					})
+					if (mapSetCause.reason === 'override') await SquadServer.emitAppEvent(ctx, mapSet)
+					else await AppEventsSys.persistAppEvent(ctx, mapSet)
+					mapSetAppEventId = mapSet.id
+				}
+				// awaiting this will cause a deadlock on map roll, so it stays detached; observe its rejection
+				SquadServer.pushAttribution(ctx, {
+					type: 'MAP_SET_ATTRIBUTION',
+					itemId,
+					layerId: nextQueuedLayerId,
+					appEventId: mapSetAppEventId,
+				}).catch((err) => {
+					if (!isAbortError(err)) log.error(err)
+				})
+				break
 			}
-			// awaiting this will cause a deadlock on map roll, so it stays detached; observe its rejection
-			SquadServer.pushAttribution(ctx, {
-				type: 'MAP_SET_ATTRIBUTION',
-				itemId,
-				layerId: nextQueuedLayerId,
-				appEventId: mapSetAppEventId,
-			}).catch((err) => {
-				if (!isAbortError(err)) log.error(err)
-			})
-			break
+			default:
+				assertNever(res)
 		}
-		default:
-			assertNever(res)
-	}
-})
+	},
+)
 
 export async function toggleUpdatesToSquadServer(
 	{ ctx, input }: {
@@ -516,11 +527,7 @@ export const router = {
 	watchUnexpectedNextLayer: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
 		{ context, signal, input },
 	) {
-		const obs = SquadServer.sliceCtx$(context.wsClientId, input.serverId).pipe(
-			Rx.switchMap(ctx => {
-				if (!ctx) return Rx.EMPTY
-				return ctx.layerQueue.unexpectedNextLayerSet$
-			}),
+		const obs = SquadServer.sliceStream$(context.wsClientId, input.serverId, (ctx) => ctx.layerQueue.unexpectedNextLayerSet$).pipe(
 			withAbortSignal(signal!),
 		)
 		yield* toAsyncGenerator(obs)
@@ -530,7 +537,9 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string(), disabled: z.boolean() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctx = SquadServer.resolveSliceCtx(_ctx, input.serverId)
+			const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
 			return await toggleUpdatesToSquadServer({ ctx, input })
 		}),
 
@@ -538,29 +547,25 @@ export const router = {
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function*({ context, input, signal }) {
-			const updateForServer$ = SquadServer.sliceCtx$(context.wsClientId, input.serverId).pipe(
-				Rx.switchMap(ctx => {
-					if (!ctx) return Rx.EMPTY
-					const initial: SLL.Update = {
-						code: 'init',
-						state: ctx.layerQueue.session.state,
-						ops: ctx.layerQueue.session.ops,
-					}
-					const updateForClient$: Rx.Observable<SLL.Update> = ctx.layerQueue.op$.pipe(
-						// the originator already has the op in its pending set -- ack with just the id
-						Rx.map(({ op, sourceWsClientId }): SLL.Update =>
-							sourceWsClientId !== undefined && sourceWsClientId === context.wsClientId
-								? { code: 'ack' as const, opId: op.opId }
-								: { code: 'op' as const, op }
-						),
-						Rx.startWith(initial),
-						// if we don't do this then the orpcWs breaks
-						Rx.observeOn(Rx.asyncScheduler),
-					)
-					return updateForClient$
-				}),
-				withAbortSignal(signal!),
-			)
+			const updateForServer$ = SquadServer.sliceStream$(context.wsClientId, input.serverId, (ctx) => {
+				const initial: SLL.Update = {
+					code: 'init',
+					state: ctx.layerQueue.session.state,
+					ops: ctx.layerQueue.session.ops,
+				}
+				const updateForClient$: Rx.Observable<SLL.Update> = ctx.layerQueue.op$.pipe(
+					// the originator already has the op in its pending set -- ack with just the id
+					Rx.map(({ op, sourceWsClientId }): SLL.Update =>
+						sourceWsClientId !== undefined && sourceWsClientId === context.wsClientId
+							? { code: 'ack' as const, opId: op.opId }
+							: { code: 'op' as const, op }
+					),
+					Rx.startWith(initial),
+					// if we don't do this then the orpcWs breaks
+					Rx.observeOn(Rx.asyncScheduler),
+				)
+				return updateForClient$
+			}).pipe(withAbortSignal(signal!))
 
 			yield* toAsyncGenerator(updateForServer$)
 		}),
@@ -569,7 +574,9 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string(), op: SLL.OperationSchema }))
 		.handler(async ({ context: _ctx, input: { serverId, op } }) => {
-			const ctx = SquadServer.resolveSliceCtx(_ctx, serverId)
+			const ctxRes = SquadServer.trySliceCtx(_ctx, serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
 			const authRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write'))
 			if (authRes) return authRes
 
@@ -631,7 +638,9 @@ export const dispatchOp = C.spanOp(
 	'dispatchOp',
 	{
 		module,
-		mutexes: (ctx) => ctx.layerQueue.updateLayerMtx,
+		// see syncNextLayerToServer: side effects reach getCurrentMatch, so matchHistory.mtx is taken
+		// as part of this op's ordered lock set rather than nested underneath updateLayerMtx
+		mutexes: (ctx) => [ctx.layerQueue.updateLayerMtx, ctx.matchHistory.mtx],
 		levels: { event: 'info' },
 		attrs: (ctx, op) => ({ [ATTRS.LayerQueue.OP]: op.op, [ATTRS.LayerQueue.OP_ID]: op.opId }),
 		extraText: (ctx, op) => `Dispatch op ${op.op} (${op.opId})`,
@@ -753,7 +762,8 @@ const handleSideEffect = C.spanOp(
 					type: 'QUEUE_UPDATED',
 					actor,
 					serverId: ctx.serverId,
-					matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
+					// no current match yet on a freshly-registered server (first sync hasn't run)
+					matchId: (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null,
 					causeId: null,
 					trigger,
 					ops,

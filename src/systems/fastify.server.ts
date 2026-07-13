@@ -73,6 +73,9 @@ export const setup = C.spanOp('setup', { module }, async () => {
 
 	// --------  static file serving --------
 	switch (ENV.NODE_ENV) {
+		// test serves the built frontend exactly as production does: e2e tests drive the real client,
+		// and serving it from the instance itself keeps each test's app self-contained on its own port
+		case 'test':
 		case 'production':
 			instance.register(fastifyStatic, {
 				root: Paths.DIST,
@@ -90,9 +93,8 @@ export const setup = C.spanOp('setup', { module }, async () => {
 			})
 			break
 		case 'development':
+			// the dev server serves the frontend; fastify only provides the API + websocket surface
 			break
-		case 'test':
-			throw new Error('test environment not supported')
 		default:
 			assertNever(ENV.NODE_ENV)
 	}
@@ -330,11 +332,9 @@ export const setup = C.spanOp('setup', { module }, async () => {
 					.header('Access-Control-Allow-Headers', '*')
 					.send('')
 			}
+			case 'test':
 			case 'production': {
 				return res.sendFile('index.html')
-			}
-			case 'test': {
-				throw new Error('Not implemented')
 			}
 			default:
 				assertNever(ENV.NODE_ENV)

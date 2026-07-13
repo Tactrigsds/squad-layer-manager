@@ -503,19 +503,21 @@ const serverRouter = {
 	watchSettings: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
 		{ context: _ctx, signal, input },
 	) {
-		const obs = SquadServer.sliceCtx$(_ctx.wsClientId, input.serverId).pipe(
-			Rx.switchMap((ctx) => ctx ? ctx.serverSettings.update$ : Rx.EMPTY),
+		const obs = SquadServer.sliceStream$(_ctx.wsClientId, input.serverId, (ctx) => ctx.serverSettings.update$).pipe(
 			withAbortSignal(signal!),
 		)
 
 		yield* toAsyncGenerator(obs)
 	}),
 
+	// deliberately doesn't resolve a slice: editing settings is how an admin repairs a broken server or prepares a
+	// disabled one, and neither has a slice. Everything below only needs the db + the serverId.
 	updateSettings: orpcBase
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string(), ops: z.array(SETTINGS.SettingMutationSchema) }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctx = SquadServer.resolveSliceCtx(_ctx, input.serverId)
+			if (!hasServerEntry(input.serverId)) return { code: 'err:server-not-found' as const }
+			const ctx = { ..._ctx, serverId: input.serverId }
 			const access = RBAC.serverSettingsWriteAccess(await Rbac.getUserPermissions(ctx), input.serverId)
 			if (access.kind === 'none') {
 				return RBAC.permissionDenied({

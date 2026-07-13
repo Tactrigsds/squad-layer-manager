@@ -173,7 +173,6 @@ export const COMMAND_DECLARATIONS = {
 	...declareCommand('kick', {
 		args: [
 			{ kind: 'player', name: 'player' },
-			{ kind: 'duration', name: 'duration' },
 			{ kind: 'reason', name: 'reason', action: 'kick', optional: true },
 		],
 		defaults: { scopes: ['admin'], strings: ['kick'], enabled: true },
@@ -181,10 +180,25 @@ export const COMMAND_DECLARATIONS = {
 	...declareCommand('kickSquad', {
 		args: [
 			{ kind: 'squad', name: 'squad' },
-			{ kind: 'duration', name: 'duration' },
 			{ kind: 'reason', name: 'reason', action: 'kick', optional: true },
 		],
 		defaults: { scopes: ['admin'], strings: ['kicksquad'], enabled: true },
+	}),
+	...declareCommand('timeout', {
+		args: [
+			{ kind: 'player', name: 'player' },
+			{ kind: 'duration', name: 'duration' },
+			{ kind: 'reason', name: 'reason', action: 'timeout', optional: true },
+		],
+		defaults: { scopes: ['admin'], strings: ['timeout', 'to'], enabled: true },
+	}),
+	...declareCommand('timeoutSquad', {
+		args: [
+			{ kind: 'squad', name: 'squad' },
+			{ kind: 'duration', name: 'duration' },
+			{ kind: 'reason', name: 'reason', action: 'timeout', optional: true },
+		],
+		defaults: { scopes: ['admin'], strings: ['timeoutsquad', 'tos'], enabled: true },
 	}),
 	// the target may be offline, so the arg is a plain token resolved against players with active timeouts
 	...declareCommand('clearTimeout', {
@@ -193,11 +207,11 @@ export const COMMAND_DECLARATIONS = {
 	}),
 }
 
-// configurable fixed-duration kick aliases (e.g. !yeet = kick with 2h) share these args: a player and an
+// configurable fixed-duration timeout aliases (e.g. !yeet = timeout with 2h) share these args: a player and an
 // optional reason. shared so both the command dispatcher and the help listings can describe them.
 export const TIMEOUT_ALIAS_ARG_DEFS = [
 	{ kind: 'player', name: 'player' },
-	{ kind: 'reason', name: 'reason', action: 'kick', optional: true },
+	{ kind: 'reason', name: 'reason', action: 'timeout', optional: true },
 ] as const satisfies readonly ArgDef[]
 
 export type CommandId = keyof typeof COMMAND_DECLARATIONS

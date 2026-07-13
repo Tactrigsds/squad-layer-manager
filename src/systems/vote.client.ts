@@ -6,7 +6,8 @@ import * as Rx from 'rxjs'
 import { map, share } from 'rxjs'
 
 const voteStateCold$ = (serverId: string) =>
-	RPC.observe(() => RPC.orpc.vote.watchUpdates.call({ serverId })).pipe(
+	RPC.observe('vote.watchUpdates', () => RPC.orpc.vote.watchUpdates.call({ serverId })).pipe(
+		RPC.dropServerNotLoaded(),
 		Rx.tap((update) => {
 			if (update.code === 'initial-state' && update.state) {
 				PartSys.stripParts(update.state)

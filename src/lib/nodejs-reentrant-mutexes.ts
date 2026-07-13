@@ -5,6 +5,19 @@ type MutexContext = { locked: Set<MutexInterface>; releaseTasks: Set<() => void 
 
 const mtxStorage = new AsyncLocalStorage<MutexContext>()
 
+// stable total order for multi-mutex acquisition; first-seen assignment is consistent for the
+// process lifetime, which is all a deadlock-free ordering requires
+const lockOrder = new WeakMap<MutexInterface, number>()
+let lockOrderCounter = 0
+function lockOrderOf(mutex: MutexInterface): number {
+	let order = lockOrder.get(mutex)
+	if (order === undefined) {
+		order = lockOrderCounter++
+		lockOrder.set(mutex, order)
+	}
+	return order
+}
+
 /**
  * Add a task to be executed when  all mutexes are released.
  * @param tasks are deduped via referential equality
@@ -40,10 +53,16 @@ export const withAcquired = <Cb extends (...args: any[]) => Promise<any>>(
 					// being in 'locked', means that we've already acquired this mutex
 					const mutexesToAcquire = mutexes.filter(mutex => !locked.has(mutex))
 
-					// Acquire all locks that we don't have yet
-					const newlyAcquired = await Promise.all(
-						mutexesToAcquire.map(mutex => mutex.acquire().catch(e => e === E_CANCELED ? () => undefined : Promise.reject(e))),
-					)
+					// Acquire sequentially in a stable global order (not Promise.all): concurrent partial
+					// acquisition of multi-mutex sets deadlocks as soon as two ops share two mutexes
+					// (op A holds m1 awaiting m2, op B holds m2 awaiting m1). A consistent total order
+					// makes cyclic waits between multi-lock ops impossible.
+					const newlyAcquired: (() => void)[] = []
+					for (const mutex of [...mutexesToAcquire].sort((a, b) => lockOrderOf(a) - lockOrderOf(b))) {
+						newlyAcquired.push(
+							await mutex.acquire().catch(e => e === E_CANCELED ? () => undefined : Promise.reject(e)),
+						)
+					}
 
 					for (const mutex of mutexesToAcquire) {
 						locked.add(mutex)
@@ -62,8 +81,9 @@ export const withAcquired = <Cb extends (...args: any[]) => Promise<any>>(
 							try {
 								await Promise.all(mutexes.map(mutex => mutex.waitForUnlock()))
 							} catch (err) {
+								// detached: rethrowing here is an unhandled rejection, not something a caller can catch
 								logError(err, 'error while waiting for mutexes to unlock')
-								throw err
+								return
 							}
 							for (const task of releaseTasks) {
 								try {

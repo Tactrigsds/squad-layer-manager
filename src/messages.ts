@@ -248,7 +248,7 @@ export const WARNS = {
 				const signature = CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS[id].args)
 				return `[${sortedStrings.join(', ')}]${signature ? ` ${signature}` : ''}: ${GENERAL.command.descriptions[id]}`
 			})
-			// fixed-duration kick aliases aren't in COMMAND_DECLARATIONS; append them with a generated description
+			// fixed-duration timeout aliases aren't in COMMAND_DECLARATIONS; append them with a generated description
 			const aliasSignature = CMD.formatArgSignature(CMD.TIMEOUT_ALIAS_ARG_DEFS)
 			const aliasLines = timeoutAliases.map((a) =>
 				`[${prefix}${a.string}]${aliasSignature ? ` ${aliasSignature}` : ''}: ${GENERAL.command.timeoutAliasDescription(a.duration)}`
@@ -360,11 +360,13 @@ export const GENERAL = {
 			disbandSquad: 'Disband a squad',
 			demoteCommander: 'Demote a player from commander',
 			broadcast: 'Send an admin broadcast: one word picks a preset, more words broadcast the message verbatim',
-			kick: 'Kick a player with a timeout (e.g. 2h); they are re-kicked on any SLM server until it expires',
-			kickSquad: 'Kick every member of a squad with a timeout (e.g. 2h)',
-			clearTimeout: "Cancel a player's active kick timeout (works for offline players)",
+			kick: 'Kick a player from the server; they may rejoin immediately',
+			kickSquad: 'Kick every member of a squad from the server',
+			timeout: 'Kick a player with a timeout (e.g. 2h); they are re-kicked on any SLM server until it expires',
+			timeoutSquad: 'Kick every member of a squad with a timeout (e.g. 2h)',
+			clearTimeout: "Cancel a player's active timeout (works for offline players)",
 		} satisfies Record<CMD.CommandId, string>,
-		// configurable fixed-duration kick aliases; shared by the in-game help and the web help dialog
+		// configurable fixed-duration timeout aliases; shared by the in-game help and the web help dialog
 		timeoutAliasDescription: (durationMs: number) => `Kick with a ${formatHumanTime(durationMs)} timeout`,
 	},
 }

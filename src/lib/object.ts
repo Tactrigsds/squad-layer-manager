@@ -1,4 +1,6 @@
-import fastDeepEqual from 'fast-deep-equal/es6'
+// explicit file rather than the directory: bundlers resolve `fast-deep-equal/es6` fine, but node's
+// ESM resolver rejects directory imports, which breaks anything importing this module under plain node
+import fastDeepEqual from 'fast-deep-equal/es6/index.js'
 import { current, isDraft } from 'immer'
 import jp from 'jsonpath'
 import { isNullOrUndef } from './type-guards'

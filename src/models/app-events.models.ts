@@ -129,6 +129,14 @@ export const BroadcastSentSchema = event('BROADCAST_SENT', {
 })
 export type BroadcastSent = z.infer<typeof BroadcastSentSchema>
 
+// a plain kick: the players are removed from the server and may rejoin immediately. A kick with an attached
+// timeout is PLAYER_TIMED_OUT instead.
+export const PlayerKickedSchema = event('PLAYER_KICKED', {
+	targets: z.array(SM.PlayerIdSchema),
+	reason: AppliedActionReasonSchema.optional(),
+})
+export type PlayerKicked = z.infer<typeof PlayerKickedSchema>
+
 // a kick with an attached timeout: the player is re-kicked on join from any SLM server until expiresAt.
 // enforcement kicks attribute their PLAYER_KICKED server events to this event (no per-enforcement app event).
 export const PlayerTimedOutSchema = event('PLAYER_TIMED_OUT', {
@@ -317,6 +325,7 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	CommanderDemotedSchema,
 	FogOfWarToggledSchema,
 	BroadcastSentSchema,
+	PlayerKickedSchema,
 	PlayerTimedOutSchema,
 	TimeoutCancelledSchema,
 	MatchEndedSchema,
@@ -346,6 +355,7 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 		case 'PLAYER_REMOVED_FROM_SQUAD':
 		case 'TEAM_CHANGE_FORCED':
 		case 'PLAYER_KILLED':
+		case 'PLAYER_KICKED':
 			return e.targets
 		case 'SQUAD_DISBANDED':
 			return e.members
@@ -405,8 +415,10 @@ export function describeAppEvent(e: AppEvent): string {
 		case 'BROADCAST_SENT':
 			// preset broadcasts embed nothing extra; the label is implicit in the configured message
 			return `broadcast: "${e.message}"`
+		case 'PLAYER_KICKED':
+			return `kicked ${players(e.targets.length)}${forReason(e.reason)}`
 		case 'PLAYER_TIMED_OUT':
-			return `kicked 1 player with a ${formatHumanTime(e.durationMs)} timeout${e.reason?.label ? ` for ${e.reason.label}` : ''}`
+			return `timed out 1 player for ${formatHumanTime(e.durationMs)}${forReason(e.reason)}`
 		case 'TIMEOUT_CANCELLED':
 			return `cancelled a player's timeout`
 		case 'MATCH_ENDED':

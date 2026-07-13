@@ -56,10 +56,20 @@ export type LayersStatusExt = LayersStatus & {
 }
 
 export type RconError = { code: 'err:rcon'; msg: string }
-export type ServerDisabled = { code: 'server-disabled' }
+
+// the server has no live slice for this id: it's disabled, broken, still booting, or was torn down by a fatal
+// resource error. Every per-server endpoint can return this instead of throwing or (worse) going silent.
+export type ServerNotLoaded = { code: 'err:server-not-loaded'; serverId: string; msg: string }
+export function serverNotLoaded(serverId: string): ServerNotLoaded {
+	return { code: 'err:server-not-loaded', serverId, msg: `Server "${serverId}" is not currently loaded` }
+}
+export function isServerNotLoaded(value: unknown): value is ServerNotLoaded {
+	return typeof value === 'object' && value !== null && (value as ServerNotLoaded).code === 'err:server-not-loaded'
+}
+
 export type ServerInfoRes = { code: 'ok'; data: ServerInfo } | RconError
 export type LayerStatusRes = { code: 'ok'; data: LayersStatus } | RconError
-export type LayersStatusResExt = { code: 'ok'; data: LayersStatusExt } | RconError | ServerDisabled
+export type LayersStatusResExt = { code: 'ok'; data: LayersStatusExt } | RconError
 
 export const TeamIdSchema = z.union([z.literal(1), z.literal(2)])
 export type TeamId = z.infer<typeof TeamIdSchema>
@@ -1039,14 +1049,16 @@ export namespace LogEvents {
 		ip: z.union([z.ipv4(), z.ipv6()]),
 	})
 	export type PlayerDisconnected = z.infer<typeof PlayerDisconnectedDef['schema']>
-	// Restricted to GameNetDriver connections. The same CloseBunch line is also emitted for BeaconNetDriver
-	// (join-queue) connections closing, which carry the player's EOS but PC: NULL and are not real game
-	// disconnects. Matching those would emit a spurious PLAYER_DISCONNECTED around the time a player is
-	// actually joining (~63% of raw CloseBunch lines on a busy server are beacon closes).
+	// Parses UNetDriver::RemoveClientConnection rather than the earlier "Sending CloseBunch" line: CloseBunch
+	// fires before the disconnect fully settles, so e.g. a wounded player's Die() lands *after* it, which
+	// misorders death handling relative to the disconnect. RemoveClientConnection is the last line of the
+	// disconnect sequence. Restricted to GameNetDriver connections: the same line is also emitted for
+	// BeaconNetDriver (join-queue) connections closing, which carry the player's EOS but PC: NULL and are not
+	// real game disconnects (~60% of raw RemoveClientConnection lines on a busy server are beacon closes).
 	export const PlayerDisconnectedMatcher = createLogMatcher({
 		event: PlayerDisconnectedDef,
 		regex:
-			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogNet: UChannel::Close: Sending CloseBunch\. ChIndex == [0-9]+\. Name: \[UChannel\] ChIndex: [0-9]+, Closing: [0-9]+ \[UNetConnection\] RemoteAddr: ([\d.]+):[\d]+, Name: \w+EOSIpNetConnection_[0-9]+, Driver: Name:GameNetDriver Def:GameNetDriver \w+NetDriver_[0-9]+, IsServer: YES, PC: ([^ ]+), Owner: [^ ]+, UniqueId: RedpointEOS:([\d\w]+)/,
+			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogNet: UNetDriver::RemoveClientConnection - Removed address ([\d.]+):[\d]+ from MappedClientConnections for: \[UNetConnection\] RemoteAddr: [\d.]+:[\d]+, Name: \w+EOSIpNetConnection_[0-9]+, Driver: Name:GameNetDriver Def:GameNetDriver \w+NetDriver_[0-9]+, IsServer: YES, PC: ([^ ]+), Owner: [^ ]+, UniqueId: RedpointEOS:([\d\w]+)/,
 		onMatch: (args) => {
 			return {
 				raw: args[0],

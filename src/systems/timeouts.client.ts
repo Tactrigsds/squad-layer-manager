@@ -8,26 +8,26 @@ import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 
 export const [useActiveTimeouts, activeTimeouts$] = ReactRx.bind(
-	RPC.observe(() => RPC.orpc.timeouts.watchActiveTimeouts.call()),
+	RPC.observe('timeouts.watchActiveTimeouts', () => RPC.orpc.timeouts.watchActiveTimeouts.call()),
 	[],
 )
 
-export function useKickPlayerMutation() {
-	return useMutation(RPC.orpc.timeouts.kickPlayer.mutationOptions())
+export function useTimeoutPlayerMutation() {
+	return useMutation(RPC.orpc.timeouts.timeoutPlayer.mutationOptions())
 }
 
 export function useCancelTimeoutMutation() {
 	return useMutation(RPC.orpc.timeouts.cancelTimeout.mutationOptions())
 }
 
-type KickResult = { code: string }
-type KickInput = { serverId: string; playerId: SM.PlayerId; durationMs: number; reason?: string; presetReasonLabel?: string }
+type TimeoutResult = { code: string }
+type TimeoutInput = { serverId: string; playerId: SM.PlayerId; durationMs: number; reason?: string; presetReasonLabel?: string }
 
-// the kick endpoint is single-target, so bulk/squad kicks fan out one call per player. Validates the shared
-// timeout duration once (mirroring the single-player dialog) and reports the outcome via toast. Individual kick
-// failures are expected and non-fatal (e.g. a player already holds a timeout), so they're counted rather than thrown.
-export async function kickPlayers(
-	mutateAsync: (input: KickInput) => Promise<KickResult>,
+// the timeout endpoint is single-target, so bulk/squad timeouts fan out one call per player. Validates the shared
+// duration once (mirroring the single-player dialog) and reports the outcome via toast. Individual failures are
+// expected and non-fatal (e.g. a player already holds a timeout), so they're counted rather than thrown.
+export async function timeoutPlayers(
+	mutateAsync: (input: TimeoutInput) => Promise<TimeoutResult>,
 	opts: {
 		serverId: string
 		playerIds: SM.PlayerId[]
@@ -51,22 +51,22 @@ export async function kickPlayers(
 			mutateAsync({ serverId: opts.serverId, playerId, durationMs, reason: opts.reason, presetReasonLabel: opts.presetReasonLabel })
 		),
 	)
-	let kicked = 0
+	let timedOut = 0
 	let failed = 0
 	for (const r of results) {
-		if (r.status === 'fulfilled' && r.value.code === 'ok') kicked++
+		if (r.status === 'fulfilled' && r.value.code === 'ok') timedOut++
 		else failed++
 	}
 	const duration = ZodLib.formatHumanTime(durationMs)
-	if (kicked > 0) toast(`Kicked ${kicked} player${kicked === 1 ? '' : 's'} with a ${duration} timeout`)
+	if (timedOut > 0) toast(`Timed out ${timedOut} player${timedOut === 1 ? '' : 's'} for ${duration}`)
 	if (failed > 0) {
-		toast.error(`${failed} kick${failed === 1 ? '' : 's'} failed`, {
+		toast.error(`${failed} timeout${failed === 1 ? '' : 's'} failed`, {
 			description: 'They may already have an active timeout or have left the server.',
 		})
 	}
 }
 
-// the logged-in user's effective max kick-timeout: undefined = cannot issue timeouts, null = unlimited,
+// the logged-in user's effective max timeout: undefined = cannot issue timeouts, null = unlimited,
 // number = max ms. Timeout grants are comparator-matched, so RbacClient.usePermsCheck (equality) can't gate this.
 export function useMaxTimeout(): number | null | undefined {
 	const user = UsersClient.useLoggedInUser()

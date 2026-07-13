@@ -1,8 +1,6 @@
 import ServerDashboard from '@/components/server-dashboard'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { frameManager } from '@/frames/frame-manager'
+import ServerUnavailable from '@/components/server-unavailable'
+import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Browser from '@/lib/browser'
 import * as FRM from '@/lib/frame'
@@ -13,8 +11,8 @@ import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UPClient from '@/systems/user-presence.client'
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { AlertCircle, Home } from 'lucide-react'
+import * as ReactRx from '@react-rxjs/core'
+import { createFileRoute } from '@tanstack/react-router'
 import React from 'react'
 import * as Rx from 'rxjs'
 
@@ -24,14 +22,7 @@ export const Route = createFileRoute('/_app/servers/$serverId')({
 	loader: async ({ params }) => {
 		const settings = await SettingsClient.fetchSettings()
 		const serverConfig = settings.servers.find(s => s.id === params.serverId)
-		// only spin up a frame for a server that actually has a live backend slice; disabled/broken/missing servers
-		// render the "unavailable" view instead (see RouteComponent, which recomputes this reactively)
-		return {
-			displayName: serverConfig?.displayName ?? params.serverId,
-			squadServerFrameKey: SettingsClient.isServerUsable(serverConfig)
-				? frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(params.serverId))
-				: undefined,
-		}
+		return { displayName: serverConfig?.displayName ?? params.serverId }
 	},
 
 	head: ({ loaderData }) => ({
@@ -56,18 +47,38 @@ export const Route = createFileRoute('/_app/servers/$serverId')({
 // state to the component directly, and it only ever runs immediately before the matching mount.
 let enteredViaNavigation = false
 
+// availability is read outside the squadServer frame (it's what decides whether the frame exists at all), so nothing else
+// holds its stream open -- this boundary is the subscriber. Suspension while it waits for its first emit is handled by the
+// route's pending component.
 function RouteComponent() {
 	const serverId = Route.useParams().serverId
-	const { squadServerFrameKey } = Route.useLoaderData()
-	const settings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
-	const serverConfig = settings?.servers.find(s => s.id === serverId)
-	// derived from the live settings store so disabling the server mid-session flips this to the unavailable view. we also
-	// need the frame the loader created; if the server was re-enabled after nav there's no frame yet, so fall back to the card.
-	const canRenderDashboard = SettingsClient.isServerUsable(serverConfig) && squadServerFrameKey !== undefined
+	return (
+		<ReactRx.Subscribe source$={SquadServerClient.serverAvailability$(serverId)}>
+			<ServerRoute serverId={serverId} />
+		</ReactRx.Subscribe>
+	)
+}
+
+function ServerRoute({ serverId }: { serverId: string }) {
+	// tracks both the registry (enabled/broken) and the backend's live slices, so enabling, disabling, or losing a server
+	// mid-session swaps between the dashboard and the unavailable view without a reload
+	const availability = SquadServerClient.useServerAvailability(serverId)
+
+	if (availability !== 'ok') return <ServerUnavailable serverId={serverId} status={availability} />
+	// keyed so that losing and regaining a server builds a fresh frame rather than reviving the stale one
+	return <ServerDashboardHost key={serverId} serverId={serverId} />
+}
+
+// owns the frame for as long as the server is actually available: mounting sets it up, unmounting (i.e. the server
+// becoming unavailable, or navigating away) tears it down along with all of its per-server subscriptions.
+function ServerDashboardHost(props: { serverId: string }) {
+	const frameKey = useFrameLifecycle(SquadServerFrame.frame, {
+		input: SquadServerFrame.createInput(props.serverId),
+	})
+	useFrameTeardownOnUnmount(frameKey)
+
+	const serverId = props.serverId
 	React.useEffect(() => {
-		if (!canRenderDashboard) {
-			return
-		}
 		const sub = new Rx.Subscription()
 
 		// A user is "engaged" on this dashboard once they either navigated in or interacted. Until then
@@ -131,60 +142,7 @@ function RouteComponent() {
 		return () => {
 			sub.unsubscribe()
 		}
-	}, [canRenderDashboard, serverId])
+	}, [serverId])
 
-	if (!canRenderDashboard) {
-		return (
-			<div className="flex items-center justify-center min-h-screen p-4 w-full">
-				<Card className="w-full max-w-lg">
-					<CardHeader className="text-center pb-4">
-						<CardTitle className="text-2xl">
-							{serverConfig
-								? <>Server "{serverConfig.displayName}" Unavailable</>
-								: <>Server "{serverId}" Not Found</>}
-						</CardTitle>
-					</CardHeader>
-					<CardContent className="space-y-4">
-						<Alert variant="destructive">
-							<AlertCircle className="h-4 w-4" />
-							<AlertTitle>What happened?</AlertTitle>
-							<AlertDescription>
-								{serverConfig
-									? "This server is currently disabled and can't be loaded right now. If you have access, first please enable it in the settings page."
-									: 'This server may have been removed from the configuration or the server ID is incorrect.'}
-							</AlertDescription>
-						</Alert>
-						{settings && settings.servers.some(s => SettingsClient.isServerUsable(s))
-							? (
-								<div className="space-y-3">
-									<div className="text-sm font-medium text-muted-foreground">Available servers:</div>
-									<div className="space-y-2">
-										{settings.servers.filter(s => SettingsClient.isServerUsable(s)).map((server) => (
-											<Link key={server.id} to="/servers/$serverId" params={{ serverId: server.id }}>
-												<Button variant="outline" className="w-full justify-start" size="lg">
-													<Home className="mr-2 h-4 w-4" />
-													{server.displayName}
-												</Button>
-											</Link>
-										))}
-									</div>
-								</div>
-							)
-							: (
-								<div className="pt-2">
-									<Link to="/" className="block">
-										<Button className="w-full" size="lg">
-											<Home className="mr-2 h-4 w-4" />
-											Go Back to Servers List
-										</Button>
-									</Link>
-								</div>
-							)}
-					</CardContent>
-				</Card>
-			</div>
-		)
-	}
-
-	return <ServerDashboard stores={FRM.toProp(squadServerFrameKey!)} />
+	return <ServerDashboard stores={FRM.toProp(frameKey)} />
 }

@@ -1,4 +1,5 @@
 import * as Obj from '@/lib/object'
+import * as RxHelpers from '@/lib/react-rxjs-helpers'
 import * as ZusUtils from '@/lib/zustand'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
@@ -6,7 +7,6 @@ import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as PartSys from '@/systems/parts.client'
 import * as RbacClient from '@/systems/rbac.client'
-import * as ReactRx from '@react-rxjs/core'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import * as React from 'react'
 import superjson from 'superjson'
@@ -91,7 +91,13 @@ export function invalidateUsers() {
 	PartSys.PartsStore.setState({ users: [] })
 }
 
-const [_, userInvalidation$] = ReactRx.bind(RPC.observe(() => RPC.orpc.users.watchUserInvalidation.call()))
+// an event feed, not state: it stays silent until something actually invalidates, so it must not be given a
+// first-emit guard (which would error the stream out of existence 15s after connecting)
+const [_, userInvalidation$] = RxHelpers.bind(
+	'users.userInvalidation',
+	RPC.observe('users.watchUserInvalidation', () => RPC.orpc.users.watchUserInvalidation.call()),
+	{ firstEmitTimeoutMs: false },
+)
 
 export function setup() {
 	userInvalidation$.subscribe(() => {
