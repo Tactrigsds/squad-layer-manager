@@ -69,6 +69,9 @@ export const groups = {
 	httpServer: {
 		PORT: ParsedIntSchema.default(3000),
 		HOST: z.string().prefault('127.0.0.1'),
+		// the vite dev server's port (dev only), so a second instance of the app can be brought up beside a
+		// running one without contending for 5173. Moving it means moving ORIGIN with it.
+		CLIENT_PORT: ParsedIntSchema.default(5173),
 		ORIGIN: NormedUrl.default('http://localhost:5173'),
 	},
 
