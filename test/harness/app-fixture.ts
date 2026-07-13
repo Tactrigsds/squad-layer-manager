@@ -33,9 +33,11 @@ function resolveGeneratedPath(relPath: string, probeGlobDir?: string): string {
 	for (const root of roots) {
 		if (probeGlobDir) {
 			const dir = path.join(root, probeGlobDir)
-			if (fs.existsSync(dir) && fs.readdirSync(dir).some((f) => /^layers_v.*\.sqlite3(\.gz)?$/.test(f))) {
-				return path.join(root, relPath)
-			}
+			if (!fs.existsSync(dir)) continue
+			const files = fs.readdirSync(dir)
+			// an uncompressed db if there is one (see the caller), the gzipped one otherwise
+			if (files.some((f) => /^layers_v.*\.sqlite3$/.test(f))) return path.join(root, relPath)
+			if (files.some((f) => /^layers_v.*\.sqlite3\.gz$/.test(f))) return path.join(root, `${relPath}.gz`)
 		} else if (fs.existsSync(path.join(root, relPath))) {
 			return path.join(root, relPath)
 		}
@@ -288,7 +290,13 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 
 	// the layer db is a hard runtime prerequisite: the app cannot boot without it, and it's a
 	// generated artifact (pnpm preprocess) that fresh checkouts don't have. Fail fast and clearly.
-	const layersDbPath = process.env.LAYERS_DB_PATH ?? resolveGeneratedPath('data/layers_v{{LAYERS_VERSION}}.sqlite3.gz', 'data')
+	//
+	// An already-decompressed db is preferred over the .gz production ships: sqlite can't open a
+	// gzipped file, so the app otherwise hashes it and decompresses a copy into ./data/decompressed --
+	// which means it has to be able to *write* to the layer db directory. Reading an uncompressed db
+	// directly lets the tests mount it read-only, so no test can corrupt what the others are reading.
+	const layersDbPath = process.env.LAYERS_DB_PATH
+		?? resolveGeneratedPath('data/layers_v{{LAYERS_VERSION}}.sqlite3', 'data')
 	const layerDbConfigPath = process.env.LAYER_DB_CONFIG_PATH ?? resolveGeneratedPath('layer-db.json')
 	const layersDbDir = path.dirname(layersDbPath)
 	if (!fs.existsSync(layersDbDir) || !fs.readdirSync(layersDbDir).some((f) => /^layers_v.*\.sqlite3(\.gz)?$/.test(f))) {

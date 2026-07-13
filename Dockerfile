@@ -103,7 +103,8 @@ RUN pnpm exec playwright install --with-deps chromium-headless-shell
 # drive the deployed bundle rather than the source: the point of testing in this image is that it is
 # the image
 ENV SLM_TEST_SERVER_ENTRY=dist-server/main-instrumented.js
-# the layer db is not baked in (it isn't in production either); mount /app/data, as the deployment does
-ENV LAYERS_DB_PATH=/app/data/layers_v{{LAYERS_VERSION}}.sqlite3.gz
+# the layer db is not baked in (it isn't in production either): mount /app/data, as the deployment
+# does. The path is left to the harness, which prefers an already-decompressed db so that the mount
+# can be read-only -- sqlite cannot open a .gz, and the app would otherwise decompress a copy into it.
 
 CMD ["pnpm", "run", "test:ci"]
