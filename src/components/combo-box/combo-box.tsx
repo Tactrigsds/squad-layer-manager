@@ -104,6 +104,9 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 							ref={btnRef}
 							variant="outline"
 							role="combobox"
+							// the trigger's content is the current selection, which makes its name change as the
+							// user picks values. Name it after what it selects instead, so it stays addressable.
+							aria-label={props.title || undefined}
 							className={cn('w-[min] justify-between overflow-hidden', props.className)}
 						>
 							<span className="truncate min-w-0">{selectedOptionDisplay}</span>

@@ -203,7 +203,9 @@ function useQueueWarnings(stores: SquadServerFrame.KeyProp) {
 	)
 
 	return React.useMemo(() => {
-		if (!warns || !queueModifiedByUser) return null
+		// null, not an empty array: the save flow gates on this being non-null, so a queue with nothing to warn
+		// about has to be indistinguishable from one whose statuses haven't loaded
+		if (!warns || warns.length === 0 || !queueModifiedByUser) return null
 		return warns
 	}, [
 		warns,

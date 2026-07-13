@@ -1,6 +1,7 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import { superjsonify } from '@/lib/drizzle'
 import { tsMigrations } from '@/migrations/registry'
+import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LL from '@/models/layer-list.models'
@@ -92,7 +93,7 @@ const OTEL_SERVICE_NAME = process.env.SLM_TEST_OTEL_SERVICE_NAME ?? 'slm-test'
 
 // The name of the test currently running, if the runner told us. Playwright's fixture sets this (see
 // test/e2e/fixtures.ts) so that an app built inside a test is labelled with that test, without every
-// spec having to say so.
+// test file having to say so.
 let currentLabel: string | undefined
 export function setCurrentTestLabel(label: string | undefined) {
 	currentLabel = label
@@ -103,7 +104,7 @@ export function setCurrentTestLabel(label: string | undefined) {
 function callerFile(): string {
 	const stack = new Error().stack?.split('\n') ?? []
 	for (const line of stack) {
-		const match = line.match(/\(?(\/[^\s):]+\.(?:spec|test)\.ts)/)
+		const match = line.match(/\(?(\/[^\s):]+\.test\.ts)/)
 		if (match) return path.basename(match[1])
 	}
 	return 'unknown'
@@ -141,6 +142,9 @@ export type AppFixtureOptions = {
 	// which arrange() does) stops the generator from filling the queue with random layers, which is
 	// what makes a queue assertion worth writing.
 	layerQueue?: LL.List
+	// filter entities to seed. A server's pool config (serverSettings.queue.mainPool.filters) references
+	// these by id, so anything that applies, indicates or warns on a filter needs them seeded first.
+	filters?: F.FilterEntity[]
 	// steam ids that are admins in game. Written to an Admins.cfg the app reads as a `local` admin
 	// list source, so these players come back from ListPlayers with isAdmin set.
 	admins?: string[]
@@ -286,6 +290,14 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	await db.insert(Schema.users).values(users.map((u) => ({ discordId: u.discordId, username: u.username })))
 	const steamLinks = users.flatMap((u) => (u.steamIds ?? []).map((steamId) => ({ steam64Id: BigInt(steamId), discordId: u.discordId })))
 	if (steamLinks.length > 0) await db.insert(Schema.linkedSteamAccounts).values(steamLinks)
+
+	// -------- filters --------
+	// after the users, since a filter's owner is a foreign key onto one. Inserted raw, not superjsonified:
+	// filter-entity.server reads these rows straight into F.FilterEntitySchema.parse, so the `filter` column
+	// holds plain json (unlike servers.layerQueue and the settings columns).
+	if (opts.filters && opts.filters.length > 0) {
+		await db.insert(Schema.filters).values(opts.filters)
+	}
 	driver.close()
 
 	// the layer db is a hard runtime prerequisite: the app cannot boot without it, and it's a
