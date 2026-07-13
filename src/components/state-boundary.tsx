@@ -1,5 +1,6 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
 import * as RxHelpers from '@/lib/react-rxjs-helpers'
 import * as RPC from '@/orpc.client'
 import { AlertCircle, Loader2 } from 'lucide-react'
@@ -49,7 +50,13 @@ function StateErrorFallback(props: { label: string; error: unknown; reset: () =>
 // router-wide net. Without a pending component TanStack doesn't wrap a match in Suspense at all, so a single
 // suspending stream anywhere in a route would bubble to the root boundary and blank the whole app.
 export function RoutePendingComponent() {
-	return <SlowAwareFallback label="this page" slowAfterMs={4_000} />
+	// fills the route outlet rather than sitting at its start, so the spinner lands in the middle of the page area
+	return (
+		<div className="flex flex-1 h-full w-full items-center justify-center gap-2 p-2 text-sm text-muted-foreground">
+			<Spinner />
+			{import.meta.env.DEV && <span>Route suspended, waiting on state…</span>}
+		</div>
+	)
 }
 
 export function RouteErrorComponent(props: { error: unknown; reset: () => void }) {
