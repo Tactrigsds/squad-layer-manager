@@ -1,0 +1,76 @@
+{
+	"name": "squad-layer-manager",
+	"build": {
+		"dockerfile": "Dockerfile",
+		// the image copies nothing from the repo (the workspace is bind-mounted, and the install happens
+		// in post-create), so the context is this directory rather than the repo root -- data/ alone is
+		// several GB to hand to the daemon for nothing
+		"context": "."
+	},
+	"remoteUser": "node",
+
+	"features": {
+		// sudo for the node user (post-create needs it to take ownership of the volumes below), plus the
+		// usual shell niceties
+		"ghcr.io/devcontainers/features/common-utils:2": {
+			"username": "node",
+			"installZsh": false,
+			"upgradePackages": false
+		},
+		"ghcr.io/devcontainers/features/github-cli:1": {}
+	},
+
+	"mounts": [
+		// node_modules is a volume rather than part of the bind mount on purpose: the native deps
+		// (better-sqlite3, cpu-features, bufferutil) are compiled against the host's glibc, and a tree
+		// built on the host will not load in here. The container keeps its own install; the host keeps
+		// its own.
+		"source=slm-node-modules,target=${containerWorkspaceFolder}/node_modules,type=volume",
+		// so a rebuild installs from the store instead of re-downloading the world. The path is pinned by
+		// NPM_CONFIG_STORE_DIR in the Dockerfile; see the comment there for why it can't be the default.
+		"source=slm-pnpm-store,target=/pnpm/store,type=volume"
+	],
+
+	// NOTE: these win over .env. The app reads process.env first and dotenv does not overwrite what is
+	// already set (see src/server/env.ts ensureEnvSetup), so anything set here cannot be overridden from
+	// .env -- only by the shell you launch the process in.
+	"containerEnv": {
+		// the app defaults to 127.0.0.1, which is unreachable from the host once it's inside a container
+		"HOST": "0.0.0.0",
+		// the otel stack (`docker compose up -d otel`) runs on the host, not in here
+		"OTLP_COLLECTOR_ENDPOINT": "http://host.docker.internal:4318"
+	},
+	// makes host.docker.internal above resolve on Linux
+	"runArgs": ["--add-host=host.docker.internal:host-gateway"],
+
+	"forwardPorts": [5173, 3000, 8443, 9229],
+	"portsAttributes": {
+		"5173": { "label": "client (vite)", "onAutoForward": "notify" },
+		"3000": { "label": "server (fastify)", "onAutoForward": "silent" },
+		"8443": { "label": "squad logs receiver", "onAutoForward": "silent" },
+		"9229": { "label": "node inspector", "onAutoForward": "silent" }
+	},
+
+	"postCreateCommand": "bash .devcontainer/post-create.sh",
+
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"dprint.dprint",
+				"oxc.oxc-vscode",
+				"bradlc.vscode-tailwindcss",
+				"ms-playwright.playwright",
+				"vitest.explorer"
+			],
+			"settings": {
+				// the repo is on a typescript prerelease; VS Code has to be pointed at it explicitly
+				"typescript.tsdk": "node_modules/typescript/lib",
+				"editor.defaultFormatter": "dprint.dprint",
+				"editor.formatOnSave": true,
+				// the container's login shell is bash and scripts here assume it; fish is installed if you
+				// want it, but it isn't the default
+				"terminal.integrated.defaultProfile.linux": "bash"
+			}
+		}
+	}
+}
