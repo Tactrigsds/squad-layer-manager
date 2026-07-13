@@ -8,6 +8,7 @@ import * as fsPromise from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import zlib from 'node:zlib'
+import { z } from 'zod'
 
 const gzip = promisify(zlib.gzip)
 
@@ -27,12 +28,15 @@ export async function setup() {
 	const filePath = path.join(Paths.DATA, FILE_NAME)
 	raw = await fsPromise.readFile(filePath)
 	const file = JSON.parse(raw.toString('utf8')) as L.LayerDataFile
-	if (!file.components || !file.factionUnits) {
-		throw new Error(`${filePath} is malformed: expected { components, factionUnits }. re-run pnpm preprocess`)
+	if (!file.components || !file.factionUnits || !file.extraColumns) {
+		throw new Error(`${filePath} is malformed: expected { components, factionUnits, extraColumns }. re-run pnpm preprocess`)
 	}
 	L.setLayerData({
 		components: LC.buildFullLayerComponents(file.components),
 		factionUnits: file.factionUnits,
+		// the layer db's extra columns are described by the artifact that ships them, so nothing but preprocess
+		// ever reads layer-db.json
+		extraColumns: z.array(LC.ColumnDefSchema).parse(file.extraColumns),
 	})
 	hash = crypto.createHash('sha256').update(raw).digest('hex')
 	gzipped = await gzip(raw)

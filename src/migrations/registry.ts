@@ -21,6 +21,7 @@ import * as m0068 from './0068_reset_admin_action_reasons'
 import * as m0069 from './0069_settings_permissions'
 import * as m0070 from './0070_split_kick_and_timeout'
 import * as m0071 from './0071_teamswitches_to_teamswaps'
+import * as m0072 from './0072_seed_layer_generation_global_setting'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -33,4 +34,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0069_settings_permissions', up: m0069.up },
 	{ name: '0070_split_kick_and_timeout', up: m0070.up },
 	{ name: '0071_teamswitches_to_teamswaps', up: m0071.up },
+	{ name: '0072_seed_layer_generation_global_setting', up: m0072.up },
 ]

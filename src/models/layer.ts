@@ -10,13 +10,17 @@ import * as z from 'zod'
 export type LayerData = {
 	components: LC.LayerComponents
 	factionUnits: FactionUnitConfigMapping
+	// definitions of the extra columns the layer db was built with. authored in layer-db.json, which is a
+	// preprocess-time input: at runtime they ride along with the data they describe (see LayerDataFile)
+	extraColumns: LC.ColumnDef[]
 }
 
-// the on-disk/wire shape of assets/layer-data.json. derived parts of LayerComponents come from
+// the on-disk/wire shape of data/layer-data.json. derived parts of LayerComponents come from
 // constants in code (LC.buildFullLayerComponents), so only the base components are persisted.
 export type LayerDataFile = {
 	components: LC.BaseLayerComponents
 	factionUnits: FactionUnitConfigMapping
+	extraColumns: LC.ColumnDef[]
 }
 
 function unloadedLayerDataProxy<T extends object>(name: string): T {
@@ -28,10 +32,12 @@ function unloadedLayerDataProxy<T extends object>(name: string): T {
 
 export let StaticLayerComponents: LC.LayerComponents = unloadedLayerDataProxy('StaticLayerComponents')
 export let StaticFactionunitConfigs: FactionUnitConfigMapping = unloadedLayerDataProxy('StaticFactionunitConfigs')
+export let StaticExtraColumns: LC.ColumnDef[] = unloadedLayerDataProxy('StaticExtraColumns')
 
 export function setLayerData(data: LayerData) {
 	StaticLayerComponents = data.components
 	StaticFactionunitConfigs = data.factionUnits
+	StaticExtraColumns = data.extraColumns
 }
 
 export const ASYMM_GAMEMODES = ['Invasion', 'Destruction', 'Insurgency']

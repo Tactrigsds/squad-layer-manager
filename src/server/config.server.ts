@@ -24,7 +24,7 @@ export type PublicConfig = {
 	repoUrl: string | undefined
 	issuesUrl: string | undefined
 	layerTable: SETTINGS.GlobalSettings['layerTable']
-	extraColumnsConfig: typeof LayerDb.LAYER_DB_CONFIG
+	layerGeneration: SETTINGS.GlobalSettings['layerGeneration']
 	layersVersion: string
 }
 
@@ -41,13 +41,13 @@ export function pushPublicConfig() {
 		repoUrl: ENV.PUBLIC_REPO_URL,
 		issuesUrl: ENV.PUBLIC_ISSUES_URL,
 		layerTable: Settings.GLOBAL_SETTINGS.layerTable,
-		extraColumnsConfig: LayerDb.LAYER_DB_CONFIG,
+		layerGeneration: Settings.GLOBAL_SETTINGS.layerGeneration,
 		layersVersion: LayerDb.layersVersion,
 	})
 }
 
 // called once from main.ts, after LayerDb.setup() and Settings.setup() have resolved. Re-pushes whenever global
-// settings change so `layerTable` edits live-update every client's column config without a restart.
+// settings change so `layerTable`/`layerGeneration` edits live-update every client without a restart.
 export function setup() {
 	ENV = envBuilder()
 	pushPublicConfig()

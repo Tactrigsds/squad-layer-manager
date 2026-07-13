@@ -1,6 +1,7 @@
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toAsyncGenerator } from '@/lib/async'
 import * as Gen from '@/lib/generator'
+import * as Obj from '@/lib/object'
 
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
@@ -29,8 +30,10 @@ import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 
 export type Store = {
-	filtersModifiedEpoch: number
-	incrementFiltersModifiedEpoch: () => void
+	// bumped whenever mutable state the worker holds (filter entities, generation weights) changes, invalidating
+	// anything we cached against the old state
+	backgroundStateEpoch: number
+	incrementBackgroundStateEpoch: () => void
 	hoveredConstraintItemId: string | null
 	status: 'uninitialized' | 'initializing' | 'downloading-layers' | 'ready' | 'error'
 	errorMessage: string | null
@@ -40,10 +43,10 @@ export type Store = {
 // we don't want to use the entire query context as query state so instead we just increment these counters whenever one of them change and depend on that instead
 export const Store = Zus.createStore<Store>((set, get, store) => {
 	return ({
-		filtersModifiedEpoch: 0,
+		backgroundStateEpoch: 0,
 		hoveredConstraintItemId: null,
-		incrementFiltersModifiedEpoch() {
-			set({ filtersModifiedEpoch: get().filtersModifiedEpoch + 1 })
+		incrementBackgroundStateEpoch() {
+			set({ backgroundStateEpoch: get().backgroundStateEpoch + 1 })
 		},
 		status: 'uninitialized',
 		errorMessage: null,
@@ -198,7 +201,7 @@ const QUERY_LAYERS_CACHE_MAX_ENTRIES = 50
 
 // starts the query eagerly on first call for a given input; the returned observable replays all packets
 export function queryLayers$(input: LQY.LayersQueryInput): Rx.Observable<QueryLayersPacket> {
-	const key = JSON.stringify(getDepKey(input, Store.getState().filtersModifiedEpoch))
+	const key = JSON.stringify(getDepKey(input, Store.getState().backgroundStateEpoch))
 	let packet$ = queryLayersCache.get(key)
 	if (!packet$) {
 		packet$ = Rx.from(streamQueryLayersPackets(input)).pipe(Rx.shareReplay())
@@ -424,7 +427,7 @@ export function useLayerExists(
 }
 
 export function useDepKey(input?: unknown) {
-	const backgroundStateEpoch = ZusUtils.useStore(Store, ZusUtils.useShallow(s => s.filtersModifiedEpoch))
+	const backgroundStateEpoch = ZusUtils.useStore(Store, ZusUtils.useShallow(s => s.backgroundStateEpoch))
 	return getDepKey(input, backgroundStateEpoch)
 }
 
@@ -459,6 +462,7 @@ function getDepKey(input: unknown, backgroundStateEpoch: number) {
  */
 export const QUERY_PRIORITIES: Record<WorkerTypes.RequestInner['type'], number> = {
 	'filter-update': 5,
+	'generation-update': 5,
 	'init': 5,
 	getLayerItemStatuses: 4,
 	queryLayers: 3,
@@ -582,7 +586,7 @@ async function setup() {
 
 	const ctx: WorkerTypes.InitRequest['input'] = {
 		...CS.init(),
-		effectiveColsConfig: LC.getEffectiveColumnConfig(config.extraColumnsConfig),
+		generationConfig: config.layerGeneration,
 		filters,
 		layerData,
 	}
@@ -604,7 +608,20 @@ async function setup() {
 
 	FilterEntityClient.filterEntities$.pipe(Rx.observeOn(Rx.asyncScheduler)).subscribe((filters) => {
 		void sendWorkerRequest('filter-update', filters)
-		Store.getState().incrementFiltersModifiedEpoch()
+		Store.getState().incrementBackgroundStateEpoch()
+	})
+
+	// generation weights are a global setting: the config stream re-pushes on every settings change, so refresh the
+	// worker's copy instead of leaving it frozen at whatever was configured when the page loaded. the stream replays
+	// the config the worker was just initialized with, so skip that one and only forward actual changes
+	ConfigClient.config$.pipe(
+		Rx.map((config) => config.layerGeneration),
+		Rx.distinctUntilChanged(Obj.deepEqual),
+		Rx.skip(1),
+		Rx.observeOn(Rx.asyncScheduler),
+	).subscribe((generation) => {
+		void sendWorkerRequest('generation-update', generation)
+		Store.getState().incrementBackgroundStateEpoch()
 	})
 
 	await initPromise

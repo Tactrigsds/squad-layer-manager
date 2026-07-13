@@ -37,9 +37,45 @@ const ParsedNullableFloat = ParsedFloatSchema.transform((val) => (isNaN(val) ? n
 
 const Steps = z.enum(['update-layers-table', 'download-csvs', 'write-components-and-units', 'compress-db', 'all'])
 
-const envBuilder = Env.getEnvBuilder({ ...Env.groups.preprocess, ...Env.groups.layerDb })
+Env.ensureEnvSetup()
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.preprocess, ...Env.groups.layerDb, ...Env.groups.general })
 let ENV!: ReturnType<typeof envBuilder>
 let log = baseLogger
+
+// layer-db.json defines the extra columns to ingest from the layers csv. It is preprocess-time input only: the
+// definitions are written into layer-data.json alongside the db they describe, so nothing reads this file at runtime.
+let LAYER_DB_CONFIG!: LC.LayerDbConfig
+
+const DEFAULT_LAYER_DB_CONFIG_PATH = './layer-db.json'
+
+function readLayerDbConfig(): LC.LayerDbConfig {
+	// the schema is emitted next to the file it validates so editors can complete/lint layer-db.json
+	fs.writeFileSync(
+		path.join(Paths.ASSETS, 'db-config-schema.json'),
+		JSON.stringify(z.toJSONSchema(LC.LayerDbConfigSchema, { io: 'input' }), null, 2),
+	)
+
+	let raw: string
+	try {
+		raw = fs.readFileSync(ENV.LAYER_DB_CONFIG_PATH, 'utf-8')
+	} catch {
+		// an explicit path that can't be read is a misconfiguration; the default one just means "no extra columns"
+		if (ENV.LAYER_DB_CONFIG_PATH !== DEFAULT_LAYER_DB_CONFIG_PATH) throw new Error(`Cannot access ${ENV.LAYER_DB_CONFIG_PATH}`)
+		log.info('no %s: building the layer db with no extra columns', ENV.LAYER_DB_CONFIG_PATH)
+		return { columns: [] }
+	}
+
+	const parsed = JSON.parse(raw)
+	// generation moved to globalSettings.layerGeneration (migration 0072). the key is stripped on parse, so a file
+	// that still carries it preprocesses fine but the weights do nothing -- say so rather than let someone tune a dead knob
+	if (parsed?.generation !== undefined) {
+		log.warn(
+			'%s still contains a "generation" block. It has moved to global settings (Layer Generation) and is ignored here; remove it from the file.',
+			ENV.LAYER_DB_CONFIG_PATH,
+		)
+	}
+	return LC.LayerDbConfigSchema.parse(parsed)
+}
 
 async function main() {
 	let args = z.array(Steps).parse(process.argv.slice(2))
@@ -53,8 +89,8 @@ async function main() {
 	ensureLoggerSetup()
 	log = module.getLogger()
 
-	LayerDb.setupExtraColsConfig()
-	const ctx = { ...CS.init(), effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.LAYER_DB_CONFIG) }
+	LAYER_DB_CONFIG = readLayerDbConfig()
+	const ctx = { ...CS.init(), effectiveColsConfig: LC.getEffectiveColumnConfig(LAYER_DB_CONFIG.columns) }
 
 	const needsSheetData = args.includes('write-components-and-units') || args.includes('update-layers-table')
 		|| args.includes('download-csvs')
@@ -64,13 +100,15 @@ async function main() {
 		await ensureAllSheetsDownloaded({ invalidate: args.includes('download-csvs') })
 		data = await parseSquadLayerSheetData()
 		components = LC.buildFullLayerComponents(data.components)
-		L.setLayerData({ components, factionUnits: data.units })
+		L.setLayerData({ components, factionUnits: data.units, extraColumns: LAYER_DB_CONFIG.columns })
 	}
 
 	if (args.includes('write-components-and-units')) {
 		const file: L.LayerDataFile = {
 			components: LC.toBaseLayerComponents(components),
 			factionUnits: data.units,
+			// the column defs ship with the db they describe, so the app never has to read layer-db.json
+			extraColumns: LAYER_DB_CONFIG.columns,
 		}
 		await fsPromise.writeFile(path.join(Paths.DATA, LayerData.FILE_NAME), JSON.stringify(file, null, 2))
 	}
@@ -141,7 +179,7 @@ async function main() {
 
 async function populateExtraColsTable(ctx: CS.LayerDb, csvPath: string, components: LC.LayerComponents): Promise<void> {
 	const extraColsZodProps: Record<string, z.ZodType> = {}
-	for (const col of LayerDb.LAYER_DB_CONFIG.columns) {
+	for (const col of LAYER_DB_CONFIG.columns) {
 		let schema: z.ZodType
 		switch (col.type) {
 			case 'string':
@@ -164,7 +202,7 @@ async function populateExtraColsTable(ctx: CS.LayerDb, csvPath: string, componen
 		extraColsZodProps[col.name] = schema
 	}
 	const extraColsZodSchema = z.object(extraColsZodProps)
-	const insert = createInserter(ctx, 'layersExtra', ['id', ...LayerDb.LAYER_DB_CONFIG.columns.map(c => c.name)])
+	const insert = createInserter(ctx, 'layersExtra', ['id', ...LAYER_DB_CONFIG.columns.map(c => c.name)])
 
 	const seenIds = new Set<string>()
 	let inserted = 0
