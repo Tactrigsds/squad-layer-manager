@@ -29,8 +29,6 @@
 		"db:migrate:prod": "node --enable-source-maps dist-server/scripts/migrate.js",
 		"setup:hooks": "git config core.hooksPath .githooks && chmod +x .githooks/pre-push .githooks/pre-push.js",
 		"remove:hooks": "git config --unset core.hooksPath",
-		"graph": "madge --image graph.svg --ts-config tsconfig.json",
-		"graph:circular": "madge --circular --ts-config tsconfig.json",
 		"test:e2e": "NODE_ENV=production vite build && playwright test",
 		"test:e2e:ci": "playwright test",
 		"test:ci": "pnpm run test:integration && pnpm run test:e2e:ci"
