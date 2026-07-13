@@ -72,6 +72,8 @@ export type AppFixture = {
 	dbPath: string
 	tmpDir: string
 	logFile: string
+	// the emulated squad server's SquadGame.log, which the app tails
+	squadLogPath: string
 	child: childProcess.ChildProcess | null
 	adminUser: TestUser
 	// url that logs the given user in via the query-param auth bypass, for the e2e client to open
@@ -81,8 +83,6 @@ export type AppFixture = {
 	waitFor: <T>(probe: () => T | Promise<T>, opts?: { timeoutMs?: number; intervalMs?: number; label?: string }) => Promise<NonNullable<T>>
 	dispose: () => Promise<void>
 }
-
-const LOG_AGENT_TOKEN = 'integ-test-token'
 
 // snowflake-shaped ids so nothing downstream trips on the bigint range
 export const ADMIN_USER: TestUser = { discordId: 900000000000000001n, username: 'test-admin' }
@@ -102,10 +102,13 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	const driver = new Database(dbPath)
 	await Migrate.runMigrations(driver, { sqlDir: path.join(REPO_ROOT, 'drizzle-sqlite'), tsMigrations })
 	const db = drizzle(driver)
+	// the emulator writes its log to a file and the app tails it, the same `local-file` path a
+	// same-host squad server uses. No test-only transport in between.
+	const squadLogPath = path.join(tmpDir, 'SquadGame.log')
 	const serverSettings = SETTINGS.ServerSettingsSchema.parse({
 		connections: {
 			rcon: { host: '127.0.0.1', port: emu.rconPort, password: emu.password },
-			logs: { type: 'log-receiver', token: LOG_AGENT_TOKEN },
+			logs: { type: 'local-file', logFile: squadLogPath },
 		},
 		adminListSources: [],
 		adminIdentifyingPermissions: [],
@@ -140,6 +143,8 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	if (!fs.existsSync(layerDbConfigPath)) {
 		throw new Error(`integration tests need layer-db.json but it was not found at ${layerDbConfigPath}. Set LAYER_DB_CONFIG_PATH.`)
 	}
+
+	emu.attachLogFile(squadLogPath)
 
 	const [appPort, logsReceiverPort] = await Promise.all([freePort(), freePort()])
 	const appUrl = `http://127.0.0.1:${appPort}`
@@ -214,8 +219,6 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 			const res = await fetch(`${appUrl}/check-auth`).catch(() => null)
 			return res !== null
 		}, { label: 'app readiness', timeoutMs: 60_000 })
-
-		await emu.attachLogAgent({ host: '127.0.0.1', port: logsReceiverPort, serverId, token: LOG_AGENT_TOKEN })
 	}
 
 	return {
@@ -227,6 +230,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		dbPath,
 		tmpDir,
 		logFile,
+		squadLogPath,
 		child,
 		adminUser: ADMIN_USER,
 		loginUrl: (user = ADMIN_USER, urlPath = '/') => `${appUrl}${urlPath}?login=${encodeURIComponent(user.username)}`,

@@ -6,6 +6,7 @@ import { acquireInBlock, anySignal, distinctDeepEquals, firstValueFrom, toAsyncG
 import { AsyncResource } from '@/lib/async-resource'
 import * as Cleanup from '@/lib/cleanup'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
+import { FileTail } from '@/lib/file-tail'
 import * as Gen from '@/lib/generator'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as Obj from '@/lib/object'
@@ -713,8 +714,12 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 				return null
 			},
 		},
+		// how far a non-log event may lead the log stream before we stop waiting for the log to catch up.
+		// A polled source can be a whole poll behind; a pushed one is near-live.
 		minSafeLogLeadTimeForOtherEvents: logType === 'sftp'
 			? Settings.GLOBAL_SETTINGS.squadServer.sftpPollInterval * 2
+			: logType === 'local-file'
+			? Settings.GLOBAL_SETTINGS.squadServer.logFilePollInterval * 2
 			: logType === 'log-receiver'
 			? 1000
 			: assertNever(logType),
@@ -864,6 +869,19 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			chunk$ = Rx.fromEvent(sftpReader, 'chunk').pipe(
 				Rx.map((...args) => args[0] as string),
 			)
+		} else if (settings.connections.logs.type === 'local-file') {
+			const fileReader = new FileTail({
+				filePath: settings.connections.logs.logFile,
+				pollInterval: Settings.GLOBAL_SETTINGS.squadServer.logFilePollInterval,
+				onFatalError: onResourceFatalError,
+				parentModule: module,
+			})
+			cleanup.push(() => fileReader.unwatch())
+			fileReader.watch()
+
+			chunk$ = Rx.fromEvent(fileReader, 'chunk').pipe(
+				Rx.map((...args) => args[0] as string),
+			)
 		} else if (settings.connections.logs.type === 'log-receiver') {
 			chunk$ = SquadLogsReceiver.event$.pipe(
 				Rx.concatMap((event) => event.type === 'data' ? Rx.of(event.data) : Rx.EMPTY),
@@ -872,8 +890,8 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			assertNever(settings.connections.logs)
 		}
 
-		// Counted on the way in, at the one point both log sources (sftp poll and log-receiver push)
-		// funnel through, so the numbers mean the same thing regardless of which one a server uses. A
+		// Counted on the way in, at the one point every log source (sftp poll, local file tail,
+		// log-receiver push) funnels through, so the numbers mean the same thing whichever a server uses. A
 		// chunk is not line-aligned, so lines are counted by newline rather than by split length: a
 		// chunk that splits a line in half would otherwise count it twice.
 		const logSource = settings.connections.logs.type satisfies ATTRS.SquadLogs.Source

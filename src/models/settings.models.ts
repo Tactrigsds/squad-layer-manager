@@ -187,6 +187,7 @@ export const GlobalSettingsSchema = z.object({
 	}).prefault({}),
 	squadServer: z.object({
 		sftpPollInterval: HumanTime.prefault('1s'),
+		logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines'),
 		sftpReconnectInterval: HumanTime.prefault('5s'),
 		sftpMaxReconnectAttempts: z.int().min(1).prefault(10).describe(
 			'How many consecutive SFTP failures to tolerate (reconnecting between each) before tearing down the server slice',
@@ -358,6 +359,11 @@ export const ServerConnectionSchema = z.object({
 		z.object({
 			type: z.literal('log-receiver'),
 			token: z.string().default('dev'),
+		}),
+		// the game's log on this host's filesystem (same box, or a mounted log directory)
+		z.object({
+			type: z.literal('local-file'),
+			logFile: z.string().min(1),
 		}),
 		z.object({
 			type: z.literal('sftp'),

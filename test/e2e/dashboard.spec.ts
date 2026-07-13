@@ -13,12 +13,21 @@ test.describe('server dashboard', () => {
 		await expect(page.getByRole('row', { name: /Harju_RAAS_v1/ })).toBeVisible()
 		await expect(page.getByRole('row', { name: /In progress/ })).toBeVisible()
 
-		// the app generates queue items on boot, and sets the first one as next layer on the server
+		// the app generates queue items on boot and pushes the first one to the server as next layer
 		const queueTab = page.getByRole('tab', { name: /^Queue/ })
 		await expect(queueTab).toHaveAttribute('aria-selected', 'true')
-		const setNext = await app.emu.expectCommand(/^AdminSetNextLayer /, { timeoutMs: 20_000 })
-		const queuedLayer = setNext.body.split(/\s+/)[1]
-		await expect(page.getByRole('tabpanel', { name: /^Queue/ }).getByText(queuedLayer)).toBeVisible()
+
+		const queuePanel = page.getByRole('tabpanel', { name: /^Queue/ })
+		const firstItem = queuePanel.getByText(/^\w+_\w+_v\d+$/).first()
+		await expect(firstItem).toBeVisible({ timeout: 20_000 })
+		const queuedLayer = (await firstItem.textContent())!.trim()
+
+		// asserted from the UI's current state outwards rather than from the first command the emulator
+		// happened to receive: the queue can regenerate, which supersedes an earlier AdminSetNextLayer
+		await expect.poll(
+			() => app.emu.rcon.commandLog.some((c) => c.body.startsWith(`AdminSetNextLayer ${queuedLayer}`)),
+			{ timeout: 20_000, message: `emulator never received AdminSetNextLayer for the queued layer ${queuedLayer}` },
+		).toBe(true)
 	})
 
 	test('a player joining in game appears on the teams tab', async ({ page, app }) => {
@@ -37,7 +46,9 @@ test.describe('server dashboard', () => {
 	test('the activity feed records what the emulated server did', async ({ page }) => {
 		const feed = page.getByRole('region', { name: 'Server Activity' })
 		await expect(feed).toBeVisible()
-		await expect(feed.getByText(/RCON connection established/i)).toBeVisible({ timeout: 20_000 })
-		await expect(feed.getByText(/Next layer set to/i)).toBeVisible()
+		// the app instance is shared across this file's tests, so the feed accumulates: assert an entry
+		// exists rather than that it's the only one
+		await expect(feed.getByText(/RCON connection established/i).first()).toBeVisible({ timeout: 20_000 })
+		await expect(feed.getByText(/Next layer set to/i).first()).toBeVisible()
 	})
 })

@@ -1,4 +1,5 @@
 import { makePlayer } from '@/emulator'
+import * as fs from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 
@@ -35,8 +36,22 @@ describe('app boot against emulator', () => {
 		}, { label: 'APP_STARTED app event' })
 	})
 
-	it('accepted the log-agent connection', () => {
-		expect(app.emu.logAgent?.connected).toBe(true)
+	it("the app consumes the emulated server's log file", async () => {
+		expect(fs.existsSync(app.squadLogPath)).toBe(true)
+
+		// PLAYER_CONNECTED only ever comes from the log (the teams poll produces PLAYER_RECONCILED
+		// instead), so its presence proves the local-file source is wired end to end
+		const player = makePlayer({ name: ' log_source_probe' })
+		app.emu.world.connectPlayer(player)
+		await app.waitFor(() => {
+			const db = app.readDb()
+			try {
+				const row = db.prepare(`SELECT count(*) as n FROM serverEvents WHERE type = 'PLAYER_CONNECTED'`).get() as { n: number }
+				return row.n > 0
+			} finally {
+				db.close()
+			}
+		}, { label: 'PLAYER_CONNECTED server event from the log', timeoutMs: 25_000 })
 	})
 
 	it('ingests log events: a server roll ends the match and starts the next one', async () => {
