@@ -1,0 +1,77 @@
+name: SLM Integration Tests
+
+# Runs the integration and e2e suites inside the `test` stage of the production image: the same
+# server bundle, the same client build, the same base. What's added is a browser and the test
+# sources. See the Dockerfile's test stage.
+
+on:
+  push:
+    branches: ["main", "dev"]
+  pull_request:
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # the layer db is a generated artifact, and (like production) it isn't baked into the image --
+      # it's mounted at /app/data. It changes only when the layer data does, so it's worth caching:
+      # building it from scratch takes minutes.
+      - name: Restore layer db
+        id: layer-db-cache
+        uses: actions/cache@v4
+        with:
+          path: data
+          key: layer-db-${{ vars.LAYERS_VERSION || 'latest' }}-${{ hashFiles('src/scripts/preprocess.ts', 'src/models/layer-columns.ts') }}
+
+      - name: Build test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: test
+          load: true
+          tags: slm-test:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # on a cache miss, build the layer db with the image's own bundled pipeline (the same one
+      # production uses to (re)build it against a mounted volume)
+      - name: Build layer db
+        if: steps.layer-db-cache.outputs.cache-hit != 'true'
+        env:
+          LAYERS_DB_URL: ${{ vars.LAYERS_DB_URL }}
+        run: |
+          mkdir -p data
+          if [ -n "$LAYERS_DB_URL" ]; then
+            echo "downloading prebuilt layer db"
+            curl -fsSL "$LAYERS_DB_URL" -o "data/$(basename "$LAYERS_DB_URL")"
+          else
+            echo "no LAYERS_DB_URL set; building the layer db from source data"
+            docker run --rm -v "$PWD/data:/app/data" \
+              -e LAYERS_VERSION="${{ vars.LAYERS_VERSION || '@latest' }}" \
+              slm-test:ci pnpm run preprocess:prod
+          fi
+          ls -la data
+
+      - name: Run integration and e2e tests
+        run: |
+          docker run --rm \
+            -e CI=true \
+            -e LAYERS_VERSION="${{ vars.LAYERS_VERSION || '@latest' }}" \
+            -v "$PWD/data:/app/data:ro" \
+            -v "$PWD/test-results:/app/test-results" \
+            slm-test:ci
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: test-results
+          retention-days: 7
+          if-no-files-found: ignore

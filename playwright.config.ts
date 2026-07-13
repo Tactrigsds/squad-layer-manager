@@ -17,6 +17,9 @@ export default defineConfig({
 	timeout: 60_000,
 	expect: { timeout: 15_000 },
 	use: {
+		// chromium cannot use its sandbox inside a container without extra privileges, and the container
+		// is the isolation boundary here anyway
+		launchOptions: process.env.CI ? { args: ['--no-sandbox'] } : {},
 		trace: 'retain-on-failure',
 		screenshot: 'only-on-failure',
 		// selectors must be role/label-based, so tests double as an accessibility check on the markup

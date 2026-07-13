@@ -31,7 +31,9 @@
 		"remove:hooks": "git config --unset core.hooksPath",
 		"graph": "madge --image graph.svg --ts-config tsconfig.json",
 		"graph:circular": "madge --circular --ts-config tsconfig.json",
-		"test:e2e": "NODE_ENV=production vite build && playwright test"
+		"test:e2e": "NODE_ENV=production vite build && playwright test",
+		"test:e2e:ci": "playwright test",
+		"test:ci": "pnpm run test:integration && pnpm run test:e2e:ci"
 	},
 	"dependencies": {
 		"@codemirror/autocomplete": "^6.20.3",

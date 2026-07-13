@@ -54,6 +54,22 @@ function ensureLayerData() {
 	layerDataLoaded = true
 }
 
+// How to start the app under test. In the docker image (and so in CI) SLM_TEST_SERVER_ENTRY points at
+// the bundled server, so the tests drive the very artifact that gets deployed; locally we run the
+// source through tsx, so there's nothing to rebuild between edit and test.
+function serverCommand(): [string, string[]] {
+	// main-instrumented is the entry production runs: it starts the otel sdk (when OTEL_ENABLED) and then
+	// hands off to main. Spawning it -- rather than main directly -- is what lets a test's telemetry exist
+	// at all. register-otel.mjs installs the loader hook the auto-instrumentations need.
+	const otelLoader = ['--import', path.join(REPO_ROOT, 'register-otel.mjs')]
+	const entry = process.env.SLM_TEST_SERVER_ENTRY
+	if (entry) return ['node', ['--enable-source-maps', ...otelLoader, entry]]
+	return [
+		path.join(REPO_ROOT, 'node_modules/.bin/tsx'),
+		['--tsconfig', 'tsconfig.node.json', ...otelLoader, 'src/server/main-instrumented.ts'],
+	]
+}
+
 function freePort(): Promise<number> {
 	return new Promise((resolve, reject) => {
 		const srv = net.createServer()
@@ -67,6 +83,30 @@ function freePort(): Promise<number> {
 
 // steamIds link this user to in-game players (linkedSteamAccounts), which is how a chat command's
 // sender is resolved back to an SLM user for permission checks
+// One id for the whole test run (all fixtures in it), so a Grafana query can scope to "this run" and
+// then narrow to one test. Overridable so CI can use its run id.
+const TEST_RUN_ID = process.env.SLM_TEST_RUN_ID ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+const OTEL_SERVICE_NAME = process.env.SLM_TEST_OTEL_SERVICE_NAME ?? 'slm-test'
+
+// The name of the test currently running, if the runner told us. Playwright's fixture sets this (see
+// test/e2e/fixtures.ts) so that an app built inside a test is labelled with that test, without every
+// spec having to say so.
+let currentLabel: string | undefined
+export function setCurrentTestLabel(label: string | undefined) {
+	currentLabel = label
+}
+
+// the test file that built this fixture, read off the stack: runner-agnostic, and enough to find the
+// telemetry again even when a test didn't name itself
+function callerFile(): string {
+	const stack = new Error().stack?.split('\n') ?? []
+	for (const line of stack) {
+		const match = line.match(/\(?(\/[^\s):]+\.(?:spec|test)\.ts)/)
+		if (match) return path.basename(match[1])
+	}
+	return 'unknown'
+}
+
 export type TestUser = {
 	discordId: bigint
 	username: string
@@ -80,6 +120,12 @@ export type AppFixtureOptions = {
 	serverId?: string
 	emulator?: EmulatorOptions
 	env?: Record<string, string>
+	// what to call this app's telemetry. Normally the test's own name -- the e2e fixture passes it
+	// automatically; a vitest test can pass its own. Falls back to the file that created the fixture.
+	label?: string
+	// export telemetry for this app regardless of SLM_TEST_OTEL, optionally somewhere other than the
+	// configured collector
+	otel?: { endpoint?: string }
 	// extra users to seed beyond the default admin; only the admin gets superuser perms
 	users?: TestUser[]
 	// steam ids linked to the seeded admin, so an in-game player sending a chat command resolves to
@@ -116,6 +162,8 @@ export type AppFixture = {
 	adminsCfgPath: string
 	child: childProcess.ChildProcess | null
 	adminUser: TestUser
+	// the resource attributes this app's telemetry carries (see SLM_TEST_OTEL)
+	otelLabels: Record<string, string>
 	// url that logs the given user in via the query-param auth bypass, for the e2e client to open
 	loginUrl: (user?: TestUser, path?: string) => string
 	// resolves once the app's roster cache reflects the emulator's current players. The app reads the
@@ -249,19 +297,51 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 				+ `Generate it with \`pnpm preprocess\` or point LAYERS_DB_PATH at an existing copy.`,
 		)
 	}
-	if (!fs.existsSync(layerDbConfigPath)) {
-		throw new Error(`integration tests need layer-db.json but it was not found at ${layerDbConfigPath}. Set LAYER_DB_CONFIG_PATH.`)
-	}
+	// layer-db.json is optional: without it the app runs with no extra layer columns, which the tests
+	// don't depend on. It's deployment config (gitignored), so a CI image legitimately won't have one.
 
 	emu.attachLogFile(squadLogPath)
 
 	const [appPort, logsReceiverPort] = await Promise.all([freePort(), freePort()])
 	const appUrl = `http://127.0.0.1:${appPort}`
 
+	// -------- telemetry --------
+	// Off by default: a test run shouldn't need a collector, and exporting costs time. Turned on
+	// (SLM_TEST_OTEL=1, with the otel stack from docker-compose.yaml up) every span, log and metric this
+	// app emits is labelled with the test that produced it, so a failure can be read in Grafana rather
+	// than reconstructed from a log tail.
+	const otelLabels: Record<string, string> = {
+		'service.name': OTEL_SERVICE_NAME,
+		'deployment.environment.name': 'test',
+		'slm.test.run_id': TEST_RUN_ID,
+		'slm.test.name': opts.label ?? currentLabel ?? callerFile(),
+		'slm.test.file': callerFile(),
+		'slm.test.server_id': serverId,
+	}
+	const otelEnabled = !!opts.otel || process.env.SLM_TEST_OTEL === '1' || process.env.SLM_TEST_OTEL === 'true'
+	const otelEnv: Record<string, string> = otelEnabled
+		? {
+			OTEL_ENABLED: 'true',
+			OTLP_COLLECTOR_ENDPOINT: opts.otel?.endpoint ?? process.env.OTLP_COLLECTOR_ENDPOINT ?? 'http://localhost:4318',
+			// a test is short and rare: sample everything, or the one trace you want won't be there
+			OTEL_TRACE_SAMPLE_RATIO: '1',
+			OTEL_RESOURCE_ATTRIBUTES: Object.entries(otelLabels)
+				.map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+				.join(','),
+		}
+		: { OTEL_ENABLED: 'false' }
+	if (otelEnabled) {
+		console.log(
+			`[slm-test] telemetry: service.name=${OTEL_SERVICE_NAME} slm.test.run_id=${TEST_RUN_ID} slm.test.name="${
+				otelLabels['slm.test.name']
+			}"`,
+		)
+	}
+
 	const env: Record<string, string> = {
 		...process.env as Record<string, string>,
 		NODE_ENV: 'test',
-		OTEL_ENABLED: 'false',
+		...otelEnv,
 		DB_PATH: dbPath,
 		DB_AUTOMIGRATE: 'false',
 		PORT: String(appPort),
@@ -279,7 +359,9 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		QUERY_PARAM_AUTH_BYPASS: 'true',
 		SUPER_USERS: users.filter((u) => u.superUser ?? u.discordId === ADMIN_USER.discordId).map((u) => String(u.discordId)).join(','),
 		LAYERS_DB_PATH: layersDbPath,
-		LAYER_DB_CONFIG_PATH: layerDbConfigPath,
+		// only point at a config that exists: the app treats an unreachable *explicit* path as fatal,
+		// while an absent default one just means "no extra columns"
+		...(fs.existsSync(layerDbConfigPath) ? { LAYER_DB_CONFIG_PATH: layerDbConfigPath } : {}),
 		...opts.env,
 	}
 
@@ -304,20 +386,22 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 			await new Promise((r) => setTimeout(r, intervalMs))
 		}
 		const tail = fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8').split('\n').slice(-30).join('\n') : '(no log file)'
+		// when telemetry is on, say where to find it: the log tail is what's left when you can't
+		const telemetryHint = otelEnabled
+			? `\ntelemetry: slm.test.run_id="${TEST_RUN_ID}" slm.test.name="${otelLabels['slm.test.name']}"`
+			: ''
 		throw new Error(
 			`timed out waiting for ${waitOpts?.label ?? 'probe'} after ${timeoutMs}ms.`
 				+ (lastErr ? ` last error: ${lastErr.message}` : '')
+				+ telemetryHint
 				+ `\napp log tail:\n${tail}`,
 		)
 	}
 
 	if (opts.spawn !== false) {
 		const out = fs.openSync(logFile, 'a')
-		child = childProcess.spawn(
-			path.join(REPO_ROOT, 'node_modules/.bin/tsx'),
-			['--tsconfig', 'tsconfig.node.json', 'src/server/main.ts'],
-			{ cwd: REPO_ROOT, env, stdio: ['ignore', out, out] },
-		)
+		const [command, args] = serverCommand()
+		child = childProcess.spawn(command, args, { cwd: REPO_ROOT, env, stdio: ['ignore', out, out] })
 		childExited = new Promise((resolve) => child!.once('exit', (code) => resolve(code)))
 
 		await waitFor(async () => {
@@ -343,6 +427,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		adminsCfgPath,
 		child,
 		adminUser: ADMIN_USER,
+		otelLabels,
 		loginUrl: (user = ADMIN_USER, urlPath = '/') => `${appUrl}${urlPath}?login=${encodeURIComponent(user.username)}`,
 		waitForRosterSync: async (syncOpts) => {
 			// two polls, not one: the roster resource fetches under a mutex, so the second ListPlayers

@@ -72,3 +72,38 @@ ENV PUBLIC_GIT_BRANCH=${GIT_BRANCH}
 
 # Run the server using the compiled output
 CMD ["pnpm", "run", "server:prod"]
+
+# Test stage - the production image, plus the machinery to drive it.
+#
+# Deliberately built on top of `runtime` rather than beside it: the tests spawn the very server
+# bundle that gets deployed (SLM_TEST_SERVER_ENTRY below), against the same dist/ the browser loads,
+# so what CI exercises is the artifact, not a re-derivation of it. What's added is only what a test
+# needs and production must not carry: dev dependencies, a browser, and the test sources.
+FROM runtime AS test
+
+# before the install: the runtime stage sets NODE_ENV=production, and pnpm skips devDependencies when
+# it sees that -- which is every tool the tests are made of
+ENV NODE_ENV=test
+
+# the tests import app source (models, the emulator) and are TypeScript, so the source tree and the
+# dev dependencies come back
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --prod=false
+
+COPY src ./src
+COPY test ./test
+COPY drizzle ./drizzle
+COPY paths.ts tsconfig.json tsconfig.app.json tsconfig.node.json ./
+COPY vite.config.ts vitest.integration.config.ts playwright.config.ts index.html ./
+
+# Only the headless shell, not the full chromium: `playwright install chromium` fetches both (646MB),
+# and the shell alone (267MB) is what a headless run uses. --with-deps brings in the system libraries
+# it links against.
+RUN pnpm exec playwright install --with-deps chromium-headless-shell
+
+# drive the deployed bundle rather than the source: the point of testing in this image is that it is
+# the image
+ENV SLM_TEST_SERVER_ENTRY=dist-server/main-instrumented.js
+# the layer db is not baked in (it isn't in production either); mount /app/data, as the deployment does
+ENV LAYERS_DB_PATH=/app/data/layers_v{{LAYERS_VERSION}}.sqlite3.gz
+
+CMD ["pnpm", "run", "test:ci"]
