@@ -9,6 +9,7 @@ import * as CMD from '@/models/command.models.ts'
 import * as CB from '@/models/constraint-builders'
 import * as F from '@/models/filter.models'
 import * as LP from '@/models/labeled-presets.models'
+import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
@@ -240,6 +241,10 @@ export const GlobalSettingsSchema = z.object({
 		],
 		defaultSortBy: { type: 'random' },
 	}).describe('Configures the columns, default sort, and extra menu items of the layer table'),
+	layerGeneration: LC.LayerGenerationConfigSchema.describe(
+		"Configures how layers are picked during generation (autogeneration, vote generation, and the layer table's random sort). "
+			+ 'Each column in the order is picked weighted-randomly in turn, narrowing the candidate pool for the next.',
+	),
 }).superRefine((val, ctx) => {
 	// command strings and timeout-alias strings share one namespace: a real command always wins on collision, so
 	// a timeout alias that clashes is unreachable (and vice versa). matching is case-insensitive, like dispatch.

@@ -38,21 +38,26 @@ export const COLUMN_KEYS = Object.keys(BASE_COLUMN_DEFS) as L.LayerColumnKey[]
 
 export type EffectiveColumnConfig = {
 	defs: Record<string, CombinedColumnDef>
-	generation: LayerGenerationConfig
 }
 
 export const BASE_COLUMN_CONFIG: EffectiveColumnConfig = {
 	defs: BASE_COLUMN_DEFS,
-	generation: { columnOrder: [], weights: {} },
 }
-export function getEffectiveColumnConfig(config: LayerDbConfig): EffectiveColumnConfig {
+// keyed by the extra-column array's identity: the query layer memoizes derived state (drizzle views, extra-col
+// schemas, query cache keys) against the returned config, so the same columns must always yield the same object
+const effectiveColumnConfigs = new WeakMap<object, EffectiveColumnConfig>()
+export function getEffectiveColumnConfig(extraColumns: ColumnDef[] = L.StaticExtraColumns): EffectiveColumnConfig {
+	const cached = effectiveColumnConfigs.get(extraColumns)
+	if (cached) return cached
 	const defs: EffectiveColumnConfig['defs'] = {
 		...BASE_COLUMN_CONFIG.defs,
 	}
-	for (const def of Object.values(config.columns)) {
+	for (const def of extraColumns) {
 		defs[def.name] = { ...def, table: 'extra-cols' }
 	}
-	return { ...BASE_COLUMN_CONFIG, defs, generation: config.generation }
+	const config = { ...BASE_COLUMN_CONFIG, defs }
+	effectiveColumnConfigs.set(extraColumns, config)
+	return config
 }
 
 export function getColumnDef(name: string, cfg = BASE_COLUMN_CONFIG) {
@@ -689,12 +694,28 @@ export const WEIGHT_COLUMNS = z.enum(
 
 export type WeightColumn = z.infer<typeof WEIGHT_COLUMNS>
 
+// weight applied to values which aren't listed in the config for their column
+export const DEFAULT_GENERATION_WEIGHT = 0.1
+
+// deliberately permissive: an entry that is stale (a map dropped by a game update), weighted for a column that
+// isn't picked, or duplicated is inert rather than wrong, and a settings document that fails to parse takes the
+// server down with it (see loadGlobalSettings). The editor surfaces these instead; see layer-generation-config-editor.
+export const LayerGenerationConfigSchema = z.object({
+	columnOrder: z.array(WEIGHT_COLUMNS).prefault([]).describe(
+		'Columns to pick weighted-randomly during layer generation, in the order they are picked. Each pick narrows the candidate pool for the next.',
+	),
+	weights: z.partialRecord(WEIGHT_COLUMNS, z.array(z.object({ value: z.string(), weight: z.number() })))
+		.prefault({})
+		.describe(
+			`Relative selection weight per column value. Values not listed here are weighted ${DEFAULT_GENERATION_WEIGHT}. Weights are relative, not probabilities: they are normalized against the values actually available in the pool at pick time.`,
+		),
+})
+	.prefault({})
+
+export type LayerGenerationConfig = z.infer<typeof LayerGenerationConfigSchema>
+
 export const LayerDbConfigSchema = z.object({
 	columns: z.array(ColumnDefSchema),
-	generation: z.object({
-		columnOrder: z.array(WEIGHT_COLUMNS),
-		weights: z.partialRecord(WEIGHT_COLUMNS, z.array(z.object({ value: z.string(), weight: z.number() }))),
-	}),
 })
 	.refine(config => {
 		const allCols = new Set(COLUMN_KEYS) as Set<string>
@@ -712,7 +733,6 @@ export const LayerDbConfigSchema = z.object({
 	})
 
 export type LayerDbConfig = z.infer<typeof LayerDbConfigSchema>
-export type LayerGenerationConfig = LayerDbConfig['generation']
 
 export function buildFullLayerComponents(
 	components: BaseLayerComponents,

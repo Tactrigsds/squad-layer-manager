@@ -18,6 +18,7 @@ async function load(): Promise<L.LayerData> {
 	const data: L.LayerData = {
 		components: LC.buildFullLayerComponents(file.components),
 		factionUnits: file.factionUnits,
+		extraColumns: file.extraColumns,
 	}
 	L.setLayerData(data)
 	return data

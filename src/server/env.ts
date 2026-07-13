@@ -107,7 +107,6 @@ export const groups = {
 
 	layerDb: {
 		LAYERS_VERSION: PathSegment.default('@latest'), // @latest is a magic string which resolves the latest available version according to semver that's availble at the configured path for  LAYERS_DB_PATH and EXTRA_COLS_CSV_PATH
-		LAYER_DB_CONFIG_PATH: z.string().prefault('./layer-db.json'),
 		LAYERS_DB_PATH: z.string().prefault('./data/layers_v{{LAYERS_VERSION}}.sqlite3.gz'),
 	},
 
@@ -116,6 +115,9 @@ export const groups = {
 		SPREADSHEET_ID: z.string().prefault('1UXEgkUMBxhmYyEkaMSUd1Ko_I7s--7krCdyshZ076pU'),
 		SPREADSHEET_MAP_LAYERS_GID: z.number().prefault(1212962563),
 		EXTRA_COLS_CSV_PATH: z.string().prefault(path.join(Paths.DATA, 'layers_v{{LAYERS_VERSION}}.csv')),
+		// defines the extra columns to ingest into the layer db. read only by preprocess: the definitions are baked
+		// into layer-data.json, which is what the app reads at runtime
+		LAYER_DB_CONFIG_PATH: z.string().prefault('./layer-db.json'),
 	},
 
 	battlemetrics: {
@@ -180,9 +182,8 @@ const buildForValidation = getEnvBuilder({
 
 export function ensureEnvSetup() {
 	if (setup) return
-	if (Cli.options) {
-		dotenv.config({ path: Cli.options.envFile })
-	}
+	// entrypoints which don't use the cli system (scripts) still get the default .env; --env-file only overrides the path
+	dotenv.config({ path: Cli.options?.envFile })
 	rawEnv = {}
 	for (
 		const key of Object.values(groups).flatMap(g => Object.keys(g))

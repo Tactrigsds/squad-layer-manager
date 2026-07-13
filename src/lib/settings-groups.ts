@@ -12,7 +12,7 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 		keys: ['warnPrefix', 'adminActionReasons', 'requireReasonFor', 'broadcasts', 'messageVariables', 'chat'],
 	},
 	{ slug: 'commands', label: 'In-game Commands', keys: ['commandPrefix', 'commands', 'timeoutCommandAliases'] },
-	{ slug: 'queue-and-votes', label: 'Queue & Votes', keys: ['layerQueue', 'vote', 'layerTable'] },
+	{ slug: 'queue-and-votes', label: 'Queue & Votes', keys: ['layerQueue', 'vote', 'layerTable', 'layerGeneration'] },
 	{
 		slug: 'squad-server',
 		label: 'Squad Server',
@@ -24,7 +24,12 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 
 // paths the TOC must treat as leaves even though their schema node is an object with properties: they render via
 // override widgets, so no per-property anchors exist in the DOM
-export const TOC_LEAF_PATHS: ReadonlySet<string> = new Set(['layerTable', 'queue.mainPool', 'queue.generationPool'])
+export const TOC_LEAF_PATHS: ReadonlySet<string> = new Set([
+	'layerTable',
+	'layerGeneration',
+	'queue.mainPool',
+	'queue.generationPool',
+])
 
 // partition `keys` (schema property order) into the ordered group buckets plus the ungrouped remainder
 export function splitByGroups(

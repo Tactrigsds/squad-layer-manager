@@ -13,6 +13,7 @@ import * as LayerDb from '@/systems/layer-db.server'
 import * as LayerQueries from '@/systems/layer-queries.shared'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
+import * as Settings from '@/systems/settings.server'
 import { z } from 'zod'
 
 const module = initModule('layer-queries')
@@ -38,6 +39,7 @@ export function resolveLayerQueryCtx<Ctx extends C.MatchHistory & C.LayerQueue>(
 		log,
 		...resolveLayerDbContext(),
 		filters: FilterEntity.state.filters,
+		generationConfig: Settings.GLOBAL_SETTINGS.layerGeneration,
 	}
 }
 
@@ -52,6 +54,8 @@ function resolveLayerDbContext(): CS.LayerDb {
 	return {
 		...CS.init(),
 		layerDb: () => LayerDb.db,
-		effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.LAYER_DB_CONFIG),
+		// derived from the extra columns the layer data shipped with, and memoized on them, so every request shares
+		// one config object (the query layer caches drizzle views/schemas/cache keys against its identity)
+		effectiveColsConfig: LC.getEffectiveColumnConfig(),
 	}
 }

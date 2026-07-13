@@ -81,7 +81,7 @@ export const frame = frameManager.createFrame<Types>({
 				state$.pipe(Rx.map(([state]) => state.settings.saved), Rx.distinctUntilChanged()),
 				// filter edits invalidate previously computed statuses
 				ZusUtils.toObservable(LayerQueriesClient.Store, true).pipe(
-					Rx.map(([state]) => state.filtersModifiedEpoch),
+					Rx.map(([state]) => state.backgroundStateEpoch),
 					Rx.distinctUntilChanged(),
 				),
 			]).pipe(

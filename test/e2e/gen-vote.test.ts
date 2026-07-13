@@ -65,4 +65,42 @@ test.describe('generating a vote', () => {
 			await app.dispose()
 		}
 	})
+
+	// the generation weights (globalSettings.layerGeneration) are the other half of what shapes a generated
+	// choice, and they take a long path to get here: global settings -> public config -> the client's query
+	// worker, which does the weighted picking. Gamemode is safe to assert on because only Map has to be
+	// unique across choices (V.GenVote.DEFAULT_CHOICE_COMPARISONS).
+	test('weights the columns it picks by the configured generation weights', async ({ page }) => {
+		const app = await createAppFixture({
+			layerQueue: queue(LAYERS.harjuRaas),
+			globalSettings: (settings) => {
+				// unlisted values weigh LC.DEFAULT_GENERATION_WEIGHT (0.1), so Invasion outweighs every other
+				// gamemode by four orders of magnitude: drawing anything else is a ~0.04% event per choice
+				settings.layerGeneration = {
+					columnOrder: ['Gamemode'],
+					weights: { Gamemode: [{ value: 'Invasion', weight: 1000 }] },
+				}
+			},
+			serverSettings: (settings) => {
+				// no pool filter: the weights, not a filter, have to be what narrows the gamemode
+				settings.queue.mainPool.filters = []
+				settings.queue.mainPool.repeatRules = []
+			},
+		})
+		try {
+			await page.goto(app.loginUrl())
+			await expect(page.getByRole('tab', { name: 'Queue (1)' })).toBeVisible({ timeout: 20_000 })
+
+			await page.getByRole('button', { name: 'Start Editing' }).click()
+			await page.getByRole('button', { name: 'Gen Vote' }).click()
+			const dialog = page.getByRole('dialog', { name: 'Generate Vote' })
+			await dialog.getByRole('button', { name: 'Generate', exact: true }).click()
+
+			const choices = dialog.getByRole('listitem')
+			await expect(choices).toHaveCount(3)
+			await expect(choices.filter({ hasText: /_Invasion_v\d/ })).toHaveCount(3)
+		} finally {
+			await app.dispose()
+		}
+	})
 })
