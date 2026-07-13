@@ -30,7 +30,8 @@
 		"setup:hooks": "git config core.hooksPath .githooks && chmod +x .githooks/pre-push .githooks/pre-push.js",
 		"remove:hooks": "git config --unset core.hooksPath",
 		"graph": "madge --image graph.svg --ts-config tsconfig.json",
-		"graph:circular": "madge --circular --ts-config tsconfig.json"
+		"graph:circular": "madge --circular --ts-config tsconfig.json",
+		"test:e2e": "NODE_ENV=production vite build && playwright test"
 	},
 	"dependencies": {
 		"@codemirror/autocomplete": "^6.20.3",
@@ -97,6 +98,7 @@
 		"@orpc/client": "^1.14.7",
 		"@orpc/server": "^1.14.7",
 		"@orpc/tanstack-query": "^1.14.7",
+		"@playwright/test": "^1.61.1",
 		"@radix-ui/primitive": "^1.1.2",
 		"@radix-ui/react-accordion": "^1.2.11",
 		"@radix-ui/react-alert-dialog": "^1.1.14",

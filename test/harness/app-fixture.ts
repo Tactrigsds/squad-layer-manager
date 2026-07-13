@@ -11,6 +11,7 @@ import * as net from 'node:net'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { Emulator, type EmulatorOptions } from '../../src/emulator'
+import { BmServer } from '../../src/emulator/bm-server'
 
 // Boots the real app (child process, real boot path) against an emulated squad server, with an
 // ephemeral sqlite db and ports, for integration tests. One fixture = one app instance + one
@@ -49,16 +50,22 @@ function freePort(): Promise<number> {
 	})
 }
 
+export type TestUser = { discordId: bigint; username: string }
+
 export type AppFixtureOptions = {
 	serverId?: string
 	emulator?: EmulatorOptions
 	env?: Record<string, string>
+	// extra users to seed beyond the default admin; only the admin gets superuser perms
+	users?: TestUser[]
 	// skip spawning; useful to test seeding in isolation
 	spawn?: boolean
 }
 
 export type AppFixture = {
 	emu: Emulator
+	// stub BattleMetrics API the app talks to; inspect bm.requestLog / bm.players to assert writes
+	bm: BmServer
 	serverId: string
 	appPort: number
 	appUrl: string
@@ -66,6 +73,9 @@ export type AppFixture = {
 	tmpDir: string
 	logFile: string
 	child: childProcess.ChildProcess | null
+	adminUser: TestUser
+	// url that logs the given user in via the query-param auth bypass, for the e2e client to open
+	loginUrl: (user?: TestUser, path?: string) => string
 	// fresh read-only connection to the app's db, for assertions
 	readDb: () => SqliteDb
 	waitFor: <T>(probe: () => T | Promise<T>, opts?: { timeoutMs?: number; intervalMs?: number; label?: string }) => Promise<NonNullable<T>>
@@ -73,6 +83,9 @@ export type AppFixture = {
 }
 
 const LOG_AGENT_TOKEN = 'integ-test-token'
+
+// snowflake-shaped ids so nothing downstream trips on the bigint range
+export const ADMIN_USER: TestUser = { discordId: 900000000000000001n, username: 'test-admin' }
 
 export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<AppFixture> {
 	const serverId = opts.serverId ?? 'emu-server-1'
@@ -82,6 +95,8 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 
 	const emu = new Emulator(opts.emulator)
 	await emu.start()
+	const bm = new BmServer()
+	const bmPort = await bm.listen()
 
 	// migrate + seed before the app boots, so the server registry sees the emulated server
 	const driver = new Database(dbPath)
@@ -104,6 +119,11 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 			settings: serverSettings,
 		}),
 	)
+
+	// the bypass login resolves users by username against this table; the admin additionally gets
+	// every permission via the SUPER_USERS env bootstrap below
+	const users = [ADMIN_USER, ...(opts.users ?? [])]
+	await db.insert(Schema.users).values(users.map((u) => ({ discordId: u.discordId, username: u.username })))
 	driver.close()
 
 	// the layer db is a hard runtime prerequisite: the app cannot boot without it, and it's a
@@ -139,9 +159,11 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		DISCORD_CLIENT_SECRET: 'disabled',
 		DISCORD_BOT_TOKEN: 'disabled',
 		DISCORD_HOME_GUILD_ID: '1',
-		BM_PAT: 'disabled',
-		BM_ORG_ID: '0',
+		BM_HOST: `http://127.0.0.1:${bmPort}`,
+		BM_PAT: 'stub-token',
+		BM_ORG_ID: 'stub-org',
 		QUERY_PARAM_AUTH_BYPASS: 'true',
+		SUPER_USERS: String(ADMIN_USER.discordId),
 		LAYERS_DB_PATH: layersDbPath,
 		LAYER_DB_CONFIG_PATH: layerDbConfigPath,
 		...opts.env,
@@ -198,6 +220,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 
 	return {
 		emu,
+		bm,
 		serverId,
 		appPort,
 		appUrl,
@@ -205,6 +228,8 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		tmpDir,
 		logFile,
 		child,
+		adminUser: ADMIN_USER,
+		loginUrl: (user = ADMIN_USER, urlPath = '/') => `${appUrl}${urlPath}?login=${encodeURIComponent(user.username)}`,
 		readDb: () => new Database(dbPath, { readonly: true }),
 		waitFor,
 		dispose: async () => {
@@ -215,6 +240,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 				clearTimeout(killTimer)
 			}
 			emu.dispose()
+			bm.close()
 			// set SLM_KEEP_TEST_TMP=1 to retain the db + app log of a failing run
 			if (!process.env.SLM_KEEP_TEST_TMP) fs.rmSync(tmpDir, { recursive: true, force: true })
 		},
