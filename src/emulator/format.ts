@@ -21,13 +21,18 @@ export type SquadLike = {
 	teamId: number
 	squadId: number
 	name: string
+	size: number
 	locked: boolean
 	creatorName: string
 	creatorEos: string
 	creatorSteam: string
 }
 
-export type TeamLike = { id: number; name: string }
+// two different names, and the game uses them in different places: ListSquads heads each team with the
+// unit's display name ("205th Separate Motor Rifle Brigade"), while the squad-created chat line names
+// the faction ("Russian Ground Forces"). The app resolves the latter against its faction list, so
+// getting them the wrong way round leaves it unable to place the squad.
+export type TeamLike = { id: number; name: string; factionName: string }
 
 export type LayerLike = {
 	level: string
@@ -127,7 +132,7 @@ export function listSquads(teams: TeamLike[], squads: SquadLike[]): string {
 		lines.push(`Team ID: ${team.id} (${team.name})`)
 		for (const s of squads.filter((s) => s.teamId === team.id)) {
 			lines.push(
-				`ID: ${s.squadId} | Name: ${s.name} | Size: 1 | Locked: ${
+				`ID: ${s.squadId} | Name: ${s.name} | Size: ${s.size} | Locked: ${
 					s.locked ? 'True' : 'False'
 				} | Creator Name: ${s.creatorName.trim()} | Creator Online IDs: ${idsStr({ eos: s.creatorEos, steam: s.creatorSteam })}`,
 			)
@@ -156,8 +161,8 @@ export function playerWarnedBody(name: string, reason: string): string {
 	return `Remote admin has warned player ${name}. Message was "${reason}"`
 }
 
-export function squadCreatedBody(p: PlayerLike, squadId: number, squadName: string, teamName: string): string {
-	return `${p.name.trim()} (Online IDs:${idsStr(p)}) has created Squad ${squadId} (Squad Name: ${squadName}) on ${teamName}`
+export function squadCreatedBody(p: PlayerLike, squadId: number, squadName: string, factionName: string): string {
+	return `${p.name.trim()} (Online IDs:${idsStr(p)}) has created Squad ${squadId} (Squad Name: ${squadName}) on ${factionName}`
 }
 
 export function squadRenamedBody(squadId: number, teamId: number, oldName: string, newName: string): string {

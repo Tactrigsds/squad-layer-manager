@@ -1,3 +1,4 @@
+import * as L from '@/models/layer'
 import * as Fmt from './format'
 
 // The emulated squad server's world: one mutable model that both protocol frontends render
@@ -87,10 +88,7 @@ type EmuSquad = {
 export class World {
 	serverName: string
 	maxPlayers: number
-	teams: Fmt.TeamLike[] = [
-		{ id: 1, name: '205th Separate Motor Rifle Brigade' },
-		{ id: 2, name: '161st Air Assault Brigade' },
-	]
+	teams: Fmt.TeamLike[] = []
 	currentLayer: Fmt.LayerLike
 	nextLayer: Fmt.LayerLike | null
 	knownLayers: Set<string> | null
@@ -124,6 +122,24 @@ export class World {
 			mapDir: '/Game/Maps/Sumari/Gameplay_Layers',
 		}
 		this.knownLayers = opts.knownLayers ? new Set(opts.knownLayers) : null
+		this.#resolveTeams()
+	}
+
+	// the two teams are whatever the current layer's factions are. The names come from the app's own
+	// faction data, so a squad created here names a faction the app can actually resolve.
+	#resolveTeams() {
+		const [t1, t2] = this.currentLayer.factions.split(/\s+/)
+		this.teams = [1, 2].map((id) => {
+			const token = id === 1 ? t1 : t2
+			const [factionId, unit] = (token ?? '').split('+')
+			const configs = Object.values(L.StaticFactionunitConfigs).filter((c) => c.factionID === factionId)
+			const config = configs.find((c) => (unit ? c.unitObjectName.endsWith(unit) : c.unitObjectName.includes('CombinedArms'))) ?? configs[0]
+			return {
+				id,
+				name: config?.displayName ?? `Team ${id}`,
+				factionName: config?.factionName ?? `Team ${id}`,
+			}
+		})
 	}
 
 	// each logical action gets one chainID, like a real server frame
@@ -191,14 +207,27 @@ export class World {
 		this.squads.push(squad)
 		p.squadId = squadId
 		p.isLeader = true
-		const teamName = this.teams.find((t) => t.id === teamId)!.name
-		this.#chat(Fmt.squadCreatedBody(p, squadId, name, teamName))
-		this.#log(`LogSquad: ${Fmt.squadCreatedBody(p, squadId, name, teamName)}`)
+		// the game names the faction here, not the unit
+		const factionName = this.teams.find((t) => t.id === teamId)!.factionName
+		this.#chat(Fmt.squadCreatedBody(p, squadId, name, factionName))
+		this.#log(`LogSquad: ${Fmt.squadCreatedBody(p, squadId, name, factionName)}`)
 		return squad
+	}
+
+	// another player joins an existing squad. The creator is already in it (createSquad puts them there).
+	joinSquad(p: EmuPlayer, squad: EmuSquad): EmuPlayer {
+		p.teamId = squad.teamId
+		p.squadId = squad.squadId
+		p.isLeader = false
+		return p
 	}
 
 	leaveSquad(p: EmuPlayer) {
 		this.#dropFromSquad(p)
+	}
+
+	squadMembers(squad: { teamId: number; squadId: number }): EmuPlayer[] {
+		return this.playerList().filter((p) => p.teamId === squad.teamId && p.squadId === squad.squadId)
 	}
 
 	possessAdminCam(p: EmuPlayer) {
@@ -245,6 +274,8 @@ export class World {
 
 		this.currentLayer = target
 		this.nextLayer = null
+		// the new layer brings new factions, so the teams are new too
+		this.#resolveTeams()
 		this.matchStartedAt = this.#now()
 		for (const p of this.players.values()) {
 			p.squadId = null
@@ -297,6 +328,7 @@ export class World {
 						teamId: s.teamId,
 						squadId: s.squadId,
 						name: s.name,
+						size: this.squadMembers(s).length,
 						locked: s.locked,
 						creatorName: s.creator.name,
 						creatorEos: s.creator.eos,

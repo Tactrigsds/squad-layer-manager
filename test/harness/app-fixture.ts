@@ -160,6 +160,8 @@ function applyTestTimings(settings: SETTINGS.GlobalSettings) {
 }
 
 export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<AppFixture> {
+	// the emulator resolves its team names from the layer's factions, so this has to happen before it exists
+	ensureLayerData()
 	const serverId = opts.serverId ?? 'emu-server-1'
 	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slm-integ-'))
 	const dbPath = path.join(tmpDir, 'main.sqlite3')
@@ -213,10 +215,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	// (A test that wants that path sets emulator.nextLayer itself.)
 	if (opts.layerQueue && !opts.emulator?.nextLayer) {
 		const headLayerId = LL.getNextLayerId(layerQueue)
-		if (headLayerId) {
-			ensureLayerData()
-			emu.world.handleCommand(L.getLayerCommand(headLayerId, 'set-next'))
-		}
+		if (headLayerId) emu.world.handleCommand(L.getLayerCommand(headLayerId, 'set-next'))
 	}
 
 	await db.insert(Schema.servers).values(
