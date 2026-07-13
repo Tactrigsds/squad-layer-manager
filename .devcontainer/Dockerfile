@@ -2,12 +2,24 @@
 # .tool-versions use, so a native module that builds here builds there.
 FROM node:24.18.0-bookworm
 
-# node-gyp compiles the native deps (better-sqlite3, cpu-features, bufferutil, utf-8-validate) and
-# needs python3; the base image already carries gcc/g++/make from buildpack-deps. fish is available for
-# anyone who wants it, but bash stays the default shell.
+# python3: node-gyp compiles the native deps (better-sqlite3, cpu-features, bufferutil, utf-8-validate)
+# and needs it; the base image already carries gcc/g++/make from buildpack-deps.
+# sqlite3, jq, vim: edit-global-settings.sh shells out to all three ($EDITOR defaults to vim), and
+# sqlite3 is how you go poke at data/main.sqlite3 by hand anyway.
+# less: git's pager.
+# ripgrep, fd, tree, bat, lsof: what a coding agent (or a human) reaches for -- search, file listing,
+# and finding out who is holding a port.
+# fish is available for anyone who wants it, but bash stays the default shell.
 RUN apt-get update \
-	&& apt-get install -y --no-install-recommends python3 fish \
-	&& rm -rf /var/lib/apt/lists/*
+	&& apt-get install -y --no-install-recommends \
+		python3 sqlite3 jq vim less \
+		ripgrep fd-find tree bat lsof \
+		fish \
+	&& rm -rf /var/lib/apt/lists/* \
+# debian ships these two under different names to avoid collisions; everything (and everyone)
+# expects them as `fd` and `bat`
+	&& ln -s "$(command -v fdfind)" /usr/local/bin/fd \
+	&& ln -s "$(command -v batcat)" /usr/local/bin/bat
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
