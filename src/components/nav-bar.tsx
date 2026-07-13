@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/switch'
 import TabsList from '@/components/ui/tabs-list'
 import UserPermissionsDialog from '@/components/user-permissions-dialog'
 import { frameManager } from '@/frames/frame-manager.ts'
@@ -22,6 +23,7 @@ import * as ZusUtils from '@/lib/zustand'
 import * as USR from '@/models/users.models.ts'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
+import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
 
@@ -143,6 +145,7 @@ export default function NavBar() {
 					</DropdownMenuRadioGroup>
 				</DropdownMenuSubContent>
 			</DropdownMenuSub>
+			<NormalizeTeamsToggle />
 			<DropdownMenuSeparator />
 			<NicknameDialog onOpenChange={onNicknameOpenChange} open={openState === 'nickname'}>
 				<DropdownMenuItem onClick={() => setDropdownState('nickname')} className="text-sm">
@@ -319,6 +322,30 @@ export default function NavBar() {
 				)}
 			</div>
 		</nav>
+	)
+}
+
+// The switch is presentational: the menu item owns the toggle so it also responds to keyboard selection, and
+// preventing the default select keeps the menu open across flips.
+function NormalizeTeamsToggle() {
+	const displayTeamsNormalized = ZusUtils.useStore(ClientOnlySettings.Store, s => s.displayTeamsNormalized)
+	return (
+		<DropdownMenuItem
+			role="menuitemcheckbox"
+			aria-checked={displayTeamsNormalized}
+			className="text-sm justify-between gap-4"
+			title="Show team A on the left and team B on the right, instead of team 1 and team 2"
+			onSelect={e => {
+				e.preventDefault()
+				ClientOnlySettings.Actions.setDisplayTeamsNormalized(!displayTeamsNormalized)
+			}}
+		>
+			<span className="flex items-center">
+				<Icons.ArrowLeftRight className="mr-2 h-4 w-4" />
+				Normalize Teams
+			</span>
+			<Switch checked={displayTeamsNormalized} tabIndex={-1} className="pointer-events-none" />
+		</DropdownMenuItem>
 	)
 }
 
