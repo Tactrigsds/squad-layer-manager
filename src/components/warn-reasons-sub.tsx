@@ -48,7 +48,7 @@ export function WarnReasonsSub(props: {
 					<Separator />
 					{reasons.map(reason => (
 						<Item key={reason.label} onClick={() => props.onPreset(reason)}>
-							<span title={reason.message}>{reason.label}</span>
+							<span title={AAR.reasonText('warn', reason)}>{reason.label}</span>
 						</Item>
 					))}
 				</SubContent>
@@ -70,7 +70,7 @@ export function ReasonPicker(props: {
 	customRef?: React.MutableRefObject<string>
 	// when true a reason is mandatory (enforced on submit); reflected in the label
 	required?: boolean
-	// for kicks: the currently-entered timeout, so the preview can resolve {{duration}} live (undefined = no timeout)
+	// for timeouts: the currently-entered duration, so the preview can resolve {{duration}} live
 	durationMs?: number
 }) {
 	const reasons = ZusUtils.useStore(
@@ -119,7 +119,7 @@ export function ReasonPicker(props: {
 					<SelectContent>
 						<SelectItem value={CUSTOM}>{allowCustom ? 'Custom' : 'None'}</SelectItem>
 						{reasons.map(reason => (
-							<SelectItem key={reason.label} value={reason.label} title={reason.message}>
+							<SelectItem key={reason.label} value={reason.label} title={AAR.reasonText(props.action, reason)}>
 								{reason.label}
 							</SelectItem>
 						))}
@@ -148,9 +148,9 @@ export function ReasonPicker(props: {
 }
 
 // renders the exact in-game text a player will receive for the chosen reason + action, mirroring the settings-page
-// reason preview. reason (a selected preset) takes precedence over customText (free-text). {{duration}} resolves to
-// the passed kick timeout (empty when none, so {{#duration}} sections drop out); other {{variables}} come from the
-// configured Message Variables. Renders nothing until there's some text to show.
+// reason preview. reason (a selected preset) takes precedence over customText (free-text). For timeouts {{duration}}
+// resolves to the entered duration (empty while it's unparseable, so {{#duration}} sections drop out); other
+// {{variables}} come from the configured Message Variables. Renders nothing until there's some text to show.
 export function ReasonMessagePreview(props: {
 	action: AAR.AdminActionType
 	reason?: AAR.AdminActionReason
@@ -165,7 +165,7 @@ export function ReasonMessagePreview(props: {
 	if (!props.reason && !custom) return null
 
 	const vars: Record<string, string> = { ...customVars }
-	if (props.action === 'kick') vars.duration = props.durationMs && props.durationMs > 0 ? formatHumanTime(props.durationMs) : ''
+	if (props.action === 'timeout') vars.duration = props.durationMs && props.durationMs > 0 ? formatHumanTime(props.durationMs) : ''
 	const text = props.reason
 		? AAR.formatAppliedReason(props.action, props.reason, { vars })
 		: renderTemplate(custom!, vars)

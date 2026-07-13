@@ -156,7 +156,9 @@ export const validateAndUpdate = C.spanOp(
 	async (ctx: C.Db & C.FastifyRequest & Partial<C.FastifyReply>, allowRefresh = false) => {
 		async function errorOrBypass<Res>(res: Res) {
 			if (ENV.QUERY_PARAM_AUTH_BYPASS && !!ctx.res) {
-				const res = ctx.res
+				// nb: don't shadow `res` with ctx.res here: returning the FastifyReply where the error
+				// result is expected makes callers `await` fastify's thenable reply, which deadlocks
+				const reply = ctx.res
 				const query = ctx.req.query as Record<string, string>
 				if (!query.login) return res
 				const username = query['login']
@@ -164,7 +166,7 @@ export const validateAndUpdate = C.spanOp(
 				const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.username, username))
 				log.info('resolved user: %o', user)
 				if (!user) throw new Error(`User ${username} not found during bypass`)
-				const loginRes = await logInUser({ ...ctx, res }, { username, id: user.discordId })
+				const loginRes = await logInUser({ ...ctx, res: reply }, { username, id: user.discordId })
 
 				return { code: 'ok' as const, ...loginRes, user: await Users.buildUser(user) }
 			}

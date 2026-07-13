@@ -1,5 +1,7 @@
 import * as AR from '@/app-routes'
+import * as RxHelpers from '@/lib/react-rxjs-helpers'
 import { toast } from '@/lib/toast'
+import * as SM from '@/models/squad.models'
 import type { OrpcAppRouter } from '@/server/orpc-app-router'
 import * as ConfigClient from '@/systems/config.client'
 import { createORPCClient, onError } from '@orpc/client'
@@ -71,6 +73,10 @@ export const [useConnectStatus, connectStatus$] = (() => {
 
 connectStatus$.subscribe()
 
+// suspending state observables only get their first-emit clock while the websocket is actually up, so a
+// disconnect keeps them in Suspense (resolving on reconnect) instead of erroring them out. see RxHelpers.bind
+RxHelpers.setTransportLive(connectStatus$.pipe(Rx.map(status => status === 'open'), Rx.distinctUntilChanged()))
+
 opened$.pipe(
 	Rx.tap(() => {
 		if (disconnectTime) {
@@ -122,25 +128,60 @@ closed$.pipe(
 export const queryClient = new QueryClient()
 export const orpc = createTanstackQueryUtils(_orpcClient, { path: ['orpc'] })
 
-export function observe<T>(task: () => Promise<Rx.ObservableInput<T>>, opts?: { onError?: (error: any, count: number) => void }) {
+const MAX_RETRY_DELAY = 10_000
+
+/**
+ * @param tag - identifies the subscription in logs, traces and error messages. Conventionally the router path,
+ * e.g. 'squadServer.watchTickRate'.
+ */
+export function observe<T>(
+	tag: string,
+	task: () => Promise<Rx.ObservableInput<T>>,
+	opts?: { onError?: (error: any, count: number) => void },
+) {
 	return Rx.from(toCold(task)).pipe(
-		traceTag('ORPC_OBSERVE'),
+		traceTag(`ORPC_${tag.replace(/[^0-9a-zA-Z_$]/g, '_')}`),
 		Rx.concatAll(),
 		Rx.retry({
+			// without this the attempt count accumulates across the whole session, so a subscription that has
+			// weathered a dozen reconnects ends up waiting tens of minutes before its next attempt
+			resetOnSuccess: true,
 			delay: (error, count) => {
 				opts?.onError?.(error, count)
-				const backoff$ = Rx.timer(Math.pow(2, count) * 250)
+				// every watch subscription in the app retries at once after a reconnect, so identical delays would
+				// thunder against the server. Half-jittered, capped exponential backoff.
+				const backoffMs = Math.min(Math.pow(2, count) * 250, MAX_RETRY_DELAY)
+				const backoff$ = Rx.timer(backoffMs / 2 + Math.random() * (backoffMs / 2))
 
 				// we only want to log the error if the connection is closed
 				if (connectStatus$.getValue() !== 'open') return backoff$
 
-				console.error(error)
+				console.error(`[${tag}] subscription failed (attempt ${count})`, error)
 				if (count > 2) {
-					toast.error('Remote Subscription Error', { description: error.message })
+					toast.error('Remote Subscription Error', { description: `${tag}: ${error.message}` })
 				}
 
 				return backoff$
 			},
 		}),
 	)
+}
+
+/**
+ * Drops the err:server-not-loaded value every per-server stream can emit (see SquadServer.sliceStream$), so consumers
+ * keep their original payload type. Losing the slice isn't this layer's problem to report: the dashboard gates itself on
+ * squadServer.watchLoadedServers and swaps in the unavailable view, and the stream resumes on its own once the slice is
+ * back. Holding rather than erroring is what makes that recovery automatic.
+ */
+export function dropServerNotLoaded<T>(): Rx.OperatorFunction<T | SM.ServerNotLoaded, T> {
+	return Rx.filter((value): value is T => !SM.isServerNotLoaded(value))
+}
+
+/**
+ * The query-side counterpart to dropServerNotLoaded: reads err:server-not-loaded as "no data". Every endpoint that can
+ * return it is reachable only from the server dashboard, which unmounts itself when the server goes away, so the only
+ * way a component sees this is a teardown race it is already on its way out of.
+ */
+export function selectLoaded<T>(res: T | SM.ServerNotLoaded): T | undefined {
+	return SM.isServerNotLoaded(res) ? undefined : res
 }

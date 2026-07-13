@@ -612,6 +612,10 @@ function MatchHistoryRow({
 			<ContextMenuTrigger asChild>
 				<TableRow
 					title="Left click to view events, Right click for Context Menu, Click+drag to requeue"
+					// dnd-kit's accessibility plugin stamps role="button" on any draggable that has no role of
+					// its own, which would make this <tr> a button wrapping <td> cells: invalid, and it drops the
+					// row out of the table's accessibility tree. Declaring the real role keeps dnd-kit off it.
+					role="row"
 					ref={dragProps.ref}
 					data-is-dragging={dragProps.isDragging}
 					data-is-editing={isEditingQueue}

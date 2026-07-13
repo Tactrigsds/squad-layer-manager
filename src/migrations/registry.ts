@@ -19,6 +19,7 @@ import * as m0066 from './0066_filter_apply_operators'
 import * as m0067 from './0067_seed_layer_table_global_setting'
 import * as m0068 from './0068_reset_admin_action_reasons'
 import * as m0069 from './0069_settings_permissions'
+import * as m0070 from './0070_split_kick_and_timeout'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -29,4 +30,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0067_seed_layer_table_global_setting', up: m0067.up },
 	{ name: '0068_reset_admin_action_reasons', up: m0068.up },
 	{ name: '0069_settings_permissions', up: m0069.up },
+	{ name: '0070_split_kick_and_timeout', up: m0070.up },
 ]

@@ -1,8 +1,8 @@
+import * as RxHelpers from '@/lib/react-rxjs-helpers'
 import * as ZusUtils from '@/lib/zustand'
 import type * as AAR from '@/models/admin-action-reasons.models'
 import * as RPC from '@/orpc.client'
 import type { PublicSettings } from '@/systems/settings.server'
-import * as ReactRx from '@react-rxjs/core'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import { toStream } from 'zustand-rx'
@@ -15,8 +15,9 @@ export function getSettings() {
 	return PublicSettingsStore.getState()
 }
 
-// whether the given admin action is configured to require a reason (enforced server-side; used to gate web dialogs)
-export function useReasonRequired(action: AAR.AdminActionType): boolean {
+// whether the given admin action is configured to require a reason (enforced server-side; used to gate web dialogs).
+// warns aren't configurable here: they always require one.
+export function useReasonRequired(action: AAR.RequirableAdminActionType): boolean {
 	return ZusUtils.useStore(PublicSettingsStore, s => s?.requireReasonFor.includes(action) ?? false)
 }
 
@@ -39,8 +40,9 @@ export async function fetchSettings() {
 // the encoded (pre-decode) form, e.g. HumanTime fields as '5m' strings rather than milliseconds -- meant for display/editing.
 // the deny response is kept in the stream (not filtered) so the Suspense boundary always resolves; a denied user (e.g. after an
 // rbac change left their session with stale perms) is handled by the consumer instead of hanging forever.
-export const [useGlobalSettings, globalSettings$] = ReactRx.bind(
-	RPC.observe(() => RPC.orpc.settings.global.watchSettings.call()),
+export const [useGlobalSettings, globalSettings$] = RxHelpers.bind(
+	'settings.globalSettings',
+	RPC.observe('settings.global.watchSettings', () => RPC.orpc.settings.global.watchSettings.call()),
 )
 
 // per-server settings (EditSettingsStore) now live on the squadServer frame's server-settings partial, see @/frame-partials/server-settings.partial
@@ -48,7 +50,7 @@ export const [useGlobalSettings, globalSettings$] = ReactRx.bind(
 // ============================== setup ==============================
 
 export function setup() {
-	RPC.observe(() => RPC.orpc.settings.public.watchPublicSettings.call()).subscribe(settings => {
+	RPC.observe('settings.public.watchPublicSettings', () => RPC.orpc.settings.public.watchPublicSettings.call()).subscribe(settings => {
 		PublicSettingsStore.setState(settings)
 	})
 }

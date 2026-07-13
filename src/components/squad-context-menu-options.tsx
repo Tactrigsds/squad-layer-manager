@@ -16,7 +16,7 @@ import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 import React from 'react'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
-import { KickDialogContent, type MenuSlots } from './player-context-menu-options'
+import { type MenuSlots, TimeoutDialogContent } from './player-context-menu-options'
 import { ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger } from './ui/context-menu'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
 import { ReasonPicker, WarnReasonsSub } from './warn-reasons-sub'
@@ -42,20 +42,22 @@ export function SquadMenuItems(
 	const openDialog = useAlertDialog()
 	const closeDialog = useCloseAlertDialog()
 	const openOrFocusWindow = useOpenOrFocusWindow()
-	// holds the preset-reason pick in the disband/kill/kick dialogs; the alert dialog only resolves a button id and
-	// unmounts its content on confirm, so the pick is read from here
+	// holds the preset-reason pick in the disband/kill/kick/timeout dialogs; the alert dialog only resolves a button
+	// id and unmounts its content on confirm, so the pick is read from here
 	const presetReasonRef = React.useRef('')
 	const customReasonRef = React.useRef('')
-	const kickDurationRef = React.useRef('')
+	const timeoutDurationRef = React.useRef('')
 
 	const disbandReasonRequired = SettingsClient.useReasonRequired('disband-squad')
 	const killReasonRequired = SettingsClient.useReasonRequired('kill')
 	const kickReasonRequired = SettingsClient.useReasonRequired('kick')
+	const timeoutReasonRequired = SettingsClient.useReasonRequired('timeout')
 	const disbandSquadMutation = SquadServerClient.useDisbandSquadMutation()
 	const resetSquadNameMutation = SquadServerClient.useResetSquadNameMutation()
 	const warnPlayersMutation = SquadServerClient.useWarnPlayersMutation()
 	const killMutation = SquadServerClient.useKillMutation()
-	const kickMutation = TimeoutsClient.useKickPlayerMutation()
+	const kickMutation = SquadServerClient.useKickPlayersMutation()
+	const timeoutMutation = TimeoutsClient.useTimeoutPlayerMutation()
 	const maxTimeout = TimeoutsClient.useMaxTimeout()
 
 	// uniqueId isn't on the passed-in squad prop, so resolve it (and live membership) from chat state; it's
@@ -76,9 +78,10 @@ export function SquadMenuItems(
 	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canQueue(squadPlayerIds))
 	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
+	const kickDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:kick-players'))
 	// timeout grants are comparator-matched (see useMaxTimeout), so the denial is synthesized rather than
 	// coming from usePermsCheck
-	const kickDenied = maxTimeout === undefined
+	const timeoutDenied = maxTimeout === undefined
 		? RBAC.permissionDenied({ check: 'all', permits: [RBAC.perm('squad-server:timeout-players', { maxDurationMs: null })] })
 		: null
 
@@ -182,23 +185,17 @@ export function SquadMenuItems(
 
 	async function kickSquad() {
 		if (squadPlayerIds.length === 0) return
-		kickDurationRef.current = ''
 		customReasonRef.current = ''
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
 			const result = await openDialog({
 				title: 'Kick Squad',
 				variant: 'destructive',
-				description:
-					`Kick the ${squadPlayerIds.length} members of squad ${squadLabel}? They will be re-kicked on join from any SLM-managed server until the timeout expires.`,
+				description: `Kick the ${squadPlayerIds.length} members of squad ${squadLabel} from the server? They may rejoin immediately.`,
 				content: (
-					<KickDialogContent
-						durationRef={kickDurationRef}
-						customReasonRef={customReasonRef}
-						presetReasonRef={presetReasonRef}
-						maxTimeout={maxTimeout}
-						required={kickReasonRequired}
-					/>
+					<div className="grid gap-3 py-2">
+						<ReasonPicker action="kick" presetRef={presetReasonRef} customRef={customReasonRef} required={kickReasonRequired} />
+					</div>
 				),
 				buttons: [{ id: 'confirm', label: 'Kick' }],
 			})
@@ -210,10 +207,49 @@ export function SquadMenuItems(
 				customRef: customReasonRef,
 			})
 			if (!input) return
-			await TimeoutsClient.kickPlayers(kickMutation.mutateAsync, {
+			const res = await kickMutation.mutateAsync({ serverId, playerIds: squadPlayerIds, ...input })
+			if (res.code !== 'ok') {
+				toast.error('Kick failed', { description: 'msg' in res && res.msg ? res.msg : res.code })
+				return
+			}
+			toast(`Kicked squad ${squadLabel}`)
+		})
+	}
+
+	async function timeoutSquad() {
+		if (squadPlayerIds.length === 0) return
+		timeoutDurationRef.current = ''
+		customReasonRef.current = ''
+		presetReasonRef.current = ''
+		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
+			const result = await openDialog({
+				title: 'Timeout Squad',
+				variant: 'destructive',
+				description:
+					`Kick the ${squadPlayerIds.length} members of squad ${squadLabel}? They will be re-kicked on join from any SLM-managed server until the timeout expires.`,
+				content: (
+					<TimeoutDialogContent
+						durationRef={timeoutDurationRef}
+						customReasonRef={customReasonRef}
+						presetReasonRef={presetReasonRef}
+						maxTimeout={maxTimeout}
+						required={timeoutReasonRequired}
+					/>
+				),
+				buttons: [{ id: 'confirm', label: 'Timeout' }],
+			})
+			if (result !== 'confirm') return
+			const input = SquadServerClient.readReasonInput({
+				action: 'timeout',
+				required: timeoutReasonRequired,
+				presetRef: presetReasonRef,
+				customRef: customReasonRef,
+			})
+			if (!input) return
+			await TimeoutsClient.timeoutPlayers(timeoutMutation.mutateAsync, {
 				serverId,
 				playerIds: squadPlayerIds,
-				durationText: kickDurationRef.current,
+				durationText: timeoutDurationRef.current,
 				maxTimeout,
 				...input,
 			})
@@ -294,6 +330,15 @@ export function SquadMenuItems(
 					disabled={!!kickDenied || squadPlayerIds.length === 0}
 				>
 					Kick Squad
+				</Item>
+			</PermissionDeniedTooltip>
+			<PermissionDeniedTooltip denied={timeoutDenied}>
+				<Item
+					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
+					onClick={timeoutSquad}
+					disabled={!!timeoutDenied || squadPlayerIds.length === 0}
+				>
+					Timeout Squad
 				</Item>
 			</PermissionDeniedTooltip>
 			<Separator />

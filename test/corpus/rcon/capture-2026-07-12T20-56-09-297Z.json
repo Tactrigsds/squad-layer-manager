@@ -1,0 +1,543 @@
+{
+	"capturedAt": "2026-07-12T20:56:09.297Z",
+	"host": "203.0.113.1",
+	"note": "raw RCON capture for emulator corpus. See capture-rcon-corpus.ts",
+	"captures": [
+		{
+			"command": "ListPlayers",
+			"sentId": 20,
+			"packets": [
+				{
+					"direction": "received",
+					"time": 1783889766955,
+					"size": 255,
+					"id": 20,
+					"type": 0,
+					"body": "----- Active Players -----\nID: 0 | Online IDs: EOS: 000249a430574933aefd9bbc9a8f2f37 steam: 76561198052229202 | Name:  grey275 | Team ID: 2 | Squad ID: 1 | Is Leader: True | Role: PLA_Recruit\n----- Recently Disconnected Players [Max of 15] -----",
+					"hex": "ff00000014000000000000002d2d2d2d2d2041637469766520506c6179657273202d2d2d2d2d0a49443a2030207c204f6e6c696e65204944733a20454f533a20303030323439613433303537343933336165666439626263396138663266333720737465616d3a203736353631313938303532323239323032207c204e616d653a202067726579323735207c205465616d2049443a2032207c2053717561642049443a2031207c204973204c65616465723a2054727565207c20526f6c653a20504c415f526563727569740a2d2d2d2d2d20526563656e746c7920446973636f6e6e656374656420506c6179657273205b4d6178206f662031355d202d2d2d2d2d0000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889767067,
+					"size": 10,
+					"id": 22,
+					"type": 0,
+					"body": "",
+					"hex": "0a00000016000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889767067,
+					"size": 10,
+					"id": 22,
+					"type": 0,
+					"body": "",
+					"hex": "0a00000016000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889767067,
+					"size": 7,
+					"id": 0,
+					"type": 0,
+					"body": "",
+					"hex": "00010000000000",
+					"note": "SOH-7-byte-sequence"
+				}
+			],
+			"assembledBody": "----- Active Players -----\nID: 0 | Online IDs: EOS: 000249a430574933aefd9bbc9a8f2f37 steam: 76561198052229202 | Name:  grey275 | Team ID: 2 | Squad ID: 1 | Is Leader: True | Role: PLA_Recruit\n----- Recently Disconnected Players [Max of 15] -----",
+			"durationMs": 597
+		},
+		{
+			"command": "ListSquads",
+			"sentId": 24,
+			"packets": [
+				{
+					"direction": "received",
+					"time": 1783889767477,
+					"size": 279,
+					"id": 24,
+					"type": 0,
+					"body": "----- Active Squads -----\nTeam ID: 1 (205th Separate Motor Rifle Brigade)\nTeam ID: 2 (161st Air Assault Brigade)\nID: 1 | Name: A SQUAD | Size: 1 | Locked: False | Creator Name: grey275 | Creator Online IDs: EOS: 000249a430574933aefd9bbc9a8f2f37 steam: 76561198052229202",
+					"hex": "1701000018000000000000002d2d2d2d2d2041637469766520537175616473202d2d2d2d2d0a5465616d2049443a203120283230357468205365706172617465204d6f746f72205269666c652042726967616465290a5465616d2049443a203220283136317374204169722041737361756c742042726967616465290a49443a2031207c204e616d653a2041205351554144207c2053697a653a2031207c204c6f636b65643a2046616c7365207c2043726561746f72204e616d653a2067726579323735207c2043726561746f72204f6e6c696e65204944733a20454f533a20303030323439613433303537343933336165666439626263396138663266333720737465616d3a2037363536313139383035323232393230320000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889767551,
+					"size": 10,
+					"id": 26,
+					"type": 0,
+					"body": "",
+					"hex": "0a0000001a000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889767551,
+					"size": 10,
+					"id": 26,
+					"type": 0,
+					"body": "",
+					"hex": "0a0000001a000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889767551,
+					"size": 7,
+					"id": 0,
+					"type": 0,
+					"body": "",
+					"hex": "00010000000000",
+					"note": "SOH-7-byte-sequence"
+				}
+			],
+			"assembledBody": "----- Active Squads -----\nTeam ID: 1 (205th Separate Motor Rifle Brigade)\nTeam ID: 2 (161st Air Assault Brigade)\nID: 1 | Name: A SQUAD | Size: 1 | Locked: False | Creator Name: grey275 | Creator Online IDs: EOS: 000249a430574933aefd9bbc9a8f2f37 steam: 76561198052229202",
+			"durationMs": 483
+		},
+		{
+			"command": "ShowCommandInfo AdminRenameSquad",
+			"sentId": 28,
+			"packets": [
+				{
+					"direction": "received",
+					"time": 1783889767945,
+					"size": 100,
+					"id": 28,
+					"type": 0,
+					"body": "\nAdminRenameSquad <TeamNumber = [1|2]> <SquadIndex>\n\n         Renames the specified Squad\n",
+					"hex": "640000001c000000000000000a41646d696e52656e616d655371756164203c5465616d4e756d626572203d205b317c325d3e203c5371756164496e6465783e0a0a20202020202020202052656e616d657320746865207370656369666965642053717561640a0000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889768042,
+					"size": 10,
+					"id": 30,
+					"type": 0,
+					"body": "",
+					"hex": "0a0000001e000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889768042,
+					"size": 10,
+					"id": 30,
+					"type": 0,
+					"body": "",
+					"hex": "0a0000001e000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889768042,
+					"size": 7,
+					"id": 0,
+					"type": 0,
+					"body": "",
+					"hex": "00010000000000",
+					"note": "SOH-7-byte-sequence"
+				}
+			],
+			"assembledBody": "\nAdminRenameSquad <TeamNumber = [1|2]> <SquadIndex>\n\n         Renames the specified Squad\n",
+			"durationMs": 491
+		},
+		{
+			"command": "ShowCommandInfo AdminChangeLayer",
+			"sentId": 32,
+			"packets": [
+				{
+					"direction": "received",
+					"time": 1783889768433,
+					"size": 124,
+					"id": 32,
+					"type": 0,
+					"body": "\nAdminChangeLayer <LayerName Faction1+Type Faction2+Type>\n\n         Change the layer and travel to it immediately\n",
+					"hex": "7c00000020000000000000000a41646d696e4368616e67654c61796572203c4c617965724e616d652046616374696f6e312b547970652046616374696f6e322b547970653e0a0a2020202020202020204368616e676520746865206c6179657220616e642074726176656c20746f20697420696d6d6564696174656c790a0000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889768509,
+					"size": 10,
+					"id": 34,
+					"type": 0,
+					"body": "",
+					"hex": "0a00000022000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889768509,
+					"size": 10,
+					"id": 34,
+					"type": 0,
+					"body": "",
+					"hex": "0a00000022000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889768509,
+					"size": 7,
+					"id": 0,
+					"type": 0,
+					"body": "",
+					"hex": "00010000000000",
+					"note": "SOH-7-byte-sequence"
+				}
+			],
+			"assembledBody": "\nAdminChangeLayer <LayerName Faction1+Type Faction2+Type>\n\n         Change the layer and travel to it immediately\n",
+			"durationMs": 467
+		},
+		{
+			"command": "ShowCommandInfo AdminWarn",
+			"sentId": 36,
+			"packets": [
+				{
+					"direction": "received",
+					"time": 1783889768905,
+					"size": 110,
+					"id": 36,
+					"type": 0,
+					"body": "\nAdminWarn \"<NameOrEOSId>\" <WarnReason>\n\n         Warns a player from the server for being abusive.\n",
+					"hex": "6e00000024000000000000000a41646d696e5761726e20223c4e616d654f72454f5349643e22203c5761726e526561736f6e3e0a0a2020202020202020205761726e73206120706c617965722066726f6d207468652073657276657220666f72206265696e6720616275736976652e0a0000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889768996,
+					"size": 10,
+					"id": 38,
+					"type": 0,
+					"body": "",
+					"hex": "0a00000026000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889768996,
+					"size": 10,
+					"id": 38,
+					"type": 0,
+					"body": "",
+					"hex": "0a00000026000000000000000000"
+				},
+				{
+					"direction": "received",
+					"time": 1783889768996,
+					"size": 7,
+					"id": 0,
+					"type": 0,
+					"body": "",
+					"hex": "00010000000000",
+					"note": "SOH-7-byte-sequence"
+				}
+			],
+			"assembledBody": "\nAdminWarn \"<NameOrEOSId>\" <WarnReason>\n\n         Warns a player from the server for being abusive.\n",
+			"durationMs": 488
+		}
+	],
+	"serverPackets": [],
+	"sessionLog": [
+		{
+			"direction": "sent",
+			"time": 1783889766282,
+			"size": 29,
+			"id": 2147483647,
+			"type": 3,
+			"body": "<REDACTED>",
+			"hex": "19000000ffffff7f03000000<REDACTED>0000",
+			"note": "auth"
+		},
+		{
+			"direction": "received",
+			"time": 1783889766668,
+			"size": 10,
+			"id": 2147483647,
+			"type": 0,
+			"body": "",
+			"hex": "0a000000ffffff7f000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889766771,
+			"size": 10,
+			"id": 2147483647,
+			"type": 2,
+			"body": "",
+			"hex": "0a000000ffffff7f020000000000"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889766771,
+			"size": 25,
+			"id": 20,
+			"type": 2,
+			"body": "ListPlayers",
+			"hex": "1500000014000000020000004c697374506c61796572730000"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889766771,
+			"size": 14,
+			"id": 22,
+			"type": 2,
+			"body": "",
+			"hex": "0a00000016000000020000000000",
+			"note": "empty-probe"
+		},
+		{
+			"direction": "received",
+			"time": 1783889766955,
+			"size": 255,
+			"id": 20,
+			"type": 0,
+			"body": "----- Active Players -----\nID: 0 | Online IDs: EOS: 000249a430574933aefd9bbc9a8f2f37 steam: 76561198052229202 | Name:  grey275 | Team ID: 2 | Squad ID: 1 | Is Leader: True | Role: PLA_Recruit\n----- Recently Disconnected Players [Max of 15] -----",
+			"hex": "ff00000014000000000000002d2d2d2d2d2041637469766520506c6179657273202d2d2d2d2d0a49443a2030207c204f6e6c696e65204944733a20454f533a20303030323439613433303537343933336165666439626263396138663266333720737465616d3a203736353631313938303532323239323032207c204e616d653a202067726579323735207c205465616d2049443a2032207c2053717561642049443a2031207c204973204c65616465723a2054727565207c20526f6c653a20504c415f526563727569740a2d2d2d2d2d20526563656e746c7920446973636f6e6e656374656420506c6179657273205b4d6178206f662031355d202d2d2d2d2d0000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889767067,
+			"size": 10,
+			"id": 22,
+			"type": 0,
+			"body": "",
+			"hex": "0a00000016000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889767067,
+			"size": 10,
+			"id": 22,
+			"type": 0,
+			"body": "",
+			"hex": "0a00000016000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889767067,
+			"size": 7,
+			"id": 0,
+			"type": 0,
+			"body": "",
+			"hex": "00010000000000",
+			"note": "SOH-7-byte-sequence"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889767368,
+			"size": 24,
+			"id": 24,
+			"type": 2,
+			"body": "ListSquads",
+			"hex": "1400000018000000020000004c6973745371756164730000"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889767368,
+			"size": 14,
+			"id": 26,
+			"type": 2,
+			"body": "",
+			"hex": "0a0000001a000000020000000000",
+			"note": "empty-probe"
+		},
+		{
+			"direction": "received",
+			"time": 1783889767477,
+			"size": 279,
+			"id": 24,
+			"type": 0,
+			"body": "----- Active Squads -----\nTeam ID: 1 (205th Separate Motor Rifle Brigade)\nTeam ID: 2 (161st Air Assault Brigade)\nID: 1 | Name: A SQUAD | Size: 1 | Locked: False | Creator Name: grey275 | Creator Online IDs: EOS: 000249a430574933aefd9bbc9a8f2f37 steam: 76561198052229202",
+			"hex": "1701000018000000000000002d2d2d2d2d2041637469766520537175616473202d2d2d2d2d0a5465616d2049443a203120283230357468205365706172617465204d6f746f72205269666c652042726967616465290a5465616d2049443a203220283136317374204169722041737361756c742042726967616465290a49443a2031207c204e616d653a2041205351554144207c2053697a653a2031207c204c6f636b65643a2046616c7365207c2043726561746f72204e616d653a2067726579323735207c2043726561746f72204f6e6c696e65204944733a20454f533a20303030323439613433303537343933336165666439626263396138663266333720737465616d3a2037363536313139383035323232393230320000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889767551,
+			"size": 10,
+			"id": 26,
+			"type": 0,
+			"body": "",
+			"hex": "0a0000001a000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889767551,
+			"size": 10,
+			"id": 26,
+			"type": 0,
+			"body": "",
+			"hex": "0a0000001a000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889767551,
+			"size": 7,
+			"id": 0,
+			"type": 0,
+			"body": "",
+			"hex": "00010000000000",
+			"note": "SOH-7-byte-sequence"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889767851,
+			"size": 46,
+			"id": 28,
+			"type": 2,
+			"body": "ShowCommandInfo AdminRenameSquad",
+			"hex": "2a0000001c0000000200000053686f77436f6d6d616e64496e666f2041646d696e52656e616d6553717561640000"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889767851,
+			"size": 14,
+			"id": 30,
+			"type": 2,
+			"body": "",
+			"hex": "0a0000001e000000020000000000",
+			"note": "empty-probe"
+		},
+		{
+			"direction": "received",
+			"time": 1783889767945,
+			"size": 100,
+			"id": 28,
+			"type": 0,
+			"body": "\nAdminRenameSquad <TeamNumber = [1|2]> <SquadIndex>\n\n         Renames the specified Squad\n",
+			"hex": "640000001c000000000000000a41646d696e52656e616d655371756164203c5465616d4e756d626572203d205b317c325d3e203c5371756164496e6465783e0a0a20202020202020202052656e616d657320746865207370656369666965642053717561640a0000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889768042,
+			"size": 10,
+			"id": 30,
+			"type": 0,
+			"body": "",
+			"hex": "0a0000001e000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889768042,
+			"size": 10,
+			"id": 30,
+			"type": 0,
+			"body": "",
+			"hex": "0a0000001e000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889768042,
+			"size": 7,
+			"id": 0,
+			"type": 0,
+			"body": "",
+			"hex": "00010000000000",
+			"note": "SOH-7-byte-sequence"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889768342,
+			"size": 46,
+			"id": 32,
+			"type": 2,
+			"body": "ShowCommandInfo AdminChangeLayer",
+			"hex": "2a000000200000000200000053686f77436f6d6d616e64496e666f2041646d696e4368616e67654c617965720000"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889768342,
+			"size": 14,
+			"id": 34,
+			"type": 2,
+			"body": "",
+			"hex": "0a00000022000000020000000000",
+			"note": "empty-probe"
+		},
+		{
+			"direction": "received",
+			"time": 1783889768433,
+			"size": 124,
+			"id": 32,
+			"type": 0,
+			"body": "\nAdminChangeLayer <LayerName Faction1+Type Faction2+Type>\n\n         Change the layer and travel to it immediately\n",
+			"hex": "7c00000020000000000000000a41646d696e4368616e67654c61796572203c4c617965724e616d652046616374696f6e312b547970652046616374696f6e322b547970653e0a0a2020202020202020204368616e676520746865206c6179657220616e642074726176656c20746f20697420696d6d6564696174656c790a0000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889768509,
+			"size": 10,
+			"id": 34,
+			"type": 0,
+			"body": "",
+			"hex": "0a00000022000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889768509,
+			"size": 10,
+			"id": 34,
+			"type": 0,
+			"body": "",
+			"hex": "0a00000022000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889768509,
+			"size": 7,
+			"id": 0,
+			"type": 0,
+			"body": "",
+			"hex": "00010000000000",
+			"note": "SOH-7-byte-sequence"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889768809,
+			"size": 39,
+			"id": 36,
+			"type": 2,
+			"body": "ShowCommandInfo AdminWarn",
+			"hex": "23000000240000000200000053686f77436f6d6d616e64496e666f2041646d696e5761726e0000"
+		},
+		{
+			"direction": "sent",
+			"time": 1783889768809,
+			"size": 14,
+			"id": 38,
+			"type": 2,
+			"body": "",
+			"hex": "0a00000026000000020000000000",
+			"note": "empty-probe"
+		},
+		{
+			"direction": "received",
+			"time": 1783889768905,
+			"size": 110,
+			"id": 36,
+			"type": 0,
+			"body": "\nAdminWarn \"<NameOrEOSId>\" <WarnReason>\n\n         Warns a player from the server for being abusive.\n",
+			"hex": "6e00000024000000000000000a41646d696e5761726e20223c4e616d654f72454f5349643e22203c5761726e526561736f6e3e0a0a2020202020202020205761726e73206120706c617965722066726f6d207468652073657276657220666f72206265696e6720616275736976652e0a0000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889768996,
+			"size": 10,
+			"id": 38,
+			"type": 0,
+			"body": "",
+			"hex": "0a00000026000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889768996,
+			"size": 10,
+			"id": 38,
+			"type": 0,
+			"body": "",
+			"hex": "0a00000026000000000000000000"
+		},
+		{
+			"direction": "received",
+			"time": 1783889768996,
+			"size": 7,
+			"id": 0,
+			"type": 0,
+			"body": "",
+			"hex": "00010000000000",
+			"note": "SOH-7-byte-sequence"
+		}
+	]
+}

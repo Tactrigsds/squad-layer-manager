@@ -121,8 +121,12 @@ export const PERMISSION_DEFINITION = {
 	}),
 	...definePermission('squad-server:warn-players', { description: 'Send in-game warnings to players', scope: 'global' }),
 	...definePermission('squad-server:broadcast', { description: 'Send server-wide broadcast messages', scope: 'global' }),
+	...definePermission('squad-server:kick-players', {
+		description: 'Kick players from the server (no timeout; they may rejoin immediately)',
+		scope: 'global',
+	}),
 	...definePermission('squad-server:timeout-players', {
-		description: 'Kick players with a timeout, up to the granted maximum duration',
+		description: 'Kick players with a timeout barring them from rejoining, up to the granted maximum duration',
 		scope: 'timeout',
 	}),
 

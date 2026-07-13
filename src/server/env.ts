@@ -57,6 +57,9 @@ export const groups = {
 
 	//
 	discord: {
+		// disables the discord integration entirely (no bot login, no guild fetches). Intended for
+		// integration-test/emulator environments; the other DISCORD_* vars still need (dummy) values.
+		DISCORD_ENABLED: z.stringbool().default(true),
 		DISCORD_CLIENT_ID: z.string().min(1),
 		DISCORD_CLIENT_SECRET: z.string().min(1),
 		DISCORD_BOT_TOKEN: z.string().min(1),

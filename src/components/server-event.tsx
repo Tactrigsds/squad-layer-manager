@@ -680,9 +680,9 @@ function AppEventEntry(
 		const target = event.targetPlayers[0]
 		return (
 			<EventLine time={event.time} icon={<Icons.UserX className="h-4 w-4 text-red-500 shrink-0" />}>
-				{actorLabel} kicked {target && matchId !== null
+				{actorLabel} timed out {target && matchId !== null
 					? <PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} />
-					: 'a player'} with a {formatHumanTime(appEvent.durationMs)} timeout
+					: 'a player'} for {formatHumanTime(appEvent.durationMs)}
 				{appEvent.reason?.label ? ` for ${appEvent.reason.label}` : ''}
 			</EventLine>
 		)
@@ -838,7 +838,7 @@ function AppEventEntry(
 		)
 	}
 
-	// PLAYER_REMOVED_FROM_SQUAD / TEAM_CHANGE_FORCED / PLAYER_KILLED: "{actor} {verb} {targets}{suffix}"
+	// PLAYER_REMOVED_FROM_SQUAD / TEAM_CHANGE_FORCED / PLAYER_KILLED / PLAYER_KICKED: "{actor} {verb} {targets}{suffix}"
 	const count = appEvent.targets.length
 	const plural = count === 1 ? 'player' : 'players'
 	let verb: string
@@ -848,6 +848,10 @@ function AppEventEntry(
 		verb = 'removed'
 		icon = <Icons.UserMinus className="h-4 w-4 text-orange-500 shrink-0" />
 		suffix = appEvent.reason?.label ? ` from their squad for ${appEvent.reason.label}` : ' from their squad'
+	} else if (appEvent.type === 'PLAYER_KICKED') {
+		verb = 'kicked'
+		icon = <Icons.UserX className="h-4 w-4 text-red-500 shrink-0" />
+		suffix = appEvent.reason?.label ? ` for ${appEvent.reason.label}` : null
 	} else if (appEvent.type === 'PLAYER_KILLED') {
 		verb = 'killed'
 		icon = <Icons.Skull className="h-4 w-4 text-red-500 shrink-0" />

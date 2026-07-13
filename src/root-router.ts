@@ -1,3 +1,4 @@
+import { RouteErrorComponent, RoutePendingComponent } from '@/components/state-boundary'
 import * as TSR from '@tanstack/react-router'
 import * as Rx from 'rxjs'
 import { routeTree } from './routeTree.gen.ts'
@@ -16,6 +17,10 @@ export const rootRouter = TSR.createRouter({
 	// the settings page manages hash scrolling itself (custom scroll container + sticky-header offset, see settings-nav.ts),
 	// so disable the router's native hash scroll which would otherwise fight it on load
 	defaultHashScrollIntoView: false,
+	// a pending component is what makes TanStack wrap each match in its own Suspense boundary; without one, a
+	// component suspending on a StateObservable takes the whole app down to the root boundary
+	defaultPendingComponent: RoutePendingComponent,
+	defaultErrorComponent: RouteErrorComponent,
 })
 
 export const newRoute$ = new Rx.Observable<string>(observer => {

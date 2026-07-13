@@ -1,4 +1,5 @@
 import * as MapUtils from '@/lib/map'
+import * as RxHelpers from '@/lib/react-rxjs-helpers'
 import * as ConfigClient from '@/systems/config.client'
 
 import { assertNever } from '@/lib/type-guards'
@@ -57,7 +58,7 @@ export const filterEntityChanged$ = new Rx.Subject<void>()
 const [initialized$, setInitialized] = createSignal<true>()
 
 export const filterMutation$ = new Rx.Observable<USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>>((s) => {
-	const promise = RPC.observe(() => RPC.orpc.filters.watchFilters.call()).subscribe(
+	const promise = RPC.observe('filters.watchFilters', () => RPC.orpc.filters.watchFilters.call()).subscribe(
 		(_output) => {
 			const output = PartsSys.stripParts(_output) as FilterEntityChange
 			switch (output.code) {
@@ -98,7 +99,7 @@ export const filterMutation$ = new Rx.Observable<USR.UserEntityMutation<F.Filter
 export function setup() {
 	filterMutation$.subscribe()
 	filterEntities$.subscribe()
-	initializedFilterEntities$().subscribe()
+	initializedFilterEntities$().pipe(RxHelpers.retryHot()).subscribe()
 }
 
 export const [useFilterEntities, filterEntities$] = ReactRx.bind(
@@ -106,7 +107,8 @@ export const [useFilterEntities, filterEntities$] = ReactRx.bind(
 	filterEntities,
 )
 
-export const [useInitializedFilterEntities, initializedFilterEntities$] = ReactRx.bind(
+export const [useInitializedFilterEntities, initializedFilterEntities$] = RxHelpers.bind(
+	'filterEntity.initializedFilterEntities',
 	() => initialized$.pipe(Rx.map(() => filterEntities)),
 )
 

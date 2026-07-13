@@ -28,10 +28,10 @@
 /logs
 *.log
 
-# Test files
-*.test.ts
-*.test.js
-/vitest.config.*
+# Test files: the `test` stage needs these (they never reach the production stages, which copy only
+# build output), so only the artifacts that must stay out are excluded
+/test-results
+/playwright-report
 
 # Documentation
 /README.md

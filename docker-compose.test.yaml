@@ -1,0 +1,20 @@
+# Runs the integration and e2e suites the way CI does: inside the production image, plus the test
+# machinery (see the Dockerfile's `test` stage).
+#
+#   docker compose -f docker-compose.test.yaml run --rm --build tests
+#
+# The layer db is not in the image -- production doesn't bake it in either -- so ./data is mounted,
+# exactly as the deployment mounts /app/data. Failure artifacts (traces, screenshots) land in
+# ./test-results.
+services:
+  tests:
+    build:
+      context: .
+      target: test
+    environment:
+      # chromium's sandbox needs privileges the container doesn't have; the container is the boundary
+      CI: "true"
+      LAYERS_VERSION: "${LAYERS_VERSION:-@latest}"
+    volumes:
+      - ./data:/app/data:ro
+      - ./test-results:/app/test-results

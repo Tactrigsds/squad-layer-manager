@@ -17,6 +17,10 @@ import { StickyGroup } from './sticky-group.tsx'
 import TeamsPanel from './teams-panel.tsx'
 import UserPresencePanel, { sortEditingPresence } from './user-presence-panel.tsx'
 
+// stable ids so each tab and its panel can point at each other (aria-controls / aria-labelledby)
+const tabId = (value: string) => `primary-panel-tab-${value}`
+const tabPanelId = (value: string) => `primary-panel-panel-${value}`
+
 function TabBar<T extends string>({
 	tabs,
 	value,
@@ -31,11 +35,23 @@ function TabBar<T extends string>({
 	ref?: React.RefObject<HTMLDivElement>
 }) {
 	return (
-		<div ref={ref} className={cn('grid divide-x', className)} style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)` }}>
+		<div
+			ref={ref}
+			role="tablist"
+			className={cn('grid divide-x', className)}
+			style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)` }}
+		>
 			{tabs.map(tab => (
 				<button
 					key={tab.value}
 					type="button"
+					role="tab"
+					id={tabId(tab.value)}
+					aria-selected={value === tab.value}
+					aria-controls={tabPanelId(tab.value)}
+					// only the active tab is in the tab order; arrow keys are the expected way to move between
+					// tabs, and roving tabindex is what tells assistive tech that
+					tabIndex={value === tab.value ? 0 : -1}
 					className={cn(
 						'py-2 px-4 text-sm font-medium transition-colors',
 						value === tab.value
@@ -124,11 +140,28 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 				</div>
 				<StickyGroup stickyRef={headerRef}>
 					<div className="grid">
-						<div className={cn('[grid-area:1/1]', tab !== 'queue' && 'invisible -z-20')}>
+						{
+							/* both panels stay mounted (they hold live state) and share one grid cell. `inert` takes the
+						    inactive one out of the a11y tree and the tab order while leaving that layout intact --
+						    `invisible` alone does neither, so its buttons stayed focusable */
+						}
+						<div
+							role="tabpanel"
+							id={tabPanelId('queue')}
+							aria-labelledby={tabId('queue')}
+							inert={tab !== 'queue'}
+							className={cn('[grid-area:1/1]', tab !== 'queue' && 'invisible -z-20')}
+						>
 							<SlmUpdatesDisabledAlert stores={props.stores} />
 							<QueuePanelContent stores={props.stores} />
 						</div>
-						<div className={cn('[grid-area:1/1]', tab !== 'teams' && 'invisible -z-20')}>
+						<div
+							role="tabpanel"
+							id={tabPanelId('teams')}
+							aria-labelledby={tabId('teams')}
+							inert={tab !== 'teams'}
+							className={cn('[grid-area:1/1]', tab !== 'teams' && 'invisible -z-20')}
+						>
 							<TeamsPanel stores={props.stores} />
 						</div>
 					</div>

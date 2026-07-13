@@ -68,9 +68,10 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	const squadServerFrameKey = stores.squadServer
 	const serverId = squadServerFrameKey.serverId
-	const { data } = useQuery(
-		RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { serverId, playerId } }),
-	)
+	const { data } = useQuery({
+		...RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { serverId, playerId } }),
+		select: RPC.selectLoaded,
+	})
 	const eventsQuery = useInfiniteQuery(playerEventsInfiniteOptions(serverId, playerId))
 	const { data: bmData } = useQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId }, staleTime: Infinity }))
 	const orgFlags = useOrgFlags()
@@ -91,7 +92,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	)
 
 	// pages arrive most-recent-match first; reverse to interleave chronologically ahead of the live current-match events
-	const historicalEvents = (eventsQuery.data?.pages ?? []).slice().reverse().flatMap(p => p.events)
+	const historicalEvents = (eventsQuery.data?.pages ?? []).slice().reverse().flatMap(p => RPC.selectLoaded(p)?.events ?? [])
 	const allEvents = [...historicalEvents, ...currentMatchEvents]
 	const livePlayer = ZusUtils.useStore(
 		squadServerFrameKey,
@@ -337,7 +338,7 @@ function playerEventsInfiniteOptions(serverId: string, playerId: string) {
 	return RPC.orpc.matchHistory.getPlayerEvents.infiniteOptions({
 		input: (cursor: number | undefined) => ({ serverId, playerId, cursor }),
 		initialPageParam: undefined as number | undefined,
-		getNextPageParam: (lastPage) => lastPage.nextCursor,
+		getNextPageParam: (lastPage) => RPC.selectLoaded(lastPage)?.nextCursor,
 	})
 }
 

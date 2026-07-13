@@ -31,7 +31,7 @@ export namespace Actions {
 }
 
 export const [usePlayerBmData, playerBmData$] = ReactRx.bind<BM.PublicPlayerBmData>(
-	RPC.observe(() => RPC.orpc.battlemetrics.watchPlayerBmData.call()).pipe(
+	RPC.observe('battlemetrics.watchPlayerBmData', () => RPC.orpc.battlemetrics.watchPlayerBmData.call()).pipe(
 		Rx.scan((acc, update) => ({ ...acc, [update.playerId]: update.data }), {} as BM.PublicPlayerBmData),
 	),
 	{},
@@ -119,7 +119,7 @@ export function useGroupedPlayerFlagColor(playerId: string): string | null {
 export function setup() {
 	playerBmData$.subscribe()
 
-	RPC.observe(() => RPC.orpc.battlemetrics.watchPlayerBmData.call()).subscribe((update) => {
+	RPC.observe('battlemetrics.watchPlayerBmData', () => RPC.orpc.battlemetrics.watchPlayerBmData.call()).subscribe((update) => {
 		RPC.queryClient.setQueryData(
 			RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId: update.playerId }, staleTime: Infinity }).queryKey,
 			update.data,

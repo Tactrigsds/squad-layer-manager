@@ -147,10 +147,10 @@ export function PlayerCopyIdsSub(
 	)
 }
 
-// the Kick dialog body: the timeout input is kept in state (in addition to the ref the confirm handler reads) so the
-// ReasonPicker's message preview can resolve {{duration}} live as the admin types. Shared with the bulk and squad
-// kick dialogs.
-export function KickDialogContent(
+// the Timeout dialog body: the duration input is kept in state (in addition to the ref the confirm handler reads) so
+// the ReasonPicker's message preview can resolve {{duration}} live as the admin types. Shared with the bulk and squad
+// timeout dialogs.
+export function TimeoutDialogContent(
 	{ durationRef, customReasonRef, presetReasonRef, maxTimeout, required }: {
 		durationRef: React.MutableRefObject<string>
 		customReasonRef: React.MutableRefObject<string>
@@ -164,9 +164,9 @@ export function KickDialogContent(
 	return (
 		<div className="grid gap-3 py-2">
 			<div className="grid gap-2">
-				<Label htmlFor="kick-duration">Timeout duration</Label>
+				<Label htmlFor="timeout-duration">Timeout duration</Label>
 				<Input
-					id="kick-duration"
+					id="timeout-duration"
 					autoComplete="off"
 					placeholder={maxTimeout == null ? 'e.g. 30m, 2h, 1d' : `e.g. 30m, 2h (max ${ZodLib.formatHumanTime(maxTimeout)})`}
 					defaultValue={durationRef.current}
@@ -176,7 +176,13 @@ export function KickDialogContent(
 					}}
 				/>
 			</div>
-			<ReasonPicker action="kick" presetRef={presetReasonRef} customRef={customReasonRef} required={required} durationMs={durationMs} />
+			<ReasonPicker
+				action="timeout"
+				presetRef={presetReasonRef}
+				customRef={customReasonRef}
+				required={required}
+				durationMs={durationMs}
+			/>
 		</div>
 	)
 }
@@ -194,18 +200,20 @@ export function PlayerMenuItems(
 	const openDialog = useAlertDialog()
 	const closeDialog = useCloseAlertDialog()
 	const openOrFocusWindow = useOpenOrFocusWindow()
-	// holds the latest custom-reason input value (kill + kick dialogs); the alert dialog only resolves a button
-	// id, so we read the reason from here rather than the (unmounting) DOM input when the dialog confirms
+	// holds the latest custom-reason input value (kill + kick + timeout dialogs); the alert dialog only resolves a
+	// button id, so we read the reason from here rather than the (unmounting) DOM input when the dialog confirms
 	const customReasonRef = React.useRef('')
 	// same mechanism for the preset-reason pick in the action confirmation dialogs; reset on each dialog open
 	const presetReasonRef = React.useRef('')
-	const kickDurationRef = React.useRef('')
+	const timeoutDurationRef = React.useRef('')
 
 	const warnPlayersMutation = SquadServerClient.useWarnPlayersMutation()
-	const kickMutation = TimeoutsClient.useKickPlayerMutation()
+	const kickMutation = SquadServerClient.useKickPlayersMutation()
+	const timeoutMutation = TimeoutsClient.useTimeoutPlayerMutation()
 	const maxTimeout = TimeoutsClient.useMaxTimeout()
 	const killReasonRequired = SettingsClient.useReasonRequired('kill')
 	const kickReasonRequired = SettingsClient.useReasonRequired('kick')
+	const timeoutReasonRequired = SettingsClient.useReasonRequired('timeout')
 	const removeReasonRequired = SettingsClient.useReasonRequired('remove-from-squad')
 	const disbandReasonRequired = SettingsClient.useReasonRequired('disband-squad')
 	const demoteReasonRequired = SettingsClient.useReasonRequired('demote-commander')
@@ -281,9 +289,10 @@ export function PlayerMenuItems(
 
 	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
+	const kickDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:kick-players'))
 	// timeout grants are comparator-matched (see useMaxTimeout), so the denial is synthesized rather than
 	// coming from usePermsCheck
-	const kickDenied = maxTimeout === undefined
+	const timeoutDenied = maxTimeout === undefined
 		? RBAC.permissionDenied({ check: 'all', permits: [RBAC.perm('squad-server:timeout-players', { maxDurationMs: null })] })
 		: null
 
@@ -349,29 +358,61 @@ export function PlayerMenuItems(
 	}
 
 	async function kick() {
-		kickDurationRef.current = ''
 		customReasonRef.current = ''
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
 			const result = await openDialog({
 				title: 'Kick Player',
 				variant: 'destructive',
-				description: `Kick ${
-					playerInfo?.username ?? 'this player'
-				}? They will be re-kicked on join from any SLM-managed server until the timeout expires.`,
+				description: `Kick ${playerInfo?.username ?? 'this player'} from the server? They may rejoin immediately.`,
 				content: (
-					<KickDialogContent
-						durationRef={kickDurationRef}
-						customReasonRef={customReasonRef}
-						presetReasonRef={presetReasonRef}
-						maxTimeout={maxTimeout}
-						required={kickReasonRequired}
-					/>
+					<div className="grid gap-3 py-2">
+						<ReasonPicker action="kick" presetRef={presetReasonRef} customRef={customReasonRef} required={kickReasonRequired} />
+					</div>
 				),
 				buttons: [{ id: 'confirm', label: 'Kick' }],
 			})
 			if (result !== 'confirm') return
-			const durationMs = ZodLib.tryParseHumanTimeToken(kickDurationRef.current.trim())
+			const input = SquadServerClient.readReasonInput({
+				action: 'kick',
+				required: kickReasonRequired,
+				presetRef: presetReasonRef,
+				customRef: customReasonRef,
+			})
+			if (!input) return
+			const res = await kickMutation.mutateAsync({ serverId, playerIds: [playerId], ...input })
+			if (res.code !== 'ok') {
+				toast.error('Kick failed', { description: 'msg' in res && res.msg ? res.msg : res.code })
+				return
+			}
+			toast(`Kicked ${playerInfo?.username ?? 'player'}`)
+		})
+	}
+
+	async function timeout() {
+		timeoutDurationRef.current = ''
+		customReasonRef.current = ''
+		presetReasonRef.current = ''
+		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
+			const result = await openDialog({
+				title: 'Timeout Player',
+				variant: 'destructive',
+				description: `Kick ${
+					playerInfo?.username ?? 'this player'
+				}? They will be re-kicked on join from any SLM-managed server until the timeout expires.`,
+				content: (
+					<TimeoutDialogContent
+						durationRef={timeoutDurationRef}
+						customReasonRef={customReasonRef}
+						presetReasonRef={presetReasonRef}
+						maxTimeout={maxTimeout}
+						required={timeoutReasonRequired}
+					/>
+				),
+				buttons: [{ id: 'confirm', label: 'Timeout' }],
+			})
+			if (result !== 'confirm') return
+			const durationMs = ZodLib.tryParseHumanTimeToken(timeoutDurationRef.current.trim())
 			if (durationMs === undefined) {
 				toast.error('Invalid duration', { description: 'Use a duration like 30m, 2h or 1d' })
 				return
@@ -381,18 +422,18 @@ export function PlayerMenuItems(
 				return
 			}
 			const input = SquadServerClient.readReasonInput({
-				action: 'kick',
-				required: kickReasonRequired,
+				action: 'timeout',
+				required: timeoutReasonRequired,
 				presetRef: presetReasonRef,
 				customRef: customReasonRef,
 			})
 			if (!input) return
-			const res = await kickMutation.mutateAsync({ serverId, playerId, durationMs, ...input })
+			const res = await timeoutMutation.mutateAsync({ serverId, playerId, durationMs, ...input })
 			if (res.code !== 'ok') {
-				toast.error('Kick failed', { description: 'msg' in res && res.msg ? res.msg : res.code })
+				toast.error('Timeout failed', { description: 'msg' in res && res.msg ? res.msg : res.code })
 				return
 			}
-			toast(`Kicked ${playerInfo?.username ?? 'player'} with a ${ZodLib.formatHumanTime(durationMs)} timeout`)
+			toast(`Timed out ${playerInfo?.username ?? 'player'} for ${ZodLib.formatHumanTime(durationMs)}`)
 		})
 	}
 
@@ -631,6 +672,15 @@ export function PlayerMenuItems(
 					disabled={!!kickDenied || !isOnServer}
 				>
 					Kick
+				</Item>
+			</PermissionDeniedTooltip>
+			<PermissionDeniedTooltip denied={timeoutDenied}>
+				<Item
+					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
+					onClick={timeout}
+					disabled={!!timeoutDenied || !isOnServer}
+				>
+					Timeout
 				</Item>
 			</PermissionDeniedTooltip>
 			<Separator />

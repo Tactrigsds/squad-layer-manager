@@ -372,6 +372,9 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 										<Button
 											size="icon"
 											variant={forceSave ? 'destructive' : 'secondary'}
+											// icon-only, so it needs a name of its own: the tooltip is not one
+											aria-label="Toggle force save"
+											aria-pressed={forceSave}
 											onClick={() => setForceSave(!forceSave)}
 										>
 											<Icons.Sword />

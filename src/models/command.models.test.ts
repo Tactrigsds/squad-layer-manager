@@ -9,7 +9,7 @@ const preds = (opts: { teams?: string[]; presets?: string[] }): CMD.AssignPredic
 })
 
 function reason(label: string, opts: Partial<AAR.AdminActionReason> = {}): AAR.AdminActionReason {
-	return { label, message: `${label} message`, aliases: [], actionTexts: {}, ...opts }
+	return { label, aliases: [], actionTexts: { warn: `${label} warn text` }, ...opts }
 }
 
 describe('assignArgTokens', () => {
@@ -53,19 +53,15 @@ describe('assignArgTokens', () => {
 			expect(CMD.assignArgTokens(disbandArgs, ['2', 'afq'], p)).toEqual({ code: 'ok', windows: { squad: ['2'], reason: ['afq'] } })
 		})
 
-		it('kicksquad (squad + duration + reason) keeps the duration out of the squad window', () => {
-			const kickSquadArgs = [
-				{ kind: 'squad', name: 'squad' },
-				{ kind: 'duration', name: 'duration' },
-				{ kind: 'reason', name: 'reason', action: 'kick', optional: true },
-			] as const
+		it('timeoutsquad (squad + duration + reason) keeps the duration out of the squad window', () => {
+			const timeoutSquadArgs = CMD.COMMAND_DECLARATIONS.timeoutSquad.args
 			// a lone squad number + duration: "2" is the squad on the caller's team, "2h" is the duration
-			expect(CMD.assignArgTokens(kickSquadArgs, ['2', '2h', 'tk'], p)).toEqual({
+			expect(CMD.assignArgTokens(timeoutSquadArgs, ['2', '2h', 'tk'], p)).toEqual({
 				code: 'ok',
 				windows: { squad: ['2'], duration: ['2h'], reason: ['tk'] },
 			})
 			// explicit team + squad + duration + reason
-			expect(CMD.assignArgTokens(kickSquadArgs, ['2', '3', '2h', 'stop', 'it'], p)).toEqual({
+			expect(CMD.assignArgTokens(timeoutSquadArgs, ['2', '3', '2h', 'stop', 'it'], p)).toEqual({
 				code: 'ok',
 				windows: { squad: ['2', '3'], duration: ['2h'], reason: ['stop', 'it'] },
 			})
@@ -119,32 +115,45 @@ describe('resolveDurationArg', () => {
 	})
 })
 
-describe('kick arg windows', () => {
+describe('kick and timeout arg windows', () => {
 	const kickArgs = CMD.COMMAND_DECLARATIONS.kick.args
+	const timeoutArgs = CMD.COMMAND_DECLARATIONS.timeout.args
 
-	it('splits player, duration and reason tail', () => {
-		expect(CMD.assignArgTokens(kickArgs, ['bob', '2h', 'tk'], noPreds)).toEqual({
+	it('a kick takes no duration: everything after the player is the reason', () => {
+		expect(CMD.assignArgTokens(kickArgs, ['bob', 'stop', 'that'], noPreds)).toEqual({
+			code: 'ok',
+			windows: { player: ['bob'], reason: ['stop', 'that'] },
+		})
+		expect(CMD.assignArgTokens(kickArgs, ['bob'], noPreds)).toEqual({
+			code: 'ok',
+			windows: { player: ['bob'], reason: undefined },
+		})
+		expect(CMD.assignArgTokens(kickArgs, [], noPreds)).toEqual({ code: 'err:missing-arg', argName: 'player' })
+	})
+
+	it('a timeout splits player, duration and reason tail', () => {
+		expect(CMD.assignArgTokens(timeoutArgs, ['bob', '2h', 'tk'], noPreds)).toEqual({
 			code: 'ok',
 			windows: { player: ['bob'], duration: ['2h'], reason: ['tk'] },
 		})
-		expect(CMD.assignArgTokens(kickArgs, ['bob', '2h', 'stop', 'that'], noPreds)).toEqual({
+		expect(CMD.assignArgTokens(timeoutArgs, ['bob', '2h', 'stop', 'that'], noPreds)).toEqual({
 			code: 'ok',
 			windows: { player: ['bob'], duration: ['2h'], reason: ['stop', 'that'] },
 		})
 	})
 
-	it('reason is optional but player and duration are required', () => {
-		expect(CMD.assignArgTokens(kickArgs, ['bob', '2h'], noPreds)).toEqual({
+	it('a timeout reason is optional but its player and duration are required', () => {
+		expect(CMD.assignArgTokens(timeoutArgs, ['bob', '2h'], noPreds)).toEqual({
 			code: 'ok',
 			windows: { player: ['bob'], duration: ['2h'], reason: undefined },
 		})
-		expect(CMD.assignArgTokens(kickArgs, ['bob'], noPreds)).toEqual({ code: 'err:missing-arg', argName: 'duration' })
+		expect(CMD.assignArgTokens(timeoutArgs, ['bob'], noPreds)).toEqual({ code: 'err:missing-arg', argName: 'duration' })
 	})
 })
 
 describe('resolveReasonArg', () => {
 	const reasons = [
-		reason('Teamkilling', { aliases: ['tk'], actionTexts: { kick: 'tk kick text' } }),
+		reason('Teamkilling', { aliases: ['tk'], actionTexts: { warn: 'tk warn text', kick: 'tk kick text' } }),
 		reason('AFK'),
 	]
 

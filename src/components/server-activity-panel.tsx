@@ -205,7 +205,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 		queryKey: [...RPC.orpc.matchHistory.getMatchEvents.key(), selectedMatchOrdinal],
 		queryFn: async () => {
 			if (selectedMatchOrdinal === null) return null
-			return RPC.orpc.matchHistory.getMatchEvents.call({ serverId, ordinal: selectedMatchOrdinal })
+			return RPC.selectLoaded(await RPC.orpc.matchHistory.getMatchEvents.call({ serverId, ordinal: selectedMatchOrdinal })) ?? null
 		},
 		enabled: selectedMatchOrdinal !== null && selectedMatchOrdinal !== undefined,
 		staleTime: Infinity,
@@ -358,10 +358,12 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 	)
 
 	return (
-		<Card className="flex flex-col h-full min-h-0 w-full">
+		// a labelled region so the feed is a landmark users (and tests) can jump to, rather than an
+		// anonymous div that only reads as a pile of text
+		<Card role="region" aria-labelledby="server-activity-title" className="flex flex-col h-full min-h-0 w-full">
 			<CardHeader className="flex flex-row justify-between flex-shrink-0 items-center pb-3">
 				<div className="flex items-center gap-4">
-					<CardTitle className="flex items-center gap-2">
+					<CardTitle id="server-activity-title" className="flex items-center gap-2">
 						<Icons.Server className="h-5 w-5" />
 						Server Activity
 					</CardTitle>

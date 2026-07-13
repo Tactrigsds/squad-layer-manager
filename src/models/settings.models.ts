@@ -137,14 +137,14 @@ export const GlobalSettingsSchema = z.object({
 		'Prefix applied to admin-directed warns (admin notifications and in-game command feedback). Never applied to warns delivered to affected players.',
 	),
 	adminActionReasons: AAR.AdminActionReasonsSchema.describe(
-		'Preset reasons admins can pick when performing actions against players. Each reason has a warn text and separate text per action it applies to; a reason is available for an action only if it has text for that action. Text is sent verbatim to the affected player(s) in-game and supports {{variables}}. '
-			+ 'Available: {{label}}, {{duration}} (kicks only), plus any Message Variables below.',
+		'Preset reasons admins can pick when performing actions against players. Each reason carries separate text per action it applies to, and is available for an action only if it has text for that action (so every reason needs at least one action text). Text is sent verbatim to the affected player(s) in-game and supports {{variables}}. '
+			+ 'Available: {{label}}, {{duration}} (timeouts only), plus any Message Variables below.',
 	),
 	broadcasts: LP.BroadcastPresetsSchema.describe(
 		'Preset broadcast messages selectable by label or alias via the in-game broadcast command. Messages support {{variables}}: {{label}} plus any Message Variables below.',
 	),
-	requireReasonFor: z.array(AAR.ADMIN_ACTION_TYPE).prefault([]).describe(
-		'Actions that require a reason (a preset or custom text). Performing one of these without a reason is rejected.',
+	requireReasonFor: z.array(AAR.REQUIRABLE_ADMIN_ACTION_TYPE).prefault([]).describe(
+		'Actions that require a reason (a preset or custom text). Performing one of these without a reason is rejected. Warns always require a reason, so they are not listed here.',
 	),
 	messageVariables: z.array(z.object({
 		name: z.string().trim().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, {
@@ -187,6 +187,7 @@ export const GlobalSettingsSchema = z.object({
 	}).prefault({}),
 	squadServer: z.object({
 		sftpPollInterval: HumanTime.prefault('1s'),
+		logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines'),
 		sftpReconnectInterval: HumanTime.prefault('5s'),
 		sftpMaxReconnectAttempts: z.int().min(1).prefault(10).describe(
 			'How many consecutive SFTP failures to tolerate (reconnecting between each) before tearing down the server slice',
@@ -358,6 +359,11 @@ export const ServerConnectionSchema = z.object({
 		z.object({
 			type: z.literal('log-receiver'),
 			token: z.string().default('dev'),
+		}),
+		// the game's log on this host's filesystem (same box, or a mounted log directory)
+		z.object({
+			type: z.literal('local-file'),
+			logFile: z.string().min(1),
 		}),
 		z.object({
 			type: z.literal('sftp'),

@@ -79,6 +79,8 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 						throw permissionDeniedError(res)
 					case 'err:rcon':
 						throw new Error('Failed to disable Fog of War (RCON error)')
+					case 'err:server-not-loaded':
+						throw new Error(res.msg)
 					default:
 						assertNever(res)
 				}
@@ -110,6 +112,8 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 					case 'err:timeout':
 					case 'err:unknown':
 						throw new Error(res.message)
+					case 'err:server-not-loaded':
+						throw new Error(res.msg)
 					default:
 						assertNever(res)
 				}

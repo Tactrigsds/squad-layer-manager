@@ -46,7 +46,12 @@ docker/logs
 docker/squad-dedicated
 
 .tanstack/
+.claude/
 
 dist-server/
 
 graph.svg
+
+# playwright
+/test-results/
+/playwright-report/

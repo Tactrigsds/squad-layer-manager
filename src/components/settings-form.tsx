@@ -641,7 +641,7 @@ function AdminActionReasonsField({ value$, reset$, onChange }: OverrideProps) {
 					<TableHead className="w-8" />
 				</>
 			}
-			newRow={() => ({ label: '', message: '', aliases: [], actionTexts: {} })}
+			newRow={() => ({ label: '', aliases: [], actionTexts: {} })}
 			Row={AdminActionReasonRow}
 		/>
 	)
@@ -670,13 +670,12 @@ function BroadcastsField({ value$, reset$, onChange }: OverrideProps) {
 function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetRowProps) {
 	const row$ = React.useMemo(() => scopeValue(parent$, idx), [parent$, idx])
 	const label$ = React.useMemo(() => scopeValue(row$, 'label'), [row$])
-	const message$ = React.useMemo(() => scopeValue(row$, 'message'), [row$])
 	const aliases$ = React.useMemo(() => scopeValue(row$, 'aliases'), [row$])
 	const actionTexts$ = React.useMemo(() => scopeValue(row$, 'actionTexts'), [row$])
 	// the set of actions this reason carries text for; keys are added/removed structurally (emits reset$)
-	const actionTexts = (useFieldValue(actionTexts$, reset$) as Partial<Record<AAR.ExecutableAdminActionType, string>> | undefined) ?? {}
-	const presentActions = AAR.EXECUTABLE_ADMIN_ACTION_TYPE.options.filter((a) => actionTexts[a] !== undefined)
-	const remainingActions = AAR.EXECUTABLE_ADMIN_ACTION_TYPE.options.filter((a) => actionTexts[a] === undefined)
+	const actionTexts = (useFieldValue(actionTexts$, reset$) as Partial<Record<AAR.AdminActionType, string>> | undefined) ?? {}
+	const presentActions = AAR.ADMIN_ACTION_TYPE.options.filter((a) => actionTexts[a] !== undefined)
+	const remainingActions = AAR.ADMIN_ACTION_TYPE.options.filter((a) => actionTexts[a] === undefined)
 
 	const setField = (key: keyof AAR.AdminActionReason) => (v: any) => {
 		const arr = [...((parent$.getValue() as AAR.AdminActionReason[]) ?? [])]
@@ -684,19 +683,19 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 		parentOnChange(arr)
 	}
 	// non-structural: text edit within an existing action key (no reset$; the textarea stays mounted)
-	const setActionText = (action: AAR.ExecutableAdminActionType) => (v: string) => {
+	const setActionText = (action: AAR.AdminActionType) => (v: string) => {
 		const arr = [...((parent$.getValue() as AAR.AdminActionReason[]) ?? [])]
 		arr[idx] = { ...arr[idx], actionTexts: { ...arr[idx].actionTexts, [action]: v } }
 		parentOnChange(arr)
 	}
 	// structural: adding/removing an action key mounts/unmounts a textarea, so re-seed uncontrolled inputs via reset$
-	const addAction = (action: AAR.ExecutableAdminActionType) => {
+	const addAction = (action: AAR.AdminActionType) => {
 		const arr = [...((parent$.getValue() as AAR.AdminActionReason[]) ?? [])]
 		arr[idx] = { ...arr[idx], actionTexts: { ...arr[idx].actionTexts, [action]: '' } }
 		parentOnChange(arr)
 		reset$.next()
 	}
-	const removeAction = (action: AAR.ExecutableAdminActionType) => {
+	const removeAction = (action: AAR.AdminActionType) => {
 		const arr = [...((parent$.getValue() as AAR.AdminActionReason[]) ?? [])]
 		const nextTexts = { ...arr[idx].actionTexts }
 		delete nextTexts[action]
@@ -712,10 +711,9 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 			</TableCell>
 			<TableCell className="align-top">
 				<div className="space-y-1.5">
-					<div className="rounded-md border">
-						<div className="px-2 pt-1 text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">Warn</div>
-						<TextAreaCell value$={message$} reset$={reset$} onChange={setField('message')} placeholder="Sent when warning a player" />
-					</div>
+					{presentActions.length === 0 && (
+						<p className="text-xs text-destructive">Add text for at least one action, otherwise this reason can never be used.</p>
+					)}
 					{presentActions.map((action) => {
 						const text$ = scopeValue(actionTexts$, action)
 						return (
@@ -745,7 +743,7 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 						)
 					})}
 					{remainingActions.length > 0 && (
-						<Select value="" onValueChange={(a) => addAction(a as AAR.ExecutableAdminActionType)}>
+						<Select value="" onValueChange={(a) => addAction(a as AAR.AdminActionType)}>
 							<SelectTrigger className="h-8">
 								<SelectValue placeholder="Add action text…" />
 							</SelectTrigger>
@@ -772,24 +770,26 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 }
 
 // the verbatim rendered text each applicable context delivers in-game (squad contexts get the @Squad1 tag),
-// with the given custom message variables applied. kicks are shown both with a 2h sample timeout and with no
-// timeout (empty {{duration}}) so {{#duration}} sections can be checked both ways
+// with the given custom message variables applied. timeouts are shown with a 2h sample duration, and again with
+// the remaining duration (what enforcement re-renders on rejoin) so {{#duration}} sections can be checked both ways
 function reasonPreviewEntries(reason: AAR.AdminActionReason, customVars: Record<string, string>): { context: string; text: string }[] {
 	const applied = (action: AAR.AdminActionType, opts?: { squadTag?: string; duration?: string }) =>
 		AAR.formatAppliedReason(action, reason, {
 			squadTag: opts?.squadTag,
-			vars: { ...customVars, ...(action === 'kick' ? { duration: opts?.duration ?? '' } : {}) },
+			vars: { ...customVars, ...(action === 'timeout' ? { duration: opts?.duration ?? '' } : {}) },
 		})
-	const entries = [
-		{ context: 'Warn', text: applied('warn') },
-		{ context: 'Warn squad', text: applied('warn', { squadTag: '@Squad1' }) },
-	]
+	const entries: { context: string; text: string }[] = []
 	// one entry per action the reason carries text for; squad-directed actions get the @Squad1 tag
-	for (const action of AAR.EXECUTABLE_ADMIN_ACTION_TYPE.options) {
+	for (const action of AAR.ADMIN_ACTION_TYPE.options) {
 		if (reason.actionTexts[action] === undefined) continue
-		if (action === 'kick') {
-			entries.push({ context: 'Kick (timeout)', text: applied('kick', { duration: '2h' }) })
-			entries.push({ context: 'Kick (no timeout)', text: applied('kick', { duration: '' }) })
+		if (action === 'warn') {
+			entries.push({ context: 'Warn', text: applied('warn') })
+			entries.push({ context: 'Warn squad', text: applied('warn', { squadTag: '@Squad1' }) })
+			continue
+		}
+		if (action === 'timeout') {
+			entries.push({ context: 'Timeout', text: applied('timeout', { duration: '2h' }) })
+			entries.push({ context: 'Timeout (expired)', text: applied('timeout', { duration: '' }) })
 			continue
 		}
 		const squadTag = AAR.ADMIN_ACTIONS[action].targetKind === 'squad' ? '@Squad1' : undefined
@@ -819,10 +819,9 @@ function ReasonPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Su
 	// tolerate incomplete draft rows so the preview shows the message shape while it's being written
 	const actionTexts = Object.fromEntries(
 		Object.entries(raw?.actionTexts ?? {}).map(([action, text]) => [action, (text ?? '').trim() || '<action text>']),
-	) as Partial<Record<AAR.ExecutableAdminActionType, string>>
+	) as Partial<Record<AAR.AdminActionType, string>>
 	const reason: AAR.AdminActionReason = {
 		label: raw?.label?.trim() || '<label>',
-		message: raw?.message?.trim() || '<warn text>',
 		aliases: raw?.aliases ?? [],
 		actionTexts,
 	}
@@ -835,7 +834,8 @@ function ReasonPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Su
 			</PopoverTrigger>
 			<PopoverContent className="w-96 space-y-2" align="end">
 				<p className="text-xs text-muted-foreground">
-					In-game text delivered for each applicable action (kicks shown with a 2h sample timeout and with none).
+					In-game text delivered for each applicable action (timeouts shown with a 2h sample duration, and as re-delivered once it has run
+					out).
 				</p>
 				<TemplateSyntaxHint />
 				{reasonPreviewEntries(reason, customVars).map((entry) => (

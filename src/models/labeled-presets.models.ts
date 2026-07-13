@@ -12,8 +12,9 @@ export const LabeledPresetSchema = z.object({
 })
 export type LabeledPreset = z.infer<typeof LabeledPresetSchema>
 
-// labels unique, aliases unique across all presets, and aliases must not collide with labels, since both
-// address a preset in chat commands. all case-insensitive.
+// labels unique, aliases unique across all presets, and aliases must not collide with ANOTHER preset's label,
+// since both address a preset in chat commands. An alias equal to its own preset's label is harmless (it
+// resolves to the same preset) and allowed. all case-insensitive.
 export function addLabelAliasUniquenessIssues(
 	presets: Pick<LabeledPreset, 'label' | 'aliases'>[],
 	ctx: z.core.$RefinementCtx,
@@ -38,8 +39,9 @@ export function addLabelAliasUniquenessIssues(
 	})
 	presets.forEach((preset, i) => {
 		preset.aliases.forEach((alias, j) => {
-			if (seenLabels.has(alias.toLowerCase())) {
-				ctx.addIssue({ code: 'custom', message: `Alias "${alias}" collides with a preset label`, path: [i, 'aliases', j] })
+			const labelOwner = seenLabels.get(alias.toLowerCase())
+			if (labelOwner !== undefined && labelOwner !== i) {
+				ctx.addIssue({ code: 'custom', message: `Alias "${alias}" collides with another preset's label`, path: [i, 'aliases', j] })
 			}
 		})
 	})

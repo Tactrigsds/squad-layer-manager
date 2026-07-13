@@ -82,6 +82,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 	const { data, isPending } = useQuery({
 		...RPC.orpc.matchHistory.getSquadDetails.queryOptions({ input: { serverId, uniqueSquadId } }),
 		enabled: !isCurrentMatchSquad,
+		select: RPC.selectLoaded,
 	})
 
 	const squad = data?.squad

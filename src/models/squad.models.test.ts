@@ -20,7 +20,7 @@ const NEW_GAME =
 	'[2025.11.19-18.16.42:091][  0]LogWorld: Bringing World /Al_Basrah/Maps/Gameplay_Layers/AlBasrah_AAS_v1.AlBasrah_AAS_v1 up for play'
 
 const PLAYER_CONNECTED =
-	'[2025.11.19-18.18.26:148][549]LogSquad: PostLogin: NewPlayer: BP_PlayerController_C /Game/Maps/Level.PersistentLevel.Logano_Stefano (IP: 192.168.1.1 | Online IDs: EOS: 0002abc123def456789abc123def4567)'
+	'[2025.11.19-18.18.26:148][549]LogSquad: PostLogin: NewPlayer: BP_PlayerController_C /Game/Maps/Level.PersistentLevel.Logano_Stefano (IP: 203.0.113.21 | Online IDs: EOS: 0002abc123def456789abc123def4567)'
 const PLAYER_JOIN_SUCCEEDED = '[2025.11.19-18.18.26:151][549]LogNet: Join succeeded: Logano Stefano'
 const PLAYER_ADDED_TO_TEAM = '[2025.11.19-18.18.26:152][549]LogSquad: Player  Logano Stefano has been added to Team 1'
 const PLAYER_RESTARTED =
@@ -29,7 +29,7 @@ const JOIN_CHAIN = [PLAYER_CONNECTED, PLAYER_JOIN_SUCCEEDED, PLAYER_ADDED_TO_TEA
 
 // New Squad format: complex map path, generic numbered controller, steam ID alongside EOS, no PLAYER_ADDED_TO_TEAM, PLAYER_RESTARTED before PLAYER_JOIN_SUCCEEDED
 const PLAYER_CONNECTED_NEW =
-	'[2026.04.17-18.11.29:556][237]LogSquad: PostLogin: NewPlayer: BP_PlayerController_C /Game/Maps/Narva/Gameplay_Layers/Narva_AAS_v2.Narva_AAS_v2:PersistentLevel.BP_PlayerController_C_2147444576 (IP: 75.155.191.37 | Online IDs: EOS: 000249a430574933aefd9bbc9a8f2f37 steam: 76561198052229202)'
+	'[2026.04.17-18.11.29:556][237]LogSquad: PostLogin: NewPlayer: BP_PlayerController_C /Game/Maps/Narva/Gameplay_Layers/Narva_AAS_v2.Narva_AAS_v2:PersistentLevel.BP_PlayerController_C_2147444576 (IP: 203.0.113.20 | Online IDs: EOS: 000249a430574933aefd9bbc9a8f2f37 steam: 76561198052229202)'
 const PLAYER_RESTARTED_NEW =
 	'[2026.04.17-18.11.29:556][237]LogSquadTrace: [DedicatedServer]RestartPlayer(): On Server PC=grey275 Spawn=nullptr DeployRole=AFU_Rifleman_13'
 const PLAYER_JOIN_SUCCEEDED_NEW = '[2026.04.17-18.11.29:556][237]LogNet: Join succeeded: grey275'
@@ -85,12 +85,12 @@ const ADMIN_LAYER_CHANGED_PLAYER_CHAIN = `
 // [2026.05.20-21.59.52:085][ 77]LogGameState: Match State Changed from InProgress to WaitingPostMatch
 
 const PLAYER_DISCONNECTED =
-	'[2026.04.17-18.35.14:535][115]LogNet: UChannel::Close: Sending CloseBunch. ChIndex == 0. Name: [UChannel] ChIndex: 0, Closing: 0 [UNetConnection] RemoteAddr: 75.155.191.37:51909, Name: RedpointEOSIpNetConnection_2147440814, Driver: Name:GameNetDriver Def:GameNetDriver RedpointEOSNetDriver_2147482371, IsServer: YES, PC: BP_PlayerController_C_2147440788, Owner: BP_PlayerController_C_2147440788, UniqueId: RedpointEOS:000249a430574933aefd9bbc9a8f2f37'
+	'[2026.07.12-19.05.54:142][418]LogNet: UNetDriver::RemoveClientConnection - Removed address 203.0.113.22:60763 from MappedClientConnections for: [UNetConnection] RemoteAddr: 203.0.113.22:60763, Name: RedpointEOSIpNetConnection_2147249600, Driver: Name:GameNetDriver Def:GameNetDriver RedpointEOSNetDriver_2147482319, IsServer: YES, PC: BP_PlayerController_C_2147247660, Owner: BP_PlayerController_C_2147247660, UniqueId: RedpointEOS:00026fd6fefb44a3a86b91925c95a40f'
 
-// Same CloseBunch shape but on a BeaconNetDriver (join-queue) connection: PC NULL, SQJoinBeaconClient owner.
-// Must NOT be parsed as a real disconnect.
+// Same RemoveClientConnection shape but on a BeaconNetDriver (join-queue) connection: PC NULL,
+// SQJoinBeaconClient owner. Must NOT be parsed as a real disconnect.
 const BEACON_DISCONNECT =
-	'[2026.07.07-01.18.54:947][379]LogNet: UChannel::Close: Sending CloseBunch. ChIndex == 0. Name: [UChannel] ChIndex: 0, Closing: 0 [UNetConnection] RemoteAddr: 216.232.38.246:51687, Name: RedpointEOSIpNetConnection_2145110902, Driver: Name:RedpointEOSNetDriver_2145311439 Def:BeaconNetDriver RedpointEOSNetDriver_2145311439, IsServer: YES, PC: NULL, Owner: SQJoinBeaconClient_2145110896, UniqueId: RedpointEOS:00026f3bb7554da784fb6c8f55344076'
+	'[2026.07.02-08.26.47:884][437]LogNet: UNetDriver::RemoveClientConnection - Removed address 203.0.113.2:45870 from MappedClientConnections for: [UNetConnection] RemoteAddr: 203.0.113.2:45870, Name: RedpointEOSIpNetConnection_2147480829, Driver: Name:RedpointEOSNetDriver_2147481756 Def:BeaconNetDriver RedpointEOSNetDriver_2147481756, IsServer: YES, PC: NULL, Owner: SQJoinBeaconClient_2147480824, UniqueId: RedpointEOS:00023e0ccf9a4321bc99f7ca0e466f5a'
 
 const ADMIN_BROADCAST_SINGLE = '[2025.11.19-18.18.26:151][549]LogSquad: ADMIN COMMAND: Message broadcasted <Hello world> from RCON'
 const ADMIN_BROADCAST_MULTILINE =
@@ -121,15 +121,15 @@ const ADMIN_REMOVED_FROM_SQUAD = '[2026.07.05-02.18.39:536][533]LogSquad: ADMIN 
 
 describe('LogEvents.parse', () => {
 	describe('PLAYER_DISCONNECTED', () => {
-		it('parses disconnect with verbose Driver field and generic controller name', async () => {
+		it('parses a RemoveClientConnection disconnect', async () => {
 			const events = await collect([PLAYER_DISCONNECTED, NEXT_TICK_EVENT].join('\n'))
 			expect(events).toHaveLength(1)
 			expect(events[0]).toMatchObject({
 				type: 'PLAYER_DISCONNECTED',
-				ip: '75.155.191.37',
+				ip: '203.0.113.22',
 				playerIds: expect.objectContaining({
-					eos: '000249a430574933aefd9bbc9a8f2f37',
-					playerController: 'BP_PlayerController_C_2147440788',
+					eos: '00026fd6fefb44a3a86b91925c95a40f',
+					playerController: 'BP_PlayerController_C_2147247660',
 				}),
 			})
 		})

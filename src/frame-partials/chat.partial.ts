@@ -60,6 +60,7 @@ export function initChat(args: Args) {
 	const chatDisconnected$ = new Rx.Subject<CHAT.ConnectionErrorEvent>()
 
 	const chatEvent$ = RPC.observe(
+		'squadServer.watchChatEvents',
 		() => {
 			const eventBuffer = get().chatState.eventBuffer
 			return RPC.orpc.squadServer.watchChatEvents.call({
@@ -76,7 +77,7 @@ export function initChat(args: Args) {
 				})
 			},
 		},
-	).pipe(Rx.tap({ next: () => (previouslyConnected = true) }))
+	).pipe(RPC.dropServerNotLoaded(), Rx.tap({ next: () => (previouslyConnected = true) }))
 
 	args.sub.add(
 		Rx.merge(chatEvent$, chatDisconnected$.pipe(Rx.map(e => [e]))).subscribe(events => {

@@ -196,9 +196,10 @@ export function initTeamswitches(args: Args) {
 	)
 
 	args.sub.add(
-		RPC.observe(() => RPC.orpc.teamswitches.watchUpdates.call({ serverId })).subscribe(update => {
-			get().onUpdate(update)
-		}),
+		RPC.observe('teamswitches.watchUpdates', () => RPC.orpc.teamswitches.watchUpdates.call({ serverId })).pipe(RPC.dropServerNotLoaded())
+			.subscribe(update => {
+				get().onUpdate(update)
+			}),
 	)
 }
 

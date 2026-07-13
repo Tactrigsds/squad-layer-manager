@@ -69,13 +69,16 @@ export function initServerSettings(args: Args) {
 	)
 
 	args.sub.add(
-		RPC.observe(() => RPC.orpc.settings.server.watchSettings.call({ serverId })).subscribe(([settings, source]) => {
-			const updated = Obj.structuralMerge(get().saved, settings)
-			set({ saved: updated, edited: updated, ops: [] })
-			if (source) {
-				toast(SS.printSource(source))
-			}
-		}),
+		RPC.observe('settings.server.watchSettings', () => RPC.orpc.settings.server.watchSettings.call({ serverId })).pipe(
+			RPC.dropServerNotLoaded(),
+		)
+			.subscribe(([settings, source]) => {
+				const updated = Obj.structuralMerge(get().saved, settings)
+				set({ saved: updated, edited: updated, ops: [] })
+				if (source) {
+					toast(SS.printSource(source))
+				}
+			}),
 	)
 }
 

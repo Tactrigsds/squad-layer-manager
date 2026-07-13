@@ -89,8 +89,8 @@ export async function listActiveTimeouts(ctx: C.Db): Promise<ActiveTimeoutRow[]>
 	})
 }
 
-// the delivered kick message when no reason was given
-const DEFAULT_KICK_TEXT = 'You have been kicked by an admin.'
+// the delivered kick message when a timeout was issued without a reason
+const DEFAULT_TIMEOUT_TEXT = 'You have been kicked by an admin.'
 
 // creates the timeout (app event + row) and kicks the player from the issuing server. `reason` carries the
 // unrendered template + vars (with the ORIGINAL duration); enforcement re-renders with the remaining one.
@@ -148,7 +148,7 @@ export async function kickWithTimeout(
 		reasonTemplate: opts.reason?.template ?? null,
 		reasonVars: opts.reason?.vars ?? null,
 	})
-	const message = opts.reason ? AAR.renderAppliedReason(opts.reason) : DEFAULT_KICK_TEXT
+	const message = opts.reason ? AAR.renderAppliedReason(opts.reason) : DEFAULT_TIMEOUT_TEXT
 	await SquadServer.kickPlayerAction(ctx, targetId, { type: 'event', id: appEvent.id }, message)
 	await SquadServer.notifyAdminsOfWebAction(ctx, appEvent)
 	update$.next()
@@ -192,7 +192,7 @@ export async function enforceTimeouts(ctx: C.Db & C.ServerSlice & CS.AbortSignal
 		const remainingMs = timeout.expiresAt.getTime() - Date.now()
 		const message = applied
 			? AAR.renderAppliedReason(applied, { extraVars: { duration: remainingMs > 0 ? formatDurationApprox(remainingMs) : '' } })
-			: DEFAULT_KICK_TEXT
+			: DEFAULT_TIMEOUT_TEXT
 		await SquadServer.kickPlayerAction(
 			ctx,
 			timeout.playerId,
@@ -222,7 +222,7 @@ export const router = {
 			return await cancelTimeout(ctx, { timeoutId: input.timeoutId, actor: { type: 'slm-user', userId: ctx.user.discordId } })
 		}),
 
-	kickPlayer: orpcBase
+	timeoutPlayer: orpcBase
 		.input(
 			z.object({
 				serverId: z.string(),
@@ -233,10 +233,12 @@ export const router = {
 			}).refine(i => !(i.reason && i.presetReasonLabel), { error: 'At most one of reason or presetReasonLabel may be provided' }),
 		)
 		.handler(async ({ context: _ctx, input }) => {
-			const ctx = SquadServer.resolveSliceCtx(_ctx, input.serverId)
+			const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyTimeoutForUser(ctx, input.durationMs)
 			if (denyRes) return denyRes
-			const reasonRes = SquadServer.resolveReasonInput('kick', input, { duration: formatHumanTime(input.durationMs) })
+			const reasonRes = SquadServer.resolveReasonInput('timeout', input, { duration: formatHumanTime(input.durationMs) })
 			if (reasonRes.code !== 'ok') return reasonRes
 			const teamsRes = await ctx.server.teams.get(ctx)
 			if (teamsRes.code !== 'ok') return teamsRes
