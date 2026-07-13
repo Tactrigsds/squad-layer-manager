@@ -2,7 +2,7 @@ import * as dotenv from 'dotenv'
 import path from 'node:path'
 import { z } from 'zod'
 import * as Paths from '../../paths.ts'
-import { NormedUrl, ParsedBigIntSchema, ParsedIntSchema, PathSegment } from '../lib/zod'
+import { HumanTime, NormedUrl, ParsedBigIntSchema, ParsedIntSchema, PathSegment } from '../lib/zod'
 import * as Cli from '../systems/cli.server'
 
 // comma-separated list of Discord snowflake ids parsed to bigints (e.g. SUPER_USERS="123,456")
@@ -41,11 +41,37 @@ export const groups = {
 	},
 
 	db: {
-		DB_PATH: z.string().min(1).prefault('./data/main.sqlite3'),
+		DB_PATH: z.string().min(1).prefault('./data/db.sqlite3'),
 		// When true, the server applies pending migrations itself at boot instead of refusing to
 		// start (see db.ts setup()). Off by default: migrations run out-of-band via `pnpm db:migrate`
 		// until the new migration system is proven. Unsafe to enable while another app instance runs.
 		DB_AUTOMIGRATE: z.stringbool().default(false),
+	},
+
+	backups: {
+		// how often to back up the main db (e.g. '72h'). unset disables automatic backups entirely, including the
+		// event-history prune that runs alongside them. Backups use sqlite's online backup API, so they're
+		// consistent snapshots taken without blocking writers.
+		AUTOMATIC_BACKUPS_PERIODIC: HumanTime.optional(),
+		BACKUPS_DIR: z.string().min(1).prefault('./data/backups'),
+		// how many backups to keep, locally and (if configured) on the sftp target. 0 keeps all of them.
+		BACKUPS_RETAIN_COUNT: ParsedIntSchema.pipe(z.number().min(0)).default(10),
+
+		// server events belonging to matches that ended before this long ago are deleted as part of each backup
+		// run (the backup is taken after the prune, so the pruned rows are never in it). The most recent matches
+		// are always kept regardless of age (see MIN_RETAINED_MATCHES). Unset disables pruning.
+		EVENT_HISTORY_RETENTION_PERIOD: HumanTime.optional(),
+
+		// optional sftp target each backup is uploaded to after it's written locally. enabled by setting
+		// BACKUP_SFTP_HOST; authenticate with a password or a private key (at least one is required).
+		BACKUP_SFTP_HOST: z.string().min(1).optional(),
+		BACKUP_SFTP_PORT: ParsedIntSchema.default(22),
+		BACKUP_SFTP_USERNAME: z.string().min(1).optional(),
+		BACKUP_SFTP_PASSWORD: z.string().min(1).optional(),
+		BACKUP_SFTP_PRIVATE_KEY_PATH: z.string().min(1).optional(),
+		BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE: z.string().min(1).optional(),
+		// remote directory the backups are written to. created if it doesn't exist.
+		BACKUP_SFTP_DIR: z.string().min(1).prefault('.'),
 	},
 
 	// only needed when running integration tests for the rcon modules
