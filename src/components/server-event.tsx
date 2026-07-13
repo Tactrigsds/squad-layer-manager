@@ -765,6 +765,7 @@ function AppEventEntry(
 		|| appEvent.type === 'FILTER_CHANGED' || appEvent.type === 'FILTER_CONTRIBUTOR_CHANGED'
 		|| appEvent.type === 'USER_ACCOUNT_CHANGED' || appEvent.type === 'PLAYER_FLAGS_UPDATED'
 		|| appEvent.type === 'APP_STARTED' || appEvent.type === 'APP_RESTARTED'
+		|| appEvent.type === 'BACKUP_CREATED'
 	) {
 		// global/audit-only types -- they never reach a server activity feed (matchId null), but the union needs a
 		// branch. rendered generically via describeAppEvent (the audit log is where these actually show up).

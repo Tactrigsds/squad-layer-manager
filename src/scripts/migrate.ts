@@ -9,7 +9,7 @@ import path from 'node:path'
 // to dist-server/scripts/migrate.js, alongside the shipped drizzle-sqlite/ folder).
 //
 // DB_PATH default is kept in sync with drizzle.config.ts and src/server/env.ts.
-const DB_PATH = process.env.DB_PATH ?? './data/main.sqlite3'
+const DB_PATH = process.env.DB_PATH ?? './data/db.sqlite3'
 const SQL_DIR = path.resolve(process.cwd(), 'drizzle-sqlite')
 
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true })

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Edit the global settings JSON (globalSettings table) in vim and write it back.
-# Usage: ./edit-global-settings.sh [path-to-sqlite-db]   (default: $DB_PATH or ./data/main.sqlite3)
+# Usage: ./edit-global-settings.sh [path-to-sqlite-db]   (default: $DB_PATH or ./data/db.sqlite3)
 set -euo pipefail
 
-DB="${1:-${DB_PATH:-./data/main.sqlite3}}"
+DB="${1:-${DB_PATH:-./data/db.sqlite3}}"
 [[ -f $DB ]] || { echo "error: db file not found: $DB" >&2; exit 1; }
 
 tmpdir=$(mktemp -d)
