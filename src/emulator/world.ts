@@ -101,6 +101,11 @@ export class World {
 	publicQueue = 0
 	publicQueueLimit = 25
 	fogOfWar: 'on' | 'off' = 'on'
+	// A roll reassigns players to the other team index. This is what SLM's team model assumes: it
+	// norms team ids to sides A/B keyed on the match ordinal's parity, so a player's side is only
+	// stable across matches if their raw team flips with it. Teamswitches queued for the next map
+	// depend on it -- without the swap the app finds them already on the side they asked for.
+	swapTeamsOnRoll = true
 
 	#sinks: WorldSinks
 	#now: () => Date
@@ -244,6 +249,7 @@ export class World {
 		for (const p of this.players.values()) {
 			p.squadId = null
 			p.isLeader = false
+			if (this.swapTeamsOnRoll && p.teamId !== null) p.teamId = p.teamId === 1 ? 2 : 1
 		}
 		this.squads = []
 		this.#log(Fmt.logNewGame(this.currentLayer))
