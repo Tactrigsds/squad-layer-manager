@@ -20,17 +20,18 @@ const gzip = promisify(zlib.gzip)
 import { initModule } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
 
-import { z } from 'zod'
-
 const module = initModule('layer-db')
 let log!: CS.Logger
 export let db!: LayerDb
 
-export const DEFAULT_EXTRA_COLUMNS_CONFIG_PATH = './layer-db.json'
-
-export let LAYER_DB_CONFIG!: LC.LayerDbConfig
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.layerDb, ...Env.groups.general })
-let ENV!: ReturnType<typeof envBuilder>
+let _env: ReturnType<typeof envBuilder> | undefined
+// getVersionTemplatedPath resolves paths for callers that haven't opened the db (preprocess picks the csv/db paths
+// before setup()), so the env is built on first use rather than in setup()
+function env() {
+	_env ??= envBuilder()
+	return _env
+}
 
 export let hash!: string
 export let layersVersion!: string
@@ -42,47 +43,16 @@ let dbPath!: string
 
 let mode!: 'populate' | 'read'
 
-export function setupExtraColsConfig() {
-	if (!ENV) ENV = envBuilder()
-	if (ENV.NODE_ENV === 'development') {
-		generateJsonSchema()
-	}
-	let canAccess: boolean
-	try {
-		fs.accessSync(ENV.LAYER_DB_CONFIG_PATH)
-		canAccess = true
-	} catch {
-		canAccess = false
-	}
-	if (!canAccess && ENV.LAYER_DB_CONFIG_PATH !== DEFAULT_EXTRA_COLUMNS_CONFIG_PATH) {
-		throw new Error(`Cannot access ${ENV.LAYER_DB_CONFIG_PATH}`)
-	} else if (!canAccess) {
-		LAYER_DB_CONFIG = {
-			columns: [],
-			generation: {
-				columnOrder: [],
-				weights: {},
-			},
-		}
-	} else {
-		const raw = fs.readFileSync(ENV.LAYER_DB_CONFIG_PATH, 'utf-8')
-		LAYER_DB_CONFIG = LC.LayerDbConfigSchema.parse(JSON.parse(raw))
-	}
-}
-
-// Resolves the config synchronously (so `LAYER_DB_CONFIG`/`layersVersion` are available immediately)
-// and kicks off opening the db in the background. The returned promise (also exposed as `ready`)
-// settles once `db`/`hash`/`driver` are populated, so it does not block the startup procedure —
-// callers await `ready` right before they need the layer db.
+// Resolves `layersVersion` synchronously (so it's available immediately) and kicks off opening the db in the
+// background. The returned promise (also exposed as `ready`) settles once `db`/`hash`/`driver` are populated, so
+// it does not block the startup procedure — callers await `ready` right before they need the layer db.
 export function setup(_opts?: { skipHash?: boolean; mode?: 'populate' | 'read'; logging?: boolean; dbPath?: string }): Promise<void> {
 	log = module.getLogger()
 	const opts = _opts ?? {}
 	opts.mode ??= 'read'
 	mode = opts.mode
 	opts.logging ??= true
-	ENV = envBuilder()
-	setupExtraColsConfig()
-	;[dbPath, layersVersion] = opts.dbPath ? [opts.dbPath, 'unknown'] : getVersionTemplatedPath(ENV.LAYERS_DB_PATH)
+	;[dbPath, layersVersion] = opts.dbPath ? [opts.dbPath, 'unknown'] : getVersionTemplatedPath(env().LAYERS_DB_PATH)
 	// abort the setup I/O (decompression, hashing) if the process starts shutting down mid-startup
 	const ctx: CS.AbortSignal = { signal: CleanupSys.shutdownSignal }
 	ready = load(ctx, opts)
@@ -231,7 +201,7 @@ export function getVersionTemplatedPath(filePath: string): [string, string] {
 		return [filePath, 'unknown']
 	}
 
-	if (ENV.LAYERS_VERSION === '@latest') {
+	if (env().LAYERS_VERSION === '@latest') {
 		// in this case we look for  where {{LAYERS_VERSION}} is in the path and replace it with the path segment that uses the same pattern as the input path and has the highest version
 		const segments = filePath.split('/')
 		const segmentIndex = segments.findIndex((segment) => segment.includes('{{LAYERS_VERSION}}'))
@@ -262,13 +232,13 @@ export function getVersionTemplatedPath(filePath: string): [string, string] {
 		// Sort by semver
 		const versions = matches.sort((a, b) => semver.compare(a.version, b.version))
 		const latestVersion = versions[versions.length - 1]
-		const modifiedSegment = Mustache.render(latestVersion.segment, { LAYERS_VERSION: ENV.LAYERS_VERSION })
+		const modifiedSegment = Mustache.render(latestVersion.segment, { LAYERS_VERSION: env().LAYERS_VERSION })
 		const modifiedSegments = [...segments]
 		modifiedSegments[segmentIndex] = modifiedSegment
 		return [modifiedSegments.join('/'), latestVersion.version]
 	}
 
-	return [Mustache.render(filePath, { LAYERS_VERSION: ENV.LAYERS_VERSION }), ENV.LAYERS_VERSION]
+	return [Mustache.render(filePath, { LAYERS_VERSION: env().LAYERS_VERSION }), env().LAYERS_VERSION]
 }
 
 const ddlDialect = new SQLiteSyncDialect()
@@ -330,10 +300,4 @@ export async function writePopulated(dbPath: string) {
 	} else {
 		await driver.backup(dbPath)
 	}
-}
-
-function generateJsonSchema() {
-	const schemaPath = path.join(Paths.ASSETS, 'db-config-schema.json')
-	const schema = z.toJSONSchema(LC.LayerDbConfigSchema, { io: 'input' })
-	fs.writeFileSync(schemaPath, JSON.stringify(schema, null, 2))
 }

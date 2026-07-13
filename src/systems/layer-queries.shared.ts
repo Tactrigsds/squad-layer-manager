@@ -1205,8 +1205,8 @@ async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 		constraints: input.constraints,
 		cursor: input.cursor,
 		list: input.list,
-		weights: ctx.effectiveColsConfig.generation.weights,
-		columnOrder: ctx.effectiveColsConfig.generation.columnOrder,
+		weights: ctx.generationConfig.weights,
+		columnOrder: ctx.generationConfig.columnOrder,
 	})
 	const cacheKey = simpleHash(cacheKeyInput)
 
@@ -1275,12 +1275,12 @@ async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 			return idx
 		}
 		let currentSelectedIndex = pickLayerIndex()
-		for (let j = 0; j < ctx.effectiveColsConfig.generation.columnOrder.length; j++) {
+		for (let j = 0; j < ctx.generationConfig.columnOrder.length; j++) {
 			if (filtered.size === indexedBaseLayers.length) break
-			const columnName = ctx.effectiveColsConfig.generation.columnOrder[j]
+			const columnName = ctx.generationConfig.columnOrder[j]
 			const valuesMap: OneToMany.OneToManyMap<number | null, number> = new Map()
 			const colWeights = new Map<LC.DbValueResult, number>()
-			for (const w of ctx.effectiveColsConfig.generation.weights[columnName as LC.WeightColumn] ?? []) {
+			for (const w of ctx.generationConfig.weights[columnName] ?? []) {
 				colWeights.set(LC.dbValue(columnName, w.value), w.weight)
 			}
 			for (const layer of indexedBaseLayers) {
@@ -1289,7 +1289,7 @@ async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 			}
 			if (valuesMap.size === 0) break
 			const values = Array.from(valuesMap.keys())
-			const weights = values.map(value => colWeights.get(value ?? null) ?? .1)
+			const weights = values.map(value => colWeights.get(value ?? null) ?? LC.DEFAULT_GENERATION_WEIGHT)
 			const selected = weightedRandomSelection(values, weights, rng)
 			for (const [value, indexes] of valuesMap.entries()) {
 				if (value === selected) continue

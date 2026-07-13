@@ -120,73 +120,9 @@
           }
         ]
       }
-    },
-    "generation": {
-      "type": "object",
-      "properties": {
-        "columnOrder": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": [
-              "Map",
-              "Layer",
-              "Gamemode",
-              "Size",
-              "Faction_1",
-              "Faction_2",
-              "Unit_1",
-              "Unit_2",
-              "Alliance_1",
-              "Alliance_2"
-            ]
-          }
-        },
-        "weights": {
-          "type": "object",
-          "propertyNames": {
-            "type": "string",
-            "enum": [
-              "Map",
-              "Layer",
-              "Gamemode",
-              "Size",
-              "Faction_1",
-              "Faction_2",
-              "Unit_1",
-              "Unit_2",
-              "Alliance_1",
-              "Alliance_2"
-            ]
-          },
-          "additionalProperties": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "value": {
-                  "type": "string"
-                },
-                "weight": {
-                  "type": "number"
-                }
-              },
-              "required": [
-                "value",
-                "weight"
-              ]
-            }
-          }
-        }
-      },
-      "required": [
-        "columnOrder",
-        "weights"
-      ]
     }
   },
   "required": [
-    "columns",
-    "generation"
+    "columns"
   ]
 }

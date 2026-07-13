@@ -24,7 +24,7 @@ import { BmServer } from '../../src/emulator/bm-server'
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..')
 
-// layer db + layer-db.json are generated artifacts and not present in fresh worktrees; fall back
+// the layer db and layer-data.json are generated artifacts and not present in fresh worktrees; fall back
 // to the main checkout's copies when running from one. `exists` is checked on a concrete probe
 // path since LAYERS_DB_PATH contains a version template.
 function resolveGeneratedPath(relPath: string, probeGlobDir?: string): string {
@@ -53,7 +53,11 @@ let layerDataLoaded = false
 function ensureLayerData() {
 	if (layerDataLoaded) return
 	const file = JSON.parse(fs.readFileSync(resolveGeneratedPath('data/layer-data.json'), 'utf8')) as L.LayerDataFile
-	L.setLayerData({ components: LC.buildFullLayerComponents(file.components), factionUnits: file.factionUnits })
+	L.setLayerData({
+		components: LC.buildFullLayerComponents(file.components),
+		factionUnits: file.factionUnits,
+		extraColumns: file.extraColumns,
+	})
 	layerDataLoaded = true
 }
 
@@ -309,7 +313,6 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	// directly lets the tests mount it read-only, so no test can corrupt what the others are reading.
 	const layersDbPath = process.env.LAYERS_DB_PATH
 		?? resolveGeneratedPath('data/layers_v{{LAYERS_VERSION}}.sqlite3', 'data')
-	const layerDbConfigPath = process.env.LAYER_DB_CONFIG_PATH ?? resolveGeneratedPath('layer-db.json')
 	const layersDbDir = path.dirname(layersDbPath)
 	if (!fs.existsSync(layersDbDir) || !fs.readdirSync(layersDbDir).some((f) => /^layers_v.*\.sqlite3(\.gz)?$/.test(f))) {
 		throw new Error(
@@ -317,8 +320,6 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 				+ `Generate it with \`pnpm preprocess\` or point LAYERS_DB_PATH at an existing copy.`,
 		)
 	}
-	// layer-db.json is optional: without it the app runs with no extra layer columns, which the tests
-	// don't depend on. It's deployment config (gitignored), so a CI image legitimately won't have one.
 
 	emu.attachLogFile(squadLogPath)
 
@@ -379,9 +380,6 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		QUERY_PARAM_AUTH_BYPASS: 'true',
 		SUPER_USERS: users.filter((u) => u.superUser ?? u.discordId === ADMIN_USER.discordId).map((u) => String(u.discordId)).join(','),
 		LAYERS_DB_PATH: layersDbPath,
-		// only point at a config that exists: the app treats an unreachable *explicit* path as fatal,
-		// while an absent default one just means "no extra columns"
-		...(fs.existsSync(layerDbConfigPath) ? { LAYER_DB_CONFIG_PATH: layerDbConfigPath } : {}),
 		...opts.env,
 	}
 

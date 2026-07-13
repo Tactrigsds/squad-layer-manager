@@ -2,6 +2,7 @@ import { BmFlagMultiSelect, BmFlagOrColorSelect, BmFlagOrderedList, FlagPriority
 import ComboBox, { type ComboBoxOption } from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { DiscordMemberSelect, DiscordRoleSelect } from '@/components/discord-picker'
+import LayerGenerationConfigEditor from '@/components/layer-generation-config-editor'
 import LayerTableConfigEditor from '@/components/layer-table-config-editor'
 import { GenerationPoolFiltersPanel, MainPoolFiltersPanel, RepeatRulesPanel } from '@/components/pool-config-panels'
 import type { PoolConfigApi } from '@/components/pool-config-panels.helpers'
@@ -454,6 +455,17 @@ function LayerTableField({ value$, reset$, onChange }: OverrideProps) {
 	return (
 		<LayerTableConfigEditor
 			value={value ?? { orderedColumns: [], defaultSortBy: { type: 'random' } }}
+			onChange={onChange}
+			reset$={reset$}
+		/>
+	)
+}
+// bespoke editor for the weighted-random layer generation config (pick order + per-value weights)
+function LayerGenerationField({ value$, reset$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$, reset$)
+	return (
+		<LayerGenerationConfigEditor
+			value={value ?? { columnOrder: [], weights: {} }}
 			onChange={onChange}
 			reset$={reset$}
 		/>
@@ -1133,6 +1145,7 @@ function overrideFor(path: Path, node: Node): React.FC<OverrideProps> | undefine
 	if (path.length === 1 && last === 'adminActionReasons') return AdminActionReasonsField
 	if (path.length === 1 && last === 'broadcasts') return BroadcastsField
 	if (path.length === 1 && last === 'layerTable') return LayerTableField
+	if (path.length === 1 && last === 'layerGeneration') return LayerGenerationField
 	if (path.length === 1 && last === 'playerFlagColorHierarchy') return FlagOrderedListField
 	if (path.length === 1 && last === 'playerFlagsRequiringNote') return FlagMultiSelectField
 	if (path[0] === 'playerFlagGroupings' && typeof path[1] === 'number' && last === 'color') return FlagOrColorField
