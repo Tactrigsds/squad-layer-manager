@@ -15,7 +15,9 @@ export default defineConfig({
 		setupFiles: ['./src/vitest-setup.ts'],
 		testTimeout: 60_000,
 		hookTimeout: 120_000,
-		// each fixture owns a child process + ports; keep suites sequential for predictable load
-		fileParallelism: false,
+		// each file boots its own app (child process, ephemeral db + ports), so files are isolated by
+		// construction and can run together. Capped rather than unbounded: every app loads the layer db.
+		fileParallelism: true,
+		maxWorkers: 4,
 	},
 })

@@ -7,10 +7,12 @@ import { defineConfig, devices } from '@playwright/test'
 // The client bundle must be built first: `pnpm test:e2e` does that for you.
 export default defineConfig({
 	testDir: './test/e2e',
+	// each spec file gets its own app + emulator (worker-scoped fixture), so files are isolated and can
+	// run in parallel; tests within a file share that app and run in order
 	fullyParallel: false,
 	forbidOnly: !!process.env.CI,
 	retries: 0,
-	workers: 1,
+	workers: 4,
 	reporter: process.env.CI ? 'line' : 'list',
 	timeout: 60_000,
 	expect: { timeout: 15_000 },

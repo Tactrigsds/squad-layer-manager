@@ -1,7 +1,11 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import { superjsonify } from '@/lib/drizzle'
 import { tsMigrations } from '@/migrations/registry'
+import * as L from '@/models/layer'
+import * as LC from '@/models/layer-columns'
+import * as LL from '@/models/layer-list.models'
 import * as SETTINGS from '@/models/settings.models'
+import type * as SM from '@/models/squad.models'
 import * as Migrate from '@/server/migrate'
 import Database, { type Database as SqliteDb } from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
@@ -39,6 +43,17 @@ function resolveGeneratedPath(relPath: string, probeGlobDir?: string): string {
 	return path.join(REPO_ROOT, relPath)
 }
 
+// the layer components are static app data, loaded at runtime rather than bundled. Anything that
+// resolves a layer id (getLayerCommand here) needs them, and playwright -- unlike vitest -- has no
+// setup file to do it, so the fixture loads them itself.
+let layerDataLoaded = false
+function ensureLayerData() {
+	if (layerDataLoaded) return
+	const file = JSON.parse(fs.readFileSync(resolveGeneratedPath('data/layer-data.json'), 'utf8')) as L.LayerDataFile
+	L.setLayerData({ components: LC.buildFullLayerComponents(file.components), factionUnits: file.factionUnits })
+	layerDataLoaded = true
+}
+
 function freePort(): Promise<number> {
 	return new Promise((resolve, reject) => {
 		const srv = net.createServer()
@@ -50,7 +65,9 @@ function freePort(): Promise<number> {
 	})
 }
 
-export type TestUser = { discordId: bigint; username: string }
+// steamIds link this user to in-game players (linkedSteamAccounts), which is how a chat command's
+// sender is resolved back to an SLM user for permission checks
+export type TestUser = { discordId: bigint; username: string; steamIds?: string[] }
 
 export type AppFixtureOptions = {
 	serverId?: string
@@ -58,6 +75,20 @@ export type AppFixtureOptions = {
 	env?: Record<string, string>
 	// extra users to seed beyond the default admin; only the admin gets superuser perms
 	users?: TestUser[]
+	// steam ids linked to the seeded admin, so an in-game player sending a chat command resolves to
+	// a user the permission checks recognise
+	adminSteamIds?: string[]
+	// mutate the settings before they're written, in place. Called with fully-parsed defaults (with
+	// the test timings below already applied), so durations are milliseconds, not '3m' strings.
+	globalSettings?: (settings: SETTINGS.GlobalSettings) => void
+	serverSettings?: (settings: SETTINGS.ServerSettings) => void
+	// the queue the server starts with. Seeding one (and pinning queue.preferredLength to its length,
+	// which arrange() does) stops the generator from filling the queue with random layers, which is
+	// what makes a queue assertion worth writing.
+	layerQueue?: LL.List
+	// steam ids that are admins in game. Written to an Admins.cfg the app reads as a `local` admin
+	// list source, so these players come back from ListPlayers with isAdmin set.
+	admins?: string[]
 	// skip spawning; useful to test seeding in isolation
 	spawn?: boolean
 }
@@ -74,10 +105,16 @@ export type AppFixture = {
 	logFile: string
 	// the emulated squad server's SquadGame.log, which the app tails
 	squadLogPath: string
+	// the Admins.cfg the app reads as a local admin list source; rewrite it to change who is an admin
+	adminsCfgPath: string
 	child: childProcess.ChildProcess | null
 	adminUser: TestUser
 	// url that logs the given user in via the query-param auth bypass, for the e2e client to open
 	loginUrl: (user?: TestUser, path?: string) => string
+	// resolves once the app's roster cache reflects the emulator's current players. The app reads the
+	// roster from a polled ListPlayers, so a player who just joined isn't known to it yet -- anything
+	// that resolves a player (chat commands, warns) needs this first.
+	waitForRosterSync: (opts?: { timeoutMs?: number }) => Promise<void>
 	// fresh read-only connection to the app's db, for assertions
 	readDb: () => SqliteDb
 	waitFor: <T>(probe: () => T | Promise<T>, opts?: { timeoutMs?: number; intervalMs?: number; label?: string }) => Promise<NonNullable<T>>
@@ -86,6 +123,34 @@ export type AppFixture = {
 
 // snowflake-shaped ids so nothing downstream trips on the bigint range
 export const ADMIN_USER: TestUser = { discordId: 900000000000000001n, username: 'test-admin' }
+
+// the in-game admin group the seeded Admins.cfg grants, and the permission the app looks for when
+// deciding which connected players are admins
+const ADMIN_GROUP = 'SlmTestAdmin'
+const ADMIN_PERM: SM.PlayerPerm = 'canseeadminchat'
+const ADMIN_LIST_SOURCE = 'test-admins'
+
+function renderAdminsCfg(steamIds: string[]): string {
+	const lines = [`Group=${ADMIN_GROUP}:${ADMIN_PERM},balance,cameraman,teamchange`]
+	for (const steamId of steamIds) lines.push(`Admin=${steamId}:${ADMIN_GROUP}`)
+	return lines.join('\n') + '\n'
+}
+
+// Durations that would make a test sit and wait. Every one is a setting, and settings are the only
+// lever we have: the app runs in its own process, so its timers can't be faked. Tests override any
+// of these through the globalSettings hook.
+function applyTestTimings(settings: SETTINGS.GlobalSettings) {
+	settings.vote.voteDuration = 8_000
+	settings.vote.finalVoteReminder = 2_000
+	settings.vote.voteReminderInterval = 3_000
+	settings.vote.internalVoteReminderInterval = 3_000
+	settings.layerQueue.adminQueueReminderInterval = 5_000
+	settings.postRollAnnouncementsTimeout = 2_000
+	settings.fogOffDelay = 2_000
+	// the log tail's poll interval is also the window the event pipeline waits for the log to catch
+	// up with rcon/poll events, so a short one keeps tests responsive
+	settings.squadServer.logFilePollInterval = 250
+}
 
 export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<AppFixture> {
 	const serverId = opts.serverId ?? 'emu-server-1'
@@ -102,6 +167,22 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	const driver = new Database(dbPath)
 	await Migrate.runMigrations(driver, { sqlDir: path.join(REPO_ROOT, 'drizzle-sqlite'), tsMigrations })
 	const db = drizzle(driver)
+	// -------- in-game admins --------
+	const adminsCfgPath = path.join(tmpDir, 'Admins.cfg')
+	fs.writeFileSync(adminsCfgPath, renderAdminsCfg(opts.admins ?? []))
+
+	// -------- global settings --------
+	// written before boot rather than defaulted by the app, so tests can arrange the durations and
+	// command config they depend on (settings.server only inserts defaults when the row is absent)
+	const globalSettings = SETTINGS.GlobalSettingsSchema.parse({})
+	applyTestTimings(globalSettings)
+	globalSettings.adminListSources[ADMIN_LIST_SOURCE] = { type: 'local', source: adminsCfgPath }
+	opts.globalSettings?.(globalSettings)
+	await db.insert(Schema.globalSettings).values(
+		superjsonify(Schema.globalSettings, { id: 1, settings: SETTINGS.GlobalSettingsSchema.encode(globalSettings) }),
+	)
+
+	// -------- server --------
 	// the emulator writes its log to a file and the app tails it, the same `local-file` path a
 	// same-host squad server uses. No test-only transport in between.
 	const squadLogPath = path.join(tmpDir, 'SquadGame.log')
@@ -110,23 +191,45 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 			rcon: { host: '127.0.0.1', port: emu.rconPort, password: emu.password },
 			logs: { type: 'local-file', logFile: squadLogPath },
 		},
-		adminListSources: [],
-		adminIdentifyingPermissions: [],
+		adminListSources: [ADMIN_LIST_SOURCE],
+		adminIdentifyingPermissions: [ADMIN_PERM],
 	})
+	// a seeded queue is only stable if nothing tops it up: generation fills the queue to
+	// preferredLength with random layers, so pin that to what we seeded
+	const layerQueue = opts.layerQueue ?? []
+	if (opts.layerQueue) serverSettings.queue.preferredLength = opts.layerQueue.length
+	opts.serverSettings?.(serverSettings)
+
+	// Put the emulated server's next layer where a steady-state server's would be: on the head of
+	// SLM's queue. A server whose next layer disagrees with the queue is the *external set* path -- the
+	// app pulls that layer into the head of its queue -- which would quietly displace what we seeded.
+	// (A test that wants that path sets emulator.nextLayer itself.)
+	if (opts.layerQueue && !opts.emulator?.nextLayer) {
+		const headLayerId = LL.getNextLayerId(layerQueue)
+		if (headLayerId) {
+			ensureLayerData()
+			emu.world.handleCommand(L.getLayerCommand(headLayerId, 'set-next'))
+		}
+	}
+
 	await db.insert(Schema.servers).values(
 		superjsonify(Schema.servers, {
 			id: serverId,
 			displayName: 'Emulated Server',
 			enabled: true,
 			defaultServer: true,
+			layerQueue,
 			settings: serverSettings,
 		}),
 	)
 
+	// -------- users --------
 	// the bypass login resolves users by username against this table; the admin additionally gets
 	// every permission via the SUPER_USERS env bootstrap below
-	const users = [ADMIN_USER, ...(opts.users ?? [])]
+	const users = [{ ...ADMIN_USER, steamIds: opts.adminSteamIds }, ...(opts.users ?? [])]
 	await db.insert(Schema.users).values(users.map((u) => ({ discordId: u.discordId, username: u.username })))
+	const steamLinks = users.flatMap((u) => (u.steamIds ?? []).map((steamId) => ({ steam64Id: BigInt(steamId), discordId: u.discordId })))
+	if (steamLinks.length > 0) await db.insert(Schema.linkedSteamAccounts).values(steamLinks)
 	driver.close()
 
 	// the layer db is a hard runtime prerequisite: the app cannot boot without it, and it's a
@@ -231,9 +334,19 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		tmpDir,
 		logFile,
 		squadLogPath,
+		adminsCfgPath,
 		child,
 		adminUser: ADMIN_USER,
 		loginUrl: (user = ADMIN_USER, urlPath = '/') => `${appUrl}${urlPath}?login=${encodeURIComponent(user.username)}`,
+		waitForRosterSync: async (syncOpts) => {
+			// two polls, not one: the roster resource fetches under a mutex, so the second ListPlayers
+			// can only have been issued after the first one's response was parsed and cached
+			const from = emu.rcon.commandLog.length
+			await waitFor(
+				() => emu.rcon.commandLog.slice(from).filter((c) => c.body === 'ListPlayers').length >= 2,
+				{ label: 'roster poll', timeoutMs: syncOpts?.timeoutMs ?? 25_000 },
+			)
+		},
 		readDb: () => new Database(dbPath, { readonly: true }),
 		waitFor,
 		dispose: async () => {

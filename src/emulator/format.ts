@@ -189,6 +189,20 @@ export function logAdminCommand(body: string, source: string = RCON_SOURCE): str
 	return `LogSquad: ADMIN COMMAND: ${body} from ${source}`
 }
 
+// a roll travels through a transition map before the destination loads. The app keys off this line
+// to snapshot which layer it expects next, so a roll without it is not a roll it can follow.
+export function logSeamlessTravel(l: LayerLike): string {
+	return `LogWorld: SeamlessTravel to: ${l.mapDir}/${l.layer}`
+}
+
+export function logTransitionWorld(): string {
+	return 'LogWorld: Bringing World /Game/Maps/TransitionMap.TransitionMap up for play (max tick rate 64) at 2026.07.12-15.57.18'
+}
+
+export function logStartLoadingDestination(l: LayerLike): string {
+	return `LogWorld: StartLoadingDestination to: ${l.mapDir}/${l.layer}`
+}
+
 export function logNewGame(l: LayerLike): string {
 	return `LogWorld: Bringing World ${l.mapDir}/${l.layer}.${l.layer} up for play (max tick rate 64) at 2026.07.12-15.57.19`
 }

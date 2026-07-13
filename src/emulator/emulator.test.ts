@@ -253,6 +253,22 @@ describe('log lines parse via LogEvents matchers', () => {
 		local.dispose()
 	})
 
+	it('a roll travels through the transition map before the destination layer', async () => {
+		const local = new Emulator()
+		local.world.endMatch()
+		local.world.startNewGame({
+			level: 'Gorodok',
+			layer: 'Gorodok_RAAS_v1',
+			factions: 'USA+CombinedArms RGF+CombinedArms',
+			mapDir: '/Game/Maps/Gorodok/Gameplay_Layers',
+		})
+		const events = await collectLogEvents(local.logLines)
+		const newGames = events.filter((e) => e.type === 'NEW_GAME') as SM.LogEvents.NewGame[]
+		// the app snapshots the layer it expects on the transition, and resolves the roll on the second
+		expect(newGames.map((e) => e.layerClassname)).toEqual(['TransitionMap', 'Gorodok_RAAS_v1'])
+		local.dispose()
+	})
+
 	it('AdminEndMatch emits a valid ROUND_ENDED_CHAIN', async () => {
 		const local = new Emulator()
 		local.world.handleCommand('AdminEndMatch')

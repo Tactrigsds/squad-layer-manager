@@ -230,10 +230,16 @@ export class World {
 
 	startNewGame(layer?: Fmt.LayerLike) {
 		if (layer) this.nextLayer = layer
-		if (this.nextLayer) {
-			this.currentLayer = this.nextLayer
-			this.nextLayer = null
-		}
+		const target = this.nextLayer ?? this.currentLayer
+
+		// the real sequence: the server travels through a transition map, then brings up the destination.
+		// The app watches for the transition to know a roll has begun and which layer it expects.
+		this.#log(Fmt.logSeamlessTravel(target))
+		this.#log(Fmt.logTransitionWorld())
+		this.#log(Fmt.logStartLoadingDestination(target))
+
+		this.currentLayer = target
+		this.nextLayer = null
 		this.matchStartedAt = this.#now()
 		for (const p of this.players.values()) {
 			p.squadId = null
