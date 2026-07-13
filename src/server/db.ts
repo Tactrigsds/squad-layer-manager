@@ -24,9 +24,22 @@ let ENV!: ReturnType<typeof envBuilder>
 let db: Db
 let dbRedactParams: Db
 
+// the DB_PATH default was ./data/main.sqlite3 before backups landed (they're named after the db file, and "main" said
+// nothing). A deployment that relied on the default would otherwise come up silently on a fresh, empty database while
+// its real one sat next to it, so refuse to start instead. Safe to delete once no deployment has the old file.
+const LEGACY_DB_PATH = './data/main.sqlite3'
+function assertNotLegacyDbPath() {
+	if (process.env.DB_PATH || !fs.existsSync(LEGACY_DB_PATH)) return
+	throw new Error(
+		`Refusing to start: found a database at the old default path ${LEGACY_DB_PATH}, but the default is now ${ENV.DB_PATH}. `
+			+ `Rename it (along with any -wal/-shm files) to ${ENV.DB_PATH}, or set DB_PATH=${LEGACY_DB_PATH} to keep using it.`,
+	)
+}
+
 export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 	log = module.getLogger()
 	ENV = envBuilder()
+	assertNotLegacyDbPath()
 
 	fs.mkdirSync(path.dirname(ENV.DB_PATH), { recursive: true })
 	driver = new DatabaseConstructor(ENV.DB_PATH)
@@ -76,6 +89,16 @@ export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 			},
 		},
 	})
+}
+
+// sqlite's online backup API (the same thing the shell's `.backup` runs): copies the database page by page from the
+// live connection, giving a consistent snapshot without taking the db offline. Writes made through this connection
+// while it runs are applied to the copy too, so the snapshot can't tear. better-sqlite3 transfers in 100-page chunks
+// with a setImmediate between them, so this doesn't block the event loop despite the driver being synchronous.
+// The destination is written by sqlite itself, so callers should hand it a temp path and rename into place -- a crash
+// mid-backup otherwise leaves a truncated file that looks whole.
+export async function backupTo(destPath: string) {
+	return await driver.backup(destPath)
 }
 
 // try to use the getter instead of passing the db instance around by itself. that way the logger is always up-to-date. not expensive.
