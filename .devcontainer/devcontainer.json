@@ -38,22 +38,38 @@
 		// the app defaults to 127.0.0.1, which is unreachable from the host once it's inside a container
 		"HOST": "0.0.0.0",
 		// the otel stack (`docker compose up -d otel`) runs on the host, not in here
-		"OTLP_COLLECTOR_ENDPOINT": "http://host.docker.internal:4318"
+		"OTLP_COLLECTOR_ENDPOINT": "http://host.docker.internal:4318",
+		// the repo's tools (dprint, oxlint, vitest, playwright, drizzle-kit) are devDependencies, and nothing
+		// puts them on PATH outside of `pnpm run`. The container has no global copy of any of them to fall
+		// back on the way a host does, so without this they are simply missing from every terminal in here.
+		"PATH": "${containerWorkspaceFolder}/node_modules/.bin:${containerEnv:PATH}"
 	},
 	// makes host.docker.internal above resolve on Linux
 	"runArgs": ["--add-host=host.docker.internal:host-gateway"],
 
-	"forwardPorts": [5173, 3000, 8443, 9229],
+	// published 1:1 (docker -p), so the host port is always the port in the label. appPort rather than
+	// forwardPorts because forwardPorts is an editor-level tunnel that only VS Code implements -- Zed
+	// drives the reference devcontainer CLI, which passes appPort to docker and ignores forwardPorts.
+	// The bind happens when the container starts, so the container will not come up if something on the
+	// host is already holding one of these (an app you left running outside the container, typically).
+	"appPort": ["5173:5173", "3000:3000", "8443:8443", "9229:9229"],
 	"portsAttributes": {
-		"5173": { "label": "client (vite)", "onAutoForward": "notify" },
-		"3000": { "label": "server (fastify)", "onAutoForward": "silent" },
-		"8443": { "label": "squad logs receiver", "onAutoForward": "silent" },
-		"9229": { "label": "node inspector", "onAutoForward": "silent" }
+		"5173": { "label": "client (vite)" },
+		"3000": { "label": "server (fastify)" },
+		"8443": { "label": "squad logs receiver" },
+		"9229": { "label": "node inspector" }
 	},
 
 	"postCreateCommand": "bash .devcontainer/post-create.sh",
 
 	"customizations": {
+		// only the languages the repo actually contains that Zed does not handle out of the box. Everything
+		// else it needs (typescript, tailwind, the dprint formatter and the oxc lsp) is either built in or
+		// configured in .zed/settings.json, which rides along in the bind mount.
+		// NOTE: these install into your local Zed too, not just the container's session.
+		"zed": {
+			"extensions": ["dockerfile", "sql", "html"]
+		},
 		"vscode": {
 			"extensions": [
 				"dprint.dprint",

@@ -18,6 +18,11 @@ dist-ssr
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+# settings.json and debug.json are project config (formatter, language servers, debug targets) and are
+# tracked; anything else that lands in here, adminlist.txt included, is local scratch
+.zed/*
+!.zed/settings.json
+!.zed/debug.json
 .idea
 .DS_Store
 *.suo
