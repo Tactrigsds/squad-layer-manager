@@ -16,6 +16,12 @@ ENV PATH="$PNPM_HOME:$PATH"
 # here, so it isn't. Left alone, pnpm falls back to <project>/.pnpm-store, which is the bind mount:
 # the store would land in the host's repo.
 ENV NPM_CONFIG_STORE_DIR="/pnpm/store"
+# Corepack caches the package manager it downloads under $HOME, and this build runs as root while the
+# container runs as `node`. Left at the default, root's cache is primed and node's is empty, so corepack
+# re-fetches pnpm from the registry the first time you run any pnpm command -- turning `pnpm run
+# server:dev` into something that needs the network, and failing outright when it can't reach npmjs.
+# A shared COREPACK_HOME bakes pnpm into the image for every user.
+ENV COREPACK_HOME="/pnpm/corepack"
 RUN corepack enable && corepack prepare pnpm@10.22.0 --activate \
 	&& mkdir -p "$NPM_CONFIG_STORE_DIR" && chown -R node:node "$PNPM_HOME"
 
