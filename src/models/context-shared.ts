@@ -20,6 +20,10 @@ export function isCtx(ctx: any): ctx is Ctx {
 
 export type EffectiveColumnConfig = Ctx & { effectiveColsConfig: LC.EffectiveColumnConfig }
 
+// the weighted-random layer generation config. unlike effectiveColsConfig this is admin-editable at runtime
+// (globalSettings.layerGeneration), so holders must refresh it when settings change
+export type LayerGeneration = Ctx & { generationConfig: LC.LayerGenerationConfig }
+
 export type LayerDb = Ctx & { layerDb: () => LDB.LayerDb } & EffectiveColumnConfig
 export type AbortSignal = { signal: globalThis.AbortSignal }
 
@@ -36,7 +40,7 @@ export type Filters = Ctx & {
 export type MatchHistory = Ctx & {
 	recentMatches: MH.MatchDetails[]
 }
-export type LayerQuery = Ctx & LayerDb & Log & Filters
+export type LayerQuery = Ctx & LayerDb & Log & Filters & LayerGeneration
 
 export function addSignal<C extends Ctx & Partial<AbortSignal>>(ctx: C, signal: globalThis.AbortSignal): C & AbortSignal {
 	return { ...ctx, signal: ctx.signal ? anySignal(signal, ctx.signal)! : signal }

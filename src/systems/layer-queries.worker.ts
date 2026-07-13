@@ -3,6 +3,7 @@ import { acquireInBlock } from '@/lib/async'
 import * as CS from '@/models/context-shared'
 import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
+import * as LC from '@/models/layer-columns'
 import type { LayerDb } from '@/models/layer-db'
 import type * as LQY from '@/models/layer-queries.models'
 import * as ATTRS from '@/models/otel-attrs'
@@ -18,8 +19,8 @@ export type ToWorker = RequestInner & Sequenced & Prioritized
 
 export type FromWorker = (ResponseInner | { type: 'worker-error'; error: string } | SignalLoadingLayersStarted) & Sequenced
 
-export type RequestInner = OtherQueryRequest | QueryLayersRequest | InitRequest | FilterUpdateRequest
-export type ResponseInner = OtherQueryResponse | QueryLayersResponse | InitResponse | FilterUpdateResponse
+export type RequestInner = OtherQueryRequest | QueryLayersRequest | InitRequest | FilterUpdateRequest | GenerationUpdateRequest
+export type ResponseInner = OtherQueryResponse | QueryLayersResponse | InitResponse | FilterUpdateResponse | GenerationUpdateResponse
 
 export type OtherQueries = typeof queries
 export type OtherQueryType = keyof OtherQueries
@@ -47,8 +48,8 @@ export type QueryLayersResponse = {
 export type InitRequest = {
 	type: 'init'
 	// the worker doesn't share module state with the main thread, so layer data is passed along
-	// rather than fetched a second time
-	input: CS.EffectiveColumnConfig & BackgroundQueryState & { layerData: L.LayerData }
+	// rather than fetched a second time. the column config is derived from it here.
+	input: CS.LayerGeneration & BackgroundQueryState & { layerData: L.LayerData }
 }
 
 export type InitResponse = {
@@ -66,6 +67,18 @@ export type FilterUpdateResponse = {
 	payload?: undefined
 }
 
+// generation weights are admin-editable at runtime, so the worker's copy has to be refreshed rather than
+// baked in at init
+export type GenerationUpdateRequest = {
+	type: 'generation-update'
+	input: LC.LayerGenerationConfig
+}
+
+export type GenerationUpdateResponse = {
+	type: 'generation-update'
+	payload?: undefined
+}
+
 export type SignalLoadingLayersStarted = {
 	type: 'layer-download-started'
 }
@@ -78,7 +91,7 @@ export type Prioritized = {
 }
 
 type State = {
-	ctx: CS.LayerDb & CS.Log
+	ctx: CS.LayerDb & CS.Log & CS.LayerGeneration
 	filters: Map<string, F.FilterEntity>
 }
 
@@ -102,6 +115,11 @@ onmessage = withErrorResponse(async (e) => {
 	if (msg.type === 'filter-update') {
 		state.filters = msg.input
 		post({ type: 'filter-update' })
+		return
+	}
+	if (msg.type === 'generation-update') {
+		state.ctx = { ...state.ctx, generationConfig: msg.input }
+		post({ type: 'generation-update' })
 		return
 	}
 
@@ -136,7 +154,8 @@ async function init(initRequest: InitRequest) {
 	state = {
 		ctx: {
 			...CS.init(),
-			effectiveColsConfig: initRequest.input.effectiveColsConfig,
+			effectiveColsConfig: LC.getEffectiveColumnConfig(),
+			generationConfig: initRequest.input.generationConfig,
 			log,
 			layerDb: () => db,
 		},

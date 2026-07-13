@@ -2119,7 +2119,7 @@
         "Gamemode": "RAAS",
         "LayerVersion": "V3",
         "Collection": "Community",
-        "Size": "Medium",
+        "Size": "Large",
         "Layer": "Harju_RAAS_v3_CL",
         "hasCommander": true,
         "persistentLightingType": "Daytime",
@@ -4194,7 +4194,7 @@
         "Gamemode": "RAAS",
         "LayerVersion": "V3",
         "Collection": "Community",
-        "Size": "Medium",
+        "Size": "Large",
         "Layer": "Sanxian_RAAS_v3_CL",
         "hasCommander": true,
         "persistentLightingType": "Daytime",
@@ -5346,7 +5346,7 @@
         "Gamemode": "FRAAS",
         "LayerVersion": "V3",
         "Collection": "Community",
-        "Size": "Medium",
+        "Size": "Large",
         "Layer": "Harju_FRAAS_v3_CL",
         "hasCommander": true,
         "persistentLightingType": "Daytime",
@@ -5661,7 +5661,7 @@
         "Gamemode": "FRAAS",
         "LayerVersion": "V3",
         "Collection": "Community",
-        "Size": "Medium",
+        "Size": "Large",
         "Layer": "Sanxian_FRAAS_v3_CL",
         "hasCommander": true,
         "persistentLightingType": "Daytime",
@@ -265704,5 +265704,99 @@
       ],
       "type": "LightInfantry"
     }
-  }
+  },
+  "extraColumns": [
+    {
+      "type": "float",
+      "name": "Logistics_1",
+      "displayName": "Logistics 1"
+    },
+    {
+      "type": "float",
+      "name": "Logistics_2",
+      "displayName": "Logistics 2"
+    },
+    {
+      "type": "float",
+      "name": "Transportation_1",
+      "displayName": "Transportation 1"
+    },
+    {
+      "type": "float",
+      "name": "Transportation_2",
+      "displayName": "Transportation 2"
+    },
+    {
+      "type": "float",
+      "name": "Armor_1",
+      "displayName": "Armor 1"
+    },
+    {
+      "type": "float",
+      "name": "Armor_2",
+      "displayName": "Armor 2"
+    },
+    {
+      "type": "float",
+      "name": "Anti-Infantry_1",
+      "displayName": "Anti-Infantry 1"
+    },
+    {
+      "type": "float",
+      "name": "Anti-Infantry_2",
+      "displayName": "Anti-Infantry 2"
+    },
+    {
+      "type": "float",
+      "name": "ZERO_Score_1",
+      "displayName": "ZERO Score 1"
+    },
+    {
+      "type": "float",
+      "name": "ZERO_Score_2",
+      "displayName": "ZERO Score 2"
+    },
+    {
+      "type": "float",
+      "name": "Balance_Differential",
+      "displayName": "Balance",
+      "shortName": "BAL"
+    },
+    {
+      "type": "float",
+      "name": "Asymmetry_Score",
+      "displayName": "Asymm",
+      "shortName": "ASM"
+    },
+    {
+      "type": "boolean",
+      "name": "Z_Pool",
+      "displayName": "Z Pool"
+    },
+    {
+      "type": "float",
+      "name": "Logistics_Diff",
+      "displayName": "Logistics Diff"
+    },
+    {
+      "type": "float",
+      "name": "Transportation_Diff",
+      "displayName": "Transportation Diff"
+    },
+    {
+      "type": "float",
+      "name": "Armor_Diff",
+      "displayName": "Armor Diff"
+    },
+    {
+      "type": "float",
+      "name": "Anti-Infantry_Diff",
+      "displayName": "Anti-Infantry Diff"
+    },
+    {
+      "type": "float",
+      "name": "ZERO_Score_Diff",
+      "displayName": "ZERO Score Diff"
+    }
+  ]
 }

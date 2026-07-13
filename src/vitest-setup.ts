@@ -9,4 +9,5 @@ const file = JSON.parse(fs.readFileSync(path.join(Paths.DATA, 'layer-data.json')
 L.setLayerData({
 	components: LC.buildFullLayerComponents(file.components),
 	factionUnits: file.factionUnits,
+	extraColumns: file.extraColumns,
 })
