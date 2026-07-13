@@ -539,7 +539,8 @@ export async function setup() {
 
 	const settingsModified$ = Rx.combineLatest([
 		ZusUtils.toObservable(SquadServerClient.SelectedServerStore, true).pipe(Rx.map(([s]) => s.selectedServerId)),
-		toStream(SettingsClient.PublicSettingsStore),
+		// see squad-server.client: toStream needs fireImmediately to carry the store's current value
+		toStream(SettingsClient.PublicSettingsStore, undefined, { fireImmediately: true }),
 	]).pipe(
 		Rx.map(([serverId, settings]) => settings?.servers.find(s => s.id === serverId)),
 		Rx.distinctUntilChanged(),
@@ -547,7 +548,10 @@ export async function setup() {
 			// only track settings-modified for a usable server; otherwise there's no frame to read and no edits to flush
 			if (!SettingsClient.isServerUsable(serverConfig)) return Rx.of(false)
 			const key = frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(serverConfig.id))
-			return toStream(ZusUtils.resolveReadStore(key)).pipe(Rx.map(s => s.settings.modified), Rx.distinctUntilChanged())
+			return toStream(ZusUtils.resolveReadStore(key), undefined, { fireImmediately: true }).pipe(
+				Rx.map(s => s.settings.modified),
+				Rx.distinctUntilChanged(),
+			)
 		}),
 	)
 	const wsClientId$ = ConfigClient.fetchConfig().then(config => config.wsClientId)

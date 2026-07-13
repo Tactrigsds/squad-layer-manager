@@ -27,7 +27,10 @@ export const [useLayerItemsState, layerItemsState$] = RxHelpers.bind(
 		if (!serverId) return Rx.of({ layerItems: [], firstLayerItemParity: 0 } satisfies LQY.LayerItemsState)
 		const key = frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(serverId))
 		return Rx.combineLatest([
-			ZusRx.toStream(ZusUtils.resolveReadStore(key)).pipe(Rx.map(s => s.queue.layerList), Rx.distinctUntilChanged()),
+			ZusRx.toStream(ZusUtils.resolveReadStore(key), undefined, { fireImmediately: true }).pipe(
+				Rx.map(s => s.queue.layerList),
+				Rx.distinctUntilChanged(),
+			),
 			MatchHistoryClient.recentMatches$(serverId),
 		]).pipe(
 			Rx.map(([layerList, history]) => {
