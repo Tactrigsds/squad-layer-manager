@@ -13,6 +13,7 @@ import type * as V from '@/models/vote.models'
 import type * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import type { WarnOptions } from '@/systems/squad-rcon.server'
+import { setBy } from '@tanstack/react-form'
 import * as dateFns from 'date-fns'
 import { assertNever, isNullOrUndef } from './lib/type-guards'
 
@@ -162,36 +163,18 @@ export const WARNS = {
 		},
 
 		empty: `WARNING: Queue is empty. Please populate it`,
-		showNext: (layerQueue: LL.List, parts: USR.UserPart, opts?: { updated?: boolean }) => (ctx: C.Player) => {
-			const item = layerQueue[0]
-			let setByDisplay: string
-			switch (item?.source.type) {
-				case undefined:
-				case 'unknown':
-					setByDisplay = `Unknown`
-					break
-				case 'generated':
-					setByDisplay = `Generated`
-					break
-				case 'gameserver':
-					setByDisplay = `Game Server`
-					break
-				case 'manual':
-					{
-						const userId = item.source.userId
-						setByDisplay = `Set by ${parts?.users.find(user => user.discordId === userId)?.displayName ?? 'Unknown'}`
-					}
-					break
-				default:
-					assertNever(item.source)
-			}
-
-			const extraDisplay = setByDisplay
-			const getOptions = (msg: string | string[]) => ({ msg })
-
+		showNext: (
+			layerQueue: LL.List,
+			nextLayer: L.UnvalidatedLayer | null,
+			setByUser: USR.User | undefined,
+			commands: Record<CMD.CommandId, CMD.CommandConfig>,
+			opts?: { updated?: boolean; isAdmin?: boolean },
+		) =>
+		(ctx: C.Player) => {
+			const item = layerQueue.length > 0 ? layerQueue[0] : undefined
 			const playerNextTeamId = isNullOrUndef(ctx.player.teamId) ? undefined : ctx.player.teamId === 1 ? 2 : 1
-
-			if (LL.isVoteItem(item)) {
+			let lines: string[] = []
+			if (item && LL.isVoteItem(item)) {
 				if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') {
 					let winningLayer: L.LayerId | undefined
 
@@ -201,30 +184,67 @@ export const WARNS = {
 							break
 						}
 					}
-					const msg = `Next Layer${opts?.updated ? ' changed' : ''} (Chosen via vote)\n${
-						winningLayer ? DH.displayLayer(winningLayer, playerNextTeamId, ['layer', 'factions', 'units']) : 'unknown'
-					}`
-					return getOptions(msg)
+					lines.push(
+						`Next Layer${opts?.updated ? ' changed' : ''} (Chosen via vote)\n${
+							winningLayer ? DH.displayLayer(winningLayer, playerNextTeamId, ['layer', 'factions', 'units'], '\n') : 'unknown'
+						}`,
+					)
 				} else {
-					const msg = [
-						'Upcoming vote:',
-						voteChoicesLines(item.choices.map(choice => choice.layerId), playerNextTeamId, ['layer', 'factions', 'units']).join('\n'),
-					]
-					msg.push(extraDisplay)
-					return getOptions(msg)
+					if (opts?.updated) {
+						const showNextString = commands.showNext.strings[0]
+						const runWithPart = opts.isAdmin ? ` (run with ${showNextString})` : ''
+						lines.push(`Next layer Changed. Will be chosen via vote${runWithPart}:`)
+					} else {
+						lines.push('Upcoming vote:')
+					}
+					lines.push(
+						voteChoicesLines(item.choices.map(choice => choice.layerId), playerNextTeamId, ['layer', 'factions', 'units']).join(),
+					)
+				}
+			} else {
+				if (nextLayer === null) {
+					lines.push(`No next layer data available`)
+				} else {
+					lines.push(
+						`Next Layer${opts?.updated ? ' changed' : ''}:\n${
+							DH.displayLayer(nextLayer, playerNextTeamId, ['layer', 'factions', 'units'], '\n')
+						}\n`,
+					)
 				}
 			}
 
-			// this shouldn't be possible
-			if (!item.layerId) return `No next layer set`
+			// only show who set the layer to admins
+			if (opts?.isAdmin) {
+				let setByDisplay: string
+				if (!item) {
+					setByDisplay = `Unknown`
+				} else {
+					switch (item.source.type) {
+						case 'generated':
+							setByDisplay = `Generated`
+							break
+						case 'gameserver':
+							setByDisplay = `Game Server`
+							break
+						case 'manual':
+							{
+								const userId = item.source.userId
+								setByDisplay = `Set by ${setByUser && userId === setByUser.discordId ? setByUser.displayName : 'Unknown'}`
+							}
+							break
+						case undefined:
+						case 'unknown':
+							setByDisplay = `Unknown`
+							break
+						default:
+							assertNever(item.source)
+					}
+				}
 
-			const msg = [
-				`Next Layer${opts?.updated ? ' has been changed to:' : ':'}\n${
-					DH.displayLayer(item.layerId, playerNextTeamId, ['layer', 'factions', 'units'])
-				}`,
-			]
-			msg.push(extraDisplay)
-			return getOptions(msg)
+				lines.push(setByDisplay)
+			}
+
+			return { msg: lines }
 		},
 		requestFeedback: (index: LL.ItemIndex, playerName: string, item: LL.Item) => ({
 			msg: [

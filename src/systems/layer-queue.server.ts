@@ -375,23 +375,34 @@ export async function warnShowNext(
 	opts?: { updated?: boolean },
 ) {
 	const layerQueue = getSavedQueue(ctx)
-	const parts: USR.UserPart = { users: [] }
 	const firstItem = layerQueue[0]
+	let setByUser: USR.User | undefined
 	if (firstItem?.source.type === 'manual') {
 		const userId = firstItem.source.userId
 		const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, userId))
-		parts.users.push(await Users.buildUser(user))
+		setByUser = await Users.buildUser(user)
 	}
+	let isAdmin: boolean = false
+	if (playerIds === 'all-admins') {
+		isAdmin = true
+	} else if (playerIds.steam !== undefined) {
+		// isAdmin = (await ctx.adminList.get(ctx)).admins.has(playerIds.steam)
+	}
+
+	const nextLayerRes = await ctx.server.layersStatus.get(ctx)
+	const nextLayer = nextLayerRes.code === 'ok' ? nextLayerRes.data.nextLayer : null
+	const commands = Settings.GLOBAL_SETTINGS.commands
+	const showNextMsg = Messages.WARNS.queue.showNext(layerQueue, nextLayer, setByUser, commands, { updated: opts?.updated, isAdmin })
 	if (playerIds === 'all-admins') {
 		await SquadRcon.warnAllAdmins(
 			ctx,
-			Messages.WARNS.queue.showNext(layerQueue, parts, { updated: opts?.updated }),
+			showNextMsg,
 		)
 	} else {
 		await SquadRcon.warn(
 			ctx,
 			playerIds,
-			Messages.WARNS.queue.showNext(layerQueue, parts, { updated: opts?.updated }),
+			showNextMsg,
 		)
 	}
 }

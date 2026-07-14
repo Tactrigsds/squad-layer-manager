@@ -982,7 +982,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 								if (Settings.GLOBAL_SETTINGS.allowedPrefixes.some((prefix) => event.message.startsWith(prefix))) {
 									opts.push(
 										Commands.handleCommand(ctx, event).then((res) => {
-											if (res?.code !== 'ok') log.error(res)
+											if (res && res?.code !== 'ok') log.error(res)
 										}),
 									)
 								} else if (

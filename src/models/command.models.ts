@@ -96,7 +96,7 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('abortVote', { args: [], defaults: { scopes: ['admin'], strings: ['abortvote', 'av'], enabled: true } }),
 	...declareCommand('endVoteEarly', { args: [], defaults: { scopes: ['admin'], strings: ['endvote', 'ev'], enabled: true } }),
-	...declareCommand('showNext', { args: [], defaults: { scopes: ['admin'], strings: ['shownext', 'sn'], enabled: true } }),
+	...declareCommand('showNext', { args: [], defaults: { scopes: ['admin', 'public'], strings: ['shownext', 'sn'], enabled: true } }),
 	...declareCommand('enableSlmUpdates', { args: [], defaults: { scopes: ['admin'], strings: ['enableslm'], enabled: true } }),
 	...declareCommand('disableSlmUpdates', { args: [], defaults: { scopes: ['admin'], strings: ['disableslm'], enabled: true } }),
 	...declareCommand('getSlmUpdatesEnabled', { args: [], defaults: { scopes: ['admin'], strings: ['slmstatus'], enabled: true } }),
