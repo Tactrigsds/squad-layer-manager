@@ -1,4 +1,5 @@
 import * as Arr from '@/lib/array'
+import * as Obj from '@/lib/object'
 import { simpleUniqueStringMatch } from '@/lib/string'
 import { assertNever } from '@/lib/type-guards'
 import { formatHumanTime } from '@/lib/zod'
@@ -85,6 +86,8 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 
 	const parseRes = CMD.parseCommand(msg, Settings.GLOBAL_SETTINGS.commands)
 	if (parseRes.code === 'err:unknown-command') {
+		// just don't respond to unknown commands from non-admins
+		if (!sender.isAdmin) return
 		// real command strings win by construction: aliases are only consulted after parseCommand misses
 		const aliasRes = await tryTimeoutAlias(h)
 		if (aliasRes) return aliasRes
@@ -97,8 +100,11 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 
 	const cmdConfig = Settings.GLOBAL_SETTINGS.commands[cmd as keyof typeof Settings.GLOBAL_SETTINGS.commands]
 	if (!CMD.chatInScope(cmdConfig.scopes, msg.channelType)) {
-		const scopes = CMD.getScopesForChat(msg.channelType)
-		const correctChats = scopes.flatMap((s) => CMD.CHAT_SCOPE_MAPPINGS[s])
+		if (!sender.isAdmin && Obj.deepEqual(cmdConfig.scopes, ['admin'])) {
+			// non-admin is trying to use admin command, just ignore them
+			return
+		}
+		const correctChats = cmdConfig.scopes.flatMap((s) => CMD.CHAT_SCOPE_MAPPINGS[s])
 		return await error('wrong-chat', Messages.WARNS.commands.wrongChat(correctChats))
 	}
 

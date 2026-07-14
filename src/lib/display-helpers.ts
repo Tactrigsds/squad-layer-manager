@@ -16,10 +16,15 @@ export const MISSING_DISPLAY = ' - '
 export const LAYER_DISPLAY_PROP = z.enum(['map', 'gamemode', 'layer', 'factions', 'units'])
 export type LayerDisplayProp = z.infer<typeof LAYER_DISPLAY_PROP>
 
-export function displayLayer(_possibleUnknown: L.UnvalidatedLayer | L.LayerId, you?: 1 | 2, displayProps?: LayerDisplayProp[]) {
+export function displayLayer(
+	_possibleUnknown: L.UnvalidatedLayer | L.LayerId,
+	you?: 1 | 2,
+	displayProps?: LayerDisplayProp[],
+	delimit?: string,
+) {
 	const possibleUnknown = typeof _possibleUnknown === 'string' ? L.fromPossibleRawId(_possibleUnknown) : _possibleUnknown
 	if (L.isKnownLayer(possibleUnknown)) {
-		return toShortLayerName(possibleUnknown, you, displayProps)
+		return toShortLayerName(possibleUnknown, you, displayProps, delimit)
 	}
 
 	return possibleUnknown.id.slice('RAW:'.length)
@@ -107,7 +112,7 @@ export function toFullLayerNameFromId(id: string, you?: 1 | 2, displayProps?: La
 	return layer.id.slice('RAW:'.length)
 }
 
-export function toShortLayerName(layer: L.KnownLayer, you?: 1 | 2, displayProps?: LayerDisplayProp[]) {
+export function toShortLayerName(layer: L.KnownLayer, you?: 1 | 2, displayProps?: LayerDisplayProp[], delimit?: string) {
 	// If no display props specified, show everything
 	if (!displayProps || displayProps.length === 0) {
 		const subfaction1 = toShortUnit(layer.Unit_1)
@@ -176,7 +181,7 @@ export function toShortLayerName(layer: L.KnownLayer, you?: 1 | 2, displayProps?
 		}
 	}
 
-	return parts.join(' - ')
+	return parts.join(`${delimit ?? ' - '}`)
 }
 
 export function toShortTeamsDisplay(layer: Partial<L.KnownLayer>, you?: 1 | 2, displayProps?: LayerDisplayProp[]) {
