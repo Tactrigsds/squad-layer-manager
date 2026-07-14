@@ -2,25 +2,39 @@
 
 A Tool for managing the upcoming layers of a squad server.
 
-## Deployment
+## Deployment & Hosting.
 
 Deployment is done via docker.
 
-An image reflecting the `main` branch of the repository is available at `ghcr.io/tactrigsds/squad-layer-manager:latest`. the /app/data folder is expected to be bind-mounted for persistence
+An image reflecting the `main` branch of the repository is available at `ghcr.io/tactrigsds/squad-layer-manager:latest`. the /app/data folder is expected to be bind-mounted for persistence data persistence
 
-## Configuration
+### Configuration
 
-- `.env` contains sensitive secrets, and can be overridden by environment
-  variables. Reference [src/server/env.ts](src/server/env.ts) for available
-  options.
+`.env` contains sensitive secrets and some basic configuration options, and can be overridden by environment
+variables. Reference [src/server/env.ts](src/server/env.ts) for available
+options.
 
-- The rest of the configuration is done via the app, though there is a script included `edit-global-settings.sh` if you need to manage it from outside the app
+The rest of the configuration is done via the app on the settings page, though there is a script included `edit-global-settings.sh` if you need to manage it from outside the app, and while the app isn't running.
 
-The database lives at `./data/db.sqlite3` by default. It used to default to `./data/main.sqlite3`: a deployment
-carrying that older file needs to rename it (along with any `-wal`/`-shm` files) or set `DB_PATH` explicitly.
+The database lives at `./data/db.sqlite3` by default.
 The app refuses to start if it finds one, rather than quietly coming up on an empty database.
+On boot, -wal and -shm files will be created alongside `db.sqlite3`. These are safe to delete _ONLY_ when the app is not running.
 
-## Backups
+### The Layer data
+
+The app needs two artifacts to run:
+
+- `data/layers_v<version>.bin.gz` -- contains a set of all possible layer configurations (layer + factions + units) in a columnar format, plus any scoring we attribute to each layer.
+- `data/layer-data.json` -- the components (maps, factions, units, extra-column definitions) the
+  table's encoded values refer to. TODO we need to version layer-data.json as well
+
+<version> is parsed as semver, and by default the app will load whatever the latest release is, unless the `LAYERS_VERSION` environment variable is set.
+
+`layer-data.json` and `layers_v<version>.bin.gz` need to copied from [the release](https://github.com/Tactrigsds/squad-layer-manager/releases/tag/layer-db) into `data/` from where you're running the app.
+
+It is possible to build your own `layer-data.json` and `layers_v<version>.bin.gz` with alternate scoring and different layers/game versions. see `src/scripts/preprocess.ts`.
+
+#### Backups
 
 Off by default. Set `AUTOMATIC_BACKUPS_PERIODIC` to a duration (e.g. `72h`) and the app will snapshot its
 database on that interval, optionally shipping each one to an SFTP host.
@@ -54,7 +68,7 @@ deletes any backup matching its own name, so they would prune each other's.
 A failed upload does not fail the backup. The local copy is still written, and the audit event records that it
 never left the box.
 
-### Event history retention
+#### Event history retention
 
 `EVENT_HISTORY_RETENTION_PERIOD` prunes old server events (chat, kills, connects) as part of each backup run,
 which is what keeps the database from growing without bound. Events are deleted for matches older than the
@@ -65,117 +79,14 @@ log. The prune runs before the snapshot, so a backup never carries rows that wer
 The first prune after turning this on clears the whole accumulated backlog and is much larger than the ones
 that follow.
 
-### Restoring
+#### Restoring
 
 ```sh
+# while the application is OFF:
+# delete or move the existing database and its -wal and -shm files
+rm data/db.sqlite3*
 gunzip -c slm-backup-db-20260713-134504.sqlite3.gz > data/db.sqlite3
 ```
-
-## The layer query engine
-
-Every question the app asks about layers -- which ones are in a pool, what to put on a page, what to
-generate next -- is answered by `layer-engine/`, a rust crate compiled to wasm. It holds the 732k-row layer
-table in columnar form (`data/layers_v*.bin`, written by `pnpm preprocess`) and the same wasm module
-runs in the browser's query worker and in the server process, so there is one implementation of the
-filter semantics rather than two.
-
-Filters are lowered to a small IR in TypeScript (`src/models/layer-engine.ts`) before they reach it.
-That is deliberate: team columns, enum mapping, and null-as-an-enum-index are decisions the app
-already knows how to make, and the engine only implements primitive comparisons plus SQL's
-three-valued logic (a comparison against null is null, and stays excluded under negation).
-
-The engine deliberately knows nothing about what a faction or a map _is_: the artifact carries only
-encoded values, and `data/layer-data.json` (from the same preprocess run) is what gives them meaning.
-That is why filters are lowered against the column config before they reach it.
-
-It replaced a SQLite layer db. `src/systems/layer-engine.test.ts` checks it still answers exactly what
-that db answered, for every filter that runs in production -- those expectations were recorded from
-the SQLite implementation and are what gates any change to the engine.
-
-### Publishing the layer table
-
-`pnpm preprocess` turns the scored layer csv into the two artifacts the app boots on:
-
-- `data/layers_v<version>.bin.gz` -- the layer table, columnar and gzipped, what the engine reads.
-- `data/layer-data.json` -- the components (maps, factions, units, extra-column definitions) the
-  table's encoded values refer to.
-
-Neither is in version control, and CI cannot build them: the scored csv (`data/layers_v<version>.csv`)
-and `layer-db.json`, which declares the extra columns to ingest from it, are both local-only. So this is
-a manual step, run by whoever has that csv:
-
-```sh
-LAYERS_VERSION=<version> pnpm preprocess   # writes both files into data/
-```
-
-Attach **both** to the `layer-db` github release, replacing what's there. They must come from the same
-run: the table is a table of integers, and a `layer-data.json` from a different game version decodes
-them into the wrong factions and maps rather than failing. The integration-test workflow pulls the pair
-from that release and refuses to run if either is missing.
-
-## Testing
-
-Three suites, in increasing order of what they cost and what they cover:
-
-- `pnpm test` — unit tests. No app, no server.
-- `pnpm test:integration` — boots the real app against an emulated squad server (RCON + game log)
-  and drives it as an admin would from in-game chat, asserting against the app's database and the
-  commands the emulator received.
-- `pnpm test:e2e` — the same, driven through the real client in a browser.
-
-Both of the latter need generated artifacts that a fresh checkout does not have:
-
-- `assets/layer-engine.wasm` — the query engine, built from `layer-engine/` with `pnpm build:engine`
-  (needs a rust toolchain).
-- `data/layers_v*.bin.gz` and `data/layer-data.json` — the layer table the engine reads, and the
-  components that give its encoded values meaning. Both come out of one `pnpm preprocess` run and are
-  published together; neither is useful without the other, so keep them in step.
-
-To run them the way CI does — inside the production image, driving the very server bundle that gets
-deployed:
-
-```sh
-docker compose -f docker-compose.test.yaml run --rm --build tests
-```
-
-The image is the production one plus a browser, the test sources, and dev dependencies (see the
-Dockerfile's `test` stage). The layer table is mounted rather than baked in, exactly as in production.
-
-### Debugging a failing test with telemetry
-
-A failing integration test is usually easier to read as a trace than as a log tail. The app under test
-can export to the otel stack, labelled with the test that produced it:
-
-```sh
-docker compose up -d otel          # the collector + grafana, from docker-compose.yaml
-SLM_TEST_OTEL=1 pnpm test:integration
-```
-
-Every span, log and metric that app emits then carries:
-
-| attribute            | what it is                                                                                             |
-| -------------------- | ------------------------------------------------------------------------------------------------------ |
-| `service.name`       | `slm-test` (rather than `squad-layer-manager`, so test telemetry never mixes with a real deployment's) |
-| `slm.test.name`      | the test, e.g. `admin actions from the teams panel > disbanding a squad`                               |
-| `slm.test.file`      | the spec file it came from                                                                             |
-| `slm.test.run_id`    | one id for the whole run, so you can scope to it and then narrow to one test                           |
-| `slm.test.server_id` | the emulated server                                                                                    |
-
-Grafana (http://localhost:3001) — traces in Tempo:
-
-```
-{ resource.slm.test.name = "admin actions from the teams panel > disbanding a squad" }
-```
-
-and the app's logs for the same test in Loki:
-
-```
-{service_name="slm-test"} | slm_test_name = "admin actions from the teams panel > disbanding a squad"
-```
-
-A test that times out prints its `slm.test.run_id` and `slm.test.name` in the failure, so there's
-something to paste. Telemetry is off unless `SLM_TEST_OTEL=1`: exporting costs time, and a test run
-shouldn't need a collector to pass.
 
 ## Logging
 
