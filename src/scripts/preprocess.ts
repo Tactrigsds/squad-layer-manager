@@ -10,8 +10,7 @@ import * as LC from '@/models/layer-columns'
 import * as SLL from '@/models/squad-layer-list.models'
 import * as Env from '@/server/env'
 import { baseLogger, ensureLoggerSetup, initModule } from '@/server/logger'
-import * as LayerData from '@/systems/layer-data.server'
-import * as LayerEngine from '@/systems/layer-engine.server'
+import * as LayerArtifacts from '@/systems/layer-artifacts.server'
 import { parse } from 'csv-parse'
 import http from 'follow-redirects'
 import * as fs from 'fs'
@@ -36,7 +35,7 @@ const ParsedNullableFloat = ParsedFloatSchema.transform((val) => (isNaN(val) ? n
 const Steps = z.enum(['build-layer-artifact', 'download-csvs', 'write-components-and-units', 'compress-artifact', 'all'])
 
 Env.ensureEnvSetup()
-const envBuilder = Env.getEnvBuilder({ ...Env.groups.preprocess, ...Env.groups.layerDb, ...Env.groups.general })
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.preprocess, ...Env.groups.layers, ...Env.groups.general })
 let ENV!: ReturnType<typeof envBuilder>
 let log = baseLogger
 
@@ -101,6 +100,19 @@ async function main() {
 		L.setLayerData({ components, factionUnits: data.units, extraColumns: LAYER_DB_CONFIG.columns })
 	}
 
+	// the version of a build comes from the csv it ingests, and both halves of the pair are stamped with it and
+	// written side by side: the app will not load a table without the components that go with it.
+	const writesArtifacts = args.includes('write-components-and-units') || args.includes('build-layer-artifact')
+		|| args.includes('compress-artifact')
+	let csvPath!: string
+	let layersVersion!: string
+	let tablePath!: string
+	if (writesArtifacts) {
+		;[csvPath, layersVersion] = LayerArtifacts.getVersionTemplatedPath(ENV.EXTRA_COLS_CSV_PATH)
+		tablePath = path.join(ENV.LAYERS_OUTPUT_DIR, LayerArtifacts.tableFileName(layersVersion))
+		await fsPromise.mkdir(ENV.LAYERS_OUTPUT_DIR, { recursive: true })
+	}
+
 	if (args.includes('write-components-and-units')) {
 		const file: L.LayerDataFile = {
 			components: LC.toBaseLayerComponents(components),
@@ -108,14 +120,14 @@ async function main() {
 			// the column defs ship with the db they describe, so the app never has to read layer-db.json
 			extraColumns: LAYER_DB_CONFIG.columns,
 		}
-		await fsPromise.writeFile(path.join(Paths.DATA, LayerData.FILE_NAME), JSON.stringify(file, null, 2))
+		const layerDataPath = path.join(ENV.LAYERS_OUTPUT_DIR, LayerArtifacts.layerDataFileName(layersVersion))
+		await fsPromise.writeFile(layerDataPath, JSON.stringify(file, null, 2))
+		log.info('Wrote %s', layerDataPath)
 	}
 
 	if (args.includes('build-layer-artifact')) {
-		const [csvPath, layersVersion] = LayerEngine.getVersionTemplatedPath(ENV.EXTRA_COLS_CSV_PATH)
-		const artifactPath = csvPath.replace(/\.csv$/, LA.ARTIFACT_EXT)
-		fs.rmSync(artifactPath, { force: true })
-		fs.rmSync(`${artifactPath}.gz`, { force: true })
+		fs.rmSync(tablePath, { force: true })
+		fs.rmSync(`${tablePath}.gz`, { force: true })
 
 		const artifact = await buildLayerArtifact(ctx, {
 			components,
@@ -123,21 +135,19 @@ async function main() {
 			csvPath,
 			layersVersion,
 		})
-		await fsPromise.writeFile(artifactPath, artifact)
-		log.info('Wrote %s (%s MB)', artifactPath, (artifact.length / 1e6).toFixed(1))
+		await fsPromise.writeFile(tablePath, artifact)
+		log.info('Wrote %s (%s MB)', tablePath, (artifact.length / 1e6).toFixed(1))
 	}
 
 	if (args.includes('compress-artifact')) {
-		const [csvPath] = LayerEngine.getVersionTemplatedPath(ENV.EXTRA_COLS_CSV_PATH)
-		const artifactPath = csvPath.replace(/\.csv$/, LA.ARTIFACT_EXT)
-		if (!fs.existsSync(artifactPath)) throw new Error(`Layer artifact does not exist: ${artifactPath}`)
+		if (!fs.existsSync(tablePath)) throw new Error(`Layer artifact does not exist: ${tablePath}`)
 
-		log.info('Compressing %s', artifactPath)
-		const buffer = await fsPromise.readFile(artifactPath)
+		log.info('Compressing %s', tablePath)
+		const buffer = await fsPromise.readFile(tablePath)
 		// level 5 compresses ~40% faster than the default 6 for a ~0.1% size cost on this data
 		const compressed = await gzip(buffer, { level: 5 })
-		await fsPromise.writeFile(`${artifactPath}.gz`, compressed)
-		log.info('Compressed to %s MB', (compressed.length / 1e6).toFixed(1))
+		await fsPromise.writeFile(`${tablePath}.gz`, compressed)
+		log.info('Compressed to %s MB (%s)', (compressed.length / 1e6).toFixed(1), `${tablePath}.gz`)
 	}
 
 	log.info('Done!')

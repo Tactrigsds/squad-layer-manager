@@ -38,10 +38,15 @@ extra-columns.json
 google-credentials.json
 
 /data/layers*.csv
-# preprocess outputs, published together as a github release: the layer table the engine reads, and the components
-# that give its encoded values meaning
+# the layer artifacts ship in assets/layers (tracked). ./data is only ever a local/deployment override, so
+# anything dropped in there stays out of the repo.
 /data/layers_v*.bin
 /data/layers_v*.bin.gz
+/data/layer-data_v*.json
+
+# preprocess writes the table twice: compressed (tracked, and what the image ships) and uncompressed. The
+# engine loads either, the uncompressed one just loads quicker, and at 60MB it has no business in git.
+/assets/layers/layers_v*.bin
 
 broken-layers.csv
 drizzle/seed_weights.sql

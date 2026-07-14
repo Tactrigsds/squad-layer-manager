@@ -105,17 +105,24 @@ export const groups = {
 		SQUAD_LOGS_RECEIVER_PORT: ParsedIntSchema.default(8443),
 	},
 
-	layerDb: {
-		LAYERS_VERSION: PathSegment.default('@latest'), // @latest is a magic string which resolves the latest available version according to semver that's availble at the configured path for LAYERS_ARTIFACT_PATH and EXTRA_COLS_CSV_PATH
-		// the columnar artifact the query engine reads (models/layer-artifact.ts), written by preprocess
-		LAYERS_ARTIFACT_PATH: z.string().prefault('./data/layers_v{{LAYERS_VERSION}}.bin.gz'),
+	layers: {
+		// @latest is a magic string resolving to the highest semver whose artifacts are present (see
+		// systems/layer-artifacts.server.ts). Pinning a version that no searched directory has is an error.
+		LAYERS_VERSION: PathSegment.default('@latest'),
+		// an extra directory to search for layer artifacts, ahead of ./data and the assets/layers the image ships.
+		// Only needed when the artifacts live somewhere other than the data mount.
+		LAYERS_DIR: z.string().min(1).optional(),
 	},
 
 	preprocess: {
 		// The spreadsheet of OWI's layer spreadsheet. This is only used for layer sizes at the momenet
 		SPREADSHEET_ID: z.string().prefault('1UXEgkUMBxhmYyEkaMSUd1Ko_I7s--7krCdyshZ076pU'),
 		SPREADSHEET_MAP_LAYERS_GID: z.number().prefault(1212962563),
+		// the csv preprocess ingests. It is the input the version of a build is taken from, and unlike the pair
+		// preprocess writes out, it's far too big to ship, so it stays in ./data.
 		EXTRA_COLS_CSV_PATH: z.string().prefault(path.join(Paths.DATA, 'layers_v{{LAYERS_VERSION}}.csv')),
+		// where preprocess writes the pair it builds. Defaults to the directory that ships with the image.
+		LAYERS_OUTPUT_DIR: z.string().min(1).prefault(Paths.LAYERS),
 		// defines the extra columns to ingest into the layer db. read only by preprocess: the definitions are baked
 		// into layer-data.json, which is what the app reads at runtime
 		LAYER_DB_CONFIG_PATH: z.string().prefault('./layer-db.json'),

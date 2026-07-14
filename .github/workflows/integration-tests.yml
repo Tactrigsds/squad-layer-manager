@@ -23,39 +23,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # The layer table and its components are generated artifacts and, like production, aren't baked into the
-      # image -- they're mounted at /app/data. They live on the `layer-db` release, and are cached here so most
-      # runs don't re-download them.
-      #
-      # The cache key is versioned (-bin): the release used to carry a sqlite db, and a cache entry from that era
-      # would restore a data dir with no layer table in it while still counting as a hit, leaving the app to fail
-      # at boot with the download step skipped.
-      - name: Restore layer table
-        id: layer-table-cache
-        uses: actions/cache@v4
-        with:
-          path: data
-          key: layer-table-bin-${{ vars.LAYERS_VERSION || 'rolling' }}
-
-      - name: Download layer table
-        if: steps.layer-table-cache.outputs.cache-hit != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir -p data
-          # both, and from the same publish: the table carries encoded values, layer-data.json is what gives them
-          # meaning, and a mismatched pair is worse than a missing one
-          gh release download layer-db --dir data --clobber \
-            --pattern 'layers_v*.bin.gz' --pattern 'layer-data.json' \
-            || {
-              echo "::error::No 'layer-db' release found, or it has no layers_v*.bin.gz + layer-data.json. Publish one from \`pnpm preprocess\` output."
-              exit 1
-            }
-          test -f data/layer-data.json || { echo "::error::release has no layer-data.json"; exit 1; }
-          compgen -G 'data/layers_v*.bin.gz' > /dev/null || { echo "::error::release has no layers_v*.bin.gz"; exit 1; }
-          # the engine gunzips in memory, so the .gz is all the app needs
-          ls -la data
-
+      # The layer artifacts are checked in (assets/layers) and baked into the image, so there is nothing to
+      # download, cache or mount here: the tests run against the same pair production does.
       - name: Build test image
         uses: docker/build-push-action@v6
         with:
@@ -70,8 +39,6 @@ jobs:
         run: |
           docker run --rm \
             -e CI=true \
-            -e LAYERS_VERSION="${{ vars.LAYERS_VERSION || '@latest' }}" \
-            -v "$PWD/data:/app/data:ro" \
             -v "$PWD/test-results:/app/test-results" \
             slm-test:ci
 

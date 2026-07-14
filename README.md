@@ -22,17 +22,28 @@ On boot, -wal and -shm files will be created alongside `db.sqlite3`. These are s
 
 ### The Layer data
 
-The app needs two artifacts to run:
+The app runs on a _pair_ of artifacts, always of the same version:
 
-- `data/layers_v<version>.bin.gz` -- contains a set of all possible layer configurations (layer + factions + units) in a columnar format, plus any scoring we attribute to each layer.
-- `data/layer-data.json` -- the components (maps, factions, units, extra-column definitions) the
-  table's encoded values refer to. TODO we need to version layer-data.json as well
+- `layers_v<version>.bin.gz` -- a set of all possible layer configurations (layer + factions + units) in a columnar
+  format, plus any scoring we attribute to each layer.
+- `layer-data_v<version>.json` -- the components (maps, factions, units, extra-column definitions) the table's
+  encoded values refer to.
 
-<version> is parsed as semver, and by default the app will load whatever the latest release is, unless the `LAYERS_VERSION` environment variable is set.
+Neither is any use without the other -- a table read against the wrong components silently resolves to the wrong
+layers -- so the two are only ever treated as a pair, and only when they sit in the same directory under the same
+version. Half a pair is a startup error rather than something the app quietly works around.
 
-`layer-data.json` and `layers_v<version>.bin.gz` need to copied from [the release](https://github.com/Tactrigsds/squad-layer-manager/releases/tag/layer-db) into `data/` from where you're running the app.
+Both are checked in under `assets/layers` and ship inside the docker image, so the app boots as-is and there is
+nothing to download.
 
-It is possible to build your own `layer-data.json` and `layers_v<version>.bin.gz` with alternate scoring and different layers/game versions. see `src/scripts/preprocess.ts`.
+To run a different layer version than the one the image ships, drop a complete pair into `data/` (the directory a
+deployment mounts). **Any** complete pair there is preferred over the one in the image, including an older one, so
+moving a running deployment between layer versions is a matter of dropping files into the mount and restarting.
+`<version>` is parsed as semver and the highest one in the winning directory is used, unless `LAYERS_VERSION` pins
+one. `LAYERS_DIR` adds a directory that is searched ahead of both.
+
+You can build your own pair with alternate scoring and different layers/game versions: see `src/scripts/preprocess.ts`
+(`pnpm preprocess`), which writes both halves into `assets/layers` (override with `LAYERS_OUTPUT_DIR`).
 
 #### Backups
 

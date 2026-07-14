@@ -22,12 +22,7 @@ else
 	missing+=("assets/layer-engine.wasm  -- the layer query engine. Install rust, then run \`pnpm build:engine\`.")
 fi
 
-# preprocess writes both, and they're published together: the table the engine reads, and the components that give
-# its encoded values meaning. One without the other is useless.
-compgen -G "data/layers_v*.bin.gz" > /dev/null \
-	|| missing+=("data/layers_v*.bin.gz  -- the layer table, generated. Run \`pnpm preprocess\` (needs network).")
-[[ -f data/layer-data.json ]] \
-	|| missing+=("data/layer-data.json  -- the layer components, generated. Run \`pnpm preprocess\` (needs network).")
+# the layer artifacts (assets/layers) are checked in, so there is nothing to fetch or generate for them here.
 
 if (( ${#missing[@]} )); then
 	echo
