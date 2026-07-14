@@ -47,9 +47,24 @@ process.stdin.on('end', () => {
 		execSync('pnpm run lint', { stdio: 'inherit' })
 		console.log('✅ Linting passed\n')
 
-		console.log('🧪 Running tests...')
+		console.log('🧪 Running unit tests...')
 		execSync('pnpm run test', { stdio: 'inherit' })
-		console.log('✅ Tests passed\n')
+		console.log('✅ Unit tests passed\n')
+
+		// the integration suite runs the server from source through tsx, but the layer engine is wasm and is
+		// loaded at runtime either way, so it has to be built before anything boots the app.
+		console.log('🦀 Building layer engine...')
+		execSync('pnpm run build:engine', { stdio: 'inherit' })
+		console.log('✅ Layer engine built\n')
+
+		console.log('🧪 Running integration tests...')
+		execSync('pnpm run test:integration', { stdio: 'inherit' })
+		console.log('✅ Integration tests passed\n')
+
+		// test:e2e also builds the client bundle the tests are served (and rebuilds the engine, a no-op here)
+		console.log('🧪 Running e2e tests...')
+		execSync('pnpm run test:e2e', { stdio: 'inherit' })
+		console.log('✅ E2E tests passed\n')
 
 		console.log('✨ All checks passed! Ready to push.')
 		process.exit(0)
