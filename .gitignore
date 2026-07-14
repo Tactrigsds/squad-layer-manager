@@ -42,7 +42,6 @@ google-credentials.json
 # that give its encoded values meaning
 /data/layers_v*.bin
 /data/layers_v*.bin.gz
-/data/layer-data.json
 
 broken-layers.csv
 drizzle/seed_weights.sql
