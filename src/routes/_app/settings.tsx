@@ -185,8 +185,9 @@ function RouteComponent() {
 	return (
 		// bounded to the viewport (navbar h-16 + outlet p-4 = 6rem) so the two columns can scroll independently;
 		// the outlet wrapper is overflow-hidden, which would otherwise break sticky/independent scrolling
-		<div className="flex gap-4 w-full max-w-[84rem] mx-auto h-[calc(100dvh-6rem)]">
-			<aside className="w-60 shrink-0 overflow-hidden border-r pr-2 py-2">
+		<div className="flex w-full h-[calc(100dvh-6rem)]">
+			{/* the TOC only earns its width once the content column has room to spare, so it scales back on narrower viewports */}
+			<aside className="w-52 md:w-60 lg:w-72 xl:w-80 shrink-0 overflow-hidden border-r pr-2 py-2">
 				<SettingsToc
 					showServers={!manageServersDenied || servers.length > 0}
 					showGlobal={globalAccess.canRead}
@@ -197,54 +198,63 @@ function RouteComponent() {
 					newServerMode={derived.newServerMode}
 				/>
 			</aside>
-			{/* no top padding: sticky section headers pin flush to the top, otherwise scrolled content bleeds into the gap */}
-			<main className="flex-1 min-w-0 overflow-y-auto px-2 pb-2 space-y-6">
-				{/* ServerManagement reads PublicSettingsStore, not globalSettings$, so it must not sit behind the global-settings Suspense */}
-				{!manageServersDenied && (
-					<div id="section:servers" className="scroll-mt-2 rounded-xl">
-						<ServerManagementSection
-							onAddServer={() => setCreatingNonce(createId(4))}
-							creating={creating}
-							canCreate={canCreateServers}
-						/>
-					</div>
-				)}
-				{servers.map((server) => {
-					const key = sectionKeys.find((k) => k.kind === 'server' && k.serverId === server.id)
-					if (!key) return null
-					return (
-						<div key={server.id} id={`section:server:${server.id}`} className="scroll-mt-2 rounded-xl">
-							<ServerSettingsSection server={server} stores={{ settingsEditor: key }} />
+			{
+				/* `main` spans the whole non-TOC area (the content column is centred inside it) so a wheel anywhere outside the
+			    TOC scrolls the settings, rather than landing on the non-scrollable outlet wrapper.
+			    `relative` is load-bearing: sr-only elements in the form are position:absolute, and without a positioned
+			    scroll container they escape main's clipping and stretch the document's scroll height to the full unclipped
+			    content height, making the whole app (navbar included) scroll away. */
+			}
+			<main className="relative flex-1 min-w-0 overflow-y-auto">
+				{/* no top padding: sticky section headers pin flush to the top, otherwise scrolled content bleeds into the gap */}
+				<div className="mx-auto w-full max-w-[68rem] px-4 pb-2 space-y-6">
+					{/* ServerManagement reads PublicSettingsStore, not globalSettings$, so it must not sit behind the global-settings Suspense */}
+					{!manageServersDenied && (
+						<div id="section:servers" className="scroll-mt-2 rounded-xl">
+							<ServerManagementSection
+								onAddServer={() => setCreatingNonce(createId(4))}
+								creating={creating}
+								canCreate={canCreateServers}
+							/>
 						</div>
-					)
-				})}
-				{!manageServersDenied && canCreateServers && creating && (() => {
-					const key = sectionKeys.find((k) => k.kind === 'new-server')
-					if (!key) return null
-					return (
-						<div id="section:server:__new__" className="scroll-mt-2 rounded-xl">
-							<CreateServerSection stores={{ settingsEditor: key }} onCancel={() => setCreatingNonce(null)} />
-						</div>
-					)
-				})()}
-				{globalAccess.canRead && (() => {
-					const key = sectionKeys.find((k) => k.kind === 'global')
-					if (!key) return null
-					// Subscribe has no fallback of its own: the suspension is handed to StateBoundary, which also
-					// catches the first-emit timeout if global settings never arrive
-					return (
-						<StateBoundary label="global settings">
-							<ReactRx.Subscribe source$={SettingsClient.globalSettings$}>
-								<div id="section:global" className="scroll-mt-2 rounded-xl">
-									<GlobalSettingsSection stores={{ settingsEditor: key }} />
-								</div>
-								<div id="section:audit" className="scroll-mt-2 rounded-xl">
-									<AuditLogSection />
-								</div>
-							</ReactRx.Subscribe>
-						</StateBoundary>
-					)
-				})()}
+					)}
+					{servers.map((server) => {
+						const key = sectionKeys.find((k) => k.kind === 'server' && k.serverId === server.id)
+						if (!key) return null
+						return (
+							<div key={server.id} id={`section:server:${server.id}`} className="scroll-mt-2 rounded-xl">
+								<ServerSettingsSection server={server} stores={{ settingsEditor: key }} />
+							</div>
+						)
+					})}
+					{!manageServersDenied && canCreateServers && creating && (() => {
+						const key = sectionKeys.find((k) => k.kind === 'new-server')
+						if (!key) return null
+						return (
+							<div id="section:server:__new__" className="scroll-mt-2 rounded-xl">
+								<CreateServerSection stores={{ settingsEditor: key }} onCancel={() => setCreatingNonce(null)} />
+							</div>
+						)
+					})()}
+					{globalAccess.canRead && (() => {
+						const key = sectionKeys.find((k) => k.kind === 'global')
+						if (!key) return null
+						// Subscribe has no fallback of its own: the suspension is handed to StateBoundary, which also
+						// catches the first-emit timeout if global settings never arrive
+						return (
+							<StateBoundary label="global settings">
+								<ReactRx.Subscribe source$={SettingsClient.globalSettings$}>
+									<div id="section:global" className="scroll-mt-2 rounded-xl">
+										<GlobalSettingsSection stores={{ settingsEditor: key }} />
+									</div>
+									<div id="section:audit" className="scroll-mt-2 rounded-xl">
+										<AuditLogSection />
+									</div>
+								</ReactRx.Subscribe>
+							</StateBoundary>
+						)
+					})()}
+				</div>
 			</main>
 			<SettingsSavePanel sectionKeys={sectionKeys} />
 		</div>
@@ -305,6 +315,34 @@ function AuditLogEntry({ event, actorName }: { event: AppEvents.AppEvent; actorN
 				{JSON.stringify(event, (_key, value) => typeof value === 'bigint' ? value.toString() : value, 2)}
 			</pre>
 		</details>
+	)
+}
+
+// Format/Reset/Save for a JSON-mode section. Lives in the editor's own header row (SchemaJsonEditor's `toolbar` slot)
+// rather than below it, so it stays reachable once the editor goes fullscreen and covers the page.
+function JsonEditorToolbar(
+	{ editorRef, deniedPaths, canSave, saving, onSave }: {
+		editorRef: React.RefObject<SchemaJsonEditorHandle | null>
+		deniedPaths: string[]
+		canSave: boolean
+		saving: boolean
+		onSave: () => void
+	},
+) {
+	return (
+		<>
+			{deniedPaths.length > 0 && (
+				<p className="min-w-0 truncate text-xs text-amber-500">
+					Not permitted to modify: {deniedPaths.map((p) => <code key={p} className="mx-0.5">{p}</code>)}
+				</p>
+			)}
+			<Button size="sm" variant="outline" onClick={() => editorRef.current?.format()}>
+				<Icons.Braces className="h-4 w-4" />
+				Format
+			</Button>
+			<Button size="sm" variant="outline" onClick={() => editorRef.current?.reset()}>Reset</Button>
+			<Button size="sm" disabled={!canSave || saving} onClick={onSave}>{saving ? 'Saving…' : 'Save'}</Button>
+		</>
 	)
 }
 
@@ -611,29 +649,18 @@ function ServerSettingsSection(
 									onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
 									minHeightPx={350}
 									label="Server Settings"
+									toolbar={
+										<JsonEditorToolbar
+											editorRef={editorRef}
+											deniedPaths={deniedPaths}
+											canSave={changes.length > 0 && valid && deniedPaths.length === 0}
+											saving={saving}
+											onSave={handleJsonSave}
+										/>
+									}
 								/>
 							</React.Suspense>
 						)}
-					{ready && mode === 'json' && (
-						<div className="flex items-center justify-end gap-2">
-							{deniedPaths.length > 0 && (
-								<p className="mr-auto text-xs text-amber-500">
-									Not permitted to modify: {deniedPaths.map((p) => <code key={p} className="mx-0.5">{p}</code>)}
-								</p>
-							)}
-							<Button variant="outline" onClick={() => editorRef.current?.format()}>
-								<Icons.Braces className="h-4 w-4" />
-								Format
-							</Button>
-							<Button variant="outline" onClick={() => editorRef.current?.reset()}>Reset</Button>
-							<Button
-								disabled={changes.length === 0 || !valid || deniedPaths.length > 0 || saving}
-								onClick={handleJsonSave}
-							>
-								{saving ? 'Saving…' : 'Save'}
-							</Button>
-						</div>
-					)}
 				</CardContent>
 			</StickyGroup>
 		</Card>
@@ -821,6 +848,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 							/>
 						)
 						: (
+							// GUI mode uses the shared bottom control panel; JSON mode keeps its own toolbar, inside the editor
 							<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
 								<SchemaJsonEditor
 									ref={editorRef}
@@ -829,30 +857,18 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 									onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
 									minHeightPx={450}
 									label="Global Settings"
+									toolbar={
+										<JsonEditorToolbar
+											editorRef={editorRef}
+											deniedPaths={deniedPaths}
+											canSave={changes.length > 0 && valid && deniedPaths.length === 0}
+											saving={saving}
+											onSave={handleJsonSave}
+										/>
+									}
 								/>
 							</React.Suspense>
 						)}
-					{/* GUI mode uses the shared bottom control panel; JSON mode keeps an inline toolbar */}
-					{mode === 'json' && (
-						<div className="flex items-center justify-end gap-2">
-							{deniedPaths.length > 0 && (
-								<p className="mr-auto text-xs text-amber-500">
-									Not permitted to modify: {deniedPaths.map((p) => <code key={p} className="mx-0.5">{p}</code>)}
-								</p>
-							)}
-							<Button variant="outline" onClick={() => editorRef.current?.format()}>
-								<Icons.Braces className="h-4 w-4" />
-								Format
-							</Button>
-							<Button variant="outline" onClick={() => editorRef.current?.reset()}>Reset</Button>
-							<Button
-								disabled={changes.length === 0 || !valid || deniedPaths.length > 0 || saving}
-								onClick={handleJsonSave}
-							>
-								{saving ? 'Saving…' : 'Save'}
-							</Button>
-						</div>
-					)}
 				</CardContent>
 			</StickyGroup>
 		</Card>

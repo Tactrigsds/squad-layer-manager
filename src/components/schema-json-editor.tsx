@@ -135,13 +135,16 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 		<BaseZIndexContext.Provider value={contentBaseZIndex}>
 			<div
 				className={cn(
-					'relative grid w-full grid-cols-[minmax(0,2fr)_minmax(0,1fr)] grid-rows-[min-content_minmax(0,1fr)] gap-2 rounded-md',
+					'relative flex w-full flex-col gap-2 rounded-md',
 					isFullscreen && 'fixed inset-0 h-screen w-screen bg-background p-4',
 				)}
 				style={isFullscreen ? { zIndex: contentBaseZIndex } : { height: props.minHeightPx ?? 400 }}
 			>
-				<h3 className={Typography.Small + 'mb-2 ml-[45px]'}>{props.label ?? 'Settings'}</h3>
-				<h3 className={Typography.Small + 'mb-2'}>Errors</h3>
+				{/* pr-9 keeps the toolbar clear of the fullscreen toggle pinned to the container's corner */}
+				<div className="flex min-h-7 items-center gap-2 pr-9">
+					<h3 className={cn(Typography.Small, 'ml-[45px]')}>{props.label ?? 'Settings'}</h3>
+					{props.toolbar && <div className="ml-auto flex min-w-0 items-center gap-2">{props.toolbar}</div>}
+				</div>
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button
@@ -157,8 +160,13 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 					</TooltipTrigger>
 					<TooltipContent>{isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}</TooltipContent>
 				</Tooltip>
-				<div ref={editorEltRef} className="min-h-0 overflow-hidden rounded-md border"></div>
-				<pre className="min-h-0 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">{errorText}</pre>
+				<div className="grid min-h-0 flex-1 grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-2">
+					<div ref={editorEltRef} className="min-h-0 overflow-hidden rounded-md border"></div>
+					<div className="flex min-h-0 flex-col gap-2">
+						<h3 className={Typography.Small}>Errors</h3>
+						<pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">{errorText}</pre>
+					</div>
+				</div>
 			</div>
 		</BaseZIndexContext.Provider>
 	)
