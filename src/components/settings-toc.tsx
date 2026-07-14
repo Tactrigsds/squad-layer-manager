@@ -234,6 +234,14 @@ export default function SettingsToc(
 	const [query, setQuery] = React.useState('')
 	const [expanded, setExpanded] = React.useState<Set<string>>(new Set(['section:servers', 'section:global']))
 	const containerRef = React.useRef<HTMLDivElement>(null)
+	const searchRef = React.useRef<HTMLInputElement>(null)
+
+	// an anchored visit is already taking the user somewhere specific (and the settle-scroll would fight the focus), so
+	// only claim focus when the page opens with no fragment. preventScroll: the input sits in its own scroll column.
+	React.useEffect(() => {
+		if (SettingsNav.currentAnchor()) return
+		searchRef.current?.focus({ preventScroll: true })
+	}, [])
 
 	const perms = RbacClient.useLoggedInPerms()
 	const globalWrite = React.useMemo(() => RBAC.globalSettingsWriteAccess(perms), [perms])
@@ -381,6 +389,7 @@ export default function SettingsToc(
 				<div className="relative">
 					<Icons.Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
 					<Input
+						ref={searchRef}
 						className="h-8 pl-7"
 						placeholder="Search settings…"
 						value={query}
