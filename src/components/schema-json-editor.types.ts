@@ -16,5 +16,7 @@ export interface SchemaJsonEditorProps<TOut, TIn = TOut> {
 	onValidChange: (value: TOut | null) => void
 	label?: string
 	minHeightPx?: number
+	// rendered in the editor's own header row, so it stays reachable in fullscreen (where the editor covers the page)
+	toolbar?: React.ReactNode
 	ref?: React.Ref<SchemaJsonEditorHandle>
 }
