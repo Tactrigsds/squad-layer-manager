@@ -1,0 +1,2674 @@
+[
+	{
+		"id": "armored-matchups",
+		"filter": {
+			"type": "all",
+			"children": [
+				{
+					"type": "in",
+					"neg": false,
+					"args": [
+						{
+							"type": "team-column",
+							"column": "Unit",
+							"quantifier": "both"
+						},
+						{
+							"type": "values",
+							"values": [
+								"Armored",
+								"Mechanized"
+							]
+						}
+					]
+				},
+				{
+					"type": "included-in",
+					"filterId": "no-mech-on-hilly"
+				}
+			]
+		}
+	},
+	{
+		"id": "balanced-asymmetry",
+		"filter": {
+			"type": "all",
+			"children": [
+				{
+					"type": "inrange",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Balance_Differential"
+						},
+						{
+							"type": "value",
+							"value": -1
+						},
+						{
+							"type": "value",
+							"value": 1
+						}
+					]
+				},
+				{
+					"type": "inrange",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Asymmetry_Score"
+						},
+						{
+							"type": "value",
+							"value": 10
+						},
+						{
+							"type": "value",
+							"value": 50
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "classic-squad-layers",
+		"filter": {
+			"type": "all",
+			"children": [
+				{
+					"type": "all",
+					"children": [
+						{
+							"type": "in",
+							"neg": true,
+							"args": [
+								{
+									"type": "column",
+									"column": "Gamemode"
+								},
+								{
+									"type": "values",
+									"values": [
+										"Skirmish",
+										"Insurgency",
+										"Invasion",
+										"Destruction",
+										"Seed",
+										"Training"
+									]
+								}
+							]
+						},
+						{
+							"type": "in",
+							"neg": true,
+							"args": [
+								{
+									"type": "column",
+									"column": "Layer"
+								},
+								{
+									"type": "values",
+									"values": [
+										"FoolsRoad_RAAS_v1",
+										"GooseBay_RAAS_v1",
+										"Gorodok_RAAS_v2",
+										"Fallujah_RAAS_v1",
+										"Tallil_RAAS_v1",
+										"Tallil_RAAS_v2",
+										"Skorpo_RAAS_v1",
+										"Harju_RAAS_v2"
+									]
+								}
+							]
+						}
+					]
+				},
+				{
+					"type": "inrange",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Logistics_Diff"
+						},
+						{
+							"type": "value",
+							"value": 1
+						},
+						{
+							"type": "value",
+							"value": -1
+						}
+					]
+				},
+				{
+					"type": "notall",
+					"children": [
+						{
+							"type": "in",
+							"neg": false,
+							"args": [
+								{
+									"type": "column",
+									"column": "Map"
+								},
+								{
+									"type": "values",
+									"values": [
+										"Fallujah",
+										"Kohat",
+										"Lashkar",
+										"Manicouagan",
+										"Sanxian",
+										"Skorpo"
+									]
+								}
+							]
+						},
+						{
+							"type": "some",
+							"children": [
+								{
+									"type": "lt",
+									"neg": false,
+									"args": [
+										{
+											"type": "column",
+											"column": "Logistics_2"
+										},
+										{
+											"type": "value",
+											"value": -0.5
+										}
+									]
+								},
+								{
+									"type": "lt",
+									"neg": false,
+									"args": [
+										{
+											"type": "column",
+											"column": "Logistics_1"
+										},
+										{
+											"type": "value",
+											"value": -0.5
+										}
+									]
+								}
+							]
+						}
+					]
+				},
+				{
+					"type": "inrange",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Armor_Diff"
+						},
+						{
+							"type": "value",
+							"value": 0.5
+						},
+						{
+							"type": "value",
+							"value": 0
+						}
+					]
+				},
+				{
+					"type": "inrange",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Asymmetry_Score"
+						},
+						{
+							"type": "value",
+							"value": 0
+						},
+						{
+							"type": "value",
+							"value": 10
+						}
+					]
+				},
+				{
+					"type": "in",
+					"neg": true,
+					"args": [
+						{
+							"type": "column",
+							"column": "Layer"
+						},
+						{
+							"type": "values",
+							"values": [
+								"Lashkar_TC_v1",
+								"Tallil_TC_v1",
+								"Harju_TC_v1",
+								"Kohat_TC_v1",
+								"Mestia_TC_v1"
+							]
+						}
+					]
+				},
+				{
+					"type": "inrange",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Balance_Differential"
+						},
+						{
+							"type": "value",
+							"value": 2
+						},
+						{
+							"type": "value",
+							"value": -2
+						}
+					]
+				},
+				{
+					"type": "included-in",
+					"filterId": "loganos-filter"
+				},
+				{
+					"type": "none",
+					"children": [
+						{
+							"type": "in",
+							"neg": false,
+							"args": [
+								{
+									"type": "column",
+									"column": "Unit_1"
+								},
+								{
+									"type": "values",
+									"values": [
+										"Armored",
+										"Mechanized"
+									]
+								}
+							]
+						},
+						{
+							"type": "in",
+							"neg": false,
+							"args": [
+								{
+									"type": "column",
+									"column": "Unit_2"
+								},
+								{
+									"type": "values",
+									"values": [
+										"Armored",
+										"Mechanized"
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "cringe-layer-removal-by-logano",
+		"filter": {
+			"type": "none",
+			"children": [
+				{
+					"type": "in",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Layer"
+						},
+						{
+							"type": "values",
+							"values": [
+								"Anvil_RAAS_v1",
+								"Anvil_RAAS_v2",
+								"BlackCoast_AAS_v2",
+								"FoolsRoad_AAS_v1",
+								"Harju_RAAS_v2",
+								"Kohat_RAAS_v2",
+								"Kohat_RAAS_v1",
+								"Lashkar_AAS_v1",
+								"Lashkar_RAAS_v1",
+								"Manicouagan_AAS_v3",
+								"Mestia_AAS_v2",
+								"Sanxian_AAS_v1",
+								"Sanxian_AAS_v3",
+								"Tallil_AAS_v1",
+								"Yehorivka_AAS_v2",
+								"Yehorivka_RAAS_v2",
+								"Sumari_AAS_v3",
+								"Harju_AAS_v1",
+								"Mutaha_TC_v1",
+								"Sumari_TC_v1",
+								"Tallil_TC_v1",
+								"FoolsRoad_TC_v1",
+								"Gorodok_TC_v1",
+								"Harju_TC_v1",
+								"Kohat_TC_v1",
+								"FoolsRoad_Destruction_v1",
+								"Yehorivka_Destruction_v1",
+								"Kohat_Insurgency_v1",
+								"BlackCoast_Seed_v1",
+								"Lashkar_TC_v1",
+								"Lashkar_TC_v2",
+								"BlackCoast_RAAS_v2",
+								"GooseBay_AAS_v1",
+								"Mutaha_RAAS_v1",
+								"Anvil_AAS_v1",
+								"Chora_RAAS_v1",
+								"Fallujah_RAAS_v1",
+								"Skorpo_RAAS_v1",
+								"Sanxian_RAAS_v2",
+								"Sanxian_RAAS_v1",
+								"Narva_AAS_v3",
+								"Mutaha_AAS_v2",
+								"Kohat_FRAAS_v2",
+								"Kohat_FRAAS_v1",
+								"Lashkar_FRAAS_v1",
+								"Manicouagan_RAAS_v1",
+								"Manicouagan_FRAAS_v1",
+								"Mutaha_FRAAS_v1",
+								"Sanxian_FRAAS_v1",
+								"Sanxian_FRAAS_v2",
+								"Skorpo_FRAAS_v1",
+								"Fallujah_FRAAS_v1",
+								"GooseBay_RAAS_v1",
+								"GooseBay_RAAS_v2",
+								"Gorodok_RAAS_v2",
+								"AlBasrah_FRAAS_v1",
+								"Anvil_FRAAS_v2",
+								"BlackCoast_FRAAS_v2",
+								"Tallil_RAAS_v1",
+								"Tallil_RAAS_v2",
+								"Yehorivka_FRAAS_v2",
+								"Yehorivka_RAAS_v1"
+							]
+						}
+					]
+				},
+				{
+					"type": "in",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Gamemode"
+						},
+						{
+							"type": "values",
+							"values": [
+								"Destruction",
+								"Insurgency",
+								"Invasion",
+								"Seed",
+								"Skirmish",
+								"Training",
+								"TC",
+								"RAAS"
+							]
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "cringe-unit-removal-by-logano",
+		"filter": {
+			"type": "some",
+			"children": [
+				{
+					"type": "none",
+					"children": [
+						{
+							"type": "all",
+							"children": [
+								{
+									"type": "in",
+									"neg": false,
+									"args": [
+										{
+											"type": "team-column",
+											"column": "Unit",
+											"quantifier": "either"
+										},
+										{
+											"type": "values",
+											"values": [
+												"AirAssault",
+												"Armored",
+												"Mechanized"
+											]
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "all",
+							"children": [
+								{
+									"type": "eq",
+									"neg": false,
+									"args": [
+										{
+											"type": "team-column",
+											"column": "Faction",
+											"quantifier": "either"
+										},
+										{
+											"type": "value",
+											"value": "VDV"
+										}
+									]
+								},
+								{
+									"type": "in",
+									"neg": false,
+									"args": [
+										{
+											"type": "team-column",
+											"column": "Unit",
+											"quantifier": "either"
+										},
+										{
+											"type": "values",
+											"values": [
+												"CombinedArms"
+											]
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "all",
+							"children": [
+								{
+									"type": "eq",
+									"neg": false,
+									"args": [
+										{
+											"type": "team-column",
+											"column": "Faction",
+											"quantifier": "either"
+										},
+										{
+											"type": "value",
+											"value": "PLAAGF"
+										}
+									]
+								},
+								{
+									"type": "in",
+									"neg": false,
+									"args": [
+										{
+											"type": "team-column",
+											"column": "Unit",
+											"quantifier": "either"
+										},
+										{
+											"type": "values",
+											"values": [
+												"CombinedArms"
+											]
+										}
+									]
+								}
+							]
+						}
+					]
+				},
+				{
+					"type": "all",
+					"children": [
+						{
+							"type": "in",
+							"neg": false,
+							"args": [
+								{
+									"type": "team-column",
+									"column": "Faction",
+									"quantifier": "either"
+								},
+								{
+									"type": "values",
+									"values": [
+										"BAF",
+										"ADF",
+										"CAF",
+										"MEI",
+										"IMF"
+									]
+								}
+							]
+						},
+						{
+							"type": "eq",
+							"neg": false,
+							"args": [
+								{
+									"type": "team-column",
+									"column": "Unit",
+									"quantifier": "either"
+								},
+								{
+									"type": "value",
+									"value": "Mechanized"
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "disallow-broken-layers",
+		"filter": {
+			"type": "some",
+			"children": [
+				{
+					"type": "eq",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Map"
+						},
+						{
+							"type": "value",
+							"value": "Sanxian"
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "drpeppers-manic-monday",
+		"filter": {
+			"type": "all",
+			"children": [
+				{
+					"type": "eq",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Map"
+						},
+						{
+							"type": "value",
+							"value": "Manicouagan"
+						}
+					]
+				},
+				{
+					"type": "inrange",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Balance_Differential"
+						},
+						{
+							"type": "value",
+							"value": -2
+						},
+						{
+							"type": "value",
+							"value": 2
+						}
+					]
+				},
+				{
+					"type": "inrange",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Asymmetry_Score"
+						},
+						{
+							"type": "value",
+							"value": 0
+						},
+						{
+							"type": "value",
+							"value": 10
+						}
+					]
+				},
+				{
+					"type": "included-in",
+					"filterId": "ez-matchup-no-tc"
+				},
+				{
+					"type": "included-in",
+					"filterId": "classic-squad-layers"
+				}
+			]
+		}
+	},
+	{
+		"id": "ez-matchup-no-tc",
+		"filter": {
+			"type": "all",
+			"children": [
+				{
+					"type": "included-in",
+					"filterId": "classic-squad-layers"
+				},
+				{
+					"type": "eq",
+					"neg": true,
+					"args": [
+						{
+							"type": "column",
+							"column": "Gamemode"
+						},
+						{
+							"type": "value",
+							"value": "TC"
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "fogless",
+		"filter": {
+			"type": "all",
+			"children": [
+				{
+					"type": "in",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Gamemode"
+						},
+						{
+							"type": "values",
+							"values": [
+								"AAS",
+								"FRAAS",
+								"TC"
+							]
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "has-tracked-logis",
+		"filter": {
+			"type": "all",
+			"children": [
+				{
+					"type": "eq",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Size"
+						},
+						{
+							"type": "value",
+							"value": "Large"
+						}
+					]
+				},
+				{
+					"type": "some",
+					"children": [
+						{
+							"type": "some",
+							"children": [
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_1"
+												},
+												{
+													"type": "value",
+													"value": "GFI"
+												}
+											]
+										},
+										{
+											"type": "in",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_1"
+												},
+												{
+													"type": "values",
+													"values": [
+														"Mechanized",
+														"Armored"
+													]
+												}
+											]
+										}
+									]
+								},
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_2"
+												},
+												{
+													"type": "value",
+													"value": "GFI"
+												}
+											]
+										},
+										{
+											"type": "in",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_2"
+												},
+												{
+													"type": "values",
+													"values": [
+														"Mechanized",
+														"Armored"
+													]
+												}
+											]
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "some",
+							"children": [
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_1"
+												},
+												{
+													"type": "value",
+													"value": "VDV"
+												}
+											]
+										},
+										{
+											"type": "in",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_1"
+												},
+												{
+													"type": "values",
+													"values": [
+														"Mechanized",
+														"AirAssault",
+														"Armored",
+														"CombinedArms",
+														"Motorized",
+														"LightInfantry",
+														"AmphibiousAssault"
+													]
+												}
+											]
+										}
+									]
+								},
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_2"
+												},
+												{
+													"type": "value",
+													"value": "VDV"
+												}
+											]
+										},
+										{
+											"type": "in",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_2"
+												},
+												{
+													"type": "values",
+													"values": [
+														"Mechanized",
+														"AirAssault",
+														"Armored",
+														"CombinedArms",
+														"Motorized",
+														"LightInfantry",
+														"AmphibiousAssault"
+													]
+												}
+											]
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "some",
+							"children": [
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_1"
+												},
+												{
+													"type": "value",
+													"value": "CAF"
+												}
+											]
+										},
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_1"
+												},
+												{
+													"type": "value",
+													"value": "Armored"
+												}
+											]
+										}
+									]
+								},
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_2"
+												},
+												{
+													"type": "value",
+													"value": "CAF"
+												}
+											]
+										},
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_2"
+												},
+												{
+													"type": "value",
+													"value": "Armored"
+												}
+											]
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "some",
+							"children": [
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_1"
+												},
+												{
+													"type": "value",
+													"value": "IMF"
+												}
+											]
+										},
+										{
+											"type": "in",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_1"
+												},
+												{
+													"type": "values",
+													"values": [
+														"Mechanized",
+														"Armored"
+													]
+												}
+											]
+										}
+									]
+								},
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_2"
+												},
+												{
+													"type": "value",
+													"value": "IMF"
+												}
+											]
+										},
+										{
+											"type": "in",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_2"
+												},
+												{
+													"type": "values",
+													"values": [
+														"Mechanized",
+														"Armored"
+													]
+												}
+											]
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "some",
+							"children": [
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_1"
+												},
+												{
+													"type": "value",
+													"value": "AFU"
+												}
+											]
+										},
+										{
+											"type": "in",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_1"
+												},
+												{
+													"type": "values",
+													"values": [
+														"Mechanized",
+														"Armored",
+														"AmphibiousAssault"
+													]
+												}
+											]
+										}
+									]
+								},
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_2"
+												},
+												{
+													"type": "value",
+													"value": "AFU"
+												}
+											]
+										},
+										{
+											"type": "in",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_2"
+												},
+												{
+													"type": "values",
+													"values": [
+														"Mechanized",
+														"Armored",
+														"AmphibiousAssault"
+													]
+												}
+											]
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "some",
+							"children": [
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_1"
+												},
+												{
+													"type": "value",
+													"value": "USMC"
+												}
+											]
+										},
+										{
+											"type": "in",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_1"
+												},
+												{
+													"type": "values",
+													"values": [
+														"Armored",
+														"CombinedArms",
+														"AmphibiousAssault"
+													]
+												}
+											]
+										}
+									]
+								},
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_2"
+												},
+												{
+													"type": "value",
+													"value": "USMC"
+												}
+											]
+										},
+										{
+											"type": "in",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_2"
+												},
+												{
+													"type": "values",
+													"values": [
+														"Armored",
+														"CombinedArms",
+														"AmphibiousAssault"
+													]
+												}
+											]
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "some",
+							"children": [
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_1"
+												},
+												{
+													"type": "value",
+													"value": "USA"
+												}
+											]
+										},
+										{
+											"type": "in",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_1"
+												},
+												{
+													"type": "values",
+													"values": [
+														"Armored",
+														"Mechanized"
+													]
+												}
+											]
+										}
+									]
+								},
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_2"
+												},
+												{
+													"type": "value",
+													"value": "USA"
+												}
+											]
+										},
+										{
+											"type": "in",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_2"
+												},
+												{
+													"type": "values",
+													"values": [
+														"Armored",
+														"Mechanized"
+													]
+												}
+											]
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "some",
+							"children": [
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_1"
+												},
+												{
+													"type": "value",
+													"value": "RGF"
+												}
+											]
+										},
+										{
+											"type": "in",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_1"
+												},
+												{
+													"type": "values",
+													"values": [
+														"Armored",
+														"Mechanized",
+														"AmphibiousAssault"
+													]
+												}
+											]
+										}
+									]
+								},
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_2"
+												},
+												{
+													"type": "value",
+													"value": "RGF"
+												}
+											]
+										},
+										{
+											"type": "in",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_2"
+												},
+												{
+													"type": "values",
+													"values": [
+														"Armored",
+														"Mechanized",
+														"AmphibiousAssault"
+													]
+												}
+											]
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "some",
+							"children": [
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_1"
+												},
+												{
+													"type": "value",
+													"value": "PLANMC"
+												}
+											]
+										},
+										{
+											"type": "in",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_1"
+												},
+												{
+													"type": "values",
+													"values": [
+														"Armored",
+														"Support",
+														"CombinedArms",
+														"AmphibiousAssault"
+													]
+												}
+											]
+										}
+									]
+								},
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_2"
+												},
+												{
+													"type": "value",
+													"value": "PLANMC"
+												}
+											]
+										},
+										{
+											"type": "in",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_2"
+												},
+												{
+													"type": "values",
+													"values": [
+														"Armored",
+														"Support",
+														"CombinedArms",
+														"AmphibiousAssault"
+													]
+												}
+											]
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "some",
+							"children": [
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_1"
+												},
+												{
+													"type": "value",
+													"value": "PLAAGF"
+												}
+											]
+										},
+										{
+											"type": "in",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_1"
+												},
+												{
+													"type": "values",
+													"values": [
+														"Mechanized",
+														"Armored",
+														"CombinedArms",
+														"AmphibiousAssault"
+													]
+												}
+											]
+										}
+									]
+								},
+								{
+									"type": "all",
+									"children": [
+										{
+											"type": "eq",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Faction_2"
+												},
+												{
+													"type": "value",
+													"value": "PLAAGF"
+												}
+											]
+										},
+										{
+											"type": "in",
+											"neg": false,
+											"args": [
+												{
+													"type": "column",
+													"column": "Unit_2"
+												},
+												{
+													"type": "values",
+													"values": [
+														"Mechanized",
+														"Armored",
+														"CombinedArms",
+														"AmphibiousAssault"
+													]
+												}
+											]
+										}
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "ico-testing",
+		"filter": {
+			"type": "all",
+			"children": [
+				{
+					"type": "in",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Gamemode"
+						},
+						{
+							"type": "values",
+							"values": [
+								"AAS",
+								"RAAS",
+								"FRAAS",
+								"Skirmish",
+								"TC",
+								"Invasion"
+							]
+						}
+					]
+				},
+				{
+					"type": "in",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Faction_1"
+						},
+						{
+							"type": "values",
+							"values": [
+								"USA",
+								"MEI"
+							]
+						}
+					]
+				},
+				{
+					"type": "in",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Faction_2"
+						},
+						{
+							"type": "values",
+							"values": [
+								"USA",
+								"MEI"
+							]
+						}
+					]
+				},
+				{
+					"type": "in",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Map"
+						},
+						{
+							"type": "values",
+							"values": [
+								"AlBasrah",
+								"Fallujah",
+								"Mutaha"
+							]
+						}
+					]
+				},
+				{
+					"type": "none",
+					"children": [
+						{
+							"type": "all",
+							"children": [
+								{
+									"type": "eq",
+									"neg": false,
+									"args": [
+										{
+											"type": "column",
+											"column": "Faction_1"
+										},
+										{
+											"type": "value",
+											"value": "USA"
+										}
+									]
+								},
+								{
+									"type": "in",
+									"neg": false,
+									"args": [
+										{
+											"type": "column",
+											"column": "Unit_1"
+										},
+										{
+											"type": "values",
+											"values": [
+												"Mechanized",
+												"Armored",
+												"Motorized",
+												"AmphibiousAssault"
+											]
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "all",
+							"children": [
+								{
+									"type": "eq",
+									"neg": false,
+									"args": [
+										{
+											"type": "column",
+											"column": "Faction_2"
+										},
+										{
+											"type": "value",
+											"value": "USA"
+										}
+									]
+								},
+								{
+									"type": "in",
+									"neg": false,
+									"args": [
+										{
+											"type": "column",
+											"column": "Unit_2"
+										},
+										{
+											"type": "values",
+											"values": [
+												"Mechanized",
+												"Armored",
+												"Motorized",
+												"AmphibiousAssault"
+											]
+										}
+									]
+								}
+							]
+						}
+					]
+				},
+				{
+					"type": "none",
+					"children": [
+						{
+							"type": "all",
+							"children": [
+								{
+									"type": "eq",
+									"neg": false,
+									"args": [
+										{
+											"type": "column",
+											"column": "Faction_1"
+										},
+										{
+											"type": "value",
+											"value": "MEI"
+										}
+									]
+								},
+								{
+									"type": "eq",
+									"neg": false,
+									"args": [
+										{
+											"type": "column",
+											"column": "Unit_1"
+										},
+										{
+											"type": "value",
+											"value": "Armored"
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "all",
+							"children": [
+								{
+									"type": "eq",
+									"neg": false,
+									"args": [
+										{
+											"type": "column",
+											"column": "Faction_2"
+										},
+										{
+											"type": "value",
+											"value": "MEI"
+										}
+									]
+								},
+								{
+									"type": "eq",
+									"neg": false,
+									"args": [
+										{
+											"type": "column",
+											"column": "Unit_2"
+										},
+										{
+											"type": "value",
+											"value": "Armored"
+										}
+									]
+								}
+							]
+						}
+					]
+				},
+				{
+					"type": "inrange",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Balance_Differential"
+						},
+						{
+							"type": "value",
+							"value": -6
+						},
+						{
+							"type": "value",
+							"value": 6
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "imbalanced-layers",
+		"filter": {
+			"type": "some",
+			"children": [
+				{
+					"type": "all",
+					"children": [
+						{
+							"type": "inrange",
+							"neg": true,
+							"args": [
+								{
+									"type": "column",
+									"column": "Balance_Differential"
+								},
+								{
+									"type": "value",
+									"value": -9
+								},
+								{
+									"type": "value",
+									"value": 9
+								}
+							]
+						},
+						{
+							"type": "eq",
+							"neg": true,
+							"args": [
+								{
+									"type": "column",
+									"column": "Balance_Differential"
+								},
+								{
+									"type": "value",
+									"value": null
+								}
+							]
+						}
+					]
+				},
+				{
+					"type": "eq",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Layer"
+						},
+						{
+							"type": "value",
+							"value": "Manicouagan_AAS_v3"
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "large-timing-advantage-team1",
+		"filter": {
+			"type": "all",
+			"children": [
+				{
+					"type": "in",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Layer"
+						},
+						{
+							"type": "values",
+							"values": [
+								"Lashkar_AAS_v2",
+								"Lashkar_TC_v2",
+								"Lashkar_RAAS_v1"
+							]
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "large-timing-advantage-team2",
+		"filter": {
+			"type": "all",
+			"children": [
+				{
+					"type": "in",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Layer"
+						},
+						{
+							"type": "values",
+							"values": [
+								"Harju_RAAS_v2",
+								"FoolsRoad_AAS_v2",
+								"AlBasrah_RAAS_v2"
+							]
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "late-night-pool",
+		"filter": {
+			"type": "all",
+			"children": [
+				{
+					"type": "included-in",
+					"filterId": "main-pool"
+				},
+				{
+					"type": "none",
+					"children": [
+						{
+							"type": "eq",
+							"neg": false,
+							"args": [
+								{
+									"type": "column",
+									"column": "Unit_1"
+								},
+								{
+									"type": "value",
+									"value": "AirAssault"
+								}
+							]
+						},
+						{
+							"type": "eq",
+							"neg": false,
+							"args": [
+								{
+									"type": "column",
+									"column": "Unit_2"
+								},
+								{
+									"type": "value",
+									"value": "AirAssault"
+								}
+							]
+						}
+					]
+				},
+				{
+					"type": "none",
+					"children": [
+						{
+							"type": "eq",
+							"neg": false,
+							"args": [
+								{
+									"type": "column",
+									"column": "Unit_1"
+								},
+								{
+									"type": "value",
+									"value": "Armored"
+								}
+							]
+						},
+						{
+							"type": "eq",
+							"neg": false,
+							"args": [
+								{
+									"type": "column",
+									"column": "Unit_2"
+								},
+								{
+									"type": "value",
+									"value": "Armored"
+								}
+							]
+						}
+					]
+				},
+				{
+					"type": "notall",
+					"children": [
+						{
+							"type": "eq",
+							"neg": false,
+							"args": [
+								{
+									"type": "column",
+									"column": "Alliance_1"
+								},
+								{
+									"type": "value",
+									"value": "PAC"
+								}
+							]
+						},
+						{
+							"type": "eq",
+							"neg": false,
+							"args": [
+								{
+									"type": "column",
+									"column": "Alliance_2"
+								},
+								{
+									"type": "value",
+									"value": "PAC"
+								}
+							]
+						}
+					]
+				},
+				{
+					"type": "in",
+					"neg": true,
+					"args": [
+						{
+							"type": "column",
+							"column": "Map"
+						},
+						{
+							"type": "values",
+							"values": [
+								"Anvil",
+								"Kohat",
+								"Lashkar",
+								"PacificProvingGrounds",
+								"Tallil",
+								"Skorpo",
+								"Kamdesh",
+								"Logar",
+								"Sanxian",
+								"Sumari",
+								"GooseBay",
+								"FoolsRoad"
+							]
+						}
+					]
+				},
+				{
+					"type": "in",
+					"neg": true,
+					"args": [
+						{
+							"type": "column",
+							"column": "Layer"
+						},
+						{
+							"type": "values",
+							"values": [
+								"Manicouagan_RAAS_v1",
+								"Manicouagan_RAAS_v2",
+								"Manicouagan_FRAAS_v1",
+								"Manicouagan_FRAAS_v2",
+								"Gorodok_RAAS_v2",
+								"Gorodok_FRAAS_v2"
+							]
+						}
+					]
+				},
+				{
+					"type": "in",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Gamemode"
+						},
+						{
+							"type": "values",
+							"values": [
+								"RAAS",
+								"AAS",
+								"FRAAS"
+							]
+						}
+					]
+				},
+				{
+					"type": "inrange",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Balance_Differential"
+						},
+						{
+							"type": "value",
+							"value": -1
+						},
+						{
+							"type": "value",
+							"value": 1
+						}
+					]
+				},
+				{
+					"type": "lt",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Asymmetry_Score"
+						},
+						{
+							"type": "value",
+							"value": 8
+						}
+					]
+				},
+				{
+					"type": "gt",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Logistics_1"
+						},
+						{
+							"type": "value",
+							"value": -0.9
+						}
+					]
+				},
+				{
+					"type": "gt",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Logistics_2"
+						},
+						{
+							"type": "value",
+							"value": -0.9
+						}
+					]
+				},
+				{
+					"type": "gt",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Transportation_1"
+						},
+						{
+							"type": "value",
+							"value": -1.2
+						}
+					]
+				},
+				{
+					"type": "gt",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Transportation_2"
+						},
+						{
+							"type": "value",
+							"value": -1.2
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "loganos-filter",
+		"filter": {
+			"type": "all",
+			"children": [
+				{
+					"type": "included-in",
+					"filterId": "main-pool"
+				},
+				{
+					"type": "included-in",
+					"filterId": "cringe-unit-removal-by-logano"
+				},
+				{
+					"type": "included-in",
+					"filterId": "loganos-goated-layers-only"
+				}
+			]
+		}
+	},
+	{
+		"id": "main-pool",
+		"filter": {
+			"type": "all",
+			"children": [
+				{
+					"type": "excluded-from",
+					"filterId": "disallow-broken-layers"
+				},
+				{
+					"type": "excluded-from",
+					"filterId": "similar-factions"
+				},
+				{
+					"type": "eq",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Z_Pool"
+						},
+						{
+							"type": "value",
+							"value": true
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "no-mech-on-hilly",
+		"filter": {
+			"type": "notall",
+			"children": [
+				{
+					"type": "in",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Map"
+						},
+						{
+							"type": "values",
+							"values": [
+								"Manicouagan",
+								"Skorpo",
+								"Lashkar"
+							]
+						}
+					]
+				},
+				{
+					"type": "some",
+					"children": [
+						{
+							"type": "in",
+							"neg": false,
+							"args": [
+								{
+									"type": "column",
+									"column": "Unit_1"
+								},
+								{
+									"type": "values",
+									"values": [
+										"Mechanized",
+										"Armored"
+									]
+								}
+							]
+						},
+						{
+							"type": "in",
+							"neg": false,
+							"args": [
+								{
+									"type": "column",
+									"column": "Unit_2"
+								},
+								{
+									"type": "values",
+									"values": [
+										"Mechanized",
+										"Armored"
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "not-skirmish",
+		"filter": {
+			"type": "all",
+			"children": [
+				{
+					"type": "all",
+					"children": [
+						{
+							"type": "eq",
+							"neg": true,
+							"args": [
+								{
+									"type": "column",
+									"column": "Gamemode"
+								},
+								{
+									"type": "value",
+									"value": "Seed"
+								}
+							]
+						},
+						{
+							"type": "eq",
+							"neg": true,
+							"args": [
+								{
+									"type": "column",
+									"column": "Gamemode"
+								},
+								{
+									"type": "value",
+									"value": "Skirmish"
+								}
+							]
+						}
+					]
+				},
+				{
+					"type": "inrange",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Balance_Differential"
+						},
+						{
+							"type": "value",
+							"value": -2.05
+						},
+						{
+							"type": "value",
+							"value": 2.05
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "only-symmetric-units",
+		"filter": {
+			"type": "all",
+			"children": [
+				{
+					"type": "eq",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Unit_1"
+						},
+						{
+							"type": "column",
+							"column": "Unit_2"
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "seeding",
+		"filter": {
+			"type": "all",
+			"children": [
+				{
+					"type": "eq",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Gamemode"
+						},
+						{
+							"type": "value",
+							"value": "Seed"
+						}
+					]
+				},
+				{
+					"type": "in",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Layer"
+						},
+						{
+							"type": "values",
+							"values": [
+								"Manicouagan_Seed_v2_CL",
+								"Sumari_Seed_v1",
+								"AlBasrah_Seed_v1",
+								"AlBasrah_Seed_v2",
+								"Fallujah_Seed_v1",
+								"Harju_Seed_v1",
+								"BlackCoast_Seed_v1"
+							]
+						}
+					]
+				},
+				{
+					"type": "none",
+					"children": [
+						{
+							"type": "in",
+							"neg": false,
+							"args": [
+								{
+									"type": "column",
+									"column": "Faction_1"
+								},
+								{
+									"type": "values",
+									"values": [
+										"PLANMC",
+										"PLAAGF"
+									]
+								}
+							]
+						},
+						{
+							"type": "in",
+							"neg": false,
+							"args": [
+								{
+									"type": "column",
+									"column": "Faction_2"
+								},
+								{
+									"type": "values",
+									"values": [
+										"PLANMC",
+										"PLAAGF"
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "similar-factions",
+		"filter": {
+			"type": "some",
+			"children": [
+				{
+					"type": "all",
+					"children": [
+						{
+							"type": "in",
+							"neg": false,
+							"args": [
+								{
+									"type": "column",
+									"column": "Faction_1"
+								},
+								{
+									"type": "values",
+									"values": [
+										"USA",
+										"USMC"
+									]
+								}
+							]
+						},
+						{
+							"type": "in",
+							"neg": false,
+							"args": [
+								{
+									"type": "column",
+									"column": "Faction_2"
+								},
+								{
+									"type": "values",
+									"values": [
+										"USA",
+										"USMC"
+									]
+								}
+							]
+						}
+					]
+				},
+				{
+					"type": "all",
+					"children": [
+						{
+							"type": "in",
+							"neg": false,
+							"args": [
+								{
+									"type": "column",
+									"column": "Faction_1"
+								},
+								{
+									"type": "values",
+									"values": [
+										"PLANMC",
+										"PLAAGF",
+										"PLA"
+									]
+								}
+							]
+						},
+						{
+							"type": "in",
+							"neg": false,
+							"args": [
+								{
+									"type": "column",
+									"column": "Faction_2"
+								},
+								{
+									"type": "values",
+									"values": [
+										"PLANMC",
+										"PLAAGF",
+										"PLA"
+									]
+								}
+							]
+						}
+					]
+				},
+				{
+					"type": "all",
+					"children": [
+						{
+							"type": "in",
+							"neg": false,
+							"args": [
+								{
+									"type": "column",
+									"column": "Faction_1"
+								},
+								{
+									"type": "values",
+									"values": [
+										"VDV",
+										"RGF"
+									]
+								}
+							]
+						},
+						{
+							"type": "in",
+							"neg": false,
+							"args": [
+								{
+									"type": "column",
+									"column": "Faction_2"
+								},
+								{
+									"type": "values",
+									"values": [
+										"VDV",
+										"RGF"
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "team1-advantaged",
+		"filter": {
+			"type": "all",
+			"children": [
+				{
+					"type": "gt",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Balance_Differential"
+						},
+						{
+							"type": "value",
+							"value": 1.5
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "team2-advantaged",
+		"filter": {
+			"type": "all",
+			"children": [
+				{
+					"type": "lt",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Balance_Differential"
+						},
+						{
+							"type": "value",
+							"value": -1.5
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		"id": "loganos-goated-layers-only",
+		"filter": {
+			"type": "some",
+			"children": [
+				{
+					"type": "in",
+					"neg": false,
+					"args": [
+						{
+							"type": "column",
+							"column": "Layer"
+						},
+						{
+							"type": "values",
+							"values": [
+								"AlBasrah_AAS_v3_CL",
+								"AlBasrah_AAS_v2",
+								"AlBasrah_FRAAS_v3",
+								"BlackCoast_AAS_v1",
+								"BlackCoast_FRAAS_v1",
+								"Chora_AAS_v2",
+								"Chora_AAS_v3",
+								"Chora_FRAAS_v1",
+								"Fallujah_FRAAS_v1",
+								"Fallujah_AAS_v1",
+								"FoolsRoad_AAS_v2",
+								"Harju_AAS_v1",
+								"Harju_AAS_v2",
+								"Harju_AAS_v3",
+								"Harju_FRAAS_v3_CL",
+								"Kamdesh_AAS_v1",
+								"Kokan_AAS_v1",
+								"Kokan_AAS_v2",
+								"Mutaha_AAS_v1",
+								"Mutaha_FRAAS_v2",
+								"Mutaha_FRAAS_v1",
+								"Narva_AAS_v1",
+								"Narva_FRAAS_v1",
+								"Sumari_AAS_v2",
+								"Yehorivka_AAS_v1",
+								"GooseBay_FRAAS_v1",
+								"Gorodok_FRAAS_v1",
+								"Kohat_AAS_v1",
+								"Lashkar_AAS_v1",
+								"Logar_AAS_v1",
+								"Manicouagan_AAS_v2",
+								"Mestia_FRAAS_v1"
+							]
+						}
+					]
+				}
+			]
+		}
+	}
+]

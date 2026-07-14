@@ -2,143 +2,30 @@ import { createId } from '@/lib/id'
 import { LRUMap } from '@/lib/lru-map'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
-import * as OneToMany from '@/lib/one-to-many-map'
-import { weightedRandomSelection } from '@/lib/random'
 import { assertNever } from '@/lib/type-guards'
 import type * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
-import * as F from '@/models/filter.models'
+import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
+import * as LE from '@/models/layer-engine'
 import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
-import type { SQL } from 'drizzle-orm'
-import { sql } from 'drizzle-orm'
-import * as E from 'drizzle-orm'
-import seedrandom from 'seedrandom'
 
-// snapshot of the filter entities a query depends on, taken when its result is cached. null means the
-// filter didn't exist at cache time. compared entity-by-entity (not by map identity) to detect staleness
-type FilterEntitySnapshot = Map<string, F.FilterEntity | null>
+// The query layer, running against the columnar engine (layer-engine/) rather than SQLite.
+//
+// Division of labour: TypeScript owns everything that needs to know what a layer *means* (constraint semantics, repeat
+// rules, cursors, match descriptors) and lowers filters into the engine's IR; the engine owns everything that has to
+// touch all 732k rows. Values cross the boundary in their db encoding and are decoded here with the same
+// LC.fromDbValue the SQLite path used, so nothing downstream of these functions changed.
 
-const MAX_PAGES_PER_QUERY = 1000 // Store up to 1000 pages per unique query
-const MAX_CACHED_QUERIES = 512 // Store up to 512 unique query hashes
-const MAX_CACHED_QUERY_RESULTS = 256
-
-// Cache for randomized layer query results
-// Two-tier structure: LRUMap<queryHash, pages: Map<pageIndex, layerIds[]>>
-const randomLayerCache = new LRUMap<string, { pages: Map<number, number[]>; filterEntities: FilterEntitySnapshot }>(MAX_CACHED_QUERIES)
+// A random page is a draw, not a sort, so paging can't just re-slice an ordering: a page has to know which layers the
+// other pages of the same query already took, and it has to hand back the same layers if it's revisited. That is what
+// this cache is for.
+const MAX_PAGES_PER_QUERY = 1000
+const MAX_CACHED_QUERIES = 512
+const randomLayerCache = new LRUMap<string, { pages: Map<number, number[]>; totalCount: number }>(MAX_CACHED_QUERIES)
 let cachedSeed: string | null = null
-
-// Cache for non-random query results, invalidated when any filter entity the query depends on changes
-const queryResultCache = new LRUMap<string, { value: unknown; filterEntities: FilterEntitySnapshot }>(MAX_CACHED_QUERY_RESULTS)
-
-// Per-(filter entity, packed layer id) match results and per-layer existence for getLayerItemStatuses,
-// keyed by colsConfig identity so they reset with the layer DB. A filter's entry is dropped when the
-// filter entity chain it depends on changes; layer ids accumulate as they're queried, which stays small
-// in practice (only ids that appear in layer lists)
-type FilterMatchCacheEntry = { filterEntities: FilterEntitySnapshot; matches: Map<number, boolean> }
-const filterMatchCaches = new WeakMap<object, Map<F.FilterEntityId, FilterMatchCacheEntry>>()
-const layerExistenceCaches = new WeakMap<object, Map<number, boolean>>()
-
-// filter entities are replaced copy-on-write when they change, so entity identity is a safe key for
-// memoizing the (expensive) zod parse of their filter tree. getFilterNodeSQLConditions re-parses on
-// every apply-filter, and that runs many times per query and per filter in getLayerItemStatuses
-const parsedEntityFilters = new WeakMap<object, F.FilterNode>()
-function parseEntityFilter(entity: F.FilterEntity): F.FilterNode {
-	let parsed = parsedEntityFilters.get(entity)
-	if (parsed === undefined) {
-		parsed = F.FilterNodeSchema.parse(entity.filter)
-		parsedEntityFilters.set(entity, parsed)
-	}
-	return parsed
-}
-
-function collectFilterNodeFilterIds(node: F.FilterNode, ids: Set<string>) {
-	if (F.isApplyFilterNode(node)) ids.add(node.filterId)
-	if (F.isBlockNode(node)) {
-		for (const child of node.children) collectFilterNodeFilterIds(child, ids)
-	}
-}
-
-function snapshotRelevantFilterEntities(ctx: CS.Filters, constraints: LQY.Constraint[] | undefined): FilterEntitySnapshot {
-	const ids = new Set<string>()
-	for (const constraint of constraints ?? []) {
-		switch (constraint.type) {
-			case 'filter-anon':
-				collectFilterNodeFilterIds(constraint.filter, ids)
-				break
-			case 'filter-entity':
-				ids.add(constraint.filterId)
-				break
-			case 'filter-menu-items':
-				for (const item of constraint.items) {
-					if (item.node) collectFilterNodeFilterIds(item.node, ids)
-				}
-				break
-			case 'do-not-repeat':
-				break
-			default:
-				assertNever(constraint)
-		}
-	}
-	const snapshot: FilterEntitySnapshot = new Map()
-	const pending = [...ids]
-	while (pending.length > 0) {
-		const id = pending.pop()!
-		if (snapshot.has(id)) continue
-		const entity = ctx.filters.get(id) ?? null
-		snapshot.set(id, entity)
-		if (entity) {
-			const referenced = new Set<string>()
-			collectFilterNodeFilterIds(entity.filter as F.FilterNode, referenced)
-			pending.push(...referenced)
-		}
-	}
-	return snapshot
-}
-
-function relevantFilterEntitiesChanged(ctx: CS.Filters, snapshot: FilterEntitySnapshot): boolean {
-	for (const [id, entity] of snapshot) {
-		const current = ctx.filters.get(id) ?? null
-		if (entity === null || current === null) {
-			if (entity !== current) return true
-		} else if (!Obj.shallowEquals(entity, current)) return true
-	}
-	return false
-}
-
-// effectiveColsConfig is large but referentially stable, so memoize its hash by identity
-const colsConfigHashes = new WeakMap<object, string>()
-function queryCacheKey(name: string, ctx: CS.LayerQuery, input: object) {
-	let colsCfg = colsConfigHashes.get(ctx.effectiveColsConfig)
-	if (colsCfg === undefined) {
-		colsCfg = simpleHash(JSON.stringify(ctx.effectiveColsConfig))
-		colsConfigHashes.set(ctx.effectiveColsConfig, colsCfg)
-	}
-	const str = JSON.stringify({ name, input, colsCfg })
-	// include the length to make hash collisions between differently-shaped inputs less likely
-	return `${simpleHash(str)}:${str.length}`
-}
-
-function getCachedQueryResult<T>(ctx: CS.Filters, key: string): T | undefined {
-	const entry = queryResultCache.get(key)
-	if (!entry) return undefined
-	if (relevantFilterEntitiesChanged(ctx, entry.filterEntities)) {
-		queryResultCache.delete(key)
-		return undefined
-	}
-	return entry.value as T
-}
-
-function setCachedQueryResult(ctx: CS.Filters, key: string, value: unknown, constraints: LQY.Constraint[] | undefined) {
-	queryResultCache.set(key, { value, filterEntities: snapshotRelevantFilterEntities(ctx, constraints) })
-}
-
-export type QueriedLayer = {
-	layers: L.KnownLayer & { constraints: boolean[] }
-	totalCount: number
-}
 
 export type QueryLayersResponsePart = {
 	code: 'layers-page'
@@ -150,544 +37,40 @@ export type QueryLayersResponsePart = {
 	values: Record<string, string[]>
 } | F.InvalidFilterNodeResult
 
-export async function* queryLayersStreamed(args: {
-	input: LQY.LayersQueryInput
-	ctx: CS.LayerQuery
-}): AsyncGenerator<QueryLayersResponsePart> {
-	const ctx: CS.LayerQuery = {
-		...args.ctx,
-		log: args.ctx.log.child({ query: 'query-layers' }),
-	}
-	const input = { ...args.input }
-	input.pageSize ??= 100
-	input.pageIndex ??= 0
+// the constraint-driven queries need the engine, the column config and the filter entities; only generation and the
+// streamed query need the log and the generation config on top
+type QueryCtx = CS.LayerEngine & CS.Filters
 
-	ctx.log = ctx.log.child({ query: 'queryLayers-' + createId(4) })
-	ctx.log.debug(input, 'running queryLayers')
-
-	// the random-sort path has its own cache (randomLayerCache)
-	const cacheKey = input.sort?.type === 'random' ? undefined : queryCacheKey('queryLayers', ctx, input)
-	if (cacheKey) {
-		const cached = getCachedQueryResult<QueryLayersResponsePart[]>(ctx, cacheKey)
-		if (cached) return yield* cached
-	}
-
-	const conditionsRes = buildQueryInputSqlCondition(ctx, input)
-	if (conditionsRes.code !== 'ok') return yield conditionsRes
-	const { conditions: whereConditions, selectProperties } = conditionsRes
-
-	if (input.sort && input.sort.type === 'random') {
-		const { layers, totalCount } = await getRandomGeneratedLayers(
-			args.ctx,
-			E.and(...whereConditions),
-			selectProperties,
-			input.pageSize,
-			input,
-			true,
-			input.sort.seed ?? LQY.getSeed(),
-			input.pageIndex!,
-		)
-		yield { code: 'layers-page' as const, layers, totalCount, pageCount: Math.ceil(totalCount / input.pageSize!) }
-		if (conditionsRes.filterMenuItemPossibleValueConditions) {
-			yield {
-				code: 'menu-item-possible-values',
-				values: await queryFilterMenuPossibleValues(ctx, conditionsRes.filterMenuItemPossibleValueConditions),
-			}
-		}
-		return
-	}
-
-	const includeWhere = (query: any) => {
-		if (whereConditions.length > 0) {
-			return query.where(E.and(...whereConditions))
-		}
-		return query
-	}
-	const selectCols = { ...LC.selectAllViewCols(ctx), ...selectProperties }
-
-	let query: any = ctx
-		.layerDb()
-		.select(selectCols)
-		.from(LC.layersView(ctx))
-	query = includeWhere(query)
-
-	if (input.sort) {
-		const isNumericSortCol = LC.isNumericColumn(input.sort.sortBy, ctx)
-		let direction = input.sort.direction
-		if (!isNumericSortCol && direction.endsWith('ABS')) {
-			direction = direction.split(':')[0] as 'ASC' | 'DESC'
-		}
-
-		if (direction === 'ASC') {
-			query = query.orderBy(E.asc(LC.viewCol(input.sort.sortBy, ctx)))
-		} else if (direction === 'DESC') {
-			query = query.orderBy(E.desc(LC.viewCol(input.sort.sortBy, ctx)))
-		} else if (direction === 'ASC:ABS') {
-			query = query.orderBy(E.asc(sql`abs(${LC.viewCol(input.sort.sortBy, ctx)})`))
-		} else if (direction === 'DESC:ABS') {
-			query = query.orderBy(E.desc(sql`abs(${LC.viewCol(input.sort.sortBy, ctx)})`))
-		} else {
-			assertNever(direction)
-		}
-	}
-	query = query.offset(input.pageIndex! * input.pageSize!).limit(input.pageSize)
-
-	let countQuery = ctx
-		.layerDb()
-		.select({ count: sql<string>`count(*)` })
-		.from(LC.layersView(ctx))
-	countQuery = includeWhere(countQuery)
-
-	const rows = await query
-	const layers = postProcessLayers(ctx, rows, input)
-	const [countResult] = await countQuery.execute()
-	const totalCount = Number(countResult.count)
-	const parts: QueryLayersResponsePart[] = [{
-		code: 'layers-page' as const,
-		layers: layers,
-		totalCount,
-		pageCount: Math.ceil(totalCount / input.pageSize!),
-	}]
-
-	if (conditionsRes.filterMenuItemPossibleValueConditions) {
-		parts.push({
-			code: 'menu-item-possible-values',
-			values: await queryFilterMenuPossibleValues(ctx, conditionsRes.filterMenuItemPossibleValueConditions),
-		})
-	}
-	setCachedQueryResult(ctx, cacheKey!, parts, input.constraints)
-	yield* parts
+function lowerCtx(ctx: QueryCtx): LE.LowerCtx {
+	return { ...ctx, colIndex: (name: string) => ctx.engine.columnIndex(name) }
 }
 
-export async function genVote(args: { ctx: CS.LayerQuery; input: LQY.GenVote.Input }) {
-	const { input, ctx } = args
-	const base = buildQueryInputSqlCondition(ctx, input)
-	if (base.code !== 'ok') return base
-
-	const choices = Obj.deepClone(input.choices)
-	const chosenLayers: (PostProcessedLayer | undefined)[] = new Array<PostProcessedLayer>(choices.length)
-
-	for (let i = 0; i < choices.length; i++) {
-		const choice = choices[i]
-		const conditions = [...base.conditions]
-		if (choice.layerId || input.onlyIndex !== undefined && input.onlyIndex !== i) continue
-		const filterNode = LQY.GenVote.getChoiceFilterNode(choices, input.uniqueConstraints, i)!
-		const filterNodeRes = getFilterNodeSQLConditions(ctx, filterNode, [], [])
-		if (filterNodeRes.code !== 'ok') return filterNodeRes
-		conditions.push(filterNodeRes.condition)
-		const condition = E.and(...conditions)
-		const res = await getRandomGeneratedLayers(ctx, condition, base.selectProperties, 1, input, true, LQY.getSeed(), 0)
-		if (res.layers[0]) {
-			choice.layerId = res.layers[0].id
-			chosenLayers[i] = res.layers[0]
-		}
-	}
-
-	const choiceErrors: (string | undefined)[] = new Array(choices.length)
-	for (let i = 0; i < choices.length; i++) {
-		if (!chosenLayers[i] && !choices[i].layerId && input.onlyIndex === undefined || input.onlyIndex === i) {
-			choiceErrors[i] = 'No suitable layer found'
-		}
-	}
-
-	return {
-		code: 'ok' as const,
-		chosenLayers,
-		choiceErrors,
-	}
+// the app works in whole layers: every column of the effective config, in a stable order
+function layerColumns(ctx: CS.EffectiveColumnConfig) {
+	return Object.keys(ctx.effectiveColsConfig.defs)
 }
 
-export async function layerExists({
-	input,
-	ctx,
-}: {
-	input: LQY.LayerExistsInput
-	ctx: CS.LayerQuery
-}) {
-	const packedIds = LC.packValidLayers(input)
-	const results = await ctx
-		.layerDb()
-		.select(LC.selectViewCols(['id'], ctx))
-		.from(LC.layersView(ctx))
-		.where(E.inArray(LC.viewCol('id', ctx), packedIds))
-	const existsMap = new Set(results.map((result) => LC.unpackId(result.id as number)))
-
-	return {
-		code: 'ok' as const,
-		results: input.map((id) => ({
-			id: id,
-			exists: existsMap.has(id),
-		})),
-	}
+function columnIndexes(ctx: CS.LayerEngine, names: readonly string[]) {
+	return names.map((name) => ctx.engine.columnIndex(name))
 }
 
-async function queryFilterMenuPossibleValues(ctx: CS.LayerQuery, conditionsMap: Record<string, SQL<unknown>[]>) {
-	const values: Record<string, string[]> = {}
-	for (const [field, conditions] of Object.entries(conditionsMap)) {
-		const res = (await ctx.layerDb().selectDistinct({ [field]: LC.viewCol(field, ctx) })
-			.from(LC.layersView(ctx))
-			.where(E.and(...conditions)))
-			.map((row: any) => LC.fromDbValue(field, row[field], ctx))
+// ---------------------------- constraints ----------------------------
 
-		values[field] = res as string[]
-	}
-	return values
+type CompiledConstraints = {
+	code: 'ok'
+	// the pool: every constraint that filters, ANDed together
+	where: LE.Ir
+	// per constraint, the condition to report against each returned layer (null when it shows no indicator)
+	indicators: (LE.Ir | null)[]
+	// per filter-menu field that asked for them, the condition its possible values are computed under
+	menuItemConditions?: Record<string, LE.Ir>
 }
 
-export async function queryLayerComponent(args: {
-	ctx: CS.LayerQuery
-	input: LQY.LayerComponentInput
-}) {
-	const ctx: CS.LayerQuery = args.ctx
-	const input = args.input
-	const cacheKey = queryCacheKey('queryLayerComponent', ctx, input)
-	const cached = getCachedQueryResult<string[]>(ctx, cacheKey)
-	if (cached) return cached
-	const conditionsRes = buildQueryInputSqlCondition(ctx, input)
-	if (conditionsRes.code !== 'ok') return conditionsRes
-	const { conditions: whereConditions } = conditionsRes
-	const colDef = LC.getColumnDef(input.column, ctx.effectiveColsConfig)
-	if (!colDef) return { code: 'err:unknown-column' as const }
-
-	const res = (await ctx.layerDb().selectDistinct({ [input.column]: LC.viewCol(input.column, ctx) })
-		.from(LC.layersView(ctx))
-		.where(E.and(...whereConditions)))
-		.map((row: any) => LC.fromDbValue(input.column, row[input.column], ctx))
-	setCachedQueryResult(ctx, cacheKey, res, input.constraints)
-	return res as string[]
-}
-
-// reentrantFilterIds are IDs that cannot be present in this node, as their presence would cause
-// infinite recursion. Team-generic column args expand within their own comparison (see compileCompNode).
-export function getFilterNodeSQLConditions(
-	ctx: CS.Log & CS.Filters & CS.LayerDb,
-	node: F.FilterNode,
-	path: string[],
-	reentrantFilterIds: string[],
-): F.SQLConditionsResult {
-	const errors: F.NodeValidationError[] = []
-	let condition: SQL | undefined
-
-	if (F.isCompNode(node)) {
-		condition = compileCompNode(ctx, node, path, errors)
-	}
-
-	if (F.isApplyFilterNode(node)) {
-		path = [...path, 'filterId']
-		if (reentrantFilterIds.includes(node.filterId)) {
-			errors.push({
-				path,
-				filterId: node.filterId,
-				type: 'recursive-filter',
-				msg: 'Filter is mutually recursive via filter: ' + node.filterId,
-			})
-		} else {
-			const entity = ctx.filters.get(node.filterId)
-			if (!entity) {
-				errors.push({
-					path,
-					filterId: node.filterId,
-					type: 'unknown-filter',
-					msg: `Filter ${node.filterId} doesn't exist`,
-				})
-			} else {
-				const filter = parseEntityFilter(entity)
-				const res = getFilterNodeSQLConditions(ctx, filter, path, [...reentrantFilterIds, node.filterId])
-				if (res.code !== 'ok') return res
-				// 'excluded-from' means the layer must NOT match the referenced filter
-				condition = F.APPLY_FILTER_TYPE_NEGATED[node.type] ? E.not(res.condition) : res.condition
-			}
-		}
-	}
-
-	if (F.isBlockNode(node)) {
-		const childrenPath = [...path, 'children']
-		const childConditions: SQL<unknown>[] = []
-		for (let i = 0; i < node.children.length; i++) {
-			const res = getFilterNodeSQLConditions(ctx, node.children[i], [...childrenPath, i.toString()], reentrantFilterIds)
-			if (res.code !== 'ok') errors.push(...res.errors)
-			else childConditions.push(res.condition)
-		}
-		const sem = F.BLOCK_TYPE_SEMANTICS[node.type]
-		const base = sem.conjunction
-			? (childConditions.length > 0 ? E.and(...childConditions)! : sql`1 = 1`)
-			: (childConditions.length > 0 ? E.or(...childConditions)! : sql`0 = 1`)
-		condition = sem.negated ? E.not(base) : base
-	}
-
-	if (errors.length > 0) {
-		return {
-			code: 'err:invalid-node' as const,
-			errors,
-		}
-	}
-
-	// block and apply-filter operators fold their own negation into the type; only comp nodes carry a
-	// `neg` flag
-	if (F.isCompNode(node) && node.neg) condition = E.not(condition!)
-	return { code: 'ok' as const, condition: condition! }
-}
-
-// resolves a scalar arg to either a drizzle column expression or a raw db value.
-// anchorColumn (if provided) supplies the enum mapping used to convert value args.
-type ResolvedScalar =
-	| { kind: 'column'; expr: any; column: string; domain: F.ValueDomain | undefined }
-	| { kind: 'value'; value: LC.DbValue }
-	| { kind: 'null' }
-
-// If `column` is a string-enum column whose mapping contains null (so a null value is stored as a
-// concrete enum index rather than SQL NULL), returns that index; otherwise undefined (meaning null
-// should be treated as SQL NULL).
-function enumNullDbValue(ctx: CS.EffectiveColumnConfig, column: string | undefined): LC.DbValue | undefined {
-	if (column === undefined) return undefined
-	const def = LC.getColumnDef(column, ctx.effectiveColsConfig)
-	if (def?.type !== 'string' || !def.enumMapping) return undefined
-	const mapped = LC.dbValue(column, null, ctx)
-	return LC.isUnmappedDbValue(mapped) ? undefined : mapped
-}
-
-function resolveScalarArg(
-	ctx: CS.EffectiveColumnConfig,
-	arg: F.ScalarArg,
-	anchorColumn: string | undefined,
-	team: 1 | 2 | undefined,
-	path: string[],
-	errors: F.NodeValidationError[],
-): ResolvedScalar | undefined {
-	switch (arg.type) {
-		case 'column':
-		case 'team-column': {
-			let column: string
-			if (arg.type === 'team-column') {
-				if (team === undefined) {
-					errors.push({ type: 'invalid-node', path, msg: `Team column "${arg.column}" could not be resolved to a team` })
-					return undefined
-				}
-				column = F.resolveTeamColumn(arg.column, team)
-			} else {
-				column = arg.column
-			}
-			const colDef = LC.getColumnDef(column, ctx.effectiveColsConfig)
-			if (!colDef) {
-				errors.push({ type: 'unmapped-column', column, path, msg: `Column ${column} is not mapped` })
-				return undefined
-			}
-			return { kind: 'column', expr: LC.viewCol(column, ctx), column, domain: F.columnValueDomain(column, ctx.effectiveColsConfig) }
-		}
-		case 'value': {
-			if (arg.value === null) {
-				// for an enum column that includes null as a mapped value (e.g. LayerVersion's "no version"),
-				// a null value is a concrete enum index in the stored data, not SQL NULL
-				const idx = enumNullDbValue(ctx, anchorColumn)
-				if (idx !== undefined) return { kind: 'value', value: idx }
-				return { kind: 'null' }
-			}
-			if (anchorColumn === undefined) {
-				errors.push({ type: 'invalid-node', path, msg: 'Comparison requires at least one column operand' })
-				return undefined
-			}
-			const dbValue = LC.dbValue(anchorColumn, arg.value, ctx)
-			if (LC.isUnmappedDbValue(dbValue)) {
-				errors.push({
-					type: 'unmapped-value',
-					path,
-					column: anchorColumn,
-					value: arg.value,
-					msg: `Value ${arg.value} is not mapped for column ${anchorColumn}`,
-				})
-				return { kind: 'value', value: null }
-			}
-			return { kind: 'value', value: dbValue }
-		}
-		default:
-			assertNever(arg)
-	}
-}
-
-// A comparison that references any team-generic column expands over both teams, combining the two
-// per-team conditions with OR ('either') or AND ('both') per the team column's quantifier.
-function compileCompNode(
-	ctx: CS.EffectiveColumnConfig,
-	node: F.CompNode,
-	path: string[],
-	errors: F.NodeValidationError[],
-): SQL | undefined {
-	// the subject (arg[0]) must be a column: value-first / all-constant comparisons aren't representable in
-	// the builder (see SubjectArgSchema). Flag it here so text-editor-authored nodes get a clear message.
-	const subject = node.args[0] as F.Arg | undefined
-	if (subject?.type !== 'column' && subject?.type !== 'team-column') {
-		errors.push({ type: 'invalid-node', path, msg: "A comparison's first operand must be a column" })
-		return undefined
-	}
-	const teamArg = (node.args as F.Arg[]).find((a) => a.type === 'team-column') as F.TeamColumnArg | undefined
-	if (!teamArg) return compileCompForTeam(ctx, node, path, undefined, errors)
-	const c1 = compileCompForTeam(ctx, node, path, 1, errors)
-	// team 1 and team 2 resolve to columns of the same enum mapping, so they produce identical
-	// validation errors; discard team 2's to avoid duplicating them in the error list
-	const c2 = compileCompForTeam(ctx, node, path, 2, [])
-	return teamArg.quantifier === 'both' ? E.and(c1, c2) : E.or(c1, c2)
-}
-
-function compileCompForTeam(
-	ctx: CS.EffectiveColumnConfig,
-	node: F.CompNode,
-	path: string[],
-	team: 1 | 2 | undefined,
-	errors: F.NodeValidationError[],
-): SQL | undefined {
-	const anchor = F.compAnchorArg(node)
-	const anchorColumn = anchor
-		? (anchor.type === 'column'
-			? (anchor.column as string | undefined)
-			: (anchor.type === 'team-column' && team !== undefined && anchor.column
-				? F.resolveTeamColumn(anchor.column as F.TeamColumn, team)
-				: undefined))
-		: undefined
-
-	// bail on an unmapped anchor column before resolving value operands: value conversion goes through
-	// LC.dbValue(anchorColumn, ...), which throws on a column that isn't in the effective config
-	if (anchorColumn !== undefined && !LC.getColumnDef(anchorColumn, ctx.effectiveColsConfig)) {
-		errors.push({ type: 'unmapped-column', column: anchorColumn, path, msg: `Column ${anchorColumn} is not mapped` })
-		return undefined
-	}
-
-	const resolveScalar = (arg: F.ScalarArg) => resolveScalarArg(ctx, arg, anchorColumn, team, path, errors)
-	// operand expression for a resolved scalar (a drizzle column, a raw value, or SQL NULL)
-	const operand = (r: ResolvedScalar | undefined): any => {
-		if (!r) return null
-		if (r.kind === 'column') return r.expr
-		if (r.kind === 'null') return null
-		return r.value
-	}
-	// null test for an operand. On a float column NaN counts as null (it's a missing/invalid value, and
-	// eq on floats is a null test): `col <> col` is true only for NaN, so it catches NaN alongside SQL NULL.
-	const nullTest = (r: ResolvedScalar): SQL => {
-		const expr = operand(r)
-		if (r.kind === 'column' && F.isFloatDomain(r.domain)) return E.or(E.isNull(expr), E.ne(expr, expr))!
-		return E.isNull(expr)!
-	}
-
-	switch (node.type) {
-		case 'eq': {
-			const a = resolveScalar(node.args[0])
-			const b = resolveScalar(node.args[1])
-			// null on either side becomes an IS NULL test on the other operand (NaN counts as null on floats)
-			if (a?.kind === 'null' && b && b.kind !== 'null') return nullTest(b)
-			if (b?.kind === 'null' && a && a.kind !== 'null') return nullTest(a)
-			if (a?.kind === 'null' && b?.kind === 'null') return sql`1 = 1`
-			checkColumnColumnDomains(a, b, path, errors)
-			return E.eq(operand(a), operand(b))
-		}
-		case 'in': {
-			// the list may mix constant values and column references; each column becomes a `subject = column`
-			// disjunct alongside the `subject IN (constants)` term
-			const subject = resolveScalar(node.args[0])
-			const subjectExpr = operand(subject)
-			const constants: LC.DbValue[] = []
-			const parts: SQL[] = []
-			let hasNull = false
-			for (const item of node.args[1].values) {
-				if (item === null) {
-					// on an enum column that maps null to an index, a null list item is that concrete index
-					const idx = enumNullDbValue(ctx, anchorColumn)
-					if (idx !== undefined) constants.push(idx)
-					else hasNull = true
-					continue
-				}
-				if (F.isColumnListItem(item)) {
-					const colDef = LC.getColumnDef(item.column, ctx.effectiveColsConfig)
-					if (!colDef) {
-						errors.push({ type: 'unmapped-column', column: item.column, path, msg: `Column ${item.column} is not mapped` })
-						continue
-					}
-					const itemDomain = F.columnValueDomain(item.column, ctx.effectiveColsConfig)
-					if (subject?.kind === 'column' && subject.domain && itemDomain && !F.domainsCompatible(subject.domain, itemDomain)) {
-						errors.push({
-							type: 'invalid-node',
-							path,
-							msg: `Columns ${subject.column} and ${item.column} are not comparable (different data types)`,
-						})
-						continue
-					}
-					parts.push(E.eq(subjectExpr, LC.viewCol(item.column, ctx))!)
-					continue
-				}
-				const dbValue = LC.dbValue(anchorColumn ?? '', item, ctx)
-				if (LC.isUnmappedDbValue(dbValue)) {
-					errors.push({
-						type: 'unmapped-value',
-						path,
-						column: anchorColumn ?? '',
-						value: item,
-						msg: `Value ${item} is not mapped for column ${anchorColumn}`,
-					})
-					continue
-				}
-				constants.push(dbValue)
-			}
-			if (constants.length > 0) parts.unshift(E.inArray(subjectExpr, constants)!)
-			if (hasNull) parts.push(E.isNull(subjectExpr)!)
-			if (parts.length === 0) return sql`0 = 1`
-			return E.or(...parts)!
-		}
-		case 'lt':
-		case 'gt': {
-			const a = resolveScalar(node.args[0])
-			const b = resolveScalar(node.args[1])
-			if (a?.kind === 'null' || b?.kind === 'null') {
-				errors.push({ type: 'invalid-node', path, msg: 'Ordered comparison cannot use null' })
-				return sql`0 = 1`
-			}
-			checkColumnColumnDomains(a, b, path, errors)
-			// null and NaN subjects are excluded implicitly: SQLite stores NaN as SQL NULL, and any
-			// comparison against NULL is NULL (excluded), which survives the outer negation too (NOT NULL is
-			// NULL). So the negated forms (>=, <=) also drop null/NaN rows. Do NOT add an explicit validity
-			// guard here: since neg is applied outside as NOT(condition), a guard would let nulls through the
-			// negated forms.
-			return node.type === 'lt' ? E.lt(operand(a), operand(b)) : E.gt(operand(a), operand(b))
-		}
-		case 'inrange': {
-			const subject = resolveScalar(node.args[0])
-			const lo = resolveScalar(node.args[1])
-			const hi = resolveScalar(node.args[2])
-			if (subject?.kind === 'null' || lo?.kind === 'null' || hi?.kind === 'null') {
-				errors.push({ type: 'invalid-node', path, msg: 'Range comparison cannot use null' })
-				return sql`0 = 1`
-			}
-			// null/NaN subjects are excluded implicitly (NaN is stored as SQL NULL, and NULL comparisons are
-			// NULL), including under the negated ![..] form. See the lt/gt note above for why no explicit guard.
-			// forgive reversed constant bounds, matching the legacy inrange behavior
-			let loOp = operand(lo)
-			let hiOp = operand(hi)
-			if (
-				lo?.kind === 'value' && hi?.kind === 'value' && typeof lo.value === 'number' && typeof hi.value === 'number' && lo.value > hi.value
-			) {
-				;[loOp, hiOp] = [hiOp, loOp]
-			}
-			return E.and(E.gte(operand(subject), loOp), E.lte(operand(subject), hiOp))
-		}
-		default:
-			assertNever(node)
-	}
-}
-
-function checkColumnColumnDomains(
-	a: ResolvedScalar | undefined,
-	b: ResolvedScalar | undefined,
-	path: string[],
-	errors: F.NodeValidationError[],
-) {
-	if (a?.kind === 'column' && b?.kind === 'column' && a.domain && b.domain && !F.domainsCompatible(a.domain, b.domain)) {
-		errors.push({ type: 'invalid-node', path, msg: `Columns ${a.column} and ${b.column} are not comparable (different data types)` })
-	}
-}
-
-function buildQueryInputSqlCondition(
-	ctx: CS.Log & CS.Filters & CS.LayerDb,
+export function buildQueryConstraints(
+	ctx: QueryCtx,
 	input: LQY.BaseQueryInput,
-) {
-	const baseConditions: SQL<unknown>[] = []
-	const selectProperties: any = {}
+): CompiledConstraints | F.InvalidFilterNodeResult {
+	const lower = lowerCtx(ctx)
 	const constraints = input.constraints ?? []
 	const list = input.list ?? LQY.initLayerItemsState()
 
@@ -697,218 +80,512 @@ function buildQueryInputSqlCondition(
 		cursorIndex = LQY.resolveCursorIndex(list, cursor)
 	}
 
+	const baseConditions: LE.Ir[] = []
+	const indicators: (LE.Ir | null)[] = new Array(constraints.length).fill(null)
+
 	for (let i = 0; i < constraints.length; i++) {
 		const constraint = constraints[i]
 		if (constraint.type === 'filter-menu-items') continue
 		if (constraint.showIndicator === 'disabled' && constraint.filterApplState === 'disabled') continue
-		let res: F.SQLConditionsResult | undefined
+
+		let ir: LE.Ir
 		switch (constraint.type) {
-			case 'filter-anon':
-				res = getFilterNodeSQLConditions(ctx, constraint.filter, [i.toString()], [])
+			case 'filter-anon': {
+				const res = LE.lowerFilterNode(lower, constraint.filter, [i.toString()])
+				if (res.code !== 'ok') return res
+				ir = res.ir
 				break
-			case 'filter-entity':
-				res = getFilterNodeSQLConditions(
-					ctx,
-					FB.includedIn(constraint.filterId),
-					[i.toString()],
-					[],
-				)
+			}
+			case 'filter-entity': {
+				const res = LE.lowerFilterNode(lower, FB.includedIn(constraint.filterId), [i.toString()])
+				if (res.code !== 'ok') return res
+				ir = res.ir
 				break
+			}
 			case 'do-not-repeat':
-				{
-					res = getRepeatSQLConditions(ctx, list, cursorIndex?.outerIndex ?? 0, constraint.rule)
-				}
+				ir = repeatRuleIr(ctx, list, cursorIndex?.outerIndex ?? 0, constraint.rule)
 				break
 			default:
 				assertNever(constraint)
-		}
-		if (res.code !== 'ok') {
-			// TODO: pass error back instead
-			return res
 		}
 
 		switch (constraint.filterApplState) {
-			case 'regular': {
-				baseConditions.push(res.condition)
+			case 'regular':
+				baseConditions.push(ir)
 				break
-			}
-
-			case 'inverted': {
-				baseConditions.push(E.not(res.condition))
+			case 'inverted':
+				baseConditions.push(LE.not(ir))
 				break
-			}
-
-			case 'disabled': {
+			case 'disabled':
 				break
-			}
-
 			default:
 				assertNever(constraint)
 		}
 
-		if (constraint.showIndicator) {
-			// repeat rules are handled separately so just use 1=1 for do-not-repeat constraints for now
-			selectProperties[`constraint_${i}`] = constraint.type === 'do-not-repeat' ? sql`1=1` : res.condition
-		}
+		// a repeat rule's indicator is filled in per item during post-processing, because a violation carries which
+		// earlier match it repeats, which is not something a condition over the table can say
+		if (constraint.showIndicator && constraint.type !== 'do-not-repeat') indicators[i] = ir
 	}
 
-	const conditions: SQL<unknown>[] = [...baseConditions]
-	// the conditions to retrieve possible values for menu items
-	let filterMenuItemPossibleValueConditions: Record<string, SQL<unknown>[]> | undefined
-	// get menu item conditions
-	//
-	const itemConstraint = constraints.find(c => c.type === 'filter-menu-items')
+	// menu items: a field's possible values are computed under the *other* fields' conditions, minus the siblings it
+	// excludes and minus its own (or it could only ever offer the value already chosen)
+	let menuItemConditions: Record<string, LE.Ir> | undefined
+	const itemConstraint = constraints.find((c) => c.type === 'filter-menu-items')
+	const conditions = [...baseConditions]
 	if (itemConstraint) {
-		filterMenuItemPossibleValueConditions = {}
-		const itemConditions: Record<string, SQL<unknown>> = {}
+		menuItemConditions = {}
+		const itemConditions: Record<string, LE.Ir> = {}
 		for (const { field, node } of itemConstraint.items) {
 			if (!node) continue
-			const res = getFilterNodeSQLConditions(ctx, node, [], [])
-			if (res.code !== 'ok') {
-				return res
-			}
-			itemConditions[field] = res.condition
+			const res = LE.lowerFilterNode(lower, node)
+			if (res.code !== 'ok') return res
+			itemConditions[field] = res.ir
 		}
 		conditions.push(...Object.values(itemConditions))
 
-		for (const currentItem of itemConstraint.items) {
-			if (!currentItem.returnPossibleValues) continue
-			filterMenuItemPossibleValueConditions[currentItem.field] = [...baseConditions]
+		for (const item of itemConstraint.items) {
+			if (!item.returnPossibleValues) continue
+			const forField = [...baseConditions]
 			for (const [field, condition] of Object.entries(itemConditions)) {
-				if (currentItem.field === field || currentItem.excludedSiblings?.includes(field)) continue
-				filterMenuItemPossibleValueConditions[currentItem.field].push(condition)
+				if (item.field === field || item.excludedSiblings?.includes(field)) continue
+				forField.push(condition)
 			}
+			menuItemConditions[item.field] = LE.and(forField)
 		}
 	}
 
-	return { code: 'ok' as const, conditions, selectProperties, filterMenuItemPossibleValueConditions }
+	return { code: 'ok', where: LE.and(conditions), indicators, menuItemConditions }
+}
+
+// A do-not-repeat rule filters out the values the recent layers used, so it lowers to the same IR as everything else.
+function repeatRuleIr(ctx: CS.LayerEngine, list: LQY.LayerItemsState, cursorIndex: number, rule: LQY.RepeatRule): LE.Ir {
+	if (rule.within <= 0) return { op: 'false' }
+	const col = (name: string) => ctx.engine.columnIndex(name)
+
+	const values = new Set<number>()
+	const valuesA = new Set<number>()
+	const valuesB = new Set<number>()
+	const previousLayers = list.layerItems
+
+	for (let i = cursorIndex - 1; i >= Math.max(cursorIndex - rule.within, 0); i--) {
+		if (LQY.isLookbackTerminatingLayerItem(previousLayers[i])) break
+		const teamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, i)
+		const layer = L.toLayer(previousLayers[i].layerId)
+
+		switch (rule.field) {
+			case 'Map':
+			case 'Gamemode':
+			case 'Size':
+			case 'Layer': {
+				const value = layer[rule.field]
+				if (value && (rule.targetValues?.includes(value) ?? true)) {
+					const dbValue = LC.dbValue(rule.field, value, ctx)
+					if (!LC.isUnmappedDbValue(dbValue) && dbValue !== null) values.add(Number(dbValue))
+				}
+				break
+			}
+			case 'Faction': {
+				for (const team of ['A', 'B'] as const) {
+					const column = MH.getTeamNormalizedFactionProp(teamParity, team)
+					const value = layer[column]
+					if (!value || LQY.valueFilteredByTargetValues(rule, value)) continue
+					const dbValue = LC.dbValue(column, value, ctx)
+					if (LC.isUnmappedDbValue(dbValue) || dbValue === null) continue
+					;(team === 'A' ? valuesA : valuesB).add(Number(dbValue))
+				}
+				break
+			}
+			case 'Alliance': {
+				for (const team of ['A', 'B'] as const) {
+					const column = MH.getTeamNormalizedAllianceProp(teamParity, team)
+					const alliance = layer[column]
+					if (LQY.valueFilteredByTargetValues(rule, alliance)) continue
+					const dbValue = LC.dbValue(column, alliance, ctx)
+					if (LC.isUnmappedDbValue(dbValue) || dbValue === null) continue
+					;(team === 'A' ? valuesA : valuesB).add(Number(dbValue))
+				}
+				break
+			}
+			default:
+				assertNever(rule.field)
+		}
+	}
+
+	const targetParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, cursorIndex)
+	switch (rule.field) {
+		case 'Map':
+		case 'Gamemode':
+		case 'Size':
+		case 'Layer': {
+			if (values.size === 0) return { op: 'false' }
+			return { op: 'in_vals', col: col(rule.field), vals: [...values] }
+		}
+		case 'Faction':
+		case 'Alliance': {
+			const [colA, colB] = rule.field === 'Faction'
+				? [MH.getTeamNormalizedFactionProp(targetParity, 'A'), MH.getTeamNormalizedFactionProp(targetParity, 'B')]
+				: [MH.getTeamNormalizedAllianceProp(targetParity, 'A'), MH.getTeamNormalizedAllianceProp(targetParity, 'B')]
+			return {
+				op: 'or',
+				children: [
+					{ op: 'in_vals', col: col(colA), vals: [...valuesA] },
+					{ op: 'in_vals', col: col(colB), vals: [...valuesB] },
+				],
+			}
+		}
+		default:
+			assertNever(rule.field)
+	}
+}
+
+// ---------------------------- queries ----------------------------
+
+export async function* queryLayersStreamed(args: {
+	input: LQY.LayersQueryInput
+	ctx: CS.LayerQuery
+}): AsyncGenerator<QueryLayersResponsePart> {
+	const ctx: CS.LayerQuery = {
+		...args.ctx,
+		log: args.ctx.log.child({ query: 'queryLayers-' + createId(4) }),
+	}
+	const input = { ...args.input }
+	input.pageSize ??= 100
+	input.pageIndex ??= 0
+	ctx.log.debug(input, 'running queryLayers')
+
+	const compiled = buildQueryConstraints(ctx, input)
+	if (compiled.code !== 'ok') {
+		yield compiled
+		return
+	}
+
+	const names = layerColumns(ctx)
+	const columns = columnIndexes(ctx, names)
+	const indicators = compiled.indicators.filter((ir): ir is LE.Ir => ir !== null)
+	// which constraint each indicator belongs to, so the engine's answers land back in constraint order
+	const indicatorConstraints: number[] = []
+	compiled.indicators.forEach((ir, idx) => {
+		if (ir !== null) indicatorConstraints.push(idx)
+	})
+
+	const res = input.sort?.type === 'random'
+		? drawRandomPage(ctx, {
+			where: compiled.where,
+			input,
+			seed: input.sort.seed ?? LQY.getSeed(),
+			pageIndex: input.pageIndex!,
+			pageSize: input.pageSize!,
+			indicators,
+			columns,
+		})
+		: ctx.engine.query<LE.SelectResponse>({
+			kind: 'select',
+			where: compiled.where,
+			indicators,
+			sort: columnSort(ctx, input.sort),
+			pageIndex: input.pageIndex!,
+			pageSize: input.pageSize!,
+			columns,
+		})
+
+	const layers = postProcessLayers(
+		ctx,
+		{ rows: res.rows, names, indicatorResults: res.indicators, indicatorConstraints },
+		input,
+	)
+	yield {
+		code: 'layers-page' as const,
+		layers,
+		totalCount: res.totalCount,
+		pageCount: Math.ceil(res.totalCount / input.pageSize!),
+	}
+
+	if (compiled.menuItemConditions) {
+		const values: Record<string, string[]> = {}
+		for (const [field, condition] of Object.entries(compiled.menuItemConditions)) {
+			const raw = ctx.engine.query<(number | null)[]>({
+				kind: 'distinct',
+				where: condition,
+				col: ctx.engine.columnIndex(field),
+			})
+			values[field] = raw.map((value) => LC.fromDbValue(field, value, ctx)) as string[]
+		}
+		yield { code: 'menu-item-possible-values', values }
+	}
+}
+
+function columnSort(ctx: CS.LayerEngine, sort: LQY.LayersQuerySort | null | undefined): LE.Sort | null {
+	if (sort?.type !== 'column') return null
+	let direction = sort.direction
+	// only a numeric column has a meaningful absolute value
+	if (!LC.isNumericColumn(sort.sortBy, ctx) && direction.endsWith('ABS')) {
+		direction = direction.split(':')[0] as 'ASC' | 'DESC'
+	}
+	return { column: { col: ctx.engine.columnIndex(sort.sortBy), dir: direction } }
+}
+
+// Weighted generation. The engine does the picking, since it holds the group universe; this is the bookkeeping around
+// it: exclude what sibling pages already took, and replay a page that's revisited instead of re-drawing it.
+function drawRandomPage(ctx: CS.LayerQuery, args: {
+	where: LE.Ir
+	input: LQY.BaseQueryInput
+	seed: string
+	pageIndex: number
+	pageSize: number
+	indicators: LE.Ir[]
+	columns: number[]
+}): LE.SelectResponse {
+	const { where, input, seed, pageIndex, pageSize, indicators, columns } = args
+	if (cachedSeed !== seed) {
+		randomLayerCache.clear()
+		cachedSeed = seed
+	}
+	const cacheKey = simpleHash(JSON.stringify({
+		where,
+		cursor: input.cursor,
+		list: input.list,
+		generation: ctx.generationConfig,
+	}))
+	let entry = randomLayerCache.get(cacheKey)
+	if (!entry) {
+		entry = { pages: new Map<number, number[]>(), totalCount: 0 }
+		randomLayerCache.set(cacheKey, entry)
+	}
+
+	const idCol = ctx.engine.columnIndex('id')
+	const cachedIds = entry.pages.get(pageIndex)
+	if (cachedIds) {
+		// the draw for this page already happened: fetch exactly those layers again rather than drawing new ones
+		const res = ctx.engine.query<LE.SelectResponse>({
+			kind: 'select',
+			where: LE.and([where, { op: 'in_vals', col: idCol, vals: cachedIds }]),
+			indicators,
+			sort: null,
+			pageIndex: 0,
+			pageSize: cachedIds.length,
+			columns,
+		})
+		return { ...res, totalCount: entry.totalCount }
+	}
+
+	const excludeIds: number[] = []
+	for (const [index, ids] of entry.pages) {
+		if (index !== pageIndex) excludeIds.push(...ids)
+	}
+
+	const res = ctx.engine.query<LE.SelectResponse>({
+		kind: 'select',
+		where,
+		indicators,
+		sort: { random: { ...generationSpec(ctx, seed, pageIndex, pageSize), excludeIds } },
+		pageIndex: 0,
+		pageSize,
+		columns,
+	})
+
+	entry.totalCount = res.totalCount
+	if (entry.pages.size < MAX_PAGES_PER_QUERY) {
+		const idIndex = columns.indexOf(idCol)
+		entry.pages.set(pageIndex, res.rows.map((row) => row[idIndex]!))
+	}
+	return res
+}
+
+// The pick order and its weights, packed into the engine's request. The radices travel with the request, so the
+// engine's packing and LC.packStepKey cannot drift apart.
+function generationSpec(ctx: CS.LayerQuery, seed: string, pageIndex: number, numLayers: number): LE.GenSpec {
+	const config = ctx.generationConfig
+	const steps: LE.StepSpec[] = config.pickOrder.map((key) => {
+		const weights: { key: number; weight: number }[] = []
+		if (LC.isMatchupKey(key)) {
+			const [columns1, columns2] = LC.MATCHUP_COLUMNS[key]
+			for (const entry of config.matchupWeights[key] as LC.MatchupWeightEntry[]) {
+				const packed = packMatchupEntry(ctx, key, entry)
+				// a pairing the layer set doesn't have (e.g. a faction dropped by a game update) can't match a group
+				if (packed !== undefined) weights.push({ key: packed, weight: entry.weight })
+			}
+			return {
+				cols1: columnIndexes(ctx, columns1),
+				radices1: columns1.map((column) => LC.weightColumnRadix(column)),
+				cols2: columnIndexes(ctx, columns2),
+				radices2: columns2.map((column) => LC.weightColumnRadix(column)),
+				weights,
+			}
+		}
+		for (const entry of config.weights[key] ?? []) {
+			const value = LC.dbValue(key, entry.value, ctx)
+			if (LC.isUnmappedDbValue(value)) continue
+			weights.push({ key: LC.packSideKey([key], [value]), weight: entry.weight })
+		}
+		return { cols1: columnIndexes(ctx, [key]), radices1: [LC.weightColumnRadix(key)], weights }
+	})
+
+	return {
+		steps,
+		defaultWeight: LC.DEFAULT_GENERATION_WEIGHT,
+		// the page rides in the seed: different pages of one query have to draw different layers
+		seed: simpleHashInt(`${seed}:${pageIndex}`),
+		numLayers,
+	}
+}
+
+function packMatchupEntry(ctx: CS.LayerQuery, key: LC.MatchupKey, entry: LC.MatchupWeightEntry): number | undefined {
+	const byColumn = new Map<LC.WeightColumn, LC.DbValue>()
+	const sides: [readonly LC.WeightColumn[], LC.MatchupSide][] = [
+		[LC.MATCHUP_COLUMNS[key][0], entry.teams[0]],
+		[LC.MATCHUP_COLUMNS[key][1], entry.teams[1]],
+	]
+	for (const [columns, side] of sides) {
+		const values = LC.matchupSideValues(key, side)
+		for (let i = 0; i < columns.length; i++) {
+			const value = LC.dbValue(columns[i], values[i], ctx)
+			if (LC.isUnmappedDbValue(value)) return undefined
+			byColumn.set(columns[i], value)
+		}
+	}
+	return LC.packStepKey(key, (column) => byColumn.get(column) ?? null)
+}
+
+export async function genVote(args: { ctx: CS.LayerQuery; input: LQY.GenVote.Input }) {
+	const { input, ctx } = args
+	const base = buildQueryConstraints(ctx, input)
+	if (base.code !== 'ok') return base
+
+	const choices = Obj.deepClone(input.choices)
+	const chosenLayers: (PostProcessedLayer | undefined)[] = new Array<PostProcessedLayer>(choices.length)
+	const names = layerColumns(ctx)
+	const columns = columnIndexes(ctx, names)
+	const seed = input.seed ?? LQY.getSeed()
+
+	for (let i = 0; i < choices.length; i++) {
+		const choice = choices[i]
+		if (choice.layerId || (input.onlyIndex !== undefined && input.onlyIndex !== i)) continue
+		// each choice is drawn from the pool minus what the other choices took, which is what keeps them distinct
+		const filterNode = LQY.GenVote.getChoiceFilterNode(choices, input.uniqueConstraints, i)!
+		const res = LE.lowerFilterNode(lowerCtx(ctx), filterNode)
+		if (res.code !== 'ok') return res
+
+		const generated = ctx.engine.query<LE.SelectResponse>({
+			kind: 'select',
+			where: LE.and([base.where, res.ir]),
+			indicators: [],
+			sort: { random: { ...generationSpec(ctx, seed, i, 1), excludeIds: [] } },
+			pageIndex: 0,
+			pageSize: 1,
+			columns,
+		})
+		const [layer] = postProcessLayers(
+			ctx,
+			{ rows: generated.rows, names, indicatorResults: [], indicatorConstraints: [] },
+			input,
+		)
+		if (layer) {
+			choice.layerId = layer.id
+			chosenLayers[i] = layer
+		}
+	}
+
+	const choiceErrors: (string | undefined)[] = new Array(choices.length)
+	for (let i = 0; i < choices.length; i++) {
+		if (!chosenLayers[i] && !choices[i].layerId && (input.onlyIndex === undefined || input.onlyIndex === i)) {
+			choiceErrors[i] = 'No suitable layer found'
+		}
+	}
+
+	return { code: 'ok' as const, chosenLayers, choiceErrors }
+}
+
+export async function layerExists({ input, ctx }: { input: LQY.LayerExistsInput; ctx: CS.LayerEngine }) {
+	const known = input.filter((id) => L.isKnownLayer(id))
+	const res = ctx.engine.query<LE.MatchesResponse>({
+		kind: 'matches',
+		filters: [],
+		ids: known.map((id) => LC.packId(id)),
+	})
+	const existing = new Set<L.LayerId>()
+	for (let i = 0; i < known.length; i++) {
+		if (res.exists[i]) existing.add(known[i])
+	}
+	return {
+		code: 'ok' as const,
+		results: input.map((id) => ({ id, exists: existing.has(id) })),
+	}
+}
+
+export async function queryLayerComponent(args: { ctx: QueryCtx; input: LQY.LayerComponentInput }) {
+	const { ctx, input } = args
+	if (!LC.getColumnDef(input.column, ctx.effectiveColsConfig)) return { code: 'err:unknown-column' as const }
+	const compiled = buildQueryConstraints(ctx, input)
+	if (compiled.code !== 'ok') return compiled
+
+	const values = ctx.engine.query<(number | null)[]>({
+		kind: 'distinct',
+		where: compiled.where,
+		col: ctx.engine.columnIndex(input.column),
+	})
+	return values.map((value) => LC.fromDbValue(input.column, value, ctx)) as string[]
 }
 
 // given a set of layer ids, returns those that fall outside the pool defined by `constraints` (a layer is out of pool
-// if it fails an active constraint or does not exist in the layer db). used to gate queue:force-write. with no
-// constraints nothing is out of pool, so the check is inert until an admin marks filters as inPool.
+// if it fails an active constraint or does not exist). used to gate queue:force-write. with no constraints nothing is
+// out of pool, so the check is inert until an admin marks filters as inPool.
 export async function getLayersOutOfPool(args: {
-	ctx: CS.LayerQuery
+	ctx: QueryCtx
 	input: { layerIds: L.LayerId[]; constraints: LQY.Constraint[] }
-}): Promise<{ code: 'ok'; outOfPool: L.LayerId[] } | Exclude<F.SQLConditionsResult, { code: 'ok' }>> {
+}): Promise<{ code: 'ok'; outOfPool: L.LayerId[] } | F.InvalidFilterNodeResult> {
 	const { ctx } = args
 	const { layerIds, constraints } = args.input
 	if (constraints.length === 0 || layerIds.length === 0) return { code: 'ok' as const, outOfPool: [] }
 
-	const condRes = buildQueryInputSqlCondition(ctx, { constraints })
-	if (condRes.code !== 'ok') return condRes
+	const compiled = buildQueryConstraints(ctx, { constraints })
+	if (compiled.code !== 'ok') return compiled
 
-	const packedById = new Map<L.LayerId, number>()
-	for (const id of layerIds) {
-		// ids not in the canonical layer format can never be in the pool
-		if (L.isKnownLayer(id)) packedById.set(id, LC.packId(id))
-	}
-
+	// ids that aren't in the canonical layer format can never be in the pool
+	const known = layerIds.filter((id) => L.isKnownLayer(id))
+	const res = ctx.engine.query<LE.MatchesResponse>({
+		kind: 'matches',
+		filters: [compiled.where],
+		ids: known.map((id) => LC.packId(id)),
+	})
 	const inPool = new Set<L.LayerId>()
-	if (packedById.size > 0) {
-		const rows = await ctx.layerDb()
-			.select({ _id: LC.viewCol('id', ctx) })
-			.from(LC.layersView(ctx))
-			.where(E.and(E.inArray(LC.viewCol('id', ctx), Array.from(packedById.values())), ...condRes.conditions))
-		for (const row of rows) inPool.add(LC.unpackId(Number(row._id)))
+	for (let i = 0; i < known.length; i++) {
+		if (res.exists[i] && res.matches[0][i]) inPool.add(known[i])
 	}
-
 	return { code: 'ok' as const, outOfPool: layerIds.filter((id) => !inPool.has(id)) }
 }
 
-export async function getLayerItemStatuses(args: {
-	ctx: CS.LayerQuery
-	input: LQY.LayerItemStatusesInput
-}) {
-	const ctx: CS.LayerQuery = { ...args.ctx }
-	const input = args.input
+export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.LayerItemStatusesInput }) {
+	const { ctx, input } = args
 	const constraints = input.constraints ?? []
 	const list = input.list ?? LQY.initLayerItemsState()
 	const layerItems = list.layerItems
 
-	let matchCache = filterMatchCaches.get(ctx.effectiveColsConfig)
-	if (!matchCache) {
-		matchCache = new Map()
-		filterMatchCaches.set(ctx.effectiveColsConfig, matchCache)
-	}
-	let existence = layerExistenceCaches.get(ctx.effectiveColsConfig)
-	if (!existence) {
-		existence = new Map()
-		layerExistenceCaches.set(ctx.effectiveColsConfig, existence)
-	}
-
 	const filterConstraints = constraints.filter((c): c is Extract<LQY.Constraint, { type: 'filter-entity' }> =>
 		c.type === 'filter-entity' && c.showIndicator !== 'disabled'
 	)
-	const filterEntries = new Map<F.FilterEntityId, FilterMatchCacheEntry>()
+	const lower = lowerCtx(ctx)
+	const filterIrs: LE.Ir[] = []
 	for (const constraint of filterConstraints) {
-		let entry = matchCache.get(constraint.filterId)
-		if (entry && relevantFilterEntitiesChanged(ctx, entry.filterEntities)) {
-			matchCache.delete(constraint.filterId)
-			entry = undefined
-		}
-		if (!entry) {
-			entry = { filterEntities: snapshotRelevantFilterEntities(ctx, [constraint]), matches: new Map() }
-			matchCache.set(constraint.filterId, entry)
-		}
-		filterEntries.set(constraint.filterId, entry)
+		const res = LE.lowerFilterNode(lower, FB.includedIn(constraint.filterId), [constraint.id])
+		if (res.code !== 'ok') return res
+		filterIrs.push(res.ir)
 	}
 
-	const packedIds = new Map<L.LayerId, number>()
-	for (const layerId of LQY.getAllLayerIds(layerItems)) {
-		if (!packedIds.has(layerId) && L.isKnownLayer(layerId)) packedIds.set(layerId, LC.packId(layerId))
-	}
-
-	// query only the existence checks and (filter, layer) pairs we don't have cached
-	const idsToQuery = new Set<number>()
-	const filterIdsToQuery = new Set<F.FilterEntityId>()
-	for (const packed of packedIds.values()) {
-		if (!existence.has(packed)) idsToQuery.add(packed)
-	}
-	for (const [filterId, entry] of filterEntries) {
-		for (const packed of packedIds.values()) {
-			if (!entry.matches.has(packed)) {
-				idsToQuery.add(packed)
-				filterIdsToQuery.add(filterId)
-			}
-		}
-	}
-
-	if (idsToQuery.size > 0) {
-		const queriedFilterIds = Array.from(filterIdsToQuery)
-		const selectExpr: any = { _id: LC.viewCol('id', ctx) }
-		for (let i = 0; i < queriedFilterIds.length; i++) {
-			const res = getFilterNodeSQLConditions(ctx, FB.includedIn(queriedFilterIds[i]), [queriedFilterIds[i]], [])
-			if (res.code !== 'ok') return res
-			selectExpr[`f_${i}`] = res.condition
-		}
-		const rows = await ctx
-			.layerDb()
-			.select(selectExpr)
-			.from(LC.layersView(ctx))
-			.where(E.inArray(LC.viewCol('id', ctx), Array.from(idsToQuery)))
-
-		const returned = new Set<number>()
-		for (const row of rows) {
-			const packed = Number(row._id)
-			returned.add(packed)
-			existence.set(packed, true)
-			for (let i = 0; i < queriedFilterIds.length; i++) {
-				filterEntries.get(queriedFilterIds[i])!.matches.set(packed, Number(row[`f_${i}`]) === 1)
-			}
-		}
-		// ids missing from the view don't exist and can't match anything; record that so they
-		// aren't requeried on every call
-		for (const packed of idsToQuery) {
-			if (returned.has(packed)) continue
-			existence.set(packed, false)
-			for (const filterId of queriedFilterIds) filterEntries.get(filterId)!.matches.set(packed, false)
-		}
-	}
+	const layerIds = [...new Set(LQY.getAllLayerIds(layerItems))].filter((id) => L.isKnownLayer(id))
+	const res = ctx.engine.query<LE.MatchesResponse>({
+		kind: 'matches',
+		filters: filterIrs,
+		ids: layerIds.map((id) => LC.packId(id)),
+	})
 
 	const present = new Set<L.LayerId>()
-	for (const [layerId, packed] of packedIds) {
-		if (existence.get(packed)) present.add(layerId)
+	const matchesByFilter = new Map<F.FilterEntityId, Map<L.LayerId, boolean>>()
+	for (const constraint of filterConstraints) matchesByFilter.set(constraint.filterId, new Map())
+	for (let i = 0; i < layerIds.length; i++) {
+		if (res.exists[i]) present.add(layerIds[i])
+		for (let f = 0; f < filterConstraints.length; f++) {
+			matchesByFilter.get(filterConstraints[f].filterId)!.set(layerIds[i], res.matches[f][i])
+		}
 	}
 
 	const matchDescriptors: Map<LQY.ItemId, LQY.MatchDescriptor[]> = new Map()
@@ -932,17 +609,19 @@ export async function getLayerItemStatuses(args: {
 					}
 
 					case 'filter-entity': {
-						const packed = packedIds.get(item.layerId)
-						if (packed === undefined) break
-						if (filterEntries.get(constraint.filterId)!.matches.get(packed)) {
-							itemDescriptors.push({ type: 'filter-entity', constraintId: constraint.id, layerId: item.layerId, itemId: item.itemId })
+						if (matchesByFilter.get(constraint.filterId)?.get(item.layerId)) {
+							itemDescriptors.push({
+								type: 'filter-entity',
+								constraintId: constraint.id,
+								layerId: item.layerId,
+								itemId: item.itemId,
+							})
 						}
 						break
 					}
 
-					default: {
+					default:
 						assertNever(constraint)
-					}
 				}
 			}
 		}
@@ -973,14 +652,94 @@ export async function getLayerItemStatuses(args: {
 
 	const statuses: LQY.LayerItemStatuses = {
 		present,
-		matchDescriptors: matchDescriptors,
+		matchDescriptors,
 		warns,
 	}
 
-	return {
-		code: 'ok' as const,
-		statuses,
+	return { code: 'ok' as const, statuses }
+}
+
+export async function getLayerInfo({ ctx, input }: { ctx: CS.LayerEngine; input: { layerId: L.LayerId } }) {
+	if (!L.isKnownLayer(input.layerId)) return null
+	const names = layerColumns(ctx)
+	const row = ctx.engine.query<(number | null)[] | null>({
+		kind: 'info',
+		id: LC.packId(input.layerId),
+		columns: columnIndexes(ctx, names),
+	})
+	if (!row) return null
+	return decodeRow(ctx, row, names)
+}
+
+export async function getScoreRanges({ ctx }: { ctx: CS.LayerEngine }) {
+	const floatCols = Object.values(ctx.effectiveColsConfig.defs).filter((col) => col.type === 'float' && col.table === 'extra-cols')
+	if (floatCols.length === 0) return []
+	const ranges = ctx.engine.query<LE.RangeResponse[]>({
+		kind: 'ranges',
+		columns: floatCols.map((col) => ctx.engine.columnIndex(col.name)),
+	})
+	// stored floats are scaled ints; unscale back to the app-facing float domain for the sliders
+	return floatCols.map((col, i) => ({
+		field: col.name,
+		min: LC.fromScaledDbFloat(col, ranges[i].min ?? 0),
+		max: LC.fromScaledDbFloat(col, ranges[i].max ?? 0),
+	}))
+}
+
+// ---------------------------- post-processing ----------------------------
+
+export type PostProcessedLayer = ReturnType<typeof postProcessLayers>[number]
+
+function decodeRow(ctx: CS.EffectiveColumnConfig, row: (number | null)[], names: string[]) {
+	const layer: Record<string, string | number | boolean | null> = {}
+	for (let i = 0; i < names.length; i++) {
+		layer[names[i]] = LC.fromDbValue(names[i], row[i], ctx)!
 	}
+	return layer as L.KnownLayer & Record<string, number | boolean | string | null>
+}
+
+function postProcessLayers(
+	ctx: CS.EffectiveColumnConfig,
+	page: { rows: (number | null)[][]; names: string[]; indicatorResults: boolean[][]; indicatorConstraints: number[] },
+	baseInput: LQY.BaseQueryInput,
+) {
+	const list = baseInput.list ?? LQY.initLayerItemsState()
+	let cursorIndex: LQY.ItemIndex | null = null
+	if (baseInput.cursor) {
+		const cursor = LQY.fromLayerListCursor(list, baseInput.cursor)
+		cursorIndex = LQY.resolveCursorIndex(list, cursor)
+	}
+	const constraints = baseInput.constraints ?? []
+
+	return page.rows.map((row, rowIndex) => {
+		const layer = decodeRow(ctx, row, page.names)
+		const layerId = layer.id as L.LayerId
+		const constraintResults: boolean[] = new Array(constraints.length).fill(false)
+		const matchDescriptors: LQY.MatchDescriptor[] = []
+
+		for (let i = 0; i < page.indicatorConstraints.length; i++) {
+			const constraintIdx = page.indicatorConstraints[i]
+			const matched = page.indicatorResults[rowIndex]?.[i] ?? false
+			constraintResults[constraintIdx] = matched
+			if (matched) {
+				matchDescriptors.push({ type: 'filter-entity', constraintId: constraints[constraintIdx].id, layerId })
+			}
+		}
+
+		// repeat rules are evaluated per item: a violation says which earlier match it repeats, which is not something
+		// a condition over the table can express
+		for (let i = 0; i < constraints.length; i++) {
+			const constraint = constraints[i]
+			if (constraint.type !== 'do-not-repeat' || !cursorIndex) continue
+			const descriptors = getisMatchedByRepeatRuleDirect(list, cursorIndex.outerIndex, constraint.id, constraint.rule, layerId)
+			if (descriptors) {
+				constraintResults[i] = true
+				matchDescriptors.push(...descriptors)
+			}
+		}
+
+		return { ...layer, constraints: constraintResults, matchDescriptors }
+	})
 }
 
 function getisMatchedByRepeatRuleDirect(
@@ -1026,7 +785,6 @@ function getisMatchedByRepeatRuleDirect(
 				break
 			case 'Faction': {
 				const checkFaction = (team: MH.NormedTeamId) => {
-					// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
 					const targetFaction = targetLayer[MH.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]!
 					const previousFaction = layer[MH.getTeamNormalizedFactionProp(layerTeamParity, team)]
 					if (
@@ -1043,7 +801,6 @@ function getisMatchedByRepeatRuleDirect(
 			}
 			case 'Alliance': {
 				const checkAlliance = (team: MH.NormedTeamId) => {
-					// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
 					const targetAlliance = targetLayer[MH.getTeamNormalizedAllianceProp(targetLayerTeamParity, team)]
 					const previousAlliance = layer[MH.getTeamNormalizedAllianceProp(layerTeamParity, team)]
 
@@ -1063,405 +820,24 @@ function getisMatchedByRepeatRuleDirect(
 	return descriptors.length > 0 ? descriptors : undefined
 }
 
-function getRepeatSQLConditions(
-	ctx: CS.EffectiveColumnConfig,
-	list: LQY.LayerItemsState,
-	cursorIndex: number,
-	rule: LQY.RepeatRule,
-): F.SQLConditionsResult {
-	const values = new Set<number>()
-	const valuesA = new Set<number>()
-	const valuesB = new Set<number>()
-	if (rule.within <= 0) return { code: 'ok' as const, condition: sql`false` }
-
-	const previousLayers = list.layerItems
-
-	for (let i = cursorIndex - 1; i >= Math.max(cursorIndex - rule.within, 0); i--) {
-		const teamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, i)
-		if (LQY.isLookbackTerminatingLayerItem(previousLayers[i])) break
-		const layerItem = previousLayers[i]
-		const layer = L.toLayer(layerItem.layerId)
-		switch (rule.field) {
-			case 'Map':
-			case 'Gamemode':
-			case 'Size':
-			case 'Layer':
-				if (
-					layer[rule.field]
-					&& (rule.targetValues?.includes(layer[rule.field]!) ?? true)
-				) {
-					const value = LC.dbValue(rule.field, layer[rule.field]!, ctx)
-					if (LC.isUnmappedDbValue(value)) break
-					values.add(value as number)
-				}
-				break
-			case 'Faction': {
-				const addApplicable = (team: MH.NormedTeamId) => {
-					// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
-					const column = MH.getTeamNormalizedFactionProp(teamParity, team)
-					const value = layer[column]
-					const values = team === 'A' ? valuesA : valuesB
-					if (value && (!LQY.valueFilteredByTargetValues(rule, value))) {
-						const dbValue = LC.dbValue(column, value, ctx)
-						if (LC.isUnmappedDbValue(dbValue)) return
-						values.add(dbValue as number)
-					}
-				}
-				addApplicable('A')
-				addApplicable('B')
-				break
-			}
-			case 'Alliance': {
-				const addApplicable = (team: MH.NormedTeamId) => {
-					const column = MH.getTeamNormalizedAllianceProp(teamParity, team)
-					const alliance = layer[column]
-					const values = team === 'A' ? valuesA : valuesB
-					if (!LQY.valueFilteredByTargetValues(rule, alliance)) {
-						const dbValue = LC.dbValue(column, alliance, ctx)
-						if (LC.isUnmappedDbValue(dbValue)) return
-						values.add(dbValue as number)
-					}
-				}
-				addApplicable('A')
-				addApplicable('B')
-				break
-			}
-			default:
-				assertNever(rule.field)
-		}
-	}
-
-	const targetLayerTeamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, cursorIndex)
-	let resultSql: SQL
-	switch (rule.field) {
-		case 'Map':
-		case 'Gamemode':
-		case 'Size':
-		case 'Layer': {
-			if (values.size === 0) {
-				return { code: 'ok' as const, condition: sql`false` }
-			}
-			resultSql = E.inArray(LC.viewCol(rule.field, ctx), Array.from(values))
-			break
-		}
-		case 'Faction': {
-			const teamACol = MH.getTeamNormalizedFactionProp(targetLayerTeamParity, 'A')
-			const teamBCol = MH.getTeamNormalizedFactionProp(targetLayerTeamParity, 'B')
-			resultSql = E.or(
-				E.inArray(LC.viewCol(teamACol, ctx), Array.from(valuesA)),
-				E.inArray(LC.viewCol(teamBCol, ctx), Array.from(valuesB)),
-			)!
-			break
-		}
-		case 'Alliance': {
-			const allianceACol = MH.getTeamNormalizedAllianceProp(targetLayerTeamParity, 'A')
-			const allianceBCol = MH.getTeamNormalizedAllianceProp(targetLayerTeamParity, 'B')
-			resultSql = E.or(
-				E.inArray(LC.viewCol(allianceACol, ctx), Array.from(valuesA)),
-				E.inArray(LC.viewCol(allianceBCol, ctx), Array.from(valuesB)),
-			)!
-			break
-		}
-		default:
-			assertNever(rule.field)
-	}
-
-	return {
-		code: 'ok' as const,
-		condition: resultSql,
-	}
-}
-
-type GenLayerOutput<ReturnLayers extends boolean> = ReturnLayers extends true ? { layers: PostProcessedLayer[]; totalCount: number }
-	: { ids: L.LayerId[]; totalCount: number }
-async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
-	ctx: CS.LayerQuery,
-	p_condition: SQL<unknown> | undefined,
-	selectProperties: any,
-	numLayers: number,
-	input: LQY.BaseQueryInput,
-	returnLayers: ReturnLayers,
-	seed: string,
-	pageIndex: number,
-): Promise<GenLayerOutput<ReturnLayers>> {
-	const totalCount = await ctx.layerDb().$count(LC.layersView(ctx), p_condition)
-
-	if (totalCount === 0) {
-		// @ts-expect-error idgaf
-		if (returnLayers) return { layers: [], totalCount } as { layers: PostProcessedLayer[]; totalCount: number }
-		// @ts-expect-error idgaf
-		return { ids: [], totalCount: 0 } as { ids: string[]; totalCount: number }
-	}
-
-	// Clear cache if seed has changed
-	if (cachedSeed !== seed) {
-		randomLayerCache.clear()
-		cachedSeed = seed
-	}
-
-	// Create cache key from query inputs
-	// Note: p_condition is derived from constraints, so we don't need to include it separately
-	const cacheKeyInput = JSON.stringify({
-		constraints: input.constraints,
-		cursor: input.cursor,
-		list: input.list,
-		weights: ctx.generationConfig.weights,
-		columnOrder: ctx.generationConfig.columnOrder,
-	})
-	const cacheKey = simpleHash(cacheKeyInput)
-
-	// Check cache first (LRUMap.get moves the entry to the end)
-	let cacheEntry = randomLayerCache.get(cacheKey)
-	if (cacheEntry && relevantFilterEntitiesChanged(ctx, cacheEntry.filterEntities)) {
-		randomLayerCache.delete(cacheKey)
-		cacheEntry = undefined
-	}
-	if (!cacheEntry) {
-		cacheEntry = { pages: new Map<number, number[]>(), filterEntities: snapshotRelevantFilterEntities(ctx, input.constraints) }
-		randomLayerCache.set(cacheKey, cacheEntry)
-	}
-	const queryCacheForSeed = cacheEntry.pages
-
-	const cachedIds = queryCacheForSeed.get(pageIndex)
-	if (cachedIds) {
-		return await getResultLayers(cachedIds, returnLayers)
-	}
-
-	// Collect all previously seen IDs from other pages to exclude them
-	const excludedIds = new Set<number>()
-	for (const [cachedPageIndex, ids] of queryCacheForSeed.entries()) {
-		if (cachedPageIndex !== pageIndex) {
-			for (const id of ids) {
-				excludedIds.add(id)
-			}
-		}
-	}
-
-	// Include page index in the seed for different results per page
-	const rng = seedrandom(seed + pageIndex.toString())
-
-	const baseLayersQuery = ctx.layerDb()
-		.select(LC.selectViewCols([...LC.GROUP_BY_COLUMNS, 'id'], ctx))
-		.from(LC.layersView(ctx))
-		.where(E.and(p_condition, E.notInArray(LC.viewCol('id', ctx), Array.from(excludedIds))))
-		// Hash function using prime multiplication and modulo for pseudo-random distribution
-		// Multiplies ID by large prime (2654435761) and adds random seed
-		// Modulo 2147483647 (2^31 - 1, also prime) ensures bounded output
-		// Deterministic for a given seed, ensuring reproducible results
-		.orderBy(sql`
-			((id * 2654435761) + ${Math.abs(rng.int32())}) % 2147483647
-		`)
-		.limit(Math.min(numLayers * 500, 5000))
-
-	const baseLayers = await baseLayersQuery
-	const indexedBaseLayers = baseLayers.map((layer, index): Record<string, number | null> & { index: number } => ({
-		...layer,
-		index,
-	}))
-	const selectedIndexes: number[] = []
-
-	for (let i = 0; i < numLayers; i++) {
-		const filtered = new Set<number>(selectedIndexes)
-		// pick a uniformly random layer among those not yet filtered out. layer.index is the layer's
-		// position in indexedBaseLayers, so we can sample [0, n) directly. this is only ever called for the
-		// initial pick, where `filtered` (prior selections) is sparse relative to n, so rejection sampling
-		// terminates in ~1 draw on average. picking uniformly over unfiltered indices is distributionally
-		// identical to taking the first unfiltered element of a full shuffle, which is what this replaced
-		const total = indexedBaseLayers.length
-		const pickLayerIndex = () => {
-			if (filtered.size >= total) return undefined
-			let idx = Math.floor(rng() * total)
-			while (filtered.has(idx)) idx = Math.floor(rng() * total)
-			return idx
-		}
-		let currentSelectedIndex = pickLayerIndex()
-		for (let j = 0; j < ctx.generationConfig.columnOrder.length; j++) {
-			if (filtered.size === indexedBaseLayers.length) break
-			const columnName = ctx.generationConfig.columnOrder[j]
-			const valuesMap: OneToMany.OneToManyMap<number | null, number> = new Map()
-			const colWeights = new Map<LC.DbValueResult, number>()
-			for (const w of ctx.generationConfig.weights[columnName] ?? []) {
-				colWeights.set(LC.dbValue(columnName, w.value), w.weight)
-			}
-			for (const layer of indexedBaseLayers) {
-				if (filtered.has(layer.index)) continue
-				OneToMany.set(valuesMap, layer[columnName] as number | null, layer.index)
-			}
-			if (valuesMap.size === 0) break
-			const values = Array.from(valuesMap.keys())
-			const weights = values.map(value => colWeights.get(value ?? null) ?? LC.DEFAULT_GENERATION_WEIGHT)
-			const selected = weightedRandomSelection(values, weights, rng)
-			for (const [value, indexes] of valuesMap.entries()) {
-				if (value === selected) continue
-				for (const index of indexes) {
-					filtered.add(index)
-				}
-			}
-			// the layers still unfiltered after this column are exactly those matching the selected value,
-			// so draw from that set directly rather than rescanning every candidate
-			const survivors = Array.from(valuesMap.get(selected)!)
-			currentSelectedIndex = survivors[Math.floor(rng() * survivors.length)]
-		}
-		if (currentSelectedIndex !== undefined) {
-			selectedIndexes.push(currentSelectedIndex)
-			filtered.add(currentSelectedIndex)
-		}
-	}
-
-	const selectedIds = selectedIndexes.map(index => baseLayers[index].id as number)
-
-	// Store in cache, limiting the number of pages stored per query
-	if (queryCacheForSeed!.size < MAX_PAGES_PER_QUERY) {
-		queryCacheForSeed!.set(pageIndex, selectedIds)
-	}
-
-	return await getResultLayers(selectedIds, returnLayers)
-
-	async function getResultLayers<ReturnLayers extends boolean>(
-		selectedIds: number[],
-		returnLayers: ReturnLayers,
-	): Promise<GenLayerOutput<ReturnLayers>> {
-		if (returnLayers) {
-			const rows = await ctx.layerDb().select({ ...LC.selectAllViewCols(ctx), ...selectProperties }).from(LC.layersView(ctx)).where(
-				E.inArray(LC.viewCol('id', ctx), selectedIds),
-			)
-			const res = { layers: postProcessLayers(ctx, rows as any[], input), totalCount }
-			// @ts-expect-error idgaf
-			return res
-		} else {
-			// @ts-expect-error idgaf
-			return { ids: selectedIds.map(id => LC.unpackId(id)), totalCount }
-		}
-	}
-}
-
-export type PostProcessedLayer = Awaited<
-	ReturnType<typeof postProcessLayers>
->[number]
-function postProcessLayers(
-	ctx: CS.Log & CS.EffectiveColumnConfig,
-	layers: ({ id: number } & Record<string, string | number | boolean> & Record<string, boolean>)[],
-	baseInput: LQY.BaseQueryInput,
-) {
-	const list = baseInput.list ?? LQY.initLayerItemsState()
-	let cursorIndex: LQY.ItemIndex | null = null
-	if (baseInput.cursor) {
-		const cursor = LQY.fromLayerListCursor(list, baseInput.cursor)
-		cursorIndex = LQY.resolveCursorIndex(list, cursor)
-	}
-	const constraints = baseInput.constraints ?? []
-	// every row carries the same select columns, so classify the keys once instead of running Object.keys
-	// and a regex per key on every row
-	const colKeys: string[] = []
-	const constraintKeys: { key: string; idx: number }[] = []
-	for (const key of layers.length > 0 ? Object.keys(layers[0]) : []) {
-		if (key in ctx.effectiveColsConfig.defs) {
-			colKeys.push(key)
-			continue
-		}
-		const constraintResultMatch = key.match(/^constraint_(\d+)$/)
-		if (constraintResultMatch) constraintKeys.push({ key, idx: Number(constraintResultMatch[1]) })
-	}
-	return layers.map((layer) => {
-		// default to true because missing means the constraint is applied via a where condition
-		const constraintResults: boolean[] = new Array(constraints.length).fill(false)
-		const matchDescriptors: LQY.MatchDescriptor[] = []
-		const strId = LC.unpackId(layer.id)
-		const layersConverted: Record<string, string | number | boolean> = {}
-		for (const key of colKeys) {
-			layersConverted[key] = LC.fromDbValue(key, layer[key], ctx)!
-		}
-		for (const { key, idx: constraintIdx } of constraintKeys) {
-			const constraint = constraints[constraintIdx]
-			switch (constraint.type) {
-				case 'do-not-repeat': {
-					if (!cursorIndex) break
-					// TODO being able to do this makes the SQL conditions we made for the dnr rules redundant, we should remove them
-					const descriptors = getisMatchedByRepeatRuleDirect(
-						list,
-						cursorIndex.outerIndex,
-						constraint.id,
-						constraint.rule,
-						strId,
-					)
-					if (descriptors) {
-						constraintResults[constraintIdx] = true
-						matchDescriptors.push(...descriptors)
-					}
-					break
-				}
-
-				case 'filter-entity': {
-					const matched = Number(layer[key as keyof L.KnownLayer]) === 1
-					constraintResults[constraintIdx] = matched
-					if (matched) {
-						matchDescriptors.push({ type: 'filter-entity', constraintId: constraint.id, layerId: strId })
-					}
-				}
-			}
-		}
-		return {
-			...layersConverted as L.KnownLayer & Record<string, number | boolean | string | null>,
-			constraints: constraintResults,
-			matchDescriptors,
-		}
-	})
-}
-
 export const queries = {
 	layerExists,
-	queryLayerComponent: queryLayerComponent,
+	queryLayerComponent,
 	getLayerItemStatuses,
 	getLayerInfo,
 	genVote,
 }
 
-export async function getLayerInfo({ ctx, input }: { ctx: CS.LayerDb; input: { layerId: L.LayerId } }) {
-	if (!L.isKnownLayer(input.layerId)) return null
-	const [row] = await ctx.layerDb().select(LC.selectAllViewCols(ctx)).from(LC.layersView(ctx)).where(
-		E.eq(LC.viewCol('id', ctx), LC.packId(input.layerId)),
-	)
-	// @ts-expect-error idgaf
-	if (row) return LC.fromDbValues([row], ctx)[0]
-	return null
-}
-
-export async function getScoreRanges({ ctx }: { ctx: CS.LayerDb }) {
-	const ops: Promise<{
-		min: number
-		max: number
-		field: string
-	}>[] = []
-	for (const col of Object.values(ctx.effectiveColsConfig.defs)) {
-		if (col.type !== 'float' || col.table !== 'extra-cols') continue
-		ops.push(getRangeForExtraCol({ input: { colDef: col }, ctx }).then(range => ({ ...range, field: col.name })))
-	}
-	return await Promise.all(ops)
-}
-
-async function getRangeForExtraCol({ input, ctx }: { input: { colDef: LC.CombinedColumnDef }; ctx: CS.LayerDb }) {
-	const result = await ctx
-		.layerDb()
-		.select({
-			min: sql<number>`MIN(${LC.viewCol(input.colDef.name, ctx)})`,
-			max: sql<number>`MAX(${LC.viewCol(input.colDef.name, ctx)})`,
-		})
-		.from(LC.layersView(ctx))
-		.where(E.isNotNull(LC.viewCol(input.colDef.name, ctx)))
-
-	const [{ min, max }] = result
-	// stored floats are scaled ints; unscale back to the app-facing float domain for the slider
-	return { min: LC.fromScaledDbFloat(input.colDef, min), max: LC.fromScaledDbFloat(input.colDef, max) }
-}
-
-// Simple FNV-1a hash function for creating cache keys
-// Works in both Node.js and browsers, collisions are acceptable for this use case
+// FNV-1a. Collisions are acceptable for cache keys, and it behaves the same on both hosts.
 function simpleHash(str: string): string {
-	let hash = 2166136261 // FNV offset basis
+	return simpleHashInt(str).toString(36)
+}
+
+function simpleHashInt(str: string): number {
+	let hash = 2166136261
 	for (let i = 0; i < str.length; i++) {
 		hash ^= str.charCodeAt(i)
-		hash = Math.imul(hash, 16777619) // FNV prime
+		hash = Math.imul(hash, 16777619)
 	}
-	// Convert to positive number and base36 for compact representation
-	return (hash >>> 0).toString(36)
+	return hash >>> 0
 }

@@ -3,7 +3,7 @@ import type * as F from '@/models/filter.models'
 import type * as LC from '@/models/layer-columns'
 import type * as MH from '@/models/match-history.models'
 import type pino from 'pino'
-import type * as LDB from './layer-db'
+import type * as LE from './layer-engine'
 
 const CtxSymbol = Symbol('context')
 export type Ctx = {
@@ -24,7 +24,9 @@ export type EffectiveColumnConfig = Ctx & { effectiveColsConfig: LC.EffectiveCol
 // (globalSettings.layerGeneration), so holders must refresh it when settings change
 export type LayerGeneration = Ctx & { generationConfig: LC.LayerGenerationConfig }
 
-export type LayerDb = Ctx & { layerDb: () => LDB.LayerDb } & EffectiveColumnConfig
+// the columnar query engine (layer-engine/), which replaced the SQLite layer db. It is immutable for its lifetime, so it
+// is shared by every request rather than opened per query.
+export type LayerEngine = Ctx & { engine: LE.EngineHandle } & EffectiveColumnConfig
 export type AbortSignal = { signal: globalThis.AbortSignal }
 
 export type Logger = pino.Logger
@@ -40,7 +42,7 @@ export type Filters = Ctx & {
 export type MatchHistory = Ctx & {
 	recentMatches: MH.MatchDetails[]
 }
-export type LayerQuery = Ctx & LayerDb & Log & Filters & LayerGeneration
+export type LayerQuery = Ctx & LayerEngine & Log & Filters & LayerGeneration
 
 export function addSignal<C extends Ctx & Partial<AbortSignal>>(ctx: C, signal: globalThis.AbortSignal): C & AbortSignal {
 	return { ...ctx, signal: ctx.signal ? anySignal(signal, ctx.signal)! : signal }

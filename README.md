@@ -71,6 +71,48 @@ that follow.
 gunzip -c slm-backup-db-20260713-134504.sqlite3.gz > data/db.sqlite3
 ```
 
+## The layer query engine
+
+Every question the app asks about layers -- which ones are in a pool, what to put on a page, what to
+generate next -- is answered by `layer-engine/`, a rust crate compiled to wasm. It holds the 732k-row layer
+table in columnar form (`data/layers_v*.bin`, written by `pnpm preprocess`) and the same wasm module
+runs in the browser's query worker and in the server process, so there is one implementation of the
+filter semantics rather than two.
+
+Filters are lowered to a small IR in TypeScript (`src/models/layer-engine.ts`) before they reach it.
+That is deliberate: team columns, enum mapping, and null-as-an-enum-index are decisions the app
+already knows how to make, and the engine only implements primitive comparisons plus SQL's
+three-valued logic (a comparison against null is null, and stays excluded under negation).
+
+The engine deliberately knows nothing about what a faction or a map _is_: the artifact carries only
+encoded values, and `data/layer-data.json` (from the same preprocess run) is what gives them meaning.
+That is why filters are lowered against the column config before they reach it.
+
+It replaced a SQLite layer db. `src/systems/layer-engine.test.ts` checks it still answers exactly what
+that db answered, for every filter that runs in production -- those expectations were recorded from
+the SQLite implementation and are what gates any change to the engine.
+
+### Publishing the layer table
+
+`pnpm preprocess` turns the scored layer csv into the two artifacts the app boots on:
+
+- `data/layers_v<version>.bin.gz` -- the layer table, columnar and gzipped, what the engine reads.
+- `data/layer-data.json` -- the components (maps, factions, units, extra-column definitions) the
+  table's encoded values refer to.
+
+Neither is in version control, and CI cannot build them: the scored csv (`data/layers_v<version>.csv`)
+and `layer-db.json`, which declares the extra columns to ingest from it, are both local-only. So this is
+a manual step, run by whoever has that csv:
+
+```sh
+LAYERS_VERSION=<version> pnpm preprocess   # writes both files into data/
+```
+
+Attach **both** to the `layer-db` github release, replacing what's there. They must come from the same
+run: the table is a table of integers, and a `layer-data.json` from a different game version decodes
+them into the wrong factions and maps rather than failing. The integration-test workflow pulls the pair
+from that release and refuses to run if either is missing.
+
 ## Testing
 
 Three suites, in increasing order of what they cost and what they cover:
@@ -81,8 +123,13 @@ Three suites, in increasing order of what they cost and what they cover:
   commands the emulator received.
 - `pnpm test:e2e` — the same, driven through the real client in a browser.
 
-Both of the latter need the layer db (`data/layers_v*.sqlite3.gz`), which is a generated artifact:
-run `pnpm preprocess` if you don't have one.
+Both of the latter need generated artifacts that a fresh checkout does not have:
+
+- `assets/layer-engine.wasm` — the query engine, built from `layer-engine/` with `pnpm build:engine`
+  (needs a rust toolchain).
+- `data/layers_v*.bin.gz` and `data/layer-data.json` — the layer table the engine reads, and the
+  components that give its encoded values meaning. Both come out of one `pnpm preprocess` run and are
+  published together; neither is useful without the other, so keep them in step.
 
 To run them the way CI does — inside the production image, driving the very server bundle that gets
 deployed:
@@ -92,7 +139,7 @@ docker compose -f docker-compose.test.yaml run --rm --build tests
 ```
 
 The image is the production one plus a browser, the test sources, and dev dependencies (see the
-Dockerfile's `test` stage). The layer db is mounted rather than baked in, exactly as in production.
+Dockerfile's `test` stage). The layer table is mounted rather than baked in, exactly as in production.
 
 ### Debugging a failing test with telemetry
 

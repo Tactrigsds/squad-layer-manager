@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as AAR from '@/models/admin-action-reasons.models'
 import type * as LP from '@/models/labeled-presets.models'
+import * as LC from '@/models/layer-columns'
 import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
@@ -460,12 +461,12 @@ function LayerTableField({ value$, reset$, onChange }: OverrideProps) {
 		/>
 	)
 }
-// bespoke editor for the weighted-random layer generation config (pick order + per-value weights)
+// bespoke editor for the weighted-random layer generation config (pick order + per-value / per-matchup weights)
 function LayerGenerationField({ value$, reset$, onChange }: OverrideProps) {
 	const value = useFieldValue(value$, reset$)
 	return (
 		<LayerGenerationConfigEditor
-			value={value ?? { columnOrder: [], weights: {} }}
+			value={value ?? LC.LayerGenerationConfigSchema.parse({})}
 			onChange={onChange}
 			reset$={reset$}
 		/>

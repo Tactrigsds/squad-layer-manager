@@ -106,8 +106,9 @@ export const groups = {
 	},
 
 	layerDb: {
-		LAYERS_VERSION: PathSegment.default('@latest'), // @latest is a magic string which resolves the latest available version according to semver that's availble at the configured path for  LAYERS_DB_PATH and EXTRA_COLS_CSV_PATH
-		LAYERS_DB_PATH: z.string().prefault('./data/layers_v{{LAYERS_VERSION}}.sqlite3.gz'),
+		LAYERS_VERSION: PathSegment.default('@latest'), // @latest is a magic string which resolves the latest available version according to semver that's availble at the configured path for LAYERS_ARTIFACT_PATH and EXTRA_COLS_CSV_PATH
+		// the columnar artifact the query engine reads (models/layer-artifact.ts), written by preprocess
+		LAYERS_ARTIFACT_PATH: z.string().prefault('./data/layers_v{{LAYERS_VERSION}}.bin.gz'),
 	},
 
 	preprocess: {

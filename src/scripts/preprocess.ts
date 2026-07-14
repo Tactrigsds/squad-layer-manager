@@ -5,22 +5,20 @@ import type { OneToManyMap } from '@/lib/one-to-many-map'
 import { ParsedFloatSchema, ParsedIntSchema } from '@/lib/zod'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
+import * as LA from '@/models/layer-artifact'
 import * as LC from '@/models/layer-columns'
 import * as SLL from '@/models/squad-layer-list.models'
 import * as Env from '@/server/env'
 import { baseLogger, ensureLoggerSetup, initModule } from '@/server/logger'
 import * as LayerData from '@/systems/layer-data.server'
-import * as LayerDb from '@/systems/layer-db.server'
+import * as LayerEngine from '@/systems/layer-engine.server'
 import { parse } from 'csv-parse'
-import { getTableColumns } from 'drizzle-orm'
 import http from 'follow-redirects'
 import * as fs from 'fs'
 import * as fsPromise from 'fs/promises'
-import { glob } from 'glob'
 import { promisify } from 'node:util'
 import zlib from 'node:zlib'
 import path from 'path'
-import * as Rx from 'rxjs'
 
 import { z } from 'zod'
 
@@ -35,7 +33,7 @@ export const ParsedNanFloatSchema = z
 
 const ParsedNullableFloat = ParsedFloatSchema.transform((val) => (isNaN(val) ? null : val))
 
-const Steps = z.enum(['update-layers-table', 'download-csvs', 'write-components-and-units', 'compress-db', 'all'])
+const Steps = z.enum(['build-layer-artifact', 'download-csvs', 'write-components-and-units', 'compress-artifact', 'all'])
 
 Env.ensureEnvSetup()
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.preprocess, ...Env.groups.layerDb, ...Env.groups.general })
@@ -82,7 +80,7 @@ async function main() {
 	if (Arr.includes(args, 'all')) {
 		args = [...Steps.options]
 	} else if (args.length === 0) {
-		args.push('update-layers-table', 'write-components-and-units', 'compress-db')
+		args.push('build-layer-artifact', 'write-components-and-units', 'compress-artifact')
 	}
 	Env.ensureEnvSetup()
 	ENV = envBuilder()
@@ -92,7 +90,7 @@ async function main() {
 	LAYER_DB_CONFIG = readLayerDbConfig()
 	const ctx = { ...CS.init(), effectiveColsConfig: LC.getEffectiveColumnConfig(LAYER_DB_CONFIG.columns) }
 
-	const needsSheetData = args.includes('write-components-and-units') || args.includes('update-layers-table')
+	const needsSheetData = args.includes('write-components-and-units') || args.includes('build-layer-artifact')
 		|| args.includes('download-csvs')
 	let data!: Awaited<ReturnType<typeof parseSquadLayerSheetData>>
 	let components!: LC.LayerComponents
@@ -113,107 +111,89 @@ async function main() {
 		await fsPromise.writeFile(path.join(Paths.DATA, LayerData.FILE_NAME), JSON.stringify(file, null, 2))
 	}
 
-	if (args.includes('update-layers-table')) {
-		const [csvPath] = LayerDb.getVersionTemplatedPath(ENV.EXTRA_COLS_CSV_PATH)
-		const dbPath = csvPath.replace(/\.csv$/, '.sqlite3')
-		fs.rmSync(dbPath, { force: true })
-		for (const file of glob.sync(`${dbPath}*`)) {
-			fs.rmSync(file, { force: true })
-		}
+	if (args.includes('build-layer-artifact')) {
+		const [csvPath, layersVersion] = LayerEngine.getVersionTemplatedPath(ENV.EXTRA_COLS_CSV_PATH)
+		const artifactPath = csvPath.replace(/\.csv$/, LA.ARTIFACT_EXT)
+		fs.rmSync(artifactPath, { force: true })
+		fs.rmSync(`${artifactPath}.gz`, { force: true })
 
-		// create the schema in-process rather than shelling out to `drizzle-kit push`: that needs the
-		// src tree + a drizzle-kit config, neither of which ships in the slim prod image. setup()
-		// below reads this file back in populate mode.
-		log.info('Creating layer db schema at %s', dbPath)
-		LayerDb.createSchemaFile(ctx, dbPath)
-
-		await LayerDb.setup({ skipHash: true, mode: 'populate', logging: false, dbPath })
-		const outerCtx = ctx
-		{
-			const ctx = { ...CS.init(), ...outerCtx, layerDb: () => LayerDb.db }
-
-			// drop secondary indexes for the bulk inserts and rebuild them afterwards: maintaining
-			// them per-row roughly doubles insert time, while a rebuild over the full table is one
-			// sorted pass per index
-			const droppedIndexes = ctx.layerDb().$client
-				.prepare(`SELECT name, sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL`)
-				.all() as { name: string; sql: string }[]
-			for (const idx of droppedIndexes) {
-				ctx.layerDb().$client.exec(`DROP INDEX "${idx.name}"`)
-			}
-
-			await populateExtraColsTable(ctx, csvPath, components)
-			await populateLayersTable(ctx, components, Rx.from(data.baseLayers))
-
-			log.info('Rebuilding %s indexes', droppedIndexes.length)
-			for (const idx of droppedIndexes) {
-				ctx.layerDb().$client.exec(idx.sql)
-			}
-
-			ctx.layerDb().run('PRAGMA wal_checkpoint')
-			ctx.layerDb().run('VACUUM')
-			ctx.layerDb().run('PRAGMA optimize')
-			await LayerDb.writePopulated(dbPath)
-			ctx.layerDb().$client.close()
-			log.info('Wrote layers to %s', dbPath)
-		}
+		const artifact = await buildLayerArtifact(ctx, {
+			components,
+			baseLayers: data.baseLayers,
+			csvPath,
+			layersVersion,
+		})
+		await fsPromise.writeFile(artifactPath, artifact)
+		log.info('Wrote %s (%s MB)', artifactPath, (artifact.length / 1e6).toFixed(1))
 	}
 
-	if (args.includes('compress-db')) {
-		const [csvPath] = LayerDb.getVersionTemplatedPath(ENV.EXTRA_COLS_CSV_PATH)
-		const dbPath = csvPath.replace(/\.csv$/, '.sqlite3')
-		const gzipPath = `${dbPath}.gz`
+	if (args.includes('compress-artifact')) {
+		const [csvPath] = LayerEngine.getVersionTemplatedPath(ENV.EXTRA_COLS_CSV_PATH)
+		const artifactPath = csvPath.replace(/\.csv$/, LA.ARTIFACT_EXT)
+		if (!fs.existsSync(artifactPath)) throw new Error(`Layer artifact does not exist: ${artifactPath}`)
 
-		if (!fs.existsSync(dbPath)) {
-			throw new Error(`Database file does not exist: ${dbPath}`)
-		}
-
-		log.info('Compressing database file %s to %s', dbPath, gzipPath)
-		const buffer = await fsPromise.readFile(dbPath)
+		log.info('Compressing %s', artifactPath)
+		const buffer = await fsPromise.readFile(artifactPath)
 		// level 5 compresses ~40% faster than the default 6 for a ~0.1% size cost on this data
 		const compressed = await gzip(buffer, { level: 5 })
-		await fsPromise.writeFile(gzipPath, compressed)
+		await fsPromise.writeFile(`${artifactPath}.gz`, compressed)
+		log.info('Compressed to %s MB', (compressed.length / 1e6).toFixed(1))
 	}
+
 	log.info('Done!')
 }
 
-async function populateExtraColsTable(ctx: CS.LayerDb, csvPath: string, components: LC.LayerComponents): Promise<void> {
-	const extraColsZodProps: Record<string, z.ZodType> = {}
-	for (const col of LAYER_DB_CONFIG.columns) {
-		let schema: z.ZodType
-		switch (col.type) {
-			case 'string':
-				schema = z.string().optional()
-				break
-			case 'integer':
-				schema = ParsedIntSchema
-				break
-			case 'boolean':
-				schema = z.stringbool().transform(v => Number(v))
-				break
-			case 'float':
-				// persist floats as ints scaled by 10^precision to shrink the table and its index;
-				// read back via LC.fromScaledDbFloat
-				schema = ParsedNullableFloat.transform(v => LC.toScaledDbFloat(col, v))
-				break
-			default:
-				throw new Error(`Unsupported column type: ${(col as any).type}`)
+// Builds the columnar artifact the query engine reads (see models/layer-artifact.ts and layer-engine/src/store.rs).
+//
+// Two passes, so the whole table never exists as JS objects: first the base layers, which fix the row order (ascending
+// packed id, which the engine binary-searches and which groups layers of a map together); then the extra-cols csv,
+// whose rows are placed by looking their id up in that order. Columns are built straight into typed arrays with the
+// null sentinels already written.
+async function buildLayerArtifact(
+	ctx: CS.EffectiveColumnConfig,
+	args: { components: LC.LayerComponents; baseLayers: L.KnownLayer[]; csvPath: string; layersVersion: string },
+): Promise<Buffer> {
+	const { components, baseLayers, csvPath } = args
+	const baseColumns = LC.COLUMN_KEYS.filter((key) => key !== 'id')
+
+	const seen = new Set<string>()
+	const rows: { id: number; values: number[] }[] = []
+	for (const layer of baseLayers) {
+		if (seen.has(layer.id)) throw new Error(`Duplicate layer ID: ${layer.id}`)
+		seen.add(layer.id)
+		const row = LC.toRow(layer, ctx, components) as Record<string, number | null>
+		rows.push({
+			id: Number(row.id),
+			values: baseColumns.map((column) => (row[column] === null || row[column] === undefined ? -1 : row[column])),
+		})
+	}
+	rows.sort((a, b) => a.id - b.id)
+	const rowCount = rows.length
+	log.info('Building artifact for %s layers', rowCount)
+
+	const ids = new Int32Array(rowCount)
+	const baseData = baseColumns.map(() => new Uint8Array(rowCount))
+	for (let i = 0; i < rowCount; i++) {
+		ids[i] = rows[i].id
+		for (let c = 0; c < baseColumns.length; c++) {
+			const value = rows[i].values[c]
+			baseData[c][i] = value < 0 ? LA.NULL_U8 : value
 		}
-		extraColsZodProps[col.name] = schema
-	}
-	const extraColsZodSchema = z.object(extraColsZodProps)
-	const insert = createInserter(ctx, 'layersExtra', ['id', ...LAYER_DB_CONFIG.columns.map(c => c.name)])
-
-	const seenIds = new Set<string>()
-	let inserted = 0
-	let buf: Record<string, unknown>[] = []
-	const flush = () => {
-		insert(buf)
-		inserted += buf.length
-		log.info(`Inserted %s rows into extraCols`, inserted)
-		buf = []
 	}
 
+	// extra columns start out entirely null: a layer the scores csv doesn't cover simply has no scores
+	const extraDefs = LAYER_DB_CONFIG.columns
+	const extraData = extraDefs.map((def) => {
+		const kind = LA.columnKind({ ...def, table: 'extra-cols' })
+		if (kind === 'u8') return new Uint8Array(rowCount).fill(LA.NULL_U8)
+		const arr = new Int32Array(rowCount)
+		arr.fill(LA.NULL_I32)
+		return arr
+	})
+
+	const extraColsSchema = z.object(Object.fromEntries(extraDefs.map((col) => [col.name, extraColSchema(col)])))
+
+	const seenExtra = new Set<number>()
 	for (const row of readSimpleCsv(csvPath)) {
 		if (row.Scored === 'False') continue
 		if (row.SubFac_1) row.Unit_1 = row.SubFac_1
@@ -233,34 +213,83 @@ async function populateExtraColsTable(ctx: CS.LayerDb, csvPath: string, componen
 			Unit_1: row['Unit_1'],
 			Unit_2: row['Unit_2'],
 		}
-		const ids = [L.getKnownLayerId(idArgs, components)!]
-		if (ids[0] === null) continue
+		const layerIds = [L.getKnownLayerId(idArgs, components)!]
+		if (layerIds[0] === null) continue
 		// for now we're just using the same data for FRAAS as RAAS
 		if (segments.Gamemode === 'RAAS') {
-			ids.push(L.getKnownLayerId({ ...idArgs, Gamemode: 'FRAAS' }, components)!)
+			layerIds.push(L.getKnownLayerId({ ...idArgs, Gamemode: 'FRAAS' }, components)!)
 		}
-		const extraColsRow = extraColsZodSchema.parse(row)
-		for (const layerId of ids) {
-			if (seenIds.has(layerId)) {
-				log.warn(`Duplicate extra layer ${layerId} found`)
-				continue
-			}
-			// packId validates the layer along the way, replacing a separate isKnownLayer pass
+		const parsed = extraColsSchema.parse(row) as Record<string, number | null>
+
+		for (const layerId of layerIds) {
 			let packedId: number
 			try {
+				// packId validates the layer along the way, replacing a separate isKnownLayer pass
 				packedId = LC.packId(layerId, components)
 			} catch {
 				log.warn(`Unknown layer ${layerId}`)
 				continue
 			}
-			seenIds.add(layerId)
-
-			buf.push({ ...extraColsRow, id: packedId })
-			if (buf.length >= INSERT_CHUNK_SIZE) flush()
+			if (seenExtra.has(packedId)) {
+				log.warn(`Duplicate extra layer ${layerId} found`)
+				continue
+			}
+			seenExtra.add(packedId)
+			const index = binarySearch(ids, packedId)
+			// scores for a layer the sheet no longer lists: nothing to attach them to
+			if (index < 0) continue
+			for (let c = 0; c < extraDefs.length; c++) {
+				const value = parsed[extraDefs[c].name]
+				if (value === null || value === undefined) continue
+				extraData[c][index] = value
+			}
 		}
 	}
-	flush()
-	log.info('extraLayers insert completed')
+	log.info('Attached extra columns for %s layers', seenExtra.size)
+
+	return LA.writeArtifact({
+		rowCount,
+		layersVersion: args.layersVersion,
+		columns: [
+			{ name: 'id', kind: 'i32', values: ids },
+			...baseColumns.map((name, c) => ({ name, kind: 'u8' as const, values: baseData[c] })),
+			...extraDefs.map((def, c) => ({
+				name: def.name,
+				kind: LA.columnKind({ ...def, table: 'extra-cols' }),
+				values: extraData[c],
+			})),
+		],
+	})
+}
+
+function extraColSchema(col: LC.ColumnDef): z.ZodType {
+	switch (col.type) {
+		case 'string':
+			throw new Error(`Extra column "${col.name}" is a string; the layer engine has no string column type yet`)
+		case 'integer':
+			return ParsedIntSchema
+		case 'boolean':
+			return z.stringbool().transform((v) => Number(v))
+		case 'float':
+			// floats persist as ints scaled by 10^precision, the same encoding the layer db used; read back via
+			// LC.fromScaledDbFloat
+			return ParsedNullableFloat.transform((v) => (v === null ? null : LC.toScaledDbFloat(col, v)))
+		default:
+			throw new Error(`Unsupported column type: ${(col as LC.ColumnDef).type}`)
+	}
+}
+
+function binarySearch(haystack: Int32Array, needle: number): number {
+	let lo = 0
+	let hi = haystack.length - 1
+	while (lo <= hi) {
+		const mid = (lo + hi) >> 1
+		const value = haystack[mid]
+		if (value === needle) return mid
+		if (value < needle) lo = mid + 1
+		else hi = mid - 1
+	}
+	return -1
 }
 
 // the extra-cols csv is machine-generated and contains no quoted fields, which lets us skip
@@ -289,53 +318,6 @@ function* readSimpleCsv(csvPath: string): Generator<Record<string, string>> {
 		for (let i = 0; i < header.length; i++) row[header[i]] = parts[i]
 		yield row
 	}
-}
-
-const INSERT_CHUNK_SIZE = 20_000
-
-// drizzle's query building dominates bulk-insert time, so inserts go through a raw prepared
-// statement inside a transaction instead
-function createInserter(ctx: CS.LayerDb, table: string, cols: string[]) {
-	const driver = ctx.layerDb().$client
-	const stmt = driver.prepare(
-		`INSERT INTO "${table}" (${cols.map(c => `"${c}"`).join(',')}) VALUES (${cols.map(() => '?').join(',')})`,
-	)
-	return driver.transaction((rows: Record<string, unknown>[]) => {
-		for (const row of rows) {
-			stmt.run(cols.map(c => row[c] ?? null))
-		}
-	})
-}
-
-async function populateLayersTable(
-	ctx: CS.LayerDb,
-	components: LC.LayerComponents,
-	finalLayers: Rx.Observable<L.KnownLayer>,
-) {
-	const t0 = performance.now()
-
-	// -------- process layers --------
-	const insert = createInserter(ctx, 'layers', Object.keys(getTableColumns(LC.layers)))
-	const seenIds: Set<string> = new Set()
-	let inserted = 0
-	await Rx.lastValueFrom(finalLayers.pipe(
-		Rx.bufferCount(INSERT_CHUNK_SIZE),
-		Rx.concatMap(async (buf) => {
-			for (const layer of buf) {
-				if (seenIds.has(layer.id)) {
-					throw new Error(`Duplicate layer ID: ${layer.id}`)
-				}
-				seenIds.add(layer.id)
-			}
-			insert(buf.map(layer => LC.toRow(layer, ctx, components)))
-			inserted += buf.length
-			log.info(`Inserted %s rows into layers`, inserted)
-		}),
-	))
-
-	const t1 = performance.now()
-	const elapsedSecondsInsert = (t1 - t0) / 1000
-	log.info(`Inserting ${inserted} rows took ${elapsedSecondsInsert} s`)
 }
 
 async function parseSquadLayerSheetData() {

@@ -14,7 +14,7 @@ import * as Discord from '@/systems/discord.server'
 import * as Fastify from '@/systems/fastify.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
 import * as LayerData from '@/systems/layer-data.server'
-import * as LayerDb from '@/systems/layer-db.server'
+import * as LayerEngine from '@/systems/layer-engine.server'
 import * as LayerQueries from '@/systems/layer-queries.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
@@ -70,8 +70,8 @@ await C.spanOp('main', { module }, async () => {
 	Vote.setup()
 	WsSession.setup()
 	// resolves its config synchronously but opens the db in the background, so it stays off the
-	// critical path; we await `LayerDb.ready` below, right before the db can first be queried
-	await LayerDb.setup()
+	// critical path; we await `LayerEngine.ready` below, right before the engine can first be queried
+	await LayerEngine.setup()
 	await DB.setup()
 	// starts its own background loop; nothing else depends on it, but it needs the db open
 	Backups.setup()

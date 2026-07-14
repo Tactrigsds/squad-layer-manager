@@ -9,7 +9,7 @@ import type * as C from '@/server/context'
 
 import { getOrpcBase } from '@/server/orpc-base'
 import * as FilterEntity from '@/systems/filter-entity.server'
-import * as LayerDb from '@/systems/layer-db.server'
+import * as LayerEngine from '@/systems/layer-engine.server'
 import * as LayerQueries from '@/systems/layer-queries.shared'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
@@ -26,7 +26,7 @@ export function setup() {
 
 export const router = {
 	getLayerInfo: orpcBase.input(z.object({ layerId: L.LayerIdSchema })).handler(async ({ context: ctx, input }) => {
-		const lqContext = { ...ctx, ...resolveLayerDbContext() }
+		const lqContext = { ...ctx, ...resolveLayerEngineContext() }
 		return await LayerQueries.getLayerInfo({ ctx: lqContext, input })
 	}),
 }
@@ -37,7 +37,7 @@ export function resolveLayerQueryCtx<Ctx extends C.MatchHistory & C.LayerQueue>(
 	return {
 		...ctx,
 		log,
-		...resolveLayerDbContext(),
+		...resolveLayerEngineContext(),
 		filters: FilterEntity.state.filters,
 		generationConfig: Settings.GLOBAL_SETTINGS.layerGeneration,
 	}
@@ -50,12 +50,12 @@ export async function resolveLayerItemsState(ctx: C.MatchHistory & C.LayerQueue 
 	)
 }
 
-function resolveLayerDbContext(): CS.LayerDb {
+function resolveLayerEngineContext(): CS.LayerEngine {
 	return {
 		...CS.init(),
-		layerDb: () => LayerDb.db,
+		engine: LayerEngine.engine,
 		// derived from the extra columns the layer data shipped with, and memoized on them, so every request shares
-		// one config object (the query layer caches drizzle views/schemas/cache keys against its identity)
+		// one config object
 		effectiveColsConfig: LC.getEffectiveColumnConfig(),
 	}
 }

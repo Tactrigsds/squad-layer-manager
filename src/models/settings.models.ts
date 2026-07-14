@@ -243,7 +243,7 @@ export const GlobalSettingsSchema = z.object({
 	}).describe('Configures the columns, default sort, and extra menu items of the layer table'),
 	layerGeneration: LC.LayerGenerationConfigSchema.describe(
 		"Configures how layers are picked during generation (autogeneration, vote generation, and the layer table's random sort). "
-			+ 'Each column in the order is picked weighted-randomly in turn, narrowing the candidate pool for the next.',
+			+ 'Each column or matchup in the pick order is picked weighted-randomly in turn, narrowing the candidate pool for the next.',
 	),
 }).superRefine((val, ctx) => {
 	// command strings and timeout-alias strings share one namespace: a real command always wins on collision, so

@@ -16,7 +16,7 @@ import * as ORPCServer from '@/server/orpc-handler'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Discord from '@/systems/discord.server'
 import * as LayerData from '@/systems/layer-data.server'
-import * as LayerDb from '@/systems/layer-db.server'
+import * as LayerEngine from '@/systems/layer-engine.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sessions from '@/systems/sessions.server'
 import * as SquadServer from '@/systems/squad-server.server'
@@ -150,19 +150,19 @@ export const setup = C.spanOp('setup', { module }, async () => {
 		await Sessions.logout({ ...ctx, res })
 	})
 
-	instance.get(AR.route('/layers.sqlite3'), async (req, res) => {
+	instance.get(AR.route('/layers.bin'), async (req, res) => {
 		for (const [key, value] of Object.entries(BASE_HEADERS)) {
 			res = res.header(key, value)
 		}
-		await LayerDb.ready
+		await LayerEngine.ready
 		const ifNoneMatch = req.headers['if-none-match']
-		const etag = `"${LayerDb.hash}"`
+		const etag = `"${LayerEngine.hash}"`
 		res.header('ETag', etag)
 		if (ifNoneMatch && ifNoneMatch === etag) {
 			return res.code(304).send()
 		}
 
-		const [stream, contentType] = LayerDb.readFilestream()
+		const [stream, contentType] = LayerEngine.readFilestream()
 		res.header('Content-Type', contentType)
 		return res.send(stream)
 	})

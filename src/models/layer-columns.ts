@@ -694,6 +694,142 @@ export const WEIGHT_COLUMNS = z.enum(
 
 export type WeightColumn = z.infer<typeof WEIGHT_COLUMNS>
 
+// A matchup weights the two teams as a pair instead of weighting each team's column on its own, so ADF vs PLA can
+// be weighted differently from ADF and PLA individually. Matchups are unordered: the weight for [ADF, PLA] applies
+// to a layer whichever team fields which faction.
+export const MATCHUP_KEYS = z.enum(['AllianceMatchup', 'FactionMatchup', 'UnitMatchup', 'FactionUnitMatchup'])
+export type MatchupKey = z.infer<typeof MATCHUP_KEYS>
+
+// the columns each matchup compares, team 1's first. A team's side of the matchup is the tuple of its values for
+// these columns, so FactionUnitMatchup groups on (Faction, Unit) per team while FactionMatchup ignores the unit.
+export const MATCHUP_COLUMNS = {
+	AllianceMatchup: [['Alliance_1'], ['Alliance_2']],
+	FactionMatchup: [['Faction_1'], ['Faction_2']],
+	UnitMatchup: [['Unit_1'], ['Unit_2']],
+	FactionUnitMatchup: [['Faction_1', 'Unit_1'], ['Faction_2', 'Unit_2']],
+} as const satisfies Record<MatchupKey, [readonly WeightColumn[], readonly WeightColumn[]]>
+
+// a pick step is either a single column or a matchup between the two teams
+export const PICK_KEYS = z.enum([...WEIGHT_COLUMNS.options, ...MATCHUP_KEYS.options])
+export type PickKey = z.infer<typeof PICK_KEYS>
+
+export function isMatchupKey(key: PickKey): key is MatchupKey {
+	return key in MATCHUP_COLUMNS
+}
+
+export const FactionUnitSchema = z.object({ Faction: z.string(), Unit: z.string() })
+export type FactionUnit = z.infer<typeof FactionUnitSchema>
+export type MatchupSide = string | FactionUnit
+
+function matchupEntries<S extends z.ZodType>(side: S) {
+	return z.array(z.object({ teams: z.tuple([side, side]), weight: z.number() })).prefault([])
+}
+
+export const MatchupWeightsSchema = z.object({
+	AllianceMatchup: matchupEntries(z.string()),
+	FactionMatchup: matchupEntries(z.string()),
+	UnitMatchup: matchupEntries(z.string()),
+	FactionUnitMatchup: matchupEntries(FactionUnitSchema),
+}).prefault({})
+
+export type MatchupWeights = z.infer<typeof MatchupWeightsSchema>
+export type MatchupWeightEntry<K extends MatchupKey = MatchupKey> = MatchupWeights[K][number]
+
+// a side's values in MATCHUP_COLUMNS order
+export function matchupSideValues(key: MatchupKey, side: MatchupSide): string[] {
+	if (key === 'FactionUnitMatchup') {
+		const fu = side as FactionUnit
+		return [fu.Faction, fu.Unit]
+	}
+	return [side as string]
+}
+
+// order-independent key for a matchup: the two sides' values, canonically ordered, so a layer and its
+// team-swapped counterpart land in the same group
+export function matchupGroupKey(side1: readonly DbValue[], side2: readonly DbValue[]) {
+	const a = side1.join(',')
+	const b = side2.join(',')
+	return a <= b ? `${a}|${b}` : `${b}|${a}`
+}
+
+// identity of a configured matchup entry, in app values rather than db values: [ADF, PLA] and [PLA, ADF] are the
+// same matchup, so they share a key
+export function matchupEntryKey(key: MatchupKey, teams: readonly [MatchupSide, MatchupSide]) {
+	return matchupGroupKey(matchupSideValues(key, teams[0]), matchupSideValues(key, teams[1]))
+}
+
+// ---------------------------- generation group keys ----------------------------
+// Generation groups candidate layers by pick step, and it does the grouping in SQL (see getRandomGeneratedLayers), so
+// a step's group has to be expressible as one scalar the database can GROUP BY, PARTITION BY and match with IN. These
+// pack a step's columns into a single integer, mixed-radix over each column's enum size. The SQL builders mirror this
+// packing exactly, so a key computed here from a weight entry matches the key the database computes from a layer row.
+
+// db values are enum indices, so a column's values fit in [0, size); the extra slot holds null (packed as 0)
+export function weightColumnRadix(column: WeightColumn, components = L.StaticLayerComponents) {
+	return (groupByColumnDefaultValues(column, components) as string[]).length + 1
+}
+
+export function sideKeyRadix(columns: readonly WeightColumn[], components = L.StaticLayerComponents) {
+	let radix = 1
+	for (const column of columns) radix *= weightColumnRadix(column, components)
+	return radix
+}
+
+export function packSideKey(columns: readonly WeightColumn[], values: readonly DbValue[], components = L.StaticLayerComponents) {
+	let key = 0
+	for (let i = 0; i < columns.length; i++) {
+		key = key * weightColumnRadix(columns[i], components) + ((values[i] as number | null | undefined) ?? -1) + 1
+	}
+	return key
+}
+
+// the two sides are packed in canonical (min, max) order, which is what makes a matchup unordered: a layer and its
+// team-swapped counterpart produce the same key
+export function stepKeyRadix(key: PickKey, components = L.StaticLayerComponents) {
+	if (!isMatchupKey(key)) return sideKeyRadix([key], components)
+	const sideRadix = sideKeyRadix(MATCHUP_COLUMNS[key][1], components)
+	return sideRadix * sideRadix
+}
+
+export function packStepKey(key: PickKey, dbValueOf: (column: WeightColumn) => DbValue, components = L.StaticLayerComponents) {
+	if (!isMatchupKey(key)) return packSideKey([key], [dbValueOf(key)], components)
+	const [columns1, columns2] = MATCHUP_COLUMNS[key]
+	const side1 = packSideKey(columns1, columns1.map(dbValueOf), components)
+	const side2 = packSideKey(columns2, columns2.map(dbValueOf), components)
+	const radix = sideKeyRadix(columns2, components)
+	return Math.min(side1, side2) * radix + Math.max(side1, side2)
+}
+
+// a path is the step keys picked so far, packed together. Long pick orders can overflow the exact-integer range, in
+// which case callers fall back to string keys (see pathKeyMode)
+export function pathKeyRadix(pickOrder: readonly PickKey[], components = L.StaticLayerComponents) {
+	let radix = 1
+	for (const key of pickOrder) radix *= stepKeyRadix(key, components)
+	return radix
+}
+
+export function pathKeyMode(pickOrder: readonly PickKey[], components = L.StaticLayerComponents): 'int' | 'string' {
+	return pathKeyRadix(pickOrder, components) <= Number.MAX_SAFE_INTEGER ? 'int' : 'string'
+}
+
+export function packPathKey(pickOrder: readonly PickKey[], stepKeys: readonly number[], components = L.StaticLayerComponents) {
+	if (pathKeyMode(pickOrder, components) === 'string') return stepKeys.join('_')
+	let key = 0
+	for (let i = 0; i < stepKeys.length; i++) key = key * stepKeyRadix(pickOrder[i], components) + stepKeys[i]
+	return key
+}
+
+// whether a side is one the layer set actually has. a faction/unit pairing the game doesn't field is as inert as a
+// faction it dropped: no layer can match it
+export function isMatchupSideKnown(key: MatchupKey, side: MatchupSide, components = L.StaticLayerComponents) {
+	if (key === 'FactionUnitMatchup') {
+		const { Faction, Unit } = side as FactionUnit
+		return components.factionToUnit[Faction]?.includes(Unit) ?? false
+	}
+	const column = MATCHUP_COLUMNS[key][0][0]
+	return (groupByColumnDefaultValues(column, components) as string[]).includes(side as string)
+}
+
 // weight applied to values which aren't listed in the config for their column
 export const DEFAULT_GENERATION_WEIGHT = 0.1
 
@@ -701,14 +837,17 @@ export const DEFAULT_GENERATION_WEIGHT = 0.1
 // isn't picked, or duplicated is inert rather than wrong, and a settings document that fails to parse takes the
 // server down with it (see loadGlobalSettings). The editor surfaces these instead; see layer-generation-config-editor.
 export const LayerGenerationConfigSchema = z.object({
-	columnOrder: z.array(WEIGHT_COLUMNS).prefault([]).describe(
-		'Columns to pick weighted-randomly during layer generation, in the order they are picked. Each pick narrows the candidate pool for the next.',
+	pickOrder: z.array(PICK_KEYS).prefault([]).describe(
+		'Columns and matchups to pick weighted-randomly during layer generation, in the order they are picked. Each pick narrows the candidate pool for the next.',
 	),
 	weights: z.partialRecord(WEIGHT_COLUMNS, z.array(z.object({ value: z.string(), weight: z.number() })))
 		.prefault({})
 		.describe(
 			`Relative selection weight per column value. Values not listed here are weighted ${DEFAULT_GENERATION_WEIGHT}. Weights are relative, not probabilities: they are normalized against the values actually available in the pool at pick time.`,
 		),
+	matchupWeights: MatchupWeightsSchema.describe(
+		`Relative selection weight per matchup between the two teams. Matchups are unordered, so [ADF, PLA] and [PLA, ADF] are the same entry. Pairings not listed here are weighted ${DEFAULT_GENERATION_WEIGHT}.`,
+	),
 })
 	.prefault({})
 

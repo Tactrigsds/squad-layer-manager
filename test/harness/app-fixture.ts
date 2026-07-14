@@ -3,6 +3,7 @@ import { superjsonify } from '@/lib/drizzle'
 import { tsMigrations } from '@/migrations/registry'
 import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
+import * as LA from '@/models/layer-artifact'
 import * as LC from '@/models/layer-columns'
 import * as LL from '@/models/layer-list.models'
 import * as SETTINGS from '@/models/settings.models'
@@ -24,9 +25,9 @@ import { BmServer } from '../../src/emulator/bm-server'
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..')
 
-// the layer db and layer-data.json are generated artifacts and not present in fresh worktrees; fall back
+// the layer table and layer-data.json are generated artifacts and not present in fresh worktrees; fall back
 // to the main checkout's copies when running from one. `exists` is checked on a concrete probe
-// path since LAYERS_DB_PATH contains a version template.
+// path since LAYERS_ARTIFACT_PATH contains a version template.
 function resolveGeneratedPath(relPath: string, probeGlobDir?: string): string {
 	const worktreeMarker = `${path.sep}.claude${path.sep}worktrees${path.sep}`
 	const roots = [REPO_ROOT]
@@ -36,9 +37,9 @@ function resolveGeneratedPath(relPath: string, probeGlobDir?: string): string {
 			const dir = path.join(root, probeGlobDir)
 			if (!fs.existsSync(dir)) continue
 			const files = fs.readdirSync(dir)
-			// an uncompressed db if there is one (see the caller), the gzipped one otherwise
-			if (files.some((f) => /^layers_v.*\.sqlite3$/.test(f))) return path.join(root, relPath)
-			if (files.some((f) => /^layers_v.*\.sqlite3\.gz$/.test(f))) return path.join(root, `${relPath}.gz`)
+			// an uncompressed table if there is one, the gzipped one otherwise: both load, the first is just quicker
+			if (files.some((f) => /^layers_v.*\.bin$/.test(f))) return path.join(root, relPath)
+			if (files.some((f) => /^layers_v.*\.bin\.gz$/.test(f))) return path.join(root, `${relPath}.gz`)
 		} else if (fs.existsSync(path.join(root, relPath))) {
 			return path.join(root, relPath)
 		}
@@ -304,20 +305,24 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	}
 	driver.close()
 
-	// the layer db is a hard runtime prerequisite: the app cannot boot without it, and it's a
-	// generated artifact (pnpm preprocess) that fresh checkouts don't have. Fail fast and clearly.
-	//
-	// An already-decompressed db is preferred over the .gz production ships: sqlite can't open a
-	// gzipped file, so the app otherwise hashes it and decompresses a copy into ./data/decompressed --
-	// which means it has to be able to *write* to the layer db directory. Reading an uncompressed db
-	// directly lets the tests mount it read-only, so no test can corrupt what the others are reading.
-	const layersDbPath = process.env.LAYERS_DB_PATH
-		?? resolveGeneratedPath('data/layers_v{{LAYERS_VERSION}}.sqlite3', 'data')
-	const layersDbDir = path.dirname(layersDbPath)
-	if (!fs.existsSync(layersDbDir) || !fs.readdirSync(layersDbDir).some((f) => /^layers_v.*\.sqlite3(\.gz)?$/.test(f))) {
+	// the layer table and its components are hard runtime prerequisites: the app cannot boot without them, and both
+	// are generated (pnpm preprocess) rather than checked in. Fail fast and clearly.
+	const layersArtifactPath = process.env.LAYERS_ARTIFACT_PATH
+		?? resolveGeneratedPath(`data/layers_v{{LAYERS_VERSION}}${LA.ARTIFACT_EXT}`, 'data')
+	const layersArtifactDir = path.dirname(layersArtifactPath)
+	if (
+		!fs.existsSync(layersArtifactDir)
+		|| !fs.readdirSync(layersArtifactDir).some((f) => /^layers_v.*\.bin(\.gz)?$/.test(f))
+	) {
 		throw new Error(
-			`integration tests need the layer db artifact (layers_v*.sqlite3[.gz]) but none was found in ${layersDbDir}. `
-				+ `Generate it with \`pnpm preprocess\` or point LAYERS_DB_PATH at an existing copy.`,
+			`integration tests need the layer table (layers_v*.bin[.gz]) but none was found in ${layersArtifactDir}. `
+				+ `Generate it with \`pnpm preprocess\` or point LAYERS_ARTIFACT_PATH at an existing copy.`,
+		)
+	}
+	if (!fs.existsSync(path.join(layersArtifactDir, 'layer-data.json'))) {
+		throw new Error(
+			`integration tests need data/layer-data.json (the components the layer table's encoded values refer to), `
+				+ `which ships alongside the table from the same \`pnpm preprocess\` run.`,
 		)
 	}
 
@@ -379,7 +384,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		BM_ORG_ID: 'stub-org',
 		QUERY_PARAM_AUTH_BYPASS: 'true',
 		SUPER_USERS: users.filter((u) => u.superUser ?? u.discordId === ADMIN_USER.discordId).map((u) => String(u.discordId)).join(','),
-		LAYERS_DB_PATH: layersDbPath,
+		LAYERS_ARTIFACT_PATH: layersArtifactPath,
 		...opts.env,
 	}
 

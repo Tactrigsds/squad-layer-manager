@@ -38,7 +38,11 @@ extra-columns.json
 google-credentials.json
 
 /data/layers*.csv
-/data/decompressed/
+# preprocess outputs, published together as a github release: the layer table the engine reads, and the components
+# that give its encoded values meaning
+/data/layers_v*.bin
+/data/layers_v*.bin.gz
+/data/layer-data.json
 
 broken-layers.csv
 drizzle/seed_weights.sql
@@ -60,3 +64,7 @@ graph.svg
 # playwright
 /test-results/
 /playwright-report/
+
+# built by `pnpm build:engine` from layer-engine/
+assets/layer-engine.wasm
+layer-engine/target/
