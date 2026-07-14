@@ -1,5 +1,5 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
-import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import * as ZodLib from '@/lib/zod'
 import * as ZusUtils from '@/lib/zustand'
@@ -563,8 +563,7 @@ export function PlayerMenuItems(
 						disabled={!inSquad}
 						onClick={() => {
 							TSWClient.Actions.ensureViewingTeams(serverId)
-							const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer)).players
-							SquadServerClient.Actions.selectSquad(playerId, players)
+							SquadServerFrame.Actions.selectSquad(stores, playerId)
 						}}
 					>
 						Squad{playerInfo?.squadName ? ` (${playerInfo.squadName})` : ''}
@@ -576,7 +575,7 @@ export function PlayerMenuItems(
 					onClick={() => {
 						if (playerInfo?.role == null) return
 						TSWClient.Actions.ensureViewingTeams(serverId)
-						SquadServerClient.Actions.selectAllWithRole(stores, playerInfo.role, teamId)
+						SquadServerFrame.Actions.selectAllWithRole(stores, playerInfo.role, teamId)
 					}}
 				>
 					Role{playerInfo?.role != null ? ` (${playerInfo.role})` : ''}
@@ -587,7 +586,7 @@ export function PlayerMenuItems(
 					onClick={() => {
 						if (grouping == null) return
 						TSWClient.Actions.ensureViewingTeams(serverId)
-						SquadServerClient.Actions.selectGrouping(stores, grouping, teamId)
+						SquadServerFrame.Actions.selectGrouping(stores, grouping, teamId)
 					}}
 				>
 					Grouping{grouping != null ? ` (${grouping})` : ''}
@@ -597,7 +596,7 @@ export function PlayerMenuItems(
 					disabled={!playerInfo?.isLeader || teamMissing}
 					onClick={() => {
 						TSWClient.Actions.ensureViewingTeams(serverId)
-						SquadServerClient.Actions.selectAllSquadLeaders(stores, teamId)
+						SquadServerFrame.Actions.selectAllSquadLeaders(stores, teamId)
 					}}
 				>
 					Squad Leaders
@@ -606,7 +605,7 @@ export function PlayerMenuItems(
 					disabled={!playerInfo?.isAdmin || teamMissing}
 					onClick={() => {
 						TSWClient.Actions.ensureViewingTeams(serverId)
-						SquadServerClient.Actions.selectAllAdmins(stores, teamId)
+						SquadServerFrame.Actions.selectAllAdmins(stores, teamId)
 					}}
 				>
 					Admins
@@ -616,7 +615,7 @@ export function PlayerMenuItems(
 					disabled={!isOnServer || teamMissing}
 					onClick={() => {
 						TSWClient.Actions.ensureViewingTeams(serverId)
-						SquadServerClient.Actions.selectAllTeamPlayers(stores, teamId)
+						SquadServerFrame.Actions.selectAllTeamPlayers(stores, teamId)
 					}}
 				>
 					All Players
@@ -626,7 +625,7 @@ export function PlayerMenuItems(
 					disabled={teamMissing}
 					onClick={() => {
 						TSWClient.Actions.ensureViewingTeams(serverId)
-						SquadServerClient.Actions.invertSelection(stores, teamId)
+						SquadServerFrame.Actions.invertSelection(stores, teamId)
 					}}
 				>
 					Invert

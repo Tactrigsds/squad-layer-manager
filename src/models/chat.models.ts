@@ -1,3 +1,4 @@
+import type { ServerEventPlayerAssocType } from '$root/drizzle/enums'
 import * as Arr from '@/lib/array'
 import * as Gen from '@/lib/generator'
 import { assertNever } from '@/lib/type-guards'
@@ -744,8 +745,19 @@ export type PrimaryFilterState = null | {
 	id: number
 }
 
-export const SECONDARY_FILTER_STATE = z.enum(['ALL', 'DEFAULT', 'CHAT', 'ADMIN'])
+export const SECONDARY_FILTER_STATE = z.enum(['ALL', 'DEFAULT', 'CHAT', 'SLM_EVENTS', 'ADMIN', 'KILLFEED', 'SELECTED_PLAYERS'])
 export type SecondaryFilterState = z.infer<typeof SECONDARY_FILTER_STATE>
+
+// iteration order doubles as the order the filters are offered in the UI
+export const SECONDARY_FILTER_LABELS: Record<SecondaryFilterState, string> = {
+	ALL: 'All',
+	DEFAULT: 'Default',
+	CHAT: 'Chat',
+	SLM_EVENTS: 'SLM Events',
+	ADMIN: 'Admin',
+	KILLFEED: 'Killfeed',
+	SELECTED_PLAYERS: 'Selected Players',
+}
 
 export type ChatViewOptionsStore = {
 	primaryFilter: PrimaryFilterState
@@ -754,41 +766,86 @@ export type ChatViewOptionsStore = {
 	setSecondaryFilter(secondary: SecondaryFilterState): void
 }
 
-export function isEventFilteredBySecondary(event: EventEnriched, filterState: SecondaryFilterState): boolean {
-	// app (audit) events are admin actions: visible everywhere except the pure-chat view
-	if (event.type === 'APP_EVENT') {
-		return filterState === 'CHAT'
+// match boundaries and rcon connectivity anchor the feed in time, so they're shown under every filter. MAP_SET is
+// deliberately not one of them: a layer being set is an administrative event, not a marker the other feeds need
+function isPinnedSystemEvent(event: EventEnriched): boolean {
+	switch (event.type) {
+		case 'NEW_GAME':
+		case 'RESET':
+		case 'ROUND_ENDED':
+		case 'RCON_CONNECTED':
+		case 'RCON_DISCONNECTED':
+			return true
+		default:
+			return false
 	}
-	// Always show new game and round ended events
-	if (
-		['NEW_GAME', 'ROUND_ENDED', 'RESET', 'RCON_CONNECTED', 'RCON_DISCONNECTED'].includes(event.type)
-	) {
-		return false
-	}
+}
 
-	if (filterState === 'ALL') {
-		return false
-	} else if (filterState === 'DEFAULT') {
-		if (event.type === 'PLAYER_DIED' || event.type === 'PLAYER_WOUNDED' && event.variant !== 'teamkill') {
+// rcon-originated broadcasts are SLM/tooling output rather than someone talking, and are already represented by the
+// app event that sent them
+function isChatEvent(event: EventEnriched): boolean {
+	if (event.type === 'CHAT_MESSAGE') return true
+	return event.type === 'ADMIN_BROADCAST' && event.from !== 'RCON'
+}
+
+function isWarnEvent(event: EventEnriched): boolean {
+	if (event.type === 'PLAYER_WARNED' || event.type === 'WARNS_AGGREGATED') return true
+	return event.type === 'APP_EVENT' && event.appEvent.type === 'PLAYER_WARNED'
+}
+
+function isKillfeedEvent(event: EventEnriched): event is SE.PlayerDied<SM.Player> | SE.PlayerWounded<SM.Player> {
+	return event.type === 'PLAYER_DIED' || event.type === 'PLAYER_WOUNDED'
+}
+
+// admin actions observed in-game/over rcon. their SLM-initiated counterparts arrive as app events instead
+function isAdminActionEvent(event: EventEnriched): boolean {
+	switch (event.type) {
+		case 'PLAYER_KICKED':
+		case 'PLAYER_BANNED':
+		case 'POSSESSED_ADMIN_CAMERA':
+		case 'UNPOSSESSED_ADMIN_CAMERA':
 			return true
-		}
-		if (event.type === 'PLAYER_JOINED_SQUAD' || event.type === 'PLAYER_LEFT_SQUAD') {
-			return true
-		}
-		return false
-	} else if (filterState === 'CHAT') {
-		// Show only chat messages and broadcasts
-		return !(event.type === 'CHAT_MESSAGE' || event.type === 'ADMIN_BROADCAST' && event.from !== 'RCON')
-	} else if (filterState === 'ADMIN') {
-		// Show only admin chat messages and broadcasts
-		if (event.type === 'ADMIN_BROADCAST' && event.from !== 'RCON') {
+		default:
 			return false
-		} else if (event.type === 'CHAT_MESSAGE' && event.channel.type === 'ChatAdmin') {
-			return false
-		}
-		return true
 	}
-	return false
+}
+
+export type SecondaryFilterContext = {
+	// only read by SELECTED_PLAYERS
+	selectedPlayerIds?: ReadonlySet<SM.PlayerId>
+}
+
+export function showEventInFeed(event: EventEnriched, filterState: SecondaryFilterState, ctx?: SecondaryFilterContext): boolean {
+	if (isPinnedSystemEvent(event)) return true
+
+	switch (filterState) {
+		case 'ALL':
+			return true
+		case 'DEFAULT':
+			if (isKillfeedEvent(event) && event.variant !== 'teamkill') return false
+			if (event.type === 'PLAYER_JOINED_SQUAD' || event.type === 'PLAYER_LEFT_SQUAD') return false
+			return true
+		case 'CHAT':
+			return isChatEvent(event) || isWarnEvent(event)
+		case 'SLM_EVENTS':
+			return event.type === 'APP_EVENT' || event.type === 'MAP_SET'
+		case 'ADMIN':
+			if (event.type === 'APP_EVENT' || event.type === 'MAP_SET') return true
+			if (event.type === 'CHAT_MESSAGE') return event.channel.type === 'ChatAdmin'
+			if (event.type === 'ADMIN_BROADCAST') return event.from !== 'RCON'
+			if (event.type === 'PLAYER_CONNECTED' || event.type === 'PLAYER_DISCONNECTED') return event.player.isAdmin
+			if (isKillfeedEvent(event)) return event.variant === 'teamkill'
+			return isWarnEvent(event) || isAdminActionEvent(event)
+		case 'KILLFEED':
+			return isKillfeedEvent(event)
+		case 'SELECTED_PLAYERS': {
+			const selected = ctx?.selectedPlayerIds
+			if (!selected || selected.size === 0) return false
+			return hasAnyAssocPlayer(event, selected)
+		}
+		default:
+			assertNever(filterState)
+	}
 }
 
 // event types the feed renderer (ServerEvent) always renders as nothing. Callers that inject separators/markers
@@ -802,7 +859,13 @@ export function isRenderableInFeed(event: EventEnriched): boolean {
 		&& event.type !== 'NOOP'
 }
 
-export function* iterAssocPlayers(event: EventEnriched, playerId?: SM.PlayerId) {
+// the raw server-event assoc types, plus 'actor' for the admin who took an app event's action
+export type AssocPlayerType = ServerEventPlayerAssocType | 'actor'
+
+export function* iterAssocPlayers(
+	event: EventEnriched,
+	playerId?: SM.PlayerId,
+): Generator<readonly [SM.Player | SM.PlayerId, AssocPlayerType]> {
 	if (event.type === 'NOOP') return
 	if (event.type === 'WARNS_AGGREGATED') {
 		for (const warn of event.warns) {
@@ -814,20 +877,30 @@ export function* iterAssocPlayers(event: EventEnriched, playerId?: SM.PlayerId) 
 		for (const player of event.targetPlayers) {
 			if (!playerId || SM.PlayerIds.getPlayerId(player.ids) === playerId) yield [player, 'player'] as const
 		}
-		return
-	}
-	if (!event) {
-		yield* SE.iterAssocPlayers(event)
+		if (event.actorPlayer && (!playerId || SM.PlayerIds.getPlayerId(event.actorPlayer.ids) === playerId)) {
+			yield [event.actorPlayer, 'actor'] as const
+		}
+		for (const collapsed of event.collapsed) {
+			yield* iterAssocPlayers(collapsed, playerId)
+		}
 		return
 	}
 	for (const [player, assocType] of SE.iterAssocPlayers(event)) {
-		if (typeof player === 'string' && player === playerId) yield [player, assocType] as const
-		if (typeof player === 'object' && SM.PlayerIds.getPlayerId(player.ids) === playerId) yield [player, assocType] as const
+		const id = typeof player === 'string' ? player : SM.PlayerIds.getPlayerId(player.ids)
+		if (!playerId || id === playerId) yield [player, assocType] as const
 	}
 }
 
 export function hasAssocPlayer(event: EventEnriched, playerId: SM.PlayerId): boolean {
 	return Gen.hasValues(iterAssocPlayers(event, playerId))
+}
+
+export function hasAnyAssocPlayer(event: EventEnriched, playerIds: ReadonlySet<SM.PlayerId>): boolean {
+	for (const [player] of iterAssocPlayers(event)) {
+		const id = typeof player === 'string' ? player : SM.PlayerIds.getPlayerId(player.ids)
+		if (playerIds.has(id)) return true
+	}
+	return false
 }
 
 // squad-association equivalent of iterAssocPlayers: handles the enriched-only event variants (which have no entry in

@@ -1,10 +1,9 @@
 import { MatchTeamDisplay } from '@/components/teams-display'
-import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { cn } from '@/lib/utils'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import { useGroupedPlayerFlagColor } from '@/systems/battlemetrics.client'
-import * as SquadServerClient from '@/systems/squad-server.client'
 import { ContextMenu } from '@radix-ui/react-context-menu'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -70,7 +69,7 @@ export function PlayerDisplay(
 						if (!e.shiftKey) return
 						e.preventDefault()
 						e.stopPropagation()
-						SquadServerClient.Actions.selectAllAdmins(stores, e.ctrlKey ? undefined : player.teamId ?? undefined)
+						SquadServerFrame.Actions.selectAllAdmins(stores, e.ctrlKey ? undefined : player.teamId ?? undefined)
 					}}
 				>
 					<Icons.ShieldCheckIcon className="h-[1em] w-[1em] text-background fill-blue-300" />

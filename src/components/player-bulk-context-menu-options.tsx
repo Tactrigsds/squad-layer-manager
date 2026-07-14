@@ -1,5 +1,5 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
-import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
 import type * as AAR from '@/models/admin-action-reasons.models'
@@ -305,7 +305,7 @@ export default function PlayerBulkContextMenuOptions(
 	return (
 		<>
 			<ContextMenuLabel>{playerIds.length} players selected</ContextMenuLabel>
-			<ContextMenuItem onClick={() => SquadServerClient.Actions.invertSelection(stores)}>
+			<ContextMenuItem onClick={() => SquadServerFrame.Actions.invertSelection(stores)}>
 				Invert Selection
 				<ContextMenuShortcut>Alt+Ctrl+click select-all box</ContextMenuShortcut>
 			</ContextMenuItem>
