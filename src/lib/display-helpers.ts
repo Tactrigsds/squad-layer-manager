@@ -181,7 +181,7 @@ export function toShortLayerName(layer: L.KnownLayer, you?: 1 | 2, displayProps?
 		}
 	}
 
-	return parts.join(`${delimit ?? ' - '}`)
+	return parts.join(delimit ?? ' - ')
 }
 
 export function toShortTeamsDisplay(layer: Partial<L.KnownLayer>, you?: 1 | 2, displayProps?: LayerDisplayProp[]) {
