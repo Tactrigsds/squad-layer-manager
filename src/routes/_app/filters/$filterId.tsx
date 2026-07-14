@@ -62,7 +62,7 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 
 	head: ({ loaderData }) => ({
 		meta: [
-			{ title: loaderData ? `${loaderData.entity.name} - SLM` : undefined },
+			{ title: loaderData ? `SLM - ${loaderData.entity.name}` : undefined },
 		],
 	}),
 })

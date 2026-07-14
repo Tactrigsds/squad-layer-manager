@@ -44,6 +44,10 @@ const SchemaJsonEditor = React.lazy(
 ) as unknown as typeof SchemaJsonEditorComponent
 
 export const Route = createFileRoute('/_app/settings')({
+	head: () => ({
+		meta: [{ title: 'SLM - Settings' }],
+	}),
+
 	component: RouteComponent,
 })
 

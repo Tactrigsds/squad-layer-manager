@@ -13,11 +13,13 @@ import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import TabsList from '@/components/ui/tabs-list'
 import UserPermissionsDialog from '@/components/user-permissions-dialog'
-import { frameManager } from '@/frames/frame-manager.ts'
+import { frameManager, useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager.ts'
+import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 
 import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 
 import { useIsDesktopSize, useIsSmallViewport } from '@/lib/browser.ts'
+import * as Obj from '@/lib/object'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as USR from '@/models/users.models.ts'
@@ -35,6 +37,8 @@ import { useLoggedInUser } from '@/systems/users.client'
 import * as TSR from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
+
+const EXPLORE_LAYERS_FRAME_INSTANCE_ID = 'explore-layers'
 
 export default function NavBar() {
 	const flags = FeatureFlags.useFeatureFlags()
@@ -233,7 +237,7 @@ export default function NavBar() {
 					</div>
 				)}
 			</div>
-			<ExploreLayersDialog open={exploreLayersOpen} onOpenChange={setExploreLayersOpen} />
+			<ExploreLayersDialog open={exploreLayersOpen} onOpenChange={setExploreLayersOpen} squadServer={squadServerKey} />
 			<div className="flex h-max min-h-0 flex-row items-center space-x-1 sm:space-x-3 overflow-hidden">
 				{simulateRoles && (
 					<div className="hidden sm:flex items-center space-x-1 shrink-0">
@@ -349,12 +353,25 @@ function NormalizeTeamsToggle() {
 	)
 }
 
-function ExploreLayersDialog(props: { open: boolean; onOpenChange: (open: boolean) => void }) {
-	const data = TSR.useLoaderData({ from: '/_app' })
+// the explore frame is scoped to the selected server, since its pool filters and repeat-rule constraints come from that
+// server's settings. Switching servers therefore builds a fresh instance and drops the previous one, rather than leaving
+// the dialog constrained by the server the page happened to load with
+function ExploreLayersDialog(props: { open: boolean; onOpenChange: (open: boolean) => void } & Partial<SquadServerFrame.KeyProp>) {
+	const squadServer = props.squadServer
+	const input = React.useMemo(
+		() =>
+			SelectLayersFrame.createInput({
+				sharedInstanceId: squadServer ? `${EXPLORE_LAYERS_FRAME_INSTANCE_ID}:${squadServer.serverId}` : EXPLORE_LAYERS_FRAME_INSTANCE_ID,
+				squadServer,
+			}),
+		[squadServer],
+	)
+	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, { input, equalityFn: Obj.deepEqual })
+	useFrameTeardownOnUnmount(frameKey)
 
 	return (
 		<SelectLayersDialog
-			stores={{ selectLayers: data.stores.exploreLayers }}
+			stores={{ selectLayers: frameKey, squadServer }}
 			open={props.open}
 			onOpenChange={props.onOpenChange}
 			title="Layers"
