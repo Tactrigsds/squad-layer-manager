@@ -218,8 +218,9 @@ export type CommandId = keyof typeof COMMAND_DECLARATIONS
 export const COMMAND_ID = z.enum(Object.keys(COMMAND_DECLARATIONS) as [CommandId, ...CommandId[]])
 export type CommandDeclaration<Id extends CommandId> = (typeof COMMAND_DECLARATIONS)[Id]
 
-// the prefix a fresh install seeds command strings with, when no settings exist yet to read `defaultPrefix` from
-export const FALLBACK_PREFIX = '/'
+// the prefix a fresh install seeds command strings with, when no settings exist yet to read `defaultPrefix` from.
+// matches the prefix migration 0074 falls back to, so a fresh install and a migrated one agree on what to type.
+export const FALLBACK_PREFIX = '!'
 
 // declared strings are bare (`help`); the stored ones carry a prefix (`!help`), which is attached by
 // seedCommandConfigs using the installation's configured defaultPrefix
