@@ -10,13 +10,9 @@ Three suites, in increasing order of what they cost and what they cover:
   commands the emulator received.
 - `pnpm test:e2e` — the same, driven through the real client in a browser.
 
-Both of the latter need generated artifacts that a fresh checkout does not have:
-
-- `assets/layer-engine.wasm` — the query engine, built from `layer-engine/` with `pnpm build:engine`
-  (needs a rust toolchain).
-- `data/layers_v*.bin.gz` and `data/layer-data.json` — the layer table the engine reads, and the
-  components that give its encoded values meaning. Both come out of one `pnpm preprocess` run and are
-  published together; neither is useful without the other, so keep them in step.
+Both of the latter need `assets/layer-engine.wasm` — the query engine, built from `layer-engine/` with
+`pnpm build:engine` (needs a rust toolchain) — which a fresh checkout does not have. The layer artifacts
+they run against (`assets/layers`) are checked in.
 
 To run them the way CI does — inside the production image, driving the very server bundle that gets
 deployed:
@@ -26,7 +22,8 @@ docker compose -f docker-compose.test.yaml run --rm --build tests
 ```
 
 The image is the production one plus a browser, the test sources, and dev dependencies (see the
-Dockerfile's `test` stage). The layer table is mounted rather than baked in, exactly as in production.
+Dockerfile's `test` stage). The layer artifacts are baked in, exactly as in production, so the tests run
+against the same pair the deployment does.
 
 ### Debugging a failing test with telemetry
 

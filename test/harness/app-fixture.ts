@@ -3,12 +3,12 @@ import { superjsonify } from '@/lib/drizzle'
 import { tsMigrations } from '@/migrations/registry'
 import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
-import * as LA from '@/models/layer-artifact'
 import * as LC from '@/models/layer-columns'
 import * as LL from '@/models/layer-list.models'
 import * as SETTINGS from '@/models/settings.models'
 import type * as SM from '@/models/squad.models'
 import * as Migrate from '@/server/migrate'
+import * as LayerArtifacts from '@/systems/layer-artifacts.server'
 import Database, { type Database as SqliteDb } from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import * as childProcess from 'node:child_process'
@@ -25,35 +25,14 @@ import { BmServer } from '../../src/emulator/bm-server'
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..')
 
-// the layer table and layer-data.json are generated artifacts and not present in fresh worktrees; fall back
-// to the main checkout's copies when running from one. `exists` is checked on a concrete probe
-// path since LAYERS_ARTIFACT_PATH contains a version template.
-function resolveGeneratedPath(relPath: string, probeGlobDir?: string): string {
-	const worktreeMarker = `${path.sep}.claude${path.sep}worktrees${path.sep}`
-	const roots = [REPO_ROOT]
-	if (REPO_ROOT.includes(worktreeMarker)) roots.push(REPO_ROOT.split(worktreeMarker)[0])
-	for (const root of roots) {
-		if (probeGlobDir) {
-			const dir = path.join(root, probeGlobDir)
-			if (!fs.existsSync(dir)) continue
-			const files = fs.readdirSync(dir)
-			// an uncompressed table if there is one, the gzipped one otherwise: both load, the first is just quicker
-			if (files.some((f) => /^layers_v.*\.bin$/.test(f))) return path.join(root, relPath)
-			if (files.some((f) => /^layers_v.*\.bin\.gz$/.test(f))) return path.join(root, `${relPath}.gz`)
-		} else if (fs.existsSync(path.join(root, relPath))) {
-			return path.join(root, relPath)
-		}
-	}
-	return path.join(REPO_ROOT, relPath)
-}
-
 // the layer components are static app data, loaded at runtime rather than bundled. Anything that
 // resolves a layer id (getLayerCommand here) needs them, and playwright -- unlike vitest -- has no
-// setup file to do it, so the fixture loads them itself.
+// setup file to do it, so the fixture loads them itself. Resolved exactly as the app under test resolves
+// them, so the components the test reasons about are the ones the app is running.
 let layerDataLoaded = false
 function ensureLayerData() {
 	if (layerDataLoaded) return
-	const file = JSON.parse(fs.readFileSync(resolveGeneratedPath('data/layer-data.json'), 'utf8')) as L.LayerDataFile
+	const file = JSON.parse(fs.readFileSync(LayerArtifacts.resolvePair().layerDataPath, 'utf8')) as L.LayerDataFile
 	L.setLayerData({
 		components: LC.buildFullLayerComponents(file.components),
 		factionUnits: file.factionUnits,
@@ -242,7 +221,11 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	// -------- global settings --------
 	// written before boot rather than defaulted by the app, so tests can arrange the durations and
 	// command config they depend on (settings.server only inserts defaults when the row is absent)
-	const globalSettings = SETTINGS.GlobalSettingsSchema.parse({})
+	// parseGlobalSettings, not the schema directly: command configs have no schema-level defaults (their strings
+	// depend on defaultPrefix), so they're seeded before the parse
+	const parsedSettings = SETTINGS.parseGlobalSettings({})
+	if (!parsedSettings.success) throw new Error(`default global settings do not parse: ${parsedSettings.error}`)
+	const globalSettings = parsedSettings.data
 	applyTestTimings(globalSettings)
 	globalSettings.adminListSources[ADMIN_LIST_SOURCE] = { type: 'local', source: adminsCfgPath }
 	opts.globalSettings?.(globalSettings)
@@ -305,26 +288,10 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	}
 	driver.close()
 
-	// the layer table and its components are hard runtime prerequisites: the app cannot boot without them, and both
-	// are generated (pnpm preprocess) rather than checked in. Fail fast and clearly.
-	const layersArtifactPath = process.env.LAYERS_ARTIFACT_PATH
-		?? resolveGeneratedPath(`data/layers_v{{LAYERS_VERSION}}${LA.ARTIFACT_EXT}`, 'data')
-	const layersArtifactDir = path.dirname(layersArtifactPath)
-	if (
-		!fs.existsSync(layersArtifactDir)
-		|| !fs.readdirSync(layersArtifactDir).some((f) => /^layers_v.*\.bin(\.gz)?$/.test(f))
-	) {
-		throw new Error(
-			`integration tests need the layer table (layers_v*.bin[.gz]) but none was found in ${layersArtifactDir}. `
-				+ `Generate it with \`pnpm preprocess\` or point LAYERS_ARTIFACT_PATH at an existing copy.`,
-		)
-	}
-	if (!fs.existsSync(path.join(layersArtifactDir, 'layer-data.json'))) {
-		throw new Error(
-			`integration tests need data/layer-data.json (the components the layer table's encoded values refer to), `
-				+ `which ships alongside the table from the same \`pnpm preprocess\` run.`,
-		)
-	}
+	// the layer artifacts are a hard runtime prerequisite: the app cannot boot without them. They're checked in
+	// (assets/layers), so this only fires when a checkout is broken -- but it fires here rather than as an opaque
+	// boot failure in the child process.
+	LayerArtifacts.resolvePair()
 
 	emu.attachLogFile(squadLogPath)
 
@@ -384,7 +351,6 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		BM_ORG_ID: 'stub-org',
 		QUERY_PARAM_AUTH_BYPASS: 'true',
 		SUPER_USERS: users.filter((u) => u.superUser ?? u.discordId === ADMIN_USER.discordId).map((u) => String(u.discordId)).join(','),
-		LAYERS_ARTIFACT_PATH: layersArtifactPath,
 		...opts.env,
 	}
 

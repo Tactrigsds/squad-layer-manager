@@ -1,11 +1,10 @@
-import * as Paths from '$root/paths'
 import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import { initModule } from '@/server/logger'
+import * as LayerArtifacts from '@/systems/layer-artifacts.server'
 import crypto from 'crypto'
 import * as fsPromise from 'node:fs/promises'
-import path from 'node:path'
 import { promisify } from 'node:util'
 import zlib from 'node:zlib'
 import { z } from 'zod'
@@ -21,15 +20,15 @@ export let hash!: string
 export let raw!: Buffer
 export let gzipped!: Buffer
 
-export const FILE_NAME = 'layer-data.json'
-
 export async function setup() {
 	log = module.getLogger()
-	const filePath = path.join(Paths.DATA, FILE_NAME)
-	raw = await fsPromise.readFile(filePath)
+	// the components are half of a versioned pair, and the layer engine loads the other half from the same
+	// directory: whichever table it runs, these are the components its encoded values index into
+	const { layerDataPath } = LayerArtifacts.resolvePair()
+	raw = await fsPromise.readFile(layerDataPath)
 	const file = JSON.parse(raw.toString('utf8')) as L.LayerDataFile
 	if (!file.components || !file.factionUnits || !file.extraColumns) {
-		throw new Error(`${filePath} is malformed: expected { components, factionUnits, extraColumns }. re-run pnpm preprocess`)
+		throw new Error(`${layerDataPath} is malformed: expected { components, factionUnits, extraColumns }. re-run pnpm preprocess`)
 	}
 	L.setLayerData({
 		components: LC.buildFullLayerComponents(file.components),
@@ -40,5 +39,5 @@ export async function setup() {
 	})
 	hash = crypto.createHash('sha256').update(raw).digest('hex')
 	gzipped = await gzip(raw)
-	log.info('loaded %s (%d bytes, hash %s)', FILE_NAME, raw.length, hash.slice(0, 12))
+	log.info('loaded %s (%d bytes, hash %s)', layerDataPath, raw.length, hash.slice(0, 12))
 }

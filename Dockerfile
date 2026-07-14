@@ -70,6 +70,11 @@ COPY --from=builder /app/register-otel.mjs ./register-otel.mjs
 # the server instantiates the same engine the browser does, and reads the wasm off disk
 COPY --from=builder /app/assets/layer-engine.wasm ./assets/layer-engine.wasm
 
+# the layer table and the components its encoded values index into. Small enough to ship, so the image boots on
+# its own; a deployment that wants a different layer version drops the pair into its /app/data mount, which is
+# searched first (see systems/layer-artifacts.server.ts).
+COPY --from=builder /app/assets/layers ./assets/layers
+
 # Copy necessary runtime files
 COPY --from=builder /app/drizzle-sqlite ./drizzle-sqlite
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
@@ -117,8 +122,7 @@ RUN pnpm exec playwright install --with-deps chromium-headless-shell
 # drive the deployed bundle rather than the source: the point of testing in this image is that it is
 # the image
 ENV SLM_TEST_SERVER_ENTRY=dist-server/main-instrumented.js
-# the layer table is not baked in (it isn't in production either): mount /app/data, as the deployment
-# does. The engine gunzips the artifact into wasm memory, so the mount can be read-only: nothing is
-# written back into it.
+# nothing to mount: the layer artifacts the tests run against are the ones baked into the runtime stage,
+# which are the ones production runs.
 
 CMD ["pnpm", "run", "test:ci"]

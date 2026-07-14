@@ -38,6 +38,10 @@
 /docs
 /todo.md
 
+# The uncompressed layer table: preprocess leaves it beside the .gz, the image only ever ships the .gz, and at
+# 60MB it would otherwise be dragged into the build context on every build.
+/assets/layers/layers_v*.bin
+
 # Temporary files
 *.tmp
 *.swp
