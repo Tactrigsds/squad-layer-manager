@@ -6,9 +6,8 @@ import * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
-import { getFilterNodeSQLConditions } from '@/systems/layer-queries.shared'
+import * as LE from '@/models/layer-engine'
 import DatabaseConstructor from 'better-sqlite3'
-import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core'
 import { describe, expect, it } from 'vitest'
 
 // -------- operator selection round-trips --------
@@ -89,44 +88,42 @@ describe('value domains', () => {
 
 // -------- compiler validation --------
 
-function testCtx(): CS.Log & CS.Filters & CS.LayerDb {
+function testCtx(): LE.LowerCtx {
 	return {
 		...CS.init(),
 		effectiveColsConfig: LC.BASE_COLUMN_CONFIG,
 		filters: new Map(),
-		log: { child: () => ({}) } as any,
-		layerDb: (() => {
-			throw new Error('layerDb should not be called during condition building')
-		}) as any,
+		// the engine addresses columns by index; lowering only needs a stable mapping, not a loaded artifact
+		colIndex: (name: string) => LC.COLUMN_KEYS.indexOf(name as never),
 	}
 }
 
-describe('getFilterNodeSQLConditions validation', () => {
+describe('filter lowering validation', () => {
 	// team-column tests use IS NULL tests (eq against null) so they don't depend on enum value mappings
 	it('accepts a simple column comparison', () => {
-		expect(getFilterNodeSQLConditions(testCtx(), FB.isNull('Map'), [], []).code).toBe('ok')
+		expect(LE.lowerFilterNode(testCtx(), FB.isNull('Map')).code).toBe('ok')
 	})
 
 	it('accepts column vs column of the same domain', () => {
-		const res = getFilterNodeSQLConditions(testCtx(), FB.eq(FB.col('Faction_1'), FB.col('Faction_2')), [], [])
+		const res = LE.lowerFilterNode(testCtx(), FB.eq(FB.col('Faction_1'), FB.col('Faction_2')))
 		expect(res.code).toBe('ok')
 	})
 
 	it('rejects column vs column of different domains', () => {
-		const res = getFilterNodeSQLConditions(testCtx(), FB.eq(FB.col('Faction_1'), FB.col('Unit_1')), [], [])
+		const res = LE.lowerFilterNode(testCtx(), FB.eq(FB.col('Faction_1'), FB.col('Unit_1')))
 		expect(res.code).toBe('err:invalid-node')
 	})
 
 	it('accepts a team-column comparison (expands over both teams) for either and both quantifiers', () => {
-		expect(getFilterNodeSQLConditions(testCtx(), FB.isNull(FB.teamCol('Faction', 'either')), [], []).code).toBe('ok')
-		expect(getFilterNodeSQLConditions(testCtx(), FB.isNull(FB.teamCol('Alliance', 'both')), [], []).code).toBe('ok')
+		expect(LE.lowerFilterNode(testCtx(), FB.isNull(FB.teamCol('Faction', 'either'))).code).toBe('ok')
+		expect(LE.lowerFilterNode(testCtx(), FB.isNull(FB.teamCol('Alliance', 'both'))).code).toBe('ok')
 	})
 
 	it('reports an unmapped column', () => {
-		const res = getFilterNodeSQLConditions(testCtx(), FB.isNull('NotAColumn'), [], [])
+		const res = LE.lowerFilterNode(testCtx(), FB.isNull('NotAColumn'))
 		expect(res.code).toBe('err:invalid-node')
 		if (res.code === 'err:invalid-node') {
-			expect(res.errors.some((e) => e.type === 'unmapped-column')).toBe(true)
+			expect(res.errors.some((e: F.NodeValidationError) => e.type === 'unmapped-column')).toBe(true)
 		}
 	})
 
@@ -136,14 +133,14 @@ describe('getFilterNodeSQLConditions validation', () => {
 		for (
 			const node of [FB.eq('NotAColumn', 'x'), FB.inValues('NotAColumn', ['a']), FB.lt('NotAColumn', 5), FB.inrange('NotAColumn', 1, 9)]
 		) {
-			const res = getFilterNodeSQLConditions(testCtx(), node, [], [])
+			const res = LE.lowerFilterNode(testCtx(), node)
 			expect(res.code).toBe('err:invalid-node')
 		}
 	})
 
 	it('does not duplicate validation errors for team-column comparisons', () => {
 		// 'NotAFaction' is unmapped for both Faction_1 and Faction_2; only one error should surface
-		const res = getFilterNodeSQLConditions(testCtx(), FB.eq(FB.teamCol('Faction', 'either'), 'NotAFaction'), [], [])
+		const res = LE.lowerFilterNode(testCtx(), FB.eq(FB.teamCol('Faction', 'either'), 'NotAFaction'))
 		expect(res.code).toBe('err:invalid-node')
 		if (res.code === 'err:invalid-node') {
 			expect(res.errors.filter((e) => e.type === 'unmapped-value')).toHaveLength(1)
@@ -157,7 +154,7 @@ describe('getFilterNodeSQLConditions validation', () => {
 			args: [{ type: 'column', column: 'Faction_1' }, { type: 'values', values: [{ type: 'column', column: 'Faction_2' }] }],
 		} as any
 		expect(F.FilterNodeSchema.safeParse(node).success).toBe(true)
-		expect(getFilterNodeSQLConditions(testCtx(), node, [], []).code).toBe('ok')
+		expect(LE.lowerFilterNode(testCtx(), node).code).toBe('ok')
 	})
 
 	it('rejects an `in` list column of a different domain', () => {
@@ -166,7 +163,7 @@ describe('getFilterNodeSQLConditions validation', () => {
 			neg: false,
 			args: [{ type: 'column', column: 'Faction_1' }, { type: 'values', values: [{ type: 'column', column: 'Unit_1' }] }],
 		} as any
-		expect(getFilterNodeSQLConditions(testCtx(), node, [], []).code).toBe('err:invalid-node')
+		expect(LE.lowerFilterNode(testCtx(), node).code).toBe('err:invalid-node')
 	})
 
 	// the subject (arg[0]) must be a column: value-first / all-constant comparisons are unrepresentable in
@@ -177,69 +174,54 @@ describe('getFilterNodeSQLConditions validation', () => {
 		for (const node of [twoConstants, valueFirst]) {
 			expect(F.FilterNodeSchema.safeParse(node).success).toBe(false)
 			expect(F.isValidCompNode(node)).toBe(false)
-			expect(getFilterNodeSQLConditions(testCtx(), node, [], []).code).toBe('err:invalid-node')
+			expect(LE.lowerFilterNode(testCtx(), node).code).toBe('err:invalid-node')
 		}
 	})
 
 	// the four block operators fold the old (and/or) x negation matrix: all=AND, some=OR, none=NOT OR,
-	// notall=NOT AND. verify each compiles to the expected boolean structure.
-	it('compiles block operators to the right and/or/not structure', () => {
+	// notall=NOT AND. verify each lowers to the expected boolean structure.
+	it('lowers block operators to the right and/or/not structure', () => {
 		const kids = [FB.isNull('Map'), FB.isNull('Gamemode')]
-		const sqlFor = (node: F.FilterNode) => {
-			const res = getFilterNodeSQLConditions(testCtx(), node, [], [])
+		const irFor = (node: F.FilterNode) => {
+			const res = LE.lowerFilterNode(testCtx(), node)
 			expect(res.code).toBe('ok')
-			return res.code === 'ok' ? new SQLiteSyncDialect().sqlToQuery(res.condition).sql.toLowerCase() : ''
+			return res.code === 'ok' ? res.ir : null
 		}
-		const all = sqlFor(FB.all(kids))
-		expect(all).toContain(' and ')
-		expect(all).not.toContain('not ')
-
-		const some = sqlFor(FB.some(kids))
-		expect(some).toContain(' or ')
-		expect(some).not.toContain('not ')
-
-		const none = sqlFor(FB.none(kids))
-		expect(none).toContain('not ')
-		expect(none).toContain(' or ')
-
-		const notall = sqlFor(FB.notAll(kids))
-		expect(notall).toContain('not ')
-		expect(notall).toContain(' and ')
+		expect(irFor(FB.all(kids))).toMatchObject({ op: 'and' })
+		expect(irFor(FB.some(kids))).toMatchObject({ op: 'or' })
+		expect(irFor(FB.none(kids))).toMatchObject({ op: 'not', child: { op: 'or' } })
+		expect(irFor(FB.notAll(kids))).toMatchObject({ op: 'not', child: { op: 'and' } })
 	})
 
-	// apply-filter folds its old `neg` into the operator: included-in applies the referenced filter's
-	// condition directly, excluded-from wraps it in NOT.
-	it('compiles apply-filter operators with the right negation', () => {
+	// apply-filter folds its old `neg` into the operator: included-in inlines the referenced filter's condition
+	// directly, excluded-from wraps it in NOT.
+	it('lowers apply-filter operators with the right negation', () => {
 		const ctx = testCtx()
 		ctx.filters.set('ref', { id: 'ref', filter: FB.isNull('Map') } as any)
-		const sqlFor = (node: F.FilterNode) => {
-			const res = getFilterNodeSQLConditions(ctx, node, [], [])
+		const irFor = (node: F.FilterNode) => {
+			const res = LE.lowerFilterNode(ctx, node)
 			expect(res.code).toBe('ok')
-			return res.code === 'ok' ? new SQLiteSyncDialect().sqlToQuery(res.condition).sql.toLowerCase() : ''
+			return res.code === 'ok' ? res.ir : null
 		}
-		expect(sqlFor(FB.includedIn('ref'))).not.toContain('not ')
-		expect(sqlFor(FB.excludedFrom('ref'))).toContain('not ')
+		expect(irFor(FB.includedIn('ref'))).toMatchObject({ op: 'is_null' })
+		expect(irFor(FB.excludedFrom('ref'))).toMatchObject({ op: 'not', child: { op: 'is_null' } })
 	})
 
-	// LayerVersion's enum mapping includes null ("no version"), stored as the enum index (4), not SQL NULL
-	it('eq against null on an enum column that maps null resolves to the enum index, not IS NULL', () => {
-		const res = getFilterNodeSQLConditions(testCtx(), FB.eq('LayerVersion', null), [], [])
+	// LayerVersion's enum mapping includes null ("no version"), stored as the enum index (4), not as SQL NULL
+	it('eq against null on an enum column that maps null resolves to the enum index, not a null test', () => {
+		const res = LE.lowerFilterNode(testCtx(), FB.eq('LayerVersion', null))
 		expect(res.code).toBe('ok')
 		if (res.code === 'ok') {
-			const q = new SQLiteSyncDialect().sqlToQuery(res.condition)
-			expect(q.params).toContain(4) // versions.indexOf(null)
-			expect(q.sql.toLowerCase()).not.toContain('is null')
+			expect(res.ir).toMatchObject({ op: 'eq_val', val: 4 }) // versions.indexOf(null)
 		}
 	})
 
 	it('null in an `in` list on such a column becomes the enum index too', () => {
 		const node = { type: 'in', neg: false, args: [{ type: 'column', column: 'LayerVersion' }, { type: 'values', values: [null] }] } as any
-		const res = getFilterNodeSQLConditions(testCtx(), node, [], [])
+		const res = LE.lowerFilterNode(testCtx(), node)
 		expect(res.code).toBe('ok')
 		if (res.code === 'ok') {
-			const q = new SQLiteSyncDialect().sqlToQuery(res.condition)
-			expect(q.params).toContain(4)
-			expect(q.sql.toLowerCase()).not.toContain('is null')
+			expect(res.ir).toMatchObject({ op: 'in_vals', vals: [4] })
 		}
 	})
 })

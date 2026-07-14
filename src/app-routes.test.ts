@@ -125,10 +125,10 @@ describe('getRouteRegex', () => {
 
 	describe('special regex characters in routes', () => {
 		test('handles routes with dots', () => {
-			const regex = getRouteRegex('/layers.sqlite3')
+			const regex = getRouteRegex('/layers.bin')
 
-			expect(regex.test('/layers.sqlite3')).toBe(true)
-			expect(regex.test('/layersXsqlite3')).toBe(false) // should not match due to literal dot
+			expect(regex.test('/layers.bin')).toBe(true)
+			expect(regex.test('/layersXbin')).toBe(false) // should not match due to literal dot
 		})
 
 		test('handles routes with other special characters', () => {
@@ -296,7 +296,7 @@ describe('getRouteRegex', () => {
 				'/login',
 				'/login/callback',
 				'/logout',
-				'/layers.sqlite3',
+				'/layers.bin',
 				'/orpc',
 			]
 

@@ -2,7 +2,7 @@ import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import type * as SETTINGS from '@/models/settings.models'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base.ts'
-import * as LayerDb from '@/systems/layer-db.server'
+import * as LayerEngine from '@/systems/layer-engine.server'
 import * as Settings from '@/systems/settings.server'
 import * as Rx from 'rxjs'
 import * as Env from './env.ts'
@@ -42,11 +42,11 @@ export function pushPublicConfig() {
 		issuesUrl: ENV.PUBLIC_ISSUES_URL,
 		layerTable: Settings.GLOBAL_SETTINGS.layerTable,
 		layerGeneration: Settings.GLOBAL_SETTINGS.layerGeneration,
-		layersVersion: LayerDb.layersVersion,
+		layersVersion: LayerEngine.layersVersion,
 	})
 }
 
-// called once from main.ts, after LayerDb.setup() and Settings.setup() have resolved. Re-pushes whenever global
+// called once from main.ts, after LayerEngine.setup() and Settings.setup() have resolved. Re-pushes whenever global
 // settings change so `layerTable`/`layerGeneration` edits live-update every client without a restart.
 export function setup() {
 	ENV = envBuilder()

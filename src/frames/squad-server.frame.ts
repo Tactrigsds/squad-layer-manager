@@ -3,11 +3,13 @@ import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
 import * as TeamswapsPrt from '@/frame-partials/teamswaps.partial'
 import type * as FRM from '@/lib/frame'
+import * as ODSM from '@/lib/odsm'
 import * as ZusUtils from '@/lib/zustand'
 
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SETTINGS from '@/models/settings.models'
+import * as SLL from '@/models/shared-layer-list'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
@@ -22,6 +24,10 @@ export type Input = { serverId: string }
 export type State = ChatPrt.Store & ServerSettingsPrt.Store & LayerQueuePrt.Store & TeamswapsPrt.Store & {
 	layerItemsState: LQY.LayerItemsState
 	layerItemStatuses: LQY.LayerItemStatuses | null
+	// the queue the statuses above were computed for. Statuses lag an edit by a debounce plus a query, so a caller that
+	// has to be right about them (the save flow gates on warnings) can tell current answers from stale ones. Display
+	// keeps using the stale ones meanwhile, which is what stops the indicators flickering on every edit.
+	layerItemStatusesFor: LQY.LayerItemsState | null
 }
 export type Types = {
 	name: 'squadServer'
@@ -56,6 +62,7 @@ export const frame = frameManager.createFrame<Types>({
 		args.set({
 			layerItemsState: LQY.initLayerItemsState(),
 			layerItemStatuses: null,
+			layerItemStatusesFor: null,
 		})
 
 		Rx.combineLatest([
@@ -90,10 +97,13 @@ export const frame = frameManager.createFrame<Types>({
 					Rx.from(LayerQueriesClient.fetchLayerItemStatuses({
 						constraints: SETTINGS.getSettingsConstraints(settings),
 						list,
-					})).pipe(Rx.catchError(() => Rx.EMPTY))
+					})).pipe(
+						Rx.map((layerItemStatuses) => [layerItemStatuses, list] as const),
+						Rx.catchError(() => Rx.EMPTY),
+					)
 				),
-			).subscribe((layerItemStatuses) => {
-				if (layerItemStatuses) args.set({ layerItemStatuses })
+			).subscribe(([layerItemStatuses, list]) => {
+				if (layerItemStatuses) args.set({ layerItemStatuses, layerItemStatusesFor: list })
 			}),
 		)
 	},
@@ -112,4 +122,36 @@ export namespace Sel {
 	export function settingsOrDefault(s: State | undefined) {
 		return s?.settings.saved ?? SETTINGS.PublicServerSettingsSchema.parse({})
 	}
+}
+
+// ---------------------------- layer item statuses ----------------------------
+
+export function statusesAreCurrent(state: State) {
+	return state.layerItemStatusesFor === state.layerItemsState
+}
+
+// The warnings the queue would raise if it were saved as it stands: repeat-rule violations and pool-filter warnings on
+// items the user themselves put there. Null means "nothing to warn about", which is also what an unloaded status set
+// reports, so callers that must not skip a warning wait for current statuses first (see awaitCurrentStatuses).
+export function selectQueueWarnings(state: State, userDiscordId: bigint | undefined): LQY.QueueWarning[] | null {
+	const warns = state.layerItemStatuses?.warns
+	if (!warns || warns.length === 0 || !userDiscordId) return null
+	const modifiedByUser = state.queue.isModified
+		&& SLL.hasUserMutations(ODSM.Client.localOps(state.queue.rbSession), state.queue.rbSession.localState, userDiscordId)
+	if (!modifiedByUser) return null
+	return warns
+}
+
+// Statuses lag the queue by a debounce plus a query, so reading them straight after an edit gates the save on warnings
+// computed for a list the user has already edited away from -- which is how a stale warning could both block a save
+// and then vanish, leaving the editor stuck. Wait for the statuses that belong to the queue as it is now.
+export async function awaitCurrentStatuses(key: ZusUtils.AnyStore<State>, timeoutMs = 5000): Promise<void> {
+	if (statusesAreCurrent(ZusUtils.getState(key))) return
+	await Rx.firstValueFrom(
+		ZusUtils.toObservable(key, true).pipe(
+			Rx.filter(([state]) => statusesAreCurrent(state)),
+			// a query that never lands must not strand the editor: fall through and gate on what we have
+			Rx.timeout({ first: timeoutMs, with: () => Rx.of(null) }),
+		),
+	)
 }

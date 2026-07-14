@@ -15,8 +15,19 @@ pnpm exec playwright install chromium
 
 missing=()
 [[ -f .env ]] || missing+=(".env  -- secrets and local overrides; see src/server/env.ts for the schema. The container has no copy and cannot generate one.")
-compgen -G "data/layers_v*.sqlite3.gz" > /dev/null \
-	|| missing+=("data/layers_v*.sqlite3.gz  -- the layer db, a generated artifact. Run \`pnpm preprocess\` (needs network).")
+# the layer query engine is a rust crate compiled to wasm; the app can't build or boot without it
+if command -v cargo > /dev/null; then
+	pnpm run build:engine
+else
+	missing+=("assets/layer-engine.wasm  -- the layer query engine. Install rust, then run \`pnpm build:engine\`.")
+fi
+
+# preprocess writes both, and they're published together: the table the engine reads, and the components that give
+# its encoded values meaning. One without the other is useless.
+compgen -G "data/layers_v*.bin.gz" > /dev/null \
+	|| missing+=("data/layers_v*.bin.gz  -- the layer table, generated. Run \`pnpm preprocess\` (needs network).")
+[[ -f data/layer-data.json ]] \
+	|| missing+=("data/layer-data.json  -- the layer components, generated. Run \`pnpm preprocess\` (needs network).")
 
 if (( ${#missing[@]} )); then
 	echo

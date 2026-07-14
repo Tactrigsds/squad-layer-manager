@@ -36,7 +36,7 @@ export const routes = [
 	defRoute('/login', [], 'custom', { authed: false }),
 	defRoute('/login/callback', [], 'custom', { authed: false }),
 	defRoute('/logout', [], 'custom'),
-	defRoute('/layers.sqlite3', [], 'custom'),
+	defRoute('/layers.bin', [], 'custom'),
 	defRoute('/layer-data.json', [], 'custom'),
 	defRoute('/check-auth', [], 'custom'),
 

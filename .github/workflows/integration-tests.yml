@@ -23,33 +23,37 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # The layer db is a generated artifact and, like production, isn't baked into the image -- it's
-      # mounted at /app/data. It lives on the `layer-db` release (see the Publish Layer DB workflow),
-      # and is cached here so most runs don't re-download it.
-      - name: Restore layer db
-        id: layer-db-cache
+      # The layer table and its components are generated artifacts and, like production, aren't baked into the
+      # image -- they're mounted at /app/data. They live on the `layer-db` release, and are cached here so most
+      # runs don't re-download them.
+      #
+      # The cache key is versioned (-bin): the release used to carry a sqlite db, and a cache entry from that era
+      # would restore a data dir with no layer table in it while still counting as a hit, leaving the app to fail
+      # at boot with the download step skipped.
+      - name: Restore layer table
+        id: layer-table-cache
         uses: actions/cache@v4
         with:
           path: data
-          key: layer-db-${{ vars.LAYERS_VERSION || 'rolling' }}
+          key: layer-table-bin-${{ vars.LAYERS_VERSION || 'rolling' }}
 
-      - name: Download layer db
-        if: steps.layer-db-cache.outputs.cache-hit != 'true'
+      - name: Download layer table
+        if: steps.layer-table-cache.outputs.cache-hit != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p data
-          # both, and from the same publish: the app reads the db and its components together
+          # both, and from the same publish: the table carries encoded values, layer-data.json is what gives them
+          # meaning, and a mismatched pair is worse than a missing one
           gh release download layer-db --dir data --clobber \
-            --pattern 'layers_v*.sqlite3.gz' --pattern 'layer-data.json' \
+            --pattern 'layers_v*.bin.gz' --pattern 'layer-data.json' \
             || {
-              echo "::error::No 'layer-db' release found. Run the 'Publish Layer DB' workflow to create one."
+              echo "::error::No 'layer-db' release found, or it has no layers_v*.bin.gz + layer-data.json. Publish one from \`pnpm preprocess\` output."
               exit 1
             }
-          # decompress here, once, rather than in every app the tests boot: sqlite cannot open a .gz,
-          # so the app would otherwise have to write a decompressed copy into the mount -- and the
-          # mount is read-only precisely so that no test can corrupt what the others are reading
-          gunzip -kf data/layers_v*.sqlite3.gz
+          test -f data/layer-data.json || { echo "::error::release has no layer-data.json"; exit 1; }
+          compgen -G 'data/layers_v*.bin.gz' > /dev/null || { echo "::error::release has no layers_v*.bin.gz"; exit 1; }
+          # the engine gunzips in memory, so the .gz is all the app needs
           ls -la data
 
       - name: Build test image

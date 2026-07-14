@@ -77,8 +77,9 @@ test.describe('generating a vote', () => {
 				// unlisted values weigh LC.DEFAULT_GENERATION_WEIGHT (0.1), so Invasion outweighs every other
 				// gamemode by four orders of magnitude: drawing anything else is a ~0.04% event per choice
 				settings.layerGeneration = {
-					columnOrder: ['Gamemode'],
+					pickOrder: ['Gamemode'],
 					weights: { Gamemode: [{ value: 'Invasion', weight: 1000 }] },
+					matchupWeights: { AllianceMatchup: [], FactionMatchup: [], UnitMatchup: [], FactionUnitMatchup: [] },
 				}
 			},
 			serverSettings: (settings) => {
@@ -99,6 +100,48 @@ test.describe('generating a vote', () => {
 			const choices = dialog.getByRole('listitem')
 			await expect(choices).toHaveCount(3)
 			await expect(choices.filter({ hasText: /_Invasion_v\d/ })).toHaveCount(3)
+		} finally {
+			await app.dispose()
+		}
+	})
+
+	// a matchup weighs the two teams as an unordered pair, which is the half of generation that neither a column
+	// weight nor a filter can express: it has to hold whichever team ends up fielding which faction
+	test('weights the faction matchup it picks, in either team order', async ({ page }) => {
+		const app = await createAppFixture({
+			layerQueue: queue(LAYERS.harjuRaas),
+			globalSettings: (settings) => {
+				settings.layerGeneration = {
+					pickOrder: ['FactionMatchup'],
+					weights: {},
+					matchupWeights: {
+						AllianceMatchup: [],
+						// unlisted pairings weigh LC.DEFAULT_GENERATION_WEIGHT (0.1), so this pairing outweighs every
+						// other one by four orders of magnitude
+						FactionMatchup: [{ teams: ['ADF', 'RGF'], weight: 1000 }],
+						UnitMatchup: [],
+						FactionUnitMatchup: [],
+					},
+				}
+			},
+			serverSettings: (settings) => {
+				settings.queue.mainPool.filters = []
+				settings.queue.mainPool.repeatRules = []
+			},
+		})
+		try {
+			await page.goto(app.loginUrl())
+			await expect(page.getByRole('tab', { name: 'Queue (1)' })).toBeVisible({ timeout: 20_000 })
+
+			await page.getByRole('button', { name: 'Start Editing' }).click()
+			await page.getByRole('button', { name: 'Gen Vote' }).click()
+			const dialog = page.getByRole('dialog', { name: 'Generate Vote' })
+			await dialog.getByRole('button', { name: 'Generate', exact: true }).click()
+
+			const choices = dialog.getByRole('listitem')
+			await expect(choices).toHaveCount(3)
+			// team order is whatever the layer has, so assert on the pairing rather than on which side is which
+			await expect(choices.filter({ hasText: 'ADF' }).filter({ hasText: 'RGF' })).toHaveCount(3)
 		} finally {
 			await app.dispose()
 		}

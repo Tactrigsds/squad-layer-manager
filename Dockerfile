@@ -1,3 +1,11 @@
+# Engine stage - compile the layer query engine to wasm. One artifact serves both the browser worker and the server.
+FROM rust:1.90-slim AS layer-engine
+WORKDIR /layer-engine
+RUN rustup target add wasm32-unknown-unknown
+COPY layer-engine/Cargo.toml layer-engine/rust-toolchain.toml ./
+COPY layer-engine/src ./src
+RUN cargo build --release --target wasm32-unknown-unknown
+
 # Build stage - compile frontend and backend
 FROM node:24.18.0 AS builder
 LABEL org.opencontainers.image.description="A squad server admin tool focused on managing upcoming layers"
@@ -17,6 +25,9 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 # Copy source code
 COPY . .
+
+# the worker bundles the engine wasm as an asset, so it has to exist before the client build
+COPY --from=layer-engine /layer-engine/target/wasm32-unknown-unknown/release/layer_engine.wasm ./assets/layer-engine.wasm
 
 # Set build environment
 ENV NODE_ENV=production
@@ -55,6 +66,9 @@ COPY --from=builder /app/dist-server ./dist-server
 # Registers the OTel import-in-the-middle loader hook; `server:prod` loads it via `node --import`.
 # Without it the auto-instrumentations load but patch nothing (see register-otel.mjs).
 COPY --from=builder /app/register-otel.mjs ./register-otel.mjs
+
+# the server instantiates the same engine the browser does, and reads the wasm off disk
+COPY --from=builder /app/assets/layer-engine.wasm ./assets/layer-engine.wasm
 
 # Copy necessary runtime files
 COPY --from=builder /app/drizzle-sqlite ./drizzle-sqlite
@@ -103,8 +117,8 @@ RUN pnpm exec playwright install --with-deps chromium-headless-shell
 # drive the deployed bundle rather than the source: the point of testing in this image is that it is
 # the image
 ENV SLM_TEST_SERVER_ENTRY=dist-server/main-instrumented.js
-# the layer db is not baked in (it isn't in production either): mount /app/data, as the deployment
-# does. The path is left to the harness, which prefers an already-decompressed db so that the mount
-# can be read-only -- sqlite cannot open a .gz, and the app would otherwise decompress a copy into it.
+# the layer table is not baked in (it isn't in production either): mount /app/data, as the deployment
+# does. The engine gunzips the artifact into wasm memory, so the mount can be read-only: nothing is
+# written back into it.
 
 CMD ["pnpm", "run", "test:ci"]

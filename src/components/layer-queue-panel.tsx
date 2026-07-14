@@ -9,17 +9,15 @@ import { CardDescription } from '@/components/ui/card'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
-import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
+import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
-import * as ODSM from '@/lib/odsm'
 import { cn } from '@/lib/utils.ts'
 
 import * as ZusUtils from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 
-import * as SLL from '@/models/shared-layer-list'
 import * as UP from '@/models/user-presence'
 import * as RBAC from '@/rbac.models.ts'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
@@ -190,27 +188,11 @@ function ValidationWarningsDisplay(
 }
 
 function useQueueWarnings(stores: SquadServerFrame.KeyProp) {
-	const warns = ZusUtils.useStore(stores.squadServer, s => s.layerItemStatuses?.warns)
 	const loggedInUser = UsersClient.useLoggedInUser()
-	const queueModifiedByUser = ZusUtils.useStore(
+	return ZusUtils.useStore(
 		stores.squadServer!,
-		s =>
-			s.queue.isModified && !!loggedInUser && SLL.hasUserMutations(
-				ODSM.Client.localOps(s.queue.rbSession),
-				s.queue.rbSession.localState,
-				loggedInUser.discordId,
-			),
+		ZusUtils.useShallow((s) => SquadServerFrame.selectQueueWarnings(s, loggedInUser?.discordId)),
 	)
-
-	return React.useMemo(() => {
-		// null, not an empty array: the save flow gates on this being non-null, so a queue with nothing to warn
-		// about has to be indistinguishable from one whose statuses haven't loaded
-		if (!warns || warns.length === 0 || !queueModifiedByUser) return null
-		return warns
-	}, [
-		warns,
-		queueModifiedByUser,
-	])
 }
 
 // type QueueErrorWithDetails =
@@ -222,7 +204,8 @@ type QueueControlPanelProps = {
 }
 
 function QueueControlPanel(props: QueueControlPanelProps) {
-	const { warnings, showWarnings, setShowWarnings } = props
+	const { showWarnings, setShowWarnings } = props
+	const loggedInUser = UsersClient.useLoggedInUser()
 	// const isEditing = UPClient.useIsEditing()
 	const [isEditing, setIsEditing] = UPClient.useEditingQueueState(props.stores.squadServer!.serverId)
 	const numEditors = ZusUtils.useStore(UPClient.Store, state => state.editors.size)
@@ -233,7 +216,15 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			setIsEditing(true)
 			setShowWarnings(false)
 		} else {
-			if (warnings && !showWarnings && !forceSave) {
+			// statuses lag an edit by a debounce plus a query, so the warnings in this closure can belong to a queue the
+			// user has already edited away from. Gating on those both blocks a save that shouldn't be blocked and drops
+			// the acknowledgement when the real statuses land.
+			await SquadServerFrame.awaitCurrentStatuses(props.stores.squadServer!)
+			const currentWarnings = SquadServerFrame.selectQueueWarnings(
+				ZusUtils.getState(props.stores.squadServer!),
+				loggedInUser?.discordId,
+			)
+			if (currentWarnings && !showWarnings && !forceSave) {
 				setShowWarnings(true)
 				return
 			}

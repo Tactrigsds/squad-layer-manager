@@ -1,19 +1,17 @@
+import engineWasmUrl from '$root/assets/layer-engine.wasm?url'
 import * as AR from '@/app-routes'
 import { acquireInBlock } from '@/lib/async'
 import * as CS from '@/models/context-shared'
 import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
-import type { LayerDb } from '@/models/layer-db'
 import type * as LQY from '@/models/layer-queries.models'
 import * as ATTRS from '@/models/otel-attrs'
+import { LayerEngine } from '@/systems/layer-engine.shared'
 import { queries, type QueryLayersResponsePart, queryLayersStreamed } from '@/systems/layer-queries.shared'
 import { baseLogger } from '@/systems/logger.client'
 import { Mutex } from 'async-mutex'
-import { drizzle } from 'drizzle-orm/sql-js'
-import initSqlJs from 'sql.js'
 // must match the loader variant the bundler resolves for 'sql.js' (browser export condition)
-import sqlJsWasmUrl from 'sql.js/dist/sql-wasm-browser.wasm?url'
 
 export type ToWorker = RequestInner & Sequenced & Prioritized
 
@@ -91,7 +89,7 @@ export type Prioritized = {
 }
 
 type State = {
-	ctx: CS.LayerDb & CS.Log & CS.LayerGeneration
+	ctx: CS.LayerEngine & CS.Log & CS.LayerGeneration
 	filters: Map<string, F.FilterEntity>
 }
 
@@ -134,30 +132,27 @@ onmessage = withErrorResponse(async (e) => {
 		post({ type: 'queryLayers', payload: { code: 'end' } })
 		return
 	}
-	const response = (await queries[msg.type]({ ctx: queryCtx, input: msg.input as any })) as OtherQueryResponse
-	post({ type: msg.type, payload: response } as any)
+	const payload = await queries[msg.type]({ ctx: queryCtx, input: msg.input as any })
+	post({ type: msg.type, payload } as unknown as OtherQueryResponse)
 })
 
 async function init(initRequest: InitRequest) {
 	L.setLayerData(initRequest.input.layerData)
-	const SQL = await initSqlJs({ locateFile: () => sqlJsWasmUrl })
 
-	const buffer = await fetchDatabaseBuffer()
-	const driver = new SQL.Database(new Uint8Array(buffer))
-	const db = drizzle(driver, {
-		logger: {
-			logQuery(query, params) {
-				log.debug({ params }, 'LDB: %s', query)
-			},
-		},
-	}) as unknown as LayerDb
+	const [wasm, artifact] = await Promise.all([
+		fetch(engineWasmUrl).then((res) => res.arrayBuffer()),
+		fetchLayerArtifact(),
+	])
+	const engine = await LayerEngine.create(wasm, new Uint8Array(artifact))
+	log.info('layer engine ready: %s layers', engine.rowCount)
+
 	state = {
 		ctx: {
 			...CS.init(),
 			effectiveColsConfig: LC.getEffectiveColumnConfig(),
 			generationConfig: initRequest.input.generationConfig,
 			log,
-			layerDb: () => db,
+			engine,
 		},
 		filters: initRequest.input.filters,
 	}
@@ -181,7 +176,7 @@ function withErrorResponse<Msg extends { type: string } & Sequenced>(cb: (e: { d
 	}
 }
 
-async function fetchDatabaseBuffer() {
+async function fetchLayerArtifact() {
 	try {
 		// Check if SharedArrayBuffer is available
 		if (typeof SharedArrayBuffer === 'undefined') {
@@ -189,15 +184,15 @@ async function fetchDatabaseBuffer() {
 		}
 
 		const opfsRoot = await navigator.storage.getDirectory()
-		const dbFileName = 'layers.sqlite3'
-		const hashFileName = 'layers.sqlite3.hash'
+		const artifactFileName = 'layers.bin'
+		const hashFileName = 'layers.bin.hash'
 
 		let dbHandle: FileSystemFileHandle
 		let hashHandle: FileSystemFileHandle
 		let storedHash: string | null = null
 
 		try {
-			const dbHandlePromise = opfsRoot.getFileHandle(dbFileName).then(handle => {
+			const dbHandlePromise = opfsRoot.getFileHandle(artifactFileName).then(handle => {
 				return handle
 			})
 			const hashHandlePromise = opfsRoot.getFileHandle(hashFileName).then(handle => {
@@ -209,14 +204,14 @@ async function fetchDatabaseBuffer() {
 			;[dbHandle, hashHandle, storedHash] = await Promise.all([dbHandlePromise, hashHandlePromise, storedHashPromise])
 		} catch {
 			;[dbHandle, hashHandle] = await Promise.all([
-				opfsRoot.getFileHandle(dbFileName, { create: true }),
+				opfsRoot.getFileHandle(artifactFileName, { create: true }),
 				opfsRoot.getFileHandle(hashFileName, { create: true }),
 			])
 		}
 
 		const headers = storedHash ? { 'If-None-Match': storedHash } : undefined
 
-		const res = await fetch(AR.link('/layers.sqlite3'), { headers })
+		const res = await fetch(AR.link('/layers.bin'), { headers })
 
 		let buffer: ArrayBuffer
 
