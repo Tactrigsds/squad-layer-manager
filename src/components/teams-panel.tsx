@@ -1,6 +1,6 @@
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import * as ChatPrt from '@/frame-partials/chat.partial'
-import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useIsDesktopSize } from '@/lib/browser'
 import * as DH from '@/lib/display-helpers'
 import * as MapUtils from '@/lib/map'
@@ -20,13 +20,12 @@ import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
-import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswaps.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
 
 import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table'
-import type { CellContext, ColumnDef, ColumnHelper, HeaderContext, Row, SortingState } from '@tanstack/react-table'
+import type { CellContext, ColumnDef, ColumnHelper, HeaderContext, OnChangeFn, Row, RowSelectionState, SortingState } from '@tanstack/react-table'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import PlayerBulkContextMenuOptions from './player-bulk-context-menu-options'
@@ -89,7 +88,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 	)
 	const [searchQuery, setSearchQuery] = React.useState('')
 	const [showSelected, setShowSelected] = React.useState(false)
-	const selectedCount = ZusUtils.useStore(SquadServerClient.PlayerSelectionStore, s => Object.values(s.selection).filter(Boolean).length)
+	const selectedCount = ZusUtils.useStore(props.stores.squadServer!, SquadServerFrame.Sel.selectedPlayerCount)
 	const showSelectedId = React.useId()
 	React.useEffect(() => {
 		if (selectedCount === 0 && showSelected) setShowSelected(false)
@@ -136,7 +135,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 		[allPlayersA, allPlayersB],
 	)
 	const resetAll = () => {
-		SquadServerClient.Actions.setSelection({})
+		SquadServerFrame.Actions.setSelection(props.stores, {})
 		setSearchQuery('')
 		setAdminsOnly(false)
 		setRoleFilter(null)
@@ -217,7 +216,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 								.filter((_, i) => matched.has(i))
 								.map(p => SM.PlayerIds.getPlayerId(p.ids))
 							// additive, like every other selection action -- merge matches into the current selection
-							SquadServerClient.Actions.selectPlayers(matchedIds)
+							SquadServerFrame.Actions.selectPlayers(props.stores, matchedIds)
 						}}
 					/>
 					<div className="flex items-center gap-2 justify-center">
@@ -439,8 +438,7 @@ function shiftClickCellProps(
 				if ((e.target as HTMLElement).closest('[data-select-squad-leaders]')) return
 				e.preventDefault()
 				e.stopPropagation()
-				const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
-				SquadServerClient.Actions.selectSquad(SM.PlayerIds.getPlayerId(player.ids), players)
+				SquadServerFrame.Actions.selectSquad(stores, SM.PlayerIds.getPlayerId(player.ids))
 			},
 		}
 	}
@@ -452,7 +450,7 @@ function shiftClickCellProps(
 				if (!e.shiftKey) return
 				e.preventDefault()
 				e.stopPropagation()
-				SquadServerClient.Actions.selectAllWithRole(stores, role, e.ctrlKey ? undefined : player.teamId ?? undefined)
+				SquadServerFrame.Actions.selectAllWithRole(stores, role, e.ctrlKey ? undefined : player.teamId ?? undefined)
 			},
 		}
 	}
@@ -464,7 +462,7 @@ function shiftClickCellProps(
 				if (!e.shiftKey) return
 				e.preventDefault()
 				e.stopPropagation()
-				SquadServerClient.Actions.selectGrouping(stores, grouping, e.ctrlKey ? undefined : player.teamId ?? undefined)
+				SquadServerFrame.Actions.selectGrouping(stores, grouping, e.ctrlKey ? undefined : player.teamId ?? undefined)
 			},
 		}
 	}
@@ -895,7 +893,7 @@ function SquadCell(
 						if (!e.shiftKey) return
 						e.preventDefault()
 						e.stopPropagation()
-						SquadServerClient.Actions.selectAllSquadLeaders(stores, e.ctrlKey ? undefined : teamId)
+						SquadServerFrame.Actions.selectAllSquadLeaders(stores, e.ctrlKey ? undefined : teamId)
 					}}
 				>
 					(SL)
@@ -989,12 +987,12 @@ const teamPlayerColumns: ColumnDef<TeamsPanelModels.EnrichedPlayer, any>[] = [
 					onClick={e => {
 						if (e.altKey) {
 							e.preventDefault()
-							SquadServerClient.Actions.invertSelection(stores, e.ctrlKey ? undefined : teamId)
+							SquadServerFrame.Actions.invertSelection(stores, e.ctrlKey ? undefined : teamId)
 							return
 						}
 						if (!e.shiftKey) return
 						e.preventDefault()
-						SquadServerClient.Actions.selectAllTeamPlayers(stores, e.ctrlKey ? undefined : teamId)
+						SquadServerFrame.Actions.selectAllTeamPlayers(stores, e.ctrlKey ? undefined : teamId)
 					}}
 					title="Select all shown. Shift+click: select all on this team. Shift+Ctrl+click: both teams. Alt+click: invert selection on this team. Alt+Ctrl+click: invert on both teams"
 					aria-label="Select all"
@@ -1033,12 +1031,12 @@ const combinedPlayerColumns: ColumnDef<CombinedPlayer, any>[] = [
 					onClick={e => {
 						if (e.altKey) {
 							e.preventDefault()
-							SquadServerClient.Actions.invertSelection(stores)
+							SquadServerFrame.Actions.invertSelection(stores)
 							return
 						}
 						if (!e.shiftKey) return
 						e.preventDefault()
-						SquadServerClient.Actions.selectAllTeamPlayers(stores)
+						SquadServerFrame.Actions.selectAllTeamPlayers(stores)
 					}}
 					title="Select all shown. Shift+click: select all players on both teams. Alt+click: invert selection"
 					aria-label="Select all"
@@ -1155,18 +1153,20 @@ function SquadGroupHeaderRow(props: {
 	stores: SquadServerFrame.KeyProp
 }) {
 	const selectedCount = ZusUtils.useStore(
-		SquadServerClient.PlayerSelectionStore,
-		s => props.playerIds.filter(id => s.selection[id]).length,
+		props.stores.squadServer!,
+		(s: SquadServerFrame.State) => props.playerIds.filter(id => SquadServerFrame.Sel.playerSelection(s)[id]).length,
 	)
 	const allSelected = props.playerIds.length > 0 && selectedCount === props.playerIds.length
 	const someSelected = selectedCount > 0 && !allSelected
 	const toggle = (checked: boolean) => {
-		const current = { ...SquadServerClient.PlayerSelectionStore.getState().selection }
-		for (const id of props.playerIds) {
-			if (checked) current[id] = true
-			else delete current[id]
-		}
-		SquadServerClient.Actions.setSelection(current)
+		SquadServerFrame.Actions.setSelection(props.stores, current => {
+			const next = { ...current }
+			for (const id of props.playerIds) {
+				if (checked) next[id] = true
+				else delete next[id]
+			}
+			return next
+		})
 	}
 	// clicking anywhere on the header row toggles the whole squad's selection (interactive children like
 	// the squad-details button and checkbox stop propagation so they keep their own behavior)
@@ -1248,9 +1248,13 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	enableSquadGroups?: boolean
 	className?: string
 }) {
-	const rowSelection = ZusUtils.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
+	const rowSelection = ZusUtils.useStore(props.stores.squadServer!, SquadServerFrame.Sel.playerSelection)
 	const savedSwaps = ZusUtils.useStore(props.stores.squadServer!, s => TSWClient.Sel.localState(s).savedSwaps)
-	const setRowSelection = SquadServerClient.Actions.setSelection
+	const stores = props.stores
+	const setRowSelection: OnChangeFn<RowSelectionState> = React.useCallback(
+		updater => SquadServerFrame.Actions.setSelection(stores, updater),
+		[stores],
+	)
 	const mouseDownRef = React.useRef<{ index: number; originalSelected: boolean } | null>(null)
 	const { sorting, setSorting } = props
 	const [statsMetric, setStatsMetric] = React.useState<StatsSortMetric>('kills')
@@ -1289,9 +1293,9 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	const visibleKey = React.useId()
 	const displayedIds = React.useMemo(() => props.data.map(p => SM.PlayerIds.getPlayerId(p.ids)), [props.data])
 	React.useEffect(() => {
-		SquadServerClient.VisiblePlayersActions.setVisible(visibleKey, displayedIds)
-	}, [visibleKey, displayedIds])
-	React.useEffect(() => () => SquadServerClient.VisiblePlayersActions.clearVisible(visibleKey), [visibleKey])
+		SquadServerFrame.Actions.setVisiblePlayers(stores, visibleKey, displayedIds)
+	}, [stores, visibleKey, displayedIds])
+	React.useEffect(() => () => SquadServerFrame.Actions.clearVisiblePlayers(stores, visibleKey), [stores, visibleKey])
 	const headersRef = React.useRef<HTMLTableSectionElement | null>(null)
 
 	const renderPlayerRow = (row: Row<T>, visibleIndex: number) => {
@@ -1319,18 +1323,20 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 							const md = mouseDownRef.current
 							if (!md) return
 							const [lo, hi] = [Math.min(md.index, visibleIndex), Math.max(md.index, visibleIndex)]
-							const current = { ...SquadServerClient.PlayerSelectionStore.getState().selection }
-							for (let i = lo; i <= hi; i++) {
-								const p = rows[i]?.original
-								if (!p) continue
-								const pid = SM.PlayerIds.getPlayerId(p.ids)
-								if (md.originalSelected) {
-									current[pid] = true
-								} else {
-									delete current[pid]
+							setRowSelection(current => {
+								const next = { ...current }
+								for (let i = lo; i <= hi; i++) {
+									const p = rows[i]?.original
+									if (!p) continue
+									const pid = SM.PlayerIds.getPlayerId(p.ids)
+									if (md.originalSelected) {
+										next[pid] = true
+									} else {
+										delete next[pid]
+									}
 								}
-							}
-							setRowSelection(current)
+								return next
+							})
 							mouseDownRef.current = { index: visibleIndex, originalSelected: md.originalSelected }
 						}}
 					>
@@ -1436,7 +1442,7 @@ function TeamPlayerTable(
 		stores: SquadServerFrame.KeyProp
 	},
 ) {
-	const rowSelection = ZusUtils.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
+	const rowSelection = ZusUtils.useStore(props.stores.squadServer!, SquadServerFrame.Sel.playerSelection)
 	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
 	const matchId = match?.historyEntryId ?? 0
 	const groupingColorByLabel = useGroupingColorByLabel()
@@ -1526,7 +1532,7 @@ function CombinedPlayerTable(
 		stores: SquadServerFrame.KeyProp
 	},
 ) {
-	const rowSelection = ZusUtils.useStore(SquadServerClient.PlayerSelectionStore, s => s.selection)
+	const rowSelection = ZusUtils.useStore(props.stores.squadServer!, SquadServerFrame.Sel.playerSelection)
 	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
 	const matchId = match?.historyEntryId ?? 0
 	const groupingColorByLabel = useGroupingColorByLabel()

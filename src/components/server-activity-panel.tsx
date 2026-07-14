@@ -10,10 +10,11 @@ import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import { cn } from '@/lib/utils.ts'
 
 import * as ChatPrt from '@/frame-partials/chat.partial'
-import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as ZusUtils from '@/lib/zustand'
 import * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
+import type * as SM from '@/models/squad.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex.ts'
 import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
@@ -83,6 +84,14 @@ function ServerChatEvents(
 	const loaderZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 	const scrollToBottomZIndex = loaderZIndex - 1
 
+	// the selected-players filter has nothing to match against until the teams panel has a selection, so the feed is
+	// reduced to the pinned match markers. say why rather than looking broken
+	const noPlayersSelected = ZusUtils.useStore(
+		props.stores.squadServer!,
+		(s: SquadServerFrame.State) =>
+			s.chat.secondaryFilterState === 'SELECTED_PLAYERS' && SquadServerFrame.Sel.settledSelectedPlayerIds(s).size === 0,
+	)
+
 	return (
 		<div className={cn(props.className, 'h-full relative @container')}>
 			{!synced && selectedMatchOrdinal === null && (
@@ -111,7 +120,12 @@ function ServerChatEvents(
 			<ScrollArea ref={scrollAreaRef} className="h-full">
 				{/* it's important that the only things which can significantly resize the scrollarea are in this container, otherwise the autoscroll will break */}
 				<div ref={eventsContainerRef} className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">
-					{props.filteredEvents && props.filteredEvents.length === 0 && (
+					{noPlayersSelected && (
+						<div className="text-muted-foreground text-sm text-center py-8">
+							No players selected. Select players in the teams panel to filter the feed.
+						</div>
+					)}
+					{!noPlayersSelected && props.filteredEvents && props.filteredEvents.length === 0 && (
 						<div className="text-muted-foreground text-sm text-center py-8">
 							No events yet for {selectedMatchOrdinal === null ? 'current match' : 'this match'}
 						</div>
@@ -233,42 +247,54 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 
 	// Event filtering logic
 	const prevState = React.useRef<
-		{ eventGeneration: number; filteredEvents: CHAT.EventEnriched[]; eventFilterState: CHAT.SecondaryFilterState; matchId: number } | null
+		| {
+			eventGeneration: number
+			filteredEvents: CHAT.EventEnriched[]
+			eventFilterState: CHAT.SecondaryFilterState
+			selectedPlayerIds: ReadonlySet<SM.PlayerId>
+			matchId: number
+		}
+		| null
 	>(null)
 	const prevHistoricalState = React.useRef<
 		| {
 			selectedMatchOrdinal: number
 			filteredEvents: CHAT.EventEnriched[]
 			eventFilterState: CHAT.SecondaryFilterState
+			selectedPlayerIds: ReadonlySet<SM.PlayerId>
 			eventsVersion: any
 		}
 		| null
 	>(null)
 
 	const eventFilterState = ZusUtils.useStore(stores.squadServer!, s => s.chat.secondaryFilterState)
+	const selectedPlayerIds = ZusUtils.useStore(stores.squadServer!, SquadServerFrame.Sel.settledSelectedPlayerIds)
 
 	const filteredEvents = React.useMemo(() => {
 		// If viewing a historical match, use the historical query data
 		if (selectedMatchOrdinal !== null) {
 			if (!historicalEventsQuery.data?.events) return null
 
-			// Cache check for historical events
+			// Cache check for historical events. the selection only enters the filter under SELECTED_PLAYERS, so
+			// selection churn doesn't invalidate the other filters
 			if (
 				prevHistoricalState.current?.selectedMatchOrdinal === selectedMatchOrdinal
 				&& prevHistoricalState.current?.eventFilterState === eventFilterState
 				&& prevHistoricalState.current?.eventsVersion === historicalEventsQuery.data
+				&& (eventFilterState !== 'SELECTED_PLAYERS' || prevHistoricalState.current.selectedPlayerIds === selectedPlayerIds)
 			) {
 				return prevHistoricalState.current.filteredEvents
 			}
 
 			const filtered = historicalEventsQuery.data.events.filter((event: CHAT.EventEnriched) =>
-				!CHAT.isEventFilteredBySecondary(event, eventFilterState)
+				CHAT.showEventInFeed(event, eventFilterState, { selectedPlayerIds })
 			)
 
 			prevHistoricalState.current = {
 				selectedMatchOrdinal,
 				filteredEvents: filtered,
 				eventFilterState,
+				selectedPlayerIds,
 				eventsVersion: historicalEventsQuery.data,
 			}
 			return filtered
@@ -276,7 +302,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 
 		// Otherwise use live event buffer - handled by separate selector below
 		return null
-	}, [selectedMatchOrdinal, historicalEventsQuery.data, eventFilterState])
+	}, [selectedMatchOrdinal, historicalEventsQuery.data, eventFilterState, selectedPlayerIds])
 
 	const liveFilteredEvents = ZusUtils.useStore(
 		stores.squadServer!,
@@ -284,28 +310,32 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 			if (selectedMatchOrdinal !== null) return null // Using historical events instead
 			if (!s.chat.chatState.synced || displayMatch?.historyEntryId === undefined) return null
 
+			const eventFilterState = s.chat.secondaryFilterState
+			const selectedPlayerIds = SquadServerFrame.Sel.settledSelectedPlayerIds(s)
+
 			// we have all of this ceremony to prevent having to reallocate the event buffer array every time it's modified. maybe a bit excessive :shrug:
 			if (
 				displayMatch?.historyEntryId === prevState.current?.matchId
 				&& s.chat.eventGeneration === prevState.current?.eventGeneration
-				&& s.chat.secondaryFilterState === prevState.current.eventFilterState
+				&& eventFilterState === prevState.current.eventFilterState
+				&& (eventFilterState !== 'SELECTED_PLAYERS' || prevState.current.selectedPlayerIds === selectedPlayerIds)
 			) {
 				return prevState.current?.filteredEvents
 			}
 
-			const eventFilterState = s.chat.secondaryFilterState
 			const eventBuffer = s.chat.chatState.eventBuffer
 			const filtered: CHAT.EventEnriched[] = []
 			for (const event of eventBuffer) {
 				if (event.matchId !== displayMatch?.historyEntryId) continue
-				if (!CHAT.isEventFilteredBySecondary(event, eventFilterState)) {
+				if (CHAT.showEventInFeed(event, eventFilterState, { selectedPlayerIds })) {
 					filtered.push(event)
 				}
 			}
 			prevState.current = {
 				eventGeneration: s.chat.eventGeneration,
 				filteredEvents: filtered,
-				eventFilterState: s.chat.secondaryFilterState,
+				eventFilterState,
+				selectedPlayerIds,
 				matchId: displayMatch?.historyEntryId,
 			}
 			return filtered

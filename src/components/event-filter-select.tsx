@@ -1,23 +1,20 @@
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import type * as CHAT from '@/models/chat.models'
+import * as CHAT from '@/models/chat.models'
 
 import * as Icons from 'lucide-react'
-
-const labels: Record<CHAT.SecondaryFilterState, string> = {
-	ALL: 'All',
-	DEFAULT: 'Default',
-	CHAT: 'Chat Only',
-	ADMIN: 'Admin Only',
-}
 
 export default function EventFilterSelect(props: {
 	value: CHAT.SecondaryFilterState
 	onValueChange: (value: CHAT.SecondaryFilterState) => void
+	// defaults to every filter. pass a subset to hide filters that don't apply to the containing view
+	options?: CHAT.SecondaryFilterState[]
 	variant?: 'default' | 'outline' | 'ghost' | 'link'
 	open?: boolean
 	onOpenChange?: (open: boolean) => void
 }) {
+	const labels = CHAT.SECONDARY_FILTER_LABELS
+	const options = props.options ?? (Object.keys(labels) as CHAT.SecondaryFilterState[])
 	return (
 		<DropdownMenu open={props.open} onOpenChange={props.onOpenChange}>
 			<DropdownMenuTrigger asChild>
@@ -29,9 +26,9 @@ export default function EventFilterSelect(props: {
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end">
 				<DropdownMenuRadioGroup value={props.value} onValueChange={props.onValueChange as (value: string) => void}>
-					{Object.entries(labels).map(([key, label]) => (
-						<DropdownMenuRadioItem key={key} value={key}>
-							{label}
+					{options.map((option) => (
+						<DropdownMenuRadioItem key={option} value={option}>
+							{labels[option]}
 						</DropdownMenuRadioItem>
 					))}
 				</DropdownMenuRadioGroup>

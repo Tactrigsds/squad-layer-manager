@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
@@ -15,8 +15,6 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 type Channel = 'warn-admins' | 'broadcast' | 'warn-selected'
-
-const hasSelection = (selection: Record<string, boolean>) => Object.values(selection).some(Boolean)
 
 // broadcast matches CHANNEL_STYLES.Broadcast in server-event.tsx (yellow-500); warn-selected gets orange as a
 // "targeted warn" accent distinct from both
@@ -45,7 +43,7 @@ const CHANNEL_CFG: Record<Channel, {
 
 export default function ServerChatBox({ stores }: { stores: SquadServerFrame.KeyProp }) {
 	const serverId = stores.squadServer.serverId
-	const initialChannel: Channel = hasSelection(SquadServerClient.PlayerSelectionStore.getState().selection)
+	const initialChannel: Channel = SquadServerFrame.Sel.hasSelection(ZusUtils.getState(stores.squadServer))
 		? 'warn-selected'
 		: 'warn-admins'
 	const [channel, setChannel] = React.useState<Channel>(initialChannel)
@@ -73,20 +71,17 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 	// follow the teams-panel selection: empty -> non-empty picks "Selected", the reverse falls back to "Admins".
 	// broadcast is a deliberate choice, so leave it alone.
 	React.useEffect(() =>
-		SquadServerClient.PlayerSelectionStore.subscribe((state, prev) => {
-			const now = hasSelection(state.selection)
-			if (now === hasSelection(prev.selection)) return
+		ZusUtils.resolveReadStore(stores.squadServer).subscribe((state, prev) => {
+			const now = SquadServerFrame.Sel.hasSelection(state)
+			if (now === SquadServerFrame.Sel.hasSelection(prev)) return
 			if (channel === 'broadcast') return
 			selectChannel(now ? 'warn-selected' : 'warn-admins')
-		}), [channel])
+		}), [channel, stores.squadServer])
 
 	const username = UsersClient.useLoggedInUser()?.displayName
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
 	const broadcastDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:broadcast'))
-	const selectedCount = ZusUtils.useStore(
-		SquadServerClient.PlayerSelectionStore,
-		s => Object.values(s.selection).filter(Boolean).length,
-	)
+	const selectedCount = ZusUtils.useStore(stores.squadServer, SquadServerFrame.Sel.selectedPlayerCount)
 
 	const warnAdminsMutation = SquadServerClient.useWarnAdminsMutation()
 	const broadcastMutation = SquadServerClient.useBroadcastMutation()
@@ -110,8 +105,7 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 			} else if (channel === 'broadcast') {
 				res = await broadcastMutation.mutateAsync({ serverId, message: composed })
 			} else {
-				const selection = SquadServerClient.PlayerSelectionStore.getState().selection
-				const playerIds = Object.keys(selection).filter(id => selection[id])
+				const playerIds = [...SquadServerFrame.Sel.selectedPlayerIds(ZusUtils.getState(stores.squadServer))]
 				if (playerIds.length === 0) return
 				res = await warnPlayersMutation.mutateAsync({ serverId, playerIds, reason: composed })
 			}

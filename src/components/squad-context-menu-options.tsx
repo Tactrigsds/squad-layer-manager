@@ -1,5 +1,5 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
-import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
 import type * as AAR from '@/models/admin-action-reasons.models'
@@ -347,8 +347,7 @@ export function SquadMenuItems(
 				onClick={() => {
 					if (squadPlayerIds.length === 0) return
 					TSWClient.Actions.ensureViewingTeams(serverId)
-					const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer)).players
-					SquadServerClient.Actions.selectSquad(squadPlayerIds[0], players)
+					SquadServerFrame.Actions.selectSquad(stores, squadPlayerIds[0])
 				}}
 			>
 				<span title="Shortcut: shift+click the Squad cell in the teams panel">Select Squad</span>
