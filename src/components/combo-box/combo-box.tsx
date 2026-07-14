@@ -18,6 +18,11 @@ export type ComboBoxProps<T extends string | null = string | null> = {
 	title: string
 	// text shown on the trigger when nothing is selected; defaults to `Select {title}...`
 	placeholder?: string
+	// placeholder inside the search input; defaults to `Search...`
+	searchPlaceholder?: string
+	// shown when the option list is empty; defaults to `No {title} found.`. Useful for search-driven pickers that want a
+	// "type to search" hint before any query is entered.
+	emptyMessage?: React.ReactNode
 	inputValue?: string
 	setInputValue?: (value: string) => void
 	value: T | undefined
@@ -131,9 +136,14 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 				}
 				{open && (
 					<Command shouldFilter={!props.setInputValue}>
-						<CommandInput ref={inputRef} placeholder="Search..." value={props.inputValue} onValueChange={props.setInputValue} />
+						<CommandInput
+							ref={inputRef}
+							placeholder={props.searchPlaceholder ?? 'Search...'}
+							value={props.inputValue}
+							onValueChange={props.setInputValue}
+						/>
 						<CommandList>
-							<CommandEmpty>No {props.title} found.</CommandEmpty>
+							<CommandEmpty>{props.emptyMessage ?? `No ${props.title} found.`}</CommandEmpty>
 							<CommandGroup>
 								{options === LOADING && (
 									<CommandItem>
