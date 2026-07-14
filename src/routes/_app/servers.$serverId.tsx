@@ -27,7 +27,7 @@ export const Route = createFileRoute('/_app/servers/$serverId')({
 
 	head: ({ loaderData }) => ({
 		meta: [
-			{ title: loaderData?.displayName ? `${loaderData?.displayName} - SLM` : undefined },
+			{ title: loaderData?.displayName ? `SLM - ${loaderData?.displayName}` : undefined },
 		],
 	}),
 

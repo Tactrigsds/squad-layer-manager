@@ -24,7 +24,7 @@ export const Route = createFileRoute('/layers/$layerId/$tab')({
 	},
 	head: ({ match }) => ({
 		meta: [
-			{ title: DH.displayLayer(match.context.layer) + ' - SLM' },
+			{ title: 'SLM - ' + DH.displayLayer(match.context.layer) },
 		],
 	}),
 	caseSensitive: true,

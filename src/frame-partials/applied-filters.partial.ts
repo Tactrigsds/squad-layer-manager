@@ -34,22 +34,38 @@ export function initAppliedFiltersStore(
 	args: Args,
 ) {
 	const set = ZusUtils.toPartialSetter(args.set, 'appliedFilters')
-	const { filterStates, indicatedFilters } = getInitialFilterStates(args.input.poolDefaultDisabled, args.get().squadServer)
-	if (args.sub.closed) return
 	set(
 		{
-			filterStates,
-			indicatedFilters,
+			filterStates: new Map(),
+			indicatedFilters: new Map(),
 		} satisfies AppliedFiltersSlice,
 	)
 
+	// filter entities stream in over the websocket after boot, so a frame can be set up before they land (the
+	// explore-layers frame is built in the /_app loader). seeding synchronously would drop every configured pool filter
+	void (async () => {
+		await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
+		if (args.sub.closed) return
+		set(getInitialFilterStates(args.input.poolDefaultDisabled, args.get().squadServer))
+	})()
+
 	const unsub = ExtraFiltersStore.subscribe(extraFiltersState => {
+		// only extra filters are owned by this store -- the pool's configured filters keep their state
+		const poolFilterIds = getPoolFilterIds(args.get().squadServer)
 		set(state => ({
-			filterStates: new Map(Gen.filter(state.filterStates, ([id]) => extraFiltersState.extraFilters.has(id))),
+			filterStates: new Map(
+				Gen.filter(state.filterStates, ([id]) => extraFiltersState.extraFilters.has(id) || poolFilterIds.has(id)),
+			),
 		}))
 	})
 
 	args.sub.add(ZusUtils.toRxSub(unsub))
+}
+
+function getPoolFilterIds(squadServer: SquadServerFrame.Key | undefined) {
+	if (!squadServer) return new Set<F.FilterEntityId>()
+	const poolSettings = SquadServerFrame.Sel.settings(ZusUtils.getState(squadServer)).queue.mainPool.filters
+	return new Set(poolSettings.filter(c => c.defaultApplyDuringLayerSelection !== 'hidden').map(c => c.filterId))
 }
 
 function getInitialFilterStates(poolDefaultDisabled: boolean, squadServer: SquadServerFrame.Key | undefined) {
