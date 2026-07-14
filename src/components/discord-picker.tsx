@@ -1,5 +1,6 @@
 import ComboBox from '@/components/combo-box/combo-box'
 import type { ComboBoxOption } from '@/components/combo-box/combo-box'
+import { LOADING } from '@/components/combo-box/constants'
 import { useDebounced } from '@/hooks/use-debounce'
 import * as RPC from '@/orpc.client'
 import * as UsersClient from '@/systems/users.client'
@@ -123,14 +124,24 @@ export function DiscordMemberSelect(
 		})),
 	]
 
+	// before any query is typed there's nothing to show, so the picker would otherwise read "No member found." as if it
+	// had searched and come up empty. Show a spinner while a search is in flight, a prompt when idle, and only the real
+	// "not found" once a query has actually settled with no matches.
+	const hasQuery = queryTerm.trim().length > 0
+	const searching = hasQuery && searchRes.isFetching
+	const comboOptions = searching && options.length === 0 ? LOADING : options
+	const emptyMessage = hasQuery ? 'No members found.' : 'Type a name or id to search members.'
+
 	return (
 		<div className="space-y-1">
 			<ComboBox
 				className="w-full"
 				title="member"
 				placeholder="Search members…"
+				searchPlaceholder="Search by name or id…"
+				emptyMessage={emptyMessage}
 				value={value || undefined}
-				options={options}
+				options={comboOptions}
 				disabled={disabled}
 				inputValue={input}
 				setInputValue={(v) => {

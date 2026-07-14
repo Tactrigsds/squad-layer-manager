@@ -29,6 +29,8 @@ export const TOC_LEAF_PATHS: ReadonlySet<string> = new Set([
 	'layerGeneration',
 	'queue.mainPool',
 	'queue.generationPool',
+	// the whole rbac subtree renders as one consolidated per-role editor, so it emits no per-subkey anchors
+	'rbac',
 ])
 
 // partition `keys` (schema property order) into the ordered group buckets plus the ungrouped remainder

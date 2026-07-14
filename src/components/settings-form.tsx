@@ -439,16 +439,8 @@ function FlagPriorityMapField({ value$, reset$, onChange }: OverrideProps) {
 	const value = useFieldValue(value$, reset$)
 	return <FlagPriorityMap value={value ?? {}} onChange={onChange} />
 }
-function DiscordRoleField({ value$, reset$, onChange }: OverrideProps) {
-	const value = useFieldValue(value$, reset$)
-	return <DiscordRoleSelect value={value ?? ''} onChange={onChange} />
-}
 function PasswordField({ value$, reset$, onChange }: OverrideProps) {
 	return <TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric={false} secret placeholder="Password" />
-}
-function DiscordMemberField({ value$, reset$, onChange }: OverrideProps) {
-	const value = useFieldValue(value$, reset$)
-	return <DiscordMemberSelect value={value ?? ''} onChange={onChange} />
 }
 // bespoke editor for the layer-table config (column order/visibility, default sort, extra menu items, default filters)
 function LayerTableField({ value$, reset$, onChange }: OverrideProps) {
@@ -469,110 +461,6 @@ function LayerGenerationField({ value$, reset$, onChange }: OverrideProps) {
 			value={value ?? LC.LayerGenerationConfigSchema.parse({})}
 			onChange={onChange}
 			reset$={reset$}
-		/>
-	)
-}
-// a defined role's permission expression, plus a warning when nothing assigns the role
-function RolePermissionField({ value$, reset$, onChange, path }: OverrideProps) {
-	const value = useFieldValue(value$, reset$)
-	const { assignedRoleIds } = React.useContext(RbacContext)
-	const roleId = String(path[path.length - 1])
-	return (
-		<div className="space-y-1.5">
-			<PermissionExpressionEditor value={value} onChange={onChange} />
-			{!assignedRoleIds.has(roleId) && (
-				<p className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500">
-					<Icons.TriangleAlert className="h-3 w-3 shrink-0" />
-					This role has no role assignments, so it is never granted to anyone.
-				</p>
-			)}
-		</div>
-	)
-}
-// per-role max kick-timeout durations (rbac.maxTimeouts): role picker keyed to the defined roles,
-// HumanTime text input (edited in the encoded string form, e.g. "2h")
-function MaxTimeoutsField({ value$, reset$, onChange }: OverrideProps) {
-	const { roleIds } = React.useContext(RbacContext)
-	const value = (useFieldValue(value$, reset$) as Record<string, string> | undefined) ?? {}
-	const entries = Object.keys(value)
-	const remaining = roleIds.filter((r) => !(r in value))
-
-	function structural(next: Record<string, unknown>) {
-		onChange(next)
-		reset$.next()
-	}
-
-	return (
-		<div className="space-y-2">
-			{entries.length === 0 && <p className="text-xs text-muted-foreground">No roles may issue kick timeouts.</p>}
-			{entries.map((roleId) => (
-				<MaxTimeoutEntry
-					key={roleId}
-					roleId={roleId}
-					parent$={value$}
-					reset$={reset$}
-					parentOnChange={onChange}
-					onRemove={() => {
-						const next = { ...((value$.getValue() as Record<string, unknown>) ?? {}) }
-						delete next[roleId]
-						structural(next)
-					}}
-				/>
-			))}
-			{remaining.length > 0 && (
-				<Select
-					value=""
-					onValueChange={(roleId) => structural({ ...((value$.getValue() as Record<string, unknown>) ?? {}), [roleId]: '1h' })}
-				>
-					<SelectTrigger className="h-8 max-w-[16rem]">
-						<SelectValue placeholder="Add role…" />
-					</SelectTrigger>
-					<SelectContent>
-						{remaining.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-					</SelectContent>
-				</Select>
-			)}
-		</div>
-	)
-}
-
-function MaxTimeoutEntry(
-	{ roleId, parent$, reset$, parentOnChange, onRemove }: {
-		roleId: string
-		parent$: ValueState
-		reset$: Rx.Subject<void>
-		parentOnChange: (v: any) => void
-		onRemove: () => void
-	},
-) {
-	const value$ = React.useMemo(() => scopeValue(parent$, roleId), [parent$, roleId])
-	const onChange = React.useCallback(
-		(v: any) => parentOnChange({ ...((parent$.getValue() as Record<string, unknown>) ?? {}), [roleId]: v }),
-		[parent$, parentOnChange, roleId],
-	)
-	return (
-		<div className="flex items-center gap-2">
-			<span className="w-40 truncate text-sm font-mono">{roleId}</span>
-			<div className="w-32">
-				<TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric={false} placeholder="2h" />
-			</div>
-			<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={onRemove}>
-				<Icons.X className="h-4 w-4" />
-			</Button>
-		</div>
-	)
-}
-
-// role picker for an assignment, keyed to the defined roles (rbac.roles) rather than free text
-function AssignmentRolesField({ value$, reset$, onChange }: OverrideProps) {
-	const value = useFieldValue(value$, reset$) as string[]
-	const { roleIds } = React.useContext(RbacContext)
-	return (
-		<ComboBoxMulti
-			title="Role"
-			values={value ?? []}
-			options={roleIds}
-			onSelect={(next) => onChange(typeof next === 'function' ? next(value ?? []) : next)}
 		/>
 	)
 }
@@ -1093,46 +981,550 @@ function serverGrantPathOptions(): string[] {
 	return cachedServerGrantPaths
 }
 
-function GrantPathField({ value$, reset$, onChange, options }: OverrideProps & { options: string[] }) {
-	const value = (useFieldValue(value$, reset$) as string | undefined) ?? ''
-	// stale/unknown paths stay selectable so they remain visible and removable
-	const opts = !value || options.includes(value) ? options : [value, ...options]
-	return (
-		<ComboBox
-			title="setting path"
-			className="w-full max-w-[24rem] font-mono"
-			value={value || undefined}
-			options={opts}
-			sort={false}
-			onSelect={(v) => onChange(v ?? '')}
-		/>
-	)
+// -------- consolidated rbac editor --------
+//
+// The whole `rbac` node renders as one master-detail editor instead of five independent record-sections. The persisted
+// shape is untouched (roles / roleAssignments / maxTimeouts / globalSettingsGrants / serverSettingsGrants); this widget
+// just presents it per-role: pick a role on the left, edit its permissions, settings grants, timeout cap and
+// assignments on the right. Assignments are stored by-discord-entity but edited here inverted (which entities grant the
+// selected role), writing back into the same arrays.
+
+const SERVER_GRANT_ACCESS_OPTIONS = ['read', 'write', 'write-sensitive'] as const
+const VALID_ROLE_ID = /^[a-z0-9-]{3,32}$/
+
+type RoleAssignments = {
+	'discord-role'?: { discordRoleId: string | number; roles?: string[] }[]
+	'discord-user'?: { userId: string | number; roles?: string[] }[]
+	'discord-server-member'?: string[]
 }
-function GlobalGrantPathField(props: OverrideProps) {
-	return <GrantPathField {...props} options={globalGrantPathOptions()} />
-}
-function ServerGrantPathField(props: OverrideProps) {
-	return <GrantPathField {...props} options={serverGrantPathOptions()} />
+type ServerGrant = { access: string; serverIds?: string[]; paths?: string[] }
+type RbacValue = {
+	roles?: Record<string, string[]>
+	roleAssignments?: RoleAssignments
+	maxTimeouts?: Record<string, string>
+	globalSettingsGrants?: Record<string, string[]>
+	serverSettingsGrants?: Record<string, ServerGrant[]>
 }
 
-// server ids picked from the registry; stale ids stay selectable so they remain visible and removable
-function GrantServerIdField({ value$, reset$, onChange }: OverrideProps) {
-	const value = (useFieldValue(value$, reset$) as string | undefined) ?? ''
+type DiscordAssignmentKind = 'discord-role' | 'discord-user'
+const ASSIGNMENT_ID_KEY = { 'discord-role': 'discordRoleId', 'discord-user': 'userId' } as const
+
+// set the whole rbac object to a fresh value derived from the current one, then poke reset$ so any uncontrolled inputs
+// (the timeout duration field) re-read
+type RbacUpdate = (fn: (rbac: RbacValue) => RbacValue, quiet?: boolean) => void
+
+// omit a key from a record when its value is empty, otherwise set it (keeps the persisted maps free of empty entries)
+function withRecordKey<T>(rec: Record<string, T> | undefined, key: string, val: T | undefined): Record<string, T> {
+	const next = { ...(rec ?? {}) }
+	if (val === undefined || (Array.isArray(val) && val.length === 0)) delete next[key]
+	else next[key] = val
+	return next
+}
+
+// the discord-role / discord-user ids currently granting `roleId`
+function assignmentIdsFor(ra: RoleAssignments | undefined, kind: DiscordAssignmentKind, roleId: string): string[] {
+	const idKey = ASSIGNMENT_ID_KEY[kind]
+	return (ra?.[kind] ?? []).filter((a) => (a.roles ?? []).includes(roleId)).map((a) => String((a as any)[idKey]))
+}
+
+// add/remove `roleId` from the entry keyed by `id`, creating or dropping the entry as needed
+function withAssignment(
+	ra: RoleAssignments | undefined,
+	kind: DiscordAssignmentKind,
+	id: string,
+	roleId: string,
+	present: boolean,
+): RoleAssignments {
+	const idKey = ASSIGNMENT_ID_KEY[kind]
+	const list = [...((ra?.[kind] ?? []) as { [k: string]: any; roles?: string[] }[])]
+	const idx = list.findIndex((a) => String(a[idKey]) === id)
+	if (present) {
+		if (!id) return { ...ra }
+		if (idx === -1) list.push({ [idKey]: id, roles: [roleId] })
+		else if (!(list[idx].roles ?? []).includes(roleId)) list[idx] = { ...list[idx], roles: [...(list[idx].roles ?? []), roleId] }
+	} else if (idx !== -1) {
+		const roles = (list[idx].roles ?? []).filter((r) => r !== roleId)
+		if (roles.length === 0) list.splice(idx, 1)
+		else list[idx] = { ...list[idx], roles }
+	}
+	return { ...ra, [kind]: list }
+}
+
+function everyMemberHas(ra: RoleAssignments | undefined, roleId: string): boolean {
+	return (ra?.['discord-server-member'] ?? []).includes(roleId)
+}
+function withEveryMember(ra: RoleAssignments | undefined, roleId: string, present: boolean): RoleAssignments {
+	const cur = ra?.['discord-server-member'] ?? []
+	const next = present ? (cur.includes(roleId) ? cur : [...cur, roleId]) : cur.filter((r) => r !== roleId)
+	return { ...ra, 'discord-server-member': next }
+}
+
+function assignedRoleIdsOf(ra: RoleAssignments | undefined): Set<string> {
+	const set = new Set<string>()
+	for (const kind of ['discord-role', 'discord-user'] as const) {
+		for (const a of ra?.[kind] ?? []) for (const r of a.roles ?? []) set.add(r)
+	}
+	for (const r of ra?.['discord-server-member'] ?? []) set.add(r)
+	return set
+}
+
+// drop a role everywhere it's referenced so the config never dangles (mirrors useRoleCascade, but atomic with the delete)
+function withRoleRemoved(rbac: RbacValue, roleId: string): RbacValue {
+	const roles = { ...(rbac.roles ?? {}) }
+	delete roles[roleId]
+	// drop the role from every assignment entry, and drop entries left granting nothing
+	const pruneRoles = <A extends { roles?: string[] }>(list: A[] | undefined): A[] =>
+		(list ?? []).map((a) => ({ ...a, roles: (a.roles ?? []).filter((r) => r !== roleId) })).filter((a) => (a.roles ?? []).length > 0)
+	const ra: RoleAssignments = {
+		...rbac.roleAssignments,
+		'discord-role': pruneRoles(rbac.roleAssignments?.['discord-role']),
+		'discord-user': pruneRoles(rbac.roleAssignments?.['discord-user']),
+		'discord-server-member': (rbac.roleAssignments?.['discord-server-member'] ?? []).filter((r) => r !== roleId),
+	}
+	return {
+		...rbac,
+		roles,
+		roleAssignments: ra,
+		maxTimeouts: withRecordKey(rbac.maxTimeouts, roleId, undefined),
+		globalSettingsGrants: withRecordKey(rbac.globalSettingsGrants, roleId, undefined),
+		serverSettingsGrants: withRecordKey(rbac.serverSettingsGrants, roleId, undefined),
+	}
+}
+
+// rename a role key everywhere it's referenced, atomically (so useRoleCascade sees no orphaned reference to prune)
+function withRoleRenamed(rbac: RbacValue, oldId: string, newId: string): RbacValue {
+	const renameKey = (r: string) => (r === oldId ? newId : r)
+	const renameRecord = <T,>(rec: Record<string, T> | undefined): Record<string, T> => {
+		const next: Record<string, T> = {}
+		for (const [k, v] of Object.entries(rec ?? {})) next[renameKey(k)] = v
+		return next
+	}
+	const ra = rbac.roleAssignments ?? {}
+	return {
+		...rbac,
+		roles: renameRecord(rbac.roles),
+		roleAssignments: {
+			...ra,
+			'discord-role': (ra['discord-role'] ?? []).map((a) => ({ ...a, roles: (a.roles ?? []).map(renameKey) })),
+			'discord-user': (ra['discord-user'] ?? []).map((a) => ({ ...a, roles: (a.roles ?? []).map(renameKey) })),
+			'discord-server-member': (ra['discord-server-member'] ?? []).map(renameKey),
+		},
+		maxTimeouts: renameRecord(rbac.maxTimeouts),
+		globalSettingsGrants: renameRecord(rbac.globalSettingsGrants),
+		serverSettingsGrants: renameRecord(rbac.serverSettingsGrants),
+	}
+}
+
+function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void }) {
+	const rbac = (useFieldValue(value$, reset$) as RbacValue) ?? {}
+	const roleIds = Object.keys(rbac.roles ?? {})
+	const assigned = React.useMemo(() => assignedRoleIdsOf(rbac.roleAssignments), [rbac.roleAssignments])
+	const issues = React.useContext(ValidationContext).filter((i) => i.path.startsWith('rbac.'))
+
+	const [selected, setSelected] = React.useState<string | null>(roleIds[0] ?? null)
+	React.useEffect(() => {
+		if (selected && roleIds.includes(selected)) return
+		setSelected(roleIds[0] ?? null)
+	}, [selected, roleIds])
+
+	// `quiet` skips reset$: use it for edits driven by an uncontrolled input (the timeout duration field), where re-emitting
+	// would clobber an in-flight keystroke. Structural edits (add/remove/rename/toggles) leave it off so inputs re-seed.
+	const update = React.useCallback<RbacUpdate>((fn, quiet) => {
+		onChange(fn((value$.getValue() as RbacValue) ?? {}))
+		if (!quiet) reset$.next()
+	}, [onChange, value$, reset$])
+
+	const [newRole, setNewRole] = React.useState('')
+	const canAdd = VALID_ROLE_ID.test(newRole) && !(newRole in (rbac.roles ?? {}))
+	function addRole() {
+		if (!canAdd) return
+		update((r) => ({ ...r, roles: { ...(r.roles ?? {}), [newRole]: [] } }))
+		setSelected(newRole)
+		setNewRole('')
+	}
+
+	return (
+		<div className="space-y-3">
+			{issues.length > 0 && (
+				<div className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 space-y-0.5">
+					{issues.map((i, n) => (
+						// oxlint-disable-next-line no-array-index-key
+						<p key={n} className="flex items-start gap-1.5 text-xs text-destructive">
+							<Icons.TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
+							<span>
+								<code className="text-[10px]">{i.path}</code> {i.message}
+							</span>
+						</p>
+					))}
+				</div>
+			)}
+			<div className="grid grid-cols-[minmax(160px,14rem)_1fr] gap-4">
+				<div className="sticky top-2 self-start max-h-[70vh] overflow-y-auto space-y-2 pr-1">
+					<div className="space-y-1">
+						{roleIds.length === 0 && <p className="text-xs text-muted-foreground">No roles defined yet.</p>}
+						{roleIds.map((id) => (
+							<button
+								key={id}
+								type="button"
+								onClick={() => setSelected(id)}
+								className={cn(
+									'flex w-full items-center gap-1.5 rounded-md border px-2 py-1.5 text-left font-mono text-sm',
+									id === selected ? 'border-primary bg-accent' : 'border-transparent hover:bg-accent/50',
+								)}
+							>
+								<span className="truncate">{id}</span>
+								{!assigned.has(id) && (
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<Icons.TriangleAlert className="ml-auto h-3 w-3 shrink-0 text-amber-600 dark:text-amber-500" />
+										</TooltipTrigger>
+										<TooltipContent>No assignments, so this role is never granted to anyone</TooltipContent>
+									</Tooltip>
+								)}
+							</button>
+						))}
+					</div>
+					<div className="flex items-center gap-1.5 pt-1">
+						<Input
+							className="h-8 font-mono"
+							placeholder="new-role-id"
+							value={newRole}
+							onChange={(e) => setNewRole(e.target.value)}
+							onKeyDown={(e) => {
+								if (e.key === 'Enter') {
+									e.preventDefault()
+									addRole()
+								}
+							}}
+						/>
+						<Button type="button" size="icon" variant="outline" className="h-8 w-8 shrink-0" disabled={!canAdd} onClick={addRole}>
+							<Icons.Plus className="h-4 w-4" />
+						</Button>
+					</div>
+				</div>
+				{selected
+					? (
+						<RoleDetail
+							key={selected}
+							roleId={selected}
+							rbac={rbac}
+							value$={value$}
+							reset$={reset$}
+							update={update}
+							assigned={assigned.has(selected)}
+						/>
+					)
+					: <p className="self-start text-sm text-muted-foreground">Select or add a role to configure it.</p>}
+			</div>
+		</div>
+	)
+}
+
+function RoleSubsection({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+	return (
+		<section className="space-y-1.5">
+			<h4 className="text-sm font-semibold">{title}</h4>
+			{description && <p className="text-xs text-muted-foreground">{description}</p>}
+			{children}
+		</section>
+	)
+}
+
+function RoleDetail(
+	{ roleId, rbac, value$, reset$, update, assigned }: {
+		roleId: string
+		rbac: RbacValue
+		value$: ValueState
+		reset$: Rx.Subject<void>
+		update: RbacUpdate
+		assigned: boolean
+	},
+) {
+	const [renaming, setRenaming] = React.useState(false)
+	// scoped value-state for the timeout duration field so it can reuse the uncontrolled TextInputField
+	const timeout$ = React.useMemo(() => scopeValue(scopeValue(value$, 'maxTimeouts'), roleId), [value$, roleId])
+	const hasTimeout = roleId in (rbac.maxTimeouts ?? {})
+
+	return (
+		<div className="min-w-0 space-y-4 rounded-md border p-3">
+			<div className="flex items-center gap-2">
+				{renaming
+					? (
+						<Input
+							autoFocus
+							className="h-8 max-w-[16rem] font-mono"
+							defaultValue={roleId}
+							onBlur={(e) => {
+								const next = e.target.value.trim()
+								setRenaming(false)
+								if (next && next !== roleId && VALID_ROLE_ID.test(next) && !(next in (rbac.roles ?? {}))) {
+									update((r) => withRoleRenamed(r, roleId, next))
+								}
+							}}
+							onKeyDown={(e) => {
+								if (e.key === 'Enter') e.currentTarget.blur()
+								if (e.key === 'Escape') setRenaming(false)
+							}}
+						/>
+					)
+					: (
+						<>
+							<h3 className="font-mono text-base font-semibold">{roleId}</h3>
+							<Button type="button" size="icon" variant="ghost" className="h-7 w-7" onClick={() => setRenaming(true)}>
+								<Icons.Pencil className="h-3.5 w-3.5" />
+							</Button>
+						</>
+					)}
+				<Button
+					type="button"
+					size="sm"
+					variant="ghost"
+					className="ml-auto text-destructive"
+					onClick={() => update((r) => withRoleRemoved(r, roleId))}
+				>
+					<Icons.Trash2 className="mr-1 h-4 w-4" />
+					Delete role
+				</Button>
+			</div>
+
+			<RoleSubsection
+				title="Global Permissions"
+				description="Global-scope permissions. Settings permissions granted here are unrestricted (all servers / all settings); use the grants below to restrict them."
+			>
+				<PermissionExpressionEditor
+					value={rbac.roles?.[roleId]}
+					onChange={(v) => update((r) => ({ ...r, roles: { ...(r.roles ?? {}), [roleId]: v } }))}
+				/>
+			</RoleSubsection>
+
+			<RoleSubsection
+				title="Kick timeouts"
+				description="The maximum kick-timeout duration this role may issue (e.g. 2h). Super users/roles are unlimited."
+			>
+				<div className="flex items-center gap-3">
+					<div className="flex items-center gap-2">
+						<Switch
+							checked={hasTimeout}
+							onCheckedChange={(on) => update((r) => ({ ...r, maxTimeouts: withRecordKey(r.maxTimeouts, roleId, on ? '1h' : undefined) }))}
+						/>
+						<span className="text-sm">May issue kick timeouts</span>
+					</div>
+					{hasTimeout && (
+						<div className="w-32">
+							<TextInputField
+								value$={timeout$}
+								reset$={reset$}
+								onChange={(v) => update((r) => ({ ...r, maxTimeouts: withRecordKey(r.maxTimeouts, roleId, (v as string) || '1h') }), true)}
+								numeric={false}
+								placeholder="2h"
+							/>
+						</div>
+					)}
+				</div>
+			</RoleSubsection>
+
+			<RoleSubsection
+				title="Global settings grants"
+				description='Dotted setting paths this role may edit (e.g. "vote.voteDuration", or "vote" for the whole section). Any grant also lets the role view global settings.'
+			>
+				<ComboBoxMulti
+					title="setting path"
+					className="w-full max-w-[28rem] font-mono"
+					values={rbac.globalSettingsGrants?.[roleId] ?? []}
+					options={globalGrantPathOptions()}
+					onSelect={(next) =>
+						update((r) => {
+							const cur = r.globalSettingsGrants?.[roleId] ?? []
+							const resolved = typeof next === 'function' ? next(cur) : next
+							return { ...r, globalSettingsGrants: withRecordKey(r.globalSettingsGrants, roleId, resolved) }
+						})}
+				/>
+			</RoleSubsection>
+
+			<RoleSubsection
+				title="Server settings grants"
+				description="Per-server restricted read/write grants. Any grant also lets the role view the server's non-sensitive settings."
+			>
+				<RoleServerGrantsEditor roleId={roleId} grants={rbac.serverSettingsGrants?.[roleId] ?? []} update={update} />
+			</RoleSubsection>
+
+			<RoleSubsection title="Assignments" description="Which Discord roles, users, or members are granted this role.">
+				<RoleAssignmentsEditor roleId={roleId} rbac={rbac} update={update} assigned={assigned} />
+			</RoleSubsection>
+		</div>
+	)
+}
+
+function RoleServerGrantsEditor(
+	{ roleId, grants, update }: { roleId: string; grants: ServerGrant[]; update: RbacUpdate },
+) {
 	const servers = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers) ?? []
-	const options: ComboBoxOption<string>[] = servers.map((s) => ({
+	const serverOptions: ComboBoxOption<string>[] = servers.map((s) => ({
 		value: s.id,
 		label: `${s.displayName} (${s.id})`,
 		keywords: [s.displayName],
 	}))
-	if (value && !servers.some((s) => s.id === value)) options.unshift({ value })
+
+	function setGrants(next: ServerGrant[]) {
+		update((r) => ({ ...r, serverSettingsGrants: withRecordKey(r.serverSettingsGrants, roleId, next) }))
+	}
+	function patch(idx: number, patch: Partial<ServerGrant>) {
+		setGrants(grants.map((g, i) => (i === idx ? { ...g, ...patch } : g)))
+	}
+
 	return (
-		<ComboBox
-			title="server"
-			className="w-full max-w-[24rem]"
-			value={value || undefined}
-			options={options}
-			onSelect={(v) => onChange(v ?? '')}
-		/>
+		<div className="space-y-2">
+			{grants.length === 0 && <p className="text-xs text-muted-foreground">No server grants.</p>}
+			{grants.map((grant, idx) => {
+				const options = grant.serverIds?.some((id) => !servers.some((s) => s.id === id))
+					? [...grant.serverIds.filter((id) => !servers.some((s) => s.id === id)).map((id) => ({ value: id })), ...serverOptions]
+					: serverOptions
+				return (
+					// oxlint-disable-next-line no-array-index-key
+					<div key={idx} className="space-y-2 rounded-md border p-2">
+						<div className="flex items-center gap-2">
+							<Select value={grant.access} onValueChange={(v) => patch(idx, { access: v, ...(v !== 'write' ? { paths: [] } : {}) })}>
+								<SelectTrigger className="h-8 w-48">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{SERVER_GRANT_ACCESS_OPTIONS.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+								</SelectContent>
+							</Select>
+							<Button
+								type="button"
+								size="icon"
+								variant="ghost"
+								className="ml-auto h-8 w-8 text-destructive"
+								onClick={() => setGrants(grants.filter((_, i) => i !== idx))}
+							>
+								<Icons.X className="h-4 w-4" />
+							</Button>
+						</div>
+						<div className="space-y-1">
+							<label className="text-xs text-muted-foreground">Servers (empty = all)</label>
+							<ComboBoxMulti
+								title="server"
+								className="w-full max-w-[28rem]"
+								values={grant.serverIds ?? []}
+								options={options}
+								onSelect={(next) => patch(idx, { serverIds: typeof next === 'function' ? next(grant.serverIds ?? []) : next })}
+							/>
+						</div>
+						{grant.access === 'write' && (
+							<div className="space-y-1">
+								<label className="text-xs text-muted-foreground">Setting paths (empty = all non-sensitive)</label>
+								<ComboBoxMulti
+									title="setting path"
+									className="w-full max-w-[28rem] font-mono"
+									values={grant.paths ?? []}
+									options={serverGrantPathOptions()}
+									onSelect={(next) => patch(idx, { paths: typeof next === 'function' ? next(grant.paths ?? []) : next })}
+								/>
+							</div>
+						)}
+					</div>
+				)
+			})}
+			<Button
+				type="button"
+				size="sm"
+				variant="outline"
+				onClick={() => setGrants([...grants, { access: 'write', serverIds: [], paths: [] }])}
+			>
+				<Icons.Plus className="mr-1 h-4 w-4" />
+				Add grant
+			</Button>
+		</div>
+	)
+}
+
+function RoleAssignmentsEditor(
+	{ roleId, rbac, update, assigned }: { roleId: string; rbac: RbacValue; update: RbacUpdate; assigned: boolean },
+) {
+	const ra = rbac.roleAssignments
+	const roleAssignIds = assignmentIdsFor(ra, 'discord-role', roleId)
+	const userAssignIds = assignmentIdsFor(ra, 'discord-user', roleId)
+
+	function changeDiscordRole(oldId: string, nextId: string) {
+		if (nextId === oldId) return
+		update((r) => {
+			let next = withAssignment(r.roleAssignments, 'discord-role', oldId, roleId, false)
+			if (nextId) next = withAssignment(next, 'discord-role', nextId, roleId, true)
+			return { ...r, roleAssignments: next }
+		})
+	}
+	function changeDiscordUser(oldId: string, nextId: string) {
+		if (nextId === oldId) return
+		update((r) => {
+			let next = withAssignment(r.roleAssignments, 'discord-user', oldId, roleId, false)
+			if (nextId) next = withAssignment(next, 'discord-user', nextId, roleId, true)
+			return { ...r, roleAssignments: next }
+		})
+	}
+
+	return (
+		<div className="space-y-3">
+			{!assigned && (
+				<p className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500">
+					<Icons.TriangleAlert className="h-3 w-3 shrink-0" />
+					This role has no assignments, so it is never granted to anyone.
+				</p>
+			)}
+			<div className="flex items-center gap-2">
+				<Switch
+					checked={everyMemberHas(ra, roleId)}
+					onCheckedChange={(on) => update((r) => ({ ...r, roleAssignments: withEveryMember(r.roleAssignments, roleId, on) }))}
+				/>
+				<span className="text-sm">Granted to every server member</span>
+			</div>
+
+			<div className="space-y-1.5">
+				<label className="text-xs text-muted-foreground">Discord roles</label>
+				{roleAssignIds.map((id) => (
+					<div key={id} className="flex items-center gap-2">
+						<div className="min-w-0 flex-1 max-w-[24rem]">
+							<DiscordRoleSelect value={id} onChange={(next) => changeDiscordRole(id, next)} />
+						</div>
+						<Button
+							type="button"
+							size="icon"
+							variant="ghost"
+							className="h-8 w-8 text-destructive"
+							onClick={() => changeDiscordRole(id, '')}
+						>
+							<Icons.X className="h-4 w-4" />
+						</Button>
+					</div>
+				))}
+				<div className="max-w-[24rem]">
+					<DiscordRoleSelect value="" onChange={(next) => next && changeDiscordRole('', next)} />
+				</div>
+			</div>
+
+			<div className="space-y-1.5">
+				<label className="text-xs text-muted-foreground">Discord users</label>
+				{userAssignIds.map((id) => (
+					<div key={id} className="flex items-center gap-2">
+						<div className="min-w-0 flex-1 max-w-[24rem]">
+							<DiscordMemberSelect value={id} onChange={(next) => changeDiscordUser(id, next)} />
+						</div>
+						<Button
+							type="button"
+							size="icon"
+							variant="ghost"
+							className="h-8 w-8 text-destructive"
+							onClick={() => changeDiscordUser(id, '')}
+						>
+							<Icons.X className="h-4 w-4" />
+						</Button>
+					</div>
+				))}
+				<div className="max-w-[24rem]">
+					<DiscordMemberSelect value="" onChange={(next) => next && changeDiscordUser('', next)} />
+				</div>
+			</div>
+		</div>
 	)
 }
 
@@ -1151,19 +1543,7 @@ function overrideFor(path: Path, node: Node): React.FC<OverrideProps> | undefine
 	if (path.length === 1 && last === 'playerFlagsRequiringNote') return FlagMultiSelectField
 	if (path[0] === 'playerFlagGroupings' && typeof path[1] === 'number' && last === 'color') return FlagOrColorField
 	if (path[0] === 'playerFlagGroupings' && typeof path[1] === 'number' && last === 'associations') return FlagPriorityMapField
-	if (path[0] === 'rbac' && path[1] === 'roles' && path.length === 3) return RolePermissionField
-	if (path[0] === 'rbac' && path.length === 2 && last === 'maxTimeouts') return MaxTimeoutsField
-	// path-scoped settings grants: pickers over the schemas' dotted paths / the server registry, instead of free text
-	if (path[0] === 'rbac' && path[1] === 'globalSettingsGrants' && path.length === 4) return GlobalGrantPathField
-	if (path[0] === 'rbac' && path[1] === 'serverSettingsGrants' && path.length === 6 && path[4] === 'paths') return ServerGrantPathField
-	if (path[0] === 'rbac' && path[1] === 'serverSettingsGrants' && path.length === 6 && path[4] === 'serverIds') return GrantServerIdField
-	// the per-assignment `roles` lists, plus the flat "every member" list, are all role pickers keyed to defined roles
-	if (path[0] === 'rbac' && path[1] === 'roleAssignments' && (last === 'roles' || last === 'discord-server-member')) {
-		return AssignmentRolesField
-	}
-	// searchable Discord role/account pickers for the role-assignment editor, keyed to the raw-id fields
-	if (path[0] === 'rbac' && path[1] === 'roleAssignments' && path[2] === 'discord-role' && last === 'discordRoleId') return DiscordRoleField
-	if (path[0] === 'rbac' && path[1] === 'roleAssignments' && path[2] === 'discord-user' && last === 'userId') return DiscordMemberField
+	// the entire `rbac` subtree is rendered by RbacBody (see FieldControl), so no per-field rbac overrides are needed here
 	// server settings: the pool configuration reuses the dashboard popover's panels; connection passwords are masked
 	if (path.length === 2 && path[0] === 'queue' && last === 'mainPool') return MainPoolField
 	if (path.length === 2 && path[0] === 'queue' && last === 'generationPool') return GenerationPoolField
@@ -1355,6 +1735,10 @@ function FieldControl(
 ) {
 	const Override = overrideFor(path, node)
 	if (Override) return <Override value$={value$} reset$={reset$} onChange={onChange} path={path} />
+
+	// the whole rbac subtree renders as one consolidated per-role editor (kept inside the standard section shell so its
+	// header + super-users callout + reset controls are preserved)
+	if (path.length === 1 && path[0] === 'rbac') return <RbacBody value$={value$} reset$={reset$} onChange={onChange} />
 
 	const { inner, nullable } = stripNullable(node)
 
