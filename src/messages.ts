@@ -173,7 +173,7 @@ export const WARNS = {
 			const item = layerQueue.length > 0 ? layerQueue[0] : undefined
 			const playerNextTeamId = isNullOrUndef(ctx.player.teamId) ? undefined : ctx.player.teamId === 1 ? 2 : 1
 			let lines: string[] = []
-			if (item && LL.isVoteItem(item)) {
+			if (item && LL.isVoteItem(item) && nextLayer && L.areLayersCompatible(item.layerId, nextLayer)) {
 				if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') {
 					let winningLayer: L.LayerId | undefined
 
