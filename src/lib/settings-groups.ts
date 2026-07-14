@@ -11,7 +11,7 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 		label: 'Messaging & Reasons',
 		keys: ['warnPrefix', 'adminActionReasons', 'requireReasonFor', 'broadcasts', 'messageVariables', 'chat'],
 	},
-	{ slug: 'commands', label: 'In-game Commands', keys: ['commandPrefix', 'commands', 'timeoutCommandAliases'] },
+	{ slug: 'commands', label: 'In-game Commands', keys: ['allowedPrefixes', 'defaultPrefix', 'commands', 'timeoutCommandAliases'] },
 	{ slug: 'queue-and-votes', label: 'Queue & Votes', keys: ['layerQueue', 'vote', 'layerTable', 'layerGeneration'] },
 	{
 		slug: 'squad-server',

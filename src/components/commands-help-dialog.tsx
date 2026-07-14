@@ -90,7 +90,7 @@ function CommandEntry(
 		<div id={entry.id} data-cmd-anchor className="space-y-2 scroll-mt-9">
 			<div className="flex items-center gap-2">
 				<div className="flex flex-1 flex-wrap items-center gap-1">
-					{CMD.buildCommand(cmdId, argObject, settings.commands, settings.commandPrefix, true).map((cmdString) => (
+					{CMD.buildCommand(cmdId, argObject, settings.commands, true).map((cmdString) => (
 						<CopyableCommand key={cmdString} cmdString={cmdString} chatScope={chatScope} />
 					))}
 				</div>
@@ -111,9 +111,7 @@ function CommandEntry(
 function AliasEntry(
 	{ entry, settings }: { entry: Extract<Entry, { kind: 'alias' }>; settings: PublicSettings },
 ) {
-	const cmdString = `${settings.commandPrefix}${entry.alias.string} ${
-		CMD.formatArgSignature(CMD.TIMEOUT_ALIAS_ARG_DEFS, settings.requireReasonFor)
-	}`
+	const cmdString = `${entry.alias.string} ${CMD.formatArgSignature(CMD.TIMEOUT_ALIAS_ARG_DEFS, settings.requireReasonFor)}`
 	return (
 		<div id={entry.id} data-cmd-anchor className="space-y-1 scroll-mt-9">
 			<CopyableCommand cmdString={cmdString} chatScope="ChatToAdmin" />
@@ -171,7 +169,7 @@ export default function CommandsHelpDialog({ children, open, onOpenChange }: Com
 				return {
 					kind: 'command',
 					id: `command:${cmdId}`,
-					label: `${settings.commandPrefix}${cmd.strings[0] ?? cmdId}`,
+					label: cmd.strings[0] ?? cmdId,
 					search: [cmdId, ...cmd.strings, descriptions[cmdId], group.label].join(' ').toLowerCase(),
 					cmdId,
 					cmd,
@@ -185,7 +183,7 @@ export default function CommandsHelpDialog({ children, open, onOpenChange }: Com
 				entries: settings.timeoutCommandAliases.map((alias): Entry => ({
 					kind: 'alias',
 					id: `timeout-alias:${alias.string}`,
-					label: `${settings.commandPrefix}${alias.string}`,
+					label: alias.string,
 					search: `${alias.string} timeout alias kick`,
 					alias,
 				})),

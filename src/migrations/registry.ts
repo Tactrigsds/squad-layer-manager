@@ -23,6 +23,7 @@ import * as m0070 from './0070_split_kick_and_timeout'
 import * as m0071 from './0071_teamswitches_to_teamswaps'
 import * as m0072 from './0072_seed_layer_generation_global_setting'
 import * as m0073 from './0073_layer_generation_matchup_weights'
+import * as m0074 from './0074_command_allowed_prefixes'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -37,4 +38,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0071_teamswitches_to_teamswaps', up: m0071.up },
 	{ name: '0072_seed_layer_generation_global_setting', up: m0072.up },
 	{ name: '0073_layer_generation_matchup_weights', up: m0073.up },
+	{ name: '0074_command_allowed_prefixes', up: m0074.up },
 ]

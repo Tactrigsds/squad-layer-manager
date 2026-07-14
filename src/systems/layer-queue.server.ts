@@ -150,7 +150,6 @@ export const setupInstance = C.spanOp(
 									GS.vote.startVoteReminderThreshold,
 									GS.vote.autoStartVoteDelay !== null,
 									Settings.GLOBAL_SETTINGS.commands,
-									Settings.GLOBAL_SETTINGS.commandPrefix,
 								),
 							)
 						} else if (serverState.layerQueue.length === 0) {

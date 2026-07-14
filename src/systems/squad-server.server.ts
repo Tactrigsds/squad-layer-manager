@@ -979,7 +979,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 						try {
 							const opts: Promise<void>[] = []
 							if (event.type === 'CHAT_MESSAGE') {
-								if (event.message.startsWith(Settings.GLOBAL_SETTINGS.commandPrefix)) {
+								if (Settings.GLOBAL_SETTINGS.allowedPrefixes.some((prefix) => event.message.startsWith(prefix))) {
 									opts.push(
 										Commands.handleCommand(ctx, event).then((res) => {
 											if (res?.code !== 'ok') log.error(res)
