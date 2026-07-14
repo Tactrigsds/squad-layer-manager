@@ -83,7 +83,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 	const user: USR.GuiOrChatUserId = { steamId: sender.ids.steam }
 	const h: HandlerCtx = { ctx, msg, sender, user, reply, error }
 
-	const parseRes = CMD.parseCommand(msg, Settings.GLOBAL_SETTINGS.commands, Settings.GLOBAL_SETTINGS.commandPrefix)
+	const parseRes = CMD.parseCommand(msg, Settings.GLOBAL_SETTINGS.commands)
 	if (parseRes.code === 'err:unknown-command') {
 		// real command strings win by construction: aliases are only consulted after parseCommand misses
 		const aliasRes = await tryTimeoutAlias(h)
@@ -120,16 +120,13 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 async function tryTimeoutAlias(h: HandlerCtx): Promise<HandlerResult | undefined> {
 	if (h.msg.channelType !== 'ChatAdmin') return undefined
 	const words = h.msg.message.split(/\s+/)
-	const token = words[0].slice(1).toLowerCase()
+	const token = words[0].toLowerCase()
 	const alias = Settings.GLOBAL_SETTINGS.timeoutCommandAliases.find(a => a.string.toLowerCase() === token)
 	if (!alias) return undefined
 	log.info('Timeout alias received: %s', alias.string)
 	const resolved = await resolveArgDefs(h.ctx, CMD.TIMEOUT_ALIAS_ARG_DEFS, words.slice(1), h.sender)
 	if (resolved.code === 'err:missing-arg') {
-		return await h.error(
-			'invalid-args',
-			`Usage: ${Settings.GLOBAL_SETTINGS.commandPrefix}${alias.string} ${CMD.formatArgSignature(CMD.TIMEOUT_ALIAS_ARG_DEFS)}`,
-		)
+		return await h.error('invalid-args', `Usage: ${alias.string} ${CMD.formatArgSignature(CMD.TIMEOUT_ALIAS_ARG_DEFS)}`)
 	}
 	if (resolved.code !== 'ok') return await h.error('invalid-args', resolved.msg)
 	const args = resolved.args as CMD.ResolvedArgs<typeof CMD.TIMEOUT_ALIAS_ARG_DEFS>
@@ -209,7 +206,7 @@ async function resolveArgs<Id extends CMD.CommandId>(
 	const defs = CMD.COMMAND_DECLARATIONS[cmd].args as readonly CMD.ArgDef[]
 	const res = await resolveArgDefs(ctx, defs, tokens, sender)
 	if (res.code === 'err:missing-arg') {
-		return { code: 'err', msg: CMD.formatUsage(cmd, cmdConfig, Settings.GLOBAL_SETTINGS.commandPrefix) }
+		return { code: 'err', msg: CMD.formatUsage(cmd, cmdConfig) }
 	}
 	if (res.code !== 'ok') return res
 	return { code: 'ok', args: res.args as CMD.CommandArgs<Id> }
@@ -318,7 +315,6 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		await h.reply(
 			Messages.WARNS.commands.help(
 				Settings.GLOBAL_SETTINGS.commands,
-				Settings.GLOBAL_SETTINGS.commandPrefix,
 				Settings.GLOBAL_SETTINGS.timeoutCommandAliases,
 			),
 		)
@@ -556,9 +552,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		if (Settings.GLOBAL_SETTINGS.playerFlagsRequiringNote.includes(flagToUpdate.id) && !reason) {
 			return await h.error(
 				'note-required',
-				`Flag "${flagToUpdate.name}" requires a reason: ${
-					CMD.formatUsage('flag', Settings.GLOBAL_SETTINGS.commands.flag, Settings.GLOBAL_SETTINGS.commandPrefix)
-				}`,
+				`Flag "${flagToUpdate.name}" requires a reason: ${CMD.formatUsage('flag', Settings.GLOBAL_SETTINGS.commands.flag)}`,
 			)
 		}
 		const targetIds = target.ids

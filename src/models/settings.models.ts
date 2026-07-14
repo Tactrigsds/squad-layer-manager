@@ -213,12 +213,17 @@ export const GlobalSettingsSchema = z.object({
 	navLinks: NavLinkSchema.optional().describe('Global links to display in the navbar dropdown menu'),
 	warnOnSlmStart: z.boolean().prefault(false),
 	adminListSources: z.record(z.string(), SM.AdminListSourceSchema).prefault({}).describe('Named admin list sources'),
-	commandPrefix: BasicStrNoWhitespace.prefault('!').describe('Prefix character for in-game commands'),
+	allowedPrefixes: z.array(BasicStrNoWhitespace).min(1).prefault([CMD.FALLBACK_PREFIX]).describe(
+		'Prefixes an in-game command may start with. Every command string and timeout alias must begin with one of these',
+	),
+	defaultPrefix: BasicStrNoWhitespace.prefault(CMD.FALLBACK_PREFIX).describe(
+		'The allowed prefix that commands introduced by future SLM versions are seeded with',
+	),
 	timeoutCommandAliases: z.array(z.object({
-		string: BasicStrNoWhitespace.describe('Command string (without the prefix)'),
+		string: BasicStrNoWhitespace.describe('Command string, including its prefix'),
 		duration: HumanTime.describe('Fixed timeout duration this alias kicks with'),
 	})).prefault([]).describe(
-		'Extra admin-chat commands that kick with a fixed timeout, e.g. yeet = 2h. Real command strings win on collision.',
+		'Extra admin-chat commands that kick with a fixed timeout, e.g. !yeet = 2h. Real command strings win on collision.',
 	),
 	commands: CMD.AllCommandConfigSchema,
 	rbac: RbacSettingsSchema,
@@ -246,34 +251,46 @@ export const GlobalSettingsSchema = z.object({
 			+ 'Each column or matchup in the pick order is picked weighted-randomly in turn, narrowing the candidate pool for the next.',
 	),
 }).superRefine((val, ctx) => {
+	const allowedPrefixes = val.allowedPrefixes ?? [CMD.FALLBACK_PREFIX]
+	const seenPrefix = new Set<string>()
+	allowedPrefixes.forEach((p, i) => {
+		if (seenPrefix.has(p)) {
+			ctx.addIssue({ code: 'custom', message: `Duplicate prefix "${p}"`, path: ['allowedPrefixes', i] })
+		}
+		seenPrefix.add(p)
+	})
+	// commands seeded for future SLM versions take defaultPrefix, so it has to be one an admin actually accepts;
+	// otherwise the next release's new commands would fail this schema on load and refuse to boot
+	const defaultPrefix = val.defaultPrefix ?? CMD.FALLBACK_PREFIX
+	if (!allowedPrefixes.includes(defaultPrefix)) {
+		ctx.addIssue({
+			code: 'custom',
+			message: `Default prefix "${defaultPrefix}" must be one of the allowed prefixes (${allowedPrefixes.join(', ')})`,
+			path: ['defaultPrefix'],
+		})
+	}
+	const hasAllowedPrefix = (s: string) => allowedPrefixes.some((p) => s.startsWith(p))
+	const prefixIssue = (s: string, noun: string, path: (string | number)[]) => {
+		ctx.addIssue({
+			code: 'custom',
+			message: `${noun} "${s}" must start with one of the allowed prefixes (${allowedPrefixes.join(', ')})`,
+			path,
+		})
+	}
+
 	// command strings and timeout-alias strings share one namespace: a real command always wins on collision, so
 	// a timeout alias that clashes is unreachable (and vice versa). matching is case-insensitive, like dispatch.
-	const prefix = val.commandPrefix ?? '!'
 	const commandOwner = new Map<string, string>()
 	for (const [id, cmd] of Object.entries(val.commands ?? {})) {
-		// strings are stored without the prefix (dispatch strips one prefix char before matching), so a string that
-		// bakes in the prefix would only ever trigger on a doubled prefix. reject it to prevent that misconfiguration.
 		;(cmd.strings ?? []).forEach((s, j) => {
-			if (prefix && s.startsWith(prefix)) {
-				ctx.addIssue({
-					code: 'custom',
-					message: `Command string "${s}" must not include the command prefix "${prefix}"`,
-					path: ['commands', id, 'strings', j],
-				})
-			}
+			if (!hasAllowedPrefix(s)) prefixIssue(s, 'Command string', ['commands', id, 'strings', j])
 			commandOwner.set(s.toLowerCase(), id)
 		})
 	}
 	const seenAlias = new Set<string>()
 	val.timeoutCommandAliases?.forEach((alias, i) => {
 		const key = alias.string.toLowerCase()
-		if (prefix && alias.string.startsWith(prefix)) {
-			ctx.addIssue({
-				code: 'custom',
-				message: `Timeout alias "${alias.string}" must not include the command prefix "${prefix}"`,
-				path: ['timeoutCommandAliases', i, 'string'],
-			})
-		}
+		if (!hasAllowedPrefix(alias.string)) prefixIssue(alias.string, 'Timeout alias', ['timeoutCommandAliases', i, 'string'])
 		const owner = commandOwner.get(key)
 		if (owner) {
 			ctx.addIssue({
@@ -292,6 +309,15 @@ export const GlobalSettingsSchema = z.object({
 export type GlobalSettings = z.infer<typeof GlobalSettingsSchema>
 // the pre-decode shape (e.g. HumanTime fields as '5m' strings instead of milliseconds) -- what gets persisted/displayed for editing
 export type GlobalSettingsInput = z.input<typeof GlobalSettingsSchema>
+
+// seeds configs for commands the stored settings predate, using their own defaultPrefix. Must be applied to raw
+// settings before GlobalSettingsSchema parses them (the schema has no defaults for command strings, since they
+// depend on a sibling field). Call this instead of parsing raw global settings directly.
+export function parseGlobalSettings(raw: unknown) {
+	const input = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : {}
+	const defaultPrefix = typeof input.defaultPrefix === 'string' ? input.defaultPrefix : CMD.FALLBACK_PREFIX
+	return GlobalSettingsSchema.safeParse({ ...input, commands: CMD.seedCommandConfigs(input.commands, defaultPrefix) })
+}
 
 // ============================== per-server settings ==============================
 

@@ -37,7 +37,9 @@ export let GLOBAL_SETTINGS!: SETTINGS.GlobalSettings
 async function loadGlobalSettings(ctx: C.Db) {
 	const rows = await ctx.db().select().from(Schema.globalSettings)
 	if (rows.length === 0) {
-		const defaults = SETTINGS.GlobalSettingsSchema.parse({})
+		const defaultsRes = SETTINGS.parseGlobalSettings({})
+		if (!defaultsRes.success) throw new Error('Default global settings failed schema validation', { cause: defaultsRes.error })
+		const defaults = defaultsRes.data
 		await ctx.db().insert(Schema.globalSettings).values(
 			superjsonify(Schema.globalSettings, { id: 1, settings: SETTINGS.GlobalSettingsSchema.encode(defaults) }),
 		)
@@ -45,7 +47,8 @@ async function loadGlobalSettings(ctx: C.Db) {
 		log.info('Created default global settings row')
 	} else {
 		const raw = unsuperjsonify(Schema.globalSettings, rows[0]) as any
-		const parseRes = SETTINGS.GlobalSettingsSchema.safeParse(raw.settings)
+		// seeds any command this installation's settings predate (see SETTINGS.parseGlobalSettings)
+		const parseRes = SETTINGS.parseGlobalSettings(raw.settings)
 		if (!parseRes.success) {
 			// refuse to start rather than silently reset to defaults: a validation failure means either a bad manual
 			// edit or a breaking schema change with a missing/incorrect migration, and booting on defaults would quietly
@@ -69,7 +72,7 @@ export async function updateGlobalSettings(
 	access: RBAC.SettingsWriteAccess = { kind: 'all' },
 ) {
 	const merged = { ...GLOBAL_SETTINGS, ...input }
-	const parseRes = SETTINGS.GlobalSettingsSchema.safeParse(merged)
+	const parseRes = SETTINGS.parseGlobalSettings(merged)
 	if (!parseRes.success) {
 		return { code: 'err:invalid-settings' as const, message: parseRes.error.message }
 	}
@@ -396,7 +399,6 @@ export type PublicSettings = {
 	navLinks: SETTINGS.GlobalSettings['navLinks']
 	chat: SETTINGS.GlobalSettings['chat']
 	commands: SETTINGS.GlobalSettings['commands']
-	commandPrefix: string
 	timeoutCommandAliases: SETTINGS.GlobalSettings['timeoutCommandAliases']
 	vote: { voteDuration: number; voteDisplayProps: SETTINGS.GlobalSettings['vote']['voteDisplayProps'] }
 	servers: ServerEntry[]
@@ -417,7 +419,6 @@ function buildPublicSettings(): PublicSettings {
 		navLinks: GLOBAL_SETTINGS.navLinks,
 		chat: GLOBAL_SETTINGS.chat,
 		commands: GLOBAL_SETTINGS.commands,
-		commandPrefix: GLOBAL_SETTINGS.commandPrefix,
 		timeoutCommandAliases: GLOBAL_SETTINGS.timeoutCommandAliases,
 		vote: {
 			voteDuration: GLOBAL_SETTINGS.vote.voteDuration,

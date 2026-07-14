@@ -154,10 +154,10 @@ export const WARNS = {
 			return `WARNING: The next layer (${DH.displayLayer(layerId)}) has ${str}. Check SLM for more details.`
 		},
 
-		votePending(matchStartTime: Date, threshold: number, autostart: boolean, commands: CMD.CommandConfigs, commandPrefix: string) {
+		votePending(matchStartTime: Date, threshold: number, autostart: boolean, commands: CMD.CommandConfigs) {
 			const timeUntilVote = Math.max(0, threshold - (Date.now() - matchStartTime.getTime()))
 			const formattedTime = formatInterval(timeUntilVote, { terse: false, round: 'second' })
-			const showNextCmd = CMD.buildCommand('showNext', {}, commands, commandPrefix, true)[0]
+			const showNextCmd = CMD.buildCommand('showNext', {}, commands, true)[0]
 			return `A Vote is pending${autostart ? ' and will be run in ' + formattedTime : ''}. Run ${showNextCmd} to preview the vote`
 		},
 
@@ -240,18 +240,17 @@ export const WARNS = {
 		wrongChat: (correctChats: string[]) => `Command not available in this chat. Try using ${correctChats.join(' or ')}`,
 		help(
 			commands: Record<CMD.CommandId, CMD.CommandConfig>,
-			prefix: string,
 			timeoutAliases: readonly { string: string; duration: number }[] = [],
 		) {
 			const commandLines = Obj.objEntries(commands).filter(([_, cmd]) => cmd.enabled).map(([id, cmd]) => {
-				const sortedStrings = cmd.strings.sort((a, b) => a.length - b.length).map((s) => `${prefix}${s}`)
+				const sortedStrings = cmd.strings.toSorted((a, b) => a.length - b.length)
 				const signature = CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS[id].args)
 				return `[${sortedStrings.join(', ')}]${signature ? ` ${signature}` : ''}: ${GENERAL.command.descriptions[id]}`
 			})
 			// fixed-duration timeout aliases aren't in COMMAND_DECLARATIONS; append them with a generated description
 			const aliasSignature = CMD.formatArgSignature(CMD.TIMEOUT_ALIAS_ARG_DEFS)
 			const aliasLines = timeoutAliases.map((a) =>
-				`[${prefix}${a.string}]${aliasSignature ? ` ${aliasSignature}` : ''}: ${GENERAL.command.timeoutAliasDescription(a.duration)}`
+				`[${a.string}]${aliasSignature ? ` ${aliasSignature}` : ''}: ${GENERAL.command.timeoutAliasDescription(a.duration)}`
 			)
 			const groups = Arr.paged([...commandLines, ...aliasLines], 3)
 			if (groups.length === 0) groups.push([])

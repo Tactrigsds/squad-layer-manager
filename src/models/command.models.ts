@@ -218,28 +218,47 @@ export type CommandId = keyof typeof COMMAND_DECLARATIONS
 export const COMMAND_ID = z.enum(Object.keys(COMMAND_DECLARATIONS) as [CommandId, ...CommandId[]])
 export type CommandDeclaration<Id extends CommandId> = (typeof COMMAND_DECLARATIONS)[Id]
 
-// description is not configurable, rest of properties are
-const COMMAND_DEFAULTS: CommandConfigs = Object.fromEntries(
-	Object.entries(COMMAND_DECLARATIONS).map(([id, declaration]) => [id, declaration.defaults]),
-) as CommandConfigs
+// the prefix a fresh install seeds command strings with, when no settings exist yet to read `defaultPrefix` from
+export const FALLBACK_PREFIX = '/'
 
-function CommandConfigSchema(commandId: CommandId) {
-	const defaultConfig = COMMAND_DEFAULTS[commandId]
-	return z.object({
-		strings: z.array(BasicStrNoWhitespace).prefault(defaultConfig.strings).describe(
-			'Command strings that trigger this command when prefixed with the command prefix',
-		),
-		scopes: z.array(COMMAND_SCOPES).prefault(defaultConfig.scopes).describe('Scopes in which this command is available'),
-		enabled: z.boolean().prefault(defaultConfig.enabled),
-	}).prefault(defaultConfig)
+// declared strings are bare (`help`); the stored ones carry a prefix (`!help`), which is attached by
+// seedCommandConfigs using the installation's configured defaultPrefix
+function prefixed(prefix: string, config: CommandConfig): CommandConfig {
+	return { ...config, strings: config.strings.map((s) => prefix + s) }
 }
 
+// fills in every command the installation hasn't stored a config for yet, prefixing its declared strings with
+// `defaultPrefix`. Runs before the settings schema parses raw data (see Settings.loadGlobalSettings): a command
+// added by a later release must be seeded with a prefix the installation actually allows, and zod can't express a
+// prefault that depends on a sibling field. Configs already present are passed through untouched.
+export function seedCommandConfigs(commands: unknown, defaultPrefix: string): Record<string, unknown> {
+	const stored = (commands && typeof commands === 'object') ? commands as Record<string, unknown> : {}
+	const seeded: Record<string, unknown> = { ...stored }
+	for (const [id, declaration] of Object.entries(COMMAND_DECLARATIONS)) {
+		if (seeded[id] === undefined) seeded[id] = prefixed(defaultPrefix, declaration.defaults)
+	}
+	return seeded
+}
+
+function CommandConfigSchema(commandId: CommandId) {
+	const declared = COMMAND_DECLARATIONS[commandId].defaults
+	return z.object({
+		strings: z.array(BasicStrNoWhitespace).describe(
+			'Command strings that trigger this command. Each must start with one of the allowed prefixes',
+		),
+		scopes: z.array(COMMAND_SCOPES).prefault(declared.scopes).describe('Scopes in which this command is available'),
+		enabled: z.boolean().prefault(declared.enabled),
+	})
+}
+
+// no prefault on the object or on `strings`: a command's default strings depend on `defaultPrefix`, so they're
+// seeded by seedCommandConfigs before parsing rather than baked into the schema
 export const AllCommandConfigSchema = z.object(
 	Object.fromEntries(Object.keys(COMMAND_DECLARATIONS).map(id => [id, CommandConfigSchema(id as CommandId)])) as Record<
 		CommandId,
 		ReturnType<typeof CommandConfigSchema>
 	>,
-).default(COMMAND_DEFAULTS)
+)
 
 // -------- resolved argument shapes --------
 
@@ -266,15 +285,14 @@ export type CommandArgs<Id extends CommandId> = ResolvedArgs<CommandDeclaration<
 
 // -------- Helpers --------
 
-export function parseCommand(msg: SM.RconEvents.ChatMessage, configs: CommandConfigs, commandPrefix: string) {
+// command strings carry their own prefix (`!help`), so the whole first word is matched as-is
+export function parseCommand(msg: SM.RconEvents.ChatMessage, configs: CommandConfigs) {
 	const words = msg.message.split(/\s+/)
-	const cmdText = words[0].slice(1)
-	const cmd = matchCommandText(configs, cmdText)
+	const cmd = matchCommandText(configs, words[0])
 	if (!cmd) {
 		const allCommandStrings = Obj.objValues(configs)
 			.filter((c) => chatInScope(c.scopes, msg.channelType))
 			.flatMap((c) => c.strings)
-			.map((s) => (commandPrefix + s))
 		const sortedMatches = StringComparison.diceCoefficient.sortMatch(words[0].toLowerCase(), allCommandStrings)
 		if (sortedMatches.length === 0) {
 			return { code: 'err:unknown-command' as const, msg: `Unknown command "${words[0]}"` }
@@ -483,9 +501,9 @@ export function formatArgSignature(args: readonly ArgDef[], requiredReasonAction
 	return args.map((def) => formatArg(def, requiredReasonActions)).join(' ').trim()
 }
 
-export function formatUsage(id: CommandId, config: CommandConfig, prefix: string): string {
+export function formatUsage(id: CommandId, config: CommandConfig): string {
 	const cmdString = config.strings[0] ?? id
-	return `Usage: ${prefix}${cmdString} ${formatArgSignature(COMMAND_DECLARATIONS[id].args)}`.trim()
+	return `Usage: ${cmdString} ${formatArgSignature(COMMAND_DECLARATIONS[id].args)}`.trim()
 }
 
 function matchCommandText(configs: CommandConfigs, cmdText: string) {
@@ -520,7 +538,6 @@ export function buildCommand(
 	id: CommandId,
 	argObj: Record<string, string>,
 	configs: CommandConfigs,
-	prefix: string,
 	excludeConsoleCommand = false,
 ) {
 	const declaration = COMMAND_DECLARATIONS[id]
@@ -532,8 +549,8 @@ export function buildCommand(
 	else throw new Error(`Invalid scope for command ${id}`)
 	const argSubstring = (declaration.args as readonly ArgDef[]).map((arg) => argObj[arg.name] ?? '').join(' ')
 	return config.strings
-		.sort((a, b) => b.length - a.length)
+		.toSorted((a, b) => b.length - a.length)
 		.map(str => {
-			return `${unrealConsoleCommand} ${prefix}${str} ${argSubstring}`.trim()
+			return `${unrealConsoleCommand} ${str} ${argSubstring}`.trim()
 		})
 }

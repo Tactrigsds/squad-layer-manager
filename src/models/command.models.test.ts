@@ -216,7 +216,17 @@ describe('usage strings', () => {
 	})
 
 	it('formatUsage uses the first configured string', () => {
-		const usage = CMD.formatUsage('warn', { strings: ['warn'], scopes: ['admin'], enabled: true }, '!')
+		const usage = CMD.formatUsage('warn', { strings: ['!warn'], scopes: ['admin'], enabled: true })
 		expect(usage).toBe('Usage: !warn <player> <reason|message>')
+	})
+})
+
+describe('seedCommandConfigs', () => {
+	it('seeds missing commands with prefixed default strings and leaves stored ones alone', () => {
+		const stored = { warn: { strings: ['/w'], scopes: ['admin'], enabled: false } }
+		const seeded = CMD.seedCommandConfigs(stored, '/')
+		expect(seeded.warn).toEqual(stored.warn)
+		expect(seeded.help).toEqual({ strings: ['/help', '/h'], scopes: ['admin'], enabled: true })
+		expect(Object.keys(seeded).sort()).toEqual(Object.keys(CMD.COMMAND_DECLARATIONS).sort())
 	})
 })
