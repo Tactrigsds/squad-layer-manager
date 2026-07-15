@@ -1,0 +1,139 @@
+# Installing SLM
+
+### Prerequisites
+
+1. Docker, and a server to run it on: [installation instructions](https://docs.docker.com/get-docker/)
+2. A domain and some way to send traffic to SLM.
+3. A Discord server, which you have permissions to install apps on.
+
+### Where to Install
+
+SLM needs access to your Squad Server's log files in order to function. This can be done either locally by mounting the log files directly into the container, via an SFTP connection(this works with PSG-hosted servers for example), or by running a log agent on the game host that streams log data to SLM over its normal url(see [CONFIGURING.md#log-agent](CONFIGURING.md#log-agent) for more). SLM can be set up with any number of squad servers, so keep that in mind as well when deciding where to install it.
+
+### Installation
+
+#### Docker Compose
+
+```sh
+mkdir squad-layer-manager && cd squad-layer-manager
+curl -fsSL https://raw.githubusercontent.com/Tactrigsds/squad-layer-manager/main/install.sh | bash
+```
+
+This lays down the files a deployment is made of: `docker-compose.yaml`, a `.env` (copied from `.env.example`, which is left alongside it), the `edit-global-settings.sh` helper, and an `observability/` directory of Grafana, Loki, and Tempo config. It also creates a `data/` directory, which houses the database file and any persistent data and will be bind-mounted to the app container. You can use a volume instead if you prefer. It refuses to run if any of those files, or `data/`, already exists, so it never overwrites an existing deployment.
+
+#### Discord app
+
+SLM authenticates users through a discord app you own, installed on your org's discord server.
+
+Create one at [discord.com/developers/applications](https://discord.com/developers/applications).
+
+Then, make the settings match these screenshots:
+
+![discord_1](../images/discord_1.png)
+Note the `applications.commands` and `bot` scopes. Both are needed.
+
+Register `<ORIGIN>/login/callback` as a redirect uri, where ORIGIN is wherever you're planning on serving SLM from.
+![discord_2](../images/discord_2.png)
+
+Set ORIGIN in `.env` to match (without `/login/callback`), and fill out `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` in the .env
+
+Configure the bot's intents as such:
+![discord_3](../images/discord_3.png)
+
+Copy your bot token into `DISCORD_BOT_TOKEN` in the `.env` file.
+
+If you don't have access to install the app on your org's discord server, then you may have to set it to public so that someone with access can install it. You can uncheck this option once it's installed.
+
+Set `DISCORD_HOME_GUILD_ID` to the id of your org's discord server. To find this, enable Developer Mode in your discord settings, and right-click on the server icon. Only members of the server can be granted access to SLM.
+
+Set at least one `SUPER_USERS` id to your discord user id (available by clicking your profile picture with developer mode enabled), or nobody can administer the app: they are granted every permission
+unconditionally, and are the bootstrap you cannot lock yourself out of. This person must be a member of your org's discord server.
+
+Next, install the app on your org's discord server by visiting the install link on the `Installation` page. Make sure it's the same one as `DISCORD_HOME_GUILD_ID` in the `.env` file.
+
+#### Battlemetrics
+
+SLM has a battlemetrics integration. Among other things, it lets users update players flags remotely, and gives more context when managing players on the servers.
+
+Set `BM_PAT` to a battlemetrics personal access token, and `BM_ORG_ID` to your org's battlemetrics id.
+Check the environment variable's description of BM_PAT for the required scopes.
+
+#### Backups
+
+Off by default. Set `AUTOMATIC_BACKUPS_PERIODIC` to a duration (e.g. `72h`) and the app will snapshot its
+database on that interval, optionally shipping each one to an SFTP host.
+
+A snapshot is taken with sqlite's online backup API, so it is a consistent point-in-time copy taken without
+locking the app out of its own database, and it is gzipped (typically 5-10x smaller) before being stored or
+uploaded. Backups are named after the database they came from, e.g. `slm-backup-db-20260713-134504.sqlite3.gz`.
+Each run is recorded in the audit log as a `BACKUP_CREATED` event.
+
+The schedule is anchored to the last backup that actually happened, not to boot, so a server restarted more
+often than the interval still gets backed up. A backup that came due while the app was down is taken shortly
+after it comes back up.
+
+| variable                             | default          | what it does                                                  |
+| ------------------------------------ | ---------------- | ------------------------------------------------------------- |
+| `AUTOMATIC_BACKUPS_PERIODIC`         | unset (disabled) | how often to back up, e.g. `72h`                              |
+| `EVENT_HISTORY_RETENTION_PERIOD`     | unset (disabled) | prune server events older than this, e.g. `90d` (see below)   |
+| `BACKUPS_DIR`                        | `./data/backups` | where backups are written                                     |
+| `BACKUPS_RETAIN_COUNT`               | `10`             | how many to keep, locally and remotely. `0` keeps all of them |
+| `BACKUP_SFTP_HOST`                   | unset (disabled) | setting this uploads each backup to that host                 |
+| `BACKUP_SFTP_PORT`                   | `22`             |                                                               |
+| `BACKUP_SFTP_USERNAME`               |                  | required when a host is set                                   |
+| `BACKUP_SFTP_PASSWORD`               |                  | this or a private key is required when a host is set          |
+| `BACKUP_SFTP_PRIVATE_KEY_PATH`       |                  | path to a private key, as an alternative to a password        |
+| `BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE` |                  | if the key needs one                                          |
+| `BACKUP_SFTP_DIR`                    | `.`              | remote directory, created if missing                          |
+
+Two SLM instances must not share a `BACKUP_SFTP_DIR` unless their databases are named differently: retention
+deletes any backup matching its own name, so they would prune each other's.
+
+A failed upload does not fail the backup. The local copy is still written, and the audit event records that it
+never left the box.
+
+To restore from a backup, with the application stopped, replace the database with the decompressed snapshot:
+
+```sh
+# while the application is OFF:
+# delete or move the existing database and its -wal and -shm files
+rm data/db.sqlite3*
+gunzip -c slm-backup-db-20260713-134504.sqlite3.gz > data/db.sqlite3
+```
+
+#### Event history retention
+
+`EVENT_HISTORY_RETENTION_PERIOD` prunes old server events (chat, kills, connects) as part of each backup run,
+which is what keeps the database from growing without bound. Events are deleted for matches older than the
+retention period, except that the 100 most recent matches per server are always kept regardless of age (the app loads them at startup). Match records themselves are never deleted, only their events, and neither is the audit log. The prune runs before the snapshot, so a backup never carries rows that were just dropped.
+
+The first prune after turning this on clears the whole accumulated backlog and is much larger than the ones
+that follow.
+
+#### Telemetry
+
+Detailed logs and telemetry are available via grafana, hosted at `http://localhost:3001`, which you may also want to expose to the internet. Just make sure to change the default admin password before doing so. see [https://grafana.com/docs/grafana/latest/introduction/](https://grafana.com/docs/grafana/latest/introduction/) for more. There is a dashboard set up there preconfigured to assist with monitoring SLM.
+
+If you don't want any telemetry, then set `OTEL_ENABLED=false`, and comment out or delete the otel service from `docker-compose.yaml` before starting the app.
+
+#### Starting SLM.
+
+Assuming that your system already has docker installed and running, and you've got a public url for the server, you can start it up.
+
+`docker compose up -d`
+
+If docker is configured to start on boot, then the app will start automatically when the system boots in the event of a reboot.
+
+Stop everything with `docker compose down`. If you want to stop just the app while leaving grafana running, use `docker compose stop app`.
+
+Once you've got the app running, you'll be able to sign in with discord OAuth, and you can move on to [configuring SLM](CONFIGURING.md).
+
+#### Upgrading
+
+```sh
+docker compose pull && docker compose up -d
+```
+
+Migrations are applied on boot by default; set `DB_AUTOMIGRATE=0` to disable this behavior.
+
+Run migrations manually with `docker compose run --rm app pnpm db:migrate:prod`.

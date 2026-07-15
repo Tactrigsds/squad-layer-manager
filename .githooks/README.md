@@ -12,10 +12,7 @@ Disable with:
 pnpm remove:hooks
 ```
 
-Runs three checks on changed files when pushing to `main`:
-
-- Type checking with `tsc -b`
-- Format checking with `dprint check`
-- Linting with `oxlint --type-aware`
+`pre-push` runs the full suite (format, typecheck, lint, unit, integration, e2e) when pushing to `main`, and
+nothing on any other branch. See [CONTRIBUTING.md](../CONTRIBUTING.md#the-pre-push-hook) for the details.
 
 **Bypass:** `git push --no-verify`
