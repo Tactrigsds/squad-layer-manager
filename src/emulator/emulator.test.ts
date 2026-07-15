@@ -44,7 +44,7 @@ beforeAll(async () => {
 	await emu.start()
 	rcon = new Rcon({
 		serverId: 'emu-test',
-		settings: { host: '127.0.0.1', port: emu.rconPort, password: emu.password },
+		transport: new CoreRcon.DirectSocketTransport({ host: '127.0.0.1', port: emu.rconPort, password: emu.password }),
 		autoReconnectDelay: 200,
 	})
 	await rcon.connect()

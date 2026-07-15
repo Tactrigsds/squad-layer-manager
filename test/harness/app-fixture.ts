@@ -134,16 +134,17 @@ export type AppFixtureOptions = {
 	admins?: string[]
 	// skip spawning; useful to test seeding in isolation
 	spawn?: boolean
-	// how the app ingests the emulator's log. 'local-file' (default) tails the SquadGame.log directly;
-	// 'log-receiver' runs the real rust log agent (log-agent/agent), which tails that same file and
-	// streams it to the app over the /log-agent websocket. Exercises the full remote-agent pipeline.
-	logSource?: 'local-file' | 'log-receiver'
+	// how the app reaches the emulated server. 'local' (default) tails the SquadGame.log directly and dials
+	// RCON directly; 'server-agent' runs the real rust server agent (server-agent/agent), which tails that
+	// same file and proxies RCON, streaming both to the app over the /server-agent websocket. Exercises the
+	// full remote-agent pipeline including the RCON tunnel.
+	logSource?: 'local' | 'server-agent'
 }
 
 export type AppFixture = {
 	emu: Emulator
-	// the running log agent when logSource is 'log-receiver' (else null); stop()/start() drive reconnect tests
-	logAgent: LogAgentController | null
+	// the running server agent when logSource is 'server-agent' (else null); stop()/start() drive reconnect tests
+	serverAgent: ServerAgentController | null
 	// stub BattleMetrics API the app talks to; inspect bm.requestLog / bm.players to assert writes
 	bm: BmServer
 	serverId: string
@@ -179,13 +180,13 @@ export const ADMIN_USER: TestUser = { discordId: 900000000000000001n, username: 
 // deciding which connected players are admins
 const ADMIN_GROUP = 'SlmTestAdmin'
 const ADMIN_PERM: SM.PlayerPerm = 'canseeadminchat'
-const LOG_AGENT_TOKEN = 'test-log-agent-token'
-const AGENT_DIR = path.join(REPO_ROOT, 'log-agent/agent')
+const SERVER_AGENT_TOKEN = 'test-server-agent-token'
+const AGENT_DIR = path.join(REPO_ROOT, 'server-agent/agent')
 
-// Resolves the real log agent binary, building it once (release) if no build is present. The debug build
+// Resolves the real server agent binary, building it once (release) if no build is present. The debug build
 // is preferred when it already exists so a dev iterating on tests doesn't pay for a release compile.
 function resolveAgentBinary(): string {
-	const exe = process.platform === 'win32' ? 'slm-log-agent.exe' : 'slm-log-agent'
+	const exe = process.platform === 'win32' ? 'slm-server-agent.exe' : 'slm-server-agent'
 	for (const profile of ['release', 'debug']) {
 		const candidate = path.join(AGENT_DIR, 'target', profile, exe)
 		if (fs.existsSync(candidate)) return candidate
@@ -194,15 +195,17 @@ function resolveAgentBinary(): string {
 	return path.join(AGENT_DIR, 'target', 'release', exe)
 }
 
-// Runs the real rust log agent against the emulator's SquadGame.log, streaming it to the app's
-// /log-agent websocket. Returns a controller so tests can drop and restart it (reconnect scenarios).
-type LogAgentController = {
+// Runs the real rust server agent against the emulator's SquadGame.log and RCON port, streaming both to the
+// app's /server-agent websocket. Returns a controller so tests can drop and restart it (reconnect scenarios).
+type ServerAgentController = {
 	start: () => void
 	stop: () => void
 	dispose: () => void
 }
 
-function startLogAgent(args: { appPort: number; serverId: string; logPath: string; agentLogPath: string }): LogAgentController {
+function startServerAgent(
+	args: { appPort: number; serverId: string; logPath: string; agentLogPath: string; rconPort: number; rconPassword: string },
+): ServerAgentController {
 	const binary = resolveAgentBinary()
 	let child: childProcess.ChildProcess | null = null
 	const start = () => {
@@ -210,13 +213,20 @@ function startLogAgent(args: { appPort: number; serverId: string; logPath: strin
 		const out = fs.openSync(args.agentLogPath, 'a')
 		child = childProcess.spawn(binary, [
 			'--url',
-			`ws://127.0.0.1:${args.appPort}/log-agent`,
+			`ws://127.0.0.1:${args.appPort}/server-agent`,
 			'--server-id',
 			args.serverId,
 			'--token',
-			LOG_AGENT_TOKEN,
+			SERVER_AGENT_TOKEN,
 			'--file',
 			args.logPath,
+			// the agent holds the RCON creds and proxies them; the app never sees them for a server-agent server
+			'--rcon-host',
+			'127.0.0.1',
+			'--rcon-port',
+			String(args.rconPort),
+			'--rcon-password',
+			args.rconPassword,
 			// tests move fast; poll and reconnect quickly so assertions don't wait on the agent
 			'--poll-ms',
 			'100',
@@ -294,17 +304,19 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	)
 
 	// -------- server --------
-	// the emulator writes its log to a file and the app tails it, the same `local-file` path a
+	// the emulator writes its log to a file and the app tails it, the same `local` path a
 	// same-host squad server uses. No test-only transport in between.
 	const squadLogPath = path.join(tmpDir, 'SquadGame.log')
-	const logSource = opts.logSource ?? 'local-file'
+	const logSource = opts.logSource ?? 'local'
 	const serverSettings = SETTINGS.ServerSettingsSchema.parse({
-		connections: {
-			rcon: { host: '127.0.0.1', port: emu.rconPort, password: emu.password },
-			logs: logSource === 'log-receiver'
-				? { type: 'log-receiver', token: LOG_AGENT_TOKEN }
-				: { type: 'local-file', logFile: squadLogPath },
-		},
+		// server-agent mode keeps no RCON creds in the app: the agent holds them and proxies RCON over its tunnel
+		connections: logSource === 'server-agent'
+			? { type: 'server-agent', token: SERVER_AGENT_TOKEN }
+			: {
+				type: 'local',
+				logFile: squadLogPath,
+				rcon: { host: '127.0.0.1', port: emu.rconPort, password: emu.password },
+			},
 		adminListSources: [{ type: 'local', source: adminsCfgPath }],
 		adminIdentifyingPermissions: [ADMIN_PERM],
 	})
@@ -467,21 +479,23 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		}, { label: 'app readiness', timeoutMs: 60_000 })
 	}
 
-	// the real log agent tails the file the emulator writes and streams it to the app; start it only once
-	// the app is listening so its first connection lands
-	let logAgent: LogAgentController | null = null
-	if (logSource === 'log-receiver' && opts.spawn !== false) {
-		logAgent = startLogAgent({
+	// the real server agent tails the file the emulator writes and proxies its RCON; start it only once the
+	// app is listening so its first connection lands
+	let serverAgent: ServerAgentController | null = null
+	if (logSource === 'server-agent' && opts.spawn !== false) {
+		serverAgent = startServerAgent({
 			appPort,
 			serverId,
 			logPath: squadLogPath,
-			agentLogPath: path.join(tmpDir, 'log-agent.log'),
+			agentLogPath: path.join(tmpDir, 'server-agent.log'),
+			rconPort: emu.rconPort,
+			rconPassword: emu.password,
 		})
 	}
 
 	return {
 		emu,
-		logAgent,
+		serverAgent,
 		bm,
 		serverId,
 		appPort,
@@ -507,7 +521,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		readDb: () => new Database(dbPath, { readonly: true }),
 		waitFor,
 		dispose: async () => {
-			logAgent?.dispose()
+			serverAgent?.dispose()
 			if (child && child.exitCode === null) {
 				child.kill('SIGTERM')
 				const killTimer = setTimeout(() => child?.kill('SIGKILL'), 8000)

@@ -1,11 +1,12 @@
-# Build context is this directory (log-agent/agent):
-# docker build -t slm-log-agent log-agent/agent
+# Build context is this directory (server-agent/agent):
+# docker build -t slm-server-agent server-agent/agent
 #
-# Runtime config is by env (see --help / src/main.rs): SLM_URL, SLM_SERVER_ID, SLM_TOKEN, SLM_LOG_PATH.
-# Mount the squad server's log directory and point SLM_LOG_PATH at the SquadGame.log inside it, e.g.
+# Runtime config is by env (see --help / src/main.rs): SLM_URL, SLM_SERVER_ID, SLM_TOKEN, SLM_LOG_PATH, and
+# optionally SLM_RCON_HOST / SLM_RCON_PORT / SLM_RCON_PASSWORD to proxy RCON. Mount the squad server's log
+# directory and point SLM_LOG_PATH at the SquadGame.log inside it, e.g.
 # docker run --rm -v /srv/squad/SquadGame/Saved/Logs:/logs:ro \
-# -e SLM_URL=wss://slm.example.com/log-agent -e SLM_SERVER_ID=srv1 -e SLM_TOKEN=... \
-# -e SLM_LOG_PATH=/logs/SquadGame.log slm-log-agent
+# -e SLM_URL=wss://slm.example.com/server-agent -e SLM_SERVER_ID=srv1 -e SLM_TOKEN=... \
+# -e SLM_LOG_PATH=/logs/SquadGame.log slm-server-agent
 
 FROM rust:1-slim AS build
 WORKDIR /agent
@@ -26,6 +27,6 @@ RUN cargo build --release --target x86_64-unknown-linux-musl
 # static musl binary: needs no libc, so a minimal base is enough. distroless/static ships CA certs,
 # /etc/passwd and a nonroot user, which is all a network client wants.
 FROM gcr.io/distroless/static-debian12 AS runtime
-COPY --from=build /agent/target/x86_64-unknown-linux-musl/release/slm-log-agent /usr/local/bin/slm-log-agent
+COPY --from=build /agent/target/x86_64-unknown-linux-musl/release/slm-server-agent /usr/local/bin/slm-server-agent
 USER nonroot
-ENTRYPOINT ["/usr/local/bin/slm-log-agent"]
+ENTRYPOINT ["/usr/local/bin/slm-server-agent"]

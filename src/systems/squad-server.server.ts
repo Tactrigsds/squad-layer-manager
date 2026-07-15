@@ -10,7 +10,7 @@ import { FileTail } from '@/lib/file-tail'
 import * as Gen from '@/lib/generator'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as Obj from '@/lib/object'
-import Rcon from '@/lib/rcon/core-rcon'
+import Rcon, { DirectSocketTransport } from '@/lib/rcon/core-rcon'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import { SftpTail } from '@/lib/sftp-tail'
 import * as Templating from '@/lib/templating'
@@ -48,8 +48,8 @@ import * as Commands from '@/systems/commands.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
+import * as ServerAgent from '@/systems/server-agent.server'
 import * as Settings from '@/systems/settings.server'
-import * as SquadLogsReceiver from '@/systems/squad-logs-receiver.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as TeamswapsSys from '@/systems/teamswaps.server'
 import * as Timeouts from '@/systems/timeouts.server'
@@ -642,7 +642,11 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	const signal = anySignal(ctx.signal, sliceAbort.signal)!
 	ctx = { ...ctx, signal }
 
-	const rcon = new Rcon({ serverId, settings: settings.connections.rcon })
+	// local/sftp dial RCON directly; server-agent tunnels it through the agent (the agent holds the password)
+	const rconTransport = settings.connections.type === 'server-agent'
+		? ServerAgent.rconTransportFor(serverId)
+		: new DirectSocketTransport(settings.connections.rcon)
+	const rcon = new Rcon({ serverId, transport: rconTransport })
 	rcon.ensureConnected()
 	cleanup.push(() => rcon.disconnect())
 
@@ -709,13 +713,13 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		},
 		// how far a non-log event may lead the log stream before we stop waiting for the log to catch up.
 		// A polled source can be a whole poll behind; a pushed one is near-live.
-		minSafeLogLeadTimeForOtherEvents: settings.connections.logs.type === 'sftp'
-			? settings.connections.logs.pollInterval * 2
-			: settings.connections.logs.type === 'local-file'
+		minSafeLogLeadTimeForOtherEvents: settings.connections.type === 'sftp'
+			? settings.connections.sftp.pollInterval * 2
+			: settings.connections.type === 'local'
 			? Settings.GLOBAL_SETTINGS.squadServer.logFilePollInterval * 2
-			: settings.connections.logs.type === 'log-receiver'
+			: settings.connections.type === 'server-agent'
 			? 1000
-			: assertNever(settings.connections.logs),
+			: assertNever(settings.connections),
 	})
 
 	const server: SquadServer = {
@@ -842,16 +846,17 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	cleanup.push(logStreamAc)
 	void C.spanOp('processLogEvents', { module }, async (_: unknown) => {
 		let chunk$: Rx.Observable<string>
-		if (settings.connections.logs.type === 'sftp') {
+		if (settings.connections.type === 'sftp') {
+			const sftp = settings.connections.sftp
 			const sftpReader = new SftpTail({
-				filePath: settings.connections!.logs.logFile,
-				host: settings.connections!.logs.host,
-				port: settings.connections!.logs.port,
-				username: settings.connections!.logs.username,
-				password: settings.connections!.logs.password,
-				pollInterval: settings.connections.logs.pollInterval,
-				reconnectInterval: settings.connections.logs.reconnectInterval,
-				maxReconnectAttempts: settings.connections.logs.maxReconnectAttempts,
+				filePath: sftp.logFile,
+				host: sftp.host,
+				port: sftp.port,
+				username: sftp.username,
+				password: sftp.password,
+				pollInterval: sftp.pollInterval,
+				reconnectInterval: sftp.reconnectInterval,
+				maxReconnectAttempts: sftp.maxReconnectAttempts,
 				// reconnection attempts exhausted: tear the slice down rather than letting the error crash the process
 				onFatalError: onResourceFatalError,
 				parentModule: module,
@@ -862,9 +867,9 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			chunk$ = Rx.fromEvent(sftpReader, 'chunk').pipe(
 				Rx.map((...args) => args[0] as string),
 			)
-		} else if (settings.connections.logs.type === 'local-file') {
+		} else if (settings.connections.type === 'local') {
 			const fileReader = new FileTail({
-				filePath: settings.connections.logs.logFile,
+				filePath: settings.connections.logFile,
 				pollInterval: Settings.GLOBAL_SETTINGS.squadServer.logFilePollInterval,
 				onFatalError: onResourceFatalError,
 				parentModule: module,
@@ -875,17 +880,17 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			chunk$ = Rx.fromEvent(fileReader, 'chunk').pipe(
 				Rx.map((...args) => args[0] as string),
 			)
-		} else if (settings.connections.logs.type === 'log-receiver') {
-			chunk$ = SquadLogsReceiver.streamFor(serverId)
+		} else if (settings.connections.type === 'server-agent') {
+			chunk$ = ServerAgent.streamFor(serverId)
 		} else {
-			assertNever(settings.connections.logs)
+			assertNever(settings.connections)
 		}
 
 		// Counted on the way in, at the one point every log source (sftp poll, local file tail,
-		// log-receiver push) funnels through, so the numbers mean the same thing whichever a server uses. A
+		// server-agent push) funnels through, so the numbers mean the same thing whichever a server uses. A
 		// chunk is not line-aligned, so lines are counted by newline rather than by split length: a
 		// chunk that splits a line in half would otherwise count it twice.
-		const logSource = settings.connections.logs.type satisfies ATTRS.SquadLogs.Source
+		const logSource = settings.connections.type satisfies ATTRS.SquadLogs.Source
 		const countedChunk$ = chunk$.pipe(
 			Rx.tap((chunk) => {
 				const attrs = { [ATTRS.SquadServer.ID]: serverId, [ATTRS.SquadLogs.SOURCE]: logSource }

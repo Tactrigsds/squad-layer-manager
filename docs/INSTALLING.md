@@ -8,7 +8,7 @@
 
 ### Where to Install
 
-SLM needs access to your Squad Server's log files in order to function. This can be done either locally by mounting the log files directly into the container, via an SFTP connection(this works with PSG-hosted servers for example), or by running a log agent on the game host that streams log data to SLM over its normal url(see [CONFIGURING.md#log-agent](CONFIGURING.md#log-agent) for more). SLM can be set up with any number of squad servers, so keep that in mind as well when deciding where to install it.
+SLM needs access to your Squad Server's log files in order to function. This can be done either locally by mounting the log files directly into the container, via an SFTP connection(this works with PSG-hosted servers for example), or by running a server agent on the game host that streams log data (and proxies RCON) to SLM over its normal url(see [CONFIGURING.md#server-agent](CONFIGURING.md#server-agent) for more). SLM can be set up with any number of squad servers, so keep that in mind as well when deciding where to install it.
 
 ### Installation
 
@@ -53,7 +53,7 @@ Next, install the app on your org's discord server by visiting the install link 
 
 #### Encryption key
 
-SLM encrypts sensitive settings at rest (each server's RCON and SFTP passwords and its log-agent token). This is keyed by `SETTINGS_ENCRYPTION_KEY`, which is required: the app refuses to start without it. Generate a strong key and paste it into `.env`:
+SLM encrypts sensitive settings at rest (each server's RCON and SFTP passwords and its server-agent token). This is keyed by `SETTINGS_ENCRYPTION_KEY`, which is required: the app refuses to start without it. Generate a strong key and paste it into `.env`:
 
 ```sh
 openssl rand -base64 32

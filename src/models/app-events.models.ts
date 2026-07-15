@@ -215,7 +215,7 @@ export const REDACTED_SETTING = '[redacted]'
 export const SettingChangeSchema = z.object({ path: z.string(), from: z.unknown(), to: z.unknown() })
 
 // the settings subtree holding credentials. `connections` is the whole of it: rcon password, sftp host/user/password,
-// and the log-receiver token all live under it, and it's the same subtree RBAC gates behind write-sensitive.
+// and the server-agent token all live under it, and it's the same subtree RBAC gates behind write-sensitive.
 function isSensitiveSettingPath(path: string) {
 	return path === 'connections' || path.startsWith('connections.')
 }

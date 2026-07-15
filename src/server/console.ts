@@ -44,9 +44,9 @@ import * as LayerQueries from '@/systems/layer-queries.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
+import * as ServerAgent from '@/systems/server-agent.server'
 import * as Sessions from '@/systems/sessions.server'
 import * as Settings from '@/systems/settings.server'
-import * as SquadLogsReceiver from '@/systems/squad-logs-receiver.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Teamswaps from '@/systems/teamswaps.server'
@@ -81,8 +81,8 @@ const namespaces = {
 	MatchHistory,
 	Rbac,
 	Sessions,
+	ServerAgent,
 	Settings,
-	SquadLogsReceiver,
 	SquadRcon,
 	SquadServer,
 	Teamswaps,

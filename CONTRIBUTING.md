@@ -62,15 +62,15 @@ pnpm run client:dev
 Both the integration and e2e suites spawn a real app instance (child process, ephemeral db and ports) against
 an emulated squad server, so they need no external services, but they are slow relative to the unit tests.
 
-## The log agent
+## The server agent
 
-The log agent ([log-agent/agent](log-agent/agent)) is a standalone rust binary, separate from the app and not needed to run it. Build it with:
+The server agent ([server-agent/agent](server-agent/agent)) is a standalone rust binary, separate from the app and not needed to run it. It streams a server's logs to SLM and proxies its RCON. Build it with:
 
 ```sh
-pnpm run build:agent   # cargo build --release, binary at log-agent/agent/target/release/slm-log-agent
+pnpm run build:agent   # cargo build --release, binary at server-agent/agent/target/release/slm-server-agent
 ```
 
-See [docs/CONFIGURING.md#log-agent](docs/CONFIGURING.md#log-agent) for more details on how to configure it.
+See [docs/CONFIGURING.md#server-agent](docs/CONFIGURING.md#server-agent) for more details on how to configure it.
 
 ## The pre-push hook
 

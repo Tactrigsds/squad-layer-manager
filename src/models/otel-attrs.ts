@@ -70,7 +70,7 @@ export namespace Rcon {
 
 export namespace SquadLogs {
 	export const SOURCE = 'slm.squad_logs.source'
-	export type Source = 'sftp' | 'log-receiver' | 'local-file'
+	export type Source = 'sftp' | 'server-agent' | 'local'
 	export const LINES = 'slm.squad_logs.lines'
 	export const IO = 'slm.squad_logs.io'
 	export const EVENTS = 'slm.squad_logs.events'

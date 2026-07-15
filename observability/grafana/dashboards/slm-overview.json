@@ -181,7 +181,7 @@
 		{
 			"type": "timeseries",
 			"title": "Log lines parsed",
-			"description": "Lines ingested per second against events successfully parsed out of them. Both sources (sftp poll and log-receiver push) are counted at the same point, so the numbers mean the same thing either way. Lines far outrunning events is normal (most lines are not events); events dropping to zero while lines keep flowing is not.",
+			"description": "Lines ingested per second against events successfully parsed out of them. Both sources (sftp poll and server-agent push) are counted at the same point, so the numbers mean the same thing either way. Lines far outrunning events is normal (most lines are not events); events dropping to zero while lines keep flowing is not.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
 			"gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
 			"targets": [

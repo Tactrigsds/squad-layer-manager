@@ -436,37 +436,48 @@ export const PoolConfigurationSchema = z.object({
 })
 
 export type PoolConfiguration = z.infer<typeof PoolConfigurationSchema>
-export const ServerConnectionSchema = z.object({
-	rcon: z.object({
-		host: z.string().min(1),
-		port: z.number().min(1).max(65535),
-		password: z.string().min(1),
-	}),
-	logs: z.discriminatedUnion('type', [
-		z.object({
-			type: z.literal('log-receiver'),
-			token: z.string().default('dev'),
-		}),
-		// the game's log on this host's filesystem (same box, or a mounted log directory)
-		z.object({
-			type: z.literal('local-file'),
-			logFile: z.string().min(1),
-		}),
-		z.object({
-			type: z.literal('sftp'),
-			host: z.string().min(1),
-			port: z.number().min(1).max(65535),
-			username: z.string().min(1),
-			password: z.string().min(1),
-			logFile: z.string().min(1),
-			pollInterval: HumanTime.prefault('1s').describe('How often to poll the remote log file over SFTP for new lines.'),
-			reconnectInterval: HumanTime.prefault('5s').describe('How long to wait between SFTP reconnection attempts.'),
-			maxReconnectAttempts: z.int().min(1).prefault(10).describe(
-				'How many consecutive SFTP failures to tolerate (reconnecting between each) before tearing down the server.',
-			),
-		}),
-	]),
+export const RconConnectionSchema = z.object({
+	host: z.string().min(1),
+	port: z.number().min(1).max(65535),
+	password: z.string().min(1),
 })
+export type RconConnection = z.infer<typeof RconConnectionSchema>
+
+export const SftpLogConnectionSchema = z.object({
+	host: z.string().min(1),
+	port: z.number().min(1).max(65535),
+	username: z.string().min(1),
+	password: z.string().min(1),
+	logFile: z.string().min(1),
+	pollInterval: HumanTime.prefault('1s').describe('How often to poll the remote log file over SFTP for new lines.'),
+	reconnectInterval: HumanTime.prefault('5s').describe('How long to wait between SFTP reconnection attempts.'),
+	maxReconnectAttempts: z.int().min(1).prefault(10).describe(
+		'How many consecutive SFTP failures to tolerate (reconnecting between each) before tearing down the server.',
+	),
+})
+
+// How SLM reaches a squad server, as three mutually-exclusive modes:
+//   local        - SLM shares the box: reads the log file directly, dials RCON directly.
+//   sftp         - SLM is remote: tails the log over SFTP, dials RCON directly over the network.
+//   server-agent - the slm-server-agent (see ../../server-agent) runs on/near the box and handles BOTH
+//                  logs and RCON. The RCON password lives in the agent's own config, never here; SLM only
+//                  stores the shared handshake token.
+export const ServerConnectionSchema = z.discriminatedUnion('type', [
+	z.object({
+		type: z.literal('local'),
+		logFile: z.string().min(1),
+		rcon: RconConnectionSchema,
+	}),
+	z.object({
+		type: z.literal('sftp'),
+		rcon: RconConnectionSchema,
+		sftp: SftpLogConnectionSchema,
+	}),
+	z.object({
+		type: z.literal('server-agent'),
+		token: z.string().default('dev'),
+	}),
+])
 export const GenerationFilterConfigSchema = z.object({ filterId: z.string(), applyAs: POOL_FILTER_APPLY_AS })
 export type GenerationFilterConfig = z.infer<typeof GenerationFilterConfigSchema>
 export type ServerConnection = z.infer<typeof ServerConnectionSchema>

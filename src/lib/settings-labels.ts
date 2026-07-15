@@ -9,7 +9,8 @@ const LABEL_OVERRIDES: Record<string, string> = {
 	// per-server settings
 	connections: 'Connections',
 	'connections.rcon': 'RCON',
-	'connections.logs': 'Log Source',
+	'connections.sftp': 'SFTP Log Source',
+	'connections.token': 'Agent Token',
 	'queue.generationPool': 'Autogeneration Pool',
 }
 

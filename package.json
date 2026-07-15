@@ -33,7 +33,7 @@
 		"test:e2e:ci": "playwright test",
 		"test:ci": "pnpm run test:integration && pnpm run test:e2e:ci",
 		"build:engine": "cd layer-engine && cargo build --release --target wasm32-unknown-unknown && cd .. && mkdir -p assets && cp layer-engine/target/wasm32-unknown-unknown/release/layer_engine.wasm assets/layer-engine.wasm",
-		"build:agent": "cargo build --release --manifest-path log-agent/agent/Cargo.toml",
+		"build:agent": "cargo build --release --manifest-path server-agent/agent/Cargo.toml",
 		"build:all": "pnpm run build:engine && pnpm run build:prod"
 	},
 	"dependencies": {

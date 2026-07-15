@@ -93,7 +93,7 @@ describe('app-events persistence', () => {
 			causeId: null,
 			changes: [
 				{ path: 'connections.rcon.password', from: 'old-rcon-pw', to: 'new-rcon-pw' },
-				{ path: 'connections.logs.token', from: 'old-token', to: 'new-token' },
+				{ path: 'connections.token', from: 'old-token', to: 'new-token' },
 				{ path: 'connections', from: { rcon: { password: 'whole-object' } }, to: {} },
 				{ path: 'queue.preferredLength', from: 12, to: 8 },
 			],
@@ -101,7 +101,7 @@ describe('app-events persistence', () => {
 		const persisted = AppEvents.fromRow(AppEvents.toRow(e) as any) as AppEvents.SettingsUpdated
 		expect(persisted.changes).toEqual([
 			{ path: 'connections.rcon.password', from: AppEvents.REDACTED_SETTING, to: AppEvents.REDACTED_SETTING },
-			{ path: 'connections.logs.token', from: AppEvents.REDACTED_SETTING, to: AppEvents.REDACTED_SETTING },
+			{ path: 'connections.token', from: AppEvents.REDACTED_SETTING, to: AppEvents.REDACTED_SETTING },
 			{ path: 'connections', from: AppEvents.REDACTED_SETTING, to: AppEvents.REDACTED_SETTING },
 			// non-sensitive paths keep their values
 			{ path: 'queue.preferredLength', from: 12, to: 8 },

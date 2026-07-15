@@ -285,36 +285,33 @@ export function initServerSettingsSlice(
 	return slice
 }
 
-// the connection secrets encrypted at rest: the RCON password, the SFTP log password, and the log-agent
-// token. In memory these are always plaintext; sealing happens only at a DB write, opening only at a DB read.
+// the connection secrets encrypted at rest: the RCON password (local/sftp), the SFTP log password, and the
+// server-agent token. In memory these are always plaintext; sealing happens only at a DB write, opening only
+// at a DB read.
 function transformConnectionSecrets(
 	settings: SETTINGS.ServerSettings,
 	fn: (value: string) => string,
 ): SETTINGS.ServerSettings {
 	const { connections } = settings
-	const { logs } = connections
-	let newLogs: typeof logs
-	switch (logs.type) {
-		case 'log-receiver':
-			newLogs = { ...logs, token: fn(logs.token) }
+	let newConnections: typeof connections
+	switch (connections.type) {
+		case 'local':
+			newConnections = { ...connections, rcon: { ...connections.rcon, password: fn(connections.rcon.password) } }
 			break
 		case 'sftp':
-			newLogs = { ...logs, password: fn(logs.password) }
+			newConnections = {
+				...connections,
+				rcon: { ...connections.rcon, password: fn(connections.rcon.password) },
+				sftp: { ...connections.sftp, password: fn(connections.sftp.password) },
+			}
 			break
-		case 'local-file':
-			newLogs = logs
+		case 'server-agent':
+			newConnections = { ...connections, token: fn(connections.token) }
 			break
 		default:
-			assertNever(logs)
+			assertNever(connections)
 	}
-	return {
-		...settings,
-		connections: {
-			...connections,
-			rcon: { ...connections.rcon, password: fn(connections.rcon.password) },
-			logs: newLogs,
-		},
-	}
+	return { ...settings, connections: newConnections }
 }
 
 export const sealConnections = (settings: SETTINGS.ServerSettings) => transformConnectionSecrets(settings, SecretBox.seal)
