@@ -237,7 +237,7 @@ export default function NavBar() {
 					</div>
 				)}
 			</div>
-			<ExploreLayersDialog open={exploreLayersOpen} onOpenChange={setExploreLayersOpen} squadServer={squadServerKey} />
+			<ExploreLayersDialog open={exploreLayersOpen} onOpenChange={setExploreLayersOpen} />
 			<div className="flex h-max min-h-0 flex-row items-center space-x-1 sm:space-x-3 overflow-hidden">
 				{simulateRoles && (
 					<div className="hidden sm:flex items-center space-x-1 shrink-0">
@@ -356,22 +356,14 @@ function NormalizeTeamsToggle() {
 // the explore frame is scoped to the selected server, since its pool filters and repeat-rule constraints come from that
 // server's settings. Switching servers therefore builds a fresh instance and drops the previous one, rather than leaving
 // the dialog constrained by the server the page happened to load with
-function ExploreLayersDialog(props: { open: boolean; onOpenChange: (open: boolean) => void } & Partial<SquadServerFrame.KeyProp>) {
-	const squadServer = props.squadServer
-	const input = React.useMemo(
-		() =>
-			SelectLayersFrame.createInput({
-				sharedInstanceId: squadServer ? `${EXPLORE_LAYERS_FRAME_INSTANCE_ID}:${squadServer.serverId}` : EXPLORE_LAYERS_FRAME_INSTANCE_ID,
-				squadServer,
-			}),
-		[squadServer],
-	)
+function ExploreLayersDialog(props: { open: boolean; onOpenChange: (open: boolean) => void }) {
+	const input = React.useMemo(() => SelectLayersFrame.createInput({ sharedInstanceId: EXPLORE_LAYERS_FRAME_INSTANCE_ID }), [])
 	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, { input, equalityFn: Obj.deepEqual })
 	useFrameTeardownOnUnmount(frameKey)
 
 	return (
 		<SelectLayersDialog
-			stores={{ selectLayers: frameKey, squadServer }}
+			stores={{ selectLayers: frameKey }}
 			open={props.open}
 			onOpenChange={props.onOpenChange}
 			title="Layers"
