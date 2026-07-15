@@ -6,7 +6,7 @@ import * as Env from './env.ts'
 await Cli.ensureCliParsed()
 Env.ensureEnvSetup()
 
-const ENV = Env.getEnvBuilder({ OTEL_ENABLED: Env.groups.general.OTEL_ENABLED })()
+const ENV = Env.getEnvBuilder({ OTEL_ENABLED: Env.groups.otel.OTEL_ENABLED })()
 
 if (ENV.OTEL_ENABLED) {
 	// setupOtel registers sdk.shutdown() with cleanup.server, which runs it on SIGTERM. A 'beforeExit'

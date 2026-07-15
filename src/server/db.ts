@@ -49,11 +49,9 @@ export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 
 	// Schema-vs-code guard, run while foreign_keys is still at its default (OFF) — same as the
 	// standalone `pnpm db:migrate`, since drizzle-kit's table-rebuild migrations require FK
-	// enforcement off. By default migrations are applied out-of-band and boot merely refuses to run
-	// against a DB that's behind (never taking a write lock or mutating the DB here). With
-	// DB_AUTOMIGRATE on, boot applies pending migrations itself instead — enable only once the new
-	// migration system is trusted, and never with more than one instance running. Scripts that
-	// intentionally run pre-migration pass skipMigrationCheck.
+	// enforcement off. Boot applies pending migrations itself by default; with DB_AUTOMIGRATE off it
+	// merely refuses to run against a DB that's behind, never taking a write lock or mutating the DB
+	// here. Scripts that intentionally run pre-migration pass skipMigrationCheck.
 	if (!opts?.skipMigrationCheck) {
 		const migrateOpts = { sqlDir: path.resolve(process.cwd(), 'drizzle-sqlite'), tsMigrations }
 		if (ENV.DB_AUTOMIGRATE) {

@@ -85,7 +85,6 @@ export default defineConfig({
 		},
 	],
 	server: process.env.NODE_ENV === 'development' ? buildDevServerConfig() : undefined,
-	envPrefix: 'PUBLIC_',
 	build: {
 		sourcemap: true,
 	},
