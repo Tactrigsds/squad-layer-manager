@@ -18,7 +18,7 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 		label: 'Squad Server',
 		keys: ['squadServer', 'adminListSources', 'fogOffDelay', 'postRollAnnouncementsTimeout', 'balanceTriggerLevels'],
 	},
-	{ slug: 'players', label: 'Players & Flags', keys: ['playerFlagColorHierarchy', 'playerFlagsRequiringNote', 'playerFlagGroupings'] },
+	{ slug: 'players', label: 'Players & Flags', keys: ['playerFlagGroupings', 'playerFlagsRequiringNote'] },
 	// rbac stays ungrouped: its own section header already reads "Permissions & Roles"
 ]
 
@@ -34,6 +34,8 @@ export const TOC_LEAF_PATHS: ReadonlySet<string> = new Set([
 	'layerGeneration',
 	'queue.mainPool',
 	'queue.generationPool',
+	// the whole playerFlagGroupings subtree renders as one bespoke editor (modes + groupings), so it emits no per-subkey anchors
+	'playerFlagGroupings',
 	// the whole rbac subtree renders as one consolidated per-role editor, so it emits no per-subkey anchors
 	'rbac',
 ])

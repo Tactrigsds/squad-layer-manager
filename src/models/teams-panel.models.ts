@@ -42,7 +42,7 @@ export namespace Sel {
 				(...[, , , , settings]: Inputs) => settings?.playerFlagGroupings,
 			],
 			(players, playerStats, bmData, selectedModeId, orgFlags, groupings) => {
-				const playerFlagGroupings = groupings ?? []
+				const playerFlagGroupings = groupings ?? BM.EMPTY_PLAYER_FLAG_GROUPINGS
 				const modeIds = BM.getGroupingModeIds(playerFlagGroupings)
 				const activeModeId = selectedModeId !== null && modeIds.includes(selectedModeId)
 					? selectedModeId

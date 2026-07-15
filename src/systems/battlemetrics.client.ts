@@ -42,16 +42,6 @@ export function useOrgFlags(): BM.PlayerFlag[] | undefined {
 	return data ?? undefined
 }
 
-export function sortFlagsByHierarchy<T extends BM.PlayerFlag>(flags: T[]): T[] {
-	const hierarchy = SettingsClient.getSettings()?.playerFlagColorHierarchy
-	if (!hierarchy || hierarchy.length === 0) return flags
-	return [...flags].sort((a, b) => {
-		const aIdx = hierarchy.indexOf(a.id)
-		const bIdx = hierarchy.indexOf(b.id)
-		return (aIdx === -1 ? Infinity : aIdx) - (bIdx === -1 ? Infinity : bIdx)
-	})
-}
-
 export function usePlayerFlagIds(playerId: string): string[] | null {
 	const bmData = usePlayerBmData()
 	const player = bmData[playerId]
@@ -82,38 +72,34 @@ export function useGroupedPlayerFlagColor(playerId: string): string | null {
 	if (!flags || flags.length === 0) return null
 
 	const playerFlagGroupings = config?.playerFlagGroupings
-	if (playerFlagGroupings && orgFlags) {
-		const modeIds = BM.getGroupingModeIds(playerFlagGroupings)
-		const activeModeId = selectedModeId !== null && modeIds.includes(selectedModeId)
-			? selectedModeId
-			: modeIds[0] ?? null
+	if (!playerFlagGroupings || !orgFlags) return null
 
-		if (activeModeId !== null) {
-			const modeGroupings = playerFlagGroupings.filter(g => g.modeIds.includes(activeModeId))
+	const modeIds = BM.getGroupingModeIds(playerFlagGroupings)
+	const activeModeId = selectedModeId !== null && modeIds.includes(selectedModeId)
+		? selectedModeId
+		: modeIds[0] ?? null
+	if (activeModeId === null) return null
 
-			const flagColorById = new Map<string, string>()
-			for (const flag of orgFlags) {
-				if (flag.color) flagColorById.set(flag.id, flag.color)
-			}
+	const modeGroupings = playerFlagGroupings.groupings.filter(g => g.modeIds.includes(activeModeId))
 
-			const associations: [string, string, number][] = []
-			for (const group of modeGroupings) {
-				for (const [flagId, priority] of Object.entries(group.associations)) {
-					associations.push([group.color, flagId, priority])
-				}
-			}
-			associations.sort((a, b) => a[2] - b[2])
-			for (const [groupColor, flagId] of associations) {
-				if (flags.some(f => f.id === flagId)) {
-					return flagColorById.get(groupColor) ?? groupColor
-				}
-			}
-			return null
-		}
+	const flagColorById = new Map<string, string>()
+	for (const flag of orgFlags) {
+		if (flag.color) flagColorById.set(flag.id, flag.color)
 	}
 
-	// Fallback: hierarchy-based color
-	return sortFlagsByHierarchy(flags)[0]?.color ?? null
+	const associations: [string, string, number][] = []
+	for (const group of modeGroupings) {
+		for (const [flagId, priority] of Object.entries(group.associations)) {
+			associations.push([group.color, flagId, priority])
+		}
+	}
+	associations.sort((a, b) => a[2] - b[2])
+	for (const [groupColor, flagId] of associations) {
+		if (flags.some(f => f.id === flagId)) {
+			return flagColorById.get(groupColor) ?? groupColor
+		}
+	}
+	return null
 }
 
 export function setup() {

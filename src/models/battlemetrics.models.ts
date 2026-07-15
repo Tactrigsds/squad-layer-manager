@@ -144,23 +144,27 @@ export type PlayerProfile = {
 
 export type PublicPlayerBmData = Record<string, PlayerFlagsAndProfile>
 export type PlayerBmDataUpdate = { playerId: string; data: PlayerFlagsAndProfile }
-export const PlayerFlagGroupingsSchema = z.array(
-	z.object({ label: z.string(), modeIds: z.array(z.string()), associations: z.record(z.uuid(), z.number()), color: z.string() }),
-)
+// a single grouping: assigns players to a labelled/colored bucket (by the flags in `associations`, priority-ordered)
+// within the display modes it belongs to.
+export const PlayerFlagGroupingSchema = z.object({
+	label: z.string(),
+	modeIds: z.array(z.string()).prefault([]),
+	associations: z.record(z.uuid(), z.number()),
+	color: z.string(),
+})
+export type PlayerFlagGrouping = z.infer<typeof PlayerFlagGroupingSchema>
+
+// `modeIds` are the display modes declared upfront; each grouping's own `modeIds` reference this list.
+export const PlayerFlagGroupingsSchema = z.object({
+	modeIds: z.array(z.string()).prefault([]),
+	groupings: z.array(PlayerFlagGroupingSchema).prefault([]),
+})
 export type PlayerFlagGroupings = z.infer<typeof PlayerFlagGroupingsSchema>
 
+export const EMPTY_PLAYER_FLAG_GROUPINGS: PlayerFlagGroupings = { modeIds: [], groupings: [] }
+
 export function getGroupingModeIds(groupings: PlayerFlagGroupings): string[] {
-	const seen = new Set<string>()
-	const result: string[] = []
-	for (const group of groupings) {
-		for (const modeId of group.modeIds) {
-			if (!seen.has(modeId)) {
-				seen.add(modeId)
-				result.push(modeId)
-			}
-		}
-	}
-	return result
+	return groupings.modeIds
 }
 
 export function resolvePlayerFlagGroups(
@@ -171,7 +175,7 @@ export function resolvePlayerFlagGroups(
 	const groups: Map<SM.PlayerId, string> = new Map()
 	if (!modeId) return groups
 
-	const modeGroupings = groupings.filter(g => g.modeIds.includes(modeId))
+	const modeGroupings = groupings.groupings.filter(g => g.modeIds.includes(modeId))
 	const associations: [string, string, number][] = []
 	for (const group of modeGroupings) {
 		for (const [id, priority] of Object.entries(group.associations)) {

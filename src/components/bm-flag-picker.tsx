@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type * as BM from '@/models/battlemetrics.models'
 import { useOrgFlags } from '@/systems/battlemetrics.client'
-import * as DndKit from '@/systems/dndkit.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
@@ -83,119 +82,6 @@ export function BmFlagMultiSelect(
 				<Icons.ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 			</Button>
 		</ComboBoxMulti>
-	)
-}
-
-// ordered list of flags with add / drag-to-reorder / remove (e.g. playerFlagColorHierarchy where order = priority)
-export function BmFlagOrderedList(
-	{ value, onChange, disabled }: { value: string[]; onChange: (next: string[]) => void; disabled?: boolean },
-) {
-	const orgFlags = useOrgFlags()
-	const options = useFlagOptions()
-
-	// only offer flags not already in the list
-	const addOptions = options === LOADING ? LOADING : options.filter((o) => !value.includes(o.value))
-
-	// drag-to-reorder via the shared dnd-kit provider. The handler stays stable (registered once) but reads the latest
-	// value/onChange off a ref, so reordering doesn't depend on re-registering on every edit.
-	const stateRef = React.useRef({ value, onChange })
-	stateRef.current = { value, onChange }
-	DndKit.useDragEnd(React.useCallback((evt) => {
-		const { active, over } = evt
-		if (active.type !== 'bm-flag' || !over) return
-		const slot = over.slots.find((s) => s.dragItem.type === 'bm-flag')
-		if (!slot) return
-		const targetId = String(slot.dragItem.id)
-		if (targetId === active.id) return
-		const { value, onChange } = stateRef.current
-		if (!value.includes(active.id)) return
-		const without = value.filter((id) => id !== active.id)
-		let insertAt = without.indexOf(targetId)
-		if (insertAt < 0) return
-		if (slot.position === 'after') insertAt += 1
-		onChange([...without.slice(0, insertAt), active.id, ...without.slice(insertAt)])
-	}, []))
-
-	return (
-		<div className="space-y-1.5">
-			{value.length === 0 && <p className="text-xs text-muted-foreground">No flags configured.</p>}
-			<ol>
-				{value.map((id, idx) => (
-					<React.Fragment key={id}>
-						<FlagDropSeparator position="before" flagId={id} />
-						<FlagOrderRow
-							id={id}
-							index={idx}
-							flags={orgFlags}
-							disabled={disabled}
-							onRemove={() => onChange(value.filter((v) => v !== id))}
-						/>
-					</React.Fragment>
-				))}
-				{value.length > 0 && <FlagDropSeparator position="after" flagId={value[value.length - 1]} />}
-			</ol>
-			<ComboBox
-				title="Add flag"
-				value={undefined}
-				options={addOptions}
-				disabled={disabled}
-				onSelect={(id) => {
-					if (id && !value.includes(id)) onChange([...value, id])
-				}}
-			/>
-		</div>
-	)
-}
-
-// a thin gap between/around rows that highlights while a flag is dragged over it (invisible but layout-occupying otherwise)
-function FlagDropSeparator({ position, flagId }: { position: 'before' | 'after'; flagId: string }) {
-	const drop = DndKit.useDroppable({
-		type: 'relative-to-drag-item',
-		slots: [{ position, dragItem: { type: 'bm-flag', id: flagId } }],
-	})
-	return <li ref={drop.ref} data-over={drop.isDropTarget} className="my-0.5 h-1 rounded bg-primary data-[over=false]:invisible" />
-}
-
-function FlagOrderRow(
-	{ id, index, flags, disabled, onRemove }: {
-		id: string
-		index: number
-		flags: BM.PlayerFlag[] | undefined
-		disabled?: boolean
-		onRemove: () => void
-	},
-) {
-	const drag = DndKit.useDraggable({ type: 'bm-flag', id }, { feedback: 'default', disabled })
-	return (
-		<li
-			ref={drag.ref}
-			data-dragging={drag.isDragging}
-			className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-1 rounded-md bg-background data-[dragging=true]:opacity-40"
-		>
-			<button
-				type="button"
-				ref={drag.handleRef}
-				className="cursor-grab rounded text-muted-foreground disabled:cursor-default"
-				aria-label="Drag to reorder"
-				disabled={disabled}
-			>
-				<Icons.GripVertical className="h-4 w-4" />
-			</button>
-			<span className="w-6 text-right text-xs tabular-nums text-muted-foreground">{index + 1}.</span>
-			<div className="min-w-0 overflow-hidden">
-				<FlagLabel id={id} flags={flags} />
-			</div>
-			<Button
-				type="button"
-				size="icon"
-				variant="ghost"
-				className="h-6 w-6 text-destructive"
-				disabled={disabled}
-				onClick={onRemove}
-			>
-				<Icons.X className="h-4 w-4" />
-			</Button>
-		</li>
 	)
 }
 
