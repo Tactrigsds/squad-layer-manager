@@ -1,5 +1,5 @@
 import { BmFlagMultiSelect, BmFlagOrColorSelect, BmFlagOrderedList, FlagPriorityMap } from '@/components/bm-flag-picker'
-import ComboBox, { type ComboBoxOption } from '@/components/combo-box/combo-box'
+import type { ComboBoxOption } from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { DiscordMemberSelect, DiscordRoleSelect } from '@/components/discord-picker'
 import LayerGenerationConfigEditor from '@/components/layer-generation-config-editor'
@@ -196,11 +196,6 @@ function PermissionExpressionEditor({ value, onChange }: { value: string[] | und
 
 // -------- rbac cross-field wiring --------
 
-// `roles` (rbac.roles) is the source of truth for which roles exist; assignment role pickers are keyed to it and each
-// role shows a warning when nothing assigns it. Both need data from sibling branches, shared here via context.
-type RbacInfo = { roleIds: string[]; assignedRoleIds: Set<string> }
-const RbacContext = React.createContext<RbacInfo>({ roleIds: [], assignedRoleIds: new Set() })
-
 // the draft's custom message variables (rbac-style sibling read), so the reason preview can render templates
 const MessageVarsContext = React.createContext<Record<string, string>>({})
 
@@ -275,85 +270,6 @@ function getAtPath(root: any, path: Path): unknown {
 		cur = cur[key as any]
 	}
 	return cur
-}
-
-function readRbacInfo(root: any): RbacInfo {
-	const rbac = root?.rbac
-	const ra = rbac?.roleAssignments
-	const roleIds = Object.keys(rbac?.roles ?? {})
-	const assignedRoleIds = new Set<string>()
-	// discord-role/discord-user are id-keyed lists of { roles }; discord-server-member is a flat list of roles
-	for (const type of ['discord-role', 'discord-user'] as const) {
-		for (const a of ra?.[type] ?? []) for (const r of a.roles ?? []) assignedRoleIds.add(r)
-	}
-	for (const r of ra?.['discord-server-member'] ?? []) assignedRoleIds.add(r)
-	return { roleIds, assignedRoleIds }
-}
-
-function sameRbacInfo(a: RbacInfo, b: RbacInfo): boolean {
-	if (a.roleIds.length !== b.roleIds.length || a.assignedRoleIds.size !== b.assignedRoleIds.size) return false
-	return a.roleIds.every((r, i) => r === b.roleIds[i]) && [...a.assignedRoleIds].every((r) => b.assignedRoleIds.has(r))
-}
-
-function useRbacInfo(value$: ValueState): RbacInfo {
-	const [info, setInfo] = React.useState(() => readRbacInfo(value$.getValue()))
-	React.useEffect(() => {
-		const sub = value$.subscribe((v) =>
-			setInfo((prev) => {
-				const next = readRbacInfo(v)
-				return sameRbacInfo(prev, next) ? prev : next
-			})
-		)
-		return () => sub.unsubscribe()
-	}, [value$])
-	return info
-}
-
-// when a role is deleted from rbac.roles, prune it from every assignment so the config never dangles (which the schema
-// would otherwise reject). Runs off the root value$/onChange since it spans both branches.
-function useRoleCascade(value$: ValueState, onChange: (v: any) => void) {
-	const prevRoles = React.useRef<string[] | null>(null)
-	React.useEffect(() => {
-		const sub = value$.subscribe((v: any) => {
-			const roleIds = Object.keys(v?.rbac?.roles ?? {})
-			const prev = prevRoles.current
-			prevRoles.current = roleIds
-			if (prev === null) return
-			const removed = prev.filter((r) => !roleIds.includes(r))
-			if (removed.length === 0) return
-			const ra = v.rbac.roleAssignments
-			let changed = false
-			const nextRa: any = {}
-			for (const type of ['discord-role', 'discord-user'] as const) {
-				nextRa[type] = (ra[type] ?? []).map((a: any) => {
-					const roles = (a.roles ?? []).filter((r: string) => !removed.includes(r))
-					if (roles.length !== (a.roles?.length ?? 0)) changed = true
-					return { ...a, roles }
-				})
-			}
-			const memberRoles = (ra['discord-server-member'] ?? []).filter((r: string) => !removed.includes(r))
-			if (memberRoles.length !== (ra['discord-server-member']?.length ?? 0)) changed = true
-			nextRa['discord-server-member'] = memberRoles
-			// maxTimeouts is keyed by role too; dangling keys would fail the schema's superRefine
-			const nextMaxTimeouts: Record<string, unknown> = { ...(v.rbac.maxTimeouts ?? {}) }
-			for (const r of removed) {
-				if (r in nextMaxTimeouts) {
-					delete nextMaxTimeouts[r]
-					changed = true
-				}
-			}
-			// defer to avoid re-entrant BehaviorSubject.next while this emission is still being delivered
-			if (changed) {
-				queueMicrotask(() =>
-					onChange({
-						...value$.getValue(),
-						rbac: { ...value$.getValue().rbac, roleAssignments: nextRa, maxTimeouts: nextMaxTimeouts },
-					})
-				)
-			}
-		})
-		return () => sub.unsubscribe()
-	}, [value$, onChange])
 }
 
 // the env-configured SUPER_USERS/SUPER_ROLES bootstrap: shown read-only at the top of the rbac section so admins know
@@ -983,142 +899,70 @@ function serverGrantPathOptions(): string[] {
 
 // -------- consolidated rbac editor --------
 //
-// The whole `rbac` node renders as one master-detail editor instead of five independent record-sections. The persisted
-// shape is untouched (roles / roleAssignments / maxTimeouts / globalSettingsGrants / serverSettingsGrants); this widget
-// just presents it per-role: pick a role on the left, edit its permissions, settings grants, timeout cap and
-// assignments on the right. Assignments are stored by-discord-entity but edited here inverted (which entities grant the
-// selected role), writing back into the same arrays.
+// The whole `rbac` node renders as one master-detail editor: pick a role on the left, edit everything about it on the
+// right. This mirrors the persisted shape, where each role is one object under `roles[roleId]` holding its permissions,
+// timeout cap, settings grants and assignments.
 
 const SERVER_GRANT_ACCESS_OPTIONS = ['read', 'write', 'write-sensitive'] as const
 const VALID_ROLE_ID = /^[a-z0-9-]{3,32}$/
 
-type RoleAssignments = {
-	'discord-role'?: { discordRoleId: string | number; roles?: string[] }[]
-	'discord-user'?: { userId: string | number; roles?: string[] }[]
-	'discord-server-member'?: string[]
-}
 type ServerGrant = { access: string; serverIds?: string[]; paths?: string[] }
-type RbacValue = {
-	roles?: Record<string, string[]>
-	roleAssignments?: RoleAssignments
-	maxTimeouts?: Record<string, string>
-	globalSettingsGrants?: Record<string, string[]>
-	serverSettingsGrants?: Record<string, ServerGrant[]>
+type RoleAssignmentsValue = { discordRoleIds?: (string | number)[]; discordUserIds?: (string | number)[]; everyMember?: boolean }
+type RoleConfig = {
+	permissions?: string[]
+	maxTimeout?: string
+	globalSettingsGrants?: string[]
+	serverSettingsGrants?: ServerGrant[]
+	assignments?: RoleAssignmentsValue
 }
+type RbacValue = { roles?: Record<string, RoleConfig> }
 
-type DiscordAssignmentKind = 'discord-role' | 'discord-user'
-const ASSIGNMENT_ID_KEY = { 'discord-role': 'discordRoleId', 'discord-user': 'userId' } as const
-
-// set the whole rbac object to a fresh value derived from the current one, then poke reset$ so any uncontrolled inputs
-// (the timeout duration field) re-read
+// apply `fn` to the whole rbac object, then poke reset$ so any uncontrolled inputs (the timeout duration field) re-read.
+// `quiet` skips reset$ for edits driven by an uncontrolled input, where re-emitting would clobber an in-flight keystroke.
 type RbacUpdate = (fn: (rbac: RbacValue) => RbacValue, quiet?: boolean) => void
 
-// omit a key from a record when its value is empty, otherwise set it (keeps the persisted maps free of empty entries)
-function withRecordKey<T>(rec: Record<string, T> | undefined, key: string, val: T | undefined): Record<string, T> {
-	const next = { ...(rec ?? {}) }
+// set/replace one role's config immutably
+function withRoleConfig(rbac: RbacValue, roleId: string, fn: (cfg: RoleConfig) => RoleConfig): RbacValue {
+	const roles = { ...(rbac.roles ?? {}) }
+	roles[roleId] = fn(roles[roleId] ?? {})
+	return { ...rbac, roles }
+}
+
+// set a config field, dropping it when empty so the persisted role stays free of empty maps/arrays
+function setRoleField<K extends keyof RoleConfig>(cfg: RoleConfig, key: K, val: RoleConfig[K] | undefined): RoleConfig {
+	const next = { ...cfg }
 	if (val === undefined || (Array.isArray(val) && val.length === 0)) delete next[key]
-	else next[key] = val
+	else next[key] = val as RoleConfig[K]
 	return next
 }
 
-// the discord-role / discord-user ids currently granting `roleId`
-function assignmentIdsFor(ra: RoleAssignments | undefined, kind: DiscordAssignmentKind, roleId: string): string[] {
-	const idKey = ASSIGNMENT_ID_KEY[kind]
-	return (ra?.[kind] ?? []).filter((a) => (a.roles ?? []).includes(roleId)).map((a) => String((a as any)[idKey]))
+// merge into a role's assignments, dropping the whole `assignments` object once nothing is assigned
+function withAssignments(cfg: RoleConfig, patch: Partial<RoleAssignmentsValue>): RoleConfig {
+	const a: RoleAssignmentsValue = { ...cfg.assignments, ...patch }
+	const empty = (a.discordRoleIds?.length ?? 0) === 0 && (a.discordUserIds?.length ?? 0) === 0 && !a.everyMember
+	return setRoleField(cfg, 'assignments', empty ? undefined : a)
 }
 
-// add/remove `roleId` from the entry keyed by `id`, creating or dropping the entry as needed
-function withAssignment(
-	ra: RoleAssignments | undefined,
-	kind: DiscordAssignmentKind,
-	id: string,
-	roleId: string,
-	present: boolean,
-): RoleAssignments {
-	const idKey = ASSIGNMENT_ID_KEY[kind]
-	const list = [...((ra?.[kind] ?? []) as { [k: string]: any; roles?: string[] }[])]
-	const idx = list.findIndex((a) => String(a[idKey]) === id)
-	if (present) {
-		if (!id) return { ...ra }
-		if (idx === -1) list.push({ [idKey]: id, roles: [roleId] })
-		else if (!(list[idx].roles ?? []).includes(roleId)) list[idx] = { ...list[idx], roles: [...(list[idx].roles ?? []), roleId] }
-	} else if (idx !== -1) {
-		const roles = (list[idx].roles ?? []).filter((r) => r !== roleId)
-		if (roles.length === 0) list.splice(idx, 1)
-		else list[idx] = { ...list[idx], roles }
-	}
-	return { ...ra, [kind]: list }
+function isRoleAssigned(cfg: RoleConfig | undefined): boolean {
+	const a = cfg?.assignments
+	return !!a && ((a.discordRoleIds?.length ?? 0) > 0 || (a.discordUserIds?.length ?? 0) > 0 || !!a.everyMember)
 }
 
-function everyMemberHas(ra: RoleAssignments | undefined, roleId: string): boolean {
-	return (ra?.['discord-server-member'] ?? []).includes(roleId)
-}
-function withEveryMember(ra: RoleAssignments | undefined, roleId: string, present: boolean): RoleAssignments {
-	const cur = ra?.['discord-server-member'] ?? []
-	const next = present ? (cur.includes(roleId) ? cur : [...cur, roleId]) : cur.filter((r) => r !== roleId)
-	return { ...ra, 'discord-server-member': next }
-}
-
-function assignedRoleIdsOf(ra: RoleAssignments | undefined): Set<string> {
-	const set = new Set<string>()
-	for (const kind of ['discord-role', 'discord-user'] as const) {
-		for (const a of ra?.[kind] ?? []) for (const r of a.roles ?? []) set.add(r)
-	}
-	for (const r of ra?.['discord-server-member'] ?? []) set.add(r)
-	return set
-}
-
-// drop a role everywhere it's referenced so the config never dangles (mirrors useRoleCascade, but atomic with the delete)
 function withRoleRemoved(rbac: RbacValue, roleId: string): RbacValue {
 	const roles = { ...(rbac.roles ?? {}) }
 	delete roles[roleId]
-	// drop the role from every assignment entry, and drop entries left granting nothing
-	const pruneRoles = <A extends { roles?: string[] }>(list: A[] | undefined): A[] =>
-		(list ?? []).map((a) => ({ ...a, roles: (a.roles ?? []).filter((r) => r !== roleId) })).filter((a) => (a.roles ?? []).length > 0)
-	const ra: RoleAssignments = {
-		...rbac.roleAssignments,
-		'discord-role': pruneRoles(rbac.roleAssignments?.['discord-role']),
-		'discord-user': pruneRoles(rbac.roleAssignments?.['discord-user']),
-		'discord-server-member': (rbac.roleAssignments?.['discord-server-member'] ?? []).filter((r) => r !== roleId),
-	}
-	return {
-		...rbac,
-		roles,
-		roleAssignments: ra,
-		maxTimeouts: withRecordKey(rbac.maxTimeouts, roleId, undefined),
-		globalSettingsGrants: withRecordKey(rbac.globalSettingsGrants, roleId, undefined),
-		serverSettingsGrants: withRecordKey(rbac.serverSettingsGrants, roleId, undefined),
-	}
+	return { ...rbac, roles }
 }
 
-// rename a role key everywhere it's referenced, atomically (so useRoleCascade sees no orphaned reference to prune)
 function withRoleRenamed(rbac: RbacValue, oldId: string, newId: string): RbacValue {
-	const renameKey = (r: string) => (r === oldId ? newId : r)
-	const renameRecord = <T,>(rec: Record<string, T> | undefined): Record<string, T> => {
-		const next: Record<string, T> = {}
-		for (const [k, v] of Object.entries(rec ?? {})) next[renameKey(k)] = v
-		return next
-	}
-	const ra = rbac.roleAssignments ?? {}
-	return {
-		...rbac,
-		roles: renameRecord(rbac.roles),
-		roleAssignments: {
-			...ra,
-			'discord-role': (ra['discord-role'] ?? []).map((a) => ({ ...a, roles: (a.roles ?? []).map(renameKey) })),
-			'discord-user': (ra['discord-user'] ?? []).map((a) => ({ ...a, roles: (a.roles ?? []).map(renameKey) })),
-			'discord-server-member': (ra['discord-server-member'] ?? []).map(renameKey),
-		},
-		maxTimeouts: renameRecord(rbac.maxTimeouts),
-		globalSettingsGrants: renameRecord(rbac.globalSettingsGrants),
-		serverSettingsGrants: renameRecord(rbac.serverSettingsGrants),
-	}
+	const roles: Record<string, RoleConfig> = {}
+	for (const [k, v] of Object.entries(rbac.roles ?? {})) roles[k === oldId ? newId : k] = v
+	return { ...rbac, roles }
 }
 
 function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void }) {
 	const rbac = (useFieldValue(value$, reset$) as RbacValue) ?? {}
 	const roleIds = Object.keys(rbac.roles ?? {})
-	const assigned = React.useMemo(() => assignedRoleIdsOf(rbac.roleAssignments), [rbac.roleAssignments])
 	const issues = React.useContext(ValidationContext).filter((i) => i.path.startsWith('rbac.'))
 
 	const [selected, setSelected] = React.useState<string | null>(roleIds[0] ?? null)
@@ -1138,9 +982,14 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 	const canAdd = VALID_ROLE_ID.test(newRole) && !(newRole in (rbac.roles ?? {}))
 	function addRole() {
 		if (!canAdd) return
-		update((r) => ({ ...r, roles: { ...(r.roles ?? {}), [newRole]: [] } }))
+		update((r) => ({ ...r, roles: { ...(r.roles ?? {}), [newRole]: { permissions: [] } } }))
 		setSelected(newRole)
 		setNewRole('')
+	}
+	// explicit empty roles (not undefined) so it stays cleared rather than re-triggering the schema's preset default
+	function clearAll() {
+		update((r) => ({ ...r, roles: {} }))
+		setSelected(null)
 	}
 
 	return (
@@ -1158,6 +1007,15 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 					))}
 				</div>
 			)}
+			{roleIds.length > 0 && (
+				<div className="flex items-center justify-between">
+					<p className="text-xs text-muted-foreground">{roleIds.length} role{roleIds.length === 1 ? '' : 's'} defined</p>
+					<Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={clearAll}>
+						<Icons.Trash2 className="mr-1 h-4 w-4" />
+						Clear all
+					</Button>
+				</div>
+			)}
 			<div className="grid grid-cols-[minmax(160px,14rem)_1fr] gap-4">
 				<div className="sticky top-2 self-start max-h-[70vh] overflow-y-auto space-y-2 pr-1">
 					<div className="space-y-1">
@@ -1173,7 +1031,7 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 								)}
 							>
 								<span className="truncate">{id}</span>
-								{!assigned.has(id) && (
+								{!isRoleAssigned(rbac.roles?.[id]) && (
 									<Tooltip>
 										<TooltipTrigger asChild>
 											<Icons.TriangleAlert className="ml-auto h-3 w-3 shrink-0 text-amber-600 dark:text-amber-500" />
@@ -1211,7 +1069,7 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 							value$={value$}
 							reset$={reset$}
 							update={update}
-							assigned={assigned.has(selected)}
+							assigned={isRoleAssigned(rbac.roles?.[selected])}
 						/>
 					)
 					: <p className="self-start text-sm text-muted-foreground">Select or add a role to configure it.</p>}
@@ -1241,9 +1099,10 @@ function RoleDetail(
 	},
 ) {
 	const [renaming, setRenaming] = React.useState(false)
+	const cfg = rbac.roles?.[roleId] ?? {}
 	// scoped value-state for the timeout duration field so it can reuse the uncontrolled TextInputField
-	const timeout$ = React.useMemo(() => scopeValue(scopeValue(value$, 'maxTimeouts'), roleId), [value$, roleId])
-	const hasTimeout = roleId in (rbac.maxTimeouts ?? {})
+	const timeout$ = React.useMemo(() => scopeValue(scopeValue(scopeValue(value$, 'roles'), roleId), 'maxTimeout'), [value$, roleId])
+	const hasTimeout = cfg.maxTimeout !== undefined
 
 	return (
 		<div className="min-w-0 space-y-4 rounded-md border p-3">
@@ -1292,8 +1151,8 @@ function RoleDetail(
 				description="Global-scope permissions. Settings permissions granted here are unrestricted (all servers / all settings); use the grants below to restrict them."
 			>
 				<PermissionExpressionEditor
-					value={rbac.roles?.[roleId]}
-					onChange={(v) => update((r) => ({ ...r, roles: { ...(r.roles ?? {}), [roleId]: v } }))}
+					value={cfg.permissions}
+					onChange={(v) => update((r) => withRoleConfig(r, roleId, (c) => ({ ...c, permissions: v })))}
 				/>
 			</RoleSubsection>
 
@@ -1305,7 +1164,8 @@ function RoleDetail(
 					<div className="flex items-center gap-2">
 						<Switch
 							checked={hasTimeout}
-							onCheckedChange={(on) => update((r) => ({ ...r, maxTimeouts: withRecordKey(r.maxTimeouts, roleId, on ? '1h' : undefined) }))}
+							onCheckedChange={(on) =>
+								update((r) => withRoleConfig(r, roleId, (c) => setRoleField(c, 'maxTimeout', on ? '1h' : undefined)))}
 						/>
 						<span className="text-sm">May issue kick timeouts</span>
 					</div>
@@ -1314,7 +1174,8 @@ function RoleDetail(
 							<TextInputField
 								value$={timeout$}
 								reset$={reset$}
-								onChange={(v) => update((r) => ({ ...r, maxTimeouts: withRecordKey(r.maxTimeouts, roleId, (v as string) || '1h') }), true)}
+								onChange={(v) =>
+									update((r) => withRoleConfig(r, roleId, (c) => setRoleField(c, 'maxTimeout', (v as string) || '1h')), true)}
 								numeric={false}
 								placeholder="2h"
 							/>
@@ -1330,14 +1191,15 @@ function RoleDetail(
 				<ComboBoxMulti
 					title="setting path"
 					className="w-full max-w-[28rem] font-mono"
-					values={rbac.globalSettingsGrants?.[roleId] ?? []}
+					values={cfg.globalSettingsGrants ?? []}
 					options={globalGrantPathOptions()}
 					onSelect={(next) =>
-						update((r) => {
-							const cur = r.globalSettingsGrants?.[roleId] ?? []
-							const resolved = typeof next === 'function' ? next(cur) : next
-							return { ...r, globalSettingsGrants: withRecordKey(r.globalSettingsGrants, roleId, resolved) }
-						})}
+						update((r) =>
+							withRoleConfig(r, roleId, (c) => {
+								const resolved = typeof next === 'function' ? next(c.globalSettingsGrants ?? []) : next
+								return setRoleField(c, 'globalSettingsGrants', resolved)
+							})
+						)}
 				/>
 			</RoleSubsection>
 
@@ -1345,11 +1207,11 @@ function RoleDetail(
 				title="Server settings grants"
 				description="Per-server restricted read/write grants. Any grant also lets the role view the server's non-sensitive settings."
 			>
-				<RoleServerGrantsEditor roleId={roleId} grants={rbac.serverSettingsGrants?.[roleId] ?? []} update={update} />
+				<RoleServerGrantsEditor roleId={roleId} grants={cfg.serverSettingsGrants ?? []} update={update} />
 			</RoleSubsection>
 
 			<RoleSubsection title="Assignments" description="Which Discord roles, users, or members are granted this role.">
-				<RoleAssignmentsEditor roleId={roleId} rbac={rbac} update={update} assigned={assigned} />
+				<RoleAssignmentsEditor roleId={roleId} cfg={cfg} update={update} assigned={assigned} />
 			</RoleSubsection>
 		</div>
 	)
@@ -1366,7 +1228,7 @@ function RoleServerGrantsEditor(
 	}))
 
 	function setGrants(next: ServerGrant[]) {
-		update((r) => ({ ...r, serverSettingsGrants: withRecordKey(r.serverSettingsGrants, roleId, next) }))
+		update((r) => withRoleConfig(r, roleId, (c) => setRoleField(c, 'serverSettingsGrants', next)))
 	}
 	function patch(idx: number, patch: Partial<ServerGrant>) {
 		setGrants(grants.map((g, i) => (i === idx ? { ...g, ...patch } : g)))
@@ -1440,28 +1302,24 @@ function RoleServerGrantsEditor(
 }
 
 function RoleAssignmentsEditor(
-	{ roleId, rbac, update, assigned }: { roleId: string; rbac: RbacValue; update: RbacUpdate; assigned: boolean },
+	{ roleId, cfg, update, assigned }: { roleId: string; cfg: RoleConfig; update: RbacUpdate; assigned: boolean },
 ) {
-	const ra = rbac.roleAssignments
-	const roleAssignIds = assignmentIdsFor(ra, 'discord-role', roleId)
-	const userAssignIds = assignmentIdsFor(ra, 'discord-user', roleId)
+	const roleAssignIds = (cfg.assignments?.discordRoleIds ?? []).map(String)
+	const userAssignIds = (cfg.assignments?.discordUserIds ?? []).map(String)
 
-	function changeDiscordRole(oldId: string, nextId: string) {
+	// replace `oldId` with `nextId` in one of the assignment id lists; '' as oldId adds, '' as nextId removes
+	function changeAssignment(bucket: 'discordRoleIds' | 'discordUserIds', oldId: string, nextId: string) {
 		if (nextId === oldId) return
-		update((r) => {
-			let next = withAssignment(r.roleAssignments, 'discord-role', oldId, roleId, false)
-			if (nextId) next = withAssignment(next, 'discord-role', nextId, roleId, true)
-			return { ...r, roleAssignments: next }
-		})
+		update((r) =>
+			withRoleConfig(r, roleId, (c) => {
+				const cur = (c.assignments?.[bucket] ?? []).map(String).filter((id) => id !== oldId)
+				if (nextId && !cur.includes(nextId)) cur.push(nextId)
+				return withAssignments(c, { [bucket]: cur })
+			})
+		)
 	}
-	function changeDiscordUser(oldId: string, nextId: string) {
-		if (nextId === oldId) return
-		update((r) => {
-			let next = withAssignment(r.roleAssignments, 'discord-user', oldId, roleId, false)
-			if (nextId) next = withAssignment(next, 'discord-user', nextId, roleId, true)
-			return { ...r, roleAssignments: next }
-		})
-	}
+	const changeDiscordRole = (oldId: string, nextId: string) => changeAssignment('discordRoleIds', oldId, nextId)
+	const changeDiscordUser = (oldId: string, nextId: string) => changeAssignment('discordUserIds', oldId, nextId)
 
 	return (
 		<div className="space-y-3">
@@ -1473,8 +1331,8 @@ function RoleAssignmentsEditor(
 			)}
 			<div className="flex items-center gap-2">
 				<Switch
-					checked={everyMemberHas(ra, roleId)}
-					onCheckedChange={(on) => update((r) => ({ ...r, roleAssignments: withEveryMember(r.roleAssignments, roleId, on) }))}
+					checked={!!cfg.assignments?.everyMember}
+					onCheckedChange={(on) => update((r) => withRoleConfig(r, roleId, (c) => withAssignments(c, { everyMember: on })))}
 				/>
 				<span className="text-sm">Granted to every server member</span>
 			</div>
@@ -1934,10 +1792,6 @@ function RecordField(
 	// when the schema constrains keys to a known set (z.partialRecord / propertyNames enum), the key becomes a fixed picker
 	// rather than free text, so only known keys can be added
 	const keyEnum: string[] | undefined = node.propertyNames?.enum
-	// the settings-grant maps are keyed by role id: keys come from the roles defined in the draft, not free text
-	const roleKeyed = path[0] === 'rbac' && path.length === 2
-		&& (path[1] === 'globalSettingsGrants' || path[1] === 'serverSettingsGrants')
-	const { roleIds } = React.useContext(RbacContext)
 	const [newKey, setNewKey] = React.useState('')
 	const value = (useFieldValue(value$, reset$) as Record<string, any>) ?? {}
 	const entries = Object.entries(value)
@@ -1980,7 +1834,7 @@ function RecordField(
 					valueNode={valueNode}
 					path={path}
 					entryKey={key}
-					fixedKey={!!keyEnum || roleKeyed}
+					fixedKey={!!keyEnum}
 					parent$={value$}
 					reset$={reset$}
 					parentOnChange={onChange}
@@ -1999,17 +1853,6 @@ function RecordField(
 						</SelectContent>
 					</Select>
 				))
-				: roleKeyed
-				? (
-					<ComboBox
-						title="role"
-						placeholder="Add role…"
-						className="h-8 max-w-[16rem]"
-						value={undefined}
-						options={roleIds.filter((r) => !(r in value))}
-						onSelect={(r) => r && add(r)}
-					/>
-				)
 				: (
 					<div className="flex items-center gap-2">
 						<Input
@@ -2092,8 +1935,9 @@ function ObjectField(
 	)
 }
 
-// the value a field falls back to. For prefaulted object sections the node default is a bare {}, so we reconstruct
-// from child defaults to get the real nested default (used for both the "Default:" hint and reset-to-default).
+// the value a field falls back to. For prefaulted object sections the node default is often a bare {}, so we reconstruct
+// from child defaults to get the real nested default (used for both the "Default:" hint and reset-to-default). A key the
+// object's own default already provides wins over the child default (it's the more specific value, e.g. rbac's preset).
 const defaultCache = new WeakMap<object, { has: boolean; value: unknown }>()
 function effectiveDefault(node: Node): { has: boolean; value: unknown } {
 	if (node && typeof node === 'object' && defaultCache.has(node)) return defaultCache.get(node)!
@@ -2104,6 +1948,7 @@ function effectiveDefault(node: Node): { has: boolean; value: unknown } {
 		const base = explicit && typeof explicit === 'object' && !Array.isArray(explicit) ? { ...explicit } : {}
 		let has = explicit !== undefined
 		for (const key of Object.keys(inner.properties)) {
+			if (key in base) continue
 			const d = effectiveDefault(inner.properties[key])
 			if (d.has) {
 				;(base as Record<string, unknown>)[key] = d.value
@@ -2460,7 +2305,7 @@ function JsonFallback({ value$, reset$, onChange }: { value$: ValueState; reset$
 }
 
 export default function SettingsForm(
-	{ schema, value$, reset$, onChange, saved, idPrefix = 'setting:', groups, issues, writeAccess = WRITE_ACCESS_ALL }: {
+	{ schema, value$, reset$, onChange, saved, idPrefix = 'setting:', groups, priorityKeys, issues, writeAccess = WRITE_ACCESS_ALL }: {
 		schema: z.ZodType
 		value$: Rx.Observable<any> & { getValue: () => any }
 		reset$: Rx.Subject<void>
@@ -2472,20 +2317,29 @@ export default function SettingsForm(
 		idPrefix?: string
 		// presentation-level grouping of the top-level keys (see settings-groups.ts); ungrouped keys render after the groups
 		groups?: SettingsGroup[]
+		// presentation-level ordering (ungrouped forms only): these top-level keys float to the front, in the given order,
+		// with the rest following in schema order. Keeps the persisted shape untouched, same rationale as `groups`.
+		priorityKeys?: string[]
 		// schema issues for the current draft (input-shape safeParse); each leaf field displays the issues under its path
 		issues?: readonly z.core.$ZodIssue[]
 		// the user's write grant; fields with no overlap render read-only. Defaults to unrestricted.
 		writeAccess?: RBAC.SettingsWriteAccess
 	},
 ) {
-	const jsonSchema = React.useMemo(() => z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' }) as Node, [schema])
-	// stable so the form subtree stays memoized when only rbacInfo (context) changes
+	const rawJsonSchema = React.useMemo(() => z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' }) as Node, [schema])
+	// float any priorityKeys to the front of the root object's properties (insertion order drives render + reset order)
+	const jsonSchema = React.useMemo(() => {
+		const props: Record<string, Node> | undefined = rawJsonSchema?.properties
+		if (!priorityKeys?.length || !props) return rawJsonSchema
+		const ordered: Record<string, Node> = {}
+		for (const k of priorityKeys) if (k in props) ordered[k] = props[k]
+		for (const k of Object.keys(props)) if (!(k in ordered)) ordered[k] = props[k]
+		return { ...rawJsonSchema, properties: ordered }
+	}, [rawJsonSchema, priorityKeys])
 	const rootPath = React.useMemo<Path>(() => [], [])
 	const formOptions = React.useMemo(() => ({ idPrefix }), [idPrefix])
 	const savedCtx = React.useMemo(() => ({ saved }), [saved])
-	const rbacInfo = useRbacInfo(value$)
 	const messageVars = useMessageVars(value$)
-	useRoleCascade(value$, onChange)
 	const normIssues = React.useMemo(
 		() => (issues ?? []).map((i): NormalizedIssue => ({ path: i.path.map(String).join('.'), message: i.message })),
 		[issues],
@@ -2494,15 +2348,13 @@ export default function SettingsForm(
 		<FormOptionsContext.Provider value={formOptions}>
 			<WriteAccessContext.Provider value={writeAccess}>
 				<SavedRootContext.Provider value={savedCtx}>
-					<RbacContext.Provider value={rbacInfo}>
-						<MessageVarsContext.Provider value={messageVars}>
-							<ValidationContext.Provider value={normIssues}>
-								{groups
-									? <GroupedRootFields node={jsonSchema} groups={groups} value$={value$} reset$={reset$} onChange={onChange} />
-									: <ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />}
-							</ValidationContext.Provider>
-						</MessageVarsContext.Provider>
-					</RbacContext.Provider>
+					<MessageVarsContext.Provider value={messageVars}>
+						<ValidationContext.Provider value={normIssues}>
+							{groups
+								? <GroupedRootFields node={jsonSchema} groups={groups} value$={value$} reset$={reset$} onChange={onChange} />
+								: <ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />}
+						</ValidationContext.Provider>
+					</MessageVarsContext.Provider>
 				</SavedRootContext.Provider>
 			</WriteAccessContext.Provider>
 		</FormOptionsContext.Provider>

@@ -114,9 +114,9 @@ export function MainPoolFiltersPanel({ api }: { api: PoolConfigApi }) {
 							disabled: 'No warning',
 						}
 						const inPoolDescriptions: { [k in SETTINGS.PoolFilterApplyAs]: string } = {
-							regular: 'Layers must match this filter to be in the pool',
-							inverted: 'Layers must NOT match this filter to be in the pool',
-							disabled: 'Does not define the pool',
+							regular: 'Must match',
+							inverted: 'Must not match',
+							disabled: 'Disabled',
 						}
 						const canWarn = !!filterConfig.showIndicator && filterConfig.showIndicator !== 'disabled'
 						const handleIndicateMatchesChanged = (_newValue: LQY.IndicatorState | undefined) => {
