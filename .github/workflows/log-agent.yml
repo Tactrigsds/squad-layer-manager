@@ -1,8 +1,8 @@
 name: Log Agent Release
 
-# Builds the rust log agent (log-agent/agent) for each supported platform and attaches the binaries to
-# the GitHub release for the tag. Tag a release as `log-agent-v<version>` (matching the version in
-# log-agent/agent/Cargo.toml) to publish it. The squadjs plugin downloads these same assets by name.
+# Builds the rust log agent (log-agent/agent), attaches per-platform binaries to the GitHub release for the
+# tag (the squadjs plugin downloads these by name) and publishes the Docker image to GHCR. Tag a release as
+# `log-agent-v<version>` (matching the version in log-agent/agent/Cargo.toml) to publish it.
 
 on:
   push:
@@ -67,3 +67,41 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           files: log-agent/${{ matrix.asset }}
+
+  # Publishes the agent's Docker image to GHCR so end users can `docker run` it instead of building it.
+  # Tags it with the release version (log-agent-v<version> -> <version>) and `latest`.
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image tags
+        id: meta
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          TAG_NAME="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG_NAME#log-agent-v}"
+          IMAGE="ghcr.io/$OWNER/slm-log-agent"
+          echo "TAGS=$IMAGE:$VERSION,$IMAGE:latest" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: log-agent/agent
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: ${{ steps.meta.outputs.TAGS }}
