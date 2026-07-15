@@ -412,6 +412,8 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		BM_PAT: 'stub-token',
 		BM_ORG_ID: 'stub-org',
 		QUERY_PARAM_AUTH_BYPASS: 'true',
+		// fixed 32-byte base64 key so encrypted settings survive across restarts within a test run
+		SETTINGS_ENCRYPTION_KEY: 'c2xtLXRlc3QtZW5jcnlwdGlvbi1rZXktMzJieXRlcyE=',
 		SUPER_USERS: users.filter((u) => u.superUser ?? u.discordId === ADMIN_USER.discordId).map((u) => String(u.discordId)).join(','),
 		...opts.env,
 	}

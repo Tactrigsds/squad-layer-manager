@@ -51,6 +51,16 @@ unconditionally, and are the bootstrap you cannot lock yourself out of. This per
 
 Next, install the app on your org's discord server by visiting the install link on the `Installation` page. Make sure it's the same one as `DISCORD_HOME_GUILD_ID` in the `.env` file.
 
+#### Encryption key
+
+SLM encrypts sensitive settings at rest (each server's RCON and SFTP passwords and its log-agent token). This is keyed by `SETTINGS_ENCRYPTION_KEY`, which is required: the app refuses to start without it. Generate a strong key and paste it into `.env`:
+
+```sh
+openssl rand -base64 32
+```
+
+Keep this key safe and stable. If you change or lose it, the already-encrypted connection secrets can no longer be decrypted and have to be re-entered on the settings page. The first boot after setting the key transparently encrypts any connection secrets that were previously stored in plaintext.
+
 #### Battlemetrics
 
 SLM has a battlemetrics integration. Among other things, it lets users update players flags remotely, and gives more context when managing players on the servers.

@@ -1504,7 +1504,8 @@ export async function getFullServerState(ctx: C.Db & C.LayerQueue) {
 		.from(Schema.servers)
 		.where(E.eq(Schema.servers.id, ctx.serverId))
 	const [serverRaw] = await query
-	return SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
+	const state = SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
+	return { ...state, settings: Settings.openConnections(state.settings) }
 }
 
 export function getCurrTeams(ctx: C.SquadServer) {
@@ -1754,7 +1755,8 @@ export async function getServerState(ctx: C.Db & C.ServerId) {
 		.from(Schema.servers)
 		.where(E.eq(Schema.servers.id, ctx.serverId))
 	const [serverRaw] = await query
-	return SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
+	const state = SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
+	return { ...state, settings: Settings.openConnections(state.settings) }
 }
 
 // settings changes go through Settings.updateServerSettings instead — that's the one source of truth for reading/writing/broadcasting settings

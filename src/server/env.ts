@@ -111,6 +111,27 @@ export const groups = {
 		}),
 	},
 
+	encryption: {
+		SETTINGS_ENCRYPTION_KEY: z.string().min(1).transform((val, ctx) => {
+			const buf = Buffer.from(val, 'base64')
+			if (buf.length !== 32) {
+				ctx.addIssue({ code: 'custom', message: 'must be a base64-encoded 32-byte key (generate one with `openssl rand -base64 32`)' })
+				return z.NEVER
+			}
+			return buf
+		}).meta({
+			description:
+				"a base64-encoded 32-byte key used to encrypt sensitive settings at rest (a server's RCON/SFTP passwords and log-agent token). Generate one with `openssl rand -base64 32`. Required. Changing it makes any already-encrypted connection secrets unreadable, so they have to be re-entered on the settings page.",
+			envExample: {
+				include: 'set',
+				dev: {
+					description:
+						'a base64-encoded 32-byte key used to encrypt sensitive settings at rest. `pnpm server:dev` generates one into your .env automatically if it is missing, so you normally never touch this. Generate one manually with `openssl rand -base64 32`.',
+				},
+			},
+		}),
+	},
+
 	db: {
 		DB_PATH: z.string().min(1).prefault('./data/db.sqlite3').meta({
 			description: 'the main sqlite database. -wal and -shm files are created alongside it, so mount the directory, not the file.',
@@ -305,6 +326,7 @@ export const groupMeta: Record<keyof typeof groups, { title: string; description
 			'the app exports traces, metrics and logs over OTLP. docker-compose runs a collector (grafana/otel-lgtm) next to it, and the grafana portal it serves is where the dashboards live.',
 	},
 	rbac: { title: 'Permissions' },
+	encryption: { title: 'Encryption' },
 	db: { title: 'Database' },
 	backups: { title: 'Backups' },
 	discord: {
@@ -361,6 +383,14 @@ export function getEnvBuilder<G extends Record<string, z.ZodType>>(groups: G) {
 }
 
 let setup = false
+
+// injects a var into the already-frozen rawEnv after ensureEnvSetup has run, so a value written at boot
+// (e.g. the dev-generated SETTINGS_ENCRYPTION_KEY) is visible to env builders. Clears any cached parse so
+// the next build picks it up.
+export function injectRawVar(key: string, value: string) {
+	rawEnv[key] = value
+	parsedProperties.delete(key)
+}
 
 const buildForValidation = getEnvBuilder({
 	NODE_ENV: groups.general.NODE_ENV,

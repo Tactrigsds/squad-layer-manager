@@ -3,6 +3,7 @@ import { toAsyncGenerator, withAbortSignal } from '@/lib/async.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Obj from '@/lib/object'
 import { diffSettings, type SettingChange } from '@/lib/settings-diff'
+import { assertNever } from '@/lib/type-guards'
 import * as AppEvents from '@/models/app-events.models'
 import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
@@ -12,6 +13,7 @@ import type * as C from '@/server/context.ts'
 import * as DB from '@/server/db.ts'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as SecretBox from '@/server/secret-box.server'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as SquadServer from '@/systems/squad-server.server'
@@ -145,6 +147,17 @@ async function loadServerRegistry(ctx: C.Db) {
 		}
 		const settingsRes = SETTINGS.ServerSettingsSchema.safeParse(row.settings)
 		const broken = !settingsRes.success
+		if (settingsRes.success) {
+			// backfill: encrypt any connection secrets still stored as plaintext (idempotent, since sealing an
+			// already-sealed value is a no-op, so this is a no-op on every boot after the first)
+			const sealed = sealConnections(settingsRes.data)
+			if (!Obj.deepEqual(sealed.connections, settingsRes.data.connections)) {
+				await ctx.db({ redactParams: true }).update(Schema.servers).set(superjsonify(Schema.servers, { settings: sealed })).where(
+					E.eq(Schema.servers.id, row.id),
+				)
+				log.info(`Encrypted plaintext connection secrets at rest for server ${row.id}`)
+			}
+		}
 		let enabled = row.enabled
 		if (broken) {
 			log.error(settingsRes.error, `Server ${row.id} has invalid settings, it won't have a live slice until it's repaired`)
@@ -189,7 +202,9 @@ export async function createServerEntry(ctx: C.Db, input: {
 		teamswaps: null,
 		settings: settingsRes.data,
 	}
-	await ctx.db({ redactParams: true }).insert(Schema.servers).values(superjsonify(Schema.servers, newServer))
+	await ctx.db({ redactParams: true }).insert(Schema.servers).values(
+		superjsonify(Schema.servers, { ...newServer, settings: sealConnections(newServer.settings) }),
+	)
 	serverRegistry.set(newServer.id, {
 		id: newServer.id,
 		displayName: newServer.displayName,
@@ -270,13 +285,48 @@ export function initServerSettingsSlice(
 	return slice
 }
 
+// the connection secrets encrypted at rest: the RCON password, the SFTP log password, and the log-agent
+// token. In memory these are always plaintext; sealing happens only at a DB write, opening only at a DB read.
+function transformConnectionSecrets(
+	settings: SETTINGS.ServerSettings,
+	fn: (value: string) => string,
+): SETTINGS.ServerSettings {
+	const { connections } = settings
+	const { logs } = connections
+	let newLogs: typeof logs
+	switch (logs.type) {
+		case 'log-receiver':
+			newLogs = { ...logs, token: fn(logs.token) }
+			break
+		case 'sftp':
+			newLogs = { ...logs, password: fn(logs.password) }
+			break
+		case 'local-file':
+			newLogs = logs
+			break
+		default:
+			assertNever(logs)
+	}
+	return {
+		...settings,
+		connections: {
+			...connections,
+			rcon: { ...connections.rcon, password: fn(connections.rcon.password) },
+			logs: newLogs,
+		},
+	}
+}
+
+export const sealConnections = (settings: SETTINGS.ServerSettings) => transformConnectionSecrets(settings, SecretBox.seal)
+export const openConnections = (settings: SETTINGS.ServerSettings) => transformConnectionSecrets(settings, SecretBox.open)
+
 // reads settings for a server that may not have a live slice (e.g. it's disabled), always going to the DB
 export async function getServerSettings(ctx: C.Db, serverId: SS.ServerId): Promise<SETTINGS.ServerSettings> {
 	const [row] = await ctx.db().select({ id: Schema.servers.id, settings: Schema.servers.settings }).from(Schema.servers).where(
 		E.eq(Schema.servers.id, serverId),
 	)
 	if (!row) throw new Error(`Server ${serverId} not found`)
-	return SETTINGS.ServerSettingsSchema.parse(unsuperjsonify(Schema.servers, row).settings)
+	return openConnections(SETTINGS.ServerSettingsSchema.parse(unsuperjsonify(Schema.servers, row).settings))
 }
 
 // the one place that writes the settings column and broadcasts the change; everything else (mutations, repairs) routes through this
@@ -287,7 +337,7 @@ export async function updateServerSettings(
 ) {
 	await ctx.db({ redactParams: true })
 		.update(Schema.servers)
-		.set(superjsonify(Schema.servers, { settings: newSettings }))
+		.set(superjsonify(Schema.servers, { settings: sealConnections(newSettings) }))
 		.where(E.eq(Schema.servers.id, ctx.serverId))
 
 	ctx.tx.unlockTasks.push(() => settings$.next({ scope: 'server', serverId: ctx.serverId, settings: newSettings, source }))
@@ -319,15 +369,15 @@ export async function updateRawServerSettings(
 	const priorRawRes = await getRawServerSettings(ctx, serverId)
 	const priorParseRes = priorRawRes.code === 'ok' ? SETTINGS.ServerSettingsSchema.safeParse(priorRawRes.settings) : undefined
 	const priorBroken = !priorParseRes?.success
+	// prior connection secrets are stored sealed; open them so every comparison and diff below runs on
+	// plaintext (sealing again is deferred to updateServerSettings)
+	const priorSettings = priorParseRes?.success ? openConnections(priorParseRes.data) : undefined
 
 	// non-sensitive writers get connections redacted on read, so whatever they send back is ignored: the stored
-	// connections are carried over verbatim before validation
+	// connections are carried over (as plaintext, so the change comparison below sees no spurious diff) before validation
 	if (!opts.canWriteSensitive) {
 		if (rawSettings && typeof rawSettings === 'object') {
-			const priorConnections = priorRawRes.code === 'ok' && priorRawRes.settings && typeof priorRawRes.settings === 'object'
-				? (priorRawRes.settings as Record<string, unknown>).connections
-				: undefined
-			;(rawSettings as Record<string, unknown>).connections = priorConnections
+			;(rawSettings as Record<string, unknown>).connections = priorSettings?.connections
 		}
 	}
 
@@ -341,7 +391,7 @@ export async function updateRawServerSettings(
 		if (priorBroken) {
 			return RBAC.permissionDenied({ check: 'all' as const, permits: [RBAC.perm('server-settings:write', { serverId, paths: null })] })
 		}
-		const deniedPaths = diffSettings(priorParseRes.data, parseRes.data)
+		const deniedPaths = diffSettings(priorSettings!, parseRes.data)
 			.map((c) => c.path)
 			// connection changes are governed by write-sensitive, not by path grants
 			.filter((p) => !(p === 'connections' || p.startsWith('connections.')))
@@ -354,9 +404,9 @@ export async function updateRawServerSettings(
 		}
 	}
 
-	const connectionsChanged = priorBroken || !Obj.deepEqual(priorParseRes.data.connections, parseRes.data.connections)
+	const connectionsChanged = priorBroken || !Obj.deepEqual(priorSettings!.connections, parseRes.data.connections)
 	const adminListFieldsChanged = priorBroken || !Obj.deepEqual(
-		Obj.selectProps(priorParseRes.data, ADMIN_LIST_AFFECTING_FIELDS),
+		Obj.selectProps(priorSettings!, ADMIN_LIST_AFFECTING_FIELDS),
 		Obj.selectProps(parseRes.data, ADMIN_LIST_AFFECTING_FIELDS),
 	)
 
@@ -365,7 +415,7 @@ export async function updateRawServerSettings(
 	})
 
 	// a repair has no valid prior state to diff against, so every field reads as newly set
-	const changes = diffSettings(priorParseRes?.success ? priorParseRes.data : {}, parseRes.data)
+	const changes = diffSettings(priorSettings ?? {}, parseRes.data)
 
 	entry.broken = false
 	settings$.next({ scope: 'registry' })
