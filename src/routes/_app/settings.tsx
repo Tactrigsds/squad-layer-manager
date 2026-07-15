@@ -16,9 +16,10 @@ import { frameManager } from '@/frames/frame-manager'
 import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import { createId } from '@/lib/id'
 import { useRefConstructor } from '@/lib/react'
-import { GLOBAL_SETTINGS_GROUPS } from '@/lib/settings-groups'
+import { GLOBAL_SETTINGS_GROUPS, SERVER_SETTINGS_PRIORITY_KEYS } from '@/lib/settings-groups'
 import * as SettingsNav from '@/lib/settings-nav'
 import { assertNever } from '@/lib/type-guards'
+import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as AppEvents from '@/models/app-events.models'
 import * as SS from '@/models/server-state.models'
@@ -212,34 +213,20 @@ function RouteComponent() {
 			<main className="relative flex-1 min-w-0 overflow-y-auto">
 				{/* no top padding: sticky section headers pin flush to the top, otherwise scrolled content bleeds into the gap */}
 				<div className="mx-auto w-full max-w-[68rem] px-4 pb-2 space-y-6">
-					{/* ServerManagement reads PublicSettingsStore, not globalSettings$, so it must not sit behind the global-settings Suspense */}
-					{!manageServersDenied && (
+					{/* Servers reads PublicSettingsStore, not globalSettings$, so it must not sit behind the global-settings Suspense */}
+					{(!manageServersDenied || servers.length > 0) && (
 						<div id="section:servers" className="scroll-mt-2 rounded-xl">
-							<ServerManagementSection
-								onAddServer={() => setCreatingNonce(createId(4))}
-								creating={creating}
+							<ServersSection
+								servers={servers}
+								sectionKeys={sectionKeys}
+								canManage={!manageServersDenied}
 								canCreate={canCreateServers}
+								creating={creating}
+								onAddServer={() => setCreatingNonce(createId(4))}
+								onCancelCreate={() => setCreatingNonce(null)}
 							/>
 						</div>
 					)}
-					{servers.map((server) => {
-						const key = sectionKeys.find((k) => k.kind === 'server' && k.serverId === server.id)
-						if (!key) return null
-						return (
-							<div key={server.id} id={`section:server:${server.id}`} className="scroll-mt-2 rounded-xl">
-								<ServerSettingsSection server={server} stores={{ settingsEditor: key }} />
-							</div>
-						)
-					})}
-					{!manageServersDenied && canCreateServers && creating && (() => {
-						const key = sectionKeys.find((k) => k.kind === 'new-server')
-						if (!key) return null
-						return (
-							<div id="section:server:__new__" className="scroll-mt-2 rounded-xl">
-								<CreateServerSection stores={{ settingsEditor: key }} onCancel={() => setCreatingNonce(null)} />
-							</div>
-						)
-					})()}
 					{globalAccess.canRead && (() => {
 						const key = sectionKeys.find((k) => k.kind === 'global')
 						if (!key) return null
@@ -368,14 +355,14 @@ function ServerStatusBadge({ state }: { state: ServerLifecycleState }) {
 			return (
 				<span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
 					<span className="h-2 w-2 rounded-full bg-added" />
-					Running
+					Connected
 				</span>
 			)
 		case 'stopped':
 			return (
 				<span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
 					<span className="h-2 w-2 rounded-full border border-muted-foreground/60" />
-					Stopped
+					Disconnected
 				</span>
 			)
 		case 'starting':
@@ -383,7 +370,7 @@ function ServerStatusBadge({ state }: { state: ServerLifecycleState }) {
 			return (
 				<span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
 					<Spinner className="size-3" />
-					{state === 'starting' ? 'Starting…' : 'Stopping…'}
+					{state === 'starting' ? 'Connecting…' : 'Disconnecting…'}
 				</span>
 			)
 		case 'broken':
@@ -398,161 +385,227 @@ function ServerStatusBadge({ state }: { state: ServerLifecycleState }) {
 	}
 }
 
-function ServerManagementSection(
-	{ onAddServer, creating, canCreate }: { onAddServer: () => void; creating: boolean; canCreate: boolean },
+type PublicServer = { id: string; displayName: string; enabled: boolean; broken: boolean; defaultServer: boolean }
+
+// the sentinel selection value for the (unsaved) new-server form
+const NEW_SERVER_SELECTION = '__new__'
+
+function lifecycleState(
+	server: PublicServer,
+	inflight: { startingId?: string; stoppingId?: string },
+): ServerLifecycleState {
+	if (server.broken) return 'broken'
+	if (inflight.startingId === server.id) return 'starting'
+	if (inflight.stoppingId === server.id) return 'stopping'
+	return server.enabled ? 'running' : 'stopped'
+}
+
+// picks the server to show first: a broken one (so it's noticed and repaired) wins, then the default, then the first
+function pickDefaultSelection(servers: PublicServer[]): string | null {
+	return (servers.find((s) => s.broken) ?? servers.find((s) => s.defaultServer) ?? servers[0])?.id ?? null
+}
+
+// master-detail for the server registry: pick a server on the left, edit its settings on the right. The server list
+// doubles as the old management card, and each server's lifecycle controls (status, start/stop, default, delete) live
+// in its detail-card header. All editing state still lives in per-server settings-editor frames (kept alive by the
+// route regardless of which detail is shown), so drafts survive switching servers and the save panel aggregates them.
+function ServersSection(
+	{ servers, sectionKeys, canManage, canCreate, creating, onAddServer, onCancelCreate }: {
+		servers: PublicServer[]
+		sectionKeys: SettingsEditorFrame.Key[]
+		canManage: boolean
+		canCreate: boolean
+		creating: boolean
+		onAddServer: () => void
+		onCancelCreate: () => void
+	},
 ) {
-	const settings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
 	const deleteServersDenied = RbacClient.usePermsCheck(RBAC.perm('admin:delete-servers'))
 	const openDialog = useAlertDialog()
-	const headerRef = React.useRef<HTMLDivElement>(null)
 
-	const enableMutation = useMutation(RPC.orpc.settings.admin.enableServer.mutationOptions({
-		onSuccess: (res) => {
-			if (res?.code === 'err:permission-denied') RbacClient.handlePermissionDenied(res)
-		},
-	}))
+	const onDenied = { onSuccess: (res: any) => res?.code === 'err:permission-denied' && RbacClient.handlePermissionDenied(res) }
+	const enableMutation = useMutation(RPC.orpc.settings.admin.enableServer.mutationOptions(onDenied))
+	const disableMutation = useMutation(RPC.orpc.settings.admin.disableServer.mutationOptions(onDenied))
+	const deleteMutation = useMutation(RPC.orpc.settings.admin.deleteServer.mutationOptions(onDenied))
+	const setDefaultMutation = useMutation(RPC.orpc.settings.admin.setDefaultServer.mutationOptions(onDenied))
+	const busy = enableMutation.isPending || disableMutation.isPending || deleteMutation.isPending || setDefaultMutation.isPending
+	// the start/stop RPCs only resolve once the server slice is fully spun up / torn down, so the mutation's in-flight
+	// window is exactly the transitional period
+	const inflight = {
+		startingId: enableMutation.isPending ? enableMutation.variables?.serverId : undefined,
+		stoppingId: disableMutation.isPending ? disableMutation.variables?.serverId : undefined,
+	}
 
-	const disableMutation = useMutation(RPC.orpc.settings.admin.disableServer.mutationOptions({
-		onSuccess: (res) => {
-			if (res?.code === 'err:permission-denied') RbacClient.handlePermissionDenied(res)
-		},
-	}))
+	const [selected, setSelected] = React.useState<string | null>(() => pickDefaultSelection(servers))
+	// keep the selection valid as servers stream in / are deleted, and follow the create flow in and out of the new-server form
+	React.useEffect(() => {
+		if (creating) {
+			setSelected(NEW_SERVER_SELECTION)
+			return
+		}
+		setSelected((cur) => (cur && cur !== NEW_SERVER_SELECTION && servers.some((s) => s.id === cur) ? cur : pickDefaultSelection(servers)))
+	}, [creating, servers])
 
-	const deleteMutation = useMutation(RPC.orpc.settings.admin.deleteServer.mutationOptions({
-		onSuccess: (res) => {
-			if (res?.code === 'err:permission-denied') RbacClient.handlePermissionDenied(res)
-		},
-	}))
-
-	const setDefaultMutation = useMutation(RPC.orpc.settings.admin.setDefaultServer.mutationOptions({
-		onSuccess: (res) => {
-			if (res?.code === 'err:permission-denied') RbacClient.handlePermissionDenied(res)
-		},
-	}))
-
-	async function handleDelete(server: { id: string; displayName: string }) {
+	async function handleDelete(server: PublicServer) {
 		const result = await openDialog({
 			title: 'Delete Server',
 			description: `Delete server "${server.displayName}" (${server.id})? This cannot be undone.`,
 			buttons: [{ id: 'confirm', label: 'Delete', variant: 'destructive' }],
 		})
-		if (result !== 'confirm') return
-		deleteMutation.mutate({ serverId: server.id })
+		if (result === 'confirm') deleteMutation.mutate({ serverId: server.id })
 	}
 
-	const servers = settings?.servers ?? []
-	const busy = enableMutation.isPending || disableMutation.isPending || deleteMutation.isPending || setDefaultMutation.isPending
+	const selectedServer = servers.find((s) => s.id === selected)
+	const serverKey = selectedServer && sectionKeys.find((k) => k.kind === 'server' && k.serverId === selectedServer.id)
+	const newServerKey = sectionKeys.find((k) => k.kind === 'new-server')
 
 	return (
-		<Card>
-			<StickyGroup stickyRef={headerRef}>
-				<CardHeader ref={headerRef} className="rounded-t-xl border-b bg-card">
-					<CardTitle>Servers</CardTitle>
-					<CardDescription>Add, remove, and configure servers.</CardDescription>
-				</CardHeader>
-				<CardContent className="space-y-4">
-					{servers.length === 0 && <p className="text-sm text-muted-foreground">No servers configured.</p>}
-					{servers.map(server => {
-						// the start/stop RPCs only resolve once the server slice is fully spun up / torn down, so the
-						// mutation's in-flight window is exactly the transitional period
-						const starting = enableMutation.isPending && enableMutation.variables?.serverId === server.id
-						const stopping = disableMutation.isPending && disableMutation.variables?.serverId === server.id
-						const state: ServerLifecycleState = server.broken
-							? 'broken'
-							: starting
-							? 'starting'
-							: stopping
-							? 'stopping'
-							: server.enabled
-							? 'running'
-							: 'stopped'
-						return (
-							<div key={server.id} className="space-y-2">
-								<div className="flex items-center justify-between gap-2">
-									<div>
-										<p className="flex items-center gap-2 font-medium text-sm">
-											{server.displayName}
-											<ServerStatusBadge state={state} />
-										</p>
-										<p className="text-xs text-muted-foreground">{server.id}</p>
-										{server.broken && <p className="text-xs text-destructive">Settings failed validation and need to be repaired</p>}
-									</div>
-									<div className="flex items-center gap-2">
-										{server.broken
-											? (
-												<Button
-													size="sm"
-													variant="destructive"
-													onClick={() => SettingsNav.navigateToAnchor(`section:server:${server.id}`)}
-												>
-													Fix Settings
-												</Button>
-											)
-											: (
-												<Button
-													size="icon"
-													variant="ghost"
-													title="Edit settings"
-													onClick={() => SettingsNav.navigateToAnchor(`section:server:${server.id}`)}
-												>
-													<Icons.Pencil className="h-4 w-4" />
-												</Button>
-											)}
-										<div className="flex items-center gap-1.5">
-											<Checkbox
-												id={`default-${server.id}`}
-												checked={server.defaultServer}
-												disabled={busy || server.defaultServer}
-												onCheckedChange={(checked) => {
-													if (checked) setDefaultMutation.mutate({ serverId: server.id })
-												}}
-											/>
-											<Label htmlFor={`default-${server.id}`} className="text-sm font-normal cursor-pointer">
-												Default
-											</Label>
-										</div>
-										{!server.broken && (
-											<Button
-												size="sm"
-												variant="outline"
-												className="w-16"
-												disabled={busy}
-												title={server.enabled
-													? 'Stop the server. It stays off across SLM restarts.'
-													: 'Start the server. It will also start automatically with SLM.'}
-												onClick={() => {
-													if (server.enabled) disableMutation.mutate({ serverId: server.id })
-													else enableMutation.mutate({ serverId: server.id })
-												}}
-											>
-												{server.enabled ? 'Stop' : 'Start'}
-											</Button>
-										)}
-										{!deleteServersDenied && (
-											<Button size="icon" variant="ghost" disabled={busy} onClick={() => handleDelete(server)}>
-												<Icons.Trash2 className="h-4 w-4" />
-											</Button>
-										)}
-									</div>
-								</div>
-							</div>
-						)
-					})}
-					{canCreate && <Button variant="outline" disabled={creating} onClick={onAddServer}>Add Server</Button>}
-				</CardContent>
-			</StickyGroup>
-		</Card>
+		<div className="grid grid-cols-[minmax(11rem,17rem)_1fr] gap-4 items-start">
+			<ServerList
+				servers={servers}
+				selected={selected}
+				onSelect={setSelected}
+				inflight={inflight}
+				canCreate={canManage && canCreate}
+				creating={creating}
+				onAddServer={onAddServer}
+			/>
+			<div className="min-w-0">
+				{creating && newServerKey
+					? <CreateServerSection stores={{ settingsEditor: newServerKey }} onCancel={onCancelCreate} />
+					: selectedServer && serverKey
+					? (
+						<ServerSettingsSection
+							server={selectedServer}
+							stores={{ settingsEditor: serverKey }}
+							lifecycle={
+								<ServerLifecycleControls
+									server={selectedServer}
+									state={lifecycleState(selectedServer, inflight)}
+									busy={busy}
+									canManage={canManage}
+									canDelete={!deleteServersDenied}
+									onToggle={() =>
+										selectedServer.enabled
+											? disableMutation.mutate({ serverId: selectedServer.id })
+											: enableMutation.mutate({ serverId: selectedServer.id })}
+									onSetDefault={() => setDefaultMutation.mutate({ serverId: selectedServer.id })}
+									onDelete={() => handleDelete(selectedServer)}
+								/>
+							}
+						/>
+					)
+					: <p className="text-sm text-muted-foreground">Select a server to configure it.</p>}
+			</div>
+		</div>
 	)
 }
 
-// GUI/JSON editor for one server's full settings, always mounted so the TOC + scroll-spy can resolve its anchors. GUI
-// mode routes save/reset through the shared bottom panel; JSON mode keeps its own inline toolbar (a power-user escape
-// hatch). Server settings have no codec transforms, so the edit/input shape equals the stored shape (no encode step).
-// All editing state lives in the section's settings-editor frame; this component is a view over it.
+function ServerList(
+	{ servers, selected, onSelect, inflight, canCreate, creating, onAddServer }: {
+		servers: PublicServer[]
+		selected: string | null
+		onSelect: (id: string) => void
+		inflight: { startingId?: string; stoppingId?: string }
+		canCreate: boolean
+		creating: boolean
+		onAddServer: () => void
+	},
+) {
+	return (
+		<div className="sticky top-2 self-start space-y-2">
+			<div className="space-y-1">
+				{servers.length === 0 && <p className="text-sm text-muted-foreground">No servers configured.</p>}
+				{servers.map((server) => (
+					<button
+						key={server.id}
+						type="button"
+						onClick={() => onSelect(server.id)}
+						className={cn(
+							'flex w-full flex-col gap-0.5 rounded-md border px-2.5 py-2 text-left',
+							server.id === selected ? 'border-primary bg-accent' : 'border-transparent hover:bg-accent/50',
+						)}
+					>
+						<span className="flex items-center justify-between gap-2">
+							<span className="truncate text-sm font-medium">{server.displayName}</span>
+							<ServerStatusBadge state={lifecycleState(server, inflight)} />
+						</span>
+						<span className="truncate font-mono text-xs text-muted-foreground">{server.id}</span>
+					</button>
+				))}
+			</div>
+			{canCreate && (
+				<Button variant="outline" size="sm" className="w-full" disabled={creating} onClick={onAddServer}>
+					<Icons.Plus className="mr-1 h-4 w-4" />
+					Add Server
+				</Button>
+			)}
+		</div>
+	)
+}
+
+// the selected server's lifecycle controls, shown on the right of its detail-card header
+function ServerLifecycleControls(
+	{ server, state, busy, canManage, canDelete, onToggle, onSetDefault, onDelete }: {
+		server: PublicServer
+		state: ServerLifecycleState
+		busy: boolean
+		canManage: boolean
+		canDelete: boolean
+		onToggle: () => void
+		onSetDefault: () => void
+		onDelete: () => void
+	},
+) {
+	return (
+		<div className="flex items-center gap-2">
+			<ServerStatusBadge state={state} />
+			{canManage && (
+				<>
+					<div className="flex items-center gap-1.5">
+						<Checkbox
+							id={`default-${server.id}`}
+							checked={server.defaultServer}
+							disabled={busy || server.defaultServer}
+							onCheckedChange={(checked) => checked && onSetDefault()}
+						/>
+						<Label htmlFor={`default-${server.id}`} className="text-sm font-normal cursor-pointer">Default</Label>
+					</div>
+					{!server.broken && (
+						<Button
+							size="sm"
+							variant={server.enabled ? 'destructive' : 'outline'}
+							className="w-28"
+							disabled={busy}
+							title={server.enabled
+								? 'Disconnect from the server. It stays disconnected across SLM restarts.'
+								: 'Connect to the server. It will also connect automatically with SLM.'}
+							onClick={onToggle}
+						>
+							{server.enabled ? 'Disconnect' : 'Connect'}
+						</Button>
+					)}
+					{canDelete && (
+						<Button size="icon" variant="ghost" disabled={busy} title="Delete server" onClick={onDelete}>
+							<Icons.Trash2 className="h-4 w-4" />
+						</Button>
+					)}
+				</>
+			)}
+		</div>
+	)
+}
+
+// GUI/JSON editor for one server's full settings (the right-hand detail of the servers master-detail). GUI mode routes
+// save/reset through the shared bottom panel; JSON mode keeps its own inline toolbar (a power-user escape hatch). Server
+// settings have no codec transforms, so the edit/input shape equals the stored shape (no encode step). All editing state
+// lives in the section's settings-editor frame; this component is a view over it. `lifecycle` renders the server's
+// start/stop/status/default/delete controls on the right of the header.
 function ServerSettingsSection(
-	{ server, stores }: {
+	{ server, stores, lifecycle }: {
 		server: { id: string; displayName: string; broken: boolean }
 		stores: SettingsEditorFrame.KeyProp
+		lifecycle?: React.ReactNode
 	},
 ) {
 	const key = stores.settingsEditor
@@ -619,9 +672,12 @@ function ServerSettingsSection(
 								</p>
 							)}
 						</div>
-						<div className="flex items-center rounded-md border p-0.5">
-							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>GUI</Button>
-							<Button size="sm" variant={mode === 'json' ? 'secondary' : 'ghost'} onClick={() => switchMode('json')}>JSON</Button>
+						<div className="flex items-center gap-3">
+							{lifecycle}
+							<div className="flex items-center rounded-md border p-0.5">
+								<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>GUI</Button>
+								<Button size="sm" variant={mode === 'json' ? 'secondary' : 'ghost'} onClick={() => switchMode('json')}>JSON</Button>
+							</div>
 						</div>
 					</div>
 				</CardHeader>
@@ -640,6 +696,7 @@ function ServerSettingsSection(
 								onChange={onFormChange}
 								saved={saved}
 								idPrefix={`setting:server:${server.id}:`}
+								priorityKeys={SERVER_SETTINGS_PRIORITY_KEYS}
 								issues={issues}
 								writeAccess={formWriteAccess}
 							/>
@@ -744,6 +801,7 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 								onChange={onFormChange}
 								saved={SettingsEditorFrame.NEW_SERVER_DRAFT}
 								idPrefix="setting:server:__new__:"
+								priorityKeys={SERVER_SETTINGS_PRIORITY_KEYS}
 								issues={issues}
 							/>
 						)

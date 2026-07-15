@@ -22,6 +22,11 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 	// rbac stays ungrouped: its own section header already reads "Permissions & Roles"
 ]
 
+// server settings aren't grouped, but the fields an operator must configure to get a new server working (connection
+// details, admin list sources, admin-identifying permissions) float to the top of the form; the rest follow in schema
+// order. Presentation-only, so the persisted shape is untouched (same rationale as the groups above).
+export const SERVER_SETTINGS_PRIORITY_KEYS: string[] = ['connections', 'adminListSources', 'adminIdentifyingPermissions']
+
 // paths the TOC must treat as leaves even though their schema node is an object with properties: they render via
 // override widgets, so no per-property anchors exist in the DOM
 export const TOC_LEAF_PATHS: ReadonlySet<string> = new Set([

@@ -37,6 +37,7 @@ export let GLOBAL_SETTINGS!: SETTINGS.GlobalSettings
 async function loadGlobalSettings(ctx: C.Db) {
 	const rows = await ctx.db().select().from(Schema.globalSettings)
 	if (rows.length === 0) {
+		// fresh install: schema defaults include the tiered admins/managers/owners RBAC preset (see defaultRbacSettings)
 		const defaultsRes = SETTINGS.parseGlobalSettings({})
 		if (!defaultsRes.success) throw new Error('Default global settings failed schema validation', { cause: defaultsRes.error })
 		const defaults = defaultsRes.data

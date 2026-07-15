@@ -17,87 +17,74 @@ import { z } from 'zod'
 
 // ============================== rbac (moved out of the deploy-time config so it's admin-editable at runtime) ==============================
 
-// discord ids are kept as strings here (not bigint) so they round-trip cleanly through the JSON settings editor / settings GUI;
-// rbac.server converts them to bigint at the boundary
-// `roles` is the source of truth for which roles exist; every role referenced in `roleAssignments` must be defined there
-// (enforced by the check below, mirrored in the GUI by keying the assignment role pickers to the defined roles).
+// Everything about a role lives under `roles[roleId]`: its permissions, timeout cap, restricted settings grants, and
+// which discord entities it's assigned to. Consolidating per-role (rather than five parallel role-keyed maps) makes the
+// "a role must be defined to be referenced" invariant structural, so the schema no longer has to police it.
 // dotted path into a settings document, e.g. "vote.voteDuration" or just "vote" for the whole section
 const SettingsGrantPathSchema = z.string().trim().min(1).regex(/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/, {
 	error: 'Must be a dotted setting path, e.g. "vote.voteDuration"',
 })
 
+// discord ids are kept as strings here (ParsableBigInt) so they round-trip cleanly through the JSON settings editor /
+// settings GUI; rbac.server converts them to bigint at the boundary
+const RoleAssignmentsSchema = z.object({
+	discordRoleIds: z.array(ParsableBigIntSchema).prefault([]).describe('Discord role ids whose members are granted this role'),
+	discordUserIds: z.array(ParsableBigIntSchema).prefault([]).describe('Discord user ids granted this role'),
+	everyMember: z.boolean().prefault(false).describe('Grant this role to every member of the Discord server'),
+}).prefault({})
+
+const ServerSettingsGrantSchema = z.object({
+	access: z.enum(['read', 'write', 'write-sensitive']).prefault('write').describe(
+		'read = view settings (never connection details); write = edit non-sensitive settings; write-sensitive = view and edit the RCON/SFTP connection details',
+	),
+	serverIds: z.array(z.string()).prefault([]).describe('Server ids this grant applies to; empty = all servers'),
+	paths: z.array(SettingsGrantPathSchema).prefault([]).describe(
+		'Write grants only: dotted setting paths to restrict the grant to (e.g. "queue.mainPool"); empty = all non-sensitive settings',
+	),
+})
+
+const RoleConfigSchema = z.object({
+	permissions: z.array(RBAC.ROLE_PERMISSION_EXPRESSION).prefault([]).describe(
+		'Permissions granted by this role. Settings permissions granted here are unrestricted (all servers / all settings); '
+			+ 'use the settings-grants below for restricted grants.',
+	),
+	// "up to N" comparisons can't ride the permission-expression grammar (grants are equality-matched), so the timeout cap
+	// is its own field. Absent = the role cannot issue timeouts; negation doesn't apply, drop the field instead.
+	maxTimeout: HumanTime.optional().describe(
+		'Maximum kick-timeout duration (e.g. "2h"). Absent = this role cannot issue timeouts. Super users/roles are unlimited.',
+	),
+	// restricted settings grants, like maxTimeout these carry arguments the expression grammar can't: they let the role
+	// edit only specific settings (and for servers, only specific servers). Unrestricted access is granted via `permissions`.
+	globalSettingsGrants: z.array(SettingsGrantPathSchema).prefault([]).describe(
+		'Restricted global-settings write grants: dotted setting paths the role may edit (e.g. "vote.voteDuration", or "vote" for the whole section). '
+			+ 'Any grant also lets the role view global settings. A "!global-settings:write" denial in permissions overrides these.',
+	),
+	serverSettingsGrants: z.array(ServerSettingsGrantSchema).prefault([]).describe(
+		"Restricted server-settings grants. Any grant also lets the role view the server's (non-sensitive) settings. "
+			+ 'Matching "!server-settings:*" denials in permissions override these.',
+	),
+	assignments: RoleAssignmentsSchema.describe('Which discord roles/users/members are granted this role'),
+}).describe('Everything about a role: its permissions, timeout cap, restricted settings grants and assignments')
+
 export const RbacSettingsSchema = z.object({
-	roles: z
-		.record(RBAC.UserDefinedRoleIdSchema, z.array(RBAC.ROLE_PERMISSION_EXPRESSION))
-		.prefault({})
-		.describe(
-			'Defined roles and their permissions. The source of truth for which roles exist. '
-				+ 'Settings permissions granted here are unrestricted (all servers / all settings); use the settings-grants maps below for restricted grants.',
-		),
-	roleAssignments: z.object({
-		'discord-role': z.array(z.object({ discordRoleId: ParsableBigIntSchema, roles: z.array(RBAC.UserDefinedRoleIdSchema) })).prefault([]),
-		'discord-user': z.array(z.object({ userId: ParsableBigIntSchema, roles: z.array(RBAC.UserDefinedRoleIdSchema) })).prefault([]),
-		// there is only one "every member" bucket, so this is a flat list of roles rather than a keyed, repeatable list
-		'discord-server-member': z.array(RBAC.UserDefinedRoleIdSchema).prefault([]).describe(
-			'Roles granted to every member of the Discord server',
-		),
-	}).prefault({}).describe('Which discord roles/users/members are granted which roles'),
-	// "up to N" comparisons can't ride the permission-expression grammar (grants are equality-matched),
-	// so per-role timeout caps live in their own map. Negation doesn't apply: remove the entry instead.
-	maxTimeouts: z.record(RBAC.UserDefinedRoleIdSchema, HumanTime).prefault({}).describe(
-		'Per-role maximum kick-timeout duration (e.g. "2h"). Roles absent here cannot issue timeouts. Super users/roles are unlimited.',
-	),
-	// restricted settings grants, like maxTimeouts these carry arguments the expression grammar can't: they let a role
-	// edit only specific settings (and for servers, only specific servers). Unrestricted access is granted via `roles`.
-	globalSettingsGrants: z.record(RBAC.UserDefinedRoleIdSchema, z.array(SettingsGrantPathSchema)).prefault({}).describe(
-		'Per-role restricted global-settings write grants: dotted setting paths the role may edit (e.g. "vote.voteDuration", or "vote" for the whole section). '
-			+ 'Any grant also lets the role view global settings. A "!global-settings:write" denial in Roles overrides these.',
-	),
-	serverSettingsGrants: z.record(
-		RBAC.UserDefinedRoleIdSchema,
-		z.array(z.object({
-			access: z.enum(['read', 'write', 'write-sensitive']).prefault('write').describe(
-				'read = view settings (never connection details); write = edit non-sensitive settings; write-sensitive = view and edit the RCON/SFTP connection details',
-			),
-			serverIds: z.array(z.string()).prefault([]).describe('Server ids this grant applies to; empty = all servers'),
-			paths: z.array(SettingsGrantPathSchema).prefault([]).describe(
-				'Write grants only: dotted setting paths to restrict the grant to (e.g. "queue.mainPool"); empty = all non-sensitive settings',
-			),
-		})),
-	).prefault({}).describe(
-		"Per-role restricted server-settings grants. Any grant also lets the role view the server's (non-sensitive) settings. "
-			+ 'Matching "!server-settings:*" denials in Roles override these.',
+	roles: z.record(RBAC.UserDefinedRoleIdSchema, RoleConfigSchema).prefault({}).describe(
+		'Defined roles, keyed by id. Each holds its own permissions, timeout cap, settings grants and assignments.',
 	),
 }).superRefine((val, ctx) => {
-	const defined = new Set(Object.keys(val.roles ?? {}))
-	const checkRole = (role: string, path: (string | number)[]) => {
-		if (!defined.has(role)) ctx.addIssue({ code: 'custom', message: `Role "${role}" is not defined in Roles`, path })
-	}
-	for (const type of ['discord-role', 'discord-user'] as const) {
-		val.roleAssignments[type].forEach((assignment, i) => {
-			assignment.roles.forEach((role, j) => checkRole(role, ['roleAssignments', type, i, 'roles', j]))
-		})
-	}
-	val.roleAssignments['discord-server-member'].forEach((role, j) => checkRole(role, ['roleAssignments', 'discord-server-member', j]))
-	for (const role of Object.keys(val.maxTimeouts ?? {})) checkRole(role, ['maxTimeouts', role])
 	// only the first path segment is validated (deeper segments that don't resolve simply never match a write)
-	for (const [role, paths] of Object.entries(val.globalSettingsGrants ?? {})) {
-		checkRole(role, ['globalSettingsGrants', role])
-		paths.forEach((p, i) => {
+	for (const [role, cfg] of Object.entries(val.roles ?? {})) {
+		cfg.globalSettingsGrants.forEach((p, i) => {
 			const head = p.split('.')[0]
 			if (!globalSettingsTopLevelKeys().includes(head)) {
-				ctx.addIssue({ code: 'custom', message: `"${head}" is not a global setting`, path: ['globalSettingsGrants', role, i] })
+				ctx.addIssue({ code: 'custom', message: `"${head}" is not a global setting`, path: ['roles', role, 'globalSettingsGrants', i] })
 			}
 		})
-	}
-	for (const [role, grants] of Object.entries(val.serverSettingsGrants ?? {})) {
-		checkRole(role, ['serverSettingsGrants', role])
-		grants.forEach((grant, i) => {
+		cfg.serverSettingsGrants.forEach((grant, i) => {
 			if (grant.access !== 'write' && grant.paths.length > 0) {
 				ctx.addIssue({
 					code: 'custom',
 					message: 'Paths only apply to write grants',
-					path: ['serverSettingsGrants', role, i, 'paths'],
+					path: ['roles', role, 'serverSettingsGrants', i, 'paths'],
 				})
 			}
 			grant.paths.forEach((p, j) => {
@@ -106,13 +93,15 @@ export const RbacSettingsSchema = z.object({
 					ctx.addIssue({
 						code: 'custom',
 						message: `"${head}" is not a grantable server setting`,
-						path: ['serverSettingsGrants', role, i, 'paths', j],
+						path: ['roles', role, 'serverSettingsGrants', i, 'paths', j],
 					})
 				}
 			})
 		})
 	}
-}).prefault({})
+	// default to the tiered admins/managers/owners preset (see defaultRbacSettings). Lazy thunk because the preset reads
+	// GlobalSettingsSchema, which is declared further down; also drives fresh-install seeding and the form's reset-to-default.
+}).prefault(() => defaultRbacSettings())
 
 // hoisted so the RbacSettingsSchema refine above can call them at parse time (the schemas are declared further down)
 export function globalSettingsTopLevelKeys(): string[] {
@@ -317,6 +306,65 @@ export function parseGlobalSettings(raw: unknown) {
 	const input = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : {}
 	const defaultPrefix = typeof input.defaultPrefix === 'string' ? input.defaultPrefix : CMD.FALLBACK_PREFIX
 	return GlobalSettingsSchema.safeParse({ ...input, commands: CMD.seedCommandConfigs(input.commands, defaultPrefix) })
+}
+
+// The tiered RBAC preset a fresh install starts from (see settings.server loadGlobalSettings). The roles are defined
+// but UNASSIGNED: a new install has no Discord role/user ids yet, so the env SUPER_USERS/SUPER_ROLES bootstrap grants
+// initial access and an owner assigns Discord entities to these roles from the settings page afterwards. Owners are free
+// to edit or delete them. Only applied on first install; existing installs keep whatever roles they already have.
+//
+//   admins   - in-game operations: queue, votes, filters, player moderation. No settings access.
+//   managers - everything admins can do, plus most non-sensitive settings: every global setting except the permissions
+//              config (so they can't escalate their own access), and editing existing servers' non-connection settings.
+//              Can restart SLM. Cannot create servers or edit connection details (no write-sensitive), or delete servers.
+//   owners   - everything.
+// return type deliberately not annotated with `z.input<typeof RbacSettingsSchema>`: RbacSettingsSchema's prefault
+// references this function, so annotating it back would make the schema type self-referential. The pieces are typed
+// individually instead, which keeps the returned literal a valid schema input.
+export function defaultRbacSettings() {
+	// in-game admin capabilities, shared by admins and managers (all global-scope perms)
+	const adminPermissions: RBAC.RolePermissionExpression[] = [
+		'site:authorized',
+		'queue:write',
+		'vote:manage',
+		'filters:create',
+		'filters:write-all',
+		'squad-server:end-match',
+		'squad-server:turn-fog-off',
+		'squad-server:manage-players',
+		'squad-server:warn-players',
+		'squad-server:broadcast',
+		'squad-server:kick-players',
+		'battlemetrics:write-flags',
+	]
+	// admin:manage-servers lets them enable/disable and set the default server; without a write-sensitive grant they
+	// still can't create servers (which requires supplying connection details)
+	const managerPermissions: RBAC.RolePermissionExpression[] = [...adminPermissions, 'admin:manage-servers', 'admin:restart-slm']
+	const ownerPermissions: RBAC.RolePermissionExpression[] = ['*']
+	// edit all servers' non-connection settings (write implies read); no write-sensitive, so connections stay off-limits
+	const managerServerGrants: { access: 'read' | 'write' | 'write-sensitive'; serverIds: string[]; paths: string[] }[] = [
+		{ access: 'write', serverIds: [], paths: [] },
+	]
+	return {
+		roles: {
+			admins: {
+				permissions: adminPermissions,
+				maxTimeout: '2h',
+			},
+			managers: {
+				permissions: managerPermissions,
+				maxTimeout: '6h',
+				// every global setting except the permissions config
+				globalSettingsGrants: globalSettingsTopLevelKeys().filter((k) => k !== 'rbac'),
+				serverSettingsGrants: managerServerGrants,
+			},
+			owners: {
+				permissions: ownerPermissions,
+				// there is no in-settings "unlimited" (that comes only from the SUPER_USERS/SUPER_ROLES bootstrap), so a large finite cap
+				maxTimeout: '52w',
+			},
+		},
+	}
 }
 
 // ============================== per-server settings ==============================

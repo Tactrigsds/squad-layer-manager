@@ -22,22 +22,24 @@ const SUPER_ROLE: RBAC.Role = { type: 'super' }
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.rbac, ...Env.groups.discord })
 let ENV!: ReturnType<typeof envBuilder>
 
+type RoleConfig = NonNullable<SETTINGS.RbacSettings['roles'][string]>
+
 let userDefinedRoles: RBAC.Role[] = []
 let userDefinedPermissionExpressions: Record<string, RBAC.RolePermissionExpression[]> = {}
 let roleAssignments: RBAC.RoleAssignment[] = []
-// role -> max kick-timeout duration in ms (rbac.maxTimeouts; HumanTime decodes to ms)
+// role -> max kick-timeout duration in ms (roles[role].maxTimeout; HumanTime decodes to ms)
 let roleMaxTimeouts: Record<string, number> = {}
-// restricted settings grants (rbac.globalSettingsGrants / rbac.serverSettingsGrants)
-let roleGlobalSettingsGrants: SETTINGS.RbacSettings['globalSettingsGrants'] = {}
-let roleServerSettingsGrants: SETTINGS.RbacSettings['serverSettingsGrants'] = {}
+// restricted settings grants (roles[role].globalSettingsGrants / .serverSettingsGrants)
+let roleGlobalSettingsGrants: Record<string, RoleConfig['globalSettingsGrants']> = {}
+let roleServerSettingsGrants: Record<string, RoleConfig['serverSettingsGrants']> = {}
 let superUserIds = new Set<bigint>()
 let superRoleIds = new Set<bigint>()
 
 export function setup() {
 	ENV = envBuilder()
 	// role config comes from admin-editable global settings and is pushed in via applyRbacSettings() once settings load;
-	// start from empty defaults so we never reference an unset binding
-	applyRbacSettings(SETTINGS.RbacSettingsSchema.parse({}))
+	// start from an empty set (not the schema's preset default) so we never reference an unset binding
+	applyRbacSettings(SETTINGS.RbacSettingsSchema.parse({ roles: {} }))
 	superUserIds = new Set(ENV.SUPER_USERS)
 	superRoleIds = new Set(ENV.SUPER_ROLES)
 }
@@ -46,41 +48,28 @@ export function setup() {
 export function applyRbacSettings(rbac: SETTINGS.RbacSettings) {
 	userDefinedPermissionExpressions = {}
 	userDefinedRoles = []
-
-	for (const roleType of objKeys(rbac.roles)) {
-		userDefinedRoles.push(RBAC.userDefinedRole(roleType))
-		userDefinedPermissionExpressions[roleType] = rbac.roles[roleType]
-	}
-
-	roleMaxTimeouts = { ...rbac.maxTimeouts }
-	roleGlobalSettingsGrants = { ...rbac.globalSettingsGrants }
-	roleServerSettingsGrants = { ...rbac.serverSettingsGrants }
-
+	roleMaxTimeouts = {}
+	roleGlobalSettingsGrants = {}
+	roleServerSettingsGrants = {}
 	roleAssignments = []
 
-	for (const assignment of rbac.roleAssignments['discord-role']) {
-		for (const roleType of assignment.roles) {
-			roleAssignments.push({
-				type: 'discord-role',
-				role: RBAC.userDefinedRole(roleType),
-				discordRoleId: BigInt(assignment.discordRoleId),
-			})
+	for (const roleType of objKeys(rbac.roles)) {
+		const cfg = rbac.roles[roleType]
+		userDefinedRoles.push(RBAC.userDefinedRole(roleType))
+		userDefinedPermissionExpressions[roleType] = cfg.permissions
+		if (cfg.maxTimeout !== undefined) roleMaxTimeouts[roleType] = cfg.maxTimeout
+		if (cfg.globalSettingsGrants.length > 0) roleGlobalSettingsGrants[roleType] = cfg.globalSettingsGrants
+		if (cfg.serverSettingsGrants.length > 0) roleServerSettingsGrants[roleType] = cfg.serverSettingsGrants
+
+		for (const discordRoleId of cfg.assignments.discordRoleIds) {
+			roleAssignments.push({ type: 'discord-role', role: RBAC.userDefinedRole(roleType), discordRoleId: BigInt(discordRoleId) })
 		}
-	}
-	for (const assignment of rbac.roleAssignments['discord-user']) {
-		for (const roleType of assignment.roles) {
-			roleAssignments.push({
-				type: 'discord-user',
-				role: RBAC.userDefinedRole(roleType),
-				discordUserId: BigInt(assignment.userId),
-			})
+		for (const userId of cfg.assignments.discordUserIds) {
+			roleAssignments.push({ type: 'discord-user', role: RBAC.userDefinedRole(roleType), discordUserId: BigInt(userId) })
 		}
-	}
-	for (const roleType of rbac.roleAssignments['discord-server-member']) {
-		roleAssignments.push({
-			type: 'discord-server-member',
-			role: RBAC.userDefinedRole(roleType),
-		})
+		if (cfg.assignments.everyMember) {
+			roleAssignments.push({ type: 'discord-server-member', role: RBAC.userDefinedRole(roleType) })
+		}
 	}
 
 	// TODO add preflight checks to make sure the remote references in role assignments are valid
