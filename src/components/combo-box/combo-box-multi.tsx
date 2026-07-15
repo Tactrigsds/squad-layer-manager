@@ -3,7 +3,7 @@ import React, { useEffect, useImperativeHandle, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command.tsx'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.tsx'
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover.tsx'
 import * as DisplayHelpers from '@/lib/display-helpers.ts'
 import { cn } from '@/lib/utils'
 
@@ -131,6 +131,12 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		return map
 	}, [options])
 
+	// the value of the option the mouse is currently over (either column); drives the floating description box
+	const [hoveredValue, setHoveredValue] = useState<T | null>(null)
+	const hasDescriptions = options !== LOADING && options.some((o) => o.description != null)
+	const hoveredDescription = hoveredValue !== null ? optionsByValue.get(hoveredValue)?.description ?? null : null
+	const hoveredOption = hoveredValue !== null ? optionsByValue.get(hoveredValue) : undefined
+
 	const displayValues = useInternalState ? internalValues : values
 
 	const confirmedSet = props.confirm ? new Set(values) : null
@@ -160,203 +166,234 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 			valuesDisplay = valuesDisplay.slice(0, restrictSize) + '...'
 		}
 	}
+	const trigger = (
+		<PopoverTrigger asChild>
+			{props.children ?? (
+				<Button
+					variant="outline"
+					disabled={disabled}
+					role="combobox"
+					aria-expanded={open}
+					className={cn(props.className, restrictValueSize && 'max-w-[400px]', 'justify-between font-mono')}
+				>
+					<span className="grow overflow-hidden text-ellipsis">
+						{valuesDisplay}
+					</span>
+					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+				</Button>
+			)}
+		</PopoverTrigger>
+	)
+
 	// we don't fully unbound the size here, just relax the limit
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				{props.children ?? (
-					<Button
-						variant="outline"
-						disabled={disabled}
-						role="combobox"
-						aria-expanded={open}
-						className={cn(props.className, restrictValueSize && 'max-w-[400px]', 'justify-between font-mono')}
-					>
-						<span className="grow overflow-hidden text-ellipsis">
-							{valuesDisplay}
-						</span>
-						<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-					</Button>
-				)}
-			</PopoverTrigger>
+			{trigger}
 			<PopoverContent align="start" className="min-w-[600px] p-0 overflow-hidden">
 				{
 					/* gate on open so the option elements aren't built on every render while closed --
 				    option lists can be thousands of entries long */
 				}
 				{open && (
-					<Command shouldFilter={!props.setInputValue} className="flex flex-col">
-						{/* Shared header row */}
-						<div className="flex border-b shrink-0">
-							{/* Left header: search input */}
-							<div className="flex-1 border-r">
-								<CommandInput value={props.inputValue} onValueChange={props.setInputValue} placeholder="Search options..." />
-							</div>
-							{/* Right header: selected count + action buttons */}
-							<div className="flex-1 flex items-center justify-between px-2 h-[41px]">
-								<span className="text-sm font-medium">
-									Selected {props.title ? props.title + 's ' : ''}({displayValues.length}
-									{selectionLimit ? `/${selectionLimit}` : ''})
-								</span>
-								<span className="flex items-center space-x-1">
-									{reset && (() => {
-										const resetToValues = Array.isArray(reset) ? reset : initialValues
-										const resetValues = resetToValues.filter(val => optionsByValue.has(val))
-										const currentSet = new Set(displayValues)
-										const resetSet = new Set(resetValues)
-										const isIdentical = currentSet.size === resetSet.size && [...currentSet].every(val => resetSet.has(val))
-										return (
+					// when any option carries a description, a floating box tracking the hovered option is anchored to the
+					// body panel: it sits directly above the panel (flipping below when there's no room) and spans its full
+					// width. Usages without descriptions never open it.
+					<Popover open={hasDescriptions && hoveredDescription != null}>
+						<PopoverAnchor asChild>
+							<div className="w-full">
+								<PopoverContent
+									side="top"
+									align="start"
+									sideOffset={6}
+									onOpenAutoFocus={(e) => e.preventDefault()}
+									onCloseAutoFocus={(e) => e.preventDefault()}
+									className="pointer-events-none w-[var(--radix-popover-trigger-width)] max-w-none space-y-1 p-3"
+								>
+									{hoveredOption?.label != null
+										&& <div className="text-sm font-medium font-mono break-words">{hoveredOption.label}</div>}
+									<div className="text-xs text-muted-foreground break-words">{hoveredDescription}</div>
+								</PopoverContent>
+								<Command shouldFilter={!props.setInputValue} className="flex flex-col">
+									{/* Shared header row */}
+									<div className="flex border-b shrink-0">
+										{/* Left header: search input */}
+										<div className="flex-1 border-r">
+											<CommandInput value={props.inputValue} onValueChange={props.setInputValue} placeholder="Search options..." />
+										</div>
+										{/* Right header: selected count + action buttons */}
+										<div className="flex-1 flex items-center justify-between px-2 h-[41px]">
+											<span className="text-sm font-medium">
+												Selected {props.title ? props.title + 's ' : ''}({displayValues.length}
+												{selectionLimit ? `/${selectionLimit}` : ''})
+											</span>
+											<span className="flex items-center space-x-1">
+												{reset && (() => {
+													const resetToValues = Array.isArray(reset) ? reset : initialValues
+													const resetValues = resetToValues.filter(val => optionsByValue.has(val))
+													const currentSet = new Set(displayValues)
+													const resetSet = new Set(resetValues)
+													const isIdentical = currentSet.size === resetSet.size && [...currentSet].every(val => resetSet.has(val))
+													return (
+														<Button
+															variant="ghost"
+															size="sm"
+															onClick={() => onSelect(resetValues)}
+															disabled={isIdentical}
+															className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
+															title="Reset to Initial"
+														>
+															<Undo2 className="h-4 w-4" />
+														</Button>
+													)
+												})()}
+												{options !== LOADING && options.length > 0 && displayValues.length < options.length && (
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => {
+															const allValues = options
+																.filter(opt => !opt.disabled)
+																.map(opt => opt.value)
+																.filter(val =>
+																	!selectionLimit || displayValues.length + (displayValues.includes(val) ? 0 : 1) <= selectionLimit
+																)
+															onSelect(allValues)
+														}}
+														className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+														title="Select All"
+													>
+														<CheckCheck className="h-4 w-4" />
+													</Button>
+												)}
+												{displayValues.length > 0 && (
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => onSelect([])}
+														className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+														title="Clear All"
+													>
+														<Trash2 className="h-4 w-4" />
+													</Button>
+												)}
+												{!props.confirm && (
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => setOpen(false)}
+														className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+														title="Close"
+													>
+														<X className="h-4 w-4" />
+													</Button>
+												)}
+											</span>
+										</div>
+									</div>
+
+									{/* Lists row */}
+									<div className="flex h-[340px]">
+										{/* Left — available options */}
+										<div className="flex-1 border-r overflow-hidden">
+											<CommandList className="max-h-[340px]">
+												<CommandEmpty>No results found.</CommandEmpty>
+												<CommandGroup>
+													{options === LOADING && (
+														<CommandItem>
+															<LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+															Loading...
+														</CommandItem>
+													)}
+													{options !== LOADING && options.map((option) => (
+														<CommandItem
+															key={option.value}
+															value={option.value === null ? NULL.current : option.value}
+															keywords={option.keywords}
+															onMouseEnter={() => setHoveredValue(option.value)}
+															onMouseLeave={() => setHoveredValue((cur) => cur === option.value ? null : cur)}
+															disabled={option.disabled
+																|| (selectionLimit ? values.length >= selectionLimit && !values.includes(option.value) : false)}
+															onSelect={() => {
+																if (option.disabled) return
+																onSelect((prevValues) => {
+																	if (prevValues.includes(option.value)) {
+																		return prevValues.filter((v) => v !== option.value)
+																	} else {
+																		return [...prevValues, option.value]
+																	}
+																})
+															}}
+														>
+															<Check className={cn('mr-2 h-4 w-4', displayValues.includes(option.value) ? 'opacity-100' : 'opacity-0')} />
+															{option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
+														</CommandItem>
+													))}
+												</CommandGroup>
+											</CommandList>
+										</div>
+
+										{/* Right — selected items */}
+										<div className="flex-1 overflow-y-auto p-2 space-y-1">
+											{displayValues.length === 0
+												? (
+													<div className="text-sm text-muted-foreground text-center py-8">
+														No items selected
+													</div>
+												)
+												: displayValues.map((value) => {
+													const option = optionsByValue.get(value)
+													const displayText = option ? (option.label ?? option.value) : value
+													return (
+														<div
+															key={value}
+															className="flex items-center justify-between p-2 bg-muted rounded-sm text-sm cursor-pointer"
+															onMouseEnter={() => setHoveredValue(value)}
+															onMouseLeave={() => setHoveredValue((cur) => cur === value ? null : cur)}
+															onMouseDown={(e) => {
+																if (e.button === 1) {
+																	e.preventDefault()
+																	onSelect((prevValues) => prevValues.filter((v) => v !== value))
+																}
+															}}
+														>
+															<span className="flex-1 truncate">
+																{displayText === null ? DisplayHelpers.NULL_DISPLAY : displayText}
+															</span>
+															<Button
+																variant="ghost"
+																size="sm"
+																onClick={() => onSelect((prevValues) => prevValues.filter((v) => v !== value))}
+																className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive ml-2"
+															>
+																<X className="h-3 w-3" />
+															</Button>
+														</div>
+													)
+												})}
+										</div>
+									</div>
+
+									{/* Full-width confirm button */}
+									{props.confirm && (
+										<div className="border-t shrink-0">
 											<Button
 												variant="ghost"
-												size="sm"
-												onClick={() => onSelect(resetValues)}
-												disabled={isIdentical}
-												className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
-												title="Reset to Initial"
+												onClick={() => {
+													props.onConfirm?.(displayValues)
+													setOpen(false)
+												}}
+												disabled={!hasChanges}
+												className="w-full rounded-none h-9 text-primary hover:text-primary hover:bg-primary/10 flex items-center justify-center gap-2 disabled:opacity-40"
 											>
-												<Undo2 className="h-4 w-4" />
+												<SquareCheck className="h-4 w-4" />
+												<span className="text-sm">{typeof props.confirm === 'string' ? props.confirm : 'Confirm'}</span>
 											</Button>
-										)
-									})()}
-									{options !== LOADING && options.length > 0 && displayValues.length < options.length && (
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => {
-												const allValues = options
-													.filter(opt => !opt.disabled)
-													.map(opt => opt.value)
-													.filter(val => !selectionLimit || displayValues.length + (displayValues.includes(val) ? 0 : 1) <= selectionLimit)
-												onSelect(allValues)
-											}}
-											className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-											title="Select All"
-										>
-											<CheckCheck className="h-4 w-4" />
-										</Button>
-									)}
-									{displayValues.length > 0 && (
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => onSelect([])}
-											className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-											title="Clear All"
-										>
-											<Trash2 className="h-4 w-4" />
-										</Button>
-									)}
-									{!props.confirm && (
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => setOpen(false)}
-											className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-											title="Close"
-										>
-											<X className="h-4 w-4" />
-										</Button>
-									)}
-								</span>
-							</div>
-						</div>
-
-						{/* Lists row */}
-						<div className="flex h-[340px]">
-							{/* Left — available options */}
-							<div className="flex-1 border-r overflow-hidden">
-								<CommandList className="max-h-[340px]">
-									<CommandEmpty>No results found.</CommandEmpty>
-									<CommandGroup>
-										{options === LOADING && (
-											<CommandItem>
-												<LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-												Loading...
-											</CommandItem>
-										)}
-										{options !== LOADING && options.map((option) => (
-											<CommandItem
-												key={option.value}
-												value={option.value === null ? NULL.current : option.value}
-												keywords={option.keywords}
-												disabled={option.disabled
-													|| (selectionLimit ? values.length >= selectionLimit && !values.includes(option.value) : false)}
-												onSelect={() => {
-													if (option.disabled) return
-													onSelect((prevValues) => {
-														if (prevValues.includes(option.value)) {
-															return prevValues.filter((v) => v !== option.value)
-														} else {
-															return [...prevValues, option.value]
-														}
-													})
-												}}
-											>
-												<Check className={cn('mr-2 h-4 w-4', displayValues.includes(option.value) ? 'opacity-100' : 'opacity-0')} />
-												{option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
-											</CommandItem>
-										))}
-									</CommandGroup>
-								</CommandList>
-							</div>
-
-							{/* Right — selected items */}
-							<div className="flex-1 overflow-y-auto p-2 space-y-1">
-								{displayValues.length === 0
-									? (
-										<div className="text-sm text-muted-foreground text-center py-8">
-											No items selected
 										</div>
-									)
-									: displayValues.map((value) => {
-										const option = optionsByValue.get(value)
-										const displayText = option ? (option.label ?? option.value) : value
-										return (
-											<div
-												key={value}
-												className="flex items-center justify-between p-2 bg-muted rounded-sm text-sm cursor-pointer"
-												onMouseDown={(e) => {
-													if (e.button === 1) {
-														e.preventDefault()
-														onSelect((prevValues) => prevValues.filter((v) => v !== value))
-													}
-												}}
-											>
-												<span className="flex-1 truncate">
-													{displayText === null ? DisplayHelpers.NULL_DISPLAY : displayText}
-												</span>
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={() => onSelect((prevValues) => prevValues.filter((v) => v !== value))}
-													className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive ml-2"
-												>
-													<X className="h-3 w-3" />
-												</Button>
-											</div>
-										)
-									})}
+									)}
+								</Command>
 							</div>
-						</div>
-
-						{/* Full-width confirm button */}
-						{props.confirm && (
-							<div className="border-t shrink-0">
-								<Button
-									variant="ghost"
-									onClick={() => {
-										props.onConfirm?.(displayValues)
-										setOpen(false)
-									}}
-									disabled={!hasChanges}
-									className="w-full rounded-none h-9 text-primary hover:text-primary hover:bg-primary/10 flex items-center justify-center gap-2 disabled:opacity-40"
-								>
-									<SquareCheck className="h-4 w-4" />
-									<span className="text-sm">{typeof props.confirm === 'string' ? props.confirm : 'Confirm'}</span>
-								</Button>
-							</div>
-						)}
-					</Command>
+						</PopoverAnchor>
+					</Popover>
 				)}
 			</PopoverContent>
 		</Popover>

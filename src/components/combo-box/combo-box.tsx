@@ -42,6 +42,8 @@ export interface ComboBoxOption<T> {
 	label?: React.ReactNode
 	keywords?: string[]
 	disabled?: boolean
+	// longer explanatory text shown in a floating box while the option is hovered (ComboBoxMulti only)
+	description?: React.ReactNode
 }
 
 export default function ComboBox<T extends string | null>(props: ComboBoxProps<T>) {

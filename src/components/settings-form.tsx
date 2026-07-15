@@ -155,8 +155,15 @@ function emptyValue(node: Node): unknown {
 }
 
 // granted permissions include the "*" wildcard; denials are stored with a "!" prefix but edited without it in a separate select
-const GRANT_PERM_OPTIONS: string[] = ['*', ...RBAC.ROLE_GRANTABLE_PERMISSION_TYPE.options]
-const DENY_PERM_OPTIONS: string[] = [...RBAC.ROLE_GRANTABLE_PERMISSION_TYPE.options]
+function permOption(p: string): ComboBoxOption<string> {
+	const def = RBAC.PERMISSION_DEFINITION[p as keyof typeof RBAC.PERMISSION_DEFINITION]
+	return { value: p, description: def?.description }
+}
+const GRANT_PERM_OPTIONS: ComboBoxOption<string>[] = [
+	{ value: '*', description: 'Grants every permission (full access to everything)' },
+	...RBAC.ROLE_GRANTABLE_PERMISSION_TYPE.options.map(permOption),
+]
+const DENY_PERM_OPTIONS: ComboBoxOption<string>[] = RBAC.ROLE_GRANTABLE_PERMISSION_TYPE.options.map(permOption)
 
 // editor for a role's permission expression list: granted perms and denied perms (!-prefixed) in two separate selects
 function PermissionExpressionEditor({ value, onChange }: { value: string[] | undefined; onChange: (v: string[]) => void }) {
