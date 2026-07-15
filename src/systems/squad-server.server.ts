@@ -883,9 +883,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 				Rx.map((...args) => args[0] as string),
 			)
 		} else if (settings.connections.logs.type === 'log-receiver') {
-			chunk$ = SquadLogsReceiver.event$.pipe(
-				Rx.concatMap((event) => event.type === 'data' ? Rx.of(event.data) : Rx.EMPTY),
-			)
+			chunk$ = SquadLogsReceiver.streamFor(serverId)
 		} else {
 			assertNever(settings.connections.logs)
 		}

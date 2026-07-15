@@ -1,10 +1,8 @@
-import { LogAgentClient, type LogAgentOptions } from './log-agent-client'
 import { LogFileSink } from './log-file'
 import { RconServer } from './rcon-server'
 import { World, type WorldOptions } from './world'
 
 export * as Fmt from './format'
-export { LogAgentClient } from './log-agent-client'
 export { LogFileSink } from './log-file'
 export { RconServer } from './rcon-server'
 export { makePlayer, World } from './world'
@@ -21,9 +19,9 @@ export type EmulatorOptions = WorldOptions & {
 	tickRateIntervalMs?: number
 }
 
-// One emulated squad server: a World plus its protocol frontends. Logs go wherever the app is
-// configured to read them from: a file it tails (attachLogFile, the `local-file` source) or a push
-// into its log receiver (attachLogAgent). Either way the lines are the same.
+// One emulated squad server: a World plus its protocol frontends. Logs are written to a file
+// (attachLogFile) that the app reads directly (the `local-file` source) or that the real log agent
+// (log-agent/agent) tails and ships to the app's log receiver. Either way the lines are the same.
 export class Emulator {
 	world: World
 	rcon: RconServer
@@ -77,18 +75,6 @@ export class Emulator {
 		return sink
 	}
 
-	logAgent: LogAgentClient | null = null
-
-	// connects the log frontend to the app's squad-logs-receiver and streams every subsequent
-	// world log line to it
-	async attachLogAgent(opts: LogAgentOptions): Promise<LogAgentClient> {
-		const client = new LogAgentClient(opts)
-		await client.connect()
-		this.logAgent = client
-		this.onLogLine((line) => client.writeLine(line))
-		return client
-	}
-
 	onLogLine(cb: (line: string) => void): () => void {
 		this.#logSubscribers.add(cb)
 		return () => this.#logSubscribers.delete(cb)
@@ -119,7 +105,6 @@ export class Emulator {
 	dispose() {
 		for (const timer of this.#timers) clearTimeout(timer)
 		this.#timers.clear()
-		this.logAgent?.destroy()
 		this.logFile?.close()
 		this.rcon.close()
 	}

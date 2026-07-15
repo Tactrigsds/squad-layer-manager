@@ -19,6 +19,7 @@ import * as LayerData from '@/systems/layer-data.server'
 import * as LayerEngine from '@/systems/layer-engine.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sessions from '@/systems/sessions.server'
+import * as SquadLogsReceiver from '@/systems/squad-logs-receiver.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as UserPresenceSys from '@/systems/user-presence.server'
 import * as WsSessionSys from '@/systems/ws-session.server'
@@ -310,6 +311,10 @@ export const setup = C.spanOp('setup', { module }, async () => {
 			// carries the connection-level signal; orpc middleware narrows it per-call
 			const ctx = createOrpcSessionBase(getAuthedCtx(req), connection)
 			void ORPCServer.orpcHandler.upgrade(connection, { context: ctx })
+		})
+		// log agents stream a squad server's SquadGame.log here; token-authed, no oRPC (see squad-logs-receiver.server.ts)
+		instance.get(AR.route('/log-agent'), { websocket: true }, async (connection, req) => {
+			SquadLogsReceiver.handleConnection(connection, req)
 		})
 	})
 

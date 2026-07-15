@@ -134,10 +134,16 @@ export type AppFixtureOptions = {
 	admins?: string[]
 	// skip spawning; useful to test seeding in isolation
 	spawn?: boolean
+	// how the app ingests the emulator's log. 'local-file' (default) tails the SquadGame.log directly;
+	// 'log-receiver' runs the real rust log agent (log-agent/agent), which tails that same file and
+	// streams it to the app over the /log-agent websocket. Exercises the full remote-agent pipeline.
+	logSource?: 'local-file' | 'log-receiver'
 }
 
 export type AppFixture = {
 	emu: Emulator
+	// the running log agent when logSource is 'log-receiver' (else null); stop()/start() drive reconnect tests
+	logAgent: LogAgentController | null
 	// stub BattleMetrics API the app talks to; inspect bm.requestLog / bm.players to assert writes
 	bm: BmServer
 	serverId: string
@@ -174,6 +180,62 @@ export const ADMIN_USER: TestUser = { discordId: 900000000000000001n, username: 
 const ADMIN_GROUP = 'SlmTestAdmin'
 const ADMIN_PERM: SM.PlayerPerm = 'canseeadminchat'
 const ADMIN_LIST_SOURCE = 'test-admins'
+const LOG_AGENT_TOKEN = 'test-log-agent-token'
+const AGENT_DIR = path.join(REPO_ROOT, 'log-agent/agent')
+
+// Resolves the real log agent binary, building it once (release) if no build is present. The debug build
+// is preferred when it already exists so a dev iterating on tests doesn't pay for a release compile.
+function resolveAgentBinary(): string {
+	const exe = process.platform === 'win32' ? 'slm-log-agent.exe' : 'slm-log-agent'
+	for (const profile of ['release', 'debug']) {
+		const candidate = path.join(AGENT_DIR, 'target', profile, exe)
+		if (fs.existsSync(candidate)) return candidate
+	}
+	childProcess.execFileSync('cargo', ['build', '--release'], { cwd: AGENT_DIR, stdio: 'inherit' })
+	return path.join(AGENT_DIR, 'target', 'release', exe)
+}
+
+// Runs the real rust log agent against the emulator's SquadGame.log, streaming it to the app's
+// /log-agent websocket. Returns a controller so tests can drop and restart it (reconnect scenarios).
+type LogAgentController = {
+	start: () => void
+	stop: () => void
+	dispose: () => void
+}
+
+function startLogAgent(args: { appPort: number; serverId: string; logPath: string; agentLogPath: string }): LogAgentController {
+	const binary = resolveAgentBinary()
+	let child: childProcess.ChildProcess | null = null
+	const start = () => {
+		if (child) return
+		const out = fs.openSync(args.agentLogPath, 'a')
+		child = childProcess.spawn(binary, [
+			'--url',
+			`ws://127.0.0.1:${args.appPort}/log-agent`,
+			'--server-id',
+			args.serverId,
+			'--token',
+			LOG_AGENT_TOKEN,
+			'--file',
+			args.logPath,
+			// tests move fast; poll and reconnect quickly so assertions don't wait on the agent
+			'--poll-ms',
+			'100',
+			'--reconnect-ms',
+			'300',
+		], { stdio: ['ignore', out, out] })
+		child.once('exit', () => {
+			child = null
+		})
+	}
+	const stop = () => {
+		if (!child) return
+		child.kill('SIGKILL')
+		child = null
+	}
+	start()
+	return { start, stop, dispose: stop }
+}
 
 function renderAdminsCfg(steamIds: string[]): string {
 	const lines = [`Group=${ADMIN_GROUP}:${ADMIN_PERM},balance,cameraman,teamchange`]
@@ -237,10 +299,13 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	// the emulator writes its log to a file and the app tails it, the same `local-file` path a
 	// same-host squad server uses. No test-only transport in between.
 	const squadLogPath = path.join(tmpDir, 'SquadGame.log')
+	const logSource = opts.logSource ?? 'local-file'
 	const serverSettings = SETTINGS.ServerSettingsSchema.parse({
 		connections: {
 			rcon: { host: '127.0.0.1', port: emu.rconPort, password: emu.password },
-			logs: { type: 'local-file', logFile: squadLogPath },
+			logs: logSource === 'log-receiver'
+				? { type: 'log-receiver', token: LOG_AGENT_TOKEN }
+				: { type: 'local-file', logFile: squadLogPath },
 		},
 		adminListSources: [ADMIN_LIST_SOURCE],
 		adminIdentifyingPermissions: [ADMIN_PERM],
@@ -295,7 +360,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 
 	emu.attachLogFile(squadLogPath)
 
-	const [appPort, logsReceiverPort] = await Promise.all([freePort(), freePort()])
+	const appPort = await freePort()
 	const appUrl = `http://127.0.0.1:${appPort}`
 
 	// -------- telemetry --------
@@ -340,7 +405,6 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		PORT: String(appPort),
 		HOST: '127.0.0.1',
 		ORIGIN: appUrl,
-		SQUAD_LOGS_RECEIVER_PORT: String(logsReceiverPort),
 		DISCORD_ENABLED: 'false',
 		DISCORD_CLIENT_ID: 'disabled',
 		DISCORD_CLIENT_SECRET: 'disabled',
@@ -403,8 +467,21 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		}, { label: 'app readiness', timeoutMs: 60_000 })
 	}
 
+	// the real log agent tails the file the emulator writes and streams it to the app; start it only once
+	// the app is listening so its first connection lands
+	let logAgent: LogAgentController | null = null
+	if (logSource === 'log-receiver' && opts.spawn !== false) {
+		logAgent = startLogAgent({
+			appPort,
+			serverId,
+			logPath: squadLogPath,
+			agentLogPath: path.join(tmpDir, 'log-agent.log'),
+		})
+	}
+
 	return {
 		emu,
+		logAgent,
 		bm,
 		serverId,
 		appPort,
@@ -430,6 +507,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		readDb: () => new Database(dbPath, { readonly: true }),
 		waitFor,
 		dispose: async () => {
+			logAgent?.dispose()
 			if (child && child.exitCode === null) {
 				child.kill('SIGTERM')
 				const killTimer = setTimeout(() => child?.kill('SIGKILL'), 8000)

@@ -1,185 +1,297 @@
 import { spawn } from 'child_process'
-import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { createWriteStream, existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'fs'
+import https from 'https'
+import os from 'os'
 import path from 'path'
 import BasePlugin from './base-plugin.js'
 
+// The agent binary this plugin version expects. Must match a published `log-agent-v<version>` release
+// (see .github/workflows/log-agent.yml) and log-agent/agent/Cargo.toml.
+const AGENT_VERSION = '0.1.0'
+const RELEASE_REPO = 'Tactrigsds/squad-layer-manager'
+
+// Release asset name for the current platform. Matches the workflow's matrix.
+function assetName() {
+	if (process.platform === 'linux' && process.arch === 'x64') return 'slm-log-agent-x86_64-unknown-linux-musl'
+	if (process.platform === 'win32' && process.arch === 'x64') return 'slm-log-agent-x86_64-pc-windows-msvc.exe'
+	throw new Error(`no prebuilt slm-log-agent for ${process.platform}/${process.arch}; build it from source and set binaryPath`)
+}
+
+function httpGet(url) {
+	return new Promise((resolve, reject) => {
+		https.get(url, { headers: { 'User-Agent': 'slm-log-agent-plugin' } }, resolve).on('error', reject)
+	})
+}
+
+function pipeToFile(res, dest) {
+	return new Promise((resolve, reject) => {
+		let settled = false
+		const done = (err) => {
+			if (settled) return
+			settled = true
+			if (err) reject(err)
+			else resolve()
+		}
+		const file = createWriteStream(dest)
+		res.pipe(file)
+		file.on('finish', () => file.close((err) => done(err)))
+		file.on('error', (err) => {
+			try {
+				unlinkSync(dest)
+			} catch {}
+			done(err)
+		})
+		res.on('error', done)
+	})
+}
+
 export default class SLMLogAgent extends BasePlugin {
 	static get description() {
-		return 'Send logs to Squad Layer Manager http://github.com/Tactrigsds/squad-layer-manager/'
+		return "Streams this server's logs to Squad Layer Manager via the slm-log-agent (https://github.com/Tactrigsds/squad-layer-manager). "
+			+ 'The agent runs detached so it keeps streaming even if SquadJS restarts or crashes.'
 	}
 
 	static get defaultEnabled() {
-		return true
+		return false
 	}
 
 	static get optionsSpecification() {
 		return {
-			host: {
-				required: false,
-				description: 'The host to connect to',
-				default: 'localhost',
-			},
-			port: {
-				required: false,
-				description: 'The port to connect to',
-				default: 8443,
-			},
-			pidFile: {
-				required: false,
-				description: 'Path to the PID file',
-				default: '/tmp/slm-agent-daemon.pid',
-			},
-			logFile: {
-				required: false,
-				description: 'Path to the log file',
-				default: '/tmp/slm-agent-daemon.log',
-			},
-			killOnExit: {
-				required: false,
-				description: 'Kill the daemon when the plugin unmounts',
-				default: true,
+			url: {
+				required: true,
+				description: 'SLM log-agent websocket url, e.g. wss://slm.example.com/log-agent',
 			},
 			slmServerId: {
 				required: true,
-				description: 'ID of the server as configured in Squad Layer Manager',
+				description: 'ID of this server as configured in Squad Layer Manager',
 			},
 			token: {
 				required: true,
-				description: 'Authentication token for Squad Layer Manager',
+				description: 'The log-receiver token for this server (SLM server settings -> Log Source)',
 			},
-			tls: {
+			insecure: {
 				required: false,
-				description: 'Use TLS for secure connection',
+				description: 'Skip TLS certificate verification (self-signed / IP-only certs)',
 				default: false,
 			},
-			rejectUnauthorized: {
+			binaryPath: {
 				required: false,
-				description: 'Reject unauthorized TLS certificates',
-				default: true,
+				description: 'Path to an existing slm-log-agent binary. If unset, the matching release is downloaded.',
+				default: null,
+			},
+			binDir: {
+				required: false,
+				description: 'Directory to cache the downloaded agent binary in',
+				default: path.join(os.tmpdir(), 'slm-log-agent'),
+			},
+			pidFile: {
+				required: false,
+				description: 'PID file used to detect an already-running agent. Defaults to a per-server path in the temp dir.',
+				default: null,
+			},
+			logFile: {
+				required: false,
+				description: 'File the agent appends its own logs to (surfaced in SquadJS at verbose level 1)',
+				default: null,
+			},
+			killOnExit: {
+				required: false,
+				description: 'Kill the agent when this plugin unmounts. Off by default so the agent survives a SquadJS restart/crash.',
+				default: false,
 			},
 		}
 	}
 
 	constructor(server, options, connectors) {
 		super(server, options, connectors)
-		this.tailProcess = null
+		this.agentLogOffset = 0
+		this.tailTimer = null
+	}
+
+	get pidFile() {
+		return this.options.pidFile || path.join(os.tmpdir(), `slm-log-agent-${this.options.slmServerId}.pid`)
+	}
+
+	get logFilePath() {
+		return this.options.logFile || path.join(os.tmpdir(), `slm-log-agent-${this.options.slmServerId}.log`)
 	}
 
 	async mount() {
 		this.cleanup = []
-		if (existsSync(this.options.pidFile)) {
-			const pid = parseInt(readFileSync(this.options.pidFile, 'utf8'))
-			try {
-				// Check if process exists
-				process.kill(pid, 0)
-				return
-			} catch {
-				// Process doesn't exist, clean up stale PID file
-				try {
-					unlinkSync(this.options.pidFile)
-				} catch {}
-			}
 
-			// already running, tail the log file
-			this.verbose(1, `Daemon already running with PID: ${pid}`)
-			if (this.options.killOnExit) {
-				this.cleanup.push(() => {
-					this.verbose(1, `Killing daemon with PID: ${pid}`)
-					process.kill(pid, 'SIGTERM')
-					unlinkSync(this.options.pidFile)
-				})
-			}
-			this.tailAgentLogFile()
+		// already running from a previous SquadJS run? leave it be -- that is the whole point of detaching.
+		const existingPid = this.readPid()
+		if (existingPid !== null && this.isAlive(existingPid)) {
+			this.verbose(1, `slm-log-agent already running (pid ${existingPid})`)
+			this.startTailingAgentLog()
+			if (this.options.killOnExit) this.cleanup.push(() => this.killAgent(existingPid))
+			return
 		}
 
-		this.tailAgentLogFile()
+		const binary = this.options.binaryPath || (await this.ensureBinary())
+		const logPath = path.join(this.server.options.logDir, 'SquadGame.log')
 
 		const args = [
-			'./squad-server/plugins/log-agent/log-agent.js',
+			'--url',
+			this.options.url,
+			'--server-id',
+			String(this.options.slmServerId),
+			'--token',
+			String(this.options.token),
 			'--file',
-			path.join(this.server.options.logDir, 'SquadGame.log'),
-			'--host',
-			this.options.host,
-			'--port',
-			this.options.port,
-			'--logfile',
-			this.options.logFile,
-			'--serverId',
-			this.options.slmServerId,
-			'--daemon',
+			logPath,
+			'--log-file',
+			this.logFilePath,
 		]
+		if (this.options.insecure) args.push('--insecure')
 
-		// Add token
-		args.push('--token', this.options.token)
+		this.verbose(1, `starting slm-log-agent: ${binary} ${args.join(' ')}`)
 
-		// Add TLS options
-		if (this.options.tls) {
-			args.push('--tls')
-		}
-
-		if (!this.options.rejectUnauthorized) {
-			args.push('--rejectUnauthorized=false')
-		}
-
-		this.verbose(1, `Starting daemon: node ${args.join(' ')}`)
-
-		const child = spawn('node', args, {
-			detached: !this.options.killOnExit,
+		// detached + unref + stdio ignore: the agent lives in its own process group and keeps running if
+		// SquadJS exits or crashes. Its own logs go to logFilePath via --log-file.
+		const child = spawn(binary, args, {
+			detached: true,
 			stdio: 'ignore',
-			cwd: process.cwd(),
+			windowsHide: true,
 		})
+		child.on('error', (err) => this.verbose(1, `failed to start agent: ${err.message}`))
+		child.unref()
 
-		// Write PID file
-		writeFileSync(this.options.pidFile, child.pid.toString())
+		if (child.pid) this.writePid(child.pid)
+		this.verbose(1, `slm-log-agent started (pid ${child.pid})`)
 
-		// Monitor daemon process exit
-		child.on('exit', (code, signal) => {
-			if (code !== null) {
-				this.verbose(1, `Daemon exited with code ${code}`)
-			} else if (signal !== null) {
-				this.verbose(1, `Daemon killed by signal ${signal}`)
-			}
-		})
-
-		if (!this.options.killOnExit) {
-			child.unref()
-		} else {
-			// Unref allows parent to exit independently
-			this.cleanup.push(() => child.kill('SIGTERM'))
-		}
-
-		this.verbose(1, `Daemon started with PID: ${child.pid}`)
-	}
-
-	tailAgentLogFile() {
-		this.tailProcess = spawn('tail', ['-f', '-n', '0', this.options.logFile])
-
-		this.tailProcess.stdout.on('data', (data) => {
-			const lines = data.toString().trim().split('\n')
-			for (const line of lines) {
-				if (line.includes('[ERROR]')) {
-					const msg = line.replace(/^\[ERROR\]\s*\S+\s*/, '')
-					this.verbose(1, `agent: ${msg}`)
-				} else if (line.includes('[LOG]')) {
-					const msg = line.replace(/^\[LOG\]\s*\S+\s*/, '')
-					this.verbose(1, `agent: ${msg}`)
-				}
-			}
-		})
-		this.verbose(1, `Tailing log file ${this.options.logFile}`)
-
-		this.tailProcess.on('error', (err) => {
-			this.verbose(2, `Failed to tail log file: ${err.message}`)
-		})
-
-		this.cleanup.push(() => {
-			this.tailProcess.kill()
-		})
+		this.startTailingAgentLog()
+		if (this.options.killOnExit && child.pid) this.cleanup.push(() => this.killAgent(child.pid))
 	}
 
 	async unmount() {
-		for (const cleanupFn of this.cleanup) {
-			await cleanupFn()
+		if (this.tailTimer) {
+			clearInterval(this.tailTimer)
+			this.tailTimer = null
+		}
+		for (const fn of this.cleanup ?? []) {
+			try {
+				await fn()
+			} catch (err) {
+				this.verbose(1, `cleanup error: ${err.message}`)
+			}
+		}
+	}
+
+	// -------- binary management --------
+
+	async ensureBinary() {
+		const asset = assetName()
+		const dir = path.join(this.options.binDir, AGENT_VERSION)
+		const dest = path.join(dir, asset)
+		if (existsSync(dest)) return dest
+
+		mkdirSync(dir, { recursive: true })
+		const url = `https://github.com/${RELEASE_REPO}/releases/download/log-agent-v${AGENT_VERSION}/${asset}`
+		this.verbose(1, `downloading slm-log-agent ${AGENT_VERSION} from ${url}`)
+		const tmp = `${dest}.download`
+		await this.download(url, tmp)
+		if (process.platform !== 'win32') {
+			const { chmodSync } = await import('fs')
+			chmodSync(tmp, 0o755)
+		}
+		const { renameSync } = await import('fs')
+		renameSync(tmp, dest)
+		this.verbose(1, `slm-log-agent downloaded to ${dest}`)
+		return dest
+	}
+
+	async download(url, dest, redirects = 0) {
+		if (redirects > 5) throw new Error('too many redirects downloading agent')
+		const res = await httpGet(url)
+		// GitHub release downloads redirect to a CDN
+		if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+			res.resume()
+			return this.download(res.headers.location, dest, redirects + 1)
+		}
+		if (res.statusCode !== 200) {
+			res.resume()
+			throw new Error(`download failed: HTTP ${res.statusCode} for ${url}`)
+		}
+		await pipeToFile(res, dest)
+		return dest
+	}
+
+	// -------- pid file --------
+
+	readPid() {
+		try {
+			const pid = parseInt(readFileSync(this.pidFile, 'utf8').trim(), 10)
+			return Number.isNaN(pid) ? null : pid
+		} catch {
+			return null
+		}
+	}
+
+	writePid(pid) {
+		try {
+			writeFileSync(this.pidFile, String(pid))
+		} catch (err) {
+			this.verbose(1, `could not write pid file ${this.pidFile}: ${err.message}`)
+		}
+	}
+
+	isAlive(pid) {
+		try {
+			process.kill(pid, 0)
+			return true
+		} catch {
+			return false
+		}
+	}
+
+	killAgent(pid) {
+		this.verbose(1, `stopping slm-log-agent (pid ${pid})`)
+		try {
+			process.kill(pid, 'SIGTERM')
+		} catch {}
+		try {
+			unlinkSync(this.pidFile)
+		} catch {}
+	}
+
+	// -------- surface the agent's own logs in SquadJS --------
+
+	// cross-platform tail: poll the agent's log file for new [LOG]/[ERROR] lines rather than shelling out
+	// to `tail`, which does not exist on Windows
+	startTailingAgentLog() {
+		const file = this.logFilePath
+		try {
+			this.agentLogOffset = existsSync(file) ? statSync(file).size : 0
+		} catch {
+			this.agentLogOffset = 0
+		}
+		this.tailTimer = setInterval(() => this.pollAgentLog(file), 5000)
+	}
+
+	pollAgentLog(file) {
+		let size
+		try {
+			size = statSync(file).size
+		} catch {
+			return
+		}
+		if (size <= this.agentLogOffset) {
+			// rotated/truncated: start over from the top
+			if (size < this.agentLogOffset) this.agentLogOffset = 0
+			return
+		}
+		let chunk
+		try {
+			const fd = readFileSync(file)
+			chunk = fd.subarray(this.agentLogOffset).toString('utf8')
+		} catch {
+			return
+		}
+		this.agentLogOffset = size
+		for (const line of chunk.split('\n')) {
+			const m = /^\[(LOG|ERROR)\]\s+\S+\s+(.*)$/.exec(line)
+			if (m) this.verbose(1, `agent: ${m[2]}`)
 		}
 	}
 }
