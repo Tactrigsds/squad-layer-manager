@@ -11,6 +11,8 @@ Use namespace imports for all nontrivial modules, unless established convention 
 
 Avoid comments which trivially explain what a piece of code does. Only leave a comment if there's something non-obvious going on, or to explain why a particular approach was taken.
 
+Also avoid comments which refer back to previous versions of the codebase or why something changed, unless there's an extremely motivating reason to do so.
+
 # Editing
 
 Run `pnpm run format` and `pnpm run check`(or some subset to typecheck your specific changes) before reporting your changes to the user.
@@ -29,6 +31,8 @@ Commonly passed pieces of state should passed via the ctx object, which should a
 Functions should only specify the minimal amount of context that they need in the ctx parameter type signature.
 
 # Client side
+
+The vite dev server will be running on http://localhost:5173 by default in dev mode.
 
 Stores / frames should be used, at minimum, whenever:
 
