@@ -207,7 +207,7 @@ describe('server rolling', () => {
 		await app.waitForRosterSync()
 		const oldMatch = latestMatch()
 
-		roll()
+		await withRconOffline(() => roll())
 		await app.waitForRosterSync()
 		const newMatch = await waitForNewMatch(oldMatch.id)
 
