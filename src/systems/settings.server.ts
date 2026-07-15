@@ -396,7 +396,6 @@ export const settings$ = new Rx.Subject<SettingsEvent>()
 export type PublicSettings = {
 	layerQueue: { lowQueueWarningThreshold: number; maxQueueSize: number }
 	topBarColor: SETTINGS.GlobalSettings['topBarColor']
-	playerFlagColorHierarchy: SETTINGS.GlobalSettings['playerFlagColorHierarchy']
 	navLinks: SETTINGS.GlobalSettings['navLinks']
 	chat: SETTINGS.GlobalSettings['chat']
 	commands: SETTINGS.GlobalSettings['commands']
@@ -416,7 +415,6 @@ function buildPublicSettings(): PublicSettings {
 	return {
 		layerQueue: Obj.selectProps(GLOBAL_SETTINGS.layerQueue, ['lowQueueWarningThreshold', 'maxQueueSize']),
 		topBarColor: GLOBAL_SETTINGS.topBarColor,
-		playerFlagColorHierarchy: GLOBAL_SETTINGS.playerFlagColorHierarchy,
 		navLinks: GLOBAL_SETTINGS.navLinks,
 		chat: GLOBAL_SETTINGS.chat,
 		commands: GLOBAL_SETTINGS.commands,

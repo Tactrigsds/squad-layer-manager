@@ -194,11 +194,12 @@ export const GlobalSettingsSchema = z.object({
 	balanceTriggerLevels: z.partialRecord(BAL.TRIGGER_IDS, BAL.TRIGGER_LEVEL)
 		.prefault({ '150x2': 'warn' })
 		.describe('Configures the trigger warning levels for balance calculations'),
-	playerFlagColorHierarchy: z.array(z.uuid()).optional(),
 	playerFlagsRequiringNote: z.array(z.uuid()).prefault([]).describe(
 		"Flags (by id) that require a reason to be given when added, which is included in the note posted to the player's BattleMetrics profile",
 	),
-	playerFlagGroupings: BM.PlayerFlagGroupingsSchema.optional(),
+	playerFlagGroupings: BM.PlayerFlagGroupingsSchema.prefault(BM.EMPTY_PLAYER_FLAG_GROUPINGS).describe(
+		'Groups players into labelled/colored buckets by their flags, per display mode. Modes are declared upfront and selected in the players panel.',
+	),
 	navLinks: NavLinkSchema.optional().describe('Global links to display in the navbar dropdown menu'),
 	warnOnSlmStart: z.boolean().prefault(false),
 	adminListSources: z.record(z.string(), SM.AdminListSourceSchema).prefault({}).describe('Named admin list sources'),

@@ -15,7 +15,7 @@ import * as BM from '@/models/battlemetrics.models'
 import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as RPC from '@/orpc.client'
-import { sortFlagsByHierarchy, useOrgFlags } from '@/systems/battlemetrics.client'
+import { useGroupedPlayerFlagColor, useOrgFlags } from '@/systems/battlemetrics.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
@@ -77,9 +77,8 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	const eventsQuery = useInfiniteQuery(playerEventsInfiniteOptions(serverId, playerId))
 	const { data: bmData } = useQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId }, staleTime: Infinity }))
 	const orgFlags = useOrgFlags()
-	const rawFlags = bmData && orgFlags ? BM.resolveFlags(bmData.flagIds, orgFlags) : null
-	const flags = rawFlags ? sortFlagsByHierarchy(rawFlags) : undefined
-	const flagColor = flags ? flags[0]?.color ?? null : null
+	const flags = bmData && orgFlags ? BM.resolveFlags(bmData.flagIds, orgFlags) : undefined
+	const flagColor = useGroupedPlayerFlagColor(playerId)
 	const profile = bmData ? (({ flagIds: _, ...rest }) => rest)(bmData) : null
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
 	const currentMatchEvents = ZusUtils.useStore(
@@ -397,7 +396,7 @@ function EventSeparator({ time, prevTime }: { time: number; prevTime: number | n
 }
 
 interface PlayerFlagsListProps {
-	flags: NonNullable<ReturnType<typeof sortFlagsByHierarchy>>
+	flags: BM.PlayerFlag[]
 }
 
 function PlayerFlagsList({ flags }: PlayerFlagsListProps) {

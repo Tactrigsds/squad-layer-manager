@@ -263,7 +263,7 @@ export function ServerActivityCharts(props: {
 	const flagGroupChart = React.useMemo(() => {
 		if (!playerFlagGroupings || !livePlayers || activeModeId === null) return null
 
-		const modeGroupings = playerFlagGroupings.filter(g => g.modeIds.includes(activeModeId))
+		const modeGroupings = playerFlagGroupings.groupings.filter(g => g.modeIds.includes(activeModeId))
 
 		const chartPlayers = slsOnly ? livePlayers.filter(p => p.isLeader) : livePlayers
 

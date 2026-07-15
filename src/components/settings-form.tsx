@@ -1,4 +1,4 @@
-import { BmFlagMultiSelect, BmFlagOrColorSelect, BmFlagOrderedList, FlagPriorityMap } from '@/components/bm-flag-picker'
+import { BmFlagMultiSelect, BmFlagOrColorSelect, FlagPriorityMap } from '@/components/bm-flag-picker'
 import type { ComboBoxOption } from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { DiscordMemberSelect, DiscordRoleSelect } from '@/components/discord-picker'
@@ -27,6 +27,7 @@ import * as Templating from '@/lib/templating'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as AAR from '@/models/admin-action-reasons.models'
+import type * as BM from '@/models/battlemetrics.models'
 import type * as LP from '@/models/labeled-presets.models'
 import * as LC from '@/models/layer-columns'
 import * as SETTINGS from '@/models/settings.models'
@@ -339,21 +340,146 @@ function sectionExtraFor(path: Path): React.FC | undefined {
 
 type OverrideProps = { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void; path: Path }
 
-function FlagOrderedListField({ value$, reset$, onChange }: OverrideProps) {
-	const value = useFieldValue(value$, reset$)
-	return <BmFlagOrderedList value={value ?? []} onChange={onChange} />
-}
 function FlagMultiSelectField({ value$, reset$, onChange }: OverrideProps) {
 	const value = useFieldValue(value$, reset$)
 	return <BmFlagMultiSelect value={value ?? []} onChange={onChange} />
 }
-function FlagOrColorField({ value$, reset$, onChange }: OverrideProps) {
-	const value = useFieldValue(value$, reset$)
-	return <BmFlagOrColorSelect value={value ?? ''} onChange={onChange} />
+
+type FlagGrouping = BM.PlayerFlagGrouping
+type FlagGroupingsValue = { modeIds?: string[]; groupings?: FlagGrouping[] }
+
+function newFlagGrouping(): FlagGrouping {
+	return { label: '', modeIds: [], associations: {}, color: '' }
 }
-function FlagPriorityMapField({ value$, reset$, onChange }: OverrideProps) {
-	const value = useFieldValue(value$, reset$)
-	return <FlagPriorityMap value={value ?? {}} onChange={onChange} />
+
+// bespoke editor for `playerFlagGroupings`: display modes are declared upfront (as chips), and each grouping picks its
+// modes from that declared list (dropdown) plus a label, color and priority-ordered flag associations.
+function PlayerFlagGroupingsField({ value$, reset$, onChange }: OverrideProps) {
+	const value = (useFieldValue(value$, reset$) as FlagGroupingsValue) ?? {}
+	const modeIds = value.modeIds ?? []
+	const groupings = value.groupings ?? []
+
+	// `quiet` skips reset$: use it for the uncontrolled label input, where re-emitting would clobber an in-flight keystroke.
+	// Structural edits (add/remove modes or groupings) leave it off so the label inputs re-seed after re-indexing.
+	const update = React.useCallback((fn: (v: FlagGroupingsValue) => FlagGroupingsValue, quiet?: boolean) => {
+		onChange(fn((value$.getValue() as FlagGroupingsValue) ?? {}))
+		if (!quiet) reset$.next()
+	}, [onChange, value$, reset$])
+
+	const [newMode, setNewMode] = React.useState('')
+	const trimmedMode = newMode.trim()
+	const canAddMode = trimmedMode.length > 0 && !modeIds.includes(trimmedMode)
+	function addMode() {
+		if (!canAddMode) return
+		update((v) => ({ ...v, modeIds: [...(v.modeIds ?? []), trimmedMode] }))
+		setNewMode('')
+	}
+	// removing a mode also strips it from every grouping that referenced it
+	function removeMode(id: string) {
+		update((v) => ({
+			...v,
+			modeIds: (v.modeIds ?? []).filter((m) => m !== id),
+			groupings: (v.groupings ?? []).map((g) => ({ ...g, modeIds: g.modeIds.filter((m) => m !== id) })),
+		}))
+	}
+
+	function addGrouping() {
+		update((v) => ({ ...v, groupings: [...(v.groupings ?? []), newFlagGrouping()] }))
+	}
+	function removeGrouping(idx: number) {
+		update((v) => ({ ...v, groupings: (v.groupings ?? []).filter((_, i) => i !== idx) }))
+	}
+	function changeGrouping(idx: number, patch: Partial<FlagGrouping>, quiet?: boolean) {
+		update((v) => ({ ...v, groupings: (v.groupings ?? []).map((g, i) => i === idx ? { ...g, ...patch } : g) }), quiet)
+	}
+
+	const modeOptions: ComboBoxOption<string>[] = modeIds.map((id) => ({ value: id, label: id }))
+
+	return (
+		<div className="space-y-4">
+			<div className="space-y-1.5">
+				<Label className="text-sm font-medium">Grouping modes</Label>
+				<p className="text-xs text-muted-foreground">Declared upfront; each grouping and the players panel select from these.</p>
+				<div className="flex flex-wrap items-center gap-1.5">
+					{modeIds.length === 0 && <span className="text-xs text-muted-foreground">No modes defined.</span>}
+					{modeIds.map((id) => (
+						<span key={id} className="flex items-center gap-1 rounded border bg-background px-1.5 py-0.5 text-xs">
+							{id}
+							<button type="button" className="text-destructive" aria-label={`Remove mode ${id}`} onClick={() => removeMode(id)}>
+								<Icons.X className="h-3 w-3" />
+							</button>
+						</span>
+					))}
+				</div>
+				<div className="flex max-w-sm items-center gap-2">
+					<Input
+						placeholder="New mode id"
+						value={newMode}
+						onChange={(e) => setNewMode(e.target.value)}
+						onKeyDown={(e) => {
+							if (e.key === 'Enter') {
+								e.preventDefault()
+								addMode()
+							}
+						}}
+					/>
+					<Button type="button" variant="outline" size="sm" disabled={!canAddMode} onClick={addMode}>Add mode</Button>
+				</div>
+			</div>
+
+			<div className="space-y-2">
+				<Label className="text-sm font-medium">Groupings</Label>
+				{groupings.length === 0 && <p className="text-xs text-muted-foreground">No groupings defined.</p>}
+				{groupings.map((g, idx) => (
+					// oxlint-disable-next-line no-array-index-key
+					<div key={idx} className="space-y-3 rounded-md border p-3">
+						<div className="flex items-start gap-2">
+							<div className="flex-1 space-y-1">
+								<Label className="text-xs text-muted-foreground">Label</Label>
+								<TextInputField
+									value$={scopeValue(scopeValue(scopeValue(value$, 'groupings'), idx), 'label')}
+									reset$={reset$}
+									onChange={(next) => changeGrouping(idx, { label: (next as string) ?? '' }, true)}
+									numeric={false}
+									placeholder="Grouping label"
+								/>
+							</div>
+							<Button
+								type="button"
+								size="icon"
+								variant="ghost"
+								className="mt-6 h-6 w-6 shrink-0 text-destructive"
+								aria-label="Remove grouping"
+								onClick={() => removeGrouping(idx)}
+							>
+								<Icons.X className="h-4 w-4" />
+							</Button>
+						</div>
+						<div className="space-y-1">
+							<Label className="text-xs text-muted-foreground">Modes</Label>
+							<ComboBoxMulti
+								title="Mode"
+								values={g.modeIds}
+								options={modeOptions}
+								onSelect={(next) => changeGrouping(idx, { modeIds: typeof next === 'function' ? next(g.modeIds) : next })}
+							/>
+						</div>
+						<div className="space-y-1">
+							<Label className="text-xs text-muted-foreground">Color</Label>
+							<BmFlagOrColorSelect value={g.color ?? ''} onChange={(next) => changeGrouping(idx, { color: next })} />
+						</div>
+						<div className="space-y-1">
+							<Label className="text-xs text-muted-foreground">Flags</Label>
+							<FlagPriorityMap value={g.associations ?? {}} onChange={(next) => changeGrouping(idx, { associations: next })} />
+						</div>
+					</div>
+				))}
+				<Button type="button" variant="outline" size="sm" onClick={addGrouping}>
+					<Icons.Plus className="mr-1 h-4 w-4" />Add grouping
+				</Button>
+			</div>
+		</div>
+	)
 }
 function PasswordField({ value$, reset$, onChange }: OverrideProps) {
 	return <TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric={false} secret placeholder="Password" />
@@ -1397,10 +1523,8 @@ function overrideFor(path: Path, node: Node): React.FC<OverrideProps> | undefine
 	if (path.length === 1 && last === 'broadcasts') return BroadcastsField
 	if (path.length === 1 && last === 'layerTable') return LayerTableField
 	if (path.length === 1 && last === 'layerGeneration') return LayerGenerationField
-	if (path.length === 1 && last === 'playerFlagColorHierarchy') return FlagOrderedListField
 	if (path.length === 1 && last === 'playerFlagsRequiringNote') return FlagMultiSelectField
-	if (path[0] === 'playerFlagGroupings' && typeof path[1] === 'number' && last === 'color') return FlagOrColorField
-	if (path[0] === 'playerFlagGroupings' && typeof path[1] === 'number' && last === 'associations') return FlagPriorityMapField
+	if (path.length === 1 && last === 'playerFlagGroupings') return PlayerFlagGroupingsField
 	// the entire `rbac` subtree is rendered by RbacBody (see FieldControl), so no per-field rbac overrides are needed here
 	// server settings: the pool configuration reuses the dashboard popover's panels; connection passwords are masked
 	if (path.length === 2 && path[0] === 'queue' && last === 'mainPool') return MainPoolField

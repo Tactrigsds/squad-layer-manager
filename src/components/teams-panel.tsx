@@ -1093,12 +1093,12 @@ const matchesCombinedSquadFilter = (player: CombinedPlayer, squadFilter: string)
 function useGroupingColorByLabel(): Map<string, string> {
 	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
 	const orgFlags = BattlemetricsClient.useOrgFlags()
-	const modeIds = React.useMemo(() => BM.getGroupingModeIds(config?.playerFlagGroupings ?? []), [config])
+	const modeIds = React.useMemo(() => BM.getGroupingModeIds(config?.playerFlagGroupings ?? BM.EMPTY_PLAYER_FLAG_GROUPINGS), [config])
 	const activeModeId = ZusUtils.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingModeId(modeIds))
 	return React.useMemo(() => {
-		const playerFlagGroupings = config?.playerFlagGroupings ?? []
+		const playerFlagGroupings = config?.playerFlagGroupings ?? BM.EMPTY_PLAYER_FLAG_GROUPINGS
 		if (!activeModeId) return new Map<string, string>()
-		const modeGroupings = playerFlagGroupings.filter(g => g.modeIds.includes(activeModeId))
+		const modeGroupings = playerFlagGroupings.groupings.filter(g => g.modeIds.includes(activeModeId))
 		const flagColorById = new Map<string, string>()
 		for (const flag of orgFlags ?? []) {
 			if (flag.color) flagColorById.set(flag.id, flag.color)
