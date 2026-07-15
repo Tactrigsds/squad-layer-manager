@@ -94,6 +94,17 @@ chmod +x "$DIR/edit-global-settings.sh"
 cp "$DIR/.env.example" "$DIR/.env"
 say "  + .env (from .env.example)"
 
+# provision a strong key for encrypting sensitive settings at rest, so the deployment boots without a manual
+# key-generation step. Regenerating it later means re-entering connection secrets on the settings page.
+if command -v openssl >/dev/null 2>&1; then
+	enc_key="$(openssl rand -base64 32)"
+else
+	enc_key="$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
+fi
+enc_tmp="$(mktemp)"
+sed "s|^SETTINGS_ENCRYPTION_KEY=.*|SETTINGS_ENCRYPTION_KEY=${enc_key}|" "$DIR/.env" > "$enc_tmp" && mv "$enc_tmp" "$DIR/.env"
+say "  + generated SETTINGS_ENCRYPTION_KEY"
+
 say ""
 say "installed to $(cd "$DIR" && pwd)"
 say ""

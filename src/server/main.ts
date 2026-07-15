@@ -39,6 +39,7 @@ import * as DB from './db'
 import * as EnvExample from './env-example.ts'
 import * as Env from './env.ts'
 import { ensureLoggerSetup, initModule } from './logger.ts'
+import * as SecretBox from './secret-box.server.ts'
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
 let ENV!: ReturnType<typeof envBuilder>
@@ -58,7 +59,12 @@ await C.spanOp('main', { module }, async () => {
 	if (ENV.NODE_ENV === 'development') {
 		const { changed } = EnvExample.write()
 		if (changed.length > 0) log.info('regenerated %s from the env schema', changed.join(', '))
+		// a fresh checkout has no encryption key; generate and persist one so `pnpm server:dev` just works
+		SecretBox.ensureDevKeyInEnvFile()
 	}
+	// validates SETTINGS_ENCRYPTION_KEY now (fail fast) rather than on the first settings write; in production a
+	// missing key stops the boot here
+	SecretBox.setup()
 	CleanupSys.setup()
 	// layer components/factionunit configs are consumed synchronously all over the app (including
 	// while parsing config), so they load before everything else
