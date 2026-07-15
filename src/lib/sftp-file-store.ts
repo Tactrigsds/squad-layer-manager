@@ -20,6 +20,7 @@ const DEFAULT_TIMEOUT = 30_000
 
 export type SftpSession = {
 	uploadFile: (localPath: string, remotePath: string) => Promise<void>
+	readFile: (remotePath: string) => Promise<Buffer>
 	listDir: (remoteDir: string) => Promise<string[]>
 	unlink: (remotePath: string) => Promise<void>
 	// creates the directory and any missing parents. no-op if it already exists.
@@ -77,6 +78,7 @@ function buildSession(sftp: SFTPWrapper, signal?: AbortSignal): SftpSession {
 
 	const session: SftpSession = {
 		uploadFile: (localPath, remotePath) => promisify<void>(cb => sftp.fastPut(localPath, remotePath, err => cb(err, undefined))),
+		readFile: (remotePath) => promisify<Buffer>(cb => sftp.readFile(remotePath, (err, data) => cb(err, data as Buffer))),
 		listDir: async (remoteDir) => {
 			const entries = await promisify<{ filename: string }[]>(cb => sftp.readdir(remoteDir, cb))
 			return entries.map(e => e.filename)

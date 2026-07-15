@@ -26,6 +26,8 @@ import * as m0073 from './0073_layer_generation_matchup_weights'
 import * as m0074 from './0074_command_allowed_prefixes'
 import * as m0075 from './0075_rbac_consolidate_per_role'
 import * as m0076 from './0076_player_flag_groupings_restructure'
+import * as m0077 from './0077_sftp_tuning_into_connection'
+import * as m0078 from './0078_admin_list_sources_per_server'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -43,4 +45,6 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0074_command_allowed_prefixes', up: m0074.up },
 	{ name: '0075_rbac_consolidate_per_role', up: m0075.up },
 	{ name: '0076_player_flag_groupings_restructure', up: m0076.up },
+	{ name: '0077_sftp_tuning_into_connection', up: m0077.up },
+	{ name: '0078_admin_list_sources_per_server', up: m0078.up },
 ]

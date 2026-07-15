@@ -16,7 +16,7 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 	{
 		slug: 'squad-server',
 		label: 'Squad Server',
-		keys: ['squadServer', 'adminListSources', 'fogOffDelay', 'postRollAnnouncementsTimeout', 'balanceTriggerLevels'],
+		keys: ['squadServer', 'fogOffDelay', 'postRollAnnouncementsTimeout', 'balanceTriggerLevels'],
 	},
 	{ slug: 'players', label: 'Players & Flags', keys: ['playerFlagGroupings', 'playerFlagsRequiringNote'] },
 	// rbac stays ungrouped: its own section header already reads "Permissions & Roles"

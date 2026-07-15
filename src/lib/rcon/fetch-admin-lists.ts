@@ -8,6 +8,7 @@ import { initModule } from '@/server/logger'
 import type * as SM from '@/models/squad.models.ts'
 import * as C from '@/server/context.ts'
 
+import { withSftp } from '@/lib/sftp-file-store.ts'
 import { Client as FTPClient } from 'basic-ftp'
 import fs from 'fs'
 import path from 'path'
@@ -31,7 +32,8 @@ export default C.spanOp(
 		const players: SM.SquadAdmins = new Map()
 
 		for (const [_idx, source] of sources.entries()) {
-			log.info(`Fetching admin list from ${source.type} source ${source.source}`)
+			const sourceLabel = source.type === 'sftp' ? `${source.username}@${source.host}:${source.port}${source.filePath}` : source.source
+			log.info(`Fetching admin list from ${source.type} source ${sourceLabel}`)
 			let data = ''
 			try {
 				switch (source.type) {
@@ -75,14 +77,23 @@ export default C.spanOp(
 						data = buffer.toString('utf8')
 						break
 					}
+					case 'sftp': {
+						const buffer = await withSftp(
+							{ host: source.host, port: source.port, username: source.username, password: source.password },
+							(session) => session.readFile(source.filePath),
+							signal,
+						)
+						data = buffer.toString('utf8')
+						break
+					}
 					default: {
-						const _exhaustive: never = source.type
+						const _exhaustive: never = source
 						throw new Error(`Unsupported AdminList type`)
 					}
 				}
 			} catch (error) {
 				if (signal?.aborted) throw signal.reason
-				log.error(`Error fetching ${source.type} admin list: ${source.source}`, error)
+				log.error(`Error fetching ${source.type} admin list: ${sourceLabel}`, error)
 			}
 
 			const groupRgx = /(?<=^Group=)(?<groupID>.*?):(?<groupPerms>.*?)(?=(?:\r\n|\r|\n|\s+\/\/))/gm

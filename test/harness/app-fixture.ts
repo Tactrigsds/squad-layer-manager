@@ -179,7 +179,6 @@ export const ADMIN_USER: TestUser = { discordId: 900000000000000001n, username: 
 // deciding which connected players are admins
 const ADMIN_GROUP = 'SlmTestAdmin'
 const ADMIN_PERM: SM.PlayerPerm = 'canseeadminchat'
-const ADMIN_LIST_SOURCE = 'test-admins'
 const LOG_AGENT_TOKEN = 'test-log-agent-token'
 const AGENT_DIR = path.join(REPO_ROOT, 'log-agent/agent')
 
@@ -289,7 +288,6 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	if (!parsedSettings.success) throw new Error(`default global settings do not parse: ${parsedSettings.error}`)
 	const globalSettings = parsedSettings.data
 	applyTestTimings(globalSettings)
-	globalSettings.adminListSources[ADMIN_LIST_SOURCE] = { type: 'local', source: adminsCfgPath }
 	opts.globalSettings?.(globalSettings)
 	await db.insert(Schema.globalSettings).values(
 		superjsonify(Schema.globalSettings, { id: 1, settings: SETTINGS.GlobalSettingsSchema.encode(globalSettings) }),
@@ -307,7 +305,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 				? { type: 'log-receiver', token: LOG_AGENT_TOKEN }
 				: { type: 'local-file', logFile: squadLogPath },
 		},
-		adminListSources: [ADMIN_LIST_SOURCE],
+		adminListSources: [{ type: 'local', source: adminsCfgPath }],
 		adminIdentifyingPermissions: [ADMIN_PERM],
 	})
 	// a seeded queue is only stable if nothing tops it up: generation fills the queue to
