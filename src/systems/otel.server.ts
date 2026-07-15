@@ -15,7 +15,7 @@ import { ATTR_SERVICE_INSTANCE_ID, ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } fro
 import { ORPCInstrumentation } from '@orpc/otel'
 import { randomBytes } from 'crypto'
 
-const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.otel })
 let ENV!: ReturnType<typeof envBuilder>
 
 const getCollectorEndpoint = (path: string) => {

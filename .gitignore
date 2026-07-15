@@ -32,6 +32,10 @@ dist-ssr
 *.sw?
 *.tsbuildinfo
 .env*
+# generated from src/server/env.ts on every dev boot, and tracked: the templates an install and a checkout
+# respectively start from
+!.env.example
+!.env.example.dev
 
 slm-config.json*
 extra-columns.json

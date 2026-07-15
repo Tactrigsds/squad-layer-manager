@@ -5,145 +5,324 @@ import * as Paths from '../../paths.ts'
 import { HumanTime, NormedUrl, ParsedBigIntSchema, ParsedIntSchema, PathSegment } from '../lib/zod'
 import * as Cli from '../systems/cli.server'
 
+// how a var is written into the example env files, which are regenerated from this file on every dev boot
+// (see env-example.ts). `description` is a plain GlobalMeta field and becomes the comment above the var.
+type EnvExampleEntry = {
+	// 'set' is written uncommented (either the implementor has to fill it in, or the file presets it),
+	// 'commented' commented-out, 'omit' not at all. Inferred when left out: a var the schema rejects as
+	// undefined is 'set', anything else is 'commented'.
+	include?: 'set' | 'commented' | 'omit'
+	// a value the file presets because the schema's default is the wrong one for this audience. Never a
+	// placeholder example: a commented-out var shows its real default and nothing else, so that uncommenting
+	// a line can't change behaviour. Anything worth illustrating goes in the description.
+	value?: string
+}
+
+export type EnvExampleMeta = EnvExampleEntry & {
+	// overrides for .env.example.dev, which someone running the app from a checkout copies. Anything not
+	// overridden here is inherited from the entry above, which is what .env.example (a deployment) gets.
+	dev?: EnvExampleEntry & {
+		// replaces the top-level `description` in the dev file. For the handful of vars whose explanation is
+		// only true of, or only useful to, one of the two audiences; the deployment file has no use for
+		// vite, `pnpm db:migrate` or anything else that only exists in a checkout.
+		description?: string
+	}
+}
+
+declare module 'zod' {
+	interface GlobalMeta {
+		envExample?: EnvExampleMeta
+	}
+}
+
 // comma-separated list of Discord snowflake ids parsed to bigints (e.g. SUPER_USERS="123,456")
 const BigIntListSchema = z.string().default('').transform((val) => val.split(',').map((s) => s.trim()).filter(Boolean).map(BigInt))
 
 export const groups = {
 	general: {
-		NODE_ENV: z.enum(['development', 'production', 'test']),
-		LOG_LEVEL_OVERRIDE: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),
-		OTEL_ENABLED: z.stringbool().default(true),
-		OTLP_COLLECTOR_ENDPOINT: NormedUrl.transform((url) => url.replace(/\/$/, '')).default('http://localhost:4318'),
-		// Head sampling ratio for traces we root ourselves. Defaults to 1 (sample everything, the prior
-		// behaviour); lower it if span volume from high-frequency ops becomes a problem.
-		OTEL_TRACE_SAMPLE_RATIO: z.coerce.number().min(0).max(1).default(1),
+		NODE_ENV: z.enum(['development', 'production', 'test']).meta({
+			description:
+				'`pnpm server:dev` sets this itself, so it is only read from here by bare `pnpm script` / `pnpm preprocess` runs. A deployment leaves it unset: the image already pins it to production.',
+			envExample: { include: 'omit', dev: { include: 'set', value: 'development' } },
+		}),
+		LOG_LEVEL_OVERRIDE: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional().meta({
+			description: 'overrides the log level, which is otherwise info.',
+			envExample: {
+				dev: { description: 'overrides the log level, which is otherwise debug in development and test, info in production.' },
+			},
+		}),
+		PUBLIC_GIT_SHA: z.string().min(1).prefault('unknown').meta({
+			description: "baked into the image at build time from the Dockerfile's GIT_SHA/GIT_BRANCH build args, and reported on boot.",
+			envExample: { include: 'omit' },
+		}),
+		PUBLIC_GIT_BRANCH: z.string().min(1).prefault('unknown').meta({
+			description: 'see PUBLIC_GIT_SHA.',
+			envExample: { include: 'omit' },
+		}),
 
-		PUBLIC_GIT_SHA: z.string().min(1).prefault('unknown'),
-		PUBLIC_GIT_BRANCH: z.string().min(1).prefault('unknown'),
+		QUERY_PARAM_AUTH_BYPASS: z.stringbool().optional().meta({
+			description:
+				'lets a request log in as an existing user with a `?login=<username>` query param, skipping the discord oauth round trip. Refused outright when NODE_ENV=production, so it is only any use from a checkout.',
+			envExample: { include: 'omit', dev: { include: 'commented' } },
+		}),
 
-		QUERY_PARAM_AUTH_BYPASS: z.stringbool().optional(),
+		LOG_EXCLUDE_CONTEXT_PARAMS: z.string().default('').transform(val => new Set(val.split(',').map(s => s.trim()).filter(Boolean))).meta({
+			description:
+				'comma-separated context params to leave out of rendered log lines. Purely a readability knob for a noisy local console; it does not affect what is exported.',
+			envExample: { include: 'omit', dev: { include: 'commented' } },
+		}),
 
-		LOG_EXCLUDE_CONTEXT_PARAMS: z.string().default('').transform(val => new Set(val.split(',').map(s => s.trim()).filter(Boolean))),
-
-		PUBLIC_REPO_URL: z.url().optional(),
-		PUBLIC_ISSUES_URL: z.url().optional(),
+		PUBLIC_REPO_URL: z.url().optional().meta({
+			description: 'shown to users in the app. Set these to your fork if you run one.',
+			envExample: { include: 'omit', dev: { include: 'commented' } },
+		}),
+		PUBLIC_ISSUES_URL: z.url().optional().meta({
+			description: 'where the app points users who want to report a bug.',
+			envExample: { include: 'omit', dev: { include: 'commented' } },
+		}),
 	},
 
 	squadcalc: {
-		PUBLIC_SQUADCALC_URL: NormedUrl.default('https://squadcalc.app'),
+		PUBLIC_SQUADCALC_URL: NormedUrl.default('https://squadcalc.app').meta({
+			description: 'the squadcalc instance the layer info popouts link out to. Only worth setting if you self-host it.',
+		}),
+	},
+
+	otel: {
+		OTEL_ENABLED: z.stringbool().default(true).meta({
+			description: 'turn it off if nothing is listening on the endpoint below; the app then exports nothing at all.',
+		}),
+		OTLP_COLLECTOR_ENDPOINT: NormedUrl.transform((url) => url.replace(/\/$/, '')).default('http://localhost:4318').meta({
+			description: 'where the exporters send to. docker-compose points this at its collector service rather than localhost.',
+		}),
+		OTEL_TRACE_SAMPLE_RATIO: z.coerce.number().min(0).max(1).default(1).meta({
+			description: 'the fraction of traces sampled. 1 keeps everything; lower it if the span volume becomes a problem.',
+		}),
 	},
 
 	rbac: {
-		// Discord user/role ids that are always granted every permission (deploy-time bootstrap so an admin can never be locked out).
-		// role/permission configuration otherwise lives in admin-editable global settings (see GlobalSettingsSchema.rbac).
-		SUPER_USERS: BigIntListSchema,
-		SUPER_ROLES: BigIntListSchema,
+		SUPER_USERS: BigIntListSchema.meta({
+			description:
+				'comma-separated discord user ids that are always granted every permission (e.g. 123456789012345678,987654321098765432). Set at least one, or nobody can administer the app. Every other role and permission is configured from the settings page; this is the bootstrap that cannot be locked out.',
+			envExample: { include: 'set' },
+		}),
+		SUPER_ROLES: BigIntListSchema.meta({
+			description: 'as SUPER_USERS, but discord role ids: everyone holding one of these roles is granted every permission.',
+		}),
 	},
 
 	db: {
-		DB_PATH: z.string().min(1).prefault('./data/db.sqlite3'),
-		// When true, the server applies pending migrations itself at boot instead of refusing to
-		// start (see db.ts setup()). Off by default: migrations run out-of-band via `pnpm db:migrate`
-		// until the new migration system is proven. Unsafe to enable while another app instance runs.
-		DB_AUTOMIGRATE: z.stringbool().default(false),
+		DB_PATH: z.string().min(1).prefault('./data/db.sqlite3').meta({
+			description: 'the main sqlite database. -wal and -shm files are created alongside it, so mount the directory, not the file.',
+		}),
+		DB_AUTOMIGRATE: z.stringbool().default(true).meta({
+			description:
+				'applies pending migrations at boot. Turn it off to run them yourself instead (`pnpm db:migrate:prod`); the app then refuses to start against a database that is behind rather than touching it.',
+			envExample: {
+				dev: {
+					description:
+						'applies pending migrations at boot. Turn it off to run them out-of-band instead (`pnpm db:migrate`); the app then refuses to start against a database that is behind rather than touching it.',
+				},
+			},
+		}),
 	},
 
+	// a checkout has nothing worth backing up, so none of this shows up in the dev example
 	backups: {
-		// how often to back up the main db (e.g. '72h'). unset disables automatic backups entirely, including the
-		// event-history prune that runs alongside them. Backups use sqlite's online backup API, so they're
-		// consistent snapshots taken without blocking writers.
-		AUTOMATIC_BACKUPS_PERIODIC: HumanTime.optional(),
-		BACKUPS_DIR: z.string().min(1).prefault('./data/backups'),
-		// how many backups to keep, locally and (if configured) on the sftp target. 0 keeps all of them.
-		BACKUPS_RETAIN_COUNT: ParsedIntSchema.pipe(z.number().min(0)).default(10),
+		AUTOMATIC_BACKUPS_PERIODIC: HumanTime.optional().meta({
+			description:
+				'how often to back up the main db, as a duration (e.g. 72h). Unset disables automatic backups entirely, including the event-history prune that runs alongside them. A backup is a consistent snapshot, taken without blocking writers.',
+			envExample: { dev: { include: 'omit' } },
+		}),
+		BACKUPS_DIR: z.string().min(1).prefault('./data/backups').meta({
+			description: 'where backups are written locally.',
+			envExample: { dev: { include: 'omit' } },
+		}),
+		BACKUPS_RETAIN_COUNT: ParsedIntSchema.pipe(z.number().min(0)).default(10).meta({
+			description: 'how many backups to keep, locally and (if configured) on the sftp target. 0 keeps all of them.',
+			envExample: { dev: { include: 'omit' } },
+		}),
 
-		// server events belonging to matches that ended before this long ago are deleted as part of each backup
-		// run (the backup is taken after the prune, so the pruned rows are never in it). The most recent matches
-		// are always kept regardless of age (see MIN_RETAINED_MATCHES). Unset disables pruning.
-		EVENT_HISTORY_RETENTION_PERIOD: HumanTime.optional(),
+		EVENT_HISTORY_RETENTION_PERIOD: HumanTime.optional().meta({
+			description:
+				'server events belonging to matches that ended longer ago than this duration (e.g. 90d) are deleted as part of each backup run, before the backup is taken. The most recent matches are always kept regardless of age. Unset disables pruning.',
+			envExample: { dev: { include: 'omit' } },
+		}),
 
-		// optional sftp target each backup is uploaded to after it's written locally. enabled by setting
-		// BACKUP_SFTP_HOST; authenticate with a password or a private key (at least one is required).
-		BACKUP_SFTP_HOST: z.string().min(1).optional(),
-		BACKUP_SFTP_PORT: ParsedIntSchema.default(22),
-		BACKUP_SFTP_USERNAME: z.string().min(1).optional(),
-		BACKUP_SFTP_PASSWORD: z.string().min(1).optional(),
-		BACKUP_SFTP_PRIVATE_KEY_PATH: z.string().min(1).optional(),
-		BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE: z.string().min(1).optional(),
-		// remote directory the backups are written to. created if it doesn't exist.
-		BACKUP_SFTP_DIR: z.string().min(1).prefault('.'),
+		BACKUP_SFTP_HOST: z.string().min(1).optional().meta({
+			description:
+				'an sftp target each backup is uploaded to after it is written locally. Setting this host is what enables the upload; authenticate with a password or a private key, at least one of which is required.',
+			envExample: { dev: { include: 'omit' } },
+		}),
+		BACKUP_SFTP_PORT: ParsedIntSchema.default(22).meta({
+			description: 'see BACKUP_SFTP_HOST.',
+			envExample: { dev: { include: 'omit' } },
+		}),
+		BACKUP_SFTP_USERNAME: z.string().min(1).optional().meta({
+			description: 'see BACKUP_SFTP_HOST.',
+			envExample: { dev: { include: 'omit' } },
+		}),
+		BACKUP_SFTP_PASSWORD: z.string().min(1).optional().meta({
+			description: 'see BACKUP_SFTP_HOST. Either this or BACKUP_SFTP_PRIVATE_KEY_PATH is required once a host is set.',
+			envExample: { dev: { include: 'omit' } },
+		}),
+		BACKUP_SFTP_PRIVATE_KEY_PATH: z.string().min(1).optional().meta({
+			description: 'see BACKUP_SFTP_HOST. Either this or BACKUP_SFTP_PASSWORD is required once a host is set.',
+			envExample: { dev: { include: 'omit' } },
+		}),
+		BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE: z.string().min(1).optional().meta({
+			description: 'only needed if the key at BACKUP_SFTP_PRIVATE_KEY_PATH is encrypted.',
+			envExample: { dev: { include: 'omit' } },
+		}),
+		BACKUP_SFTP_DIR: z.string().min(1).prefault('.').meta({
+			description: 'the remote directory backups are written to. Created if it does not exist.',
+			envExample: { dev: { include: 'omit' } },
+		}),
 	},
 
-	// only needed when running integration tests for the rcon modules
-	testRcon: {
-		TEST_RCON_HOST: z.string().min(1).prefault('localhost'),
-		TEST_RCON_PORT: ParsedIntSchema.default(27015),
-		TEST_RCON_PASSWORD: z.string().min(1).prefault('test'),
-	},
-
-	//
 	discord: {
-		// disables the discord integration entirely (no bot login, no guild fetches). Intended for
-		// integration-test/emulator environments; the other DISCORD_* vars still need (dummy) values.
-		DISCORD_ENABLED: z.stringbool().default(true),
-		DISCORD_CLIENT_ID: z.string().min(1),
-		DISCORD_CLIENT_SECRET: z.string().min(1),
-		DISCORD_BOT_TOKEN: z.string().min(1),
-		DISCORD_HOME_GUILD_ID: ParsedBigIntSchema,
+		DISCORD_ENABLED: z.stringbool().default(true).meta({
+			description:
+				'disables the discord integration entirely (no bot login, no guild fetches), which no install wants: it is what the integration tests and the emulator run with. The other DISCORD_* vars still need (dummy) values.',
+			envExample: { include: 'omit', dev: { include: 'commented' } },
+		}),
+		DISCORD_CLIENT_ID: z.string().min(1).meta({
+			description: 'from the discord app SLM logs users in with. See the README for how the app has to be set up.',
+		}),
+		DISCORD_CLIENT_SECRET: z.string().min(1).meta({
+			description: "the discord app's oauth2 client secret.",
+		}),
+		DISCORD_BOT_TOKEN: z.string().min(1).meta({
+			description: 'the bot token of the same discord app. It has to be installed on the guild below.',
+		}),
+		DISCORD_HOME_GUILD_ID: ParsedBigIntSchema.meta({
+			description: "the guild SLM resolves users and roles against, i.e. your org's discord server.",
+		}),
 	},
 
 	httpServer: {
-		PORT: ParsedIntSchema.default(3000),
-		HOST: z.string().prefault('127.0.0.1'),
-		// the vite dev server's port (dev only), so a second instance of the app can be brought up beside a
-		// running one without contending for 5173. Moving it means moving ORIGIN with it.
-		CLIENT_PORT: ParsedIntSchema.default(5173),
-		ORIGIN: NormedUrl.default('http://localhost:5173'),
-	},
-
-	squadLogsReceiver: {
-		SQUAD_LOGS_RECEIVER_PORT: ParsedIntSchema.default(8443),
+		PORT: ParsedIntSchema.default(3000).meta({
+			description: 'the port the app listens on. Put your reverse proxy in front of it and point ORIGIN at that.',
+			envExample: { dev: { description: 'the port the app listens on. The client is served separately in development, see CLIENT_PORT.' } },
+		}),
+		HOST: z.string().prefault('127.0.0.1').meta({
+			description: 'the interface the app binds to. The image already sets 0.0.0.0, since loopback inside a container is unreachable.',
+			envExample: { dev: { description: 'the interface the app binds to.' } },
+		}),
+		CLIENT_PORT: ParsedIntSchema.default(5173).meta({
+			description:
+				"the vite dev server's port, so a second instance of the app can be brought up beside a running one without contending for 5173. Moving it means moving ORIGIN with it.",
+			envExample: { include: 'omit', dev: { include: 'commented' } },
+		}),
+		ORIGIN: NormedUrl.default('http://localhost:3000').meta({
+			description:
+				"the url the app is reached at, from a browser's point of view. Change it to the publicly addressable url of your install: the default below only holds if the app is reached directly on PORT, with nothing in front of it. The discord oauth callback is built from this, so it also has to match a redirect uri registered on the discord app.",
+			// written out uncommented in both files, showing the url that environment is actually reached at, so
+			// that changing it is an edit rather than something you have to know to uncomment
+			envExample: {
+				include: 'set',
+				dev: {
+					value: 'http://localhost:5173',
+					description:
+						"the url the app is reached at, from a browser's point of view, which in development is the vite dev server (CLIENT_PORT) rather than the app's own port, since that is what serves the client. The discord oauth callback is built from it, so it has to match a redirect uri registered on the discord app.",
+				},
+			},
+		}),
 	},
 
 	layers: {
-		// @latest is a magic string resolving to the highest semver whose artifacts are present (see
-		// systems/layer-artifacts.server.ts). Pinning a version that no searched directory has is an error.
-		LAYERS_VERSION: PathSegment.default('@latest'),
-		// an extra directory to search for layer artifacts, ahead of ./data and the assets/layers the image ships.
-		// Only needed when the artifacts live somewhere other than the data mount.
-		LAYERS_DIR: z.string().min(1).optional(),
+		LAYERS_VERSION: PathSegment.default('@latest').meta({
+			description:
+				'@latest is a magic string resolving to the highest semver whose artifacts are present. Pinning a version that no searched directory has is an error.',
+		}),
+		LAYERS_DIR: z.string().min(1).optional().meta({
+			description:
+				'an extra directory to search for layer artifacts, ahead of ./data and the assets/layers the image ships. Only needed when the artifacts live somewhere other than the data mount.',
+		}),
 	},
 
+	// only `pnpm preprocess` reads these, so they stay out of the deployment example
 	preprocess: {
-		// The spreadsheet of OWI's layer spreadsheet. This is only used for layer sizes at the momenet
-		SPREADSHEET_ID: z.string().prefault('1UXEgkUMBxhmYyEkaMSUd1Ko_I7s--7krCdyshZ076pU'),
-		SPREADSHEET_MAP_LAYERS_GID: z.number().prefault(1212962563),
-		// the csv preprocess ingests. It is the input the version of a build is taken from, and unlike the pair
-		// preprocess writes out, it's far too big to ship, so it stays in ./data.
-		EXTRA_COLS_CSV_PATH: z.string().prefault(path.join(Paths.DATA, 'layers_v{{LAYERS_VERSION}}.csv')),
-		// where preprocess writes the pair it builds. Defaults to the directory that ships with the image.
-		LAYERS_OUTPUT_DIR: z.string().min(1).prefault(Paths.LAYERS),
-		// defines the extra columns to ingest into the layer db. read only by preprocess: the definitions are baked
-		// into layer-data.json, which is what the app reads at runtime
-		LAYER_DB_CONFIG_PATH: z.string().prefault('./layer-db.json'),
+		SPREADSHEET_ID: z.string().prefault('1UXEgkUMBxhmYyEkaMSUd1Ko_I7s--7krCdyshZ076pU').meta({
+			description: "OWI's layer spreadsheet. Only used for layer sizes at the moment.",
+			envExample: { include: 'omit', dev: { include: 'commented' } },
+		}),
+		SPREADSHEET_MAP_LAYERS_GID: ParsedIntSchema.default(1212962563).meta({
+			description: 'the sheet within SPREADSHEET_ID the layers are read from.',
+			envExample: { include: 'omit', dev: { include: 'commented' } },
+		}),
+		EXTRA_COLS_CSV_PATH: z.string().prefault(path.join(Paths.DATA, 'layers_v{{LAYERS_VERSION}}.csv')).meta({
+			description:
+				'the csv preprocess ingests. It is the input the version of a build is taken from, and unlike the pair preprocess writes out, it is far too big to ship, so it stays in ./data.',
+			envExample: { include: 'omit', dev: { include: 'commented' } },
+		}),
+		LAYERS_OUTPUT_DIR: z.string().min(1).prefault(Paths.LAYERS).meta({
+			description: 'where preprocess writes the pair it builds. Defaults to the directory that ships with the image.',
+			envExample: { include: 'omit', dev: { include: 'commented' } },
+		}),
+		LAYER_DB_CONFIG_PATH: z.string().prefault('./layer-db.json').meta({
+			description:
+				'defines the extra columns to ingest into the layer table. Read only by preprocess: the definitions are baked into layer-data.json, which is what the app reads at runtime.',
+			envExample: { include: 'omit', dev: { include: 'commented' } },
+		}),
 	},
 
 	battlemetrics: {
-		BM_HOST: z.url().prefault('https://api.battlemetrics.com'),
-
-		// Battlemetrics API Token.
-		// Required permissions are:
-		// - player flags (add/remove player flags. don't need to add new flags)
-		// - player notes(read & createe)
-		// - rcon(read, unclear why we need this one tbqh but experimentally seem to)
-		BM_PAT: z.string({}).meta({
-			description: `
-                        `.trim(),
+		BM_HOST: z.url().prefault('https://api.battlemetrics.com').meta({
+			description: 'the battlemetrics api.',
 		}),
 
-		BM_ORG_ID: z.string(),
+		BM_PAT: z.string().meta({
+			description: `battlemetrics API token. It needs these permissions:
+- player flags (add/remove. it doesn't need to create new ones)
+- player notes (read & create)
+- rcon (read)
+Leave it empty if you don't have an org on battlemetrics; the app boots without it, and the features that read it will fail.`,
+			envExample: {
+				dev: {
+					description: `battlemetrics API token. It needs these permissions:
+- player flags (add/remove. it doesn't need to create new ones)
+- player notes (read & create)
+- rcon (read. unclear why this one is needed, but experimentally it is)
+Leave it empty if you don't have an org on battlemetrics; the app boots without it, and the features that read it will fail.`,
+				},
+			},
+		}),
+
+		BM_ORG_ID: z.string().meta({
+			description: 'the battlemetrics organization the token above belongs to. Player flags are filtered to this org.',
+		}),
 	},
 } satisfies { [key: string]: Record<string, z.ZodType> }
+
+// section headers in the example env files. A group whose vars are all omitted never shows up.
+export const groupMeta: Record<keyof typeof groups, { title: string; description?: string }> = {
+	general: { title: 'General' },
+	squadcalc: { title: 'Squadcalc' },
+	otel: {
+		title: 'Telemetry',
+		description:
+			'the app exports traces, metrics and logs over OTLP. docker-compose runs a collector (grafana/otel-lgtm) next to it, and the grafana portal it serves is where the dashboards live.',
+	},
+	rbac: { title: 'Permissions' },
+	db: { title: 'Database' },
+	backups: { title: 'Backups' },
+	discord: {
+		title: 'Discord',
+		description: 'SLM authenticates users through a discord app you own. The README walks through creating it.',
+	},
+	httpServer: { title: 'HTTP server' },
+	layers: {
+		title: 'Layers',
+		description:
+			'the app ships with a complete set of layer artifacts and boots without any of this set. See the README for how a version is resolved.',
+	},
+	preprocess: {
+		title: 'Preprocess',
+		description: 'only read by `pnpm preprocess`, which builds a layer artifact pair. The app itself never reads these.',
+	},
+	battlemetrics: { title: 'Battlemetrics' },
+}
 
 let rawEnv!: Record<string, string | undefined>
 

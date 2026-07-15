@@ -36,6 +36,7 @@ import * as CS from '@/models/context-shared'
 import * as Config from './config.server.ts'
 import * as C from './context.ts'
 import * as DB from './db'
+import * as EnvExample from './env-example.ts'
 import * as Env from './env.ts'
 import { ensureLoggerSetup, initModule } from './logger.ts'
 
@@ -52,6 +53,12 @@ const log = module.getLogger()
 await C.spanOp('main', { module }, async () => {
 	// Use provided env file path if available
 	log.info('-------- Starting SLM version %s --------', formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA))
+	// before anything can fail on a missing var: a stale .env is the likeliest reason a dev boot doesn't get
+	// any further than this, and the examples are what they'd reach for to fix it
+	if (ENV.NODE_ENV === 'development') {
+		const { changed } = EnvExample.write()
+		if (changed.length > 0) log.info('regenerated %s from the env schema', changed.join(', '))
+	}
 	CleanupSys.setup()
 	// layer components/factionunit configs are consumed synchronously all over the app (including
 	// while parsing config), so they load before everything else
