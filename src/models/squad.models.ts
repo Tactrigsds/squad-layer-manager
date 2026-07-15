@@ -526,11 +526,23 @@ export const PLAYER_PERM = z.enum([
 	'canseeadminchat', // This group can see the admin chat and teamkill/admin-join notifications
 ])
 export type PlayerPerm = z.infer<typeof PLAYER_PERM>
-export const AdminListSourceSchema = z.object({
-	type: z.enum(['remote', 'local', 'ftp']),
-	source: z.string(),
-})
+// remote/local/ftp keep a single `source` string (a URL, local path, or ftp:// URI); sftp holds its connection
+// details separately so they can be entered directly (or copied from the server's sftp log connection).
+export const AdminListSourceSchema = z.discriminatedUnion('type', [
+	z.object({ type: z.literal('remote'), source: z.string() }),
+	z.object({ type: z.literal('local'), source: z.string() }),
+	z.object({ type: z.literal('ftp'), source: z.string() }),
+	z.object({
+		type: z.literal('sftp'),
+		host: z.string(),
+		port: z.number().min(1).max(65535).prefault(22),
+		username: z.string(),
+		password: z.string(),
+		filePath: z.string(),
+	}),
+])
 export type AdminListSource = z.infer<typeof AdminListSourceSchema>
+export type AdminListSourceType = AdminListSource['type']
 // steamId -> groups
 export type SquadAdmins = OneToManyMap<SteamId, string>
 // group -> permissions

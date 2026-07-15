@@ -122,7 +122,9 @@ export const NavLinkSchema = z.array(z.object({
 // ============================== global settings ==============================
 
 export const GlobalSettingsSchema = z.object({
-	topBarColor: z.string().prefault('green').nullable().describe('set to null for production'),
+	topBarColor: z.string().prefault('green').nullable().describe(
+		'Tints the top navigation bar so non-production environments are visually distinct. Set to null in production to disable the tint.',
+	),
 	warnPrefix: z.string().nullable().prefault('SLM: ').describe(
 		'Prefix applied to admin-directed warns (admin notifications and in-game command feedback). Never applied to warns delivered to affected players.',
 	),
@@ -146,7 +148,9 @@ export const GlobalSettingsSchema = z.object({
 	),
 	postRollAnnouncementsTimeout: HumanTime.prefault('5m').describe('How long to wait before sending post-roll reminders'),
 	fogOffDelay: HumanTime.prefault('25s').describe('Delay before fog is automatically turned off'),
-	chat: CHAT.ChatConfigSchema.prefault({}),
+	chat: CHAT.ChatConfigSchema.prefault({}).describe(
+		'Live chat/event feed settings, including regex patterns for suppressing noisy warn and broadcast messages.',
+	),
 	layerQueue: z.object({
 		lowQueueWarningThreshold: z
 			.number()
@@ -170,18 +174,13 @@ export const GlobalSettingsSchema = z.object({
 			'How far into a match to stop auto-starting votes',
 		),
 		voteDisplayProps: z.array(DH.LAYER_DISPLAY_PROP).prefault(['map', 'gamemode']).describe(
-			'What parts of a layer setup should be displayed',
+			'What parts of a layer setup should be displayed by default',
 		),
 		finalVoteReminder: HumanTime.prefault('10s').describe('How far in advance the final vote reminder should be sent'),
 		maxNumVoteChoices: z.int().min(1).max(50).prefault(5).describe('Maximum number of choices allowed in a vote'),
 	}).prefault({}),
 	squadServer: z.object({
-		sftpPollInterval: HumanTime.prefault('1s'),
-		logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines'),
-		sftpReconnectInterval: HumanTime.prefault('5s'),
-		sftpMaxReconnectAttempts: z.int().min(1).prefault(10).describe(
-			'How many consecutive SFTP failures to tolerate (reconnecting between each) before tearing down the server slice',
-		),
+		logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines.'),
 		tickRateThresholds: z.object({
 			good: z.number().positive().prefault(60).describe(
 				'At or above this tick rate the live server tick rate displays as good (green)',
@@ -201,8 +200,7 @@ export const GlobalSettingsSchema = z.object({
 		'Groups players into labelled/colored buckets by their flags, per display mode. Modes are declared upfront and selected in the players panel.',
 	),
 	navLinks: NavLinkSchema.optional().describe('Global links to display in the navbar dropdown menu'),
-	warnOnSlmStart: z.boolean().prefault(false),
-	adminListSources: z.record(z.string(), SM.AdminListSourceSchema).prefault({}).describe('Named admin list sources'),
+	warnOnSlmStart: z.boolean().prefault(false).describe('Warn all in-game admins when SLM starts or restarts.'),
 	allowedPrefixes: z.array(BasicStrNoWhitespace).min(1).prefault([CMD.FALLBACK_PREFIX]).describe(
 		'Prefixes an in-game command may start with. Every command string and timeout alias must begin with one of these',
 	),
@@ -233,10 +231,19 @@ export const GlobalSettingsSchema = z.object({
 			{ name: 'Faction_2' },
 			{ name: 'Unit_2' },
 			{ name: 'Alliance_2', visible: false },
+
+			{ name: 'Balance_Differential' },
+			{ name: 'Asymmetry_Score' },
 		],
 		defaultSortBy: { type: 'random' },
+		extraLayerSelectMenuItems: [
+			{ type: 'inrange', neg: false, args: [{ type: 'column', column: 'Balance_Differential' }, { type: 'value' }, { type: 'value' }] },
+			{ type: 'inrange', neg: false, args: [{ type: 'column', column: 'Asymmetry_Score' }, { type: 'value' }, { type: 'value' }] },
+		],
 	}).describe('Configures the columns, default sort, and extra menu items of the layer table'),
-	layerGeneration: LC.LayerGenerationConfigSchema.describe(
+	layerGeneration: LC.LayerGenerationConfigSchema.prefault({
+		pickOrder: ['Map', 'Gamemode', 'Faction_1', 'Faction_2', 'Unit_1', 'Unit_2'],
+	}).describe(
 		"Configures how layers are picked during generation (autogeneration, vote generation, and the layer table's random sort). "
 			+ 'Each column or matchup in the pick order is picked weighted-randomly in turn, narrowing the candidate pool for the next.',
 	),
@@ -399,7 +406,7 @@ export const PoolFilterConfigSchema = z.object({
 	}).optional(),
 	warn: POOL_FILTER_APPLY_AS.optional().meta({
 		description:
-			"How users should be warned if a layer matching this filter is about to be played, or when it is added to the queue. Invert if you want warnings for layers which *DON't match this filter",
+			'How users should be warned when a layer matching this filter is about to be played or is added to the queue. Invert to warn about layers that do NOT match this filter.',
 	}).optional(),
 }).refine(c => !c.warn || c.showIndicator && c.showIndicator !== 'disabled', 'Cannot warn without indicating matches')
 export type PoolFilterConfig = z.infer<typeof PoolFilterConfigSchema>
@@ -452,6 +459,11 @@ export const ServerConnectionSchema = z.object({
 			username: z.string().min(1),
 			password: z.string().min(1),
 			logFile: z.string().min(1),
+			pollInterval: HumanTime.prefault('1s').describe('How often to poll the remote log file over SFTP for new lines.'),
+			reconnectInterval: HumanTime.prefault('5s').describe('How long to wait between SFTP reconnection attempts.'),
+			maxReconnectAttempts: z.int().min(1).prefault(10).describe(
+				'How many consecutive SFTP failures to tolerate (reconnecting between each) before tearing down the server.',
+			),
 		}),
 	]),
 })
@@ -475,10 +487,12 @@ export type QueueSettings = z.infer<typeof QueueSettingsSchema>
 
 export const PublicServerSettingsSchema = z
 	.object({
-		updatesToSquadServerDisabled: z.boolean().prefault(false).describe('disable SLM from setting the next layer on the server'),
+		updatesToSquadServerDisabled: z.boolean().prefault(false).describe('Disable SLM from setting the next layer on the server.'),
 		queue: QueueSettingsSchema
 			// avoid sharing default queue object - TODO unclear if necessary
-			.prefault({}).transform((obj) => Obj.deepClone(obj)),
+			.prefault({}).transform((obj) => Obj.deepClone(obj)).describe(
+				'The layer queue configuration: the main pool (filters and repeat rules), the generation pool used for autogeneration, and queue length / vote preferences.',
+			),
 		remindersAndAnnouncementsEnabled: z.boolean().prefault(true).describe('Whether reminders/announcements for admins are enabled'),
 		overrideAdminSetNextLayer: z.boolean().prefault(false).describe(
 			'Whether AdminSetNextLayer commands not originating from SLM are respected',
@@ -494,8 +508,13 @@ EXAMPLE_PUBLIC_SETTINGS.queue.generationPool.filters.push({ applyAs: DEFAULT_POO
 
 export const ServerSettingsSchema = PublicServerSettingsSchema.extend({
 	connections: ServerConnectionSchema,
-	adminListSources: z.array(z.string()),
-	adminIdentifyingPermissions: z.array(SM.PLAYER_PERM),
+	adminListSources: z.array(SM.AdminListSourceSchema).describe(
+		"Admin list sources to load this server's admins from. Each is a remote URL, local file, or FTP path serving admins in Squad's Admins.cfg format.",
+	),
+	adminIdentifyingPermissions: z.array(SM.PLAYER_PERM).describe(
+		'In-game admin-list permissions that mark a player as an admin in SLM (e.g. "canseeadminchat"). A player granted any of these by an '
+			+ 'admin list source is treated as an admin, which drives admin-only warns and admin presence.',
+	),
 	navLinks: NavLinkSchema.optional().describe('Server-specific links to display in the navbar dropdown menu'),
 })
 

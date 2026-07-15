@@ -10,6 +10,7 @@ import { StickyGroup } from '@/components/sticky-group'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { InputGroup, InputGroupAddon, InputGroupButton } from '@/components/ui/input-group'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -18,6 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDebounced } from '@/hooks/use-debounce'
+import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object'
 import type { SettingsGroup } from '@/lib/settings-groups'
 import { splitByGroups } from '@/lib/settings-groups'
@@ -31,8 +33,10 @@ import type * as BM from '@/models/battlemetrics.models'
 import type * as LP from '@/models/labeled-presets.models'
 import * as LC from '@/models/layer-columns'
 import * as SETTINGS from '@/models/settings.models'
+import type * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
+import * as ConfigClient from '@/systems/config.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
 import { useQuery } from '@tanstack/react-query'
@@ -229,6 +233,10 @@ function useMessageVars(value$: ValueState): Record<string, string> {
 // per-form options. `idPrefix` scopes the DOM ids / URL-fragment anchors so multiple forms on the settings page (global
 // settings + one per server) don't collide; it stays `setting:*` so the TOC scroll-spy and hash nav still match.
 const FormOptionsContext = React.createContext<{ idPrefix: string }>({ idPrefix: 'setting:' })
+
+// the whole settings document being edited, so a bespoke field can read a sibling it isn't scoped to (e.g. the admin
+// list sftp editor copying connection details from `connections.logs`). Null when unset (e.g. tests).
+const RootValueContext = React.createContext<ValueState | null>(null)
 
 // the user's write grant over the settings being edited; leaves outside it render dimmed + inert (see LeafField)
 const WRITE_ACCESS_ALL: RBAC.SettingsWriteAccess = { kind: 'all' }
@@ -490,6 +498,83 @@ function PlayerFlagGroupingsField({ value$, reset$, onChange }: OverrideProps) {
 }
 function PasswordField({ value$, reset$, onChange }: OverrideProps) {
 	return <TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric={false} secret placeholder="Password" />
+}
+
+// the log-receiver's shared secret: masked by default, with generate-a-new-token and copy-to-clipboard affordances. The
+// input is uncontrolled (seeded from value$, debounced upward, re-read on reset$), same as TextInputField.
+function LogReceiverTokenField({ value$, reset$, onChange }: OverrideProps) {
+	const ref = React.useRef<HTMLInputElement>(null)
+	const [show, setShow] = React.useState(false)
+	const [copied, setCopied] = React.useState(false)
+	const copiedTimeout = React.useRef<ReturnType<typeof setTimeout>>(null)
+	const push = useDebounced<any>({ delay: DEBOUNCE_MS, onChange })
+	const repoUrl = ZusUtils.useStore(ConfigClient.Store, (s) => s?.repoUrl)
+	const docUrl = repoUrl ? `${repoUrl}/blob/HEAD/docs/CONFIGURING.md#log-agent` : undefined
+	const format = (v: any) => v === null || v === undefined ? '' : String(v)
+	useReset(reset$, () => {
+		const formatted = format(value$.getValue())
+		if (ref.current && ref.current.value !== formatted) ref.current.value = formatted
+	})
+
+	function generate() {
+		const token = createId(32)
+		if (ref.current) ref.current.value = token
+		setShow(true)
+		onChange(token)
+	}
+	function copy() {
+		const cur = ref.current?.value ?? ''
+		if (!cur) return
+		void navigator.clipboard.writeText(cur)
+		setCopied(true)
+		if (copiedTimeout.current) clearTimeout(copiedTimeout.current)
+		copiedTimeout.current = setTimeout(() => setCopied(false), 1500)
+	}
+	React.useEffect(() => () => {
+		if (copiedTimeout.current) clearTimeout(copiedTimeout.current)
+	}, [])
+
+	return (
+		<div className="space-y-1.5">
+			<InputGroup>
+				{/* a bare input (not InputGroupInput, whose custom Input wraps the control in a div that breaks the flex row) */}
+				<input
+					ref={ref}
+					data-slot="input-group-control"
+					type={show ? 'text' : 'password'}
+					defaultValue={format(value$.getValue())}
+					placeholder="Log receiver token"
+					autoComplete="off"
+					spellCheck={false}
+					onChange={(e) => push(e.currentTarget.value)}
+					className="flex-1 min-w-0 bg-transparent px-3 py-1 font-mono text-sm outline-none placeholder:text-muted-foreground placeholder:font-sans"
+				/>
+				<InputGroupAddon align="inline-end">
+					<InputGroupButton
+						size="icon-xs"
+						aria-label={show ? 'Hide token' : 'Show token'}
+						onClick={() => setShow((s) => !s)}
+					>
+						{show ? <Icons.EyeOff /> : <Icons.Eye />}
+					</InputGroupButton>
+					<InputGroupButton size="icon-xs" aria-label="Copy token" onClick={copy}>
+						{copied ? <Icons.Check /> : <Icons.Copy />}
+					</InputGroupButton>
+					<InputGroupButton size="xs" onClick={generate}>
+						<Icons.RefreshCw />Generate
+					</InputGroupButton>
+				</InputGroupAddon>
+			</InputGroup>
+			<p className="text-xs text-muted-foreground">
+				The log agent authenticates with this token, so treat it like a password.{' '}
+				{docUrl && (
+					<a href={docUrl} target="_blank" rel="noreferrer" className="underline hover:text-foreground">
+						Log agent setup guide
+					</a>
+				)}
+			</p>
+		</div>
+	)
 }
 // bespoke editor for the layer-table config (column order/visibility, default sort, extra menu items, default filters)
 function LayerTableField({ value$, reset$, onChange }: OverrideProps) {
@@ -956,25 +1041,163 @@ function usePoolConfigApi({ value$, reset$, onChange }: OverrideProps): PoolConf
 	}
 }
 
-// server settings reference the global settings' named admin list sources; pick from the defined names instead of
-// typing them. Unknown/stale names stay selectable so they remain visible and removable.
-function AdminListSourceNamesField({ value$, reset$, onChange }: OverrideProps) {
-	const value = (useFieldValue(value$, reset$) as string[] | undefined) ?? []
-	const names = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.adminListSourceNames) ?? []
-	const options = [...new Set([...names, ...value])]
+const ADMIN_SOURCE_TYPE_OPTIONS: { value: SM.AdminListSourceType; label: string }[] = [
+	{ value: 'remote', label: 'Remote URL' },
+	{ value: 'local', label: 'Local file' },
+	{ value: 'ftp', label: 'FTP' },
+	{ value: 'sftp', label: 'SFTP' },
+]
+
+const ADMIN_SOURCE_STRING_PLACEHOLDER: Record<'remote' | 'local' | 'ftp', string> = {
+	remote: 'https://host/admins.cfg',
+	local: 'path/to/Admins.cfg',
+	ftp: 'ftp://user:password@host:21/admins.cfg',
+}
+
+function defaultAdminSource(type: SM.AdminListSourceType): SM.AdminListSource {
+	if (type === 'sftp') return { type: 'sftp', host: '', port: 22, username: '', password: '', filePath: '' }
+	return { type, source: '' }
+}
+
+// a never-emitting stand-in so useFieldValue can be called unconditionally when there is no root document (e.g. tests)
+const EMPTY_ROOT_VALUE$ = new Rx.BehaviorSubject<any>(undefined) as unknown as ValueState
+
+// bespoke editor for a server's `adminListSources` (a discriminated union of remote/local/ftp/sftp). sftp holds its own
+// connection details, with a shortcut to copy them from the server's sftp log connection when one is configured.
+function AdminListSourcesField({ value$, reset$, onChange }: OverrideProps) {
+	const value = (useFieldValue(value$, reset$) as SM.AdminListSource[] | undefined) ?? []
+	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
+	const logType$ = React.useMemo(() => scopeValue(scopeValue(scopeValue(root$, 'connections'), 'logs'), 'type'), [root$])
+	const canCopyFromLog = useFieldValue(logType$, reset$) === 'sftp'
+
+	// `quiet` skips reset$ so an in-flight keystroke in an uncontrolled field isn't clobbered; structural edits (add/remove,
+	// type change) leave it off so the fields re-seed after re-indexing.
+	const update = React.useCallback((fn: (v: SM.AdminListSource[]) => SM.AdminListSource[], quiet?: boolean) => {
+		onChange(fn((value$.getValue() as SM.AdminListSource[] | undefined) ?? []))
+		if (!quiet) reset$.next()
+	}, [onChange, value$, reset$])
+
+	const patch = (idx: number, p: Partial<SM.AdminListSource>, quiet?: boolean) =>
+		update((v) => v.map((s, i) => i === idx ? { ...s, ...p } as SM.AdminListSource : s), quiet)
+
+	function copyFromLog(idx: number) {
+		const logs = (root$.getValue() as { connections?: { logs?: any } } | undefined)?.connections?.logs
+		if (!logs || logs.type !== 'sftp') return
+		patch(idx, { host: logs.host, port: logs.port, username: logs.username, password: logs.password })
+	}
+
 	return (
-		<div className="space-y-1">
-			<ComboBoxMulti
-				title="Admin list source"
-				values={value}
-				options={options}
-				onSelect={(next) => onChange(typeof next === 'function' ? next(value) : next)}
-			/>
-			{names.length === 0 && (
-				<p className="text-xs text-muted-foreground">
-					No named sources are defined yet; add them under Global Settings → Admin List Sources.
-				</p>
-			)}
+		<div className="space-y-2">
+			{value.length === 0 && <p className="text-xs text-muted-foreground">No admin list sources.</p>}
+			{value.map((source, idx) => (
+				// oxlint-disable-next-line no-array-index-key
+				<div key={idx} className="space-y-3 rounded-md border p-3">
+					<div className="flex items-center gap-2">
+						<Select
+							value={source.type}
+							onValueChange={(t) => update((v) => v.map((s, i) => i === idx ? defaultAdminSource(t as SM.AdminListSourceType) : s))}
+						>
+							<SelectTrigger className="w-40">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{ADMIN_SOURCE_TYPE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+							</SelectContent>
+						</Select>
+						<div className="flex-1" />
+						<Button
+							type="button"
+							size="icon"
+							variant="ghost"
+							className="h-6 w-6 shrink-0 text-destructive"
+							aria-label="Remove admin list source"
+							onClick={() => update((v) => v.filter((_, i) => i !== idx))}
+						>
+							<Icons.X className="h-4 w-4" />
+						</Button>
+					</div>
+					{source.type === 'sftp'
+						? (
+							<div className="space-y-3">
+								<div className="grid grid-cols-[1fr_7rem] gap-2">
+									<div className="space-y-1">
+										<Label className="text-xs text-muted-foreground">Host</Label>
+										<TextInputField
+											value$={scopeValue(scopeValue(value$, idx), 'host')}
+											reset$={reset$}
+											onChange={(next) => patch(idx, { host: (next as string) ?? '' }, true)}
+											numeric={false}
+											placeholder="sftp.host.com"
+										/>
+									</div>
+									<div className="space-y-1">
+										<Label className="text-xs text-muted-foreground">Port</Label>
+										<TextInputField
+											value$={scopeValue(scopeValue(value$, idx), 'port')}
+											reset$={reset$}
+											onChange={(next) => patch(idx, { port: typeof next === 'number' ? next : 22 }, true)}
+											numeric
+											placeholder="22"
+										/>
+									</div>
+								</div>
+								<div className="grid grid-cols-2 gap-2">
+									<div className="space-y-1">
+										<Label className="text-xs text-muted-foreground">Username</Label>
+										<TextInputField
+											value$={scopeValue(scopeValue(value$, idx), 'username')}
+											reset$={reset$}
+											onChange={(next) => patch(idx, { username: (next as string) ?? '' }, true)}
+											numeric={false}
+										/>
+									</div>
+									<div className="space-y-1">
+										<Label className="text-xs text-muted-foreground">Password</Label>
+										<TextInputField
+											value$={scopeValue(scopeValue(value$, idx), 'password')}
+											reset$={reset$}
+											onChange={(next) => patch(idx, { password: (next as string) ?? '' }, true)}
+											numeric={false}
+											secret
+										/>
+									</div>
+								</div>
+								<div className="space-y-1">
+									<Label className="text-xs text-muted-foreground">File path</Label>
+									<TextInputField
+										value$={scopeValue(scopeValue(value$, idx), 'filePath')}
+										reset$={reset$}
+										onChange={(next) => patch(idx, { filePath: (next as string) ?? '' }, true)}
+										numeric={false}
+										placeholder="/SquadGame/Saved/Admins.cfg"
+									/>
+								</div>
+								{canCopyFromLog && (
+									<Button type="button" variant="outline" size="sm" onClick={() => copyFromLog(idx)}>
+										<Icons.Copy className="mr-1 h-4 w-4" />Copy connection from log source
+									</Button>
+								)}
+							</div>
+						)
+						: (
+							<div className="space-y-1">
+								<Label className="text-xs text-muted-foreground">
+									{source.type === 'remote' ? 'URL' : source.type === 'local' ? 'File path' : 'FTP URI'}
+								</Label>
+								<TextInputField
+									value$={scopeValue(scopeValue(value$, idx), 'source')}
+									reset$={reset$}
+									onChange={(next) => patch(idx, { source: (next as string) ?? '' }, true)}
+									numeric={false}
+									placeholder={ADMIN_SOURCE_STRING_PLACEHOLDER[source.type]}
+								/>
+							</div>
+						)}
+				</div>
+			))}
+			<Button type="button" variant="outline" size="sm" onClick={() => update((v) => [...v, defaultAdminSource('remote')])}>
+				<Icons.Plus className="mr-1 h-4 w-4" />Add source
+			</Button>
 		</div>
 	)
 }
@@ -1519,13 +1742,9 @@ function RoleAssignmentsEditor(
 	)
 }
 
-function overrideFor(path: Path, node: Node): React.FC<OverrideProps> | undefined {
+function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefined {
 	const last = path[path.length - 1]
-	// the global `adminListSources` is a name-keyed record of source definitions (rendered generically); the
-	// per-server one is an array of names referencing it, which gets the picker
-	if (path.length === 1 && last === 'adminListSources' && stripNullable(node).inner.type === 'array') {
-		return AdminListSourceNamesField
-	}
+	if (path.length === 1 && last === 'adminListSources') return AdminListSourcesField
 	if (path.length === 1 && last === 'adminActionReasons') return AdminActionReasonsField
 	if (path.length === 1 && last === 'broadcasts') return BroadcastsField
 	if (path.length === 1 && last === 'layerTable') return LayerTableField
@@ -1536,6 +1755,7 @@ function overrideFor(path: Path, node: Node): React.FC<OverrideProps> | undefine
 	// server settings: the pool configuration reuses the dashboard popover's panels; connection passwords are masked
 	if (path.length === 2 && path[0] === 'queue' && last === 'mainPool') return MainPoolField
 	if (path.length === 2 && path[0] === 'queue' && last === 'generationPool') return GenerationPoolField
+	if (path.length === 3 && path[0] === 'connections' && path[1] === 'logs' && last === 'token') return LogReceiverTokenField
 	if (last === 'password') return PasswordField
 	return undefined
 }
@@ -2477,17 +2697,19 @@ export default function SettingsForm(
 	)
 	return (
 		<FormOptionsContext.Provider value={formOptions}>
-			<WriteAccessContext.Provider value={writeAccess}>
-				<SavedRootContext.Provider value={savedCtx}>
-					<MessageVarsContext.Provider value={messageVars}>
-						<ValidationContext.Provider value={normIssues}>
-							{groups
-								? <GroupedRootFields node={jsonSchema} groups={groups} value$={value$} reset$={reset$} onChange={onChange} />
-								: <ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />}
-						</ValidationContext.Provider>
-					</MessageVarsContext.Provider>
-				</SavedRootContext.Provider>
-			</WriteAccessContext.Provider>
+			<RootValueContext.Provider value={value$}>
+				<WriteAccessContext.Provider value={writeAccess}>
+					<SavedRootContext.Provider value={savedCtx}>
+						<MessageVarsContext.Provider value={messageVars}>
+							<ValidationContext.Provider value={normIssues}>
+								{groups
+									? <GroupedRootFields node={jsonSchema} groups={groups} value$={value$} reset$={reset$} onChange={onChange} />
+									: <ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />}
+							</ValidationContext.Provider>
+						</MessageVarsContext.Provider>
+					</SavedRootContext.Provider>
+				</WriteAccessContext.Provider>
+			</RootValueContext.Provider>
 		</FormOptionsContext.Provider>
 	)
 }

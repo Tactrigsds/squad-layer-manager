@@ -116,13 +116,31 @@ function highlightElement(el: HTMLElement): void {
 	el.setAttribute('data-anchor-highlight', 'true')
 }
 
+// listeners notified on every navigateToAnchor. The server settings pane is master-detail (only the selected server is
+// mounted), so it subscribes here to select whichever server an anchor points at before the settle-scroll runs -- else
+// navigating to a non-selected server would target an element that isn't in the DOM.
+type AnchorListener = (id: string) => void
+const anchorListeners = new Set<AnchorListener>()
+export function onAnchorNavigate(fn: AnchorListener): () => void {
+	anchorListeners.add(fn)
+	return () => anchorListeners.delete(fn)
+}
+
 // the single entry point for moving to a settings anchor, whether from a TOC click, an initial page-load fragment, or a
 // pasted/edited hash. It records the location (replaceState keeps the history stack clean and doesn't trigger the
 // browser's native jump; it's a harmless no-op when the hash already matches), then scrolls + highlights via the settle
 // pass so the target stays pinned through the reflow of async section content, a GUI/JSON switch, or a section expand.
 export function navigateToAnchor(id: string): void {
 	history.replaceState(history.state, '', `#${id}`)
+	for (const listener of anchorListeners) listener(id)
 	scrollToAnchorSettled(id, { highlight: true })
+}
+
+// the server id an anchor points at (any `*:server:<id>:*` or `section:server:<id>`), or null. '__new__' is included.
+export function serverForAnchor(id: string): string | null {
+	const section = sectionForAnchor(id)
+	if (!section?.startsWith('section:server:')) return null
+	return section.slice('section:server:'.length) || null
 }
 
 // the anchor id currently in the URL hash, or null

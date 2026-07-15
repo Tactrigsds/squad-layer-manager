@@ -669,14 +669,8 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			`${serverId}/adminLists`,
 			async (_ctx) => {
 				const currentSettings = await Settings.getServerSettings(getBaseCtx(), serverId)
-				const serverSources: SM.AdminListSource[] = []
-				for (const key of currentSettings.adminListSources) {
-					const source = Settings.GLOBAL_SETTINGS.adminListSources[key]
-					if (source) serverSources.push(source)
-					else log.warn(`Admin list source "${key}" not found in global settings`)
-				}
 				// we are duplicating fetches here if two servers have the same source, but shouldn't matter
-				return fetchAdminLists(serverSources, currentSettings.adminIdentifyingPermissions, _ctx.signal)
+				return fetchAdminLists(currentSettings.adminListSources, currentSettings.adminIdentifyingPermissions, _ctx.signal)
 			},
 			module,
 			{
@@ -689,7 +683,6 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		)
 	})()
 	cleanup.push(() => adminList.dispose())
-	const logType = settings.connections.logs.type
 	const eventState: PendingEvents.State = PendingEvents.init({
 		counters: {
 			eventId: globalState.serverEventIdCounter,
@@ -716,13 +709,13 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		},
 		// how far a non-log event may lead the log stream before we stop waiting for the log to catch up.
 		// A polled source can be a whole poll behind; a pushed one is near-live.
-		minSafeLogLeadTimeForOtherEvents: logType === 'sftp'
-			? Settings.GLOBAL_SETTINGS.squadServer.sftpPollInterval * 2
-			: logType === 'local-file'
+		minSafeLogLeadTimeForOtherEvents: settings.connections.logs.type === 'sftp'
+			? settings.connections.logs.pollInterval * 2
+			: settings.connections.logs.type === 'local-file'
 			? Settings.GLOBAL_SETTINGS.squadServer.logFilePollInterval * 2
-			: logType === 'log-receiver'
+			: settings.connections.logs.type === 'log-receiver'
 			? 1000
-			: assertNever(logType),
+			: assertNever(settings.connections.logs),
 	})
 
 	const server: SquadServer = {
@@ -856,9 +849,9 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 				port: settings.connections!.logs.port,
 				username: settings.connections!.logs.username,
 				password: settings.connections!.logs.password,
-				pollInterval: Settings.GLOBAL_SETTINGS.squadServer.sftpPollInterval,
-				reconnectInterval: Settings.GLOBAL_SETTINGS.squadServer.sftpReconnectInterval,
-				maxReconnectAttempts: Settings.GLOBAL_SETTINGS.squadServer.sftpMaxReconnectAttempts,
+				pollInterval: settings.connections.logs.pollInterval,
+				reconnectInterval: settings.connections.logs.reconnectInterval,
+				maxReconnectAttempts: settings.connections.logs.maxReconnectAttempts,
 				// reconnection attempts exhausted: tear the slice down rather than letting the error crash the process
 				onFatalError: onResourceFatalError,
 				parentModule: module,

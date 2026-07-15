@@ -446,6 +446,27 @@ function ServersSection(
 		setSelected((cur) => (cur && cur !== NEW_SERVER_SELECTION && servers.some((s) => s.id === cur) ? cur : pickDefaultSelection(servers)))
 	}, [creating, servers])
 
+	// the TOC (and page-load fragments) navigate to a server's anchor, but only the selected server is mounted; select
+	// whichever server an anchor points at so its section exists for the settle-scroll to land on. Live navigations always
+	// win; the page-load fragment is applied only once (once its server has streamed in), so it can't later clobber a
+	// manual selection when the server list updates.
+	const initialAnchorSelected = React.useRef(false)
+	React.useEffect(() => {
+		const selectFromAnchor = (id: string) => {
+			const serverId = SettingsNav.serverForAnchor(id)
+			if (serverId && serverId !== NEW_SERVER_SELECTION && servers.some((s) => s.id === serverId)) setSelected(serverId)
+		}
+		if (!initialAnchorSelected.current) {
+			const anchor = SettingsNav.currentAnchor()
+			const serverId = anchor && SettingsNav.serverForAnchor(anchor)
+			if (serverId && serverId !== NEW_SERVER_SELECTION && servers.some((s) => s.id === serverId)) {
+				setSelected(serverId)
+				initialAnchorSelected.current = true
+			}
+		}
+		return SettingsNav.onAnchorNavigate(selectFromAnchor)
+	}, [servers])
+
 	async function handleDelete(server: PublicServer) {
 		const result = await openDialog({
 			title: 'Delete Server',
@@ -472,28 +493,34 @@ function ServersSection(
 			/>
 			<div className="min-w-0">
 				{creating && newServerKey
-					? <CreateServerSection stores={{ settingsEditor: newServerKey }} onCancel={onCancelCreate} />
+					? (
+						<div id={`section:server:${NEW_SERVER_SELECTION}`} className="scroll-mt-2">
+							<CreateServerSection stores={{ settingsEditor: newServerKey }} onCancel={onCancelCreate} />
+						</div>
+					)
 					: selectedServer && serverKey
 					? (
-						<ServerSettingsSection
-							server={selectedServer}
-							stores={{ settingsEditor: serverKey }}
-							lifecycle={
-								<ServerLifecycleControls
-									server={selectedServer}
-									state={lifecycleState(selectedServer, inflight)}
-									busy={busy}
-									canManage={canManage}
-									canDelete={!deleteServersDenied}
-									onToggle={() =>
-										selectedServer.enabled
-											? disableMutation.mutate({ serverId: selectedServer.id })
-											: enableMutation.mutate({ serverId: selectedServer.id })}
-									onSetDefault={() => setDefaultMutation.mutate({ serverId: selectedServer.id })}
-									onDelete={() => handleDelete(selectedServer)}
-								/>
-							}
-						/>
+						<div id={`section:server:${selectedServer.id}`} className="scroll-mt-2">
+							<ServerSettingsSection
+								server={selectedServer}
+								stores={{ settingsEditor: serverKey }}
+								lifecycle={
+									<ServerLifecycleControls
+										server={selectedServer}
+										state={lifecycleState(selectedServer, inflight)}
+										busy={busy}
+										canManage={canManage}
+										canDelete={!deleteServersDenied}
+										onToggle={() =>
+											selectedServer.enabled
+												? disableMutation.mutate({ serverId: selectedServer.id })
+												: enableMutation.mutate({ serverId: selectedServer.id })}
+										onSetDefault={() => setDefaultMutation.mutate({ serverId: selectedServer.id })}
+										onDelete={() => handleDelete(selectedServer)}
+									/>
+								}
+							/>
+						</div>
 					)
 					: <p className="text-sm text-muted-foreground">Select a server to configure it.</p>}
 			</div>
