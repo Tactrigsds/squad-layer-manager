@@ -12,86 +12,96 @@ All settings are optionally editable via a built-in JSON editor.
 
 Multiple squad servers can be hooked up to a single SLM instance. Click the "Add Server" button to start setting up a new server.
 
-Doing so requires RCON connection details, and a log source.
-There are 3 potential log sources:
+Each server uses one of three connection modes:
 
-- local file - this one assumes that you have your squad server's logs directly mounted to SLM's docker container. This option gives you the least latency for SLM's event processing.
-- log agent - Run a small agent on your squad server's machine that streams log entries to SLM over a websocket. Best when SLM runs somewhere other than the game host. See below.
-- sftp - SFTP connection to the server's log file. Will poll periodically for new log entries. Works fine with PSG-hosted squad servers where you can't run an agent.
+- local - assumes SLM shares the box with the squad server: it reads the `SquadGame.log` directly and dials RCON directly. Lowest latency for SLM's event processing. Needs a log file path and RCON details.
+- sftp - SLM is remote: it tails the log file over SFTP (polling periodically) and dials RCON directly over the network. Works fine with PSG-hosted squad servers where you can't run an agent. Needs SFTP details and RCON details.
+- server agent - Run the small [server agent](#server-agent) on the game host. It handles both the log stream and RCON, so SLM never holds the RCON password and never needs to reach the RCON port. Best when SLM runs somewhere other than the game host. Needs only a shared token here.
 
-### Log Agent
+### Server Agent
 
-When you pick the "log agent" source, you can choose or generate a secret token for the log agent to authenticate with. The agent connects to SLM's normal url (the same `ORIGIN` you serve the app on) at the `/log-agent` path - If SLM is served over https, use
+When you pick the "server agent" mode, you can choose or generate a secret token for the agent to authenticate with. The agent connects to SLM's normal url (the same `ORIGIN` you serve the app on) at the `/server-agent` path - If SLM is served over https, use
 `wss://`; over plain http, use `ws://`.
 
-The agent ([log-agent/agent](../log-agent/agent), a small rust program) tails the server's `SquadGame.log`
-and streams new lines as they are written. It resumes on its own if the connection drops. There are three
-ways to run it.
+The agent ([server-agent/agent](../server-agent/agent), a small rust program) runs next to the squad server. It tails the server's `SquadGame.log` and streams new lines as they are written, and it proxies RCON: it holds the RCON password itself, authenticates to the local RCON port, and tunnels the connection to SLM. That way the RCON password stays on the game host and the RCON port never has to be exposed to SLM. It resumes on its own if the connection drops. There are three ways to run it.
+
+The RCON proxy is opt-in: supply the agent with `--rcon-host` / `--rcon-port` / `--rcon-password` (or the SquadJS plugin's `rcon*` options) to enable it. Omit all three to run the agent logs-only.
 
 #### SquadJS plugin
 
-If you already run SquadJS, drop [log-agent/squadjs-plugin.js](../log-agent/squadjs-plugin.js) into your
+If you already run SquadJS, drop [server-agent/squadjs-plugin.js](../server-agent/squadjs-plugin.js) into your
 SquadJS plugins directory and add it to the `plugins` array in your SquadJS `config.json`. It downloads the
-matching agent binary and launches it detached, so the agent keeps streaming even if SquadJS restarts or
-crashes.
+matching agent binary and launches it detached, so the agent keeps working even if SquadJS restarts or
+crashes. The `rcon*` options default to SquadJS's own rcon config, so the RCON proxy usually needs no extra
+setup.
 
 ```json
 {
-	"plugin": "SLMLogAgent",
+	"plugin": "SLMServerAgent",
 	"enabled": true,
-	"url": "wss://slm.example.com/log-agent",
+	"url": "wss://slm.example.com/server-agent",
 	"slmServerId": "<your-slm-server-id>",
-	"token": "<log-receiver-token>"
+	"token": "<server-agent-token>"
 }
 ```
 
-| Option        | Required | Default              | Description                                                                     |
-| ------------- | -------- | -------------------- | ------------------------------------------------------------------------------- |
-| `url`         | yes      |                      | SLM log-agent websocket url, e.g. `wss://slm.example.com/log-agent`             |
-| `slmServerId` | yes      |                      | This server's id as configured in SLM                                           |
-| `token`       | yes      |                      | The log-receiver token for this server (SLM server settings, Log Source)        |
-| `insecure`    | no       | `false`              | Skip TLS certificate verification (self-signed / IP-only certs)                 |
-| `binaryPath`  | no       | download release     | Path to an existing `slm-log-agent` binary instead of downloading one           |
-| `binDir`      | no       | OS temp dir          | Directory to cache the downloaded agent binary in                               |
-| `pidFile`     | no       | per-server temp path | PID file used to detect an already-running agent                                |
-| `logFile`     | no       | per-server temp path | File the agent appends its own logs to (shown in SquadJS at verbose level 1)    |
-| `killOnExit`  | no       | `false`              | Kill the agent when the plugin unmounts (off, so it survives a SquadJS restart) |
+| Option         | Required | Default                  | Description                                                                     |
+| -------------- | -------- | ------------------------ | ------------------------------------------------------------------------------- |
+| `url`          | yes      |                          | SLM server-agent websocket url, e.g. `wss://slm.example.com/server-agent`       |
+| `slmServerId`  | yes      |                          | This server's id as configured in SLM                                           |
+| `token`        | yes      |                          | The server-agent token for this server (SLM server settings, Connections)       |
+| `rconHost`     | no       | SquadJS host / 127.0.0.1 | RCON host to proxy. Set empty to disable the RCON proxy (logs-only)             |
+| `rconPort`     | no       | SquadJS rcon port        | RCON port to proxy                                                              |
+| `rconPassword` | no       | SquadJS rcon password    | RCON password (stays on the game host, never sent to SLM)                       |
+| `insecure`     | no       | `false`                  | Skip TLS certificate verification (self-signed / IP-only certs)                 |
+| `binaryPath`   | no       | download release         | Path to an existing `slm-server-agent` binary instead of downloading one        |
+| `binDir`       | no       | OS temp dir              | Directory to cache the downloaded agent binary in                               |
+| `pidFile`      | no       | per-server temp path     | PID file used to detect an already-running agent                                |
+| `logFile`      | no       | per-server temp path     | File the agent appends its own logs to (shown in SquadJS at verbose level 1)    |
+| `killOnExit`   | no       | `false`                  | Kill the agent when the plugin unmounts (off, so it survives a SquadJS restart) |
 
 #### Standalone binary
 
 Download the binary for your platform from the
-[releases page](https://github.com/Tactrigsds/squad-layer-manager/releases) (tags named `log-agent-v*`) and
+[releases page](https://github.com/Tactrigsds/squad-layer-manager/releases) (tags named `server-agent-v*`) and
 run it as a service:
 
 ```sh
-slm-log-agent --url wss://slm.example.com/log-agent --server-id <id> --token <token> --file /path/to/SquadGame.log
+slm-server-agent --url wss://slm.example.com/server-agent --server-id <id> --token <token> --file /path/to/SquadGame.log \
+  --rcon-host 127.0.0.1 --rcon-port 21114 --rcon-password <rcon-password>
 ```
 
 #### Docker
 
-Run the published image, `ghcr.io/tactrigsds/slm-log-agent:latest`, configured through env vars, mounting
+Run the published image, `ghcr.io/tactrigsds/slm-server-agent:latest`, configured through env vars, mounting
 the server's log directory read-only:
 
 ```sh
 docker run -d --restart unless-stopped \
   -v /path/to/SquadGame/Saved/Logs:/logs:ro \
-  -e SLM_URL=wss://slm.example.com/log-agent -e SLM_SERVER_ID=<id> -e SLM_TOKEN=<token> \
+  -e SLM_URL=wss://slm.example.com/server-agent -e SLM_SERVER_ID=<id> -e SLM_TOKEN=<token> \
   -e SLM_LOG_PATH=/logs/SquadGame.log \
-  ghcr.io/tactrigsds/slm-log-agent:latest
+  -e SLM_RCON_HOST=<rcon-host> -e SLM_RCON_PORT=<rcon-port> -e SLM_RCON_PASSWORD=<rcon-password> \
+  ghcr.io/tactrigsds/slm-server-agent:latest
 ```
 
 Both the standalone binary and the Docker image take the same settings, as either a flag or an env var:
 
-| Flag             | Env var            | Required | Default | Description                                                              |
-| ---------------- | ------------------ | -------- | ------- | ------------------------------------------------------------------------ |
-| `--url`          | `SLM_URL`          | yes      |         | SLM websocket url, e.g. `wss://slm.example.com/log-agent`                |
-| `--server-id`    | `SLM_SERVER_ID`    | yes      |         | Server id as configured in SLM                                           |
-| `--token`        | `SLM_TOKEN`        | yes      |         | The log-receiver token for that server                                   |
-| `--file`         | `SLM_LOG_PATH`     | yes      |         | Path to `SquadGame.log`                                                  |
-| `--reconnect-ms` | `SLM_RECONNECT_MS` | no       | `5000`  | Delay between reconnect attempts, in milliseconds                        |
-| `--poll-ms`      | `SLM_POLL_MS`      | no       | `1000`  | How often to check the log for new data, in milliseconds                 |
-| `--log-file`     | `SLM_AGENT_LOG`    | no       |         | Also append the agent's own logs to this file                            |
-| `--insecure`     | `SLM_INSECURE=1`   | no       | off     | Do not verify the server's TLS certificate (self-signed / IP-only certs) |
+| Flag              | Env var             | Required | Default | Description                                                              |
+| ----------------- | ------------------- | -------- | ------- | ------------------------------------------------------------------------ |
+| `--url`           | `SLM_URL`           | yes      |         | SLM websocket url, e.g. `wss://slm.example.com/server-agent`             |
+| `--server-id`     | `SLM_SERVER_ID`     | yes      |         | Server id as configured in SLM                                           |
+| `--token`         | `SLM_TOKEN`         | yes      |         | The server-agent token for that server                                   |
+| `--file`          | `SLM_LOG_PATH`      | yes      |         | Path to `SquadGame.log`                                                  |
+| `--rcon-host`     | `SLM_RCON_HOST`     | no\*     |         | Local RCON host to proxy (usually `127.0.0.1`)                           |
+| `--rcon-port`     | `SLM_RCON_PORT`     | no\*     |         | Local RCON port                                                          |
+| `--rcon-password` | `SLM_RCON_PASSWORD` | no\*     |         | RCON password (stays on the game host, never sent to SLM)                |
+| `--reconnect-ms`  | `SLM_RECONNECT_MS`  | no       | `5000`  | Delay between reconnect attempts, in milliseconds                        |
+| `--poll-ms`       | `SLM_POLL_MS`       | no       | `1000`  | How often to check the log for new data, in milliseconds                 |
+| `--log-file`      | `SLM_AGENT_LOG`     | no       |         | Also append the agent's own logs to this file                            |
+| `--insecure`      | `SLM_INSECURE=1`    | no       | off     | Do not verify the server's TLS certificate (self-signed / IP-only certs) |
+
+\* The three `--rcon-*` options are all-or-nothing: supply all three to enable the RCON proxy, or none to run logs-only.
 
 ## Permissions
 

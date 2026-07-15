@@ -6,7 +6,7 @@ import * as Cli from '../systems/cli.server.ts'
 import * as Env from './env.ts'
 import { initModule } from './logger.ts'
 
-// Symmetric encryption for secrets we persist (currently the RCON/SFTP passwords and log-agent token in a
+// Symmetric encryption for secrets we persist (currently the RCON/SFTP passwords and server-agent token in a
 // server's connection settings). Values are stored as a self-describing envelope so we can tell an encrypted
 // value from a legacy plaintext one, and version the scheme if it ever changes.
 //

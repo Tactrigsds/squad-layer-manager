@@ -21,9 +21,9 @@ import * as MatchHistory from '@/systems/match-history.server'
 import * as Metrics from '@/systems/metrics.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
 import * as Rbac from '@/systems/rbac.server'
+import * as ServerAgent from '@/systems/server-agent.server'
 import * as Sessions from '@/systems/sessions.server'
 import * as Settings from '@/systems/settings.server'
-import * as SquadLogsReceiver from '@/systems/squad-logs-receiver.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Teamswaps from '@/systems/teamswaps.server'
@@ -96,7 +96,7 @@ await C.spanOp('main', { module }, async () => {
 	await Settings.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 	// after Settings.setup so GLOBAL_SETTINGS.layerTable exists; also subscribes to settings changes to re-push
 	Config.setup()
-	await SquadLogsReceiver.setup()
+	await ServerAgent.setup()
 	// detect (before this instance's APP_STARTED is persisted) whether we came up via a restart-slm command, so the
 	// per-server "SLM started/restarted" admin warn (sent during SquadServer.setup) can name who restarted it
 	await AppEventsSys.detectRestartAtBoot(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))

@@ -1,17 +1,17 @@
-name: Log Agent Release
+name: Server Agent Release
 
-# Builds the rust log agent (log-agent/agent), attaches per-platform binaries to the GitHub release for the
-# tag (the squadjs plugin downloads these by name) and publishes the Docker image to GHCR. Tag a release as
-# `log-agent-v<version>` (matching the version in log-agent/agent/Cargo.toml) to publish it.
+# Builds the rust server agent (server-agent/agent), attaches per-platform binaries to the GitHub release for
+# the tag (the squadjs plugin downloads these by name) and publishes the Docker image to GHCR. Tag a release as
+# `server-agent-v<version>` (matching the version in server-agent/agent/Cargo.toml) to publish it.
 
 on:
   push:
     tags:
-      - "log-agent-v*"
+      - "server-agent-v*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "existing log-agent-v* tag to build and upload to"
+        description: "existing server-agent-v* tag to build and upload to"
         required: true
 
 permissions:
@@ -25,14 +25,14 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
-            asset: slm-log-agent-x86_64-unknown-linux-musl
+            asset: slm-server-agent-x86_64-unknown-linux-musl
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            asset: slm-log-agent-x86_64-pc-windows-msvc.exe
+            asset: slm-server-agent-x86_64-pc-windows-msvc.exe
     runs-on: ${{ matrix.os }}
     defaults:
       run:
-        working-directory: log-agent/agent
+        working-directory: server-agent/agent
     steps:
       - uses: actions/checkout@v4
 
@@ -49,27 +49,27 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: log-agent/agent
+          workspaces: server-agent/agent
 
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Stage asset (unix)
         if: matrix.os != 'windows-latest'
-        run: cp target/${{ matrix.target }}/release/slm-log-agent ../${{ matrix.asset }}
+        run: cp target/${{ matrix.target }}/release/slm-server-agent ../${{ matrix.asset }}
 
       - name: Stage asset (windows)
         if: matrix.os == 'windows-latest'
-        run: cp target/${{ matrix.target }}/release/slm-log-agent.exe ../${{ matrix.asset }}
+        run: cp target/${{ matrix.target }}/release/slm-server-agent.exe ../${{ matrix.asset }}
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          files: log-agent/${{ matrix.asset }}
+          files: server-agent/${{ matrix.asset }}
 
   # Publishes the agent's Docker image to GHCR so end users can `docker run` it instead of building it.
-  # Tags it with the release version (log-agent-v<version> -> <version>) and `latest`.
+  # Tags it with the release version (server-agent-v<version> -> <version>) and `latest`.
   docker:
     runs-on: ubuntu-latest
     permissions:
@@ -83,8 +83,8 @@ jobs:
         run: |
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           TAG_NAME="${{ github.event.inputs.tag || github.ref_name }}"
-          VERSION="${TAG_NAME#log-agent-v}"
-          IMAGE="ghcr.io/$OWNER/slm-log-agent"
+          VERSION="${TAG_NAME#server-agent-v}"
+          IMAGE="ghcr.io/$OWNER/slm-server-agent"
           echo "TAGS=$IMAGE:$VERSION,$IMAGE:latest" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
@@ -100,7 +100,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: log-agent/agent
+          context: server-agent/agent
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max

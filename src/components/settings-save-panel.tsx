@@ -15,7 +15,7 @@ import React from 'react'
 // new-server form). Sections are settings-editor frame instances; the panel derives everything it shows straight from
 // their stores, and commits every dirty GUI-mode section on Save (JSON mode keeps its own inline toolbar).
 
-// secrets (rcon/sftp passwords, log-receiver token) must not be shown in plain text in the save confirmation. Redact by
+// secrets (rcon/sftp passwords, server-agent token) must not be shown in plain text in the save confirmation. Redact by
 // key name so it also covers object-level diffs (e.g. the whole `connections` object added when creating a server).
 const SENSITIVE_KEYS = new Set(['password', 'token', 'secret'])
 const MASK = '••••••••'

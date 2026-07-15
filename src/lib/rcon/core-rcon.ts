@@ -19,6 +19,64 @@ export type DecodedPacket = {
 	body: string
 }
 
+// Rcon owns all Source-protocol framing/reassembly and speaks to the game server through a transport, which is
+// just a byte pipe plus connection lifecycle. Two implementations exist: a direct TCP socket (DirectSocketTransport,
+// below), and a tunnel over the server-agent WebSocket (AgentTunnelTransport, in server-agent.server.ts). The latter
+// keeps the RCON password off SLM entirely: the agent authenticates to localhost RCON itself and hands us an
+// already-authenticated byte stream.
+export type RconTransportHandlers = {
+	// underlying link established. For a self-authenticating transport this is when Rcon sends the Source auth packet.
+	onConnect(): void
+	onData(data: Buffer): void
+	onClose(): void
+	onError(err: Error): void
+	// the link is authenticated and usable WITHOUT Rcon driving the auth handshake (the transport did it). Maps to
+	// the same readiness signal as the direct path's auth echo.
+	onReady(): void
+}
+
+export interface RconTransport {
+	// host:port (or an agent label) for logging
+	readonly label: string
+	// when set, Rcon performs the Source auth handshake on connect using this password (direct path). When undefined,
+	// the transport delivers an already-authenticated stream and signals readiness via onReady (tunnel path).
+	readonly authPassword?: string
+	connect(handlers: RconTransportHandlers): void
+	write(buf: Buffer): void
+	readonly writable: boolean
+	destroy(): void
+}
+
+export class DirectSocketTransport implements RconTransport {
+	private client: net.Socket | null = null
+	readonly label: string
+	readonly authPassword: string
+	constructor(private settings: SETTINGS.RconConnection) {
+		for (const option of ['host', 'port', 'password'] as const) {
+			if (!(option in settings)) throw new Error(`${option} must be specified.`)
+		}
+		this.label = `${settings.host}:${settings.port}`
+		this.authPassword = settings.password
+	}
+	connect(handlers: RconTransportHandlers): void {
+		this.client = net
+			.createConnection({ port: this.settings.port, host: this.settings.host }, () => handlers.onConnect())
+			.on('data', (data) => handlers.onData(data))
+			.on('end', () => handlers.onClose())
+			.on('error', (error) => handlers.onError(error))
+	}
+	write(buf: Buffer): void {
+		this.client?.write(buf.toString('binary'), 'binary')
+	}
+	get writable(): boolean {
+		return this.client?.writable ?? false
+	}
+	destroy(): void {
+		this.client?.destroy()
+		this.client = null
+	}
+}
+
 const module = initModule('core-rcon')
 let log!: CS.Logger
 
@@ -53,8 +111,7 @@ type Events = {
 
 export default class Rcon extends EventEmitter<Events> {
 	serverId: string
-	private settings: SETTINGS.ServerConnection['rcon']
-	private client: net.Socket | null
+	private transport: RconTransport
 	private stream: Buffer
 	private type: {
 		auth: number
@@ -73,14 +130,10 @@ export default class Rcon extends EventEmitter<Events> {
 	private msgId: number
 	private responseString: { id: number; body: string }
 
-	constructor(options: { serverId: string; settings: SETTINGS.ServerConnection['rcon']; autoReconnectDelay?: number }) {
+	constructor(options: { serverId: string; transport: RconTransport; autoReconnectDelay?: number }) {
 		super()
-		for (const option of ['host', 'port', 'password']) {
-			if (!(option in options.settings)) throw new Error(`${option} must be specified.`)
-		}
 		this.serverId = options.serverId
-		this.settings = options.settings
-		this.client = null
+		this.transport = options.transport
 		this.stream = Buffer.alloc(0)
 		this.type = { auth: 0x03, command: 0x02, response: 0x00, server: 0x01 }
 		this.soh = { size: 7, id: 0, type: this.type.response, body: '' }
@@ -92,13 +145,11 @@ export default class Rcon extends EventEmitter<Events> {
 	ensureConnectedSub?: Rx.Subscription
 	ensureConnected() {
 		if (this.ensureConnectedSub) return
-		const connect = () => {
-		}
 		const sub = new Rx.Subscription()
 		this.ensureConnectedSub = sub
 		sub.add(
 			Rx.fromEvent(this, 'auth').subscribe(() => {
-				log.info('RCON Connected to: %s', `${this.settings.host}:${this.settings.port}`)
+				log.info('RCON Connected to: %s', this.transport.label)
 				this.connected$.next(true)
 			}),
 		)
@@ -112,14 +163,19 @@ export default class Rcon extends EventEmitter<Events> {
 					return Rx.concat(Rx.of(1), Rx.interval(this.autoReconnectDelay))
 				}),
 			).subscribe(() => {
-				log.info('Attempting to connect to RCON: %s', `${this.settings.host}:${this.settings.port}`)
-				this.client?.destroy()
-				this.client = net
-					.createConnection({ port: this.settings.port, host: this.settings.host }, () => this.#sendAuth())
-					.on('data', (data) => this.#onData(data))
-					.on('end', () => this.#onClose())
-					.on('error', (error) => this.#onNetError(error))
-				connect()
+				log.info('Attempting to connect to RCON: %s', this.transport.label)
+				this.transport.destroy()
+				this.transport.connect({
+					// direct: TCP connected, send the Source auth packet. tunnel: no-op (the agent authenticates itself).
+					onConnect: () => {
+						if (this.transport.authPassword !== undefined) this.#sendAuth()
+					},
+					onData: (data) => this.#onData(data),
+					onClose: () => this.#onClose(),
+					onError: (error) => this.#onNetError(error),
+					// tunnel readiness: the agent authenticated to local RCON. Same signal as the direct auth echo.
+					onReady: () => this.emit('auth'),
+				})
 			}),
 		)
 	}
@@ -130,11 +186,11 @@ export default class Rcon extends EventEmitter<Events> {
 	}
 
 	disconnect() {
-		log.info('Disconnecting from: %s', `${this.settings.host}:${this.settings.port}`)
+		log.info('Disconnecting from: %s', this.transport.label)
 		this.removeAllListeners()
 		this.ensureConnectedSub?.unsubscribe()
 		this.ensureConnectedSub = undefined
-		this.client?.destroy()
+		this.transport.destroy()
 		this.connected$.next(false)
 		this.connected$.unsubscribe()
 	}
@@ -183,9 +239,9 @@ export default class Rcon extends EventEmitter<Events> {
 				recordOutcome('error')
 				return { code: 'err:rcon' as const, msg: "Couldn't establish connection with server" }
 			}
-			if (!this.client?.writable) {
+			if (!this.transport.writable) {
 				recordOutcome('error')
-				return { code: 'err:rcon' as const, msg: 'Unable to write to node:net socket.' }
+				return { code: 'err:rcon' as const, msg: 'Unable to write to RCON transport.' }
 			}
 			const length = Buffer.from(body).length
 			if (length > SM.RCON_MAX_BUF_LEN) {
@@ -206,9 +262,10 @@ export default class Rcon extends EventEmitter<Events> {
 	)
 
 	#sendAuth(): void {
-		log.trace(`Sending Token to: ${this.settings.host}:${this.settings.port}`)
-		log.trace(`Writing packet with type "${this.type.auth}" and body "${this.settings.password}".`)
-		this.#writeBuf(this.#encode(this.type.auth, 2147483647, this.settings.password))
+		const password = this.transport.authPassword
+		if (password === undefined) return
+		log.trace(`Sending auth to: ${this.transport.label}`)
+		this.#writeBuf(this.#encode(this.type.auth, 2147483647, password))
 	}
 
 	#send(body: string, id = 99): void {
@@ -229,7 +286,7 @@ export default class Rcon extends EventEmitter<Events> {
 			[ATTRS.SquadServer.ID]: this.serverId,
 			[ATTRS.IO.DIRECTION]: 'sent' satisfies ATTRS.IO.Direction,
 		})
-		this.client?.write(buf.toString('binary'), 'binary')
+		this.transport.write(buf)
 	}
 
 	#encode(type: number, id: number, body = ''): Buffer {

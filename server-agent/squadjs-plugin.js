@@ -5,21 +5,21 @@ import os from 'os'
 import path from 'path'
 import BasePlugin from './base-plugin.js'
 
-// The agent binary this plugin version expects. Must match a published `log-agent-v<version>` release
-// (see .github/workflows/log-agent.yml) and log-agent/agent/Cargo.toml.
-const AGENT_VERSION = '0.1.0'
+// The agent binary this plugin version expects. Must match a published `server-agent-v<version>` release
+// (see .github/workflows/server-agent.yml) and server-agent/agent/Cargo.toml.
+const AGENT_VERSION = '0.2.0'
 const RELEASE_REPO = 'Tactrigsds/squad-layer-manager'
 
 // Release asset name for the current platform. Matches the workflow's matrix.
 function assetName() {
-	if (process.platform === 'linux' && process.arch === 'x64') return 'slm-log-agent-x86_64-unknown-linux-musl'
-	if (process.platform === 'win32' && process.arch === 'x64') return 'slm-log-agent-x86_64-pc-windows-msvc.exe'
-	throw new Error(`no prebuilt slm-log-agent for ${process.platform}/${process.arch}; build it from source and set binaryPath`)
+	if (process.platform === 'linux' && process.arch === 'x64') return 'slm-server-agent-x86_64-unknown-linux-musl'
+	if (process.platform === 'win32' && process.arch === 'x64') return 'slm-server-agent-x86_64-pc-windows-msvc.exe'
+	throw new Error(`no prebuilt slm-server-agent for ${process.platform}/${process.arch}; build it from source and set binaryPath`)
 }
 
 function httpGet(url) {
 	return new Promise((resolve, reject) => {
-		https.get(url, { headers: { 'User-Agent': 'slm-log-agent-plugin' } }, resolve).on('error', reject)
+		https.get(url, { headers: { 'User-Agent': 'slm-server-agent-plugin' } }, resolve).on('error', reject)
 	})
 }
 
@@ -45,10 +45,12 @@ function pipeToFile(res, dest) {
 	})
 }
 
-export default class SLMLogAgent extends BasePlugin {
+export default class SLMServerAgent extends BasePlugin {
 	static get description() {
-		return "Streams this server's logs to Squad Layer Manager via the slm-log-agent (https://github.com/Tactrigsds/squad-layer-manager). "
-			+ 'The agent runs detached so it keeps streaming even if SquadJS restarts or crashes.'
+		return "Streams this server's logs to Squad Layer Manager and proxies its RCON via the slm-server-agent "
+			+ '(https://github.com/Tactrigsds/squad-layer-manager). The agent runs detached so it keeps working even if '
+			+ 'SquadJS restarts or crashes. RCON is proxied only when all three rcon* options resolve (from these options '
+			+ "or SquadJS's own rcon config); otherwise the agent runs logs-only."
 	}
 
 	static get defaultEnabled() {
@@ -59,7 +61,7 @@ export default class SLMLogAgent extends BasePlugin {
 		return {
 			url: {
 				required: true,
-				description: 'SLM log-agent websocket url, e.g. wss://slm.example.com/log-agent',
+				description: 'SLM server-agent websocket url, e.g. wss://slm.example.com/server-agent',
 			},
 			slmServerId: {
 				required: true,
@@ -67,22 +69,37 @@ export default class SLMLogAgent extends BasePlugin {
 			},
 			token: {
 				required: true,
-				description: 'The log-receiver token for this server (SLM server settings -> Log Source)',
+				description: 'The server-agent token for this server (SLM server settings -> Connections)',
 			},
 			insecure: {
 				required: false,
 				description: 'Skip TLS certificate verification (self-signed / IP-only certs)',
 				default: false,
 			},
+			rconHost: {
+				required: false,
+				description: "RCON host to proxy. Defaults to SquadJS's rcon host, else 127.0.0.1. Set empty to disable the rcon proxy.",
+				default: null,
+			},
+			rconPort: {
+				required: false,
+				description: "RCON port to proxy. Defaults to SquadJS's rcon port.",
+				default: null,
+			},
+			rconPassword: {
+				required: false,
+				description: "RCON password (stays on this host, never sent to SLM). Defaults to SquadJS's rcon password.",
+				default: null,
+			},
 			binaryPath: {
 				required: false,
-				description: 'Path to an existing slm-log-agent binary. If unset, the matching release is downloaded.',
+				description: 'Path to an existing slm-server-agent binary. If unset, the matching release is downloaded.',
 				default: null,
 			},
 			binDir: {
 				required: false,
 				description: 'Directory to cache the downloaded agent binary in',
-				default: path.join(os.tmpdir(), 'slm-log-agent'),
+				default: path.join(os.tmpdir(), 'slm-server-agent'),
 			},
 			pidFile: {
 				required: false,
@@ -109,11 +126,22 @@ export default class SLMLogAgent extends BasePlugin {
 	}
 
 	get pidFile() {
-		return this.options.pidFile || path.join(os.tmpdir(), `slm-log-agent-${this.options.slmServerId}.pid`)
+		return this.options.pidFile || path.join(os.tmpdir(), `slm-server-agent-${this.options.slmServerId}.pid`)
 	}
 
 	get logFilePath() {
-		return this.options.logFile || path.join(os.tmpdir(), `slm-log-agent-${this.options.slmServerId}.log`)
+		return this.options.logFile || path.join(os.tmpdir(), `slm-server-agent-${this.options.slmServerId}.log`)
+	}
+
+	// resolve the rcon proxy config from plugin options, falling back to SquadJS's own rcon config. Returns null
+	// (proxy disabled, agent runs logs-only) if the host is explicitly blanked or no password can be found.
+	resolveRcon() {
+		const host = this.options.rconHost ?? this.server?.options?.rconHost ?? '127.0.0.1'
+		if (host === '') return null
+		const port = this.options.rconPort ?? this.server?.options?.rconPort
+		const password = this.options.rconPassword ?? this.server?.options?.rconPassword
+		if (port == null || password == null || password === '') return null
+		return { host, port, password }
 	}
 
 	async mount() {
@@ -122,7 +150,7 @@ export default class SLMLogAgent extends BasePlugin {
 		// already running from a previous SquadJS run? leave it be -- that is the whole point of detaching.
 		const existingPid = this.readPid()
 		if (existingPid !== null && this.isAlive(existingPid)) {
-			this.verbose(1, `slm-log-agent already running (pid ${existingPid})`)
+			this.verbose(1, `slm-server-agent already running (pid ${existingPid})`)
 			this.startTailingAgentLog()
 			if (this.options.killOnExit) this.cleanup.push(() => this.killAgent(existingPid))
 			return
@@ -144,8 +172,16 @@ export default class SLMLogAgent extends BasePlugin {
 			this.logFilePath,
 		]
 		if (this.options.insecure) args.push('--insecure')
+		const rcon = this.resolveRcon()
+		if (rcon) {
+			args.push('--rcon-host', String(rcon.host), '--rcon-port', String(rcon.port), '--rcon-password', String(rcon.password))
+		} else {
+			this.verbose(1, 'no rcon config resolved; agent will run logs-only')
+		}
 
-		this.verbose(1, `starting slm-log-agent: ${binary} ${args.join(' ')}`)
+		// avoid logging the rcon password on the args line
+		const safeArgs = args.map((a, i) => (args[i - 1] === '--rcon-password' ? '***' : a))
+		this.verbose(1, `starting slm-server-agent: ${binary} ${safeArgs.join(' ')}`)
 
 		// detached + unref + stdio ignore: the agent lives in its own process group and keeps running if
 		// SquadJS exits or crashes. Its own logs go to logFilePath via --log-file.
@@ -158,7 +194,7 @@ export default class SLMLogAgent extends BasePlugin {
 		child.unref()
 
 		if (child.pid) this.writePid(child.pid)
-		this.verbose(1, `slm-log-agent started (pid ${child.pid})`)
+		this.verbose(1, `slm-server-agent started (pid ${child.pid})`)
 
 		this.startTailingAgentLog()
 		if (this.options.killOnExit && child.pid) this.cleanup.push(() => this.killAgent(child.pid))
@@ -187,8 +223,8 @@ export default class SLMLogAgent extends BasePlugin {
 		if (existsSync(dest)) return dest
 
 		mkdirSync(dir, { recursive: true })
-		const url = `https://github.com/${RELEASE_REPO}/releases/download/log-agent-v${AGENT_VERSION}/${asset}`
-		this.verbose(1, `downloading slm-log-agent ${AGENT_VERSION} from ${url}`)
+		const url = `https://github.com/${RELEASE_REPO}/releases/download/server-agent-v${AGENT_VERSION}/${asset}`
+		this.verbose(1, `downloading slm-server-agent ${AGENT_VERSION} from ${url}`)
 		const tmp = `${dest}.download`
 		await this.download(url, tmp)
 		if (process.platform !== 'win32') {
@@ -197,7 +233,7 @@ export default class SLMLogAgent extends BasePlugin {
 		}
 		const { renameSync } = await import('fs')
 		renameSync(tmp, dest)
-		this.verbose(1, `slm-log-agent downloaded to ${dest}`)
+		this.verbose(1, `slm-server-agent downloaded to ${dest}`)
 		return dest
 	}
 
@@ -246,7 +282,7 @@ export default class SLMLogAgent extends BasePlugin {
 	}
 
 	killAgent(pid) {
-		this.verbose(1, `stopping slm-log-agent (pid ${pid})`)
+		this.verbose(1, `stopping slm-server-agent (pid ${pid})`)
 		try {
 			process.kill(pid, 'SIGTERM')
 		} catch {}

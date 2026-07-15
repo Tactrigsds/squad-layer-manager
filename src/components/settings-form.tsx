@@ -235,7 +235,7 @@ function useMessageVars(value$: ValueState): Record<string, string> {
 const FormOptionsContext = React.createContext<{ idPrefix: string }>({ idPrefix: 'setting:' })
 
 // the whole settings document being edited, so a bespoke field can read a sibling it isn't scoped to (e.g. the admin
-// list sftp editor copying connection details from `connections.logs`). Null when unset (e.g. tests).
+// list sftp editor copying connection details from `connections.sftp`). Null when unset (e.g. tests).
 const RootValueContext = React.createContext<ValueState | null>(null)
 
 // the user's write grant over the settings being edited; leaves outside it render dimmed + inert (see LeafField)
@@ -500,16 +500,16 @@ function PasswordField({ value$, reset$, onChange }: OverrideProps) {
 	return <TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric={false} secret placeholder="Password" />
 }
 
-// the log-receiver's shared secret: masked by default, with generate-a-new-token and copy-to-clipboard affordances. The
+// the server-agent's shared secret: masked by default, with generate-a-new-token and copy-to-clipboard affordances. The
 // input is uncontrolled (seeded from value$, debounced upward, re-read on reset$), same as TextInputField.
-function LogReceiverTokenField({ value$, reset$, onChange }: OverrideProps) {
+function ServerAgentTokenField({ value$, reset$, onChange }: OverrideProps) {
 	const ref = React.useRef<HTMLInputElement>(null)
 	const [show, setShow] = React.useState(false)
 	const [copied, setCopied] = React.useState(false)
 	const copiedTimeout = React.useRef<ReturnType<typeof setTimeout>>(null)
 	const push = useDebounced<any>({ delay: DEBOUNCE_MS, onChange })
 	const repoUrl = ZusUtils.useStore(ConfigClient.Store, (s) => s?.repoUrl)
-	const docUrl = repoUrl ? `${repoUrl}/blob/HEAD/docs/CONFIGURING.md#log-agent` : undefined
+	const docUrl = repoUrl ? `${repoUrl}/blob/HEAD/docs/CONFIGURING.md#server-agent` : undefined
 	const format = (v: any) => v === null || v === undefined ? '' : String(v)
 	useReset(reset$, () => {
 		const formatted = format(value$.getValue())
@@ -543,7 +543,7 @@ function LogReceiverTokenField({ value$, reset$, onChange }: OverrideProps) {
 					data-slot="input-group-control"
 					type={show ? 'text' : 'password'}
 					defaultValue={format(value$.getValue())}
-					placeholder="Log receiver token"
+					placeholder="Server agent token"
 					autoComplete="off"
 					spellCheck={false}
 					onChange={(e) => push(e.currentTarget.value)}
@@ -566,10 +566,10 @@ function LogReceiverTokenField({ value$, reset$, onChange }: OverrideProps) {
 				</InputGroupAddon>
 			</InputGroup>
 			<p className="text-xs text-muted-foreground">
-				The log agent authenticates with this token, so treat it like a password.{' '}
+				The server agent authenticates with this token, so treat it like a password.{' '}
 				{docUrl && (
 					<a href={docUrl} target="_blank" rel="noreferrer" className="underline hover:text-foreground">
-						Log agent setup guide
+						Server agent setup guide
 					</a>
 				)}
 			</p>
@@ -1067,8 +1067,8 @@ const EMPTY_ROOT_VALUE$ = new Rx.BehaviorSubject<any>(undefined) as unknown as V
 function AdminListSourcesField({ value$, reset$, onChange }: OverrideProps) {
 	const value = (useFieldValue(value$, reset$) as SM.AdminListSource[] | undefined) ?? []
 	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
-	const logType$ = React.useMemo(() => scopeValue(scopeValue(scopeValue(root$, 'connections'), 'logs'), 'type'), [root$])
-	const canCopyFromLog = useFieldValue(logType$, reset$) === 'sftp'
+	const connType$ = React.useMemo(() => scopeValue(scopeValue(root$, 'connections'), 'type'), [root$])
+	const canCopyFromLog = useFieldValue(connType$, reset$) === 'sftp'
 
 	// `quiet` skips reset$ so an in-flight keystroke in an uncontrolled field isn't clobbered; structural edits (add/remove,
 	// type change) leave it off so the fields re-seed after re-indexing.
@@ -1081,9 +1081,10 @@ function AdminListSourcesField({ value$, reset$, onChange }: OverrideProps) {
 		update((v) => v.map((s, i) => i === idx ? { ...s, ...p } as SM.AdminListSource : s), quiet)
 
 	function copyFromLog(idx: number) {
-		const logs = (root$.getValue() as { connections?: { logs?: any } } | undefined)?.connections?.logs
-		if (!logs || logs.type !== 'sftp') return
-		patch(idx, { host: logs.host, port: logs.port, username: logs.username, password: logs.password })
+		const connections = (root$.getValue() as { connections?: { type?: string; sftp?: any } } | undefined)?.connections
+		if (!connections || connections.type !== 'sftp') return
+		const sftp = connections.sftp
+		patch(idx, { host: sftp.host, port: sftp.port, username: sftp.username, password: sftp.password })
 	}
 
 	return (
@@ -1755,7 +1756,7 @@ function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefin
 	// server settings: the pool configuration reuses the dashboard popover's panels; connection passwords are masked
 	if (path.length === 2 && path[0] === 'queue' && last === 'mainPool') return MainPoolField
 	if (path.length === 2 && path[0] === 'queue' && last === 'generationPool') return GenerationPoolField
-	if (path.length === 3 && path[0] === 'connections' && path[1] === 'logs' && last === 'token') return LogReceiverTokenField
+	if (path.length === 2 && path[0] === 'connections' && last === 'token') return ServerAgentTokenField
 	if (last === 'password') return PasswordField
 	return undefined
 }

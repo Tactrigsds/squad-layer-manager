@@ -28,6 +28,7 @@ import * as m0075 from './0075_rbac_consolidate_per_role'
 import * as m0076 from './0076_player_flag_groupings_restructure'
 import * as m0077 from './0077_sftp_tuning_into_connection'
 import * as m0078 from './0078_admin_list_sources_per_server'
+import * as m0079 from './0079_connection_modes'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -47,4 +48,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0076_player_flag_groupings_restructure', up: m0076.up },
 	{ name: '0077_sftp_tuning_into_connection', up: m0077.up },
 	{ name: '0078_admin_list_sources_per_server', up: m0078.up },
+	{ name: '0079_connection_modes', up: m0079.up },
 ]

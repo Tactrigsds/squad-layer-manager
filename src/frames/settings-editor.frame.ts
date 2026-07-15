@@ -80,8 +80,9 @@ export type Frame = FRM.Frame<Types>
 // prefaulted fields (queue, public settings) are filled in by ServerSettingsSchema at save time.
 export const NEW_SERVER_DRAFT: SETTINGS.ServerSettings = {
 	connections: {
+		type: 'local',
+		logFile: '',
 		rcon: { host: '', port: 21114, password: '' },
-		logs: { type: 'log-receiver', token: 'dev' },
 	},
 	adminListSources: [],
 	adminIdentifyingPermissions: ['canseeadminchat'],

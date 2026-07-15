@@ -1,11 +1,19 @@
-// slm-log-agent: tails a Squad server's SquadGame.log and streams it to Squad Layer Manager over a
-// WebSocket. See ../../src/systems/squad-logs-receiver.server.ts for the other end of the protocol.
+// slm-server-agent: runs on/near a Squad server host and connects out to Squad Layer Manager over a single
+// WebSocket. It handles both of that server's I/O:
+//   - tails SquadGame.log and streams it up
+//   - proxies RCON: it holds the RCON password itself, authenticates to the local RCON port, and tunnels the
+//     already-authenticated byte stream up. SLM never holds the RCON password for an agent-mode server.
+// See ../../src/systems/server-agent.server.ts for the other end of the protocol.
 //
 // Protocol:
-//   1. connect to `wss://<origin>/log-agent` (or ws:// for plaintext)
-//   2. send one text frame: `slm-log-agent@<version>:<serverId>:<token>`
-//   3. expect a `ok` text frame back (any other reply / close means rejected)
-//   4. stream raw log bytes as binary frames, resuming from our own byte offset across reconnects
+//   1. connect to `wss://<origin>/server-agent` (or ws:// for plaintext)
+//   2. send one text frame: `slm-server-agent@<version>:<serverId>:<token>`
+//   3. expect an `ok` text frame back (any other reply / close means rejected)
+//   4. every subsequent frame is BINARY, tagged by its first byte:
+//        0x00 <log bytes>      raw SquadGame.log bytes, resuming from our own byte offset across reconnects
+//        0x01 <rcon bytes>     raw post-auth Source RCON packet bytes, tunnelled to/from local RCON
+//        0x02 <utf8 control>   rcon control we send up: `rcon-ready` | `rcon-error` | `rcon-disconnected`
+//      SLM only ever sends us 0x01 rcon frames (commands for the tunnel).
 //
 // Kept small and dependency-light on purpose: it runs on the game host, next to the server it watches.
 
@@ -15,21 +23,34 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use futures_util::{SinkExt, StreamExt};
 use tokio::fs;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
+use tokio::sync::mpsc;
 use tokio_rustls::rustls::pki_types::ServerName;
 use tokio_rustls::TlsConnector;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 
-const VERSION: &str = "0.1.0";
+const VERSION: &str = "0.2.0";
+
+// binary frame channel tags (first byte of every post-handshake frame)
+const TAG_LOG: u8 = 0x00;
+const TAG_RCON_DATA: u8 = 0x01;
+const TAG_RCON_CONTROL: u8 = 0x02;
 
 // read the file in bounded slices so a big backlog (e.g. first read of a long-disconnected agent) streams
 // as several frames with backpressure between them rather than one giant allocation
 const READ_CHUNK: usize = 64 * 1024;
 
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+
+#[derive(Clone)]
+struct RconConfig {
+    host: String,
+    port: u16,
+    password: String,
+}
 
 struct Config {
     url: String,
@@ -40,6 +61,7 @@ struct Config {
     poll: Duration,
     insecure: bool,
     log_file: Option<String>,
+    rcon: Option<RconConfig>,
 }
 
 fn main() {
@@ -55,12 +77,13 @@ fn main() {
     // that ClientConfig::builder() picks up
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    let logger = Logger::new(cfg.log_file.clone());
+    let logger = Arc::new(Logger::new(cfg.log_file.clone()));
     logger.info(&format!(
-        "starting slm-log-agent@{VERSION} (pid {}) for server {} -> {}",
+        "starting slm-server-agent@{VERSION} (pid {}) for server {} -> {} (rcon proxy: {})",
         std::process::id(),
         cfg.server_id,
-        cfg.url
+        cfg.url,
+        if cfg.rcon.is_some() { "on" } else { "off" },
     ));
 
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -70,7 +93,7 @@ fn main() {
     rt.block_on(run(cfg, logger));
 }
 
-async fn run(cfg: Config, log: Logger) {
+async fn run(cfg: Config, log: Arc<Logger>) {
     // our byte position in the log file. `None` until the first successful stat, at which point we jump to
     // end-of-file so we stream only new lines rather than replaying the whole existing log. It persists
     // across reconnects, so a blip replays exactly what was appended while we were gone.
@@ -108,7 +131,7 @@ async fn run(cfg: Config, log: Logger) {
 
 async fn connect_and_stream(
     cfg: &Config,
-    log: &Logger,
+    log: &Arc<Logger>,
     offset: &mut Option<u64>,
 ) -> Result<(), String> {
     let target = Target::parse(&cfg.url)?;
@@ -147,7 +170,7 @@ async fn connect_and_stream(
 
 async fn drive<S>(
     cfg: &Config,
-    log: &Logger,
+    log: &Arc<Logger>,
     offset: &mut Option<u64>,
     ws: WebSocketStream<S>,
 ) -> Result<(), String>
@@ -159,7 +182,7 @@ where
     // handshake
     write
         .send(Message::Text(format!(
-            "slm-log-agent@{VERSION}:{}:{}",
+            "slm-server-agent@{VERSION}:{}:{}",
             cfg.server_id, cfg.token
         )))
         .await
@@ -178,44 +201,84 @@ where
 
     log.info("connected");
 
-    // drive the read half in the background: it auto-responds to pings (the split halves share the
-    // underlying socket via a lock) and tells us when the server hangs up.
+    // all outbound frames (log + rcon) funnel through one channel drained by a single writer task, so the two
+    // producers never race on the sink. Bounded, so a slow sink applies backpressure to the log pump.
+    let (tx, mut rx) = mpsc::channel::<Message>(64);
+    // SLM -> local RCON bytes, fed by the reader task and consumed by the rcon bridge
+    let (rcon_in_tx, rcon_in_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+
+    let writer = tokio::spawn(async move {
+        while let Some(msg) = rx.recv().await {
+            if write.send(msg).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    // drive the read half: auto-responds to pings (the split halves share the underlying socket via a lock),
+    // demuxes inbound rcon-data frames to the bridge, and tells us when the server hangs up.
     let mut reader = tokio::spawn(async move {
         while let Some(msg) = read.next().await {
             match msg {
+                Ok(Message::Binary(data)) => {
+                    let bytes: &[u8] = &data;
+                    if let Some((&tag, payload)) = bytes.split_first() {
+                        if tag == TAG_RCON_DATA {
+                            let _ = rcon_in_tx.send(payload.to_vec());
+                        }
+                    }
+                }
                 Ok(Message::Close(_)) | Err(_) => break,
                 Ok(_) => {}
             }
         }
     });
 
+    let rcon_task = cfg.rcon.clone().map(|rc| {
+        tokio::spawn(rcon_bridge(rc, tx.clone(), rcon_in_rx, log.clone(), cfg.reconnect))
+    });
+
+    let result = pump_loop(cfg, log, offset, &tx, &mut reader).await;
+
+    // tear down the side tasks so a reconnect starts clean
+    if let Some(h) = rcon_task {
+        h.abort();
+    }
+    writer.abort();
+    reader.abort();
+    result
+}
+
+async fn pump_loop(
+    cfg: &Config,
+    log: &Arc<Logger>,
+    offset: &mut Option<u64>,
+    tx: &mpsc::Sender<Message>,
+    reader: &mut tokio::task::JoinHandle<()>,
+) -> Result<(), String> {
     loop {
         tokio::select! {
             biased;
-            _ = &mut reader => {
-                // server closed or the read side errored; return so the caller reconnects
-                return Ok(());
-            }
-            result = pump_file(cfg, log, offset, &mut write) => {
-                result?;
-            }
+            _ = &mut *reader => return Ok(()),
+            result = pump_file(cfg, log, offset, tx) => { result?; }
         }
 
         tokio::select! {
             biased;
-            _ = &mut reader => return Ok(()),
+            _ = &mut *reader => return Ok(()),
             _ = tokio::time::sleep(cfg.poll) => {}
         }
     }
 }
 
-// reads whatever has been appended since `offset` and sends it, updating `offset`. Rotation/truncation
-// (offset past the current end) restarts from the top of the new file, matching how the game rolls its log.
+// reads whatever has been appended since `offset` and sends it as 0x00-tagged frames, updating `offset`.
+// Rotation/truncation (offset past the current end) restarts from the top of the new file, matching how the
+// game rolls its log.
 async fn pump_file(
     cfg: &Config,
-    log: &Logger,
+    log: &Arc<Logger>,
     offset: &mut Option<u64>,
-    write: &mut (impl SinkExt<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin),
+    tx: &mpsc::Sender<Message>,
 ) -> Result<(), String> {
     let size = match fs::metadata(&cfg.file).await {
         Ok(meta) => meta.len(),
@@ -261,17 +324,162 @@ async fn pump_file(
         if n == 0 {
             break;
         }
-        // `send().await` applies backpressure: it resolves once the frame is accepted by the sink
-        write
-            .send(Message::Binary(buf[..n].to_vec()))
+        let mut frame = Vec::with_capacity(n + 1);
+        frame.push(TAG_LOG);
+        frame.extend_from_slice(&buf[..n]);
+        // `send().await` applies backpressure: it resolves once the bounded channel has room
+        tx.send(Message::Binary(frame))
             .await
-            .map_err(|e| format!("send failed: {e}"))?;
+            .map_err(|_| "websocket writer closed".to_string())?;
         pos += n as u64;
         remaining -= n as u64;
         *offset = Some(pos);
     }
 
     Ok(())
+}
+
+// --------  rcon proxy --------
+
+// Keeps a connection to the local RCON port authenticated and tunnelled to SLM. Post-auth it is a transparent
+// byte pump: SLM's Rcon does all Source-protocol framing, we just move bytes. Reconnects on its own, telling
+// SLM (via control frames) whenever the tunnel becomes ready or drops so its Rcon tracks connection state.
+async fn rcon_bridge(
+    cfg: RconConfig,
+    tx: mpsc::Sender<Message>,
+    mut inbound: mpsc::UnboundedReceiver<Vec<u8>>,
+    log: Arc<Logger>,
+    reconnect: Duration,
+) {
+    loop {
+        match rcon_session(&cfg, &tx, &mut inbound, &log).await {
+            Ok(()) => log.info("rcon: tunnel closed"),
+            Err(err) => log.error(&format!("rcon: {err}")),
+        }
+        // let SLM mark its Rcon disconnected; if the ws is gone this fails and we stop
+        if tx.send(control_frame("rcon-disconnected")).await.is_err() {
+            return;
+        }
+        tokio::time::sleep(reconnect).await;
+        if tx.is_closed() {
+            return;
+        }
+    }
+}
+
+async fn rcon_session(
+    cfg: &RconConfig,
+    tx: &mpsc::Sender<Message>,
+    inbound: &mut mpsc::UnboundedReceiver<Vec<u8>>,
+    log: &Arc<Logger>,
+) -> Result<(), String> {
+    // discard any SLM->rcon bytes buffered against a previous, now-dead session
+    while inbound.try_recv().is_ok() {}
+
+    let mut stream = TcpStream::connect((cfg.host.as_str(), cfg.port))
+        .await
+        .map_err(|e| format!("connect {}:{} failed: {e}", cfg.host, cfg.port))?;
+    let _ = stream.set_nodelay(true);
+
+    rcon_authenticate(&mut stream, &cfg.password).await?;
+    log.info(&format!("rcon: authenticated to {}:{}", cfg.host, cfg.port));
+    if tx.send(control_frame("rcon-ready")).await.is_err() {
+        return Ok(());
+    }
+
+    let (mut rd, mut wr) = stream.into_split();
+    let mut buf = vec![0u8; READ_CHUNK];
+    loop {
+        tokio::select! {
+            biased;
+            msg = inbound.recv() => match msg {
+                Some(bytes) => wr
+                    .write_all(&bytes)
+                    .await
+                    .map_err(|e| format!("write to rcon failed: {e}"))?,
+                None => return Ok(()), // the ws reader ended
+            },
+            result = rd.read(&mut buf) => {
+                let n = result.map_err(|e| format!("read from rcon failed: {e}"))?;
+                if n == 0 {
+                    return Ok(()); // rcon closed the connection
+                }
+                let mut frame = Vec::with_capacity(n + 1);
+                frame.push(TAG_RCON_DATA);
+                frame.extend_from_slice(&buf[..n]);
+                if tx.send(Message::Binary(frame)).await.is_err() {
+                    return Ok(());
+                }
+            }
+        }
+    }
+}
+
+// Minimal Source RCON auth: send a SERVERDATA_AUTH (type 3) packet with the password, then read packets until
+// the SERVERDATA_AUTH_RESPONSE (type 2). An id of -1 in that response means the password was rejected. We only
+// parse enough to complete auth; everything after is opaque bytes tunnelled to SLM.
+async fn rcon_authenticate(stream: &mut TcpStream, password: &str) -> Result<(), String> {
+    const AUTH_ID: i32 = 1;
+    const TYPE_AUTH: i32 = 3;
+    const TYPE_AUTH_RESPONSE: i32 = 2;
+
+    stream
+        .write_all(&encode_rcon(AUTH_ID, TYPE_AUTH, password))
+        .await
+        .map_err(|e| format!("auth write failed: {e}"))?;
+
+    loop {
+        let (id, typ) = read_rcon_header(stream).await?;
+        if typ == TYPE_AUTH_RESPONSE {
+            if id == -1 {
+                return Err("auth failed (bad password)".into());
+            }
+            return Ok(());
+        }
+        // some servers first echo an empty SERVERDATA_RESPONSE_VALUE (type 0); keep reading for the auth reply
+    }
+}
+
+fn encode_rcon(id: i32, typ: i32, body: &str) -> Vec<u8> {
+    let body = body.as_bytes();
+    let size = (4 + 4 + body.len() + 2) as i32;
+    let mut buf = Vec::with_capacity(4 + size as usize);
+    buf.extend_from_slice(&size.to_le_bytes());
+    buf.extend_from_slice(&id.to_le_bytes());
+    buf.extend_from_slice(&typ.to_le_bytes());
+    buf.extend_from_slice(body);
+    buf.push(0);
+    buf.push(0);
+    buf
+}
+
+// reads one Source RCON packet, returning its (id, type) and discarding the body. read_exact consumes exactly
+// the packet's bytes, so the stream is left positioned at the start of the next packet with nothing over-read.
+async fn read_rcon_header(stream: &mut TcpStream) -> Result<(i32, i32), String> {
+    let mut size_buf = [0u8; 4];
+    stream
+        .read_exact(&mut size_buf)
+        .await
+        .map_err(|e| format!("auth read failed: {e}"))?;
+    let size = i32::from_le_bytes(size_buf);
+    if !(10..=8192).contains(&size) {
+        return Err(format!("bad rcon packet size: {size}"));
+    }
+    let mut body = vec![0u8; size as usize];
+    stream
+        .read_exact(&mut body)
+        .await
+        .map_err(|e| format!("auth read failed: {e}"))?;
+    let id = i32::from_le_bytes([body[0], body[1], body[2], body[3]]);
+    let typ = i32::from_le_bytes([body[4], body[5], body[6], body[7]]);
+    Ok((id, typ))
+}
+
+fn control_frame(msg: &str) -> Message {
+    let mut frame = Vec::with_capacity(msg.len() + 1);
+    frame.push(TAG_RCON_CONTROL);
+    frame.extend_from_slice(msg.as_bytes());
+    Message::Binary(frame)
 }
 
 async fn shutdown_signal() {
@@ -442,16 +650,21 @@ impl Logger {
 // --------  config / args --------
 
 const USAGE: &str = "\
-usage: slm-log-agent --url <ws-url> --server-id <id> --token <token> --file <path> [options]
+usage: slm-server-agent --url <ws-url> --server-id <id> --token <token> --file <path> [options]
 
-  --url <url>            SLM websocket url, e.g. wss://slm.example.com/log-agent   [env SLM_URL]
+  --url <url>            SLM websocket url, e.g. wss://slm.example.com/server-agent [env SLM_URL]
   --server-id <id>       server id as configured in SLM                            [env SLM_SERVER_ID]
-  --token <token>        the log-receiver token for that server                    [env SLM_TOKEN]
+  --token <token>        the server-agent token for that server                    [env SLM_TOKEN]
   --file <path>          path to SquadGame.log                                     [env SLM_LOG_PATH]
   --reconnect-ms <n>     delay between reconnect attempts (default 5000)           [env SLM_RECONNECT_MS]
   --poll-ms <n>          how often to check the log for new data (default 1000)    [env SLM_POLL_MS]
   --log-file <path>      also append agent logs to this file                       [env SLM_AGENT_LOG]
   --insecure             do not verify the server's TLS certificate                [env SLM_INSECURE=1]
+
+  RCON proxy (all three together enable it; omit all to run logs-only):
+  --rcon-host <host>     local RCON host to proxy (usually 127.0.0.1)              [env SLM_RCON_HOST]
+  --rcon-port <port>     local RCON port                                           [env SLM_RCON_PORT]
+  --rcon-password <pw>   RCON password (stays on this host, never sent to SLM)     [env SLM_RCON_PASSWORD]
 ";
 
 impl Config {
@@ -467,6 +680,9 @@ impl Config {
             std::env::var("SLM_INSECURE").ok().as_deref(),
             Some("1") | Some("true")
         );
+        let mut rcon_host = std::env::var("SLM_RCON_HOST").ok();
+        let mut rcon_port: Option<u16> = env_u16("SLM_RCON_PORT")?;
+        let mut rcon_password = std::env::var("SLM_RCON_PASSWORD").ok();
 
         let mut args = std::env::args().skip(1);
         while let Some(arg) = args.next() {
@@ -476,6 +692,15 @@ impl Config {
                 "--token" => token = Some(take(&mut args, "--token")?),
                 "--file" => file = Some(take(&mut args, "--file")?),
                 "--log-file" => log_file = Some(take(&mut args, "--log-file")?),
+                "--rcon-host" => rcon_host = Some(take(&mut args, "--rcon-host")?),
+                "--rcon-port" => {
+                    rcon_port = Some(
+                        take(&mut args, "--rcon-port")?
+                            .parse()
+                            .map_err(|_| "--rcon-port must be a number".to_string())?,
+                    )
+                }
+                "--rcon-password" => rcon_password = Some(take(&mut args, "--rcon-password")?),
                 "--reconnect-ms" => {
                     reconnect_ms = take(&mut args, "--reconnect-ms")?
                         .parse()
@@ -495,6 +720,19 @@ impl Config {
             }
         }
 
+        // rcon is opt-in and all-or-nothing: a partial config is a mistake worth failing loudly on
+        let rcon = match (rcon_host, rcon_port, rcon_password) {
+            (None, None, None) => None,
+            (Some(host), Some(port), Some(password)) if !host.is_empty() && !password.is_empty() => {
+                Some(RconConfig { host, port, password })
+            }
+            _ => {
+                return Err(
+                    "rcon proxy needs all of --rcon-host / --rcon-port / --rcon-password (or none)".into(),
+                )
+            }
+        };
+
         Ok(Config {
             url: require(url, "--url / SLM_URL")?,
             server_id: require(server_id, "--server-id / SLM_SERVER_ID")?,
@@ -504,6 +742,7 @@ impl Config {
             poll: Duration::from_millis(poll_ms),
             insecure,
             log_file,
+            rcon,
         })
     }
 }
@@ -520,6 +759,16 @@ fn require(value: Option<String>, what: &str) -> Result<String, String> {
 }
 
 fn env_u64(key: &str) -> Result<Option<u64>, String> {
+    match std::env::var(key) {
+        Ok(v) => v
+            .parse()
+            .map(Some)
+            .map_err(|_| format!("{key} must be a number")),
+        Err(_) => Ok(None),
+    }
+}
+
+fn env_u16(key: &str) -> Result<Option<u16>, String> {
     match std::env::var(key) {
         Ok(v) => v
             .parse()

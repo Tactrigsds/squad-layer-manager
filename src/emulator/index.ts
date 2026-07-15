@@ -20,8 +20,8 @@ export type EmulatorOptions = WorldOptions & {
 }
 
 // One emulated squad server: a World plus its protocol frontends. Logs are written to a file
-// (attachLogFile) that the app reads directly (the `local-file` source) or that the real log agent
-// (log-agent/agent) tails and ships to the app's log receiver. Either way the lines are the same.
+// (attachLogFile) that the app reads directly (the `local` source) or that the real server agent
+// (server-agent/agent) tails and ships to the app. Either way the lines are the same.
 export class Emulator {
 	world: World
 	rcon: RconServer

@@ -1,11 +1,11 @@
 [package]
-name = "slm-log-agent"
-version = "0.1.0"
+name = "slm-server-agent"
+version = "0.2.0"
 edition = "2021"
-description = "Tails a Squad server's SquadGame.log and streams it to Squad Layer Manager over a WebSocket."
+description = "Runs on a Squad server host: streams SquadGame.log to Squad Layer Manager and proxies RCON, over one WebSocket."
 
 [[bin]]
-name = "slm-log-agent"
+name = "slm-server-agent"
 path = "src/main.rs"
 
 [dependencies]

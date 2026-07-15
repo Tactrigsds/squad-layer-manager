@@ -121,7 +121,7 @@ export const groups = {
 			return buf
 		}).meta({
 			description:
-				"a base64-encoded 32-byte key used to encrypt sensitive settings at rest (a server's RCON/SFTP passwords and log-agent token). Generate one with `openssl rand -base64 32`. Required. Changing it makes any already-encrypted connection secrets unreadable, so they have to be re-entered on the settings page.",
+				"a base64-encoded 32-byte key used to encrypt sensitive settings at rest (a server's RCON/SFTP passwords and server-agent token). Generate one with `openssl rand -base64 32`. Required. Changing it makes any already-encrypted connection secrets unreadable, so they have to be re-entered on the settings page.",
 			envExample: {
 				include: 'set',
 				dev: {
