@@ -1,18 +1,18 @@
 # Installing SLM
 
-### Prerequisites
+### 1. Prerequisites
 
 1. Docker, and a server to run it on: [installation instructions](https://docs.docker.com/get-docker/)
 2. A domain and some way to send traffic to SLM.
 3. A Discord server, which you have permissions to install apps on.
 
-### Where to Install
+### 2. Where to Install
 
 SLM needs access to your Squad Server's log files in order to function. This can be done either locally by mounting the log files directly into the container, via an SFTP connection(this works with PSG-hosted servers for example), or by running a server agent on the game host that streams log data (and proxies RCON) to SLM over its normal url(see [CONFIGURING.md#server-agent](CONFIGURING.md#server-agent) for more). SLM can be set up with any number of squad servers, so keep that in mind as well when deciding where to install it.
 
-### Installation
+### 3. Installation
 
-#### Docker Compose
+#### 3.1. Docker Compose
 
 ```sh
 mkdir squad-layer-manager && cd squad-layer-manager
@@ -21,7 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/Tactrigsds/squad-layer-manager/main
 
 This lays down the files a deployment is made of: `docker-compose.yaml`, a `.env` (copied from `.env.example`, which is left alongside it), the `edit-global-settings.sh` helper, and an `observability/` directory of Grafana, Loki, and Tempo config. It also creates a `data/` directory, which houses the database file and any persistent data and will be bind-mounted to the app container. You can use a volume instead if you prefer. It refuses to run if any of those files, or `data/`, already exists, so it never overwrites an existing deployment.
 
-#### Discord app
+#### 3.2. Discord app
 
 SLM authenticates users through a discord app you own, installed on your org's discord server.
 
@@ -51,7 +51,7 @@ unconditionally, and are the bootstrap you cannot lock yourself out of. This per
 
 Next, install the app on your org's discord server by visiting the install link on the `Installation` page. Make sure it's the same one as `DISCORD_HOME_GUILD_ID` in the `.env` file.
 
-#### Encryption key
+#### 3.3. Encryption key
 
 SLM encrypts sensitive settings at rest (each server's RCON and SFTP passwords and its server-agent token). This is keyed by `SETTINGS_ENCRYPTION_KEY`, which is required: the app refuses to start without it. Generate a strong key and paste it into `.env`:
 
@@ -61,14 +61,14 @@ openssl rand -base64 32
 
 Keep this key safe and stable. If you change or lose it, the already-encrypted connection secrets can no longer be decrypted and have to be re-entered on the settings page. The first boot after setting the key transparently encrypts any connection secrets that were previously stored in plaintext.
 
-#### Battlemetrics
+#### 3.4. Battlemetrics
 
 SLM has a battlemetrics integration. Among other things, it lets users update players flags remotely, and gives more context when managing players on the servers.
 
 Set `BM_PAT` to a battlemetrics personal access token, and `BM_ORG_ID` to your org's battlemetrics id.
 Check the environment variable's description of BM_PAT for the required scopes.
 
-#### Backups
+#### 3.5. Backups
 
 Off by default. Set `AUTOMATIC_BACKUPS_PERIODIC` to a duration (e.g. `72h`) and the app will snapshot its
 database on that interval, optionally shipping each one to an SFTP host.
@@ -111,7 +111,7 @@ rm data/db.sqlite3*
 gunzip -c slm-backup-db-20260713-134504.sqlite3.gz > data/db.sqlite3
 ```
 
-#### Event history retention
+#### 3.6. Event history retention
 
 `EVENT_HISTORY_RETENTION_PERIOD` prunes old server events (chat, kills, connects) as part of each backup run,
 which is what keeps the database from growing without bound. Events are deleted for matches older than the
@@ -120,13 +120,13 @@ retention period, except that the 100 most recent matches per server are always 
 The first prune after turning this on clears the whole accumulated backlog and is much larger than the ones
 that follow.
 
-#### Telemetry
+#### 3.7. Telemetry
 
 Detailed logs and telemetry are available via grafana, hosted at `http://localhost:3001`, which you may also want to expose to the internet. Just make sure to change the default admin password before doing so. see [https://grafana.com/docs/grafana/latest/introduction/](https://grafana.com/docs/grafana/latest/introduction/) for more. There is a dashboard set up there preconfigured to assist with monitoring SLM.
 
 If you don't want any telemetry, then set `OTEL_ENABLED=false`, and comment out or delete the otel service from `docker-compose.yaml` before starting the app.
 
-#### Starting SLM.
+#### 3.8. Starting SLM
 
 Assuming that your system already has docker installed and running, and you've got a public url for the server, you can start it up.
 
@@ -138,7 +138,7 @@ Stop everything with `docker compose down`. If you want to stop just the app whi
 
 Once you've got the app running, you'll be able to sign in with discord OAuth, and you can move on to [configuring SLM](CONFIGURING.md).
 
-#### Upgrading
+#### 3.9. Upgrading
 
 ```sh
 docker compose pull && docker compose up -d

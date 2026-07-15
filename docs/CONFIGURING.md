@@ -25,40 +25,7 @@ When you pick the "server agent" mode, you can choose or generate a secret token
 
 The agent ([server-agent/agent](../server-agent/agent), a small rust program) runs next to the squad server. It tails the server's `SquadGame.log` and streams new lines as they are written, and it proxies RCON: it holds the RCON password itself, authenticates to the local RCON port, and tunnels the connection to SLM. That way the RCON password stays on the game host and the RCON port never has to be exposed to SLM. It resumes on its own if the connection drops. There are three ways to run it.
 
-The RCON proxy is opt-in: supply the agent with `--rcon-host` / `--rcon-port` / `--rcon-password` (or the SquadJS plugin's `rcon*` options) to enable it. Omit all three to run the agent logs-only.
-
-#### SquadJS plugin
-
-If you already run SquadJS, drop [server-agent/squadjs-plugin.js](../server-agent/squadjs-plugin.js) into your
-SquadJS plugins directory and add it to the `plugins` array in your SquadJS `config.json`. It downloads the
-matching agent binary and launches it detached, so the agent keeps working even if SquadJS restarts or
-crashes. The `rcon*` options default to SquadJS's own rcon config, so the RCON proxy usually needs no extra
-setup.
-
-```json
-{
-	"plugin": "SLMServerAgent",
-	"enabled": true,
-	"url": "wss://slm.example.com/server-agent",
-	"slmServerId": "<your-slm-server-id>",
-	"token": "<server-agent-token>"
-}
-```
-
-| Option         | Required | Default                  | Description                                                                     |
-| -------------- | -------- | ------------------------ | ------------------------------------------------------------------------------- |
-| `url`          | yes      |                          | SLM server-agent websocket url, e.g. `wss://slm.example.com/server-agent`       |
-| `slmServerId`  | yes      |                          | This server's id as configured in SLM                                           |
-| `token`        | yes      |                          | The server-agent token for this server (SLM server settings, Connections)       |
-| `rconHost`     | no       | SquadJS host / 127.0.0.1 | RCON host to proxy. Set empty to disable the RCON proxy (logs-only)             |
-| `rconPort`     | no       | SquadJS rcon port        | RCON port to proxy                                                              |
-| `rconPassword` | no       | SquadJS rcon password    | RCON password (stays on the game host, never sent to SLM)                       |
-| `insecure`     | no       | `false`                  | Skip TLS certificate verification (self-signed / IP-only certs)                 |
-| `binaryPath`   | no       | download release         | Path to an existing `slm-server-agent` binary instead of downloading one        |
-| `binDir`       | no       | OS temp dir              | Directory to cache the downloaded agent binary in                               |
-| `pidFile`      | no       | per-server temp path     | PID file used to detect an already-running agent                                |
-| `logFile`      | no       | per-server temp path     | File the agent appends its own logs to (shown in SquadJS at verbose level 1)    |
-| `killOnExit`   | no       | `false`                  | Kill the agent when the plugin unmounts (off, so it survives a SquadJS restart) |
+The RCON proxy is opt-in: supply the agent with `--rcon-host` / `--rcon-port` / `--rcon-password` to enable it. Omit all three to run the agent logs-only.
 
 #### Standalone binary
 
