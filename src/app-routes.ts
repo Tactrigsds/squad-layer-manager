@@ -43,6 +43,9 @@ export const routes = [
 	defRoute('/discord-cdn/*', ['*'], 'custom'),
 
 	defRoute('/orpc', [], 'custom', { websocket: true }),
+	// log agents authenticate with a per-server token, not a session cookie, so this route is unauthed and
+	// validates the token itself (see squad-logs-receiver.server.ts)
+	defRoute('/log-agent', [], 'custom', { websocket: true, authed: false }),
 
 	defRoute('/', [], 'page'),
 	defRoute('/servers/:id', ['id'] as const, 'page'),

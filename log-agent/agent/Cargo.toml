@@ -1,0 +1,26 @@
+[package]
+name = "slm-log-agent"
+version = "0.1.0"
+edition = "2021"
+description = "Tails a Squad server's SquadGame.log and streams it to Squad Layer Manager over a WebSocket."
+
+[[bin]]
+name = "slm-log-agent"
+path = "src/main.rs"
+
+[dependencies]
+futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+tokio = { version = "1", default-features = false, features = ["rt", "macros", "net", "io-util", "time", "fs", "signal", "sync"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+# no tls feature here: we drive the TLS handshake ourselves with the ring provider (below), which keeps
+# musl/windows cross-compilation free of cmake and the aws-lc-rs C toolchain
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "handshake"] }
+webpki-roots = "0.26"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
