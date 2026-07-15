@@ -236,6 +236,8 @@ async function fetchSquads(ctx: C.Rcon & CS.AbortSignal) {
 }
 
 async function fetchTeams(ctx: C.Rcon & C.AdminList & C.AsyncResourceInvocation & CS.AbortSignal): Promise<SM.TeamsRes> {
+	// stamped before the requests go out so it's a lower bound on the snapshot's validity; see TeamsRes.polledAt
+	const polledAt = Date.now()
 	const [playersRes, squadsRes] = await Promise.all([fetchPlayers(ctx), fetchSquads(ctx)])
 
 	if (playersRes.code === 'err:rcon') return playersRes
@@ -295,6 +297,7 @@ async function fetchTeams(ctx: C.Rcon & C.AdminList & C.AsyncResourceInvocation 
 
 	return {
 		code: 'ok',
+		polledAt,
 		players,
 		squads,
 	}

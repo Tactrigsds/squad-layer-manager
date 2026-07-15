@@ -9,7 +9,14 @@ import type { ActionSource } from '@/models/server-events-base.models'
 import * as SE from '@/models/server-events.models'
 import * as SM from '@/models/squad.models'
 import { z } from 'zod'
-type TeamsUpdateEvent = { type: 'TEAMS_UPDATE'; id: number; teams: SM.Teams; time: number }
+// `time` is when the poll's response was received; it drives ordering, staleness and the log-lead guard exactly
+// as any other event. `polledAt` is when the underlying ListPlayers request was issued (see TeamsRes.polledAt) --
+// a lower bound on when the snapshot was taken. Only the roll-completion gate keys off `polledAt`: a response in
+// flight across the (near-instant) roll still carries the pre-roll roster yet is received after the roll's
+// NEW_GAME, so gating on receive time would let that stale snapshot complete the roll. Everything else, including
+// ordering, stays on `time` -- a poll whose snapshot reflects a just-landed connect must sort after that connect's
+// log, and the sync boundary (unlike a roll) is never straddled by an in-flight poll (see the syncing branch).
+type TeamsUpdateEvent = { type: 'TEAMS_UPDATE'; id: number; teams: SM.Teams; time: number; polledAt: number }
 export type Attribution = {
 	type: 'MAP_SET_ATTRIBUTION'
 	itemId: string
@@ -292,12 +299,15 @@ export function onRconEvent(state: State, event: SM.RconEvents.Event) {
 	state.eventBufs.rconEmittedEvents.push({ ...event, id: Gen.next(state.counters.pendingEventId) })
 }
 
-export function onTeamsPolled(state: State, teams: SM.Teams, time: number) {
+// `polledAt` (ListPlayers issue time) defaults to `time` (receive time) for callers that don't distinguish the
+// two -- collapsing them just reverts to receive-time boundary gating, the pre-fix behavior. Production always
+// passes a distinct polledAt so an in-flight-across-a-roll response is gated correctly; see TeamsUpdateEvent.
+export function onTeamsPolled(state: State, teams: SM.Teams, time: number, polledAt: number = time) {
 	const lastEvent = state.eventBufs.teamsUpdates.at(-1)
 	if (!!lastEvent && lastEvent.time > time) {
 		throw new Error(`Teams polled with time ${time} is older than last event time ${lastEvent.time}`)
 	}
-	state.eventBufs.teamsUpdates.push({ type: 'TEAMS_UPDATE', id: Gen.next(state.counters.pendingEventId), teams, time })
+	state.eventBufs.teamsUpdates.push({ type: 'TEAMS_UPDATE', id: Gen.next(state.counters.pendingEventId), teams, time, polledAt })
 }
 
 // Fold an emitted event into `state`: seed an empty roster if a roster-bearing event needs one, stamp expectation
@@ -685,7 +695,11 @@ async function* processPendingEvent(
 
 	outerIf: if (pendingEvent.type === 'TEAMS_UPDATE' && state.syncState.type === 'syncing') {
 		if (state.currentMatch === 'PENDING') throw new Error('Unexpected missing current match')
-		// Discard polls captured before the boundary (a previous match / pre-connect snapshot).
+		// Discard polls captured before the boundary (a previous match / pre-connect snapshot). Gated on receive
+		// time, not polledAt: unlike a roll, a sync boundary isn't straddled by an in-flight poll on the same
+		// connection -- initial sync has no prior roster (currTeams is null) and a reconnect drops the socket, so any
+		// pre-disconnect response fails rather than arriving late. Using polledAt here would only risk discarding the
+		// first genuine post-connect poll (its request can be issued a hair before boundaryTime) and stalling sync.
 		if (pendingEvent.time < state.syncState.boundaryTime) break outerIf
 		// Snapshot only players already assigned to a team. We used to require EVERY listed player to be teamed,
 		// which let a single still-loading/spectating straggler defer sync indefinitely and widen the window in
@@ -714,7 +728,10 @@ async function* processPendingEvent(
 
 	outerIf: if (
 		pendingEvent.type === 'TEAMS_UPDATE' && state.syncState.type === 'rolling' && !!state.syncState.newGameEvent
-		&& state.syncState.newGameEvent.time < pendingEvent.time
+		// polledAt (issue time), not receive time: the roll completes only on a poll definitely issued after the
+		// destination NEW_GAME, so a response that was in flight across the roll (pre-roll roster, received after the
+		// boundary) can't complete it. It falls through to the non-synced drop below; the next poll finishes the roll.
+		&& state.syncState.newGameEvent.time < pendingEvent.polledAt
 		&& state.currentMatch !== 'PENDING'
 	) {
 		// See the syncing branch above: snapshot the teamed players, don't stall on team-less stragglers.

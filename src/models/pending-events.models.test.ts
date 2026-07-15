@@ -333,6 +333,55 @@ describe('PendingEvents', () => {
 			expect(state.syncState.type).toBe('synced')
 		})
 
+		// A ListPlayers response can be in flight across the (near-instant, in tests) roll: it still reflects the
+		// pre-roll roster yet is RECEIVED after the destination NEW_GAME. Gating roll completion on receive time
+		// would let that stale snapshot become the RESET, and the next genuine poll -- showing the automatic
+		// side-swap -- would then surface as an organic PLAYER_CHANGED_TEAM. Gating on polledAt (issue time) rejects it.
+		it('a poll in flight across the roll (received after the boundary but issued before it) does not complete the roll', async () => {
+			const { state } = makeState({ layerId: LAYER_A })
+			await syncUp(state, { layerId: LAYER_A, teams: makeTeams([makePlayer('eos-001', 1)]) })
+			state.nextLayerId = LAYER_A
+
+			PendingEvents.onLogEvent(state, {
+				type: 'NEW_GAME',
+				time: 300,
+				chainID: 0,
+				raw: '',
+				mapClassname: 'Transition',
+				layerClassname: 'TransitionMap',
+			})
+			await collect(state)
+			PendingEvents.onLogEvent(state, {
+				type: 'NEW_GAME',
+				time: 400,
+				chainID: 0,
+				raw: '',
+				mapClassname: 'Gorodok',
+				layerClassname: LAYER_A_CLASSNAME,
+			})
+			await collect(state)
+			expect(state.syncState).toMatchObject({ type: 'rolling', newGameEvent: expect.objectContaining({ time: 400 }) })
+
+			// received at 410 (after the 400 boundary), issued at 350 (before it): still the pre-roll roster (team 1)
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1)]), 410, 350)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(411))
+			const staleBatch = await collect(state)
+			expect(staleBatch.some(e => e.type === 'RESET')).toBe(false)
+			expect(state.syncState.type).toBe('rolling')
+
+			// the genuine first post-roll poll: issued after the boundary, carrying the swapped roster (team 2)
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 2)]), 500, 450)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(501))
+			const rollBatch = await collect(state)
+			const reset = rollBatch.find(e => e.type === 'RESET') as SE.Reset
+			expect(reset).toMatchObject({ source: 'server-roll' })
+			expect(reset.state.players.map(p => ({ eos: p.ids.eos, teamId: p.teamId }))).toEqual([{ eos: 'eos-001', teamId: 2 }])
+			expect(state.syncState.type).toBe('synced')
+
+			// the automatic side-swap arrived via the wholesale RESET, never as an individual team change
+			expect([...staleBatch, ...rollBatch].some(e => e.type === 'PLAYER_CHANGED_TEAM')).toBe(false)
+		})
+
 		// End-to-end for B + C + A: a player still loading (team-less) during the roll is excluded from the
 		// snapshot, but is recovered by reconcile as soon as a later poll shows them teamed.
 		it('a player team-less during the roll is excluded from the snapshot then recovered once teamed', async () => {
