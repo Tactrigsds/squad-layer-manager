@@ -288,34 +288,37 @@ export function initServerSettingsSlice(
 // the connection secrets encrypted at rest: the RCON password (local/sftp), the SFTP log password, and the
 // server-agent token. In memory these are always plaintext; sealing happens only at a DB write, opening only
 // at a DB read.
-function transformConnectionSecrets(
-	settings: SETTINGS.ServerSettings,
+function transformConnectionSecretValues(
+	connections: SETTINGS.ServerConnection,
 	fn: (value: string) => string,
-): SETTINGS.ServerSettings {
-	const { connections } = settings
-	let newConnections: typeof connections
+): SETTINGS.ServerConnection {
 	switch (connections.type) {
 		case 'local':
-			newConnections = { ...connections, rcon: { ...connections.rcon, password: fn(connections.rcon.password) } }
-			break
+			return { ...connections, rcon: { ...connections.rcon, password: fn(connections.rcon.password) } }
 		case 'sftp':
-			newConnections = {
+			return {
 				...connections,
 				rcon: { ...connections.rcon, password: fn(connections.rcon.password) },
 				sftp: { ...connections.sftp, password: fn(connections.sftp.password) },
 			}
-			break
 		case 'server-agent':
-			newConnections = { ...connections, token: fn(connections.token) }
-			break
+			return { ...connections, token: fn(connections.token) }
 		default:
 			assertNever(connections)
 	}
-	return { ...settings, connections: newConnections }
+}
+
+function transformConnectionSecrets(
+	settings: SETTINGS.ServerSettings,
+	fn: (value: string) => string,
+): SETTINGS.ServerSettings {
+	return { ...settings, connections: transformConnectionSecretValues(settings.connections, fn) }
 }
 
 export const sealConnections = (settings: SETTINGS.ServerSettings) => transformConnectionSecrets(settings, SecretBox.seal)
 export const openConnections = (settings: SETTINGS.ServerSettings) => transformConnectionSecrets(settings, SecretBox.open)
+export const sealConnectionValues = (connections: SETTINGS.ServerConnection) => transformConnectionSecretValues(connections, SecretBox.seal)
+export const openConnectionValues = (connections: SETTINGS.ServerConnection) => transformConnectionSecretValues(connections, SecretBox.open)
 
 // reads settings for a server that may not have a live slice (e.g. it's disabled), always going to the DB
 export async function getServerSettings(ctx: C.Db, serverId: SS.ServerId): Promise<SETTINGS.ServerSettings> {
@@ -729,10 +732,20 @@ const adminRouter = {
 			}
 			const res = await getRawServerSettings(ctx, input.serverId)
 			if (res.code !== 'ok') return res
-			if (RBAC.canWriteSensitiveServerSettings(perms, input.serverId)) return { ...res, sensitiveOmitted: false as const }
 			const settings = res.settings
-			if (settings && typeof settings === 'object') delete (settings as Record<string, unknown>).connections
-			return { code: 'ok' as const, settings, sensitiveOmitted: true as const }
+			if (!RBAC.canWriteSensitiveServerSettings(perms, input.serverId)) {
+				if (settings && typeof settings === 'object') delete (settings as Record<string, unknown>).connections
+				return { code: 'ok' as const, settings, sensitiveOmitted: true as const }
+			}
+			// connections are stored sealed at rest; open them so the editor shows/edits plaintext instead of the envelope.
+			// a settings blob that fails schema validation (repair flow) may not have valid connections to open, so leave it as-is
+			if (settings && typeof settings === 'object' && 'connections' in settings) {
+				const connRes = SETTINGS.ServerConnectionSchema.safeParse((settings as Record<string, unknown>).connections)
+				if (connRes.success) {
+					;(settings as Record<string, unknown>).connections = openConnectionValues(connRes.data)
+				}
+			}
+			return { code: 'ok' as const, settings, sensitiveOmitted: false as const }
 		}),
 
 	updateRawSettings: orpcBase
