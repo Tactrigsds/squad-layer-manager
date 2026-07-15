@@ -88,6 +88,7 @@ const orpcBase = getOrpcBase(module)
 
 type State = {
 	slices: Map<string, C.ServerSlice>
+	sliceInitMtxs: Map<string, MutexInterface>
 	// emits a serverId whenever that server's slice is added to or removed from `slices`
 	sliceLifecycleUpdate$: Rx.Subject<string>
 	serverEventIdCounter: Generator<number, never, unknown>
@@ -572,6 +573,7 @@ export async function setup() {
 		sliceLifecycleUpdate$: new IsolatedSubject(),
 		serverEventIdCounter: undefined!,
 		squadIdCounter: undefined!,
+		sliceInitMtxs: new Map(),
 	}
 
 	const lastEventRes = await ctx
@@ -599,13 +601,21 @@ export async function setup() {
 
 // boots a slice for the given server if it's enabled, not broken, and doesn't already have one running
 export async function ensureSliceRunning(serverId: string) {
-	if (globalState.slices.has(serverId)) return
-	const entry = Settings.getServerEntry(serverId)
-	if (!entry || !entry.enabled || entry.broken) return
-	const ctx = getBaseCtx()
-	const serverState = await getServerState({ ...ctx, serverId })
-	await setupSlice(ctx, serverState)
-	log.info(`Server ${serverId} setup complete`)
+	let mtx = globalState.sliceInitMtxs.get(serverId)
+	mtx ??= new Mutex()
+	globalState.sliceInitMtxs.set(serverId, mtx)
+	await mtx.acquire()
+	try {
+		if (globalState.slices.has(serverId)) return
+		const entry = Settings.getServerEntry(serverId)
+		if (!entry || !entry.enabled || entry.broken) return
+		const ctx = getBaseCtx()
+		const serverState = await getServerState({ ...ctx, serverId })
+		await setupSlice(ctx, serverState)
+		log.info(`Server ${serverId} setup complete`)
+	} finally {
+		mtx.release()
+	}
 }
 
 // tears down and re-creates the slice for a server, picking up the latest settings from the DB. If the server isn't currently
