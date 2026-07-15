@@ -207,7 +207,12 @@ describe('server rolling', () => {
 		await app.waitForRosterSync()
 		const oldMatch = latestMatch()
 
-		await withRconOffline(() => roll())
+		// Deliberately rolled with RCON up. A ListPlayers response can be in flight across the (instantaneous) roll,
+		// so it still reflects the pre-roll roster yet is received just after the destination NEW_GAME. The pipeline
+		// orders that poll by when its request was ISSUED (polledAt), not received, so the stale snapshot is treated
+		// as pre-boundary and can't complete the roll -- which is what keeps the automatic side-swap from surfacing as
+		// an organic team change here. See TeamsRes.polledAt and the pending-events roll gates.
+		roll()
 		await app.waitForRosterSync()
 		const newMatch = await waitForNewMatch(oldMatch.id)
 

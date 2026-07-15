@@ -1010,13 +1010,14 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 					{ module, numTaskRetries: 0, levels: { event: 'debug' } },
 					async (teamsRes, signal) => {
 						if (teamsRes.code !== 'ok') return teamsRes
-						const time = Date.now()
+						const receivedAt = Date.now()
 						const ctx = resolveSliceCtx(CS.addSignal(getBaseCtx(), signal), serverId)
 						await collectEvents(ctx, () => {
 							PendingEvents.onTeamsPolled(
 								server.eventState,
 								{ players: teamsRes.players, squads: teamsRes.squads },
-								time,
+								receivedAt,
+								teamsRes.polledAt,
 							)
 						})
 					},

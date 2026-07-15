@@ -473,7 +473,12 @@ export type PlayerListRes = { code: 'ok'; players: Player[] } | RconError
 export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError
 export type Teams<P = Player> = { players: P[]; squads: Squad[] }
 export type UniqueTeams<P = Player> = { players: P[]; squads: UniqueSquad[] }
-export type TeamsRes<P = Player> = { code: 'ok' } & Teams<P> | RconError
+// `polledAt` is the wall-clock time the ListPlayers/ListSquads requests were issued -- a lower bound on when
+// the snapshot was actually taken (the server captures it no earlier than the request is sent). The event
+// pipeline orders teams polls by this, NOT by when the response arrived: a response can be in flight across a
+// map roll, so it still reflects the pre-roll roster while arriving after the roll's NEW_GAME log. Timestamping
+// at receive time would let that stale snapshot complete the roll; polledAt keeps it correctly pre-boundary.
+export type TeamsRes<P = Player> = { code: 'ok'; polledAt: number } & Teams<P> | RconError
 
 export namespace Squads {
 	// identifies a squad across teams
