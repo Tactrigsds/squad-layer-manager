@@ -21,9 +21,7 @@ There are 3 potential log sources:
 
 ### Log Agent
 
-When you pick the "log agent" source, SLM generates a token for that server. The agent authenticates
-with it, so treat it like a password. The agent connects to SLM's normal url (the same `ORIGIN` you serve
-the app on) at the `/log-agent` path - there is no separate port to open. If SLM is served over https, use
+When you pick the "log agent" source, you can choose or generate a secret token for the log agent to authenticate with. The agent connects to SLM's normal url (the same `ORIGIN` you serve the app on) at the `/log-agent` path - If SLM is served over https, use
 `wss://`; over plain http, use `ws://`.
 
 The agent ([log-agent/agent](../log-agent/agent), a small rust program) tails the server's `SquadGame.log`
