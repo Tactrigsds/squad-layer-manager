@@ -61,6 +61,12 @@ export async function setup() {
 		client.login(ENV.DISCORD_BOT_TOKEN).catch(reject)
 	})
 
+	// everything SLM resolves (members, roles, emojis) is scoped to the home guild, so an install in any other
+	// one serves nobody and leaves the app with a presence no one here manages. Leave on sight, and sweep what
+	// we're already in: the app may have been added elsewhere before this check existed.
+	client.on('guildCreate', (guild) => void leaveForeignGuild(guild))
+	await Promise.all(client.guilds.cache.map((guild) => leaveForeignGuild(guild)))
+
 	const res = await fetchGuild(ENV.DISCORD_HOME_GUILD_ID)
 	if (res.code !== 'ok') {
 		// the bot can only fetch guilds it's a member of, so UnknownGuild here means the SLM application
@@ -136,6 +142,22 @@ export async function getOauthUser(ctx: Partial<CS.AbortSignal>, token: AccessTo
 
 	const data = await fetchDiscordUserRes.json()
 	return DiscordUserSchema.parse(data)
+}
+
+async function leaveForeignGuild(guild: D.Guild) {
+	if (BigInt(guild.id) === ENV.DISCORD_HOME_GUILD_ID) return
+	log.warn(
+		'Leaving guild "%s" (%s): SLM only serves its configured home guild (DISCORD_HOME_GUILD_ID=%s)',
+		guild.name,
+		guild.id,
+		ENV.DISCORD_HOME_GUILD_ID,
+	)
+	try {
+		await guild.leave()
+	} catch (err) {
+		// the bot can't leave a guild it owns, and can't do much about it either
+		log.error({ err }, 'Failed to leave guild "%s" (%s)', guild.name, guild.id)
+	}
 }
 
 async function fetchGuild(guildId: bigint) {
