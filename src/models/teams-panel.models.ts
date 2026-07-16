@@ -12,6 +12,7 @@ export type EnrichedPlayer = SM.Player & {
 	bmProfile: Omit<BM.PlayerFlagsAndProfile, 'playerIds'> | undefined
 	group?: string
 	stats: CHAT.PlayerStats | undefined
+	inAdminCam: boolean
 }
 
 export namespace Sel {
@@ -37,12 +38,13 @@ export namespace Sel {
 			[
 				(...[store, currentMatch]: Inputs) => ChatPrt.Sel.playersForTeam(teamId)(store, currentMatch),
 				(...[store]: Inputs) => ChatPrt.Sel.chatState(store).playerStats,
+				(...[store]: Inputs) => ChatPrt.Sel.chatState(store).adminCamPlayerIds,
 				(...[, , bmData]: Inputs) => bmData,
 				(...[, , , bmStore]: Inputs) => bmStore.selectedGroupingId,
 				(...[, , , bmStore]: Inputs) => bmStore.orgFlags,
 				(...[, , , , settings]: Inputs) => settings?.playerGroupings,
 			],
-			(players, playerStats, bmData, selectedGroupingId, orgFlags, settingsGroupings) => {
+			(players, playerStats, adminCamPlayerIds, bmData, selectedGroupingId, orgFlags, settingsGroupings) => {
 				const playerGroupings = settingsGroupings ?? PG.EMPTY_PLAYER_GROUPINGS
 				const groupingIds = PG.getGroupingIds(playerGroupings)
 				const activeGroupingId = selectedGroupingId !== null && groupingIds.includes(selectedGroupingId)
@@ -67,6 +69,7 @@ export namespace Sel {
 						bmProfile: profile ? Obj.omit(profile, ['playerIds']) : undefined,
 						group: allGroups.get(playerId),
 						stats: playerStats[playerId],
+						inAdminCam: adminCamPlayerIds.includes(playerId),
 					}
 				})
 			},
