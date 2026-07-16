@@ -10,6 +10,15 @@ function rule(flagId: string, group: string): PG.GroupRule {
 	return { type: 'battlemetrics', flag: flagId, group }
 }
 
+function adminRule(adminGroup: string, group: string): PG.GroupRule {
+	return { type: 'admin-list', adminGroup, group }
+}
+
+// a player carrying the given flags and no admin-list membership
+function withFlags(...ids: string[]): PG.PlayerFacts {
+	return { flags: ids.map((id) => flag(id)), adminGroups: [] }
+}
+
 const GROUPING: PG.Grouping = {
 	rules: [rule('f-hq', 'HQ'), rule('f-mod', 'HQ'), rule('f-regular', 'Regulars')],
 	groups: { HQ: { color: { type: 'flag', flag: 'f-hq' } }, Regulars: { color: { type: 'custom', color: '#00ff00' } } },
@@ -19,21 +28,44 @@ const ORG_FLAGS = [flag('f-hq', '#ff0000'), flag('f-mod', '#0000ff'), flag('f-re
 
 describe('resolveGroup', () => {
 	it('assigns the group of the first matching rule', () => {
-		expect(PG.resolveGroup(GROUPING, [flag('f-regular')])).toBe('Regulars')
-		expect(PG.resolveGroup(GROUPING, [flag('f-mod')])).toBe('HQ')
+		expect(PG.resolveGroup(GROUPING, withFlags('f-regular'))).toBe('Regulars')
+		expect(PG.resolveGroup(GROUPING, withFlags('f-mod'))).toBe('HQ')
 	})
 
 	it('rule order decides priority when a player matches several rules', () => {
 		// carries both: HQ wins because its rule sits higher, regardless of the flags' own order
-		expect(PG.resolveGroup(GROUPING, [flag('f-regular'), flag('f-hq')])).toBe('HQ')
+		expect(PG.resolveGroup(GROUPING, withFlags('f-regular', 'f-hq'))).toBe('HQ')
 
 		const reordered: PG.Grouping = { ...GROUPING, rules: [...GROUPING.rules].reverse() }
-		expect(PG.resolveGroup(reordered, [flag('f-regular'), flag('f-hq')])).toBe('Regulars')
+		expect(PG.resolveGroup(reordered, withFlags('f-regular', 'f-hq'))).toBe('Regulars')
 	})
 
 	it('leaves a player ungrouped when no rule matches', () => {
-		expect(PG.resolveGroup(GROUPING, [flag('f-unknown')])).toBeUndefined()
-		expect(PG.resolveGroup(GROUPING, [])).toBeUndefined()
+		expect(PG.resolveGroup(GROUPING, withFlags('f-unknown'))).toBeUndefined()
+		expect(PG.resolveGroup(GROUPING, withFlags())).toBeUndefined()
+	})
+
+	it('matches admin-list group membership', () => {
+		const g: PG.Grouping = { rules: [adminRule('Admins', 'Staff'), adminRule('Whitelist', 'Members')], groups: {} }
+		expect(PG.resolveGroup(g, { flags: [], adminGroups: ['Whitelist'] })).toBe('Members')
+		// a player in several admin groups takes the higher rule, same as flags
+		expect(PG.resolveGroup(g, { flags: [], adminGroups: ['Whitelist', 'Admins'] })).toBe('Staff')
+		expect(PG.resolveGroup(g, { flags: [], adminGroups: ['Cameraman'] })).toBeUndefined()
+	})
+
+	// the whole point of the source discriminator: one grouping can mix them, and priority is still just rule order
+	it('mixes sources in one priority order', () => {
+		const g: PG.Grouping = { rules: [adminRule('Admins', 'Staff'), rule('f-regular', 'Regulars')], groups: {} }
+		const both: PG.PlayerFacts = { flags: [flag('f-regular')], adminGroups: ['Admins'] }
+		expect(PG.resolveGroup(g, both)).toBe('Staff')
+		const flipped: PG.Grouping = { ...g, rules: [...g.rules].reverse() }
+		expect(PG.resolveGroup(flipped, both)).toBe('Regulars')
+	})
+
+	// a rule only ever reads its own source's facts
+	it('does not match an admin group against a flag of the same name', () => {
+		const g: PG.Grouping = { rules: [adminRule('Whitelist', 'Members')], groups: {} }
+		expect(PG.resolveGroup(g, { flags: [flag('Whitelist')], adminGroups: [] })).toBeUndefined()
 	})
 })
 
@@ -102,6 +134,21 @@ describe('getGroupFlags', () => {
 	it('skips rules with no flag picked yet', () => {
 		expect(PG.getGroupFlags({ rules: [rule('', 'HQ'), rule('f-hq', 'HQ')], groups: {} }, 'HQ')).toEqual(['f-hq'])
 	})
+
+	// an admin list carries no colors, so such a group has nothing to follow and takes a custom color instead
+	it('offers nothing for a group defined only by admin-list rules', () => {
+		const g: PG.Grouping = { rules: [adminRule('Whitelist', 'Members')], groups: {} }
+		expect(PG.getGroupFlags(g, 'Members')).toEqual([])
+		expect(PG.defaultGroupColor(g, 'Members', ORG_FLAGS)).toBeUndefined()
+		expect(PG.getGroupColor(g, 'Members', ORG_FLAGS)).toBe(PG.DEFAULT_GROUP_COLOR)
+	})
+
+	// a group fed by both sources can still follow its flag
+	it('offers only the flag rules of a mixed group', () => {
+		const g: PG.Grouping = { rules: [adminRule('Admins', 'Staff'), rule('f-hq', 'Staff')], groups: {} }
+		expect(PG.getGroupFlags(g, 'Staff')).toEqual(['f-hq'])
+		expect(PG.defaultGroupColor(g, 'Staff', ORG_FLAGS)).toEqual({ type: 'flag', flag: 'f-hq' })
+	})
 })
 
 describe('getGroupColor', () => {
@@ -145,10 +192,10 @@ describe('resolvePlayerGroups', () => {
 	}
 
 	it('resolves every player under the named grouping only', () => {
-		const players: [string, BM.PlayerFlag[]][] = [
-			['p1', [flag('f-hq')]],
-			['p2', [flag('f-regular')]],
-			['p3', [flag('f-nothing')]],
+		const players: [string, PG.PlayerFacts][] = [
+			['p1', withFlags('f-hq')],
+			['p2', withFlags('f-regular')],
+			['p3', withFlags('f-nothing')],
 		]
 		expect(PG.resolvePlayerGroups(players, groupings, 'admin')).toEqual(new Map([['p1', 'HQ'], ['p2', 'Regulars']]))
 		// the same roster buckets differently under another grouping -- that is the point of having several
@@ -156,7 +203,7 @@ describe('resolvePlayerGroups', () => {
 	})
 
 	it('groups nobody for a missing or unset grouping', () => {
-		const players: [string, BM.PlayerFlag[]][] = [['p1', [flag('f-hq')]]]
+		const players: [string, PG.PlayerFacts][] = [['p1', withFlags('f-hq')]]
 		expect(PG.resolvePlayerGroups(players, groupings, 'deleted').size).toBe(0)
 		expect(PG.resolvePlayerGroups(players, groupings, null).size).toBe(0)
 	})
@@ -170,6 +217,14 @@ describe('PlayerGroupingsSchema', () => {
 
 	it('rejects a rule with no group, which could never be told apart in the UI', () => {
 		expect(PG.PlayerGroupingsSchema.safeParse({ admin: { rules: [rule('f-hq', '')] } }).success).toBe(false)
+	})
+
+	it('takes admin-list rules and keeps the sources apart', () => {
+		const parsed = PG.PlayerGroupingsSchema.parse({ a: { rules: [adminRule('Whitelist', 'Members'), rule('f-hq', 'HQ')] } })
+		expect(parsed.a.rules).toEqual([adminRule('Whitelist', 'Members'), rule('f-hq', 'HQ')])
+		// each variant carries only its own source field
+		expect(PG.PlayerGroupingsSchema.safeParse({ a: { rules: [{ type: 'admin-list', flag: 'f-hq', group: 'HQ' }] } }).success).toBe(false)
+		expect(PG.PlayerGroupingsSchema.safeParse({ a: { rules: [{ type: 'admin-list', adminGroup: '', group: 'HQ' }] } }).success).toBe(false)
 	})
 
 	it('takes both color variants and rejects an untagged one', () => {

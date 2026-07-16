@@ -78,7 +78,6 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	const { data: bmData } = useQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId }, staleTime: Infinity }))
 	const orgFlags = useOrgFlags()
 	const flags = bmData && orgFlags ? BM.resolveFlags(bmData.flagIds, orgFlags) : undefined
-	const groupColor = usePlayerGroupColor(playerId)
 	const profile = bmData ? (({ flagIds: _, ...rest }) => rest)(bmData) : null
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
 	const currentMatchEvents = ZusUtils.useStore(
@@ -100,6 +99,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	const livePlayer = ZusUtils.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.player(playerId)(s) ?? null)
 	const recentPlayer = ZusUtils.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.recentPlayer(playerId)(s) ?? null)
 	const ids = livePlayer?.ids ?? recentPlayer?.ids
+	const groupColor = usePlayerGroupColor(playerId, livePlayer?.adminGroups ?? recentPlayer?.adminGroups ?? [])
 
 	const connectionStatus = data?.connectionStatus ?? null
 	const elapsed = useElapsed(connectionStatus?.status === 'online' ? connectionStatus.connectedSince : null)

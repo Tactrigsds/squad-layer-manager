@@ -142,6 +142,24 @@ export type MatchHistoryState = {
 } & Parts<USR.UserPart>
 
 export const orpcRouter = {
+	// The admin-list group names known to any running server, for the player-groupings editor to offer. Player groupings are
+	// global config while an admin list is per-server, so this is the union across servers rather than one server's list: a
+	// grouping naming a group only some servers define simply matches nobody on the others.
+	listAdminListGroups: orpcBase.handler(async () => {
+		const baseCtx = getBaseCtx()
+		const names = new Set<string>()
+		for (const slice of globalState.slices.values()) {
+			try {
+				const adminList = await slice.adminList.get({ ...baseCtx, ...slice }, { ttl: Infinity })
+				for (const group of adminList.groups.keys()) names.add(group)
+			} catch (err) {
+				// one unreachable admin list must not deny the editor every other server's groups
+				log.warn(err, 'Failed to read an admin list while listing groups')
+			}
+		}
+		return [...names].sort()
+	}),
+
 	// which servers currently have a live slice. This is runtime state, not registry config: a server can be enabled and
 	// non-broken yet have no slice (still booting, or torn down by a fatal resource error), and everything served per-server
 	// needs one. The client gates the dashboard on this so it renders "unavailable" instead of hanging on silent streams.

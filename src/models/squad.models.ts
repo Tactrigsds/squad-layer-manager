@@ -396,6 +396,10 @@ export const PlayerSchema = z.object({
 	squadId: z.number().nullable(),
 	isLeader: z.boolean(),
 	isAdmin: z.boolean(),
+	// the admin list groups this player is in. `isAdmin` only reflects the groups holding an admin-identifying
+	// permission, so this is a superset of it: a reserve-slot group like Whitelist appears here and not there.
+	// Prefaulted because events persisted before this field existed carry players without it.
+	adminGroups: z.array(z.string()).prefault([]),
 	role: z.string(),
 })
 
@@ -403,15 +407,16 @@ export type Player = z.infer<typeof PlayerSchema>
 export const PlayerIdSchema = z.string()
 export type PlayerId = EosId
 
-// The part of a player that stays meaningful once they disconnect: who they are, and whether they're an admin.
+// The part of a player that stays meaningful once they disconnect: who they are, and what the admin list says about
+// them (both of which are properties of the person, not of the session).
 // Everything tied to participation in a match rather than to the live roster (combat stats, resolving the author of
 // an event that has since scrolled past their disconnect) hangs off a list of these instead of `Player`, so it
 // survives a player dropping and rejoining mid-match. `Player` is assignable to it.
-export const RecentPlayerSchema = PlayerSchema.pick({ ids: true, isAdmin: true })
+export const RecentPlayerSchema = PlayerSchema.pick({ ids: true, isAdmin: true, adminGroups: true })
 export type RecentPlayer = z.infer<typeof RecentPlayerSchema>
 
 export function toRecentPlayer(player: RecentPlayer): RecentPlayer {
-	return { ids: { ...player.ids }, isAdmin: player.isAdmin }
+	return { ids: { ...player.ids }, isAdmin: player.isAdmin, adminGroups: [...player.adminGroups] }
 }
 
 // A roster is "settled" when every player has been assigned to a team -- i.e. no one is still loading / unassigned.

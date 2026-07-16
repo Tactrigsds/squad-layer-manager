@@ -1030,6 +1030,8 @@ async function* processPendingEvent(
 				squadId: null,
 				isLeader: false,
 				isAdmin: state.admins.has(SM.PlayerIds.getPlayerId(events.PLAYER_CONNECTED.playerIds)),
+				// the log stream carries no admin-list membership; the next RCON teams poll fills both this and isAdmin in
+				adminGroups: [],
 				role: 'unknown',
 			}
 
@@ -1393,6 +1395,7 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 				squadId: null,
 				isLeader: false,
 				isAdmin: nextPlayer.isAdmin,
+				adminGroups: nextPlayer.adminGroups,
 				role: nextPlayer.role,
 			},
 			...base,
