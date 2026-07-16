@@ -43,7 +43,7 @@ const EXPLORE_LAYERS_FRAME_INSTANCE_ID = 'explore-layers'
 export default function NavBar() {
 	const flags = FeatureFlags.useFeatureFlags()
 	const wsStatus = RPC.useConnectStatus()
-	const { simulateRoles, setSimulateRoles } = ZusUtils.useStore(RbacClient.RbacStore)
+	const { simulate, setSimulate } = ZusUtils.useStore(RbacClient.RbacStore)
 	const user = useLoggedInUser()
 
 	const avatarUrl = user && USR.getAvatarUrl(user)
@@ -114,10 +114,10 @@ export default function NavBar() {
 	const userMenuContent = user && (
 		<>
 			<DropdownMenuLabel className="truncate max-w-50">{user.displayName}</DropdownMenuLabel>
-			{simulateRoles && (
-				<DropdownMenuItem onClick={() => setSimulateRoles(false)} className="sm:hidden text-sm">
+			{simulate && (
+				<DropdownMenuItem onClick={() => setSimulate(false)} className="sm:hidden text-sm">
 					<Icons.X className="mr-2 h-4 w-4" />
-					Stop Simulating Roles
+					Stop Simulating
 				</DropdownMenuItem>
 			)}
 			{wsStatus === 'closed' && (
@@ -239,10 +239,10 @@ export default function NavBar() {
 			</div>
 			<ExploreLayersDialog open={exploreLayersOpen} onOpenChange={setExploreLayersOpen} />
 			<div className="flex h-max min-h-0 flex-row items-center space-x-1 sm:space-x-3 overflow-hidden">
-				{simulateRoles && (
+				{simulate && (
 					<div className="hidden sm:flex items-center space-x-1 shrink-0">
-						<span className="text-sm font-medium">Simulating Roles</span>{' '}
-						<Button size="icon" variant="ghost" onClick={() => setSimulateRoles(false)}>
+						<span className="text-sm font-medium">Simulating</span>{' '}
+						<Button size="icon" variant="ghost" onClick={() => setSimulate(false)}>
 							<Icons.X className="h-4 w-4" />
 						</Button>
 					</div>
