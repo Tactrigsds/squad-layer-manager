@@ -1114,7 +1114,10 @@ function TeamSpecConfig(props: {
 					key={teamColumn}
 					title={teamColumn}
 					emptyLabel={`any ${teamColumn.toLowerCase()}`}
-					className="w-[180px]"
+					// a floor, not a fixed width: the three dimensions line up when empty, but a filled one
+					// grows to its selection (all four alliances need ~270px) instead of truncating at 180.
+					// restrictValueSize still caps it at 400px, so a big faction selection can't run away
+					className="min-w-[180px]"
 					restrictValueSize
 					// both teams' columns share an enum mapping, so team 1's value list serves either side
 					column={F.resolveTeamColumn(teamColumn, 1) as LC.GroupByColumn}
