@@ -1,4 +1,6 @@
 import * as dotenv from 'dotenv'
+import * as Crypto from 'node:crypto'
+import fs from 'node:fs'
 import path from 'node:path'
 import { z } from 'zod'
 import * as Paths from '../../paths.ts'
@@ -32,8 +34,15 @@ export type EnvExampleMeta = EnvExampleEntry & {
 declare module 'zod' {
 	interface GlobalMeta {
 		envExample?: EnvExampleMeta
+		// the var holds a credential: it is read from the secrets file (see readSecretsFile) and written to
+		// .env.secrets.example rather than .env.example. docs/INSTALLING.md covers why.
+		secret?: true
 	}
 }
+
+// The key .env.example.dev ships, so a checkout boots without a key-generation step. It says what it is,
+// where a random-looking string would not; production refuses to start with it (see ensureEnvSetup).
+export const INSECURE_DEV_ENCRYPTION_KEY = 'A_VERY_INSECURE_ENCRYPTION_KEY'
 
 // comma-separated list of Discord snowflake ids parsed to bigints (e.g. SUPER_USERS="123,456")
 const BigIntListSchema = z.string().default('').transform((val) => val.split(',').map((s) => s.trim()).filter(Boolean).map(BigInt))
@@ -70,6 +79,12 @@ export const groups = {
 			description:
 				'comma-separated context params to leave out of rendered log lines. Purely a readability knob for a noisy local console; it does not affect what is exported.',
 			envExample: { include: 'omit', dev: { include: 'commented' } },
+		}),
+
+		SECRETS_FILE: z.string().min(1).optional().meta({
+			description:
+				'the file the credentials are read from. Defaults to ./.env.secrets when that file exists; set this to read them from somewhere else (e.g. /run/secrets/slm-secrets, where a docker secret is mounted). Pointing it at a file that is not there is an error, rather than a silent boot without them.',
+			envExample: { include: 'commented' },
 		}),
 
 		PUBLIC_REPO_URL: z.url().optional().meta({
@@ -112,21 +127,17 @@ export const groups = {
 	},
 
 	encryption: {
-		SETTINGS_ENCRYPTION_KEY: z.string().min(1).transform((val, ctx) => {
-			const buf = Buffer.from(val, 'base64')
-			if (buf.length !== 32) {
-				ctx.addIssue({ code: 'custom', message: 'must be a base64-encoded 32-byte key (generate one with `openssl rand -base64 32`)' })
-				return z.NEVER
-			}
-			return buf
-		}).meta({
+		// any string, hashed into the 32 bytes AES-256 needs
+		SETTINGS_ENCRYPTION_KEY: z.string().min(1).transform(val => Crypto.createHash('sha256').update(val).digest()).meta({
+			secret: true,
 			description:
-				"a base64-encoded 32-byte key used to encrypt sensitive settings at rest (a server's RCON/SFTP passwords and server-agent token). Generate one with `openssl rand -base64 32`. Required. Changing it makes any already-encrypted connection secrets unreadable, so they have to be re-entered on the settings page.",
+				"the key sensitive settings are encrypted at rest with (a server's RCON/SFTP passwords and server-agent token). Generate a strong one with `openssl rand -base64 32`. Required. Changing it makes any already-encrypted connection secrets unreadable, so they have to be re-entered on the settings page.",
 			envExample: {
 				include: 'set',
 				dev: {
+					value: INSECURE_DEV_ENCRYPTION_KEY,
 					description:
-						'a base64-encoded 32-byte key used to encrypt sensitive settings at rest. `pnpm server:dev` generates one into your .env automatically if it is missing, so you normally never touch this. Generate one manually with `openssl rand -base64 32`.',
+						'the key sensitive settings are encrypted at rest with. The phrase below is the development key: it is in the repo, so it is public, and the app refuses to start with it when NODE_ENV=production. Generate a real one with `openssl rand -base64 32`.',
 				},
 			},
 		}),
@@ -184,6 +195,7 @@ export const groups = {
 			envExample: { dev: { include: 'omit' } },
 		}),
 		BACKUP_SFTP_PASSWORD: z.string().min(1).optional().meta({
+			secret: true,
 			description: 'see BACKUP_SFTP_HOST. Either this or BACKUP_SFTP_PRIVATE_KEY_PATH is required once a host is set.',
 			envExample: { dev: { include: 'omit' } },
 		}),
@@ -192,6 +204,7 @@ export const groups = {
 			envExample: { dev: { include: 'omit' } },
 		}),
 		BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE: z.string().min(1).optional().meta({
+			secret: true,
 			description: 'only needed if the key at BACKUP_SFTP_PRIVATE_KEY_PATH is encrypted.',
 			envExample: { dev: { include: 'omit' } },
 		}),
@@ -211,10 +224,12 @@ export const groups = {
 			description: 'from the discord app SLM logs users in with. See the README for how the app has to be set up.',
 		}),
 		DISCORD_CLIENT_SECRET: z.string().min(1).meta({
+			secret: true,
 			description: "the discord app's oauth2 client secret.",
 		}),
 		DISCORD_BOT_TOKEN: z.string().min(1).meta({
-			description: 'the bot token of the same discord app. It has to be installed on the guild below.',
+			secret: true,
+			description: 'the bot token of the same discord app. It has to be installed on the guild DISCORD_HOME_GUILD_ID names.',
 		}),
 		DISCORD_HOME_GUILD_ID: ParsedBigIntSchema.meta({
 			description: "the guild SLM resolves users and roles against, i.e. your org's discord server.",
@@ -294,6 +309,7 @@ export const groups = {
 		}),
 
 		BM_PAT: z.string().meta({
+			secret: true,
 			description: `battlemetrics API token. It needs these permissions:
 - player flags (add/remove. it doesn't need to create new ones)
 - player notes (read & create)
@@ -311,7 +327,7 @@ Leave it empty if you don't have an org on battlemetrics; the app boots without 
 		}),
 
 		BM_ORG_ID: z.string().meta({
-			description: 'the battlemetrics organization the token above belongs to. Player flags are filtered to this org.',
+			description: 'the battlemetrics organization BM_PAT belongs to. Player flags are filtered to this org.',
 		}),
 	},
 } satisfies { [key: string]: Record<string, z.ZodType> }
@@ -346,7 +362,25 @@ export const groupMeta: Record<keyof typeof groups, { title: string; description
 	battlemetrics: { title: 'Battlemetrics' },
 }
 
+export function isSecret(schema: z.ZodType): boolean {
+	return schema.meta()?.secret === true
+}
+
+export function entries(): [string, z.ZodType][] {
+	return Object.values(groups).flatMap(group => Object.entries(group as Record<string, z.ZodType>))
+}
+
+export const DEFAULT_SECRETS_PATH = path.join(Paths.PROJECT_ROOT, '.env.secrets')
+
 let rawEnv!: Record<string, string | undefined>
+
+// the secrets that arrived as environment variables rather than from the secrets file, which is supported but
+// worth a word in production. Read after ensureEnvSetup, once there is a logger to say it with.
+let secretsFromEnvironment: string[] = []
+
+export function getSecretsFromEnvironment(): string[] {
+	return secretsFromEnvironment
+}
 
 const parsedProperties = new Map<string, unknown>()
 
@@ -384,9 +418,14 @@ export function getEnvBuilder<G extends Record<string, z.ZodType>>(groups: G) {
 
 let setup = false
 
-// injects a var into the already-frozen rawEnv after ensureEnvSetup has run, so a value written at boot
-// (e.g. the dev-generated SETTINGS_ENCRYPTION_KEY) is visible to env builders. Clears any cached parse so
-// the next build picks it up.
+// the raw, unparsed value of a var, for the callers that only want to know whether it is set at all. Secrets
+// are not in process.env to be checked directly (see ensureEnvSetup), so this is the only way to ask.
+export function rawVar(key: string): string | undefined {
+	return rawEnv[key]
+}
+
+// injects a var into the already-frozen rawEnv after ensureEnvSetup has run, so that a value decided at
+// runtime is visible to env builders. Clears any cached parse so the next build picks it up.
 export function injectRawVar(key: string, value: string) {
 	rawEnv[key] = value
 	parsedProperties.delete(key)
@@ -397,22 +436,48 @@ const buildForValidation = getEnvBuilder({
 	QUERY_PARAM_AUTH_BYPASS: groups.general.QUERY_PARAM_AUTH_BYPASS,
 })
 
+// The default path is a convention rather than a requirement: a checkout and the test harness pass their
+// secrets in the environment and have no file. A path asked for explicitly does have to be there, since
+// booting without the secrets someone pointed us at is never what they meant.
+function resolveSecretsFile(): { filePath: string; explicit: boolean } {
+	const explicit = Cli.options?.secretsFile ?? process.env.SECRETS_FILE
+	return explicit ? { filePath: explicit, explicit: true } : { filePath: DEFAULT_SECRETS_PATH, explicit: false }
+}
+
+function readSecretsFile(): Record<string, string> {
+	const { filePath, explicit } = resolveSecretsFile()
+	let contents: string
+	try {
+		contents = fs.readFileSync(filePath, 'utf8')
+	} catch (error) {
+		if (!explicit && (error as NodeJS.ErrnoException).code === 'ENOENT') return {}
+		throw new Error(`Could not read the secrets file at ${filePath}`, { cause: error })
+	}
+	return dotenv.parse(contents)
+}
+
 export function ensureEnvSetup() {
 	if (setup) return
 	// entrypoints which don't use the cli system (scripts) still get the default .env; --env-file only overrides the path
 	dotenv.config({ path: Cli.options?.envFile })
+	const secrets = readSecretsFile()
 	rawEnv = {}
-	for (
-		const key of Object.values(groups).flatMap(g => Object.keys(g))
-	) {
-		if (process.env[key]) {
-			rawEnv[key] = process.env[key]
-		}
+	secretsFromEnvironment = []
+	for (const [key, schema] of entries()) {
+		const fromFile = isSecret(schema) ? secrets[key] : undefined
+		const value = fromFile ?? process.env[key]
+		if (value) rawEnv[key] = value
+		if (value && isSecret(schema) && fromFile === undefined) secretsFromEnvironment.push(key)
 	}
 
 	const toValidate = buildForValidation()
 	if (toValidate.NODE_ENV === 'production' && toValidate.QUERY_PARAM_AUTH_BYPASS) {
 		throw new Error('QUERY_PARAM_AUTH_BYPASS=true is not allowed in production')
+	}
+	if (toValidate.NODE_ENV === 'production' && rawEnv.SETTINGS_ENCRYPTION_KEY === INSECURE_DEV_ENCRYPTION_KEY) {
+		throw new Error(
+			'SETTINGS_ENCRYPTION_KEY is the development key .env.example.dev ships, which is public. Generate a real one with `openssl rand -base64 32`.',
+		)
 	}
 
 	setup = true

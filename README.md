@@ -20,8 +20,8 @@ mkdir squad-layer-manager && cd squad-layer-manager
 curl -fsSL https://raw.githubusercontent.com/Tactrigsds/squad-layer-manager/main/install.sh | bash
 ```
 
-Then create the Discord app, fill in `.env`, and `docker compose up -d`. Everything else is configured from the
-app's settings page.
+Then create the Discord app, fill in `.env` and `.env.secrets` (which holds the credentials), and
+`docker compose up -d`. Everything else is configured from the app's settings page.
 
 ## Pull Request Guidelines
 
