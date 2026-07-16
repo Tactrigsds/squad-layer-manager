@@ -168,9 +168,11 @@ async function fetchPlayers(ctx: C.Rcon & C.AdminList & CS.AbortSignal) {
 		data.ids = ids
 
 		data.isAdmin = false
+		data.adminGroups = []
 		if (data.ids.steam) {
 			const adminList = await ctx.adminList.get(ctx, { ttl: Infinity })
 			data.isAdmin = adminList.admins.has(data.ids.steam)
+			data.adminGroups = [...(adminList.players.get(data.ids.steam) ?? [])]
 		} else {
 			log.info('parsed player info data without steam id: %o', data)
 		}
