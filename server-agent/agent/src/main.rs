@@ -33,7 +33,10 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 
-const VERSION: &str = "0.2.0";
+// The version we introduce ourselves with in the handshake, and the one SLM logs for a connected agent. Read
+// from Cargo.toml so it can't drift from the crate the binary was built from, which is what the release tag
+// (server-agent-v<version>) names.
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // binary frame channel tags (first byte of every post-handshake frame)
 const TAG_LOG: u8 = 0x00;
