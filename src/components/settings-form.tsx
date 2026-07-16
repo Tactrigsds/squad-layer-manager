@@ -731,7 +731,7 @@ function GroupingCard(
 				<details>
 					<summary className="cursor-pointer text-xs text-muted-foreground">Colors ({groupNames.length})</summary>
 					<p className="mt-1 text-xs text-muted-foreground">
-						Following a flag keeps the color in step with battlemetrics; a custom color stays put.
+						Following a flag keeps the color in step with battlemetrics.
 					</p>
 					<ul className="mt-1.5 space-y-1">
 						{groupNames.map((group) => {
