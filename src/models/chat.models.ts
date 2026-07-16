@@ -52,19 +52,56 @@ export type PlayerStats = {
 export type PlayerStatsMap = Record<SM.PlayerId, PlayerStats>
 
 export type InterpolableState = {
+	// the live roster: only players currently connected
 	players: SM.Player[]
+	// everyone who has taken part in the current match, including players who have since disconnected. Reset at match
+	// boundaries alongside playerStats, whose keys it is the domain of.
+	recentPlayers: SM.RecentPlayer[]
+	// the live squads: only squads that currently exist
 	squads: SM.UniqueSquad[]
-	// per-match combat stats, keyed by player id. kept separate from players rather than stored on them
+	// every squad instance that has existed in the current match, including disbanded ones. Same bargain as
+	// recentPlayers: keyed by uniqueId, which is stable for the lifetime of an instance.
+	recentSquads: SM.RecentSquad[]
+	// per-match combat stats, keyed by recent player id. kept separate from the player records rather than stored on
+	// them, so a player who reconnects mid-match keeps the score they built up before dropping.
 	playerStats: PlayerStatsMap
+	// players currently in admin camera, tracked from POSSESSED/UNPOSSESSED_ADMIN_CAMERA. kept separate from players
+	// since the roster is replaced wholesale by the teams poll, which knows nothing about admin camera
+	adminCamPlayerIds: SM.PlayerId[]
 }
 
 export namespace InterpolableState {
 	export function clone(state: InterpolableState): InterpolableState {
 		return {
 			players: state.players.map(p => ({ ...p, ids: { ...p.ids } })),
+			recentPlayers: [...state.recentPlayers],
 			squads: [...state.squads],
+			recentSquads: [...state.recentSquads],
 			playerStats: { ...state.playerStats },
+			adminCamPlayerIds: [...state.adminCamPlayerIds],
 		}
+	}
+
+	// records a player as having taken part in the current match, refreshing the ids/admin status of an existing entry.
+	export function recordRecentPlayer(state: InterpolableState, player: SM.RecentPlayer) {
+		const index = SM.PlayerIds.indexOf(state.recentPlayers, p => p.ids, player.ids)
+		if (index === -1) state.recentPlayers.push(SM.toRecentPlayer(player))
+		else state.recentPlayers[index] = SM.toRecentPlayer(player)
+	}
+
+	export function findRecentPlayer(state: InterpolableState, id: SM.PlayerIds.IdQueryOrPlayerId) {
+		return SM.PlayerIds.find(state.recentPlayers, p => p.ids, id)
+	}
+
+	// records a squad instance as having existed in the current match, refreshing an existing entry (e.g. a rename).
+	export function recordRecentSquad(state: InterpolableState, squad: SM.RecentSquad) {
+		const index = state.recentSquads.findIndex(s => s.uniqueId === squad.uniqueId)
+		if (index === -1) state.recentSquads.push(SM.toRecentSquad(squad))
+		else state.recentSquads[index] = SM.toRecentSquad(squad)
+	}
+
+	export function findRecentSquad(state: InterpolableState, uniqueSquadId: number) {
+		return state.recentSquads.find(s => s.uniqueId === uniqueSquadId)
 	}
 }
 
@@ -187,8 +224,11 @@ export type ChatState = {
 export function getInitialInterpolatedState(): InterpolableState {
 	return {
 		players: [],
+		recentPlayers: [],
 		squads: [],
+		recentSquads: [],
 		playerStats: {},
+		adminCamPlayerIds: [],
 	}
 }
 
@@ -435,8 +475,23 @@ function interpolateEvent(
 		case 'MAP_SET':
 		case 'NEW_GAME':
 		case 'RESET': {
-			if (event.type === 'NEW_GAME' || event.type === 'RESET') state.playerStats = {}
 			applyEventTeamMutations(chatLog, state, event)
+			if (event.type === 'NEW_GAME') {
+				// a match boundary restarts participation: only whoever is on the roster right now counts as recent,
+				// and last match's scores go with it. NEW_GAME is the only boundary -- a RESET reseeds the roster for
+				// a boundary NEW_GAME already announced, but is ALSO emitted on a same-match rcon reconnect
+				// (source 'rcon-reconnected'), where wiping would cost the match its scores so far.
+				state.playerStats = {}
+				state.recentPlayers = state.players.map(SM.toRecentPlayer)
+				state.recentSquads = state.squads.map(SM.toRecentSquad)
+			} else if (event.type === 'RESET') {
+				// RESET restates the roster from scratch and carries no admin camera information, so anyone we thought
+				// was in admin camera is no longer known to be
+				state.adminCamPlayerIds = []
+				// the reseeded roster may name players and squads we haven't seen participate yet
+				for (const player of state.players) InterpolableState.recordRecentPlayer(state, player)
+				for (const squad of state.squads) InterpolableState.recordRecentSquad(state, squad)
+			}
 			return event
 		}
 
@@ -451,6 +506,7 @@ function interpolateEvent(
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player.ids)} connected but was already in the player list`)
 			}
 			applyEventTeamMutations(chatLog, state, event)
+			InterpolableState.recordRecentPlayer(state, event.player)
 			return { ...event, player: event.player }
 		}
 
@@ -461,6 +517,7 @@ function interpolateEvent(
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player.ids)} reconciled but was already in the player list`)
 			}
 			applyEventTeamMutations(chatLog, state, event)
+			InterpolableState.recordRecentPlayer(state, event.player)
 			return { ...event, player: event.player }
 		}
 
@@ -470,6 +527,7 @@ function interpolateEvent(
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} disconnected but was not found in the player list`)
 			}
 			const player = state.players[index]
+			state.adminCamPlayerIds = state.adminCamPlayerIds.filter(id => id !== event.player)
 			applyEventTeamMutations(chatLog, state, event)
 			return { ...event, player }
 		}
@@ -480,6 +538,7 @@ function interpolateEvent(
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} had details changed but was not found in the player list`)
 			}
 			applyEventTeamMutations(chatLog, state, event)
+			InterpolableState.recordRecentPlayer(state, state.players[index])
 			return { ...event, player: state.players[index] }
 		}
 
@@ -499,6 +558,7 @@ function interpolateEvent(
 				return noop(`Squad ${event.uniqueId} was renamed but was not found in the squad list`)
 			}
 			applyEventTeamMutations(chatLog, state, event)
+			InterpolableState.recordRecentSquad(state, state.squads[index])
 			return { ...event, squad: state.squads[index] }
 		}
 
@@ -599,6 +659,7 @@ function interpolateEvent(
 				)
 			}
 			applyEventTeamMutations(chatLog, state, event)
+			InterpolableState.recordRecentSquad(state, squad)
 			return { ...event, creator: state.players[creatorIndex] }
 		}
 
@@ -631,6 +692,12 @@ function interpolateEvent(
 			}
 			if (event.type === 'PLAYER_KICKED') {
 				return { ...event, player, reason: event.reason?.replace('Kicked from the server: ', '').trim() }
+			}
+			if (event.type === 'POSSESSED_ADMIN_CAMERA' && !state.adminCamPlayerIds.includes(event.player)) {
+				state.adminCamPlayerIds = [...state.adminCamPlayerIds, event.player]
+			}
+			if (event.type === 'UNPOSSESSED_ADMIN_CAMERA') {
+				state.adminCamPlayerIds = state.adminCamPlayerIds.filter(id => id !== event.player)
 			}
 			return { ...event, player }
 		}
