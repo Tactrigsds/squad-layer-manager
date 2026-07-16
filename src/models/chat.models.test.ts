@@ -11,6 +11,7 @@ function makePlayer(eos: string, opts: Partial<SM.Player> = {}): SM.Player {
 		squadId: null,
 		isLeader: false,
 		isAdmin: false,
+		adminGroups: [],
 		role: 'Rifleman_01',
 		...opts,
 	}

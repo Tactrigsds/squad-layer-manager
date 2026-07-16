@@ -30,7 +30,8 @@ import * as m0077 from './0077_sftp_tuning_into_connection'
 import * as m0078 from './0078_admin_list_sources_per_server'
 import * as m0079 from './0079_connection_modes'
 import * as m0080 from './0080_command_aliases'
-import * as m0081 from './0081_block_operators_to_logical_ids'
+import * as m0081 from './0081_player_groupings_by_grouping_id'
+import * as m0082 from './0082_block_operators_to_logical_ids'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -52,5 +53,6 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0078_admin_list_sources_per_server', up: m0078.up },
 	{ name: '0079_connection_modes', up: m0079.up },
 	{ name: '0080_command_aliases', up: m0080.up },
-	{ name: '0081_block_operators_to_logical_ids', up: m0081.up },
+	{ name: '0081_player_groupings_by_grouping_id', up: m0081.up },
+	{ name: '0082_block_operators_to_logical_ids', up: m0082.up },
 ]
