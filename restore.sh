@@ -35,6 +35,16 @@ fi
 status=0
 docker compose run --rm app pnpm db:restore:prod "$@" || status=$?
 
+# 2 means the restore worked but the database it put back is behind this image. Starting the app now would migrate it
+# straight back up, which for a rollback undoes the exact thing you just did -- so this is the one success we refuse to
+# restart on.
+if [[ $status -eq 2 ]]; then
+	echo
+	echo "The app is left stopped on purpose. Point docker-compose.yaml at the version this database belongs to, then:"
+	echo "  docker compose up -d app"
+	exit 0
+fi
+
 if [[ $status -ne 0 ]]; then
 	echo >&2
 	echo "restore failed (exit $status). The app is left stopped: check the message above before starting it." >&2
