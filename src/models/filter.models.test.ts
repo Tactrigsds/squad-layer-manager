@@ -2,7 +2,7 @@ import { up as migrateFilterNodes } from '@/migrations/0062_filter_nodes_operato
 import { up as migrateTeamScopes } from '@/migrations/0063_filter_team_scopes_to_and_or'
 import { up as migrateBlockOperators } from '@/migrations/0065_filter_block_operators'
 import { up as migrateApplyOperators } from '@/migrations/0066_filter_apply_operators'
-import { up as migrateBlockIds } from '@/migrations/0081_block_operators_to_logical_ids'
+import { up as migrateBlockIds } from '@/migrations/0082_block_operators_to_logical_ids'
 import * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'

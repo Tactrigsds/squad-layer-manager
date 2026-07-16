@@ -3,7 +3,7 @@ import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { cn } from '@/lib/utils'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
-import { useGroupedPlayerFlagColor } from '@/systems/battlemetrics.client'
+import { usePlayerGroupColor } from '@/systems/battlemetrics.client'
 import { ContextMenu } from '@radix-ui/react-context-menu'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -57,7 +57,7 @@ export function PlayerDisplay(
 ) {
 	const playerId = SM.PlayerIds.getPlayerId(player.ids)
 	const windowProps: PlayerDetailsWindowProps = { playerId, stores }
-	const flagColor = useGroupedPlayerFlagColor(playerId)
+	const groupColor = usePlayerGroupColor(playerId, player.adminGroups)
 
 	return (
 		<span className={cn('inline-flex items-baseline', className)}>
@@ -89,7 +89,7 @@ export function PlayerDisplay(
 				playerId={SM.PlayerIds.getPlayerId(player.ids)}
 				stores={stores}
 				disableContextMenu={disableContextMenu}
-				style={flagColor ? { color: flagColor } : undefined}
+				style={groupColor ? { color: groupColor } : undefined}
 			/>
 			{(showTeam && player.teamId !== null) || (showSquad && player.squadId !== null)
 				? (
