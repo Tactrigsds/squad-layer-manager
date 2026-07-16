@@ -38,7 +38,7 @@ export function createEmuCommands(ctx: { emu: Emulator; bm: BmServer }): { comma
 
 	function requirePlayer(name: string): EmuPlayer {
 		const player = players.get(name)
-		if (!player) throw new Error(`no player named '${name}' — 'players' lists them, 'join ${name}' connects them`)
+		if (!player) throw new Error(`no player named '${name}' -- 'players' lists them, 'join ${name}' connects them`)
 		return player
 	}
 
@@ -134,7 +134,7 @@ export async function dispatch(commands: EmuCommands, args: string[]): Promise<R
 	const [name, ...rest] = args
 	if (!name) return { ok: true, output: '' }
 	const command = commands[name]
-	if (!command) return { ok: false, output: `unknown command '${name}' — try 'help'` }
+	if (!command) return { ok: false, output: `unknown command '${name}' -- try 'help'` }
 	try {
 		return { ok: true, output: (await command.run(rest)) ?? '' }
 	} catch (err) {
@@ -206,7 +206,7 @@ export function send(socketPath: string, args: string[]): Promise<Response> {
 		})
 		socket.on('error', (err) => {
 			if ((err as NodeJS.ErrnoException).code === 'ENOENT' || (err as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
-				reject(new Error('no emulator is running for this worktree — start one with `pnpm dev:emu`'))
+				reject(new Error('no emulator is running for this worktree -- start one with `pnpm dev:emu`'))
 				return
 			}
 			reject(err)

@@ -11,7 +11,7 @@ pnpm dev          # terminal 2: the app + client
 ```
 
 `dev:init` prints the URL to open. Discord oauth is off for a dev instance, so log in with
-`?login=<username>` — any username in the cloned database works.
+`?login=<username>` -- any username in the cloned database works.
 
 ## Slots
 
@@ -34,7 +34,7 @@ every worktree agrees on.
 
 `dev:init` clones the main checkout's database, then re-points it at this worktree's emulator: the default
 server gets a `local` connection to the emulator's log file and RCON port, and every other server is disabled
-and has its connection scrubbed. Everything else — match history, users, filters, settings — survives, which
+and has its connection scrubbed. Everything else -- match history, users, filters, settings -- survives, which
 is the point: an experiment runs against realistic data rather than an empty db.
 
 Re-clone at any time with `pnpm dev:db:clone --force` (stop the app first). `--from <path>` clones from
@@ -50,7 +50,7 @@ Two safety properties, both of which the script enforces rather than assumes:
 - **The destination is never swapped out from under a running app.** This is the half that needs care, and
   not for a reason WAL covers. WAL coordinates concurrent _connections_ to a database; replacing the file
   happens behind SQLite's back, where its locking has no say. An app left holding the unlinked file goes on
-  writing to it — successfully, and into nothing, since the inode has no name any more — while serving reads
+  writing to it -- successfully, and into nothing, since the inode has no name any more -- while serving reads
   from a database that is no longer on disk. Nothing errors. So the script takes an _exclusive_ lock and
   holds it from before the snapshot until after the rename: an app that boots into that window fails loudly
   on `SQLITE_BUSY` rather than becoming a ghost.
@@ -60,7 +60,7 @@ Two safety properties, both of which the script enforces rather than assumes:
 
 The `-wal` is deleted with the file it belongs to, before the replacement takes the name. Left behind, it is
 replayed over the new database as though it described it, and the reader silently sees the _old_ database's
-contents — with `integrity_check` reporting `ok`, so nothing anywhere reports a problem.
+contents -- with `integrity_check` reporting `ok`, so nothing anywhere reports a problem.
 
 For contrast, `pnpm db:migrate` against a running app is a different and much milder case, because it writes
 _through_ SQLite rather than around it: WAL serializes it, a racing write gets `SQLITE_BUSY` instead of being
@@ -75,7 +75,7 @@ driving the production server.
 
 `pnpm dev:emu` runs the emulated squad server (`src/emulator`) and a stub BattleMetrics API. It is a separate
 process from the app on purpose: `pnpm dev` runs under `tsx watch` and restarts on every edit, which would
-take the emulated world — players, squads, match state, log history — down with it each time. As its own
+take the emulated world -- players, squads, match state, log history -- down with it each time. As its own
 process the world outlives app reloads.
 
 It writes the same `SquadGame.log` a real server does, and the app tails it over the same `local` code path.
@@ -91,7 +91,7 @@ app reads.
 ```sh
 pnpm emuctl join Alice          # a player connects
 pnpm emuctl squad Alice Able    # ...and leads a squad
-pnpm emuctl chat Alice '!vote 1' # say something in all-chat — this is how you drive chat commands
+pnpm emuctl chat Alice '!vote 1' # say something in all-chat -- this is how you drive chat commands
 pnpm emuctl end 1               # end the match, team 1 winning
 pnpm emuctl cycle               # drop and restore rcon, as a server restart would
 pnpm emuctl rcon ListPlayers    # any raw rcon command
@@ -106,7 +106,7 @@ neither can grow a verb the other lacks.
 the network, and scoped to the worktree by living in its own `data/dev`. It exits non-zero and says what is
 wrong if the command fails or no emulator is running, so it composes in scripts.
 
-Quote anything with a `!` or spaces (`'!vote 1'`) — it is a single argument, and your shell would otherwise
+Quote anything with a `!` or spaces (`'!vote 1'`) -- it is a single argument, and your shell would otherwise
 have opinions about it.
 
 ## What a dev instance cannot reach
@@ -130,4 +130,4 @@ injected at spawn time instead.
 
 The gitignored build artifacts a fresh worktree lacks (`assets/layer-engine.wasm`, `layer-db.json`) are
 copied from the main checkout, or built if it has none either. They are copied rather than linked so a
-worktree working on `layer-engine/` can rebuild over its own copy — run `pnpm build:engine` if you change it.
+worktree working on `layer-engine/` can rebuild over its own copy -- run `pnpm build:engine` if you change it.

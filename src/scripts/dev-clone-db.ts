@@ -79,7 +79,7 @@ function lockDest(): Database | null {
 		driver.close()
 		const code = (err as { code?: string }).code
 		if (code === 'SQLITE_BUSY' || code === 'SQLITE_BUSY_SNAPSHOT') {
-			console.error(`${dest} is open in another process — stop this worktree's app before replacing its database.`)
+			console.error(`${dest} is open in another process -- stop this worktree's app before replacing its database.`)
 			process.exit(1)
 		}
 		throw err
@@ -200,4 +200,4 @@ try {
 	driver.close()
 }
 
-console.log(`done — slot ${slot.slot}, app on :${slot.ports.app}, client on :${slot.ports.client}`)
+console.log(`done -- slot ${slot.slot}, app on :${slot.ports.app}, client on :${slot.ports.client}`)
