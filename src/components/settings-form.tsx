@@ -2139,34 +2139,42 @@ function ScopeValueRows(
 					</Button>
 				</div>
 			))}
-			{adding && (
-				<div className="flex items-center gap-1">
-					<ComboBox
-						title={title}
-						className={boxClass}
-						placeholder={`Select ${title}...`}
-						value={undefined}
-						options={optionsFor()}
-						onSelect={(next) => {
-							if (next) onChange([...values, next])
-							setAdding(false)
-						}}
-					/>
-					<Button
-						type="button"
-						size="icon"
-						variant="ghost"
-						className="h-8 w-8 shrink-0 text-destructive"
-						onClick={() => setAdding(false)}
-					>
-						<Icons.X className="h-4 w-4" />
+			{
+				/* Add swaps itself out for the empty dropdown rather than sitting disabled above it, so the control you clicked is
+			    the control you then pick from. It comes back once the pick lands (or the X cancels). */
+			}
+			{adding
+				? (
+					<div className="flex items-center gap-1">
+						<ComboBox
+							title={title}
+							className={boxClass}
+							placeholder={`Select ${title}...`}
+							value={undefined}
+							options={optionsFor()}
+							onSelect={(next) => {
+								if (next) onChange([...values, next])
+								setAdding(false)
+							}}
+						/>
+						<Button
+							type="button"
+							size="icon"
+							variant="ghost"
+							className="h-8 w-8 shrink-0 text-destructive"
+							onClick={() => setAdding(false)}
+						>
+							<Icons.X className="h-4 w-4" />
+						</Button>
+					</div>
+				)
+				: (
+					// exhausted is a different story from adding: the button stays, disabled, to say there's nothing left to pick
+					<Button type="button" size="sm" variant="outline" className="h-7" disabled={exhausted} onClick={() => setAdding(true)}>
+						<Icons.Plus className="mr-1 h-3.5 w-3.5" />
+						Add {title}
 					</Button>
-				</div>
-			)}
-			<Button type="button" size="sm" variant="outline" className="h-7" disabled={adding || exhausted} onClick={() => setAdding(true)}>
-				<Icons.Plus className="mr-1 h-3.5 w-3.5" />
-				Add {title}
-			</Button>
+				)}
 		</div>
 	)
 }
