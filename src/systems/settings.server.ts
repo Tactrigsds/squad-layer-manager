@@ -50,8 +50,18 @@ async function loadGlobalSettings(ctx: C.Db) {
 		log.info('Created default global settings row')
 	} else {
 		const raw = unsuperjsonify(Schema.globalSettings, rows[0]) as any
+		// the trim isn't written back: it costs nothing to redo each boot, and leaving the row alone keeps the grants
+		// recoverable if the setting they name comes back under a migration
+		const trimRes = SETTINGS.trimStaleSettingsGrants(raw.settings)
+		if (trimRes.dropped.length > 0) {
+			log.warn(
+				'Ignoring %d settings grant(s) referencing settings that no longer exist: %s',
+				trimRes.dropped.length,
+				trimRes.dropped.join(', '),
+			)
+		}
 		// seeds any command this installation's settings predate (see SETTINGS.parseGlobalSettings)
-		const parseRes = SETTINGS.parseGlobalSettings(raw.settings)
+		const parseRes = SETTINGS.parseGlobalSettings(trimRes.settings)
 		if (!parseRes.success) {
 			// refuse to start rather than silently reset to defaults: a validation failure means either a bad manual
 			// edit or a breaking schema change with a missing/incorrect migration, and booting on defaults would quietly
