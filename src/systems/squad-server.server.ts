@@ -1839,7 +1839,7 @@ const loadSavedEvents = C.spanOp(
 				.where(E.eq(Schema.serverEvents.matchId, lastMatch.id))
 				.orderBy(E.asc(Schema.serverEvents.id))
 			: []
-		const events = rowsRaw.map((r) => SE.fromEventRow(r.event))
+		const events = SE.fromEventRows({ ...ctx, log }, rowsRaw.map((r) => r.event))
 		server.lastSavedEventId = events[events.length - 1]?.id ?? null
 		server.emittedEvents = events
 		server.savedEventIds = new Set(events.map((e) => e.id))

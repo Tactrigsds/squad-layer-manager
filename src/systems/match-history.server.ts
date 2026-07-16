@@ -428,7 +428,7 @@ export const matchHistoryRouter = {
 			.leftJoin(Schema.squadEventAssociations, E.eq(Schema.serverEvents.id, Schema.squadEventAssociations.serverEventId))
 			.orderBy(E.desc(Schema.serverEvents.id))
 
-		const events = eventRows.map((row) => SE.fromEventRow(row.event)).toReversed()
+		const events = SE.fromEventRows({ ...ctx, log }, eventRows.map((row) => row.event)).toReversed()
 		const state = CHAT.getInitialChatState()
 		const processedEvents = new Set<number>()
 		for (const event of events) {
@@ -624,8 +624,7 @@ const getEventsForMatches = C.spanOp(
 				const eventsByMatch = new Map<number, CHAT.EventEnriched[]>()
 				for (const matchId of uncached) {
 					const state = CHAT.getInitialChatState()
-					for (const rawEvent of rowsByMatch.get(matchId) ?? []) {
-						const event = SE.fromEventRow(rawEvent)
+					for (const event of SE.fromEventRows({ ...ctx, log }, rowsByMatch.get(matchId) ?? [])) {
 						CHAT.handleEvent(state, event)
 					}
 					eventsByMatch.set(matchId, state.eventBuffer)

@@ -400,8 +400,9 @@ export const PlayerSchema = z.object({
 	// permission, so this is a superset of it: a reserve-slot group like Whitelist appears here and not there.
 	//
 	// Optional, and every read must tolerate its absence: events persisted before this field existed hold players
-	// without it, and SE.fromEventRow hands stored event JSON to the client without a schema parse, so no default
-	// is ever applied to them. A prefault would only make the type claim otherwise.
+	// without it (99.4% of the player entries on the RESETs currently in prod). Now that SE.fromEventRow parses,
+	// a prefault here would apply on read and let this be required -- see the note on fromEventRow before doing it,
+	// since the live (unparsed) event path would then be the only thing guaranteeing the field.
 	adminGroups: z.array(z.string()).optional(),
 	role: z.string(),
 })
@@ -502,6 +503,12 @@ export type PlayerListRes = { code: 'ok'; players: Player[] } | RconError
 export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError
 export type Teams<P = Player> = { players: P[]; squads: Squad[] }
 export type UniqueTeams<P = Player> = { players: P[]; squads: UniqueSquad[] }
+// The roster in its persisted form (P = Player), i.e. what a RESET (and a legacy NEW_GAME) carries. The generic
+// above stays hand-written since zod can't express it; this validates the one instantiation that hits the db.
+export const UniqueTeamsSchema = z.object({
+	players: z.array(PlayerSchema),
+	squads: z.array(UniqueSquadSchema),
+})
 // `polledAt` is the wall-clock time the ListPlayers/ListSquads requests were issued -- a lower bound on when
 // the snapshot was actually taken (the server captures it no earlier than the request is sent). The event
 // pipeline orders teams polls by this, NOT by when the response arrived: a response can be in flight across a
@@ -586,11 +593,13 @@ export type AdminList = { players: SquadAdmins; groups: SquadGroups; admins: Set
 export const CHAT_CHANNEL_TYPE = z.enum(['ChatAdmin', 'ChatTeam', 'ChatSquad', 'ChatAll'])
 export type ChatChannelType = z.infer<typeof CHAT_CHANNEL_TYPE>
 
-export type ChatChannel =
-	| { type: 'ChatAll' }
-	| { type: 'ChatAdmin' }
-	| { type: 'ChatTeam'; teamId: TeamId }
-	| { type: 'ChatSquad'; teamId: TeamId; squadId: SquadId; uniqueId?: number }
+export const ChatChannelSchema = z.discriminatedUnion('type', [
+	z.object({ type: z.literal('ChatAll') }),
+	z.object({ type: z.literal('ChatAdmin') }),
+	z.object({ type: z.literal('ChatTeam'), teamId: TeamIdSchema }),
+	z.object({ type: z.literal('ChatSquad'), teamId: TeamIdSchema, squadId: z.number(), uniqueId: z.number().optional() }),
+])
+export type ChatChannel = z.infer<typeof ChatChannelSchema>
 
 export const RCON_MAX_BUF_LEN = 4152
 
