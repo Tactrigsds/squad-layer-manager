@@ -34,6 +34,11 @@ Env.ensureEnvSetup()
 const ENV = Env.getEnvBuilder({ ...Env.groups.db, ...Env.groups.backups })()
 const DB_PATH = path.resolve(ENV.DB_PATH)
 
+// The restore worked, but the database it put back is older than the code about to run against it -- which is the
+// normal case for `--pre-migration`, and the one where blindly starting the app would apply the migration again and
+// undo the whole exercise. Its own exit code so the wrapper can decline to restart the app rather than walk into that.
+const EXIT_RESTORED_BEHIND_BUILD = 2
+
 type Candidate = { fileName: string; path: string; kind: DbBackup.BackupKind; takenAt: Date; sizeBytes: number }
 
 // every backup of this database, newest first, whatever kind
@@ -217,9 +222,10 @@ try {
 	if (pending.length > 0) {
 		console.log(
 			`\nnote: this database is ${pending.length} migration(s) behind this build (${pending.join(', ')}).\n`
-				+ 'Starting the app will apply them again (taking a fresh pre-migration backup first). If you are rolling back a\n'
-				+ 'bad upgrade, roll the image back to the matching version too, or the migration you just undid comes straight back.',
+				+ 'Starting this version of the app applies them again, undoing the restore -- so roll the image back to the version\n'
+				+ 'this database belongs to before starting it (or set DB_AUTOMIGRATE=0 if you know what you are doing).',
 		)
+		process.exit(EXIT_RESTORED_BEHIND_BUILD)
 	}
 } finally {
 	if (existing?.open) existing.close()
