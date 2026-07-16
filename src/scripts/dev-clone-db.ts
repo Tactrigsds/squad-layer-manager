@@ -23,6 +23,13 @@ import * as Slots from '../dev/slots.ts'
 // through it, so the clone includes everything committed as of the snapshot. A file copy would be wrong on
 // both counts: it would miss the -wal (the clone would silently lose recent writes) and tear across
 // concurrent writes.
+//
+// The destination is the dangerous half, and not for a reason WAL covers. WAL coordinates concurrent
+// *connections* to a database; this replaces the *file* behind SQLite's back. An app holding the old file
+// open is left writing to an unlinked inode: the writes succeed, and are lost, and it serves reads from a
+// database that no longer exists on disk -- silently, with nothing raising an error. Hence lockDest: the
+// exclusive lock is held from before the snapshot until after the rename, so an app that boots into that
+// window fails loudly on SQLITE_BUSY instead of becoming a ghost.
 
 const args = parseArgs({
 	options: {
@@ -51,31 +58,31 @@ if (fs.existsSync(dest) && !args.values.force) {
 	process.exit(1)
 }
 
-// The destination is the file we unlink and replace, so nothing may have it open: an app that did would be
-// left holding a deleted inode and a WAL that no longer describes it, which is the one way this script can
-// actually corrupt something.
+// Takes an exclusive lock on the destination and keeps it, returning the connection holding it; the caller
+// closes that to release. Null when there is no destination yet, which is the nothing-to-protect case.
 //
 // An exclusive lock, not `BEGIN IMMEDIATE`. A running app that happens not to be writing holds no write lock,
 // so BEGIN IMMEDIATE succeeds against it and the check would pass exactly when it matters most. Exclusive
-// locking mode conflicts with any other connection, idle or not.
-function assertDestIdle() {
-	if (!fs.existsSync(dest)) return
+// locking mode conflicts with any other connection, idle or not, and -- unlike an ordinary transaction -- it
+// keeps the file locks until the connection closes, so the probe below leaves the lock in place.
+function lockDest(): Database | null {
+	if (!fs.existsSync(dest)) return null
 	const driver = new DatabaseConstructor(dest)
 	driver.pragma('busy_timeout = 2000')
 	try {
 		driver.pragma('locking_mode = EXCLUSIVE')
 		driver.exec('BEGIN IMMEDIATE')
 		driver.exec('ROLLBACK')
+		return driver
 	} catch (err) {
+		if (driver.inTransaction) driver.exec('ROLLBACK')
+		driver.close()
 		const code = (err as { code?: string }).code
 		if (code === 'SQLITE_BUSY' || code === 'SQLITE_BUSY_SNAPSHOT') {
 			console.error(`${dest} is open in another process — stop this worktree's app before replacing its database.`)
 			process.exit(1)
 		}
 		throw err
-	} finally {
-		if (driver.inTransaction) driver.exec('ROLLBACK')
-		driver.close()
 	}
 }
 
@@ -90,8 +97,9 @@ function snapshot() {
 	} finally {
 		src.close()
 	}
-	// A stale -wal/-shm beside the replaced file would be read as belonging to it, which is real corruption
-	// rather than a stale read. They have to go before the new db takes the name, not after.
+	// The -wal has to go with the file it belongs to, and before the new one takes the name. Left in place it
+	// is replayed over the clone as though it described it: the reader then silently sees the *old* database's
+	// contents, and integrity_check calls that ok, so nothing anywhere reports a problem.
 	for (const suffix of ['', '-wal', '-shm']) fs.rmSync(dest + suffix, { force: true })
 	fs.renameSync(tmp, dest)
 }
@@ -172,9 +180,14 @@ async function repointServers(driver: Database) {
 	}
 }
 
-assertDestIdle()
 console.log(`cloning ${source}\n     -> ${dest}`)
-snapshot()
+// held across the snapshot and the rename, not just checked before them
+const destLock = lockDest()
+try {
+	snapshot()
+} finally {
+	destLock?.close()
+}
 
 const driver = new DatabaseConstructor(dest)
 driver.pragma('journal_mode = WAL')
