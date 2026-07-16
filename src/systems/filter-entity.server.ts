@@ -213,8 +213,7 @@ export const filtersRouter = {
 				type: 'add',
 				key: newFilterEntity.id,
 				value: newFilterEntity,
-				username: ctx.user.username,
-				displayName: ctx.user.displayName,
+				userId: ctx.user.discordId,
 			}])
 			await recordFilterChange(ctx, 'created', newFilterEntity.id, { filterName: newFilterEntity.name })
 		}
@@ -254,8 +253,7 @@ export const filtersRouter = {
 					type: 'update',
 					key: id,
 					value: res.filter,
-					username: ctx.user.username,
-					displayName: ctx.user.displayName,
+					userId: ctx.user.discordId,
 				}])
 				// the update is a partial, and a field resubmitted unchanged isn't a change worth recording
 				const changedFields = Object.keys(update).filter(
@@ -308,8 +306,7 @@ export const filtersRouter = {
 		filterMutation$.next([C.storeLinkToActiveSpan(ctx, 'event.emitter'), {
 			type: 'delete',
 			key: idToDelete,
-			username: ctx.user.username,
-			displayName: ctx.user.displayName,
+			userId: ctx.user.discordId,
 			value: res.filter,
 		}])
 		await recordFilterChange(ctx, 'deleted', idToDelete, { filterName: res.filter.name })
@@ -340,7 +337,7 @@ export async function* watchFilters(
 	}
 	for await (const [ctx, mutation] of toAsyncGenerator(filterMutation$.pipe(withAbortSignal(signal!)))) {
 		const dbUsers = await ctx.db().select().from(Schema.users).where(
-			E.or(E.eq(Schema.users.discordId, mutation.value.owner), E.eq(Schema.users.username, mutation.username)),
+			E.inArray(Schema.users.discordId, [...new Set([mutation.value.owner, mutation.userId])]),
 		)
 		const users = await Users.buildUsers(dbUsers)
 

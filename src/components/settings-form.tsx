@@ -2093,7 +2093,7 @@ function ScopeMultiSelect(
 	return (
 		<ComboBoxMulti
 			title={title}
-			placeholder={emptyLabel}
+			emptyLabel={emptyLabel}
 			className={cn('w-full max-w-[24rem]', mono && 'font-mono')}
 			values={values}
 			options={options}
