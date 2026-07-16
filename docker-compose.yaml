@@ -17,11 +17,15 @@ services:
       # the database, and any layer artifacts you drop in to override the ones the image ships. Mount the
       # directory rather than the db file: sqlite writes -wal and -shm alongside it.
       - ./data:/app/data
+      # Every credential SLM reads (see .env.secrets.example). Mounted rather than passed through env_file
+      # below, which would make it readable via `docker inspect`. See docs/INSTALLING.md#33-secrets.
+      - ./.env.secrets:/app/.env.secrets:ro
 
     # Will automatically restart SLM in the event of a crash.
     restart: unless-stopped
     command:
       ["pnpm", "run", "server:prod"]
+    # everything that is not a credential
     env_file: .env
   otel:
     image: grafana/otel-lgtm

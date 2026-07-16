@@ -11,45 +11,81 @@ import * as Env from './env.ts'
 // There are two audiences, and they want different files: someone standing up an install (.env.example) and
 // someone running the app from a checkout (.env.example.dev). A var's metadata describes the deployment file,
 // and its `dev` key overrides that where the two diverge (see EnvExampleMeta).
+//
+// A deployment's file is split in two: the credentials go to .env.secrets.example and everything else to
+// .env.example (see docs/INSTALLING.md). A checkout keeps one file, since `pnpm server:dev` expects to find
+// everything in .env.
 
 export type Audience = 'deployment' | 'dev'
 
-export const PATHS: Record<Audience, string> = {
-	deployment: path.join(Paths.PROJECT_ROOT, '.env.example'),
-	dev: path.join(Paths.PROJECT_ROOT, '.env.example.dev'),
+type Target = {
+	audience: Audience
+	// which half of the vars this file carries. A checkout's file takes both.
+	contents: 'plain' | 'secrets' | 'all'
+	path: string
+	header: string[]
 }
 
 const COMMENT_WIDTH = 110
 
-const HEADERS: Record<Audience, string[]> = {
-	deployment: [
-		'The environment SLM runs on. Copy this to .env, which is the file a docker install points env_file at',
-		'(see docker-compose.yaml). Anything in here can be passed as a real environment variable instead, which',
-		'takes precedence.',
-		'',
-		'Fill in the vars left uncommented. Everything commented out is optional, and shows the default it falls',
-		'back to -- an empty one has no default, so uncommenting a line as-is never changes what the app does.',
-		'',
-		'Running the app from a checkout rather than installing it? Use .env.example.dev.',
-	],
-	dev: [
-		'The environment SLM runs on, for a local checkout (`pnpm server:dev`). Copy this to .env.',
-		'',
-		'Fill in the vars left uncommented. Everything commented out is optional, and shows the default it falls',
-		'back to -- an empty one has no default, so uncommenting a line as-is never changes what the app does.',
-		'',
-		'This leaves out what only an install has to care about (backups and the sftp target they upload to). See',
-		'.env.example for those, or src/server/env.ts for everything.',
-	],
-}
+export const TARGETS: Target[] = [
+	{
+		audience: 'deployment',
+		contents: 'plain',
+		path: path.join(Paths.PROJECT_ROOT, '.env.example'),
+		header: [
+			'The environment SLM runs on. Copy this to .env, which is the file a docker install points env_file at',
+			'(see docker-compose.yaml). Anything in here can be passed as a real environment variable instead, which',
+			'takes precedence.',
+			'',
+			'Credentials do not belong in here: they go in .env.secrets (see .env.secrets.example).',
+			'',
+			'Fill in the vars left uncommented. Everything commented out is optional, and shows the default it falls',
+			'back to -- an empty one has no default, so uncommenting a line as-is never changes what the app does.',
+			'',
+			'Running the app from a checkout rather than installing it? Use .env.example.dev.',
+		],
+	},
+	{
+		audience: 'deployment',
+		contents: 'secrets',
+		path: path.join(Paths.PROJECT_ROOT, '.env.secrets.example'),
+		header: [
+			'Every credential SLM reads. Copy this to .env.secrets, which docker-compose mounts into the container as',
+			'a file rather than passing to it as environment variables (see docs/INSTALLING.md for why, and for how',
+			'to point SECRETS_FILE at a docker secret instead).',
+			'',
+			'Treat it the way you would a private key: it is worth `chmod 600` and it belongs in no backup you would',
+			'not also put a password in.',
+		],
+	},
+	{
+		audience: 'dev',
+		contents: 'all',
+		path: path.join(Paths.PROJECT_ROOT, '.env.example.dev'),
+		header: [
+			'The environment SLM runs on, for a local checkout (`pnpm server:dev`). Copy this to .env.',
+			'',
+			'Fill in the vars left uncommented. Everything commented out is optional, and shows the default it falls',
+			'back to -- an empty one has no default, so uncommenting a line as-is never changes what the app does.',
+			'',
+			'Unlike an install, this keeps the credentials in the same file, and presets a public, known-insecure',
+			'encryption key. An install splits them out into .env.secrets; see .env.secrets.example.',
+			'',
+			'This leaves out what only an install has to care about (backups and the sftp target they upload to). See',
+			'.env.example for those, or src/server/env.ts for everything.',
+		],
+	},
+]
 
 const GENERATED_BY = 'Generated from src/server/env.ts on every dev boot -- edit the schema there, not this file.'
 
-export function build(audience: Audience): string {
-	const lines: string[] = [GENERATED_BY, '', ...HEADERS[audience]].map(comment)
+export function build(target: Target): string {
+	const lines: string[] = [GENERATED_BY, '', ...target.header].map(comment)
 	for (const [groupName, group] of Object.entries(Env.groups)) {
 		const rendered = Object.entries(group as Record<string, z.ZodType>)
-			.map(([name, schema]) => renderVar(name, schema, audience))
+			.filter(([, schema]) => target.contents === 'all' || Env.isSecret(schema) === (target.contents === 'secrets'))
+			.map(([name, schema]) => renderVar(name, schema, target.audience))
 			.filter(v => v !== undefined)
 		if (rendered.length === 0) continue
 
@@ -65,9 +101,9 @@ export function build(audience: Audience): string {
 // so an example that fails to write is never worth interrupting a boot for.
 export function write(): { changed: string[] } {
 	const changed: string[] = []
-	for (const audience of Object.keys(PATHS) as Audience[]) {
-		const filePath = PATHS[audience]
-		const content = build(audience)
+	for (const target of TARGETS) {
+		const filePath = target.path
+		const content = build(target)
 		let existing: string | undefined
 		try {
 			existing = fs.readFileSync(filePath, 'utf8')

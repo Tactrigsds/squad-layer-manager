@@ -59,8 +59,15 @@ await C.spanOp('main', { module }, async () => {
 	if (ENV.NODE_ENV === 'development') {
 		const { changed } = EnvExample.write()
 		if (changed.length > 0) log.info('regenerated %s from the env schema', changed.join(', '))
-		// a fresh checkout has no encryption key; generate and persist one so `pnpm server:dev` just works
-		SecretBox.ensureDevKeyInEnvFile()
+	}
+	// supported, but an install gives up what the secrets file is for. Only worth saying where it is deployed:
+	// a checkout keeps its credentials in .env by design.
+	const secretsFromEnv = Env.getSecretsFromEnvironment()
+	if (ENV.NODE_ENV === 'production' && secretsFromEnv.length > 0) {
+		log.warn(
+			'%s read from the environment rather than a secrets file, which is readable via `docker inspect`. See docs/INSTALLING.md#33-secrets',
+			secretsFromEnv.join(', '),
+		)
 	}
 	// validates SETTINGS_ENCRYPTION_KEY now (fail fast) rather than on the first settings write; in production a
 	// missing key stops the boot here
