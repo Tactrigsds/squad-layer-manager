@@ -498,11 +498,15 @@ function RuleDropSeparator({ position, groupingId, idx }: { position: 'before' |
 	return <li ref={drop.ref} data-over={drop.isDropTarget} className="my-0.5 h-1 rounded bg-primary data-[over=false]:invisible" />
 }
 
+// sentinel option: leaves the list and lets a name be typed instead
+const ADD_NEW_GROUP = '__add-new-group__'
+
 function RuleRow(
-	{ rule, idx, groupingId, usedFlags, usedAdminGroups, adminGroupOptions, value$, reset$, onReplace, onChange, onRemove }: {
+	{ rule, idx, groupingId, groupNames, usedFlags, usedAdminGroups, adminGroupOptions, value$, reset$, onReplace, onChange, onRemove }: {
 		rule: PG.GroupRule
 		idx: number
 		groupingId: string
+		groupNames: string[]
 		usedFlags: string[]
 		usedAdminGroups: string[]
 		adminGroupOptions: ComboBoxOption<string>[] | typeof LOADING
@@ -514,6 +518,11 @@ function RuleRow(
 	},
 ) {
 	const drag = DndKit.useDraggable({ type: 'grouping-rule', id: ruleDragId(groupingId, idx) }, { feedback: 'default' })
+	// Several rules feeding one group is the norm, so once the grouping names any group, picking from the list is the
+	// common case and typing is the exception. Which mode a row is in has to be sticky, never derived from whether the
+	// name exists yet: group names come from the rules themselves, so a half-typed name is already an "existing" group
+	// and the field would turn into a combo box under the keystroke that created it.
+	const [namingNewGroup, setNamingNewGroup] = React.useState(groupNames.length === 0)
 	// switching source discards the old source's field: the variants share only `group`, and a stale `flag` sitting on an
 	// admin-list rule would be written straight back out again
 	function setSource(type: PG.GroupRuleSource) {
@@ -560,13 +569,46 @@ function RuleRow(
 					/>
 				)}
 			<Icons.ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-			<TextInputField
-				value$={scopeValue(scopeValue(scopeValue(value$, 'rules'), idx), 'group')}
-				reset$={reset$}
-				onChange={(next) => onChange(idx, { group: (next as string) ?? '' }, true)}
-				numeric={false}
-				placeholder="Group name"
-			/>
+			{namingNewGroup
+				? (
+					<div className="flex min-w-0 items-center gap-1">
+						<TextInputField
+							value$={scopeValue(scopeValue(scopeValue(value$, 'rules'), idx), 'group')}
+							reset$={reset$}
+							onChange={(next) => onChange(idx, { group: (next as string) ?? '' }, true)}
+							numeric={false}
+							placeholder="Group name"
+						/>
+						{groupNames.length > 0 && (
+							<Button
+								type="button"
+								size="icon"
+								variant="ghost"
+								className="h-6 w-6 shrink-0"
+								title="Pick an existing group instead"
+								aria-label="Pick an existing group instead"
+								onClick={() => setNamingNewGroup(false)}
+							>
+								<Icons.List className="h-4 w-4" />
+							</Button>
+						)}
+					</div>
+				)
+				: (
+					<ComboBox
+						title="Group"
+						value={rule.group || undefined}
+						options={[
+							...groupNames.map((name): ComboBoxOption<string> => ({ value: name, label: name })),
+							{ value: ADD_NEW_GROUP, label: <span className="text-muted-foreground">Add new group...</span>, keywords: ['new'] },
+						]}
+						onSelect={(next) => {
+							if (!next) return
+							if (next === ADD_NEW_GROUP) setNamingNewGroup(true)
+							else onChange(idx, { group: next })
+						}}
+					/>
+				)}
 			<Button
 				type="button"
 				size="icon"
@@ -666,6 +708,7 @@ function GroupingCard(
 								rule={rule}
 								idx={idx}
 								groupingId={groupingId}
+								groupNames={groupNames}
 								usedFlags={rules.flatMap((r) => r.type === 'battlemetrics' ? [r.flag] : [])}
 								usedAdminGroups={rules.flatMap((r) => r.type === 'admin-list' ? [r.adminGroup] : [])}
 								adminGroupOptions={adminGroupOptions}
