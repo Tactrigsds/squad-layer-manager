@@ -1,5 +1,6 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Obj from '@/lib/object'
+import { assertNever } from '@/lib/type-guards'
 import type * as CS from '@/models/context-shared'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
@@ -37,6 +38,22 @@ export const NEW_GAME_META = meta({
 	players: [{ assocType: 'game-participant', path: '$.state.players[*]' }],
 	squads: ['$.state.squads[*]'],
 })
+
+// Whether a NEW_GAME marks a roll that happened while this server was watching, and so is a boundary that held
+// actions (teamswaps) should fire on. 'slm-started' is not: it means SLM has just learned about a match that was
+// already running, and treating that as a boundary applies held actions to a match mid-flight.
+export function newGameIsRoll(source: NewGame['source']): boolean {
+	switch (source) {
+		case 'server-roll':
+		case 'new-game-detected':
+		case 'rcon-reconnected':
+			return true
+		case 'slm-started':
+			return false
+		default:
+			assertNever(source)
+	}
+}
 
 // RESET carries the definitive team roster: "the roster is now exactly this". Emitted on the first teams poll after
 // a match boundary (a NEW_GAME / server roll) and on a same-match RCON reconnect.
