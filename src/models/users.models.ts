@@ -1,5 +1,5 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
-import * as AR from '@/app-routes'
+import * as DM from '@/models/discord.models'
 import { z } from 'zod'
 
 export const GuiUserIdSchema = z.object({
@@ -61,9 +61,9 @@ export const UserIdSchema = z.bigint().positive()
 export type UserId = z.infer<typeof UserIdSchema>
 
 export const getAvatarUrl = (user: User) => {
-	if (user.avatar) return AR.link('/discord-cdn/*', `avatars/${user.discordId}/${user.avatar}.png`)
+	if (user.avatar) return `${DM.CDN_BASE}/avatars/${user.discordId}/${user.avatar}.png`
 	const id = ((user.discordId >> 22n) % 6n).toString()
-	return AR.link('/discord-cdn/*', `embed/avatars/${id}.png`)
+	return `${DM.CDN_BASE}/embed/avatars/${id}.png`
 }
 
 export const getUserInitials = (user: User) => {
