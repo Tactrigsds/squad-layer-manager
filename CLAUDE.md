@@ -35,6 +35,10 @@ Never point a worktree at a real squad server or the real battlemetrics org; `de
 
 See docs/DEV_INSTANCES.md.
 
+# Pull Requests
+
+Always do a check for potential merge conflicts before pushing commits to a PR. For frontend changes, always provide a link to the running dev server with the changes up.
+
 # Documentation, prose and app text
 
 No emdashes.
