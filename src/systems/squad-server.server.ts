@@ -89,7 +89,8 @@ const orpcBase = getOrpcBase(module)
 
 type State = {
 	slices: Map<string, C.ServerSlice>
-	sliceInitMtxs: Map<string, MutexInterface>
+	// guards every transition of a server's slice between running and not, not just setup. See withSliceLock.
+	sliceLifecycleMtxs: Map<string, MutexInterface>
 	// emits a serverId whenever that server's slice is added to or removed from `slices`
 	sliceLifecycleUpdate$: Rx.Subject<string>
 	serverEventIdCounter: Generator<number, never, unknown>
@@ -592,7 +593,7 @@ export async function setup() {
 		sliceLifecycleUpdate$: new IsolatedSubject(),
 		serverEventIdCounter: undefined!,
 		squadIdCounter: undefined!,
-		sliceInitMtxs: new Map(),
+		sliceLifecycleMtxs: new Map(),
 	}
 
 	const lastEventRes = await ctx
@@ -618,35 +619,52 @@ export async function setup() {
 	await Promise.all(Settings.listServerEntries().map((entry) => ensureSliceRunning(entry.id)))
 }
 
+// Serializes every transition of a server's slice between running and not, so that no two of setup, teardown and restart can
+// interleave and observe each other's half-applied state. Per-server, so unrelated servers never wait on each other.
+//
+// The mutex is not reentrant, so the *Locked functions below are the composable pieces: anything already holding the lock must
+// call those, and only the exported entry points may take it. Acquiring it twice in one call stack self-deadlocks.
+function withSliceLock<T>(serverId: string, fn: () => Promise<T>): Promise<T> {
+	let mtx = globalState.sliceLifecycleMtxs.get(serverId)
+	if (!mtx) {
+		mtx = new Mutex()
+		globalState.sliceLifecycleMtxs.set(serverId, mtx)
+	}
+	return mtx.runExclusive(fn)
+}
+
 // boots a slice for the given server if it's enabled, not broken, and doesn't already have one running
 export async function ensureSliceRunning(serverId: string) {
-	let mtx = globalState.sliceInitMtxs.get(serverId)
-	mtx ??= new Mutex()
-	globalState.sliceInitMtxs.set(serverId, mtx)
-	await mtx.acquire()
-	try {
-		if (globalState.slices.has(serverId)) return
-		const entry = Settings.getServerEntry(serverId)
-		if (!entry || !entry.enabled || entry.broken) return
-		const ctx = getBaseCtx()
-		const serverState = await getServerState({ ...ctx, serverId })
-		await setupSlice(ctx, serverState)
-		log.info(`Server ${serverId} setup complete`)
-	} finally {
-		mtx.release()
-	}
+	await withSliceLock(serverId, () => ensureSliceRunningLocked(serverId))
+}
+
+async function ensureSliceRunningLocked(serverId: string) {
+	if (globalState.slices.has(serverId)) return
+	const entry = Settings.getServerEntry(serverId)
+	if (!entry || !entry.enabled || entry.broken) return
+	const ctx = getBaseCtx()
+	const serverState = await getServerState({ ...ctx, serverId })
+	await setupSlice(ctx, serverState)
+	log.info(`Server ${serverId} setup complete`)
+}
+
+// tears down the slice for a server if one is running. No-op otherwise.
+async function destroySliceIfRunningLocked(serverId: string) {
+	const slice = globalState.slices.get(serverId)
+	if (!slice) return false
+	await destroyServer({ ...getBaseCtx(), ...slice })
+	return true
 }
 
 // tears down and re-creates the slice for a server, picking up the latest settings from the DB. If the server isn't currently
 // running (disabled, broken, or not yet started), this just ensures it's running per the usual rules -- it never force-starts it.
 export async function restartSliceIfRunning(serverId: string) {
-	const ctx = getBaseCtx()
-	const slice = globalState.slices.get(serverId)
-	if (slice) {
-		await destroyServer({ ...ctx, ...slice })
-		log.info(`Server ${serverId} slice destroyed for restart`)
-	}
-	await ensureSliceRunning(serverId)
+	await withSliceLock(serverId, async () => {
+		if (await destroySliceIfRunningLocked(serverId)) {
+			log.info(`Server ${serverId} slice destroyed for restart`)
+		}
+		await ensureSliceRunningLocked(serverId)
+	})
 }
 
 // forces the admin list resource to refetch (picking up the latest adminListSources/adminIdentifyingPermissions) without
@@ -682,17 +700,20 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	const layersStatusExt$: SquadServer['layersStatusExt$'] = getLayersStatusExt$(serverId)
 
 	// a resource that keeps failing after retries means the slice can't do its job -- tear the slice down instead of
-	// letting the error escalate to an unhandled rejection and crash the process
-	const onResourceFatalError = async (err: unknown) => {
+	// letting the error escalate to an unhandled rejection and crash the process.
+	//
+	// Takes the slice lock, which is safe only because AsyncResource discards this callback's return rather than awaiting it:
+	// nothing holding the lock ever waits on us, so there is no cycle. If the resource dies mid-setup we simply queue behind
+	// setupSlice and tear down the slice it just finished building.
+	const destroySliceAfterFatalError = async (err: unknown) => {
 		log.error(err, `Server ${serverId}: async resource failed permanently, destroying slice`)
-		const slice = globalState.slices.get(serverId)
-		if (!slice) return
 		try {
-			await destroyServer({ ...getBaseCtx(), ...slice })
+			await withSliceLock(serverId, () => destroySliceIfRunningLocked(serverId))
 		} catch (destroyErr) {
 			log.error(destroyErr, `Server ${serverId}: failed to destroy slice after fatal resource error`)
 		}
 	}
+	const onResourceFatalError = (err: unknown) => void destroySliceAfterFatalError(err)
 
 	const adminList = (() => {
 		const adminListTTL = HumanTime.parse('1h')
@@ -1093,8 +1114,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	void adminList.get(slice)
 
 	server.cleanupId = CleanupSys.register(async () => {
-		const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-		await destroyServer(ctx)
+		await withSliceLock(serverId, () => destroySliceIfRunningLocked(serverId))
 	})
 	log.info('Initialized server %s', serverId)
 	if (Settings.GLOBAL_SETTINGS.warnOnSlmStart) {
@@ -1516,6 +1536,8 @@ function mergeEventsByTime(serverEvents: SE.Event[], appEvents: AppEvents.AppEve
 	return [...wrapped, ...serverEvents].sort((a, b) => timeOf(a) - timeOf(b))
 }
 
+// Must be called with the server's slice lock held (see withSliceLock) -- it is the unlocked primitive, and callers reach it
+// through destroySliceIfRunningLocked. Taking the lock here instead would self-deadlock the callers that already hold it.
 const destroyServer = C.spanOp('destroyServer', { module, levels: { event: 'info' } }, async (ctx: C.ServerSlice) => {
 	if (ctx.server.destroyed) return
 	log.info(`destroying server slice ${ctx.serverId}`)
@@ -1525,7 +1547,6 @@ const destroyServer = C.spanOp('destroyServer', { module, levels: { event: 'info
 	const cleanupId = ctx.server.cleanupId
 	if (cleanupId !== null) CleanupSys.unregister(cleanupId)
 	await Cleanup.runCleanup({ ...CS.init(), ...ctx, log }, ctx.cleanup)
-	// we're not dealing with mutexes yet Sadge
 	globalState.slices.delete(ctx.serverId)
 	globalState.sliceLifecycleUpdate$.next(ctx.serverId)
 })
@@ -1764,20 +1785,14 @@ export async function disableServer(serverId: string) {
 	const res = await Settings.setServerEnabled(ctx, serverId, false)
 	if (res.code !== 'ok') return res
 
-	const slice = globalState.slices.get(serverId)
-	if (slice) {
-		await destroyServer({ ...ctx, ...slice })
-	}
+	await withSliceLock(serverId, () => destroySliceIfRunningLocked(serverId))
 	log.info('Server %s disabled', serverId)
 	return { code: 'ok' as const }
 }
 
 export async function deleteServer(serverId: string) {
 	const ctx = getBaseCtx()
-	const slice = globalState.slices.get(serverId)
-	if (slice) {
-		await destroyServer({ ...ctx, ...slice })
-	}
+	await withSliceLock(serverId, () => destroySliceIfRunningLocked(serverId))
 	return await Settings.deleteServerEntry(ctx, serverId)
 }
 
