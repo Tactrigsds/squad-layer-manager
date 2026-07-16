@@ -366,6 +366,12 @@ export function arePermsEqual(perm1: Permission & Partial<PermissionTrace>, perm
 	return Obj.deepEqual(perm1, perm2)
 }
 
+// matches on identity alone (type + scope + args). Unlike arePermsEqual this ignores negation state, which changes as
+// permission simulation is applied and so can't be part of a perm's identity.
+export function isSamePerm(perm1: Permission & Partial<PermissionTrace>, perm2: Permission & Partial<PermissionTrace>) {
+	return arePermsEqual(Obj.selectProps(perm1, ['args', 'scope', 'type']), Obj.selectProps(perm2, ['args', 'scope', 'type']))
+}
+
 export function getWritePermReqForFilterEntity(id: F.FilterEntityId): PermissionReq {
 	return {
 		check: 'any',
@@ -486,6 +492,58 @@ export function settingsPathOverlaps(access: SettingsWriteAccess, path: string |
 	if (access.kind === 'none') return false
 	const dotted = dottedSettingsPath(path)
 	return access.paths.some((p) => dotted === p || dotted.startsWith(p + '.') || p.startsWith(dotted + '.'))
+}
+
+// does `perms` already grant everything `perm` grants? The scoped permissions ("up to N ms", "these paths on these
+// servers") are comparators rather than equality matches, so they're covered scope-by-scope here.
+export function permSubsumedBy(perm: Permission, perms: Permission[]): boolean {
+	switch (perm.type) {
+		case 'squad-server:timeout-players': {
+			const args = perm.args as z.infer<(typeof PERM_SCOPE_ARGS)['timeout']> | undefined
+			const max = maxTimeoutDurationMs(perms)
+			if (max === undefined) return false
+			if (max === null) return true
+			if (!args || args.maxDurationMs === null) return false
+			return args.maxDurationMs <= max
+		}
+		case 'global-settings:write': {
+			const args = perm.args as GlobalWriteArgs | undefined
+			return pathsCoveredBy(args ? args.paths : null, globalSettingsWriteAccess(perms))
+		}
+		case 'server-settings:read':
+		case 'server-settings:write-sensitive': {
+			const serverId = (perm.args as ServerScopeArgs | undefined)?.serverId ?? null
+			// an all-servers grant can only be covered by another all-servers grant
+			if (serverId === null) {
+				return perms.some((p) => p.type === perm.type && ((p.args as ServerScopeArgs | undefined)?.serverId ?? null) === null)
+			}
+			return perm.type === 'server-settings:read'
+				? canReadServerSettings(perms, serverId)
+				: canWriteSensitiveServerSettings(perms, serverId)
+		}
+		case 'server-settings:write': {
+			const args = perm.args as ServerWriteArgs | undefined
+			const serverId = args?.serverId ?? null
+			if (serverId === null) {
+				const allServerPathSets = perms.flatMap((p) => {
+					if (p.type !== 'server-settings:write') return []
+					const pArgs = p.args as ServerWriteArgs | undefined
+					return (pArgs?.serverId ?? null) === null ? [pArgs?.paths ?? null] : []
+				})
+				return pathsCoveredBy(args ? args.paths : null, collectWriteAccess(allServerPathSets))
+			}
+			return pathsCoveredBy(args ? args.paths : null, serverSettingsWriteAccess(perms, serverId))
+		}
+		default:
+			return perms.some((p) => arePermsEqual(p, perm))
+	}
+}
+
+// null paths = unrestricted, so only an unrestricted grant covers it
+function pathsCoveredBy(paths: string[] | null, access: SettingsWriteAccess): boolean {
+	if (access.kind === 'all') return true
+	if (access.kind === 'none' || paths === null) return false
+	return paths.every((path) => settingsPathAllowed(access, path))
 }
 
 export function getPermissionsByRole(permissions: TracedPermission[]): [Role, TracedPermission[]][] {
