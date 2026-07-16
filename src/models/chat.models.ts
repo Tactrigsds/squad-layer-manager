@@ -56,6 +56,9 @@ export type InterpolableState = {
 	squads: SM.UniqueSquad[]
 	// per-match combat stats, keyed by player id. kept separate from players rather than stored on them
 	playerStats: PlayerStatsMap
+	// players currently in admin camera, tracked from POSSESSED/UNPOSSESSED_ADMIN_CAMERA. kept separate from players
+	// since the roster is replaced wholesale by the teams poll, which knows nothing about admin camera
+	adminCamPlayerIds: SM.PlayerId[]
 }
 
 export namespace InterpolableState {
@@ -64,6 +67,7 @@ export namespace InterpolableState {
 			players: state.players.map(p => ({ ...p, ids: { ...p.ids } })),
 			squads: [...state.squads],
 			playerStats: { ...state.playerStats },
+			adminCamPlayerIds: [...state.adminCamPlayerIds],
 		}
 	}
 }
@@ -189,6 +193,7 @@ export function getInitialInterpolatedState(): InterpolableState {
 		players: [],
 		squads: [],
 		playerStats: {},
+		adminCamPlayerIds: [],
 	}
 }
 
@@ -436,6 +441,9 @@ function interpolateEvent(
 		case 'NEW_GAME':
 		case 'RESET': {
 			if (event.type === 'NEW_GAME' || event.type === 'RESET') state.playerStats = {}
+			// RESET restates the roster from scratch and carries no admin camera information, so anyone we thought was
+			// in admin camera is no longer known to be
+			if (event.type === 'RESET') state.adminCamPlayerIds = []
 			applyEventTeamMutations(chatLog, state, event)
 			return event
 		}
@@ -470,6 +478,7 @@ function interpolateEvent(
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} disconnected but was not found in the player list`)
 			}
 			const player = state.players[index]
+			state.adminCamPlayerIds = state.adminCamPlayerIds.filter(id => id !== event.player)
 			applyEventTeamMutations(chatLog, state, event)
 			return { ...event, player }
 		}
@@ -631,6 +640,12 @@ function interpolateEvent(
 			}
 			if (event.type === 'PLAYER_KICKED') {
 				return { ...event, player, reason: event.reason?.replace('Kicked from the server: ', '').trim() }
+			}
+			if (event.type === 'POSSESSED_ADMIN_CAMERA' && !state.adminCamPlayerIds.includes(event.player)) {
+				state.adminCamPlayerIds = [...state.adminCamPlayerIds, event.player]
+			}
+			if (event.type === 'UNPOSSESSED_ADMIN_CAMERA') {
+				state.adminCamPlayerIds = state.adminCamPlayerIds.filter(id => id !== event.player)
 			}
 			return { ...event, player }
 		}
