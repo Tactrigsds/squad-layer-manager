@@ -31,7 +31,6 @@ import fastifyWebsocket from '@fastify/websocket'
 import * as Otel from '@opentelemetry/api'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import fastify from 'fastify'
-import { Readable } from 'node:stream'
 import type { WebSocket } from 'ws'
 
 const BASE_HEADERS = {
@@ -193,59 +192,6 @@ export const setup = C.spanOp('setup', { module }, async () => {
 			return ctx.res.status(401).send({ error: 'Unauthorized' })
 		}
 		return res.status(200).send({ status: 'ok' })
-	})
-
-	// Discord CDN proxy - streams responses without buffering
-	instance.get(AR.route('/discord-cdn/*'), async (req, res) => {
-		try {
-			// Extract the path after /cdn-proxy/
-			const url = req.url.replace(/^\/discord-cdn\//, '')
-			const cdnUrl = `https://cdn.discordapp.com/${url}`
-
-			log.trace('Proxying request to Discord CDN: %s', cdnUrl)
-
-			// Fetch from Discord CDN
-			const cdnResponse = await fetch(cdnUrl, { signal: getPatchedCtx(req).signal })
-
-			if (!cdnResponse.ok) {
-				log.warn('Discord CDN returned error: %d for %s', cdnResponse.status, cdnUrl)
-				return res.status(cdnResponse.status).send({ error: 'CDN request failed' })
-			}
-
-			// Forward relevant headers from Discord CDN response
-			const headersToForward = [
-				'content-type',
-				'content-length',
-				'cache-control',
-				'etag',
-				'last-modified',
-				'expires',
-				'content-disposition',
-				'content-encoding',
-			]
-
-			for (const header of headersToForward) {
-				const value = cdnResponse.headers.get(header)
-				if (value) {
-					res.header(header, value)
-				}
-			}
-
-			// Add CORS headers
-			res.header('Access-Control-Allow-Origin', '*')
-			res.header('Access-Control-Allow-Methods', 'GET')
-
-			// Stream the response using Node.js stream from Web Stream
-			if (cdnResponse.body) {
-				const nodeStream = Readable.fromWeb(cdnResponse.body as any)
-				return res.send(nodeStream)
-			}
-
-			return res.send('')
-		} catch (err) {
-			log.error('Error proxying to Discord CDN: %s', err)
-			return res.status(500).send({ error: 'Failed to proxy request' })
-		}
 	})
 
 	const authedCtxCreatedAt = new Map<FastifyRequest['id'], number>()
