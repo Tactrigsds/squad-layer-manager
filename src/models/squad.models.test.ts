@@ -566,3 +566,28 @@ describe('PlayerIds.findByUsernameLoose', () => {
 		expect(SM.PlayerIds.findByUsernameLoose(players, p => p.ids, 'AAA')).toBeUndefined()
 	})
 })
+
+describe('toRecentPlayer', () => {
+	// SE.fromEventRow deserializes stored event JSON without a schema parse, so a player persisted before adminGroups
+	// existed reaches the reducer with the field simply absent. Spreading that threw "adminGroups is not iterable" and
+	// took the whole chat feed down on any RESET replaying such an event.
+	it('accepts a player persisted before adminGroups existed', () => {
+		const legacy = {
+			ids: { eos: 'e1', playerController: 'ctrl', username: 'legacy' },
+			isAdmin: true,
+			role: 'Rifleman_01',
+		} as unknown as SM.RecentPlayer
+
+		const recent = SM.toRecentPlayer(legacy)
+		expect(recent.adminGroups).toEqual([])
+		expect(recent.isAdmin).toBe(true)
+	})
+
+	it('copies admin groups rather than aliasing them', () => {
+		const groups = ['Admins']
+		const recent = SM.toRecentPlayer({ ids: { eos: 'e1', playerController: 'c', username: 'u' }, isAdmin: true, adminGroups: groups })
+		expect(recent.adminGroups).toEqual(['Admins'])
+		groups.push('Whitelist')
+		expect(recent.adminGroups).toEqual(['Admins'])
+	})
+})
