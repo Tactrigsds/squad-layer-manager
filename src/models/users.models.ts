@@ -30,7 +30,6 @@ export type User = SchemaModels.User & {
 	nickname: string | null
 }
 export type MiniUser = {
-	username: string
 	displayName: string
 	discordId: bigint
 }
@@ -38,7 +37,6 @@ export type MiniUser = {
 // reduce down a type that's assignable to MiniUser
 export function toMiniUser(user: MiniUser): MiniUser {
 	return {
-		username: user.username,
 		displayName: user.displayName,
 		discordId: user.discordId,
 	}
@@ -46,10 +44,10 @@ export function toMiniUser(user: MiniUser): MiniUser {
 
 export type UserPart = { users: User[] }
 
-// represents a user's edit or deletion of an entity
+// represents a user's edit or deletion of an entity. Carries the actor's id, not their name: consumers resolve
+// the display name so it reflects the user's current nickname rather than whatever it was at mutation time.
 export type UserEntityMutation<K extends string | number, V> = {
-	username: string
-	displayName: string
+	userId: UserId
 	key: K
 	value: V
 	type: 'add' | 'update' | 'delete'

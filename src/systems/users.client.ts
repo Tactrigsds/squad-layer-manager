@@ -99,6 +99,15 @@ export function simulatePerms(basePerms: RBAC.TracedPermission[], simulation: Si
 	)
 }
 
+// resolves a user id to the name to show, outside of a hook (e.g. from a toast in an rx subscription). Shares the
+// cache with useUser, so an already-loaded user costs nothing.
+export async function fetchDisplayName(id: USR.UserId, fallback = 'another user') {
+	const cached = PartSys.findUser(id)
+	if (cached) return cached.displayName
+	const res = await RPC.queryClient.getQueryCache().build(RPC.queryClient, getFetchUserOptions(id)).fetch()
+	return res?.code === 'ok' ? res.user.displayName : fallback
+}
+
 export async function fetchLoggedInUser() {
 	return RPC.queryClient.getQueryCache().build(RPC.queryClient, {
 		...loggedInUserBaseQuery,

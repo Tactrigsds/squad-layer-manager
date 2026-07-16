@@ -1,4 +1,3 @@
-import * as Schema from '$root/drizzle/schema.ts'
 import * as Arr from '@/lib/array'
 import { isAbortError, sleep, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { withThrownAsync } from '@/lib/error'
@@ -29,10 +28,10 @@ import * as Rbac from '@/systems/rbac.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as UserPresenceSys from '@/systems/user-presence.server'
+import * as Users from '@/systems/users.server'
 
 import { Mutex } from 'async-mutex'
 import type { MutexInterface } from 'async-mutex'
-import * as E from 'drizzle-orm'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
 
@@ -83,11 +82,7 @@ async function resolveSourceName(
 	players?: { ids: SM.PlayerIds.Schema }[],
 ): Promise<string> {
 	if (source.discordId) {
-		const [user] = await ctx.db()
-			.select({ name: Schema.users.nickname, username: Schema.users.username })
-			.from(Schema.users)
-			.where(E.eq(Schema.users.discordId, source.discordId))
-		return (user?.name || user?.username) ?? 'Admin'
+		return await Users.resolveDisplayName(ctx, source.discordId, 'Admin')
 	}
 	if (source.steamId && players) {
 		const player = players.find(p => p.ids.steam === source.steamId)
