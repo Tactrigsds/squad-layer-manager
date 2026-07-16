@@ -1955,15 +1955,24 @@ function RolePermissionsTable(
 									<PermScopeCell row={row} timeout$={timeout$} reset$={reset$} onPatch={patchRow} />
 								</TableCell>
 								<TableCell className="align-top">
-									<Button
-										type="button"
-										size="icon"
-										variant="ghost"
-										className="h-8 w-8 text-destructive"
-										onClick={() => setRows(rows.filter((r) => r.id !== row.id))}
-									>
-										<Icons.X className="h-4 w-4" />
-									</Button>
+									{
+										/* a trash can, not an X: the scope cell's own X drops a single scope value, and the two end up close
+									    enough that reusing the icon for "remove the whole permission" would be a trap */
+									}
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<Button
+												type="button"
+												size="icon"
+												variant="ghost"
+												className="h-8 w-8 text-destructive"
+												onClick={() => setRows(rows.filter((r) => r.id !== row.id))}
+											>
+												<Icons.Trash2 className="h-4 w-4" />
+											</Button>
+										</TooltipTrigger>
+										<TooltipContent>Remove this permission</TooltipContent>
+									</Tooltip>
 								</TableCell>
 							</TableRow>
 						)
@@ -2021,7 +2030,7 @@ function PermScopeCell(
 
 		case 'global-settings-write':
 			return (
-				<ScopeMultiSelect
+				<ScopeValueRows
 					title="setting path"
 					mono
 					emptyLabel="All settings"
@@ -2033,7 +2042,7 @@ function PermScopeCell(
 
 		case 'server-settings':
 			return (
-				<ScopeMultiSelect
+				<ScopeValueRows
 					title="server"
 					emptyLabel="All servers"
 					values={row.serverIds ?? []}
@@ -2044,15 +2053,16 @@ function PermScopeCell(
 
 		case 'server-settings-write':
 			return (
-				<div className="space-y-1">
-					<ScopeMultiSelect
+				// two independent lists in one cell, so they get more room between them than the rows within each
+				<div className="space-y-3">
+					<ScopeValueRows
 						title="server"
 						emptyLabel="All servers"
 						values={row.serverIds ?? []}
 						options={serverOptionsFor(servers, row.serverIds ?? [])}
 						onChange={(serverIds) => onPatch(row.id, { serverIds })}
 					/>
-					<ScopeMultiSelect
+					<ScopeValueRows
 						title="setting path"
 						mono
 						emptyLabel="All non-sensitive settings"
@@ -2079,26 +2089,85 @@ function serverOptionsFor(servers: { id: string; displayName: string }[], select
 	return [...unknown, ...known]
 }
 
-function ScopeMultiSelect(
+// One dropdown per selected value rather than a single multi-select: the values here are long (dotted setting paths,
+// `Display Name (server-id)`) and a combined trigger could only show them comma-joined and ellipsed, which truncated
+// exactly the tail that distinguishes them.
+function ScopeValueRows(
 	{ title, values, options, onChange, emptyLabel, mono }: {
 		title: string
 		values: string[]
 		options: (ComboBoxOption<string> | string)[]
 		onChange: (next: string[]) => void
-		// an empty scope means unrestricted, which reads as a bug unless the control says so
+		// an empty scope means unrestricted, which reads as a bug unless it's spelled out
 		emptyLabel: string
 		mono?: boolean
 	},
 ) {
+	// the not-yet-chosen row that `Add` opens. It lives here rather than in `values` so an abandoned Add can't write an
+	// empty entry back to the settings draft.
+	const [adding, setAdding] = React.useState(false)
+	const normalized: ComboBoxOption<string>[] = options.map((o) => (typeof o === 'string' ? { value: o } : o))
+	const selected = new Set(values)
+	const exhausted = normalized.every((o) => selected.has(o.value))
+
+	// a value already used in a sibling row would be a no-op grant, so only the row holding it may keep it
+	function optionsFor(own?: string): ComboBoxOption<string>[] {
+		return normalized.map((o) => (o.value !== own && selected.has(o.value) ? { ...o, disabled: true } : o))
+	}
+	const boxClass = cn('w-full max-w-[22rem]', mono && 'font-mono')
+
 	return (
-		<ComboBoxMulti
-			title={title}
-			emptyLabel={emptyLabel}
-			className={cn('w-full max-w-[24rem]', mono && 'font-mono')}
-			values={values}
-			options={options}
-			onSelect={(next) => onChange(typeof next === 'function' ? next(values) : next)}
-		/>
+		<div className="space-y-1">
+			{values.length === 0 && !adding && <p className="text-xs leading-8 text-muted-foreground">{emptyLabel}</p>}
+			{values.map((value, idx) => (
+				<div key={value} className="flex items-center gap-1">
+					<ComboBox
+						title={title}
+						className={boxClass}
+						value={value}
+						options={optionsFor(value)}
+						onSelect={(next) => next && onChange(values.map((v, i) => (i === idx ? next : v)))}
+					/>
+					<Button
+						type="button"
+						size="icon"
+						variant="ghost"
+						className="h-8 w-8 shrink-0 text-destructive"
+						onClick={() => onChange(values.filter((_, i) => i !== idx))}
+					>
+						<Icons.X className="h-4 w-4" />
+					</Button>
+				</div>
+			))}
+			{adding && (
+				<div className="flex items-center gap-1">
+					<ComboBox
+						title={title}
+						className={boxClass}
+						placeholder={`Select ${title}...`}
+						value={undefined}
+						options={optionsFor()}
+						onSelect={(next) => {
+							if (next) onChange([...values, next])
+							setAdding(false)
+						}}
+					/>
+					<Button
+						type="button"
+						size="icon"
+						variant="ghost"
+						className="h-8 w-8 shrink-0 text-destructive"
+						onClick={() => setAdding(false)}
+					>
+						<Icons.X className="h-4 w-4" />
+					</Button>
+				</div>
+			)}
+			<Button type="button" size="sm" variant="outline" className="h-7" disabled={adding || exhausted} onClick={() => setAdding(true)}>
+				<Icons.Plus className="mr-1 h-3.5 w-3.5" />
+				Add {title}
+			</Button>
+		</div>
 	)
 }
 
