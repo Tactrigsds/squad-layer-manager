@@ -18,8 +18,9 @@
 // Kept small and dependency-light on purpose: it runs on the game host, next to the server it watches.
 
 use std::io::SeekFrom;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use futures_util::{SinkExt, StreamExt};
 use tokio::fs;
@@ -32,7 +33,10 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 
-const VERSION: &str = "0.2.0";
+// The version we introduce ourselves with in the handshake, and the one SLM logs for a connected agent. Read
+// from Cargo.toml so it can't drift from the crate the binary was built from, which is what the release tag
+// (server-agent-v<version>) names.
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // binary frame channel tags (first byte of every post-handshake frame)
 const TAG_LOG: u8 = 0x00;
@@ -44,6 +48,46 @@ const TAG_RCON_CONTROL: u8 = 0x02;
 const READ_CHUNK: usize = 64 * 1024;
 
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+
+// How often to report what we're moving.
+const REPORT_INTERVAL: Duration = Duration::from_secs(300);
+
+// Byte counters behind the periodic throughput report. "up" is what we send SLM, "down" what it sends us; the
+// log only ever flows up. Shared across the reader, writer and reporter tasks, and across reconnects, so the
+// report cadence doesn't reset when the connection blips.
+#[derive(Default)]
+struct Stats {
+    log_up: AtomicU64,
+    rcon_up: AtomicU64,
+    rcon_down: AtomicU64,
+}
+
+// How long the log may go without growing before we say so. A live squad server writes continuously, so a log
+// this quiet means we're almost certainly watching the wrong path rather than a genuinely idle server.
+const IDLE_NOTICE: Duration = Duration::from_secs(300);
+
+// Our position in the log file, plus enough state to report file-level problems once rather than on every
+// poll. It lives across reconnects, so a blip replays exactly what was appended while we were gone.
+struct Tail {
+    // `None` until the first successful stat, at which point we jump to end-of-file so we stream only new
+    // lines rather than replaying the whole existing log.
+    offset: Option<u64>,
+    // whether the file is currently absent, so it's reported on the edge rather than on every poll
+    missing: bool,
+    last_growth: Instant,
+    idle_reported: bool,
+}
+
+impl Tail {
+    fn new() -> Tail {
+        Tail {
+            offset: None,
+            missing: false,
+            last_growth: Instant::now(),
+            idle_reported: false,
+        }
+    }
+}
 
 #[derive(Clone)]
 struct RconConfig {
@@ -93,11 +137,49 @@ fn main() {
     rt.block_on(run(cfg, logger));
 }
 
+// A steady heartbeat of what we're actually moving. It tells a healthy-but-quiet agent apart from a stalled
+// one, and makes each server's log and rcon volume visible without instrumenting SLM. Runs for the life of
+// the process rather than per-connection, so the numbers stay comparable across reconnects.
+async fn report_throughput(stats: Arc<Stats>, log: Arc<Logger>, window: Duration) {
+    let mut ticker = tokio::time::interval(window);
+    // interval's first tick resolves immediately; skip it so every report covers a whole window
+    ticker.tick().await;
+    loop {
+        ticker.tick().await;
+        // swap: each report covers only its own window, so a burst doesn't inflate the next one
+        let log_up = stats.log_up.swap(0, Ordering::Relaxed);
+        let rcon_up = stats.rcon_up.swap(0, Ordering::Relaxed);
+        let rcon_down = stats.rcon_down.swap(0, Ordering::Relaxed);
+        log.info(&format!(
+            "streaming: log {}, rcon {} up / {} down (last {}s: {log_up} B log, {rcon_up} B rcon up, {rcon_down} B rcon down)",
+            rate(log_up, window),
+            rate(rcon_up, window),
+            rate(rcon_down, window),
+            window.as_secs(),
+        ));
+    }
+}
+
+// bytes observed over `window`, as a per-minute rate at human scale
+fn rate(bytes: u64, window: Duration) -> String {
+    let per_min = bytes as f64 * 60.0 / window.as_secs_f64();
+    if per_min >= 1024.0 * 1024.0 {
+        format!("{:.1} MiB/min", per_min / (1024.0 * 1024.0))
+    } else if per_min >= 1024.0 {
+        format!("{:.1} KiB/min", per_min / 1024.0)
+    } else {
+        format!("{per_min:.0} B/min")
+    }
+}
+
 async fn run(cfg: Config, log: Arc<Logger>) {
-    // our byte position in the log file. `None` until the first successful stat, at which point we jump to
-    // end-of-file so we stream only new lines rather than replaying the whole existing log. It persists
-    // across reconnects, so a blip replays exactly what was appended while we were gone.
-    let mut offset: Option<u64> = None;
+    let mut tail = Tail::new();
+    let stats = Arc::new(Stats::default());
+    tokio::spawn(report_throughput(
+        stats.clone(),
+        log.clone(),
+        REPORT_INTERVAL,
+    ));
 
     let shutdown = shutdown_signal();
     tokio::pin!(shutdown);
@@ -109,7 +191,7 @@ async fn run(cfg: Config, log: Arc<Logger>) {
                 log.info("shutting down");
                 return;
             }
-            result = connect_and_stream(&cfg, &log, &mut offset) => {
+            result = connect_and_stream(&cfg, &log, &mut tail, &stats) => {
                 match result {
                     Ok(()) => log.info("connection closed by server"),
                     Err(err) => log.error(&format!("connection ended: {err}")),
@@ -132,7 +214,8 @@ async fn run(cfg: Config, log: Arc<Logger>) {
 async fn connect_and_stream(
     cfg: &Config,
     log: &Arc<Logger>,
-    offset: &mut Option<u64>,
+    tail: &mut Tail,
+    stats: &Arc<Stats>,
 ) -> Result<(), String> {
     let target = Target::parse(&cfg.url)?;
     let request = cfg
@@ -159,20 +242,21 @@ async fn connect_and_stream(
         let (ws, _resp) = tokio_tungstenite::client_async(request, tls)
             .await
             .map_err(|e| format!("websocket handshake failed: {e}"))?;
-        drive(cfg, log, offset, ws).await
+        drive(cfg, log, tail, ws, stats).await
     } else {
         let (ws, _resp) = tokio_tungstenite::client_async(request, tcp)
             .await
             .map_err(|e| format!("websocket handshake failed: {e}"))?;
-        drive(cfg, log, offset, ws).await
+        drive(cfg, log, tail, ws, stats).await
     }
 }
 
 async fn drive<S>(
     cfg: &Config,
     log: &Arc<Logger>,
-    offset: &mut Option<u64>,
+    tail: &mut Tail,
     ws: WebSocketStream<S>,
+    stats: &Arc<Stats>,
 ) -> Result<(), String>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -207,16 +291,31 @@ where
     // SLM -> local RCON bytes, fed by the reader task and consumed by the rcon bridge
     let (rcon_in_tx, rcon_in_rx) = mpsc::unbounded_channel::<Vec<u8>>();
 
+    let writer_stats = stats.clone();
     let writer = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
+            // every outbound frame is tagged and they all funnel through here, so this is the one place that
+            // has to count them; read the tag before the sink takes ownership
+            let counted = match &msg {
+                Message::Binary(data) => data
+                    .split_first()
+                    .map(|(&tag, payload)| (tag, payload.len() as u64)),
+                _ => None,
+            };
             if write.send(msg).await.is_err() {
                 break;
             }
+            match counted {
+                Some((TAG_LOG, n)) => writer_stats.log_up.fetch_add(n, Ordering::Relaxed),
+                Some((TAG_RCON_DATA, n)) => writer_stats.rcon_up.fetch_add(n, Ordering::Relaxed),
+                _ => 0,
+            };
         }
     });
 
     // drive the read half: auto-responds to pings (the split halves share the underlying socket via a lock),
     // demuxes inbound rcon-data frames to the bridge, and tells us when the server hangs up.
+    let reader_stats = stats.clone();
     let mut reader = tokio::spawn(async move {
         while let Some(msg) = read.next().await {
             match msg {
@@ -224,6 +323,9 @@ where
                     let bytes: &[u8] = &data;
                     if let Some((&tag, payload)) = bytes.split_first() {
                         if tag == TAG_RCON_DATA {
+                            reader_stats
+                                .rcon_down
+                                .fetch_add(payload.len() as u64, Ordering::Relaxed);
                             let _ = rcon_in_tx.send(payload.to_vec());
                         }
                     }
@@ -238,7 +340,7 @@ where
         tokio::spawn(rcon_bridge(rc, tx.clone(), rcon_in_rx, log.clone(), cfg.reconnect))
     });
 
-    let result = pump_loop(cfg, log, offset, &tx, &mut reader).await;
+    let result = pump_loop(cfg, log, tail, &tx, &mut reader).await;
 
     // tear down the side tasks so a reconnect starts clean
     if let Some(h) = rcon_task {
@@ -252,7 +354,7 @@ where
 async fn pump_loop(
     cfg: &Config,
     log: &Arc<Logger>,
-    offset: &mut Option<u64>,
+    tail: &mut Tail,
     tx: &mpsc::Sender<Message>,
     reader: &mut tokio::task::JoinHandle<()>,
 ) -> Result<(), String> {
@@ -260,7 +362,7 @@ async fn pump_loop(
         tokio::select! {
             biased;
             _ = &mut *reader => return Ok(()),
-            result = pump_file(cfg, log, offset, tx) => { result?; }
+            result = pump_file(cfg, log, tail, tx) => { result?; }
         }
 
         tokio::select! {
@@ -271,39 +373,70 @@ async fn pump_loop(
     }
 }
 
-// reads whatever has been appended since `offset` and sends it as 0x00-tagged frames, updating `offset`.
+// reads whatever has been appended since `tail.offset` and sends it as 0x00-tagged frames, advancing it.
 // Rotation/truncation (offset past the current end) restarts from the top of the new file, matching how the
-// game rolls its log.
+// game rolls its log. Anything that stops data flowing without ending the connection is reported here: those
+// states are invisible from SLM's side, which just sees a connected agent that never sends anything.
 async fn pump_file(
     cfg: &Config,
     log: &Arc<Logger>,
-    offset: &mut Option<u64>,
+    tail: &mut Tail,
     tx: &mpsc::Sender<Message>,
 ) -> Result<(), String> {
     let size = match fs::metadata(&cfg.file).await {
         Ok(meta) => meta.len(),
-        // the file may not exist yet if the server is still starting; try again next poll
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(e) => return Err(format!("stat {} failed: {e}", cfg.file)),
-    };
-
-    let start = match offset {
-        // first observation: start streaming from the current end, skipping existing history
-        None => {
-            *offset = Some(size);
+        // The file may legitimately not exist yet if the server is still starting, so this isn't fatal and we
+        // just try again next poll. It is reported because it is otherwise indistinguishable, from the
+        // outside, from a healthy agent tailing a quiet log: the connection stays up and RCON keeps working
+        // while nothing is ever streamed.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if !tail.missing {
+                tail.missing = true;
+                log.error(&format!(
+                    "{} does not exist, so no logs will be streamed until it appears. Check --file / SLM_LOG_PATH, \
+                     and that the log directory is mounted if this agent runs in a container",
+                    cfg.file,
+                ));
+            }
             return Ok(());
         }
-        Some(o) => *o,
+        Err(e) => return Err(format!("stat {} failed: {e}", cfg.file)),
+    };
+    if tail.missing {
+        tail.missing = false;
+        log.info(&format!("{} appeared", cfg.file));
+    }
+
+    let start = match tail.offset {
+        // first observation: start streaming from the current end, skipping existing history
+        None => {
+            tail.offset = Some(size);
+            tail.last_growth = Instant::now();
+            log.info(&format!("tailing {} from byte {size}", cfg.file));
+            return Ok(());
+        }
+        Some(o) => o,
     };
 
     if start > size {
         log.info("log file shrank (rotated or truncated), restarting from its start");
-        *offset = Some(0);
+        tail.offset = Some(0);
         return Ok(());
     }
     if start == size {
+        if !tail.idle_reported && tail.last_growth.elapsed() >= IDLE_NOTICE {
+            tail.idle_reported = true;
+            log.error(&format!(
+                "{} has not grown in {}s. A running squad server writes its log continuously, so this is \
+                 usually the wrong path (a rotated or stale copy) rather than an idle server",
+                cfg.file,
+                IDLE_NOTICE.as_secs(),
+            ));
+        }
         return Ok(());
     }
+    tail.last_growth = Instant::now();
+    tail.idle_reported = false;
 
     let mut file = fs::File::open(&cfg.file)
         .await
@@ -333,7 +466,7 @@ async fn pump_file(
             .map_err(|_| "websocket writer closed".to_string())?;
         pos += n as u64;
         remaining -= n as u64;
-        *offset = Some(pos);
+        tail.offset = Some(pos);
     }
 
     Ok(())
