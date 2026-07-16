@@ -217,14 +217,15 @@ export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 		).subscribe(),
 	)
 
-	// Schedule teamswaps on map roll. Wait until the new match's roster has settled (every player assigned to a
-	// team) before executing the saved swaps, so they land on faithful team data. NEW_GAME is now a roster-less
-	// boundary that precedes the roster, and players load in during staging, so a fixed delay is not enough --
-	// waitForSettledRoster polls RCON until settled or a timeout. taskScheduling 'switch' aborts a pending wait if
-	// another match boundary arrives first.
+	// Schedule teamswaps on map roll. NEW_GAME is a roster-less boundary that precedes the roster, so this waits
+	// before executing, to give the new match's teams a chance to land and the swaps to be applied against faithful
+	// team data. taskScheduling 'switch' aborts a pending wait if another match boundary arrives first.
+	//
+	// Only a NEW_GAME that is actually a roll may execute: a 'slm-started' one fires this delay on boot, which is
+	// long enough to swallow swaps saved moments later and execute them against the still-current match.
 	ctx.cleanup.push(
 		ctx.server.event$.pipe(
-			Rx.filter(([, e]) => e.type === 'NEW_GAME'),
+			Rx.filter(([, e]) => e.type === 'NEW_GAME' && SE.newGameIsRoll(e.source)),
 			Rx.delay(2000),
 			C.durableSub('performTeamswaps', { module, taskScheduling: 'switch' }, async ([ctx], signal) => {
 				await dispatchOp({ ...ctx, signal }, [{ opId: TSW.createOpId(), code: 'execute-teamswaps' }])
