@@ -283,7 +283,11 @@ function BlockNodeControlPanel(props: NodeProps) {
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
 	const { delete: deleteNode } = actions.common
 	const { addChild, setBlockType } = actions.block
-	const blockTypeOptions = F.BLOCK_TYPES.map((t) => ({ value: t, label: F.BLOCK_TYPE_DISPLAY_NAMES[t] }))
+	const blockTypeOptions = F.BLOCK_TYPES.map((t) => ({
+		value: t,
+		label: F.BLOCK_TYPE_DISPLAY_NAMES[t],
+		description: F.BLOCK_TYPE_DESCRIPTIONS[t],
+	}))
 	return (
 		<div className="flex items-center space-x-1">
 			<ComboBox
@@ -433,7 +437,11 @@ export function LeafFilterNode(props: NodeProps) {
 					allowEmpty={false}
 					title="mode"
 					value={node.type}
-					options={F.APPLY_FILTER_TYPES.map((t) => ({ value: t, label: F.APPLY_FILTER_TYPE_DISPLAY_NAMES[t] }))}
+					options={F.APPLY_FILTER_TYPES.map((t) => ({
+						value: t,
+						label: F.APPLY_FILTER_TYPE_DISPLAY_NAMES[t],
+						description: F.APPLY_FILTER_TYPE_DESCRIPTIONS[t],
+					}))}
 					onSelect={(v) => actions.applyFilter.setType(v as F.ApplyFilterType)}
 				/>
 				<ApplyFilter
@@ -651,7 +659,7 @@ export function Comparison(props: {
 			className={cn(operatorSelectClass, componentStyles)}
 			title="Operator"
 			value={F.compOpSelectionKey(node)}
-			options={opOptions.map((o) => ({ value: o.key, label: o.label }))}
+			options={opOptions.map((o) => ({ value: o.key, label: o.label, description: o.description }))}
 			ref={codeBoxRef}
 			// like the subject, hand focus onward to the value editor once an operator is picked
 			preventCloseAutoFocus={handOffFocusToValue}

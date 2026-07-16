@@ -28,10 +28,10 @@ function toColumnArg(input: ColumnInput): F.ColumnArg | F.TeamColumnArg {
 
 // -------- block builders --------
 
-export const all = (children: F.FilterNode[]): F.FilterNode => ({ type: 'all', children })
-export const some = (children: F.FilterNode[]): F.FilterNode => ({ type: 'some', children })
-export const none = (children: F.FilterNode[]): F.FilterNode => ({ type: 'none', children })
-export const notAll = (children: F.FilterNode[]): F.FilterNode => ({ type: 'notall', children })
+export const and = (children: F.FilterNode[]): F.FilterNode => ({ type: 'and', children })
+export const or = (children: F.FilterNode[]): F.FilterNode => ({ type: 'or', children })
+export const nor = (children: F.FilterNode[]): F.FilterNode => ({ type: 'nor', children })
+export const nand = (children: F.FilterNode[]): F.FilterNode => ({ type: 'nand', children })
 
 export const includedIn = (filterId: string): F.FilterNode => ({ type: 'included-in', filterId })
 export const excludedFrom = (filterId: string): F.FilterNode => ({ type: 'excluded-from', filterId })

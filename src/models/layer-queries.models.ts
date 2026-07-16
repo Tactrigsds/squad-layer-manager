@@ -149,7 +149,7 @@ export namespace GenVote {
 			}
 		}
 
-		return FB.all(nodes)
+		return FB.and(nodes)
 	}
 }
 

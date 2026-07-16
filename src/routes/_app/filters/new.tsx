@@ -7,7 +7,7 @@ import * as ConfigClient from '@/systems/config.client'
 import { createFileRoute } from '@tanstack/react-router'
 import React from 'react'
 
-const DEFAULT_FILTER: F.EditableFilterNode = EFB.all()
+const DEFAULT_FILTER: F.EditableFilterNode = EFB.and()
 
 // editor frames minted by the loader; each run creates a fresh instance, swept when the route is left
 let activeFrameKeys: EditFrame.Key[] = []
