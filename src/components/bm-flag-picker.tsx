@@ -3,7 +3,6 @@ import type { ComboBoxOption } from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { LOADING } from '@/components/combo-box/constants.ts'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type * as BM from '@/models/battlemetrics.models'
 import { useOrgFlags } from '@/systems/battlemetrics.client'
@@ -85,102 +84,30 @@ export function BmFlagMultiSelect(
 	)
 }
 
-// editor for a Record<flagId, priority> map (e.g. a flag grouping's `associations`)
-export function FlagPriorityMap(
-	{ value, onChange, disabled }: { value: Record<string, number>; onChange: (next: Record<string, number>) => void; disabled?: boolean },
+// single flag select. `exclude` drops flags already spoken for by a sibling row.
+export function BmFlagSelect(
+	{ value, onChange, disabled, exclude, className }: {
+		value: string | undefined
+		onChange: (next: string) => void
+		disabled?: boolean
+		exclude?: string[]
+		className?: string
+	},
 ) {
-	const orgFlags = useOrgFlags()
 	const options = useFlagOptions()
-	const entries = Object.entries(value)
-	const addOptions = options === LOADING ? LOADING : options.filter((o) => !(o.value in value))
-
-	function setPriority(id: string, priority: number) {
-		onChange({ ...value, [id]: priority })
-	}
-	function remove(id: string) {
-		const next = { ...value }
-		delete next[id]
-		onChange(next)
-	}
-	function add(id: string) {
-		const nextPriority = entries.length === 0 ? 1 : Math.max(...entries.map(([, p]) => p)) + 1
-		onChange({ ...value, [id]: nextPriority })
-	}
-
+	const selectable = options === LOADING || !exclude?.length
+		? options
+		: options.filter((o) => o.value === value || !exclude.includes(o.value))
 	return (
-		<div className="space-y-1.5">
-			{entries.length === 0 && <p className="text-xs text-muted-foreground">No flags in this group.</p>}
-			<ul className="space-y-1">
-				{entries.map(([id, priority]) => (
-					<li key={id} className="grid grid-cols-[minmax(0,1fr)_auto_5rem_auto] items-center gap-2">
-						<div className="min-w-0 overflow-hidden">
-							<FlagLabel id={id} flags={orgFlags} />
-						</div>
-						<label className="text-xs text-muted-foreground">priority</label>
-						<Input
-							type="number"
-							className="h-8 w-full"
-							value={priority}
-							disabled={disabled}
-							onChange={(e) => setPriority(id, e.target.valueAsNumber)}
-						/>
-						<Button
-							type="button"
-							size="icon"
-							variant="ghost"
-							className="h-6 w-6 text-destructive"
-							disabled={disabled}
-							onClick={() => remove(id)}
-						>
-							<Icons.X className="h-4 w-4" />
-						</Button>
-					</li>
-				))}
-			</ul>
-			<ComboBox
-				title="Add flag"
-				value={undefined}
-				options={addOptions}
-				disabled={disabled}
-				onSelect={(id) => {
-					if (id) add(id)
-				}}
-			/>
-		</div>
-	)
-}
-
-// a value that is either a flag id (color taken from that flag) or a raw CSS color (e.g. "#ef4444")
-export function BmFlagOrColorSelect(
-	{ value, onChange, disabled }: { value: string; onChange: (next: string) => void; disabled?: boolean },
-) {
-	const orgFlags = useOrgFlags()
-	const options = useFlagOptions()
-	const isKnownFlag = orgFlags?.some((f) => f.id === value)
-	return (
-		<div className="flex items-center gap-2">
-			<ComboBox
-				className="flex-1"
-				title="Flag color"
-				value={isKnownFlag ? value : undefined}
-				options={options}
-				disabled={disabled}
-				onSelect={(id) => {
-					if (id) onChange(id)
-				}}
-			/>
-			<span className="text-xs text-muted-foreground">or</span>
-			<Input
-				className="w-28 font-mono"
-				placeholder="#rrggbb"
-				value={isKnownFlag ? '' : value}
-				disabled={disabled}
-				onChange={(e) => onChange(e.target.value)}
-			/>
-			<span
-				className="h-6 w-6 rounded border shrink-0"
-				style={{ backgroundColor: isKnownFlag ? orgFlags?.find((f) => f.id === value)?.color ?? undefined : value }}
-			/>
-		</div>
+		<ComboBox
+			className={className}
+			title="Flag"
+			value={value}
+			options={selectable}
+			disabled={disabled}
+			onSelect={(id) => {
+				if (id) onChange(id)
+			}}
+		/>
 	)
 }

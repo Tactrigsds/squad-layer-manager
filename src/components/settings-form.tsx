@@ -1,4 +1,4 @@
-import { BmFlagMultiSelect, BmFlagOrColorSelect, FlagPriorityMap } from '@/components/bm-flag-picker'
+import { BmFlagMultiSelect, BmFlagSelect } from '@/components/bm-flag-picker'
 import type { ComboBoxOption } from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { DiscordMemberSelect, DiscordRoleSelect } from '@/components/discord-picker'
@@ -34,10 +34,12 @@ import type * as BM from '@/models/battlemetrics.models'
 import * as CMD from '@/models/command.models'
 import type * as LP from '@/models/labeled-presets.models'
 import * as LC from '@/models/layer-columns'
+import * as PG from '@/models/player-groupings.models'
 import * as SETTINGS from '@/models/settings.models'
 import type * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
+import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
@@ -366,139 +368,278 @@ function FlagMultiSelectField({ value$, reset$, onChange }: OverrideProps) {
 	return <BmFlagMultiSelect value={value ?? []} onChange={onChange} />
 }
 
-type FlagGrouping = BM.PlayerFlagGrouping
-type FlagGroupingsValue = { modeIds?: string[]; groupings?: FlagGrouping[] }
+type PlayerGroupingsValue = Record<string, PG.Grouping | undefined>
 
-function newFlagGrouping(): FlagGrouping {
-	return { label: '', modeIds: [], associations: {}, color: '' }
+// A group's color is seeded from the flag of the first rule naming it, so picking flags is usually all an operator has to
+// do. An entry that already exists is never re-derived -- an explicit color would otherwise be undone by a flag change.
+// Half-finished rules must not leave an entry behind: a placeholder written before a flag is picked would count as
+// existing and block the seeding it is standing in for.
+function syncedGroups(grouping: PG.Grouping, orgFlags: BM.PlayerFlag[] | undefined): Record<string, PG.Group> {
+	const groups: Record<string, PG.Group> = {}
+	for (const rule of grouping.rules) {
+		if (!rule.group || groups[rule.group]) continue
+		const existing = grouping.groups?.[rule.group]
+		if (existing) {
+			groups[rule.group] = existing
+			continue
+		}
+		const derived = derivedGroupColor(grouping, rule.group, orgFlags)
+		if (derived) groups[rule.group] = { color: derived }
+	}
+	return groups
 }
 
-// bespoke editor for `playerFlagGroupings`: display modes are declared upfront (as chips), and each grouping picks its
-// modes from that declared list (dropdown) plus a label, color and priority-ordered flag associations.
-function PlayerFlagGroupingsField({ value$, reset$, onChange }: OverrideProps) {
-	const value = (useFieldValue(value$, reset$) as FlagGroupingsValue) ?? {}
-	const modeIds = value.modeIds ?? []
-	const groupings = value.groupings ?? []
+// undefined until some flag of the group actually carries a color -- callers leave the entry out rather than pinning a
+// placeholder, so `getGroupColor`'s fallback covers the gap and a later flag pick can still seed it.
+function derivedGroupColor(grouping: PG.Grouping, group: string, orgFlags: BM.PlayerFlag[] | undefined): string | undefined {
+	for (const rule of grouping.rules) {
+		if (rule.group !== group) continue
+		const color = orgFlags?.find((f) => f.id === rule.flag)?.color
+		if (color) return color
+	}
+	return undefined
+}
 
-	// `quiet` skips reset$: use it for the uncontrolled label input, where re-emitting would clobber an in-flight keystroke.
-	// Structural edits (add/remove modes or groupings) leave it off so the label inputs re-seed after re-indexing.
-	const update = React.useCallback((fn: (v: FlagGroupingsValue) => FlagGroupingsValue, quiet?: boolean) => {
-		onChange(fn((value$.getValue() as FlagGroupingsValue) ?? {}))
+// bespoke editor for `playerGroupings`. Each grouping is an ordered rule list (first match wins), so priority is row
+// position rather than a number. Group colors are derived from the rules' flags and kept in a secondary section.
+function PlayerGroupingsField({ value$, reset$, onChange }: OverrideProps) {
+	const value = (useFieldValue(value$, reset$) as PlayerGroupingsValue) ?? {}
+	const groupingIds = Object.keys(value)
+	const orgFlags = BattlemetricsClient.useOrgFlags()
+
+	// `quiet` skips reset$: use it for edits driven by an uncontrolled input (the group name), where re-emitting would
+	// clobber an in-flight keystroke. Structural edits leave it off so inputs re-seed after re-indexing.
+	const update = React.useCallback((fn: (v: PlayerGroupingsValue) => PlayerGroupingsValue, quiet?: boolean) => {
+		onChange(fn((value$.getValue() as PlayerGroupingsValue) ?? {}))
 		if (!quiet) reset$.next()
 	}, [onChange, value$, reset$])
 
-	const [newMode, setNewMode] = React.useState('')
-	const trimmedMode = newMode.trim()
-	const canAddMode = trimmedMode.length > 0 && !modeIds.includes(trimmedMode)
-	function addMode() {
-		if (!canAddMode) return
-		update((v) => ({ ...v, modeIds: [...(v.modeIds ?? []), trimmedMode] }))
-		setNewMode('')
-	}
-	// removing a mode also strips it from every grouping that referenced it
-	function removeMode(id: string) {
-		update((v) => ({
-			...v,
-			modeIds: (v.modeIds ?? []).filter((m) => m !== id),
-			groupings: (v.groupings ?? []).map((g) => ({ ...g, modeIds: g.modeIds.filter((m) => m !== id) })),
-		}))
-	}
+	// every rule edit re-syncs the group map, so a group can never outlive the last rule naming it
+	const updateGrouping = React.useCallback((id: string, fn: (g: PG.Grouping) => PG.Grouping, quiet?: boolean) => {
+		update((v) => {
+			const next = fn(v[id] ?? PG.EMPTY_GROUPING)
+			return { ...v, [id]: { ...next, groups: syncedGroups(next, orgFlags) } }
+		}, quiet)
+	}, [update, orgFlags])
 
+	const [newGrouping, setNewGrouping] = React.useState('')
+	const trimmedNew = newGrouping.trim()
+	const canAdd = trimmedNew.length > 0 && !(trimmedNew in value)
 	function addGrouping() {
-		update((v) => ({ ...v, groupings: [...(v.groupings ?? []), newFlagGrouping()] }))
+		if (!canAdd) return
+		update((v) => ({ ...v, [trimmedNew]: PG.EMPTY_GROUPING }))
+		setNewGrouping('')
 	}
-	function removeGrouping(idx: number) {
-		update((v) => ({ ...v, groupings: (v.groupings ?? []).filter((_, i) => i !== idx) }))
+	function removeGrouping(id: string) {
+		update((v) => {
+			const next = { ...v }
+			delete next[id]
+			return next
+		})
 	}
-	function changeGrouping(idx: number, patch: Partial<FlagGrouping>, quiet?: boolean) {
-		update((v) => ({ ...v, groupings: (v.groupings ?? []).map((g, i) => i === idx ? { ...g, ...patch } : g) }), quiet)
-	}
-
-	const modeOptions: ComboBoxOption<string>[] = modeIds.map((id) => ({ value: id, label: id }))
 
 	return (
 		<div className="space-y-4">
-			<div className="space-y-1.5">
-				<Label className="text-sm font-medium">Grouping modes</Label>
-				<p className="text-xs text-muted-foreground">Declared upfront; each grouping and the players panel select from these.</p>
-				<div className="flex flex-wrap items-center gap-1.5">
-					{modeIds.length === 0 && <span className="text-xs text-muted-foreground">No modes defined.</span>}
-					{modeIds.map((id) => (
-						<span key={id} className="flex items-center gap-1 rounded border bg-background px-1.5 py-0.5 text-xs">
-							{id}
-							<button type="button" className="text-destructive" aria-label={`Remove mode ${id}`} onClick={() => removeMode(id)}>
-								<Icons.X className="h-3 w-3" />
-							</button>
-						</span>
-					))}
-				</div>
-				<div className="flex max-w-sm items-center gap-2">
-					<Input
-						placeholder="New mode id"
-						value={newMode}
-						onChange={(e) => setNewMode(e.target.value)}
-						onKeyDown={(e) => {
-							if (e.key === 'Enter') {
-								e.preventDefault()
-								addMode()
-							}
-						}}
-					/>
-					<Button type="button" variant="outline" size="sm" disabled={!canAddMode} onClick={addMode}>Add mode</Button>
-				</div>
+			{groupingIds.length === 0 && (
+				<p className="text-xs text-muted-foreground">
+					No groupings defined. A grouping is one way of sorting players into groups; the players panel and activity charts pick between
+					them by name.
+				</p>
+			)}
+			{groupingIds.map((id) => (
+				<GroupingCard
+					key={id}
+					groupingId={id}
+					grouping={value[id] ?? PG.EMPTY_GROUPING}
+					value$={scopeValue(value$, id)}
+					reset$={reset$}
+					orgFlags={orgFlags}
+					onUpdate={updateGrouping}
+					onRemove={removeGrouping}
+				/>
+			))}
+			<div className="flex max-w-sm items-center gap-2">
+				<Input
+					placeholder="New grouping name"
+					value={newGrouping}
+					onChange={(e) => setNewGrouping(e.target.value)}
+					onKeyDown={(e) => {
+						if (e.key === 'Enter') {
+							e.preventDefault()
+							addGrouping()
+						}
+					}}
+				/>
+				<Button type="button" variant="outline" size="sm" disabled={!canAdd} onClick={addGrouping}>
+					<Icons.Plus className="mr-1 h-4 w-4" />Add grouping
+				</Button>
+			</div>
+		</div>
+	)
+}
+
+function GroupingCard(
+	{ groupingId, grouping, value$, reset$, orgFlags, onUpdate, onRemove }: {
+		groupingId: string
+		grouping: PG.Grouping
+		value$: ValueState
+		reset$: Rx.Subject<void>
+		orgFlags: BM.PlayerFlag[] | undefined
+		onUpdate: (id: string, fn: (g: PG.Grouping) => PG.Grouping, quiet?: boolean) => void
+		onRemove: (id: string) => void
+	},
+) {
+	const rules = grouping.rules ?? []
+	// a rule the operator is still filling in names no group yet, and an unnamed color row is just noise
+	const groupNames = PG.getGroupNames(grouping).filter(Boolean)
+
+	function changeRule(idx: number, patch: Partial<PG.GroupRule>, quiet?: boolean) {
+		onUpdate(groupingId, (g) => ({ ...g, rules: g.rules.map((r, i) => i === idx ? { ...r, ...patch } : r) }), quiet)
+	}
+	function addRule() {
+		onUpdate(groupingId, (g) => ({ ...g, rules: [...g.rules, { type: 'battlemetrics', flag: '', group: '' }] }))
+	}
+	function removeRule(idx: number) {
+		onUpdate(groupingId, (g) => ({ ...g, rules: g.rules.filter((_, i) => i !== idx) }))
+	}
+	function moveRule(idx: number, delta: number) {
+		onUpdate(groupingId, (g) => {
+			const target = idx + delta
+			if (target < 0 || target >= g.rules.length) return g
+			const next = [...g.rules]
+			const moved = next[idx]
+			next[idx] = next[target]
+			next[target] = moved
+			return { ...g, rules: next }
+		})
+	}
+	function setGroupColor(group: string, color: string) {
+		onUpdate(groupingId, (g) => ({ ...g, groups: { ...g.groups, [group]: { color } } }), true)
+	}
+	function resetGroupColor(group: string) {
+		onUpdate(groupingId, (g) => {
+			const groups = { ...g.groups }
+			delete groups[group]
+			return { ...g, groups }
+		})
+	}
+
+	return (
+		<div className="space-y-3 rounded-md border p-3">
+			<div className="flex items-center justify-between gap-2">
+				<span className="text-sm font-medium">{groupingId}</span>
+				<Button
+					type="button"
+					size="icon"
+					variant="ghost"
+					className="h-6 w-6 shrink-0 text-destructive"
+					aria-label={`Remove grouping ${groupingId}`}
+					onClick={() => onRemove(groupingId)}
+				>
+					<Icons.X className="h-4 w-4" />
+				</Button>
 			</div>
 
-			<div className="space-y-2">
-				<Label className="text-sm font-medium">Groupings</Label>
-				{groupings.length === 0 && <p className="text-xs text-muted-foreground">No groupings defined.</p>}
-				{groupings.map((g, idx) => (
-					// oxlint-disable-next-line no-array-index-key
-					<div key={idx} className="space-y-3 rounded-md border p-3">
-						<div className="flex items-start gap-2">
-							<div className="flex-1 space-y-1">
-								<Label className="text-xs text-muted-foreground">Label</Label>
-								<TextInputField
-									value$={scopeValue(scopeValue(scopeValue(value$, 'groupings'), idx), 'label')}
-									reset$={reset$}
-									onChange={(next) => changeGrouping(idx, { label: (next as string) ?? '' }, true)}
-									numeric={false}
-									placeholder="Grouping label"
-								/>
+			<div className="space-y-1.5">
+				<Label className="text-xs text-muted-foreground">Rules</Label>
+				<p className="text-xs text-muted-foreground">A player joins the group of the first rule whose flag they carry.</p>
+				{rules.length === 0 && <p className="text-xs text-muted-foreground">No rules yet.</p>}
+				<ol className="space-y-1">
+					{rules.map((rule, idx) => (
+						// oxlint-disable-next-line no-array-index-key
+						<li key={idx} className="grid grid-cols-[1.5rem_minmax(0,1fr)_auto_minmax(0,1fr)_auto_auto] items-center gap-2">
+							<span className="text-xs tabular-nums text-muted-foreground">{idx + 1}</span>
+							<BmFlagSelect
+								value={rule.flag || undefined}
+								exclude={rules.map((r) => r.flag)}
+								onChange={(flag) => changeRule(idx, { flag })}
+							/>
+							<Icons.ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+							<TextInputField
+								value$={scopeValue(scopeValue(scopeValue(value$, 'rules'), idx), 'group')}
+								reset$={reset$}
+								onChange={(next) => changeRule(idx, { group: (next as string) ?? '' }, true)}
+								numeric={false}
+								placeholder="Group name"
+							/>
+							<div className="flex">
+								<Button
+									type="button"
+									size="icon"
+									variant="ghost"
+									className="h-6 w-6"
+									disabled={idx === 0}
+									aria-label="Raise priority"
+									onClick={() => moveRule(idx, -1)}
+								>
+									<Icons.ChevronUp className="h-4 w-4" />
+								</Button>
+								<Button
+									type="button"
+									size="icon"
+									variant="ghost"
+									className="h-6 w-6"
+									disabled={idx === rules.length - 1}
+									aria-label="Lower priority"
+									onClick={() => moveRule(idx, 1)}
+								>
+									<Icons.ChevronDown className="h-4 w-4" />
+								</Button>
 							</div>
 							<Button
 								type="button"
 								size="icon"
 								variant="ghost"
-								className="mt-6 h-6 w-6 shrink-0 text-destructive"
-								aria-label="Remove grouping"
-								onClick={() => removeGrouping(idx)}
+								className="h-6 w-6 text-destructive"
+								aria-label="Remove rule"
+								onClick={() => removeRule(idx)}
 							>
 								<Icons.X className="h-4 w-4" />
 							</Button>
-						</div>
-						<div className="space-y-1">
-							<Label className="text-xs text-muted-foreground">Modes</Label>
-							<ComboBoxMulti
-								title="Mode"
-								values={g.modeIds}
-								options={modeOptions}
-								onSelect={(next) => changeGrouping(idx, { modeIds: typeof next === 'function' ? next(g.modeIds) : next })}
-							/>
-						</div>
-						<div className="space-y-1">
-							<Label className="text-xs text-muted-foreground">Color</Label>
-							<BmFlagOrColorSelect value={g.color ?? ''} onChange={(next) => changeGrouping(idx, { color: next })} />
-						</div>
-						<div className="space-y-1">
-							<Label className="text-xs text-muted-foreground">Flags</Label>
-							<FlagPriorityMap value={g.associations ?? {}} onChange={(next) => changeGrouping(idx, { associations: next })} />
-						</div>
-					</div>
-				))}
-				<Button type="button" variant="outline" size="sm" onClick={addGrouping}>
-					<Icons.Plus className="mr-1 h-4 w-4" />Add grouping
+						</li>
+					))}
+				</ol>
+				<Button type="button" variant="outline" size="sm" onClick={addRule}>
+					<Icons.Plus className="mr-1 h-4 w-4" />Add rule
 				</Button>
 			</div>
+
+			{groupNames.length > 0 && (
+				<details>
+					<summary className="cursor-pointer text-xs text-muted-foreground">Colors ({groupNames.length})</summary>
+					<ul className="mt-1.5 space-y-1">
+						{groupNames.map((group) => {
+							const color = PG.getGroupColor(grouping, group)
+							const isDerived = !grouping.groups?.[group]
+							return (
+								<li key={group} className="flex items-center gap-2">
+									<span className="h-5 w-5 shrink-0 rounded border" style={{ backgroundColor: color }} />
+									<span className="min-w-0 flex-1 truncate text-xs">{group}</span>
+									<Input
+										key={`${group}:${color}`}
+										className="h-8 w-28 font-mono"
+										placeholder={PG.DEFAULT_GROUP_COLOR}
+										defaultValue={color}
+										onChange={(e) => setGroupColor(group, e.target.value)}
+									/>
+									<Button
+										type="button"
+										size="icon"
+										variant="ghost"
+										className="h-6 w-6"
+										disabled={isDerived}
+										title="Take the color from this group's first flag"
+										aria-label={`Reset color for ${group}`}
+										onClick={() => resetGroupColor(group)}
+									>
+										<Icons.RotateCcw className="h-3.5 w-3.5" />
+									</Button>
+								</li>
+							)
+						})}
+					</ul>
+				</details>
+			)}
 		</div>
 	)
 }
@@ -2159,7 +2300,7 @@ function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefin
 	if (path.length === 1 && last === 'layerTable') return LayerTableField
 	if (path.length === 1 && last === 'layerGeneration') return LayerGenerationField
 	if (path.length === 1 && last === 'playerFlagsRequiringNote') return FlagMultiSelectField
-	if (path.length === 1 && last === 'playerFlagGroupings') return PlayerFlagGroupingsField
+	if (path.length === 1 && last === 'playerGroupings') return PlayerGroupingsField
 	// the entire `rbac` subtree is rendered by RbacBody (see FieldControl), so no per-field rbac overrides are needed here
 	// server settings: the pool configuration reuses the dashboard popover's panels; connection passwords are masked
 	if (path.length === 2 && path[0] === 'queue' && last === 'mainPool') return MainPoolField

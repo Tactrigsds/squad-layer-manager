@@ -15,7 +15,7 @@ import * as BM from '@/models/battlemetrics.models'
 import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as RPC from '@/orpc.client'
-import { useGroupedPlayerFlagColor, useOrgFlags } from '@/systems/battlemetrics.client'
+import { useOrgFlags, usePlayerGroupColor } from '@/systems/battlemetrics.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
@@ -78,7 +78,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	const { data: bmData } = useQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId }, staleTime: Infinity }))
 	const orgFlags = useOrgFlags()
 	const flags = bmData && orgFlags ? BM.resolveFlags(bmData.flagIds, orgFlags) : undefined
-	const flagColor = useGroupedPlayerFlagColor(playerId)
+	const groupColor = usePlayerGroupColor(playerId)
 	const profile = bmData ? (({ flagIds: _, ...rest }) => rest)(bmData) : null
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
 	const currentMatchEvents = ZusUtils.useStore(
@@ -117,7 +117,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	return (
 		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
 			<DraggableWindowDragBar>
-				<DraggableWindowTitle style={flagColor ? { color: flagColor } : undefined}>
+				<DraggableWindowTitle style={groupColor ? { color: groupColor } : undefined}>
 					{player?.ids.username ?? 'Player Details'}
 					{livePlayer && (livePlayer.teamId !== null || livePlayer.squadId !== null) && (
 						<span className="text-muted-foreground font-normal ml-1">
