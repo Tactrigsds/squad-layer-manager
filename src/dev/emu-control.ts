@@ -96,6 +96,19 @@ export function createEmuCommands(ctx: { emu: Emulator; bm: BmServer }): { comma
 				return `${name} created squad ${squad.squadId} '${rest.join(' ')}' on team ${squad.teamId}`
 			},
 		},
+		cam: {
+			usage: 'cam <name> [off]       a player enters admin camera, or leaves it with `off`',
+			run: ([name, off]) => {
+				if (!name || (off && off !== 'off')) throw new Error('usage: cam <name> [off]')
+				const player = requirePlayer(name)
+				if (off) {
+					emu.world.unpossessAdminCam(player)
+					return `${name} left admin camera`
+				}
+				emu.world.possessAdminCam(player)
+				return `${name} entered admin camera`
+			},
+		},
 		end: {
 			usage: 'end [1|2]              end the match, optionally naming the winning team',
 			run: ([team]) => {

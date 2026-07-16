@@ -465,3 +465,49 @@ describe('chat.models recent squads', () => {
 		expect(recentUniqueIds(state)).toEqual([])
 	})
 })
+
+describe('admin camera tracking', () => {
+	function seededState(players: SM.Player[]): CHAT.ChatState {
+		const state = CHAT.getInitialChatState()
+		state.interpolatedState.players = players
+		return state
+	}
+
+	function possessed(player: SM.PlayerId, id: number): SE.PossessedAdminCamera {
+		return { type: 'POSSESSED_ADMIN_CAMERA', id, time: id, matchId: 1, player }
+	}
+	function unpossessed(player: SM.PlayerId, id: number): SE.UnpossessedAdminCamera {
+		return { type: 'UNPOSSESSED_ADMIN_CAMERA', id, time: id, matchId: 1, player }
+	}
+
+	it('tracks possess and unpossess', () => {
+		const state = seededState([makePlayer('a'), makePlayer('b')])
+		CHAT.handleEvent(state, possessed('a', 1))
+		CHAT.handleEvent(state, possessed('b', 2))
+		expect(state.interpolatedState.adminCamPlayerIds).toEqual(['a', 'b'])
+
+		CHAT.handleEvent(state, unpossessed('a', 3))
+		expect(state.interpolatedState.adminCamPlayerIds).toEqual(['b'])
+	})
+
+	it('drops a player who disconnects while in admin camera', () => {
+		const state = seededState([makePlayer('a')])
+		CHAT.handleEvent(state, possessed('a', 1))
+		CHAT.handleEvent(state, { type: 'PLAYER_DISCONNECTED', id: 2, time: 2, matchId: 1, player: 'a' })
+		expect(state.interpolatedState.adminCamPlayerIds).toEqual([])
+	})
+
+	it('assumes nobody is in admin camera after a RESET', () => {
+		const state = seededState([makePlayer('a')])
+		CHAT.handleEvent(state, possessed('a', 1))
+		CHAT.handleEvent(state, {
+			type: 'RESET',
+			id: 2,
+			time: 2,
+			matchId: 1,
+			source: 'rcon-reconnected',
+			state: { players: [makePlayer('a')], squads: [] },
+		})
+		expect(state.interpolatedState.adminCamPlayerIds).toEqual([])
+	})
+})

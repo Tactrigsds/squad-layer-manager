@@ -195,6 +195,12 @@ export const frame = frameManager.createFrame<Types>({
 export namespace Sel {
 	const EMPTY_LAYER_ITEMS = LQY.initLayerItemsState()
 
+	// repeat rules are evaluated against the layers surrounding a position in the list, so without a cursor there's
+	// nothing for them to say
+	export function repeatRulesApplicable(state: State) {
+		return state.cursor !== undefined
+	}
+
 	export function preMenuFilteredQueryInput(
 		state: State,
 		squadServer?: SquadServerFrame.State,
