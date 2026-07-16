@@ -275,7 +275,7 @@ export function ServerActivityCharts(props: {
 			.map(p => {
 				const eosId = p.ids.eos!
 				const flagIds = bmData[eosId]?.flagIds ?? []
-				return [eosId, { flags: orgFlags ? BM.resolveFlags(flagIds, orgFlags) : [], adminGroups: p.adminGroups }]
+				return [eosId, { flags: orgFlags ? BM.resolveFlags(flagIds, orgFlags) : [], adminGroups: p.adminGroups ?? [] }]
 			})
 
 		const playerGroups = PG.resolvePlayerGroups(playerFacts, playerGroupings, activeGroupingId)
