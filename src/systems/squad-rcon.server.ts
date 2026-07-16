@@ -35,12 +35,13 @@ export function initSquadRcon(
 	opts?: { onFatalError?: (err: unknown) => void },
 ): SquadRcon {
 	const rcon = ctx.rcon
+	const cacheTTL = Settings.GLOBAL_SETTINGS.squadServer.rconCacheTTL
 	const layersStatus: SquadRcon['layersStatus'] = new AsyncResource<SM.LayerStatusRes, C.Rcon & CS.AbortSignal>(
 		`serverStatus`,
 		(ctx) => getLayerStatus(ctx),
 		module,
 		{
-			defaultTTL: 5000,
+			defaultTTL: cacheTTL.layersStatus,
 			retries: 4,
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.LayerStatusRes) => res.code !== 'ok',
@@ -55,7 +56,7 @@ export function initSquadRcon(
 		(ctx) => getServerInfo(ctx),
 		module,
 		{
-			defaultTTL: 10_000,
+			defaultTTL: cacheTTL.serverInfo,
 			retries: 4,
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.ServerInfoRes) => res.code !== 'ok',
@@ -70,7 +71,7 @@ export function initSquadRcon(
 		(ctx) => fetchTeams(ctx),
 		module,
 		{
-			defaultTTL: 5000,
+			defaultTTL: cacheTTL.teams,
 			retries: 4,
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.TeamsRes) => res.code !== 'ok',
