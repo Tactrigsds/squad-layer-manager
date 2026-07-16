@@ -5,6 +5,7 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as ZusUtils from '@/lib/zustand'
 import * as BM from '@/models/battlemetrics.models'
 import * as L from '@/models/layer'
+import * as PG from '@/models/player-groupings.models'
 import type * as SM from '@/models/squad.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
@@ -210,14 +211,14 @@ export function ServerActivityCharts(props: {
 	const bmData = BattlemetricsClient.usePlayerBmData()
 	const orgFlags = BattlemetricsClient.useOrgFlags()
 	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
-	const playerFlagGroupings = config?.playerFlagGroupings
+	const playerGroupings = config?.playerGroupings
 
-	const groupingModeIds = React.useMemo(
-		() => playerFlagGroupings ? BM.getGroupingModeIds(playerFlagGroupings) : [],
-		[playerFlagGroupings],
+	const groupingIds = React.useMemo(
+		() => playerGroupings ? PG.getGroupingIds(playerGroupings) : [],
+		[playerGroupings],
 	)
 	const slsOnly = ZusUtils.useStore(BattlemetricsClient.Store, s => s.slsOnly)
-	const activeModeId = ZusUtils.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingModeId(groupingModeIds))
+	const activeGroupingId = ZusUtils.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingId(groupingIds))
 
 	const events = selectedMatchOrdinal !== null ? props.historicalEvents : liveUnfilteredEvents
 	const isEmpty = !events || events.length === 0
@@ -259,11 +260,12 @@ export function ServerActivityCharts(props: {
 		]
 	}, [displayTeamsNormalized, props.currentMatchOrdinal, props.layerId])
 
-	// Build flag group counts per team from live players
+	// Build group counts per team from live players
 	const flagGroupChart = React.useMemo(() => {
-		if (!playerFlagGroupings || !livePlayers || activeModeId === null) return null
+		if (!playerGroupings || !livePlayers || activeGroupingId === null) return null
 
-		const modeGroupings = playerFlagGroupings.groupings.filter(g => g.modeIds.includes(activeModeId))
+		const grouping = playerGroupings[activeGroupingId]
+		if (!grouping) return null
 
 		const chartPlayers = slsOnly ? livePlayers.filter(p => p.isLeader) : livePlayers
 
@@ -277,11 +279,11 @@ export function ServerActivityCharts(props: {
 				return [eosId, flags]
 			})
 
-		const playerGroups = BM.resolvePlayerFlagGroups(playerFlagPairs, playerFlagGroupings, activeModeId)
+		const playerGroups = PG.resolvePlayerGroups(playerFlagPairs, playerGroupings, activeGroupingId)
 
 		// Count per group per team, with "Other" for unmatched players
-		// Labels are unique within a mode, so we can use a Map for O(1) lookup
-		const groupLabels = [...modeGroupings.map(g => g.label), 'Other']
+		// Group names are unique within a grouping, so we can use a Map for O(1) lookup
+		const groupLabels = [...PG.getGroupNames(grouping), PG.UNGROUPED_LABEL]
 		const labelToIdx = new Map(groupLabels.map((label, i) => [label, i]))
 		const team1Counts = new Array(groupLabels.length).fill(0)
 		const team2Counts = new Array(groupLabels.length).fill(0)
@@ -303,21 +305,7 @@ export function ServerActivityCharts(props: {
 			}
 		}
 
-		// Build a flagId -> color lookup from org flags
-		const flagColorById = new Map<string, string>()
-		for (const flag of orgFlags ?? []) {
-			if (flag.color) flagColorById.set(flag.id, flag.color)
-		}
-
-		const groupColorByLabel = new Map(modeGroupings.map(g => [g.label, g.color]))
-		const resolveGroupColor = (label: string): string => {
-			const raw = groupColorByLabel.get(label)
-			if (!raw) return '#888'
-			// If raw looks like a UUID, treat it as a flag ID and look up its color
-			return flagColorById.get(raw) ?? raw
-		}
-
-		const groupColors = groupLabels.map(resolveGroupColor)
+		const groupColors = groupLabels.map(label => PG.getGroupColor(grouping, label))
 
 		return createFlagGroupChartOption(
 			groupLabels,
@@ -331,8 +319,8 @@ export function ServerActivityCharts(props: {
 			isDark,
 		)
 	}, [
-		playerFlagGroupings,
-		activeModeId,
+		playerGroupings,
+		activeGroupingId,
 		livePlayers,
 		slsOnly,
 		bmData,
@@ -388,18 +376,20 @@ export function ServerActivityCharts(props: {
 				<div>
 					<div className="flex items-center gap-1 px-1 mb-0.5">
 						<span className="text-xs text-muted-foreground">Team Breakdowns</span>
-						{groupingModeIds.length > 1 && (
+						{groupingIds.length > 1 && (
 							<div className="flex gap-0.5 ml-2">
-								{groupingModeIds.map(modeId => (
+								{groupingIds.map(groupingId => (
 									<button
 										type="button"
-										key={modeId}
-										onClick={() => BattlemetricsClient.Actions.setSelectedModeId(modeId)}
+										key={groupingId}
+										onClick={() => BattlemetricsClient.Actions.setSelectedGroupingId(groupingId)}
 										className={`text-xs px-2 py-0.5 rounded ${
-											activeModeId === modeId ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+											activeGroupingId === groupingId
+												? 'bg-primary text-primary-foreground'
+												: 'text-muted-foreground hover:text-foreground'
 										}`}
 									>
-										{modeId}
+										{groupingId}
 									</button>
 								))}
 							</div>

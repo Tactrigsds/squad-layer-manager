@@ -267,11 +267,11 @@ export namespace Actions {
 		)
 	}
 
-	export function selectGrouping(stores: KeyProp, grouping: string, teamId?: SM.TeamId) {
+	export function selectGroup(stores: KeyProp, group: string, teamId?: SM.TeamId) {
 		const enriched = getEnrichedPlayers(stores)
 		selectPlayers(
 			stores,
-			enriched.filter(p => p.grouping === grouping && (teamId == null || p.teamId === teamId)).map(p => SM.PlayerIds.getPlayerId(p.ids)),
+			enriched.filter(p => p.group === group && (teamId == null || p.teamId === teamId)).map(p => SM.PlayerIds.getPlayerId(p.ids)),
 		)
 	}
 

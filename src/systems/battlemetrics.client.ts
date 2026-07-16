@@ -1,5 +1,6 @@
 import * as ZusUtils from '@/lib/zustand'
 import * as BM from '@/models/battlemetrics.models'
+import * as PG from '@/models/player-groupings.models'
 import * as RPC from '@/orpc.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as ReactRx from '@react-rxjs/core'
@@ -8,22 +9,22 @@ import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 
 export const Store = Zus.createStore<BM.StoreState>(() => ({
-	selectedModeId: null,
+	selectedGroupingId: null,
 	slsOnly: false,
 	orgFlags: [],
 }))
 
 export namespace Sel {
-	// resolves the active grouping mode: the selected one if still configured, else the first configured
-	export const activeGroupingModeId = (groupingModeIds: string[]) => (state: BM.StoreState) =>
-		state.selectedModeId !== null && groupingModeIds.includes(state.selectedModeId)
-			? state.selectedModeId
-			: groupingModeIds[0] ?? null
+	// resolves the active grouping: the selected one if still configured, else the first configured
+	export const activeGroupingId = (groupingIds: string[]) => (state: BM.StoreState) =>
+		state.selectedGroupingId !== null && groupingIds.includes(state.selectedGroupingId)
+			? state.selectedGroupingId
+			: groupingIds[0] ?? null
 }
 
 export namespace Actions {
-	export function setSelectedModeId(id: string | null) {
-		Store.setState({ selectedModeId: id })
+	export function setSelectedGroupingId(id: string | null) {
+		Store.setState({ selectedGroupingId: id })
 	}
 	export function setSlsOnly(v: boolean) {
 		Store.setState({ slsOnly: v })
@@ -63,43 +64,19 @@ export function usePlayerProfile(playerId: string) {
 	return profile
 }
 
-export function useGroupedPlayerFlagColor(playerId: string): string | null {
+// the color of the group this player falls into under the active grouping, or null when nothing matches
+export function usePlayerGroupColor(playerId: string): string | null {
 	const flags = usePlayerFlags(playerId)
-	const orgFlags = useOrgFlags()
 	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
-	const selectedModeId = ZusUtils.useStore(Store, s => s.selectedModeId)
+	const playerGroupings = config?.playerGroupings
+	const groupingIds = playerGroupings ? PG.getGroupingIds(playerGroupings) : []
+	const activeGroupingId = ZusUtils.useStore(Store, Sel.activeGroupingId(groupingIds))
 
-	if (!flags || flags.length === 0) return null
-
-	const playerFlagGroupings = config?.playerFlagGroupings
-	if (!playerFlagGroupings || !orgFlags) return null
-
-	const modeIds = BM.getGroupingModeIds(playerFlagGroupings)
-	const activeModeId = selectedModeId !== null && modeIds.includes(selectedModeId)
-		? selectedModeId
-		: modeIds[0] ?? null
-	if (activeModeId === null) return null
-
-	const modeGroupings = playerFlagGroupings.groupings.filter(g => g.modeIds.includes(activeModeId))
-
-	const flagColorById = new Map<string, string>()
-	for (const flag of orgFlags) {
-		if (flag.color) flagColorById.set(flag.id, flag.color)
-	}
-
-	const associations: [string, string, number][] = []
-	for (const group of modeGroupings) {
-		for (const [flagId, priority] of Object.entries(group.associations)) {
-			associations.push([group.color, flagId, priority])
-		}
-	}
-	associations.sort((a, b) => a[2] - b[2])
-	for (const [groupColor, flagId] of associations) {
-		if (flags.some(f => f.id === flagId)) {
-			return flagColorById.get(groupColor) ?? groupColor
-		}
-	}
-	return null
+	if (!flags || flags.length === 0 || !playerGroupings || activeGroupingId === null) return null
+	const grouping = playerGroupings[activeGroupingId]
+	if (!grouping) return null
+	const group = PG.resolveGroup(grouping, flags)
+	return group === undefined ? null : PG.getGroupColor(grouping, group)
 }
 
 export function setup() {
