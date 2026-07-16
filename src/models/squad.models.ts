@@ -480,6 +480,16 @@ export const UniqueSquadSchema = SquadSchema.extend({
 })
 export type UniqueSquad = z.infer<typeof UniqueSquadSchema>
 
+// The squad counterpart of RecentPlayer: the part of a squad instance that stays meaningful once it disbands -- which
+// instance it was, whose team it was on, who made it and what it was called. `locked` is live state and drops out,
+// just as a player's team/squad/role does. `UniqueSquad` is assignable to it.
+export const RecentSquadSchema = UniqueSquadSchema.omit({ locked: true })
+export type RecentSquad = z.infer<typeof RecentSquadSchema>
+
+export function toRecentSquad(squad: RecentSquad): RecentSquad {
+	return { uniqueId: squad.uniqueId, squadId: squad.squadId, squadName: squad.squadName, creator: squad.creator, teamId: squad.teamId }
+}
+
 export type PlayerListRes = { code: 'ok'; players: Player[] } | RconError
 export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError
 export type Teams<P = Player> = { players: P[]; squads: Squad[] }

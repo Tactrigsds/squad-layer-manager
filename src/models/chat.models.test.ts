@@ -402,3 +402,66 @@ describe('chat.models recent players', () => {
 		expect(recentIds(state)).toEqual(['a'])
 	})
 })
+
+describe('chat.models recent squads', () => {
+	function connected(player: SM.Player, id: number): SE.PlayerConnected {
+		return { type: 'PLAYER_CONNECTED', id, time: 100 + id, matchId: 1, player }
+	}
+	function squadCreated(squad: SM.UniqueSquad, id: number): SE.SquadCreated {
+		return { type: 'SQUAD_CREATED', id, time: 100 + id, matchId: 1, squad }
+	}
+	function squadDisbanded(uniqueId: number, id: number): SE.SquadDisbanded {
+		return { type: 'SQUAD_DISBANDED', id, time: 100 + id, matchId: 1, uniqueId }
+	}
+	function squadRenamed(uniqueId: number, oldSquadName: string, newSquadName: string, id: number): SE.SquadRenamed {
+		return { type: 'SQUAD_RENAMED', id, time: 100 + id, matchId: 1, uniqueId, oldSquadName, newSquadName }
+	}
+	function newGame(id: number): SE.NewGame {
+		return { type: 'NEW_GAME', id, time: 100 + id, matchId: 1, source: 'new-game-detected', layerId: 'l1' }
+	}
+	const recentUniqueIds = (state: CHAT.ChatState) => state.interpolatedState.recentSquads.map(s => s.uniqueId)
+
+	function stateWithSquad() {
+		const state = CHAT.getInitialChatState()
+		CHAT.handleEvent(state, connected(makePlayer('a'), 1))
+		CHAT.handleEvent(state, squadCreated(makeSquad(1, 1, 'a', 101), 2))
+		return state
+	}
+
+	it('keeps a disbanded squad in recentSquads, but off the live squad list', () => {
+		const state = stateWithSquad()
+		CHAT.handleEvent(state, squadDisbanded(101, 3))
+
+		expect(state.interpolatedState.squads).toHaveLength(0)
+		expect(recentUniqueIds(state)).toEqual([101])
+		const recent = CHAT.InterpolableState.findRecentSquad(state.interpolatedState, 101)
+		expect(recent).toMatchObject({ uniqueId: 101, squadId: 1, teamId: 1, creator: 'a', squadName: 'Squad 1' })
+	})
+
+	it('tracks a rename, and keeps the new name after the squad disbands', () => {
+		const state = stateWithSquad()
+		CHAT.handleEvent(state, squadRenamed(101, 'Squad 1', 'Armour', 3))
+		expect(recentUniqueIds(state)).toEqual([101])
+		expect(CHAT.InterpolableState.findRecentSquad(state.interpolatedState, 101)?.squadName).toBe('Armour')
+
+		CHAT.handleEvent(state, squadDisbanded(101, 4))
+		expect(CHAT.InterpolableState.findRecentSquad(state.interpolatedState, 101)?.squadName).toBe('Armour')
+	})
+
+	// squad ids get reused, so a later instance must not inherit the earlier one's entry
+	it('tracks two instances that reuse the same in-game squad id separately', () => {
+		const state = stateWithSquad()
+		CHAT.handleEvent(state, squadDisbanded(101, 3))
+		CHAT.handleEvent(state, squadCreated(makeSquad(1, 1, 'a', 102), 4))
+
+		expect(recentUniqueIds(state)).toEqual([101, 102])
+	})
+
+	it('clears recentSquads at a match boundary', () => {
+		const state = stateWithSquad()
+		CHAT.handleEvent(state, squadDisbanded(101, 3))
+		CHAT.handleEvent(state, newGame(4))
+
+		expect(recentUniqueIds(state)).toEqual([])
+	})
+})

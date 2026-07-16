@@ -126,6 +126,16 @@ export namespace Sel {
 		return (store: Store) => CHAT.InterpolableState.findRecentPlayer(chatState(store), playerId)
 	}
 
+	export function recentSquads(store: Store) {
+		return chatState(store).recentSquads
+	}
+
+	// resolves any squad instance from the current match, disbanded or not. Its emptiness is not a "disbanded" test --
+	// use squads/squad for that.
+	export function recentSquad(uniqueSquadId: number) {
+		return (store: Store) => CHAT.InterpolableState.findRecentSquad(chatState(store), uniqueSquadId)
+	}
+
 	export const squadsForTeam = RSel.memoizeFactory((maybeNormedTeamId: MH.NormedTeamId | SM.TeamId) =>
 		RSel.createDeepSelector(
 			[(store: Store) => chatState(store).squads, currentMatchArg],
