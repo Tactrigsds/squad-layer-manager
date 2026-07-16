@@ -41,6 +41,7 @@ import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
+import * as DndKit from '@/systems/dndkit.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
 import { useQuery } from '@tanstack/react-query'
@@ -370,6 +371,18 @@ function FlagMultiSelectField({ value$, reset$, onChange }: OverrideProps) {
 
 type PlayerGroupingsValue = Record<string, PG.Grouping | undefined>
 
+// Drag ids must be unique across every grouping card mounted at once, and a rule has nothing of its own to be named by
+// (its position IS its priority), so grouping + index identifies it. JSON-encoded because a grouping id is free text
+// and could contain whatever delimiter we picked.
+function ruleDragId(groupingId: string, idx: number): string {
+	return JSON.stringify([groupingId, idx])
+}
+
+function parseRuleDragId(id: string): { groupingId: string; idx: number } {
+	const [groupingId, idx] = JSON.parse(id) as [string, number]
+	return { groupingId, idx }
+}
+
 // A group's color defaults to a reference to the first of its flags that has one, so picking flags is usually all an
 // operator has to do and the color keeps tracking battlemetrics afterwards. An entry that already exists is left alone.
 // Half-finished rules must not leave an entry behind: a placeholder written before a flag is picked would count as
@@ -468,6 +481,65 @@ function PlayerGroupingsField({ value$, reset$, onChange }: OverrideProps) {
 	)
 }
 
+// a thin gap between/around rows that highlights while a rule is dragged over it (invisible but layout-occupying otherwise)
+function RuleDropSeparator({ position, groupingId, idx }: { position: 'before' | 'after'; groupingId: string; idx: number }) {
+	const drop = DndKit.useDroppable({
+		type: 'relative-to-drag-item',
+		slots: [{ position, dragItem: { type: 'grouping-rule', id: ruleDragId(groupingId, idx) } }],
+	})
+	return <li ref={drop.ref} data-over={drop.isDropTarget} className="my-0.5 h-1 rounded bg-primary data-[over=false]:invisible" />
+}
+
+function RuleRow(
+	{ rule, idx, groupingId, usedFlags, value$, reset$, onChange, onRemove }: {
+		rule: PG.GroupRule
+		idx: number
+		groupingId: string
+		usedFlags: string[]
+		value$: ValueState
+		reset$: Rx.Subject<void>
+		onChange: (idx: number, patch: Partial<PG.GroupRule>, quiet?: boolean) => void
+		onRemove: () => void
+	},
+) {
+	const drag = DndKit.useDraggable({ type: 'grouping-rule', id: ruleDragId(groupingId, idx) }, { feedback: 'default' })
+	return (
+		<li
+			ref={drag.ref}
+			data-dragging={drag.isDragging}
+			className="grid grid-cols-[auto_1.5rem_minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md bg-background data-[dragging=true]:opacity-40"
+		>
+			<button type="button" ref={drag.handleRef} className="cursor-grab rounded text-muted-foreground" aria-label="Drag to reorder">
+				<Icons.GripVertical className="h-4 w-4" />
+			</button>
+			<span className="text-xs tabular-nums text-muted-foreground">{idx + 1}.</span>
+			<BmFlagSelect
+				value={rule.flag || undefined}
+				exclude={usedFlags}
+				onChange={(flag) => onChange(idx, { flag })}
+			/>
+			<Icons.ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+			<TextInputField
+				value$={scopeValue(scopeValue(scopeValue(value$, 'rules'), idx), 'group')}
+				reset$={reset$}
+				onChange={(next) => onChange(idx, { group: (next as string) ?? '' }, true)}
+				numeric={false}
+				placeholder="Group name"
+			/>
+			<Button
+				type="button"
+				size="icon"
+				variant="ghost"
+				className="h-6 w-6 text-destructive"
+				aria-label="Remove rule"
+				onClick={onRemove}
+			>
+				<Icons.X className="h-4 w-4" />
+			</Button>
+		</li>
+	)
+}
+
 function GroupingCard(
 	{ groupingId, grouping, value$, reset$, orgFlags, onUpdate, onRemove }: {
 		groupingId: string
@@ -492,21 +564,31 @@ function GroupingCard(
 	function removeRule(idx: number) {
 		onUpdate(groupingId, (g) => ({ ...g, rules: g.rules.filter((_, i) => i !== idx) }))
 	}
-	function moveRule(idx: number, delta: number) {
-		onUpdate(groupingId, (g) => {
-			const target = idx + delta
-			if (target < 0 || target >= g.rules.length) return g
-			const next = [...g.rules]
-			const moved = next[idx]
-			next[idx] = next[target]
-			next[target] = moved
-			return { ...g, rules: next }
-		})
-	}
 	// `quiet` for the custom-color text field only, so an in-flight keystroke is not clobbered
 	function setGroupColor(group: string, color: PG.GroupColor, quiet?: boolean) {
 		onUpdate(groupingId, (g) => ({ ...g, groups: { ...g.groups, [group]: { color } } }), quiet)
 	}
+
+	// drag-to-reorder via the shared dnd-kit provider (see dndkit.client), matching the layer-table column editor. The
+	// handler is registered once and reads the latest state off a ref; every grouping card registers one, so a drop
+	// belonging to another card's list has to be ignored.
+	const stateRef = React.useRef({ groupingId, onUpdate })
+	stateRef.current = { groupingId, onUpdate }
+	DndKit.useDragEnd(React.useCallback((evt) => {
+		const { active, over } = evt
+		if (active.type !== 'grouping-rule' || !over) return
+		const slot = over.slots.find((s) => s.dragItem.type === 'grouping-rule')
+		if (!slot) return
+		// the separators only ever register before/after; 'on' would mean dropping onto a rule itself, which reorders nothing
+		const position = slot.position
+		if (position === 'on') return
+		const from = parseRuleDragId(active.id)
+		// find() can't narrow the element, so the id is still the union's string | number here
+		const to = parseRuleDragId(String(slot.dragItem.id))
+		const { groupingId, onUpdate } = stateRef.current
+		if (from.groupingId !== groupingId || to.groupingId !== groupingId) return
+		onUpdate(groupingId, (g) => ({ ...g, rules: PG.moveRule(g.rules, from.idx, to.idx, position) }))
+	}, []))
 
 	return (
 		<div className="space-y-3 rounded-md border p-3">
@@ -526,62 +608,28 @@ function GroupingCard(
 
 			<div className="space-y-1.5">
 				<Label className="text-xs text-muted-foreground">Rules</Label>
-				<p className="text-xs text-muted-foreground">A player joins the group of the first rule whose flag they carry.</p>
+				<p className="text-xs text-muted-foreground">
+					A player joins the group of the first rule whose flag they carry. Drag to reorder; priority is top to bottom.
+				</p>
 				{rules.length === 0 && <p className="text-xs text-muted-foreground">No rules yet.</p>}
-				<ol className="space-y-1">
+				<ol>
 					{rules.map((rule, idx) => (
 						// oxlint-disable-next-line no-array-index-key
-						<li key={idx} className="grid grid-cols-[1.5rem_minmax(0,1fr)_auto_minmax(0,1fr)_auto_auto] items-center gap-2">
-							<span className="text-xs tabular-nums text-muted-foreground">{idx + 1}</span>
-							<BmFlagSelect
-								value={rule.flag || undefined}
-								exclude={rules.map((r) => r.flag)}
-								onChange={(flag) => changeRule(idx, { flag })}
-							/>
-							<Icons.ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-							<TextInputField
-								value$={scopeValue(scopeValue(scopeValue(value$, 'rules'), idx), 'group')}
+						<React.Fragment key={idx}>
+							<RuleDropSeparator position="before" groupingId={groupingId} idx={idx} />
+							<RuleRow
+								rule={rule}
+								idx={idx}
+								groupingId={groupingId}
+								usedFlags={rules.map((r) => r.flag)}
+								value$={value$}
 								reset$={reset$}
-								onChange={(next) => changeRule(idx, { group: (next as string) ?? '' }, true)}
-								numeric={false}
-								placeholder="Group name"
+								onChange={changeRule}
+								onRemove={() => removeRule(idx)}
 							/>
-							<div className="flex">
-								<Button
-									type="button"
-									size="icon"
-									variant="ghost"
-									className="h-6 w-6"
-									disabled={idx === 0}
-									aria-label="Raise priority"
-									onClick={() => moveRule(idx, -1)}
-								>
-									<Icons.ChevronUp className="h-4 w-4" />
-								</Button>
-								<Button
-									type="button"
-									size="icon"
-									variant="ghost"
-									className="h-6 w-6"
-									disabled={idx === rules.length - 1}
-									aria-label="Lower priority"
-									onClick={() => moveRule(idx, 1)}
-								>
-									<Icons.ChevronDown className="h-4 w-4" />
-								</Button>
-							</div>
-							<Button
-								type="button"
-								size="icon"
-								variant="ghost"
-								className="h-6 w-6 text-destructive"
-								aria-label="Remove rule"
-								onClick={() => removeRule(idx)}
-							>
-								<Icons.X className="h-4 w-4" />
-							</Button>
-						</li>
+						</React.Fragment>
 					))}
+					{rules.length > 0 && <RuleDropSeparator position="after" groupingId={groupingId} idx={rules.length - 1} />}
 				</ol>
 				<Button type="button" variant="outline" size="sm" onClick={addRule}>
 					<Icons.Plus className="mr-1 h-4 w-4" />Add rule

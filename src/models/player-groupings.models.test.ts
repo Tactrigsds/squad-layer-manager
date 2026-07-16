@@ -52,6 +52,46 @@ describe('getGroupNames', () => {
 	})
 })
 
+describe('moveRule', () => {
+	const rules = [rule('a', 'A'), rule('b', 'B'), rule('c', 'C'), rule('d', 'D')]
+	const flags = (rs: PG.GroupRule[]) => rs.map((r) => r.type === 'battlemetrics' ? r.flag : '')
+
+	it('moves a rule up, before and after the target', () => {
+		expect(flags(PG.moveRule(rules, 2, 0, 'before'))).toEqual(['c', 'a', 'b', 'd'])
+		expect(flags(PG.moveRule(rules, 2, 0, 'after'))).toEqual(['a', 'c', 'b', 'd'])
+	})
+
+	// moving down is where naive index math goes wrong: pulling the dragged rule out shifts every later index down one
+	it('moves a rule down, before and after the target', () => {
+		expect(flags(PG.moveRule(rules, 0, 2, 'after'))).toEqual(['b', 'c', 'a', 'd'])
+		expect(flags(PG.moveRule(rules, 0, 2, 'before'))).toEqual(['b', 'a', 'c', 'd'])
+	})
+
+	it('moves a rule to either end', () => {
+		expect(flags(PG.moveRule(rules, 3, 0, 'before'))).toEqual(['d', 'a', 'b', 'c'])
+		expect(flags(PG.moveRule(rules, 0, 3, 'after'))).toEqual(['b', 'c', 'd', 'a'])
+	})
+
+	it('is a no-op when dropped on itself or out of range', () => {
+		expect(PG.moveRule(rules, 1, 1, 'before')).toBe(rules)
+		expect(PG.moveRule(rules, 1, 1, 'after')).toBe(rules)
+		expect(PG.moveRule(rules, 9, 0, 'before')).toBe(rules)
+		expect(PG.moveRule(rules, 0, 9, 'before')).toBe(rules)
+	})
+
+	it('never drops or duplicates a rule', () => {
+		for (const from of [0, 1, 2, 3]) {
+			for (const to of [0, 1, 2, 3]) {
+				for (const position of ['before', 'after'] as const) {
+					const next = PG.moveRule(rules, from, to, position)
+					expect(next).toHaveLength(rules.length)
+					expect([...flags(next)].sort()).toEqual(['a', 'b', 'c', 'd'])
+				}
+			}
+		}
+	})
+})
+
 describe('getGroupFlags', () => {
 	// the colour picker offers these, so a group must never be offered another group's flag
 	it('lists only the flags of rules naming that group, deduped and in order', () => {

@@ -92,6 +92,20 @@ export function getGroupColor(grouping: Grouping, group: string, orgFlags: BM.Pl
 	return resolveGroupColor(grouping.groups[group]?.color, orgFlags)
 }
 
+// Moves the rule at `from` to sit before/after the rule currently at `to`, which is how a drag-to-reorder drop reads.
+// The target is resolved by identity before the move, so pulling the dragged rule out of the list can't shift the
+// insertion point out from under us. A no-op drop (onto itself) returns the same rules.
+export function moveRule(rules: GroupRule[], from: number, to: number, position: 'before' | 'after'): GroupRule[] {
+	const moved = rules[from]
+	const target = rules[to]
+	if (!moved || !target) return rules
+	const without = rules.filter((_, i) => i !== from)
+	let insertAt = without.indexOf(target)
+	if (insertAt < 0) return rules
+	if (position === 'after') insertAt += 1
+	return [...without.slice(0, insertAt), moved, ...without.slice(insertAt)]
+}
+
 // the color a group takes when nothing is configured for it: the first of its own flags that has one
 export function defaultGroupColor(grouping: Grouping, group: string, orgFlags: BM.PlayerFlag[] | undefined): GroupColor | undefined {
 	for (const flag of getGroupFlags(grouping, group)) {
