@@ -69,11 +69,12 @@ const IDLE_NOTICE: Duration = Duration::from_secs(300);
 // Our position in the log file, plus enough state to report file-level problems once rather than on every
 // poll. It lives across reconnects, so a blip replays exactly what was appended while we were gone.
 struct Tail {
-    // `None` until the first successful stat, at which point we jump to end-of-file so we stream only new
-    // lines rather than replaying the whole existing log.
+    // `None` until the log is first seen, at which point we jump to end-of-file so we stream only new lines
+    // rather than replaying the whole existing log.
     offset: Option<u64>,
-    // whether the file is currently absent, so it's reported on the edge rather than on every poll
-    missing: bool,
+    // why the log isn't readable, while it isn't, so a state is reported when it changes rather than on
+    // every poll
+    not_ready: Option<String>,
     last_growth: Instant,
     idle_reported: bool,
 }
@@ -82,11 +83,20 @@ impl Tail {
     fn new() -> Tail {
         Tail {
             offset: None,
-            missing: false,
+            not_ready: None,
             last_growth: Instant::now(),
             idle_reported: false,
         }
     }
+}
+
+// Why a pump didn't get through.
+enum PumpErr {
+    // Something about the file itself. Transient by nature: the volume it lives on can be mounted after we
+    // start, replaced under us, or rotated away mid-read. Reported and retried on the next poll.
+    File(String),
+    // The websocket writer is gone, so this connection is over and a new one has to be dialled.
+    Closed,
 }
 
 #[derive(Clone)]
@@ -373,39 +383,74 @@ async fn pump_loop(
     }
 }
 
-// reads whatever has been appended since `tail.offset` and sends it as 0x00-tagged frames, advancing it.
-// Rotation/truncation (offset past the current end) restarts from the top of the new file, matching how the
-// game rolls its log. Anything that stops data flowing without ending the connection is reported here: those
-// states are invisible from SLM's side, which just sees a connected agent that never sends anything.
+// Pumps the log and reports whatever is stopping it. Nothing about the file itself ends the connection: the
+// log commonly lives on a volume that is mounted after we start, and the rcon tunnel shares this websocket,
+// so a log that isn't there yet must not take rcon down with it. File problems are reported and retried on
+// the next poll; only a dead websocket propagates.
+//
+// The report matters because these states are invisible from SLM's side, which just sees a connected agent
+// that never sends anything -- indistinguishable from a healthy agent tailing a quiet log.
 async fn pump_file(
     cfg: &Config,
     log: &Arc<Logger>,
     tail: &mut Tail,
     tx: &mpsc::Sender<Message>,
 ) -> Result<(), String> {
-    let size = match fs::metadata(&cfg.file).await {
-        Ok(meta) => meta.len(),
-        // The file may legitimately not exist yet if the server is still starting, so this isn't fatal and we
-        // just try again next poll. It is reported because it is otherwise indistinguishable, from the
-        // outside, from a healthy agent tailing a quiet log: the connection stays up and RCON keeps working
-        // while nothing is ever streamed.
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            if !tail.missing {
-                tail.missing = true;
+    match read_appended(cfg, log, tail, tx).await {
+        Ok(()) => {
+            if let Some(prev) = tail.not_ready.take() {
+                log.info(&format!("{} is readable again (was: {prev})", cfg.file));
+            }
+            Ok(())
+        }
+        // report once per distinct reason rather than once per poll, but re-report when the reason changes:
+        // a mount landing in stages walks through several before it settles
+        Err(PumpErr::File(reason)) => {
+            if tail.not_ready.as_deref() != Some(reason.as_str()) {
                 log.error(&format!(
-                    "{} does not exist, so no logs will be streamed until it appears. Check --file / SLM_LOG_PATH, \
-                     and that the log directory is mounted if this agent runs in a container",
+                    "not streaming logs: {} {reason}. Check --file / SLM_LOG_PATH, and that the log \
+                     directory is mounted if this agent runs in a container",
                     cfg.file,
                 ));
+                tail.not_ready = Some(reason);
             }
-            return Ok(());
+            Ok(())
         }
-        Err(e) => return Err(format!("stat {} failed: {e}", cfg.file)),
-    };
-    if tail.missing {
-        tail.missing = false;
-        log.info(&format!("{} appeared", cfg.file));
+        Err(PumpErr::Closed) => Err("websocket writer closed".to_string()),
     }
+}
+
+// Reads whatever has been appended since `tail.offset` and sends it as 0x00-tagged frames, advancing it.
+// Rotation/truncation (offset past the current end) restarts from the top of the new file, matching how the
+// game rolls its log.
+async fn read_appended(
+    cfg: &Config,
+    log: &Arc<Logger>,
+    tail: &mut Tail,
+    tx: &mpsc::Sender<Message>,
+) -> Result<(), PumpErr> {
+    // stat rather than open: existence is a question, not a reason to touch the file. We never open the
+    // game's log for writing and never create it -- a log that isn't there is something to wait for, not to
+    // bring into existence, and creating one would leave the game writing to a file we'd already replaced.
+    let size = match fs::metadata(&cfg.file).await {
+        // The game only ever writes a regular file. An unmounted mountpoint is usually an empty directory
+        // sitting at the same path, so anything that isn't a regular file means the volume isn't in place
+        // yet rather than that we should try to read it -- reading a directory would fail every poll.
+        Ok(meta) if meta.is_file() => meta.len(),
+        Ok(meta) if meta.is_dir() => {
+            return Err(PumpErr::File(
+                "is a directory, not a file: the log volume is probably not mounted yet".into(),
+            ))
+        }
+        Ok(_) => return Err(PumpErr::File("is not a regular file".into())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(PumpErr::File("does not exist yet".into()))
+        }
+        // A volume still being mounted reports plenty besides ENOENT (EACCES while the directory settles,
+        // ESTALE, ENOTCONN). They all mean the same thing to us -- not ready, look again next poll -- and
+        // none of them is a reason to drop a working connection.
+        Err(e) => return Err(PumpErr::File(format!("cannot be checked: {e}"))),
+    };
 
     let start = match tail.offset {
         // first observation: start streaming from the current end, skipping existing history
@@ -438,12 +483,14 @@ async fn pump_file(
     tail.last_growth = Instant::now();
     tail.idle_reported = false;
 
+    // read-only (File::open is O_RDONLY), and only now that there is something to read
     let mut file = fs::File::open(&cfg.file)
         .await
-        .map_err(|e| format!("open {} failed: {e}", cfg.file))?;
+        // it can be rotated away between the stat above and here; pick the new one up next poll
+        .map_err(|e| PumpErr::File(format!("cannot be opened for reading: {e}")))?;
     file.seek(SeekFrom::Start(start))
         .await
-        .map_err(|e| format!("seek failed: {e}"))?;
+        .map_err(|e| PumpErr::File(format!("cannot be seeked: {e}")))?;
 
     let mut remaining = size - start;
     let mut pos = start;
@@ -453,7 +500,7 @@ async fn pump_file(
         let n = file
             .read(&mut buf[..want])
             .await
-            .map_err(|e| format!("read failed: {e}"))?;
+            .map_err(|e| PumpErr::File(format!("cannot be read: {e}")))?;
         if n == 0 {
             break;
         }
@@ -463,7 +510,7 @@ async fn pump_file(
         // `send().await` applies backpressure: it resolves once the bounded channel has room
         tx.send(Message::Binary(frame))
             .await
-            .map_err(|_| "websocket writer closed".to_string())?;
+            .map_err(|_| PumpErr::Closed)?;
         pos += n as u64;
         remaining -= n as u64;
         tail.offset = Some(pos);
