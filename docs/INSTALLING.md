@@ -129,8 +129,22 @@ Check the environment variable's description of BM_PAT for the required scopes.
 
 #### 3.6. Backups
 
-Off by default. Set `AUTOMATIC_BACKUPS_PERIODIC` to a duration (e.g. `72h`) and the app will snapshot its
-database on that interval, optionally shipping each one to an SFTP host.
+There are two kinds, and only the periodic one is optional.
+
+**Before every migration**, always, the database is snapshotted into `BACKUPS_DIR` first. This happens whether
+the app applies migrations itself at boot (`DB_AUTOMIGRATE`, the default) or you run `pnpm db:migrate:prod`
+yourself, and it is what you restore from if an upgrade turns out to have been a mistake. Nothing is applied if
+the snapshot fails. These are named `slm-backup-db-pre-migration-20260713-134504.sqlite3.gz` and retained
+separately from the periodic ones, so a busy backup schedule can't age out the one snapshot you need;
+`PRE_MIGRATION_BACKUPS_RETAIN_COUNT` (default `1`, keeping the database as it was before the migration you last
+ran) is how many are kept. They are never uploaded.
+
+A migration will not run against a database another process has open: SQLite offers no safe way to change a
+schema under a running app, so the app refuses to boot, or `db:migrate` exits non-zero, rather than risk it.
+An idle app still counts as using the database. Stop it first.
+
+**Periodically** is off by default. Set `AUTOMATIC_BACKUPS_PERIODIC` to a duration (e.g. `72h`) and the app will
+snapshot its database on that interval, optionally shipping each one to an SFTP host.
 
 A snapshot is taken with sqlite's online backup API, so it is a consistent point-in-time copy taken without
 locking the app out of its own database, and it is gzipped (typically 5-10x smaller) before being stored or
@@ -141,19 +155,20 @@ The schedule is anchored to the last backup that actually happened, not to boot,
 often than the interval still gets backed up. A backup that came due while the app was down is taken shortly
 after it comes back up.
 
-| variable                             | default          | what it does                                                  |
-| ------------------------------------ | ---------------- | ------------------------------------------------------------- |
-| `AUTOMATIC_BACKUPS_PERIODIC`         | unset (disabled) | how often to back up, e.g. `72h`                              |
-| `EVENT_HISTORY_RETENTION_PERIOD`     | unset (disabled) | prune server events older than this, e.g. `90d` (see below)   |
-| `BACKUPS_DIR`                        | `./data/backups` | where backups are written                                     |
-| `BACKUPS_RETAIN_COUNT`               | `10`             | how many to keep, locally and remotely. `0` keeps all of them |
-| `BACKUP_SFTP_HOST`                   | unset (disabled) | setting this uploads each backup to that host                 |
-| `BACKUP_SFTP_PORT`                   | `22`             |                                                               |
-| `BACKUP_SFTP_USERNAME`               |                  | required when a host is set                                   |
-| `BACKUP_SFTP_PASSWORD`               |                  | this or a private key is required when a host is set          |
-| `BACKUP_SFTP_PRIVATE_KEY_PATH`       |                  | path to a private key, as an alternative to a password        |
-| `BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE` |                  | if the key needs one                                          |
-| `BACKUP_SFTP_DIR`                    | `.`              | remote directory, created if missing                          |
+| variable                             | default          | what it does                                                                   |
+| ------------------------------------ | ---------------- | ------------------------------------------------------------------------------ |
+| `AUTOMATIC_BACKUPS_PERIODIC`         | unset (disabled) | how often to back up, e.g. `72h`                                               |
+| `EVENT_HISTORY_RETENTION_PERIOD`     | unset (disabled) | prune server events older than this, e.g. `90d` (see below)                    |
+| `BACKUPS_DIR`                        | `./data/backups` | where backups are written                                                      |
+| `BACKUPS_RETAIN_COUNT`               | `10`             | how many periodic backups to keep, locally and remotely. `0` keeps all of them |
+| `PRE_MIGRATION_BACKUPS_RETAIN_COUNT` | `1`              | how many pre-migration backups to keep. `0` keeps all of them                  |
+| `BACKUP_SFTP_HOST`                   | unset (disabled) | setting this uploads each backup to that host                                  |
+| `BACKUP_SFTP_PORT`                   | `22`             |                                                                                |
+| `BACKUP_SFTP_USERNAME`               |                  | required when a host is set                                                    |
+| `BACKUP_SFTP_PASSWORD`               |                  | this or a private key is required when a host is set                           |
+| `BACKUP_SFTP_PRIVATE_KEY_PATH`       |                  | path to a private key, as an alternative to a password                         |
+| `BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE` |                  | if the key needs one                                                           |
+| `BACKUP_SFTP_DIR`                    | `.`              | remote directory, created if missing                                           |
 
 Two SLM instances must not share a `BACKUP_SFTP_DIR` unless their databases are named differently: retention
 deletes any backup matching its own name, so they would prune each other's.
@@ -203,7 +218,8 @@ Once you've got the app running, you'll be able to sign in with discord OAuth, a
 docker compose pull && docker compose up -d
 ```
 
-Migrations are applied on boot by default; set `DB_AUTOMIGRATE=0` to disable this behavior.
+Migrations are applied on boot by default; set `DB_AUTOMIGRATE=0` to disable this behavior. Either way the
+database is backed up first (see [3.6](#36-backups)), so a bad upgrade is recoverable.
 
 An install that predates `.env.secrets` keeps working untouched: SLM reads the credentials from wherever it
 finds them. To move them out of the environment (see [3.3](#33-secrets)), take the six variables in that
