@@ -1,6 +1,6 @@
 [package]
 name = "slm-server-agent"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "Runs on a Squad server host: streams SquadGame.log to Squad Layer Manager and proxies RCON, over one WebSocket."
 
