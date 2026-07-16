@@ -4,12 +4,13 @@ import * as RSel from '@/lib/reselect'
 import * as BM from '@/models/battlemetrics.models'
 import type * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
+import * as PG from '@/models/player-groupings.models'
 import * as SM from '@/models/squad.models'
 import type { PublicSettings } from '@/systems/settings.server'
 
 export type EnrichedPlayer = SM.Player & {
 	bmProfile: Omit<BM.PlayerFlagsAndProfile, 'playerIds'> | undefined
-	grouping?: string
+	group?: string
 	stats: CHAT.PlayerStats | undefined
 	inAdminCam: boolean
 }
@@ -23,7 +24,7 @@ export namespace Sel {
 		settings: PublicSettings | undefined,
 	]
 	// Enriched players across both teams. Shared by call sites that need the whole roster (e.g. the
-	// grouping/selection actions) so the enrichment logic lives in one place.
+	// group/selection actions) so the enrichment logic lives in one place.
 	export const allEnrichedPlayers = RSel.createDeepSelector(
 		[
 			(...args: Inputs) => playersForTeam('A')(...args),
@@ -39,28 +40,25 @@ export namespace Sel {
 				(...[store]: Inputs) => ChatPrt.Sel.chatState(store).playerStats,
 				(...[store]: Inputs) => ChatPrt.Sel.chatState(store).adminCamPlayerIds,
 				(...[, , bmData]: Inputs) => bmData,
-				(...[, , , bmStore]: Inputs) => bmStore.selectedModeId,
+				(...[, , , bmStore]: Inputs) => bmStore.selectedGroupingId,
 				(...[, , , bmStore]: Inputs) => bmStore.orgFlags,
-				(...[, , , , settings]: Inputs) => settings?.playerFlagGroupings,
+				(...[, , , , settings]: Inputs) => settings?.playerGroupings,
 			],
-			(players, playerStats, adminCamPlayerIds, bmData, selectedModeId, orgFlags, groupings) => {
-				const playerFlagGroupings = groupings ?? BM.EMPTY_PLAYER_FLAG_GROUPINGS
-				const modeIds = BM.getGroupingModeIds(playerFlagGroupings)
-				const activeModeId = selectedModeId !== null && modeIds.includes(selectedModeId)
-					? selectedModeId
-					: modeIds[0] ?? null
+			(players, playerStats, adminCamPlayerIds, bmData, selectedGroupingId, orgFlags, settingsGroupings) => {
+				const playerGroupings = settingsGroupings ?? PG.EMPTY_PLAYER_GROUPINGS
+				const groupingIds = PG.getGroupingIds(playerGroupings)
+				const activeGroupingId = selectedGroupingId !== null && groupingIds.includes(selectedGroupingId)
+					? selectedGroupingId
+					: groupingIds[0] ?? null
 
-				const playerFlagPairs: [SM.PlayerId, BM.PlayerFlag[]][] = players
+				const playerFacts: [SM.PlayerId, PG.PlayerFacts][] = players
 					.filter(p => p.ids.eos != null)
 					.map(p => {
 						const eosId = p.ids.eos!
 						const flagIds = bmData[eosId]?.flagIds ?? []
-						const flags = BM.resolveFlags(flagIds, orgFlags)
-						return [eosId, flags]
+						return [eosId, { flags: BM.resolveFlags(flagIds, orgFlags), adminGroups: p.adminGroups }]
 					})
-				const allGroups = activeModeId !== null
-					? BM.resolvePlayerFlagGroups(playerFlagPairs, playerFlagGroupings, activeModeId)
-					: new Map<SM.PlayerId, string>()
+				const allGroups = PG.resolvePlayerGroups(playerFacts, playerGroupings, activeGroupingId)
 
 				return players.map((p): EnrichedPlayer => {
 					const playerId = SM.PlayerIds.getPlayerId(p.ids)
@@ -68,7 +66,7 @@ export namespace Sel {
 					return {
 						...p,
 						bmProfile: profile ? Obj.omit(profile, ['playerIds']) : undefined,
-						grouping: allGroups.get(playerId),
+						group: allGroups.get(playerId),
 						stats: playerStats[playerId],
 						inAdminCam: adminCamPlayerIds.includes(playerId),
 					}

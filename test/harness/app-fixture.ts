@@ -248,6 +248,18 @@ function applyTestTimings(settings: SETTINGS.GlobalSettings) {
 	// the log tail's poll interval is also the window the event pipeline waits for the log to catch
 	// up with rcon/poll events, so a short one keeps tests responsive
 	settings.squadServer.logFilePollInterval = 250
+	// The roster TTL doubles as the ListPlayers poll interval, so it sets the floor on waitForRosterSync
+	// (which wants two polls) and dominates this suite's wall time. 2s roughly halves the suite against
+	// the shipped 5s.
+	//
+	// Do not lower these further without re-measuring: at 1s the suite got faster still but started
+	// failing about one run in three, and at 500ms it got both slower *and* flakier -- RCON is
+	// serialized, so polling faster than it drains queues commands until responses breach the 2s
+	// timeout in core-rcon and back off. The failures only appear under full-suite load, never in a
+	// single file, and they land on whichever test is unluckiest rather than a consistent one.
+	settings.squadServer.rconCacheTTL.layersStatus = 2_000
+	settings.squadServer.rconCacheTTL.serverInfo = 4_000
+	settings.squadServer.rconCacheTTL.teams = 2_000
 }
 
 export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<AppFixture> {
