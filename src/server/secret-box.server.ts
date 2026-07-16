@@ -1,19 +1,11 @@
 import * as Crypto from 'node:crypto'
-import * as fs from 'node:fs'
-import * as path from 'node:path'
-import * as Paths from '../../paths.ts'
-import * as Cli from '../systems/cli.server.ts'
 import * as Env from './env.ts'
-import { initModule } from './logger.ts'
 
 // Symmetric encryption for secrets we persist (currently the RCON/SFTP passwords and server-agent token in a
 // server's connection settings). Values are stored as a self-describing envelope so we can tell an encrypted
 // value from a legacy plaintext one, and version the scheme if it ever changes.
 //
 // Envelope: `enc:v1:` + base64( iv(12) || authTag(16) || ciphertext ), AES-256-GCM.
-
-const module = initModule('secret-box')
-let log!: ReturnType<typeof module.getLogger>
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.encryption })
 
@@ -32,26 +24,6 @@ function getKey(): Buffer {
 // first settings write.
 export function setup() {
 	getKey()
-}
-
-export function generateKey(): string {
-	return Crypto.randomBytes(32).toString('base64')
-}
-
-// Development convenience: a fresh checkout has no key set, so generate one and persist it to the active .env
-// so it survives restarts (a volatile key would make previously-encrypted settings unreadable). Never used in
-// production, where a missing key is a hard boot failure.
-export function ensureDevKeyInEnvFile() {
-	log = module.getLogger()
-	if (Env.rawVar('SETTINGS_ENCRYPTION_KEY')) return
-	const key = generateKey()
-	// wherever the key would have been read from, so a checkout that has taken up a secrets file gets it
-	// written back there rather than into a .env that is no longer where the app looks
-	const envPath = Env.secretsFilePath() ?? Cli.options?.envFile ?? path.join(Paths.PROJECT_ROOT, '.env')
-	const prefix = fs.existsSync(envPath) && !fs.readFileSync(envPath, 'utf8').endsWith('\n') ? '\n' : ''
-	fs.appendFileSync(envPath, `${prefix}SETTINGS_ENCRYPTION_KEY=${key}\n`)
-	Env.injectRawVar('SETTINGS_ENCRYPTION_KEY', key)
-	log.info('Generated SETTINGS_ENCRYPTION_KEY and wrote it to %s', envPath)
 }
 
 export function isSealed(value: string): boolean {

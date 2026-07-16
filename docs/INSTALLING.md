@@ -88,9 +88,8 @@ reach none of those places. Everything else goes on being handed over as `env_fi
 costs nothing, since it describes the shape of the install rather than the keys to it.
 
 SLM still reads any of these from a real environment variable if it finds one there, so an install predating
-this split keeps working, and it takes them back out of its environment once it has. That stops anything inside
-the process from reading them later, but not `docker inspect`: by then the value has already been in the
-container's environment. Mounting the file is what actually avoids that.
+this split keeps working. It warns on boot when it does, naming the variables: nothing stops you passing them
+that way, it just costs you what the file is for.
 
 If your secrets come from a secrets manager, mount whatever file it produces and point `SECRETS_FILE` at it. As
 a docker secret, for instance:

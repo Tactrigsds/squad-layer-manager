@@ -12,10 +12,9 @@ import * as Env from './env.ts'
 // someone running the app from a checkout (.env.example.dev). A var's metadata describes the deployment file,
 // and its `dev` key overrides that where the two diverge (see EnvExampleMeta).
 //
-// A deployment's file is split in two: the credentials go to .env.secrets.example, which is read as a file and
-// deliberately never becomes part of the environment (see env.ts), and everything else to .env.example, which
-// docker hands over as env_file. A checkout keeps one file, since it has no environment worth hiding a secret
-// from and `pnpm server:dev` expects to find everything in .env.
+// A deployment's file is split in two: the credentials go to .env.secrets.example and everything else to
+// .env.example (see docs/INSTALLING.md). A checkout keeps one file, since `pnpm server:dev` expects to find
+// everything in .env.
 
 export type Audience = 'deployment' | 'dev'
 
@@ -39,8 +38,7 @@ export const TARGETS: Target[] = [
 			'(see docker-compose.yaml). Anything in here can be passed as a real environment variable instead, which',
 			'takes precedence.',
 			'',
-			'Credentials do not belong in here: they go in .env.secrets (see .env.secrets.example), which SLM reads',
-			'as a file rather than as environment variables.',
+			'Credentials do not belong in here: they go in .env.secrets (see .env.secrets.example).',
 			'',
 			'Fill in the vars left uncommented. Everything commented out is optional, and shows the default it falls',
 			'back to -- an empty one has no default, so uncommenting a line as-is never changes what the app does.',
@@ -53,17 +51,12 @@ export const TARGETS: Target[] = [
 		contents: 'secrets',
 		path: path.join(Paths.PROJECT_ROOT, '.env.secrets.example'),
 		header: [
-			'Every credential SLM reads. Copy this to .env.secrets, which docker-compose mounts into the container',
-			'as a file (see docker-compose.yaml). Point SECRETS_FILE elsewhere to read it from another path, e.g. a',
-			'docker secret under /run/secrets.',
+			'Every credential SLM reads. Copy this to .env.secrets, which docker-compose mounts into the container as',
+			'a file rather than passing to it as environment variables (see docs/INSTALLING.md for why, and for how',
+			'to point SECRETS_FILE at a docker secret instead).',
 			'',
-			'These are deliberately not environment variables. An environment is readable from outside the process',
-			'that owns it -- `docker inspect`, /proc/<pid>/environ -- and by everything running inside it, so SLM',
-			'reads this file directly and never puts what is in it into its own environment. Passing one of these as',
-			'a real environment variable still works, and gives up that property.',
-			'',
-			'Treat this file the way you would a private key: it is worth `chmod 600` and it belongs in no backup you',
-			'would not also put a password in.',
+			'Treat it the way you would a private key: it is worth `chmod 600` and it belongs in no backup you would',
+			'not also put a password in.',
 		],
 	},
 	{
@@ -76,8 +69,8 @@ export const TARGETS: Target[] = [
 			'Fill in the vars left uncommented. Everything commented out is optional, and shows the default it falls',
 			'back to -- an empty one has no default, so uncommenting a line as-is never changes what the app does.',
 			'',
-			'Unlike an install, this keeps the credentials in the same file: a checkout has no environment worth',
-			'hiding them from. An install splits them out into .env.secrets; see .env.secrets.example.',
+			'Unlike an install, this keeps the credentials in the same file, and presets a public, known-insecure',
+			'encryption key. An install splits them out into .env.secrets; see .env.secrets.example.',
 			'',
 			'This leaves out what only an install has to care about (backups and the sftp target they upload to). See',
 			'.env.example for those, or src/server/env.ts for everything.',
