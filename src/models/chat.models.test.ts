@@ -322,3 +322,83 @@ describe('warn target summary grouping', () => {
 		expect(summaryFor(players, squads, ['a', 'c'])).toEqual({ type: 'players' })
 	})
 })
+
+describe('chat.models recent players', () => {
+	function connected(player: SM.Player, id: number): SE.PlayerConnected {
+		return { type: 'PLAYER_CONNECTED', id, time: 100 + id, matchId: 1, player }
+	}
+	function disconnected(eos: SM.PlayerId, id: number): SE.PlayerDisconnected {
+		return { type: 'PLAYER_DISCONNECTED', id, time: 100 + id, matchId: 1, player: eos }
+	}
+	function died(victim: SM.PlayerId, attacker: SM.PlayerId, id: number): SE.PlayerDied {
+		return { type: 'PLAYER_DIED', id, time: 100 + id, matchId: 1, victim, attacker, damage: 100, weapon: 'rifle', variant: 'normal' }
+	}
+	function reset(players: SM.Player[], id: number, source: SE.Reset['source']): SE.Reset {
+		return { type: 'RESET', id, time: 100 + id, matchId: 1, source, state: { players, squads: [] } }
+	}
+	function newGame(id: number): SE.NewGame {
+		return { type: 'NEW_GAME', id, time: 100 + id, matchId: 1, source: 'new-game-detected', layerId: 'l1' }
+	}
+	const recentIds = (state: CHAT.ChatState) => state.interpolatedState.recentPlayers.map(p => p.ids.eos)
+
+	it('keeps a disconnected player in recentPlayers, but off the live roster', () => {
+		const state = CHAT.getInitialChatState()
+		CHAT.handleEvent(state, connected(makePlayer('a'), 1))
+		CHAT.handleEvent(state, connected(makePlayer('b'), 2))
+		CHAT.handleEvent(state, disconnected('a', 3))
+
+		expect(state.interpolatedState.players.map(p => p.ids.eos)).toEqual(['b'])
+		expect(recentIds(state)).toEqual(['a', 'b'])
+	})
+
+	it('does not duplicate a player who reconnects', () => {
+		const state = CHAT.getInitialChatState()
+		CHAT.handleEvent(state, connected(makePlayer('a'), 1))
+		CHAT.handleEvent(state, disconnected('a', 2))
+		CHAT.handleEvent(state, connected(makePlayer('a'), 3))
+
+		expect(recentIds(state)).toEqual(['a'])
+	})
+
+	it('keeps a score across a disconnect and reconnect', () => {
+		const state = CHAT.getInitialChatState()
+		CHAT.handleEvent(state, connected(makePlayer('a'), 1))
+		CHAT.handleEvent(state, connected(makePlayer('b'), 2))
+		CHAT.handleEvent(state, died('b', 'a', 3))
+		CHAT.handleEvent(state, disconnected('a', 4))
+
+		expect(state.interpolatedState.playerStats['a'].kills).toBe(1)
+		expect(recentIds(state)).toContain('a')
+
+		CHAT.handleEvent(state, connected(makePlayer('a'), 5))
+		expect(state.interpolatedState.playerStats['a'].kills).toBe(1)
+	})
+
+	// a same-match rcon reconnect reseeds the roster with a RESET. Wiping stats there would cost the match every
+	// score built up before the reconnect.
+	it('keeps scores across a same-match rcon reconnect', () => {
+		const state = CHAT.getInitialChatState()
+		CHAT.handleEvent(state, connected(makePlayer('a'), 1))
+		CHAT.handleEvent(state, connected(makePlayer('b'), 2))
+		CHAT.handleEvent(state, died('b', 'a', 3))
+
+		CHAT.handleEvent(state, reset([makePlayer('a'), makePlayer('b'), makePlayer('c')], 4, 'rcon-reconnected'))
+
+		expect(state.interpolatedState.playerStats['a'].kills).toBe(1)
+		expect(recentIds(state)).toEqual(['a', 'b', 'c'])
+	})
+
+	it('clears recentPlayers and scores at a match boundary', () => {
+		const state = CHAT.getInitialChatState()
+		CHAT.handleEvent(state, connected(makePlayer('a'), 1))
+		CHAT.handleEvent(state, connected(makePlayer('b'), 2))
+		CHAT.handleEvent(state, died('b', 'a', 3))
+		CHAT.handleEvent(state, disconnected('b', 4))
+
+		CHAT.handleEvent(state, newGame(5))
+
+		expect(state.interpolatedState.playerStats).toEqual({})
+		// 'b' left before the boundary, so only the surviving roster carries over
+		expect(recentIds(state)).toEqual(['a'])
+	})
+})

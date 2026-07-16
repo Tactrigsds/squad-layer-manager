@@ -52,9 +52,14 @@ export type PlayerStats = {
 export type PlayerStatsMap = Record<SM.PlayerId, PlayerStats>
 
 export type InterpolableState = {
+	// the live roster: only players currently connected
 	players: SM.Player[]
+	// everyone who has taken part in the current match, including players who have since disconnected. Reset at match
+	// boundaries alongside playerStats, whose keys it is the domain of.
+	recentPlayers: SM.RecentPlayer[]
 	squads: SM.UniqueSquad[]
-	// per-match combat stats, keyed by player id. kept separate from players rather than stored on them
+	// per-match combat stats, keyed by recent player id. kept separate from the player records rather than stored on
+	// them, so a player who reconnects mid-match keeps the score they built up before dropping.
 	playerStats: PlayerStatsMap
 }
 
@@ -62,9 +67,21 @@ export namespace InterpolableState {
 	export function clone(state: InterpolableState): InterpolableState {
 		return {
 			players: state.players.map(p => ({ ...p, ids: { ...p.ids } })),
+			recentPlayers: [...state.recentPlayers],
 			squads: [...state.squads],
 			playerStats: { ...state.playerStats },
 		}
+	}
+
+	// records a player as having taken part in the current match, refreshing the ids/admin status of an existing entry.
+	export function recordRecentPlayer(state: InterpolableState, player: SM.RecentPlayer) {
+		const index = SM.PlayerIds.indexOf(state.recentPlayers, p => p.ids, player.ids)
+		if (index === -1) state.recentPlayers.push(SM.toRecentPlayer(player))
+		else state.recentPlayers[index] = SM.toRecentPlayer(player)
+	}
+
+	export function findRecentPlayer(state: InterpolableState, id: SM.PlayerIds.IdQueryOrPlayerId) {
+		return SM.PlayerIds.find(state.recentPlayers, p => p.ids, id)
 	}
 }
 
@@ -187,6 +204,7 @@ export type ChatState = {
 export function getInitialInterpolatedState(): InterpolableState {
 	return {
 		players: [],
+		recentPlayers: [],
 		squads: [],
 		playerStats: {},
 	}
@@ -435,8 +453,18 @@ function interpolateEvent(
 		case 'MAP_SET':
 		case 'NEW_GAME':
 		case 'RESET': {
-			if (event.type === 'NEW_GAME' || event.type === 'RESET') state.playerStats = {}
 			applyEventTeamMutations(chatLog, state, event)
+			if (event.type === 'NEW_GAME') {
+				// a match boundary restarts participation: only whoever is on the roster right now counts as recent,
+				// and last match's scores go with it. NEW_GAME is the only boundary -- a RESET reseeds the roster for
+				// a boundary NEW_GAME already announced, but is ALSO emitted on a same-match rcon reconnect
+				// (source 'rcon-reconnected'), where wiping would cost the match its scores so far.
+				state.playerStats = {}
+				state.recentPlayers = state.players.map(SM.toRecentPlayer)
+			} else if (event.type === 'RESET') {
+				// the reseeded roster may name players we haven't seen participate yet
+				for (const player of state.players) InterpolableState.recordRecentPlayer(state, player)
+			}
 			return event
 		}
 
@@ -451,6 +479,7 @@ function interpolateEvent(
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player.ids)} connected but was already in the player list`)
 			}
 			applyEventTeamMutations(chatLog, state, event)
+			InterpolableState.recordRecentPlayer(state, event.player)
 			return { ...event, player: event.player }
 		}
 
@@ -461,6 +490,7 @@ function interpolateEvent(
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player.ids)} reconciled but was already in the player list`)
 			}
 			applyEventTeamMutations(chatLog, state, event)
+			InterpolableState.recordRecentPlayer(state, event.player)
 			return { ...event, player: event.player }
 		}
 
@@ -480,6 +510,7 @@ function interpolateEvent(
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} had details changed but was not found in the player list`)
 			}
 			applyEventTeamMutations(chatLog, state, event)
+			InterpolableState.recordRecentPlayer(state, state.players[index])
 			return { ...event, player: state.players[index] }
 		}
 

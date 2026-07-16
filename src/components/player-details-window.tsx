@@ -95,15 +95,17 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	// pages arrive most-recent-match first; reverse to interleave chronologically ahead of the live current-match events
 	const historicalEvents = (eventsQuery.data?.pages ?? []).slice().reverse().flatMap(p => RPC.selectLoaded(p)?.events ?? [])
 	const allEvents = [...historicalEvents, ...currentMatchEvents]
-	const livePlayer = ZusUtils.useStore(
-		squadServerFrameKey,
-		(s) => ChatPrt.Sel.chatState(s).players.find((p) => p.ids.steam === playerId) ?? null,
-	)
+	const livePlayer = ZusUtils.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.player(playerId)(s) ?? null)
+	const recentPlayer = ZusUtils.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.recentPlayer(playerId)(s) ?? null)
+	// team/squad/role only exist on a full player, so a disconnected one is still reconstructed from the feed --
+	// which is also the only source for a player being viewed in a past match, who is in no recentPlayers list.
 	const player = livePlayer ?? CHAT.findLastPlayerInstance(allEvents, playerId)
+	// recentPlayers tracks detail changes for the current match, so it beats a reconstruction for identity alone
+	const ids = recentPlayer?.ids ?? player?.ids
 
 	const connectionStatus = data?.connectionStatus ?? null
 	const elapsed = useElapsed(connectionStatus?.status === 'online' ? connectionStatus.connectedSince : null)
-	const isOnline = !!ZusUtils.useStore(squadServerFrameKey, ChatPrt.Sel.player(playerId))
+	const isOnline = !!livePlayer
 	const globalFilterState = ZusUtils.useStore(squadServerFrameKey, ChatPrt.Sel.secondaryFilterState)
 	// this window's feed is already scoped to one player, so the selection-based filter has nothing to add here
 	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>(
@@ -118,7 +120,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
 			<DraggableWindowDragBar>
 				<DraggableWindowTitle style={flagColor ? { color: flagColor } : undefined}>
-					{player?.ids.username ?? 'Player Details'}
+					{ids?.username ?? 'Player Details'}
 					{livePlayer && (livePlayer.teamId !== null || livePlayer.squadId !== null) && (
 						<span className="text-muted-foreground font-normal ml-1">
 							({livePlayer.teamId !== null && currentMatch
@@ -169,18 +171,16 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 				<div className="inline-flex gap-1 items-baseline">
 					{player?.role && <div className="text-muted-foreground">{player.role}</div>}
 					<CopyIdButton label="eos" id={playerId} />
-					{(player?.ids.steam ?? profile?.playerIds.steam) && (
-						<CopyIdButton label="steam" id={(player?.ids.steam ?? profile?.playerIds.steam)!} />
-					)}
-					{player?.ids.epic && <CopyIdButton label="epic" id={player.ids.epic} />}
+					{(ids?.steam ?? profile?.playerIds.steam) && <CopyIdButton label="steam" id={(ids?.steam ?? profile?.playerIds.steam)!} />}
+					{ids?.epic && <CopyIdButton label="epic" id={ids.epic} />}
 				</div>
 				<div className="flex items-center gap-2 text-muted-foreground">
-					{(player?.ids.steam ?? profile?.playerIds.steam)
+					{(ids?.steam ?? profile?.playerIds.steam)
 						? (
 							<>
-								<ExtLink href={`https://steamcommunity.com/profiles/${player?.ids.steam ?? profile?.playerIds.steam}`}>Steam</ExtLink>
-								<ExtLink href={`https://communitybanlist.com/search/${player?.ids.steam ?? profile?.playerIds.steam}`}>CBL</ExtLink>
-								<ExtLink href={`https://mysquadstats.com/search/${player?.ids.steam ?? profile?.playerIds.steam}#vanillaStats`}>
+								<ExtLink href={`https://steamcommunity.com/profiles/${ids?.steam ?? profile?.playerIds.steam}`}>Steam</ExtLink>
+								<ExtLink href={`https://communitybanlist.com/search/${ids?.steam ?? profile?.playerIds.steam}`}>CBL</ExtLink>
+								<ExtLink href={`https://mysquadstats.com/search/${ids?.steam ?? profile?.playerIds.steam}#vanillaStats`}>
 									MySquadStats
 								</ExtLink>
 							</>
@@ -268,7 +268,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 						serverId={serverId}
 						playerIds={[playerId]}
 						focusTarget={{ kind: 'player', playerId }}
-						placeholder={`Warn ${player?.ids.username ?? 'player'}…`}
+						placeholder={`Warn ${ids?.username ?? 'player'}…`}
 					/>
 				</div>
 			)}
