@@ -70,8 +70,7 @@ export type LowerResult = { code: 'ok'; ir: Ir } | F.InvalidFilterNodeResult
 export type LowerCtx = CS.Filters & CS.EffectiveColumnConfig & { colIndex: ColumnIndex }
 
 // Errors are collected against the node path rather than thrown, because the filter editor highlights the offending
-// node from them. This mirrors getFilterNodeSQLConditions: same error types, same paths, so the UI behaves the same
-// whichever backend produced them.
+// node from them.
 export function lowerFilterNode(ctx: LowerCtx, node: F.FilterNode, path: string[] = [], appliedFilters: string[] = []): LowerResult {
 	const errors: F.NodeValidationError[] = []
 	const ir = lowerNode(ctx, node, path, appliedFilters, errors)

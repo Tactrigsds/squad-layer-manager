@@ -411,7 +411,6 @@ export function LeafFilterNode(props: NodeProps) {
 	)
 
 	if (F.isCompNode(node)) {
-		// team-generic columns (Alliance/Faction/Unit) are selectable only within a team scope
 		return (
 			<NodeWrapper path={nodePath} className="flex items-center space-x-1" nodeId={props.nodeId}>
 				<CompNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />

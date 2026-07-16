@@ -7,7 +7,6 @@ import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object'
 import * as Sparse from '@/lib/sparse-tree'
 import { assertNever } from '@/lib/type-guards'
-import type { SQL } from 'drizzle-orm'
 import { z } from 'zod'
 import * as LC from './layer-columns'
 
@@ -677,7 +676,6 @@ export type FilterEntity = z.infer<typeof FilterEntitySchema>
 // -------- validation errors --------
 
 export type InvalidFilterNodeResult = { code: 'err:invalid-node'; errors: NodeValidationError[] }
-export type SQLConditionsResult = { code: 'ok'; condition: SQL } | InvalidFilterNodeResult
 
 type ErrorBase = {
 	path: string[]
@@ -695,7 +693,8 @@ export type NodeValidationError =
 		type: 'recursive-filter' | 'unknown-filter'
 		filterId: string
 	}
-	// semantic problems: incompatible arg domains, team columns outside a team scope, nested scopes, ...
+	// semantic problems: incompatible arg domains, a comparison whose subject isn't a column, null on an
+	// ordered comparison, ...
 	| ErrorBase & { type: 'invalid-node' }
 
 export type NodeValidationErrorStore = {
