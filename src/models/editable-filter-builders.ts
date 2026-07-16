@@ -11,10 +11,10 @@ export const createBlock = <T extends F.BlockType>(type: T) => {
 	}
 }
 
-export const all = createBlock('all')
-export const some = createBlock('some')
-export const none = createBlock('none')
-export const notAll = createBlock('notall')
+export const and = createBlock('and')
+export const or = createBlock('or')
+export const nor = createBlock('nor')
+export const nand = createBlock('nand')
 
 export const createApplyFilter = <T extends F.ApplyFilterType>(type: T) => {
 	return (filterId?: F.FilterEntityId) => ({ type, filterId }) as Extract<F.EditableFilterNode, { type: T }>

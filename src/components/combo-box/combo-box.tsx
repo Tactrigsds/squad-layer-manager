@@ -1,15 +1,16 @@
+import { useCommandState } from 'cmdk'
 import { Check, ChevronsUpDown, LoaderCircle } from 'lucide-react'
 import React, { useImperativeHandle, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button.tsx'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.tsx'
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover.tsx'
 import * as DH from '@/lib/display-helpers.ts'
 import type { Clearable, Focusable } from '@/lib/react.ts'
 import { cn } from '@/lib/utils'
 
 import { LOADING } from './constants.ts'
-import { normalizeOptions } from './options.ts'
+import { cmdkItemKey, normalizeOptions } from './options.ts'
 
 export type ComboBoxHandle = Focusable & Clearable
 export type ComboBoxProps<T extends string | null = string | null> = {
@@ -42,8 +43,36 @@ export interface ComboBoxOption<T> {
 	label?: React.ReactNode
 	keywords?: string[]
 	disabled?: boolean
-	// longer explanatory text shown in a floating box while the option is hovered (ComboBoxMulti only)
+	// longer explanatory text shown in a floating box while the option is highlighted
 	description?: React.ReactNode
+}
+
+// floating box describing the currently highlighted option, anchored to the option list. cmdk owns the
+// highlight (it follows both the pointer and arrow keys), so we read it rather than tracking hover
+// ourselves. Rendered only when some option carries a description.
+function HighlightedDescription<T extends string | null>(props: { options: ComboBoxOption<T>[] }) {
+	const highlighted = useCommandState((state) => state.value) as string | undefined
+	const option = highlighted ? props.options.find((o) => cmdkItemKey(o) === highlighted) : undefined
+	const description = option?.description
+	return (
+		<Popover open={description != null}>
+			{/* spans the option panel, so the box sits beside the whole list rather than jumping between items */}
+			<PopoverAnchor asChild>
+				<div className="pointer-events-none absolute inset-0" />
+			</PopoverAnchor>
+			<PopoverContent
+				side="right"
+				align="start"
+				sideOffset={6}
+				onOpenAutoFocus={(e) => e.preventDefault()}
+				onCloseAutoFocus={(e) => e.preventDefault()}
+				className="pointer-events-none w-64 max-w-none space-y-1 p-3"
+			>
+				{option?.label != null && <div className="text-sm font-medium font-mono break-words">{option.label}</div>}
+				<div className="text-xs text-muted-foreground break-words">{description}</div>
+			</PopoverContent>
+		</Popover>
+	)
 }
 
 export default function ComboBox<T extends string | null>(props: ComboBoxProps<T>) {
@@ -52,6 +81,8 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 		() => normalizeOptions('ComboBox', props.options, props.sort ?? true),
 		[props.options, props.sort],
 	)
+
+	const hasDescriptions = options !== LOADING && options.some((o) => o.description != null)
 
 	const btnRef = useRef<HTMLButtonElement | null>(null)
 	const inputRef = useRef<HTMLInputElement | null>(null)
@@ -137,7 +168,8 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 				    option lists can be thousands of entries long */
 				}
 				{open && (
-					<Command shouldFilter={!props.setInputValue}>
+					<Command shouldFilter={!props.setInputValue} className="relative">
+						{hasDescriptions && <HighlightedDescription options={options as ComboBoxOption<T>[]} />}
 						<CommandInput
 							ref={inputRef}
 							placeholder={props.searchPlaceholder ?? 'Search...'}

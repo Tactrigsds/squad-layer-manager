@@ -11,7 +11,7 @@ test.describe('generating a vote', () => {
 	test('draws choices from the pool and adds them to the queue as a vote', async ({ page }) => {
 		const app = await createAppFixture({
 			layerQueue: queue(LAYERS.harjuRaas),
-			filters: [filter('raas-only', 'RAAS Only', FB.all([FB.eq('Gamemode', 'RAAS')]))],
+			filters: [filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')]))],
 			serverSettings: (settings) => {
 				settings.queue.mainPool.filters = [poolFilter('raas-only')]
 				settings.queue.mainPool.repeatRules = []
