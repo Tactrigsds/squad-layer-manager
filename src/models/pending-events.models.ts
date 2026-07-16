@@ -85,7 +85,6 @@ export type State = {
 	// SLM-armed expectations: match an upcoming server event and stamp its `source` (see EventExpectation)
 	expectations: EventExpectation[]
 
-	// players from the last =<2 matches
 	nextLayerId: L.LayerId | null
 	expectedNewLayerId: L.LayerId | null
 
@@ -989,7 +988,7 @@ async function* processPendingEvent(
 		case 'PLAYER_WARNED': {
 			const player = SM.PlayerIds.find(state.currTeams.players, p => p.ids, pendingEvent.playerIds)
 			if (!player) {
-				log.error('Player not found in recentPlayers: %s', SM.PlayerIds.prettyPrint(pendingEvent.playerIds))
+				log.error('Player not found in currTeams: %s', SM.PlayerIds.prettyPrint(pendingEvent.playerIds))
 				break
 			}
 			yield {

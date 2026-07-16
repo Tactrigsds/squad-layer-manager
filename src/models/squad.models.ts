@@ -403,6 +403,17 @@ export type Player = z.infer<typeof PlayerSchema>
 export const PlayerIdSchema = z.string()
 export type PlayerId = EosId
 
+// The part of a player that stays meaningful once they disconnect: who they are, and whether they're an admin.
+// Everything tied to participation in a match rather than to the live roster (combat stats, resolving the author of
+// an event that has since scrolled past their disconnect) hangs off a list of these instead of `Player`, so it
+// survives a player dropping and rejoining mid-match. `Player` is assignable to it.
+export const RecentPlayerSchema = PlayerSchema.pick({ ids: true, isAdmin: true })
+export type RecentPlayer = z.infer<typeof RecentPlayerSchema>
+
+export function toRecentPlayer(player: RecentPlayer): RecentPlayer {
+	return { ids: { ...player.ids }, isAdmin: player.isAdmin }
+}
+
 // A roster is "settled" when every player has been assigned to a team -- i.e. no one is still loading / unassigned.
 // Canonical gate for operations that need faithful team data (e.g. executing configured team swaps): acting on a
 // roster with team-less players would compute moves / balance against an incomplete picture.
