@@ -58,22 +58,45 @@ export function useLoggedInUserBase() {
 
 // NOTE: this method of simulating perms will not work with actions that aren't validated client-side.
 export function useLoggedInUser() {
-	const { simulateRoles, disabledRoles } = ZusUtils.useStore(RbacClient.RbacStore)
+	const { simulate, disabledRoles, addedRoles, disabledPerms } = ZusUtils.useStore(RbacClient.RbacStore)
 	const loggedInUser = useLoggedInUserBase()
 
 	return React.useMemo(() => {
 		if (!loggedInUser) return undefined
-
-		if (!simulateRoles) return loggedInUser
-		const simulatedPerms = loggedInUser.perms.filter((p: RBAC.TracedPermission) =>
-			p.allowedByRoles.some((r) => !disabledRoles.some(toCompare => Obj.deepEqual(r, toCompare)))
-		)
+		if (!simulate) return loggedInUser
 
 		return {
 			...loggedInUser,
-			perms: RBAC.recalculateNegations(simulatedPerms),
+			perms: RBAC.recalculateNegations(
+				simulatePerms(loggedInUser.perms, { disabledRoles, addedRoles, disabledPerms }),
+			),
 		}
-	}, [loggedInUser, simulateRoles, disabledRoles])
+	}, [loggedInUser, simulate, disabledRoles, addedRoles, disabledPerms])
+}
+
+export type Simulation = {
+	disabledRoles: RBAC.Role[]
+	addedRoles: RbacClient.SimulatableRole[]
+	disabledPerms: RBAC.Permission[]
+}
+
+// the perms a simulation leaves the user with, before negations are recalculated. Added roles contribute perms the user
+// already holds, so the only thing they change on their own is which roles a perm is attributed to.
+export function simulatePerms(basePerms: RBAC.TracedPermission[], simulation: Simulation): RBAC.TracedPermission[] {
+	const isRoleDisabled = (role: RBAC.Role) => simulation.disabledRoles.some(disabled => Obj.deepEqual(role, disabled))
+
+	const perms: RBAC.TracedPermission[] = basePerms.map(p => ({ ...p, allowedByRoles: [...p.allowedByRoles] }))
+	for (const added of simulation.addedRoles) {
+		if (isRoleDisabled(added.role)) continue
+		for (const perm of added.perms) {
+			RBAC.addTracedPerms(perms, { ...perm, allowedByRoles: [...perm.allowedByRoles] })
+		}
+	}
+
+	return perms.filter(p =>
+		p.allowedByRoles.some(role => !isRoleDisabled(role))
+		&& !simulation.disabledPerms.some(disabled => RBAC.isSamePerm(disabled, p))
+	)
 }
 
 export async function fetchLoggedInUser() {

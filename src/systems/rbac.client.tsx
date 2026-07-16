@@ -52,32 +52,66 @@ export function useUserDefinedRoles() {
 	return useQuery(RPC.orpc.rbac.getUserDefinedRoles.queryOptions())
 }
 
+// the user's own roles. Can't be derived from their permissions' traces, since a role granting nothing appears in none
+export function useMyRoles() {
+	return useQuery(RPC.orpc.rbac.getMyRoles.queryOptions())
+}
+
+// roles the user doesn't hold but may simulate holding, along with the permissions each would grant
+export type SimulatableRole = { role: RBAC.Role; perms: RBAC.TracedPermission[] }
+export function useSimulatableRoles() {
+	return useQuery(RPC.orpc.rbac.getSimulatableRoles.queryOptions())
+}
+
+// simulation can only ever narrow what the user can do: roles and permissions may be switched off, and roles may only
+// be switched on when the server has vouched that they grant nothing the user doesn't already have.
 export type RbacStore = {
-	simulateRoles: boolean
-	setSimulateRoles: (simulateRoles: boolean) => void
+	simulate: boolean
+	setSimulate: (simulate: boolean) => void
 	disabledRoles: RBAC.Role[]
 	disableRole: (role: RBAC.Role) => void
 	enableRole: (role: RBAC.Role) => void
+	// simulatable roles the user has opted into, carrying the perms the server attributed to them
+	addedRoles: SimulatableRole[]
+	addRole: (added: SimulatableRole) => void
+	removeRole: (role: RBAC.Role) => void
+	// permissions switched off individually, independent of the roles granting them
+	disabledPerms: RBAC.Permission[]
+	disablePerm: (perm: RBAC.Permission) => void
+	enablePerm: (perm: RBAC.Permission) => void
 }
 
 export const RbacStore = Zus.createStore<RbacStore>((set, get) => ({
-	simulateRoles: false,
-	setSimulateRoles: (simulateRoles: boolean) => {
-		set({ simulateRoles })
-		if (!simulateRoles) {
-			set({ disabledRoles: [] })
+	simulate: false,
+	setSimulate: (simulate: boolean) => {
+		if (!simulate) {
+			set({ simulate, disabledRoles: [], addedRoles: [], disabledPerms: [] })
+			return
 		}
+		set({ simulate })
 	},
 
 	disabledRoles: [],
 	disableRole: (roleToDisable) => {
 		const disabledRoles = get().disabledRoles
-		for (const roleToCompare of disabledRoles) {
-			if (Obj.deepEqual(roleToDisable, roleToCompare)) {
-				return
-			}
-		}
+		if (disabledRoles.some(r => Obj.deepEqual(roleToDisable, r))) return
 		set({ disabledRoles: [...disabledRoles, roleToDisable] })
 	},
 	enableRole: (role) => set({ disabledRoles: get().disabledRoles.filter(r => !Obj.deepEqual(r, role)) }),
+
+	addedRoles: [],
+	addRole: (added) => {
+		const addedRoles = get().addedRoles
+		if (addedRoles.some(a => Obj.deepEqual(a.role, added.role))) return
+		set({ addedRoles: [...addedRoles, added], disabledRoles: get().disabledRoles.filter(r => !Obj.deepEqual(r, added.role)) })
+	},
+	removeRole: (role) => set({ addedRoles: get().addedRoles.filter(a => !Obj.deepEqual(a.role, role)) }),
+
+	disabledPerms: [],
+	disablePerm: (perm) => {
+		const disabledPerms = get().disabledPerms
+		if (disabledPerms.some(p => RBAC.isSamePerm(p, perm))) return
+		set({ disabledPerms: [...disabledPerms, Obj.selectProps(perm, ['type', 'scope', 'args'])] })
+	},
+	enablePerm: (perm) => set({ disabledPerms: get().disabledPerms.filter(p => !RBAC.isSamePerm(p, perm)) }),
 }))

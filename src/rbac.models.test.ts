@@ -90,3 +90,54 @@ describe('settings access aggregation', () => {
 		expect(RBAC.settingsPathAllowed(access, ['queue', 'mainPool'])).toBe(false)
 	})
 })
+
+describe('permSubsumedBy', () => {
+	it('global perms match on identity', () => {
+		expect(RBAC.permSubsumedBy(RBAC.perm('vote:manage'), [RBAC.perm('vote:manage')])).toBe(true)
+		expect(RBAC.permSubsumedBy(RBAC.perm('vote:manage'), [RBAC.perm('queue:write')])).toBe(false)
+		expect(RBAC.permSubsumedBy(RBAC.perm('vote:manage'), [])).toBe(false)
+	})
+
+	it('filter-scoped perms match on their args', () => {
+		expect(RBAC.permSubsumedBy(RBAC.perm('filters:write', { filterId: 'f1' }), [RBAC.perm('filters:write', { filterId: 'f1' })])).toBe(true)
+		expect(RBAC.permSubsumedBy(RBAC.perm('filters:write', { filterId: 'f1' }), [RBAC.perm('filters:write', { filterId: 'f2' })])).toBe(
+			false,
+		)
+	})
+
+	it('timeouts are subsumed by an equal or longer grant', () => {
+		expect(RBAC.permSubsumedBy(timeoutPerm(60_000), [timeoutPerm(600_000)])).toBe(true)
+		expect(RBAC.permSubsumedBy(timeoutPerm(60_000), [timeoutPerm(60_000)])).toBe(true)
+		expect(RBAC.permSubsumedBy(timeoutPerm(600_000), [timeoutPerm(60_000)])).toBe(false)
+		expect(RBAC.permSubsumedBy(timeoutPerm(600_000), [timeoutPerm(null)])).toBe(true)
+		// unlimited is only subsumed by unlimited
+		expect(RBAC.permSubsumedBy(timeoutPerm(null), [timeoutPerm(600_000)])).toBe(false)
+		expect(RBAC.permSubsumedBy(timeoutPerm(60_000), [])).toBe(false)
+	})
+
+	it('settings path grants are subsumed by any covering prefix', () => {
+		const restricted = [RBAC.perm('global-settings:write', { paths: ['queue'] })]
+		expect(RBAC.permSubsumedBy(RBAC.perm('global-settings:write', { paths: ['queue.mainPool'] }), restricted)).toBe(true)
+		expect(RBAC.permSubsumedBy(RBAC.perm('global-settings:write', { paths: ['queue', 'vote'] }), restricted)).toBe(false)
+		// an unrestricted grant is only subsumed by another unrestricted one
+		expect(RBAC.permSubsumedBy(RBAC.perm('global-settings:write', { paths: null }), restricted)).toBe(false)
+		expect(
+			RBAC.permSubsumedBy(RBAC.perm('global-settings:write', { paths: null }), [RBAC.perm('global-settings:write', { paths: null })]),
+		).toBe(true)
+	})
+
+	it('server settings grants respect both server id and paths', () => {
+		const perms = [RBAC.perm('server-settings:write', { serverId: 's1', paths: ['queue'] })]
+		expect(RBAC.permSubsumedBy(RBAC.perm('server-settings:write', { serverId: 's1', paths: ['queue.mainPool'] }), perms)).toBe(true)
+		expect(RBAC.permSubsumedBy(RBAC.perm('server-settings:write', { serverId: 's2', paths: ['queue'] }), perms)).toBe(false)
+		expect(RBAC.permSubsumedBy(RBAC.perm('server-settings:write', { serverId: 's1', paths: ['vote'] }), perms)).toBe(false)
+		// an all-servers grant needs an all-servers grant behind it, not a per-server one
+		expect(RBAC.permSubsumedBy(RBAC.perm('server-settings:write', { serverId: null, paths: ['queue'] }), perms)).toBe(false)
+		expect(
+			RBAC.permSubsumedBy(RBAC.perm('server-settings:read', { serverId: null }), [RBAC.perm('server-settings:read', { serverId: 's1' })]),
+		).toBe(false)
+		expect(
+			RBAC.permSubsumedBy(RBAC.perm('server-settings:read', { serverId: 's1' }), [RBAC.perm('server-settings:read', { serverId: null })]),
+		).toBe(true)
+	})
+})

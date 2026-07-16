@@ -129,6 +129,82 @@ export const getRolesForDiscordUser = C.spanOp(
 	},
 )
 
+// the permissions a set of roles grants purely from their rbac settings config. Negations only apply within the given
+// set, which is what lets a single role be evaluated in isolation (see getSimulatableRoles).
+function permsFromRoleConfigs(roles: RBAC.Role[]): RBAC.TracedPermission[] {
+	const perms: RBAC.TracedPermission[] = []
+	const allNegatingPerms: Set<RBAC.RoleGrantablePermissionType> = new Set()
+
+	for (const role of roles) {
+		for (const permExpr of userDefinedPermissionExpressions[role.type] ?? []) {
+			const perm = RBAC.parseNegatingPermissionType(permExpr)
+			if (!perm) continue
+			allNegatingPerms.add(perm)
+			perms.push(RBAC.tracedPerm(perm, [role], { negated: true, negating: true }, RBAC.unrestrictedRoleGrantArgs(perm)))
+		}
+	}
+
+	const isNegated = (perm: RBAC.PermissionType) => allNegatingPerms.has(perm as RBAC.RoleGrantablePermissionType)
+
+	for (const role of roles) {
+		if ((userDefinedPermissionExpressions[role.type] ?? []).includes('*')) {
+			for (const permType of RBAC.ROLE_GRANTABLE_PERMISSION_TYPE.options) {
+				perms.push(
+					RBAC.tracedPerm(permType, [role], { negated: allNegatingPerms.has(permType) }, RBAC.unrestrictedRoleGrantArgs(permType)),
+				)
+			}
+		}
+		for (const permExpr of userDefinedPermissionExpressions[role.type] ?? []) {
+			if (!RBAC.isRoleGrantablePermissionType(permExpr)) continue
+			RBAC.addTracedPerms(
+				perms,
+				RBAC.tracedPerm(permExpr, [role], { negated: allNegatingPerms.has(permExpr) }, RBAC.unrestrictedRoleGrantArgs(permExpr)),
+			)
+		}
+		if (roleMaxTimeouts[role.type] !== undefined) {
+			RBAC.addTracedPerms(
+				perms,
+				RBAC.tracedPerm('squad-server:timeout-players', [role], {}, { maxDurationMs: roleMaxTimeouts[role.type] }),
+			)
+		}
+		// restricted settings grants; a matching negation in any role's expressions wins over these too
+		const globalPaths = roleGlobalSettingsGrants[role.type]
+		if (globalPaths && globalPaths.length > 0) {
+			RBAC.addTracedPerms(
+				perms,
+				RBAC.tracedPerm('global-settings:write', [role], { negated: isNegated('global-settings:write') }, { paths: [...globalPaths] }),
+			)
+		}
+		for (const grant of roleServerSettingsGrants[role.type] ?? []) {
+			const serverIds: (string | null)[] = grant.serverIds.length > 0 ? grant.serverIds : [null]
+			for (const serverId of serverIds) {
+				if (grant.access === 'read') {
+					RBAC.addTracedPerms(
+						perms,
+						RBAC.tracedPerm('server-settings:read', [role], { negated: isNegated('server-settings:read') }, { serverId }),
+					)
+				} else if (grant.access === 'write') {
+					RBAC.addTracedPerms(
+						perms,
+						RBAC.tracedPerm('server-settings:write', [role], { negated: isNegated('server-settings:write') }, {
+							serverId,
+							paths: grant.paths.length > 0 ? [...grant.paths] : null,
+						}),
+					)
+				} else {
+					RBAC.addTracedPerms(
+						perms,
+						RBAC.tracedPerm('server-settings:write-sensitive', [role], { negated: isNegated('server-settings:write-sensitive') }, {
+							serverId,
+						}),
+					)
+				}
+			}
+		}
+	}
+	return perms
+}
+
 export const getUserRbacPerms = C.spanOp(
 	'getUserRbacPerms',
 	{ module, levels: { event: 'trace' }, attrs: (ctx: C.UserId) => ({ [ATTRS.User.ID]: String(ctx.user.discordId) }) },
@@ -140,7 +216,6 @@ export const getUserRbacPerms = C.spanOp(
 		const filterRowsPromise = getFilterPermissionRows()
 
 		const perms: RBAC.TracedPermission[] = []
-		const allNegatingPerms: Set<RBAC.RoleGrantablePermissionType> = new Set()
 
 		// super users/roles are granted every role-grantable permission (unrestricted), overriding any negations.
 		// timeout grants are not expression-grantable, so the unlimited grant is added explicitly
@@ -153,75 +228,12 @@ export const getUserRbacPerms = C.spanOp(
 				RBAC.tracedPerm('squad-server:timeout-players', [SUPER_ROLE], { negated: false }, { maxDurationMs: null }),
 			)
 		}
-		for (const role of roles) {
-			for (const permExpr of userDefinedPermissionExpressions[role.type]) {
-				const perm = RBAC.parseNegatingPermissionType(permExpr)
-				if (!perm) continue
-				allNegatingPerms.add(perm)
-				perms.push(RBAC.tracedPerm(perm, [role], { negated: true, negating: true }, RBAC.unrestrictedRoleGrantArgs(perm)))
-			}
+
+		for (const rolePerm of permsFromRoleConfigs(roles)) {
+			RBAC.addTracedPerms(perms, rolePerm)
 		}
 
-		const isNegated = (perm: RBAC.PermissionType) => allNegatingPerms.has(perm as RBAC.RoleGrantablePermissionType)
-
-		for (const role of roles) {
-			if (userDefinedPermissionExpressions[role.type].includes('*')) {
-				for (const permType of RBAC.ROLE_GRANTABLE_PERMISSION_TYPE.options) {
-					perms.push(
-						RBAC.tracedPerm(permType, [role], { negated: allNegatingPerms.has(permType) }, RBAC.unrestrictedRoleGrantArgs(permType)),
-					)
-				}
-			}
-			for (const permExpr of userDefinedPermissionExpressions[role.type]) {
-				if (!RBAC.isRoleGrantablePermissionType(permExpr)) continue
-				RBAC.addTracedPerms(
-					perms,
-					RBAC.tracedPerm(permExpr, [role], { negated: allNegatingPerms.has(permExpr) }, RBAC.unrestrictedRoleGrantArgs(permExpr)),
-				)
-			}
-			if (roleMaxTimeouts[role.type] !== undefined) {
-				RBAC.addTracedPerms(
-					perms,
-					RBAC.tracedPerm('squad-server:timeout-players', [role], {}, { maxDurationMs: roleMaxTimeouts[role.type] }),
-				)
-			}
-			// restricted settings grants; a matching negation in any role's expressions wins over these too
-			const globalPaths = roleGlobalSettingsGrants[role.type]
-			if (globalPaths && globalPaths.length > 0) {
-				RBAC.addTracedPerms(
-					perms,
-					RBAC.tracedPerm('global-settings:write', [role], { negated: isNegated('global-settings:write') }, { paths: [...globalPaths] }),
-				)
-			}
-			for (const grant of roleServerSettingsGrants[role.type] ?? []) {
-				const serverIds: (string | null)[] = grant.serverIds.length > 0 ? grant.serverIds : [null]
-				for (const serverId of serverIds) {
-					if (grant.access === 'read') {
-						RBAC.addTracedPerms(
-							perms,
-							RBAC.tracedPerm('server-settings:read', [role], { negated: isNegated('server-settings:read') }, { serverId }),
-						)
-					} else if (grant.access === 'write') {
-						RBAC.addTracedPerms(
-							perms,
-							RBAC.tracedPerm('server-settings:write', [role], { negated: isNegated('server-settings:write') }, {
-								serverId,
-								paths: grant.paths.length > 0 ? [...grant.paths] : null,
-							}),
-						)
-					} else {
-						RBAC.addTracedPerms(
-							perms,
-							RBAC.tracedPerm('server-settings:write-sensitive', [role], { negated: isNegated('server-settings:write-sensitive') }, {
-								serverId,
-							}),
-						)
-					}
-				}
-			}
-		}
-
-		const negatedFiltersWrite = isNegated('filters:write')
+		const negatedFiltersWrite = perms.some((p) => p.negating && p.type === 'filters:write')
 		for (const row of await filterRowsPromise) {
 			const source: RBAC.TracedPermission['allowedByRoles'][number] = row.source === 'owner'
 				? { type: 'filter-owner', filterId: row.filterId }
@@ -346,6 +358,37 @@ export async function tryDenyAnyTimeoutGrant(
 export const orpcRouter = {
 	getUserDefinedRoles: orpcBase.handler(() => {
 		return userDefinedRoles
+	}),
+
+	// the caller's own roles. Not derivable from their permissions' traces: a role granting nothing appears in no trace,
+	// but is still a role they hold
+	getMyRoles: orpcBase.handler(async ({ context: _ctx }) => {
+		const ctx = DB.addPooledDb(_ctx as any) as C.Db & C.UserId
+		const roles = await getRolesForDiscordUser(ctx)
+		// matches how the super bootstrap attributes its grants in getUserRbacPerms
+		if (await isSuperUser(ctx)) return [SUPER_ROLE, ...roles]
+		return roles
+	}),
+
+	// roles the caller doesn't hold but whose permissions they already hold anyway, so the permissions dialog can offer
+	// them for simulation. Returning the role's traced perms lets the client attribute its own perms to the simulated
+	// role without granting anything: a role is only offered when every permission it grants is subsumed by the caller's.
+	getSimulatableRoles: orpcBase.handler(async ({ context: _ctx }) => {
+		const ctx = DB.addPooledDb(_ctx as any) as C.Db & C.UserId
+		const userPerms = RBAC.fromTracedPermissions(await getUserRbacPerms(ctx))
+		const heldRoles = new Set((await getRolesForDiscordUser(ctx)).map((r) => r.type))
+
+		const simulatable: { role: RBAC.Role; perms: RBAC.TracedPermission[] }[] = []
+		for (const role of userDefinedRoles) {
+			if (heldRoles.has(role.type)) continue
+			const perms = permsFromRoleConfigs([role])
+			// a role granting nothing (or only negations) is vacuously subsumed, and simulating it is still meaningful:
+			// its negations take access away
+			const granted = RBAC.fromTracedPermissions(perms)
+			if (!granted.every((p) => RBAC.permSubsumedBy(p, userPerms))) continue
+			simulatable.push({ role, perms })
+		}
+		return simulatable
 	}),
 
 	// the env-configured SUPER_USERS/SUPER_ROLES bootstrap, surfaced read-only in the settings rbac section.
