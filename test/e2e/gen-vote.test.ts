@@ -116,9 +116,12 @@ test.describe('generating a vote', () => {
 					weights: {},
 					matchupWeights: {
 						AllianceMatchup: [],
-						// unlisted pairings weigh LC.DEFAULT_GENERATION_WEIGHT (0.1), so this pairing outweighs every
-						// other one by four orders of magnitude
-						FactionMatchup: [{ teams: ['ADF', 'RGF'], weight: 1000 }],
+						// Unlisted pairings weigh LC.DEFAULT_GENERATION_WEIGHT (0.1) EACH, and weights are normalized
+						// against the sum of what's in the pool -- not against the largest one. With 17 factions there
+						// are ~136 other pairings, so what this competes with is their total (~13.6), not 0.1. At
+						// weight 1000 that left each draw ~1.3% likely to miss, i.e. ~4% over three draws: measured at
+						// 2 failures in 60 runs before this was raised. The margin has to cover the whole pool.
+						FactionMatchup: [{ teams: ['ADF', 'RGF'], weight: 1_000_000 }],
 						UnitMatchup: [],
 						FactionUnitMatchup: [],
 					},
