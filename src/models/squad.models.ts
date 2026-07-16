@@ -396,10 +396,13 @@ export const PlayerSchema = z.object({
 	squadId: z.number().nullable(),
 	isLeader: z.boolean(),
 	isAdmin: z.boolean(),
-	// the admin list groups this player is in. `isAdmin` only reflects the groups holding an admin-identifying
+	// The admin list groups this player is in. `isAdmin` only reflects the groups holding an admin-identifying
 	// permission, so this is a superset of it: a reserve-slot group like Whitelist appears here and not there.
-	// Prefaulted because events persisted before this field existed carry players without it.
-	adminGroups: z.array(z.string()).prefault([]),
+	//
+	// Optional, and every read must tolerate its absence: events persisted before this field existed hold players
+	// without it, and SE.fromEventRow hands stored event JSON to the client without a schema parse, so no default
+	// is ever applied to them. A prefault would only make the type claim otherwise.
+	adminGroups: z.array(z.string()).optional(),
 	role: z.string(),
 })
 
@@ -416,7 +419,7 @@ export const RecentPlayerSchema = PlayerSchema.pick({ ids: true, isAdmin: true, 
 export type RecentPlayer = z.infer<typeof RecentPlayerSchema>
 
 export function toRecentPlayer(player: RecentPlayer): RecentPlayer {
-	return { ids: { ...player.ids }, isAdmin: player.isAdmin, adminGroups: [...player.adminGroups] }
+	return { ids: { ...player.ids }, isAdmin: player.isAdmin, adminGroups: [...(player.adminGroups ?? [])] }
 }
 
 // A roster is "settled" when every player has been assigned to a team -- i.e. no one is still loading / unassigned.

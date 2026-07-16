@@ -56,7 +56,7 @@ export namespace Sel {
 					.map(p => {
 						const eosId = p.ids.eos!
 						const flagIds = bmData[eosId]?.flagIds ?? []
-						return [eosId, { flags: BM.resolveFlags(flagIds, orgFlags), adminGroups: p.adminGroups }]
+						return [eosId, { flags: BM.resolveFlags(flagIds, orgFlags), adminGroups: p.adminGroups ?? [] }]
 					})
 				const allGroups = PG.resolvePlayerGroups(playerFacts, playerGroupings, activeGroupingId)
 
