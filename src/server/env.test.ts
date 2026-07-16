@@ -2,15 +2,23 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+// for the var metadata only; each case imports its own instance through loadEnv
+import * as Env from './env.ts'
 
 // ensureEnvSetup latches, so each case gets a fresh module registry and a fresh copy of the environment
 async function loadEnv(secrets: string | undefined, env: Record<string, string> = {}) {
 	vi.resetModules()
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slm-env-'))
 	let secretsPath: string | undefined
 	if (secrets !== undefined) {
-		secretsPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'slm-env-')), '.env.secrets')
+		secretsPath = path.join(dir, '.env.secrets')
 		fs.writeFileSync(secretsPath, secrets)
 	}
+	// ensureEnvSetup loads the .env into the environment, and the repo root has a real one with real secrets in
+	// it on any machine the app has been run on. Point it at an empty file so a case only ever sees what it sets.
+	const envPath = path.join(dir, '.env')
+	fs.writeFileSync(envPath, '')
+	vi.doMock('../systems/cli.server', () => ({ options: { envFile: envPath } }))
 	// always explicit: the default path is the repo root, which may or may not have a real one sitting in it
 	process.env.SECRETS_FILE = secretsPath ?? path.join(os.tmpdir(), 'slm-no-such-secrets')
 	Object.assign(process.env, env)
@@ -20,8 +28,17 @@ async function loadEnv(secrets: string | undefined, env: Record<string, string> 
 const KEY = 'A'.repeat(44)
 const originalEnv = { ...process.env }
 
+// The setup file imports a module that calls ensureEnvSetup at import time, which loads the repo root's .env
+// into the environment before this file is even evaluated -- so originalEnv already holds whatever real
+// credentials the machine has. Drop everything env.ts reads, so a case only sees what it sets itself.
+function baseEnv() {
+	const env = { ...originalEnv }
+	for (const [key] of Env.entries()) delete env[key]
+	return { ...env, NODE_ENV: 'test' }
+}
+
 beforeEach(() => {
-	process.env = { ...originalEnv, NODE_ENV: 'test' }
+	process.env = baseEnv()
 })
 
 afterEach(() => {
