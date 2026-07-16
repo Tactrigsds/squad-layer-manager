@@ -1,5 +1,10 @@
 import { defineConfig, devices } from '@playwright/test'
 
+// The fixtures import app modules that resolve env, which requires NODE_ENV. Vitest defaults it to
+// 'test' and the docker image sets it, but a bare `playwright test` has neither, so default it here
+// (config is loaded in every worker before the test files are).
+process.env.NODE_ENV ??= 'test'
+
 // E2E tests drive the real client against a real app instance backed by the squad server emulator
 // (see test/e2e/fixtures.ts). The app is spawned per test file by the fixture rather than by a
 // `webServer` here, because each one serves its own frontend on its own port.
