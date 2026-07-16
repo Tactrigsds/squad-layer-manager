@@ -1,4 +1,4 @@
-import * as AR from '@/app-routes'
+import * as DM from '@/models/discord.models'
 import * as EMO from '@/models/emoji.models'
 import * as RPC from '@/orpc.client'
 import { useQuery } from '@tanstack/react-query'
@@ -26,5 +26,5 @@ export function useEmoji(id: string | undefined, opts?: { enabled?: boolean }) {
 }
 
 export function getEmojiUrl(emoji: Extract<EMO.Emoji, { type: 'discord' }>, size: number = 32): string {
-	return AR.link('/discord-cdn/*', `emojis/${EMO.parseDiscordEmojiId(emoji.id)}.webp?size=${size}`)
+	return `${DM.CDN_BASE}/emojis/${EMO.parseDiscordEmojiId(emoji.id)}.webp?size=${size}`
 }
