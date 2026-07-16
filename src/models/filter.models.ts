@@ -1,5 +1,5 @@
 // Filter nodes form a small expression AST. Every node's `type` is an operator: block operators
-// (all/some/none/notall) take child nodes, comparison operators take argument terms (columns,
+// (and/or/nor/nand) take child nodes, comparison operators take argument terms (columns,
 // constants, team-generic columns), and apply-filter operators (included-in/excluded-from) reference
 // another filter entity.
 import type * as SchemaModels from '$root/drizzle/schema.models'
@@ -88,28 +88,36 @@ export const COMP_TYPE_DEFS: Record<CompType, CompTypeDef> = {
 	inrange: { displayName: '[..]', negDisplayName: '![..]', domain: 'number', argSlots: ['scalar', 'scalar', 'scalar'] },
 }
 
-// Block operators fold the old (and/or) x negation matrix into four named quantifiers over their
-// children: all = every child matches (AND), some = at least one matches (OR), none = no child
-// matches (NOT OR), notall = not every child matches (NOT AND). They carry no separate `neg` flag,
-// negation is intrinsic to the operator, and the set is closed under negation (all<->notall,
-// some<->none).
-export const BLOCK_TYPES = ['all', 'some', 'none', 'notall'] as const
+// Block operators are the four boolean operations over their children, named after the operation
+// itself: and = every child matches, or = at least one matches, nor = none match, nand = not every
+// child matches. They carry no separate `neg` flag, negation is intrinsic to the operator, and the
+// set is closed under negation (and<->nand, or<->nor).
+export const BLOCK_TYPES = ['and', 'or', 'nor', 'nand'] as const
 export type BlockType = (typeof BLOCK_TYPES)[number]
 
+// the colloquial reading is what the editor leads with; the operation it names follows in parens,
+// since the two together are what make the negated pair (nor/nand) legible
 export const BLOCK_TYPE_DISPLAY_NAMES: Record<BlockType, string> = {
-	all: 'all',
-	some: 'some',
-	none: 'none',
-	notall: 'not all',
+	and: 'all of (and)',
+	or: 'any of (or)',
+	nor: 'none of (nor)',
+	nand: 'not all of (nand)',
+}
+
+export const BLOCK_TYPE_DESCRIPTIONS: Record<BlockType, string> = {
+	and: 'Matches layers where every condition in this block matches.',
+	or: 'Matches layers where at least one condition in this block matches.',
+	nor: 'Matches layers where not a single condition in this block matches.',
+	nand: 'Matches layers where at least one condition in this block fails.',
 }
 
 // how each block operator compiles: `conjunction` picks AND (true) vs OR (false) over the child
 // conditions, `negated` wraps the combined result in NOT.
 export const BLOCK_TYPE_SEMANTICS: Record<BlockType, { conjunction: boolean; negated: boolean }> = {
-	all: { conjunction: true, negated: false },
-	notall: { conjunction: true, negated: true },
-	some: { conjunction: false, negated: false },
-	none: { conjunction: false, negated: true },
+	and: { conjunction: true, negated: false },
+	nand: { conjunction: true, negated: true },
+	or: { conjunction: false, negated: false },
+	nor: { conjunction: false, negated: true },
 }
 
 // Apply-filter operators reference another filter entity, folding the old apply-filter `neg` flag into
@@ -122,6 +130,11 @@ export const APPLY_FILTER_TYPE_DISPLAY_NAMES: Record<ApplyFilterType, string> = 
 	'excluded-from': 'excluded from',
 }
 
+export const APPLY_FILTER_TYPE_DESCRIPTIONS: Record<ApplyFilterType, string> = {
+	'included-in': 'Matches layers that the referenced filter matches.',
+	'excluded-from': 'Matches layers that the referenced filter does not match.',
+}
+
 // 'excluded-from' compiles as the negation of the referenced filter's condition
 export const APPLY_FILTER_TYPE_NEGATED: Record<ApplyFilterType, boolean> = {
 	'included-in': false,
@@ -130,7 +143,7 @@ export const APPLY_FILTER_TYPE_NEGATED: Record<ApplyFilterType, boolean> = {
 
 // Matchup operators describe one matchup: two team specs, each a set of allowed values per team
 // column. The plural is the set semantics -- {USA, CAF} vs {RGF} already denotes several concrete
-// matchups -- not a list of matchups; several unrelated matchups are a `some` block over several
+// matchups -- not a list of matchups; several unrelated matchups are an `or` block over several
 // nodes. Unlike a `team-column` comparison, whose quantifier expands one column over both teams
 // independently, a matchup correlates the two sides: it pairs team spec 0 against team spec 1. By
 // default either orientation matches; `locked` pins spec 0 to team 1 and spec 1 to team 2.
@@ -217,10 +230,10 @@ export const DisallowMatchupsNodeSchema = matchupNodeSchema('disallow-matchups')
 
 const ChildrenSchema = z.lazy(() => z.array(FilterNodeSchema))
 const blockNodeSchema = <T extends BlockType>(type: T) => z.object({ type: z.literal(type), children: ChildrenSchema })
-export const AllNodeSchema = blockNodeSchema('all')
-export const SomeNodeSchema = blockNodeSchema('some')
-export const NoneNodeSchema = blockNodeSchema('none')
-export const NotAllNodeSchema = blockNodeSchema('notall')
+export const AndNodeSchema = blockNodeSchema('and')
+export const OrNodeSchema = blockNodeSchema('or')
+export const NorNodeSchema = blockNodeSchema('nor')
+export const NandNodeSchema = blockNodeSchema('nand')
 
 export const FilterNodeSchema: z.ZodType<FilterNode> = z.lazy(() =>
 	z.discriminatedUnion('type', [
@@ -233,10 +246,10 @@ export const FilterNodeSchema: z.ZodType<FilterNode> = z.lazy(() =>
 		ExcludedFromNodeSchema,
 		AllowMatchupsNodeSchema,
 		DisallowMatchupsNodeSchema,
-		AllNodeSchema,
-		SomeNodeSchema,
-		NoneNodeSchema,
-		NotAllNodeSchema,
+		AndNodeSchema,
+		OrNodeSchema,
+		NorNodeSchema,
+		NandNodeSchema,
 	])
 ) as z.ZodType<FilterNode>
 
@@ -405,6 +418,8 @@ export function defaultCompType(domain: ValueDomain | undefined): CompType {
 export type CompOpSelectOption = {
 	key: string
 	label: string
+	// one-line explanation of the operator, shown alongside the (necessarily terse) label in the select
+	description: string
 	type: CompType
 	neg: boolean
 }
@@ -415,24 +430,58 @@ export function compOpSelectOptions(domain: ValueDomain | undefined): CompOpSele
 	// exact equality against a numeric constant is unreliable. There are no dedicated null-test
 	// operators — null is selected as a value.
 	const options: CompOpSelectOption[] = [
-		{ key: 'eq', label: '=', type: 'eq', neg: false },
-		{ key: 'neq', label: '!=', type: 'eq', neg: true },
+		{
+			key: 'eq',
+			label: '=',
+			description: floatDomain
+				? 'Matches layers whose value is missing. Exact equality is unreliable on a decimal column, so this operator only tests against no value.'
+				: 'Matches layers whose value is exactly the one given.',
+			type: 'eq',
+			neg: false,
+		},
+		{
+			key: 'neq',
+			label: '!=',
+			description: floatDomain
+				? 'Matches layers whose value is present. Exact equality is unreliable on a decimal column, so this operator only tests against no value.'
+				: 'Matches layers whose value is anything other than the one given.',
+			type: 'eq',
+			neg: true,
+		},
 	]
 	// `in` uses exact equality, so skip it for floats (and it's redundant for booleans)
 	if (!floatDomain && (!domain || domain.kind !== 'boolean')) {
 		options.push(
-			{ key: 'in', label: 'in', type: 'in', neg: false },
-			{ key: 'notin', label: 'not in', type: 'in', neg: true },
+			{ key: 'in', label: 'in', description: 'Matches layers whose value is any one of the listed values.', type: 'in', neg: false },
+			{ key: 'notin', label: 'not in', description: 'Matches layers whose value is none of the listed values.', type: 'in', neg: true },
 		)
 	}
 	if (!domain || domain.kind === 'number') {
 		options.push(
-			{ key: 'lt', label: '<', type: 'lt', neg: false },
-			{ key: 'gt', label: '>', type: 'gt', neg: false },
-			{ key: 'lte', label: '<=', type: 'gt', neg: true },
-			{ key: 'gte', label: '>=', type: 'lt', neg: true },
-			{ key: 'inrange', label: '[..]', type: 'inrange', neg: false },
-			{ key: 'outrange', label: '![..]', type: 'inrange', neg: true },
+			{ key: 'lt', label: '<', description: 'Matches layers whose value is less than the one given.', type: 'lt', neg: false },
+			{ key: 'gt', label: '>', description: 'Matches layers whose value is greater than the one given.', type: 'gt', neg: false },
+			{ key: 'lte', label: '<=', description: 'Matches layers whose value is less than or equal to the one given.', type: 'gt', neg: true },
+			{
+				key: 'gte',
+				label: '>=',
+				description: 'Matches layers whose value is greater than or equal to the one given.',
+				type: 'lt',
+				neg: true,
+			},
+			{
+				key: 'inrange',
+				label: '[..]',
+				description: 'Matches layers whose value falls between the two bounds given, inclusive.',
+				type: 'inrange',
+				neg: false,
+			},
+			{
+				key: 'outrange',
+				label: '![..]',
+				description: 'Matches layers whose value falls outside the two bounds given.',
+				type: 'inrange',
+				neg: true,
+			},
 		)
 	}
 	return options
@@ -463,7 +512,7 @@ export function compOpSelectionKey(node: EditableCompNode): string {
 }
 
 // reshapes args to the selected operator's slots, carrying compatible args over
-export function applyCompOpSelection(node: EditableCompNode, option: CompOpSelectOption): EditableCompNode {
+export function applyCompOpSelection(node: EditableCompNode, option: Pick<CompOpSelectOption, 'type' | 'neg'>): EditableCompNode {
 	const def = COMP_TYPE_DEFS[option.type]
 	const prevArgs = node.args
 	const args = def.argSlots.map((slot, i): EditableArg => {

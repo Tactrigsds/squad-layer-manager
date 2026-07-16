@@ -102,7 +102,7 @@ function getFilterFromComparisons(items: Record<string, F.EditableCompNode>) {
 	}
 
 	if (nodes.length === 0) return undefined
-	return FB.all(nodes)
+	return FB.and(nodes)
 }
 
 export namespace Sel {

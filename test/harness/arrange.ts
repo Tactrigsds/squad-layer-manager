@@ -38,7 +38,7 @@ export function voteQueueItem(choices: L.LayerId[], opts?: { itemId?: string }):
 }
 
 // A filter entity, owned by the seeded admin. `filter` is a validated FilterNode -- build it with the
-// FB builders (e.g. `FB.all([FB.eq('Gamemode', 'RAAS')])`), whose root must be a block node.
+// FB builders (e.g. `FB.and([FB.eq('Gamemode', 'RAAS')])`), whose root must be a block node.
 export function filter(
 	id: F.FilterEntityId,
 	name: string,

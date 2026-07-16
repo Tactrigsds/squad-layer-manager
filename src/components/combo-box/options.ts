@@ -1,5 +1,16 @@
+import * as DH from '@/lib/display-helpers.ts'
 import type { ComboBoxOption } from './combo-box.tsx'
+
 import { LOADING } from './constants.ts'
+
+// the string cmdk identifies an option's item by, which is what it reports as the highlighted item.
+// It's the item's `value` prop trimmed, falling back to the rendered text content when that's unset
+// (null-valued options). A label that isn't a plain string has no key we can predict here.
+export function cmdkItemKey<T extends string | null>(option: ComboBoxOption<T>): string | null {
+	if (option.value !== null) return option.value.trim()
+	if (option.label == null) return DH.NULL_DISPLAY.trim()
+	return typeof option.label === 'string' ? option.label.trim() : null
+}
 
 // normalizes raw options to ComboBoxOption[], asserts value uniqueness, and sorts (disabled last,
 // then label/value unless sort is false). memoize at the call site -- this runs O(n log n) over

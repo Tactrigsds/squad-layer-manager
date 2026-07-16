@@ -75,7 +75,7 @@ const setup: Frame['setup'] = (args) => {
 	const set = args.set
 
 	const editedFilterEntity = args.input.editedFilterId ? FilterEntityClient.filterEntities.get(args.input.editedFilterId) : null
-	const savedFilter: F.EditableFilterNode = args.input.startingFilter ?? editedFilterEntity?.filter ?? EFB.all()
+	const savedFilter: F.EditableFilterNode = args.input.startingFilter ?? editedFilterEntity?.filter ?? EFB.and()
 
 	set(
 		{

@@ -14,7 +14,7 @@ test.describe('queue item constraints', () => {
 			// Gorodok twice, two apart: within the Map repeat rule's window of 4
 			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed, LAYERS.gorodokAas),
 			filters: [
-				filter('raas-only', 'RAAS Only', FB.all([FB.eq('Gamemode', 'RAAS')]), { alertMessage: 'RAAS layers are in the pool' }),
+				filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')]), { alertMessage: 'RAAS layers are in the pool' }),
 			],
 			serverSettings: (settings) => {
 				settings.queue.mainPool.filters = [poolFilter('raas-only')]
