@@ -176,7 +176,10 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 					aria-expanded={open}
 					// truncation is left to the ellipsis on the label below: it cuts at the width actually
 					// available, where a character count would cut at a guess about it
-					className={cn(props.className, restrictValueSize ? 'max-w-[400px]' : 'max-w-full', 'justify-between font-mono')}
+					// min-w-0: a flex item defaults to min-width:auto and so refuses to shrink below its
+					// content, which would leave the label's ellipsis with nothing to do and let the trigger
+					// push out of a flex container instead of truncating inside it
+					className={cn(props.className, restrictValueSize ? 'max-w-[400px]' : 'max-w-full', 'min-w-0 justify-between font-mono')}
 				>
 					<span className="grow overflow-hidden text-ellipsis">
 						{valuesDisplay}
