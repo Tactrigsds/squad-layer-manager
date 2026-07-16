@@ -51,15 +51,14 @@ export namespace Sel {
 					? selectedGroupingId
 					: groupingIds[0] ?? null
 
-				const playerFlagPairs: [SM.PlayerId, BM.PlayerFlag[]][] = players
+				const playerFacts: [SM.PlayerId, PG.PlayerFacts][] = players
 					.filter(p => p.ids.eos != null)
 					.map(p => {
 						const eosId = p.ids.eos!
 						const flagIds = bmData[eosId]?.flagIds ?? []
-						const flags = BM.resolveFlags(flagIds, orgFlags)
-						return [eosId, flags]
+						return [eosId, { flags: BM.resolveFlags(flagIds, orgFlags), adminGroups: p.adminGroups }]
 					})
-				const allGroups = PG.resolvePlayerGroups(playerFlagPairs, playerGroupings, activeGroupingId)
+				const allGroups = PG.resolvePlayerGroups(playerFacts, playerGroupings, activeGroupingId)
 
 				return players.map((p): EnrichedPlayer => {
 					const playerId = SM.PlayerIds.getPlayerId(p.ids)

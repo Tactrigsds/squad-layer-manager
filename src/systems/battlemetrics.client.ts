@@ -64,8 +64,9 @@ export function usePlayerProfile(playerId: string) {
 	return profile
 }
 
-// the color of the group this player falls into under the active grouping, or null when nothing matches
-export function usePlayerGroupColor(playerId: string): string | null {
+// the color of the group this player falls into under the active grouping, or null when nothing matches. `adminGroups`
+// comes from the player rather than being looked up here: the admin list is per-server and this hook has no server.
+export function usePlayerGroupColor(playerId: string, adminGroups: string[]): string | null {
 	const flags = usePlayerFlags(playerId)
 	const orgFlags = useOrgFlags()
 	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
@@ -73,10 +74,10 @@ export function usePlayerGroupColor(playerId: string): string | null {
 	const groupingIds = playerGroupings ? PG.getGroupingIds(playerGroupings) : []
 	const activeGroupingId = ZusUtils.useStore(Store, Sel.activeGroupingId(groupingIds))
 
-	if (!flags || flags.length === 0 || !playerGroupings || activeGroupingId === null) return null
+	if (!playerGroupings || activeGroupingId === null) return null
 	const grouping = playerGroupings[activeGroupingId]
 	if (!grouping) return null
-	const group = PG.resolveGroup(grouping, flags)
+	const group = PG.resolveGroup(grouping, { flags: flags ?? [], adminGroups })
 	return group === undefined ? null : PG.getGroupColor(grouping, group, orgFlags)
 }
 

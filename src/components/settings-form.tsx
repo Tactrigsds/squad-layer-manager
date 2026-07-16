@@ -1,6 +1,8 @@
 import { BmFlagMultiSelect, BmFlagSelect } from '@/components/bm-flag-picker'
+import ComboBox from '@/components/combo-box/combo-box'
 import type { ComboBoxOption } from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
+import { LOADING } from '@/components/combo-box/constants.ts'
 import { DiscordMemberSelect, DiscordRoleSelect } from '@/components/discord-picker'
 import LayerGenerationConfigEditor from '@/components/layer-generation-config-editor'
 import LayerTableConfigEditor from '@/components/layer-table-config-editor'
@@ -409,6 +411,11 @@ function PlayerGroupingsField({ value$, reset$, onChange }: OverrideProps) {
 	const value = (useFieldValue(value$, reset$) as PlayerGroupingsValue) ?? {}
 	const groupingIds = Object.keys(value)
 	const orgFlags = BattlemetricsClient.useOrgFlags()
+	// the union across running servers -- fetched once here rather than per rule row
+	const adminGroupsQuery = useQuery(RPC.orpc.squadServer.listAdminListGroups.queryOptions({ staleTime: 60_000 }))
+	const adminGroupOptions: ComboBoxOption<string>[] | typeof LOADING = adminGroupsQuery.data
+		? adminGroupsQuery.data.map((name) => ({ value: name, label: name }))
+		: LOADING
 
 	// `quiet` skips reset$: use it for edits driven by an uncontrolled input (the group name), where re-emitting would
 	// clobber an in-flight keystroke. Structural edits leave it off so inputs re-seed after re-indexing.
@@ -457,6 +464,7 @@ function PlayerGroupingsField({ value$, reset$, onChange }: OverrideProps) {
 					value$={scopeValue(value$, id)}
 					reset$={reset$}
 					orgFlags={orgFlags}
+					adminGroupOptions={adminGroupOptions}
 					onUpdate={updateGrouping}
 					onRemove={removeGrouping}
 				/>
@@ -491,33 +499,66 @@ function RuleDropSeparator({ position, groupingId, idx }: { position: 'before' |
 }
 
 function RuleRow(
-	{ rule, idx, groupingId, usedFlags, value$, reset$, onChange, onRemove }: {
+	{ rule, idx, groupingId, usedFlags, usedAdminGroups, adminGroupOptions, value$, reset$, onReplace, onChange, onRemove }: {
 		rule: PG.GroupRule
 		idx: number
 		groupingId: string
 		usedFlags: string[]
+		usedAdminGroups: string[]
+		adminGroupOptions: ComboBoxOption<string>[] | typeof LOADING
 		value$: ValueState
 		reset$: Rx.Subject<void>
+		onReplace: (idx: number, rule: PG.GroupRule) => void
 		onChange: (idx: number, patch: Partial<PG.GroupRule>, quiet?: boolean) => void
 		onRemove: () => void
 	},
 ) {
 	const drag = DndKit.useDraggable({ type: 'grouping-rule', id: ruleDragId(groupingId, idx) }, { feedback: 'default' })
+	// switching source discards the old source's field: the variants share only `group`, and a stale `flag` sitting on an
+	// admin-list rule would be written straight back out again
+	function setSource(type: PG.GroupRuleSource) {
+		if (type === rule.type) return
+		onReplace(idx, type === 'battlemetrics' ? { type, flag: '', group: rule.group } : { type, adminGroup: '', group: rule.group })
+	}
 	return (
 		<li
 			ref={drag.ref}
 			data-dragging={drag.isDragging}
-			className="grid grid-cols-[auto_1.5rem_minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md bg-background data-[dragging=true]:opacity-40"
+			className="grid grid-cols-[auto_1.5rem_7rem_minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md bg-background data-[dragging=true]:opacity-40"
 		>
 			<button type="button" ref={drag.handleRef} className="cursor-grab rounded text-muted-foreground" aria-label="Drag to reorder">
 				<Icons.GripVertical className="h-4 w-4" />
 			</button>
 			<span className="text-xs tabular-nums text-muted-foreground">{idx + 1}.</span>
-			<BmFlagSelect
-				value={rule.flag || undefined}
-				exclude={usedFlags}
-				onChange={(flag) => onChange(idx, { flag })}
-			/>
+			<Select value={rule.type} onValueChange={(next) => setSource(next as PG.GroupRuleSource)}>
+				<SelectTrigger className="h-8" aria-label="Rule source">
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent>
+					{PG.GROUP_RULE_SOURCES.map((source) => <SelectItem key={source} value={source}>{PG.GROUP_RULE_SOURCE_LABELS[source]}
+					</SelectItem>)}
+				</SelectContent>
+			</Select>
+			{rule.type === 'battlemetrics'
+				? (
+					<BmFlagSelect
+						value={rule.flag || undefined}
+						exclude={usedFlags}
+						onChange={(flag) => onChange(idx, { flag })}
+					/>
+				)
+				: (
+					<ComboBox
+						title="Admin group"
+						value={rule.adminGroup || undefined}
+						options={adminGroupOptions === LOADING
+							? LOADING
+							: adminGroupOptions.filter((o) => o.value === rule.adminGroup || !usedAdminGroups.includes(o.value))}
+						onSelect={(adminGroup) => {
+							if (adminGroup) onChange(idx, { adminGroup })
+						}}
+					/>
+				)}
 			<Icons.ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
 			<TextInputField
 				value$={scopeValue(scopeValue(scopeValue(value$, 'rules'), idx), 'group')}
@@ -541,12 +582,13 @@ function RuleRow(
 }
 
 function GroupingCard(
-	{ groupingId, grouping, value$, reset$, orgFlags, onUpdate, onRemove }: {
+	{ groupingId, grouping, value$, reset$, orgFlags, adminGroupOptions, onUpdate, onRemove }: {
 		groupingId: string
 		grouping: PG.Grouping
 		value$: ValueState
 		reset$: Rx.Subject<void>
 		orgFlags: BM.PlayerFlag[] | undefined
+		adminGroupOptions: ComboBoxOption<string>[] | typeof LOADING
 		onUpdate: (id: string, fn: (g: PG.Grouping) => PG.Grouping, quiet?: boolean) => void
 		onRemove: (id: string) => void
 	},
@@ -556,7 +598,10 @@ function GroupingCard(
 	const groupNames = PG.getGroupNames(grouping).filter(Boolean)
 
 	function changeRule(idx: number, patch: Partial<PG.GroupRule>, quiet?: boolean) {
-		onUpdate(groupingId, (g) => ({ ...g, rules: g.rules.map((r, i) => i === idx ? { ...r, ...patch } : r) }), quiet)
+		onUpdate(groupingId, (g) => ({ ...g, rules: g.rules.map((r, i) => i === idx ? { ...r, ...patch } as PG.GroupRule : r) }), quiet)
+	}
+	function replaceRule(idx: number, rule: PG.GroupRule) {
+		onUpdate(groupingId, (g) => ({ ...g, rules: g.rules.map((r, i) => i === idx ? rule : r) }))
 	}
 	function addRule() {
 		onUpdate(groupingId, (g) => ({ ...g, rules: [...g.rules, { type: 'battlemetrics', flag: '', group: '' }] }))
@@ -621,9 +666,12 @@ function GroupingCard(
 								rule={rule}
 								idx={idx}
 								groupingId={groupingId}
-								usedFlags={rules.map((r) => r.flag)}
+								usedFlags={rules.flatMap((r) => r.type === 'battlemetrics' ? [r.flag] : [])}
+								usedAdminGroups={rules.flatMap((r) => r.type === 'admin-list' ? [r.adminGroup] : [])}
+								adminGroupOptions={adminGroupOptions}
 								value$={value$}
 								reset$={reset$}
+								onReplace={replaceRule}
 								onChange={changeRule}
 								onRemove={() => removeRule(idx)}
 							/>

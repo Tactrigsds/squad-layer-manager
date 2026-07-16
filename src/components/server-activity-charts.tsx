@@ -269,17 +269,16 @@ export function ServerActivityCharts(props: {
 
 		const chartPlayers = slsOnly ? livePlayers.filter(p => p.isLeader) : livePlayers
 
-		// Build [eosId, flags[]] pairs for all live players — bmData is keyed by EOS ID
-		const playerFlagPairs: [SM.PlayerId, BM.PlayerFlag[]][] = chartPlayers
+		// Build [eosId, facts] pairs for all live players -- bmData is keyed by EOS ID
+		const playerFacts: [SM.PlayerId, PG.PlayerFacts][] = chartPlayers
 			.filter(p => p.ids.eos != null)
 			.map(p => {
 				const eosId = p.ids.eos!
 				const flagIds = bmData[eosId]?.flagIds ?? []
-				const flags = orgFlags ? BM.resolveFlags(flagIds, orgFlags) : []
-				return [eosId, flags]
+				return [eosId, { flags: orgFlags ? BM.resolveFlags(flagIds, orgFlags) : [], adminGroups: p.adminGroups }]
 			})
 
-		const playerGroups = PG.resolvePlayerGroups(playerFlagPairs, playerGroupings, activeGroupingId)
+		const playerGroups = PG.resolvePlayerGroups(playerFacts, playerGroupings, activeGroupingId)
 
 		// Count per group per team, with "Other" for unmatched players
 		// Group names are unique within a grouping, so we can use a Map for O(1) lookup

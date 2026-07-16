@@ -3,16 +3,39 @@ import type * as BM from '@/models/battlemetrics.models'
 import type * as SM from '@/models/squad.models'
 import { z } from 'zod'
 
-// A rule assigns players matching one source-specific attribute to a group. Battlemetrics flags are the only
-// source today; the discriminator is what lets another source be added without reshaping a grouping.
+// A rule assigns players matching one source-specific attribute to a group. Sources are independent: rules from
+// different ones sit in the same priority order and a grouping may mix them freely.
 export const GroupRuleSchema = z.discriminatedUnion('type', [
+	// a flag on the player's battlemetrics profile
 	z.object({
 		type: z.literal('battlemetrics'),
 		flag: z.string(),
 		group: z.string().trim().min(1),
 	}),
+	// membership of a group in the server's admin list (`Group=<adminGroup>:<perms>`). Not every admin-list group makes
+	// its members admins -- a reserve-slot group like Whitelist is exactly the sort of thing worth grouping on.
+	z.object({
+		type: z.literal('admin-list'),
+		adminGroup: z.string().trim().min(1),
+		group: z.string().trim().min(1),
+	}),
 ])
 export type GroupRule = z.infer<typeof GroupRuleSchema>
+export type GroupRuleSource = GroupRule['type']
+
+export const GROUP_RULE_SOURCES: GroupRuleSource[] = ['battlemetrics', 'admin-list']
+
+export const GROUP_RULE_SOURCE_LABELS: Record<GroupRuleSource, string> = {
+	'battlemetrics': 'BM flag',
+	'admin-list': 'Admin group',
+}
+
+// What a rule matches against. Sourced per player and per server: the admin list is the server's own, so the same
+// grouping can put a player in different groups on different servers, which is the point of it being server config.
+export type PlayerFacts = {
+	flags: BM.PlayerFlag[]
+	adminGroups: string[]
+}
 
 // A group's color either follows one of its own flags -- so a recolour in battlemetrics reaches the UI without anyone
 // editing settings -- or is pinned to a literal. The `flag` variant stores only the reference, never a copy of the color.
@@ -65,10 +88,12 @@ export function getGroupNames(grouping: Grouping): string[] {
 }
 
 // The flags a group's color may follow: those of the rules that put players in it. A group's look should come from
-// something that actually defines it, so flags belonging to other groups are not offered.
+// something that actually defines it, so flags belonging to other groups are not offered. A group defined only by
+// admin-list rules has none, and takes a custom color instead -- an admin list carries no colors to follow.
 export function getGroupFlags(grouping: Grouping, group: string): string[] {
 	const flags: string[] = []
 	for (const rule of grouping.rules) {
+		if (rule.type !== 'battlemetrics') continue
 		if (rule.group === group && rule.flag && !flags.includes(rule.flag)) flags.push(rule.flag)
 	}
 	return flags
@@ -114,25 +139,27 @@ export function defaultGroupColor(grouping: Grouping, group: string, orgFlags: B
 	return undefined
 }
 
-function matchesRule(rule: GroupRule, flags: BM.PlayerFlag[]): boolean {
+function matchesRule(rule: GroupRule, facts: PlayerFacts): boolean {
 	switch (rule.type) {
 		case 'battlemetrics':
-			return flags.some(f => f.id === rule.flag)
+			return facts.flags.some(f => f.id === rule.flag)
+		case 'admin-list':
+			return facts.adminGroups.includes(rule.adminGroup)
 		default:
-			return assertNever(rule.type)
+			return assertNever(rule)
 	}
 }
 
 // the group a player belongs to under `grouping`, or undefined when no rule matches
-export function resolveGroup(grouping: Grouping, flags: BM.PlayerFlag[]): string | undefined {
+export function resolveGroup(grouping: Grouping, facts: PlayerFacts): string | undefined {
 	for (const rule of grouping.rules) {
-		if (matchesRule(rule, flags)) return rule.group
+		if (matchesRule(rule, facts)) return rule.group
 	}
 	return undefined
 }
 
 export function resolvePlayerGroups(
-	players: [SM.PlayerId, BM.PlayerFlag[]][],
+	players: [SM.PlayerId, PlayerFacts][],
 	groupings: PlayerGroupings,
 	groupingId: string | null | undefined,
 ): Map<SM.PlayerId, string> {
@@ -141,8 +168,8 @@ export function resolvePlayerGroups(
 	const grouping = groupings[groupingId]
 	if (!grouping) return groups
 
-	for (const [playerId, flags] of players) {
-		const group = resolveGroup(grouping, flags)
+	for (const [playerId, facts] of players) {
+		const group = resolveGroup(grouping, facts)
 		if (group !== undefined) groups.set(playerId, group)
 	}
 	return groups
