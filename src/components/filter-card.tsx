@@ -296,6 +296,7 @@ function BlockNodeControlPanel(props: NodeProps) {
 			<InlineAddButton
 				actions={[
 					{ label: 'comparison', onSelect: () => addChild('eq') },
+					{ label: 'matchup', onSelect: () => addChild('allow-matchups') },
 					{ label: 'apply existing filter', onSelect: () => addChild('included-in') },
 					'separator',
 					...F.BLOCK_TYPES.map((t): InlineAddAction => ({
@@ -414,6 +415,14 @@ export function LeafFilterNode(props: NodeProps) {
 		return (
 			<NodeWrapper path={nodePath} className="flex items-center space-x-1" nodeId={props.nodeId}>
 				<CompNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
+				{opCluster}
+			</NodeWrapper>
+		)
+	}
+	if (F.isMatchupNode(node)) {
+		return (
+			<NodeWrapper path={nodePath} className="flex items-center space-x-1" nodeId={props.nodeId}>
+				<MatchupNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
 				{opCluster}
 			</NodeWrapper>
 		)
@@ -1057,6 +1066,9 @@ function StringInConfig(
 		className?: string
 		ref?: React.ForwardedRef<ComboBoxHandle>
 		restrictValueSize?: boolean
+		// matchup dimensions title themselves by dimension ('Faction'), not by the underlying column ('T1')
+		title?: string
+		emptyLabel?: string
 	},
 ) {
 	const options = React.useMemo(() => {
@@ -1074,7 +1086,8 @@ function StringInConfig(
 	}, [props.column, props.allowedValues])
 	return (
 		<ComboBoxMulti
-			title={LC.getColumnDef(props.column)?.displayName ?? props.column}
+			title={props.title ?? LC.getColumnDef(props.column)?.displayName ?? props.column}
+			emptyLabel={props.emptyLabel}
 			ref={props.ref}
 			values={props.values}
 			options={options}
@@ -1082,6 +1095,96 @@ function StringInConfig(
 			className={props.className}
 			restrictValueSize={props.restrictValueSize}
 		/>
+	)
+}
+
+// One side of a matchup: a multi-select per team dimension. Empty means "any", so the placeholder says
+// so rather than prompting for a selection -- an unfilled dimension is a real choice here, not a
+// half-finished one.
+function TeamSpecConfig(props: {
+	label: string
+	spec: F.MatchupTeamSpec
+	setValues: (column: F.TeamColumn, values: F.Value[]) => void
+}) {
+	return (
+		<div className="flex flex-col space-y-1 rounded border border-dashed px-2 py-1.5">
+			<span className="text-xs font-semibold text-muted-foreground">{props.label}</span>
+			{F.TEAM_COLUMNS.map((teamColumn) => (
+				<StringInConfig
+					key={teamColumn}
+					title={teamColumn}
+					emptyLabel={`any ${teamColumn.toLowerCase()}`}
+					// a floor, not a fixed width: the three dimensions line up when empty, but a filled one
+					// grows to its selection (all four alliances need ~270px) instead of truncating at 180.
+					// restrictValueSize still caps it at 400px, so a big faction selection can't run away
+					className="min-w-[180px]"
+					restrictValueSize
+					// both teams' columns share an enum mapping, so team 1's value list serves either side
+					column={F.resolveTeamColumn(teamColumn, 1) as LC.GroupByColumn}
+					values={(props.spec[teamColumn] ?? []) as (string | null)[]}
+					setValues={(update) => {
+						const prev = (props.spec[teamColumn] ?? []) as (string | null)[]
+						const next = typeof update === 'function' ? update(prev) : update
+						props.setValues(teamColumn, next as F.Value[])
+					}}
+				/>
+			))}
+		</div>
+	)
+}
+
+function MatchupNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node: F.EditableMatchupNode }) {
+	const node = props.node
+	const actions = EditFrame.getNodeActions(props.stores, props.nodeId).matchup
+	// unlocked, the specs are not pinned to the _1/_2 columns, so naming them "Team 1"/"Team 2" would
+	// misdescribe what the node matches. "Team A"/"Team B" are not available either: those already mean
+	// the normalized teams that persist across the team1/team2 swap (see MH.NormedTeamId and the
+	// displayTeamsNormalized setting), which is a different idea entirely -- and that setting toggles
+	// between those very labels, so reusing them here would read as driving it.
+	const [leftLabel, rightLabel] = node.locked ? ['Team 1', 'Team 2'] : ['One side', 'Other side']
+	return (
+		<div className="flex items-center space-x-2">
+			<ComboBox
+				allowEmpty={false}
+				className="w-min"
+				title="Operator"
+				value={node.type}
+				options={F.MATCHUP_TYPES.map((t) => ({ value: t, label: F.MATCHUP_TYPE_DISPLAY_NAMES[t] }))}
+				onSelect={(v) => actions.setType(v as F.MatchupType)}
+			/>
+			<TeamSpecConfig label={leftLabel} spec={node.teams[0]} setValues={(col, values) => actions.setTeamValues(0, col, values)} />
+			<div className="flex flex-col items-center space-y-1">
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button size="icon" variant="ghost" onClick={() => actions.swapTeams()}>
+							<Icons.ArrowLeftRight />
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent>Swap the two sides</TooltipContent>
+				</Tooltip>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							size="icon"
+							variant={node.locked ? 'secondary' : 'ghost'}
+							aria-pressed={node.locked}
+							onClick={() => actions.setLocked(!node.locked)}
+						>
+							{node.locked ? <Icons.Lock /> : <Icons.LockOpen />}
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent>
+						{node.locked
+							? 'Team order locked: matches only as configured, left on team 1 and right on team 2. Click to allow either order.'
+							: 'Either team order matches: the two sides are interchangeable. Click to lock them to team 1 and team 2.'}
+					</TooltipContent>
+				</Tooltip>
+				<span className="whitespace-nowrap text-[10px] text-muted-foreground">
+					{node.locked ? 'order locked' : 'either order'}
+				</span>
+			</div>
+			<TeamSpecConfig label={rightLabel} spec={node.teams[1]} setValues={(col, values) => actions.setTeamValues(1, col, values)} />
+		</div>
 	)
 }
 

@@ -215,3 +215,11 @@ export async function buildUser(dbUser: Schema.User): Promise<USR.User> {
 export async function buildUsers(dbUsers: Schema.User[]): Promise<USR.User[]> {
 	return Promise.all(dbUsers.map(user => buildUser(user)))
 }
+
+// the single way to turn a user id into text for display. Goes through buildUser so callers get the same name the
+// GUI shows (nickname > guild display name > global name > username), rather than each site reimplementing a subset.
+export async function resolveDisplayName(ctx: C.Db, userId: USR.UserId, fallback = 'An admin'): Promise<string> {
+	const [dbUser] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, userId)).limit(1)
+	if (!dbUser) return fallback
+	return (await buildUser(dbUser)).displayName
+}

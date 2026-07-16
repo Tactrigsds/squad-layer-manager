@@ -53,6 +53,7 @@ import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as TeamswapsSys from '@/systems/teamswaps.server'
 import * as Timeouts from '@/systems/timeouts.server'
+import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
 import * as WsSessionSys from '@/systems/ws-session.server'
 import * as Orpc from '@orpc/server'
@@ -1079,7 +1080,10 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	})
 	log.info('Initialized server %s', serverId)
 	if (Settings.GLOBAL_SETTINGS.warnOnSlmStart) {
-		await SquadRcon.warnAllAdmins({ ...ctx, ...slice }, Messages.WARNS.slmStarted(AppEventsSys.restartInfo?.name))
+		const restartedBy = AppEventsSys.restartInfo
+			? await Users.resolveDisplayName(ctx, AppEventsSys.restartInfo.userId, 'someone')
+			: undefined
+		await SquadRcon.warnAllAdmins({ ...ctx, ...slice }, Messages.WARNS.slmStarted(restartedBy))
 	}
 }
 
@@ -1157,11 +1161,7 @@ export async function notifyAdminsOfWebAction(
 	description?: string,
 ) {
 	if (appEvent.actor.type !== 'slm-user') return
-	const [user] = await ctx.db()
-		.select({ nickname: Schema.users.nickname, username: Schema.users.username })
-		.from(Schema.users)
-		.where(E.eq(Schema.users.discordId, appEvent.actor.userId))
-	const name = user?.nickname || user?.username || 'An admin'
+	const name = await Users.resolveDisplayName(ctx, appEvent.actor.userId)
 	await SquadRcon.warnAllAdmins(ctx, `${name} ${description ?? AppEvents.describeAppEvent(appEvent)}`)
 }
 

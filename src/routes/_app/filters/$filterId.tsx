@@ -99,13 +99,13 @@ function RouteComponent() {
 						case 'add':
 							break
 						case 'update': {
-							if (mutation.username === loggedInUser?.username) return
-							toast(`Filter ${mutation.value.name} was updated by ${mutation.displayName}`)
+							if (mutation.userId === loggedInUser?.discordId) return
+							toast(`Filter ${mutation.value.name} was updated by ${await UsersClient.fetchDisplayName(mutation.userId)}`)
 							break
 						}
 						case 'delete': {
-							if (mutation.username === loggedInUser?.username) return
-							toast(`Filter ${mutation.value.name} was deleted by ${mutation.displayName}`)
+							if (mutation.userId === loggedInUser?.discordId) return
+							toast(`Filter ${mutation.value.name} was deleted by ${await UsersClient.fetchDisplayName(mutation.userId)}`)
 							void rootRouter.navigate({ to: '/filters' })
 							break
 						}

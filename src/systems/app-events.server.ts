@@ -1,5 +1,6 @@
 import * as Schema from '$root/drizzle/schema'
 import * as AppEvents from '@/models/app-events.models'
+import type * as USR from '@/models/users.models'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
@@ -22,8 +23,8 @@ export async function persistAppEvent(ctx: C.Db, appEvent: AppEvents.AppEvent) {
 
 // set once at boot (before this instance's APP_STARTED is persisted): the user who restarted SLM, if this boot
 // followed a restart-slm command, else null. A restart is detected when the most recent APP_RESTARTED is newer than
-// the previous instance's APP_STARTED. Read by the "SLM started/restarted" admin warn.
-export let restartInfo: { userId: bigint; name: string } | null = null
+// the previous instance's APP_STARTED. Read by the "SLM started/restarted" admin warn, which resolves the display name.
+export let restartInfo: { userId: USR.UserId } | null = null
 
 export async function detectRestartAtBoot(ctx: C.Db) {
 	// the instance that ran immediately before this one (our own APP_STARTED isn't persisted yet at this point)
@@ -41,9 +42,7 @@ export async function detectRestartAtBoot(ctx: C.Db) {
 		restartInfo = null
 		return
 	}
-	const [user] = await ctx.db().select({ username: Schema.users.username, nickname: Schema.users.nickname })
-		.from(Schema.users).where(E.eq(Schema.users.discordId, restart.actorUserId)).limit(1)
-	restartInfo = { userId: restart.actorUserId, name: user?.nickname ?? user?.username ?? 'someone' }
+	restartInfo = { userId: restart.actorUserId }
 }
 
 export const router = {
