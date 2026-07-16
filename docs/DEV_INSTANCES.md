@@ -47,10 +47,25 @@ Two safety properties, both of which the script enforces rather than assumes:
   cloning from a main checkout that is running the app is safe, and the clone still contains everything
   committed as of the snapshot. (A plain `cp` would be wrong twice over: it omits the `-wal`, so the clone
   silently loses recent writes, and it tears across concurrent ones.)
-- **The destination is never yanked out from under a running app.** The clone unlinks and replaces the target
-  file, so the script refuses if anything has it open. Note that "has it open" is not the same as "holds the
-  write lock": an app that happens to be idle holds no write lock, so the check takes an _exclusive_ lock,
-  which conflicts with any other connection.
+- **The destination is never swapped out from under a running app.** This is the half that needs care, and
+  not for a reason WAL covers. WAL coordinates concurrent _connections_ to a database; replacing the file
+  happens behind SQLite's back, where its locking has no say. An app left holding the unlinked file goes on
+  writing to it — successfully, and into nothing, since the inode has no name any more — while serving reads
+  from a database that is no longer on disk. Nothing errors. So the script takes an _exclusive_ lock and
+  holds it from before the snapshot until after the rename: an app that boots into that window fails loudly
+  on `SQLITE_BUSY` rather than becoming a ghost.
+
+  Note that "has it open" is not the same as "holds the write lock". An app that happens to be idle holds no
+  write lock, so a `BEGIN IMMEDIATE` probe succeeds against it and would pass exactly when it matters most.
+
+The `-wal` is deleted with the file it belongs to, before the replacement takes the name. Left behind, it is
+replayed over the new database as though it described it, and the reader silently sees the _old_ database's
+contents — with `integrity_check` reporting `ok`, so nothing anywhere reports a problem.
+
+For contrast, `pnpm db:migrate` against a running app is a different and much milder case, because it writes
+_through_ SQLite rather than around it: WAL serializes it, a racing write gets `SQLITE_BUSY` instead of being
+lost, and the app re-prepares its statements against the new schema by itself. The worst case there is loud
+errors from app code that disagrees with the schema, not silent loss.
 
 No connection that reaches a real squad server survives a clone. The source's rows hold live RCON hosts and
 passwords, and a merely-disabled row would keep them one settings-page toggle away from a dev instance
