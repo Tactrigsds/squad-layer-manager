@@ -370,34 +370,24 @@ function FlagMultiSelectField({ value$, reset$, onChange }: OverrideProps) {
 
 type PlayerGroupingsValue = Record<string, PG.Grouping | undefined>
 
-// A group's color is seeded from the flag of the first rule naming it, so picking flags is usually all an operator has to
-// do. An entry that already exists is never re-derived -- an explicit color would otherwise be undone by a flag change.
+// A group's color defaults to a reference to the first of its flags that has one, so picking flags is usually all an
+// operator has to do and the color keeps tracking battlemetrics afterwards. An entry that already exists is left alone.
 // Half-finished rules must not leave an entry behind: a placeholder written before a flag is picked would count as
-// existing and block the seeding it is standing in for.
+// existing and block the seeding it is standing in for. A reference to a flag the group no longer carries is dropped
+// rather than kept, since the picker would not offer that flag any more.
 function syncedGroups(grouping: PG.Grouping, orgFlags: BM.PlayerFlag[] | undefined): Record<string, PG.Group> {
 	const groups: Record<string, PG.Group> = {}
 	for (const rule of grouping.rules) {
 		if (!rule.group || groups[rule.group]) continue
 		const existing = grouping.groups?.[rule.group]
-		if (existing) {
+		if (existing && (existing.color.type === 'custom' || PG.getGroupFlags(grouping, rule.group).includes(existing.color.flag))) {
 			groups[rule.group] = existing
 			continue
 		}
-		const derived = derivedGroupColor(grouping, rule.group, orgFlags)
+		const derived = PG.defaultGroupColor(grouping, rule.group, orgFlags)
 		if (derived) groups[rule.group] = { color: derived }
 	}
 	return groups
-}
-
-// undefined until some flag of the group actually carries a color -- callers leave the entry out rather than pinning a
-// placeholder, so `getGroupColor`'s fallback covers the gap and a later flag pick can still seed it.
-function derivedGroupColor(grouping: PG.Grouping, group: string, orgFlags: BM.PlayerFlag[] | undefined): string | undefined {
-	for (const rule of grouping.rules) {
-		if (rule.group !== group) continue
-		const color = orgFlags?.find((f) => f.id === rule.flag)?.color
-		if (color) return color
-	}
-	return undefined
 }
 
 // bespoke editor for `playerGroupings`. Each grouping is an ordered rule list (first match wins), so priority is row
@@ -513,15 +503,9 @@ function GroupingCard(
 			return { ...g, rules: next }
 		})
 	}
-	function setGroupColor(group: string, color: string) {
-		onUpdate(groupingId, (g) => ({ ...g, groups: { ...g.groups, [group]: { color } } }), true)
-	}
-	function resetGroupColor(group: string) {
-		onUpdate(groupingId, (g) => {
-			const groups = { ...g.groups }
-			delete groups[group]
-			return { ...g, groups }
-		})
+	// `quiet` for the custom-color text field only, so an in-flight keystroke is not clobbered
+	function setGroupColor(group: string, color: PG.GroupColor, quiet?: boolean) {
+		onUpdate(groupingId, (g) => ({ ...g, groups: { ...g.groups, [group]: { color } } }), quiet)
 	}
 
 	return (
@@ -607,33 +591,31 @@ function GroupingCard(
 			{groupNames.length > 0 && (
 				<details>
 					<summary className="cursor-pointer text-xs text-muted-foreground">Colors ({groupNames.length})</summary>
+					<p className="mt-1 text-xs text-muted-foreground">
+						Following a flag keeps the color in step with battlemetrics; a custom color stays put.
+					</p>
 					<ul className="mt-1.5 space-y-1">
 						{groupNames.map((group) => {
-							const color = PG.getGroupColor(grouping, group)
-							const isDerived = !grouping.groups?.[group]
+							const color = grouping.groups?.[group]?.color
+							const resolved = PG.getGroupColor(grouping, group, orgFlags)
 							return (
-								<li key={group} className="flex items-center gap-2">
-									<span className="h-5 w-5 shrink-0 rounded border" style={{ backgroundColor: color }} />
-									<span className="min-w-0 flex-1 truncate text-xs">{group}</span>
-									<Input
-										key={`${group}:${color}`}
-										className="h-8 w-28 font-mono"
-										placeholder={PG.DEFAULT_GROUP_COLOR}
-										defaultValue={color}
-										onChange={(e) => setGroupColor(group, e.target.value)}
+								<li key={group} className="grid grid-cols-[1.25rem_minmax(0,8rem)_minmax(0,1fr)_auto_7rem] items-center gap-2">
+									<span className="h-5 w-5 shrink-0 rounded border" style={{ backgroundColor: resolved }} />
+									<span className="min-w-0 truncate text-xs" title={group}>{group}</span>
+									<BmFlagSelect
+										title="Color from flag"
+										value={color?.type === 'flag' ? color.flag : undefined}
+										only={PG.getGroupFlags(grouping, group)}
+										onChange={(flag) => setGroupColor(group, { type: 'flag', flag })}
 									/>
-									<Button
-										type="button"
-										size="icon"
-										variant="ghost"
-										className="h-6 w-6"
-										disabled={isDerived}
-										title="Take the color from this group's first flag"
-										aria-label={`Reset color for ${group}`}
-										onClick={() => resetGroupColor(group)}
-									>
-										<Icons.RotateCcw className="h-3.5 w-3.5" />
-									</Button>
+									<span className="text-xs text-muted-foreground">or</span>
+									<Input
+										key={`${group}:${color?.type === 'custom' ? color.color : ''}`}
+										className="h-8 font-mono"
+										placeholder="#rrggbb"
+										defaultValue={color?.type === 'custom' ? color.color : ''}
+										onChange={(e) => setGroupColor(group, { type: 'custom', color: e.target.value }, true)}
+									/>
 								</li>
 							)
 						})}

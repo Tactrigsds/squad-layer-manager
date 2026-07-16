@@ -14,9 +14,17 @@ export const GroupRuleSchema = z.discriminatedUnion('type', [
 ])
 export type GroupRule = z.infer<typeof GroupRuleSchema>
 
+// A group's color either follows one of its own flags -- so a recolour in battlemetrics reaches the UI without anyone
+// editing settings -- or is pinned to a literal. The `flag` variant stores only the reference, never a copy of the color.
+export const GroupColorSchema = z.discriminatedUnion('type', [
+	z.object({ type: z.literal('flag'), flag: z.string() }),
+	z.object({ type: z.literal('custom'), color: z.string() }),
+])
+export type GroupColor = z.infer<typeof GroupColorSchema>
+
 // Presentation for a group. Group membership comes from the rules, so nothing here can affect who lands where.
 export const GroupSchema = z.object({
-	color: z.string(),
+	color: GroupColorSchema,
 })
 export type Group = z.infer<typeof GroupSchema>
 
@@ -56,8 +64,40 @@ export function getGroupNames(grouping: Grouping): string[] {
 	return names
 }
 
-export function getGroupColor(grouping: Grouping, group: string): string {
-	return grouping.groups[group]?.color ?? DEFAULT_GROUP_COLOR
+// The flags a group's color may follow: those of the rules that put players in it. A group's look should come from
+// something that actually defines it, so flags belonging to other groups are not offered.
+export function getGroupFlags(grouping: Grouping, group: string): string[] {
+	const flags: string[] = []
+	for (const rule of grouping.rules) {
+		if (rule.group === group && rule.flag && !flags.includes(rule.flag)) flags.push(rule.flag)
+	}
+	return flags
+}
+
+// The one place the flag-color reference is followed. Falls back when the flag is gone from the org or carries no
+// color of its own, so a stale reference degrades to the default rather than breaking the render.
+export function resolveGroupColor(color: GroupColor | undefined, orgFlags: BM.PlayerFlag[] | undefined): string {
+	if (!color) return DEFAULT_GROUP_COLOR
+	switch (color.type) {
+		case 'flag':
+			return orgFlags?.find(f => f.id === color.flag)?.color ?? DEFAULT_GROUP_COLOR
+		case 'custom':
+			return color.color
+		default:
+			return assertNever(color)
+	}
+}
+
+export function getGroupColor(grouping: Grouping, group: string, orgFlags: BM.PlayerFlag[] | undefined): string {
+	return resolveGroupColor(grouping.groups[group]?.color, orgFlags)
+}
+
+// the color a group takes when nothing is configured for it: the first of its own flags that has one
+export function defaultGroupColor(grouping: Grouping, group: string, orgFlags: BM.PlayerFlag[] | undefined): GroupColor | undefined {
+	for (const flag of getGroupFlags(grouping, group)) {
+		if (orgFlags?.find(f => f.id === flag)?.color) return { type: 'flag', flag }
+	}
+	return undefined
 }
 
 function matchesRule(rule: GroupRule, flags: BM.PlayerFlag[]): boolean {

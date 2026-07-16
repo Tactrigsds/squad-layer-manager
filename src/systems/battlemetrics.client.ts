@@ -67,6 +67,7 @@ export function usePlayerProfile(playerId: string) {
 // the color of the group this player falls into under the active grouping, or null when nothing matches
 export function usePlayerGroupColor(playerId: string): string | null {
 	const flags = usePlayerFlags(playerId)
+	const orgFlags = useOrgFlags()
 	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
 	const playerGroupings = config?.playerGroupings
 	const groupingIds = playerGroupings ? PG.getGroupingIds(playerGroupings) : []
@@ -76,7 +77,7 @@ export function usePlayerGroupColor(playerId: string): string | null {
 	const grouping = playerGroupings[activeGroupingId]
 	if (!grouping) return null
 	const group = PG.resolveGroup(grouping, flags)
-	return group === undefined ? null : PG.getGroupColor(grouping, group)
+	return group === undefined ? null : PG.getGroupColor(grouping, group, orgFlags)
 }
 
 export function setup() {
