@@ -109,6 +109,7 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 	}, [fullTableWidth])
 
 	const canSubmit = ZusUtils.useStore(frameKey, (s) => s.layerTable.selected.length > 0 && !submitted)
+	const showPoolCheckboxes = ZusUtils.useStore(frameKey, SelectLayersFrame.Sel.repeatRulesApplicable)
 
 	const submit = props.selectQueueItems
 		? () => {
@@ -160,7 +161,7 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 				<div className="flex flex-col space-y-2 justify-between h-full">
 					<div className="flex h-full">
 						<LayerTable
-							extraPanelItems={<PoolCheckboxes stores={{ poolCheckboxes: frameKey }} />}
+							extraPanelItems={showPoolCheckboxes ? <PoolCheckboxes stores={{ poolCheckboxes: frameKey }} /> : undefined}
 							stores={{ layerTable: frameKey }}
 							canChangeRowsPerPage={false}
 							canToggleColumns
