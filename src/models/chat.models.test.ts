@@ -336,6 +336,9 @@ describe('admin camera tracking', () => {
 	function unpossessed(player: SM.PlayerId, id: number): SE.UnpossessedAdminCamera {
 		return { type: 'UNPOSSESSED_ADMIN_CAMERA', id, time: id, matchId: 1, player }
 	}
+	function newGame(id: number, state: SM.UniqueTeams): SE.NewGame {
+		return { type: 'NEW_GAME', id, time: id, matchId: 2, source: 'server-roll', layerId: 'Harju_RAAS_v1', state }
+	}
 
 	it('tracks possess and unpossess', () => {
 		const state = seededState([makePlayer('a'), makePlayer('b')])
@@ -351,6 +354,24 @@ describe('admin camera tracking', () => {
 		const state = seededState([makePlayer('a')])
 		CHAT.handleEvent(state, possessed('a', 1))
 		CHAT.handleEvent(state, { type: 'PLAYER_DISCONNECTED', id: 2, time: 2, matchId: 1, player: 'a' })
+		expect(state.interpolatedState.adminCamPlayerIds).toEqual([])
+	})
+
+	// a legacy NEW_GAME carries a roster and swaps it wholesale, so a possessing player can be off the roster by the
+	// time their disconnect lands. the id has to go anyway, or it re-icons them when they reconnect.
+	it('drops a disconnecting player who is no longer on the roster', () => {
+		const state = seededState([makePlayer('a')])
+		CHAT.handleEvent(state, possessed('a', 1))
+		state.interpolatedState.players = []
+		CHAT.handleEvent(state, { type: 'PLAYER_DISCONNECTED', id: 2, time: 2, matchId: 1, player: 'a' })
+		expect(state.interpolatedState.adminCamPlayerIds).toEqual([])
+	})
+
+	// the legacy variant: a NEW_GAME carrying a roster that no longer has the possessing player on it
+	it('assumes nobody is in admin camera after a NEW_GAME', () => {
+		const state = seededState([makePlayer('a')])
+		CHAT.handleEvent(state, possessed('a', 1))
+		CHAT.handleEvent(state, newGame(2, { players: [makePlayer('b')], squads: [] }))
 		expect(state.interpolatedState.adminCamPlayerIds).toEqual([])
 	})
 

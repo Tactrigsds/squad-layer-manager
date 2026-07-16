@@ -440,10 +440,13 @@ function interpolateEvent(
 		case 'MAP_SET':
 		case 'NEW_GAME':
 		case 'RESET': {
-			if (event.type === 'NEW_GAME' || event.type === 'RESET') state.playerStats = {}
-			// RESET restates the roster from scratch and carries no admin camera information, so anyone we thought was
-			// in admin camera is no longer known to be
-			if (event.type === 'RESET') state.adminCamPlayerIds = []
+			// neither a match boundary nor a RESET carries admin camera information, so anyone we thought was in admin
+			// camera is no longer known to be. clearing on NEW_GAME too covers the legacy roster-carrying variant,
+			// which would otherwise swap a possessing player off the roster and strand their id here
+			if (event.type === 'NEW_GAME' || event.type === 'RESET') {
+				state.playerStats = {}
+				state.adminCamPlayerIds = []
+			}
 			applyEventTeamMutations(chatLog, state, event)
 			return event
 		}
@@ -473,12 +476,14 @@ function interpolateEvent(
 		}
 
 		case 'PLAYER_DISCONNECTED': {
+			// cleared before the roster lookup below: a disconnect for someone already off the roster still has to drop
+			// them from admin camera, or the id survives to the next RESET and re-icons them if they reconnect
+			state.adminCamPlayerIds = state.adminCamPlayerIds.filter(id => id !== event.player)
 			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.player)
 			if (index === -1) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} disconnected but was not found in the player list`)
 			}
 			const player = state.players[index]
-			state.adminCamPlayerIds = state.adminCamPlayerIds.filter(id => id !== event.player)
 			applyEventTeamMutations(chatLog, state, event)
 			return { ...event, player }
 		}
