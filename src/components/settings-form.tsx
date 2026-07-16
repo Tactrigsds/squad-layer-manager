@@ -7,6 +7,7 @@ import LayerTableConfigEditor from '@/components/layer-table-config-editor'
 import { GenerationPoolFiltersPanel, MainPoolFiltersPanel, RepeatRulesPanel } from '@/components/pool-config-panels'
 import type { PoolConfigApi } from '@/components/pool-config-panels.helpers'
 import { StickyGroup } from '@/components/sticky-group'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -22,7 +23,7 @@ import { useDebounced } from '@/hooks/use-debounce'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object'
 import type { SettingsGroup } from '@/lib/settings-groups'
-import { splitByGroups } from '@/lib/settings-groups'
+import { HIDDEN_GLOBAL_SETTINGS_KEYS, splitByGroups } from '@/lib/settings-groups'
 import { humanize, settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import * as Templating from '@/lib/templating'
@@ -30,6 +31,7 @@ import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as AAR from '@/models/admin-action-reasons.models'
 import type * as BM from '@/models/battlemetrics.models'
+import * as CMD from '@/models/command.models'
 import type * as LP from '@/models/labeled-presets.models'
 import * as LC from '@/models/layer-columns'
 import * as SETTINGS from '@/models/settings.models'
@@ -237,6 +239,10 @@ const FormOptionsContext = React.createContext<{ idPrefix: string }>({ idPrefix:
 // the whole settings document being edited, so a bespoke field can read a sibling it isn't scoped to (e.g. the admin
 // list sftp editor copying connection details from `connections.sftp`). Null when unset (e.g. tests).
 const RootValueContext = React.createContext<ValueState | null>(null)
+
+// the root document's onChange, so a bespoke field can write siblings it isn't scoped to. The command-prefix editor
+// uses it to propagate a prefix rename across every command string / timeout alias that uses that prefix.
+const RootOnChangeContext = React.createContext<((next: any) => void) | null>(null)
 
 // the user's write grant over the settings being edited; leaves outside it render dimmed + inert (see LeafField)
 const WRITE_ACCESS_ALL: RBAC.SettingsWriteAccess = { kind: 'all' }
@@ -496,6 +502,404 @@ function PlayerFlagGroupingsField({ value$, reset$, onChange }: OverrideProps) {
 		</div>
 	)
 }
+// -------- command prefixes editor --------
+
+// a small "?" affordance that reveals a longer explanation on hover, so compact editors can drop verbose inline descriptions
+function HelpTip({ text }: { text: string }) {
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Help">
+					<Icons.CircleHelp className="h-3.5 w-3.5" />
+				</button>
+			</TooltipTrigger>
+			<TooltipContent className="max-w-xs">{text}</TooltipContent>
+		</Tooltip>
+	)
+}
+
+// which allowed prefix an inline command string uses: the longest one it starts with (so "!!" wins over "!")
+function prefixUsedBy(str: string, prefixes: string[]): string | undefined {
+	let best: string | undefined
+	for (const p of prefixes) if (p && str.startsWith(p) && (best === undefined || p.length > best.length)) best = p
+	return best
+}
+
+// re-point an inline string from `oldPrefix` to `newPrefix`
+function repointPrefix(str: string, oldPrefix: string, newPrefix: string): string {
+	return newPrefix + str.slice(oldPrefix.length)
+}
+
+type CommandsMap = Record<string, { strings?: string[] } | undefined>
+type AliasList = { alias: string; command: string }[]
+
+function mapCommandStrings(commands: CommandsMap, fn: (s: string) => string): CommandsMap {
+	const out: CommandsMap = {}
+	for (const [id, cmd] of Object.entries(commands)) out[id] = { ...cmd, strings: (cmd?.strings ?? []).map(fn) }
+	return out
+}
+
+// the command string an alias's expansion starts with (its remaining words are arguments, which carry no prefix)
+function aliasCommandWord(command: string): string {
+	return command.trim().split(/\s+/)[0] ?? ''
+}
+
+// re-points the leading command string of an alias's expansion, leaving its arguments and spacing untouched
+function repointCommandText(command: string, oldPrefix: string, newPrefix: string, prefixes: string[]): string {
+	const match = /^(\s*)(\S+)([\s\S]*)$/.exec(command)
+	if (!match || prefixUsedBy(match[2], prefixes) !== oldPrefix) return command
+	return match[1] + repointPrefix(match[2], oldPrefix, newPrefix) + match[3]
+}
+
+// one editable prefix. The char input is committed on blur/Enter (not per keystroke) because committing propagates a
+// rewrite across every string using it; re-seeded by remounting (its key includes the committed value).
+function PrefixRow(
+	{ index, prefix, isDefault, usage, onCommit, onSetDefault, onRemove }: {
+		index: number
+		prefix: string
+		isDefault: boolean
+		usage: number
+		onCommit: (next: string) => void
+		onSetDefault: () => void
+		onRemove: () => void
+	},
+) {
+	const [draft, setDraft] = React.useState(prefix)
+	const invalid = !CMD.isValidPrefix(draft.trim())
+	// discard an invalid edit on blur (reverting to the committed value) rather than propagating a bad prefix into every string
+	const commit = () => {
+		const next = draft.trim()
+		if (!CMD.isValidPrefix(next)) {
+			setDraft(prefix)
+			return
+		}
+		onCommit(next)
+	}
+	const removable = !isDefault && usage === 0
+	return (
+		<div className="flex items-center gap-2 rounded-md border px-2 py-1.5">
+			<span className="text-xs text-muted-foreground tabular-nums">#{index + 1}</span>
+			<Input
+				aria-label={`Prefix ${index + 1}`}
+				className={cn('h-7 w-16 font-mono text-sm', invalid && 'border-destructive focus-visible:ring-destructive')}
+				title={invalid ? CMD.PREFIX_ERROR : undefined}
+				value={draft}
+				onChange={(e) => setDraft(e.target.value)}
+				onBlur={commit}
+				onKeyDown={(e) => {
+					if (e.key === 'Enter') {
+						e.preventDefault()
+						e.currentTarget.blur()
+					}
+				}}
+			/>
+			<label className="flex items-center gap-1 text-xs text-muted-foreground">
+				<input type="radio" checked={isDefault} onChange={onSetDefault} aria-label={`Make prefix ${index + 1} the default`} />
+				Default
+			</label>
+			<span className="whitespace-nowrap text-xs text-muted-foreground">{usage} {usage === 1 ? 'use' : 'uses'}</span>
+			<Button
+				type="button"
+				size="icon"
+				variant="ghost"
+				className="h-6 w-6 shrink-0 text-destructive disabled:opacity-40"
+				aria-label={`Remove prefix ${index + 1}`}
+				disabled={!removable}
+				title={isDefault ? 'The default prefix cannot be removed' : usage > 0 ? `${usage} strings still use this prefix` : undefined}
+				onClick={onRemove}
+			>
+				<Icons.X className="h-4 w-4" />
+			</Button>
+		</div>
+	)
+}
+
+// bespoke editor for `allowedPrefixes`: prefixes are numbered so they have their own identity. Editing a prefix's
+// characters propagates the change to every command string and timeout alias that uses it; one prefix is marked the
+// default (new commands seed from it); a prefix in use can't be removed. Reads/writes siblings via the root contexts.
+function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
+	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
+	const rootOnChange = React.useContext(RootOnChangeContext)
+	const root = (useFieldValue(root$, reset$) as
+		| { defaultPrefix?: string; commands?: CommandsMap; commandAliases?: AliasList }
+		| undefined) ?? {}
+	const prefixes = (useFieldValue(value$, reset$) as string[] | undefined) ?? []
+	const commands = root.commands ?? {}
+	const aliases = root.commandAliases ?? []
+	const defaultPrefix = root.defaultPrefix ?? prefixes[0] ?? ''
+
+	const [newPrefix, setNewPrefix] = React.useState('')
+
+	function writeRoot(patch: Record<string, unknown>) {
+		const cur = (root$.getValue() as Record<string, unknown>) ?? {}
+		rootOnChange?.({ ...cur, ...patch })
+		reset$.next()
+	}
+
+	// an alias counts twice over: once for the shortcut, once for the command string it expands to
+	function usageOf(prefix: string): number {
+		let n = 0
+		for (const cmd of Object.values(commands)) for (const s of cmd?.strings ?? []) if (prefixUsedBy(s, prefixes) === prefix) n++
+		for (const a of aliases) {
+			if (prefixUsedBy(a.alias, prefixes) === prefix) n++
+			if (prefixUsedBy(aliasCommandWord(a.command), prefixes) === prefix) n++
+		}
+		return n
+	}
+
+	function commitEdit(idx: number, next: string) {
+		const oldPrefix = prefixes[idx]
+		if (!next || next === oldPrefix || !CMD.isValidPrefix(next)) return
+		const nextPrefixes = prefixes.map((p, i) => (i === idx ? next : p))
+		// target by the OLD prefix list so longest-match stays stable while rewriting
+		const nextCommands = mapCommandStrings(
+			commands,
+			(s) => (prefixUsedBy(s, prefixes) === oldPrefix ? repointPrefix(s, oldPrefix, next) : s),
+		)
+		const nextAliases = aliases.map((a) => ({
+			...a,
+			alias: prefixUsedBy(a.alias, prefixes) === oldPrefix ? repointPrefix(a.alias, oldPrefix, next) : a.alias,
+			command: repointCommandText(a.command, oldPrefix, next, prefixes),
+		}))
+		writeRoot({
+			allowedPrefixes: nextPrefixes,
+			commands: nextCommands,
+			commandAliases: nextAliases,
+			defaultPrefix: defaultPrefix === oldPrefix ? next : defaultPrefix,
+		})
+	}
+
+	const newTrimmed = newPrefix.trim()
+	const newInvalid = newTrimmed !== '' && !CMD.isValidPrefix(newTrimmed)
+	const newDuplicate = newTrimmed !== '' && prefixes.includes(newTrimmed)
+	function addPrefix() {
+		if (!newTrimmed || newInvalid || newDuplicate) return
+		writeRoot({ allowedPrefixes: [...prefixes, newTrimmed] })
+		setNewPrefix('')
+	}
+
+	function removePrefix(idx: number) {
+		const p = prefixes[idx]
+		if (p === defaultPrefix || usageOf(p) > 0) return
+		writeRoot({ allowedPrefixes: prefixes.filter((_, i) => i !== idx) })
+	}
+
+	return (
+		<div className="space-y-2">
+			<p className="text-xs text-muted-foreground">
+				Editing a prefix updates every command string and alias that uses it. The default prefix seeds new commands.
+			</p>
+			<div className="flex flex-wrap items-center gap-3">
+				{prefixes.map((p, idx) => (
+					<PrefixRow
+						// key carries the committed value so the row's uncontrolled draft re-seeds on external change; idx keeps it unique across duplicate prefixes
+						// oxlint-disable-next-line no-array-index-key
+						key={`${idx}:${p}`}
+						index={idx}
+						prefix={p}
+						isDefault={p === defaultPrefix}
+						usage={usageOf(p)}
+						onCommit={(next) => commitEdit(idx, next)}
+						onSetDefault={() => writeRoot({ defaultPrefix: p })}
+						onRemove={() => removePrefix(idx)}
+					/>
+				))}
+				<div className="flex items-center gap-2">
+					<Input
+						aria-label="New prefix"
+						className={cn(
+							'h-7 w-16 font-mono text-sm',
+							(newInvalid || newDuplicate) && 'border-destructive focus-visible:ring-destructive',
+						)}
+						title={newInvalid ? CMD.PREFIX_ERROR : newDuplicate ? 'That prefix already exists' : undefined}
+						placeholder="$"
+						value={newPrefix}
+						onChange={(e) => setNewPrefix(e.target.value)}
+						onKeyDown={(e) => {
+							if (e.key === 'Enter') {
+								e.preventDefault()
+								addPrefix()
+							}
+						}}
+					/>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						disabled={!newTrimmed || newInvalid || newDuplicate}
+						onClick={addPrefix}
+					>
+						Add prefix
+					</Button>
+				</div>
+			</div>
+		</div>
+	)
+}
+
+// bespoke editor for a command's `strings` array (inline-prefixed, short): lays the inputs out horizontally so they
+// don't each hog a full row. Each string is an uncontrolled TextInputField scoped to its index (re-seeds on reset$).
+function CommandStringsField({ value$, reset$, onChange }: OverrideProps) {
+	const strings = (useFieldValue(value$, reset$) as string[] | undefined) ?? []
+	function structural(next: string[]) {
+		onChange(next)
+		reset$.next()
+	}
+	return (
+		<div className="flex flex-wrap items-center gap-2">
+			{strings.map((_, idx) => (
+				// oxlint-disable-next-line no-array-index-key
+				<div key={idx} className="flex items-center gap-1">
+					<div className="w-40">
+						<TextInputField
+							value$={scopeValue(value$, idx)}
+							reset$={reset$}
+							numeric={false}
+							placeholder="prefix + command"
+							onChange={(v) => onChange(((value$.getValue() as string[]) ?? []).map((s, i) => (i === idx ? (v ?? '') : s)))}
+						/>
+					</div>
+					<Button
+						type="button"
+						size="icon"
+						variant="ghost"
+						className="h-6 w-6 shrink-0 text-destructive"
+						aria-label={`Remove string ${idx + 1}`}
+						onClick={() => structural(strings.filter((_, i) => i !== idx))}
+					>
+						<Icons.X className="h-4 w-4" />
+					</Button>
+				</div>
+			))}
+			<Button type="button" variant="outline" size="sm" onClick={() => structural([...strings, ''])}>
+				<Icons.Plus className="mr-1 h-4 w-4" />Add
+			</Button>
+		</div>
+	)
+}
+
+// compact editor for a single command (`commands.<id>`): collapses the strings/scopes/enabled sub-sections into a
+// couple of tight rows, moving their descriptions into `?` tooltips. The command name + reset come from the LeafField
+// shell. Schema issues (e.g. a string missing an allowed prefix) still surface under the card via the field's issues.
+function CommandCard({ value$, reset$, onChange }: OverrideProps) {
+	const cfg = (useFieldValue(value$, reset$) as { scopes?: CMD.CommandScope[]; enabled?: boolean }) ?? {}
+	const scopes = cfg.scopes ?? []
+	const enabled = cfg.enabled ?? true
+	const strings$ = React.useMemo(() => scopeValue(value$, 'strings'), [value$])
+	function patch(p: Record<string, unknown>) {
+		onChange({ ...((value$.getValue() as Record<string, unknown>) ?? {}), ...p })
+	}
+	return (
+		<div className="space-y-2">
+			<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+				<span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+					Strings <HelpTip text="Command strings that trigger this command. Each must start with one of the allowed prefixes." />
+				</span>
+				<CommandStringsField value$={strings$} reset$={reset$} onChange={(v) => patch({ strings: v })} path={[]} />
+			</div>
+			<div className="flex flex-wrap items-center gap-4">
+				<div className="flex items-center gap-2">
+					<span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+						Scopes <HelpTip text="Chat scopes this command is available in (admin and/or public chats)." />
+					</span>
+					<ComboBoxMulti
+						title="Scope"
+						values={scopes}
+						options={[...CMD.COMMAND_SCOPES.options]}
+						onSelect={(next) => patch({ scopes: (typeof next === 'function' ? next(scopes) : next) })}
+					/>
+				</div>
+				<label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+					<Switch checked={enabled} onCheckedChange={(v) => patch({ enabled: v })} />
+					Enabled
+				</label>
+			</div>
+		</div>
+	)
+}
+
+// what an alias's command text points at, for the status column. `undefined` means there's nothing useful to say:
+// either the text is still empty, or its args are malformed, which surfaces as a schema issue under the field instead.
+type AliasStatus = { broken: boolean; label: string; title: string }
+function aliasStatus(command: string, commands: CMD.CommandConfigs | undefined): AliasStatus | undefined {
+	if (!commands || command.trim() === '') return undefined
+	const res = CMD.resolveAliasCommand(command, commands)
+	if (res.code === 'err:invalid-args') return undefined
+	if (res.code === 'err:unknown-command') return { broken: true, label: 'Unavailable', title: res.msg }
+	if (!commands[res.cmdId].enabled) {
+		return { broken: true, label: 'Disabled', title: `The "${res.cmdId}" command is disabled, so this alias does nothing.` }
+	}
+	return { broken: false, label: res.cmdId, title: `Runs the "${res.cmdId}" command.` }
+}
+
+// bespoke editor for `commandAliases`: an alias is just a shortcut string and the full command it runs, so the row is
+// two text fields plus a status showing which command it resolves to (and whether that command is usable).
+function CommandAliasesField({ value$, reset$, onChange }: OverrideProps) {
+	return (
+		<PresetTableField
+			value$={value$}
+			reset$={reset$}
+			onChange={onChange}
+			headers={
+				<>
+					<TableHead className="w-[12rem]">Alias</TableHead>
+					<TableHead>Full command</TableHead>
+					<TableHead className="w-[9rem]">Runs</TableHead>
+					<TableHead className="w-8" />
+				</>
+			}
+			newRow={() => ({ alias: '', command: '' })}
+			Row={CommandAliasRow}
+		/>
+	)
+}
+
+function CommandAliasRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetRowProps) {
+	const row$ = React.useMemo(() => scopeValue(parent$, idx), [parent$, idx])
+	const alias$ = React.useMemo(() => scopeValue(row$, 'alias'), [row$])
+	const command$ = React.useMemo(() => scopeValue(row$, 'command'), [row$])
+	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
+	// the command text is read reactively so the status follows the input (a debounce behind it, like every other field)
+	const command = (useFieldValue(command$, reset$) as string | undefined) ?? ''
+	const commands = ((useFieldValue(root$, reset$) as { commands?: CMD.CommandConfigs } | undefined) ?? {}).commands
+	const status = aliasStatus(command, commands)
+
+	const setField = (key: 'alias' | 'command') => (v: any) => {
+		const arr = [...((parent$.getValue() as CMD.CommandAlias[]) ?? [])]
+		arr[idx] = { ...arr[idx], [key]: v ?? '' }
+		parentOnChange(arr)
+	}
+
+	return (
+		<TableRow>
+			<TableCell className="align-top">
+				<TextInputField value$={alias$} reset$={reset$} onChange={setField('alias')} numeric={false} placeholder="/rules" />
+			</TableCell>
+			<TableCell className="align-top">
+				<TextInputField
+					value$={command$}
+					reset$={reset$}
+					onChange={setField('command')}
+					numeric={false}
+					placeholder="/broadcast Read the rules"
+				/>
+			</TableCell>
+			<TableCell className="align-top">
+				{status && (
+					<Badge variant={status.broken ? 'destructive' : 'outline'} className="font-mono text-xs" title={status.title}>
+						{status.label}
+					</Badge>
+				)}
+			</TableCell>
+			<TableCell className="align-top">
+				<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={onRemove}>
+					<Icons.X className="h-4 w-4" />
+				</Button>
+			</TableCell>
+		</TableRow>
+	)
+}
+
 function PasswordField({ value$, reset$, onChange }: OverrideProps) {
 	return <TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric={false} secret placeholder="Password" />
 }
@@ -1746,6 +2150,10 @@ function RoleAssignmentsEditor(
 function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefined {
 	const last = path[path.length - 1]
 	if (path.length === 1 && last === 'adminListSources') return AdminListSourcesField
+	if (path.length === 1 && last === 'allowedPrefixes') return AllowedPrefixesField
+	// each command renders as one compact card (which itself renders the strings sub-editor), so there's no separate strings override
+	if (path.length === 2 && path[0] === 'commands') return CommandCard
+	if (path.length === 1 && last === 'commandAliases') return CommandAliasesField
 	if (path.length === 1 && last === 'adminActionReasons') return AdminActionReasonsField
 	if (path.length === 1 && last === 'broadcasts') return BroadcastsField
 	if (path.length === 1 && last === 'layerTable') return LayerTableField
@@ -2570,6 +2978,9 @@ function Field(
 		(v: any) => parentOnChange({ ...((parent$.getValue() as Record<string, any>) ?? {}), [name]: v }),
 		[parentOnChange, parent$, name],
 	)
+	// keys managed inline by a sibling editor render no field of their own (e.g. defaultPrefix, chosen via the
+	// "default" markers in the allowedPrefixes editor)
+	if (path.length === 1 && HIDDEN_GLOBAL_SETTINGS_KEYS.has(name)) return null
 	const { inner } = stripNullable(node)
 	const hasOverride = !!overrideFor(path, node)
 	const isSection = !hasOverride
@@ -2699,17 +3110,19 @@ export default function SettingsForm(
 	return (
 		<FormOptionsContext.Provider value={formOptions}>
 			<RootValueContext.Provider value={value$}>
-				<WriteAccessContext.Provider value={writeAccess}>
-					<SavedRootContext.Provider value={savedCtx}>
-						<MessageVarsContext.Provider value={messageVars}>
-							<ValidationContext.Provider value={normIssues}>
-								{groups
-									? <GroupedRootFields node={jsonSchema} groups={groups} value$={value$} reset$={reset$} onChange={onChange} />
-									: <ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />}
-							</ValidationContext.Provider>
-						</MessageVarsContext.Provider>
-					</SavedRootContext.Provider>
-				</WriteAccessContext.Provider>
+				<RootOnChangeContext.Provider value={onChange}>
+					<WriteAccessContext.Provider value={writeAccess}>
+						<SavedRootContext.Provider value={savedCtx}>
+							<MessageVarsContext.Provider value={messageVars}>
+								<ValidationContext.Provider value={normIssues}>
+									{groups
+										? <GroupedRootFields node={jsonSchema} groups={groups} value$={value$} reset$={reset$} onChange={onChange} />
+										: <ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />}
+								</ValidationContext.Provider>
+							</MessageVarsContext.Provider>
+						</SavedRootContext.Provider>
+					</WriteAccessContext.Provider>
+				</RootOnChangeContext.Provider>
 			</RootValueContext.Provider>
 		</FormOptionsContext.Provider>
 	)

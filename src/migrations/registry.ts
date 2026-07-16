@@ -29,6 +29,7 @@ import * as m0076 from './0076_player_flag_groupings_restructure'
 import * as m0077 from './0077_sftp_tuning_into_connection'
 import * as m0078 from './0078_admin_list_sources_per_server'
 import * as m0079 from './0079_connection_modes'
+import * as m0080 from './0080_command_aliases'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -49,4 +50,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0077_sftp_tuning_into_connection', up: m0077.up },
 	{ name: '0078_admin_list_sources_per_server', up: m0078.up },
 	{ name: '0079_connection_modes', up: m0079.up },
+	{ name: '0080_command_aliases', up: m0080.up },
 ]

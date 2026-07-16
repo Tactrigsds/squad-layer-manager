@@ -207,13 +207,6 @@ export const COMMAND_DECLARATIONS = {
 	}),
 }
 
-// configurable fixed-duration timeout aliases (e.g. !yeet = timeout with 2h) share these args: a player and an
-// optional reason. shared so both the command dispatcher and the help listings can describe them.
-export const TIMEOUT_ALIAS_ARG_DEFS = [
-	{ kind: 'player', name: 'player' },
-	{ kind: 'reason', name: 'reason', action: 'timeout', optional: true },
-] as const satisfies readonly ArgDef[]
-
 export type CommandId = keyof typeof COMMAND_DECLARATIONS
 export const COMMAND_ID = z.enum(Object.keys(COMMAND_DECLARATIONS) as [CommandId, ...CommandId[]])
 export type CommandDeclaration<Id extends CommandId> = (typeof COMMAND_DECLARATIONS)[Id]
@@ -221,6 +214,16 @@ export type CommandDeclaration<Id extends CommandId> = (typeof COMMAND_DECLARATI
 // the prefix a fresh install seeds command strings with, when no settings exist yet to read `defaultPrefix` from.
 // matches the prefix migration 0074 falls back to, so a fresh install and a migrated one agree on what to type.
 export const FALLBACK_PREFIX = '!'
+
+// a command prefix: one or more ASCII special (punctuation/symbol) characters. Letters, digits, whitespace and
+// non-ASCII are excluded so a prefix can't be mistaken for the command word itself. Exported so the settings editor
+// can validate the prefix inputs the same way the schema does.
+export const PREFIX_ERROR = 'Prefix must be one or more ASCII special characters (e.g. ! . @ #)'
+const ASCII_SPECIAL = /^[!-/:-@[-`{-~]+$/
+export function isValidPrefix(s: string): boolean {
+	return ASCII_SPECIAL.test(s)
+}
+export const PrefixSchema = z.string().min(1).regex(ASCII_SPECIAL, PREFIX_ERROR)
 
 // declared strings are bare (`help`); the stored ones carry a prefix (`!help`), which is attached by
 // seedCommandConfigs using the installation's configured defaultPrefix
@@ -514,6 +517,63 @@ function matchCommandText(configs: CommandConfigs, cmdText: string) {
 		}
 	}
 	return null
+}
+
+// -------- command aliases --------
+
+// A shortcut to a complete command invocation: `/rules` -> `/broadcast Read the rules`. The aliased command carries
+// all of its own arguments and tokens typed after the alias are ignored, so an alias is a plain text substitution.
+//
+// If aliases ever need to take arguments, pin them by name (`/timeout duration=2h`, leaving `player` and `reason` to
+// be typed in chat) rather than splicing tokens positionally: a positional splice can only fix arguments that come
+// first, which can't express the old fixed-duration timeout aliases (`duration` sits between `player` and `reason`).
+export type CommandAlias = { alias: string; command: string }
+
+export type AliasResolution =
+	// the target is resolved but may be disabled; callers decide whether that's an error (dispatch) or a display
+	// concern (the settings editor and help listings, which show it as unavailable)
+	| { code: 'ok'; cmdId: CommandId; tokens: string[] }
+	// the first word matches no configured command string. Not a schema error: a later SLM release can rename a
+	// command's strings out from under a stored alias, and that must not stop the settings from loading
+	| { code: 'err:unknown-command'; msg: string }
+	| { code: 'err:invalid-args'; msg: string }
+
+// Static validation of an alias's command text: everything checkable without the live roster or the configured
+// reasons. Resolves the command string, then checks the args assign (all required ones present) and that int and
+// duration tokens parse. Player/squad/reason tokens can only be checked at dispatch, so they're taken on faith.
+export function resolveAliasCommand(command: string, configs: CommandConfigs): AliasResolution {
+	const words = command.trim().split(/\s+/).filter((w) => w !== '')
+	if (words.length === 0) return { code: 'err:unknown-command', msg: 'No command given' }
+	const cmdId = matchCommandText(configs, words[0])
+	if (!cmdId) return { code: 'err:unknown-command', msg: `"${words[0]}" is not a configured command string` }
+
+	const tokens = words.slice(1)
+	const args = COMMAND_DECLARATIONS[cmdId].args as readonly ArgDef[]
+	// permissive predicates: a team can be named by the current layer's faction, which isn't knowable here, and
+	// treating no token as a configured reason keeps the squad window from being narrowed on a guess
+	const assigned = assignArgTokens(args, tokens, { isTeamToken: () => true, isPresetToken: () => false })
+	if (assigned.code === 'err:missing-arg') {
+		return { code: 'err:invalid-args', msg: `Missing <${assigned.argName}>. Usage: ${words[0]} ${formatArgSignature(args)}`.trim() }
+	}
+	for (const def of args) {
+		const window = assigned.windows[def.name]
+		if (!window || window.length === 0) continue
+		if (def.kind === 'int') {
+			const res = coerceIntArg(def.name, window[0])
+			if (res.code !== 'ok') return { code: 'err:invalid-args', msg: res.msg }
+		}
+		if (def.kind === 'duration') {
+			const res = resolveDurationArg(def.name, window[0])
+			if (res.code !== 'ok') return { code: 'err:invalid-args', msg: res.msg }
+		}
+	}
+	return { code: 'ok', cmdId, tokens }
+}
+
+// a real command string always wins on collision, so an alias is only consulted when the token matches none
+export function findAlias(aliases: readonly CommandAlias[], configs: CommandConfigs, token: string): CommandAlias | undefined {
+	if (matchCommandText(configs, token)) return undefined
+	return aliases.find((a) => a.alias.toLowerCase() === token.toLowerCase())
 }
 
 export function chatInScope(scopes: CommandScope[], msgChat: SM.ChatChannelType) {
