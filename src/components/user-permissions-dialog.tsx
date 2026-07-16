@@ -8,6 +8,7 @@ import * as RbacClient from '@/systems/rbac.client'
 import * as UsersClient from '@/systems/users.client'
 import React from 'react'
 import { Badge } from './ui/badge'
+import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { Label } from './ui/label'
 import { Switch } from './ui/switch'
@@ -73,6 +74,8 @@ function RoleBadge(props: { role: RBAC.Role; simulate: boolean; enabled: boolean
 	)
 }
 
+const PERMS_SHOWN_COLLAPSED = 5
+
 function RoleSection(props: {
 	role: RBAC.Role
 	perms: RBAC.TracedPermission[]
@@ -82,6 +85,10 @@ function RoleSection(props: {
 	onToggle: (enabled: boolean) => void
 	isPermActive: (perm: RBAC.Permission) => boolean
 }) {
+	const [showAll, setShowAll] = React.useState(false)
+	const shownPerms = showAll ? props.perms : props.perms.slice(0, PERMS_SHOWN_COLLAPSED)
+	const hiddenCount = props.perms.length - shownPerms.length
+
 	return (
 		<div className={cn('border rounded-lg p-4 space-y-3', !props.enabled && 'opacity-50 bg-muted/30')}>
 			<div className="flex items-center justify-between">
@@ -105,7 +112,7 @@ function RoleSection(props: {
 
 			{props.enabled && (
 				<div className="space-y-2">
-					{props.perms.map((perm) => (
+					{shownPerms.map((perm) => (
 						<div
 							key={permKey(perm)}
 							className={cn(
@@ -123,6 +130,16 @@ function RoleSection(props: {
 							<Badge variant="outline" className="text-xs">{formatPermissionScope(perm)}</Badge>
 						</div>
 					))}
+					{(hiddenCount > 0 || showAll) && (
+						<Button
+							variant="link"
+							size="sm"
+							className="h-auto p-0 text-xs"
+							onClick={() => setShowAll(!showAll)}
+						>
+							{showAll ? 'Show fewer' : `...see all ${props.perms.length}`}
+						</Button>
+					)}
 				</div>
 			)}
 		</div>
@@ -228,10 +245,10 @@ export default function UserPermissionsDialog(
 					<DialogDescription>View your current permissions and roles</DialogDescription>
 				</DialogHeader>
 
-				<div className="flex items-center space-x-2 p-4 border rounded-lg bg-muted/50">
+				<div className="flex items-center space-x-3 p-4 border rounded-lg bg-muted/50">
 					<Switch checked={simulate} onCheckedChange={setSimulate} id={simulateId} />
-					<Label htmlFor={simulateId} className="text-sm font-medium">Simulate</Label>
-					<span className="text-xs text-muted-foreground">
+					<Label htmlFor={simulateId} className="text-sm font-medium shrink-0">Simulate</Label>
+					<span className="text-xs text-muted-foreground text-balance leading-relaxed">
 						Toggle roles and permissions to see how the site behaves without them. You can only simulate losing access, never gaining it.
 					</span>
 				</div>
