@@ -65,6 +65,25 @@ describe('app-events persistence', () => {
 		expect(AppEvents.fromRow(row)).toBeNull()
 	})
 
+	it('reads a backup row from before pre-migration backups existed as a periodic one', () => {
+		const e = AppEvents.create<AppEvents.BackupCreated>({
+			type: 'BACKUP_CREATED',
+			actor: { type: 'system' },
+			serverId: null,
+			matchId: null,
+			causeId: null,
+			fileName: 'slm-backup-db-20260713-134504.sqlite3.gz',
+			sizeBytes: 1024,
+			reason: 'periodic',
+			durationMs: 80,
+		})
+		const row = AppEvents.toRow(e) as any
+		// an old row, written before the reason was recorded. Every one of them is a periodic backup: there was no
+		// other kind. Dropping them (fromRow returns null on a parse failure) would put holes in the audit log.
+		row.data = superjson.serialize({ fileName: e.fileName, sizeBytes: e.sizeBytes, durationMs: e.durationMs })
+		expect(AppEvents.fromRow(row)).toEqual(e)
+	})
+
 	it('round-trips a settings diff, including a path that had no previous value', () => {
 		const e = AppEvents.create<AppEvents.SettingsUpdated>({
 			type: 'SETTINGS_UPDATED',

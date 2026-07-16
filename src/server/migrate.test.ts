@@ -99,28 +99,21 @@ describe('applyPendingMigrations', () => {
 		expect(backupNames().length).toBe(1)
 	})
 
-	test('retains only the configured number of pre-migration backups', async () => {
-		writeSqlMigration('0001_first', 'CREATE TABLE first (id INTEGER PRIMARY KEY)')
-		await apply()
-		expect(backupNames().length).toBe(1)
-		const old = 'slm-backup-db-pre-migration-20200101-000000.sqlite3.gz'
-		stashBackup(old)
-
-		writeSqlMigration('0002_second', 'CREATE TABLE second (id INTEGER PRIMARY KEY)')
-		await apply()
-		expect(backupNames().length).toBe(1)
-		expect(backupNames()[0]).not.toBe(old)
-	})
-
-	test('leaves periodic backups alone', async () => {
+	test('prunes the retention window, which is shared with the periodic backups', async () => {
 		fs.mkdirSync(backupsDir, { recursive: true })
-		const periodic = 'slm-backup-db-20200101-000000.sqlite3.gz'
-		fs.writeFileSync(path.join(backupsDir, periodic), '')
+		for (const day of ['05', '06', '07']) fs.writeFileSync(path.join(backupsDir, `slm-backup-db-202001${day}-000000.sqlite3.gz`), '')
 
+		// window of 2: the snapshot about to be taken, plus the newest periodic one
 		writeSqlMigration('0001_first', 'CREATE TABLE first (id INTEGER PRIMARY KEY)')
-		await apply()
-		expect(backupNames()).toContain(periodic)
+		await apply(2)
+
+		expect(backupNames()).toEqual([
+			expect.stringContaining('-pre-migration-'),
+			'slm-backup-db-20200107-000000.sqlite3.gz',
+		])
 	})
+
+	// retention itself (the shared window, the pinned rollback point) is db-backup.test.ts's business
 
 	test('refuses to migrate a db another connection has open, and applies nothing', async () => {
 		writeSqlMigration('0001_first', 'CREATE TABLE first (id INTEGER PRIMARY KEY)')

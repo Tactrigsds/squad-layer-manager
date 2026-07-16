@@ -199,7 +199,11 @@ export type AppRestarted = z.infer<typeof AppRestartedSchema>
 export const BackupCreatedSchema = event('BACKUP_CREATED', {
 	fileName: z.string(),
 	sizeBytes: z.number(),
-	durationMs: z.number(),
+	// why the snapshot was taken. Defaulted rather than required: every row written before pre-migration backups
+	// existed is a periodic one, so old rows read back correctly instead of being dropped by fromRow.
+	reason: z.enum(['periodic', 'pre-migration']).default('periodic'),
+	// absent for a pre-migration backup: it is taken before the app (and this event system) is up, so nobody timed it
+	durationMs: z.number().optional(),
 	// absent when no sftp target is configured; false when the upload failed (the local backup still exists)
 	uploaded: z.boolean().optional(),
 	// the prune that ran before the snapshot was taken. absent when event-history retention is disabled.
@@ -530,7 +534,8 @@ export function describeAppEvent(e: AppEvent): string {
 			const pruned = e.pruned && e.pruned.events > 0
 				? `, pruned ${e.pruned.events} events from ${e.pruned.matches} ${e.pruned.matches === 1 ? 'match' : 'matches'}`
 				: ''
-			return `backed up the database to ${e.fileName} (${size})${upload}${pruned}`
+			const what = e.reason === 'pre-migration' ? 'backed up the database before migrating it' : 'backed up the database'
+			return `${what}, to ${e.fileName} (${size})${upload}${pruned}`
 		}
 	}
 }
