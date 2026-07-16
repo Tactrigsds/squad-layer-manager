@@ -201,17 +201,18 @@ export const GlobalSettingsSchema = z.object({
 	),
 	navLinks: NavLinkSchema.optional().describe('Global links to display in the navbar dropdown menu'),
 	warnOnSlmStart: z.boolean().prefault(false).describe('Warn all in-game admins when SLM starts or restarts.'),
-	allowedPrefixes: z.array(BasicStrNoWhitespace).min(1).prefault([CMD.FALLBACK_PREFIX]).describe(
+	allowedPrefixes: z.array(CMD.PrefixSchema).min(1).prefault([CMD.FALLBACK_PREFIX]).describe(
 		'Prefixes an in-game command may start with. Every command string and timeout alias must begin with one of these',
 	),
-	defaultPrefix: BasicStrNoWhitespace.prefault(CMD.FALLBACK_PREFIX).describe(
+	defaultPrefix: CMD.PrefixSchema.prefault(CMD.FALLBACK_PREFIX).describe(
 		'The allowed prefix that commands introduced by future SLM versions are seeded with',
 	),
-	timeoutCommandAliases: z.array(z.object({
-		string: BasicStrNoWhitespace.describe('Command string, including its prefix'),
-		duration: HumanTime.describe('Fixed timeout duration this alias kicks with'),
+	commandAliases: z.array(z.object({
+		alias: BasicStrNoWhitespace.describe('The shortcut typed in chat, including its prefix'),
+		command: z.string().min(1).describe('The full command this alias runs, including its prefix and every argument'),
 	})).prefault([]).describe(
-		'Extra admin-chat commands that kick with a fixed timeout, e.g. !yeet = 2h. Real command strings win on collision.',
+		'Shortcuts to complete commands, e.g. /rules = /broadcast Read the rules. An alias takes no arguments of its own '
+			+ '(anything typed after it is ignored), runs in the scopes of the command it points at, and loses to a real command string on collision.',
 	),
 	commands: CMD.AllCommandConfigSchema,
 	rbac: RbacSettingsSchema,
@@ -275,8 +276,8 @@ export const GlobalSettingsSchema = z.object({
 		})
 	}
 
-	// command strings and timeout-alias strings share one namespace: a real command always wins on collision, so
-	// a timeout alias that clashes is unreachable (and vice versa). matching is case-insensitive, like dispatch.
+	// command strings and alias strings share one namespace: a real command always wins on collision, so an alias
+	// that clashes is unreachable. matching is case-insensitive, like dispatch.
 	const commandOwner = new Map<string, string>()
 	for (const [id, cmd] of Object.entries(val.commands ?? {})) {
 		;(cmd.strings ?? []).forEach((s, j) => {
@@ -285,21 +286,29 @@ export const GlobalSettingsSchema = z.object({
 		})
 	}
 	const seenAlias = new Set<string>()
-	val.timeoutCommandAliases?.forEach((alias, i) => {
-		const key = alias.string.toLowerCase()
-		if (!hasAllowedPrefix(alias.string)) prefixIssue(alias.string, 'Timeout alias', ['timeoutCommandAliases', i, 'string'])
+	val.commandAliases?.forEach((alias, i) => {
+		const key = alias.alias.toLowerCase()
+		if (!hasAllowedPrefix(alias.alias)) prefixIssue(alias.alias, 'Alias', ['commandAliases', i, 'alias'])
 		const owner = commandOwner.get(key)
 		if (owner) {
 			ctx.addIssue({
 				code: 'custom',
-				message: `Timeout alias "${alias.string}" clashes with the command "${owner}". Pick a different string.`,
-				path: ['timeoutCommandAliases', i, 'string'],
+				message: `Alias "${alias.alias}" clashes with the command "${owner}". Pick a different string.`,
+				path: ['commandAliases', i, 'alias'],
 			})
 		}
 		if (seenAlias.has(key)) {
-			ctx.addIssue({ code: 'custom', message: `Duplicate timeout alias "${alias.string}"`, path: ['timeoutCommandAliases', i, 'string'] })
+			ctx.addIssue({ code: 'custom', message: `Duplicate alias "${alias.alias}"`, path: ['commandAliases', i, 'alias'] })
 		}
 		seenAlias.add(key)
+
+		// only malformed args are an error here. An alias whose command string doesn't resolve is left to load and
+		// surface as unavailable in the editor and the help listings: a later SLM release can rename a command's
+		// strings, and stored settings that predate the rename must not stop the server booting.
+		const res = CMD.resolveAliasCommand(alias.command, val.commands as CMD.CommandConfigs)
+		if (res.code === 'err:invalid-args') {
+			ctx.addIssue({ code: 'custom', message: res.msg, path: ['commandAliases', i, 'command'] })
+		}
 	})
 })
 

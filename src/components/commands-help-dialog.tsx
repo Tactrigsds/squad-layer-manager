@@ -20,16 +20,16 @@ interface CommandsHelpDialogProps {
 	onOpenChange?: (open: boolean) => void
 }
 
-type TimeoutAlias = PublicSettings['timeoutCommandAliases'][number]
+type CommandAlias = PublicSettings['commandAliases'][number]
 
 // one listing in the help body, anchored by `id` so the table of contents can scroll it into view
 type Entry =
 	| { kind: 'command'; id: string; label: string; search: string; cmdId: CMD.CommandId; cmd: CMD.CommandConfig }
-	| { kind: 'alias'; id: string; label: string; search: string; alias: TimeoutAlias }
+	| { kind: 'alias'; id: string; label: string; search: string; alias: CommandAlias }
 
 type Section = { id: string; label: string; entries: Entry[] }
 
-const TIMEOUT_ALIASES_SECTION_ID = 'command-group:timeout-aliases'
+const ALIASES_SECTION_ID = 'command-group:aliases'
 
 // the reason arg (if any) for a command's args; drives the applicable-reasons listing
 function reasonArgOf(args: readonly CMD.ArgDef[]) {
@@ -108,14 +108,24 @@ function CommandEntry(
 	)
 }
 
+// an alias takes no arguments, so its listing is the shortcut itself, what it expands to, and (when the command it
+// points at is disabled or no longer exists) why it currently does nothing
 function AliasEntry(
 	{ entry, settings }: { entry: Extract<Entry, { kind: 'alias' }>; settings: PublicSettings },
 ) {
-	const cmdString = `${entry.alias.string} ${CMD.formatArgSignature(CMD.TIMEOUT_ALIAS_ARG_DEFS, settings.requireReasonFor)}`
+	const res = CMD.resolveAliasCommand(entry.alias.command, settings.commands)
+	const target = res.code === 'ok' ? settings.commands[res.cmdId] : undefined
+	const unusable = res.code !== 'ok' ? 'Unavailable' : !target!.enabled ? 'Disabled' : undefined
+	const chatScope = target?.scopes.includes('public') && !target.scopes.includes('admin') ? 'ChatToAll' : 'ChatToAdmin'
 	return (
 		<div id={entry.id} data-cmd-anchor className="space-y-1 scroll-mt-9">
-			<CopyableCommand cmdString={cmdString} chatScope="ChatToAdmin" />
-			<p className="text-sm text-muted-foreground">{Messages.GENERAL.command.timeoutAliasDescription(entry.alias.duration)}</p>
+			<div className="flex items-center gap-2">
+				<CopyableCommand cmdString={entry.alias.alias} chatScope={chatScope} />
+				{unusable && <Badge variant="destructive" className="text-xs">{unusable}</Badge>}
+			</div>
+			<p className="text-sm text-muted-foreground">{Messages.GENERAL.command.aliasDescription(entry.alias.command)}</p>
+			{res.code === 'ok' && <p className="text-sm text-muted-foreground">{Messages.GENERAL.command.descriptions[res.cmdId]}</p>}
+			{res.code === 'err:unknown-command' && <p className="text-sm text-destructive">{res.msg}</p>}
 		</div>
 	)
 }
@@ -176,15 +186,15 @@ export default function CommandsHelpDialog({ children, open, onOpenChange }: Com
 				}
 			}),
 		}))
-		if (settings.timeoutCommandAliases.length > 0) {
+		if (settings.commandAliases.length > 0) {
 			sections.push({
-				id: TIMEOUT_ALIASES_SECTION_ID,
-				label: 'Timeout Aliases',
-				entries: settings.timeoutCommandAliases.map((alias): Entry => ({
+				id: ALIASES_SECTION_ID,
+				label: 'Aliases',
+				entries: settings.commandAliases.map((alias): Entry => ({
 					kind: 'alias',
-					id: `timeout-alias:${alias.string}`,
-					label: alias.string,
-					search: `${alias.string} timeout alias kick`,
+					id: `alias:${alias.alias}`,
+					label: alias.alias,
+					search: `${alias.alias} ${alias.command} alias shortcut`.toLowerCase(),
 					alias,
 				})),
 			})
@@ -272,13 +282,11 @@ export default function CommandsHelpDialog({ children, open, onOpenChange }: Com
 						{visible.map((section) => (
 							<section key={section.id}>
 								<h3 className="sticky top-0 z-10 bg-background py-1 text-sm font-semibold">{section.label}</h3>
-								{section.id === TIMEOUT_ALIASES_SECTION_ID && (
-									<div className="space-y-2 pb-2">
-										<p className="text-sm text-muted-foreground">
-											Fixed-duration kick shortcuts, usable in admin chat only. Each kicks a player with its configured timeout.
-										</p>
-										<CommandReasons reasonArg={reasonArgOf(CMD.TIMEOUT_ALIAS_ARG_DEFS)!} reasons={settings.adminActionReasons} />
-									</div>
+								{section.id === ALIASES_SECTION_ID && (
+									<p className="pb-2 text-sm text-muted-foreground">
+										Shortcuts for complete commands. An alias takes no arguments of its own, and runs in the same chats as the command it
+										points at.
+									</p>
 								)}
 								<div className="space-y-4 pb-4">
 									{section.entries.map((entry) =>

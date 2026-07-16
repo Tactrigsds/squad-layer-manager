@@ -1,7 +1,6 @@
 import * as Arr from '@/lib/array'
 import * as DH from '@/lib/display-helpers'
 import * as Obj from '@/lib/object'
-import { formatHumanTime } from '@/lib/zod'
 import * as BAL from '@/models/balance-triggers.models'
 import * as CMD from '@/models/command.models'
 import * as L from '@/models/layer'
@@ -259,18 +258,20 @@ export const WARNS = {
 		wrongChat: (correctChats: string[]) => `Command not available in this chat. Try using ${correctChats.join(' or ')}`,
 		help(
 			commands: Record<CMD.CommandId, CMD.CommandConfig>,
-			timeoutAliases: readonly { string: string; duration: number }[] = [],
+			aliases: readonly CMD.CommandAlias[] = [],
 		) {
 			const commandLines = Obj.objEntries(commands).filter(([_, cmd]) => cmd.enabled).map(([id, cmd]) => {
 				const sortedStrings = cmd.strings.toSorted((a, b) => a.length - b.length)
 				const signature = CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS[id].args)
 				return `[${sortedStrings.join(', ')}]${signature ? ` ${signature}` : ''}: ${GENERAL.command.descriptions[id]}`
 			})
-			// fixed-duration timeout aliases aren't in COMMAND_DECLARATIONS; append them with a generated description
-			const aliasSignature = CMD.formatArgSignature(CMD.TIMEOUT_ALIAS_ARG_DEFS)
-			const aliasLines = timeoutAliases.map((a) =>
-				`[${a.string}]${aliasSignature ? ` ${aliasSignature}` : ''}: ${GENERAL.command.timeoutAliasDescription(a.duration)}`
-			)
+			// aliases take no args of their own, so they list as the shortcut and what it expands to. Ones pointing at a
+			// disabled or no-longer-existing command are dropped: they can't be run.
+			const aliasLines = aliases.flatMap((a) => {
+				const res = CMD.resolveAliasCommand(a.command, commands)
+				if (res.code !== 'ok' || !commands[res.cmdId].enabled) return []
+				return [`[${a.alias}]: ${GENERAL.command.aliasDescription(a.command)}`]
+			})
 			const groups = Arr.paged([...commandLines, ...aliasLines], 3)
 			if (groups.length === 0) groups.push([])
 			groups[0].unshift(`Available commands:`)
@@ -385,7 +386,7 @@ export const GENERAL = {
 			clearTimeout: "Cancel a player's active timeout (works for offline players)",
 		} satisfies Record<CMD.CommandId, string>,
 		// configurable fixed-duration timeout aliases; shared by the in-game help and the web help dialog
-		timeoutAliasDescription: (durationMs: number) => `Kick with a ${formatHumanTime(durationMs)} timeout`,
+		aliasDescription: (command: string) => `Shortcut for "${command}"`,
 	},
 }
 
