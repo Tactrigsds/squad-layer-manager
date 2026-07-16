@@ -79,10 +79,24 @@ export function lowerFilterNode(ctx: LowerCtx, node: F.FilterNode, path: string[
 	return { code: 'ok', ir: ir! }
 }
 
+// These fold the boolean constants rather than passing them through: callers build children
+// conditionally, so a matchup whose dimensions are all "any" produces a pile of `true`s that would
+// otherwise survive as a redundant AND/OR node. `true` is the identity of AND and its annihilator
+// under OR (and vice versa for `false`).
 export function and(children: Ir[]): Ir {
-	if (children.length === 0) return { op: 'true' }
-	if (children.length === 1) return children[0]
-	return { op: 'and', children }
+	if (children.some((child) => child.op === 'false')) return { op: 'false' }
+	const kept = children.filter((child) => child.op !== 'true')
+	if (kept.length === 0) return { op: 'true' }
+	if (kept.length === 1) return kept[0]
+	return { op: 'and', children: kept }
+}
+
+export function or(children: Ir[]): Ir {
+	if (children.some((child) => child.op === 'true')) return { op: 'true' }
+	const kept = children.filter((child) => child.op !== 'false')
+	if (kept.length === 0) return { op: 'false' }
+	if (kept.length === 1) return kept[0]
+	return { op: 'or', children: kept }
 }
 
 export function not(child: Ir): Ir {
@@ -130,6 +144,10 @@ function lowerNode(
 		return F.APPLY_FILTER_TYPE_NEGATED[node.type] ? not(inner) : inner
 	}
 
+	if (F.isMatchupNode(node)) {
+		return lowerMatchup(ctx, node, path, errors)
+	}
+
 	if (F.isBlockNode(node)) {
 		const childrenPath = [...path, 'children']
 		const children: Ir[] = []
@@ -146,6 +164,45 @@ function lowerNode(
 
 	errors.push({ type: 'invalid-node', path, msg: `Unhandled filter node type` })
 	return undefined
+}
+
+// A matchup pairs the two team specs against the two teams. Unlocked, either orientation matches, so
+// it lowers to a disjunction over both -- this is the correlation a `team-column` quantifier cannot
+// express, since that expands one column over both teams independently.
+function lowerMatchup(ctx: LowerCtx, node: F.MatchupNode, path: string[], errors: F.NodeValidationError[]): Ir | undefined {
+	const orient = (teamOf0: 1 | 2, teamOf1: 1 | 2, errs: F.NodeValidationError[]): Ir =>
+		and([
+			teamSpecIr(ctx, node.teams[0], teamOf0, path, errs),
+			teamSpecIr(ctx, node.teams[1], teamOf1, path, errs),
+		])
+
+	// both orientations resolve the same specs against columns of the same enum mapping, so the mirror
+	// would report every problem a second time; collect errors from the first orientation only
+	const base = node.locked
+		? orient(1, 2, errors)
+		: or([orient(1, 2, errors), orient(2, 1, [])])
+	return F.MATCHUP_TYPE_NEGATED[node.type] ? not(base) : base
+}
+
+// one side of a matchup against a concrete team. Only dimensions carrying values constrain anything;
+// an empty one is "any", and `and([])` is already `true`, so no special case is needed.
+function teamSpecIr(
+	ctx: LowerCtx,
+	spec: F.MatchupTeamSpec,
+	team: 1 | 2,
+	path: string[],
+	errors: F.NodeValidationError[],
+): Ir {
+	const children: Ir[] = []
+	for (const teamColumn of F.TEAM_COLUMNS) {
+		const values = spec[teamColumn]
+		if (!values || values.length === 0) continue
+		const column = F.resolveTeamColumn(teamColumn, team)
+		const col = columnIndex(ctx, column, path, errors)
+		if (col === undefined) continue
+		children.push(valueListIr(ctx, column, col, values, path, errors))
+	}
+	return and(children)
 }
 
 function lowerComp(ctx: LowerCtx, node: F.CompNode, path: string[], errors: F.NodeValidationError[]): Ir | undefined {
@@ -207,39 +264,8 @@ function lowerCompForTeam(
 			// a null value is an IS NULL test, except on an enum column that maps null to a concrete index
 			return other.val === null ? { op: 'is_null', col } : { op: 'eq_val', col, val: other.val }
 		}
-		case 'in': {
-			// constants collapse into one membership pass; column items and null stay separate disjuncts
-			const constants: number[] = []
-			const children: Ir[] = []
-			for (const item of node.args[1].values) {
-				if (item === null) {
-					const nullIndex = enumNullIndex(ctx, subject)
-					if (nullIndex === null) children.push({ op: 'is_null', col })
-					else constants.push(nullIndex)
-					continue
-				}
-				if (F.isColumnListItem(item)) {
-					const other = columnIndex(ctx, item.column, path, errors)
-					if (other === undefined) continue
-					const domain = F.columnValueDomain(item.column, ctx.effectiveColsConfig)
-					if (subjectDomain && domain && !F.domainsCompatible(subjectDomain, domain)) {
-						errors.push({
-							type: 'invalid-node',
-							path,
-							msg: `Columns ${subject} and ${item.column} are not comparable (different data types)`,
-						})
-						continue
-					}
-					children.push({ op: 'eq_col', col, other })
-					continue
-				}
-				const value = encodeValue(ctx, subject, item, path, errors)
-				if (value !== undefined) constants.push(value)
-			}
-			if (constants.length > 0) children.unshift({ op: 'in_vals', col, vals: constants })
-			if (children.length === 0) return { op: 'false' }
-			return children.length === 1 ? children[0] : { op: 'or', children }
-		}
+		case 'in':
+			return valueListIr(ctx, subject, col, node.args[1].values, path, errors)
 		case 'lt':
 		case 'gt': {
 			const other = operand(node.args[1])
@@ -266,6 +292,49 @@ function lowerCompForTeam(
 		default:
 			assertNever(node)
 	}
+}
+
+// membership of `col` (the already-resolved index of `column`) in a list of items. Constants collapse
+// into one membership pass; column items and null stay separate disjuncts. Shared by the `in`
+// operator and the matchup operators, which differ only in that matchups never carry column items.
+function valueListIr(
+	ctx: LowerCtx,
+	column: string,
+	col: number,
+	items: F.InListItem[],
+	path: string[],
+	errors: F.NodeValidationError[],
+): Ir {
+	const columnDomain = F.columnValueDomain(column, ctx.effectiveColsConfig)
+	const constants: number[] = []
+	const children: Ir[] = []
+	for (const item of items) {
+		if (item === null) {
+			const nullIndex = enumNullIndex(ctx, column)
+			if (nullIndex === null) children.push({ op: 'is_null', col })
+			else constants.push(nullIndex)
+			continue
+		}
+		if (F.isColumnListItem(item)) {
+			const other = columnIndex(ctx, item.column, path, errors)
+			if (other === undefined) continue
+			const domain = F.columnValueDomain(item.column, ctx.effectiveColsConfig)
+			if (columnDomain && domain && !F.domainsCompatible(columnDomain, domain)) {
+				errors.push({
+					type: 'invalid-node',
+					path,
+					msg: `Columns ${column} and ${item.column} are not comparable (different data types)`,
+				})
+				continue
+			}
+			children.push({ op: 'eq_col', col, other })
+			continue
+		}
+		const value = encodeValue(ctx, column, item, path, errors)
+		if (value !== undefined) constants.push(value)
+	}
+	if (constants.length > 0) children.unshift({ op: 'in_vals', col, vals: constants })
+	return or(children)
 }
 
 function resolveColumn(

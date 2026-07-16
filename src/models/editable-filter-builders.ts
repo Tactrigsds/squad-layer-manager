@@ -23,6 +23,18 @@ export const createApplyFilter = <T extends F.ApplyFilterType>(type: T) => {
 export const includedIn = createApplyFilter('included-in')
 export const excludedFrom = createApplyFilter('excluded-from')
 
+export const createMatchup = <T extends F.MatchupType>(type: T) => {
+	return (teams?: [F.MatchupTeamSpec, F.MatchupTeamSpec], locked = false) =>
+		({
+			type,
+			locked,
+			teams: teams ?? [{}, {}],
+		}) as Extract<F.EditableFilterNode, { type: T }>
+}
+
+export const allowMatchups = createMatchup('allow-matchups')
+export const disallowMatchups = createMatchup('disallow-matchups')
+
 // -------- comparison builders --------
 
 const colArg = (column?: string): F.EditableScalarArg => ({ type: 'column', column })
@@ -69,6 +81,7 @@ export const comp = (column?: string): F.EditableCompNode => eq(column)
 export function nodeOfType(type: F.NodeType): F.EditableFilterNode {
 	if (F.isCompType(type)) return { type, neg: false, args: [colArg(), { type: 'value' }] } as F.EditableCompNode
 	if (F.isApplyFilterType(type)) return createApplyFilter(type)()
+	if (F.isMatchupType(type)) return createMatchup(type)()
 	if (F.isBlockType(type)) return createBlock(type)()
 	assertNever(type)
 }
