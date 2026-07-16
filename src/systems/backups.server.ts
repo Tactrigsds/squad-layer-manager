@@ -7,17 +7,15 @@ import * as CS from '@/models/context-shared'
 import * as MH from '@/models/match-history.models'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
+import * as DbBackup from '@/server/db-backup'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
-import * as DateFns from 'date-fns'
 import * as E from 'drizzle-orm'
 import fs from 'node:fs'
 import path from 'node:path'
-import * as Stream from 'node:stream/promises'
 import * as Timers from 'node:timers/promises'
-import * as Zlib from 'node:zlib'
 
 const module = initModule('backups')
 let log!: CS.Logger
@@ -34,32 +32,6 @@ const MIN_RETAINED_MATCHES = Math.max(100, MH.MAX_RECENT_MATCHES)
 // the rest of the app is still setting itself up
 const BOOT_SETTLE_DELAY = parseHumanTime('1m')
 const FAILED_BACKUP_RETRY_DELAY = parseHumanTime('30m')
-
-// backups are named slm-backup-<db filename>-<yyyyMMdd>-<HHmmss>.sqlite3.gz, e.g.
-// slm-backup-db-20260713-134016.sqlite3.gz for the default ./data/db.sqlite3. Naming them after the source db means
-// backups of different databases (two SLM instances pointed at one sftp directory, say) can't be mistaken for each
-// other -- which matters because retention deletes everything matching this prefix. Restore with
-// `gunzip -c <backup> > db.sqlite3`.
-const BACKUP_FILE_EXT = '.sqlite3.gz'
-
-function backupFilePrefix() {
-	return `slm-backup-${path.basename(ENV.DB_PATH).replace(/\.sqlite3?$/, '')}`
-}
-
-function backupFilePattern() {
-	return new RegExp(`^${escapeRegExp(backupFilePrefix())}-\\d{8}-\\d{6}${escapeRegExp(BACKUP_FILE_EXT)}$`)
-}
-
-// streamed, so a multi-GB db never lands in memory. gzip is a big win here: a sqlite file is mostly repetitive page
-// structure and text, and the archive is what we ship over sftp and keep N copies of at both ends.
-async function gzipFile(sourcePath: string, destPath: string, signal: AbortSignal) {
-	await Stream.pipeline(
-		fs.createReadStream(sourcePath),
-		Zlib.createGzip(),
-		fs.createWriteStream(destPath),
-		{ signal },
-	)
-}
 
 export function setup() {
 	log = module.getLogger()
@@ -129,7 +101,7 @@ async function getLastBackupTime(ctx: C.Db) {
 		.limit(1)
 	const loggedAt = row?.time.getTime()
 
-	const fileNames = fs.existsSync(ENV.BACKUPS_DIR) ? backupFiles(fs.readdirSync(ENV.BACKUPS_DIR)) : []
+	const fileNames = fs.existsSync(ENV.BACKUPS_DIR) ? DbBackup.backupFiles(fs.readdirSync(ENV.BACKUPS_DIR), ENV.DB_PATH, 'periodic') : []
 	const writtenAt = fileNames.length === 0
 		? undefined
 		: Math.max(...fileNames.map(name => fs.statSync(path.join(ENV.BACKUPS_DIR, name)).mtimeMs))
@@ -145,27 +117,13 @@ export const runBackup = C.spanOp('runBackup', { module }, async (ctx: C.Db & CS
 	const startedAt = Date.now()
 	const pruned = await pruneEventHistory(ctx)
 
-	fs.mkdirSync(ENV.BACKUPS_DIR, { recursive: true })
-	const fileName = `${backupFilePrefix()}-${DateFns.format(new Date(), 'yyyyMMdd-HHmmss')}${BACKUP_FILE_EXT}`
+	const fileName = DbBackup.fileName(ENV.DB_PATH, 'periodic')
 	const destPath = path.join(ENV.BACKUPS_DIR, fileName)
-	// sqlite writes its snapshot itself and we then gzip it, so a crash at either step would leave a partial file that
-	// still looks like a complete backup. both stages land on temp names, and only the finished archive is renamed into
-	// place (atomic within the directory).
-	const snapshotPath = `${destPath}.snapshot.tmp`
-	const tmpPath = `${destPath}.tmp`
-	let snapshotBytes: number
-	try {
-		await DB.backupTo(snapshotPath)
-		snapshotBytes = fs.statSync(snapshotPath).size
-		await gzipFile(snapshotPath, tmpPath, ctx.signal)
-		fs.renameSync(tmpPath, destPath)
-	} finally {
-		// the snapshot is an intermediate: it's the archive we keep. removed on the happy path too.
-		fs.rmSync(snapshotPath, { force: true })
-		fs.rmSync(tmpPath, { force: true })
-	}
-
-	const sizeBytes = fs.statSync(destPath).size
+	const { sizeBytes, snapshotBytes } = await DbBackup.writeBackup({
+		destPath,
+		snapshot: DB.backupTo,
+		signal: ctx.signal,
+	})
 	log.info(
 		'wrote backup %s (%d bytes, %sx smaller than the %d byte snapshot)',
 		destPath,
@@ -310,7 +268,7 @@ const uploadBackup = C.spanOp('uploadBackup', { module }, async (ctx: CS.AbortSi
 			// offsite the run has done its job, and a delete we're not permitted to make must not get recorded as a
 			// backup that never left the box.
 			try {
-				for (const stale of staleBackupFiles(await sftp.listDir(remoteDir), fileName)) {
+				for (const stale of DbBackup.staleBackupFiles(await sftp.listDir(remoteDir), { ...retentionOpts(), keep: fileName })) {
 					await sftp.unlink(`${remoteDir}/${stale}`)
 					log.info('deleted remote backup %s', stale)
 				}
@@ -328,25 +286,11 @@ const uploadBackup = C.spanOp('uploadBackup', { module }, async (ctx: CS.AbortSi
 })
 
 function pruneOldBackups(currentFileName: string) {
-	for (const stale of staleBackupFiles(fs.readdirSync(ENV.BACKUPS_DIR), currentFileName)) {
-		fs.rmSync(path.join(ENV.BACKUPS_DIR, stale), { force: true })
+	for (const stale of DbBackup.pruneBackups({ ...retentionOpts(), dir: ENV.BACKUPS_DIR, keep: currentFileName })) {
 		log.info('deleted local backup %s', stale)
 	}
 }
 
-// the backups beyond BACKUPS_RETAIN_COUNT, and never the one we just took
-function staleBackupFiles(fileNames: string[], currentFileName: string) {
-	if (ENV.BACKUPS_RETAIN_COUNT === 0) return []
-	return backupFiles(fileNames).slice(ENV.BACKUPS_RETAIN_COUNT).filter(name => name !== currentFileName)
-}
-
-// the backups of THIS database in a directory, newest first (the timestamp is in the name, so lexical order is
-// chronological). Anything else there is left alone: retention only ever deletes files we wrote ourselves.
-function backupFiles(fileNames: string[]) {
-	const pattern = backupFilePattern()
-	return fileNames.filter(name => pattern.test(name)).sort().reverse()
-}
-
-function escapeRegExp(str: string) {
-	return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+function retentionOpts() {
+	return { dbPath: ENV.DB_PATH, kind: 'periodic' as const, retainCount: ENV.BACKUPS_RETAIN_COUNT }
 }
