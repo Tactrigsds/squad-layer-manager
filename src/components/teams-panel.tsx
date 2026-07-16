@@ -761,8 +761,13 @@ function nameColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHel
 			const meta = table.options.meta as BasePlayerTableMeta
 			// let the enclosing row context menu (bulk-aware) handle right-clicks on the name
 			return (
-				<span onClick={e => e.stopPropagation()}>
+				<span onClick={e => e.stopPropagation()} className="inline-flex items-center gap-1">
 					<PlayerDisplay stores={meta.stores} player={row.original} matchId={meta.matchId} disableContextMenu />
+					{row.original.inAdminCam && (
+						<span title="In admin camera">
+							<Icons.Camera className="h-3 w-3 text-purple-500 shrink-0" />
+						</span>
+					)}
 				</span>
 			)
 		},
