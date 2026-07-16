@@ -52,6 +52,11 @@ export function useUserDefinedRoles() {
 	return useQuery(RPC.orpc.rbac.getUserDefinedRoles.queryOptions())
 }
 
+// the user's own roles. Can't be derived from their permissions' traces, since a role granting nothing appears in none
+export function useMyRoles() {
+	return useQuery(RPC.orpc.rbac.getMyRoles.queryOptions())
+}
+
 // roles the user doesn't hold but may simulate holding, along with the permissions each would grant
 export type SimulatableRole = { role: RBAC.Role; perms: RBAC.TracedPermission[] }
 export function useSimulatableRoles() {

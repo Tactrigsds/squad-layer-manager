@@ -148,6 +148,7 @@ export default function UserPermissionsDialog(
 		enablePerm,
 	} = ZusUtils.useStore(RbacClient.RbacStore)
 	const allRoles = RbacClient.useUserDefinedRoles().data
+	const myRoles = RbacClient.useMyRoles().data
 	const simulatableRoles = RbacClient.useSimulatableRoles().data
 
 	const basePerms = userBase?.perms
@@ -161,12 +162,23 @@ export default function UserPermissionsDialog(
 				: [],
 		[basePerms, simulate, addedRoles],
 	)
-	const permissionsByRole = React.useMemo(() => basePerms ? RBAC.getPermissionsByRole(basePerms) : [], [basePerms])
+	// the roles the user holds, each with the permissions it grants them. Roles come from myRoles rather than from the
+	// permission traces, so that a role granting nothing still shows up as one they hold. The inferred roles
+	// (filter-owner and friends) exist only in the traces, so both sources are merged
+	const heldRoles = React.useMemo(() => {
+		if (!basePerms) return []
+		const byRole = new Map(RBAC.getPermissionsByRole(basePerms).map(([role, perms]) => [JSON.stringify(role), { role, perms }]))
+		for (const role of myRoles ?? []) {
+			const key = JSON.stringify(role)
+			if (!byRole.has(key)) byRole.set(key, { role, perms: [] })
+		}
+		return [...byRole.values()]
+	}, [basePerms, myRoles])
 	const unheldRoles = React.useMemo(() => {
-		if (!allRoles || !basePerms) return []
-		const held = new Set(basePerms.flatMap(p => p.allowedByRoles.map(r => r.type)))
+		if (!allRoles || !myRoles) return []
+		const held = new Set(myRoles.map(r => r.type))
 		return allRoles.filter(role => !held.has(role.type))
-	}, [allRoles, basePerms])
+	}, [allRoles, myRoles])
 	const unheldPermTypes = React.useMemo(() => {
 		if (!basePerms) return []
 		const held = new Set(basePerms.map(p => p.type))
@@ -314,7 +326,7 @@ export default function UserPermissionsDialog(
 
 					<TabsContent value="roles" className="flex-1 overflow-auto">
 						<div className="space-y-6">
-							{permissionsByRole.map(([role, perms]) => (
+							{heldRoles.map(({ role, perms }) => (
 								<RoleSection
 									key={JSON.stringify(role)}
 									role={role}
