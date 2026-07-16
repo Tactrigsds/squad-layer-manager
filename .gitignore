@@ -33,9 +33,11 @@ dist-ssr
 *.tsbuildinfo
 .env*
 # generated from src/server/env.ts on every dev boot, and tracked: the templates an install and a checkout
-# respectively start from
+# respectively start from. .env.secrets.example is a template like the others; .env.secrets itself is the one
+# file here that must never be committed, and stays covered by .env* above
 !.env.example
 !.env.example.dev
+!.env.secrets.example
 
 slm-config.json*
 extra-columns.json
