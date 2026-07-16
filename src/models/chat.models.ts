@@ -65,6 +65,9 @@ export type InterpolableState = {
 	// per-match combat stats, keyed by recent player id. kept separate from the player records rather than stored on
 	// them, so a player who reconnects mid-match keeps the score they built up before dropping.
 	playerStats: PlayerStatsMap
+	// players currently in admin camera, tracked from POSSESSED/UNPOSSESSED_ADMIN_CAMERA. kept separate from players
+	// since the roster is replaced wholesale by the teams poll, which knows nothing about admin camera
+	adminCamPlayerIds: SM.PlayerId[]
 }
 
 export namespace InterpolableState {
@@ -75,6 +78,7 @@ export namespace InterpolableState {
 			squads: [...state.squads],
 			recentSquads: [...state.recentSquads],
 			playerStats: { ...state.playerStats },
+			adminCamPlayerIds: [...state.adminCamPlayerIds],
 		}
 	}
 
@@ -224,6 +228,7 @@ export function getInitialInterpolatedState(): InterpolableState {
 		squads: [],
 		recentSquads: [],
 		playerStats: {},
+		adminCamPlayerIds: [],
 	}
 }
 
@@ -480,6 +485,9 @@ function interpolateEvent(
 				state.recentPlayers = state.players.map(SM.toRecentPlayer)
 				state.recentSquads = state.squads.map(SM.toRecentSquad)
 			} else if (event.type === 'RESET') {
+				// RESET restates the roster from scratch and carries no admin camera information, so anyone we thought
+				// was in admin camera is no longer known to be
+				state.adminCamPlayerIds = []
 				// the reseeded roster may name players and squads we haven't seen participate yet
 				for (const player of state.players) InterpolableState.recordRecentPlayer(state, player)
 				for (const squad of state.squads) InterpolableState.recordRecentSquad(state, squad)
@@ -519,6 +527,7 @@ function interpolateEvent(
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} disconnected but was not found in the player list`)
 			}
 			const player = state.players[index]
+			state.adminCamPlayerIds = state.adminCamPlayerIds.filter(id => id !== event.player)
 			applyEventTeamMutations(chatLog, state, event)
 			return { ...event, player }
 		}
@@ -683,6 +692,12 @@ function interpolateEvent(
 			}
 			if (event.type === 'PLAYER_KICKED') {
 				return { ...event, player, reason: event.reason?.replace('Kicked from the server: ', '').trim() }
+			}
+			if (event.type === 'POSSESSED_ADMIN_CAMERA' && !state.adminCamPlayerIds.includes(event.player)) {
+				state.adminCamPlayerIds = [...state.adminCamPlayerIds, event.player]
+			}
+			if (event.type === 'UNPOSSESSED_ADMIN_CAMERA') {
+				state.adminCamPlayerIds = state.adminCamPlayerIds.filter(id => id !== event.player)
 			}
 			return { ...event, player }
 		}
