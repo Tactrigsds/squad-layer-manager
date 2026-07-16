@@ -51,7 +51,7 @@ const control = await EmuControl.serve(DevInstance.EMU_SOCKET_PATH, commands)
 
 for (let i = 0; i < Number(args.values.players); i++) join(`DevPlayer${i + 1}`)
 
-console.log(`emulator up — slot ${slot.slot} (${slot.name})
+console.log(`emulator up -- slot ${slot.slot} (${slot.name})
   rcon      127.0.0.1:${slot.ports.rcon} (password ${DevInstance.RCON_PASSWORD})
   bm stub   http://127.0.0.1:${slot.ports.bm}
   log       ${DevInstance.SQUAD_LOG_PATH}
@@ -76,7 +76,7 @@ process.on('SIGTERM', shutdown)
 // Only offer the REPL to a terminal. Run without one (a pane manager, a background job) stdin is at EOF
 // immediately, and a readline interface over it would fire 'close' and take the emulator down with it.
 const rl = process.stdin.isTTY ? readline.createInterface({ input: process.stdin, output: process.stdout, prompt: '> ' }) : null
-if (!rl) console.log('(no tty — repl disabled; drive it with `pnpm emuctl` instead)')
+if (!rl) console.log('(no tty -- repl disabled; drive it with `pnpm emuctl` instead)')
 
 rl?.prompt()
 rl?.on('close', shutdown)

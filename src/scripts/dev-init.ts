@@ -80,5 +80,5 @@ ready. In two terminals:
   pnpm dev:emu    the emulated squad server (keep it running; the app reconnects on its own)
   pnpm dev        the app + client, on http://localhost:${slot.ports.client}
 
-log in with ?login=<username> — discord oauth is off for dev instances.
+log in with ?login=<username> -- discord oauth is off for dev instances.
 if you change layer-engine/, rebuild this worktree's copy with \`pnpm build:engine\`.`)

@@ -59,7 +59,7 @@ spawn('server', '\x1b[36m', bin('tsx'), [
 spawn('client', '\x1b[35m', bin('vite'), [])
 
 console.log(
-	`slot ${slot.slot} (${slot.name}) — app :${slot.ports.app}, client http://localhost:${slot.ports.client}, inspect :${slot.ports.inspect}`,
+	`slot ${slot.slot} (${slot.name}) -- app :${slot.ports.app}, client http://localhost:${slot.ports.client}, inspect :${slot.ports.inspect}`,
 )
 
 process.on('SIGINT', shutdown)
