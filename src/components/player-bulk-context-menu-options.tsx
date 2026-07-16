@@ -90,7 +90,9 @@ export default function PlayerBulkContextMenuOptions(
 	// scrollable list of the selected players' usernames, shown in the swap/kill confirmation dialogs so
 	// the admin can see exactly who is affected
 	function selectedPlayerList() {
-		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer)).players
+		// recent rather than live, so a player who dropped since being selected is still named rather than
+		// rendering as a bare id
+		const players = ChatPrt.Sel.recentPlayers(ZusUtils.getState(stores.squadServer))
 		return (
 			<ul className="max-h-48 space-y-0.5 overflow-y-auto rounded border bg-muted/30 p-2 text-sm">
 				{playerIds.map(id => {

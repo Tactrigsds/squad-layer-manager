@@ -64,7 +64,9 @@ function usePlayerLinkIds(playerIds: SM.PlayerId[], stores: SquadServerFrame.Key
 		BattlemetricsClient.playerBmData$,
 		(chatStore: ChatPrt.Store, bmData: BM.PublicPlayerBmData): PlayerLinkIds[] =>
 			playerIds.map(playerId => {
-				const player = SM.PlayerIds.find(ChatPrt.Sel.chatState(chatStore).players, p => p.ids, playerId)
+				// recent rather than live: profile links are about who the player is, so they should keep working
+				// after a mid-match disconnect
+				const player = ChatPrt.Sel.recentPlayer(playerId)(chatStore)
 				const bm = bmData[playerId]
 				return {
 					eos: playerId,
