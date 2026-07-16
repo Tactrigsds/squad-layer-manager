@@ -111,8 +111,29 @@ export namespace Sel {
 		)
 	)
 
+	// the live roster entry, i.e. only resolves while the player is connected. Callers that just need to put a name or
+	// an id on screen want recentPlayer instead; this one's emptiness is also read as "is offline".
 	export function player(playerId: SM.PlayerId) {
 		return (store: Store) => SM.PlayerIds.find(chatState(store).players, p => p.ids, playerId)
+	}
+
+	export function recentPlayers(store: Store) {
+		return chatState(store).recentPlayers
+	}
+
+	// resolves anyone who has taken part in the current match, connected or not
+	export function recentPlayer(playerId: SM.PlayerId) {
+		return (store: Store) => CHAT.InterpolableState.findRecentPlayer(chatState(store), playerId)
+	}
+
+	export function recentSquads(store: Store) {
+		return chatState(store).recentSquads
+	}
+
+	// resolves any squad instance from the current match, disbanded or not. Its emptiness is not a "disbanded" test --
+	// use squads/squad for that.
+	export function recentSquad(uniqueSquadId: number) {
+		return (store: Store) => CHAT.InterpolableState.findRecentSquad(chatState(store), uniqueSquadId)
 	}
 
 	export const squadsForTeam = RSel.memoizeFactory((maybeNormedTeamId: MH.NormedTeamId | SM.TeamId) =>
