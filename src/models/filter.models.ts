@@ -129,6 +129,26 @@ export const APPLY_FILTER_TYPE_NEGATED: Record<ApplyFilterType, boolean> = {
 	'excluded-from': true,
 }
 
+// Matchup operators describe one matchup: two team specs, each a set of allowed values per team
+// column. The plural is the set semantics -- {USA, CAF} vs {RGF} already denotes several concrete
+// matchups -- not a list of matchups; several unrelated matchups are a `some` block over several
+// nodes. Unlike a `team-column` comparison, whose quantifier expands one column over both teams
+// independently, a matchup correlates the two sides: it pairs team spec 0 against team spec 1. By
+// default either orientation matches; `locked` pins spec 0 to team 1 and spec 1 to team 2.
+export const MATCHUP_TYPES = ['allow-matchups', 'disallow-matchups'] as const
+export type MatchupType = (typeof MATCHUP_TYPES)[number]
+
+export const MATCHUP_TYPE_DISPLAY_NAMES: Record<MatchupType, string> = {
+	'allow-matchups': 'allow matchups',
+	'disallow-matchups': 'disallow matchups',
+}
+
+// 'disallow-matchups' compiles as the negation of the allow condition
+export const MATCHUP_TYPE_NEGATED: Record<MatchupType, boolean> = {
+	'allow-matchups': false,
+	'disallow-matchups': true,
+}
+
 // -------- nodes --------
 
 export type CompNode =
@@ -139,10 +159,18 @@ export type CompNode =
 
 export type ApplyFilterNode = { type: ApplyFilterType; filterId: string }
 
+// one side of a matchup. Dimensions are keyed by TeamColumn so resolveTeamColumn does the _1/_2
+// resolution. A dimension that is absent or empty is unconstrained ("any"), so a spec ANDs only the
+// dimensions that carry values -- this is what makes an alliance-only matchup expressible.
+export type MatchupTeamSpec = Partial<Record<TeamColumn, Value[]>>
+
+export type MatchupNode = { type: MatchupType; locked: boolean; teams: [MatchupTeamSpec, MatchupTeamSpec] }
+
 export type FilterNode =
 	| { type: BlockType; children: FilterNode[] }
 	| CompNode
 	| ApplyFilterNode
+	| MatchupNode
 
 export type NodeType = FilterNode['type']
 
@@ -171,6 +199,23 @@ const applyFilterNodeSchema = <T extends ApplyFilterType>(type: T) =>
 export const IncludedInNodeSchema = applyFilterNodeSchema('included-in')
 export const ExcludedFromNodeSchema = applyFilterNodeSchema('excluded-from')
 
+export const MatchupTeamSpecSchema = z.object(
+	Object.fromEntries(TEAM_COLUMNS.map((col) => [col, z.array(ValueSchema).optional()])) as {
+		[K in TeamColumn]: z.ZodOptional<z.ZodArray<typeof ValueSchema>>
+	},
+) satisfies z.ZodType<MatchupTeamSpec, unknown>
+
+const LockedSchema = z.boolean().prefault(false)
+
+const matchupNodeSchema = <T extends MatchupType>(type: T) =>
+	z.object({
+		type: z.literal(type),
+		locked: LockedSchema,
+		teams: z.tuple([MatchupTeamSpecSchema, MatchupTeamSpecSchema]),
+	})
+export const AllowMatchupsNodeSchema = matchupNodeSchema('allow-matchups')
+export const DisallowMatchupsNodeSchema = matchupNodeSchema('disallow-matchups')
+
 const ChildrenSchema = z.lazy(() => z.array(FilterNodeSchema))
 const blockNodeSchema = <T extends BlockType>(type: T) => z.object({ type: z.literal(type), children: ChildrenSchema })
 export const AllNodeSchema = blockNodeSchema('all')
@@ -187,6 +232,8 @@ export const FilterNodeSchema: z.ZodType<FilterNode> = z.lazy(() =>
 		InRangeNodeSchema,
 		IncludedInNodeSchema,
 		ExcludedFromNodeSchema,
+		AllowMatchupsNodeSchema,
+		DisallowMatchupsNodeSchema,
 		AllNodeSchema,
 		SomeNodeSchema,
 		NoneNodeSchema,
@@ -225,9 +272,14 @@ export const EditableCompNodeSchema = z.object({
 
 export type EditableApplyFilterNode = { type: ApplyFilterType; filterId?: string }
 
+// a matchup node has no incomplete state to model: every dimension is optional and an empty one means
+// "any", so a half-filled node is already a valid one. The editable form is the strict form.
+export type EditableMatchupNode = MatchupNode
+
 export type EditableFilterNodeCommon =
 	| EditableCompNode
 	| EditableApplyFilterNode
+	| EditableMatchupNode
 
 export type EditableFilterNode = EditableFilterNodeCommon | {
 	type: BlockType
@@ -272,6 +324,15 @@ export function isApplyFilterNode(node: FilterNode): node is ApplyFilterNode
 export function isApplyFilterNode(node: EditableFilterNode | ShallowEditableFilterNode): node is EditableApplyFilterNode
 export function isApplyFilterNode(node: { type: string }): boolean {
 	return isApplyFilterType(node.type)
+}
+
+export function isMatchupType(type: string): type is MatchupType {
+	return MATCHUP_TYPES.includes(type as MatchupType)
+}
+export function isMatchupNode(node: FilterNode): node is MatchupNode
+export function isMatchupNode(node: EditableFilterNode | ShallowEditableFilterNode): node is EditableMatchupNode
+export function isMatchupNode(node: { type: string }): boolean {
+	return isMatchupType(node.type)
 }
 
 // -------- value domains --------
@@ -552,6 +613,9 @@ export function isLocallyValidFilterNode(node: EditableFilterNode) {
 	if (isEditableBlockNode(node)) return true
 	if (isCompNode(node)) return isValidCompNode(node)
 	if (isApplyFilterNode(node)) return isValidApplyFilterNode(node)
+	// every dimension is optional, so there is no locally-invalid matchup node. Unmapped values are
+	// still reported at lowering time.
+	if (isMatchupNode(node)) return true
 	assertNever(node)
 }
 

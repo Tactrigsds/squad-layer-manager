@@ -17,6 +17,9 @@ export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	inputValue?: string
 	setInputValue?: (value: string) => void
 	values: T[]
+	// trigger text when nothing is selected. Defaults to a prompt, but callers where an empty selection
+	// is itself meaningful (a matchup dimension left unconstrained) can say what it means instead
+	emptyLabel?: string
 	selectionLimit?: number
 	disabled?: boolean
 	sort?: boolean
@@ -158,7 +161,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 
 			valuesDisplay = selectionLimit ? `${displayText} (${displayValues.length}/${selectionLimit})` : displayText
 		} else {
-			valuesDisplay = 'Select...'
+			valuesDisplay = props.emptyLabel ?? 'Select...'
 		}
 
 		const restrictSize = props.restrictValueSize ? 25 : 100

@@ -226,6 +226,97 @@ describe('filter lowering validation', () => {
 	})
 })
 
+// -------- matchup operators --------
+
+describe('matchup lowering', () => {
+	const irFor = (node: F.FilterNode) => {
+		const res = LE.lowerFilterNode(testCtx(), node)
+		expect(res.code).toBe('ok')
+		return res.code === 'ok' ? res.ir : null
+	}
+	const colOf = (name: string) => LC.COLUMN_KEYS.indexOf(name as never)
+
+	// the point of the operator: a matchup correlates the two sides, so an unlocked one matches either
+	// assignment of the specs to teams. A team-column quantifier cannot express this.
+	it('lowers an unlocked matchup to a disjunction over both orientations', () => {
+		const ir = irFor(FB.allowMatchups([{ Faction: ['USA'] }, { Faction: ['PLA'] }]))
+		expect(ir).toMatchObject({
+			op: 'or',
+			children: [
+				{ op: 'and', children: [{ op: 'in_vals', col: colOf('Faction_1') }, { op: 'in_vals', col: colOf('Faction_2') }] },
+				{ op: 'and', children: [{ op: 'in_vals', col: colOf('Faction_2') }, { op: 'in_vals', col: colOf('Faction_1') }] },
+			],
+		})
+	})
+
+	it('lowers a locked matchup to the single as-configured orientation', () => {
+		const ir = irFor(FB.allowMatchups([{ Faction: ['USA'] }, { Faction: ['PLA'] }], { locked: true }))
+		expect(ir).toMatchObject({
+			op: 'and',
+			children: [{ op: 'in_vals', col: colOf('Faction_1') }, { op: 'in_vals', col: colOf('Faction_2') }],
+		})
+	})
+
+	it('lowers disallow-matchups as the negation of the equivalent allow-matchups', () => {
+		const teams: [F.MatchupTeamSpec, F.MatchupTeamSpec] = [{ Faction: ['USA'] }, { Faction: ['PLA'] }]
+		expect(irFor(FB.disallowMatchups(teams))).toEqual({ op: 'not', child: irFor(FB.allowMatchups(teams)) })
+	})
+
+	// an empty dimension is "any", so it must contribute no term at all -- not an empty membership test
+	// (which would match nothing and silently invert the operator's meaning)
+	it('omits empty dimensions rather than constraining on them', () => {
+		const ir = irFor(FB.allowMatchups([{ Alliance: ['BLUFOR'], Faction: [], Unit: [] }, { Faction: ['PLA'] }], { locked: true }))
+		expect(ir).toEqual({
+			op: 'and',
+			children: [
+				{ op: 'in_vals', col: colOf('Alliance_1'), vals: [LC.dbValue('Alliance_1', 'BLUFOR', testCtx())] },
+				{ op: 'in_vals', col: colOf('Faction_2'), vals: [LC.dbValue('Faction_2', 'PLA', testCtx())] },
+			],
+		})
+	})
+
+	it('ANDs the filled dimensions within one team spec', () => {
+		const ir = irFor(FB.allowMatchups([{ Faction: ['USA'], Unit: ['Armored'] }, {}], { locked: true }))
+		expect(ir).toMatchObject({
+			op: 'and',
+			children: [{ op: 'in_vals', col: colOf('Faction_1') }, { op: 'in_vals', col: colOf('Unit_1') }],
+		})
+	})
+
+	// a fully-empty node constrains nothing. This is the flip side of "empty = any" and is why the
+	// editor labels empty dimensions "any"
+	it('lowers a fully-empty matchup to true, locked or not', () => {
+		expect(irFor(FB.allowMatchups([{}, {}], { locked: true }))).toEqual({ op: 'true' })
+		expect(irFor(FB.allowMatchups([{}, {}]))).toEqual({ op: 'true' })
+	})
+
+	// ...so its complement admits nothing, rather than collapsing to a vacuous match
+	it('lowers a fully-empty disallow-matchups to not-true', () => {
+		expect(irFor(FB.disallowMatchups([{}, {}]))).toEqual({ op: 'not', child: { op: 'true' } })
+	})
+
+	it('does not duplicate validation errors across the two orientations', () => {
+		const res = LE.lowerFilterNode(testCtx(), FB.allowMatchups([{ Faction: ['NotAFaction'] }, { Faction: ['PLA'] }]))
+		expect(res.code).toBe('err:invalid-node')
+		if (res.code === 'err:invalid-node') {
+			expect(res.errors.filter((e) => e.type === 'unmapped-value')).toHaveLength(1)
+		}
+	})
+
+	it('round-trips a matchup node through the filter node schema', () => {
+		const node = FB.allowMatchups([{ Faction: ['USA'], Unit: ['Armored'] }, { Alliance: ['REDFOR'] }], { locked: true })
+		const parsed = F.FilterNodeSchema.safeParse(node)
+		expect(parsed.success).toBe(true)
+		if (parsed.success) expect(parsed.data).toEqual(node)
+	})
+
+	it('defaults locked to false when absent', () => {
+		const parsed = F.FilterNodeSchema.safeParse({ type: 'allow-matchups', teams: [{ Faction: ['USA'] }, {}] })
+		expect(parsed.success).toBe(true)
+		if (parsed.success) expect((parsed.data as F.MatchupNode).locked).toBe(false)
+	})
+})
+
 // -------- migration --------
 
 async function runMigrations(filter: unknown, ups: ((db: any) => Promise<void>)[]): Promise<any> {

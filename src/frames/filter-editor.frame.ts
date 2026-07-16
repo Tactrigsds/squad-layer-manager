@@ -158,11 +158,19 @@ export type ApplyFilterNodeActions = {
 	setFilterId: (filterId: F.FilterEntityId) => void
 }
 
+export type MatchupNodeActions = {
+	setType: (type: F.MatchupType) => void
+	setLocked: (locked: boolean) => void
+	swapTeams: () => void
+	setTeamValues: (teamIndex: 0 | 1, column: F.TeamColumn, values: F.Value[]) => void
+}
+
 export type NodeActions = {
 	common: CommonNodeActions
 	block: BlockNodeActions
 	comp: CompNodeActions
 	applyFilter: ApplyFilterNodeActions
+	matchup: MatchupNodeActions
 }
 
 type UpdateNodeFn = (cb: (draft: Im.Draft<F.ShallowEditableFilterNode>) => void) => void
@@ -273,6 +281,35 @@ export function getNodeActions(stores: KeyProp, id: string): NodeActions {
 				updateNode(draft => {
 					if (!F.isApplyFilterNode(draft)) return
 					draft.filterId = filterId
+				})
+			},
+		},
+		matchup: {
+			setType(type) {
+				updateNode(draft => {
+					if (!F.isMatchupNode(draft)) return
+					draft.type = type
+				})
+			},
+			setLocked(locked) {
+				updateNode(draft => {
+					if (!F.isMatchupNode(draft)) return
+					draft.locked = locked
+				})
+			},
+			swapTeams() {
+				updateNode(draft => {
+					if (!F.isMatchupNode(draft)) return
+					draft.teams = [draft.teams[1], draft.teams[0]]
+				})
+			},
+			setTeamValues(teamIndex, column, values) {
+				updateNode(draft => {
+					if (!F.isMatchupNode(draft)) return
+					// an empty dimension means "any"; drop the key rather than storing [] so the two spell
+					// the same thing in persisted filters
+					if (values.length === 0) delete draft.teams[teamIndex][column]
+					else draft.teams[teamIndex][column] = values
 				})
 			},
 		},
