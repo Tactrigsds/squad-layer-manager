@@ -57,7 +57,11 @@ export type InterpolableState = {
 	// everyone who has taken part in the current match, including players who have since disconnected. Reset at match
 	// boundaries alongside playerStats, whose keys it is the domain of.
 	recentPlayers: SM.RecentPlayer[]
+	// the live squads: only squads that currently exist
 	squads: SM.UniqueSquad[]
+	// every squad instance that has existed in the current match, including disbanded ones. Same bargain as
+	// recentPlayers: keyed by uniqueId, which is stable for the lifetime of an instance.
+	recentSquads: SM.RecentSquad[]
 	// per-match combat stats, keyed by recent player id. kept separate from the player records rather than stored on
 	// them, so a player who reconnects mid-match keeps the score they built up before dropping.
 	playerStats: PlayerStatsMap
@@ -69,6 +73,7 @@ export namespace InterpolableState {
 			players: state.players.map(p => ({ ...p, ids: { ...p.ids } })),
 			recentPlayers: [...state.recentPlayers],
 			squads: [...state.squads],
+			recentSquads: [...state.recentSquads],
 			playerStats: { ...state.playerStats },
 		}
 	}
@@ -82,6 +87,17 @@ export namespace InterpolableState {
 
 	export function findRecentPlayer(state: InterpolableState, id: SM.PlayerIds.IdQueryOrPlayerId) {
 		return SM.PlayerIds.find(state.recentPlayers, p => p.ids, id)
+	}
+
+	// records a squad instance as having existed in the current match, refreshing an existing entry (e.g. a rename).
+	export function recordRecentSquad(state: InterpolableState, squad: SM.RecentSquad) {
+		const index = state.recentSquads.findIndex(s => s.uniqueId === squad.uniqueId)
+		if (index === -1) state.recentSquads.push(SM.toRecentSquad(squad))
+		else state.recentSquads[index] = SM.toRecentSquad(squad)
+	}
+
+	export function findRecentSquad(state: InterpolableState, uniqueSquadId: number) {
+		return state.recentSquads.find(s => s.uniqueId === uniqueSquadId)
 	}
 }
 
@@ -206,6 +222,7 @@ export function getInitialInterpolatedState(): InterpolableState {
 		players: [],
 		recentPlayers: [],
 		squads: [],
+		recentSquads: [],
 		playerStats: {},
 	}
 }
@@ -461,9 +478,11 @@ function interpolateEvent(
 				// (source 'rcon-reconnected'), where wiping would cost the match its scores so far.
 				state.playerStats = {}
 				state.recentPlayers = state.players.map(SM.toRecentPlayer)
+				state.recentSquads = state.squads.map(SM.toRecentSquad)
 			} else if (event.type === 'RESET') {
-				// the reseeded roster may name players we haven't seen participate yet
+				// the reseeded roster may name players and squads we haven't seen participate yet
 				for (const player of state.players) InterpolableState.recordRecentPlayer(state, player)
+				for (const squad of state.squads) InterpolableState.recordRecentSquad(state, squad)
 			}
 			return event
 		}
@@ -530,6 +549,7 @@ function interpolateEvent(
 				return noop(`Squad ${event.uniqueId} was renamed but was not found in the squad list`)
 			}
 			applyEventTeamMutations(chatLog, state, event)
+			InterpolableState.recordRecentSquad(state, state.squads[index])
 			return { ...event, squad: state.squads[index] }
 		}
 
@@ -630,6 +650,7 @@ function interpolateEvent(
 				)
 			}
 			applyEventTeamMutations(chatLog, state, event)
+			InterpolableState.recordRecentSquad(state, squad)
 			return { ...event, creator: state.players[creatorIndex] }
 		}
 

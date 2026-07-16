@@ -95,13 +95,11 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	// pages arrive most-recent-match first; reverse to interleave chronologically ahead of the live current-match events
 	const historicalEvents = (eventsQuery.data?.pages ?? []).slice().reverse().flatMap(p => RPC.selectLoaded(p)?.events ?? [])
 	const allEvents = [...historicalEvents, ...currentMatchEvents]
+	// while the player is connected we render their full details; once they aren't, only what a RecentPlayer carries
+	// (their ids, and that they're an admin) is still true of them, so team/squad/role drop off rather than going stale.
 	const livePlayer = ZusUtils.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.player(playerId)(s) ?? null)
 	const recentPlayer = ZusUtils.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.recentPlayer(playerId)(s) ?? null)
-	// team/squad/role only exist on a full player, so a disconnected one is still reconstructed from the feed --
-	// which is also the only source for a player being viewed in a past match, who is in no recentPlayers list.
-	const player = livePlayer ?? CHAT.findLastPlayerInstance(allEvents, playerId)
-	// recentPlayers tracks detail changes for the current match, so it beats a reconstruction for identity alone
-	const ids = recentPlayer?.ids ?? player?.ids
+	const ids = livePlayer?.ids ?? recentPlayer?.ids
 
 	const connectionStatus = data?.connectionStatus ?? null
 	const elapsed = useElapsed(connectionStatus?.status === 'online' ? connectionStatus.connectedSince : null)
@@ -169,7 +167,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 			<div className="px-3 py-2 space-y-1.5 text-xs border-b border-border/50">
 				<PlayerTimeoutStatus playerId={playerId} />
 				<div className="inline-flex gap-1 items-baseline">
-					{player?.role && <div className="text-muted-foreground">{player.role}</div>}
+					{livePlayer?.role && <div className="text-muted-foreground">{livePlayer.role}</div>}
 					<CopyIdButton label="eos" id={playerId} />
 					{(ids?.steam ?? profile?.playerIds.steam) && <CopyIdButton label="steam" id={(ids?.steam ?? profile?.playerIds.steam)!} />}
 					{ids?.epic && <CopyIdButton label="epic" id={ids.epic} />}

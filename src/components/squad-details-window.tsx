@@ -65,6 +65,11 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 		squadServerFrameKey,
 		s => ChatPrt.Sel.chatState(s).squads.find(sq => sq.uniqueId === uniqueSquadId) ?? null,
 	)
+	// a squad that disbands while this window is open drops off `squads`, but a RecentSquad still names the instance,
+	// so the window keeps its title/team/creator instead of blanking out. Its live state (locked, the member list)
+	// legitimately goes away with it.
+	const recentSquad = ZusUtils.useStore(squadServerFrameKey, s => ChatPrt.Sel.recentSquad(uniqueSquadId)(s) ?? null)
+	const knownSquad = liveSquad ?? recentSquad
 
 	const currentMatchEvents = ZusUtils.useStore(
 		squadServerFrameKey,
@@ -106,16 +111,16 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 
 	const { scrollAreaRef, contentRef, showScrollButton, scrollToBottom } = useTailingScroll()
 
-	const creatorId = liveSquad?.creator ?? squad?.creatorId ?? null
+	const creatorId = knownSquad?.creator ?? squad?.creatorId ?? null
 	const creatorPlayer = creatorId
 		? (currentPlayers.find(p => SM.PlayerIds.getPlayerId(p.ids) === creatorId)
 			?? CHAT.findLastPlayerInstance(allEvents, creatorId))
 		: null
 
-	const teamId = (liveSquad?.teamId ?? squad?.teamId) as 1 | 2 | undefined
-	const ingameSquadId = liveSquad?.squadId ?? squad?.ingameSquadId
-	const isDefaultName = !liveSquad || liveSquad.squadName === `Squad ${ingameSquadId}`
-	const displayName = liveSquad?.squadName ?? (ingameSquadId != null ? `Squad ${ingameSquadId}` : 'Squad Details')
+	const teamId = (knownSquad?.teamId ?? squad?.teamId) as 1 | 2 | undefined
+	const ingameSquadId = knownSquad?.squadId ?? squad?.ingameSquadId
+	const isDefaultName = !knownSquad || knownSquad.squadName === `Squad ${ingameSquadId}`
+	const displayName = knownSquad?.squadName ?? (ingameSquadId != null ? `Squad ${ingameSquadId}` : 'Squad Details')
 
 	const aboveChatZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 
