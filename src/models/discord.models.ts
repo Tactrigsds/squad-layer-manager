@@ -2,6 +2,8 @@ import * as EMO from '@/models/emoji.models'
 import type * as D from 'discord.js'
 import { z } from 'zod'
 
+export const CDN_BASE = 'https://cdn.discordapp.com'
+
 export function toNormalizedEmoji(emoji: D.GuildEmoji): EMO.DiscordEmoji {
 	return {
 		id: EMO.createDiscordEmojiId(emoji.id),
