@@ -39,15 +39,13 @@ export type MatchDetails =
 		& MatchDetailsCommon
 	)
 
-export type MatchOutcome = {
-	type: 'team1' | 'team2'
-	team1Tickets: number
-	team2Tickets: number
-} | {
-	type: 'draw'
-} | {
-	type: 'unknown'
-}
+export const MatchOutcomeSchema = z.discriminatedUnion('type', [
+	z.object({ type: z.literal('team1'), team1Tickets: z.number(), team2Tickets: z.number() }),
+	z.object({ type: z.literal('team2'), team1Tickets: z.number(), team2Tickets: z.number() }),
+	z.object({ type: z.literal('draw') }),
+	z.object({ type: z.literal('unknown') }),
+])
+export type MatchOutcome = z.infer<typeof MatchOutcomeSchema>
 export type NormalizedMatchOutcome = {
 	type: NormedTeamProp
 	teamATickets: number

@@ -568,9 +568,9 @@ describe('PlayerIds.findByUsernameLoose', () => {
 })
 
 describe('toRecentPlayer', () => {
-	// SE.fromEventRow deserializes stored event JSON without a schema parse, so a player persisted before adminGroups
-	// existed reaches the reducer with the field simply absent. Spreading that threw "adminGroups is not iterable" and
-	// took the whole chat feed down on any RESET replaying such an event.
+	// A player persisted before adminGroups existed reaches the reducer with the field simply absent (the schema
+	// leaves it optional). Spreading that threw "adminGroups is not iterable" and took the whole chat feed down on
+	// any RESET replaying such an event.
 	it('accepts a player persisted before adminGroups existed', () => {
 		const legacy = {
 			ids: { eos: 'e1', playerController: 'ctrl', username: 'legacy' },
