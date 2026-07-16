@@ -46,13 +46,18 @@ describe('secret-box', () => {
 	})
 })
 
-describe('SETTINGS_ENCRYPTION_KEY validation', () => {
+describe('SETTINGS_ENCRYPTION_KEY', () => {
 	const schema = Env.groups.encryption.SETTINGS_ENCRYPTION_KEY
-	it('accepts a base64-encoded 32-byte key', () => {
-		expect(schema.safeParse(randomBytes(32).toString('base64')).success).toBe(true)
+	it('turns any string into the 32 bytes the cipher needs', () => {
+		for (const key of [randomBytes(32).toString('base64'), 'A_VERY_INSECURE_ENCRYPTION_KEY', 'x']) {
+			const parsed = schema.parse(key)
+			expect(parsed).toHaveLength(32)
+		}
 	})
-	it('rejects a key that is not 32 bytes', () => {
-		expect(schema.safeParse(randomBytes(16).toString('base64')).success).toBe(false)
+	// a key that changed shape between boots would leave every sealed setting unreadable
+	it('derives the same key from the same string every time', () => {
+		expect(schema.parse('a-passphrase')).toEqual(schema.parse('a-passphrase'))
+		expect(schema.parse('a-passphrase')).not.toEqual(schema.parse('another-passphrase'))
 	})
 	it('rejects an empty key', () => {
 		expect(schema.safeParse('').success).toBe(false)

@@ -93,11 +93,6 @@ describe('the development encryption key', () => {
 		expect(Env.rawVar('SETTINGS_ENCRYPTION_KEY')).toBe(INSECURE_DEV_ENCRYPTION_KEY)
 	})
 
-	it('is a valid key otherwise, so a checkout boots with it', async () => {
-		const Env = await import('./env.ts')
-		expect(Env.groups.encryption.SETTINGS_ENCRYPTION_KEY.safeParse(Env.INSECURE_DEV_ENCRYPTION_KEY).success).toBe(true)
-	})
-
 	it('does not stop production booting with a real key', async () => {
 		const Env = await loadEnv(`SETTINGS_ENCRYPTION_KEY=${KEY}\n`, { NODE_ENV: 'production' })
 		expect(() => Env.ensureEnvSetup()).not.toThrow()
