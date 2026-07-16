@@ -261,7 +261,7 @@ export function PlayerMenuItems(
 		},
 	)
 
-	const grouping = ZusUtils.useStore(
+	const group = ZusUtils.useStore(
 		stores.squadServer,
 		MatchHistoryClient.currentMatch$(serverId),
 		BattlemetricsClient.playerBmData$,
@@ -277,7 +277,7 @@ export function PlayerMenuItems(
 			const player = SM.PlayerIds.find(ChatPrt.Sel.chatState(chatStore).players, p => p.ids, playerId)
 			if (player?.teamId == null) return undefined
 			const enriched = TeamsPanelModels.Sel.playersForTeam(player.teamId)(chatStore, currentMatch, bmData, bmStore, settings)
-			return SM.PlayerIds.find(enriched, p => p.ids, playerId)?.grouping
+			return SM.PlayerIds.find(enriched, p => p.ids, playerId)?.group
 		},
 	)
 
@@ -584,15 +584,15 @@ export function PlayerMenuItems(
 					<ContextMenuShortcut>{sc('⇧+click role cell', '⇧+Ctrl+click role cell')}</ContextMenuShortcut>
 				</Item>
 				<Item
-					disabled={grouping == null || teamMissing}
+					disabled={group == null || teamMissing}
 					onClick={() => {
-						if (grouping == null) return
+						if (group == null) return
 						TSWClient.Actions.ensureViewingTeams(serverId)
-						SquadServerFrame.Actions.selectGrouping(stores, grouping, teamId)
+						SquadServerFrame.Actions.selectGroup(stores, group, teamId)
 					}}
 				>
-					Grouping{grouping != null ? ` (${grouping})` : ''}
-					<ContextMenuShortcut>{sc('⇧+click grouping cell', '⇧+Ctrl+click grouping cell')}</ContextMenuShortcut>
+					Group{group != null ? ` (${group})` : ''}
+					<ContextMenuShortcut>{sc('⇧+click group cell', '⇧+Ctrl+click group cell')}</ContextMenuShortcut>
 				</Item>
 				<Item
 					disabled={!playerInfo?.isLeader || teamMissing}

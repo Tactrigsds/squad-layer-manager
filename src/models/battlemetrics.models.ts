@@ -144,58 +144,6 @@ export type PlayerProfile = {
 
 export type PublicPlayerBmData = Record<string, PlayerFlagsAndProfile>
 export type PlayerBmDataUpdate = { playerId: string; data: PlayerFlagsAndProfile }
-// a single grouping: assigns players to a labelled/colored bucket (by the flags in `associations`, priority-ordered)
-// within the display modes it belongs to.
-export const PlayerFlagGroupingSchema = z.object({
-	label: z.string(),
-	modeIds: z.array(z.string()).prefault([]),
-	associations: z.record(z.uuid(), z.number()),
-	color: z.string(),
-})
-export type PlayerFlagGrouping = z.infer<typeof PlayerFlagGroupingSchema>
-
-// `modeIds` are the display modes declared upfront; each grouping's own `modeIds` reference this list.
-export const PlayerFlagGroupingsSchema = z.object({
-	modeIds: z.array(z.string()).prefault([]),
-	groupings: z.array(PlayerFlagGroupingSchema).prefault([]),
-})
-export type PlayerFlagGroupings = z.infer<typeof PlayerFlagGroupingsSchema>
-
-export const EMPTY_PLAYER_FLAG_GROUPINGS: PlayerFlagGroupings = { modeIds: [], groupings: [] }
-
-export function getGroupingModeIds(groupings: PlayerFlagGroupings): string[] {
-	return groupings.modeIds
-}
-
-export function resolvePlayerFlagGroups(
-	players: [SM.PlayerId, PlayerFlag[]][],
-	groupings: PlayerFlagGroupings,
-	modeId: string | null | undefined,
-) {
-	const groups: Map<SM.PlayerId, string> = new Map()
-	if (!modeId) return groups
-
-	const modeGroupings = groupings.groupings.filter(g => g.modeIds.includes(modeId))
-	const associations: [string, string, number][] = []
-	for (const group of modeGroupings) {
-		for (const [id, priority] of Object.entries(group.associations)) {
-			associations.push([group.label, id, priority])
-		}
-	}
-	associations.sort((a, b) => a[2] - b[2])
-
-	for (const [playerId, playerFlags] of players) {
-		for (const [label, flagId] of associations) {
-			if (playerFlags.some(f => f.id === flagId)) {
-				groups.set(playerId, label)
-				break
-			}
-		}
-	}
-
-	return groups
-}
-
 export function resolveFlags(flagIds: string[], orgFlags: PlayerFlag[]): PlayerFlag[] {
 	return flagIds.flatMap((id) => {
 		const flag = orgFlags.find((f) => f.id === id)
@@ -211,7 +159,7 @@ export const UpdatePlayerFlagsInputSchema = z.object({
 export type UpdatePlayerFlagsInput = z.infer<typeof UpdatePlayerFlagsInputSchema>
 
 export type StoreState = {
-	selectedModeId: string | null
+	selectedGroupingId: string | null
 	slsOnly: boolean
 	orgFlags: PlayerFlag[]
 }

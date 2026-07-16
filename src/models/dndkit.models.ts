@@ -24,8 +24,9 @@ export type DragItem = {
 	type: 'layer-generation-column'
 	id: string
 } | {
-	// a flag in an ordered BattleMetrics flag list, e.g. the player flag color hierarchy (id = flag id)
-	type: 'bm-flag'
+	// a rule row in a player grouping's ordered rule list. A rule has no id of its own and its order is its priority,
+	// so it's identified by grouping + position -- see ruleDragId (settings-form), which owns the encoding.
+	type: 'grouping-rule'
 	id: string
 }
 
