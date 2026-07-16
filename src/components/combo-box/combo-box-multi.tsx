@@ -178,8 +178,10 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 					// available, where a character count would cut at a guess about it
 					// min-w-0: a flex item defaults to min-width:auto and so refuses to shrink below its
 					// content, which would leave the label's ellipsis with nothing to do and let the trigger
-					// push out of a flex container instead of truncating inside it
-					className={cn(props.className, restrictValueSize ? 'max-w-[400px]' : 'max-w-full', 'min-w-0 justify-between font-mono')}
+					// push out of a flex container instead of truncating inside it.
+					// props.className goes last so a caller's width can beat these defaults -- cn merges
+					// tailwind conflicts last-wins, so the old ordering silently dropped them
+					className={cn(restrictValueSize ? 'max-w-[400px]' : 'max-w-full', 'min-w-0 justify-between font-mono', props.className)}
 				>
 					<span className="grow overflow-hidden text-ellipsis">
 						{valuesDisplay}
