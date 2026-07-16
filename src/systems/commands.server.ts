@@ -70,7 +70,6 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 		}
 	}
 
-	// sender resolution happens before parsing so timeout aliases (which dispatch on unknown commands) share it
 	const playerRes = await SquadRcon.getPlayer(ctx, msg.playerIds)
 	if (playerRes.code === 'err:rcon') {
 		return await error('rcon-error', 'RCON error')
@@ -84,13 +83,19 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 	const user: USR.GuiOrChatUserId = { steamId: sender.ids.steam }
 	const h: HandlerCtx = { ctx, msg, sender, user, reply, error }
 
-	const parseRes = CMD.parseCommand(msg, Settings.GLOBAL_SETTINGS.commands)
+	// an alias is a plain text substitution for a complete command, so it's expanded up front and everything after
+	// this point (scope, enabled, arg resolution) runs against the command it points at. Anything typed after the
+	// alias is dropped: aliases take no arguments of their own.
+	const alias = CMD.findAlias(Settings.GLOBAL_SETTINGS.commandAliases, Settings.GLOBAL_SETTINGS.commands, msg.message.split(/\s+/)[0])
+	if (alias) log.info('Command alias expanded: %s -> %s', alias.alias, alias.command)
+	const effectiveMsg = alias ? { ...msg, message: alias.command } : msg
+
+	const parseRes = CMD.parseCommand(effectiveMsg, Settings.GLOBAL_SETTINGS.commands)
 	if (parseRes.code === 'err:unknown-command') {
 		// just don't respond to unknown commands from non-admins
 		if (!sender.isAdmin) return
-		// real command strings win by construction: aliases are only consulted after parseCommand misses
-		const aliasRes = await tryTimeoutAlias(h)
-		if (aliasRes) return aliasRes
+		// an alias pointing at a command string that no longer exists: report the alias, not its stale expansion
+		if (alias) return await error('unknown-command', `Alias "${alias.alias}" points at a command that no longer exists`)
 		return await error('unknown-command', parseRes.msg)
 	}
 
@@ -120,23 +125,6 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 	// TS cannot correlate handlers[cmd] with CommandArgs<typeof cmd> across the union, so the args
 	// are cast at this single dispatch point; each handler's signature is still fully typed
 	return await handlers[cmd](h, resolved.args as never)
-}
-
-// configurable fixed-duration timeout aliases (e.g. !yeet = timeout with 2h). Admin chat only.
-async function tryTimeoutAlias(h: HandlerCtx): Promise<HandlerResult | undefined> {
-	if (h.msg.channelType !== 'ChatAdmin') return undefined
-	const words = h.msg.message.split(/\s+/)
-	const token = words[0].toLowerCase()
-	const alias = Settings.GLOBAL_SETTINGS.timeoutCommandAliases.find(a => a.string.toLowerCase() === token)
-	if (!alias) return undefined
-	log.info('Timeout alias received: %s', alias.string)
-	const resolved = await resolveArgDefs(h.ctx, CMD.TIMEOUT_ALIAS_ARG_DEFS, words.slice(1), h.sender)
-	if (resolved.code === 'err:missing-arg') {
-		return await h.error('invalid-args', `Usage: ${alias.string} ${CMD.formatArgSignature(CMD.TIMEOUT_ALIAS_ARG_DEFS)}`)
-	}
-	if (resolved.code !== 'ok') return await h.error('invalid-args', resolved.msg)
-	const args = resolved.args as CMD.ResolvedArgs<typeof CMD.TIMEOUT_ALIAS_ARG_DEFS>
-	return await executeTimeout(h, [args.player], alias.duration, args.reason, args.player.ids.username)
 }
 
 // resolves a chat team token: 1|2, normalized A|B, or the faction name of the current layer
@@ -321,7 +309,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		await h.reply(
 			Messages.WARNS.commands.help(
 				Settings.GLOBAL_SETTINGS.commands,
-				Settings.GLOBAL_SETTINGS.timeoutCommandAliases,
+				Settings.GLOBAL_SETTINGS.commandAliases,
 			),
 		)
 		return { code: 'ok' }

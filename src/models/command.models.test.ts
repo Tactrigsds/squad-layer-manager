@@ -230,3 +230,52 @@ describe('seedCommandConfigs', () => {
 		expect(Object.keys(seeded).sort()).toEqual(Object.keys(CMD.COMMAND_DECLARATIONS).sort())
 	})
 })
+
+describe('resolveAliasCommand', () => {
+	const configs = CMD.seedCommandConfigs({}, '!') as unknown as CMD.CommandConfigs
+
+	it('resolves a command string to its id and trailing tokens', () => {
+		expect(CMD.resolveAliasCommand('!broadcast Read the rules', configs)).toEqual({
+			code: 'ok',
+			cmdId: 'broadcast',
+			tokens: ['Read', 'the', 'rules'],
+		})
+	})
+
+	it('matches command strings case-insensitively and tolerates surrounding whitespace', () => {
+		expect(CMD.resolveAliasCommand('  !BROADCAST   hi there  ', configs)).toMatchObject({ code: 'ok', cmdId: 'broadcast' })
+	})
+
+	// resolves as unknown rather than invalid: an alias stored before a command's strings were renamed must still load
+	it('reports an unresolvable command string separately from bad args', () => {
+		expect(CMD.resolveAliasCommand('!nosuchcommand', configs)).toMatchObject({ code: 'err:unknown-command' })
+		expect(CMD.resolveAliasCommand('', configs)).toMatchObject({ code: 'err:unknown-command' })
+		expect(CMD.resolveAliasCommand('!broadcast', configs)).toMatchObject({ code: 'err:invalid-args' })
+	})
+
+	it('enforces required args and checks the tokens it can parse without a roster', () => {
+		expect(CMD.resolveAliasCommand('!timeout bob', configs)).toMatchObject({ code: 'err:invalid-args' })
+		expect(CMD.resolveAliasCommand('!timeout bob notaduration', configs)).toMatchObject({ code: 'err:invalid-args' })
+		expect(CMD.resolveAliasCommand('!timeout bob 2h griefing', configs)).toMatchObject({ code: 'ok', cmdId: 'timeout' })
+	})
+
+	it('accepts a command whose optional args are all omitted', () => {
+		expect(CMD.resolveAliasCommand('!startvote', configs)).toEqual({ code: 'ok', cmdId: 'startVote', tokens: [] })
+	})
+})
+
+describe('findAlias', () => {
+	const configs = CMD.seedCommandConfigs({}, '!') as unknown as CMD.CommandConfigs
+	const aliases: CMD.CommandAlias[] = [{ alias: '!rules', command: '!broadcast Read the rules' }]
+
+	it('matches an alias case-insensitively', () => {
+		expect(CMD.findAlias(aliases, configs, '!RULES')).toEqual(aliases[0])
+		expect(CMD.findAlias(aliases, configs, '!nope')).toBeUndefined()
+	})
+
+	// aliases are a fallback, so shadowing a real command string with one is a no-op rather than an override
+	it('lets a real command string win on collision', () => {
+		const shadowing: CMD.CommandAlias[] = [{ alias: '!help', command: '!broadcast nope' }]
+		expect(CMD.findAlias(shadowing, configs, '!help')).toBeUndefined()
+	})
+})
