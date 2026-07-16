@@ -17,6 +17,9 @@ export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	inputValue?: string
 	setInputValue?: (value: string) => void
 	values: T[]
+	// trigger text when nothing is selected. Defaults to a prompt, but callers where an empty selection
+	// is itself meaningful (a matchup dimension left unconstrained) can say what it means instead
+	emptyLabel?: string
 	selectionLimit?: number
 	disabled?: boolean
 	sort?: boolean
@@ -81,7 +84,9 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		props.confirm,
 	])
 
-	const restrictValueSize = props.restrictValueSize ?? true
+	// opt-in, as the name says: an unset prop leaves the trigger free to use the width its container
+	// gives it, and the label's ellipsis cuts only when it actually runs out
+	const restrictValueSize = props.restrictValueSize ?? false
 	useImperativeHandle(props.ref, () => ({
 		focus: () => {
 			setOpen(true)
@@ -158,12 +163,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 
 			valuesDisplay = selectionLimit ? `${displayText} (${displayValues.length}/${selectionLimit})` : displayText
 		} else {
-			valuesDisplay = 'Select...'
-		}
-
-		const restrictSize = props.restrictValueSize ? 25 : 100
-		if (valuesDisplay.length > restrictSize) {
-			valuesDisplay = valuesDisplay.slice(0, restrictSize) + '...'
+			valuesDisplay = props.emptyLabel ?? 'Select...'
 		}
 	}
 	const trigger = (
@@ -174,7 +174,14 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 					disabled={disabled}
 					role="combobox"
 					aria-expanded={open}
-					className={cn(props.className, restrictValueSize && 'max-w-[400px]', 'justify-between font-mono')}
+					// truncation is left to the ellipsis on the label below: it cuts at the width actually
+					// available, where a character count would cut at a guess about it
+					// min-w-0: a flex item defaults to min-width:auto and so refuses to shrink below its
+					// content, which would leave the label's ellipsis with nothing to do and let the trigger
+					// push out of a flex container instead of truncating inside it.
+					// props.className goes last so a caller's width can beat these defaults -- cn merges
+					// tailwind conflicts last-wins, so the old ordering silently dropped them
+					className={cn(restrictValueSize ? 'max-w-[400px]' : 'max-w-full', 'min-w-0 justify-between font-mono', props.className)}
 				>
 					<span className="grow overflow-hidden text-ellipsis">
 						{valuesDisplay}

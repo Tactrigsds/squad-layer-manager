@@ -36,6 +36,18 @@ export const notAll = (children: F.FilterNode[]): F.FilterNode => ({ type: 'nota
 export const includedIn = (filterId: string): F.FilterNode => ({ type: 'included-in', filterId })
 export const excludedFrom = (filterId: string): F.FilterNode => ({ type: 'excluded-from', filterId })
 
+// -------- matchup builders --------
+
+export const allowMatchups = (
+	teams: [F.MatchupTeamSpec, F.MatchupTeamSpec],
+	options: { locked?: boolean } = {},
+): F.FilterNode => ({ type: 'allow-matchups', locked: options.locked ?? false, teams })
+
+export const disallowMatchups = (
+	teams: [F.MatchupTeamSpec, F.MatchupTeamSpec],
+	options: { locked?: boolean } = {},
+): F.FilterNode => ({ type: 'disallow-matchups', locked: options.locked ?? false, teams })
+
 // -------- comparison builders --------
 
 export const eq = (column: ColumnInput, value: ScalarInput, options: { neg?: boolean } = {}): F.FilterNode => ({
