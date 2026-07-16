@@ -51,6 +51,19 @@ pnpm run server:dev
 pnpm run client:dev
 ```
 
+### Several at once
+
+To work on more than one change at a time, run each in its own git worktree as a self-contained instance —
+its own ports, database and emulated squad server, so no two contend for a real server or for 5173:
+
+```sh
+pnpm dev:init   # once per worktree
+pnpm dev:emu    # the emulated squad server
+pnpm dev        # the app + client
+```
+
+See [docs/DEV_INSTANCES.md](docs/DEV_INSTANCES.md).
+
 ## Tests
 
 | command                 | what it runs                                                            |
