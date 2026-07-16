@@ -14,6 +14,9 @@ import { normalizeOptions } from './options.ts'
 export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	className?: string
 	title?: string
+	// trigger text when nothing is selected; defaults to `Select...`. Use it where an empty selection has a meaning of its
+	// own (e.g. "All servers") rather than meaning nothing is chosen.
+	placeholder?: string
 	inputValue?: string
 	setInputValue?: (value: string) => void
 	values: T[]
@@ -158,7 +161,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 
 			valuesDisplay = selectionLimit ? `${displayText} (${displayValues.length}/${selectionLimit})` : displayText
 		} else {
-			valuesDisplay = 'Select...'
+			valuesDisplay = props.placeholder ?? 'Select...'
 		}
 
 		const restrictSize = props.restrictValueSize ? 25 : 100
