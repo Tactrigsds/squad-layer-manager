@@ -4,6 +4,11 @@
 
 export type SettingsGroup = { slug: string; label: string; keys: string[] }
 
+// top-level global-settings keys that render no field of their own in the GUI (they're managed inline by a sibling
+// editor), so neither the form nor the TOC should emit a row/anchor for them. `defaultPrefix` is chosen via the
+// "default" markers in the allowedPrefixes editor.
+export const HIDDEN_GLOBAL_SETTINGS_KEYS: ReadonlySet<string> = new Set(['defaultPrefix'])
+
 export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 	{ slug: 'general', label: 'General', keys: ['topBarColor', 'navLinks', 'warnOnSlmStart'] },
 	{
@@ -11,7 +16,7 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 		label: 'Messaging & Reasons',
 		keys: ['warnPrefix', 'adminActionReasons', 'requireReasonFor', 'broadcasts', 'messageVariables', 'chat'],
 	},
-	{ slug: 'commands', label: 'In-game Commands', keys: ['allowedPrefixes', 'defaultPrefix', 'commands', 'timeoutCommandAliases'] },
+	{ slug: 'commands', label: 'In-game Commands', keys: ['allowedPrefixes', 'defaultPrefix', 'commands', 'commandAliases'] },
 	{ slug: 'queue-and-votes', label: 'Queue & Votes', keys: ['layerQueue', 'vote', 'layerTable', 'layerGeneration'] },
 	{
 		slug: 'squad-server',

@@ -2,7 +2,7 @@ import { StickyGroup } from '@/components/sticky-group'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { SettingsGroup } from '@/lib/settings-groups'
-import { GLOBAL_SETTINGS_GROUPS, splitByGroups, TOC_LEAF_PATHS } from '@/lib/settings-groups'
+import { GLOBAL_SETTINGS_GROUPS, HIDDEN_GLOBAL_SETTINGS_KEYS, splitByGroups, TOC_LEAF_PATHS } from '@/lib/settings-groups'
 import { settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
@@ -38,7 +38,8 @@ function stripNullable(node: Node): Node {
 function buildChildren(node: Node, path: (string | number)[], idPrefix: string, access: RBAC.SettingsWriteAccess): TocNode[] {
 	const props: Record<string, Node> | undefined = node?.properties
 	if (!props) return []
-	return Object.keys(props).map((key): TocNode => {
+	// top-level keys managed inline by a sibling editor (e.g. defaultPrefix) render no field, so emit no TOC anchor either
+	return Object.keys(props).filter((key) => !(path.length === 0 && HIDDEN_GLOBAL_SETTINGS_KEYS.has(key))).map((key): TocNode => {
 		const inner = stripNullable(props[key])
 		const childPath = [...path, key]
 		const pathStr = childPath.join('.')

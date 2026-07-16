@@ -449,7 +449,7 @@ export type PublicSettings = {
 	navLinks: SETTINGS.GlobalSettings['navLinks']
 	chat: SETTINGS.GlobalSettings['chat']
 	commands: SETTINGS.GlobalSettings['commands']
-	timeoutCommandAliases: SETTINGS.GlobalSettings['timeoutCommandAliases']
+	commandAliases: SETTINGS.GlobalSettings['commandAliases']
 	vote: { voteDuration: number; voteDisplayProps: SETTINGS.GlobalSettings['vote']['voteDisplayProps'] }
 	servers: ServerEntry[]
 	playerFlagGroupings: SETTINGS.GlobalSettings['playerFlagGroupings']
@@ -466,7 +466,7 @@ function buildPublicSettings(): PublicSettings {
 		navLinks: GLOBAL_SETTINGS.navLinks,
 		chat: GLOBAL_SETTINGS.chat,
 		commands: GLOBAL_SETTINGS.commands,
-		timeoutCommandAliases: GLOBAL_SETTINGS.timeoutCommandAliases,
+		commandAliases: GLOBAL_SETTINGS.commandAliases,
 		vote: {
 			voteDuration: GLOBAL_SETTINGS.vote.voteDuration,
 			voteDisplayProps: GLOBAL_SETTINGS.vote.voteDisplayProps,
