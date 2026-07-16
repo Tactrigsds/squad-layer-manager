@@ -12,6 +12,7 @@ export default defineConfig({
 	},
 	test: {
 		include: ['test/integration/**/*.test.ts'],
+		exclude: ['.claude/**'],
 		setupFiles: ['./src/vitest-setup.ts'],
 		testTimeout: 60_000,
 		hookTimeout: 120_000,
