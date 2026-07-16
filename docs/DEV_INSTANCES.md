@@ -66,17 +66,33 @@ process the world outlives app reloads.
 It writes the same `SquadGame.log` a real server does, and the app tails it over the same `local` code path.
 There is no test-only transport in between.
 
-Given a terminal, it offers a REPL for driving scenarios (`help` lists them):
-
-```
-> join Alice            a player connects
-> chat Alice !vote 1    say something in all-chat (this is how you drive chat commands)
-> end 1                 end the match, team 1 winning
-> cycle                 drop and restore rcon, as a server restart would
-```
-
 `--players N` connects N players at startup; `--admins <steamid,...>` writes them into the `Admins.cfg` the
 app reads.
+
+### Driving it
+
+`pnpm emuctl <command>`, from anywhere in the worktree, against the running emulator:
+
+```sh
+pnpm emuctl join Alice          # a player connects
+pnpm emuctl squad Alice Able    # ...and leads a squad
+pnpm emuctl chat Alice '!vote 1' # say something in all-chat — this is how you drive chat commands
+pnpm emuctl end 1               # end the match, team 1 winning
+pnpm emuctl cycle               # drop and restore rcon, as a server restart would
+pnpm emuctl rcon ListPlayers    # any raw rcon command
+pnpm emuctl help                # the full list
+```
+
+The same commands are available as a REPL inside `pnpm dev:emu` when it has a terminal (`help` lists them
+there too). Both front ends dispatch one registry (`src/dev/emu-control.ts`) against the same live world, so
+neither can grow a verb the other lacks.
+
+`emuctl` talks to the host over a unix socket at `data/dev/emu.sock`: no port to allocate, unreachable from
+the network, and scoped to the worktree by living in its own `data/dev`. It exits non-zero and says what is
+wrong if the command fails or no emulator is running, so it composes in scripts.
+
+Quote anything with a `!` or spaces (`'!vote 1'`) — it is a single argument, and your shell would otherwise
+have opinions about it.
 
 ## What a dev instance cannot reach
 

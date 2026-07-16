@@ -1,11 +1,11 @@
 import * as fs from 'node:fs'
 import * as readline from 'node:readline'
 import { parseArgs } from 'node:util'
+import * as EmuControl from '../dev/emu-control.ts'
 import * as DevInstance from '../dev/instance.ts'
 import * as Slots from '../dev/slots.ts'
 import { BmServer } from '../emulator/bm-server.ts'
-import { Emulator, makePlayer } from '../emulator/index.ts'
-import type { EmuPlayer } from '../emulator/index.ts'
+import { Emulator } from '../emulator/index.ts'
 
 // The emulated squad server this worktree's app talks to, plus the stub battlemetrics api, as a long-lived
 // process. `pnpm dev:emu`.
@@ -13,6 +13,9 @@ import type { EmuPlayer } from '../emulator/index.ts'
 // Deliberately not hosted inside the app: `pnpm server:dev` runs under `tsx watch` and restarts on every
 // edit, which would take the emulated world -- players, squads, match state, log history -- down with it. As
 // its own process the world outlives app reloads, which is the whole point of having one while iterating.
+//
+// Scenarios are driven either from the repl below or from `pnpm emuctl` in another terminal; both dispatch
+// the same registry (src/dev/emu-control.ts).
 
 const args = parseArgs({
 	options: {
@@ -43,13 +46,8 @@ emu.attachLogFile(DevInstance.SQUAD_LOG_PATH)
 const bm = new BmServer()
 await bm.listen(slot.ports.bm)
 
-const players = new Map<string, EmuPlayer>()
-function join(name: string): EmuPlayer {
-	const player = emu.world.connectPlayer(makePlayer({ name, teamId: players.size % 2 === 0 ? 1 : 2 }))
-	players.set(name, player)
-	bm.addPlayer({ eosId: player.eos, steamId: player.steam })
-	return player
-}
+const { commands, join } = EmuControl.createEmuCommands({ emu, bm })
+const control = await EmuControl.serve(DevInstance.EMU_SOCKET_PATH, commands)
 
 for (let i = 0; i < Number(args.values.players); i++) join(`DevPlayer${i + 1}`)
 
@@ -58,74 +56,16 @@ console.log(`emulator up — slot ${slot.slot} (${slot.name})
   bm stub   http://127.0.0.1:${slot.ports.bm}
   log       ${DevInstance.SQUAD_LOG_PATH}
   app       http://localhost:${slot.ports.client}
-type 'help' for scenario commands, ctrl-c to stop`)
+drive it from here ('help'), or with \`pnpm emuctl <command>\` from anywhere in this worktree. ctrl-c to stop.`)
 
-const COMMANDS: Record<string, { usage: string; run: (rest: string[]) => void }> = {
-	help: {
-		usage: 'help',
-		run: () => {
-			for (const { usage } of Object.values(COMMANDS)) console.log(`  ${usage}`)
-		},
-	},
-	join: {
-		usage: 'join <name>            a player connects',
-		run: ([name]) => {
-			if (!name) throw new Error('name required')
-			const player = join(name)
-			console.log(`${name} joined team ${player.teamId} (steam ${player.steam})`)
-		},
-	},
-	leave: {
-		usage: 'leave <name>           a player disconnects',
-		run: ([name]) => {
-			const player = players.get(name)
-			if (!player) throw new Error(`no player named ${name}`)
-			emu.world.disconnectPlayer(player)
-			players.delete(name)
-		},
-	},
-	chat: {
-		usage: 'chat <name> <message>  say something in all-chat (use !commands here)',
-		run: ([name, ...rest]) => {
-			const player = players.get(name)
-			if (!player) throw new Error(`no player named ${name}`)
-			emu.world.chat(player, 'ChatAll', rest.join(' '))
-		},
-	},
-	admchat: {
-		usage: 'admchat <name> <msg>   say something in admin chat',
-		run: ([name, ...rest]) => {
-			const player = players.get(name)
-			if (!player) throw new Error(`no player named ${name}`)
-			emu.world.chat(player, 'ChatAdmin', rest.join(' '))
-		},
-	},
-	players: {
-		usage: 'players                who is connected',
-		run: () => {
-			for (const player of emu.world.playerList()) console.log(`  ${player.name}\tteam ${player.teamId}\tsquad ${player.squadId ?? '-'}`)
-		},
-	},
-	end: {
-		usage: 'end [1|2]              end the match, optionally naming the winning team',
-		run: ([team]) => emu.world.endMatch(team ? { winnerTeamId: Number(team) } : undefined),
-	},
-	rcon: {
-		usage: 'rcon <command>         run a raw rcon command against the world',
-		run: (rest) => console.log(emu.world.handleCommand(rest.join(' '))),
-	},
-	cycle: {
-		usage: 'cycle                  drop and restore rcon, as a server restart would',
-		run: () => void emu.cycleRcon(),
-	},
-	rotate: {
-		usage: 'rotate                 rotate the log file, as the game does',
-		run: () => emu.rotateLog(),
-	},
-}
-
+let shuttingDown = false
 function shutdown() {
+	if (shuttingDown) return
+	shuttingDown = true
 	rl?.close()
+	control.close()
+	// the socket file outlives the listener, and a leftover would look like a running emulator to the next host
+	fs.rmSync(DevInstance.EMU_SOCKET_PATH, { force: true })
 	emu.dispose()
 	bm.close()
 	process.exit(0)
@@ -136,26 +76,14 @@ process.on('SIGTERM', shutdown)
 // Only offer the REPL to a terminal. Run without one (a pane manager, a background job) stdin is at EOF
 // immediately, and a readline interface over it would fire 'close' and take the emulator down with it.
 const rl = process.stdin.isTTY ? readline.createInterface({ input: process.stdin, output: process.stdout, prompt: '> ' }) : null
-if (!rl) {
-	console.log('(no tty — scenario repl disabled; the emulator keeps running)')
-	// nothing else holds the loop open once the sockets are idle
-	setInterval(() => {}, 1 << 30)
-}
+if (!rl) console.log('(no tty — repl disabled; drive it with `pnpm emuctl` instead)')
 
 rl?.prompt()
 rl?.on('close', shutdown)
 rl?.on('line', (line) => {
-	const [name, ...rest] = line.trim().split(/\s+/)
-	if (name) {
-		const command = COMMANDS[name]
-		if (!command) console.error(`unknown command '${name}' — try 'help'`)
-		else {
-			try {
-				command.run(rest)
-			} catch (err) {
-				console.error(err instanceof Error ? err.message : err)
-			}
-		}
-	}
-	rl.prompt()
+	void (async () => {
+		const { ok, output } = await EmuControl.dispatch(commands, line.trim().split(/\s+/).filter(Boolean))
+		if (output) (ok ? console.log : console.error)(output)
+		rl.prompt()
+	})()
 })
