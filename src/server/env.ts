@@ -1,4 +1,5 @@
 import * as dotenv from 'dotenv'
+import * as Crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { z } from 'zod'
@@ -39,9 +40,11 @@ declare module 'zod' {
 	}
 }
 
-// The key .env.example.dev ships, so a checkout boots without a key-generation step. It is public, and
-// therefore worth nothing: production refuses to start with it (see ensureEnvSetup).
-export const INSECURE_DEV_ENCRYPTION_KEY = Buffer.from('insecure-dev-key-do-not-use-prod').toString('base64')
+// The key .env.example.dev ships, so a checkout boots without a key-generation step. Deliberately not the
+// base64 a real key is: it says what it is, in a file where a random-looking string would not. Hashed into
+// the 32 bytes the cipher needs (see SETTINGS_ENCRYPTION_KEY); production refuses to start with it (see
+// ensureEnvSetup).
+export const INSECURE_DEV_ENCRYPTION_KEY = 'A_VERY_INSECURE_ENCRYPTION_KEY'
 
 // comma-separated list of Discord snowflake ids parsed to bigints (e.g. SUPER_USERS="123,456")
 const BigIntListSchema = z.string().default('').transform((val) => val.split(',').map((s) => s.trim()).filter(Boolean).map(BigInt))
@@ -127,6 +130,9 @@ export const groups = {
 
 	encryption: {
 		SETTINGS_ENCRYPTION_KEY: z.string().min(1).transform((val, ctx) => {
+			// the dev key is a phrase rather than base64, so it gets hashed into a key. Stable across restarts,
+			// which is all a checkout needs: settings encrypted with it stay readable.
+			if (val === INSECURE_DEV_ENCRYPTION_KEY) return Crypto.createHash('sha256').update(val).digest()
 			const buf = Buffer.from(val, 'base64')
 			if (buf.length !== 32) {
 				ctx.addIssue({ code: 'custom', message: 'must be a base64-encoded 32-byte key (generate one with `openssl rand -base64 32`)' })
@@ -142,7 +148,7 @@ export const groups = {
 				dev: {
 					value: INSECURE_DEV_ENCRYPTION_KEY,
 					description:
-						'a base64-encoded 32-byte key used to encrypt sensitive settings at rest. The one below is the shared development key: it is in the repo, so it is public, and the app refuses to start with it when NODE_ENV=production. Generate a real one with `openssl rand -base64 32`.',
+						'a base64-encoded 32-byte key used to encrypt sensitive settings at rest. The phrase below is the development key: it is in the repo, so it is public, and the app refuses to start with it when NODE_ENV=production. Generate a real one with `openssl rand -base64 32`.',
 				},
 			},
 		}),
