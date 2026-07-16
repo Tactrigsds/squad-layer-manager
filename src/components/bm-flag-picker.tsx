@@ -23,11 +23,18 @@ export function FlagBadge({ flag, className }: { flag: BM.PlayerFlag; className?
 	)
 }
 
-// shows a resolved flag badge if the id is known, otherwise the raw id (so stale/unknown ids stay visible + removable)
+// A flag id that resolves to nothing: removed from the org, or config written against a different one. Flag ids are
+// uuids and tell a reader nothing, so say what is wrong instead and keep the id in the tooltip for whoever fixes it.
+// The entry stays present and removable either way -- a reference is never silently dropped.
+export function UnknownFlagLabel({ id }: { id: string }) {
+	return <span className="text-xs italic text-muted-foreground" title={`Unknown flag: ${id}`}>Unknown flag</span>
+}
+
+// shows a resolved flag badge if the id is known, otherwise marks it unknown (never the bare uuid)
 export function FlagLabel({ id, flags }: { id: string; flags: BM.PlayerFlag[] | undefined }) {
 	const flag = flags?.find((f) => f.id === id)
 	if (flag) return <FlagBadge flag={flag} />
-	return <span className="font-mono text-xs text-muted-foreground">{id}</span>
+	return <UnknownFlagLabel id={id} />
 }
 
 function useFlagOptions(): ComboBoxOption<string>[] | typeof LOADING {
@@ -108,6 +115,10 @@ export function BmFlagSelect(
 	}
 	if (selectable !== LOADING && exclude?.length) {
 		selectable = selectable.filter((o) => o.value === value || !exclude.includes(o.value))
+	}
+	// an unresolved id has no option to take a label from, and ComboBox would fall back to printing the raw uuid
+	if (selectable !== LOADING && value && !selectable.some((o) => o.value === value)) {
+		selectable = [...selectable, { value, label: <UnknownFlagLabel id={value} />, keywords: ['unknown'] }]
 	}
 	return (
 		<ComboBox
