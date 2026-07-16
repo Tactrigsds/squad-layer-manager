@@ -84,7 +84,9 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		props.confirm,
 	])
 
-	const restrictValueSize = props.restrictValueSize ?? true
+	// opt-in, as the name says: an unset prop leaves the trigger free to use the width its container
+	// gives it, and the label's ellipsis cuts only when it actually runs out
+	const restrictValueSize = props.restrictValueSize ?? false
 	useImperativeHandle(props.ref, () => ({
 		focus: () => {
 			setOpen(true)
@@ -163,11 +165,6 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		} else {
 			valuesDisplay = props.emptyLabel ?? 'Select...'
 		}
-
-		const restrictSize = props.restrictValueSize ? 25 : 100
-		if (valuesDisplay.length > restrictSize) {
-			valuesDisplay = valuesDisplay.slice(0, restrictSize) + '...'
-		}
 	}
 	const trigger = (
 		<PopoverTrigger asChild>
@@ -177,7 +174,9 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 					disabled={disabled}
 					role="combobox"
 					aria-expanded={open}
-					className={cn(props.className, restrictValueSize && 'max-w-[400px]', 'justify-between font-mono')}
+					// truncation is left to the ellipsis on the label below: it cuts at the width actually
+					// available, where a character count would cut at a guess about it
+					className={cn(props.className, restrictValueSize ? 'max-w-[400px]' : 'max-w-full', 'justify-between font-mono')}
 				>
 					<span className="grow overflow-hidden text-ellipsis">
 						{valuesDisplay}

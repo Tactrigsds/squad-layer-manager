@@ -1113,7 +1113,7 @@ function TeamSpecConfig(props: {
 				<StringInConfig
 					key={teamColumn}
 					title={teamColumn}
-					emptyLabel="any"
+					emptyLabel={`any ${teamColumn.toLowerCase()}`}
 					className="w-[180px]"
 					restrictValueSize
 					// both teams' columns share an enum mapping, so team 1's value list serves either side
@@ -1134,8 +1134,11 @@ function MatchupNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; n
 	const node = props.node
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId).matchup
 	// unlocked, the specs are not pinned to the _1/_2 columns, so naming them "Team 1"/"Team 2" would
-	// misdescribe what the node matches
-	const [leftLabel, rightLabel] = node.locked ? ['Team 1', 'Team 2'] : ['Team A', 'Team B']
+	// misdescribe what the node matches. "Team A"/"Team B" are not available either: those already mean
+	// the normalized teams that persist across the team1/team2 swap (see MH.NormedTeamId and the
+	// displayTeamsNormalized setting), which is a different idea entirely -- and that setting toggles
+	// between those very labels, so reusing them here would read as driving it.
+	const [leftLabel, rightLabel] = node.locked ? ['Team 1', 'Team 2'] : ['One side', 'Other side']
 	return (
 		<div className="flex items-center space-x-2">
 			<ComboBox
