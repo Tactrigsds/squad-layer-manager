@@ -14,6 +14,8 @@ export const DEV_DIR = path.join(Paths.DATA, 'dev')
 export const SQUAD_LOG_PATH = path.join(DEV_DIR, 'SquadGame.log')
 export const ADMINS_CFG_PATH = path.join(DEV_DIR, 'Admins.cfg')
 export const EMULATOR_LOG_PATH = path.join(DEV_DIR, 'emulator.log')
+// where the emulator host listens for scenario commands (`pnpm emuctl`); see src/dev/emu-control.ts
+export const EMU_SOCKET_PATH = path.join(DEV_DIR, 'emu.sock')
 
 // The emulator's RCON password. It is reachable only on loopback and holds nothing, so it is a constant
 // rather than something each worktree has to be told.

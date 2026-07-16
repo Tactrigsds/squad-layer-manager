@@ -23,6 +23,7 @@
 		"dev": "tsx --tsconfig tsconfig.node.json src/scripts/dev.ts",
 		"dev:init": "tsx --tsconfig tsconfig.node.json src/scripts/dev-init.ts",
 		"dev:emu": "tsx --tsconfig tsconfig.node.json src/scripts/dev-emu.ts",
+		"emuctl": "tsx --tsconfig tsconfig.node.json src/scripts/dev-emuctl.ts",
 		"dev:db:clone": "tsx --tsconfig tsconfig.node.json src/scripts/dev-clone-db.ts",
 		"dev:slots": "tsx --tsconfig tsconfig.node.json src/scripts/dev-slots.ts",
 		"__run-script:comment__": "run a script, just specify the script path as the last arg aka pnpm run run-script ./src/scripts/my-script.ts",
