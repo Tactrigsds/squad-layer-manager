@@ -242,6 +242,19 @@ export const GlobalSettingsSchema = z.object({
 	}).prefault({}),
 	squadServer: z.object({
 		logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines.'),
+		rconCacheTTL: z.object({
+			layersStatus: HumanTime.prefault('5s').describe(
+				'How stale the cached current/next layer may be before a read refetches it over RCON.',
+			),
+			serverInfo: HumanTime.prefault('10s').describe(
+				'How stale cached server info (player count, tick rate) may be before a read refetches it over RCON.',
+			),
+			teams: HumanTime.prefault('5s').describe(
+				'How stale the cached roster may be before a read refetches it over RCON. Also the interval at which observers poll ListPlayers.',
+			),
+		}).prefault({}).describe(
+			'How long RCON responses stay cached. Lower means fresher data and more RCON traffic; these are the dominant source of roster/status latency.',
+		),
 		tickRateThresholds: z.object({
 			good: z.number().positive().prefault(60).describe(
 				'At or above this tick rate the live server tick rate displays as good (green)',
