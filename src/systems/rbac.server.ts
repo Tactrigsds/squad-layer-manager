@@ -360,6 +360,16 @@ export const orpcRouter = {
 		return userDefinedRoles
 	}),
 
+	// the caller's own roles. Not derivable from their permissions' traces: a role granting nothing appears in no trace,
+	// but is still a role they hold
+	getMyRoles: orpcBase.handler(async ({ context: _ctx }) => {
+		const ctx = DB.addPooledDb(_ctx as any) as C.Db & C.UserId
+		const roles = await getRolesForDiscordUser(ctx)
+		// matches how the super bootstrap attributes its grants in getUserRbacPerms
+		if (await isSuperUser(ctx)) return [SUPER_ROLE, ...roles]
+		return roles
+	}),
+
 	// roles the caller doesn't hold but whose permissions they already hold anyway, so the permissions dialog can offer
 	// them for simulation. Returning the role's traced perms lets the client attribute its own perms to the simulated
 	// role without granting anything: a role is only offered when every permission it grants is subsumed by the caller's.
@@ -372,8 +382,9 @@ export const orpcRouter = {
 		for (const role of userDefinedRoles) {
 			if (heldRoles.has(role.type)) continue
 			const perms = permsFromRoleConfigs([role])
+			// a role granting nothing (or only negations) is vacuously subsumed, and simulating it is still meaningful:
+			// its negations take access away
 			const granted = RBAC.fromTracedPermissions(perms)
-			if (granted.length === 0) continue
 			if (!granted.every((p) => RBAC.permSubsumedBy(p, userPerms))) continue
 			simulatable.push({ role, perms })
 		}
