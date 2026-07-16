@@ -23,11 +23,12 @@ DIR="${1:-${SLM_DIR:-.}}"
 # that isn't github, or to try a change to this script before it's pushed.
 BASE="${SLM_BASE:-https://raw.githubusercontent.com/${REPO}/${REF}}"
 
-# what a deployment reads and the image does not carry. .env is handled on its own below: it is the one file
-# here the operator owns.
+# what a deployment reads and the image does not carry. .env and .env.secrets are handled on their own below:
+# they are the files here the operator owns.
 FILES=(
 	docker-compose.yaml
 	.env.example
+	.env.secrets.example
 	edit-global-settings.sh
 	observability/README.md
 	observability/loki-config.yaml
@@ -55,7 +56,7 @@ docker compose version > /dev/null 2>&1 || err "docker compose (v2) is required.
 # whatever else is in the directory is the operator's business, but nothing this installs may already be there.
 # data/ counts: a database in it means this is an install, not an empty directory that happens to share a name.
 conflicts=""
-for file in "${FILES[@]}" .env data; do
+for file in "${FILES[@]}" .env .env.secrets data; do
 	if [[ -e "$DIR/$file" ]]; then
 		conflicts="${conflicts}
          $file"
@@ -94,6 +95,12 @@ chmod +x "$DIR/edit-global-settings.sh"
 cp "$DIR/.env.example" "$DIR/.env"
 say "  + .env (from .env.example)"
 
+# the credentials, which docker-compose mounts as a file rather than handing to the container as environment
+# variables. Only the owner can read it: it is the one file in the install worth treating like a private key.
+cp "$DIR/.env.secrets.example" "$DIR/.env.secrets"
+chmod 600 "$DIR/.env.secrets"
+say "  + .env.secrets (from .env.secrets.example)"
+
 # provision a strong key for encrypting sensitive settings at rest, so the deployment boots without a manual
 # key-generation step. Regenerating it later means re-entering connection secrets on the settings page.
 if command -v openssl >/dev/null 2>&1; then
@@ -102,15 +109,16 @@ else
 	enc_key="$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
 fi
 enc_tmp="$(mktemp)"
-sed "s|^SETTINGS_ENCRYPTION_KEY=.*|SETTINGS_ENCRYPTION_KEY=${enc_key}|" "$DIR/.env" > "$enc_tmp" && mv "$enc_tmp" "$DIR/.env"
-say "  + generated SETTINGS_ENCRYPTION_KEY"
+# written back through the existing file rather than moved over it, so the 600 above survives
+sed "s|^SETTINGS_ENCRYPTION_KEY=.*|SETTINGS_ENCRYPTION_KEY=${enc_key}|" "$DIR/.env.secrets" > "$enc_tmp" && cat "$enc_tmp" > "$DIR/.env.secrets" && rm -f "$enc_tmp"
+say "  + generated SETTINGS_ENCRYPTION_KEY into .env.secrets"
 
 say ""
 say "installed to $(cd "$DIR" && pwd)"
 say ""
 say "next:"
 say "  1. create the discord app SLM logs users in through: https://github.com/${REPO}#discord-app"
-say "  2. fill in the vars .env leaves uncommented (the commented ones are optional and show their defaults)"
+say "  2. fill in the vars .env and .env.secrets leave uncommented (the commented ones are optional and show their defaults)"
 if [[ $DIR == "." ]]; then
 	say "  3. docker compose up -d"
 else

@@ -43,12 +43,13 @@ export function generateKey(): string {
 // production, where a missing key is a hard boot failure.
 export function ensureDevKeyInEnvFile() {
 	log = module.getLogger()
-	if (process.env.SETTINGS_ENCRYPTION_KEY) return
+	if (Env.rawVar('SETTINGS_ENCRYPTION_KEY')) return
 	const key = generateKey()
-	const envPath = Cli.options?.envFile ?? path.join(Paths.PROJECT_ROOT, '.env')
+	// wherever the key would have been read from, so a checkout that has taken up a secrets file gets it
+	// written back there rather than into a .env that is no longer where the app looks
+	const envPath = Env.secretsFilePath() ?? Cli.options?.envFile ?? path.join(Paths.PROJECT_ROOT, '.env')
 	const prefix = fs.existsSync(envPath) && !fs.readFileSync(envPath, 'utf8').endsWith('\n') ? '\n' : ''
 	fs.appendFileSync(envPath, `${prefix}SETTINGS_ENCRYPTION_KEY=${key}\n`)
-	process.env.SETTINGS_ENCRYPTION_KEY = key
 	Env.injectRawVar('SETTINGS_ENCRYPTION_KEY', key)
 	log.info('Generated SETTINGS_ENCRYPTION_KEY and wrote it to %s', envPath)
 }
