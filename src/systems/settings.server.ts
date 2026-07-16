@@ -146,21 +146,30 @@ async function loadServerRegistry(ctx: C.Db) {
 			settings: unknown
 		}
 		const settingsRes = SETTINGS.ServerSettingsSchema.safeParse(row.settings)
-		const broken = !settingsRes.success
+		let broken = !settingsRes.success
+		let brokenReason: unknown = settingsRes.success ? undefined : settingsRes.error
 		if (settingsRes.success) {
-			// backfill: encrypt any connection secrets still stored as plaintext (idempotent, since sealing an
-			// already-sealed value is a no-op, so this is a no-op on every boot after the first)
-			const sealed = sealConnections(settingsRes.data)
-			if (!Obj.deepEqual(sealed.connections, settingsRes.data.connections)) {
-				await ctx.db({ redactParams: true }).update(Schema.servers).set(superjsonify(Schema.servers, { settings: sealed })).where(
-					E.eq(Schema.servers.id, row.id),
-				)
-				log.info(`Encrypted plaintext connection secrets at rest for server ${row.id}`)
+			// backfill: bring connection secrets up to the current encryption scheme -- plaintext ones from before
+			// encryption existed, and v1 envelopes from before the key derivation changed. A no-op on every boot
+			// once each row has been rewritten.
+			try {
+				if (connectionsNeedReseal(settingsRes.data)) {
+					const sealed = resealConnections(settingsRes.data)
+					await ctx.db({ redactParams: true }).update(Schema.servers).set(superjsonify(Schema.servers, { settings: sealed })).where(
+						E.eq(Schema.servers.id, row.id),
+					)
+					log.info(`Re-encrypted connection secrets at rest for server ${row.id}`)
+				}
+			} catch (err) {
+				// secrets sealed with a key we no longer have: the same "can't run until an admin fixes it" case as
+				// invalid settings, and worth surviving boot for, since every other server may be fine
+				broken = true
+				brokenReason = err
 			}
 		}
 		let enabled = row.enabled
 		if (broken) {
-			log.error(settingsRes.error, `Server ${row.id} has invalid settings, it won't have a live slice until it's repaired`)
+			log.error(brokenReason, `Server ${row.id} has invalid settings, it won't have a live slice until it's repaired`)
 			if (enabled) {
 				// force it disabled so that repairing the settings later doesn't silently bring it back online -- an admin has to
 				// explicitly re-enable it once they're confident the fix is correct
@@ -317,6 +326,18 @@ function transformConnectionSecrets(
 
 export const sealConnections = (settings: SETTINGS.ServerSettings) => transformConnectionSecrets(settings, SecretBox.seal)
 export const openConnections = (settings: SETTINGS.ServerSettings) => transformConnectionSecrets(settings, SecretBox.open)
+export const resealConnections = (settings: SETTINGS.ServerSettings) => transformConnectionSecrets(settings, SecretBox.reseal)
+
+// whether any of a server's connection secrets is stored in a form the current key and envelope version no
+// longer produce, so the backfill knows to rewrite the row
+export function connectionsNeedReseal(settings: SETTINGS.ServerSettings): boolean {
+	let needed = false
+	transformConnectionSecrets(settings, value => {
+		needed ||= SecretBox.needsReseal(value)
+		return value
+	})
+	return needed
+}
 export const sealConnectionValues = (connections: SETTINGS.ServerConnection) => transformConnectionSecretValues(connections, SecretBox.seal)
 export const openConnectionValues = (connections: SETTINGS.ServerConnection) => transformConnectionSecretValues(connections, SecretBox.open)
 

@@ -102,7 +102,7 @@ export default defineConfig({
 		setupFiles: ['./src/vitest-setup.ts'],
 		// integration tests boot the whole app (`pnpm test:integration`) and e2e tests run under playwright
 		// (`pnpm test:e2e`); neither belongs to the unit run
-		exclude: ['**/node_modules/**', 'test/integration/**', 'test/e2e/**'],
+		exclude: ['**/node_modules/**', 'test/integration/**', 'test/e2e/**', '.claude/**'],
 	},
 })
 
