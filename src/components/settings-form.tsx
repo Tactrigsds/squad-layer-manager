@@ -1,6 +1,5 @@
 import { BmFlagMultiSelect, BmFlagSelect } from '@/components/bm-flag-picker'
-import ComboBox from '@/components/combo-box/combo-box'
-import type { ComboBoxOption } from '@/components/combo-box/combo-box'
+import ComboBox, { type ComboBoxHandle, type ComboBoxOption } from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { LOADING } from '@/components/combo-box/constants.ts'
 import { DiscordMemberSelect, DiscordRoleSelect } from '@/components/discord-picker'
@@ -29,6 +28,7 @@ import { HIDDEN_GLOBAL_SETTINGS_KEYS, splitByGroups } from '@/lib/settings-group
 import { humanize, settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import * as Templating from '@/lib/templating'
+import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as AAR from '@/models/admin-action-reasons.models'
@@ -37,6 +37,7 @@ import * as CMD from '@/models/command.models'
 import type * as LP from '@/models/labeled-presets.models'
 import * as LC from '@/models/layer-columns'
 import * as PG from '@/models/player-groupings.models'
+import * as PermRows from '@/models/rbac-perm-rows'
 import * as SETTINGS from '@/models/settings.models'
 import type * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
@@ -166,53 +167,6 @@ function emptyValue(node: Node): unknown {
 }
 
 // granted permissions include the "*" wildcard; denials are stored with a "!" prefix but edited without it in a separate select
-function permOption(p: string): ComboBoxOption<string> {
-	const def = RBAC.PERMISSION_DEFINITION[p as keyof typeof RBAC.PERMISSION_DEFINITION]
-	return { value: p, description: def?.description }
-}
-const GRANT_PERM_OPTIONS: ComboBoxOption<string>[] = [
-	{ value: '*', description: 'Grants every permission (full access to everything)' },
-	...RBAC.ROLE_GRANTABLE_PERMISSION_TYPE.options.map(permOption),
-]
-const DENY_PERM_OPTIONS: ComboBoxOption<string>[] = RBAC.ROLE_GRANTABLE_PERMISSION_TYPE.options.map(permOption)
-
-// editor for a role's permission expression list: granted perms and denied perms (!-prefixed) in two separate selects
-function PermissionExpressionEditor({ value, onChange }: { value: string[] | undefined; onChange: (v: string[]) => void }) {
-	const all = value ?? []
-	const granted = all.filter((v) => !v.startsWith('!'))
-	const denied = all.filter((v) => v.startsWith('!')).map((v) => v.slice(1))
-
-	function setGranted(next: string[]) {
-		onChange([...next, ...denied.map((p) => `!${p}`)])
-	}
-	function setDenied(next: string[]) {
-		onChange([...granted, ...next.map((p) => `!${p}`)])
-	}
-
-	return (
-		<div className="space-y-2">
-			<div className="space-y-1">
-				<label className="text-xs text-muted-foreground">Granted</label>
-				<ComboBoxMulti
-					title="Permission"
-					values={granted}
-					options={GRANT_PERM_OPTIONS}
-					onSelect={(next) => setGranted(typeof next === 'function' ? next(granted) : next)}
-				/>
-			</div>
-			<div className="space-y-1">
-				<label className="text-xs text-muted-foreground">Denied (takes precedence)</label>
-				<ComboBoxMulti
-					title="Denied permission"
-					values={denied}
-					options={DENY_PERM_OPTIONS}
-					onSelect={(next) => setDenied(typeof next === 'function' ? next(denied) : next)}
-				/>
-			</div>
-		</div>
-	)
-}
-
 // -------- rbac cross-field wiring --------
 
 // the draft's custom message variables (rbac-style sibling read), so the reason preview can render templates
@@ -1926,19 +1880,11 @@ function serverGrantPathOptions(): string[] {
 // right. This mirrors the persisted shape, where each role is one object under `roles[roleId]` holding its permissions,
 // timeout cap, settings grants and assignments.
 
-const SERVER_GRANT_ACCESS_OPTIONS = ['read', 'write', 'write-sensitive'] as const
 const VALID_ROLE_ID = /^[a-z0-9-]{3,32}$/
 
-type ServerGrant = { access: string; serverIds?: string[]; paths?: string[] }
-type RoleAssignmentsValue = { discordRoleIds?: (string | number)[]; discordUserIds?: (string | number)[]; everyMember?: boolean }
-type RoleConfig = {
-	permissions?: string[]
-	maxTimeout?: string
-	globalSettingsGrants?: string[]
-	serverSettingsGrants?: ServerGrant[]
-	assignments?: RoleAssignmentsValue
-}
-type RbacValue = { roles?: Record<string, RoleConfig> }
+type RoleAssignmentsValue = PermRows.RoleAssignmentsValue
+type RoleConfig = PermRows.RoleConfig
+type RbacValue = PermRows.RbacValue
 
 // apply `fn` to the whole rbac object, then poke reset$ so any uncontrolled inputs (the timeout duration field) re-read.
 // `quiet` skips reset$ for edits driven by an uncontrolled input, where re-emitting would clobber an in-flight keystroke.
@@ -2123,9 +2069,8 @@ function RoleDetail(
 ) {
 	const [renaming, setRenaming] = React.useState(false)
 	const cfg = rbac.roles?.[roleId] ?? {}
-	// scoped value-state for the timeout duration field so it can reuse the uncontrolled TextInputField
+	// scoped value-state for the timeout duration cell so it can reuse the uncontrolled TextInputField
 	const timeout$ = React.useMemo(() => scopeValue(scopeValue(scopeValue(value$, 'roles'), roleId), 'maxTimeout'), [value$, roleId])
-	const hasTimeout = cfg.maxTimeout !== undefined
 
 	return (
 		<div className="min-w-0 space-y-4 rounded-md border p-3">
@@ -2170,67 +2115,10 @@ function RoleDetail(
 			</div>
 
 			<RoleSubsection
-				title="Global Permissions"
-				description="Global-scope permissions. Settings permissions granted here are unrestricted (all servers / all settings); use the grants below to restrict them."
+				title="Permissions"
+				description="Everything this role may do. Each row is one permission; its Scope narrows the permission to specific servers, settings or a duration cap. Leave a scope empty to grant it unrestricted."
 			>
-				<PermissionExpressionEditor
-					value={cfg.permissions}
-					onChange={(v) => update((r) => withRoleConfig(r, roleId, (c) => ({ ...c, permissions: v })))}
-				/>
-			</RoleSubsection>
-
-			<RoleSubsection
-				title="Kick timeouts"
-				description="The maximum kick-timeout duration this role may issue (e.g. 2h). Super users/roles are unlimited."
-			>
-				<div className="flex items-center gap-3">
-					<div className="flex items-center gap-2">
-						<Switch
-							checked={hasTimeout}
-							onCheckedChange={(on) =>
-								update((r) => withRoleConfig(r, roleId, (c) => setRoleField(c, 'maxTimeout', on ? '1h' : undefined)))}
-						/>
-						<span className="text-sm">May issue kick timeouts</span>
-					</div>
-					{hasTimeout && (
-						<div className="w-32">
-							<TextInputField
-								value$={timeout$}
-								reset$={reset$}
-								onChange={(v) =>
-									update((r) => withRoleConfig(r, roleId, (c) => setRoleField(c, 'maxTimeout', (v as string) || '1h')), true)}
-								numeric={false}
-								placeholder="2h"
-							/>
-						</div>
-					)}
-				</div>
-			</RoleSubsection>
-
-			<RoleSubsection
-				title="Global settings grants"
-				description='Dotted setting paths this role may edit (e.g. "vote.voteDuration", or "vote" for the whole section). Any grant also lets the role view global settings.'
-			>
-				<ComboBoxMulti
-					title="setting path"
-					className="w-full max-w-[28rem] font-mono"
-					values={cfg.globalSettingsGrants ?? []}
-					options={globalGrantPathOptions()}
-					onSelect={(next) =>
-						update((r) =>
-							withRoleConfig(r, roleId, (c) => {
-								const resolved = typeof next === 'function' ? next(c.globalSettingsGrants ?? []) : next
-								return setRoleField(c, 'globalSettingsGrants', resolved)
-							})
-						)}
-				/>
-			</RoleSubsection>
-
-			<RoleSubsection
-				title="Server settings grants"
-				description="Per-server restricted read/write grants. Any grant also lets the role view the server's non-sensitive settings."
-			>
-				<RoleServerGrantsEditor roleId={roleId} grants={cfg.serverSettingsGrants ?? []} update={update} />
+				<RolePermissionsTable roleId={roleId} cfg={cfg} timeout$={timeout$} reset$={reset$} update={update} />
 			</RoleSubsection>
 
 			<RoleSubsection title="Assignments" description="Which Discord roles, users, or members are granted this role.">
@@ -2240,86 +2128,322 @@ function RoleDetail(
 	)
 }
 
-function RoleServerGrantsEditor(
-	{ roleId, grants, update }: { roleId: string; grants: ServerGrant[]; update: RbacUpdate },
+// one row = one permission the role holds. The five persisted fields are projected to rows on read and distributed back
+// on write by PermRows, so this component only ever deals in rows.
+function RolePermissionsTable(
+	{ roleId, cfg, timeout$, reset$, update }: {
+		roleId: string
+		cfg: RoleConfig
+		timeout$: ValueState
+		reset$: Rx.Subject<void>
+		update: RbacUpdate
+	},
+) {
+	const rows = PermRows.rowsFromConfig(cfg)
+
+	// `quiet` is threaded through for the timeout duration cell, whose uncontrolled input would be clobbered by a reset$
+	function setRows(next: PermRows.PermRow[], quiet?: boolean) {
+		update((r) => withRoleConfig(r, roleId, (c) => PermRows.configFromRows(c, next)), quiet)
+	}
+	function patchRow(id: string, patch: Partial<PermRows.PermRow>, quiet?: boolean) {
+		setRows(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)), quiet)
+	}
+
+	const wildcarded = rows.some((r) => r.type === PermRows.ALL_PERMISSIONS && r.effect === 'allow')
+
+	// a second row of the same permission only means something when it can carry different scope args; the rest would
+	// just collapse on save, so offering them is a lie
+	const addOptions: ComboBoxOption<string>[] = PermRows.ADDABLE_TYPES.map((type) => {
+		const repeatable = PermRows.rowScope(type) === 'server-settings' || PermRows.rowScope(type) === 'server-settings-write'
+		const taken = !repeatable && rows.some((r) => r.type === type && r.effect === 'allow')
+		return { value: type, description: PermRows.permDescription(type), disabled: taken }
+	})
+
+	return (
+		<div className="space-y-2">
+			<Table>
+				<TableHeader>
+					<TableRow>
+						<TableHead className="w-[7.5rem]">Effect</TableHead>
+						<TableHead className="w-[16rem]">Permission</TableHead>
+						<TableHead>Scope</TableHead>
+						<TableHead className="w-10" />
+					</TableRow>
+				</TableHeader>
+				<TableBody>
+					{rows.length === 0 && (
+						<TableRow>
+							<TableCell colSpan={4} className="text-xs text-muted-foreground">
+								This role grants nothing yet.
+							</TableCell>
+						</TableRow>
+					)}
+					{rows.map((row) => {
+						// `*` already grants every permission, so the allow rows under it are redundant. Deny still wins over it.
+						const subsumed = wildcarded && row.effect === 'allow' && row.type !== PermRows.ALL_PERMISSIONS
+						return (
+							<TableRow key={row.id} className={cn(subsumed && 'opacity-50')}>
+								<TableCell className="align-top">
+									<Select
+										value={row.effect}
+										disabled={!PermRows.canDeny(row.type)}
+										onValueChange={(v) => patchRow(row.id, { effect: v as PermRows.Effect })}
+									>
+										<SelectTrigger className="h-8">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="allow">Allow</SelectItem>
+											<SelectItem value="deny">Deny</SelectItem>
+										</SelectContent>
+									</Select>
+								</TableCell>
+								<TableCell className="align-top">
+									<div className="flex items-start gap-1">
+										<code className="text-xs leading-8">{row.type === PermRows.ALL_PERMISSIONS ? 'All permissions (*)' : row.type}</code>
+										{PermRows.permDescription(row.type) && <HelpTip text={PermRows.permDescription(row.type)!} />}
+										{subsumed && (
+											<Tooltip>
+												<TooltipTrigger asChild>
+													<Icons.Info className="mt-2 h-3 w-3 shrink-0 text-muted-foreground" />
+												</TooltipTrigger>
+												<TooltipContent>Already granted by the wildcard row above</TooltipContent>
+											</Tooltip>
+										)}
+									</div>
+								</TableCell>
+								<TableCell className="align-top">
+									<PermScopeCell row={row} timeout$={timeout$} reset$={reset$} onPatch={patchRow} />
+								</TableCell>
+								<TableCell className="align-top">
+									{
+										/* a trash can, not an X: the scope cell's own X drops a single scope value, and the two end up close
+									    enough that reusing the icon for "remove the whole permission" would be a trap */
+									}
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<Button
+												type="button"
+												size="icon"
+												variant="ghost"
+												className="h-8 w-8 text-destructive"
+												onClick={() => setRows(rows.filter((r) => r.id !== row.id))}
+											>
+												<Icons.Trash2 className="h-4 w-4" />
+											</Button>
+										</TooltipTrigger>
+										<TooltipContent>Remove this permission</TooltipContent>
+									</Tooltip>
+								</TableCell>
+							</TableRow>
+						)
+					})}
+				</TableBody>
+			</Table>
+			<ComboBox
+				title="permission"
+				placeholder="Add permission..."
+				className="w-[20rem]"
+				value={undefined}
+				options={addOptions}
+				onSelect={(type) => type && setRows([...rows, PermRows.newRow(type)])}
+			/>
+		</div>
+	)
+}
+
+// the Scope cell is a switch over the permission's scope kind, so a new permission needs no new editor: it inherits the
+// cell for whichever scope it declares in PERMISSION_DEFINITION.
+function PermScopeCell(
+	{ row, timeout$, reset$, onPatch }: {
+		row: PermRows.PermRow
+		timeout$: ValueState
+		reset$: Rx.Subject<void>
+		onPatch: (id: string, patch: Partial<PermRows.PermRow>, quiet?: boolean) => void
+	},
 ) {
 	const servers = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers) ?? []
-	const serverOptions: ComboBoxOption<string>[] = servers.map((s) => ({
+
+	// a denial is unrestricted by construction: the expression grammar carries no args
+	if (row.effect === 'deny') return <span className="text-xs leading-8 text-muted-foreground">Everything</span>
+
+	const scope = PermRows.rowScope(row.type)
+	switch (scope) {
+		case 'all':
+		case 'global':
+			return <span className="text-xs leading-8 text-muted-foreground">{scope === 'all' ? 'Everything' : '—'}</span>
+
+		case 'timeout':
+			return (
+				<div className="flex items-center gap-2">
+					<span className="text-xs text-muted-foreground">up to</span>
+					<div className="w-24">
+						<TextInputField
+							value$={timeout$}
+							reset$={reset$}
+							onChange={(v) => onPatch(row.id, { maxTimeout: (v as string) || PermRows.DEFAULT_MAX_TIMEOUT }, true)}
+							numeric={false}
+							placeholder="2h"
+						/>
+					</div>
+				</div>
+			)
+
+		case 'global-settings-write':
+			return (
+				<ScopeValueRows
+					title="setting path"
+					mono
+					emptyLabel="All settings"
+					values={row.paths ?? []}
+					options={globalGrantPathOptions()}
+					onChange={(paths) => onPatch(row.id, { paths })}
+				/>
+			)
+
+		case 'server-settings':
+			return (
+				<ScopeValueRows
+					title="server"
+					emptyLabel="All servers"
+					values={row.serverIds ?? []}
+					options={serverOptionsFor(servers, row.serverIds ?? [])}
+					onChange={(serverIds) => onPatch(row.id, { serverIds })}
+				/>
+			)
+
+		case 'server-settings-write':
+			return (
+				// two independent lists in one cell, so they get more room between them than the rows within each
+				<div className="space-y-3">
+					<ScopeValueRows
+						title="server"
+						emptyLabel="All servers"
+						values={row.serverIds ?? []}
+						options={serverOptionsFor(servers, row.serverIds ?? [])}
+						onChange={(serverIds) => onPatch(row.id, { serverIds })}
+					/>
+					<ScopeValueRows
+						title="setting path"
+						mono
+						emptyLabel="All non-sensitive settings"
+						values={row.paths ?? []}
+						options={serverGrantPathOptions()}
+						onChange={(paths) => onPatch(row.id, { paths })}
+					/>
+				</div>
+			)
+
+		default:
+			return assertNever(scope)
+	}
+}
+
+// unknown ids (a server that has since been deleted) stay selectable so opening the editor can't silently drop a grant
+function serverOptionsFor(servers: { id: string; displayName: string }[], selected: string[]): ComboBoxOption<string>[] {
+	const known: ComboBoxOption<string>[] = servers.map((s) => ({
 		value: s.id,
 		label: `${s.displayName} (${s.id})`,
 		keywords: [s.displayName],
 	}))
+	const unknown = selected.filter((id) => !servers.some((s) => s.id === id)).map((id) => ({ value: id }))
+	return [...unknown, ...known]
+}
 
-	function setGrants(next: ServerGrant[]) {
-		update((r) => withRoleConfig(r, roleId, (c) => setRoleField(c, 'serverSettingsGrants', next)))
+// One dropdown per selected value rather than a single multi-select: the values here are long (dotted setting paths,
+// `Display Name (server-id)`) and a combined trigger could only show them comma-joined and ellipsed, which truncated
+// exactly the tail that distinguishes them.
+function ScopeValueRows(
+	{ title, values, options, onChange, emptyLabel, mono }: {
+		title: string
+		values: string[]
+		options: (ComboBoxOption<string> | string)[]
+		onChange: (next: string[]) => void
+		// an empty scope means unrestricted, which reads as a bug unless it's spelled out
+		emptyLabel: string
+		mono?: boolean
+	},
+) {
+	// the not-yet-chosen row that `Add` opens. It lives here rather than in `values` so an abandoned Add can't write an
+	// empty entry back to the settings draft.
+	const [adding, setAdding] = React.useState(false)
+	// Add is one intent, so it opens the dropdown it just swapped itself out for rather than asking for a second click.
+	// Driven off the transition, not a callback ref: the imperative handle is rebuilt whenever the popover's own `open`
+	// changes, which would re-fire a ref callback and reopen a box the user had just dismissed.
+	const pendingRef = React.useRef<ComboBoxHandle>(null)
+	React.useEffect(() => {
+		if (adding) pendingRef.current?.focus()
+	}, [adding])
+	const normalized: ComboBoxOption<string>[] = options.map((o) => (typeof o === 'string' ? { value: o } : o))
+	const selected = new Set(values)
+	const exhausted = normalized.every((o) => selected.has(o.value))
+
+	// a value already used in a sibling row would be a no-op grant, so only the row holding it may keep it
+	function optionsFor(own?: string): ComboBoxOption<string>[] {
+		return normalized.map((o) => (o.value !== own && selected.has(o.value) ? { ...o, disabled: true } : o))
 	}
-	function patch(idx: number, patch: Partial<ServerGrant>) {
-		setGrants(grants.map((g, i) => (i === idx ? { ...g, ...patch } : g)))
-	}
+	const boxClass = cn('w-full max-w-[22rem]', mono && 'font-mono')
 
 	return (
-		<div className="space-y-2">
-			{grants.length === 0 && <p className="text-xs text-muted-foreground">No server grants.</p>}
-			{grants.map((grant, idx) => {
-				const options = grant.serverIds?.some((id) => !servers.some((s) => s.id === id))
-					? [...grant.serverIds.filter((id) => !servers.some((s) => s.id === id)).map((id) => ({ value: id })), ...serverOptions]
-					: serverOptions
-				return (
-					// oxlint-disable-next-line no-array-index-key
-					<div key={idx} className="space-y-2 rounded-md border p-2">
-						<div className="flex items-center gap-2">
-							<Select value={grant.access} onValueChange={(v) => patch(idx, { access: v, ...(v !== 'write' ? { paths: [] } : {}) })}>
-								<SelectTrigger className="h-8 w-48">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{SERVER_GRANT_ACCESS_OPTIONS.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-								</SelectContent>
-							</Select>
-							<Button
-								type="button"
-								size="icon"
-								variant="ghost"
-								className="ml-auto h-8 w-8 text-destructive"
-								onClick={() => setGrants(grants.filter((_, i) => i !== idx))}
-							>
-								<Icons.X className="h-4 w-4" />
-							</Button>
-						</div>
-						<div className="space-y-1">
-							<label className="text-xs text-muted-foreground">Servers (empty = all)</label>
-							<ComboBoxMulti
-								title="server"
-								className="w-full max-w-[28rem]"
-								values={grant.serverIds ?? []}
-								options={options}
-								onSelect={(next) => patch(idx, { serverIds: typeof next === 'function' ? next(grant.serverIds ?? []) : next })}
-							/>
-						</div>
-						{grant.access === 'write' && (
-							<div className="space-y-1">
-								<label className="text-xs text-muted-foreground">Setting paths (empty = all non-sensitive)</label>
-								<ComboBoxMulti
-									title="setting path"
-									className="w-full max-w-[28rem] font-mono"
-									values={grant.paths ?? []}
-									options={serverGrantPathOptions()}
-									onSelect={(next) => patch(idx, { paths: typeof next === 'function' ? next(grant.paths ?? []) : next })}
-								/>
-							</div>
-						)}
+		<div className="space-y-1">
+			{values.length === 0 && !adding && <p className="text-xs leading-8 text-muted-foreground">{emptyLabel}</p>}
+			{values.map((value, idx) => (
+				<div key={value} className="flex items-center gap-1">
+					<ComboBox
+						title={title}
+						className={boxClass}
+						value={value}
+						options={optionsFor(value)}
+						onSelect={(next) => next && onChange(values.map((v, i) => (i === idx ? next : v)))}
+					/>
+					<Button
+						type="button"
+						size="icon"
+						variant="ghost"
+						className="h-8 w-8 shrink-0 text-destructive"
+						onClick={() => onChange(values.filter((_, i) => i !== idx))}
+					>
+						<Icons.X className="h-4 w-4" />
+					</Button>
+				</div>
+			))}
+			{
+				/* Add swaps itself out for the empty dropdown rather than sitting disabled above it, so the control you clicked is
+			    the control you then pick from. It comes back once the pick lands (or the X cancels). */
+			}
+			{adding
+				? (
+					<div className="flex items-center gap-1">
+						<ComboBox
+							ref={pendingRef}
+							title={title}
+							className={boxClass}
+							placeholder={`Select ${title}...`}
+							value={undefined}
+							options={optionsFor()}
+							onSelect={(next) => {
+								if (next) onChange([...values, next])
+								setAdding(false)
+							}}
+						/>
+						<Button
+							type="button"
+							size="icon"
+							variant="ghost"
+							className="h-8 w-8 shrink-0 text-destructive"
+							onClick={() => setAdding(false)}
+						>
+							<Icons.X className="h-4 w-4" />
+						</Button>
 					</div>
 				)
-			})}
-			<Button
-				type="button"
-				size="sm"
-				variant="outline"
-				onClick={() => setGrants([...grants, { access: 'write', serverIds: [], paths: [] }])}
-			>
-				<Icons.Plus className="mr-1 h-4 w-4" />
-				Add grant
-			</Button>
+				: (
+					// exhausted is a different story from adding: the button stays, disabled, to say there's nothing left to pick
+					<Button type="button" size="sm" variant="outline" className="h-7" disabled={exhausted} onClick={() => setAdding(true)}>
+						<Icons.Plus className="mr-1 h-3.5 w-3.5" />
+						Add {title}
+					</Button>
+				)}
 		</div>
 	)
 }
