@@ -11,7 +11,7 @@ test.describe('selecting layers', () => {
 	test('applies the pool filter by default, narrows through the filter menu, and adds the chosen layer', async ({ page }) => {
 		const app = await createAppFixture({
 			layerQueue: queue(LAYERS.harjuRaas),
-			filters: [filter('raas-only', 'RAAS Only', FB.all([FB.eq('Gamemode', 'RAAS')]))],
+			filters: [filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')]))],
 			serverSettings: (settings) => {
 				settings.queue.mainPool.filters = [poolFilter('raas-only')]
 			},
