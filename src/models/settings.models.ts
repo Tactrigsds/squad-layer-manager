@@ -3,7 +3,6 @@ import * as Obj from '@/lib/object'
 import { BasicStrNoWhitespace, HumanTime, ParsableBigIntSchema } from '@/lib/zod'
 import * as AAR from '@/models/admin-action-reasons.models.ts'
 import * as BAL from '@/models/balance-triggers.models.ts'
-import * as BM from '@/models/battlemetrics.models.ts'
 import * as CHAT from '@/models/chat.models.ts'
 import * as CMD from '@/models/command.models.ts'
 import * as CB from '@/models/constraint-builders'
@@ -11,6 +10,7 @@ import * as F from '@/models/filter.models'
 import * as LP from '@/models/labeled-presets.models'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
+import * as PG from '@/models/player-groupings.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
 import { z } from 'zod'
@@ -242,6 +242,19 @@ export const GlobalSettingsSchema = z.object({
 	}).prefault({}),
 	squadServer: z.object({
 		logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines.'),
+		rconCacheTTL: z.object({
+			layersStatus: HumanTime.prefault('5s').describe(
+				'How stale the cached current/next layer may be before a read refetches it over RCON.',
+			),
+			serverInfo: HumanTime.prefault('10s').describe(
+				'How stale cached server info (player count, tick rate) may be before a read refetches it over RCON.',
+			),
+			teams: HumanTime.prefault('5s').describe(
+				'How stale the cached roster may be before a read refetches it over RCON. Also the interval at which observers poll ListPlayers.',
+			),
+		}).prefault({}).describe(
+			'How long RCON responses stay cached. Lower means fresher data and more RCON traffic; these are the dominant source of roster/status latency.',
+		),
 		tickRateThresholds: z.object({
 			good: z.number().positive().prefault(60).describe(
 				'At or above this tick rate the live server tick rate displays as good (green)',
@@ -257,8 +270,8 @@ export const GlobalSettingsSchema = z.object({
 	playerFlagsRequiringNote: z.array(z.uuid()).prefault([]).describe(
 		"Flags (by id) that require a reason to be given when added, which is included in the note posted to the player's BattleMetrics profile",
 	),
-	playerFlagGroupings: BM.PlayerFlagGroupingsSchema.prefault(BM.EMPTY_PLAYER_FLAG_GROUPINGS).describe(
-		'Groups players into labelled/colored buckets by their flags, per display mode. Modes are declared upfront and selected in the players panel.',
+	playerGroupings: PG.PlayerGroupingsSchema.prefault(PG.EMPTY_PLAYER_GROUPINGS).describe(
+		'Named ways of sorting players into coloured groups. Each grouping is an ordered list of rules assigning a group to players with a given flag, highest priority first; the players panel and activity charts pick which grouping to show.',
 	),
 	navLinks: NavLinkSchema.optional().describe('Global links to display in the navbar dropdown menu'),
 	warnOnSlmStart: z.boolean().prefault(false).describe('Warn all in-game admins when SLM starts or restarts.'),
