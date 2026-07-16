@@ -3,7 +3,6 @@ import * as Obj from '@/lib/object'
 import type { StateObservable } from '@react-rxjs/core'
 import { useQueries } from '@tanstack/react-query'
 import type { UseQueryOptions } from '@tanstack/react-query'
-import { derive } from 'derive-zustand'
 import * as React from 'react'
 import * as Rx from 'rxjs'
 
@@ -256,5 +255,3 @@ export function toObservable<S extends NonNullable<object>, EmitCurrent extends 
 		return () => unsub()
 	})
 }
-
-export const deriveStores = derive
