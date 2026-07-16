@@ -1095,6 +1095,7 @@ const matchesCombinedSquadFilter = (player: CombinedPlayer, squadFilter: string)
 
 function useGroupColorByName(): Map<string, string> {
 	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
+	const orgFlags = BattlemetricsClient.useOrgFlags()
 	const playerGroupings = config?.playerGroupings
 	const groupingIds = React.useMemo(() => playerGroupings ? PG.getGroupingIds(playerGroupings) : [], [playerGroupings])
 	const activeGroupingId = ZusUtils.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingId(groupingIds))
@@ -1103,10 +1104,10 @@ function useGroupColorByName(): Map<string, string> {
 		const grouping = activeGroupingId ? playerGroupings?.[activeGroupingId] : undefined
 		if (!grouping) return result
 		for (const group of PG.getGroupNames(grouping)) {
-			result.set(group, PG.getGroupColor(grouping, group))
+			result.set(group, PG.getGroupColor(grouping, group, orgFlags))
 		}
 		return result
-	}, [playerGroupings, activeGroupingId])
+	}, [playerGroupings, activeGroupingId, orgFlags])
 }
 
 // Applies search + role/group/squad/admin filters, then the "show selected" toggle. squad matching

@@ -84,24 +84,35 @@ export function BmFlagMultiSelect(
 	)
 }
 
-// single flag select. `exclude` drops flags already spoken for by a sibling row.
+// single flag select. `exclude` drops flags already spoken for by a sibling row; `only` narrows the choice to a given
+// set (and keeps their order), for callers where an arbitrary org flag would be meaningless.
 export function BmFlagSelect(
-	{ value, onChange, disabled, exclude, className }: {
+	{ value, onChange, disabled, exclude, only, title, className }: {
 		value: string | undefined
 		onChange: (next: string) => void
 		disabled?: boolean
 		exclude?: string[]
+		only?: string[]
+		title?: string
 		className?: string
 	},
 ) {
 	const options = useFlagOptions()
-	const selectable = options === LOADING || !exclude?.length
-		? options
-		: options.filter((o) => o.value === value || !exclude.includes(o.value))
+	let selectable = options
+	if (selectable !== LOADING && only) {
+		const byId = new Map(selectable.map((o) => [o.value, o]))
+		selectable = only.flatMap((id) => {
+			const option = byId.get(id)
+			return option ? [option] : []
+		})
+	}
+	if (selectable !== LOADING && exclude?.length) {
+		selectable = selectable.filter((o) => o.value === value || !exclude.includes(o.value))
+	}
 	return (
 		<ComboBox
 			className={className}
-			title="Flag"
+			title={title ?? 'Flag'}
 			value={value}
 			options={selectable}
 			disabled={disabled}

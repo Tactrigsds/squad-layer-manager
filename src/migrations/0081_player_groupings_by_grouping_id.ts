@@ -3,11 +3,18 @@ import type { MigrationDriver } from '@/server/migrate'
 // Replaces `playerFlagGroupings` with `playerGroupings`, keyed by grouping id. Before:
 //   playerFlagGroupings: { modeIds: string[], groupings: { label, modeIds, associations: Record<flagId, number>, color }[] }
 // After:
-//   playerGroupings: Record<groupingId, { rules: { type: 'battlemetrics', flag, group }[], groups: Record<group, { color }> }>
+//   playerGroupings: Record<groupingId, {
+//     rules: { type: 'battlemetrics', flag, group }[],
+//     groups: Record<group, { color: { type: 'flag', flag } | { type: 'custom', color } }>
+//   }>
 //
 // The old "display mode" is now the grouping itself, so each mode becomes one record entry holding only the groupings that
 // referenced it. Numeric `associations` priorities are flattened into `rules` -- ordered across every grouping in the mode,
 // which is how priority was compared before -- so array position now carries the priority.
+//
+// The old `color` was one string meaning either a flag id (take that flag's color) or a literal CSS color, told apart by
+// looking for a UUID. Both meanings survive as the two variants of the new tagged color, so the same UUID test decides
+// which variant to write and nothing is lost.
 //
 // Without this migration the reshaped GlobalSettingsSchema fails to validate on load, which would reset EVERY global
 // setting to defaults.
@@ -47,27 +54,24 @@ export async function up(db: MigrationDriver): Promise<void> {
 		if (id && !groupingIds.includes(id)) groupingIds.push(id)
 	}
 
-	// `color` used to mean either a flag id (take that flag's color) or a literal CSS color. A flag id can't be resolved
-	// here (no BattleMetrics access from a migration), so those fall back to the neutral default and get re-picked by hand.
-	const unresolvedColorGroups: string[] = []
+	type Color = { type: 'flag'; flag: string } | { type: 'custom'; color: string }
 
-	const playerGroupings: Record<string, { rules: any[]; groups: Record<string, { color: string }> }> = {}
+	const playerGroupings: Record<string, { rules: any[]; groups: Record<string, { color: Color }> }> = {}
 	for (const groupingId of groupingIds) {
 		const mine = oldGroupings.filter(g => (g?.modeIds ?? []).map(String).includes(groupingId))
 
 		const flattened: { group: string; flag: string; priority: number }[] = []
-		const groups: Record<string, { color: string }> = {}
+		const groups: Record<string, { color: Color }> = {}
 		for (const g of mine) {
 			const group = typeof g?.label === 'string' ? g.label.trim() : ''
 			// the new rule schema requires a group name; an unlabelled grouping could never be told apart in the UI anyway
 			if (!group) continue
 
 			const rawColor = typeof g?.color === 'string' ? g.color : ''
-			if (rawColor && UUID_RE.test(rawColor)) {
-				groups[group] = { color: DEFAULT_GROUP_COLOR }
-				unresolvedColorGroups.push(`${groupingId}/${group}`)
-			} else {
-				groups[group] = { color: rawColor || DEFAULT_GROUP_COLOR }
+			groups[group] = {
+				color: UUID_RE.test(rawColor)
+					? { type: 'flag', flag: rawColor }
+					: { type: 'custom', color: rawColor || DEFAULT_GROUP_COLOR },
 			}
 
 			for (const [flag, priority] of Object.entries(g?.associations ?? {})) {
@@ -85,12 +89,4 @@ export async function up(db: MigrationDriver): Promise<void> {
 	delete json.playerFlagGroupings
 	json.playerGroupings = playerGroupings
 	db.prepare(`UPDATE globalSettings SET settings = ? WHERE id = 1`).run(JSON.stringify(wrapper))
-
-	if (unresolvedColorGroups.length > 0) {
-		console.warn(
-			`0081: these groups took their color from a flag, which cannot be resolved offline, so they were set to `
-				+ `${DEFAULT_GROUP_COLOR}. Under Settings > Players & Flags > Player groupings, the reset button next to each group `
-				+ `(Colors section) takes the color back from its flag: ${unresolvedColorGroups.join(', ')}`,
-		)
-	}
 }

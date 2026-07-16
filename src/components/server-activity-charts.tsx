@@ -305,7 +305,7 @@ export function ServerActivityCharts(props: {
 			}
 		}
 
-		const groupColors = groupLabels.map(label => PG.getGroupColor(grouping, label))
+		const groupColors = groupLabels.map(label => PG.getGroupColor(grouping, label, orgFlags))
 
 		return createFlagGroupChartOption(
 			groupLabels,
