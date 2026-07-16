@@ -95,8 +95,8 @@ chmod +x "$DIR/edit-global-settings.sh"
 cp "$DIR/.env.example" "$DIR/.env"
 say "  + .env (from .env.example)"
 
-# the credentials, which docker-compose mounts as a file rather than handing to the container as environment
-# variables. Only the owner can read it: it is the one file in the install worth treating like a private key.
+# the credentials, which docker-compose mounts as a file. Owner-readable only: it is the one file in the
+# install worth treating like a private key.
 cp "$DIR/.env.secrets.example" "$DIR/.env.secrets"
 chmod 600 "$DIR/.env.secrets"
 say "  + .env.secrets (from .env.secrets.example)"

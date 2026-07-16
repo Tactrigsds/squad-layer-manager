@@ -35,19 +35,18 @@ describe('secrets', () => {
 
 		expect(Env.rawVar('DISCORD_BOT_TOKEN')).toBe('from-file')
 		expect(Env.rawVar('SETTINGS_ENCRYPTION_KEY')).toBe(KEY)
-		// the point of the file: a credential that was never in the environment can't be read back out of it
 		expect(process.env.DISCORD_BOT_TOKEN).toBeUndefined()
-		expect(process.env.SETTINGS_ENCRYPTION_KEY).toBeUndefined()
 		expect(Object.values(process.env)).not.toContain('from-file')
+		expect(Env.getSecretsFromEnvironment()).toEqual([])
 	})
 
 	// an install predating the split, and the test harness, both hand them over this way
-	it('still reads one passed through the environment, and takes it back out', async () => {
+	it('still reads one passed through the environment, and reports it', async () => {
 		const Env = await loadEnv('', { BM_PAT: 'from-environment' })
 		Env.ensureEnvSetup()
 
 		expect(Env.rawVar('BM_PAT')).toBe('from-environment')
-		expect(process.env.BM_PAT).toBeUndefined()
+		expect(Env.getSecretsFromEnvironment()).toEqual(['BM_PAT'])
 	})
 
 	it('leaves everything that is not a credential in the environment', async () => {
@@ -63,6 +62,7 @@ describe('secrets', () => {
 		Env.ensureEnvSetup()
 
 		expect(Env.rawVar('BM_PAT')).toBe('from-file')
+		expect(Env.getSecretsFromEnvironment()).toEqual([])
 	})
 
 	// booting without the secrets someone pointed us at is never what they meant
@@ -75,6 +75,31 @@ describe('secrets', () => {
 		vi.resetModules()
 		delete process.env.SECRETS_FILE
 		const Env = await import('./env.ts')
+		expect(() => Env.ensureEnvSetup()).not.toThrow()
+	})
+})
+
+describe('the development encryption key', () => {
+	it('is refused in production, where it would encrypt nothing: it is public', async () => {
+		const { INSECURE_DEV_ENCRYPTION_KEY } = await import('./env.ts')
+		const Env = await loadEnv(`SETTINGS_ENCRYPTION_KEY=${INSECURE_DEV_ENCRYPTION_KEY}\n`, { NODE_ENV: 'production' })
+		expect(() => Env.ensureEnvSetup()).toThrow(/development key/)
+	})
+
+	it('is fine outside production, which is the whole point of shipping it', async () => {
+		const { INSECURE_DEV_ENCRYPTION_KEY } = await import('./env.ts')
+		const Env = await loadEnv(`SETTINGS_ENCRYPTION_KEY=${INSECURE_DEV_ENCRYPTION_KEY}\n`)
+		expect(() => Env.ensureEnvSetup()).not.toThrow()
+		expect(Env.rawVar('SETTINGS_ENCRYPTION_KEY')).toBe(INSECURE_DEV_ENCRYPTION_KEY)
+	})
+
+	it('is a valid key otherwise, so a checkout boots with it', async () => {
+		const Env = await import('./env.ts')
+		expect(Env.groups.encryption.SETTINGS_ENCRYPTION_KEY.safeParse(Env.INSECURE_DEV_ENCRYPTION_KEY).success).toBe(true)
+	})
+
+	it('does not stop production booting with a real key', async () => {
+		const Env = await loadEnv(`SETTINGS_ENCRYPTION_KEY=${KEY}\n`, { NODE_ENV: 'production' })
 		expect(() => Env.ensureEnvSetup()).not.toThrow()
 	})
 })

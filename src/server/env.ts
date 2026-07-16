@@ -33,12 +33,15 @@ export type EnvExampleMeta = EnvExampleEntry & {
 declare module 'zod' {
 	interface GlobalMeta {
 		envExample?: EnvExampleMeta
-		// the var holds a credential. Secrets are read from the secrets file rather than the environment, and
-		// never land in process.env (see ensureEnvSetup); the deployment example splits them out into
-		// .env.secrets.example accordingly.
+		// the var holds a credential: it is read from the secrets file (see readSecretsFile) and written to
+		// .env.secrets.example rather than .env.example. docs/INSTALLING.md covers why.
 		secret?: true
 	}
 }
+
+// The key .env.example.dev ships, so a checkout boots without a key-generation step. It is public, and
+// therefore worth nothing: production refuses to start with it (see ensureEnvSetup).
+export const INSECURE_DEV_ENCRYPTION_KEY = Buffer.from('insecure-dev-key-do-not-use-prod').toString('base64')
 
 // comma-separated list of Discord snowflake ids parsed to bigints (e.g. SUPER_USERS="123,456")
 const BigIntListSchema = z.string().default('').transform((val) => val.split(',').map((s) => s.trim()).filter(Boolean).map(BigInt))
@@ -79,7 +82,7 @@ export const groups = {
 
 		SECRETS_FILE: z.string().min(1).optional().meta({
 			description:
-				'the file the secrets are read from, which is never loaded into the environment. Defaults to ./.env.secrets when that file exists; set this to read them from somewhere else (e.g. /run/secrets/slm-secrets, where a docker secret is mounted). Pointing it at a file that is not there is an error, rather than a silent boot without them.',
+				'the file the credentials are read from. Defaults to ./.env.secrets when that file exists; set this to read them from somewhere else (e.g. /run/secrets/slm-secrets, where a docker secret is mounted). Pointing it at a file that is not there is an error, rather than a silent boot without them.',
 			envExample: { include: 'commented' },
 		}),
 
@@ -137,8 +140,9 @@ export const groups = {
 			envExample: {
 				include: 'set',
 				dev: {
+					value: INSECURE_DEV_ENCRYPTION_KEY,
 					description:
-						'a base64-encoded 32-byte key used to encrypt sensitive settings at rest. `pnpm server:dev` generates one into your .env automatically if it is missing, so you normally never touch this. Generate one manually with `openssl rand -base64 32`.',
+						'a base64-encoded 32-byte key used to encrypt sensitive settings at rest. The one below is the shared development key: it is in the repo, so it is public, and the app refuses to start with it when NODE_ENV=production. Generate a real one with `openssl rand -base64 32`.',
 				},
 			},
 		}),
@@ -375,6 +379,14 @@ export const DEFAULT_SECRETS_PATH = path.join(Paths.PROJECT_ROOT, '.env.secrets'
 
 let rawEnv!: Record<string, string | undefined>
 
+// the secrets that arrived as environment variables rather than from the secrets file, which is supported but
+// worth a word in production. Read after ensureEnvSetup, once there is a logger to say it with.
+let secretsFromEnvironment: string[] = []
+
+export function getSecretsFromEnvironment(): string[] {
+	return secretsFromEnvironment
+}
+
 const parsedProperties = new Map<string, unknown>()
 
 function parseGroups<G extends Record<string, z.ZodType>>(groups: G) {
@@ -417,9 +429,8 @@ export function rawVar(key: string): string | undefined {
 	return rawEnv[key]
 }
 
-// injects a var into the already-frozen rawEnv after ensureEnvSetup has run, so a value written at boot
-// (e.g. the dev-generated SETTINGS_ENCRYPTION_KEY) is visible to env builders. Clears any cached parse so
-// the next build picks it up.
+// injects a var into the already-frozen rawEnv after ensureEnvSetup has run, so that a value decided at
+// runtime is visible to env builders. Clears any cached parse so the next build picks it up.
 export function injectRawVar(key: string, value: string) {
 	rawEnv[key] = value
 	parsedProperties.delete(key)
@@ -430,24 +441,12 @@ const buildForValidation = getEnvBuilder({
 	QUERY_PARAM_AUTH_BYPASS: groups.general.QUERY_PARAM_AUTH_BYPASS,
 })
 
-// Read straight into rawEnv, never through process.env. An environment is readable from outside the process
-// that owns it (`docker inspect`, /proc/<pid>/environ) and by anything running inside it, so a credential
-// that is never put there cannot leak that way; everything else about a var is unchanged, since nothing
-// downstream of here reads process.env.
-//
 // The default path is a convention rather than a requirement: a checkout and the test harness pass their
 // secrets in the environment and have no file. A path asked for explicitly does have to be there, since
 // booting without the secrets someone pointed us at is never what they meant.
 function resolveSecretsFile(): { filePath: string; explicit: boolean } {
 	const explicit = Cli.options?.secretsFile ?? process.env.SECRETS_FILE
 	return explicit ? { filePath: explicit, explicit: true } : { filePath: DEFAULT_SECRETS_PATH, explicit: false }
-}
-
-// where the secrets are read from, if anywhere: an explicitly configured path, or the default when it is
-// actually there. undefined means the secrets arrive through the environment, as they do in a checkout.
-export function secretsFilePath(): string | undefined {
-	const { filePath, explicit } = resolveSecretsFile()
-	return explicit || fs.existsSync(filePath) ? filePath : undefined
 }
 
 function readSecretsFile(): Record<string, string> {
@@ -468,19 +467,22 @@ export function ensureEnvSetup() {
 	dotenv.config({ path: Cli.options?.envFile })
 	const secrets = readSecretsFile()
 	rawEnv = {}
+	secretsFromEnvironment = []
 	for (const [key, schema] of entries()) {
-		const value = (isSecret(schema) ? secrets[key] : undefined) ?? process.env[key]
+		const fromFile = isSecret(schema) ? secrets[key] : undefined
+		const value = fromFile ?? process.env[key]
 		if (value) rawEnv[key] = value
-		// a secret that came through the environment regardless (an install predating the split, a
-		// `environment:` entry, the test harness) is at least taken back out of it, so that nothing reading
-		// process.env later in this process sees it. Whoever can already read the process's original environ
-		// still can: only never putting it there in the first place fixes that.
-		if (isSecret(schema)) delete process.env[key]
+		if (value && isSecret(schema) && fromFile === undefined) secretsFromEnvironment.push(key)
 	}
 
 	const toValidate = buildForValidation()
 	if (toValidate.NODE_ENV === 'production' && toValidate.QUERY_PARAM_AUTH_BYPASS) {
 		throw new Error('QUERY_PARAM_AUTH_BYPASS=true is not allowed in production')
+	}
+	if (toValidate.NODE_ENV === 'production' && rawEnv.SETTINGS_ENCRYPTION_KEY === INSECURE_DEV_ENCRYPTION_KEY) {
+		throw new Error(
+			'SETTINGS_ENCRYPTION_KEY is the development key .env.example.dev ships, which is public. Generate a real one with `openssl rand -base64 32`.',
+		)
 	}
 
 	setup = true
