@@ -44,6 +44,10 @@ extra-columns.json
 google-credentials.json
 
 /data/layers*.csv
+# everything the dev emulator owns (see docs/DEV_INSTANCES.md): the log it writes, the Admins.cfg the app
+# reads back, and anything else a scenario leaves behind
+/data/dev/
+
 # the layer artifacts ship in assets/layers (tracked). ./data is only ever a local/deployment override, so
 # anything dropped in there stays out of the repo.
 /data/layers_v*.bin

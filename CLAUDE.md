@@ -18,6 +18,23 @@ Also avoid comments which refer back to previous versions of the codebase or why
 Run `pnpm run format` and `pnpm run check`(or some subset to typecheck your specific changes) before reporting your changes to the user.
 If we've completed a goal or feature, then run `pnpm run lint:fix` and fix all lint errors as a cleanup step.
 
+# Running the app in a worktree
+
+If you are working in a git worktree, do not run `pnpm server:dev` / `pnpm client:dev` and do not use ports 3000/5173: those belong to the main checkout, and an app you reach there is not running your changes. Each worktree gets its own instance instead, on its own ports, with its own database and an emulated squad server:
+
+```sh
+pnpm dev:init   # once per worktree: claims a port slot, links .env, clones the db. Prints your URL.
+pnpm dev:emu    # the emulated squad server. Leave it running, it is a separate process on purpose.
+pnpm dev        # the app + client
+pnpm dev:slots  # which worktree owns which ports
+```
+
+Log in with `?login=<username>` (discord oauth is off for dev instances; any username in the cloned db works). Drive the emulated server with `pnpm emuctl <command>` (`pnpm emuctl help`) rather than trying to reach a real squad server -- e.g. `pnpm emuctl join Alice`, `pnpm emuctl chat Alice '!vote 1'`, `pnpm emuctl end 1`.
+
+Never point a worktree at a real squad server or the real battlemetrics org; `dev:init` deliberately scrubs those, and re-adding them means an experiment drives production.
+
+See docs/DEV_INSTANCES.md.
+
 # Documentation, prose and app text
 
 No emdashes.
@@ -32,7 +49,7 @@ Functions should only specify the minimal amount of context that they need in th
 
 # Client side
 
-The vite dev server will be running on http://localhost:5173 by default in dev mode.
+In the main checkout the vite dev server runs on http://localhost:5173 by default. In a worktree it does not: see "Running the app in a worktree" below for the port, and do not assume 5173 is yours.
 
 Stores / frames should be used, at minimum, whenever:
 

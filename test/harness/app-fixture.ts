@@ -1,9 +1,9 @@
 import * as Schema from '$root/drizzle/schema.ts'
+import * as DevInstance from '@/dev/instance'
 import { superjsonify } from '@/lib/drizzle'
 import { tsMigrations } from '@/migrations/registry'
 import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
-import * as LC from '@/models/layer-columns'
 import * as LL from '@/models/layer-list.models'
 import * as SETTINGS from '@/models/settings.models'
 import type * as SM from '@/models/squad.models'
@@ -24,22 +24,6 @@ import { BmServer } from '../../src/emulator/bm-server'
 // emulated server; parallel suites are isolated by construction.
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..')
-
-// the layer components are static app data, loaded at runtime rather than bundled. Anything that
-// resolves a layer id (getLayerCommand here) needs them, and playwright -- unlike vitest -- has no
-// setup file to do it, so the fixture loads them itself. Resolved exactly as the app under test resolves
-// them, so the components the test reasons about are the ones the app is running.
-let layerDataLoaded = false
-function ensureLayerData() {
-	if (layerDataLoaded) return
-	const file = JSON.parse(fs.readFileSync(LayerArtifacts.resolvePair().layerDataPath, 'utf8')) as L.LayerDataFile
-	L.setLayerData({
-		components: LC.buildFullLayerComponents(file.components),
-		factionUnits: file.factionUnits,
-		extraColumns: file.extraColumns,
-	})
-	layerDataLoaded = true
-}
 
 // How to start the app under test. In the docker image (and so in CI) SLM_TEST_SERVER_ENTRY points at
 // the bundled server, so the tests drive the very artifact that gets deployed; locally we run the
@@ -247,9 +231,7 @@ function startServerAgent(
 }
 
 function renderAdminsCfg(steamIds: string[]): string {
-	const lines = [`Group=${ADMIN_GROUP}:${ADMIN_PERM},balance,cameraman,teamchange`]
-	for (const steamId of steamIds) lines.push(`Admin=${steamId}:${ADMIN_GROUP}`)
-	return lines.join('\n') + '\n'
+	return DevInstance.renderAdminsCfg(steamIds, ADMIN_GROUP, [ADMIN_PERM, 'balance', 'cameraman', 'teamchange'])
 }
 
 // Durations that would make a test sit and wait. Every one is a setting, and settings are the only
@@ -270,7 +252,7 @@ function applyTestTimings(settings: SETTINGS.GlobalSettings) {
 
 export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<AppFixture> {
 	// the emulator resolves its team names from the layer's factions, so this has to happen before it exists
-	ensureLayerData()
+	DevInstance.ensureLayerData()
 	const serverId = opts.serverId ?? 'emu-server-1'
 	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slm-integ-'))
 	const dbPath = path.join(tmpDir, 'main.sqlite3')
