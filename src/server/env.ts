@@ -171,13 +171,8 @@ export const groups = {
 			envExample: { dev: { include: 'omit' } },
 		}),
 		BACKUPS_RETAIN_COUNT: ParsedIntSchema.pipe(z.number().min(0)).default(10).meta({
-			description: 'how many periodic backups to keep, locally and (if configured) on the sftp target. 0 keeps all of them.',
-			envExample: { dev: { include: 'omit' } },
-		}),
-
-		PRE_MIGRATION_BACKUPS_RETAIN_COUNT: ParsedIntSchema.pipe(z.number().min(0)).default(1).meta({
 			description:
-				'how many pre-migration backups to keep in BACKUPS_DIR. One is always taken before any migration is applied, whether by the app at boot or by `pnpm db:migrate:prod`, and they are retained separately from the periodic ones (and never uploaded). The default keeps only the most recent, which is the database as it was before the migration you last ran. 0 keeps all of them.',
+				'how many backups to keep, locally and (if configured) on the sftp target. 0 keeps all of them. Periodic and pre-migration backups share this one window, with a single exception: the most recent pre-migration backup is always kept, however old it is, since it is the only thing a bad upgrade can be rolled back to.',
 			envExample: { dev: { include: 'omit' } },
 		}),
 

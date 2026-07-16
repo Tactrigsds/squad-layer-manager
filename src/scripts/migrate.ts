@@ -30,7 +30,7 @@ try {
 		sqlDir: SQL_DIR,
 		tsMigrations,
 		log: (msg) => console.log(msg),
-		backup: { dbPath: ENV.DB_PATH, dir: ENV.BACKUPS_DIR, retainCount: ENV.PRE_MIGRATION_BACKUPS_RETAIN_COUNT },
+		backup: { dbPath: ENV.DB_PATH, dir: ENV.BACKUPS_DIR, retainCount: ENV.BACKUPS_RETAIN_COUNT },
 	})
 	console.log(applied.length ? `done — applied ${applied.length} migration(s)` : 'done — already up to date')
 } catch (err) {

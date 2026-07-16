@@ -60,7 +60,7 @@ export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 			const { applied } = await Migrate.applyPendingMigrations(driver, {
 				...migrateOpts,
 				log: (msg) => log.info(msg),
-				backup: { dbPath: ENV.DB_PATH, dir: ENV.BACKUPS_DIR, retainCount: ENV.PRE_MIGRATION_BACKUPS_RETAIN_COUNT },
+				backup: { dbPath: ENV.DB_PATH, dir: ENV.BACKUPS_DIR, retainCount: ENV.BACKUPS_RETAIN_COUNT },
 			})
 			if (applied.length > 0) log.info('DB_AUTOMIGRATE applied %d migration(s)', applied.length)
 		} else {

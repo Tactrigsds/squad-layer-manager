@@ -78,7 +78,8 @@ export type BackupConfig = {
 	// the database being migrated, which backups are named after
 	dbPath: string
 	dir: string
-	// how many pre-migration backups to keep, this one included. 0 keeps all of them.
+	// the retention window this snapshot is pruned against, shared with the periodic backups (BACKUPS_RETAIN_COUNT).
+	// 0 keeps all of them.
 	retainCount: number
 }
 
@@ -111,8 +112,8 @@ async function takePreMigrationBackup(driver: MigrationDriver, backup: BackupCon
 	const { sizeBytes } = await DbBackup.writeBackup({ destPath, snapshot: (dest) => driver.backup(dest) })
 	log(`wrote pre-migration backup ${destPath} (${sizeBytes} bytes)`)
 	// pruned after the new one is on disk, so a failure here can never leave us with none
-	const pruned = DbBackup.pruneBackups({ ...backup, kind: 'pre-migration', keep: name })
-	for (const stale of pruned) log(`deleted old pre-migration backup ${stale}`)
+	const pruned = DbBackup.pruneBackups({ ...backup, keep: name })
+	for (const stale of pruned) log(`deleted old backup ${stale}`)
 }
 
 // Holds sqlite's exclusive lock on the database for the duration of `fn`, so nothing else can read or write it, and

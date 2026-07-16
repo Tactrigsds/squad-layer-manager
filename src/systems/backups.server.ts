@@ -36,28 +36,78 @@ const FAILED_BACKUP_RETRY_DELAY = parseHumanTime('30m')
 export function setup() {
 	log = module.getLogger()
 	ENV = buildEnv()
+	void run()
+}
+
+async function run() {
+	const ctx = DB.addPooledDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
+
+	// before anything else, and whether or not the periodic schedule is even on: a pre-migration backup may have just
+	// been taken, and until it's adopted this system doesn't know it exists.
+	try {
+		await adoptUnrecordedBackups(ctx)
+	} catch (err) {
+		if (!isAbortError(err)) log.error(err, 'failed to account for backups taken outside the schedule')
+	}
 
 	if (ENV.AUTOMATIC_BACKUPS_PERIODIC === undefined) {
 		log.info('automatic backups disabled (AUTOMATIC_BACKUPS_PERIODIC unset)')
 		return
 	}
-	const interval = ENV.AUTOMATIC_BACKUPS_PERIODIC
 	const sftp = getSftpTarget()
-
 	log.info(
 		'automatic backups every %s to %s%s, event history retention: %s',
-		formatHumanTime(interval),
+		formatHumanTime(ENV.AUTOMATIC_BACKUPS_PERIODIC),
 		ENV.BACKUPS_DIR,
 		sftp ? ` (uploading to ${sftp.username}@${sftp.host}:${ENV.BACKUP_SFTP_DIR})` : '',
 		ENV.EVENT_HISTORY_RETENTION_PERIOD === undefined ? 'disabled' : formatHumanTime(ENV.EVENT_HISTORY_RETENTION_PERIOD),
 	)
-
-	void runBackupLoop(interval)
+	await runBackupLoop(ENV.AUTOMATIC_BACKUPS_PERIODIC, ctx)
 }
 
-async function runBackupLoop(interval: number) {
-	const ctx = DB.addPooledDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
+// A pre-migration snapshot is taken by the migration runner (see server/migrate.ts) before the app exists, so it can't
+// record itself, ship itself offsite, or tell the schedule that it happened. Rather than a handoff, we notice it here:
+// a pre-migration backup newer than the newest BACKUP_CREATED event is one nothing has accounted for. Adopting it is
+// what stops the two triggers producing two snapshots of the same database a minute apart -- and it's also how the
+// audit log gets to mention pre-migration backups at all, and how they reach the sftp target.
+//
+// Deliberately driven off what's on disk rather than a handoff file: it costs nothing, it's self-healing, and it
+// equally covers a snapshot taken by an out-of-band `pnpm db:migrate:prod` days before this boot.
+const adoptUnrecordedBackups = C.spanOp('adoptUnrecordedBackups', { module }, async (ctx: C.Db & CS.AbortSignal) => {
+	if (!fs.existsSync(ENV.BACKUPS_DIR)) return
+	const loggedAt = await getLastBackupEventTime(ctx)
+	// only pre-migration backups: a periodic one is written by the loop below, which records its own event, so an
+	// unrecorded periodic file means the event failed to write and re-adopting it would say it happened twice.
+	const unrecorded = DbBackup.backupFiles(fs.readdirSync(ENV.BACKUPS_DIR), ENV.DB_PATH)
+		.filter(f => f.kind === 'pre-migration')
+		.map(f => ({ fileName: f.name, stat: fs.statSync(path.join(ENV.BACKUPS_DIR, f.name)) }))
+		.filter(f => loggedAt === undefined || f.stat.mtimeMs > loggedAt)
+		.reverse() // oldest first, so the audit log reads in the order they were taken
 
+	for (const { fileName, stat } of unrecorded) {
+		ctx.signal.throwIfAborted()
+		const uploaded = await uploadBackup(ctx, path.join(ENV.BACKUPS_DIR, fileName), fileName)
+		await AppEventsSys.persistAppEvent(
+			ctx,
+			AppEvents.create<AppEvents.BackupCreated>({
+				type: 'BACKUP_CREATED',
+				actor: { type: 'system' },
+				serverId: null,
+				matchId: null,
+				causeId: null,
+				// when the snapshot was taken, not when we noticed it: this event is what anchors the schedule
+				time: stat.mtimeMs,
+				fileName,
+				sizeBytes: stat.size,
+				reason: 'pre-migration',
+				uploaded,
+			}),
+		)
+		log.info('recorded pre-migration backup %s, taken %s ago', fileName, formatDurationApprox(Date.now() - stat.mtimeMs))
+	}
+})
+
+async function runBackupLoop(interval: number, ctx: C.Db & CS.AbortSignal) {
 	// the schedule is anchored to the last backup that actually happened, not to boot: a server restarted more often
 	// than the interval would otherwise never reach its first backup at all. A backup taken shortly before a restart
 	// isn't taken again, and one that came due while we were down is taken now (BOOT_SETTLE_DELAY floors the first
@@ -88,23 +138,32 @@ async function runBackupLoop(interval: number) {
 	}
 }
 
-// when the last backup was taken, or null if we can't account for one. The audit log records every backup this app
-// took; the backups dir holds the artifacts. They normally agree, and when they don't (the db was restored from an
-// older snapshot, or the backups dir lives on storage that didn't survive the restart) the older of the two is the
-// honest answer: a missing signal means we have no backup we can point at, so we take one.
-async function getLastBackupTime(ctx: C.Db) {
+async function getLastBackupEventTime(ctx: C.Db) {
 	const [row] = await ctx.db()
 		.select({ time: Schema.appEvents.time })
 		.from(Schema.appEvents)
 		.where(E.eq(Schema.appEvents.type, 'BACKUP_CREATED'))
 		.orderBy(E.desc(Schema.appEvents.time))
 		.limit(1)
-	const loggedAt = row?.time.getTime()
+	return row?.time.getTime()
+}
 
-	const fileNames = fs.existsSync(ENV.BACKUPS_DIR) ? DbBackup.backupFiles(fs.readdirSync(ENV.BACKUPS_DIR), ENV.DB_PATH, 'periodic') : []
-	const writtenAt = fileNames.length === 0
+// when the last backup was taken, or null if we can't account for one. The audit log records every backup this app
+// took; the backups dir holds the artifacts. They normally agree, and when they don't (the db was restored from an
+// older snapshot, or the backups dir lives on storage that didn't survive the restart) the older of the two is the
+// honest answer: a missing signal means we have no backup we can point at, so we take one.
+//
+// Every backup counts, whatever it was taken for: having just snapshotted the database in order to migrate it, there
+// is nothing for a periodic run to add a minute later, and taking one anyway is how the same database got copied twice
+// per upgrade. This is only safe because adoption uploads what it adopts -- anchoring on a local-only file would
+// quietly mean nothing reaches the sftp target for a whole interval, which is the one thing offsite exists to prevent.
+async function getLastBackupTime(ctx: C.Db) {
+	const loggedAt = await getLastBackupEventTime(ctx)
+
+	const files = fs.existsSync(ENV.BACKUPS_DIR) ? DbBackup.backupFiles(fs.readdirSync(ENV.BACKUPS_DIR), ENV.DB_PATH) : []
+	const writtenAt = files.length === 0
 		? undefined
-		: Math.max(...fileNames.map(name => fs.statSync(path.join(ENV.BACKUPS_DIR, name)).mtimeMs))
+		: Math.max(...files.map(f => fs.statSync(path.join(ENV.BACKUPS_DIR, f.name)).mtimeMs))
 
 	if (loggedAt === undefined || writtenAt === undefined) return null
 	return Math.min(loggedAt, writtenAt)
@@ -145,6 +204,7 @@ export const runBackup = C.spanOp('runBackup', { module }, async (ctx: C.Db & CS
 			causeId: null,
 			fileName,
 			sizeBytes,
+			reason: 'periodic',
 			durationMs: Date.now() - startedAt,
 			uploaded,
 			pruned,
@@ -292,5 +352,5 @@ function pruneOldBackups(currentFileName: string) {
 }
 
 function retentionOpts() {
-	return { dbPath: ENV.DB_PATH, kind: 'periodic' as const, retainCount: ENV.BACKUPS_RETAIN_COUNT }
+	return { dbPath: ENV.DB_PATH, retainCount: ENV.BACKUPS_RETAIN_COUNT }
 }

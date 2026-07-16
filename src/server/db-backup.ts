@@ -15,10 +15,10 @@ import * as Zlib from 'node:zlib'
 // `gunzip -c <backup> > db.sqlite3`.
 export const BACKUP_FILE_EXT = '.sqlite3.gz'
 
-// the two kinds are named apart because they are retained apart: each kind's retention only ever sees, and only
-// ever deletes, files of its own kind. A pre-migration snapshot is the one backup you want to still be there
-// after a migration went wrong, so a busy periodic schedule must not be able to age it out.
-export type BackupKind = 'periodic' | 'pre-migration'
+// why a backup was taken. It is in the file name so that a pre-migration snapshot can be found (and restored) as
+// what it is, and so that retention can pin the newest one -- not because the two are separate collections.
+export const BACKUP_KINDS = ['periodic', 'pre-migration'] as const
+export type BackupKind = typeof BACKUP_KINDS[number]
 
 function filePrefix(dbPath: string, kind: BackupKind) {
 	const db = path.basename(dbPath).replace(/\.sqlite3?$/, '')
@@ -26,29 +26,62 @@ function filePrefix(dbPath: string, kind: BackupKind) {
 }
 
 function filePattern(dbPath: string, kind: BackupKind) {
-	return new RegExp(`^${escapeRegExp(filePrefix(dbPath, kind))}-\\d{8}-\\d{6}${escapeRegExp(BACKUP_FILE_EXT)}$`)
+	return new RegExp(`^${escapeRegExp(filePrefix(dbPath, kind))}-(\\d{8})-(\\d{6})${escapeRegExp(BACKUP_FILE_EXT)}$`)
 }
 
 export function fileName(dbPath: string, kind: BackupKind, at = new Date()) {
 	return `${filePrefix(dbPath, kind)}-${DateFns.format(at, 'yyyyMMdd-HHmmss')}${BACKUP_FILE_EXT}`
 }
 
-// the backups of THIS database, of THIS kind, in a directory, newest first (the timestamp is in the name, so
-// lexical order is chronological). Anything else there is left alone: retention only ever deletes files we wrote
-// ourselves. The periodic pattern requires the timestamp immediately after the db name, so it can't match a
-// pre-migration backup.
-export function backupFiles(fileNames: string[], dbPath: string, kind: BackupKind) {
-	const pattern = filePattern(dbPath, kind)
-	return fileNames.filter(name => pattern.test(name)).sort().reverse()
+// `stamp` is the file's yyyyMMddHHmmss, which sorts chronologically. The whole NAME does not: `-pre-migration`
+// sits between the db name and the timestamp, so sorting on that orders every pre-migration backup after every
+// periodic one, whatever their dates -- which, once the two share a retention window, silently means retention
+// keeps the wrong files.
+export type BackupFile = { name: string; kind: BackupKind; stamp: string }
+
+// null when the file isn't a backup of this database at all. Anything that returns null is left alone forever:
+// retention only ever deletes files we wrote ourselves.
+export function parseBackupFile(fileName: string, dbPath: string): BackupFile | null {
+	// pre-migration first: the periodic pattern requires the timestamp immediately after the db name, so the two
+	// can't both match, but trying the more specific one first makes that a property of this function rather than
+	// of the regexes.
+	for (const kind of ['pre-migration', 'periodic'] as const) {
+		const match = filePattern(dbPath, kind).exec(fileName)
+		if (match) return { name: fileName, kind, stamp: match[1] + match[2] }
+	}
+	return null
 }
 
-// the backups beyond retainCount, and never the one we just took. retainCount 0 keeps all of them.
-export function staleBackupFiles(fileNames: string[], opts: { dbPath: string; kind: BackupKind; retainCount: number; keep?: string }) {
+export function kindOf(fileName: string, dbPath: string): BackupKind | null {
+	return parseBackupFile(fileName, dbPath)?.kind ?? null
+}
+
+// every backup of THIS database in a directory listing, newest first, of either kind
+export function backupFiles(fileNames: string[], dbPath: string): BackupFile[] {
+	return fileNames
+		.map(name => parseBackupFile(name, dbPath))
+		.filter((f): f is BackupFile => f !== null)
+		.sort((a, b) => (a.stamp < b.stamp ? 1 : a.stamp > b.stamp ? -1 : 0))
+}
+
+// The backups outside the retention window: one window over both kinds, because a backup is a backup and the
+// database only has one past. retainCount 0 keeps all of them.
+//
+// One exception, and it is the reason the kinds are distinguishable at all: the newest pre-migration backup is
+// never pruned, however far out of the window it has fallen. It is the only thing a bad upgrade can be rolled
+// back to, and it is precisely the deployments backing up most often that would otherwise age it out within the
+// day. That makes the count a floor rather than a hard cap -- you can end up holding retainCount + 1.
+export function staleBackupFiles(fileNames: string[], opts: { dbPath: string; retainCount: number; keep?: string }) {
 	if (opts.retainCount === 0) return []
-	return backupFiles(fileNames, opts.dbPath, opts.kind).slice(opts.retainCount).filter(name => name !== opts.keep)
+	const all = backupFiles(fileNames, opts.dbPath)
+	const kept = new Set(all.slice(0, opts.retainCount).map(f => f.name))
+	const rollbackPoint = all.find(f => f.kind === 'pre-migration')
+	if (rollbackPoint) kept.add(rollbackPoint.name)
+	if (opts.keep) kept.add(opts.keep)
+	return all.filter(f => !kept.has(f.name)).map(f => f.name)
 }
 
-export function pruneBackups(opts: { dir: string; dbPath: string; kind: BackupKind; retainCount: number; keep?: string }) {
+export function pruneBackups(opts: { dir: string; dbPath: string; retainCount: number; keep?: string }) {
 	const stale = staleBackupFiles(fs.readdirSync(opts.dir), opts)
 	for (const name of stale) fs.rmSync(path.join(opts.dir, name), { force: true })
 	return stale
