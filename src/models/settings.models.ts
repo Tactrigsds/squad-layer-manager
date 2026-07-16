@@ -114,6 +114,67 @@ export function serverSettingsGrantableTopLevelKeys(): string[] {
 
 export type RbacSettings = z.infer<typeof RbacSettingsSchema>
 
+// Grants reference settings by path, so a setting a later SLM release renames or removes leaves behind grants the
+// RbacSettingsSchema refine above rejects -- taking the whole install down at boot over a reference that is merely
+// stale. Drop those grants instead (same reasoning as unresolvable command aliases below) and hand the caller a
+// description of each one to report. Operates on raw settings, so it must run before the schema parses them.
+export function trimStaleSettingsGrants(raw: unknown): { settings: unknown; dropped: string[] } {
+	const dropped: string[] = []
+	if (!raw || typeof raw !== 'object') return { settings: raw, dropped }
+	const rbac = (raw as Record<string, unknown>).rbac
+	if (!rbac || typeof rbac !== 'object') return { settings: raw, dropped }
+	const rolesRaw = (rbac as Record<string, unknown>).roles
+	if (!rolesRaw || typeof rolesRaw !== 'object') return { settings: raw, dropped }
+
+	const globalKeys = globalSettingsTopLevelKeys()
+	const serverKeys = serverSettingsGrantableTopLevelKeys()
+	// only the head segment is checked, matching the refine: deeper segments that don't resolve simply never match a write
+	const keepPaths = (paths: unknown, liveKeys: string[], describe: (path: string, index: number) => string) => {
+		if (!Array.isArray(paths)) return paths
+		const kept = paths.filter((p, i) => {
+			if (typeof p !== 'string' || liveKeys.includes(p.split('.')[0])) return true
+			dropped.push(describe(p, i))
+			return false
+		})
+		return kept.length === paths.length ? paths : kept
+	}
+
+	let rolesChanged = false
+	const roles: Record<string, unknown> = {}
+	for (const [roleId, cfgRaw] of Object.entries(rolesRaw as Record<string, unknown>)) {
+		roles[roleId] = cfgRaw
+		if (!cfgRaw || typeof cfgRaw !== 'object') continue
+		const cfg = cfgRaw as Record<string, unknown>
+
+		const globalGrants = keepPaths(
+			cfg.globalSettingsGrants,
+			globalKeys,
+			(path, i) => `rbac.roles.${roleId}.globalSettingsGrants[${i}] ("${path}")`,
+		)
+
+		let serverGrants = cfg.serverSettingsGrants
+		if (Array.isArray(serverGrants)) {
+			const nextGrants = serverGrants.map((grantRaw, gi) => {
+				if (!grantRaw || typeof grantRaw !== 'object') return grantRaw
+				const grant = grantRaw as Record<string, unknown>
+				const paths = keepPaths(
+					grant.paths,
+					serverKeys,
+					(path, i) => `rbac.roles.${roleId}.serverSettingsGrants[${gi}].paths[${i}] ("${path}")`,
+				)
+				return paths === grant.paths ? grantRaw : { ...grant, paths }
+			})
+			if (nextGrants.some((g, i) => g !== (serverGrants as unknown[])[i])) serverGrants = nextGrants
+		}
+
+		if (globalGrants === cfg.globalSettingsGrants && serverGrants === cfg.serverSettingsGrants) continue
+		roles[roleId] = { ...cfg, globalSettingsGrants: globalGrants, serverSettingsGrants: serverGrants }
+		rolesChanged = true
+	}
+	if (!rolesChanged) return { settings: raw, dropped }
+	return { settings: { ...(raw as Record<string, unknown>), rbac: { ...(rbac as Record<string, unknown>), roles } }, dropped }
+}
+
 export const NavLinkSchema = z.array(z.object({
 	label: z.string(),
 	url: z.url(),
