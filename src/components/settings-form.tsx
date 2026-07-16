@@ -1,5 +1,5 @@
 import { BmFlagMultiSelect, BmFlagOrColorSelect, FlagPriorityMap } from '@/components/bm-flag-picker'
-import ComboBox, { type ComboBoxOption } from '@/components/combo-box/combo-box'
+import ComboBox, { type ComboBoxHandle, type ComboBoxOption } from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { DiscordMemberSelect, DiscordRoleSelect } from '@/components/discord-picker'
 import LayerGenerationConfigEditor from '@/components/layer-generation-config-editor'
@@ -2106,6 +2106,13 @@ function ScopeValueRows(
 	// the not-yet-chosen row that `Add` opens. It lives here rather than in `values` so an abandoned Add can't write an
 	// empty entry back to the settings draft.
 	const [adding, setAdding] = React.useState(false)
+	// Add is one intent, so it opens the dropdown it just swapped itself out for rather than asking for a second click.
+	// Driven off the transition, not a callback ref: the imperative handle is rebuilt whenever the popover's own `open`
+	// changes, which would re-fire a ref callback and reopen a box the user had just dismissed.
+	const pendingRef = React.useRef<ComboBoxHandle>(null)
+	React.useEffect(() => {
+		if (adding) pendingRef.current?.focus()
+	}, [adding])
 	const normalized: ComboBoxOption<string>[] = options.map((o) => (typeof o === 'string' ? { value: o } : o))
 	const selected = new Set(values)
 	const exhausted = normalized.every((o) => selected.has(o.value))
@@ -2147,6 +2154,7 @@ function ScopeValueRows(
 				? (
 					<div className="flex items-center gap-1">
 						<ComboBox
+							ref={pendingRef}
 							title={title}
 							className={boxClass}
 							placeholder={`Select ${title}...`}
