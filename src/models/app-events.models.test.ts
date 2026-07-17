@@ -259,3 +259,39 @@ describe('summarizeQueueChanges', () => {
 		])
 	})
 })
+
+// the feed and the backfill both gate on this, so it's the one place the audit-only rule is written down
+describe('isFeedVisible', () => {
+	function mapSet(reason: AppEvents.MapSet['reason']) {
+		return AppEvents.create<AppEvents.MapSet>({
+			type: 'MAP_SET',
+			actor: { type: 'system' },
+			serverId: 's1',
+			matchId: 1,
+			causeId: null,
+			layerId: 'GD-RAAS-V1:USA-CA:RGF-CA',
+			reason,
+		})
+	}
+
+	it('hides a queue-driven MAP_SET: its QUEUE_UPDATED already reports the layer', () => {
+		expect(AppEvents.isFeedVisible(mapSet('queue-updated'))).toBe(false)
+	})
+
+	it('shows an override MAP_SET: nothing else in the feed reports it', () => {
+		expect(AppEvents.isFeedVisible(mapSet('override'))).toBe(true)
+	})
+
+	it('shows other event types', () => {
+		const warned = AppEvents.create<AppEvents.PlayerWarned>({
+			type: 'PLAYER_WARNED',
+			actor: { type: 'slm-user', userId: 42n },
+			serverId: 's1',
+			matchId: 1,
+			causeId: null,
+			message: 'stop',
+			targets: ['eos-1'],
+		})
+		expect(AppEvents.isFeedVisible(warned)).toBe(true)
+	})
+})
