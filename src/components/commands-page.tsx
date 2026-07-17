@@ -133,7 +133,7 @@ function CommandEntry(
 	const argObject = Object.fromEntries(args.map(arg => [arg.name, CMD.formatArg(arg, settings.requireReasonFor)]))
 	const chatScope = cmd.scopes.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
 	return (
-		<Collapsible open={open} onOpenChange={setOpen} id={entry.id} data-cmd-anchor className="space-y-2 scroll-mt-9">
+		<Collapsible open={open} onOpenChange={setOpen} id={entry.id} data-cmd-anchor className="space-y-2">
 			<div className="flex items-center gap-2">
 				<PinButton cmdId={cmdId} pinned={pinned} />
 				<div className="flex flex-1 flex-wrap items-center gap-1">
@@ -174,7 +174,7 @@ function AliasEntry({ entry, settings }: { entry: Extract<Entry, { kind: 'alias'
 	const unusable = res.code !== 'ok' ? 'Unavailable' : !target!.enabled ? 'Disabled' : undefined
 	const chatScope = target?.scopes.includes('public') && !target.scopes.includes('admin') ? 'ChatToAll' : 'ChatToAdmin'
 	return (
-		<div id={entry.id} data-cmd-anchor className="space-y-1 scroll-mt-9">
+		<div id={entry.id} data-cmd-anchor className="space-y-1">
 			<div className="flex items-center gap-2">
 				<CopyableCommand cmdString={entry.alias.alias} chatScope={chatScope} />
 				{unusable && <Badge variant="destructive" className="text-xs">{unusable}</Badge>}
@@ -203,7 +203,7 @@ function highlightEntry(el: HTMLElement) {
 	el.setAttribute('data-anchor-highlight', 'true')
 }
 
-// tracks which entry anchor sits at the top of the page body, so the matching TOC row can be highlighted
+// tracks which entry the body is scrolled to, so the matching TOC row can be highlighted
 function useActiveEntry(scrollRef: React.RefObject<HTMLDivElement | null>, deps: unknown): string | null {
 	const [activeId, setActiveId] = React.useState<string | null>(null)
 	React.useEffect(() => {
@@ -219,8 +219,9 @@ function useActiveEntry(scrollRef: React.RefObject<HTMLDivElement | null>, deps:
 				setActiveId(anchors[anchors.length - 1].id)
 				return
 			}
-			// the fold sits below the pinned section header, so the entry visible beneath it wins
-			const fold = container.getBoundingClientRect().top + 40
+			// The entry crossing the middle of the body wins. That's also where scrollToEntry lands a target, so the
+			// highlight doesn't move when the keyboard cursor is dropped and this takes back over.
+			const fold = container.getBoundingClientRect().top + container.clientHeight / 2
 			let current: string | null = null
 			for (const el of anchors) {
 				if (el.getBoundingClientRect().top <= fold) current = el.id
@@ -355,18 +356,40 @@ export default function CommandsPage() {
 		// the refs only exist once settings has rendered the page, so this can't bind on the first render
 	}, [settings])
 
+	// Puts an entry in the middle of the body -- so it arrives with its neighbours for context, rather than tucked under
+	// the sticky section header. Instant, never smooth: a smooth scroll is still travelling when the next keypress or
+	// click lands, so the cursor ends up scheduling scrolls faster than they finish. Returns false for an id that isn't
+	// on the page (a stale link), leaving the body where it was.
+	const landOnEntry = React.useCallback((id: string, opts?: { highlight?: boolean }) => {
+		const el = scrollRef.current?.querySelector<HTMLElement>(`#${CSS.escape(id)}`)
+		if (!el) return false
+		scrollingToEntry.current = true
+		el.scrollIntoView({ block: 'center', behavior: 'instant' })
+		requestAnimationFrame(() => {
+			scrollingToEntry.current = false
+		})
+		if (opts?.highlight) highlightEntry(el)
+		return true
+	}, [])
+
 	// a fragment on arrival (someone followed a link to a command) lands on it once the list has rendered
 	React.useEffect(() => {
 		const id = pendingAnchor.current
 		if (!settings || !id) return
 		pendingAnchor.current = null
-		const el = scrollRef.current?.querySelector<HTMLElement>(`#${CSS.escape(id)}`)
-		// a stale link, to a command or section that no longer exists: leave the page where it opened
-		if (!el) return
-		el.scrollIntoView({ block: 'start', behavior: 'instant' })
-		highlightEntry(el)
-		setCursorId(id)
-	}, [settings])
+		if (landOnEntry(id, { highlight: true })) setCursorId(id)
+	}, [settings, landOnEntry])
+
+	// A hash pasted or edited on a page that's already open. In-app navigation uses replaceState, which fires no
+	// hashchange, so a TOC click doesn't come back through here and land twice.
+	React.useEffect(() => {
+		const onHash = () => {
+			const id = currentAnchor()
+			if (id && landOnEntry(id, { highlight: true })) setCursorId(id)
+		}
+		window.addEventListener('hashchange', onHash)
+		return () => window.removeEventListener('hashchange', onHash)
+	}, [landOnEntry])
 
 	const sections = React.useMemo(() => settings ? buildSections(settings, pinnedCommands) : [], [settings, pinnedCommands])
 	const pinnedSet = React.useMemo(() => new Set(pinnedCommands), [pinnedCommands])
@@ -389,27 +412,14 @@ export default function CommandsPage() {
 
 	if (!settings) return null
 
-	// Always instant. Smooth is still travelling when the next keypress or click lands, which leaves the cursor
-	// scheduling scrolls faster than they finish and the highlight reading a position that hasn't arrived.
-	function scrollToEntry(id: string, opts?: { highlight?: boolean }) {
-		const el = scrollRef.current?.querySelector<HTMLElement>(`#${CSS.escape(id)}`)
-		if (!el) return
-		scrollingToEntry.current = true
-		el.scrollIntoView({ block: 'start', behavior: 'instant' })
-		requestAnimationFrame(() => {
-			scrollingToEntry.current = false
-		})
-		if (opts?.highlight) highlightEntry(el)
-	}
-
 	// Following a link to an entry: record it, mark it, and put the cursor on it. The cursor matters at the end of the
-	// list, where the target can't be scrolled to the top -- the scroll-derived highlight would land on whatever the
-	// fold happened to stop at, so linking to one of the last commands would highlight a different one.
+	// list, where the target can't be centred -- the scroll-derived highlight would land on whatever the fold stopped
+	// at, so linking to one of the last commands would highlight a different one.
 	function navigateToEntry(id: string) {
 		// replaceState keeps the history stack clean and skips the browser's own jump; a no-op when the hash matches
 		history.replaceState(history.state, '', `#${encodeURIComponent(id)}`)
 		setCursorId(id)
-		scrollToEntry(id, { highlight: true })
+		landOnEntry(id, { highlight: true })
 	}
 
 	// Up/down walk the results from the search box, so a search can be narrowed and swept without leaving the input.
@@ -429,7 +439,7 @@ export default function CommandsPage() {
 			? (delta === 1 ? 0 : ids.length - 1)
 			: Math.min(Math.max(current + delta, 0), ids.length - 1)
 		setCursorId(ids[next])
-		scrollToEntry(ids[next])
+		landOnEntry(ids[next])
 	}
 
 	return (
@@ -494,7 +504,10 @@ export default function CommandsPage() {
 					</aside>
 					<div
 						ref={scrollRef}
-						className="flex-1 min-w-0 overflow-y-auto pr-4"
+						// pl-1 is for the anchor highlight: it's a box-shadow ring, so it paints outside the entry's box and
+						// the entries run flush to this container's content edge -- without the padding, overflow clips the
+						// ring's left side away. pr-4 already leaves the right side room.
+						className="flex-1 min-w-0 overflow-y-auto pl-1 pr-4"
 						onScroll={() => {
 							if (!scrollingToEntry.current) setCursorId(null)
 						}}
