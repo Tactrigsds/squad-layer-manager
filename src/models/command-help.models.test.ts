@@ -87,6 +87,11 @@ describe('describeArgs', () => {
 		expect(CMDH.describeArgs('kick', seeds)[1].presets).toEqual(['toxicity'])
 	})
 
+	it("names every section in the help command's section arg", () => {
+		const [sectionArg] = CMDH.describeArgs('help', seeds)
+		for (const token of CMD.sectionTokens()) expect(sectionArg.description).toContain(token)
+	})
+
 	it('prepends the per-arg note to its kind description', () => {
 		const [flagArg] = CMDH.describeArgs('listFlags', seeds)
 		expect(flagArg.description).toContain('Lists every flag in the organization when omitted.')
