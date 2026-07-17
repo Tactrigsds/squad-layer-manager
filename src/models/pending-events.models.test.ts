@@ -12,6 +12,7 @@ import { describe, expect, it, vi } from 'vitest'
 const LAYER_A = 'RAW:Gorodok_RAAS_v1 RGF+CombinedArms ADF+Mechanized' as L.LayerId
 const LAYER_A_CLASSNAME = 'Gorodok_RAAS_v1'
 // Narva_RAAS_v1, Faction_1=CAF, Faction_2=RGF
+const LAYER_B = 'RAW:Narva_RAAS_v1 CAF+CombinedArms RGF+CombinedArms' as L.LayerId
 
 // --- Helpers ---
 
@@ -1725,6 +1726,75 @@ describe('PendingEvents', () => {
 			})
 			const events = await collect(state)
 			expect(events.find(e => e.type === 'PLAYER_LEFT_SQUAD')).toBeUndefined()
+		})
+	})
+
+	// SLM pushes an attribution when it sets a layer, and the MAP_SET the server reports back claims it, so the event
+	// carries the app event that caused it rather than the bare `rcon` the log line says.
+	describe('MAP_SET attribution', () => {
+		function syncedState() {
+			const { state } = makeState()
+			state.syncState = { type: 'synced' }
+			state.currentMatch = { historyEntryId: 1, layerId: LAYER_A }
+			state.currTeams = { players: [], squads: [] }
+			state.lastKnownLogEventTime = 1000
+			return state
+		}
+
+		function mapSetLog(state: PendingEvents.State, classname: string, factions: string) {
+			PendingEvents.onLogEvent(state, {
+				type: 'MAP_SET',
+				time: 2000,
+				chainID: 0,
+				raw: '',
+				nextLayer: classname,
+				nextFactions: factions,
+				source: { type: 'rcon' },
+			})
+		}
+
+		async function collectMapSet(state: PendingEvents.State, time = 2001) {
+			const events = await collectAt(state, time)
+			return events.find(e => e.type === 'MAP_SET') as SE.MapSet | undefined
+		}
+
+		it('claims the attribution for the layer that was actually set', async () => {
+			const state = syncedState()
+			PendingEvents.pushAttribution(state, { type: 'MAP_SET_ATTRIBUTION', itemId: 'item-1', layerId: LAYER_A, appEventId: 'app-1' })
+			mapSetLog(state, LAYER_A_CLASSNAME, 'RGF+CombinedArms ADF+Mechanized')
+
+			expect((await collectMapSet(state))?.source).toEqual({ type: 'event', id: 'app-1' })
+			expect(state.attributions).toHaveLength(0)
+		})
+
+		// a set-next whose MAP_SET never came back (or came back before its attribution landed) leaves one behind.
+		// Consuming it positionally left the next map set reporting a bare `rcon`, which renders as a redundant
+		// standalone feed entry instead of folding into the save that caused it.
+		it('is not poisoned by a stale attribution for a different layer', async () => {
+			const state = syncedState()
+			PendingEvents.pushAttribution(state, { type: 'MAP_SET_ATTRIBUTION', itemId: 'stale', layerId: LAYER_B, appEventId: 'app-stale' })
+			PendingEvents.pushAttribution(state, { type: 'MAP_SET_ATTRIBUTION', itemId: 'item-1', layerId: LAYER_A, appEventId: 'app-1' })
+			mapSetLog(state, LAYER_A_CLASSNAME, 'RGF+CombinedArms ADF+Mechanized')
+
+			expect((await collectMapSet(state))?.source).toEqual({ type: 'event', id: 'app-1' })
+		})
+
+		it('leaves a map set nobody attributed alone', async () => {
+			const state = syncedState()
+			mapSetLog(state, LAYER_A_CLASSNAME, 'RGF+CombinedArms ADF+Mechanized')
+
+			expect((await collectMapSet(state))?.source).toEqual({ type: 'rcon' })
+		})
+
+		it('drops an attribution whose MAP_SET never landed once it ages out', async () => {
+			const state = syncedState()
+			PendingEvents.pushAttribution(state, { type: 'MAP_SET_ATTRIBUTION', itemId: 'item-1', layerId: LAYER_A, appEventId: 'app-1' })
+			// process() ages attributions off against its own clock, so pin this one just past the TTL relative to it
+			state.attributions[0].time = 2001 - PendingEvents.ATTRIBUTION_TTL_MS - 1
+			mapSetLog(state, LAYER_A_CLASSNAME, 'RGF+CombinedArms ADF+Mechanized')
+
+			expect((await collectMapSet(state))?.source).toEqual({ type: 'rcon' })
+			expect(state.attributions).toHaveLength(0)
 		})
 	})
 })

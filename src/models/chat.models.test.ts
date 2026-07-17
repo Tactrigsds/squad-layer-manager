@@ -126,6 +126,44 @@ describe('chat.models application-event collapse', () => {
 		expect(entry.targetPlayers.map(p => p.ids.eos)).toEqual(['eos-1'])
 	})
 
+	// a queue save renders the next layer itself, so its MAP_SET server event must fold into the QUEUE_UPDATED rather
+	// than trailing it as a redundant "Next layer set to X" line
+	it('collapses a queue-driven MAP_SET into its QUEUE_UPDATED entry', () => {
+		const state = seededState([makePlayer('eos-1')])
+		const queueUpdated: CHAT.AppFeedEvent = {
+			type: 'APP_EVENT',
+			appEvent: {
+				type: 'QUEUE_UPDATED',
+				id: 'app-q',
+				time: 100,
+				actor: { type: 'slm-user', userId: 1n },
+				serverId: 's1',
+				matchId: 1,
+				causeId: null,
+				instanceId: null,
+				trigger: 'user-edit',
+				ops: [],
+				prevList: [],
+				list: [],
+			} satisfies AppEvents.QueueUpdated,
+		}
+		CHAT.handleEvent(state, queueUpdated)
+		const mapSet: SE.MapSet = {
+			type: 'MAP_SET',
+			id: 1,
+			time: 101,
+			matchId: 1,
+			layerId: 'l1',
+			source: { type: 'event', id: 'app-q' },
+		}
+		CHAT.handleEvent(state, mapSet)
+
+		expect(state.eventBuffer).toHaveLength(1)
+		const entry = state.eventBuffer[0]
+		if (entry.type !== 'APP_EVENT') throw new Error('expected APP_EVENT')
+		expect(entry.collapsed).toHaveLength(1)
+	})
+
 	it('enriches a SQUAD_DISBANDED app event with its members as targetPlayers', () => {
 		const state = seededState([makePlayer('eos-1'), makePlayer('eos-2')])
 		const appEvent: CHAT.AppFeedEvent = {
