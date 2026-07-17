@@ -305,7 +305,10 @@ export function handleEvent(
 // starts a fresh entry (so unrelated warns that happen to share text stay separate)
 const WARN_AGGREGATION_WINDOW_MS = 5000
 
-// dedup key: identical warn text AND the same acting source (a specific in-game admin, RCON, etc.)
+// dedup key: identical warn text AND the same acting source (a specific in-game admin, RCON, etc.).
+// NUL joins the two halves because it can't occur in either, so no actor/reason pair can spell another one's key.
+// It's written as an escape rather than the literal byte: inline, it makes this file read as binary to grep, which
+// then reports no matches here rather than an error.
 function warnDedupKey(reason: string, source: SE.PlayerWarned['source']): string {
 	const actor = !source
 		? 'none'
@@ -314,7 +317,7 @@ function warnDedupKey(reason: string, source: SE.PlayerWarned['source']): string
 		: source.type === 'event'
 		? `event:${source.id}`
 		: source.type
-	return `${actor} ${reason}`
+	return `${actor}\u0000${reason}`
 }
 
 // merge a standalone warn into a recent matching group, upgrading a lone prior warn in place if needed; else append.
