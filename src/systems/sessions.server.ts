@@ -220,6 +220,13 @@ export async function logInUser(ctx: C.Db & C.FastifyRequest & C.FastifyReply, d
 	const sessionId = createId(64)
 	const expiresAt = new Date(Date.now() + SESSION_MAX_AGE)
 
+	// resolved before the transaction: it fetches the discord member over the network, and the tx lock is global
+	const builtUser = await Users.buildUser({
+		discordId: discordUser.id,
+		username: discordUser.username,
+		nickname: null,
+	})
+
 	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 		const [user] = await ctx.db()
 			.select()
@@ -241,11 +248,7 @@ export async function logInUser(ctx: C.Db & C.FastifyRequest & C.FastifyReply, d
 			id: sessionId,
 			userId: discordUser.id,
 			expiresAt,
-			user: await Users.buildUser({
-				discordId: discordUser.id,
-				username: discordUser.username,
-				nickname: null,
-			}),
+			user: builtUser,
 		})
 	})
 	await setSessionCookie(ctx, sessionId)

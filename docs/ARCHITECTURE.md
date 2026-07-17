@@ -703,6 +703,16 @@ are still treated as though they could be async in the future, so
 IMMEDIATE`/`COMMIT`/`ROLLBACK`. Re-entrant: an inner transaction joins the outer one, and an inner `rollback()`
 rolls back the outer. This is one process-wide lock, a deliberate simplicity-over-throughput call.
 
+Because that lock is process-wide, **a `runTransaction` callback must never await anything but a query.** Queries
+resolve immediately (the driver is synchronous), so a transaction that only queries holds the lock for microseconds.
+Awaiting rcon, discord, sftp, or any other network call inside one instead stalls every write in the process for the
+length of that round-trip, and the external call is not rolled back with the transaction anyway. Two ways out, both
+already used: hoist the call above the transaction when the write depends on its result (`Sessions.logInUser` resolves
+the discord member first; `filterEntity.updateFilter` does its rbac check first), or push it onto `ctx.tx.unlockTasks`
+when it's a side effect of the write (`LayerQueue.saveQueueAndUpdateServer` defers its rcon layer-set this way). Note
+that `unlockTasks` belong to the _outermost_ transaction, so a deferred task escapes an enclosing transaction too; it
+runs after `COMMIT` with the mutex context still ambient, but with `tx` spent.
+
 **Migrations** use a custom runner (`src/server/migrate.ts`, `pnpm db:migrate`) that merges drizzle-kit
 generated `.sql` files with hand-written `.ts` data migrations into one filename-ordered sequence tracked in
 `_slm_migrations`. Two constraints shape it:
