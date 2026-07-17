@@ -8,6 +8,7 @@ import * as ZusUtils from '@/lib/zustand'
 import * as Messages from '@/messages'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as SettingsClient from '@/systems/settings.client'
 import type { PublicSettings } from '@/systems/settings.server'
@@ -302,8 +303,32 @@ export default function CommandsPage() {
 	// re-read the entry it started from and the cursor would never leave it.
 	const [cursorId, setCursorId] = React.useState<string | null>(null)
 	const scrollRef = React.useRef<HTMLDivElement>(null)
+	const rootRef = React.useRef<HTMLDivElement>(null)
+	const navRef = React.useRef<HTMLElement>(null)
 	// set while scrollToEntry runs, so the body's own scrolling isn't mistaken for the user taking over
 	const scrollingToEntry = React.useRef(false)
+	const stickyZIndex = useZIndex(ZI_OFFSETS.STICKYGROUP_FLOOR)
+
+	// The body scrolls inside its own container, so a wheel anywhere else -- the margins either side of the centred
+	// column, the page header, the search box -- lands on nothing and the list sits still. Forward those to the body.
+	// Whatever scrolls itself keeps its own wheel: the body, and the table of contents while it has somewhere to go.
+	React.useEffect(() => {
+		const root = rootRef.current
+		const scroller = scrollRef.current
+		if (!root || !scroller) return
+		const onWheel = (e: WheelEvent) => {
+			const target = e.target as Node
+			if (scroller.contains(target)) return
+			const nav = navRef.current
+			if (nav?.contains(target) && nav.scrollHeight > nav.clientHeight) return
+			// forwarding the delta means taking the event over, so this listener can't be passive
+			e.preventDefault()
+			scroller.scrollTop += e.deltaY
+		}
+		root.addEventListener('wheel', onWheel, { passive: false })
+		return () => root.removeEventListener('wheel', onWheel)
+		// the refs only exist once settings has rendered the page, so this can't bind on the first render
+	}, [settings])
 
 	const sections = React.useMemo(() => settings ? buildSections(settings, pinnedCommands) : [], [settings, pinnedCommands])
 	const pinnedSet = React.useMemo(() => new Set(pinnedCommands), [pinnedCommands])
@@ -358,93 +383,98 @@ export default function CommandsPage() {
 		// the height has to be pinned here, as the settings page does: _app only bounds its own height on the dashboard
 		// route, so flex-1/min-h-0 alone leaves this growing to fit and the body scrolling the window instead of itself
 		// -- which silently costs the sticky headers and the scroll-tracked highlight. 6rem = the nav bar + _app's padding.
-		<div className="mx-auto flex h-[calc(100dvh-6rem)] w-full max-w-6xl flex-col">
-			<header className="shrink-0 pb-3">
-				<h1 className="text-xl font-semibold">Ingame Commands</h1>
-				<p className="pt-1 text-sm text-muted-foreground">
-					Everything you type is case-insensitive. Player, squad and flag names match on any part of the name, ignoring spaces.
-				</p>
-			</header>
-			<div className="flex gap-4 flex-1 min-h-0">
-				<aside className="flex flex-col w-52 shrink-0 min-h-0 border-r pr-2">
-					<div className="relative shrink-0 pb-2">
-						<Icons.Search className="absolute left-2 top-[0.9rem] -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-						<Input
-							className="h-8 pl-7"
-							placeholder="Search commands…"
-							onChange={(e) => {
-								setQuery(e.target.value)
-								setCursorId(null)
-							}}
-							onKeyDown={onSearchKeyDown}
-						/>
-					</div>
-					<nav className="flex-1 min-h-0 overflow-y-auto">
-						{visible.length === 0
-							? <p className="text-sm text-muted-foreground px-1">No matches.</p>
-							: (
-								<ul>
-									{visible.map((section) => (
-										// mirrors the body's sections -- label, rule, indented entries -- so the two columns read as the same split
-										<li key={section.id} className="pt-4 first:pt-0">
-											<p className="border-b border-border px-1 pb-1 text-xs font-semibold uppercase tracking-wide text-foreground">
-												{section.label}
-											</p>
-											<ul className="space-y-px pl-2 pt-1">
-												{section.entries.map((entry) => (
-													<li key={entry.id}>
-														<button
-															type="button"
-															onClick={() => scrollToEntry(entry.id)}
-															className={cn(
-																'block w-full truncate rounded px-1 py-0.5 text-left font-mono text-sm hover:text-foreground',
-																entry.id === highlightId ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground',
-															)}
-															title={entry.label}
-														>
-															{entry.label}
-														</button>
-													</li>
-												))}
-											</ul>
-										</li>
-									))}
-								</ul>
-							)}
-					</nav>
-				</aside>
-				<div
-					ref={scrollRef}
-					className="flex-1 min-w-0 overflow-y-auto pr-4"
-					onScroll={() => {
-						if (!scrollingToEntry.current) setCursorId(null)
-					}}
-				>
-					{visible.map((section) => (
-						<section key={section.id} className="pb-8 last:pb-2">
-							{
-								/* the header stays legible over the entries it scrolls across, so it needs to be opaque and to own the
+		<div ref={rootRef} className="flex h-[calc(100dvh-6rem)] w-full justify-center">
+			<div className="flex h-full w-full max-w-6xl flex-col">
+				<header className="shrink-0 pb-3">
+					<h1 className="text-xl font-semibold">Ingame Commands</h1>
+					<p className="pt-1 text-sm text-muted-foreground">
+						Everything you type is case-insensitive. Player, squad and flag names match on any part of the name, ignoring spaces.
+					</p>
+				</header>
+				<div className="flex gap-4 flex-1 min-h-0">
+					<aside className="flex flex-col w-52 shrink-0 min-h-0 border-r pr-2">
+						<div className="relative shrink-0 pb-2">
+							<Icons.Search className="absolute left-2 top-[0.9rem] -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+							<Input
+								className="h-8 pl-7"
+								placeholder="Search commands…"
+								onChange={(e) => {
+									setQuery(e.target.value)
+									setCursorId(null)
+								}}
+								onKeyDown={onSearchKeyDown}
+							/>
+						</div>
+						<nav ref={navRef} className="flex-1 min-h-0 overflow-y-auto">
+							{visible.length === 0
+								? <p className="text-sm text-muted-foreground px-1">No matches.</p>
+								: (
+									<ul>
+										{visible.map((section) => (
+											// mirrors the body's sections -- label, rule, indented entries -- so the two columns read as the same split
+											<li key={section.id} className="pt-4 first:pt-0">
+												<p className="border-b border-border px-1 pb-1 text-xs font-semibold uppercase tracking-wide text-foreground">
+													{section.label}
+												</p>
+												<ul className="space-y-px pl-2 pt-1">
+													{section.entries.map((entry) => (
+														<li key={entry.id}>
+															<button
+																type="button"
+																onClick={() => scrollToEntry(entry.id)}
+																className={cn(
+																	'block w-full truncate rounded px-1 py-0.5 text-left font-mono text-sm hover:text-foreground',
+																	entry.id === highlightId ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground',
+																)}
+																title={entry.label}
+															>
+																{entry.label}
+															</button>
+														</li>
+													))}
+												</ul>
+											</li>
+										))}
+									</ul>
+								)}
+						</nav>
+					</aside>
+					<div
+						ref={scrollRef}
+						className="flex-1 min-w-0 overflow-y-auto pr-4"
+						onScroll={() => {
+							if (!scrollingToEntry.current) setCursorId(null)
+						}}
+					>
+						{visible.map((section) => (
+							<section key={section.id} className="pb-8 last:pb-2">
+								{
+									/* the header stays legible over the entries it scrolls across, so it needs to be opaque and to own the
 							    full width -- hence the negative margin pulling it out to the scroll container's padding */
-							}
-							<h2 className="sticky top-0 z-10 -mx-1 mb-2 border-b-2 border-border bg-background px-1 pb-1.5 pt-1 text-base font-semibold tracking-tight">
-								{section.label}
-							</h2>
-							{section.blurb && <p className="pb-3 text-sm text-muted-foreground">{section.blurb}</p>}
-							{
-								/* dividers between commands: a section is a long stack of similar-looking rows, and the arg signatures
+								}
+								<h2
+									style={{ zIndex: stickyZIndex }}
+									className="sticky top-0 -mx-1 mb-2 border-b-2 border-border bg-background px-1 pb-1.5 pt-1 text-base font-semibold tracking-tight"
+								>
+									{section.label}
+								</h2>
+								{section.blurb && <p className="pb-3 text-sm text-muted-foreground">{section.blurb}</p>}
+								{
+									/* dividers between commands: a section is a long stack of similar-looking rows, and the arg signatures
 							    wrap, which left the boundary between two commands ambiguous on spacing alone */
-							}
-							<div className="divide-y divide-border/70">
-								{section.entries.map((entry) => (
-									<div key={entry.id} className="py-3 first:pt-0 last:pb-0">
-										{entry.kind === 'command'
-											? <CommandEntry entry={entry} settings={settings} pinned={pinnedSet.has(entry.cmdId)} />
-											: <AliasEntry entry={entry} settings={settings} />}
-									</div>
-								))}
-							</div>
-						</section>
-					))}
+								}
+								<div className="divide-y divide-border/70">
+									{section.entries.map((entry) => (
+										<div key={entry.id} className="py-3 first:pt-0 last:pb-0">
+											{entry.kind === 'command'
+												? <CommandEntry entry={entry} settings={settings} pinned={pinnedSet.has(entry.cmdId)} />
+												: <AliasEntry entry={entry} settings={settings} />}
+										</div>
+									))}
+								</div>
+							</section>
+						))}
+					</div>
 				</div>
 			</div>
 		</div>
