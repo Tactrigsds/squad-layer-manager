@@ -217,8 +217,8 @@ export default function NavBar() {
 								? <NavLink params={{ serverId: selectedServer.id }} to="/servers/$serverId">Server</NavLink>
 								: <NavLink to="/servers">Server</NavLink>
 						)}
-						<NavLink to="/filters">Filters</NavLink>
 						<NavLink to="/commands">Commands</NavLink>
+						<NavLink to="/filters">Filters</NavLink>
 						{showSettingsLink && <NavLink to="/settings">Settings</NavLink>}
 						<Button variant="secondary" size="sm" onClick={() => setExploreLayersOpen(true)}>Explore Layers</Button>
 					</div>
@@ -386,10 +386,10 @@ function MobileNavMenu(props: {
 					</DropdownMenuItem>
 				)}
 				<DropdownMenuItem asChild className="cursor-pointer">
-					<TSR.Link to="/filters">Filters</TSR.Link>
+					<TSR.Link to="/commands">Commands</TSR.Link>
 				</DropdownMenuItem>
 				<DropdownMenuItem asChild className="cursor-pointer">
-					<TSR.Link to="/commands">Commands</TSR.Link>
+					<TSR.Link to="/filters">Filters</TSR.Link>
 				</DropdownMenuItem>
 				{props.showSettingsLink && (
 					<DropdownMenuItem asChild className="cursor-pointer">
