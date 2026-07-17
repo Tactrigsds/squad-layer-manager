@@ -131,16 +131,25 @@ export const loadState = C.spanOp(
 			...m,
 			isCurrentMatch: m.historyEntryId === currentMatchId,
 		}))
+		const userRows = new Map<bigint, Schema.User>()
 		for (const row of rows) {
 			const isCurrentMatch = row.recent_matches.id === currentMatchId!
 			// @ts-expect-error idgaf
 			const details = MH.matchHistoryEntryToMatchDetails(unsuperjsonify(Schema.matchHistory, row.recent_matches), isCurrentMatch)
 			state.recentMatches.push(details)
 
-			if (row.users) {
-				const user = await UsersClient.buildUser(row.users)
-				Arr.upsertOn(state.parts.users, user, 'discordId')
-			}
+			if (row.users) userRows.set(row.users.discordId, row.users)
+		}
+
+		// buildUser reaches the Discord REST API, which yields to the event loop. Enriching here would hold the
+		// process-wide transaction lock across a network round trip, so defer it: recentMatches reference users by
+		// setByUserId, not by embedding, and parts.users is display-only, so it can fill in after commit.
+		if (userRows.size > 0) {
+			addReleaseTask(async () => {
+				const users = await UsersClient.buildUsers([...userRows.values()])
+				for (const user of users) Arr.upsertOn(state.parts.users, user, 'discordId')
+				state.dispatchUpdate()
+			})
 		}
 
 		for (const row of balanceTriggerRows) {
