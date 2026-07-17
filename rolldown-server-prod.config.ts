@@ -26,6 +26,9 @@ export default defineConfig({
 		// .ts migration registry ships in the slim prod image; .sql files are read at
 		// runtime from the copied drizzle-sqlite/ folder.
 		'scripts/migrate': 'src/scripts/migrate.ts',
+		// Puts a backup back (`pnpm db:restore:prod`, or the restore.sh wrapper). Bundled for the same reason as the
+		// migration runner: it reads the migration registry, to say whether the database it restored is behind the build.
+		'scripts/restore': 'src/scripts/restore.ts',
 		// Layer-db (re)build pipeline. Bundled so it can run in the slim prod image against a
 		// mounted /app/data volume; it builds the layer db schema in-process (no drizzle-kit),
 		// so no config/src tree is needed at runtime. Run via `pnpm run preprocess:prod`.

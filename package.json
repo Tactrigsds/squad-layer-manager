@@ -34,6 +34,8 @@
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "tsx --tsconfig tsconfig.node.json src/scripts/migrate.ts",
 		"db:migrate:prod": "node --enable-source-maps dist-server/scripts/migrate.js",
+		"db:restore": "tsx --tsconfig tsconfig.node.json src/scripts/restore.ts",
+		"db:restore:prod": "node --enable-source-maps dist-server/scripts/restore.js",
 		"setup:hooks": "git config core.hooksPath .githooks && chmod +x .githooks/pre-push .githooks/pre-push.js",
 		"remove:hooks": "git config --unset core.hooksPath",
 		"test:e2e": "pnpm run build:engine && NODE_ENV=production vite build && playwright test",

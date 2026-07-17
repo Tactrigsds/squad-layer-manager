@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3'
 import fs from 'node:fs'
 import path from 'node:path'
+import * as DbBackup from './db-backup.ts'
 
 // Custom migration runner that applies both generated `.sql` schema migrations
 // (authored via `drizzle-kit generate`) and hand-written `.ts` data migrations in
@@ -71,6 +72,98 @@ export async function runMigrations(
 		done.push(m.name)
 	}
 	return { applied: done }
+}
+
+export type BackupConfig = {
+	// the database being migrated, which backups are named after
+	dbPath: string
+	dir: string
+	// the retention window this snapshot is pruned against, shared with the periodic backups (BACKUPS_RETAIN_COUNT).
+	// 0 keeps all of them.
+	retainCount: number
+}
+
+// The database is open in another process, so migrating it now is not safe.
+export class DbInUseError extends Error {}
+
+// The entry point for anything that migrates a database it did not just create: takes the db offline for the
+// duration, snapshots it if there is anything to apply, and only then applies it. `runMigrations` remains the bare
+// runner, for callers holding a database nothing else can reach (a fresh test db, a clone that isn't in place yet).
+export async function applyPendingMigrations(
+	driver: MigrationDriver,
+	opts: { sqlDir: string; tsMigrations: TsMigration[]; log?: (msg: string) => void; backup?: BackupConfig },
+): Promise<{ applied: string[] }> {
+	const log = opts.log ?? (() => {})
+	// checked before taking the lock, because there is usually nothing to do and a caller that isn't migrating has no
+	// business demanding exclusive access: every boot goes through here, and one that overlaps the outgoing process's
+	// shutdown would otherwise refuse to start over migrations it was never going to apply. Re-checked under the lock,
+	// which is the check that counts.
+	if (getPendingMigrations(driver, opts).length === 0) return { applied: [] }
+	return await withDbLockedExclusively(driver, async () => {
+		if (getPendingMigrations(driver, opts).length === 0) return { applied: [] }
+		if (opts.backup) await takePreMigrationBackup(driver, opts.backup, log)
+		return await runMigrations(driver, opts)
+	})
+}
+
+async function takePreMigrationBackup(driver: MigrationDriver, backup: BackupConfig, log: (msg: string) => void) {
+	const name = DbBackup.fileName(backup.dbPath, 'pre-migration')
+	const destPath = path.join(backup.dir, name)
+	const { sizeBytes } = await DbBackup.writeBackup({ destPath, snapshot: (dest) => driver.backup(dest) })
+	log(`wrote pre-migration backup ${destPath} (${sizeBytes} bytes)`)
+	// pruned after the new one is on disk, so a failure here can never leave us with none
+	const pruned = DbBackup.pruneBackups({ ...backup, keep: name })
+	for (const stale of pruned) log(`deleted old backup ${stale}`)
+}
+
+// Holds sqlite's exclusive lock on the database for the duration of `fn`, so nothing else can read or write it, and
+// throws DbInUseError rather than proceeding if anything else already has it open.
+//
+// An exclusive lock, not `BEGIN IMMEDIATE`. A running app that happens not to be writing holds no write lock, so
+// BEGIN IMMEDIATE succeeds against it and the check would pass exactly when it matters most: sqlite has no online-DDL
+// guarantees, so a table-rebuild migration applied under a live app is how a database gets corrupted. Exclusive
+// locking mode conflicts with any other connection, idle or not, and holds its locks until the mode is dropped again
+// rather than until the transaction ends.
+export async function withDbLockedExclusively<T>(driver: MigrationDriver, fn: () => Promise<T>): Promise<T> {
+	// A WAL connection that goes exclusive before it has ever touched the db keeps its wal-index in heap memory and
+	// never creates the -shm file -- and such a connection can't be put back into NORMAL locking mode at all, short of
+	// reopening it. That's silent: the pragma below reports `normal` afterwards while the file stays locked for the life
+	// of the connection, which for the boot path is the life of the app. One read first, and the -shm exists.
+	driver.prepare('SELECT 1 FROM sqlite_master').get()
+	driver.pragma('locking_mode = EXCLUSIVE')
+	try {
+		// the mode alone takes no locks; the first access after it does
+		driver.exec('BEGIN IMMEDIATE')
+		driver.exec('ROLLBACK')
+	} catch (err) {
+		if (driver.inTransaction) driver.exec('ROLLBACK')
+		driver.pragma('locking_mode = NORMAL')
+		if (isDatabaseLocked(err)) {
+			throw new DbInUseError(
+				`${driver.name} is open in another process. Stop the app (and any other \`db:migrate\` run) before migrating: `
+					+ 'sqlite cannot safely apply schema changes to a database something else is using.',
+				{ cause: err },
+			)
+		}
+		throw err
+	}
+	try {
+		return await fn()
+	} finally {
+		driver.pragma('locking_mode = NORMAL')
+		// NORMAL doesn't take effect until the file is next accessed, so the locks would otherwise stay held for the
+		// life of this connection -- which for the boot path is the life of the app.
+		driver.exec('BEGIN IMMEDIATE')
+		driver.exec('COMMIT')
+	}
+}
+
+export function isDatabaseLocked(err: unknown): boolean {
+	for (let e: unknown = err; e != null; e = (e as { cause?: unknown }).cause) {
+		const code = (e as { code?: string }).code
+		if (code === 'SQLITE_BUSY' || code === 'SQLITE_BUSY_SNAPSHOT') return true
+	}
+	return false
 }
 
 // Read-only: which migrations (by name) exist but aren't recorded as applied. Used by the
