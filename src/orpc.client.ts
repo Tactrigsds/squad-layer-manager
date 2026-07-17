@@ -97,12 +97,40 @@ connectStatus$.pipe(
 	Rx.distinctUntilChanged(),
 ).subscribe(online => onlineManager.setOnline(online))
 
+// A backgrounded tab's socket is dropped externally (OS suspension, network sleep, a proxy idle-timeout) while nothing
+// on either side keeps it alive. partysocket has no liveness detection, so the dead socket only surfaces as a close
+// event around the moment the tab is refocused, and its first reconnect attempt then waits minReconnectionDelay (1-5s).
+// On refocus we force an immediate reconnect (resets partysocket's retry backoff to 0), so recovery is near-instant.
+let becameVisibleAt = document.hidden ? 0 : Date.now()
+document.addEventListener('visibilitychange', () => {
+	if (document.hidden) return
+	becameVisibleAt = Date.now()
+	if (!transportOpen()) websocket.reconnect()
+})
+
+// A disconnect discovered at or just after refocus is the expected idle-drop, and it recovers on its own within a
+// second or two, so warning about it is just noise. This grace window suppresses the toast for that case while still
+// reporting a genuine outage that happens (or persists) while the user is actively looking at the tab.
+const REFOCUS_GRACE_MS = 3_000
+const shouldWarnDisconnected$ = Rx.combineLatest([
+	connectStatus$,
+	Rx.fromEvent(document, 'visibilitychange').pipe(Rx.startWith(null)),
+]).pipe(
+	Rx.switchMap(([status]) => {
+		if (status !== 'closed' || document.hidden) return Rx.of(false)
+		const remaining = REFOCUS_GRACE_MS - (Date.now() - becameVisibleAt)
+		if (remaining <= 0) return Rx.of(true)
+		return Rx.concat(Rx.of(false), Rx.of(true).pipe(Rx.delay(remaining)))
+	}),
+	Rx.distinctUntilChanged(),
+)
+
 // one toast for the whole outage, replaced in place by its own resolution. Keyed so repeated close events can't stack
 // copies of it, and unclearable because dismissing it wouldn't make the app usable again.
 const RECONNECT_TOAST_ID = 'ws-reconnect'
 let reconnectToastShown = false
-connectStatus$.subscribe(status => {
-	if (status === 'closed' && !reconnectToastShown) {
+shouldWarnDisconnected$.subscribe(warn => {
+	if (warn && !reconnectToastShown) {
 		reconnectToastShown = true
 		// the whole state is in the title: updating a toast by id merges into the existing one, so a description set
 		// here would survive into the success toast that replaces it
@@ -111,9 +139,15 @@ connectStatus$.subscribe(status => {
 			duration: Infinity,
 			dismissible: false,
 		})
-	} else if (status === 'open' && reconnectToastShown) {
+	} else if (!warn && reconnectToastShown) {
 		reconnectToastShown = false
-		toast.success('Reconnected to the server', { id: RECONNECT_TOAST_ID, duration: 3_000, dismissible: true })
+		// resolved because we reconnected -> tell the user; resolved because the tab went hidden while still down ->
+		// just drop the toast, there is nothing to celebrate and no one watching
+		if (transportOpen()) {
+			toast.success('Reconnected to the server', { id: RECONNECT_TOAST_ID, duration: 3_000, dismissible: true })
+		} else {
+			toast.dismiss(RECONNECT_TOAST_ID)
+		}
 	}
 })
 
