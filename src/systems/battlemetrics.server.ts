@@ -634,6 +634,21 @@ export const router = {
 		return fetchSinglePlayerBmData(ctx, SM.PlayerIds.queryFromPlayerId(input.playerId))
 	}),
 
+	// on-demand cache bust: drops each player's cached BM data and refetches, pushing the fresh result down the watch
+	// stream. A player whose refetch fails is left with whatever was cached rather than failing the batch.
+	refreshPlayerBmData: orpcBase.meta({ type: 'mutation' }).input(z.object({
+		playerIds: z.array(z.string()).min(1),
+	})).handler(async ({ input, context: ctx }) => {
+		const failed: string[] = []
+		for (const playerId of input.playerIds) {
+			await refreshPlayerFlags(ctx, playerId, SM.PlayerIds.queryFromPlayerId(playerId)).catch((err) => {
+				log.warn({ err, playerId }, 'failed to refresh player bm data')
+				failed.push(playerId)
+			})
+		}
+		return { code: 'ok' as const, refreshedCount: input.playerIds.length - failed.length, failed }
+	}),
+
 	watchPlayerBmData: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ signal, context: _ctx }) {
 		const initial$ = Rx.from(
 			[...playerFlagsAndProfileCache.entries()]
