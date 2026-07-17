@@ -53,6 +53,24 @@ describe('buildExamples', () => {
 		expect(examples.every((e) => e.command !== '!kick Alice')).toBe(true)
 	})
 
+	it('picks a preset by a single-token alias when its label has whitespace', () => {
+		// a two-word label typed verbatim would be read as a custom reason, not this preset, so the example has to
+		// reach it by its alias
+		const multiWord: CMDH.ExampleSeeds = {
+			...seeds,
+			reasons: [{ ...reason('No SLKit', ['warn']), aliases: ['slkit'] }],
+		}
+		expect(CMDH.buildExamples('warn', configs.warn, multiWord)[0].command).toBe('!warn Alice slkit')
+	})
+
+	it('skips the preset example when no configured preset can be named in one token', () => {
+		const unreachable: CMDH.ExampleSeeds = { ...seeds, reasons: [reason('No SLKit', ['warn'])] }
+		// warn's reason is required, so the preset form is the shortest one -- and it has to fall away entirely
+		expect(CMDH.buildExamples('warn', configs.warn, unreachable)).toEqual([
+			{ command: '!warn Alice stop doing that', note: 'With a custom reason' },
+		])
+	})
+
 	it('uses the declared sample token for string args', () => {
 		expect(CMDH.buildExamples('flag', configs.flag, seeds)[0].command).toBe('!flag Alice cheater')
 	})
@@ -102,12 +120,21 @@ describe('resolveHelpListing', () => {
 		expect(byLabel.commands).toEqual(['flag', 'removeFlag', 'listFlags'])
 	})
 
-	it('names the valid sections when given an unknown one', () => {
+	it('advertises sections by id, never by a label that could not be typed', () => {
+		// `section` is a single-token arg, so "Player Flags" would never match -- only `flags` can be advised
 		const listing = CMDH.resolveHelpListing(configs, [], 'nonsense')
 		expect(listing.code).toBe('err:unknown-section')
 		if (listing.code !== 'err:unknown-section') return
-		expect(listing.msg).toContain('Moderation')
+		expect(listing.msg).toContain('flags')
 		expect(listing.msg).toContain('all')
+		expect(listing.msg).not.toContain('Player Flags')
+	})
+
+	it('trails the quick reference with a hint naming the single-token sections', () => {
+		const listing = CMDH.resolveHelpListing(configs, [], undefined)
+		if (listing.code !== 'ok') throw new Error('expected ok')
+		expect(listing.title).toBe('Commands')
+		expect(listing.hint).toBe('More: !help <section> -- general, votes, teamswaps, flags, moderation, messaging, all')
 	})
 
 	it("lists an alias under its target command's section, and drops it when the target is disabled", () => {

@@ -72,13 +72,26 @@ function argOptional(def: CMD.ArgDef, requiredReasonActions: readonly AAR.AdminA
 	return !!def.optional
 }
 
-function presetsFor(def: CMD.ArgDef, seeds: ExampleSeeds): string[] {
+// The single token that picks this preset in chat. A preset arg is only matched when it's exactly one token (two or
+// more are taken as custom text), so a preset whose label has whitespace can only be reached by an alias -- and one
+// with neither a single-word label nor a single-word alias can't be reached at all.
+function presetToken(preset: { label: string; aliases: string[] }): string | undefined {
+	return [preset.label, ...preset.aliases].find((s) => !/\s/.test(s))
+}
+
+// how a preset lists in the help: its label, plus the aliases it can be typed as when the label itself isn't typeable
+function presetLabel(preset: { label: string; aliases: string[] }): string {
+	if (preset.aliases.length === 0) return preset.label
+	return `${preset.label} (${preset.aliases.join(', ')})`
+}
+
+function argPresets(def: CMD.ArgDef, seeds: ExampleSeeds): { label: string; aliases: string[] }[] {
 	switch (def.kind) {
 		case 'reason':
 		case 'preset-reason':
-			return AAR.reasonsForAction(seeds.reasons, def.action).map((r) => r.label)
+			return AAR.reasonsForAction(seeds.reasons, def.action)
 		case 'broadcast':
-			return seeds.broadcasts.map((b) => b.label)
+			return seeds.broadcasts
 		default:
 			return []
 	}
@@ -98,7 +111,7 @@ export function describeArgs(
 			// the kind explains the general shape; `describe` says what this arg means for this command
 			description: def.describe ? `${def.describe} ${kindHelp.description}` : kindHelp.description,
 			optional: argOptional(def, requiredReasonActions),
-			presets: presetsFor(def, seeds),
+			presets: argPresets(def, seeds).map(presetLabel),
 		}
 	})
 }
@@ -134,19 +147,28 @@ function sampleTokens(def: CMD.ArgDef, seeds: ExampleSeeds): Sample {
 			return { token: 'some text' }
 		case 'reason':
 		case 'preset-reason': {
-			const token = AAR.reasonsForAction(seeds.reasons, def.action)[0]?.label
+			// the first preset that can actually be picked by a single token, not just the first configured one
+			const token = firstPresetToken(AAR.reasonsForAction(seeds.reasons, def.action))
 			// `preset-reason` takes presets only, so it has no free-text form to demonstrate
 			if (def.kind === 'preset-reason') return { token }
 			return { token, alt: { token: 'stop doing that', note: 'With a custom reason' } }
 		}
 		case 'broadcast':
 			return {
-				token: seeds.broadcasts[0]?.label,
+				token: firstPresetToken(seeds.broadcasts),
 				alt: { token: 'Server restarting in 5 minutes', note: 'With a custom message' },
 			}
 		default:
 			assertNever(def)
 	}
+}
+
+function firstPresetToken(presets: { label: string; aliases: string[] }[]): string | undefined {
+	for (const preset of presets) {
+		const token = presetToken(preset)
+		if (token !== undefined) return token
+	}
+	return undefined
 }
 
 // how far down the arg list an example fills. Examples are built by walking the args in order, so a variant is a
@@ -208,10 +230,13 @@ export function buildExamples(
 // what a help command lists. A bare `!help` answers with the quick reference, since an admin mid-match wants the
 // handful of commands they actually use, not thirty lines paged into chat.
 export type HelpListing =
-	| { code: 'ok'; title: string; commands: CMD.CommandId[]; aliases: CMD.CommandAlias[] }
+	| { code: 'ok'; title: string; commands: CMD.CommandId[]; aliases: CMD.CommandAlias[]; hint?: string }
 	| { code: 'err:unknown-section'; msg: string }
 
-const sectionOptions = () => [...CMD.COMMAND_SECTION_IDS.map((s) => CMD.COMMAND_SECTIONS[s].label), CMD.ALL_SECTIONS_TOKEN].join(', ')
+// The section tokens, as they have to be typed: `section` is a single-token arg, so a section whose label has
+// whitespace ("Player Flags") can only ever be named by its id. Ids are always single words, so those are what's
+// advertised -- never the labels, which would be advice that doesn't work.
+const sectionOptions = () => [...CMD.COMMAND_SECTION_IDS, CMD.ALL_SECTIONS_TOKEN].join(', ')
 
 // resolves what `!help [section]` should list. Only enabled commands are listed, and aliases whose target is disabled
 // or missing are dropped: neither can actually be run.
@@ -235,9 +260,10 @@ export function resolveHelpListing(
 		const helpString = configs.help.strings[0] ?? 'help'
 		return {
 			code: 'ok',
-			title: `Commands (${helpString} ${sectionOptions()} for more)`,
+			title: 'Commands',
 			commands,
 			aliases: aliasesFor('quick-reference'),
+			hint: `More: ${helpString} <section> -- ${sectionOptions()}`,
 		}
 	}
 
