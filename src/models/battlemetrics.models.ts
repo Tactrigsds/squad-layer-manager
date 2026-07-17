@@ -158,25 +158,28 @@ export const UpdatePlayerFlagsInputSchema = z.object({
 
 export type UpdatePlayerFlagsInput = z.infer<typeof UpdatePlayerFlagsInputSchema>
 
+// a flag being added or removed, with the reason given for that flag alone
+export const FlagChangeSchema = z.object({ id: z.string(), reason: z.string().trim().optional() })
+export type FlagChange = z.infer<typeof FlagChangeSchema>
+
 // Flags carry no history of their own on BattleMetrics, so the note is the only durable record of who touched a
 // player's flags and why. Both the web workflows and the in-game commands post through here so a profile reads the
-// same regardless of where the action came from.
+// same regardless of where the action came from. One note per flag: a reason justifies one flag, and keeping them
+// separate is what lets a later removal's note line up with the addition's.
 export function flagChangeNote(
-	opts: { action: 'added' | 'removed'; flagNames: string[]; actor: string; reason?: string },
+	opts: { action: 'added' | 'removed'; flagName: string; actor: string; reason?: string },
 ): string {
-	const flags = opts.flagNames.map((name) => `"${name}"`).join(', ')
-	const noun = opts.flagNames.length === 1 ? 'Flag' : 'Flags'
 	const reason = opts.reason?.trim()
 	return [
-		`${noun} ${flags} ${opts.action} by ${opts.actor} via SLM.`,
+		`Flag "${opts.flagName}" ${opts.action} by ${opts.actor} via SLM.`,
 		...(reason ? [`Reason: ${reason}`] : []),
 	].join('\n')
 }
 
-// which of `flagIds` require a reason before they can be added. shared by the client (to mark the field required
-// up-front) and the server (which enforces it).
-export function flagsRequiringNote(flagIds: string[], requiring: string[]): string[] {
-	return flagIds.filter((id) => requiring.includes(id))
+// ids of flags that require a reason but weren't given one. the client marks those fields required up-front; the
+// server calls this to enforce it.
+export function flagsMissingRequiredNote(flags: FlagChange[], requiring: string[]): string[] {
+	return flags.filter((f) => requiring.includes(f.id) && !f.reason?.trim()).map((f) => f.id)
 }
 
 export type StoreState = {

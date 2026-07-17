@@ -563,7 +563,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		if (res.code === 'ok') {
 			const note = BM.flagChangeNote({
 				action: 'added',
-				flagNames: [flagToUpdate.name],
+				flagName: flagToUpdate.name,
 				actor: `${h.sender.ids.username} (Steam ${h.sender.ids.steam})`,
 				reason,
 			})
@@ -610,7 +610,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		}
 		const note = BM.flagChangeNote({
 			action: 'removed',
-			flagNames: [flagToRemove.name],
+			flagName: flagToRemove.name,
 			actor: `${h.sender.ids.username} (Steam ${h.sender.ids.steam})`,
 			reason: args.reason?.trim(),
 		})
