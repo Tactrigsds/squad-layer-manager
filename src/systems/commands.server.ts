@@ -109,8 +109,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 			// non-admin is trying to use admin command, just ignore them
 			return
 		}
-		const correctChats = cmdConfig.scopes.flatMap((s) => CMD.CHAT_SCOPE_MAPPINGS[s])
-		return await error('wrong-chat', Messages.WARNS.commands.wrongChat(correctChats))
+		return await error('wrong-chat', Messages.WARNS.commands.wrongChat(cmdConfig.scopes))
 	}
 
 	if (!cmdConfig.enabled) {
@@ -305,11 +304,12 @@ function oppositeNormedTeam(currentMatch: MH.MatchDetails, teamId: SM.TeamId): M
 
 // exhaustive by construction: a new CommandId without a handler is a compile error
 const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<Id>) => Promise<HandlerResult> } = {
-	help: async (h) => {
+	help: async (h, args) => {
 		await h.reply(
 			Messages.WARNS.commands.help(
 				Settings.GLOBAL_SETTINGS.commands,
 				Settings.GLOBAL_SETTINGS.commandAliases,
+				args.section,
 			),
 		)
 		return { code: 'ok' }

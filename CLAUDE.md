@@ -80,6 +80,8 @@ Generally speaking, actions by the user should be handled at the top level by a 
 
 Never export non-components from .tsx files, as it breaks hot module replacement.
 
+Never hardcode a z-index. Take one from src/models/zindex.ts via `useZIndex(ZI_OFFSETS.<BAND>)`, which picks the band for what you're layering (in-container overlays, sticky headers, popovers, tooltips, draggable windows, dialogs). Its offsets are relative to the nearest enclosing `BaseZIndexContext` rather than absolute, so a bare `z-50` is right up until the component is rendered inside a dialog or a draggable window. For sticky headers nested inside other sticky headers, use the `StickyGroup` component instead of picking offsets yourself: it measures ancestor heights and assigns both the `top` offset and the z-index.
+
 Avoid controlled inputs and textareas (don't set `value`). Do the same for other fields that are latency-sensitive. make sure we debounce inputs which may otherwise cause frequent re-renders.
 
 # Testing

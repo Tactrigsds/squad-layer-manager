@@ -1,7 +1,7 @@
 import * as Arr from '@/lib/array'
 import * as DH from '@/lib/display-helpers'
-import * as Obj from '@/lib/object'
 import * as BAL from '@/models/balance-triggers.models'
+import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
@@ -255,26 +255,38 @@ export const WARNS = {
 		unknownCommand(cmdText: string, closestMatch: string) {
 			return `Unknown: ${cmdText}.\nDid you mean "${closestMatch}"?`
 		},
-		wrongChat: (correctChats: string[]) => `Command not available in this chat. Try using ${correctChats.join(' or ')}`,
+		// Takes the command's scopes rather than the chats they map to, so admin-only can be named as such: it's the
+		// common case by far, and it matches how the scope is labelled on the commands page (CMD.COMMAND_SCOPE_LABELS),
+		// where the raw ChatAdmin/ChatTeam enum names never appear.
+		wrongChat(scopes: CMD.CommandScope[]) {
+			if (scopes.length === 1 && scopes[0] === 'admin') return 'Admin only commands must be used in admin chat'
+			const correctChats = scopes.flatMap((s) => CMD.CHAT_SCOPE_MAPPINGS[s])
+			return `Command not available in this chat. Try using ${correctChats.join(' or ')}`
+		},
+		// `section` is the raw token typed after the help command; omitted means the quick reference. Returns one
+		// string per warn, since chat can only take a few lines at a time.
 		help(
-			commands: Record<CMD.CommandId, CMD.CommandConfig>,
+			commands: CMD.CommandConfigs,
 			aliases: readonly CMD.CommandAlias[] = [],
+			section?: string,
 		) {
-			const commandLines = Obj.objEntries(commands).filter(([_, cmd]) => cmd.enabled).map(([id, cmd]) => {
+			const listing = CMDH.resolveHelpListing(commands, aliases, section)
+			if (listing.code === 'err:unknown-section') return [listing.msg]
+
+			const commandLines = listing.commands.map((id) => {
+				const cmd = commands[id]
 				const sortedStrings = cmd.strings.toSorted((a, b) => a.length - b.length)
 				const signature = CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS[id].args)
 				return `[${sortedStrings.join(', ')}]${signature ? ` ${signature}` : ''}: ${GENERAL.command.descriptions[id]}`
 			})
-			// aliases take no args of their own, so they list as the shortcut and what it expands to. Ones pointing at a
-			// disabled or no-longer-existing command are dropped: they can't be run.
-			const aliasLines = aliases.flatMap((a) => {
-				const res = CMD.resolveAliasCommand(a.command, commands)
-				if (res.code !== 'ok' || !commands[res.cmdId].enabled) return []
-				return [`[${a.alias}]: ${GENERAL.command.aliasDescription(a.command)}`]
-			})
-			const groups = Arr.paged([...commandLines, ...aliasLines], 3)
-			if (groups.length === 0) groups.push([])
-			groups[0].unshift(`Available commands:`)
+			// aliases take no args of their own, so they list as the shortcut and what it expands to
+			const aliasLines = listing.aliases.map((a) => `[${a.alias}]: ${GENERAL.command.aliasDescription(a.command)}`)
+			const lines = [...commandLines, ...aliasLines]
+			if (lines.length === 0) return [`${listing.title}: none.`, ...(listing.hint ? [listing.hint] : [])]
+			const groups = Arr.paged(lines, 3)
+			groups[0].unshift(`${listing.title}:`)
+			// the hint tells you how to see the rest, so it trails the listing rather than crowding the first warn
+			if (listing.hint) groups[groups.length - 1].push(listing.hint)
 			return groups.map((g) => g.join('\n'))
 		},
 		missingSteamId: () => `You are not signed in as a Steam user.`,

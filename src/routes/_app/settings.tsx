@@ -14,6 +14,7 @@ import { useAlertDialog } from '@/components/ui/lazy-alert-dialog'
 import { Spinner } from '@/components/ui/spinner'
 import { frameManager } from '@/frames/frame-manager'
 import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
+import { useForwardWheelToScroller } from '@/lib/browser'
 import { createId } from '@/lib/id'
 import { useRefConstructor } from '@/lib/react'
 import { ADVANCED_GLOBAL_SETTINGS_PATHS, ADVANCED_SERVER_SETTINGS_PATHS, GLOBAL_SETTINGS_GROUPS, SERVER_SETTINGS_PRIORITY_KEYS } from '@/lib/settings-groups'
@@ -143,6 +144,12 @@ function RouteComponent() {
 		},
 	})
 
+	const rootRef = React.useRef<HTMLDivElement>(null)
+	const mainRef = React.useRef<HTMLElement>(null)
+	// the margins either side of the centred columns, and the empty space below a short table of contents, sit outside
+	// `main`, so without this their wheel events land on nothing
+	useForwardWheelToScroller(rootRef, mainRef, null)
+
 	// the fragment to scroll to on load, captured once. Handled lazily below once its owning section has rendered, since
 	// the sections load async (per-server fetch, global-settings Suspense) and a `setting:*` field only exists after its
 	// section mounts.
@@ -188,65 +195,73 @@ function RouteComponent() {
 	}
 
 	return (
-		// bounded to the viewport (navbar h-16 + outlet p-4 = 6rem) so the two columns can scroll independently;
-		// the outlet wrapper is overflow-hidden, which would otherwise break sticky/independent scrolling
-		<div className="flex w-full h-[calc(100dvh-6rem)]">
-			{/* the TOC only earns its width once the content column has room to spare, so it scales back on narrower viewports */}
-			<aside className="w-52 md:w-60 lg:w-72 xl:w-80 shrink-0 overflow-hidden border-r pr-2 py-2">
-				<SettingsToc
-					showServers={!manageServersDenied || servers.length > 0}
-					showGlobal={globalAccess.canRead}
-					globalMode={derived.globalMode}
-					servers={servers}
-					serverModes={derived.serverModes}
-					creatingServer={creating}
-					newServerMode={derived.newServerMode}
-				/>
-			</aside>
-			{
-				/* `main` spans the whole non-TOC area (the content column is centred inside it) so a wheel anywhere outside the
-			    TOC scrolls the settings, rather than landing on the non-scrollable outlet wrapper.
+		// Bounded to the viewport (navbar h-16 + outlet p-4 = 6rem) so the two columns can scroll independently; the
+		// outlet wrapper is overflow-hidden, which would otherwise break sticky/independent scrolling.
+		// This element stays full width while the columns centre inside it, so the centring margins belong to it and
+		// useForwardWheelToScroller can hand their wheel events to `main` -- they'd otherwise land on the outlet
+		// wrapper, which doesn't scroll.
+		<div ref={rootRef} className="flex w-full h-[calc(100dvh-6rem)] justify-center">
+			<div className="flex h-full w-full max-w-6xl">
+				{
+					/* Sized like the commands page's. The columns are capped and centred now, so growing the TOC with the viewport
+				    would only eat the content column, which needs the width more -- its server sections are master-detail. */
+				}
+				<aside className="w-52 md:w-60 shrink-0 overflow-hidden border-r pr-2 py-2">
+					<SettingsToc
+						showServers={!manageServersDenied || servers.length > 0}
+						showGlobal={globalAccess.canRead}
+						globalMode={derived.globalMode}
+						servers={servers}
+						serverModes={derived.serverModes}
+						creatingServer={creating}
+						newServerMode={derived.newServerMode}
+					/>
+				</aside>
+				{
+					/* `main` spans the whole non-TOC width of the centred group (the content column is centred inside it in turn),
+			    so a wheel between the two still scrolls the settings; the margins outside the group are the hook's job.
 			    `relative` is load-bearing: sr-only elements in the form are position:absolute, and without a positioned
 			    scroll container they escape main's clipping and stretch the document's scroll height to the full unclipped
 			    content height, making the whole app (navbar included) scroll away. */
-			}
-			<main className="relative flex-1 min-w-0 overflow-y-auto">
-				{/* no top padding: sticky section headers pin flush to the top, otherwise scrolled content bleeds into the gap */}
-				<div className="mx-auto w-full max-w-[68rem] px-4 pb-2 space-y-6">
-					{/* Servers reads PublicSettingsStore, not globalSettings$, so it must not sit behind the global-settings Suspense */}
-					{(!manageServersDenied || servers.length > 0) && (
-						<div id="section:servers" className="scroll-mt-2 rounded-xl">
-							<ServersSection
-								servers={servers}
-								sectionKeys={sectionKeys}
-								canManage={!manageServersDenied}
-								canCreate={canCreateServers}
-								creating={creating}
-								onAddServer={() => setCreatingNonce(createId(4))}
-								onCancelCreate={() => setCreatingNonce(null)}
-							/>
-						</div>
-					)}
-					{globalAccess.canRead && (() => {
-						const key = sectionKeys.find((k) => k.kind === 'global')
-						if (!key) return null
-						// Subscribe has no fallback of its own: the suspension is handed to StateBoundary, which also
-						// catches the first-emit timeout if global settings never arrive
-						return (
-							<StateBoundary label="global settings">
-								<ReactRx.Subscribe source$={SettingsClient.globalSettings$}>
-									<div id="section:global" className="scroll-mt-2 rounded-xl">
-										<GlobalSettingsSection stores={{ settingsEditor: key }} />
-									</div>
-									<div id="section:audit" className="scroll-mt-2 rounded-xl">
-										<AuditLogSection />
-									</div>
-								</ReactRx.Subscribe>
-							</StateBoundary>
-						)
-					})()}
-				</div>
-			</main>
+				}
+				<main ref={mainRef} className="relative flex-1 min-w-0 overflow-y-auto">
+					{/* no top padding: sticky section headers pin flush to the top, otherwise scrolled content bleeds into the gap */}
+					<div className="mx-auto w-full max-w-[68rem] px-4 pb-2 space-y-6">
+						{/* Servers reads PublicSettingsStore, not globalSettings$, so it must not sit behind the global-settings Suspense */}
+						{(!manageServersDenied || servers.length > 0) && (
+							<div id="section:servers" className="scroll-mt-2 rounded-xl">
+								<ServersSection
+									servers={servers}
+									sectionKeys={sectionKeys}
+									canManage={!manageServersDenied}
+									canCreate={canCreateServers}
+									creating={creating}
+									onAddServer={() => setCreatingNonce(createId(4))}
+									onCancelCreate={() => setCreatingNonce(null)}
+								/>
+							</div>
+						)}
+						{globalAccess.canRead && (() => {
+							const key = sectionKeys.find((k) => k.kind === 'global')
+							if (!key) return null
+							// Subscribe has no fallback of its own: the suspension is handed to StateBoundary, which also
+							// catches the first-emit timeout if global settings never arrive
+							return (
+								<StateBoundary label="global settings">
+									<ReactRx.Subscribe source$={SettingsClient.globalSettings$}>
+										<div id="section:global" className="scroll-mt-2 rounded-xl">
+											<GlobalSettingsSection stores={{ settingsEditor: key }} />
+										</div>
+										<div id="section:audit" className="scroll-mt-2 rounded-xl">
+											<AuditLogSection />
+										</div>
+									</ReactRx.Subscribe>
+								</StateBoundary>
+							)
+						})()}
+					</div>
+				</main>
+			</div>
 			<SettingsSavePanel sectionKeys={sectionKeys} />
 		</div>
 	)
