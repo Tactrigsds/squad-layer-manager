@@ -344,9 +344,12 @@ export function createOrpcSessionBase(
 	ctx: C.FastifyRequestFull & C.AuthedUser,
 	websocket: WebSocket,
 ): C.OrpcBase {
-	// reuse the id of an interrupted session for this user if there is one, so the reconnecting socket
-	// picks up its held presence (activity + locks) with no visible break; otherwise mint a fresh id
-	const wsClientId = UserPresenceSys.reclaimInterruptedClientId(ctx.user.discordId) ?? createId(32)
+	// reconnecting clients send the id they last held as `?prior=`, so the socket picks up its held presence
+	// (activity + locks) in place with no visible break and leaves no ghost "other session"; otherwise mint a fresh id
+	const priorClientId = typeof (ctx.req.query as { prior?: unknown })?.prior === 'string'
+		? (ctx.req.query as { prior: string }).prior
+		: undefined
+	const wsClientId = UserPresenceSys.reclaimClientId(ctx.user.discordId, priorClientId) ?? createId(32)
 
 	const wsCtx: C.OrpcBase = {
 		wsClientId,

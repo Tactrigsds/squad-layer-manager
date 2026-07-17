@@ -20,6 +20,14 @@ const CLEAN_CLOSE_CODES = new Set([1000, 1001])
 const module = initModule('ws-session')
 let log!: CS.Logger
 
+// Without an application-level ping the server cannot tell a live-but-quiet socket from a half-open one
+// (a client whose network dropped or machine slept): the OS keeps the dead connection around for its own
+// keepalive window (~2h), so presence counts a ghost as `connected` the whole time. Pinging on an interval
+// and terminating anything that misses the next round's pong (browsers answer ping frames automatically)
+// bounds that to one interval -- the `ws` library's documented liveness pattern.
+const PING_INTERVAL = 30_000
+const socketAlive = new WeakMap<C.OrpcSessionBase['ws'], boolean>()
+
 const meter = metrics.getMeter('ws-session')
 meter.createObservableGauge(ATTRS.WebSocket.CONNECTED_CLIENTS, {
 	description: 'Number of currently connected WebSocket clients',
@@ -74,6 +82,33 @@ function instrumentSocketIo(ws: C.OrpcSessionBase['ws']) {
 
 export function setup() {
 	log = module.getLogger()
+	setInterval(() => {
+		for (const ctx of wsSessions.values()) {
+			if (socketAlive.get(ctx.ws) === false) {
+				// missed the previous round's pong: the socket is half-open. Terminating it runs the close path
+				// (abnormal -> interrupted), so presence stops counting it as connected.
+				log.info('%s (%s) missed keepalive pong, terminating', ctx.user.username, ctx.wsClientId)
+				ctx.ws.terminate()
+				continue
+			}
+			socketAlive.set(ctx.ws, false)
+			try {
+				ctx.ws.ping()
+			} catch { /* socket already closing */ }
+		}
+	}, PING_INTERVAL).unref()
+}
+
+// A reconnecting client is reclaiming this id (see reclaimClientId): if a stale socket is still parked on it
+// -- its close not yet detected, e.g. a half-open connection -- drop it from tracking and terminate it so the
+// reclaiming socket can register the id cleanly. The stale socket's later close is a no-op (see registerClient).
+export function evictStaleSocket(wsClientId: string) {
+	const stale = wsSessions.get(wsClientId)
+	if (!stale) return
+	wsSessions.delete(wsClientId)
+	try {
+		stale.ws.terminate()
+	} catch { /* already dead */ }
 }
 
 export function registerClient(ctx: C.OrpcSessionBase) {
@@ -83,9 +118,14 @@ export function registerClient(ctx: C.OrpcSessionBase) {
 	}
 
 	wsSessions.set(ctx.wsClientId, ctx)
+	socketAlive.set(ctx.ws, true)
+	ctx.ws.on('pong', () => socketAlive.set(ctx.ws, true))
 	connectionCounter.add(1)
 	instrumentSocketIo(ctx.ws)
 	ctx.ws.on('close', (code) => {
+		// A stale socket whose id was reclaimed by a reconnect must not tear down the live session now holding
+		// that id: only act if we're still the registered owner.
+		if (wsSessions.get(ctx.wsClientId) !== ctx) return
 		const interrupted = !CLEAN_CLOSE_CODES.has(code)
 		log.info('%s has disconnected (%s) code=%d interrupted=%s', ctx.user.username, ctx.wsClientId, code, interrupted)
 		disconnect$.next({ ctx, interrupted })

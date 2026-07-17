@@ -18,7 +18,15 @@ import { formatVersion } from './lib/versioning'
 
 const wsHostname = window.location.origin.replace(/^http/, 'ws').replace(/\/$/, '')
 const wsUrl = `${wsHostname}${AR.route('/orpc')}`
-const websocket = new WebSocket(wsUrl)
+
+// On reconnect, tell the server the id we last held so it reclaims that exact presence entry (activity +
+// locks) and evicts our stale socket, instead of minting a fresh id and leaving a ghost that reads as an
+// "other active session". partysocket re-invokes this per connect; empty on the first connect (no id yet).
+function resolveWsUrl(): string {
+	const priorClientId = ConfigClient.getConfig()?.wsClientId
+	return priorClientId ? `${wsUrl}?prior=${encodeURIComponent(priorClientId)}` : wsUrl
+}
+const websocket = new WebSocket(resolveWsUrl)
 
 // read off the socket rather than connectStatus$, because a close event fails the in-flight calls and moves the status
 // in an order we don't control: readyState is already CLOSING/CLOSED by the time those rejections land.
