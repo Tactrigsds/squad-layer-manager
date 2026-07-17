@@ -231,7 +231,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 						<TableRow className="font-medium">
 							<TableHead className="text-right px-0.5">
 							</TableHead>
-							<TableHead className="hidden min-[820px]:table-cell">
+							<TableHead className="hidden @[820px]:table-cell">
 								Time
 							</TableHead>
 							<TableHead>Layer</TableHead>
@@ -266,7 +266,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 									<Icons.Flag />
 								</div>
 							</TableHead>
-							<TableHead className="hidden min-[900px]:table-cell pr-0.5">
+							<TableHead className="hidden @[900px]:table-cell pr-0.5">
 								<span title="Set By">
 									<Icons.User />
 								</span>
@@ -279,19 +279,19 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 								<TableRow>
 									<TableCell
 										colSpan={8}
-										className="text-center text-muted-foreground py-8 hidden min-[900px]:table-cell"
+										className="text-center text-muted-foreground py-8 hidden @[900px]:table-cell"
 									>
 										No matches found
 									</TableCell>
 									<TableCell
 										colSpan={7}
-										className="text-center text-muted-foreground py-8 hidden min-[820px]:table-cell min-[900px]:hidden"
+										className="text-center text-muted-foreground py-8 hidden @[820px]:table-cell @[900px]:hidden"
 									>
 										No matches found
 									</TableCell>
 									<TableCell
 										colSpan={6}
-										className="text-center text-muted-foreground py-8 table-cell min-[820px]:hidden"
+										className="text-center text-muted-foreground py-8 table-cell @[820px]:hidden"
 									>
 										No matches found
 									</TableCell>
@@ -644,7 +644,7 @@ function MatchHistoryRow({
 								)}
 						</div>
 					</TableCell>
-					<TableCell className="text-xs hidden min-[820px]:table-cell pl-2 ">
+					<TableCell className="text-xs hidden @[820px]:table-cell pl-2 ">
 						{entry.isCurrentMatch && entry.startTime && entry.status === 'in-progress'
 							&& (
 								<span className="font-mono font-light">

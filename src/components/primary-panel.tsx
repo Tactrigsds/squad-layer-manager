@@ -84,7 +84,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 	const headerRef = React.useRef<HTMLDivElement>(null)
 
 	return (
-		<Card className="flex flex-col flex-1 min-h-0">
+		<Card className="flex flex-col flex-1 min-h-0 @container">
 			<ScrollArea className="flex-1">
 				<MatchHistoryPanelContent stores={props.stores} />
 				<Separator />

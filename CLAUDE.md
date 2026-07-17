@@ -31,13 +31,14 @@ If we've completed a goal or feature, then run `pnpm run lint:fix` and fix all l
 If you are working in a git worktree, do not run `pnpm server:dev` / `pnpm client:dev` and do not use ports 3000/5173: those belong to the main checkout, and an app you reach there is not running your changes. Each worktree gets its own instance instead, on its own ports, with its own database and an emulated squad server:
 
 ```sh
+pnpm install    # a fresh worktree has no node_modules of its own; dev:init fails ("No preset version ... tsx") until this runs
 pnpm dev:init   # once per worktree: claims a port slot, links .env, clones the db. Prints your URL.
 pnpm dev:emu    # the emulated squad server. Leave it running, it is a separate process on purpose.
 pnpm dev        # the app + client
 pnpm dev:slots  # which worktree owns which ports
 ```
 
-Log in with `?login=<username>` (discord oauth is off for dev instances; any username in the cloned db works). Drive the emulated server with `pnpm emuctl <command>` (`pnpm emuctl help`) rather than trying to reach a real squad server -- e.g. `pnpm emuctl join Alice`, `pnpm emuctl chat Alice '!vote 1'`, `pnpm emuctl end 1`.
+Log in with `?login=<username>` (discord oauth is off for dev instances -- `dev`'s env sets `QUERY_PARAM_AUTH_BYPASS`/`DISCORD_ENABLED=false` for you; any username in the cloned db works). Wait for the app port to be listening before you hit `?login=`: navigating during boot fails the bypass request and bounces you into the real Discord oauth flow, which looks like the bypass is broken when it is not. Drive the emulated server with `pnpm emuctl <command>` (`pnpm emuctl help`) rather than trying to reach a real squad server -- e.g. `pnpm emuctl join Alice`, `pnpm emuctl chat Alice '!vote 1'`, `pnpm emuctl end 1`.
 
 Never point a worktree at a real squad server or the real battlemetrics org; `dev:init` deliberately scrubs those, and re-adding them means an experiment drives production.
 

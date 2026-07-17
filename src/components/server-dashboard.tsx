@@ -35,14 +35,15 @@ export default function ServerDashboard(props: { stores: SquadServerFrame.KeyPro
 			)}
 
 			{isDesktop && (
-				/* Desktop: Two column layout */
-				<div className="flex gap-2 h-full min-h-0 w-full justify-center">
-					{/* left column — grows into free space (capped) to give the teams grid more room */}
-					<div className="flex flex-col gap-2 shrink-0 min-w-0 grow max-w-[1250px]">
+				/* Desktop: two proportional columns. `minmax(0,...)` on both tracks lets them share the give, so
+				   the right column no longer absorbs all the shrink and starve (the left used to be grow+shrink-0,
+				   which greedily took the space and forced the right one to collapse). Capped and centered so
+				   ultrawide gutters rather than stretching the panels past a readable width. */
+				<div className="grid gap-2 h-full min-h-0 w-full max-w-[2050px] mx-auto grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+					<div className="flex flex-col gap-2 min-h-0 min-w-0">
 						<PrimaryPanel stores={props.stores} />
 					</div>
-					{/* right column — explicit width matches SecondaryPanel max-w so justify-center works */}
-					<div className="flex min-h-0 min-w-0 w-[800px] shrink">
+					<div className="flex min-h-0 min-w-0">
 						<SecondaryPanel stores={props.stores} />
 					</div>
 				</div>
