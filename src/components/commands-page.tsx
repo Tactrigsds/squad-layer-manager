@@ -186,6 +186,23 @@ function AliasEntry({ entry, settings }: { entry: Extract<Entry, { kind: 'alias'
 	)
 }
 
+// The entry id in the URL fragment, if any. Entry ids are section-scoped (a command listed under both Pinned and
+// Moderation is two elements), so the fragment names one listing exactly rather than a command in the abstract.
+function currentAnchor(): string | null {
+	const hash = window.location.hash.slice(1)
+	return hash ? decodeURIComponent(hash) : null
+}
+
+// Marks one entry as the linked target. Exclusive, and persists until the next navigation, so the command you followed
+// a link to stays identifiable once the scroll has finished. index.css styles [data-anchor-highlight] (a ring plus a
+// flash on apply) for the settings page; reused verbatim here so a link lands the same way in both places.
+function highlightEntry(el: HTMLElement) {
+	for (const other of document.querySelectorAll('[data-anchor-highlight]')) {
+		if (other !== el) other.removeAttribute('data-anchor-highlight')
+	}
+	el.setAttribute('data-anchor-highlight', 'true')
+}
+
 // tracks which entry anchor sits at the top of the page body, so the matching TOC row can be highlighted
 function useActiveEntry(scrollRef: React.RefObject<HTMLDivElement | null>, deps: unknown): string | null {
 	const [activeId, setActiveId] = React.useState<string | null>(null)
@@ -195,9 +212,15 @@ function useActiveEntry(scrollRef: React.RefObject<HTMLDivElement | null>, deps:
 		let raf = 0
 		const compute = () => {
 			raf = 0
+			const anchors = container.querySelectorAll<HTMLElement>('[data-cmd-anchor]')
+			// Once the list has bottomed out nothing scrolls any further, so the last entries never reach the fold and
+			// would never highlight however far you scroll. The end of the scroll belongs to the last entry.
+			if (anchors.length > 0 && container.scrollTop + container.clientHeight >= container.scrollHeight - 2) {
+				setActiveId(anchors[anchors.length - 1].id)
+				return
+			}
 			// the fold sits below the pinned section header, so the entry visible beneath it wins
 			const fold = container.getBoundingClientRect().top + 40
-			const anchors = container.querySelectorAll<HTMLElement>('[data-cmd-anchor]')
 			let current: string | null = null
 			for (const el of anchors) {
 				if (el.getBoundingClientRect().top <= fold) current = el.id
@@ -308,6 +331,8 @@ export default function CommandsPage() {
 	// set while scrollToEntry runs, so the body's own scrolling isn't mistaken for the user taking over
 	const scrollingToEntry = React.useRef(false)
 	const stickyZIndex = useZIndex(ZI_OFFSETS.STICKYGROUP_FLOOR)
+	// latched: read once on mount, consumed by the effect below, so a later hash rewrite can't re-trigger it
+	const pendingAnchor = React.useRef<string | null>(currentAnchor())
 
 	// The body scrolls inside its own container, so a wheel anywhere else -- the margins either side of the centred
 	// column, the page header, the search box -- lands on nothing and the list sits still. Forward those to the body.
@@ -328,6 +353,19 @@ export default function CommandsPage() {
 		root.addEventListener('wheel', onWheel, { passive: false })
 		return () => root.removeEventListener('wheel', onWheel)
 		// the refs only exist once settings has rendered the page, so this can't bind on the first render
+	}, [settings])
+
+	// a fragment on arrival (someone followed a link to a command) lands on it once the list has rendered
+	React.useEffect(() => {
+		const id = pendingAnchor.current
+		if (!settings || !id) return
+		pendingAnchor.current = null
+		const el = scrollRef.current?.querySelector<HTMLElement>(`#${CSS.escape(id)}`)
+		// a stale link, to a command or section that no longer exists: leave the page where it opened
+		if (!el) return
+		el.scrollIntoView({ block: 'start', behavior: 'instant' })
+		highlightEntry(el)
+		setCursorId(id)
 	}, [settings])
 
 	const sections = React.useMemo(() => settings ? buildSections(settings, pinnedCommands) : [], [settings, pinnedCommands])
@@ -351,12 +389,27 @@ export default function CommandsPage() {
 
 	if (!settings) return null
 
-	function scrollToEntry(id: string, behavior: ScrollBehavior = 'smooth') {
+	// Always instant. Smooth is still travelling when the next keypress or click lands, which leaves the cursor
+	// scheduling scrolls faster than they finish and the highlight reading a position that hasn't arrived.
+	function scrollToEntry(id: string, opts?: { highlight?: boolean }) {
+		const el = scrollRef.current?.querySelector<HTMLElement>(`#${CSS.escape(id)}`)
+		if (!el) return
 		scrollingToEntry.current = true
-		scrollRef.current?.querySelector(`#${CSS.escape(id)}`)?.scrollIntoView({ block: 'start', behavior })
+		el.scrollIntoView({ block: 'start', behavior: 'instant' })
 		requestAnimationFrame(() => {
 			scrollingToEntry.current = false
 		})
+		if (opts?.highlight) highlightEntry(el)
+	}
+
+	// Following a link to an entry: record it, mark it, and put the cursor on it. The cursor matters at the end of the
+	// list, where the target can't be scrolled to the top -- the scroll-derived highlight would land on whatever the
+	// fold happened to stop at, so linking to one of the last commands would highlight a different one.
+	function navigateToEntry(id: string) {
+		// replaceState keeps the history stack clean and skips the browser's own jump; a no-op when the hash matches
+		history.replaceState(history.state, '', `#${encodeURIComponent(id)}`)
+		setCursorId(id)
+		scrollToEntry(id, { highlight: true })
 	}
 
 	// Up/down walk the results from the search box, so a search can be narrowed and swept without leaving the input.
@@ -376,7 +429,7 @@ export default function CommandsPage() {
 			? (delta === 1 ? 0 : ids.length - 1)
 			: Math.min(Math.max(current + delta, 0), ids.length - 1)
 		setCursorId(ids[next])
-		scrollToEntry(ids[next], 'instant')
+		scrollToEntry(ids[next])
 	}
 
 	return (
@@ -421,7 +474,7 @@ export default function CommandsPage() {
 														<li key={entry.id}>
 															<button
 																type="button"
-																onClick={() => scrollToEntry(entry.id)}
+																onClick={() => navigateToEntry(entry.id)}
 																className={cn(
 																	'block w-full truncate rounded px-1 py-0.5 text-left font-mono text-sm hover:text-foreground',
 																	entry.id === highlightId ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground',
