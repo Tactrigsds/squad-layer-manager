@@ -44,8 +44,6 @@ declare module 'zod' {
 // where a random-looking string would not; production refuses to start with it (see ensureEnvSetup).
 export const INSECURE_DEV_ENCRYPTION_KEY = 'A_VERY_INSECURE_ENCRYPTION_KEY'
 
-export const DOCS_SOURCE_REPO = 'https://github.com/Tactrigsds/squad-layer-manager/blob/main'
-
 // comma-separated list of Discord snowflake ids parsed to bigints (e.g. SUPER_USERS="123,456")
 const BigIntListSchema = z.string().default('').transform((val) => val.split(',').map((s) => s.trim()).filter(Boolean).map(BigInt))
 
@@ -222,7 +220,7 @@ export const groups = {
 			envExample: { include: 'omit', dev: { include: 'commented' } },
 		}),
 		DISCORD_CLIENT_ID: z.string().min(1).meta({
-			description: `from the discord app SLM logs users in with. Creating one: ${DOCS_SOURCE_REPO}/docs/INSTALLING.md`,
+			description: 'from the discord app SLM logs users in with.',
 		}),
 		DISCORD_CLIENT_SECRET: z.string().min(1).meta({
 			secret: true,
@@ -342,8 +340,7 @@ export const groupMeta: Record<keyof typeof groups, { title: string; description
 	httpServer: { title: 'HTTP server' },
 	layers: {
 		title: 'Layers',
-		description:
-			`the app ships with a complete set of layer artifacts and boots without any of these set. How a version is resolved: ${DOCS_SOURCE_REPO}/docs/LAYER_DATA.md`,
+		description: 'the app ships with a complete set of layer artifacts and boots without any of these set.',
 	},
 	preprocess: {
 		title: 'Preprocess',

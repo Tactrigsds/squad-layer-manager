@@ -45,8 +45,7 @@ export const TARGETS: Target[] = [
 		path: path.join(Paths.PROJECT_ROOT, '.env.secrets.example'),
 		header: [
 			'Every credential SLM reads. It is mounted into the container as a file rather than passed as environment',
-			'variables. To point SECRETS_FILE at a docker secret instead, see',
-			`${Env.DOCS_SOURCE_REPO}/docs/INSTALLING.md`,
+			'variables. SECRETS_FILE can point at a docker secret instead.',
 			'',
 			'Treat it as a private key: keep it out of any backup you would not put a password in.',
 		],

@@ -93,6 +93,12 @@ done
 
 chmod +x "$DIR/edit-global-settings.sh" "$DIR/restore.sh"
 
+INSTALLING_URL="https://github.com/${REPO}/blob/${REF}/docs/INSTALLING.md"
+
+for file in .env.example .env.secrets.example; do
+	printf '\n# Installing and configuring SLM: %s\n' "$INSTALLING_URL" >> "$DIR/$file"
+done
+
 cp "$DIR/.env.example" "$DIR/.env"
 say "  + .env (from .env.example)"
 
@@ -118,7 +124,7 @@ say ""
 say "installed to $(cd "$DIR" && pwd)"
 say ""
 say "next:"
-say "  1. create the discord app SLM logs users in through: https://github.com/${REPO}#discord-app"
+say "  1. create the discord app SLM logs users in through: ${INSTALLING_URL}"
 say "  2. fill in the vars .env and .env.secrets leave uncommented (the commented ones are optional and show their defaults)"
 if [[ $DIR == "." ]]; then
 	say "  3. docker compose up -d"
