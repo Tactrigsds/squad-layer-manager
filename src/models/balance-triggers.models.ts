@@ -23,6 +23,8 @@ export type EvaluationResultBase<Input> = {
 export type BalanceTrigger<ID extends string, Input> = {
 	id: ID
 	name: string
+	// shown in the settings UI to explain what pattern this trigger fires on
+	description: string
 	// update whenever we change the logic for the trigger
 	version: number
 
@@ -55,6 +57,7 @@ const trig150x2 = createTrigger<'150x2', MH.PostGameMatchDetails[]>({
 	id: '150x2',
 	version: 1,
 	name: '150 tickets x2',
+	description: 'The same team won the last 2 matches, each by 150 or more tickets.',
 	resolveInput: lastNResolvedMatchesForSession(2),
 	evaluate: resolveBasicTicketStreak(150, 2),
 })
@@ -63,6 +66,7 @@ const trig200x2 = createTrigger<'200x2', MH.PostGameMatchDetails[]>({
 	id: '200x2',
 	version: 1,
 	name: '200 tickets x2',
+	description: 'The same team won the last 2 matches, each by 200 or more tickets.',
 	resolveInput: lastNResolvedMatchesForSession(2),
 	evaluate: resolveBasicTicketStreak(200, 2),
 })
@@ -94,6 +98,7 @@ const trigRWS5 = createTrigger<'RWS5', MH.PostGameMatchDetails[]>({
 	id: 'RWS5',
 	version: 1,
 	name: 'Raw Win Streak Across 5',
+	description: 'The same team won the last 5 matches in a row, regardless of ticket margin.',
 	resolveInput: lastNResolvedMatchesForSession(5),
 	evaluate: (_ctx, matchDetails) => {
 		let streaker: MH.NormedTeamProp | undefined
@@ -122,6 +127,8 @@ const trigRAM3Plus = createTrigger<'RAM3+', MH.PostGameMatchDetails[]>({
 	id: 'RAM3+',
 	version: 1,
 	name: 'Maximum Rolling Average Across 3+',
+	description:
+		'The same team is on a winning streak of at least 3 matches and, across some window of that streak, has been winning by an average of 125 or more tickets.',
 	resolveInput: lastNResolvedMatchesForSession(20),
 	evaluate: (_ctx, matchDetails) => {
 		let streaker: MH.NormedTeamProp | undefined

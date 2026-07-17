@@ -33,6 +33,7 @@ import { cn } from '@/lib/utils'
 import * as Zod from '@/lib/zod'
 import * as ZusUtils from '@/lib/zustand'
 import * as AAR from '@/models/admin-action-reasons.models'
+import * as BAL from '@/models/balance-triggers.models'
 import type * as BM from '@/models/battlemetrics.models'
 import * as CMD from '@/models/command.models'
 import type * as LP from '@/models/labeled-presets.models'
@@ -334,6 +335,43 @@ type OverrideProps = { value$: ValueState; reset$: Rx.Subject<void>; onChange: (
 function FlagMultiSelectField({ value$, reset$, onChange }: OverrideProps) {
 	const value = useFieldValue(value$, reset$)
 	return <BmFlagMultiSelect value={value ?? []} onChange={onChange} />
+}
+
+// bespoke editor for `balanceTriggerLevels`: one row per known trigger, with its name + description and a severity picker.
+// The persisted shape is a partial record keyed by trigger id, so "Off" means the trigger is simply absent from it.
+const BALANCE_TRIGGER_OFF = 'off'
+function BalanceTriggerLevelsField({ value$, reset$, onChange }: OverrideProps) {
+	const value = (useFieldValue(value$, reset$) as Partial<Record<string, string>>) ?? {}
+	function setLevel(id: string, level: string) {
+		const cur = { ...((value$.getValue() as Record<string, string>) ?? {}) }
+		if (level === BALANCE_TRIGGER_OFF) delete cur[id]
+		else cur[id] = level
+		onChange(cur)
+	}
+	return (
+		<div className="space-y-2">
+			{Object.values(BAL.TRIGGERS).map((trigger) => (
+				<div key={trigger.id} className="flex items-start gap-3 rounded-md border p-2">
+					<div className="min-w-0 flex-1 space-y-0.5">
+						<div className="flex items-baseline gap-2">
+							<span className="text-sm font-medium">{trigger.name}</span>
+							<span className="font-mono text-xs text-muted-foreground">{trigger.id}</span>
+						</div>
+						<p className="text-xs text-muted-foreground">{trigger.description}</p>
+					</div>
+					<Select value={value[trigger.id] ?? BALANCE_TRIGGER_OFF} onValueChange={(level) => setLevel(trigger.id, level)}>
+						<SelectTrigger className="h-8 w-32 shrink-0">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value={BALANCE_TRIGGER_OFF}>Off</SelectItem>
+							{BAL.TRIGGER_LEVEL.options.map((lvl) => <SelectItem key={lvl} value={lvl}>{humanize(lvl)}</SelectItem>)}
+						</SelectContent>
+					</Select>
+				</div>
+			))}
+		</div>
+	)
 }
 
 type PlayerGroupingsValue = Record<string, PG.Grouping | undefined>
@@ -2555,6 +2593,7 @@ function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefin
 	if (path.length === 1 && last === 'broadcasts') return BroadcastsField
 	if (path.length === 1 && last === 'layerTable') return LayerTableField
 	if (path.length === 1 && last === 'layerGeneration') return LayerGenerationField
+	if (path.length === 1 && last === 'balanceTriggerLevels') return BalanceTriggerLevelsField
 	if (path.length === 1 && last === 'playerFlagsRequiringNote') return FlagMultiSelectField
 	if (path.length === 1 && last === 'playerGroupings') return PlayerGroupingsField
 	// the entire `rbac` subtree is rendered by RbacBody (see FieldControl), so no per-field rbac overrides are needed here
