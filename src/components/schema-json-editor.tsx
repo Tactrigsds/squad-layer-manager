@@ -24,6 +24,8 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 	schemaRef.current = props.schema
 	const onValidChangeRef = React.useRef(props.onValidChange)
 	onValidChangeRef.current = props.onValidChange
+	const onReadyRef = React.useRef(props.onReady)
+	onReadyRef.current = props.onReady
 
 	const onChange = React.useCallback((value: string) => {
 		let obj: any
@@ -70,6 +72,7 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 
 		const initialParseRes = schemaRef.current.safeParse(lastSyncedValueRef.current)
 		lastValidRef.current = initialParseRes.success ? initialParseRes.data : null
+		onReadyRef.current?.()
 
 		// remeasure when returning to a hidden tab, matching the old resize-on-visibility behavior
 		const sub = Rx.fromEvent(document, 'visibilitychange').subscribe(() => {

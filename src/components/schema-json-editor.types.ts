@@ -18,5 +18,8 @@ export interface SchemaJsonEditorProps<TOut, TIn = TOut> {
 	minHeightPx?: number
 	// rendered in the editor's own header row, so it stays reachable in fullscreen (where the editor covers the page)
 	toolbar?: React.ReactNode
+	// fired once the editor is mounted and laid out. The bundle is lazy-loaded, so a caller that wants to bring the
+	// editor into view has to wait for this rather than acting on the click that selected it.
+	onReady?: () => void
 	ref?: React.Ref<SchemaJsonEditorHandle>
 }
