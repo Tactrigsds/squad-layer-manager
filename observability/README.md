@@ -27,13 +27,13 @@ docker run --rm --entrypoint cat grafana/otel-lgtm:<tag> /otel-lgtm/tempo-config
 
 then re-applying the deltas in the table below. Diff it against what is here before you trust it.
 
-| File                                | Replaces                            | What we add                                                                                 |
-| ----------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------- |
-| `tempo-config.yaml`                 | `/otel-lgtm/tempo-config.yaml`      | `compactor.compaction.block_retention: 72h`, plus the `local-blocks` processor              |
-| `loki-config.yaml`                  | `/otel-lgtm/loki-config.yaml`       | `limits_config.retention_period: 336h` + a `compactor` block                                |
-| `grafana/provisioning/datasources/` | the image's datasource provisioning | `tracesToMetrics`, otherwise the image's own cross-links                                    |
-| `grafana/provisioning/dashboards/`  | the image's dashboard provisioning  | points at `grafana/dashboards/`; re-declares the image's two RED dashboards so they survive |
-| `grafana/dashboards/`               | nothing (new)                       | the two SLM dashboards                                                                      |
+| File                                | Replaces                            | What we add                                                                                  |
+| ----------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------- |
+| `tempo-config.yaml`                 | `/otel-lgtm/tempo-config.yaml`      | 72h `block_retention` on `backend_scheduler` + `backend_worker` (Tempo 3 has no `compactor`) |
+| `loki-config.yaml`                  | `/otel-lgtm/loki-config.yaml`       | `limits_config.retention_period: 336h` + a `compactor` block                                 |
+| `grafana/provisioning/datasources/` | the image's datasource provisioning | `tracesToMetrics`, otherwise the image's own cross-links                                     |
+| `grafana/provisioning/dashboards/`  | the image's dashboard provisioning  | points at `grafana/dashboards/`; re-declares the image's two RED dashboards so they survive  |
+| `grafana/dashboards/`               | nothing (new)                       | the two SLM dashboards                                                                       |
 
 ## Retention
 
