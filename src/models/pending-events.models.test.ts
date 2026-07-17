@@ -44,6 +44,7 @@ function makeState(opts: {
 	layerId?: L.LayerId
 	isNewMatch?: boolean
 } = {}): { state: PendingEvents.State; hooks: PendingEvents.State['hooks'] } {
+	const eventIdCounter = Gen.counter()
 	const hooks: PendingEvents.State['hooks'] = {
 		onNewGameDuringSync: vi.fn().mockResolvedValue({
 			match: makeMatchDetails(opts.matchId ?? 1, opts.layerId ?? LAYER_A),
@@ -54,10 +55,15 @@ function makeState(opts: {
 			nextLayerId: opts.layerId ?? LAYER_A,
 		}),
 		fetchLayersStatus: () => Promise.resolve(null),
+		// stands in for the db insert: hands out ids in emission order, exactly as the autoincrement column does
+		createEvent: (event) => {
+			const id = Gen.next(eventIdCounter)
+			return Promise.resolve({ ...event, id } as SE.Event)
+		},
 	}
 	const state = PendingEvents.init({
 		currentMatch: opts.currentMatch ?? 'PENDING',
-		counters: { eventId: Gen.counter(), squadId: Gen.counter() },
+		counters: { squadId: Gen.counter() },
 		log: makeLog(),
 		hooks,
 	})

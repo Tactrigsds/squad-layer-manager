@@ -93,7 +93,6 @@ type State = {
 	sliceLifecycleMtxs: Map<string, MutexInterface>
 	// emits a serverId whenever that server's slice is added to or removed from `slices`
 	sliceLifecycleUpdate$: Rx.Subject<string>
-	serverEventIdCounter: Generator<number, never, unknown>
 	squadIdCounter: Generator<number, never, unknown>
 
 	debug__ticketOutcome?: { team1: number; team2: number }
@@ -111,13 +110,8 @@ export type SquadServer = {
 	// latest "Server Tick Rate" reported in the game logs; null until the first sample is seen
 	tickRate$: Rx.BehaviorSubject<number | null>
 
-	// if null, we haven't saved yet in this instantiation of the server
-	lastSavedEventId: number | null
-
-	// ids saveEvents has already processed (saved or skipped); guards against double-persisting an event id.
-	// Pruned alongside the emittedEvents rotation on match rollover.
-	savedEventIds: Set<number>
-
+	// events of the current match, kept in memory purely to serve the chat feed without a query. Every one of
+	// them is already persisted (see the createEvent hook); this is a cache, not a write buffer.
 	emittedEvents: SE.Event[]
 	// TODO we should slim down the context we provide here so that we're just transmitting span & logging info, and leave the listener to construct everything else
 	event$: Rx.Subject<[C.Db & C.ServerSlice, SE.Event]>
@@ -133,7 +127,6 @@ export type SquadServer = {
 	cleanupId: number | null
 
 	processEventsMtx: MutexInterface
-	savingEventsMtx: MutexInterface
 } & SquadRcon.SquadRcon
 
 export type MatchHistoryState = {
@@ -591,20 +584,9 @@ export async function setup() {
 	globalState = {
 		slices: new Map(),
 		sliceLifecycleUpdate$: new IsolatedSubject(),
-		serverEventIdCounter: undefined!,
 		squadIdCounter: undefined!,
 		sliceLifecycleMtxs: new Map(),
 	}
-
-	const lastEventRes = await ctx
-		.db()
-		.select({ id: Schema.serverEvents.id })
-		.from(Schema.serverEvents)
-		.orderBy(E.desc(Schema.serverEvents.id))
-		.limit(1)
-	// driver sometimes returns strings so just to be safe
-	const nextEventId = lastEventRes.length > 0 ? lastEventRes[0].id + 1 : 0
-	globalState.serverEventIdCounter = Gen.counter(nextEventId)
 
 	const lastSquadRes = await ctx
 		.db()
@@ -739,7 +721,6 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	cleanup.push(() => adminList.dispose())
 	const eventState: PendingEvents.State = PendingEvents.init({
 		counters: {
-			eventId: globalState.serverEventIdCounter,
 			squadId: globalState.squadIdCounter,
 		},
 		currentMatch: 'PENDING',
@@ -747,6 +728,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		hooks: {
 			onNewGameDuringRoll: onNewGameDuringRoll(serverId),
 			onNewGameDuringSync: onNewGameDuringSync(serverId),
+			createEvent: createEvent(serverId),
 			fetchLayersStatus: async () => {
 				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
 				const data = await Rx.firstValueFrom(
@@ -789,12 +771,8 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		chatState: CHAT.getInitialChatState(),
 		emittedEvents: [],
 		emittedAppEvents: [],
-		lastSavedEventId: null,
-		savedEventIds: new Set(),
 		destroyed: false,
 		cleanupId: null,
-
-		savingEventsMtx: new Mutex(),
 
 		...SquadRcon.initSquadRcon({ ...ctx, rcon, adminList, serverId }, cleanup, { onFatalError: onResourceFatalError }),
 	}
@@ -805,7 +783,6 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		server.tickRate$,
 		server.event$,
 		server.appEvent$,
-		server.savingEventsMtx,
 		server.processEventsMtx,
 	)
 
@@ -1080,34 +1057,6 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			)
 			.subscribe(),
 	)
-
-	{
-		// -------- periodically save events  --------
-		const saveEventSub = Rx.interval(10_000)
-			.pipe(
-				Rx.filter(() => {
-					const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-					return ctx.server.emittedEvents.length > 0
-						&& ctx.server.lastSavedEventId !== ctx.server.emittedEvents[ctx.server.emittedEvents.length - 1].id
-				}),
-				C.durableSub(
-					'save-events-interval',
-					{ module, root: true, taskScheduling: 'exhaust' },
-					async () => {
-						const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-						return saveEvents(ctx)
-					},
-				),
-			)
-			.subscribe()
-
-		// -------- save remaining events on cleanup  --------
-		cleanup.push(async () => {
-			const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-			saveEventSub.unsubscribe()
-			await saveEvents(ctx)
-		})
-	}
 
 	void LayerQueue.setupInstance({ ...ctx, ...slice })
 	Battlemetrics.setupSquadServerInstance({ ...ctx, ...slice })
@@ -1854,10 +1803,7 @@ const loadSavedEvents = C.spanOp(
 				.where(E.eq(Schema.serverEvents.matchId, lastMatch.id))
 				.orderBy(E.asc(Schema.serverEvents.id))
 			: []
-		const events = SE.fromEventRows({ ...ctx, log }, rowsRaw.map((r) => r.event))
-		server.lastSavedEventId = events[events.length - 1]?.id ?? null
-		server.emittedEvents = events
-		server.savedEventIds = new Set(events.map((e) => e.id))
+		server.emittedEvents = SE.fromEventRows({ ...ctx, log }, rowsRaw.map((r) => r.event))
 
 		const appEventRows = lastMatch
 			? await ctx
@@ -1871,27 +1817,28 @@ const loadSavedEvents = C.spanOp(
 	},
 )
 
-type EventInsertRows = {
-	eventRow: SchemaModels.NewServerEvent
+// the rows that hang off an event, and so can only be built once the insert has allocated its id
+type EventAssociationRows = {
 	playerRows: SchemaModels.NewPlayer[]
 	playerAssociationRows: SchemaModels.NewPlayerEventAssociation[]
 	squadRows: SchemaModels.NewSquad[]
 	squadAssociationRows: SchemaModels.NewSquadEventAssociation[]
 }
 
-function buildEventRows(ctx: CS.Log, event: SE.Event): EventInsertRows {
-	const persisted = Obj.omit(event, ['id', 'type', 'time', 'matchId'])
+function buildEventRow(event: SE.NewEvent): SchemaModels.NewServerEvent {
+	const persisted = Obj.omit(event, ['type', 'time', 'matchId'])
 	// queryable projection of source when it links to an app event
 	const source = (event as { source?: { type: string; id?: string } }).source
-	const eventRow: SchemaModels.NewServerEvent = {
-		id: event.id,
+	return {
 		type: event.type,
 		time: new Date(event.time),
 		matchId: event.matchId,
 		appEventId: source?.type === 'event' ? source.id! : null,
 		data: superjson.serialize(persisted),
 	}
+}
 
+function buildAssociationRows(ctx: CS.Log, event: SE.Event): EventAssociationRows {
 	const playerRows: SchemaModels.NewPlayer[] = []
 	const playerAssociationRows: SchemaModels.NewPlayerEventAssociation[] = []
 	for (const [player, assocType] of SE.iterAssocPlayers(event)) {
@@ -1929,18 +1876,10 @@ function buildEventRows(ctx: CS.Log, event: SE.Event): EventInsertRows {
 		squadAssociationRows.push({ squadId: uniqueSquadId, serverEventId: event.id })
 	}
 
-	return { eventRow, playerRows, playerAssociationRows, squadRows, squadAssociationRows }
+	return { playerRows, playerAssociationRows, squadRows, squadAssociationRows }
 }
 
-// Persists the rows for a single event. Kept as one unit so a caller can wrap it in a per-event transaction:
-// any statement here that throws (a constraint violation, a bad steamId, an unknown-player FK) aborts only this
-// event, letting the caller log it and move on rather than rolling back an entire batch.
-async function insertEventRows(ctx: C.Db, rows: EventInsertRows) {
-	await ctx
-		.db()
-		.insert(Schema.serverEvents)
-		.values([rows.eventRow])
-
+async function insertAssociationRows(ctx: C.Db, rows: EventAssociationRows) {
 	if (rows.playerRows.length > 0) {
 		await ctx
 			.db()
@@ -2042,86 +1981,31 @@ async function insertEventRows(ctx: C.Db, rows: EventInsertRows) {
 	}
 }
 
-// Persists buffered events one at a time, each in its own transaction. If any row insert for an event throws
-// (a constraint violation, a malformed steamId, etc.) the event is logged in full and skipped, so a single bad
-// event can neither roll back the rest of the batch nor silently drop it. The in-memory cursor advances only
-// after each event is dealt with, keeping it in step with the DB even across a crash mid-batch.
+// Persists a single event and returns it with the id the insert allocated -- the createEvent hook every event
+// PendingEvents emits goes through. serverEvents.id is autoincrement, so the db, not the app, hands out ids and
+// they can't drift from what's on disk.
 //
-// NOTE: a failing event is skipped (its cursor advances) after being logged, so its data is dropped on purpose
-// rather than becoming a poison pill that blocks every later event. The error log is the record of what was lost.
-export const saveEvents = C.spanOp(
-	'saveEvents',
-	{ module, mutexes: (ctx) => ctx.server.savingEventsMtx },
-	async (ctx: C.SquadServer & C.Db) => {
-		const server = ctx.server
-
-		let events: SE.Event[] = []
-		if (server.lastSavedEventId === null) {
-			events = server.emittedEvents.slice()
-		} else {
-			const lastSavedIndex = server.emittedEvents.findIndex((e) => e.id === server.lastSavedEventId)
-			if (lastSavedIndex === -1) {
-				throw new Error(`CRITICAL: Unable to resolve last saved event ${server.lastSavedEventId}`)
-			}
-			events = server.emittedEvents.slice(lastSavedIndex + 1)
-		}
-
-		if (events.length === 0) {
-			log.debug('No events to save')
-			return
-		}
-
-		let savedCount = 0
-		let failedCount = 0
-		for (const event of events) {
-			if (server.savedEventIds.has(event.id)) {
-				log.error('saveEvents: duplicate event id %d (%s), skipping', event.id, event.type)
-				server.lastSavedEventId = event.id
-				continue
-			}
-
-			const rows = buildEventRows({ ...CS.init(), log }, event)
-			try {
-				await DB.runTransaction(ctx, { redactParams: true }, (txCtx) => insertEventRows(txCtx, rows))
-				savedCount++
-			} catch (err) {
-				failedCount++
-				// err in the merge object so pino's error serializer includes message/stack (a %o format drops
-				// non-enumerable Error props, leaving just the code)
-				log.error(
-					{ err, event, playerRows: rows.playerRows, squadRows: rows.squadRows },
-					'saveEvents: failed to persist event %d (%s); skipping it so the rest of the batch is not lost',
-					event.id,
-					event.type,
-				)
-			}
-			// Advance past the event whether it committed or failed. Leaving the cursor behind a failed event would
-			// re-fail it on every flush and block every later event from ever being saved.
-			server.savedEventIds.add(event.id)
-			server.lastSavedEventId = event.id
-		}
-
-		if (failedCount > 0) {
-			log.warn('saveEvents: persisted %d event(s), %d failed and were skipped', savedCount, failedCount)
-		}
-
-		// Everything before the current match is persisted and no longer served from memory; rotate it out so
-		// emittedEvents (and the duplicate-id set) don't grow for the life of the process. Mirrors what
-		// loadEventState keeps on slice boot. The cut is bounded by the save cursor: events can land for a NEW
-		// match while this flush's inserts are in flight, and cutting past the cursor would strand it (the next
-		// flush resolves lastSavedEventId by index).
-		const currentMatchId = server.emittedEvents[server.emittedEvents.length - 1]?.matchId
-		if (currentMatchId !== undefined && server.lastSavedEventId !== null) {
-			const firstCurrentIdx = server.emittedEvents.findIndex((e) => e.matchId === currentMatchId)
-			const cursorIdx = server.emittedEvents.findIndex((e) => e.id === server.lastSavedEventId)
-			const cutoff = Math.min(firstCurrentIdx, cursorIdx)
-			if (cutoff > 0) {
-				const dropped = server.emittedEvents.splice(0, cutoff)
-				for (const e of dropped) server.savedEventIds.delete(e.id)
-			}
-		}
-	},
-)
+// One transaction per event: a statement that throws (a constraint violation, a bad steamId, an unknown-player
+// FK) rolls back only this event, and the throw propagates so the caller never emits an event we failed to
+// record. PendingEvents.process() logs it and moves on to the next pending event.
+const createEvent = (serverId: string): PendingEvents.State['hooks']['createEvent'] => async (newEvent) => {
+	const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+	return C.spanOp(
+		'createEvent',
+		{ module },
+		async () =>
+			await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
+				const [inserted] = await ctx
+					.db()
+					.insert(Schema.serverEvents)
+					.values(buildEventRow(newEvent))
+					.returning({ id: Schema.serverEvents.id })
+				const event = { ...newEvent, id: inserted.id } as SE.Event
+				await insertAssociationRows(ctx, buildAssociationRows({ ...ctx, log }, event))
+				return event
+			}),
+	)()
+}
 
 const onNewGameDuringSync = (serverId: string): PendingEvents.State['hooks']['onNewGameDuringSync'] => async (currentLayerId, _time) => {
 	const ctx = resolveSliceCtx(getBaseCtx(), serverId)
@@ -2129,7 +2013,7 @@ const onNewGameDuringSync = (serverId: string): PendingEvents.State['hooks']['on
 		'onNewGameDuringSync',
 		{
 			module,
-			mutexes: () => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx],
+			mutexes: () => [ctx.matchHistory.mtx],
 			levels: { event: 'info' },
 		},
 		async () => {
@@ -2145,7 +2029,7 @@ const onNewGameDuringRoll = (serverId: string): PendingEvents.State['hooks']['on
 		'onNewGameDuringRoll',
 		{
 			module,
-			mutexes: () => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx, ctx.layerQueue.updateLayerMtx],
+			mutexes: () => [ctx.matchHistory.mtx, ctx.layerQueue.updateLayerMtx],
 			levels: { event: 'info' },
 		},
 		async () =>
