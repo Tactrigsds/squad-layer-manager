@@ -35,7 +35,7 @@ declare module 'zod' {
 	interface GlobalMeta {
 		envExample?: EnvExampleMeta
 		// the var holds a credential: it is read from the secrets file (see readSecretsFile) and written to
-		// .env.secrets.example rather than .env.example. docs/INSTALLING.md covers why.
+		// .env.secrets.example rather than .env.example. docs/installing.md covers why.
 		secret?: true
 	}
 }

@@ -8,7 +8,7 @@
 
 ### 2. Where to Install
 
-SLM needs access to your Squad Server's log files in order to function. This can be done either locally by mounting the log files directly into the container, via an SFTP connection(this works with PSG-hosted servers for example), or by running a server agent on the game host that streams log data (and proxies RCON) to the SLM server (see [CONFIGURING.md#server-agent](CONFIGURING.md#server-agent) for more). SLM can be set up with any number of squad servers, so keep that in mind as well when deciding where to install it.
+SLM needs access to your Squad Server's log files in order to function. This can be done either locally by mounting the log files directly into the container, via an SFTP connection(this works with PSG-hosted servers for example), or by running a server agent on the game host that streams log data (and proxies RCON) to the SLM server (see [configuring.md#server-agent](configuring.md#server-agent) for more). SLM can be set up with any number of squad servers, so keep that in mind as well when deciding where to install it.
 
 ### 3. Installation
 
@@ -79,17 +79,9 @@ services:
     env_file: .env
 ```
 
-A container's environment is not a private place. Anyone who can reach the docker daemon reads all of it back
-with `docker inspect`, it sits in `/proc/<pid>/environ` for anyone on the host who can see the process, and
-every library and subprocess inside the container can read it out of the environment they inherit. None of that
-is a bug in docker: it is what an environment is, which is why it is the wrong place to put a password. SLM
-reads `.env.secrets` as a file and never loads what is in it into its own environment, so your credentials
-reach none of those places. Everything else goes on being handed over as `env_file: .env`, where being readable
-costs nothing, since it describes the shape of the install rather than the keys to it.
-
-SLM still reads any of these from a real environment variable if it finds one there, so an install predating
-this split keeps working. It warns on boot when it does, naming the variables: nothing stops you passing them
-that way, it just costs you what the file is for.
+SLM reads `.env.secrets` as a file and never loads it into its own environment, so the credentials stay out of
+`docker inspect`, `/proc/<pid>/environ`, and the environment every subprocess inherits. Everything else stays in
+`.env`, handed over with `env_file`.
 
 If your secrets come from a secrets manager, mount whatever file it produces and point `SECRETS_FILE` at it. As
 a docker secret, for instance:
@@ -224,7 +216,7 @@ If docker is configured to start on boot, then the app will start automatically 
 
 Stop everything with `docker compose down`. If you want to stop just the app while leaving grafana running, use `docker compose stop app`.
 
-Once you've got the app running, you'll be able to sign in with discord OAuth, and you can move on to [configuring SLM](CONFIGURING.md).
+Once you've got the app running, you'll be able to sign in with discord OAuth, and you can move on to [configuring SLM](configuring.md).
 
 #### 3.10. Upgrading
 

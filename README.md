@@ -4,15 +4,15 @@ A Tool for managing the upcoming layers of a squad server, and other things also
 
 ## Documentation
 
-- [Installing](docs/INSTALLING.md) - Get SLM Running
-- [Configuring](docs/CONFIGURING.md) - Configure SLM to work for your squad server
-- [Layer data](docs/LAYER_DATA.md) - the layer artifact pair, how it is resolved, and building your own.
+- [Installing](docs/installing.md) - Get SLM Running
+- [Configuring](docs/configuring.md) - Configure SLM to work for your squad server
+- [Layer data](docs/layer_data.md) - the layer artifact pair, how it is resolved, and building your own.
 - [Contributing](CONTRIBUTING.md) - local dev setup, the test suites, and the pre-push hook.
 
 ## Deployment
 
 Docker, via Docker Compose. The image (`ghcr.io/tactrigsds/squad-layer-manager:latest`, built from `main`) carries
-the app and a complete set of layer data. See [docs/INSTALLING.md](docs/INSTALLING.md) for the full walkthrough; the
+the app and a complete set of layer data. See [docs/installing.md](docs/installing.md) for the full walkthrough; the
 short version is:
 
 ```sh
