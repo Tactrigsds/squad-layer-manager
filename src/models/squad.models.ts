@@ -324,14 +324,14 @@ export namespace PlayerIds {
 	// containment is possible when the real player isn't in the list, so only use this as a fallback after find().
 	export function findByUsernameLoose<T>(players: T[], cb: (item: T) => Type, username: string): T | undefined {
 		const names = players.map(p => cb(p).username ?? '')
-		const res = simpleUniqueStringMatch(names, username)
+		const res = simpleUniqueStringMatch(names, username, { stripNonAscii: true })
 		if (res.code === 'ok') return players[res.matched]
 		// the log name may carry a tag the RCON name lacks; try the reverse direction
-		const target = normalizeForMatch(username)
+		const target = normalizeForMatch(username, { stripNonAscii: true })
 		if (!target) return undefined
 		const reverseMatches: number[] = []
 		for (let i = 0; i < names.length; i++) {
-			const name = normalizeForMatch(names[i])
+			const name = normalizeForMatch(names[i], { stripNonAscii: true })
 			if (name && target.includes(name)) reverseMatches.push(i)
 		}
 		if (reverseMatches.length === 1) return players[reverseMatches[0]]
