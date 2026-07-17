@@ -401,14 +401,22 @@ nor cares which of the four it was handed.
 
 `ZusUtils.useStore` is heavily overloaded and is the sanctioned read path for component display logic: one input
 returns its state;
-N inputs plus a trailing selector calls `selector(...states)`; N inputs alone returns a tuple. It runs
-`useQueries` for query sources, subscribes to sync sources in an effect, and bails out on `Object.is`
-(element-wise for the tuple case, since the tuple is freshly allocated each compute and would otherwise always
-look changed). Nullish inputs are tolerated as placeholders so hook dependency counts stay stable.
+N inputs plus a trailing selector calls `selector(...states)`; N inputs alone returns a tuple. It reads through
+`useSyncExternalStore`, caching the snapshot on the states **and** the selector's identity: the states half is
+what stops an uncached snapshot from spinning, and the selector half is what makes an inline selector closing
+over a prop recompute when that prop changes. Nullish inputs are tolerated as placeholders so hook dependency
+counts stay stable.
 
-Outside render, the counterpart is **`ZusUtils.getState`**: a point-in-time read with no subscription, for
-event handlers and `Actions` code. Both resolve frame keys the same way and feed the same `Sel` selectors, so
-the choice is only whether you want to subscribe.
+`useQueries` is called only when at least one input is a query source, because an empty one still allocates an
+observer and re-runs its `setQueries` effect on every render. That makes the hook call conditional, which is
+sound only because the count is fixed for a component instance; a guard throws if it ever changes. Pass a query
+unconditionally and use its `enabled` option if you need it inert.
+
+Outside render, the counterpart is **`ZusUtils.getState`**, which mirrors the same overloads without
+subscribing: one input returns its state, N inputs plus a selector calls `selector(...states)`. Both resolve
+frame keys the same way and feed the same `Sel` selectors, so the choice is only whether you want to subscribe.
+If any input is a query source, `getState` returns a **promise** (it awaits via `ensureQueryData`); that is
+decided in the types, so it is a compile error rather than a silent `undefined`.
 
 Merging several sources into one selector is the intended way to derive state:
 
@@ -425,9 +433,12 @@ The same selectors are reusable verbatim off the render path, applied to a `getS
 const current = Sel.tanstackSortingState(ZusUtils.getState(stores.layerTable))
 ```
 
-Note the shape difference: `useStore` takes N sources and hands their states to the selector, while `getState`
-reads one source and you apply the selector yourself. Merging several sources has no `getState` equivalent;
-read each one and combine them in the handler.
+The two call shapes rhyme, so moving a selector between render and handler code is a mechanical edit -- the
+merged read above works off the render path too:
+
+```ts
+const presence = ZusUtils.getState(ConfigClient.Store, UPClient.Store, Sel.clientPresence)
+```
 
 Frame keys are recognized structurally and resolved through a resolver that `frame-manager.ts` injects at init
 (`registerFrameKeyResolver`), purely because `zustand.ts` cannot import `frame.ts` without a cycle.

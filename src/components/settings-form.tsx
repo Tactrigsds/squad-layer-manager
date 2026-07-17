@@ -2869,12 +2869,13 @@ function ArrayField(
 	const items: Node = node.items ?? {}
 	const { inner } = stripNullable(items)
 
+	const value = (useFieldValue(value$, reset$) as any[]) ?? []
+
 	// array of enum -> multi-select
 	if (inner.enum && inner.type !== 'array' && inner.type !== 'object') {
 		return <EnumArrayField value$={value$} reset$={reset$} onChange={onChange} options={inner.enum} />
 	}
 
-	const value = (useFieldValue(value$, reset$) as any[]) ?? []
 	const isPrimitive = inner.type === 'string' || inner.type === 'integer' || inner.type === 'number' || isStringOrNumber(inner)
 
 	// structural edits emit reset$ so uncontrolled item inputs re-read after re-indexing
