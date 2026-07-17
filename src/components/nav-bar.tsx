@@ -22,7 +22,6 @@ import { useIsDesktopSize, useIsSmallViewport } from '@/lib/browser.ts'
 import * as Obj from '@/lib/object'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
-import * as USR from '@/models/users.models.ts'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
@@ -46,7 +45,7 @@ export default function NavBar() {
 	const { simulate, setSimulate } = ZusUtils.useStore(RbacClient.RbacStore)
 	const user = useLoggedInUser()
 
-	const avatarUrl = user && USR.getAvatarUrl(user)
+	const avatarUrl = user?.avatarUrl
 
 	// Check if we're on the server dashboard route
 	const isOnServerDashboard = TSR.useMatch({ from: '/_app/servers/$serverId', shouldThrow: false })
