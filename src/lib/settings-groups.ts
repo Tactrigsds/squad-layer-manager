@@ -54,7 +54,6 @@ export const ADVANCED_GLOBAL_SETTINGS_PATHS: ReadonlySet<string> = new Set([
 ])
 
 export const ADVANCED_SERVER_SETTINGS_PATHS: ReadonlySet<string> = new Set([
-	'navLinks',
 	'squadServer',
 	'postRollAnnouncementsTimeout',
 ])
