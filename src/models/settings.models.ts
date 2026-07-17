@@ -247,7 +247,7 @@ export const GlobalSettingsSchema = z.object({
 				'How stale the cached current/next layer may be before a read refetches it over RCON.',
 			),
 			serverInfo: HumanTime.prefault('10s').describe(
-				'How stale cached server info (player count, tick rate) may be before a read refetches it over RCON.',
+				'How stale cached server info (server name, queue length, max player count, etc.) may be before a read refetches it over RCON.',
 			),
 			teams: HumanTime.prefault('5s').describe(
 				'How stale the cached roster may be before a read refetches it over RCON. Also the interval at which observers poll ListPlayers.',
