@@ -15,6 +15,7 @@ import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
 import * as Rbac from '@/systems/rbac.server'
+import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Otel from '@opentelemetry/api'
 import * as Rx from 'rxjs'
@@ -80,13 +81,6 @@ function getCachedPlayer(eosId: string): BM.PlayerFlagsAndProfile | undefined {
 	if (!entry) return undefined
 	if (Date.now() > entry.expiresAt) return undefined
 	return entry.value
-}
-
-function getCachedPlayerEntry(eosId: string): { value: BM.PlayerFlagsAndProfile; bmPlayerId: string } | undefined {
-	const entry = playerFlagsAndProfileCache.get(eosId)
-	if (!entry) return undefined
-	if (Date.now() > entry.expiresAt) return undefined
-	return entry
 }
 
 function setCachedPlayer(eosId: string, bmPlayerId: string, value: BM.PlayerFlagsAndProfile) {
@@ -653,53 +647,121 @@ export const router = {
 		return getOrgFlags(ctx)
 	}),
 
-	updatePlayerFlags: orpcBase.meta({ type: 'mutation' }).input(z.object({
+	addFlags: orpcBase.meta({ type: 'mutation' }).input(z.object({
 		playerId: z.string(),
-		flagIds: z.array(z.string()),
+		flagIds: z.array(z.string()).min(1),
+		reason: z.string().trim().optional(),
+	})).handler(async ({ input, context: ctx }) => {
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('battlemetrics:write-flags'))
+		if (denyRes) return denyRes
+
+		const orgFlags = await getOrgFlags(ctx)
+		const reason = input.reason?.trim() || undefined
+		// the client marks the field required, but it's the client of a permission-gated mutation: re-check here
+		const requiring = BM.flagsRequiringNote(input.flagIds, Settings.GLOBAL_SETTINGS.playerFlagsRequiringNote)
+		if (requiring.length > 0 && !reason) {
+			return { code: 'err:reason-required' as const, flags: BM.resolveFlags(requiring, orgFlags).map((f) => f.name) }
+		}
+
+		const playerIds = SM.PlayerIds.queryFromPlayerId(input.playerId)
+		const current = await fetchSinglePlayerBmData(ctx, playerIds)
+		if (!current) return { code: 'err:not-found' as const }
+
+		const toAdd = input.flagIds.filter((id) => !current.flagIds.includes(id))
+		if (toAdd.length === 0) return { code: 'err:already-flagged' as const }
+
+		const res = await addPlayerFlags(ctx, current.bmPlayerId, toAdd)
+		if (res.code === 'player-already-has-flag') return { code: 'err:already-flagged' as const }
+
+		const added = BM.resolveFlags(toAdd, orgFlags).map((f) => ({ id: f.id, name: f.name }))
+		const noteAdded = await postFlagChangeNote(ctx, current.bmPlayerId, {
+			action: 'added',
+			flagNames: added.map((f) => f.name),
+			actor: actorLabel(ctx),
+			reason,
+		})
+
+		const updated = await refreshPlayerFlags(ctx, input.playerId, playerIds)
+		await persistFlagsUpdatedEvent(ctx, { playerId: input.playerId, added, removed: [], reason })
+
+		return { code: 'ok' as const, data: updated, noteAdded }
+	}),
+
+	removeFlags: orpcBase.meta({ type: 'mutation' }).input(z.object({
+		playerId: z.string(),
+		flagIds: z.array(z.string()).min(1),
+		reason: z.string().trim().optional(),
 	})).handler(async ({ input, context: ctx }) => {
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('battlemetrics:write-flags'))
 		if (denyRes) return denyRes
 
 		const playerIds = SM.PlayerIds.queryFromPlayerId(input.playerId)
-		const eosId = input.playerId
 		const current = await fetchSinglePlayerBmData(ctx, playerIds)
 		if (!current) return { code: 'err:not-found' as const }
 
-		const currentFlagIds = new Set(current.flagIds)
-		const desiredFlagIds = new Set(input.flagIds)
+		const toRemove = input.flagIds.filter((id) => current.flagIds.includes(id))
+		if (toRemove.length === 0) return { code: 'err:not-flagged' as const }
 
-		const toAdd = input.flagIds.filter((id) => !currentFlagIds.has(id))
-		const toRemove = [...currentFlagIds].filter((id) => !desiredFlagIds.has(id))
-
-		const cacheEntry = getCachedPlayerEntry(eosId)!
-		await Promise.all([
-			addPlayerFlags(ctx, cacheEntry.bmPlayerId, toAdd),
-			removePlayerFlags(ctx, cacheEntry.bmPlayerId, toRemove),
-		])
-
-		// Bust cache so next fetch returns fresh data
-		playerFlagsAndProfileCache.delete(eosId)
-		const updated = await fetchSinglePlayerBmData(ctx, playerIds)
-
-		// Persist immediately so DB doesn't serve stale flags on next startup
-		persistCache().catch((err) => log.warn({ err }, 'Failed to persist BM cache after flag update'))
+		await removePlayerFlags(ctx, current.bmPlayerId, toRemove)
 
 		const orgFlags = await getOrgFlags(ctx)
-		const flagInfo = (ids: string[]) => BM.resolveFlags(ids, orgFlags).map((f) => ({ id: f.id, name: f.name }))
-		await AppEventsSys.persistAppEvent(
-			ctx,
-			AppEvents.create<AppEvents.PlayerFlagsUpdated>({
-				type: 'PLAYER_FLAGS_UPDATED',
-				playerId: input.playerId,
-				added: flagInfo(toAdd),
-				removed: flagInfo(toRemove),
-				actor: { type: 'slm-user', userId: ctx.user.discordId },
-				serverId: null,
-				matchId: null,
-				causeId: null,
-			}),
-		)
+		const reason = input.reason?.trim() || undefined
+		const removed = BM.resolveFlags(toRemove, orgFlags).map((f) => ({ id: f.id, name: f.name }))
+		const noteAdded = await postFlagChangeNote(ctx, current.bmPlayerId, {
+			action: 'removed',
+			flagNames: removed.map((f) => f.name),
+			actor: actorLabel(ctx),
+			reason,
+		})
 
-		return { code: 'ok' as const, data: updated }
+		const updated = await refreshPlayerFlags(ctx, input.playerId, playerIds)
+		await persistFlagsUpdatedEvent(ctx, { playerId: input.playerId, added: [], removed, reason })
+
+		return { code: 'ok' as const, data: updated, noteAdded }
 	}),
+}
+
+function actorLabel(ctx: C.User) {
+	return `${ctx.user.displayName} (Discord ${ctx.user.discordId})`
+}
+
+// a failed note must not fail the flag change itself: the flag is already written to BM by this point, and
+// reporting failure would invite a retry that double-flags. callers surface `noteAdded` instead.
+async function postFlagChangeNote(
+	ctx: CS.Ctx & CS.AbortSignal,
+	bmPlayerId: string,
+	opts: { action: 'added' | 'removed'; flagNames: string[]; actor: string; reason?: string },
+) {
+	if (opts.flagNames.length === 0) return true
+	return await addPlayerNote(ctx, bmPlayerId, BM.flagChangeNote(opts))
+		.then(() => true)
+		.catch((err) => {
+			log.warn({ err, bmPlayerId }, 'failed to post BM note after flag change')
+			return false
+		})
+}
+
+async function refreshPlayerFlags(ctx: CS.Ctx & CS.AbortSignal, eosId: string, playerIds: SM.PlayerIds.IdQuery<'eos'>) {
+	playerFlagsAndProfileCache.delete(eosId)
+	const updated = await fetchSinglePlayerBmData(ctx, playerIds)
+	// persist immediately so the db doesn't serve stale flags on next startup
+	persistCache().catch((err) => log.warn({ err }, 'Failed to persist BM cache after flag update'))
+	return updated
+}
+
+async function persistFlagsUpdatedEvent(
+	ctx: C.User & C.Db,
+	e: Pick<AppEvents.PlayerFlagsUpdated, 'playerId' | 'added' | 'removed' | 'reason'>,
+) {
+	await AppEventsSys.persistAppEvent(
+		ctx,
+		AppEvents.create<AppEvents.PlayerFlagsUpdated>({
+			type: 'PLAYER_FLAGS_UPDATED',
+			...e,
+			actor: { type: 'slm-user', userId: ctx.user.discordId },
+			serverId: null,
+			matchId: null,
+			causeId: null,
+		}),
+	)
 }
