@@ -137,21 +137,14 @@ whatever distance the nearest `catch` happens to sit.
 handle it. Given how many discriminated unions the domain layer has (30+), this is the main mechanism keeping
 them honest.
 
-### Copy-on-write by default
-
-State updates copy rather than mutate unless mutation is proven safe or the path is hot. Immer is used where
-the copying gets tedious (frame state, presence, filter editing). This is what makes the per-item selector
-memoization on the client work: because a list's reference only changes on a real mutation, a reference-equal
-memo is sufficient and a deep-equality check would be wasted work.
-
 ### Schema-first models
 
 Zod schema is declared first, the type is derived from it (`export type X = z.infer<typeof XSchema>`), near
 universally. Notable house conventions:
 
 - `.prefault(...)` rather than `.default(...)`, so defaults are themselves validated.
-- `.describe(...)` / `.meta({description})` are not documentation, they are **UI**. The settings page renders
-  a schema-driven form and reads these as field help text.
+- `.describe(...)` / `.meta({description})` are not only documentation, they are **UI**. The settings page renders
+  a schema-driven form and reads these as field help text, and the LSPs of the in-app editors will render these as tooltips due to the generated JSON schema.
 - `z.preprocess` is used sparingly and treated as a hazard. It is explicitly banned in `GlobalSettings`
   after a past incident.
 - No `z.brand()` anywhere. Nominal-ish typing is done informally through type aliases.
@@ -406,7 +399,7 @@ which unifies a raw zustand store, a frame instance key, a react-query options o
 `StateObservable` behind one interface. Everything downstream accepts `AnyInput`, so a component neither knows
 nor cares which of the four it was handed.
 
-`ZusUtils.useStore` is heavily overloaded and is the sanctioned read path **for display logic**: one input
+`ZusUtils.useStore` is heavily overloaded and is the sanctioned read path for component display logic: one input
 returns its state;
 N inputs plus a trailing selector calls `selector(...states)`; N inputs alone returns a tuple. It runs
 `useQueries` for query sources, subscribes to sync sources in an effect, and bails out on `Object.is`
@@ -624,8 +617,8 @@ It is a pure state machine (`init` + `on*` transitions), and the most heavily te
 
 ### Settings
 
-Almost all configuration is runtime-editable settings in the database, not config files. `src/server/config.ts`
-and `slm-config.jsonc` were dissolved; what remains in env vars is only what is needed to boot.
+Almost all configuration is runtime-editable settings in the database, not config files. This is done so that
+all hosts can have a smooth upgrade path via database migrations with limited manual intervention.
 
 Two schemas: `GlobalSettingsSchema` (one document: RBAC, commands, layer generation, admin action reasons,
 broadcasts, vote/queue tunables) and `ServerSettingsSchema` (per server: connections, admin list sources,
@@ -639,19 +632,14 @@ Permissions are computed fresh per request from three sources merged into a trac
 records **which role granted it** (for UI and audit): env-var super users/roles (the bootstrap that cannot be
 locked out), admin-editable roles, and per-filter contributor grants.
 
-Validation strictness is deliberately uneven. A settings document that fails to parse takes the server down at
-boot, so a stale layer-generation weight entry (referencing a dropped map) is treated as **inert rather than
-invalid** and surfaced by the editor. Command prefixes and aliases are validated strictly, since those failures
-are recoverable.
-
 A server whose stored settings fail validation is marked `broken` and force-disabled, so that fixing an
 unrelated thing does not silently reactivate it. An admin must re-enable it explicitly.
 
 ## The layer engine (rust/wasm)
 
-`layer-engine/` is Rust compiled to wasm, replacing what used to be a SQLite layer database. It
-owns the layer table in columnar form and answers every query the app makes: filtering, sorting, paging,
-distinct values, statuses, and weighted generation.
+`layer-engine/` is Rust compiled to wasm, which can query into a set columnar data format containing all known layer combinations.
+It handles a number of different query behaviors, including filtering, sorting, paging,
+distinct values, and weighted random selection.
 
 **One module serves both hosts.** The server and the browser's query worker load the same `.wasm`.
 
@@ -660,10 +648,8 @@ memory, calls in, and reads the response back via `result_ptr`/`result_len`. Req
 (Host-side gotcha: take a fresh `Uint8Array` view after every call, since allocation can grow and detach
 memory.)
 
-**All semantic lowering stays in TypeScript.** `models/layer-engine.ts` compiles the filter AST down to a
-small IR of primitive comparisons over column indices and encoded values. Team-column expansion, enum mapping,
-null-as-enum-index, and forgiving reversed range bounds all happen TS-side, because duplicating that semantics
-in a second language is how the two drift apart. The IR:
+**All semantic lowering is done in TypeScript.** `models/layer-engine.ts` compiles the filter AST down to a
+small IR of primitive comparisons over column indices and encoded values.
 
 ```ts
 type Ir =
@@ -690,13 +676,10 @@ the IR's JSON, which can never go stale because the layer table is immutable for
 The one place duplication _is_ accepted is generation key packing, which is implemented identically in
 `layer-columns.ts` and `gen.rs`, so a key computed from a weight entry matches the key computed from a row.
 
-Golden tests (`test/fixtures/layer-engine-golden.json`) gate the engine.
-
 ## Out-of-process pieces
 
 **The server agent** (`server-agent/agent`, Rust) runs on the game host. It tails
-`SquadGame.log` and streams lines over a WebSocket to `/server-agent` (a raw socket, deliberately not oRPC, to
-keep the agent's protocol dependency-free), and it proxies RCON: it holds the RCON password itself,
+`SquadGame.log` and streams lines over a WebSocket to `/server-agent`, and it proxies RCON: it holds the RCON password itself,
 authenticates to localhost, and tunnels an already-authenticated byte stream. **SLM never holds the RCON
 password and never needs to reach the RCON port.**
 
@@ -704,13 +687,8 @@ The RCON abstraction reflects this: `RconTransport` is a byte pipe plus lifecycl
 direct TCP socket, and the agent tunnel). It has a distinct `onReady` separate from `onConnect` so a
 self-authenticating transport can say "usable, and I did the handshake myself".
 
-Connections are a three-mode discriminated union: `local` (share the box, read the file and dial RCON
-directly), `sftp` (tail over SFTP, dial RCON over the network), `server-agent`.
-
 **The emulator** (`src/emulator/`) is a fake Squad server: a `World` model plus protocol frontends (an RCON
-server and a log file sink). It is what makes the integration and e2e suites need no external services. Note
-the tick-rate chatter is not cosmetic: `parseLogStream` only completes an entry when the next one arrives, so
-a silent server would leave the last event stuck in the parser.
+server and a log file sink). It is what makes the integration and e2e suites need no external services.
 
 ## Data and persistence
 
@@ -757,9 +735,6 @@ OpenTelemetry (traces, metrics, logs) plus pino, with a local Grafana/Tempo/Loki
 Almost all of it arrives through **`spanOp`** ([above](#spanop-the-unit-of-server-work)), which is why there
 is very little manual instrumentation anywhere: one call produces a span, a structured log line, and an
 op-duration histogram sample, and the full option set is `{ module, attrs, mutexes, kind }`.
-
-Outcomes are three-way: `ok`, `error` (thrown), `value-error` (a returned `err:*`). Aborts are logged at debug
-rather than error, because a cancelled request is not a failure.
 
 **`durableSub`** is its RxJS counterpart, and it **owns all error handling**: neither a failing source nor a
 torn-down task ever reaches the subscriber. These are always-on server pipelines subscribed with a bare
