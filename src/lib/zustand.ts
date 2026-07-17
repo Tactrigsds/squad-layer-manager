@@ -66,7 +66,7 @@ type InputState<S> = S extends null | undefined ? undefined
 	: S extends QuerySource<infer T> ? T | undefined
 	: never
 type InputStates<Inputs extends MaybeInput[]> = { [K in keyof Inputs]: InputState<Inputs[K]> }
-// getState awaits query sources rather than sampling them, so they can't be pending-undefined like on the render path
+// query sources are awaited rather than sampled, so they are never pending-undefined here
 type ResolvedState<S> = S extends QuerySource<infer T> ? T : InputState<S>
 type ResolvedStates<Inputs extends MaybeInput[]> = { [K in keyof Inputs]: ResolvedState<Inputs[K]> }
 type IsQuery<T> = T extends { queryKey: unknown } ? true : false
@@ -92,8 +92,7 @@ export function registerFrameKeyResolver(resolve: (key: FRM.InstanceKeyOfState<a
 	resolveFrameKeyStores = resolve
 }
 
-// injected by orpc.client.ts for the same reason as the frame key resolver above -- importing the query client
-// here would be an upward lib -> src import
+// injected by orpc.client.ts: importing the query client here would be an upward lib -> src import
 let queryClient: QueryClient | undefined
 export function registerQueryClient(client: QueryClient) {
 	queryClient = client
@@ -143,17 +142,14 @@ function subscribe(s: AnyStore<any> | null, update: () => void): () => void {
 	return s.subscribe(update)
 }
 
-// mirrors useStore's signature, minus the subscription. any query source among the inputs makes the return a
-// promise -- resolving it is the only honest option, since undefined-because-unfetched is indistinguishable
-// from undefined-because-absent
+// any query source among the inputs makes the return a promise. see docs/ARCHITECTURE.md
 export function getState<I extends MaybeInput>(source: I): Returns<[I], ResolvedState<I>>
 export function getState<Inputs extends MaybeInput[], R>(
 	...args: [...Inputs, (...states: ResolvedStates<Inputs>) => R]
 ): Returns<Inputs, R>
 export function getState<Inputs extends MaybeInput[]>(...inputs: Inputs): Returns<Inputs, ResolvedStates<Inputs>>
 export function getState(...args: (MaybeInput | ((...states: any[]) => any))[]): any {
-	// safe as long as every store here is a createStore StoreApi (a plain object) rather than a callable
-	// create() hook -- same assumption useStore makes
+	// relies on sources being createStore StoreApis rather than callable create() hooks, which would also be functions
 	const hasSelector = typeof args[args.length - 1] === 'function'
 	const inputs = (hasSelector ? args.slice(0, -1) : args) as MaybeInput[]
 	const selector = hasSelector ? args[args.length - 1] as (...states: any[]) => any : undefined
@@ -164,14 +160,11 @@ export function getState(...args: (MaybeInput | ((...states: any[]) => any))[]):
 	if (!inputs.some(isQuerySource)) return finish(inputs.map(sample))
 
 	const client = requireQueryClient()
-	// ensureQueryData, not fetchQuery: serve cached data when present and fetch when absent, which is the
-	// off-render analogue of what useQueries does on mount. fetchQuery would refetch and do more work than the
-	// component path for the same inputs
+	// ensureQueryData serves cached data and fetches only when absent, matching what useQueries does on mount;
+	// fetchQuery would refetch every time
 	return Promise.all(inputs.filter(isQuerySource).map(query => client.ensureQueryData(query as any)))
-		// sync sources are sampled here rather than at call time: once we're awaiting, a point-in-time read of
-		// everything is impossible, so sample late and hand the selector the most coherent snapshot available at
-		// the moment it computes. a frame key torn down mid-flight therefore rejects the promise rather than
-		// resolving against a stale instance
+		// sync sources are sampled after the await, so the selector sees the most coherent snapshot available at
+		// the moment it computes. a frame key torn down mid-flight rejects here rather than reading a stale instance
 		.then(resolved => {
 			let qIdx = 0
 			return finish(inputs.map(input => isQuerySource(input) ? resolved[qIdx++] : sample(input)))
@@ -192,12 +185,8 @@ export function useStore(...args: (MaybeInput | ((...states: any[]) => any))[]):
 	const regularSources = allInputs.filter((s): s is SyncSource<any> | null => !isQuerySource(s))
 	const querySources = allInputs.filter(isQuerySource)
 
-	// an empty useQueries is not free -- it allocates an observer, subscribes, and re-runs its setQueries
-	// effect every render (react-query spreads a fresh options object into that effect's deps), which roughly
-	// quadruples the cost of a re-render. no call site passes a query source today, so skip the hook entirely
-	// when there are none. this is a conditional hook call, which is legal only because the branch is fixed for
-	// the life of a component instance -- the guard below turns a violation into a clear error instead of
-	// React's "rendered fewer hooks than expected"
+	// an empty useQueries still allocates an observer and re-runs its setQueries effect every render, so it is
+	// skipped outright. legal only because the query count is fixed per component instance, which this guards.
 	const queryCount = React.useRef(querySources.length)
 	if (queryCount.current !== querySources.length) {
 		throw new Error(
@@ -210,10 +199,9 @@ export function useStore(...args: (MaybeInput | ((...states: any[]) => any))[]):
 	const queryResults = querySources.length > 0 ? useQueries({ queries: querySources }) : NO_QUERIES
 
 	const cache = React.useRef<{ selector: unknown; states: any[]; value: any } | null>(null)
-	// useSyncExternalStore calls this during render and again on every store event, and spins if it returns a
-	// fresh value while nothing has changed -- so the result is cached. the cache is keyed on the selector as
-	// well as the states, because an inline selector closing over props changes identity every render and must
-	// recompute even when no source emitted
+	// useSyncExternalStore spins if this returns a fresh value while nothing changed, hence the cache. it is keyed
+	// on the selector as well as the states, since an inline selector closing over props must recompute on a
+	// prop change that no source emitted for
 	const getSnapshot = () => {
 		let qIdx = 0
 		const states = allInputs.map(input =>
@@ -236,13 +224,11 @@ export function useStore(...args: (MaybeInput | ((...states: any[]) => any))[]):
 			const unsubs = regularSources.map(s => subscribe(s as any, onChange))
 			return () => unsubs.forEach(unsub => unsub())
 		},
-		// resubscribing only depends on the sources; query data flows in through getSnapshot instead.
-		// nullish inputs stay in the array as placeholders so this dep list keeps a stable size
+		// query data flows in through getSnapshot, so only the sources force a resubscribe
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 		regularSources,
 	)
 
-	// no getServerSnapshot: this is a client-only SPA, so it would never be called
 	return React.useSyncExternalStore(subscribeAll, getSnapshot)
 }
 
