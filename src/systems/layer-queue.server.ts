@@ -334,33 +334,42 @@ export async function saveQueueAndUpdateServer(
 	queueUpdatedId?: string,
 ) {
 	await VoteSys.syncVoteStateWithQueueState(ctx, list)
-	return await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-		const serverState = await SquadServer.getServerState(ctx)
+	return await DB.runTransaction(ctx, { redactParams: true }, async (txCtx) => {
+		const serverState = await SquadServer.getServerState(txCtx)
 		const nextItemId = list[0]?.itemId || null
 		const nextLayerId = LL.getNextLayerId(list)
-		if (ctx.serverSettings.settings.warnOnChangeLayer && nextLayerId) {
-			const statusRes = await ctx.server.layersStatus.get(ctx)
-			if (statusRes.code === 'ok' && statusRes.data.nextLayer) {
-				if (!L.areLayersCompatible(statusRes.data.nextLayer.id, nextLayerId)) {
-					await warnShowNext(ctx, 'all-admins', { updated: true })
-				}
-			}
-		}
-		if (nextLayerId && nextItemId) {
-			await syncNextLayerToServer(
-				ctx,
-				serverState.settings,
-				nextLayerId,
-				nextItemId,
-				queueUpdatedId ? { reason: 'queue-updated', causeId: queueUpdatedId } : undefined,
-			)
-		} else {
-			log.error('No next layer to sync to server')
-		}
 
-		await SquadServer.updateServerState(ctx, { layerQueue: list }, {
+		await SquadServer.updateServerState(txCtx, { layerQueue: list }, {
 			type: 'system',
 			event: 'admin-change-layer',
+		})
+
+		// These reach the game server over rcon, so they're deferred rather than awaited under the (global) tx lock.
+		// unlockTasks are the outermost transaction's, so this also keeps them out of the map-roll tx that
+		// onNewGameDuringRoll wraps around this. The mutex context is ambient, so it still covers them; `tx` is dropped
+		// because it's spent by then, and a nested runTransaction would otherwise join a committed transaction and run
+		// in autocommit with a rollback() that does nothing.
+		const deferredCtx = { ...ctx, tx: undefined }
+		txCtx.tx.unlockTasks.push(async () => {
+			if (deferredCtx.serverSettings.settings.warnOnChangeLayer && nextLayerId) {
+				const statusRes = await deferredCtx.server.layersStatus.get(deferredCtx)
+				if (statusRes.code === 'ok' && statusRes.data.nextLayer) {
+					if (!L.areLayersCompatible(statusRes.data.nextLayer.id, nextLayerId)) {
+						await warnShowNext(deferredCtx, 'all-admins', { updated: true })
+					}
+				}
+			}
+			if (nextLayerId && nextItemId) {
+				await syncNextLayerToServer(
+					deferredCtx,
+					serverState.settings,
+					nextLayerId,
+					nextItemId,
+					queueUpdatedId ? { reason: 'queue-updated', causeId: queueUpdatedId } : undefined,
+				)
+			} else {
+				log.error('No next layer to sync to server')
+			}
 		})
 
 		return {
