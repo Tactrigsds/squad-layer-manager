@@ -32,12 +32,17 @@
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
 			"gridPos": { "h": 5, "w": 8, "x": 0, "y": 1 },
 			"targets": [
-				{ "refId": "A", "expr": "slm_rcon_connected{slm_squad_server_id=~\"$server\"}", "legendFormat": "{{slm_squad_server_id}}" }
+				{
+					"refId": "A",
+					"expr": "max by (slm_squad_server_id) (slm_rcon_connected{slm_squad_server_id=~\"$server\"})",
+					"legendFormat": "{{slm_squad_server_id}}",
+					"instant": true
+				}
 			],
 			"options": {
 				"reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
 				"colorMode": "background",
-				"graphMode": "area"
+				"graphMode": "none"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -56,11 +61,13 @@
 			"description": "Live websocket sessions right now.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
 			"gridPos": { "h": 5, "w": 4, "x": 8, "y": 1 },
-			"targets": [{ "refId": "A", "expr": "slm_websocket_connected_clients", "legendFormat": "clients" }],
+			"targets": [
+				{ "refId": "A", "expr": "max(slm_websocket_connected_clients)", "legendFormat": "clients", "instant": true }
+			],
 			"options": {
 				"reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
 				"colorMode": "value",
-				"graphMode": "area"
+				"graphMode": "none"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -76,11 +83,13 @@
 			"description": "Initialized squad server slices. A drop here without a config change means a slice failed to come up.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
 			"gridPos": { "h": 5, "w": 4, "x": 12, "y": 1 },
-			"targets": [{ "refId": "A", "expr": "slm_squad_server_count", "legendFormat": "slices" }],
+			"targets": [
+				{ "refId": "A", "expr": "max(slm_squad_server_count)", "legendFormat": "slices", "instant": true }
+			],
 			"options": {
 				"reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
 				"colorMode": "value",
-				"graphMode": "area"
+				"graphMode": "none"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -97,7 +106,11 @@
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
 			"gridPos": { "h": 5, "w": 8, "x": 16, "y": 1 },
 			"targets": [
-				{ "refId": "A", "expr": "slm_rcon_connected{slm_squad_server_id=~\"$server\"}", "legendFormat": "{{slm_squad_server_id}}" }
+				{
+					"refId": "A",
+					"expr": "max by (slm_squad_server_id) (slm_rcon_connected{slm_squad_server_id=~\"$server\"})",
+					"legendFormat": "{{slm_squad_server_id}}"
+				}
 			],
 			"fieldConfig": {
 				"defaults": {
@@ -274,7 +287,7 @@
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
 			"gridPos": { "h": 8, "w": 8, "x": 0, "y": 34 },
 			"targets": [
-				{ "refId": "A", "expr": "slm_websocket_connected_clients", "legendFormat": "connected clients" },
+				{ "refId": "A", "expr": "max(slm_websocket_connected_clients)", "legendFormat": "connected clients" },
 				{ "refId": "B", "expr": "rate(slm_websocket_connections_total[$__rate_interval])", "legendFormat": "connections/s" }
 			],
 			"fieldConfig": {
@@ -335,7 +348,11 @@
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
 			"gridPos": { "h": 7, "w": 12, "x": 0, "y": 43 },
 			"targets": [
-				{ "refId": "A", "expr": "slm_layer_queue_length{slm_squad_server_id=~\"$server\"}", "legendFormat": "{{slm_squad_server_id}}" }
+				{
+					"refId": "A",
+					"expr": "max by (slm_squad_server_id) (slm_layer_queue_length{slm_squad_server_id=~\"$server\"})",
+					"legendFormat": "{{slm_squad_server_id}}"
+				}
 			],
 			"fieldConfig": {
 				"defaults": { "min": 0, "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 10, "lineWidth": 2 } },
@@ -349,10 +366,14 @@
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
 			"gridPos": { "h": 7, "w": 12, "x": 12, "y": 43 },
 			"targets": [
-				{ "refId": "A", "expr": "slm_vote_in_progress{slm_squad_server_id=~\"$server\"}", "legendFormat": "vote {{slm_squad_server_id}}" },
+				{
+					"refId": "A",
+					"expr": "max by (slm_squad_server_id) (slm_vote_in_progress{slm_squad_server_id=~\"$server\"})",
+					"legendFormat": "vote {{slm_squad_server_id}}"
+				},
 				{
 					"refId": "B",
-					"expr": "slm_layer_queue_unsaved{slm_squad_server_id=~\"$server\"}",
+					"expr": "max by (slm_squad_server_id) (slm_layer_queue_unsaved{slm_squad_server_id=~\"$server\"})",
 					"legendFormat": "unsaved {{slm_squad_server_id}}"
 				}
 			],
@@ -376,12 +397,12 @@
 			"targets": [
 				{
 					"refId": "A",
-					"expr": "slm_teamswap_pending_swaps{slm_squad_server_id=~\"$server\"}",
+					"expr": "max by (slm_squad_server_id) (slm_teamswap_pending_swaps{slm_squad_server_id=~\"$server\"})",
 					"legendFormat": "pending {{slm_squad_server_id}}"
 				},
 				{
 					"refId": "B",
-					"expr": "slm_teamswap_swapping{slm_squad_server_id=~\"$server\"}",
+					"expr": "max by (slm_squad_server_id) (slm_teamswap_swapping{slm_squad_server_id=~\"$server\"})",
 					"legendFormat": "swapping {{slm_squad_server_id}}"
 				}
 			],
@@ -397,9 +418,9 @@
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
 			"gridPos": { "h": 7, "w": 12, "x": 12, "y": 51 },
 			"targets": [
-				{ "refId": "A", "expr": "slm_battlemetrics_requests_per_second", "legendFormat": "requests /1s (limit 10)" },
-				{ "refId": "B", "expr": "slm_battlemetrics_requests_per_minute", "legendFormat": "requests /60s (limit 60)" },
-				{ "refId": "C", "expr": "slm_battlemetrics_queue_size", "legendFormat": "queued" }
+				{ "refId": "A", "expr": "max(slm_battlemetrics_requests_per_second)", "legendFormat": "requests /1s (limit 10)" },
+				{ "refId": "B", "expr": "max(slm_battlemetrics_requests_per_minute)", "legendFormat": "requests /60s (limit 60)" },
+				{ "refId": "C", "expr": "max(slm_battlemetrics_queue_size)", "legendFormat": "queued" }
 			],
 			"fieldConfig": { "defaults": { "min": 0, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] }
 		},
