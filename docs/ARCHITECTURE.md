@@ -715,6 +715,14 @@ when it's a side effect of the write (`LayerQueue.saveQueueAndUpdateServer` defe
 that `unlockTasks` belong to the _outermost_ transaction, so a deferred task escapes an enclosing transaction too; it
 runs after `COMMIT` with the mutex context still ambient, but with `tx` spent.
 
+**That rule is enforced, not just documented.** `runTransaction` races every callback against a `setImmediate`: because
+the driver is synchronous an awaited query settles on a microtask, and microtasks all drain before the loop reaches the
+check phase, so a query-only callback always wins. A callback that reaches the network, the disk or a timer has to yield
+and loses. Losing throws in development and test (loudly, rolling the transaction back), and warns in production, where
+a violation is a latency bug and failing the write would be the worse outcome. The report carries the stack of the
+offending `runTransaction` call, and a joined inner transaction reports before its outer one, so the innermost violator
+is named rather than the whole roll.
+
 **Migrations** use a custom runner (`src/server/migrate.ts`, `pnpm db:migrate`) that merges drizzle-kit
 generated `.sql` files with hand-written `.ts` data migrations into one filename-ordered sequence tracked in
 `_slm_migrations`. Two constraints shape it:
