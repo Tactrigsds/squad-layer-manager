@@ -714,9 +714,11 @@ handled by a `superjsonify`/`unsuperjsonify` pair that walks the drizzle table c
 are still treated as though they could be async in the future, so
 `runTransaction` serializes logical transactions with a manual promise-chain lock around manual `BEGIN
 IMMEDIATE`/`COMMIT`/`ROLLBACK`. Re-entrant: an inner transaction joins the outer one, and an inner `rollback()`
-rolls back the outer. This is one process-wide lock, a deliberate simplicity-over-throughput call.
+rolls back the outer. Therefore, all transactions may wait for others to complete asyncronously,
+but are always executed syncronously once the lock is acquired.
 
-Because that lock is process-wide, **a `runTransaction` callback must never await anything but a query.** Queries
+Because that lock is process-wide, **a `runTransaction` callback must never await anything but a query.**(This isn't 
+great, and there's probably a better way to do this while still using drizzle.) Queries
 resolve immediately (the driver is synchronous), so a transaction that only queries holds the lock for microseconds.
 Awaiting rcon, discord, sftp, or any other network call inside one instead stalls every write in the process for the
 length of that round-trip, and the external call is not rolled back with the transaction anyway. Two ways out, both
