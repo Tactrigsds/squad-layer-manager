@@ -16,7 +16,7 @@ import { frameManager } from '@/frames/frame-manager'
 import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import { createId } from '@/lib/id'
 import { useRefConstructor } from '@/lib/react'
-import { GLOBAL_SETTINGS_GROUPS, SERVER_SETTINGS_PRIORITY_KEYS } from '@/lib/settings-groups'
+import { ADVANCED_GLOBAL_SETTINGS_PATHS, ADVANCED_SERVER_SETTINGS_PATHS, GLOBAL_SETTINGS_GROUPS, SERVER_SETTINGS_PRIORITY_KEYS } from '@/lib/settings-groups'
 import * as SettingsNav from '@/lib/settings-nav'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
@@ -724,6 +724,7 @@ function ServerSettingsSection(
 								saved={saved}
 								idPrefix={`setting:server:${server.id}:`}
 								priorityKeys={SERVER_SETTINGS_PRIORITY_KEYS}
+								advancedPaths={ADVANCED_SERVER_SETTINGS_PATHS}
 								issues={issues}
 								writeAccess={formWriteAccess}
 							/>
@@ -829,6 +830,7 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 								saved={SettingsEditorFrame.NEW_SERVER_DRAFT}
 								idPrefix="setting:server:__new__:"
 								priorityKeys={SERVER_SETTINGS_PRIORITY_KEYS}
+								advancedPaths={ADVANCED_SERVER_SETTINGS_PATHS}
 								issues={issues}
 							/>
 						)
@@ -932,6 +934,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 								onChange={onFormChange}
 								saved={saved}
 								groups={GLOBAL_SETTINGS_GROUPS}
+								advancedPaths={ADVANCED_GLOBAL_SETTINGS_PATHS}
 								issues={issues}
 								writeAccess={writeAccess}
 							/>
