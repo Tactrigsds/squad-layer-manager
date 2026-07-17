@@ -38,6 +38,8 @@ pnpm dev        # the app + client
 pnpm dev:slots  # which worktree owns which ports
 ```
 
+`pnpm dev` and `pnpm dev:emu` are long-lived; an agent must start them as tracked background jobs (`run_in_background`).
+
 Log in with `?login=<username>` (discord oauth is off for dev instances -- `dev`'s env sets `QUERY_PARAM_AUTH_BYPASS`/`DISCORD_ENABLED=false` for you; any username in the cloned db works). Wait for the app port to be listening before you hit `?login=`: navigating during boot fails the bypass request and bounces you into the real Discord oauth flow, which looks like the bypass is broken when it is not. Drive the emulated server with `pnpm emuctl <command>` (`pnpm emuctl help`) rather than trying to reach a real squad server -- e.g. `pnpm emuctl join Alice`, `pnpm emuctl chat Alice '!vote 1'`, `pnpm emuctl end 1`.
 
 Never point a worktree at a real squad server or the real battlemetrics org; `dev:init` deliberately scrubs those, and re-adding them means an experiment drives production.
