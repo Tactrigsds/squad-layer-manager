@@ -8,7 +8,7 @@
 
 ### 2. Where to Install
 
-SLM needs access to your Squad Server's log files in order to function. This can be done either locally by mounting the log files directly into the container, via an SFTP connection(this works with PSG-hosted servers for example), or by running a server agent on the game host that streams log data (and proxies RCON) to SLM over its normal url(see [CONFIGURING.md#server-agent](CONFIGURING.md#server-agent) for more). SLM can be set up with any number of squad servers, so keep that in mind as well when deciding where to install it.
+SLM needs access to your Squad Server's log files in order to function. This can be done either locally by mounting the log files directly into the container, via an SFTP connection(this works with PSG-hosted servers for example), or by running a server agent on the game host that streams log data (and proxies RCON) to the SLM server (see [CONFIGURING.md#server-agent](CONFIGURING.md#server-agent) for more). SLM can be set up with any number of squad servers, so keep that in mind as well when deciding where to install it.
 
 ### 3. Installation
 
