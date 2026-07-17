@@ -38,6 +38,8 @@
 	--color-info: hsl(var(--info));
 	--color-info-foreground: hsl(var(--info-foreground));
 
+	--color-admin: hsl(var(--admin));
+
 	--color-moved: hsl(var(--moved));
 	--color-moved-foreground: hsl(var(--moved-foreground));
 
@@ -127,6 +129,10 @@
 		--destructive-foreground: 0 0% 98%;
 		--info: 210 100% 50%;
 		--info-foreground: 0 0% 100%;
+		/* The admin blue: the shield on an admin player, the ChatAdmin feed colour, the chat box's admin target, and
+		   admin-only commands. Was rgb(147, 197, 253)/blue-300 copied by hand into three files. Same value in both
+		   themes, as the literals were. */
+		--admin: 211.7 96.4% 78.4%;
 		--border: 240 5.9% 90%;
 		--input: 240 5.9% 90%;
 		--ring: 240 10% 3.9%;
@@ -168,6 +174,7 @@
 		--destructive-foreground: 0 0% 98%;
 		--info: 210 100% 50%;
 		--info-foreground: 0 0% 100%;
+		--admin: 211.7 96.4% 78.4%;
 		--border: 240 3.7% 15.9%;
 		--input: 240 3.7% 15.9%;
 		--ring: 240 4.9% 83.9%;

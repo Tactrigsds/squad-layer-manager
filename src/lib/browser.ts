@@ -93,3 +93,45 @@ export function useIsSmallViewport() {
 	}, [])
 	return isSmall
 }
+
+// The scrollable this wheel event is already going to move, if any: the first ancestor between the target and `root`
+// that both scrolls and has somewhere left to go. `scroller` counts even when it's fully scrolled, since it's the one
+// the delta is destined for anyway.
+function wheelTargetScroller(target: Node | null, root: HTMLElement, scroller: HTMLElement): HTMLElement | null {
+	for (let node = target instanceof HTMLElement ? target : target?.parentElement; node && node !== root; node = node.parentElement) {
+		if (node === scroller) return node
+		const overflowY = getComputedStyle(node).overflowY
+		if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) return node
+	}
+	return null
+}
+
+/**
+ * Sends wheel events that land on nothing to a page's real scroll container.
+ *
+ * A page whose body scrolls inside an inner container silently drops every wheel that lands outside it -- the margins
+ * either side of a centred column, a page header, the empty space under a short table of contents -- and the body just
+ * sits there. This forwards those to `scrollRef`. Anything that would scroll on its own is left alone, so an inner
+ * list (a table of contents with more rows than it can show) still takes its own wheel until it runs out.
+ *
+ * `deps` re-binds the listener; pass whatever gates the refs being attached, since they're null until the page renders.
+ */
+export function useForwardWheelToScroller(
+	rootRef: React.RefObject<HTMLElement | null>,
+	scrollRef: React.RefObject<HTMLElement | null>,
+	deps: unknown,
+) {
+	React.useEffect(() => {
+		const root = rootRef.current
+		const scroller = scrollRef.current
+		if (!root || !scroller) return
+		const onWheel = (e: WheelEvent) => {
+			if (wheelTargetScroller(e.target as Node | null, root, scroller)) return
+			// forwarding the delta means taking the event over, so this listener can't be passive
+			e.preventDefault()
+			scroller.scrollTop += e.deltaY
+		}
+		root.addEventListener('wheel', onWheel, { passive: false })
+		return () => root.removeEventListener('wheel', onWheel)
+	}, [rootRef, scrollRef, deps])
+}

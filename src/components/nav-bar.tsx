@@ -1,6 +1,5 @@
 import * as AR from '@/app-routes.ts'
 import AboutDialog from '@/components/about-dialog'
-import CommandsHelpDialog from '@/components/commands-help-dialog'
 import LinkSteamAccountDialog from '@/components/link-steam-account-dialog'
 import NicknameDialog from '@/components/nickname-dialog'
 import SelectLayersDialog from '@/components/select-layers-dialog'
@@ -56,9 +55,7 @@ export default function NavBar() {
 	// in single-column mode the dashboard has no room for its own tab cluster, so the switcher takes over the "Server" nav slot
 	const showDashboardTabs = !!isOnServerDashboard && !isDesktop
 
-	const [openState, setDropdownState] = React.useState<'primary' | 'permissions' | 'commands' | 'steam-link' | 'nickname' | 'about' | null>(
-		null,
-	)
+	const [openState, setDropdownState] = React.useState<'primary' | 'permissions' | 'steam-link' | 'nickname' | 'about' | null>(null)
 	const onPrimaryDropdownOpenChange = (newState: boolean) => {
 		if (openState !== 'primary' && openState !== null) return
 		setDropdownState(newState ? 'primary' : null)
@@ -66,10 +63,6 @@ export default function NavBar() {
 	const onPermissionsOpenChange = (newState: boolean) => {
 		setDropdownState(newState ? 'permissions' : null)
 	}
-	const onCommandsHelpOpenChange = (newState: boolean) => {
-		setDropdownState(newState ? 'commands' : null)
-	}
-
 	const onNicknameOpenChange = (newState: boolean) => {
 		setDropdownState(newState ? 'nickname' : null)
 	}
@@ -168,12 +161,6 @@ export default function NavBar() {
 					Permissions
 				</DropdownMenuItem>
 			</UserPermissionsDialog>
-			<CommandsHelpDialog onOpenChange={onCommandsHelpOpenChange} open={openState === 'commands'}>
-				<DropdownMenuItem onClick={() => setDropdownState('commands')} className="text-sm">
-					<Icons.HelpCircle className="mr-2 h-4 w-4" />
-					Commands
-				</DropdownMenuItem>
-			</CommandsHelpDialog>
 			<AboutDialog onOpenChange={onAboutOpenChange} open={openState === 'about'}>
 				<DropdownMenuItem onClick={() => setDropdownState('about')} className="text-sm">
 					<Icons.Info className="mr-2 h-4 w-4" />
@@ -230,6 +217,7 @@ export default function NavBar() {
 								? <NavLink params={{ serverId: selectedServer.id }} to="/servers/$serverId">Server</NavLink>
 								: <NavLink to="/servers">Server</NavLink>
 						)}
+						<NavLink to="/commands">Commands</NavLink>
 						<NavLink to="/filters">Filters</NavLink>
 						{showSettingsLink && <NavLink to="/settings">Settings</NavLink>}
 						<Button variant="secondary" size="sm" onClick={() => setExploreLayersOpen(true)}>Explore Layers</Button>
@@ -397,6 +385,9 @@ function MobileNavMenu(props: {
 							: <TSR.Link to="/servers">Server</TSR.Link>}
 					</DropdownMenuItem>
 				)}
+				<DropdownMenuItem asChild className="cursor-pointer">
+					<TSR.Link to="/commands">Commands</TSR.Link>
+				</DropdownMenuItem>
 				<DropdownMenuItem asChild className="cursor-pointer">
 					<TSR.Link to="/filters">Filters</TSR.Link>
 				</DropdownMenuItem>
