@@ -15,6 +15,7 @@ import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 import React from 'react'
+import { AddPlayerFlagsMenuItem } from './bm-flag-workflows'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { contextMenuSlots, PlayerCopyIdsSub, PlayerOpenLinksSub, TimeoutDialogContent } from './player-context-menu-options'
 import { ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuShortcut } from './ui/context-menu'
@@ -369,6 +370,11 @@ export default function PlayerBulkContextMenuOptions(
 				label={fullSquad ? 'Warn Squad' : 'Warn'}
 				onCustom={warn}
 				onPreset={warnPreset}
+			/>
+			<AddPlayerFlagsMenuItem
+				slots={contextMenuSlots}
+				playerIds={playerIds}
+				targetDescription={fullSquad ? `squad "${fullSquad.squadName}"` : `these ${playerIds.length} players`}
 			/>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<ContextMenuItem onClick={removeFromSquad} disabled={!!manageDenied}>Remove from Squad</ContextMenuItem>
