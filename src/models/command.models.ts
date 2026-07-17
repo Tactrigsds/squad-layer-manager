@@ -290,7 +290,7 @@ export const COMMAND_DECLARATIONS = {
 	...declareCommand('disbandSquad', {
 		section: 'moderation',
 		args: [{ kind: 'squad', name: 'squad' }, { kind: 'reason', name: 'reason', action: 'disband-squad', optional: true }],
-		defaults: { scopes: ['admin'], strings: ['disband'], enabled: true, quickReference: true },
+		defaults: { scopes: ['admin'], strings: ['disband'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('demoteCommander', {
 		section: 'moderation',
