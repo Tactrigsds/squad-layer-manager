@@ -147,3 +147,32 @@ export type EnumToTuple<S extends z.ZodEnum> = [z.infer<S>, ...z.infer<S>[]]
 export function enumTupleOptions<S extends z.ZodEnum>(schema: S): EnumToTuple<S> {
 	return schema.options as unknown as EnumToTuple<S>
 }
+
+// wrappers that don't change an object's shape at a key boundary. `pipe` resolves to its input side because callers
+// navigate the input/encoded shape (what the settings drafts hold), which is also the side a codec is edited in.
+const SHAPE_PRESERVING_WRAPPERS = ['optional', 'nullable', 'default', 'prefault', 'readonly', 'nonoptional']
+
+function unwrapToObject(schema: unknown): { shape: Record<string, z.ZodType> } | undefined {
+	let cur = schema as any
+	while (cur?.def) {
+		const type = cur.def.type
+		if (type === 'object' || type === 'interface') return cur
+		if (SHAPE_PRESERVING_WRAPPERS.includes(type)) cur = cur.def.innerType
+		else if (type === 'pipe') cur = cur.def.in
+		else return undefined
+	}
+	return undefined
+}
+
+// The schema sitting at `path` within `schema`, or undefined when the path isn't statically addressable (it runs
+// through a record/array entry, or a node with no shape). Codec-carrying subtrees come back whole, so the result parses
+// the same input shape the path addresses.
+export function schemaAtPath(schema: z.ZodType, path: readonly (string | number)[]): z.ZodType | undefined {
+	let cur: z.ZodType | undefined = schema
+	for (const key of path) {
+		const obj: { shape: Record<string, z.ZodType> } | undefined = cur && unwrapToObject(cur)
+		cur = obj?.shape[String(key)]
+		if (!cur) return undefined
+	}
+	return cur
+}
