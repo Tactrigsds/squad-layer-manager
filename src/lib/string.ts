@@ -37,9 +37,12 @@ export namespace StrPatterns {
 	export const PATH_SEGMENT = /[^/]+/
 }
 
+// Folds away only what a human plausibly varies when typing a name to search for: case, spacing, and unicode
+// composition. Deliberately keeps non-ascii -- see docs/LOG_NAME_MATCHING.md for why stripping it was wrong.
 export function normalizeForMatch(s: string) {
-	return s.replace(/[^\x20-\x7E]|\s/g, '').toLowerCase()
+	return s.normalize('NFKC').replace(/\s/g, '').toLowerCase()
 }
+
 export function simpleStringMatch(names: string[], target: string) {
 	const normalizedTarget = normalizeForMatch(target)
 	const matched: number[] = []
