@@ -193,7 +193,7 @@ export async function buildUser(dbUser: Schema.User): Promise<USR.User> {
 		return {
 			...dbUser,
 			displayName: dbUser.nickname || dbUser.username,
-			avatar: null,
+			avatarUrl: USR.getDefaultAvatarUrl(dbUser.discordId),
 			displayHexColor: null,
 		}
 	}
@@ -207,7 +207,7 @@ export async function buildUser(dbUser: Schema.User): Promise<USR.User> {
 			member.user.username,
 			dbUser.username,
 		]),
-		avatar: member.avatar ?? member.user.avatar,
+		avatarUrl: member.displayAvatarURL({ size: 128 }),
 		displayHexColor: member.displayHexColor ?? member.user.hexAccentColor,
 	}
 }

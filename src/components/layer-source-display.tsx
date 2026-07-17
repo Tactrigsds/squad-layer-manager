@@ -61,7 +61,7 @@ export default function LayerSourceDisplay(props: { source: LL.Source }) {
 			return renderAvatar('Generated', 'G', '#059669', <Icons.Dices />)
 		case 'manual': {
 			if (!user) return null
-			return renderAvatar(username, USR.getUserInitials(user), user.displayHexColor ?? undefined, USR.getAvatarUrl(user), true)
+			return renderAvatar(username, USR.getUserInitials(user), user.displayHexColor ?? undefined, user.avatarUrl, true)
 		}
 		default:
 			assertNever(props.source)

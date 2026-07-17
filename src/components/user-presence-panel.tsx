@@ -4,7 +4,7 @@ import * as MapUtils from '@/lib/map'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as UP from '@/models/user-presence'
-import * as USR from '@/models/users.models'
+import type * as USR from '@/models/users.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
@@ -147,7 +147,7 @@ const PresenceAvatar = React.forwardRef<
 				style={{ backgroundColor: user.displayHexColor ?? undefined }}
 				className={cn('h-full w-full', presence.away && 'grayscale opacity-50', avatarClassName)}
 			>
-				<AvatarImage src={USR.getAvatarUrl(user)} crossOrigin="anonymous" />
+				<AvatarImage src={user.avatarUrl} crossOrigin="anonymous" />
 				<AvatarFallback className={fallbackClassName}>{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
 			</Avatar>
 			{badge !== undefined && (

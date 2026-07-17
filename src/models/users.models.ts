@@ -26,7 +26,7 @@ export type User = SchemaModels.User & {
 	username: string
 	displayName: string
 	displayHexColor: string | null
-	avatar: string | null
+	avatarUrl: string
 	nickname: string | null
 }
 export type MiniUser = {
@@ -58,10 +58,11 @@ export const UserIdSchema = z.bigint().positive()
 
 export type UserId = z.infer<typeof UserIdSchema>
 
-export const getAvatarUrl = (user: User) => {
-	if (user.avatar) return `${DM.CDN_BASE}/avatars/${user.discordId}/${user.avatar}.png`
-	const id = ((user.discordId >> 22n) % 6n).toString()
-	return `${DM.CDN_BASE}/embed/avatars/${id}.png`
+// only for users we couldn't resolve against discord; otherwise the url comes from discord.js, which
+// knows about guild-specific and animated avatars. Mirrors discord.js' User#defaultAvatarURL.
+export const getDefaultAvatarUrl = (discordId: bigint) => {
+	const index = ((discordId >> 22n) % 6n).toString()
+	return `${DM.CDN_BASE}/embed/avatars/${index}.png`
 }
 
 export const getUserInitials = (user: User) => {
