@@ -17,7 +17,6 @@ const badgeVariants = cva(
 				added: 'border-transparent bg-added text-added-foreground shadow-sm hover:bg-added/80',
 				removed: 'border-transparent bg-removed text-removed-foreground shadow-sm hover:bg-removed/80',
 				info: 'border-transparent bg-info text-info-foreground shadow-sm hover:bg-info/80',
-				admin: 'border-transparent bg-admin text-admin-foreground shadow-sm hover:bg-admin/80',
 			},
 		},
 		defaultVariants: {

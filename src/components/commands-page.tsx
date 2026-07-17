@@ -28,11 +28,13 @@ const PINNED_SECTION_ID = 'section:pinned'
 const QUICK_REF_SECTION_ID = 'section:quick-reference'
 const ALIASES_SECTION_ID = 'section:aliases'
 
-// admin-only takes the app's admin blue (the same token as the shield on an admin player and the admin-chat target in
-// the chat box), since it's the restriction worth spotting. Public is the absence of one, so it stays neutral.
-const SCOPE_BADGE_VARIANTS: Record<CMD.CommandScope, 'admin' | 'secondary'> = {
-	admin: 'admin',
-	public: 'secondary',
+// Each scope is shown as its chat channel already is elsewhere in the app: admin-only in the admin blue with a shield
+// (as on an admin player and the chat box's admin target), public in ChatAll's white. Tinted outline rather than a
+// solid fill -- it's the same treatment the chat box gives its channels, and a filled badge at this size buried the
+// label. The icon does the work at a glance; the colour alone would be carrying too much.
+const SCOPE_BADGES: Record<CMD.CommandScope, { icon: React.ComponentType<{ className?: string }>; className: string }> = {
+	admin: { icon: Icons.Shield, className: 'border-admin/60 text-admin' },
+	public: { icon: Icons.Globe, className: 'border-foreground/40 text-foreground' },
 }
 
 function CopyableCommand({ cmdString, chatScope }: { cmdString: string; chatScope: 'ChatToAdmin' | 'ChatToAll' }) {
@@ -136,11 +138,15 @@ function CommandEntry(
 					))}
 				</div>
 				{!cmd.enabled && <Badge variant="destructive" className="text-xs">Disabled</Badge>}
-				{cmd.scopes.map((scope) => (
-					<Badge key={scope} variant={SCOPE_BADGE_VARIANTS[scope]} className="text-xs whitespace-nowrap">
-						{CMD.COMMAND_SCOPE_LABELS[scope]}
-					</Badge>
-				))}
+				{cmd.scopes.map((scope) => {
+					const { icon: ScopeIcon, className } = SCOPE_BADGES[scope]
+					return (
+						<Badge key={scope} variant="outline" className={cn('gap-1 whitespace-nowrap text-xs', className)}>
+							<ScopeIcon className="h-3 w-3" />
+							{CMD.COMMAND_SCOPE_LABELS[scope]}
+						</Badge>
+					)
+				})}
 				<CollapsibleTrigger asChild>
 					<Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs text-muted-foreground">
 						{open ? <Icons.ChevronDown className="h-3 w-3" /> : <Icons.ChevronRight className="h-3 w-3" />}
