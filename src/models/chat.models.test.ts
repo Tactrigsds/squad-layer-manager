@@ -458,7 +458,22 @@ describe('chat.models recent squads', () => {
 	function newGame(id: number): SE.NewGame {
 		return { type: 'NEW_GAME', id, time: 100 + id, matchId: 1, source: 'new-game-detected', layerId: 'l1' }
 	}
+	function joinedSquad(playerEos: SM.PlayerId, uniqueId: number, id: number): SE.PlayerJoinedSquad {
+		return { type: 'PLAYER_JOINED_SQUAD', id, time: 100 + id, matchId: 1, uniqueId, player: playerEos }
+	}
+	function promoted(playerEos: SM.PlayerId, uniqueId: number, id: number): SE.PlayerPromotedToLeader {
+		return { type: 'PLAYER_PROMOTED_TO_LEADER', id, time: 100 + id, matchId: 1, uniqueId, player: playerEos }
+	}
+	// synthesized SQUAD_CREATED: the create log never landed, so the poll invented the squad. It carries no
+	// creation-time membership; the join/promote events reconciled from the same poll establish it instead.
+	function synthesizedSquad(squad: SM.UniqueSquad, id: number): SE.SquadCreated {
+		return { type: 'SQUAD_CREATED', id, time: 100 + id, matchId: 1, squad, synthesized: true }
+	}
+	function resetEmpty(id: number): SE.Reset {
+		return { type: 'RESET', id, time: 100 + id, matchId: 1, source: 'rcon-reconnected', state: { players: [], squads: [] } }
+	}
 	const recentUniqueIds = (state: CHAT.ChatState) => state.interpolatedState.recentSquads.map(s => s.uniqueId)
+	const byEos = (state: CHAT.ChatState, eos: string) => state.interpolatedState.players.find(p => p.ids.eos === eos)!
 
 	function stateWithSquad() {
 		const state = CHAT.getInitialChatState()
@@ -494,6 +509,66 @@ describe('chat.models recent squads', () => {
 		CHAT.handleEvent(state, squadCreated(makeSquad(1, 1, 'a', 102), 4))
 
 		expect(recentUniqueIds(state)).toEqual([101, 102])
+	})
+
+	// SQUAD_CREATED is parsed from the log stream while the creator's PLAYER_CONNECTED is reconciled from the teams
+	// poll, so the create can land before its creator is on the roster. The squad must still be tracked, or every
+	// later PLAYER_JOINED_SQUAD referencing it is dropped and its members are stuck as Unassigned.
+	it('tracks a squad created before its creator joins the roster, so joins still land', () => {
+		const state = CHAT.getInitialChatState()
+		CHAT.handleEvent(state, squadCreated(makeSquad(1, 1, 'a', 101), 1))
+		CHAT.handleEvent(state, connected(makePlayer('a'), 2))
+		CHAT.handleEvent(state, connected(makePlayer('b'), 3))
+		CHAT.handleEvent(state, joinedSquad('a', 101, 4))
+		CHAT.handleEvent(state, joinedSquad('b', 101, 5))
+
+		expect(state.interpolatedState.squads.map(s => s.uniqueId)).toEqual([101])
+		const byEos = (eos: string) => state.interpolatedState.players.find(p => p.ids.eos === eos)
+		expect(byEos('a')?.squadId).toBe(1)
+		expect(byEos('b')?.squadId).toBe(1)
+	})
+
+	// A synthesized squad never resolves its creator through the create event (there's no membership on it); the
+	// creator's leadership arrives via the poll's join+promote, which can land after the synthesized create. The
+	// squad must be tracked so those land -- this is the reconnect/roll ordering the CI flake exposed.
+	it('tracks a synthesized squad and lands its poll-reconciled joins and promote', () => {
+		const state = CHAT.getInitialChatState()
+		CHAT.handleEvent(state, synthesizedSquad(makeSquad(1, 1, 'a', 101), 1))
+		CHAT.handleEvent(state, connected(makePlayer('a'), 2))
+		CHAT.handleEvent(state, connected(makePlayer('b'), 3))
+		CHAT.handleEvent(state, joinedSquad('a', 101, 4))
+		CHAT.handleEvent(state, promoted('a', 101, 5))
+		CHAT.handleEvent(state, joinedSquad('b', 101, 6))
+
+		expect(state.interpolatedState.squads.map(s => s.uniqueId)).toEqual([101])
+		expect(byEos(state, 'a')).toMatchObject({ squadId: 1, isLeader: true })
+		expect(byEos(state, 'b')).toMatchObject({ squadId: 1, isLeader: false })
+	})
+
+	// A same-match rcon reconnect wipes the roster with an empty RESET, taking the squad and its membership with it.
+	// The post-reconnect poll re-adds everyone and re-synthesizes the squad (new uniqueId); membership must re-form.
+	it('recovers a squad and its members after a RESET wipes them', () => {
+		const state = CHAT.getInitialChatState()
+		CHAT.handleEvent(state, connected(makePlayer('a'), 1))
+		CHAT.handleEvent(state, connected(makePlayer('b'), 2))
+		CHAT.handleEvent(state, squadCreated(makeSquad(1, 1, 'a', 101), 3))
+		CHAT.handleEvent(state, joinedSquad('b', 101, 4))
+		expect(byEos(state, 'a')).toMatchObject({ squadId: 1, isLeader: true })
+
+		CHAT.handleEvent(state, resetEmpty(5))
+		expect(state.interpolatedState.squads).toHaveLength(0)
+		expect(state.interpolatedState.players).toHaveLength(0)
+
+		CHAT.handleEvent(state, connected(makePlayer('a'), 6))
+		CHAT.handleEvent(state, connected(makePlayer('b'), 7))
+		CHAT.handleEvent(state, synthesizedSquad(makeSquad(1, 1, 'a', 102), 8))
+		CHAT.handleEvent(state, joinedSquad('a', 102, 9))
+		CHAT.handleEvent(state, promoted('a', 102, 10))
+		CHAT.handleEvent(state, joinedSquad('b', 102, 11))
+
+		expect(state.interpolatedState.squads.map(s => s.uniqueId)).toEqual([102])
+		expect(byEos(state, 'a')).toMatchObject({ squadId: 1, isLeader: true })
+		expect(byEos(state, 'b')).toMatchObject({ squadId: 1, isLeader: false })
 	})
 
 	it('clears recentSquads at a match boundary', () => {
