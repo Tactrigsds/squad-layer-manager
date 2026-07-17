@@ -30,6 +30,7 @@ FILES=(
 	.env.example
 	.env.secrets.example
 	edit-global-settings.sh
+	restore.sh
 	observability/README.md
 	observability/loki-config.yaml
 	observability/tempo-config.yaml
@@ -90,7 +91,7 @@ for file in "${FILES[@]}"; do
 	say "  + $file"
 done
 
-chmod +x "$DIR/edit-global-settings.sh"
+chmod +x "$DIR/edit-global-settings.sh" "$DIR/restore.sh"
 
 cp "$DIR/.env.example" "$DIR/.env"
 say "  + .env (from .env.example)"

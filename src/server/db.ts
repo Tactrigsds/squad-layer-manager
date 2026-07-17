@@ -19,7 +19,8 @@ let log!: CS.Logger
 
 let driver!: Database
 
-const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.db })
+// backups: boot takes a pre-migration snapshot, which is named after DB_PATH and retained in BACKUPS_DIR
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.db, ...Env.groups.backups })
 let ENV!: ReturnType<typeof envBuilder>
 let db: Db
 let dbRedactParams: Db
@@ -49,13 +50,18 @@ export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 
 	// Schema-vs-code guard, run while foreign_keys is still at its default (OFF) — same as the
 	// standalone `pnpm db:migrate`, since drizzle-kit's table-rebuild migrations require FK
-	// enforcement off. Boot applies pending migrations itself by default; with DB_AUTOMIGRATE off it
-	// merely refuses to run against a DB that's behind, never taking a write lock or mutating the DB
-	// here. Scripts that intentionally run pre-migration pass skipMigrationCheck.
+	// enforcement off. Boot applies pending migrations itself by default, backing the DB up first and
+	// refusing to touch a DB another process has open; with DB_AUTOMIGRATE off it merely refuses to run
+	// against a DB that's behind, never taking a write lock or mutating the DB here. Scripts that
+	// intentionally run pre-migration pass skipMigrationCheck.
 	if (!opts?.skipMigrationCheck) {
 		const migrateOpts = { sqlDir: path.resolve(process.cwd(), 'drizzle-sqlite'), tsMigrations }
 		if (ENV.DB_AUTOMIGRATE) {
-			const { applied } = await Migrate.runMigrations(driver, { ...migrateOpts, log: (msg) => log.info(msg) })
+			const { applied } = await Migrate.applyPendingMigrations(driver, {
+				...migrateOpts,
+				log: (msg) => log.info(msg),
+				backup: { dbPath: ENV.DB_PATH, dir: ENV.BACKUPS_DIR, retainCount: ENV.BACKUPS_RETAIN_COUNT },
+			})
 			if (applied.length > 0) log.info('DB_AUTOMIGRATE applied %d migration(s)', applied.length)
 		} else {
 			const pending = Migrate.getPendingMigrations(driver, migrateOpts)

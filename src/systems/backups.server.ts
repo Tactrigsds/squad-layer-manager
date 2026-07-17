@@ -7,17 +7,15 @@ import * as CS from '@/models/context-shared'
 import * as MH from '@/models/match-history.models'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
+import * as DbBackup from '@/server/db-backup'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
-import * as DateFns from 'date-fns'
 import * as E from 'drizzle-orm'
 import fs from 'node:fs'
 import path from 'node:path'
-import * as Stream from 'node:stream/promises'
 import * as Timers from 'node:timers/promises'
-import * as Zlib from 'node:zlib'
 
 const module = initModule('backups')
 let log!: CS.Logger
@@ -35,57 +33,81 @@ const MIN_RETAINED_MATCHES = Math.max(100, MH.MAX_RECENT_MATCHES)
 const BOOT_SETTLE_DELAY = parseHumanTime('1m')
 const FAILED_BACKUP_RETRY_DELAY = parseHumanTime('30m')
 
-// backups are named slm-backup-<db filename>-<yyyyMMdd>-<HHmmss>.sqlite3.gz, e.g.
-// slm-backup-db-20260713-134016.sqlite3.gz for the default ./data/db.sqlite3. Naming them after the source db means
-// backups of different databases (two SLM instances pointed at one sftp directory, say) can't be mistaken for each
-// other -- which matters because retention deletes everything matching this prefix. Restore with
-// `gunzip -c <backup> > db.sqlite3`.
-const BACKUP_FILE_EXT = '.sqlite3.gz'
-
-function backupFilePrefix() {
-	return `slm-backup-${path.basename(ENV.DB_PATH).replace(/\.sqlite3?$/, '')}`
-}
-
-function backupFilePattern() {
-	return new RegExp(`^${escapeRegExp(backupFilePrefix())}-\\d{8}-\\d{6}${escapeRegExp(BACKUP_FILE_EXT)}$`)
-}
-
-// streamed, so a multi-GB db never lands in memory. gzip is a big win here: a sqlite file is mostly repetitive page
-// structure and text, and the archive is what we ship over sftp and keep N copies of at both ends.
-async function gzipFile(sourcePath: string, destPath: string, signal: AbortSignal) {
-	await Stream.pipeline(
-		fs.createReadStream(sourcePath),
-		Zlib.createGzip(),
-		fs.createWriteStream(destPath),
-		{ signal },
-	)
-}
-
 export function setup() {
 	log = module.getLogger()
 	ENV = buildEnv()
+	void run()
+}
+
+async function run() {
+	const ctx = DB.addPooledDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
+
+	// before anything else, and whether or not the periodic schedule is even on: a pre-migration backup may have just
+	// been taken, and until it's adopted this system doesn't know it exists.
+	try {
+		await adoptUnrecordedBackups(ctx)
+	} catch (err) {
+		if (!isAbortError(err)) log.error(err, 'failed to account for backups taken outside the schedule')
+	}
 
 	if (ENV.AUTOMATIC_BACKUPS_PERIODIC === undefined) {
 		log.info('automatic backups disabled (AUTOMATIC_BACKUPS_PERIODIC unset)')
 		return
 	}
-	const interval = ENV.AUTOMATIC_BACKUPS_PERIODIC
 	const sftp = getSftpTarget()
-
 	log.info(
 		'automatic backups every %s to %s%s, event history retention: %s',
-		formatHumanTime(interval),
+		formatHumanTime(ENV.AUTOMATIC_BACKUPS_PERIODIC),
 		ENV.BACKUPS_DIR,
 		sftp ? ` (uploading to ${sftp.username}@${sftp.host}:${ENV.BACKUP_SFTP_DIR})` : '',
 		ENV.EVENT_HISTORY_RETENTION_PERIOD === undefined ? 'disabled' : formatHumanTime(ENV.EVENT_HISTORY_RETENTION_PERIOD),
 	)
-
-	void runBackupLoop(interval)
+	await runBackupLoop(ENV.AUTOMATIC_BACKUPS_PERIODIC, ctx)
 }
 
-async function runBackupLoop(interval: number) {
-	const ctx = DB.addPooledDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
+// A pre-migration snapshot is taken by the migration runner (see server/migrate.ts) before the app exists, so it can't
+// record itself, ship itself offsite, or tell the schedule that it happened. Rather than a handoff, we notice it here:
+// a pre-migration backup newer than the newest BACKUP_CREATED event is one nothing has accounted for. Adopting it is
+// what stops the two triggers producing two snapshots of the same database a minute apart -- and it's also how the
+// audit log gets to mention pre-migration backups at all, and how they reach the sftp target.
+//
+// Deliberately driven off what's on disk rather than a handoff file: it costs nothing, it's self-healing, and it
+// equally covers a snapshot taken by an out-of-band `pnpm db:migrate:prod` days before this boot.
+const adoptUnrecordedBackups = C.spanOp('adoptUnrecordedBackups', { module }, async (ctx: C.Db & CS.AbortSignal) => {
+	if (!fs.existsSync(ENV.BACKUPS_DIR)) return
+	const loggedAt = await getLastBackupEventTime(ctx)
+	// only pre-migration backups: a periodic one is written by the loop below, which records its own event, so an
+	// unrecorded periodic file means the event failed to write and re-adopting it would say it happened twice.
+	const unrecorded = DbBackup.backupFiles(fs.readdirSync(ENV.BACKUPS_DIR), ENV.DB_PATH)
+		.filter(f => f.kind === 'pre-migration')
+		.map(f => ({ fileName: f.name, stat: fs.statSync(path.join(ENV.BACKUPS_DIR, f.name)) }))
+		.filter(f => loggedAt === undefined || f.stat.mtimeMs > loggedAt)
+		.reverse() // oldest first, so the audit log reads in the order they were taken
 
+	for (const { fileName, stat } of unrecorded) {
+		ctx.signal.throwIfAborted()
+		const uploaded = await uploadBackup(ctx, path.join(ENV.BACKUPS_DIR, fileName), fileName)
+		await AppEventsSys.persistAppEvent(
+			ctx,
+			AppEvents.create<AppEvents.BackupCreated>({
+				type: 'BACKUP_CREATED',
+				actor: { type: 'system' },
+				serverId: null,
+				matchId: null,
+				causeId: null,
+				// when the snapshot was taken, not when we noticed it: this event is what anchors the schedule
+				time: stat.mtimeMs,
+				fileName,
+				sizeBytes: stat.size,
+				reason: 'pre-migration',
+				uploaded,
+			}),
+		)
+		log.info('recorded pre-migration backup %s, taken %s ago', fileName, formatDurationApprox(Date.now() - stat.mtimeMs))
+	}
+})
+
+async function runBackupLoop(interval: number, ctx: C.Db & CS.AbortSignal) {
 	// the schedule is anchored to the last backup that actually happened, not to boot: a server restarted more often
 	// than the interval would otherwise never reach its first backup at all. A backup taken shortly before a restart
 	// isn't taken again, and one that came due while we were down is taken now (BOOT_SETTLE_DELAY floors the first
@@ -116,23 +138,32 @@ async function runBackupLoop(interval: number) {
 	}
 }
 
-// when the last backup was taken, or null if we can't account for one. The audit log records every backup this app
-// took; the backups dir holds the artifacts. They normally agree, and when they don't (the db was restored from an
-// older snapshot, or the backups dir lives on storage that didn't survive the restart) the older of the two is the
-// honest answer: a missing signal means we have no backup we can point at, so we take one.
-async function getLastBackupTime(ctx: C.Db) {
+async function getLastBackupEventTime(ctx: C.Db) {
 	const [row] = await ctx.db()
 		.select({ time: Schema.appEvents.time })
 		.from(Schema.appEvents)
 		.where(E.eq(Schema.appEvents.type, 'BACKUP_CREATED'))
 		.orderBy(E.desc(Schema.appEvents.time))
 		.limit(1)
-	const loggedAt = row?.time.getTime()
+	return row?.time.getTime()
+}
 
-	const fileNames = fs.existsSync(ENV.BACKUPS_DIR) ? backupFiles(fs.readdirSync(ENV.BACKUPS_DIR)) : []
-	const writtenAt = fileNames.length === 0
+// when the last backup was taken, or null if we can't account for one. The audit log records every backup this app
+// took; the backups dir holds the artifacts. They normally agree, and when they don't (the db was restored from an
+// older snapshot, or the backups dir lives on storage that didn't survive the restart) the older of the two is the
+// honest answer: a missing signal means we have no backup we can point at, so we take one.
+//
+// Every backup counts, whatever it was taken for: having just snapshotted the database in order to migrate it, there
+// is nothing for a periodic run to add a minute later, and taking one anyway is how the same database got copied twice
+// per upgrade. This is only safe because adoption uploads what it adopts -- anchoring on a local-only file would
+// quietly mean nothing reaches the sftp target for a whole interval, which is the one thing offsite exists to prevent.
+async function getLastBackupTime(ctx: C.Db) {
+	const loggedAt = await getLastBackupEventTime(ctx)
+
+	const files = fs.existsSync(ENV.BACKUPS_DIR) ? DbBackup.backupFiles(fs.readdirSync(ENV.BACKUPS_DIR), ENV.DB_PATH) : []
+	const writtenAt = files.length === 0
 		? undefined
-		: Math.max(...fileNames.map(name => fs.statSync(path.join(ENV.BACKUPS_DIR, name)).mtimeMs))
+		: Math.max(...files.map(f => fs.statSync(path.join(ENV.BACKUPS_DIR, f.name)).mtimeMs))
 
 	if (loggedAt === undefined || writtenAt === undefined) return null
 	return Math.min(loggedAt, writtenAt)
@@ -145,27 +176,13 @@ export const runBackup = C.spanOp('runBackup', { module }, async (ctx: C.Db & CS
 	const startedAt = Date.now()
 	const pruned = await pruneEventHistory(ctx)
 
-	fs.mkdirSync(ENV.BACKUPS_DIR, { recursive: true })
-	const fileName = `${backupFilePrefix()}-${DateFns.format(new Date(), 'yyyyMMdd-HHmmss')}${BACKUP_FILE_EXT}`
+	const fileName = DbBackup.fileName(ENV.DB_PATH, 'periodic')
 	const destPath = path.join(ENV.BACKUPS_DIR, fileName)
-	// sqlite writes its snapshot itself and we then gzip it, so a crash at either step would leave a partial file that
-	// still looks like a complete backup. both stages land on temp names, and only the finished archive is renamed into
-	// place (atomic within the directory).
-	const snapshotPath = `${destPath}.snapshot.tmp`
-	const tmpPath = `${destPath}.tmp`
-	let snapshotBytes: number
-	try {
-		await DB.backupTo(snapshotPath)
-		snapshotBytes = fs.statSync(snapshotPath).size
-		await gzipFile(snapshotPath, tmpPath, ctx.signal)
-		fs.renameSync(tmpPath, destPath)
-	} finally {
-		// the snapshot is an intermediate: it's the archive we keep. removed on the happy path too.
-		fs.rmSync(snapshotPath, { force: true })
-		fs.rmSync(tmpPath, { force: true })
-	}
-
-	const sizeBytes = fs.statSync(destPath).size
+	const { sizeBytes, snapshotBytes } = await DbBackup.writeBackup({
+		destPath,
+		snapshot: DB.backupTo,
+		signal: ctx.signal,
+	})
 	log.info(
 		'wrote backup %s (%d bytes, %sx smaller than the %d byte snapshot)',
 		destPath,
@@ -187,6 +204,7 @@ export const runBackup = C.spanOp('runBackup', { module }, async (ctx: C.Db & CS
 			causeId: null,
 			fileName,
 			sizeBytes,
+			reason: 'periodic',
 			durationMs: Date.now() - startedAt,
 			uploaded,
 			pruned,
@@ -310,7 +328,7 @@ const uploadBackup = C.spanOp('uploadBackup', { module }, async (ctx: CS.AbortSi
 			// offsite the run has done its job, and a delete we're not permitted to make must not get recorded as a
 			// backup that never left the box.
 			try {
-				for (const stale of staleBackupFiles(await sftp.listDir(remoteDir), fileName)) {
+				for (const stale of DbBackup.staleBackupFiles(await sftp.listDir(remoteDir), { ...retentionOpts(), keep: fileName })) {
 					await sftp.unlink(`${remoteDir}/${stale}`)
 					log.info('deleted remote backup %s', stale)
 				}
@@ -328,25 +346,11 @@ const uploadBackup = C.spanOp('uploadBackup', { module }, async (ctx: CS.AbortSi
 })
 
 function pruneOldBackups(currentFileName: string) {
-	for (const stale of staleBackupFiles(fs.readdirSync(ENV.BACKUPS_DIR), currentFileName)) {
-		fs.rmSync(path.join(ENV.BACKUPS_DIR, stale), { force: true })
+	for (const stale of DbBackup.pruneBackups({ ...retentionOpts(), dir: ENV.BACKUPS_DIR, keep: currentFileName })) {
 		log.info('deleted local backup %s', stale)
 	}
 }
 
-// the backups beyond BACKUPS_RETAIN_COUNT, and never the one we just took
-function staleBackupFiles(fileNames: string[], currentFileName: string) {
-	if (ENV.BACKUPS_RETAIN_COUNT === 0) return []
-	return backupFiles(fileNames).slice(ENV.BACKUPS_RETAIN_COUNT).filter(name => name !== currentFileName)
-}
-
-// the backups of THIS database in a directory, newest first (the timestamp is in the name, so lexical order is
-// chronological). Anything else there is left alone: retention only ever deletes files we wrote ourselves.
-function backupFiles(fileNames: string[]) {
-	const pattern = backupFilePattern()
-	return fileNames.filter(name => pattern.test(name)).sort().reverse()
-}
-
-function escapeRegExp(str: string) {
-	return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+function retentionOpts() {
+	return { dbPath: ENV.DB_PATH, retainCount: ENV.BACKUPS_RETAIN_COUNT }
 }

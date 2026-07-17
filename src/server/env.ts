@@ -171,7 +171,8 @@ export const groups = {
 			envExample: { dev: { include: 'omit' } },
 		}),
 		BACKUPS_RETAIN_COUNT: ParsedIntSchema.pipe(z.number().min(0)).default(10).meta({
-			description: 'how many backups to keep, locally and (if configured) on the sftp target. 0 keeps all of them.',
+			description:
+				'how many backups to keep, locally and (if configured) on the sftp target. 0 keeps all of them. Periodic and pre-migration backups share this one window, with a single exception: the most recent pre-migration backup is always kept, however old it is, since it is the only thing a bad upgrade can be rolled back to.',
 			envExample: { dev: { include: 'omit' } },
 		}),
 
