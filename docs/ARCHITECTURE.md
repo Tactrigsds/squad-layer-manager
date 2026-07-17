@@ -719,7 +719,8 @@ state lives in JSON columns rather than being normalized. Those columns are **su
 handled by a `superjsonify`/`unsuperjsonify` pair that walks the drizzle table config and transforms only
 `json`-typed columns. This is what allows bigints (Discord snowflakes) and Dates to round-trip.
 
-**Transactions serialize globally.** better-sqlite3 is one synchronous connection, but callbacks are async, so
+**Transactions serialize globally.** better-sqlite3 is one synchronous connection, but callbacks 
+are still treated as though they could be async in the future, so
 `runTransaction` serializes logical transactions with a manual promise-chain lock around manual `BEGIN
 IMMEDIATE`/`COMMIT`/`ROLLBACK`. Re-entrant: an inner transaction joins the outer one, and an inner `rollback()`
 rolls back the outer. This is one process-wide lock, a deliberate simplicity-over-throughput call.
