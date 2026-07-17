@@ -9,9 +9,17 @@ Async functions should by-default have the option to pass a signal to cancel an 
 When branching on unions(especially discriminated unions), generally use `assertNever()` from src/lib/type-guards.ts to cover off the default case so that type errors are raised if we add new members to the union.
 Use namespace imports for all nontrivial modules, unless established convention for that module contradicts this. Make sure that the chosen namespace is consistent and unique across the app, except for special cases like things imported into context.ts or context-shared.ts. Use convenient abbreviations or acronyms for commonly used lib modules, model modules, and imported packages
 
-Avoid comments which trivially explain what a piece of code does. Only leave a comment if there's something non-obvious going on, or to explain why a particular approach was taken.
+Only write a comment which is _absolutely necessary_: one without which it would be hard to work out what is actually going on, and why. Everything else is noise. Default to no comment.
 
-Also avoid comments which refer back to previous versions of the codebase or why something changed, unless there's an extremely motivating reason to do so.
+Before writing one, try to make it unnecessary. A precise name is almost always better than a comment explaining a vague one: `DOCS_SOURCE_REPO` needs no comment where `DOCS` needs three lines. If the rationale is long, it belongs in docs/ once, with the code pointing at it.
+
+Never write a comment which:
+
+- trivially explains what the code does, or restates a name, type or condition already visible on the line
+- justifies, editorializes or argues for the approach taken
+- refers back to previous versions of the codebase or to why something changed, unless there's an extremely motivating reason to do so
+
+Keep the ones which survive short. A necessary comment is usually one line.
 
 # Editing
 
