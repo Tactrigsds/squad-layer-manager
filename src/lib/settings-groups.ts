@@ -24,8 +24,13 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 		keys: ['squadServer', 'fogOffDelay', 'postRollAnnouncementsTimeout', 'balanceTriggerLevels'],
 	},
 	{ slug: 'players', label: 'Players & Flags', keys: ['playerGroupings', 'playerFlagsRequiringNote'] },
-	// rbac stays ungrouped: its own section header already reads "Permissions & Roles"
+	// rbac stays ungrouped: its own section header already reads "Permissions & Roles". It leads the form via
+	// GLOBAL_SETTINGS_PRIORITY_KEYS rather than trailing the groups with the other ungrouped keys.
 ]
+
+// permissions are what an operator most often opens this page for, so rbac leads the global form. Ungrouped keys
+// otherwise trail the groups, which is where a newly added setting should surface -- but not where rbac belongs.
+export const GLOBAL_SETTINGS_PRIORITY_KEYS: string[] = ['rbac']
 
 // server settings aren't grouped, but the fields an operator must configure to get a new server working (connection
 // details, admin list sources, admin-identifying permissions) float to the top of the form; the rest follow in schema
@@ -104,16 +109,22 @@ export function splitAdvanced(keys: string[], parentPath: string, advanced: Read
 	return { normal: keys.filter((k) => !isAdvanced(k)), advanced: keys.filter(isAdvanced) }
 }
 
-// partition `keys` (schema property order) into the ordered group buckets plus the ungrouped remainder
+// partition `keys` (schema property order) into the keys that lead the form, the ordered group buckets, and the
+// ungrouped remainder. `priorityKeys` render first, in the given order, as their own sections; a leading key is
+// claimed from whatever group would otherwise hold it, so it never renders twice.
 export function splitByGroups(
 	keys: string[],
 	groups: SettingsGroup[],
-): { groups: { group: SettingsGroup; keys: string[] }[]; ungrouped: string[] } {
+	priorityKeys: readonly string[] = [],
+): { leading: string[]; groups: { group: SettingsGroup; keys: string[] }[]; ungrouped: string[] } {
+	const leading = priorityKeys.filter((k) => keys.includes(k))
+	const leads = new Set(leading)
 	const grouped = new Set(groups.flatMap((g) => g.keys))
 	return {
+		leading,
 		groups: groups
-			.map((group) => ({ group, keys: group.keys.filter((k) => keys.includes(k)) }))
+			.map((group) => ({ group, keys: group.keys.filter((k) => keys.includes(k) && !leads.has(k)) }))
 			.filter((g) => g.keys.length > 0),
-		ungrouped: keys.filter((k) => !grouped.has(k)),
+		ungrouped: keys.filter((k) => !grouped.has(k) && !leads.has(k)),
 	}
 }

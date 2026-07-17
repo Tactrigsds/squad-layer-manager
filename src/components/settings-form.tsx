@@ -3579,19 +3579,20 @@ function GroupSection({ slug, label, children }: { slug: string; label: string; 
 	)
 }
 
-// root fields partitioned into the given groups (schema order within each group is the group's key order); keys not
-// covered by any group render ungrouped afterwards
+// root fields partitioned into the given groups (schema order within each group is the group's key order): priorityKeys
+// lead as their own sections, then the groups, then any key no group covers
 function GroupedRootFields(
-	{ node, groups, value$, reset$, onChange }: {
+	{ node, groups, priorityKeys, value$, reset$, onChange }: {
 		node: Node
 		groups: SettingsGroup[]
+		priorityKeys?: string[]
 		value$: ValueState
 		reset$: Rx.Subject<void>
 		onChange: (v: Record<string, any>) => void
 	},
 ) {
 	const props: Record<string, Node> = node.properties ?? {}
-	const { groups: grouped, ungrouped } = splitByGroups(Object.keys(props), groups)
+	const { leading, groups: grouped, ungrouped } = splitByGroups(Object.keys(props), groups, priorityKeys)
 	const advancedPaths = React.useContext(AdvancedPathsContext)
 	const field = (key: string) => (
 		<Field key={key} name={key} node={props[key]} path={[key]} parent$={value$} parentOnChange={onChange} reset$={reset$} />
@@ -3608,6 +3609,7 @@ function GroupedRootFields(
 	}
 	return (
 		<div className="space-y-6">
+			{renderKeys(leading)}
 			{grouped.map(({ group, keys }) => (
 				<GroupSection key={group.slug} slug={group.slug} label={group.label}>
 					{renderKeys(keys)}
@@ -3670,8 +3672,9 @@ export default function SettingsForm(
 		idPrefix?: string
 		// presentation-level grouping of the top-level keys (see settings-groups.ts); ungrouped keys render after the groups
 		groups?: SettingsGroup[]
-		// presentation-level ordering (ungrouped forms only): these top-level keys float to the front, in the given order,
-		// with the rest following in schema order. Keeps the persisted shape untouched, same rationale as `groups`.
+		// presentation-level ordering: these top-level keys float to the front, in the given order, with the rest following
+		// in schema order. In a grouped form they lead as their own sections, ahead of every group. Keeps the persisted
+		// shape untouched, same rationale as `groups`.
 		priorityKeys?: string[]
 		// dotted paths of the fields that render inside their section's collapsed "Advanced" disclosure (see settings-groups.ts)
 		advancedPaths?: ReadonlySet<string>
@@ -3710,7 +3713,16 @@ export default function SettingsForm(
 									<MessageVarsContext.Provider value={messageVars}>
 										<ValidationContext.Provider value={normIssues}>
 											{groups
-												? <GroupedRootFields node={jsonSchema} groups={groups} value$={value$} reset$={reset$} onChange={onChange} />
+												? (
+													<GroupedRootFields
+														node={jsonSchema}
+														groups={groups}
+														priorityKeys={priorityKeys}
+														value$={value$}
+														reset$={reset$}
+														onChange={onChange}
+													/>
+												)
 												: <ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />}
 										</ValidationContext.Provider>
 									</MessageVarsContext.Provider>

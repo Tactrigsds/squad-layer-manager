@@ -16,7 +16,7 @@ import { frameManager } from '@/frames/frame-manager'
 import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import { createId } from '@/lib/id'
 import { useRefConstructor } from '@/lib/react'
-import { ADVANCED_GLOBAL_SETTINGS_PATHS, ADVANCED_SERVER_SETTINGS_PATHS, GLOBAL_SETTINGS_GROUPS, SERVER_SETTINGS_PRIORITY_KEYS } from '@/lib/settings-groups'
+import { ADVANCED_GLOBAL_SETTINGS_PATHS, ADVANCED_SERVER_SETTINGS_PATHS, GLOBAL_SETTINGS_GROUPS, GLOBAL_SETTINGS_PRIORITY_KEYS, SERVER_SETTINGS_PRIORITY_KEYS } from '@/lib/settings-groups'
 import * as SettingsNav from '@/lib/settings-nav'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
@@ -936,6 +936,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 								onChange={onFormChange}
 								saved={saved}
 								groups={GLOBAL_SETTINGS_GROUPS}
+								priorityKeys={GLOBAL_SETTINGS_PRIORITY_KEYS}
 								advancedPaths={ADVANCED_GLOBAL_SETTINGS_PATHS}
 								issues={issues}
 								writeAccess={writeAccess}

@@ -2,7 +2,7 @@ import { StickyGroup } from '@/components/sticky-group'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { SettingsGroup } from '@/lib/settings-groups'
-import { GLOBAL_SETTINGS_GROUPS, HIDDEN_GLOBAL_SETTINGS_KEYS, splitByGroups, TOC_LEAF_PATHS } from '@/lib/settings-groups'
+import { GLOBAL_SETTINGS_GROUPS, GLOBAL_SETTINGS_PRIORITY_KEYS, HIDDEN_GLOBAL_SETTINGS_KEYS, splitByGroups, TOC_LEAF_PATHS } from '@/lib/settings-groups'
 import { settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
@@ -57,11 +57,12 @@ function buildChildren(node: Node, path: (string | number)[], idPrefix: string, 
 }
 
 // mirror the form's presentation-level grouping: wrap the top-level nodes into group nodes (anchored to the group
-// headers the form emits), leaving ungrouped keys at the top level after them
-function groupTocNodes(children: TocNode[], groups: SettingsGroup[], idPrefix: string): TocNode[] {
+// headers the form emits), with the leading keys above them and any ungrouped key at the top level after them
+function groupTocNodes(children: TocNode[], groups: SettingsGroup[], idPrefix: string, priorityKeys: string[]): TocNode[] {
 	const byKey = new Map(children.map((c) => [c.path, c]))
-	const { groups: grouped, ungrouped } = splitByGroups(children.map((c) => c.path), groups)
+	const { leading, groups: grouped, ungrouped } = splitByGroups(children.map((c) => c.path), groups, priorityKeys)
 	return [
+		...leading.map((k) => byKey.get(k)!),
 		...grouped.map(({ group, keys }): TocNode => {
 			const children = keys.map((k) => byKey.get(k)!)
 			return {
@@ -274,6 +275,7 @@ export default function SettingsToc(
 					),
 					GLOBAL_SETTINGS_GROUPS,
 					'setting:',
+					GLOBAL_SETTINGS_PRIORITY_KEYS,
 				),
 		[globalMode, globalWrite],
 	)
