@@ -19,7 +19,7 @@
 		"build:prod": "pnpm run build:client && pnpm run build:server",
 		"server:prod": "NODE_ENV=production node --enable-source-maps --import ./register-otel.mjs dist-server/main-instrumented.js",
 		"server:dev": "NODE_ENV=development NODE_OPTIONS=\"--import ./register-otel.mjs\" tsx watch --inspect --include=./slm-config.jsonc --include=./.env --tsconfig tsconfig.node.json src/server/main-instrumented.ts",
-		"__dev-instance:comment__": "many worktrees side by side: `dev:init` provisions one (port slot, env links, db clone), then `dev:emu` + `dev` run it. See docs/DEV_INSTANCES.md",
+		"__dev-instance:comment__": "many worktrees side by side: `dev:init` provisions one (port slot, env links, db clone), then `dev:emu` + `dev` run it. See docs/dev_instances.md",
 		"dev": "tsx --tsconfig tsconfig.node.json src/scripts/dev.ts",
 		"dev:init": "tsx --tsconfig tsconfig.node.json src/scripts/dev-init.ts",
 		"dev:emu": "tsx --tsconfig tsconfig.node.json src/scripts/dev-emu.ts",
