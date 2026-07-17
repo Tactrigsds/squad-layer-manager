@@ -37,25 +37,35 @@ export namespace StrPatterns {
 	export const PATH_SEGMENT = /[^/]+/
 }
 
-export function normalizeForMatch(s: string) {
-	return s.replace(/[^\x20-\x7E]|\s/g, '').toLowerCase()
+export type NormalizeForMatchOpts = {
+	// Discards everything outside printable ascii. Only appropriate when the two sides are known to disagree about their
+	// non-ascii characters (see PlayerIds.findByUsernameLoose). For anything a user types this is hostile: a fully
+	// non-latin name normalizes to the empty string, which is contained in every other name.
+	stripNonAscii?: boolean
 }
-export function simpleStringMatch(names: string[], target: string) {
-	const normalizedTarget = normalizeForMatch(target)
+
+export function normalizeForMatch(s: string, opts?: NormalizeForMatchOpts) {
+	let normalized = s.normalize('NFKC')
+	if (opts?.stripNonAscii) normalized = normalized.replace(/[^\x20-\x7E]/g, '')
+	return normalized.replace(/\s/g, '').toLowerCase()
+}
+
+export function simpleStringMatch(names: string[], target: string, opts?: NormalizeForMatchOpts) {
+	const normalizedTarget = normalizeForMatch(target, opts)
 	const matched: number[] = []
 	for (let i = 0; i < names.length; i++) {
-		if (normalizeForMatch(names[i]).includes(normalizedTarget)) {
+		if (normalizeForMatch(names[i], opts).includes(normalizedTarget)) {
 			matched.push(i)
 		}
 	}
 	return matched
 }
 
-export function simpleUniqueStringMatch(names: string[], target: string) {
-	const normalizedTarget = normalizeForMatch(target)
+export function simpleUniqueStringMatch(names: string[], target: string, opts?: NormalizeForMatchOpts) {
+	const normalizedTarget = normalizeForMatch(target, opts)
 	const matched: number[] = []
 	for (let i = 0; i < names.length; i++) {
-		if (normalizeForMatch(names[i]).includes(normalizedTarget)) {
+		if (normalizeForMatch(names[i], opts).includes(normalizedTarget)) {
 			matched.push(i)
 		}
 	}
