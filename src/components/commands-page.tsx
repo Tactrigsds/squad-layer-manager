@@ -129,7 +129,9 @@ function CommandEntry(
 					))}
 				</div>
 				{!cmd.enabled && <Badge variant="destructive" className="text-xs">Disabled</Badge>}
-				{cmd.scopes.map((scope) => <Badge key={scope} variant="outline" className="text-xs">{scope}</Badge>)}
+				{cmd.scopes.map((scope) => (
+					<Badge key={scope} variant="outline" className="text-xs whitespace-nowrap">{CMD.COMMAND_SCOPE_LABELS[scope]}</Badge>
+				))}
 				<CollapsibleTrigger asChild>
 					<Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs text-muted-foreground">
 						{open ? <Icons.ChevronDown className="h-3 w-3" /> : <Icons.ChevronRight className="h-3 w-3" />}
@@ -303,14 +305,10 @@ export default function CommandsPage() {
 		<div className="flex flex-col flex-1 min-h-0 w-full max-w-6xl mx-auto">
 			<header className="shrink-0 pb-3">
 				<h1 className="text-xl font-semibold">Ingame Commands</h1>
-				<ul className="list-disc pl-4 space-y-1 pt-1 text-sm text-muted-foreground">
-					<li>
-						A command with the <code>admin</code> scope can only be used in admin chat, and so on.
-					</li>
-					<li>Players can be matched by ID (Steam, EOS, Epic) or by username match.</li>
-					<li>All matching (usernames, flag names) is case-insensitive with non-ASCII and whitespace stripped.</li>
-					<li>Expand a command for its arguments and examples. Pin the ones you use often.</li>
-				</ul>
+				<p className="pt-1 text-sm text-muted-foreground">
+					Everything you type is case-insensitive. Player, squad and flag names match on any part of the name, ignoring spaces and non-ASCII
+					characters.
+				</p>
 			</header>
 			<div className="flex gap-4 flex-1 min-h-0">
 				<aside className="flex flex-col w-52 shrink-0 min-h-0 border-r pr-2">

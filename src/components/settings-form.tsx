@@ -1022,7 +1022,7 @@ function CommandCard({ value$, reset$, onChange }: OverrideProps) {
 					<ComboBoxMulti
 						title="Scope"
 						values={scopes}
-						options={[...CMD.COMMAND_SCOPES.options]}
+						options={CMD.COMMAND_SCOPES.options.map((scope) => ({ value: scope, label: CMD.COMMAND_SCOPE_LABELS[scope] }))}
 						onSelect={(next) => patch({ scopes: (typeof next === 'function' ? next(scopes) : next) })}
 					/>
 				</div>

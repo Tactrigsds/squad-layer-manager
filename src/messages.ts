@@ -255,7 +255,14 @@ export const WARNS = {
 		unknownCommand(cmdText: string, closestMatch: string) {
 			return `Unknown: ${cmdText}.\nDid you mean "${closestMatch}"?`
 		},
-		wrongChat: (correctChats: string[]) => `Command not available in this chat. Try using ${correctChats.join(' or ')}`,
+		// Takes the command's scopes rather than the chats they map to, so admin-only can be named as such: it's the
+		// common case by far, and it matches how the scope is labelled on the commands page (CMD.COMMAND_SCOPE_LABELS),
+		// where the raw ChatAdmin/ChatTeam enum names never appear.
+		wrongChat(scopes: CMD.CommandScope[]) {
+			if (scopes.length === 1 && scopes[0] === 'admin') return 'Admin only commands must be used in admin chat'
+			const correctChats = scopes.flatMap((s) => CMD.CHAT_SCOPE_MAPPINGS[s])
+			return `Command not available in this chat. Try using ${correctChats.join(' or ')}`
+		},
 		// `section` is the raw token typed after the help command; omitted means the quick reference. Returns one
 		// string per warn, since chat can only take a few lines at a time.
 		help(

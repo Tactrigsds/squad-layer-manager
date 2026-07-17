@@ -109,8 +109,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 			// non-admin is trying to use admin command, just ignore them
 			return
 		}
-		const correctChats = cmdConfig.scopes.flatMap((s) => CMD.CHAT_SCOPE_MAPPINGS[s])
-		return await error('wrong-chat', Messages.WARNS.commands.wrongChat(correctChats))
+		return await error('wrong-chat', Messages.WARNS.commands.wrongChat(cmdConfig.scopes))
 	}
 
 	if (!cmdConfig.enabled) {
