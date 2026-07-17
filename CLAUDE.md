@@ -74,6 +74,8 @@ Never export non-components from .tsx files, as it breaks hot module replacement
 
 Avoid controlled inputs and textareas (don't set `value`). Do the same for other fields that are latency-sensitive. make sure we debounce inputs which may otherwise cause frequent re-renders.
 
+Don't set magic number z indexes. instead, respect and expand upon the system in `./src/models/zindex.ts`
+
 # Testing
 
 Unit tests should be reserved for code with two properties: being actually complex, and being largely self-contained, or at least isolatable. Do not write unit tests for trivial code.
