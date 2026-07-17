@@ -1101,6 +1101,7 @@ function StringInConfig(
 			onSelect={props.setValues}
 			className={props.className}
 			restrictValueSize={props.restrictValueSize}
+			chipDisplay
 		/>
 	)
 }
@@ -1279,7 +1280,7 @@ function LayersInConfig(
 				<ul className="flex flex-wrap items-center gap-1">
 					{filteredValues.map((layerId) => (
 						<li key={layerId} className="flex min-w-0 items-center justify-between gap-1 px-2 py-1 bg-secondary rounded-md">
-							<ShortLayerName layerId={layerId} allowShowInfo={false} className="text-sm" />
+							<ShortLayerName layerId={layerId} className="text-sm" />
 							<Button
 								size="sm"
 								variant="ghost"
@@ -1322,9 +1323,9 @@ export function LayerEqConfig(
 	const [open, setOpen] = React.useState(false)
 
 	return (
-		<div className="flex min-w-0 flex-wrap space-x-2 items-center">
-			<Button className="flex h-auto min-w-0 flex-wrap items-center gap-1" variant="ghost" onClick={() => setOpen(true)}>
-				{props.value !== null && <ShortLayerName layerId={props.value} allowShowInfo={false} />}
+		<div className="flex min-w-0 flex-wrap items-center gap-1">
+			{props.value !== null && <ShortLayerName layerId={props.value} />}
+			<Button size="icon" variant="ghost" aria-label="Change layer" onClick={() => setOpen(true)}>
 				<Icons.Edit className="shrink-0" />
 			</Button>
 			<EditLayerDialog

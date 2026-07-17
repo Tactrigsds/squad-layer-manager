@@ -27,6 +27,9 @@ export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	onSelect?: React.Dispatch<React.SetStateAction<T[]>>
 	ref?: React.ForwardedRef<ComboBoxHandle>
 	restrictValueSize?: boolean
+	// render the selection as wrapping chips in the trigger instead of one ellipsis-clipped line. with
+	// restrictValueSize the chip area caps its height and scrolls; otherwise it grows with the selection.
+	chipDisplay?: boolean
 	selectOnClose?: boolean
 	reset?: boolean | T[]
 	confirm?: boolean | string
@@ -150,8 +153,10 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		|| displayValues.some(v => !confirmedSet.has(v))
 	)
 
+	const chipDisplay = props.chipDisplay ?? false
 	let valuesDisplay = ''
-	if (!props.children) {
+	// chip mode renders each selection as its own node, so only the empty-state text is precomputed here
+	if (!props.children && !(chipDisplay && displayValues.length > 0)) {
 		if (displayValues.length > 0) {
 			const displayText = displayValues
 				.map((value) => {
@@ -166,6 +171,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 			valuesDisplay = props.emptyLabel ?? 'Select...'
 		}
 	}
+	const showChips = chipDisplay && displayValues.length > 0
 	const trigger = (
 		<PopoverTrigger asChild>
 			{props.children ?? (
@@ -181,12 +187,43 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 					// push out of a flex container instead of truncating inside it.
 					// props.className goes last so a caller's width can beat these defaults -- cn merges
 					// tailwind conflicts last-wins, so the old ordering silently dropped them
-					className={cn(restrictValueSize ? 'max-w-[400px]' : 'max-w-full', 'min-w-0 justify-between font-mono', props.className)}
+					// chip mode grows multiline as the selection wraps, so let the button size to its content
+					// (h-auto) and top-align the chevron; the parent decides how much room it gets
+					className={cn(
+						restrictValueSize ? 'max-w-[400px]' : 'max-w-full',
+						'min-w-0 justify-between font-mono',
+						showChips && 'h-auto min-h-9 items-start py-1',
+						props.className,
+					)}
 				>
-					<span className="grow overflow-hidden text-ellipsis">
-						{valuesDisplay}
-					</span>
-					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+					{showChips
+						? (
+							<span className="flex grow flex-wrap items-center gap-1">
+								{displayValues.map((value) => {
+									const option = optionsByValue.get(value)
+									const label = option ? (option.label ?? option.value) : value
+									return (
+										<span
+											key={value === null ? NULL.current : value}
+											className="inline-flex items-center rounded bg-secondary px-1.5 py-0.5 text-xs font-normal"
+										>
+											{label === null ? DisplayHelpers.NULL_DISPLAY : label}
+										</span>
+									)
+								})}
+								{selectionLimit && (
+									<span className="self-center text-xs text-muted-foreground">
+										({displayValues.length}/{selectionLimit})
+									</span>
+								)}
+							</span>
+						)
+						: (
+							<span className="grow overflow-hidden text-ellipsis">
+								{valuesDisplay}
+							</span>
+						)}
+					<ChevronsUpDown className={cn('ml-2 h-4 w-4 shrink-0 opacity-50', showChips && 'mt-1 self-start')} />
 				</Button>
 			)}
 		</PopoverTrigger>
