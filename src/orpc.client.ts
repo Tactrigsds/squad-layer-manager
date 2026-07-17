@@ -85,10 +85,16 @@ connectStatus$.subscribe()
 // tanstack's own notion of "online" is navigator.onLine, which stays true when our websocket is the only thing that
 // died. Driving it off the socket instead means queries and mutations pause for the outage and resume on reconnect,
 // rather than each one burning its retries against a transport that cannot answer.
+//
+// Only a sustained outage counts as offline. 'pending' is a socket that has never opened yet, and reporting that as
+// offline would pause every query on the initial page load: tanstack only un-pauses a query when it is both online
+// AND the document is visible (see canContinue in its retryer), and it notifies on change, so a load that goes
+// offline -> online while the page is hidden leaves those queries paused for good. The link buffers calls made
+// before the socket opens anyway, so there is nothing to pause for here.
 connectStatus$.pipe(
-	Rx.map(status => status === 'open'),
+	Rx.map(status => status !== 'closed'),
 	Rx.distinctUntilChanged(),
-).subscribe(open => onlineManager.setOnline(open))
+).subscribe(online => onlineManager.setOnline(online))
 
 // one toast for the whole outage, replaced in place by its own resolution. Keyed so repeated close events can't stack
 // copies of it, and unclearable because dismissing it wouldn't make the app usable again.
