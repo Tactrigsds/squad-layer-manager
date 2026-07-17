@@ -47,7 +47,8 @@ export const TARGETS: Target[] = [
 		path: path.join(Paths.PROJECT_ROOT, '.env.secrets.example'),
 		header: [
 			'Every credential SLM reads. It is mounted into the container as a file rather than passed as environment',
-			'variables. See docs/INSTALLING.md to point SECRETS_FILE at a docker secret instead.',
+			'variables. To point SECRETS_FILE at a docker secret instead, see',
+			`${Env.DOCS}/docs/INSTALLING.md`,
 			'',
 			'Treat it as a private key: keep it out of any backup you would not put a password in.',
 		],
@@ -70,10 +71,13 @@ export const TARGETS: Target[] = [
 	},
 ]
 
+// only worth saying to a checkout, which has the schema to edit. install.sh copies the deployment files into
+// place, so there the line would sit in an operator's own .env claiming it gets regenerated.
 const GENERATED_BY = 'Generated from src/server/env.ts on every dev boot -- edit the schema there, not this file.'
 
 export function build(target: Target): string {
-	const lines: string[] = [GENERATED_BY, '', ...target.header].map(comment)
+	const preamble = target.audience === 'dev' ? [GENERATED_BY, ''] : []
+	const lines: string[] = [...preamble, ...target.header].map(comment)
 	for (const [groupName, group] of Object.entries(Env.groups)) {
 		const rendered = Object.entries(group as Record<string, z.ZodType>)
 			.filter(([, schema]) => target.contents === 'all' || Env.isSecret(schema) === (target.contents === 'secrets'))
