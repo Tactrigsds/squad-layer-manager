@@ -998,9 +998,10 @@ function CommandStringsField({ value$, reset$, onChange }: OverrideProps) {
 // couple of tight rows, moving their descriptions into `?` tooltips. The command name + reset come from the LeafField
 // shell. Schema issues (e.g. a string missing an allowed prefix) still surface under the card via the field's issues.
 function CommandCard({ value$, reset$, onChange }: OverrideProps) {
-	const cfg = (useFieldValue(value$, reset$) as { scopes?: CMD.CommandScope[]; enabled?: boolean }) ?? {}
+	const cfg = (useFieldValue(value$, reset$) as { scopes?: CMD.CommandScope[]; enabled?: boolean; quickReference?: boolean }) ?? {}
 	const scopes = cfg.scopes ?? []
 	const enabled = cfg.enabled ?? true
+	const quickReference = cfg.quickReference ?? false
 	const strings$ = React.useMemo(() => scopeValue(value$, 'strings'), [value$])
 	function patch(p: Record<string, unknown>) {
 		onChange({ ...((value$.getValue() as Record<string, unknown>) ?? {}), ...p })
@@ -1028,6 +1029,13 @@ function CommandCard({ value$, reset$, onChange }: OverrideProps) {
 				<label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
 					<Switch checked={enabled} onCheckedChange={(v) => patch({ enabled: v })} />
 					Enabled
+				</label>
+				<label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+					<Checkbox checked={quickReference} onCheckedChange={(v) => patch({ quickReference: v === true })} />
+					<span className="flex items-center gap-1">
+						Quick Reference
+						<HelpTip text="Show this command on the commands page's quick reference, and in the in-game help command's default listing." />
+					</span>
 				</label>
 			</div>
 		</div>

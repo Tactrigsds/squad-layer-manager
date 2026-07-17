@@ -11,6 +11,10 @@ export type ClientOnlySettingsStore = {
 	chartTab: ChartTab
 	chartTimeInterval: ChartTimeInterval
 	primaryPanelTab: PrimaryPanelTab
+	// commands the admin pinned to the top of the commands page, in the order they pinned them. Held as CommandIds
+	// rather than command strings so a pin survives an admin renaming the command; ids for commands that no longer
+	// exist are ignored on read rather than pruned, since a downgrade shouldn't silently drop them.
+	pinnedCommands: string[]
 }
 
 export const Store = Zus.createStore<ClientOnlySettingsStore>()(ZusMiddle.persist<ClientOnlySettingsStore>(() => ({
@@ -18,6 +22,7 @@ export const Store = Zus.createStore<ClientOnlySettingsStore>()(ZusMiddle.persis
 	chartTab: 'population',
 	chartTimeInterval: 5,
 	primaryPanelTab: 'VIEWING_QUEUE',
+	pinnedCommands: [],
 }), {
 	name: 'settings:v1',
 	storage: ZusMiddle.createJSONStorage(() => localStorage),
@@ -35,6 +40,12 @@ export namespace Actions {
 	}
 	export function setPrimaryPanelTab(value: PrimaryPanelTab) {
 		Store.setState({ primaryPanelTab: value })
+	}
+	export function toggleCommandPinned(commandId: string) {
+		const pinned = Store.getState().pinnedCommands
+		Store.setState({
+			pinnedCommands: pinned.includes(commandId) ? pinned.filter((id) => id !== commandId) : [...pinned, commandId],
+		})
 	}
 }
 
