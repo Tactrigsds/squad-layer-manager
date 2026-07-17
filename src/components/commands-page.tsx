@@ -194,14 +194,36 @@ function currentAnchor(): string | null {
 	return hash ? decodeURIComponent(hash) : null
 }
 
-// Marks one entry as the linked target. Exclusive, and persists until the next navigation, so the command you followed
-// a link to stays identifiable once the scroll has finished. index.css styles [data-anchor-highlight] (a ring plus a
-// flash on apply) for the settings page; reused verbatim here so a link lands the same way in both places.
-function highlightEntry(el: HTMLElement) {
+// Clears any existing anchor mark, then marks `el` when `mark` is set. Landing somewhere always supersedes the
+// previous mark, even when the new target isn't itself ringed (a category), so an old command's ring doesn't linger.
+// The mark is exclusive and persists until the next navigation. index.css styles [data-anchor-highlight] (a ring plus
+// a flash on apply) for the settings page; reused verbatim here so a link lands the same way in both places.
+function setAnchorHighlight(el: HTMLElement, mark: boolean) {
 	for (const other of document.querySelectorAll('[data-anchor-highlight]')) {
 		if (other !== el) other.removeAttribute('data-anchor-highlight')
 	}
-	el.setAttribute('data-anchor-highlight', 'true')
+	if (mark) el.setAttribute('data-anchor-highlight', 'true')
+	else el.removeAttribute('data-anchor-highlight')
+}
+
+// A hover-revealed link to a fragment on the page, mirroring the settings page's AnchorLink: a real href (so it can be
+// copied or opened in a new tab) that on plain click scrolls in-place rather than letting the browser jump. Its row
+// must carry `group` for the hover reveal.
+function AnchorLinkIcon({ id, onNavigate, label }: { id: string; onNavigate: (id: string) => void; label: string }) {
+	return (
+		<a
+			href={`#${encodeURIComponent(id)}`}
+			className="shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
+			title={label}
+			aria-label={label}
+			onClick={(e) => {
+				e.preventDefault()
+				onNavigate(id)
+			}}
+		>
+			<Icons.Link className="h-3.5 w-3.5" />
+		</a>
+	)
 }
 
 // the full listing a compact card's "Details" jumps to: a command under its own declared section, an alias under
@@ -216,13 +238,14 @@ function detailsAnchorId(entry: Entry): string {
 // A command or alias reduced to its first string, its one-line description, and a link to the full listing. Small
 // enough to pack many per row -- the Pinned and Quick Reference sections are for scanning what exists, not reading the
 // detail. Not itself a scroll target: it lives above the scrolling body, and Details is what jumps into the body.
-function CompactEntry({ entry, onDetails }: { entry: Entry; onDetails: (id: string) => void }) {
+// `onUnpin` is set for the pinned cards (which are always commands), adding an unpin control at the bottom-left.
+function CompactEntry({ entry, onDetails, onUnpin }: { entry: Entry; onDetails: (id: string) => void; onUnpin?: () => void }) {
 	const string = entry.kind === 'command' ? entry.cmd.strings[0] ?? entry.cmdId : entry.alias.alias
 	const description = entry.kind === 'command'
 		? Messages.GENERAL.command.descriptions[entry.cmdId]
 		: Messages.GENERAL.command.aliasDescription(entry.alias.command)
 	return (
-		<div className="flex flex-col gap-1 rounded-md border bg-background px-2.5 py-1.5">
+		<div className="flex h-full flex-col gap-1 rounded-md border bg-background px-2.5 py-1.5">
 			<div className="flex items-center justify-between gap-1">
 				<code className="truncate font-mono text-sm font-medium" title={string}>{string}</code>
 				<Button
@@ -235,34 +258,53 @@ function CompactEntry({ entry, onDetails }: { entry: Entry; onDetails: (id: stri
 				</Button>
 			</div>
 			<p className="line-clamp-2 text-xs text-muted-foreground">{description}</p>
+			{onUnpin && (
+				// mt-auto keeps it on the card's bottom edge even when a shorter description leaves the card taller than its
+				// content (grid rows stretch every card to the tallest in the row)
+				<Button
+					variant="ghost"
+					size="sm"
+					className="mt-auto h-5 shrink-0 gap-0.5 self-end px-1 text-xs text-muted-foreground hover:text-foreground"
+					onClick={onUnpin}
+				>
+					<Icons.PinOff className="h-3 w-3" /> Unpin
+				</Button>
+			)}
 		</div>
 	)
 }
 
-function CompactGrid({ entries, onDetails }: { entries: Entry[]; onDetails: (id: string) => void }) {
-	return (
-		<div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(13rem,1fr))]">
-			{entries.map((entry) => <CompactEntry key={entry.id} entry={entry} onDetails={onDetails} />)}
-		</div>
-	)
-}
-
-// The Pinned and Quick Reference sections, rendered together as one block on a secondary background: the everyday
-// commands, with the ones this browser pinned called out at the top. Both are shortcuts into the sections below, so
-// they use compact cards whose Details link jumps there.
-function QuickReferenceBlock(
-	{ pinned, quickRef, onDetails }: { pinned?: Section; quickRef?: Section; onDetails: (id: string) => void },
+function CompactGrid(
+	{ entries, onDetails, onUnpin }: { entries: Entry[]; onDetails: (id: string) => void; onUnpin?: (cmdId: CMD.CommandId) => void },
 ) {
 	return (
-		<section className="mb-8 rounded-lg bg-secondary/60 p-4">
-			<h2 className="mb-3 text-base font-semibold tracking-tight">Quick Reference</h2>
-			{pinned && (
-				<div className="mb-4">
-					<h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pinned</h3>
-					<CompactGrid entries={pinned.entries} onDetails={onDetails} />
-				</div>
-			)}
-			{quickRef && <CompactGrid entries={quickRef.entries} onDetails={onDetails} />}
+		<div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(13rem,1fr))]">
+			{entries.map((entry) => (
+				<CompactEntry
+					key={entry.id}
+					entry={entry}
+					onDetails={onDetails}
+					onUnpin={onUnpin && entry.kind === 'command' ? () => onUnpin(entry.cmdId) : undefined}
+				/>
+			))}
+		</div>
+	)
+}
+
+// A titled block of compact cards on a secondary background: the "Your Pinned Commands" and "Quick Reference"
+// scans that sit above the menu. Both are shortcuts into the sections below, so their cards' Details link jumps there.
+function CompactSection(
+	{ title, section, onDetails, onUnpin }: {
+		title: string
+		section: Section
+		onDetails: (id: string) => void
+		onUnpin?: (cmdId: CMD.CommandId) => void
+	},
+) {
+	return (
+		<section className="rounded-lg bg-secondary/60 p-4">
+			<h2 className="mb-3 text-base font-semibold tracking-tight">{title}</h2>
+			<CompactGrid entries={section.entries} onDetails={onDetails} onUnpin={onUnpin} />
 		</section>
 	)
 }
@@ -415,16 +457,18 @@ export default function CommandsPage() {
 		requestAnimationFrame(() => {
 			scrollingToEntry.current = false
 		})
-		if (opts?.highlight) highlightEntry(el)
+		setAnchorHighlight(el, opts?.highlight ?? false)
 		return true
 	}, [])
 
-	// a fragment on arrival (someone followed a link to a command) lands on it once the list has rendered
+	// a fragment on arrival (someone followed a link) lands on it once the list has rendered. A category anchor has no
+	// `/`; it scrolls but isn't ringed or given the cursor, matching an in-page category-link click.
 	React.useEffect(() => {
 		const id = pendingAnchor.current
 		if (!settings || !id) return
 		pendingAnchor.current = null
-		if (landOnEntry(id, { highlight: true })) setCursorId(id)
+		const isEntry = id.includes('/')
+		if (landOnEntry(id, { highlight: isEntry }) && isEntry) setCursorId(id)
 	}, [settings, landOnEntry])
 
 	// A hash pasted or edited on a page that's already open. In-app navigation uses replaceState, which fires no
@@ -432,7 +476,9 @@ export default function CommandsPage() {
 	React.useEffect(() => {
 		const onHash = () => {
 			const id = currentAnchor()
-			if (id && landOnEntry(id, { highlight: true })) setCursorId(id)
+			if (!id) return
+			const isEntry = id.includes('/')
+			if (landOnEntry(id, { highlight: isEntry }) && isEntry) setCursorId(id)
 		}
 		window.addEventListener('hashchange', onHash)
 		return () => window.removeEventListener('hashchange', onHash)
@@ -466,14 +512,17 @@ export default function CommandsPage() {
 	const quickRefShortcut = visible.find((s) => s.id === QUICK_REF_SECTION_ID)
 	const contentSections = visible.filter((s) => !SHORTCUT_SECTION_IDS.has(s.id))
 
-	// Following a link to an entry: record it, mark it, and put the cursor on it. The cursor matters at the end of the
-	// list, where the target can't be centred -- the scroll-derived highlight would land on whatever the fold stopped
-	// at, so linking to one of the last commands would highlight a different one.
-	function navigateToEntry(id: string) {
+	// Following a link to an entry: record it in the URL, scroll to it, and (for a command) ring it and put the cursor
+	// on it. The cursor matters at the end of the list, where the target can't be centred -- the scroll-derived
+	// highlight would land on whatever the fold stopped at, so linking to one of the last commands would highlight a
+	// different one. A category link passes highlight:false: it's a whole section header, and a persistent ring on a
+	// full-width sticky bar reads as an error state rather than a landing mark.
+	function navigateToEntry(id: string, opts?: { highlight?: boolean }) {
+		const highlight = opts?.highlight !== false
 		// replaceState keeps the history stack clean and skips the browser's own jump; a no-op when the hash matches
 		history.replaceState(history.state, '', `#${encodeURIComponent(id)}`)
-		setCursorId(id)
-		landOnEntry(id, { highlight: true })
+		if (highlight) setCursorId(id)
+		landOnEntry(id, { highlight })
 	}
 
 	// Up/down walk the results from the search box, so a search can be narrowed and swept without leaving the input.
@@ -511,8 +560,16 @@ export default function CommandsPage() {
 				</header>
 				{/* the everyday commands sit above the whole menu -- search box, table of contents and listings all start below */}
 				{(pinnedShortcut || quickRefShortcut) && (
-					<div className="shrink-0">
-						<QuickReferenceBlock pinned={pinnedShortcut} quickRef={quickRefShortcut} onDetails={navigateToEntry} />
+					<div className="shrink-0 space-y-4 pb-6">
+						{pinnedShortcut && (
+							<CompactSection
+								title="Your Pinned Commands"
+								section={pinnedShortcut}
+								onDetails={navigateToEntry}
+								onUnpin={ClientOnlySettings.Actions.toggleCommandPinned}
+							/>
+						)}
+						{quickRefShortcut && <CompactSection title="Quick Reference" section={quickRefShortcut} onDetails={navigateToEntry} />}
 					</div>
 				)}
 				<div className="flex gap-4 flex-1 min-h-0">
@@ -580,10 +637,16 @@ export default function CommandsPage() {
 							    full width -- hence the negative margin pulling it out to the scroll container's padding */
 								}
 								<h2
+									id={section.id}
 									style={{ zIndex: stickyZIndex }}
-									className="sticky top-0 -mx-1 mb-2 border-b-2 border-border bg-background px-1 pb-1.5 pt-1 text-base font-semibold tracking-tight"
+									className="group sticky top-0 -mx-1 mb-2 flex scroll-mt-2 items-center gap-2 border-b-2 border-border bg-background px-1 pb-1.5 pt-1 text-base font-semibold tracking-tight"
 								>
 									{section.label}
+									<AnchorLinkIcon
+										id={section.id}
+										onNavigate={(id) => navigateToEntry(id, { highlight: false })}
+										label={`Link to ${section.label}`}
+									/>
 								</h2>
 								{section.blurb && <p className="pb-3 text-sm text-muted-foreground">{section.blurb}</p>}
 								{
