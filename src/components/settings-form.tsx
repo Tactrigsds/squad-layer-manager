@@ -3291,31 +3291,37 @@ const SchemaJsonEditor = React.lazy(
 	() => import('@/components/schema-json-editor') as unknown as Promise<{ default: React.FC<any> }>,
 ) as unknown as typeof SchemaJsonEditorComponent
 
+// which editor a field with a scoped JSON editor is currently showing, mirroring the page-level section modes
+type FieldMode = 'gui' | 'json'
+
 // the sub-schema for this field's scoped JSON editor, or undefined when it doesn't offer one
-function useLocalJsonSchema(pathStr: string, path: Path): z.ZodType | undefined {
+function useLocalJsonSchema(pathStr: string): z.ZodType | undefined {
 	const rootSchema = React.useContext(RootSchemaContext)
 	return React.useMemo(
-		// eslint-disable-next-line react-hooks/exhaustive-deps -- `path` is rebuilt every render; pathStr identifies it
-		() => (rootSchema && LOCAL_JSON_EDITOR_PATHS.has(pathStr) ? Zod.schemaAtPath(rootSchema, path) : undefined),
-		[
-			rootSchema,
-			pathStr,
-			path,
-		],
+		// splitting pathStr rather than taking the path array keeps this memo stable: the array is rebuilt every render.
+		// Only the declared paths are split, and those have no dots inside a segment.
+		() => (rootSchema && LOCAL_JSON_EDITOR_PATHS.has(pathStr) ? Zod.schemaAtPath(rootSchema, pathStr.split('.')) : undefined),
+		[rootSchema, pathStr],
 	)
 }
 
-function LocalJsonToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+// the GUI/JSON segmented control the settings-page section headers use, scaled down to sit in a field's header row
+function LocalModeToggle({ mode, onSelect }: { mode: FieldMode; onSelect: (next: FieldMode) => void }) {
 	return (
-		<Tooltip>
-			<TooltipTrigger asChild>
-				<Button type="button" size="sm" variant={on ? 'secondary' : 'ghost'} className="h-6 gap-1 px-1.5 text-xs" onClick={onToggle}>
-					<Icons.Braces className="h-3 w-3" />
-					JSON
+		<div className="flex items-center rounded-md border p-0.5">
+			{(['gui', 'json'] as const).map((option) => (
+				<Button
+					key={option}
+					type="button"
+					size="sm"
+					variant={mode === option ? 'secondary' : 'ghost'}
+					className="h-5 px-1.5 text-[10px]"
+					onClick={() => onSelect(option)}
+				>
+					{option === 'gui' ? 'GUI' : 'JSON'}
 				</Button>
-			</TooltipTrigger>
-			<TooltipContent>{on ? 'Back to the form' : 'Edit just this setting as JSON'}</TooltipContent>
-		</Tooltip>
+			))}
+		</div>
 	)
 }
 
@@ -3382,8 +3388,8 @@ function SectionField(
 	const SectionExtra = sectionExtraFor(path)
 	// leaves dim themselves individually; the section only needs its own bulk-reset controls neutralized
 	const writable = RBAC.settingsPathOverlaps(React.useContext(WriteAccessContext), path)
-	const jsonSchema = useLocalJsonSchema(pathStr, path)
-	const [jsonMode, setJsonMode] = React.useState(false)
+	const jsonSchema = useLocalJsonSchema(pathStr)
+	const [mode, setMode] = React.useState<FieldMode>('gui')
 	return (
 		<fieldset
 			id={domId}
@@ -3398,13 +3404,13 @@ function SectionField(
 					<span className="contents" inert={!writable}>
 						<FieldResetControls value$={value$} reset$={reset$} onChange={onChange} node={node} path={path} showDefaultLabel={false} />
 					</span>
-					{jsonSchema && writable && <LocalJsonToggle on={jsonMode} onToggle={() => setJsonMode((v) => !v)} />}
+					{jsonSchema && writable && <LocalModeToggle mode={mode} onSelect={setMode} />}
 					<AnchorLink domId={domId} />
 				</div>
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
 				{SectionExtra && <SectionExtra />}
 				<FieldIssues issues={sectionIssues} pathStr={pathStr} />
-				{jsonSchema && jsonMode
+				{jsonSchema && mode === 'json'
 					? (
 						<LocalJsonField
 							schema={jsonSchema}
@@ -3444,8 +3450,8 @@ function LeafField(
 	// loose overlap: a grant pointing inside this field's subtree still permits editing part of it, so the field stays
 	// active and the save panel's exact per-path check flags anything outside the grant
 	const writable = RBAC.settingsPathOverlaps(React.useContext(WriteAccessContext), path)
-	const jsonSchema = useLocalJsonSchema(pathStr, path)
-	const [jsonMode, setJsonMode] = React.useState(false)
+	const jsonSchema = useLocalJsonSchema(pathStr)
+	const [mode, setMode] = React.useState<FieldMode>('gui')
 	// the inline "default: <value>" hint only reads well for scalars; complex/override fields still get the reset buttons
 	const showDefaultLabel = !hasOverride && isScalarNode(inner)
 	const controls = (
@@ -3479,7 +3485,7 @@ function LeafField(
 						</Tooltip>
 					)}
 					{!isBoolean && controls}
-					{jsonSchema && writable && <LocalJsonToggle on={jsonMode} onToggle={() => setJsonMode((v) => !v)} />}
+					{jsonSchema && writable && <LocalModeToggle mode={mode} onSelect={setMode} />}
 					<AnchorLink domId={domId} />
 				</div>
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
@@ -3487,7 +3493,7 @@ function LeafField(
 			</div>
 			<div className={cn(isBoolean && 'shrink-0 flex items-center gap-1')} inert={!writable}>
 				{isBoolean && controls}
-				{jsonSchema && jsonMode
+				{jsonSchema && mode === 'json'
 					? (
 						<LocalJsonField
 							schema={jsonSchema}
