@@ -319,9 +319,10 @@ export namespace PlayerIds {
 	}
 
 	// Resolves a player from a bare display name (e.g. a Die()/Wound() log line, which carries no online ids for the
-	// victim). Exact matching is find()'s job; this adds tolerance for tag/whitespace/unicode differences between log
-	// and RCON names via normalized containment in either direction, requiring the match to be unique. A unique-but-wrong
-	// containment is possible when the real player isn't in the list, so only use this as a fallback after find().
+	// victim). Exact matching is find()'s job; the one divergence this adds tolerance for is the clan tag, which the log
+	// name can carry while the RCON name doesn't -- hence containment in either direction, requiring a unique match.
+	// The log and RCON names do NOT otherwise disagree (docs/LOG_NAME_MATCHING.md). A unique-but-wrong containment is
+	// possible when the real player isn't in the list, so only use this as a fallback after find().
 	export function findByUsernameLoose<T>(players: T[], cb: (item: T) => Type, username: string): T | undefined {
 		const names = players.map(p => cb(p).username ?? '')
 		const res = simpleUniqueStringMatch(names, username)
