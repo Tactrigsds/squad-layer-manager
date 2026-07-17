@@ -1,6 +1,6 @@
 # Configuring SLM
 
-This guide assumes that you already have a running instance of SLM. Go to [INSTALLING.md](INSTALLING.md) if you don't.
+This guide assumes that you already have a running instance of SLM. Go to [installing.md](installing.md) if you don't.
 
 SLM is largely configured through the settings page.
 

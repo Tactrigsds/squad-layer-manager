@@ -18,7 +18,7 @@ If you find an issue with the app, it's recommended that you submit an issue fir
 
 ## Getting your bearings
 
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes what the app is built out of: the layering, the
+[docs/architecture.md](docs/architecture.md) describes what the app is built out of: the layering, the
 conventions it leans on (context composition, result codes, namespace imports, schema-first models), the
 server and client state machinery, the layer engine, and a list of quirks that are easier to read about than
 to discover. Worth a skim before your first change, and [CLAUDE.md](CLAUDE.md) states the rules it explains
@@ -70,7 +70,7 @@ pnpm dev:emu    # the emulated squad server
 pnpm dev        # the app + client
 ```
 
-See [docs/DEV_INSTANCES.md](docs/DEV_INSTANCES.md).
+See [docs/dev_instances.md](docs/dev_instances.md).
 
 ## Tests
 
@@ -91,7 +91,7 @@ The server agent ([server-agent/agent](server-agent/agent)) is a standalone rust
 pnpm run build:agent   # cargo build --release, binary at server-agent/agent/target/release/slm-server-agent
 ```
 
-See [docs/CONFIGURING.md#server-agent](docs/CONFIGURING.md#server-agent) for more details on how to configure it.
+See [docs/configuring.md#server-agent](docs/configuring.md#server-agent) for more details on how to configure it.
 
 ## The pre-push hook
 

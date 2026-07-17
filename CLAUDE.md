@@ -42,7 +42,7 @@ Log in with `?login=<username>` (discord oauth is off for dev instances -- `dev`
 
 Never point a worktree at a real squad server or the real battlemetrics org; `dev:init` deliberately scrubs those, and re-adding them means an experiment drives production.
 
-See docs/DEV_INSTANCES.md.
+See docs/dev_instances.md.
 
 # Pull Requests
 
