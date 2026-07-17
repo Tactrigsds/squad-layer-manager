@@ -28,7 +28,10 @@ services:
     # everything that is not a credential
     env_file: .env
   otel:
-    image: grafana/otel-lgtm
+    # Pinned, and has to stay pinned: ./observability holds verbatim copies of this image's own Loki
+    # and Tempo config, so the tag and those files are one unit. On :latest a new image moves the
+    # binaries underneath them and they stop parsing. See observability/README.md#the-mount-contract.
+    image: grafana/otel-lgtm:0.29.0
     restart: unless-stopped
     ports:
       # the grafana portal
