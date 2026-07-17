@@ -1,6 +1,5 @@
 import * as Arr from '@/lib/array'
 import * as DH from '@/lib/display-helpers'
-import * as Obj from '@/lib/object'
 import * as BAL from '@/models/balance-triggers.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
@@ -276,9 +275,11 @@ export const WARNS = {
 			// aliases take no args of their own, so they list as the shortcut and what it expands to
 			const aliasLines = listing.aliases.map((a) => `[${a.alias}]: ${GENERAL.command.aliasDescription(a.command)}`)
 			const lines = [...commandLines, ...aliasLines]
-			if (lines.length === 0) return [`${listing.title}: none.`]
+			if (lines.length === 0) return [`${listing.title}: none.`, ...(listing.hint ? [listing.hint] : [])]
 			const groups = Arr.paged(lines, 3)
 			groups[0].unshift(`${listing.title}:`)
+			// the hint tells you how to see the rest, so it trails the listing rather than crowding the first warn
+			if (listing.hint) groups[groups.length - 1].push(listing.hint)
 			return groups.map((g) => g.join('\n'))
 		},
 		missingSteamId: () => `You are not signed in as a Steam user.`,
