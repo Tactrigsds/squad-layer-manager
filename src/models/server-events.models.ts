@@ -1,6 +1,7 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
+import type * as Types from '@/lib/types'
 import type * as CS from '@/models/context-shared'
 import type * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
@@ -119,7 +120,7 @@ export const PLAYER_CONNECTED_META = meta({ players: [{ assocType: 'player' }] }
 // Emitted by the teams-poll reconciler for a player RCON reports as present but who was missing from our roster
 // (e.g. their PLAYER_CONNECTED landed during a round roll and was dropped). Semantically distinct from
 // PLAYER_CONNECTED -- it is a roster backfill, not a fresh join -- so join-only consumers (feed card, battlemetrics,
-// connection indicator, teamswap tracking) ignore it. Carries the full player so saveEvents registers them.
+// connection indicator, teamswap tracking) ignore it. Carries the full player so the event insert registers them.
 export type PlayerReconciled<P = SM.Player> =
 	& {
 		type: 'PLAYER_RECONCILED'
@@ -361,6 +362,10 @@ export type Event<P = SM.PlayerId> =
 	| PlayerJoinedSquad<P>
 	| PlayerPromotedToLeader<P>
 	| TeamsPolledUpdate
+
+// An event before it has been written to the db. `id` is serverEvents.id, allocated by the insert, so it only
+// exists once the row does -- see the createEvent hook in pending-events.models.ts.
+export type NewEvent = Types.DistributiveOmit<Event, 'id'>
 
 // ---- persisted form (serverEvents.data), validated on read by fromEventRow.
 //
