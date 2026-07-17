@@ -1,8 +1,14 @@
 # Overrides /otel-lgtm/tempo-config.yaml in the grafana/otel-lgtm image. Everything outside the
-# `compactor` block and the local-blocks additions noted below is the image's own config, reproduced
+# `backend_scheduler`/`backend_worker` retention blocks below is the image's own config, reproduced
 # verbatim: mounting this file replaces the original wholesale, so dropping a section here would
 # silently un-configure it. Reproduced from the 0.29.0 image, which is the tag docker-compose.yaml
 # pins and the reason it pins one at all. See README.md#the-mount-contract.
+#
+# 0.29.0 ships Tempo 3.0.2, which removed the compactor component (#6273) and the metrics-generator
+# local-blocks processor (#6555). So neither the old top-level `compactor:` block nor the
+# `metrics_generator.processor.local_blocks` / `metrics_generator.traces_storage` config exists any
+# more; a config carrying them fails to parse and Tempo exits silently (logging=false), taking traces
+# with it while every other component reports healthy. The two deltas below are the Tempo-3 forms.
 server:
   http_listen_port: 3200
   grpc_listen_port: 9096
@@ -32,36 +38,43 @@ storage:
     local:
       path: /data/tempo/blocks
 
-# 3 day trace retention. Tempo's default is 336h; traces are by far the highest-volume signal we emit
-# (one span per spanOp, plus auto-instrumented http/rcon/dns spans underneath each), so they get the
-# shortest window. The RED metrics derived from them by the metrics_generator below live in Prometheus
-# and outlive the spans themselves, so long-range trend queries still work after the traces age out.
-compactor:
-  compaction:
-    block_retention: 72h
-    compacted_block_retention: 1h
-
 metrics_generator:
   processor:
-    local_blocks:
-      filter_server_spans: false
     span_metrics:
       dimensions:
         - service_name
         - operation
         - status_code
-  traces_storage:
-    path: /data/tempo/generator/traces
   storage:
     path: /data/tempo/generator/wal
     remote_write:
       - url: http://127.0.0.1:9090/api/v1/write
         send_exemplars: true
 
+# 3 day trace retention (default is 336h). Traces are by far the highest-volume signal we emit (one span
+# per spanOp, plus auto-instrumented http/rcon/dns spans underneath each), so they get the shortest
+# window. The RED metrics derived from them by the metrics_generator above live in Prometheus and outlive
+# the spans themselves, so long-range trend queries still work after the traces age out.
+#
+# Tempo 3 replaced the compactor component with a backend-scheduler (decides which blocks to compact and
+# expire) and a backend-worker (runs the jobs), so `block_retention` lives on both instead of on a
+# top-level `compactor` block. The nested `provider.compaction.compaction` path is not a typo: the outer
+# is the scheduler's compaction provider, the inner its compaction settings (confirmed against Tempo's
+# own /status/config, since the -help flag paths are mangled for this struct).
+backend_scheduler:
+  provider:
+    compaction:
+      compaction:
+        block_retention: 72h
+backend_worker:
+  compaction:
+    block_retention: 72h
+
 # Must be the scoped form: Tempo 3 refuses to start on the legacy flat `metrics_generator_processors`
-# key. local-blocks is ours on top of the image's two, and is what backs TraceQL metrics queries
-# (`| rate() by(...)`), which the Traces Drilldown issues on open.
+# key. These are the image's own two processors. There is no `local-blocks` entry: that processor is gone
+# in Tempo 3, and TraceQL metrics (`{...} | rate() by(...)`, which the Traces Drilldown issues on open)
+# are served natively without it.
 overrides:
   defaults:
     metrics_generator:
-      processors: [service-graphs, span-metrics, local-blocks]
+      processors: [service-graphs, span-metrics]
