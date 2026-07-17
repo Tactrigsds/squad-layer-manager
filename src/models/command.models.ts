@@ -14,6 +14,13 @@ export const CHAT_SCOPE_MAPPINGS = {
 	[COMMAND_SCOPES.enum.admin]: ['ChatAdmin'],
 	[COMMAND_SCOPES.enum.public]: ['ChatTeam', 'ChatSquad', 'ChatAll'],
 }
+
+// How a scope is labelled wherever it's shown. A scope is a restriction on where a command may be typed, but a bare
+// "admin" badge reads as "admins can use this" rather than "only admin chat accepts this", which is what it means.
+export const COMMAND_SCOPE_LABELS: Record<CommandScope, string> = {
+	admin: 'admin only',
+	public: 'public',
+}
 export type CommandConfig = {
 	strings: string[]
 	scopes: CommandScope[]
