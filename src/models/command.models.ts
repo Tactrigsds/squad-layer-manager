@@ -127,7 +127,11 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { scopes: ['admin'], strings: ['flag'], enabled: true },
 	}),
 	...declareCommand('removeFlag', {
-		args: [{ kind: 'player', name: 'player' }, { kind: 'string', name: 'flag' }],
+		args: [
+			{ kind: 'player', name: 'player' },
+			{ kind: 'string', name: 'flag' },
+			{ kind: 'text', name: 'reason', optional: true },
+		],
 		defaults: { scopes: ['admin'], strings: ['removeFlag', 'rf'], enabled: true },
 	}),
 	...declareCommand('listFlags', {

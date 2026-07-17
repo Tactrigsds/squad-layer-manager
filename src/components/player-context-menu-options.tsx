@@ -22,6 +22,7 @@ import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 import React from 'react'
+import { PlayerFlagsSub } from './bm-flag-workflows'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger } from './ui/context-menu'
 import { Input } from './ui/input'
@@ -695,6 +696,7 @@ export function PlayerMenuItems(
 			</PermissionDeniedTooltip>
 			<Separator />
 			{!omitWarn && <WarnReasonsSub slots={slots} denied={warnDenied} disabled={!isOnServer} onCustom={warn} onPreset={sendPresetWarn} />}
+			<PlayerFlagsSub slots={slots} playerId={playerId} />
 			<Item onClick={copyTeleportCommand} disabled={!isOnServer}>
 				Copy Teleport Command
 			</Item>

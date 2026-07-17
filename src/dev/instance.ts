@@ -4,6 +4,7 @@ import * as LayerArtifacts from '@/systems/layer-artifacts.server'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import * as Paths from '../../paths.ts'
+import * as BmServer from '../emulator/bm-server.ts'
 import type * as Slots from './slots.ts'
 
 // One dev instance = one worktree = one slot: the app, the vite dev server, an emulated squad server and a
@@ -62,8 +63,11 @@ export function envOverrides(slot: Slots.Slot): Record<string, string> {
 		QUERY_PARAM_AUTH_BYPASS: 'true',
 
 		// The stub the emulator host serves. Pointing at the real battlemetrics api would let a worktree write
-		// flags and notes to the live org, which is never what an experiment wants.
+		// flags and notes to the live org, which is never what an experiment wants. The org id is pinned to the
+		// stub's: the app drops flags belonging to any other org, so leaving the real one here would make every
+		// player in a dev instance read as unflagged.
 		BM_HOST: `http://127.0.0.1:${slot.ports.bm}`,
+		BM_ORG_ID: BmServer.STUB_ORG_ID,
 
 		// One collector serves every worktree; this is what separates their telemetry in grafana.
 		OTEL_RESOURCE_ATTRIBUTES: [

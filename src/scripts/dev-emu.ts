@@ -44,6 +44,7 @@ await emu.start({ rconPort: slot.ports.rcon })
 emu.attachLogFile(DevInstance.SQUAD_LOG_PATH)
 
 const bm = new BmServer()
+bm.onNote = ({ bmPlayerId, note }) => console.log(`[bm] note on ${bmPlayerId}:\n${note}`)
 await bm.listen(slot.ports.bm)
 
 const { commands, join } = EmuControl.createEmuCommands({ emu, bm })

@@ -281,6 +281,9 @@ export const PlayerFlagsUpdatedSchema = event('PLAYER_FLAGS_UPDATED', {
 	// the flags added and removed by this action (id + name resolved from the org's flag list)
 	added: z.array(z.object({ id: z.string(), name: z.string() })),
 	removed: z.array(z.object({ id: z.string(), name: z.string() })),
+	// the free-text reason given for the action, as posted to the player's BM note. absent on events recorded before
+	// reasons existed, and on additions of flags that don't require one.
+	reason: z.string().optional(),
 })
 export type PlayerFlagsUpdated = z.infer<typeof PlayerFlagsUpdatedSchema>
 
@@ -518,7 +521,8 @@ export function describeAppEvent(e: AppEvent): string {
 		}
 		case 'PLAYER_FLAGS_UPDATED': {
 			const changes = [...e.added.map(f => `+${f.name}`), ...e.removed.map(f => `−${f.name}`)].join(', ')
-			return `updated Battlemetrics flags for player ${e.playerId}${changes ? `: ${changes}` : ''}`
+			const reason = e.reason ? ` (reason: ${e.reason})` : ''
+			return `updated Battlemetrics flags for player ${e.playerId}${changes ? `: ${changes}` : ''}${reason}`
 		}
 		case 'APP_STARTED':
 			return `SLM started${e.version ? ` (${e.version})` : ''}`
