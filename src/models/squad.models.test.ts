@@ -565,6 +565,22 @@ describe('PlayerIds.findByUsernameLoose', () => {
 		const players = [player('a', 'AAA alpha'), player('b', 'beta AAA')]
 		expect(SM.PlayerIds.findByUsernameLoose(players, p => p.ids, 'AAA')).toBeUndefined()
 	})
+
+	// names lifted from the log corpus; these resolve via the tag-prefix pass, not by discarding the non-ascii
+	it('matches a log name whose tag is non-ascii', () => {
+		const players = [player('a', 'Ewan'), player('b', 'Hopeless')]
+		expect(SM.PlayerIds.findByUsernameLoose(players, p => p.ids, 'Ω Ewan')).toBe(players[0])
+	})
+
+	it('does not resolve a non-latin name to an arbitrary player', () => {
+		const players = [player('a', 'Bob'), player('b', 'Hopeless')]
+		expect(SM.PlayerIds.findByUsernameLoose(players, p => p.ids, 'Пётр')).toBeUndefined()
+	})
+
+	it('resolves a fully non-latin name to its own roster entry', () => {
+		const players = [player('a', 'кирикwise d(^. .^)'), player('b', 'Bob')]
+		expect(SM.PlayerIds.findByUsernameLoose(players, p => p.ids, '✘✘✘✘✘✘✘ кирикwise d(^. .^)')).toBe(players[0])
+	})
 })
 
 describe('toRecentPlayer', () => {

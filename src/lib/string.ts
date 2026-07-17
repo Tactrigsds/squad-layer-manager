@@ -37,35 +37,28 @@ export namespace StrPatterns {
 	export const PATH_SEGMENT = /[^/]+/
 }
 
-export type NormalizeForMatchOpts = {
-	// Discards everything outside printable ascii. Only appropriate when the two sides are known to disagree about their
-	// non-ascii characters (see PlayerIds.findByUsernameLoose). For anything a user types this is hostile: a fully
-	// non-latin name normalizes to the empty string, which is contained in every other name.
-	stripNonAscii?: boolean
+// Folds away only what a human plausibly varies when typing a name to search for: case, spacing, and unicode
+// composition. Deliberately keeps non-ascii -- see docs/LOG_NAME_MATCHING.md for why stripping it was wrong.
+export function normalizeForMatch(s: string) {
+	return s.normalize('NFKC').replace(/\s/g, '').toLowerCase()
 }
 
-export function normalizeForMatch(s: string, opts?: NormalizeForMatchOpts) {
-	let normalized = s.normalize('NFKC')
-	if (opts?.stripNonAscii) normalized = normalized.replace(/[^\x20-\x7E]/g, '')
-	return normalized.replace(/\s/g, '').toLowerCase()
-}
-
-export function simpleStringMatch(names: string[], target: string, opts?: NormalizeForMatchOpts) {
-	const normalizedTarget = normalizeForMatch(target, opts)
+export function simpleStringMatch(names: string[], target: string) {
+	const normalizedTarget = normalizeForMatch(target)
 	const matched: number[] = []
 	for (let i = 0; i < names.length; i++) {
-		if (normalizeForMatch(names[i], opts).includes(normalizedTarget)) {
+		if (normalizeForMatch(names[i]).includes(normalizedTarget)) {
 			matched.push(i)
 		}
 	}
 	return matched
 }
 
-export function simpleUniqueStringMatch(names: string[], target: string, opts?: NormalizeForMatchOpts) {
-	const normalizedTarget = normalizeForMatch(target, opts)
+export function simpleUniqueStringMatch(names: string[], target: string) {
+	const normalizedTarget = normalizeForMatch(target)
 	const matched: number[] = []
 	for (let i = 0; i < names.length; i++) {
-		if (normalizeForMatch(names[i], opts).includes(normalizedTarget)) {
+		if (normalizeForMatch(names[i]).includes(normalizedTarget)) {
 			matched.push(i)
 		}
 	}

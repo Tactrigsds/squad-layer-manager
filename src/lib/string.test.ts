@@ -4,11 +4,12 @@ import { normalizeForMatch, simpleUniqueStringMatch } from './string'
 
 const PYOTR = 'Пётр'
 const TANAKA = 'たなか'
-const JOSE_PRECOMPOSED = 'José'
-const JOSE_DECOMPOSED = 'José'
+// escaped rather than literal: dprint normalizes the source file, which would collapse these two into one string
+const JOSE_PRECOMPOSED = 'Jos\u00e9'
+const JOSE_DECOMPOSED = 'Jose\u0301'
 
 describe('normalizeForMatch', () => {
-	test('keeps non-ascii by default', () => {
+	test('keeps non-ascii', () => {
 		expect(normalizeForMatch(PYOTR)).toBe(PYOTR.toLowerCase())
 		expect(normalizeForMatch(TANAKA)).toBe(TANAKA)
 	})
@@ -20,14 +21,8 @@ describe('normalizeForMatch', () => {
 		expect(normalizeForMatch('ＴＡＧ')).toBe('tag')
 	})
 
-	test('strips whitespace and case in both modes', () => {
+	test('folds case and whitespace', () => {
 		expect(normalizeForMatch('[TAG] Bob Smith')).toBe('[tag]bobsmith')
-		expect(normalizeForMatch('[TAG] Bob Smith', { stripNonAscii: true })).toBe('[tag]bobsmith')
-	})
-
-	test('stripNonAscii discards everything outside printable ascii', () => {
-		expect(normalizeForMatch(PYOTR, { stripNonAscii: true })).toBe('')
-		expect(normalizeForMatch(`Ivan ${PYOTR}`, { stripNonAscii: true })).toBe('ivan')
 	})
 })
 
@@ -45,14 +40,6 @@ describe('simpleUniqueStringMatch', () => {
 
 	test('resolves a name typed in a different composition form', () => {
 		expect(simpleUniqueStringMatch(names, JOSE_DECOMPOSED)).toEqual({ code: 'ok', matched: 3 })
-	})
-
-	// the reason stripNonAscii is off by default: stripping leaves an empty needle, which every name contains
-	test('stripNonAscii makes a non-latin name match everything', () => {
-		expect(simpleUniqueStringMatch(names, PYOTR, { stripNonAscii: true })).toEqual({
-			code: 'err:multiple-matches',
-			count: names.length,
-		})
 	})
 
 	test('still distinguishes latin names', () => {
