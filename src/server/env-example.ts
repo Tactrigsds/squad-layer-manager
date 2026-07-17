@@ -37,8 +37,6 @@ export const TARGETS: Target[] = [
 			'The environment SLM runs on, minus the credentials, which go in .env.secrets (see .env.secrets.example).',
 			'',
 			'Fill in the vars left uncommented. Commented-out vars are optional and show their default.',
-			'',
-			'Running the app from a checkout instead of installing it? Use .env.example.dev.',
 		],
 	},
 	{
@@ -57,27 +55,13 @@ export const TARGETS: Target[] = [
 		audience: 'dev',
 		contents: 'all',
 		path: path.join(Paths.PROJECT_ROOT, '.env.example.dev'),
-		header: [
-			'The environment for running SLM from a checkout (`pnpm server:dev`). Copy this to .env.',
-			'',
-			'Fill in the vars left uncommented. Commented-out vars are optional and show their default.',
-			'',
-			'Credentials stay in this file, and the encryption key below is a preset, public dev key. An install',
-			'splits them out into .env.secrets instead; see .env.secrets.example.',
-			'',
-			'Install-only vars (backups and their sftp target) are left out. See .env.example for those, or',
-			'src/server/env.ts for everything.',
-		],
+		// nothing: CONTRIBUTING.md is where a checkout is told what to do with this file
+		header: [],
 	},
 ]
 
-// only worth saying to a checkout, which has the schema to edit. install.sh copies the deployment files into
-// place, so there the line would sit in an operator's own .env claiming it gets regenerated.
-const GENERATED_BY = 'Generated from src/server/env.ts on every dev boot -- edit the schema there, not this file.'
-
 export function build(target: Target): string {
-	const preamble = target.audience === 'dev' ? [GENERATED_BY, ''] : []
-	const lines: string[] = [...preamble, ...target.header].map(comment)
+	const lines: string[] = target.header.map(comment)
 	for (const [groupName, group] of Object.entries(Env.groups)) {
 		const rendered = Object.entries(group as Record<string, z.ZodType>)
 			.filter(([, schema]) => target.contents === 'all' || Env.isSecret(schema) === (target.contents === 'secrets'))
@@ -86,8 +70,10 @@ export function build(target: Target): string {
 		if (rendered.length === 0) continue
 
 		const meta = Env.groupMeta[groupName as keyof typeof Env.groups]
-		lines.push('', section(meta.title))
-		if (meta.description) lines.push(...wrap(meta.description).map(comment), '')
+		if (lines.length > 0) lines.push('')
+		lines.push(section(meta.title))
+		// the dev file carries nothing but the vars and a line each on what they are: a checkout has env.ts
+		if (meta.description && target.audience === 'deployment') lines.push(...wrap(meta.description).map(comment), '')
 		lines.push(rendered.join('\n\n'))
 	}
 	return lines.join('\n') + '\n'
