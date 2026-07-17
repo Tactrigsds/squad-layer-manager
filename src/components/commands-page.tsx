@@ -126,7 +126,12 @@ function CommandDetails({ cmdId, cmd, settings }: { cmdId: CMD.CommandId; cmd: C
 }
 
 function CommandEntry(
-	{ entry, settings, pinned }: { entry: Extract<Entry, { kind: 'command' }>; settings: PublicSettings; pinned: boolean },
+	{ entry, settings, pinned, onLink }: {
+		entry: Extract<Entry, { kind: 'command' }>
+		settings: PublicSettings
+		pinned: boolean
+		onLink: (id: string) => void
+	},
 ) {
 	const { cmdId, cmd } = entry
 	const [open, setOpen] = React.useState(false)
@@ -135,13 +140,15 @@ function CommandEntry(
 	const chatScope = cmd.scopes.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
 	return (
 		<Collapsible open={open} onOpenChange={setOpen} id={entry.id} data-cmd-anchor className="space-y-2">
-			<div className="flex items-center gap-2">
+			<div className="group flex items-center gap-2">
 				<PinButton cmdId={cmdId} pinned={pinned} />
-				<div className="flex flex-1 flex-wrap items-center gap-1">
+				<div className="flex flex-wrap items-center gap-1">
 					{CMD.buildCommand(cmdId, argObject, settings.commands, true).map((cmdString) => (
 						<CopyableCommand key={cmdString} cmdString={cmdString} chatScope={chatScope} />
 					))}
+					<AnchorLinkIcon id={entry.id} onNavigate={onLink} label="Link to this command" />
 				</div>
+				<div className="flex-1" />
 				{!cmd.enabled && <Badge variant="destructive" className="text-xs">Disabled</Badge>}
 				{cmd.scopes.map((scope) => {
 					const { icon: ScopeIcon, className } = SCOPE_BADGES[scope]
@@ -169,15 +176,18 @@ function CommandEntry(
 
 // an alias takes no arguments, so its listing is the shortcut itself, what it expands to, and (when the command it
 // points at is disabled or no longer exists) why it currently does nothing
-function AliasEntry({ entry, settings }: { entry: Extract<Entry, { kind: 'alias' }>; settings: PublicSettings }) {
+function AliasEntry(
+	{ entry, settings, onLink }: { entry: Extract<Entry, { kind: 'alias' }>; settings: PublicSettings; onLink: (id: string) => void },
+) {
 	const res = CMD.resolveAliasCommand(entry.alias.command, settings.commands)
 	const target = res.code === 'ok' ? settings.commands[res.cmdId] : undefined
 	const unusable = res.code !== 'ok' ? 'Unavailable' : !target!.enabled ? 'Disabled' : undefined
 	const chatScope = target?.scopes.includes('public') && !target.scopes.includes('admin') ? 'ChatToAll' : 'ChatToAdmin'
 	return (
 		<div id={entry.id} data-cmd-anchor className="space-y-1">
-			<div className="flex items-center gap-2">
+			<div className="group flex items-center gap-2">
 				<CopyableCommand cmdString={entry.alias.alias} chatScope={chatScope} />
+				<AnchorLinkIcon id={entry.id} onNavigate={onLink} label="Link to this alias" />
 				{unusable && <Badge variant="destructive" className="text-xs">{unusable}</Badge>}
 			</div>
 			<p className="text-sm text-muted-foreground">{Messages.GENERAL.command.aliasDescription(entry.alias.command)}</p>
@@ -206,9 +216,9 @@ function setAnchorHighlight(el: HTMLElement, mark: boolean) {
 	else el.removeAttribute('data-anchor-highlight')
 }
 
-// A hover-revealed link to a fragment on the page, mirroring the settings page's AnchorLink: a real href (so it can be
-// copied or opened in a new tab) that on plain click scrolls in-place rather than letting the browser jump. Its row
-// must carry `group` for the hover reveal.
+// A link to a fragment on the page, mirroring the settings page's AnchorLink: a real href (so it can be copied or
+// opened in a new tab) that on plain click scrolls/records in-place rather than letting the browser jump. Revealed on
+// hover of its row, which must carry `group`.
 function AnchorLinkIcon({ id, onNavigate, label }: { id: string; onNavigate: (id: string) => void; label: string }) {
 	return (
 		<a
@@ -449,14 +459,17 @@ export default function CommandsPage() {
 	// the sticky section header. Instant, never smooth: a smooth scroll is still travelling when the next keypress or
 	// click lands, so the cursor ends up scheduling scrolls faster than they finish. Returns false for an id that isn't
 	// on the page (a stale link), leaving the body where it was.
-	const landOnEntry = React.useCallback((id: string, opts?: { highlight?: boolean }) => {
+	const landOnEntry = React.useCallback((id: string, opts?: { highlight?: boolean; scroll?: boolean }) => {
 		const el = scrollRef.current?.querySelector<HTMLElement>(`#${CSS.escape(id)}`)
 		if (!el) return false
-		scrollingToEntry.current = true
-		el.scrollIntoView({ block: 'center', behavior: 'instant' })
-		requestAnimationFrame(() => {
-			scrollingToEntry.current = false
-		})
+		// a link icon on an entry the user is already looking at rings and records it without scrolling (opts.scroll false)
+		if (opts?.scroll !== false) {
+			scrollingToEntry.current = true
+			el.scrollIntoView({ block: 'center', behavior: 'instant' })
+			requestAnimationFrame(() => {
+				scrollingToEntry.current = false
+			})
+		}
 		setAnchorHighlight(el, opts?.highlight ?? false)
 		return true
 	}, [])
@@ -517,13 +530,18 @@ export default function CommandsPage() {
 	// highlight would land on whatever the fold stopped at, so linking to one of the last commands would highlight a
 	// different one. A category link passes highlight:false: it's a whole section header, and a persistent ring on a
 	// full-width sticky bar reads as an error state rather than a landing mark.
-	function navigateToEntry(id: string, opts?: { highlight?: boolean }) {
+	function navigateToEntry(id: string, opts?: { highlight?: boolean; scroll?: boolean }) {
 		const highlight = opts?.highlight !== false
+		const scroll = opts?.scroll !== false
 		// replaceState keeps the history stack clean and skips the browser's own jump; a no-op when the hash matches
 		history.replaceState(history.state, '', `#${encodeURIComponent(id)}`)
 		if (highlight) setCursorId(id)
-		landOnEntry(id, { highlight })
+		landOnEntry(id, { highlight, scroll })
 	}
+
+	// what a link icon on an entry does: exactly what its table-of-contents row does (record the URL, ring it, put the
+	// cursor on it), minus the scroll -- the user is already looking at the entry the icon sits on
+	const linkToEntry = (id: string) => navigateToEntry(id, { scroll: false })
 
 	// Up/down walk the results from the search box, so a search can be narrowed and swept without leaving the input.
 	// Instant rather than smooth: a smooth scroll is still travelling when the next press lands, and holding a key
@@ -594,9 +612,13 @@ export default function CommandsPage() {
 										{contentSections.map((section) => (
 											// mirrors the body's sections -- label, rule, indented entries -- so the two columns read as the same split
 											<li key={section.id} className="pt-4 first:pt-0">
-												<p className="border-b border-border px-1 pb-1 text-xs font-semibold uppercase tracking-wide text-foreground">
+												<button
+													type="button"
+													onClick={() => navigateToEntry(section.id, { highlight: false })}
+													className="block w-full border-b border-border px-1 pb-1 text-left text-xs font-semibold uppercase tracking-wide text-foreground hover:text-foreground/70"
+												>
 													{section.label}
-												</p>
+												</button>
 												<ul className="space-y-px pl-2 pt-1">
 													{section.entries.map((entry) => (
 														<li key={entry.id}>
@@ -644,7 +666,7 @@ export default function CommandsPage() {
 									{section.label}
 									<AnchorLinkIcon
 										id={section.id}
-										onNavigate={(id) => navigateToEntry(id, { highlight: false })}
+										onNavigate={(id) => navigateToEntry(id, { highlight: false, scroll: false })}
 										label={`Link to ${section.label}`}
 									/>
 								</h2>
@@ -657,8 +679,8 @@ export default function CommandsPage() {
 									{section.entries.map((entry) => (
 										<div key={entry.id} className="py-3 first:pt-0 last:pb-0">
 											{entry.kind === 'command'
-												? <CommandEntry entry={entry} settings={settings} pinned={pinnedSet.has(entry.cmdId)} />
-												: <AliasEntry entry={entry} settings={settings} />}
+												? <CommandEntry entry={entry} settings={settings} pinned={pinnedSet.has(entry.cmdId)} onLink={linkToEntry} />
+												: <AliasEntry entry={entry} settings={settings} onLink={linkToEntry} />}
 										</div>
 									))}
 								</div>
