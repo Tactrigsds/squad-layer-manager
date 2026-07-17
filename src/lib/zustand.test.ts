@@ -75,7 +75,7 @@ describe('getState with query sources', () => {
 
 		store.setState({ count: 100 })
 		release()
-		// 100 (the post-call value), not 0 -- the store is read when the selector actually computes
+		// 101, not 1: the store is read when the selector computes, not when getState was called
 		await expect(pending).resolves.toBe(101)
 	})
 

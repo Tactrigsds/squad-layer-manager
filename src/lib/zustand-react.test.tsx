@@ -11,7 +11,6 @@ import * as ZusUtils from './zustand'
 type State = { count: number; name: string }
 const createStore = () => Zus.createStore<State>(() => ({ count: 0, name: 'a' }))
 
-// useStore calls useQueries unconditionally, so even query-free reads need a provider in scope
 const wrapper = ({ children }: { children: React.ReactNode }) => (
 	<QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
 )
@@ -64,7 +63,7 @@ describe('useStore', () => {
 		expect(result.current).toEqual([undefined, 0])
 	})
 
-	// the observable path is duck-typed on getValue/pipe, which a BehaviorSubject satisfies
+	// the observable path is duck-typed on getValue/pipe, which BehaviorSubject satisfies
 	it('reads an observable source and re-renders on emission', () => {
 		const subject = new Rx.BehaviorSubject({ n: 1 })
 		const { result } = renderHook(() => ZusUtils.useStore(subject as any, (s: { n: number }) => s.n))
@@ -84,8 +83,7 @@ describe('useStore', () => {
 		expect(result.current).toBe(25)
 	})
 
-	// the regression that motivates useSyncExternalStore: a selector closing over a prop must recompute when
-	// that prop changes, even though no store emitted and no query data moved
+	// the regression that motivates useSyncExternalStore: no source emits, but the snapshot must still change
 	it('recomputes when the selector closes over a changed prop', () => {
 		const store = Zus.createStore<{ items: Record<string, string> }>(() => ({ items: { a: 'apple', b: 'banana' } }))
 		const { result, rerender } = renderHook(
@@ -99,7 +97,7 @@ describe('useStore', () => {
 
 	it('does not miss a store emission between render and subscription', () => {
 		const store = createStore()
-		// a component that mutates the store while rendering, i.e. before effects run
+		// mutates the store during render, i.e. before effects run
 		function Probe() {
 			const count = ZusUtils.useStore(store, (s: State) => s.count)
 			const done = React.useRef(false)
@@ -113,8 +111,7 @@ describe('useStore', () => {
 		expect(screen.getByTestId('v').textContent).toBe('42')
 	})
 
-	// an uncached getSnapshot makes useSyncExternalStore spin, and an inline selector returning a fresh object
-	// every render is the shape most likely to trigger it
+	// an inline selector returning a fresh object is the shape most likely to spin useSyncExternalStore
 	it('does not loop or re-render spuriously with an inline object-returning selector', () => {
 		const store = createStore()
 		let renders = 0
@@ -125,7 +122,6 @@ describe('useStore', () => {
 		expect(renders).toBe(1)
 		rerender()
 		expect(renders).toBe(2)
-		// a store change the selector's output is insensitive to still shouldn't wedge anything
 		act(() => store.setState({ name: 'zzz' }))
 		expect(renders).toBeLessThanOrEqual(3)
 	})
@@ -166,8 +162,8 @@ describe('useStore', () => {
 		expect(result.current).toBe(7)
 	})
 
-	// useQueries is skipped entirely when no query sources are passed, which is only sound while the count is
-	// fixed per component instance. a change must be a loud error, not React's "rendered fewer hooks" confusion
+	// skipping useQueries is only sound while the count is fixed, so a change must be a loud error rather than
+	// React's "rendered fewer hooks" confusion
 	it('throws a clear error if the query source count changes across renders', () => {
 		const store = createStore()
 		const query = { queryKey: ['flip'], queryFn: async () => ({ n: 1 }) } as any
@@ -191,7 +187,6 @@ describe('useStore', () => {
 		const { unmount } = renderHook(() => ZusUtils.useStore(store, (s: State) => s.count))
 		expect((store as any).getState()).toBeDefined()
 		unmount()
-		// no throw / no update after unmount
 		act(() => store.setState({ count: 9 }))
 	})
 })

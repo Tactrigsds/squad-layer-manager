@@ -29,8 +29,7 @@
 			}
 		],
 
-		// the hooks rules live in the pedantic category, which is off wholesale above, so they have to be
-		// switched on by name. severities mirror eslint-plugin-react-hooks' own recommended config
+		// the hooks rules live in the pedantic category, off wholesale above, so they only run if named here
 		"react-hooks/rules-of-hooks": "error",
 		"react-hooks/exhaustive-deps": "warn",
 
@@ -111,8 +110,7 @@
 			}
 		},
 		{
-			// playwright fixtures hand control back by calling `use(value)`, which the hooks rule reads as
-			// React 19's `use` hook being called outside a component
+			// playwright fixtures call `use(value)`, which the rule misreads as React 19's `use` hook
 			"files": [
 				"test/e2e/**"
 			],
