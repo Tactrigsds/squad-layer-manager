@@ -586,8 +586,10 @@ data by ~112MB.
 - **server events** are SLM's domain events derived from game server input (`NEW_GAME`, `PLAYER_CONNECTED`,
   `MAP_SET`). High volume, low level.
 - **app events** (`app-events.models.ts`) are SLM's **audit log**: one entry per user- or system-initiated
-  action, with an `actor` (`slm-user | ingame-user | system`) and a `causeId` chaining provenance
-  (`COMMAND_INVOKED` -> `VOTE_STARTED` -> `NEXT_LAYER_SET`).
+  action, with an `actor` (`slm-user | ingame-user | system`) and a `causeId` naming the app event that caused
+  this one. The only chain written today is `QUEUE_UPDATED` -> `MAP_SET`, and nothing reads `causeId` back.
+  Not every app event reaches the activity feed: see `isFeedVisible`, which both the emit path and the feed
+  backfill gate on.
 - **pending events** (`pending-events.models.ts`) is the **state machine that produces server events** out of
   raw input.
 
