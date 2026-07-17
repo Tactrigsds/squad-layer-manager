@@ -1,4 +1,7 @@
+import type * as AppEvents from '@/models/app-events.models'
+import type * as CHAT from '@/models/chat.models'
 import * as SLL from '@/models/shared-layer-list'
+import * as SM from '@/models/squad.models'
 import type { OrpcAppRouter } from '@/server/orpc-app-router'
 import { createORPCClient } from '@orpc/client'
 import { RPCLink } from '@orpc/client/websocket'
@@ -37,6 +40,12 @@ beforeAll(async () => {
 		layerQueue: [queueItem(LAYERS.gorodokRaas, { itemId: HEAD_ITEM_ID }), queueItem(LAYERS.sumariSeed)],
 	})
 
+	await connect()
+}, 120_000)
+
+// opens an authed oRPC websocket, replacing any existing one (a restart drops the old socket with the app)
+async function connect() {
+	socket?.close()
 	// the query-param bypass logs the seeded admin in and hands back the session cookie the /orpc upgrade authenticates
 	const loginRes = await fetch(app.loginUrl(app.adminUser), { redirect: 'manual' })
 	const cookie = loginRes.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
@@ -48,7 +57,7 @@ beforeAll(async () => {
 		socket.once('error', reject)
 	})
 	client = createORPCClient(new RPCLink({ websocket: socket as unknown as globalThis.WebSocket }))
-}, 120_000)
+}
 
 afterAll(async () => {
 	socket?.close()
@@ -57,6 +66,18 @@ afterAll(async () => {
 
 function dispatch(op: SLL.Operation) {
 	return client.layerQueue.dispatchOp({ serverId: app.serverId, op })
+}
+
+// the feed exactly as a freshly-connected client receives it: everything watchChatEvents replays up to the SYNCED
+// marker that closes the initial batch (which arrives in pages, see Arr.paged)
+async function initialFeedBatch(): Promise<(CHAT.Event | CHAT.LifecycleEvent)[]> {
+	const batch: (CHAT.Event | CHAT.LifecycleEvent)[] = []
+	for await (const page of await client.squadServer.watchChatEvents({ serverId: app.serverId })) {
+		if (SM.isServerNotLoaded(page)) continue
+		batch.push(...page)
+		if (page.some((e) => e.type === 'SYNCED')) break
+	}
+	return batch
 }
 
 // the app event a MAP_SET server event for `layerId` is attributed to, or null if it landed unattributed.
@@ -95,5 +116,25 @@ describe('queue save attribution', () => {
 		// null here is the regression: an unattributed MAP_SET renders as its own redundant feed entry
 		expect(attribution.appEventId, `MAP_SET for ${layerId} landed unattributed`).not.toBeNull()
 		expect(attribution.appType).toBe('QUEUE_UPDATED')
+	})
+
+	// The live feed never sees a queue-driven MAP_SET app event, because it's persisted rather than emitted. The
+	// backfill rebuilds that same buffer from the db on boot, and used to take every row for the match -- so a
+	// restart put the audit-only event into the feed, where it drew back the duplicate line the attribution above
+	// exists to avoid. Only a restart can see this: the live path can never produce that state.
+	it('does not replay the audit-only MAP_SET into the feed after a restart', { timeout: 120_000 }, async () => {
+		await app.restart()
+		await connect()
+
+		const batch = await initialFeedBatch()
+
+		const appEvents = batch.filter((e): e is { type: 'APP_EVENT'; appEvent: AppEvents.AppEvent } => e.type === 'APP_EVENT')
+		const queueUpdateds = appEvents.filter((e) => e.appEvent.type === 'QUEUE_UPDATED')
+		// the saves above are all in this match, so their QUEUE_UPDATEDs must survive the restart -- otherwise this
+		// test would pass simply by backfilling nothing at all
+		expect(queueUpdateds.length, "expected the saves' QUEUE_UPDATEDs to be backfilled").toBeGreaterThan(0)
+
+		const auditOnly = appEvents.filter((e) => e.appEvent.type === 'MAP_SET' && e.appEvent.reason === 'queue-updated')
+		expect(auditOnly, 'audit-only MAP_SETs must not be backfilled into the feed').toEqual([])
 	})
 })
