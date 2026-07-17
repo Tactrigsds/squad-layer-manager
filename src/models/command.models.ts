@@ -164,13 +164,13 @@ export const COMMAND_DECLARATIONS = {
 			scopes: ['admin'],
 			strings: ['startvote', 'sv'],
 			enabled: true,
-			quickReference: true,
+			quickReference: false,
 		},
 	}),
 	...declareCommand('abortVote', {
 		section: 'votes',
 		args: [],
-		defaults: { scopes: ['admin'], strings: ['abortvote', 'av'], enabled: true, quickReference: true },
+		defaults: { scopes: ['admin'], strings: ['abortvote', 'av'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('endVoteEarly', {
 		section: 'votes',
