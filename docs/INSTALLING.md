@@ -210,7 +210,7 @@ that follow.
 
 #### 3.8. Telemetry
 
-Detailed logs and telemetry are available via grafana, hosted at `http://localhost:3001`, which you may also want to expose to the internet. Just make sure to change the default admin password before doing so. see [https://grafana.com/docs/grafana/latest/introduction/](https://grafana.com/docs/grafana/latest/introduction/) for more. There is a dashboard set up there preconfigured to assist with monitoring SLM.
+Detailed logs and telemetry are available via grafana, hosted at `http://localhost:3001`, which you may also want to expose to the internet. Just make sure to change the default admin password before doing so. see [https://github.com/grafana/docker-otel-lgtm](https://github.com/grafana/docker-otel-lgtm) for more. There is a dashboard set up there preconfigured to assist with monitoring SLM.
 
 If you don't want any telemetry, then set `OTEL_ENABLED=false`, and comment out or delete the otel service from `docker-compose.yaml` before starting the app.
 
