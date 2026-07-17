@@ -29,6 +29,11 @@
 			}
 		],
 
+		// the hooks rules live in the pedantic category, which is off wholesale above, so they have to be
+		// switched on by name. severities mirror eslint-plugin-react-hooks' own recommended config
+		"react-hooks/rules-of-hooks": "error",
+		"react-hooks/exhaustive-deps": "warn",
+
 		"@typescript-eslint/consistent-type-imports": "error",
 		"react/jsx-no-useless-fragment": "error",
 		"react/jsx-curly-brace-presence": "warn",
@@ -103,6 +108,16 @@
 			],
 			"rules": {
 				"@typescript-eslint/no-explicit-any": "off"
+			}
+		},
+		{
+			// playwright fixtures hand control back by calling `use(value)`, which the hooks rule reads as
+			// React 19's `use` hook being called outside a component
+			"files": [
+				"test/e2e/**"
+			],
+			"rules": {
+				"react-hooks/rules-of-hooks": "off"
 			}
 		}
 	]
