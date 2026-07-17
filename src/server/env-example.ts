@@ -46,7 +46,7 @@ export const TARGETS: Target[] = [
 		header: [
 			'Every credential SLM reads. It is mounted into the container as a file rather than passed as environment',
 			'variables. To point SECRETS_FILE at a docker secret instead, see',
-			`${Env.DOCS}/docs/INSTALLING.md`,
+			`${Env.DOCS_SOURCE_REPO}/docs/INSTALLING.md`,
 			'',
 			'Treat it as a private key: keep it out of any backup you would not put a password in.',
 		],
@@ -55,7 +55,6 @@ export const TARGETS: Target[] = [
 		audience: 'dev',
 		contents: 'all',
 		path: path.join(Paths.PROJECT_ROOT, '.env.example.dev'),
-		// nothing: CONTRIBUTING.md is where a checkout is told what to do with this file
 		header: [],
 	},
 ]
@@ -72,7 +71,6 @@ export function build(target: Target): string {
 		const meta = Env.groupMeta[groupName as keyof typeof Env.groups]
 		if (lines.length > 0) lines.push('')
 		lines.push(section(meta.title))
-		// the dev file carries nothing but the vars and a line each on what they are: a checkout has env.ts
 		if (meta.description && target.audience === 'deployment') lines.push(...wrap(meta.description).map(comment), '')
 		lines.push(rendered.join('\n\n'))
 	}
