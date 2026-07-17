@@ -1,3 +1,4 @@
+import { assertNever } from '@/lib/type-guards'
 import { tsMigrations } from '@/migrations/registry'
 import type * as CS from '@/models/context-shared'
 import { initModule } from '@/server/logger'
@@ -133,6 +134,65 @@ async function acquireTxLock(): Promise<() => void> {
 	return release
 }
 
+// Only queries may be awaited inside a transaction: the lock above is process-wide, so a callback that waits on
+// anything else stalls every other write in the process for as long as it waits (and whatever it waited on is not
+// rolled back with the transaction anyway). See docs/ARCHITECTURE.md.
+//
+// That property is detectable rather than merely conventional. better-sqlite3 is synchronous, so an awaited drizzle
+// query settles on a microtask, and the microtask queue always drains before the loop reaches the check phase --
+// a query-only callback therefore always beats a setImmediate scheduled alongside it. Anything that reaches the
+// network, the disk or a timer has to yield first, and loses the race.
+//
+// exported for its test: the race is the whole mechanism, and it is not otherwise observable from outside.
+export async function runDetectingYield<V>(run: () => Promise<V>): Promise<{ res: V; yielded: boolean }> {
+	let yielded = false
+	const immediate = setImmediate(() => {
+		yielded = true
+	})
+	try {
+		return { res: await run(), yielded }
+	} finally {
+		clearImmediate(immediate)
+	}
+}
+
+// keyed on the tx handle, which a joined inner transaction shares with its outer one, so a violation is reported once
+// at the innermost transaction that saw it -- the precise one -- rather than again at every transaction enclosing it.
+const asyncTxReported = new WeakSet<object>()
+
+async function runTxCallback<V>(txHandle: object, callback: () => Promise<V>): Promise<V> {
+	// constructed eagerly because the offending call site is gone by the time the violation is detectable. V8 formats
+	// .stack lazily, so this costs an allocation unless it's actually reported.
+	const callSite = new Error()
+	const { res, yielded } = await runDetectingYield(callback)
+	// deliberately after the await rather than around it: a callback that threw is already loud, and throwing this on
+	// top of it would bury the actual failure
+	if (yielded && !asyncTxReported.has(txHandle)) {
+		asyncTxReported.add(txHandle)
+		reportAsyncTx(callSite)
+	}
+	return res
+}
+
+function reportAsyncTx(callSite: Error): void {
+	const msg = 'transaction callback yielded to the event loop: only queries may be awaited inside runTransaction, '
+		+ 'because the transaction lock is process-wide. Hoist the call above runTransaction if the write needs its '
+		+ 'result, or defer it with ctx.tx.unlockTasks if it is a side effect of the write. See docs/ARCHITECTURE.md.'
+	switch (ENV.NODE_ENV) {
+		// a violation is a latency bug rather than a correctness one, and rolling a transaction back over it in prod
+		// would turn slow writes into failed ones
+		case 'production':
+			log.warn({ err: callSite }, msg)
+			return
+		case 'development':
+		case 'test':
+			callSite.message = msg
+			throw callSite
+		default:
+			assertNever(ENV.NODE_ENV)
+	}
+}
+
 export async function runTransaction<T extends C.Db, V>(
 	ctx: T & { tx?: { rollback: () => void } },
 	opts: { redactParams?: boolean },
@@ -151,25 +211,27 @@ export async function runTransaction<T extends C.Db, V>(
 	const callback = (typeof secondArg === 'function' ? secondArg : thirdArg)!
 
 	// already inside a transaction: join it. an inner rollback() rolls back the outer transaction
-	if (ctx.tx) return callback(ctx as T & C.Tx)
+	if (ctx.tx) return await runTxCallback(ctx.tx, () => callback(ctx as T & C.Tx))
 
 	let res!: Awaited<V>
 	let shouldRollback = false
 	const unlockTasks: C.Tx['tx']['unlockTasks'] = []
+	const txHandle: C.Tx['tx'] = {
+		rollback: () => {
+			shouldRollback = true
+		},
+		unlockTasks,
+	}
 	const release = await acquireTxLock()
 	try {
 		driver.exec('BEGIN IMMEDIATE')
 		try {
-			res = await callback({
-				...ctx,
-				tx: {
-					rollback: () => {
-						shouldRollback = true
-					},
-					unlockTasks,
-				},
-				db: () => ctx.db(opts),
-			})
+			res = await runTxCallback(txHandle, () =>
+				callback({
+					...ctx,
+					tx: txHandle,
+					db: () => ctx.db(opts),
+				}))
 			driver.exec(shouldRollback ? 'ROLLBACK' : 'COMMIT')
 		} catch (err) {
 			if (driver.inTransaction) driver.exec('ROLLBACK')
