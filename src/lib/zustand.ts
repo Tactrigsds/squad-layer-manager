@@ -2,7 +2,7 @@ import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
 import type { StateObservable } from '@react-rxjs/core'
 import { useQueries } from '@tanstack/react-query'
-import type { UseQueryOptions } from '@tanstack/react-query'
+import type { QueryClient, UseQueryOptions } from '@tanstack/react-query'
 import * as React from 'react'
 import * as Rx from 'rxjs'
 
@@ -66,6 +66,16 @@ type InputState<S> = S extends null | undefined ? undefined
 	: S extends QuerySource<infer T> ? T | undefined
 	: never
 type InputStates<Inputs extends MaybeInput[]> = { [K in keyof Inputs]: InputState<Inputs[K]> }
+// query sources are awaited rather than sampled, so they are never pending-undefined here
+type ResolvedState<S> = S extends QuerySource<infer T> ? T : InputState<S>
+type ResolvedStates<Inputs extends MaybeInput[]> = { [K in keyof Inputs]: ResolvedState<Inputs[K]> }
+type IsQuery<T> = T extends { queryKey: unknown } ? true : false
+type HasQuery<Inputs extends readonly unknown[]> = Inputs extends readonly [infer H, ...infer R]
+	? IsQuery<H> extends true ? true : HasQuery<R>
+	: false
+type Returns<Inputs extends MaybeInput[], R> = HasQuery<Inputs> extends true ? Promise<R> : R
+
+const NO_QUERIES: { data?: unknown }[] = []
 
 function isQuerySource(s: unknown): s is QuerySource<any> {
 	return typeof s === 'object' && s !== null && 'queryKey' in s && !('getState' in s) && !('getValue' in s)
@@ -80,6 +90,17 @@ type FrameStores = { store: StoreApi<any>; update$: Rx.Observable<any> }
 let resolveFrameKeyStores: ((key: FRM.InstanceKeyOfState<any>) => FrameStores | undefined) | undefined
 export function registerFrameKeyResolver(resolve: (key: FRM.InstanceKeyOfState<any>) => FrameStores | undefined) {
 	resolveFrameKeyStores = resolve
+}
+
+// injected by orpc.client.ts: importing the query client here would be an upward lib -> src import
+let queryClient: QueryClient | undefined
+export function registerQueryClient(client: QueryClient) {
+	queryClient = client
+}
+
+function requireQueryClient(): QueryClient {
+	if (!queryClient) throw new Error('No QueryClient registered -- ZusUtils.registerQueryClient must run before a query source is read')
+	return queryClient
 }
 
 function resolveFrameStores(key: FRM.InstanceKeyOfState<any>): FrameStores {
@@ -121,10 +142,33 @@ function subscribe(s: AnyStore<any> | null, update: () => void): () => void {
 	return s.subscribe(update)
 }
 
-export function getState<S extends AnyStore<any> | null | undefined>(source: S): InputState<S>
-export function getState(source: AnyStore<any> | null | undefined): any {
-	if (source == null) return undefined
-	return resolveReadStore(source).getState()
+// any query source among the inputs makes the return a promise. see docs/ARCHITECTURE.md
+export function getState<I extends MaybeInput>(source: I): Returns<[I], ResolvedState<I>>
+export function getState<Inputs extends MaybeInput[], R>(
+	...args: [...Inputs, (...states: ResolvedStates<Inputs>) => R]
+): Returns<Inputs, R>
+export function getState<Inputs extends MaybeInput[]>(...inputs: Inputs): Returns<Inputs, ResolvedStates<Inputs>>
+export function getState(...args: (MaybeInput | ((...states: any[]) => any))[]): any {
+	// relies on sources being createStore StoreApis rather than callable create() hooks, which would also be functions
+	const hasSelector = typeof args[args.length - 1] === 'function'
+	const inputs = (hasSelector ? args.slice(0, -1) : args) as MaybeInput[]
+	const selector = hasSelector ? args[args.length - 1] as (...states: any[]) => any : undefined
+
+	const sample = (input: MaybeInput) => getSourceState(resolveInput(input) as SyncSource<any> | null)
+	const finish = (states: any[]) => selector ? selector(...states) : states.length === 1 ? states[0] : states
+
+	if (!inputs.some(isQuerySource)) return finish(inputs.map(sample))
+
+	const client = requireQueryClient()
+	// ensureQueryData serves cached data and fetches only when absent, matching what useQueries does on mount;
+	// fetchQuery would refetch every time
+	return Promise.all(inputs.filter(isQuerySource).map(query => client.ensureQueryData(query as any)))
+		// sync sources are sampled after the await, so the selector sees the most coherent snapshot available at
+		// the moment it computes. a frame key torn down mid-flight rejects here rather than reading a stale instance
+		.then(resolved => {
+			let qIdx = 0
+			return finish(inputs.map(input => isQuerySource(input) ? resolved[qIdx++] : sample(input)))
+		})
 }
 
 export function useStore<I extends MaybeInput>(store: I): InputState<I>
@@ -141,43 +185,51 @@ export function useStore(...args: (MaybeInput | ((...states: any[]) => any))[]):
 	const regularSources = allInputs.filter((s): s is SyncSource<any> | null => !isQuerySource(s))
 	const querySources = allInputs.filter(isQuerySource)
 
-	const queryResults = useQueries({ queries: querySources })
+	// an empty useQueries still allocates an observer and re-runs its setQueries effect every render, so it is
+	// skipped outright. legal only because the query count is fixed per component instance, which this guards.
+	const queryCount = React.useRef(querySources.length)
+	if (queryCount.current !== querySources.length) {
+		throw new Error(
+			`useStore was called with ${querySources.length} query sources after ${queryCount.current} on a previous render. `
+				+ 'The number of query sources passed to a given useStore call must not change across renders; '
+				+ "pass a stable set and use the query's own `enabled` option to make one inert.",
+		)
+	}
+	// eslint-disable-next-line react-hooks/rules-of-hooks
+	const queryResults = querySources.length > 0 ? useQueries({ queries: querySources }) : NO_QUERIES
 
-	// when there's no selector and multiple inputs we pack states into a fresh array each compute,
-	// so equality checks must compare element-wise to avoid spurious re-renders
-	const packed = !selector && allInputs.length > 1
-	const compute = () => {
+	const cache = React.useRef<{ selector: unknown; states: any[]; value: any } | null>(null)
+	// useSyncExternalStore spins if this returns a fresh value while nothing changed, hence the cache. it is keyed
+	// on the selector as well as the states, since an inline selector closing over props must recompute on a
+	// prop change that no source emitted for
+	const getSnapshot = () => {
 		let qIdx = 0
 		const states = allInputs.map(input =>
 			isQuerySource(input) ? queryResults[qIdx++]?.data : getSourceState(input as SyncSource<any> | null)
 		)
-		return selector ? selector(...states) : states.length === 1 ? states[0] : states
+		const prev = cache.current
+		if (
+			prev && prev.selector === selector && prev.states.length === states.length
+			&& prev.states.every((v, i) => Object.is(v, states[i]))
+		) {
+			return prev.value
+		}
+		const value = selector ? selector(...states) : states.length === 1 ? states[0] : states
+		cache.current = { selector, states, value }
+		return value
 	}
-	// latest compute lives in a ref so subscriptions see fresh selector/query data without
-	// re-subscribing when an inline selector changes identity every render
-	const computeRef = React.useRef(compute)
-	computeRef.current = compute
 
-	const [value, setValue] = React.useState(compute)
-
-	React.useEffect(() => {
-		const update = () =>
-			setValue((prev: any) => {
-				const next = computeRef.current()
-				if (Object.is(prev, next)) return prev
-				if (packed && Array.isArray(prev) && prev.length === next.length && prev.every((v: any, i: number) => Object.is(v, next[i]))) {
-					return prev
-				}
-				return next
-			})
-		const unsubs = regularSources.map(s => subscribe(s as any, update))
-		// sync once: catches emissions between render and subscription, and query data changes
-		update()
-		return () => unsubs.forEach(unsub => unsub())
+	const subscribeAll = React.useCallback(
+		(onChange: () => void) => {
+			const unsubs = regularSources.map(s => subscribe(s as any, onChange))
+			return () => unsubs.forEach(unsub => unsub())
+		},
+		// query data flows in through getSnapshot, so only the sources force a resubscribe
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [...regularSources, ...queryResults.map(r => r.data)])
+		regularSources,
+	)
 
-	return value
+	return React.useSyncExternalStore(subscribeAll, getSnapshot)
 }
 
 // a live StoreApi view over the whole source store -- like toPartialStore but unscoped
