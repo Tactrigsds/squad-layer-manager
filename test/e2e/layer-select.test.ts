@@ -34,13 +34,23 @@ test.describe('selecting layers', () => {
 			await page.getByRole('option', { name: 'Sumari', exact: true }).click()
 
 			const rows = dialog.getByRole('row')
+			// with the filter applied every row this query can return is a Sumari_RAAS_v1 variant, so its absence is
+			// what says the filter withheld the rest, rather than that they are on some other page
 			await expect(rows.filter({ hasText: 'Sumari_RAAS_v1' }).first()).toBeVisible()
-			// Sumari has seed layers, but Seed is not RAAS, so the applied filter withholds them
 			await expect(rows.filter({ hasText: 'Sumari_Seed_v1' })).toHaveCount(0)
 
 			// turning the filter off is what lets an admin reach outside the pool
 			await raasOnly.click()
 			await expect(raasOnly).toHaveAttribute('aria-checked', 'false')
+
+			// and now narrow to the gamemode being asserted on. The table sorts randomly by default (see the layerTable
+			// setting) and pages, so "is Sumari_Seed_v1 in the table" without narrowing to it is really "did the shuffle
+			// deal it onto page one" -- which it did about five times in six. Sumari_Seed_v1 is Sumari's only seed layer,
+			// so once Seed is the gamemode, every row is one of its faction variants whatever the shuffle did.
+			await dialog.getByRole('combobox', { name: 'Gamemode' }).click()
+			await page.getByRole('option', { name: 'Seed', exact: true }).click()
+			await expect(dialog.getByRole('combobox', { name: 'Gamemode' })).toHaveText('Seed')
+
 			const seedRow = rows.filter({ hasText: 'Sumari_Seed_v1' }).first()
 			await expect(seedRow).toBeVisible()
 
