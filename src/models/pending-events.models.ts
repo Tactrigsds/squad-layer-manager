@@ -313,29 +313,34 @@ export function onTeamsPolled(state: State, teams: SM.Teams, time: number, polle
 	state.eventBufs.teamsUpdates.push({ type: 'TEAMS_UPDATE', id: Gen.next(state.counters.pendingEventId), teams, time, polledAt })
 }
 
-// The single point every event this module produces passes through. Order matters throughout:
-//   1. seed an empty roster if a roster-bearing event needs one,
-//   2. stamp expectation attribution -- `source` is part of the persisted event (and its appEventId column), so
-//      this has to happen before the insert, and while SQUAD_DISBANDED can still resolve its squad in currTeams,
-//   3. persist, which is what allocates the id,
-//   4. apply team mutations, only once the event is on disk -- a throw from createEvent leaves state untouched
-//      rather than mutated for an event nobody else will ever see.
-async function emit(state: State, ctx: CS.Log, newEvent: SE.NewEvent): Promise<SE.Event> {
-	if (SE.eventRoster(newEvent) && !state.currTeams) {
+// Builds an event: stamps expectation attribution, then persists it to get its id. Called at the point each
+// event is constructed, so everything from the yield onwards already carries the real (db-allocated) id.
+//
+// The attribution stamp belongs here rather than in the caller: `source` is part of the persisted event (and of
+// its appEventId column), so stamping after the insert would silently drop it. It also has to precede
+// applyEventTeamMutations (which the caller runs on the yielded event) -- SQUAD_DISBANDED resolves its squad out
+// of currTeams, so the squad has to still be in there.
+async function createEvent(state: State, event: SE.NewEvent): Promise<SE.Event> {
+	applyExpectations(state, event)
+	return await state.hooks.createEvent(event)
+}
+
+// Fold an emitted event into `state`: seed an empty roster if a roster-bearing event needs one, then apply team
+// mutations. Runs on the event the generator handed over, i.e. once it is already on disk. Shared by the main
+// processing loop and the watchdog resync.
+function applyEventToState(state: State, ctx: CS.Log, event: SE.Event) {
+	if (SE.eventRoster(event) && !state.currTeams) {
 		state.currTeams = initUniqueTeams(state, { players: [], squads: [] })
 	}
-	applyExpectations(state, newEvent)
-	const event = await state.hooks.createEvent(newEvent)
 	if (state.currTeams) {
 		applyEventTeamMutations(ctx, state.currTeams, event)
 	}
-	return event
 }
 
 // Watchdog recovery: re-establish sync from RCON's current layer when the log-driven roll/sync got wedged. Mirrors
 // the RCON_CONNECTED sync-begin (resolve the match, enter 'syncing', emit a roster-less NEW_GAME for a new match)
 // so the next teams poll produces the RESET that reseeds the roster.
-async function* forceResync(state: State, time: number): AsyncGenerator<SE.NewEvent> {
+async function* forceResync(state: State, time: number): AsyncGenerator<SE.Event> {
 	const layersStatus = await state.hooks.fetchLayersStatus()
 	if (!layersStatus) {
 		state.log.warn('sync watchdog fired but fetchLayersStatus returned null; cannot force resync')
@@ -347,13 +352,13 @@ async function* forceResync(state: State, time: number): AsyncGenerator<SE.NewEv
 	state.currentMatch = { historyEntryId: match.historyEntryId, layerId: match.layerId }
 	state.syncState = { type: 'syncing', isNewMatch, boundaryTime: time }
 	if (isNewMatch) {
-		yield {
+		yield await createEvent(state, {
 			type: 'NEW_GAME',
 			layerId: state.currentMatch.layerId,
 			matchId: state.currentMatch.historyEntryId,
 			source: 'new-game-detected',
 			time,
-		}
+		})
 	}
 }
 
@@ -373,8 +378,9 @@ export async function* process(
 		state.nonSyncedSince ??= time
 		if (time - state.nonSyncedSince >= SYNC_WATCHDOG_TIMEOUT_MS) {
 			state.nonSyncedSince = time // reset the clock so a failed resync retries after another full timeout, not every poll
-			for await (const newEvent of forceResync(state, time)) {
-				yield await emit(state, ctx, newEvent)
+			for await (const event of forceResync(state, time)) {
+				applyEventToState(state, ctx, event)
+				yield event
 			}
 		}
 	} else {
@@ -422,8 +428,9 @@ export async function* process(
 	for (let i = 0; i < toProcess.length; i++) {
 		const pendingEvent = toProcess[i]
 		try {
-			for await (const newEvent of processPendingEvent(state, processedEventIds, time, pendingEvent)) {
-				yield await emit(state, ctx, newEvent)
+			for await (const event of processPendingEvent(state, processedEventIds, time, pendingEvent)) {
+				applyEventToState(state, ctx, event)
+				yield event
 			}
 		} catch (err) {
 			state.log.error(err, 'Error while processing event %s (%s)', pendingEvent.type, pendingEvent.id)
@@ -616,7 +623,7 @@ async function* processPendingEvent(
 	processedEventIds: Set<number>,
 	time: number,
 	pendingEvent: PendingEvent,
-): AsyncGenerator<SE.NewEvent> {
+): AsyncGenerator<SE.Event> {
 	const log = state.log
 
 	if (pendingEvent.type !== 'UNKNOWN') {
@@ -641,35 +648,35 @@ async function* processPendingEvent(
 		}
 
 		state.isFirstConnection = state.isFirstConnection === null
-		yield {
+		yield await createEvent(state, {
 			type: 'RCON_CONNECTED',
 			matchId: state.currentMatch.historyEntryId,
 			time: pendingEvent.time,
 			reconnected: !state.isFirstConnection,
-		}
+		})
 
 		if (
 			pendingEvent.nextLayerId !== null && (state.nextLayerId === null || !L.layersEqual(state.nextLayerId, pendingEvent.nextLayerId))
 		) {
 			state.nextLayerId = pendingEvent.nextLayerId
-			yield {
+			yield await createEvent(state, {
 				type: 'MAP_SET',
 				layerId: state.nextLayerId,
 				matchId: state.currentMatch.historyEntryId,
 				time: Date.now(),
-			}
+			})
 		}
 
 		// Roster-less boundary marker for a genuinely new match; the roster follows on the first post-boundary poll
 		// (RESET). A same-match reconnect (isNewMatch=false) emits no NEW_GAME -- just the RESET reseed.
 		if (isNewMatch) {
-			yield {
+			yield await createEvent(state, {
 				type: 'NEW_GAME',
 				layerId: state.currentMatch.layerId,
 				matchId: state.currentMatch.historyEntryId,
 				source: state.isFirstConnection ? 'slm-started' : 'rcon-reconnected',
 				time: pendingEvent.time,
-			}
+			})
 		}
 	}
 
@@ -687,11 +694,11 @@ async function* processPendingEvent(
 		state.unknownSquadStreaks.clear()
 		state.unassignedPlayers.clear()
 		if (state.currentMatch !== 'PENDING') {
-			yield {
+			yield await createEvent(state, {
 				type: 'RCON_DISCONNECTED',
 				time: pendingEvent.time,
 				matchId: state.currentMatch.historyEntryId,
-			}
+			})
 		}
 	}
 
@@ -717,13 +724,13 @@ async function* processPendingEvent(
 
 		// The definitive roster always arrives via RESET. For a new match the roster-less NEW_GAME boundary was
 		// already emitted at RCON_CONNECTED; a same-match reconnect emits only this RESET.
-		yield {
+		yield await createEvent(state, {
 			type: 'RESET',
 			matchId: state.currentMatch.historyEntryId,
 			state: teams,
 			time: pendingEvent.time,
 			source: state.isFirstConnection ? 'slm-started' : 'rcon-reconnected',
-		}
+		})
 		state.syncState = { type: 'synced' }
 	}
 
@@ -744,13 +751,13 @@ async function* processPendingEvent(
 		const teams = initUniqueTeams(state, { players: teamedPlayers, squads: pendingEvent.teams.squads }, prior)
 		// The roster-less NEW_GAME(server-roll) boundary was emitted when the real-layer NEW_GAME log arrived; this
 		// first post-boundary poll carries the definitive roster as a RESET. The reducer applies it to currTeams.
-		yield {
+		yield await createEvent(state, {
 			type: 'RESET',
 			time: pendingEvent.time,
 			matchId: state.currentMatch.historyEntryId,
 			state: teams,
 			source: 'server-roll',
-		}
+		})
 		state.syncState = { type: 'synced' }
 	}
 
@@ -803,13 +810,13 @@ async function* processPendingEvent(
 
 			// Roster-less boundary marker, emitted promptly at the real-layer log. The roster follows on the first
 			// teams poll timestamped after this (see the rolling TEAMS_UPDATE branch), as a RESET.
-			yield {
+			yield await createEvent(state, {
 				type: 'NEW_GAME',
 				layerId: state.currentMatch.layerId,
 				matchId: state.currentMatch.historyEntryId,
 				source: 'server-roll',
 				time: pendingEvent.time,
-			}
+			})
 		}
 	}
 
@@ -847,12 +854,12 @@ async function* processPendingEvent(
 				}
 				state.attributions.splice(attributionIndex, 1)
 			}
-			yield {
+			yield await createEvent(state, {
 				type: 'MAP_SET',
 				...base,
 				layerId: layer.id,
 				source,
-			}
+			})
 			break
 		}
 
@@ -950,37 +957,37 @@ async function* processPendingEvent(
 				}
 			}
 
-			const event: Types.DistributiveOmit<SE.RoundEnded, 'id'> = {
+			const roundEnded: Types.DistributiveOmit<SE.RoundEnded, 'id'> = {
 				type: 'ROUND_ENDED',
 				outcome,
 				action: action,
 				...base,
 			}
 
-			yield event
+			yield await createEvent(state, roundEnded)
 
 			break
 		}
 
 		case 'PLAYER_KICKED_CHAIN': {
 			const events = pendingEvent.events
-			yield {
+			yield await createEvent(state, {
 				...base,
 				type: 'PLAYER_KICKED',
 				player: SM.PlayerIds.getPlayerId(events.PLAYER_KICKED.playerIds),
 				reason: events.KICKING_PLAYER.reason,
-			}
+			})
 			break
 		}
 
 		// carryover from squadjs, no recent instances of this in current prod logs
 		case 'PLAYER_BANNED': {
-			yield {
+			yield await createEvent(state, {
 				...base,
 				type: 'PLAYER_BANNED',
 				player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
 				interval: pendingEvent.interval,
-			}
+			})
 			break
 		}
 
@@ -990,30 +997,30 @@ async function* processPendingEvent(
 				log.error('Player not found in currTeams: %s', SM.PlayerIds.prettyPrint(pendingEvent.playerIds))
 				break
 			}
-			yield {
+			yield await createEvent(state, {
 				...base,
 				type: 'PLAYER_WARNED',
 				reason: pendingEvent.reason,
 				player: SM.PlayerIds.getPlayerId(player.ids),
-			}
+			})
 			break
 		}
 
 		case 'POSSESSED_ADMIN_CAMERA': {
-			yield {
+			yield await createEvent(state, {
 				...base,
 				type: 'POSSESSED_ADMIN_CAMERA',
 				player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
-			}
+			})
 			break
 		}
 
 		case 'UNPOSSESSED_ADMIN_CAMERA': {
-			yield {
+			yield await createEvent(state, {
 				...base,
 				type: 'UNPOSSESSED_ADMIN_CAMERA',
 				player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
-			}
+			})
 			break
 		}
 
@@ -1034,11 +1041,11 @@ async function* processPendingEvent(
 				role: 'unknown',
 			}
 
-			yield {
+			yield await createEvent(state, {
 				type: 'PLAYER_CONNECTED',
 				...base,
 				player: Obj.deepClone(player),
-			}
+			})
 			break
 		}
 
@@ -1077,21 +1084,21 @@ async function* processPendingEvent(
 			if (existingSquad) {
 				for (const player of state.currTeams.players) {
 					if (!SM.Squads.idsEqual(player, squad)) continue
-					yield {
+					yield await createEvent(state, {
 						type: 'PLAYER_LEFT_SQUAD',
 						player: SM.PlayerIds.getPlayerId(player.ids),
 						uniqueId: existingSquad.uniqueId,
 						matchId: state.currentMatch.historyEntryId,
 						time: pendingEvent.time,
-					}
+					})
 				}
 
-				yield {
+				yield await createEvent(state, {
 					type: 'SQUAD_DISBANDED',
 					uniqueId: existingSquad.uniqueId,
 					matchId: state.currentMatch.historyEntryId,
 					time: pendingEvent.time,
-				}
+				})
 			}
 
 			if (player) {
@@ -1109,13 +1116,13 @@ async function* processPendingEvent(
 				}
 
 				if (player.teamId !== teamId) {
-					yield {
+					yield await createEvent(state, {
 						type: 'PLAYER_CHANGED_TEAM',
 						player: SM.PlayerIds.getPlayerId(player.ids),
 						newTeamId: teamId,
 						time: pendingEvent.time,
 						matchId: state.currentMatch.historyEntryId,
-					}
+					})
 				}
 			} else {
 				// the creator not being in currTeams yet (e.g. their connect was missed) is no reason to drop the
@@ -1126,11 +1133,11 @@ async function* processPendingEvent(
 				)
 			}
 
-			yield {
+			yield await createEvent(state, {
 				type: 'SQUAD_CREATED',
 				squad: squad,
 				...base,
-			}
+			})
 
 			break
 		}
@@ -1151,11 +1158,11 @@ async function* processPendingEvent(
 				log.warn(`Player not found on disconnect: ${SM.PlayerIds.prettyPrint(pendingEvent.playerIds)}`)
 				break
 			}
-			yield {
+			yield await createEvent(state, {
 				type: 'PLAYER_DISCONNECTED',
 				player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
 				...base,
-			}
+			})
 			break
 		}
 
@@ -1165,13 +1172,13 @@ async function* processPendingEvent(
 				log.error('SQUAD_RENAMED: squad not found for squadId=%d, teamId=%d', pendingEvent.squadId, pendingEvent.teamId)
 				break
 			}
-			yield {
+			yield await createEvent(state, {
 				type: 'SQUAD_RENAMED',
 				uniqueId: squad.uniqueId,
 				oldSquadName: pendingEvent.oldSquadName,
 				newSquadName: pendingEvent.newSquadName,
 				...base,
-			}
+			})
 			break
 		}
 
@@ -1192,21 +1199,21 @@ async function* processPendingEvent(
 			}
 			for (const player of state.currTeams.players) {
 				if (!SM.Squads.idsEqual(player, squad)) continue
-				yield {
+				yield await createEvent(state, {
 					type: 'PLAYER_LEFT_SQUAD',
 					player: SM.PlayerIds.getPlayerId(player.ids),
 					uniqueId: squad.uniqueId,
 					matchId: state.currentMatch.historyEntryId,
 					time: pendingEvent.time,
 					source: pendingEvent.source,
-				}
+				})
 			}
-			yield {
+			yield await createEvent(state, {
 				type: 'SQUAD_DISBANDED',
 				...base,
 				uniqueId: squad.uniqueId,
 				source: pendingEvent.source,
-			}
+			})
 			break
 		}
 
@@ -1232,7 +1239,10 @@ async function* processPendingEvent(
 		}
 
 		case 'TEAMS_UPDATE': {
-			const events = Array.from(reconcileTeamsUpdate(state, pendingEvent))
+			// drained before any of it is yielded, as it always has been: every event the reconciler produces is
+			// computed against the pre-mutation roster, and the caller only mutates once we hand an event over
+			const events: SE.Event[] = []
+			for await (const event of reconcileTeamsUpdate(state, pendingEvent)) events.push(event)
 			yield* events
 			// a forced-team-change attribution is valid for exactly one poll -- discard whatever wasn't consumed
 			state.forcedTeamChanges.clear()
@@ -1273,7 +1283,7 @@ async function* processPendingEvent(
 				variant = 'normal'
 			}
 
-			yield {
+			yield await createEvent(state, {
 				type: pendingEvent.type,
 				...base,
 				damage: pendingEvent.damage,
@@ -1281,7 +1291,7 @@ async function* processPendingEvent(
 				variant,
 				attacker: SM.PlayerIds.getPlayerId(attacker.ids),
 				victim: SM.PlayerIds.getPlayerId(victim.ids),
-			}
+			})
 
 			break
 		}
@@ -1325,23 +1335,23 @@ async function* processPendingEvent(
 				if (squad) channel = { ...squadChannel, uniqueId: squad.uniqueId }
 			}
 
-			yield {
+			yield await createEvent(state, {
 				type: 'CHAT_MESSAGE',
 				message: pendingEvent.message,
 				player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
 				channel,
 				...base,
-			}
+			})
 			break
 		}
 
 		case 'ADMIN_BROADCAST': {
-			yield {
+			yield await createEvent(state, {
 				type: 'ADMIN_BROADCAST',
 				message: pendingEvent.message,
 				source: pendingEvent.source,
 				...base,
-			}
+			})
 			break
 		}
 	}
@@ -1349,7 +1359,7 @@ async function* processPendingEvent(
 	processedEventIds.add(pendingEvent.id)
 }
 
-function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator<SE.NewEvent> {
+async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): AsyncGenerator<SE.Event> {
 	const nextTeams = event.teams
 	if (!state.currTeams || state.currentMatch === 'PENDING') return
 	const nextSquads: SM.UniqueSquad[] = []
@@ -1381,7 +1391,7 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 		}
 		if (inCurrTeams) continue
 		emittedEvent = true
-		yield {
+		yield await createEvent(state, {
 			type: prevUnassigned.has(playerId) ? 'PLAYER_RECONCILED' : 'PLAYER_CONNECTED',
 			player: {
 				ids: nextPlayer.ids,
@@ -1393,7 +1403,7 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 				role: nextPlayer.role,
 			},
 			...base,
-		}
+		})
 	}
 	state.unassignedPlayers = nextUnassigned
 
@@ -1412,11 +1422,11 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 		}
 		state.pollAbsenceStreaks.delete(playerId)
 		emittedEvent = true
-		yield {
+		yield await createEvent(state, {
 			type: 'PLAYER_DISCONNECTED',
 			player: playerId,
 			...base,
-		}
+		})
 	}
 
 	// we want the SQUAD_CREATED event to have always landed before attempting to process teams updates, so an unknown
@@ -1451,12 +1461,12 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 			UNKNOWN_SQUAD_SYNTHESIS_THRESHOLD,
 		)
 		emittedEvent = true
-		yield {
+		yield await createEvent(state, {
 			type: 'SQUAD_CREATED',
 			squad: uniqueSquad,
 			synthesized: true,
 			...base,
-		}
+		})
 		nextSquads.push(uniqueSquad)
 	}
 	// entries for squads that matched or vanished this poll are stale
@@ -1475,12 +1485,12 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 		if (currSquad && (!squad || currSquad.uniqueId !== squad.uniqueId)) {
 			// currPlayer.squadId = null
 			emittedEvent = true
-			yield {
+			yield await createEvent(state, {
 				type: 'PLAYER_LEFT_SQUAD',
 				player: playerId,
 				uniqueId: currSquad.uniqueId,
 				...base,
-			}
+			})
 		}
 	}
 
@@ -1490,11 +1500,11 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 		if (!nextSquad) {
 			disbandedSquads.add(currSquad.uniqueId)
 			emittedEvent = true
-			yield {
+			yield await createEvent(state, {
 				type: 'SQUAD_DISBANDED',
 				uniqueId: currSquad.uniqueId,
 				...base,
-			}
+			})
 			continue
 		}
 
@@ -1502,12 +1512,12 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 		const prevDetails = Obj.selectProps(currSquad, SM.SQUAD_DETAILS)
 		if (!Obj.deepEqual(details, prevDetails)) {
 			emittedEvent = true
-			yield {
+			yield await createEvent(state, {
 				type: 'SQUAD_DETAILS_CHANGED',
 				uniqueId: currSquad.uniqueId,
 				details,
 				...base,
-			}
+			})
 		}
 	}
 
@@ -1517,14 +1527,14 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 
 		if (currPlayer && nextPlayer.teamId !== currPlayer.teamId) {
 			emittedEvent = true
-			yield {
+			yield await createEvent(state, {
 				type: 'PLAYER_CHANGED_TEAM',
 				player: playerId,
 				newTeamId: nextPlayer.teamId,
 				// attributed if an admin forced this change (recorded from the log); undefined for organic switches
 				source: state.forcedTeamChanges.get(playerId),
 				...base,
-			}
+			})
 		}
 	}
 
@@ -1540,12 +1550,12 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 
 			if (hasChangedSquad) {
 				emittedEvent = true
-				yield {
+				yield await createEvent(state, {
 					type: 'PLAYER_JOINED_SQUAD',
 					uniqueId: squad.uniqueId,
 					player: playerId,
 					...base,
-				}
+				})
 			}
 
 			if (player.isLeader && !prevPlayer?.isLeader) {
@@ -1554,12 +1564,12 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 					return
 				}
 				emittedEvent = true
-				yield {
+				yield await createEvent(state, {
 					type: 'PLAYER_PROMOTED_TO_LEADER',
 					uniqueId: squad.uniqueId,
 					player: playerId,
 					...base,
-				}
+				})
 			}
 		}
 
@@ -1569,41 +1579,44 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 			const newUsername = prevPlayer.ids.username !== player.ids.username ? player.ids.username : undefined
 			if (!Obj.deepEqual(details, prevDetails) || newUsername) {
 				emittedEvent = true
-				yield {
-					type: 'PLAYER_DETAILS_CHANGED',
-					player: SM.PlayerIds.getPlayerId(player.ids),
-					details,
-					newUsername,
-					...base,
-				} satisfies Types.DistributiveOmit<SE.PlayerDetailsChanged, 'id'>
+				yield await createEvent(
+					state,
+					{
+						type: 'PLAYER_DETAILS_CHANGED',
+						player: SM.PlayerIds.getPlayerId(player.ids),
+						details,
+						newUsername,
+						...base,
+					} satisfies Types.DistributiveOmit<SE.PlayerDetailsChanged, 'id'>,
+				)
 			}
 		}
 	}
 	if (emittedEvent) {
-		yield {
+		yield await createEvent(state, {
 			type: 'TEAMS_POLLED_UPDATE',
 			matchId: state.currentMatch.historyEntryId,
 			time: event.time,
-		}
+		})
 	}
 }
 
-function* emitLeaveSquadEvents(
+async function* emitLeaveSquadEvents(
 	state: StateWithCurrentMatchAndPlayers,
 	time: number,
 	player: SM.Player,
 	squadUniqueId: number,
 	source?: SM.LogEvents.ActionSource,
-): Generator<SE.NewEvent> {
+): AsyncGenerator<SE.Event> {
 	if (player.squadId) {
-		yield {
+		yield await createEvent(state, {
 			type: 'PLAYER_LEFT_SQUAD',
 			player: SM.PlayerIds.getPlayerId(player.ids),
 			uniqueId: squadUniqueId,
 			time,
 			matchId: state.currentMatch.historyEntryId,
 			source,
-		}
+		})
 		const otherPlayers: SM.Player[] = []
 		for (const otherPlayer of state.currTeams.players) {
 			if (SM.Squads.idsEqual(otherPlayer, player) && !SM.PlayerIds.match(player.ids, otherPlayer.ids)) {
@@ -1611,23 +1624,23 @@ function* emitLeaveSquadEvents(
 			}
 		}
 		if (otherPlayers.length === 0) {
-			yield {
+			yield await createEvent(state, {
 				type: 'SQUAD_DISBANDED',
 				uniqueId: squadUniqueId,
 				time,
 				matchId: state.currentMatch.historyEntryId,
 				source,
-			}
+			})
 		} else if (otherPlayers.length === 1) {
 			const otherPlayer = otherPlayers[0]
 			if (player.isLeader) {
-				yield {
+				yield await createEvent(state, {
 					type: 'PLAYER_PROMOTED_TO_LEADER',
 					player: SM.PlayerIds.getPlayerId(otherPlayer.ids),
 					uniqueId: squadUniqueId,
 					time,
 					matchId: state.currentMatch.historyEntryId,
-				}
+				})
 			}
 		}
 	}
