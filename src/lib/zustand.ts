@@ -192,41 +192,41 @@ export function useStore(...args: (MaybeInput | ((...states: any[]) => any))[]):
 
 	const queryResults = useQueries({ queries: querySources })
 
-	// when there's no selector and multiple inputs we pack states into a fresh array each compute,
-	// so equality checks must compare element-wise to avoid spurious re-renders
-	const packed = !selector && allInputs.length > 1
-	const compute = () => {
+	const cache = React.useRef<{ selector: unknown; states: any[]; value: any } | null>(null)
+	// useSyncExternalStore calls this during render and again on every store event, and spins if it returns a
+	// fresh value while nothing has changed -- so the result is cached. the cache is keyed on the selector as
+	// well as the states, because an inline selector closing over props changes identity every render and must
+	// recompute even when no source emitted
+	const getSnapshot = () => {
 		let qIdx = 0
 		const states = allInputs.map(input =>
 			isQuerySource(input) ? queryResults[qIdx++]?.data : getSourceState(input as SyncSource<any> | null)
 		)
-		return selector ? selector(...states) : states.length === 1 ? states[0] : states
+		const prev = cache.current
+		if (
+			prev && prev.selector === selector && prev.states.length === states.length
+			&& prev.states.every((v, i) => Object.is(v, states[i]))
+		) {
+			return prev.value
+		}
+		const value = selector ? selector(...states) : states.length === 1 ? states[0] : states
+		cache.current = { selector, states, value }
+		return value
 	}
-	// latest compute lives in a ref so subscriptions see fresh selector/query data without
-	// re-subscribing when an inline selector changes identity every render
-	const computeRef = React.useRef(compute)
-	computeRef.current = compute
 
-	const [value, setValue] = React.useState(compute)
-
-	React.useEffect(() => {
-		const update = () =>
-			setValue((prev: any) => {
-				const next = computeRef.current()
-				if (Object.is(prev, next)) return prev
-				if (packed && Array.isArray(prev) && prev.length === next.length && prev.every((v: any, i: number) => Object.is(v, next[i]))) {
-					return prev
-				}
-				return next
-			})
-		const unsubs = regularSources.map(s => subscribe(s as any, update))
-		// sync once: catches emissions between render and subscription, and query data changes
-		update()
-		return () => unsubs.forEach(unsub => unsub())
+	const subscribeAll = React.useCallback(
+		(onChange: () => void) => {
+			const unsubs = regularSources.map(s => subscribe(s as any, onChange))
+			return () => unsubs.forEach(unsub => unsub())
+		},
+		// resubscribing only depends on the sources; query data flows in through getSnapshot instead.
+		// nullish inputs stay in the array as placeholders so this dep list keeps a stable size
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [...regularSources, ...queryResults.map(r => r.data)])
+		regularSources,
+	)
 
-	return value
+	// no getServerSnapshot: this is a client-only SPA, so it would never be called
+	return React.useSyncExternalStore(subscribeAll, getSnapshot)
 }
 
 // a live StoreApi view over the whole source store -- like toPartialStore but unscoped
