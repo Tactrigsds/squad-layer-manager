@@ -28,6 +28,9 @@ const PINNED_SECTION_ID = 'section:pinned'
 const QUICK_REF_SECTION_ID = 'section:quick-reference'
 const ALIASES_SECTION_ID = 'section:aliases'
 
+// the sections that re-list commands already shown under their own section, rather than holding any of their own
+const SHORTCUT_SECTION_IDS: ReadonlySet<string> = new Set([PINNED_SECTION_ID, QUICK_REF_SECTION_ID])
+
 // Each scope is shown as its chat channel already is elsewhere in the app: admin-only in the admin blue with a shield
 // (as on an admin player and the chat box's admin target), public in ChatAll's white. Tinted outline rather than a
 // solid fill -- it's the same treatment the chat box gives its channels, and a filled badge at this size buried the
@@ -261,7 +264,6 @@ function buildSections(settings: PublicSettings, pinnedCommands: string[]): Sect
 		sections.push({
 			id: QUICK_REF_SECTION_ID,
 			label: 'Quick Reference',
-			blurb: 'The commands this server marks as everyday ones. These are also what the in-game help command lists on its own.',
 			entries: [
 				...quickRef.map((cmdId) => commandEntry(QUICK_REF_SECTION_ID, cmdId, settings.commands[cmdId], 'Quick Reference')),
 				...quickRefAliases.map((alias) => aliasEntry(QUICK_REF_SECTION_ID, alias)),
@@ -295,7 +297,13 @@ export default function CommandsPage() {
 	const settings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
 	const pinnedCommands = ZusUtils.useStore(ClientOnlySettings.Store, s => s.pinnedCommands)
 	const [query, setQuery] = React.useState('')
+	// Where the arrow keys are. Kept as state rather than read back off the scroll position: the highlight otherwise
+	// follows whatever sits at the top of the body, which only updates on a real user scroll -- so each press would
+	// re-read the entry it started from and the cursor would never leave it.
+	const [cursorId, setCursorId] = React.useState<string | null>(null)
 	const scrollRef = React.useRef<HTMLDivElement>(null)
+	// set while scrollToEntry runs, so the body's own scrolling isn't mistaken for the user taking over
+	const scrollingToEntry = React.useRef(false)
 
 	const sections = React.useMemo(() => settings ? buildSections(settings, pinnedCommands) : [], [settings, pinnedCommands])
 	const pinnedSet = React.useMemo(() => new Set(pinnedCommands), [pinnedCommands])
@@ -303,33 +311,73 @@ export default function CommandsPage() {
 	const q = query.trim().toLowerCase()
 	// a section-label match keeps the whole section, so searching "moderation" lists everything under it
 	const visible = q
+		// Pinned and quick reference are shortcuts into the sections below, not content of their own, so a search hit
+		// lands in each of them as well as its real section -- three copies of one command. Searching is already the
+		// direct way to find something, so the shortcuts drop out and every hit appears exactly once.
 		? sections
+			.filter((s) => !SHORTCUT_SECTION_IDS.has(s.id))
 			.map((s) => (s.label.toLowerCase().includes(q) ? s : { ...s, entries: s.entries.filter((e) => e.search.includes(q)) }))
 			.filter((s) => s.entries.length > 0)
 		: sections
 
 	const activeId = useActiveEntry(scrollRef, visible.map((s) => s.id).join(','))
+	// the cursor owns the highlight while arrowing; otherwise it follows the entry at the top of the body
+	const highlightId = cursorId ?? activeId
 
 	if (!settings) return null
 
-	function scrollToEntry(id: string) {
-		scrollRef.current?.querySelector(`#${CSS.escape(id)}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+	function scrollToEntry(id: string, behavior: ScrollBehavior = 'smooth') {
+		scrollingToEntry.current = true
+		scrollRef.current?.querySelector(`#${CSS.escape(id)}`)?.scrollIntoView({ block: 'start', behavior })
+		requestAnimationFrame(() => {
+			scrollingToEntry.current = false
+		})
+	}
+
+	// Up/down walk the results from the search box, so a search can be narrowed and swept without leaving the input.
+	// Instant rather than smooth: a smooth scroll is still travelling when the next press lands, and holding a key
+	// would then be scheduling scrolls faster than they finish.
+	function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+		if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+		const ids = visible.flatMap((section) => section.entries.map((entry) => entry.id))
+		if (ids.length === 0) return
+		// otherwise the caret jumps to either end of the query
+		e.preventDefault()
+		const delta = e.key === 'ArrowDown' ? 1 : -1
+		// picks up from wherever the body was scrolled to, so arrowing after a scroll continues from what's on screen
+		const current = highlightId ? ids.indexOf(highlightId) : -1
+		// with nothing highlighted yet, down starts at the top of the list and up starts at the bottom
+		const next = current === -1
+			? (delta === 1 ? 0 : ids.length - 1)
+			: Math.min(Math.max(current + delta, 0), ids.length - 1)
+		setCursorId(ids[next])
+		scrollToEntry(ids[next], 'instant')
 	}
 
 	return (
-		<div className="flex flex-col flex-1 min-h-0 w-full max-w-6xl mx-auto">
+		// the height has to be pinned here, as the settings page does: _app only bounds its own height on the dashboard
+		// route, so flex-1/min-h-0 alone leaves this growing to fit and the body scrolling the window instead of itself
+		// -- which silently costs the sticky headers and the scroll-tracked highlight. 6rem = the nav bar + _app's padding.
+		<div className="mx-auto flex h-[calc(100dvh-6rem)] w-full max-w-6xl flex-col">
 			<header className="shrink-0 pb-3">
 				<h1 className="text-xl font-semibold">Ingame Commands</h1>
 				<p className="pt-1 text-sm text-muted-foreground">
-					Everything you type is case-insensitive. Player, squad and flag names match on any part of the name, ignoring spaces and non-ASCII
-					characters.
+					Everything you type is case-insensitive. Player, squad and flag names match on any part of the name, ignoring spaces.
 				</p>
 			</header>
 			<div className="flex gap-4 flex-1 min-h-0">
 				<aside className="flex flex-col w-52 shrink-0 min-h-0 border-r pr-2">
 					<div className="relative shrink-0 pb-2">
 						<Icons.Search className="absolute left-2 top-[0.9rem] -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-						<Input className="h-8 pl-7" placeholder="Search commands…" onChange={(e) => setQuery(e.target.value)} />
+						<Input
+							className="h-8 pl-7"
+							placeholder="Search commands…"
+							onChange={(e) => {
+								setQuery(e.target.value)
+								setCursorId(null)
+							}}
+							onKeyDown={onSearchKeyDown}
+						/>
 					</div>
 					<nav className="flex-1 min-h-0 overflow-y-auto">
 						{visible.length === 0
@@ -350,7 +398,7 @@ export default function CommandsPage() {
 															onClick={() => scrollToEntry(entry.id)}
 															className={cn(
 																'block w-full truncate rounded px-1 py-0.5 text-left font-mono text-sm hover:text-foreground',
-																entry.id === activeId ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground',
+																entry.id === highlightId ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground',
 															)}
 															title={entry.label}
 														>
@@ -365,7 +413,13 @@ export default function CommandsPage() {
 							)}
 					</nav>
 				</aside>
-				<div ref={scrollRef} className="flex-1 min-w-0 overflow-y-auto pr-4">
+				<div
+					ref={scrollRef}
+					className="flex-1 min-w-0 overflow-y-auto pr-4"
+					onScroll={() => {
+						if (!scrollingToEntry.current) setCursorId(null)
+					}}
+				>
 					{visible.map((section) => (
 						<section key={section.id} className="pb-8 last:pb-2">
 							{
