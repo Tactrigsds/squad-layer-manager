@@ -226,14 +226,16 @@ export const filtersRouter = {
 		.input(z.tuple([F.FilterEntityIdSchema, F.UpdateFilterEntitySchema.partial()]))
 		.handler(async ({ input, context: ctx }) => {
 			const [id, update] = input
+			// resolved before the transaction, as createFilter and deleteFilter already do: the check reaches discord
+			// over the network to resolve the user's roles, and the tx lock is global
+			const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.getWritePermReqForFilterEntity(id))
+			if (deniedRes) {
+				return deniedRes
+			}
 			const res = await DB.runTransaction(ctx, async (ctx) => {
 				const [rawFilter] = await ctx.db().select().from(Schema.filters).where(E.eq(Schema.filters.id, id))
 				if (!rawFilter) {
 					return { code: 'err:not-found' as const }
-				}
-				const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.getWritePermReqForFilterEntity(id))
-				if (deniedRes) {
-					return deniedRes
 				}
 				const updateResult = await ctx.db().update(Schema.filters).set(update).where(E.eq(Schema.filters.id, id))
 
