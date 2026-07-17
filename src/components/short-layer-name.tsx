@@ -80,8 +80,10 @@ export default function ShortLayerName(
 		teamParity,
 	])
 
+	const backfilledLayer = React.useMemo(() => ({ ...(backfillLayer ?? {}), ...partialLayer }), [backfillLayer, partialLayer])
+
 	if (!partialLayer.Layer) return layerId.slice('RAW:'.length)
-	partialLayer = React.useMemo(() => ({ ...(backfillLayer ?? {}), ...partialLayer }), [backfillLayer, partialLayer])
+	partialLayer = backfilledLayer
 
 	let leftTeamElt: React.ReactNode | undefined
 	let rightTeamElt: React.ReactNode | undefined
