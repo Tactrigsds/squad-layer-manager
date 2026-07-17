@@ -19,7 +19,7 @@ mkdir squad-layer-manager && cd squad-layer-manager
 curl -fsSL https://raw.githubusercontent.com/Tactrigsds/squad-layer-manager/main/install.sh | bash
 ```
 
-This lays down the files a deployment is made of: `docker-compose.yaml`, a `.env` (copied from `.env.example`, which is left alongside it), a `.env.secrets` (copied from `.env.secrets.example`, and holding every credential SLM reads: see [3.3](#33-secrets)), the `edit-global-settings.sh` and `restore.sh` helpers, and an `observability/` directory of Grafana, Loki, and Tempo config. It also creates a `data/` directory, which houses the database file and any persistent data and will be bind-mounted to the app container. You can use a volume instead if you prefer. It refuses to run if any of those files, or `data/`, already exists, so it never overwrites an existing deployment.
+This lays down the files a deployment is made of: `docker-compose.yaml`, a `.env` (copied from `.env.example`, which is left alongside it), a `.env.secrets` (copied from `.env.secrets.example`, and holding every credential SLM reads: see [3.3](#33-secrets)), the `edit-global-settings.sh` and `restore.sh` helpers, and an `observability/` directory of Grafana, Loki, and Tempo config. It also creates a `data/` directory, which houses the database file and any persistent data and will be bind-mounted to the app container.
 
 #### 3.2. Discord app
 
