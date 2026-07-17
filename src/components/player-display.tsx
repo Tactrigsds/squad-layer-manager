@@ -72,7 +72,7 @@ export function PlayerDisplay(
 						SquadServerFrame.Actions.selectAllAdmins(stores, e.ctrlKey ? undefined : player.teamId ?? undefined)
 					}}
 				>
-					<Icons.ShieldCheckIcon className="h-[1em] w-[1em] text-background fill-blue-300" />
+					<Icons.ShieldCheckIcon className="h-[1em] w-[1em] text-background fill-admin" />
 				</span>
 			)}
 			{player.isLeader && (

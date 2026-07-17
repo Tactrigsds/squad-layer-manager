@@ -28,6 +28,13 @@ const PINNED_SECTION_ID = 'section:pinned'
 const QUICK_REF_SECTION_ID = 'section:quick-reference'
 const ALIASES_SECTION_ID = 'section:aliases'
 
+// admin-only takes the app's admin blue (the same token as the shield on an admin player and the admin-chat target in
+// the chat box), since it's the restriction worth spotting. Public is the absence of one, so it stays neutral.
+const SCOPE_BADGE_VARIANTS: Record<CMD.CommandScope, 'admin' | 'secondary'> = {
+	admin: 'admin',
+	public: 'secondary',
+}
+
 function CopyableCommand({ cmdString, chatScope }: { cmdString: string; chatScope: 'ChatToAdmin' | 'ChatToAll' }) {
 	const copy = async () => {
 		const consoleCommand = `${chatScope} ${cmdString}`
@@ -130,7 +137,9 @@ function CommandEntry(
 				</div>
 				{!cmd.enabled && <Badge variant="destructive" className="text-xs">Disabled</Badge>}
 				{cmd.scopes.map((scope) => (
-					<Badge key={scope} variant="outline" className="text-xs whitespace-nowrap">{CMD.COMMAND_SCOPE_LABELS[scope]}</Badge>
+					<Badge key={scope} variant={SCOPE_BADGE_VARIANTS[scope]} className="text-xs whitespace-nowrap">
+						{CMD.COMMAND_SCOPE_LABELS[scope]}
+					</Badge>
 				))}
 				<CollapsibleTrigger asChild>
 					<Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs text-muted-foreground">
@@ -320,11 +329,14 @@ export default function CommandsPage() {
 						{visible.length === 0
 							? <p className="text-sm text-muted-foreground px-1">No matches.</p>
 							: (
-								<ul className="space-y-2">
+								<ul>
 									{visible.map((section) => (
-										<li key={section.id}>
-											<p className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{section.label}</p>
-											<ul>
+										// mirrors the body's sections -- label, rule, indented entries -- so the two columns read as the same split
+										<li key={section.id} className="pt-4 first:pt-0">
+											<p className="border-b border-border px-1 pb-1 text-xs font-semibold uppercase tracking-wide text-foreground">
+												{section.label}
+											</p>
+											<ul className="space-y-px pl-2 pt-1">
 												{section.entries.map((entry) => (
 													<li key={entry.id}>
 														<button
@@ -349,15 +361,27 @@ export default function CommandsPage() {
 				</aside>
 				<div ref={scrollRef} className="flex-1 min-w-0 overflow-y-auto pr-4">
 					{visible.map((section) => (
-						<section key={section.id}>
-							<h2 className="sticky top-0 z-10 bg-background py-1 text-sm font-semibold">{section.label}</h2>
-							{section.blurb && <p className="pb-2 text-sm text-muted-foreground">{section.blurb}</p>}
-							<div className="space-y-4 pb-4">
-								{section.entries.map((entry) =>
-									entry.kind === 'command'
-										? <CommandEntry key={entry.id} entry={entry} settings={settings} pinned={pinnedSet.has(entry.cmdId)} />
-										: <AliasEntry key={entry.id} entry={entry} settings={settings} />
-								)}
+						<section key={section.id} className="pb-8 last:pb-2">
+							{
+								/* the header stays legible over the entries it scrolls across, so it needs to be opaque and to own the
+							    full width -- hence the negative margin pulling it out to the scroll container's padding */
+							}
+							<h2 className="sticky top-0 z-10 -mx-1 mb-2 border-b-2 border-border bg-background px-1 pb-1.5 pt-1 text-base font-semibold tracking-tight">
+								{section.label}
+							</h2>
+							{section.blurb && <p className="pb-3 text-sm text-muted-foreground">{section.blurb}</p>}
+							{
+								/* dividers between commands: a section is a long stack of similar-looking rows, and the arg signatures
+							    wrap, which left the boundary between two commands ambiguous on spacing alone */
+							}
+							<div className="divide-y divide-border/70">
+								{section.entries.map((entry) => (
+									<div key={entry.id} className="py-3 first:pt-0 last:pb-0">
+										{entry.kind === 'command'
+											? <CommandEntry entry={entry} settings={settings} pinned={pinnedSet.has(entry.cmdId)} />
+											: <AliasEntry entry={entry} settings={settings} />}
+									</div>
+								))}
 							</div>
 						</section>
 					))}

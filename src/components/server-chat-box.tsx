@@ -25,9 +25,8 @@ const CHANNEL_CFG: Record<Channel, {
 }> = {
 	'warn-admins': {
 		icon: Icons.Shield,
-		// same blue as the admin badge (fill-blue-300 in player-display.tsx) / ChatAdmin channel style
-		triggerClass: 'border-blue-300/60 text-blue-300 focus:ring-blue-300/50 [&_svg]:text-blue-300',
-		inputClass: 'border-blue-300/60 focus-visible:ring-blue-300/50',
+		triggerClass: 'border-admin/60 text-admin focus:ring-admin/50 [&_svg]:text-admin',
+		inputClass: 'border-admin/60 focus-visible:ring-admin/50',
 	},
 	broadcast: {
 		icon: Icons.Megaphone,
@@ -150,7 +149,7 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value="warn-admins" disabled={!!warnDenied} className="text-xs text-blue-300 whitespace-nowrap">Admins</SelectItem>
+						<SelectItem value="warn-admins" disabled={!!warnDenied} className="text-xs text-admin whitespace-nowrap">Admins</SelectItem>
 						<SelectItem value="broadcast" disabled={!!broadcastDenied} className="text-xs text-yellow-500 whitespace-nowrap">
 							Broadcast
 						</SelectItem>
