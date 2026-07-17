@@ -73,13 +73,15 @@ function FlagRow(props: {
 }
 
 export function ManageFlagsDialogContent(props: {
-	currentFlagIds: string[]
+	playerId: string
 	addRef: React.MutableRefObject<string[]>
 	removeRef: React.MutableRefObject<string[]>
 	reasonsRef: React.MutableRefObject<Record<string, string>>
 }) {
 	const orgFlags = BattlemetricsClient.useOrgFlags()
 	const requiringNote = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.playerFlagsRequiringNote ?? [])
+	// read live so the refresh kicked off when the dialog opened lands here without reopening it
+	const currentFlagIds = BattlemetricsClient.usePlayerFlagIds(props.playerId) ?? []
 	// staged rather than applied on click: a misclick on a destructive action stays undoable while the dialog is open
 	const [staged, setStaged] = React.useState<string[]>(() => props.removeRef.current)
 	const [pending, setPending] = React.useState<string[]>(() => props.addRef.current)
@@ -87,7 +89,7 @@ export function ManageFlagsDialogContent(props: {
 	const [picking, setPicking] = React.useState(false)
 
 	const addable = (orgFlags ?? []).map((f) => f.id)
-		.filter((id) => !props.currentFlagIds.includes(id) && !pending.includes(id))
+		.filter((id) => !currentFlagIds.includes(id) && !pending.includes(id))
 
 	function toggleStaged(id: string) {
 		const next = staged.includes(id) ? staged.filter((f) => f !== id) : [...staged, id]
@@ -111,11 +113,9 @@ export function ManageFlagsDialogContent(props: {
 	return (
 		<div className="grid gap-2">
 			<Label>Flags</Label>
-			{props.currentFlagIds.length === 0 && pending.length === 0 && (
-				<p className="text-xs text-muted-foreground">This player has no flags.</p>
-			)}
+			{currentFlagIds.length === 0 && pending.length === 0 && <p className="text-xs text-muted-foreground">This player has no flags.</p>}
 			<ul className="grid gap-1">
-				{props.currentFlagIds.map((id) => (
+				{currentFlagIds.map((id) => (
 					<FlagRow
 						key={id}
 						id={id}
@@ -261,6 +261,7 @@ function useManageFlagsAction(playerId: string) {
 	const denied = RbacClient.usePermsCheck(RBAC.perm('battlemetrics:write-flags'))
 	const openDialog = useAlertDialog()
 	const currentFlagIds = BattlemetricsClient.usePlayerFlagIds(playerId)
+	const refresh = BattlemetricsClient.useRefreshPlayerBmData()
 	const mutation = useMutation(RPC.orpc.battlemetrics.updateFlags.mutationOptions())
 	const addRef = React.useRef<string[]>([])
 	const removeRef = React.useRef<string[]>([])
@@ -271,12 +272,14 @@ function useManageFlagsAction(playerId: string) {
 		addRef.current = []
 		removeRef.current = []
 		reasonsRef.current = {}
+		// pull fresh flags in case they moved since this player's data was last polled; the dialog reads them live
+		void refresh.mutateAsync({ playerIds: [playerId] })
 		const result = await openDialog({
 			title: 'Manage Flags',
 			description: "Add or remove BattleMetrics flags on this player's profile.",
 			content: (
 				<ManageFlagsDialogContent
-					currentFlagIds={currentFlagIds}
+					playerId={playerId}
 					addRef={addRef}
 					removeRef={removeRef}
 					reasonsRef={reasonsRef}
@@ -327,6 +330,7 @@ export function PlayerFlagsMenuItem(props: { slots: MenuSlots; playerId: string;
 function useAddFlagsAction(playerIds: string[], targetDescription: string) {
 	const denied = RbacClient.usePermsCheck(RBAC.perm('battlemetrics:write-flags'))
 	const openDialog = useAlertDialog()
+	const refresh = BattlemetricsClient.useRefreshPlayerBmData()
 	const mutation = useMutation(RPC.orpc.battlemetrics.addFlags.mutationOptions())
 	const addRef = React.useRef<string[]>([])
 	const reasonsRef = React.useRef<Record<string, string>>({})
@@ -335,6 +339,8 @@ function useAddFlagsAction(playerIds: string[], targetDescription: string) {
 		if (playerIds.length === 0) return
 		addRef.current = []
 		reasonsRef.current = {}
+		// the server re-diffs against live flags per player; refreshing keeps its skip-already-flagged decision current
+		void refresh.mutateAsync({ playerIds })
 		const result = await openDialog({
 			title: 'Add Flags',
 			description: `Add BattleMetrics flags to ${targetDescription}.`,

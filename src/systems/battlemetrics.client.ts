@@ -4,7 +4,7 @@ import * as PG from '@/models/player-groupings.models'
 import * as RPC from '@/orpc.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as ReactRx from '@react-rxjs/core'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 
@@ -41,6 +41,11 @@ export const [usePlayerBmData, playerBmData$] = ReactRx.bind<BM.PublicPlayerBmDa
 export function useOrgFlags(): BM.PlayerFlag[] | undefined {
 	const { data } = useQuery(RPC.orpc.battlemetrics.listOrgFlags.queryOptions({ staleTime: Infinity }))
 	return data ?? undefined
+}
+
+// busts the server's BM cache for these players and refetches; fresh data arrives over the watch stream
+export function useRefreshPlayerBmData() {
+	return useMutation(RPC.orpc.battlemetrics.refreshPlayerBmData.mutationOptions())
 }
 
 export function usePlayerFlagIds(playerId: string): string[] | null {
