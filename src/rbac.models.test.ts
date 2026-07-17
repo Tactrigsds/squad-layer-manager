@@ -74,7 +74,7 @@ describe('settings access aggregation', () => {
 		const access: RBAC.SettingsWriteAccess = { kind: 'paths', paths: ['queue.mainPool', 'vote'] }
 		expect(RBAC.settingsPathAllowed(access, 'queue.mainPool')).toBe(true)
 		expect(RBAC.settingsPathAllowed(access, ['queue', 'mainPool', 'filters', 0, 'inPool'])).toBe(true)
-		expect(RBAC.settingsPathAllowed(access, 'vote.voteDuration')).toBe(true)
+		expect(RBAC.settingsPathAllowed(access, 'vote.defaultVoteDuration')).toBe(true)
 		expect(RBAC.settingsPathAllowed(access, 'queue.mainPoolExtra')).toBe(false)
 		expect(RBAC.settingsPathAllowed(access, 'queue')).toBe(false)
 		expect(RBAC.settingsPathAllowed({ kind: 'all' }, 'anything')).toBe(true)

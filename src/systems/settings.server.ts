@@ -481,7 +481,7 @@ export type PublicSettings = {
 	chat: SETTINGS.GlobalSettings['chat']
 	commands: SETTINGS.GlobalSettings['commands']
 	commandAliases: SETTINGS.GlobalSettings['commandAliases']
-	vote: { voteDuration: number; voteDisplayProps: SETTINGS.GlobalSettings['vote']['voteDisplayProps'] }
+	vote: { defaultVoteDuration: number; defaultVoteDisplayProps: SETTINGS.GlobalSettings['vote']['defaultVoteDisplayProps'] }
 	servers: ServerEntry[]
 	playerGroupings: SETTINGS.GlobalSettings['playerGroupings']
 	playerFlagsRequiringNote: SETTINGS.GlobalSettings['playerFlagsRequiringNote']
@@ -500,8 +500,8 @@ function buildPublicSettings(): PublicSettings {
 		commands: GLOBAL_SETTINGS.commands,
 		commandAliases: GLOBAL_SETTINGS.commandAliases,
 		vote: {
-			voteDuration: GLOBAL_SETTINGS.vote.voteDuration,
-			voteDisplayProps: GLOBAL_SETTINGS.vote.voteDisplayProps,
+			defaultVoteDuration: GLOBAL_SETTINGS.vote.defaultVoteDuration,
+			defaultVoteDisplayProps: GLOBAL_SETTINGS.vote.defaultVoteDisplayProps,
 		},
 		servers: listServerEntries(),
 		playerGroupings: GLOBAL_SETTINGS.playerGroupings,

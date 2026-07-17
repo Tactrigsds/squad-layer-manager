@@ -238,7 +238,7 @@ function renderAdminsCfg(steamIds: string[]): string {
 // lever we have: the app runs in its own process, so its timers can't be faked. Tests override any
 // of these through the globalSettings hook.
 function applyTestTimings(settings: SETTINGS.GlobalSettings) {
-	settings.vote.voteDuration = 8_000
+	settings.vote.defaultVoteDuration = 8_000
 	settings.vote.finalVoteReminder = 2_000
 	settings.vote.voteReminderInterval = 3_000
 	settings.vote.internalVoteReminderInterval = 3_000

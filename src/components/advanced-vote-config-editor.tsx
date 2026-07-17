@@ -22,9 +22,9 @@ export type AdvancedVoteConfigEditorProps = {
 
 export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 	const appConfig = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
-	const displayProps = props.config?.displayProps ?? appConfig?.vote.voteDisplayProps ?? []
-	const duration = props.config?.duration ?? appConfig?.vote.voteDuration ?? 120
-	const usingDefault = !props.config?.displayProps && !props.config?.duration && !!appConfig?.vote.voteDisplayProps
+	const displayProps = props.config?.displayProps ?? appConfig?.vote.defaultVoteDisplayProps ?? []
+	const duration = props.config?.duration ?? appConfig?.vote.defaultVoteDuration ?? 120
+	const usingDefault = !props.config?.displayProps && !props.config?.duration && !!appConfig?.vote.defaultVoteDisplayProps
 	const statuses = DH.toDisplayPropStatuses(displayProps)
 
 	const preview = props.choices.length > 0

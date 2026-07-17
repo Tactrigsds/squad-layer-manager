@@ -95,12 +95,16 @@ describe('app-events persistence', () => {
 				{ path: 'layerQueue.lowQueueWarningThreshold', from: 3, to: 5 },
 				{ path: 'connections.rcon.password', from: AppEvents.REDACTED_SETTING, to: AppEvents.REDACTED_SETTING },
 				// a newly-set path has no `from` at all, which is the case superjson has to preserve
-				{ path: 'vote.voteDisplayProps', from: undefined, to: ['layer'] },
+				{ path: 'vote.defaultVoteDisplayProps', from: undefined, to: ['layer'] },
 			],
 		})
 		const back = AppEvents.fromRow(AppEvents.toRow(e) as any)
 		expect(back).toEqual(e)
-		expect((back as AppEvents.SettingsUpdated).changes?.[2]).toEqual({ path: 'vote.voteDisplayProps', from: undefined, to: ['layer'] })
+		expect((back as AppEvents.SettingsUpdated).changes?.[2]).toEqual({
+			path: 'vote.defaultVoteDisplayProps',
+			from: undefined,
+			to: ['layer'],
+		})
 	})
 
 	it('redacts connection credentials on the way to the database, even if the caller did not', () => {

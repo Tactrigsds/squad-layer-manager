@@ -20,9 +20,9 @@ import { z } from 'zod'
 // Everything about a role lives under `roles[roleId]`: its permissions, timeout cap, restricted settings grants, and
 // which discord entities it's assigned to. Consolidating per-role (rather than five parallel role-keyed maps) makes the
 // "a role must be defined to be referenced" invariant structural, so the schema no longer has to police it.
-// dotted path into a settings document, e.g. "vote.voteDuration" or just "vote" for the whole section
+// dotted path into a settings document, e.g. "vote.defaultVoteDuration" or just "vote" for the whole section
 const SettingsGrantPathSchema = z.string().trim().min(1).regex(/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/, {
-	error: 'Must be a dotted setting path, e.g. "vote.voteDuration"',
+	error: 'Must be a dotted setting path, e.g. "vote.defaultVoteDuration"',
 })
 
 // discord ids are kept as strings here (ParsableBigInt) so they round-trip cleanly through the JSON settings editor /
@@ -56,7 +56,7 @@ const RoleConfigSchema = z.object({
 	// restricted settings grants, like maxTimeout these carry arguments the expression grammar can't: they let the role
 	// edit only specific settings (and for servers, only specific servers). Unrestricted access is granted via `permissions`.
 	globalSettingsGrants: z.array(SettingsGrantPathSchema).prefault([]).describe(
-		'Restricted global-settings write grants: dotted setting paths the role may edit (e.g. "vote.voteDuration", or "vote" for the whole section). '
+		'Restricted global-settings write grants: dotted setting paths the role may edit (e.g. "vote.defaultVoteDuration", or "vote" for the whole section). '
 			+ 'Any grant also lets the role view global settings. A "!global-settings:write" denial in permissions overrides these.',
 	),
 	serverSettingsGrants: z.array(ServerSettingsGrantSchema).prefault([]).describe(
@@ -224,7 +224,7 @@ export const GlobalSettingsSchema = z.object({
 		maxQueueSize: z.int().min(1).max(100).prefault(20).describe('Maximum number of layers that can be in the queue'),
 	}).prefault({}),
 	vote: z.object({
-		voteDuration: HumanTime.prefault('180s').describe('Duration of a vote'),
+		defaultVoteDuration: HumanTime.prefault('180s').describe('Default duration of a vote'),
 		startVoteReminderThreshold: HumanTime.prefault('20m').describe('How far into a match to start reminding admins to start a vote'),
 		voteReminderInterval: HumanTime.prefault('30s').describe('How often to remind users to vote'),
 		internalVoteReminderInterval: HumanTime.prefault('15s').describe('How often to remind admins to vote in an internal vote'),
@@ -234,7 +234,7 @@ export const GlobalSettingsSchema = z.object({
 		autoStartVoteCutoff: HumanTime.prefault('30m').describe(
 			'How far into a match to stop auto-starting votes',
 		),
-		voteDisplayProps: z.array(DH.LAYER_DISPLAY_PROP).prefault(['map', 'gamemode']).describe(
+		defaultVoteDisplayProps: z.array(DH.LAYER_DISPLAY_PROP).prefault(['map', 'gamemode']).describe(
 			'What parts of a layer setup should be displayed by default',
 		),
 		finalVoteReminder: HumanTime.prefault('10s').describe('How far in advance the final vote reminder should be sent'),
@@ -266,7 +266,11 @@ export const GlobalSettingsSchema = z.object({
 	}).prefault({}),
 	balanceTriggerLevels: z.partialRecord(BAL.TRIGGER_IDS, BAL.TRIGGER_LEVEL)
 		.prefault({ '150x2': 'warn' })
-		.describe('Configures the trigger warning levels for balance calculations'),
+		.describe(
+			'Balance triggers detect one-sided runs of matches (a team winning several games in a row, or by large ticket margins) '
+				+ 'and surface a warning so admins can rebalance. Each entry sets the severity a trigger fires at: info, warn, or violation '
+				+ '(increasing severity). A trigger left unset never fires.',
+		),
 	playerFlagsRequiringNote: z.array(z.uuid()).prefault([]).describe(
 		"Flags (by id) that require a reason to be given when added, which is included in the note posted to the player's BattleMetrics profile",
 	),

@@ -252,7 +252,7 @@ export const startVote = C.spanOp(
 			return { code: 'err:vote-not-allowed' as const, msg: Messages.WARNS.vote.start.noVoteInPostGame }
 		}
 
-		const duration = opts.duration ?? Settings.GLOBAL_SETTINGS.vote.voteDuration
+		const duration = opts.duration ?? Settings.GLOBAL_SETTINGS.vote.defaultVoteDuration
 		const layerQueue = LayerQueue.getSavedQueue(ctx)
 		const itemId = opts.itemId ?? layerQueue[0]?.itemId
 		if (!itemId) {
@@ -320,7 +320,7 @@ export const startVote = C.spanOp(
 				ctx.vote.state,
 				item,
 				duration,
-				item.voteConfig?.displayProps ?? Settings.GLOBAL_SETTINGS.vote.voteDisplayProps,
+				item.voteConfig?.displayProps ?? Settings.GLOBAL_SETTINGS.vote.defaultVoteDisplayProps,
 			),
 		)
 
@@ -398,7 +398,10 @@ export const handleVote = C.spanOp(
 				await SquadRcon.warn(
 					ctx,
 					msg.playerIds,
-					Messages.WARNS.vote.voteCast(choiceLayerId, voteItem?.voteConfig?.displayProps ?? Settings.GLOBAL_SETTINGS.vote.voteDisplayProps),
+					Messages.WARNS.vote.voteCast(
+						choiceLayerId,
+						voteItem?.voteConfig?.displayProps ?? Settings.GLOBAL_SETTINGS.vote.defaultVoteDisplayProps,
+					),
 				)
 			})(),
 		)
@@ -528,7 +531,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 						voteItem,
 						timeLeft,
 						false,
-						voteItem.voteConfig?.displayProps ?? Settings.GLOBAL_SETTINGS.vote.voteDisplayProps,
+						voteItem.voteConfig?.displayProps ?? Settings.GLOBAL_SETTINGS.vote.defaultVoteDisplayProps,
 					)
 					await broadcastVoteUpdate(ctx, ctx.vote.state, msg, { onlyNotifyNonVotingAdmins: true })
 				}),
@@ -551,7 +554,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 						voteItem,
 						Settings.GLOBAL_SETTINGS.vote.finalVoteReminder,
 						true,
-						voteItem.voteConfig?.displayProps ?? Settings.GLOBAL_SETTINGS.vote.voteDisplayProps,
+						voteItem.voteConfig?.displayProps ?? Settings.GLOBAL_SETTINGS.vote.defaultVoteDisplayProps,
 					)
 					await broadcastVoteUpdate(ctx, ctx.vote.state, msg, { onlyNotifyNonVotingAdmins: true })
 				}),
@@ -637,7 +640,7 @@ export const endVote = C.spanOp(
 			voteItemId: endingVoteState.itemId,
 		})
 
-		const displayProps = listItem.voteConfig?.displayProps ?? Settings.GLOBAL_SETTINGS.vote.voteDisplayProps
+		const displayProps = listItem.voteConfig?.displayProps ?? Settings.GLOBAL_SETTINGS.vote.defaultVoteDisplayProps
 		if (endingVoteState.code === 'ended:winner') {
 			await broadcastVoteUpdate(
 				ctx,

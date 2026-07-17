@@ -10,20 +10,17 @@ export type SettingsGroup = { slug: string; label: string; keys: string[] }
 export const HIDDEN_GLOBAL_SETTINGS_KEYS: ReadonlySet<string> = new Set(['defaultPrefix'])
 
 export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
-	{ slug: 'general', label: 'General', keys: ['topBarColor', 'navLinks', 'warnOnSlmStart'] },
+	{ slug: 'commands', label: 'In-game Commands', keys: ['allowedPrefixes', 'defaultPrefix', 'commands', 'commandAliases'] },
 	{
 		slug: 'messaging',
 		label: 'Messaging & Reasons',
 		keys: ['warnPrefix', 'adminActionReasons', 'requireReasonFor', 'broadcasts', 'messageVariables', 'chat'],
 	},
-	{ slug: 'commands', label: 'In-game Commands', keys: ['allowedPrefixes', 'defaultPrefix', 'commands', 'commandAliases'] },
-	{ slug: 'queue-and-votes', label: 'Queue & Votes', keys: ['layerQueue', 'vote', 'layerTable', 'layerGeneration'] },
-	{
-		slug: 'squad-server',
-		label: 'Squad Server',
-		keys: ['squadServer', 'fogOffDelay', 'postRollAnnouncementsTimeout', 'balanceTriggerLevels'],
-	},
 	{ slug: 'players', label: 'Players & Flags', keys: ['playerGroupings', 'playerFlagsRequiringNote'] },
+	{ slug: 'balance', label: 'Balance Triggers', keys: ['balanceTriggerLevels'] },
+	{ slug: 'queue-and-votes', label: 'Queue & Votes', keys: ['layerQueue', 'vote', 'layerTable', 'layerGeneration'] },
+	{ slug: 'squad-server', label: 'Squad Server', keys: ['squadServer', 'fogOffDelay', 'postRollAnnouncementsTimeout'] },
+	{ slug: 'misc', label: 'Miscellaneous', keys: ['topBarColor', 'navLinks', 'warnOnSlmStart'] },
 	// rbac stays ungrouped: its own section header already reads "Permissions & Roles". It leads the form via
 	// GLOBAL_SETTINGS_PRIORITY_KEYS rather than trailing the groups with the other ungrouped keys.
 ]
