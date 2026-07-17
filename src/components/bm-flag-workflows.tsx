@@ -22,54 +22,66 @@ import { useAlertDialog } from './ui/lazy-alert-dialog'
 // judgement call that may need justifying) and taking one back off. A single diffing multi-select made both look like
 // one edit and gave the reason nowhere to live, so they're split.
 
-function ReasonField(props: {
-	reasonRef: React.MutableRefObject<string>
-	required: boolean
+// One reason per flag, because each flag's note carries only its own: a shared box would put the same text against
+// flags applied for unrelated reasons. Rows appear as flags are picked, so a dialog with nothing selected has no
+// inputs at all. Keyed by flag id, so adding or dropping a row leaves the others' typed text alone.
+function FlagReasonRows(props: {
+	flagIds: string[]
+	reasonsRef: React.MutableRefObject<Record<string, string>>
+	// flag ids that can't be submitted without a reason; empty when nothing is required (removals)
+	requiringNote: string[]
+	orgFlags: BM.PlayerFlag[] | undefined
 	placeholder: string
-	// flags driving the requirement, named so the admin knows which selection to undo if they don't want to explain it
-	requiredBy?: string[]
 }) {
+	if (props.flagIds.length === 0) return null
 	return (
-		<div className="grid gap-2">
-			<Label>
-				Reason
-				{props.required
-					? <span className="text-destructive">{' '}(required)</span>
-					: <span className="text-muted-foreground">{' '}(optional)</span>}
-			</Label>
-			<Input
-				autoComplete="off"
-				placeholder={props.placeholder}
-				defaultValue={props.reasonRef.current}
-				onChange={(e) => {
-					props.reasonRef.current = e.target.value
-				}}
-			/>
-			{props.required && props.requiredBy && props.requiredBy.length > 0 && (
-				<span className="text-xs text-muted-foreground">
-					Required by {props.requiredBy.join(', ')}
-				</span>
-			)}
+		<div className="grid gap-3">
+			{props.flagIds.map((id) => {
+				const required = props.requiringNote.includes(id)
+				return (
+					<div key={id} className="grid gap-1">
+						<Label className="flex items-center gap-1">
+							<FlagLabel id={id} flags={props.orgFlags} />
+							{required
+								? <span className="text-xs text-destructive">(reason required)</span>
+								: <span className="text-xs text-muted-foreground">(reason optional)</span>}
+						</Label>
+						<Input
+							autoComplete="off"
+							placeholder={props.placeholder}
+							defaultValue={props.reasonsRef.current[id] ?? ''}
+							onChange={(e) => {
+								props.reasonsRef.current[id] = e.target.value
+							}}
+						/>
+					</div>
+				)
+			})}
 			<span className="text-xs text-muted-foreground">
-				Posted to the player's BattleMetrics profile as a note.
+				Each reason is posted to the player's BattleMetrics profile as its own note.
 			</span>
 		</div>
 	)
 }
 
+// only the flags still selected: a row's text survives in the ref after its flag is dropped, so it can be restored if
+// the flag is picked again, but it must never be submitted for a flag that isn't being changed
+function readFlagChanges(flagIds: string[], reasonsRef: React.MutableRefObject<Record<string, string>>): BM.FlagChange[] {
+	return flagIds.map((id) => ({ id, reason: reasonsRef.current[id]?.trim() || undefined }))
+}
+
 export function AddFlagsDialogContent(props: {
 	currentFlagIds: string[]
 	flagIdsRef: React.MutableRefObject<string[]>
-	reasonRef: React.MutableRefObject<string>
+	reasonsRef: React.MutableRefObject<Record<string, string>>
 }) {
 	const orgFlags = BattlemetricsClient.useOrgFlags()
 	const requiringNote = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.playerFlagsRequiringNote ?? [])
-	// mirrored into state so the reason field can flip to required as the selection changes
+	// mirrored into state so the reason rows follow the selection
 	const [selected, setSelected] = React.useState<string[]>(() => props.flagIdsRef.current)
 
-	// a flag the player already has isn't addable; the manage workflow is where those live
+	// a flag the player already has isn't addable; the remove workflow is where those live
 	const addable = (orgFlags ?? []).map((f) => f.id).filter((id) => !props.currentFlagIds.includes(id))
-	const requiredBy = BM.resolveFlags(BM.flagsRequiringNote(selected, requiringNote), orgFlags ?? []).map((f) => f.name)
 
 	if (addable.length === 0) {
 		return <p className="text-xs text-muted-foreground">This player already has every flag configured for the organization.</p>
@@ -89,11 +101,12 @@ export function AddFlagsDialogContent(props: {
 					}}
 				/>
 			</div>
-			<ReasonField
-				reasonRef={props.reasonRef}
-				required={requiredBy.length > 0}
-				requiredBy={requiredBy}
-				placeholder="Why are these flags being applied?"
+			<FlagReasonRows
+				flagIds={selected}
+				reasonsRef={props.reasonsRef}
+				requiringNote={requiringNote}
+				orgFlags={orgFlags}
+				placeholder="Why is this flag being applied?"
 			/>
 		</div>
 	)
@@ -102,11 +115,11 @@ export function AddFlagsDialogContent(props: {
 export function RemoveFlagsDialogContent(props: {
 	currentFlagIds: string[]
 	flagIdsRef: React.MutableRefObject<string[]>
-	reasonRef: React.MutableRefObject<string>
+	reasonsRef: React.MutableRefObject<Record<string, string>>
 }) {
 	const orgFlags = BattlemetricsClient.useOrgFlags()
-	// staged rather than removed on click: one confirm means one BM note covering the whole change, and a misclick on a
-	// destructive action stays undoable while the dialog is open
+	// staged rather than removed on click: a misclick on a destructive action stays undoable while the dialog is open,
+	// and a flag has to be staged before there's anywhere to write its reason
 	const [staged, setStaged] = React.useState<string[]>(() => props.flagIdsRef.current)
 
 	function toggle(id: string) {
@@ -146,7 +159,13 @@ export function RemoveFlagsDialogContent(props: {
 					})}
 				</ul>
 			</div>
-			<ReasonField reasonRef={props.reasonRef} required={false} placeholder="Why are these flags being removed?" />
+			<FlagReasonRows
+				flagIds={staged}
+				reasonsRef={props.reasonsRef}
+				requiringNote={[]}
+				orgFlags={orgFlags}
+				placeholder="Why is this flag being removed?"
+			/>
 		</div>
 	)
 }
@@ -164,20 +183,24 @@ export function PlayerFlagsMenuItems(props: {
 	const addMutation = useMutation(RPC.orpc.battlemetrics.addFlags.mutationOptions())
 	const removeMutation = useMutation(RPC.orpc.battlemetrics.removeFlags.mutationOptions())
 	const flagIdsRef = React.useRef<string[]>([])
-	const reasonRef = React.useRef('')
+	const reasonsRef = React.useRef<Record<string, string>>({})
 
 	function flagNames(ids: string[]) {
 		return BM.resolveFlags(ids, orgFlags ?? []).map((f) => f.name).join(', ')
 	}
 
+	function resetDialogState() {
+		flagIdsRef.current = []
+		reasonsRef.current = {}
+	}
+
 	async function addFlags() {
 		if (currentFlagIds === null) return
-		flagIdsRef.current = []
-		reasonRef.current = ''
+		resetDialogState()
 		const result = await openDialog({
 			title: 'Add Flags',
 			description: "Add BattleMetrics flags to this player's profile.",
-			content: <AddFlagsDialogContent currentFlagIds={currentFlagIds} flagIdsRef={flagIdsRef} reasonRef={reasonRef} />,
+			content: <AddFlagsDialogContent currentFlagIds={currentFlagIds} flagIdsRef={flagIdsRef} reasonsRef={reasonsRef} />,
 			buttons: [{ id: 'confirm', label: 'Add Flags' }],
 		})
 		if (result !== 'confirm') return
@@ -186,7 +209,7 @@ export function PlayerFlagsMenuItems(props: {
 			toast.error('No flags selected')
 			return
 		}
-		const res = await addMutation.mutateAsync({ playerId: props.playerId, flagIds, reason: reasonRef.current.trim() || undefined })
+		const res = await addMutation.mutateAsync({ playerId: props.playerId, flags: readFlagChanges(flagIds, reasonsRef) })
 		if (res.code === 'err:reason-required') {
 			toast.error('Reason required', { description: `These flags require a reason: ${res.flags.join(', ')}` })
 			return
@@ -200,15 +223,14 @@ export function PlayerFlagsMenuItems(props: {
 		})
 	}
 
-	async function manageFlags() {
+	async function removeFlags() {
 		if (currentFlagIds === null) return
-		flagIdsRef.current = []
-		reasonRef.current = ''
+		resetDialogState()
 		const result = await openDialog({
-			title: 'Manage Flags',
+			title: 'Remove Flags',
 			description: "Remove BattleMetrics flags from this player's profile.",
 			variant: 'destructive',
-			content: <RemoveFlagsDialogContent currentFlagIds={currentFlagIds} flagIdsRef={flagIdsRef} reasonRef={reasonRef} />,
+			content: <RemoveFlagsDialogContent currentFlagIds={currentFlagIds} flagIdsRef={flagIdsRef} reasonsRef={reasonsRef} />,
 			buttons: [{ id: 'confirm', label: 'Remove Flags' }],
 		})
 		if (result !== 'confirm') return
@@ -220,8 +242,7 @@ export function PlayerFlagsMenuItems(props: {
 		const removedNames = flagNames(flagIds)
 		const res = await removeMutation.mutateAsync({
 			playerId: props.playerId,
-			flagIds,
-			reason: reasonRef.current.trim() || undefined,
+			flags: readFlagChanges(flagIds, reasonsRef),
 		})
 		if (res.code !== 'ok') {
 			toast.error('Failed to remove flags', { description: res.code })
@@ -235,12 +256,12 @@ export function PlayerFlagsMenuItems(props: {
 	return (
 		<>
 			<Item onClick={addFlags} disabled={currentFlagIds === null}>Add Flags...</Item>
-			<Item onClick={manageFlags} disabled={!currentFlagIds || currentFlagIds.length === 0}>Manage Flags...</Item>
+			<Item onClick={removeFlags} disabled={!currentFlagIds || currentFlagIds.length === 0}>Remove Flags...</Item>
 		</>
 	)
 }
 
-// the Flags context-menu entry: Add and Manage, each opening its own workflow
+// the Flags context-menu entry: Add and Remove, each opening its own workflow
 export function PlayerFlagsSub(props: { slots: MenuSlots; playerId: string; label?: string }) {
 	const { Item, Sub, SubTrigger, SubContent } = props.slots
 	const denied = RbacClient.usePermsCheck(RBAC.perm('battlemetrics:write-flags'))
