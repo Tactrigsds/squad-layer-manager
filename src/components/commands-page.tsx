@@ -204,6 +204,69 @@ function highlightEntry(el: HTMLElement) {
 	el.setAttribute('data-anchor-highlight', 'true')
 }
 
+// the full listing a compact card's "Details" jumps to: a command under its own declared section, an alias under
+// Aliases. The Pinned / Quick Reference cards are shortcuts, so Details links to the real entry rather than repeating
+// its arguments and examples inline.
+function detailsAnchorId(entry: Entry): string {
+	return entry.kind === 'command'
+		? `section:${CMD.COMMAND_DECLARATIONS[entry.cmdId].section}/command:${entry.cmdId}`
+		: `${ALIASES_SECTION_ID}/alias:${entry.alias.alias}`
+}
+
+// A command or alias reduced to its first string, its one-line description, and a link to the full listing. Small
+// enough to pack many per row -- the Pinned and Quick Reference sections are for scanning what exists, not reading the
+// detail. Not itself a scroll target: it lives above the scrolling body, and Details is what jumps into the body.
+function CompactEntry({ entry, onDetails }: { entry: Entry; onDetails: (id: string) => void }) {
+	const string = entry.kind === 'command' ? entry.cmd.strings[0] ?? entry.cmdId : entry.alias.alias
+	const description = entry.kind === 'command'
+		? Messages.GENERAL.command.descriptions[entry.cmdId]
+		: Messages.GENERAL.command.aliasDescription(entry.alias.command)
+	return (
+		<div className="flex flex-col gap-1 rounded-md border bg-background px-2.5 py-1.5">
+			<div className="flex items-center justify-between gap-1">
+				<code className="truncate font-mono text-sm font-medium" title={string}>{string}</code>
+				<Button
+					variant="ghost"
+					size="sm"
+					className="h-5 shrink-0 gap-0.5 px-1 text-xs text-muted-foreground"
+					onClick={() => onDetails(detailsAnchorId(entry))}
+				>
+					Details <Icons.ArrowRight className="h-3 w-3" />
+				</Button>
+			</div>
+			<p className="line-clamp-2 text-xs text-muted-foreground">{description}</p>
+		</div>
+	)
+}
+
+function CompactGrid({ entries, onDetails }: { entries: Entry[]; onDetails: (id: string) => void }) {
+	return (
+		<div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(13rem,1fr))]">
+			{entries.map((entry) => <CompactEntry key={entry.id} entry={entry} onDetails={onDetails} />)}
+		</div>
+	)
+}
+
+// The Pinned and Quick Reference sections, rendered together as one block on a secondary background: the everyday
+// commands, with the ones this browser pinned called out at the top. Both are shortcuts into the sections below, so
+// they use compact cards whose Details link jumps there.
+function QuickReferenceBlock(
+	{ pinned, quickRef, onDetails }: { pinned?: Section; quickRef?: Section; onDetails: (id: string) => void },
+) {
+	return (
+		<section className="mb-8 rounded-lg bg-secondary/60 p-4">
+			<h2 className="mb-3 text-base font-semibold tracking-tight">Quick Reference</h2>
+			{pinned && (
+				<div className="mb-4">
+					<h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pinned</h3>
+					<CompactGrid entries={pinned.entries} onDetails={onDetails} />
+				</div>
+			)}
+			{quickRef && <CompactGrid entries={quickRef.entries} onDetails={onDetails} />}
+		</section>
+	)
+}
+
 // tracks which entry the body is scrolled to, so the matching TOC row can be highlighted
 function useActiveEntry(scrollRef: React.RefObject<HTMLDivElement | null>, deps: unknown): string | null {
 	const [activeId, setActiveId] = React.useState<string | null>(null)
@@ -272,16 +335,17 @@ function buildSections(settings: PublicSettings, pinnedCommands: string[]): Sect
 
 	// pins are per-browser, so an id can outlive the command it named (a downgrade, or a renamed id)
 	const pinned = pinnedCommands.filter((id): id is CMD.CommandId => id in settings.commands)
+	const pinnedSet = new Set(pinned)
 	if (pinned.length > 0) {
 		sections.push({
 			id: PINNED_SECTION_ID,
 			label: 'Pinned',
-			blurb: 'Commands you pinned. Saved in this browser only.',
 			entries: pinned.map((cmdId) => commandEntry(PINNED_SECTION_ID, cmdId, settings.commands[cmdId], 'Pinned')),
 		})
 	}
 
-	const quickRef = CMD.COMMAND_IDS.filter((id) => settings.commands[id].quickReference)
+	// a pinned command is already called out in the Pinned subsection above, so it drops out of the quick-reference grid
+	const quickRef = CMD.COMMAND_IDS.filter((id) => settings.commands[id].quickReference && !pinnedSet.has(id))
 	const quickRefAliases = settings.commandAliases.filter((a) => {
 		const res = CMD.resolveAliasCommand(a.command, settings.commands)
 		return res.code === 'ok' && settings.commands[res.cmdId].quickReference
@@ -395,6 +459,13 @@ export default function CommandsPage() {
 
 	if (!settings) return null
 
+	// Pinned and Quick Reference render as one block above the columns rather than as sections in the body or rows in
+	// the table of contents -- they're a scan of the everyday commands, and the body below is the full menu. Absent
+	// while searching (the shortcut sections are filtered out of `visible` then), so a search shows only real hits.
+	const pinnedShortcut = visible.find((s) => s.id === PINNED_SECTION_ID)
+	const quickRefShortcut = visible.find((s) => s.id === QUICK_REF_SECTION_ID)
+	const contentSections = visible.filter((s) => !SHORTCUT_SECTION_IDS.has(s.id))
+
 	// Following a link to an entry: record it, mark it, and put the cursor on it. The cursor matters at the end of the
 	// list, where the target can't be centred -- the scroll-derived highlight would land on whatever the fold stopped
 	// at, so linking to one of the last commands would highlight a different one.
@@ -410,7 +481,8 @@ export default function CommandsPage() {
 	// would then be scheduling scrolls faster than they finish.
 	function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
 		if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
-		const ids = visible.flatMap((section) => section.entries.map((entry) => entry.id))
+		// only the body's entries; the compact shortcuts above aren't scroll targets
+		const ids = contentSections.flatMap((section) => section.entries.map((entry) => entry.id))
 		if (ids.length === 0) return
 		// otherwise the caret jumps to either end of the query
 		e.preventDefault()
@@ -437,6 +509,12 @@ export default function CommandsPage() {
 						Everything you type is case-insensitive. Player, squad and flag names match on any part of the name, ignoring spaces.
 					</p>
 				</header>
+				{/* the everyday commands sit above the whole menu -- search box, table of contents and listings all start below */}
+				{(pinnedShortcut || quickRefShortcut) && (
+					<div className="shrink-0">
+						<QuickReferenceBlock pinned={pinnedShortcut} quickRef={quickRefShortcut} onDetails={navigateToEntry} />
+					</div>
+				)}
 				<div className="flex gap-4 flex-1 min-h-0">
 					<aside className="flex flex-col w-52 shrink-0 min-h-0 border-r pr-2">
 						<div className="relative shrink-0 pb-2">
@@ -452,11 +530,11 @@ export default function CommandsPage() {
 							/>
 						</div>
 						<nav className="flex-1 min-h-0 overflow-y-auto">
-							{visible.length === 0
+							{contentSections.length === 0
 								? <p className="text-sm text-muted-foreground px-1">No matches.</p>
 								: (
 									<ul>
-										{visible.map((section) => (
+										{contentSections.map((section) => (
 											// mirrors the body's sections -- label, rule, indented entries -- so the two columns read as the same split
 											<li key={section.id} className="pt-4 first:pt-0">
 												<p className="border-b border-border px-1 pb-1 text-xs font-semibold uppercase tracking-wide text-foreground">
@@ -495,7 +573,7 @@ export default function CommandsPage() {
 							if (!scrollingToEntry.current) setCursorId(null)
 						}}
 					>
-						{visible.map((section) => (
+						{contentSections.map((section) => (
 							<section key={section.id} className="pb-8 last:pb-2">
 								{
 									/* the header stays legible over the entries it scrolls across, so it needs to be opaque and to own the
