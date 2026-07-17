@@ -9,7 +9,7 @@ import { RPCLink } from '@orpc/client/websocket'
 import type { RouterClient } from '@orpc/server'
 import { createTanstackQueryUtils } from '@orpc/tanstack-query'
 import * as ReactRx from '@react-rxjs/core'
-import { QueryClient } from '@tanstack/react-query'
+import { onlineManager, QueryClient } from '@tanstack/react-query'
 import { WebSocket } from 'partysocket'
 import * as Rx from 'rxjs'
 import { toCold, traceTag } from './lib/async'
@@ -18,6 +18,12 @@ import { formatVersion } from './lib/versioning'
 const wsHostname = window.location.origin.replace(/^http/, 'ws').replace(/\/$/, '')
 const wsUrl = `${wsHostname}${AR.route('/orpc')}`
 const websocket = new WebSocket(wsUrl)
+
+// read off the socket rather than connectStatus$, because a close event fails the in-flight calls and moves the status
+// in an order we don't control: readyState is already CLOSING/CLOSED by the time those rejections land.
+function transportOpen() {
+	return websocket.readyState === WebSocket.OPEN
+}
 
 const orpcLink = new RPCLink({
 	// partysocket's WebSocket is a drop-in replacement, but types its readyState as
@@ -29,6 +35,9 @@ const orpcLink = new RPCLink({
 			// AbortErrors happen whenever an unsubscribe happens, we can safely ignore them
 			if (error instanceof Error && error.name === 'AbortError') return
 			console.error(error)
+			// a dropped socket fails every in-flight call at once, and none of those failures tell the user anything the
+			// reconnect toast isn't already saying. Only calls that failed while the transport was up are real news.
+			if (!transportOpen()) return
 			if (error instanceof Error) {
 				toast.error('Transport Error', { description: error.message })
 			} else {
@@ -72,6 +81,34 @@ export const [useConnectStatus, connectStatus$] = (() => {
 })()
 
 connectStatus$.subscribe()
+
+// tanstack's own notion of "online" is navigator.onLine, which stays true when our websocket is the only thing that
+// died. Driving it off the socket instead means queries and mutations pause for the outage and resume on reconnect,
+// rather than each one burning its retries against a transport that cannot answer.
+connectStatus$.pipe(
+	Rx.map(status => status === 'open'),
+	Rx.distinctUntilChanged(),
+).subscribe(open => onlineManager.setOnline(open))
+
+// one toast for the whole outage, replaced in place by its own resolution. Keyed so repeated close events can't stack
+// copies of it, and unclearable because dismissing it wouldn't make the app usable again.
+const RECONNECT_TOAST_ID = 'ws-reconnect'
+let reconnectToastShown = false
+connectStatus$.subscribe(status => {
+	if (status === 'closed' && !reconnectToastShown) {
+		reconnectToastShown = true
+		// the whole state is in the title: updating a toast by id merges into the existing one, so a description set
+		// here would survive into the success toast that replaces it
+		toast.loading('Lost connection to the server, reconnecting...', {
+			id: RECONNECT_TOAST_ID,
+			duration: Infinity,
+			dismissible: false,
+		})
+	} else if (status === 'open' && reconnectToastShown) {
+		reconnectToastShown = false
+		toast.success('Reconnected to the server', { id: RECONNECT_TOAST_ID, duration: 3_000, dismissible: true })
+	}
+})
 
 // suspending state observables only get their first-emit clock while the websocket is actually up, so a
 // disconnect keeps them in Suspense (resolving on reconnect) instead of erroring them out. see RxHelpers.bind
@@ -148,20 +185,24 @@ export function observe<T>(
 			resetOnSuccess: true,
 			delay: (error, count) => {
 				opts?.onError?.(error, count)
+				// resubscribing over a socket that is down just fails again, so the retry waits for the transport to come
+				// back instead of polling it. The reconnect itself is the delay, and the reconnect toast is the report.
+				const untilOpen$ = connectStatus$.pipe(Rx.filter(status => status === 'open'), Rx.take(1))
+				if (!transportOpen()) return untilOpen$
+
 				// every watch subscription in the app retries at once after a reconnect, so identical delays would
 				// thunder against the server. Half-jittered, capped exponential backoff.
 				const backoffMs = Math.min(Math.pow(2, count) * 250, MAX_RETRY_DELAY)
 				const backoff$ = Rx.timer(backoffMs / 2 + Math.random() * (backoffMs / 2))
 
-				// we only want to log the error if the connection is closed
-				if (connectStatus$.getValue() !== 'open') return backoff$
-
 				console.error(`[${tag}] subscription failed (attempt ${count})`, error)
 				if (count > 2) {
-					toast.error('Remote Subscription Error', { description: `${tag}: ${error.message}` })
+					// keyed per subscription so a stuck one replaces its own toast rather than stacking a new one each attempt
+					toast.error('Remote Subscription Error', { id: `sub-error-${tag}`, description: `${tag}: ${error.message}` })
 				}
 
-				return backoff$
+				// the socket can still drop during the backoff, so hold there too rather than retrying into a dead transport
+				return backoff$.pipe(Rx.concatMap(() => untilOpen$))
 			},
 		}),
 	)
