@@ -777,7 +777,9 @@ function AppEventEntry(
 	}
 
 	// warns render message-style (colored channel + border + gradient) like a chat message, with the channel
-	// naming who was warned rather than a chat scope
+	// naming who was warned rather than a chat scope. The actor keeps a verb ("X warned: ...") rather than a bare
+	// chat-sender prefix ("X: ..."), since the warn body may itself carry an admin's name (the warn box's optional
+	// username prefix) and a bare prefix makes the attribution indistinguishable from that.
 	if (appEvent.type === 'PLAYER_WARNED') {
 		const warnCount = appEvent.targets.length
 		const summary = event.warnSummary
@@ -809,7 +811,7 @@ function AppEventEntry(
 			<>
 				<EventTime time={event.time} />
 				<div className="grow min-w-0 wrap-anywhere">
-					{channel} {actorLabel}: "{appEvent.message}"
+					{channel} {actorLabel} warned: "{appEvent.message}"
 				</div>
 			</>
 		)
