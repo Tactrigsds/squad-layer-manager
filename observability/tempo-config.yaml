@@ -1,6 +1,8 @@
 # Overrides /otel-lgtm/tempo-config.yaml in the grafana/otel-lgtm image. Everything outside the
-# `compactor` block is the image's own config, reproduced verbatim: mounting this file replaces the
-# original wholesale, so dropping a section here would silently un-configure it.
+# `compactor` block and the local-blocks additions noted below is the image's own config, reproduced
+# verbatim: mounting this file replaces the original wholesale, so dropping a section here would
+# silently un-configure it. Reproduced from the 0.29.0 image, which is the tag docker-compose.yaml
+# pins and the reason it pins one at all. See README.md#the-mount-contract.
 server:
   http_listen_port: 3200
   grpc_listen_port: 9096
@@ -14,17 +16,9 @@ distributor:
         http:
           endpoint: "127.0.0.1:4418"
 
-ingester:
-  trace_idle_period: 1s
-  max_block_duration: 1s
-  flush_check_period: 1s
-  lifecycler:
-    address: 127.0.0.1
-    ring:
-      kvstore:
-        store: inmemory
-      replication_factor: 1
-    min_ready_duration: 1s
+memberlist:
+  bind_addr: [127.0.0.1]
+  bind_port: 7947
 
 querier:
   frontend_worker:
@@ -64,5 +58,10 @@ metrics_generator:
       - url: http://127.0.0.1:9090/api/v1/write
         send_exemplars: true
 
+# Must be the scoped form: Tempo 3 refuses to start on the legacy flat `metrics_generator_processors`
+# key. local-blocks is ours on top of the image's two, and is what backs TraceQL metrics queries
+# (`| rate() by(...)`), which the Traces Drilldown issues on open.
 overrides:
-  metrics_generator_processors: [service-graphs, local-blocks, span-metrics]
+  defaults:
+    metrics_generator:
+      processors: [service-graphs, span-metrics, local-blocks]
