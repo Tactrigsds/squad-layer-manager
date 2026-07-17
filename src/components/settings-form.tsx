@@ -3305,10 +3305,11 @@ function useLocalJsonSchema(pathStr: string): z.ZodType | undefined {
 	)
 }
 
-// the GUI/JSON segmented control the settings-page section headers use, scaled down to sit in a field's header row
+// the GUI/JSON segmented control the settings-page section headers use, scaled down to sit in a field's header row.
+// `ml-auto` pins it to the right end of that row, where the page-level control sits in its own header.
 function LocalModeToggle({ mode, onSelect }: { mode: FieldMode; onSelect: (next: FieldMode) => void }) {
 	return (
-		<div className="flex items-center rounded-md border p-0.5">
+		<div className="ml-auto flex items-center rounded-md border p-0.5">
 			{(['gui', 'json'] as const).map((option) => (
 				<Button
 					key={option}
@@ -3404,8 +3405,8 @@ function SectionField(
 					<span className="contents" inert={!writable}>
 						<FieldResetControls value$={value$} reset$={reset$} onChange={onChange} node={node} path={path} showDefaultLabel={false} />
 					</span>
-					{jsonSchema && writable && <LocalModeToggle mode={mode} onSelect={setMode} />}
 					<AnchorLink domId={domId} />
+					{jsonSchema && writable && <LocalModeToggle mode={mode} onSelect={setMode} />}
 				</div>
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
 				{SectionExtra && <SectionExtra />}
@@ -3485,8 +3486,8 @@ function LeafField(
 						</Tooltip>
 					)}
 					{!isBoolean && controls}
-					{jsonSchema && writable && <LocalModeToggle mode={mode} onSelect={setMode} />}
 					<AnchorLink domId={domId} />
+					{jsonSchema && writable && <LocalModeToggle mode={mode} onSelect={setMode} />}
 				</div>
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
 				<FieldIssues issues={fieldIssues} pathStr={pathStr} />
