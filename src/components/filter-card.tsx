@@ -1294,6 +1294,10 @@ function LayersInConfig(
 				</ul>
 			)}
 			<div className="w-max">
+				<Button size="sm" variant="outline" onClick={() => setOpen(true)} className="w-full">
+					<Icons.Edit className="h-4 w-4 mr-2" />
+					{filteredValues.length === 0 ? 'Select Layers' : 'Edit Layers'}
+				</Button>
 				<SelectLayersDialog
 					open={open}
 					onOpenChange={setOpen}
@@ -1301,12 +1305,7 @@ function LayersInConfig(
 					pinMode="layers"
 					defaultSelected={filteredValues}
 					selectQueueItems={items => props.setValues(values => Arr.union(values, items.map(items => items.layerId!)))}
-				>
-					<Button size="sm" variant="outline" onClick={() => setOpen(true)} className="w-full">
-						<Icons.Edit className="h-4 w-4 mr-2" />
-						{filteredValues.length === 0 ? 'Select Layers' : 'Edit Layers'}
-					</Button>
-				</SelectLayersDialog>
+				/>
 			</div>
 		</div>
 	)
