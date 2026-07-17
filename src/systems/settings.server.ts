@@ -484,6 +484,7 @@ export type PublicSettings = {
 	vote: { voteDuration: number; voteDisplayProps: SETTINGS.GlobalSettings['vote']['voteDisplayProps'] }
 	servers: ServerEntry[]
 	playerGroupings: SETTINGS.GlobalSettings['playerGroupings']
+	playerFlagsRequiringNote: SETTINGS.GlobalSettings['playerFlagsRequiringNote']
 	squadServer: { tickRateThresholds: SETTINGS.GlobalSettings['squadServer']['tickRateThresholds'] }
 	adminActionReasons: SETTINGS.GlobalSettings['adminActionReasons']
 	requireReasonFor: SETTINGS.GlobalSettings['requireReasonFor']
@@ -504,6 +505,7 @@ function buildPublicSettings(): PublicSettings {
 		},
 		servers: listServerEntries(),
 		playerGroupings: GLOBAL_SETTINGS.playerGroupings,
+		playerFlagsRequiringNote: GLOBAL_SETTINGS.playerFlagsRequiringNote,
 		squadServer: { tickRateThresholds: GLOBAL_SETTINGS.squadServer.tickRateThresholds },
 		adminActionReasons: GLOBAL_SETTINGS.adminActionReasons,
 		requireReasonFor: GLOBAL_SETTINGS.requireReasonFor,

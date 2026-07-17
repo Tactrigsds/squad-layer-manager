@@ -53,23 +53,34 @@ function toArrayUpdate<T>(prev: T[], next: React.SetStateAction<T[]>): T[] {
 	return typeof next === 'function' ? (next as (p: T[]) => T[])(prev) : next
 }
 
-// unordered multi-select of flags (e.g. playerFlagsRequiringNote).
+// unordered multi-select of flags (e.g. playerFlagsRequiringNote). `only` narrows the choice to a given set (and keeps
+// their order), for callers where an arbitrary org flag would be meaningless.
 // a custom trigger is required because ComboBoxMulti's default trigger stringifies option labels (which are react nodes here).
 export function BmFlagMultiSelect(
-	{ value, onChange, disabled, className }: {
+	{ value, onChange, disabled, only, placeholder, className }: {
 		value: string[]
 		onChange: (next: string[]) => void
 		disabled?: boolean
+		only?: string[]
+		placeholder?: string
 		className?: string
 	},
 ) {
 	const options = useFlagOptions()
 	const orgFlags = useOrgFlags()
+	let selectable = options
+	if (selectable !== LOADING && only) {
+		const byId = new Map(selectable.map((o) => [o.value, o]))
+		selectable = only.flatMap((id) => {
+			const option = byId.get(id)
+			return option ? [option] : []
+		})
+	}
 	return (
 		<ComboBoxMulti
 			title="Flag"
 			values={value}
-			options={options}
+			options={selectable}
 			disabled={disabled}
 			onSelect={(next) => onChange(toArrayUpdate(value, next))}
 		>
@@ -82,7 +93,7 @@ export function BmFlagMultiSelect(
 			>
 				<span className="flex flex-wrap items-center gap-1 min-w-0">
 					{value.length === 0
-						? <span className="text-muted-foreground">Select flags...</span>
+						? <span className="text-muted-foreground">{placeholder ?? 'Select flags...'}</span>
 						: value.map((id) => <FlagLabel key={id} id={id} flags={orgFlags} />)}
 				</span>
 				<Icons.ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -94,7 +105,7 @@ export function BmFlagMultiSelect(
 // single flag select. `exclude` drops flags already spoken for by a sibling row; `only` narrows the choice to a given
 // set (and keeps their order), for callers where an arbitrary org flag would be meaningless.
 export function BmFlagSelect(
-	{ value, onChange, disabled, exclude, only, title, className }: {
+	{ value, onChange, disabled, exclude, only, title, className, autoOpen, onOpenChange, placeholder }: {
 		value: string | undefined
 		onChange: (next: string) => void
 		disabled?: boolean
@@ -102,6 +113,9 @@ export function BmFlagSelect(
 		only?: string[]
 		title?: string
 		className?: string
+		autoOpen?: boolean
+		onOpenChange?: (open: boolean) => void
+		placeholder?: string
 	},
 ) {
 	const options = useFlagOptions()
@@ -124,9 +138,12 @@ export function BmFlagSelect(
 		<ComboBox
 			className={className}
 			title={title ?? 'Flag'}
+			placeholder={placeholder}
 			value={value}
 			options={selectable}
 			disabled={disabled}
+			autoOpen={autoOpen}
+			onOpenChange={onOpenChange}
 			onSelect={(id) => {
 				if (id) onChange(id)
 			}}

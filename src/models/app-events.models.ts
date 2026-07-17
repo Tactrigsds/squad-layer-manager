@@ -282,9 +282,11 @@ export type UserAccountChanged = z.infer<typeof UserAccountChangedSchema>
 
 export const PlayerFlagsUpdatedSchema = event('PLAYER_FLAGS_UPDATED', {
 	playerId: SM.PlayerIdSchema,
-	// the flags added and removed by this action (id + name resolved from the org's flag list)
-	added: z.array(z.object({ id: z.string(), name: z.string() })),
-	removed: z.array(z.object({ id: z.string(), name: z.string() })),
+	// the flags added and removed by this action (id + name resolved from the org's flag list), each with the reason
+	// given for that flag alone, as posted to its BM note. `reason` is absent on events recorded before reasons
+	// existed, and on flags nothing required one for.
+	added: z.array(z.object({ id: z.string(), name: z.string(), reason: z.string().optional() })),
+	removed: z.array(z.object({ id: z.string(), name: z.string(), reason: z.string().optional() })),
 })
 export type PlayerFlagsUpdated = z.infer<typeof PlayerFlagsUpdatedSchema>
 
@@ -521,7 +523,8 @@ export function describeAppEvent(e: AppEvent): string {
 			return e.nickname === null ? 'cleared their nickname' : `set their nickname to "${e.nickname}"`
 		}
 		case 'PLAYER_FLAGS_UPDATED': {
-			const changes = [...e.added.map(f => `+${f.name}`), ...e.removed.map(f => `−${f.name}`)].join(', ')
+			const describe = (sign: string) => (f: { name: string; reason?: string }) => `${sign}${f.name}${f.reason ? ` (${f.reason})` : ''}`
+			const changes = [...e.added.map(describe('+')), ...e.removed.map(describe('−'))].join(', ')
 			return `updated Battlemetrics flags for player ${e.playerId}${changes ? `: ${changes}` : ''}`
 		}
 		case 'APP_STARTED':
