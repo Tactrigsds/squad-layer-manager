@@ -467,11 +467,26 @@ function RuleDropSeparator({ position, groupingId, idx }: { position: 'before' |
 const ADD_NEW_GROUP = '__add-new-group__'
 
 function RuleRow(
-	{ rule, idx, groupingId, groupNames, usedFlags, usedAdminGroups, adminGroupOptions, value$, reset$, onReplace, onChange, onRemove }: {
+	{
+		rule,
+		idx,
+		groupingId,
+		groupNames,
+		groupColors,
+		usedFlags,
+		usedAdminGroups,
+		adminGroupOptions,
+		value$,
+		reset$,
+		onReplace,
+		onChange,
+		onRemove,
+	}: {
 		rule: PG.GroupRule
 		idx: number
 		groupingId: string
 		groupNames: string[]
+		groupColors: Record<string, string>
 		usedFlags: string[]
 		usedAdminGroups: string[]
 		adminGroupOptions: ComboBoxOption<string>[] | typeof LOADING
@@ -564,7 +579,10 @@ function RuleRow(
 						title="Group"
 						value={rule.group || undefined}
 						options={[
-							...groupNames.map((name): ComboBoxOption<string> => ({ value: name, label: name })),
+							...groupNames.map((name): ComboBoxOption<string> => ({
+								value: name,
+								label: <span style={{ color: groupColors[name] }}>{name}</span>,
+							})),
 							{ value: ADD_NEW_GROUP, label: <span className="text-muted-foreground">Add new group...</span>, keywords: ['new'] },
 						]}
 						onSelect={(next) => {
@@ -603,6 +621,7 @@ function GroupingCard(
 	const rules = grouping.rules ?? []
 	// a rule the operator is still filling in names no group yet, and an unnamed color row is just noise
 	const groupNames = PG.getGroupNames(grouping).filter(Boolean)
+	const groupColors = Object.fromEntries(groupNames.map((name) => [name, PG.getGroupColor(grouping, name, orgFlags)]))
 
 	function changeRule(idx: number, patch: Partial<PG.GroupRule>, quiet?: boolean) {
 		onUpdate(groupingId, (g) => ({ ...g, rules: g.rules.map((r, i) => i === idx ? { ...r, ...patch } as PG.GroupRule : r) }), quiet)
@@ -664,6 +683,18 @@ function GroupingCard(
 					A player joins the group of the first rule whose flag they carry. Drag to reorder; priority is top to bottom.
 				</p>
 				{rules.length === 0 && <p className="text-xs text-muted-foreground">No rules yet.</p>}
+				{rules.length > 0 && (
+					// column headers, aligned to the same grid template as RuleRow
+					<div className="grid grid-cols-[auto_1.5rem_7rem_minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-2 px-0 text-xs font-medium text-muted-foreground">
+						<span />
+						<span />
+						<span />
+						<span>Flag</span>
+						<span />
+						<span>Mapped grouping</span>
+						<span />
+					</div>
+				)}
 				<ol>
 					{rules.map((rule, idx) => (
 						// oxlint-disable-next-line no-array-index-key
@@ -674,6 +705,7 @@ function GroupingCard(
 								idx={idx}
 								groupingId={groupingId}
 								groupNames={groupNames}
+								groupColors={groupColors}
 								usedFlags={rules.flatMap((r) => r.type === 'battlemetrics' ? [r.flag] : [])}
 								usedAdminGroups={rules.flatMap((r) => r.type === 'admin-list' ? [r.adminGroup] : [])}
 								adminGroupOptions={adminGroupOptions}
