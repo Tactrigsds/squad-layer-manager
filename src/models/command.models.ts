@@ -46,7 +46,16 @@ export const COMMAND_SECTION_IDS = Object.keys(COMMAND_SECTIONS) as CommandSecti
 // collide with one
 export const ALL_SECTIONS_TOKEN = 'all'
 
-// resolves a user-typed section token (`!help moderation`), matching the id or the label case-insensitively
+// Every token the help command's `section` arg accepts, in declaration order. Always derive listings of the sections
+// from this rather than writing them out: a section added to COMMAND_SECTIONS has to show up everywhere it's
+// advertised, and the ids (never the labels) are what's typeable -- see resolveSectionToken's caveat.
+export function sectionTokens(): string[] {
+	return [...COMMAND_SECTION_IDS, ALL_SECTIONS_TOKEN]
+}
+
+// Resolves a user-typed section token (`!help moderation`), matching the id or the label case-insensitively. A label
+// is only ever reachable when it's a single word, since `section` is a single-token arg -- so only ids are advertised
+// (see sectionTokens); matching labels is a convenience for the ones that happen to be typeable.
 export function resolveSectionToken(token: string): CommandSection | undefined {
 	const t = token.trim().toLowerCase()
 	return COMMAND_SECTION_IDS.find((id) => id.toLowerCase() === t || COMMAND_SECTIONS[id].label.toLowerCase() === t)
@@ -126,7 +135,8 @@ export const COMMAND_DECLARATIONS = {
 			name: 'section',
 			optional: true,
 			sample: 'moderation',
-			describe: `A section name to list, or "${ALL_SECTIONS_TOKEN}" for every command. Lists the quick reference when omitted.`,
+			describe: `One of ${COMMAND_SECTION_IDS.join(', ')}, or "${ALL_SECTIONS_TOKEN}" for every command. `
+				+ 'Lists the quick reference when omitted.',
 		}],
 		defaults: {
 			scopes: ['admin'],

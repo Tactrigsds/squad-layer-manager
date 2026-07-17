@@ -233,10 +233,7 @@ export type HelpListing =
 	| { code: 'ok'; title: string; commands: CMD.CommandId[]; aliases: CMD.CommandAlias[]; hint?: string }
 	| { code: 'err:unknown-section'; msg: string }
 
-// The section tokens, as they have to be typed: `section` is a single-token arg, so a section whose label has
-// whitespace ("Player Flags") can only ever be named by its id. Ids are always single words, so those are what's
-// advertised -- never the labels, which would be advice that doesn't work.
-const sectionOptions = () => [...CMD.COMMAND_SECTION_IDS, CMD.ALL_SECTIONS_TOKEN].join(', ')
+const sectionOptions = () => CMD.sectionTokens().join(', ')
 
 // resolves what `!help [section]` should list. Only enabled commands are listed, and aliases whose target is disabled
 // or missing are dropped: neither can actually be run.
