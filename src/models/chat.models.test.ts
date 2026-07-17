@@ -458,6 +458,9 @@ describe('chat.models recent squads', () => {
 	function newGame(id: number): SE.NewGame {
 		return { type: 'NEW_GAME', id, time: 100 + id, matchId: 1, source: 'new-game-detected', layerId: 'l1' }
 	}
+	function joinedSquad(playerEos: SM.PlayerId, uniqueId: number, id: number): SE.PlayerJoinedSquad {
+		return { type: 'PLAYER_JOINED_SQUAD', id, time: 100 + id, matchId: 1, uniqueId, player: playerEos }
+	}
 	const recentUniqueIds = (state: CHAT.ChatState) => state.interpolatedState.recentSquads.map(s => s.uniqueId)
 
 	function stateWithSquad() {
@@ -494,6 +497,23 @@ describe('chat.models recent squads', () => {
 		CHAT.handleEvent(state, squadCreated(makeSquad(1, 1, 'a', 102), 4))
 
 		expect(recentUniqueIds(state)).toEqual([101, 102])
+	})
+
+	// SQUAD_CREATED is parsed from the log stream while the creator's PLAYER_CONNECTED is reconciled from the teams
+	// poll, so the create can land before its creator is on the roster. The squad must still be tracked, or every
+	// later PLAYER_JOINED_SQUAD referencing it is dropped and its members are stuck as Unassigned.
+	it('tracks a squad created before its creator joins the roster, so joins still land', () => {
+		const state = CHAT.getInitialChatState()
+		CHAT.handleEvent(state, squadCreated(makeSquad(1, 1, 'a', 101), 1))
+		CHAT.handleEvent(state, connected(makePlayer('a'), 2))
+		CHAT.handleEvent(state, connected(makePlayer('b'), 3))
+		CHAT.handleEvent(state, joinedSquad('a', 101, 4))
+		CHAT.handleEvent(state, joinedSquad('b', 101, 5))
+
+		expect(state.interpolatedState.squads.map(s => s.uniqueId)).toEqual([101])
+		const byEos = (eos: string) => state.interpolatedState.players.find(p => p.ids.eos === eos)
+		expect(byEos('a')?.squadId).toBe(1)
+		expect(byEos('b')?.squadId).toBe(1)
 	})
 
 	it('clears recentSquads at a match boundary', () => {
