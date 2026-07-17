@@ -34,16 +34,9 @@ export const TARGETS: Target[] = [
 		contents: 'plain',
 		path: path.join(Paths.PROJECT_ROOT, '.env.example'),
 		header: [
-			'The environment SLM runs on. Copy this to .env, which is the file a docker install points env_file at',
-			'(see docker-compose.yaml). Anything in here can be passed as a real environment variable instead, which',
-			'takes precedence.',
+			'The environment SLM runs on, minus the credentials, which go in .env.secrets (see .env.secrets.example).',
 			'',
-			'Credentials do not belong in here: they go in .env.secrets (see .env.secrets.example).',
-			'',
-			'Fill in the vars left uncommented. Everything commented out is optional, and shows the default it falls',
-			'back to -- an empty one has no default, so uncommenting a line as-is never changes what the app does.',
-			'',
-			'Running the app from a checkout rather than installing it? Use .env.example.dev.',
+			'Fill in the vars left uncommented. Commented-out vars are optional and show their default.',
 		],
 	},
 	{
@@ -51,37 +44,22 @@ export const TARGETS: Target[] = [
 		contents: 'secrets',
 		path: path.join(Paths.PROJECT_ROOT, '.env.secrets.example'),
 		header: [
-			'Every credential SLM reads. Copy this to .env.secrets, which docker-compose mounts into the container as',
-			'a file rather than passing to it as environment variables (see docs/INSTALLING.md for why, and for how',
-			'to point SECRETS_FILE at a docker secret instead).',
+			'Every credential SLM reads. It is mounted into the container as a file rather than passed as environment',
+			'variables. SECRETS_FILE can point at a docker secret instead.',
 			'',
-			'Treat it the way you would a private key: it is worth `chmod 600` and it belongs in no backup you would',
-			'not also put a password in.',
+			'Treat it as a private key: keep it out of any backup you would not put a password in.',
 		],
 	},
 	{
 		audience: 'dev',
 		contents: 'all',
 		path: path.join(Paths.PROJECT_ROOT, '.env.example.dev'),
-		header: [
-			'The environment SLM runs on, for a local checkout (`pnpm server:dev`). Copy this to .env.',
-			'',
-			'Fill in the vars left uncommented. Everything commented out is optional, and shows the default it falls',
-			'back to -- an empty one has no default, so uncommenting a line as-is never changes what the app does.',
-			'',
-			'Unlike an install, this keeps the credentials in the same file, and presets a public, known-insecure',
-			'encryption key. An install splits them out into .env.secrets; see .env.secrets.example.',
-			'',
-			'This leaves out what only an install has to care about (backups and the sftp target they upload to). See',
-			'.env.example for those, or src/server/env.ts for everything.',
-		],
+		header: [],
 	},
 ]
 
-const GENERATED_BY = 'Generated from src/server/env.ts on every dev boot -- edit the schema there, not this file.'
-
 export function build(target: Target): string {
-	const lines: string[] = [GENERATED_BY, '', ...target.header].map(comment)
+	const lines: string[] = target.header.map(comment)
 	for (const [groupName, group] of Object.entries(Env.groups)) {
 		const rendered = Object.entries(group as Record<string, z.ZodType>)
 			.filter(([, schema]) => target.contents === 'all' || Env.isSecret(schema) === (target.contents === 'secrets'))
@@ -90,8 +68,9 @@ export function build(target: Target): string {
 		if (rendered.length === 0) continue
 
 		const meta = Env.groupMeta[groupName as keyof typeof Env.groups]
-		lines.push('', section(meta.title))
-		if (meta.description) lines.push(...wrap(meta.description).map(comment), '')
+		if (lines.length > 0) lines.push('')
+		lines.push(section(meta.title))
+		if (meta.description && target.audience === 'deployment') lines.push(...wrap(meta.description).map(comment), '')
 		lines.push(rendered.join('\n\n'))
 	}
 	return lines.join('\n') + '\n'

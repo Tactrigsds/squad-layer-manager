@@ -50,8 +50,7 @@ const BigIntListSchema = z.string().default('').transform((val) => val.split(','
 export const groups = {
 	general: {
 		NODE_ENV: z.enum(['development', 'production', 'test']).meta({
-			description:
-				'`pnpm server:dev` sets this itself, so it is only read from here by bare `pnpm script` / `pnpm preprocess` runs. A deployment leaves it unset: the image already pins it to production.',
+			description: '`pnpm server:dev` sets this itself; it is only read from here by bare `pnpm script` / `pnpm preprocess` runs.',
 			envExample: { include: 'omit', dev: { include: 'set', value: 'development' } },
 		}),
 		LOG_LEVEL_OVERRIDE: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional().meta({
@@ -71,19 +70,18 @@ export const groups = {
 
 		QUERY_PARAM_AUTH_BYPASS: z.stringbool().optional().meta({
 			description:
-				'lets a request log in as an existing user with a `?login=<username>` query param, skipping the discord oauth round trip. Refused outright when NODE_ENV=production, so it is only any use from a checkout.',
+				'lets a request log in as an existing user with a `?login=<username>` query param, skipping discord oauth. Rejected when NODE_ENV=production.',
 			envExample: { include: 'omit', dev: { include: 'commented' } },
 		}),
 
 		LOG_EXCLUDE_CONTEXT_PARAMS: z.string().default('').transform(val => new Set(val.split(',').map(s => s.trim()).filter(Boolean))).meta({
-			description:
-				'comma-separated context params to leave out of rendered log lines. Purely a readability knob for a noisy local console; it does not affect what is exported.',
+			description: 'comma-separated context params to leave out of rendered log lines. Does not affect exported logs.',
 			envExample: { include: 'omit', dev: { include: 'commented' } },
 		}),
 
 		SECRETS_FILE: z.string().min(1).optional().meta({
 			description:
-				'the file the credentials are read from. Defaults to ./.env.secrets when that file exists; set this to read them from somewhere else (e.g. /run/secrets/slm-secrets, where a docker secret is mounted). Pointing it at a file that is not there is an error, rather than a silent boot without them.',
+				'the file credentials are read from. Defaults to ./.env.secrets when it exists; set this to read them from somewhere else (e.g. /run/secrets/slm-secrets, where a docker secret is mounted). A path that does not exist is an error.',
 			envExample: { include: 'commented' },
 		}),
 
@@ -99,26 +97,26 @@ export const groups = {
 
 	squadcalc: {
 		PUBLIC_SQUADCALC_URL: NormedUrl.default('https://squadcalc.app').meta({
-			description: 'the squadcalc instance the layer info popouts link out to. Only worth setting if you self-host it.',
+			description: 'the squadcalc instance the layer info popouts link out to. Only set it if you self-host squadcalc.',
 		}),
 	},
 
 	otel: {
 		OTEL_ENABLED: z.stringbool().default(true).meta({
-			description: 'turn it off if nothing is listening on the endpoint below; the app then exports nothing at all.',
+			description: 'turn it off if nothing is listening on the endpoint below.',
 		}),
 		OTLP_COLLECTOR_ENDPOINT: NormedUrl.transform((url) => url.replace(/\/$/, '')).default('http://localhost:4318').meta({
-			description: 'where the exporters send to. docker-compose points this at its collector service rather than localhost.',
+			description: 'where the exporters send to. docker-compose points this at its own collector service.',
 		}),
 		OTEL_TRACE_SAMPLE_RATIO: z.coerce.number().min(0).max(1).default(1).meta({
-			description: 'the fraction of traces sampled. 1 keeps everything; lower it if the span volume becomes a problem.',
+			description: 'the fraction of traces sampled. 1 keeps everything.',
 		}),
 	},
 
 	rbac: {
 		SUPER_USERS: BigIntListSchema.meta({
 			description:
-				'comma-separated discord user ids that are always granted every permission (e.g. 123456789012345678,987654321098765432). Set at least one, or nobody can administer the app. Every other role and permission is configured from the settings page; this is the bootstrap that cannot be locked out.',
+				'comma-separated discord user ids granted every permission (e.g. 123456789012345678,987654321098765432). Set at least one, or nobody can administer the app. Every other role is configured from the settings page.',
 			envExample: { include: 'set' },
 		}),
 		SUPER_ROLES: BigIntListSchema.meta({
@@ -131,13 +129,13 @@ export const groups = {
 		SETTINGS_ENCRYPTION_KEY: z.string().min(1).transform(val => Crypto.createHash('sha256').update(val).digest()).meta({
 			secret: true,
 			description:
-				"the key sensitive settings are encrypted at rest with (a server's RCON/SFTP passwords and server-agent token). Generate a strong one with `openssl rand -base64 32`. Required. Changing it makes any already-encrypted connection secrets unreadable, so they have to be re-entered on the settings page.",
+				"the key sensitive settings are encrypted at rest with (a server's RCON/SFTP passwords and server-agent token). Generate one with `openssl rand -base64 32`. Changing it makes already-encrypted connection secrets unreadable, so they have to be re-entered on the settings page.",
 			envExample: {
 				include: 'set',
 				dev: {
 					value: INSECURE_DEV_ENCRYPTION_KEY,
 					description:
-						'the key sensitive settings are encrypted at rest with. The phrase below is the development key: it is in the repo, so it is public, and the app refuses to start with it when NODE_ENV=production. Generate a real one with `openssl rand -base64 32`.',
+						'the key sensitive settings are encrypted at rest with. The value below is the public dev key; the app refuses to start with it when NODE_ENV=production. Generate a real one with `openssl rand -base64 32`.',
 				},
 			},
 		}),
@@ -149,11 +147,11 @@ export const groups = {
 		}),
 		DB_AUTOMIGRATE: z.stringbool().default(true).meta({
 			description:
-				'applies pending migrations at boot. Turn it off to run them yourself instead (`pnpm db:migrate:prod`); the app then refuses to start against a database that is behind rather than touching it.',
+				'applies pending migrations at boot. Turn it off to run them yourself (`pnpm db:migrate:prod`); the app then refuses to start against a database that is behind.',
 			envExample: {
 				dev: {
 					description:
-						'applies pending migrations at boot. Turn it off to run them out-of-band instead (`pnpm db:migrate`); the app then refuses to start against a database that is behind rather than touching it.',
+						'applies pending migrations at boot. Turn it off to run them yourself (`pnpm db:migrate`); the app then refuses to start against a database that is behind.',
 				},
 			},
 		}),
@@ -163,7 +161,7 @@ export const groups = {
 	backups: {
 		AUTOMATIC_BACKUPS_PERIODIC: HumanTime.optional().meta({
 			description:
-				'how often to back up the main db, as a duration (e.g. 72h). Unset disables automatic backups entirely, including the event-history prune that runs alongside them. A backup is a consistent snapshot, taken without blocking writers.',
+				'how often to back up the main db, as a duration (e.g. 72h). Unset disables automatic backups, including the event-history prune that runs alongside them.',
 			envExample: { dev: { include: 'omit' } },
 		}),
 		BACKUPS_DIR: z.string().min(1).prefault('./data/backups').meta({
@@ -172,19 +170,19 @@ export const groups = {
 		}),
 		BACKUPS_RETAIN_COUNT: ParsedIntSchema.pipe(z.number().min(0)).default(10).meta({
 			description:
-				'how many backups to keep, locally and (if configured) on the sftp target. 0 keeps all of them. Periodic and pre-migration backups share this one window, with a single exception: the most recent pre-migration backup is always kept, however old it is, since it is the only thing a bad upgrade can be rolled back to.',
+				'how many backups to keep, locally and on the sftp target. 0 keeps all of them. Periodic and pre-migration backups share this one window; the most recent pre-migration backup is always kept, however old.',
 			envExample: { dev: { include: 'omit' } },
 		}),
 
 		EVENT_HISTORY_RETENTION_PERIOD: HumanTime.optional().meta({
 			description:
-				'server events belonging to matches that ended longer ago than this duration (e.g. 90d) are deleted as part of each backup run, before the backup is taken. The most recent matches are always kept regardless of age. Unset disables pruning.',
+				'server events from matches that ended longer ago than this duration (e.g. 90d) are deleted before each backup is taken. The most recent matches are always kept. Unset disables pruning.',
 			envExample: { dev: { include: 'omit' } },
 		}),
 
 		BACKUP_SFTP_HOST: z.string().min(1).optional().meta({
 			description:
-				'an sftp target each backup is uploaded to after it is written locally. Setting this host is what enables the upload; authenticate with a password or a private key, at least one of which is required.',
+				'an sftp target each backup is uploaded to after it is written locally. Setting this host enables the upload; a password or a private key is also required.',
 			envExample: { dev: { include: 'omit' } },
 		}),
 		BACKUP_SFTP_PORT: ParsedIntSchema.default(22).meta({
@@ -218,11 +216,11 @@ export const groups = {
 	discord: {
 		DISCORD_ENABLED: z.stringbool().default(true).meta({
 			description:
-				'disables the discord integration entirely (no bot login, no guild fetches), which no install wants: it is what the integration tests and the emulator run with. The other DISCORD_* vars still need (dummy) values.',
+				'disables the discord integration entirely (no bot login, no guild fetches). The integration tests and the emulator run with it off; the other DISCORD_* vars still need dummy values.',
 			envExample: { include: 'omit', dev: { include: 'commented' } },
 		}),
 		DISCORD_CLIENT_ID: z.string().min(1).meta({
-			description: 'from the discord app SLM logs users in with. See the README for how the app has to be set up.',
+			description: 'from the discord app SLM logs users in with.',
 		}),
 		DISCORD_CLIENT_SECRET: z.string().min(1).meta({
 			secret: true,
@@ -230,7 +228,7 @@ export const groups = {
 		}),
 		DISCORD_BOT_TOKEN: z.string().min(1).meta({
 			secret: true,
-			description: 'the bot token of the same discord app. It has to be installed on the guild DISCORD_HOME_GUILD_ID names.',
+			description: 'the bot token of the same discord app. The bot has to be installed on the guild DISCORD_HOME_GUILD_ID names.',
 		}),
 		DISCORD_HOME_GUILD_ID: ParsedBigIntSchema.meta({
 			description: "the guild SLM resolves users and roles against, i.e. your org's discord server.",
@@ -247,13 +245,12 @@ export const groups = {
 			envExample: { dev: { description: 'the interface the app binds to.' } },
 		}),
 		CLIENT_PORT: ParsedIntSchema.default(5173).meta({
-			description:
-				"the vite dev server's port, so a second instance of the app can be brought up beside a running one without contending for 5173. Moving it means moving ORIGIN with it.",
+			description: "the vite dev server's port. Move it to run a second instance beside a running one; ORIGIN has to move with it.",
 			envExample: { include: 'omit', dev: { include: 'commented' } },
 		}),
 		ORIGIN: NormedUrl.default('http://localhost:3000').meta({
 			description:
-				"the url the app is reached at, from a browser's point of view. Change it to the publicly addressable url of your install: the default below only holds if the app is reached directly on PORT, with nothing in front of it. The discord oauth callback is built from this, so it also has to match a redirect uri registered on the discord app.",
+				"the publicly addressable url the app is reached at, from a browser's point of view. The default below only holds if the app is reached directly on PORT, with nothing in front of it. The discord oauth callback is built from this, so it also has to match a redirect uri registered on the discord app.",
 			// written out uncommented in both files, showing the url that environment is actually reached at, so
 			// that changing it is an edit rather than something you have to know to uncomment
 			envExample: {
@@ -261,7 +258,7 @@ export const groups = {
 				dev: {
 					value: 'http://localhost:5173',
 					description:
-						"the url the app is reached at, from a browser's point of view, which in development is the vite dev server (CLIENT_PORT) rather than the app's own port, since that is what serves the client. The discord oauth callback is built from it, so it has to match a redirect uri registered on the discord app.",
+						"the url the app is reached at, from a browser's point of view. In development that is the vite dev server (CLIENT_PORT), which serves the client, not the app's own port. The discord oauth callback is built from this, so it also has to match a redirect uri registered on the discord app.",
 				},
 			},
 		}),
@@ -270,11 +267,11 @@ export const groups = {
 	layers: {
 		LAYERS_VERSION: PathSegment.default('@latest').meta({
 			description:
-				'@latest is a magic string resolving to the highest semver whose artifacts are present. Pinning a version that no searched directory has is an error.',
+				'@latest resolves to the highest version whose artifacts are present. Pinning a version no searched directory has is an error.',
 		}),
 		LAYERS_DIR: z.string().min(1).optional().meta({
 			description:
-				'an extra directory to search for layer artifacts, ahead of ./data and the assets/layers the image ships. Only needed when the artifacts live somewhere other than the data mount.',
+				'an extra directory to search for layer artifacts, ahead of ./data and the assets/layers the image ships. Only needed when the artifacts live outside the data mount.',
 		}),
 	},
 
@@ -289,8 +286,7 @@ export const groups = {
 			envExample: { include: 'omit', dev: { include: 'commented' } },
 		}),
 		EXTRA_COLS_CSV_PATH: z.string().prefault(path.join(Paths.DATA, 'layers_v{{LAYERS_VERSION}}.csv')).meta({
-			description:
-				'the csv preprocess ingests. It is the input the version of a build is taken from, and unlike the pair preprocess writes out, it is far too big to ship, so it stays in ./data.',
+			description: 'the csv preprocess ingests, and where a build takes its version from. Too big to ship, so it stays in ./data.',
 			envExample: { include: 'omit', dev: { include: 'commented' } },
 		}),
 		LAYERS_OUTPUT_DIR: z.string().min(1).prefault(Paths.LAYERS).meta({
@@ -299,7 +295,7 @@ export const groups = {
 		}),
 		LAYER_DB_CONFIG_PATH: z.string().prefault('./layer-db.json').meta({
 			description:
-				'defines the extra columns to ingest into the layer table. Read only by preprocess: the definitions are baked into layer-data.json, which is what the app reads at runtime.',
+				'defines the extra columns to ingest into the layer table. Read only by preprocess, which bakes the definitions into layer-data.json.',
 			envExample: { include: 'omit', dev: { include: 'commented' } },
 		}),
 	},
@@ -312,19 +308,10 @@ export const groups = {
 		BM_PAT: z.string().meta({
 			secret: true,
 			description: `battlemetrics API token. It needs these permissions:
-- player flags (add/remove. it doesn't need to create new ones)
+- player flags (add/remove; it does not need to create new ones)
 - player notes (read & create)
 - rcon (read)
-Leave it empty if you don't have an org on battlemetrics; the app boots without it, and the features that read it will fail.`,
-			envExample: {
-				dev: {
-					description: `battlemetrics API token. It needs these permissions:
-- player flags (add/remove. it doesn't need to create new ones)
-- player notes (read & create)
-- rcon (read. unclear why this one is needed, but experimentally it is)
-Leave it empty if you don't have an org on battlemetrics; the app boots without it, and the features that read it will fail.`,
-				},
-			},
+Leave it empty if you have no battlemetrics org: the app boots without it, and the features that read it fail.`,
 		}),
 
 		BM_ORG_ID: z.string().meta({
@@ -340,7 +327,7 @@ export const groupMeta: Record<keyof typeof groups, { title: string; description
 	otel: {
 		title: 'Telemetry',
 		description:
-			'the app exports traces, metrics and logs over OTLP. docker-compose runs a collector (grafana/otel-lgtm) next to it, and the grafana portal it serves is where the dashboards live.',
+			'the app exports traces, metrics and logs over OTLP. docker-compose runs a grafana/otel-lgtm collector next to it, which serves the dashboards.',
 	},
 	rbac: { title: 'Permissions' },
 	encryption: { title: 'Encryption' },
@@ -348,17 +335,16 @@ export const groupMeta: Record<keyof typeof groups, { title: string; description
 	backups: { title: 'Backups' },
 	discord: {
 		title: 'Discord',
-		description: 'SLM authenticates users through a discord app you own. The README walks through creating it.',
+		description: 'SLM authenticates users through a discord app you own.',
 	},
 	httpServer: { title: 'HTTP server' },
 	layers: {
 		title: 'Layers',
-		description:
-			'the app ships with a complete set of layer artifacts and boots without any of this set. See the README for how a version is resolved.',
+		description: 'the app ships with a complete set of layer artifacts and boots without any of these set.',
 	},
 	preprocess: {
 		title: 'Preprocess',
-		description: 'only read by `pnpm preprocess`, which builds a layer artifact pair. The app itself never reads these.',
+		description: 'only read by `pnpm preprocess`, which builds a layer artifact pair. The app itself never reads them.',
 	},
 	battlemetrics: { title: 'Battlemetrics' },
 }
