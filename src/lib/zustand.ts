@@ -2,7 +2,7 @@ import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
 import type { StateObservable } from '@react-rxjs/core'
 import { useQueries } from '@tanstack/react-query'
-import type { UseQueryOptions } from '@tanstack/react-query'
+import type { QueryClient, UseQueryOptions } from '@tanstack/react-query'
 import * as React from 'react'
 import * as Rx from 'rxjs'
 
@@ -66,6 +66,14 @@ type InputState<S> = S extends null | undefined ? undefined
 	: S extends QuerySource<infer T> ? T | undefined
 	: never
 type InputStates<Inputs extends MaybeInput[]> = { [K in keyof Inputs]: InputState<Inputs[K]> }
+// getState awaits query sources rather than sampling them, so they can't be pending-undefined like on the render path
+type ResolvedState<S> = S extends QuerySource<infer T> ? T : InputState<S>
+type ResolvedStates<Inputs extends MaybeInput[]> = { [K in keyof Inputs]: ResolvedState<Inputs[K]> }
+type IsQuery<T> = T extends { queryKey: unknown } ? true : false
+type HasQuery<Inputs extends readonly unknown[]> = Inputs extends readonly [infer H, ...infer R]
+	? IsQuery<H> extends true ? true : HasQuery<R>
+	: false
+type Returns<Inputs extends MaybeInput[], R> = HasQuery<Inputs> extends true ? Promise<R> : R
 
 function isQuerySource(s: unknown): s is QuerySource<any> {
 	return typeof s === 'object' && s !== null && 'queryKey' in s && !('getState' in s) && !('getValue' in s)
@@ -80,6 +88,18 @@ type FrameStores = { store: StoreApi<any>; update$: Rx.Observable<any> }
 let resolveFrameKeyStores: ((key: FRM.InstanceKeyOfState<any>) => FrameStores | undefined) | undefined
 export function registerFrameKeyResolver(resolve: (key: FRM.InstanceKeyOfState<any>) => FrameStores | undefined) {
 	resolveFrameKeyStores = resolve
+}
+
+// injected by orpc.client.ts for the same reason as the frame key resolver above -- importing the query client
+// here would be an upward lib -> src import
+let queryClient: QueryClient | undefined
+export function registerQueryClient(client: QueryClient) {
+	queryClient = client
+}
+
+function requireQueryClient(): QueryClient {
+	if (!queryClient) throw new Error('No QueryClient registered -- ZusUtils.registerQueryClient must run before a query source is read')
+	return queryClient
 }
 
 function resolveFrameStores(key: FRM.InstanceKeyOfState<any>): FrameStores {
@@ -121,10 +141,39 @@ function subscribe(s: AnyStore<any> | null, update: () => void): () => void {
 	return s.subscribe(update)
 }
 
-export function getState<S extends AnyStore<any> | null | undefined>(source: S): InputState<S>
-export function getState(source: AnyStore<any> | null | undefined): any {
-	if (source == null) return undefined
-	return resolveReadStore(source).getState()
+// mirrors useStore's signature, minus the subscription. any query source among the inputs makes the return a
+// promise -- resolving it is the only honest option, since undefined-because-unfetched is indistinguishable
+// from undefined-because-absent
+export function getState<I extends MaybeInput>(source: I): Returns<[I], ResolvedState<I>>
+export function getState<Inputs extends MaybeInput[], R>(
+	...args: [...Inputs, (...states: ResolvedStates<Inputs>) => R]
+): Returns<Inputs, R>
+export function getState<Inputs extends MaybeInput[]>(...inputs: Inputs): Returns<Inputs, ResolvedStates<Inputs>>
+export function getState(...args: (MaybeInput | ((...states: any[]) => any))[]): any {
+	// safe as long as every store here is a createStore StoreApi (a plain object) rather than a callable
+	// create() hook -- same assumption useStore makes
+	const hasSelector = typeof args[args.length - 1] === 'function'
+	const inputs = (hasSelector ? args.slice(0, -1) : args) as MaybeInput[]
+	const selector = hasSelector ? args[args.length - 1] as (...states: any[]) => any : undefined
+
+	const sample = (input: MaybeInput) => getSourceState(resolveInput(input) as SyncSource<any> | null)
+	const finish = (states: any[]) => selector ? selector(...states) : states.length === 1 ? states[0] : states
+
+	if (!inputs.some(isQuerySource)) return finish(inputs.map(sample))
+
+	const client = requireQueryClient()
+	// ensureQueryData, not fetchQuery: serve cached data when present and fetch when absent, which is the
+	// off-render analogue of what useQueries does on mount. fetchQuery would refetch and do more work than the
+	// component path for the same inputs
+	return Promise.all(inputs.filter(isQuerySource).map(query => client.ensureQueryData(query as any)))
+		// sync sources are sampled here rather than at call time: once we're awaiting, a point-in-time read of
+		// everything is impossible, so sample late and hand the selector the most coherent snapshot available at
+		// the moment it computes. a frame key torn down mid-flight therefore rejects the promise rather than
+		// resolving against a stale instance
+		.then(resolved => {
+			let qIdx = 0
+			return finish(inputs.map(input => isQuerySource(input) ? resolved[qIdx++] : sample(input)))
+		})
 }
 
 export function useStore<I extends MaybeInput>(store: I): InputState<I>
