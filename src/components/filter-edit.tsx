@@ -6,6 +6,7 @@ import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import * as ValidationErrors from '@/lib/validation-errors'
 import * as ZusUtils from '@/lib/zustand'
 import * as F from '@/models/filter.models'
 import type * as USR from '@/models/users.models'
@@ -224,7 +225,13 @@ export function FilterEdit(
 									<Icons.Dot />
 									<small className="font-light">Owner: {props.owner.displayName}</small>
 									<Icons.Dot />
-									<Button disabled={loggedInUserRole === 'none'} onClick={() => setEditingDetails(true)} variant="ghost" size="icon">
+									<Button
+										aria-label="Edit Details"
+										disabled={loggedInUserRole === 'none'}
+										onClick={() => setEditingDetails(true)}
+										variant="ghost"
+										size="icon"
+									>
 										<Icons.Edit />
 									</Button>
 								</span>
@@ -287,7 +294,7 @@ export function FilterEdit(
 														{field.state.meta.errors.length > 0 && (
 															<Alert variant="destructive">
 																<AlertTitle>{label}:</AlertTitle>
-																<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+																<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
 															</Alert>
 														)}
 													</div>
@@ -316,7 +323,7 @@ export function FilterEdit(
 															{field.state.meta.errors.length > 0 && (
 																<Alert variant="destructive">
 																	<AlertTitle>{label}:</AlertTitle>
-																	<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+																	<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
 																</Alert>
 															)}
 														</div>
@@ -343,7 +350,7 @@ export function FilterEdit(
 															{field.state.meta.errors.length > 0 && (
 																<Alert variant="destructive">
 																	<AlertTitle>{label}:</AlertTitle>
-																	<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+																	<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
 																</Alert>
 															)}
 														</div>
@@ -373,7 +380,7 @@ export function FilterEdit(
 															{field.state.meta.errors.length > 0 && (
 																<Alert variant="destructive">
 																	<AlertTitle>{label}:</AlertTitle>
-																	<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+																	<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
 																</Alert>
 															)}
 														</div>
@@ -400,7 +407,7 @@ export function FilterEdit(
 															{field.state.meta.errors.length > 0 && (
 																<Alert variant="destructive">
 																	<AlertTitle>{label}:</AlertTitle>
-																	<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+																	<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
 																</Alert>
 															)}
 														</div>
@@ -434,7 +441,7 @@ export function FilterEdit(
 													{field.state.meta.errors.length > 0 && (
 														<Alert variant="destructive">
 															<AlertTitle>{label}:</AlertTitle>
-															<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+															<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
 														</Alert>
 													)}
 												</div>
@@ -442,6 +449,7 @@ export function FilterEdit(
 										}}
 									</form.Field>
 									<Button
+										aria-label="Cancel Editing Details"
 										className="self-start"
 										variant="ghost"
 										size="icon"

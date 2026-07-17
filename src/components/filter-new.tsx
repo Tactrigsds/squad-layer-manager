@@ -3,6 +3,7 @@ import { Input } from '@/components/ui/input'
 import type * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
+import * as ValidationErrors from '@/lib/validation-errors'
 import * as ZusUtils from '@/lib/zustand'
 import * as F from '@/models/filter.models'
 import * as RBAC from '@/rbac.models'
@@ -36,7 +37,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 	const navigate = useNavigate()
 	const createFilterMutation = useFilterCreate()
 
-	const form = Form.useForm<FormData>({
+	const form = Form.useForm({
 		defaultValues: {
 			id: '',
 			name: '',
@@ -45,7 +46,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 			emoji: null as string | null,
 			invertedAlertMessage: '',
 			invertedEmoji: null as string | null,
-		},
+		} satisfies FormData,
 		onSubmit: async ({ value }) => {
 			const state = ZusUtils.getState(props.stores.filterEditor)
 
@@ -133,7 +134,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 										{field.state.meta.errors.length > 0 && (
 											<Alert variant="destructive">
 												<AlertTitle>{label}:</AlertTitle>
-												<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+												<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
 											</Alert>
 										)}
 									</div>
@@ -157,7 +158,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 										{field.state.meta.errors.length > 0 && (
 											<Alert variant="destructive">
 												<AlertTitle>{label}:</AlertTitle>
-												<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+												<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
 											</Alert>
 										)}
 									</div>
@@ -184,7 +185,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 											{field.state.meta.errors.length > 0 && (
 												<Alert variant="destructive">
 													<AlertTitle>{label}:</AlertTitle>
-													<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+													<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
 												</Alert>
 											)}
 										</div>
@@ -212,7 +213,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 											{field.state.meta.errors.length > 0 && (
 												<Alert variant="destructive">
 													<AlertTitle>{label}:</AlertTitle>
-													<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+													<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
 												</Alert>
 											)}
 										</div>
@@ -240,7 +241,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 											{field.state.meta.errors.length > 0 && (
 												<Alert variant="destructive">
 													<AlertTitle>{label}:</AlertTitle>
-													<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+													<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
 												</Alert>
 											)}
 										</div>
@@ -268,7 +269,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 											{field.state.meta.errors.length > 0 && (
 												<Alert variant="destructive">
 													<AlertTitle>{label}:</AlertTitle>
-													<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+													<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
 												</Alert>
 											)}
 										</div>
@@ -301,7 +302,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 								{field.state.meta.errors.length > 0 && (
 									<Alert variant="destructive">
 										<AlertTitle>{label}:</AlertTitle>
-										<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+										<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
 									</Alert>
 								)}
 							</div>
