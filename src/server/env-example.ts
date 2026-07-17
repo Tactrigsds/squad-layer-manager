@@ -34,10 +34,7 @@ export const TARGETS: Target[] = [
 		contents: 'plain',
 		path: path.join(Paths.PROJECT_ROOT, '.env.example'),
 		header: [
-			'Copy this to .env, which is what docker-compose points env_file at. A real environment variable takes',
-			'precedence over anything set here.',
-			'',
-			'Credentials go in .env.secrets instead (see .env.secrets.example).',
+			'The environment SLM runs on, minus the credentials, which go in .env.secrets (see .env.secrets.example).',
 			'',
 			'Fill in the vars left uncommented. Commented-out vars are optional and show their default.',
 			'',
@@ -49,10 +46,10 @@ export const TARGETS: Target[] = [
 		contents: 'secrets',
 		path: path.join(Paths.PROJECT_ROOT, '.env.secrets.example'),
 		header: [
-			'Every credential SLM reads. Copy this to .env.secrets, which docker-compose mounts into the container as',
-			'a file. See docs/INSTALLING.md to point SECRETS_FILE at a docker secret instead.',
+			'Every credential SLM reads. It is mounted into the container as a file rather than passed as environment',
+			'variables. See docs/INSTALLING.md to point SECRETS_FILE at a docker secret instead.',
 			'',
-			'Treat it as a private key: `chmod 600` it, and keep it out of backups.',
+			'Treat it as a private key: keep it out of any backup you would not put a password in.',
 		],
 	},
 	{
