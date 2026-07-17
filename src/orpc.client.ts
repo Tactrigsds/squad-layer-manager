@@ -1,6 +1,7 @@
 import * as AR from '@/app-routes'
 import * as RxHelpers from '@/lib/react-rxjs-helpers'
 import { toast } from '@/lib/toast'
+import * as ZusUtils from '@/lib/zustand'
 import * as SM from '@/models/squad.models'
 import type { OrpcAppRouter } from '@/server/orpc-app-router'
 import * as ConfigClient from '@/systems/config.client'
@@ -169,6 +170,7 @@ closed$.pipe(
 ).subscribe()
 
 export const queryClient = new QueryClient()
+ZusUtils.registerQueryClient(queryClient)
 export const orpc = createTanstackQueryUtils(_orpcClient, { path: ['orpc'] })
 
 const MAX_RETRY_DELAY = 10_000
