@@ -47,7 +47,8 @@ const baseShape = {
 	serverId: z.string().nullable(),
 	// feed replay/join key; null for global (never enters a server activity feed)
 	matchId: z.number().nullable(),
-	// provenance chain: the app event that caused this one (COMMAND_INVOKED -> VOTE_STARTED -> NEXT_LAYER_SET)
+	// provenance: the app event that caused this one. Today the only chain written is QUEUE_UPDATED -> MAP_SET, and
+	// nothing reads it back -- no query, join or UI walks it -- so don't lean on it to make an event reachable.
 	causeId: z.string().nullable(),
 	// the SLM process (otel service.instance.id) that emitted this event; stamped at persist time. null on events
 	// created before this was introduced.
