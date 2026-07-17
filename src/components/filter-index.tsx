@@ -4,7 +4,6 @@ import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import type * as F from '@/models/filter.models'
 import type * as LQY from '@/models/layer-queries.models'
-import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
@@ -52,7 +51,7 @@ function FilterEntityCard({ entity, cfg }: FilterEntityCardProps) {
 									style={{ backgroundColor: user.displayHexColor ?? undefined }}
 									className="hover:cursor-pointer select-none h-5 w-5 shrink-0"
 								>
-									<AvatarImage src={USR.getAvatarUrl(user)} crossOrigin="anonymous" />
+									<AvatarImage src={user.avatarUrl} crossOrigin="anonymous" />
 									<AvatarFallback className="text-xs">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
 								</Avatar>
 								<span>
