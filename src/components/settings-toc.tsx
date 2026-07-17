@@ -84,6 +84,20 @@ function filterNode(node: TocNode, query: string): TocNode | null {
 	return null
 }
 
+// the node ids the tree renders, in display order, for the search box's up/down/Enter navigation. A collapsed branch
+// contributes only its own id, matching what's on screen.
+function flattenVisible(nodes: TocNode[], expanded: Set<string>, forceOpen: boolean): string[] {
+	const out: string[] = []
+	const walk = (ns: TocNode[]) => {
+		for (const n of ns) {
+			out.push(n.id)
+			if ((forceOpen || expanded.has(n.id)) && n.children.length > 0) walk(n.children)
+		}
+	}
+	walk(nodes)
+	return out
+}
+
 function TocItem(
 	{ node, depth, expanded, toggle, forceOpen, activeId, showMarkers }: {
 		node: TocNode
@@ -233,6 +247,8 @@ export default function SettingsToc(
 	},
 ) {
 	const [query, setQuery] = React.useState('')
+	// the search box's keyboard focus: which TOC row Enter jumps to, moved by up/down. Reset when the query changes.
+	const [focusedId, setFocusedId] = React.useState<string | null>(null)
 	const [expanded, setExpanded] = React.useState<Set<string>>(new Set(['section:servers', 'section:global']))
 	const containerRef = React.useRef<HTMLDivElement>(null)
 	const searchRef = React.useRef<HTMLInputElement>(null)
@@ -367,12 +383,39 @@ export default function SettingsToc(
 		return cur
 	}, [activeAnchorId, parentById, expanded, forceOpen])
 
+	// the search box drives the table of contents: up/down move this focus, Enter jumps to it. It defaults to the first
+	// match while searching, so Enter jumps there with nothing arrowed. With neither, the highlight follows the scroll.
+	const flatIds = flattenVisible(visible, expanded, forceOpen)
+	const focusHighlightId = focusedId ?? (q ? flatIds[0] ?? null : null)
+	const highlightId = focusHighlightId ?? activeId
+
 	// keep the highlighted item in view within the (independently scrolling) sidebar
 	React.useEffect(() => {
-		if (!activeId) return
-		const el = containerRef.current?.querySelector(`[data-toc-id="${CSS.escape(activeId)}"]`)
+		if (!highlightId) return
+		const el = containerRef.current?.querySelector(`[data-toc-id="${CSS.escape(highlightId)}"]`)
 		el?.scrollIntoView({ block: 'nearest' })
-	}, [activeId])
+	}, [highlightId])
+
+	function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+		if (e.key === 'Enter') {
+			const target = focusHighlightId ?? flatIds[0]
+			if (target) {
+				e.preventDefault()
+				SettingsNav.navigateToAnchor(target)
+			}
+			return
+		}
+		if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+		if (flatIds.length === 0) return
+		// otherwise the caret jumps to either end of the query
+		e.preventDefault()
+		const delta = e.key === 'ArrowDown' ? 1 : -1
+		const from = flatIds.indexOf(focusHighlightId ?? '')
+		const next = from === -1
+			? (delta === 1 ? 0 : flatIds.length - 1)
+			: Math.min(Math.max(from + delta, 0), flatIds.length - 1)
+		setFocusedId(flatIds[next])
+	}
 
 	function toggle(id: string) {
 		setExpanded((prev) => {
@@ -394,7 +437,11 @@ export default function SettingsToc(
 						className="h-8 pl-7"
 						placeholder="Search settings…"
 						value={query}
-						onChange={(e) => setQuery(e.target.value)}
+						onChange={(e) => {
+							setQuery(e.target.value)
+							setFocusedId(null)
+						}}
+						onKeyDown={onSearchKeyDown}
 					/>
 				</div>
 			</div>
@@ -411,7 +458,7 @@ export default function SettingsToc(
 									expanded={expanded}
 									toggle={toggle}
 									forceOpen={forceOpen}
-									activeId={activeId}
+									activeId={highlightId}
 									showMarkers={showMarkers}
 								/>
 							))}

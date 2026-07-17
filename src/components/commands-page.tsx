@@ -446,6 +446,7 @@ export default function CommandsPage() {
 	// together within it, and the table of contents sticks once it reaches the top
 	const scrollRef = React.useRef<HTMLDivElement>(null)
 	const navRef = React.useRef<HTMLElement>(null)
+	const searchRef = React.useRef<HTMLInputElement>(null)
 	// set while scrollToEntry runs, so the page's own scrolling isn't mistaken for the user taking over
 	const scrollingToEntry = React.useRef(false)
 	const stickyZIndex = useZIndex(ZI_OFFSETS.STICKYGROUP_FLOOR)
@@ -471,6 +472,13 @@ export default function CommandsPage() {
 		return true
 	}, [])
 
+	// focus the search box on arrival, as the settings page does -- unless a fragment is taking the user somewhere
+	// specific, where stealing focus would fight the landing
+	React.useEffect(() => {
+		if (!settings || currentAnchor()) return
+		searchRef.current?.focus({ preventScroll: true })
+	}, [settings])
+
 	// a fragment on arrival (someone followed a link) lands on it once the list has rendered. A category anchor has no
 	// `/`; it scrolls but isn't ringed or given the cursor, matching an in-page category-link click.
 	React.useEffect(() => {
@@ -478,7 +486,7 @@ export default function CommandsPage() {
 		if (!settings || !id) return
 		pendingAnchor.current = null
 		const isEntry = id.includes('/')
-		if (landOnEntry(id, { highlight: isEntry }) && isEntry) setCursorId(id)
+		if (landOnEntry(id, { highlight: true }) && isEntry) setCursorId(id)
 	}, [settings, landOnEntry])
 
 	// A hash pasted or edited on a page that's already open. In-app navigation uses replaceState, which fires no
@@ -488,7 +496,7 @@ export default function CommandsPage() {
 			const id = currentAnchor()
 			if (!id) return
 			const isEntry = id.includes('/')
-			if (landOnEntry(id, { highlight: isEntry }) && isEntry) setCursorId(id)
+			if (landOnEntry(id, { highlight: true }) && isEntry) setCursorId(id)
 		}
 		window.addEventListener('hashchange', onHash)
 		return () => window.removeEventListener('hashchange', onHash)
@@ -521,18 +529,15 @@ export default function CommandsPage() {
 
 	if (!settings) return null
 
-	// Following a link to an entry: record it in the URL, scroll to it, and (for a command) ring it and put the cursor
-	// on it. The cursor matters at the end of the list, where the target can't be centred -- the scroll-derived
-	// highlight would land on whatever the fold stopped at, so linking to one of the last commands would highlight a
-	// different one. A category link passes highlight:false: it's a whole section header, and a persistent ring on a
-	// full-width sticky bar reads as an error state rather than a landing mark.
-	function navigateToEntry(id: string, opts?: { highlight?: boolean; scroll?: boolean }) {
-		const highlight = opts?.highlight !== false
+	// Records the target in the URL, scrolls to it (unless scroll:false) and rings it, as the settings page does for
+	// both fields and sections. Only a command/alias (its id carries a `/`) also takes the table-of-contents cursor:
+	// that cursor drives the command highlight in the list, and a whole section isn't one of those rows.
+	function navigateToEntry(id: string, opts?: { scroll?: boolean }) {
 		const scroll = opts?.scroll !== false
 		// replaceState keeps the history stack clean and skips the browser's own jump; a no-op when the hash matches
 		history.replaceState(history.state, '', `#${encodeURIComponent(id)}`)
-		if (highlight) setCursorId(id)
-		landOnEntry(id, { highlight, scroll })
+		if (id.includes('/')) setCursorId(id)
+		landOnEntry(id, { highlight: true, scroll })
 	}
 
 	// what a link icon on an entry does: exactly what its table-of-contents row does (record the URL, ring it, put the
@@ -571,7 +576,7 @@ export default function CommandsPage() {
 		// window scrolling instead. 6rem = the nav bar + _app's padding.
 		<div
 			ref={scrollRef}
-			className="h-[calc(100dvh-6rem)] overflow-y-auto"
+			className="h-[calc(100dvh-6rem)] w-full overflow-y-auto"
 			onScroll={() => {
 				if (!scrollingToEntry.current) setCursorId(null)
 			}}
@@ -609,6 +614,7 @@ export default function CommandsPage() {
 						<div className="relative shrink-0 bg-background pt-2 pb-2">
 							<Icons.Search className="absolute left-2 top-[1.15rem] -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
 							<Input
+								ref={searchRef}
 								className="h-8 pl-7"
 								placeholder="Search commands…"
 								onChange={(e) => {
@@ -627,7 +633,7 @@ export default function CommandsPage() {
 											<li key={section.id} className="pt-4 first:pt-0">
 												<button
 													type="button"
-													onClick={() => navigateToEntry(section.id, { highlight: false })}
+													onClick={() => navigateToEntry(section.id)}
 													className="block w-full border-b border-border px-1 pb-1 text-left text-xs font-semibold uppercase tracking-wide text-foreground hover:text-foreground/70"
 												>
 													{section.label}
@@ -667,7 +673,7 @@ export default function CommandsPage() {
 									{section.label}
 									<AnchorLinkIcon
 										id={section.id}
-										onNavigate={(id) => navigateToEntry(id, { highlight: false, scroll: false })}
+										onNavigate={(id) => navigateToEntry(id, { scroll: false })}
 										label={`Link to ${section.label}`}
 									/>
 								</h2>
