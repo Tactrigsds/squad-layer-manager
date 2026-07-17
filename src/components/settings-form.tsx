@@ -24,12 +24,13 @@ import { useDebounced } from '@/hooks/use-debounce'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object'
 import type { SettingsGroup } from '@/lib/settings-groups'
-import { HIDDEN_GLOBAL_SETTINGS_KEYS, splitByGroups } from '@/lib/settings-groups'
+import { HIDDEN_GLOBAL_SETTINGS_KEYS, LOCAL_JSON_EDITOR_PATHS, splitAdvanced, splitByGroups } from '@/lib/settings-groups'
 import { humanize, settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import * as Templating from '@/lib/templating'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
+import * as Zod from '@/lib/zod'
 import * as ZusUtils from '@/lib/zustand'
 import * as AAR from '@/models/admin-action-reasons.models'
 import type * as BM from '@/models/battlemetrics.models'
@@ -52,6 +53,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
+import type SchemaJsonEditorComponent from './schema-json-editor'
 import { MessagePreviewBox } from './warn-reasons-sub'
 
 // The form is driven off the JSON-Schema projection of a Zod schema (input mode), edited in the encoded/input shape
@@ -202,6 +204,15 @@ const RootValueContext = React.createContext<ValueState | null>(null)
 // the root document's onChange, so a bespoke field can write siblings it isn't scoped to. The command-prefix editor
 // uses it to propagate a prefix rename across every command string / timeout alias that uses that prefix.
 const RootOnChangeContext = React.createContext<((next: any) => void) | null>(null)
+
+// the zod schema of the whole document, so a field can resolve the sub-schema at its own path for its scoped JSON
+// editor (the json-schema projection the form walks can't be handed back to zod for parsing)
+const RootSchemaContext = React.createContext<z.ZodType | null>(null)
+
+// paths that render inside their section's "Advanced" disclosure (see settings-groups.ts). Empty for forms that
+// declare none.
+const NO_ADVANCED_PATHS: ReadonlySet<string> = new Set()
+const AdvancedPathsContext = React.createContext<ReadonlySet<string>>(NO_ADVANCED_PATHS)
 
 // the user's write grant over the settings being edited; leaves outside it render dimmed + inert (see LeafField)
 const WRITE_ACCESS_ALL: RBAC.SettingsWriteAccess = { kind: 'all' }
@@ -3072,11 +3083,18 @@ function ObjectField(
 	},
 ) {
 	const props: Record<string, Node> = node.properties ?? {}
+	const { normal, advanced } = splitAdvanced(Object.keys(props), path.join('.'), React.useContext(AdvancedPathsContext))
+	const field = (key: string) => (
+		<Field key={key} name={key} node={props[key]} path={[...path, key]} parent$={value$} parentOnChange={onChange} reset$={reset$} />
+	)
 	return (
 		<div className="space-y-3">
-			{Object.entries(props).map(([key, childNode]) => (
-				<Field key={key} name={key} node={childNode} path={[...path, key]} parent$={value$} parentOnChange={onChange} reset$={reset$} />
-			))}
+			{normal.map((key) => field(key))}
+			{advanced.length > 0 && (
+				<AdvancedDisclosure paths={advanced.map((key) => [...path, key].join('.'))}>
+					{advanced.map((key) => field(key))}
+				</AdvancedDisclosure>
+			)}
 		</div>
 	)
 }
@@ -3228,6 +3246,142 @@ function AnchorLink({ domId }: { domId: string }) {
 	)
 }
 
+// -------- advanced disclosure --------
+
+// The collapsed tail of a section: the fields most installs never touch (see settings-groups.ts). `paths` are the
+// dotted paths it holds, so it can open itself when one of them is navigated to (the TOC lists advanced settings like
+// any other) or when one of them fails validation, which must never be hidden behind a collapsed row.
+function AdvancedDisclosure({ paths, children }: { paths: string[]; children: React.ReactNode }) {
+	const [expanded, setExpanded] = React.useState(false)
+	const { idPrefix } = React.useContext(FormOptionsContext)
+	const covers = React.useCallback((candidate: string, prefix: string) => {
+		return paths.some((p) => {
+			const full = `${prefix}${p}`
+			return candidate === full || candidate.startsWith(`${full}.`)
+		})
+	}, [paths])
+
+	React.useEffect(() => SettingsNav.onAnchorNavigate((id) => covers(id, idPrefix) && setExpanded(true)), [covers, idPrefix])
+
+	const hasIssue = React.useContext(ValidationContext).some((i) => covers(i.path, ''))
+	const open = expanded || hasIssue
+	return (
+		<div className="rounded-md border border-dashed">
+			<button
+				type="button"
+				className="flex w-full items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+				onClick={() => setExpanded((v) => !v)}
+				aria-expanded={open}
+			>
+				<Icons.ChevronRight className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-90')} />
+				Advanced
+				<span className="opacity-60">({paths.length})</span>
+				{hasIssue && <Icons.TriangleAlert className="h-3 w-3 text-destructive" />}
+			</button>
+			{open && <div className="space-y-3 border-t px-2 py-3">{children}</div>}
+		</div>
+	)
+}
+
+// -------- scoped json editor --------
+
+// lazily loaded so a settings visit that never opens a JSON editor doesn't pay for the CodeMirror bundle. The `as`
+// casts restore the generic component signature React.lazy erases (same as the page-level editor in routes/settings).
+const SchemaJsonEditor = React.lazy(
+	() => import('@/components/schema-json-editor') as unknown as Promise<{ default: React.FC<any> }>,
+) as unknown as typeof SchemaJsonEditorComponent
+
+// which editor a field with a scoped JSON editor is currently showing, mirroring the page-level section modes
+type FieldMode = 'gui' | 'json'
+
+// the sub-schema for this field's scoped JSON editor, or undefined when it doesn't offer one
+function useLocalJsonSchema(pathStr: string): z.ZodType | undefined {
+	const rootSchema = React.useContext(RootSchemaContext)
+	return React.useMemo(
+		// splitting pathStr rather than taking the path array keeps this memo stable: the array is rebuilt every render.
+		// Only the declared paths are split, and those have no dots inside a segment.
+		() => (rootSchema && LOCAL_JSON_EDITOR_PATHS.has(pathStr) ? Zod.schemaAtPath(rootSchema, pathStr.split('.')) : undefined),
+		[rootSchema, pathStr],
+	)
+}
+
+// the GUI/JSON segmented control the settings-page section headers use, scaled down to sit in a field's header row.
+// `ml-auto` pins it to the right end of that row, where the page-level control sits in its own header.
+function LocalModeToggle({ mode, onSelect }: { mode: FieldMode; onSelect: (next: FieldMode) => void }) {
+	return (
+		<div className="ml-auto flex items-center rounded-md border p-0.5">
+			{(['gui', 'json'] as const).map((option) => (
+				<Button
+					key={option}
+					type="button"
+					size="sm"
+					variant={mode === option ? 'secondary' : 'ghost'}
+					className="h-5 px-1.5 text-[10px]"
+					onClick={() => onSelect(option)}
+				>
+					{option === 'gui' ? 'GUI' : 'JSON'}
+				</Button>
+			))}
+		</div>
+	)
+}
+
+// The form's drafts hold the input/encoded shape, but the editor validates through the sub-schema, which yields the
+// decoded shape (e.g. HumanTime as milliseconds). Encode back where the schema allows it; a subtree carrying a
+// one-way transform can't encode at all, and its output shape is its input shape anyway.
+function toInputShape(schema: z.ZodType, decoded: unknown): unknown {
+	try {
+		return schema.encode(decoded)
+	} catch {
+		return decoded
+	}
+}
+
+// A JSON editor over one subtree of the form, swapped in for that field's widget. The editor owns its buffer while
+// open: handing our own edits straight back as `value` would re-sync the document mid-keystroke, so it's only re-seeded
+// on reset$, which is exactly the programmatic-change signal the uncontrolled inputs re-read on. Re-seeding remounts it
+// rather than passing a new `value`, because the editor re-syncs only when `value` differs from what it last synced,
+// and a reset typically restores the very value it was seeded with (leaving the user's edits sitting in the buffer).
+function LocalJsonField(
+	{ schema, label, domId, value$, reset$, onChange }: {
+		schema: z.ZodType
+		label: string
+		// the field's own anchor, which the editor renders inside: the scroll target once the editor is up
+		domId: string
+		value$: ValueState
+		reset$: Rx.Subject<void>
+		onChange: (v: any) => void
+	},
+) {
+	const [seed, setSeed] = React.useState(() => ({ value: value$.getValue(), nonce: 0 }))
+	useReset(reset$, () => setSeed((prev) => ({ value: value$.getValue(), nonce: prev.nonce + 1 })))
+	const onValidChange = React.useCallback((v: unknown) => {
+		if (v === null) return
+		onChange(toInputShape(schema, v))
+	}, [schema, onChange])
+	// only the first mount scrolls: re-seeding after a reset remounts the editor, and yanking the viewport for that
+	// would be a surprise. This component only exists while the field is in JSON mode, so the ref resets on reopen.
+	const broughtIntoView = React.useRef(false)
+	const onReady = React.useCallback(() => {
+		if (broughtIntoView.current) return
+		broughtIntoView.current = true
+		SettingsNav.scrollToAnchorSettled(domId)
+	}, [domId])
+	return (
+		<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
+			<SchemaJsonEditor
+				key={seed.nonce}
+				schema={schema}
+				value={seed.value}
+				onValidChange={onValidChange}
+				onReady={onReady}
+				minHeightPx={320}
+				label={label}
+			/>
+		</React.Suspense>
+	)
+}
+
 // a nested object section: titled fieldset. `useIsModified` keeps the reset affordance live without re-rendering
 // the whole subtree on every descendant edit.
 function SectionField(
@@ -3253,6 +3407,8 @@ function SectionField(
 	const SectionExtra = sectionExtraFor(path)
 	// leaves dim themselves individually; the section only needs its own bulk-reset controls neutralized
 	const writable = RBAC.settingsPathOverlaps(React.useContext(WriteAccessContext), path)
+	const jsonSchema = useLocalJsonSchema(pathStr)
+	const [mode, setMode] = React.useState<FieldMode>('gui')
 	return (
 		<fieldset
 			id={domId}
@@ -3268,11 +3424,23 @@ function SectionField(
 						<FieldResetControls value$={value$} reset$={reset$} onChange={onChange} node={node} path={path} showDefaultLabel={false} />
 					</span>
 					<AnchorLink domId={domId} />
+					{jsonSchema && writable && <LocalModeToggle mode={mode} onSelect={setMode} />}
 				</div>
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
 				{SectionExtra && <SectionExtra />}
 				<FieldIssues issues={sectionIssues} pathStr={pathStr} />
-				<FieldControl node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />
+				{jsonSchema && mode === 'json'
+					? (
+						<LocalJsonField
+							schema={jsonSchema}
+							label={settingLabel(path, name)}
+							domId={domId}
+							value$={value$}
+							reset$={reset$}
+							onChange={onChange}
+						/>
+					)
+					: <FieldControl node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />}
 			</StickyGroup>
 		</fieldset>
 	)
@@ -3302,6 +3470,8 @@ function LeafField(
 	// loose overlap: a grant pointing inside this field's subtree still permits editing part of it, so the field stays
 	// active and the save panel's exact per-path check flags anything outside the grant
 	const writable = RBAC.settingsPathOverlaps(React.useContext(WriteAccessContext), path)
+	const jsonSchema = useLocalJsonSchema(pathStr)
+	const [mode, setMode] = React.useState<FieldMode>('gui')
 	// the inline "default: <value>" hint only reads well for scalars; complex/override fields still get the reset buttons
 	const showDefaultLabel = !hasOverride && isScalarNode(inner)
 	const controls = (
@@ -3336,13 +3506,25 @@ function LeafField(
 					)}
 					{!isBoolean && controls}
 					<AnchorLink domId={domId} />
+					{jsonSchema && writable && <LocalModeToggle mode={mode} onSelect={setMode} />}
 				</div>
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
 				<FieldIssues issues={fieldIssues} pathStr={pathStr} />
 			</div>
 			<div className={cn(isBoolean && 'shrink-0 flex items-center gap-1')} inert={!writable}>
 				{isBoolean && controls}
-				<FieldControl node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />
+				{jsonSchema && mode === 'json'
+					? (
+						<LocalJsonField
+							schema={jsonSchema}
+							label={settingLabel(path, name)}
+							domId={domId}
+							value$={value$}
+							reset$={reset$}
+							onChange={onChange}
+						/>
+					)
+					: <FieldControl node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />}
 			</div>
 		</div>
 	)
@@ -3410,18 +3592,28 @@ function GroupedRootFields(
 ) {
 	const props: Record<string, Node> = node.properties ?? {}
 	const { groups: grouped, ungrouped } = splitByGroups(Object.keys(props), groups)
+	const advancedPaths = React.useContext(AdvancedPathsContext)
+	const field = (key: string) => (
+		<Field key={key} name={key} node={props[key]} path={[key]} parent$={value$} parentOnChange={onChange} reset$={reset$} />
+	)
+	// each group carries its own advanced tail, so a rarely-touched setting stays with the settings it belongs to
+	const renderKeys = (keys: string[]) => {
+		const { normal, advanced } = splitAdvanced(keys, '', advancedPaths)
+		return (
+			<>
+				{normal.map((key) => field(key))}
+				{advanced.length > 0 && <AdvancedDisclosure paths={advanced}>{advanced.map((key) => field(key))}</AdvancedDisclosure>}
+			</>
+		)
+	}
 	return (
 		<div className="space-y-6">
 			{grouped.map(({ group, keys }) => (
 				<GroupSection key={group.slug} slug={group.slug} label={group.label}>
-					{keys.map((key) => (
-						<Field key={key} name={key} node={props[key]} path={[key]} parent$={value$} parentOnChange={onChange} reset$={reset$} />
-					))}
+					{renderKeys(keys)}
 				</GroupSection>
 			))}
-			{ungrouped.map((key) => (
-				<Field key={key} name={key} node={props[key]} path={[key]} parent$={value$} parentOnChange={onChange} reset$={reset$} />
-			))}
+			{renderKeys(ungrouped)}
 		</div>
 	)
 }
@@ -3454,7 +3646,19 @@ function JsonFallback({ value$, reset$, onChange }: { value$: ValueState; reset$
 }
 
 export default function SettingsForm(
-	{ schema, value$, reset$, onChange, saved, idPrefix = 'setting:', groups, priorityKeys, issues, writeAccess = WRITE_ACCESS_ALL }: {
+	{
+		schema,
+		value$,
+		reset$,
+		onChange,
+		saved,
+		idPrefix = 'setting:',
+		groups,
+		priorityKeys,
+		advancedPaths = NO_ADVANCED_PATHS,
+		issues,
+		writeAccess = WRITE_ACCESS_ALL,
+	}: {
 		schema: z.ZodType
 		value$: Rx.Observable<any> & { getValue: () => any }
 		reset$: Rx.Subject<void>
@@ -3469,6 +3673,8 @@ export default function SettingsForm(
 		// presentation-level ordering (ungrouped forms only): these top-level keys float to the front, in the given order,
 		// with the rest following in schema order. Keeps the persisted shape untouched, same rationale as `groups`.
 		priorityKeys?: string[]
+		// dotted paths of the fields that render inside their section's collapsed "Advanced" disclosure (see settings-groups.ts)
+		advancedPaths?: ReadonlySet<string>
 		// schema issues for the current draft (input-shape safeParse); each leaf field displays the issues under its path
 		issues?: readonly z.core.$ZodIssue[]
 		// the user's write grant; fields with no overlap render read-only. Defaults to unrestricted.
@@ -3497,17 +3703,21 @@ export default function SettingsForm(
 		<FormOptionsContext.Provider value={formOptions}>
 			<RootValueContext.Provider value={value$}>
 				<RootOnChangeContext.Provider value={onChange}>
-					<WriteAccessContext.Provider value={writeAccess}>
-						<SavedRootContext.Provider value={savedCtx}>
-							<MessageVarsContext.Provider value={messageVars}>
-								<ValidationContext.Provider value={normIssues}>
-									{groups
-										? <GroupedRootFields node={jsonSchema} groups={groups} value$={value$} reset$={reset$} onChange={onChange} />
-										: <ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />}
-								</ValidationContext.Provider>
-							</MessageVarsContext.Provider>
-						</SavedRootContext.Provider>
-					</WriteAccessContext.Provider>
+					<RootSchemaContext.Provider value={schema}>
+						<AdvancedPathsContext.Provider value={advancedPaths}>
+							<WriteAccessContext.Provider value={writeAccess}>
+								<SavedRootContext.Provider value={savedCtx}>
+									<MessageVarsContext.Provider value={messageVars}>
+										<ValidationContext.Provider value={normIssues}>
+											{groups
+												? <GroupedRootFields node={jsonSchema} groups={groups} value$={value$} reset$={reset$} onChange={onChange} />
+												: <ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />}
+										</ValidationContext.Provider>
+									</MessageVarsContext.Provider>
+								</SavedRootContext.Provider>
+							</WriteAccessContext.Provider>
+						</AdvancedPathsContext.Provider>
+					</RootSchemaContext.Provider>
 				</RootOnChangeContext.Provider>
 			</RootValueContext.Provider>
 		</FormOptionsContext.Provider>
