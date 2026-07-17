@@ -93,7 +93,7 @@ done
 
 chmod +x "$DIR/edit-global-settings.sh" "$DIR/restore.sh"
 
-INSTALLING_URL="https://github.com/${REPO}/blob/${REF}/docs/INSTALLING.md"
+INSTALLING_URL="https://github.com/${REPO}/blob/${REF}/docs/installing.md"
 
 for file in .env.example .env.secrets.example; do
 	printf '\n# Installing and configuring SLM: %s\n' "$INSTALLING_URL" >> "$DIR/$file"

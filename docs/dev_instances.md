@@ -38,34 +38,8 @@ and has its connection scrubbed. Everything else -- match history, users, filter
 is the point: an experiment runs against realistic data rather than an empty db.
 
 Re-clone at any time with `pnpm dev:db:clone --force` (stop the app first). `--from <path>` clones from
-somewhere other than the main checkout.
-
-Two safety properties, both of which the script enforces rather than assumes:
-
-- **The source is never written.** The snapshot is `VACUUM INTO` over a read-only connection, which takes a
-  read transaction and writes a new file. It cannot take the source's write lock or checkpoint its WAL, so
-  cloning from a main checkout that is running the app is safe, and the clone still contains everything
-  committed as of the snapshot. (A plain `cp` would be wrong twice over: it omits the `-wal`, so the clone
-  silently loses recent writes, and it tears across concurrent ones.)
-- **The destination is never swapped out from under a running app.** This is the half that needs care, and
-  not for a reason WAL covers. WAL coordinates concurrent _connections_ to a database; replacing the file
-  happens behind SQLite's back, where its locking has no say. An app left holding the unlinked file goes on
-  writing to it -- successfully, and into nothing, since the inode has no name any more -- while serving reads
-  from a database that is no longer on disk. Nothing errors. So the script takes an _exclusive_ lock and
-  holds it from before the snapshot until after the rename: an app that boots into that window fails loudly
-  on `SQLITE_BUSY` rather than becoming a ghost.
-
-  Note that "has it open" is not the same as "holds the write lock". An app that happens to be idle holds no
-  write lock, so a `BEGIN IMMEDIATE` probe succeeds against it and would pass exactly when it matters most.
-
-The `-wal` is deleted with the file it belongs to, before the replacement takes the name. Left behind, it is
-replayed over the new database as though it described it, and the reader silently sees the _old_ database's
-contents -- with `integrity_check` reporting `ok`, so nothing anywhere reports a problem.
-
-For contrast, `pnpm db:migrate` against a running app is a different and much milder case, because it writes
-_through_ SQLite rather than around it: WAL serializes it, a racing write gets `SQLITE_BUSY` instead of being
-lost, and the app re-prepares its statements against the new schema by itself. The worst case there is loud
-errors from app code that disagrees with the schema, not silent loss.
+somewhere other than the main checkout. The clone is a `VACUUM INTO` snapshot over a read-only connection, so
+cloning from a main checkout that is running the app is safe and never touches the source.
 
 No connection that reaches a real squad server survives a clone. The source's rows hold live RCON hosts and
 passwords, and a merely-disabled row would keep them one settings-page toggle away from a dev instance
@@ -73,13 +47,10 @@ driving the production server.
 
 ## The emulator
 
-`pnpm dev:emu` runs the emulated squad server (`src/emulator`) and a stub BattleMetrics API. It is a separate
-process from the app on purpose: `pnpm dev` runs under `tsx watch` and restarts on every edit, which would
-take the emulated world -- players, squads, match state, log history -- down with it each time. As its own
-process the world outlives app reloads.
+`pnpm dev:emu` runs the emulated squad server (`src/emulator`) and a stub BattleMetrics API. Run it as its own
+process (not under `pnpm dev`) so its world -- players, squads, match state -- survives app reloads.
 
 It writes the same `SquadGame.log` a real server does, and the app tails it over the same `local` code path.
-There is no test-only transport in between.
 
 `--players N` connects N players at startup; `--admins <steamid,...>` writes them into the `Admins.cfg` the
 app reads.

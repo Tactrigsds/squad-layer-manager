@@ -142,7 +142,7 @@ function subscribe(s: AnyStore<any> | null, update: () => void): () => void {
 	return s.subscribe(update)
 }
 
-// any query source among the inputs makes the return a promise. see docs/ARCHITECTURE.md
+// any query source among the inputs makes the return a promise. see docs/architecture.md
 export function getState<I extends MaybeInput>(source: I): Returns<[I], ResolvedState<I>>
 export function getState<Inputs extends MaybeInput[], R>(
 	...args: [...Inputs, (...states: ResolvedStates<Inputs>) => R]

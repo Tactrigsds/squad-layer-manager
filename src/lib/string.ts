@@ -38,7 +38,8 @@ export namespace StrPatterns {
 }
 
 // Folds away only what a human plausibly varies when typing a name to search for: case, spacing, and unicode
-// composition. Deliberately keeps non-ascii -- see docs/LOG_NAME_MATCHING.md for why stripping it was wrong.
+// composition. Deliberately keeps non-ascii: a fully non-latin name would otherwise strip to the empty string,
+// which is contained in every name and so matches everything.
 export function normalizeForMatch(s: string) {
 	return s.normalize('NFKC').replace(/\s/g, '').toLowerCase()
 }

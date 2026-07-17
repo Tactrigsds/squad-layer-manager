@@ -13,7 +13,7 @@ import * as Env from './env.ts'
 // and its `dev` key overrides that where the two diverge (see EnvExampleMeta).
 //
 // A deployment's file is split in two: the credentials go to .env.secrets.example and everything else to
-// .env.example (see docs/INSTALLING.md). A checkout keeps one file, since `pnpm server:dev` expects to find
+// .env.example (see docs/installing.md). A checkout keeps one file, since `pnpm server:dev` expects to find
 // everything in .env.
 
 export type Audience = 'deployment' | 'dev'
