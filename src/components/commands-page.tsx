@@ -2,7 +2,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
-import { useForwardWheelToScroller } from '@/lib/browser'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
@@ -443,17 +442,15 @@ export default function CommandsPage() {
 	// follows whatever sits at the top of the body, which only updates on a real user scroll -- so each press would
 	// re-read the entry it started from and the cursor would never leave it.
 	const [cursorId, setCursorId] = React.useState<string | null>(null)
+	// the whole page is one scroll container; the header, quick reference, table of contents and listings scroll
+	// together within it, and the table of contents sticks once it reaches the top
 	const scrollRef = React.useRef<HTMLDivElement>(null)
-	const rootRef = React.useRef<HTMLDivElement>(null)
-	// set while scrollToEntry runs, so the body's own scrolling isn't mistaken for the user taking over
+	const navRef = React.useRef<HTMLElement>(null)
+	// set while scrollToEntry runs, so the page's own scrolling isn't mistaken for the user taking over
 	const scrollingToEntry = React.useRef(false)
 	const stickyZIndex = useZIndex(ZI_OFFSETS.STICKYGROUP_FLOOR)
 	// latched: read once on mount, consumed by the effect below, so a later hash rewrite can't re-trigger it
 	const pendingAnchor = React.useRef<string | null>(currentAnchor())
-
-	// the margins either side of the centred column, the page header and the search box all sit outside the body's
-	// scroll container, so without this their wheel events land on nothing. `settings` gates the refs being attached.
-	useForwardWheelToScroller(rootRef, scrollRef, settings)
 
 	// Puts an entry in the middle of the body -- so it arrives with its neighbours for context, rather than tucked under
 	// the sticky section header. Instant, never smooth: a smooth scroll is still travelling when the next keypress or
@@ -500,30 +497,29 @@ export default function CommandsPage() {
 	const sections = React.useMemo(() => settings ? buildSections(settings, pinnedCommands) : [], [settings, pinnedCommands])
 	const pinnedSet = React.useMemo(() => new Set(pinnedCommands), [pinnedCommands])
 
+	// Pinned and Quick Reference render as one block above the menu, never as body sections or table-of-contents rows --
+	// they're a scan of the everyday commands, and the body below is the full menu.
+	const pinnedShortcut = sections.find((s) => s.id === PINNED_SECTION_ID)
+	const quickRefShortcut = sections.find((s) => s.id === QUICK_REF_SECTION_ID)
+	// the body always lists every section; the search narrows only the table of contents
+	const contentSections = sections.filter((s) => !SHORTCUT_SECTION_IDS.has(s.id))
+
 	const q = query.trim().toLowerCase()
 	// a section-label match keeps the whole section, so searching "moderation" lists everything under it
-	const visible = q
-		// Pinned and quick reference are shortcuts into the sections below, not content of their own, so a search hit
-		// lands in each of them as well as its real section -- three copies of one command. Searching is already the
-		// direct way to find something, so the shortcuts drop out and every hit appears exactly once.
-		? sections
-			.filter((s) => !SHORTCUT_SECTION_IDS.has(s.id))
+	const tocSections = q
+		? contentSections
 			.map((s) => (s.label.toLowerCase().includes(q) ? s : { ...s, entries: s.entries.filter((e) => e.search.includes(q)) }))
 			.filter((s) => s.entries.length > 0)
-		: sections
+		: contentSections
+	const tocEntryIds = tocSections.flatMap((s) => s.entries.map((e) => e.id))
 
-	const activeId = useActiveEntry(scrollRef, visible.map((s) => s.id).join(','))
-	// the cursor owns the highlight while arrowing; otherwise it follows the entry at the top of the body
-	const highlightId = cursorId ?? activeId
+	const activeId = useActiveEntry(scrollRef, contentSections.map((s) => s.id).join(','))
+	// the table of contents highlights the entry the keyboard is on -- the one Enter jumps to -- or the first match
+	// while searching; with neither, it follows the section the page is scrolled to
+	const focusId = cursorId ?? (q ? tocEntryIds[0] ?? null : null)
+	const tocHighlightId = focusId ?? activeId
 
 	if (!settings) return null
-
-	// Pinned and Quick Reference render as one block above the columns rather than as sections in the body or rows in
-	// the table of contents -- they're a scan of the everyday commands, and the body below is the full menu. Absent
-	// while searching (the shortcut sections are filtered out of `visible` then), so a search shows only real hits.
-	const pinnedShortcut = visible.find((s) => s.id === PINNED_SECTION_ID)
-	const quickRefShortcut = visible.find((s) => s.id === QUICK_REF_SECTION_ID)
-	const contentSections = visible.filter((s) => !SHORTCUT_SECTION_IDS.has(s.id))
 
 	// Following a link to an entry: record it in the URL, scroll to it, and (for a command) ring it and put the cursor
 	// on it. The cursor matters at the end of the list, where the target can't be centred -- the scroll-derived
@@ -543,42 +539,52 @@ export default function CommandsPage() {
 	// cursor on it), minus the scroll -- the user is already looking at the entry the icon sits on
 	const linkToEntry = (id: string) => navigateToEntry(id, { scroll: false })
 
-	// Up/down walk the results from the search box, so a search can be narrowed and swept without leaving the input.
-	// Instant rather than smooth: a smooth scroll is still travelling when the next press lands, and holding a key
-	// would then be scheduling scrolls faster than they finish.
+	// The search box drives the table of contents, not the page: up/down move the focused row, Enter jumps to it. Enter
+	// with nothing arrowed jumps to the first match. Arrowing only moves the focus (and keeps that row in view within
+	// the list); it doesn't scroll the page -- that's what Enter is for.
 	function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+		if (e.key === 'Enter') {
+			const target = focusId ?? tocEntryIds[0]
+			if (target) {
+				e.preventDefault()
+				navigateToEntry(target)
+			}
+			return
+		}
 		if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
-		// only the body's entries; the compact shortcuts above aren't scroll targets
-		const ids = contentSections.flatMap((section) => section.entries.map((entry) => entry.id))
-		if (ids.length === 0) return
+		if (tocEntryIds.length === 0) return
 		// otherwise the caret jumps to either end of the query
 		e.preventDefault()
 		const delta = e.key === 'ArrowDown' ? 1 : -1
-		// picks up from wherever the body was scrolled to, so arrowing after a scroll continues from what's on screen
-		const current = highlightId ? ids.indexOf(highlightId) : -1
-		// with nothing highlighted yet, down starts at the top of the list and up starts at the bottom
-		const next = current === -1
-			? (delta === 1 ? 0 : ids.length - 1)
-			: Math.min(Math.max(current + delta, 0), ids.length - 1)
-		setCursorId(ids[next])
-		landOnEntry(ids[next])
+		const from = tocEntryIds.indexOf(focusId ?? '')
+		const next = from === -1
+			? (delta === 1 ? 0 : tocEntryIds.length - 1)
+			: Math.min(Math.max(from + delta, 0), tocEntryIds.length - 1)
+		const nextId = tocEntryIds[next]
+		setCursorId(nextId)
+		navRef.current?.querySelector(`[data-toc-id="${CSS.escape(nextId)}"]`)?.scrollIntoView({ block: 'nearest' })
 	}
 
 	return (
-		// the height has to be pinned here, as the settings page does: _app only bounds its own height on the dashboard
-		// route, so flex-1/min-h-0 alone leaves this growing to fit and the body scrolling the window instead of itself
-		// -- which silently costs the sticky headers and the scroll-tracked highlight. 6rem = the nav bar + _app's padding.
-		<div ref={rootRef} className="flex h-[calc(100dvh-6rem)] w-full justify-center">
-			<div className="flex h-full w-full max-w-6xl flex-col">
-				<header className="shrink-0 pb-3">
+		// One scroll container for the whole page. The height is pinned as the settings page does: _app only bounds its
+		// own height on the dashboard route, so flex-1/min-h-0 alone would leave this growing to fit its content and the
+		// window scrolling instead. 6rem = the nav bar + _app's padding.
+		<div
+			ref={scrollRef}
+			className="h-[calc(100dvh-6rem)] overflow-y-auto"
+			onScroll={() => {
+				if (!scrollingToEntry.current) setCursorId(null)
+			}}
+		>
+			<div className="mx-auto w-full max-w-6xl px-1">
+				<header className="pt-1 pb-3">
 					<h1 className="text-xl font-semibold">Ingame Commands</h1>
 					<p className="pt-1 text-sm text-muted-foreground">
 						Everything you type is case-insensitive. Player, squad and flag names match on any part of the name, ignoring spaces.
 					</p>
 				</header>
-				{/* the everyday commands sit above the whole menu -- search box, table of contents and listings all start below */}
 				{(pinnedShortcut || quickRefShortcut) && (
-					<div className="shrink-0 space-y-4 pb-6">
+					<div className="space-y-4 pb-6">
 						{pinnedShortcut && (
 							<CompactSection
 								title="Your Pinned Commands"
@@ -590,10 +596,18 @@ export default function CommandsPage() {
 						{quickRefShortcut && <CompactSection title="Quick Reference" section={quickRefShortcut} onDetails={navigateToEntry} />}
 					</div>
 				)}
-				<div className="flex gap-4 flex-1 min-h-0">
-					<aside className="flex flex-col w-52 shrink-0 min-h-0 border-r pr-2">
-						<div className="relative shrink-0 pb-2">
-							<Icons.Search className="absolute left-2 top-[0.9rem] -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+				<div className="flex gap-4">
+					{
+						/* the table of contents is the one thing that stays put: it sticks once the header and quick reference
+					    have scrolled off, capped to the viewport with its own scroll for a long list. bg so the everyday
+					    commands pass behind it as they scroll away. */
+					}
+					<aside
+						style={{ zIndex: stickyZIndex }}
+						className="sticky top-0 flex max-h-[calc(100dvh-6rem)] w-52 shrink-0 flex-col self-start border-r bg-background pr-2"
+					>
+						<div className="relative shrink-0 bg-background pt-2 pb-2">
+							<Icons.Search className="absolute left-2 top-[1.15rem] -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
 							<Input
 								className="h-8 pl-7"
 								placeholder="Search commands…"
@@ -604,13 +618,12 @@ export default function CommandsPage() {
 								onKeyDown={onSearchKeyDown}
 							/>
 						</div>
-						<nav className="flex-1 min-h-0 overflow-y-auto">
-							{contentSections.length === 0
-								? <p className="text-sm text-muted-foreground px-1">No matches.</p>
+						<nav ref={navRef} className="min-h-0 flex-1 overflow-y-auto">
+							{tocSections.length === 0
+								? <p className="px-1 text-sm text-muted-foreground">No matches.</p>
 								: (
 									<ul>
-										{contentSections.map((section) => (
-											// mirrors the body's sections -- label, rule, indented entries -- so the two columns read as the same split
+										{tocSections.map((section) => (
 											<li key={section.id} className="pt-4 first:pt-0">
 												<button
 													type="button"
@@ -624,10 +637,11 @@ export default function CommandsPage() {
 														<li key={entry.id}>
 															<button
 																type="button"
+																data-toc-id={entry.id}
 																onClick={() => navigateToEntry(entry.id)}
 																className={cn(
 																	'block w-full truncate rounded px-1 py-0.5 text-left font-mono text-sm hover:text-foreground',
-																	entry.id === highlightId ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground',
+																	entry.id === tocHighlightId ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground',
 																)}
 																title={entry.label}
 															>
@@ -642,26 +656,13 @@ export default function CommandsPage() {
 								)}
 						</nav>
 					</aside>
-					<div
-						ref={scrollRef}
-						// pl-1 is for the anchor highlight: it's a box-shadow ring, so it paints outside the entry's box and
-						// the entries run flush to this container's content edge -- without the padding, overflow clips the
-						// ring's left side away. pr-4 already leaves the right side room.
-						className="flex-1 min-w-0 overflow-y-auto pl-1 pr-4"
-						onScroll={() => {
-							if (!scrollingToEntry.current) setCursorId(null)
-						}}
-					>
+					<div className="min-w-0 flex-1">
 						{contentSections.map((section) => (
 							<section key={section.id} className="pb-8 last:pb-2">
-								{
-									/* the header stays legible over the entries it scrolls across, so it needs to be opaque and to own the
-							    full width -- hence the negative margin pulling it out to the scroll container's padding */
-								}
 								<h2
 									id={section.id}
 									style={{ zIndex: stickyZIndex }}
-									className="group sticky top-0 -mx-1 mb-2 flex scroll-mt-2 items-center gap-2 border-b-2 border-border bg-background px-1 pb-1.5 pt-1 text-base font-semibold tracking-tight"
+									className="group sticky top-0 mb-2 flex scroll-mt-1 items-center gap-2 border-b-2 border-border bg-background pb-1.5 pt-1 text-base font-semibold tracking-tight"
 								>
 									{section.label}
 									<AnchorLinkIcon
@@ -671,10 +672,7 @@ export default function CommandsPage() {
 									/>
 								</h2>
 								{section.blurb && <p className="pb-3 text-sm text-muted-foreground">{section.blurb}</p>}
-								{
-									/* dividers between commands: a section is a long stack of similar-looking rows, and the arg signatures
-							    wrap, which left the boundary between two commands ambiguous on spacing alone */
-								}
+								{/* dividers between commands: the arg signatures wrap, which left the boundary between two ambiguous on spacing alone */}
 								<div className="divide-y divide-border/70">
 									{section.entries.map((entry) => (
 										<div key={entry.id} className="py-3 first:pt-0 last:pb-0">
