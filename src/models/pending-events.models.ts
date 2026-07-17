@@ -2,6 +2,7 @@ import * as Arr from '@/lib/array'
 import * as Gen from '@/lib/generator'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
+import type * as Types from '@/lib/types'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
@@ -132,7 +133,6 @@ export type State = {
 	// already aware of (PLAYER_RECONCILED) rather than a fresh arrival (PLAYER_CONNECTED). Rebuilt every poll.
 	unassignedPlayers: Set<SM.PlayerId>
 	counters: {
-		eventId: Generator<number, never, unknown>
 		squadId: Generator<number, never, unknown>
 		pendingEventId: Generator<number, never, unknown>
 	}
@@ -141,6 +141,10 @@ export type State = {
 		onNewGameDuringRoll: (newLayerId: L.LayerId, time: number) => Promise<{ match: MH.MatchDetails; nextLayerId: L.LayerId | null }>
 		onNewGameDuringSync: (newLayerId: L.LayerId, time: number) => Promise<{ match: MH.MatchDetails; isNewMatch: boolean }>
 		fetchLayersStatus: () => Promise<SM.LayersStatus | null>
+		// Persists the event and returns it with the id the insert allocated. Every event this module emits goes
+		// through here first, so an event is on disk before any consumer (or our own state) ever sees it, and ids
+		// are handed out in emission order.
+		createEvent: (event: SE.NewEvent) => Promise<SE.Event>
 	}
 
 	// if we receive a non-log event and we haven't received a log event in this amount of time since the time of the received event, we can assume that there are no log events older than this time that we have yet to receive
@@ -227,7 +231,7 @@ export function expectWarn(
 	armExpectation(state, { type: 'PLAYER_WARNED', playerId: opts.playerId, reason: opts.reason }, opts.source, opts.ttlMs)
 }
 
-function expectationMatches(state: State, match: ExpectationMatch, event: SE.Event): boolean {
+function expectationMatches(state: State, match: ExpectationMatch, event: SE.NewEvent): boolean {
 	switch (match.type) {
 		case 'PLAYER_WARNED':
 			// warns have no organic equivalent (players don't warn each other) and never carry a native source,
@@ -263,13 +267,13 @@ function expectationMatches(state: State, match: ExpectationMatch, event: SE.Eve
 // true when the game attributed this event to an admin action (it already carries a source), as opposed to an
 // organic change inferred from team polling (source undefined). Guards against a stale/racing expectation stamping
 // an organic squad-leave / team-change / disband. See the source assignments in the ADMIN_* handlers + reconcileTeamsUpdate.
-function eventIsAdminCaused(event: SE.Event): boolean {
+function eventIsAdminCaused(event: SE.NewEvent): boolean {
 	return (event as { source?: ActionSource }).source !== undefined
 }
 
 // stamps an emitted event with a matching armed expectation's source (consume-once). mutates the event in place.
 // runs before applyEventTeamMutations so SQUAD_DISBANDED can still resolve its squad in currTeams.
-function applyExpectations(state: State, event: SE.Event) {
+function applyExpectations(state: State, event: SE.NewEvent) {
 	const idx = state.expectations.findIndex(exp => expectationMatches(state, exp.match, event))
 	if (idx === -1) return
 	;(event as { source?: ActionSource }).source = state.expectations[idx].source
@@ -309,23 +313,29 @@ export function onTeamsPolled(state: State, teams: SM.Teams, time: number, polle
 	state.eventBufs.teamsUpdates.push({ type: 'TEAMS_UPDATE', id: Gen.next(state.counters.pendingEventId), teams, time, polledAt })
 }
 
-// Fold an emitted event into `state`: seed an empty roster if a roster-bearing event needs one, stamp expectation
-// attribution before mutating teams (SQUAD_DISBANDED matching needs the squad still present), then apply team
-// mutations. Shared by the main processing loop and the watchdog resync.
-function applyEventToState(state: State, ctx: CS.Log, event: SE.Event) {
-	if (SE.eventRoster(event) && !state.currTeams) {
+// The single point every event this module produces passes through. Order matters throughout:
+//   1. seed an empty roster if a roster-bearing event needs one,
+//   2. stamp expectation attribution -- `source` is part of the persisted event (and its appEventId column), so
+//      this has to happen before the insert, and while SQUAD_DISBANDED can still resolve its squad in currTeams,
+//   3. persist, which is what allocates the id,
+//   4. apply team mutations, only once the event is on disk -- a throw from createEvent leaves state untouched
+//      rather than mutated for an event nobody else will ever see.
+async function emit(state: State, ctx: CS.Log, newEvent: SE.NewEvent): Promise<SE.Event> {
+	if (SE.eventRoster(newEvent) && !state.currTeams) {
 		state.currTeams = initUniqueTeams(state, { players: [], squads: [] })
 	}
-	applyExpectations(state, event)
+	applyExpectations(state, newEvent)
+	const event = await state.hooks.createEvent(newEvent)
 	if (state.currTeams) {
 		applyEventTeamMutations(ctx, state.currTeams, event)
 	}
+	return event
 }
 
 // Watchdog recovery: re-establish sync from RCON's current layer when the log-driven roll/sync got wedged. Mirrors
 // the RCON_CONNECTED sync-begin (resolve the match, enter 'syncing', emit a roster-less NEW_GAME for a new match)
 // so the next teams poll produces the RESET that reseeds the roster.
-async function* forceResync(state: State, time: number): AsyncGenerator<SE.Event> {
+async function* forceResync(state: State, time: number): AsyncGenerator<SE.NewEvent> {
 	const layersStatus = await state.hooks.fetchLayersStatus()
 	if (!layersStatus) {
 		state.log.warn('sync watchdog fired but fetchLayersStatus returned null; cannot force resync')
@@ -339,7 +349,6 @@ async function* forceResync(state: State, time: number): AsyncGenerator<SE.Event
 	if (isNewMatch) {
 		yield {
 			type: 'NEW_GAME',
-			id: Gen.next(state.counters.eventId),
 			layerId: state.currentMatch.layerId,
 			matchId: state.currentMatch.historyEntryId,
 			source: 'new-game-detected',
@@ -364,9 +373,8 @@ export async function* process(
 		state.nonSyncedSince ??= time
 		if (time - state.nonSyncedSince >= SYNC_WATCHDOG_TIMEOUT_MS) {
 			state.nonSyncedSince = time // reset the clock so a failed resync retries after another full timeout, not every poll
-			for await (const event of forceResync(state, time)) {
-				applyEventToState(state, ctx, event)
-				yield event
+			for await (const newEvent of forceResync(state, time)) {
+				yield await emit(state, ctx, newEvent)
 			}
 		}
 	} else {
@@ -414,9 +422,8 @@ export async function* process(
 	for (let i = 0; i < toProcess.length; i++) {
 		const pendingEvent = toProcess[i]
 		try {
-			for await (const event of processPendingEvent(state, processedEventIds, time, pendingEvent)) {
-				applyEventToState(state, ctx, event)
-				yield event
+			for await (const newEvent of processPendingEvent(state, processedEventIds, time, pendingEvent)) {
+				yield await emit(state, ctx, newEvent)
 			}
 		} catch (err) {
 			state.log.error(err, 'Error while processing event %s (%s)', pendingEvent.type, pendingEvent.id)
@@ -609,7 +616,7 @@ async function* processPendingEvent(
 	processedEventIds: Set<number>,
 	time: number,
 	pendingEvent: PendingEvent,
-): AsyncGenerator<SE.Event> {
+): AsyncGenerator<SE.NewEvent> {
 	const log = state.log
 
 	if (pendingEvent.type !== 'UNKNOWN') {
@@ -639,7 +646,6 @@ async function* processPendingEvent(
 			matchId: state.currentMatch.historyEntryId,
 			time: pendingEvent.time,
 			reconnected: !state.isFirstConnection,
-			id: Gen.next(state.counters.eventId),
 		}
 
 		if (
@@ -649,7 +655,6 @@ async function* processPendingEvent(
 			yield {
 				type: 'MAP_SET',
 				layerId: state.nextLayerId,
-				id: Gen.next(state.counters.eventId),
 				matchId: state.currentMatch.historyEntryId,
 				time: Date.now(),
 			}
@@ -660,7 +665,6 @@ async function* processPendingEvent(
 		if (isNewMatch) {
 			yield {
 				type: 'NEW_GAME',
-				id: Gen.next(state.counters.eventId),
 				layerId: state.currentMatch.layerId,
 				matchId: state.currentMatch.historyEntryId,
 				source: state.isFirstConnection ? 'slm-started' : 'rcon-reconnected',
@@ -686,7 +690,6 @@ async function* processPendingEvent(
 			yield {
 				type: 'RCON_DISCONNECTED',
 				time: pendingEvent.time,
-				id: Gen.next(state.counters.eventId),
 				matchId: state.currentMatch.historyEntryId,
 			}
 		}
@@ -719,7 +722,6 @@ async function* processPendingEvent(
 			matchId: state.currentMatch.historyEntryId,
 			state: teams,
 			time: pendingEvent.time,
-			id: Gen.next(state.counters.eventId),
 			source: state.isFirstConnection ? 'slm-started' : 'rcon-reconnected',
 		}
 		state.syncState = { type: 'synced' }
@@ -744,7 +746,6 @@ async function* processPendingEvent(
 		// first post-boundary poll carries the definitive roster as a RESET. The reducer applies it to currTeams.
 		yield {
 			type: 'RESET',
-			id: Gen.next(state.counters.eventId),
 			time: pendingEvent.time,
 			matchId: state.currentMatch.historyEntryId,
 			state: teams,
@@ -804,7 +805,6 @@ async function* processPendingEvent(
 			// teams poll timestamped after this (see the rolling TEAMS_UPDATE branch), as a RESET.
 			yield {
 				type: 'NEW_GAME',
-				id: Gen.next(state.counters.eventId),
 				layerId: state.currentMatch.layerId,
 				matchId: state.currentMatch.historyEntryId,
 				source: 'server-roll',
@@ -820,7 +820,6 @@ async function* processPendingEvent(
 	if (!state.currTeams) throw new Error('currTeams is null when synced')
 
 	const base = {
-		id: Gen.next(state.counters.eventId),
 		matchId: state.currentMatch.historyEntryId,
 		time: pendingEvent.time,
 	}
@@ -951,7 +950,7 @@ async function* processPendingEvent(
 				}
 			}
 
-			const event: SE.RoundEnded = {
+			const event: Types.DistributiveOmit<SE.RoundEnded, 'id'> = {
 				type: 'ROUND_ENDED',
 				outcome,
 				action: action,
@@ -1080,7 +1079,6 @@ async function* processPendingEvent(
 					if (!SM.Squads.idsEqual(player, squad)) continue
 					yield {
 						type: 'PLAYER_LEFT_SQUAD',
-						id: Gen.next(state.counters.eventId),
 						player: SM.PlayerIds.getPlayerId(player.ids),
 						uniqueId: existingSquad.uniqueId,
 						matchId: state.currentMatch.historyEntryId,
@@ -1090,7 +1088,6 @@ async function* processPendingEvent(
 
 				yield {
 					type: 'SQUAD_DISBANDED',
-					id: Gen.next(state.counters.eventId),
 					uniqueId: existingSquad.uniqueId,
 					matchId: state.currentMatch.historyEntryId,
 					time: pendingEvent.time,
@@ -1114,7 +1111,6 @@ async function* processPendingEvent(
 				if (player.teamId !== teamId) {
 					yield {
 						type: 'PLAYER_CHANGED_TEAM',
-						id: Gen.next(state.counters.eventId),
 						player: SM.PlayerIds.getPlayerId(player.ids),
 						newTeamId: teamId,
 						time: pendingEvent.time,
@@ -1198,7 +1194,6 @@ async function* processPendingEvent(
 				if (!SM.Squads.idsEqual(player, squad)) continue
 				yield {
 					type: 'PLAYER_LEFT_SQUAD',
-					id: Gen.next(state.counters.eventId),
 					player: SM.PlayerIds.getPlayerId(player.ids),
 					uniqueId: squad.uniqueId,
 					matchId: state.currentMatch.historyEntryId,
@@ -1354,7 +1349,7 @@ async function* processPendingEvent(
 	processedEventIds.add(pendingEvent.id)
 }
 
-function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator<SE.Event> {
+function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator<SE.NewEvent> {
 	const nextTeams = event.teams
 	if (!state.currTeams || state.currentMatch === 'PENDING') return
 	const nextSquads: SM.UniqueSquad[] = []
@@ -1388,7 +1383,6 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 		emittedEvent = true
 		yield {
 			type: prevUnassigned.has(playerId) ? 'PLAYER_RECONCILED' : 'PLAYER_CONNECTED',
-			id: Gen.next(state.counters.eventId),
 			player: {
 				ids: nextPlayer.ids,
 				teamId: nextPlayer.teamId,
@@ -1420,7 +1414,6 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 		emittedEvent = true
 		yield {
 			type: 'PLAYER_DISCONNECTED',
-			id: Gen.next(state.counters.eventId),
 			player: playerId,
 			...base,
 		}
@@ -1460,7 +1453,6 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 		emittedEvent = true
 		yield {
 			type: 'SQUAD_CREATED',
-			id: Gen.next(state.counters.eventId),
 			squad: uniqueSquad,
 			synthesized: true,
 			...base,
@@ -1484,7 +1476,6 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 			// currPlayer.squadId = null
 			emittedEvent = true
 			yield {
-				id: Gen.next(state.counters.eventId),
 				type: 'PLAYER_LEFT_SQUAD',
 				player: playerId,
 				uniqueId: currSquad.uniqueId,
@@ -1500,7 +1491,6 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 			disbandedSquads.add(currSquad.uniqueId)
 			emittedEvent = true
 			yield {
-				id: Gen.next(state.counters.eventId),
 				type: 'SQUAD_DISBANDED',
 				uniqueId: currSquad.uniqueId,
 				...base,
@@ -1513,7 +1503,6 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 		if (!Obj.deepEqual(details, prevDetails)) {
 			emittedEvent = true
 			yield {
-				id: Gen.next(state.counters.eventId),
 				type: 'SQUAD_DETAILS_CHANGED',
 				uniqueId: currSquad.uniqueId,
 				details,
@@ -1529,7 +1518,6 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 		if (currPlayer && nextPlayer.teamId !== currPlayer.teamId) {
 			emittedEvent = true
 			yield {
-				id: Gen.next(state.counters.eventId),
 				type: 'PLAYER_CHANGED_TEAM',
 				player: playerId,
 				newTeamId: nextPlayer.teamId,
@@ -1553,7 +1541,6 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 			if (hasChangedSquad) {
 				emittedEvent = true
 				yield {
-					id: Gen.next(state.counters.eventId),
 					type: 'PLAYER_JOINED_SQUAD',
 					uniqueId: squad.uniqueId,
 					player: playerId,
@@ -1568,7 +1555,6 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 				}
 				emittedEvent = true
 				yield {
-					id: Gen.next(state.counters.eventId),
 					type: 'PLAYER_PROMOTED_TO_LEADER',
 					uniqueId: squad.uniqueId,
 					player: playerId,
@@ -1584,19 +1570,17 @@ function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Generator
 			if (!Obj.deepEqual(details, prevDetails) || newUsername) {
 				emittedEvent = true
 				yield {
-					id: Gen.next(state.counters.eventId),
 					type: 'PLAYER_DETAILS_CHANGED',
 					player: SM.PlayerIds.getPlayerId(player.ids),
 					details,
 					newUsername,
 					...base,
-				} satisfies SE.PlayerDetailsChanged
+				} satisfies Types.DistributiveOmit<SE.PlayerDetailsChanged, 'id'>
 			}
 		}
 	}
 	if (emittedEvent) {
 		yield {
-			id: Gen.next(state.counters.eventId),
 			type: 'TEAMS_POLLED_UPDATE',
 			matchId: state.currentMatch.historyEntryId,
 			time: event.time,
@@ -1610,11 +1594,10 @@ function* emitLeaveSquadEvents(
 	player: SM.Player,
 	squadUniqueId: number,
 	source?: SM.LogEvents.ActionSource,
-): Generator<SE.Event> {
+): Generator<SE.NewEvent> {
 	if (player.squadId) {
 		yield {
 			type: 'PLAYER_LEFT_SQUAD',
-			id: Gen.next(state.counters.eventId),
 			player: SM.PlayerIds.getPlayerId(player.ids),
 			uniqueId: squadUniqueId,
 			time,
@@ -1630,7 +1613,6 @@ function* emitLeaveSquadEvents(
 		if (otherPlayers.length === 0) {
 			yield {
 				type: 'SQUAD_DISBANDED',
-				id: Gen.next(state.counters.eventId),
 				uniqueId: squadUniqueId,
 				time,
 				matchId: state.currentMatch.historyEntryId,
@@ -1641,7 +1623,6 @@ function* emitLeaveSquadEvents(
 			if (player.isLeader) {
 				yield {
 					type: 'PLAYER_PROMOTED_TO_LEADER',
-					id: Gen.next(state.counters.eventId),
 					player: SM.PlayerIds.getPlayerId(otherPlayer.ids),
 					uniqueId: squadUniqueId,
 					time,

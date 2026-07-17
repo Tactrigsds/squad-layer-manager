@@ -446,7 +446,7 @@ export const matchHistoryRouter = {
 
 export const addNewCurrentMatch = C.spanOp(
 	'addNewCurrentMatch',
-	{ module, levels: { event: 'info' }, mutexes: (ctx) => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx] },
+	{ module, levels: { event: 'info' }, mutexes: (ctx) => [ctx.matchHistory.mtx] },
 	async (
 		ctx: C.Db & C.MatchHistory & C.SquadServer & CS.AbortSignal,
 		entry: Omit<SchemaModels.NewMatchHistory, 'ordinal' | 'serverId'>,
@@ -458,11 +458,8 @@ export const addNewCurrentMatch = C.spanOp(
 				superjsonify(Schema.matchHistory, { ...entry, ordinal, serverId: ctx.serverId }),
 			)
 
-			// write event buffer since we're about to flush it
-			await SquadServer.saveEvents(ctx)
-			ctx.server.lastSavedEventId = null
-			// flush the events buffer
-
+			// events are persisted as they're emitted, so the in-memory cache is just dropped; it only ever
+			// holds the current match
 			ctx.server.emittedEvents = []
 
 			await loadState(ctx, { startAtOrdinal: ordinal })
