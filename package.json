@@ -229,6 +229,7 @@
 		"vite-plugin-oxlint": "^2.1.2",
 		"vite-tsconfig-paths": "^6.1.1",
 		"vitest": "^4.1.10",
+		"ws": "^8.21.1",
 		"zod": "^4.1.13",
 		"zustand": "^5.0.6",
 		"zustand-rx": "^2.1.0"

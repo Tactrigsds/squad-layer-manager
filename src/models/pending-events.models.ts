@@ -22,13 +22,18 @@ export type Attribution = {
 	itemId: string
 	layerId: L.LayerId
 	time: number
-	// when set, the resulting MAP_SET links to this QUEUE_UPDATED app event instead of the bespoke layer-queue source
+	// when set, the resulting MAP_SET links to this app event instead of the bespoke layer-queue source. it's whichever
+	// app event renders in the feed (a QUEUE_UPDATED, or a MAP_SET for an override), so the server event collapses into it
 	appEventId?: string
 }
 
 // how long an armed expectation lives before it's GC'd if its event never lands (RCON error, player left).
 // matched expectations are consumed immediately, so this is only a safety net -- NOT the matching window.
 export const DEFAULT_EXPECTATION_TTL_MS = 60_000
+
+// how long a pending MAP_SET attribution lives before it's GC'd if its MAP_SET never lands. Same safety-net role
+// as the expectation TTL: matching ones are consumed on match, so this only drops sets the server never reported.
+export const ATTRIBUTION_TTL_MS = 60_000
 
 // number of consecutive teams polls a player in currTeams must be absent from RCON ListPlayers before we cull
 // them. 2 == one grace poll, so a single dropped/partial poll never evicts a still-connected player. At the ~5s
@@ -356,6 +361,9 @@ export async function* process(
 	const ctx = { log, ...CS.init() }
 	// GC expectations whose event never landed (matched ones are consumed on match, so this only drops stale arms)
 	state.expectations = state.expectations.filter(e => e.expiresAt >= time)
+	// same for attributions: a set-next whose MAP_SET never came back would otherwise sit here forever, and a later
+	// set of that same layer would wrongly inherit it
+	state.attributions = state.attributions.filter(a => time - a.time <= ATTRIBUTION_TTL_MS)
 
 	// Roll/sync watchdog. While non-synced every event is dropped (see the synced gate), so a roll whose real-layer
 	// NEW_GAME log never arrived would wedge us in 'rolling' indefinitely. If we've been mid-sync past the timeout,
@@ -838,14 +846,17 @@ async function* processPendingEvent(
 			}
 			let source: SE.MapSet['source'] = pendingEvent.source
 			state.nextLayerId = layer.id
-			const attributionIndex = state.attributions.findIndex(a => a.type === 'MAP_SET_ATTRIBUTION')
+			// match on the layer, not on position: a set-next whose MAP_SET never landed (or landed before its own
+			// attribution did) leaves an attribution behind, and taking that one here would consume it AND leave this
+			// event unattributed -- which is what made a stale attribution poison the next map set
+			const attributionIndex = state.attributions.findIndex(a =>
+				a.type === 'MAP_SET_ATTRIBUTION' && L.areLayersCompatible(a.layerId, layer.id)
+			)
 			if (attributionIndex !== -1) {
 				const attribution = state.attributions[attributionIndex]
-				if (L.areLayersCompatible(attribution.layerId, layer.id)) {
-					source = attribution.appEventId
-						? { type: 'event', id: attribution.appEventId }
-						: { type: 'layer-queue', itemId: attribution.itemId }
-				}
+				source = attribution.appEventId
+					? { type: 'event', id: attribution.appEventId }
+					: { type: 'layer-queue', itemId: attribution.itemId }
 				state.attributions.splice(attributionIndex, 1)
 			}
 			yield {

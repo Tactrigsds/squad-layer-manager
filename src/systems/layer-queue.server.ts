@@ -463,7 +463,10 @@ export const syncNextLayerToServer = C.spanOp(
 					})
 					if (mapSetCause.reason === 'override') await SquadServer.emitAppEvent(ctx, mapSet)
 					else await AppEventsSys.persistAppEvent(ctx, mapSet)
-					mapSetAppEventId = mapSet.id
+					// attribute to whichever app event reaches the feed, since that's what the server event collapses into:
+					// the QUEUE_UPDATED for a queue-driven set (its MAP_SET is audit-only), the MAP_SET itself for an override.
+					// the audit-only MAP_SET stays reachable from the QUEUE_UPDATED via its causeId.
+					mapSetAppEventId = mapSetCause.reason === 'queue-updated' ? mapSetCause.causeId : mapSet.id
 				}
 				// awaiting this will cause a deadlock on map roll, so it stays detached; observe its rejection
 				SquadServer.pushAttribution(ctx, {
