@@ -75,6 +75,8 @@ type HasQuery<Inputs extends readonly unknown[]> = Inputs extends readonly [infe
 	: false
 type Returns<Inputs extends MaybeInput[], R> = HasQuery<Inputs> extends true ? Promise<R> : R
 
+const NO_QUERIES: { data?: unknown }[] = []
+
 function isQuerySource(s: unknown): s is QuerySource<any> {
 	return typeof s === 'object' && s !== null && 'queryKey' in s && !('getState' in s) && !('getValue' in s)
 }
@@ -190,7 +192,22 @@ export function useStore(...args: (MaybeInput | ((...states: any[]) => any))[]):
 	const regularSources = allInputs.filter((s): s is SyncSource<any> | null => !isQuerySource(s))
 	const querySources = allInputs.filter(isQuerySource)
 
-	const queryResults = useQueries({ queries: querySources })
+	// an empty useQueries is not free -- it allocates an observer, subscribes, and re-runs its setQueries
+	// effect every render (react-query spreads a fresh options object into that effect's deps), which roughly
+	// quadruples the cost of a re-render. no call site passes a query source today, so skip the hook entirely
+	// when there are none. this is a conditional hook call, which is legal only because the branch is fixed for
+	// the life of a component instance -- the guard below turns a violation into a clear error instead of
+	// React's "rendered fewer hooks than expected"
+	const queryCount = React.useRef(querySources.length)
+	if (queryCount.current !== querySources.length) {
+		throw new Error(
+			`useStore was called with ${querySources.length} query sources after ${queryCount.current} on a previous render. `
+				+ 'The number of query sources passed to a given useStore call must not change across renders; '
+				+ "pass a stable set and use the query's own `enabled` option to make one inert.",
+		)
+	}
+	// eslint-disable-next-line react-hooks/rules-of-hooks
+	const queryResults = querySources.length > 0 ? useQueries({ queries: querySources }) : NO_QUERIES
 
 	const cache = React.useRef<{ selector: unknown; states: any[]; value: any } | null>(null)
 	// useSyncExternalStore calls this during render and again on every store event, and spins if it returns a

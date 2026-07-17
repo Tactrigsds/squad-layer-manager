@@ -4,7 +4,7 @@ import type { RenderHookOptions } from '@testing-library/react'
 import { act, cleanup, render as rtlRender, renderHook as rtlRenderHook, screen } from '@testing-library/react'
 import * as React from 'react'
 import * as Rx from 'rxjs'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Zus from 'zustand'
 import * as ZusUtils from './zustand'
 
@@ -164,6 +164,26 @@ describe('useStore', () => {
 			await new Promise(r => setTimeout(r, 10))
 		})
 		expect(result.current).toBe(7)
+	})
+
+	// useQueries is skipped entirely when no query sources are passed, which is only sound while the count is
+	// fixed per component instance. a change must be a loud error, not React's "rendered fewer hooks" confusion
+	it('throws a clear error if the query source count changes across renders', () => {
+		const store = createStore()
+		const query = { queryKey: ['flip'], queryFn: async () => ({ n: 1 }) } as any
+		const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+		try {
+			const { rerender } = renderHook(
+				({ withQuery }: { withQuery: boolean }) =>
+					withQuery
+						? ZusUtils.useStore(store, query, (s: State) => s.count)
+						: ZusUtils.useStore(store, (s: State) => s.count),
+				{ initialProps: { withQuery: false } },
+			)
+			expect(() => rerender({ withQuery: true })).toThrow(/number of query sources/)
+		} finally {
+			spy.mockRestore()
+		}
 	})
 
 	it('unsubscribes on unmount', () => {
