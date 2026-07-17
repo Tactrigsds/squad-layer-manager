@@ -3343,9 +3343,11 @@ function toInputShape(schema: z.ZodType, decoded: unknown): unknown {
 // rather than passing a new `value`, because the editor re-syncs only when `value` differs from what it last synced,
 // and a reset typically restores the very value it was seeded with (leaving the user's edits sitting in the buffer).
 function LocalJsonField(
-	{ schema, label, value$, reset$, onChange }: {
+	{ schema, label, domId, value$, reset$, onChange }: {
 		schema: z.ZodType
 		label: string
+		// the field's own anchor, which the editor renders inside: the scroll target once the editor is up
+		domId: string
 		value$: ValueState
 		reset$: Rx.Subject<void>
 		onChange: (v: any) => void
@@ -3357,9 +3359,25 @@ function LocalJsonField(
 		if (v === null) return
 		onChange(toInputShape(schema, v))
 	}, [schema, onChange])
+	// only the first mount scrolls: re-seeding after a reset remounts the editor, and yanking the viewport for that
+	// would be a surprise. This component only exists while the field is in JSON mode, so the ref resets on reopen.
+	const broughtIntoView = React.useRef(false)
+	const onReady = React.useCallback(() => {
+		if (broughtIntoView.current) return
+		broughtIntoView.current = true
+		SettingsNav.scrollToAnchorSettled(domId)
+	}, [domId])
 	return (
 		<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
-			<SchemaJsonEditor key={seed.nonce} schema={schema} value={seed.value} onValidChange={onValidChange} minHeightPx={320} label={label} />
+			<SchemaJsonEditor
+				key={seed.nonce}
+				schema={schema}
+				value={seed.value}
+				onValidChange={onValidChange}
+				onReady={onReady}
+				minHeightPx={320}
+				label={label}
+			/>
 		</React.Suspense>
 	)
 }
@@ -3416,6 +3434,7 @@ function SectionField(
 						<LocalJsonField
 							schema={jsonSchema}
 							label={settingLabel(path, name)}
+							domId={domId}
 							value$={value$}
 							reset$={reset$}
 							onChange={onChange}
@@ -3499,6 +3518,7 @@ function LeafField(
 						<LocalJsonField
 							schema={jsonSchema}
 							label={settingLabel(path, name)}
+							domId={domId}
 							value$={value$}
 							reset$={reset$}
 							onChange={onChange}

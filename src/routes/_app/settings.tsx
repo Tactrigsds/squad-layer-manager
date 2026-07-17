@@ -736,6 +736,7 @@ function ServerSettingsSection(
 									schema={schema}
 									value={draft}
 									onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
+									onReady={() => SettingsNav.scrollToAnchorSettled(`section:server:${server.id}`)}
 									minHeightPx={350}
 									label="Server Settings"
 									toolbar={
@@ -841,6 +842,7 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 									schema={SETTINGS.ServerSettingsSchema}
 									value={draft}
 									onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
+									onReady={() => SettingsNav.scrollToAnchorSettled(`section:server:${NEW_SERVER_SELECTION}`)}
 									minHeightPx={350}
 									label="Server Settings"
 								/>
@@ -947,6 +949,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 									schema={SETTINGS.GlobalSettingsSchema}
 									value={draft}
 									onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
+									onReady={() => SettingsNav.scrollToAnchorSettled('section:global')}
 									minHeightPx={450}
 									label="Global Settings"
 									toolbar={
