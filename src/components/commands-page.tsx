@@ -2,6 +2,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
+import { useForwardWheelToScroller } from '@/lib/browser'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
@@ -328,33 +329,15 @@ export default function CommandsPage() {
 	const [cursorId, setCursorId] = React.useState<string | null>(null)
 	const scrollRef = React.useRef<HTMLDivElement>(null)
 	const rootRef = React.useRef<HTMLDivElement>(null)
-	const navRef = React.useRef<HTMLElement>(null)
 	// set while scrollToEntry runs, so the body's own scrolling isn't mistaken for the user taking over
 	const scrollingToEntry = React.useRef(false)
 	const stickyZIndex = useZIndex(ZI_OFFSETS.STICKYGROUP_FLOOR)
 	// latched: read once on mount, consumed by the effect below, so a later hash rewrite can't re-trigger it
 	const pendingAnchor = React.useRef<string | null>(currentAnchor())
 
-	// The body scrolls inside its own container, so a wheel anywhere else -- the margins either side of the centred
-	// column, the page header, the search box -- lands on nothing and the list sits still. Forward those to the body.
-	// Whatever scrolls itself keeps its own wheel: the body, and the table of contents while it has somewhere to go.
-	React.useEffect(() => {
-		const root = rootRef.current
-		const scroller = scrollRef.current
-		if (!root || !scroller) return
-		const onWheel = (e: WheelEvent) => {
-			const target = e.target as Node
-			if (scroller.contains(target)) return
-			const nav = navRef.current
-			if (nav?.contains(target) && nav.scrollHeight > nav.clientHeight) return
-			// forwarding the delta means taking the event over, so this listener can't be passive
-			e.preventDefault()
-			scroller.scrollTop += e.deltaY
-		}
-		root.addEventListener('wheel', onWheel, { passive: false })
-		return () => root.removeEventListener('wheel', onWheel)
-		// the refs only exist once settings has rendered the page, so this can't bind on the first render
-	}, [settings])
+	// the margins either side of the centred column, the page header and the search box all sit outside the body's
+	// scroll container, so without this their wheel events land on nothing. `settings` gates the refs being attached.
+	useForwardWheelToScroller(rootRef, scrollRef, settings)
 
 	// Puts an entry in the middle of the body -- so it arrives with its neighbours for context, rather than tucked under
 	// the sticky section header. Instant, never smooth: a smooth scroll is still travelling when the next keypress or
@@ -468,7 +451,7 @@ export default function CommandsPage() {
 								onKeyDown={onSearchKeyDown}
 							/>
 						</div>
-						<nav ref={navRef} className="flex-1 min-h-0 overflow-y-auto">
+						<nav className="flex-1 min-h-0 overflow-y-auto">
 							{visible.length === 0
 								? <p className="text-sm text-muted-foreground px-1">No matches.</p>
 								: (
