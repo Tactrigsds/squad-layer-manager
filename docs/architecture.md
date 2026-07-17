@@ -756,10 +756,8 @@ prod. Connection secrets are AES-256-GCM sealed at the db boundary only (`enc:v<
 always plaintext in memory, keyed by `SETTINGS_ENCRYPTION_KEY`, with transparent fallback to a legacy key
 derivation and an opportunistic reseal on load.
 
-**Layer data** ships as a versioned _pair_ of artifacts (a columnar `.bin.gz` and a components `.json`) that
-are only ever valid together, since a table read against the wrong components silently resolves to the wrong
-layers. Half a pair is a startup error. Both are checked into `assets/layers` and ship in the docker image;
-any complete pair in the mounted `data/` always wins.
+**Layer data** ships as a versioned _pair_ of artifacts (a columnar `.bin.gz` and a components `.json`).
+Both are checked into `assets/layers` and ship in the docker image; but any complete pair in the mounted `data/` always wins.
 
 ## Observability
 
