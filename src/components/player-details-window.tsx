@@ -1,4 +1,4 @@
-import { PlayerFlagsDropdown } from '@/components/bm-flag-workflows'
+import { PlayerFlagsButton } from '@/components/bm-flag-workflows'
 import EventFilterSelect from '@/components/event-filter-select'
 import { PlayerMenuItems } from '@/components/player-context-menu-options'
 import { MatchTeamDisplay } from '@/components/teams-display'
@@ -143,7 +143,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 						)
 				)}
 				{flags && flags.length > 0 && <PlayerFlagsList flags={flags} />}
-				<PlayerFlagsDropdown playerId={playerId} />
+				<PlayerFlagsButton playerId={playerId} />
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
 						<button

@@ -647,16 +647,19 @@ export const router = {
 		return getOrgFlags(ctx)
 	}),
 
-	addFlags: orpcBase.meta({ type: 'mutation' }).input(z.object({
+	// one dialog's worth of edits lands as one action: one permission check, one refresh, and one audit event
+	// carrying the whole change, rather than an add and a remove that only happened to be submitted together.
+	updateFlags: orpcBase.meta({ type: 'mutation' }).input(z.object({
 		playerId: z.string(),
-		flags: z.array(BM.FlagChangeSchema).min(1),
+		add: z.array(BM.FlagChangeSchema).prefault([]),
+		remove: z.array(BM.FlagChangeSchema).prefault([]),
 	})).handler(async ({ input, context: ctx }) => {
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('battlemetrics:write-flags'))
 		if (denyRes) return denyRes
 
 		const orgFlags = await getOrgFlags(ctx)
 		// the client marks those fields required, but it's the client of a permission-gated mutation: re-check here
-		const missing = BM.flagsMissingRequiredNote(input.flags, Settings.GLOBAL_SETTINGS.playerFlagsRequiringNote)
+		const missing = BM.flagsMissingRequiredNote(input.add, Settings.GLOBAL_SETTINGS.playerFlagsRequiringNote)
 		if (missing.length > 0) {
 			return { code: 'err:reason-required' as const, flags: BM.resolveFlags(missing, orgFlags).map((f) => f.name) }
 		}
@@ -665,45 +668,27 @@ export const router = {
 		const current = await fetchSinglePlayerBmData(ctx, playerIds)
 		if (!current) return { code: 'err:not-found' as const }
 
-		const toAdd = input.flags.filter((f) => !current.flagIds.includes(f.id))
-		if (toAdd.length === 0) return { code: 'err:already-flagged' as const }
+		// the dialog was built against flags that may have moved since; drop anything already in its target state
+		// rather than failing the whole submit over it
+		const toAdd = input.add.filter((f) => !current.flagIds.includes(f.id))
+		const toRemove = input.remove.filter((f) => current.flagIds.includes(f.id))
+		if (toAdd.length === 0 && toRemove.length === 0) return { code: 'err:no-changes' as const }
 
-		const res = await addPlayerFlags(ctx, current.bmPlayerId, toAdd.map((f) => f.id))
-		if (res.code === 'player-already-has-flag') return { code: 'err:already-flagged' as const }
-
-		const added = resolveFlagChanges(toAdd, orgFlags)
-		const noteAdded = await postFlagChangeNotes(ctx, current.bmPlayerId, 'added', added, actorLabel(ctx))
-
-		const updated = await refreshPlayerFlags(ctx, input.playerId, playerIds)
-		await persistFlagsUpdatedEvent(ctx, { playerId: input.playerId, added, removed: [] })
-
-		return { code: 'ok' as const, data: updated, noteAdded }
-	}),
-
-	removeFlags: orpcBase.meta({ type: 'mutation' }).input(z.object({
-		playerId: z.string(),
-		flags: z.array(BM.FlagChangeSchema).min(1),
-	})).handler(async ({ input, context: ctx }) => {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('battlemetrics:write-flags'))
-		if (denyRes) return denyRes
-
-		const playerIds = SM.PlayerIds.queryFromPlayerId(input.playerId)
-		const current = await fetchSinglePlayerBmData(ctx, playerIds)
-		if (!current) return { code: 'err:not-found' as const }
-
-		const toRemove = input.flags.filter((f) => current.flagIds.includes(f.id))
-		if (toRemove.length === 0) return { code: 'err:not-flagged' as const }
-
+		const addRes = await addPlayerFlags(ctx, current.bmPlayerId, toAdd.map((f) => f.id))
+		if (addRes.code === 'player-already-has-flag') return { code: 'err:already-flagged' as const }
 		await removePlayerFlags(ctx, current.bmPlayerId, toRemove.map((f) => f.id))
 
-		const orgFlags = await getOrgFlags(ctx)
+		const added = resolveFlagChanges(toAdd, orgFlags)
 		const removed = resolveFlagChanges(toRemove, orgFlags)
-		const noteAdded = await postFlagChangeNotes(ctx, current.bmPlayerId, 'removed', removed, actorLabel(ctx))
+		const noteResults = await Promise.all([
+			postFlagChangeNotes(ctx, current.bmPlayerId, 'added', added, actorLabel(ctx)),
+			postFlagChangeNotes(ctx, current.bmPlayerId, 'removed', removed, actorLabel(ctx)),
+		])
 
 		const updated = await refreshPlayerFlags(ctx, input.playerId, playerIds)
-		await persistFlagsUpdatedEvent(ctx, { playerId: input.playerId, added: [], removed })
+		await persistFlagsUpdatedEvent(ctx, { playerId: input.playerId, added, removed })
 
-		return { code: 'ok' as const, data: updated, noteAdded }
+		return { code: 'ok' as const, data: updated, noteAdded: noteResults.every(Boolean), added, removed }
 	}),
 }
 
