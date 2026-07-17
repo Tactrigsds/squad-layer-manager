@@ -646,6 +646,13 @@ function interpolateEvent(
 				return noop(`Squad ${event.squad.uniqueId} already exists`)
 			}
 			const squad: SM.UniqueSquad = event.squad
+			// Track the squad even when its creator isn't on the roster yet. SQUAD_CREATED (parsed from the log
+			// stream) races the creator's PLAYER_CONNECTED (reconciled from the teams poll), so it can arrive first;
+			// dropping the squad here would strand every later PLAYER_JOINED_SQUAD referencing it (squad-not-found),
+			// leaving its members stuck as Unassigned. applyEventTeamMutations tracks it regardless and only skips
+			// establishing membership when the creator is unknown.
+			applyEventTeamMutations(chatLog, state, event)
+			InterpolableState.recordRecentSquad(state, squad)
 			const creatorIndex = SM.PlayerIds.indexOf(state.players, p => p.ids, event.squad.creator)
 			if (creatorIndex === -1) {
 				return noop(
@@ -661,8 +668,6 @@ function interpolateEvent(
 					}`,
 				)
 			}
-			applyEventTeamMutations(chatLog, state, event)
-			InterpolableState.recordRecentSquad(state, squad)
 			return { ...event, creator: state.players[creatorIndex] }
 		}
 
