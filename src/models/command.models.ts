@@ -18,31 +18,74 @@ export type CommandConfig = {
 	strings: string[]
 	scopes: CommandScope[]
 	enabled: boolean
+	// whether the command appears on the quick reference: the commands page's top section, and the only commands
+	// bare `!help` lists (see Messages.WARNS.commands.help)
+	quickReference: boolean
 }
 
 export type CommandConfigs = { [k in CommandId]: CommandConfig }
 
+// -------- sections --------
+
+// The section a command belongs to. Declared per command rather than configured: sections are the axis both the
+// commands page's table of contents and `!help <section>` navigate by, so they have to stay exhaustive as commands
+// are added, and a section an admin renamed out from under a stored alias would be a needless failure mode.
+export const COMMAND_SECTIONS = {
+	general: { label: 'General' },
+	votes: { label: 'Votes & SLM Updates' },
+	teamswaps: { label: 'Teamswaps' },
+	flags: { label: 'Player Flags' },
+	moderation: { label: 'Moderation' },
+	messaging: { label: 'Messaging' },
+} as const satisfies Record<string, { label: string }>
+
+export type CommandSection = keyof typeof COMMAND_SECTIONS
+export const COMMAND_SECTION_IDS = Object.keys(COMMAND_SECTIONS) as CommandSection[]
+
+// the reserved `!help` argument listing every command regardless of section. Not a section itself, so it can't
+// collide with one
+export const ALL_SECTIONS_TOKEN = 'all'
+
+// resolves a user-typed section token (`!help moderation`), matching the id or the label case-insensitively
+export function resolveSectionToken(token: string): CommandSection | undefined {
+	const t = token.trim().toLowerCase()
+	return COMMAND_SECTION_IDS.find((id) => id.toLowerCase() === t || COMMAND_SECTIONS[id].label.toLowerCase() === t)
+}
+
+export function commandsInSection(section: CommandSection): CommandId[] {
+	return COMMAND_IDS.filter((id) => COMMAND_DECLARATIONS[id].section === section)
+}
+
 // Args are declared with a kind so token assignment, resolution, and usage strings are all derived centrally
 // (see assignArgTokens + resolveArgs in commands.server). Handlers receive typed values via CommandArgs<Id>.
+//
+// `describe` is an optional per-arg note for the detailed help on the commands page. Each kind already carries its own
+// generic explanation (see ARG_KIND_HELP in command-help.models), so only set this where the kind's blurb doesn't say
+// what this particular arg means.
+//
+// `sample` overrides the token the generated examples fill this arg with. Kinds whose values are drawn from live
+// settings (reason, broadcast) or are self-evident (player, duration) sample themselves; set this for `string` and
+// `int` args, whose name is all the generator would otherwise have to go on.
+type ArgCommon = { name: string; describe?: string; sample?: string }
 export type ArgDef =
 	// single token, passed through as-is
-	| { kind: 'string'; name: string; optional?: true }
+	| ArgCommon & { kind: 'string'; optional?: true }
 	// single token, coerced to an integer
-	| { kind: 'int'; name: string; optional?: true }
+	| ArgCommon & { kind: 'int'; optional?: true }
 	// single token, a HumanTime duration like 2h or 30m, resolved to milliseconds
-	| { kind: 'duration'; name: string; optional?: true }
+	| ArgCommon & { kind: 'duration'; optional?: true }
 	// single token, resolved to a unique player by id or username substring
-	| { kind: 'player'; name: string; optional?: true }
+	| ArgCommon & { kind: 'player'; optional?: true }
 	// 1-2 tokens: [team] <squad>; team = 1|2|A|B|faction, caller's team when omitted
-	| { kind: 'squad'; name: string }
+	| ArgCommon & { kind: 'squad' }
 	// rest: raw remainder joined with spaces
-	| { kind: 'text'; name: string; optional?: true }
+	| ArgCommon & { kind: 'text'; optional?: true }
 	// rest: a single token must match a configured reason (label/alias); 2+ tokens are a custom message
-	| { kind: 'reason'; name: string; action: AAR.AdminActionType; optional?: true }
+	| ArgCommon & { kind: 'reason'; action: AAR.AdminActionType; optional?: true }
 	// single token, configured reason only
-	| { kind: 'preset-reason'; name: string; action: AAR.AdminActionType; optional?: true }
+	| ArgCommon & { kind: 'preset-reason'; action: AAR.AdminActionType; optional?: true }
 	// rest: a single token must match a configured broadcast (label/alias); 2+ tokens are broadcast verbatim
-	| { kind: 'broadcast'; name: string }
+	| ArgCommon & { kind: 'broadcast' }
 
 const REST_KINDS: ArgDef['kind'][] = ['text', 'reason', 'broadcast']
 
@@ -60,159 +103,238 @@ function assertValidArgDefs(id: string, args: readonly ArgDef[]) {
 
 function declareCommand<Id extends string, const Args extends readonly ArgDef[]>(
 	id: Id,
-	opts: { args: Args; defaults: CommandConfig },
+	opts: { section: CommandSection; args: Args; defaults: CommandConfig },
 ) {
 	assertValidArgDefs(id, opts.args)
 	return {
 		[id]: {
 			id,
+			section: opts.section,
 			defaults: opts.defaults,
 			args: opts.args,
 		},
-	} as { [K in Id]: { id: Id; defaults: CommandConfig; args: Args } }
+	} as { [K in Id]: { id: Id; section: CommandSection; defaults: CommandConfig; args: Args } }
 }
 
+// `quickReference` seeds the default cheat sheet: the handful of commands an admin reaches for in a normal shift,
+// which is what a bare `!help` in the middle of a match should answer with. Admins re-pick it per installation.
 export const COMMAND_DECLARATIONS = {
 	...declareCommand('help', {
-		args: [],
+		section: 'general',
+		args: [{
+			kind: 'string',
+			name: 'section',
+			optional: true,
+			sample: 'moderation',
+			describe: `A section name to list, or "${ALL_SECTIONS_TOKEN}" for every command. Lists the quick reference when omitted.`,
+		}],
 		defaults: {
 			scopes: ['admin'],
 			strings: ['help', 'h'],
 			enabled: true,
+			quickReference: true,
 		},
 	}),
 	...declareCommand('requestFeedback', {
+		section: 'general',
 		// queue numbers accept dotted forms like "2.1", so this stays a string arg
-		args: [{ kind: 'string', name: 'number', optional: true }],
-		defaults: { scopes: ['admin'], strings: ['feedback', 'fb'], enabled: true },
+		args: [{
+			kind: 'string',
+			name: 'number',
+			optional: true,
+			sample: '2.1',
+			describe: 'A queue item number like 2 or 2.1. Defaults to the next item.',
+		}],
+		defaults: { scopes: ['admin'], strings: ['feedback', 'fb'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('startVote', {
+		section: 'votes',
 		args: [],
 		defaults: {
 			scopes: ['admin'],
 			strings: ['startvote', 'sv'],
 			enabled: true,
+			quickReference: true,
 		},
 	}),
-	...declareCommand('abortVote', { args: [], defaults: { scopes: ['admin'], strings: ['abortvote', 'av'], enabled: true } }),
-	...declareCommand('endVoteEarly', { args: [], defaults: { scopes: ['admin'], strings: ['endvote', 'ev'], enabled: true } }),
-	...declareCommand('showNext', { args: [], defaults: { scopes: ['admin', 'public'], strings: ['shownext', 'sn'], enabled: true } }),
-	...declareCommand('enableSlmUpdates', { args: [], defaults: { scopes: ['admin'], strings: ['enableslm'], enabled: true } }),
-	...declareCommand('disableSlmUpdates', { args: [], defaults: { scopes: ['admin'], strings: ['disableslm'], enabled: true } }),
-	...declareCommand('getSlmUpdatesEnabled', { args: [], defaults: { scopes: ['admin'], strings: ['slmstatus'], enabled: true } }),
+	...declareCommand('abortVote', {
+		section: 'votes',
+		args: [],
+		defaults: { scopes: ['admin'], strings: ['abortvote', 'av'], enabled: true, quickReference: true },
+	}),
+	...declareCommand('endVoteEarly', {
+		section: 'votes',
+		args: [],
+		defaults: { scopes: ['admin'], strings: ['endvote', 'ev'], enabled: true, quickReference: false },
+	}),
+	...declareCommand('showNext', {
+		section: 'general',
+		args: [],
+		defaults: { scopes: ['admin', 'public'], strings: ['shownext', 'sn'], enabled: true, quickReference: true },
+	}),
+	...declareCommand('enableSlmUpdates', {
+		section: 'votes',
+		args: [],
+		defaults: { scopes: ['admin'], strings: ['enableslm'], enabled: true, quickReference: false },
+	}),
+	...declareCommand('disableSlmUpdates', {
+		section: 'votes',
+		args: [],
+		defaults: { scopes: ['admin'], strings: ['disableslm'], enabled: true, quickReference: false },
+	}),
+	...declareCommand('getSlmUpdatesEnabled', {
+		section: 'votes',
+		args: [],
+		defaults: { scopes: ['admin'], strings: ['slmstatus'], enabled: true, quickReference: false },
+	}),
 	...declareCommand('swapNow', {
+		section: 'teamswaps',
 		args: [{ kind: 'player', name: 'player' }],
-		defaults: { scopes: ['admin'], strings: ['swapnow'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['swapnow'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('swapNext', {
+		section: 'teamswaps',
 		args: [{ kind: 'player', name: 'player' }],
-		defaults: { scopes: ['admin'], strings: ['swapnext'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['swapnext'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('swapSquadNow', {
+		section: 'teamswaps',
 		args: [{ kind: 'squad', name: 'squad' }],
-		defaults: { scopes: ['admin'], strings: ['swapsquadnow'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['swapsquadnow'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('swapSquadNext', {
+		section: 'teamswaps',
 		args: [{ kind: 'squad', name: 'squad' }],
-		defaults: { scopes: ['admin'], strings: ['swapsquadnext'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['swapsquadnext'], enabled: true, quickReference: false },
 	}),
-	...declareCommand('swaps', { args: [], defaults: { scopes: ['admin'], strings: ['swaps'], enabled: true } }),
-	...declareCommand('clearSwaps', { args: [], defaults: { scopes: ['admin'], strings: ['clearswaps'], enabled: true } }),
+	...declareCommand('swaps', {
+		section: 'teamswaps',
+		args: [],
+		defaults: { scopes: ['admin'], strings: ['swaps'], enabled: true, quickReference: true },
+	}),
+	...declareCommand('clearSwaps', {
+		section: 'teamswaps',
+		args: [],
+		defaults: { scopes: ['admin'], strings: ['clearswaps'], enabled: true, quickReference: false },
+	}),
 	...declareCommand('flag', {
+		section: 'flags',
 		args: [
 			{ kind: 'player', name: 'player' },
-			{ kind: 'string', name: 'flag' },
-			{ kind: 'text', name: 'reason', optional: true },
+			{ kind: 'string', name: 'flag', sample: 'cheater', describe: 'The name of a BattleMetrics flag in your organization.' },
+			{ kind: 'text', name: 'reason', optional: true, describe: "Posted as a note on the player's BM profile. Some flags require one." },
 		],
-		defaults: { scopes: ['admin'], strings: ['flag'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['flag'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('removeFlag', {
+		section: 'flags',
 		args: [
 			{ kind: 'player', name: 'player' },
-			{ kind: 'string', name: 'flag' },
-			{ kind: 'text', name: 'reason', optional: true },
+			{ kind: 'string', name: 'flag', sample: 'cheater', describe: 'The name of a BattleMetrics flag currently on the player.' },
+			{ kind: 'text', name: 'reason', optional: true, describe: "Posted as a note on the player's BM profile." },
 		],
-		defaults: { scopes: ['admin'], strings: ['removeFlag', 'rf'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['removeFlag', 'rf'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('listFlags', {
-		args: [{ kind: 'player', name: 'player', optional: true }],
-		defaults: { enabled: true, scopes: ['admin'], strings: ['listflags', 'lf'] },
+		section: 'flags',
+		args: [{ kind: 'player', name: 'player', optional: true, describe: 'Lists every flag in the organization when omitted.' }],
+		defaults: { enabled: true, scopes: ['admin'], strings: ['listflags', 'lf'], quickReference: false },
 	}),
 	...declareCommand('warn', {
+		section: 'moderation',
 		args: [{ kind: 'player', name: 'player' }, { kind: 'reason', name: 'reason', action: 'warn' }],
-		defaults: { scopes: ['admin'], strings: ['warn'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['warn'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('listWarnReasons', {
+		section: 'moderation',
 		args: [],
-		defaults: { scopes: ['admin'], strings: ['warnreasons', 'warns'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['warnreasons', 'warns'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('warnSquad', {
+		section: 'moderation',
 		args: [{ kind: 'squad', name: 'squad' }, { kind: 'reason', name: 'reason', action: 'warn' }],
-		defaults: { scopes: ['admin'], strings: ['warnsquad', 'ws'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['warnsquad', 'ws'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('kill', {
+		section: 'moderation',
 		args: [{ kind: 'player', name: 'player' }, { kind: 'reason', name: 'reason', action: 'kill', optional: true }],
-		defaults: { scopes: ['admin'], strings: ['kill'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['kill'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('killSquad', {
+		section: 'moderation',
 		args: [{ kind: 'squad', name: 'squad' }, { kind: 'reason', name: 'reason', action: 'kill', optional: true }],
-		defaults: { scopes: ['admin'], strings: ['killsquad'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['killsquad'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('removeFromSquad', {
+		section: 'moderation',
 		args: [{ kind: 'player', name: 'player' }, { kind: 'reason', name: 'reason', action: 'remove-from-squad', optional: true }],
-		defaults: { scopes: ['admin'], strings: ['rfs', 'removefromsquad'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['rfs', 'removefromsquad'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('disbandSquad', {
+		section: 'moderation',
 		args: [{ kind: 'squad', name: 'squad' }, { kind: 'reason', name: 'reason', action: 'disband-squad', optional: true }],
-		defaults: { scopes: ['admin'], strings: ['disband'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['disband'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('demoteCommander', {
+		section: 'moderation',
 		args: [{ kind: 'player', name: 'player' }, { kind: 'reason', name: 'reason', action: 'demote-commander', optional: true }],
-		defaults: { scopes: ['admin'], strings: ['demote'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['demote'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('broadcast', {
+		section: 'messaging',
 		args: [{ kind: 'broadcast', name: 'message' }],
-		defaults: { scopes: ['admin'], strings: ['broadcast', 'b'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['broadcast', 'b'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('kick', {
+		section: 'moderation',
 		args: [
 			{ kind: 'player', name: 'player' },
 			{ kind: 'reason', name: 'reason', action: 'kick', optional: true },
 		],
-		defaults: { scopes: ['admin'], strings: ['kick'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['kick'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('kickSquad', {
+		section: 'moderation',
 		args: [
 			{ kind: 'squad', name: 'squad' },
 			{ kind: 'reason', name: 'reason', action: 'kick', optional: true },
 		],
-		defaults: { scopes: ['admin'], strings: ['kicksquad'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['kicksquad'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('timeout', {
+		section: 'moderation',
 		args: [
 			{ kind: 'player', name: 'player' },
 			{ kind: 'duration', name: 'duration' },
 			{ kind: 'reason', name: 'reason', action: 'timeout', optional: true },
 		],
-		defaults: { scopes: ['admin'], strings: ['timeout', 'to'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['timeout', 'to'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('timeoutSquad', {
+		section: 'moderation',
 		args: [
 			{ kind: 'squad', name: 'squad' },
 			{ kind: 'duration', name: 'duration' },
 			{ kind: 'reason', name: 'reason', action: 'timeout', optional: true },
 		],
-		defaults: { scopes: ['admin'], strings: ['timeoutsquad', 'tos'], enabled: true },
+		defaults: { scopes: ['admin'], strings: ['timeoutsquad', 'tos'], enabled: true, quickReference: false },
 	}),
 	// the target may be offline, so the arg is a plain token resolved against players with active timeouts
 	...declareCommand('clearTimeout', {
-		args: [{ kind: 'string', name: 'player' }],
-		defaults: { scopes: ['admin'], strings: ['cleartimeout', 'ct'], enabled: true },
+		section: 'moderation',
+		args: [{
+			kind: 'string',
+			name: 'player',
+			sample: 'Alice',
+			describe: 'A player id, or a username substring matched against players with an active timeout.',
+		}],
+		defaults: { scopes: ['admin'], strings: ['cleartimeout', 'ct'], enabled: true, quickReference: false },
 	}),
 }
 
 export type CommandId = keyof typeof COMMAND_DECLARATIONS
 export const COMMAND_ID = z.enum(Object.keys(COMMAND_DECLARATIONS) as [CommandId, ...CommandId[]])
+export const COMMAND_IDS = Object.keys(COMMAND_DECLARATIONS) as CommandId[]
 export type CommandDeclaration<Id extends CommandId> = (typeof COMMAND_DECLARATIONS)[Id]
 
 // the prefix a fresh install seeds command strings with, when no settings exist yet to read `defaultPrefix` from.
@@ -256,6 +378,9 @@ function CommandConfigSchema(commandId: CommandId) {
 		),
 		scopes: z.array(COMMAND_SCOPES).prefault(declared.scopes).describe('Scopes in which this command is available'),
 		enabled: z.boolean().prefault(declared.enabled),
+		quickReference: z.boolean().prefault(declared.quickReference).describe(
+			'Show this command on the quick reference: the top section of the commands page, and the only commands a bare help command lists',
+		),
 	})
 }
 
