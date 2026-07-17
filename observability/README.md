@@ -13,9 +13,23 @@ Each file here **replaces** a file the image ships, rather than merging with it.
 of them reproduces the image's own config in full, and only adds to it. If you delete a section
 because it looks irrelevant, you silently un-configure it.
 
+It also means **the image tag and these files are one unit**, which is why `docker-compose.yaml` pins
+`grafana/otel-lgtm:0.29.0` instead of tracking `:latest`. A copy of a config is a copy of one version
+of it. When the tag moves, the binary moves underneath the copy and the copy stops parsing, and Tempo
+in particular exits on a config error rather than starting with defaults: the container comes up, the
+other five components report ready, and the only symptom is Grafana failing to reach Tempo on
+`:3200`. Upgrading the tag therefore means re-copying these files from the new image in the same
+commit:
+
+```sh
+docker run --rm --entrypoint cat grafana/otel-lgtm:<tag> /otel-lgtm/tempo-config.yaml
+```
+
+then re-applying the deltas in the table below. Diff it against what is here before you trust it.
+
 | File                                | Replaces                            | What we add                                                                                 |
 | ----------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------- |
-| `tempo-config.yaml`                 | `/otel-lgtm/tempo-config.yaml`      | `compactor.compaction.block_retention: 72h`                                                 |
+| `tempo-config.yaml`                 | `/otel-lgtm/tempo-config.yaml`      | `compactor.compaction.block_retention: 72h`, plus the `local-blocks` processor              |
 | `loki-config.yaml`                  | `/otel-lgtm/loki-config.yaml`       | `limits_config.retention_period: 336h` + a `compactor` block                                |
 | `grafana/provisioning/datasources/` | the image's datasource provisioning | `tracesToMetrics`, otherwise the image's own cross-links                                    |
 | `grafana/provisioning/dashboards/`  | the image's dashboard provisioning  | points at `grafana/dashboards/`; re-declares the image's two RED dashboards so they survive |
