@@ -1246,8 +1246,8 @@ async function* processPendingEvent(
 
 		case 'PLAYER_DIED':
 		case 'PLAYER_WOUNDED': {
-			// the log identifies the victim by display name only, which can diverge from the RCON roster name
-			// (tag/whitespace/unicode); fall back to a loose unique match rather than dropping the event
+			// the log identifies the victim by display name only, which can carry a clan tag the RCON roster name
+			// lacks; fall back to a loose unique match rather than dropping the event
 			let victim = SM.PlayerIds.find(state.currTeams.players, p => p.ids, pendingEvent.victimIds)
 			if (!victim && pendingEvent.victimIds.username) {
 				victim = SM.PlayerIds.findByUsernameLoose(state.currTeams.players, p => p.ids, pendingEvent.victimIds.username)
