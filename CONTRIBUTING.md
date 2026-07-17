@@ -16,6 +16,14 @@ You as the contributor must take responsibility for the code you submit, and you
 
 If you find an issue with the app, it's recommended that you submit an issue first for validation before working on a PR.
 
+## Getting your bearings
+
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes what the app is built out of: the layering, the
+conventions it leans on (context composition, result codes, namespace imports, schema-first models), the
+server and client state machinery, the layer engine, and a list of quirks that are easier to read about than
+to discover. Worth a skim before your first change, and [CLAUDE.md](CLAUDE.md) states the rules it explains
+the reasoning behind.
+
 ## Prerequisites
 
 nodejs 24.18.0
