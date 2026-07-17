@@ -138,25 +138,20 @@ the snapshot fails. These are named `slm-backup-db-pre-migration-20260713-134504
 recent one is never deleted by retention, however old it gets: it is the only way back from the migration it
 was taken before.
 
-A migration will not run against a database another process has open: SQLite offers no safe way to change a
-schema under a running app, so the app refuses to boot, or `db:migrate` exits non-zero, rather than risk it.
-An idle app still counts as using the database. Stop it first.
+A migration will not run against a database another process has open.
+Stop SLM before attempting to migrate manually.
 
-**Periodically** is off by default. Set `AUTOMATIC_BACKUPS_PERIODIC` to a duration (e.g. `72h`) and the app will
-snapshot its database on that interval, optionally shipping each one to an SFTP host.
+**Periodic Backups** are off by default. Set `AUTOMATIC_BACKUPS_PERIODIC` to a duration (e.g. `72h`) and the app will
+snapshot its database on that interval.
 
 The two share a schedule and a retention window rather than running as separate systems. A backup taken to
 migrate counts as that interval's backup (it is uploaded and recorded like any other), so an upgrade doesn't
 produce two copies of the same database a minute apart, and the next periodic one is a full interval later.
 
-A snapshot is taken with sqlite's online backup API, so it is a consistent point-in-time copy taken without
-locking the app out of its own database, and it is gzipped (typically 5-10x smaller) before being stored or
-uploaded. Backups are named after the database they came from, e.g. `slm-backup-db-20260713-134504.sqlite3.gz`.
+Backups are named after the database they came from, e.g. `slm-backup-db-20260713-134504.sqlite3.gz`.
 Each run is recorded in the audit log as a `BACKUP_CREATED` event.
 
-The schedule is anchored to the last backup that actually happened, not to boot, so a server restarted more
-often than the interval still gets backed up. A backup that came due while the app was down is taken shortly
-after it comes back up.
+It's also possible to configure an SFTP destination for the backups. See below.
 
 | variable                             | default          | what it does                                                          |
 | ------------------------------------ | ---------------- | --------------------------------------------------------------------- |
@@ -172,13 +167,10 @@ after it comes back up.
 | `BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE` |                  | if the key needs one                                                  |
 | `BACKUP_SFTP_DIR`                    | `.`              | remote directory, created if missing                                  |
 
-`BACKUPS_RETAIN_COUNT` is one window over both kinds: the newest N backups survive, whatever they were taken
-for, plus the most recent pre-migration one, so you may hold N+1. Two SLM instances must not share a
-`BACKUP_SFTP_DIR` unless their databases are named differently: retention deletes any backup matching its own
+Two SLM instances must not share a `BACKUP_SFTP_DIR` unless their databases are named differently: retention deletes any backup matching its own
 name, so they would prune each other's.
 
-A failed upload does not fail the backup. The local copy is still written, and the audit event records that it
-never left the box.
+A failed upload does not fail the backup. The local copy is still written, and the audit event records that it never left the box.
 
 ##### Restoring
 
