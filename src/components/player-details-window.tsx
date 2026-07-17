@@ -1,4 +1,4 @@
-import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
+import { PlayerFlagsButton } from '@/components/bm-flag-workflows'
 import EventFilterSelect from '@/components/event-filter-select'
 import { PlayerMenuItems } from '@/components/player-context-menu-options'
 import { MatchTeamDisplay } from '@/components/teams-display'
@@ -19,7 +19,7 @@ import { useOrgFlags, usePlayerGroupColor } from '@/systems/battlemetrics.client
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
-import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -28,10 +28,7 @@ import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
 import { ServerEvent } from './server-event'
 import WarnChatBox from './warn-chat-box'
 
-import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
-import * as RBAC from '@/rbac.models'
-import * as RbacClient from '@/systems/rbac.client'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
 import { Separator } from './ui/separator'
 import { Spinner } from './ui/spinner'
@@ -146,7 +143,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 						)
 				)}
 				{flags && flags.length > 0 && <PlayerFlagsList flags={flags} />}
-				<EditFlagsButton playerId={playerId} currentFlagIds={bmData?.flagIds ?? []} />
+				<PlayerFlagsButton playerId={playerId} />
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
 						<button
@@ -485,59 +482,5 @@ function PlayerFlagsList({ flags }: PlayerFlagsListProps) {
 				))}
 			</div>
 		</div>
-	)
-}
-
-interface EditFlagsButtonProps {
-	playerId: string
-	currentFlagIds: string[]
-}
-
-function EditFlagsButton({ playerId, currentFlagIds }: EditFlagsButtonProps) {
-	const denied = RbacClient.usePermsCheck(RBAC.perm('battlemetrics:write-flags'))
-	const { data: orgFlags } = useQuery(RPC.orpc.battlemetrics.listOrgFlags.queryOptions({ staleTime: Infinity }))
-	const mutation = useMutation(RPC.orpc.battlemetrics.updatePlayerFlags.mutationOptions())
-
-	const flagsToRender = React.useMemo(() => {
-		return orgFlags ?? []
-	}, [orgFlags])
-
-	const options = React.useMemo(() =>
-		flagsToRender.map((f) => ({
-			value: f.id,
-			keywords: f.name ? [f.name] : undefined,
-			label: (
-				<span
-					className="inline-flex items-center gap-1"
-					style={{ color: f.color ?? undefined }}
-				>
-					{f.icon && <span className="material-symbols-outlined leading-none" style={{ fontSize: '14px' }}>{f.icon}</span>}
-					{f.name}
-				</span>
-			),
-		})), [flagsToRender])
-
-	return (
-		<PermissionDeniedTooltip denied={denied}>
-			<ComboBoxMulti
-				values={currentFlagIds}
-				options={options}
-				confirm="Apply"
-				onConfirm={(flagIds) => {
-					mutation.mutate({ playerId, flagIds })
-				}}
-				selectOnClose={false}
-				disabled={!!denied}
-			>
-				<button
-					type="button"
-					disabled={!!denied}
-					className="inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
-					title="Edit flags"
-				>
-					<Icons.Pencil className="h-3 w-3" />
-				</button>
-			</ComboBoxMulti>
-		</PermissionDeniedTooltip>
 	)
 }

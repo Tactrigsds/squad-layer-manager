@@ -20,22 +20,35 @@ export type BmPlayer = {
 
 export type BmRequest = { method: string; path: string; body: unknown }
 
+// real BM flag ids are uuids, and settings that reference them (playerFlagsRequiringNote) validate as much, so the
+// stub's ids have to be uuids too or those settings can't be saved against it
+// The org the stub claims to be. A dev instance runs with BM_ORG_ID pinned to this (see dev/instance.ts) so the app
+// and the stub agree without either knowing the real org's id.
+export const STUB_ORG_ID = 'stub-org'
+
 const DEFAULT_FLAGS: BmFlag[] = [
-	{ id: 'flag-seeder', name: 'Seeder', color: '#00ff00', description: 'Seeds the server', icon: 'star' },
-	{ id: 'flag-watchlist', name: 'Watchlist', color: '#ff0000', description: 'Under watch', icon: 'eye' },
+	{ id: '00000000-0000-4000-8000-000000000001', name: 'Seeder', color: '#00ff00', description: 'Seeds the server', icon: 'star' },
+	{ id: '00000000-0000-4000-8000-000000000002', name: 'Watchlist', color: '#ff0000', description: 'Under watch', icon: 'eye' },
 ]
 
 export class BmServer {
 	orgFlags: BmFlag[]
+	// the app drops any flag not owned by its own org (see fetchPlayerDetail), so the stub has to claim an org and say
+	// so on every flagPlayer, or its flags all get filtered out and a flagged player reads as unflagged
+	orgId: string
 	players = new Map<string, BmPlayer>()
 	notes: { bmPlayerId: string; note: string }[] = []
 	requestLog: BmRequest[] = []
+	// a note is the only lasting trace a flag change leaves on a real profile, so the dev host prints them rather
+	// than leaving them buried in memory. tests read `notes` instead.
+	onNote?: (note: { bmPlayerId: string; note: string }) => void
 
 	#server: http.Server
 	#nextPlayerId = 1000
 
-	constructor(opts?: { orgFlags?: BmFlag[] }) {
+	constructor(opts?: { orgFlags?: BmFlag[]; orgId?: string }) {
 		this.orgFlags = opts?.orgFlags ?? [...DEFAULT_FLAGS]
+		this.orgId = opts?.orgId ?? STUB_ORG_ID
 		this.#server = http.createServer((req, res) => void this.#handle(req, res))
 	}
 
@@ -133,7 +146,9 @@ export class BmServer {
 		const noteWrite = url.match(/^\/players\/([^/?]+)\/relationships\/notes/)
 		if (method === 'POST' && noteWrite) {
 			const note = (body as { data?: { attributes?: { note?: string } } } | undefined)?.data?.attributes?.note ?? ''
-			this.notes.push({ bmPlayerId: noteWrite[1], note })
+			const entry = { bmPlayerId: noteWrite[1], note }
+			this.notes.push(entry)
+			this.onNote?.(entry)
 			return send(200, { data: { type: 'playerNote', id: String(this.notes.length) } })
 		}
 
@@ -156,7 +171,10 @@ export class BmServer {
 				included.push({
 					type: 'flagPlayer',
 					id: `fp-${player.bmPlayerId}-${flagId}`,
-					relationships: { playerFlag: { data: { type: 'playerFlag', id: flagId } } },
+					relationships: {
+						playerFlag: { data: { type: 'playerFlag', id: flagId } },
+						organization: { data: { type: 'organization', id: this.orgId } },
+					},
 				})
 				const def = this.orgFlags.find((f) => f.id === flagId)
 				if (def) {

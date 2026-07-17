@@ -5,7 +5,7 @@ import { assertNever } from '@/lib/type-guards'
 import { formatHumanTime } from '@/lib/zod'
 import * as Messages from '@/messages.ts'
 import * as AAR from '@/models/admin-action-reasons.models'
-import type * as BM from '@/models/battlemetrics.models'
+import * as BM from '@/models/battlemetrics.models'
 import * as CMD from '@/models/command.models.ts'
 import type * as CS from '@/models/context-shared'
 import * as LP from '@/models/labeled-presets.models'
@@ -561,10 +561,12 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			return await h.error(res.code, `Player "${targetIds.username}" is already assigned flag "${flagToUpdate.name}"`)
 		}
 		if (res.code === 'ok') {
-			const note = [
-				`Flag "${flagToUpdate.name}" added by ${h.sender.ids.username} (Steam ${h.sender.ids.steam}) via SLM.`,
-				...(reason ? [`Reason: ${reason}`] : []),
-			].join('\n')
+			const note = BM.flagChangeNote({
+				action: 'added',
+				flagName: flagToUpdate.name,
+				actor: `${h.sender.ids.username} (Steam ${h.sender.ids.steam})`,
+				reason,
+			})
 			const noteAdded = await Battlemetrics.addPlayerNote(h.ctx, bmPlayerData.bmPlayerId, note).then(() => true).catch((err) => {
 				log.warn({ err, targetIds }, 'failed to post BM note after adding flag')
 				return false
@@ -606,8 +608,21 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 				`Flag "${flagToRemove.name}" is already removed from ${target.ids.username}'s BM profile`,
 			)
 		}
+		const note = BM.flagChangeNote({
+			action: 'removed',
+			flagName: flagToRemove.name,
+			actor: `${h.sender.ids.username} (Steam ${h.sender.ids.steam})`,
+			reason: args.reason?.trim(),
+		})
+		const noteAdded = await Battlemetrics.addPlayerNote(h.ctx, bmPlayerData.bmPlayerId, note).then(() => true).catch((err) => {
+			log.warn({ err, targetIds: target.ids }, 'failed to post BM note after removing flag')
+			return false
+		})
 		await Battlemetrics.invalidateAndRefetchPlayer(h.ctx, target.ids.eos)
-		await h.reply(`Removed flag "${flagToRemove.name}" from ${target.ids.username}'s BM profile`)
+		await h.reply(
+			`Removed flag "${flagToRemove.name}" from ${target.ids.username}'s BM profile`
+				+ (noteAdded ? '' : ', but failed to post the accompanying note'),
+		)
 		return { code: 'ok' }
 	},
 

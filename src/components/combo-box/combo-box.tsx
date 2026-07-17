@@ -34,6 +34,12 @@ export type ComboBoxProps<T extends string | null = string | null> = {
 	// when set, Radix won't restore focus to the trigger as the popover closes. Use when a selection
 	// hands focus off to another element (e.g. the next argument), so the restore doesn't steal it back.
 	preventCloseAutoFocus?: boolean
+	// mount already open. for pickers summoned by another control (an "add" button that becomes this), where the
+	// summoning click is the only click the user should need.
+	autoOpen?: boolean
+	// fired when the user dismisses the popover (escape, outside click, trigger). NOT fired when a selection closes
+	// it -- `onSelect` covers that -- so a caller can tell "picked nothing" from "picked something".
+	onOpenChange?: (open: boolean) => void
 	children?: React.ReactNode
 	ref?: React.ForwardedRef<ComboBoxHandle>
 }
@@ -90,7 +96,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 	// races the close callback. Only consulted when preventCloseAutoFocus is set.
 	const selectionInitiatedRef = useRef(false)
 
-	const [open, setOpen] = useState(false)
+	const [open, setOpen] = useState(!!props.autoOpen)
 	const _onSelect = props.onSelect
 	useImperativeHandle(props.ref, () => ({
 		focus: () => {
@@ -131,6 +137,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 			onOpenChange={(next) => {
 				if (next) selectionInitiatedRef.current = false
 				setOpen(next)
+				props.onOpenChange?.(next)
 			}}
 		>
 			<PopoverTrigger asChild>
