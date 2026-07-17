@@ -154,6 +154,10 @@ export type AppFixture = {
 	// fresh read-only connection to the app's db, for assertions
 	readDb: () => SqliteDb
 	waitFor: <T>(probe: () => T | Promise<T>, opts?: { timeoutMs?: number; intervalMs?: number; label?: string }) => Promise<NonNullable<T>>
+	// stop the app and boot it again against the same db, emulator and ports. For anything that only happens on
+	// boot -- notably the feed backfill, which rebuilds state from the db rather than from what it saw live.
+	// `child` on the fixture is the original process and goes stale across this; nothing else does.
+	restart: () => Promise<void>
 	dispose: () => Promise<void>
 }
 
@@ -457,7 +461,15 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		)
 	}
 
-	if (opts.spawn !== false) {
+	async function stopApp() {
+		if (!child || child.exitCode !== null) return
+		child.kill('SIGTERM')
+		const killTimer = setTimeout(() => child?.kill('SIGKILL'), 8000)
+		await childExited
+		clearTimeout(killTimer)
+	}
+
+	async function spawnApp() {
 		const out = fs.openSync(logFile, 'a')
 		const [command, args] = serverCommand()
 		child = childProcess.spawn(command, args, { cwd: REPO_ROOT, env, stdio: ['ignore', out, out] })
@@ -472,6 +484,8 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 			return res !== null
 		}, { label: 'app readiness', timeoutMs: 60_000 })
 	}
+
+	if (opts.spawn !== false) await spawnApp()
 
 	// the real server agent tails the file the emulator writes and proxies its RCON; start it only once the
 	// app is listening so its first connection lands
@@ -514,14 +528,13 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		},
 		readDb: () => new Database(dbPath, { readonly: true }),
 		waitFor,
+		restart: async () => {
+			await stopApp()
+			await spawnApp()
+		},
 		dispose: async () => {
 			serverAgent?.dispose()
-			if (child && child.exitCode === null) {
-				child.kill('SIGTERM')
-				const killTimer = setTimeout(() => child?.kill('SIGKILL'), 8000)
-				await childExited
-				clearTimeout(killTimer)
-			}
+			await stopApp()
 			emu.dispose()
 			bm.close()
 			// set SLM_KEEP_TEST_TMP=1 to retain the db + app log of a failing run
