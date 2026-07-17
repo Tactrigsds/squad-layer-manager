@@ -38,6 +38,9 @@
 	--color-info: hsl(var(--info));
 	--color-info-foreground: hsl(var(--info-foreground));
 
+	--color-admin: hsl(var(--admin));
+	--color-admin-foreground: hsl(var(--admin-foreground));
+
 	--color-moved: hsl(var(--moved));
 	--color-moved-foreground: hsl(var(--moved-foreground));
 
@@ -127,6 +130,10 @@
 		--destructive-foreground: 0 0% 98%;
 		--info: 210 100% 50%;
 		--info-foreground: 0 0% 100%;
+		/* the admin blue: what marks a player as an admin, admin chat, and admin-only commands. Was blue-300 copied
+		   by hand into player-display and server-chat-box; same value in both themes, as it was before. */
+		--admin: 211.7 96.4% 78.4%;
+		--admin-foreground: 213 60% 12%;
 		--border: 240 5.9% 90%;
 		--input: 240 5.9% 90%;
 		--ring: 240 10% 3.9%;
@@ -168,6 +175,8 @@
 		--destructive-foreground: 0 0% 98%;
 		--info: 210 100% 50%;
 		--info-foreground: 0 0% 100%;
+		--admin: 211.7 96.4% 78.4%;
+		--admin-foreground: 213 60% 12%;
 		--border: 240 3.7% 15.9%;
 		--input: 240 3.7% 15.9%;
 		--ring: 240 4.9% 83.9%;
