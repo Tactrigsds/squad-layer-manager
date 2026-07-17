@@ -40,8 +40,17 @@ test.describe('selecting layers', () => {
 			await expect(rows.filter({ hasText: 'Sumari_Seed_v1' })).toHaveCount(0)
 
 			// turning the filter off is what lets an admin reach outside the pool
+			const matchedCount = dialog.getByText(/matched layers|No layers matched/)
+			const countWithFilter = await matchedCount.textContent()
 			await raasOnly.click()
 			await expect(raasOnly).toHaveAttribute('aria-checked', 'false')
+
+			// the checkbox flips immediately but the query behind it does not, and the same response that refills the
+			// table is what tells the filter menu which gamemodes are still reachable. Until it lands the menu still
+			// shows Seed as out-of-pool, and an out-of-pool option swallows the click that would select it -- so
+			// clicking now is a coin flip. The count only renders on a settled query, so waiting for it to change is
+			// what makes the menu below answer for the pool we actually have.
+			await expect(matchedCount).not.toHaveText(countWithFilter!)
 
 			// and now narrow to the gamemode being asserted on. The table sorts randomly by default (see the layerTable
 			// setting) and pages, so "is Sumari_Seed_v1 in the table" without narrowing to it is really "did the shuffle
