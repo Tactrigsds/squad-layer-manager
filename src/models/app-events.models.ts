@@ -367,6 +367,20 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 ])
 export type AppEvent = z.infer<typeof AppEventSchema>
 
+// Whether this event belongs in the live activity feed, as opposed to being audit-log-only. The audit log records
+// what SLM did; the feed only wants what's worth reading, and a queue-driven MAP_SET says nothing its QUEUE_UPDATED
+// hasn't already said.
+//
+// Both sides of the feed have to agree on this: emitAppEvent vs persistAppEvent applies it when the event happens,
+// and the backfill that rebuilds the buffer from the db applies it again -- an unfiltered backfill puts audit-only
+// events into the feed on the next restart, which is not a state the live path can ever produce.
+export function isFeedVisible(event: AppEvent): boolean {
+	// 'queue-updated' folds into the QUEUE_UPDATED it links to via causeId; 'override' is news (SLM put the layer
+	// back over someone else's set) and names who it overrode
+	if (event.type === 'MAP_SET') return event.reason === 'override'
+	return true
+}
+
 export type AppEventType = AppEvent['type']
 
 // the players involved in an app event (targets, or a disbanded squad's members) as eos ids

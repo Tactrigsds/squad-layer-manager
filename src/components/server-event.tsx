@@ -739,14 +739,9 @@ function AppEventEntry(
 		return <TeamswapsUpdatedEvent event={event} appEvent={appEvent} actorLabel={actorLabel} stores={stores} />
 	}
 	if (appEvent.type === 'MAP_SET') {
-		// only override sets reach the feed; queue-driven MAP_SETs fold into their QUEUE_UPDATED (audit-only)
-		if (appEvent.reason === 'queue-updated') {
-			return (
-				<EventLine time={event.time} icon={<Icons.RefreshCw className="h-4 w-4 text-amber-500 shrink-0" />}>
-					Next layer set to <ShortLayerName layerId={appEvent.layerId} />
-				</EventLine>
-			)
-		}
+		// audit-only (see AppEvents.isFeedVisible): its QUEUE_UPDATED already names the layer, so drawing this too
+		// would just repeat it. Only override sets are worth a line of their own.
+		if (appEvent.reason === 'queue-updated') return null
 		// the overridden player (if any) is resolved into targetPlayers via involvedPlayerIds
 		const overrodePlayer = event.targetPlayers[0]
 		const who = appEvent.overrode?.type === 'player' && overrodePlayer && matchId !== null

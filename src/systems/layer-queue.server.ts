@@ -461,7 +461,7 @@ export const syncNextLayerToServer = C.spanOp(
 						matchId: (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null,
 						causeId: mapSetCause.reason === 'queue-updated' ? mapSetCause.causeId : null,
 					})
-					if (mapSetCause.reason === 'override') await SquadServer.emitAppEvent(ctx, mapSet)
+					if (AppEvents.isFeedVisible(mapSet)) await SquadServer.emitAppEvent(ctx, mapSet)
 					else await AppEventsSys.persistAppEvent(ctx, mapSet)
 					// attribute to whichever app event reaches the feed, since that's what the server event collapses into:
 					// the QUEUE_UPDATED for a queue-driven set (its MAP_SET is audit-only), the MAP_SET itself for an override.
