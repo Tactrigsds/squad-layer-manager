@@ -243,8 +243,13 @@ function applyTestTimings(settings: SETTINGS.GlobalSettings) {
 	settings.vote.voteReminderInterval = 3_000
 	settings.vote.internalVoteReminderInterval = 3_000
 	settings.layerQueue.adminQueueReminderInterval = 5_000
-	settings.postRollAnnouncementsTimeout = 2_000
 	settings.fogOffDelay = 2_000
+}
+
+// Same idea as applyTestTimings, for the settings that moved to per-server. Applied to the parsed (decoded) server
+// settings, so these are milliseconds.
+function applyServerTestTimings(settings: SETTINGS.ServerSettings) {
+	settings.postRollAnnouncementsTimeout = 2_000
 	// the log tail's poll interval is also the window the event pipeline waits for the log to catch
 	// up with rcon/poll events, so a short one keeps tests responsive
 	settings.squadServer.logFilePollInterval = 250
@@ -314,6 +319,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		adminListSources: [{ type: 'local', source: adminsCfgPath }],
 		adminIdentifyingPermissions: [ADMIN_PERM],
 	})
+	applyServerTestTimings(serverSettings)
 	// a seeded queue is only stable if nothing tops it up: generation fills the queue to
 	// preferredLength with random layers, so pin that to what we seeded
 	const layerQueue = opts.layerQueue ?? []

@@ -3,6 +3,7 @@ import * as Obj from '@/lib/object'
 import type { SettingChange } from '@/lib/settings-diff'
 import { diffSettings } from '@/lib/settings-diff'
 import { toast } from '@/lib/toast'
+import { formatHumanTime } from '@/lib/zod'
 import * as ZusUtils from '@/lib/zustand'
 import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
@@ -93,11 +94,38 @@ function editSchema(state: SettingsEditor): z.ZodType<any> {
 	return state.sensitiveOmitted ? SETTINGS.ServerSettingsNoConnectionsSchema : SETTINGS.ServerSettingsSchema
 }
 
+// Server settings persist decoded (HumanTime as ms), but the two fields that moved here from global -- squadServer and
+// postRollAnnouncementsTimeout -- edit nicer as HumanTime strings ('5s'), like the global form. We encode ONLY those:
+// the rest of server settings has no GUI-rendered codec (connection HumanTime uses bespoke widgets), and the whole
+// object isn't encodable anyway (the queue's filter preprocess is one-way). Operates on a decoded value.
+function toServerEditShape(decoded: any): any {
+	if (!decoded || typeof decoded !== 'object') return decoded
+	const out = { ...decoded }
+	if (typeof out.postRollAnnouncementsTimeout === 'number') {
+		out.postRollAnnouncementsTimeout = formatHumanTime(out.postRollAnnouncementsTimeout)
+	}
+	if (out.squadServer && typeof out.squadServer === 'object') out.squadServer = SETTINGS.SquadServerSettingsSchema.encode(out.squadServer)
+	return out
+}
+
+// a freshly loaded raw server value in the edit shape; a value that fails validation (a broken server being repaired)
+// passes through untouched so JSON mode can still show and fix it.
+function loadedServerEditShape(sensitiveOmitted: boolean, raw: unknown): unknown {
+	const schema = sensitiveOmitted ? SETTINGS.ServerSettingsNoConnectionsSchema : SETTINGS.ServerSettingsSchema
+	const parsed = schema.safeParse(raw)
+	return parsed.success ? toServerEditShape(parsed.data) : raw
+}
+
+// re-encode a decoded value (the JSON editor's output) into the section's edit shape
+function toEditShape(state: SettingsEditor, decoded: any): any {
+	return state.kind === 'global' ? SETTINGS.GlobalSettingsSchema.encode(decoded) : toServerEditShape(decoded)
+}
+
 // the pending value in the encoded/input shape (same shape as `saved`), for diffing against the baseline
 function nextEncoded(state: SettingsEditor): any {
 	if (state.mode === 'gui') return state.draft
 	if (state.jsonValid === null) return undefined
-	return state.kind === 'global' ? SETTINGS.GlobalSettingsSchema.encode(state.jsonValid) : state.jsonValid
+	return toEditShape(state, state.jsonValid)
 }
 
 // the decoded value a save would submit (null when invalid): the gui draft parsed, or the JSON editor's latest valid value
@@ -201,8 +229,9 @@ async function loadServerSettings(
 		set({ loading: false, loadFailed: res?.code ?? 'error' })
 		return
 	}
-	set({ loading: false, loadFailed: null, sensitiveOmitted: res.sensitiveOmitted, saved: res.settings })
-	if (opts.seedDraft && get().draft === undefined) set({ draft: res.settings })
+	const editShape = loadedServerEditShape(res.sensitiveOmitted, res.settings)
+	set({ loading: false, loadFailed: null, sensitiveOmitted: res.sensitiveOmitted, saved: editShape })
+	if (opts.seedDraft && get().draft === undefined) set({ draft: editShape })
 }
 
 export const frame = frameManager.createFrame<Types>({
@@ -279,7 +308,7 @@ export namespace Actions {
 		} else {
 			if (state.jsonValid !== null) {
 				// carry JSON edits back into the gui draft (re-encode to the input shape); reset$ makes the gui re-read
-				const enc = state.kind === 'global' ? SETTINGS.GlobalSettingsSchema.encode(state.jsonValid) : state.jsonValid
+				const enc = toEditShape(state, state.jsonValid)
 				s.setState({ mode: 'gui', draft: enc })
 				state.reset$.next()
 			} else {

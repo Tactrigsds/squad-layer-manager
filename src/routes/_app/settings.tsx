@@ -624,10 +624,10 @@ function ServerLifecycleControls(
 }
 
 // GUI/JSON editor for one server's full settings (the right-hand detail of the servers master-detail). GUI mode routes
-// save/reset through the shared bottom panel; JSON mode keeps its own inline toolbar (a power-user escape hatch). Server
-// settings have no codec transforms, so the edit/input shape equals the stored shape (no encode step). All editing state
-// lives in the section's settings-editor frame; this component is a view over it. `lifecycle` renders the server's
-// start/stop/status/default/delete controls on the right of the header.
+// save/reset through the shared bottom panel; JSON mode keeps its own inline toolbar (a power-user escape hatch). The
+// settings-editor frame encodes the stored (decoded) settings into the input shape for editing and decodes on save, the
+// same as the global form (server settings now carry HumanTime codecs). All editing state lives in that frame; this
+// component is a view over it. `lifecycle` renders the server's start/stop/status/default/delete controls on the header.
 function ServerSettingsSection(
 	{ server, stores, lifecycle }: {
 		server: { id: string; displayName: string; broken: boolean }

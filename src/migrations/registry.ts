@@ -33,6 +33,7 @@ import * as m0080 from './0080_command_aliases'
 import * as m0081 from './0081_player_groupings_by_grouping_id'
 import * as m0082 from './0082_block_operators_to_logical_ids'
 import * as m0083 from './0083_rename_default_vote_settings'
+import * as m0084 from './0084_squad_server_settings_per_server'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -57,4 +58,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0081_player_groupings_by_grouping_id', up: m0081.up },
 	{ name: '0082_block_operators_to_logical_ids', up: m0082.up },
 	{ name: '0083_rename_default_vote_settings', up: m0083.up },
+	{ name: '0084_squad_server_settings_per_server', up: m0084.up },
 ]

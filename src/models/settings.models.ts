@@ -207,7 +207,6 @@ export const GlobalSettingsSchema = z.object({
 	})).prefault([]).describe(
 		'Custom variables usable in reason and broadcast messages as {{name}} (e.g. name "discord", value "discord.gg/xyz").',
 	),
-	postRollAnnouncementsTimeout: HumanTime.prefault('5m').describe('How long to wait before sending post-roll reminders'),
 	fogOffDelay: HumanTime.prefault('25s').describe('Delay before fog is automatically turned off'),
 	chat: CHAT.ChatConfigSchema.prefault({}).describe(
 		'Live chat/event feed settings, including regex patterns for suppressing noisy warn and broadcast messages.',
@@ -239,30 +238,6 @@ export const GlobalSettingsSchema = z.object({
 		),
 		finalVoteReminder: HumanTime.prefault('10s').describe('How far in advance the final vote reminder should be sent'),
 		maxNumVoteChoices: z.int().min(1).max(50).prefault(5).describe('Maximum number of choices allowed in a vote'),
-	}).prefault({}),
-	squadServer: z.object({
-		logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines.'),
-		rconCacheTTL: z.object({
-			layersStatus: HumanTime.prefault('5s').describe(
-				'How stale the cached current/next layer may be before a read refetches it over RCON.',
-			),
-			serverInfo: HumanTime.prefault('10s').describe(
-				'How stale cached server info (server name, queue length, max player count, etc.) may be before a read refetches it over RCON.',
-			),
-			teams: HumanTime.prefault('5s').describe(
-				'How stale the cached roster may be before a read refetches it over RCON. Also the interval at which observers poll ListPlayers.',
-			),
-		}).prefault({}).describe(
-			'How long RCON responses stay cached. Lower means fresher data and more RCON traffic; these are the dominant source of roster/status latency.',
-		),
-		tickRateThresholds: z.object({
-			good: z.number().positive().prefault(60).describe(
-				'At or above this tick rate the live server tick rate displays as good (green)',
-			),
-			warning: z.number().positive().prefault(50).describe(
-				'At or above this tick rate (but below the good threshold) the tick rate displays as a warning (yellow); below it, as unhealthy (red)',
-			),
-		}).prefault({}).describe('Thresholds for coloring the live server tick rate display'),
 	}).prefault({}),
 	balanceTriggerLevels: z.partialRecord(BAL.TRIGGER_IDS, BAL.TRIGGER_LEVEL)
 		.prefault({ '150x2': 'warn' })
@@ -583,6 +558,34 @@ export const QueueSettingsSchema = z.object({
 })
 export type QueueSettings = z.infer<typeof QueueSettingsSchema>
 
+// per-server operational tuning: log polling, RCON cache freshness, and tick-rate display coloring. Split out (rather
+// than inlined in PublicServerSettingsSchema) so the settings-editor frame can encode just this subtree to the input
+// shape -- the whole server settings object isn't encodable (the queue's filter preprocess is one-way).
+export const SquadServerSettingsSchema = z.object({
+	logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines.'),
+	rconCacheTTL: z.object({
+		layersStatus: HumanTime.prefault('5s').describe(
+			'How stale the cached current/next layer may be before a read refetches it over RCON.',
+		),
+		serverInfo: HumanTime.prefault('10s').describe(
+			'How stale cached server info (server name, queue length, max player count, etc.) may be before a read refetches it over RCON.',
+		),
+		teams: HumanTime.prefault('5s').describe(
+			'How stale the cached roster may be before a read refetches it over RCON. Also the interval at which observers poll ListPlayers.',
+		),
+	}).prefault({}).describe(
+		'How long RCON responses stay cached. Lower means fresher data and more RCON traffic; these are the dominant source of roster/status latency.',
+	),
+	tickRateThresholds: z.object({
+		good: z.number().positive().prefault(60).describe(
+			'At or above this tick rate the live server tick rate displays as good (green)',
+		),
+		warning: z.number().positive().prefault(50).describe(
+			'At or above this tick rate (but below the good threshold) the tick rate displays as a warning (yellow); below it, as unhealthy (red)',
+		),
+	}).prefault({}).describe('Thresholds for coloring the live server tick rate display'),
+})
+
 export const PublicServerSettingsSchema = z
 	.object({
 		updatesToSquadServerDisabled: z.boolean().prefault(false).describe('Disable SLM from setting the next layer on the server.'),
@@ -596,6 +599,8 @@ export const PublicServerSettingsSchema = z
 			'Whether AdminSetNextLayer commands not originating from SLM are respected',
 		),
 		warnOnChangeLayer: z.boolean().prefault(false).describe('Warn admins when the next layer is changed'),
+		postRollAnnouncementsTimeout: HumanTime.prefault('5m').describe('How long to wait before sending post-roll reminders'),
+		squadServer: SquadServerSettingsSchema.prefault({}),
 	})
 
 export type PublicServerSettings = z.infer<typeof PublicServerSettingsSchema>

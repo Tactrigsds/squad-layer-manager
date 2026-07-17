@@ -19,8 +19,7 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 	{ slug: 'players', label: 'Players & Flags', keys: ['playerGroupings', 'playerFlagsRequiringNote'] },
 	{ slug: 'balance', label: 'Balance Triggers', keys: ['balanceTriggerLevels'] },
 	{ slug: 'queue-and-votes', label: 'Queue & Votes', keys: ['layerQueue', 'vote', 'layerTable', 'layerGeneration'] },
-	{ slug: 'squad-server', label: 'Squad Server', keys: ['squadServer', 'fogOffDelay', 'postRollAnnouncementsTimeout'] },
-	{ slug: 'misc', label: 'Miscellaneous', keys: ['topBarColor', 'navLinks', 'warnOnSlmStart'] },
+	{ slug: 'misc', label: 'Miscellaneous', keys: ['topBarColor', 'navLinks', 'warnOnSlmStart', 'fogOffDelay'] },
 	// rbac stays ungrouped: its own section header already reads "Permissions & Roles". It leads the form via
 	// GLOBAL_SETTINGS_PRIORITY_KEYS rather than trailing the groups with the other ungrouped keys.
 ]
@@ -51,9 +50,7 @@ export const ADVANCED_GLOBAL_SETTINGS_PATHS: ReadonlySet<string> = new Set([
 	'vote.finalVoteReminder',
 	'vote.autoStartVoteCutoff',
 	'vote.maxNumVoteChoices',
-	'squadServer',
 	'fogOffDelay',
-	'postRollAnnouncementsTimeout',
 ])
 
 export const ADVANCED_SERVER_SETTINGS_PATHS: ReadonlySet<string> = new Set([
@@ -61,6 +58,8 @@ export const ADVANCED_SERVER_SETTINGS_PATHS: ReadonlySet<string> = new Set([
 	'overrideAdminSetNextLayer',
 	'warnOnChangeLayer',
 	'navLinks',
+	'squadServer',
+	'postRollAnnouncementsTimeout',
 ])
 
 // Subtrees whose GUI editor is elaborate enough that bulk edits (reordering, copying a role between installs, pasting a

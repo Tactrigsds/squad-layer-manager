@@ -7,6 +7,7 @@ import { WARNS } from '@/messages'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 
+import type * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
 import * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
@@ -32,10 +33,10 @@ export type SquadRcon = {
 export function initSquadRcon(
 	ctx: C.Rcon & C.AdminList & CS.AbortSignal,
 	cleanup: Cleanup.Tasks,
-	opts?: { onFatalError?: (err: unknown) => void },
+	opts: { rconCacheTTL: SETTINGS.PublicServerSettings['squadServer']['rconCacheTTL']; onFatalError?: (err: unknown) => void },
 ): SquadRcon {
 	const rcon = ctx.rcon
-	const cacheTTL = Settings.GLOBAL_SETTINGS.squadServer.rconCacheTTL
+	const cacheTTL = opts.rconCacheTTL
 	const layersStatus: SquadRcon['layersStatus'] = new AsyncResource<SM.LayerStatusRes, C.Rcon & CS.AbortSignal>(
 		`serverStatus`,
 		(ctx) => getLayerStatus(ctx),
@@ -46,7 +47,7 @@ export function initSquadRcon(
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.LayerStatusRes) => res.code !== 'ok',
 			log,
-			onFatalError: opts?.onFatalError,
+			onFatalError: opts.onFatalError,
 		},
 	)
 	cleanup.push(() => layersStatus.dispose())
@@ -61,7 +62,7 @@ export function initSquadRcon(
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.ServerInfoRes) => res.code !== 'ok',
 			log,
-			onFatalError: opts?.onFatalError,
+			onFatalError: opts.onFatalError,
 		},
 	)
 	cleanup.push(() => serverInfo.dispose())
@@ -76,7 +77,7 @@ export function initSquadRcon(
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.TeamsRes) => res.code !== 'ok',
 			log,
-			onFatalError: opts?.onFatalError,
+			onFatalError: opts.onFatalError,
 		},
 	)
 	cleanup.push(() => teams.dispose())

@@ -306,7 +306,7 @@ export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.Serv
 		}))
 
 		const withWaits: Rx.Observable<unknown>[] = []
-		withWaits.push(Rx.timer(Settings.GLOBAL_SETTINGS.postRollAnnouncementsTimeout))
+		withWaits.push(Rx.timer(ctx.serverSettings.settings.postRollAnnouncementsTimeout))
 
 		for (let i = 0; i < announcementTasks.length; i++) {
 			withWaits.push(announcementTasks[i].pipe(Rx.catchError(() => Rx.EMPTY)))

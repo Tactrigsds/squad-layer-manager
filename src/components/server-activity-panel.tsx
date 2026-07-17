@@ -18,7 +18,6 @@ import type * as SM from '@/models/squad.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex.ts'
 import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
-import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import { useQuery } from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
@@ -173,8 +172,8 @@ function ServerCounts(props: { stores: SquadServerFrame.KeyProp }) {
 	)
 	const tickRate = SquadServerClient.useTickRate(serverId)
 	const tickRateThresholds = ZusUtils.useStore(
-		SettingsClient.PublicSettingsStore,
-		s => s?.squadServer.tickRateThresholds,
+		props.stores.squadServer!,
+		s => s.settings.saved.squadServer.tickRateThresholds,
 	)
 
 	if (serverInfoStatusRes.code !== 'ok') return <ServerUnreachable statusRes={serverInfoStatusRes} />

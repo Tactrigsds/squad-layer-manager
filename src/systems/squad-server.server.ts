@@ -766,7 +766,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		minSafeLogLeadTimeForOtherEvents: settings.connections.type === 'sftp'
 			? settings.connections.sftp.pollInterval * 2
 			: settings.connections.type === 'local'
-			? Settings.GLOBAL_SETTINGS.squadServer.logFilePollInterval * 2
+			? settings.squadServer.logFilePollInterval * 2
 			: settings.connections.type === 'server-agent'
 			? 1000
 			: assertNever(settings.connections),
@@ -796,7 +796,10 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 
 		savingEventsMtx: new Mutex(),
 
-		...SquadRcon.initSquadRcon({ ...ctx, rcon, adminList, serverId }, cleanup, { onFatalError: onResourceFatalError }),
+		...SquadRcon.initSquadRcon({ ...ctx, rcon, adminList, serverId }, cleanup, {
+			rconCacheTTL: settings.squadServer.rconCacheTTL,
+			onFatalError: onResourceFatalError,
+		}),
 	}
 
 	cleanup.push(
@@ -920,7 +923,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		} else if (settings.connections.type === 'local') {
 			const fileReader = new FileTail({
 				filePath: settings.connections.logFile,
-				pollInterval: Settings.GLOBAL_SETTINGS.squadServer.logFilePollInterval,
+				pollInterval: settings.squadServer.logFilePollInterval,
 				onFatalError: onResourceFatalError,
 				parentModule: module,
 			})
