@@ -269,7 +269,9 @@ export default function NavBar() {
 					</span>
 				)}
 				{isOnServerDashboard && squadServerKey && <ServerActionsDropdown stores={{ squadServer: squadServerKey }} />}
-				{settings && <NavLinksDropdown globalLinks={settings.navLinks} />}
+				{settings && (squadServerKey
+					? <NavLinksWithServer globalLinks={settings.navLinks} squadServerKey={squadServerKey} />
+					: <NavLinksDropdown globalLinks={settings.navLinks} />)}
 				{isOnServerDashboard && selectedServer && settings && (() => {
 					const servers = settings.servers
 					return servers.length <= 1
@@ -417,6 +419,15 @@ function MobileNavMenu(props: {
 			</DropdownMenuContent>
 		</DropdownMenu>
 	)
+}
+
+// the current server's nav links live on its squadServer frame (the server-settings partial), so read them there and
+// merge with the global links into one dropdown. Only mounted on a server dashboard (where squadServerKey exists).
+function NavLinksWithServer(
+	{ globalLinks, squadServerKey }: { globalLinks?: { label: string; url: string }[]; squadServerKey: SquadServerFrame.Key },
+) {
+	const serverLinks = ZusUtils.useStore(squadServerKey, s => s.settings.saved.navLinks)
+	return <NavLinksDropdown globalLinks={globalLinks} serverLinks={serverLinks} />
 }
 
 function NavLinksDropdown(

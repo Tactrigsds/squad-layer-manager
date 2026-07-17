@@ -601,6 +601,8 @@ export const PublicServerSettingsSchema = z
 		warnOnChangeLayer: z.boolean().prefault(false).describe('Warn admins when the next layer is changed'),
 		postRollAnnouncementsTimeout: HumanTime.prefault('5m').describe('How long to wait before sending post-roll reminders'),
 		squadServer: SquadServerSettingsSchema.prefault({}),
+		// public (not secret): the navbar shows these to any client viewing the server, and getPublicSettings already ships them
+		navLinks: NavLinkSchema.optional().describe('Server-specific links to display in the navbar dropdown menu'),
 	})
 
 export type PublicServerSettings = z.infer<typeof PublicServerSettingsSchema>
@@ -618,7 +620,6 @@ export const ServerSettingsSchema = PublicServerSettingsSchema.extend({
 		'In-game admin-list permissions that mark a player as an admin in SLM (e.g. "canseeadminchat"). A player granted any of these by an '
 			+ 'admin list source is treated as an admin, which drives admin-only warns and admin presence.',
 	),
-	navLinks: NavLinkSchema.optional().describe('Server-specific links to display in the navbar dropdown menu'),
 })
 
 export type ServerSettings = z.infer<typeof ServerSettingsSchema>
