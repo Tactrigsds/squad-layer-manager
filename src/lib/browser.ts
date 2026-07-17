@@ -59,39 +59,29 @@ export const userIsActive$ = (function createPageActivityObservable(): Rx.Observ
 	)
 })()
 
-export function useIsDesktopSize() {
-	const [isDesktop, setIsDesktop] = React.useState(false)
+function useMediaQuery(query: string) {
+	// Lazy init off matchMedia so the first render already matches the viewport. A `useState(false)` seed
+	// paints the mobile layout for one frame on every desktop load, then snaps -- visible, and it churns any
+	// layout keyed off the result (the navbar's dashboard tab switcher mounts then unmounts).
+	const [matches, setMatches] = React.useState(() => isBrowser() && window.matchMedia(query).matches)
 
 	React.useEffect(() => {
-		const mediaQuery = window.matchMedia('(min-width: 1280px)')
-		setIsDesktop(mediaQuery.matches)
-
-		const handleChange = (e: MediaQueryListEvent) => {
-			setIsDesktop(e.matches)
-		}
-
+		const mediaQuery = window.matchMedia(query)
+		setMatches(mediaQuery.matches)
+		const handleChange = (e: MediaQueryListEvent) => setMatches(e.matches)
 		mediaQuery.addEventListener('change', handleChange)
 		return () => mediaQuery.removeEventListener('change', handleChange)
-	}, [])
-	return isDesktop
+	}, [query])
+	return matches
+}
+
+export function useIsDesktopSize() {
+	return useMediaQuery('(min-width: 1280px)')
 }
 
 // true below the Tailwind `sm` breakpoint (640px) -- the width at which the navbar collapses its links into a hamburger
 export function useIsSmallViewport() {
-	const [isSmall, setIsSmall] = React.useState(false)
-
-	React.useEffect(() => {
-		const mediaQuery = window.matchMedia('(max-width: 639.98px)')
-		setIsSmall(mediaQuery.matches)
-
-		const handleChange = (e: MediaQueryListEvent) => {
-			setIsSmall(e.matches)
-		}
-
-		mediaQuery.addEventListener('change', handleChange)
-		return () => mediaQuery.removeEventListener('change', handleChange)
-	}, [])
-	return isSmall
+	return useMediaQuery('(max-width: 639.98px)')
 }
 
 // The scrollable this wheel event is already going to move, if any: the first ancestor between the target and `root`
