@@ -717,7 +717,7 @@ IMMEDIATE`/`COMMIT`/`ROLLBACK`. Re-entrant: an inner transaction joins the outer
 rolls back the outer. Therefore, all transactions may wait for others to complete asyncronously,
 but are always executed syncronously once the lock is acquired.
 
-Because that lock is process-wide, **a `runTransaction` callback must never await anything but a query.**(This isn't 
+Because that lock is process-wide, **a `runTransaction` callback must never await anything but a query.**(This isn't
 great, and there's probably a better way to do this while still using drizzle.) Queries
 resolve immediately (the driver is synchronous), so a transaction that only queries holds the lock for microseconds.
 Awaiting rcon, discord, sftp, or any other network call inside one instead stalls every write in the process for the

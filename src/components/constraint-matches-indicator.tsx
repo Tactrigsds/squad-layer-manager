@@ -46,7 +46,7 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 	}
 
 	const indicatorIcons: React.ReactNode[] = []
-	const renderedRepeats: Extract<LQY.ViewableConstraint, { type: 'do-not-repeat' }>[] = []
+	const renderedRepeats: Extract<LQY.Constraint, { type: 'do-not-repeat' }>[] = []
 	const renderedFilters: [string, React.ReactNode][] = []
 	for (const constraint of props.queriedConstraints) {
 		if (constraint.type === 'filter-anon' || constraint.type === 'filter-menu-items') continue
@@ -188,7 +188,7 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 }
 
 export type RepeatViolationDisplayProps = {
-	constraint: Extract<LQY.ViewableConstraint, { type: 'do-not-repeat' }>
+	constraint: Extract<LQY.Constraint, { type: 'do-not-repeat' }>
 	showIcon: boolean
 	layerId?: string
 	matchDescriptors?: LQY.MatchDescriptor[]

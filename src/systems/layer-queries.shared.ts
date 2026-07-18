@@ -560,8 +560,9 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 	const list = input.list ?? LQY.initLayerItemsState()
 	const layerItems = list.layerItems
 
+	// match state is needed for both indication and warning, so evaluate any constraint with either active
 	const filterConstraints = constraints.filter((c): c is Extract<LQY.Constraint, { type: 'filter-entity' }> =>
-		c.type === 'filter-entity' && c.showIndicator !== 'disabled'
+		c.type === 'filter-entity' && (c.showIndicator !== 'disabled' || c.warn !== 'disabled')
 	)
 	const lower = lowerCtx(ctx)
 	const filterIrs: LE.Ir[] = []
@@ -593,7 +594,11 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 		for (const item of LQY.coalesceLayerItems(layerItems[i])) {
 			const itemDescriptors = MapUtils.defaultInsGet(matchDescriptors, item.itemId, [])
 			for (const constraint of constraints) {
-				if (constraint.showIndicator === 'disabled') continue
+				if (constraint.type === 'filter-anon' || constraint.type === 'filter-menu-items') continue
+				const active = constraint.type === 'do-not-repeat'
+					|| constraint.showIndicator !== 'disabled'
+					|| constraint.warn !== 'disabled'
+				if (!active) continue
 				switch (constraint.type) {
 					case 'do-not-repeat': {
 						const descriptors = getisMatchedByRepeatRuleDirect(
@@ -824,6 +829,7 @@ export const queries = {
 	layerExists,
 	queryLayerComponent,
 	getLayerItemStatuses,
+	getLayersOutOfPool,
 	getLayerInfo,
 	genVote,
 }

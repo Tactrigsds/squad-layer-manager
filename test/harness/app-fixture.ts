@@ -110,7 +110,7 @@ export type AppFixtureOptions = {
 	// which arrange() does) stops the generator from filling the queue with random layers, which is
 	// what makes a queue assertion worth writing.
 	layerQueue?: LL.List
-	// filter entities to seed. A server's pool config (serverSettings.queue.mainPool.filters) references
+	// filter entities to seed. A server's pool config (serverSettings.queue.mainPool) references
 	// these by id, so anything that applies, indicates or warns on a filter needs them seeded first.
 	filters?: F.FilterEntity[]
 	// steam ids that are admins in game. Written to an Admins.cfg the app reads as a `local` admin
