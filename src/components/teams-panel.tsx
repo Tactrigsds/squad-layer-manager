@@ -767,7 +767,15 @@ function nameColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHel
 				<span onClick={e => e.stopPropagation()} className="inline-flex items-center gap-1">
 					<PlayerDisplay stores={meta.stores} player={row.original} matchId={meta.matchId} disableContextMenu />
 					{row.original.inAdminCam && (
-						<span title="In admin camera">
+						<span
+							title="In admin camera. Shift+click: select this team's players in admin cam. Shift+Ctrl+click: both teams"
+							onClickCapture={e => {
+								if (!e.shiftKey) return
+								e.preventDefault()
+								e.stopPropagation()
+								SquadServerFrame.Actions.selectAllInAdminCam(meta.stores, e.ctrlKey ? undefined : row.original.teamId ?? undefined)
+							}}
+						>
 							<Icons.Camera className="h-3 w-3 text-purple-500 shrink-0" />
 						</span>
 					)}
