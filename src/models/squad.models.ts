@@ -290,6 +290,12 @@ export namespace PlayerIds {
 		for (const prop of LOOKUP_PROPS) {
 			if (aNorm[prop] && bNorm[prop] && aNorm[prop] === bNorm[prop]) return true
 		}
+		// Two records that both carry a differing hard id are provably distinct players, so the loose
+		// username-substring fallback below must not override that (a player named "Quincy" would otherwise
+		// collide with a distinct "REAL Quincy").
+		for (const prop of UNIQUE_PROPS) {
+			if (aNorm[prop] && bNorm[prop] && aNorm[prop] !== bNorm[prop]) return false
+		}
 		if (aNorm.username && bNorm.usernameNoTag?.includes(aNorm.username)) return true
 		if (bNorm.username && aNorm.usernameNoTag?.includes(bNorm.username)) return true
 		return false
