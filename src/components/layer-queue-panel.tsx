@@ -33,8 +33,10 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 import { RepeatViolationDisplay } from './constraint-matches-indicator.tsx'
 import { LayerList } from './layer-list.tsx'
-import PoolConfigurationPopover from './server-settings-popover.tsx'
+import { useOpenPoolConfigWindow } from './pool-config-window.helpers.ts'
 import ShortLayerName from './short-layer-name.tsx'
+
+void import('@/components/pool-config-window')
 
 import { assertNever } from '@/lib/type-guards.ts'
 import EmojiDisplay from './emoji-display.tsx'
@@ -210,6 +212,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 	const [isEditing, setIsEditing] = UPClient.useEditingQueueState(props.stores.squadServer!.serverId)
 	const numEditors = ZusUtils.useStore(UPClient.Store, state => state.editors.size)
 	const [forceSave, setForceSave] = React.useState(false)
+	const openPoolConfig = useOpenPoolConfigWindow({ stores: { squadServer: props.stores.squadServer! } })
 
 	const setEditing = async (editing: boolean) => {
 		if (editing) {
@@ -409,11 +412,9 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 						return <div className="col-start-2 row-start-1 invisible group-data-[status=editing]:visible">{saveButtonGroup}</div>
 					})()}
 				</div>
-				<PoolConfigurationPopover stores={{ squadServer: props.stores.squadServer! }}>
-					<Button size="icon" variant="ghost" title="Pool Configuration">
-						<Icons.Settings />
-					</Button>
-				</PoolConfigurationPopover>
+				<Button size="icon" variant="ghost" title="Pool Configuration" onClick={(e) => openPoolConfig(e.currentTarget)}>
+					<Icons.Settings />
+				</Button>
 			</div>
 		</div>
 	)

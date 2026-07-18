@@ -89,7 +89,6 @@ export const TOC_LEAF_PATHS: ReadonlySet<string> = new Set([
 	'layerTable',
 	'layerGeneration',
 	'queue.mainPool',
-	'queue.generationPool',
 	// the whole playerGroupings subtree renders as one bespoke editor, so it emits no per-subkey anchors
 	'playerGroupings',
 	// the whole rbac subtree renders as one consolidated per-role editor, so it emits no per-subkey anchors

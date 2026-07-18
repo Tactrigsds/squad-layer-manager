@@ -1,6 +1,6 @@
 import * as FB from '@/models/filter-builders'
 import { createAppFixture } from '../harness/app-fixture'
-import { filter, LAYERS, poolFilter, queue } from '../harness/arrange'
+import { filter, LAYERS, queue, selectableFilter } from '../harness/arrange'
 import { expect, test } from './fixtures'
 
 // Generating a vote is the one path where the app picks the layers rather than the admin, so the pool
@@ -13,7 +13,7 @@ test.describe('generating a vote', () => {
 			layerQueue: queue(LAYERS.harjuRaas),
 			filters: [filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')]))],
 			serverSettings: (settings) => {
-				settings.queue.mainPool.filters = [poolFilter('raas-only')]
+				selectableFilter(settings.queue.mainPool, 'raas-only')
 				settings.queue.mainPool.repeatRules = []
 			},
 		})
@@ -84,7 +84,6 @@ test.describe('generating a vote', () => {
 			},
 			serverSettings: (settings) => {
 				// no pool filter: the weights, not a filter, have to be what narrows the gamemode
-				settings.queue.mainPool.filters = []
 				settings.queue.mainPool.repeatRules = []
 			},
 		})
@@ -128,7 +127,6 @@ test.describe('generating a vote', () => {
 				}
 			},
 			serverSettings: (settings) => {
-				settings.queue.mainPool.filters = []
 				settings.queue.mainPool.repeatRules = []
 			},
 		})

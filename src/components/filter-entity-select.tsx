@@ -5,7 +5,6 @@ import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type * as F from '@/models/filter.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
-import { Link } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import { Checkbox } from './ui/checkbox.tsx'
@@ -20,6 +19,7 @@ export default function FilterEntitySelect(props: {
 	enabled?: boolean
 	setEnabled?: (enabled: boolean) => void
 	excludedFilterIds?: F.FilterEntityId[]
+	linkClassName?: string
 	children?: React.ReactNode
 }) {
 	const filters = FilterEntityClient.useFilterEntities()
@@ -60,7 +60,7 @@ export default function FilterEntitySelect(props: {
 			>
 				{props.children}
 			</ComboBox>
-			{props.filterId && <FilterEntityLink filterId={props.filterId} />}
+			{props.filterId && <FilterEntityLink filterId={props.filterId} className={props.linkClassName} />}
 		</div>
 	)
 }
@@ -77,15 +77,17 @@ export function FilterEntityLabel(props: { className?: string; filter: F.FilterE
 	)
 }
 
+// a plain anchor rather than a router Link: this renders inside draggable windows, whose outlet sits outside the
+// RouterProvider, and it opens a new tab anyway
 export function FilterEntityLink(props: { filterId: F.FilterEntityId; className?: string }) {
 	return (
-		<Link
+		<a
 			className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), props.className)}
-			params={{ filterId: props.filterId }}
-			to="/filters/$filterId"
-			target="__blank"
+			href={`/filters/${props.filterId}`}
+			target="_blank"
+			rel="noreferrer"
 		>
 			<Icons.ExternalLink />
-		</Link>
+		</a>
 	)
 }
