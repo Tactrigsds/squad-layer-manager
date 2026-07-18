@@ -360,8 +360,21 @@ export function PoolFiltersPanel({ api }: { api: PoolConfigApi }) {
 	return (
 		<div className="space-y-4">
 			<PoolFilterSection api={api} />
-			<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-				{SECONDARY_LISTS.map((config) => <SecondaryFilterList key={config.key} api={api} config={config} />)}
+			<div className="space-y-3">
+				<span className="flex items-center gap-1">
+					<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Secondary Filters</h4>
+					<HelpTooltip label="About secondary filters">
+						<p>
+							Secondary filters never decide what is in the pool; they add behavior on top of it: displaying match or miss indicators on
+							layers, being offered during layer selection, warning when a matching layer is queued or about to be played, and further
+							constraining autogeneration.
+						</p>
+						<p>A filter can appear in several of these lists at once.</p>
+					</HelpTooltip>
+				</span>
+				<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+					{SECONDARY_LISTS.map((config) => <SecondaryFilterList key={config.key} api={api} config={config} />)}
+				</div>
 			</div>
 		</div>
 	)
