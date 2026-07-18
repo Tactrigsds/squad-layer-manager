@@ -126,7 +126,8 @@ Backups happen for two reasons. One of them is not optional.
 **Before every migration**, always, the database is snapshotted into `BACKUPS_DIR` first. This happens whether
 the app applies migrations itself at boot (`DB_AUTOMIGRATE`, the default) or you run `pnpm db:migrate:prod`
 yourself, and it is what you restore from if an upgrade turns out to have been a mistake. Nothing is applied if
-the snapshot fails. These are named `slm-backup-db-pre-migration-20260713-134504.sqlite3.gz`, and the most
+the snapshot fails. These are named `slm-backup-db-pre-migration-a6047f44deb0-20260713-134504.sqlite3.gz` (the sha is the version being
+upgraded _from_, which is the one a rollback wants), and the most
 recent one is never deleted by retention, however old it gets: it is the only way back from the migration it
 was taken before.
 
@@ -140,8 +141,30 @@ The two share a schedule and a retention window rather than running as separate 
 migrate counts as that interval's backup (it is uploaded and recorded like any other), so an upgrade doesn't
 produce two copies of the same database a minute apart, and the next periodic one is a full interval later.
 
-Backups are named after the database they came from, e.g. `slm-backup-db-20260713-134504.sqlite3.gz`.
-Each run is recorded in the audit log as a `BACKUP_CREATED` event.
+Backups are named after the database they came from, so two instances writing to one directory can't be confused
+and retention only ever prunes its own. The full format is:
+
+```
+slm-backup-<db>[-pre-migration]-<sha>-<yyyyMMdd>-<HHmmss>.sqlite3.gz
+```
+
+For example:
+
+```
+slm-backup-db-a6047f44deb0-20260713-134504.sqlite3.gz                 a periodic backup
+slm-backup-db-pre-migration-9c1f0a2b3d4e-20260713-134016.sqlite3.gz   taken before a migration
+```
+
+| segment               | meaning                                                                                                                                                                                                                                                         |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `slm-backup-`         | fixed prefix marking an SLM backup                                                                                                                                                                                                                              |
+| `<db>`                | the source database's filename without extension (`db` for `db.sqlite3`). Retention only deletes names matching this, so distinct db names keep two instances sharing a directory from pruning each other's backups                                             |
+| `-pre-migration`      | present only on the snapshot taken before a migration, absent on periodic backups. It is what lets retention pin the newest pre-migration backup and never age it out                                                                                           |
+| `<sha>`               | short git sha of the build that owned the database when the snapshot was taken (recorded inside it, see `_slm_meta`). For a pre-migration backup this is the version being upgraded _from_, the one to roll back to. `unknown` if the database carried no stamp |
+| `<yyyyMMdd>-<HHmmss>` | when it was taken, which sorts chronologically                                                                                                                                                                                                                  |
+| `.sqlite3.gz`         | a gzipped SQLite database                                                                                                                                                                                                                                       |
+
+Each run is also recorded in the audit log as a `BACKUP_CREATED` event.
 
 It's also possible to configure an SFTP destination for the backups. See below.
 
@@ -169,14 +192,26 @@ A failed upload does not fail the backup. The local copy is still written, and t
 `restore.sh` stops the app, puts a backup back, and starts it again:
 
 ```sh
-./restore.sh --list             # what backups there are
-./restore.sh --pre-migration    # the snapshot taken before the last migration: undo a bad upgrade
-./restore.sh --latest           # the newest backup of any kind
-./restore.sh --from slm-backup-db-20260713-134504.sqlite3.gz    # a specific one
+./restore.sh --list                   # what backups there are, and the build each belongs to
+./restore.sh --inspect --latest       # which build a backup belongs to, without restoring it
+./restore.sh --pre-migration          # the snapshot taken before the last migration: undo a bad upgrade
+./restore.sh --latest                 # the newest backup of any kind
+./restore.sh --commit-sha commit-a6047f4    # the newest backup taken by a given build
+./restore.sh --from slm-backup-db-a6047f44deb0-20260713-134504.sqlite3.gz    # a specific one
 ```
 
 `--from` also takes a path, which is how you restore a backup fetched back off the SFTP target. Drop it in
 `data/backups` or pass the full path.
+
+Because the filename carries the owning build's sha (see the breakdown above), `--list` shows the build and
+`--commit-sha` can pick the newest backup from a particular version without unpacking anything. `--commit-sha`
+accepts a full sha, a short one, or a `commit-<sha>` image tag, and pairs with `--pre-migration` to restrict the
+search to pre-migration snapshots.
+
+`--inspect` pairs with a backup selector (`--latest`, `--pre-migration`, `--from`) and changes nothing: it unpacks
+the backup, reports which app build the database belongs to and which image tag to pin, and how far behind the
+current build it is. Run it first when rolling back an upgrade, so you know which version to point
+`docker-compose.yaml` at before you start the app.
 
 The database being replaced is kept, renamed to `db.sqlite3.replaced-<timestamp>` next to it, because a restore
 is otherwise the one operation with no undo. Delete it once you are happy. The restore is checked
@@ -189,7 +224,9 @@ the app goes on writing to a database that is no longer at that path, and those 
 
 If you are rolling back a bad upgrade, roll the image back too. Restoring a pre-migration backup and then
 starting the same version just applies the same migration again (the restore says so if the database it put
-back is behind the build).
+back is behind the build). Each database is stamped with the git sha and branch of the app that last ran
+against it, so the restore (and `--inspect`) names the exact image tag to pin -- for a pre-migration snapshot
+that is the version you were upgrading _from_, which is the one to roll back to.
 
 #### 3.7. Event history retention
 

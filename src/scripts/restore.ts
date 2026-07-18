@@ -1,5 +1,7 @@
+import { formatVersion } from '@/lib/versioning'
 import { tsMigrations } from '@/migrations/registry'
 import * as DbBackup from '@/server/db-backup'
+import * as DbMeta from '@/server/db-meta'
 import * as Env from '@/server/env'
 import * as Migrate from '@/server/migrate'
 import DatabaseConstructor, { type Database } from 'better-sqlite3'
@@ -22,8 +24,10 @@ import * as Zlib from 'node:zlib'
 const args = parseArgs({
 	options: {
 		list: { type: 'boolean', default: false },
+		inspect: { type: 'boolean', default: false },
 		'pre-migration': { type: 'boolean', default: false },
 		latest: { type: 'boolean', default: false },
+		'commit-sha': { type: 'string' },
 		from: { type: 'string' },
 		yes: { type: 'boolean', short: 'y', default: false },
 	},
@@ -39,22 +43,23 @@ const DB_PATH = path.resolve(ENV.DB_PATH)
 // undo the whole exercise. Its own exit code so the wrapper can decline to restart the app rather than walk into that.
 const EXIT_RESTORED_BEHIND_BUILD = 2
 
-type Candidate = { fileName: string; path: string; kind: DbBackup.BackupKind; takenAt: Date; sizeBytes: number }
+type Candidate = { fileName: string; path: string; kind: DbBackup.BackupKind; sha: string | null; takenAt: Date; sizeBytes: number }
 
 // every backup of this database, newest first, whatever kind
 function candidates(): Candidate[] {
 	if (!fs.existsSync(ENV.BACKUPS_DIR)) return []
 	const names = fs.readdirSync(ENV.BACKUPS_DIR)
-	return DbBackup.backupFiles(names, ENV.DB_PATH).map(({ name, kind }) => {
+	return DbBackup.backupFiles(names, ENV.DB_PATH).map(({ name, kind, sha }) => {
 		const p = path.join(ENV.BACKUPS_DIR, name)
 		const stat = fs.statSync(p)
-		return { fileName: name, path: p, kind, takenAt: stat.mtime, sizeBytes: stat.size }
+		return { fileName: name, path: p, kind, sha, takenAt: stat.mtime, sizeBytes: stat.size }
 	})
 }
 
 function describe(c: Candidate) {
 	const size = `${(c.sizeBytes / 1024 / 1024).toFixed(1)} MB`
-	return `${c.fileName}\n    ${c.kind}, taken ${DateFns.format(c.takenAt, 'yyyy-MM-dd HH:mm:ss')}, ${size}`
+	const build = c.sha && c.sha !== 'unknown' ? `commit-${c.sha.slice(0, 7)}` : 'build unknown'
+	return `${c.fileName}\n    ${c.kind}, ${build}, taken ${DateFns.format(c.takenAt, 'yyyy-MM-dd HH:mm:ss')}, ${size}`
 }
 
 function list() {
@@ -76,23 +81,25 @@ function pick(): Candidate {
 		const resolved = fs.existsSync(p) ? p : fs.existsSync(fallback) ? fallback : null
 		if (!resolved) fail(`no such backup: ${args.values.from}`)
 		const stat = fs.statSync(resolved)
+		const parsed = DbBackup.parseBackupFile(path.basename(resolved), ENV.DB_PATH)
 		return {
 			fileName: path.basename(resolved),
 			path: resolved,
-			kind: DbBackup.kindOf(path.basename(resolved), ENV.DB_PATH) ?? 'periodic',
+			kind: parsed?.kind ?? 'periodic',
+			sha: parsed?.sha ?? null,
 			takenAt: stat.mtime,
 			sizeBytes: stat.size,
 		}
 	}
 
-	const all = candidates()
-	const wanted = args.values['pre-migration'] ? all.filter(c => c.kind === 'pre-migration') : all
+	const commitSha = args.values['commit-sha']
+	const db = path.basename(ENV.DB_PATH)
+	let wanted = candidates()
+	if (args.values['pre-migration']) wanted = wanted.filter(c => c.kind === 'pre-migration')
+	if (commitSha) wanted = wanted.filter(c => DbBackup.shaMatchesRequest(c.sha, commitSha))
 	if (wanted.length === 0) {
-		fail(
-			args.values['pre-migration']
-				? `no pre-migration backups of ${path.basename(ENV.DB_PATH)} in ${ENV.BACKUPS_DIR}`
-				: `no backups of ${path.basename(ENV.DB_PATH)} in ${ENV.BACKUPS_DIR}`,
-		)
+		const scope = [args.values['pre-migration'] ? 'pre-migration ' : '', `backups of ${db}`, commitSha ? ` from commit ${commitSha}` : '']
+		fail(`no ${scope.join('')} in ${ENV.BACKUPS_DIR}`)
 	}
 	return wanted[0]
 }
@@ -100,6 +107,28 @@ function pick(): Candidate {
 function fail(msg: string): never {
 	console.error(msg)
 	process.exit(1)
+}
+
+// Reports which build a backup belongs to and how far behind the current code it is, without replacing anything --
+// the answer to "which image do I pin?" before committing to the restore. Unpacks to a temp file next to the db and
+// removes it again, so it needs the disk space but neither stops the app nor touches the live database.
+async function inspect(backup: Candidate) {
+	console.log(`inspecting ${describe(backup)}\n`)
+	const tmpPath = `${DB_PATH}.inspect-${process.pid}.tmp`
+	rmDbFiles(tmpPath)
+	try {
+		await gunzipTo(backup.path, tmpPath)
+		assertIntact(tmpPath)
+		console.log(pinGuidance(buildStampOf(tmpPath)))
+		const pending = pendingAfterRestore(tmpPath)
+		console.log(
+			pending.length > 0
+				? `It is ${pending.length} migration(s) behind the current build (${pending.join(', ')}).`
+				: 'It is up to date with the current build.',
+		)
+	} finally {
+		rmDbFiles(tmpPath)
+	}
 }
 
 async function gunzipTo(sourcePath: string, destPath: string) {
@@ -130,6 +159,35 @@ function pendingAfterRestore(dbPath: string) {
 	} finally {
 		db.close()
 	}
+}
+
+// the build a backup belongs to, stamped into the db by the app that last ran against it. null for a backup taken
+// before stamping existed, or one pulled off a database that never booted the app.
+function buildStampOf(dbPath: string): DbMeta.BuildStamp | null {
+	const db = new DatabaseConstructor(dbPath, { readonly: true })
+	try {
+		return DbMeta.readBuildStamp(db)
+	} finally {
+		db.close()
+	}
+}
+
+// CI publishes every commit as `commit-<first 7 of sha>` (see .github/workflows/docker-ci.yml). null when the stamp
+// isn't a git sha we can turn into a tag (e.g. an "unknown" build with no GIT_SHA baked in).
+function imageTagFor(sha: string): string | null {
+	return /^[0-9a-f]{7,40}$/i.test(sha) ? `commit-${sha.slice(0, 7)}` : null
+}
+
+// the line(s) telling the operator which image this backup belongs to, so they can pin it before starting the app.
+function pinGuidance(stamp: DbMeta.BuildStamp | null): string {
+	if (!stamp) {
+		return 'This backup carries no build stamp (it predates version stamping); use the migration gap reported here to work out which image to pin.'
+	}
+	const tag = imageTagFor(stamp.gitSha)
+	const version = formatVersion(stamp.gitBranch, stamp.gitSha)
+	return tag
+		? `This backup belongs to build ${version}. Pin the \`${tag}\` image tag in docker-compose.yaml before starting the app.`
+		: `This backup belongs to build ${version}, which has no published image tag; match the image to it before starting the app.`
 }
 
 async function confirm(question: string) {
@@ -173,13 +231,19 @@ if (args.values.list) {
 	list()
 	process.exit(0)
 }
-if (!args.values.from && !args.values['pre-migration'] && !args.values.latest) {
+if (!args.values.from && !args.values['pre-migration'] && !args.values.latest && !args.values['commit-sha']) {
 	console.error('pick a backup: --latest (newest of any kind), --pre-migration (newest taken before a migration),')
-	console.error('or --from <file>. `--list` shows what there is.')
+	console.error('--commit-sha <sha> (newest from a given build), or --from <file>. `--list` shows what there is.')
 	process.exit(1)
 }
 
 const backup = pick()
+
+if (args.values.inspect) {
+	await inspect(backup)
+	process.exit(0)
+}
+
 const existing = lockExisting()
 try {
 	console.log(`restoring ${describe(backup)}\n     -> ${ENV.DB_PATH}\n`)
@@ -194,6 +258,7 @@ try {
 	assertIntact(tmpPath)
 
 	const pending = pendingAfterRestore(tmpPath)
+	const stamp = buildStampOf(tmpPath)
 
 	// An archive holds one file, so a -wal next to the unpacked copy can only be the empty one sqlite made for the
 	// read-only connections just above, which they aren't allowed to tidy up on close. Left there they would follow
@@ -218,12 +283,13 @@ try {
 
 	fs.renameSync(tmpPath, DB_PATH)
 	console.log(`restored ${ENV.DB_PATH} from ${backup.fileName}`)
+	console.log(pinGuidance(stamp))
 
 	if (pending.length > 0) {
 		console.log(
 			`\nnote: this database is ${pending.length} migration(s) behind this build (${pending.join(', ')}).\n`
-				+ 'Starting this version of the app applies them again, undoing the restore -- so roll the image back to the version\n'
-				+ 'this database belongs to before starting it (or set DB_AUTOMIGRATE=0 if you know what you are doing).',
+				+ 'Starting this version of the app applies them again, undoing the restore -- so roll the image back before\n'
+				+ 'starting it (or set DB_AUTOMIGRATE=0 if you know what you are doing).',
 		)
 		process.exit(EXIT_RESTORED_BEHIND_BUILD)
 	}
