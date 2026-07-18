@@ -40,6 +40,8 @@ export type Constraint =
 		filterApplState: FilterApplicationState
 		showIndicator: IndicatorState
 		warn: FilterApplicationState
+		// set only on the single pool-membership constraint; consumers key off this to find it
+		poolFilterMode?: 'include' | 'exclude'
 		id: string
 	}
 	| {
@@ -65,8 +67,6 @@ export type FilterMenuItem = {
 	// siblings that this menu item *shouldn't* be filtered by
 	excludedSiblings?: string[]
 }
-
-export type ViewableConstraint = Exclude<Constraint, { indicateMatches: false }>
 
 export const LAYERS_QUERY_SORT_DIRECTION = z.enum(['ASC', 'DESC', 'ASC:ABS', 'DESC:ABS'])
 export type LayersQuerySortDirection = z.infer<typeof LAYERS_QUERY_SORT_DIRECTION>

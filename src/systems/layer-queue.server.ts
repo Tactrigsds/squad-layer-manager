@@ -125,7 +125,11 @@ export const setupInstance = C.spanOp(
 							const repeatViolations = warns.filter(w => w.type === 'repeat-rule-violation-warning').flatMap(w => w.descriptors)
 							const poolViolations = warns.filter(w => w.type === 'filter-entity-warning').map(w => {
 								const constraint = allConstraints.find(c => c.id === w.constraintId)! as Extract<LQY.Constraint, { type: 'filter-entity' }>
-								return constraint.warn === 'inverted' ? `!${constraint.filterId}` : constraint.filterId
+								const entity = ctx.filters.get(constraint.filterId)
+								// warn 'inverted' fires when the layer does NOT match, so use the miss indicator's message
+								const missed = constraint.warn === 'inverted'
+								return (missed ? entity?.invertedAlertMessage : entity?.alertMessage)
+									?? `${missed ? '!' : ''}${entity?.name ?? constraint.filterId}`
 							})
 							await SquadRcon.warnAllAdmins(
 								ctx,
