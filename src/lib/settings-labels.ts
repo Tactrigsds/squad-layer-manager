@@ -11,7 +11,6 @@ const LABEL_OVERRIDES: Record<string, string> = {
 	'connections.rcon': 'RCON',
 	'connections.sftp': 'SFTP Log Source',
 	'connections.token': 'Agent Token',
-	'queue.generationPool': 'Autogeneration Pool',
 }
 
 export function humanize(key: string): string {

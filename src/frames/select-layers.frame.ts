@@ -131,7 +131,7 @@ const setup: Frame['setup'] = (args) => {
 
 	AppliedFiltersPrt.initAppliedFiltersStore({
 		...args,
-		input: { poolDefaultDisabled: !!input.initialEditedLayerId },
+		input: input.initialEditedLayerId ? { context: 'edit', editedLayerId: input.initialEditedLayerId } : { context: 'add' },
 	})
 	PoolCheckboxesPrt.initNewPoolCheckboxes({ ...args, input: { defaultState: { dnr: 'disabled' } } })
 	LayerFilterMenuPrt.initLayerFilterMenuStore({

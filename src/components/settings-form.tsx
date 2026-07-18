@@ -5,7 +5,7 @@ import { LOADING } from '@/components/combo-box/constants.ts'
 import { DiscordMemberSelect, DiscordRoleSelect } from '@/components/discord-picker'
 import LayerGenerationConfigEditor from '@/components/layer-generation-config-editor'
 import LayerTableConfigEditor from '@/components/layer-table-config-editor'
-import { GenerationPoolFiltersPanel, MainPoolFiltersPanel, RepeatRulesPanel } from '@/components/pool-config-panels'
+import { PoolFiltersPanel, RepeatRulesPanel } from '@/components/pool-config-panels'
 import type { PoolConfigApi } from '@/components/pool-config-panels.helpers'
 import { StickyGroup } from '@/components/sticky-group'
 import { Badge } from '@/components/ui/badge'
@@ -1697,7 +1697,7 @@ function usePathValue(value$: ValueState, reset$: Rx.Observable<void>, path: Pat
 }
 
 // PoolConfigApi over the form's draft observable, so the settings page renders the same pool-configuration UI as the
-// dashboard popover. Paths are relative to the pool object this override is mounted on (queue.mainPool / generationPool).
+// dashboard popover. Paths are relative to the pool object this override is mounted on (queue.mainPool).
 function usePoolConfigApi({ value$, reset$, onChange }: OverrideProps): PoolConfigApi {
 	const [resetKey, setResetKey] = React.useState(0)
 	useReset(reset$, () => setResetKey((k) => k + 1))
@@ -1878,18 +1878,8 @@ function MainPoolField(props: OverrideProps) {
 	const api = usePoolConfigApi(props)
 	return (
 		<div className="space-y-6">
-			<MainPoolFiltersPanel api={api} />
-			<RepeatRulesPanel poolId="mainPool" api={api} />
-		</div>
-	)
-}
-
-function GenerationPoolField(props: OverrideProps) {
-	const api = usePoolConfigApi(props)
-	return (
-		<div className="space-y-6">
-			<GenerationPoolFiltersPanel api={api} />
-			<RepeatRulesPanel poolId="generationPool" api={api} />
+			<PoolFiltersPanel api={api} />
+			<RepeatRulesPanel api={api} />
 		</div>
 	)
 }
@@ -2600,7 +2590,6 @@ function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefin
 	// the entire `rbac` subtree is rendered by RbacBody (see FieldControl), so no per-field rbac overrides are needed here
 	// server settings: the pool configuration reuses the dashboard popover's panels; connection passwords are masked
 	if (path.length === 2 && path[0] === 'queue' && last === 'mainPool') return MainPoolField
-	if (path.length === 2 && path[0] === 'queue' && last === 'generationPool') return GenerationPoolField
 	if (path.length === 2 && path[0] === 'connections' && last === 'token') return ServerAgentTokenField
 	if (last === 'password') return PasswordField
 	return undefined

@@ -226,8 +226,13 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 			const content = contentRef.current
 			if (!content) return
 
-			const target = e.target as Node
+			const target = e.target as Element
 			if (content.contains(target)) {
+				return
+			}
+			// popovers, combo boxes and dialogs render in portals at body level, outside the window's DOM node;
+			// a mousedown inside one of them is not a click on the page behind the window
+			if (target.closest?.('[data-radix-popper-content-wrapper], [role="dialog"]')) {
 				return
 			}
 
