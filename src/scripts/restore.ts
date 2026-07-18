@@ -27,6 +27,7 @@ const args = parseArgs({
 		inspect: { type: 'boolean', default: false },
 		'pre-migration': { type: 'boolean', default: false },
 		latest: { type: 'boolean', default: false },
+		'commit-sha': { type: 'string' },
 		from: { type: 'string' },
 		yes: { type: 'boolean', short: 'y', default: false },
 	},
@@ -42,22 +43,23 @@ const DB_PATH = path.resolve(ENV.DB_PATH)
 // undo the whole exercise. Its own exit code so the wrapper can decline to restart the app rather than walk into that.
 const EXIT_RESTORED_BEHIND_BUILD = 2
 
-type Candidate = { fileName: string; path: string; kind: DbBackup.BackupKind; takenAt: Date; sizeBytes: number }
+type Candidate = { fileName: string; path: string; kind: DbBackup.BackupKind; sha: string | null; takenAt: Date; sizeBytes: number }
 
 // every backup of this database, newest first, whatever kind
 function candidates(): Candidate[] {
 	if (!fs.existsSync(ENV.BACKUPS_DIR)) return []
 	const names = fs.readdirSync(ENV.BACKUPS_DIR)
-	return DbBackup.backupFiles(names, ENV.DB_PATH).map(({ name, kind }) => {
+	return DbBackup.backupFiles(names, ENV.DB_PATH).map(({ name, kind, sha }) => {
 		const p = path.join(ENV.BACKUPS_DIR, name)
 		const stat = fs.statSync(p)
-		return { fileName: name, path: p, kind, takenAt: stat.mtime, sizeBytes: stat.size }
+		return { fileName: name, path: p, kind, sha, takenAt: stat.mtime, sizeBytes: stat.size }
 	})
 }
 
 function describe(c: Candidate) {
 	const size = `${(c.sizeBytes / 1024 / 1024).toFixed(1)} MB`
-	return `${c.fileName}\n    ${c.kind}, taken ${DateFns.format(c.takenAt, 'yyyy-MM-dd HH:mm:ss')}, ${size}`
+	const build = c.sha && c.sha !== 'unknown' ? `commit-${c.sha.slice(0, 7)}` : 'build unknown'
+	return `${c.fileName}\n    ${c.kind}, ${build}, taken ${DateFns.format(c.takenAt, 'yyyy-MM-dd HH:mm:ss')}, ${size}`
 }
 
 function list() {
@@ -79,23 +81,25 @@ function pick(): Candidate {
 		const resolved = fs.existsSync(p) ? p : fs.existsSync(fallback) ? fallback : null
 		if (!resolved) fail(`no such backup: ${args.values.from}`)
 		const stat = fs.statSync(resolved)
+		const parsed = DbBackup.parseBackupFile(path.basename(resolved), ENV.DB_PATH)
 		return {
 			fileName: path.basename(resolved),
 			path: resolved,
-			kind: DbBackup.kindOf(path.basename(resolved), ENV.DB_PATH) ?? 'periodic',
+			kind: parsed?.kind ?? 'periodic',
+			sha: parsed?.sha ?? null,
 			takenAt: stat.mtime,
 			sizeBytes: stat.size,
 		}
 	}
 
-	const all = candidates()
-	const wanted = args.values['pre-migration'] ? all.filter(c => c.kind === 'pre-migration') : all
+	const commitSha = args.values['commit-sha']
+	const db = path.basename(ENV.DB_PATH)
+	let wanted = candidates()
+	if (args.values['pre-migration']) wanted = wanted.filter(c => c.kind === 'pre-migration')
+	if (commitSha) wanted = wanted.filter(c => DbBackup.shaMatchesRequest(c.sha, commitSha))
 	if (wanted.length === 0) {
-		fail(
-			args.values['pre-migration']
-				? `no pre-migration backups of ${path.basename(ENV.DB_PATH)} in ${ENV.BACKUPS_DIR}`
-				: `no backups of ${path.basename(ENV.DB_PATH)} in ${ENV.BACKUPS_DIR}`,
-		)
+		const scope = [args.values['pre-migration'] ? 'pre-migration ' : '', `backups of ${db}`, commitSha ? ` from commit ${commitSha}` : '']
+		fail(`no ${scope.join('')} in ${ENV.BACKUPS_DIR}`)
 	}
 	return wanted[0]
 }
@@ -227,9 +231,9 @@ if (args.values.list) {
 	list()
 	process.exit(0)
 }
-if (!args.values.from && !args.values['pre-migration'] && !args.values.latest) {
+if (!args.values.from && !args.values['pre-migration'] && !args.values.latest && !args.values['commit-sha']) {
 	console.error('pick a backup: --latest (newest of any kind), --pre-migration (newest taken before a migration),')
-	console.error('or --from <file>. `--list` shows what there is.')
+	console.error('--commit-sha <sha> (newest from a given build), or --from <file>. `--list` shows what there is.')
 	process.exit(1)
 }
 

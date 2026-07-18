@@ -126,7 +126,8 @@ Backups happen for two reasons. One of them is not optional.
 **Before every migration**, always, the database is snapshotted into `BACKUPS_DIR` first. This happens whether
 the app applies migrations itself at boot (`DB_AUTOMIGRATE`, the default) or you run `pnpm db:migrate:prod`
 yourself, and it is what you restore from if an upgrade turns out to have been a mistake. Nothing is applied if
-the snapshot fails. These are named `slm-backup-db-pre-migration-20260713-134504.sqlite3.gz`, and the most
+the snapshot fails. These are named `slm-backup-db-pre-migration-a6047f44deb0-20260713-134504.sqlite3.gz` (the sha is the version being
+upgraded _from_, which is the one a rollback wants), and the most
 recent one is never deleted by retention, however old it gets: it is the only way back from the migration it
 was taken before.
 
@@ -169,15 +170,21 @@ A failed upload does not fail the backup. The local copy is still written, and t
 `restore.sh` stops the app, puts a backup back, and starts it again:
 
 ```sh
-./restore.sh --list                   # what backups there are
+./restore.sh --list                   # what backups there are, and the build each belongs to
 ./restore.sh --inspect --latest       # which build a backup belongs to, without restoring it
 ./restore.sh --pre-migration          # the snapshot taken before the last migration: undo a bad upgrade
 ./restore.sh --latest                 # the newest backup of any kind
-./restore.sh --from slm-backup-db-20260713-134504.sqlite3.gz    # a specific one
+./restore.sh --commit-sha commit-a6047f4    # the newest backup taken by a given build
+./restore.sh --from slm-backup-db-a6047f44deb0-20260713-134504.sqlite3.gz    # a specific one
 ```
 
 `--from` also takes a path, which is how you restore a backup fetched back off the SFTP target. Drop it in
 `data/backups` or pass the full path.
+
+Each backup's filename carries the short git sha of the build that owned the database when it was taken (e.g.
+`slm-backup-db-a6047f44deb0-...`), so `--list` shows the build and `--commit-sha` can pick the newest backup from a
+particular version. `--commit-sha` accepts a full sha, a short one, or a `commit-<sha>` image tag, and pairs with
+`--pre-migration` to restrict the search to pre-migration snapshots.
 
 `--inspect` pairs with a backup selector (`--latest`, `--pre-migration`, `--from`) and changes nothing: it unpacks
 the backup, reports which app build the database belongs to and which image tag to pin, and how far behind the
