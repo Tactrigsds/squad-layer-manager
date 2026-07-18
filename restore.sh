@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Restore the database from a backup, stopping the app around it.
 #
-#   ./restore.sh --list                  what backups there are
+#   ./restore.sh --list                  what backups there are (with the build each belongs to)
 #   ./restore.sh --inspect --latest      which build a backup belongs to (which image to pin), without restoring it
 #   ./restore.sh --pre-migration         the snapshot taken before the last migration (undo a bad upgrade)
 #   ./restore.sh --latest                the newest backup of any kind
+#   ./restore.sh --commit-sha <sha>      the newest backup taken by a given build (a git sha or commit-<sha> tag)
 #   ./restore.sh --from <file>           a specific one, e.g. one pulled back off the sftp target into ./data/backups
 #
 # The app must not be running: it would go on writing to the database being replaced and lose those writes, without

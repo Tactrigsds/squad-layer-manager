@@ -112,6 +112,12 @@ export async function backupTo(destPath: string) {
 	return await driver.backup(destPath)
 }
 
+// the build that owns this database, stamped on boot (see db-meta.ts). null only if setup() hasn't run or the db
+// predates stamping. Used to name a periodic backup after the version it belongs to.
+export function readBuildStamp() {
+	return DbMeta.readBuildStamp(driver)
+}
+
 // try to use the getter instead of passing the db instance around by itself. that way the logger is always up-to-date. not expensive.
 export function addPooledDb<T extends object>(ctx: T) {
 	if ('db' in ctx) return ctx as T & C.Db
