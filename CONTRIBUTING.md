@@ -29,6 +29,10 @@ the reasoning behind.
 nodejs 24.18.0
 pnpm
 
+## Dev Container
+
+There is a devcontainer configured that reproduces a working environment on linux. Not yet tested on macos or wsl.
+
 ## Setup
 
 ```sh
@@ -37,9 +41,7 @@ pnpm run build:engine   # the layer engine is rust -> wasm and the wasm blob is 
 pnpm exec playwright install chromium   # only needed if you want to run the e2e suite
 ```
 
-## Dev Container
 
-There is a devcontainer configured that reproduces a working environment on linux. Not yet tested on macos or wsl.
 
 ## Environment Variables
 
