@@ -41,8 +41,6 @@ pnpm run build:engine   # the layer engine is rust -> wasm and the wasm blob is 
 pnpm exec playwright install chromium   # only needed if you want to run the e2e suite
 ```
 
-
-
 ## Environment Variables
 
 Copy [.env.example.dev](.env.example.dev) to `.env` and fill in the vars it leaves uncommented; the commented-out ones are optional and show the default they fall back to.
