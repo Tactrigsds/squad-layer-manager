@@ -243,6 +243,16 @@ export namespace Actions {
 		)
 	}
 
+	export function selectAllInAdminCam(stores: KeyProp, teamId?: SM.TeamId) {
+		const chatState = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!))
+		selectPlayers(
+			stores,
+			chatState.players
+				.filter(p => chatState.adminCamPlayerIds.includes(SM.PlayerIds.getPlayerId(p.ids)) && (teamId == null || p.teamId === teamId))
+				.map(p => SM.PlayerIds.getPlayerId(p.ids)),
+		)
+	}
+
 	export function selectAllWithRole(stores: KeyProp, role: string, teamId?: SM.TeamId) {
 		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
 		selectPlayers(
