@@ -169,14 +169,20 @@ A failed upload does not fail the backup. The local copy is still written, and t
 `restore.sh` stops the app, puts a backup back, and starts it again:
 
 ```sh
-./restore.sh --list             # what backups there are
-./restore.sh --pre-migration    # the snapshot taken before the last migration: undo a bad upgrade
-./restore.sh --latest           # the newest backup of any kind
+./restore.sh --list                   # what backups there are
+./restore.sh --inspect --latest       # which build a backup belongs to, without restoring it
+./restore.sh --pre-migration          # the snapshot taken before the last migration: undo a bad upgrade
+./restore.sh --latest                 # the newest backup of any kind
 ./restore.sh --from slm-backup-db-20260713-134504.sqlite3.gz    # a specific one
 ```
 
 `--from` also takes a path, which is how you restore a backup fetched back off the SFTP target. Drop it in
 `data/backups` or pass the full path.
+
+`--inspect` pairs with a backup selector (`--latest`, `--pre-migration`, `--from`) and changes nothing: it unpacks
+the backup, reports which app build the database belongs to and which image tag to pin, and how far behind the
+current build it is. Run it first when rolling back an upgrade, so you know which version to point
+`docker-compose.yaml` at before you start the app.
 
 The database being replaced is kept, renamed to `db.sqlite3.replaced-<timestamp>` next to it, because a restore
 is otherwise the one operation with no undo. Delete it once you are happy. The restore is checked
@@ -189,7 +195,9 @@ the app goes on writing to a database that is no longer at that path, and those 
 
 If you are rolling back a bad upgrade, roll the image back too. Restoring a pre-migration backup and then
 starting the same version just applies the same migration again (the restore says so if the database it put
-back is behind the build).
+back is behind the build). Each database is stamped with the git sha and branch of the app that last ran
+against it, so the restore (and `--inspect`) names the exact image tag to pin -- for a pre-migration snapshot
+that is the version you were upgrading _from_, which is the one to roll back to.
 
 #### 3.7. Event history retention
 

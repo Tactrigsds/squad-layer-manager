@@ -1,5 +1,7 @@
+import { formatVersion } from '@/lib/versioning'
 import { tsMigrations } from '@/migrations/registry'
 import * as DbBackup from '@/server/db-backup'
+import * as DbMeta from '@/server/db-meta'
 import * as Env from '@/server/env'
 import * as Migrate from '@/server/migrate'
 import DatabaseConstructor, { type Database } from 'better-sqlite3'
@@ -22,6 +24,7 @@ import * as Zlib from 'node:zlib'
 const args = parseArgs({
 	options: {
 		list: { type: 'boolean', default: false },
+		inspect: { type: 'boolean', default: false },
 		'pre-migration': { type: 'boolean', default: false },
 		latest: { type: 'boolean', default: false },
 		from: { type: 'string' },
@@ -102,6 +105,28 @@ function fail(msg: string): never {
 	process.exit(1)
 }
 
+// Reports which build a backup belongs to and how far behind the current code it is, without replacing anything --
+// the answer to "which image do I pin?" before committing to the restore. Unpacks to a temp file next to the db and
+// removes it again, so it needs the disk space but neither stops the app nor touches the live database.
+async function inspect(backup: Candidate) {
+	console.log(`inspecting ${describe(backup)}\n`)
+	const tmpPath = `${DB_PATH}.inspect-${process.pid}.tmp`
+	rmDbFiles(tmpPath)
+	try {
+		await gunzipTo(backup.path, tmpPath)
+		assertIntact(tmpPath)
+		console.log(pinGuidance(buildStampOf(tmpPath)))
+		const pending = pendingAfterRestore(tmpPath)
+		console.log(
+			pending.length > 0
+				? `It is ${pending.length} migration(s) behind the current build (${pending.join(', ')}).`
+				: 'It is up to date with the current build.',
+		)
+	} finally {
+		rmDbFiles(tmpPath)
+	}
+}
+
 async function gunzipTo(sourcePath: string, destPath: string) {
 	await Stream.pipeline(fs.createReadStream(sourcePath), Zlib.createGunzip(), fs.createWriteStream(destPath))
 }
@@ -130,6 +155,35 @@ function pendingAfterRestore(dbPath: string) {
 	} finally {
 		db.close()
 	}
+}
+
+// the build a backup belongs to, stamped into the db by the app that last ran against it. null for a backup taken
+// before stamping existed, or one pulled off a database that never booted the app.
+function buildStampOf(dbPath: string): DbMeta.BuildStamp | null {
+	const db = new DatabaseConstructor(dbPath, { readonly: true })
+	try {
+		return DbMeta.readBuildStamp(db)
+	} finally {
+		db.close()
+	}
+}
+
+// CI publishes every commit as `commit-<first 7 of sha>` (see .github/workflows/docker-ci.yml). null when the stamp
+// isn't a git sha we can turn into a tag (e.g. an "unknown" build with no GIT_SHA baked in).
+function imageTagFor(sha: string): string | null {
+	return /^[0-9a-f]{7,40}$/i.test(sha) ? `commit-${sha.slice(0, 7)}` : null
+}
+
+// the line(s) telling the operator which image this backup belongs to, so they can pin it before starting the app.
+function pinGuidance(stamp: DbMeta.BuildStamp | null): string {
+	if (!stamp) {
+		return 'This backup carries no build stamp (it predates version stamping); use the migration gap reported here to work out which image to pin.'
+	}
+	const tag = imageTagFor(stamp.gitSha)
+	const version = formatVersion(stamp.gitBranch, stamp.gitSha)
+	return tag
+		? `This backup belongs to build ${version}. Pin the \`${tag}\` image tag in docker-compose.yaml before starting the app.`
+		: `This backup belongs to build ${version}, which has no published image tag; match the image to it before starting the app.`
 }
 
 async function confirm(question: string) {
@@ -180,6 +234,12 @@ if (!args.values.from && !args.values['pre-migration'] && !args.values.latest) {
 }
 
 const backup = pick()
+
+if (args.values.inspect) {
+	await inspect(backup)
+	process.exit(0)
+}
+
 const existing = lockExisting()
 try {
 	console.log(`restoring ${describe(backup)}\n     -> ${ENV.DB_PATH}\n`)
@@ -194,6 +254,7 @@ try {
 	assertIntact(tmpPath)
 
 	const pending = pendingAfterRestore(tmpPath)
+	const stamp = buildStampOf(tmpPath)
 
 	// An archive holds one file, so a -wal next to the unpacked copy can only be the empty one sqlite made for the
 	// read-only connections just above, which they aren't allowed to tidy up on close. Left there they would follow
@@ -218,12 +279,13 @@ try {
 
 	fs.renameSync(tmpPath, DB_PATH)
 	console.log(`restored ${ENV.DB_PATH} from ${backup.fileName}`)
+	console.log(pinGuidance(stamp))
 
 	if (pending.length > 0) {
 		console.log(
 			`\nnote: this database is ${pending.length} migration(s) behind this build (${pending.join(', ')}).\n`
-				+ 'Starting this version of the app applies them again, undoing the restore -- so roll the image back to the version\n'
-				+ 'this database belongs to before starting it (or set DB_AUTOMIGRATE=0 if you know what you are doing).',
+				+ 'Starting this version of the app applies them again, undoing the restore -- so roll the image back before\n'
+				+ 'starting it (or set DB_AUTOMIGRATE=0 if you know what you are doing).',
 		)
 		process.exit(EXIT_RESTORED_BEHIND_BUILD)
 	}
