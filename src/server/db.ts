@@ -10,6 +10,7 @@ import { highlight } from 'sql-highlight'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import type * as C from './context.ts'
+import * as DbMeta from './db-meta.ts'
 import * as Env from './env.ts'
 import * as Migrate from './migrate.ts'
 
@@ -73,6 +74,11 @@ export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 				)
 			}
 		}
+
+		// stamp the database with the build now taking ownership of it, so a backup of it can later say which image to
+		// restore to. After migrations on purpose: a pre-migration snapshot is already on disk carrying the previous
+		// build's stamp, which is the one a rollback wants.
+		DbMeta.writeBuildStamp(driver, { gitSha: ENV.PUBLIC_GIT_SHA, gitBranch: ENV.PUBLIC_GIT_BRANCH })
 	}
 
 	// mysql enforced the schema's FK cascades; sqlite only does so with this pragma (per-connection).
@@ -104,6 +110,12 @@ export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 // mid-backup otherwise leaves a truncated file that looks whole.
 export async function backupTo(destPath: string) {
 	return await driver.backup(destPath)
+}
+
+// the build that owns this database, stamped on boot (see db-meta.ts). null only if setup() hasn't run or the db
+// predates stamping. Used to name a periodic backup after the version it belongs to.
+export function readBuildStamp() {
+	return DbMeta.readBuildStamp(driver)
 }
 
 // try to use the getter instead of passing the db instance around by itself. that way the logger is always up-to-date. not expensive.

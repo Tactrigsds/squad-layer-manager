@@ -8,11 +8,15 @@ import * as Zlib from 'node:zlib'
 // backup loop (backups.server.ts) and the pre-migration snapshot (migrate.ts). This module deliberately knows
 // nothing about env, logging or the driver -- the pre-migration path runs before any of that is set up.
 //
-// Backups are named slm-backup-<db filename>[-pre-migration]-<yyyyMMdd>-<HHmmss>.sqlite3.gz, e.g.
-// slm-backup-db-20260713-134016.sqlite3.gz for the default ./data/db.sqlite3. Naming them after the source db
-// means backups of different databases (two SLM instances pointed at one sftp directory, say) can't be mistaken
-// for each other -- which matters because retention deletes everything matching the prefix. Restore with
+// Backups are named slm-backup-<db filename>[-pre-migration]-<sha>-<yyyyMMdd>-<HHmmss>.sqlite3.gz, e.g.
+// slm-backup-db-a6047f44deb0-20260713-134016.sqlite3.gz for the default ./data/db.sqlite3. Naming them after the
+// source db means backups of different databases (two SLM instances pointed at one sftp directory, say) can't be
+// mistaken for each other -- which matters because retention deletes everything matching the prefix. Restore with
 // `gunzip -c <backup> > db.sqlite3`.
+//
+// <sha> is the short git sha of the build that owned the database when the snapshot was taken (see db-meta.ts). It
+// rides in the name so a backup can be selected and listed by version without unpacking it. Backups written before
+// this segment existed simply have no sha, and still parse (with sha null) -- the parser makes it optional.
 export const BACKUP_FILE_EXT = '.sqlite3.gz'
 
 // why a backup was taken. It is in the file name so that a pre-migration snapshot can be found (and restored) as
@@ -25,29 +29,51 @@ function filePrefix(dbPath: string, kind: BackupKind) {
 	return kind === 'pre-migration' ? `slm-backup-${db}-pre-migration` : `slm-backup-${db}`
 }
 
+// the sha is optional in the pattern so backups written before the sha segment existed still parse. It can't be
+// confused with the timestamp that follows: the timestamp is two fixed-width all-digit groups, and even a fully
+// numeric short sha only matches the optional group when a second `-<8 digits>-<6 digits>` still follows it.
 function filePattern(dbPath: string, kind: BackupKind) {
-	return new RegExp(`^${escapeRegExp(filePrefix(dbPath, kind))}-(\\d{8})-(\\d{6})${escapeRegExp(BACKUP_FILE_EXT)}$`)
+	return new RegExp(
+		`^${escapeRegExp(filePrefix(dbPath, kind))}-(?:([0-9a-f]{7,40}|unknown)-)?(\\d{8})-(\\d{6})${escapeRegExp(BACKUP_FILE_EXT)}$`,
+	)
 }
 
-export function fileName(dbPath: string, kind: BackupKind, at = new Date()) {
-	return `${filePrefix(dbPath, kind)}-${DateFns.format(at, 'yyyyMMdd-HHmmss')}${BACKUP_FILE_EXT}`
+// A filename-safe token for the owning build: a lowercased hex prefix of the git sha (see db-meta.ts), or `unknown`
+// for a database that carries no stamp. Trimmed to 12 chars -- long enough to be unambiguous, short enough to read.
+export function shaToken(sha: string | null | undefined): string {
+	const hex = /^[0-9a-f]+/i.exec((sha ?? '').trim())?.[0]
+	return hex && hex.length >= 7 ? hex.slice(0, 12).toLowerCase() : 'unknown'
+}
+
+export function fileName(dbPath: string, kind: BackupKind, sha: string | null | undefined, at = new Date()) {
+	return `${filePrefix(dbPath, kind)}-${shaToken(sha)}-${DateFns.format(at, 'yyyyMMdd-HHmmss')}${BACKUP_FILE_EXT}`
+}
+
+// Whether a backup's sha token satisfies a `--commit-sha` request. The request may be a full sha, a short one, or a
+// `commit-<sha>` image tag; a match is either being a prefix of the other, so 7-, 12- and 40-char forms all line up.
+// A backup with no stamp (`unknown`, or an older name with no sha at all) never matches.
+export function shaMatchesRequest(fileSha: string | null, requested: string): boolean {
+	if (!fileSha || fileSha === 'unknown') return false
+	const req = requested.trim().toLowerCase().replace(/^commit-/, '')
+	return req.length > 0 && (fileSha.startsWith(req) || req.startsWith(fileSha))
 }
 
 // `stamp` is the file's yyyyMMddHHmmss, which sorts chronologically. The whole NAME does not: `-pre-migration`
 // sits between the db name and the timestamp, so sorting on that orders every pre-migration backup after every
 // periodic one, whatever their dates -- which, once the two share a retention window, silently means retention
 // keeps the wrong files.
-export type BackupFile = { name: string; kind: BackupKind; stamp: string }
+export type BackupFile = { name: string; kind: BackupKind; stamp: string; sha: string | null }
 
 // null when the file isn't a backup of this database at all. Anything that returns null is left alone forever:
-// retention only ever deletes files we wrote ourselves.
+// retention only ever deletes files we wrote ourselves. `sha` is the owning build's short sha, or null for a backup
+// named before the sha segment existed.
 export function parseBackupFile(fileName: string, dbPath: string): BackupFile | null {
 	// pre-migration first: the periodic pattern requires the timestamp immediately after the db name, so the two
 	// can't both match, but trying the more specific one first makes that a property of this function rather than
 	// of the regexes.
 	for (const kind of ['pre-migration', 'periodic'] as const) {
 		const match = filePattern(dbPath, kind).exec(fileName)
-		if (match) return { name: fileName, kind, stamp: match[1] + match[2] }
+		if (match) return { name: fileName, kind, stamp: match[2] + match[3], sha: match[1] ?? null }
 	}
 	return null
 }
