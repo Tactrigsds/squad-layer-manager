@@ -10,7 +10,6 @@
 import { assertNever } from '@/lib/type-guards'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as CMD from '@/models/command.models'
-import type * as LP from '@/models/labeled-presets.models'
 
 // what an arg kind accepts, explained once for every arg that uses it. `syntax` is the shape of the token(s);
 // `description` is the prose shown beside it.
@@ -40,17 +39,12 @@ export const ARG_KIND_HELP: Record<CMD.ArgDef['kind'], { syntax: string; descrip
 		syntax: 'preset',
 		description: 'A configured reason, by its name or alias. Custom text is not accepted here.',
 	},
-	broadcast: {
-		syntax: 'preset | free text',
-		description: 'A single word picks a configured broadcast by its name or alias. Two or more words are broadcast verbatim.',
-	},
 }
 
 // the live values examples are filled from, so an example uses reasons and broadcasts this installation actually has
 // configured rather than invented ones an admin would get an "unknown reason" error for
 export type ExampleSeeds = {
 	reasons: AAR.AdminActionReason[]
-	broadcasts: LP.BroadcastPreset[]
 }
 
 export type ArgHelp = {
@@ -68,7 +62,7 @@ function argOptional(def: CMD.ArgDef, requiredReasonActions: readonly AAR.AdminA
 	if (def.kind === 'reason' || def.kind === 'preset-reason') {
 		return !requiredReasonActions.includes(def.action) && !!def.optional
 	}
-	if (def.kind === 'squad' || def.kind === 'broadcast') return false
+	if (def.kind === 'squad') return false
 	return !!def.optional
 }
 
@@ -90,8 +84,6 @@ function argPresets(def: CMD.ArgDef, seeds: ExampleSeeds): { label: string; alia
 		case 'reason':
 		case 'preset-reason':
 			return AAR.reasonsForAction(seeds.reasons, def.action)
-		case 'broadcast':
-			return seeds.broadcasts
 		default:
 			return []
 	}
@@ -153,11 +145,6 @@ function sampleTokens(def: CMD.ArgDef, seeds: ExampleSeeds): Sample {
 			if (def.kind === 'preset-reason') return { token }
 			return { token, alt: { token: 'stop doing that', note: 'With a custom reason' } }
 		}
-		case 'broadcast':
-			return {
-				token: firstPresetToken(seeds.broadcasts),
-				alt: { token: 'Server restarting in 5 minutes', note: 'With a custom message' },
-			}
 		default:
 			assertNever(def)
 	}

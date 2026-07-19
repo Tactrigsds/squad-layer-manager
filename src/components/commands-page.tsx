@@ -80,7 +80,7 @@ function PinButton({ cmdId, pinned }: { cmdId: CMD.CommandId; pinned: boolean })
 // the per-argument breakdown and worked examples, shown when a command is expanded. Both are derived from the
 // command's declaration plus the installation's configured reasons/broadcasts (see command-help.models).
 function CommandDetails({ cmdId, cmd, settings }: { cmdId: CMD.CommandId; cmd: CMD.CommandConfig; settings: PublicSettings }) {
-	const seeds: CMDH.ExampleSeeds = { reasons: settings.adminActionReasons, broadcasts: settings.broadcasts }
+	const seeds: CMDH.ExampleSeeds = { reasons: settings.adminActionReasons }
 	const args = CMDH.describeArgs(cmdId, seeds, settings.requireReasonFor)
 	const examples = CMDH.buildExamples(cmdId, cmd, seeds, settings.requireReasonFor)
 	const chatScope = cmd.scopes.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
