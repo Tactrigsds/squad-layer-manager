@@ -42,7 +42,7 @@ Configure the bot's intents as such:
 
 Copy your bot token into `DISCORD_BOT_TOKEN` in the `.env.secrets` file.
 
-If you don't have access to install the app on your org's discord server, then you may have to set it to public so that someone with access can install it. You can uncheck this option once it's installed.
+Like most other discord apps, SLM must be configured with a public install link, but this is not a security issue. Even if some other server gets the install link, they won't be able to perform actions, and SLM will automatically leave any discord server that's not the one configured below.
 
 Set `DISCORD_HOME_GUILD_ID` to the id of your org's discord server. To find this, enable Developer Mode in your discord settings, and right-click on the server icon. Only members of the server can be granted access to SLM.
 
