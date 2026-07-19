@@ -583,6 +583,25 @@ describe('PlayerIds.findByUsernameLoose', () => {
 	})
 })
 
+describe('PlayerIds.match', () => {
+	it('matches two records that share a hard id', () => {
+		expect(SM.PlayerIds.match({ eos: 'a', username: 'Quincy' }, { eos: 'a', username: 'Someone Else' })).toBe(true)
+	})
+
+	it('matches on username substring when neither side has a hard id', () => {
+		expect(SM.PlayerIds.match({ username: 'Quincy' }, { usernameNoTag: '『tag』 Quincy' })).toBe(true)
+	})
+
+	// prod: player "Quincy" (00021f...) was resolved to a distinct impostor "REAL Quincy" (000275...) every
+	// roster poll because "REAL Quincy".includes("Quincy"), producing a storm of spurious promote/team-change events.
+	it('does not collapse two players with differing hard ids just because one name is a substring of the other', () => {
+		const quincy = { eos: '00021f', username: 'Quincy' }
+		const impostor = { eos: '000275', username: 'REAL Quincy', usernameNoTag: 'REAL Quincy' }
+		expect(SM.PlayerIds.match(quincy, impostor)).toBe(false)
+		expect(SM.PlayerIds.match(impostor, quincy)).toBe(false)
+	})
+})
+
 describe('toRecentPlayer', () => {
 	// A player persisted before adminGroups existed reaches the reducer with the field simply absent (the schema
 	// leaves it optional). Spreading that threw "adminGroups is not iterable" and took the whole chat feed down on
