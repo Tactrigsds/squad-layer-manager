@@ -9,9 +9,8 @@ function reason(label: string, actions: AAR.AdminActionType[]): AAR.AdminActionR
 
 const seeds: CMDH.ExampleSeeds = {
 	reasons: [reason('toxicity', ['warn', 'kick', 'timeout']), reason('teamkilling', ['warn'])],
-	broadcasts: [{ label: 'restart', aliases: [], message: 'Server restarting' }],
 }
-const noSeeds: CMDH.ExampleSeeds = { reasons: [], broadcasts: [] }
+const noSeeds: CMDH.ExampleSeeds = { reasons: [] }
 
 // the real configs, with every command's declared strings under the fallback prefix
 const configs = CMD.seedCommandConfigs({}, CMD.FALLBACK_PREFIX) as unknown as CMD.CommandConfigs
