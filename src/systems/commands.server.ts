@@ -280,12 +280,6 @@ async function resolveArgDefs(
 				out[def.name] = res.reason
 				break
 			}
-			case 'broadcast': {
-				const res = CMD.resolveBroadcastArg(Settings.GLOBAL_SETTINGS.broadcasts, window)
-				if (res.code !== 'ok') return { code: 'err', msg: res.msg }
-				out[def.name] = res.value
-				break
-			}
 			default:
 				def satisfies never
 		}
@@ -757,14 +751,9 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	},
 
 	broadcast: async (h, args) => {
-		if (args.message.type === 'preset') {
-			await SquadServer.broadcastAction(h.ctx, args.message.preset.message, ingameActor(h.sender), {
-				presetLabel: args.message.preset.label,
-			})
-		} else {
-			await SquadServer.broadcastAction(h.ctx, args.message.text, ingameActor(h.sender))
-		}
-		await h.reply('Broadcast sent')
+		const applied = CMD.applyResolvedReason('broadcast', args.reason, SquadServer.messageVars())
+		const message = AAR.renderAppliedReason(applied)
+		await SquadRcon.broadcast(h.ctx, message)
 		return { code: 'ok' }
 	},
 
