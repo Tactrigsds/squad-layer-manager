@@ -101,10 +101,8 @@ export type ArgDef =
 	| ArgCommon & { kind: 'reason'; action: AAR.AdminActionType; optional?: true }
 	// single token, configured reason only
 	| ArgCommon & { kind: 'preset-reason'; action: AAR.AdminActionType; optional?: true }
-	// rest: a single token must match a configured broadcast (label/alias); 2+ tokens are broadcast verbatim
-	| ArgCommon & { kind: 'broadcast' }
 
-const REST_KINDS: ArgDef['kind'][] = ['text', 'reason', 'broadcast']
+const REST_KINDS: ArgDef['kind'][] = ['text', 'reason']
 
 // structural rules the token-assignment logic depends on; violations are programmer errors caught at module load
 function assertValidArgDefs(id: string, args: readonly ArgDef[]) {
@@ -327,7 +325,7 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('broadcast', {
 		section: 'messaging',
-		args: [{ kind: 'broadcast', name: 'message' }],
+		args: [{ kind: 'reason', name: 'reason', action: 'broadcast' }],
 		defaults: { scopes: ['admin'], strings: ['broadcast', 'b'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('kick', {
@@ -526,11 +524,9 @@ export function assignArgTokens(
 				break
 			}
 			case 'text':
-			case 'reason':
-			case 'broadcast': {
-				const optional = def.kind !== 'broadcast' && def.optional
+			case 'reason': {
 				if (rem.length === 0) {
-					if (!optional) return { code: 'err:missing-arg', argName: def.name }
+					if (!def.optional) return { code: 'err:missing-arg', argName: def.name }
 					windows[def.name] = undefined
 					break
 				}
@@ -658,16 +654,13 @@ export function resolveBroadcastArg(
 // reflect the configured requirement. `reason` accepts free text (shown as `name|message`); `preset-reason` is preset-only.
 export function formatArg(def: ArgDef, requiredReasonActions: readonly AAR.AdminActionType[] = []): string {
 	const reasonRequired = (def.kind === 'reason' || def.kind === 'preset-reason') && requiredReasonActions.includes(def.action)
-	const optional = !reasonRequired && def.kind !== 'squad' && def.kind !== 'broadcast' && def.optional
+	const optional = !reasonRequired && def.kind !== 'squad' && def.optional
 	let inner: string
 	switch (def.kind) {
 		case 'squad':
 			return '[team] <squad>'
 		case 'reason':
 			inner = `${def.name}|message`
-			break
-		case 'broadcast':
-			inner = 'preset|message'
 			break
 		default:
 			inner = def.name

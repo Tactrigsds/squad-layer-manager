@@ -1,5 +1,7 @@
 import { matchLog } from '@/lib/log-parsing'
 import * as SM from '@/models/squad.models'
+import * as fs from 'node:fs'
+import * as path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 async function* toChunks(...chunks: string[]): AsyncGenerator<string> {
@@ -262,6 +264,24 @@ describe('LogEvents.parse', () => {
 			expect(events[1]).toMatchObject({ type: 'NEW_GAME' })
 		})
 
+		// verbatim from the 2026-07-21 roll: the destination layer came up on the tick the first player joined
+		it('yields a non-chain event sharing a chainID with a chain', async () => {
+			const errors: Error[] = []
+			const events = await collect(
+				[
+					'[2026.07.21-02.53.22:137][244]LogWorld: Bringing World /Game/Maps/Yehorivka/Gameplay_Layers/Yehorivka_RAAS_v1.Yehorivka_RAAS_v1 up for play (max tick rate 64) at 2026.07.20-21.53.22',
+					'[2026.07.21-02.53.22:156][244]LogSquad: PostLogin: NewPlayer: BP_PlayerController_C /Game/Maps/Yehorivka/Gameplay_Layers/Yehorivka_RAAS_v1.Yehorivka_RAAS_v1:PersistentLevel.BP_PlayerController_C_2144631733 (IP: 203.0.113.93 | Online IDs: EOS: 00028b65ac3a4897b91b409c34d3a7d3 steam: 76561198025944513)',
+					'[2026.07.21-02.53.22:156][244]LogSquad: Player  Morgan has been added to Team 1',
+					'[2026.07.21-02.53.22:156][244]LogNet: Join succeeded: Morgan',
+					NEXT_TICK_EVENT,
+				].join('\n'),
+				errors,
+			)
+			expect(errors).toEqual([])
+			expect(events.map(e => e.type)).toEqual(['NEW_GAME', 'PLAYER_CONNECTED_CHAIN'])
+			expect(events[0]).toMatchObject({ type: 'NEW_GAME', layerClassname: 'Yehorivka_RAAS_v1' })
+		})
+
 		it('yields an UNKNOWN event for unrecognized log lines', async () => {
 			const errors: Error[] = []
 			const events = await collect(
@@ -275,9 +295,9 @@ describe('LogEvents.parse', () => {
 	})
 
 	describe('PLAYER_CONNECTED_CHAIN', () => {
-		it('groups all four events into a single chain event', async () => {
+		it('groups the join events into a single chain event', async () => {
 			const events = await collect([JOIN_CHAIN, NEXT_TICK_EVENT].join('\n'))
-			expect(events).toHaveLength(1)
+			expect(events.map(e => e.type)).toEqual(['PLAYER_CONNECTED_CHAIN', 'PLAYER_RESTARTED'])
 			expect(events[0]).toMatchObject({
 				type: 'PLAYER_CONNECTED_CHAIN',
 				events: {
@@ -290,21 +310,22 @@ describe('LogEvents.parse', () => {
 
 		it('handles two sequential join chains with different chainIDs', async () => {
 			const events = await collect([JOIN_CHAIN, JOIN_CHAIN_NEW, NEXT_TICK_EVENT].join('\n'))
-			expect(events).toHaveLength(2)
-			expect(events[0]).toMatchObject({ type: 'PLAYER_CONNECTED_CHAIN' })
-			expect(events[1]).toMatchObject({ type: 'PLAYER_CONNECTED_CHAIN' })
+			expect(events.map(e => e.type)).toEqual([
+				'PLAYER_CONNECTED_CHAIN',
+				'PLAYER_RESTARTED',
+				'PLAYER_CONNECTED_CHAIN',
+				'PLAYER_RESTARTED',
+			])
 		})
 
-		it('silently ignores unrecognized events with the same chainID mid-chain', async () => {
+		it('yields unrecognized events with the same chainID mid-chain rather than dropping them', async () => {
 			const errors: Error[] = []
-			// An unrecognized log line sharing chainID 549 appears between chain events — should be silently dropped
 			const unknownSameChain = '[2025.11.19-18.18.26:150][549]LogSomething: Some unrecognized line'
 			const events = await collect(
 				[PLAYER_CONNECTED, PLAYER_JOIN_SUCCEEDED, unknownSameChain, PLAYER_ADDED_TO_TEAM, PLAYER_RESTARTED, NEXT_TICK_EVENT].join('\n'),
 				errors,
 			)
-			expect(events).toHaveLength(1)
-			expect(events[0]).toMatchObject({ type: 'PLAYER_CONNECTED_CHAIN' })
+			expect(events.map(e => e.type)).toEqual(['PLAYER_CONNECTED_CHAIN', 'UNKNOWN', 'PLAYER_RESTARTED'])
 			expect(errors).toHaveLength(0)
 		})
 
@@ -319,7 +340,8 @@ describe('LogEvents.parse', () => {
 			expect(errors[0].message).toMatch(/PLAYER_JOIN_SUCCEEDED/)
 		})
 
-		it('pushes duplicate errors when chain-start event is repeated with the same chainID', async () => {
+		// two players joining on one engine tick: each primary opens its own instance instead of colliding
+		it('yields one chain per chain-start event repeated with the same chainID', async () => {
 			const errors: Error[] = []
 			const events = await collect(
 				[
@@ -335,15 +357,13 @@ describe('LogEvents.parse', () => {
 				),
 				errors,
 			)
-			expect(events).toHaveLength(1)
-			expect(events[0]).toMatchObject({ type: 'PLAYER_CONNECTED_CHAIN' })
-			expect(errors.length).toBeGreaterThan(0)
-			expect(errors[0].message).toMatch(/duplicate/i)
+			expect(events.map(e => e.type)).toEqual(['PLAYER_CONNECTED_CHAIN', 'PLAYER_CONNECTED_CHAIN', 'PLAYER_RESTARTED'])
+			expect(errors).toHaveLength(0)
 		})
 
 		it('parses new format: steam ID, generic controller, PLAYER_RESTARTED before PLAYER_JOIN_SUCCEEDED, no PLAYER_ADDED_TO_TEAM', async () => {
 			const events = await collect([JOIN_CHAIN_NEW, NEXT_TICK_EVENT].join('\n'))
-			expect(events).toHaveLength(1)
+			expect(events.map(e => e.type)).toEqual(['PLAYER_CONNECTED_CHAIN', 'PLAYER_RESTARTED'])
 			expect(events[0]).toMatchObject({
 				type: 'PLAYER_CONNECTED_CHAIN',
 				events: {
@@ -399,15 +419,16 @@ describe('LogEvents.parse', () => {
 			const errors: Error[] = []
 			const events = await collect(ROUND_ADMIN_CHAIN, errors)
 			expect(errors).toHaveLength(0)
-			expect(events).toHaveLength(1)
-			expect(events[0]).toMatchObject({
+			const chains = events.filter(e => e.type === 'ROUND_ENDED_CHAIN')
+			expect(chains).toHaveLength(1)
+			expect(chains[0]).toMatchObject({
 				type: 'ROUND_ENDED_CHAIN',
 				events: {
 					ROUND_ENDED: expect.objectContaining({ type: 'ROUND_ENDED' }),
 					ADMIN_ENDED_MATCH: expect.objectContaining({ source: { type: 'rcon' } }),
 				},
 			})
-			expect(events[0]).not.toHaveProperty('events.ROUND_DECIDED_WINNER')
+			expect(chains[0]).not.toHaveProperty('events.ROUND_DECIDED_WINNER')
 		})
 
 		it('includes ADMIN_ENDED_MATCH with player source when match is ended via in-game admin', async () => {
@@ -435,8 +456,9 @@ describe('LogEvents.parse', () => {
 			const errors: Error[] = []
 			const events = await collect([ADMIN_LAYER_CHANGED_PLAYER_CHAIN, NEXT_TICK_EVENT].join('\n'), errors)
 			expect(errors).toHaveLength(0)
-			expect(events).toHaveLength(1)
-			expect(events[0]).toMatchObject({
+			const chains = events.filter(e => e.type === 'ROUND_ENDED_CHAIN')
+			expect(chains).toHaveLength(1)
+			expect(chains[0]).toMatchObject({
 				type: 'ROUND_ENDED_CHAIN',
 				events: {
 					LAYER_CHANGED: expect.objectContaining({
@@ -451,7 +473,7 @@ describe('LogEvents.parse', () => {
 					}),
 				},
 			})
-			expect(events[0]).not.toHaveProperty('events.ADMIN_ENDED_MATCH')
+			expect(chains[0]).not.toHaveProperty('events.ADMIN_ENDED_MATCH')
 		})
 
 		it('handles a draw (team -1)', async () => {
@@ -503,17 +525,12 @@ describe('LogEvents.parse', () => {
 	describe('mixed events', () => {
 		it('yields non-chain events before and after a chain', async () => {
 			const events = await collect([NEW_GAME, JOIN_CHAIN, NEW_GAME, NEXT_TICK_EVENT].join('\n'))
-			expect(events).toHaveLength(3)
-			expect(events[0]).toMatchObject({ type: 'NEW_GAME' })
-			expect(events[1]).toMatchObject({ type: 'PLAYER_CONNECTED_CHAIN' })
-			expect(events[2]).toMatchObject({ type: 'NEW_GAME' })
+			expect(events.map(e => e.type)).toEqual(['NEW_GAME', 'PLAYER_CONNECTED_CHAIN', 'PLAYER_RESTARTED', 'NEW_GAME'])
 		})
 
 		it('yields two different chain types sequentially', async () => {
 			const events = await collect([JOIN_CHAIN, ROUND_CHAIN, NEXT_TICK_EVENT].join('\n'))
-			expect(events).toHaveLength(2)
-			expect(events[0]).toMatchObject({ type: 'PLAYER_CONNECTED_CHAIN' })
-			expect(events[1]).toMatchObject({ type: 'ROUND_ENDED_CHAIN' })
+			expect(events.map(e => e.type)).toEqual(['PLAYER_CONNECTED_CHAIN', 'PLAYER_RESTARTED', 'ROUND_ENDED_CHAIN'])
 		})
 	})
 })
@@ -583,6 +600,25 @@ describe('PlayerIds.findByUsernameLoose', () => {
 	})
 })
 
+describe('PlayerIds.match', () => {
+	it('matches two records that share a hard id', () => {
+		expect(SM.PlayerIds.match({ eos: 'a', username: 'Quincy' }, { eos: 'a', username: 'Someone Else' })).toBe(true)
+	})
+
+	it('matches on username substring when neither side has a hard id', () => {
+		expect(SM.PlayerIds.match({ username: 'Quincy' }, { usernameNoTag: '『tag』 Quincy' })).toBe(true)
+	})
+
+	// prod: player "Quincy" (00021f...) was resolved to a distinct impostor "REAL Quincy" (000275...) every
+	// roster poll because "REAL Quincy".includes("Quincy"), producing a storm of spurious promote/team-change events.
+	it('does not collapse two players with differing hard ids just because one name is a substring of the other', () => {
+		const quincy = { eos: '00021f', username: 'Quincy' }
+		const impostor = { eos: '000275', username: 'REAL Quincy', usernameNoTag: 'REAL Quincy' }
+		expect(SM.PlayerIds.match(quincy, impostor)).toBe(false)
+		expect(SM.PlayerIds.match(impostor, quincy)).toBe(false)
+	})
+})
+
 describe('toRecentPlayer', () => {
 	// A player persisted before adminGroups existed reaches the reducer with the field simply absent (the schema
 	// leaves it optional). Spreading that threw "adminGroups is not iterable" and took the whole chat feed down on
@@ -606,4 +642,78 @@ describe('toRecentPlayer', () => {
 		groups.push('Whitelist')
 		expect(recent.adminGroups).toEqual(['Admins'])
 	})
+})
+
+// Real engine-tick groups from the log archive, generated by src/scripts/scan-chain-straddles.ts and weighted
+// towards ticks where a chain shares its chainID with something else.
+type ChainTickFixture = { reason: string; file: string; line: number; chainId: string; lines: string[] }
+const CHAIN_TICKS: ChainTickFixture[] = JSON.parse(
+	fs.readFileSync(path.join(import.meta.dirname, '../../test/fixtures/log-chain-ticks.json'), 'utf8'),
+)
+
+const LOG_START = /^\[[0-9.:-]+]\[[ 0-9]*]/
+// a log entry is a start line plus its continuation lines, which is what the parser feeds to matchLog
+function toEntries(lines: string[]): string[] {
+	const entries: string[] = []
+	for (const line of lines) {
+		if (LOG_START.test(line) || entries.length === 0) entries.push(line)
+		else entries[entries.length - 1] += '\n' + line
+	}
+	return entries
+}
+
+function countTypes(types: string[]): Record<string, number> {
+	const counts: Record<string, number> = {}
+	for (const type of types) counts[type] = (counts[type] ?? 0) + 1
+	return counts
+}
+
+function emittedTypes(events: (SM.LogEvents.AnyChainEvent | SM.LogEvents.NonChainEvent)[]): string[] {
+	return events.flatMap(event => ('events' in event ? Object.keys(event.events) : [event.type]))
+}
+
+describe('LogEvents.parse conservation', () => {
+	it('has fixture coverage of the ticks that used to lose events', () => {
+		expect(CHAIN_TICKS.length).toBeGreaterThan(20)
+		expect(CHAIN_TICKS.some(t => t.reason === 'consumed-event-shares-tick')).toBe(true)
+		expect(CHAIN_TICKS.some(t => t.reason === 'two-instances-one-tick')).toBe(true)
+		expect(CHAIN_TICKS.some(t => t.lines.some(l => l.includes('Yehorivka_RAAS_v1 up for play')))).toBe(true)
+	})
+
+	// only a chain that fails validation may withhold events, and only its own members
+	const CHAIN_MEMBER_TYPES = new Set([
+		'PLAYER_CONNECTED',
+		'PLAYER_JOIN_SUCCEEDED',
+		'PLAYER_ADDED_TO_TEAM',
+		'ROUND_ENDED',
+		'ROUND_DECIDED_WINNER',
+		'ROUND_DECIDED_LOSER',
+		'ADMIN_ENDED_MATCH',
+		'LAYER_CHANGED',
+		'KICKING_PLAYER',
+		'PLAYER_KICKED',
+	])
+
+	// the invariant partitionTick exists to hold: a recognized entry is never silently discarded
+	it.each(CHAIN_TICKS.map((tick, i) => [i, tick] as const))(
+		'accounts for every recognized entry in tick %i',
+		async (_i, tick) => {
+			// a line on a different chainID flushes the fixture's tick; it stays buffered and is not emitted
+			const sentinel = '[2026.01.01-00.00.00:000][9999]LogFlush: sentinel'
+			const expected = countTypes(
+				toEntries(tick.lines).flatMap(entry => matchLog(entry, SM.LogEvents.EventMatchers)[0]?.type ?? []),
+			)
+
+			const errors: Error[] = []
+			const emitted = countTypes(emittedTypes(await collect([...tick.lines, sentinel].join('\n'), errors)))
+
+			for (const [type, count] of Object.entries(emitted)) {
+				expect({ type, count }).toEqual({ type, count: Math.min(count, expected[type] ?? 0) })
+			}
+			const withheld = Object.entries(expected).filter(([type, count]) => (emitted[type] ?? 0) < count)
+			expect(withheld.filter(([type]) => !CHAIN_MEMBER_TYPES.has(type))).toEqual([])
+			if (withheld.length > 0) expect(errors.length).toBeGreaterThan(0)
+			else expect(errors).toEqual([])
+		},
+	)
 })

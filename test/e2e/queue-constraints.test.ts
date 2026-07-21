@@ -19,7 +19,7 @@ test.describe('queue item constraints', () => {
 			serverSettings: (settings) => {
 				selectableFilter(settings.queue.mainPool, 'raas-only')
 				// just the one rule, so an item's indicators are attributable to it and nothing else
-				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, constrainGeneration: true }]
+				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, autogen: true }]
 			},
 		})
 		try {
@@ -61,7 +61,7 @@ test.describe('queue item constraints', () => {
 		const app = await createAppFixture({
 			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed),
 			serverSettings: (settings) => {
-				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, warn: true, constrainGeneration: true }]
+				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, warn: true }]
 			},
 		})
 		try {

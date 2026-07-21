@@ -172,10 +172,22 @@ const dispatchOp = C.spanOp(
 		}
 	},
 )
-// Called at connection time (see createOrpcSessionBase): if this user has a client whose socket was
-// interrupted, hand the new connection that same wsClientId so its held activity and locks carry over
-// untouched, and mark it live again. Returns the reclaimed id, or undefined to mint a fresh one.
-export function reclaimInterruptedClientId(userId: bigint): string | undefined {
+// Called at connection time (see createOrpcSessionBase): hand the new connection the wsClientId it is
+// reconnecting into, so its held presence (activity + locks) carries over untouched and no ghost entry is
+// left behind. Returns the reclaimed id, or undefined to mint a fresh one.
+export function reclaimClientId(userId: bigint, priorClientId?: string): string | undefined {
+	// The reconnecting client told us the id it last held. Reclaim that exact entry whether it is still
+	// `connected` (its old socket half-open, close not yet detected -- the common reconnect case) or already
+	// `connection-interrupted`, and evict any stale socket still parked on it. Scoped to this user's own ids.
+	if (priorClientId !== undefined) {
+		const presence = globalUserPresence.session.state.presence.get(priorClientId)
+		if (presence && presence.userId === userId && presence.connectionState !== 'disconnected') {
+			WSSessionSys.evictStaleSocket(priorClientId)
+			return markReclaimed(priorClientId)
+		}
+	}
+
+	// Fallback for a client that supplied no usable prior id: reclaim its most-recently-seen interrupted entry.
 	let reclaimedId: string | undefined
 	let bestSeen = -Infinity
 	for (const [clientId, presence] of globalUserPresence.session.state.presence) {
@@ -188,11 +200,15 @@ export function reclaimInterruptedClientId(userId: bigint): string | undefined {
 		}
 	}
 	if (reclaimedId === undefined) return undefined
-	// the reconnecting socket owns this id now; cancel the pending disconnect and mark it live
-	clearPendingDisconnect(reclaimedId)
-	dispatchOp([{ code: 'connection-restored', clientId: reclaimedId, opId: UP.createOpId(), time: Date.now() }])
+	return markReclaimed(reclaimedId)
+}
+
+// the reconnecting socket owns this id now; cancel any pending disconnect and mark it live
+function markReclaimed(clientId: string): string {
+	clearPendingDisconnect(clientId)
+	dispatchOp([{ code: 'connection-restored', clientId, opId: UP.createOpId(), time: Date.now() }])
 		.catch((error) => log.error(error))
-	return reclaimedId
+	return clientId
 }
 
 // the users currently editing the given server's layer queue, minus `exclude` (typically the user whose save is

@@ -634,6 +634,21 @@ export const router = {
 		return fetchSinglePlayerBmData(ctx, SM.PlayerIds.queryFromPlayerId(input.playerId))
 	}),
 
+	// on-demand cache bust: drops each player's cached BM data and refetches, pushing the fresh result down the watch
+	// stream. A player whose refetch fails is left with whatever was cached rather than failing the batch.
+	refreshPlayerBmData: orpcBase.meta({ type: 'mutation' }).input(z.object({
+		playerIds: z.array(z.string()).min(1),
+	})).handler(async ({ input, context: ctx }) => {
+		const failed: string[] = []
+		for (const playerId of input.playerIds) {
+			await refreshPlayerFlags(ctx, playerId, SM.PlayerIds.queryFromPlayerId(playerId)).catch((err) => {
+				log.warn({ err, playerId }, 'failed to refresh player bm data')
+				failed.push(playerId)
+			})
+		}
+		return { code: 'ok' as const, refreshedCount: input.playerIds.length - failed.length, failed }
+	}),
+
 	watchPlayerBmData: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ signal, context: _ctx }) {
 		const initial$ = Rx.from(
 			[...playerFlagsAndProfileCache.entries()]
@@ -689,6 +704,47 @@ export const router = {
 		await persistFlagsUpdatedEvent(ctx, { playerId: input.playerId, added, removed })
 
 		return { code: 'ok' as const, data: updated, noteAdded: noteResults.every(Boolean), added, removed }
+	}),
+
+	// add-only, applied across many players (bulk selection / squad): one flag set with per-flag reasons, added to
+	// every target that doesn't already have it. Each player lands its own PLAYER_FLAGS_UPDATED event and BM notes,
+	// so the audit trail reads the same as if each had been flagged singly. A player already carrying a flag is left
+	// untouched rather than failing the batch.
+	addFlags: orpcBase.meta({ type: 'mutation' }).input(z.object({
+		playerIds: z.array(z.string()).min(1),
+		add: z.array(BM.FlagChangeSchema).min(1),
+	})).handler(async ({ input, context: ctx }) => {
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('battlemetrics:write-flags'))
+		if (denyRes) return denyRes
+
+		const orgFlags = await getOrgFlags(ctx)
+		const missing = BM.flagsMissingRequiredNote(input.add, Settings.GLOBAL_SETTINGS.playerFlagsRequiringNote)
+		if (missing.length > 0) {
+			return { code: 'err:reason-required' as const, flags: BM.resolveFlags(missing, orgFlags).map((f) => f.name) }
+		}
+
+		let flaggedCount = 0
+		let allNotesAdded = true
+		for (const playerId of input.playerIds) {
+			const playerIds = SM.PlayerIds.queryFromPlayerId(playerId)
+			const current = await fetchSinglePlayerBmData(ctx, playerIds)
+			if (!current) continue
+			const toAdd = input.add.filter((f) => !current.flagIds.includes(f.id))
+			if (toAdd.length === 0) continue
+
+			const addRes = await addPlayerFlags(ctx, current.bmPlayerId, toAdd.map((f) => f.id))
+			if (addRes.code === 'player-already-has-flag') continue
+
+			const added = resolveFlagChanges(toAdd, orgFlags)
+			const noteAdded = await postFlagChangeNotes(ctx, current.bmPlayerId, 'added', added, actorLabel(ctx))
+			if (!noteAdded) allNotesAdded = false
+
+			await refreshPlayerFlags(ctx, playerId, playerIds)
+			await persistFlagsUpdatedEvent(ctx, { playerId, added, removed: [] })
+			flaggedCount++
+		}
+
+		return { code: 'ok' as const, flaggedCount, playerCount: input.playerIds.length, noteAdded: allNotesAdded }
 	}),
 }
 

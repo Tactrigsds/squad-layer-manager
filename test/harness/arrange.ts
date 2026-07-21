@@ -63,7 +63,7 @@ export function filter(
 export function selectableFilter(
 	pool: SETTINGS.PoolConfiguration,
 	filterId: F.FilterEntityId,
-	opts?: { applyAs?: SETTINGS.AppliedFilterApplyAs },
+	opts?: { applyAs?: SETTINGS.SelectableFilterApplyAs },
 ) {
 	pool.defaultSelectable.push({ filterId, applyAs: opts?.applyAs ?? 'regular' })
 	pool.indicateMatches.push(filterId)

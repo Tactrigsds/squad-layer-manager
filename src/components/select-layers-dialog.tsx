@@ -34,7 +34,6 @@ type SelectLayersDialogProps = {
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
 	footerAdditions?: React.ReactNode
-	children?: React.ReactNode
 	cursor?: LL.Cursor
 }
 

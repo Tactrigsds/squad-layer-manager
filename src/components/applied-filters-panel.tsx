@@ -12,7 +12,6 @@ import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import EmojiDisplay from './emoji-display.tsx'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
 import { ScrollArea, ScrollBar } from './ui/scroll-area.tsx'
-import { Toggle } from './ui/toggle.tsx'
 import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
 
 export default function AppliedFiltersPanel(
@@ -158,7 +157,7 @@ export default function AppliedFiltersPanel(
 				</Button>
 			</ComboBoxMulti>
 			<div className="flex flex-row gap-2 w-max">
-				<PoolFilterToggle stores={props.stores} />
+				<PoolFilterCheckbox stores={props.stores} />
 				{selectableFilterIds.map((filterId) => {
 					return <FilterCheckbox key={filterId} filterId={filterId} stores={{ appliedFilters: props.stores.appliedFilters }} />
 				})}
@@ -179,31 +178,34 @@ export default function AppliedFiltersPanel(
 	)
 }
 
-// the pool filter is pinned and two-state: it either constrains the query to the pool or it doesn't
-export function PoolFilterToggle({ stores }: { stores: Partial<SquadServerFrame.KeyProp> & AppliedFiltersPrt.KeyProp }) {
+const POOL_STATE_TITLES: Record<AppliedFiltersPrt.ApplyAs, string> = {
+	regular: 'Only pool layers are shown (Ctrl+Click to show only layers outside the pool)',
+	inverted: 'Only layers outside the pool are shown; they cannot be selected without the queue:force-write permission',
+	disabled: 'The pool does not constrain the query: all layers are shown (Ctrl+Click to invert)',
+}
+
+// the pool filter is pinned; out-of-pool layers surfaced by the inverted/disabled states stay unselectable for
+// users without queue:force-write, so no state needs to be locked away
+export function PoolFilterCheckbox({ stores }: { stores: Partial<SquadServerFrame.KeyProp> & AppliedFiltersPrt.KeyProp }) {
 	const poolFilter = ZusUtils.useStore(
 		stores.squadServer ?? null,
 		ZusUtils.useShallow(s => s ? s.settings.saved.queue.mainPool.poolFilter : null),
 	)
-	const poolApplied = ZusUtils.useStore(stores.appliedFilters, s => s.appliedFilters.poolApplied)
+	const poolApplyAs = ZusUtils.useStore(stores.appliedFilters, s => s.appliedFilters.poolApplyAs)
 	const filter = FilterEntityClient.useFilterEntities().get(poolFilter?.filterId as string)
 	if (!poolFilter || !filter) return
 
-	const emoji = poolApplied ? filter.emoji : filter.invertedEmoji ?? filter.emoji
+	const emoji = poolApplyAs === 'inverted' ? filter.invertedEmoji ?? filter.emoji : filter.emoji
 	return (
-		<Toggle
+		<TriStateCheckbox
 			variant="outline"
-			size="sm"
-			pressed={poolApplied}
-			onPressedChange={(pressed) => AppliedFiltersPrt.Actions.setPoolApplied(stores, pressed)}
-			title={poolApplied
-				? `Only pool layers are shown. Click to include layers outside the pool.`
-				: `Layers outside the pool are shown. Click to only show pool layers.`}
-			className="data-[state=on]:bg-accent"
+			checked={poolApplyAs}
+			onCheckedChange={(applyAs) => AppliedFiltersPrt.Actions.setPoolApplyAs(stores, applyAs)}
+			title={POOL_STATE_TITLES[poolApplyAs]}
 		>
 			{emoji && <EmojiDisplay size="sm" emoji={emoji} />}
 			<span>{filter.name}</span>
-		</Toggle>
+		</TriStateCheckbox>
 	)
 }
 

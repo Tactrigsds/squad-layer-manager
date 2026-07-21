@@ -123,6 +123,7 @@ export type CommanderDemoted = z.infer<typeof CommanderDemotedSchema>
 export const FogOfWarToggledSchema = event('FOG_OF_WAR_TOGGLED', { enabled: z.boolean() })
 export type FogOfWarToggled = z.infer<typeof FogOfWarToggledSchema>
 
+// freeform broadcast from the gui
 export const BroadcastSentSchema = event('BROADCAST_SENT', {
 	message: z.string(),
 	// set when the message came from a configured broadcast preset

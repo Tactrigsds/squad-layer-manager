@@ -7,7 +7,7 @@ import * as RbacClient from '@/systems/rbac.client'
 // Data access abstraction for the shared pool-configuration panels (see pool-config-panels.tsx). The same UI is
 // mounted against two very different editing substrates: the dashboard popover's ops-based settings store, and the
 // settings page's draft BehaviorSubject (SettingsForm override). Paths are relative to the pool object
-// (queue.mainPool / queue.generationPool).
+// (queue.mainPool).
 export type PoolConfigApi = {
 	// hook: subscribes to the value at `path`, re-rendering when it changes
 	useValue: (path: SETTINGS.SettingsPath) => unknown

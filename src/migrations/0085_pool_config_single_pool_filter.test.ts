@@ -47,13 +47,17 @@ describe('0085_pool_config_single_pool_filter', () => {
 		const queue = readSettings(db).queue
 
 		expect(queue.mainPool.filters).toBeUndefined()
-		expect(queue.generationPool.filters).toBeUndefined()
+		expect(queue.generationPool).toBeUndefined()
 
 		// the first active inPool entry wins; later ones are dropped
 		expect(queue.mainPool.poolFilter).toEqual({ filterId: 'the-pool', mode: 'include' })
 		expect(queue.mainPool.indicateMatches).toEqual(['the-pool', 'select-me'])
 		expect(queue.mainPool.indicateMisses).toEqual(['the-pool', 'warn-only'])
-		expect(queue.mainPool.defaultSelectable).toEqual([{ filterId: 'select-me', applyAs: 'inverted' }])
+		// 'disabled' carries over (offered but unchecked); 'hidden' is dropped
+		expect(queue.mainPool.defaultSelectable).toEqual([
+			{ filterId: 'select-me', applyAs: 'inverted' },
+			{ filterId: 'warn-only', applyAs: 'disabled' },
+		])
 		expect(queue.mainPool.warnFor).toEqual([
 			{ filterId: 'select-me', applyAs: 'regular' },
 			{ filterId: 'warn-only', applyAs: 'inverted' },
@@ -63,10 +67,11 @@ describe('0085_pool_config_single_pool_filter', () => {
 			{ filterId: 'gen-b', applyAs: 'inverted' },
 		])
 
-		// untouched
-		expect(queue.mainPool.repeatRules).toEqual(OLD_QUEUE.mainPool.repeatRules)
-		expect(queue.generationPool.repeatRules).toEqual(OLD_QUEUE.generationPool.repeatRules)
-		expect(queue.generationPool.applyMainPoolRepeatRules).toBe(true)
+		// applyMainPoolRepeatRules=true marks the main rule autogen; the generation rule merges in as autogen
+		expect(queue.mainPool.repeatRules).toEqual([
+			{ label: 'Map', field: 'Map', within: 4, warn: true, autogen: true },
+			{ label: 'Gen', field: 'Layer', within: 2, autogen: true },
+		])
 
 		// the migrated shape must parse under the live schema
 		expect(() => SETTINGS.QueueSettingsSchema.parse(queue)).not.toThrow()

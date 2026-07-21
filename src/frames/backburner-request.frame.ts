@@ -367,12 +367,15 @@ export namespace Sel {
 			if (applyAs === 'regular') filterIds.push(filterId)
 			else if (applyAs === 'inverted') excludedFilterIds.push(filterId)
 		}
-		// the pool toggle writes pool membership into the template itself
+		// the pool checkbox writes pool membership into the template itself: 'regular' pins the request to the
+		// pool, 'inverted' to outside it, 'disabled' leaves it unconstrained
 		const poolFilter = state.squadServer
 			? SquadServerFrame.Sel.settings(ZusUtils.getState(state.squadServer)).queue.mainPool.poolFilter
 			: null
-		if (poolFilter && state.appliedFilters.poolApplied) {
-			;(poolFilter.mode === 'include' ? filterIds : excludedFilterIds).push(poolFilter.filterId)
+		const poolApplyAs = state.appliedFilters.poolApplyAs
+		if (poolFilter && poolApplyAs !== 'disabled') {
+			const wantsPoolMatches = (poolFilter.mode === 'include') === (poolApplyAs === 'regular')
+			;(wantsPoolMatches ? filterIds : excludedFilterIds).push(poolFilter.filterId)
 		}
 		return BB.buildTemplateFilter({
 			...(useLayer ? { layers } : components),

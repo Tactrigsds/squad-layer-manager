@@ -1,7 +1,6 @@
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Arr from '@/lib/array.ts'
-import * as DH from '@/lib/display-helpers'
 import * as Obj from '@/lib/object.ts'
 import type { Clearable, Focusable } from '@/lib/react'
 import { eltToFocusable } from '@/lib/react'
@@ -28,6 +27,7 @@ import { FilterEntityLabel } from './filter-entity-select.tsx'
 import type { FilterTextEditorHandle } from './filter-text-editor.types'
 import { NodePortal, StoredParentNode } from './node-map.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
+import ShortLayerName from './short-layer-name.tsx'
 import { Button, buttonVariants } from './ui/button'
 import { ButtonGroup } from './ui/button-group'
 import { Input } from './ui/input'
@@ -110,7 +110,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 
 	const rendered = (
 		<div defaultValue="builder" className="w-full space-x-2 flex">
-			<div className="flex-1">
+			<div className="flex-1 min-w-0 overflow-x-auto">
 				<div className={activeTab === 'builder' ? '' : 'hidden'}>
 					<StoredParentNode nodeId={rootNodeId} store={nodeStore} />
 				</div>
@@ -386,7 +386,7 @@ const NodeWrapper = (
 					>
 						<Icons.GripVertical />
 					</button>
-					<div className={className}>
+					<div className={cn('min-w-0', className)}>
 						{children}
 					</div>
 				</>
@@ -420,7 +420,7 @@ export function LeafFilterNode(props: NodeProps) {
 		const subject = node.args[0]
 		const isSelectLayers = subject?.type === 'column' && subject.column === 'id'
 		return (
-			<NodeWrapper path={nodePath} className="flex items-center space-x-1" nodeId={props.nodeId}>
+			<NodeWrapper path={nodePath} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId}>
 				{isSelectLayers
 					? <SelectLayersNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
 					: <CompNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />}
@@ -430,7 +430,7 @@ export function LeafFilterNode(props: NodeProps) {
 	}
 	if (F.isMatchupNode(node)) {
 		return (
-			<NodeWrapper path={nodePath} className="flex items-center space-x-1" nodeId={props.nodeId}>
+			<NodeWrapper path={nodePath} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId}>
 				<MatchupNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
 				{opCluster}
 			</NodeWrapper>
@@ -438,7 +438,7 @@ export function LeafFilterNode(props: NodeProps) {
 	}
 	if (F.isApplyFilterNode(node)) {
 		return (
-			<NodeWrapper path={nodePath} className="flex items-center space-x-1" nodeId={props.nodeId}>
+			<NodeWrapper path={nodePath} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId}>
 				<ComboBox
 					allowEmpty={false}
 					title="mode"
@@ -1148,6 +1148,7 @@ function StringInConfig(
 			onSelect={props.setValues}
 			className={props.className}
 			restrictValueSize={props.restrictValueSize}
+			chipDisplay
 		/>
 	)
 }
@@ -1215,7 +1216,7 @@ export function MatchupConfig(props: {
 	// between those very labels, so reusing them here would read as driving it.
 	const [leftLabel, rightLabel] = node.locked ? ['Team 1', 'Team 2'] : ['One side', 'Other side']
 	return (
-		<div className="flex items-center space-x-2">
+		<div className="flex flex-wrap items-center gap-2">
 			{(props.showTypeSelect ?? true) && (
 				<ComboBox
 					allowEmpty={false}
@@ -1309,7 +1310,7 @@ function InListConfig(
 	const addableColumns = props.comparableColumns.filter((o) => !columns.some((c) => c.column === o.value))
 
 	return (
-		<div className={cn(props.className, 'flex items-center space-x-1')}>
+		<div className={cn(props.className, 'flex flex-wrap items-center gap-1')}>
 			<StringInConfig
 				ref={props.ref}
 				column={props.column}
@@ -1368,16 +1369,16 @@ function LayersInConfig(
 	return (
 		<div className={cn(props.className, 'space-y-2')}>
 			{filteredValues.length > 0 && (
-				<ul className="flex items-center space-x-1">
+				<ul className="flex flex-wrap items-center gap-1">
 					{filteredValues.map((layerId) => (
-						<li key={layerId} className="flex items-center justify-between px-2 py-1 bg-secondary rounded-md">
-							<span className="text-sm">{DH.displayLayer(layerId)}</span>
+						<li key={layerId} className="flex min-w-0 items-center justify-between gap-1 px-2 py-1 bg-secondary rounded-md">
+							<ShortLayerName layerId={layerId} className="text-sm" />
 							<Button
 								size="sm"
 								variant="ghost"
 								onClick={() =>
 									removeValue(layerId)}
-								className="h-6 w-6 p-0 hover:bg-destructive/20 hover:text-destructive"
+								className="h-6 w-6 shrink-0 p-0 hover:bg-destructive/20 hover:text-destructive"
 							>
 								<Minus className="h-3 w-3" />
 							</Button>
@@ -1386,6 +1387,10 @@ function LayersInConfig(
 				</ul>
 			)}
 			<div className="w-max">
+				<Button size="sm" variant="outline" onClick={() => setOpen(true)} className="w-full">
+					<Icons.Edit className="h-4 w-4 mr-2" />
+					{filteredValues.length === 0 ? 'Select Layers' : 'Edit Layers'}
+				</Button>
 				<SelectLayersDialog
 					open={open}
 					onOpenChange={setOpen}
@@ -1393,12 +1398,7 @@ function LayersInConfig(
 					pinMode="layers"
 					defaultSelected={filteredValues}
 					selectQueueItems={items => props.setValues(values => Arr.union(values, items.map(items => items.layerId!)))}
-				>
-					<Button size="sm" variant="outline" onClick={() => setOpen(true)} className="w-full">
-						<Icons.Edit className="h-4 w-4 mr-2" />
-						{filteredValues.length === 0 ? 'Select Layers' : 'Edit Layers'}
-					</Button>
-				</SelectLayersDialog>
+				/>
 			</div>
 		</div>
 	)

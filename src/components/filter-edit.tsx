@@ -344,7 +344,7 @@ export function FilterEdit(
 																placeholder={label}
 																defaultValue={field.state.value ?? ''}
 																onBlur={field.handleBlur}
-																onChange={(e) => field.setValue(e.target.value.trim() ?? null)}
+																onChange={(e) => field.setValue(e.target.value.trim() || null)}
 																rows={3}
 															/>
 															{field.state.meta.errors.length > 0 && (
@@ -401,7 +401,7 @@ export function FilterEdit(
 																placeholder={label}
 																defaultValue={field.state.value ?? ''}
 																onBlur={field.handleBlur}
-																onChange={(e) => field.setValue(e.target.value.trim() ?? null)}
+																onChange={(e) => field.setValue(e.target.value.trim() || null)}
 																rows={3}
 															/>
 															{field.state.meta.errors.length > 0 && (
@@ -434,7 +434,7 @@ export function FilterEdit(
 														placeholder={label}
 														defaultValue={field.state.value ?? ''}
 														onBlur={field.handleBlur}
-														onChange={(e) => field.handleChange(e.target.value?.trim() ?? null)}
+														onChange={(e) => field.handleChange(e.target.value?.trim() || null)}
 														rows={15}
 														className="font-mono text-sm grow"
 													/>
