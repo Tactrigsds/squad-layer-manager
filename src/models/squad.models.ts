@@ -1561,9 +1561,7 @@ export namespace LogEvents {
 	type ChainInstance = { chainKey: keyof typeof LOG_CHAINS; primaryIndex: number; time: number; events: Record<string, Event> }
 
 	// A chainID is an engine tick, not a chain: events belonging to no chain, and several instances of the same
-	// chain, routinely share one. Partition the tick into chain instances plus standalone events, keeping log
-	// order, so nothing buffered is discarded -- a map roll whose destination layer came up on the tick a player
-	// joined used to lose its NEW_GAME outright. See docs/log_parsing.md.
+	// chain, routinely share one. Partition rather than select, so nothing in the tick is discarded.
 	function partitionTick(events: Event[], errors: Error[]): ParseOutputEvent[] {
 		const instanceByIndex = new Map<number, ChainInstance>()
 		const instances: ChainInstance[] = []
@@ -1580,8 +1578,8 @@ export namespace LogEvents {
 			if (instanceByIndex.has(i)) return
 			const membership = EVENT_CHAIN_MAP.get(event.type)
 			if (!membership) return
-			// prefer the most recent instance already open at this point; fall back to any instance still missing
-			// the member, since a member can precede its own primary within a tick (LAYER_CHANGED before ROUND_ENDED)
+			// a member can precede its own primary within a tick (LAYER_CHANGED before ROUND_ENDED), so fall back
+			// past the positional match
 			const wants = (inst: ChainInstance) => inst.chainKey === membership.chainKey && !inst.events[event.type]
 			const instance = instances.findLast(inst => wants(inst) && inst.primaryIndex < i) ?? instances.find(wants)
 			if (!instance) return

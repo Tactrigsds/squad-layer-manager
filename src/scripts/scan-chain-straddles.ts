@@ -3,9 +3,9 @@ import * as fs from 'node:fs'
 import * as readline from 'node:readline'
 import { anonymizeIps } from './anonymize-ips'
 
-// Diagnostic: reproduce parseLogStream's tick grouping over a log archive and report where chains and the
-// rest of their tick interact -- chains spanning ticks, several instances in one tick, and events sharing a
-// tick with a chain. Used to size the partition rewrite in squad.models.ts; see docs/log_parsing.md.
+// Diagnostic: reproduce parseLogStream's tick grouping over a log archive and report chains spanning ticks,
+// several instances in one tick, and events sharing a tick with a chain. Re-run it before changing how
+// partitionTick assigns members, to check the assumptions it relies on still hold.
 //
 // usage: pnpm run script src/scripts/scan-chain-straddles.ts <path> [...paths]
 //        FIXTURE_OUT=test/fixtures/log-chain-ticks.json pnpm run script ... <path>   (regenerate the fixture)
@@ -104,7 +104,6 @@ async function scanFile(path: string): Promise<Report> {
 			rep.multiChainType.push({ chains: primariesPresent.map(c => c.key), line: tick.line })
 		}
 
-		// the parser breaks on the first primary found in buffer order
 		const firstPrimary = tick.events.find(e => CHAIN_BY_PRIMARY.has(e.type))!
 		const chain = CHAIN_BY_PRIMARY.get(firstPrimary.type)!
 
@@ -116,9 +115,7 @@ async function scanFile(path: string): Promise<Report> {
 		const losesConsumed = tick.events.some(e => !chain.members.includes(e.type) && CONSUMED_EVENTS.has(e.type))
 		addFixture(rep, losesConsumed ? 'consumed-event-shares-tick' : 'chain-tick', tick)
 
-		// anything recognized in this tick that is not a member of the winning chain is dropped today.
-		// classify by position relative to the chain's own member span, since that decides whether a
-		// "before / after" emission split can reproduce log order or not.
+		// non-members sharing the tick, positioned relative to the chain's own member span
 		const memberIdxs = tick.events.map((e, i) => (chain.members.includes(e.type) ? i : -1)).filter(i => i >= 0)
 		const firstMember = memberIdxs[0]
 		const lastMember = memberIdxs[memberIdxs.length - 1]
