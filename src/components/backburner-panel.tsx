@@ -506,7 +506,7 @@ function BackburnerRow(
 							<Button
 								size="icon"
 								variant="ghost"
-								className="h-7 w-7 text-destructive"
+								className="h-7 w-7"
 								aria-label="Remove request"
 								onClick={() => LayerQueuePrt.Actions.removeBackburnerItems(queueKey, [props.itemId])}
 							>
