@@ -854,38 +854,7 @@ export namespace LogEvents {
 				return results
 			}
 
-			let chainDef: ChainDef | undefined
-			let chainKey: keyof typeof LOG_CHAINS | undefined
-			for (const event of chainState.events) {
-				const membership = EVENT_CHAIN_MAP.get(event.type)
-				if (membership?.primary) {
-					chainDef = LOG_CHAINS[membership.chainKey]
-					chainKey = membership.chainKey
-					break
-				}
-			}
-
-			if (chainDef) {
-				const chainEvents: ChainEvents<typeof chainDef> = {}
-				const eventKeys = new Set(chainEventKeys(chainDef))
-				for (const event of chainState.events) {
-					if (!eventKeys.has(event.type)) continue
-					if (chainEvents[event.type]) {
-						errors.push(new Error(`Duplicate event type: ${event.type}`))
-						continue
-					}
-					chainEvents[event.type] = event
-				}
-				const chainEvent: AnyChainEvent = { type: chainKey!, events: chainEvents as any, time: chainState.events[0]!.time }
-				const chainErrors = validateChainEvent(chainEvent, chainDef)
-				if (chainErrors.length > 0) {
-					errors.push(...chainErrors)
-				} else {
-					results.push(chainEvent)
-				}
-			} else {
-				results.push(...(chainState.events as any[]))
-			}
+			results.push(...partitionTick(chainState.events, errors))
 
 			chainState = { chainID: event.chainID, events: [event] }
 
@@ -1573,17 +1542,9 @@ export namespace LogEvents {
 	export type NonChainEvent = Exclude<Event, { type: ChainMemberType }>
 	export type ParsedEvent = AnyChainEvent | NonChainEvent
 
-	function getChainItemSchema(item: ChainDef[number]): EventSchema {
-		return 'event' in item ? item.event : item
-	}
-
 	function toChainItem(item: ChainDef[number]): ChainItem {
 		if ('event' in item) return item
 		return { event: item } as ChainItem
-	}
-
-	function chainEventKeys(def: ChainDef): string[] {
-		return def.map(getChainItemSchema).map(item => item.type)
 	}
 
 	function validateChainEvent(event: AnyChainEvent, chainDef: ChainDef): Error[] {
@@ -1595,6 +1556,50 @@ export namespace LogEvents {
 			}
 		}
 		return errors
+	}
+
+	type ChainInstance = { chainKey: keyof typeof LOG_CHAINS; primaryIndex: number; time: number; events: Record<string, Event> }
+
+	// A chainID is an engine tick, not a chain: events belonging to no chain, and several instances of the same
+	// chain, routinely share one. Partition rather than select, so nothing in the tick is discarded.
+	function partitionTick(events: Event[], errors: Error[]): ParseOutputEvent[] {
+		const instanceByIndex = new Map<number, ChainInstance>()
+		const instances: ChainInstance[] = []
+		events.forEach((event, i) => {
+			const membership = EVENT_CHAIN_MAP.get(event.type)
+			if (!membership?.primary) return
+			const instance: ChainInstance = { chainKey: membership.chainKey, primaryIndex: i, time: event.time, events: { [event.type]: event } }
+			instanceByIndex.set(i, instance)
+			instances.push(instance)
+		})
+
+		const absorbed = new Set<number>()
+		events.forEach((event, i) => {
+			if (instanceByIndex.has(i)) return
+			const membership = EVENT_CHAIN_MAP.get(event.type)
+			if (!membership) return
+			// a member can precede its own primary within a tick (LAYER_CHANGED before ROUND_ENDED), so fall back
+			// past the positional match
+			const wants = (inst: ChainInstance) => inst.chainKey === membership.chainKey && !inst.events[event.type]
+			const instance = instances.findLast(inst => wants(inst) && inst.primaryIndex < i) ?? instances.find(wants)
+			if (!instance) return
+			instance.events[event.type] = event
+			absorbed.add(i)
+		})
+
+		const results: ParseOutputEvent[] = []
+		events.forEach((event, i) => {
+			const instance = instanceByIndex.get(i)
+			if (!instance) {
+				if (!absorbed.has(i)) results.push(event as NonChainEvent)
+				return
+			}
+			const chainEvent = { type: instance.chainKey, events: instance.events, time: instance.time } as AnyChainEvent
+			const chainErrors = validateChainEvent(chainEvent, LOG_CHAINS[instance.chainKey])
+			if (chainErrors.length > 0) errors.push(...chainErrors)
+			else results.push(chainEvent)
+		})
+		return results
 	}
 
 	type ChainMembership = { chainKey: keyof typeof LOG_CHAINS } & ChainItemOptions
