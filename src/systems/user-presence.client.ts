@@ -574,10 +574,9 @@ export async function setup() {
 		handleIncomingPresenceUpdate(update)
 	})
 
-	// Presence after a websocket reconnect is re-established server-side: an abnormal socket close
-	// leaves our prior presence in 'connection-interrupted' with its activity intact, and when our new
-	// connection registers the server steals that activity onto the fresh wsClientId (see
-	// user-presence.server.ts). So there's nothing to replay from the client here.
+	// Presence after a websocket reconnect is re-established server-side: our new socket sends the id we
+	// last held as `?prior=`, and the server reclaims that same wsClientId with its activity and locks
+	// intact (see reclaimClientId in user-presence.server.ts). So there's nothing to replay from the client here.
 
 	const settingsModified$ = Rx.combineLatest([
 		ZusUtils.toObservable(SquadServerClient.SelectedServerStore, true).pipe(Rx.map(([s]) => s.selectedServerId)),

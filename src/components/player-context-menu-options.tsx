@@ -258,6 +258,7 @@ export function PlayerMenuItems(
 				isCommander: player.isLeader && squad?.squadName === 'Command Squad',
 				isLeader: player.isLeader,
 				isAdmin: player.isAdmin,
+				inAdminCam: ChatPrt.Sel.chatState(chatStore).adminCamPlayerIds.includes(playerId),
 			}
 		},
 	)
@@ -613,6 +614,16 @@ export function PlayerMenuItems(
 				>
 					Admins
 					<ContextMenuShortcut>{sc('⇧+click admin badge', '⇧+Ctrl+click admin badge')}</ContextMenuShortcut>
+				</Item>
+				<Item
+					disabled={!playerInfo?.inAdminCam || teamMissing}
+					onClick={() => {
+						TSWClient.Actions.ensureViewingTeams(serverId)
+						SquadServerFrame.Actions.selectAllInAdminCam(stores, teamId)
+					}}
+				>
+					In Admin Cam
+					<ContextMenuShortcut>{sc('⇧+click camera icon', '⇧+Ctrl+click camera icon')}</ContextMenuShortcut>
 				</Item>
 				<Item
 					disabled={!isOnServer || teamMissing}

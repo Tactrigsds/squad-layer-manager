@@ -7,6 +7,7 @@ import { z } from 'zod'
 // until it expires. They're separate actions with separate texts, permissions and commands.
 export const ADMIN_ACTION_TYPE = z.enum([
 	'warn',
+	'broadcast',
 	'kill',
 	'kick',
 	'timeout',
@@ -38,6 +39,7 @@ export type AdminActionDescriptor = {
 
 export const ADMIN_ACTIONS: Record<AdminActionType, AdminActionDescriptor> = {
 	'warn': { displayName: 'Warn', targetKind: 'players', permission: 'squad-server:warn-players', reasonDelivery: 'native' },
+	'broadcast': { displayName: 'Broadcast', targetKind: 'players', permission: 'squad-server:broadcast', reasonDelivery: 'native' },
 	'kill': { displayName: 'Kill', targetKind: 'players', permission: 'squad-server:manage-players', reasonDelivery: 'native' },
 	// the AdminKick reason string carries the text, for both plain kicks and timeouts
 	'kick': { displayName: 'Kick', targetKind: 'players', permission: 'squad-server:kick-players', reasonDelivery: 'native' },

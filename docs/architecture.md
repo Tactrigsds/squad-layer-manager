@@ -714,9 +714,11 @@ handled by a `superjsonify`/`unsuperjsonify` pair that walks the drizzle table c
 are still treated as though they could be async in the future, so
 `runTransaction` serializes logical transactions with a manual promise-chain lock around manual `BEGIN
 IMMEDIATE`/`COMMIT`/`ROLLBACK`. Re-entrant: an inner transaction joins the outer one, and an inner `rollback()`
-rolls back the outer. This is one process-wide lock, a deliberate simplicity-over-throughput call.
+rolls back the outer. Therefore, all transactions may wait for others to complete asyncronously,
+but are always executed syncronously once the lock is acquired.
 
-Because that lock is process-wide, **a `runTransaction` callback must never await anything but a query.** Queries
+Because that lock is process-wide, **a `runTransaction` callback must never await anything but a query.**(This isn't
+great, and there's probably a better way to do this while still using drizzle.) Queries
 resolve immediately (the driver is synchronous), so a transaction that only queries holds the lock for microseconds.
 Awaiting rcon, discord, sftp, or any other network call inside one instead stalls every write in the process for the
 length of that round-trip, and the external call is not rolled back with the transaction anyway. Two ways out, both
@@ -754,10 +756,8 @@ prod. Connection secrets are AES-256-GCM sealed at the db boundary only (`enc:v<
 always plaintext in memory, keyed by `SETTINGS_ENCRYPTION_KEY`, with transparent fallback to a legacy key
 derivation and an opportunistic reseal on load.
 
-**Layer data** ships as a versioned _pair_ of artifacts (a columnar `.bin.gz` and a components `.json`) that
-are only ever valid together, since a table read against the wrong components silently resolves to the wrong
-layers. Half a pair is a startup error. Both are checked into `assets/layers` and ship in the docker image;
-any complete pair in the mounted `data/` always wins.
+**Layer data** ships as a versioned _pair_ of artifacts (a columnar `.bin.gz` and a components `.json`).
+Both are checked into `assets/layers` and ship in the docker image; but any complete pair in the mounted `data/` always wins.
 
 ## Observability
 

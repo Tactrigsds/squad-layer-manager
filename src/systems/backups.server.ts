@@ -176,7 +176,7 @@ export const runBackup = C.spanOp('runBackup', { module }, async (ctx: C.Db & CS
 	const startedAt = Date.now()
 	const pruned = await pruneEventHistory(ctx)
 
-	const fileName = DbBackup.fileName(ENV.DB_PATH, 'periodic')
+	const fileName = DbBackup.fileName(ENV.DB_PATH, 'periodic', DB.readBuildStamp()?.gitSha)
 	const destPath = path.join(ENV.BACKUPS_DIR, fileName)
 	const { sizeBytes, snapshotBytes } = await DbBackup.writeBackup({
 		destPath,

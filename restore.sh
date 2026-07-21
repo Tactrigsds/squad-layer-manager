@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Restore the database from a backup, stopping the app around it.
 #
-#   ./restore.sh --list                  what backups there are
+#   ./restore.sh --list                  what backups there are (with the build each belongs to)
+#   ./restore.sh --inspect --latest      which build a backup belongs to (which image to pin), without restoring it
 #   ./restore.sh --pre-migration         the snapshot taken before the last migration (undo a bad upgrade)
 #   ./restore.sh --latest                the newest backup of any kind
+#   ./restore.sh --commit-sha <sha>      the newest backup taken by a given build (a git sha or commit-<sha> tag)
 #   ./restore.sh --from <file>           a specific one, e.g. one pulled back off the sftp target into ./data/backups
 #
 # The app must not be running: it would go on writing to the database being replaced and lose those writes, without
@@ -16,9 +18,9 @@ cd "$(dirname "$0")"
 command -v docker > /dev/null 2>&1 || { echo "error: docker is required" >&2; exit 1; }
 docker compose version > /dev/null 2>&1 || { echo "error: docker compose (v2) is required" >&2; exit 1; }
 
-# --list reads the backups directory and touches nothing, so it has no business stopping anybody's app
+# --list and --inspect touch neither the live database nor the app, so they have no business stopping anybody's app
 for arg in "$@"; do
-	if [[ $arg == --list ]]; then
+	if [[ $arg == --list || $arg == --inspect ]]; then
 		exec docker compose run --rm app pnpm db:restore:prod "$@"
 	fi
 done

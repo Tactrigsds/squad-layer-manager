@@ -25,7 +25,7 @@ describe('pool configuration schema', () => {
 			defaultSelectable: [{ filterId: 'a-filter', applyAs: 'inverted' }],
 			warnFor: [{ filterId: 'b-filter', applyAs: 'regular' }],
 			constrainGeneration: [{ filterId: 'the-pool', applyAs: 'regular' }],
-			repeatRules: [{ label: 'Map', field: 'Map', within: 4, constrainGeneration: true }],
+			repeatRules: [{ label: 'Map', field: 'Map', within: 4 }],
 		}
 		const parsed = SETTINGS.PoolConfigurationSchema.parse(config)
 		expect(parsed).toEqual(config)
@@ -75,8 +75,8 @@ describe('getSettingsConstraints', () => {
 		warnFor: [{ filterId: 'b-filter', applyAs: 'inverted' }, { filterId: 'd-filter', applyAs: 'regular' }],
 		constrainGeneration: [{ filterId: 'e-filter', applyAs: 'inverted' }],
 		repeatRules: [
-			{ label: 'Map', field: 'Map', within: 4, constrainGeneration: true },
-			{ label: 'Layer', field: 'Layer', within: 2, constrainGeneration: false },
+			{ label: 'Map', field: 'Map', within: 4 },
+			{ label: 'Gen', field: 'Layer', within: 2, autogen: true },
 		],
 	})
 
@@ -93,33 +93,23 @@ describe('getSettingsConstraints', () => {
 		// warn-only: no indication configured, but the warn still needs the constraint present
 		expect(byId.get('filter-cfg:d-filter')).toMatchObject({ showIndicator: 'disabled', warn: 'regular' })
 
-		// every repeat rule warns/indicates during selection, regardless of its generation flag
+		// all repeat rules apply in selection/status contexts, autogen-flagged or not
 		expect(byId.get('layer-pool:mainPool:Map')).toMatchObject({ type: 'do-not-repeat' })
-		expect(byId.get('layer-pool:mainPool:Layer')).toMatchObject({ type: 'do-not-repeat' })
+		expect(byId.get('layer-pool:mainPool:Gen')).toMatchObject({ type: 'do-not-repeat' })
 		// generation-only config stays out of selection contexts
 		expect(constraints.some(c => c.type === 'filter-entity' && c.filterId === 'e-filter')).toBe(false)
 	})
 
-	test('generation context: pool filter always constrains, constrainGeneration applies, no warns', () => {
+	test('generation context: pool filter always constrains, constrainGeneration and autogen rules apply', () => {
 		const constraints = SETTINGS.getSettingsConstraints(settings, { generatingLayers: true })
 		const byId = new Map(constraints.map(c => [c.id, c]))
 
 		expect(byId.get('pool-filter')).toMatchObject({ filterApplState: 'regular', warn: 'disabled' })
 		expect(byId.get('gen:e-filter')).toMatchObject({ filterApplState: 'inverted' })
-		// only rules with constrainGeneration on constrain autogeneration
-		expect(byId.has('layer-pool:mainPool:Map')).toBe(true)
-		expect(byId.has('layer-pool:mainPool:Layer')).toBe(false)
+		// only autogen-flagged repeat rules constrain generation
+		expect(byId.has('layer-pool:mainPool:Gen')).toBe(true)
+		expect(byId.has('layer-pool:mainPool:Map')).toBe(false)
 		// indication lists don't constrain generation
 		expect(byId.has('filter-cfg:a-filter')).toBe(false)
-	})
-
-	test('repeat rules constrain generation by default', () => {
-		const withRules = settingsWith({
-			repeatRules: SETTINGS.PoolConfigurationSchema.parse({
-				repeatRules: [{ label: 'Map', field: 'Map', within: 4 }],
-			}).repeatRules,
-		})
-		const constraints = SETTINGS.getSettingsConstraints(withRules, { generatingLayers: true })
-		expect(constraints.some(c => c.id === 'layer-pool:mainPool:Map')).toBe(true)
 	})
 })

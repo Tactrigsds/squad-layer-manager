@@ -1698,7 +1698,7 @@ function usePathValue(value$: ValueState, reset$: Rx.Observable<void>, path: Pat
 }
 
 // PoolConfigApi over the form's draft observable, so the settings page renders the same pool-configuration UI as the
-// dashboard popover. Paths are relative to the pool object this override is mounted on (queue.mainPool / generationPool).
+// dashboard popover. Paths are relative to the pool object this override is mounted on (queue.mainPool).
 function usePoolConfigApi({ value$, reset$, onChange }: OverrideProps): PoolConfigApi {
 	const [resetKey, setResetKey] = React.useState(0)
 	useReset(reset$, () => setResetKey((k) => k + 1))

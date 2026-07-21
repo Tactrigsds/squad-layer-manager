@@ -37,7 +37,7 @@ import React from 'react'
 import * as Rx from 'rxjs'
 import { CopyableCommand } from './commands-page.tsx'
 
-import { FilterCheckbox, PoolFilterToggle } from './applied-filters-panel.tsx'
+import { FilterCheckbox, PoolFilterCheckbox } from './applied-filters-panel.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
 import type { ComparisonHandle, MatchupActions } from './filter-card'
 import { Comparison, MatchupConfig } from './filter-card'
@@ -162,7 +162,7 @@ export default function BackburnerPanel(props: StoresProp) {
 	}, [queueDrop, consumeRequest])
 
 	const commandSettings = ZusUtils.useStore(SettingsClient.PublicSettingsStore, s => s?.commands.requestLayer)
-	const commandExamples = commandSettings ? CMDH.buildExamples('requestLayer', commandSettings, { broadcasts: [], reasons: [] }) : []
+	const commandExamples = commandSettings ? CMDH.buildExamples('requestLayer', commandSettings, { reasons: [] }) : []
 	const commandExample: CMDH.CommandExample | undefined = commandExamples[0]
 
 	if (items.length === 0 && !canRequest) return null
@@ -716,7 +716,7 @@ function RequestFiltersColumn(props: { stores: RequestFrame.KeyProp & Partial<Sq
 			<span className="text-sm font-medium">Filters</span>
 			{(poolFilterId !== null || selectableFilterIds.length > 0) && (
 				<div className="flex flex-col items-start gap-1">
-					<PoolFilterToggle stores={{ squadServer: props.stores.squadServer, appliedFilters: key }} />
+					<PoolFilterCheckbox stores={{ squadServer: props.stores.squadServer, appliedFilters: key }} />
 					{selectableFilterIds.map(filterId => <FilterCheckbox key={filterId} filterId={filterId} stores={appliedKey} />)}
 				</div>
 			)}

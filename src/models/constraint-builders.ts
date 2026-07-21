@@ -23,20 +23,27 @@ export const filterEntity = (id: string, filterId: F.FilterEntityId, opts?: {
 })
 
 // the single pool-membership constraint. showIndicator stays 'both' even when not applied so queries always
-// return per-row membership (row disabling, indicators). warn fires on out-of-pool: a miss for 'include', a match for 'exclude'.
+// return per-row membership (row disabling, indicators). opts.applyAs is relative to the POOL, not the filter:
+// 'regular' narrows to pool layers, 'inverted' to out-of-pool layers, 'disabled' leaves the pool unapplied.
+// warn fires on out-of-pool: a miss for 'include', a match for 'exclude'.
 export const poolFilter = (
 	filterId: F.FilterEntityId,
 	mode: 'include' | 'exclude',
-	opts?: { applied?: boolean; warn?: boolean },
-): Extract<LQY.Constraint, { type: 'filter-entity' }> => ({
-	type: 'filter-entity',
-	id: 'pool-filter',
-	filterId,
-	poolFilterMode: mode,
-	filterApplState: (opts?.applied ?? true) ? (mode === 'include' ? 'regular' : 'inverted') : 'disabled',
-	showIndicator: 'both',
-	warn: opts?.warn ? (mode === 'include' ? 'inverted' : 'regular') : 'disabled',
-})
+	opts?: { applyAs?: LQY.FilterApplicationState; warn?: boolean },
+): Extract<LQY.Constraint, { type: 'filter-entity' }> => {
+	const applyAs = opts?.applyAs ?? 'regular'
+	const toPool = mode === 'include' ? 'regular' : 'inverted'
+	const toOutside = mode === 'include' ? 'inverted' : 'regular'
+	return {
+		type: 'filter-entity',
+		id: 'pool-filter',
+		filterId,
+		poolFilterMode: mode,
+		filterApplState: applyAs === 'disabled' ? 'disabled' : applyAs === 'regular' ? toPool : toOutside,
+		showIndicator: 'both',
+		warn: opts?.warn ? toOutside : 'disabled',
+	}
+}
 
 export const repeatRule = (
 	id: string,

@@ -15,6 +15,7 @@ import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 import React from 'react'
+import { AddPlayerFlagsMenuItem } from './bm-flag-workflows'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { type MenuSlots, TimeoutDialogContent } from './player-context-menu-options'
 import { ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger } from './ui/context-menu'
@@ -366,6 +367,12 @@ export function SquadMenuItems(
 					/>
 				</>
 			)}
+			<AddPlayerFlagsMenuItem
+				slots={slots}
+				playerIds={squadPlayerIds}
+				targetDescription={`squad ${squadLabel}`}
+				label="Add Flags to Squad..."
+			/>
 			<Separator />
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item onClick={disbandSquad} disabled={!!manageDenied || !squadExists}>

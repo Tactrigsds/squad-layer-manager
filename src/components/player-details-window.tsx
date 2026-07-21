@@ -15,7 +15,7 @@ import * as BM from '@/models/battlemetrics.models'
 import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as RPC from '@/orpc.client'
-import { useOrgFlags, usePlayerGroupColor } from '@/systems/battlemetrics.client'
+import { useOrgFlags, usePlayerGroupColor, useRefreshPlayerBmData } from '@/systems/battlemetrics.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
@@ -143,6 +143,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 						)
 				)}
 				{flags && flags.length > 0 && <PlayerFlagsList flags={flags} />}
+				<PlayerBmRefreshButton playerId={playerId} />
 				<PlayerFlagsButton playerId={playerId} />
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
@@ -268,6 +269,25 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 				</div>
 			)}
 		</div>
+	)
+}
+
+// on-demand bust of this player's cached BM data; the fresh flags/profile arrive over the watch stream
+function PlayerBmRefreshButton({ playerId }: { playerId: string }) {
+	const refresh = useRefreshPlayerBmData()
+	return (
+		<button
+			type="button"
+			disabled={refresh.isPending}
+			onClick={async () => {
+				const res = await refresh.mutateAsync({ playerIds: [playerId] })
+				if (res.failed.length > 0) toast.error('Failed to refresh BattleMetrics data')
+			}}
+			className="inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors shrink-0 disabled:pointer-events-none"
+			title="Refresh BattleMetrics data"
+		>
+			<Icons.RefreshCw className={`h-3 w-3 ${refresh.isPending ? 'animate-spin' : ''}`} />
+		</button>
 	)
 }
 

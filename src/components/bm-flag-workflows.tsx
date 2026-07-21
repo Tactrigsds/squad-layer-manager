@@ -73,13 +73,15 @@ function FlagRow(props: {
 }
 
 export function ManageFlagsDialogContent(props: {
-	currentFlagIds: string[]
+	playerId: string
 	addRef: React.MutableRefObject<string[]>
 	removeRef: React.MutableRefObject<string[]>
 	reasonsRef: React.MutableRefObject<Record<string, string>>
 }) {
 	const orgFlags = BattlemetricsClient.useOrgFlags()
 	const requiringNote = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.playerFlagsRequiringNote ?? [])
+	// read live so the refresh kicked off when the dialog opened lands here without reopening it
+	const currentFlagIds = BattlemetricsClient.usePlayerFlagIds(props.playerId) ?? []
 	// staged rather than applied on click: a misclick on a destructive action stays undoable while the dialog is open
 	const [staged, setStaged] = React.useState<string[]>(() => props.removeRef.current)
 	const [pending, setPending] = React.useState<string[]>(() => props.addRef.current)
@@ -87,7 +89,7 @@ export function ManageFlagsDialogContent(props: {
 	const [picking, setPicking] = React.useState(false)
 
 	const addable = (orgFlags ?? []).map((f) => f.id)
-		.filter((id) => !props.currentFlagIds.includes(id) && !pending.includes(id))
+		.filter((id) => !currentFlagIds.includes(id) && !pending.includes(id))
 
 	function toggleStaged(id: string) {
 		const next = staged.includes(id) ? staged.filter((f) => f !== id) : [...staged, id]
@@ -111,11 +113,9 @@ export function ManageFlagsDialogContent(props: {
 	return (
 		<div className="grid gap-2">
 			<Label>Flags</Label>
-			{props.currentFlagIds.length === 0 && pending.length === 0 && (
-				<p className="text-xs text-muted-foreground">This player has no flags.</p>
-			)}
+			{currentFlagIds.length === 0 && pending.length === 0 && <p className="text-xs text-muted-foreground">This player has no flags.</p>}
 			<ul className="grid gap-1">
-				{props.currentFlagIds.map((id) => (
+				{currentFlagIds.map((id) => (
 					<FlagRow
 						key={id}
 						id={id}
@@ -173,6 +173,84 @@ export function ManageFlagsDialogContent(props: {
 	)
 }
 
+// add-only variant of the flag dialog: no current flags, no removals -- just the set of flags to apply to every
+// target, each with its own reason. Shared by the bulk-selection and squad menus, where the targets' existing flags
+// differ and there's nothing to diff against.
+export function AddFlagsDialogContent(props: {
+	addRef: React.MutableRefObject<string[]>
+	reasonsRef: React.MutableRefObject<Record<string, string>>
+}) {
+	const orgFlags = BattlemetricsClient.useOrgFlags()
+	const requiringNote = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.playerFlagsRequiringNote ?? [])
+	const [pending, setPending] = React.useState<string[]>(() => props.addRef.current)
+	// while true the add button is replaced by the picker it summoned
+	const [picking, setPicking] = React.useState(false)
+
+	const addable = (orgFlags ?? []).map((f) => f.id).filter((id) => !pending.includes(id))
+
+	function dropPending(id: string) {
+		const next = pending.filter((f) => f !== id)
+		setPending(next)
+		props.addRef.current = next
+	}
+
+	function addPending(id: string) {
+		const next = [...pending, id]
+		setPending(next)
+		props.addRef.current = next
+		setPicking(false)
+	}
+
+	return (
+		<div className="grid gap-2">
+			<Label>Flags to add</Label>
+			{pending.length === 0 && <p className="text-xs text-muted-foreground">No flags selected yet.</p>}
+			<ul className="grid gap-1">
+				{pending.map((id) => (
+					<FlagRow
+						key={id}
+						id={id}
+						change="adding"
+						requiresReason={requiringNote.includes(id)}
+						orgFlags={orgFlags}
+						reasonsRef={props.reasonsRef}
+						onToggle={() => dropPending(id)}
+					/>
+				))}
+			</ul>
+			{picking
+				? (
+					<BmFlagSelect
+						value={undefined}
+						only={addable}
+						autoOpen
+						placeholder="Select a flag..."
+						onOpenChange={(open) => {
+							if (!open) setPicking(false)
+						}}
+						onChange={addPending}
+					/>
+				)
+				: (
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						className="justify-self-start"
+						disabled={addable.length === 0}
+						onClick={() => setPicking(true)}
+					>
+						<Icons.Plus className="mr-1 h-3 w-3" />
+						Add flag
+					</Button>
+				)}
+			<span className="text-xs text-muted-foreground">
+				Each reason is posted to every selected player's BattleMetrics profile as its own note.
+			</span>
+		</div>
+	)
+}
+
 // only the flags actually being changed: a row's text survives in the ref after its row goes away, so it can be
 // restored if the flag comes back, but it must never be submitted for a flag that isn't changing
 function readFlagChanges(flagIds: string[], reasonsRef: React.MutableRefObject<Record<string, string>>): BM.FlagChange[] {
@@ -183,6 +261,7 @@ function useManageFlagsAction(playerId: string) {
 	const denied = RbacClient.usePermsCheck(RBAC.perm('battlemetrics:write-flags'))
 	const openDialog = useAlertDialog()
 	const currentFlagIds = BattlemetricsClient.usePlayerFlagIds(playerId)
+	const refresh = BattlemetricsClient.useRefreshPlayerBmData()
 	const mutation = useMutation(RPC.orpc.battlemetrics.updateFlags.mutationOptions())
 	const addRef = React.useRef<string[]>([])
 	const removeRef = React.useRef<string[]>([])
@@ -193,12 +272,14 @@ function useManageFlagsAction(playerId: string) {
 		addRef.current = []
 		removeRef.current = []
 		reasonsRef.current = {}
+		// pull fresh flags in case they moved since this player's data was last polled; the dialog reads them live
+		void refresh.mutateAsync({ playerIds: [playerId] })
 		const result = await openDialog({
 			title: 'Manage Flags',
 			description: "Add or remove BattleMetrics flags on this player's profile.",
 			content: (
 				<ManageFlagsDialogContent
-					currentFlagIds={currentFlagIds}
+					playerId={playerId}
 					addRef={addRef}
 					removeRef={removeRef}
 					reasonsRef={reasonsRef}
@@ -242,6 +323,60 @@ export function PlayerFlagsMenuItem(props: { slots: MenuSlots; playerId: string;
 	return (
 		<PermissionDeniedTooltip denied={denied}>
 			<Item onClick={manageFlags} disabled={disabled}>{props.label ?? 'Manage Flags...'}</Item>
+		</PermissionDeniedTooltip>
+	)
+}
+
+function useAddFlagsAction(playerIds: string[], targetDescription: string) {
+	const denied = RbacClient.usePermsCheck(RBAC.perm('battlemetrics:write-flags'))
+	const openDialog = useAlertDialog()
+	const refresh = BattlemetricsClient.useRefreshPlayerBmData()
+	const mutation = useMutation(RPC.orpc.battlemetrics.addFlags.mutationOptions())
+	const addRef = React.useRef<string[]>([])
+	const reasonsRef = React.useRef<Record<string, string>>({})
+
+	async function addFlags() {
+		if (playerIds.length === 0) return
+		addRef.current = []
+		reasonsRef.current = {}
+		// the server re-diffs against live flags per player; refreshing keeps its skip-already-flagged decision current
+		void refresh.mutateAsync({ playerIds })
+		const result = await openDialog({
+			title: 'Add Flags',
+			description: `Add BattleMetrics flags to ${targetDescription}.`,
+			content: <AddFlagsDialogContent addRef={addRef} reasonsRef={reasonsRef} />,
+			buttons: [{ id: 'confirm', label: 'Apply' }],
+		})
+		if (result !== 'confirm') return
+		const add = readFlagChanges(addRef.current, reasonsRef)
+		if (add.length === 0) {
+			toast.error('No flags to add')
+			return
+		}
+		const res = await mutation.mutateAsync({ playerIds, add })
+		if (res.code === 'err:reason-required') {
+			toast.error('Reason required', { description: `These flags require a reason: ${res.flags.join(', ')}` })
+			return
+		}
+		if (res.code !== 'ok') {
+			toast.error('Failed to add flags', { description: res.code })
+			return
+		}
+		toast(`Flagged ${res.flaggedCount} of ${res.playerCount} players`, {
+			description: res.noteAdded ? undefined : 'The flags were added, but a BattleMetrics note failed to post.',
+		})
+	}
+
+	return { addFlags, denied, disabled: !!denied || playerIds.length === 0 }
+}
+
+// bulk-selection and squad menu entry: add-only flags across every target
+export function AddPlayerFlagsMenuItem(props: { slots: MenuSlots; playerIds: string[]; targetDescription: string; label?: string }) {
+	const { Item } = props.slots
+	const { addFlags, denied, disabled } = useAddFlagsAction(props.playerIds, props.targetDescription)
+	return (
+		<PermissionDeniedTooltip denied={denied}>
+			<Item onClick={addFlags} disabled={disabled}>{props.label ?? 'Add Flags...'}</Item>
 		</PermissionDeniedTooltip>
 	)
 }

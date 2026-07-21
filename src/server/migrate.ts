@@ -2,6 +2,7 @@ import type { Database } from 'better-sqlite3'
 import fs from 'node:fs'
 import path from 'node:path'
 import * as DbBackup from './db-backup.ts'
+import * as DbMeta from './db-meta.ts'
 
 // Custom migration runner that applies both generated `.sql` schema migrations
 // (authored via `drizzle-kit generate`) and hand-written `.ts` data migrations in
@@ -107,7 +108,9 @@ export async function applyPendingMigrations(
 }
 
 async function takePreMigrationBackup(driver: MigrationDriver, backup: BackupConfig, log: (msg: string) => void) {
-	const name = DbBackup.fileName(backup.dbPath, 'pre-migration')
+	// the stamp still on the db is the build being upgraded FROM: this backup is named after the version a rollback
+	// wants, not the one about to apply the migrations.
+	const name = DbBackup.fileName(backup.dbPath, 'pre-migration', DbMeta.readBuildStamp(driver)?.gitSha)
 	const destPath = path.join(backup.dir, name)
 	const { sizeBytes } = await DbBackup.writeBackup({ destPath, snapshot: (dest) => driver.backup(dest) })
 	log(`wrote pre-migration backup ${destPath} (${sizeBytes} bytes)`)

@@ -14,10 +14,13 @@ import type { MigrationDriver } from '@/server/migrate'
 //   mainPool.poolFilter: { filterId, mode: 'include'|'exclude' } | null   (first active inPool entry; extras dropped)
 //   mainPool.indicateMatches: filterId[]      (showIndicator regular|both)
 //   mainPool.indicateMisses: filterId[]       (showIndicator inverted|both)
-//   mainPool.defaultSelectable: { filterId, applyAs: 'regular'|'inverted' }[]  (from defaultApplyDuringLayerSelection)
+//   mainPool.defaultSelectable: { filterId, applyAs: 'regular'|'inverted'|'disabled' }[]  (from defaultApplyDuringLayerSelection; 'hidden' dropped)
 //   mainPool.warnFor: { filterId, applyAs }[] (from warn)
 //   mainPool.constrainGeneration: { filterId, applyAs }[]  (from generationPool.filters)
-//   mainPool.filters / generationPool.filters are deleted; repeatRules + applyMainPoolRepeatRules untouched.
+//   mainPool.repeatRules gain a per-rule `autogen` boolean, absorbing queue.generationPool entirely:
+//     applyMainPoolRepeatRules=true marks every main rule autogen; generationPool.repeatRules merge in with
+//     autogen=true (by label if a main rule already carries it, appended otherwise).
+//   mainPool.filters and queue.generationPool are deleted.
 //
 // `settings` is stored superjson-wrapped ({ json, meta }); the touched values are plain objects/arrays so `meta`
 // never references them. Idempotent: servers whose mainPool has no `filters` key are left alone.
@@ -51,7 +54,9 @@ export async function up(db: MigrationDriver): Promise<void> {
 			if (config.showIndicator === 'regular' || config.showIndicator === 'both') pushUnique(indicateMatches, config.filterId)
 			if (config.showIndicator === 'inverted' || config.showIndicator === 'both') pushUnique(indicateMisses, config.filterId)
 			const applyAs = config.defaultApplyDuringLayerSelection
-			if (applyAs === 'regular' || applyAs === 'inverted') pushUnique(defaultSelectable, { filterId: config.filterId, applyAs })
+			if (applyAs === 'regular' || applyAs === 'inverted' || applyAs === 'disabled') {
+				pushUnique(defaultSelectable, { filterId: config.filterId, applyAs })
+			}
 			if (config.warn === 'regular' || config.warn === 'inverted') pushUnique(warnFor, { filterId: config.filterId, applyAs: config.warn })
 		}
 
@@ -66,9 +71,22 @@ export async function up(db: MigrationDriver): Promise<void> {
 			}
 		}
 
+		const repeatRules: any[] = Array.isArray(mainPool.repeatRules) ? mainPool.repeatRules : []
+		if (genPool?.applyMainPoolRepeatRules === true) {
+			for (const rule of repeatRules) rule.autogen = true
+		}
+		if (genPool && Array.isArray(genPool.repeatRules)) {
+			for (const genRule of genPool.repeatRules) {
+				if (!genRule || typeof genRule.label !== 'string') continue
+				const existing = repeatRules.find((r) => r.label === genRule.label)
+				if (existing) existing.autogen = true
+				else repeatRules.push({ ...genRule, autogen: true })
+			}
+		}
+
 		delete mainPool.filters
-		if (genPool) delete genPool.filters
-		Object.assign(mainPool, { poolFilter, indicateMatches, indicateMisses, defaultSelectable, warnFor, constrainGeneration })
+		delete queue.generationPool
+		Object.assign(mainPool, { poolFilter, indicateMatches, indicateMisses, defaultSelectable, warnFor, constrainGeneration, repeatRules })
 
 		db.prepare(`UPDATE servers SET settings = ? WHERE id = ?`).run(JSON.stringify(wrapper), row.id)
 	}
