@@ -378,27 +378,38 @@ function describeMatchupSide(spec: F.MatchupTeamSpec): string {
 	return bits.length > 0 ? bits.join(' ') : 'any'
 }
 
+// one rendered condition of a template. filterId is set on the filter-entity conditions so a UI can show the
+// filter's own indicator alongside its name; excluded marks the "not <name>" form, whose indicator is the
+// filter's inverted one
+export type TemplateDisplayPart = { text: string; filterId?: string; excluded?: boolean }
+
 // the segments a template renders as (rows, chat listings): map/gamemode/version/... values verbatim, team
 // pairs as "A vs B", filter names resolved by the caller, and a count for anything unrecognized
-export function templateDisplayParts(filter: F.FilterNode, getFilterName?: (id: string) => string | undefined): string[] {
+export function templateDisplayParts(
+	filter: F.FilterNode,
+	getFilterName?: (id: string) => string | undefined,
+): TemplateDisplayPart[] {
 	const parts = parseTemplateParts(filter)
-	const out: string[] = [...parts.layers, ...parts.maps, ...parts.gamemodes, ...parts.versions, ...parts.collections, ...parts.sizes]
+	const values = [...parts.layers, ...parts.maps, ...parts.gamemodes, ...parts.versions, ...parts.collections, ...parts.sizes]
+	const out: TemplateDisplayPart[] = values.map(text => ({ text }))
 	for (const values of [parts.factions, parts.alliances, parts.units]) {
-		if (values.length === 1) out.push(values[0])
-		else if (values.length >= 2) out.push(`${values[0]} vs ${values[1]}`)
+		if (values.length === 1) out.push({ text: values[0] })
+		else if (values.length >= 2) out.push({ text: `${values[0]} vs ${values[1]}` })
 	}
 	if (parts.matchup && matchupHasValues(parts.matchup)) {
 		const [a, b] = parts.matchup.teams
-		out.push(`${describeMatchupSide(a)} vs ${describeMatchupSide(b)}${parts.matchup.locked ? ' (locked)' : ''}`)
+		out.push({ text: `${describeMatchupSide(a)} vs ${describeMatchupSide(b)}${parts.matchup.locked ? ' (locked)' : ''}` })
 	}
-	for (const id of parts.filterIds) out.push(getFilterName?.(id) ?? id)
-	for (const id of parts.excludedFilterIds) out.push(`not ${getFilterName?.(id) ?? id}`)
-	if (parts.other.length > 0) out.push(`+${parts.other.length} custom condition${parts.other.length === 1 ? '' : 's'}`)
-	return out.length > 0 ? out : ['any layer']
+	for (const id of parts.filterIds) out.push({ text: getFilterName?.(id) ?? id, filterId: id })
+	for (const id of parts.excludedFilterIds) out.push({ text: `not ${getFilterName?.(id) ?? id}`, filterId: id, excluded: true })
+	if (parts.other.length > 0) {
+		out.push({ text: `+${parts.other.length} custom condition${parts.other.length === 1 ? '' : 's'}` })
+	}
+	return out.length > 0 ? out : [{ text: 'any layer' }]
 }
 
 export function describeTemplate(filter: F.FilterNode, getFilterName?: (id: string) => string | undefined): string {
-	return templateDisplayParts(filter, getFilterName).join(', ')
+	return templateDisplayParts(filter, getFilterName).map(part => part.text).join(', ')
 }
 
 // -------- request token resolution (/reqlayer) --------
