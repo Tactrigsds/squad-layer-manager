@@ -33,6 +33,15 @@ export const createInput = (
 		instanceId: createId(4),
 	}
 }
+// one-shot intent recorded when a node is added from the categorized add menu, keyed by the new node's
+// id. `group` scopes a comparison's subject dropdown while it is still blank (it is otherwise re-derived
+// from the chosen column); `focus`/`autoOpenLayers` are consumed once on mount.
+export type CreateHint = {
+	group?: F.SubjectColumnGroup
+	focus?: 'operator'
+	autoOpenLayers?: boolean
+}
+
 type FilterEditorBase =
 	& {
 		sub: Rx.Subscription
@@ -40,6 +49,7 @@ type FilterEditorBase =
 		editedFilterId?: string
 		savedFilter: F.EditableFilterNode
 		tree: F.FilterNodeTree
+		createHints: Map<string, CreateHint>
 
 		validatedFilter: F.FilterNode | null
 		modified: boolean
@@ -86,6 +96,7 @@ const setup: Frame['setup'] = (args) => {
 
 			savedFilter: savedFilter,
 			tree: F.upsertFilterNodeTreeInPlace(savedFilter),
+			createHints: new Map(),
 
 			validatedFilter: null,
 			modified: false,
@@ -138,6 +149,8 @@ export namespace Sel {
 
 	export const idByPath = (path: Sparse.NodePath) => (state: FilterEditor): string | undefined =>
 		MapUtils.revLookup(state.tree.paths, path, Sparse.serializeNodePath)
+
+	export const createHint = (id: string) => (state: FilterEditor): CreateHint | undefined => state.createHints.get(id)
 }
 
 export type CommonNodeActions = {
@@ -147,6 +160,7 @@ export type CommonNodeActions = {
 export type BlockNodeActions = {
 	setBlockType: (type: F.BlockType) => void
 	addChild: (type: F.NodeType) => void
+	addSeeded: (seed: F.EditableFilterNode, hint?: CreateHint) => void
 }
 
 export type CompNodeActions = {
@@ -189,7 +203,7 @@ export namespace Actions {
 	}
 
 	export function updateRoot(stores: KeyProp, filter: F.EditableFilterNode) {
-		store(stores).setState({ tree: F.upsertFilterNodeTreeInPlace(filter) })
+		store(stores).setState({ tree: F.upsertFilterNodeTreeInPlace(filter), createHints: new Map() })
 	}
 
 	export function updateNode(stores: KeyProp, id: string, cb: (draft: Im.Draft<F.ShallowEditableFilterNode>) => void) {
@@ -211,23 +225,27 @@ export namespace Actions {
 	}
 
 	export function addChild(stores: KeyProp, parentId: string, type: F.NodeType) {
-		const s = store(stores)
-		s.setState({
-			tree: Im.produce(s.getState().tree, draft => {
-				const node: F.ShallowEditableFilterNode = F.toShallowNode(EFB.nodeOfType(type))
-				const id = createId(4)
-				const parentPath = draft.paths.get(parentId)!
-				let last: number = -1
-				for (const path of draft.paths.values()) {
-					if (!Sparse.isChildPath(parentPath, path)) continue
-					last = Math.max(last, path[parentPath.length])
-				}
+		addSeededChild(stores, parentId, EFB.nodeOfType(type))
+	}
 
-				const newPath = [...parentPath, last + 1]
-				draft.paths.set(id, newPath)
-				draft.nodes.set(id, node)
-			}),
+	export function addSeededChild(stores: KeyProp, parentId: string, seed: F.EditableFilterNode, hint?: CreateHint) {
+		const s = store(stores)
+		const id = createId(4)
+		const tree = Im.produce(s.getState().tree, draft => {
+			const node: F.ShallowEditableFilterNode = F.toShallowNode(seed)
+			const parentPath = draft.paths.get(parentId)!
+			let last: number = -1
+			for (const path of draft.paths.values()) {
+				if (!Sparse.isChildPath(parentPath, path)) continue
+				last = Math.max(last, path[parentPath.length])
+			}
+
+			const newPath = [...parentPath, last + 1]
+			draft.paths.set(id, newPath)
+			draft.nodes.set(id, node)
 		})
+		if (hint) s.setState({ tree, createHints: new Map(s.getState().createHints).set(id, hint) })
+		else s.setState({ tree })
 	}
 
 	export function reset(stores: KeyProp, filter?: F.EditableFilterNode) {
@@ -236,6 +254,7 @@ export namespace Actions {
 		s.setState({
 			savedFilter: filter,
 			tree: F.upsertFilterNodeTreeInPlace(filter),
+			createHints: new Map(),
 		})
 	}
 }
@@ -255,6 +274,9 @@ export function getNodeActions(stores: KeyProp, id: string): NodeActions {
 			},
 			addChild: (type: F.NodeType) => {
 				Actions.addChild(stores, id, type)
+			},
+			addSeeded: (seed, hint) => {
+				Actions.addSeededChild(stores, id, seed, hint)
 			},
 		},
 		comp: {

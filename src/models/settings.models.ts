@@ -7,7 +7,6 @@ import * as CHAT from '@/models/chat.models.ts'
 import * as CMD from '@/models/command.models.ts'
 import * as CB from '@/models/constraint-builders'
 import * as F from '@/models/filter.models'
-import * as LP from '@/models/labeled-presets.models'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
 import * as PG from '@/models/player-groupings.models'
@@ -52,6 +51,9 @@ const RoleConfigSchema = z.object({
 	// is its own field. Absent = the role cannot issue timeouts; negation doesn't apply, drop the field instead.
 	maxTimeout: HumanTime.optional().describe(
 		'Maximum kick-timeout duration (e.g. "2h"). Absent = this role cannot issue timeouts. Super users/roles are unlimited.',
+	),
+	maxLayerRequests: z.number().int().positive().optional().describe(
+		'Maximum concurrent layer requests (backburner items) the role may hold. Absent = this role cannot request layers. Super users/roles are unlimited.',
 	),
 	// restricted settings grants, like maxTimeout these carry arguments the expression grammar can't: they let the role
 	// edit only specific settings (and for servers, only specific servers). Unrestricted access is granted via `permissions`.
@@ -438,10 +440,12 @@ export function defaultRbacSettings() {
 			admins: {
 				permissions: adminPermissions,
 				maxTimeout: '2h',
+				maxLayerRequests: 5,
 			},
 			managers: {
 				permissions: managerPermissions,
 				maxTimeout: '6h',
+				maxLayerRequests: 5,
 				// every global setting except the permissions config
 				globalSettingsGrants: globalSettingsTopLevelKeys().filter((k) => k !== 'rbac'),
 				serverSettingsGrants: managerServerGrants,
@@ -450,6 +454,7 @@ export function defaultRbacSettings() {
 				permissions: ownerPermissions,
 				// there is no in-settings "unlimited" (that comes only from the SUPER_USERS/SUPER_ROLES bootstrap), so a large finite cap
 				maxTimeout: '52w',
+				maxLayerRequests: 10,
 			},
 		},
 	}
@@ -457,10 +462,12 @@ export function defaultRbacSettings() {
 
 // ============================== per-server settings ==============================
 
+// autogen on by default: a fresh server that generates layers violating its own repeat rules is never what
+// anyone wants, and the per-rule checkbox is there to turn it off
 const DEFAULT_REPEAT_RULE_CONFIGS: PoolRepeatRuleConfig[] = [
-	{ label: 'Map', field: 'Map', within: 4 },
-	{ label: 'Layer', field: 'Layer', within: 7 },
-	{ label: 'Faction', field: 'Faction', within: 3 },
+	{ label: 'Map', field: 'Map', within: 4, autogen: true },
+	{ label: 'Layer', field: 'Layer', within: 7, autogen: true },
+	{ label: 'Faction', field: 'Faction', within: 3, autogen: true },
 ]
 
 export const POOL_FILTER_APPLY_AS = z.enum(['regular', 'inverted', 'disabled'])
@@ -590,6 +597,11 @@ export const QueueSettingsSchema = z.object({
 	preferredLength: z.number().prefault(12),
 	generatedItemType: z.enum(['layer', 'vote']).prefault('layer'),
 	preferredNumVoteChoices: z.number().prefault(3),
+	layerRequests: z.object({
+		maxTotal: z.number().int().positive().prefault(50).describe(
+			'Maximum number of layer requests the backburner may hold across all users',
+		),
+	}).prefault({}),
 })
 export type QueueSettings = z.infer<typeof QueueSettingsSchema>
 

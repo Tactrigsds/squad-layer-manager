@@ -72,6 +72,9 @@ export const APP_EVENT_TYPE = z.enum([
 	'TEAMSWAPS_UPDATED',
 	'PLAYER_KICKED',
 	'BACKUP_CREATED',
+	'LAYER_REQUEST_ADDED',
+	'LAYER_REQUEST_REMOVED',
+	'LAYER_REQUEST_CONSUMED',
 ])
 export type AppEventType = z.infer<typeof APP_EVENT_TYPE>
 

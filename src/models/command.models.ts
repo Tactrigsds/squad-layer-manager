@@ -40,6 +40,7 @@ export type CommandConfigs = { [k in CommandId]: CommandConfig }
 export const COMMAND_SECTIONS = {
 	general: { label: 'General' },
 	votes: { label: 'Votes & SLM Updates' },
+	layerRequests: { label: 'Layer Requests' },
 	teamswaps: { label: 'Teamswaps' },
 	flags: { label: 'Player Flags' },
 	moderation: { label: 'Moderation' },
@@ -201,6 +202,33 @@ export const COMMAND_DECLARATIONS = {
 		section: 'votes',
 		args: [],
 		defaults: { scopes: ['admin'], strings: ['slmstatus'], enabled: true, quickReference: false },
+	}),
+	...declareCommand('requestLayer', {
+		section: 'layerRequests',
+		args: [{
+			kind: 'text',
+			name: 'request',
+			sample: 'goro adf pla',
+			describe: 'Any mix of map, gamemode, size, faction, alliance, unit or filter names. Map and filter names match loosely; '
+				+ 'everything else must match exactly. Two factions (or alliances/units) mean a matchup.',
+		}],
+		defaults: { scopes: ['admin', 'public'], strings: ['requestlayer', 'reqlayer', 'rql'], enabled: true, quickReference: false },
+	}),
+	...declareCommand('listLayerRequests', {
+		section: 'layerRequests',
+		args: [],
+		defaults: { scopes: ['admin', 'public'], strings: ['reqs', 'listreqs'], enabled: true, quickReference: false },
+	}),
+	...declareCommand('removeLayerRequest', {
+		section: 'layerRequests',
+		args: [{
+			kind: 'int',
+			name: 'number',
+			optional: true,
+			sample: '2',
+			describe: 'The request number from the list. Removes your newest request when omitted.',
+		}],
+		defaults: { scopes: ['admin', 'public'], strings: ['unreqlayer', 'rmreq'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('swapNow', {
 		section: 'teamswaps',

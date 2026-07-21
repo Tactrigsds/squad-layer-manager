@@ -1,7 +1,27 @@
 import * as DND from '@/models/dndkit.models'
+import { type CollisionDetector, CollisionPriority, CollisionType } from '@dnd-kit/abstract'
 import * as DndKitReact from '@dnd-kit/react'
 
 import React from 'react'
+
+// like @dnd-kit/collision's pointerIntersection, but measured against the droppable element's LIVE rect: the
+// cached shape can lag a drag-start expansion, and it disagrees with the pointer under page zoom. Used wherever a
+// thin, dynamically-expanding drop target (the reorder separators) must track the pointer precisely.
+export const livePointerIntersection: CollisionDetector = ({ dragOperation, droppable }) => {
+	const coords = dragOperation.position.current
+	const element = (droppable as { element?: Element }).element
+	if (!coords || !element) return null
+	const rect = element.getBoundingClientRect()
+	if (coords.x < rect.left || coords.x > rect.right || coords.y < rect.top || coords.y > rect.bottom) return null
+	const dx = coords.x - (rect.left + rect.width / 2)
+	const dy = coords.y - (rect.top + rect.height / 2)
+	return {
+		id: droppable.id,
+		value: 1 / (Math.hypot(dx, dy) || 1),
+		type: CollisionType.PointerIntersection,
+		priority: CollisionPriority.High,
+	}
+}
 
 export const DragEndContext = React.createContext<DND.DragEndContext>({ addHook: () => {}, removeHook: () => {} })
 
@@ -15,8 +35,8 @@ export function useDragEnd(handler: DND.DragEndHandler) {
 	}, [id, handler, ctx])
 }
 
-export function useDroppable(item: DND.DropItem) {
-	return DndKitReact.useDroppable({ id: DND.serializeDropItem(item) })
+export function useDroppable(item: DND.DropItem, input?: Omit<DndKitReact.UseDroppableInput, 'id'>) {
+	return DndKitReact.useDroppable({ id: DND.serializeDropItem(item), ...(input ?? {}) })
 }
 
 export function useDraggable(item: DND.DragItem, input?: Omit<DndKitReact.UseDraggableInput, 'id'>) {

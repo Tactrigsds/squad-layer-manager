@@ -1,3 +1,4 @@
+import * as BB from '@/models/backburner.models'
 import * as LL from '@/models/layer-list.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as TSW from '@/models/teamswaps.models'
@@ -25,6 +26,7 @@ export const ServerStateSchema = z.object({
 		(val) => (val instanceof Map || (val && typeof val === 'object' && 'switches' in val) ? null : val),
 		SavedTeamswapsSchema.nullable(),
 	).prefault(null),
+	backburner: BB.BackburnerListSchema.prefault([]),
 	settings: SETTINGS.ServerSettingsSchema,
 })
 
@@ -50,6 +52,7 @@ export type LQStateUpdate = {
 				| 'updates-to-squad-server-toggled'
 				| 'teamswaps-saved'
 				| 'teamswap-execution-completed'
+				| 'backburner-updated'
 		}
 		// TODO bring this up to date with signature of VoteStateUpdate
 		| {
@@ -76,6 +79,7 @@ export function printSource(source: LQStateUpdate['source']) {
 			'ended-early': 'Vote ended early',
 			'teamswap-execution-completed': 'Teamswaps Executed',
 			'teamswaps-saved': 'Teamswaps Saved',
+			'backburner-updated': 'Layer requests updated',
 		}
 		return eventLabels[source.event]
 	} else {

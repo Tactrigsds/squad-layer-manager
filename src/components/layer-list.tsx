@@ -426,9 +426,9 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 	const isVoteChoice = !!parentItem
 
 	const isModified = ZusUtils.useStore(props.stores.squadServer, LayerQueuePrt.Sel.isModified)
-	const isEditing = ZusUtils.useStore(UPClient.Store, s => user ? UPClient.Sel.isEditing(user.discordId)(s) : false)
 	const isLocked = ZusUtils.useStore(UPClient.Store, UPClient.Sel.isSllItemLocked(item.itemId))
-	const canEdit = !isLocked && !!isEditing
+	const writeDenied = RbacClient.usePermsCheck(RBAC.perm('queue:write'))
+	const canEdit = !isLocked && !writeDenied
 
 	const [itemPresence, itemActivityUser, activityHovered] = UPClient.useItemPresence(item.itemId)
 
@@ -440,7 +440,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 	// 'default' (clone) not 'move': with 'move' dnd-kit drags the real element and animates it into its final
 	// slot over a 250ms drop animation, so the item visibly lags behind the mouse release. 'default' drags a
 	// throwaway clone and places the real item instantly. Matches vote items (below) and the filter editor.
-	const dragProps = DndKit.useDraggable(draggableItem, { feedback: 'default', disabled: !isEditing })
+	const dragProps = DndKit.useDraggable(draggableItem, { feedback: 'default', disabled: !canEdit })
 
 	const itemStores = { queue: props.stores.squadServer }
 
@@ -474,7 +474,6 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 	const editButtonProps = (className?: string) => ({
 		'data-can-edit': canEdit,
 		'data-mobile': isMobile,
-		'data-is-editing': !!isEditing,
 		disabled: !canEdit,
 		className,
 	})
@@ -533,7 +532,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 
 	return (
 		<>
-			{(LL.isLocallyFirstIndex(index)) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!isEditing} />}
+			{(LL.isLocallyFirstIndex(index)) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!canEdit} />}
 			<ItemContextMenu stores={props.stores} itemId={props.itemId} disabled={!canEdit}>
 				<li
 					ref={dragProps.ref}
@@ -546,11 +545,11 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					data-is-voting={voteState?.code === 'in-progress'}
 					data-is-hovered={activityHovered}
 				>
-					<span className="grid">
+					<span className="flex items-center">
 						<span
 							data-mobile={isMobile}
 							data-viewing-queue={viewingQueue}
-							className="text-right m-auto font-mono text-s col-start-1 row-start-1 invisible data-[mobile=false]:data-[viewing-queue=true]:not-group-hover/single-item:visible"
+							className="text-right font-mono text-s invisible data-[mobile=false]:data-[viewing-queue=true]:visible"
 						>
 							{LL.getItemNumber(index)}
 						</span>
@@ -558,12 +557,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 							ref={dragProps.handleRef}
 							variant="ghost"
 							size="icon"
-							{...editButtonProps(
-								cn(
-									'data-[can-edit=true]:cursor-grab data-[mobile=false]:not-group-hover/single-item:invisible',
-									'col-start-1 row-start-1',
-								),
-							)}
+							{...editButtonProps('data-[can-edit=true]:cursor-grab')}
 						>
 							<Icons.GripVertical />
 						</Button>
@@ -600,7 +594,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 						variant="ghost"
 						size="icon"
 						title="Edit"
-						disabled={!isEditing}
+						disabled={!canEdit}
 					>
 						<Icons.Pencil />
 					</StartActivityInteraction>
@@ -633,7 +627,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					</ItemDropdown>
 				</li>
 			</ItemContextMenu>
-			<QueueItemSeparator links={afterItemLinks} isAfterLast={isLocallyLast} disabled={!isEditing} />
+			<QueueItemSeparator links={afterItemLinks} isAfterLast={isLocallyLast} disabled={!canEdit} />
 		</>
 	)
 })
@@ -655,9 +649,10 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const manageVoteDenied = RbacClient.usePermsCheck(RBAC.perm('vote:manage'))
 	const isEditing = UPClient.useIsEditing()
 	const isLocked = ZusUtils.useStore(UPClient.Store, UPClient.Sel.isSllItemLocked(item.itemId))
-	const canEdit = !isLocked && !!isEditing
+	const writeDenied = RbacClient.usePermsCheck(RBAC.perm('queue:write'))
+	const canEdit = !isLocked && !writeDenied
 	const draggableItem = LL.layerItemToDragItem(item)
-	const dragProps = DndKit.useDraggable(draggableItem, { disabled: !isEditing })
+	const dragProps = DndKit.useDraggable(draggableItem, { disabled: !canEdit })
 
 	const itemStores = { queue: props.stores.squadServer }
 
@@ -809,7 +804,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 
 	return (
 		<>
-			{LL.isLocallyFirstIndex(index) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!isEditing} />}
+			{LL.isLocallyFirstIndex(index) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!canEdit} />}
 			<ItemContextMenu stores={props.stores} itemId={props.itemId} disabled={!canEdit}>
 				<li
 					ref={dragProps.ref}
@@ -1025,7 +1020,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 						)}
 				</li>
 			</ItemContextMenu>
-			<QueueItemSeparator links={afterItemLinks} isAfterLast={isLocallyLast} disabled={!isEditing} />
+			<QueueItemSeparator links={afterItemLinks} isAfterLast={isLocallyLast} disabled={!canEdit} />
 		</>
 	)
 }
@@ -1210,7 +1205,8 @@ function ItemMenuItems(props: {
 	}, [item.itemId])
 
 	const isLocked = ZusUtils.useStore(UPClient.Store, UPClient.Sel.isSllItemLocked(item.itemId))
-	const isEditing = UPClient.useIsEditing()
+	const writeDenied = RbacClient.usePermsCheck(RBAC.perm('queue:write'))
+	const canEdit = !isLocked && !writeDenied
 	const itemStores = { queue: props.stores.squadServer }
 
 	function sendToFront() {
@@ -1241,7 +1237,7 @@ function ItemMenuItems(props: {
 		<>
 			<Menu.Group>
 				<Menu.Item
-					disabled={!isEditing || isLocked}
+					disabled={!canEdit}
 					onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'clone', itemId: item.itemId })}
 				>
 					<Icons.Copy />Clone
@@ -1255,7 +1251,7 @@ function ItemMenuItems(props: {
 					matchKey={key => Obj.deepEqualStrict(key, { ...activities['add-before'], serverId: props.stores.squadServer.serverId })}
 					preload="viewport"
 					render={Menu.Item}
-					disabled={!isEditing}
+					disabled={!canEdit}
 				>
 					Add Layers Before
 				</StartActivityInteraction>
@@ -1265,7 +1261,7 @@ function ItemMenuItems(props: {
 					matchKey={key => Obj.deepEqualStrict(key, { ...activities['add-after'], serverId: props.stores.squadServer.serverId })}
 					preload="viewport"
 					render={Menu.Item}
-					disabled={!isEditing}
+					disabled={!canEdit}
 				>
 					Add Layers After
 				</StartActivityInteraction>
@@ -1274,13 +1270,13 @@ function ItemMenuItems(props: {
 			<Menu.Separator />
 			<Menu.Group>
 				<Menu.Item
-					disabled={!isEditing || (index.innerIndex ?? index.outerIndex) === 0 || isLocked}
+					disabled={!canEdit || (index.innerIndex ?? index.outerIndex) === 0}
 					onClick={sendToFront}
 				>
 					Send to Front
 				</Menu.Item>
 				<Menu.Item
-					disabled={!isEditing || lastLocalIndex && LL.indexesEqual(index, lastLocalIndex) || isLocked}
+					disabled={!canEdit || (!!lastLocalIndex && LL.indexesEqual(index, lastLocalIndex))}
 					onClick={sendToBack}
 				>
 					Send to Back
@@ -1296,15 +1292,20 @@ function QueueItemSeparator(props: {
 	isAfterLast?: boolean
 	disabled?: boolean
 }) {
-	const { ref, isDropTarget } = DndKit.useDroppable(LL.llItemCursorsToDropItem(props.links))
+	const dragging = DndKit.useDragging()
+	// a request dragged in from the backburner is a thin, expanding target the pointer must track exactly; queue
+	// reorder (layer-item) keeps the default shape collision so its behaviour is unchanged
+	const collisionDetector = dragging?.type === 'backburner-item' ? DndKit.livePointerIntersection : undefined
+	const { ref, isDropTarget } = DndKit.useDroppable(LL.llItemCursorsToDropItem(props.links), { collisionDetector })
 	const disabled = props.disabled || false
+	// taller (bigger drop target) only while an item is actually being dragged; compact otherwise
+	const expanded = !disabled && (dragging?.type === 'layer-item' || dragging?.type === 'backburner-item')
 	return (
 		<Separator
 			ref={ref}
-			// taller (bigger drop target) while editing so items are easier to drag between; collapses when not editable
 			className={cn(
-				'w-full min-w-0 bg-transparent data-[is-last=true]:invisible data-[is-over=true]:bg-primary/30',
-				disabled ? 'h-2' : 'h-6',
+				'w-full min-w-0 bg-transparent data-[is-last=true]:invisible data-[is-over=true]:bg-accent',
+				expanded ? 'h-6' : 'h-2',
 			)} // data-is-last={props.isAfterLast && !isOver}
 			data-is-over={!disabled && isDropTarget}
 		/>

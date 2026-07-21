@@ -19,7 +19,10 @@ export default function AppliedFiltersPanel(
 ) {
 	const filterEntities = FilterEntityClient.useFilterEntities()
 	const scrollRef = React.useRef<HTMLDivElement>(null)
-	const extraFilters = ZusUtils.useStore(AppliedFiltersPrt.ExtraFiltersStore, s => s.extraFilters)
+	// an instance with locally-scoped extras renders its own set; otherwise the global saved one
+	const localExtraFilters = ZusUtils.useStore(props.stores.appliedFilters, s => s.appliedFilters.localExtraFilters)
+	const globalExtraFilters = ZusUtils.useStore(AppliedFiltersPrt.ExtraFiltersStore, s => s.extraFilters)
+	const extraFilters = localExtraFilters ?? globalExtraFilters
 	const [canScrollLeft, setCanScrollLeft] = React.useState(false)
 	const [canScrollRight, setCanScrollRight] = React.useState(false)
 	const canScroll = canScrollLeft || canScrollRight
@@ -183,7 +186,7 @@ const POOL_STATE_TITLES: Record<AppliedFiltersPrt.ApplyAs, string> = {
 
 // the pool filter is pinned; out-of-pool layers surfaced by the inverted/disabled states stay unselectable for
 // users without queue:force-write, so no state needs to be locked away
-function PoolFilterCheckbox({ stores }: { stores: Partial<SquadServerFrame.KeyProp> & AppliedFiltersPrt.KeyProp }) {
+export function PoolFilterCheckbox({ stores }: { stores: Partial<SquadServerFrame.KeyProp> & AppliedFiltersPrt.KeyProp }) {
 	const poolFilter = ZusUtils.useStore(
 		stores.squadServer ?? null,
 		ZusUtils.useShallow(s => s ? s.settings.saved.queue.mainPool.poolFilter : null),
@@ -206,7 +209,7 @@ function PoolFilterCheckbox({ stores }: { stores: Partial<SquadServerFrame.KeyPr
 	)
 }
 
-function FilterCheckbox({ filterId, stores }: { filterId: string; stores: AppliedFiltersPrt.KeyProp }) {
+export function FilterCheckbox({ filterId, stores }: { filterId: string; stores: AppliedFiltersPrt.KeyProp }) {
 	const storeAppliedState = ZusUtils.useStore(
 		stores.appliedFilters,
 		s => s.appliedFilters.filterStates.get(filterId) ?? 'disabled',

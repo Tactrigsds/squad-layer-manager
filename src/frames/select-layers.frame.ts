@@ -8,7 +8,10 @@ import type * as FRM from '@/lib/frame'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object'
 import * as ZusUtils from '@/lib/zustand'
+import * as BB from '@/models/backburner.models'
 import * as CS from '@/models/context-shared'
+import * as EFB from '@/models/editable-filter-builders'
+import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import type * as LL from '@/models/layer-list.models'
@@ -31,14 +34,18 @@ export function createInput(
 		maxSelected?: number
 		minSelected?: number
 		sharedInstanceId?: string
+		// seed the layer-select menu from a backburner template (matchup left -> Team 1, right -> Team 2)
+		startingTemplate?: F.FilterNode
 	} & Partial<SquadServerFrame.KeyProp>,
 ): Input {
+	const colConfig = ConfigClient.getColConfig()
 	const base: BaseInput = {
-		colConfig: ConfigClient.getColConfig(),
+		colConfig,
 		initialEditedLayerId: opts.initialEditedLayerId,
 		instanceId: opts.sharedInstanceId ?? createId(4),
 		cursor: opts.cursor,
 		squadServer: opts.squadServer,
+		startingMenuItems: opts.startingTemplate ? menuItemsFromTemplate(opts.startingTemplate, colConfig) : undefined,
 	}
 	return {
 		...LayerTablePrt.getInputDefaults({
@@ -62,6 +69,7 @@ type BaseInput = {
 	cursor?: LL.Cursor
 	initialEditedLayerId?: L.LayerId
 	instanceId: string
+	startingMenuItems?: Record<string, F.EditableCompNode>
 } & Partial<SquadServerFrame.KeyProp>
 
 type Input = BaseInput & LayerTablePrt.Input
@@ -136,7 +144,13 @@ const setup: Frame['setup'] = (args) => {
 	PoolCheckboxesPrt.initNewPoolCheckboxes({ ...args, input: { defaultState: { dnr: 'disabled' } } })
 	LayerFilterMenuPrt.initLayerFilterMenuStore({
 		...args,
-		input: { colConfig: input.colConfig, defaultFields: getFilterMenuDefaultFields(input.initialEditedLayerId, input.colConfig) },
+		input: input.startingMenuItems
+			? {
+				colConfig: input.colConfig,
+				items: input.startingMenuItems,
+				emptyItems: LayerFilterMenuPrt.getDefaultFilterMenuItemState({}, input.colConfig),
+			}
+			: { colConfig: input.colConfig, defaultFields: getFilterMenuDefaultFields(input.initialEditedLayerId, input.colConfig) },
 	})
 	LayerTablePrt.initLayerTable(args)
 
@@ -234,6 +248,20 @@ export namespace Actions {
 	export function setCursor(stores: KeyProp, cursor: LL.Cursor | undefined) {
 		ZusUtils.resolveStore<State>(stores.selectLayers).setState({ cursor })
 	}
+}
+
+// a backburner template's constraints as the menu's per-column comparisons: single values become `eq`, multiple
+// (e.g. a merged request's `Map in [Chora, Fallujah]`) become `in`. The team-column split is done upstream.
+function menuItemsFromTemplate(
+	filter: F.FilterNode,
+	colConfig: LQY.EffectiveColumnAndTableConfig,
+): Record<string, F.EditableCompNode> {
+	const items = LayerFilterMenuPrt.getDefaultFilterMenuItemState({}, colConfig)
+	for (const [field, values] of Obj.objEntries(BB.templateToMenuFieldValues(filter))) {
+		if (!items[field]) continue
+		items[field] = values.length > 1 ? EFB.inValues(field, values) : EFB.eq(field, values[0])
+	}
+	return items
 }
 
 function getFilterMenuDefaultFields(editedLayerId: L.LayerId | undefined, colConfig: LQY.EffectiveColumnAndTableConfig) {

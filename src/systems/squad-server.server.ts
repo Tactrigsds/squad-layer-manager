@@ -2048,9 +2048,10 @@ const onNewGameDuringRoll = (serverId: string): PendingEvents.State['hooks']['on
 						nextLqItem
 						&& L.areLayersCompatible(nextLqItem.layerId, newLayerId)
 					) {
-						await LayerQueue.dispatchOp(ctx, { op: 'shift-first-saved-layer', opId: SLL.createOpId() })
 						currentMatchLqItem = nextLqItem
 					}
+					// the new match must be recorded before the queue shift: emptying the queue triggers generation,
+					// whose do-not-repeat lookback must see the layer that just started playing
 					const { match } = await MatchHistory.addNewCurrentMatch(
 						ctx,
 						MH.getNewMatchHistoryEntry({
@@ -2060,6 +2061,9 @@ const onNewGameDuringRoll = (serverId: string): PendingEvents.State['hooks']['on
 							lqItem: currentMatchLqItem,
 						}),
 					)
+					if (currentMatchLqItem) {
+						await LayerQueue.dispatchOp(ctx, { op: 'shift-first-saved-layer', opId: SLL.createOpId() })
+					}
 					LayerQueue.schedulePostRollTasks(ctx, match.layerId)
 					const nextLayerId = LL.getNextLayerId(LayerQueue.getSavedQueue(ctx))
 					return { match, nextLayerId }

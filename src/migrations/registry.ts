@@ -35,6 +35,8 @@ import * as m0082 from './0082_block_operators_to_logical_ids'
 // 0083/0084 are claimed by the settings-advanced branch (PR #40)
 import * as m0085 from './0085_pool_config_single_pool_filter'
 import * as m0086 from './0086_fold_broadcasts_into_admin_action_reasons'
+import * as m0087 from './0087_id_eq_to_select_layers'
+import * as m0088 from './0088_backburner_column'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -60,4 +62,6 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0082_block_operators_to_logical_ids', up: m0082.up },
 	{ name: '0085_pool_config_single_pool_filter', up: m0085.up },
 	{ name: '0086_fold_broadcasts_into_admin_action_reasons', up: m0086.up },
+	{ name: '0087_id_eq_to_select_layers', up: m0087.up },
+	{ name: '0088_backburner_column', up: m0088.up },
 ]
