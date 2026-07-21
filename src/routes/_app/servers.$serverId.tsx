@@ -4,6 +4,7 @@ import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-man
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Browser from '@/lib/browser'
 import * as FRM from '@/lib/frame'
+import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
 import * as UP from '@/models/user-presence'
 import * as RootRouter from '@/root-router'
@@ -12,7 +13,7 @@ import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as ReactRx from '@react-rxjs/core'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useBlocker } from '@tanstack/react-router'
 import React from 'react'
 import * as Rx from 'rxjs'
 
@@ -78,6 +79,7 @@ function ServerDashboardHost(props: { serverId: string }) {
 	useFrameTeardownOnUnmount(frameKey)
 
 	const serverId = props.serverId
+	useUnsavedEditsGuard(FRM.toProp(frameKey), serverId)
 	React.useEffect(() => {
 		const sub = new Rx.Subscription()
 
@@ -145,4 +147,35 @@ function ServerDashboardHost(props: { serverId: string }) {
 	}, [serverId])
 
 	return <ServerDashboard stores={FRM.toProp(frameKey)} />
+}
+
+// The queue and the layer-request drafts are shared, and the server drops one the moment its last editor
+// goes away: leaving with edits nobody else is holding loses them. So warn on the way out, and once we are
+// gone say what happened -- the dashboard is torn down by then, so the discard itself is never seen.
+function useUnsavedEditsGuard(stores: SquadServerFrame.KeyProp, serverId: string) {
+	const [queueModified, requestsModified] = ZusUtils.useStore(
+		stores.squadServer!,
+		ZusUtils.useShallow(s => [s.queue.isModified, s.queue.backburnerModified]),
+	)
+	const [editingQueue] = UPClient.useEditingQueueState(serverId)
+	const [editingRequests] = UPClient.useEditingLayerRequestsState(serverId)
+	const queueEditors = ZusUtils.useStore(UPClient.Store, UPClient.Sel.editingClientCount(serverId, 'queue'))
+	const requestEditors = ZusUtils.useStore(UPClient.Store, UPClient.Sel.editingClientCount(serverId, 'layer-requests'))
+
+	const wouldDiscard = (editingQueue && queueModified && queueEditors <= 1)
+		|| (editingRequests && requestsModified && requestEditors <= 1)
+	const wouldDiscardRef = React.useRef(wouldDiscard)
+	wouldDiscardRef.current = wouldDiscard
+
+	useBlocker({
+		enableBeforeUnload: wouldDiscard,
+		shouldBlockFn: () => {
+			if (!wouldDiscardRef.current) return false
+			return !confirm('Leaving discards your unsaved edits, since nobody else is editing. Are you sure you want to leave?')
+		},
+	})
+
+	React.useEffect(() => () => {
+		if (wouldDiscardRef.current) toast.info('Your unsaved edits have been discarded')
+	}, [])
 }

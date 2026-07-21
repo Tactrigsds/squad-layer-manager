@@ -297,7 +297,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					variant="secondary"
 					disabled={!isEditing}
 				>
-					<Icons.PlusIcon />
+					<Icons.ListPlus />
 					<span>Add Layers</span>
 				</StartActivityInteraction>
 				<StartActivityInteraction

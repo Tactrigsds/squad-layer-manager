@@ -51,4 +51,38 @@ test.describe('editing the queue', () => {
 			await app.dispose()
 		}
 	})
+
+	test('leaving the dashboard with a draft nobody else holds warns first, then discards it', async ({ page }) => {
+		const app = await createAppFixture({
+			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed, LAYERS.skorpoRaas),
+		})
+		try {
+			await page.goto(app.loginUrl())
+			await expect(page.getByRole('tab', { name: 'Queue (3)' })).toBeVisible({ timeout: 20_000 })
+
+			const queuePanel = page.getByRole('tabpanel', { name: /^Queue/ })
+			await page.getByRole('button', { name: 'Start Editing' }).click()
+			await queuePanel.getByRole('listitem').filter({ hasText: 'Gorodok_RAAS_v1' })
+				.getByRole('button', { name: 'Delete' }).click()
+			await expect(queuePanel.getByRole('listitem')).toHaveCount(2)
+
+			// the draft dies with the editing session, so navigating out asks before it does
+			const prompts: string[] = []
+			page.on('dialog', (dialog) => {
+				prompts.push(dialog.message())
+				void dialog.accept()
+			})
+			await page.getByRole('link', { name: 'Filters' }).click()
+			await expect(page).toHaveURL(/\/filters/)
+			expect(prompts).toEqual([expect.stringContaining('unsaved edits')])
+			await expect(page.getByText('Your unsaved edits have been discarded')).toBeVisible()
+
+			// and it really is gone server-side: the deleted item is back on the way in
+			await page.goto(app.loginUrl())
+			await expect(page.getByRole('tab', { name: 'Queue (3)' })).toBeVisible({ timeout: 20_000 })
+			await expect(queuePanel.getByRole('listitem').filter({ hasText: 'Gorodok_RAAS_v1' })).toBeVisible()
+		} finally {
+			await app.dispose()
+		}
+	})
 })

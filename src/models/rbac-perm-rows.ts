@@ -14,6 +14,7 @@ export type RoleAssignmentsValue = { discordRoleIds?: (string | number)[]; disco
 export type RoleConfig = {
 	permissions?: string[]
 	maxTimeout?: string
+	maxLayerRequests?: number
 	globalSettingsGrants?: string[]
 	serverSettingsGrants?: ServerGrant[]
 	assignments?: RoleAssignmentsValue
@@ -28,6 +29,7 @@ export type RowScope =
 	| 'all'
 	| 'global'
 	| 'timeout'
+	| 'layer-requests'
 	| 'global-settings-write'
 	| 'server-settings'
 	| 'server-settings-write'
@@ -41,19 +43,23 @@ export type PermRow = {
 	serverIds?: string[]
 	paths?: string[]
 	maxTimeout?: string
+	maxLayerRequests?: number
 }
 
 export const ALL_PERMISSIONS = '*'
 // matches the duration the old kick-timeout switch seeded on enable
 export const DEFAULT_MAX_TIMEOUT = '1h'
+// matches what the default admin/manager roles are seeded with
+export const DEFAULT_MAX_LAYER_REQUESTS = 5
 
 // permissions the table can add. `filters:write` is absent on purpose: it's granted by the inferred filter-owner /
 // filter-contributor roles, never by a role definition.
 export const ADDABLE_TYPES: string[] = [
 	ALL_PERMISSIONS,
 	...RBAC.ROLE_GRANTABLE_PERMISSION_TYPE.options,
-	// not role-grantable as an expression (it rides `maxTimeout`), but it is a row
+	// not role-grantable as expressions (they ride `maxTimeout`/`maxLayerRequests`), but they are rows
 	'squad-server:timeout-players',
+	'queue:request-layers',
 ]
 
 // declaration order in PERMISSION_DEFINITION, so the table lists permissions in the same order every time regardless of
@@ -93,6 +99,8 @@ function emptyArgs(type: string): Partial<PermRow> {
 			return {}
 		case 'timeout':
 			return { maxTimeout: DEFAULT_MAX_TIMEOUT }
+		case 'layer-requests':
+			return { maxLayerRequests: DEFAULT_MAX_LAYER_REQUESTS }
 		case 'global-settings-write':
 			return { paths: [] }
 		case 'server-settings':
@@ -161,6 +169,10 @@ export function rowsFromConfig(cfg: RoleConfig): PermRow[] {
 		rows.push({ id: '', type: 'squad-server:timeout-players', effect: 'allow', maxTimeout: cfg.maxTimeout })
 	}
 
+	if (cfg.maxLayerRequests !== undefined) {
+		rows.push({ id: '', type: 'queue:request-layers', effect: 'allow', maxLayerRequests: cfg.maxLayerRequests })
+	}
+
 	for (const expr of exprs) {
 		if (!expr.startsWith('!')) continue
 		const type = expr.slice(1)
@@ -175,6 +187,7 @@ export function configFromRows(cfg: RoleConfig, rows: PermRow[]): RoleConfig {
 	const globalSettingsGrants: string[] = []
 	const serverSettingsGrants: ServerGrant[] = []
 	let maxTimeout: string | undefined
+	let maxLayerRequests: number | undefined
 
 	for (const row of rows) {
 		if (row.effect === 'deny') {
@@ -189,6 +202,9 @@ export function configFromRows(cfg: RoleConfig, rows: PermRow[]): RoleConfig {
 				break
 			case 'timeout':
 				maxTimeout = row.maxTimeout || DEFAULT_MAX_TIMEOUT
+				break
+			case 'layer-requests':
+				maxLayerRequests = row.maxLayerRequests || DEFAULT_MAX_LAYER_REQUESTS
 				break
 			case 'global-settings-write':
 				// no paths = unrestricted, which only the bare expression can express
@@ -222,9 +238,11 @@ export function configFromRows(cfg: RoleConfig, rows: PermRow[]): RoleConfig {
 		globalSettingsGrants: [...new Set(globalSettingsGrants)],
 		serverSettingsGrants,
 	}
-	// maxTimeout is genuinely optional though: absent means the role cannot issue timeouts at all, so an absent row has to
-	// drop the field rather than write a falsy cap.
+	// maxTimeout/maxLayerRequests are genuinely optional though: absent means the role cannot use the ability at all, so
+	// an absent row has to drop the field rather than write a falsy cap.
 	if (maxTimeout === undefined) delete next.maxTimeout
 	else next.maxTimeout = maxTimeout
+	if (maxLayerRequests === undefined) delete next.maxLayerRequests
+	else next.maxLayerRequests = maxLayerRequests
 	return next
 }

@@ -138,7 +138,7 @@ describe('resolveHelpListing', () => {
 		const listing = CMDH.resolveHelpListing(configs, [], undefined)
 		if (listing.code !== 'ok') throw new Error('expected ok')
 		expect(listing.title).toBe('Commands')
-		expect(listing.hint).toBe('More: !help <section> -- general, votes, teamswaps, flags, moderation, messaging, all')
+		expect(listing.hint).toBe('More: !help <section> -- general, votes, layerRequests, teamswaps, flags, moderation, messaging, all')
 	})
 
 	it("lists an alias under its target command's section, and drops it when the target is disabled", () => {

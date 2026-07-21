@@ -263,6 +263,12 @@ export function getQueryLayersInput(baseInput: LQY.BaseQueryInput, _opts?: Query
 	}
 }
 
+export async function checkBackburnerTemplates(
+	input: LQY.BaseQueryInput & { templates: { itemId: string; filter: F.FilterNode }[] },
+) {
+	return await sendWorkerRequest('checkBackburnerTemplates', input)
+}
+
 export async function generateVote(input: LQY.GenVote.Input) {
 	const res = await sendWorkerRequest('genVote', input)
 	if (res.code !== 'ok') return res
@@ -487,6 +493,7 @@ export const QUERY_PRIORITIES: Record<WorkerTypes.RequestInner['type'], number> 
 	genVote: 3,
 	layerExists: 2,
 	getLayerInfo: 2,
+	checkBackburnerTemplates: 2,
 	queryLayerComponent: 1,
 } as const
 

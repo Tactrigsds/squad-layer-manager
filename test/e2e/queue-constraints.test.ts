@@ -19,7 +19,7 @@ test.describe('queue item constraints', () => {
 			serverSettings: (settings) => {
 				selectableFilter(settings.queue.mainPool, 'raas-only')
 				// just the one rule, so an item's indicators are attributable to it and nothing else
-				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4 }]
+				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, autogen: true }]
 			},
 		})
 		try {

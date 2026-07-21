@@ -4,6 +4,7 @@ import * as Obj from '@/lib/object'
 import * as ODSM from '@/lib/odsm'
 import { assertNever } from '@/lib/type-guards'
 
+import * as BB from '@/models/backburner.models'
 import * as LL from '@/models/layer-list.models'
 
 import * as USR from '@/models/users.models'
@@ -118,6 +119,79 @@ function buildOperationSchema<
 			...baseProps,
 			op: z.literal('queue-item-generated'),
 			item: itemSchema,
+			// backburner templates the generated layer satisfies; removed from the backburner in the same op so the
+			// generated item and its consumption converge atomically on every replica
+			consumedBackburnerItemIds: z.array(BB.ItemIdSchema).optional(),
+		}),
+		z.object({
+			...baseProps,
+			...clientProps,
+			...editWindowProps,
+			op: z.literal('backburner-add'),
+			item: BB.BackburnerItemSchema,
+		}),
+		z.object({
+			...baseProps,
+			...clientProps,
+			...editWindowProps,
+			op: z.literal('backburner-update'),
+			itemId: BB.ItemIdSchema,
+			filter: BB.BackburnerItemSchema.shape.filter,
+		}),
+		z.object({
+			...baseProps,
+			...clientProps,
+			...editWindowProps,
+			op: z.literal('backburner-remove'),
+			itemIds: z.array(BB.ItemIdSchema).min(1),
+		}),
+		z.object({
+			...baseProps,
+			...clientProps,
+			...editWindowProps,
+			op: z.literal('backburner-reorder'),
+			itemId: BB.ItemIdSchema,
+			newIndex: z.number().int().min(0),
+		}),
+		// merges source's constraints into target (target keeps its identity and position) and drops source.
+		// combinability (the merged template still having solutions) is validated by the dispatcher, not here.
+		z.object({
+			...baseProps,
+			...clientProps,
+			...editWindowProps,
+			op: z.literal('backburner-combine'),
+			targetItemId: BB.ItemIdSchema,
+			sourceItemId: BB.ItemIdSchema,
+		}),
+		// server-only: a write straight to the saved backburner (chat commands, evictions). Applied to both the
+		// saved and draft lists so in-flight GUI edits survive, and exempt from edit windows and the generation gate.
+		z.object({
+			...baseProps,
+			op: z.literal('backburner-write-saved'),
+			write: z.discriminatedUnion('kind', [
+				z.object({ kind: z.literal('add'), item: BB.BackburnerItemSchema, evictItemIds: z.array(BB.ItemIdSchema) }),
+				z.object({ kind: z.literal('remove'), itemIds: z.array(BB.ItemIdSchema).min(1) }),
+			]),
+			source: USR.GuiOrChatUserIdSchema.optional(),
+		}),
+		// the backburner's own save/reset: its editing session is fully separate from the queue's
+		z.object({
+			...baseProps,
+			...clientProps,
+			op: z.literal('backburner-save'),
+			// saved while others were still editing (the presence-level "force save" workaround)
+			force: z.boolean().optional(),
+		}),
+		z.object({
+			...baseProps,
+			...clientProps,
+			op: z.literal('backburner-reset'),
+		}),
+		// server-only: the last client editing the backburner went away without finishing (navigated off,
+		// disconnected, timed out), so nobody is left to commit the draft and it is dropped
+		z.object({
+			...baseProps,
+			op: z.literal('discard-abandoned-request-edits'),
 		}),
 		...getItemOpEntries({ ...baseProps, ...clientProps, ...editWindowProps, itemId: LL.ItemIdSchema }),
 		z.object({
@@ -147,6 +221,11 @@ function buildOperationSchema<
 			...editWindowProps,
 			op: z.literal('reset-to-saved'),
 		}),
+		// the queue-side counterpart of discard-abandoned-request-edits
+		z.object({
+			...baseProps,
+			op: z.literal('discard-abandoned-queue-edits'),
+		}),
 	])
 }
 
@@ -161,6 +240,13 @@ const CLIENT_OPCODE = z.enum([
 	'clear',
 	'save',
 	'reset-to-saved',
+	'backburner-add',
+	'backburner-update',
+	'backburner-remove',
+	'backburner-reorder',
+	'backburner-combine',
+	'backburner-save',
+	'backburner-reset',
 ])
 type ClientOpcode = z.infer<typeof CLIENT_OPCODE>
 
@@ -185,6 +271,13 @@ export type State = {
 	mutations: ItemMut.Mutations
 	requestingGeneratedQueueItem: boolean
 	lastSaveOpId: null | string
+	// the layer backburner (in-game "layer requests"), sharing this session so ops can atomically span both
+	// collections. draft vs saved works like the queue's list/savedList; modified detection is by deep equality
+	// (the reducer deep-clones state, so reference identity does not survive a batch). Its editing session is
+	// separate from the queue's, so it gates its draft ops with its own window counter
+	backburner: BB.BackburnerItem[]
+	savedBackburner: BB.BackburnerItem[]
+	backburnerEditWindowSeqId: number
 }
 
 // the typed payload carried by a RejectedError thrown from the reducer, for the dispatcher to surface
@@ -208,6 +301,17 @@ export type SideEffect =
 	| {
 		// requests that a queue item be generated before the list is saved. happens when the saved list would be empty
 		code: 'request-queue-item-generation'
+	}
+	| {
+		// the saved backburner changed and needs to be written to the database (and app events emitted)
+		code: 'request-backburner-save'
+		items: BB.BackburnerItem[]
+		prevItems: BB.BackburnerItem[]
+		opId: string
+		trigger: 'user-save' | 'chat-write' | 'consumed'
+		source?: USR.GuiOrChatUserId
+		// for 'consumed': the generated layer that satisfied the consumed templates
+		layerId?: string | null
 	}
 	| {
 		// success is false when the op was skipped (stale edit window, pending generation)
@@ -278,14 +382,19 @@ export const reducer: ODSM.Reducer<Operation, State, SideEffect> = (oldState, op
 // returns whether the op was applied (as opposed to skipped)
 export function applyOperation(session: State, newOp: Operation, onSideEffect?: ODSM.OnSideEffect<SideEffect>): boolean {
 	const opWindowSeqId = (newOp as { editWindowSeqId?: number })?.editWindowSeqId
-	if (opWindowSeqId && opWindowSeqId !== session.editWindowSeqId) {
+	const currentWindowSeqId = isBackburnerOp(newOp) ? session.backburnerEditWindowSeqId : session.editWindowSeqId
+	if (opWindowSeqId && opWindowSeqId !== currentWindowSeqId) {
 		return false
 	}
 	if (newOp.op === 'queue-item-generated') {
+		if (newOp.consumedBackburnerItemIds?.length) consumeBackburnerItems(session, newOp, onSideEffect)
 		saveList(session, newOp, [newOp.item], onSideEffect)
 		session.requestingGeneratedQueueItem = false
 		return true
 	}
+	// backburner ops never touch the queue list, so they are exempt from the generation gate; the shared
+	// editWindowSeqId gate above still applies to the draft ops (which carry a window id)
+	if (isBackburnerOp(newOp)) return applyBackburnerOperation(session, newOp, onSideEffect)
 	if (session.requestingGeneratedQueueItem) {
 		return false
 	}
@@ -436,8 +545,8 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 			// a save with no net changes shouldn't request a DB write or emit a QUEUE_UPDATED. this guard lives here
 			// (not in saveList) because in-place system ops -- rolls, vote results -- mutate savedList before saving,
 			// so they can't be compared inside saveList; they always save.
-			if (Obj.deepEqual(session.list, session.savedList)) break
-			saveList(session, newOp, session.list, onSideEffect)
+			const queueChanged = !Obj.deepEqual(session.list, session.savedList)
+			if (queueChanged) saveList(session, newOp, session.list, onSideEffect)
 			break
 		}
 
@@ -448,7 +557,8 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 			break
 		}
 
-		case 'reset-to-saved': {
+		case 'reset-to-saved':
+		case 'discard-abandoned-queue-edits': {
 			session.list = Obj.deepClone(session.savedList)
 			session.mutations = ItemMut.initMutations()
 			session.editWindowSeqId++
@@ -460,6 +570,155 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 	}
 
 	return true
+}
+
+const BACKBURNER_OPCODES = [
+	'backburner-add',
+	'backburner-update',
+	'backburner-remove',
+	'backburner-reorder',
+	'backburner-combine',
+	'backburner-write-saved',
+	'backburner-save',
+	'backburner-reset',
+	'discard-abandoned-request-edits',
+] as const
+type BackburnerOp = Extract<Operation, { op: (typeof BACKBURNER_OPCODES)[number] }>
+
+export function isBackburnerOp(op: Operation): op is BackburnerOp {
+	return (BACKBURNER_OPCODES as readonly string[]).includes(op.op)
+}
+
+// state.backburner/savedBackburner may alias each other after a save, so every mutation reassigns a fresh
+// array rather than mutating in place
+function applyBackburnerOperation(session: State, newOp: BackburnerOp, onSideEffect?: ODSM.OnSideEffect<SideEffect>): boolean {
+	switch (newOp.op) {
+		case 'backburner-add': {
+			if (session.backburner.some(item => item.itemId === newOp.item.itemId)) break
+			session.backburner = [...session.backburner, newOp.item]
+			break
+		}
+
+		case 'backburner-update': {
+			const index = session.backburner.findIndex(item => item.itemId === newOp.itemId)
+			if (index === -1) break
+			const next = [...session.backburner]
+			next[index] = { ...next[index], filter: newOp.filter }
+			session.backburner = next
+			break
+		}
+
+		case 'backburner-remove': {
+			session.backburner = BB.removeByIds(session.backburner, newOp.itemIds)
+			break
+		}
+
+		case 'backburner-reorder': {
+			const index = session.backburner.findIndex(item => item.itemId === newOp.itemId)
+			if (index === -1) break
+			const next = [...session.backburner]
+			const [item] = next.splice(index, 1)
+			next.splice(Math.min(newOp.newIndex, next.length), 0, item)
+			session.backburner = next
+			break
+		}
+
+		case 'backburner-combine': {
+			if (newOp.targetItemId === newOp.sourceItemId) break
+			const targetIndex = session.backburner.findIndex(item => item.itemId === newOp.targetItemId)
+			const sourceIndex = session.backburner.findIndex(item => item.itemId === newOp.sourceItemId)
+			if (targetIndex === -1 || sourceIndex === -1) break
+			const target = session.backburner[targetIndex]
+			const source = session.backburner[sourceIndex]
+			const merged = BB.mergeTemplateFilters(target.filter, source.filter)
+			// conflicting filters: the dispatcher rejects this before it enters history; skipping keeps a replica no-op
+			if (merged.code !== 'ok') break
+			const next = [...session.backburner]
+			next[targetIndex] = { ...target, filter: merged.filter }
+			next.splice(sourceIndex, 1)
+			session.backburner = next
+			break
+		}
+
+		case 'backburner-write-saved': {
+			const write = newOp.write
+			const prevItems = session.savedBackburner
+			const apply = (items: BB.BackburnerItem[]): BB.BackburnerItem[] => {
+				switch (write.kind) {
+					case 'add': {
+						const without = BB.removeByIds(items, write.evictItemIds)
+						if (without.some(item => item.itemId === write.item.itemId)) return without
+						return [...without, write.item]
+					}
+					case 'remove':
+						return BB.removeByIds(items, write.itemIds)
+					default:
+						return assertNever(write)
+				}
+			}
+			session.savedBackburner = apply(session.savedBackburner)
+			// the committed change lands in the draft too, so in-flight GUI edits survive around it
+			session.backburner = apply(session.backburner)
+			onSideEffect?.({
+				code: 'request-backburner-save',
+				items: session.savedBackburner,
+				prevItems,
+				opId: newOp.opId,
+				trigger: 'chat-write',
+				source: newOp.source,
+			})
+			break
+		}
+
+		case 'backburner-save': {
+			if (Obj.deepEqual(session.backburner, session.savedBackburner)) break
+			const prevItems = session.savedBackburner
+			session.savedBackburner = Obj.deepClone(session.backburner)
+			session.backburnerEditWindowSeqId++
+			onSideEffect?.({
+				code: 'request-backburner-save',
+				items: session.savedBackburner,
+				prevItems,
+				opId: newOp.opId,
+				trigger: 'user-save',
+				source: { discordId: newOp.userId },
+			})
+			break
+		}
+
+		case 'backburner-reset':
+		case 'discard-abandoned-request-edits': {
+			session.backburner = Obj.deepClone(session.savedBackburner)
+			session.backburnerEditWindowSeqId++
+			break
+		}
+
+		default:
+			assertNever(newOp)
+	}
+	return true
+}
+
+function consumeBackburnerItems(
+	session: State,
+	newOp: Extract<Operation, { op: 'queue-item-generated' }>,
+	onSideEffect?: ODSM.OnSideEffect<SideEffect>,
+) {
+	const itemIds = newOp.consumedBackburnerItemIds ?? []
+	const prevItems = session.savedBackburner
+	const nextSaved = BB.removeByIds(session.savedBackburner, itemIds)
+	// a template removed since generation snapshotted it is simply no longer there to consume
+	if (nextSaved.length === prevItems.length) return
+	session.savedBackburner = nextSaved
+	session.backburner = BB.removeByIds(session.backburner, itemIds)
+	onSideEffect?.({
+		code: 'request-backburner-save',
+		items: session.savedBackburner,
+		prevItems,
+		opId: newOp.opId,
+		trigger: 'consumed',
+		layerId: newOp.item.type === 'single-list-item' ? newOp.item.layerId : null,
+	})
 }
 
 // prevList is the saved list before this save, for the QUEUE_UPDATED app event to diff against. it defaults to the
@@ -499,7 +758,7 @@ export function mergeMutations(base: ItemMut.Mutations, additions: ItemMut.Mutat
 	return result
 }
 
-export function createNewState(list?: LL.List): State {
+export function createNewState(list?: LL.List, backburner?: BB.BackburnerItem[]): State {
 	return {
 		list: list ? Obj.deepClone(list) : [],
 		editWindowSeqId: 0,
@@ -508,11 +767,20 @@ export function createNewState(list?: LL.List): State {
 		savedList: list ? Obj.deepClone(list) : [],
 		requestingGeneratedQueueItem: false,
 		lastSaveOpId: null,
+		backburner: backburner ? Obj.deepClone(backburner) : [],
+		savedBackburner: backburner ? Obj.deepClone(backburner) : [],
+		backburnerEditWindowSeqId: 0,
 	}
 }
 
 export function hasMutations(session: State): boolean {
 	return ItemMut.hasMutations(session.mutations)
+}
+
+// the reducer deep-clones state, so the backburner draft has no reference identity to compare against its
+// saved copy -- modified-ness is a value comparison
+export function hasBackburnerMutations(session: State): boolean {
+	return !Obj.deepEqual(session.backburner, session.savedBackburner)
 }
 
 // `in` rather than a cast: the op union only carries editWindowSeqId/userId on the client-issued ops, and

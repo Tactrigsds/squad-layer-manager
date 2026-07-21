@@ -85,7 +85,7 @@ describe('settings access aggregation', () => {
 		const access: RBAC.SettingsWriteAccess = { kind: 'paths', paths: ['queue.mainPool.repeatRules'] }
 		expect(RBAC.settingsPathOverlaps(access, ['queue', 'mainPool'])).toBe(true)
 		expect(RBAC.settingsPathOverlaps(access, ['queue', 'mainPool', 'repeatRules', 0])).toBe(true)
-		expect(RBAC.settingsPathOverlaps(access, ['queue', 'generationPool'])).toBe(false)
+		expect(RBAC.settingsPathOverlaps(access, ['queue', 'layerRequests'])).toBe(false)
 		// strict check must not accept the parent
 		expect(RBAC.settingsPathAllowed(access, ['queue', 'mainPool'])).toBe(false)
 	})
