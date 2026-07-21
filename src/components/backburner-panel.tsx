@@ -39,6 +39,7 @@ import { CopyableCommand } from './commands-page.tsx'
 
 import { FilterCheckbox, PoolFilterCheckbox } from './applied-filters-panel.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
+import EmojiDisplay from './emoji-display.tsx'
 import type { ComparisonHandle, MatchupActions } from './filter-card'
 import { Comparison, MatchupConfig } from './filter-card'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
@@ -531,13 +532,21 @@ function TemplateDisplay(props: { filter: F.FilterNode; className?: string }) {
 	const filterEntities = FilterEntityClient.useFilterEntities()
 	const parts = BB.templateDisplayParts(props.filter, id => filterEntities.get(id)?.name)
 	return (
-		<span className={cn('font-mono text-sm', props.className)} title={parts.join(' \u00b7 ')}>
-			{parts.map((part, index) => (
-				<React.Fragment key={part}>
-					{index > 0 && <span className="text-muted-foreground">{' \u00b7 '}</span>}
-					<span>{part}</span>
-				</React.Fragment>
-			))}
+		<span className={cn('font-mono text-sm', props.className)} title={parts.map(part => part.text).join(' \u00b7 ')}>
+			{parts.map((part, index) => {
+				const entity = part.filterId ? filterEntities.get(part.filterId) : undefined
+				// an excluded filter is indicated by its miss indicator, the same way the applied-filters panel reads it
+				const emoji = part.excluded ? entity?.invertedEmoji ?? entity?.emoji : entity?.emoji
+				return (
+					<React.Fragment key={part.filterId ?? part.text}>
+						{index > 0 && <span className="text-muted-foreground">{' \u00b7 '}</span>}
+						<span className="inline-flex items-center gap-1 align-middle">
+							{emoji && <EmojiDisplay emoji={emoji} size="sm" />}
+							<span>{part.text}</span>
+						</span>
+					</React.Fragment>
+				)
+			})}
 		</span>
 	)
 }
