@@ -22,6 +22,22 @@ export const filterEntity = (id: string, filterId: F.FilterEntityId, opts?: {
 	warn: opts?.warn ?? 'disabled',
 })
 
+// the single pool-membership constraint. showIndicator stays 'both' even when not applied so queries always
+// return per-row membership (row disabling, indicators). warn fires on out-of-pool: a miss for 'include', a match for 'exclude'.
+export const poolFilter = (
+	filterId: F.FilterEntityId,
+	mode: 'include' | 'exclude',
+	opts?: { applied?: boolean; warn?: boolean },
+): Extract<LQY.Constraint, { type: 'filter-entity' }> => ({
+	type: 'filter-entity',
+	id: 'pool-filter',
+	filterId,
+	poolFilterMode: mode,
+	filterApplState: (opts?.applied ?? true) ? (mode === 'include' ? 'regular' : 'inverted') : 'disabled',
+	showIndicator: 'both',
+	warn: opts?.warn ? (mode === 'include' ? 'inverted' : 'regular') : 'disabled',
+})
+
 export const repeatRule = (
 	id: string,
 	rule: LQY.RepeatRule,

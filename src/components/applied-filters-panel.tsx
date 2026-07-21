@@ -12,7 +12,7 @@ import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import EmojiDisplay from './emoji-display.tsx'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
 import { ScrollArea, ScrollBar } from './ui/scroll-area.tsx'
-
+import { Toggle } from './ui/toggle.tsx'
 import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
 
 export default function AppliedFiltersPanel(
@@ -20,7 +20,10 @@ export default function AppliedFiltersPanel(
 ) {
 	const filterEntities = FilterEntityClient.useFilterEntities()
 	const scrollRef = React.useRef<HTMLDivElement>(null)
-	const extraFilters = ZusUtils.useStore(AppliedFiltersPrt.ExtraFiltersStore, s => s.extraFilters)
+	// an instance with locally-scoped extras renders its own set; otherwise the global saved one
+	const localExtraFilters = ZusUtils.useStore(props.stores.appliedFilters, s => s.appliedFilters.localExtraFilters)
+	const globalExtraFilters = ZusUtils.useStore(AppliedFiltersPrt.ExtraFiltersStore, s => s.extraFilters)
+	const extraFilters = localExtraFilters ?? globalExtraFilters
 	const [canScrollLeft, setCanScrollLeft] = React.useState(false)
 	const [canScrollRight, setCanScrollRight] = React.useState(false)
 	const canScroll = canScrollLeft || canScrollRight
@@ -88,16 +91,18 @@ export default function AppliedFiltersPanel(
 		}
 	}, [extraFilters])
 
-	const poolFilterIds: F.FilterEntityId[] = ZusUtils.useStore(
+	const poolFilterId: F.FilterEntityId | null = ZusUtils.useStore(
 		props.stores.squadServer ?? null,
-		ZusUtils.useShallow(s =>
-			s ? s.settings.saved.queue.mainPool.filters.filter(c => c.defaultApplyDuringLayerSelection !== 'hidden').map(c => c.filterId) : []
-		),
+		s => s ? s.settings.saved.queue.mainPool.poolFilter?.filterId ?? null : null,
 	)
-	const extraFilterIds: F.FilterEntityId[] = Array.from(extraFilters).filter(id => !poolFilterIds.includes(id))
+	const selectableFilterIds: F.FilterEntityId[] = ZusUtils.useStore(
+		props.stores.squadServer ?? null,
+		ZusUtils.useShallow(s => s ? s.settings.saved.queue.mainPool.defaultSelectable.map(c => c.filterId) : []),
+	)
+	const extraFilterIds: F.FilterEntityId[] = Array.from(extraFilters).filter(id => !selectableFilterIds.includes(id))
 
 	const options = Array.from(Gen.map(filterEntities.values(), function*(filter) {
-		if (poolFilterIds.includes(filter.id)) return
+		if (selectableFilterIds.includes(filter.id) || filter.id === poolFilterId) return
 		yield {
 			value: filter.id,
 			label: <FilterEntityLabel filter={filter} />,
@@ -153,7 +158,8 @@ export default function AppliedFiltersPanel(
 				</Button>
 			</ComboBoxMulti>
 			<div className="flex flex-row gap-2 w-max">
-				{poolFilterIds.map((filterId) => {
+				<PoolFilterToggle stores={props.stores} />
+				{selectableFilterIds.map((filterId) => {
 					return <FilterCheckbox key={filterId} filterId={filterId} stores={{ appliedFilters: props.stores.appliedFilters }} />
 				})}
 			</div>
@@ -173,7 +179,35 @@ export default function AppliedFiltersPanel(
 	)
 }
 
-function FilterCheckbox({ filterId, stores }: { filterId: string; stores: AppliedFiltersPrt.KeyProp }) {
+// the pool filter is pinned and two-state: it either constrains the query to the pool or it doesn't
+export function PoolFilterToggle({ stores }: { stores: Partial<SquadServerFrame.KeyProp> & AppliedFiltersPrt.KeyProp }) {
+	const poolFilter = ZusUtils.useStore(
+		stores.squadServer ?? null,
+		ZusUtils.useShallow(s => s ? s.settings.saved.queue.mainPool.poolFilter : null),
+	)
+	const poolApplied = ZusUtils.useStore(stores.appliedFilters, s => s.appliedFilters.poolApplied)
+	const filter = FilterEntityClient.useFilterEntities().get(poolFilter?.filterId as string)
+	if (!poolFilter || !filter) return
+
+	const emoji = poolApplied ? filter.emoji : filter.invertedEmoji ?? filter.emoji
+	return (
+		<Toggle
+			variant="outline"
+			size="sm"
+			pressed={poolApplied}
+			onPressedChange={(pressed) => AppliedFiltersPrt.Actions.setPoolApplied(stores, pressed)}
+			title={poolApplied
+				? `Only pool layers are shown. Click to include layers outside the pool.`
+				: `Layers outside the pool are shown. Click to only show pool layers.`}
+			className="data-[state=on]:bg-accent"
+		>
+			{emoji && <EmojiDisplay size="sm" emoji={emoji} />}
+			<span>{filter.name}</span>
+		</Toggle>
+	)
+}
+
+export function FilterCheckbox({ filterId, stores }: { filterId: string; stores: AppliedFiltersPrt.KeyProp }) {
 	const storeAppliedState = ZusUtils.useStore(
 		stores.appliedFilters,
 		s => s.appliedFilters.filterStates.get(filterId) ?? 'disabled',

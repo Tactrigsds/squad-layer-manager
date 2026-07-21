@@ -1,6 +1,6 @@
 import * as FB from '@/models/filter-builders'
 import { createAppFixture } from '../harness/app-fixture'
-import { filter, LAYERS, poolFilter, queue } from '../harness/arrange'
+import { filter, LAYERS, queue, selectableFilter } from '../harness/arrange'
 import { expect, test } from './fixtures'
 
 // The select-layers dialog. What it offers is the product of three things -- the server's pool config,
@@ -13,7 +13,7 @@ test.describe('selecting layers', () => {
 			layerQueue: queue(LAYERS.harjuRaas),
 			filters: [filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')]))],
 			serverSettings: (settings) => {
-				settings.queue.mainPool.filters = [poolFilter('raas-only')]
+				selectableFilter(settings.queue.mainPool, 'raas-only')
 			},
 		})
 		try {

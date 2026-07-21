@@ -10,9 +10,9 @@ import { assertNever } from '@/lib/type-guards.ts'
 import { cn } from '@/lib/utils.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
 import type * as DND from '@/models/dndkit.models.ts'
+import * as EFB from '@/models/editable-filter-builders'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
-import type * as LQY from '@/models/layer-queries.models.ts'
 import * as ConfigClient from '@/systems/config.client'
 import * as DndKit from '@/systems/dndkit.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
@@ -24,7 +24,6 @@ import React from 'react'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import type { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
-import EditLayerDialog from './edit-layer-dialog.tsx'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
 import type { FilterTextEditorHandle } from './filter-text-editor.types'
 import { NodePortal, StoredParentNode } from './node-map.tsx'
@@ -282,7 +281,7 @@ function BlockNodeControlPanel(props: NodeProps) {
 	const isRootNode = nodePath.length === 0
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
 	const { delete: deleteNode } = actions.common
-	const { addChild, setBlockType } = actions.block
+	const { addChild, addSeeded, setBlockType } = actions.block
 	const blockTypeOptions = F.BLOCK_TYPES.map((t) => ({
 		value: t,
 		label: F.BLOCK_TYPE_DISPLAY_NAMES[t],
@@ -299,14 +298,17 @@ function BlockNodeControlPanel(props: NodeProps) {
 			/>
 			<InlineAddButton
 				actions={[
-					{ label: 'comparison', onSelect: () => addChild('eq') },
-					{ label: 'matchup', onSelect: () => addChild('allow-matchups') },
-					{ label: 'apply existing filter', onSelect: () => addChild('included-in') },
+					{ label: 'condition block', onSelect: () => addChild('and') },
 					'separator',
-					...F.BLOCK_TYPES.map((t): InlineAddAction => ({
-						label: `${F.BLOCK_TYPE_DISPLAY_NAMES[t]} block`,
-						onSelect: () => addChild(t),
-					})),
+					{ label: 'map', onSelect: () => addSeeded(EFB.inValues('Map'), { group: 'layer-identity', focus: 'operator' }) },
+					{ label: 'layer', onSelect: () => addSeeded(EFB.inValues('Layer'), { group: 'layer-identity', focus: 'operator' }) },
+					{ label: 'gamemode', onSelect: () => addSeeded(EFB.inValues('Gamemode'), { group: 'layer-identity', focus: 'operator' }) },
+					{ label: 'matchup', onSelect: () => addChild('allow-matchups') },
+					{ label: 'faction/unit', onSelect: () => addSeeded(EFB.inValues(), { group: 'team' }) },
+					{ label: 'scores', onSelect: () => addSeeded(EFB.comp(), { group: 'extra' }) },
+					{ label: 'select layers', onSelect: () => addSeeded(EFB.inValues('id'), { autoOpenLayers: true }) },
+					'separator',
+					{ label: 'apply existing filter', onSelect: () => addChild('included-in') },
 				]}
 			/>
 			{!isRootNode
@@ -415,9 +417,13 @@ export function LeafFilterNode(props: NodeProps) {
 	)
 
 	if (F.isCompNode(node)) {
+		const subject = node.args[0]
+		const isSelectLayers = subject?.type === 'column' && subject.column === 'id'
 		return (
 			<NodeWrapper path={nodePath} className="flex items-center space-x-1" nodeId={props.nodeId}>
-				<CompNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
+				{isSelectLayers
+					? <SelectLayersNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
+					: <CompNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />}
 				{opCluster}
 			</NodeWrapper>
 		)
@@ -467,13 +473,59 @@ export function LeafFilterNode(props: NodeProps) {
 
 function CompNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node: F.EditableCompNode }) {
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
+	const cfg = ConfigClient.useEffectiveColConfig()
+	const hint = ZusUtils.useStore(props.stores.filterEditor, EditFrame.Sel.createHint(props.nodeId))
+	// scope the subject dropdown to the node's column group, re-derived from the chosen column so the
+	// restriction persists; the create-hint only supplies the group while the comparison is still blank.
+	const subject = props.node.args[0] as F.EditableScalarArg | undefined
+	const subjectColumn = subject?.type === 'column'
+		? subject.column
+		: subject?.type === 'team-column' && subject.column
+		? F.resolveTeamColumn(subject.column, 1)
+		: undefined
+	const group = (subjectColumn ? F.subjectColumnGroup(subjectColumn, cfg ?? undefined) : undefined) ?? hint?.group
+	const allowedColumns = group ? F.columnsInGroup(group, cfg ?? undefined) : undefined
 	return (
 		<Comparison
 			node={props.node}
 			setNode={update => actions.comp.setNode(update)}
-			teamColumnsAvailable
+			teamColumnsAvailable={group === 'team' || group === undefined}
+			allowedColumns={allowedColumns}
+			defaultFocus={hint?.focus}
 			restrictValueSize={false}
 		/>
+	)
+}
+
+// the simplified `id in [...]` node: just the layer picker, since `id` supports no other operation.
+function SelectLayersNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node: F.EditableCompNode }) {
+	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
+	const hint = ZusUtils.useStore(props.stores.filterEditor, EditFrame.Sel.createHint(props.nodeId))
+	const valuesArg = props.node.args[1]
+	const items = (valuesArg?.type === 'values' ? valuesArg.values : undefined) ?? []
+	const values = items.filter((i) => !F.isColumnListItem(i)) as (string | null)[]
+	const setValues = (update: React.SetStateAction<(string | null)[]>) =>
+		actions.comp.setNode(Im.produce((c) => {
+			const prev = (c.args[1]?.type === 'values' ? c.args[1].values : undefined) ?? []
+			const primitives = prev.filter((i) => !F.isColumnListItem(i)) as (string | null)[]
+			const next = typeof update === 'function' ? update(primitives) : update
+			c.args[1] = { type: 'values', values: next.length === 0 ? undefined : next }
+		}))
+	return (
+		<div className="flex items-center space-x-1">
+			<ComboBox
+				allowEmpty={false}
+				className={operatorSelectClass}
+				title="mode"
+				value={props.node.neg ? 'notin' : 'in'}
+				options={[
+					{ value: 'in', label: 'in', description: 'Matches the listed layers.' },
+					{ value: 'notin', label: 'not in', description: 'Matches every layer except the listed ones.' },
+				]}
+				onSelect={(v) => actions.comp.setNode(Im.produce((c) => void (c.neg = v === 'notin')))}
+			/>
+			<LayersInConfig values={values} setValues={setValues} autoOpen={hint?.autoOpenLayers} />
+		</div>
 	)
 }
 
@@ -494,6 +546,9 @@ export function Comparison(props: {
 	showValueDropdown?: boolean
 	lockOnSingleOption?: boolean
 	defaultEditing?: boolean
+	// when a freshly-created comparison already has a subject column, open the operator select on mount
+	// instead of the subject picker
+	defaultFocus?: 'operator'
 	highlight?: boolean
 	columnLabel?: string
 	// overrides the numeric value input's width wrapper (default w-[100px]); used to keep the compact
@@ -560,7 +615,8 @@ export function Comparison(props: {
 	// directly in the column select rather than a separate dropdown
 	const TEAM_PREFIX = 'team:'
 	const teamColumnValue = (column: F.TeamColumn, quantifier: F.TeamQuantifier) => `${TEAM_PREFIX}${quantifier}:${column}`
-	const baseCols = cfg ? Object.keys(cfg.defs) : LC.COLUMN_KEYS
+	// `id` is no longer a general subject; it is reachable only through the dedicated "select layers" node
+	const baseCols = (cfg ? Object.keys(cfg.defs) : (LC.COLUMN_KEYS as string[])).filter((c) => c !== 'id')
 	const allowedBaseCols = props.allowedColumns ? props.allowedColumns.filter((c) => baseCols.includes(c)) : baseCols
 	const baseOption = (c: string): ComboBoxOption<string> & { label: string } => ({
 		value: c,
@@ -684,8 +740,11 @@ export function Comparison(props: {
 	// placeholder to the real container (see node-map.tsx), so a synchronous open races that remount -- the
 	// placeholder mount's frame is cancelled when it unmounts, and only the stable mount's frame fires.
 	React.useEffect(() => {
-		if (!(columnEditable && (props.defaultEditing || !hasSubject))) return
-		const raf = requestAnimationFrame(() => columnBoxRef.current?.focus())
+		if (!columnEditable) return
+		const raf = requestAnimationFrame(() => {
+			if (props.defaultFocus === 'operator' && hasSubject) codeBoxRef.current?.focus()
+			else if (props.defaultEditing || !hasSubject) columnBoxRef.current?.focus()
+		})
 		return () => cancelAnimationFrame(raf)
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
@@ -837,18 +896,6 @@ export function Comparison(props: {
 				{nullToggle(index, false)}
 			</div>
 		)
-		if (optionsColumn === 'id') {
-			return withToggle(
-				<LayerEqConfig
-					value={(value as string | null) ?? null}
-					stores={props.stores}
-					setValue={(update) => {
-						const v = typeof update === 'function' ? update((value as string | null) ?? null) : update
-						setSlotValue(index, v)
-					}}
-				/>,
-			)
-		}
 		if (!domain || domain.kind === 'enum' || domain.kind === 'string') {
 			return withToggle(
 				<StringEqConfig
@@ -1112,6 +1159,8 @@ function TeamSpecConfig(props: {
 	label: string
 	spec: F.MatchupTeamSpec
 	setValues: (column: F.TeamColumn, values: F.Value[]) => void
+	// narrow a dimension's options to what still has matches (the backburner request dialog); absent = full list
+	allowedValues?: (column: F.TeamColumn) => string[] | undefined
 }) {
 	return (
 		<div className="flex flex-col space-y-1 rounded border border-dashed px-2 py-1.5">
@@ -1126,6 +1175,7 @@ function TeamSpecConfig(props: {
 					// restrictValueSize still caps it at 400px, so a big faction selection can't run away
 					className="min-w-[180px]"
 					restrictValueSize
+					allowedValues={props.allowedValues?.(teamColumn)}
 					// both teams' columns share an enum mapping, so team 1's value list serves either side
 					column={F.resolveTeamColumn(teamColumn, 1) as LC.GroupByColumn}
 					values={(props.spec[teamColumn] ?? []) as (string | null)[]}
@@ -1140,9 +1190,24 @@ function TeamSpecConfig(props: {
 	)
 }
 
-function MatchupNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node: F.EditableMatchupNode }) {
-	const node = props.node
-	const actions = EditFrame.getNodeActions(props.stores, props.nodeId).matchup
+export type MatchupActions = {
+	setType: (type: F.MatchupType) => void
+	setLocked: (locked: boolean) => void
+	swapTeams: () => void
+	setTeamValues: (teamIndex: 0 | 1, column: F.TeamColumn, values: F.Value[]) => void
+}
+
+// the matchup editor proper, decoupled from the filter-editor frame so other hosts (the backburner request
+// dialog) can drive it against their own state
+export function MatchupConfig(props: {
+	node: F.EditableMatchupNode
+	actions: MatchupActions
+	// per-side, per-dimension option narrowing (the backburner request dialog); absent = full value lists
+	allowedTeamValues?: (side: 0 | 1, column: F.TeamColumn) => string[] | undefined
+	// hosts where the operator is fixed (a layer request is always allow-matchups) hide the select
+	showTypeSelect?: boolean
+}) {
+	const { node, actions } = props
 	// unlocked, the specs are not pinned to the _1/_2 columns, so naming them "Team 1"/"Team 2" would
 	// misdescribe what the node matches. "Team A"/"Team B" are not available either: those already mean
 	// the normalized teams that persist across the team1/team2 swap (see MH.NormedTeamId and the
@@ -1151,15 +1216,22 @@ function MatchupNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; n
 	const [leftLabel, rightLabel] = node.locked ? ['Team 1', 'Team 2'] : ['One side', 'Other side']
 	return (
 		<div className="flex items-center space-x-2">
-			<ComboBox
-				allowEmpty={false}
-				className="w-min"
-				title="Operator"
-				value={node.type}
-				options={F.MATCHUP_TYPES.map((t) => ({ value: t, label: F.MATCHUP_TYPE_DISPLAY_NAMES[t] }))}
-				onSelect={(v) => actions.setType(v as F.MatchupType)}
+			{(props.showTypeSelect ?? true) && (
+				<ComboBox
+					allowEmpty={false}
+					className="w-min"
+					title="Operator"
+					value={node.type}
+					options={F.MATCHUP_TYPES.map((t) => ({ value: t, label: F.MATCHUP_TYPE_DISPLAY_NAMES[t] }))}
+					onSelect={(v) => actions.setType(v as F.MatchupType)}
+				/>
+			)}
+			<TeamSpecConfig
+				label={leftLabel}
+				spec={node.teams[0]}
+				allowedValues={props.allowedTeamValues && ((column) => props.allowedTeamValues!(0, column))}
+				setValues={(col, values) => actions.setTeamValues(0, col, values)}
 			/>
-			<TeamSpecConfig label={leftLabel} spec={node.teams[0]} setValues={(col, values) => actions.setTeamValues(0, col, values)} />
 			<div className="flex flex-col items-center space-y-1">
 				<Tooltip>
 					<TooltipTrigger asChild>
@@ -1190,9 +1262,19 @@ function MatchupNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; n
 					{node.locked ? 'order locked' : 'either order'}
 				</span>
 			</div>
-			<TeamSpecConfig label={rightLabel} spec={node.teams[1]} setValues={(col, values) => actions.setTeamValues(1, col, values)} />
+			<TeamSpecConfig
+				label={rightLabel}
+				spec={node.teams[1]}
+				allowedValues={props.allowedTeamValues && ((column) => props.allowedTeamValues!(1, column))}
+				setValues={(col, values) => actions.setTeamValues(1, col, values)}
+			/>
 		</div>
 	)
+}
+
+function MatchupNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node: F.EditableMatchupNode }) {
+	const actions = EditFrame.getNodeActions(props.stores, props.nodeId).matchup
+	return <MatchupConfig node={props.node} actions={actions} />
 }
 
 // value list for an `in` operator: a constant multi-select plus (in the editor) removable column references
@@ -1263,10 +1345,20 @@ function LayersInConfig(
 		values: (string | null)[]
 		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
 		className?: string
+		// open the layer-select dialog once on mount (a freshly added "select layers" node)
+		autoOpen?: boolean
 	},
 ) {
 	const [open, setOpen] = React.useState(false)
 	const filteredValues = props.values?.filter(v => v !== null)
+
+	// mirrors the comparison/apply-filter auto-open: rAF + cancel dodges the portal remount race
+	React.useEffect(() => {
+		if (!props.autoOpen) return
+		const raf = requestAnimationFrame(() => setOpen(true))
+		return () => cancelAnimationFrame(raf)
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [])
 
 	const removeValue = (layerIdToRemove: string) => {
 		props.setValues(prevValues => prevValues?.filter(layerId => layerId !== layerIdToRemove) ?? [])
@@ -1308,33 +1400,6 @@ function LayersInConfig(
 					</Button>
 				</SelectLayersDialog>
 			</div>
-		</div>
-	)
-}
-
-export function LayerEqConfig(
-	props: {
-		value: string | null
-		setValue: React.Dispatch<React.SetStateAction<string | null>>
-		baseQueryInput?: LQY.BaseQueryInput
-		stores?: Partial<SquadServerFrame.KeyProp>
-	},
-) {
-	const [open, setOpen] = React.useState(false)
-
-	return (
-		<div className="flex space-x-2 items-center">
-			<Button className="flex items-center space-x-1" variant="ghost" onClick={() => setOpen(true)}>
-				{props.value !== null && DH.displayLayer(props.value)}
-				<Icons.Edit />
-			</Button>
-			<EditLayerDialog
-				open={open}
-				onOpenChange={setOpen}
-				layerId={props.value ?? undefined}
-				onSelectLayer={(v) => props.setValue(v)}
-				stores={props.stores}
-			/>
 		</div>
 	)
 }

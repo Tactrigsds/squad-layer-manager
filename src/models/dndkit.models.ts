@@ -28,6 +28,10 @@ export type DragItem = {
 	// so it's identified by grouping + position -- see ruleDragId (settings-form), which owns the encoding.
 	type: 'grouping-rule'
 	id: string
+} | {
+	// a layer template in the backburner panel (id = BB.ItemId)
+	type: 'backburner-item'
+	id: string
 }
 
 {

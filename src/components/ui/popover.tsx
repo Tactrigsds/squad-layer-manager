@@ -17,10 +17,12 @@ const PopoverContent = React.forwardRef<
 >(({ className, align = 'center', sideOffset = 4, children, style, ...props }, ref) => {
 	const draggableWindowOutletKey = React.useId()
 	const contentRef = React.useRef<HTMLDivElement | null>(null)
+	const [contentNode, setContentNode] = React.useState<HTMLDivElement | null>(null)
 
 	const combinedRef = React.useCallback(
 		(node: HTMLDivElement | null) => {
 			contentRef.current = node
+			setContentNode(node)
 			if (typeof ref === 'function') {
 				ref(node)
 			} else if (ref) {
@@ -29,6 +31,17 @@ const PopoverContent = React.forwardRef<
 		},
 		[ref],
 	)
+
+	// a Dialog's scroll lock (react-remove-scroll) preventDefaults every wheel event that reaches the document
+	// from outside the dialog's own content, and popper content is portalled to the body -- so without this an
+	// option list inside a dialog cannot be scrolled at all. Keeping the event inside the popover leaves the
+	// browser's own scrolling intact.
+	React.useEffect(() => {
+		if (!contentNode) return
+		const stopPropagation = (e: WheelEvent) => e.stopPropagation()
+		contentNode.addEventListener('wheel', stopPropagation)
+		return () => contentNode.removeEventListener('wheel', stopPropagation)
+	}, [contentNode])
 
 	const contentZIndex = useZIndex(ZI_OFFSETS.POPOVER)
 

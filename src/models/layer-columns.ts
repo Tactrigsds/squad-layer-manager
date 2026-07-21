@@ -36,6 +36,17 @@ export const BASE_COLUMN_DEFS = {
 
 export const COLUMN_KEYS = Object.keys(BASE_COLUMN_DEFS) as L.LayerColumnKey[]
 
+// the layer-identity columns, offered together as one restricted subject group in the filter editor's
+// map/layer/gamemode add flows
+export const LAYER_IDENTITY_COLUMNS = [
+	'Map',
+	'Layer',
+	'Gamemode',
+	'LayerVersion',
+	'Size',
+	'Collection',
+] as const satisfies L.LayerColumnKey[]
+
 export type EffectiveColumnConfig = {
 	defs: Record<string, CombinedColumnDef>
 }

@@ -322,6 +322,28 @@ export const TeamswapsUpdatedSchema = event('TEAMSWAPS_UPDATED', {
 })
 export type TeamswapsUpdated = z.infer<typeof TeamswapsUpdatedSchema>
 
+// a layer template was pushed onto the backburner (/reqlayer or the layer-requests panel)
+export const LayerRequestAddedSchema = event('LAYER_REQUEST_ADDED', {
+	itemId: z.string(),
+	description: z.string(),
+})
+export type LayerRequestAdded = z.infer<typeof LayerRequestAddedSchema>
+
+// backburner templates were removed without being satisfied (explicit removal, or eviction by the owner's newest request)
+export const LayerRequestRemovedSchema = event('LAYER_REQUEST_REMOVED', {
+	itemIds: z.array(z.string()).min(1),
+	descriptions: z.array(z.string()),
+})
+export type LayerRequestRemoved = z.infer<typeof LayerRequestRemovedSchema>
+
+// generation satisfied these backburner templates: the generated layer matches all of them
+export const LayerRequestConsumedSchema = event('LAYER_REQUEST_CONSUMED', {
+	itemIds: z.array(z.string()).min(1),
+	descriptions: z.array(z.string()),
+	layerId: L.LayerIdSchema,
+})
+export type LayerRequestConsumed = z.infer<typeof LayerRequestConsumedSchema>
+
 // SLM set the next layer on the server. reason 'queue-updated' folds into its cause (the QUEUE_UPDATED linked via
 // causeId) and is audit-only; reason 'override' is when SLM set the layer back over an external set, and gets a feed
 // entry naming who it overrode.
@@ -355,6 +377,9 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	VoteAbortedSchema,
 	QueueUpdatedSchema,
 	TeamswapsUpdatedSchema,
+	LayerRequestAddedSchema,
+	LayerRequestRemovedSchema,
+	LayerRequestConsumedSchema,
 	SettingsUpdatedSchema,
 	ServerRegistryChangedSchema,
 	FilterChangedSchema,
@@ -407,6 +432,9 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 		case 'VOTE_ENDED':
 		case 'VOTE_ABORTED':
 		case 'QUEUE_UPDATED':
+		case 'LAYER_REQUEST_ADDED':
+		case 'LAYER_REQUEST_REMOVED':
+		case 'LAYER_REQUEST_CONSUMED':
 		case 'SETTINGS_UPDATED':
 		case 'SERVER_REGISTRY_CHANGED':
 		case 'FILTER_CHANGED':
@@ -498,6 +526,18 @@ export function describeAppEvent(e: AppEvent): string {
 			if (e.swaps.size === 0) return 'cleared the queued teamswaps'
 			const parts = [added > 0 ? `+${added}` : null, removed > 0 ? `−${removed}` : null].filter(Boolean)
 			return `updated the queued teamswaps (${parts.join(', ')})`
+		}
+		case 'LAYER_REQUEST_ADDED':
+			return `requested a layer: "${e.description}"`
+		case 'LAYER_REQUEST_REMOVED': {
+			const n = e.itemIds.length
+			return `removed ${n} layer request${n === 1 ? '' : 's'} (${e.descriptions.join('; ')})`
+		}
+		case 'LAYER_REQUEST_CONSUMED': {
+			const n = e.itemIds.length
+			return `satisfied ${n} layer request${n === 1 ? '' : 's'} (${e.descriptions.join('; ')}), next layer ${
+				DH.toShortLayerNameFromId(e.layerId)
+			}`
 		}
 		case 'MAP_SET': {
 			const layer = DH.toShortLayerNameFromId(e.layerId)
@@ -602,12 +642,23 @@ function actorsByItem(ops: SLL.Operation[]): Map<LL.ItemId, Actor> {
 				actors.set(op.itemId, actor)
 				break
 			// carry no item of their own: shift-first-saved-layer drops whatever was at the head of the queue, and
-			// the rest are session bookkeeping
+			// the rest are session bookkeeping. backburner ops never touch queue items (their attribution is
+			// carried by the LAYER_REQUEST_* events instead)
 			case 'init':
 			case 'shift-first-saved-layer':
 			case 'save':
 			case 'save-completed':
 			case 'reset-to-saved':
+			case 'discard-abandoned-queue-edits':
+			case 'discard-abandoned-request-edits':
+			case 'backburner-add':
+			case 'backburner-update':
+			case 'backburner-remove':
+			case 'backburner-reorder':
+			case 'backburner-combine':
+			case 'backburner-write-saved':
+			case 'backburner-save':
+			case 'backburner-reset':
 				break
 			default:
 				assertNever(op)

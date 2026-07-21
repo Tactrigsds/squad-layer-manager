@@ -406,9 +406,40 @@ export function domainSupportsCompType(domain: ValueDomain, type: CompType): boo
 	return domain.kind === 'number'
 }
 
-// the operator a fresh comparison should default to for a given subject domain
+// the operator a fresh comparison should default to for a given subject domain. enum/string subjects
+// prefer `in` (picking a set of allowed values is the common case); floats default to a range.
 export function defaultCompType(domain: ValueDomain | undefined): CompType {
-	return isFloatDomain(domain) ? 'inrange' : 'eq'
+	if (isFloatDomain(domain)) return 'inrange'
+	if (domain?.kind === 'enum' || domain?.kind === 'string') return 'in'
+	return 'eq'
+}
+
+// -------- subject column groups --------
+// the filter editor's categorized add menu scopes a comparison's subject dropdown to one group. the
+// group is re-derived from the current subject column so the restriction persists without touching the AST.
+
+export type SubjectColumnGroup = 'layer-identity' | 'team' | 'extra'
+
+const TEAM_BASE_COLUMNS: ReadonlySet<string> = new Set(Object.values(TEAM_COLUMN_PAIRS).flat())
+
+export function subjectColumnGroup(column: string, cfg = LC.BASE_COLUMN_CONFIG): SubjectColumnGroup | undefined {
+	if ((LC.LAYER_IDENTITY_COLUMNS as readonly string[]).includes(column)) return 'layer-identity'
+	if (TEAM_BASE_COLUMNS.has(column)) return 'team'
+	if (LC.getColumnDef(column, cfg)?.table === 'extra-cols') return 'extra'
+	return undefined
+}
+
+export function columnsInGroup(group: SubjectColumnGroup, cfg = LC.BASE_COLUMN_CONFIG): string[] {
+	switch (group) {
+		case 'layer-identity':
+			return [...LC.LAYER_IDENTITY_COLUMNS]
+		case 'team':
+			return Object.values(TEAM_COLUMN_PAIRS).flat()
+		case 'extra':
+			return Object.keys(cfg.defs).filter((c) => cfg.defs[c].table === 'extra-cols')
+		default:
+			assertNever(group)
+	}
 }
 
 // -------- operator selection --------

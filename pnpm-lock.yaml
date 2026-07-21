@@ -29,6 +29,12 @@ importers:
       '@codemirror/view':
         specifier: ^6.43.6
         version: 6.43.6
+      '@dnd-kit/abstract':
+        specifier: 0.1.21
+        version: 0.1.21
+      '@dnd-kit/collision':
+        specifier: 0.1.21
+        version: 0.1.21
       '@dnd-kit/dom':
         specifier: 0.1.21
         version: 0.1.21

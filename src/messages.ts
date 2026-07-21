@@ -293,6 +293,18 @@ export const WARNS = {
 		steamAccountNotLinked: () =>
 			`This command requires a linked SLM account. Link your Steam ID on the SLM website (account menu > Linked Steam Accounts).`,
 	},
+	layerRequests: {
+		added: (parts: string[], ownCount: number, evictedCount: number) => {
+			const base = `Layer request queued: ${parts.join(', ')}. You have ${ownCount} request${ownCount !== 1 ? 's' : ''} queued`
+			return evictedCount > 0
+				? `${base} (your oldest ${evictedCount === 1 ? 'request was' : `${evictedCount} requests were`} dropped to make room).`
+				: `${base}.`
+		},
+		noSolutions: (request: string) => `No layers in the current pool match "${request}".`,
+		backburnerFull: (max: number) => `The layer request list is full (max ${max}).`,
+		removed: (description: string) => `Removed layer request: ${description}`,
+		empty: 'No layer requests queued.',
+	},
 	teamswaps: {
 		notifyPlayerOfUpcomingTeamswap: 'You have been marked for a team swap on mapchange. '
 			+ 'Thank you for helping with team balance and contact admins if you have issues.',
@@ -396,6 +408,9 @@ export const GENERAL = {
 			timeout: 'Kick a player with a timeout (e.g. 2h); they are re-kicked on any SLM server until it expires',
 			timeoutSquad: 'Kick every member of a squad with a timeout (e.g. 2h)',
 			clearTimeout: "Cancel a player's active timeout (works for offline players)",
+			requestLayer: 'Request a layer: autogeneration satisfies queued requests when it picks the next layer',
+			listLayerRequests: 'List the queued layer requests',
+			removeLayerRequest: 'Remove a layer request (your newest, or by number from the list)',
 		} satisfies Record<CMD.CommandId, string>,
 		// configurable fixed-duration timeout aliases; shared by the in-game help and the web help dialog
 		aliasDescription: (command: string) => `Shortcut for "${command}"`,

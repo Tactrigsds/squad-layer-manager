@@ -65,6 +65,8 @@ export const PERM_SCOPE_ARGS = {
 	filter: z.object({ filterId: F.FilterEntityIdSchema }),
 	// null = unlimited (Infinity doesn't serialize and zod rejects it)
 	timeout: z.object({ maxDurationMs: z.number().int().positive().nullable() }),
+	// null = unlimited
+	'layer-requests': z.object({ maxQueued: z.number().int().positive().nullable() }),
 	// null serverId = all servers
 	'server-settings': z.object({ serverId: z.string().nullable() }),
 	// paths are dotted setting-path prefixes (e.g. "queue.mainPool"); null = all non-sensitive settings
@@ -87,6 +89,10 @@ export const PERMISSION_DEFINITION = {
 	...definePermission('queue:force-write', {
 		description: "Add, remove, edit or reorder layers in the queue, even if the layer isn't in the pool",
 		scope: 'global',
+	}),
+	...definePermission('queue:request-layers', {
+		description: 'Request layers (the backburner below the queue and /reqlayer in-game), up to the granted number of concurrent requests',
+		scope: 'layer-requests',
 	}),
 	...definePermission('vote:manage', { description: 'Start and abort votes', scope: 'global' }),
 
@@ -394,6 +400,20 @@ export function maxTimeoutDurationMs(perms: Permission[]): number | null | undef
 	return max
 }
 
+// the effective max concurrent layer requests a set of perms grants: undefined = no grant at all,
+// null = unlimited, number = max items. A comparator like maxTimeoutDurationMs, not an equality match.
+export function maxLayerRequests(perms: Permission[]): number | null | undefined {
+	let max: number | undefined = undefined
+	for (const p of perms) {
+		if (p.type !== 'queue:request-layers') continue
+		const args = p.args as z.infer<(typeof PERM_SCOPE_ARGS)['layer-requests']> | undefined
+		if (!args) continue
+		if (args.maxQueued === null) return null
+		if (max === undefined || args.maxQueued > max) max = args.maxQueued
+	}
+	return max
+}
+
 // ============================== settings access ==============================
 // Settings write grants are prefix-matched against setting paths and server ids ("covers", not "equals"), so like
 // timeouts they bypass the equality-matched permission path and get aggregated here instead.
@@ -505,6 +525,14 @@ export function permSubsumedBy(perm: Permission, perms: Permission[]): boolean {
 			if (max === null) return true
 			if (!args || args.maxDurationMs === null) return false
 			return args.maxDurationMs <= max
+		}
+		case 'queue:request-layers': {
+			const args = perm.args as z.infer<(typeof PERM_SCOPE_ARGS)['layer-requests']> | undefined
+			const max = maxLayerRequests(perms)
+			if (max === undefined) return false
+			if (max === null) return true
+			if (!args || args.maxQueued === null) return false
+			return args.maxQueued <= max
 		}
 		case 'global-settings:write': {
 			const args = perm.args as GlobalWriteArgs | undefined

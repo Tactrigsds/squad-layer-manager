@@ -152,6 +152,7 @@ export type Store = {
 	presence: UP.PresenceState
 	editors: Set<USR.UserId>
 	teamswapEditors: Set<USR.UserId>
+	layerRequestEditors: Set<USR.UserId>
 	// derived: resolved per-user presence (latest session wins per userId)
 }
 
@@ -198,6 +199,7 @@ function createPresenceStore() {
 				}
 				const editors = new Set<USR.UserId>()
 				const teamswapEditors = new Set<USR.UserId>()
+				const layerRequestEditors = new Set<USR.UserId>()
 				for (const client of presence.values()) {
 					const activity = client.activityState
 					if (activity && UP.Trans.editingQueue(activity.opts.serverId).match(activity)) {
@@ -206,12 +208,18 @@ function createPresenceStore() {
 					if (activity && UP.Trans.editingTeamswaps(activity.opts.serverId).match(activity)) {
 						teamswapEditors.add(client.userId)
 					}
+					if (activity && UP.Trans.editingLayerRequests(activity.opts.serverId).match(activity)) {
+						layerRequestEditors.add(client.userId)
+					}
 				}
 				if (!Obj.deepEqual(editors, state.editors)) {
 					toUpdate.editors = editors
 				}
 				if (!Obj.deepEqual(teamswapEditors, state.teamswapEditors)) {
 					toUpdate.teamswapEditors = teamswapEditors
+				}
+				if (!Obj.deepEqual(layerRequestEditors, state.layerRequestEditors)) {
+					toUpdate.layerRequestEditors = layerRequestEditors
 				}
 			}
 
@@ -228,6 +236,7 @@ function createPresenceStore() {
 			presence: session.localState.presence,
 			editors: new Set(),
 			teamswapEditors: new Set(),
+			layerRequestEditors: new Set(),
 			userPresence: new Map(),
 			activityLoaderCache: [],
 
@@ -335,6 +344,24 @@ export namespace Actions {
 		if (updates.length > 0) updateActivity(...updates)
 	}
 
+	// Registers the local client as editing, so an edit made without pressing "Start Editing" still claims
+	// an editing session. Idempotent, so they never clobber a sub-activity already in progress.
+	export function ensureEditingQueue(serverId: string) {
+		ensureEditing(UP.Trans.editingQueue(serverId))
+	}
+
+	export function ensureEditingLayerRequests(serverId: string) {
+		ensureEditing(UP.Trans.editingLayerRequests(serverId))
+	}
+
+	function ensureEditing(trans: UP.ActivityTransitions) {
+		const config = ConfigClient.getConfig()
+		if (!config) return
+		const activity = Store.getState().presence.get(config.wsClientId)?.activityState ?? null
+		if (trans.match(activity)) return
+		updateActivity(trans.create())
+	}
+
 	// Wraps an async player-management flow: marks the given player dialogue active for presence, then
 	// clears it once the flow settles (resolves, rejects, or is cancelled). Callers should still call
 	// ensureViewingTeams() themselves before invoking, since not every flow needs it.
@@ -416,6 +443,17 @@ export namespace Sel {
 		return count
 	}
 
+	// clients (not users) holding an editing session on one of the server's shared drafts. The server discards
+	// the draft once this reaches zero, so the last one out is who has to be warned before they leave.
+	export const editingClientCount = (serverId: string, scope: 'queue' | 'layer-requests') => (state: Store) => {
+		const trans = scope === 'queue' ? UP.Trans.editingQueue(serverId) : UP.Trans.editingLayerRequests(serverId)
+		let count = 0
+		for (const presence of state.presence.values()) {
+			if (presence.activityState && trans.match(presence.activityState)) count++
+		}
+		return count
+	}
+
 	export const userPresence = (userId: USR.UserId) => (store: Store) => {
 		if (!userId) return
 		return store.userPresence.get(userId)
@@ -454,6 +492,10 @@ export function useEditingQueueState(serverId: string) {
 
 export function useEditingTeamswapsState(serverId: string) {
 	return useActivityState(UP.Trans.editingTeamswaps(serverId))
+}
+
+export function useEditingLayerRequestsState(serverId: string) {
+	return useActivityState(UP.Trans.editingLayerRequests(serverId))
 }
 
 export function useIsEditing() {

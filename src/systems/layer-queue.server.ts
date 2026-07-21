@@ -12,8 +12,10 @@ import { assertNever } from '@/lib/type-guards.ts'
 import { HumanTime } from '@/lib/zod.ts'
 import * as Messages from '@/messages.ts'
 import * as AppEvents from '@/models/app-events.models'
+import * as BB from '@/models/backburner.models'
 import * as BAL from '@/models/balance-triggers.models.ts'
 import * as CS from '@/models/context-shared'
+import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -33,6 +35,7 @@ import * as DB from '@/server/db.ts'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
+import * as FilterEntity from '@/systems/filter-entity.server'
 import * as LayerQueriesServer from '@/systems/layer-queries.server'
 import * as LayerQueries from '@/systems/layer-queries.shared.ts'
 import * as MatchHistory from '@/systems/match-history.server'
@@ -68,7 +71,7 @@ export function setup() {
 }
 
 export function initLayerQueueSlice(ctx: C.ServerSliceCleanup & C.ServerId, serverState: SS.ServerState) {
-	const sllState = SLL.createNewState(serverState.layerQueue)
+	const sllState = SLL.createNewState(serverState.layerQueue, serverState.backburner)
 	const slice: LayerQueueSlice = {
 		unexpectedNextLayerSet$: new IsolatedBehaviorSubject<L.LayerId | null>(null),
 		update$: new IsolatedReplaySubject(1),
@@ -125,7 +128,11 @@ export const setupInstance = C.spanOp(
 							const repeatViolations = warns.filter(w => w.type === 'repeat-rule-violation-warning').flatMap(w => w.descriptors)
 							const poolViolations = warns.filter(w => w.type === 'filter-entity-warning').map(w => {
 								const constraint = allConstraints.find(c => c.id === w.constraintId)! as Extract<LQY.Constraint, { type: 'filter-entity' }>
-								return constraint.warn === 'inverted' ? `!${constraint.filterId}` : constraint.filterId
+								const entity = ctx.filters.get(constraint.filterId)
+								// warn 'inverted' fires when the layer does NOT match, so use the miss indicator's message
+								const missed = constraint.warn === 'inverted'
+								return (missed ? entity?.invertedAlertMessage : entity?.alertMessage)
+									?? `${missed ? '!' : ''}${entity?.name ?? constraint.filterId}`
 							})
 							await SquadRcon.warnAllAdmins(
 								ctx,
@@ -257,6 +264,24 @@ export const setupInstance = C.spanOp(
 				}),
 			).subscribe()
 		}
+
+		// -------- discard drafts whose last editor left without saving --------
+		ctx.cleanup.push(
+			UserPresenceSys.editingAbandoned$(serverId).pipe(
+				C.durableSub('discard-abandoned-edits', { module, levels: { event: 'info' } }, async (scope, signal) => {
+					const ctx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
+					const state = ctx.layerQueue.session.state
+					if (scope === 'queue') {
+						if (!SLL.hasMutations(state)) return
+						await dispatchOp(ctx, { op: 'discard-abandoned-queue-edits', opId: SLL.createOpId() })
+					} else {
+						if (!SLL.hasBackburnerMutations(state)) return
+						await dispatchOp(ctx, { op: 'discard-abandoned-request-edits', opId: SLL.createOpId() })
+					}
+					log.info('discarded abandoned %s edits', scope)
+				}),
+			).subscribe(),
+		)
 	},
 )
 
@@ -599,8 +624,6 @@ export const router = {
 			const ctxRes = SquadServer.trySliceCtx(_ctx, serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const authRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write'))
-			if (authRes) return authRes
 
 			const userId = (op as { userId?: USR.UserId })?.userId
 			if (userId && ctx.user.discordId !== userId) {
@@ -608,6 +631,21 @@ export const router = {
 					code: 'err:invalid-user' as const,
 					msg: `Invalid user ${userId} for operation ${op.op} (${op.opId})`,
 				}
+			}
+
+			if (
+				op.op === 'backburner-write-saved' || op.op === 'discard-abandoned-request-edits'
+				|| op.op === 'discard-abandoned-queue-edits'
+			) {
+				return { code: 'err:invalid-op' as const, msg: `${op.op} is server-only` }
+			}
+
+			if (SLL.isBackburnerOp(op)) {
+				const backburnerRes = await tryDenyBackburnerDraftOp(ctx, op)
+				if (backburnerRes) return backburnerRes
+			} else {
+				const authRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write'))
+				if (authRes) return authRes
 			}
 
 			// adding or setting a layer that isn't in the configured pool additionally requires queue:force-write.
@@ -636,6 +674,207 @@ export const router = {
 
 			return { code: 'ok' as const }
 		}),
+}
+
+// queue:write qualifies outright; otherwise any queue:request-layers grant does
+async function tryDenyQueueWriteOrRequestGrant(ctx: C.Db & C.UserId) {
+	const writeDenied = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write'))
+	if (!writeDenied) return null
+	return await Rbac.tryDenyLayerRequestsForUser(ctx)
+}
+
+// whether a template has any solutions. Pool membership rides in the template itself (see BB.withPoolFilter),
+// and do-not-repeat constraints are deliberately excluded: they are transient, and a request that is only
+// blocked until the next match shouldn't be rejected outright.
+export async function isTemplateSatisfiable(
+	ctx: C.Db & C.MatchHistory & C.LayerQueue & CS.AbortSignal,
+	filter: F.FilterNode,
+): Promise<boolean> {
+	const layerCtx = LayerQueriesServer.resolveLayerQueryCtx(ctx)
+	const res = await LayerQueries.checkBackburnerTemplates({
+		ctx: layerCtx,
+		input: { constraints: [], templates: [{ itemId: 'probe', filter }] },
+	})
+	if (res.code !== 'ok') {
+		log.error('backburner satisfiability probe failed to build constraints, failing open: %o', res)
+		return true
+	}
+	return res.satisfiable['probe']
+}
+
+type BackburnerDraftOp = Exclude<Extract<SLL.Operation, { op: `backburner-${string}` }>, { op: 'backburner-write-saved' }>
+
+// per-op authorization + validation for backburner draft ops arriving over the RPC. Own items need any
+// queue:request-layers grant; touching someone else's item needs queue:write. Adds/updates/combines are
+// probed for satisfiability so an impossible template can't enter the backburner.
+async function tryDenyBackburnerDraftOp(
+	ctx: C.Db & C.ServerSlice & C.UserId & CS.AbortSignal,
+	op: BackburnerDraftOp,
+) {
+	const state = ctx.layerQueue.session.state
+	const owner: USR.GuiOrChatUserId = { discordId: ctx.user.discordId }
+	const targets: BB.BackburnerItem[] = []
+	switch (op.op) {
+		case 'backburner-add':
+			break
+		case 'backburner-update':
+		case 'backburner-reorder': {
+			const item = state.backburner.find(item => item.itemId === op.itemId)
+			if (item) targets.push(item)
+			break
+		}
+		case 'backburner-remove':
+			targets.push(...state.backburner.filter(item => op.itemIds.includes(item.itemId)))
+			break
+		case 'backburner-combine':
+			targets.push(...state.backburner.filter(item => item.itemId === op.targetItemId || item.itemId === op.sourceItemId))
+			break
+		// save/reset commit or discard the shared draft as a whole; any requester may do so
+		case 'backburner-save':
+		case 'backburner-reset':
+			break
+		default:
+			assertNever(op)
+	}
+	const touchesOthers = targets.some(item => !BB.sameOwner(item.source, owner))
+	const authRes = touchesOthers
+		? await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write'))
+		: await tryDenyQueueWriteOrRequestGrant(ctx)
+	if (authRes) return authRes
+
+	switch (op.op) {
+		case 'backburner-add': {
+			if (!BB.sameOwner(op.item.source, owner)) {
+				return { code: 'err:invalid-source' as const, msg: 'Layer requests must be added under your own account' }
+			}
+			const capRes = await checkBackburnerCaps(ctx, owner)
+			if (capRes) return capRes
+			if (!(await isTemplateSatisfiable(ctx, op.item.filter))) {
+				return { code: 'err:no-solutions' as const, msg: 'No layers in the current pool match this request' }
+			}
+			break
+		}
+		case 'backburner-update': {
+			if (!(await isTemplateSatisfiable(ctx, op.filter))) {
+				return { code: 'err:no-solutions' as const, msg: 'No layers in the current pool match this request' }
+			}
+			break
+		}
+		case 'backburner-combine': {
+			const target = state.backburner.find(item => item.itemId === op.targetItemId)
+			const source = state.backburner.find(item => item.itemId === op.sourceItemId)
+			if (!target || !source) break
+			const merged = BB.mergeTemplateFilters(target.filter, source.filter)
+			if (merged.code !== 'ok') {
+				const names = merged.filterIds.map(id => backburnerFilterName(id) ?? id)
+				return {
+					code: 'err:not-combinable' as const,
+					msg: `Cannot combine: ${names.join(', ')} is applied normally on one request and inverted on the other`,
+				}
+			}
+			if (!(await isTemplateSatisfiable(ctx, merged.filter))) {
+				return { code: 'err:not-combinable' as const, msg: 'No layers match the combined request' }
+			}
+			break
+		}
+		case 'backburner-remove':
+		case 'backburner-reorder':
+		case 'backburner-save':
+		case 'backburner-reset':
+			break
+		default:
+			assertNever(op)
+	}
+	return null
+}
+
+// the GUI add path rejects at the caps rather than evicting (the panel offers an explicit "evict my oldest"
+// confirm); the per-user cap doesn't apply to queue:write holders, who curate the whole backburner anyway
+export async function checkBackburnerCaps(
+	ctx: C.Db & C.ServerSlice & C.UserId & CS.AbortSignal,
+	owner: USR.GuiOrChatUserId,
+	opts?: { list?: BB.BackburnerItem[] },
+) {
+	const state = ctx.layerQueue.session.state
+	const list = opts?.list ?? state.backburner
+	const serverState = await SquadServer.getServerState(ctx)
+	const maxTotal = serverState.settings.queue.layerRequests.maxTotal
+	if (list.length >= maxTotal) return { code: 'err:backburner-full' as const, max: maxTotal }
+	const hasQueueWrite = !(await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write')))
+	if (hasQueueWrite) return null
+	const max = await Rbac.getMaxLayerRequestsForUser(ctx)
+	if (max === null || max === undefined) return null
+	const own = BB.ownedItems(list, owner).length
+	if (own >= max) return { code: 'err:limit-reached' as const, max }
+	return null
+}
+
+export type AddRequestResult =
+	| { code: 'ok'; item: BB.BackburnerItem; evicted: BB.BackburnerItem[] }
+	| { code: 'err:no-solutions'; msg: string }
+	| { code: 'err:backburner-full'; max: number }
+	| RBAC.PermissionDeniedResponse
+
+// the chat path (/reqlayer): commits straight to the saved backburner, evicting the owner's oldest request(s)
+// when they are at their cap. `user` is the sender's linked SLM account (RBAC identity); `source` carries both
+// ids so ownership checks work from either surface.
+export async function addBackburnerRequestFromChat(
+	ctx: C.Db & C.ServerSlice & CS.AbortSignal,
+	args: { user: { discordId: bigint }; source: USR.GuiOrChatUserId; filter: F.FilterNode },
+): Promise<AddRequestResult> {
+	const rbacCtx = { ...ctx, user: args.user }
+	// same gate as the GUI path: queue:write curators qualify without a request grant (and are uncapped)
+	const denied = await tryDenyQueueWriteOrRequestGrant(rbacCtx)
+	if (denied) return denied
+	const serverState = await SquadServer.getServerState(ctx)
+	// in-game requests always carry the main pool filter; only the GUI can deliberately drop it
+	const filter = BB.withPoolFilter(args.filter, serverState.settings.queue.mainPool.poolFilter)
+	if (!(await isTemplateSatisfiable(ctx, filter))) {
+		return { code: 'err:no-solutions', msg: 'No layers in the current pool match this request' }
+	}
+	const saved = ctx.layerQueue.session.state.savedBackburner
+	const maxTotal = serverState.settings.queue.layerRequests.maxTotal
+	const max = await Rbac.getMaxLayerRequestsForUser(rbacCtx)
+	const own = BB.ownedItems(saved, args.source)
+	const evicted: BB.BackburnerItem[] = []
+	if (max !== null && max !== undefined && own.length >= max) {
+		evicted.push(...own.slice(0, own.length - max + 1))
+	}
+	if (saved.length - evicted.length >= maxTotal) return { code: 'err:backburner-full', max: maxTotal }
+	const item: BB.BackburnerItem = {
+		itemId: BB.createItemId(),
+		filter,
+		source: args.source,
+		createdAt: Date.now(),
+	}
+	await dispatchOp(ctx, {
+		op: 'backburner-write-saved',
+		opId: SLL.createOpId(),
+		write: { kind: 'add', item, evictItemIds: evicted.map(i => i.itemId) },
+		source: args.source,
+	})
+	return { code: 'ok', item, evicted }
+}
+
+export async function removeBackburnerRequestsFromChat(
+	ctx: C.Db & C.ServerSlice & CS.AbortSignal,
+	args: { itemIds: string[]; source: USR.GuiOrChatUserId },
+) {
+	await dispatchOp(ctx, {
+		op: 'backburner-write-saved',
+		opId: SLL.createOpId(),
+		write: { kind: 'remove', itemIds: args.itemIds },
+		source: args.source,
+	})
+}
+
+export function getSavedBackburner(ctx: C.LayerQueue): BB.BackburnerItem[] {
+	return ctx.layerQueue.session.state.savedBackburner
+}
+
+// resolves filter-entity names for template descriptions (chat listings, app events)
+export function backburnerFilterName(id: string): string | undefined {
+	return FilterEntity.state.filters.get(id)?.name
 }
 
 // layer ids an op would introduce into the queue that are subject to the pool/force-write gate. move, delete, clone
@@ -710,47 +949,114 @@ const handleSideEffect = C.spanOp(
 				const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: true })
 				const layerCtx = LayerQueriesServer.resolveLayerQueryCtx(ctx)
 				const layerItemsState = await LayerQueriesServer.resolveLayerItemsState(ctx)
+				const templates = ctx.layerQueue.session.state.savedBackburner.map(item => ({ itemId: item.itemId, filter: item.filter }))
 
-				const nextQueuedLayerId = await (async function getNextQueuedLayerId(constraints: LQY.Constraint[] = allConstraints) {
+				const fallback = { layerId: L.DEFAULT_LAYER_ID, consumedItemIds: [] as string[] }
+				const generated = await (async function generate(
+					constraints: LQY.Constraint[] = allConstraints,
+				): Promise<{ layerId: L.LayerId; consumedItemIds: string[] }> {
 					try {
-						const gen = LayerQueries.queryLayersStreamed({
+						const res = await LayerQueries.generateWithBackburner({
 							ctx: layerCtx,
 							input: {
 								constraints,
+								templates,
 								list: layerItemsState,
 								cursor: { type: 'start' },
 								action: 'add',
-								pageSize: 1,
-								sort: { type: 'random', seed: LQY.getSeed() },
+								seed: LQY.getSeed(),
 							},
 						})
-						let ids: string[] = []
-
-						for await (const packet of gen) {
-							if (packet.code === 'menu-item-possible-values') continue
-							if (packet.code === 'err:invalid-node') {
-								log.error(`Invalid node error when generating layer: %o`, { cause: packet.errors })
-								return L.DEFAULT_LAYER_ID
-							}
-							ids = packet.layers.map(l => l.id)
+						if (res.code !== 'ok') {
+							log.error(`Invalid node error when generating layer: %o`, { cause: res.errors })
+							return fallback
 						}
-
-						if (ids.length > 0) return ids[0]
+						if (res.invalidItemIds.length > 0) {
+							log.warn('backburner templates failed to lower and were skipped: %o', res.invalidItemIds)
+						}
+						if (res.layer) return { layerId: res.layer.id, consumedItemIds: res.consumedItemIds }
 						const noDnrConstraints = constraints.filter(c => c.type !== 'do-not-repeat')
 						if (noDnrConstraints.length < constraints.length) {
 							log.info('no layers found with do-not-repeat constraints applied, retrying without')
-							return await getNextQueuedLayerId(noDnrConstraints)
+							return await generate(noDnrConstraints)
 						}
 						log.warn(`No layers found for constraints: %o`, { constraints })
-						return L.DEFAULT_LAYER_ID
+						return fallback
 					} catch (e) {
 						log.error(`Error generating layer: %o`, e)
-						return L.DEFAULT_LAYER_ID
+						return fallback
 					}
 				})()
 
-				const nextQueueItem = LL.createItem({ type: 'single-list-item', layerId: nextQueuedLayerId }, { type: 'generated' })
-				await dispatchOp(ctx, { op: 'queue-item-generated', item: nextQueueItem, opId: SLL.createOpId() })
+				const nextQueueItem = LL.createItem({ type: 'single-list-item', layerId: generated.layerId }, { type: 'generated' })
+				await dispatchOp(ctx, {
+					op: 'queue-item-generated',
+					item: nextQueueItem,
+					consumedBackburnerItemIds: generated.consumedItemIds.length > 0 ? generated.consumedItemIds : undefined,
+					opId: SLL.createOpId(),
+				})
+				break
+			}
+			case 'request-backburner-save': {
+				await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
+					await SquadServer.updateServerState(ctx, { backburner: se.items }, { type: 'system', event: 'backburner-updated' })
+				})
+				if (se.trigger === 'user-save') {
+					UserPresenceSys.dispatchEndAllLayerRequestEditing(ctx.serverId)
+				}
+				const matchId = (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null
+				const describe = (item: BB.BackburnerItem) => BB.describeTemplate(item.filter, backburnerFilterName)
+				const prevIds = new Set(se.prevItems.map(item => item.itemId))
+				const nextIds = new Set(se.items.map(item => item.itemId))
+				const added = se.items.filter(item => !prevIds.has(item.itemId))
+				const removed = se.prevItems.filter(item => !nextIds.has(item.itemId))
+				if (se.trigger === 'consumed') {
+					if (removed.length > 0) {
+						await SquadServer.emitAppEvent(
+							ctx,
+							AppEvents.create<AppEvents.LayerRequestConsumed>({
+								type: 'LAYER_REQUEST_CONSUMED',
+								actor: { type: 'system' },
+								serverId: ctx.serverId,
+								matchId,
+								causeId: null,
+								itemIds: removed.map(item => item.itemId),
+								descriptions: removed.map(describe),
+								layerId: se.layerId ?? L.DEFAULT_LAYER_ID,
+							}),
+						)
+					}
+					break
+				}
+				// each added item is attributed to whoever created it; the removal batch to whoever performed the write
+				for (const item of added) {
+					await SquadServer.emitAppEvent(
+						ctx,
+						AppEvents.create<AppEvents.LayerRequestAdded>({
+							type: 'LAYER_REQUEST_ADDED',
+							actor: SquadServer.actorFromUser(ctx, item.source),
+							serverId: ctx.serverId,
+							matchId,
+							causeId: null,
+							itemId: item.itemId,
+							description: describe(item),
+						}),
+					)
+				}
+				if (removed.length > 0) {
+					await SquadServer.emitAppEvent(
+						ctx,
+						AppEvents.create<AppEvents.LayerRequestRemoved>({
+							type: 'LAYER_REQUEST_REMOVED',
+							actor: SquadServer.actorFromUser(ctx, se.source),
+							serverId: ctx.serverId,
+							matchId,
+							causeId: null,
+							itemIds: removed.map(item => item.itemId),
+							descriptions: removed.map(describe),
+						}),
+					)
+				}
 				break
 			}
 			case 'request-list-save': {

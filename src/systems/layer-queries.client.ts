@@ -62,8 +62,14 @@ export namespace Actions {
 	}
 }
 
+// only pool membership disables rows; constraint values are raw matches (pre-inversion), index-aligned to constraints
 function getIsLayerDisabled(layerData: RowData, canForceSelect: boolean, constraints: LQY.Constraint[]) {
-	return !canForceSelect && layerData.constraints.values?.some((v, i) => !v && constraints[i].type !== 'do-not-repeat')
+	if (canForceSelect) return false
+	const index = constraints.findIndex(c => c.type === 'filter-entity' && c.poolFilterMode)
+	if (index === -1) return false
+	const poolConstraint = constraints[index] as Extract<LQY.Constraint, { type: 'filter-entity' }>
+	const matched = layerData.constraints.values?.[index] ?? false
+	return poolConstraint.poolFilterMode === 'include' ? !matched : matched
 }
 
 export type ConstraintRowDetails = {
@@ -257,6 +263,12 @@ export function getQueryLayersInput(baseInput: LQY.BaseQueryInput, _opts?: Query
 	}
 }
 
+export async function checkBackburnerTemplates(
+	input: LQY.BaseQueryInput & { templates: { itemId: string; filter: F.FilterNode }[] },
+) {
+	return await sendWorkerRequest('checkBackburnerTemplates', input)
+}
+
 export async function generateVote(input: LQY.GenVote.Input) {
 	const res = await sendWorkerRequest('genVote', input)
 	if (res.code !== 'ok') return res
@@ -394,6 +406,17 @@ export function useLayerItemStatusData(
 	])
 }
 
+export async function fetchLayersOutOfPool(
+	input: { layerIds: L.LayerId[]; constraints: LQY.Constraint[] },
+): Promise<L.LayerId[] | null> {
+	const res = await sendWorkerRequest('getLayersOutOfPool', input)
+	if (res.code !== 'ok') {
+		console.error('getLayersOutOfPool:', res)
+		return null
+	}
+	return res.outOfPool
+}
+
 // resolved reactively into the squad-server frame's layerItemStatuses state; not a query
 export async function fetchLayerItemStatuses(input: LQY.LayerItemStatusesInput): Promise<LQY.LayerItemStatuses | null> {
 	const res = await sendWorkerRequest('getLayerItemStatuses', input)
@@ -465,10 +488,12 @@ export const QUERY_PRIORITIES: Record<WorkerTypes.RequestInner['type'], number> 
 	'generation-update': 5,
 	'init': 5,
 	getLayerItemStatuses: 4,
+	getLayersOutOfPool: 4,
 	queryLayers: 3,
 	genVote: 3,
 	layerExists: 2,
 	getLayerInfo: 2,
+	checkBackburnerTemplates: 2,
 	queryLayerComponent: 1,
 } as const
 
