@@ -67,10 +67,12 @@ describe('operator selection', () => {
 		expect(F.domainsCompatible({ kind: 'number', integral: true }, { kind: 'number', integral: false })).toBe(true)
 	})
 
-	it('defaults float subjects to inrange, others to eq', () => {
+	it('defaults floats to inrange, enum/string to in, others to eq', () => {
 		expect(F.defaultCompType({ kind: 'number', integral: false })).toBe('inrange')
 		expect(F.defaultCompType({ kind: 'number', integral: true })).toBe('eq')
-		expect(F.defaultCompType({ kind: 'enum', mapping: 'factions' })).toBe('eq')
+		expect(F.defaultCompType({ kind: 'enum', mapping: 'factions' })).toBe('in')
+		expect(F.defaultCompType({ kind: 'string' })).toBe('in')
+		expect(F.defaultCompType({ kind: 'boolean' })).toBe('eq')
 	})
 
 	it('carries a single value across an eq -> in change', () => {

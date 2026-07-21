@@ -29,6 +29,8 @@ let userDefinedPermissionExpressions: Record<string, RBAC.RolePermissionExpressi
 let roleAssignments: RBAC.RoleAssignment[] = []
 // role -> max kick-timeout duration in ms (roles[role].maxTimeout; HumanTime decodes to ms)
 let roleMaxTimeouts: Record<string, number> = {}
+// role -> max concurrent layer requests (roles[role].maxLayerRequests)
+let roleMaxLayerRequests: Record<string, number> = {}
 // restricted settings grants (roles[role].globalSettingsGrants / .serverSettingsGrants)
 let roleGlobalSettingsGrants: Record<string, RoleConfig['globalSettingsGrants']> = {}
 let roleServerSettingsGrants: Record<string, RoleConfig['serverSettingsGrants']> = {}
@@ -49,6 +51,7 @@ export function applyRbacSettings(rbac: SETTINGS.RbacSettings) {
 	userDefinedPermissionExpressions = {}
 	userDefinedRoles = []
 	roleMaxTimeouts = {}
+	roleMaxLayerRequests = {}
 	roleGlobalSettingsGrants = {}
 	roleServerSettingsGrants = {}
 	roleAssignments = []
@@ -58,6 +61,7 @@ export function applyRbacSettings(rbac: SETTINGS.RbacSettings) {
 		userDefinedRoles.push(RBAC.userDefinedRole(roleType))
 		userDefinedPermissionExpressions[roleType] = cfg.permissions
 		if (cfg.maxTimeout !== undefined) roleMaxTimeouts[roleType] = cfg.maxTimeout
+		if (cfg.maxLayerRequests !== undefined) roleMaxLayerRequests[roleType] = cfg.maxLayerRequests
 		if (cfg.globalSettingsGrants.length > 0) roleGlobalSettingsGrants[roleType] = cfg.globalSettingsGrants
 		if (cfg.serverSettingsGrants.length > 0) roleServerSettingsGrants[roleType] = cfg.serverSettingsGrants
 
@@ -167,6 +171,12 @@ function permsFromRoleConfigs(roles: RBAC.Role[]): RBAC.TracedPermission[] {
 				RBAC.tracedPerm('squad-server:timeout-players', [role], {}, { maxDurationMs: roleMaxTimeouts[role.type] }),
 			)
 		}
+		if (roleMaxLayerRequests[role.type] !== undefined) {
+			RBAC.addTracedPerms(
+				perms,
+				RBAC.tracedPerm('queue:request-layers', [role], {}, { maxQueued: roleMaxLayerRequests[role.type] }),
+			)
+		}
 		// restricted settings grants; a matching negation in any role's expressions wins over these too
 		const globalPaths = roleGlobalSettingsGrants[role.type]
 		if (globalPaths && globalPaths.length > 0) {
@@ -226,6 +236,10 @@ export const getUserRbacPerms = C.spanOp(
 			RBAC.addTracedPerms(
 				perms,
 				RBAC.tracedPerm('squad-server:timeout-players', [SUPER_ROLE], { negated: false }, { maxDurationMs: null }),
+			)
+			RBAC.addTracedPerms(
+				perms,
+				RBAC.tracedPerm('queue:request-layers', [SUPER_ROLE], { negated: false }, { maxQueued: null }),
 			)
 		}
 
@@ -340,6 +354,24 @@ export async function tryDenyTimeoutForUser(
 	return RBAC.permissionDenied({
 		check: 'all',
 		permits: [RBAC.perm('squad-server:timeout-players', { maxDurationMs: requestedDurationMs })],
+	})
+}
+
+// "up to N concurrent items" layer-request checks bypass the equality-matched permission path
+// (see RBAC.maxLayerRequests): undefined = no grant, null = unlimited, number = max concurrent items
+export async function getMaxLayerRequestsForUser(ctx: C.Db & C.UserId): Promise<number | null | undefined> {
+	const perms = RBAC.fromTracedPermissions(await getUserRbacPerms(ctx))
+	return RBAC.maxLayerRequests(perms)
+}
+
+// gate for holding layer requests at all: any request grant (of any size) qualifies
+export async function tryDenyLayerRequestsForUser(
+	ctx: C.Db & C.UserId,
+): Promise<RBAC.PermissionDeniedResponse<'queue:request-layers'> | null> {
+	if ((await getMaxLayerRequestsForUser(ctx)) !== undefined) return null
+	return RBAC.permissionDenied({
+		check: 'all',
+		permits: [RBAC.perm('queue:request-layers', { maxQueued: null })],
 	})
 }
 

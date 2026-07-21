@@ -1,13 +1,9 @@
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
 import { useDebounced } from '@/hooks/use-debounce.ts'
-import * as Arr from '@/lib/array'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
-import type * as F from '@/models/filter.models.ts'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as SETTINGS from '@/models/settings.models.ts'
@@ -17,288 +13,228 @@ import React from 'react'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
 import { ConstraintViolationIcon } from './constraint-matches-indicator.tsx'
-import FilterEntitySelect from './filter-entity-select.tsx'
+import EmojiDisplay from './emoji-display.tsx'
+import FilterEntitySelect, { FilterEntityLink } from './filter-entity-select.tsx'
 import type { PoolConfigApi } from './pool-config-panels.helpers.ts'
+import { Alert, AlertDescription } from './ui/alert.tsx'
 import { Checkbox } from './ui/checkbox.tsx'
 import { Input } from './ui/input.tsx'
-import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
 
 // Shared pool-configuration UI (filters + repeat rules for the main/generation pools), used by both the dashboard's
 // server-settings popover and the settings page's server forms. All data access goes through PoolConfigApi so the
 // two hosts can plug in their own editing substrate (ops-based store vs draft observable).
 
-export function MainPoolFiltersPanel({ api }: { api: PoolConfigApi }) {
-	const filtersPath = ['filters']
-	const filterConfigs = (api.useValue(filtersPath) as SETTINGS.PoolFilterConfig[] | null) ?? []
+// The single pool filter: defines pool membership everywhere (row disabling, force-write gating, warnings,
+// autogeneration). The filter entity's emoji/alertMessage pair indicates matches; invertedEmoji/invertedAlertMessage
+// indicates misses -- the pool filter needs all four configured.
+export function PoolFilterSection({ api }: { api: PoolConfigApi }) {
+	const poolFilter = (api.useValue(['poolFilter']) as SETTINGS.PoolFilterSetting | null) ?? null
 	const filterEntities = FilterEntityClient.useFilterEntities()
+	const entity = poolFilter ? filterEntities.get(poolFilter.filterId) : undefined
 
-	const add = (filterId: F.FilterEntityId | null) => {
-		if (filterId === null) return
-		const newFilters: SETTINGS.PoolFilterConfig[] = [...filterConfigs, {
-			filterId,
-			defaultApplyDuringLayerSelection: SETTINGS.DEFAULT_POOL_FILTER_APPLY_AS,
-		}]
-		api.set(filtersPath, newFilters)
+	const onSelect = (filterId: string | null) => {
+		api.set(['poolFilter'], filterId === null ? null : { filterId, mode: poolFilter?.mode ?? 'include' })
+	}
+	const setMode = (mode?: SETTINGS.PoolFilterMode) => {
+		if (poolFilter && mode) api.set(['poolFilter', 'mode'], mode)
+	}
+
+	const missingIndicators: string[] = []
+	if (entity) {
+		if (!entity.emoji) missingIndicators.push('match emoji')
+		if (!entity.alertMessage) missingIndicators.push('match alert message')
+		if (!entity.invertedEmoji) missingIndicators.push('miss emoji')
+		if (!entity.invertedAlertMessage) missingIndicators.push('miss alert message')
+	}
+
+	const modeDescriptions: { [k in SETTINGS.PoolFilterMode]: string } = {
+		include: 'Matching layers are in the pool',
+		exclude: 'Matching layers are excluded from the pool',
 	}
 
 	return (
 		<div className="space-y-3">
-			<div className="flex items-center justify-between">
-				<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Filters</h4>
-				<PermissionDeniedTooltip denied={api.writeDenied}>
+			<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Pool Filter</h4>
+			<div className="border rounded-md p-3 space-y-2">
+				<div className="flex items-center gap-2">
 					<FilterEntitySelect
-						title="New Pool Filter"
-						filterId={null}
-						onSelect={add}
-						excludedFilterIds={Arr.deref('filterId', filterConfigs)}
-						allowEmpty={false}
+						className="grow"
+						title="Pool Filter"
+						filterId={poolFilter?.filterId ?? null}
+						onSelect={onSelect}
 						enabled={!api.writeDenied}
-					>
-						<Button disabled={!!api.writeDenied} size="sm" variant="outline">
-							<Icons.Plus className="h-4 w-4 mr-2" />
-							Add Filter
-						</Button>
-					</FilterEntitySelect>
-				</PermissionDeniedTooltip>
-			</div>
-			<div className="border rounded-md p-3">
-				<div
-					className="grid gap-2 items-center"
-					style={{ gridTemplateColumns: 'minmax(0, auto) max-content max-content max-content max-content max-content' }}
-				>
-					{/* Header Row */}
-					<div className="contents text-sm font-medium text-muted-foreground">
-						<div>Filter</div>
-						<div>Layer Default Select</div>
-						<div>In Pool</div>
-						<div>Indicate</div>
-						<div>Warn</div>
-						<div></div>
-					</div>
-					{/* Filter Rows */}
-					{filterConfigs.map((filterConfig, i) => {
-						const filterId = filterConfig.filterId
-						const filterPath = [...filtersPath, i]
-						const filter = filterEntities.get(filterId)
-						if (!filter) return
-						const onSelect = (newFilterId: string | null) => {
-							if (newFilterId === null || newFilterId === filterId) {
-								return
-							}
-							const newValue: SETTINGS.PoolFilterConfig = {
-								filterId: newFilterId,
-								defaultApplyDuringLayerSelection: SETTINGS.DEFAULT_POOL_FILTER_APPLY_AS,
-							}
-							api.set(filterPath, newValue)
-						}
-						const deleteFilter = () => {
-							const filterConfigs = api.getValue(filtersPath) as SETTINGS.PoolFilterConfig[]
-							api.set(filtersPath, filterConfigs.filter((c) => c.filterId !== filterConfig.filterId))
-						}
-						const excludedFilterIds = filterConfigs.flatMap((c) => filterId !== c.filterId ? [c.filterId] : [])
-						const defaultApplyDescriptions: { [k in SETTINGS.PoolFilterDefaultApplyAsSetting]: string } = {
-							regular: 'Regular',
-							inverted: 'Inverted',
-							disabled: 'Disabled',
-							hidden: 'Hidden',
-						}
-						const indicateDescriptions: { [k in LQY.IndicatorState]: string } = {
-							regular: 'Matches',
-							inverted: 'Non-matches',
-							disabled: 'Disabled',
-							both: 'Both',
-						}
-						const warnDescriptions: { [k in SETTINGS.PoolFilterApplyAs]: string } = {
-							regular: 'Warn when a layer matching this filter is queued or about to be played',
-							inverted: 'Warn when a layer NOT matching this filter is queued or about to be played',
-							disabled: 'No warning',
-						}
-						const inPoolDescriptions: { [k in SETTINGS.PoolFilterApplyAs]: string } = {
-							regular: 'Must match',
-							inverted: 'Must not match',
-							disabled: 'Disabled',
-						}
-						const canWarn = !!filterConfig.showIndicator && filterConfig.showIndicator !== 'disabled'
-						const handleIndicateMatchesChanged = (_newValue: LQY.IndicatorState | undefined) => {
-							const newValue = _newValue ?? 'disabled'
-							const newConfig: SETTINGS.PoolFilterConfig = {
-								...filterConfig,
-								showIndicator: newValue,
-								warn: newValue === 'disabled' ? undefined : filterConfig.warn,
-							}
-							api.set(filterPath, newConfig)
-						}
-						const handleDefaultApplyChanged = (_newValue: SETTINGS.PoolFilterDefaultApplyAsSetting | undefined) => {
-							api.set([...filterPath, 'defaultApplyDuringLayerSelection'], _newValue ?? 'disabled')
-						}
-						const handleWarnChanged = (newWarn: SETTINGS.PoolFilterApplyAs) => {
-							api.set([...filterPath, 'warn'], newWarn)
-						}
-						const handleInPoolChanged = (_newValue: SETTINGS.PoolFilterApplyAs | undefined) => {
-							api.set([...filterPath, 'inPool'], _newValue ?? 'disabled')
-						}
-
-						return (
-							<React.Fragment key={filterId}>
-								<FilterEntitySelect
-									enabled={!api.writeDenied}
-									title="Pool Filter"
-									filterId={filterId}
-									onSelect={onSelect}
-									allowToggle={false}
-									allowEmpty={false}
-									excludedFilterIds={excludedFilterIds}
-								/>
-								<ComboBox
-									title="Default Apply"
-									options={SETTINGS.POOL_FILTER_DEFAULT_APPLY_AS_SETTING.options.map(v => ({
-										value: v,
-										label: defaultApplyDescriptions[v],
-									}))}
-									value={filterConfig.defaultApplyDuringLayerSelection ?? 'disabled'}
-									allowEmpty={false}
-									onSelect={handleDefaultApplyChanged}
-									disabled={!!api.writeDenied}
-								/>
-								<ComboBox
-									title="In Pool"
-									options={SETTINGS.POOL_FILTER_APPLY_AS.options.map(v => ({ value: v, label: inPoolDescriptions[v] }))}
-									value={filterConfig.inPool ?? 'disabled'}
-									allowEmpty={false}
-									onSelect={handleInPoolChanged}
-									disabled={!!api.writeDenied}
-								/>
-								<ComboBox
-									title="Indicator State"
-									options={LQY.INDICATOR_STATE.options.map(v => ({ value: v, label: indicateDescriptions[v] }))}
-									value={filterConfig.showIndicator ?? 'disabled' as const}
-									allowEmpty={false}
-									onSelect={handleIndicateMatchesChanged}
-									disabled={!!api.writeDenied}
-								/>
-								<div className="border border-input rounded-md flex items-center justify-center">
-									<TriStateCheckbox
-										checked={filterConfig.warn}
-										onCheckedChange={handleWarnChanged}
-										disabled={!canWarn || !!api.writeDenied}
-										title={canWarn ? warnDescriptions[filterConfig.warn ?? 'disabled'] : 'Enable "Indicate" first'}
-									/>
-								</div>
-								<div className="contents">
-									<PermissionDeniedTooltip denied={api.writeDenied}>
-										<Button
-											disabled={!!api.writeDenied}
-											size="icon"
-											variant="outline"
-											onClick={deleteFilter}
-											className="h-8 w-8"
-										>
-											<Icons.Minus className="h-4 w-4" />
-										</Button>
-									</PermissionDeniedTooltip>
-								</div>
-							</React.Fragment>
-						)
-					})}
+					/>
+					<ComboBox
+						title="Mode"
+						options={SETTINGS.POOL_FILTER_MODE.options.map(v => ({ value: v, label: modeDescriptions[v] }))}
+						value={poolFilter?.mode ?? 'include'}
+						allowEmpty={false}
+						onSelect={setMode}
+						disabled={!poolFilter || !!api.writeDenied}
+					/>
 				</div>
+				{!poolFilter && (
+					<p className="text-sm text-muted-foreground">
+						No pool filter configured: every layer is in the pool.
+					</p>
+				)}
+				{entity && missingIndicators.length > 0 && (
+					<Alert variant="destructive">
+						<AlertDescription className="flex items-center gap-1">
+							<span>
+								The pool filter must have match and miss indicators configured. Missing: {missingIndicators.join(', ')}.
+							</span>
+							<FilterEntityLink filterId={entity.id} />
+						</AlertDescription>
+					</Alert>
+				)}
 			</div>
 		</div>
 	)
 }
 
-export function GenerationPoolFiltersPanel({ api }: { api: PoolConfigApi }) {
-	const filtersPath = ['filters']
-	const filterConfigs = (api.useValue(filtersPath) as SETTINGS.GenerationFilterConfig[] | null) ?? []
-	const filterEntities = FilterEntityClient.useFilterEntities()
+type SecondaryListKey = 'indicateMatches' | 'indicateMisses' | 'defaultSelectable' | 'warnFor' | 'constrainGeneration'
 
-	const add = (filterId: F.FilterEntityId | null) => {
+type SecondaryListConfig = {
+	key: SecondaryListKey
+	title: string
+	description: string
+	// 'ids' lists hold bare filter ids; 'applied' lists hold { filterId, applyAs }
+	mode: 'ids' | 'applied'
+	emojiFor: 'match' | 'miss' | 'applyAs'
+	applyAsLabels?: { regular: string; inverted: string }
+}
+
+const SECONDARY_LISTS: SecondaryListConfig[] = [
+	{
+		key: 'indicateMatches',
+		title: 'Indicate matches for',
+		description: "Layers matching these filters display the filter's match emoji",
+		mode: 'ids',
+		emojiFor: 'match',
+	},
+	{
+		key: 'indicateMisses',
+		title: 'Indicate misses for',
+		description: "Layers NOT matching these filters display the filter's miss emoji",
+		mode: 'ids',
+		emojiFor: 'miss',
+	},
+	{
+		key: 'defaultSelectable',
+		title: 'Default selectable filters',
+		description: 'Offered during layer selection, pre-applied in the configured state',
+		mode: 'applied',
+		emojiFor: 'applyAs',
+		applyAsLabels: { regular: 'Applied', inverted: 'Applied inverted' },
+	},
+	{
+		key: 'warnFor',
+		title: 'Warn for',
+		description: 'Warn when a layer in the configured state is queued or about to be played',
+		mode: 'applied',
+		emojiFor: 'applyAs',
+		applyAsLabels: { regular: 'Warn on match', inverted: 'Warn on miss' },
+	},
+	{
+		key: 'constrainGeneration',
+		title: 'Constrain generated pool for',
+		description: 'Autogenerated layers are constrained by these filters, on top of the pool filter',
+		mode: 'applied',
+		emojiFor: 'applyAs',
+		applyAsLabels: { regular: 'Must match', inverted: 'Must not match' },
+	},
+]
+
+function SecondaryFilterList({ api, config }: { api: PoolConfigApi; config: SecondaryListConfig }) {
+	const path = [config.key]
+	const rawValue = (api.useValue(path) as (string | SETTINGS.AppliedFilterSetting)[] | null) ?? []
+	const entries = rawValue.map(v => typeof v === 'string' ? { filterId: v, applyAs: undefined } : v)
+	const filterEntities = FilterEntityClient.useFilterEntities()
+	const memberIds = entries.map(e => e.filterId)
+
+	const add = (filterId: string | null) => {
 		if (filterId === null) return
-		const newFilters: SETTINGS.GenerationFilterConfig[] = [...filterConfigs, { filterId, applyAs: 'regular' }]
-		api.set(filtersPath, newFilters)
+		const added = config.mode === 'ids' ? filterId : { filterId, applyAs: 'regular' }
+		api.set(path, [...rawValue, added])
+	}
+	const remove = (filterId: string) => {
+		const current = (api.getValue(path) as (string | SETTINGS.AppliedFilterSetting)[] | null) ?? []
+		api.set(path, current.filter(v => (typeof v === 'string' ? v : v.filterId) !== filterId))
+	}
+	const setApplyAs = (index: number, applyAs?: SETTINGS.AppliedFilterApplyAs) => {
+		if (!applyAs) return
+		api.set([...path, index, 'applyAs'], applyAs)
 	}
 
 	return (
-		<div className="space-y-3">
+		<div className="space-y-2">
 			<div className="flex items-center justify-between">
-				<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Filters</h4>
+				<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')} title={config.description}>
+					{config.title}
+				</h4>
 				<PermissionDeniedTooltip denied={api.writeDenied}>
 					<FilterEntitySelect
-						title="New Pool Filter"
+						title={config.title}
 						filterId={null}
 						onSelect={add}
-						excludedFilterIds={Arr.deref('filterId', filterConfigs)}
+						excludedFilterIds={memberIds}
 						allowEmpty={false}
 						enabled={!api.writeDenied}
 					>
 						<Button disabled={!!api.writeDenied} size="sm" variant="outline">
-							<Icons.Plus className="h-4 w-4 mr-2" />
-							Add Filter
+							<Icons.Plus className="h-4 w-4" />
 						</Button>
 					</FilterEntitySelect>
 				</PermissionDeniedTooltip>
 			</div>
-			<div className="border rounded-md p-3">
-				<div
-					className="grid gap-2 items-center"
-					style={{ gridTemplateColumns: 'minmax(0, auto) max-content max-content' }}
-				>
-					<div className="contents text-sm font-medium text-muted-foreground">
-						<div>Filter</div>
-						<div>Apply As</div>
-						<div></div>
-					</div>
-					{filterConfigs.map((filterConfig, i) => {
-						const filterId = filterConfig.filterId
-						const filterPath = [...filtersPath, i]
-						const filter = filterEntities.get(filterId)
-						if (!filter) return
-						const excludedFilterIds = filterConfigs.flatMap((c) => filterId !== c.filterId ? [c.filterId] : [])
-						const onSelect = (newFilterId: string | null) => {
-							if (newFilterId === null || newFilterId === filterId) return
-							api.set(filterPath, { filterId: newFilterId, applyAs: filterConfig.applyAs })
-						}
-						const deleteFilter = () => {
-							const configs = api.getValue(filtersPath) as SETTINGS.GenerationFilterConfig[]
-							api.set(filtersPath, configs.filter((c) => c.filterId !== filterId))
-						}
-						const handleApplyAsChanged = (newValue: SETTINGS.PoolFilterApplyAs) => {
-							api.set([...filterPath, 'applyAs'], newValue)
-						}
-						return (
-							<React.Fragment key={filterId}>
-								<FilterEntitySelect
-									enabled={!api.writeDenied}
-									title="Pool Filter"
-									filterId={filterId}
-									onSelect={onSelect}
-									allowToggle={false}
+			<div className="border rounded-md p-2 space-y-1">
+				<p className="text-xs text-muted-foreground">{config.description}</p>
+				{entries.map((entry, index) => {
+					const entity = filterEntities.get(entry.filterId)
+					if (!entity) return null
+					const showMiss = config.emojiFor === 'miss' || (config.emojiFor === 'applyAs' && entry.applyAs === 'inverted')
+					const emoji = showMiss ? entity.invertedEmoji : entity.emoji
+					return (
+						<div key={entry.filterId} className="flex items-center gap-2">
+							<span className="flex grow items-center gap-1 text-sm">
+								{emoji ? <EmojiDisplay size="sm" emoji={emoji} /> : <Icons.Filter className="h-4 w-4 text-orange-400" />}
+								<span>{entity.name}</span>
+							</span>
+							{config.mode === 'applied' && (
+								<ComboBox
+									title="Apply as"
+									options={SETTINGS.APPLIED_FILTER_APPLY_AS.options.map(v => ({ value: v, label: config.applyAsLabels![v] }))}
+									value={entry.applyAs ?? 'regular'}
 									allowEmpty={false}
-									excludedFilterIds={excludedFilterIds}
+									onSelect={(v) => setApplyAs(index, v)}
+									disabled={!!api.writeDenied}
 								/>
-								<div className="border border-input rounded-md flex items-center justify-center">
-									<TriStateCheckbox
-										checked={filterConfig.applyAs}
-										onCheckedChange={handleApplyAsChanged}
-										disabled={!!api.writeDenied}
-									/>
-								</div>
-								<div className="contents">
-									<PermissionDeniedTooltip denied={api.writeDenied}>
-										<Button
-											disabled={!!api.writeDenied}
-											size="icon"
-											variant="outline"
-											onClick={deleteFilter}
-											className="h-8 w-8"
-										>
-											<Icons.Minus className="h-4 w-4" />
-										</Button>
-									</PermissionDeniedTooltip>
-								</div>
-							</React.Fragment>
-						)
-					})}
-				</div>
+							)}
+							<Button
+								disabled={!!api.writeDenied}
+								size="icon"
+								variant="outline"
+								onClick={() => remove(entry.filterId)}
+								className="h-7 w-7"
+							>
+								<Icons.Minus className="h-4 w-4" />
+							</Button>
+						</div>
+					)
+				})}
+				{entries.length === 0 && <p className="text-sm text-muted-foreground">No filters</p>}
+			</div>
+		</div>
+	)
+}
+
+export function PoolFiltersPanel({ api }: { api: PoolConfigApi }) {
+	return (
+		<div className="space-y-4">
+			<PoolFilterSection api={api} />
+			<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+				{SECONDARY_LISTS.map((config) => <SecondaryFilterList key={config.key} api={api} config={config} />)}
 			</div>
 		</div>
 	)
@@ -306,12 +242,11 @@ export function GenerationPoolFiltersPanel({ api }: { api: PoolConfigApi }) {
 
 function RepeatRuleRow(props: {
 	index: number
-	poolId: 'mainPool' | 'generationPool'
 	api: PoolConfigApi
 	// signals the panel to remount the (uncontrolled) rows so they re-seed after a shift/programmatic label change
 	onStructural: () => void
 }) {
-	const { index, poolId, api, onStructural } = props
+	const { index, api, onStructural } = props
 	const rulesPath = ['repeatRules']
 	const rulePath = [...rulesPath, index]
 
@@ -341,6 +276,10 @@ function RepeatRuleRow(props: {
 
 	const setWarn = (warn: boolean) => {
 		api.set([...rulePath, 'warn'], warn || undefined)
+	}
+
+	const setConstrainGeneration = (constrainGeneration: boolean) => {
+		api.set([...rulePath, 'constrainGeneration'], constrainGeneration)
 	}
 
 	const deleteRule = () => {
@@ -423,15 +362,20 @@ function RepeatRuleRow(props: {
 					}}
 				/>
 			</div>
-			{poolId === 'mainPool' && (
-				<div className="contents">
-					<Checkbox
-						checked={!!rule.warn}
-						disabled={!!api.writeDenied}
-						onCheckedChange={(checked) => setWarn(checked === true)}
-					/>
-				</div>
-			)}
+			<div className="contents">
+				<Checkbox
+					checked={!!rule.warn}
+					disabled={!!api.writeDenied}
+					onCheckedChange={(checked) => setWarn(checked === true)}
+				/>
+			</div>
+			<div className="contents">
+				<Checkbox
+					checked={rule.constrainGeneration}
+					disabled={!!api.writeDenied}
+					onCheckedChange={(checked) => setConstrainGeneration(checked === true)}
+				/>
+			</div>
 			<div className="contents">
 				<PermissionDeniedTooltip denied={api.writeDenied}>
 					<Button
@@ -451,10 +395,9 @@ function RepeatRuleRow(props: {
 
 export function RepeatRulesPanel(props: {
 	className?: string
-	poolId: 'mainPool' | 'generationPool'
 	api: PoolConfigApi
 }) {
-	const { poolId, api } = props
+	const { api } = props
 	const rulesPath = ['repeatRules']
 	const rulesLength = ((api.useValue(rulesPath) as LQY.RepeatRule[] | null) ?? []).length
 	// remounts the uncontrolled rows after edits that shift or rewrite their seeded values
@@ -463,16 +406,7 @@ export function RepeatRulesPanel(props: {
 
 	const addRule = () => {
 		const rules = (api.getValue(rulesPath) as LQY.RepeatRule[] | null) ?? []
-		api.set(rulesPath, [...rules, { field: 'Map', within: 0, label: 'Map' }])
-	}
-
-	const showWarn = poolId === 'mainPool'
-	const applyMainPoolRepeatRulesSwitchId = React.useId()
-	// generationPool only (reads undefined on the main pool; subscribed unconditionally to keep hook order static)
-	const applyMainPoolRepeatRules = !!api.useValue(['applyMainPoolRepeatRules'])
-	const setApplyMainPoolRepeatRules = (checked: boolean | 'indeterminate') => {
-		if (checked === 'indeterminate') return
-		api.set(['applyMainPoolRepeatRules'], checked)
+		api.set(rulesPath, [...rules, { field: 'Map', within: 0, label: 'Map', constrainGeneration: true }])
 	}
 
 	return (
@@ -484,39 +418,22 @@ export function RepeatRulesPanel(props: {
 					</h4>
 					<ConstraintViolationIcon />
 				</span>
-				<span className="flex items-center gap-2">
-					{poolId === 'generationPool' && (
-						<span className="flex items-center gap-1 text-sm text-muted-foreground">
-							<Label htmlFor={applyMainPoolRepeatRulesSwitchId} className="font-normal cursor-pointer">
-								Also apply main pool repeat rules
-							</Label>
-							<PermissionDeniedTooltip denied={api.writeDenied}>
-								<Switch
-									id={applyMainPoolRepeatRulesSwitchId}
-									disabled={!!api.writeDenied}
-									checked={applyMainPoolRepeatRules}
-									onCheckedChange={setApplyMainPoolRepeatRules}
-								/>
-							</PermissionDeniedTooltip>
-						</span>
-					)}
-					<PermissionDeniedTooltip denied={api.writeDenied}>
-						<Button
-							size="sm"
-							variant="outline"
-							disabled={!!api.writeDenied}
-							onClick={addRule}
-						>
-							<Icons.Plus className="h-4 w-4 mr-2" />
-							Add Repeat Rule
-						</Button>
-					</PermissionDeniedTooltip>
-				</span>
+				<PermissionDeniedTooltip denied={api.writeDenied}>
+					<Button
+						size="sm"
+						variant="outline"
+						disabled={!!api.writeDenied}
+						onClick={addRule}
+					>
+						<Icons.Plus className="h-4 w-4 mr-2" />
+						Add Repeat Rule
+					</Button>
+				</PermissionDeniedTooltip>
 			</div>
 			<div className="border rounded-md p-3">
 				<div
 					className="grid gap-2 items-center"
-					style={{ gridTemplateColumns: showWarn ? '2fr 2fr 60px 4fr max-content max-content' : '2fr 2fr 60px 4fr max-content' }}
+					style={{ gridTemplateColumns: '2fr 2fr 60px 4fr max-content max-content max-content' }}
 				>
 					{/* Header Row */}
 					<div className="contents text-sm font-medium text-muted-foreground">
@@ -524,7 +441,8 @@ export function RepeatRulesPanel(props: {
 						<div>Field</div>
 						<div>Within</div>
 						<div>Target Values</div>
-						{showWarn && <div>Warn</div>}
+						<div>Warn</div>
+						<div title="Autogenerated layers are constrained by this rule">Autogen</div>
 						<div></div>
 					</div>
 					{/* Rules; keyed on resetKey/structuralKey too so uncontrolled inputs re-seed after structural changes/resets */}
@@ -532,7 +450,6 @@ export function RepeatRulesPanel(props: {
 						<RepeatRuleRow
 							key={`${api.resetKey}:${structuralKey}:${index}`}
 							index={index}
-							poolId={poolId}
 							api={api}
 							onStructural={onStructural}
 						/>

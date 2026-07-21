@@ -6,8 +6,11 @@ import * as Obj from '@/lib/object'
 import * as ZusUtils from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
 import type * as F from '@/models/filter.models'
+import type * as L from '@/models/layer'
 import type * as LQY from '@/models/layer-queries.models'
+import * as SETTINGS from '@/models/settings.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import type React from 'react'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
@@ -15,8 +18,12 @@ import * as Zus from 'zustand'
 export type ApplyAs = 'regular' | 'inverted' | 'disabled'
 
 export type AppliedFiltersSlice = {
+	// whether the pool filter currently constrains the query. the pool filter itself comes from settings
+	poolApplied: boolean
 	filterStates: Map<F.FilterEntityId, ApplyAs>
-	indicatedFilters: Map<F.FilterEntityId, LQY.IndicatorState>
+	// when set, extra filters are scoped to this instance instead of the global localStorage-backed set
+	// (e.g. the backburner request dialog, where a one-off pick shouldn't edit the user's saved extras)
+	localExtraFilters?: Set<F.FilterEntityId>
 }
 
 export type Store = {
@@ -28,16 +35,20 @@ export type Predicates = Partial<SquadServerFrame.KeyProp>
 export type Key = FRM.InstanceKeyOfState<Store>
 export type KeyProp = { appliedFilters: Key }
 
-export type Args = FRM.SetupArgs<{ poolDefaultDisabled: boolean }, Store>
+export type Context = 'add' | 'edit' | 'generate'
+
+export type Args = FRM.SetupArgs<{ context: Context; editedLayerId?: L.LayerId; extraFiltersScope?: 'global' | 'local' }, Store>
 
 export function initAppliedFiltersStore(
 	args: Args,
 ) {
 	const set = ZusUtils.toPartialSetter(args.set, 'appliedFilters')
+	const localScope = args.input.extraFiltersScope === 'local'
 	set(
 		{
+			poolApplied: true,
 			filterStates: new Map(),
-			indicatedFilters: new Map(),
+			localExtraFilters: localScope ? new Set<F.FilterEntityId>() : undefined,
 		} satisfies AppliedFiltersSlice,
 	)
 
@@ -46,59 +57,76 @@ export function initAppliedFiltersStore(
 	void (async () => {
 		await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
 		if (args.sub.closed) return
-		set(getInitialFilterStates(args.input.poolDefaultDisabled, args.get().squadServer))
+		const squadServer = args.get().squadServer
+		set(getInitialFilterStates(args.input.context, squadServer, localScope))
+
+		if (args.input.context !== 'edit' || !args.input.editedLayerId || !squadServer) return
+		const settings = SquadServerFrame.Sel.settings(ZusUtils.getState(squadServer))
+		const membershipConstraints = SETTINGS.getPoolMembershipConstraints(settings)
+		if (membershipConstraints.length === 0) return
+		// only apply the pool filter once we know the edited layer is in the pool; otherwise the layer being edited
+		// would be filtered out of its own dialog
+		const outOfPool = await LayerQueriesClient.fetchLayersOutOfPool({
+			layerIds: [args.input.editedLayerId],
+			constraints: membershipConstraints,
+		})
+		if (args.sub.closed) return
+		set({ poolApplied: outOfPool !== null && outOfPool.length === 0 })
 	})()
 
-	const unsub = ExtraFiltersStore.subscribe(extraFiltersState => {
-		// only extra filters are owned by this store -- the pool's configured filters keep their state
-		const poolFilterIds = getPoolFilterIds(args.get().squadServer)
-		set(state => ({
-			filterStates: new Map(
-				Gen.filter(state.filterStates, ([id]) => extraFiltersState.extraFilters.has(id) || poolFilterIds.has(id)),
-			),
-		}))
-	})
+	if (!localScope) {
+		const unsub = ExtraFiltersStore.subscribe(extraFiltersState => {
+			// only extra filters are owned by this store -- the pool's configured filters keep their state
+			const poolFilterIds = getDefaultSelectableIds(args.get().squadServer)
+			set(state => ({
+				filterStates: new Map(
+					Gen.filter(state.filterStates, ([id]) => extraFiltersState.extraFilters.has(id) || poolFilterIds.has(id)),
+				),
+			}))
+		})
 
-	args.sub.add(ZusUtils.toRxSub(unsub))
+		args.sub.add(ZusUtils.toRxSub(unsub))
+	}
 }
 
-function getPoolFilterIds(squadServer: SquadServerFrame.Key | undefined) {
+function getDefaultSelectableIds(squadServer: SquadServerFrame.Key | undefined) {
 	if (!squadServer) return new Set<F.FilterEntityId>()
-	const poolSettings = SquadServerFrame.Sel.settings(ZusUtils.getState(squadServer)).queue.mainPool.filters
-	return new Set(poolSettings.filter(c => c.defaultApplyDuringLayerSelection !== 'hidden').map(c => c.filterId))
+	const pool = SquadServerFrame.Sel.settings(ZusUtils.getState(squadServer)).queue.mainPool
+	return new Set(pool.defaultSelectable.map(c => c.filterId))
 }
 
-function getInitialFilterStates(poolDefaultDisabled: boolean, squadServer: SquadServerFrame.Key | undefined) {
+function getInitialFilterStates(context: Context, squadServer: SquadServerFrame.Key | undefined, localScope = false) {
 	const filterStates: AppliedFiltersSlice['filterStates'] = new Map()
-	const indicatedFilters: AppliedFiltersSlice['indicatedFilters'] = new Map()
-	const extraFilters = ExtraFiltersStore.getState().extraFilters
+	// a locally-scoped instance starts with no extras rather than pulling in the user's saved set
+	const extraFilters = localScope ? new Set<F.FilterEntityId>() : ExtraFiltersStore.getState().extraFilters
 	for (const filterid of extraFilters) {
 		filterStates.set(filterid, 'disabled')
 	}
-	if (!poolDefaultDisabled && squadServer) {
-		const poolSettings = SquadServerFrame.Sel.settings(ZusUtils.getState(squadServer)).queue.mainPool.filters
-		for (const { filterId, defaultApplyDuringLayerSelection: applyAs, showIndicator } of poolSettings) {
-			if (applyAs === 'hidden') continue
-			filterStates.set(filterId, applyAs ?? 'disabled')
-			indicatedFilters.set(filterId, showIndicator ?? 'disabled')
+	let poolApplied = true
+	if (squadServer) {
+		const pool = SquadServerFrame.Sel.settings(ZusUtils.getState(squadServer)).queue.mainPool
+		for (const { filterId, applyAs } of pool.defaultSelectable) {
+			// when editing an already saved layer, secondary filters start off so the current layer stays visible
+			filterStates.set(filterId, context === 'edit' ? 'disabled' : applyAs)
 		}
+		if (context === 'generate') {
+			// generation is constrained by these server-side regardless; reflecting them here keeps the dialog honest
+			for (const { filterId, applyAs } of pool.constrainGeneration) {
+				filterStates.set(filterId, applyAs)
+			}
+		}
+		// 'edit' resolves pool membership asynchronously (see initAppliedFiltersStore); until then leave the pool off
+		if (context === 'edit' && pool.poolFilter) poolApplied = false
 	}
 
 	const filterEntities = FilterEntityClient.filterEntities
 	for (const filterId of [...filterStates.keys()]) {
-		const filterEntity = filterEntities.get(filterId)
-		if (!filterEntity) {
+		if (!filterEntities.get(filterId)) {
 			filterStates.delete(filterId)
 		}
 	}
-	for (const filterId of [...indicatedFilters.keys()]) {
-		const filterEntity = filterEntities.get(filterId)
-		if (!filterEntity) {
-			indicatedFilters.delete(filterId)
-		}
-	}
 
-	return { filterStates, indicatedFilters }
+	return { filterStates, poolApplied }
 }
 
 // global, localStorage-backed set of extra filters the user has pulled into the applied-filters panel
@@ -125,12 +153,40 @@ export const ExtraFiltersStore = Zus.createStore<LQY.ExtraQueryFiltersStore>((se
 })
 
 export namespace Sel {
+	export function poolFilterSetting(store: Store): SETTINGS.PoolFilterSetting | null {
+		if (!store.squadServer) return null
+		return SquadServerFrame.Sel.settings(ZusUtils.getState(store.squadServer)).queue.mainPool.poolFilter
+	}
+
+	// the extras set this instance renders and indicates: its own when locally scoped, else the global one
+	export function extraFilters(store: Store): Set<F.FilterEntityId> {
+		return store.appliedFilters.localExtraFilters ?? ExtraFiltersStore.getState().extraFilters
+	}
+
 	export function constraints(store: Store): LQY.Constraint[] {
 		const constraints: LQY.Constraint[] = []
+		const filterEntities = FilterEntityClient.filterEntities
+		const settings = store.squadServer ? SquadServerFrame.Sel.settings(ZusUtils.getState(store.squadServer)) : undefined
+
+		if (settings) {
+			const poolFilter = settings.queue.mainPool.poolFilter
+			if (poolFilter && filterEntities.has(poolFilter.filterId)) {
+				constraints.push(CB.poolFilter(poolFilter.filterId, poolFilter.mode, { applied: store.appliedFilters.poolApplied }))
+			}
+			// selection contexts indicate but never warn
+			for (const constraint of SETTINGS.getIndicationAndWarnConstraints(settings, { includeWarns: false })) {
+				if (constraint.type === 'filter-entity' && !filterEntities.has(constraint.filterId)) continue
+				constraints.push(constraint)
+			}
+		}
+
+		const extras = extraFilters(store)
 		for (const [filterId, applState] of store.appliedFilters.filterStates.entries()) {
+			if (!filterEntities.has(filterId)) continue
 			constraints.push(CB.filterEntity('applied-filter:' + filterId, filterId, {
 				filterApplState: applState,
-				showIndicator: store.appliedFilters.indicatedFilters.get(filterId) ?? 'both',
+				// configured filters get their indication from the indicate lists; extras always indicate
+				showIndicator: extras.has(filterId) ? 'both' : 'disabled',
 			}))
 		}
 
@@ -139,6 +195,10 @@ export namespace Sel {
 }
 
 export namespace Actions {
+	export function setPoolApplied(stores: KeyProp, poolApplied: boolean) {
+		ZusUtils.toPartialStore(stores.appliedFilters, 'appliedFilters').setState({ poolApplied })
+	}
+
 	export function setAppliedFilterState(stores: KeyProp, filterId: F.FilterEntityId, applyAs: ApplyAs) {
 		ZusUtils.toPartialStore(stores.appliedFilters, 'appliedFilters').setState(state => {
 			const filterStates = new Map(state.filterStates)
@@ -153,15 +213,34 @@ export namespace Actions {
 			for (const filterId of filterStates.keys()) {
 				filterStates.set(filterId, 'disabled')
 			}
-			return { filterStates }
+			return { filterStates, poolApplied: false }
 		})
 	}
 
 	export function selectExtraFilters(stores: KeyProp, update: React.SetStateAction<F.FilterEntityId[]>) {
-		let filterIds = typeof update === 'function' ? update(Array.from(ExtraFiltersStore.getState().extraFilters)) : update
-		const filterConfig = ZusUtils.getState(ZusUtils.getState(stores.appliedFilters).squadServer)?.settings.saved.queue.mainPool.filters
-		if (filterConfig) {
-			filterIds = filterIds.filter(id => !filterConfig.some(filterConfig => filterConfig.filterId === id))
+		const state = ZusUtils.getState(stores.appliedFilters)
+		const current = state.appliedFilters.localExtraFilters ?? ExtraFiltersStore.getState().extraFilters
+		let filterIds = typeof update === 'function' ? update(Array.from(current)) : update
+		const squadServer = state.squadServer
+		if (squadServer) {
+			const pool = SquadServerFrame.Sel.settings(ZusUtils.getState(squadServer)).queue.mainPool
+			const configuredIds = new Set([
+				...(pool.poolFilter ? [pool.poolFilter.filterId] : []),
+				...pool.defaultSelectable.map(c => c.filterId),
+			])
+			filterIds = filterIds.filter(id => !configuredIds.has(id))
+		}
+		if (state.appliedFilters.localExtraFilters) {
+			const localExtraFilters = new Set(filterIds)
+			// mirror the global-scope subscription: dropping an extra drops its applied state too
+			const poolFilterIds = getDefaultSelectableIds(squadServer)
+			ZusUtils.toPartialStore(stores.appliedFilters, 'appliedFilters').setState(slice => ({
+				localExtraFilters,
+				filterStates: new Map(
+					Gen.filter(slice.filterStates, ([id]) => localExtraFilters.has(id) || poolFilterIds.has(id)),
+				),
+			}))
+			return
 		}
 		ExtraFiltersStore.setState({
 			extraFilters: new Set(filterIds),

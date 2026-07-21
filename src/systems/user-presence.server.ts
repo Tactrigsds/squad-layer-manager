@@ -16,10 +16,14 @@ import * as WSSessionSys from '@/systems/ws-session.server'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
 
+// the two shared drafts a client can hold an editing session on
+export type DraftScope = 'queue' | 'layer-requests'
+
 export type UserPresenceContext = {
 	userPresence: {
 		session: ODSM.Server.Session<UP.Op, UP.State>
 		op$: IsolatedSubject<{ ops: UP.Op[]; sourceWsClientId?: string }>
+		abandoned$: IsolatedSubject<{ serverId: string; scope: DraftScope }>
 	}
 }
 
@@ -105,10 +109,36 @@ export const orpcRouter = {
 		}),
 }
 
+const DRAFT_SCOPES = ['queue', 'layer-requests'] as const
+
+// clients (not users) holding an editing session, counted per server for each shared draft
+type EditorCounts = Record<DraftScope, Map<string, number>>
+function countEditingClients(state: UP.State): EditorCounts {
+	const counts: EditorCounts = { 'queue': new Map(), 'layer-requests': new Map() }
+	for (const client of state.presence.values()) {
+		const activity = client.activityState
+		if (!activity) continue
+		const serverId = activity.opts.serverId
+		const bump = (scope: DraftScope) => counts[scope].set(serverId, (counts[scope].get(serverId) ?? 0) + 1)
+		if (UP.Trans.editingQueue(serverId).match(activity)) bump('queue')
+		if (UP.Trans.editingLayerRequests(serverId).match(activity)) bump('layer-requests')
+	}
+	return counts
+}
+
+// a save or an explicit "finish editing" ends the session on purpose, and commits (or has nothing to commit)
+// alongside it. Only an unannounced exit -- navigating off, disconnecting, timing out -- abandons the draft.
+function endsEditingDeliberately(op: UP.Op) {
+	if (op.code === 'sll:end-all-editing' || op.code === 'layer-requests:end-all-editing') return true
+	return op.code === 'update-activity'
+		&& (op.update.code === 'clear-editing-queue' || op.update.code === 'clear-editing-layer-requests')
+}
+
 const dispatchOp = C.spanOp(
 	'dispatchOp',
 	{ module, extraText: (ops) => ops.map(o => o.code + (o.code === 'update-activity' ? ` (${o.update.code})` : '')).join(',') },
 	async (ops: UP.Op[], opts?: { sourceWsClientId?: string }) => {
+		const editorsBefore = countEditingClients(globalUserPresence.session.state)
 		const applied = ODSM.Server.applyOps(globalUserPresence.session, ops, UP.reducer)
 		globalUserPresence.session = applied.session
 		globalUserPresence.op$.next({ ops, sourceWsClientId: opts?.sourceWsClientId })
@@ -116,6 +146,16 @@ const dispatchOp = C.spanOp(
 			const rejection = applied.error.data as UP.Rejection
 			if (rejection.code === 'op-error') log.error(rejection.error, 'presence op errored')
 			return
+		}
+		if (!ops.some(endsEditingDeliberately)) {
+			const editorsAfter = countEditingClients(globalUserPresence.session.state)
+			for (const scope of DRAFT_SCOPES) {
+				// only a server that had an editor can lose its last one, so iterating `before` covers it
+				for (const serverId of editorsBefore[scope].keys()) {
+					if ((editorsAfter[scope].get(serverId) ?? 0) > 0) continue
+					globalUserPresence.abandoned$.next({ serverId, scope })
+				}
+			}
 		}
 		for (const se of applied.sideEffects) {
 			// op-outcome is currently the only side effect
@@ -168,9 +208,25 @@ export function getQueueEditors(serverId: string, exclude?: USR.UserId): USR.Use
 	return [...editors]
 }
 
+// the shared drafts on this server whose last editing client went away without finishing. Whoever owns the
+// draft is expected to discard it: nobody is left to commit it, and the next editor would inherit edits they
+// never made.
+export function editingAbandoned$(serverId: string): Rx.Observable<DraftScope> {
+	return globalUserPresence.abandoned$.pipe(Rx.filter(e => e.serverId === serverId), Rx.map(e => e.scope))
+}
+
 export function dispatchEndAllTeamswapEditing(serverId: string) {
 	dispatchOp([{
 		code: 'teamswaps:end-all-editing',
+		opId: UP.createOpId(),
+		time: Date.now(),
+		serverId,
+	}]).catch((error) => log.error(error))
+}
+
+export function dispatchEndAllLayerRequestEditing(serverId: string) {
+	dispatchOp([{
+		code: 'layer-requests:end-all-editing',
 		opId: UP.createOpId(),
 		time: Date.now(),
 		serverId,
@@ -192,8 +248,12 @@ export function setup() {
 	globalUserPresence = {
 		session: ODSM.Server.initSession(UP.initState()),
 		op$: new IsolatedSubject<{ ops: UP.Op[]; sourceWsClientId?: string }>(),
+		abandoned$: new IsolatedSubject<{ serverId: string; scope: DraftScope }>(),
 	}
-	CleanupSys.register(() => globalUserPresence.op$.complete())
+	CleanupSys.register(() => {
+		globalUserPresence.op$.complete()
+		globalUserPresence.abandoned$.complete()
+	})
 
 	// keep the presence state's notion of enabled servers in sync with the registry; disabling/removing a server
 	// dispatches an op that both updates the set and collapses any presence sitting on that server to null

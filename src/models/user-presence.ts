@@ -42,6 +42,7 @@ export const [ACTIVITIES, ACTIVITIES_FLATTENED] = (() => {
 			leaf('PASTE_ROTATION'),
 		]),
 		leaf('EDITING_TEAMSWAPS'),
+		leaf('EDITING_LAYER_REQUESTS'),
 		variant('ON_PRIMARY_PANEL', [
 			branch('VIEWING_QUEUE', [
 				branch('VIEWING_QUEUE_SETTINGS', [leaf('CHANGING_QUEUE_SETTINGS')]),
@@ -79,6 +80,7 @@ export const [ACTIVITIES, ACTIVITIES_FLATTENED] = (() => {
 		PASTE_ROTATION: editingQueue.child.PASTE_ROTATION,
 
 		EDITING_TEAMSWAPS: ACTIVITIES.child.EDITING_TEAMSWAPS,
+		EDITING_LAYER_REQUESTS: ACTIVITIES.child.EDITING_LAYER_REQUESTS,
 
 		ON_PRIMARY_PANEL: onPrimaryPanel,
 		VIEWING_QUEUE: viewingQueue,
@@ -174,6 +176,12 @@ export const OpSchema = z.discriminatedUnion('code', [
 	z.object({
 		...serverOpBase,
 		code: z.literal('teamswaps:end-all-editing'),
+		serverId: z.string(),
+	}),
+
+	z.object({
+		...serverOpBase,
+		code: z.literal('layer-requests:end-all-editing'),
 		serverId: z.string(),
 	}),
 
@@ -341,6 +349,16 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 					})
 				}
 				success = true
+			} else if (op.code === 'layer-requests:end-all-editing') {
+				// the backburner draft is shared, so resolving it (save, reset) resolves it for every client on that server
+				for (const [clientId, clientState] of state.presence.entries()) {
+					if (clientState.activityState?.opts.serverId !== op.serverId) continue
+					state.presence.set(clientId, {
+						...clientState,
+						activityState: clearLayerRequestsEditingActivity(clientState.activityState),
+					})
+				}
+				success = true
 			} else if (op.code === 'set-enabled-servers') {
 				state.enabledServers = new Set(op.serverIds)
 				// any user sitting on a server that just lost its slice is no longer meaningfully present there
@@ -468,7 +486,8 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 				// clients (tabs / reconnects) too, so all of their sessions leave editing together
 				if (
 					op.code === 'update-activity'
-					&& (op.update.code === 'clear-editing-queue' || op.update.code === 'clear-editing-teamswaps')
+					&& (op.update.code === 'clear-editing-queue' || op.update.code === 'clear-editing-teamswaps'
+						|| op.update.code === 'clear-editing-layer-requests')
 				) {
 					for (const [otherClientId, otherState] of [...state.presence]) {
 						if (otherClientId === op.clientId || otherState.userId !== op.userId) continue
@@ -534,6 +553,8 @@ export const ActivityUpdateSchema = z.discriminatedUnion('code', [
 	z.object({ code: z.literal('clear-primary-panel') }),
 	z.object({ code: z.literal('set-editing-teamswaps') }),
 	z.object({ code: z.literal('clear-editing-teamswaps') }),
+	z.object({ code: z.literal('set-editing-layer-requests') }),
+	z.object({ code: z.literal('clear-editing-layer-requests') }),
 	z.object({ code: z.literal('set-player-dialogue'), dialog: PLAYER_DIALOGUE_ID }),
 	z.object({ code: z.literal('clear-player-dialogue') }),
 	z.object({ code: z.literal('set-editing-queue'), variant: z.any() }),
@@ -601,6 +622,15 @@ export namespace Trans {
 		},
 		create: (): ActivityUpdate => ({ code: 'set-editing-teamswaps' }),
 		destroy: (): ActivityUpdate => ({ code: 'clear-editing-teamswaps' }),
+	} satisfies ActivityTransitions)
+
+	export const editingLayerRequests = (serverId: string) => ({
+		match: (root: RootActivity | undefined | null) => {
+			if (serverId && !onDashboard(serverId).match(root)) return null
+			return root?.child.EDITING_LAYER_REQUESTS ?? null
+		},
+		create: (): ActivityUpdate => ({ code: 'set-editing-layer-requests' }),
+		destroy: (): ActivityUpdate => ({ code: 'clear-editing-layer-requests' }),
 	} satisfies ActivityTransitions)
 
 	export const editingQueue = (serverId: string) => ({
@@ -686,6 +716,14 @@ export function applyActivityUpdate(_activity: RootActivity | null, update: Acti
 		case 'clear-editing-teamswaps':
 			return Im.produce(activity, draft => {
 				delete draft.child.EDITING_TEAMSWAPS
+			})
+		case 'set-editing-layer-requests':
+			return Im.produce(activity, draft => {
+				draft.child.EDITING_LAYER_REQUESTS = ST.Match.leaf('EDITING_LAYER_REQUESTS', {})
+			})
+		case 'clear-editing-layer-requests':
+			return Im.produce(activity, draft => {
+				delete draft.child.EDITING_LAYER_REQUESTS
 			})
 		case 'set-player-dialogue': {
 			const withTeams = Trans.viewingTeams(serverId).match(activity)
@@ -788,6 +826,9 @@ export function activityToUpdates(activity: RootActivity): ActivityUpdate[] {
 
 	if (activity.child.EDITING_QUEUE) {
 		updates.push({ code: 'set-editing-queue', variant: activity.child.EDITING_QUEUE.chosen })
+	}
+	if (activity.child.EDITING_LAYER_REQUESTS) {
+		updates.push({ code: 'set-editing-layer-requests' })
 	}
 	if (activity.child.EDITING_TEAMSWAPS) {
 		updates.push({ code: 'set-editing-teamswaps' })
@@ -899,6 +940,13 @@ export function clearTeamswapEditingActivity(activity: RootActivity | null | und
 	})
 }
 
+export function clearLayerRequestsEditingActivity(activity: RootActivity | null | undefined): RootActivity | null {
+	if (!activity) return null
+	return Im.produce(activity, draft => {
+		delete draft.child.EDITING_LAYER_REQUESTS
+	})
+}
+
 export function* iterActivities(state: PresenceState) {
 	for (const [wsClientId, presence] of state.entries()) {
 		if (!presence.activityState) continue
@@ -956,6 +1004,7 @@ const fmt = <K extends keyof typeof ACTIVITIES_FLATTENED>(
 // lower index -> higher priority
 export const ACTIVITY_MESSAGE_FORMATS: ActivityMessageFormat[] = [
 	fmt('EDITING_TEAMSWAPS', 'Editing Scheduled Teamswaps'),
+	fmt('EDITING_LAYER_REQUESTS', 'Editing Layer Requests'),
 	fmt('SWITCHING_PLAYERS', 'Switching players Now'),
 	fmt('WARNING_PLAYERS', 'Warning players'),
 	fmt('REMOVING_FROM_SQUAD', 'Removing from squad'),
@@ -1028,6 +1077,13 @@ export const PRESENCE_EVENT_TEXT = {
 	'cleared-teamswaps': 'Cleared teamswaps',
 	'discarded-teamswap-edits': 'Discarded teamswap edits',
 	'swapped-players-now': 'Swapped players',
+	'added-layer-request': 'Added a layer request',
+	'edited-layer-request': 'Edited a layer request',
+	'removed-layer-request': 'Removed a layer request',
+	'moved-layer-request': 'Moved a layer request',
+	'combined-layer-requests': 'Combined layer requests',
+	'saved-layer-requests': 'Saved layer requests',
+	'discarded-layer-request-edits': 'Discarded layer request edits',
 } as const satisfies Record<string, string>
 export type PresenceEventAction = keyof typeof PRESENCE_EVENT_TEXT
 export type PresenceEvent = { userId: USR.UserId; action: PresenceEventAction }

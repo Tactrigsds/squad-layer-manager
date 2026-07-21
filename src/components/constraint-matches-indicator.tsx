@@ -46,8 +46,10 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 	}
 
 	const indicatorIcons: React.ReactNode[] = []
-	const renderedRepeats: Extract<LQY.ViewableConstraint, { type: 'do-not-repeat' }>[] = []
+	const renderedRepeats: Extract<LQY.Constraint, { type: 'do-not-repeat' }>[] = []
 	const renderedFilters: [string, React.ReactNode][] = []
+	// the same filter can be reached by several constraints (pool filter, indicate lists, applied extras)
+	const renderedFilterIds = new Set<string>()
 	for (const constraint of props.queriedConstraints) {
 		if (constraint.type === 'filter-anon' || constraint.type === 'filter-menu-items') continue
 		const matched = props.matchDescriptors?.some(desc => {
@@ -71,6 +73,7 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 			continue
 		}
 		if (constraint.type === 'filter-entity') {
+			if (renderedFilterIds.has(constraint.filterId)) continue
 			const filter = filters.get(constraint.filterId)
 			if (!filter) {
 				console.warn(`Filter not found for constraint ${constraint.id}`)
@@ -86,6 +89,7 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 				emoji = filter.invertedEmoji
 				alertMessage = filter.invertedAlertMessage
 			}
+			renderedFilterIds.add(constraint.filterId)
 			if (emoji) {
 				indicatorIcons.push(
 					<EmojiDisplay key={constraint.id} showTooltip={false} emoji={emoji} size={iconSize} />,
@@ -188,7 +192,7 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 }
 
 export type RepeatViolationDisplayProps = {
-	constraint: Extract<LQY.ViewableConstraint, { type: 'do-not-repeat' }>
+	constraint: Extract<LQY.Constraint, { type: 'do-not-repeat' }>
 	showIcon: boolean
 	layerId?: string
 	matchDescriptors?: LQY.MatchDescriptor[]

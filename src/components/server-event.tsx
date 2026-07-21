@@ -756,6 +756,21 @@ function AppEventEntry(
 		)
 	}
 	if (
+		appEvent.type === 'LAYER_REQUEST_ADDED' || appEvent.type === 'LAYER_REQUEST_REMOVED'
+		|| appEvent.type === 'LAYER_REQUEST_CONSUMED'
+	) {
+		const icon = appEvent.type === 'LAYER_REQUEST_CONSUMED'
+			? <Icons.CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+			: appEvent.type === 'LAYER_REQUEST_ADDED'
+			? <Icons.ListPlus className="h-4 w-4 text-blue-400 shrink-0" />
+			: <Icons.ListX className="h-4 w-4 text-orange-500 shrink-0" />
+		return (
+			<EventLine time={event.time} icon={icon}>
+				{actorLabel} {AppEvents.describeAppEvent(appEvent)}
+			</EventLine>
+		)
+	}
+	if (
 		appEvent.type === 'SETTINGS_UPDATED' || appEvent.type === 'SERVER_REGISTRY_CHANGED'
 		|| appEvent.type === 'FILTER_CHANGED' || appEvent.type === 'FILTER_CONTRIBUTOR_CHANGED'
 		|| appEvent.type === 'USER_ACCOUNT_CHANGED' || appEvent.type === 'PLAYER_FLAGS_UPDATED'

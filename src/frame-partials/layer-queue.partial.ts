@@ -4,6 +4,8 @@ import * as ODSM from '@/lib/odsm'
 import * as RSel from '@/lib/reselect'
 import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
+import * as BB from '@/models/backburner.models'
+import type * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
 
 import { toast } from '@/lib/toast'
@@ -11,6 +13,7 @@ import * as SLL from '@/models/shared-layer-list'
 import type * as UP from '@/models/user-presence'
 import * as RPC from '@/orpc.client'
 import * as RbacClient from '@/systems/rbac.client'
+import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 import * as Rx from 'rxjs'
 
@@ -28,7 +31,8 @@ export type State = {
 	writeIncomingOperations(ops: SLL.Operation[]): void
 
 	syncedOp$: Rx.Subject<SLL.Operation>
-	// user-attributed queue ops that landed on the synced timeline, for transient presence-panel event text
+	// user-attributed queue + layer-request ops that landed on the synced timeline, for transient
+	// presence-panel event text (both surface on the queue tab's presence panel)
 	presenceEvent$: Rx.Subject<UP.PresenceEvent>
 	committing: boolean
 
@@ -36,6 +40,9 @@ export type State = {
 	layerList: LL.List
 	mutations: ItemMut.Mutations
 	isModified: boolean
+	backburner: BB.BackburnerItem[]
+	savedBackburner: BB.BackburnerItem[]
+	backburnerModified: boolean
 }
 
 export type Args = FRM.SetupArgs<{ serverId: string }, Store, Store>
@@ -50,6 +57,11 @@ export function initLayerQueue(args: Args) {
 	const onSideEffect = (se: SLL.SideEffect) => {
 		if (se.code !== 'op-outcome' || !se.success) return
 		const op = se.op
+		if (op.op === 'discard-abandoned-queue-edits' || op.op === 'discard-abandoned-request-edits') {
+			const draft = op.op === 'discard-abandoned-queue-edits' ? 'queue' : 'layer request'
+			toast.info(`Unsaved ${draft} edits were discarded: nobody was left editing them`)
+			return
+		}
 		if (!('userId' in op)) return
 		switch (op.op) {
 			case 'add':
@@ -73,6 +85,27 @@ export function initLayerQueue(args: Args) {
 			case 'reset-to-saved':
 				presenceEvent$.next({ userId: op.userId, action: 'discarded-queue-edits' })
 				break
+			case 'backburner-add':
+				presenceEvent$.next({ userId: op.userId, action: 'added-layer-request' })
+				break
+			case 'backburner-update':
+				presenceEvent$.next({ userId: op.userId, action: 'edited-layer-request' })
+				break
+			case 'backburner-remove':
+				presenceEvent$.next({ userId: op.userId, action: 'removed-layer-request' })
+				break
+			case 'backburner-reorder':
+				presenceEvent$.next({ userId: op.userId, action: 'moved-layer-request' })
+				break
+			case 'backburner-combine':
+				presenceEvent$.next({ userId: op.userId, action: 'combined-layer-requests' })
+				break
+			case 'backburner-save':
+				presenceEvent$.next({ userId: op.userId, action: 'saved-layer-requests' })
+				break
+			case 'backburner-reset':
+				presenceEvent$.next({ userId: op.userId, action: 'discarded-layer-request-edits' })
+				break
 		}
 	}
 	const initRbSession = ODSM.Client.initSession<SLL.Operation, SLL.State>(SLL.createNewState())
@@ -90,6 +123,9 @@ export function initLayerQueue(args: Args) {
 			mutations: initRbSession.localState.mutations,
 			committing: false,
 			isModified: false,
+			backburner: initRbSession.localState.backburner,
+			savedBackburner: initRbSession.localState.savedBackburner,
+			backburnerModified: false,
 
 			handleServerUpdate(update) {
 				switch (update.code) {
@@ -142,6 +178,11 @@ export function initLayerQueue(args: Args) {
 			if (localState.saving !== queue.committing) updates.committing = localState.saving
 			if (localState.list !== queue.layerList) updates.layerList = localState.list
 			if (localState.mutations !== queue.mutations) updates.mutations = localState.mutations
+			if (localState.backburner !== queue.backburner) updates.backburner = localState.backburner
+			if (localState.savedBackburner !== queue.savedBackburner) updates.savedBackburner = localState.savedBackburner
+			const backburnerModified = SLL.hasBackburnerMutations(localState)
+			if (backburnerModified !== queue.backburnerModified) updates.backburnerModified = backburnerModified
+			// the backburner has its own editing session; queue modified-ness covers only the queue draft
 			const hasMutations = SLL.hasMutations(localState)
 			if (hasMutations !== queue.isModified) updates.isModified = hasMutations
 			if (Object.keys(updates).length > 0) set(updates)
@@ -245,14 +286,42 @@ export namespace Sel {
 	export function committing(store: Store) {
 		return store.queue.committing
 	}
+	export function backburner(store: Store) {
+		return store.queue.backburner
+	}
+	export function backburnerModified(store: Store) {
+		return store.queue.backburnerModified
+	}
+	export function savedBackburner(store: Store) {
+		return store.queue.savedBackburner
+	}
+	export const backburnerItem = RSel.memoizeFactory((itemId: string) =>
+		RSel.createDeepSelector([backburner], (items): BB.BackburnerItem | undefined => items.find(item => item.itemId === itemId))
+	)
+	const backburnerMutations = RSel.createDeepSelector(
+		[backburner, savedBackburner],
+		(draft, saved): ItemMut.Mutations => BB.diffMutations(draft, saved),
+	)
+	export const backburnerItemMutation = RSel.memoizeFactory((itemId: string) =>
+		RSel.createDeepSelector(
+			[backburnerMutations],
+			(mutations): ItemMut.ItemMutationState => ItemMut.toItemMutationState(mutations, itemId),
+		)
+	)
 }
+
+// these ops run as an editing session is being finished, so they must not claim a new one
+const SESSION_CLOSING_OPS = new Set<SLL.OpCode>(['save', 'reset-to-saved', 'backburner-save', 'backburner-reset'])
 
 export namespace Actions {
 	// try to call this such that react will batch the rerenders
 	export async function dispatch(stores: KeyProp, newOp: SLL.NewClientOperation) {
 		const slice = ZusUtils.toPartialStore(stores.queue, 'queue')
 		const userId = UsersClient.loggedInUserId!
-		const editWindowSeqId = slice.getState().rbSession.localState.editWindowSeqId
+		const localState = slice.getState().rbSession.localState
+		// backburner ops belong to the backburner's own editing session, gated by its own window counter
+		const isBackburnerOp = newOp.op.startsWith('backburner-')
+		const editWindowSeqId = isBackburnerOp ? localState.backburnerEditWindowSeqId : localState.editWindowSeqId
 		const baseProps = { opId: SLL.createOpId(), userId, editWindowSeqId }
 
 		let op: SLL.Operation
@@ -287,12 +356,19 @@ export namespace Actions {
 		}
 		slice.setState({ rbSession: outgoing.session })
 
-		const res = await RPC.orpc.layerQueue.dispatchOp.call({ serverId: slice.getState().serverId, op })
+		const serverId = slice.getState().serverId
+		// a draft edit registers the user as an editor, so no one has to press "Start Editing" first
+		if (!SESSION_CLOSING_OPS.has(op.op)) {
+			if (isBackburnerOp) UPClient.Actions.ensureEditingLayerRequests(serverId)
+			else UPClient.Actions.ensureEditingQueue(serverId)
+		}
+
+		const res = await RPC.orpc.layerQueue.dispatchOp.call({ serverId, op })
 		if (res.code === 'err:permission-denied') {
 			RbacClient.handlePermissionDenied(res)
 			return
 		} else if (res.code !== 'ok') {
-			toast.error(res.msg)
+			toast.error('msg' in res ? res.msg : res.code)
 		}
 	}
 
@@ -305,5 +381,49 @@ export namespace Actions {
 		if (!LL.isVoteItem(itemState.item)) return
 		const index: LL.ItemIndex = { innerIndex: itemState.item.choices.length, outerIndex: itemState.index.outerIndex }
 		void dispatch(stores, { op: 'add', index, items: choices })
+	}
+
+	export function addBackburnerItem(stores: KeyProp, args: { filter: F.FilterNode }) {
+		const item: BB.BackburnerItem = {
+			itemId: BB.createItemId(),
+			filter: args.filter,
+			source: { discordId: UsersClient.loggedInUserId! },
+			createdAt: Date.now(),
+		}
+		void dispatch(stores, { op: 'backburner-add', item })
+	}
+
+	export function updateBackburnerItem(stores: KeyProp, itemId: string, args: { filter: F.FilterNode }) {
+		void dispatch(stores, { op: 'backburner-update', itemId, filter: args.filter })
+	}
+
+	export function removeBackburnerItems(stores: KeyProp, itemIds: string[]) {
+		void dispatch(stores, { op: 'backburner-remove', itemIds })
+	}
+
+	export function reorderBackburnerItem(stores: KeyProp, itemId: string, newIndex: number) {
+		void dispatch(stores, { op: 'backburner-reorder', itemId, newIndex })
+	}
+
+	export function saveBackburner(stores: KeyProp, opts?: { force?: boolean }) {
+		void dispatch(stores, { op: 'backburner-save', force: opts?.force })
+	}
+
+	export function resetBackburner(stores: KeyProp) {
+		void dispatch(stores, { op: 'backburner-reset' })
+	}
+
+	export function combineBackburnerItems(stores: KeyProp, targetItemId: string, sourceItemId: string) {
+		const list = ZusUtils.getState(stores.queue).queue.backburner
+		const target = list.find(item => item.itemId === targetItemId)
+		const source = list.find(item => item.itemId === sourceItemId)
+		if (target && source) {
+			const merged = BB.mergeTemplateFilters(target.filter, source.filter)
+			if (merged.code !== 'ok') {
+				toast.error('Cannot combine these requests: a filter is applied normally on one and inverted on the other')
+				return
+			}
+		}
+		void dispatch(stores, { op: 'backburner-combine', targetItemId, sourceItemId })
 	}
 }

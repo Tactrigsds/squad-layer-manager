@@ -219,6 +219,7 @@ export async function createServerEntry(ctx: C.Db, input: {
 		defaultServer: false,
 		layerQueue: [],
 		teamswaps: null,
+		backburner: [],
 		settings: settingsRes.data,
 	}
 	await ctx.db({ redactParams: true }).insert(Schema.servers).values(

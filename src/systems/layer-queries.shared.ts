@@ -495,6 +495,120 @@ export async function genVote(args: { ctx: CS.LayerQuery; input: LQY.GenVote.Inp
 	return { code: 'ok' as const, chosenLayers, choiceErrors }
 }
 
+export type BackburnerTemplate = { itemId: string; filter: F.FilterNode }
+export type GenerateWithBackburnerInput = LQY.BaseQueryInput & { templates: BackburnerTemplate[]; seed?: string }
+export type GenerateWithBackburnerResult = {
+	code: 'ok'
+	layer: PostProcessedLayer | null
+	consumedItemIds: string[]
+	// templates whose filter no longer lowers (e.g. references a deleted filter entity); skipped, never consumed
+	invalidItemIds: string[]
+}
+
+// The greedy backburner fold: AND each template into the accumulated constraints oldest-first, skipping any
+// template that would leave zero solutions (it stays on the backburner for a future generation; later
+// templates are still tried).
+export function foldBackburnerTemplates(
+	templates: { itemId: string; ir: LE.Ir }[],
+	baseWhere: LE.Ir,
+	count: (where: LE.Ir) => number,
+): { where: LE.Ir; consumedItemIds: string[] } {
+	let acc = baseWhere
+	const consumedItemIds: string[] = []
+	for (const template of templates) {
+		const candidate = LE.and([acc, template.ir])
+		if (count(candidate) === 0) continue
+		acc = candidate
+		consumedItemIds.push(template.itemId)
+	}
+	return { where: acc, consumedItemIds }
+}
+
+function countSolutions(ctx: CS.LayerEngine, where: LE.Ir): number {
+	const idCol = ctx.engine.columnIndex('id')
+	return ctx.engine.query<LE.SelectResponse>({
+		kind: 'select',
+		where,
+		indicators: [],
+		sort: null,
+		pageIndex: 0,
+		pageSize: 1,
+		columns: [idCol],
+	}).totalCount
+}
+
+export async function generateWithBackburner(args: {
+	ctx: CS.LayerQuery
+	input: GenerateWithBackburnerInput
+}): Promise<GenerateWithBackburnerResult | F.InvalidFilterNodeResult> {
+	const { ctx, input } = args
+	// templates carry their own filters (incl. pool membership), so the fold applies only the repeat rules on
+	// top of them; the full configured constraints only shape the draw when no template is consumed
+	const repeatBase = buildQueryConstraints(ctx, {
+		...input,
+		constraints: (input.constraints ?? []).filter(c => c.type === 'do-not-repeat'),
+	})
+	if (repeatBase.code !== 'ok') return repeatBase
+
+	const lowered: { itemId: string; ir: LE.Ir }[] = []
+	const invalidItemIds: string[] = []
+	for (const template of input.templates) {
+		const res = LE.lowerFilterNode(lowerCtx(ctx), template.filter)
+		if (res.code !== 'ok') {
+			invalidItemIds.push(template.itemId)
+			continue
+		}
+		lowered.push({ itemId: template.itemId, ir: res.ir })
+	}
+
+	let { where, consumedItemIds } = foldBackburnerTemplates(lowered, repeatBase.where, (w) => countSolutions(ctx, w))
+	if (consumedItemIds.length === 0) {
+		const base = buildQueryConstraints(ctx, input)
+		if (base.code !== 'ok') return base
+		where = base.where
+	}
+
+	const names = layerColumns(ctx)
+	const columns = columnIndexes(ctx, names)
+	const seed = input.seed ?? LQY.getSeed()
+	const generated = ctx.engine.query<LE.SelectResponse>({
+		kind: 'select',
+		where,
+		indicators: [],
+		sort: { random: { ...generationSpec(ctx, seed, 0, 1), excludeIds: [] } },
+		pageIndex: 0,
+		pageSize: 1,
+		columns,
+	})
+	const [layer] = postProcessLayers(
+		ctx,
+		{ rows: generated.rows, names, indicatorResults: [], indicatorConstraints: [] },
+		input,
+	)
+	return { code: 'ok', layer: layer ?? null, consumedItemIds, invalidItemIds }
+}
+
+// Per-template "does this still have solutions within the base constraints" probe: request-time validation of
+// /reqlayer, the panel's per-row satisfiability indicator, and combinability checks when merging two templates.
+export async function checkBackburnerTemplates(args: {
+	ctx: QueryCtx
+	input: LQY.BaseQueryInput & { templates: BackburnerTemplate[] }
+}): Promise<{ code: 'ok'; satisfiable: Record<string, boolean> } | F.InvalidFilterNodeResult> {
+	const { ctx, input } = args
+	const base = buildQueryConstraints(ctx, input)
+	if (base.code !== 'ok') return base
+	const satisfiable: Record<string, boolean> = {}
+	for (const template of input.templates) {
+		const res = LE.lowerFilterNode(lowerCtx(ctx), template.filter)
+		if (res.code !== 'ok') {
+			satisfiable[template.itemId] = false
+			continue
+		}
+		satisfiable[template.itemId] = countSolutions(ctx, LE.and([base.where, res.ir])) > 0
+	}
+	return { code: 'ok', satisfiable }
+}
+
 export async function layerExists({ input, ctx }: { input: LQY.LayerExistsInput; ctx: CS.LayerEngine }) {
 	const known = input.filter((id) => L.isKnownLayer(id))
 	const res = ctx.engine.query<LE.MatchesResponse>({
@@ -560,8 +674,9 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 	const list = input.list ?? LQY.initLayerItemsState()
 	const layerItems = list.layerItems
 
+	// match state is needed for both indication and warning, so evaluate any constraint with either active
 	const filterConstraints = constraints.filter((c): c is Extract<LQY.Constraint, { type: 'filter-entity' }> =>
-		c.type === 'filter-entity' && c.showIndicator !== 'disabled'
+		c.type === 'filter-entity' && (c.showIndicator !== 'disabled' || c.warn !== 'disabled')
 	)
 	const lower = lowerCtx(ctx)
 	const filterIrs: LE.Ir[] = []
@@ -593,7 +708,11 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 		for (const item of LQY.coalesceLayerItems(layerItems[i])) {
 			const itemDescriptors = MapUtils.defaultInsGet(matchDescriptors, item.itemId, [])
 			for (const constraint of constraints) {
-				if (constraint.showIndicator === 'disabled') continue
+				if (constraint.type === 'filter-anon' || constraint.type === 'filter-menu-items') continue
+				const active = constraint.type === 'do-not-repeat'
+					|| constraint.showIndicator !== 'disabled'
+					|| constraint.warn !== 'disabled'
+				if (!active) continue
 				switch (constraint.type) {
 					case 'do-not-repeat': {
 						const descriptors = getisMatchedByRepeatRuleDirect(
@@ -824,8 +943,10 @@ export const queries = {
 	layerExists,
 	queryLayerComponent,
 	getLayerItemStatuses,
+	getLayersOutOfPool,
 	getLayerInfo,
 	genVote,
+	checkBackburnerTemplates,
 }
 
 // FNV-1a. Collisions are acceptable for cache keys, and it behaves the same on both hosts.

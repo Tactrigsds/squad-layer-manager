@@ -1,6 +1,6 @@
 import * as FB from '@/models/filter-builders'
 import { createAppFixture } from '../harness/app-fixture'
-import { filter, LAYERS, poolFilter, queue } from '../harness/arrange'
+import { filter, LAYERS, queue, selectableFilter } from '../harness/arrange'
 import { expect, test } from './fixtures'
 
 // What a queued layer violates has to be visible on the item itself: the indicators are the only thing
@@ -17,9 +17,9 @@ test.describe('queue item constraints', () => {
 				filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')]), { alertMessage: 'RAAS layers are in the pool' }),
 			],
 			serverSettings: (settings) => {
-				settings.queue.mainPool.filters = [poolFilter('raas-only')]
+				selectableFilter(settings.queue.mainPool, 'raas-only')
 				// just the one rule, so an item's indicators are attributable to it and nothing else
-				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4 }]
+				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, constrainGeneration: true }]
 			},
 		})
 		try {
@@ -61,8 +61,7 @@ test.describe('queue item constraints', () => {
 		const app = await createAppFixture({
 			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed),
 			serverSettings: (settings) => {
-				settings.queue.mainPool.filters = []
-				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, warn: true }]
+				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, warn: true, constrainGeneration: true }]
 			},
 		})
 		try {

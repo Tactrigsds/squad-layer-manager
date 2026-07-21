@@ -1,11 +1,12 @@
 import { BmFlagMultiSelect, BmFlagSelect } from '@/components/bm-flag-picker'
-import ComboBox, { type ComboBoxHandle, type ComboBoxOption } from '@/components/combo-box/combo-box'
+import ComboBox, { type ComboBoxOption } from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { LOADING } from '@/components/combo-box/constants.ts'
 import { DiscordMemberSelect, DiscordRoleSelect } from '@/components/discord-picker'
 import LayerGenerationConfigEditor from '@/components/layer-generation-config-editor'
 import LayerTableConfigEditor from '@/components/layer-table-config-editor'
-import { GenerationPoolFiltersPanel, MainPoolFiltersPanel, RepeatRulesPanel } from '@/components/pool-config-panels'
+import { ListEditor } from '@/components/list-editor.tsx'
+import { PoolFiltersPanel, RepeatRulesPanel } from '@/components/pool-config-panels'
 import type { PoolConfigApi } from '@/components/pool-config-panels.helpers'
 import { StickyGroup } from '@/components/sticky-group'
 import { Badge } from '@/components/ui/badge'
@@ -1878,18 +1879,8 @@ function MainPoolField(props: OverrideProps) {
 	const api = usePoolConfigApi(props)
 	return (
 		<div className="space-y-6">
-			<MainPoolFiltersPanel api={api} />
-			<RepeatRulesPanel poolId="mainPool" api={api} />
-		</div>
-	)
-}
-
-function GenerationPoolField(props: OverrideProps) {
-	const api = usePoolConfigApi(props)
-	return (
-		<div className="space-y-6">
-			<GenerationPoolFiltersPanel api={api} />
-			<RepeatRulesPanel poolId="generationPool" api={api} />
+			<PoolFiltersPanel api={api} />
+			<RepeatRulesPanel api={api} />
 		</div>
 	)
 }
@@ -2120,8 +2111,12 @@ function RoleDetail(
 ) {
 	const [renaming, setRenaming] = React.useState(false)
 	const cfg = rbac.roles?.[roleId] ?? {}
-	// scoped value-state for the timeout duration cell so it can reuse the uncontrolled TextInputField
+	// scoped value-states for the timeout / layer-request cells so they can reuse the uncontrolled TextInputField
 	const timeout$ = React.useMemo(() => scopeValue(scopeValue(scopeValue(value$, 'roles'), roleId), 'maxTimeout'), [value$, roleId])
+	const layerRequests$ = React.useMemo(
+		() => scopeValue(scopeValue(scopeValue(value$, 'roles'), roleId), 'maxLayerRequests'),
+		[value$, roleId],
+	)
 
 	return (
 		<div className="min-w-0 space-y-4 rounded-md border p-3">
@@ -2169,7 +2164,14 @@ function RoleDetail(
 				title="Permissions"
 				description="Everything this role may do. Each row is one permission; its Scope narrows the permission to specific servers, settings or a duration cap. Leave a scope empty to grant it unrestricted."
 			>
-				<RolePermissionsTable roleId={roleId} cfg={cfg} timeout$={timeout$} reset$={reset$} update={update} />
+				<RolePermissionsTable
+					roleId={roleId}
+					cfg={cfg}
+					timeout$={timeout$}
+					layerRequests$={layerRequests$}
+					reset$={reset$}
+					update={update}
+				/>
 			</RoleSubsection>
 
 			<RoleSubsection title="Assignments" description="Which Discord roles, users, or members are granted this role.">
@@ -2182,10 +2184,11 @@ function RoleDetail(
 // one row = one permission the role holds. The five persisted fields are projected to rows on read and distributed back
 // on write by PermRows, so this component only ever deals in rows.
 function RolePermissionsTable(
-	{ roleId, cfg, timeout$, reset$, update }: {
+	{ roleId, cfg, timeout$, layerRequests$, reset$, update }: {
 		roleId: string
 		cfg: RoleConfig
 		timeout$: ValueState
+		layerRequests$: ValueState
 		reset$: Rx.Subject<void>
 		update: RbacUpdate
 	},
@@ -2264,7 +2267,7 @@ function RolePermissionsTable(
 									</div>
 								</TableCell>
 								<TableCell className="align-top">
-									<PermScopeCell row={row} timeout$={timeout$} reset$={reset$} onPatch={patchRow} />
+									<PermScopeCell row={row} timeout$={timeout$} layerRequests$={layerRequests$} reset$={reset$} onPatch={patchRow} />
 								</TableCell>
 								<TableCell className="align-top">
 									{
@@ -2306,9 +2309,10 @@ function RolePermissionsTable(
 // the Scope cell is a switch over the permission's scope kind, so a new permission needs no new editor: it inherits the
 // cell for whichever scope it declares in PERMISSION_DEFINITION.
 function PermScopeCell(
-	{ row, timeout$, reset$, onPatch }: {
+	{ row, timeout$, layerRequests$, reset$, onPatch }: {
 		row: PermRows.PermRow
 		timeout$: ValueState
+		layerRequests$: ValueState
 		reset$: Rx.Subject<void>
 		onPatch: (id: string, patch: Partial<PermRows.PermRow>, quiet?: boolean) => void
 	},
@@ -2337,6 +2341,28 @@ function PermScopeCell(
 							placeholder="2h"
 						/>
 					</div>
+				</div>
+			)
+
+		case 'layer-requests':
+			return (
+				<div className="flex items-center gap-2">
+					<span className="text-xs text-muted-foreground">up to</span>
+					<div className="w-24">
+						<TextInputField
+							value$={layerRequests$}
+							reset$={reset$}
+							onChange={(v) =>
+								onPatch(row.id, {
+									maxLayerRequests: typeof v === 'number' && Number.isFinite(v) && v >= 1
+										? Math.floor(v)
+										: PermRows.DEFAULT_MAX_LAYER_REQUESTS,
+								}, true)}
+							numeric={true}
+							placeholder={String(PermRows.DEFAULT_MAX_LAYER_REQUESTS)}
+						/>
+					</div>
+					<span className="text-xs text-muted-foreground">concurrent requests</span>
 				</div>
 			)
 
@@ -2415,16 +2441,6 @@ function ScopeValueRows(
 		mono?: boolean
 	},
 ) {
-	// the not-yet-chosen row that `Add` opens. It lives here rather than in `values` so an abandoned Add can't write an
-	// empty entry back to the settings draft.
-	const [adding, setAdding] = React.useState(false)
-	// Add is one intent, so it opens the dropdown it just swapped itself out for rather than asking for a second click.
-	// Driven off the transition, not a callback ref: the imperative handle is rebuilt whenever the popover's own `open`
-	// changes, which would re-fire a ref callback and reopen a box the user had just dismissed.
-	const pendingRef = React.useRef<ComboBoxHandle>(null)
-	React.useEffect(() => {
-		if (adding) pendingRef.current?.focus()
-	}, [adding])
 	const normalized: ComboBoxOption<string>[] = options.map((o) => (typeof o === 'string' ? { value: o } : o))
 	const selected = new Set(values)
 	const exhausted = normalized.every((o) => selected.has(o.value))
@@ -2436,66 +2452,37 @@ function ScopeValueRows(
 	const boxClass = cn('w-full max-w-[22rem]', mono && 'font-mono')
 
 	return (
-		<div className="space-y-1">
-			{values.length === 0 && !adding && <p className="text-xs leading-8 text-muted-foreground">{emptyLabel}</p>}
-			{values.map((value, idx) => (
-				<div key={value} className="flex items-center gap-1">
-					<ComboBox
-						title={title}
-						className={boxClass}
-						value={value}
-						options={optionsFor(value)}
-						onSelect={(next) => next && onChange(values.map((v, i) => (i === idx ? next : v)))}
-					/>
-					<Button
-						type="button"
-						size="icon"
-						variant="ghost"
-						className="h-8 w-8 shrink-0 text-destructive"
-						onClick={() => onChange(values.filter((_, i) => i !== idx))}
-					>
-						<Icons.X className="h-4 w-4" />
-					</Button>
-				</div>
-			))}
-			{
-				/* Add swaps itself out for the empty dropdown rather than sitting disabled above it, so the control you clicked is
-			    the control you then pick from. It comes back once the pick lands (or the X cancels). */
-			}
-			{adding
-				? (
-					<div className="flex items-center gap-1">
-						<ComboBox
-							ref={pendingRef}
-							title={title}
-							className={boxClass}
-							placeholder={`Select ${title}...`}
-							value={undefined}
-							options={optionsFor()}
-							onSelect={(next) => {
-								if (next) onChange([...values, next])
-								setAdding(false)
-							}}
-						/>
-						<Button
-							type="button"
-							size="icon"
-							variant="ghost"
-							className="h-8 w-8 shrink-0 text-destructive"
-							onClick={() => setAdding(false)}
-						>
-							<Icons.X className="h-4 w-4" />
-						</Button>
-					</div>
-				)
-				: (
-					// exhausted is a different story from adding: the button stays, disabled, to say there's nothing left to pick
-					<Button type="button" size="sm" variant="outline" className="h-7" disabled={exhausted} onClick={() => setAdding(true)}>
-						<Icons.Plus className="mr-1 h-3.5 w-3.5" />
-						Add {title}
-					</Button>
-				)}
-		</div>
+		<ListEditor
+			items={values}
+			itemKey={(value) => value}
+			emptyLabel={emptyLabel}
+			addLabel={`Add ${title}`}
+			addDisabled={exhausted}
+			onRemove={(_, idx) => onChange(values.filter((_, i) => i !== idx))}
+			renderItem={(value, idx) => (
+				<ComboBox
+					title={title}
+					className={boxClass}
+					value={value}
+					options={optionsFor(value)}
+					onSelect={(next) => next && onChange(values.map((v, i) => (i === idx ? next : v)))}
+				/>
+			)}
+			renderAddControl={({ ref, done }) => (
+				<ComboBox
+					ref={ref}
+					title={title}
+					className={boxClass}
+					placeholder={`Select ${title}...`}
+					value={undefined}
+					options={optionsFor()}
+					onSelect={(next) => {
+						if (next) onChange([...values, next])
+						done()
+					}}
+				/>
+			)}
+		/>
 	)
 }
 
@@ -2600,7 +2587,6 @@ function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefin
 	// the entire `rbac` subtree is rendered by RbacBody (see FieldControl), so no per-field rbac overrides are needed here
 	// server settings: the pool configuration reuses the dashboard popover's panels; connection passwords are masked
 	if (path.length === 2 && path[0] === 'queue' && last === 'mainPool') return MainPoolField
-	if (path.length === 2 && path[0] === 'queue' && last === 'generationPool') return GenerationPoolField
 	if (path.length === 2 && path[0] === 'connections' && last === 'token') return ServerAgentTokenField
 	if (last === 'password') return PasswordField
 	return undefined

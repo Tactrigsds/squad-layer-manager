@@ -58,16 +58,13 @@ export function filter(
 	}
 }
 
-// How a pool filter behaves for a server. Defaults to the config a filter most often carries: applied
-// during layer selection and indicated on the items it matches.
-export function poolFilter(
+// Registers a filter as default-selectable (pre-applied during layer selection) and indicating its matches --
+// the config a secondary filter most often carries.
+export function selectableFilter(
+	pool: SETTINGS.PoolConfiguration,
 	filterId: F.FilterEntityId,
-	opts?: Partial<SETTINGS.PoolFilterConfig>,
-): SETTINGS.PoolFilterConfig {
-	return {
-		filterId,
-		showIndicator: 'regular',
-		defaultApplyDuringLayerSelection: 'regular',
-		...opts,
-	}
+	opts?: { applyAs?: SETTINGS.AppliedFilterApplyAs },
+) {
+	pool.defaultSelectable.push({ filterId, applyAs: opts?.applyAs ?? 'regular' })
+	pool.indicateMatches.push(filterId)
 }

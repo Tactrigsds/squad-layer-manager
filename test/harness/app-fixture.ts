@@ -2,6 +2,7 @@ import * as Schema from '$root/drizzle/schema.ts'
 import * as DevInstance from '@/dev/instance'
 import { superjsonify } from '@/lib/drizzle'
 import { tsMigrations } from '@/migrations/registry'
+import type * as BB from '@/models/backburner.models'
 import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
@@ -110,9 +111,11 @@ export type AppFixtureOptions = {
 	// which arrange() does) stops the generator from filling the queue with random layers, which is
 	// what makes a queue assertion worth writing.
 	layerQueue?: LL.List
-	// filter entities to seed. A server's pool config (serverSettings.queue.mainPool.filters) references
+	// filter entities to seed. A server's pool config (serverSettings.queue.mainPool) references
 	// these by id, so anything that applies, indicates or warns on a filter needs them seeded first.
 	filters?: F.FilterEntity[]
+	// saved layer requests (backburner) to seed
+	backburner?: BB.BackburnerItem[]
 	// steam ids that are admins in game. Written to an Admins.cfg the app reads as a `local` admin
 	// list source, so these players come back from ListPlayers with isAdmin set.
 	admins?: string[]
@@ -340,6 +343,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 			enabled: true,
 			defaultServer: true,
 			layerQueue,
+			backburner: opts.backburner ?? [],
 			settings: serverSettings,
 		}),
 	)

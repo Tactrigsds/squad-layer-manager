@@ -5,6 +5,7 @@ import { assertNever } from '@/lib/type-guards'
 import { formatHumanTime } from '@/lib/zod'
 import * as Messages from '@/messages.ts'
 import * as AAR from '@/models/admin-action-reasons.models'
+import * as BB from '@/models/backburner.models'
 import * as BM from '@/models/battlemetrics.models'
 import * as CMD from '@/models/command.models.ts'
 import type * as CS from '@/models/context-shared'
@@ -18,6 +19,7 @@ import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
+import * as FilterEntity from '@/systems/filter-entity.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
@@ -811,6 +813,84 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		await h.reply(`Cancelled ${matches.length === 1 ? 'the timeout' : `${matches.length} timeouts`} for ${matches[0].username ?? token}`)
 		return { code: 'ok' }
 	},
+
+	requestLayer: async (h, args) => {
+		const linkedRes = await resolveLinkedSender(h)
+		if (linkedRes.code !== 'ok') return linkedRes.res
+		const tokens = args.request.split(/\s+/).filter(t => t.length > 0)
+		const filterEntities = Array.from(FilterEntity.state.filters.values()).map(f => ({ id: f.id, name: f.name }))
+		const resolveRes = BB.resolveRequestTokens({ tokens, components: L.StaticLayerComponents, filterEntities })
+		if (resolveRes.code !== 'ok') return await h.error('invalid-request', resolveRes.msg)
+		const source: USR.GuiOrChatUserId = { discordId: linkedRes.discordId, steamId: h.sender.ids.steam! }
+		const res = await LayerQueue.addBackburnerRequestFromChat(h.ctx, {
+			user: { discordId: linkedRes.discordId },
+			source,
+			filter: resolveRes.value.filter,
+		})
+		switch (res.code) {
+			case 'err:permission-denied':
+				return await h.error('permission-denied', Messages.WARNS.permissionDenied(res))
+			case 'err:no-solutions':
+				return await h.error('no-solutions', Messages.WARNS.layerRequests.noSolutions(args.request.trim()))
+			case 'err:backburner-full':
+				return await h.error('backburner-full', Messages.WARNS.layerRequests.backburnerFull(res.max))
+			case 'ok': {
+				const ownCount = BB.ownedItems(LayerQueue.getSavedBackburner(h.ctx), source).length
+				await h.reply(Messages.WARNS.layerRequests.added(resolveRes.value.parts, ownCount, res.evicted.length))
+				return { code: 'ok' }
+			}
+			default:
+				assertNever(res)
+		}
+	},
+
+	listLayerRequests: async (h) => {
+		const items = LayerQueue.getSavedBackburner(h.ctx)
+		if (items.length === 0) {
+			await h.reply(Messages.WARNS.layerRequests.empty)
+			return { code: 'ok' }
+		}
+		const owner = await resolveChatOwner(h)
+		const pages = Arr.paged(BB.getLayerRequestSummary(items, LayerQueue.backburnerFilterName, owner), 4).map(page => page.join('\n'))
+		for (const page of pages) await h.reply(page)
+		return { code: 'ok' }
+	},
+
+	removeLayerRequest: async (h, args) => {
+		const items = LayerQueue.getSavedBackburner(h.ctx)
+		const owner = await resolveChatOwner(h)
+		let target: BB.BackburnerItem | undefined
+		if (args.number !== undefined) {
+			target = items[args.number - 1]
+			if (!target) return await h.error('not-found', `No layer request #${args.number}`)
+		} else {
+			const own = BB.ownedItems(items, owner)
+			target = own[own.length - 1]
+			if (!target) return await h.error('not-found', 'You have no layer requests queued')
+		}
+		if (!BB.sameOwner(target.source, owner)) {
+			// removing someone else's request needs queue:write
+			if (owner.discordId === undefined) {
+				return await h.error('not-linked', Messages.WARNS.commands.steamAccountNotLinked())
+			}
+			const denyRes = await Rbac.tryDenyPermissionsForUser(
+				{ ...h.ctx, user: { discordId: owner.discordId } },
+				RBAC.perm('queue:write'),
+			)
+			if (denyRes) return await h.error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
+		}
+		await LayerQueue.removeBackburnerRequestsFromChat(h.ctx, { itemIds: [target.itemId], source: owner })
+		await h.reply(Messages.WARNS.layerRequests.removed(BB.describeTemplate(target.filter, LayerQueue.backburnerFilterName)))
+		return { code: 'ok' }
+	},
+}
+
+// the sender's identity for backburner ownership checks: their steam id plus their linked account, when one
+// exists (GUI-created items only carry a discordId)
+async function resolveChatOwner(h: HandlerCtx): Promise<USR.GuiOrChatUserId> {
+	const steamId = h.sender.ids.steam!
+	const linked = await Users.findUserBySteam64Id(h.ctx, BigInt(steamId))
+	return { steamId, discordId: linked?.discordId }
 }
 
 // resolves the chat sender's linked SLM account for RBAC-gated commands

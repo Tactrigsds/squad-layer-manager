@@ -10,9 +10,8 @@ import * as UPClient from '@/systems/user-presence.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import { useStorePoolConfigApi } from './pool-config-panels.helpers.ts'
-import { GenerationPoolFiltersPanel, MainPoolFiltersPanel, RepeatRulesPanel } from './pool-config-panels.tsx'
+import { PoolFiltersPanel, RepeatRulesPanel } from './pool-config-panels.tsx'
 import { Alert, AlertDescription } from './ui/alert.tsx'
-import TabsList from './ui/tabs-list.tsx'
 
 export default function ServerSettingsPopover(
 	props: {
@@ -21,7 +20,6 @@ export default function ServerSettingsPopover(
 	},
 ) {
 	const stores = props.stores
-	const [poolId, setPoolId] = React.useState<'mainPool' | 'generationPool'>('mainPool')
 
 	const [open, _setOpen] = UPClient.useActivityState(UP.Trans.viewingSettings(stores.squadServer!.serverId))
 	const setOpen = (open: boolean) => {
@@ -37,10 +35,9 @@ export default function ServerSettingsPopover(
 	)
 
 	const mainPoolApi = useStorePoolConfigApi(stores.squadServer!, ['queue', 'mainPool'])
-	const generationPoolApi = useStorePoolConfigApi(stores.squadServer!, ['queue', 'generationPool'])
-	// with no write access to either pool the popover is a read-only viewer: the panels disable their controls, and
-	// the save/reset affordances disappear (pool config itself is public data, so viewing stays available)
-	const readOnly = !!mainPoolApi.writeDenied && !!generationPoolApi.writeDenied
+	// with no write access the popover is a read-only viewer: the panels disable their controls, and the
+	// save/reset affordances disappear (pool config itself is public data, so viewing stays available)
+	const readOnly = !!mainPoolApi.writeDenied
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
@@ -56,14 +53,6 @@ export default function ServerSettingsPopover(
 						{readOnly && <span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">Read-only</span>}
 					</h3>
 					<div className="flex items-center space-x-2">
-						<TabsList
-							options={[
-								{ label: 'Main Pool', value: 'mainPool' },
-								{ label: 'Autogeneration', value: 'generationPool' },
-							]}
-							active={poolId}
-							setActive={setPoolId}
-						/>
 						{!readOnly && (
 							<Tooltip>
 								<TooltipTrigger asChild>
@@ -86,19 +75,8 @@ export default function ServerSettingsPopover(
 					</div>
 				</div>
 				<div className="space-y-6">
-					{poolId === 'mainPool'
-						? <MainPoolFiltersPanel api={mainPoolApi} />
-						: <GenerationPoolFiltersPanel api={generationPoolApi} />}
-					<RepeatRulesPanel
-						className={poolId !== 'mainPool' ? 'hidden' : undefined}
-						poolId="mainPool"
-						api={mainPoolApi}
-					/>
-					<RepeatRulesPanel
-						className={poolId !== 'generationPool' ? 'hidden' : undefined}
-						poolId="generationPool"
-						api={generationPoolApi}
-					/>
+					<PoolFiltersPanel api={mainPoolApi} />
+					<RepeatRulesPanel api={mainPoolApi} />
 				</div>
 				<div className="flex justify-end gap-2 pt-4 border-t">
 					<div className="flex flex-col gap-2">

@@ -12,6 +12,7 @@ import React from 'react'
 
 import { MatchHistoryPanelContent } from './match-history-panel'
 
+import BackburnerPanel from './backburner-panel.tsx'
 import { QueuePanelContent, SlmUpdatesDisabledAlert } from './layer-queue-panel.tsx'
 import { StickyGroup } from './sticky-group.tsx'
 import TeamsPanel from './teams-panel.tsx'
@@ -99,13 +100,17 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 										<UserPresencePanel
 											stores={props.stores}
 											sourcePresenceFn={sortEditingPresence}
-											matchActivity={root => UP.Trans.viewingQueue(serverId).match(root) || UP.Trans.editingQueue(serverId).match(root)}
+											matchActivity={root =>
+												UP.Trans.viewingQueue(serverId).match(root) || UP.Trans.editingQueue(serverId).match(root)
+												|| UP.Trans.editingLayerRequests(serverId).match(root)}
 											matchActivityForStatusText={root =>
-												UP.Trans.editingQueue(serverId).match(root) || UP.Trans.viewingQueue(serverId).match(root)}
+												UP.Trans.editingQueue(serverId).match(root) || UP.Trans.editingLayerRequests(serverId).match(root)
+												|| UP.Trans.viewingQueue(serverId).match(root)}
 											event$={queueEvent$}
 											transitionMessages={[
 												{
-													matchActivity: root => UP.Trans.editingQueue(serverId).match(root),
+													matchActivity: root =>
+														UP.Trans.editingQueue(serverId).match(root) || UP.Trans.editingLayerRequests(serverId).match(root),
 													leaveMessage: 'Finished editing',
 												},
 											]}
@@ -153,6 +158,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 						>
 							<SlmUpdatesDisabledAlert stores={props.stores} />
 							<QueuePanelContent stores={props.stores} />
+							<BackburnerPanel stores={props.stores} />
 						</div>
 						<div
 							role="tabpanel"

@@ -53,6 +53,9 @@ const RoleConfigSchema = z.object({
 	maxTimeout: HumanTime.optional().describe(
 		'Maximum kick-timeout duration (e.g. "2h"). Absent = this role cannot issue timeouts. Super users/roles are unlimited.',
 	),
+	maxLayerRequests: z.number().int().positive().optional().describe(
+		'Maximum concurrent layer requests (backburner items) the role may hold. Absent = this role cannot request layers. Super users/roles are unlimited.',
+	),
 	// restricted settings grants, like maxTimeout these carry arguments the expression grammar can't: they let the role
 	// edit only specific settings (and for servers, only specific servers). Unrestricted access is granted via `permissions`.
 	globalSettingsGrants: z.array(SettingsGrantPathSchema).prefault([]).describe(
@@ -441,10 +444,12 @@ export function defaultRbacSettings() {
 			admins: {
 				permissions: adminPermissions,
 				maxTimeout: '2h',
+				maxLayerRequests: 5,
 			},
 			managers: {
 				permissions: managerPermissions,
 				maxTimeout: '6h',
+				maxLayerRequests: 5,
 				// every global setting except the permissions config
 				globalSettingsGrants: globalSettingsTopLevelKeys().filter((k) => k !== 'rbac'),
 				serverSettingsGrants: managerServerGrants,
@@ -453,6 +458,7 @@ export function defaultRbacSettings() {
 				permissions: ownerPermissions,
 				// there is no in-settings "unlimited" (that comes only from the SUPER_USERS/SUPER_ROLES bootstrap), so a large finite cap
 				maxTimeout: '52w',
+				maxLayerRequests: 10,
 			},
 		},
 	}
@@ -461,55 +467,68 @@ export function defaultRbacSettings() {
 // ============================== per-server settings ==============================
 
 const DEFAULT_REPEAT_RULE_CONFIGS: PoolRepeatRuleConfig[] = [
-	{ label: 'Map', field: 'Map', within: 4 },
-	{ label: 'Layer', field: 'Layer', within: 7 },
-	{ label: 'Faction', field: 'Faction', within: 3 },
+	{ label: 'Map', field: 'Map', within: 4, constrainGeneration: true },
+	{ label: 'Layer', field: 'Layer', within: 7, constrainGeneration: true },
+	{ label: 'Faction', field: 'Faction', within: 3, constrainGeneration: true },
 ]
 
 export const POOL_FILTER_APPLY_AS = z.enum(['regular', 'inverted', 'disabled'])
 export type PoolFilterApplyAs = z.infer<typeof POOL_FILTER_APPLY_AS>
-export const POOL_FILTER_DEFAULT_APPLY_AS_SETTING = z.enum(['regular', 'inverted', 'disabled', 'hidden'])
-export type PoolFilterDefaultApplyAsSetting = z.infer<typeof POOL_FILTER_DEFAULT_APPLY_AS_SETTING>
-export type ConstraintApplyAs = z.infer<typeof POOL_FILTER_APPLY_AS>
-export const DEFAULT_POOL_FILTER_APPLY_AS = 'regular'
 
-export const PoolFilterConfigSchema = z.object({
+export const POOL_FILTER_MODE = z.enum(['include', 'exclude'])
+export type PoolFilterMode = z.infer<typeof POOL_FILTER_MODE>
+
+export const PoolFilterSettingSchema = z.object({
 	filterId: F.FilterEntityIdSchema,
-	showIndicator: LQY.INDICATOR_STATE.optional().meta({
-		description:
-			'Whether to indicate items that match this filter. Invert to indicate that an item DOES NOT match the filter, or "both" to indicate both matches and non-matches',
+	mode: POOL_FILTER_MODE.meta({
+		description: 'Whether layers matching this filter are included in the pool or excluded from it',
 	}),
-	defaultApplyDuringLayerSelection: POOL_FILTER_DEFAULT_APPLY_AS_SETTING.optional().meta({
-		description: 'How to apply this filter during layer selection by default',
-	})
-		.optional(),
-	inPool: POOL_FILTER_APPLY_AS.optional().meta({
-		description:
-			'Whether this filter defines main-pool membership. Layers that fail an active inPool filter can only be added to or set in the queue by users with the queue:force-write permission. Invert to require that pool layers do NOT match this filter. Defaults to disabled (this filter does not gate the pool).',
-	}).optional(),
-	warn: POOL_FILTER_APPLY_AS.optional().meta({
-		description:
-			'How users should be warned when a layer matching this filter is about to be played or is added to the queue. Invert to warn about layers that do NOT match this filter.',
-	}).optional(),
-}).refine(c => !c.warn || c.showIndicator && c.showIndicator !== 'disabled', 'Cannot warn without indicating matches')
-export type PoolFilterConfig = z.infer<typeof PoolFilterConfigSchema>
+})
+export type PoolFilterSetting = z.infer<typeof PoolFilterSettingSchema>
+
+export const APPLIED_FILTER_APPLY_AS = z.enum(['regular', 'inverted'])
+export type AppliedFilterApplyAs = z.infer<typeof APPLIED_FILTER_APPLY_AS>
+
+export const AppliedFilterSettingSchema = z.object({
+	filterId: F.FilterEntityIdSchema,
+	applyAs: APPLIED_FILTER_APPLY_AS.meta({
+		description: 'Whether the filter applies to layers matching it (regular) or layers NOT matching it (inverted)',
+	}),
+})
+export type AppliedFilterSetting = z.infer<typeof AppliedFilterSettingSchema>
 
 export const RepeatRuleConfigSchema = LQY.RepeatRuleSchema.extend({
 	warn: z.boolean().optional().meta({
 		description: 'Users should be warned before saving or before the layer violating this repeat rule is played',
+	}),
+	constrainGeneration: z.boolean().prefault(true).meta({
+		description: 'Autogenerated layers are constrained by this rule',
 	}),
 })
 
 export type PoolRepeatRuleConfig = z.infer<typeof RepeatRuleConfigSchema>
 
 export const PoolConfigurationSchema = z.object({
-	filters: z.array(
-		// migrate
-		z.preprocess(
-			(obj) => typeof obj === 'string' ? ({ filterId: obj, applyAs: DEFAULT_POOL_FILTER_APPLY_AS }) : obj,
-			PoolFilterConfigSchema,
-		),
-	),
+	poolFilter: PoolFilterSettingSchema.nullable().prefault(null).meta({
+		description:
+			'The single filter defining pool membership. Out-of-pool layers can only be queued by users with the queue:force-write permission, '
+			+ 'are warned about, and are never autogenerated. The filter entity must have both its match and miss indicators (emoji + alert message) configured.',
+	}),
+	indicateMatches: z.array(F.FilterEntityIdSchema).prefault([]).meta({
+		description: "Layers matching these filters display the filter's match indicator",
+	}),
+	indicateMisses: z.array(F.FilterEntityIdSchema).prefault([]).meta({
+		description: "Layers NOT matching these filters display the filter's miss indicator",
+	}),
+	defaultSelectable: z.array(AppliedFilterSettingSchema).prefault([]).meta({
+		description: 'Filters offered during layer selection, pre-applied in the given state',
+	}),
+	warnFor: z.array(AppliedFilterSettingSchema).prefault([]).meta({
+		description: 'Warn when a layer matching the filter in the given state is queued or about to be played',
+	}),
+	constrainGeneration: z.array(AppliedFilterSettingSchema).prefault([]).meta({
+		description: 'Autogenerated layers are constrained by these filters in the given state, in addition to the pool filter',
+	}),
 	repeatRules: z.array(RepeatRuleConfigSchema).refine(
 		(rules) => new Set(rules.map((r) => r.label)).size === rules.length,
 		{
@@ -561,21 +580,17 @@ export const ServerConnectionSchema = z.discriminatedUnion('type', [
 		token: z.string().default('dev'),
 	}),
 ])
-export const GenerationFilterConfigSchema = z.object({ filterId: z.string(), applyAs: POOL_FILTER_APPLY_AS })
-export type GenerationFilterConfig = z.infer<typeof GenerationFilterConfigSchema>
 export type ServerConnection = z.infer<typeof ServerConnectionSchema>
-export const GenerationConfigSchema = z.object({
-	filters: z.array(GenerationFilterConfigSchema),
-	repeatRules: z.array(LQY.RepeatRuleSchema),
-	applyMainPoolRepeatRules: z.boolean().prefault(false),
-})
-
 export const QueueSettingsSchema = z.object({
-	mainPool: PoolConfigurationSchema.prefault({ filters: [], repeatRules: DEFAULT_REPEAT_RULE_CONFIGS }),
-	generationPool: GenerationConfigSchema.prefault({ filters: [], repeatRules: [], applyMainPoolRepeatRules: false }),
+	mainPool: PoolConfigurationSchema.prefault({ repeatRules: DEFAULT_REPEAT_RULE_CONFIGS }),
 	preferredLength: z.number().prefault(12),
 	generatedItemType: z.enum(['layer', 'vote']).prefault('layer'),
 	preferredNumVoteChoices: z.number().prefault(3),
+	layerRequests: z.object({
+		maxTotal: z.number().int().positive().prefault(50).describe(
+			'Maximum number of layer requests the backburner may hold across all users',
+		),
+	}).prefault({}),
 })
 export type QueueSettings = z.infer<typeof QueueSettingsSchema>
 
@@ -597,8 +612,8 @@ export const PublicServerSettingsSchema = z
 export type PublicServerSettings = z.infer<typeof PublicServerSettingsSchema>
 
 const EXAMPLE_PUBLIC_SETTINGS = PublicServerSettingsSchema.parse({})
-EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.filters.push({ showIndicator: DEFAULT_POOL_FILTER_APPLY_AS, filterId: 'test-filter' })
-EXAMPLE_PUBLIC_SETTINGS.queue.generationPool.filters.push({ applyAs: DEFAULT_POOL_FILTER_APPLY_AS, filterId: 'test-filter' })
+EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.poolFilter = { filterId: 'test-filter', mode: 'include' }
+EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.defaultSelectable.push({ filterId: 'test-filter', applyAs: 'regular' })
 
 export const ServerSettingsSchema = PublicServerSettingsSchema.extend({
 	connections: ServerConnectionSchema,
@@ -623,80 +638,90 @@ export type Changed<T> = {
 }
 
 export type SettingsChanged = Changed<ServerSettings>
-export function getFilterEntityConstraintId(poolName: string, opts: { filterId: string }) {
-	return `layer-pool:${poolName}:${opts.filterId}`
-}
-export function getFilterEntityConfigFromId(poolConfig: PoolFilterConfig[], constraintId: string) {
-	const [filterId] = constraintId.split(':').slice(2)
-	if (!filterId) return
-	return poolConfig.find((p) => p.filterId === filterId)
-}
 export function getRepeatRuleConstraintId(poolName: string, opts: { label: string }) {
 	return `layer-pool:${poolName}:${opts.label}`
 }
-export function getRepeatRuleConfigFromConstraintId(poolConfig: PoolRepeatRuleConfig[], constraintId: string) {
-	const [label] = constraintId.split(':').slice(2)
-	if (!label) return
-	return poolConfig.find((r) => r.label === label)
+
+export function getPoolFilterConstraint(
+	settings: PublicServerSettings,
+	opts?: { applied?: boolean; warn?: boolean },
+): LQY.Constraint | null {
+	const poolFilter = settings.queue.mainPool.poolFilter
+	if (!poolFilter) return null
+	return CB.poolFilter(poolFilter.filterId, poolFilter.mode, opts)
 }
 
-// note the QueryConstraint is not perfectly suited to this kind of use-case as we have to arbitrarily specify apply-as
+// one constraint per filter appearing in indicateMatches/indicateMisses/warnFor. never applied as a query filter --
+// these only drive indicators and save-time/in-game warnings.
+export function getIndicationAndWarnConstraints(
+	settings: PublicServerSettings,
+	opts?: { includeWarns?: boolean },
+): LQY.Constraint[] {
+	const pool = settings.queue.mainPool
+	const configs = new Map<F.FilterEntityId, { showIndicator: LQY.IndicatorState; warn: LQY.FilterApplicationState }>()
+	const entry = (filterId: F.FilterEntityId) => {
+		let config = configs.get(filterId)
+		if (!config) {
+			config = { showIndicator: 'disabled', warn: 'disabled' }
+			configs.set(filterId, config)
+		}
+		return config
+	}
+	for (const filterId of pool.indicateMatches) {
+		const config = entry(filterId)
+		config.showIndicator = config.showIndicator === 'inverted' ? 'both' : 'regular'
+	}
+	for (const filterId of pool.indicateMisses) {
+		const config = entry(filterId)
+		config.showIndicator = config.showIndicator === 'regular' ? 'both' : 'inverted'
+	}
+	if (opts?.includeWarns ?? true) {
+		for (const { filterId, applyAs } of pool.warnFor) {
+			entry(filterId).warn = applyAs
+		}
+	}
+	return Array.from(configs, ([filterId, config]) =>
+		CB.filterEntity(`filter-cfg:${filterId}`, filterId, {
+			filterApplState: 'disabled',
+			showIndicator: config.showIndicator,
+			warn: config.warn,
+		}))
+}
+
 export function getSettingsConstraints(
 	settings: PublicServerSettings,
 	opts?: { generatingLayers?: boolean },
 ) {
 	const constraints: LQY.Constraint[] = []
-
-	if (!opts?.generatingLayers) {
-		const mainPoolConfig = settings.queue.mainPool
-		for (const { filterId, showIndicator, defaultApplyDuringLayerSelection: applyAs, warn } of mainPoolConfig.filters) {
-			constraints.push(
-				CB.filterEntity(getFilterEntityConstraintId('mainPool', { filterId }), filterId, {
-					filterApplState: applyAs === 'hidden' ? 'disabled' : applyAs,
-					showIndicator: opts?.generatingLayers ? 'disabled' : showIndicator,
-					warn,
-				}),
-			)
-		}
-	}
-
-	if (!opts?.generatingLayers || settings.queue.generationPool.applyMainPoolRepeatRules) {
-		const mainPoolConfig = settings.queue.mainPool
-		for (let j = 0; j < mainPoolConfig.repeatRules.length; j++) {
-			const rule = mainPoolConfig.repeatRules[j]
-			constraints.push(
-				CB.repeatRule(getRepeatRuleConstraintId('mainPool', { label: rule.label }), rule),
-			)
-		}
-	}
+	const queue = settings.queue
 
 	if (opts?.generatingLayers) {
-		const genPoolConfig = settings.queue.generationPool
-
-		for (const config of genPoolConfig.filters) {
-			constraints.push(CB.filterEntity(getFilterEntityConstraintId('generationPool', { filterId: config.filterId }), config.filterId, {
-				filterApplState: config.applyAs,
-			}))
+		const poolFilterConstraint = getPoolFilterConstraint(settings)
+		if (poolFilterConstraint) constraints.push(poolFilterConstraint)
+		for (const { filterId, applyAs } of queue.mainPool.constrainGeneration) {
+			constraints.push(CB.filterEntity(`gen:${filterId}`, filterId, { filterApplState: applyAs }))
 		}
-		for (const config of genPoolConfig.repeatRules) {
-			constraints.push(CB.repeatRule(getRepeatRuleConstraintId('generationPool', { label: config.label }), config))
+		for (const rule of queue.mainPool.repeatRules) {
+			if (!rule.constrainGeneration) continue
+			constraints.push(CB.repeatRule(getRepeatRuleConstraintId('mainPool', { label: rule.label }), rule))
+		}
+	} else {
+		const poolFilterConstraint = getPoolFilterConstraint(settings, { warn: true })
+		if (poolFilterConstraint) constraints.push(poolFilterConstraint)
+		constraints.push(...getIndicationAndWarnConstraints(settings))
+		for (const rule of queue.mainPool.repeatRules) {
+			constraints.push(CB.repeatRule(getRepeatRuleConstraintId('mainPool', { label: rule.label }), rule))
 		}
 	}
 
 	return constraints
 }
 
-// constraints describing which layers belong to the main pool, used to gate queue:force-write. only mainPool filters
-// with an active `inPool` apply-state participate; if none are configured the pool is unconstrained (force-write inert).
+// the constraint describing pool membership, used to gate queue:force-write. with no pool filter configured the pool is
+// unconstrained (force-write inert).
 export function getPoolMembershipConstraints(settings: PublicServerSettings): LQY.Constraint[] {
-	const constraints: LQY.Constraint[] = []
-	for (const { filterId, inPool } of settings.queue.mainPool.filters) {
-		if (!inPool || inPool === 'disabled') continue
-		constraints.push(
-			CB.filterEntity(getFilterEntityConstraintId('mainPool', { filterId }), filterId, { filterApplState: inPool }),
-		)
-	}
-	return constraints
+	const constraint = getPoolFilterConstraint(settings)
+	return constraint ? [constraint] : []
 }
 
 export function getSettingsChanged(original: ServerSettings, modified: ServerSettings) {

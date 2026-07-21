@@ -19,6 +19,8 @@ export type FilterMenuStore = {
 	filter?: F.FilterNode
 	// each menu item is a simple comparison locked to its column key
 	menuItems: Record<string, F.EditableCompNode>
+	// what resetFilter/resetAllFilters restore each item to (valueless comps, one per field)
+	emptyItems: Record<string, F.EditableCompNode>
 	baseQueryInput?: LQY.BaseQueryInput
 	clearAll$: Rx.Subject<void>
 
@@ -42,6 +44,10 @@ export type Predicates = {
 type Input = {
 	colConfig: LQY.EffectiveColumnAndTableConfig
 	defaultFields?: Partial<L.KnownLayer>
+	// custom menu item set (field -> comparison), for hosts that don't want the full layer-select menu.
+	// `emptyItems` should be the valueless counterparts; defaults to `items` as given.
+	items?: Record<string, F.EditableCompNode>
+	emptyItems?: Record<string, F.EditableCompNode>
 }
 type Args = FRM.SetupArgs<Input, Store, Store & Predicates>
 
@@ -51,11 +57,14 @@ export function initLayerFilterMenuStore(
 	args: Args,
 ) {
 	const set = ZusUtils.toPartialSetter(args.set, 'filterMenu')
-	const defaultItems = getDefaultFilterMenuItemState(args.input.defaultFields ?? {}, args.input.colConfig)
+	const defaultItems = args.input.items ?? getDefaultFilterMenuItemState(args.input.defaultFields ?? {}, args.input.colConfig)
+	const emptyItems = args.input.emptyItems
+		?? (args.input.items ? args.input.items : getDefaultFilterMenuItemState({}, args.input.colConfig))
 	const filter = getFilterFromComparisons(defaultItems)
 
 	const state: FilterMenuStore = {
 		menuItems: defaultItems,
+		emptyItems,
 		filter,
 		baseQueryInput: {},
 		colConfig: args.input.colConfig,
@@ -171,7 +180,12 @@ export namespace Actions {
 					const column = F.compAnchorColumn(comp)
 					const value = F.compValue(comp)
 					const setFieldValue = (f: string, v: F.Value | undefined) => {
-						if (draft[f]) F.setCompValue(draft[f], v)
+						const fieldComp = draft[f]
+						if (!fieldComp) return
+						// a values-shaped comp (in) must stay values-shaped, or the node ends up with a value-arg its code can't read
+						const valuesArg = fieldComp.args.find((arg): arg is F.EditableValuesArg => arg?.type === 'values')
+						if (valuesArg) valuesArg.values = v === undefined ? undefined : [v]
+						else F.setCompValue(fieldComp, v)
 					}
 
 					if (column === 'Layer' && value) {
@@ -227,8 +241,7 @@ export namespace Actions {
 
 	export function resetFilter(stores: KeyProp, field: string) {
 		const slice = ZusUtils.toPartialStore(stores.filterMenu, 'filterMenu')
-		const emptyItems = getDefaultFilterMenuItemState({}, slice.getState().colConfig)
-		const emptyComparison = emptyItems[field]
+		const emptyComparison = slice.getState().emptyItems[field]
 		if (emptyComparison) {
 			setComparison(stores, field, emptyComparison)
 		}
@@ -236,8 +249,7 @@ export namespace Actions {
 
 	export function resetAllFilters(stores: KeyProp) {
 		const slice = ZusUtils.toPartialStore(stores.filterMenu, 'filterMenu')
-		const emptyItems = getDefaultFilterMenuItemState({}, slice.getState().colConfig)
-		Object.entries(emptyItems).forEach(([field, item]) => {
+		Object.entries(slice.getState().emptyItems).forEach(([field, item]) => {
 			setComparison(stores, field, item)
 		})
 		slice.getState().clearAll$.next()

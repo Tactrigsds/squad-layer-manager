@@ -41,7 +41,7 @@ const SCOPE_BADGES: Record<CMD.CommandScope, { icon: React.ComponentType<{ class
 	public: { icon: Icons.Globe, className: 'border-foreground/40 text-foreground' },
 }
 
-function CopyableCommand({ cmdString, chatScope }: { cmdString: string; chatScope: 'ChatToAdmin' | 'ChatToAll' }) {
+export function CopyableCommand({ cmdString, chatScope }: { cmdString: string; chatScope: 'ChatToAdmin' | 'ChatToAll' }) {
 	const copy = async () => {
 		const consoleCommand = `${chatScope} ${cmdString}`
 		try {
