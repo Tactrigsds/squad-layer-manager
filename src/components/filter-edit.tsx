@@ -138,28 +138,15 @@ export function FilterEdit(
 		}
 	}, [deleteFilterMutation, navigate, props.entity])
 
-	const loggedInUserRole: 'owner' | 'contributor' | 'none' | 'write-all' = (() => {
-		if (!loggedInUser) return 'none'
+	const canEditRes = RbacClient.usePermsCheck(RBAC.getWritePermReqForFilterEntity(props.entity.id))
+	const permitWriteAll = !RbacClient.usePermsCheck(RBAC.perm('filters:write-all'))?.code
+	const loggedInUserRole: 'owner' | 'contributor' | '_none' | 'write-all' = (() => {
+		if (!loggedInUser) return '_none'
 		if (props.entity.owner === loggedInUser.discordId) return 'owner'
-
-		for (const perm of loggedInUser.perms) {
-			if (
-				perm.type === 'filters:write' && (perm.args as { filterId: string }).filterId === props.entity.id
-				&& perm.allowedByRoles.some(r =>
-					RBAC.isInferredRoleType(r) && (r.type === 'filter-role-contributor' || r.type === 'filter-user-contributor')
-				)
-			) {
-				return 'contributor'
-			}
-		}
-		for (const perm of loggedInUser.perms) {
-			if (perm.type === 'filters:write-all') {
-				return 'write-all'
-			}
-		}
-
-		return 'none'
+		return 'contributor'
 	})()
+
+	const permitEdit = !canEditRes?.code
 
 	const [filterValid, filterModified] = useFrame(
 		ZusUtils.useShallow((state) => [state.valid, state.modified]),
@@ -181,7 +168,7 @@ export function FilterEdit(
 				return (
 					<Button
 						onClick={() => form.handleSubmit()}
-						disabled={!canSubmit || !filterValid || (!filterModified && !isDirty) || loggedInUserRole == 'none'}
+						disabled={!canSubmit || !filterValid || (!filterModified && !isDirty) || permitEdit}
 					>
 						Save
 					</Button>
@@ -190,11 +177,14 @@ export function FilterEdit(
 		</form.Subscribe>
 	), [form, filterValid, filterModified, loggedInUserRole])
 
-	const deleteBtn = React.useMemo(() => (
-		<DeleteFilterDialog onDelete={onDelete}>
-			<Button variant="destructive">Delete</Button>
-		</DeleteFilterDialog>
-	), [onDelete])
+	const deleteBtn = React.useMemo(
+		() => (
+			<DeleteFilterDialog onDelete={onDelete}>
+				<Button variant="destructive" disabled={!permitEdit}>Delete</Button>
+			</DeleteFilterDialog>
+		),
+		[onDelete],
+	)
 
 	const filterCard = React.useMemo(() => (
 		<FilterCard
@@ -227,7 +217,7 @@ export function FilterEdit(
 									<Icons.Dot />
 									<Button
 										aria-label="Edit Details"
-										disabled={loggedInUserRole === 'none'}
+										disabled={!permitEdit}
 										onClick={() => setEditingDetails(true)}
 										variant="ghost"
 										size="icon"
@@ -236,7 +226,7 @@ export function FilterEdit(
 									</Button>
 								</span>
 								<span className="flex h-min items-center space-x-2 self-end">
-									{loggedInUserRole === 'owner' && (
+									{loggedInUserRole === 'owner' && permitEdit && (
 										<Badge variant="outline" className="text-nowrap border-2 border-primary">
 											You are the owner of this filter
 										</Badge>
@@ -246,12 +236,12 @@ export function FilterEdit(
 											You are a contributor
 										</Badge>
 									)}
-									{loggedInUserRole === 'none' && (
+									{!permitEdit && (
 										<Badge variant="outline" className="text-nowrap border-2 border-destructive">
 											You don't have permission to modify this filter
 										</Badge>
 									)}
-									{loggedInUserRole === 'write-all' && (
+									{permitWriteAll && (
 										<Badge variant="outline" className="border-success text-nowrap border-2">
 											You have write access to all filters
 										</Badge>
@@ -259,9 +249,9 @@ export function FilterEdit(
 									<FilterContributors
 										filterId={props.entity.id}
 										contributors={props.contributors}
-										canManage={loggedInUserRole === 'owner' || loggedInUserRole === 'write-all'}
+										canManage={permitEdit && (loggedInUserRole === 'owner' || permitWriteAll)}
 									>
-										<Button disabled={loggedInUserRole === 'none'} variant="outline">
+										<Button variant="outline">
 											Show Contributors
 										</Button>
 									</FilterContributors>
