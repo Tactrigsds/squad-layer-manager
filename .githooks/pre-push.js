@@ -12,27 +12,18 @@ process.stdin.on('data', (chunk) => {
 })
 
 process.stdin.on('end', () => {
-	// Parse push information to detect if pushing to main
-	const lines = input.trim().split('\n')
+	// <local ref> <local sha> <remote ref> <remote sha>, one per ref being pushed
+	const refs = input.trim().split('\n')
+		.map((line) => line.split(' '))
+		.filter((parts) => parts.length >= 4)
 
-	let isPushingToMain = false
+	const hasCommitsToPush = refs.some(([, localSha]) => !/^0+$/.test(localSha))
 
-	for (const line of lines) {
-		const parts = line.split(' ')
-		if (parts.length >= 4) {
-			const refName = parts[2]
-			if (refName === 'refs/heads/main') {
-				isPushingToMain = true
-				break
-			}
-		}
-	}
-
-	if (!isPushingToMain) {
+	if (!hasCommitsToPush) {
 		process.exit(0)
 	}
 
-	console.log('🔍 Pushing to main - running checks...\n')
+	console.log('🔍 Running checks...\n')
 
 	try {
 		console.log('📋 Checking format...')
