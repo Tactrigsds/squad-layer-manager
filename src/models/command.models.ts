@@ -212,7 +212,7 @@ export const COMMAND_DECLARATIONS = {
 			describe: 'Any mix of map, gamemode, size, faction, alliance, unit or filter names. Map and filter names match loosely; '
 				+ 'everything else must match exactly. Two factions (or alliances/units) mean a matchup.',
 		}],
-		defaults: { scopes: ['admin', 'public'], strings: ['reqlayer', 'rql'], enabled: true, quickReference: false },
+		defaults: { scopes: ['admin', 'public'], strings: ['requestlayer', 'reqlayer', 'rql'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('listLayerRequests', {
 		section: 'layerRequests',
