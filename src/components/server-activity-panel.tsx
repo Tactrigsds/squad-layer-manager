@@ -84,12 +84,11 @@ function ServerChatEvents(
 	const loaderZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 	const scrollToBottomZIndex = loaderZIndex - 1
 
-	// the selected-players filter has nothing to match against until the teams panel has a selection, so the feed is
+	// "Selected Only" has nothing to match against until the teams panel has a selection, so the feed is
 	// reduced to the pinned match markers. say why rather than looking broken
 	const noPlayersSelected = ZusUtils.useStore(
 		props.stores.squadServer!,
-		(s: SquadServerFrame.State) =>
-			s.chat.secondaryFilterState === 'SELECTED_PLAYERS' && SquadServerFrame.Sel.settledSelectedPlayerIds(s).size === 0,
+		(s: SquadServerFrame.State) => s.chat.selectedOnly && SquadServerFrame.Sel.settledSelectedPlayerIds(s).size === 0,
 	)
 
 	return (
@@ -251,6 +250,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 			eventGeneration: number
 			filteredEvents: CHAT.EventEnriched[]
 			eventFilterState: CHAT.SecondaryFilterState
+			selectedOnly: boolean
 			selectedPlayerIds: ReadonlySet<SM.PlayerId>
 			matchId: number
 		}
@@ -261,6 +261,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 			selectedMatchOrdinal: number
 			filteredEvents: CHAT.EventEnriched[]
 			eventFilterState: CHAT.SecondaryFilterState
+			selectedOnly: boolean
 			selectedPlayerIds: ReadonlySet<SM.PlayerId>
 			eventsVersion: any
 		}
@@ -268,6 +269,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 	>(null)
 
 	const eventFilterState = ZusUtils.useStore(stores.squadServer!, s => s.chat.secondaryFilterState)
+	const selectedOnly = ZusUtils.useStore(stores.squadServer!, ChatPrt.Sel.selectedOnly)
 	const selectedPlayerIds = ZusUtils.useStore(stores.squadServer!, SquadServerFrame.Sel.settledSelectedPlayerIds)
 
 	const filteredEvents = React.useMemo(() => {
@@ -275,25 +277,27 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 		if (selectedMatchOrdinal !== null) {
 			if (!historicalEventsQuery.data?.events) return null
 
-			// Cache check for historical events. the selection only enters the filter under SELECTED_PLAYERS, so
-			// selection churn doesn't invalidate the other filters
+			// Cache check for historical events. the selection only enters the filter when selectedOnly is set, so
+			// selection churn doesn't invalidate the cache otherwise
 			if (
 				prevHistoricalState.current?.selectedMatchOrdinal === selectedMatchOrdinal
 				&& prevHistoricalState.current?.eventFilterState === eventFilterState
+				&& prevHistoricalState.current?.selectedOnly === selectedOnly
 				&& prevHistoricalState.current?.eventsVersion === historicalEventsQuery.data
-				&& (eventFilterState !== 'SELECTED_PLAYERS' || prevHistoricalState.current.selectedPlayerIds === selectedPlayerIds)
+				&& (!selectedOnly || prevHistoricalState.current.selectedPlayerIds === selectedPlayerIds)
 			) {
 				return prevHistoricalState.current.filteredEvents
 			}
 
 			const filtered = historicalEventsQuery.data.events.filter((event: CHAT.EventEnriched) =>
-				CHAT.showEventInFeed(event, eventFilterState, { selectedPlayerIds })
+				CHAT.showEventInFeed(event, eventFilterState, { selectedPlayerIds, selectedOnly })
 			)
 
 			prevHistoricalState.current = {
 				selectedMatchOrdinal,
 				filteredEvents: filtered,
 				eventFilterState,
+				selectedOnly,
 				selectedPlayerIds,
 				eventsVersion: historicalEventsQuery.data,
 			}
@@ -302,7 +306,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 
 		// Otherwise use live event buffer - handled by separate selector below
 		return null
-	}, [selectedMatchOrdinal, historicalEventsQuery.data, eventFilterState, selectedPlayerIds])
+	}, [selectedMatchOrdinal, historicalEventsQuery.data, eventFilterState, selectedOnly, selectedPlayerIds])
 
 	const liveFilteredEvents = ZusUtils.useStore(
 		stores.squadServer!,
@@ -311,6 +315,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 			if (!s.chat.chatState.synced || displayMatch?.historyEntryId === undefined) return null
 
 			const eventFilterState = s.chat.secondaryFilterState
+			const selectedOnly = s.chat.selectedOnly
 			const selectedPlayerIds = SquadServerFrame.Sel.settledSelectedPlayerIds(s)
 
 			// we have all of this ceremony to prevent having to reallocate the event buffer array every time it's modified. maybe a bit excessive :shrug:
@@ -318,7 +323,8 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 				displayMatch?.historyEntryId === prevState.current?.matchId
 				&& s.chat.eventGeneration === prevState.current?.eventGeneration
 				&& eventFilterState === prevState.current.eventFilterState
-				&& (eventFilterState !== 'SELECTED_PLAYERS' || prevState.current.selectedPlayerIds === selectedPlayerIds)
+				&& selectedOnly === prevState.current.selectedOnly
+				&& (!selectedOnly || prevState.current.selectedPlayerIds === selectedPlayerIds)
 			) {
 				return prevState.current?.filteredEvents
 			}
@@ -327,7 +333,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 			const filtered: CHAT.EventEnriched[] = []
 			for (const event of eventBuffer) {
 				if (event.matchId !== displayMatch?.historyEntryId) continue
-				if (CHAT.showEventInFeed(event, eventFilterState, { selectedPlayerIds })) {
+				if (CHAT.showEventInFeed(event, eventFilterState, { selectedPlayerIds, selectedOnly })) {
 					filtered.push(event)
 				}
 			}
@@ -335,6 +341,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 				eventGeneration: s.chat.eventGeneration,
 				filteredEvents: filtered,
 				eventFilterState,
+				selectedOnly,
 				selectedPlayerIds,
 				matchId: displayMatch?.historyEntryId,
 			}
@@ -382,11 +389,6 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 		}
 	}, [currentMatch, recentMatches, stores.squadServer])
 
-	const eventFilter = ZusUtils.useStore(
-		stores.squadServer!,
-		s => s.chat.secondaryFilterState,
-	)
-
 	return (
 		// a labelled region so the feed is a landmark users (and tests) can jump to, rather than an
 		// anonymous div that only reads as a pile of text
@@ -432,8 +434,10 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 						)}
 					</ButtonGroup>
 					<EventFilterSelect
-						value={eventFilter}
+						value={eventFilterState}
 						onValueChange={(value) => ChatPrt.Actions.setSecondaryFilterState({ chat: stores.squadServer! }, value)}
+						selectedOnly={selectedOnly}
+						onSelectedOnlyChange={(value) => ChatPrt.Actions.setSelectedOnly({ chat: stores.squadServer! }, value)}
 					/>
 				</div>
 				<ServerCounts stores={stores} />

@@ -13,6 +13,8 @@ export type ChatSlice = {
 	serverId: string
 	chatState: CHAT.ChatState
 	secondaryFilterState: CHAT.SecondaryFilterState
+	// ANDed on top of secondaryFilterState -- restricts the feed to events involving the teams panel's current selection
+	selectedOnly: boolean
 	handleChatEvents(event: (CHAT.Event | CHAT.LifecycleEvent)[]): void
 	// increments every time we modify the chat state
 	eventGeneration: number
@@ -39,6 +41,7 @@ export function initChat(args: Args) {
 			serverId,
 			chatState: CHAT.getInitialChatState(),
 			secondaryFilterState: 'DEFAULT',
+			selectedOnly: false,
 			eventGeneration: 0,
 			selectedMatchOrdinal: null,
 			handleChatEvents(events) {
@@ -95,6 +98,9 @@ export namespace Sel {
 	}
 	export function secondaryFilterState(store: Store) {
 		return store.chat.secondaryFilterState
+	}
+	export function selectedOnly(store: Store) {
+		return store.chat.selectedOnly
 	}
 	export function selectedMatchOrdinal(store: Store) {
 		return store.chat.selectedMatchOrdinal
@@ -214,6 +220,10 @@ export namespace Sel {
 export namespace Actions {
 	export function setSecondaryFilterState(stores: KeyProp, state: CHAT.SecondaryFilterState) {
 		ZusUtils.toPartialStore(stores.chat, 'chat').setState({ secondaryFilterState: state })
+	}
+
+	export function setSelectedOnly(stores: KeyProp, selectedOnly: boolean) {
+		ZusUtils.toPartialStore(stores.chat, 'chat').setState({ selectedOnly })
 	}
 
 	export async function setSelectedMatchOrdinal(stores: KeyProp, ordinal: number | null) {
