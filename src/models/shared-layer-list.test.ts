@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 
 const USER = 5n
 const OTHER_USER = 6n
+const OTHER_LAYER_ID = L.swapFactionsInId(L.DEFAULT_LAYER_ID)
 
 let counter = 0
 function bbItem(id: string, owner: bigint = USER, map: string = 'Gorodok'): BB.BackburnerItem {
@@ -174,6 +175,84 @@ describe('generation consumption', () => {
 		})
 		expect(ids(state.savedBackburner)).toEqual(['b'])
 		expect(backburnerSaves(sideEffects)).toHaveLength(0)
+	})
+})
+
+describe('queue saves reset mutation state', () => {
+	function manualItem(layerId: L.LayerId = L.DEFAULT_LAYER_ID) {
+		return LL.createItem({ type: 'single-list-item', layerId }, { type: 'manual', userId: USER })
+	}
+
+	function queueProps(state: SLL.State) {
+		return { opId: `op-${counter++}`, userId: USER, editWindowSeqId: state.editWindowSeqId }
+	}
+
+	function editWindowClosures(sideEffects: SLL.SideEffect[]) {
+		return sideEffects.filter(se => se.code === 'edit-window-closed')
+	}
+
+	it('clears mutations when the save writes a changed list', () => {
+		const [first, second] = [manualItem(), manualItem()]
+		const initial = SLL.createNewState([first, second])
+		const edited = apply(initial, { op: 'delete', itemId: second.itemId, ...queueProps(initial) }).state
+		expect(edited.mutations.removed.has(second.itemId)).toBe(true)
+
+		const { state, sideEffects } = apply(edited, { op: 'save', ...queueProps(edited) })
+		expect(SLL.hasMutations(state)).toBe(false)
+		expect(listSaves(sideEffects)).toHaveLength(1)
+	})
+
+	// edits that cancel each other out leave the list identical to the saved one, so there is nothing to write --
+	// but the edit window still closed, and a deliberate finish-editing suppresses the abandoned-draft discard,
+	// so nothing else would ever clear the leftover mutations
+	it('clears mutations when the edits net out to no list change', () => {
+		const item = manualItem()
+		const initial = SLL.createNewState([item])
+		const there = apply(initial, { op: 'edit-layer', itemId: item.itemId, newLayerId: OTHER_LAYER_ID, ...queueProps(initial) }).state
+		const back = apply(there, { op: 'edit-layer', itemId: item.itemId, newLayerId: item.layerId, ...queueProps(there) }).state
+		expect(back.list).toEqual(back.savedList)
+		expect(SLL.hasMutations(back)).toBe(true)
+
+		const { state, sideEffects } = apply(back, { op: 'save', ...queueProps(back) })
+		expect(SLL.hasMutations(state)).toBe(false)
+		expect(state.editWindowSeqId).toBe(back.editWindowSeqId + 1)
+		expect(listSaves(sideEffects)).toHaveLength(0)
+		expect(editWindowClosures(sideEffects)).toHaveLength(1)
+	})
+
+	it('clears mutations when the save empties the queue and waits on generation', () => {
+		const item = manualItem()
+		const initial = SLL.createNewState([item])
+		const cleared = apply(initial, { op: 'clear', itemIds: [item.itemId], ...queueProps(initial) }).state
+
+		const { state, sideEffects } = apply(cleared, { op: 'save', ...queueProps(cleared) })
+		expect(sideEffects.some(se => se.code === 'request-queue-item-generation')).toBe(true)
+		expect(SLL.hasMutations(state)).toBe(false)
+
+		const generated = apply(state, { op: 'queue-item-generated', opId: 'gen', item: queueItem() }).state
+		expect(SLL.hasMutations(generated)).toBe(false)
+		expect(generated.list).toHaveLength(1)
+	})
+
+	it('clears mutations when a roll saves the list out from under an editor', () => {
+		const [first, second] = [manualItem(), manualItem()]
+		const initial = SLL.createNewState([first, second])
+		const edited = apply(initial, { op: 'edit-layer', itemId: second.itemId, newLayerId: OTHER_LAYER_ID, ...queueProps(initial) }).state
+		expect(SLL.hasMutations(edited)).toBe(true)
+
+		const { state } = apply(edited, { op: 'shift-first-saved-layer', opId: 'roll' })
+		expect(SLL.hasMutations(state)).toBe(false)
+	})
+
+	it('skips a queue op authored against the first edit window once it has closed', () => {
+		const [first, second] = [manualItem(), manualItem()]
+		const initial = SLL.createNewState([first, second])
+		expect(initial.editWindowSeqId).toBe(0)
+		const staleOp: SLL.Operation = { op: 'delete', itemId: second.itemId, ...queueProps(initial) }
+
+		const reset = apply(initial, { op: 'reset-to-saved', ...queueProps(initial) }).state
+		expect(reset.editWindowSeqId).toBe(1)
+		expect(() => apply(reset, staleOp)).toThrowError()
 	})
 })
 

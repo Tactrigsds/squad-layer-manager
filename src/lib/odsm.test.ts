@@ -264,6 +264,44 @@ describe('processAcks', () => {
 	})
 })
 
+describe('dropPendingOps', () => {
+	it('replays the local timeline without the dropped op', () => {
+		let session = Client.initSession<Op, State>([])
+		session = Client.processOutgoingOps(session, [op('a', 1)], reducer).session
+		session = Client.processOutgoingOps(session, [op('b', 2)], reducer).session
+
+		session = Client.dropPendingOps(session, ['a'], reducer)
+		expect(session.pendingOps).toEqual([op('b', 2)])
+		expect(session.localState).toEqual([2])
+	})
+
+	it('returns to the synced state when the last pending op is dropped', () => {
+		let session = Client.initSession<Op, State>([9])
+		session = Client.processOutgoingOps(session, [op('a', 1)], reducer).session
+		session = Client.dropPendingOps(session, ['a'], reducer)
+		expect(session.pendingOps).toEqual([])
+		expect(session.localState).toEqual([9])
+		expect(session.localState).toBe(session.syncedState)
+	})
+
+	// a pending op that is never acked blocks incoming server ops from reaching localState
+	it('lets server updates withheld while the op was pending reach the local state', () => {
+		let session = Client.initSession<Op, State>([])
+		session = Client.processOutgoingOps(session, [op('a', 1)], reducer).session
+		session = Client.processIncomingOps(session, [op('server', 7)], reducer).session
+		expect(session.localState).toEqual([1])
+
+		session = Client.dropPendingOps(session, ['a'], reducer)
+		expect(session.localState).toEqual([7])
+	})
+
+	it('is a no-op for ids that are not pending', () => {
+		let session = Client.initSession<Op, State>([])
+		session = Client.processOutgoingOps(session, [op('a', 1)], reducer).session
+		expect(Client.dropPendingOps(session, ['ghost'], reducer)).toBe(session)
+	})
+})
+
 describe('processInit', () => {
 	it('adopts the snapshot when nothing is pending', () => {
 		let session = Client.initSession<Op, State>([])

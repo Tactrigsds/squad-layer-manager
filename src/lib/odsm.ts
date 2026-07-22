@@ -276,6 +276,27 @@ export namespace Client {
 		return { rejected: false, session: applied.session, sideEffects: applied.sideEffects, ackedOps, unknownOpIds }
 	}
 
+	// drops ops the server refused (permission denied, an invalid op, a dispatch that never landed) and replays
+	// what is left of the local timeline. a pending op that is never acked is not merely a lost edit: until
+	// pendingOps drains, processIncomingOps/processAckedOps refuse to adopt the synced state, so every later
+	// server update -- including the saves that clear mutation state -- stops reaching localState entirely.
+	export function dropPendingOps<O extends BaseOp, S, SE extends SideEffectBase>(
+		session: Session<O, S>,
+		opIds: OpId[],
+		reducer: Reducer<O, S, SE>,
+	): Session<O, S> {
+		const droppedIds = new Set(opIds)
+		const pendingOps = session.pendingOps.filter(op => !droppedIds.has(op.opId))
+		if (pendingOps.length === session.pendingOps.length) return session
+		if (pendingOps.length === 0) return { ...session, localState: session.syncedState, pendingOps }
+		const reduced = runReducer(reducer, session.syncedState, pendingOps, session.syncedOps)
+		return {
+			...session,
+			localState: reduced.rejected ? session.syncedState : reduced.state,
+			pendingOps,
+		}
+	}
+
 	export function localOps<O extends BaseOp, S>(session: Session<O, S>): O[] {
 		return [...session.syncedOps, ...session.pendingOps]
 	}

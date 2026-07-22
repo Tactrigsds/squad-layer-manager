@@ -314,6 +314,11 @@ export type SideEffect =
 		layerId?: string | null
 	}
 	| {
+		// the save had nothing to write, but the edit window still closed -- editors are done and the draft
+		// state was reset, so this is the no-write counterpart of 'request-list-save'
+		code: 'edit-window-closed'
+	}
+	| {
 		// success is false when the op was skipped (stale edit window, pending generation)
 		code: 'op-outcome'
 		op: Operation
@@ -383,7 +388,7 @@ export const reducer: ODSM.Reducer<Operation, State, SideEffect> = (oldState, op
 export function applyOperation(session: State, newOp: Operation, onSideEffect?: ODSM.OnSideEffect<SideEffect>): boolean {
 	const opWindowSeqId = (newOp as { editWindowSeqId?: number })?.editWindowSeqId
 	const currentWindowSeqId = isBackburnerOp(newOp) ? session.backburnerEditWindowSeqId : session.editWindowSeqId
-	if (opWindowSeqId && opWindowSeqId !== currentWindowSeqId) {
+	if (opWindowSeqId !== undefined && opWindowSeqId !== currentWindowSeqId) {
 		return false
 	}
 	if (newOp.op === 'queue-item-generated') {
@@ -542,11 +547,19 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 			break
 
 		case 'save': {
-			// a save with no net changes shouldn't request a DB write or emit a QUEUE_UPDATED. this guard lives here
-			// (not in saveList) because in-place system ops -- rolls, vote results -- mutate savedList before saving,
-			// so they can't be compared inside saveList; they always save.
+			// a save with no net changes shouldn't request a DB write or emit a QUEUE_UPDATED, but it still closes
+			// the edit window: mutations that cancelled each other out (moved back, edited back) would otherwise
+			// outlive the save that acknowledged them, and nothing else clears them -- a deliberate finish-editing
+			// suppresses the abandoned-draft discard. this guard lives here (not in saveList) because in-place
+			// system ops -- rolls, vote results -- mutate savedList before saving, so they can't be compared
+			// inside saveList; they always save.
 			const queueChanged = !Obj.deepEqual(session.list, session.savedList)
-			if (queueChanged) saveList(session, newOp, session.list, onSideEffect)
+			if (queueChanged) {
+				saveList(session, newOp, session.list, onSideEffect)
+			} else {
+				closeEditWindow(session)
+				onSideEffect?.({ code: 'edit-window-closed' })
+			}
 			break
 		}
 
@@ -560,8 +573,7 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 		case 'reset-to-saved':
 		case 'discard-abandoned-queue-edits': {
 			session.list = Obj.deepClone(session.savedList)
-			session.mutations = ItemMut.initMutations()
-			session.editWindowSeqId++
+			closeEditWindow(session)
 			break
 		}
 
@@ -732,6 +744,9 @@ function saveList(
 	prevList: LL.List = session.savedList,
 ) {
 	session.saving = true
+	// before the empty-list bail-out: the draft this save consumed is gone either way, and leaving mutations
+	// behind for the generated item to clear strands them if generation never lands
+	closeEditWindow(session)
 	if (list.length === 0) {
 		session.requestingGeneratedQueueItem = true
 		onSideEffect?.({ code: 'request-queue-item-generation' })
@@ -739,9 +754,14 @@ function saveList(
 	}
 	session.list = list === session.list && list !== session.savedList ? list : Obj.deepClone(list)
 	session.savedList = list === session.savedList && list !== session.list ? list : Obj.deepClone(list)
+	onSideEffect?.({ code: 'request-list-save', list: session.savedList, prevList, opId: op.opId, lastSaveOpId: session.lastSaveOpId })
+}
+
+// every save path ends the edit window it committed: the draft's mutation highlights are spent, and latent ops
+// authored against the old window must be discarded rather than applied on top of the saved list
+function closeEditWindow(session: State) {
 	session.mutations = ItemMut.initMutations()
 	session.editWindowSeqId++
-	onSideEffect?.({ code: 'request-list-save', list: session.savedList, prevList, opId: op.opId, lastSaveOpId: session.lastSaveOpId })
 }
 
 export function mergeMutations(base: ItemMut.Mutations, additions: ItemMut.Mutations): ItemMut.Mutations {
