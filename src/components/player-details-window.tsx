@@ -33,8 +33,6 @@ import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle,
 import { Separator } from './ui/separator'
 import { Spinner } from './ui/spinner'
 
-const PLAYER_DETAILS_FILTER_OPTIONS = CHAT.SECONDARY_FILTER_STATE.options.filter(o => o !== 'SELECTED_PLAYERS')
-
 const dropdownMenuSlots = {
 	Item: DropdownMenuItem,
 	Separator: DropdownMenuSeparator,
@@ -102,10 +100,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	const elapsed = useElapsed(connectionStatus?.status === 'online' ? connectionStatus.connectedSince : null)
 	const isOnline = !!livePlayer
 	const globalFilterState = ZusUtils.useStore(squadServerFrameKey, ChatPrt.Sel.secondaryFilterState)
-	// this window's feed is already scoped to one player, so the selection-based filter has nothing to add here
-	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>(
-		globalFilterState === 'SELECTED_PLAYERS' ? 'ALL' : globalFilterState,
-	)
+	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>(globalFilterState)
 	const filteredEvents = allEvents.filter(e => CHAT.isRenderableInFeed(e) && CHAT.showEventInFeed(e, filterState))
 	const { scrollAreaRef, contentRef, showScrollButton, isAtTop, scrollToBottom, anchorForPrepend } = useTailingScroll()
 	const { setIsPinned } = useDraggableWindow()
@@ -201,7 +196,6 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 					<EventFilterSelect
 						variant="ghost"
 						value={filterState}
-						options={PLAYER_DETAILS_FILTER_OPTIONS}
 						onOpenChange={(open) => {
 							// hack to get around close on click-out behaviour. TODO find better pattern
 							if (open) setIsPinned(true)
