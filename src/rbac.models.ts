@@ -115,8 +115,15 @@ export const PERMISSION_DEFINITION = {
 	}),
 
 	...definePermission('filters:create', { description: 'Create new filters', scope: 'global' }),
-	...definePermission('filters:write-all', { description: 'Delete or modify any filter', scope: 'global' }),
+	...definePermission('filters:write-all', {
+		description: 'Delete or modify any filter, change their owners, and add/remove contributors',
+		scope: 'global',
+	}),
 	...definePermission('filters:write', { description: 'Modify a filter', scope: 'filter' }),
+	...definePermission('filters:manage', {
+		description: 'Manage a filter\s owner and contributors, and delete the filter',
+		scope: 'filter',
+	}),
 
 	...definePermission('squad-server:end-match', { description: 'End the current match on the server', scope: 'global' }),
 	...definePermission('squad-server:disable-slm-updates', { description: 'Disable updates from slm to the game-server', scope: 'global' }),
@@ -382,6 +389,12 @@ export function getWritePermReqForFilterEntity(id: F.FilterEntityId): Permission
 	return {
 		check: 'any',
 		permits: [perm('filters:write', { filterId: id }), perm('filters:write-all')],
+	}
+}
+export function getManagePermReqForFilterEntity(id: F.FilterEntityId): PermissionReq {
+	return {
+		check: 'any',
+		permits: [perm('filters:manage', { filterId: id }), perm('filters:write-all')],
 	}
 }
 
