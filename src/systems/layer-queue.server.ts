@@ -944,6 +944,10 @@ const handleSideEffect = C.spanOp(
 			case 'complete':
 			case 'op-outcome':
 				break
+			case 'edit-window-closed': {
+				UserPresenceSys.dispatchEndAllLayerQueueEditing(ctx.serverId)
+				break
+			}
 			case 'request-queue-item-generation': {
 				const serverState = await SquadServer.getServerState(ctx)
 				const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: true })
