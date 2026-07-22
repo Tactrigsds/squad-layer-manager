@@ -9,7 +9,7 @@ import * as F from '@/models/filter.models'
 import * as ATTRS from '@/models/otel-attrs'
 
 import * as AppEvents from '@/models/app-events.models'
-import type * as USR from '@/models/users.models'
+import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
@@ -319,6 +319,38 @@ export const filtersRouter = {
 	watchFilters: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
 		yield* watchFilters({ ctx: context, signal })
 	}),
+
+	changeFilterOwner: orpcBase.meta({ type: 'mutation' }).input(z.object({ filterId: F.FilterEntityIdSchema, newOwner: USR.UserIdSchema }))
+		.handler(
+			async ({ input, context: ctx }) => {
+				const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.getManagePermReqForFilterEntity(input.filterId))
+				if (denyRes) {
+					return denyRes
+				}
+
+				const res = await DB.runTransaction(ctx, async (ctx) => {
+					const [rawFilter] = await ctx.db().select().from(Schema.filters).where(E.eq(Schema.filters.id, input.filterId))
+					if (!rawFilter) {
+						return { code: 'err:filter-not-found' as const }
+					}
+					const filter = F.FilterEntitySchema.parse(rawFilter)
+					if (filter.owner === input.newOwner) {
+						return {
+							code: 'err:user-already-owns-filter' as const,
+						}
+					}
+					await ctx.db().update(Schema.filters).set({ owner: input.newOwner }).where(E.eq(Schema.filters.id, input.filterId))
+					return { code: 'ok' as const, filter }
+				})
+				if (res.code !== 'ok') return res
+				filterMutation$.next([C.storeLinkToActiveSpan(ctx, 'event.emitter'), {
+					type: 'update',
+					key: input.filterId,
+					value: res.filter,
+					userId: ctx.user.discordId,
+				}])
+			},
+		),
 }
 
 export let state!: {
