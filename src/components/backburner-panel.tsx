@@ -46,6 +46,7 @@ import { FilterEntityLabel } from './filter-entity-select.tsx'
 import { ListEditor } from './list-editor.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
 import { ButtonGroup } from './ui/button-group'
+import { UserAvatar } from './user-avatar.tsx'
 
 type StoresProp = { stores: SquadServerFrame.KeyProp }
 
@@ -480,7 +481,7 @@ function BackburnerRow(
 				</Tooltip>
 			)}
 			<TemplateDisplay filter={item.filter} className="min-w-0 flex-1 truncate" />
-			<OwnerName source={item.source} />
+			<RequestOwner source={item.source} />
 			{(canEdit || props.canRequest) && (
 				<span className="flex items-center">
 					{props.canRequest && (
@@ -520,10 +521,11 @@ function BackburnerRow(
 	)
 }
 
-function OwnerName(props: { source: BB.BackburnerItem['source'] }) {
-	const { data: userRes } = UsersClient.useUser(props.source.discordId, { enabled: props.source.discordId !== undefined })
-	const name = (userRes?.code === 'ok' ? userRes.user.displayName : undefined)
-		?? (props.source.steamId ? `steam:${props.source.steamId}` : 'unknown')
+// who asked for the layer. A request made in chat by a player with no linked discord account can only be
+// named by their steam id, so that falls back to text rather than an avatar.
+function RequestOwner(props: { source: BB.BackburnerItem['source'] }) {
+	if (props.source.discordId !== undefined) return <UserAvatar userId={props.source.discordId} label="Requested By" />
+	const name = props.source.steamId ? `steam:${props.source.steamId}` : 'unknown'
 	return <span className="max-w-32 truncate text-xs text-muted-foreground" title={name}>{name}</span>
 }
 
