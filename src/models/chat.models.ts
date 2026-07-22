@@ -820,7 +820,7 @@ export type PrimaryFilterState = null | {
 	id: number
 }
 
-export const SECONDARY_FILTER_STATE = z.enum(['ALL', 'DEFAULT', 'CHAT', 'SLM_EVENTS', 'ADMIN', 'KILLFEED', 'SELECTED_PLAYERS'])
+export const SECONDARY_FILTER_STATE = z.enum(['ALL', 'DEFAULT', 'CHAT', 'SLM_EVENTS', 'ADMIN', 'KILLFEED'])
 export type SecondaryFilterState = z.infer<typeof SECONDARY_FILTER_STATE>
 
 // iteration order doubles as the order the filters are offered in the UI
@@ -831,7 +831,6 @@ export const SECONDARY_FILTER_LABELS: Record<SecondaryFilterState, string> = {
 	SLM_EVENTS: 'SLM Events',
 	ADMIN: 'Admin',
 	KILLFEED: 'Killfeed',
-	SELECTED_PLAYERS: 'Selected Players',
 }
 
 export type ChatViewOptionsStore = {
@@ -886,13 +885,13 @@ function isAdminActionEvent(event: EventEnriched): boolean {
 }
 
 export type SecondaryFilterContext = {
-	// only read by SELECTED_PLAYERS
+	// only read when selectedOnly is set
 	selectedPlayerIds?: ReadonlySet<SM.PlayerId>
+	// ANDed on top of filterState rather than a filterState of its own, so it composes with any of them
+	selectedOnly?: boolean
 }
 
-export function showEventInFeed(event: EventEnriched, filterState: SecondaryFilterState, ctx?: SecondaryFilterContext): boolean {
-	if (isPinnedSystemEvent(event)) return true
-
+function matchesFilterState(event: EventEnriched, filterState: SecondaryFilterState): boolean {
 	switch (filterState) {
 		case 'ALL':
 			return true
@@ -910,17 +909,24 @@ export function showEventInFeed(event: EventEnriched, filterState: SecondaryFilt
 			if (event.type === 'ADMIN_BROADCAST') return event.from !== 'RCON'
 			if (event.type === 'PLAYER_CONNECTED' || event.type === 'PLAYER_DISCONNECTED') return event.player.isAdmin
 			if (isKillfeedEvent(event)) return event.variant === 'teamkill'
-			return isWarnEvent(event) || isAdminActionEvent(event)
+			// raw in-game warns are noisy under Admin; only the SLM-initiated ones (arriving as APP_EVENT, handled above) show
+			return isAdminActionEvent(event)
 		case 'KILLFEED':
 			return isKillfeedEvent(event)
-		case 'SELECTED_PLAYERS': {
-			const selected = ctx?.selectedPlayerIds
-			if (!selected || selected.size === 0) return false
-			return hasAnyAssocPlayer(event, selected)
-		}
 		default:
 			assertNever(filterState)
 	}
+}
+
+export function showEventInFeed(event: EventEnriched, filterState: SecondaryFilterState, ctx?: SecondaryFilterContext): boolean {
+	if (isPinnedSystemEvent(event)) return true
+	if (!matchesFilterState(event, filterState)) return false
+	if (ctx?.selectedOnly) {
+		const selected = ctx.selectedPlayerIds
+		if (!selected || selected.size === 0) return false
+		return hasAnyAssocPlayer(event, selected)
+	}
+	return true
 }
 
 // event types the feed renderer (ServerEvent) always renders as nothing. Callers that inject separators/markers

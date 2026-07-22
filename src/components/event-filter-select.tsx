@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import * as CHAT from '@/models/chat.models'
 
 import * as Icons from 'lucide-react'
@@ -9,6 +9,9 @@ export default function EventFilterSelect(props: {
 	onValueChange: (value: CHAT.SecondaryFilterState) => void
 	// defaults to every filter. pass a subset to hide filters that don't apply to the containing view
 	options?: CHAT.SecondaryFilterState[]
+	// omit when the containing view has no player selection for this to restrict against (e.g. a single-player feed)
+	selectedOnly?: boolean
+	onSelectedOnlyChange?: (value: boolean) => void
 	variant?: 'default' | 'outline' | 'ghost' | 'link'
 	open?: boolean
 	onOpenChange?: (open: boolean) => void
@@ -32,6 +35,18 @@ export default function EventFilterSelect(props: {
 						</DropdownMenuRadioItem>
 					))}
 				</DropdownMenuRadioGroup>
+				{props.onSelectedOnlyChange && (
+					<>
+						<DropdownMenuSeparator />
+						<DropdownMenuCheckboxItem
+							checked={!!props.selectedOnly}
+							onSelect={e => e.preventDefault()}
+							onCheckedChange={props.onSelectedOnlyChange}
+						>
+							Selected Only
+						</DropdownMenuCheckboxItem>
+					</>
+				)}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	)
