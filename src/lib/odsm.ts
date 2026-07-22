@@ -12,12 +12,12 @@ export type BaseOp = {
 
 // thrown by a reducer to reject the batch of ops it was handed. the batch produces no state change,
 // and the typed `data` payload describes why -- callers surface it and react (show it to the user,
-// return it to an rpc caller, log it). how a caller reacts depends on where the batch came from: a
-// client-authored batch is dropped entirely (never queued or sent) and its rejection is returned to
-// the dispatcher, while a batch arriving over the wire (or applied on the server) keeps the ops in
-// history for coherence but leaves state untouched. because the same op is replayed against several
-// base states (optimistic local, synced, server), a batch can be rejected against one and applied
-// against another. ops passed together are dependent, so rejection is all-or-nothing for the batch.
+// return it to an rpc caller, log it). a rejected batch never enters a timeline: a client-authored
+// batch is dropped before it is queued or sent, and a batch the server rejects touches neither its
+// state nor its history, so no replica ever sees it -- the originating client is told instead, and
+// drops its optimistic copy via dropPendingOps. because the same op is replayed against several base
+// states (optimistic local, synced, server), a batch can be rejected against one and applied against
+// another. ops passed together are dependent, so rejection is all-or-nothing for the batch.
 export class RejectedError<T = unknown> extends Error {
 	readonly data: T
 	constructor(data: T, options?: ErrorOptions & { message?: string }) {
@@ -62,7 +62,7 @@ export type Reducer<O extends BaseOp, S, SE extends SideEffectBase = undefined> 
 
 // result of applying a batch of ops. side effects are only reachable on the non-rejected branch: a
 // rejected batch changed no state and its accumulated side effects are discarded. the session is
-// present on both branches -- even a rejected batch advances op history for coherence.
+// present on both branches, but on the rejected branch it is the caller's session unchanged.
 export type Applied<Sess, SE extends SideEffectBase> =
 	| { rejected: false; session: Sess; sideEffects: SE[] }
 	| { rejected: true; session: Sess; error: RejectedError }
@@ -106,9 +106,9 @@ export namespace Server {
 		return { state, ops: [] }
 	}
 
-	// applies ops on the authoritative server. a rejected batch leaves state untouched but the ops are
-	// still recorded in history and broadcast, so originators can reconcile (roll back their optimistic
-	// copy) and late joiners stay coherent. the rejection / side effects are returned for the dispatcher.
+	// applies ops on the authoritative server. a rejected batch is discarded whole: neither state nor
+	// history moves, so it is never broadcast and late joiners never see it. the dispatcher reports the
+	// rejection to the originating client (which drops its optimistic copy) and nobody else.
 	export function applyOps<O extends BaseOp, S, SE extends SideEffectBase = undefined>(
 		session: Session<O, S>,
 		ops: O[],
@@ -123,11 +123,8 @@ export namespace Server {
 			if (existingIds.has(id)) throw new Error(`Duplicate opId already in session: ${id}`)
 		}
 		const reduced = runReducer(reducer, session.state, ops, session.ops)
-		const newSession: Session<O, S> = {
-			state: reduced.rejected ? session.state : reduced.state,
-			ops: OpHistory.concat(session.ops, ops),
-		}
-		return tag(newSession, reduced)
+		if (reduced.rejected) return tag(session, reduced)
+		return tag({ state: reduced.state, ops: OpHistory.concat(session.ops, ops) }, reduced)
 	}
 
 	export function resetSession<O extends BaseOp, S>(
@@ -191,7 +188,9 @@ export namespace Client {
 		}
 
 		const prevSyncedOps = session.syncedOps
-		// a rejected batch leaves synced state untouched but is still recorded in history
+		// the server only broadcasts what it accepted, so a rejection here means this replica has diverged
+		// from the authoritative one. the ops still enter history so op ids stay aligned, but synced state is
+		// left untouched and the caller reports the divergence
 		const reduced = runReducer(reducer, session.syncedState, ops, prevSyncedOps)
 		const newSyncedState = reduced.rejected ? session.syncedState : reduced.state
 		const newSyncedOps = [...prevSyncedOps, ...ops]
@@ -218,7 +217,8 @@ export namespace Client {
 
 	// processes server acks for ops this client dispatched. the server only sends back opIds for the
 	// originator's own ops -- since ops are fully deterministic, we advance the synced history by
-	// replaying our own pending copies instead of receiving them over the wire again
+	// replaying our own pending copies instead of receiving them over the wire again. an ack means the
+	// server accepted the op, so a rejection replaying it is divergence (see processIncomingOps)
 	export function processAckedOps<O extends BaseOp, S, SE extends SideEffectBase>(
 		session: Session<O, S>,
 		opIds: OpId[],
@@ -276,8 +276,8 @@ export namespace Client {
 		return { rejected: false, session: applied.session, sideEffects: applied.sideEffects, ackedOps, unknownOpIds }
 	}
 
-	// drops ops the server refused (permission denied, an invalid op, a dispatch that never landed) and replays
-	// what is left of the local timeline. a pending op that is never acked is not merely a lost edit: until
+	// drops ops the server refused (a `rejected` message, permission denied, a dispatch that never landed) and
+	// replays what is left of the local timeline. a pending op that is never acked is not merely a lost edit: until
 	// pendingOps drains, processIncomingOps/processAckedOps refuse to adopt the synced state, so every later
 	// server update -- including the saves that clear mutation state -- stops reaching localState entirely.
 	export function dropPendingOps<O extends BaseOp, S, SE extends SideEffectBase>(

@@ -19,10 +19,16 @@ import { z } from 'zod'
 // the two shared drafts a client can hold an editing session on
 export type DraftScope = 'queue' | 'layer-requests'
 
+// a dispatched batch on its way to the watchUpdates streams. a rejected batch changed nothing and is routed
+// to the originating client alone, so it can drop its optimistic copies -- no other client hears about it.
+// `echoToSource` sends the originator the full ops instead of an ack, for when the server corrected them
+// and its copies are no longer what the client replayed optimistically
+export type DispatchedOps = { ops: UP.Op[]; sourceWsClientId?: string; echoToSource?: boolean; rejection?: UP.Rejection }
+
 export type UserPresenceContext = {
 	userPresence: {
 		session: ODSM.Server.Session<UP.Op, UP.State>
-		op$: IsolatedSubject<{ ops: UP.Op[]; sourceWsClientId?: string }>
+		op$: IsolatedSubject<DispatchedOps>
 		abandoned$: IsolatedSubject<{ serverId: string; scope: DraftScope }>
 	}
 }
@@ -51,12 +57,15 @@ export const orpcRouter = {
 			ops: Obj.deepClone(globalUserPresence.session.ops),
 		}
 		const update$ = globalUserPresence.op$.pipe(
-			// the originator already has the ops in its pending set -- ack with just the ids
-			Rx.map(({ ops, sourceWsClientId }): UP.PresenceUpdate =>
-				sourceWsClientId !== undefined && sourceWsClientId === context.wsClientId
-					? { code: 'ack', opIds: ops.map(op => op.opId) }
-					: { code: 'op', ops }
-			),
+			Rx.map(({ ops, sourceWsClientId, echoToSource, rejection }): UP.PresenceUpdate | null => {
+				// the originator already has the ops in its pending set -- ack (or reject) with just the ids
+				const isOriginator = sourceWsClientId !== undefined && sourceWsClientId === context.wsClientId
+				const opIds = ops.map(op => op.opId)
+				if (rejection) return isOriginator ? { code: 'rejected', opIds, reason: rejection.code } : null
+				if (isOriginator && !echoToSource) return { code: 'ack', opIds }
+				return { code: 'op', ops }
+			}),
+			Rx.filter((update): update is UP.PresenceUpdate => update !== null),
 			Rx.startWith(initial),
 			withAbortSignal(signal!),
 		)
@@ -88,23 +97,19 @@ export const orpcRouter = {
 					}
 				}
 
-				// there some clients where the op time is in the future because their clocks are fucked up, so we need to update it to the current time.
-				// We need to create a new opId as well so that the client and server don't fall out of sync
+				// some clients have fucked up clocks and stamp the op in the future, so we correct it here. the opId is
+				// kept so the originator can still recognize its own op in the echo below and drop the pending copy
 				if (op.time > Date.now()) {
-					op = {
-						...op,
-						time: Date.now(),
-						opId: UP.createOpId(),
-					}
+					op = { ...op, time: Date.now() }
 					opsRewritten = true
 				}
 
 				ops.push(op)
 			}
 
-			// ack-by-id has the originator replay its own pending copies, which only works if the server
-			// applied them verbatim -- if we rewrote any op, fall back to echoing the full ops
-			dispatchOp(ops, opsRewritten ? undefined : { sourceWsClientId: ctx.wsClientId }).catch((error) => log.error(error))
+			// ack-by-id has the originator replay its own pending copies, which only works if the server applied
+			// them verbatim -- if we rewrote any op, echo the corrected ops to the originator too
+			dispatchOp(ops, { sourceWsClientId: ctx.wsClientId, echoToSource: opsRewritten }).catch((error) => log.error(error))
 			return { code: 'ok' as const }
 		}),
 }
@@ -137,16 +142,17 @@ function endsEditingDeliberately(op: UP.Op) {
 const dispatchOp = C.spanOp(
 	'dispatchOp',
 	{ module, extraText: (ops) => ops.map(o => o.code + (o.code === 'update-activity' ? ` (${o.update.code})` : '')).join(',') },
-	async (ops: UP.Op[], opts?: { sourceWsClientId?: string }) => {
+	async (ops: UP.Op[], opts?: Omit<DispatchedOps, 'ops' | 'rejection'>) => {
 		const editorsBefore = countEditingClients(globalUserPresence.session.state)
 		const applied = ODSM.Server.applyOps(globalUserPresence.session, ops, UP.reducer)
 		globalUserPresence.session = applied.session
-		globalUserPresence.op$.next({ ops, sourceWsClientId: opts?.sourceWsClientId })
 		if (applied.rejected) {
 			const rejection = applied.error.data as UP.Rejection
+			globalUserPresence.op$.next({ ops, ...opts, rejection })
 			if (rejection.code === 'op-error') log.error(rejection.error, 'presence op errored')
 			return
 		}
+		globalUserPresence.op$.next({ ops, ...opts })
 		if (!ops.some(endsEditingDeliberately)) {
 			const editorsAfter = countEditingClients(globalUserPresence.session.state)
 			for (const scope of DRAFT_SCOPES) {
@@ -263,7 +269,7 @@ export function setup() {
 
 	globalUserPresence = {
 		session: ODSM.Server.initSession(UP.initState()),
-		op$: new IsolatedSubject<{ ops: UP.Op[]; sourceWsClientId?: string }>(),
+		op$: new IsolatedSubject<DispatchedOps>(),
 		abandoned$: new IsolatedSubject<{ serverId: string; scope: DraftScope }>(),
 	}
 	CleanupSys.register(() => {

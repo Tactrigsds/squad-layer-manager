@@ -885,6 +885,13 @@ export type PresenceUpdate =
 		code: 'ack'
 		opIds: string[]
 	}
+	| {
+		// the server refused the originator's own batch: it changed nothing there and reached no other
+		// client, so the originator drops its optimistic copies. only ever sent to the originator
+		code: 'rejected'
+		opIds: string[]
+		reason: Rejection['code']
+	}
 
 // no presence instances older than this should be displayed
 export const DISPLAYED_AWAY_PRESENCE_WINDOW = 1000 * 60 * 10
