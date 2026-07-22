@@ -16,6 +16,7 @@ import * as RbacClient from '@/systems/rbac.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 import * as Rx from 'rxjs'
+import type * as Zus from 'zustand'
 
 export type Store = {
 	queue: State
@@ -363,13 +364,26 @@ export namespace Actions {
 			else UPClient.Actions.ensureEditingQueue(serverId)
 		}
 
-		const res = await RPC.orpc.layerQueue.dispatchOp.call({ serverId, op })
-		if (res.code === 'err:permission-denied') {
-			RbacClient.handlePermissionDenied(res)
+		let res: Awaited<ReturnType<typeof RPC.orpc.layerQueue.dispatchOp.call>>
+		try {
+			res = await RPC.orpc.layerQueue.dispatchOp.call({ serverId, op })
+		} catch (error) {
+			// the op will never be acked, so it must leave the pending set -- see dropPendingOps
+			rollbackOp(slice, op.opId)
+			console.error('layer queue op dispatch failed:', error)
+			toast.error('Failed to apply queue operation')
 			return
-		} else if (res.code !== 'ok') {
-			toast.error('msg' in res ? res.msg : res.code)
 		}
+		if (res.code === 'ok') return
+		rollbackOp(slice, op.opId)
+		if (res.code === 'err:permission-denied') RbacClient.handlePermissionDenied(res)
+		else toast.error('msg' in res ? res.msg : res.code)
+	}
+
+	// a refused op stays applied to the local state until we replay the timeline without it. leaving it pending
+	// also pins localState to the moment of refusal, so the queue would stop reflecting the server entirely.
+	function rollbackOp(slice: Zus.StoreApi<State>, opId: string) {
+		slice.setState({ rbSession: ODSM.Client.dropPendingOps(slice.getState().rbSession, [opId], SLL.reducer) })
 	}
 
 	export function dispatchItemOp(stores: KeyProp, itemId: string, newItemOp: SLL.NewContextItemOperation) {
