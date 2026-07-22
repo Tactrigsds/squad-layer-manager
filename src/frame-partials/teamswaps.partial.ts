@@ -37,12 +37,12 @@ async function resolveDisplayName(source: TSW.Teamswap['source'] | undefined): P
 	}
 }
 
-// surfaces a rejected teamswap op to the user. called at dispatch time with the rejection the
-// reducer threw, so it already runs on the originating client -- no need to filter by user
-function toastOpError(error: TSW.OpError) {
+// surfaces a rejected teamswap op to the user. only ever reached on the originating client -- either from
+// its own optimistic dispatch or from the server's `rejected` message -- so there's no user to filter by
+function toastOpError(code: TSW.Rejection['code']) {
 	let title: string
 	let description: string | undefined
-	switch (error.code) {
+	switch (code) {
 		case 'err:currently-swapping':
 			title = 'Swap in progress'
 			description = 'Cannot modify swaps while a team swap is being executed.'
@@ -174,7 +174,8 @@ export function initTeamswaps(args: Args) {
 					case 'op': {
 						const res = ODSM.Client.processIncomingOps(get().session, update.ops, TSW.reducer)
 						set({ session: res.session })
-						if (!res.rejected) { for (const se of res.sideEffects) onSideEffect(se, presenceEvent$) }
+						if (res.rejected) console.error('incoming teamswap ops diverged from the server:', res.error.data)
+						else for (const se of res.sideEffects) onSideEffect(se, presenceEvent$)
 						break
 					}
 					case 'ack': {
@@ -184,8 +185,16 @@ export function initTeamswaps(args: Args) {
 						if (res.unknownOpIds.length > 0) console.warn('received ack for unknown teamswap ops', res.unknownOpIds)
 						if (res.session !== session) {
 							set({ session: res.session })
-							if (!res.rejected) { for (const se of res.sideEffects) onSideEffect(se, presenceEvent$) }
+							if (res.rejected) console.error('acked teamswap ops diverged from the server:', res.error.data)
+							else for (const se of res.sideEffects) onSideEffect(se, presenceEvent$)
 						}
+						break
+					}
+					case 'rejected': {
+						// the server refused our ops, so they will never be acked -- replay the local timeline without
+						// them. a 'noop' rejection changed nothing there and has nothing to report
+						if (update.reason !== 'noop') toastOpError(update.reason)
+						set({ session: ODSM.Client.dropPendingOps(get().session, update.opIds, TSW.reducer) })
 						break
 					}
 					default:
@@ -213,7 +222,7 @@ export namespace Actions {
 			// the op was rejected against local state; surface a real failure to the user and drop it
 			// without sending. a 'noop' rejection changed nothing and has nothing to report
 			const rejection = res.error.data as TSW.Rejection
-			if (rejection.code !== 'noop') toastOpError(rejection)
+			if (rejection.code !== 'noop') toastOpError(rejection.code)
 			return
 		}
 		slice.setState({ session: res.session })

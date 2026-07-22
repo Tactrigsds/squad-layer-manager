@@ -147,9 +147,16 @@ export function initLayerQueue(args: Args) {
 						if (res.unknownOpIds.length > 0) console.warn(`received ack for unknown op ${update.opId}`)
 						if (res.session !== session) {
 							set({ rbSession: res.session })
-							if (!res.rejected) { for (const se of res.sideEffects) onSideEffect(se) }
+							if (res.rejected) console.error('acked queue op diverged from the server:', res.error.data)
+							else for (const se of res.sideEffects) onSideEffect(se)
 							for (const ackedOp of res.ackedOps) get().syncedOp$.next(ackedOp)
 						}
+						break
+					}
+					case 'rejected': {
+						// the server refused our op, so it will never be acked -- replay the local timeline without it
+						console.debug(`queue op ${update.opId} rejected by the server: ${update.reason}`)
+						set({ rbSession: ODSM.Client.dropPendingOps(get().rbSession, [update.opId], SLL.reducer) })
 						break
 					}
 					default:
@@ -160,7 +167,8 @@ export function initLayerQueue(args: Args) {
 			writeIncomingOperations(ops: SLL.Operation[]) {
 				const res = ODSM.Client.processIncomingOps(get().rbSession, ops, SLL.reducer)
 				set({ rbSession: res.session })
-				if (!res.rejected) { for (const se of res.sideEffects) onSideEffect(se) }
+				if (res.rejected) console.error('incoming queue op diverged from the server:', res.error.data)
+				else for (const se of res.sideEffects) onSideEffect(se)
 				for (const op of ops) {
 					get().syncedOp$.next(op)
 				}

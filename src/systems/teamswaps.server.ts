@@ -93,10 +93,14 @@ async function resolveSourceName(
 
 type Session = ODSM.Server.Session<TSW.Op, TSW.State>
 
+// a dispatched batch on its way to the watchUpdates streams. a rejected batch changed nothing and is routed
+// to the originating client alone, so it can drop its optimistic copies -- no other client hears about it.
+export type DispatchedOps = { ops: TSW.Op[]; sourceWsClientId?: string; rejection?: TSW.Rejection }
+
 export type TeamswapContext = {
 	session: Session
 	// outgoing operations
-	op$: IsolatedSubject<{ ops: TSW.Op[]; sourceWsClientId?: string }>
+	op$: IsolatedSubject<DispatchedOps>
 	dispatchMtx: MutexInterface
 	teamswapExecutedAt: number | null
 	haveReadSavedSwapsFromDb: boolean
@@ -108,7 +112,7 @@ export function setup() {
 export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 	const context: TeamswapContext = {
 		session: ODSM.Server.initSession(TSW.initState()),
-		op$: new IsolatedSubject<{ ops: TSW.Op[]; sourceWsClientId?: string }>(),
+		op$: new IsolatedSubject<DispatchedOps>(),
 		dispatchMtx: new Mutex(),
 		teamswapExecutedAt: null,
 		haveReadSavedSwapsFromDb: false,
@@ -373,12 +377,14 @@ export const orpcRouter = {
 				ops: ctx.teamswaps.session.ops,
 			}
 			return ctx.teamswaps.op$.pipe(
-				// the originator already has the ops in its pending set -- ack with just the ids
-				Rx.map(({ ops, sourceWsClientId }): TSW.UpdateForClient =>
-					sourceWsClientId !== undefined && sourceWsClientId === context.wsClientId
-						? { code: 'ack', opIds: ops.map(op => op.opId) }
-						: { code: 'op', ops }
-				),
+				Rx.map(({ ops, sourceWsClientId, rejection }): TSW.UpdateForClient | null => {
+					// the originator already has the ops in its pending set -- ack (or reject) with just the ids
+					const isOriginator = sourceWsClientId !== undefined && sourceWsClientId === context.wsClientId
+					const opIds = ops.map(op => op.opId)
+					if (rejection) return isOriginator ? { code: 'rejected', opIds, reason: rejection.code } : null
+					return isOriginator ? { code: 'ack', opIds } : { code: 'op', ops }
+				}),
+				Rx.filter((update): update is TSW.UpdateForClient => update !== null),
 				Rx.startWith(init),
 			)
 		}).pipe(withAbortSignal(signal!))
@@ -413,7 +419,6 @@ const dispatchOp = C.spanOp(
 	async (ctx: C.Teamswap & C.ServerSlice & C.Db, ops: TSW.Op[], opts?: { sourceWsClientId?: string }) => {
 		const applied = ODSM.Server.applyOps(ctx.teamswaps.session, ops, TSW.reducer)
 		ctx.teamswaps.session = applied.session
-		ctx.teamswaps.op$.next({ ops, sourceWsClientId: opts?.sourceWsClientId })
 
 		const opErrors = new Map<string, unknown[]>()
 		const addError = (opId: string, error: unknown) => {
@@ -426,6 +431,7 @@ const dispatchOp = C.spanOp(
 		// failure to the rpc caller via opErrors and log it; a 'noop' rejection has nothing to report
 		if (applied.rejected) {
 			const rejection = applied.error.data as TSW.Rejection
+			ctx.teamswaps.op$.next({ ops, sourceWsClientId: opts?.sourceWsClientId, rejection })
 			if (rejection.code !== 'noop') {
 				if (rejection.code === 'err:unexpected') {
 					log.error('op error while executing operation: %s op: %o', rejection.code, rejection.op)
@@ -438,6 +444,7 @@ const dispatchOp = C.spanOp(
 			}
 			return opErrors
 		}
+		ctx.teamswaps.op$.next({ ops, sourceWsClientId: opts?.sourceWsClientId })
 
 		const nextOps: TSW.Op[] = []
 		for (const se of applied.sideEffects) {

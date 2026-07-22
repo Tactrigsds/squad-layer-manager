@@ -417,17 +417,25 @@ describe('RejectedError', () => {
 		expect(res.session.pendingOps).toEqual([op('a', 2)])
 	})
 
-	it('server keeps a rejected op in history as a state no-op and returns the rejection', () => {
+	it('server discards a rejected op entirely and returns the rejection', () => {
 		const session = Server.initSession<Op, State>([1])
-		const baseState = session.state
 		const res = Server.applyOps(session, [op('a', -5)], gatedReducer)
 		expect(res.rejected).toBe(true)
 		if (!res.rejected) throw new Error('expected rejection')
-		expect(res.session.state).toBe(baseState) // no state change, same reference
-		expect(res.session.ops).toEqual([op('a', -5)]) // still recorded so it broadcasts/acks coherently
+		expect(res.session).toBe(session) // neither state nor history moves, so it is never broadcast
 		expect((res.error.data as Rejection).code).toBe('would-empty')
 	})
 
+	it('lets a rejected opId be dispatched again, since it never entered server history', () => {
+		const session = Server.initSession<Op, State>([1])
+		const rejected = Server.applyOps(session, [op('a', -5)], gatedReducer)
+		const retried = Server.applyOps(rejected.session, [op('a', 2)], gatedReducer)
+		expect(retried.rejected).toBe(false)
+		expect(retried.session.state).toEqual([1, 2])
+	})
+
+	// the server only broadcasts what it accepted, so this is the divergence path: keep the op in history
+	// so op ids stay aligned, and leave synced state alone
 	it('leaves syncedState untouched on an incoming rejected op but still records it', () => {
 		let session = Client.initSession<Op, State>([1])
 		const base = session.syncedState
@@ -467,6 +475,6 @@ describe('RejectedError', () => {
 
 		const rejectedRes = Server.applyOps(accepted.session, [op('b', -1)], effectReducer)
 		expect(rejectedRes.rejected).toBe(true) // rejected branch has no `sideEffects` field at all
-		expect(rejectedRes.session.ops.map(o => o.opId)).toEqual(['a', 'b']) // op still recorded
+		expect(rejectedRes.session.ops.map(o => o.opId)).toEqual(['a']) // rejected op left no trace
 	})
 })
