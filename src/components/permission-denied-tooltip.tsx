@@ -26,19 +26,11 @@ export function PermissionDeniedTooltip(props: {
 					{failures.length === 1 ? 'You need the following permission:' : `You need ${qualifier} of the following permissions:`}
 				</p>
 				<ul className="text-xs space-y-1">
-					{failures.map((p) => {
-						let msg: string
-						if (p.lookupType === 'static') {
-							msg = typeof p.perm === 'string' ? p.perm : p.perm.type
-						} else if (p.lookupType === 'dynamic') {
-							msg = p.message
-						} else msg = p
-						return (
-							<li key={msg} className="p-1.5 bg-muted/50 rounded space-y-0.5">
-								<div className="font-mono">{msg}</div>
-							</li>
-						)
-					})}
+					{failures.map((msg) => (
+						<li key={msg} className="p-1.5 bg-muted/50 rounded space-y-0.5">
+							<div className="font-mono">{msg}</div>
+						</li>
+					))}
 				</ul>
 			</TooltipContent>
 		</Tooltip>

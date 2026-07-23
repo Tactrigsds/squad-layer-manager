@@ -294,10 +294,10 @@ export const GlobalSettingsSchema = z.object({
 			+ '(anything typed after it is ignored), runs in the scopes of the command it points at, and loses to a real command string on collision.',
 	),
 	commands: CMD.AllCommandConfigSchema,
-	adminListSources: z.array(SM.AdminListSourceSchema).describe(
+	adminListSources: z.array(SM.AdminListSourceSchema).prefault([]).describe(
 		"Sources to load admins from, in the same format as the gameserver expects Each is a remote URL, local file, or FTP path serving admins in Squad's Admins.cfg format.",
 	),
-	adminIdentifyingPermissions: z.array(SM.PLAYER_PERM).describe(
+	adminIdentifyingPermissions: z.array(SM.PLAYER_PERM).prefault([]).describe(
 		'In-game admin-list permissions that mark a player as an admin in SLM (e.g. "canseeadminchat"). A player granted any of these by an '
 			+ 'admin list source is treated as an admin, which drives admin-only warns and admin presence.',
 	),

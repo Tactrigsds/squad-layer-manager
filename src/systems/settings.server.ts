@@ -630,9 +630,7 @@ const adminRouter = {
 			// write-sensitive grant covering the new server id
 			const perms = await Rbac.getUserPermissions(ctx)
 			if (!RBAC.canWriteSensitiveServerSettings(perms, input.id)) {
-				return RBAC.permissionDenied('all', [
-					{ lookupType: 'static', perm: RBAC.perm('server-settings:write-sensitive', { serverId: input.id }) },
-				])
+				return RBAC.permissionDenied('all', [`server-settings:write-sensitive on ${input.id}`])
 			}
 			const res = await createServerEntry(ctx, input)
 			if (res.code === 'ok') await recordServerRegistry(ctx, 'created', input.id)
