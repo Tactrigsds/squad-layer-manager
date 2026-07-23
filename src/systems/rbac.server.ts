@@ -16,6 +16,7 @@ import * as Env from '@/server/env'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as Discord from '@/systems/discord.server'
 
+import { IsolatedSubject } from '@/lib/isolated-subject'
 import { assertNever } from '@/lib/type-guards'
 import * as E from 'drizzle-orm'
 import { unionAll } from 'drizzle-orm/sqlite-core'
@@ -35,6 +36,15 @@ type RbacCache = {
 	players: Map<SM.PlayerId, Promise<RBAC.UserRbac>>
 }
 let cache!: RbacCache
+// discordId -> the player ids cached under it, so evictUser can drop a user's linked player entries without a db hit
+let userPlayerIndex = new Map<bigint, Set<SM.PlayerId>>()
+
+// emitted whenever cached perms are invalidated, so the client-facing layer (users.server) can push a refetch to the
+// affected session(s). 'all' = everyone (settings/adminlist/discord-role change); 'user' = one discord identity.
+export type RbacInvalidation = { scope: 'all' } | { scope: 'user'; discordId: bigint }
+export const invalidation$ = new IsolatedSubject<RbacInvalidation>()
+let sourceSubs: { unsubscribe(): void }[] = []
+
 type RoleConfig = NonNullable<SETTINGS.RbacSettings['roles'][string]>
 
 let userDefinedRoles: RBAC.Role[] = []
@@ -56,11 +66,39 @@ export function setup() {
 		users: new Map(),
 		players: new Map(),
 	}
+	userPlayerIndex = new Map()
 	// role config comes from admin-editable global settings and is pushed in via applyRbacSettings() once settings load;
 	// start from an empty set (not the schema's preset default) so we never reference an unset binding
 	applyRbacSettings(SETTINGS.RbacSettingsSchema.parse({ roles: {} }))
 	superUserIds = new Set(ENV.SUPER_USERS)
 	superRoleIds = new Set(ENV.SUPER_ROLES)
+
+	// admin-list content changes affect admin-derived roles globally; discord role definitions affect every holder;
+	// a single member's roles/membership change is targeted to that user
+	for (const sub of sourceSubs) sub.unsubscribe()
+	sourceSubs = [
+		AdminList.changed$.subscribe(() => invalidateAll()),
+		Discord.guildRbacEvents$.subscribe((e) => e.type === 'roles' ? invalidateAll() : invalidateUser(e.discordId)),
+	]
+}
+
+// clears every cached perm set (settings/adminlist/discord-role change) and notifies clients to refetch
+export function invalidateAll() {
+	cache.users.clear()
+	cache.players.clear()
+	userPlayerIndex.clear()
+	invalidation$.next({ scope: 'all' })
+}
+
+// drops one discord identity's cached perms (and its linked player entries) and notifies that user's session(s)
+export function invalidateUser(discordId: bigint) {
+	cache.users.delete(discordId)
+	const players = userPlayerIndex.get(discordId)
+	if (players) {
+		for (const playerId of players) cache.players.delete(playerId)
+		userPlayerIndex.delete(discordId)
+	}
+	invalidation$.next({ scope: 'user', discordId })
 }
 
 // called by settings.server whenever global settings are (re)loaded so role/permission changes take effect without a restart
@@ -145,9 +183,13 @@ export const getRbacForDiscordUser = C.spanOp(
 		})()
 
 		cache.users.set(discordUserId, userRbacPromise)
+		const linkedPlayerIds = new Set<SM.PlayerId>()
 		for (const ids of playerIds) {
-			cache.players.set(SM.PlayerIds.getPlayerId(ids), userRbacPromise)
+			const playerId = SM.PlayerIds.getPlayerId(ids)
+			cache.players.set(playerId, userRbacPromise)
+			linkedPlayerIds.add(playerId)
 		}
+		userPlayerIndex.set(discordUserId, linkedPlayerIds)
 		return await userRbacPromise
 	},
 )
@@ -199,10 +241,16 @@ export const getRbacForPlayer = C.spanOp(
 			return { roles, perms }
 		})()
 
+		cache.players.set(playerId, rbacPromise)
 		if (discordId) {
 			cache.users.set(discordId, rbacPromise)
+			let linked = userPlayerIndex.get(discordId)
+			if (!linked) {
+				linked = new Set()
+				userPlayerIndex.set(discordId, linked)
+			}
+			linked.add(playerId)
 		}
-		cache.players.set(playerId, rbacPromise)
 		return await rbacPromise
 	},
 )

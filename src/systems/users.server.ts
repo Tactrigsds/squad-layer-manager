@@ -16,9 +16,12 @@ import * as AppEventsSys from '@/systems/app-events.server'
 import * as Discord from '@/systems/discord.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as E from 'drizzle-orm'
+import * as Rx from 'rxjs'
 import { z } from 'zod'
 
-const invalidateUsers$ = new IsolatedSubject<void>()
+// discordId set = only that user's session(s) should refetch (their perms/links changed); undefined = broadcast to
+// every session (user metadata like a nickname that others render). rbac invalidation is bridged in via setup().
+const invalidateUsers$ = new IsolatedSubject<{ discordId?: bigint }>()
 
 const module = initModule('users')
 let log!: CS.Logger
@@ -30,6 +33,8 @@ let ENV!: ReturnType<typeof envBuilder>
 export function setup() {
 	log = module.getLogger()
 	ENV = envBuilder()
+	// reuse this channel to push rbac perm changes to clients: 'user' scope targets the one session, 'all' broadcasts
+	Rbac.invalidation$.subscribe((e) => invalidateUsers$.next(e.scope === 'user' ? { discordId: e.discordId } : {}))
 }
 
 async function recordUserAccount(
@@ -99,7 +104,7 @@ export const orpcRouter = {
 				seen.add(res.data)
 				parsed.push(BigInt(res.data))
 			}
-			return await DB.runTransaction(context, async (context) => {
+			const res = await DB.runTransaction(context, async (context) => {
 				const discordId = context.user.discordId
 				if (parsed.length > 0) {
 					const [taken] = await context.db()
@@ -141,9 +146,13 @@ export const orpcRouter = {
 				if (removed.length > 0) {
 					await recordUserAccount(context, discordId, 'steam-unlinked', { steamIds: removed.map(id => id.toString()) })
 				}
-				invalidateUsers$.next()
 				return { code: 'ok' as const, steamIds: parsed.map(id => id.toString()) }
 			})
+			// after commit: linking changes the caller's linked players, so their resolved perms change. evict +
+			// push a refetch to their session (the rbac cache has no TTL, so evicting mid-transaction could repopulate
+			// stale from the uncommitted read)
+			if (res.code === 'ok') Rbac.invalidateUser(context.user.discordId)
+			return res
 		}),
 
 	updateNickname: orpcBase
@@ -157,7 +166,7 @@ export const orpcRouter = {
 				const nickname = input?.trim() || null
 				context.user.nickname = nickname
 				if (nickname) context.user.displayName = nickname
-				invalidateUsers$.next()
+				invalidateUsers$.next({})
 				await context.db().update(Schema.users).set({ nickname }).where(E.eq(Schema.users.discordId, context.user.discordId))
 				await recordUserAccount(context, context.user.discordId, 'nickname-updated', { prevNickname: user.nickname, nickname })
 
@@ -165,8 +174,15 @@ export const orpcRouter = {
 			})
 		}),
 
-	watchUserInvalidation: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ signal }) {
-		yield* toAsyncGenerator(invalidateUsers$.pipe(withAbortSignal(signal!)))
+	watchUserInvalidation: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
+		const myId = context.user.discordId
+		yield* toAsyncGenerator(
+			invalidateUsers$.pipe(
+				Rx.filter((e) => e.discordId === undefined || e.discordId === myId),
+				Rx.map(() => undefined),
+				withAbortSignal(signal!),
+			),
+		)
 	}),
 }
 

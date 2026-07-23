@@ -492,6 +492,9 @@ const globalRouter = {
 				.set(superjsonify(Schema.globalSettings, { settings: SETTINGS.GlobalSettingsSchema.encode(GLOBAL_SETTINGS) }))
 
 			Rbac.applyRbacSettings(GLOBAL_SETTINGS.rbac)
+			// admin-list field edits flush rbac via AdminList.changed$ once the list refetches; the rbac subtree
+			// (roles/assignments/grants) has no other signal, so flush here when it actually changed
+			if (changes.some((c) => c.path === 'rbac' || c.path.startsWith('rbac.'))) Rbac.invalidateAll()
 			settings$.next({ scope: 'global', settings: GLOBAL_SETTINGS })
 			await AppEventsSys.persistAppEvent(
 				ctx,
