@@ -72,7 +72,11 @@ export function setup() {
 	applyRbacSettings(SETTINGS.RbacSettingsSchema.parse({ roles: {} }))
 	superUserIds = new Set(ENV.SUPER_USERS)
 	superRoleIds = new Set(ENV.SUPER_ROLES)
+}
 
+// wires the invalidation sources. Separate from setup() because AdminList.changed$ registers a long-lived observer
+// whose first fetch reads settings, so it must run only after adminlist + settings are set up (see main.ts order).
+export function wireInvalidationSources() {
 	// admin-list content changes affect admin-derived roles globally; discord role definitions affect every holder;
 	// a single member's roles/membership change is targeted to that user
 	for (const sub of sourceSubs) sub.unsubscribe()

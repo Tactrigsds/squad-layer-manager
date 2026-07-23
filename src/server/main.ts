@@ -114,6 +114,9 @@ await C.spanOp('main', { module }, async () => {
 
 	await Promise.all([SquadServer.setup(), Discord.setup()])
 
+	// after adminlist + settings + discord: rbac observes the admin list (whose fetch reads settings) and the discord gateway
+	Rbac.wireInvalidationSources()
+
 	// after SquadServer.setup, since its gauges read SquadServer.globalState
 	Metrics.setup()
 	await AppEventsSys.persistAppEvent(
