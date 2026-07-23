@@ -10,7 +10,13 @@ import * as RBAC from '@/rbac.models'
 // persisted shape is untouched.
 
 export type ServerGrant = { access: string; serverIds?: string[]; paths?: string[] }
-export type RoleAssignmentsValue = { discordRoleIds?: (string | number)[]; discordUserIds?: (string | number)[]; everyMember?: boolean }
+export type RoleAssignmentsValue = {
+	discordRoleIds?: (string | number)[]
+	discordUserIds?: (string | number)[]
+	everyMember?: boolean
+	includeIngameAdmins?: boolean
+	adminListGroups?: string[]
+}
 export type RoleConfig = {
 	permissions?: string[]
 	maxTimeout?: string
