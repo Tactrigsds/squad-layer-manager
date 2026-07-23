@@ -52,13 +52,18 @@ function whereText(guildName: string | null) {
 }
 
 function Document(
-	{ title, assetLinks, children }: { title: string; assetLinks: readonly AssetLink[]; children: React.ReactNode },
+	{ title, htmlAttrs, metas, assetLinks, children }: {
+		title: string
+		htmlAttrs: HtmlAttrs
+		metas: readonly Meta[]
+		assetLinks: readonly AssetLink[]
+		children: React.ReactNode
+	},
 ) {
 	return (
-		<html lang="en" className="dark">
+		<html {...(htmlAttrs as React.HtmlHTMLAttributes<HTMLHtmlElement>)}>
 			<head>
-				<meta charSet="UTF-8" />
-				<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+				{metas.map((m) => <meta key={m.name ?? m.charSet ?? m.httpEquiv ?? m.content ?? ''} {...m} />)}
 				<title>{title}</title>
 				{assetLinks.map((link) => <link key={link.href} {...link} />)}
 			</head>
@@ -126,16 +131,16 @@ function ForbiddenPage({ repoUrl, guildName }: { repoUrl: string; guildName: str
 }
 
 export function LandingDocument(
-	{ variant, repoUrl, guildName, assetLinks }: {
+	{ variant, repoUrl, guildName, head }: {
 		variant: 'landing' | 'forbidden'
 		repoUrl: string
 		guildName: string | null
-		assetLinks: readonly AssetLink[]
+		head: { htmlAttrs: HtmlAttrs; metas: readonly Meta[]; assetLinks: readonly AssetLink[] }
 	},
 ) {
 	const title = variant === 'landing' ? 'Squad Layer Manager' : 'Access denied - Squad Layer Manager'
 	return (
-		<Document title={title} assetLinks={assetLinks}>
+		<Document title={title} htmlAttrs={head.htmlAttrs} metas={head.metas} assetLinks={head.assetLinks}>
 			{variant === 'landing'
 				? <LandingPage repoUrl={repoUrl} guildName={guildName} />
 				: <ForbiddenPage repoUrl={repoUrl} guildName={guildName} />}
@@ -143,4 +148,6 @@ export function LandingDocument(
 	)
 }
 
+type HtmlAttrs = Record<string, string>
+type Meta = { charSet?: string; name?: string; content?: string; httpEquiv?: string }
 type AssetLink = { rel: string; href: string; crossOrigin?: 'anonymous'; as?: string; type?: string; media?: string }
