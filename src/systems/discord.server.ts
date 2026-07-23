@@ -1,3 +1,4 @@
+import { IsolatedSubject } from '@/lib/isolated-subject'
 import { formatVersion } from '@/lib/versioning.ts'
 import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
@@ -5,6 +6,7 @@ import { toNormalizedEmoji } from '@/models/discord.models'
 import * as RBAC from '@/rbac.models'
 import { initModule } from '@/server/logger'
 import * as AppEventsSys from '@/systems/app-events.server'
+import * as CleanupSys from '@/systems/cleanup.server'
 
 import * as DB from '@/server/db'
 import * as Env from '@/server/env'
@@ -36,8 +38,19 @@ const orpcBase = getOrpcBase(module)
 
 let client!: D.Client
 
+// resolved once at setup; null when the integration is disabled or the guild couldn't be fetched
+let homeGuildName: string | null = null
+export function getHomeGuildName() {
+	return homeGuildName
+}
+
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.discord })
 let ENV!: ReturnType<typeof envBuilder>
+
+// home-guild membership/role changes that affect rbac, for consumers (rbac.server) to invalidate on. 'member' =
+// one member's roles/membership changed (targeted); 'roles' = a role definition changed, affecting every holder.
+export type GuildRbacEvent = { type: 'member'; discordId: bigint } | { type: 'roles' }
+export const guildRbacEvents$ = new IsolatedSubject<GuildRbacEvent>()
 
 export async function setup() {
 	log = module.getLogger()
@@ -84,11 +97,37 @@ export async function setup() {
 		}
 		throw new Error(`Could not find Discord server ${ENV.DISCORD_HOME_GUILD_ID}`)
 	}
+	homeGuildName = res.guild.name
 
 	await res.guild.commands.set([
 		{ name: RESTART_SLM_COMMAND, description: 'Kill the SLM process so its container manager restarts it' },
 	])
 	client.on('interactionCreate', (interaction) => void handleInteraction(interaction))
+
+	const homeGuildId = ENV.DISCORD_HOME_GUILD_ID.toString()
+	client.on('guildMemberUpdate', (oldMember, newMember) => {
+		if (newMember.guild.id !== homeGuildId) return
+		// only roles matter for rbac; nickname/avatar edits don't change permissions
+		const rolesChanged = oldMember.roles.cache.size !== newMember.roles.cache.size
+			|| newMember.roles.cache.some((_, id) => !oldMember.roles.cache.has(id))
+		if (rolesChanged) guildRbacEvents$.next({ type: 'member', discordId: BigInt(newMember.id) })
+	})
+	client.on('guildMemberAdd', (member) => {
+		if (member.guild.id === homeGuildId) guildRbacEvents$.next({ type: 'member', discordId: BigInt(member.id) })
+	})
+	client.on('guildMemberRemove', (member) => {
+		if (member.guild.id === homeGuildId) guildRbacEvents$.next({ type: 'member', discordId: BigInt(member.id) })
+	})
+	// a role definition/deletion/creation changes membership or grants for every holder
+	client.on('roleCreate', (role) => {
+		if (role.guild.id === homeGuildId) guildRbacEvents$.next({ type: 'roles' })
+	})
+	client.on('roleUpdate', (_, role) => {
+		if (role.guild.id === homeGuildId) guildRbacEvents$.next({ type: 'roles' })
+	})
+	client.on('roleDelete', (role) => {
+		if (role.guild.id === homeGuildId) guildRbacEvents$.next({ type: 'roles' })
+	})
 
 	return res
 }
@@ -102,7 +141,12 @@ async function handleInteraction(interaction: D.Interaction) {
 	try {
 		// dynamic import: rbac.server statically imports this module
 		const Rbac = await import('@/systems/rbac.server')
-		const ctx = DB.addPooledDb({ ...CS.init(), user: { discordId: BigInt(interaction.user.id) } })
+		const ctx = DB.addPooledDb({
+			...CS.init(),
+			user: { discordId: BigInt(interaction.user.id) },
+			// TODO is this the best we can do?
+			signal: CleanupSys.shutdownSignal,
+		})
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:restart-slm'))
 		if (denyRes) {
 			await interaction.reply({ content: 'You are not authorized to restart SLM.', flags: D.MessageFlags.Ephemeral })

@@ -230,7 +230,6 @@ export const startVote = C.spanOp(
 			& C.Vote
 			& C.LayerQueue
 			& C.MatchHistory
-			& C.AdminList
 			& C.ServerSettings
 			& CS.AbortSignal,
 		opts: Omit<V.StartVoteInput, 'serverId'> & { initiator: USR.GuiOrChatUserId | 'autostart' },
@@ -349,7 +348,7 @@ export const handleVote = C.spanOp(
 		attrs: (_, msg) => ({ messageId: msg.message, playerUsername: msg.playerIds.username }),
 	},
 	(
-		ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.Rcon & C.AdminList & CS.AbortSignal & CS.Deferred,
+		ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.Rcon & CS.AbortSignal & CS.Deferred,
 		msg: SM.RconEvents.ChatMessage,
 	) => {
 		//
@@ -415,7 +414,7 @@ export const abortVote = C.spanOp(
 		mutexes: ctx => ctx.vote.mtx,
 	},
 	async (
-		ctx: C.Db & C.Rcon & C.SquadServer & C.MatchHistory & C.Vote & C.LayerQueue & C.AdminList & C.ServerSettings & CS.AbortSignal,
+		ctx: C.Db & C.Rcon & C.SquadServer & C.MatchHistory & C.Vote & C.LayerQueue & C.ServerSettings & CS.AbortSignal,
 		opts: { aborter: USR.GuiOrChatUserId },
 	) => {
 		const voteState = ctx.vote.state
@@ -585,7 +584,7 @@ export const endVote = C.spanOp(
 		}),
 	},
 	async (
-		ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.Rcon & C.AdminList & C.ServerSettings & CS.AbortSignal,
+		ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.Rcon & C.ServerSettings & CS.AbortSignal,
 		opts: { reason: 'vote-timeout' } | { reason: 'ended-early'; endedBy: USR.GuiOrChatUserId },
 	) => {
 		if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') {
@@ -672,7 +671,7 @@ export const endVote = C.spanOp(
 )
 
 async function broadcastVoteUpdate(
-	ctx: C.SquadServer & C.Vote & C.AdminList & C.Rcon & CS.AbortSignal,
+	ctx: C.SquadServer & C.Vote & C.Rcon & CS.AbortSignal,
 	voteState: V.VoteState | V.EndingVoteState,
 	msg: string,
 	opts?: { onlyNotifyNonVotingAdmins?: boolean },

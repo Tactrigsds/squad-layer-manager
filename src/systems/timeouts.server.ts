@@ -217,7 +217,7 @@ export const router = {
 	cancelTimeout: orpcBase
 		.input(z.object({ timeoutId: z.string() }))
 		.handler(async ({ context: ctx, input }) => {
-			const denyRes = await Rbac.tryDenyAnyTimeoutGrant(ctx)
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SM.Grants.anyTimeout())
 			if (denyRes) return denyRes
 			return await cancelTimeout(ctx, { timeoutId: input.timeoutId, actor: { type: 'slm-user', userId: ctx.user.discordId } })
 		}),
@@ -236,7 +236,7 @@ export const router = {
 			const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyTimeoutForUser(ctx, input.durationMs)
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SM.Grants.satisfyingTimeout(input.durationMs))
 			if (denyRes) return denyRes
 			const reasonRes = SquadServer.resolveReasonInput('timeout', input, { duration: formatHumanTime(input.durationMs) })
 			if (reasonRes.code !== 'ok') return reasonRes

@@ -1,6 +1,7 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array'
 import { createLogMatcher, eventDef, type EventSchema, matchLog } from '@/lib/log-parsing'
+import * as SetUtils from '@/lib/set'
 
 import * as Obj from '@/lib/object'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
@@ -8,6 +9,7 @@ import { normalizeForMatch, simpleUniqueStringMatch } from '@/lib/string'
 import * as ZodUtils from '@/lib/zod'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
+import * as RBAC from '@/rbac.models'
 import * as dateFns from 'date-fns'
 import { z } from 'zod'
 
@@ -592,10 +594,49 @@ export const AdminListSourceSchema = z.discriminatedUnion('type', [
 export type AdminListSource = z.infer<typeof AdminListSourceSchema>
 export type AdminListSourceType = AdminListSource['type']
 // steamId -> groups
-export type SquadAdmins = OneToManyMap<SteamId, string>
+export type SquadAdmins<T extends PlayerId> = OneToManyMap<T, string>
 // group -> permissions
 export type SquadGroups = OneToManyMap<string, string>
-export type AdminList = { players: SquadAdmins; groups: SquadGroups; admins: Set<SteamId> }
+export type AdminList = {
+	groups: SquadGroups
+	steam: {
+		players: SquadAdmins<SteamId>
+		admins: Set<SteamId>
+	}
+	eos: {
+		players: SquadAdmins<PlayerId>
+		admins: Set<PlayerId>
+	}
+}
+export namespace AdminList {
+	// we are enforcing that both eos and steam must be available to be checked against because adminlists can include either
+	export function getPlayerGroups(list: AdminList, ids: PlayerIds.IdQuery<'steam'>) {
+		const groups = new Set<string>()
+		if (ids.eos) {
+			const eosGroups = list.eos.players.get(ids.eos)
+			if (eosGroups) {
+				SetUtils.union(groups, eosGroups)
+			}
+		}
+
+		if (ids.steam) {
+			const steamGroups = list.steam.players.get(ids.steam)
+			if (steamGroups) {
+				SetUtils.union(groups, steamGroups)
+			}
+		}
+		return groups
+	}
+
+	// admin lists can key an admin by either id, so check both (mirrors getPlayerGroups); checking only eos when it's
+	// present misses a player listed under their steam id
+	export function getIsAdmin(list: AdminList, ids: PlayerIds.IdQuery<'steam'>) {
+		return Boolean(
+			(ids.eos && list.eos.admins.has(ids.eos))
+				|| (ids.steam && list.steam.admins.has(ids.steam)),
+		)
+	}
+}
 
 export const CHAT_CHANNEL_TYPE = z.enum(['ChatAdmin', 'ChatTeam', 'ChatSquad', 'ChatAll'])
 export type ChatChannelType = z.infer<typeof CHAT_CHANNEL_TYPE>
@@ -1610,5 +1651,26 @@ export namespace LogEvents {
 			const item = toChainItem(chainDef[i])
 			EVENT_CHAIN_MAP.set(item.event.type, { chainKey, ...Obj.selectProps(item, CHAIN_ITEM_OPTIONS_PROPS) })
 		}
+	}
+}
+
+// grants for the squad-server:timeout-players permission. "up to N ms" is a comparator, not an equality match, so
+// these express the check as a callback over the caller's perms (see RBAC.maxTimeoutDurationMs).
+export namespace Grants {
+	export function anyTimeout() {
+		return RBAC.permReq('all', ['squad-server:timeout-players'])
+	}
+
+	export function satisfyingTimeout(timeoutMs: number) {
+		return RBAC.permReq('all', [
+			(perms) => {
+				const max = RBAC.maxTimeoutDurationMs(perms)
+				if (max === null) return
+				if (max !== undefined && max >= timeoutMs) return
+				return `squad-server:timeout-players where maxDurationMs >= ${ZodUtils.formatHumanTime(timeoutMs)}. Max found: ${
+					max === undefined ? 'none' : ZodUtils.formatHumanTime(max)
+				}`
+			},
+		])
 	}
 }

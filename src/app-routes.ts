@@ -35,7 +35,8 @@ type GetLink<Params extends ParamsBase> = (...args: ToGenericStrings<Params>) =>
 export const routes = [
 	defRoute('/login', [], 'custom', { authed: false }),
 	defRoute('/login/callback', [], 'custom', { authed: false }),
-	defRoute('/logout', [], 'custom'),
+	// authed:false so a signed-in but unauthorized user (shown the 403 page) can still log out to switch accounts
+	defRoute('/logout', [], 'custom', { authed: false }),
 	defRoute('/layers.bin', [], 'custom'),
 	defRoute('/layer-data.json', [], 'custom'),
 	defRoute('/check-auth', [], 'custom'),

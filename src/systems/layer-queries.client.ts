@@ -147,7 +147,7 @@ async function* streamQueryLayersPackets(input: LQY.LayersQueryInput): AsyncGene
 		}
 
 		const user = await UsersClient.fetchLoggedInUser()
-		const userCanForceSelect = RBAC.rbacUserHasPerms(user, RBAC.perm('queue:force-write'))
+		const userCanForceSelect = !RBAC.tryDenyPermissionsForRbacUser(user, RBAC.perm('queue:force-write'))
 		let page = {
 			...res,
 			input,

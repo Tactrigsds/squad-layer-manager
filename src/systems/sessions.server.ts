@@ -153,7 +153,7 @@ export async function setup() {
 export const validateAndUpdate = C.spanOp(
 	'validateAndUpdate',
 	{ module, levels: { event: 'trace' } },
-	async (ctx: C.Db & C.FastifyRequest & Partial<C.FastifyReply>, allowRefresh = false) => {
+	async (ctx: C.Db & C.FastifyRequestFull & Partial<C.FastifyReply>, allowRefresh = false) => {
 		async function errorOrBypass<Res>(res: Res) {
 			if (ENV.QUERY_PARAM_AUTH_BYPASS && !!ctx.res) {
 				// nb: don't shadow `res` with ctx.res here: returning the FastifyReply where the error
