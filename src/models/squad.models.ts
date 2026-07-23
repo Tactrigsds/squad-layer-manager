@@ -594,7 +594,7 @@ export const AdminListSourceSchema = z.discriminatedUnion('type', [
 export type AdminListSource = z.infer<typeof AdminListSourceSchema>
 export type AdminListSourceType = AdminListSource['type']
 // steamId -> groups
-export type SquadAdmins<T extends PlayerId | SteamId> = OneToManyMap<T, string>
+export type SquadAdmins<T extends PlayerId> = OneToManyMap<T, string>
 // group -> permissions
 export type SquadGroups = OneToManyMap<string, string>
 export type AdminList = {

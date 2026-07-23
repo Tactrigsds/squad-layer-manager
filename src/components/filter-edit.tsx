@@ -175,7 +175,13 @@ export function FilterEdit(
 				)
 			}}
 		</form.Subscribe>
-	), [form, filterValid, filterModified, loggedInUserRole])
+	), [
+		form,
+		filterValid,
+		filterModified,
+		loggedInUserRole,
+		permitEdit,
+	])
 
 	const deleteBtn = React.useMemo(
 		() => (
@@ -183,7 +189,7 @@ export function FilterEdit(
 				<Button variant="destructive" disabled={!permitEdit}>Delete</Button>
 			</DeleteFilterDialog>
 		),
-		[onDelete],
+		[onDelete, permitEdit],
 	)
 
 	const filterCard = React.useMemo(() => (

@@ -1,7 +1,6 @@
 import * as Paths from '$root/paths.ts'
 import * as Arr from '@/lib/array'
 import * as OneToMany from '@/lib/one-to-many-map.ts'
-import type { OneToManyMap } from '@/lib/one-to-many-map.ts'
 import type * as CS from '@/models/context-shared'
 import { initModule } from '@/server/logger'
 

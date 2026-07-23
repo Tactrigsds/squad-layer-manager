@@ -641,7 +641,7 @@ export const router = {
 			}
 
 			if (SLL.isBackburnerOp(op)) {
-				const backburnerRes = await Rbac.tryDenyPermissionsForUser(ctx, 'queue:request-layers')
+				const backburnerRes = await tryDenyBackburnerDraftOp(ctx, op)
 				if (backburnerRes) return backburnerRes
 			} else {
 				const authRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write'))
@@ -729,8 +729,13 @@ async function tryDenyBackburnerDraftOp(
 		default:
 			assertNever(op)
 	}
+
+	// own items qualify with any queue:request-layers grant; touching someone else's item needs queue:write
 	const touchesOthers = targets.some(item => !BB.sameOwner(item.source, owner))
-	const authRes = await Rbac.tryDenyPermissionsForUser(ctx, [RBAC.perm('queue:write')])
+	const authReq = touchesOthers
+		? RBAC.perm('queue:write')
+		: RBAC.permReq('any', [RBAC.perm('queue:write'), 'queue:request-layers'])
+	const authRes = await Rbac.tryDenyPermissionsForUser(ctx, authReq)
 	if (authRes) return authRes
 
 	switch (op.op) {
