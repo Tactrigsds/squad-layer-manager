@@ -628,14 +628,13 @@ export namespace AdminList {
 		return groups
 	}
 
-	// we are enforcing that both eos and steam must be available to be checked against because adminlists can include either
+	// admin lists can key an admin by either id, so check both (mirrors getPlayerGroups); checking only eos when it's
+	// present misses a player listed under their steam id
 	export function getIsAdmin(list: AdminList, ids: PlayerIds.IdQuery<'steam'>) {
-		if (ids.eos) {
-			return list.eos.admins.has(ids.eos)
-		} else if (ids.steam) {
-			return list.steam.admins.has(ids.steam)
-		}
-		return false
+		return Boolean(
+			(ids.eos && list.eos.admins.has(ids.eos))
+				|| (ids.steam && list.steam.admins.has(ids.steam)),
+		)
 	}
 }
 
