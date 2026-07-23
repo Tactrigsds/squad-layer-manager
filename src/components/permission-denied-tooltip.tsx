@@ -13,7 +13,7 @@ export function PermissionDeniedTooltip(props: {
 	triggerClassName?: string
 }) {
 	if (!props.denied) return props.children
-	const { check, permits } = props.denied
+	const { checkType: check, failures } = props.denied
 	const qualifier = check === 'all' ? 'all' : 'one'
 	return (
 		<Tooltip>
@@ -23,14 +23,22 @@ export function PermissionDeniedTooltip(props: {
 			<TooltipContent className="max-w-xs">
 				<p className="font-semibold text-destructive mb-1">Permission denied</p>
 				<p className="text-xs text-muted-foreground mb-1">
-					{permits.length === 1 ? 'You need the following permission:' : `You need ${qualifier} of the following permissions:`}
+					{failures.length === 1 ? 'You need the following permission:' : `You need ${qualifier} of the following permissions:`}
 				</p>
 				<ul className="text-xs space-y-1">
-					{permits.map((p) => (
-						<li key={p.type} className="p-1.5 bg-muted/50 rounded space-y-0.5">
-							<div className="font-mono">{p.type}</div>
-						</li>
-					))}
+					{failures.map((p) => {
+						let msg: string
+						if (p.lookupType === 'static') {
+							msg = typeof p.perm === 'string' ? p.perm : p.perm.type
+						} else if (p.lookupType === 'dynamic') {
+							msg = p.message
+						} else msg = p
+						return (
+							<li key={msg} className="p-1.5 bg-muted/50 rounded space-y-0.5">
+								<div className="font-mono">{msg}</div>
+							</li>
+						)
+					})}
 				</ul>
 			</TooltipContent>
 		</Tooltip>

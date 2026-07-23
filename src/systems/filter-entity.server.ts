@@ -63,7 +63,7 @@ async function recordFilterChange(
 
 // managing who can contribute to a filter is an ownership concern, so it's restricted to the filter owner (or
 // anyone with blanket write access), rather than any contributor who merely has filters:write for the filter.
-async function denyUnlessFilterOwner(ctx: C.Db & C.UserId, filterId: F.FilterEntityId) {
+async function denyUnlessFilterOwner(ctx: C.Db & C.UserId & CS.AbortSignal, filterId: F.FilterEntityId) {
 	const [filter] = await ctx.db().select({ owner: Schema.filters.owner }).from(Schema.filters).where(E.eq(Schema.filters.id, filterId))
 	if (filter && filter.owner === ctx.user.discordId) return null
 	return Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('filters:write-all'))

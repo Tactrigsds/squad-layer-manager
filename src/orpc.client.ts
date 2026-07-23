@@ -211,7 +211,22 @@ closed$.pipe(
 	}),
 ).subscribe()
 
-export const queryClient = new QueryClient()
+// tanstack's default key hash is JSON.stringify, which throws on the discord ids we pass as query inputs.
+// mirrors its key sorting so hashes stay stable regardless of property order. see hashKey in query-core
+function hashQueryKey(queryKey: readonly unknown[]): string {
+	return JSON.stringify(queryKey, (_, val) => {
+		if (typeof val === 'bigint') return `${val}n`
+		if (typeof val !== 'object' || val === null || Array.isArray(val)) return val
+		const proto = Object.getPrototypeOf(val)
+		if (proto !== Object.prototype && proto !== null) return val
+		return Object.keys(val).sort().reduce<Record<string, unknown>>((sorted, key) => {
+			sorted[key] = (val as Record<string, unknown>)[key]
+			return sorted
+		}, {})
+	})
+}
+
+export const queryClient = new QueryClient({ defaultOptions: { queries: { queryKeyHashFn: hashQueryKey } } })
 ZusUtils.registerQueryClient(queryClient)
 export const orpc = createTanstackQueryUtils(_orpcClient, { path: ['orpc'] })
 

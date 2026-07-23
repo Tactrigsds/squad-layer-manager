@@ -190,3 +190,36 @@ describe('useStore', () => {
 		act(() => store.setState({ count: 9 }))
 	})
 })
+
+describe('useStore_Susp', () => {
+	type Query = ZusUtils.QuerySource<{ n: number }>
+	function Probe(props: { store: Zus.StoreApi<State>; query: Query }) {
+		const value = ZusUtils.useStore_Susp(props.store, props.query, (s, q) => s.count + q.n)
+		return <span data-testid="value">{value}</span>
+	}
+
+	it('suspends until the query resolves, then feeds the selector non-nullable data', async () => {
+		const store = createStore()
+		const query: Query = { queryKey: ['susp'], queryFn: async () => ({ n: 7 }) }
+		render(
+			<React.Suspense fallback={<span data-testid="fallback">loading</span>}>
+				<Probe store={store} query={query} />
+			</React.Suspense>,
+		)
+		expect(screen.getByTestId('fallback')).toBeDefined()
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 10))
+		})
+		expect(screen.getByTestId('value').textContent).toBe('7')
+		act(() => store.setState({ count: 3 }))
+		expect(screen.getByTestId('value').textContent).toBe('10')
+	})
+
+	it('reads sync sources without suspending when no query source is passed', () => {
+		const store = createStore()
+		const { result } = renderHook(() => ZusUtils.useStore_Susp(store, (s: State) => s.count))
+		expect(result.current).toBe(0)
+		act(() => store.setState({ count: 2 }))
+		expect(result.current).toBe(2)
+	})
+})

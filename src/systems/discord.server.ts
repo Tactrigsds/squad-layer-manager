@@ -5,6 +5,7 @@ import { toNormalizedEmoji } from '@/models/discord.models'
 import * as RBAC from '@/rbac.models'
 import { initModule } from '@/server/logger'
 import * as AppEventsSys from '@/systems/app-events.server'
+import * as CleanupSys from '@/systems/cleanup.server'
 
 import * as DB from '@/server/db'
 import * as Env from '@/server/env'
@@ -102,7 +103,12 @@ async function handleInteraction(interaction: D.Interaction) {
 	try {
 		// dynamic import: rbac.server statically imports this module
 		const Rbac = await import('@/systems/rbac.server')
-		const ctx = DB.addPooledDb({ ...CS.init(), user: { discordId: BigInt(interaction.user.id) } })
+		const ctx = DB.addPooledDb({
+			...CS.init(),
+			user: { discordId: BigInt(interaction.user.id) },
+			// TODO is this the best we can do?
+			signal: CleanupSys.shutdownSignal,
+		})
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:restart-slm'))
 		if (denyRes) {
 			await interaction.reply({ content: 'You are not authorized to restart SLM.', flags: D.MessageFlags.Ephemeral })

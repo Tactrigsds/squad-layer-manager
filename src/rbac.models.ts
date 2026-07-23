@@ -4,6 +4,8 @@ import * as F from '@/models/filter.models'
 import type * as USR from '@/models/users.models'
 
 import { z } from 'zod'
+import { assertNever } from './lib/type-guards'
+import { formatHumanTime } from './lib/zod'
 
 export type GenericRole = {
 	type: string
@@ -33,6 +35,28 @@ export type InferredRole = z.infer<typeof InferredRoleSchema>
 
 export type Role = InferredRole | GenericRole
 export type RoleArg = InferredRole | string
+export type UserRbac = {
+	perms: TracedPermission[]
+	roles: Role[]
+}
+
+export namespace Role {
+	export function push(roles: Role[], role: Role): Role[] {
+		for (const r of roles) {
+			if (Obj.deepEqual(r, role)) {
+				return roles
+			}
+		}
+		return [...roles, role]
+	}
+	export function merge(roles: Role[], otherRoles: Role[]): Role[] {
+		const newRoles = [...roles]
+		for (const role of otherRoles) {
+			push(newRoles, role)
+		}
+		return newRoles
+	}
+}
 
 export function isInferredRoleType<R extends { type: Role['type'] }>(role: R): role is Extract<R, { type: InferredRole['type'] }> {
 	return role.type === 'filter-owner' || role.type === 'filter-user-contributor' || role.type === 'filter-role-contributor'
@@ -53,6 +77,8 @@ export type RoleAssignment =
 	| { type: 'discord-role'; discordRoleId: bigint; role: Role }
 	| { type: 'discord-user'; discordUserId: bigint; role: Role }
 	| { type: 'discord-server-member'; role: Role }
+	| { type: 'admin-list-group'; role: Role; groupId: string }
+	| { type: 'ingame-admin'; role: Role }
 
 export const ROLE_ASSIGNMENT_TYPES = ['discord-role', 'discord-user', 'discord-server-member'] as const
 {
@@ -184,6 +210,43 @@ export const ROLE_GRANTABLE_PERMISSION_TYPE = z.enum(
 	],
 )
 
+export namespace Grants {
+	export function anyTimeout() {
+		return permReq(
+			'all',
+			['squad-server:timeout-players'],
+		)
+	}
+
+	export function satisfyingTimeout(timeoutMs: number) {
+		return permReq('all', [
+			(perms) => {
+				let maxSeenDuration = -1
+				for (const p of perms) {
+					if (p.type !== 'squad-server:timeout-players' || p.scope !== 'timeout' || !p.args) continue
+					const maxDurationMs = (p.args as { maxDurationMs: number })?.maxDurationMs
+					if (typeof maxDurationMs !== 'number') continue
+					maxSeenDuration = Math.max(maxSeenDuration, maxDurationMs)
+					if (maxDurationMs >= timeoutMs) {
+						return
+					}
+				}
+
+				return `squad-server:timeout-players where maxDurationMs >= ${formatHumanTime(timeoutMs)}. Max found: ${
+					maxSeenDuration === -1 ? 'none' : formatHumanTime(maxSeenDuration)
+				}`
+			},
+		])
+	}
+
+	export function globalSettingsRead() {
+		return permReq('any', [
+			perm('global-settings:read'),
+			'global-settings:write',
+		])
+	}
+}
+
 // the scope args a bare role expression grants for one of the grantable settings perms: unrestricted everything
 export function unrestrictedRoleGrantArgs<T extends RoleGrantablePermissionType>(type: T): PermArgs<T> {
 	switch (type as RoleGrantablePermissionType) {
@@ -282,86 +345,88 @@ export function addTracedPerms(perms: TracedPermission[], ...permsToAdd: TracedP
 	}
 }
 
-export function permissionDenied<T extends PermissionType>(req: PermissionReq<T>) {
+export function permissionDenied<T extends PermissionType>(
+	checkType: PermissionReq['check'],
+	failures: PermissionFailure<T>[],
+): PermissionDeniedResponse<T> {
 	return {
-		code: 'err:permission-denied' as const,
-		...req,
+		code: 'err:permission-denied',
+		checkType,
+		failures,
 	}
 }
 
-export type PermissionDeniedResponse<T extends PermissionType = PermissionType> = ReturnType<typeof permissionDenied<T>>
-export type PermissionReq<T extends PermissionType = PermissionType> = { check: 'all' | 'any'; permits: Permission<T>[] }
+export type PermissionDeniedResponse<T extends PermissionType = PermissionType> = {
+	code: 'err:permission-denied'
+	checkType: PermissionReq['check']
+	failures: PermissionFailure<T>[]
+}
 
-export function rbacUserHasPerms<T extends PermissionType>(user: UserWithRbac, perms: Permission<T>): boolean
-export function rbacUserHasPerms<T extends PermissionType>(user: UserWithRbac, perms: Permission<T>[]): boolean
-export function rbacUserHasPerms<T extends PermissionType>(user: UserWithRbac, req: PermissionReq<T>): boolean
-export function rbacUserHasPerms<T extends PermissionType>(
+export type PermitCheckerCallback = (perms: Permission[]) => string | undefined
+export type PermitChecker<T extends PermissionType = PermissionType> =
+	| Permission<T>
+	| PermitCheckerCallback
+	| T
+
+export type PermissionReq<T extends PermissionType = PermissionType> = { check: 'all' | 'any'; permits: PermitChecker<T>[] }
+export function permReq<T extends PermissionType>(check: 'all' | 'any', permits: (PermitChecker<T> | undefined)[]): PermissionReq<T> {
+	return { check, permits: permits.filter(v => Boolean(v)) as PermitChecker<T>[] }
+}
+export type PermissionFailure<T extends PermissionType = PermissionType> = { lookupType: 'static'; perm: Permission<T> | T } | {
+	lookupType: 'dynamic'
+	message: string
+}
+
+export function tryDenyPermissionsForRbacUser<T extends PermissionType>(
 	user: UserWithRbac,
-	reqOrPerms: Permission<T> | Permission<T>[] | PermissionReq<T>,
-): boolean {
-	if ('check' in reqOrPerms) {
-		return userHasPerms(user.discordId, fromTracedPermissions(user.perms), reqOrPerms)
-	}
-	const req: PermissionReq<T> = {
-		check: 'all',
-		permits: Array.isArray(reqOrPerms) ? reqOrPerms : [reqOrPerms],
-	}
-	return userHasPerms(user.discordId, fromTracedPermissions(user.perms), req)
+	req: PermitChecker<T> | PermitChecker<T>[] | PermissionReq<T>,
+): PermissionDeniedResponse<T> | null {
+	const perms = fromTracedPermissions(user.perms)
+	return tryDenyPermissions(perms, req)
 }
 
-// TODO technically incorrect when it comes to filters:write-all
-export function userHasPerms<T extends PermissionType>(userId: bigint, userPerms: Permission[], perm: Permission<T>): boolean
-export function userHasPerms<T extends PermissionType>(userId: bigint, userPerms: Permission[], perms: Permission<T>[]): boolean
-export function userHasPerms<T extends PermissionType>(userId: bigint, userPerms: Permission[], req: PermissionReq<T>): boolean
-export function userHasPerms<T extends PermissionType>(
-	userId: bigint,
-	userPerms: Permission[],
-	reqOrPerms: Permission<T> | Permission<T>[] | PermissionReq<T>,
-): boolean {
+export function tryDenyPermissions<T extends PermissionType>(
+	_userPerms: Permission[],
+	_req: PermitChecker<T> | PermitChecker<T>[] | PermissionReq<T>,
+) {
 	// just in case
-	userPerms = fromTracedPermissions(userPerms as TracedPermission<T>[])
-	const req: PermissionReq<T> = 'check' in reqOrPerms
-		? reqOrPerms
-		: {
-			check: 'all',
-			permits: Array.isArray(reqOrPerms) ? reqOrPerms : [reqOrPerms],
-		}
+	const userPerms = fromTracedPermissions(_userPerms as TracedPermission<T>[])
+	let failures: PermissionFailure<T>[] = []
+
+	let req: PermissionReq<T>
+	if (typeof _req === 'object' && 'check' in _req) {
+		req = _req
+	} else {
+		req = { check: 'all', permits: Array.isArray(_req) ? _req : [_req] }
+	}
 
 	for (const reqPerm of req.permits) {
-		const hasPerm = userPerms.find((userPerm) => arePermsEqual(userPerm, reqPerm))
-		if (req.check === 'all' && !hasPerm) return false
-		if (req.check === 'any' && hasPerm) return true
+		if (typeof reqPerm === 'function') {
+			const errorMessage = reqPerm(userPerms)
+			if (errorMessage) {
+				failures.push({ lookupType: 'dynamic', message: errorMessage })
+			}
+		} else {
+			const hasPerm = userPerms.some((userPerm) =>
+				typeof reqPerm === 'string' ? userPerm.type === reqPerm : arePermsEqual(userPerm, reqPerm)
+			)
+			if (!hasPerm) {
+				failures.push({ lookupType: 'static', perm: reqPerm })
+			}
+		}
 	}
-	return req.check === 'all'
-}
 
-export function tryDenyPermissionsForRbacUser<T extends PermissionType>(
-	user: UserWithRbac,
-	req: Permission<T>,
-): PermissionDeniedResponse<T> | null
-export function tryDenyPermissionsForRbacUser<T extends PermissionType>(
-	user: UserWithRbac,
-	req: Permission<T>[],
-): PermissionDeniedResponse<T> | null
-export function tryDenyPermissionsForRbacUser<T extends PermissionType>(
-	user: UserWithRbac,
-	req: PermissionReq<T>,
-): PermissionDeniedResponse<T> | null
-export function tryDenyPermissionsForRbacUser<T extends PermissionType>(
-	user: UserWithRbac,
-	req: Permission<T> | Permission<T>[] | PermissionReq<T>,
-): PermissionDeniedResponse<T> | null {
-	const normReq: PermissionReq<T> = 'check' in req ? req : { check: 'all', permits: Array.isArray(req) ? req : [req] }
-	if (!rbacUserHasPerms(user, normReq)) {
-		return permissionDenied(normReq)
+	let failure: boolean
+	if (req.check === 'all') {
+		failure = failures.length > 0
+	} else if (req.check === 'any') {
+		failure = failures.length === req.permits.length
+	} else {
+		assertNever(req.check)
 	}
-	return null
-}
-export function tryDenyPermissionForUser<T extends PermissionType>(userId: bigint, perms: Permission[], req: PermissionReq<T>) {
-	if (!userHasPerms(userId, perms, req)) {
-		return permissionDenied(req)
-	}
-	return null
+
+	if (!failure) return null
+	return { code: 'err:permission-denied' as const, failures, checkType: req.check }
 }
 
 export function arePermsEqual(perm1: Permission & Partial<PermissionTrace>, perm2: Permission & Partial<PermissionTrace>) {

@@ -84,11 +84,11 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 
 	const [squadMessagesOnly, setSquadMessagesOnly] = React.useState(false)
 
-	const { data, isPending } = useQuery({
-		...RPC.orpc.matchHistory.getSquadDetails.queryOptions({ input: { serverId, uniqueSquadId } }),
+	const { data, isPending } = useQuery(RPC.orpc.matchHistory.getSquadDetails.queryOptions({
+		input: { serverId, uniqueSquadId },
 		enabled: !isCurrentMatchSquad,
-		select: RPC.selectLoaded,
-	})
+		select: res => RPC.selectLoaded(res),
+	}))
 
 	const squad = data?.squad
 

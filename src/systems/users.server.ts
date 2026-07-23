@@ -4,6 +4,7 @@ import { IsolatedSubject } from '@/lib/isolated-subject'
 import { Steam64IdSchema } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
+import * as SM from '@/models/squad.models'
 import * as USR from '@/models/users.models'
 import type * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
@@ -53,18 +54,17 @@ async function recordUserAccount(
 
 export const orpcRouter = {
 	getLoggedInUser: orpcBase.handler(async ({ context }) => {
-		const perms = await Rbac.getUserRbacPerms(context)
+		const rbac = await Rbac.getRbacForDiscordUser(context)
 		const user: RBAC.UserWithRbac = {
 			...context.user,
-			perms,
+			perms: rbac.perms,
 		}
 		return { ...user, wsClientId: context.wsClientId }
 	}),
 	getUser: orpcBase
 		.input(z.bigint())
 		.handler(async ({ context, input }) => {
-			const [dbUser] = await context.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, input))
-			const user = await buildUser(dbUser)
+			const user = await getUser(context, input)
 			if (!user) return { code: 'err:not-found' as const }
 			return { code: 'ok' as const, user }
 		}),
@@ -170,15 +170,45 @@ export const orpcRouter = {
 	}),
 }
 
+export async function getUser(ctx: C.Db, discordId: bigint) {
+	const [dbUser] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, discordId))
+	const user = await buildUser(dbUser)
+	if (!user) return
+	return user
+}
+
+export async function findDiscordIdBySteam64Id(ctx: C.Db, steam64Id: bigint): Promise<bigint | undefined> {
+	const [user] = await ctx.db().select({ discordId: Schema.users.discordId }).from(Schema.users)
+		.innerJoin(Schema.linkedSteamAccounts, E.eq(Schema.users.discordId, Schema.linkedSteamAccounts.discordId))
+		.where(E.eq(Schema.linkedSteamAccounts.steam64Id, steam64Id))
+
+	return user?.discordId
+}
+
 // resolves an in-game (chat) sender's linked SLM account, e.g. for RBAC checks on chat-initiated actions
 export async function findUserBySteam64Id(ctx: C.Db, steam64Id: bigint) {
-	const [link] = await ctx.db()
-		.select({ discordId: Schema.linkedSteamAccounts.discordId })
-		.from(Schema.linkedSteamAccounts)
+	const [rawUser] = await ctx.db().select().from(Schema.users)
+		.innerJoin(Schema.linkedSteamAccounts, E.eq(Schema.users.discordId, Schema.linkedSteamAccounts.discordId))
 		.where(E.eq(Schema.linkedSteamAccounts.steam64Id, steam64Id))
-	if (!link) return undefined
-	const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, link.discordId))
-	return user
+	if (!rawUser) return null
+	return buildUser(rawUser.users)
+}
+
+export async function findUserSteamIds(ctx: C.Db, userId: bigint) {
+	const rows = await ctx.db().select({ steam64Id: Schema.linkedSteamAccounts.steam64Id }).from(Schema.linkedSteamAccounts)
+		.where(E.eq(Schema.linkedSteamAccounts.discordId, userId))
+	return rows.map((row) => row.steam64Id)
+}
+
+export async function findUserPlayerIds(ctx: C.Db, userId: bigint) {
+	const rows = await ctx.db().select({ eosid: Schema.players.eosId, steamId: Schema.players.steamId }).from(Schema.linkedSteamAccounts)
+		.leftJoin(Schema.players, E.eq(Schema.linkedSteamAccounts.steam64Id, Schema.players.steamId))
+		.where(E.eq(Schema.linkedSteamAccounts.discordId, userId))
+	let ids: SM.PlayerIds.IdQuery<'eos' | 'steam'>[] = []
+	for (const row of rows) {
+		if (row.eosid && row.steamId) ids.push({ eos: row.eosid, steam: row.steamId.toString() })
+	}
+	return ids
 }
 
 function selectBestDisplayName(options: (string | null | undefined)[]): string {

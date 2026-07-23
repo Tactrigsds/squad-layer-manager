@@ -43,7 +43,7 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 		const filterEntities = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
 		const filterEntity = filterEntities.get(params.filterId)
 		if (!filterEntity) return null
-		const ownerRes = await RPC.queryClient.fetchQuery(UsersClient.getFetchUserOptions(filterEntity.owner))
+		const ownerRes = await RPC.queryClient.fetchQuery(UsersClient.userQueryOptions(filterEntity.owner))
 		if (ownerRes.code !== 'ok') return null
 		const colConfig = await ConfigClient.fetchEffectiveColConfig()
 		const frameInput = EditFrame.createInput({ editedFilterId: params.filterId, startingFilter: filterEntity.filter, colConfig })
