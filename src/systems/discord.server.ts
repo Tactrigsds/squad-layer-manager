@@ -1,3 +1,4 @@
+import { IsolatedSubject } from '@/lib/isolated-subject'
 import { formatVersion } from '@/lib/versioning.ts'
 import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
@@ -39,6 +40,11 @@ let client!: D.Client
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.discord })
 let ENV!: ReturnType<typeof envBuilder>
+
+// home-guild membership/role changes that affect rbac, for consumers (rbac.server) to invalidate on. 'member' =
+// one member's roles/membership changed (targeted); 'roles' = a role definition changed, affecting every holder.
+export type GuildRbacEvent = { type: 'member'; discordId: bigint } | { type: 'roles' }
+export const guildRbacEvents$ = new IsolatedSubject<GuildRbacEvent>()
 
 export async function setup() {
 	log = module.getLogger()
@@ -90,6 +96,31 @@ export async function setup() {
 		{ name: RESTART_SLM_COMMAND, description: 'Kill the SLM process so its container manager restarts it' },
 	])
 	client.on('interactionCreate', (interaction) => void handleInteraction(interaction))
+
+	const homeGuildId = ENV.DISCORD_HOME_GUILD_ID.toString()
+	client.on('guildMemberUpdate', (oldMember, newMember) => {
+		if (newMember.guild.id !== homeGuildId) return
+		// only roles matter for rbac; nickname/avatar edits don't change permissions
+		const rolesChanged = oldMember.roles.cache.size !== newMember.roles.cache.size
+			|| newMember.roles.cache.some((_, id) => !oldMember.roles.cache.has(id))
+		if (rolesChanged) guildRbacEvents$.next({ type: 'member', discordId: BigInt(newMember.id) })
+	})
+	client.on('guildMemberAdd', (member) => {
+		if (member.guild.id === homeGuildId) guildRbacEvents$.next({ type: 'member', discordId: BigInt(member.id) })
+	})
+	client.on('guildMemberRemove', (member) => {
+		if (member.guild.id === homeGuildId) guildRbacEvents$.next({ type: 'member', discordId: BigInt(member.id) })
+	})
+	// a role definition/deletion/creation changes membership or grants for every holder
+	client.on('roleCreate', (role) => {
+		if (role.guild.id === homeGuildId) guildRbacEvents$.next({ type: 'roles' })
+	})
+	client.on('roleUpdate', (_, role) => {
+		if (role.guild.id === homeGuildId) guildRbacEvents$.next({ type: 'roles' })
+	})
+	client.on('roleDelete', (role) => {
+		if (role.guild.id === homeGuildId) guildRbacEvents$.next({ type: 'roles' })
+	})
 
 	return res
 }

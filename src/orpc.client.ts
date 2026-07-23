@@ -205,7 +205,7 @@ closed$.pipe(
 		if (websocket.retryCount > 5) {
 			const res = await fetch(AR.link('/check-auth'))
 			if (res.status === 401) {
-				window.location.href = AR.link('/login')
+				window.location.href = AR.link('/')
 			}
 		}
 	}),

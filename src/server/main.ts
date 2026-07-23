@@ -14,6 +14,7 @@ import * as Commands from '@/systems/commands.server'
 import * as Discord from '@/systems/discord.server'
 import * as Fastify from '@/systems/fastify.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
+import * as Landing from '@/systems/landing.server'
 import * as LayerData from '@/systems/layer-data.server'
 import * as LayerEngine from '@/systems/layer-engine.server'
 import * as LayerQueries from '@/systems/layer-queries.server'
@@ -126,6 +127,7 @@ await C.spanOp('main', { module }, async () => {
 			version: formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA),
 		}),
 	)
+	Landing.setup()
 	const { serverClosed } = await Fastify.setup()
 	if (ENV.NODE_ENV === 'development') {
 		void import('./console.ts')

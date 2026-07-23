@@ -10,7 +10,7 @@ import * as Settings from '@/systems/settings.server'
 import type * as SM from '@/models/squad.models.ts'
 import * as C from '@/server/context.ts'
 
-import { IsolatedBehaviorSubject } from '@/lib/isolated-subject'
+import { IsolatedBehaviorSubject, IsolatedSubject } from '@/lib/isolated-subject'
 import { WritableBuffer } from '@/lib/rcon/writable-buffer'
 import { withSftp } from '@/lib/sftp-file-store.ts'
 import { HumanTime } from '@/lib/zod'
@@ -32,8 +32,26 @@ export type AdminListStatus = {
 }
 
 export let status$: IsolatedBehaviorSubject<AdminListStatus>
+
+// emits when a (re)fetch produces admin data different from the last, so rbac can flush admin-derived roles. Gated
+// on content so an unchanged TTL refresh doesn't fire. Never emits on the first successful fetch (nothing to diff).
+export const changed$ = new IsolatedSubject<void>()
+let lastFingerprint: string | undefined
+
+// stable string over the parts that drive rbac (group perms, per-id groups, admin sets); admin lists are small
+function fingerprint(l: SM.AdminList): string {
+	const idPart = (t: SM.AdminList['eos']) => {
+		const players = [...OneToMany.iter(t.players)].map(([id, g]) => `${id}=${g}`).sort().join(',')
+		const admins = [...t.admins].sort().join(',')
+		return `${players}#${admins}`
+	}
+	const groups = [...OneToMany.iter(l.groups)].map(([g, p]) => `${g}=${p}`).sort().join(',')
+	return `${groups}||${idPart(l.eos)}||${idPart(l.steam)}`
+}
+
 export function setup() {
 	log = module.getLogger()
+	lastFingerprint = undefined
 	status$ = new IsolatedBehaviorSubject<AdminListStatus>({ code: 'init' })
 	adminList = (() => {
 		const adminListTTL = HumanTime.parse('1h')
@@ -47,6 +65,9 @@ export function setup() {
 				// we are duplicating fetches here if two servers have the same source, but shouldn't matter
 				const res = await fetchAdminLists(sources, identifyingPerms, _ctx.signal)
 				status$.next({ code: 'ok' })
+				const fp = fingerprint(res)
+				if (lastFingerprint !== undefined && fp !== lastFingerprint) changed$.next()
+				lastFingerprint = fp
 				return res
 			},
 			module,
