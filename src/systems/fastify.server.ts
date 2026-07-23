@@ -15,6 +15,7 @@ import { anySignal } from '@/lib/async'
 import * as ORPCServer from '@/server/orpc-handler'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Discord from '@/systems/discord.server'
+import * as Landing from '@/systems/landing.server'
 import * as LayerData from '@/systems/layer-data.server'
 import * as LayerEngine from '@/systems/layer-engine.server'
 import * as Rbac from '@/systems/rbac.server'
@@ -37,6 +38,17 @@ const BASE_HEADERS = {
 	'Cross-Origin-Embedder-Policy': 'credentialless',
 	'Cross-Origin-Opener-Policy': 'same-origin',
 	'Cross-Origin-Resource-Policy': 'cross-origin',
+}
+
+// serves a pre-rendered static page (landing/403). no-store because '/' serves different content per auth state.
+// STATIC_PAGE_HEADER marks the response so the dev vite proxy serves our body instead of the SPA shell (which it
+// otherwise substitutes for any 200 html response); see the html-proxy-middleware in vite.config.ts.
+const STATIC_PAGE_HEADER = 'x-slm-static-page'
+function sendHtmlPage(reply: FastifyReply, html: string, status: number) {
+	for (const [key, value] of Object.entries(BASE_HEADERS)) {
+		reply.header(key, value)
+	}
+	return reply.status(status).header('Cache-Control', 'no-store').header(STATIC_PAGE_HEADER, '1').type('text/html').send(html)
 }
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.httpServer, ...Env.groups.discord })
@@ -132,9 +144,7 @@ export const setup = C.spanOp('setup', { module }, async () => {
 		if (denyRes) {
 			switch (denyRes.code) {
 				case 'err:permission-denied':
-					return reply
-						.status(401)
-						.send(Messages.GENERAL.auth.noApplicationAccess)
+					return sendHtmlPage(reply, Landing.forbiddenHtml(), 403)
 				default:
 					assertNever(denyRes.code)
 			}
@@ -146,8 +156,12 @@ export const setup = C.spanOp('setup', { module }, async () => {
 	})
 
 	instance.post(AR.route('/logout'), async function(req, res) {
-		const ctx = getAuthedCtx(req)
-		await Sessions.logout({ ...ctx, res })
+		// authed:false: only the session cookie is needed, so a signed-in-but-unauthorized user can still sign out
+		const ctx = buildHttpRequestContext(req, res)
+		const sessionId = ctx.cookies['session-id']
+		if (sessionId) await Sessions.logout({ ...ctx, sessionId, res })
+		else Sessions.clearInvalidSession(ctx)
+		return res.redirect(AR.route('/'), 302)
 	})
 
 	instance.get(AR.route('/layers.bin'), async (req, res) => {
@@ -219,11 +233,14 @@ export const setup = C.spanOp('setup', { module }, async () => {
 			case 'unauthorized:not-found':
 				reply = Sessions.clearInvalidSession({ ...CS.init(), res: reply })
 				if (baseCtx.route?.def.handle === 'page') {
-					return await reply.redirect(AR.route('/login'), 302)
+					// unauthenticated visitors get the public login page at '/', not an automatic bounce to discord
+					if (baseCtx.route.def.id === '/') return sendHtmlPage(reply, Landing.landingHtml(), 200)
+					return await reply.redirect(AR.route('/'), 302)
 				} else {
 					return await reply.status(401).send(Messages.GENERAL.auth.unAuthenticated)
 				}
 			case 'err:permission-denied':
+				if (baseCtx.route?.def.handle === 'page') return sendHtmlPage(reply, Landing.forbiddenHtml(), 403)
 				return await reply.status(401).send(Messages.GENERAL.auth.noApplicationAccess)
 			default:
 				assertNever(authRes)

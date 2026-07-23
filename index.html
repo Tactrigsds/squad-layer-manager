@@ -1,8 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
+  <head id="site-head">
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Single source of truth for the site's font/preconnect links. The server-rendered landing and 403 pages
+      parse the <link> tags out of this file so they share the app's fonts and stylesheet without duplicating
+      them (see src/systems/landing.server.ts). Keep font/metadata links here.
+    -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
