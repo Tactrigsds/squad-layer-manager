@@ -31,10 +31,13 @@ const RoleAssignmentsSchema = z.object({
 	discordUserIds: z.array(ParsableBigIntSchema).prefault([]).describe('Discord user ids granted this role'),
 	everyMember: z.boolean().prefault(false).describe('Grant this role to every member of the Discord server'),
 	includeIngameAdmins: z.boolean().prefault(false).describe(
-		"Include ingame admins in the role when they're using ingame commands",
+		'Grant this role to in-game admins. A player counts as an in-game admin when the admin list places them in a group '
+			+ 'holding one of the admin-identifying permissions (configured by Admin list sources / Admin identifying permissions '
+			+ 'in global settings).',
 	),
 	adminListGroups: z.array(z.string()).prefault([]).describe(
-		"Assigns ingame admins roles based on the groups that they've been assigned in the adminlist",
+		'Grant this role to in-game players by their admin-list group membership. A player gets it while the admin list '
+			+ 'places them in any of the selected groups, admin-identifying or not (e.g. a Whitelist reserve-slot group).',
 	),
 }).prefault({})
 
