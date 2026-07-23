@@ -1,4 +1,3 @@
-import { z } from 'zod'
 export namespace User {
 	export const EMAIL = 'user.email'
 	export const FULL_NAME = 'user.full_name'

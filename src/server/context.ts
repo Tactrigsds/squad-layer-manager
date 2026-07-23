@@ -1,5 +1,5 @@
 import type * as AR from '@/app-routes.ts'
-import type { AsyncResource, AsyncResourceInvocationOpts, ImmediateRefetchError } from '@/lib/async-resource.ts'
+import type { AsyncResourceInvocationOpts, ImmediateRefetchError } from '@/lib/async-resource.ts'
 import { isAbortError, sleep } from '@/lib/async.ts'
 import type * as Cleanup from '@/lib/cleanup.ts'
 import { LRUMap } from '@/lib/lru-map.ts'

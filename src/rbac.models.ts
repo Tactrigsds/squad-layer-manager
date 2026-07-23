@@ -146,7 +146,7 @@ export const PERMISSION_DEFINITION = {
 	}),
 	...definePermission('filters:write', { description: 'Modify a filter', scope: 'filter' }),
 	...definePermission('filters:manage', {
-		description: 'Manage a filter\s owner and contributors, and delete the filter',
+		description: 'Manage a filters owner and contributors, and delete the filter',
 		scope: 'filter',
 	}),
 

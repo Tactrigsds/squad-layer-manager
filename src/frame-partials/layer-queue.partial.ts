@@ -377,7 +377,7 @@ export namespace Actions {
 		if (res.code === 'ok') return
 		rollbackOp(slice, op.opId)
 		if (res.code === 'err:permission-denied') RbacClient.handlePermissionDenied(res)
-		else toast.error(res.msg)
+		else toast.error('msg' in res ? res.msg : res.code)
 	}
 
 	// a refused op stays applied to the local state until we replay the timeline without it. leaving it pending
