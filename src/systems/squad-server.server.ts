@@ -5,7 +5,7 @@ import * as Arr from '@/lib/array'
 import { acquireInBlock, anySignal, distinctDeepEquals, firstValueFrom, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { AsyncResource } from '@/lib/async-resource'
 import * as Cleanup from '@/lib/cleanup'
-import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
+import { superjsonify } from '@/lib/drizzle'
 import { FileTail } from '@/lib/file-tail'
 import * as Gen from '@/lib/generator'
 import { IsolatedSubject } from '@/lib/isolated-subject'
@@ -1477,8 +1477,7 @@ export async function getFullServerState(ctx: C.Db & C.LayerQueue) {
 		.from(Schema.servers)
 		.where(E.eq(Schema.servers.id, ctx.serverId))
 	const [serverRaw] = await query
-	const state = SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
-	return { ...state, settings: Settings.openConnections(state.settings) }
+	return Settings.parseServerStateRow(serverRaw)
 }
 
 export function getCurrTeams(ctx: C.SquadServer) {
@@ -1722,8 +1721,7 @@ export async function getServerState(ctx: C.Db & C.ServerId) {
 		.from(Schema.servers)
 		.where(E.eq(Schema.servers.id, ctx.serverId))
 	const [serverRaw] = await query
-	const state = SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
-	return { ...state, settings: Settings.openConnections(state.settings) }
+	return Settings.parseServerStateRow(serverRaw)
 }
 
 // settings changes go through Settings.updateServerSettings instead — that's the one source of truth for reading/writing/broadcasting settings
