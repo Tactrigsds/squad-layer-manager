@@ -118,6 +118,9 @@ const [_, userInvalidation$] = RxHelpers.bind(
 export function setup() {
 	userInvalidation$.subscribe(() => {
 		invalidateUsers()
+		// perms travel on this channel too (see users.server), so refresh the rbac-derived role lists
+		// (getUserDefinedRoles / getSimulatableRoles) that getLoggedInUser's own refetch doesn't cover
+		void RPC.queryClient.invalidateQueries({ queryKey: RPC.orpc.rbac.key() })
 	})
 	// every suspending perms hook hangs on this one, so it starts before the first render rather than with it
 	void RPC.queryClient.prefetchQuery(loggedInUserQueryOptions)
