@@ -99,7 +99,7 @@ export const RbacStore = Zus.createStore<RbacStore>((set, get) => ({
 	disablePerm: (perm) => {
 		const disabledPerms = get().disabledPerms
 		if (disabledPerms.some(p => RBAC.isSamePerm(p, perm))) return
-		set({ disabledPerms: [...disabledPerms, Obj.selectProps(perm, ['type', 'scope', 'args'])] })
+		set({ disabledPerms: [...disabledPerms, Obj.selectProps(perm, ['type', 'scope', 'args']) as RBAC.Permission] })
 	},
 	enablePerm: (perm) => set({ disabledPerms: get().disabledPerms.filter(p => !RBAC.isSamePerm(p, perm)) }),
 }))

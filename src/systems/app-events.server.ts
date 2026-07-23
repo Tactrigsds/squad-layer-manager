@@ -3,7 +3,6 @@ import * as AppEvents from '@/models/app-events.models'
 import * as SETTINGS from '@/models/settings.models'
 import type * as USR from '@/models/users.models'
 import type * as C from '@/server/context'
-import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as Otel from '@/systems/otel.server'
@@ -50,8 +49,7 @@ export const router = {
 	// the audit log: most-recent-first, cursor-paginated by time
 	list: orpcBase
 		.input(z.object({ limit: z.number().int().min(1).max(200).default(50), before: z.number().optional() }))
-		.handler(async ({ context: _ctx, input }) => {
-			const ctx = DB.addPooledDb(_ctx as any)
+		.handler(async ({ context: ctx, input }) => {
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SETTINGS.Grants.globalSettingsRead())
 			if (denyRes) return denyRes
 			const rows = await ctx
