@@ -439,7 +439,7 @@ const publicRouter = {
 const globalRouter = {
 	// streams the encoded (pre-decode) form, e.g. HumanTime fields as '5m' rather than milliseconds, since this is meant for display/editing
 	watchSettings: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context: ctx }) {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.Grants.globalSettingsRead())
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SETTINGS.Grants.globalSettingsRead())
 		if (denyRes) {
 			yield denyRes
 			return
@@ -496,7 +496,7 @@ const globalRouter = {
 					serverId: null,
 					matchId: null,
 					causeId: null,
-					changes: auditableSettingChanges(res.changes),
+					changes: auditableSettingChanges(changes),
 				}),
 			)
 			return { code: 'ok' as const, changes }
@@ -525,7 +525,7 @@ const serverRouter = {
 			const ctx = { ..._ctx, serverId: input.serverId }
 			const paths = input.ops.map((op) => op.path)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SETTINGS.Grants.writeServerSettingsPaths(input.serverId, paths))
-			if (!denyRes) return denyRes
+			if (denyRes) return denyRes
 
 			// the mutations are applied in place, so the before-state has to be taken first to have anything to diff
 			let changes: SettingChange[] = []
@@ -623,10 +623,9 @@ const adminRouter = {
 			// write-sensitive grant covering the new server id
 			const perms = await Rbac.getUserPermissions(ctx)
 			if (!RBAC.canWriteSensitiveServerSettings(perms, input.id)) {
-				return RBAC.permissionDenied({
-					check: 'all' as const,
-					permits: [RBAC.perm('server-settings:write-sensitive', { serverId: input.id })],
-				})
+				return RBAC.permissionDenied('all', [
+					{ lookupType: 'static', perm: RBAC.perm('server-settings:write-sensitive', { serverId: input.id }) },
+				])
 			}
 			const res = await createServerEntry(ctx, input)
 			if (res.code === 'ok') await recordServerRegistry(ctx, 'created', input.id)
@@ -743,7 +742,7 @@ const adminRouter = {
 					serverId: input.serverId,
 					matchId: null,
 					causeId: null,
-					changes: auditableSettingChanges(res.changes),
+					changes: auditableSettingChanges(changes),
 				}),
 			)
 			// the diff is for the audit event only: it carries the raw connection values, so it must not be echoed back

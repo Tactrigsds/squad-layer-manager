@@ -1,6 +1,5 @@
 import * as DH from '@/lib/display-helpers.ts'
 import * as Obj from '@/lib/object'
-import * as SetUtils from '@/lib/set'
 import { BasicStrNoWhitespace, HumanTime, ParsableBigIntSchema } from '@/lib/zod'
 import * as AAR from '@/models/admin-action-reasons.models.ts'
 import * as BAL from '@/models/balance-triggers.models.ts'
@@ -831,61 +830,45 @@ export function dottedSettingsPath(path: string | (string | number)[]): string {
 }
 
 export namespace Grants {
-	export function writeGlobalSettingsPaths(paths: SettingsPath[]) {
+	export function globalSettingsRead() {
 		return RBAC.permReq('any', [
-			RBAC.perm('global-settings:write', { paths: null }),
+			RBAC.perm('global-settings:read'),
+			'global-settings:write',
+		])
+	}
+
+	export function writeGlobalSettingsPaths(paths: (SettingsPath | string)[]) {
+		const dottedPaths = paths.map(dottedSettingsPath)
+		return RBAC.permReq('all', [
 			(perms) => {
-				const dottedPaths = paths.map(dottedSettingsPath)
-				const foundPaths = new Set<string>()
-				for (const perm of perms) {
-					if (perm.type !== 'global-settings:write') continue
-					if (perm.scope !== 'global-settings-write') continue
-					const permPaths = (perm.args as { paths: string[] })!.paths
-					for (const path of dottedPaths) {
-						for (const permPath of permPaths) {
-							if (permPath === path || path.startsWith(permPath + '.')) {
-								foundPaths.add(path)
-							}
-						}
-					}
-				}
-				const missing = SetUtils.difference(new Set(dottedPaths), foundPaths)
-				return `global-setings:write :: missing ${Array.from(missing).join(', ')}`
+				const access = RBAC.globalSettingsWriteAccess(perms)
+				const missing = dottedPaths.filter((p) => !RBAC.settingsPathAllowed(access, p))
+				if (missing.length === 0) return
+				return `global-settings:write missing paths: ${missing.join(', ')}`
 			},
 		])
 	}
 
-	export function writeServerSettingsPaths(serverId: string, paths: SettingsPath[]) {
-		let hasSensitivePaths = false
-		for (const path of paths) {
-			if ('connections' in path) {
-				hasSensitivePaths = true
-				break
-			}
-		}
+	export function writeServerSettingsPaths(serverId: string, paths: (SettingsPath | string)[]) {
+		const dottedPaths = paths.map(dottedSettingsPath)
+		const isSensitive = (p: string) => p === 'connections' || p.startsWith('connections.')
+		const nonSensitivePaths = dottedPaths.filter((p) => !isSensitive(p))
+		const hasSensitivePaths = dottedPaths.some(isSensitive)
 
-		return RBAC.permReq<'server-settings:write' | 'server-settings:write-sensitive'>('any', [
-			RBAC.perm('server-settings:write', { serverId, paths: null }),
+		return RBAC.permReq<'server-settings:write' | 'server-settings:write-sensitive'>('all', [
 			(perms) => {
-				const dottedPaths = paths.map(dottedSettingsPath)
-				const foundPaths = new Set<string>()
-				for (const perm of perms) {
-					if (perm.type !== 'server-settings:write') continue
-					if (perm.scope !== 'server-settings-write') continue
-					const parmArgs = perm.args as { paths: string[]; serverId: string }
-					if (parmArgs.serverId !== serverId) continue
-					for (const path of dottedPaths) {
-						for (const permPath of parmArgs.paths) {
-							if (permPath === path || path.startsWith(permPath + '.')) {
-								foundPaths.add(path)
-							}
-						}
-					}
-				}
-				const missing = SetUtils.difference(new Set(dottedPaths), foundPaths)
-				return `global-setings:write :: missing ${Array.from(missing).join(', ')}`
+				const access = RBAC.serverSettingsWriteAccess(perms, serverId)
+				const missing = nonSensitivePaths.filter((p) => !RBAC.settingsPathAllowed(access, p))
+				if (missing.length === 0) return
+				return `server-settings:write missing paths: ${missing.join(', ')}`
 			},
-			hasSensitivePaths ? RBAC.perm('server-settings:write-sensitive', { serverId }) : undefined,
+			// connections are never a path grant; editing them requires write-sensitive regardless of the write grant above
+			hasSensitivePaths
+				? (perms) => {
+					if (RBAC.canWriteSensitiveServerSettings(perms, serverId)) return
+					return `server-settings:write-sensitive on ${serverId}`
+				}
+				: undefined,
 		])
 	}
 }

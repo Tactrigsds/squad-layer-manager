@@ -7,6 +7,7 @@ import * as ZusUtils from '@/lib/zustand'
 import * as BB from '@/models/backburner.models'
 import type * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
+import type * as RBAC from '@/rbac.models'
 
 import { toast } from '@/lib/toast'
 import * as SLL from '@/models/shared-layer-list'
@@ -364,7 +365,10 @@ export namespace Actions {
 			else UPClient.Actions.ensureEditingQueue(serverId)
 		}
 
-		let res: Awaited<ReturnType<typeof RPC.orpc.layerQueue.dispatchOp.call>>
+		// orpc's client type-transform collapses the permission-denied member out of this handler's return union
+		// (the large SLL.Operation input plus the failures-based response overflow its instantiation budget); it does
+		// occur at runtime, so widen back to the real shape
+		let res: Awaited<ReturnType<typeof RPC.orpc.layerQueue.dispatchOp.call>> | RBAC.PermissionDeniedResponse
 		try {
 			res = await RPC.orpc.layerQueue.dispatchOp.call({ serverId, op })
 		} catch (error) {
@@ -377,7 +381,7 @@ export namespace Actions {
 		if (res.code === 'ok') return
 		rollbackOp(slice, op.opId)
 		if (res.code === 'err:permission-denied') RbacClient.handlePermissionDenied(res)
-		else toast.error('msg' in res ? res.msg : res.code)
+		else toast.error(res.msg)
 	}
 
 	// a refused op stays applied to the local state until we replay the timeline without it. leaving it pending

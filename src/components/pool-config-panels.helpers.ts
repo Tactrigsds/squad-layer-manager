@@ -25,10 +25,9 @@ export function useStorePoolConfigApi(key: ServerSettingsPrt.Key, base: SETTINGS
 	// loose overlap check: the panel stays editable if any path under its pool subtree is writable (individual
 	// out-of-grant edits are still rejected server-side)
 	const access = RBAC.serverSettingsWriteAccess(perms, serverId)
-	const writeDenied = RBAC.settingsPathOverlaps(access, base) ? null : RBAC.permissionDenied({
-		check: 'all' as const,
-		permits: [RBAC.perm('server-settings:write', { serverId, paths: [RBAC.dottedSettingsPath(base)] })],
-	})
+	const writeDenied = RBAC.settingsPathOverlaps(access, base) ? null : RBAC.permissionDenied('all', [
+		{ lookupType: 'static', perm: RBAC.perm('server-settings:write', { serverId, paths: [RBAC.dottedSettingsPath(base)] }) },
+	])
 	return {
 		useValue: (path) =>
 			// oxlint-disable-next-line rules-of-hooks -- stable call site inside the panel components

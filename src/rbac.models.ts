@@ -5,7 +5,6 @@ import type * as USR from '@/models/users.models'
 
 import { z } from 'zod'
 import { assertNever } from './lib/type-guards'
-import { formatHumanTime } from './lib/zod'
 
 export type GenericRole = {
 	type: string
@@ -209,43 +208,6 @@ export const ROLE_GRANTABLE_PERMISSION_TYPE = z.enum(
 		...RoleGrantablePermissionType[],
 	],
 )
-
-export namespace Grants {
-	export function anyTimeout() {
-		return permReq(
-			'all',
-			['squad-server:timeout-players'],
-		)
-	}
-
-	export function satisfyingTimeout(timeoutMs: number) {
-		return permReq('all', [
-			(perms) => {
-				let maxSeenDuration = -1
-				for (const p of perms) {
-					if (p.type !== 'squad-server:timeout-players' || p.scope !== 'timeout' || !p.args) continue
-					const maxDurationMs = (p.args as { maxDurationMs: number })?.maxDurationMs
-					if (typeof maxDurationMs !== 'number') continue
-					maxSeenDuration = Math.max(maxSeenDuration, maxDurationMs)
-					if (maxDurationMs >= timeoutMs) {
-						return
-					}
-				}
-
-				return `squad-server:timeout-players where maxDurationMs >= ${formatHumanTime(timeoutMs)}. Max found: ${
-					maxSeenDuration === -1 ? 'none' : formatHumanTime(maxSeenDuration)
-				}`
-			},
-		])
-	}
-
-	export function globalSettingsRead() {
-		return permReq('any', [
-			perm('global-settings:read'),
-			'global-settings:write',
-		])
-	}
-}
 
 // the scope args a bare role expression grants for one of the grantable settings perms: unrestricted everything
 export function unrestrictedRoleGrantArgs<T extends RoleGrantablePermissionType>(type: T): PermArgs<T> {
