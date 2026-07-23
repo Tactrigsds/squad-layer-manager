@@ -321,6 +321,13 @@ export function connectionsNeedReseal(settings: SETTINGS.ServerSettings): boolea
 export const sealConnectionValues = (connections: SETTINGS.ServerConnection) => transformConnectionSecretValues(connections, SecretBox.seal)
 export const openConnectionValues = (connections: SETTINGS.ServerConnection) => transformConnectionSecretValues(connections, SecretBox.open)
 
+// The DB read boundary for a full servers row: connection secrets are sealed in the column and opened here, so
+// every ServerState the app works with is plaintext. All full-row reads go through this.
+export function parseServerStateRow(rawRow: unknown): SS.ServerState {
+	const state = SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, rawRow))
+	return { ...state, settings: openConnections(state.settings) }
+}
+
 // reads settings for a server that may not have a live slice (e.g. it's disabled), always going to the DB
 export async function getServerSettings(ctx: C.Db, serverId: SS.ServerId): Promise<SETTINGS.ServerSettings> {
 	const [row] = await ctx.db().select({ id: Schema.servers.id, settings: Schema.servers.settings }).from(Schema.servers).where(
