@@ -2,6 +2,7 @@ import * as Paths from '$root/paths'
 import { LandingDocument } from '@/components/landing-pages'
 import * as Env from '@/server/env.ts'
 import { initModule } from '@/server/logger'
+import * as Discord from '@/systems/discord.server'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { createElement } from 'react'
@@ -27,13 +28,15 @@ const module = initModule('landing')
 let landingHtmlCache!: string
 let forbiddenHtmlCache!: string
 
+// must run after Discord.setup() so the home guild name is resolved
 export function setup() {
 	ENV = envBuilder()
 	const repoUrl = ENV.PUBLIC_REPO_URL ?? DEFAULT_REPO_URL
+	const guildName = Discord.getHomeGuildName()
 	const assetLinks = [...FONT_LINKS, ...resolveStyleLinks()]
-	landingHtmlCache = render('landing', repoUrl, assetLinks)
-	forbiddenHtmlCache = render('forbidden', repoUrl, assetLinks)
-	module.getLogger().info('landing pages rendered')
+	landingHtmlCache = render('landing', repoUrl, guildName, assetLinks)
+	forbiddenHtmlCache = render('forbidden', repoUrl, guildName, assetLinks)
+	module.getLogger().info('landing pages rendered (guild: %s)', guildName ?? '<none>')
 }
 
 export function landingHtml() {
@@ -44,8 +47,13 @@ export function forbiddenHtml() {
 	return forbiddenHtmlCache
 }
 
-function render(variant: 'landing' | 'forbidden', repoUrl: string, assetLinks: { rel: string; href: string }[]) {
-	return '<!DOCTYPE html>' + renderToStaticMarkup(createElement(LandingDocument, { variant, repoUrl, assetLinks }))
+function render(
+	variant: 'landing' | 'forbidden',
+	repoUrl: string,
+	guildName: string | null,
+	assetLinks: { rel: string; href: string }[],
+) {
+	return '<!DOCTYPE html>' + renderToStaticMarkup(createElement(LandingDocument, { variant, repoUrl, guildName, assetLinks }))
 }
 
 // the SPA's Tailwind bundle already contains the landing-page classes (Tailwind's @source scans every .tsx),

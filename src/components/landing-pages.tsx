@@ -43,7 +43,13 @@ function RepoLink({ repoUrl }: { repoUrl: string }) {
 	)
 }
 
-const ADMIN_NOTE = 'You need admin permissions in the configured Discord to access SLM.'
+function instanceLine(guildName: string | null) {
+	return guildName ? `You have reached the SLM instance for ${guildName}.` : 'You have reached this Squad Layer Manager instance.'
+}
+
+function whereText(guildName: string | null) {
+	return guildName ? ` in ${guildName}` : ' in the configured Discord'
+}
 
 function Document(
 	{ title, assetLinks, children }: { title: string; assetLinks: readonly AssetLink[]; children: React.ReactNode },
@@ -65,11 +71,14 @@ function Document(
 	)
 }
 
-function LandingPage({ repoUrl }: { repoUrl: string }) {
+function LandingPage({ repoUrl, guildName }: { repoUrl: string; guildName: string | null }) {
 	return (
 		<main className="w-full max-w-md rounded-xl border bg-card p-8 text-center shadow-lg">
-			<h1 className="text-2xl font-bold tracking-tight">Squad Layer Manager</h1>
-			<p className="mt-2 text-muted-foreground">Sign in to manage layer queues, generation, and your Squad servers.</p>
+			<p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Squad Layer Manager</p>
+			<h1 className="mt-2 text-2xl font-bold tracking-tight">{instanceLine(guildName)}</h1>
+			<p className="mt-3 text-muted-foreground">
+				To access this site you must sign in with a Discord account that has sufficient privileges{whereText(guildName)}.
+			</p>
 			<a
 				href="/login"
 				className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-md bg-[#5865f2] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#4752c4]"
@@ -77,22 +86,21 @@ function LandingPage({ repoUrl }: { repoUrl: string }) {
 				<DiscordIcon />
 				<span>Log in with Discord</span>
 			</a>
-			<p className="mt-6 border-t pt-6 text-sm text-muted-foreground">
-				{ADMIN_NOTE} If you have just been granted access, log in again.
-			</p>
 			<RepoLink repoUrl={repoUrl} />
 		</main>
 	)
 }
 
-function ForbiddenPage({ repoUrl }: { repoUrl: string }) {
+function ForbiddenPage({ repoUrl, guildName }: { repoUrl: string; guildName: string | null }) {
 	return (
 		<main className="w-full max-w-md rounded-xl border bg-card p-8 text-center shadow-lg">
 			<div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/20 text-destructive-foreground">
 				<DiscordIcon />
 			</div>
 			<h1 className="text-2xl font-bold tracking-tight">Access denied</h1>
-			<p className="mt-2 text-muted-foreground">Your Discord account is not authorized to use SLM.</p>
+			<p className="mt-2 text-muted-foreground">
+				Your Discord account does not have sufficient privileges{whereText(guildName)} to access this site.
+			</p>
 			<div className="mt-6 flex flex-col gap-3">
 				<a
 					href="/"
@@ -110,7 +118,7 @@ function ForbiddenPage({ repoUrl }: { repoUrl: string }) {
 				</form>
 			</div>
 			<p className="mt-6 border-t pt-6 text-sm text-muted-foreground">
-				{ADMIN_NOTE} If you believe this is a mistake, contact an administrator.
+				If you believe this is a mistake, contact an administrator.
 			</p>
 			<RepoLink repoUrl={repoUrl} />
 		</main>
@@ -118,12 +126,19 @@ function ForbiddenPage({ repoUrl }: { repoUrl: string }) {
 }
 
 export function LandingDocument(
-	{ variant, repoUrl, assetLinks }: { variant: 'landing' | 'forbidden'; repoUrl: string; assetLinks: readonly AssetLink[] },
+	{ variant, repoUrl, guildName, assetLinks }: {
+		variant: 'landing' | 'forbidden'
+		repoUrl: string
+		guildName: string | null
+		assetLinks: readonly AssetLink[]
+	},
 ) {
 	const title = variant === 'landing' ? 'Squad Layer Manager' : 'Access denied - Squad Layer Manager'
 	return (
 		<Document title={title} assetLinks={assetLinks}>
-			{variant === 'landing' ? <LandingPage repoUrl={repoUrl} /> : <ForbiddenPage repoUrl={repoUrl} />}
+			{variant === 'landing'
+				? <LandingPage repoUrl={repoUrl} guildName={guildName} />
+				: <ForbiddenPage repoUrl={repoUrl} guildName={guildName} />}
 		</Document>
 	)
 }
