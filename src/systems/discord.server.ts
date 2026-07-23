@@ -36,6 +36,12 @@ const orpcBase = getOrpcBase(module)
 
 let client!: D.Client
 
+// resolved once at setup; null when the integration is disabled or the guild couldn't be fetched
+let homeGuildName: string | null = null
+export function getHomeGuildName() {
+	return homeGuildName
+}
+
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.discord })
 let ENV!: ReturnType<typeof envBuilder>
 
@@ -84,6 +90,7 @@ export async function setup() {
 		}
 		throw new Error(`Could not find Discord server ${ENV.DISCORD_HOME_GUILD_ID}`)
 	}
+	homeGuildName = res.guild.name
 
 	await res.guild.commands.set([
 		{ name: RESTART_SLM_COMMAND, description: 'Kill the SLM process so its container manager restarts it' },
