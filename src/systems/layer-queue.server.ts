@@ -353,7 +353,7 @@ export function getSavedQueue(ctx: C.LayerQueue) {
 }
 
 export async function saveQueueAndUpdateServer(
-	ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.AdminList & C.ServerSettings & CS.AbortSignal,
+	ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.ServerSettings & CS.AbortSignal,
 	list: LL.List,
 	// the QUEUE_UPDATED for this save; the resulting MAP_SET app event (if the next layer changed) links back to it
 	queueUpdatedId?: string,
@@ -404,7 +404,7 @@ export async function saveQueueAndUpdateServer(
 }
 
 export async function warnShowNext(
-	ctx: C.Db & C.SquadServer & C.LayerQueue & C.Rcon & C.AdminList & CS.AbortSignal,
+	ctx: C.Db & C.SquadServer & C.LayerQueue & C.Rcon & CS.AbortSignal,
 	playerIds: 'all-admins' | SM.PlayerIds.Type,
 	opts?: { updated?: boolean },
 ) {
@@ -521,7 +521,7 @@ export const syncNextLayerToServer = C.spanOp(
 
 export async function toggleUpdatesToSquadServer(
 	{ ctx, input }: {
-		ctx: C.Db & C.SquadServer & C.UserOrPlayer & C.LayerQueue & C.AdminList & C.Rcon & C.ServerSettings & CS.AbortSignal
+		ctx: C.Db & C.SquadServer & C.UserOrPlayer & C.LayerQueue & C.Rcon & C.ServerSettings & CS.AbortSignal
 		input: { disabled: boolean }
 	},
 ) {
@@ -550,7 +550,7 @@ export async function getSlmUpdatesEnabled(ctx: C.Db & C.UserOrPlayer & C.SquadS
 }
 
 export async function requestFeedback(
-	ctx: C.Db & C.SquadServer & C.LayerQueue & C.AdminList & C.Rcon & CS.AbortSignal,
+	ctx: C.Db & C.SquadServer & C.LayerQueue & C.Rcon & CS.AbortSignal,
 	playerName: string,
 	layerQueueNumber: string | undefined,
 ) {
@@ -641,7 +641,7 @@ export const router = {
 			}
 
 			if (SLL.isBackburnerOp(op)) {
-				const backburnerRes = await tryDenyBackburnerDraftOp(ctx, op)
+				const backburnerRes = await Rbac.tryDenyPermissionsForUser(ctx, 'queue:request-layers')
 				if (backburnerRes) return backburnerRes
 			} else {
 				const authRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write'))
@@ -674,13 +674,6 @@ export const router = {
 
 			return { code: 'ok' as const }
 		}),
-}
-
-// queue:write qualifies outright; otherwise any queue:request-layers grant does
-async function tryDenyQueueWriteOrRequestGrant(ctx: C.Db & C.UserId) {
-	const writeDenied = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write'))
-	if (!writeDenied) return null
-	return await Rbac.tryDenyLayerRequestsForUser(ctx)
 }
 
 // whether a template has any solutions. Pool membership rides in the template itself (see BB.withPoolFilter),
@@ -737,9 +730,7 @@ async function tryDenyBackburnerDraftOp(
 			assertNever(op)
 	}
 	const touchesOthers = targets.some(item => !BB.sameOwner(item.source, owner))
-	const authRes = touchesOthers
-		? await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write'))
-		: await tryDenyQueueWriteOrRequestGrant(ctx)
+	const authRes = await Rbac.tryDenyPermissionsForUser(ctx, [RBAC.perm('queue:write')])
 	if (authRes) return authRes
 
 	switch (op.op) {
@@ -819,12 +810,10 @@ export type AddRequestResult =
 // when they are at their cap. `user` is the sender's linked SLM account (RBAC identity); `source` carries both
 // ids so ownership checks work from either surface.
 export async function addBackburnerRequestFromChat(
-	ctx: C.Db & C.ServerSlice & CS.AbortSignal,
+	ctx: C.Db & C.ServerSlice & CS.AbortSignal & C.PlayerIds,
 	args: { user: { discordId: bigint }; source: USR.GuiOrChatUserId; filter: F.FilterNode },
 ): Promise<AddRequestResult> {
-	const rbacCtx = { ...ctx, user: args.user }
-	// same gate as the GUI path: queue:write curators qualify without a request grant (and are uncapped)
-	const denied = await tryDenyQueueWriteOrRequestGrant(rbacCtx)
+	const denied = await Rbac.tryDenyPermissionsForPlayer(ctx, 'queue:request-layers')
 	if (denied) return denied
 	const serverState = await SquadServer.getServerState(ctx)
 	// in-game requests always carry the main pool filter; only the GUI can deliberately drop it
@@ -834,7 +823,7 @@ export async function addBackburnerRequestFromChat(
 	}
 	const saved = ctx.layerQueue.session.state.savedBackburner
 	const maxTotal = serverState.settings.queue.layerRequests.maxTotal
-	const max = await Rbac.getMaxLayerRequestsForUser(rbacCtx)
+	const max = await Rbac.getMaxLayerRequestsForPlayer(ctx)
 	const own = BB.ownedItems(saved, args.source)
 	const evicted: BB.BackburnerItem[] = []
 	if (max !== null && max !== undefined && own.length >= max) {
@@ -907,7 +896,7 @@ export const dispatchOp = C.spanOp(
 		extraText: (ctx, op) => `Dispatch op ${op.op} (${op.opId})`,
 	},
 	async (
-		ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.AdminList & C.ServerSettings & CS.AbortSignal,
+		ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.ServerSettings & CS.AbortSignal,
 		op: SLL.Operation,
 		// set for ops arriving via the dispatchOp rpc; the originating client gets an ack instead of the full op
 		opts?: { sourceWsClientId?: string },
@@ -936,7 +925,7 @@ const handleSideEffect = C.spanOp(
 		attrs: (ctx, op, se) => ({ [ATTRS.LayerQueue.OP]: op.op, [ATTRS.LayerQueue.SIDE_EFFECT]: se.code }),
 	},
 	async (
-		ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.AdminList & C.ServerSettings & CS.AbortSignal,
+		ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.ServerSettings & CS.AbortSignal,
 		op: SLL.Operation,
 		se: SLL.SideEffect,
 	) => {

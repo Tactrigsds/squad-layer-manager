@@ -2,6 +2,7 @@ import { sleep } from '@/lib/async.ts'
 import * as CoreRcon from '@/lib/rcon/core-rcon'
 import * as FetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import { formatVersion } from '@/lib/versioning.ts'
+import * as AdminList from '@/systems/adminlist.server'
 
 import * as AppEvents from '@/models/app-events.models'
 import * as AppEventsSys from '@/systems/app-events.server'
@@ -107,6 +108,9 @@ await C.spanOp('main', { module }, async () => {
 	// detect (before this instance's APP_STARTED is persisted) whether we came up via a restart-slm command, so the
 	// per-server "SLM started/restarted" admin warn (sent during SquadServer.setup) can name who restarted it
 	await AppEventsSys.detectRestartAtBoot(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
+
+	AdminList.setup()
+
 	await Promise.all([SquadServer.setup(), Discord.setup()])
 
 	// after SquadServer.setup, since its gauges read SquadServer.globalState

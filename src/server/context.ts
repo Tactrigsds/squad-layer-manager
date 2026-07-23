@@ -390,10 +390,14 @@ export function initMutexStore<Ctx extends object>(ctx?: Ctx): Ctx {
 export type ResolvedRoute = CS.Ctx & { route: AR.ResolvedRoute }
 
 // could also be ws upgrade
-export type FastifyRequest = CS.Ctx & {
-	req: Fastify.FastifyRequest
-	cookies: AR.Cookies
-} & Partial<ResolvedRoute>
+export type FastifyRequest =
+	& CS.Ctx
+	& {
+		req: Fastify.FastifyRequest
+		cookies: AR.Cookies
+	}
+	& Partial<ResolvedRoute>
+
 export type FastifyRequestFull = FastifyRequest & AttachedFastify
 
 export type FastifyReply = CS.Ctx & { res: Fastify.FastifyReply }
@@ -413,9 +417,18 @@ export type Player = CS.Ctx & {
 	player: SM.Player
 }
 
+export type PlayerIds<T extends SM.PlayerIds.Fields = 'eos'> = {
+	player: {
+		ids: SM.PlayerIds.IdQuery<T>
+	}
+}
+
 export type UserOrPlayer = Partial<User> & Partial<Player>
 
-export type RbacUser = CS.Ctx & { user: RBAC.UserWithRbac }
+export type UserRbac = CS.Ctx & {
+	roles: RBAC.Role[]
+	perms: RBAC.TracedPermission[]
+}
 
 export type AuthSession = CS.Ctx & {
 	sessionId: string
@@ -432,8 +445,7 @@ export type AttachedFastify = Db & Partial<ResolvedRoute> & CS.AbortSignal
 export type Websocket = CS.Ctx & { ws: ws.WebSocket }
 export type OrpcSessionBase =
 	& CS.Ctx
-	& User
-	& AuthSession
+	& AuthedUser
 	& WSSession
 	& Websocket
 	& FastifyRequest
@@ -457,10 +469,6 @@ export type Rcon = CS.Ctx & {
 export type ServerId = CS.Ctx & {
 	serverId: string
 }
-
-export type AdminList = CS.Ctx & {
-	adminList: AsyncResource<SM.AdminList, CS.Ctx & CS.AbortSignal>
-} & ServerId
 
 export type SquadRcon = CS.Ctx & { server: SquadRconSys.SquadRcon } & Rcon & ServerId
 
@@ -506,7 +514,6 @@ export type ServerSlice =
 	& Teamswap
 	& ServerSettings
 	& ServerSliceCleanup
-	& AdminList
 	// aborts when the slice is destroyed or the process shuts down
 	& CS.AbortSignal
 

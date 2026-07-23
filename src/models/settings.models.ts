@@ -1,5 +1,6 @@
 import * as DH from '@/lib/display-helpers.ts'
 import * as Obj from '@/lib/object'
+import * as SetUtils from '@/lib/set'
 import { BasicStrNoWhitespace, HumanTime, ParsableBigIntSchema } from '@/lib/zod'
 import * as AAR from '@/models/admin-action-reasons.models.ts'
 import * as BAL from '@/models/balance-triggers.models.ts'
@@ -30,6 +31,12 @@ const RoleAssignmentsSchema = z.object({
 	discordRoleIds: z.array(ParsableBigIntSchema).prefault([]).describe('Discord role ids whose members are granted this role'),
 	discordUserIds: z.array(ParsableBigIntSchema).prefault([]).describe('Discord user ids granted this role'),
 	everyMember: z.boolean().prefault(false).describe('Grant this role to every member of the Discord server'),
+	includeIngameAdmins: z.boolean().prefault(false).describe(
+		"Include ingame admins in the role when they're using ingame commands",
+	),
+	adminListGroups: z.array(z.string()).prefault([]).describe(
+		"Assigns ingame admins roles based on the groups that they've been assigned in the adminlist",
+	),
 }).prefault({})
 
 const ServerSettingsGrantSchema = z.object({
@@ -288,6 +295,13 @@ export const GlobalSettingsSchema = z.object({
 			+ '(anything typed after it is ignored), runs in the scopes of the command it points at, and loses to a real command string on collision.',
 	),
 	commands: CMD.AllCommandConfigSchema,
+	adminListSources: z.array(SM.AdminListSourceSchema).describe(
+		"Sources to load admins from, in the same format as the gameserver expects Each is a remote URL, local file, or FTP path serving admins in Squad's Admins.cfg format.",
+	),
+	adminIdentifyingPermissions: z.array(SM.PLAYER_PERM).describe(
+		'In-game admin-list permissions that mark a player as an admin in SLM (e.g. "canseeadminchat"). A player granted any of these by an '
+			+ 'admin list source is treated as an admin, which drives admin-only warns and admin presence.',
+	),
 	rbac: RbacSettingsSchema,
 	layerTable: LQY.LayerTableConfigSchema.prefault({
 		orderedColumns: [
@@ -628,13 +642,6 @@ EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.defaultSelectable.push({ filterId: 'test-
 
 export const ServerSettingsSchema = PublicServerSettingsSchema.extend({
 	connections: ServerConnectionSchema,
-	adminListSources: z.array(SM.AdminListSourceSchema).describe(
-		"Admin list sources to load this server's admins from. Each is a remote URL, local file, or FTP path serving admins in Squad's Admins.cfg format.",
-	),
-	adminIdentifyingPermissions: z.array(SM.PLAYER_PERM).describe(
-		'In-game admin-list permissions that mark a player as an admin in SLM (e.g. "canseeadminchat"). A player granted any of these by an '
-			+ 'admin list source is treated as an admin, which drives admin-only warns and admin presence.',
-	),
 	navLinks: NavLinkSchema.optional().describe('Server-specific links to display in the navbar dropdown menu'),
 })
 
@@ -817,4 +824,68 @@ export function applySettingMutations(settings: PublicServerSettings, mutations:
 
 export function getPublicSettings(settings: ServerSettings): PublicServerSettings {
 	return Obj.exclude(settings, ['connections'])
+}
+
+export function dottedSettingsPath(path: string | (string | number)[]): string {
+	return typeof path === 'string' ? path : path.join('.')
+}
+
+export namespace Grants {
+	export function writeGlobalSettingsPaths(paths: SettingsPath[]) {
+		return RBAC.permReq('any', [
+			RBAC.perm('global-settings:write', { paths: null }),
+			(perms) => {
+				const dottedPaths = paths.map(dottedSettingsPath)
+				const foundPaths = new Set<string>()
+				for (const perm of perms) {
+					if (perm.type !== 'global-settings:write') continue
+					if (perm.scope !== 'global-settings-write') continue
+					const permPaths = (perm.args as { paths: string[] })!.paths
+					for (const path of dottedPaths) {
+						for (const permPath of permPaths) {
+							if (permPath === path || path.startsWith(permPath + '.')) {
+								foundPaths.add(path)
+							}
+						}
+					}
+				}
+				const missing = SetUtils.difference(new Set(dottedPaths), foundPaths)
+				return `global-setings:write :: missing ${Array.from(missing).join(', ')}`
+			},
+		])
+	}
+
+	export function writeServerSettingsPaths(serverId: string, paths: SettingsPath[]) {
+		let hasSensitivePaths = false
+		for (const path of paths) {
+			if ('connections' in path) {
+				hasSensitivePaths = true
+				break
+			}
+		}
+
+		return RBAC.permReq<'server-settings:write' | 'server-settings:write-sensitive'>('any', [
+			RBAC.perm('server-settings:write', { serverId, paths: null }),
+			(perms) => {
+				const dottedPaths = paths.map(dottedSettingsPath)
+				const foundPaths = new Set<string>()
+				for (const perm of perms) {
+					if (perm.type !== 'server-settings:write') continue
+					if (perm.scope !== 'server-settings-write') continue
+					const parmArgs = perm.args as { paths: string[]; serverId: string }
+					if (parmArgs.serverId !== serverId) continue
+					for (const path of dottedPaths) {
+						for (const permPath of parmArgs.paths) {
+							if (permPath === path || path.startsWith(permPath + '.')) {
+								foundPaths.add(path)
+							}
+						}
+					}
+				}
+				const missing = SetUtils.difference(new Set(dottedPaths), foundPaths)
+				return `global-setings:write :: missing ${Array.from(missing).join(', ')}`
+			},
+			hasSensitivePaths ? RBAC.perm('server-settings:write-sensitive', { serverId }) : undefined,
+		])
+	}
 }

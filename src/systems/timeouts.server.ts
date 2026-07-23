@@ -8,6 +8,7 @@ import * as AAR from '@/models/admin-action-reasons.models'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
 import * as SM from '@/models/squad.models'
+import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
@@ -217,7 +218,7 @@ export const router = {
 	cancelTimeout: orpcBase
 		.input(z.object({ timeoutId: z.string() }))
 		.handler(async ({ context: ctx, input }) => {
-			const denyRes = await Rbac.tryDenyAnyTimeoutGrant(ctx)
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.Grants.anyTimeout())
 			if (denyRes) return denyRes
 			return await cancelTimeout(ctx, { timeoutId: input.timeoutId, actor: { type: 'slm-user', userId: ctx.user.discordId } })
 		}),
@@ -236,7 +237,7 @@ export const router = {
 			const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyTimeoutForUser(ctx, input.durationMs)
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.Grants.satisfyingTimeout(input.durationMs))
 			if (denyRes) return denyRes
 			const reasonRes = SquadServer.resolveReasonInput('timeout', input, { duration: formatHumanTime(input.durationMs) })
 			if (reasonRes.code !== 'ok') return reasonRes

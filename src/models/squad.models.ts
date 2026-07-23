@@ -1,6 +1,7 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array'
 import { createLogMatcher, eventDef, type EventSchema, matchLog } from '@/lib/log-parsing'
+import * as SetUtils from '@/lib/set'
 
 import * as Obj from '@/lib/object'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
@@ -592,10 +593,50 @@ export const AdminListSourceSchema = z.discriminatedUnion('type', [
 export type AdminListSource = z.infer<typeof AdminListSourceSchema>
 export type AdminListSourceType = AdminListSource['type']
 // steamId -> groups
-export type SquadAdmins = OneToManyMap<SteamId, string>
+export type SquadAdmins<T extends PlayerId | SteamId> = OneToManyMap<T, string>
 // group -> permissions
 export type SquadGroups = OneToManyMap<string, string>
-export type AdminList = { players: SquadAdmins; groups: SquadGroups; admins: Set<SteamId> }
+export type AdminList = {
+	groups: SquadGroups
+	steam: {
+		players: SquadAdmins<SteamId>
+		admins: Set<SteamId>
+	}
+	eos: {
+		players: SquadAdmins<PlayerId>
+		admins: Set<PlayerId>
+	}
+}
+export namespace AdminList {
+	// we are enforcing that both eos and steam must be available to be checked against because adminlists can include either
+	export function getPlayerGroups(list: AdminList, ids: PlayerIds.IdQuery<'steam'>) {
+		const groups = new Set<string>()
+		if (ids.eos) {
+			const eosGroups = list.eos.players.get(ids.eos)
+			if (eosGroups) {
+				SetUtils.union(groups, eosGroups)
+			}
+		}
+
+		if (ids.steam) {
+			const steamGroups = list.steam.players.get(ids.steam)
+			if (steamGroups) {
+				SetUtils.union(groups, steamGroups)
+			}
+		}
+		return groups
+	}
+
+	// we are enforcing that both eos and steam must be available to be checked against because adminlists can include either
+	export function getIsAdmin(list: AdminList, ids: PlayerIds.IdQuery<'steam'>) {
+		if (ids.eos) {
+			return list.eos.admins.has(ids.eos)
+		} else if (ids.steam) {
+			return list.steam.admins.has(ids.steam)
+		}
+		return false
+	}
+}
 
 export const CHAT_CHANNEL_TYPE = z.enum(['ChatAdmin', 'ChatTeam', 'ChatSquad', 'ChatAll'])
 export type ChatChannelType = z.infer<typeof CHAT_CHANNEL_TYPE>

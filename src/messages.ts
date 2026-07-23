@@ -331,7 +331,7 @@ export const WARNS = {
 		notifyKilled: (reason?: string) => reason || 'You have been killed by an admin.',
 	},
 	permissionDenied(res: RBAC.PermissionDeniedResponse) {
-		return `Permission denied. You need ${res.check} of the following ${res.permits.map((p) => p.type).join(', ')}`
+		return `Permission denied. You need ${res.checkType} of the following ${res.permits.map((p) => p.type).join(', ')}`
 	},
 	slmUpdatesSet(enabled: boolean) {
 		return `Updates from SLM have been ${enabled ? 'enabled' : 'disabled'}.`

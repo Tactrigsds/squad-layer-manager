@@ -41,7 +41,7 @@ export function setup() {
 type HandlerResult = { code: string; msg?: string } | undefined
 
 type HandlerCtx = {
-	ctx: C.Db & C.ServerSlice
+	ctx: C.Db & C.ServerSlice & Partial<C.User> & C.Player
 	msg: SM.RconEvents.ChatMessage
 	// the resolved chat sender (steam id guaranteed)
 	sender: SM.Player
@@ -50,7 +50,7 @@ type HandlerCtx = {
 	error: <T extends string>(reason: T, msg: string) => Promise<{ code: `err:${T}`; msg: string }>
 }
 
-export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvents.ChatMessage) {
+export async function handleCommand(baseCtx: C.Db & C.ServerSlice & CS.AbortSignal, msg: SM.RconEvents.ChatMessage) {
 	if (!SM.CHAT_CHANNEL_TYPE.safeParse(msg.channelType).success) {
 		return {
 			code: 'err:invalid-chat-channel' as const,
@@ -62,7 +62,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 	// feedback to public chats (and all player-directed warns elsewhere) stays unprefixed
 	const isAdminChat = msg.channelType === 'ChatAdmin'
 	async function reply(opts: SquadRcon.WarnOptions) {
-		await SquadRcon.warn(ctx, msg.playerIds, isAdminChat ? SquadRcon.withPrefixFlag(opts) : opts)
+		await SquadRcon.warn(baseCtx, msg.playerIds, isAdminChat ? SquadRcon.withPrefixFlag(opts) : opts)
 	}
 	async function error<T extends string>(reason: T, errorMessage: string) {
 		await reply(errorMessage)
@@ -72,7 +72,7 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 		}
 	}
 
-	const playerRes = await SquadRcon.getPlayer(ctx, msg.playerIds)
+	const playerRes = await SquadRcon.getPlayer(baseCtx, msg.playerIds)
 	if (playerRes.code === 'err:rcon') {
 		return await error('rcon-error', 'RCON error')
 	}
@@ -81,9 +81,12 @@ export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvent
 	}
 	const sender = playerRes.player
 	if (!sender.ids.steam) return { code: 'ok' as const }
+	// const roles = Rbac.getRolesForIngameUser(ctx, sender.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
+	const discordId = await Users.findDiscordIdBySteam64Id(baseCtx, BigInt(sender.ids.steam!))
 
-	const user: USR.GuiOrChatUserId = { steamId: sender.ids.steam }
-	const h: HandlerCtx = { ctx, msg, sender, user, reply, error }
+	const user = discordId ? await Users.getUser(baseCtx, discordId) : undefined
+	const ctx: HandlerCtx['ctx'] = Obj.trimUndefined({ ...baseCtx, user, player: sender })
+	const h: HandlerCtx = { ctx: ctx, msg, sender, user: { discordId, steamId: sender.ids.steam }, reply, error }
 
 	// an alias is a plain text substitution for a complete command, so it's expanded up front and everything after
 	// this point (scope, enabled, arg resolution) runs against the command it points at. Anything typed after the
@@ -782,7 +785,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	clearTimeout: async (h, args) => {
 		const linkedRes = await resolveLinkedSender(h)
 		if (linkedRes.code !== 'ok') return linkedRes.res
-		const denyRes = await Rbac.tryDenyAnyTimeoutGrant({ ...h.ctx, user: { discordId: linkedRes.discordId } })
+		const denyRes = await Rbac.tryDenyPermissionsForPlayer({ ...h.ctx }, RBAC.Grants.anyTimeout())
 		if (denyRes) return await h.error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
 
 		// the target may be offline, so match against players holding active timeouts rather than the roster
@@ -912,8 +915,8 @@ async function executeKick(
 	if (g) return g
 	const linkedRes = await resolveLinkedSender(h)
 	if (linkedRes.code !== 'ok') return linkedRes.res
-	const denyRes = await Rbac.tryDenyPermissionsForUser(
-		{ ...h.ctx, user: { discordId: linkedRes.discordId } },
+	const denyRes = await Rbac.tryDenyPermissionsForPlayer(
+		h.ctx,
 		RBAC.perm('squad-server:kick-players'),
 	)
 	if (denyRes) return await h.error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
@@ -940,7 +943,7 @@ async function executeTimeout(
 	if (g) return g
 	const linkedRes = await resolveLinkedSender(h)
 	if (linkedRes.code !== 'ok') return linkedRes.res
-	const denyRes = await Rbac.tryDenyTimeoutForUser({ ...h.ctx, user: { discordId: linkedRes.discordId } }, durationMs)
+	const denyRes = await Rbac.tryDenyPermissionsForPlayer(h.ctx, RBAC.Grants.satisfyingTimeout(durationMs))
 	if (denyRes) return await h.error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
 	const vars = SquadServer.messageVars({ duration: formatHumanTime(durationMs) })
 	const reason = resolvedReason && CMD.applyResolvedReason('timeout', resolvedReason, vars)

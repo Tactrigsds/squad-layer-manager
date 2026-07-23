@@ -95,7 +95,7 @@ export default function NavBar() {
 		check: 'any',
 		permits: [RBAC.perm('admin:manage-servers'), RBAC.perm('admin:delete-servers')],
 	})
-	const loggedInPerms = RbacClient.useLoggedInPerms()
+	const loggedInPerms = RbacClient.useSuspendableLoggedInUserPerms()
 	const showSettingsLink = !registryDenied
 		|| RBAC.canReadGlobalSettings(loggedInPerms)
 		|| (settings?.servers ?? []).some((s) => RBAC.canReadServerSettings(loggedInPerms, s.id))

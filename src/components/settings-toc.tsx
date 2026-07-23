@@ -260,7 +260,7 @@ export default function SettingsToc(
 		searchRef.current?.focus({ preventScroll: true })
 	}, [])
 
-	const perms = RbacClient.useLoggedInPerms()
+	const perms = RbacClient.useSuspendableLoggedInUserPerms()
 	const globalWrite = React.useMemo(() => RBAC.globalSettingsWriteAccess(perms), [perms])
 	// same widening as the settings form: write-sensitive permits connections edits independent of any general write grant
 	const serverWriteById = React.useMemo(() => {

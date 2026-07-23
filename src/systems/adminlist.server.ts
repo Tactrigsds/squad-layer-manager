@@ -1,27 +1,73 @@
 import * as Paths from '$root/paths.ts'
 import * as Arr from '@/lib/array'
+import { AsyncResource } from '@/lib/async-resource.ts'
 import * as OneToMany from '@/lib/one-to-many-map.ts'
 import type { OneToManyMap } from '@/lib/one-to-many-map.ts'
 import type * as CS from '@/models/context-shared'
 import { initModule } from '@/server/logger'
+import * as CleanupSys from '@/systems/cleanup.server'
+import * as Settings from '@/systems/settings.server'
 
 import type * as SM from '@/models/squad.models.ts'
 import * as C from '@/server/context.ts'
 
+import { IsolatedBehaviorSubject, IsolatedReplaySubject } from '@/lib/isolated-subject'
+import { WritableBuffer } from '@/lib/rcon/writable-buffer'
 import { withSftp } from '@/lib/sftp-file-store.ts'
+import { HumanTime } from '@/lib/zod'
 import { Client as FTPClient } from 'basic-ftp'
 import fs from 'fs'
 import path from 'path'
-import { WritableBuffer } from './writable-buffer'
 
 const module = initModule('fetch-admin-lists')
 let log!: CS.Logger
 
-export function setup() {
-	log = module.getLogger()
+export let adminList!: AsyncResource<SM.AdminList, CS.Ctx & CS.AbortSignal>
+export type AdminListStatus = {
+	code: 'init'
+} | {
+	code: 'ok'
+} | {
+	code: 'error'
+	message: string
 }
 
-export default C.spanOp(
+export let status$: IsolatedBehaviorSubject<AdminListStatus>
+export function setup() {
+	log = module.getLogger()
+	status$ = new IsolatedBehaviorSubject<AdminListStatus>({ code: 'init' })
+	adminList = (() => {
+		const adminListTTL = HumanTime.parse('1h')
+		// read adminListSources/adminIdentifyingPermissions fresh on every fetch (rather than closing over the setup-time settings)
+		// so that SquadServer.invalidateAdminList() picks up edits without needing a full slice restart
+		return new AsyncResource<SM.AdminList, CS.Ctx & CS.AbortSignal>(
+			`adminList`,
+			async (_ctx) => {
+				const sources = Settings.GLOBAL_SETTINGS.adminListSources
+				const identifyingPerms = Settings.GLOBAL_SETTINGS.adminIdentifyingPermissions
+				// we are duplicating fetches here if two servers have the same source, but shouldn't matter
+				const res = await fetchAdminLists(sources, identifyingPerms, _ctx.signal)
+				status$.next({ code: 'ok' })
+				return res
+			},
+			module,
+			{
+				defaultTTL: adminListTTL,
+				retries: 3,
+				retryDelay: 1000,
+				log,
+				onFatalError: (err) => {
+					// TODO not maintainable0, fix
+					status$.next({ code: 'error', message: err instanceof Error ? err.message : String(err) })
+				},
+			},
+		)
+	})()
+
+	CleanupSys.register(() => adminList.dispose(), status$)
+}
+
+const fetchAdminLists = C.spanOp(
 	'fetchAdminLists',
 	{ module },
 	async (sources: SM.AdminListSource[], adminIdentifyingPerms: SM.PlayerPerm[], signal?: AbortSignal): Promise<SM.AdminList> => {

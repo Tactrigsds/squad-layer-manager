@@ -21,7 +21,7 @@ export type PoolConfigApi = {
 // api over the per-server settings partial (dashboard popover): edits are recorded as ops via Actions.set
 export function useStorePoolConfigApi(key: ServerSettingsPrt.Key, base: SETTINGS.SettingsPath): PoolConfigApi {
 	const serverId = ZusUtils.useStore(key, (s) => s.settings.serverId)
-	const perms = RbacClient.useLoggedInPerms()
+	const perms = RbacClient.useSuspendableLoggedInUserPerms()
 	// loose overlap check: the panel stays editable if any path under its pool subtree is writable (individual
 	// out-of-grant edits are still rejected server-side)
 	const access = RBAC.serverSettingsWriteAccess(perms, serverId)
