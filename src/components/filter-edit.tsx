@@ -168,7 +168,7 @@ export function FilterEdit(
 				return (
 					<Button
 						onClick={() => form.handleSubmit()}
-						disabled={!canSubmit || !filterValid || (!filterModified && !isDirty) || permitEdit}
+						disabled={!canSubmit || !filterValid || (!filterModified && !isDirty) || !permitEdit}
 					>
 						Save
 					</Button>
