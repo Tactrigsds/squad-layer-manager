@@ -30,7 +30,7 @@ async function resolveDisplayName(source: TSW.Teamswap['source'] | undefined): P
 	const discordId = source?.discordId
 	if (!discordId) return 'Someone'
 	try {
-		const res = await RPC.queryClient.fetchQuery(UsersClient.getFetchUserOptions(discordId))
+		const res = await RPC.queryClient.fetchQuery(UsersClient.userQueryOptions(discordId))
 		return res?.code === 'ok' ? res.user.displayName : 'Someone'
 	} catch {
 		return 'Someone'

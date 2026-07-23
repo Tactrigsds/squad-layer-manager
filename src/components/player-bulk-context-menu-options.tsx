@@ -70,11 +70,7 @@ export default function PlayerBulkContextMenuOptions(
 	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
 	const kickDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:kick-players'))
-	// timeout grants are comparator-matched (see useMaxTimeout), so the denial is synthesized rather than
-	// coming from usePermsCheck
-	const timeoutDenied = maxTimeout === undefined
-		? RBAC.permissionDenied({ check: 'all', permits: [RBAC.perm('squad-server:timeout-players', { maxDurationMs: null })] })
-		: null
+	const timeoutDenied = RbacClient.usePermsCheck('squad-server:timeout-players')
 	const canSwapNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwapNow(playerIds))
 	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.someCanQueue(playerIds))
 

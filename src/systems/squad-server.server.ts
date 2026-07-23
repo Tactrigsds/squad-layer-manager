@@ -3,20 +3,17 @@ import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 import * as AR from '@/app-routes'
 import * as Arr from '@/lib/array'
 import { acquireInBlock, anySignal, distinctDeepEquals, firstValueFrom, toAsyncGenerator, withAbortSignal } from '@/lib/async'
-import { AsyncResource } from '@/lib/async-resource'
 import * as Cleanup from '@/lib/cleanup'
-import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
+import { superjsonify } from '@/lib/drizzle'
 import { FileTail } from '@/lib/file-tail'
 import * as Gen from '@/lib/generator'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as Obj from '@/lib/object'
 import Rcon, { DirectSocketTransport } from '@/lib/rcon/core-rcon'
-import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import { SftpTail } from '@/lib/sftp-tail'
 import * as Templating from '@/lib/templating'
 import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
-import { HumanTime } from '@/lib/zod'
 import * as Messages from '@/messages.ts'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as AppEvents from '@/models/app-events.models'
@@ -29,19 +26,17 @@ import * as MH from '@/models/match-history.models'
 import * as ATTRS from '@/models/otel-attrs'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
-import * as SS from '@/models/server-state.models'
+import type * as SS from '@/models/server-state.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as SM from '@/models/squad.models'
-import * as AppEventsSys from '@/systems/app-events.server'
-import * as Otel from '@opentelemetry/api'
-
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
-
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as AdminList from '@/systems/adminlist.server'
+import * as AppEventsSys from '@/systems/app-events.server'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Commands from '@/systems/commands.server'
@@ -56,6 +51,7 @@ import * as Timeouts from '@/systems/timeouts.server'
 import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
 import * as WsSessionSys from '@/systems/ws-session.server'
+import * as Otel from '@opentelemetry/api'
 import * as Orpc from '@orpc/server'
 import { Mutex, type MutexInterface } from 'async-mutex'
 import { sql } from 'drizzle-orm'
@@ -145,7 +141,7 @@ export const orpcRouter = {
 		const names = new Set<string>()
 		for (const slice of globalState.slices.values()) {
 			try {
-				const adminList = await slice.adminList.get({ ...baseCtx, ...slice }, { ttl: Infinity })
+				const adminList = await AdminList.adminList.get({ ...baseCtx, ...slice }, { ttl: Infinity })
 				for (const group of adminList.groups.keys()) names.add(group)
 			} catch (err) {
 				// one unreachable admin list must not deny the editor every other server's groups
@@ -438,10 +434,13 @@ export const orpcRouter = {
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players'))
 			if (denyRes) return denyRes
-			const [adminList, teamsRes] = await Promise.all([ctx.adminList.get(ctx), ctx.server.teams.get(ctx)])
+			const [adminList, teamsRes] = await Promise.all([AdminList.adminList.get(ctx), ctx.server.teams.get(ctx)])
 			if (teamsRes.code !== 'ok') return teamsRes
 			const admins = teamsRes.players
-				.filter(p => p.ids.steam && adminList.admins.has(p.ids.steam))
+				.filter(p => {
+					if (!p.ids.steam) return false
+					return SM.AdminList.getIsAdmin(adminList, p.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
+				})
 				.map(p => SM.PlayerIds.getPlayerId(p.ids))
 			if (admins.length === 0) return { code: 'err:no-admins-online' as const }
 			await warnPlayers(ctx, admins, input.message, { type: 'slm-user', userId: ctx.user.discordId }, { suppressAdminNotify: true })
@@ -649,14 +648,6 @@ export async function restartSliceIfRunning(serverId: string) {
 	})
 }
 
-// forces the admin list resource to refetch (picking up the latest adminListSources/adminIdentifyingPermissions) without
-// tearing down the rest of the slice. No-op if the server isn't currently running.
-export function invalidateAdminList(serverId: string) {
-	const slice = globalState.slices.get(serverId)
-	if (!slice) return
-	slice.adminList.invalidate(getBaseCtx())
-}
-
 // lets destroyServer cancel a slice's in-flight work before its cleanup tasks run
 const sliceAbortControllers = new Map<string, AbortController>()
 
@@ -697,28 +688,6 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	}
 	const onResourceFatalError = (err: unknown) => void destroySliceAfterFatalError(err)
 
-	const adminList = (() => {
-		const adminListTTL = HumanTime.parse('1h')
-		// read adminListSources/adminIdentifyingPermissions fresh on every fetch (rather than closing over the setup-time settings)
-		// so that SquadServer.invalidateAdminList() picks up edits without needing a full slice restart
-		return new AsyncResource<SM.AdminList, CS.Ctx & CS.AbortSignal>(
-			`${serverId}/adminLists`,
-			async (_ctx) => {
-				const currentSettings = await Settings.getServerSettings(getBaseCtx(), serverId)
-				// we are duplicating fetches here if two servers have the same source, but shouldn't matter
-				return fetchAdminLists(currentSettings.adminListSources, currentSettings.adminIdentifyingPermissions, _ctx.signal)
-			},
-			module,
-			{
-				defaultTTL: adminListTTL,
-				retries: 3,
-				retryDelay: 1000,
-				log,
-				onFatalError: onResourceFatalError,
-			},
-		)
-	})()
-	cleanup.push(() => adminList.dispose())
 	const eventState: PendingEvents.State = PendingEvents.init({
 		counters: {
 			squadId: globalState.squadIdCounter,
@@ -774,7 +743,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		destroyed: false,
 		cleanupId: null,
 
-		...SquadRcon.initSquadRcon({ ...ctx, rcon, adminList, serverId }, cleanup, { onFatalError: onResourceFatalError }),
+		...SquadRcon.initSquadRcon({ ...ctx, rcon }, cleanup, { onFatalError: onResourceFatalError }),
 	}
 
 	cleanup.push(
@@ -806,7 +775,6 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		serverSettings: Settings.initServerSettingsSlice({ ...ctx, cleanup, serverId }, serverState),
 		vote: Vote.initVoteContext(cleanup),
 
-		adminList,
 		cleanup: cleanup,
 	}
 
@@ -1060,7 +1028,6 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 
 	void LayerQueue.setupInstance({ ...ctx, ...slice })
 	Battlemetrics.setupSquadServerInstance({ ...ctx, ...slice })
-	void adminList.get(slice)
 
 	server.cleanupId = CleanupSys.register(async () => {
 		await withSliceLock(serverId, () => destroySliceIfRunningLocked(serverId))
@@ -1142,7 +1109,7 @@ export function resolveReasonInput(
 // the web feed. In-game commands already echo to the invoking admin via reply() (and warn the target), so this
 // fires only for slm-user (web) actors; ingame-user/system actions no-op.
 export async function notifyAdminsOfWebAction(
-	ctx: C.SquadRcon & C.AdminList & C.Db & CS.AbortSignal,
+	ctx: C.SquadRcon & C.Db & CS.AbortSignal,
 	appEvent: AppEvents.AppEvent,
 	// override the default describeAppEvent phrasing (e.g. squad warns name the squad + faction)
 	description?: string,
@@ -1156,7 +1123,7 @@ export async function notifyAdminsOfWebAction(
 // PLAYER_WARNED server events to the originating action's app event (so they collapse under it in the feed
 // rather than emitting a separate PLAYER_WARNED app event).
 async function sendReasonFollowUpWarn(
-	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & CS.AbortSignal,
+	ctx: C.SquadServer & C.Rcon & C.Db & CS.AbortSignal,
 	appEventId: AppEvents.AppEventId,
 	targets: SM.PlayerId[],
 	message: string,
@@ -1175,7 +1142,7 @@ async function sendReasonFollowUpWarn(
 // caused it: PLAYER_TIMED_OUT for timeout kicks and their later enforcement, PLAYER_KICKED for plain kicks).
 // The primitive both kick paths bottom out in; it emits no app event of its own.
 export async function kickPlayerAction(
-	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & CS.AbortSignal,
+	ctx: C.SquadServer & C.Rcon & C.Db & CS.AbortSignal,
 	target: SM.PlayerId,
 	source: PendingEvents.ArmedActionSource,
 	reason?: string,
@@ -1192,7 +1159,7 @@ const DEFAULT_KICK_TEXT = 'You have been kicked by an admin.'
 // a plain kick (no timeout): the players are removed and may rejoin immediately. One app event covers the whole
 // batch, and each kick's server event is attributed to it.
 export async function kickPlayersAction(
-	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: AAR.AppliedReason,
@@ -1245,7 +1212,7 @@ export async function broadcastAction(
 // event to it, then issues the warns. Emit (persist) precedes arming and the warns so the app event exists before
 // any server event referencing it is saved.
 export async function warnPlayers(
-	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	reason: string,
 	actor: AppEvents.Actor,
@@ -1279,7 +1246,7 @@ export async function warnPlayers(
 // disbands a squad through an app event: records the squad + its members, arms the machine to attribute the
 // resulting SQUAD_DISBANDED server event to the acting user, then issues the disband.
 export async function disbandSquadAction(
-	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
 	teamId: SM.TeamId,
 	squadId: SM.SquadId,
 	actor: AppEvents.Actor,
@@ -1324,7 +1291,7 @@ export async function disbandSquadAction(
 
 // removes players from their squads through an app event, attributing each resulting PLAYER_LEFT_SQUAD server event
 export async function removePlayersFromSquad(
-	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: AAR.AppliedReason,
@@ -1413,7 +1380,7 @@ export async function killPlayersAppEvent(
 }
 
 export async function killPlayersAction(
-	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: string,
@@ -1426,7 +1393,7 @@ export async function killPlayersAction(
 }
 
 export async function renameSquadAction(
-	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
 	teamId: SM.TeamId,
 	squadId: SM.SquadId,
 	actor: AppEvents.Actor,
@@ -1453,7 +1420,7 @@ export async function renameSquadAction(
 
 // demoting a commander has no attributable server event, so this is a pure audit-feed entry
 export async function demoteCommanderAction(
-	ctx: C.SquadServer & C.Rcon & C.AdminList & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
 	playerId: SM.PlayerId,
 	actor: AppEvents.Actor,
 	reason?: AAR.AppliedReason,
@@ -1507,8 +1474,7 @@ export async function getFullServerState(ctx: C.Db & C.LayerQueue) {
 		.from(Schema.servers)
 		.where(E.eq(Schema.servers.id, ctx.serverId))
 	const [serverRaw] = await query
-	const state = SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
-	return { ...state, settings: Settings.openConnections(state.settings) }
+	return Settings.parseServerStateRow(serverRaw)
 }
 
 export function getCurrTeams(ctx: C.SquadServer) {
@@ -1752,8 +1718,7 @@ export async function getServerState(ctx: C.Db & C.ServerId) {
 		.from(Schema.servers)
 		.where(E.eq(Schema.servers.id, ctx.serverId))
 	const [serverRaw] = await query
-	const state = SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
-	return { ...state, settings: Settings.openConnections(state.settings) }
+	return Settings.parseServerStateRow(serverRaw)
 }
 
 // settings changes go through Settings.updateServerSettings instead — that's the one source of truth for reading/writing/broadcasting settings

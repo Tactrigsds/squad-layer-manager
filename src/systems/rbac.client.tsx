@@ -1,11 +1,13 @@
 import * as Obj from '@/lib/object'
+import { useStable } from '@/lib/react'
+import * as RSel from '@/lib/reselect'
 import { toast } from '@/lib/toast'
+import * as ZusUtils from '@/lib/zustand'
 import * as Messages from '@/messages'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as UsersClient from '@/systems/users.client'
 import { useQuery } from '@tanstack/react-query'
-import React from 'react'
 import * as Zus from 'zustand'
 
 export function handlePermissionDenied(res: RBAC.PermissionDeniedResponse) {
@@ -14,40 +16,26 @@ export function handlePermissionDenied(res: RBAC.PermissionDeniedResponse) {
 }
 
 export function usePermsCheck<T extends RBAC.PermissionType>(
-	req: RBAC.Permission<T> | RBAC.Permission<T>[] | RBAC.PermissionReq<T>,
-): RBAC.PermissionDeniedResponse<T> | null {
-	const user = UsersClient.useLoggedInUser()
-	const normReq: RBAC.PermissionReq<T> = 'check' in req ? req : { check: 'all', permits: Array.isArray(req) ? req : [req] }
-	if (!user) return RBAC.permissionDenied(normReq)
-	return RBAC.tryDenyPermissionsForRbacUser(user, normReq)
+	req: RBAC.PermitChecker<T> | RBAC.PermitChecker<T>[] | RBAC.PermissionReq<T>,
+): RBAC.PermissionDeniedResponse | null {
+	return ZusUtils.useStore_Susp(UsersClient.loggedInUserQueryOptions, RbacStore, Sel.permsCheck(useStable(req)))
 }
 
 // the logged-in user's effective (non-negated) permissions, for the aggregate settings-access checks below
-export function useLoggedInPerms(): RBAC.Permission[] {
-	const user = UsersClient.useLoggedInUser()
-	return React.useMemo(() => (user ? RBAC.fromTracedPermissions(user.perms) : []), [user])
+export function useSuspendableLoggedInUserPerms(): RBAC.Permission[] {
+	return ZusUtils.useStore_Susp(UsersClient.loggedInUserQueryOptions, RbacStore, Sel.loggedInUserPerms)
 }
 
 export type GlobalSettingsAccess = { canRead: boolean; write: RBAC.SettingsWriteAccess }
 export function useGlobalSettingsAccess(): GlobalSettingsAccess {
-	const perms = useLoggedInPerms()
-	return React.useMemo(() => ({
-		canRead: RBAC.canReadGlobalSettings(perms),
-		write: RBAC.globalSettingsWriteAccess(perms),
-	}), [perms])
+	return ZusUtils.useStore_Susp(UsersClient.loggedInUserQueryOptions, RbacStore, Sel.globalSettingsAccess)
 }
 
 export type ServerSettingsAccess = { canRead: boolean; write: RBAC.SettingsWriteAccess; sensitive: boolean }
 export function useServerSettingsAccess(serverId: string): ServerSettingsAccess {
-	const perms = useLoggedInPerms()
-	return React.useMemo(() => ({
-		canRead: RBAC.canReadServerSettings(perms, serverId),
-		write: RBAC.serverSettingsWriteAccess(perms, serverId),
-		sensitive: RBAC.canWriteSensitiveServerSettings(perms, serverId),
-	}), [perms, serverId])
+	return ZusUtils.useStore_Susp(UsersClient.loggedInUserQueryOptions, RbacStore, Sel.serverSettingsAccess(serverId))
 }
 
-export const GET_ROLES_QUERY_KEY = ['getRoles']
 export function useUserDefinedRoles() {
 	return useQuery(RPC.orpc.rbac.getUserDefinedRoles.queryOptions())
 }
@@ -111,7 +99,39 @@ export const RbacStore = Zus.createStore<RbacStore>((set, get) => ({
 	disablePerm: (perm) => {
 		const disabledPerms = get().disabledPerms
 		if (disabledPerms.some(p => RBAC.isSamePerm(p, perm))) return
-		set({ disabledPerms: [...disabledPerms, Obj.selectProps(perm, ['type', 'scope', 'args'])] })
+		set({ disabledPerms: [...disabledPerms, Obj.selectProps(perm, ['type', 'scope', 'args']) as RBAC.Permission] })
 	},
 	enablePerm: (perm) => set({ disabledPerms: get().disabledPerms.filter(p => !RBAC.isSamePerm(p, perm)) }),
 }))
+
+export namespace Sel {
+	// indirected rather than passed straight in: users.client and this module import each other, so reading
+	// UsersClient.Sel at module-init time would depend on which of the two the bundler evaluates first
+	const loggedInUser = (...args: [user: RBAC.UserWithRbac, rbacStore: RbacStore]) => UsersClient.Sel.loggedInUser(...args)
+
+	export const permsCheck = RSel.memoizeFactory(
+		<T extends RBAC.PermissionType>(req: RBAC.PermitChecker<T> | RBAC.PermitChecker<T>[] | RBAC.PermissionReq<T>) =>
+			RSel.createDeepSelector([loggedInUser], (user) => RBAC.tryDenyPermissionsForRbacUser(user, req)),
+	)
+
+	export const loggedInUserPerms = RSel.createDeepSelector(
+		[loggedInUser],
+		(user): RBAC.Permission[] => RBAC.fromTracedPermissions(user.perms),
+	)
+
+	export const globalSettingsAccess = RSel.createDeepSelector(
+		[loggedInUserPerms],
+		(perms): GlobalSettingsAccess => ({
+			canRead: RBAC.canReadGlobalSettings(perms),
+			write: RBAC.globalSettingsWriteAccess(perms),
+		}),
+	)
+
+	export const serverSettingsAccess = RSel.memoizeFactory((serverId: string) =>
+		RSel.createDeepSelector([loggedInUserPerms], (perms): ServerSettingsAccess => ({
+			canRead: RBAC.canReadServerSettings(perms, serverId),
+			write: RBAC.serverSettingsWriteAccess(perms, serverId),
+			sensitive: RBAC.canWriteSensitiveServerSettings(perms, serverId),
+		}))
+	)
+}

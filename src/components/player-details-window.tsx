@@ -65,10 +65,10 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	const squadServerFrameKey = stores.squadServer
 	const serverId = squadServerFrameKey.serverId
-	const { data } = useQuery({
-		...RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { serverId, playerId } }),
-		select: RPC.selectLoaded,
-	})
+	const { data } = useQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({
+		input: { serverId, playerId },
+		select: res => RPC.selectLoaded(res),
+	}))
 	const eventsQuery = useInfiniteQuery(playerEventsInfiniteOptions(serverId, playerId))
 	const { data: bmData } = useQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId }, staleTime: Infinity }))
 	const orgFlags = useOrgFlags()
