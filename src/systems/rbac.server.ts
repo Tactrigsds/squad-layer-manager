@@ -530,7 +530,7 @@ export const orpcRouter = {
 	// the env-configured SUPER_USERS/SUPER_ROLES bootstrap, surfaced read-only in the settings rbac section.
 	// ids as strings so the snowflakes survive JSON
 	getSuperConfig: orpcBase.handler(async ({ context: ctx }) => {
-		const denyRes = await tryDenyPermissionsForUser(ctx, RBAC.Grants.globalSettingsRead())
+		const denyRes = await tryDenyPermissionsForUser(ctx, SETTINGS.Grants.globalSettingsRead())
 		if (denyRes) return denyRes
 		return {
 			code: 'ok' as const,
@@ -542,13 +542,13 @@ export const orpcRouter = {
 	// guild role/member lookups powering the settings role-assignment pickers; gated behind global-settings editing
 	// since they surface guild role names and member identities
 	listGuildRoles: orpcBase.handler(async ({ context: ctx }) => {
-		const denyRes = await tryDenyPermissionsForUser(ctx, RBAC.Grants.globalSettingsRead())
+		const denyRes = await tryDenyPermissionsForUser(ctx, SETTINGS.Grants.globalSettingsRead())
 		if (denyRes) return denyRes
 		return Discord.listGuildRolesDetailed()
 	}),
 
 	searchGuildMembers: orpcBase.input(z.object({ query: z.string() })).handler(async ({ context: ctx, input }) => {
-		const denyRes = await tryDenyPermissionsForUser(ctx, RBAC.Grants.globalSettingsRead())
+		const denyRes = await tryDenyPermissionsForUser(ctx, SETTINGS.Grants.globalSettingsRead())
 		if (denyRes) return denyRes
 		const query = input.query.trim()
 		if (query.length === 0) return { code: 'ok' as const, members: [] }

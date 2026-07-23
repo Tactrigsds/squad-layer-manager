@@ -785,7 +785,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	clearTimeout: async (h, args) => {
 		const linkedRes = await resolveLinkedSender(h)
 		if (linkedRes.code !== 'ok') return linkedRes.res
-		const denyRes = await Rbac.tryDenyPermissionsForPlayer({ ...h.ctx }, RBAC.Grants.anyTimeout())
+		const denyRes = await Rbac.tryDenyPermissionsForPlayer({ ...h.ctx }, SM.Grants.anyTimeout())
 		if (denyRes) return await h.error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
 
 		// the target may be offline, so match against players holding active timeouts rather than the roster
@@ -943,7 +943,7 @@ async function executeTimeout(
 	if (g) return g
 	const linkedRes = await resolveLinkedSender(h)
 	if (linkedRes.code !== 'ok') return linkedRes.res
-	const denyRes = await Rbac.tryDenyPermissionsForPlayer(h.ctx, RBAC.Grants.satisfyingTimeout(durationMs))
+	const denyRes = await Rbac.tryDenyPermissionsForPlayer(h.ctx, SM.Grants.satisfyingTimeout(durationMs))
 	if (denyRes) return await h.error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
 	const vars = SquadServer.messageVars({ duration: formatHumanTime(durationMs) })
 	const reason = resolvedReason && CMD.applyResolvedReason('timeout', resolvedReason, vars)

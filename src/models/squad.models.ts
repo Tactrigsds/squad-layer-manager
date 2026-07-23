@@ -9,6 +9,7 @@ import { normalizeForMatch, simpleUniqueStringMatch } from '@/lib/string'
 import * as ZodUtils from '@/lib/zod'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
+import * as RBAC from '@/rbac.models'
 import * as dateFns from 'date-fns'
 import { z } from 'zod'
 
@@ -1651,5 +1652,26 @@ export namespace LogEvents {
 			const item = toChainItem(chainDef[i])
 			EVENT_CHAIN_MAP.set(item.event.type, { chainKey, ...Obj.selectProps(item, CHAIN_ITEM_OPTIONS_PROPS) })
 		}
+	}
+}
+
+// grants for the squad-server:timeout-players permission. "up to N ms" is a comparator, not an equality match, so
+// these express the check as a callback over the caller's perms (see RBAC.maxTimeoutDurationMs).
+export namespace Grants {
+	export function anyTimeout() {
+		return RBAC.permReq('all', ['squad-server:timeout-players'])
+	}
+
+	export function satisfyingTimeout(timeoutMs: number) {
+		return RBAC.permReq('all', [
+			(perms) => {
+				const max = RBAC.maxTimeoutDurationMs(perms)
+				if (max === null) return
+				if (max !== undefined && max >= timeoutMs) return
+				return `squad-server:timeout-players where maxDurationMs >= ${ZodUtils.formatHumanTime(timeoutMs)}. Max found: ${
+					max === undefined ? 'none' : ZodUtils.formatHumanTime(max)
+				}`
+			},
+		])
 	}
 }
