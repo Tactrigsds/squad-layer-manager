@@ -119,6 +119,10 @@ export type AppFixtureOptions = {
 	// steam ids that are admins in game. Written to an Admins.cfg the app reads as a `local` admin
 	// list source, so these players come back from ListPlayers with isAdmin set.
 	admins?: string[]
+	// steam ids written into a second admin-list group that holds no admin-identifying permission (a
+	// reserve-slot / Whitelist group). They appear in the admin list -- getPlayerGroups sees them -- but
+	// getIsAdmin must not, so they exercise the identifying-permission gate.
+	reserveAdmins?: string[]
 	// skip spawning; useful to test seeding in isolation
 	spawn?: boolean
 	// how the app reaches the emulated server. 'local' (default) tails the SquadGame.log directly and dials
@@ -171,6 +175,9 @@ export const ADMIN_USER: TestUser = { discordId: 900000000000000001n, username: 
 // deciding which connected players are admins
 const ADMIN_GROUP = 'SlmTestAdmin'
 const ADMIN_PERM: SM.PlayerPerm = 'canseeadminchat'
+// a group holding no admin-identifying permission, for reserveAdmins
+const RESERVE_GROUP = 'SlmTestReserve'
+const RESERVE_PERM: SM.PlayerPerm = 'reserve'
 const SERVER_AGENT_TOKEN = 'test-server-agent-token'
 const AGENT_DIR = path.join(REPO_ROOT, 'server-agent/agent')
 
@@ -237,8 +244,10 @@ function startServerAgent(
 	return { start, stop, dispose: stop }
 }
 
-function renderAdminsCfg(steamIds: string[]): string {
-	return DevInstance.renderAdminsCfg(steamIds, ADMIN_GROUP, [ADMIN_PERM, 'balance', 'cameraman', 'teamchange'])
+function renderAdminsCfg(steamIds: string[], reserveIds: string[] = []): string {
+	let cfg = DevInstance.renderAdminsCfg(steamIds, ADMIN_GROUP, [ADMIN_PERM, 'balance', 'cameraman', 'teamchange'])
+	if (reserveIds.length > 0) cfg += DevInstance.renderAdminsCfg(reserveIds, RESERVE_GROUP, [RESERVE_PERM])
+	return cfg
 }
 
 // Durations that would make a test sit and wait. Every one is a setting, and settings are the only
@@ -288,7 +297,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	const db = drizzle(driver)
 	// -------- in-game admins --------
 	const adminsCfgPath = path.join(tmpDir, 'Admins.cfg')
-	fs.writeFileSync(adminsCfgPath, renderAdminsCfg(opts.admins ?? []))
+	fs.writeFileSync(adminsCfgPath, renderAdminsCfg(opts.admins ?? [], opts.reserveAdmins ?? []))
 
 	// -------- global settings --------
 	// written before boot rather than defaulted by the app, so tests can arrange the durations and
@@ -299,6 +308,9 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	if (!parsedSettings.success) throw new Error(`default global settings do not parse: ${parsedSettings.error}`)
 	const globalSettings = parsedSettings.data
 	applyTestTimings(globalSettings)
+	// admin lists are global (see migration 0089); default them to the test Admins.cfg, before the hook so a test can override
+	globalSettings.adminListSources = [{ type: 'local', source: adminsCfgPath }]
+	globalSettings.adminIdentifyingPermissions = [ADMIN_PERM]
 	opts.globalSettings?.(globalSettings)
 	await db.insert(Schema.globalSettings).values(
 		superjsonify(Schema.globalSettings, { id: 1, settings: SETTINGS.GlobalSettingsSchema.encode(globalSettings) }),
@@ -318,8 +330,6 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 				logFile: squadLogPath,
 				rcon: { host: '127.0.0.1', port: emu.rconPort, password: emu.password },
 			},
-		adminListSources: [{ type: 'local', source: adminsCfgPath }],
-		adminIdentifyingPermissions: [ADMIN_PERM],
 	})
 	// a seeded queue is only stable if nothing tops it up: generation fills the queue to
 	// preferredLength with random layers, so pin that to what we seeded

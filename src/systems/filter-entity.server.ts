@@ -9,7 +9,7 @@ import * as F from '@/models/filter.models'
 import * as ATTRS from '@/models/otel-attrs'
 
 import * as AppEvents from '@/models/app-events.models'
-import type * as USR from '@/models/users.models'
+import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
@@ -63,7 +63,7 @@ async function recordFilterChange(
 
 // managing who can contribute to a filter is an ownership concern, so it's restricted to the filter owner (or
 // anyone with blanket write access), rather than any contributor who merely has filters:write for the filter.
-async function denyUnlessFilterOwner(ctx: C.Db & C.UserId, filterId: F.FilterEntityId) {
+async function denyUnlessFilterOwner(ctx: C.Db & C.UserId & CS.AbortSignal, filterId: F.FilterEntityId) {
 	const [filter] = await ctx.db().select({ owner: Schema.filters.owner }).from(Schema.filters).where(E.eq(Schema.filters.id, filterId))
 	if (filter && filter.owner === ctx.user.discordId) return null
 	return Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('filters:write-all'))
@@ -143,6 +143,8 @@ export const filtersRouter = {
 						return { code: 'err:already-exists' as const }
 					case 'ok':
 						await recordFilterContributor(ctx, 'added', input.filterId, input)
+						// this user gained the filter-user-contributor inferred role
+						Rbac.invalidateUser(input.userId)
 						return { code: 'ok' as const }
 					default:
 						assertNever(res)
@@ -159,6 +161,8 @@ export const filtersRouter = {
 						return { code: 'err:already-exists' as const }
 					case 'ok':
 						await recordFilterContributor(ctx, 'added', input.filterId, input)
+						// every holder of this role gains the filter-role-contributor inferred role
+						Rbac.invalidateAll()
 						return { code: 'ok' as const }
 					default:
 						assertNever(res)
@@ -195,6 +199,9 @@ export const filtersRouter = {
 			}
 
 			await recordFilterContributor(ctx, 'removed', input.filterId, input)
+			// mirror addFilterContributor: a user contributor is targeted, a role contributor affects every holder
+			if (input.userId) Rbac.invalidateUser(input.userId)
+			else Rbac.invalidateAll()
 			return { code: 'ok' as const }
 		},
 	),
@@ -216,6 +223,8 @@ export const filtersRouter = {
 				userId: ctx.user.discordId,
 			}])
 			await recordFilterChange(ctx, 'created', newFilterEntity.id, { filterName: newFilterEntity.name })
+			// the creator is now this filter's owner (filter-owner inferred role), so their cached perms are stale
+			Rbac.invalidateUser(ctx.user.discordId)
 		}
 		return {
 			code: 'ok' as const,
@@ -301,11 +310,27 @@ export const filtersRouter = {
 				return { code: 'err:filter-not-found' as const }
 			}
 			const filter = F.FilterEntitySchema.parse(rawFilter)
+			// captured before the delete so the affected inferred-role holders can be invalidated after commit
+			const userContributors = await ctx.db().select({ userId: Schema.filterUserContributors.userId })
+				.from(Schema.filterUserContributors).where(E.eq(Schema.filterUserContributors.filterId, idToDelete))
+			const [roleContributor] = await ctx.db().select({ roleId: Schema.filterRoleContributors.roleId })
+				.from(Schema.filterRoleContributors).where(E.eq(Schema.filterRoleContributors.filterId, idToDelete)).limit(1)
 			await ctx.db().delete(Schema.filters).where(E.eq(Schema.filters.id, idToDelete))
-			return { code: 'ok' as const, filter }
+			return {
+				code: 'ok' as const,
+				filter,
+				userContributorIds: userContributors.map(r => r.userId),
+				hasRoleContributors: !!roleContributor,
+			}
 		})
 		if (res.code !== 'ok') {
 			return res
+		}
+		// owner + user contributors lose their inferred roles; a role contributor affects every holder of that role
+		if (res.hasRoleContributors) Rbac.invalidateAll()
+		else {
+			Rbac.invalidateUser(res.filter.owner)
+			for (const userId of res.userContributorIds) Rbac.invalidateUser(userId)
 		}
 		filterMutation$.next([C.storeLinkToActiveSpan(ctx, 'event.emitter'), {
 			type: 'delete',
@@ -319,6 +344,41 @@ export const filtersRouter = {
 	watchFilters: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
 		yield* watchFilters({ ctx: context, signal })
 	}),
+
+	changeFilterOwner: orpcBase.meta({ type: 'mutation' }).input(z.object({ filterId: F.FilterEntityIdSchema, newOwner: USR.UserIdSchema }))
+		.handler(
+			async ({ input, context: ctx }) => {
+				const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.getManagePermReqForFilterEntity(input.filterId))
+				if (denyRes) {
+					return denyRes
+				}
+
+				const res = await DB.runTransaction(ctx, async (ctx) => {
+					const [rawFilter] = await ctx.db().select().from(Schema.filters).where(E.eq(Schema.filters.id, input.filterId))
+					if (!rawFilter) {
+						return { code: 'err:filter-not-found' as const }
+					}
+					const filter = F.FilterEntitySchema.parse(rawFilter)
+					if (filter.owner === input.newOwner) {
+						return {
+							code: 'err:user-already-owns-filter' as const,
+						}
+					}
+					await ctx.db().update(Schema.filters).set({ owner: input.newOwner }).where(E.eq(Schema.filters.id, input.filterId))
+					return { code: 'ok' as const, filter }
+				})
+				if (res.code !== 'ok') return res
+				// filter-owner moved: the old owner loses the inferred role, the new owner gains it
+				Rbac.invalidateUser(res.filter.owner)
+				Rbac.invalidateUser(input.newOwner)
+				filterMutation$.next([C.storeLinkToActiveSpan(ctx, 'event.emitter'), {
+					type: 'update',
+					key: input.filterId,
+					value: res.filter,
+					userId: ctx.user.discordId,
+				}])
+			},
+		),
 }
 
 export let state!: {

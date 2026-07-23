@@ -56,7 +56,7 @@ export const Route = createFileRoute('/_app/settings')({
 function RouteComponent() {
 	const manageServersDenied = RbacClient.usePermsCheck(RBAC.perm('admin:manage-servers'))
 	const globalAccess = RbacClient.useGlobalSettingsAccess()
-	const loggedInPerms = RbacClient.useLoggedInPerms()
+	const loggedInPerms = RbacClient.useSuspendableLoggedInUserPerms()
 	// creating a server requires supplying its connection details, so it needs write-sensitive in addition to manage-servers
 	const canCreateServers = React.useMemo(() => RBAC.canCreateServers(loggedInPerms), [loggedInPerms])
 	// scopes this visit's frame instances: a fresh pageId per mount means fresh drafts + a fresh raw-settings fetch
@@ -652,7 +652,7 @@ function ServerSettingsSection(
 ) {
 	const key = stores.settingsEditor
 	const access = RbacClient.useServerSettingsAccess(server.id)
-	const perms = RbacClient.useLoggedInPerms()
+	const perms = RbacClient.useSuspendableLoggedInUserPerms()
 	const state = ZusUtils.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
 	const { mode, changes, issues, valid, saving, loadFailed, loading, draft, saved } = state
 	// without write-sensitive the server redacts connections, so edit/validate against the connections-free schema
@@ -874,7 +874,7 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp }) {
 	const key = stores.settingsEditor
 	const { write: writeAccess } = RbacClient.useGlobalSettingsAccess()
-	const perms = RbacClient.useLoggedInPerms()
+	const perms = RbacClient.useSuspendableLoggedInUserPerms()
 	const state = ZusUtils.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
 	const { mode, changes, issues, valid, saving, draft, saved, denied } = state
 

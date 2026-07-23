@@ -252,7 +252,7 @@ const EXECUTION_TIMEOUT_MS = 60_000
 // has no team yet, can't be swapped and isn't counted as outstanding -- same rule onTeamsModified applies.
 // null means the teams couldn't be read, which says nothing either way.
 async function unswappedPlayers(
-	ctx: C.SquadServer & C.Rcon & C.AdminList & CS.AbortSignal,
+	ctx: C.SquadServer & C.Rcon & CS.AbortSignal,
 	swaps: TSW.TeamswapCollection,
 	ordinal: number,
 ): Promise<SM.PlayerId[] | null> {

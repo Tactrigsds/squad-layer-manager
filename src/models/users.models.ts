@@ -16,6 +16,7 @@ export type ChatUserId = z.infer<typeof ChatUserIdSchema>
 
 export const GuiOrChatUserIdSchema = z.object({
 	discordId: z.bigint().optional(),
+	// TODO we should probably be using eosId here
 	steamId: z.string().optional(),
 })
 
