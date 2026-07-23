@@ -143,6 +143,8 @@ export const filtersRouter = {
 						return { code: 'err:already-exists' as const }
 					case 'ok':
 						await recordFilterContributor(ctx, 'added', input.filterId, input)
+						// this user gained the filter-user-contributor inferred role
+						Rbac.invalidateUser(input.userId)
 						return { code: 'ok' as const }
 					default:
 						assertNever(res)
@@ -159,6 +161,8 @@ export const filtersRouter = {
 						return { code: 'err:already-exists' as const }
 					case 'ok':
 						await recordFilterContributor(ctx, 'added', input.filterId, input)
+						// every holder of this role gains the filter-role-contributor inferred role
+						Rbac.invalidateAll()
 						return { code: 'ok' as const }
 					default:
 						assertNever(res)
@@ -195,6 +199,9 @@ export const filtersRouter = {
 			}
 
 			await recordFilterContributor(ctx, 'removed', input.filterId, input)
+			// mirror addFilterContributor: a user contributor is targeted, a role contributor affects every holder
+			if (input.userId) Rbac.invalidateUser(input.userId)
+			else Rbac.invalidateAll()
 			return { code: 'ok' as const }
 		},
 	),
@@ -216,6 +223,8 @@ export const filtersRouter = {
 				userId: ctx.user.discordId,
 			}])
 			await recordFilterChange(ctx, 'created', newFilterEntity.id, { filterName: newFilterEntity.name })
+			// the creator is now this filter's owner (filter-owner inferred role), so their cached perms are stale
+			Rbac.invalidateUser(ctx.user.discordId)
 		}
 		return {
 			code: 'ok' as const,
@@ -301,11 +310,27 @@ export const filtersRouter = {
 				return { code: 'err:filter-not-found' as const }
 			}
 			const filter = F.FilterEntitySchema.parse(rawFilter)
+			// captured before the delete so the affected inferred-role holders can be invalidated after commit
+			const userContributors = await ctx.db().select({ userId: Schema.filterUserContributors.userId })
+				.from(Schema.filterUserContributors).where(E.eq(Schema.filterUserContributors.filterId, idToDelete))
+			const [roleContributor] = await ctx.db().select({ roleId: Schema.filterRoleContributors.roleId })
+				.from(Schema.filterRoleContributors).where(E.eq(Schema.filterRoleContributors.filterId, idToDelete)).limit(1)
 			await ctx.db().delete(Schema.filters).where(E.eq(Schema.filters.id, idToDelete))
-			return { code: 'ok' as const, filter }
+			return {
+				code: 'ok' as const,
+				filter,
+				userContributorIds: userContributors.map(r => r.userId),
+				hasRoleContributors: !!roleContributor,
+			}
 		})
 		if (res.code !== 'ok') {
 			return res
+		}
+		// owner + user contributors lose their inferred roles; a role contributor affects every holder of that role
+		if (res.hasRoleContributors) Rbac.invalidateAll()
+		else {
+			Rbac.invalidateUser(res.filter.owner)
+			for (const userId of res.userContributorIds) Rbac.invalidateUser(userId)
 		}
 		filterMutation$.next([C.storeLinkToActiveSpan(ctx, 'event.emitter'), {
 			type: 'delete',
@@ -343,6 +368,9 @@ export const filtersRouter = {
 					return { code: 'ok' as const, filter }
 				})
 				if (res.code !== 'ok') return res
+				// filter-owner moved: the old owner loses the inferred role, the new owner gains it
+				Rbac.invalidateUser(res.filter.owner)
+				Rbac.invalidateUser(input.newOwner)
 				filterMutation$.next([C.storeLinkToActiveSpan(ctx, 'event.emitter'), {
 					type: 'update',
 					key: input.filterId,
