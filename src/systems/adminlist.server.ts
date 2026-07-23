@@ -189,7 +189,6 @@ const fetchAdminLists = C.spanOp(
 				const id = m.groups!.adminID
 				if (steamId.test(id)) {
 					OneToMany.set(l.steam.players, id, m.groups!.groupID)
-					l.steam.admins.add(id)
 				} else if (eosId.test(id)) {
 					OneToMany.set(l.eos.players, id, m.groups!.groupID)
 				} else {
