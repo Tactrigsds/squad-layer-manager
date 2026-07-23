@@ -764,8 +764,9 @@ function GroupingCard(
 }
 // -------- command prefixes editor --------
 
-// a small "?" affordance that reveals a longer explanation on hover, so compact editors can drop verbose inline descriptions
-function HelpTip({ text }: { text: string }) {
+// a small "?" affordance that reveals a longer explanation on hover, so compact editors can drop verbose inline
+// descriptions. `links` render as buttons that jump to (and highlight) another setting by its anchor id.
+function HelpTip({ text, links }: { text: string; links?: { label: string; anchor: string }[] }) {
 	return (
 		<Tooltip>
 			<TooltipTrigger asChild>
@@ -773,7 +774,24 @@ function HelpTip({ text }: { text: string }) {
 					<Icons.CircleHelp className="h-3.5 w-3.5" />
 				</button>
 			</TooltipTrigger>
-			<TooltipContent className="max-w-xs">{text}</TooltipContent>
+			<TooltipContent className="max-w-xs space-y-1.5">
+				<p>{text}</p>
+				{links && links.length > 0 && (
+					<div className="flex flex-wrap gap-x-3 gap-y-1">
+						{links.map((link) => (
+							<button
+								key={link.anchor}
+								type="button"
+								className="inline-flex items-center gap-1 text-primary underline hover:no-underline"
+								onClick={() => SettingsNav.navigateToAnchor(link.anchor)}
+							>
+								<Icons.ArrowRight className="h-3 w-3 shrink-0" />
+								{link.label}
+							</button>
+						))}
+					</div>
+				)}
+			</TooltipContent>
 		</Tooltip>
 	)
 }
@@ -2521,15 +2539,12 @@ function RoleAssignmentsEditor(
 	const groupsRes = useQuery(RPC.orpc.rbac.listAdminListGroups.queryOptions({ staleTime: 60_000 }))
 	const availableGroups = groupsRes.data?.code === 'ok' ? groupsRes.data.groups : []
 	const selectedGroups = cfg.assignments?.adminListGroups ?? []
-	const allGroups = [...new Set([...availableGroups, ...selectedGroups])].sort()
-	function toggleGroup(group: string, on: boolean) {
-		update((r) =>
-			withRoleConfig(r, roleId, (c) => {
-				const cur = (c.assignments?.adminListGroups ?? []).filter((g) => g !== group)
-				if (on) cur.push(group)
-				return withAssignments(c, { adminListGroups: cur })
-			})
-		)
+	const groupOptions = [...new Set([...availableGroups, ...selectedGroups])].sort().map((group) => ({
+		value: group,
+		label: availableGroups.includes(group) ? group : `${group} (not in any current source)`,
+	}))
+	function setGroups(next: string[]) {
+		update((r) => withRoleConfig(r, roleId, (c) => withAssignments(c, { adminListGroups: next })))
 	}
 
 	return (
@@ -2553,7 +2568,16 @@ function RoleAssignmentsEditor(
 					checked={!!cfg.assignments?.includeIngameAdmins}
 					onCheckedChange={(on) => update((r) => withRoleConfig(r, roleId, (c) => withAssignments(c, { includeIngameAdmins: on })))}
 				/>
-				<span className="text-sm">Granted to in-game admins</span>
+				<span className="flex items-center gap-1 text-sm">
+					Granted to in-game admins
+					<HelpTip
+						text="A player is an in-game admin when the admin list puts them in a group that holds one of the admin-identifying permissions."
+						links={[
+							{ label: 'Admin list sources', anchor: 'setting:adminListSources' },
+							{ label: 'Admin identifying permissions', anchor: 'setting:adminIdentifyingPermissions' },
+						]}
+					/>
+				</span>
 			</div>
 
 			<div className="space-y-1.5">
@@ -2603,18 +2627,27 @@ function RoleAssignmentsEditor(
 			</div>
 
 			<div className="space-y-1.5">
-				<label className="text-xs text-muted-foreground">Admin-list groups</label>
-				{allGroups.length === 0
+				<label className="flex items-center gap-1 text-xs text-muted-foreground">
+					Admin-list groups
+					<HelpTip
+						text="Grant this role by admin-list group membership. A player gets it while the admin list places them in any selected group, admin-identifying or not (e.g. a Whitelist reserve-slot group)."
+						links={[{ label: 'Admin list sources', anchor: 'setting:adminListSources' }]}
+					/>
+				</label>
+				{groupOptions.length === 0
 					? <p className="text-xs text-muted-foreground">No admin-list groups are defined in the configured sources.</p>
-					: allGroups.map((group) => (
-						<label key={group} className="flex items-center gap-2 text-sm">
-							<Checkbox checked={selectedGroups.includes(group)} onCheckedChange={(on) => toggleGroup(group, on === true)} />
-							<span className="font-mono">{group}</span>
-							{!availableGroups.includes(group) && (
-								<span className="text-xs text-amber-600 dark:text-amber-500">(not in any current source)</span>
-							)}
-						</label>
-					))}
+					: (
+						<div className="max-w-[24rem]">
+							<ComboBoxMulti
+								title="Group"
+								values={selectedGroups}
+								options={groupOptions}
+								emptyLabel="Select admin-list groups..."
+								chipDisplay
+								onSelect={(next) => setGroups(typeof next === 'function' ? next(selectedGroups) : next)}
+							/>
+						</div>
+					)}
 			</div>
 		</div>
 	)
