@@ -143,4 +143,4 @@ export function LandingDocument(
 	)
 }
 
-type AssetLink = { rel: string; href: string; crossOrigin?: 'anonymous' | ''; as?: string }
+type AssetLink = { rel: string; href: string; crossOrigin?: 'anonymous'; as?: string; type?: string; media?: string }
