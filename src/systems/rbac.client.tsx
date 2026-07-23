@@ -17,7 +17,7 @@ export function handlePermissionDenied(res: RBAC.PermissionDeniedResponse) {
 
 export function usePermsCheck<T extends RBAC.PermissionType>(
 	req: RBAC.PermitChecker<T> | RBAC.PermitChecker<T>[] | RBAC.PermissionReq<T>,
-): RBAC.PermissionDeniedResponse<T> | null {
+): RBAC.PermissionDeniedResponse | null {
 	return ZusUtils.useStore_Susp(UsersClient.loggedInUserQueryOptions, RbacStore, Sel.permsCheck(useStable(req)))
 }
 

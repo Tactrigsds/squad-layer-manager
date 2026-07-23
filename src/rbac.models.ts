@@ -307,10 +307,10 @@ export function addTracedPerms(perms: TracedPermission[], ...permsToAdd: TracedP
 	}
 }
 
-export function permissionDenied<T extends PermissionType>(
+export function permissionDenied(
 	checkType: PermissionReq['check'],
-	failures: PermissionFailure<T>[],
-): PermissionDeniedResponse<T> {
+	failures: string[],
+): PermissionDeniedResponse {
 	return {
 		code: 'err:permission-denied',
 		checkType,
@@ -318,10 +318,13 @@ export function permissionDenied<T extends PermissionType>(
 	}
 }
 
-export type PermissionDeniedResponse<T extends PermissionType = PermissionType> = {
+// failures are pre-rendered to human-readable strings (a permission type, or a callback's message) rather than
+// carrying the structured Permission. That keeps the response shallow and non-generic, which matters: the richer
+// shape overflowed oRPC's client type-transform and got silently dropped from complex handlers' return unions.
+export type PermissionDeniedResponse = {
 	code: 'err:permission-denied'
 	checkType: PermissionReq['check']
-	failures: PermissionFailure<T>[]
+	failures: string[]
 }
 
 export type PermitCheckerCallback = (perms: Permission[]) => string | undefined
@@ -334,15 +337,16 @@ export type PermissionReq<T extends PermissionType = PermissionType> = { check: 
 export function permReq<T extends PermissionType>(check: 'all' | 'any', permits: (PermitChecker<T> | undefined)[]): PermissionReq<T> {
 	return { check, permits: permits.filter(v => Boolean(v)) as PermitChecker<T>[] }
 }
-export type PermissionFailure<T extends PermissionType = PermissionType> = { lookupType: 'static'; perm: Permission<T> | T } | {
-	lookupType: 'dynamic'
-	message: string
+
+// how a failed static permit is described in a denial response
+export function describePermit<T extends PermissionType>(permit: Permission<T> | T): string {
+	return typeof permit === 'string' ? permit : permit.type
 }
 
 export function tryDenyPermissionsForRbacUser<T extends PermissionType>(
 	user: UserWithRbac,
 	req: PermitChecker<T> | PermitChecker<T>[] | PermissionReq<T>,
-): PermissionDeniedResponse<T> | null {
+): PermissionDeniedResponse | null {
 	const perms = fromTracedPermissions(user.perms)
 	return tryDenyPermissions(perms, req)
 }
@@ -353,7 +357,7 @@ export function tryDenyPermissions<T extends PermissionType>(
 ) {
 	// just in case
 	const userPerms = fromTracedPermissions(_userPerms as TracedPermission<T>[])
-	let failures: PermissionFailure<T>[] = []
+	let failures: string[] = []
 
 	let req: PermissionReq<T>
 	if (typeof _req === 'object' && 'check' in _req) {
@@ -366,14 +370,14 @@ export function tryDenyPermissions<T extends PermissionType>(
 		if (typeof reqPerm === 'function') {
 			const errorMessage = reqPerm(userPerms)
 			if (errorMessage) {
-				failures.push({ lookupType: 'dynamic', message: errorMessage })
+				failures.push(errorMessage)
 			}
 		} else {
 			const hasPerm = userPerms.some((userPerm) =>
 				typeof reqPerm === 'string' ? userPerm.type === reqPerm : arePermsEqual(userPerm, reqPerm)
 			)
 			if (!hasPerm) {
-				failures.push({ lookupType: 'static', perm: reqPerm })
+				failures.push(describePermit(reqPerm))
 			}
 		}
 	}

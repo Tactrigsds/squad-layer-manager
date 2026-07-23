@@ -178,13 +178,16 @@ async function repointServers(driver: Database) {
 		)
 	}
 
-	// admin lists are global now (not per-server), so point the single global source at this worktree's emulated
-	// Admins.cfg and carry over the target server's identifying perms (the clone's global row predates the move)
-	const targetRawSettings = unsuperjsonify(Schema.servers, target).settings as { adminIdentifyingPermissions?: string[] }
-	const identifyingPerms = targetRawSettings.adminIdentifyingPermissions ?? ['canseeadminchat']
+	// admin lists are global now (migration 0089 hoisted them). Point the single global source at this worktree's
+	// emulated Admins.cfg, keeping the migrated identifying perms (fall back if the source install had none)
 	const gsRows = await db.select().from(Schema.globalSettings)
 	if (gsRows.length > 0) {
-		const gsRaw = unsuperjsonify(Schema.globalSettings, gsRows[0]) as { settings: Record<string, unknown> }
+		const gsRaw = unsuperjsonify(Schema.globalSettings, gsRows[0]) as {
+			settings: Record<string, unknown> & { adminIdentifyingPermissions?: string[] }
+		}
+		const identifyingPerms = gsRaw.settings.adminIdentifyingPermissions?.length
+			? gsRaw.settings.adminIdentifyingPermissions
+			: ['canseeadminchat']
 		const settings = {
 			...gsRaw.settings,
 			adminListSources: [{ type: 'local', source: DevInstance.ADMINS_CFG_PATH }],

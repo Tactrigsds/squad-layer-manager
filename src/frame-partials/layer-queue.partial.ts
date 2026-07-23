@@ -7,7 +7,6 @@ import * as ZusUtils from '@/lib/zustand'
 import * as BB from '@/models/backburner.models'
 import type * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
-import type * as RBAC from '@/rbac.models'
 
 import { toast } from '@/lib/toast'
 import * as SLL from '@/models/shared-layer-list'
@@ -365,10 +364,7 @@ export namespace Actions {
 			else UPClient.Actions.ensureEditingQueue(serverId)
 		}
 
-		// orpc's client type-transform collapses the permission-denied member out of this handler's return union
-		// (the large SLL.Operation input plus the failures-based response overflow its instantiation budget); it does
-		// occur at runtime, so widen back to the real shape
-		let res: Awaited<ReturnType<typeof RPC.orpc.layerQueue.dispatchOp.call>> | RBAC.PermissionDeniedResponse
+		let res: Awaited<ReturnType<typeof RPC.orpc.layerQueue.dispatchOp.call>>
 		try {
 			res = await RPC.orpc.layerQueue.dispatchOp.call({ serverId, op })
 		} catch (error) {
