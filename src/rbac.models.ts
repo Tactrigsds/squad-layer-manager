@@ -103,8 +103,12 @@ type PermScope = keyof typeof PERM_SCOPE_ARGS
 
 export type UserWithRbac = USR.User & { perms: TracedPermission[] }
 
+// the return is cast to a keyed record ({ [K in T]: ... }); left to inference the computed `[type]` key becomes a
+// string index signature, which erases the specific key so PERMISSION_DEFINITION[K] can't resolve per-permission
 function definePermission<T extends string, S extends PermScope>(type: T, args: { description: string; scope: S }) {
-	return { [type]: { type, description: args.description, scope: args.scope, scopeArgs: PERM_SCOPE_ARGS[args.scope] } } as const
+	return { [type]: { type, description: args.description, scope: args.scope, scopeArgs: PERM_SCOPE_ARGS[args.scope] } } as {
+		[K in T]: { type: T; description: string; scope: S; scopeArgs: (typeof PERM_SCOPE_ARGS)[S] }
+	}
 }
 
 export const PERMISSION_DEFINITION = {
@@ -177,7 +181,7 @@ export const PERMISSION_DEFINITION = {
 	...definePermission('admin:delete-servers', { description: 'Delete servers', scope: 'global' }),
 	...definePermission('admin:restart-slm', { description: 'Restart the SLM application', scope: 'global' }),
 }
-export type KnownPermission = (typeof PERMISSION_DEFINITION)[number]
+export type KnownPermission = (typeof PERMISSION_DEFINITION)[keyof typeof PERMISSION_DEFINITION]
 export type PermissionType = KnownPermission['type']
 
 export type GlobalPermissionType = Extract<KnownPermission, { scope: 'global' }>['type']
@@ -235,7 +239,8 @@ export function parseNegatingPermissionType(expr: string): RoleGrantablePermissi
 }
 
 export function fromTracedPermissions(perms: TracedPermission[]): Permission[] {
-	return perms.filter(perm => !perm.negated && !perm.negating).map(perm => Obj.exclude(perm, ['negated', 'negating']))
+	// Obj.exclude collapses the discriminated union; the runtime object is still a valid Permission
+	return perms.filter(perm => !perm.negated && !perm.negating).map(perm => Obj.exclude(perm, ['negated', 'negating']) as Permission)
 }
 
 export function recalculateNegations(perms: TracedPermission[]) {
@@ -261,22 +266,38 @@ export const ROLE_PERMISSION_EXPRESSION = z.union([
 
 export type RolePermissionExpression = z.infer<typeof ROLE_PERMISSION_EXPRESSION>
 
-export type PermArgs<T extends PermissionType> = z.infer<(typeof PERMISSION_DEFINITION)[T]['scopeArgs']>
+// precomputed as concrete maps rather than `z.infer<(PERMISSION_DEFINITION)[K]['scopeArgs']>` inline: a bare
+// z.infer over the indexed access does not resolve per-member when distributed below, leaving `args` the full
+// union and defeating narrowing. A map lookup (PermArgsMap[K]) resolves cleanly.
+type PermArgsMap = { [K in PermissionType]: z.infer<(typeof PERMISSION_DEFINITION)[K]['scopeArgs']> }
+type PermScopeMap = { [K in PermissionType]: (typeof PERMISSION_DEFINITION)[K]['scope'] }
+export type PermArgs<T extends PermissionType> = PermArgsMap[T]
 
-export type Permission<T extends PermissionType = PermissionType> = ReturnType<typeof perm<T>>
-export function perm<T extends PermissionType>(type: T, scopeOpts?: z.infer<(typeof PERMISSION_DEFINITION)[T]['scopeArgs']>) {
+type PermissionFor<K extends PermissionType> = {
+	type: K
+	scope: PermScopeMap[K]
+	args: PermArgsMap[K]
+}
+
+// distributive over T so `Permission` is a discriminated union on `type`: narrowing `perm.type === 'x'` then
+// narrows `scope` and `args` to x's. (`ReturnType<typeof perm>` would collapse to one object with independently
+// unioned fields, which doesn't narrow.)
+export type Permission<T extends PermissionType = PermissionType> = T extends unknown ? PermissionFor<T> : never
+
+export function perm<T extends PermissionType>(type: T, scopeOpts?: PermArgs<T>): Permission<T> {
+	// the generic construction can't be checked against the distributive union, but each concrete instantiation is sound
 	return {
 		type,
 		scope: PERMISSION_DEFINITION[type].scope,
 		args: scopeOpts ?? (undefined as PermArgs<T>),
-	}
+	} as Permission<T>
 }
 
 export function tracedPerm<T extends PermissionType>(
 	type: T,
 	roles: Role[],
 	opts?: { negated?: boolean; negating?: boolean },
-	scopeOpts?: z.infer<(typeof PERMISSION_DEFINITION)[T]['scopeArgs']>,
+	scopeOpts?: PermArgs<T>,
 ) {
 	return {
 		...perm(type, scopeOpts),
@@ -356,7 +377,7 @@ export function tryDenyPermissions<T extends PermissionType>(
 	_req: PermitChecker<T> | PermitChecker<T>[] | PermissionReq<T>,
 ) {
 	// just in case
-	const userPerms = fromTracedPermissions(_userPerms as TracedPermission<T>[])
+	const userPerms = fromTracedPermissions(_userPerms as unknown as TracedPermission[])
 	let failures: string[] = []
 
 	let req: PermissionReq<T>
@@ -395,24 +416,29 @@ export function tryDenyPermissions<T extends PermissionType>(
 	return { code: 'err:permission-denied' as const, failures, checkType: req.check }
 }
 
-export function arePermsEqual(perm1: Permission & Partial<PermissionTrace>, perm2: Permission & Partial<PermissionTrace>) {
-	perm1 = Obj.selectProps(perm1, ['args', 'scope', 'type', 'negated', 'negating'])
-	perm2 = Obj.selectProps(perm2, ['args', 'scope', 'type', 'negated', 'negating'])
-	Obj.trimUndefined(perm1)
-	Obj.trimUndefined(perm2)
+// a permission-shaped value for the structural comparison/manipulation helpers. Looser than the discriminated
+// `Permission` on purpose: Obj.selectProps/exclude collapse the union, so their results (and callers passing them)
+// need a shape that no longer correlates type<->scope<->args.
+export type PermLike = { type: PermissionType; scope: string; args?: unknown } & Partial<PermissionTrace>
+
+export function arePermsEqual(perm1: PermLike, perm2: PermLike) {
+	const a = Obj.selectProps(perm1, ['args', 'scope', 'type', 'negated', 'negating']) as Record<string, unknown>
+	const b = Obj.selectProps(perm2, ['args', 'scope', 'type', 'negated', 'negating']) as Record<string, unknown>
+	Obj.trimUndefined(a)
+	Obj.trimUndefined(b)
 
 	// defaults are false
-	if (!perm1.negated) delete perm1.negated
-	if (!perm2.negated) delete perm2.negated
-	if (!perm1.negating) delete perm1.negating
-	if (!perm2.negating) delete perm2.negating
+	if (!a.negated) delete a.negated
+	if (!b.negated) delete b.negated
+	if (!a.negating) delete a.negating
+	if (!b.negating) delete b.negating
 
-	return Obj.deepEqual(perm1, perm2)
+	return Obj.deepEqual(a, b)
 }
 
 // matches on identity alone (type + scope + args). Unlike arePermsEqual this ignores negation state, which changes as
 // permission simulation is applied and so can't be part of a perm's identity.
-export function isSamePerm(perm1: Permission & Partial<PermissionTrace>, perm2: Permission & Partial<PermissionTrace>) {
+export function isSamePerm(perm1: PermLike, perm2: PermLike) {
 	return arePermsEqual(Obj.selectProps(perm1, ['args', 'scope', 'type']), Obj.selectProps(perm2, ['args', 'scope', 'type']))
 }
 
@@ -436,7 +462,7 @@ export function maxTimeoutDurationMs(perms: Permission[]): number | null | undef
 	let max: number | undefined = undefined
 	for (const p of perms) {
 		if (p.type !== 'squad-server:timeout-players') continue
-		const args = p.args as z.infer<(typeof PERM_SCOPE_ARGS)['timeout']> | undefined
+		const args = p.args
 		if (!args) continue
 		if (args.maxDurationMs === null) return null
 		if (max === undefined || args.maxDurationMs > max) max = args.maxDurationMs
@@ -450,7 +476,7 @@ export function maxLayerRequests(perms: Permission[]): number | null | undefined
 	let max: number | undefined = undefined
 	for (const p of perms) {
 		if (p.type !== 'queue:request-layers') continue
-		const args = p.args as z.infer<(typeof PERM_SCOPE_ARGS)['layer-requests']> | undefined
+		const args = p.args
 		if (!args) continue
 		if (args.maxQueued === null) return null
 		if (max === undefined || args.maxQueued > max) max = args.maxQueued
@@ -472,12 +498,6 @@ export function dottedSettingsPath(path: string | (string | number)[]): string {
 	return typeof path === 'string' ? path : path.join('.')
 }
 
-// PermArgs<T> resolves imprecisely on the merged PERMISSION_DEFINITION, so the readers below type args
-// straight off PERM_SCOPE_ARGS (same approach as maxTimeoutDurationMs)
-type ServerScopeArgs = z.infer<(typeof PERM_SCOPE_ARGS)['server-settings']>
-type ServerWriteArgs = z.infer<(typeof PERM_SCOPE_ARGS)['server-settings-write']>
-type GlobalWriteArgs = z.infer<(typeof PERM_SCOPE_ARGS)['global-settings-write']>
-
 function serverIdMatches(args: { serverId: string | null } | undefined, serverId: string): boolean {
 	// missing args = a legacy/defensive grant; treat as unrestricted
 	return !args || args.serverId === null || args.serverId === serverId
@@ -497,7 +517,7 @@ export function globalSettingsWriteAccess(perms: Permission[]): SettingsWriteAcc
 	const pathSets: (string[] | null)[] = []
 	for (const p of perms) {
 		if (p.type !== 'global-settings:write') continue
-		const args = p.args as GlobalWriteArgs | undefined
+		const args = p.args
 		pathSets.push(args ? args.paths : null)
 	}
 	return collectWriteAccess(pathSets)
@@ -511,7 +531,7 @@ export function serverSettingsWriteAccess(perms: Permission[], serverId: string)
 	const pathSets: (string[] | null)[] = []
 	for (const p of perms) {
 		if (p.type !== 'server-settings:write') continue
-		const args = p.args as ServerWriteArgs | undefined
+		const args = p.args
 		if (!serverIdMatches(args, serverId)) continue
 		pathSets.push(args ? args.paths : null)
 	}
@@ -521,7 +541,7 @@ export function serverSettingsWriteAccess(perms: Permission[], serverId: string)
 export function canWriteSensitiveServerSettings(perms: Permission[], serverId: string): boolean {
 	return perms.some((p) =>
 		p.type === 'server-settings:write-sensitive'
-		&& serverIdMatches(p.args as ServerScopeArgs | undefined, serverId)
+		&& serverIdMatches(p.args, serverId)
 	)
 }
 
@@ -530,12 +550,12 @@ export function canWriteSensitiveServerSettings(perms: Permission[], serverId: s
 export function canCreateServers(perms: Permission[]): boolean {
 	return perms.some((p) =>
 		p.type === 'server-settings:write-sensitive'
-		&& ((p.args as ServerScopeArgs | undefined)?.serverId ?? null) === null
+		&& (p.args?.serverId ?? null) === null
 	)
 }
 
 export function canReadServerSettings(perms: Permission[], serverId: string): boolean {
-	if (perms.some((p) => p.type === 'server-settings:read' && serverIdMatches(p.args as ServerScopeArgs | undefined, serverId))) {
+	if (perms.some((p) => p.type === 'server-settings:read' && serverIdMatches(p.args, serverId))) {
 		return true
 	}
 	return serverSettingsWriteAccess(perms, serverId).kind !== 'none' || canWriteSensitiveServerSettings(perms, serverId)
@@ -563,7 +583,7 @@ export function settingsPathOverlaps(access: SettingsWriteAccess, path: string |
 export function permSubsumedBy(perm: Permission, perms: Permission[]): boolean {
 	switch (perm.type) {
 		case 'squad-server:timeout-players': {
-			const args = perm.args as z.infer<(typeof PERM_SCOPE_ARGS)['timeout']> | undefined
+			const args = perm.args
 			const max = maxTimeoutDurationMs(perms)
 			if (max === undefined) return false
 			if (max === null) return true
@@ -571,7 +591,7 @@ export function permSubsumedBy(perm: Permission, perms: Permission[]): boolean {
 			return args.maxDurationMs <= max
 		}
 		case 'queue:request-layers': {
-			const args = perm.args as z.infer<(typeof PERM_SCOPE_ARGS)['layer-requests']> | undefined
+			const args = perm.args
 			const max = maxLayerRequests(perms)
 			if (max === undefined) return false
 			if (max === null) return true
@@ -579,27 +599,27 @@ export function permSubsumedBy(perm: Permission, perms: Permission[]): boolean {
 			return args.maxQueued <= max
 		}
 		case 'global-settings:write': {
-			const args = perm.args as GlobalWriteArgs | undefined
+			const args = perm.args
 			return pathsCoveredBy(args ? args.paths : null, globalSettingsWriteAccess(perms))
 		}
 		case 'server-settings:read':
 		case 'server-settings:write-sensitive': {
-			const serverId = (perm.args as ServerScopeArgs | undefined)?.serverId ?? null
+			const serverId = perm.args?.serverId ?? null
 			// an all-servers grant can only be covered by another all-servers grant
 			if (serverId === null) {
-				return perms.some((p) => p.type === perm.type && ((p.args as ServerScopeArgs | undefined)?.serverId ?? null) === null)
+				return perms.some((p) => p.type === perm.type && (p.args?.serverId ?? null) === null)
 			}
 			return perm.type === 'server-settings:read'
 				? canReadServerSettings(perms, serverId)
 				: canWriteSensitiveServerSettings(perms, serverId)
 		}
 		case 'server-settings:write': {
-			const args = perm.args as ServerWriteArgs | undefined
+			const args = perm.args
 			const serverId = args?.serverId ?? null
 			if (serverId === null) {
 				const allServerPathSets = perms.flatMap((p) => {
 					if (p.type !== 'server-settings:write') return []
-					const pArgs = p.args as ServerWriteArgs | undefined
+					const pArgs = p.args
 					return (pArgs?.serverId ?? null) === null ? [pArgs?.paths ?? null] : []
 				})
 				return pathsCoveredBy(args ? args.paths : null, collectWriteAccess(allServerPathSets))
