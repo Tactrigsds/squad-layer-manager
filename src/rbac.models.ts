@@ -40,13 +40,16 @@ export type UserRbac = {
 }
 
 export namespace Role {
+	// mutates `roles` in place (adding `role` unless an equal one is already present) and returns it. Callers rely on
+	// the mutation -- see merge() and rbac.server's assignment resolvers, which discard the return value.
 	export function push(roles: Role[], role: Role): Role[] {
 		for (const r of roles) {
 			if (Obj.deepEqual(r, role)) {
 				return roles
 			}
 		}
-		return [...roles, role]
+		roles.push(role)
+		return roles
 	}
 	export function merge(roles: Role[], otherRoles: Role[]): Role[] {
 		const newRoles = [...roles]

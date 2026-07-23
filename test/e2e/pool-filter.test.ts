@@ -27,7 +27,13 @@ test.describe('pool filter', () => {
 					permissions: ['site:authorized', 'queue:write'],
 					globalSettingsGrants: [],
 					serverSettingsGrants: [],
-					assignments: { discordRoleIds: [], discordUserIds: [String(WRITER.discordId)], everyMember: false },
+					assignments: {
+						discordRoleIds: [],
+						discordUserIds: [String(WRITER.discordId)],
+						everyMember: false,
+						includeIngameAdmins: false,
+						adminListGroups: [],
+					},
 				}
 			},
 		})

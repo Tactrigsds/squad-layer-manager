@@ -299,6 +299,9 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	if (!parsedSettings.success) throw new Error(`default global settings do not parse: ${parsedSettings.error}`)
 	const globalSettings = parsedSettings.data
 	applyTestTimings(globalSettings)
+	// admin lists are global (see migration 0089); default them to the test Admins.cfg, before the hook so a test can override
+	globalSettings.adminListSources = [{ type: 'local', source: adminsCfgPath }]
+	globalSettings.adminIdentifyingPermissions = [ADMIN_PERM]
 	opts.globalSettings?.(globalSettings)
 	await db.insert(Schema.globalSettings).values(
 		superjsonify(Schema.globalSettings, { id: 1, settings: SETTINGS.GlobalSettingsSchema.encode(globalSettings) }),
@@ -318,8 +321,6 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 				logFile: squadLogPath,
 				rcon: { host: '127.0.0.1', port: emu.rconPort, password: emu.password },
 			},
-		adminListSources: [{ type: 'local', source: adminsCfgPath }],
-		adminIdentifyingPermissions: [ADMIN_PERM],
 	})
 	// a seeded queue is only stable if nothing tops it up: generation fills the queue to
 	// preferredLength with random layers, so pin that to what we seeded
