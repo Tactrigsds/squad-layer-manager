@@ -167,7 +167,6 @@ async function repointServers(driver: Database) {
 					},
 				}
 				: deadConnection(row.id),
-			adminListSources: isTarget ? [{ type: 'local', source: DevInstance.ADMINS_CFG_PATH }] : [],
 		}
 		await db.update(Schema.servers)
 			.set(superjsonify(Schema.servers, { settings, enabled: isTarget, defaultServer: isTarget }))
@@ -177,6 +176,27 @@ async function repointServers(driver: Database) {
 				? `re-pointed server ${row.id} at the emulator (rcon 127.0.0.1:${slot.ports.rcon})`
 				: `disabled server ${row.id} and scrubbed its connection`,
 		)
+	}
+
+	// admin lists are global now (migration 0089 hoisted them). Point the single global source at this worktree's
+	// emulated Admins.cfg, keeping the migrated identifying perms (fall back if the source install had none)
+	const gsRows = await db.select().from(Schema.globalSettings)
+	if (gsRows.length > 0) {
+		const gsRaw = unsuperjsonify(Schema.globalSettings, gsRows[0]) as {
+			settings: Record<string, unknown> & { adminIdentifyingPermissions?: string[] }
+		}
+		const identifyingPerms = gsRaw.settings.adminIdentifyingPermissions?.length
+			? gsRaw.settings.adminIdentifyingPermissions
+			: ['canseeadminchat']
+		const settings = {
+			...gsRaw.settings,
+			adminListSources: [{ type: 'local', source: DevInstance.ADMINS_CFG_PATH }],
+			adminIdentifyingPermissions: identifyingPerms,
+		}
+		await db.update(Schema.globalSettings)
+			.set(superjsonify(Schema.globalSettings, { settings }))
+			.where(E.eq(Schema.globalSettings.id, gsRows[0].id))
+		console.log('re-pointed global admin list source at the emulated Admins.cfg')
 	}
 }
 

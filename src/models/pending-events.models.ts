@@ -780,6 +780,7 @@ async function* processPendingEvent(
 			state.unknownSquadStreaks.clear()
 			state.unassignedPlayers.clear()
 			state.expectedNewLayerId = state.nextLayerId
+			log.debug('Received TransitionMap NEW_GAME. syncState: rolling')
 		} else {
 			// Enter 'rolling' but do NOT commit `newGameEvent` yet. The rolling TEAMS_UPDATE branch keys off
 			// `newGameEvent` (and only guards `currentMatch !== 'PENDING'`), so committing it before we've resolved
@@ -801,6 +802,7 @@ async function* processPendingEvent(
 					processedEventIds.add(pendingEvent.id)
 					return
 				}
+				log.debug('found new layer during roll: ', layersStatus.currentLayer.id)
 				newLayerId = layersStatus.currentLayer.id
 			}
 

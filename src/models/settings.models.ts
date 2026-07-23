@@ -30,6 +30,15 @@ const RoleAssignmentsSchema = z.object({
 	discordRoleIds: z.array(ParsableBigIntSchema).prefault([]).describe('Discord role ids whose members are granted this role'),
 	discordUserIds: z.array(ParsableBigIntSchema).prefault([]).describe('Discord user ids granted this role'),
 	everyMember: z.boolean().prefault(false).describe('Grant this role to every member of the Discord server'),
+	includeIngameAdmins: z.boolean().prefault(false).describe(
+		'Grant this role to in-game admins. A player counts as an in-game admin when the admin list places them in a group '
+			+ 'holding one of the admin-identifying permissions (configured by Admin list sources / Admin identifying permissions '
+			+ 'in global settings).',
+	),
+	adminListGroups: z.array(z.string()).prefault([]).describe(
+		'Grant this role to in-game players by their admin-list group membership. A player gets it while the admin list '
+			+ 'places them in any of the selected groups, admin-identifying or not (e.g. a Whitelist reserve-slot group).',
+	),
 }).prefault({})
 
 const ServerSettingsGrantSchema = z.object({
@@ -288,6 +297,13 @@ export const GlobalSettingsSchema = z.object({
 			+ '(anything typed after it is ignored), runs in the scopes of the command it points at, and loses to a real command string on collision.',
 	),
 	commands: CMD.AllCommandConfigSchema,
+	adminListSources: z.array(SM.AdminListSourceSchema).prefault([]).describe(
+		"Sources to load admins from, in the same format as the gameserver expects Each is a remote URL, local file, or FTP path serving admins in Squad's Admins.cfg format.",
+	),
+	adminIdentifyingPermissions: z.array(SM.PLAYER_PERM).prefault([]).describe(
+		'In-game admin-list permissions that mark a player as an admin in SLM (e.g. "canseeadminchat"). A player granted any of these by an '
+			+ 'admin list source is treated as an admin, which drives admin-only warns and admin presence.',
+	),
 	rbac: RbacSettingsSchema,
 	layerTable: LQY.LayerTableConfigSchema.prefault({
 		orderedColumns: [
@@ -628,13 +644,6 @@ EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.defaultSelectable.push({ filterId: 'test-
 
 export const ServerSettingsSchema = PublicServerSettingsSchema.extend({
 	connections: ServerConnectionSchema,
-	adminListSources: z.array(SM.AdminListSourceSchema).describe(
-		"Admin list sources to load this server's admins from. Each is a remote URL, local file, or FTP path serving admins in Squad's Admins.cfg format.",
-	),
-	adminIdentifyingPermissions: z.array(SM.PLAYER_PERM).describe(
-		'In-game admin-list permissions that mark a player as an admin in SLM (e.g. "canseeadminchat"). A player granted any of these by an '
-			+ 'admin list source is treated as an admin, which drives admin-only warns and admin presence.',
-	),
 	navLinks: NavLinkSchema.optional().describe('Server-specific links to display in the navbar dropdown menu'),
 })
 
@@ -817,4 +826,52 @@ export function applySettingMutations(settings: PublicServerSettings, mutations:
 
 export function getPublicSettings(settings: ServerSettings): PublicServerSettings {
 	return Obj.exclude(settings, ['connections'])
+}
+
+export function dottedSettingsPath(path: string | (string | number)[]): string {
+	return typeof path === 'string' ? path : path.join('.')
+}
+
+export namespace Grants {
+	export function globalSettingsRead() {
+		return RBAC.permReq('any', [
+			RBAC.perm('global-settings:read'),
+			'global-settings:write',
+		])
+	}
+
+	export function writeGlobalSettingsPaths(paths: (SettingsPath | string)[]) {
+		const dottedPaths = paths.map(dottedSettingsPath)
+		return RBAC.permReq('all', [
+			(perms) => {
+				const access = RBAC.globalSettingsWriteAccess(perms)
+				const missing = dottedPaths.filter((p) => !RBAC.settingsPathAllowed(access, p))
+				if (missing.length === 0) return
+				return `global-settings:write missing paths: ${missing.join(', ')}`
+			},
+		])
+	}
+
+	export function writeServerSettingsPaths(serverId: string, paths: (SettingsPath | string)[]) {
+		const dottedPaths = paths.map(dottedSettingsPath)
+		const isSensitive = (p: string) => p === 'connections' || p.startsWith('connections.')
+		const nonSensitivePaths = dottedPaths.filter((p) => !isSensitive(p))
+		const hasSensitivePaths = dottedPaths.some(isSensitive)
+
+		return RBAC.permReq<'server-settings:write' | 'server-settings:write-sensitive'>('all', [
+			(perms) => {
+				const access = RBAC.serverSettingsWriteAccess(perms, serverId)
+				const missing = nonSensitivePaths.filter((p) => !RBAC.settingsPathAllowed(access, p))
+				if (missing.length === 0) return
+				return `server-settings:write missing paths: ${missing.join(', ')}`
+			},
+			// connections are never a path grant; editing them requires write-sensitive regardless of the write grant above
+			hasSensitivePaths
+				? (perms) => {
+					if (RBAC.canWriteSensitiveServerSettings(perms, serverId)) return
+					return `server-settings:write-sensitive on ${serverId}`
+				}
+				: undefined,
+		])
+	}
 }

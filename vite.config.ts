@@ -48,8 +48,9 @@ export default defineConfig({
 									headers,
 								})
 
-								if (proxyRes.status !== 200) {
-									// Proxy the entire response if not 200
+								// non-200 responses (redirects, 403) and marked static pages (the landing page, a 200) carry their
+								// own body; anything else is a 200 the SPA should hydrate, so fall through to vite's index.html
+								if (proxyRes.status !== 200 || proxyRes.headers.get('x-slm-static-page')) {
 									console.log(`Upstream returned ${proxyRes.status}, proxying entire response`)
 									res.statusCode = proxyRes.status
 

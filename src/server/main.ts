@@ -2,6 +2,7 @@ import { sleep } from '@/lib/async.ts'
 import * as CoreRcon from '@/lib/rcon/core-rcon'
 import * as FetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import { formatVersion } from '@/lib/versioning.ts'
+import * as AdminList from '@/systems/adminlist.server'
 
 import * as AppEvents from '@/models/app-events.models'
 import * as AppEventsSys from '@/systems/app-events.server'
@@ -13,6 +14,7 @@ import * as Commands from '@/systems/commands.server'
 import * as Discord from '@/systems/discord.server'
 import * as Fastify from '@/systems/fastify.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
+import * as Landing from '@/systems/landing.server'
 import * as LayerData from '@/systems/layer-data.server'
 import * as LayerEngine from '@/systems/layer-engine.server'
 import * as LayerQueries from '@/systems/layer-queries.server'
@@ -107,7 +109,13 @@ await C.spanOp('main', { module }, async () => {
 	// detect (before this instance's APP_STARTED is persisted) whether we came up via a restart-slm command, so the
 	// per-server "SLM started/restarted" admin warn (sent during SquadServer.setup) can name who restarted it
 	await AppEventsSys.detectRestartAtBoot(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
+
+	AdminList.setup()
+
 	await Promise.all([SquadServer.setup(), Discord.setup()])
+
+	// after adminlist + settings + discord: rbac observes the admin list (whose fetch reads settings) and the discord gateway
+	Rbac.wireInvalidationSources()
 
 	// after SquadServer.setup, since its gauges read SquadServer.globalState
 	Metrics.setup()
@@ -122,6 +130,7 @@ await C.spanOp('main', { module }, async () => {
 			version: formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA),
 		}),
 	)
+	Landing.setup()
 	const { serverClosed } = await Fastify.setup()
 	if (ENV.NODE_ENV === 'development') {
 		void import('./console.ts')

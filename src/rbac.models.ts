@@ -4,6 +4,7 @@ import * as F from '@/models/filter.models'
 import type * as USR from '@/models/users.models'
 
 import { z } from 'zod'
+import { assertNever } from './lib/type-guards'
 
 export type GenericRole = {
 	type: string
@@ -33,6 +34,31 @@ export type InferredRole = z.infer<typeof InferredRoleSchema>
 
 export type Role = InferredRole | GenericRole
 export type RoleArg = InferredRole | string
+export type UserRbac = {
+	perms: TracedPermission[]
+	roles: Role[]
+}
+
+export namespace Role {
+	// mutates `roles` in place (adding `role` unless an equal one is already present) and returns it. Callers rely on
+	// the mutation -- see merge() and rbac.server's assignment resolvers, which discard the return value.
+	export function push(roles: Role[], role: Role): Role[] {
+		for (const r of roles) {
+			if (Obj.deepEqual(r, role)) {
+				return roles
+			}
+		}
+		roles.push(role)
+		return roles
+	}
+	export function merge(roles: Role[], otherRoles: Role[]): Role[] {
+		const newRoles = [...roles]
+		for (const role of otherRoles) {
+			push(newRoles, role)
+		}
+		return newRoles
+	}
+}
 
 export function isInferredRoleType<R extends { type: Role['type'] }>(role: R): role is Extract<R, { type: InferredRole['type'] }> {
 	return role.type === 'filter-owner' || role.type === 'filter-user-contributor' || role.type === 'filter-role-contributor'
@@ -53,6 +79,8 @@ export type RoleAssignment =
 	| { type: 'discord-role'; discordRoleId: bigint; role: Role }
 	| { type: 'discord-user'; discordUserId: bigint; role: Role }
 	| { type: 'discord-server-member'; role: Role }
+	| { type: 'admin-list-group'; role: Role; groupId: string }
+	| { type: 'ingame-admin'; role: Role }
 
 export const ROLE_ASSIGNMENT_TYPES = ['discord-role', 'discord-user', 'discord-server-member'] as const
 {
@@ -78,8 +106,12 @@ type PermScope = keyof typeof PERM_SCOPE_ARGS
 
 export type UserWithRbac = USR.User & { perms: TracedPermission[] }
 
+// the return is cast to a keyed record ({ [K in T]: ... }); left to inference the computed `[type]` key becomes a
+// string index signature, which erases the specific key so PERMISSION_DEFINITION[K] can't resolve per-permission
 function definePermission<T extends string, S extends PermScope>(type: T, args: { description: string; scope: S }) {
-	return { [type]: { type, description: args.description, scope: args.scope, scopeArgs: PERM_SCOPE_ARGS[args.scope] } } as const
+	return { [type]: { type, description: args.description, scope: args.scope, scopeArgs: PERM_SCOPE_ARGS[args.scope] } } as {
+		[K in T]: { type: T; description: string; scope: S; scopeArgs: (typeof PERM_SCOPE_ARGS)[S] }
+	}
 }
 
 export const PERMISSION_DEFINITION = {
@@ -115,8 +147,15 @@ export const PERMISSION_DEFINITION = {
 	}),
 
 	...definePermission('filters:create', { description: 'Create new filters', scope: 'global' }),
-	...definePermission('filters:write-all', { description: 'Delete or modify any filter', scope: 'global' }),
+	...definePermission('filters:write-all', {
+		description: 'Delete or modify any filter, change their owners, and add/remove contributors',
+		scope: 'global',
+	}),
 	...definePermission('filters:write', { description: 'Modify a filter', scope: 'filter' }),
+	...definePermission('filters:manage', {
+		description: 'Manage a filters owner and contributors, and delete the filter',
+		scope: 'filter',
+	}),
 
 	...definePermission('squad-server:end-match', { description: 'End the current match on the server', scope: 'global' }),
 	...definePermission('squad-server:disable-slm-updates', { description: 'Disable updates from slm to the game-server', scope: 'global' }),
@@ -145,7 +184,7 @@ export const PERMISSION_DEFINITION = {
 	...definePermission('admin:delete-servers', { description: 'Delete servers', scope: 'global' }),
 	...definePermission('admin:restart-slm', { description: 'Restart the SLM application', scope: 'global' }),
 }
-export type KnownPermission = (typeof PERMISSION_DEFINITION)[number]
+export type KnownPermission = (typeof PERMISSION_DEFINITION)[keyof typeof PERMISSION_DEFINITION]
 export type PermissionType = KnownPermission['type']
 
 export type GlobalPermissionType = Extract<KnownPermission, { scope: 'global' }>['type']
@@ -203,7 +242,8 @@ export function parseNegatingPermissionType(expr: string): RoleGrantablePermissi
 }
 
 export function fromTracedPermissions(perms: TracedPermission[]): Permission[] {
-	return perms.filter(perm => !perm.negated && !perm.negating).map(perm => Obj.exclude(perm, ['negated', 'negating']))
+	// Obj.exclude collapses the discriminated union; the runtime object is still a valid Permission
+	return perms.filter(perm => !perm.negated && !perm.negating).map(perm => Obj.exclude(perm, ['negated', 'negating']) as Permission)
 }
 
 export function recalculateNegations(perms: TracedPermission[]) {
@@ -229,22 +269,38 @@ export const ROLE_PERMISSION_EXPRESSION = z.union([
 
 export type RolePermissionExpression = z.infer<typeof ROLE_PERMISSION_EXPRESSION>
 
-export type PermArgs<T extends PermissionType> = z.infer<(typeof PERMISSION_DEFINITION)[T]['scopeArgs']>
+// precomputed as concrete maps rather than `z.infer<(PERMISSION_DEFINITION)[K]['scopeArgs']>` inline: a bare
+// z.infer over the indexed access does not resolve per-member when distributed below, leaving `args` the full
+// union and defeating narrowing. A map lookup (PermArgsMap[K]) resolves cleanly.
+type PermArgsMap = { [K in PermissionType]: z.infer<(typeof PERMISSION_DEFINITION)[K]['scopeArgs']> }
+type PermScopeMap = { [K in PermissionType]: (typeof PERMISSION_DEFINITION)[K]['scope'] }
+export type PermArgs<T extends PermissionType> = PermArgsMap[T]
 
-export type Permission<T extends PermissionType = PermissionType> = ReturnType<typeof perm<T>>
-export function perm<T extends PermissionType>(type: T, scopeOpts?: z.infer<(typeof PERMISSION_DEFINITION)[T]['scopeArgs']>) {
+type PermissionFor<K extends PermissionType> = {
+	type: K
+	scope: PermScopeMap[K]
+	args: PermArgsMap[K]
+}
+
+// distributive over T so `Permission` is a discriminated union on `type`: narrowing `perm.type === 'x'` then
+// narrows `scope` and `args` to x's. (`ReturnType<typeof perm>` would collapse to one object with independently
+// unioned fields, which doesn't narrow.)
+export type Permission<T extends PermissionType = PermissionType> = T extends unknown ? PermissionFor<T> : never
+
+export function perm<T extends PermissionType>(type: T, scopeOpts?: PermArgs<T>): Permission<T> {
+	// the generic construction can't be checked against the distributive union, but each concrete instantiation is sound
 	return {
 		type,
 		scope: PERMISSION_DEFINITION[type].scope,
 		args: scopeOpts ?? (undefined as PermArgs<T>),
-	}
+	} as Permission<T>
 }
 
 export function tracedPerm<T extends PermissionType>(
 	type: T,
 	roles: Role[],
 	opts?: { negated?: boolean; negating?: boolean },
-	scopeOpts?: z.infer<(typeof PERMISSION_DEFINITION)[T]['scopeArgs']>,
+	scopeOpts?: PermArgs<T>,
 ) {
 	return {
 		...perm(type, scopeOpts),
@@ -275,106 +331,117 @@ export function addTracedPerms(perms: TracedPermission[], ...permsToAdd: TracedP
 	}
 }
 
-export function permissionDenied<T extends PermissionType>(req: PermissionReq<T>) {
+export function permissionDenied(
+	checkType: PermissionReq['check'],
+	failures: string[],
+): PermissionDeniedResponse {
 	return {
-		code: 'err:permission-denied' as const,
-		...req,
+		code: 'err:permission-denied',
+		checkType,
+		failures,
 	}
 }
 
-export type PermissionDeniedResponse<T extends PermissionType = PermissionType> = ReturnType<typeof permissionDenied<T>>
-export type PermissionReq<T extends PermissionType = PermissionType> = { check: 'all' | 'any'; permits: Permission<T>[] }
+// failures are pre-rendered to human-readable strings (a permission type, or a callback's message) rather than
+// carrying the structured Permission. That keeps the response shallow and non-generic, which matters: the richer
+// shape overflowed oRPC's client type-transform and got silently dropped from complex handlers' return unions.
+export type PermissionDeniedResponse = {
+	code: 'err:permission-denied'
+	checkType: PermissionReq['check']
+	failures: string[]
+}
 
-export function rbacUserHasPerms<T extends PermissionType>(user: UserWithRbac, perms: Permission<T>): boolean
-export function rbacUserHasPerms<T extends PermissionType>(user: UserWithRbac, perms: Permission<T>[]): boolean
-export function rbacUserHasPerms<T extends PermissionType>(user: UserWithRbac, req: PermissionReq<T>): boolean
-export function rbacUserHasPerms<T extends PermissionType>(
+export type PermitCheckerCallback = (perms: Permission[]) => string | undefined
+export type PermitChecker<T extends PermissionType = PermissionType> =
+	| Permission<T>
+	| PermitCheckerCallback
+	| T
+
+export type PermissionReq<T extends PermissionType = PermissionType> = { check: 'all' | 'any'; permits: PermitChecker<T>[] }
+export function permReq<T extends PermissionType>(check: 'all' | 'any', permits: (PermitChecker<T> | undefined)[]): PermissionReq<T> {
+	return { check, permits: permits.filter(v => Boolean(v)) as PermitChecker<T>[] }
+}
+
+// how a failed static permit is described in a denial response
+export function describePermit<T extends PermissionType>(permit: Permission<T> | T): string {
+	return typeof permit === 'string' ? permit : permit.type
+}
+
+export function tryDenyPermissionsForRbacUser<T extends PermissionType>(
 	user: UserWithRbac,
-	reqOrPerms: Permission<T> | Permission<T>[] | PermissionReq<T>,
-): boolean {
-	if ('check' in reqOrPerms) {
-		return userHasPerms(user.discordId, fromTracedPermissions(user.perms), reqOrPerms)
-	}
-	const req: PermissionReq<T> = {
-		check: 'all',
-		permits: Array.isArray(reqOrPerms) ? reqOrPerms : [reqOrPerms],
-	}
-	return userHasPerms(user.discordId, fromTracedPermissions(user.perms), req)
+	req: PermitChecker<T> | PermitChecker<T>[] | PermissionReq<T>,
+): PermissionDeniedResponse | null {
+	const perms = fromTracedPermissions(user.perms)
+	return tryDenyPermissions(perms, req)
 }
 
-// TODO technically incorrect when it comes to filters:write-all
-export function userHasPerms<T extends PermissionType>(userId: bigint, userPerms: Permission[], perm: Permission<T>): boolean
-export function userHasPerms<T extends PermissionType>(userId: bigint, userPerms: Permission[], perms: Permission<T>[]): boolean
-export function userHasPerms<T extends PermissionType>(userId: bigint, userPerms: Permission[], req: PermissionReq<T>): boolean
-export function userHasPerms<T extends PermissionType>(
-	userId: bigint,
-	userPerms: Permission[],
-	reqOrPerms: Permission<T> | Permission<T>[] | PermissionReq<T>,
-): boolean {
+export function tryDenyPermissions<T extends PermissionType>(
+	_userPerms: Permission[],
+	_req: PermitChecker<T> | PermitChecker<T>[] | PermissionReq<T>,
+) {
 	// just in case
-	userPerms = fromTracedPermissions(userPerms as TracedPermission<T>[])
-	const req: PermissionReq<T> = 'check' in reqOrPerms
-		? reqOrPerms
-		: {
-			check: 'all',
-			permits: Array.isArray(reqOrPerms) ? reqOrPerms : [reqOrPerms],
-		}
+	const userPerms = fromTracedPermissions(_userPerms as unknown as TracedPermission[])
+	let failures: string[] = []
+
+	let req: PermissionReq<T>
+	if (typeof _req === 'object' && 'check' in _req) {
+		req = _req
+	} else {
+		req = { check: 'all', permits: Array.isArray(_req) ? _req : [_req] }
+	}
 
 	for (const reqPerm of req.permits) {
-		const hasPerm = userPerms.find((userPerm) => arePermsEqual(userPerm, reqPerm))
-		if (req.check === 'all' && !hasPerm) return false
-		if (req.check === 'any' && hasPerm) return true
+		if (typeof reqPerm === 'function') {
+			const errorMessage = reqPerm(userPerms)
+			if (errorMessage) {
+				failures.push(errorMessage)
+			}
+		} else {
+			const hasPerm = userPerms.some((userPerm) =>
+				typeof reqPerm === 'string' ? userPerm.type === reqPerm : arePermsEqual(userPerm, reqPerm)
+			)
+			if (!hasPerm) {
+				failures.push(describePermit(reqPerm))
+			}
+		}
 	}
-	return req.check === 'all'
+
+	let failure: boolean
+	if (req.check === 'all') {
+		failure = failures.length > 0
+	} else if (req.check === 'any') {
+		failure = failures.length === req.permits.length
+	} else {
+		assertNever(req.check)
+	}
+
+	if (!failure) return null
+	return { code: 'err:permission-denied' as const, failures, checkType: req.check }
 }
 
-export function tryDenyPermissionsForRbacUser<T extends PermissionType>(
-	user: UserWithRbac,
-	req: Permission<T>,
-): PermissionDeniedResponse<T> | null
-export function tryDenyPermissionsForRbacUser<T extends PermissionType>(
-	user: UserWithRbac,
-	req: Permission<T>[],
-): PermissionDeniedResponse<T> | null
-export function tryDenyPermissionsForRbacUser<T extends PermissionType>(
-	user: UserWithRbac,
-	req: PermissionReq<T>,
-): PermissionDeniedResponse<T> | null
-export function tryDenyPermissionsForRbacUser<T extends PermissionType>(
-	user: UserWithRbac,
-	req: Permission<T> | Permission<T>[] | PermissionReq<T>,
-): PermissionDeniedResponse<T> | null {
-	const normReq: PermissionReq<T> = 'check' in req ? req : { check: 'all', permits: Array.isArray(req) ? req : [req] }
-	if (!rbacUserHasPerms(user, normReq)) {
-		return permissionDenied(normReq)
-	}
-	return null
-}
-export function tryDenyPermissionForUser<T extends PermissionType>(userId: bigint, perms: Permission[], req: PermissionReq<T>) {
-	if (!userHasPerms(userId, perms, req)) {
-		return permissionDenied(req)
-	}
-	return null
-}
+// a permission-shaped value for the structural comparison/manipulation helpers. Looser than the discriminated
+// `Permission` on purpose: Obj.selectProps/exclude collapse the union, so their results (and callers passing them)
+// need a shape that no longer correlates type<->scope<->args.
+export type PermLike = { type: PermissionType; scope: string; args?: unknown } & Partial<PermissionTrace>
 
-export function arePermsEqual(perm1: Permission & Partial<PermissionTrace>, perm2: Permission & Partial<PermissionTrace>) {
-	perm1 = Obj.selectProps(perm1, ['args', 'scope', 'type', 'negated', 'negating'])
-	perm2 = Obj.selectProps(perm2, ['args', 'scope', 'type', 'negated', 'negating'])
-	Obj.trimUndefined(perm1)
-	Obj.trimUndefined(perm2)
+export function arePermsEqual(perm1: PermLike, perm2: PermLike) {
+	const a = Obj.selectProps(perm1, ['args', 'scope', 'type', 'negated', 'negating']) as Record<string, unknown>
+	const b = Obj.selectProps(perm2, ['args', 'scope', 'type', 'negated', 'negating']) as Record<string, unknown>
+	Obj.trimUndefined(a)
+	Obj.trimUndefined(b)
 
 	// defaults are false
-	if (!perm1.negated) delete perm1.negated
-	if (!perm2.negated) delete perm2.negated
-	if (!perm1.negating) delete perm1.negating
-	if (!perm2.negating) delete perm2.negating
+	if (!a.negated) delete a.negated
+	if (!b.negated) delete b.negated
+	if (!a.negating) delete a.negating
+	if (!b.negating) delete b.negating
 
-	return Obj.deepEqual(perm1, perm2)
+	return Obj.deepEqual(a, b)
 }
 
 // matches on identity alone (type + scope + args). Unlike arePermsEqual this ignores negation state, which changes as
 // permission simulation is applied and so can't be part of a perm's identity.
-export function isSamePerm(perm1: Permission & Partial<PermissionTrace>, perm2: Permission & Partial<PermissionTrace>) {
+export function isSamePerm(perm1: PermLike, perm2: PermLike) {
 	return arePermsEqual(Obj.selectProps(perm1, ['args', 'scope', 'type']), Obj.selectProps(perm2, ['args', 'scope', 'type']))
 }
 
@@ -382,6 +449,12 @@ export function getWritePermReqForFilterEntity(id: F.FilterEntityId): Permission
 	return {
 		check: 'any',
 		permits: [perm('filters:write', { filterId: id }), perm('filters:write-all')],
+	}
+}
+export function getManagePermReqForFilterEntity(id: F.FilterEntityId): PermissionReq {
+	return {
+		check: 'any',
+		permits: [perm('filters:manage', { filterId: id }), perm('filters:write-all')],
 	}
 }
 
@@ -392,7 +465,7 @@ export function maxTimeoutDurationMs(perms: Permission[]): number | null | undef
 	let max: number | undefined = undefined
 	for (const p of perms) {
 		if (p.type !== 'squad-server:timeout-players') continue
-		const args = p.args as z.infer<(typeof PERM_SCOPE_ARGS)['timeout']> | undefined
+		const args = p.args
 		if (!args) continue
 		if (args.maxDurationMs === null) return null
 		if (max === undefined || args.maxDurationMs > max) max = args.maxDurationMs
@@ -406,7 +479,7 @@ export function maxLayerRequests(perms: Permission[]): number | null | undefined
 	let max: number | undefined = undefined
 	for (const p of perms) {
 		if (p.type !== 'queue:request-layers') continue
-		const args = p.args as z.infer<(typeof PERM_SCOPE_ARGS)['layer-requests']> | undefined
+		const args = p.args
 		if (!args) continue
 		if (args.maxQueued === null) return null
 		if (max === undefined || args.maxQueued > max) max = args.maxQueued
@@ -428,12 +501,6 @@ export function dottedSettingsPath(path: string | (string | number)[]): string {
 	return typeof path === 'string' ? path : path.join('.')
 }
 
-// PermArgs<T> resolves imprecisely on the merged PERMISSION_DEFINITION, so the readers below type args
-// straight off PERM_SCOPE_ARGS (same approach as maxTimeoutDurationMs)
-type ServerScopeArgs = z.infer<(typeof PERM_SCOPE_ARGS)['server-settings']>
-type ServerWriteArgs = z.infer<(typeof PERM_SCOPE_ARGS)['server-settings-write']>
-type GlobalWriteArgs = z.infer<(typeof PERM_SCOPE_ARGS)['global-settings-write']>
-
 function serverIdMatches(args: { serverId: string | null } | undefined, serverId: string): boolean {
 	// missing args = a legacy/defensive grant; treat as unrestricted
 	return !args || args.serverId === null || args.serverId === serverId
@@ -453,7 +520,7 @@ export function globalSettingsWriteAccess(perms: Permission[]): SettingsWriteAcc
 	const pathSets: (string[] | null)[] = []
 	for (const p of perms) {
 		if (p.type !== 'global-settings:write') continue
-		const args = p.args as GlobalWriteArgs | undefined
+		const args = p.args
 		pathSets.push(args ? args.paths : null)
 	}
 	return collectWriteAccess(pathSets)
@@ -467,7 +534,7 @@ export function serverSettingsWriteAccess(perms: Permission[], serverId: string)
 	const pathSets: (string[] | null)[] = []
 	for (const p of perms) {
 		if (p.type !== 'server-settings:write') continue
-		const args = p.args as ServerWriteArgs | undefined
+		const args = p.args
 		if (!serverIdMatches(args, serverId)) continue
 		pathSets.push(args ? args.paths : null)
 	}
@@ -477,7 +544,7 @@ export function serverSettingsWriteAccess(perms: Permission[], serverId: string)
 export function canWriteSensitiveServerSettings(perms: Permission[], serverId: string): boolean {
 	return perms.some((p) =>
 		p.type === 'server-settings:write-sensitive'
-		&& serverIdMatches(p.args as ServerScopeArgs | undefined, serverId)
+		&& serverIdMatches(p.args, serverId)
 	)
 }
 
@@ -486,12 +553,12 @@ export function canWriteSensitiveServerSettings(perms: Permission[], serverId: s
 export function canCreateServers(perms: Permission[]): boolean {
 	return perms.some((p) =>
 		p.type === 'server-settings:write-sensitive'
-		&& ((p.args as ServerScopeArgs | undefined)?.serverId ?? null) === null
+		&& (p.args?.serverId ?? null) === null
 	)
 }
 
 export function canReadServerSettings(perms: Permission[], serverId: string): boolean {
-	if (perms.some((p) => p.type === 'server-settings:read' && serverIdMatches(p.args as ServerScopeArgs | undefined, serverId))) {
+	if (perms.some((p) => p.type === 'server-settings:read' && serverIdMatches(p.args, serverId))) {
 		return true
 	}
 	return serverSettingsWriteAccess(perms, serverId).kind !== 'none' || canWriteSensitiveServerSettings(perms, serverId)
@@ -519,7 +586,7 @@ export function settingsPathOverlaps(access: SettingsWriteAccess, path: string |
 export function permSubsumedBy(perm: Permission, perms: Permission[]): boolean {
 	switch (perm.type) {
 		case 'squad-server:timeout-players': {
-			const args = perm.args as z.infer<(typeof PERM_SCOPE_ARGS)['timeout']> | undefined
+			const args = perm.args
 			const max = maxTimeoutDurationMs(perms)
 			if (max === undefined) return false
 			if (max === null) return true
@@ -527,7 +594,7 @@ export function permSubsumedBy(perm: Permission, perms: Permission[]): boolean {
 			return args.maxDurationMs <= max
 		}
 		case 'queue:request-layers': {
-			const args = perm.args as z.infer<(typeof PERM_SCOPE_ARGS)['layer-requests']> | undefined
+			const args = perm.args
 			const max = maxLayerRequests(perms)
 			if (max === undefined) return false
 			if (max === null) return true
@@ -535,27 +602,27 @@ export function permSubsumedBy(perm: Permission, perms: Permission[]): boolean {
 			return args.maxQueued <= max
 		}
 		case 'global-settings:write': {
-			const args = perm.args as GlobalWriteArgs | undefined
+			const args = perm.args
 			return pathsCoveredBy(args ? args.paths : null, globalSettingsWriteAccess(perms))
 		}
 		case 'server-settings:read':
 		case 'server-settings:write-sensitive': {
-			const serverId = (perm.args as ServerScopeArgs | undefined)?.serverId ?? null
+			const serverId = perm.args?.serverId ?? null
 			// an all-servers grant can only be covered by another all-servers grant
 			if (serverId === null) {
-				return perms.some((p) => p.type === perm.type && ((p.args as ServerScopeArgs | undefined)?.serverId ?? null) === null)
+				return perms.some((p) => p.type === perm.type && (p.args?.serverId ?? null) === null)
 			}
 			return perm.type === 'server-settings:read'
 				? canReadServerSettings(perms, serverId)
 				: canWriteSensitiveServerSettings(perms, serverId)
 		}
 		case 'server-settings:write': {
-			const args = perm.args as ServerWriteArgs | undefined
+			const args = perm.args
 			const serverId = args?.serverId ?? null
 			if (serverId === null) {
 				const allServerPathSets = perms.flatMap((p) => {
 					if (p.type !== 'server-settings:write') return []
-					const pArgs = p.args as ServerWriteArgs | undefined
+					const pArgs = p.args
 					return (pArgs?.serverId ?? null) === null ? [pArgs?.paths ?? null] : []
 				})
 				return pathsCoveredBy(args ? args.paths : null, collectWriteAccess(allServerPathSets))

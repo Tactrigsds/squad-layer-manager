@@ -106,8 +106,8 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 	const [squadFilterA, setSquadFilterA] = React.useState<string | null>(null)
 	const [squadFilterB, setSquadFilterB] = React.useState<string | null>(null)
 	const [squadFilterCombined, setSquadFilterCombined] = React.useState<string | null>(null)
-	const [sortingA, setSortingA] = React.useState<SortingState>(DEFAULT_TEAM_SORTING)
-	const [sortingB, setSortingB] = React.useState<SortingState>(DEFAULT_TEAM_SORTING)
+	// shared so sorting either team's table applies to both -- only squad filtering stays per-team
+	const [sortingTeams, setSortingTeams] = React.useState<SortingState>(DEFAULT_TEAM_SORTING)
 	const [sortingCombined, setSortingCombined] = React.useState<SortingState>(DEFAULT_COMBINED_SORTING)
 	const allPlayersA = ZusUtils.useStore(
 		props.stores.squadServer!,
@@ -143,8 +143,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 		setSquadFilterA(null)
 		setSquadFilterB(null)
 		setSquadFilterCombined(null)
-		setSortingA(DEFAULT_TEAM_SORTING)
-		setSortingB(DEFAULT_TEAM_SORTING)
+		setSortingTeams(DEFAULT_TEAM_SORTING)
 		setSortingCombined(DEFAULT_COMBINED_SORTING)
 	}
 	const teamPanes: Record<MH.NormedTeamId, { filters: PlayerFilters; sorting: SortingState; setSorting: SetSorting }> = {
@@ -157,8 +156,8 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 				squad: squadFilterA,
 				setSquad: setSquadFilterA,
 			},
-			sorting: sortingA,
-			setSorting: setSortingA,
+			sorting: sortingTeams,
+			setSorting: setSortingTeams,
 		},
 		B: {
 			filters: {
@@ -169,8 +168,8 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 				squad: squadFilterB,
 				setSquad: setSquadFilterB,
 			},
-			sorting: sortingB,
-			setSorting: setSortingB,
+			sorting: sortingTeams,
+			setSorting: setSortingTeams,
 		},
 	}
 	const filtersC: PlayerFilters = {

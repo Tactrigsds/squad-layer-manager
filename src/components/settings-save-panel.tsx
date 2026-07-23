@@ -71,7 +71,7 @@ export function SettingsSavePanel({ sectionKeys }: { sectionKeys: SettingsEditor
 	const openDialog = useAlertDialog()
 	const zIndex = useZIndex(ZI_OFFSETS.STICKYGROUP_CEILING)
 	const states = SettingsEditorFrame.useSectionStates(sectionKeys)
-	const perms = RbacClient.useLoggedInPerms()
+	const perms = RbacClient.useSuspendableLoggedInUserPerms()
 	const servers = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers)
 
 	const sections: SectionView[] = React.useMemo(() => {

@@ -83,7 +83,7 @@ export function SquadMenuItems(
 	// timeout grants are comparator-matched (see useMaxTimeout), so the denial is synthesized rather than
 	// coming from usePermsCheck
 	const timeoutDenied = maxTimeout === undefined
-		? RBAC.permissionDenied({ check: 'all', permits: [RBAC.perm('squad-server:timeout-players', { maxDurationMs: null })] })
+		? RBAC.permissionDenied('all', ['squad-server:timeout-players'])
 		: null
 
 	const squadLabel = `"${squad.squadName}"`

@@ -1,7 +1,7 @@
 import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
 import type { StateObservable } from '@react-rxjs/core'
-import { useQueries } from '@tanstack/react-query'
+import { useQueries, useSuspenseQueries } from '@tanstack/react-query'
 import type { QueryClient, UseQueryOptions } from '@tanstack/react-query'
 import * as React from 'react'
 import * as Rx from 'rxjs'
@@ -177,6 +177,20 @@ export function useStore<Inputs extends MaybeInput[], R>(
 ): R
 export function useStore<Inputs extends MaybeInput[]>(...inputs: Inputs): InputStates<Inputs>
 export function useStore(...args: (MaybeInput | ((...states: any[]) => any))[]): any {
+	return useStoreImpl(args, false)
+}
+
+// useStore, but suspends until every query source has resolved, so the selector never sees a pending `undefined`
+export function useStore_Susp<I extends MaybeInput>(store: I): ResolvedState<I>
+export function useStore_Susp<Inputs extends MaybeInput[], R>(
+	...args: [...Inputs, (...states: ResolvedStates<Inputs>) => R]
+): R
+export function useStore_Susp<Inputs extends MaybeInput[]>(...inputs: Inputs): ResolvedStates<Inputs>
+export function useStore_Susp(...args: (MaybeInput | ((...states: any[]) => any))[]): any {
+	return useStoreImpl(args, true)
+}
+
+function useStoreImpl(args: (MaybeInput | ((...states: any[]) => any))[], suspend: boolean): any {
 	const hasSelector = typeof args[args.length - 1] === 'function'
 	// nullish inputs stay in the array as placeholders so hook/effect-dep counts are stable across renders
 	const allInputs = ((hasSelector ? args.slice(0, -1) : args) as MaybeInput[]).map(resolveInput)
@@ -195,8 +209,14 @@ export function useStore(...args: (MaybeInput | ((...states: any[]) => any))[]):
 				+ "pass a stable set and use the query's own `enabled` option to make one inert.",
 		)
 	}
-	// eslint-disable-next-line react-hooks/rules-of-hooks
-	const queryResults = querySources.length > 0 ? useQueries({ queries: querySources }) : NO_QUERIES
+	// suspend is fixed per call site (useStore vs useStore_Susp), so the branch taken here is stable per component
+	/* eslint-disable react-hooks/rules-of-hooks */
+	const queryResults = querySources.length === 0
+		? NO_QUERIES
+		: suspend
+		? useSuspenseQueries({ queries: querySources as any[] })
+		: useQueries({ queries: querySources })
+	/* eslint-enable react-hooks/rules-of-hooks */
 
 	const cache = React.useRef<{ selector: unknown; states: any[]; value: any } | null>(null)
 	// useSyncExternalStore spins if this returns a fresh value while nothing changed, hence the cache. it is keyed
