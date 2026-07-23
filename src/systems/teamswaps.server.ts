@@ -93,14 +93,12 @@ async function resolveSourceName(
 
 type Session = ODSM.Server.Session<TSW.Op, TSW.State>
 
-// a dispatched batch on its way to the watchUpdates streams. a rejected batch changed nothing and is routed
-// to the originating client alone, so it can drop its optimistic copies -- no other client hears about it.
-export type DispatchedOps = { ops: TSW.Op[]; sourceWsClientId?: string; rejection?: TSW.Rejection }
+type Dispatched = ODSM.Server.Dispatched<TSW.Op, TSW.Rejection>
 
 export type TeamswapContext = {
 	session: Session
 	// outgoing operations
-	op$: IsolatedSubject<DispatchedOps>
+	op$: IsolatedSubject<Dispatched>
 	dispatchMtx: MutexInterface
 	teamswapExecutedAt: number | null
 	haveReadSavedSwapsFromDb: boolean
@@ -112,7 +110,7 @@ export function setup() {
 export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 	const context: TeamswapContext = {
 		session: ODSM.Server.initSession(TSW.initState()),
-		op$: new IsolatedSubject<DispatchedOps>(),
+		op$: new IsolatedSubject<Dispatched>(),
 		dispatchMtx: new Mutex(),
 		teamswapExecutedAt: null,
 		haveReadSavedSwapsFromDb: false,
@@ -377,14 +375,8 @@ export const orpcRouter = {
 				ops: ctx.teamswaps.session.ops,
 			}
 			return ctx.teamswaps.op$.pipe(
-				Rx.map(({ ops, sourceWsClientId, rejection }): TSW.UpdateForClient | null => {
-					// the originator already has the ops in its pending set -- ack (or reject) with just the ids
-					const isOriginator = sourceWsClientId !== undefined && sourceWsClientId === context.wsClientId
-					const opIds = ops.map(op => op.opId)
-					if (rejection) return isOriginator ? { code: 'rejected', opIds, reason: rejection.code } : null
-					return isOriginator ? { code: 'ack', opIds } : { code: 'op', ops }
-				}),
-				Rx.filter((update): update is TSW.UpdateForClient => update !== null),
+				Rx.map(dispatched => ODSM.Server.toClientUpdate(dispatched, context.wsClientId)),
+				Rx.filter((update): update is NonNullable<typeof update> => update !== null),
 				Rx.startWith(init),
 			)
 		}).pipe(withAbortSignal(signal!))

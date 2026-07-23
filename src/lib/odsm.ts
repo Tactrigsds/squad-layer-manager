@@ -4,6 +4,7 @@
 // history is the one everyone else converges to.
 import * as Arr from '@/lib/array'
 import * as Obj from '@/lib/object'
+import { assertNever } from '@/lib/type-guards'
 
 export type OpId = string
 export type BaseOp = {
@@ -96,10 +97,46 @@ function tag<Sess, S, SE extends SideEffectBase>(session: Sess, reduced: ReduceR
 	return { rejected: false, session, sideEffects: reduced.sideEffects }
 }
 
+// the messages the server streams to a watching client. every ODSM system uses this exact shape: an
+// `init` snapshot on (re)connect, `op` for another client's accepted ops, `ack` for the originator's own
+// accepted ops (deterministic, so just the ids -- it replays its pending copies), and `rejected` for the
+// originator's own refused ops (only ever sent to the originator, which drops its optimistic copies).
+export type ClientUpdate<S, O extends BaseOp, ReasonCode extends string> =
+	| { code: 'init'; state: S; ops: O[] }
+	| { code: 'op'; ops: O[] }
+	| { code: 'ack'; opIds: OpId[] }
+	| { code: 'rejected'; opIds: OpId[]; reason: ReasonCode }
+
 export namespace Server {
 	export type Session<O extends BaseOp, S> = {
 		state: S
 		ops: O[]
+	}
+
+	// a dispatched batch on its way to the per-client update streams. a rejected batch changed nothing and
+	// is routed to the originating client alone so it can drop its optimistic copies; no other client hears
+	// about it. `echoToSource` sends the originator the full ops instead of an ack, for when the server
+	// corrected them and its copies no longer match what the client replayed optimistically.
+	export type Dispatched<O extends BaseOp, R extends { code: string }> = {
+		ops: O[]
+		sourceWsClientId?: string
+		echoToSource?: boolean
+		rejection?: R
+	}
+
+	// maps a dispatched batch to the update a single watching client should receive, or null if that client
+	// should receive nothing (a rejection destined for a different client). the originator gets an ack (or
+	// the echoed ops), a rejection, or nothing; everyone else gets the op or nothing.
+	export function toClientUpdate<O extends BaseOp, R extends { code: string }>(
+		dispatched: Dispatched<O, R>,
+		wsClientId: string,
+	): Exclude<ClientUpdate<unknown, O, R['code']>, { code: 'init' }> | null {
+		const { ops, sourceWsClientId, echoToSource, rejection } = dispatched
+		const isOriginator = sourceWsClientId !== undefined && sourceWsClientId === wsClientId
+		const opIds = ops.map(op => op.opId)
+		if (rejection) return isOriginator ? { code: 'rejected', opIds, reason: rejection.code } : null
+		if (isOriginator && !echoToSource) return { code: 'ack', opIds }
+		return { code: 'op', ops }
 	}
 
 	export function initSession<O extends BaseOp, S>(state: S): Session<O, S> {
@@ -355,6 +392,59 @@ export namespace Client {
 				localState: reduced.state,
 				pendingOps: OpHistory.concat(session.pendingOps, ops),
 			},
+		}
+	}
+
+	// side channels a consumer plugs into applyUpdate. all are optional -- a system that has no client-side
+	// side effects, no divergence surfacing, or no synced-timeline mirror simply omits the hook.
+	export type UpdateHooks<O extends BaseOp, SE extends SideEffectBase, RC extends string = string> = {
+		// side effects produced as incoming ops / acks land on the synced timeline
+		onSideEffects?: (sideEffects: SE[]) => void
+		// a reducer rejection while replaying server-accepted ops: this replica has diverged from the server
+		onDiverged?: (phase: 'op' | 'ack', error: RejectedError) => void
+		// the server refused the originator's own ops (a `rejected` message) -- surface it to the user
+		onRejected?: (reason: RC, opIds: OpId[]) => void
+		// acks for ops in neither pendingOps nor syncedOps -- a genuine protocol problem
+		onUnknownAcks?: (opIds: OpId[]) => void
+		// every op that landed on the synced timeline (incoming ops, then acked ops), in order, for consumers
+		// that mirror the synced timeline elsewhere
+		onSyncedOps?: (ops: O[]) => void
+	}
+
+	// drives one server ClientUpdate through the matching reconcile function and returns the next session,
+	// invoking the consumer's hooks for the parts that differ per system. collapses the init/op/ack/rejected
+	// switch every consumer would otherwise repeat. returns the same session reference when nothing changed,
+	// so callers can guard their store write on referential identity.
+	export function applyUpdate<O extends BaseOp, S, SE extends SideEffectBase, RC extends string = string>(
+		session: Session<O, S>,
+		update: ClientUpdate<S, O, RC>,
+		reducer: Reducer<O, S, SE>,
+		hooks?: UpdateHooks<O, SE, RC>,
+	): Session<O, S> {
+		switch (update.code) {
+			case 'init':
+				return processInit(session, update.state, update.ops, reducer)
+			case 'op': {
+				const res = processIncomingOps(session, update.ops, reducer)
+				if (res.rejected) hooks?.onDiverged?.('op', res.error)
+				else hooks?.onSideEffects?.(res.sideEffects)
+				hooks?.onSyncedOps?.(update.ops)
+				return res.session
+			}
+			case 'ack': {
+				const res = processAcks(session, update.opIds, reducer)
+				if (res.unknownOpIds.length > 0) hooks?.onUnknownAcks?.(res.unknownOpIds)
+				if (res.session === session) return session
+				if (res.rejected) hooks?.onDiverged?.('ack', res.error)
+				else hooks?.onSideEffects?.(res.sideEffects)
+				hooks?.onSyncedOps?.(res.ackedOps)
+				return res.session
+			}
+			case 'rejected':
+				hooks?.onRejected?.(update.reason, update.opIds)
+				return dropPendingOps(session, update.opIds, reducer)
+			default:
+				return assertNever(update)
 		}
 	}
 }

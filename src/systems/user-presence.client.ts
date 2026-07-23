@@ -248,29 +248,17 @@ function createPresenceStore() {
 }
 
 function handleIncomingPresenceUpdate(update: UP.PresenceUpdate) {
-	if (update.code === 'init') {
-		// apply the server snapshot and rebase in-flight pending ops onto it (e.g. the
-		// enter-server-dashboard dispatched by the route onEnter racing this init on page load) so
-		// they aren't wiped and the acks that follow still resolve
-		const newSession = ODSM.Client.processInit(Store.getState().session, update.state, update.ops, UP.reducer)
-		Store.setState({ session: newSession })
-	} else if (update.code === 'op') {
-		// presence has no client-side side effects, so the returned sideEffects are ignored
-		const res = ODSM.Client.processIncomingOps(Store.getState().session, update.ops, UP.reducer)
-		Store.setState({ session: res.session })
-		if (res.rejected) console.error('incoming presence ops diverged from the server:', res.error.data)
-	} else if (update.code === 'ack') {
-		// ops are deterministic, so the server only sends back the ids -- replay our pending copies
-		const session = Store.getState().session
-		const res = ODSM.Client.processAcks(session, update.opIds, UP.reducer)
-		if (res.unknownOpIds.length > 0) console.warn('received ack for unknown presence ops', res.unknownOpIds)
-		if (res.session !== session) Store.setState({ session: res.session })
-		if (res.rejected) console.error('acked presence ops diverged from the server:', res.error.data)
-	} else if (update.code === 'rejected') {
-		// the server refused our ops, so they will never be acked -- replay the local timeline without them
-		if (update.reason !== 'noop') console.error('presence ops rejected by the server:', update.reason)
-		Store.setState({ session: ODSM.Client.dropPendingOps(Store.getState().session, update.opIds, UP.reducer) })
-	}
+	const prev = Store.getState().session
+	// presence has no client-side side effects, so the onSideEffects hook is omitted
+	const next = ODSM.Client.applyUpdate(prev, update, UP.reducer, {
+		onDiverged: (phase, error) =>
+			console.error(`${phase === 'op' ? 'incoming' : 'acked'} presence ops diverged from the server:`, error.data),
+		onRejected: reason => {
+			if (reason !== 'noop') console.error('presence ops rejected by the server:', reason)
+		},
+		onUnknownAcks: opIds => console.warn('received ack for unknown presence ops', opIds),
+	})
+	if (next !== prev) Store.setState({ session: next })
 }
 
 export namespace Actions {

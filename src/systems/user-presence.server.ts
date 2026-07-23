@@ -19,11 +19,7 @@ import { z } from 'zod'
 // the two shared drafts a client can hold an editing session on
 export type DraftScope = 'queue' | 'layer-requests'
 
-// a dispatched batch on its way to the watchUpdates streams. a rejected batch changed nothing and is routed
-// to the originating client alone, so it can drop its optimistic copies -- no other client hears about it.
-// `echoToSource` sends the originator the full ops instead of an ack, for when the server corrected them
-// and its copies are no longer what the client replayed optimistically
-export type DispatchedOps = { ops: UP.Op[]; sourceWsClientId?: string; echoToSource?: boolean; rejection?: UP.Rejection }
+type DispatchedOps = ODSM.Server.Dispatched<UP.Op, UP.Rejection>
 
 export type UserPresenceContext = {
 	userPresence: {
@@ -57,15 +53,8 @@ export const orpcRouter = {
 			ops: Obj.deepClone(globalUserPresence.session.ops),
 		}
 		const update$ = globalUserPresence.op$.pipe(
-			Rx.map(({ ops, sourceWsClientId, echoToSource, rejection }): UP.PresenceUpdate | null => {
-				// the originator already has the ops in its pending set -- ack (or reject) with just the ids
-				const isOriginator = sourceWsClientId !== undefined && sourceWsClientId === context.wsClientId
-				const opIds = ops.map(op => op.opId)
-				if (rejection) return isOriginator ? { code: 'rejected', opIds, reason: rejection.code } : null
-				if (isOriginator && !echoToSource) return { code: 'ack', opIds }
-				return { code: 'op', ops }
-			}),
-			Rx.filter((update): update is UP.PresenceUpdate => update !== null),
+			Rx.map(dispatched => ODSM.Server.toClientUpdate(dispatched, context.wsClientId)),
+			Rx.filter((update): update is NonNullable<typeof update> => update !== null),
 			Rx.startWith(initial),
 			withAbortSignal(signal!),
 		)

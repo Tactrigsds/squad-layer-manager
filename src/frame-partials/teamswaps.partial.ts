@@ -1,7 +1,6 @@
 import type * as FRM from '@/lib/frame'
 import * as ODSM from '@/lib/odsm'
 import { toast } from '@/lib/toast'
-import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
@@ -164,42 +163,20 @@ export function initTeamswaps(args: Args) {
 			presenceEvent$,
 
 			onUpdate(update) {
-				switch (update.code) {
-					case 'init':
-						// processInit rebases in-flight pending ops onto the snapshot so the acks that follow still resolve
-						set({
-							session: ODSM.Client.processInit(get().session, update.state, update.ops, TSW.reducer),
-						})
-						break
-					case 'op': {
-						const res = ODSM.Client.processIncomingOps(get().session, update.ops, TSW.reducer)
-						set({ session: res.session })
-						if (res.rejected) console.error('incoming teamswap ops diverged from the server:', res.error.data)
-						else for (const se of res.sideEffects) onSideEffect(se, presenceEvent$)
-						break
-					}
-					case 'ack': {
-						// ops are deterministic, so the server only sends back the ids -- replay our pending copies
-						const session = get().session
-						const res = ODSM.Client.processAcks(session, update.opIds, TSW.reducer)
-						if (res.unknownOpIds.length > 0) console.warn('received ack for unknown teamswap ops', res.unknownOpIds)
-						if (res.session !== session) {
-							set({ session: res.session })
-							if (res.rejected) console.error('acked teamswap ops diverged from the server:', res.error.data)
-							else for (const se of res.sideEffects) onSideEffect(se, presenceEvent$)
-						}
-						break
-					}
-					case 'rejected': {
-						// the server refused our ops, so they will never be acked -- replay the local timeline without
-						// them. a 'noop' rejection changed nothing there and has nothing to report
-						if (update.reason !== 'noop') toastOpError(update.reason)
-						set({ session: ODSM.Client.dropPendingOps(get().session, update.opIds, TSW.reducer) })
-						break
-					}
-					default:
-						assertNever(update)
-				}
+				const prev = get().session
+				const next = ODSM.Client.applyUpdate(prev, update, TSW.reducer, {
+					onSideEffects: ses => {
+						for (const se of ses) onSideEffect(se, presenceEvent$)
+					},
+					onDiverged: (phase, error) =>
+						console.error(`${phase === 'op' ? 'incoming' : 'acked'} teamswap ops diverged from the server:`, error.data),
+					// a 'noop' rejection changed nothing on the local timeline and has nothing to report
+					onRejected: reason => {
+						if (reason !== 'noop') toastOpError(reason)
+					},
+					onUnknownAcks: opIds => console.warn('received ack for unknown teamswap ops', opIds),
+				})
+				if (next !== prev) set({ session: next })
 			},
 		} satisfies TeamswapSlice,
 	)
