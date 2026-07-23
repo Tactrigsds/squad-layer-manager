@@ -30,7 +30,13 @@ beforeAll(async () => {
 				maxLayerRequests: 1,
 				globalSettingsGrants: [],
 				serverSettingsGrants: [],
-				assignments: { discordRoleIds: [], discordUserIds: [REQUESTER.discordId.toString()], everyMember: false },
+				assignments: {
+					discordRoleIds: [],
+					discordUserIds: [REQUESTER.discordId.toString()],
+					everyMember: false,
+					includeIngameAdmins: false,
+					adminListGroups: [],
+				},
 			}
 		},
 		serverSettings: (s) => {
