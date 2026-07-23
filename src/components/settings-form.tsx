@@ -1950,13 +1950,20 @@ function setRoleField<K extends keyof RoleConfig>(cfg: RoleConfig, key: K, val: 
 // merge into a role's assignments, dropping the whole `assignments` object once nothing is assigned
 function withAssignments(cfg: RoleConfig, patch: Partial<RoleAssignmentsValue>): RoleConfig {
 	const a: RoleAssignmentsValue = { ...cfg.assignments, ...patch }
-	const empty = (a.discordRoleIds?.length ?? 0) === 0 && (a.discordUserIds?.length ?? 0) === 0 && !a.everyMember
-	return setRoleField(cfg, 'assignments', empty ? undefined : a)
+	return setRoleField(cfg, 'assignments', isAssignmentEmpty(a) ? undefined : a)
+}
+
+function isAssignmentEmpty(a: RoleAssignmentsValue): boolean {
+	return (a.discordRoleIds?.length ?? 0) === 0
+		&& (a.discordUserIds?.length ?? 0) === 0
+		&& !a.everyMember
+		&& !a.includeIngameAdmins
+		&& (a.adminListGroups?.length ?? 0) === 0
 }
 
 function isRoleAssigned(cfg: RoleConfig | undefined): boolean {
 	const a = cfg?.assignments
-	return !!a && ((a.discordRoleIds?.length ?? 0) > 0 || (a.discordUserIds?.length ?? 0) > 0 || !!a.everyMember)
+	return !!a && !isAssignmentEmpty(a)
 }
 
 function withRoleRemoved(rbac: RbacValue, roleId: string): RbacValue {
@@ -2174,7 +2181,10 @@ function RoleDetail(
 				/>
 			</RoleSubsection>
 
-			<RoleSubsection title="Assignments" description="Which Discord roles, users, or members are granted this role.">
+			<RoleSubsection
+				title="Assignments"
+				description="Who is granted this role: Discord roles, users or members, in-game admins, or specific admin-list groups."
+			>
 				<RoleAssignmentsEditor roleId={roleId} cfg={cfg} update={update} assigned={assigned} />
 			</RoleSubsection>
 		</div>
@@ -2506,6 +2516,22 @@ function RoleAssignmentsEditor(
 	const changeDiscordRole = (oldId: string, nextId: string) => changeAssignment('discordRoleIds', oldId, nextId)
 	const changeDiscordUser = (oldId: string, nextId: string) => changeAssignment('discordUserIds', oldId, nextId)
 
+	// in-game users get this role via their admin-list group membership; the picker lists the groups defined across the
+	// configured admin-list sources, unioned with any already-selected group that no longer appears in a source
+	const groupsRes = useQuery(RPC.orpc.rbac.listAdminListGroups.queryOptions({ staleTime: 60_000 }))
+	const availableGroups = groupsRes.data?.code === 'ok' ? groupsRes.data.groups : []
+	const selectedGroups = cfg.assignments?.adminListGroups ?? []
+	const allGroups = [...new Set([...availableGroups, ...selectedGroups])].sort()
+	function toggleGroup(group: string, on: boolean) {
+		update((r) =>
+			withRoleConfig(r, roleId, (c) => {
+				const cur = (c.assignments?.adminListGroups ?? []).filter((g) => g !== group)
+				if (on) cur.push(group)
+				return withAssignments(c, { adminListGroups: cur })
+			})
+		)
+	}
+
 	return (
 		<div className="space-y-3">
 			{!assigned && (
@@ -2520,6 +2546,14 @@ function RoleAssignmentsEditor(
 					onCheckedChange={(on) => update((r) => withRoleConfig(r, roleId, (c) => withAssignments(c, { everyMember: on })))}
 				/>
 				<span className="text-sm">Granted to every server member</span>
+			</div>
+
+			<div className="flex items-center gap-2">
+				<Switch
+					checked={!!cfg.assignments?.includeIngameAdmins}
+					onCheckedChange={(on) => update((r) => withRoleConfig(r, roleId, (c) => withAssignments(c, { includeIngameAdmins: on })))}
+				/>
+				<span className="text-sm">Granted to in-game admins</span>
 			</div>
 
 			<div className="space-y-1.5">
@@ -2566,6 +2600,21 @@ function RoleAssignmentsEditor(
 				<div className="max-w-[24rem]">
 					<DiscordMemberSelect value="" onChange={(next) => next && changeDiscordUser('', next)} />
 				</div>
+			</div>
+
+			<div className="space-y-1.5">
+				<label className="text-xs text-muted-foreground">Admin-list groups</label>
+				{allGroups.length === 0
+					? <p className="text-xs text-muted-foreground">No admin-list groups are defined in the configured sources.</p>
+					: allGroups.map((group) => (
+						<label key={group} className="flex items-center gap-2 text-sm">
+							<Checkbox checked={selectedGroups.includes(group)} onCheckedChange={(on) => toggleGroup(group, on === true)} />
+							<span className="font-mono">{group}</span>
+							{!availableGroups.includes(group) && (
+								<span className="text-xs text-amber-600 dark:text-amber-500">(not in any current source)</span>
+							)}
+						</label>
+					))}
 			</div>
 		</div>
 	)

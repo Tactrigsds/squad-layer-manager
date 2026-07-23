@@ -604,4 +604,12 @@ export const orpcRouter = {
 		if (query.length === 0) return { code: 'ok' as const, members: [] }
 		return Discord.searchGuildMembers(query)
 	}),
+
+	// the admin-list groups currently defined across the configured sources, for the role-assignment adminListGroups picker
+	listAdminListGroups: orpcBase.handler(async ({ context: ctx }) => {
+		const denyRes = await tryDenyPermissionsForUser(ctx, SETTINGS.Grants.globalSettingsRead())
+		if (denyRes) return denyRes
+		const list = await AdminList.adminList.get(ctx)
+		return { code: 'ok' as const, groups: [...list.groups.keys()].sort() }
+	}),
 }
