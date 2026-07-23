@@ -2,7 +2,7 @@ import * as Paths from '$root/paths.ts'
 import * as Arr from '@/lib/array'
 import { AsyncResource } from '@/lib/async-resource.ts'
 import * as OneToMany from '@/lib/one-to-many-map.ts'
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
 import { initModule } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Settings from '@/systems/settings.server'
@@ -10,13 +10,14 @@ import * as Settings from '@/systems/settings.server'
 import type * as SM from '@/models/squad.models.ts'
 import * as C from '@/server/context.ts'
 
-import { IsolatedBehaviorSubject, IsolatedSubject } from '@/lib/isolated-subject'
+import { isolateContext, IsolatedBehaviorSubject } from '@/lib/isolated-subject'
 import { WritableBuffer } from '@/lib/rcon/writable-buffer'
 import { withSftp } from '@/lib/sftp-file-store.ts'
 import { HumanTime } from '@/lib/zod'
 import { Client as FTPClient } from 'basic-ftp'
 import fs from 'fs'
 import path from 'path'
+import * as Rx from 'rxjs'
 
 const module = initModule('fetch-admin-lists')
 let log!: CS.Logger
@@ -33,10 +34,20 @@ export type AdminListStatus = {
 
 export let status$: IsolatedBehaviorSubject<AdminListStatus>
 
-// emits when a (re)fetch produces admin data different from the last, so rbac can flush admin-derived roles. Gated
-// on content so an unchanged TTL refresh doesn't fire. Never emits on the first successful fetch (nothing to diff).
-export const changed$ = new IsolatedSubject<void>()
-let lastFingerprint: string | undefined
+// emits when a (re)fetch produces admin data different from the last, so rbac can flush admin-derived roles. Derived
+// from the resource's value stream and gated on a content fingerprint, so an unchanged TTL refresh is a no-op and the
+// initial load never fires. isolateContext keeps a subscriber's work out of the fetch's async context. Subscribing
+// registers a long-lived observer, so the list also refetches proactively at its TTL (it must be wired only after
+// settings load, since the fetch reads GLOBAL_SETTINGS).
+export const changed$: Rx.Observable<void> = Rx.defer(() => adminList.observe({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
+	.pipe(
+		Rx.map(fingerprint),
+		Rx.distinctUntilChanged(),
+		Rx.skip(1),
+		isolateContext(),
+		Rx.map(() => undefined),
+		Rx.share(),
+	)
 
 // stable string over the parts that drive rbac (group perms, per-id groups, admin sets); admin lists are small
 function fingerprint(l: SM.AdminList): string {
@@ -51,7 +62,6 @@ function fingerprint(l: SM.AdminList): string {
 
 export function setup() {
 	log = module.getLogger()
-	lastFingerprint = undefined
 	status$ = new IsolatedBehaviorSubject<AdminListStatus>({ code: 'init' })
 	adminList = (() => {
 		const adminListTTL = HumanTime.parse('1h')
@@ -65,9 +75,6 @@ export function setup() {
 				// we are duplicating fetches here if two servers have the same source, but shouldn't matter
 				const res = await fetchAdminLists(sources, identifyingPerms, _ctx.signal)
 				status$.next({ code: 'ok' })
-				const fp = fingerprint(res)
-				if (lastFingerprint !== undefined && fp !== lastFingerprint) changed$.next()
-				lastFingerprint = fp
 				return res
 			},
 			module,
