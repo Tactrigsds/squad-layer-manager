@@ -18,15 +18,22 @@ const CAPPED_USER: TestUser = { discordId: 900000000000000031n, username: 'cappe
 // discord-user assignment): a distinct resolver that the same Role.push bug also silently broke
 const INGAME_STEAM_ID = '76561198000000012'
 const INGAME_USER: TestUser = { discordId: 900000000000000032n, username: 'ingame-only', steamIds: [INGAME_STEAM_ID] }
+// in the admin list, but only via a reserve-slot group with no admin-identifying permission: getPlayerGroups sees them,
+// getIsAdmin must not, so an includeIngameAdmins role must not reach them. Linked (the timeout command requires a linked
+// account before the rbac check) but assigned no role, so includeIngameAdmins is their only possible grant path.
+const RESERVE_STEAM_ID = '76561198000000013'
+const RESERVE_USER: TestUser = { discordId: 900000000000000033n, username: 'reserve-only', steamIds: [RESERVE_STEAM_ID] }
 
 let app: AppFixture
 const superAdmin = makePlayer({ name: ' super_admin', steam: SUPER_STEAM_ID, teamId: 1 })
 const capped = makePlayer({ name: ' capped_admin', steam: CAPPED_STEAM_ID, teamId: 1 })
 const ingameAdmin = makePlayer({ name: ' ingame_admin', steam: INGAME_STEAM_ID, teamId: 1 })
+const reserveAdmin = makePlayer({ name: ' reserve_admin', steam: RESERVE_STEAM_ID, teamId: 1 })
 let target1h: EmuPlayer
 let target6hCapped: EmuPlayer
 let target6hSuper: EmuPlayer
 let targetKick: EmuPlayer
+let targetReserve: EmuPlayer
 
 // the timeout command's admin scope needs in-game admin status; the duration cap comes from rbac. Both admins are in
 // the Admins.cfg (so both pass the scope), but only the super user's account is a SUPER_USER, and the capped admin's
@@ -35,8 +42,9 @@ beforeAll(async () => {
 	app = await createAppFixture({
 		layerQueue: queue(LAYERS.gorodokRaas),
 		admins: [SUPER_STEAM_ID, CAPPED_STEAM_ID, INGAME_STEAM_ID],
+		reserveAdmins: [RESERVE_STEAM_ID],
 		adminSteamIds: [SUPER_STEAM_ID],
-		users: [CAPPED_USER, INGAME_USER],
+		users: [CAPPED_USER, INGAME_USER, RESERVE_USER],
 		globalSettings: (s) => {
 			s.rbac.roles['capped-timeouter'] = {
 				permissions: [],
@@ -70,10 +78,12 @@ beforeAll(async () => {
 	app.emu.world.connectPlayer(superAdmin)
 	app.emu.world.connectPlayer(capped)
 	app.emu.world.connectPlayer(ingameAdmin)
+	app.emu.world.connectPlayer(reserveAdmin)
 	target1h = app.emu.world.connectPlayer(makePlayer({ name: ' target_onehr', teamId: 2 }))
 	target6hCapped = app.emu.world.connectPlayer(makePlayer({ name: ' target_capped', teamId: 2 }))
 	target6hSuper = app.emu.world.connectPlayer(makePlayer({ name: ' target_super', teamId: 2 }))
 	targetKick = app.emu.world.connectPlayer(makePlayer({ name: ' target_kick', teamId: 2 }))
+	targetReserve = app.emu.world.connectPlayer(makePlayer({ name: ' target_reserve', teamId: 2 }))
 	await app.waitForRosterSync()
 }, 120_000)
 
@@ -136,5 +146,21 @@ describe('role assignment via in-game admin status', () => {
 			timeoutMs: 20_000,
 		})
 		expect(app.emu.world.players.has(targetKick.eos)).toBe(false)
+	})
+
+	// the regression guard for the identifying-permission gate: a player in the admin list only through a
+	// reserve-slot group (no admin-identifying permission) is not an in-game admin, so the includeIngameAdmins role
+	// must not reach them. The command is in scope (admin chat), so it reaches the rbac check and is denied there --
+	// under the pre-fix behavior their steam id counted as an admin and the 30m timeout would have gone through.
+	it('withholds an includeIngameAdmins role from a non-identifying-group admin', async () => {
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(reserveAdmin, 'ChatAdmin', '!timeout target_reserve 30m')
+
+		await app.waitFor(() => warnsTo(reserveAdmin).some((w) => w.includes('Permission denied')), {
+			label: 'the permission-denied warn to the reserve admin',
+			timeoutMs: 20_000,
+		})
+		expect(warnsTo(reserveAdmin).some((w) => w.includes('Timed out'))).toBe(false)
+		expect(app.emu.world.players.has(targetReserve.eos)).toBe(true)
 	})
 })
