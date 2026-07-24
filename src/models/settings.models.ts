@@ -75,12 +75,10 @@ const RoleConfigSchema = z.object({
 			+ 'Matching "!server-settings:*" denials in permissions override these.',
 	),
 	assignments: RoleAssignmentsSchema.describe('Which discord roles/users/members are granted this role'),
-}).describe('Everything about a role: its permissions, timeout cap, restricted settings grants and assignments')
+})
 
 export const RbacSettingsSchema = z.object({
-	roles: z.record(RBAC.UserDefinedRoleIdSchema, RoleConfigSchema).prefault({}).describe(
-		'Defined roles, keyed by id. Each holds its own permissions, timeout cap, settings grants and assignments.',
-	),
+	roles: z.record(RBAC.UserDefinedRoleIdSchema, RoleConfigSchema).prefault({}).describe('Defined roles, keyed by id.'),
 }).superRefine((val, ctx) => {
 	// only the first path segment is validated (deeper segments that don't resolve simply never match a write)
 	for (const [role, cfg] of Object.entries(val.roles ?? {})) {
@@ -198,11 +196,12 @@ export const GlobalSettingsSchema = z.object({
 		'Tints the top navigation bar so non-production environments are visually distinct. Set to null in production to disable the tint.',
 	),
 	adminActionReasons: AAR.AdminActionReasonsSchema.describe(
-		'Preset reasons admins can pick when performing actions against players. Each reason carries separate text per action it applies to, and is available for an action only if it has text for that action (so every reason needs at least one action text). Text is sent verbatim to the affected player(s) in-game and supports {{variables}}. '
-			+ 'Available: {{label}}, {{duration}} (timeouts only), plus any Message Variables below.',
+		'Preset reasons admins can pick when acting against players. A reason is offered for an action only where it has text for that '
+			+ 'action, so every reason needs at least one. The text reaches the player verbatim and takes {{label}}, {{duration}} '
+			+ '(timeouts only) and any Message Variables below.',
 	),
 	requireReasonFor: z.array(AAR.REQUIRABLE_ADMIN_ACTION_TYPE).prefault([]).describe(
-		'Actions that require a reason (a preset or custom text). Performing one of these without a reason is rejected. Warns always require a reason, so they are not listed here.',
+		'Actions that require a reason (a preset or custom text). Performing one of these without a reason is rejected.',
 	),
 	messageVariables: z.array(z.object({
 		name: z.string().trim().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, {
@@ -236,7 +235,9 @@ export const GlobalSettingsSchema = z.object({
 	playerGroupings: PG.PlayerGroupingsSchema.prefault(PG.EMPTY_PLAYER_GROUPINGS).describe(
 		'Named ways of sorting players into coloured groups. Each grouping is an ordered list of rules assigning a group to players with a given flag, highest priority first; the players panel and activity charts pick which grouping to show.',
 	),
-	navLinks: NavLinkSchema.optional().describe('Global links to display in the navbar dropdown menu'),
+	navLinks: NavLinkSchema.optional().describe(
+		'Links to display in the navbar dropdown menu, on every page. Each server can add links of its own on top of these.',
+	),
 	warnOnSlmStart: z.boolean().prefault(false).describe('Warn all in-game admins when SLM starts or restarts.'),
 	allowedPrefixes: z.array(CMD.PrefixSchema).min(1).prefault([CMD.FALLBACK_PREFIX]).describe(
 		'Prefixes an in-game command may start with. Every command string and command alias must begin with one of these.',
@@ -251,22 +252,15 @@ export const GlobalSettingsSchema = z.object({
 		'Shortcuts to complete commands, e.g. /rules = /broadcast Read the rules. An alias takes no arguments of its own '
 			+ '(anything typed after it is ignored), runs in the scopes of the command it points at, and loses to a real command string on collision.',
 	),
-	commands: CMD.AllCommandConfigSchema.describe(
-		'Per-command configuration: the strings that trigger it, which chats it may be typed in, whether it is enabled, and whether it '
-			+ 'appears on the quick reference.',
-	),
+	commands: CMD.AllCommandConfigSchema,
 	adminListSources: z.array(SM.AdminListSourceSchema).prefault([]).describe(
-		"Sources to load admins from. Each is a remote URL, local file, or FTP path serving admins in Squad's Admins.cfg format, exactly as "
-			+ 'the gameserver expects it.',
+		'Where to load admins from. Each source serves the same Admins.cfg the gameserver reads, in the same format.',
 	),
 	adminIdentifyingPermissions: z.array(SM.PLAYER_PERM).prefault([]).describe(
 		'In-game admin-list permissions that mark a player as an admin in SLM (e.g. "canseeadminchat"). A player granted any of these by an '
 			+ 'admin list source is treated as an admin, which drives admin-only warns and admin presence.',
 	),
-	rbac: RbacSettingsSchema.describe(
-		'Who can do what. Each role carries its own permissions, kick-timeout cap, settings grants, and the Discord roles/users it is '
-			+ 'assigned to.',
-	),
+	rbac: RbacSettingsSchema,
 	layerTable: LQY.LayerTableConfigSchema.prefault({
 		orderedColumns: [
 			{ name: 'id', visible: false },
@@ -292,12 +286,12 @@ export const GlobalSettingsSchema = z.object({
 			{ type: 'inrange', neg: false, args: [{ type: 'column', column: 'Balance_Differential' }, { type: 'value' }, { type: 'value' }] },
 			{ type: 'inrange', neg: false, args: [{ type: 'column', column: 'Asymmetry_Score' }, { type: 'value' }, { type: 'value' }] },
 		],
-	}).describe('Configures the columns, default sort, and extra menu items of the layer table'),
+	}).describe('Configures the appearance of the layers table and layer select menu'),
 	layerGeneration: LC.LayerGenerationConfigSchema.prefault({
 		pickOrder: ['Map', 'Gamemode', 'Faction_1', 'Faction_2', 'Unit_1', 'Unit_2'],
 	}).describe(
-		"Configures how layers are picked during generation (autogeneration, vote generation, and the layer table's random sort). "
-			+ 'Each column or matchup in the pick order is picked weighted-randomly in turn, narrowing the candidate pool for the next.',
+		"How layers are picked during generation, vote generation and the layer table's random sort. Each column or matchup in the pick "
+			+ 'order is drawn weighted-randomly in turn, narrowing the pool the next one draws from.',
 	),
 }).superRefine((val, ctx) => {
 	const allowedPrefixes = val.allowedPrefixes ?? [CMD.FALLBACK_PREFIX]
@@ -586,8 +580,7 @@ export const QueueSettingsSchema = z.object({
 		'How often to remind admins to maintain the queue. Low queue warnings happen half as often.',
 	),
 	mainPool: PoolConfigurationSchema.prefault({ repeatRules: DEFAULT_REPEAT_RULE_CONFIGS }).describe(
-		'Which layers this server considers playable, and which of them it warns about: the pool filter that defines membership, the '
-			+ 'filters offered during layer selection, and the repeat rules.',
+		'Which layers this server considers playable, and which of them it warns about.',
 	),
 	layerRequests: z.object({
 		maxTotal: z.number().int().positive().prefault(50).describe(
@@ -607,10 +600,7 @@ export const PublicServerSettingsSchema = z
 		// DEFAULT_REPEAT_RULE_CONFIGS array is never mutated. A transform here would also be one-way, which costs
 		// ServerSettingsSchema its encodability -- and the settings editor needs that to show HumanTime fields as
 		// "5s" rather than 5000.
-		queue: QueueSettingsSchema
-			.prefault({}).describe(
-				'The layer queue configuration: the pool (filters and repeat rules) and queue length / vote preferences.',
-			),
+		queue: QueueSettingsSchema.prefault({}),
 		vote: z.object({
 			voteDuration: HumanTime.prefault('180s').describe('How long a vote stays open before it is tallied.'),
 			startVoteReminderThreshold: HumanTime.prefault('20m').describe(
@@ -632,7 +622,7 @@ export const PublicServerSettingsSchema = z
 			),
 			finalVoteReminder: HumanTime.prefault('10s').describe('How long before a vote closes the last-chance reminder is sent.'),
 			maxNumVoteChoices: z.int().min(1).max(50).prefault(5).describe('Maximum number of choices a vote may offer.'),
-		}).prefault({}).describe('How votes run: how long they stay open, how often they are advertised, and when SLM starts one itself.'),
+		}).prefault({}),
 		overrideAdminSetNextLayer: z.boolean().prefault(false).describe(
 			'What happens when the next layer is set from outside SLM (an in-game admin, or another RCON tool). On, SLM sets it straight '
 				+ 'back to whatever the queue says. Off, SLM adopts the change by putting that layer at the front of the queue.',
@@ -641,8 +631,8 @@ export const PublicServerSettingsSchema = z
 			'Warn all in-game admins when SLM sets the next layer to something other than what the server was already going to play.',
 		),
 		postRollAnnouncementsTimeout: HumanTime.prefault('5m').describe(
-			'How long after a map rolls to wait before announcing to admins: the balance trigger in effect, the next layer, and a '
-				+ 'low-queue warning, a couple of seconds apart. Only sent on servers with reminders and announcements enabled.',
+			'How long after a map rolls before admins are told the balance trigger in effect, the next layer, and whether the queue is '
+				+ 'running low.',
 		),
 		fogOffDelay: HumanTime.prefault('25s').describe(
 			'How long after a FRAAS layer starts before fog of war is turned off and announced in-game. Other gamemodes are unaffected.',
