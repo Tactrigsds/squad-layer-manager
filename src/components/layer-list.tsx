@@ -279,12 +279,8 @@ function LoadedSelectLayersView({
 				open={entry.active}
 				onOpenChange={onSelectLayersChange}
 				selectQueueItems={onAddItems}
-				footerAdditions={
-					<>
-						{activity.opts.variant === 'toggle-position' && addLayersTabsList}
-						<LayerTags tags={pendingTags} onChange={setPendingTags} />
-					</>
-				}
+				footerAdditions={activity.opts.variant === 'toggle-position' && addLayersTabsList}
+				footerBeforeSubmit={<LayerTags tags={pendingTags} onChange={setPendingTags} />}
 			/>
 		)
 	}
