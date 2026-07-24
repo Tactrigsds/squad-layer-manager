@@ -644,9 +644,12 @@ export const PublicServerSettingsSchema = z
 			'Stop SLM from writing the next layer to this server over RCON. The queue still runs and still tracks what is played; SLM just '
 				+ 'never sets the map itself. For running SLM alongside something else that owns the rotation.',
 		),
+		// no defensive clone of the prefault: zod v4 builds a fresh default per parse, and the shared
+		// DEFAULT_REPEAT_RULE_CONFIGS array is never mutated. A transform here would also be one-way, which costs
+		// ServerSettingsSchema its encodability -- and the settings editor needs that to show HumanTime fields as
+		// "5s" rather than 5000.
 		queue: QueueSettingsSchema
-			// avoid sharing default queue object - TODO unclear if necessary
-			.prefault({}).transform((obj) => Obj.deepClone(obj)).describe(
+			.prefault({}).describe(
 				'The layer queue configuration: the pool (filters and repeat rules) and queue length / vote preferences.',
 			),
 		remindersAndAnnouncementsEnabled: z.boolean().prefault(true).describe(
