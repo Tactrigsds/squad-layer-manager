@@ -130,7 +130,7 @@ await C.spanOp('main', { module }, async () => {
 			version: formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA),
 		}),
 	)
-	Landing.setup()
+	await Landing.setup()
 	const { serverClosed } = await Fastify.setup()
 	if (ENV.NODE_ENV === 'development') {
 		void import('./console.ts')
