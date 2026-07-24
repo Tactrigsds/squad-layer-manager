@@ -4,7 +4,11 @@ import * as CMD from '@/models/command.models'
 import { describe, expect, it } from 'vitest'
 
 function reason(label: string, actions: AAR.AdminActionType[]): AAR.AdminActionReason {
-	return { label, aliases: [], actionTexts: Object.fromEntries(actions.map((a) => [a, `${label} text`])) }
+	return {
+		label,
+		keywords: [label.toLowerCase().replace(/[^a-z0-9]+/g, '-')],
+		actionTexts: Object.fromEntries(actions.map((a) => [a, `${label} text`])),
+	}
 }
 
 const seeds: CMDH.ExampleSeeds = {
@@ -52,22 +56,14 @@ describe('buildExamples', () => {
 		expect(examples.every((e) => e.command !== '!kick Alice')).toBe(true)
 	})
 
-	it('picks a preset by a single-token alias when its label has whitespace', () => {
-		// a two-word label typed verbatim would be read as a custom reason, not this preset, so the example has to
-		// reach it by its alias
+	it('names a preset by its keyword, never its label', () => {
+		// a two-word label typed verbatim would be read as a custom reason, not this preset; the keyword is what
+		// chat matches, and one is always configured
 		const multiWord: CMDH.ExampleSeeds = {
 			...seeds,
-			reasons: [{ ...reason('No SLKit', ['warn']), aliases: ['slkit'] }],
+			reasons: [{ ...reason('No SLKit', ['warn']), keywords: ['slkit'] }],
 		}
 		expect(CMDH.buildExamples('warn', configs.warn, multiWord)[0].command).toBe('!warn Alice slkit')
-	})
-
-	it('skips the preset example when no configured preset can be named in one token', () => {
-		const unreachable: CMDH.ExampleSeeds = { ...seeds, reasons: [reason('No SLKit', ['warn'])] }
-		// warn's reason is required, so the preset form is the shortest one -- and it has to fall away entirely
-		expect(CMDH.buildExamples('warn', configs.warn, unreachable)).toEqual([
-			{ command: '!warn Alice stop doing that', note: 'With a custom reason' },
-		])
 	})
 
 	it('uses the declared sample token for string args', () => {

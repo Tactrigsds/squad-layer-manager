@@ -36,7 +36,7 @@ import * as ZusUtils from '@/lib/zustand'
 import * as AAR from '@/models/admin-action-reasons.models'
 import type * as BM from '@/models/battlemetrics.models'
 import * as CMD from '@/models/command.models'
-import type * as LP from '@/models/labeled-presets.models'
+import * as LP from '@/models/labeled-presets.models'
 import * as LC from '@/models/layer-columns'
 import * as PG from '@/models/player-groupings.models'
 import * as PermRows from '@/models/rbac-perm-rows'
@@ -1289,7 +1289,7 @@ function LayerGenerationField({ value$, reset$, onChange }: OverrideProps) {
 	)
 }
 
-// shared table shell for label/message/aliases preset lists (admin action reasons, broadcasts)
+// shared table shell for the label/keywords preset lists (admin action reasons)
 type PresetRowProps = {
 	idx: number
 	parent$: ValueState
@@ -1362,32 +1362,12 @@ function AdminActionReasonsField({ value$, reset$, onChange }: OverrideProps) {
 				<>
 					<TableHead className="w-[11rem]">Label</TableHead>
 					<TableHead>Texts</TableHead>
-					<TableHead className="w-[10rem]">Aliases</TableHead>
+					<TableHead className="w-[10rem]">Keywords</TableHead>
 					<TableHead className="w-8" />
 				</>
 			}
-			newRow={() => ({ label: '', aliases: [], actionTexts: {} })}
+			newRow={() => ({ label: '', keywords: [], actionTexts: {} })}
 			Row={AdminActionReasonRow}
-		/>
-	)
-}
-
-function BroadcastsField({ value$, reset$, onChange }: OverrideProps) {
-	return (
-		<PresetTableField
-			value$={value$}
-			reset$={reset$}
-			onChange={onChange}
-			headers={
-				<>
-					<TableHead className="w-[11rem]">Label</TableHead>
-					<TableHead>Message</TableHead>
-					<TableHead className="w-[10rem]">Aliases</TableHead>
-					<TableHead className="w-8" />
-				</>
-			}
-			newRow={() => ({ label: '', message: '', aliases: [] })}
-			Row={BroadcastRow}
 		/>
 	)
 }
@@ -1395,7 +1375,7 @@ function BroadcastsField({ value$, reset$, onChange }: OverrideProps) {
 function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetRowProps) {
 	const row$ = React.useMemo(() => scopeValue(parent$, idx), [parent$, idx])
 	const label$ = React.useMemo(() => scopeValue(row$, 'label'), [row$])
-	const aliases$ = React.useMemo(() => scopeValue(row$, 'aliases'), [row$])
+	const keywords$ = React.useMemo(() => scopeValue(row$, 'keywords'), [row$])
 	const actionTexts$ = React.useMemo(() => scopeValue(row$, 'actionTexts'), [row$])
 	// the set of actions this reason carries text for; keys are added/removed structurally (emits reset$)
 	const actionTexts = (useFieldValue(actionTexts$, reset$) as Partial<Record<AAR.AdminActionType, string>> | undefined) ?? {}
@@ -1480,7 +1460,7 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 				</div>
 			</TableCell>
 			<TableCell className="align-top">
-				<AliasesCell value$={aliases$} reset$={reset$} onChange={setField('aliases')} />
+				<KeywordsCell value$={keywords$} reset$={reset$} seedFrom$={label$} onChange={setField('keywords')} />
 			</TableCell>
 			<TableCell className="align-top">
 				<div className="flex flex-col gap-1">
@@ -1547,7 +1527,7 @@ function ReasonPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Su
 	) as Partial<Record<AAR.AdminActionType, string>>
 	const reason: AAR.AdminActionReason = {
 		label: raw?.label?.trim() || '<label>',
-		aliases: raw?.aliases ?? [],
+		keywords: raw?.keywords ?? [],
 		actionTexts,
 	}
 	return (
@@ -1569,66 +1549,6 @@ function ReasonPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Su
 						<MessagePreviewBox>{entry.text}</MessagePreviewBox>
 					</div>
 				))}
-			</PopoverContent>
-		</Popover>
-	)
-}
-
-function BroadcastRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetRowProps) {
-	const row$ = React.useMemo(() => scopeValue(parent$, idx), [parent$, idx])
-	const label$ = React.useMemo(() => scopeValue(row$, 'label'), [row$])
-	const message$ = React.useMemo(() => scopeValue(row$, 'message'), [row$])
-	const aliases$ = React.useMemo(() => scopeValue(row$, 'aliases'), [row$])
-
-	const setField = (key: 'label' | 'message' | 'aliases') => (v: any) => {
-		const arr = [...((parent$.getValue() as LP.BroadcastPreset[]) ?? [])]
-		arr[idx] = { ...arr[idx], [key]: v }
-		parentOnChange(arr)
-	}
-
-	return (
-		<TableRow>
-			<TableCell className="align-top">
-				<TextInputField value$={label$} reset$={reset$} onChange={setField('label')} numeric={false} placeholder="Label" />
-			</TableCell>
-			<TableCell className="align-top">
-				<div className="rounded-md border">
-					<TextAreaCell value$={message$} reset$={reset$} onChange={setField('message')} placeholder="Broadcast text sent to all players" />
-				</div>
-			</TableCell>
-			<TableCell className="align-top">
-				<AliasesCell value$={aliases$} reset$={reset$} onChange={setField('aliases')} />
-			</TableCell>
-			<TableCell className="align-top">
-				<div className="flex flex-col gap-1">
-					<BroadcastPreviewButton row$={row$} reset$={reset$} />
-					<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={onRemove}>
-						<Icons.X className="h-4 w-4" />
-					</Button>
-				</div>
-			</TableCell>
-		</TableRow>
-	)
-}
-
-// previews the broadcast as delivered in-game, rendering {{label}} plus the draft's custom message variables the
-// same way broadcastAction does at runtime
-function BroadcastPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Subject<void> }) {
-	const raw = useFieldValue(row$, reset$) as Partial<LP.BroadcastPreset> | undefined
-	const customVars = React.useContext(MessageVarsContext)
-	const message = raw?.message?.trim() || '<broadcast text>'
-	const rendered = Templating.renderTemplate(message, { ...customVars, label: raw?.label?.trim() ?? '' })
-	return (
-		<Popover>
-			<PopoverTrigger asChild>
-				<Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Preview the delivered in-game broadcast">
-					<Icons.Eye className="h-4 w-4" />
-				</Button>
-			</PopoverTrigger>
-			<PopoverContent className="w-96 space-y-2" align="end">
-				<p className="text-xs text-muted-foreground">Broadcast text delivered to all players.</p>
-				<TemplateSyntaxHint />
-				<MessagePreviewBox>{rendered}</MessagePreviewBox>
 			</PopoverContent>
 		</Popover>
 	)
@@ -1665,10 +1585,18 @@ function TextAreaCell(
 	)
 }
 
-// aliases are edited as space/comma-separated text in a single cell and stored as string[] (aliases can't
-// contain whitespace, so the separators are unambiguous)
-function AliasesCell(
-	{ value$, reset$, onChange }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: string[]) => void },
+// Keywords are edited as space/comma-separated text in a single cell and stored as string[] (a keyword can't contain
+// whitespace, so the separators are unambiguous). A keyword is required, and typing one out for every reason is busy
+// work, so the cell follows `seedFrom$` (the label) for as long as it still holds exactly what that seeded, or nothing
+// at all. The first keyword the operator writes themselves stops it -- no dirty flag to keep in sync, since the input's
+// own contents already say whether they've taken it over.
+function KeywordsCell(
+	{ value$, reset$, seedFrom$, onChange }: {
+		value$: ValueState
+		reset$: Rx.Subject<void>
+		seedFrom$: ValueState
+		onChange: (v: string[]) => void
+	},
 ) {
 	const ref = React.useRef<HTMLInputElement>(null)
 	const format = (v: string[] | undefined) => (v ?? []).join(' ')
@@ -1681,6 +1609,20 @@ function AliasesCell(
 			push(parse(formatted))
 		}
 	})
+
+	const seedSource = useFieldValue(seedFrom$, reset$) as string | undefined
+	const lastSeed = React.useRef(LP.keywordFromLabel(seedSource ?? ''))
+	React.useEffect(() => {
+		const seed = LP.keywordFromLabel(seedSource ?? '')
+		const previous = lastSeed.current
+		lastSeed.current = seed
+		if (seed === previous || !ref.current) return
+		const current = ref.current.value.trim()
+		if (current !== '' && current !== previous) return
+		ref.current.value = seed
+		push(parse(seed))
+	}, [seedSource, push])
+
 	return (
 		<Input
 			ref={ref}
@@ -2661,7 +2603,6 @@ function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefin
 	if (path.length === 2 && path[0] === 'commands') return CommandCard
 	if (path.length === 1 && last === 'commandAliases') return CommandAliasesField
 	if (path.length === 1 && last === 'adminActionReasons') return AdminActionReasonsField
-	if (path.length === 1 && last === 'broadcasts') return BroadcastsField
 	if (path.length === 1 && last === 'layerTable') return LayerTableField
 	if (path.length === 1 && last === 'layerGeneration') return LayerGenerationField
 	if (path.length === 1 && last === 'playerFlagsRequiringNote') return FlagMultiSelectField

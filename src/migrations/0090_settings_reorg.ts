@@ -1,0 +1,110 @@
+import type { MigrationDriver } from '@/server/migrate'
+
+// Settings reorganization: several keys change scope between the global row and the per-server rows.
+//
+//   overrideAdminSetNextLayer / warnOnChangeLayer   per-server -> global (first server that sets them wins)
+//   adminActionReasons[].aliases                    -> .keywords, now the ONLY thing chat matches, so required
+//
+// `settings` is stored superjson-wrapped ({ json, meta }); every value touched here is a primitive or a plain
+// object, so `meta` never references them. Idempotent throughout: once a key has been moved the source no longer
+// carries it and the destination already does.
+
+type Wrapper = { json?: Record<string, unknown>; meta?: unknown }
+
+const GLOBALIZED_SERVER_KEYS = ['overrideAdminSetNextLayer', 'warnOnChangeLayer'] as const
+
+function readGlobal(db: MigrationDriver): { id: number; wrapper: Wrapper; json: Record<string, unknown> } | null {
+	const row = db.prepare(`SELECT id, settings FROM globalSettings ORDER BY id LIMIT 1`).get() as
+		| { id: number; settings: string | null }
+		| undefined
+	if (!row?.settings) return null
+	const wrapper = JSON.parse(row.settings) as Wrapper
+	if (!wrapper.json || typeof wrapper.json !== 'object') return null
+	return { id: row.id, wrapper, json: wrapper.json }
+}
+
+function writeGlobal(db: MigrationDriver, id: number, wrapper: Wrapper): void {
+	db.prepare(`UPDATE globalSettings SET settings = ? WHERE id = ?`).run(JSON.stringify(wrapper), id)
+}
+
+export async function up(db: MigrationDriver): Promise<void> {
+	const global = readGlobal(db)
+
+	// per-server -> global. The setting is a policy rather than a connection detail, so the servers collapse into one
+	// value: the first server that has it explicitly set wins, and the schema default covers the rest.
+	const hoisted: Record<string, unknown> = {}
+	const serverRows = db.prepare(`SELECT id, settings FROM servers ORDER BY id`).all() as { id: string; settings: string | null }[]
+	for (const row of serverRows) {
+		if (!row.settings) continue
+		const wrapper = JSON.parse(row.settings) as Wrapper
+		const json = wrapper.json
+		if (!json || typeof json !== 'object') continue
+		let changed = false
+		for (const key of GLOBALIZED_SERVER_KEYS) {
+			if (!(key in json)) continue
+			if (!(key in hoisted)) hoisted[key] = json[key]
+			delete json[key]
+			changed = true
+		}
+		if (changed) db.prepare(`UPDATE servers SET settings = ? WHERE id = ?`).run(JSON.stringify(wrapper), row.id)
+	}
+
+	if (!global) return
+	let globalChanged = false
+	for (const key of GLOBALIZED_SERVER_KEYS) {
+		if (key in global.json || !(key in hoisted)) continue
+		global.json[key] = hoisted[key]
+		globalChanged = true
+	}
+
+	if (reasonAliasesToKeywords(global.json)) globalChanged = true
+
+	if (globalChanged) writeGlobal(db, global.id, global.wrapper)
+}
+
+// Chat used to resolve a reason by its label or an alias, which left a reason whose label has whitespace reachable
+// only if it happened to carry an alias (a preset arg matches exactly one token). Keywords replace aliases as the one
+// thing chat matches, so every reason needs at least one: reasons that carry no alias seed one from their label.
+function reasonAliasesToKeywords(json: Record<string, unknown>): boolean {
+	const reasons = json.adminActionReasons
+	if (!Array.isArray(reasons)) return false
+
+	const taken = new Set<string>()
+	for (const reason of reasons) {
+		if (!reason || typeof reason !== 'object') continue
+		for (const keyword of ((reason as Record<string, unknown>).keywords ?? []) as unknown[]) {
+			if (typeof keyword === 'string') taken.add(keyword.toLowerCase())
+		}
+	}
+
+	let changed = false
+	for (const raw of reasons) {
+		if (!raw || typeof raw !== 'object') continue
+		const reason = raw as Record<string, unknown>
+		if (!('aliases' in reason)) continue
+		const aliases = (Array.isArray(reason.aliases) ? reason.aliases : []).filter((a): a is string => typeof a === 'string')
+		delete reason.aliases
+		changed = true
+		if (Array.isArray(reason.keywords) && reason.keywords.length > 0) continue
+
+		const keywords = aliases.length > 0 ? aliases : [uniqueKeyword(slugify(String(reason.label ?? '')), taken)]
+		for (const keyword of keywords) taken.add(keyword.toLowerCase())
+		reason.keywords = keywords
+	}
+	return changed
+}
+
+function slugify(label: string): string {
+	return label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
+// labels are unique but their slugs need not be ("No SLKit" and "No-SLKit" collapse to the same thing), and keywords
+// have to stay unique across every reason for chat to resolve them
+function uniqueKeyword(base: string, taken: Set<string>): string {
+	const seed = base || 'reason'
+	if (!taken.has(seed)) return seed
+	for (let n = 2;; n++) {
+		const candidate = `${seed}-${n}`
+		if (!taken.has(candidate)) return candidate
+	}
+}

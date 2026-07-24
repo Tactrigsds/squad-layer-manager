@@ -248,6 +248,10 @@ export const GlobalSettingsSchema = z.object({
 		finalVoteReminder: HumanTime.prefault('10s').describe('How far in advance the final vote reminder should be sent'),
 		maxNumVoteChoices: z.int().min(1).max(50).prefault(5).describe('Maximum number of choices allowed in a vote'),
 	}).prefault({}),
+	overrideAdminSetNextLayer: z.boolean().prefault(false).describe(
+		'Whether AdminSetNextLayer commands not originating from SLM are respected',
+	),
+	warnOnChangeLayer: z.boolean().prefault(false).describe('Warn admins when the next layer is changed'),
 	squadServer: z.object({
 		logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines.'),
 		rconCacheTTL: z.object({
@@ -630,10 +634,6 @@ export const PublicServerSettingsSchema = z
 				'The layer queue configuration: the pool (filters and repeat rules) and queue length / vote preferences.',
 			),
 		remindersAndAnnouncementsEnabled: z.boolean().prefault(true).describe('Whether reminders/announcements for admins are enabled'),
-		overrideAdminSetNextLayer: z.boolean().prefault(false).describe(
-			'Whether AdminSetNextLayer commands not originating from SLM are respected',
-		),
-		warnOnChangeLayer: z.boolean().prefault(false).describe('Warn admins when the next layer is changed'),
 	})
 
 export type PublicServerSettings = z.infer<typeof PublicServerSettingsSchema>

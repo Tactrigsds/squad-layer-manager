@@ -21,7 +21,14 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 	{
 		slug: 'squad-server',
 		label: 'Squad Server',
-		keys: ['squadServer', 'fogOffDelay', 'postRollAnnouncementsTimeout', 'balanceTriggerLevels'],
+		keys: [
+			'overrideAdminSetNextLayer',
+			'warnOnChangeLayer',
+			'squadServer',
+			'fogOffDelay',
+			'postRollAnnouncementsTimeout',
+			'balanceTriggerLevels',
+		],
 	},
 	{ slug: 'players', label: 'Players & Flags', keys: ['playerGroupings', 'playerFlagsRequiringNote'] },
 	// rbac stays ungrouped: its own section header already reads "Permissions & Roles"
@@ -56,8 +63,6 @@ export const ADVANCED_GLOBAL_SETTINGS_PATHS: ReadonlySet<string> = new Set([
 
 export const ADVANCED_SERVER_SETTINGS_PATHS: ReadonlySet<string> = new Set([
 	'updatesToSquadServerDisabled',
-	'overrideAdminSetNextLayer',
-	'warnOnChangeLayer',
 	'navLinks',
 ])
 

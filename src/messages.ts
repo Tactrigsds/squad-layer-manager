@@ -395,7 +395,7 @@ export const GENERAL = {
 			swaps: 'Show a summary of queued team swaps',
 			clearSwaps: 'Clear all queued teamswaps',
 			warn: 'Warn a player',
-			listWarnReasons: 'List the configured admin action reasons and their aliases',
+			listWarnReasons: 'List the configured admin action reasons and their keywords',
 			warnSquad: 'Warn every member of a squad',
 			kill: 'Kill a player',
 			killSquad: 'Kill every member of a squad',
