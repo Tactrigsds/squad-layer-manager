@@ -391,6 +391,8 @@ export const orpcRouter = {
 				playerIds: z.array(SM.PlayerIdSchema).min(1),
 				reason: z.string().min(1).optional(),
 				presetReasonLabel: z.string().min(1).optional(),
+				// omitted, the admin notification follows the admin-target rule in warnPlayers
+				notifyAdmins: z.boolean().optional(),
 				// when a warn targets a whole squad the message gets a "@Squad<id>" (or "@cmdSquad") tag
 				taggedSquad: z.object({
 					squadId: z.number().int().positive(),
@@ -421,6 +423,7 @@ export const orpcRouter = {
 			}
 			await warnPlayers(ctx, input.playerIds, message, { type: 'slm-user', userId: ctx.user.discordId }, {
 				reasonLabel: reasonRes.applied.label,
+				notifyAdmins: input.notifyAdmins,
 				adminNotifyDescription,
 			})
 			return { code: 'ok' as const }
@@ -443,7 +446,8 @@ export const orpcRouter = {
 				})
 				.map(p => SM.PlayerIds.getPlayerId(p.ids))
 			if (admins.length === 0) return { code: 'err:no-admins-online' as const }
-			await warnPlayers(ctx, admins, input.message, { type: 'slm-user', userId: ctx.user.discordId }, { suppressAdminNotify: true })
+			// the warn already reaches every admin, so skip the meta-notification
+			await warnPlayers(ctx, admins, input.message, { type: 'slm-user', userId: ctx.user.discordId }, { notifyAdmins: false })
 			return { code: 'ok' as const }
 		}),
 
@@ -1216,9 +1220,9 @@ export async function warnPlayers(
 	targets: SM.PlayerId[],
 	reason: string,
 	actor: AppEvents.Actor,
-	// suppressAdminNotify: the "warn admins" feature already targets every admin, so skip the meta-notification there.
+	// notifyAdmins: forces the meta-notification on or off; left undefined it follows the admin-target rule below.
 	// adminNotifyDescription: override the admin-notification phrasing (squad warns name the squad + faction)
-	opts?: { reasonLabel?: string; suppressAdminNotify?: boolean; adminNotifyDescription?: string },
+	opts?: { reasonLabel?: string; notifyAdmins?: boolean; adminNotifyDescription?: string },
 ) {
 	if (targets.length === 0) return
 	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
@@ -1240,7 +1244,21 @@ export async function warnPlayers(
 		}
 	})
 	await SquadRcon.warnAll(ctx, targets, reason)
-	if (!opts?.suppressAdminNotify) await notifyAdminsOfWebAction(ctx, appEvent, opts?.adminNotifyDescription)
+	if (opts?.notifyAdmins === false) return
+	if (opts?.notifyAdmins === undefined) {
+		// admin-to-admin chatter shouldn't page the whole admin team; a preset reason is a formal action, so it still does
+		if (!opts?.reasonLabel && await everyTargetIsAdmin(ctx, targets)) return
+	}
+	await notifyAdminsOfWebAction(ctx, appEvent, opts?.adminNotifyDescription)
+}
+
+async function everyTargetIsAdmin(ctx: C.SquadRcon & CS.AbortSignal, targets: SM.PlayerId[]) {
+	const [adminList, teamsRes] = await Promise.all([AdminList.adminList.get(ctx), ctx.server.teams.get(ctx)])
+	if (teamsRes.code !== 'ok') return false
+	return targets.every(target => {
+		const player = SM.PlayerIds.find(teamsRes.players, p => p.ids, target)
+		return !!player && SM.AdminList.getIsAdmin(adminList, player.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
+	})
 }
 
 // disbands a squad through an app event: records the squad + its members, arms the machine to attribute the
