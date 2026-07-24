@@ -528,6 +528,18 @@ export async function tryDenyPermissionsForPlayer<T extends RBAC.PermissionType>
 	return RBAC.tryDenyPermissions(perms, req)
 }
 
+// for the shared entry points reachable from both the GUI and in-game chat. The player takes precedence: a chat
+// command authorizes whoever typed it, which resolves without a linked account. Neither identity present means the
+// action is system-initiated (vote autostart, generation) and goes unchecked.
+export async function tryDenyPermissionsForActor<T extends RBAC.PermissionType>(
+	ctx: C.Db & Partial<C.UserId> & Partial<C.PlayerIds> & CS.AbortSignal,
+	reqOrPerms: RBAC.PermitChecker<T> | RBAC.PermitChecker<T>[] | RBAC.PermissionReq<T>,
+) {
+	if (ctx.player) return await tryDenyPermissionsForPlayer({ ...ctx, player: ctx.player }, reqOrPerms)
+	if (ctx.user) return await tryDenyPermissionsForUser({ ...ctx, user: ctx.user }, reqOrPerms)
+	return null
+}
+
 // for the aggregate (non-equality) checks: settings access, timeouts
 export async function getUserPermissions(ctx: C.Db & C.UserId & CS.AbortSignal): Promise<RBAC.Permission[]> {
 	return RBAC.fromTracedPermissions((await getRbacForDiscordUser(ctx)).perms)

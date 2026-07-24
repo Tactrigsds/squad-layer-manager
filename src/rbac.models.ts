@@ -126,6 +126,10 @@ export const PERMISSION_DEFINITION = {
 		description: "Edit or delete anyone's notes on queued layers. Writing notes, and managing your own, only needs queue:write",
 		scope: 'global',
 	}),
+	...definePermission('queue:manage-tags', {
+		description: 'Create and edit layer tags from the queue, without needing settings access',
+		scope: 'global',
+	}),
 	...definePermission('queue:request-layers', {
 		description: 'Request layers (the backburner below the queue and /reqlayer in-game), up to the granted number of concurrent requests',
 		scope: 'layer-requests',
