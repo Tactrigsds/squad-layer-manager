@@ -282,7 +282,7 @@ function LoadedSelectLayersView({
 				footerAdditions={
 					<>
 						{activity.opts.variant === 'toggle-position' && addLayersTabsList}
-						<LayerTags tags={pendingTags} onChange={setPendingTags} emptyLabel="Tags" />
+						<LayerTags tags={pendingTags} onChange={setPendingTags} />
 					</>
 				}
 			/>
@@ -396,7 +396,7 @@ function LoadedPasteRotation({
 			extraFooter={
 				<>
 					{positionTabsList}
-					<LayerTags tags={pendingTags} onChange={setPendingTags} emptyLabel="Tags" />
+					<LayerTags tags={pendingTags} onChange={setPendingTags} />
 				</>
 			}
 		/>
@@ -583,6 +583,14 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 							droppable={true}
 							item={{ type: 'single-list-item', layerId: item.layerId, itemId: item.itemId }}
 							badges={badges}
+							tags={item.type === 'single-list-item' && (
+								<LayerTags
+									tags={item.tags}
+									disabled={!canEdit}
+									revealAddOnHover
+									onChange={(tags) => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'set-tags', tags })}
+								/>
+							)}
 						/>
 						{itemChoiceTallyPercentage !== undefined && (
 							<span className="flex space-x-1 items-center">
@@ -592,13 +600,6 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 								/>
 								<span>{voteCount}</span>
 							</span>
-						)}
-						{item.type === 'single-list-item' && (
-							<LayerTags
-								tags={item.tags}
-								disabled={!canEdit}
-								onChange={(tags) => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'set-tags', tags })}
-							/>
 						)}
 					</span>
 					{sourceDisplay && (
