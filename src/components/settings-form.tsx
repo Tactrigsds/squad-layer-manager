@@ -1510,18 +1510,17 @@ function reasonPreviewEntries(reason: AAR.AdminActionReason, customVars: Record<
 	return entries
 }
 
-// Rendering is Mustache (see src/lib/templating.ts), but the docs linked here are Handlebars', which is the name
-// people know the syntax by and reads better. The two agree on everything an admin writes in practice --
-// {{variable}} and {{#section}}...{{/section}} -- but Handlebars' block helpers ({{#if}}, {{#each}}) are NOT
-// available. Point this at Mustache's own reference if that gap ever bites.
-const TEMPLATE_SYNTAX_URL = 'https://handlebarsjs.com/guide/expressions.html'
+// message templates are rendered with Mustache (see src/lib/templating.ts), so link its reference rather than
+// Handlebars': the two share {{variable}} and {{#section}}, but Handlebars' block helpers ({{#if}}, {{#each}}) are
+// not available here, and pointing at docs that advertise them would send authors down a dead end
+const TEMPLATE_SYNTAX_URL = 'https://mustache.github.io/mustache.5.html'
 
 function TemplateSyntaxHint() {
 	return (
 		<p className="text-xs text-muted-foreground">
 			Supports{' '}
 			<a href={TEMPLATE_SYNTAX_URL} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-				{'{{variable}}'} syntax
+				Mustache {'{{variable}}'} syntax
 			</a>.
 		</p>
 	)
