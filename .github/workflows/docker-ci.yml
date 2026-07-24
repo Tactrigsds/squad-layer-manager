@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       image-tag: ${{ steps.branch.outputs.IMAGE_TAG }}
+      test-image: ${{ steps.branch.outputs.TEST_IMAGE_REPO }}@${{ steps.test-image.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
 
@@ -85,6 +86,11 @@ jobs:
           # Export the commit-specific tag for quality checks
           echo "IMAGE_TAG=ghcr.io/$OWNER/squad-layer-manager:commit-$SHORT_SHA" >> $GITHUB_OUTPUT
 
+          # The test image is handed to the integration suite by digest, so this tag only exists to keep the
+          # version reachable in GHCR; one per branch rather than one per commit.
+          echo "TEST_IMAGE_REPO=ghcr.io/$OWNER/squad-layer-manager" >> $GITHUB_OUTPUT
+          echo "TEST_IMAGE_TAG=ghcr.io/$OWNER/squad-layer-manager:test-$BRANCH_NAME" >> $GITHUB_OUTPUT
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -99,13 +105,31 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: runtime
+          push: true
+          cache-from: type=gha
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            GIT_BRANCH=${{ steps.branch.outputs.BRANCHES_LIST }}
+          tags: ${{ steps.branch.outputs.TAGS }}
+
+      # The test stage is `FROM runtime`, so building it here costs only the layers the tests add: the runtime
+      # graph is already in this builder. The integration suite then pulls it by digest instead of rebuilding
+      # the whole thing (rust wasm, pnpm install, vite build) in a parallel job with a cold cache.
+      # cache-to only on this build: exporting the test graph exports the runtime and builder stages with it.
+      - name: Build and push test image
+        id: test-image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: test
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
             GIT_SHA=${{ github.sha }}
             GIT_BRANCH=${{ steps.branch.outputs.BRANCHES_LIST }}
-          tags: ${{ steps.branch.outputs.TAGS }}
+          tags: ${{ steps.branch.outputs.TEST_IMAGE_TAG }}
 
   quality-checks:
     runs-on: ubuntu-latest
@@ -137,11 +161,16 @@ jobs:
       - name: Run tests
         run: pnpm run test
 
-  # the integration/e2e suites, called as a job so that tagging and deploying can gate on them
+  # the integration/e2e suites, called as a job so that tagging and deploying can gate on them. Runs the test
+  # image the build job already produced rather than building its own.
   integration-tests:
+    needs: build
     uses: ./.github/workflows/integration-tests.yml
     permissions:
       contents: read
+      packages: read
+    with:
+      test-image: ${{ needs.build.outputs.test-image }}
 
   tag-latest:
     runs-on: ubuntu-latest
