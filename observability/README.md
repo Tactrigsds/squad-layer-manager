@@ -66,14 +66,17 @@ span kind and status, so they cover the auto-instrumented http/rcon spans as wel
 
 ## Profiling
 
-Off unless `PYROSCOPE_ENABLED` is set (`docker-compose.yaml` sets it). The agent lives in
-`src/systems/pyroscope.server.ts` and pushes CPU/wall continuously, plus allocations and in-use heap
-while `PYROSCOPE_HEAP_ENABLED` is on. Heap sampling is the half whose cost scales with allocation
-rate, which is why it is separately switchable: turning it off leaves the flatter-cost CPU profiles.
+Off unless `PYROSCOPE_ENABLED` is set. It defaults off both in the env schema (`src/server/env.ts`)
+and in `docker-compose.yaml`, where the two lines that turn it on are commented out: profiling is
+opt-in, enabled when you have a question to chase rather than left running by default. The agent lives
+in `src/systems/pyroscope.server.ts` and pushes CPU/wall continuously, plus allocations and in-use heap
+while `PYROSCOPE_HEAP_ENABLED` is on. Heap sampling is the half whose cost scales with allocation rate,
+which is why it is separately switchable: turning it off leaves the flatter-cost CPU profiles.
 
-`docker-compose.yaml` ships with heap sampling **off**, because the cost is not only CPU: the
-sampler's tables are native allocations in the main malloc arena, which glibc does not give back.
-Turn it on when you have an allocation question to answer, rather than leaving it on by default.
+Heap sampling is worth turning off even when you do enable profiling, because its cost is not only CPU:
+the sampler's tables are native allocations in the main malloc arena, which glibc does not give back.
+Add `PYROSCOPE_HEAP_ENABLED=false` alongside `PYROSCOPE_ENABLED=true` unless it is specifically an
+allocation question you are answering.
 
 The Ops dashboard's **Profile type** variable is populated from what Pyroscope has actually received
 rather than from a hardcoded list, because which sample types exist depends on how the agent is
