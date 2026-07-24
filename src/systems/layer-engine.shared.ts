@@ -37,6 +37,17 @@ export class LayerEngine {
 		const instance = wasm instanceof WebAssembly.Module
 			? await WebAssembly.instantiate(wasm, {})
 			: (await WebAssembly.instantiate(wasm, {})).instance
+		return LayerEngine.fromInstance(instance, artifact)
+	}
+
+	// node-only counterpart to create(). Compiling wasm synchronously is disallowed in browsers for a module this
+	// size but not in node, and the server needs it: the engine is loaded on first query, and that can land inside a
+	// db transaction, where yielding to the event loop is a bug (see runTransaction in server/db.ts).
+	static createSync(wasm: BufferSource, artifact: Uint8Array): LayerEngine {
+		return LayerEngine.fromInstance(new WebAssembly.Instance(new WebAssembly.Module(wasm), {}), artifact)
+	}
+
+	private static fromInstance(instance: WebAssembly.Instance, artifact: Uint8Array): LayerEngine {
 		const exports = instance.exports as unknown as Exports
 
 		const ptr = exports.alloc(artifact.byteLength)

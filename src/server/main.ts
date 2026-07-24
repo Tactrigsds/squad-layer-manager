@@ -91,8 +91,8 @@ await C.spanOp('main', { module }, async () => {
 	Users.setup()
 	Vote.setup()
 	WsSession.setup()
-	// resolves its config synchronously but opens the db in the background, so it stays off the
-	// critical path; we await `LayerEngine.ready` below, right before the engine can first be queried
+	// resolves the artifact pair and its etag. The artifact itself is not decompressed into wasm memory until
+	// something queries it, which on a server with a non-empty saved queue may be never
 	await LayerEngine.setup()
 	await DB.setup()
 	// starts its own background loop; nothing else depends on it, but it needs the db open
