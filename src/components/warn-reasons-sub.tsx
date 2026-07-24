@@ -112,7 +112,7 @@ export function ReasonPicker(props: {
 						{ value: CUSTOM, label: allowCustom ? 'Custom' : 'None' },
 						...reasons.map(reason => ({
 							value: reason.label,
-							keywords: reason.aliases,
+							keywords: reason.keywords,
 							description: AAR.reasonText(props.action, reason),
 						})),
 					]}

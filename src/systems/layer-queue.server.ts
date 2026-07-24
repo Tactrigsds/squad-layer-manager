@@ -18,6 +18,7 @@ import * as CS from '@/models/context-shared'
 import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
+import * as LNote from '@/models/layer-notes.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as MH from '@/models/match-history.models'
 import * as SE from '@/models/server-events.models'
@@ -717,6 +718,8 @@ export const router = {
 			} else {
 				const authRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write'))
 				if (authRes) return authRes
+				const noteRes = await tryDenyNoteOp(ctx, op)
+				if (noteRes) return noteRes
 			}
 
 			// adding or setting a layer that isn't in the configured pool additionally requires queue:force-write.
@@ -764,6 +767,16 @@ export async function isTemplateSatisfiable(
 		return true
 	}
 	return res.satisfiable['probe']
+}
+
+// writing a note only needs queue:write, which the caller has already established. Rewording or dropping someone
+// else's is what the manage-all grant is for.
+async function tryDenyNoteOp(ctx: C.Db & C.ServerSlice & C.UserId & CS.AbortSignal, op: SLL.Operation) {
+	if (op.op !== 'edit-note' && op.op !== 'delete-note') return
+	const note = LL.findNote(ctx.layerQueue.session.state.list, op.itemId, op.noteId)
+	// a note that isn't there is left to the reducer, which no-ops on it
+	if (!note || LNote.isAuthor(note, ctx.user.discordId)) return
+	return await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:manage-all-notes'))
 }
 
 type BackburnerDraftOp = Exclude<Extract<SLL.Operation, { op: `backburner-${string}` }>, { op: 'backburner-write-saved' }>

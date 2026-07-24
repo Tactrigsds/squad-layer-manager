@@ -4,6 +4,8 @@ import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import type * as DND from '@/models/dndkit.models'
+import * as LNote from '@/models/layer-notes.models'
+import * as LTag from '@/models/layer-tags.models'
 import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models'
 import { z } from 'zod'
@@ -37,12 +39,17 @@ export const NewSingleItemSchema = z.object({
 	itemId: ItemIdSchema.optional(),
 	layerId: L.LayerIdSchema,
 	source: SourceSchema.optional(),
+	tags: z.array(LTag.TagIdSchema).optional(),
+	tagsSetBy: LTag.AttributionSchema.optional(),
 })
 export type NewSingleItem = z.infer<typeof NewSingleItemSchema>
 
+// notes are deliberately absent from NewSingleItemSchema: they can only arrive through the note ops, which is what
+// keeps their author trustworthy
 export const SingleItemSchema = NewSingleItemSchema.extend({
 	itemId: ItemIdSchema,
 	source: SourceSchema,
+	notes: LNote.NotesSchema.optional(),
 })
 export type SingleItem = z.infer<typeof SingleItemSchema>
 
@@ -526,6 +533,87 @@ export function editLayer(list: List, source: Source, itemId: ItemId, layerId: L
 	item.source = source
 	item.layerId = layerId
 	if (parentVoteItem) setCorrectChosenLayerIdInPlace(parentVoteItem)
+}
+
+// stamps the tags chosen in a dialog's footer onto everything it created. A vote item holds no tags of its own, so its
+// choices take them instead.
+export function withTags(items: NewItem[], tags: LTag.TagId[]): NewItem[] {
+	if (tags.length === 0) return items
+	const merge = <T extends { tags?: LTag.TagId[] }>(item: T): T => ({ ...item, tags: [...new Set([...(item.tags ?? []), ...tags])] })
+	return items.map(item => (item.type === 'single-list-item' ? merge(item) : { ...item, choices: item.choices.map(merge) }))
+}
+
+// who a tag is attributed to is decided by whoever the add itself is attributed to, so a client can't credit a tag to
+// someone else. Vote choices carry their own tags, so they are stamped too.
+export function withTagAttribution<T extends NewItem>(items: T[], source: Source): T[] {
+	const setBy = source.type === 'manual' ? source.userId : undefined
+	const stamp = <I extends { tags?: LTag.TagId[]; tagsSetBy?: LTag.Attribution }>(item: I): I => {
+		const { tagsSetBy: _discarded, ...rest } = item
+		const attribution = LTag.attribute(undefined, item.tags ?? [], setBy)
+		return (attribution ? { ...rest, tagsSetBy: attribution } : rest) as I
+	}
+	return items.map(item => (item.type === 'single-list-item' ? stamp(item) : { ...item, choices: item.choices.map(stamp) }) as T)
+}
+
+// tags belong to layer items only, so a vote item's id is a no-op here (its choices carry their own tags). One tag at a
+// time rather than a whole list, so two people tagging the same item concurrently don't overwrite each other. Each
+// returns whether anything actually changed, so the caller can skip marking the item edited.
+export function addTag(list: List, itemId: ItemId, tagId: LTag.TagId, setBy?: USR.UserId): boolean {
+	const { item } = Obj.destrNullable(findItemById(list, itemId))
+	if (!item || item.type !== 'single-list-item') return false
+	if (item.tags?.includes(tagId)) return false
+	item.tags = [...(item.tags ?? []), tagId]
+	const attribution = LTag.attribute(item.tagsSetBy, item.tags, setBy)
+	if (attribution) item.tagsSetBy = attribution
+	return true
+}
+
+export function removeTag(list: List, itemId: ItemId, tagId: LTag.TagId): boolean {
+	const { item } = Obj.destrNullable(findItemById(list, itemId))
+	if (!item || item.type !== 'single-list-item' || !item.tags) return false
+	const remaining = item.tags.filter(id => id !== tagId)
+	if (remaining.length === item.tags.length) return false
+	if (remaining.length === 0) delete item.tags
+	else item.tags = remaining
+	const attribution = LTag.attribute(item.tagsSetBy, remaining)
+	if (attribution) item.tagsSetBy = attribution
+	else delete item.tagsSetBy
+	return true
+}
+
+// notes, like tags, belong to layer items only. Each returns whether anything changed so the caller can skip marking
+// the item edited.
+export function addNote(list: List, itemId: ItemId, note: LNote.Note): boolean {
+	const { item } = Obj.destrNullable(findItemById(list, itemId))
+	if (!item || item.type !== 'single-list-item') return false
+	if (item.notes?.some(existing => existing.id === note.id)) return false
+	item.notes = [...(item.notes ?? []), note]
+	return true
+}
+
+export function editNote(list: List, itemId: ItemId, noteId: LNote.NoteId, text: string): boolean {
+	const { item } = Obj.destrNullable(findItemById(list, itemId))
+	if (!item || item.type !== 'single-list-item' || !item.notes) return false
+	const note = item.notes.find(note => note.id === noteId)
+	if (!note || note.text === text) return false
+	item.notes = item.notes.map(note => (note.id === noteId ? { ...note, text } : note))
+	return true
+}
+
+export function deleteNote(list: List, itemId: ItemId, noteId: LNote.NoteId): boolean {
+	const { item } = Obj.destrNullable(findItemById(list, itemId))
+	if (!item || item.type !== 'single-list-item' || !item.notes) return false
+	const remaining = item.notes.filter(note => note.id !== noteId)
+	if (remaining.length === item.notes.length) return false
+	if (remaining.length === 0) delete item.notes
+	else item.notes = remaining
+	return true
+}
+
+export function findNote(list: List, itemId: ItemId, noteId: LNote.NoteId): LNote.Note | undefined {
+	const { item } = Obj.destrNullable(findItemById(list, itemId))
+	if (!item || item.type !== 'single-list-item') return undefined
+	return item.notes?.find(note => note.id === noteId)
 }
 
 export function deleteItem(list: List, itemId: ItemId) {

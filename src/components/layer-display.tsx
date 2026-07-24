@@ -18,6 +18,10 @@ export default function LayerDisplay(
 	props: {
 		item: LQY.LayerItem
 		badges?: React.ReactNode[]
+		// rendered alongside the layer name, ahead of the badges, so tags read as part of the layer rather than as
+		// another status indicator. Notes follow the tags, wrapping underneath them when the row runs out of room
+		tags?: React.ReactNode
+		notes?: React.ReactNode
 		backfillLayerId?: L.LayerId
 		allowShowInfo?: boolean
 		droppable?: boolean
@@ -91,7 +95,7 @@ export default function LayerDisplay(
 		<div className={cn('flex space-x-2 items-center', props.className)} ref={props.ref}>
 			<span
 				data-over={props.droppable && dropOnAttrs.isDropTarget || undefined}
-				className="flex-1 text-nowrap "
+				className="flex-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-nowrap"
 			>
 				<ShortLayerName
 					ref={props.droppable && dropOnAttrs.ref || undefined}
@@ -102,6 +106,8 @@ export default function LayerDisplay(
 					matchDescriptors={statusData?.highlightedMatchDescriptors}
 					allowShowInfo={props.allowShowInfo}
 				/>
+				{props.tags}
+				{props.notes}
 			</span>
 			<span className="flex items-center gap-1">
 				{badges}

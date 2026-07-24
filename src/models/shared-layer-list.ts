@@ -6,6 +6,8 @@ import { assertNever } from '@/lib/type-guards'
 
 import * as BB from '@/models/backburner.models'
 import * as LL from '@/models/layer-list.models'
+import * as LNote from '@/models/layer-notes.models'
+import * as LTag from '@/models/layer-tags.models'
 
 import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models'
@@ -38,6 +40,33 @@ function getItemOpEntries<
 			...props,
 			op: z.literal('edit-layer'),
 			newLayerId: L.LayerIdSchema,
+		}),
+		z.object({
+			...props,
+			op: z.literal('add-tag'),
+			tagId: LTag.TagIdSchema,
+		}),
+		z.object({
+			...props,
+			op: z.literal('remove-tag'),
+			tagId: LTag.TagIdSchema,
+		}),
+		z.object({
+			...props,
+			op: z.literal('add-note'),
+			noteId: LNote.NoteIdSchema,
+			text: LNote.TextSchema,
+		}),
+		z.object({
+			...props,
+			op: z.literal('edit-note'),
+			noteId: LNote.NoteIdSchema,
+			text: LNote.TextSchema,
+		}),
+		z.object({
+			...props,
+			op: z.literal('delete-note'),
+			noteId: LNote.NoteIdSchema,
 		}),
 		z.object({
 			...props,
@@ -234,6 +263,11 @@ const CLIENT_OPCODE = z.enum([
 	'move',
 	'swap-factions',
 	'edit-layer',
+	'add-tag',
+	'remove-tag',
+	'add-note',
+	'edit-note',
+	'delete-note',
 	'clone',
 	'configure-vote',
 	'delete',
@@ -440,7 +474,7 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 		}
 
 		case 'add': {
-			const items = newOp.items
+			const items = LL.withTagAttribution(newOp.items, source)
 			LL.addItemsDeterministic(list, source, newOp.index, ...items)
 			ItemMut.tryApplyMutation('added', items.map(item => item.itemId), mutations)
 			if (source.type === 'manual') LL.changeGeneratedLayerAttributionInPlace(list, mutations, source.userId)
@@ -489,6 +523,43 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 			if (beforeEdit && afterEdit && beforeEdit !== afterEdit) {
 				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
 				if (mutations && source.type === 'manual') LL.changeGeneratedLayerAttributionInPlace(list, mutations, source.userId)
+			}
+			break
+		}
+
+		case 'add-tag': {
+			if (LL.addTag(list, newOp.itemId, newOp.tagId, source.type === 'manual' ? source.userId : undefined)) {
+				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
+			}
+			break
+		}
+
+		case 'remove-tag': {
+			if (LL.removeTag(list, newOp.itemId, newOp.tagId)) {
+				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
+			}
+			break
+		}
+
+		// a note is worthless without an author to attach it to, so an op from anything but a user is dropped
+		case 'add-note': {
+			if (source.type !== 'manual') break
+			if (LL.addNote(list, newOp.itemId, { id: newOp.noteId, author: source.userId, text: newOp.text })) {
+				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
+			}
+			break
+		}
+
+		case 'edit-note': {
+			if (LL.editNote(list, newOp.itemId, newOp.noteId, newOp.text)) {
+				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
+			}
+			break
+		}
+
+		case 'delete-note': {
+			if (LL.deleteNote(list, newOp.itemId, newOp.noteId)) {
+				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
 			}
 			break
 		}
