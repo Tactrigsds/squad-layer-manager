@@ -1,7 +1,6 @@
 import type * as FRM from '@/lib/frame'
 import * as ODSM from '@/lib/odsm'
 import { toast } from '@/lib/toast'
-import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
@@ -37,12 +36,12 @@ async function resolveDisplayName(source: TSW.Teamswap['source'] | undefined): P
 	}
 }
 
-// surfaces a rejected teamswap op to the user. called at dispatch time with the rejection the
-// reducer threw, so it already runs on the originating client -- no need to filter by user
-function toastOpError(error: TSW.OpError) {
+// surfaces a rejected teamswap op to the user. only ever reached on the originating client -- either from
+// its own optimistic dispatch or from the server's `rejected` message -- so there's no user to filter by
+function toastOpError(code: TSW.Rejection['code']) {
 	let title: string
 	let description: string | undefined
-	switch (error.code) {
+	switch (code) {
 		case 'err:currently-swapping':
 			title = 'Swap in progress'
 			description = 'Cannot modify swaps while a team swap is being executed.'
@@ -164,33 +163,20 @@ export function initTeamswaps(args: Args) {
 			presenceEvent$,
 
 			onUpdate(update) {
-				switch (update.code) {
-					case 'init':
-						// processInit rebases in-flight pending ops onto the snapshot so the acks that follow still resolve
-						set({
-							session: ODSM.Client.processInit(get().session, update.state, update.ops, TSW.reducer),
-						})
-						break
-					case 'op': {
-						const res = ODSM.Client.processIncomingOps(get().session, update.ops, TSW.reducer)
-						set({ session: res.session })
-						if (!res.rejected) { for (const se of res.sideEffects) onSideEffect(se, presenceEvent$) }
-						break
-					}
-					case 'ack': {
-						// ops are deterministic, so the server only sends back the ids -- replay our pending copies
-						const session = get().session
-						const res = ODSM.Client.processAcks(session, update.opIds, TSW.reducer)
-						if (res.unknownOpIds.length > 0) console.warn('received ack for unknown teamswap ops', res.unknownOpIds)
-						if (res.session !== session) {
-							set({ session: res.session })
-							if (!res.rejected) { for (const se of res.sideEffects) onSideEffect(se, presenceEvent$) }
-						}
-						break
-					}
-					default:
-						assertNever(update)
-				}
+				const prev = get().session
+				const next = ODSM.Client.applyUpdate(prev, update, TSW.reducer, {
+					onSideEffects: ses => {
+						for (const se of ses) onSideEffect(se, presenceEvent$)
+					},
+					onDiverged: (phase, error) =>
+						console.error(`${phase === 'op' ? 'incoming' : 'acked'} teamswap ops diverged from the server:`, error.data),
+					// a 'noop' rejection changed nothing on the local timeline and has nothing to report
+					onRejected: reason => {
+						if (reason !== 'noop') toastOpError(reason)
+					},
+					onUnknownAcks: opIds => console.warn('received ack for unknown teamswap ops', opIds),
+				})
+				if (next !== prev) set({ session: next })
 			},
 		} satisfies TeamswapSlice,
 	)
@@ -213,7 +199,7 @@ export namespace Actions {
 			// the op was rejected against local state; surface a real failure to the user and drop it
 			// without sending. a 'noop' rejection changed nothing and has nothing to report
 			const rejection = res.error.data as TSW.Rejection
-			if (rejection.code !== 'noop') toastOpError(rejection)
+			if (rejection.code !== 'noop') toastOpError(rejection.code)
 			return
 		}
 		slice.setState({ session: res.session })

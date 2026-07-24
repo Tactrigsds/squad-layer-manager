@@ -649,16 +649,4 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 	return [state, sideEffects]
 }
 
-export type UpdateForClient = {
-	code: 'init'
-	state: State
-	ops: Op[]
-} | {
-	code: 'op'
-	ops: Op[]
-} | {
-	// ops are deterministic, so the originator only receives the ids of its own acked ops and
-	// replays its pending copies
-	code: 'ack'
-	opIds: string[]
-}
+export type UpdateForClient = ODSM.ClientUpdate<State, Op, Rejection['code']>
