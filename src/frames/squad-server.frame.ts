@@ -127,6 +127,7 @@ export const frame = frameManager.createFrame<Types>({
 				Rx.switchMap(([list, settings]) =>
 					Rx.from(LayerQueriesClient.fetchLayerItemStatuses({
 						constraints: SETTINGS.getSettingsConstraints(settings),
+						skipWarningsForTags: settings.queue.mainPool.skipWarningsForTags,
 						list,
 					})).pipe(
 						Rx.map((layerItemStatuses) => [layerItemStatuses, list] as const),

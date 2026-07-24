@@ -1,6 +1,7 @@
 import type * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
+import type * as LTag from '@/models/layer-tags.models'
 import type * as SETTINGS from '@/models/settings.models'
 import { ADMIN_USER } from './app-fixture'
 
@@ -21,11 +22,17 @@ export const LAYERS = {
 	skorpoRaas: 'SK-RAAS-V1:USA-CA:RGF-CA',
 } satisfies Record<string, L.LayerId>
 
-export function queueItem(layerId: L.LayerId, opts?: { itemId?: string }): LL.Item {
+export function queueItem(layerId: L.LayerId, opts?: { itemId?: string; tags?: LTag.TagId[] }): LL.Item {
 	return LL.createItem(
-		{ type: 'single-list-item', layerId, itemId: opts?.itemId },
+		{ type: 'single-list-item', layerId, itemId: opts?.itemId, tags: opts?.tags },
 		{ type: 'manual', userId: ADMIN_USER.discordId },
 	)
+}
+
+// A tag definition plus the id to attach to items. Tag ids are `<label>:<6 chars>` and immutable, so the suffix is
+// fixed here rather than generated.
+export function layerTag(label: string, suffix: string): LTag.Tag {
+	return { id: `${label}:${suffix}`, label, description: '', color: '#3b82f6' }
 }
 
 export function queue(...layerIds: L.LayerId[]): LL.List {

@@ -747,11 +747,13 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 	}
 
 	const warns: LQY.QueueWarning[] = []
+	const skipWarningsForTags = input.skipWarningsForTags ?? []
 	for (const { item } of LQY.iterItems(layerItems)) {
 		if (!LQY.isLayerListItem(item)) continue
 		if (!present.has(item.layerId)) continue
 		// seeding and training layers are played outside the pool and repeat rules by design
 		if (L.isSeedingOrTrainingLayer(item.layerId)) continue
+		if (LQY.getTags(item)?.some(tag => skipWarningsForTags.includes(tag))) continue
 		for (const constraint of constraints) {
 			const descriptors = matchDescriptors.get(item.itemId)?.filter(d => d.constraintId === constraint.id)
 			const matched = descriptors?.length !== undefined && descriptors.length > 0

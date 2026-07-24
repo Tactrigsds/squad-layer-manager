@@ -135,7 +135,11 @@ export const setupInstance = C.spanOp(
 							const ctx = await LayerQueriesServer.resolveLayerQueryCtx(baseCtx)
 							const statusRes = await LayerQueries.getLayerItemStatuses({
 								ctx,
-								input: { constraints: allConstraints, list: await LayerQueriesServer.resolveLayerItemsState(baseCtx) },
+								input: {
+									constraints: allConstraints,
+									skipWarningsForTags: serverState.settings.queue.mainPool.skipWarningsForTags,
+									list: await LayerQueriesServer.resolveLayerItemsState(baseCtx),
+								},
 							})
 							if (statusRes.code !== 'ok') break warnCondition
 							const warns = statusRes.statuses.warns.filter(w => w.itemId === nextLayer.itemId)
