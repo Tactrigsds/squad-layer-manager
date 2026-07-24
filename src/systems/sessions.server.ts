@@ -258,7 +258,10 @@ export async function logInUser(ctx: C.Db & C.FastifyRequest & C.FastifyReply, d
 export const logout = C.spanOp('logout', { module }, async (ctx: { sessionId: string } & C.FastifyReply & C.Db) => {
 	await removeSessionFromCacheAndDb(ctx, ctx.sessionId)
 	C.setSpanStatus(Otel.SpanStatusCode.OK)
-	await clearInvalidSession(ctx)
+	// not awaited: clearInvalidSession returns the FastifyReply (for chaining), and a reply is a thenable that only
+	// settles once the response is sent. Awaiting it here deadlocks POST /logout -- the handler blocks waiting for a
+	// send that can't happen until it returns. Same trap as the errorOrBypass note above.
+	clearInvalidSession(ctx)
 })
 
 export async function setSessionCookie(ctx: C.HttpRequest, sessionId: string, expiresAt?: number) {
