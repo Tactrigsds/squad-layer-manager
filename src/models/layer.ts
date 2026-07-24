@@ -558,6 +558,15 @@ export function areLayersCompatible(
 	)
 }
 
+export function isSeedingOrTrainingLayer(
+	layerOrId: UnvalidatedLayer | LayerId | undefined | null,
+	components = StaticLayerComponents,
+) {
+	if (!layerOrId) return false
+	const layer = toLayer(layerOrId, components)
+	return layer.Gamemode === 'Seed' || layer.Gamemode === 'Training'
+}
+
 export function toLayer(
 	unvalidatedLayerOrId: UnvalidatedLayer | LayerId,
 	components = StaticLayerComponents,

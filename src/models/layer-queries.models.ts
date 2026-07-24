@@ -517,8 +517,7 @@ export function resolveTeamParityForCursor(state: LayerItemsState, cursor: Curso
 
 export function isLookbackTerminatingLayerItem(item: LayerItem): boolean {
 	if (isVoteListitem(item)) return false
-	const layer = L.toLayer(item.layerId)
-	return layer && item.type === 'match-history-entry' && ['Seed', 'Training'].includes(layer.Gamemode as string)
+	return item.type === 'match-history-entry' && L.isSeedingOrTrainingLayer(item.layerId)
 }
 
 export function getAllLayerIds(items: OrderedLayerItems) {
