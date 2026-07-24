@@ -285,7 +285,7 @@ export const getUser = C.spanOp(
 		}
 
 		// Fallback to database (cache miss - this shouldn't happen often)
-		log.warn('Session cache miss in getUser, falling back to database', { sessionId: ctx.sessionId })
+		log.warn({ sessionId: ctx.sessionId }, 'Session cache miss in getUser, falling back to database')
 		const q = ctx
 			.db({ redactParams: true })
 			.select({ user: Schema.users })
