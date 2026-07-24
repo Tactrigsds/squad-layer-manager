@@ -978,7 +978,7 @@ const handleSideEffect = C.spanOp(
 						log.warn(`No layers found for constraints: %o`, { constraints })
 						return fallback
 					} catch (e) {
-						log.error(`Error generating layer: %o`, e)
+						log.error(e, 'Error generating layer')
 						return fallback
 					}
 				})()

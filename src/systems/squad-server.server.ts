@@ -1922,7 +1922,7 @@ async function insertAssociationRows(ctx: C.Db, rows: EventAssociationRows) {
 		}
 		const squadRows = rows.squadRows.map((s) => {
 			if (!s.creatorId || insertedEosIds.has(s.creatorId) || knownCreatorIds.has(s.creatorId)) return s
-			log.warn('squad %d creator %s not in players table; inserting with null creatorId', s.id, s.creatorId)
+			log.warn({ squadId: s.id, creatorId: s.creatorId }, 'squad creator not in players table; inserting with null creatorId')
 			return { ...s, creatorId: null }
 		})
 		await ctx
