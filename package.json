@@ -72,6 +72,7 @@
 		"@opentelemetry/sdk-node": "^0.220.0",
 		"@opentelemetry/semantic-conventions": "^1.43.0",
 		"@orpc/otel": "^1.14.7",
+		"@pyroscope/nodejs": "0.6.1",
 		"better-sqlite3": "^12.11.1",
 		"bufferutil": "^4.0.9",
 		"cnfast": "^0.0.8",
