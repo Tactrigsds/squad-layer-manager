@@ -16,6 +16,10 @@ externalModules.push(
 	// too — bundling mysql2 breaks its dynamic auth-plugin requires at runtime.
 	/^mysql2\//,
 	// 'zlib-sync',
+	// Tailwind (a devDependency) is only reached via the dynamic import in landing.server.ts, which runs in
+	// dev/test; prod reads the prebuilt dist/landing.css. Externalize so its native oxide binary is never bundled.
+	'postcss',
+	'@tailwindcss/postcss',
 )
 
 console.log('External modules (not bundled):', externalModules)
