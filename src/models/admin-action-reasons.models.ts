@@ -126,20 +126,21 @@ export function applyCustomReason(text: string, vars: Record<string, string>): A
 }
 
 // renders an applied reason (mustache templating over the snapshotted vars plus {{label}}), with optional
-// per-render extras (e.g. the remaining timeout duration) and the `@Squad<id>` tag when messaging a squad
+// per-render extras (e.g. the remaining timeout duration) and the leading tag naming who the message is aimed at
+// (`@Squad<id>`, `@admins`, or the recipients themselves)
 export function renderAppliedReason(
 	applied: AppliedReason,
-	opts?: { squadTag?: string; extraVars?: Record<string, string> },
+	opts?: { audienceTag?: string; extraVars?: Record<string, string> },
 ): string {
 	const rendered = renderTemplate(applied.template, { ...applied.vars, label: applied.label ?? '', ...opts?.extraVars })
-	return opts?.squadTag ? `${opts.squadTag} ${rendered}` : rendered
+	return opts?.audienceTag ? `${opts.audienceTag} ${rendered}` : rendered
 }
 
 // convenience for previews and one-shot renders: apply + render in one step
 export function formatAppliedReason(
 	action: AdminActionType,
 	reason: AdminActionReason,
-	opts?: { squadTag?: string; vars?: Record<string, string> },
+	opts?: { audienceTag?: string; vars?: Record<string, string> },
 ): string {
-	return renderAppliedReason(applyReason(action, reason, opts?.vars ?? {}), { squadTag: opts?.squadTag })
+	return renderAppliedReason(applyReason(action, reason, opts?.vars ?? {}), { audienceTag: opts?.audienceTag })
 }

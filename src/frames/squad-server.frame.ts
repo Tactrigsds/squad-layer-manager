@@ -168,6 +168,23 @@ export namespace Sel {
 	export function hasSelection(s: State) {
 		return selectedPlayerCount(s) > 0
 	}
+
+	// mirrors the server's admin-target rule so the warn boxes can default their "notify admins" toggle to match
+	export function allTargetsAreAdmins(targets: Iterable<SM.PlayerId>) {
+		return (s: State) => {
+			const players = ChatPrt.Sel.chatState(s).players
+			let any = false
+			for (const target of targets) {
+				any = true
+				if (!SM.PlayerIds.find(players, p => p.ids, target)?.isAdmin) return false
+			}
+			return any
+		}
+	}
+
+	export function selectionIsAllAdmins(s: State) {
+		return allTargetsAreAdmins(selectedPlayerIds(s))(s)
+	}
 }
 
 // ---------------------------- player selection ----------------------------
