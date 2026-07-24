@@ -419,7 +419,7 @@ export const orpcRouter = {
 			if (input.taggedSquad) {
 				const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 				const squadLabel = SM.squadAdminLabel(input.taggedSquad, MH.getTeamFaction(currentMatch, input.taggedSquad.teamId))
-				adminNotifyDescription = `warned ${squadLabel}: "${message}"`
+				adminNotifyDescription = `warned ${squadLabel}: ${message}`
 			}
 			await warnPlayers(ctx, input.playerIds, message, { type: 'slm-user', userId: ctx.user.discordId }, {
 				reasonLabel: reasonRes.applied.label,
@@ -1245,20 +1245,29 @@ export async function warnPlayers(
 	})
 	await SquadRcon.warnAll(ctx, targets, reason)
 	if (opts?.notifyAdmins === false) return
+	const audience = await classifyWarnTargets(ctx, targets)
 	if (opts?.notifyAdmins === undefined) {
 		// admin-to-admin chatter shouldn't page the whole admin team; a preset reason is a formal action, so it still does
-		if (!opts?.reasonLabel && await everyTargetIsAdmin(ctx, targets)) return
+		if (!opts?.reasonLabel && audience.allAdmins) return
 	}
-	await notifyAdminsOfWebAction(ctx, appEvent, opts?.adminNotifyDescription)
+	await notifyAdminsOfWebAction(ctx, appEvent, opts?.adminNotifyDescription ?? `warned ${audience.label}: ${reason}`)
 }
 
-async function everyTargetIsAdmin(ctx: C.SquadRcon & CS.AbortSignal, targets: SM.PlayerId[]) {
+// who a warn hit, phrased for the admin notification: the warnee by name for a single target, "all admins" when it
+// reached exactly the online admin roster, otherwise a plain count. allAdmins also drives the notification opt-out.
+async function classifyWarnTargets(ctx: C.SquadRcon & CS.AbortSignal, targets: SM.PlayerId[]) {
+	const count = (n: number) => `${n} ${n === 1 ? 'player' : 'players'}`
 	const [adminList, teamsRes] = await Promise.all([AdminList.adminList.get(ctx), ctx.server.teams.get(ctx)])
-	if (teamsRes.code !== 'ok') return false
-	return targets.every(target => {
-		const player = SM.PlayerIds.find(teamsRes.players, p => p.ids, target)
-		return !!player && SM.AdminList.getIsAdmin(adminList, player.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
-	})
+	if (teamsRes.code !== 'ok') return { allAdmins: false, label: count(targets.length) }
+
+	const isAdmin = (player: SM.Player) => SM.AdminList.getIsAdmin(adminList, player.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
+	const targetPlayers = targets.map(target => SM.PlayerIds.find(teamsRes.players, p => p.ids, target))
+	const allAdmins = targetPlayers.every(player => !!player && isAdmin(player))
+	if (allAdmins && targetPlayers.length === teamsRes.players.filter(isAdmin).length) {
+		return { allAdmins, label: 'all admins' }
+	}
+	if (targetPlayers.length === 1 && targetPlayers[0]?.ids.username) return { allAdmins, label: targetPlayers[0].ids.username }
+	return { allAdmins, label: count(targets.length) }
 }
 
 // disbands a squad through an app event: records the squad + its members, arms the machine to attribute the

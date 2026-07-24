@@ -462,7 +462,7 @@ export function describeAppEvent(e: AppEvent): string {
 	switch (e.type) {
 		case 'PLAYER_WARNED':
 			// preset-reason warns embed the label in the delivered message, so it isn't repeated here
-			return `warned ${players(e.targets.length)}: "${e.message}"`
+			return `warned ${players(e.targets.length)}: ${e.message}`
 		case 'SQUAD_DISBANDED':
 			return `disbanded ${e.squadName} (Team ${e.teamId})${forReason(e.reason)}`
 		case 'PLAYER_REMOVED_FROM_SQUAD':
