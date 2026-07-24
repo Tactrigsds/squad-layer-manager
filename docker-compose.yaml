@@ -10,9 +10,11 @@ services:
       - OTLP_COLLECTOR_ENDPOINT=http://otel:4318
       # continuous CPU + heap profiling pushed to the Pyroscope bundled in the otel image; view the
       # flamegraphs under Grafana's Pyroscope datasource. Costs a few percent of runtime overhead, most
-      # of it heap sampling: set PYROSCOPE_HEAP_ENABLED=false to keep only the flatter-cost CPU profiles,
-      # or drop PYROSCOPE_ENABLED to turn profiling off entirely.
+      # of it heap sampling, which is why it is off here: its sample tables are native allocations that
+      # sit in the main malloc arena for the life of the process. Set it true when you are actually
+      # chasing an allocation question. Drop PYROSCOPE_ENABLED to turn profiling off entirely.
       - PYROSCOPE_ENABLED=true
+      - PYROSCOPE_HEAP_ENABLED=false
       - PYROSCOPE_ENDPOINT=http://otel:4040
 
     ports:
