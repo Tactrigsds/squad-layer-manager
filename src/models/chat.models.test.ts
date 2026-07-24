@@ -360,6 +360,48 @@ describe('warn target summary grouping', () => {
 		const squads = [makeSquad(1, 1, 'a', 101)]
 		expect(summaryFor(players, squads, ['a', 'c'])).toEqual({ type: 'players' })
 	})
+
+	it('squads outrank everyone: a squad that happens to be the whole server is still named', () => {
+		const players = [makePlayer('a', { teamId: 1, squadId: 1 }), makePlayer('b', { teamId: 1, squadId: 1 })]
+		const squads = [makeSquad(1, 1, 'a', 101)]
+		const summary = summaryFor(players, squads, ['a', 'b'])
+		expect(summary.type).toBe('squads')
+		if (summary.type !== 'squads') throw new Error('unreachable')
+		expect(summary.squads.map(s => s.uniqueId)).toEqual([101])
+		expect(summary.otherPlayerCount).toBe(0)
+	})
+
+	it('squads outrank teams: a squad that happens to be a whole team is still named', () => {
+		const players = [
+			makePlayer('a', { teamId: 1, squadId: 1 }),
+			makePlayer('b', { teamId: 1, squadId: 1 }),
+			makePlayer('c', { teamId: 2 }),
+		]
+		const squads = [makeSquad(1, 1, 'a', 101)]
+		expect(summaryFor(players, squads, ['a', 'b']).type).toBe('squads')
+	})
+
+	// past the preempt limit the squad list is longer and less useful than the broader description
+	it('everyone outranks squads once too many squads are named', () => {
+		const players = [
+			makePlayer('a', { teamId: 1, squadId: 1 }),
+			makePlayer('b', { teamId: 1, squadId: 2 }),
+			makePlayer('c', { teamId: 2, squadId: 3 }),
+		]
+		const squads = [makeSquad(1, 1, 'a', 101), makeSquad(2, 1, 'b', 102), makeSquad(3, 2, 'c', 103)]
+		expect(summaryFor(players, squads, ['a', 'b', 'c'])).toEqual({ type: 'everyone' })
+	})
+
+	// the squads must account for every target, so a broader set that merely contains one keeps the broader summary
+	it('everyone outranks squads when loose players are also warned', () => {
+		const players = [
+			makePlayer('a', { teamId: 1, squadId: 1 }),
+			makePlayer('b', { teamId: 1, squadId: 1 }),
+			makePlayer('c', { teamId: 2 }),
+		]
+		const squads = [makeSquad(1, 1, 'a', 101)]
+		expect(summaryFor(players, squads, ['a', 'b', 'c'])).toEqual({ type: 'everyone' })
+	})
 })
 
 describe('chat.models recent players', () => {

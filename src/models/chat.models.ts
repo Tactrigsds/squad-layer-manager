@@ -399,6 +399,10 @@ function enrichAppEvent(state: InterpolableState, appEvent: AppEvents.AppEvent):
 	}
 }
 
+// naming this many squads or fewer beats any broader description of the same target set; past it the squad list is
+// longer and less informative than "the entire server" / "both teams"
+const SQUAD_SUMMARY_PREEMPT_LIMIT = 2
+
 // classifies who a warn targeted against the current interpolated state, most-specific first. The renderer still
 // prefers naming players directly for small sets; this drives the summary for larger ones.
 function summarizeWarnTargets(state: InterpolableState, targets: SM.Player[]): WarnSummary {
@@ -406,6 +410,27 @@ function summarizeWarnTargets(state: InterpolableState, targets: SM.Player[]): W
 	const idOf = (p: SM.Player) => SM.PlayerIds.getPlayerId(p.ids)
 	const targetIds = new Set(targets.map(idOf))
 	const players = state.players
+
+	// squads warned in full, plus however many loose players remain
+	const fullSquads: { uniqueId: number; squadName: string; teamId: SM.TeamId }[] = []
+	let coveredBySquads = 0
+	for (const squad of state.squads) {
+		const members = players.filter(p => p.squadId === squad.squadId && p.teamId === squad.teamId)
+		if (members.length > 0 && members.every(p => targetIds.has(idOf(p)))) {
+			fullSquads.push({ uniqueId: squad.uniqueId, squadName: squad.squadName, teamId: squad.teamId })
+			coveredBySquads += members.length
+		}
+	}
+	const squadSummary: WarnSummary | undefined = fullSquads.length > 0
+		? { type: 'squads', squads: fullSquads, otherPlayerCount: Math.max(0, targets.length - coveredBySquads) }
+		: undefined
+
+	// a warn aimed at a squad stays described as that squad even when the squad happens to be the whole server or a
+	// whole team, which is what a near-empty server makes of every squad warn. Requires the squads to account for
+	// every target exactly, so a broader set that merely contains a full squad still gets the broader description.
+	if (squadSummary && fullSquads.length <= SQUAD_SUMMARY_PREEMPT_LIMIT && coveredBySquads === targets.length) {
+		return squadSummary
+	}
 
 	// everyone currently on the server
 	if (players.length > 0 && players.every(p => targetIds.has(idOf(p)))) return { type: 'everyone' }
@@ -426,21 +451,7 @@ function summarizeWarnTargets(state: InterpolableState, targets: SM.Player[]): W
 		return { type: 'teams', teamIds: fullTeams }
 	}
 
-	// squads warned in full, plus however many loose players remain
-	const fullSquads: { uniqueId: number; squadName: string; teamId: SM.TeamId }[] = []
-	let coveredBySquads = 0
-	for (const squad of state.squads) {
-		const members = players.filter(p => p.squadId === squad.squadId && p.teamId === squad.teamId)
-		if (members.length > 0 && members.every(p => targetIds.has(idOf(p)))) {
-			fullSquads.push({ uniqueId: squad.uniqueId, squadName: squad.squadName, teamId: squad.teamId })
-			coveredBySquads += members.length
-		}
-	}
-	if (fullSquads.length > 0) {
-		return { type: 'squads', squads: fullSquads, otherPlayerCount: Math.max(0, targets.length - coveredBySquads) }
-	}
-
-	return { type: 'players' }
+	return squadSummary ?? { type: 'players' }
 }
 
 const compiledPatternMap = new WeakMap<string[], RegExp[]>()
