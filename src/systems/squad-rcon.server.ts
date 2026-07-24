@@ -6,11 +6,11 @@ import type { DecodedPacket } from '@/lib/rcon/core-rcon'
 import { WARNS } from '@/messages'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
+import * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
 import * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
 import * as AdminList from '@/systems/adminlist.server'
-import * as Settings from '@/systems/settings.server'
 import * as Rx from 'rxjs'
 
 const module = initModule('squad-rcon')
@@ -31,10 +31,10 @@ export type SquadRcon = {
 export function initSquadRcon(
 	ctx: C.Rcon & CS.AbortSignal,
 	cleanup: Cleanup.Tasks,
-	opts?: { onFatalError?: (err: unknown) => void },
+	opts: { cacheTTL: SETTINGS.ServerSettings['rconCacheTTL']; onFatalError?: (err: unknown) => void },
 ): SquadRcon {
 	const rcon = ctx.rcon
-	const cacheTTL = Settings.GLOBAL_SETTINGS.squadServer.rconCacheTTL
+	const cacheTTL = opts.cacheTTL
 	const layersStatus: SquadRcon['layersStatus'] = new AsyncResource<SM.LayerStatusRes, C.Rcon & CS.AbortSignal>(
 		`serverStatus`,
 		(ctx) => getLayerStatus(ctx),
@@ -45,7 +45,7 @@ export function initSquadRcon(
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.LayerStatusRes) => res.code !== 'ok',
 			log,
-			onFatalError: opts?.onFatalError,
+			onFatalError: opts.onFatalError,
 		},
 	)
 	cleanup.push(() => layersStatus.dispose())
@@ -60,7 +60,7 @@ export function initSquadRcon(
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.ServerInfoRes) => res.code !== 'ok',
 			log,
-			onFatalError: opts?.onFatalError,
+			onFatalError: opts.onFatalError,
 		},
 	)
 	cleanup.push(() => serverInfo.dispose())
@@ -75,7 +75,7 @@ export function initSquadRcon(
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.TeamsRes) => res.code !== 'ok',
 			log,
-			onFatalError: opts?.onFatalError,
+			onFatalError: opts.onFatalError,
 		},
 	)
 	cleanup.push(() => teams.dispose())
@@ -326,28 +326,9 @@ export async function broadcast(ctx: C.Rcon & CS.AbortSignal, message: string) {
 	}
 }
 
-export type WarnOptionsBase =
-	| {
-		msg: string | string[]
-		// whether to include GLOBAL_SETTINGS.warnPrefix
-		prefix?: boolean
-	}
-	| string
-	| string[]
+export type WarnOptionsBase = { msg: string | string[] } | string | string[]
 // returning undefined indicates warning should be skipped
 export type WarnOptions = WarnOptionsBase | ((ctx: C.Player) => WarnOptionsBase | undefined)
-
-// normalizes any WarnOptions form to carry the admin-directed warnPrefix flag. Only admin-directed sends
-// (warnAllAdmins, admin-chat command feedback) go through this; player-directed warns stay unprefixed.
-export function withPrefixFlag(options: WarnOptions, prefix = true): WarnOptions {
-	const apply = (o: WarnOptionsBase | undefined): WarnOptionsBase | undefined => {
-		if (o === undefined) return undefined
-		if (typeof o === 'string' || Array.isArray(o)) return { msg: o, prefix }
-		return { prefix, ...o }
-	}
-	if (typeof options === 'function') return (pctx) => apply(options(pctx))
-	return apply(options)!
-}
 
 export async function getPlayer(ctx: C.SquadRcon & CS.AbortSignal, query: SM.PlayerIds.IdQuery, opts?: { ttl?: number }) {
 	const playersRes = await ctx.server.teams.get(ctx, opts)
@@ -370,7 +351,6 @@ export async function warn(ctx: C.SquadRcon & CS.AbortSignal, ids: SM.PlayerIds.
 		opts = _opts
 	}
 
-	let prefix: boolean = false
 	let msgArr: string[]
 	if (typeof opts === 'string') {
 		msgArr = [opts]
@@ -378,10 +358,6 @@ export async function warn(ctx: C.SquadRcon & CS.AbortSignal, ids: SM.PlayerIds.
 		msgArr = opts
 	} else {
 		msgArr = Array.isArray(opts.msg) ? opts.msg : [opts.msg]
-		prefix = opts.prefix ?? prefix
-	}
-	if (msgArr[0] && Settings.GLOBAL_SETTINGS.warnPrefix && prefix) {
-		msgArr[0] = Settings.GLOBAL_SETTINGS.warnPrefix + msgArr[0]
 	}
 
 	log.info(`Warning player: %s: %s`, SM.PlayerIds.prettyPrint(ids), msgArr)
@@ -407,8 +383,6 @@ export const warnAllAdmins = C.spanOp(
 	'warnAllAdmins',
 	{ module, levels: { event: 'info' } },
 	async (ctx: C.SquadRcon & CS.AbortSignal, options: WarnOptions, excludeSteamIds?: Set<string>) => {
-		// admin-directed messages carry the configured warnPrefix; this covers every warnAllAdmins call site
-		options = withPrefixFlag(options)
 		const [currentAdminList, teamsRes] = await Promise.all([
 			AdminList.adminList.get(ctx),
 			ctx.server.teams.get(ctx),

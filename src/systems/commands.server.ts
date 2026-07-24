@@ -58,11 +58,8 @@ export async function handleCommand(baseCtx: C.Db & C.ServerSlice & CS.AbortSign
 		}
 	}
 
-	// all command feedback goes through reply(); admin-chat feedback carries the configured warnPrefix,
-	// feedback to public chats (and all player-directed warns elsewhere) stays unprefixed
-	const isAdminChat = msg.channelType === 'ChatAdmin'
 	async function reply(opts: SquadRcon.WarnOptions) {
-		await SquadRcon.warn(baseCtx, msg.playerIds, isAdminChat ? SquadRcon.withPrefixFlag(opts) : opts)
+		await SquadRcon.warn(baseCtx, msg.playerIds, opts)
 	}
 	async function error<T extends string>(reason: T, errorMessage: string) {
 		await reply(errorMessage)

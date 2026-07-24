@@ -4,6 +4,9 @@ import type { MigrationDriver } from '@/server/migrate'
 //
 //   overrideAdminSetNextLayer / warnOnChangeLayer   per-server -> global (first server that sets them wins)
 //   adminActionReasons[].aliases                    -> .keywords, now the ONLY thing chat matches, so required
+//   squadServer.rconCacheTTL                        global -> per-server (copied to every server)
+//   squadServer.{logFilePollInterval,tickRateThresholds} -> global top level, dissolving squadServer
+//   warnPrefix                                      dropped; admin-directed warns are never prefixed now
 //
 // `settings` is stored superjson-wrapped ({ json, meta }); every value touched here is a primitive or a plain
 // object, so `meta` never references them. Idempotent throughout: once a key has been moved the source no longer
@@ -29,9 +32,12 @@ function writeGlobal(db: MigrationDriver, id: number, wrapper: Wrapper): void {
 
 export async function up(db: MigrationDriver): Promise<void> {
 	const global = readGlobal(db)
+	const squadServer = (global?.json.squadServer ?? {}) as Record<string, unknown>
+	// every server starts from what the whole install was already using, so nobody's RCON traffic changes shape
+	const rconCacheTTL = squadServer.rconCacheTTL
 
-	// per-server -> global. The setting is a policy rather than a connection detail, so the servers collapse into one
-	// value: the first server that has it explicitly set wins, and the schema default covers the rest.
+	// per-server -> global. These are policy rather than connection details, so the servers collapse into one value:
+	// the first server that has one explicitly set wins, and the schema default covers the rest.
 	const hoisted: Record<string, unknown> = {}
 	const serverRows = db.prepare(`SELECT id, settings FROM servers ORDER BY id`).all() as { id: string; settings: string | null }[]
 	for (const row of serverRows) {
@@ -46,6 +52,10 @@ export async function up(db: MigrationDriver): Promise<void> {
 			delete json[key]
 			changed = true
 		}
+		if (rconCacheTTL !== undefined && !('rconCacheTTL' in json)) {
+			json.rconCacheTTL = structuredClone(rconCacheTTL)
+			changed = true
+		}
 		if (changed) db.prepare(`UPDATE servers SET settings = ? WHERE id = ?`).run(JSON.stringify(wrapper), row.id)
 	}
 
@@ -54,6 +64,21 @@ export async function up(db: MigrationDriver): Promise<void> {
 	for (const key of GLOBALIZED_SERVER_KEYS) {
 		if (key in global.json || !(key in hoisted)) continue
 		global.json[key] = hoisted[key]
+		globalChanged = true
+	}
+
+	// squadServer dissolves: its cache TTLs went to the servers above, and the two settings left are unrelated to each
+	// other, so they sit at the top level rather than under a heading that no longer describes them
+	if ('squadServer' in global.json) {
+		for (const key of ['logFilePollInterval', 'tickRateThresholds']) {
+			if (key in squadServer && !(key in global.json)) global.json[key] = squadServer[key]
+		}
+		delete global.json.squadServer
+		globalChanged = true
+	}
+
+	if ('warnPrefix' in global.json) {
+		delete global.json.warnPrefix
 		globalChanged = true
 	}
 

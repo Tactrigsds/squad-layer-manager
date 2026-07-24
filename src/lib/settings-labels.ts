@@ -6,6 +6,9 @@ const LABEL_OVERRIDES: Record<string, string> = {
 	requireReasonFor: 'Require a Reason',
 	layerGeneration: 'Layer Generation Weights',
 	rbac: 'Permissions & Roles',
+	vote: 'Votes',
+	// the chat config holds nothing but the warn/broadcast suppression patterns
+	chat: 'Message Suppression',
 	// per-server settings
 	connections: 'Connections',
 	'connections.rcon': 'RCON',

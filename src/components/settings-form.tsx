@@ -3658,11 +3658,15 @@ function GroupedRootFields(
 	}
 	return (
 		<div className="space-y-6">
-			{grouped.map(({ group, keys }) => (
-				<GroupSection key={group.slug} slug={group.slug} label={group.label}>
-					{renderKeys(keys)}
-				</GroupSection>
-			))}
+			{grouped.map(({ group, keys }) =>
+				group.passthrough
+					? <React.Fragment key={group.slug}>{renderKeys(keys)}</React.Fragment>
+					: (
+						<GroupSection key={group.slug} slug={group.slug} label={group.label}>
+							{renderKeys(keys)}
+						</GroupSection>
+					)
+			)}
 			{renderKeys(ungrouped)}
 		</div>
 	)

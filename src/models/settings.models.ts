@@ -197,9 +197,6 @@ export const GlobalSettingsSchema = z.object({
 	topBarColor: z.string().prefault('green').nullable().describe(
 		'Tints the top navigation bar so non-production environments are visually distinct. Set to null in production to disable the tint.',
 	),
-	warnPrefix: z.string().nullable().prefault('SLM: ').describe(
-		'Prefix applied to admin-directed warns (admin notifications and in-game command feedback). Never applied to warns delivered to affected players.',
-	),
 	adminActionReasons: AAR.AdminActionReasonsSchema.describe(
 		'Preset reasons admins can pick when performing actions against players. Each reason carries separate text per action it applies to, and is available for an action only if it has text for that action (so every reason needs at least one action text). Text is sent verbatim to the affected player(s) in-game and supports {{variables}}. '
 			+ 'Available: {{label}}, {{duration}} (timeouts only), plus any Message Variables below.',
@@ -252,30 +249,15 @@ export const GlobalSettingsSchema = z.object({
 		'Whether AdminSetNextLayer commands not originating from SLM are respected',
 	),
 	warnOnChangeLayer: z.boolean().prefault(false).describe('Warn admins when the next layer is changed'),
-	squadServer: z.object({
-		logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines.'),
-		rconCacheTTL: z.object({
-			layersStatus: HumanTime.prefault('5s').describe(
-				'How stale the cached current/next layer may be before a read refetches it over RCON.',
-			),
-			serverInfo: HumanTime.prefault('10s').describe(
-				'How stale cached server info (player count, tick rate) may be before a read refetches it over RCON.',
-			),
-			teams: HumanTime.prefault('5s').describe(
-				'How stale the cached roster may be before a read refetches it over RCON. Also the interval at which observers poll ListPlayers.',
-			),
-		}).prefault({}).describe(
-			'How long RCON responses stay cached. Lower means fresher data and more RCON traffic; these are the dominant source of roster/status latency.',
+	logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines.'),
+	tickRateThresholds: z.object({
+		good: z.number().positive().prefault(60).describe(
+			'At or above this tick rate the live server tick rate displays as good (green)',
 		),
-		tickRateThresholds: z.object({
-			good: z.number().positive().prefault(60).describe(
-				'At or above this tick rate the live server tick rate displays as good (green)',
-			),
-			warning: z.number().positive().prefault(50).describe(
-				'At or above this tick rate (but below the good threshold) the tick rate displays as a warning (yellow); below it, as unhealthy (red)',
-			),
-		}).prefault({}).describe('Thresholds for coloring the live server tick rate display'),
-	}).prefault({}),
+		warning: z.number().positive().prefault(50).describe(
+			'At or above this tick rate (but below the good threshold) the tick rate displays as a warning (yellow); below it, as unhealthy (red)',
+		),
+	}).prefault({}).describe('Thresholds for coloring the live server tick rate display'),
 	balanceTriggerLevels: z.partialRecord(BAL.TRIGGER_IDS, BAL.TRIGGER_LEVEL)
 		.prefault({ '150x2': 'warn' })
 		.describe('Configures the trigger warning levels for balance calculations'),
@@ -634,6 +616,19 @@ export const PublicServerSettingsSchema = z
 				'The layer queue configuration: the pool (filters and repeat rules) and queue length / vote preferences.',
 			),
 		remindersAndAnnouncementsEnabled: z.boolean().prefault(true).describe('Whether reminders/announcements for admins are enabled'),
+		rconCacheTTL: z.object({
+			layersStatus: HumanTime.prefault('5s').describe(
+				'How stale the cached current/next layer may be before a read refetches it over RCON.',
+			),
+			serverInfo: HumanTime.prefault('10s').describe(
+				'How stale cached server info (player count, tick rate) may be before a read refetches it over RCON.',
+			),
+			teams: HumanTime.prefault('5s').describe(
+				'How stale the cached roster may be before a read refetches it over RCON. Also the interval at which observers poll ListPlayers.',
+			),
+		}).prefault({}).describe(
+			'How long RCON responses stay cached. Lower means fresher data and more RCON traffic; these are the dominant source of roster/status latency.',
+		),
 	})
 
 export type PublicServerSettings = z.infer<typeof PublicServerSettingsSchema>
