@@ -448,7 +448,6 @@ export function defaultRbacSettings() {
 	const adminPermissions: RBAC.RolePermissionExpression[] = [
 		'site:authorized',
 		'queue:write',
-		'queue:manage-all-notes',
 		'vote:manage',
 		'filters:create',
 		'filters:write-all',
@@ -461,8 +460,14 @@ export function defaultRbacSettings() {
 		'battlemetrics:write-flags',
 	]
 	// admin:manage-servers lets them enable/disable and set the default server; without a write-sensitive grant they
-	// still can't create servers (which requires supplying connection details)
-	const managerPermissions: RBAC.RolePermissionExpression[] = [...adminPermissions, 'admin:manage-servers', 'admin:restart-slm']
+	// still can't create servers (which requires supplying connection details). Policing other people's notes sits here
+	// rather than with the admins: writing notes and managing your own only needs queue:write
+	const managerPermissions: RBAC.RolePermissionExpression[] = [
+		...adminPermissions,
+		'queue:manage-all-notes',
+		'admin:manage-servers',
+		'admin:restart-slm',
+	]
 	const ownerPermissions: RBAC.RolePermissionExpression[] = ['*']
 	// edit all servers' non-connection settings (write implies read); no write-sensitive, so connections stay off-limits
 	const managerServerGrants: { access: 'read' | 'write' | 'write-sensitive'; serverIds: string[]; paths: string[] }[] = [
