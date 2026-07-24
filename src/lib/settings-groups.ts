@@ -60,7 +60,6 @@ export const ADVANCED_SERVER_SETTINGS_PATHS: ReadonlySet<string> = new Set([
 	'vote.internalVoteReminderInterval',
 	'vote.finalVoteReminder',
 	'vote.autoStartVoteCutoff',
-	'vote.maxNumVoteChoices',
 	'fogOffDelay',
 	'postRollAnnouncementsTimeout',
 ])

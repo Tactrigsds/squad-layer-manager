@@ -601,7 +601,6 @@ export const LayerTableConfigSchema = z.object({
 	// must stay bidirectionally codec-able (no z.preprocess/one-way transforms): the settings system round-trips
 	// GlobalSettings through .encode() for the editor form, which throws on a unidirectional transform
 	extraLayerSelectMenuItems: z.array(F.EditableCompNodeSchema).optional(),
-	defaultExtraFilters: z.array(F.FilterEntityIdSchema).optional(),
 })
 
 export type LayerTableConfig = z.infer<typeof LayerTableConfigSchema>
