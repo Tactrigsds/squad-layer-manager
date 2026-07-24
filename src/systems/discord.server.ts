@@ -88,10 +88,8 @@ export async function setup() {
 			const app = await client.application?.fetch().catch(() => null)
 			const appName = app?.name ?? client.user?.username ?? 'unknown'
 			log.fatal(
-				'The "%s" Discord application is not installed in the configured guild (homeDiscordGuildId=%s). '
-					+ 'Invite the bot to that server and restart SLM.',
-				appName,
-				ENV.DISCORD_HOME_GUILD_ID,
+				{ appName, homeDiscordGuildId: ENV.DISCORD_HOME_GUILD_ID },
+				'The Discord application is not installed in the configured guild. Invite the bot to that server and restart SLM.',
 			)
 			process.exit(1)
 		}

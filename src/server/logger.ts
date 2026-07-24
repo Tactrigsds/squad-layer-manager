@@ -83,8 +83,9 @@ export function ensureLoggerSetup() {
 			let attrs = {} as Record<string, unknown>
 			let msg = null
 			for (let i = 0; i < inputArgs.length; i++) {
-				if (typeof inputArgs[i] === 'string') {
-					msg = format(inputArgs[i], inputArgs.slice(i + 1))
+				const arg = inputArgs[i]
+				if (typeof arg === 'string') {
+					msg = format(arg, inputArgs.slice(i + 1))
 					break
 				}
 			}
