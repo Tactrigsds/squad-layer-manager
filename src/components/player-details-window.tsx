@@ -259,6 +259,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 						playerIds={[playerId]}
 						focusTarget={{ kind: 'player', playerId }}
 						placeholder={`Warn ${ids?.username ?? 'player'}…`}
+						stores={stores}
 					/>
 				</div>
 			)}

@@ -64,7 +64,7 @@ export const ADMIN_ACTIONS: Record<AdminActionType, AdminActionDescriptor> = {
 	},
 }
 
-export const AdminActionReasonSchema = LP.LabeledPresetSchema.omit({ message: true }).extend({
+export const AdminActionReasonSchema = LP.LabeledPresetSchema.extend({
 	// per-action text; a reason applies to an action iff it has text here
 	actionTexts: z.partialRecord(ADMIN_ACTION_TYPE, z.string().trim().min(1)).prefault({}).describe(
 		'Per-action text. The reason is available for an action only if it has text for that action.',
@@ -76,7 +76,7 @@ export const AdminActionReasonSchema = LP.LabeledPresetSchema.omit({ message: tr
 export type AdminActionReason = z.infer<typeof AdminActionReasonSchema>
 
 export const AdminActionReasonsSchema = z.array(AdminActionReasonSchema)
-	.superRefine(LP.addLabelAliasUniquenessIssues)
+	.superRefine(LP.addLabelKeywordUniquenessIssues)
 	.prefault([])
 
 export function reasonsForAction(reasons: AdminActionReason[], action: AdminActionType): AdminActionReason[] {
@@ -94,8 +94,19 @@ export type ResolveReasonRes =
 	| { code: 'err:reason-not-found'; msg: string }
 	| { code: 'err:reason-not-applicable'; msg: string }
 
-export function resolveReason(reasons: AdminActionReason[], action: AdminActionType, token: string): ResolveReasonRes {
-	const reason = LP.findByLabelOrAlias(reasons, token)
+// how in-game chat resolves a reason: by keyword only. A preset argument is matched as exactly one token, so a label
+// with whitespace would silently be unreachable -- hence keywords, which can't contain any and are required.
+export function resolveReason(reasons: AdminActionReason[], action: AdminActionType, keyword: string): ResolveReasonRes {
+	return checkApplicable(LP.findByKeyword(reasons, keyword), action, keyword)
+}
+
+// how the web GUI resolves a reason the admin picked from a menu: by label, the preset's identity. Handlers re-resolve
+// against current settings so a preset deleted or retargeted since the client loaded it fails the whole action.
+export function resolveReasonByLabel(reasons: AdminActionReason[], action: AdminActionType, label: string): ResolveReasonRes {
+	return checkApplicable(LP.findByLabel(reasons, label), action, label)
+}
+
+function checkApplicable(reason: AdminActionReason | undefined, action: AdminActionType, token: string): ResolveReasonRes {
 	if (!reason) return { code: 'err:reason-not-found', msg: `Admin action reason "${token}" no longer exists` }
 	if (reason.actionTexts[action] === undefined) {
 		return {
@@ -126,20 +137,21 @@ export function applyCustomReason(text: string, vars: Record<string, string>): A
 }
 
 // renders an applied reason (mustache templating over the snapshotted vars plus {{label}}), with optional
-// per-render extras (e.g. the remaining timeout duration) and the `@Squad<id>` tag when messaging a squad
+// per-render extras (e.g. the remaining timeout duration) and the leading tag naming who the message is aimed at
+// (`@Squad<id>`, `@admins`, or the recipients themselves)
 export function renderAppliedReason(
 	applied: AppliedReason,
-	opts?: { squadTag?: string; extraVars?: Record<string, string> },
+	opts?: { audienceTag?: string; extraVars?: Record<string, string> },
 ): string {
 	const rendered = renderTemplate(applied.template, { ...applied.vars, label: applied.label ?? '', ...opts?.extraVars })
-	return opts?.squadTag ? `${opts.squadTag} ${rendered}` : rendered
+	return opts?.audienceTag ? `${opts.audienceTag} ${rendered}` : rendered
 }
 
 // convenience for previews and one-shot renders: apply + render in one step
 export function formatAppliedReason(
 	action: AdminActionType,
 	reason: AdminActionReason,
-	opts?: { squadTag?: string; vars?: Record<string, string> },
+	opts?: { audienceTag?: string; vars?: Record<string, string> },
 ): string {
-	return renderAppliedReason(applyReason(action, reason, opts?.vars ?? {}), { squadTag: opts?.squadTag })
+	return renderAppliedReason(applyReason(action, reason, opts?.vars ?? {}), { audienceTag: opts?.audienceTag })
 }

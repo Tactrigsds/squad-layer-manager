@@ -114,7 +114,7 @@ describe('app-events persistence', () => {
 				{ path: 'connections.rcon.password', from: 'old-rcon-pw', to: 'new-rcon-pw' },
 				{ path: 'connections.token', from: 'old-token', to: 'new-token' },
 				{ path: 'connections', from: { rcon: { password: 'whole-object' } }, to: {} },
-				{ path: 'queue.preferredLength', from: 12, to: 8 },
+				{ path: 'queue.layerRequests.maxTotal', from: 50, to: 8 },
 			],
 		})
 		const persisted = AppEvents.fromRow(AppEvents.toRow(e) as any) as AppEvents.SettingsUpdated
@@ -123,7 +123,7 @@ describe('app-events persistence', () => {
 			{ path: 'connections.token', from: AppEvents.REDACTED_SETTING, to: AppEvents.REDACTED_SETTING },
 			{ path: 'connections', from: AppEvents.REDACTED_SETTING, to: AppEvents.REDACTED_SETTING },
 			// non-sensitive paths keep their values
-			{ path: 'queue.preferredLength', from: 12, to: 8 },
+			{ path: 'queue.layerRequests.maxTotal', from: 50, to: 8 },
 		])
 		// belt and braces: no credential value survives anywhere in the serialized blob (the paths do, by design)
 		const blob = JSON.stringify(AppEvents.toRow(e).data)

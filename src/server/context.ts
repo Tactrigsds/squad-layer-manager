@@ -13,6 +13,7 @@ import type * as SM from '@/models/squad.models.ts'
 import type * as USR from '@/models/users.models.ts'
 import type * as RBAC from '@/rbac.models'
 import type * as LayerQueueSys from '@/systems/layer-queue.server'
+import type * as MatchEventsCacheSys from '@/systems/match-events-cache.server'
 import type * as MatchHistorySys from '@/systems/match-history.server'
 import type * as SettingsSys from '@/systems/settings.server'
 import type * as SquadRconSys from '@/systems/squad-rcon.server'
@@ -484,6 +485,10 @@ export type MatchHistory = CS.Ctx & {
 	matchHistory: MatchHistorySys.MatchHistoryContext
 } & ServerId
 
+export type MatchEventsCache = CS.Ctx & {
+	matchEventsCache: MatchEventsCacheSys.MatchEventsCacheContext
+} & ServerId
+
 export type SquadServer =
 	& CS.Ctx
 	& { server: SquadServerSys.SquadServer }
@@ -511,6 +516,7 @@ export type ServerSlice =
 	& Vote
 	& LayerQueue
 	& MatchHistory
+	& MatchEventsCache
 	& Teamswap
 	& ServerSettings
 	& ServerSliceCleanup

@@ -23,9 +23,9 @@ beforeAll(async () => {
 		// (linkedSteamAccounts). Commands need both: the first to be an admin, the second to be allowed.
 		admins: [ADMIN_STEAM_ID],
 		adminSteamIds: [ADMIN_STEAM_ID],
-		globalSettings: (s) => {
+		serverSettings: (s) => {
 			// so a roll leaves the queue "low" and the app warns every admin about it -- see the last test
-			s.layerQueue.lowQueueWarningThreshold = 5
+			s.queue.lowQueueWarningThreshold = 5
 		},
 	})
 	app.emu.world.connectPlayer(admin)

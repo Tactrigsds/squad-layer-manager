@@ -84,7 +84,7 @@ export function scrollToAnchorSettled(id: string, opts?: { deadlineMs?: number; 
 		if (el) {
 			// exclusive highlight (styled via [data-anchor-highlight] in index.css), applied here rather than up-front so a
 			// field that mounts after its section still gets marked; idempotent so it isn't re-set every frame
-			if (opts?.highlight && !el.hasAttribute('data-anchor-highlight')) highlightElement(el)
+			if (opts?.highlight && !el.hasAttribute('data-anchor-highlight')) highlightElement(el, id)
 			const desired = desiredScrollTop(el, main)
 			// resting on target for a few consecutive frames means the layout above it has stopped moving
 			if (Math.abs(main.scrollTop - desired) < 1) {
@@ -107,13 +107,17 @@ export function scrollToAnchorSettled(id: string, opts?: { deadlineMs?: number; 
 	return cancel
 }
 
-// mark one element as the anchored target (styled via [data-anchor-highlight] in index.css). The marker is exclusive
-// and persists until the next navigation, so the anchored setting stays visually identifiable.
-function highlightElement(el: HTMLElement): void {
+// mark the anchored target (styled via [data-anchor-highlight] in index.css). The marker is exclusive and persists
+// until the next navigation, so the anchored setting stays visually identifiable. An element carrying
+// `data-anchor-companion="<id>"` is marked alongside the target without being what the anchor scrolls to: a server
+// anchor scrolls to its row in the list, but the settings it opens live in a separate card further down the page, and
+// both need to read as the thing that was navigated to.
+function highlightElement(el: HTMLElement, id: string): void {
+	const marked = new Set<Element>([el, ...document.querySelectorAll(`[data-anchor-companion="${CSS.escape(id)}"]`)])
 	for (const other of document.querySelectorAll('[data-anchor-highlight]')) {
-		if (other !== el) other.removeAttribute('data-anchor-highlight')
+		if (!marked.has(other)) other.removeAttribute('data-anchor-highlight')
 	}
-	el.setAttribute('data-anchor-highlight', 'true')
+	for (const node of marked) node.setAttribute('data-anchor-highlight', 'true')
 }
 
 // listeners notified on every navigateToAnchor. The server settings pane is master-detail (only the selected server is

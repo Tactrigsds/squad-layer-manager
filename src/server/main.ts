@@ -19,6 +19,7 @@ import * as LayerData from '@/systems/layer-data.server'
 import * as LayerEngine from '@/systems/layer-engine.server'
 import * as LayerQueries from '@/systems/layer-queries.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
+import * as MatchEventsCache from '@/systems/match-events-cache.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Metrics from '@/systems/metrics.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
@@ -85,14 +86,15 @@ await C.spanOp('main', { module }, async () => {
 	LayerQueries.setup()
 	LayerQueue.setup()
 	UserPresence.setup()
+	MatchEventsCache.setup()
 	MatchHistory.setup()
 	SquadRcon.setup()
 	Teamswaps.setup()
 	Users.setup()
 	Vote.setup()
 	WsSession.setup()
-	// resolves its config synchronously but opens the db in the background, so it stays off the
-	// critical path; we await `LayerEngine.ready` below, right before the engine can first be queried
+	// resolves the artifact pair and its etag. The artifact itself is not decompressed into wasm memory until
+	// something queries it, which on a server with a non-empty saved queue may be never
 	await LayerEngine.setup()
 	await DB.setup()
 	// starts its own background loop; nothing else depends on it, but it needs the db open

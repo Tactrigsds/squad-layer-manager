@@ -1,6 +1,5 @@
 import ComboBox from '@/components/combo-box/combo-box'
 import { Comparison } from '@/components/filter-card'
-import FilterEntitySelect from '@/components/filter-entity-select'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -40,7 +39,6 @@ export default function LayerTableConfigEditor(
 			<ColumnsSection value={value} patch={patch} columnOptions={columnOptions} />
 			<SortSection value={value} patch={patch} columnOptions={columnOptions} reset$={reset$} />
 			<ExtraMenuItemsSection value={value} patch={patch} />
-			<DefaultFiltersSection value={value} patch={patch} />
 		</div>
 	)
 }
@@ -281,50 +279,6 @@ function ExtraMenuItemsSection(
 				<Icons.Plus className="h-4 w-4" />
 				Add menu item
 			</Button>
-		</div>
-	)
-}
-
-function DefaultFiltersSection(
-	{ value, patch }: { value: LayerTableConfig; patch: (next: Partial<LayerTableConfig>) => void },
-) {
-	const filters = value.defaultExtraFilters ?? []
-
-	function setFilter(idx: number, filterId: string | null) {
-		if (!filterId) return
-		// ignore a pick that already exists elsewhere so ids stay unique (they key the rows)
-		if (filters.some((f, i) => f === filterId && i !== idx)) return
-		patch({ defaultExtraFilters: filters.map((f, i) => (i === idx ? filterId : f)) })
-	}
-	function remove(idx: number) {
-		const next = filters.filter((_, i) => i !== idx)
-		patch({ defaultExtraFilters: next.length ? next : undefined })
-	}
-
-	return (
-		<div className="space-y-1.5">
-			<SectionLabel hint="Filters applied to the layer table by default.">Default extra filters</SectionLabel>
-			{filters.length === 0 && <p className="text-xs text-muted-foreground">None.</p>}
-			<div className="space-y-2">
-				{filters.map((filterId, idx) => (
-					// filter ids are kept unique in the list (add/setFilter dedupe), so they're stable keys
-					<div key={filterId} className="flex items-center gap-2">
-						<FilterEntitySelect className="w-full" filterId={filterId} allowEmpty={false} onSelect={(id) => setFilter(idx, id)} />
-						<Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-destructive" onClick={() => remove(idx)}>
-							<Icons.X className="h-4 w-4" />
-						</Button>
-					</div>
-				))}
-			</div>
-			{/* appends only once a real filter is chosen, so we never persist an empty/invalid entry */}
-			<FilterEntitySelect
-				className="w-full"
-				filterId={null}
-				allowEmpty
-				onSelect={(id) => {
-					if (id && !filters.includes(id)) patch({ defaultExtraFilters: [...filters, id] })
-				}}
-			/>
 		</div>
 	)
 }

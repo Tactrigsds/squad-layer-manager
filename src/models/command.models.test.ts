@@ -9,7 +9,7 @@ const preds = (opts: { teams?: string[]; presets?: string[] }): CMD.AssignPredic
 })
 
 function reason(label: string, opts: Partial<AAR.AdminActionReason> = {}): AAR.AdminActionReason {
-	return { label, aliases: [], actionTexts: { warn: `${label} warn text` }, ...opts }
+	return { label, keywords: [label.toLowerCase()], actionTexts: { warn: `${label} warn text` }, ...opts }
 }
 
 describe('assignArgTokens', () => {
@@ -153,7 +153,7 @@ describe('kick and timeout arg windows', () => {
 
 describe('resolveReasonArg', () => {
 	const reasons = [
-		reason('Teamkilling', { aliases: ['tk'], actionTexts: { warn: 'tk warn text', kick: 'tk kick text' } }),
+		reason('Teamkilling', { keywords: ['tk'], actionTexts: { warn: 'tk warn text', kick: 'tk kick text' } }),
 		reason('AFK'),
 	]
 
@@ -186,21 +186,6 @@ describe('resolveReasonArg', () => {
 		expect(CMD.resolveReasonArg(reasons, 'warn', ['tk', 'seriously'])).toEqual({
 			code: 'ok',
 			value: { type: 'custom', text: 'tk seriously' },
-		})
-	})
-})
-
-describe('resolveBroadcastArg', () => {
-	const presets = [{ label: 'Seeding', message: 'seeding rules...', aliases: ['seed'] }]
-
-	it('one token = preset only, multi-token = verbatim', () => {
-		const one = CMD.resolveBroadcastArg(presets, ['seed'])
-		expect(one.code).toBe('ok')
-		if (one.code === 'ok') expect(one.value.type).toBe('preset')
-		expect(CMD.resolveBroadcastArg(presets, ['sed']).code).toBe('err:unknown-preset')
-		expect(CMD.resolveBroadcastArg(presets, ['hello', 'all'])).toEqual({
-			code: 'ok',
-			value: { type: 'custom', text: 'hello all' },
 		})
 	})
 })

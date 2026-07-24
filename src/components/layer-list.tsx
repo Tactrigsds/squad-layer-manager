@@ -1121,6 +1121,7 @@ export function VoteDisplayPropsPopover(
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
 			<PopoverContent className="w-80">
 				<AdvancedVoteConfigEditor
+					stores={props.stores}
 					config={currentConfig}
 					readonly={props.readonly}
 					choices={choices}

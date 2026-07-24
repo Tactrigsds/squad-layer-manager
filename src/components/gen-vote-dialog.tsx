@@ -300,6 +300,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 						</div>
 						<div className="w-80 shrink-0 flex flex-col justify-between">
 							<AdvancedVoteConfigEditor
+								stores={{ squadServer: props.stores.squadServer }}
 								config={voteConfig}
 								choices={choices.map(c => c.layerId).filter((id): id is string => !!id)}
 								onChange={handleSetVoteConfig}
