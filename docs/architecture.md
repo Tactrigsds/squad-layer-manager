@@ -689,6 +689,53 @@ the IR's JSON, which can never go stale because the layer table is immutable for
 The one place duplication _is_ accepted is generation key packing, which is implemented identically in
 `layer-columns.ts` and `gen.rs`, so a key computed from a weight entry matches the key computed from a row.
 
+**The server loads its copy lazily.** The browser runs the engine for everything the UI does (the layer table,
+the select dialog, gen-vote, filter evaluation), so the server's copy exists for four narrow jobs only: queue
+autogen, the force-write pool check, backburner template probes, and the `getLayerInfo` route. Holding the
+artifact costs ~64MB resident for as long as it is held against a ~120ms cold load, so `LayerEngine.getEngine()`
+defers it to the first actual query and memoizes from there.
+
+That only pays off if nothing resolves a query context speculatively. `resolveLayerQueryCtx` is what triggers
+the load, so call it at the point of use rather than at the top of a handler. The admin queue reminder is the
+case to copy: it runs every 10 minutes and checks for a next layer first, because that check needs no engine
+and the status query it guards does.
+
+**Nothing may query the engine inside a transaction.** The load awaits file reads and a wasm compile, and a
+`runTransaction` callback must never await anything but a query (see
+[Data and persistence](#data-and-persistence)). Queue autogen is the case that makes this concrete: it runs as
+a side effect of the op that empties the list, and during a map roll that op is dispatched inside the roll's
+transaction. So `handleSideEffect` pushes generation onto `ctx.tx.unlockTasks`, which `runTransaction` awaits
+after committing and after releasing the lock, while the caller's mutexes still cover it.
+
+Two consequences of that worth knowing. `onNewGameDuringRoll` reads its `nextLayerId` **after** the
+transaction, because the generated item does not exist until the unlock tasks have run. And the match row and
+the generated queue item are **no longer written atomically**: a crash between them leaves a committed match
+with an empty queue, which self-heals, since the `init` op regenerates on an empty saved list.
+
+**It is released again after `IDLE_RELEASE_MS` without a query**, which is what turns this from a faster boot
+into an actual memory saving: the server's queries come in short bursts minutes apart, so the artifact is
+resident for a few seconds out of every few minutes rather than permanently.
+
+Releasing it takes two things, and only having one of them is a silent no-op:
+
+- **Dropping the reference is not enough.** Wasm linear memory is external to the JS heap, so 64MB of it barely
+  moves V8's heap-limit heuristics, and ordinary request churn is absorbed by scavenges rather than provoking
+  the major GC that would clear it. Measured: with only a `WeakRef` holding the engine it survived 20s of
+  idling _and_ 20s of steady allocation, RSS unchanged. So `release()` asks for a GC explicitly. That costs
+  ~15ms against the ~60MB it returns.
+- **A `WeakRef` is still kept**, for a different reason than freeing: callers get the engine on their query
+  context, so one can outlive the idle timer. Handing that caller the engine it already holds is what stops a
+  second 64MB copy being loaded alongside the first.
+
+The tradeoff is a ~120ms reload on the first query after an idle period. It is asynchronous, so it does not
+stall the event loop, and concurrent callers arriving mid-load share one in-flight load rather than each
+decompressing a copy. Shipping the artifact uncompressed would cut it to ~95ms (the gunzip is most of it) at
+the cost of ~57MB of image size, which is not currently thought worth it.
+
+Two things kept deliberately off the engine load: the `/layers.bin` etag (hashed from the on-disk bytes at
+boot, since every client fetches that artifact on page load) and `layersVersion` (which comes from resolving
+the artifact pair, not from the loaded engine).
+
 ## Out-of-process pieces
 
 **The server agent** (`server-agent/agent`, Rust) runs on the game host. It tails

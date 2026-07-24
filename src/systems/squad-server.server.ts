@@ -2082,10 +2082,10 @@ const onNewGameDuringRoll = (serverId: string): PendingEvents.State['hooks']['on
 			mutexes: () => [ctx.matchHistory.mtx, ctx.layerQueue.updateLayerMtx],
 			levels: { event: 'info' },
 		},
-		async () =>
-			await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-				ctx.server.serverRolling$.next(Date.now())
-				try {
+		async () => {
+			ctx.server.serverRolling$.next(Date.now())
+			try {
+				const { match } = await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 					const nextLqItem = LayerQueue.getSavedQueue(ctx)[0]
 
 					let currentMatchLqItem: LL.Item | undefined
@@ -2110,12 +2110,17 @@ const onNewGameDuringRoll = (serverId: string): PendingEvents.State['hooks']['on
 						await LayerQueue.dispatchOp(ctx, { op: 'shift-first-saved-layer', opId: SLL.createOpId() })
 					}
 					LayerQueue.schedulePostRollTasks(ctx, match.layerId)
-					const nextLayerId = LL.getNextLayerId(LayerQueue.getSavedQueue(ctx))
-					return { match, nextLayerId }
-				} finally {
-					ctx.server.serverRolling$.next(null)
-				}
-			}),
+					return { match }
+				})
+				// after the transaction, not inside it: emptying the queue defers generation to the transaction's
+				// unlockTasks, which runTransaction awaits before resolving. Read any earlier and the queue is still
+				// empty. The rolling flag likewise stays up until generation has landed.
+				const nextLayerId = LL.getNextLayerId(LayerQueue.getSavedQueue(ctx))
+				return { match, nextLayerId }
+			} finally {
+				ctx.server.serverRolling$.next(null)
+			}
+		},
 	)()
 }
 

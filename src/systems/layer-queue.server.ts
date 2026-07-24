@@ -62,6 +62,19 @@ export type LayerQueueSlice = {
 	updateLayerMtx: MutexInterface
 }
 
+// ctx for op dispatch and its side effects. `tx` is present when an op is dispatched inside a transaction (the map
+// roll does this), which side effects use to defer work that must not run under the process-wide tx lock.
+type SideEffectCtx =
+	& C.Db
+	& C.LayerQueue
+	& C.SquadServer
+	& C.Vote
+	& C.MatchHistory
+	& C.Rcon
+	& C.ServerSettings
+	& CS.AbortSignal
+	& Partial<Pick<C.Tx, 'tx'>>
+
 const module = initModule('layer-queue')
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
@@ -112,17 +125,19 @@ export const setupInstance = C.spanOp(
 					C.durableSub('queue-reminders', { module, levels: { event: 'info' } }, async (_, signal) => {
 						const baseCtx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
 						const serverState = await SquadServer.getServerState(baseCtx)
-						const ctx = LayerQueriesServer.resolveLayerQueryCtx(baseCtx)
-						const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+						const currentMatch = await MatchHistory.getCurrentMatch(baseCtx)
 						const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: false })
-						const statusRes = await LayerQueries.getLayerItemStatuses({
-							ctx,
-							input: { constraints: allConstraints, list: await LayerQueriesServer.resolveLayerItemsState(baseCtx) },
-						})
 
-						warnCondition: if (statusRes.code === 'ok') {
-							const nextLayer = getSavedQueue(ctx)[0] ?? null
+						// statuses need the engine, so the query ctx stays unresolved until there is a next layer to report on
+						warnCondition: {
+							const nextLayer = getSavedQueue(baseCtx)[0] ?? null
 							if (!nextLayer) break warnCondition
+							const ctx = await LayerQueriesServer.resolveLayerQueryCtx(baseCtx)
+							const statusRes = await LayerQueries.getLayerItemStatuses({
+								ctx,
+								input: { constraints: allConstraints, list: await LayerQueriesServer.resolveLayerItemsState(baseCtx) },
+							})
+							if (statusRes.code !== 'ok') break warnCondition
 							const warns = statusRes.statuses.warns.filter(w => w.itemId === nextLayer.itemId)
 							if (warns.length === 0) break warnCondition
 							const repeatViolations = warns.filter(w => w.type === 'repeat-rule-violation-warning').flatMap(w => w.descriptors)
@@ -141,8 +156,8 @@ export const setupInstance = C.spanOp(
 							return
 						}
 
-						const voteState = ctx.vote.state
-						if (ctx.server.serverRolling$.value || currentMatch.status === 'post-game') return
+						const voteState = baseCtx.vote.state
+						if (baseCtx.server.serverRolling$.value || currentMatch.status === 'post-game') return
 						if (
 							LL.isVoteItem(serverState.layerQueue[0])
 							&& voteState?.code === 'ready'
@@ -151,7 +166,7 @@ export const setupInstance = C.spanOp(
 							&& currentMatch.startTime.getTime() + GS.vote.startVoteReminderThreshold < Date.now()
 						) {
 							await SquadRcon.warnAllAdmins(
-								ctx,
+								baseCtx,
 								Messages.WARNS.queue.votePending(
 									currentMatch.startTime,
 									GS.vote.startVoteReminderThreshold,
@@ -160,7 +175,7 @@ export const setupInstance = C.spanOp(
 								),
 							)
 						} else if (serverState.layerQueue.length === 0) {
-							await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.empty)
+							await SquadRcon.warnAllAdmins(baseCtx, Messages.WARNS.queue.empty)
 						}
 					}),
 				).subscribe(),
@@ -402,6 +417,65 @@ export async function saveQueueAndUpdateServer(
 		}
 	})
 }
+
+// Draws the next queue item and applies it. Split out of handleSideEffect because a map roll defers it past that
+// transaction's commit, where it would otherwise run untraced.
+const generateAndDispatchQueueItem = C.spanOp(
+	'generateAndDispatchQueueItem',
+	{ module, levels: { event: 'info' } },
+	async (ctx: SideEffectCtx) => {
+		const serverState = await SquadServer.getServerState(ctx)
+		const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: true })
+		const layerCtx = await LayerQueriesServer.resolveLayerQueryCtx(ctx)
+		const layerItemsState = await LayerQueriesServer.resolveLayerItemsState(ctx)
+		const templates = ctx.layerQueue.session.state.savedBackburner.map(item => ({ itemId: item.itemId, filter: item.filter }))
+
+		const fallback = { layerId: L.DEFAULT_LAYER_ID, consumedItemIds: [] as string[] }
+		const generated = await (async function generate(
+			constraints: LQY.Constraint[] = allConstraints,
+		): Promise<{ layerId: L.LayerId; consumedItemIds: string[] }> {
+			try {
+				const res = await LayerQueries.generateWithBackburner({
+					ctx: layerCtx,
+					input: {
+						constraints,
+						templates,
+						list: layerItemsState,
+						cursor: { type: 'start' },
+						action: 'add',
+						seed: LQY.getSeed(),
+					},
+				})
+				if (res.code !== 'ok') {
+					log.error(`Invalid node error when generating layer: %o`, { cause: res.errors })
+					return fallback
+				}
+				if (res.invalidItemIds.length > 0) {
+					log.warn('backburner templates failed to lower and were skipped: %o', res.invalidItemIds)
+				}
+				if (res.layer) return { layerId: res.layer.id, consumedItemIds: res.consumedItemIds }
+				const noDnrConstraints = constraints.filter(c => c.type !== 'do-not-repeat')
+				if (noDnrConstraints.length < constraints.length) {
+					log.info('no layers found with do-not-repeat constraints applied, retrying without')
+					return await generate(noDnrConstraints)
+				}
+				log.warn(`No layers found for constraints: %o`, { constraints })
+				return fallback
+			} catch (e) {
+				log.error(e, 'Error generating layer')
+				return fallback
+			}
+		})()
+
+		const nextQueueItem = LL.createItem({ type: 'single-list-item', layerId: generated.layerId }, { type: 'generated' })
+		await dispatchOp(ctx, {
+			op: 'queue-item-generated',
+			item: nextQueueItem,
+			consumedBackburnerItemIds: generated.consumedItemIds.length > 0 ? generated.consumedItemIds : undefined,
+			opId: SLL.createOpId(),
+		})
+	},
+)
 
 export async function warnShowNext(
 	ctx: C.Db & C.SquadServer & C.LayerQueue & C.Rcon & CS.AbortSignal,
@@ -652,7 +726,7 @@ export const router = {
 				if (forceWriteDenied) {
 					const serverState = await SquadServer.getServerState(ctx)
 					const poolConstraints = SETTINGS.getPoolMembershipConstraints(serverState.settings)
-					const layerCtx = LayerQueriesServer.resolveLayerQueryCtx(ctx)
+					const layerCtx = await LayerQueriesServer.resolveLayerQueryCtx(ctx)
 					const poolRes = await LayerQueries.getLayersOutOfPool({
 						ctx: layerCtx,
 						input: { layerIds: forceWriteCandidates, constraints: poolConstraints },
@@ -679,7 +753,7 @@ export async function isTemplateSatisfiable(
 	ctx: C.Db & C.MatchHistory & C.LayerQueue & CS.AbortSignal,
 	filter: F.FilterNode,
 ): Promise<boolean> {
-	const layerCtx = LayerQueriesServer.resolveLayerQueryCtx(ctx)
+	const layerCtx = await LayerQueriesServer.resolveLayerQueryCtx(ctx)
 	const res = await LayerQueries.checkBackburnerTemplates({
 		ctx: layerCtx,
 		input: { constraints: [], templates: [{ itemId: 'probe', filter }] },
@@ -897,7 +971,7 @@ export const dispatchOp = C.spanOp(
 		extraText: (ctx, op) => `Dispatch op ${op.op} (${op.opId})`,
 	},
 	async (
-		ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.ServerSettings & CS.AbortSignal,
+		ctx: SideEffectCtx,
 		op: SLL.Operation,
 		// set for ops arriving via the dispatchOp rpc; the originating client gets an ack instead of the full op
 		opts?: { sourceWsClientId?: string },
@@ -927,7 +1001,7 @@ const handleSideEffect = C.spanOp(
 		attrs: (ctx, op, se) => ({ [ATTRS.LayerQueue.OP]: op.op, [ATTRS.LayerQueue.SIDE_EFFECT]: se.code }),
 	},
 	async (
-		ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.ServerSettings & CS.AbortSignal,
+		ctx: SideEffectCtx,
 		op: SLL.Operation,
 		se: SLL.SideEffect,
 	) => {
@@ -940,56 +1014,17 @@ const handleSideEffect = C.spanOp(
 				break
 			}
 			case 'request-queue-item-generation': {
-				const serverState = await SquadServer.getServerState(ctx)
-				const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: true })
-				const layerCtx = LayerQueriesServer.resolveLayerQueryCtx(ctx)
-				const layerItemsState = await LayerQueriesServer.resolveLayerItemsState(ctx)
-				const templates = ctx.layerQueue.session.state.savedBackburner.map(item => ({ itemId: item.itemId, filter: item.filter }))
-
-				const fallback = { layerId: L.DEFAULT_LAYER_ID, consumedItemIds: [] as string[] }
-				const generated = await (async function generate(
-					constraints: LQY.Constraint[] = allConstraints,
-				): Promise<{ layerId: L.LayerId; consumedItemIds: string[] }> {
-					try {
-						const res = await LayerQueries.generateWithBackburner({
-							ctx: layerCtx,
-							input: {
-								constraints,
-								templates,
-								list: layerItemsState,
-								cursor: { type: 'start' },
-								action: 'add',
-								seed: LQY.getSeed(),
-							},
-						})
-						if (res.code !== 'ok') {
-							log.error(`Invalid node error when generating layer: %o`, { cause: res.errors })
-							return fallback
-						}
-						if (res.invalidItemIds.length > 0) {
-							log.warn('backburner templates failed to lower and were skipped: %o', res.invalidItemIds)
-						}
-						if (res.layer) return { layerId: res.layer.id, consumedItemIds: res.consumedItemIds }
-						const noDnrConstraints = constraints.filter(c => c.type !== 'do-not-repeat')
-						if (noDnrConstraints.length < constraints.length) {
-							log.info('no layers found with do-not-repeat constraints applied, retrying without')
-							return await generate(noDnrConstraints)
-						}
-						log.warn(`No layers found for constraints: %o`, { constraints })
-						return fallback
-					} catch (e) {
-						log.error(e, 'Error generating layer')
-						return fallback
-					}
-				})()
-
-				const nextQueueItem = LL.createItem({ type: 'single-list-item', layerId: generated.layerId }, { type: 'generated' })
-				await dispatchOp(ctx, {
-					op: 'queue-item-generated',
-					item: nextQueueItem,
-					consumedBackburnerItemIds: generated.consumedItemIds.length > 0 ? generated.consumedItemIds : undefined,
-					opId: SLL.createOpId(),
-				})
+				// Generation queries the layer engine (loading its artifact if nothing has for a while) and ends in a
+				// dispatchOp that opens its own transaction. Neither belongs under the process-wide tx lock, so when a
+				// map roll wraps this it runs once that transaction has committed. `tx` is dropped for the reason
+				// saveList drops it: it is spent by then, and a nested runTransaction would join a committed
+				// transaction and run in autocommit with a rollback() that does nothing.
+				if (ctx.tx) {
+					const deferredCtx = { ...ctx, tx: undefined }
+					ctx.tx.unlockTasks.push(() => generateAndDispatchQueueItem(deferredCtx))
+				} else {
+					await generateAndDispatchQueueItem(ctx)
+				}
 				break
 			}
 			case 'request-backburner-save': {
