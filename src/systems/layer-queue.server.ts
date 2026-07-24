@@ -601,11 +601,8 @@ export async function toggleUpdatesToSquadServer(
 		input: { disabled: boolean }
 	},
 ) {
-	// if player we assume authorization has already been established
-	if (ctx.user) {
-		const denyRes = await Rbac.tryDenyPermissionsForUser({ ...ctx, user: ctx.user! }, RBAC.perm('squad-server:disable-slm-updates'))
-		if (denyRes) return denyRes
-	}
+	const denyRes = await Rbac.tryDenyPermissionsForActor(ctx, RBAC.perm('squad-server:disable-slm-updates'))
+	if (denyRes) return denyRes
 
 	await DB.runTransaction(ctx, { redactParams: true }, async ctx => {
 		const serverState = await SquadServer.getServerState(ctx)
@@ -896,11 +893,12 @@ export type AddRequestResult =
 	| RBAC.PermissionDeniedResponse
 
 // the chat path (/reqlayer): commits straight to the saved backburner, evicting the owner's oldest request(s)
-// when they are at their cap. `user` is the sender's linked SLM account (RBAC identity); `source` carries both
-// ids so ownership checks work from either surface.
+// when they are at their cap. Authorization resolves off the player, so an unlinked sender can still request;
+// `source` carries their steam id plus their linked account when they have one, so ownership checks work from
+// either surface.
 export async function addBackburnerRequestFromChat(
 	ctx: C.Db & C.ServerSlice & CS.AbortSignal & C.PlayerIds,
-	args: { user: { discordId: bigint }; source: USR.GuiOrChatUserId; filter: F.FilterNode },
+	args: { source: USR.GuiOrChatUserId; filter: F.FilterNode },
 ): Promise<AddRequestResult> {
 	const denied = await Rbac.tryDenyPermissionsForPlayer(ctx, 'queue:request-layers')
 	if (denied) return denied
