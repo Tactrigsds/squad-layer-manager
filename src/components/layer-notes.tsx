@@ -125,7 +125,7 @@ function NoteListPopover(props: {
 function NoteBody(props: { note: LNote.Note; disabled?: boolean; onEdit: () => void; onDelete: () => void }) {
 	const canManage = useCanManageNote(props.note)
 	return (
-		<div className="space-y-1">
+		<div role="group" aria-label="Note" className="space-y-1">
 			<UserLabel userId={props.note.author} />
 			<p className="text-sm">
 				<RichText text={props.note.text} />
