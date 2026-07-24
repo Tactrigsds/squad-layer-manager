@@ -71,6 +71,10 @@ Off unless `PYROSCOPE_ENABLED` is set (`docker-compose.yaml` sets it). The agent
 while `PYROSCOPE_HEAP_ENABLED` is on. Heap sampling is the half whose cost scales with allocation
 rate, which is why it is separately switchable: turning it off leaves the flatter-cost CPU profiles.
 
+`docker-compose.yaml` ships with heap sampling **off**, because the cost is not only CPU: the
+sampler's tables are native allocations in the main malloc arena, which glibc does not give back.
+Turn it on when you have an allocation question to answer, rather than leaving it on by default.
+
 The Ops dashboard's **Profile type** variable is populated from what Pyroscope has actually received
 rather than from a hardcoded list, because which sample types exist depends on how the agent is
 configured. If the dropdown is empty, no profiles have arrived at all, and the thing to check is
