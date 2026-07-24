@@ -164,3 +164,74 @@ describe('setTags', () => {
 		expect(list[0].type === 'vote-list-item' && list[0].choices[0].tags).toEqual([t1])
 	})
 })
+
+describe('attribution', () => {
+	const t1 = LTag.createTagId('a')
+	const t2 = LTag.createTagId('b')
+	const alice = 1n
+	const bob = 2n
+
+	it('records who added each tag', () => {
+		const list: LL.List = [single('a')]
+		LL.setTags(list, 'a', [t1], alice)
+		expect(list[0]).toMatchObject({ tagsSetBy: { [t1]: alice } })
+	})
+
+	it('leaves an existing tag attributed to whoever added it', () => {
+		const list: LL.List = [single('a')]
+		LL.setTags(list, 'a', [t1], alice)
+		LL.setTags(list, 'a', [t1, t2], bob)
+		expect(list[0]).toMatchObject({ tagsSetBy: { [t1]: alice, [t2]: bob } })
+	})
+
+	it('drops attribution for a tag that was removed', () => {
+		const list: LL.List = [single('a')]
+		LL.setTags(list, 'a', [t1, t2], alice)
+		LL.setTags(list, 'a', [t2], alice)
+		expect(list[0]).toMatchObject({ tagsSetBy: { [t2]: alice } })
+	})
+
+	it('drops the field entirely once nothing is attributed', () => {
+		const list: LL.List = [single('a')]
+		LL.setTags(list, 'a', [t1], alice)
+		LL.setTags(list, 'a', [])
+		expect(list[0]).not.toHaveProperty('tagsSetBy')
+	})
+
+	// tags set by anything other than a user have nobody to show
+	it('records nothing for a non-user source', () => {
+		const list: LL.List = [single('a')]
+		LL.setTags(list, 'a', [t1])
+		expect(list[0]).not.toHaveProperty('tagsSetBy')
+	})
+
+	it('reports a change when only the attribution is new', () => {
+		const list: LL.List = [single('a')]
+		LL.setTags(list, 'a', [t1])
+		expect(LL.setTags(list, 'a', [t1], alice)).toBe(true)
+	})
+
+	it('takes attribution from the op source, not from the client-supplied item', () => {
+		const items = LL.withTagAttribution(
+			[{ type: 'single-list-item', layerId: 'L1', tags: [t1], tagsSetBy: { [t1]: bob } }],
+			{ type: 'manual', userId: alice },
+		)
+		expect(items[0]).toMatchObject({ tagsSetBy: { [t1]: alice } })
+	})
+
+	it('strips forged attribution when the source is not a user', () => {
+		const items = LL.withTagAttribution(
+			[{ type: 'single-list-item', layerId: 'L1', tags: [t1], tagsSetBy: { [t1]: bob } }],
+			{ type: 'generated' },
+		)
+		expect(items[0]).not.toHaveProperty('tagsSetBy')
+	})
+
+	it('attributes a vote item through its choices', () => {
+		const items = LL.withTagAttribution(
+			[{ type: 'vote-list-item', layerId: 'L1', choices: [single('c1', [t1])] }],
+			{ type: 'manual', userId: alice },
+		)
+		expect(items[0].type === 'vote-list-item' && items[0].choices[0].tagsSetBy).toEqual({ [t1]: alice })
+	})
+})

@@ -448,6 +448,7 @@ export function defaultRbacSettings() {
 	const adminPermissions: RBAC.RolePermissionExpression[] = [
 		'site:authorized',
 		'queue:write',
+		'queue:manage-all-notes',
 		'vote:manage',
 		'filters:create',
 		'filters:write-all',

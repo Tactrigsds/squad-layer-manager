@@ -1,3 +1,4 @@
+import { RichText } from '@/components/rich-text'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -5,10 +6,12 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { UserLabel } from '@/components/user-avatar'
 import { toast } from '@/lib/toast'
-import { cn } from '@/lib/utils'
+import { cn, REVEAL_ON_ITEM_HOVER } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as LTag from '@/models/layer-tags.models'
+import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
@@ -24,6 +27,8 @@ import { HexColorPicker } from 'react-colorful'
 
 export function LayerTags(props: {
 	tags: LTag.TagId[] | undefined
+	// who put each tag on this item, where that's known. Absent in the dialogs, which tag items that don't exist yet.
+	setBy?: LTag.Attribution
 	onChange: (tags: LTag.TagId[]) => void
 	disabled?: boolean
 	className?: string
@@ -48,6 +53,7 @@ export function LayerTags(props: {
 				<TagChip
 					key={tag.id}
 					tag={tag}
+					setBy={props.setBy?.[tag.id]}
 					disabled={props.disabled}
 					onRemove={() => remove(tag.id)}
 					onEdit={() => setEditing(configured.find(t => t.id === tag.id) ?? null)}
@@ -71,7 +77,7 @@ export function LayerTags(props: {
 	)
 }
 
-function TagChip(props: { tag: LTag.Resolved; disabled?: boolean; onRemove: () => void; onEdit: () => void }) {
+function TagChip(props: { tag: LTag.Resolved; setBy?: USR.UserId; disabled?: boolean; onRemove: () => void; onEdit: () => void }) {
 	const { tag } = props
 	// an interactive hover card rather than a Tooltip: the edit affordance lives inside it, and tooltips in this app are
 	// explicitly for non-interactive content (see ZI_OFFSETS.TOOLTIP)
@@ -105,7 +111,7 @@ function TagChip(props: { tag: LTag.Resolved; disabled?: boolean; onRemove: () =
 						<>
 							<p className="text-sm font-medium" style={{ color: tag.color }}>{tag.label}</p>
 							<p className="text-xs text-muted-foreground">
-								{tag.description || <span className="italic">No description</span>}
+								{tag.description ? <RichText text={tag.description} /> : <span className="italic">No description</span>}
 							</p>
 							<Button variant="outline" size="sm" className="h-6 w-full text-xs" onClick={props.onEdit}>
 								<Icons.Pencil className="mr-1 h-3 w-3" />
@@ -113,6 +119,7 @@ function TagChip(props: { tag: LTag.Resolved; disabled?: boolean; onRemove: () =
 							</Button>
 						</>
 					)}
+				{props.setBy !== undefined && <UserLabel userId={props.setBy} label="Tagged by" />}
 			</HoverCardContent>
 		</HoverCard>
 	)
@@ -140,8 +147,7 @@ function AddTagDropdown(props: {
 						'h-4 shrink-0 px-1 text-xs text-muted-foreground font-normal',
 						props.labelled ? 'gap-0.5' : 'w-4 px-0',
 						// data-[state=open] keeps it visible while its own menu is up, once the pointer leaves the item
-						props.revealOnHover
-							&& 'opacity-0 group-hover/single-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100',
+						props.revealOnHover && [REVEAL_ON_ITEM_HOVER, 'data-[state=open]:w-auto data-[state=open]:px-1 data-[state=open]:opacity-100'],
 					)}
 				>
 					<Icons.Plus className="h-3 w-3" />

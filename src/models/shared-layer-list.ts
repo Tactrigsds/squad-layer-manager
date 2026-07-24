@@ -6,6 +6,7 @@ import { assertNever } from '@/lib/type-guards'
 
 import * as BB from '@/models/backburner.models'
 import * as LL from '@/models/layer-list.models'
+import * as LNote from '@/models/layer-notes.models'
 import * as LTag from '@/models/layer-tags.models'
 
 import * as USR from '@/models/users.models'
@@ -44,6 +45,23 @@ function getItemOpEntries<
 			...props,
 			op: z.literal('set-tags'),
 			tags: z.array(LTag.TagIdSchema),
+		}),
+		z.object({
+			...props,
+			op: z.literal('add-note'),
+			noteId: LNote.NoteIdSchema,
+			text: LNote.TextSchema,
+		}),
+		z.object({
+			...props,
+			op: z.literal('edit-note'),
+			noteId: LNote.NoteIdSchema,
+			text: LNote.TextSchema,
+		}),
+		z.object({
+			...props,
+			op: z.literal('delete-note'),
+			noteId: LNote.NoteIdSchema,
 		}),
 		z.object({
 			...props,
@@ -241,6 +259,9 @@ const CLIENT_OPCODE = z.enum([
 	'swap-factions',
 	'edit-layer',
 	'set-tags',
+	'add-note',
+	'edit-note',
+	'delete-note',
 	'clone',
 	'configure-vote',
 	'delete',
@@ -447,7 +468,7 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 		}
 
 		case 'add': {
-			const items = newOp.items
+			const items = LL.withTagAttribution(newOp.items, source)
 			LL.addItemsDeterministic(list, source, newOp.index, ...items)
 			ItemMut.tryApplyMutation('added', items.map(item => item.itemId), mutations)
 			if (source.type === 'manual') LL.changeGeneratedLayerAttributionInPlace(list, mutations, source.userId)
@@ -501,7 +522,30 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 		}
 
 		case 'set-tags': {
-			if (LL.setTags(list, newOp.itemId, newOp.tags)) {
+			if (LL.setTags(list, newOp.itemId, newOp.tags, source.type === 'manual' ? source.userId : undefined)) {
+				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
+			}
+			break
+		}
+
+		// a note is worthless without an author to attach it to, so an op from anything but a user is dropped
+		case 'add-note': {
+			if (source.type !== 'manual') break
+			if (LL.addNote(list, newOp.itemId, { id: newOp.noteId, author: source.userId, text: newOp.text })) {
+				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
+			}
+			break
+		}
+
+		case 'edit-note': {
+			if (LL.editNote(list, newOp.itemId, newOp.noteId, newOp.text)) {
+				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
+			}
+			break
+		}
+
+		case 'delete-note': {
+			if (LL.deleteNote(list, newOp.itemId, newOp.noteId)) {
 				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
 			}
 			break
