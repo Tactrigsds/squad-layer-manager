@@ -242,7 +242,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 					<WarnChatBox
 						serverId={serverId}
 						playerIds={currentPlayers.map(p => SM.PlayerIds.getPlayerId(p.ids))}
-						bodyPrefix={`@Squad${ingameSquadId}`}
+						taggedSquad={{ squadId: liveSquad.squadId, squadName: liveSquad.squadName, teamId: liveSquad.teamId }}
 						focusTarget={{ kind: 'squad', uniqueSquadId }}
 						placeholder={`Warn ${displayName}…`}
 						stores={stores}
