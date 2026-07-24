@@ -209,7 +209,7 @@ export const GlobalSettingsSchema = z.object({
 		}),
 		value: z.string(),
 	})).prefault([]).describe(
-		'Custom variables usable in reason and broadcast messages as {{name}} (e.g. name "discord", value "discord.gg/xyz").',
+		'Custom variables usable in any admin action reason as {{name}} (e.g. name "discord", value "discord.gg/xyz").',
 	),
 	chat: CHAT.ChatConfigSchema.prefault({}).describe(
 		'What the live chat feed leaves out. Neither list changes what is actually sent in-game.',
