@@ -5,11 +5,11 @@ import * as AAR from '@/models/admin-action-reasons.models'
 import type * as RBAC from '@/rbac.models'
 import * as SettingsClient from '@/systems/settings.client'
 import React from 'react'
+import ComboBox from './combo-box/combo-box'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import type { MenuSlots } from './player-context-menu-options'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 
 // the Warn menu entry: a flat item when no warn presets are configured (which leaves only the custom path),
 // otherwise a sub-menu offering Custom (the warn box) or Preset Reason (the warn dialog)
@@ -102,25 +102,26 @@ export function ReasonPicker(props: {
 					: <span className="text-muted-foreground">{' '}(optional)</span>}
 			</Label>
 			{reasons.length > 0 && (
-				<Select
+				<ComboBox
+					title="Reason"
+					className="w-full"
 					value={selected}
-					onValueChange={value => {
-						setSelected(value)
-						props.presetRef.current = value === CUSTOM ? '' : value
+					// configured order, with Custom/None pinned first
+					sort={false}
+					options={[
+						{ value: CUSTOM, label: allowCustom ? 'Custom' : 'None' },
+						...reasons.map(reason => ({
+							value: reason.label,
+							keywords: reason.aliases,
+							description: AAR.reasonText(props.action, reason),
+						})),
+					]}
+					onSelect={value => {
+						const next = value ?? CUSTOM
+						setSelected(next)
+						props.presetRef.current = next === CUSTOM ? '' : next
 					}}
-				>
-					<SelectTrigger>
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value={CUSTOM}>{allowCustom ? 'Custom' : 'None'}</SelectItem>
-						{reasons.map(reason => (
-							<SelectItem key={reason.label} value={reason.label} title={AAR.reasonText(props.action, reason)}>
-								{reason.label}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+				/>
 			)}
 			{customVisible && (
 				<Input
