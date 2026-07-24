@@ -121,8 +121,6 @@ export const setupInstance = C.spanOp(
 						})
 
 						warnCondition: if (statusRes.code === 'ok') {
-							// the go-live layer queued during seeding/training is expected to break pool and repeat rules
-							if (L.isSeedingOrTrainingLayer(currentMatch?.layerId)) break warnCondition
 							const nextLayer = getSavedQueue(ctx)[0] ?? null
 							if (!nextLayer) break warnCondition
 							const warns = statusRes.statuses.warns.filter(w => w.itemId === nextLayer.itemId)
