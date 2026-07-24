@@ -25,6 +25,21 @@ import { HexColorPicker } from 'react-colorful'
 // labels/colors are resolved against global settings at render, so an id whose tag has been deleted still renders
 // (as the raw id) and can be taken off the item.
 
+// lucide only ships tag-plus from v1, which is a major upgrade away from the version pinned here, so its icon data
+// (ISC, lucide-react v1.26.0) is inlined rather than dragging every other icon through a rename audit
+const TagPlus = Icons.createLucideIcon('tag-plus', [
+	['path', { d: 'M16 13h6', key: '1um0mj' }],
+	[
+		'path',
+		{
+			d: 'm16.5 6.5-3.914-3.914A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l1.79-1.79',
+			key: 'dp0yc9',
+		},
+	],
+	['path', { d: 'M19 10v6', key: '13mz7b' }],
+	['circle', { cx: '7.5', cy: '7.5', r: '.5', fill: 'currentColor', key: 'kqv944' }],
+])
+
 export function LayerTags(props: {
 	tags: LTag.TagId[] | undefined
 	// who put each tag on this item, where that's known. Absent in the dialogs, which tag items that don't exist yet.
@@ -150,7 +165,7 @@ function AddTagDropdown(props: {
 						props.revealOnHover && [REVEAL_ON_ITEM_HOVER, 'data-[state=open]:w-auto data-[state=open]:px-1 data-[state=open]:opacity-100'],
 					)}
 				>
-					<Icons.Plus className="h-3 w-3" />
+					<TagPlus className="h-3 w-3" />
 					{props.labelled && <span>add tag</span>}
 				</Button>
 			</DropdownMenuTrigger>
