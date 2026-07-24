@@ -112,7 +112,8 @@ function reasonAliasesToKeywords(json: Record<string, unknown>): boolean {
 		changed = true
 		if (Array.isArray(reason.keywords) && reason.keywords.length > 0) continue
 
-		const keywords = aliases.length > 0 ? aliases : [uniqueKeyword(slugify(String(reason.label ?? '')), taken)]
+		const label = typeof reason.label === 'string' ? reason.label : ''
+		const keywords = aliases.length > 0 ? aliases : [uniqueKeyword(slugify(label), taken)]
 		for (const keyword of keywords) taken.add(keyword.toLowerCase())
 		reason.keywords = keywords
 	}
