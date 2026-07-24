@@ -17,7 +17,8 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 		keys: ['warnPrefix', 'adminActionReasons', 'requireReasonFor', 'broadcasts', 'messageVariables', 'chat'],
 	},
 	{ slug: 'commands', label: 'In-game Commands', keys: ['allowedPrefixes', 'defaultPrefix', 'commands', 'commandAliases'] },
-	{ slug: 'queue-and-votes', label: 'Queue & Votes', keys: ['layerQueue', 'vote', 'layerTable', 'layerGeneration'] },
+	{ slug: 'queue-and-votes', label: 'Queue & Votes', keys: ['layerQueue', 'vote'] },
+	{ slug: 'layers', label: 'Layers', keys: ['layerTags', 'layerTable', 'layerGeneration'] },
 	{
 		slug: 'squad-server',
 		label: 'Squad Server',
@@ -74,6 +75,7 @@ export const LOCAL_JSON_EDITOR_PATHS: ReadonlySet<string> = new Set([
 	'commandAliases',
 	'messageVariables',
 	'playerGroupings',
+	'layerTags',
 	'layerTable',
 	'layerGeneration',
 	'balanceTriggerLevels',

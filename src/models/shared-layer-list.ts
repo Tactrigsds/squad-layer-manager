@@ -6,6 +6,7 @@ import { assertNever } from '@/lib/type-guards'
 
 import * as BB from '@/models/backburner.models'
 import * as LL from '@/models/layer-list.models'
+import * as LTag from '@/models/layer-tags.models'
 
 import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models'
@@ -38,6 +39,11 @@ function getItemOpEntries<
 			...props,
 			op: z.literal('edit-layer'),
 			newLayerId: L.LayerIdSchema,
+		}),
+		z.object({
+			...props,
+			op: z.literal('set-tags'),
+			tags: z.array(LTag.TagIdSchema),
 		}),
 		z.object({
 			...props,
@@ -234,6 +240,7 @@ const CLIENT_OPCODE = z.enum([
 	'move',
 	'swap-factions',
 	'edit-layer',
+	'set-tags',
 	'clone',
 	'configure-vote',
 	'delete',
@@ -489,6 +496,13 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 			if (beforeEdit && afterEdit && beforeEdit !== afterEdit) {
 				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
 				if (mutations && source.type === 'manual') LL.changeGeneratedLayerAttributionInPlace(list, mutations, source.userId)
+			}
+			break
+		}
+
+		case 'set-tags': {
+			if (LL.setTags(list, newOp.itemId, newOp.tags)) {
+				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
 			}
 			break
 		}

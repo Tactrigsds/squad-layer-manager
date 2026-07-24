@@ -1,4 +1,5 @@
 import { AdvancedVoteConfigEditor } from '@/components/advanced-vote-config-editor'
+import { LayerTags } from '@/components/layer-tags'
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Badge } from '@/components/ui/badge.tsx'
 import { Button } from '@/components/ui/button'
@@ -28,6 +29,7 @@ import * as ZusUtils from '@/lib/zustand.ts'
 
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
+import type * as LTag from '@/models/layer-tags.models'
 
 import * as UP from '@/models/user-presence'
 import * as V from '@/models/vote.models.ts'
@@ -212,6 +214,8 @@ function LoadedSelectLayersView({
 	const activity = entry.key
 	const data = entry.data
 
+	const [pendingTags, setPendingTags] = React.useState<LTag.TagId[]>([])
+
 	const onAddItems = React.useCallback((items: LL.NewItem[]) => {
 		if (activity.id !== 'ADDING_ITEM') return
 		const layerList = LayerQueuePrt.Sel.layerList(ZusUtils.getState(stores.squadServer))
@@ -222,10 +226,10 @@ function LoadedSelectLayersView({
 		else index = defaultIndex
 		void LayerQueuePrt.Actions.dispatch({ queue: stores.squadServer }, {
 			op: 'add',
-			items,
+			items: LL.withTags(items, pendingTags),
 			index,
 		})
-	}, [activity.id, stores.squadServer, entry.data.selectLayersFrame])
+	}, [activity.id, stores.squadServer, entry.data.selectLayersFrame, pendingTags])
 
 	const onEditedLayer = React.useCallback((layerId: L.LayerId) => {
 		if (activity.id !== 'EDITING_ITEM') return
@@ -275,7 +279,12 @@ function LoadedSelectLayersView({
 				open={entry.active}
 				onOpenChange={onSelectLayersChange}
 				selectQueueItems={onAddItems}
-				footerAdditions={activity.opts.variant === 'toggle-position' && addLayersTabsList}
+				footerAdditions={
+					<>
+						{activity.opts.variant === 'toggle-position' && addLayersTabsList}
+						<LayerTags tags={pendingTags} onChange={setPendingTags} emptyLabel="Tags" />
+					</>
+				}
 			/>
 		)
 	}
@@ -347,6 +356,7 @@ function LoadedPasteRotation({
 }) {
 	const entry = useStableValue((e) => e, [_entry])
 	const [pastePosition, setPastePosition] = React.useState<'next' | 'after'>('next')
+	const [pendingTags, setPendingTags] = React.useState<LTag.TagId[]>([])
 
 	const onOpenChange = React.useCallback((open: boolean) => {
 		if (open) return
@@ -361,10 +371,10 @@ function LoadedPasteRotation({
 		void LayerQueuePrt.Actions.dispatch({ queue: stores.squadServer }, {
 			op: 'add',
 			index,
-			items: layerIds.map(layerId => ({ type: 'single-list-item', layerId })),
+			items: LL.withTags(layerIds.map(layerId => ({ type: 'single-list-item', layerId })), pendingTags),
 		})
 		UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
-	}, [stores.squadServer, pastePosition])
+	}, [stores.squadServer, pastePosition, pendingTags])
 
 	const positionTabsList = React.useMemo(() => (
 		<TabsList
@@ -383,7 +393,12 @@ function LoadedPasteRotation({
 			open={entry.active}
 			onOpenChange={onOpenChange}
 			onSubmit={onSubmit}
-			extraFooter={positionTabsList}
+			extraFooter={
+				<>
+					{positionTabsList}
+					<LayerTags tags={pendingTags} onChange={setPendingTags} emptyLabel="Tags" />
+				</>
+			}
 		/>
 	)
 }
@@ -577,6 +592,13 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 								/>
 								<span>{voteCount}</span>
 							</span>
+						)}
+						{item.type === 'single-list-item' && (
+							<LayerTags
+								tags={item.tags}
+								disabled={!canEdit}
+								onChange={(tags) => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'set-tags', tags })}
+							/>
 						)}
 					</span>
 					{sourceDisplay && (

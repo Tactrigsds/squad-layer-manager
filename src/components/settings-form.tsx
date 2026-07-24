@@ -38,6 +38,7 @@ import type * as BM from '@/models/battlemetrics.models'
 import * as CMD from '@/models/command.models'
 import type * as LP from '@/models/labeled-presets.models'
 import * as LC from '@/models/layer-columns'
+import * as LTag from '@/models/layer-tags.models'
 import * as PG from '@/models/player-groupings.models'
 import * as PermRows from '@/models/rbac-perm-rows'
 import * as SETTINGS from '@/models/settings.models'
@@ -52,6 +53,7 @@ import * as UsersClient from '@/systems/users.client'
 import { useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
+import { HexColorPicker } from 'react-colorful'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
 import type SchemaJsonEditorComponent from './schema-json-editor'
@@ -1373,6 +1375,111 @@ function AdminActionReasonsField({ value$, reset$, onChange }: OverrideProps) {
 	)
 }
 
+function LayerTagsField({ value$, reset$, onChange }: OverrideProps) {
+	return (
+		<PresetTableField
+			value$={value$}
+			reset$={reset$}
+			onChange={onChange}
+			headers={
+				<>
+					<TableHead className="w-[12rem]">Label</TableHead>
+					<TableHead>Description</TableHead>
+					<TableHead className="w-[9rem]">Color</TableHead>
+					<TableHead className="w-8" />
+				</>
+			}
+			newRow={() => ({ id: '', label: '', description: '', color: LTag.suggestColor([]) })}
+			Row={LayerTagRow}
+		/>
+	)
+}
+
+function LayerTagRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetRowProps) {
+	const row$ = React.useMemo(() => scopeValue(parent$, idx), [parent$, idx])
+	const descriptionRef = React.useRef<HTMLTextAreaElement>(null)
+	const row = useFieldValue(row$, reset$) as LTag.Tag | undefined
+	const colorRef = React.useRef<HTMLInputElement>(null)
+
+	const setFields = (patch: Partial<LTag.Tag>) => {
+		const arr = [...((parent$.getValue() as LTag.Tag[]) ?? [])]
+		arr[idx] = { ...arr[idx], ...patch }
+		parentOnChange(arr)
+	}
+
+	// a row's id is minted from the label the first time it's committed and is immutable from then on, so a later rename
+	// keeps the tag attached to every layer carrying it. Only a row that has never had an id can still take one.
+	const commitLabel = (label: string) => {
+		const current = (parent$.getValue() as LTag.Tag[] | undefined)?.[idx]
+		setFields(current?.id ? { label } : { label, id: label.trim() ? LTag.createTagId(label) : '' })
+	}
+
+	const setColor = (color: string) => {
+		if (colorRef.current && colorRef.current.value !== color) colorRef.current.value = color
+		setFields({ color })
+	}
+
+	return (
+		<TableRow>
+			<TableCell className="align-top">
+				<Input
+					defaultValue={row?.label ?? ''}
+					maxLength={LTag.MAX_LABEL_LENGTH}
+					placeholder="Label"
+					onBlur={(e) => commitLabel(e.target.value)}
+				/>
+				{row?.id && <p className="mt-1 font-mono text-2xs text-muted-foreground">{row.id}</p>}
+			</TableCell>
+			<TableCell className="align-top">
+				<Textarea
+					ref={descriptionRef}
+					defaultValue={row?.description ?? ''}
+					maxLength={LTag.MAX_DESCRIPTION_LENGTH}
+					className="min-h-8 text-sm"
+					placeholder="Shown when hovering the tag"
+					onBlur={(e) => setFields({ description: e.target.value })}
+				/>
+			</TableCell>
+			<TableCell className="align-top">
+				<div className="flex items-center space-x-1">
+					<Popover>
+						<PopoverTrigger asChild>
+							<button
+								type="button"
+								title="Pick color"
+								className="h-6 w-6 shrink-0 rounded border"
+								style={{ backgroundColor: row?.color ?? LTag.DELETED_TAG_COLOR }}
+							/>
+						</PopoverTrigger>
+						<PopoverContent className="w-auto p-2">
+							<HexColorPicker color={row?.color ?? LTag.DELETED_TAG_COLOR} onChange={setColor} />
+						</PopoverContent>
+					</Popover>
+					<Input
+						ref={colorRef}
+						defaultValue={row?.color ?? ''}
+						maxLength={7}
+						className="w-24 font-mono text-xs"
+						onBlur={(e) => setFields({ color: e.target.value.trim() })}
+					/>
+				</div>
+			</TableCell>
+			<TableCell className="align-top">
+				<Button
+					type="button"
+					size="icon"
+					variant="ghost"
+					className="h-8 w-8 text-destructive"
+					title="Delete tag"
+					onClick={onRemove}
+				>
+					<Icons.X className="h-4 w-4" />
+				</Button>
+			</TableCell>
+		</TableRow>
+	)
+}
+
 function BroadcastsField({ value$, reset$, onChange }: OverrideProps) {
 	return (
 		<PresetTableField
@@ -2665,6 +2772,7 @@ function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefin
 	if (path.length === 1 && last === 'broadcasts') return BroadcastsField
 	if (path.length === 1 && last === 'layerTable') return LayerTableField
 	if (path.length === 1 && last === 'layerGeneration') return LayerGenerationField
+	if (path.length === 1 && last === 'layerTags') return LayerTagsField
 	if (path.length === 1 && last === 'playerFlagsRequiringNote') return FlagMultiSelectField
 	if (path.length === 1 && last === 'playerGroupings') return PlayerGroupingsField
 	// the entire `rbac` subtree is rendered by RbacBody (see FieldControl), so no per-field rbac overrides are needed here
