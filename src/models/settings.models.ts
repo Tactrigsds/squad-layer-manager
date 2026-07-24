@@ -212,43 +212,58 @@ export const GlobalSettingsSchema = z.object({
 	})).prefault([]).describe(
 		'Custom variables usable in reason and broadcast messages as {{name}} (e.g. name "discord", value "discord.gg/xyz").',
 	),
-	postRollAnnouncementsTimeout: HumanTime.prefault('5m').describe('How long to wait before sending post-roll reminders'),
-	fogOffDelay: HumanTime.prefault('25s').describe('Delay before fog is automatically turned off'),
+	postRollAnnouncementsTimeout: HumanTime.prefault('5m').describe(
+		'How long after a map rolls to wait before announcing to admins: the balance trigger in effect, the next layer, and a '
+			+ 'low-queue warning, a couple of seconds apart. Only sent on servers with reminders and announcements enabled.',
+	),
+	fogOffDelay: HumanTime.prefault('25s').describe(
+		'How long after a FRAAS layer starts before fog of war is turned off and announced in-game. Other gamemodes are unaffected.',
+	),
 	chat: CHAT.ChatConfigSchema.prefault({}).describe(
-		'Live chat/event feed settings, including regex patterns for suppressing noisy warn and broadcast messages.',
+		'What the live chat feed leaves out. Neither list changes what is actually sent in-game.',
 	),
 	layerQueue: z.object({
 		lowQueueWarningThreshold: z
 			.number()
 			.positive()
 			.prefault(1)
-			.describe('Number of layers in the queue to trigger a low queue size warning'),
+			.describe('Admins are warned after a map roll when the queue holds this many items or fewer.'),
 		adminQueueReminderInterval: HumanTime.prefault('10m').describe(
 			'How often to remind admins to maintain the queue. Low queue warnings happen half as often.',
 		),
-		maxQueueSize: z.int().min(1).max(100).prefault(20).describe('Maximum number of layers that can be in the queue'),
-	}).prefault({}),
+		maxQueueSize: z.int().min(1).max(100).prefault(20).describe(
+			'Maximum number of items the queue may hold. Saves that would exceed it are rejected.',
+		),
+	}).prefault({}).describe('How long the queue should be kept, and how often admins are nudged to keep it that way.'),
 	vote: z.object({
-		voteDuration: HumanTime.prefault('180s').describe('Duration of a vote'),
-		startVoteReminderThreshold: HumanTime.prefault('20m').describe('How far into a match to start reminding admins to start a vote'),
-		voteReminderInterval: HumanTime.prefault('30s').describe('How often to remind users to vote'),
-		internalVoteReminderInterval: HumanTime.prefault('15s').describe('How often to remind admins to vote in an internal vote'),
+		voteDuration: HumanTime.prefault('180s').describe('How long a vote stays open before it is tallied.'),
+		startVoteReminderThreshold: HumanTime.prefault('20m').describe(
+			'How far into a match admins start being reminded that no vote has been started yet.',
+		),
+		voteReminderInterval: HumanTime.prefault('30s').describe('How often players are reminded to vote while a vote is open.'),
+		internalVoteReminderInterval: HumanTime.prefault('15s').describe(
+			'How often admins are reminded to vote while an internal (admin-only) vote is open.',
+		),
 		autoStartVoteDelay: HumanTime.prefault('20m').nullable().describe(
-			'Delay before autostarting a vote from the start of the current match. Set to null to disable',
+			'How far into a match SLM starts a vote by itself, when the next queue item is a vote. Unset to only ever start votes manually.',
 		),
 		autoStartVoteCutoff: HumanTime.prefault('30m').describe(
-			'How far into a match to stop auto-starting votes',
+			'How far into a match auto-starting gives up. Past this point starting a vote is left to an admin, so a match running long '
+				+ 'does not open a vote nobody is around for.',
 		),
 		voteDisplayProps: z.array(DH.LAYER_DISPLAY_PROP).prefault(['map', 'gamemode']).describe(
-			'What parts of a layer setup should be displayed by default',
+			'Which parts of a layer (map, gamemode, factions, units) vote choices spell out. Admins can override this per vote.',
 		),
-		finalVoteReminder: HumanTime.prefault('10s').describe('How far in advance the final vote reminder should be sent'),
-		maxNumVoteChoices: z.int().min(1).max(50).prefault(5).describe('Maximum number of choices allowed in a vote'),
-	}).prefault({}),
+		finalVoteReminder: HumanTime.prefault('10s').describe('How long before a vote closes the last-chance reminder is sent.'),
+		maxNumVoteChoices: z.int().min(1).max(50).prefault(5).describe('Maximum number of choices a vote may offer.'),
+	}).prefault({}).describe('How votes run: how long they stay open, how often they are advertised, and when SLM starts one itself.'),
 	overrideAdminSetNextLayer: z.boolean().prefault(false).describe(
-		'Whether AdminSetNextLayer commands not originating from SLM are respected',
+		'What happens when the next layer is set from outside SLM (an in-game admin, or another RCON tool). On, SLM sets it straight '
+			+ 'back to whatever the queue says. Off, SLM adopts the change by putting that layer at the front of the queue.',
 	),
-	warnOnChangeLayer: z.boolean().prefault(false).describe('Warn admins when the next layer is changed'),
+	warnOnChangeLayer: z.boolean().prefault(false).describe(
+		'Warn all in-game admins when SLM sets the next layer to something other than what the server was already going to play.',
+	),
 	logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines.'),
 	tickRateThresholds: z.object({
 		good: z.number().positive().prefault(60).describe(
@@ -260,7 +275,10 @@ export const GlobalSettingsSchema = z.object({
 	}).prefault({}).describe('Thresholds for coloring the live server tick rate display'),
 	balanceTriggerLevels: z.partialRecord(BAL.TRIGGER_IDS, BAL.TRIGGER_LEVEL)
 		.prefault({ '150x2': 'warn' })
-		.describe('Configures the trigger warning levels for balance calculations'),
+		.describe(
+			'Which balance triggers run, and how severely each one reports when it fires (info, warn, or violation). A trigger with no '
+				+ 'level set here is not evaluated at all.',
+		),
 	playerFlagsRequiringNote: z.array(z.uuid()).prefault([]).describe(
 		"Flags (by id) that require a reason to be given when added, which is included in the note posted to the player's BattleMetrics profile",
 	),
@@ -270,7 +288,7 @@ export const GlobalSettingsSchema = z.object({
 	navLinks: NavLinkSchema.optional().describe('Global links to display in the navbar dropdown menu'),
 	warnOnSlmStart: z.boolean().prefault(false).describe('Warn all in-game admins when SLM starts or restarts.'),
 	allowedPrefixes: z.array(CMD.PrefixSchema).min(1).prefault([CMD.FALLBACK_PREFIX]).describe(
-		'Prefixes an in-game command may start with. Every command string and timeout alias must begin with one of these',
+		'Prefixes an in-game command may start with. Every command string and command alias must begin with one of these.',
 	),
 	defaultPrefix: CMD.PrefixSchema.prefault(CMD.FALLBACK_PREFIX).describe(
 		'The allowed prefix that commands introduced by future SLM versions are seeded with',
@@ -282,15 +300,22 @@ export const GlobalSettingsSchema = z.object({
 		'Shortcuts to complete commands, e.g. /rules = /broadcast Read the rules. An alias takes no arguments of its own '
 			+ '(anything typed after it is ignored), runs in the scopes of the command it points at, and loses to a real command string on collision.',
 	),
-	commands: CMD.AllCommandConfigSchema,
+	commands: CMD.AllCommandConfigSchema.describe(
+		'Per-command configuration: the strings that trigger it, which chats it may be typed in, whether it is enabled, and whether it '
+			+ 'appears on the quick reference.',
+	),
 	adminListSources: z.array(SM.AdminListSourceSchema).prefault([]).describe(
-		"Sources to load admins from, in the same format as the gameserver expects Each is a remote URL, local file, or FTP path serving admins in Squad's Admins.cfg format.",
+		"Sources to load admins from. Each is a remote URL, local file, or FTP path serving admins in Squad's Admins.cfg format, exactly as "
+			+ 'the gameserver expects it.',
 	),
 	adminIdentifyingPermissions: z.array(SM.PLAYER_PERM).prefault([]).describe(
 		'In-game admin-list permissions that mark a player as an admin in SLM (e.g. "canseeadminchat"). A player granted any of these by an '
 			+ 'admin list source is treated as an admin, which drives admin-only warns and admin presence.',
 	),
-	rbac: RbacSettingsSchema,
+	rbac: RbacSettingsSchema.describe(
+		'Who can do what. Each role carries its own permissions, kick-timeout cap, settings grants, and the Discord roles/users it is '
+			+ 'assigned to.',
+	),
 	layerTable: LQY.LayerTableConfigSchema.prefault({
 		orderedColumns: [
 			{ name: 'id', visible: false },
@@ -541,7 +566,10 @@ export const PoolConfigurationSchema = z.object({
 	constrainGeneration: z.array(AppliedFilterSettingSchema).prefault([]).meta({
 		description: 'Autogenerated layers are constrained by these filters in the given state, in addition to the pool filter',
 	}),
-	repeatRules: z.array(RepeatRuleConfigSchema).refine(
+	repeatRules: z.array(RepeatRuleConfigSchema).describe(
+		'How far apart a map, layer or faction has to be spaced in the queue and recent match history. Each rule can warn when it is '
+			+ 'broken, constrain autogeneration, or both.',
+	).refine(
 		(rules) => new Set(rules.map((r) => r.label)).size === rules.length,
 		{
 			error: 'Repeat rule labels must be unique',
@@ -595,27 +623,35 @@ export const ServerConnectionSchema = z.discriminatedUnion('type', [
 export type ServerConnection = z.infer<typeof ServerConnectionSchema>
 
 export const QueueSettingsSchema = z.object({
-	mainPool: PoolConfigurationSchema.prefault({ repeatRules: DEFAULT_REPEAT_RULE_CONFIGS }),
-	preferredLength: z.number().prefault(12),
-	generatedItemType: z.enum(['layer', 'vote']).prefault('layer'),
-	preferredNumVoteChoices: z.number().prefault(3),
+	mainPool: PoolConfigurationSchema.prefault({ repeatRules: DEFAULT_REPEAT_RULE_CONFIGS }).describe(
+		'Which layers this server considers playable, and which of them it warns about: the pool filter that defines membership, the '
+			+ 'filters offered during layer selection, and the repeat rules.',
+	),
+	preferredLength: z.number().prefault(12).describe('How many items autogeneration tops the queue up to.'),
+	generatedItemType: z.enum(['layer', 'vote']).prefault('layer').describe('Whether autogeneration adds plain layers or votes.'),
+	preferredNumVoteChoices: z.number().prefault(3).describe('How many choices an autogenerated vote offers.'),
 	layerRequests: z.object({
 		maxTotal: z.number().int().positive().prefault(50).describe(
 			'Maximum number of layer requests the backburner may hold across all users',
 		),
-	}).prefault({}),
+	}).prefault({}).describe('Limits on the backburner, where layers players request in-game wait to be picked up.'),
 })
 export type QueueSettings = z.infer<typeof QueueSettingsSchema>
 
 export const PublicServerSettingsSchema = z
 	.object({
-		updatesToSquadServerDisabled: z.boolean().prefault(false).describe('Disable SLM from setting the next layer on the server.'),
+		updatesToSquadServerDisabled: z.boolean().prefault(false).describe(
+			'Stop SLM from writing the next layer to this server over RCON. The queue still runs and still tracks what is played; SLM just '
+				+ 'never sets the map itself. For running SLM alongside something else that owns the rotation.',
+		),
 		queue: QueueSettingsSchema
 			// avoid sharing default queue object - TODO unclear if necessary
 			.prefault({}).transform((obj) => Obj.deepClone(obj)).describe(
 				'The layer queue configuration: the pool (filters and repeat rules) and queue length / vote preferences.',
 			),
-		remindersAndAnnouncementsEnabled: z.boolean().prefault(true).describe('Whether reminders/announcements for admins are enabled'),
+		remindersAndAnnouncementsEnabled: z.boolean().prefault(true).describe(
+			'Whether this server sends admins the recurring nudges: post-roll announcements, queue reminders, and vote reminders.',
+		),
 		rconCacheTTL: z.object({
 			layersStatus: HumanTime.prefault('5s').describe(
 				'How stale the cached current/next layer may be before a read refetches it over RCON.',
@@ -638,7 +674,11 @@ EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.poolFilter = { filterId: 'test-filter', m
 EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.defaultSelectable.push({ filterId: 'test-filter', applyAs: 'regular' })
 
 export const ServerSettingsSchema = PublicServerSettingsSchema.extend({
-	connections: ServerConnectionSchema,
+	connections: ServerConnectionSchema.describe(
+		'How SLM reaches this server. Local: SLM shares the box, reading the log file and dialing RCON directly. SFTP: SLM is remote, '
+			+ 'tailing the log over SFTP and dialing RCON over the network. Server agent: slm-server-agent runs next to the server and '
+			+ "handles both, so the RCON password lives in the agent's config rather than here.",
+	),
 	navLinks: NavLinkSchema.optional().describe('Server-specific links to display in the navbar dropdown menu'),
 })
 
