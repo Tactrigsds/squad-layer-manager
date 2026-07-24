@@ -392,7 +392,7 @@ export type PublicSettings = {
 	servers: ServerEntry[]
 	playerGroupings: SETTINGS.GlobalSettings['playerGroupings']
 	playerFlagsRequiringNote: SETTINGS.GlobalSettings['playerFlagsRequiringNote']
-	squadServer: { tickRateThresholds: SETTINGS.GlobalSettings['squadServer']['tickRateThresholds'] }
+	tickRateThresholds: SETTINGS.GlobalSettings['tickRateThresholds']
 	adminActionReasons: SETTINGS.GlobalSettings['adminActionReasons']
 	// the commands page lists these as the presets the broadcast command accepts. Their text is broadcast to the whole
 	// server in the normal course of things, so there's nothing here a player couldn't already see
@@ -415,7 +415,7 @@ function buildPublicSettings(): PublicSettings {
 		servers: listServerEntries(),
 		playerGroupings: GLOBAL_SETTINGS.playerGroupings,
 		playerFlagsRequiringNote: GLOBAL_SETTINGS.playerFlagsRequiringNote,
-		squadServer: { tickRateThresholds: GLOBAL_SETTINGS.squadServer.tickRateThresholds },
+		tickRateThresholds: GLOBAL_SETTINGS.tickRateThresholds,
 		adminActionReasons: GLOBAL_SETTINGS.adminActionReasons,
 		requireReasonFor: GLOBAL_SETTINGS.requireReasonFor,
 		messageVariables: GLOBAL_SETTINGS.messageVariables,

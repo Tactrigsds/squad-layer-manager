@@ -2,7 +2,10 @@
 // Grouping lives here rather than in the schemas so the persisted settings shape is untouched; keys not listed in
 // any group render ungrouped after the groups (so newly added settings surface automatically).
 
-export type SettingsGroup = { slug: string; label: string; keys: string[] }
+// A `passthrough` group emits no header of its own: it exists only to place a single field that already renders its
+// own section header (carrying that section's reset controls, anchor and JSON toggle), where a second header above it
+// would just repeat the name.
+export type SettingsGroup = { slug: string; label: string; keys: string[]; passthrough?: true }
 
 // top-level global-settings keys that render no field of their own in the GUI (they're managed inline by a sibling
 // editor), so neither the form nor the TOC should emit a row/anchor for them. `defaultPrefix` is chosen via the
@@ -10,27 +13,22 @@ export type SettingsGroup = { slug: string; label: string; keys: string[] }
 export const HIDDEN_GLOBAL_SETTINGS_KEYS: ReadonlySet<string> = new Set(['defaultPrefix'])
 
 export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
-	{ slug: 'general', label: 'General', keys: ['topBarColor', 'navLinks', 'warnOnSlmStart'] },
+	{ slug: 'general', label: 'General', keys: ['topBarColor', 'navLinks', 'warnOnSlmStart', 'logFilePollInterval', 'tickRateThresholds'] },
 	{
-		slug: 'messaging',
-		label: 'Messaging & Reasons',
-		keys: ['warnPrefix', 'adminActionReasons', 'requireReasonFor', 'broadcasts', 'messageVariables', 'chat'],
+		slug: 'warns-and-broadcasts',
+		label: 'Warns & Broadcasts',
+		keys: ['adminActionReasons', 'requireReasonFor', 'messageVariables', 'chat'],
 	},
 	{ slug: 'commands', label: 'In-game Commands', keys: ['allowedPrefixes', 'defaultPrefix', 'commands', 'commandAliases'] },
-	{ slug: 'queue-and-votes', label: 'Queue & Votes', keys: ['layerQueue', 'vote', 'layerTable', 'layerGeneration'] },
+	{ slug: 'layer-queue', label: 'Layer Queue', keys: ['layerQueue'], passthrough: true },
+	{ slug: 'votes', label: 'Votes', keys: ['vote'], passthrough: true },
+	{ slug: 'layers', label: 'Layers', keys: ['layerTable', 'layerGeneration'] },
 	{
 		slug: 'squad-server',
 		label: 'Squad Server',
-		keys: [
-			'overrideAdminSetNextLayer',
-			'warnOnChangeLayer',
-			'squadServer',
-			'fogOffDelay',
-			'postRollAnnouncementsTimeout',
-			'balanceTriggerLevels',
-		],
+		keys: ['overrideAdminSetNextLayer', 'warnOnChangeLayer', 'fogOffDelay', 'postRollAnnouncementsTimeout'],
 	},
-	{ slug: 'players', label: 'Players & Flags', keys: ['playerGroupings', 'playerFlagsRequiringNote'] },
+	{ slug: 'players', label: 'Players & Balance', keys: ['playerGroupings', 'playerFlagsRequiringNote', 'balanceTriggerLevels'] },
 	// rbac stays ungrouped: its own section header already reads "Permissions & Roles"
 ]
 
@@ -46,8 +44,6 @@ export const SERVER_SETTINGS_PRIORITY_KEYS: string[] = ['connections', 'adminLis
 export const ADVANCED_GLOBAL_SETTINGS_PATHS: ReadonlySet<string> = new Set([
 	'topBarColor',
 	'warnOnSlmStart',
-	'warnPrefix',
-	'chat',
 	'allowedPrefixes',
 	'layerQueue.lowQueueWarningThreshold',
 	'layerQueue.adminQueueReminderInterval',
@@ -56,7 +52,8 @@ export const ADVANCED_GLOBAL_SETTINGS_PATHS: ReadonlySet<string> = new Set([
 	'vote.finalVoteReminder',
 	'vote.autoStartVoteCutoff',
 	'vote.maxNumVoteChoices',
-	'squadServer',
+	'logFilePollInterval',
+	'tickRateThresholds',
 	'fogOffDelay',
 	'postRollAnnouncementsTimeout',
 ])
@@ -64,6 +61,7 @@ export const ADVANCED_GLOBAL_SETTINGS_PATHS: ReadonlySet<string> = new Set([
 export const ADVANCED_SERVER_SETTINGS_PATHS: ReadonlySet<string> = new Set([
 	'updatesToSquadServerDisabled',
 	'navLinks',
+	'rconCacheTTL',
 ])
 
 // Subtrees whose GUI editor is elaborate enough that bulk edits (reordering, copying a role between installs, pasting a
@@ -75,7 +73,6 @@ export const LOCAL_JSON_EDITOR_PATHS: ReadonlySet<string> = new Set([
 	'rbac',
 	'commands',
 	'adminActionReasons',
-	'broadcasts',
 	'commandAliases',
 	'messageVariables',
 	'playerGroupings',
@@ -85,6 +82,7 @@ export const LOCAL_JSON_EDITOR_PATHS: ReadonlySet<string> = new Set([
 	'chat',
 	// server
 	'queue',
+	'rconCacheTTL',
 	'adminListSources',
 ])
 
