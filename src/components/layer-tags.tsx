@@ -27,7 +27,9 @@ export function LayerTags(props: {
 	onChange: (tags: LTag.TagId[]) => void
 	disabled?: boolean
 	className?: string
-	emptyLabel?: string
+	// keeps the add button out of the way until the queue item is hovered or the button takes focus. Only meaningful
+	// inside a `group/single-item`; the dialogs render the button unconditionally.
+	revealAddOnHover?: boolean
 }) {
 	const configured = ZusUtils.useStore(SettingsClient.PublicSettingsStore, s => s?.layerTags ?? [])
 	const resolved = LTag.resolveAll(props.tags, configured)
@@ -51,13 +53,14 @@ export function LayerTags(props: {
 					onEdit={() => setEditing(configured.find(t => t.id === tag.id) ?? null)}
 				/>
 			))}
-			{resolved.length === 0 && props.emptyLabel && <span className="text-xs text-muted-foreground">{props.emptyLabel}</span>}
 			<AddTagDropdown
 				disabled={props.disabled}
 				applied={tagIds}
 				configured={configured}
 				onSelect={add}
 				onCreate={() => setEditing('new')}
+				labelled={resolved.length === 0}
+				revealOnHover={props.revealAddOnHover}
 			/>
 			<LayerTagDialog
 				state={editing}
@@ -121,14 +124,28 @@ function AddTagDropdown(props: {
 	configured: LTag.Tag[]
 	onSelect: (id: LTag.TagId) => void
 	onCreate: () => void
+	labelled?: boolean
+	revealOnHover?: boolean
 }) {
 	const canManage = useCanManageTags()
 	const available = props.configured.filter(t => !props.applied.includes(t.id))
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild disabled={props.disabled}>
-				<Button variant="ghost" size="icon" className="h-4 w-4" title="Add tag">
+				<Button
+					variant="ghost"
+					size="sm"
+					title="Add tag"
+					className={cn(
+						'h-4 shrink-0 px-1 text-xs text-muted-foreground font-normal',
+						props.labelled ? 'gap-0.5' : 'w-4 px-0',
+						// data-[state=open] keeps it visible while its own menu is up, once the pointer leaves the item
+						props.revealOnHover
+							&& 'opacity-0 group-hover/single-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100',
+					)}
+				>
 					<Icons.Plus className="h-3 w-3" />
+					{props.labelled && <span>add tag</span>}
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
