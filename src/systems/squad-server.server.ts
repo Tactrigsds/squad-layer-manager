@@ -1244,7 +1244,8 @@ export async function warnPlayers(
 		}
 	})
 	await SquadRcon.warnAll(ctx, targets, reason)
-	if (opts?.notifyAdmins === false) return
+	// in-game commands echo to the invoking admin themselves, so there's nothing to classify or notify for them
+	if (opts?.notifyAdmins === false || actor.type !== 'slm-user') return
 	const audience = await classifyWarnTargets(ctx, targets)
 	if (opts?.notifyAdmins === undefined) {
 		// admin-to-admin chatter shouldn't page the whole admin team; a preset reason is a formal action, so it still does
