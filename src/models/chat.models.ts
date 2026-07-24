@@ -908,7 +908,6 @@ function matchesFilterState(event: EventEnriched, filterState: SecondaryFilterSt
 			if (event.type === 'CHAT_MESSAGE') return event.channel.type === 'ChatAdmin'
 			if (event.type === 'ADMIN_BROADCAST') return event.from !== 'RCON'
 			if (event.type === 'PLAYER_CONNECTED' || event.type === 'PLAYER_DISCONNECTED') return event.player.isAdmin
-			if (isKillfeedEvent(event)) return event.variant === 'teamkill'
 			// raw in-game warns are noisy under Admin; only the SLM-initiated ones (arriving as APP_EVENT, handled above) show
 			return isAdminActionEvent(event)
 		case 'KILLFEED':
