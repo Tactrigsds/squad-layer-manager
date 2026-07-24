@@ -51,6 +51,7 @@ beforeAll(async () => {
 				maxTimeout: 2 * HOUR,
 				globalSettingsGrants: [],
 				serverSettingsGrants: [],
+				serverGrants: [],
 				assignments: {
 					discordRoleIds: [],
 					discordUserIds: [CAPPED_USER.discordId.toString()],
@@ -65,6 +66,7 @@ beforeAll(async () => {
 				maxTimeout: 1 * HOUR,
 				globalSettingsGrants: [],
 				serverSettingsGrants: [],
+				serverGrants: [],
 				assignments: {
 					discordRoleIds: [],
 					discordUserIds: [],

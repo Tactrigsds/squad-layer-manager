@@ -225,7 +225,7 @@ export const matchHistoryRouter = {
 
 	getMatchEvents: orpcBase.input(z.object({ serverId: z.string(), ordinal: z.number() })).handler(async ({ input, context: _ctx }) => {
 		const ordinal = input.ordinal
-		const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+		const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
 		if (ctxRes.code !== 'ok') return ctxRes
 		const ctx = ctxRes.ctx
 
@@ -275,7 +275,7 @@ export const matchHistoryRouter = {
 		serverId: z.string(),
 		playerId: z.string(),
 	})).handler(async ({ input, context: _ctx }) => {
-		const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+		const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
 		if (ctxRes.code !== 'ok') return ctxRes
 		const ctx = ctxRes.ctx
 		const playerId = input.playerId
@@ -317,7 +317,7 @@ export const matchHistoryRouter = {
 		cursor: z.number().optional(),
 		pageSize: z.number().positive().default(100),
 	})).handler(async ({ input, context: _ctx }) => {
-		const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+		const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
 		if (ctxRes.code !== 'ok') return ctxRes
 		const ctx = ctxRes.ctx
 		const currentMatch = await getCurrentMatch(ctx)
@@ -378,7 +378,7 @@ export const matchHistoryRouter = {
 		serverId: z.string(),
 		uniqueSquadId: z.number(),
 	})).handler(async ({ input, context: _ctx }) => {
-		const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+		const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
 		if (ctxRes.code !== 'ok') return ctxRes
 		const ctx = ctxRes.ctx
 

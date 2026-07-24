@@ -45,6 +45,7 @@ import * as m0087 from './0087_id_eq_to_select_layers'
 import * as m0088 from './0088_backburner_column'
 import * as m0089 from './0089_admin_lists_to_global'
 import * as m0090 from './0090_settings_reorg'
+import * as m0091 from './0091_squad_server_view_permission'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -74,4 +75,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0088_backburner_column', up: m0088.up },
 	{ name: '0089_admin_lists_to_global', up: m0089.up },
 	{ name: '0090_settings_reorg', up: m0090.up },
+	{ name: '0091_squad_server_view_permission', up: m0091.up },
 ]

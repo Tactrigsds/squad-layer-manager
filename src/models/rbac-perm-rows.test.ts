@@ -10,10 +10,27 @@ function roundTrip(cfg: PermRows.RoleConfig): PermRows.RoleConfig {
 
 describe('rowsFromConfig', () => {
 	test('a bare global expression is one allow row with no scope args', () => {
-		const rows = PermRows.rowsFromConfig({ permissions: ['queue:write'] })
-		expect(rows).toMatchObject([{ type: 'queue:write', effect: 'allow' }])
+		const rows = PermRows.rowsFromConfig({ permissions: ['site:authorized'] })
+		expect(rows).toMatchObject([{ type: 'site:authorized', effect: 'allow' }])
 		expect(rows[0].paths).toBeUndefined()
 		expect(rows[0].serverIds).toBeUndefined()
+	})
+
+	test('a bare server-scoped expression is an allow row covering all servers', () => {
+		const rows = PermRows.rowsFromConfig({ permissions: ['queue:write'] })
+		expect(rows).toMatchObject([{ type: 'queue:write', effect: 'allow' }])
+		// empty rather than absent: the cell renders it as "All servers", which is what a bare expression grants
+		expect(rows[0].serverIds).toEqual([])
+	})
+
+	test('a serverGrant becomes a row listing its servers, and is dropped when the bare expression is present', () => {
+		const grant = { permission: 'queue:write', serverIds: ['sandbox'] }
+		expect(PermRows.rowsFromConfig({ serverGrants: [grant] })).toMatchObject([
+			{ type: 'queue:write', effect: 'allow', serverIds: ['sandbox'] },
+		])
+		expect(PermRows.rowsFromConfig({ permissions: ['queue:write'], serverGrants: [grant] })).toMatchObject([
+			{ type: 'queue:write', effect: 'allow', serverIds: [] },
+		])
 	})
 
 	test('a !-prefixed expression becomes a deny row on the same permission', () => {
@@ -201,6 +218,7 @@ describe('round trip', () => {
 			permissions: cfg.permissions ?? [],
 			globalSettingsGrants: cfg.globalSettingsGrants ?? [],
 			serverSettingsGrants: [...(cfg.serverSettingsGrants ?? [])].map((g) => JSON.stringify(g)).sort(),
+			serverGrants: [...(cfg.serverGrants ?? [])].map((g) => JSON.stringify(g)).sort(),
 		}
 	}
 

@@ -53,7 +53,7 @@ export default function WarnChatBox({
 		() => WarnChat.focusWhenVisible(() => textareaRef.current),
 	)
 	const username = UsersClient.useLoggedInUser()?.displayName
-	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
+	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players', { serverId: serverId }))
 	const warnPlayersMutation = SquadServerClient.useWarnPlayersMutation()
 	const pending = warnPlayersMutation.isPending
 	const targetsAreAllAdmins = ZusUtils.useStore(stores.squadServer, SquadServerFrame.Sel.allTargetsAreAdmins(playerIds))

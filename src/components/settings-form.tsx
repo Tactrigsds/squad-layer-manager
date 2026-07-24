@@ -2466,6 +2466,7 @@ function PermScopeCell(
 				/>
 			)
 
+		case 'server':
 		case 'server-settings':
 			return (
 				<ScopeValueRows

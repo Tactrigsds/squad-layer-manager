@@ -1,22 +1,31 @@
 import * as RBAC from '@/rbac.models'
 import { describe, expect, it } from 'vitest'
 
-function timeoutPerm(maxDurationMs: number | null): RBAC.Permission {
-	return RBAC.perm('squad-server:timeout-players', { maxDurationMs })
+function timeoutPerm(maxDurationMs: number | null, serverId: string | null = null): RBAC.Permission {
+	return RBAC.perm('squad-server:timeout-players', { serverId, maxDurationMs })
 }
 
 describe('maxTimeoutDurationMs', () => {
 	it('returns undefined with no timeout grant', () => {
-		expect(RBAC.maxTimeoutDurationMs([])).toBeUndefined()
-		expect(RBAC.maxTimeoutDurationMs([RBAC.perm('squad-server:warn-players')])).toBeUndefined()
+		expect(RBAC.maxTimeoutDurationMs([], 's1')).toBeUndefined()
+		expect(RBAC.maxTimeoutDurationMs([RBAC.perm('squad-server:warn-players', { serverId: null })], 's1')).toBeUndefined()
 	})
 
 	it('returns the max across grants', () => {
-		expect(RBAC.maxTimeoutDurationMs([timeoutPerm(60_000), timeoutPerm(3_600_000), timeoutPerm(600_000)])).toBe(3_600_000)
+		expect(RBAC.maxTimeoutDurationMs([timeoutPerm(60_000), timeoutPerm(3_600_000), timeoutPerm(600_000)], 's1')).toBe(3_600_000)
 	})
 
 	it('null (unlimited) short-circuits', () => {
-		expect(RBAC.maxTimeoutDurationMs([timeoutPerm(60_000), timeoutPerm(null)])).toBeNull()
+		expect(RBAC.maxTimeoutDurationMs([timeoutPerm(60_000), timeoutPerm(null)], 's1')).toBeNull()
+	})
+
+	it('only counts grants that reach the server asked about', () => {
+		const perms = [timeoutPerm(60_000, 's1'), timeoutPerm(3_600_000, 's2')]
+		expect(RBAC.maxTimeoutDurationMs(perms, 's1')).toBe(60_000)
+		expect(RBAC.maxTimeoutDurationMs(perms, 's3')).toBeUndefined()
+		// a null serverId asks for the cap that holds everywhere, which no per-server grant provides
+		expect(RBAC.maxTimeoutDurationMs(perms, null)).toBeUndefined()
+		expect(RBAC.maxTimeoutDurationMs([timeoutPerm(60_000)], null)).toBe(60_000)
 	})
 })
 
@@ -93,9 +102,21 @@ describe('settings access aggregation', () => {
 
 describe('permSubsumedBy', () => {
 	it('global perms match on identity', () => {
-		expect(RBAC.permSubsumedBy(RBAC.perm('vote:manage'), [RBAC.perm('vote:manage')])).toBe(true)
-		expect(RBAC.permSubsumedBy(RBAC.perm('vote:manage'), [RBAC.perm('queue:write')])).toBe(false)
-		expect(RBAC.permSubsumedBy(RBAC.perm('vote:manage'), [])).toBe(false)
+		expect(RBAC.permSubsumedBy(RBAC.perm('site:authorized'), [RBAC.perm('site:authorized')])).toBe(true)
+		expect(RBAC.permSubsumedBy(RBAC.perm('site:authorized'), [RBAC.perm('filters:create')])).toBe(false)
+		expect(RBAC.permSubsumedBy(RBAC.perm('site:authorized'), [])).toBe(false)
+	})
+
+	it('server-scoped perms are covered by an all-servers grant but not by another server', () => {
+		const onS1 = [RBAC.perm('queue:write', { serverId: 's1' })]
+		expect(RBAC.permSubsumedBy(RBAC.perm('queue:write', { serverId: 's1' }), onS1)).toBe(true)
+		expect(RBAC.permSubsumedBy(RBAC.perm('queue:write', { serverId: 's2' }), onS1)).toBe(false)
+		// the all-servers grant covers any specific server, but not the reverse
+		const allServers = [RBAC.perm('queue:write', { serverId: null })]
+		expect(RBAC.permSubsumedBy(RBAC.perm('queue:write', { serverId: 's2' }), allServers)).toBe(true)
+		expect(RBAC.permSubsumedBy(RBAC.perm('queue:write', { serverId: null }), onS1)).toBe(false)
+		// and it does not leak across permission types
+		expect(RBAC.permSubsumedBy(RBAC.perm('vote:manage', { serverId: 's1' }), allServers)).toBe(false)
 	})
 
 	it('filter-scoped perms match on their args', () => {
@@ -103,6 +124,12 @@ describe('permSubsumedBy', () => {
 		expect(RBAC.permSubsumedBy(RBAC.perm('filters:write', { filterId: 'f1' }), [RBAC.perm('filters:write', { filterId: 'f2' })])).toBe(
 			false,
 		)
+	})
+
+	it('a timeout grant on one server does not cover another', () => {
+		expect(RBAC.permSubsumedBy(timeoutPerm(60_000, 's1'), [timeoutPerm(600_000, 's1')])).toBe(true)
+		expect(RBAC.permSubsumedBy(timeoutPerm(60_000, 's2'), [timeoutPerm(600_000, 's1')])).toBe(false)
+		expect(RBAC.permSubsumedBy(timeoutPerm(60_000, 's2'), [timeoutPerm(600_000)])).toBe(true)
 	})
 
 	it('timeouts are subsumed by an equal or longer grant', () => {
@@ -157,9 +184,17 @@ describe('tryDenyPermissions', () => {
 	})
 
 	it('unscoped perms still match exactly', () => {
-		const perms = [traced(RBAC.perm('vote:manage'))]
-		expect(RBAC.tryDenyPermissions(perms, RBAC.perm('vote:manage'))).toBe(null)
-		expect(RBAC.tryDenyPermissions(perms, RBAC.perm('queue:write'))?.code).toBe('err:permission-denied')
+		const perms = [traced(RBAC.perm('site:authorized'))]
+		expect(RBAC.tryDenyPermissions(perms, RBAC.perm('site:authorized'))).toBe(null)
+		expect(RBAC.tryDenyPermissions(perms, RBAC.perm('filters:create'))?.code).toBe('err:permission-denied')
+	})
+
+	it('a sandbox-only grant does not authorize an action on another server', () => {
+		const perms = [traced(RBAC.perm('squad-server:kick-players', { serverId: 'sandbox' }))]
+		expect(RBAC.tryDenyPermissions(perms, RBAC.perm('squad-server:kick-players', { serverId: 'sandbox' }))).toBe(null)
+		expect(RBAC.tryDenyPermissions(perms, RBAC.perm('squad-server:kick-players', { serverId: 'prod' }))?.code).toBe(
+			'err:permission-denied',
+		)
 	})
 })
 
