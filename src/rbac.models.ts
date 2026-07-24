@@ -399,9 +399,9 @@ export function tryDenyPermissions<T extends PermissionType>(
 				failures.push(errorMessage)
 			}
 		} else {
-			const hasPerm = userPerms.some((userPerm) =>
-				typeof reqPerm === 'string' ? userPerm.type === reqPerm : arePermsEqual(userPerm, reqPerm)
-			)
+			const hasPerm = typeof reqPerm === 'string'
+				? userPerms.some((userPerm) => userPerm.type === reqPerm)
+				: permSubsumedBy(reqPerm, userPerms)
 			if (!hasPerm) {
 				failures.push(describePermit(reqPerm))
 			}

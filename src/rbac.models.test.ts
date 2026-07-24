@@ -142,6 +142,27 @@ describe('permSubsumedBy', () => {
 	})
 })
 
+describe('tryDenyPermissions', () => {
+	const traced = (perm: RBAC.Permission) => ({ ...perm, allowedByRoles: [], negated: false, negating: false })
+
+	it('an all-servers grant satisfies a specific-server check', () => {
+		const perms = [traced(RBAC.perm('server-settings:read', { serverId: null }))]
+		expect(RBAC.tryDenyPermissions(perms, RBAC.perm('server-settings:read', { serverId: 's1' }))).toBe(null)
+	})
+
+	it('a per-server grant does not satisfy a different server', () => {
+		const perms = [traced(RBAC.perm('server-settings:read', { serverId: 's1' }))]
+		expect(RBAC.tryDenyPermissions(perms, RBAC.perm('server-settings:read', { serverId: 's1' }))).toBe(null)
+		expect(RBAC.tryDenyPermissions(perms, RBAC.perm('server-settings:read', { serverId: 's2' }))?.code).toBe('err:permission-denied')
+	})
+
+	it('unscoped perms still match exactly', () => {
+		const perms = [traced(RBAC.perm('vote:manage'))]
+		expect(RBAC.tryDenyPermissions(perms, RBAC.perm('vote:manage'))).toBe(null)
+		expect(RBAC.tryDenyPermissions(perms, RBAC.perm('queue:write'))?.code).toBe('err:permission-denied')
+	})
+})
+
 describe('addTracedPerms', () => {
 	const roleA = RBAC.userDefinedRole('a')
 	const roleB = RBAC.userDefinedRole('b')
