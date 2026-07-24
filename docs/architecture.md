@@ -689,6 +689,33 @@ the IR's JSON, which can never go stale because the layer table is immutable for
 The one place duplication _is_ accepted is generation key packing, which is implemented identically in
 `layer-columns.ts` and `gen.rs`, so a key computed from a weight entry matches the key computed from a row.
 
+**The server loads its copy lazily.** The browser runs the engine for everything the UI does (the layer table,
+the select dialog, gen-vote, filter evaluation), so the server's copy exists for four narrow jobs only: queue
+autogen, the force-write pool check, backburner template probes, and the `getLayerInfo` route. Holding the
+artifact costs ~64MB resident for the life of the process against a ~190ms cold load, so `LayerEngine.getEngine()`
+defers it to the first actual query and memoizes from there.
+
+That only pays off if nothing resolves a query context speculatively. `resolveLayerQueryCtx` is what triggers
+the load, so call it at the point of use rather than at the top of a handler. The admin queue reminder is the
+case to copy: it runs every 10 minutes and checks for a next layer first, because that check needs no engine
+and the status query it guards does.
+
+The load is **synchronous**, which is deliberate and not an oversight. Queue autogen runs as a side effect of
+the op that empties the list, and during a roll that op is dispatched inside a `runTransaction`, where any
+yield to the event loop trips the guard described in [Data and persistence](#data-and-persistence). An async
+load fails there outright. So the server compiles the wasm with `LayerEngine.createSync` and pays one ~190ms
+stall on first query -- the same work every boot used to do unconditionally. The browser keeps the async
+`LayerEngine.create`, since sync compilation of a module this size is disallowed there.
+
+Worth being clear about the ceiling: any server that rolls a match or has the admin reminder enabled will load
+the engine within minutes of boot. What lazy loading actually buys is a faster boot, cheaper test and emulator
+instances, and standby servers that never pay the 64MB at all. It is not a reduction in steady-state memory for
+a busy server.
+
+Two things kept deliberately off the engine load: the `/layers.bin` etag (hashed from the on-disk bytes at
+boot, since every client fetches that artifact on page load) and `layersVersion` (which comes from resolving
+the artifact pair, not from the loaded engine).
+
 ## Out-of-process pieces
 
 **The server agent** (`server-agent/agent`, Rust) runs on the game host. It tails

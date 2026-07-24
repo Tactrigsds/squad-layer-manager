@@ -112,17 +112,19 @@ export const setupInstance = C.spanOp(
 					C.durableSub('queue-reminders', { module, levels: { event: 'info' } }, async (_, signal) => {
 						const baseCtx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
 						const serverState = await SquadServer.getServerState(baseCtx)
-						const ctx = LayerQueriesServer.resolveLayerQueryCtx(baseCtx)
-						const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+						const currentMatch = await MatchHistory.getCurrentMatch(baseCtx)
 						const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: false })
-						const statusRes = await LayerQueries.getLayerItemStatuses({
-							ctx,
-							input: { constraints: allConstraints, list: await LayerQueriesServer.resolveLayerItemsState(baseCtx) },
-						})
 
-						warnCondition: if (statusRes.code === 'ok') {
-							const nextLayer = getSavedQueue(ctx)[0] ?? null
+						// statuses need the engine, so the query ctx stays unresolved until there is a next layer to report on
+						warnCondition: {
+							const nextLayer = getSavedQueue(baseCtx)[0] ?? null
 							if (!nextLayer) break warnCondition
+							const ctx = LayerQueriesServer.resolveLayerQueryCtx(baseCtx)
+							const statusRes = await LayerQueries.getLayerItemStatuses({
+								ctx,
+								input: { constraints: allConstraints, list: await LayerQueriesServer.resolveLayerItemsState(baseCtx) },
+							})
+							if (statusRes.code !== 'ok') break warnCondition
 							const warns = statusRes.statuses.warns.filter(w => w.itemId === nextLayer.itemId)
 							if (warns.length === 0) break warnCondition
 							const repeatViolations = warns.filter(w => w.type === 'repeat-rule-violation-warning').flatMap(w => w.descriptors)
@@ -141,8 +143,8 @@ export const setupInstance = C.spanOp(
 							return
 						}
 
-						const voteState = ctx.vote.state
-						if (ctx.server.serverRolling$.value || currentMatch.status === 'post-game') return
+						const voteState = baseCtx.vote.state
+						if (baseCtx.server.serverRolling$.value || currentMatch.status === 'post-game') return
 						if (
 							LL.isVoteItem(serverState.layerQueue[0])
 							&& voteState?.code === 'ready'
@@ -151,7 +153,7 @@ export const setupInstance = C.spanOp(
 							&& currentMatch.startTime.getTime() + GS.vote.startVoteReminderThreshold < Date.now()
 						) {
 							await SquadRcon.warnAllAdmins(
-								ctx,
+								baseCtx,
 								Messages.WARNS.queue.votePending(
 									currentMatch.startTime,
 									GS.vote.startVoteReminderThreshold,
@@ -160,7 +162,7 @@ export const setupInstance = C.spanOp(
 								),
 							)
 						} else if (serverState.layerQueue.length === 0) {
-							await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.empty)
+							await SquadRcon.warnAllAdmins(baseCtx, Messages.WARNS.queue.empty)
 						}
 					}),
 				).subscribe(),

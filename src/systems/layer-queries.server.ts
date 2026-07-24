@@ -31,6 +31,7 @@ export const router = {
 	}),
 }
 
+// loads the engine on first call (see LayerEngine.getEngine), so resolve this only on paths that go on to query it.
 export function resolveLayerQueryCtx<Ctx extends C.MatchHistory & C.LayerQueue>(
 	ctx: Ctx,
 ): Ctx & CS.LayerQuery {
@@ -53,7 +54,7 @@ export async function resolveLayerItemsState(ctx: C.MatchHistory & C.LayerQueue 
 function resolveLayerEngineContext(): CS.LayerEngine {
 	return {
 		...CS.init(),
-		engine: LayerEngine.engine,
+		engine: LayerEngine.getEngine(),
 		// derived from the extra columns the layer data shipped with, and memoized on them, so every request shares
 		// one config object
 		effectiveColsConfig: LC.getEffectiveColumnConfig(),
