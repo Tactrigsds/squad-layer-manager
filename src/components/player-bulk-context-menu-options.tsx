@@ -2,7 +2,6 @@ import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
-import type * as AAR from '@/models/admin-action-reasons.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
@@ -279,26 +278,33 @@ export default function PlayerBulkContextMenuOptions(
 		})
 	}
 
-	// preset warns for a multi-selection get a confirmation dialog (bulk-action rule) instead of sending immediately
-	async function warnPreset(reason: AAR.AdminActionReason) {
+	async function warnPreset() {
+		presetReasonRef.current = ''
 		const result = await openDialog({
 			title: fullSquad ? 'Warn Squad' : 'Warn Players',
-			description: `Warn these ${playerIds.length} players for ${reason.label}?`,
-			content: selectedPlayerList(),
+			description: `Warn these ${playerIds.length} players with a preset reason?`,
+			content: (
+				<div className="grid gap-3 py-2">
+					<ReasonPicker action="warn" presetRef={presetReasonRef} required />
+					{selectedPlayerList()}
+				</div>
+			),
 			buttons: [{ id: 'confirm', label: 'Warn' }],
 		})
 		if (result !== 'confirm') return
+		const input = SquadServerClient.readReasonInput({ action: 'warn', required: true, presetRef: presetReasonRef })
+		if (!input) return
 		const res = await warnPlayersMutation.mutateAsync({
 			serverId,
 			playerIds,
-			presetReasonLabel: reason.label,
+			...input,
 			taggedSquad: fullSquad ? { squadId: fullSquad.squadId, squadName: fullSquad.squadName, teamId: fullSquad.teamId } : undefined,
 		})
 		if (res.code !== 'ok') {
 			toast.error('Warn failed', { description: 'msg' in res ? res.msg : res.code })
 			return
 		}
-		toast(`Warned ${playerIds.length} players for ${reason.label}`)
+		toast(`Warned ${playerIds.length} players for ${input.presetReasonLabel}`)
 	}
 
 	return (

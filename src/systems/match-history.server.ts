@@ -5,7 +5,6 @@ import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import type * as Cleanup from '@/lib/cleanup'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { IsolatedSubject } from '@/lib/isolated-subject'
-import { LRUMap } from '@/lib/lru-map'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import type { Parts } from '@/lib/types'
 import * as Messages from '@/messages'
@@ -23,6 +22,7 @@ import * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as MatchEventsCache from '@/systems/match-events-cache.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as UsersClient from '@/systems/users.server'
@@ -48,9 +48,6 @@ export type MatchHistoryContext = {
 	dispatchUpdate: () => void
 	recentMatches: MH.MatchDetails[]
 	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
-
-	// matchId -> events
-	matchEventsCache: LRUMap<number, Promise<CHAT.EventEnriched[]>>
 } & Parts<USR.UserPart>
 
 export function initMatchHistoryContext(event$: SquadServer.SquadServer['event$'], cleanup: Cleanup.Tasks): MatchHistoryContext {
@@ -63,7 +60,6 @@ export function initMatchHistoryContext(event$: SquadServer.SquadServer['event$'
 		parts: { users: [] },
 		recentMatches: [],
 		recentBalanceTriggerEvents: [],
-		matchEventsCache: new LRUMap(500),
 	}
 
 	event$.pipe(
@@ -92,7 +88,7 @@ export function getPublicMatchHistoryState(ctx: C.MatchHistory): MH.PublicMatchH
 export const loadState = C.spanOp(
 	'loadState',
 	{ module },
-	async (ctx: C.Db & C.MatchHistory & CS.AbortSignal, opts?: { startAtOrdinal?: number }) => {
+	async (ctx: C.Db & C.MatchHistory & C.MatchEventsCache & CS.AbortSignal, opts?: { startAtOrdinal?: number }) => {
 		const state = ctx.matchHistory
 		const startAtOrdinal = opts?.startAtOrdinal ?? 0
 		const recentMatchesCte = ctx.db().$with('recent_matches').as(
@@ -160,13 +156,14 @@ export const loadState = C.spanOp(
 			state.recentMatches = state.recentMatches.slice(state.recentMatches.length - MH.MAX_RECENT_MATCHES, state.recentMatches.length)
 		}
 
-		// Prime matchEventsCache for all recent matches (skip current match - events are still being generated)
+		// Prime the newest matches the cache can hold (skip the current match - its events are still being generated)
 		const matchIdsToPrime = state.recentMatches
-			.filter(match => !match.isCurrentMatch && !state.matchEventsCache.has(match.historyEntryId))
+			.filter(match => !match.isCurrentMatch && !ctx.matchEventsCache.events.has(match.historyEntryId))
+			.slice(-MatchEventsCache.MAX_CACHED_MATCHES)
 			.map(match => match.historyEntryId)
 		if (matchIdsToPrime.length > 0) {
 			// getEventsForMatches populates the cache internally with a single batched query
-			void getEventsForMatches(ctx, ...matchIdsToPrime)
+			void MatchEventsCache.getEventsForMatches(ctx, ...matchIdsToPrime)
 		}
 	},
 )
@@ -266,7 +263,7 @@ export const matchHistoryRouter = {
 			throw new Error(`Match with ordinal ${ordinal} not found`)
 		}
 
-		const events = await getEventsForMatches(ctx, match.historyEntryId)
+		const events = await MatchEventsCache.getEventsForMatches(ctx, match.historyEntryId)
 
 		return {
 			events,
@@ -310,7 +307,7 @@ export const matchHistoryRouter = {
 		return { connectionStatus }
 	}),
 
-	// Player-specific events sourced entirely from matchEventsCache (already-enriched, cache-primed recent matches).
+	// Player-specific events are drawn from the enriched events of the recent matches, cached or re-read per page.
 	// The current match is deliberately excluded: the client already has its events live via the chat feed. Pagination
 	// counts player-specific events (NEW_GAME/RESET have no player association so they don't count toward pageSize), but
 	// is aligned to match boundaries so pages never overlap. `cursor` is an exclusive upper-bound matchId.
@@ -326,10 +323,10 @@ export const matchHistoryRouter = {
 		const currentMatch = await getCurrentMatch(ctx)
 		const playerId = input.playerId
 
-		const cachedMatchIds = ctx.matchHistory.recentMatches
+		const historicalMatchIds = ctx.matchHistory.recentMatches
 			.filter(m => m.historyEntryId !== currentMatch?.historyEntryId)
 			.map(m => m.historyEntryId)
-		if (cachedMatchIds.length === 0) return { events: [] as CHAT.EventEnriched[], nextCursor: undefined }
+		if (historicalMatchIds.length === 0) return { events: [] as CHAT.EventEnriched[], nextCursor: undefined }
 
 		// per-match counts of player-specific events (game-participant assoc excluded so it counts only shown events)
 		const matchCountRows = await ctx.db()
@@ -343,7 +340,7 @@ export const matchHistoryRouter = {
 					E.ne(Schema.playerEventAssociations.assocType, SchemaModels.SERVER_EVENT_PLAYER_ASSOC_TYPE.enum['game-participant']),
 				),
 			)
-			.where(E.inArray(Schema.serverEvents.matchId, cachedMatchIds))
+			.where(E.inArray(Schema.serverEvents.matchId, historicalMatchIds))
 			.groupBy(Schema.serverEvents.matchId)
 
 		// most-recent match first (matchId is monotonic with recency)
@@ -369,7 +366,7 @@ export const matchHistoryRouter = {
 
 		const nextCursor = index < matchesWithEvents.length ? includedMatchIds[includedMatchIds.length - 1] : undefined
 
-		const enriched = await getEventsForMatches(ctx, ...includedMatchIds)
+		const enriched = await MatchEventsCache.getEventsForMatches(ctx, ...includedMatchIds)
 		const events = enriched
 			.filter(e => e.type === 'NEW_GAME' || CHAT.hasAssocPlayer(e, playerId))
 			.sort((a, b) => a.time - b.time)
@@ -457,7 +454,7 @@ export const addNewCurrentMatch = C.spanOp(
 	'addNewCurrentMatch',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => [ctx.matchHistory.mtx] },
 	async (
-		ctx: C.Db & C.MatchHistory & C.SquadServer & CS.AbortSignal,
+		ctx: C.Db & C.MatchHistory & C.MatchEventsCache & C.SquadServer & CS.AbortSignal,
 		entry: Omit<SchemaModels.NewMatchHistory, 'ordinal' | 'serverId'>,
 	) => {
 		await DB.runTransaction(ctx, async (ctx) => {
@@ -487,7 +484,7 @@ export const finalizeCurrentMatch = C.spanOp('finalizeCurrentMatch', {
 		[ATTRS.MatchHistory.CURRENT_LAYER_ID]: currentLayerId,
 	}),
 }, async (
-	ctx: C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.Db & C.MatchHistory & C.MatchEventsCache & CS.AbortSignal,
 	outcome: MH.MatchOutcome,
 	time: Date,
 ) => {
@@ -556,7 +553,10 @@ export const finalizeCurrentMatch = C.spanOp('finalizeCurrentMatch', {
 export const syncWithCurrentLayer = C.spanOp(
 	'syncWithCurrentLayer',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.matchHistory.mtx },
-	async (ctx: C.Db & C.MatchHistory & C.SquadServer & CS.AbortSignal, _currentLayerOnServer: L.UnvalidatedLayer | L.LayerId) => {
+	async (
+		ctx: C.Db & C.MatchHistory & C.MatchEventsCache & C.SquadServer & CS.AbortSignal,
+		_currentLayerOnServer: L.UnvalidatedLayer | L.LayerId,
+	) => {
 		const currentLayerOnServer = L.toLayer(_currentLayerOnServer)
 		return await DB.runTransaction(ctx, async ctx => {
 			const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
@@ -593,61 +593,5 @@ export const syncWithCurrentLayer = C.spanOp(
 				return { pushedNewMatch: true, currentMatch }
 			}
 		})
-	},
-)
-
-const getEventsForMatches = C.spanOp(
-	'getEventsForMatches',
-	{ module, levels: { event: 'trace' } },
-	async (ctx: C.Db & C.MatchHistory & CS.AbortSignal, ..._matches: number[]) => {
-		const matches = _matches.toSorted((a, b) => a - b)
-
-		const ops = new Map<number, Promise<CHAT.EventEnriched[]>>()
-		const uncached: number[] = []
-		for (const matchId of matches) {
-			const cachedEvents$ = ctx.matchHistory.matchEventsCache.get(matchId)
-			if (cachedEvents$) {
-				ops.set(matchId, cachedEvents$)
-				continue
-			}
-			uncached.push(matchId)
-		}
-
-		if (uncached.length > 0) {
-			const batch$ = (async () => {
-				const rawEvents = await ctx.db().select()
-					.from(Schema.serverEvents)
-					.where(E.inArray(Schema.serverEvents.matchId, uncached))
-					.orderBy(E.asc(Schema.serverEvents.id))
-
-				const rowsByMatch = new Map<number, typeof rawEvents>()
-				for (const rawEvent of rawEvents) {
-					let rows = rowsByMatch.get(rawEvent.matchId)
-					if (!rows) rowsByMatch.set(rawEvent.matchId, rows = [])
-					rows.push(rawEvent)
-				}
-
-				const eventsByMatch = new Map<number, CHAT.EventEnriched[]>()
-				for (const matchId of uncached) {
-					const state = CHAT.getInitialChatState()
-					for (const event of SE.fromEventRows({ ...ctx, log }, rowsByMatch.get(matchId) ?? [])) {
-						CHAT.handleEvent(state, event)
-					}
-					eventsByMatch.set(matchId, state.eventBuffer)
-				}
-				return eventsByMatch
-			})()
-			batch$.catch(() => {
-				for (const matchId of uncached) ctx.matchHistory.matchEventsCache.delete(matchId)
-			})
-			for (const matchId of uncached) {
-				const events$ = batch$.then(eventsByMatch => eventsByMatch.get(matchId)!)
-				ctx.matchHistory.matchEventsCache.set(matchId, events$)
-				ops.set(matchId, events$)
-			}
-		}
-
-		const allEvents = (await Promise.all(matches.map(matchId => ops.get(matchId)!))).flat()
-		return allEvents
 	},
 )

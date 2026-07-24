@@ -517,8 +517,7 @@ export function resolveTeamParityForCursor(state: LayerItemsState, cursor: Curso
 
 export function isLookbackTerminatingLayerItem(item: LayerItem): boolean {
 	if (isVoteListitem(item)) return false
-	const layer = L.toLayer(item.layerId)
-	return layer && item.type === 'match-history-entry' && ['Seed', 'Training'].includes(layer.Gamemode as string)
+	return item.type === 'match-history-entry' && L.isSeedingOrTrainingLayer(item.layerId)
 }
 
 export function getAllLayerIds(items: OrderedLayerItems) {
@@ -601,7 +600,6 @@ export const LayerTableConfigSchema = z.object({
 	// must stay bidirectionally codec-able (no z.preprocess/one-way transforms): the settings system round-trips
 	// GlobalSettings through .encode() for the editor form, which throws on a unidirectional transform
 	extraLayerSelectMenuItems: z.array(F.EditableCompNodeSchema).optional(),
-	defaultExtraFilters: z.array(F.FilterEntityIdSchema).optional(),
 })
 
 export type LayerTableConfig = z.infer<typeof LayerTableConfigSchema>

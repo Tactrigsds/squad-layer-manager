@@ -11,6 +11,12 @@ import type { TsMigration } from '@/server/migrate'
 // The runner merges these with the `.sql` files in drizzle-sqlite/ and applies all
 // of them in filename order, so `name` MUST match the file's numeric prefix and be
 // unique across both `.sql` and `.ts` migrations.
+//
+// A migration must not import app models (they describe the CURRENT shape, which is
+// exactly what the migration is moving away from), but `superjson` itself is fair game:
+// the JSON columns are superjson-wrapped ({ json, meta }), and a migration touching
+// values that `meta` actually references should deserialize/reserialize with superjson
+// rather than editing the wrapper by hand.
 import * as m0062 from './0062_filter_nodes_operator_model'
 import * as m0063 from './0063_filter_team_scopes_to_and_or'
 import * as m0064 from './0064_rbac_roles_rename_and_flatten_member_roles'
@@ -38,6 +44,7 @@ import * as m0086 from './0086_fold_broadcasts_into_admin_action_reasons'
 import * as m0087 from './0087_id_eq_to_select_layers'
 import * as m0088 from './0088_backburner_column'
 import * as m0089 from './0089_admin_lists_to_global'
+import * as m0090 from './0090_settings_reorg'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -66,4 +73,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0087_id_eq_to_select_layers', up: m0087.up },
 	{ name: '0088_backburner_column', up: m0088.up },
 	{ name: '0089_admin_lists_to_global', up: m0089.up },
+	{ name: '0090_settings_reorg', up: m0090.up },
 ]

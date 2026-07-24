@@ -41,12 +41,21 @@ FROM node:24.18.0-slim AS runtime
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
-# Install build dependencies for native modules (better-sqlite3, etc.)
+# Install build dependencies for native modules (better-sqlite3, etc.). libjemalloc2 is not one of them;
+# see the LD_PRELOAD below.
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
+    libjemalloc2 \
     && rm -rf /var/lib/apt/lists/*
+
+# Run on jemalloc rather than glibc malloc. glibc hands each allocating thread its own arena and then
+# essentially never returns freed pages to the OS, so RSS ratchets to the high-water mark and stays there:
+# taking one heap snapshot of a 570MB process left it at 1.37GB with the JS heap unchanged. jemalloc decays
+# unused pages back instead. Set as an image env rather than in docker-compose.yaml so every deployment gets
+# it without knowing this path exists. amd64 -- an arm64 build needs /usr/lib/aarch64-linux-gnu/.
+ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
 
 RUN corepack enable
 RUN mkdir -p /logs

@@ -26,18 +26,19 @@ export function setup() {
 
 export const router = {
 	getLayerInfo: orpcBase.input(z.object({ layerId: L.LayerIdSchema })).handler(async ({ context: ctx, input }) => {
-		const lqContext = { ...ctx, ...resolveLayerEngineContext() }
+		const lqContext = { ...ctx, ...await resolveLayerEngineContext() }
 		return await LayerQueries.getLayerInfo({ ctx: lqContext, input })
 	}),
 }
 
-export function resolveLayerQueryCtx<Ctx extends C.MatchHistory & C.LayerQueue>(
+// loads the engine on first call (see LayerEngine.getEngine), so resolve this only on paths that go on to query it.
+export async function resolveLayerQueryCtx<Ctx extends C.MatchHistory & C.LayerQueue>(
 	ctx: Ctx,
-): Ctx & CS.LayerQuery {
+): Promise<Ctx & CS.LayerQuery> {
 	return {
 		...ctx,
 		log,
-		...resolveLayerEngineContext(),
+		...await resolveLayerEngineContext(),
 		filters: FilterEntity.state.filters,
 		generationConfig: Settings.GLOBAL_SETTINGS.layerGeneration,
 	}
@@ -50,10 +51,10 @@ export async function resolveLayerItemsState(ctx: C.MatchHistory & C.LayerQueue 
 	)
 }
 
-function resolveLayerEngineContext(): CS.LayerEngine {
+async function resolveLayerEngineContext(): Promise<CS.LayerEngine> {
 	return {
 		...CS.init(),
-		engine: LayerEngine.engine,
+		engine: await LayerEngine.getEngine(),
 		// derived from the extra columns the layer data shipped with, and memoized on them, so every request shares
 		// one config object
 		effectiveColsConfig: LC.getEffectiveColumnConfig(),

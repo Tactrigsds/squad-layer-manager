@@ -97,7 +97,20 @@ function editSchema(state: SettingsEditor): z.ZodType<any> {
 function nextEncoded(state: SettingsEditor): any {
 	if (state.mode === 'gui') return state.draft
 	if (state.jsonValid === null) return undefined
-	return state.kind === 'global' ? SETTINGS.GlobalSettingsSchema.encode(state.jsonValid) : state.jsonValid
+	return editSchema(state).encode(state.jsonValid)
+}
+
+// A form always edits the encoded/input shape, so a HumanTime reads "5s" rather than 5000 whichever settings scope it
+// belongs to. Global settings are already stored that way; server settings are stored decoded, so they're encoded on
+// load. Settings that don't parse are the repair flow: hand those through untouched for the JSON editor to fix.
+function toEditShape(schema: z.ZodType<any>, raw: unknown): unknown {
+	const parsed = schema.safeParse(raw)
+	if (!parsed.success) return raw
+	try {
+		return schema.encode(parsed.data)
+	} catch {
+		return raw
+	}
 }
 
 // the decoded value a save would submit (null when invalid): the gui draft parsed, or the JSON editor's latest valid value
@@ -201,8 +214,10 @@ async function loadServerSettings(
 		set({ loading: false, loadFailed: res?.code ?? 'error' })
 		return
 	}
-	set({ loading: false, loadFailed: null, sensitiveOmitted: res.sensitiveOmitted, saved: res.settings })
-	if (opts.seedDraft && get().draft === undefined) set({ draft: res.settings })
+	const schema = res.sensitiveOmitted ? SETTINGS.ServerSettingsNoConnectionsSchema : SETTINGS.ServerSettingsSchema
+	const settings = toEditShape(schema, res.settings)
+	set({ loading: false, loadFailed: null, sensitiveOmitted: res.sensitiveOmitted, saved: settings })
+	if (opts.seedDraft && get().draft === undefined) set({ draft: settings })
 }
 
 export const frame = frameManager.createFrame<Types>({
@@ -279,7 +294,7 @@ export namespace Actions {
 		} else {
 			if (state.jsonValid !== null) {
 				// carry JSON edits back into the gui draft (re-encode to the input shape); reset$ makes the gui re-read
-				const enc = state.kind === 'global' ? SETTINGS.GlobalSettingsSchema.encode(state.jsonValid) : state.jsonValid
+				const enc = editSchema(state).encode(state.jsonValid)
 				s.setState({ mode: 'gui', draft: enc })
 				state.reset$.next()
 			} else {
