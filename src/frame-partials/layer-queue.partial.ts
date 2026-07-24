@@ -78,6 +78,12 @@ export function initLayerQueue(args: Args) {
 			case 'move':
 				presenceEvent$.next({ userId: op.userId, action: 'moved-item' })
 				break
+			case 'add-tag':
+				presenceEvent$.next({ userId: op.userId, action: 'added-tag' })
+				break
+			case 'add-note':
+				presenceEvent$.next({ userId: op.userId, action: 'added-note' })
+				break
 			case 'save':
 				presenceEvent$.next({ userId: op.userId, action: 'saved-queue' })
 				break

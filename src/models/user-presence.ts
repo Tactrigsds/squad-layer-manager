@@ -1053,6 +1053,8 @@ export const PRESENCE_EVENT_TEXT = {
 	'deleted-item': 'Deleted an item',
 	'cloned-item': 'Cloned an item',
 	'moved-item': 'Moved an item',
+	'added-tag': 'Added a tag',
+	'added-note': 'Added a note',
 	'saved-queue': 'Saved the queue',
 	'discarded-queue-edits': 'Discarded queue edits',
 	'saved-teamswaps': 'Saved teamswaps',

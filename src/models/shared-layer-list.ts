@@ -43,8 +43,13 @@ function getItemOpEntries<
 		}),
 		z.object({
 			...props,
-			op: z.literal('set-tags'),
-			tags: z.array(LTag.TagIdSchema),
+			op: z.literal('add-tag'),
+			tagId: LTag.TagIdSchema,
+		}),
+		z.object({
+			...props,
+			op: z.literal('remove-tag'),
+			tagId: LTag.TagIdSchema,
 		}),
 		z.object({
 			...props,
@@ -258,7 +263,8 @@ const CLIENT_OPCODE = z.enum([
 	'move',
 	'swap-factions',
 	'edit-layer',
-	'set-tags',
+	'add-tag',
+	'remove-tag',
 	'add-note',
 	'edit-note',
 	'delete-note',
@@ -521,8 +527,15 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 			break
 		}
 
-		case 'set-tags': {
-			if (LL.setTags(list, newOp.itemId, newOp.tags, source.type === 'manual' ? source.userId : undefined)) {
+		case 'add-tag': {
+			if (LL.addTag(list, newOp.itemId, newOp.tagId, source.type === 'manual' ? source.userId : undefined)) {
+				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
+			}
+			break
+		}
+
+		case 'remove-tag': {
+			if (LL.removeTag(list, newOp.itemId, newOp.tagId)) {
 				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
 			}
 			break
