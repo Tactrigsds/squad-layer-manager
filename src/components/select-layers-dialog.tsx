@@ -34,6 +34,8 @@ type SelectLayersDialogProps = {
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
 	footerAdditions?: React.ReactNode
+	// rendered at the far end of the footer, immediately before Submit
+	footerBeforeSubmit?: React.ReactNode
 	cursor?: LL.Cursor
 }
 
@@ -45,6 +47,8 @@ type SelectLayersDialogContentProps = {
 	defaultSelected: L.LayerId[]
 	stores?: Partial<SelectLayersFrame.KeyProp & SquadServerFrame.KeyProp>
 	footerAdditions?: React.ReactNode
+	// rendered at the far end of the footer, immediately before Submit
+	footerBeforeSubmit?: React.ReactNode
 	cursor?: LL.Cursor
 	onClose: () => void
 }
@@ -184,6 +188,7 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 							setActive={setAdditionType}
 						/>
 					)}
+					{props.footerBeforeSubmit}
 					{submit
 						&& (
 							<Button disabled={!canSubmit} onClick={submit}>
@@ -215,6 +220,7 @@ export default function SelectLayersDialog(props: SelectLayersDialogProps) {
 				defaultSelected={defaultSelected}
 				stores={props.stores}
 				footerAdditions={props.footerAdditions}
+				footerBeforeSubmit={props.footerBeforeSubmit}
 				cursor={props.cursor}
 				onClose={onClose}
 			/>
