@@ -7,8 +7,8 @@ const LABEL_OVERRIDES: Record<string, string> = {
 	layerGeneration: 'Layer Generation Weights',
 	rbac: 'Permissions & Roles',
 	vote: 'Votes',
-	// the chat config holds nothing but the warn/broadcast suppression patterns
-	chat: 'Message Suppression',
+	// the chat config holds nothing but the feed's warn/broadcast suppression patterns
+	chat: 'Chat Feed Suppression',
 	// per-server settings
 	connections: 'Connections',
 	'connections.rcon': 'RCON',

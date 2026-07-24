@@ -448,9 +448,14 @@ const compiledPatternMap = new WeakMap<string[], RegExp[]>()
 const SuppressionSchema = z.string().refine((s) => new RegExp(s))
 
 export const ChatConfigSchema = z.object({
-	warnSuppressionPatterns: z.array(SuppressionSchema).prefault([]).describe('Regex patterns to suppress warning messages'),
+	warnSuppressionPatterns: z.array(SuppressionSchema).prefault([]).describe(
+		"Regular expressions matched against a warn's text. A warn matching any of them is left out of the live chat feed; it is still "
+			+ 'delivered in-game. Use it to keep routine SLM notifications from burying real chat.',
+	),
 	broadcastSuppressionPatterns: z.array(SuppressionSchema).prefault([]).describe(
-		'Regex patterns to suppress broadcast messages. these will not apply to broadcasts sent via an ingame command.',
+		"Regular expressions matched against a broadcast's text. A broadcast matching any of them is left out of the live chat feed; it is "
+			+ 'still sent in-game. Only applies to broadcasts SLM cannot attribute to a player, so one an admin sent with an in-game command '
+			+ 'is never hidden.',
 	),
 })
 
