@@ -1266,12 +1266,8 @@ async function resolveWarnTargets(ctx: C.SquadRcon & CS.AbortSignal, targets: SM
 	return { players, allAdmins, isEntireAdminRoster: allAdmins && players.length === teamsRes.players.filter(isAdmin).length }
 }
 
-// how many warn targets get named in the message before it just goes untagged rather than listing a crowd
-const MAX_WARN_MENTIONS = 3
-
-// the "@..." tag prepended to a warn so recipients see who it's aimed at. An explicit squad warn keeps its squad
-// tag whatever its size; otherwise a handful of targets are named individually, the whole admin roster reads as
-// "@admins", and anything larger goes untagged.
+// the "@..." tag prepended to a warn so recipients see who it's aimed at: an explicit squad warn keeps its squad
+// tag, a lone target is named, the whole online admin roster reads as "@admins", and any other set goes untagged.
 async function resolveWarnAudienceTag(
 	ctx: C.SquadRcon & CS.AbortSignal,
 	targets: SM.PlayerId[],
@@ -1279,10 +1275,9 @@ async function resolveWarnAudienceTag(
 ) {
 	if (taggedSquad) return SM.squadWarnTag(taggedSquad)
 	const resolved = await resolveWarnTargets(ctx, targets)
-	if (targets.length <= MAX_WARN_MENTIONS) {
-		const names = resolved.players.map(player => player?.ids.username).filter(name => !!name)
-		// naming only some of them would read as though the rest weren't warned
-		return names.length === targets.length ? names.map(name => `@${name}`).join(', ') : undefined
+	if (targets.length === 1) {
+		const username = resolved.players[0]?.ids.username
+		return username ? `@${username}` : undefined
 	}
 	return resolved.isEntireAdminRoster ? '@admins' : undefined
 }
