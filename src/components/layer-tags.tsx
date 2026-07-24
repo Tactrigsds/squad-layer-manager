@@ -169,13 +169,14 @@ function AddTagDropdown(props: {
 					{props.labelled && <span>add tag</span>}
 				</Button>
 			</DropdownMenuTrigger>
-			<DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+			{/* a description runs to note length, so the menu holds it to one clipped line and reads in full on the chip's hover card */}
+			<DropdownMenuContent align="start" className="max-h-72 max-w-72 overflow-y-auto">
 				{available.map(tag => (
 					<DropdownMenuItem key={tag.id} onSelect={() => props.onSelect(tag.id)}>
-						<span className="mr-2 h-2 w-2 rounded-full" style={{ backgroundColor: tag.color }} />
-						<span className="flex flex-col">
-							<span className="text-xs">{tag.label}</span>
-							{tag.description && <span className="text-2xs text-muted-foreground">{tag.description}</span>}
+						<span className="mr-2 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: tag.color }} />
+						<span className="flex min-w-0 flex-col">
+							<span className="truncate text-xs">{tag.label}</span>
+							{tag.description && <span className="truncate text-2xs text-muted-foreground">{tag.description}</span>}
 						</span>
 					</DropdownMenuItem>
 				))}

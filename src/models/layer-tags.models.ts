@@ -1,4 +1,5 @@
 import { createId } from '@/lib/id'
+import * as LNote from '@/models/layer-notes.models'
 import * as USR from '@/models/users.models'
 import { z } from 'zod'
 
@@ -7,7 +8,8 @@ import { z } from 'zod'
 
 export const ID_SUFFIX_LENGTH = 6
 export const MAX_LABEL_LENGTH = 32
-export const MAX_DESCRIPTION_LENGTH = 300
+// a description says the same kind of thing a note does, at the same length
+export const MAX_DESCRIPTION_LENGTH = LNote.MAX_LENGTH
 
 export const LabelSchema = z.string().trim().min(1).max(MAX_LABEL_LENGTH).regex(/^[^:\n]+$/, {
 	error: 'Label cannot contain ":" or a newline',
