@@ -43,7 +43,7 @@ export function AdminReasonPicker({ reasons, preview, onPick, disabled, classNam
 								<CommandItem
 									key={reason.label}
 									value={reason.label}
-									keywords={reason.aliases}
+									keywords={reason.keywords}
 									onSelect={() => {
 										onPick(reason)
 										setOpen(false)

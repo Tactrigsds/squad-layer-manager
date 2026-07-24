@@ -9,6 +9,7 @@ import * as CB from '@/models/constraint-builders'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
+import * as LTag from '@/models/layer-tags.models'
 import * as PG from '@/models/player-groupings.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
@@ -287,6 +288,7 @@ export const GlobalSettingsSchema = z.object({
 			{ type: 'inrange', neg: false, args: [{ type: 'column', column: 'Asymmetry_Score' }, { type: 'value' }, { type: 'value' }] },
 		],
 	}).describe('Configures the appearance of the layers table and layer select menu'),
+	layerTags: LTag.TagsSchema,
 	layerGeneration: LC.LayerGenerationConfigSchema.prefault({
 		pickOrder: ['Map', 'Gamemode', 'Faction_1', 'Faction_2', 'Unit_1', 'Unit_2'],
 	}).describe(
@@ -355,6 +357,20 @@ export const GlobalSettingsSchema = z.object({
 			ctx.addIssue({ code: 'custom', message: res.msg, path: ['commandAliases', i, 'command'] })
 		}
 	})
+
+	const seenTagId = new Set<string>()
+	const seenTagLabel = new Set<string>()
+	val.layerTags?.forEach((tag, i) => {
+		if (seenTagId.has(tag.id)) {
+			ctx.addIssue({ code: 'custom', message: `Duplicate tag id "${tag.id}"`, path: ['layerTags', i, 'id'] })
+		}
+		seenTagId.add(tag.id)
+		const label = tag.label.trim().toLowerCase()
+		if (seenTagLabel.has(label)) {
+			ctx.addIssue({ code: 'custom', message: `Another tag is already labeled "${tag.label}"`, path: ['layerTags', i, 'label'] })
+		}
+		seenTagLabel.add(label)
+	})
 })
 
 export type GlobalSettings = z.infer<typeof GlobalSettingsSchema>
@@ -400,8 +416,14 @@ export function defaultRbacSettings() {
 		'battlemetrics:write-flags',
 	]
 	// admin:manage-servers lets them enable/disable and set the default server; without a write-sensitive grant they
-	// still can't create servers (which requires supplying connection details)
-	const managerPermissions: RBAC.RolePermissionExpression[] = [...adminPermissions, 'admin:manage-servers', 'admin:restart-slm']
+	// still can't create servers (which requires supplying connection details). Policing other people's notes sits here
+	// rather than with the admins: writing notes and managing your own only needs queue:write
+	const managerPermissions: RBAC.RolePermissionExpression[] = [
+		...adminPermissions,
+		'queue:manage-all-notes',
+		'admin:manage-servers',
+		'admin:restart-slm',
+	]
 	const ownerPermissions: RBAC.RolePermissionExpression[] = ['*']
 	// edit all servers' non-connection settings (write implies read); no write-sensitive, so connections stay off-limits
 	const managerServerGrants: { access: 'read' | 'write' | 'write-sensitive'; serverIds: string[]; paths: string[] }[] = [

@@ -24,6 +24,16 @@ export function useUser(id?: USR.UserId, opts?: { enabled?: boolean }) {
 	return useQuery(userQueryOptions(id, opts))
 }
 
+// a user id resolved from whatever already knows about them -- the parts cache, or the logged-in user -- falling back to
+// a fetch. undefined until they resolve, so callers can render whatever identity they do have in the meantime.
+export function useResolvedUser(id?: USR.UserId) {
+	const loggedInUser = useLoggedInUser()
+	const partial = id === undefined ? undefined : PartSys.findUser(id)
+	const isMe = id !== undefined && id === loggedInUser?.discordId
+	const res = useUser(id, { enabled: !partial && !isMe })
+	return (res.data?.code === 'ok' ? res.data.user : undefined) ?? partial ?? (isMe ? loggedInUser : undefined)
+}
+
 export function usersQueryOptions(userIds?: USR.UserId[] | Set<USR.UserId>, opts?: { enabled?: boolean }) {
 	return RPC.orpc.users.getUsers.queryOptions({
 		input: userIds instanceof Set ? [...userIds.values()] : userIds,

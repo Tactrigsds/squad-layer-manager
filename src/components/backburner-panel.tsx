@@ -456,7 +456,7 @@ function BackburnerRow(
 			data-mutation={displayedMutation}
 			className={cn(
 				'flex items-center gap-2 rounded-md border border-transparent px-1 py-1 text-sm data-[is-dragging=true]:opacity-50',
-				'bg-opacity-30 data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited',
+				'data-[mutation=added]:border-added data-[mutation=moved]:border-moved data-[mutation=edited]:border-edited',
 				combineTarget && (props.combinable ? 'border-primary bg-primary/10' : 'border-destructive/50'),
 			)}
 		>

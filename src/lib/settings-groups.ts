@@ -25,7 +25,7 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 	},
 	{ slug: 'commands', label: 'In-game Commands', keys: ['allowedPrefixes', 'defaultPrefix', 'commands', 'commandAliases'] },
 	{ slug: 'players', label: 'Players & Balance', keys: ['playerGroupings', 'playerFlagsRequiringNote', 'balanceTriggerLevels'] },
-	{ slug: 'layers', label: 'Layers', keys: ['layerTable', 'layerGeneration'] },
+	{ slug: 'layers', label: 'Layers', keys: ['layerTags', 'layerTable', 'layerGeneration'] },
 	{
 		slug: 'misc',
 		label: 'Miscellaneous',
@@ -76,6 +76,7 @@ export const LOCAL_JSON_EDITOR_PATHS: ReadonlySet<string> = new Set([
 	'commandAliases',
 	'messageVariables',
 	'playerGroupings',
+	'layerTags',
 	'layerTable',
 	'layerGeneration',
 	'balanceTriggerLevels',
