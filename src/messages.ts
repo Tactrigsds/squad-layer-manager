@@ -289,9 +289,6 @@ export const WARNS = {
 			if (listing.hint) groups[groups.length - 1].push(listing.hint)
 			return groups.map((g) => g.join('\n'))
 		},
-		missingSteamId: () => `You are not signed in as a Steam user.`,
-		steamAccountNotLinked: () =>
-			`This command requires a linked SLM account. Link your Steam ID on the SLM website (account menu > Linked Steam Accounts).`,
 	},
 	layerRequests: {
 		added: (parts: string[], ownCount: number, evictedCount: number) => {

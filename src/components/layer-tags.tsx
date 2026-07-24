@@ -54,6 +54,7 @@ export function LayerTags(props: {
 }) {
 	const configured = ZusUtils.useStore(SettingsClient.PublicSettingsStore, s => s?.layerTags ?? [])
 	const resolved = LTag.resolveAll(props.tags, configured)
+	const canManage = useCanManageTags()
 	const [editing, setEditing] = React.useState<LTag.Tag | 'new' | null>(null)
 
 	const tagIds = props.tags ?? []
@@ -70,11 +71,13 @@ export function LayerTags(props: {
 					tag={tag}
 					setBy={props.setBy?.[tag.id]}
 					disabled={props.disabled}
+					canManage={canManage}
 					onRemove={() => props.onRemove(tag.id)}
 					onEdit={() => setEditing(configured.find(t => t.id === tag.id) ?? null)}
 				/>
 			))}
 			<AddTagDropdown
+				canManage={canManage}
 				disabled={props.disabled}
 				applied={tagIds}
 				configured={configured}
@@ -92,7 +95,9 @@ export function LayerTags(props: {
 	)
 }
 
-function TagChip(props: { tag: LTag.Resolved; setBy?: USR.UserId; disabled?: boolean; onRemove: () => void; onEdit: () => void }) {
+function TagChip(
+	props: { tag: LTag.Resolved; setBy?: USR.UserId; disabled?: boolean; canManage: boolean; onRemove: () => void; onEdit: () => void },
+) {
 	const { tag } = props
 	// an interactive hover card rather than a Tooltip: the edit affordance lives inside it, and tooltips in this app are
 	// explicitly for non-interactive content (see ZI_OFFSETS.TOOLTIP)
@@ -128,10 +133,12 @@ function TagChip(props: { tag: LTag.Resolved; setBy?: USR.UserId; disabled?: boo
 							<p className="text-xs text-muted-foreground">
 								{tag.description ? <RichText text={tag.description} /> : <span className="italic">No description</span>}
 							</p>
-							<Button variant="outline" size="sm" className="h-6 w-full text-xs" onClick={props.onEdit}>
-								<Icons.Pencil className="mr-1 h-3 w-3" />
-								Edit tag
-							</Button>
+							{props.canManage && (
+								<Button variant="outline" size="sm" className="h-6 w-full text-xs" onClick={props.onEdit}>
+									<Icons.Pencil className="mr-1 h-3 w-3" />
+									Edit tag
+								</Button>
+							)}
 						</>
 					)}
 				{props.setBy !== undefined && <UserLabel userId={props.setBy} label="Tagged by" />}
@@ -142,6 +149,7 @@ function TagChip(props: { tag: LTag.Resolved; setBy?: USR.UserId; disabled?: boo
 
 function AddTagDropdown(props: {
 	disabled?: boolean
+	canManage: boolean
 	applied: LTag.TagId[]
 	configured: LTag.Tag[]
 	onSelect: (id: LTag.TagId) => void
@@ -149,7 +157,6 @@ function AddTagDropdown(props: {
 	labelled?: boolean
 	revealOnHover?: boolean
 }) {
-	const canManage = useCanManageTags()
 	const available = props.configured.filter(t => !props.applied.includes(t.id))
 	return (
 		<DropdownMenu>
@@ -181,7 +188,7 @@ function AddTagDropdown(props: {
 					</DropdownMenuItem>
 				))}
 				{available.length === 0 && <DropdownMenuItem disabled>No tags available</DropdownMenuItem>}
-				{canManage && (
+				{props.canManage && (
 					<>
 						<DropdownMenuSeparator />
 						<DropdownMenuItem onSelect={props.onCreate}>
@@ -316,6 +323,5 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 }
 
 function useCanManageTags() {
-	const access = RbacClient.useGlobalSettingsAccess()
-	return RBAC.settingsPathAllowed(access.write, 'layerTags')
+	return !RbacClient.usePermsCheck(RBAC.perm('queue:manage-tags'))
 }

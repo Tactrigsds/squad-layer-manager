@@ -780,8 +780,6 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	},
 
 	clearTimeout: async (h, args) => {
-		const linkedRes = await resolveLinkedSender(h)
-		if (linkedRes.code !== 'ok') return linkedRes.res
 		const denyRes = await Rbac.tryDenyPermissionsForPlayer({ ...h.ctx }, SM.Grants.anyTimeout())
 		if (denyRes) return await h.error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
 
@@ -804,15 +802,12 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	},
 
 	requestLayer: async (h, args) => {
-		const linkedRes = await resolveLinkedSender(h)
-		if (linkedRes.code !== 'ok') return linkedRes.res
 		const tokens = args.request.split(/\s+/).filter(t => t.length > 0)
 		const filterEntities = Array.from(FilterEntity.state.filters.values()).map(f => ({ id: f.id, name: f.name }))
 		const resolveRes = BB.resolveRequestTokens({ tokens, components: L.StaticLayerComponents, filterEntities })
 		if (resolveRes.code !== 'ok') return await h.error('invalid-request', resolveRes.msg)
-		const source: USR.GuiOrChatUserId = { discordId: linkedRes.discordId, steamId: h.sender.ids.steam! }
+		const source = await resolveChatOwner(h)
 		const res = await LayerQueue.addBackburnerRequestFromChat(h.ctx, {
-			user: { discordId: linkedRes.discordId },
 			source,
 			filter: resolveRes.value.filter,
 		})
@@ -859,13 +854,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		}
 		if (!BB.sameOwner(target.source, owner)) {
 			// removing someone else's request needs queue:write
-			if (owner.discordId === undefined) {
-				return await h.error('not-linked', Messages.WARNS.commands.steamAccountNotLinked())
-			}
-			const denyRes = await Rbac.tryDenyPermissionsForUser(
-				{ ...h.ctx, user: { discordId: owner.discordId } },
-				RBAC.perm('queue:write'),
-			)
+			const denyRes = await Rbac.tryDenyPermissionsForPlayer(h.ctx, RBAC.perm('queue:write'))
 			if (denyRes) return await h.error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
 		}
 		await LayerQueue.removeBackburnerRequestsFromChat(h.ctx, { itemIds: [target.itemId], source: owner })
@@ -880,16 +869,6 @@ async function resolveChatOwner(h: HandlerCtx): Promise<USR.GuiOrChatUserId> {
 	const steamId = h.sender.ids.steam!
 	const linked = await Users.findUserBySteam64Id(h.ctx, BigInt(steamId))
 	return { steamId, discordId: linked?.discordId }
-}
-
-// resolves the chat sender's linked SLM account for RBAC-gated commands
-async function resolveLinkedSender(
-	h: HandlerCtx,
-): Promise<{ code: 'ok'; discordId: bigint } | { code: 'err'; res: HandlerResult }> {
-	if (!h.sender.ids.steam) return { code: 'err', res: await h.error('missing-steam-id', Messages.WARNS.commands.missingSteamId()) }
-	const linked = await Users.findUserBySteam64Id(h.ctx, BigInt(h.sender.ids.steam))
-	if (!linked) return { code: 'err', res: await h.error('not-linked', Messages.WARNS.commands.steamAccountNotLinked()) }
-	return { code: 'ok', discordId: linked.discordId }
 }
 
 // enforces the per-action "require a reason" setting; returns the error handler-result to short-circuit, or null
@@ -910,8 +889,6 @@ async function executeKick(
 ): Promise<HandlerResult> {
 	const g = await requireReasonGuard(h, 'kick', !!resolvedReason)
 	if (g) return g
-	const linkedRes = await resolveLinkedSender(h)
-	if (linkedRes.code !== 'ok') return linkedRes.res
 	const denyRes = await Rbac.tryDenyPermissionsForPlayer(
 		h.ctx,
 		RBAC.perm('squad-server:kick-players'),
@@ -938,8 +915,6 @@ async function executeTimeout(
 ): Promise<HandlerResult> {
 	const g = await requireReasonGuard(h, 'timeout', !!resolvedReason)
 	if (g) return g
-	const linkedRes = await resolveLinkedSender(h)
-	if (linkedRes.code !== 'ok') return linkedRes.res
 	const denyRes = await Rbac.tryDenyPermissionsForPlayer(h.ctx, SM.Grants.satisfyingTimeout(durationMs))
 	if (denyRes) return await h.error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
 	const vars = SquadServer.messageVars({ duration: formatHumanTime(durationMs) })
