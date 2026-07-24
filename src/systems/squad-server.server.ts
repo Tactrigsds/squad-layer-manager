@@ -1058,7 +1058,7 @@ export async function emitAppEvent(ctx: C.SquadServer & C.Db & CS.AbortSignal, a
 // resolves a preset admin-action reason against the current global settings. handlers call this before executing
 // anything so a stale preset (deleted/retargeted since the client loaded it) fails the whole action.
 export function resolvePresetReason(action: AAR.AdminActionType, presetReasonLabel: string) {
-	return AAR.resolveReason(Settings.GLOBAL_SETTINGS.adminActionReasons, action, presetReasonLabel)
+	return AAR.resolveReasonByLabel(Settings.GLOBAL_SETTINGS.adminActionReasons, action, presetReasonLabel)
 }
 
 // the variable context for reason/broadcast message templates: the admin-configured custom variables,

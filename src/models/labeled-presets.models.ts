@@ -46,6 +46,12 @@ export function findByKeyword<T extends { keywords: string[] }>(presets: T[], to
 	return presets.find((p) => p.keywords.some((k) => k.toLowerCase() === key))
 }
 
+// how the GUI addresses a preset: by the label, which is its identity. Chat never does this -- see findByKeyword.
+export function findByLabel<T extends { label: string }>(presets: T[], label: string): T | undefined {
+	const key = label.toLowerCase()
+	return presets.find((p) => p.label.toLowerCase() === key)
+}
+
 export function keywordStrings(presets: { keywords: string[] }[]): string[] {
 	return presets.flatMap((p) => p.keywords)
 }
