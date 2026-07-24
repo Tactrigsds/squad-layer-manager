@@ -9,6 +9,7 @@ import { ListEditor } from '@/components/list-editor.tsx'
 import { PoolFiltersPanel, RepeatRulesPanel } from '@/components/pool-config-panels'
 import type { PoolConfigApi } from '@/components/pool-config-panels.helpers'
 import { StickyGroup } from '@/components/sticky-group'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -22,6 +23,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDebounced } from '@/hooks/use-debounce'
+import { TRIGGER_LEVEL_DISPLAY } from '@/lib/balance-trigger-display'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object'
 import type { SettingsGroup } from '@/lib/settings-groups'
@@ -32,7 +34,9 @@ import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zod from '@/lib/zod'
 import * as ZusUtils from '@/lib/zustand'
+import * as Messages from '@/messages'
 import * as AAR from '@/models/admin-action-reasons.models'
+import * as BAL from '@/models/balance-triggers.models'
 import type * as BM from '@/models/battlemetrics.models'
 import * as CMD from '@/models/command.models'
 import * as LP from '@/models/labeled-presets.models'
@@ -68,6 +72,9 @@ import { MessagePreviewBox } from './warn-reasons-sub'
 
 type Node = any
 type Path = (string | number)[]
+
+// a trigger with no level configured is not evaluated at all; the picker needs a value to represent that
+const TRIGGER_OFF = '__off__'
 
 // a BehaviorSubject-like handle: subscribable, plus a synchronous `.getValue()` for the current value
 type ValueState<T = any> = Rx.Observable<T> & { getValue: () => T }
@@ -1503,9 +1510,11 @@ function reasonPreviewEntries(reason: AAR.AdminActionReason, customVars: Record<
 	return entries
 }
 
-// message templates are rendered with Mustache (see src/lib/templating.ts); link to its syntax so authors know which
-// {{...}} features are actually supported (plain variable substitution, not Handlebars helpers/expressions)
-const TEMPLATE_SYNTAX_URL = 'https://mustache.github.io/mustache.5.html'
+// Rendering is Mustache (see src/lib/templating.ts), but the docs linked here are Handlebars', which is the name
+// people know the syntax by and reads better. The two agree on everything an admin writes in practice --
+// {{variable}} and {{#section}}...{{/section}} -- but Handlebars' block helpers ({{#if}}, {{#each}}) are NOT
+// available. Point this at Mustache's own reference if that gap ever bites.
+const TEMPLATE_SYNTAX_URL = 'https://handlebarsjs.com/guide/expressions.html'
 
 function TemplateSyntaxHint() {
 	return (
@@ -1725,18 +1734,21 @@ function AdminListSourcesField({ value$, reset$, onChange }: OverrideProps) {
 			{value.map((source, idx) => (
 				// oxlint-disable-next-line no-array-index-key
 				<div key={idx} className="space-y-3 rounded-md border p-3">
-					<div className="flex items-center gap-2">
-						<Select
-							value={source.type}
-							onValueChange={(t) => update((v) => v.map((s, i) => i === idx ? defaultAdminSource(t as SM.AdminListSourceType) : s))}
-						>
-							<SelectTrigger className="w-40">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								{ADMIN_SOURCE_TYPE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-							</SelectContent>
-						</Select>
+					<div className="flex items-end gap-2">
+						<div className="space-y-1">
+							<Label className="text-xs text-muted-foreground">Source Type</Label>
+							<Select
+								value={source.type}
+								onValueChange={(t) => update((v) => v.map((s, i) => i === idx ? defaultAdminSource(t as SM.AdminListSourceType) : s))}
+							>
+								<SelectTrigger className="w-40">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{ADMIN_SOURCE_TYPE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+								</SelectContent>
+							</Select>
+						</div>
 						<div className="flex-1" />
 						<Button
 							type="button"
@@ -2595,6 +2607,60 @@ function RoleAssignmentsEditor(
 	)
 }
 
+// bespoke editor for `balanceTriggerLevels`. A trigger is off unless it carries a level, and the level decides how
+// loudly it lands on the match history, so each row pairs the picker with a live preview of the alert it produces.
+function BalanceTriggerLevelsField({ value$, reset$, onChange }: OverrideProps) {
+	const value = (useFieldValue(value$, reset$) as Partial<Record<BAL.TriggerId, BAL.TriggerWarnLevel>> | undefined) ?? {}
+
+	function setLevel(id: BAL.TriggerId, level: BAL.TriggerWarnLevel | typeof TRIGGER_OFF) {
+		const next = { ...((value$.getValue() as Partial<Record<BAL.TriggerId, BAL.TriggerWarnLevel>>) ?? {}) }
+		if (level === TRIGGER_OFF) delete next[id]
+		else next[id] = level
+		onChange(next)
+		reset$.next()
+	}
+
+	return (
+		<div className="space-y-2">
+			{BAL.TRIGGER_IDS.options.map((id) => {
+				const level = value[id]
+				const display = level ? TRIGGER_LEVEL_DISPLAY[level] : undefined
+				const AlertIcon = display?.icon
+				return (
+					<div key={id} className="space-y-2 rounded-md border p-3">
+						<div className="flex items-start justify-between gap-3">
+							<div className="min-w-0 space-y-0.5">
+								<p className="text-sm font-medium">{BAL.TRIGGERS[id].name}</p>
+								<p className="text-xs text-muted-foreground">{Messages.GENERAL.balanceTrigger.descriptions[id]}</p>
+							</div>
+							<Select value={level ?? TRIGGER_OFF} onValueChange={(next) => setLevel(id, next as BAL.TriggerWarnLevel)}>
+								<SelectTrigger className={cn('h-8 w-36 shrink-0', display?.text)} aria-label={`${BAL.TRIGGERS[id].name} level`}>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value={TRIGGER_OFF}>Off</SelectItem>
+									{BAL.TRIGGER_LEVEL.options.map((opt) => (
+										<SelectItem key={opt} value={opt} className={TRIGGER_LEVEL_DISPLAY[opt].text}>{humanize(opt)}</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
+						{display && AlertIcon && (
+							<Alert variant={display.variant} className="bg-background!">
+								<AlertTitle className="flex items-center space-x-2">
+									<AlertIcon className="mr-2 h-4 w-4" />
+									{BAL.TRIGGERS[id].name}
+								</AlertTitle>
+								<AlertDescription>{Messages.GENERAL.balanceTrigger.sampleMessages[id]}</AlertDescription>
+							</Alert>
+						)}
+					</div>
+				)
+			})}
+		</div>
+	)
+}
+
 function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefined {
 	const last = path[path.length - 1]
 	if (path.length === 1 && last === 'adminListSources') return AdminListSourcesField
@@ -2605,6 +2671,7 @@ function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefin
 	if (path.length === 1 && last === 'adminActionReasons') return AdminActionReasonsField
 	if (path.length === 1 && last === 'layerTable') return LayerTableField
 	if (path.length === 1 && last === 'layerGeneration') return LayerGenerationField
+	if (path.length === 1 && last === 'balanceTriggerLevels') return BalanceTriggerLevelsField
 	if (path.length === 1 && last === 'playerFlagsRequiringNote') return FlagMultiSelectField
 	if (path.length === 1 && last === 'playerGroupings') return PlayerGroupingsField
 	// the entire `rbac` subtree is rendered by RbacBody (see FieldControl), so no per-field rbac overrides are needed here
