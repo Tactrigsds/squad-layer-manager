@@ -46,9 +46,13 @@ test.describe('admin actions from the teams panel', () => {
 			const row = panel.getByRole('row', { name: /sq_member/ })
 			await expect(row).toBeVisible({ timeout: 20_000 })
 			await row.click({ button: 'right' })
-			// warn is a submenu of the reasons an admin can pick from
+			// warn is a submenu offering the warn box (Custom) or the preset-reason dialog
 			await page.getByRole('menuitem', { name: 'Warn' }).hover()
-			await page.getByRole('menuitem', { name: 'Toxicity' }).click()
+			await page.getByRole('menuitem', { name: 'Preset Reason' }).click()
+			const dialog = page.getByRole('alertdialog', { name: 'Warn Player' })
+			await dialog.getByRole('combobox', { name: 'Reason' }).click()
+			await page.getByRole('option', { name: 'Toxicity', exact: true }).click()
+			await dialog.getByRole('button', { name: 'Warn', exact: true }).click()
 
 			await app.waitFor(() => warnsTo(app, member.eos).length > 0, { label: 'the warn reaching the game', timeoutMs: 20_000 })
 			expect(warnsTo(app, member.eos)[0]).toContain('Cut out the toxicity')

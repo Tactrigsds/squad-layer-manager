@@ -1499,9 +1499,9 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 // with the given custom message variables applied. timeouts are shown with a 2h sample duration, and again with
 // the remaining duration (what enforcement re-renders on rejoin) so {{#duration}} sections can be checked both ways
 function reasonPreviewEntries(reason: AAR.AdminActionReason, customVars: Record<string, string>): { context: string; text: string }[] {
-	const applied = (action: AAR.AdminActionType, opts?: { squadTag?: string; duration?: string }) =>
+	const applied = (action: AAR.AdminActionType, opts?: { audienceTag?: string; duration?: string }) =>
 		AAR.formatAppliedReason(action, reason, {
-			squadTag: opts?.squadTag,
+			audienceTag: opts?.audienceTag,
 			vars: { ...customVars, ...(action === 'timeout' ? { duration: opts?.duration ?? '' } : {}) },
 		})
 	const entries: { context: string; text: string }[] = []
@@ -1510,7 +1510,7 @@ function reasonPreviewEntries(reason: AAR.AdminActionReason, customVars: Record<
 		if (reason.actionTexts[action] === undefined) continue
 		if (action === 'warn') {
 			entries.push({ context: 'Warn', text: applied('warn') })
-			entries.push({ context: 'Warn squad', text: applied('warn', { squadTag: '@Squad1' }) })
+			entries.push({ context: 'Warn squad', text: applied('warn', { audienceTag: '@Squad1' }) })
 			continue
 		}
 		if (action === 'timeout') {
@@ -1518,8 +1518,8 @@ function reasonPreviewEntries(reason: AAR.AdminActionReason, customVars: Record<
 			entries.push({ context: 'Timeout (expired)', text: applied('timeout', { duration: '' }) })
 			continue
 		}
-		const squadTag = AAR.ADMIN_ACTIONS[action].targetKind === 'squad' ? '@Squad1' : undefined
-		entries.push({ context: AAR.ADMIN_ACTIONS[action].displayName, text: applied(action, { squadTag }) })
+		const audienceTag = AAR.ADMIN_ACTIONS[action].targetKind === 'squad' ? '@Squad1' : undefined
+		entries.push({ context: AAR.ADMIN_ACTIONS[action].displayName, text: applied(action, { audienceTag }) })
 	}
 	return entries
 }

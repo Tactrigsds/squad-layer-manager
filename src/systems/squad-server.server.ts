@@ -391,6 +391,11 @@ export const orpcRouter = {
 				playerIds: z.array(SM.PlayerIdSchema).min(1),
 				reason: z.string().min(1).optional(),
 				presetReasonLabel: z.string().min(1).optional(),
+				// omitted, the admin notification follows the admin-target rule in warnPlayers
+				notifyAdmins: z.boolean().optional(),
+				// lead the delivered message with the acting admin's display name ("grey275: @Alice ..."). Resolved
+				// server-side so it always names the actual sender.
+				prefixSenderName: z.boolean().optional(),
 				// when a warn targets a whole squad the message gets a "@Squad<id>" (or "@cmdSquad") tag
 				taggedSquad: z.object({
 					squadId: z.number().int().positive(),
@@ -409,19 +414,26 @@ export const orpcRouter = {
 			if (reasonRes.code !== 'ok') return reasonRes
 			// the input refine guarantees a reason was provided; narrow without asserting
 			if (!reasonRes.applied) return { code: 'err:reason-required' as const, msg: 'A reason is required to warn.' }
-			const message = AAR.renderAppliedReason(reasonRes.applied, {
-				squadTag: input.taggedSquad ? SM.squadWarnTag(input.taggedSquad) : undefined,
+			const tagged = AAR.renderAppliedReason(reasonRes.applied, {
+				audienceTag: await resolveWarnAudienceTag(ctx, input.playerIds, input.taggedSquad),
 			})
-			// squad warns name the squad + faction (e.g. "warned Squad1 (PLA): ...") in the admin notification
+			// the sender's name leads the whole thing, ahead of the audience tag: "grey275: @Alice ..."
+			const message = input.prefixSenderName
+				? `${await Users.resolveDisplayName(ctx, ctx.user.discordId)}: ${tagged}`
+				: tagged
+			// squad warns name the squad + faction (e.g. "warned Squad1 (PLA): ...") in the admin notification, which
+			// already attributes the actor, so it quotes the message without the sender prefix
 			let adminNotifyDescription: string | undefined
 			if (input.taggedSquad) {
 				const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 				const squadLabel = SM.squadAdminLabel(input.taggedSquad, MH.getTeamFaction(currentMatch, input.taggedSquad.teamId))
-				adminNotifyDescription = `warned ${squadLabel}: "${message}"`
+				adminNotifyDescription = `warned ${squadLabel}: ${tagged}`
 			}
 			await warnPlayers(ctx, input.playerIds, message, { type: 'slm-user', userId: ctx.user.discordId }, {
 				reasonLabel: reasonRes.applied.label,
+				notifyAdmins: input.notifyAdmins,
 				adminNotifyDescription,
+				adminNotifyMessage: tagged,
 			})
 			return { code: 'ok' as const }
 		}),
@@ -443,19 +455,37 @@ export const orpcRouter = {
 				})
 				.map(p => SM.PlayerIds.getPlayerId(p.ids))
 			if (admins.length === 0) return { code: 'err:no-admins-online' as const }
-			await warnPlayers(ctx, admins, input.message, { type: 'slm-user', userId: ctx.user.discordId }, { suppressAdminNotify: true })
+			// the warn already reaches every admin, so skip the meta-notification
+			await warnPlayers(ctx, admins, input.message, { type: 'slm-user', userId: ctx.user.discordId }, { notifyAdmins: false })
 			return { code: 'ok' as const }
 		}),
 
 	broadcast: orpcBase
-		.input(z.object({ serverId: z.string(), message: z.string().min(1) }))
+		.input(
+			z.object({
+				serverId: z.string(),
+				message: z.string().min(1).optional(),
+				presetReasonLabel: z.string().min(1).optional(),
+				prefixSenderName: z.boolean().optional(),
+			}).refine(i => !!i.message !== !!i.presetReasonLabel, { error: 'Exactly one of message or presetReasonLabel must be provided' }),
+		)
 		.handler(async ({ context: _ctx, input }) => {
 			const ctxRes = trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:broadcast'))
 			if (denyRes) return denyRes
-			await broadcastAction(ctx, input.message, { type: 'slm-user', userId: ctx.user.discordId })
+			let template = input.message
+			let presetLabel: string | undefined
+			if (input.presetReasonLabel) {
+				const res = resolvePresetReason('broadcast', input.presetReasonLabel)
+				if (res.code !== 'ok') return res
+				template = AAR.reasonText('broadcast', res.reason)
+				presetLabel = res.reason.label
+			}
+			// broadcastAction renders the template, so the sender prefix wraps the raw text and rides through with it
+			if (input.prefixSenderName) template = `${await Users.resolveDisplayName(ctx, ctx.user.discordId)}: ${template!}`
+			await broadcastAction(ctx, template!, { type: 'slm-user', userId: ctx.user.discordId }, { presetLabel })
 			return { code: 'ok' as const }
 		}),
 
@@ -1216,9 +1246,11 @@ export async function warnPlayers(
 	targets: SM.PlayerId[],
 	reason: string,
 	actor: AppEvents.Actor,
-	// suppressAdminNotify: the "warn admins" feature already targets every admin, so skip the meta-notification there.
+	// notifyAdmins: forces the meta-notification on or off; left undefined it follows the admin-target rule below.
 	// adminNotifyDescription: override the admin-notification phrasing (squad warns name the squad + faction)
-	opts?: { reasonLabel?: string; suppressAdminNotify?: boolean; adminNotifyDescription?: string },
+	// adminNotifyMessage: the text the notification quotes, when that should differ from what was delivered (the
+	// notification already names the actor, so it drops the delivered message's sender prefix)
+	opts?: { reasonLabel?: string; notifyAdmins?: boolean; adminNotifyDescription?: string; adminNotifyMessage?: string },
 ) {
 	if (targets.length === 0) return
 	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
@@ -1240,7 +1272,53 @@ export async function warnPlayers(
 		}
 	})
 	await SquadRcon.warnAll(ctx, targets, reason)
-	if (!opts?.suppressAdminNotify) await notifyAdminsOfWebAction(ctx, appEvent, opts?.adminNotifyDescription)
+	// in-game commands echo to the invoking admin themselves, so there's nothing to classify or notify for them
+	if (opts?.notifyAdmins === false || actor.type !== 'slm-user') return
+	const audience = await classifyWarnTargets(ctx, targets)
+	if (opts?.notifyAdmins === undefined) {
+		// admin-to-admin chatter shouldn't page the whole admin team; a preset reason is a formal action, so it still does
+		if (!opts?.reasonLabel && audience.allAdmins) return
+	}
+	const notifyMessage = opts?.adminNotifyMessage ?? reason
+	await notifyAdminsOfWebAction(ctx, appEvent, opts?.adminNotifyDescription ?? `warned ${audience.label}: ${notifyMessage}`)
+}
+
+// resolves warn targets against the live roster: the matching players (undefined where a target isn't online) plus
+// whether they're all admins and whether they're the entire online admin roster
+async function resolveWarnTargets(ctx: C.SquadRcon & CS.AbortSignal, targets: SM.PlayerId[]) {
+	const [adminList, teamsRes] = await Promise.all([AdminList.adminList.get(ctx), ctx.server.teams.get(ctx)])
+	if (teamsRes.code !== 'ok') return { players: [], allAdmins: false, isEntireAdminRoster: false }
+
+	const isAdmin = (player: SM.Player) => SM.AdminList.getIsAdmin(adminList, player.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
+	const players = targets.map(target => SM.PlayerIds.find(teamsRes.players, p => p.ids, target))
+	const allAdmins = players.every(player => !!player && isAdmin(player))
+	return { players, allAdmins, isEntireAdminRoster: allAdmins && players.length === teamsRes.players.filter(isAdmin).length }
+}
+
+// the "@..." tag prepended to a warn so recipients see who it's aimed at: an explicit squad warn keeps its squad
+// tag, a lone target is named, the whole online admin roster reads as "@admins", and any other set goes untagged.
+async function resolveWarnAudienceTag(
+	ctx: C.SquadRcon & CS.AbortSignal,
+	targets: SM.PlayerId[],
+	taggedSquad?: { squadId: number; squadName: string; teamId: SM.TeamId },
+) {
+	if (taggedSquad) return SM.squadWarnTag(taggedSquad)
+	const resolved = await resolveWarnTargets(ctx, targets)
+	if (targets.length === 1) {
+		const username = resolved.players[0]?.ids.username
+		return username ? `@${username}` : undefined
+	}
+	return resolved.isEntireAdminRoster ? '@admins' : undefined
+}
+
+// who a warn hit, phrased for the admin notification: the warnee by name for a single target, "all admins" when it
+// reached exactly the online admin roster, otherwise a plain count. allAdmins also drives the notification opt-out.
+async function classifyWarnTargets(ctx: C.SquadRcon & CS.AbortSignal, targets: SM.PlayerId[]) {
+	const count = (n: number) => `${n} ${n === 1 ? 'player' : 'players'}`
+	const resolved = await resolveWarnTargets(ctx, targets)
+	if (resolved.isEntireAdminRoster) return { allAdmins: resolved.allAdmins, label: 'all admins' }
+	const only = resolved.players.length === 1 ? resolved.players[0]?.ids.username : undefined
+	return { allAdmins: resolved.allAdmins, label: only ?? count(targets.length) }
 }
 
 // disbands a squad through an app event: records the squad + its members, arms the machine to attribute the
@@ -1281,7 +1359,7 @@ export async function disbandSquadAction(
 			ctx,
 			appEvent.id,
 			members,
-			AAR.renderAppliedReason(reason, { squadTag: squad ? SM.squadWarnTag(squad) : `@Squad${squadId}` }),
+			AAR.renderAppliedReason(reason, { audienceTag: squad ? SM.squadWarnTag(squad) : `@Squad${squadId}` }),
 		)
 	}
 	// name the squad + faction consistently with squad warns (e.g. "disbanded Squad1 (PLA)")
