@@ -7,6 +7,7 @@ import type { MigrationDriver } from '@/server/migrate'
 //   squadServer.rconCacheTTL                          global -> per-server
 //   squadServer.{logFilePollInterval,tickRateThresholds} -> global top level, dissolving squadServer
 //   warnPrefix                                        dropped; admin-directed warns are never prefixed now
+//   warnOnChangeLayer                                 -> warnOnNextLayerChange (per-server), behaviour widened
 //   queue.{preferredLength,generatedItemType,preferredNumVoteChoices} dropped; nothing read them
 //   adminActionReasons[].aliases                      -> .keywords, now the ONLY thing chat matches, so required
 //
@@ -23,6 +24,10 @@ type Wrapper = { json?: Record<string, unknown>; meta?: unknown }
 // per-server keys an earlier revision of this migration hoisted onto the global row. They belong to the server, so
 // they're pushed back down if a database ran that revision; on any other database there is nothing to push.
 const RETURNED_TO_SERVERS = ['overrideAdminSetNextLayer', 'warnOnChangeLayer'] as const
+
+// warnOnChangeLayer only fired when SLM's own queue save moved the next layer; it now announces a change from any
+// source, so it is renamed to match. The value carries over as-is.
+const RENAMED_ON_SERVERS: Record<string, string> = { warnOnChangeLayer: 'warnOnNextLayerChange' }
 
 const GLOBAL_TO_SERVER_KEYS = ['vote', 'fogOffDelay', 'postRollAnnouncementsTimeout'] as const
 const DROPPED_QUEUE_KEYS = ['preferredLength', 'generatedItemType', 'preferredNumVoteChoices'] as const
@@ -73,6 +78,14 @@ export async function up(db: MigrationDriver): Promise<void> {
 			changed = true
 		}
 		if (changed) json.queue = queue
+
+		// after the adopts above, so a value pushed back down from the global row is renamed too
+		for (const [from, to] of Object.entries(RENAMED_ON_SERVERS)) {
+			if (!(from in json)) continue
+			if (!(to in json)) json[to] = json[from]
+			delete json[from]
+			changed = true
+		}
 
 		if (changed) db.prepare(`UPDATE servers SET settings = ? WHERE id = ?`).run(JSON.stringify(wrapper), row.id)
 	}
