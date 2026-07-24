@@ -245,6 +245,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 						bodyPrefix={`@Squad${ingameSquadId}`}
 						focusTarget={{ kind: 'squad', uniqueSquadId }}
 						placeholder={`Warn ${displayName}…`}
+						stores={stores}
 					/>
 				</div>
 			)}

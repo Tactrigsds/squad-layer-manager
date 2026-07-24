@@ -1,8 +1,10 @@
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
+import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
+import * as ZusUtils from '@/lib/zustand'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -27,6 +29,7 @@ export default function WarnChatBox({
 	placeholder,
 	focusTarget,
 	className,
+	stores,
 }: {
 	serverId: string
 	playerIds: string[]
@@ -34,9 +37,12 @@ export default function WarnChatBox({
 	placeholder?: string
 	focusTarget?: WarnChat.WarnFocusTarget
 	className?: string
+	stores: SquadServerFrame.KeyProp
 }) {
 	const [message, setMessage] = React.useState('')
 	const [prefixName, setPrefixName] = React.useState(false)
+	// null follows the server's admin-target rule; set once the admin ticks the box either way
+	const [notifyAdmins, setNotifyAdmins] = React.useState<boolean | null>(null)
 	const textareaRef = React.useRef<HTMLTextAreaElement>(null)
 
 	WarnChat.useWarnFocusRequest(
@@ -47,6 +53,8 @@ export default function WarnChatBox({
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
 	const warnPlayersMutation = SquadServerClient.useWarnPlayersMutation()
 	const pending = warnPlayersMutation.isPending
+	const targetsAreAllAdmins = ZusUtils.useStore(stores.squadServer, SquadServerFrame.Sel.allTargetsAreAdmins(playerIds))
+	const notifyAdminsChecked = notifyAdmins ?? !targetsAreAllAdmins
 
 	const noTargets = playerIds.length === 0
 	const sendDisabled = pending || !!warnDenied || noTargets || !message.trim()
@@ -57,7 +65,7 @@ export default function WarnChatBox({
 		const body = bodyPrefix ? `${bodyPrefix} ${text}` : text
 		const composed = prefixName && username ? `${username}: ${body}` : body
 		try {
-			const res = await warnPlayersMutation.mutateAsync({ serverId, playerIds, reason: composed })
+			const res = await warnPlayersMutation.mutateAsync({ serverId, playerIds, reason: composed, notifyAdmins: notifyAdminsChecked })
 			if (res.code !== 'ok') {
 				toast.error('Failed to send', { description: res.code })
 				return
@@ -75,15 +83,28 @@ export default function WarnChatBox({
 
 	return (
 		<div className={cn('flex flex-col gap-1', className)}>
-			{username && (
+			<div className="flex items-center self-end gap-2">
 				<label
-					className="flex items-center self-end gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
-					title="Prefix the message with your username"
+					className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
+					title="Warn every online admin that this warn was sent"
 				>
-					<Checkbox checked={prefixName} onCheckedChange={(checked: boolean) => setPrefixName(checked)} className="h-3.5 w-3.5" />
-					{username}:
+					<Checkbox
+						checked={notifyAdminsChecked}
+						onCheckedChange={(checked: boolean) => setNotifyAdmins(checked)}
+						className="h-3.5 w-3.5"
+					/>
+					Notify admins
 				</label>
-			)}
+				{username && (
+					<label
+						className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
+						title="Prefix the message with your username"
+					>
+						<Checkbox checked={prefixName} onCheckedChange={(checked: boolean) => setPrefixName(checked)} className="h-3.5 w-3.5" />
+						{username}:
+					</label>
+				)}
+			</div>
 			<div className="flex items-stretch gap-1.5">
 				<Textarea
 					ref={textareaRef}

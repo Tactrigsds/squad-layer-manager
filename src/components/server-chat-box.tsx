@@ -49,12 +49,15 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 	const [message, setMessage] = React.useState('')
 	// warning admins prefixes the sender's name by default so they know who warned them; other channels default off
 	const [prefixName, setPrefixName] = React.useState(() => initialChannel === 'warn-admins')
+	// null follows the server's admin-target rule; set once the admin ticks the box either way
+	const [notifyAdmins, setNotifyAdmins] = React.useState<boolean | null>(null)
 	const textareaRef = React.useRef<HTMLTextAreaElement>(null)
 
-	// switch channel and reset the name-prefix to that channel's default; user can still toggle it afterward
+	// switch channel and reset the name-prefix and notify-admins toggles to that channel's defaults
 	function selectChannel(next: Channel) {
 		setChannel(next)
 		setPrefixName(next === 'warn-admins')
+		setNotifyAdmins(null)
 	}
 
 	// a "warn selected" menu action routes here: force the selected channel (overriding even broadcast, since
@@ -81,6 +84,8 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
 	const broadcastDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:broadcast'))
 	const selectedCount = ZusUtils.useStore(stores.squadServer, SquadServerFrame.Sel.selectedPlayerCount)
+	const selectionIsAllAdmins = ZusUtils.useStore(stores.squadServer, SquadServerFrame.Sel.selectionIsAllAdmins)
+	const notifyAdminsChecked = notifyAdmins ?? !selectionIsAllAdmins
 
 	const warnAdminsMutation = SquadServerClient.useWarnAdminsMutation()
 	const broadcastMutation = SquadServerClient.useBroadcastMutation()
@@ -106,7 +111,7 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 			} else {
 				const playerIds = [...SquadServerFrame.Sel.selectedPlayerIds(ZusUtils.getState(stores.squadServer))]
 				if (playerIds.length === 0) return
-				res = await warnPlayersMutation.mutateAsync({ serverId, playerIds, reason: composed })
+				res = await warnPlayersMutation.mutateAsync({ serverId, playerIds, reason: composed, notifyAdmins: notifyAdminsChecked })
 			}
 			if (res.code !== 'ok') {
 				toast.error('Failed to send', { description: res.code })
@@ -132,15 +137,30 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 	return (
 		<div className="flex items-stretch gap-1.5 pt-1 shrink-0">
 			<div className="flex flex-col justify-between gap-1 shrink-0">
-				{username && (
-					<label
-						className="flex items-center self-end gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
-						title="Prefix the message with your username"
-					>
-						<Checkbox checked={prefixName} onCheckedChange={(checked: boolean) => setPrefixName(checked)} className="h-3.5 w-3.5" />
-						{username}:
-					</label>
-				)}
+				<div className="flex items-center self-end gap-2">
+					{channel === 'warn-selected' && (
+						<label
+							className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
+							title="Warn every online admin that this warn was sent"
+						>
+							<Checkbox
+								checked={notifyAdminsChecked}
+								onCheckedChange={(checked: boolean) => setNotifyAdmins(checked)}
+								className="h-3.5 w-3.5"
+							/>
+							Notify admins
+						</label>
+					)}
+					{username && (
+						<label
+							className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
+							title="Prefix the message with your username"
+						>
+							<Checkbox checked={prefixName} onCheckedChange={(checked: boolean) => setPrefixName(checked)} className="h-3.5 w-3.5" />
+							{username}:
+						</label>
+					)}
+				</div>
 				<Select value={channel} onValueChange={v => selectChannel(v as Channel)}>
 					<SelectTrigger
 						className={cn('h-7 w-auto min-w-[7rem] gap-1.5 px-2 text-xs shrink-0 [&>span]:whitespace-nowrap', cfg.triggerClass)}
