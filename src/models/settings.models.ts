@@ -569,7 +569,7 @@ export type ServerConnection = z.infer<typeof ServerConnectionSchema>
 
 export const QueueSettingsSchema = z.object({
 	maxQueueSize: z.int().min(1).max(100).prefault(20).describe(
-		'Maximum number of items the queue may hold. Saves that would exceed it are rejected.',
+		'How long the queue is meant to get. Reaching it turns the queue counter red; nothing is rejected.',
 	),
 	lowQueueWarningThreshold: z
 		.number()
@@ -621,7 +621,6 @@ export const PublicServerSettingsSchema = z
 				'Which parts of a layer (map, gamemode, factions, units) vote choices spell out. Admins can override this per vote.',
 			),
 			finalVoteReminder: HumanTime.prefault('10s').describe('How long before a vote closes the last-chance reminder is sent.'),
-			maxNumVoteChoices: z.int().min(1).max(50).prefault(5).describe('Maximum number of choices a vote may offer.'),
 		}).prefault({}),
 		overrideAdminSetNextLayer: z.boolean().prefault(false).describe(
 			'What happens when the next layer is set from outside SLM (an in-game admin, or another RCON tool). On, SLM sets it straight '

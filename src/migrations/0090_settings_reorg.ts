@@ -9,6 +9,7 @@ import type { MigrationDriver } from '@/server/migrate'
 //   warnPrefix                                        dropped; admin-directed warns are never prefixed now
 //   warnOnChangeLayer                                 -> warnOnNextLayerChange (per-server), behaviour widened
 //   queue.{preferredLength,generatedItemType,preferredNumVoteChoices} dropped; nothing read them
+//   vote.maxNumVoteChoices, layerTable.defaultExtraFilters               dropped; nothing read them either
 //   adminActionReasons[].aliases                      -> .keywords, now the ONLY thing chat matches, so required
 //
 // Everything moving global -> per-server was one value the whole install shared, so every server starts from it and
@@ -31,6 +32,7 @@ const RENAMED_ON_SERVERS: Record<string, string> = { warnOnChangeLayer: 'warnOnN
 
 const GLOBAL_TO_SERVER_KEYS = ['vote', 'fogOffDelay', 'postRollAnnouncementsTimeout'] as const
 const DROPPED_QUEUE_KEYS = ['preferredLength', 'generatedItemType', 'preferredNumVoteChoices'] as const
+const DROPPED_VOTE_KEYS = ['maxNumVoteChoices'] as const
 
 function readGlobal(db: MigrationDriver): { id: number; wrapper: Wrapper; json: Record<string, unknown> } | null {
 	const row = db.prepare(`SELECT id, settings FROM globalSettings ORDER BY id LIMIT 1`).get() as
@@ -79,6 +81,16 @@ export async function up(db: MigrationDriver): Promise<void> {
 		}
 		if (changed) json.queue = queue
 
+		// after the adopt above, so a vote block inherited from the global row is pruned too
+		const vote = json.vote as Record<string, unknown> | undefined
+		if (vote && typeof vote === 'object') {
+			for (const key of DROPPED_VOTE_KEYS) {
+				if (!(key in vote)) continue
+				delete vote[key]
+				changed = true
+			}
+		}
+
 		// after the adopts above, so a value pushed back down from the global row is renamed too
 		for (const [from, to] of Object.entries(RENAMED_ON_SERVERS)) {
 			if (!(from in json)) continue
@@ -106,6 +118,12 @@ export async function up(db: MigrationDriver): Promise<void> {
 	for (const key of [...GLOBAL_TO_SERVER_KEYS, ...RETURNED_TO_SERVERS, 'layerQueue', 'warnPrefix']) {
 		if (!(key in global.json)) continue
 		delete global.json[key]
+		globalChanged = true
+	}
+
+	const layerTable = global.json.layerTable as Record<string, unknown> | undefined
+	if (layerTable && typeof layerTable === 'object' && 'defaultExtraFilters' in layerTable) {
+		delete layerTable.defaultExtraFilters
 		globalChanged = true
 	}
 
