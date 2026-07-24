@@ -636,6 +636,7 @@ function actorsByItem(ops: SLL.Operation[]): Map<LL.ItemId, Actor> {
 			case 'move':
 			case 'swap-factions':
 			case 'edit-layer':
+			case 'set-tags':
 			case 'clone':
 			case 'configure-vote':
 			case 'delete':
@@ -676,6 +677,12 @@ function itemLayerIds(item: LL.Item): L.LayerId[] {
 function voteStateOf(item: LL.Item) {
 	if (!LL.isVoteItem(item)) return undefined
 	return { config: item.voteConfig, result: item.endingVoteState }
+}
+
+// likewise an item can change by being tagged alone, which moves no layer id. Covers a vote item's choices too, since
+// they carry their own tags and a change inside a vote reads as an edit of the vote.
+function tagsOf(item: LL.Item) {
+	return [...LL.iterItems([item])].map(({ item }) => (item.type === 'single-list-item' ? item.tags ?? [] : []))
 }
 
 // the items that actually moved, as opposed to the ones a neighbouring insert or delete shifted along. the longest
@@ -730,7 +737,10 @@ export function summarizeQueueChanges(e: QueueUpdated): QueueChange[] {
 			continue
 		}
 		const prevLayerIds = itemLayerIds(before.item)
-		if (!Obj.deepEqual(prevLayerIds, layerIds) || !Obj.deepEqual(voteStateOf(before.item), voteStateOf(item))) {
+		if (
+			!Obj.deepEqual(prevLayerIds, layerIds) || !Obj.deepEqual(voteStateOf(before.item), voteStateOf(item))
+			|| !Obj.deepEqual(tagsOf(before.item), tagsOf(item))
+		) {
 			changes.push({ kind: 'edited', itemId, layerIds, prevLayerIds, isVote, actor: actorFor(itemId) })
 		}
 		if (moved.has(itemId)) {

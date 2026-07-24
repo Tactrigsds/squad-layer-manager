@@ -9,6 +9,7 @@ import * as CB from '@/models/constraint-builders'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
+import * as LTag from '@/models/layer-tags.models'
 import * as PG from '@/models/player-groupings.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
@@ -331,6 +332,7 @@ export const GlobalSettingsSchema = z.object({
 			{ type: 'inrange', neg: false, args: [{ type: 'column', column: 'Asymmetry_Score' }, { type: 'value' }, { type: 'value' }] },
 		],
 	}).describe('Configures the columns, default sort, and extra menu items of the layer table'),
+	layerTags: LTag.TagsSchema,
 	layerGeneration: LC.LayerGenerationConfigSchema.prefault({
 		pickOrder: ['Map', 'Gamemode', 'Faction_1', 'Faction_2', 'Unit_1', 'Unit_2'],
 	}).describe(
@@ -398,6 +400,20 @@ export const GlobalSettingsSchema = z.object({
 		if (res.code === 'err:invalid-args') {
 			ctx.addIssue({ code: 'custom', message: res.msg, path: ['commandAliases', i, 'command'] })
 		}
+	})
+
+	const seenTagId = new Set<string>()
+	const seenTagLabel = new Set<string>()
+	val.layerTags?.forEach((tag, i) => {
+		if (seenTagId.has(tag.id)) {
+			ctx.addIssue({ code: 'custom', message: `Duplicate tag id "${tag.id}"`, path: ['layerTags', i, 'id'] })
+		}
+		seenTagId.add(tag.id)
+		const label = tag.label.trim().toLowerCase()
+		if (seenTagLabel.has(label)) {
+			ctx.addIssue({ code: 'custom', message: `Another tag is already labeled "${tag.label}"`, path: ['layerTags', i, 'label'] })
+		}
+		seenTagLabel.add(label)
 	})
 })
 

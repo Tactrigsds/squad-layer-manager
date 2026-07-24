@@ -6,6 +6,7 @@ import { diffSettings, type SettingChange } from '@/lib/settings-diff'
 import { assertNever } from '@/lib/type-guards'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
+import * as LTag from '@/models/layer-tags.models'
 import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as USR from '@/models/users.models'
@@ -392,6 +393,8 @@ export type PublicSettings = {
 	servers: ServerEntry[]
 	playerGroupings: SETTINGS.GlobalSettings['playerGroupings']
 	playerFlagsRequiringNote: SETTINGS.GlobalSettings['playerFlagsRequiringNote']
+	// every client rendering the queue needs these to resolve the tag ids stored on layer items
+	layerTags: SETTINGS.GlobalSettings['layerTags']
 	squadServer: { tickRateThresholds: SETTINGS.GlobalSettings['squadServer']['tickRateThresholds'] }
 	adminActionReasons: SETTINGS.GlobalSettings['adminActionReasons']
 	// the commands page lists these as the presets the broadcast command accepts. Their text is broadcast to the whole
@@ -415,6 +418,7 @@ function buildPublicSettings(): PublicSettings {
 		servers: listServerEntries(),
 		playerGroupings: GLOBAL_SETTINGS.playerGroupings,
 		playerFlagsRequiringNote: GLOBAL_SETTINGS.playerFlagsRequiringNote,
+		layerTags: GLOBAL_SETTINGS.layerTags,
 		squadServer: { tickRateThresholds: GLOBAL_SETTINGS.squadServer.tickRateThresholds },
 		adminActionReasons: GLOBAL_SETTINGS.adminActionReasons,
 		requireReasonFor: GLOBAL_SETTINGS.requireReasonFor,
@@ -508,6 +512,49 @@ const globalRouter = {
 				}),
 			)
 			return { code: 'ok' as const, changes }
+		}),
+
+	// inline tag creation/editing from the queue. A separate endpoint because updateSettings requires the caller to hold
+	// the whole settings object, which needs global-settings:read -- a queue editor allowed to manage tags may not have it.
+	// Deletion is deliberately absent: tags are only removed from the settings page (see LTag.TagsSchema).
+	upsertLayerTag: orpcBase
+		.meta({ type: 'mutation' })
+		.input(LTag.TagSchema)
+		.handler(async ({ context: ctx, input }) => {
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SETTINGS.Grants.writeGlobalSettingsPaths([['layerTags']]))
+			if (denyRes) return denyRes
+
+			const existing = GLOBAL_SETTINGS.layerTags
+			if (LTag.labelConflict(existing, input.label, input.id)) {
+				return { code: 'err:duplicate-label' as const, message: `Another tag is already labeled "${input.label}"` }
+			}
+			const idx = existing.findIndex(t => t.id === input.id)
+			const layerTags = idx === -1 ? [...existing, input] : existing.map(t => (t.id === input.id ? input : t))
+
+			const parseRes = SETTINGS.parseGlobalSettings({ ...GLOBAL_SETTINGS, layerTags })
+			if (!parseRes.success) {
+				return { code: 'err:invalid-settings' as const, message: parseRes.error.message }
+			}
+			const changes = diffSettings(GLOBAL_SETTINGS, parseRes.data)
+			GLOBAL_SETTINGS = parseRes.data
+
+			await ctx.db({ redactParams: true })
+				.update(Schema.globalSettings)
+				.set(superjsonify(Schema.globalSettings, { settings: SETTINGS.GlobalSettingsSchema.encode(GLOBAL_SETTINGS) }))
+
+			settings$.next({ scope: 'global', settings: GLOBAL_SETTINGS })
+			await AppEventsSys.persistAppEvent(
+				ctx,
+				AppEvents.create<AppEvents.SettingsUpdated>({
+					type: 'SETTINGS_UPDATED',
+					actor: { type: 'slm-user', userId: ctx.user.discordId },
+					serverId: null,
+					matchId: null,
+					causeId: null,
+					changes: auditableSettingChanges(changes),
+				}),
+			)
+			return { code: 'ok' as const, tag: input }
 		}),
 }
 
