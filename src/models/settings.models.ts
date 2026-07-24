@@ -628,8 +628,7 @@ export const PublicServerSettingsSchema = z
 				+ 'back to whatever the queue says. Off, SLM adopts the change by putting that layer at the front of the queue.',
 		),
 		warnOnNextLayerChange: z.boolean().prefault(false).describe(
-			'Warn all in-game admins with the new next layer whenever it changes, whoever changed it. A change SLM overrides is not '
-				+ 'announced.',
+			'Warn all in-game admins with the new next layer whenever it changes. A change SLM overrides is not announced.',
 		),
 		postRollAnnouncementsTimeout: HumanTime.prefault('5m').describe(
 			'How long after a map rolls before admins are told the balance trigger in effect, the next layer, and whether the queue is '
