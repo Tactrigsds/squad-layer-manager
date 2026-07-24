@@ -41,6 +41,7 @@ import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Commands from '@/systems/commands.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
+import * as MatchEventsCache from '@/systems/match-events-cache.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as ServerAgent from '@/systems/server-agent.server'
@@ -794,6 +795,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		server,
 
 		matchHistory: MatchHistory.initMatchHistoryContext(server.event$, cleanup),
+		matchEventsCache: MatchEventsCache.initMatchEventsCacheContext(),
 
 		teamswaps: TeamswapsSys.initContext({
 			...ctx,
