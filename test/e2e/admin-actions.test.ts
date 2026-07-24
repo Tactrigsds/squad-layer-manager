@@ -50,8 +50,8 @@ test.describe('admin actions from the teams panel', () => {
 			await page.getByRole('menuitem', { name: 'Warn' }).hover()
 			await page.getByRole('menuitem', { name: 'Preset Reason' }).click()
 			const dialog = page.getByRole('alertdialog', { name: 'Warn Player' })
-			await dialog.getByRole('combobox').click()
-			await page.getByRole('option', { name: 'Toxicity' }).click()
+			await dialog.getByRole('combobox', { name: 'Reason' }).click()
+			await page.getByRole('option', { name: 'Toxicity', exact: true }).click()
 			await dialog.getByRole('button', { name: 'Warn', exact: true }).click()
 
 			await app.waitFor(() => warnsTo(app, member.eos).length > 0, { label: 'the warn reaching the game', timeoutMs: 20_000 })

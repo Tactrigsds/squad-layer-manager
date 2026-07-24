@@ -793,8 +793,10 @@ function AppEventEntry(
 	if (appEvent.type === 'PLAYER_WARNED') {
 		const warnCount = appEvent.targets.length
 		const summary = event.warnSummary
-		const single = summary.type === 'players' && warnCount === 1 && matchId !== null && event.targetPlayers.length === 1
-		const styleKey = summary.type === 'all-admins' ? 'admins' : single ? 'single' : 'selection'
+		// one resolved target is always named, even when the grouping classifier would rather call them
+		// "everyone on Team 2" (which it does whenever that player happens to be alone on their team)
+		const single = warnCount === 1 && matchId !== null && event.targetPlayers.length === 1
+		const styleKey = single ? 'single' : summary.type === 'all-admins' ? 'admins' : 'selection'
 		const style = WARN_CHANNEL_STYLES[styleKey]
 
 		const warnee: React.ReactNode = single
