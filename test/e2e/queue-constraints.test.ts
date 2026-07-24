@@ -1,6 +1,6 @@
 import * as FB from '@/models/filter-builders'
 import { createAppFixture } from '../harness/app-fixture'
-import { filter, LAYERS, queue, selectableFilter } from '../harness/arrange'
+import { filter, LAYERS, layerTag, queue, queueItem, selectableFilter } from '../harness/arrange'
 import { expect, test } from './fixtures'
 
 // What a queued layer violates has to be visible on the item itself: the indicators are the only thing
@@ -104,6 +104,104 @@ test.describe('queue item constraints', () => {
 					db.close()
 				}
 			}, { label: 'queue saved over the repeat warning' })
+		} finally {
+			await app.dispose()
+		}
+	})
+
+	// The counterpart to the test above: the same violating queue saves without a word once the offending item carries
+	// a tag the pool skips warnings for. The indicator is deliberately left alone -- the exemption silences the warning,
+	// it doesn't hide what the layer does.
+	test("skips warnings for an item tagged with one of the pool's skipWarningsForTags", async ({ page }) => {
+		const planned = layerTag('planned', 'aaaaaa')
+		const app = await createAppFixture({
+			layerQueue: [
+				queueItem(LAYERS.gorodokRaas),
+				queueItem(LAYERS.sumariSeed),
+				queueItem(LAYERS.gorodokAas, { tags: [planned.id] }),
+			],
+			globalSettings: (settings) => {
+				settings.layerTags = [planned]
+			},
+			serverSettings: (settings) => {
+				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, warn: true }]
+				settings.queue.mainPool.skipWarningsForTags = [planned.id]
+			},
+		})
+		try {
+			await page.goto(app.loginUrl())
+			await expect(page.getByRole('tab', { name: 'Queue (3)' })).toBeVisible({ timeout: 20_000 })
+
+			const items = page.getByRole('tabpanel', { name: /^Queue/ }).getByRole('listitem')
+			// the repeat is still detected and still indicated on the item; only the warning is suppressed
+			await expect(items.filter({ hasText: 'Gorodok_AAS_v1' }).getByRole('button', { name: 'Layer indicators' })).toBeVisible()
+
+			// warnings only surface for a queue this user has edited, so make one that violates nothing itself: Narva
+			// repeats neither the queue nor the match the emulated server is playing
+			await page.getByRole('button', { name: 'Start Editing' }).click()
+			await page.getByRole('button', { name: 'Add Layers' }).click()
+			const dialog = page.getByRole('dialog', { name: 'Add Layers' })
+			await dialog.getByRole('combobox', { name: 'Layer', exact: true }).click()
+			await page.getByRole('option', { name: 'Narva_RAAS_v1', exact: true }).click()
+			await dialog.getByRole('row').filter({ hasText: 'Narva_RAAS_v1' }).first().click()
+			await dialog.getByRole('button', { name: 'Submit' }).click()
+			await expect(dialog).toBeHidden()
+			// the added layer carries no indicator, so the only repeat in this queue is the tagged one
+			const narva = items.filter({ hasText: 'Narva_RAAS_v1' })
+			await expect(narva).toHaveCount(1)
+			await expect(narva.getByRole('button', { name: 'Layer indicators' })).toHaveCount(0)
+
+			// the save commits on the first attempt: had the tagged repeat still warned, this would have surfaced the
+			// warning and waited for a second click instead
+			await page.getByRole('button', { name: /^(Save|Force Save)$/ }).click()
+			await app.waitFor(() => {
+				const db = app.readDb()
+				try {
+					const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(app.serverId) as { layerQueue: string }
+					const list = JSON.parse(row.layerQueue).json as { layerId: string }[]
+					return list.length === 4 && list.some((item) => item.layerId.startsWith('NV-RAAS-'))
+				} finally {
+					db.close()
+				}
+			}, { label: 'queue saved without a repeat warning' })
+			await expect(page.getByRole('button', { name: 'Save Anyway' })).toHaveCount(0)
+			await expect(page.getByText('Repeats Detected')).toHaveCount(0)
+		} finally {
+			await app.dispose()
+		}
+	})
+
+	// The exemption is only useful if an admin can set it up without editing settings by hand, so the pool
+	// configuration window has to both render the control and persist what is picked in it.
+	test('configures skipWarningsForTags from the pool configuration window', async ({ page }) => {
+		const planned = layerTag('planned', 'aaaaaa')
+		const app = await createAppFixture({
+			globalSettings: (settings) => {
+				settings.layerTags = [planned]
+			},
+		})
+		try {
+			await page.goto(app.loginUrl())
+			await expect(page.getByRole('button', { name: 'Pool Configuration' })).toBeVisible({ timeout: 20_000 })
+			await page.getByRole('button', { name: 'Pool Configuration' }).click()
+
+			const section = page.getByRole('region', { name: 'Skip warnings for' })
+			await expect(section).toBeVisible()
+			await section.getByRole('button', { name: /add tag/i }).click()
+			await page.getByRole('menuitem', { name: 'planned' }).click()
+			await expect(section.getByText('planned')).toBeVisible()
+
+			await page.getByRole('button', { name: 'Save Changes' }).click()
+			await app.waitFor(() => {
+				const db = app.readDb()
+				try {
+					const row = db.prepare(`SELECT settings FROM servers WHERE id = ?`).get(app.serverId) as { settings: string }
+					const pool = JSON.parse(row.settings).json.queue.mainPool as { skipWarningsForTags?: string[] }
+					return pool.skipWarningsForTags?.includes(planned.id) ?? false
+				} finally {
+					db.close()
+				}
+			}, { label: 'skipWarningsForTags persisted' })
 		} finally {
 			await app.dispose()
 		}

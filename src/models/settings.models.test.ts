@@ -25,6 +25,7 @@ describe('pool configuration schema', () => {
 			defaultSelectable: [{ filterId: 'a-filter', applyAs: 'inverted' }],
 			warnFor: [{ filterId: 'b-filter', applyAs: 'regular' }],
 			constrainGeneration: [{ filterId: 'the-pool', applyAs: 'regular' }],
+			skipWarningsForTags: ['planned:aaaaaa'],
 			repeatRules: [{ label: 'Map', field: 'Map', within: 4 }],
 		}
 		const parsed = SETTINGS.PoolConfigurationSchema.parse(config)
