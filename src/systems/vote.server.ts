@@ -224,6 +224,7 @@ export const startVote = C.spanOp(
 		ctx:
 			& C.Db
 			& Partial<C.User>
+			& Partial<C.PlayerIds>
 			& C.SquadServer
 			& C.Rcon
 			& C.Vote
@@ -233,12 +234,9 @@ export const startVote = C.spanOp(
 			& CS.AbortSignal,
 		opts: Omit<V.StartVoteInput, 'serverId'> & { initiator: USR.GuiOrChatUserId | 'autostart' },
 	) => {
-		if (ctx.user !== undefined) {
-			// @ts-expect-error cringe
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage'))
-			if (denyRes) {
-				return denyRes
-			}
+		const denyRes = await Rbac.tryDenyPermissionsForActor(ctx, RBAC.perm('vote:manage'))
+		if (denyRes) {
+			return denyRes
 		}
 
 		const statusRes = await ctx.server.layersStatus.get(ctx, { ttl: 10_000 })
