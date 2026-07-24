@@ -393,6 +393,9 @@ export const orpcRouter = {
 				presetReasonLabel: z.string().min(1).optional(),
 				// omitted, the admin notification follows the admin-target rule in warnPlayers
 				notifyAdmins: z.boolean().optional(),
+				// lead the delivered message with the acting admin's display name ("grey275: @Alice ..."). Resolved
+				// server-side so it always names the actual sender.
+				prefixSenderName: z.boolean().optional(),
 				// when a warn targets a whole squad the message gets a "@Squad<id>" (or "@cmdSquad") tag
 				taggedSquad: z.object({
 					squadId: z.number().int().positive(),
@@ -411,20 +414,26 @@ export const orpcRouter = {
 			if (reasonRes.code !== 'ok') return reasonRes
 			// the input refine guarantees a reason was provided; narrow without asserting
 			if (!reasonRes.applied) return { code: 'err:reason-required' as const, msg: 'A reason is required to warn.' }
-			const message = AAR.renderAppliedReason(reasonRes.applied, {
+			const tagged = AAR.renderAppliedReason(reasonRes.applied, {
 				audienceTag: await resolveWarnAudienceTag(ctx, input.playerIds, input.taggedSquad),
 			})
-			// squad warns name the squad + faction (e.g. "warned Squad1 (PLA): ...") in the admin notification
+			// the sender's name leads the whole thing, ahead of the audience tag: "grey275: @Alice ..."
+			const message = input.prefixSenderName
+				? `${await Users.resolveDisplayName(ctx, ctx.user.discordId)}: ${tagged}`
+				: tagged
+			// squad warns name the squad + faction (e.g. "warned Squad1 (PLA): ...") in the admin notification, which
+			// already attributes the actor, so it quotes the message without the sender prefix
 			let adminNotifyDescription: string | undefined
 			if (input.taggedSquad) {
 				const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 				const squadLabel = SM.squadAdminLabel(input.taggedSquad, MH.getTeamFaction(currentMatch, input.taggedSquad.teamId))
-				adminNotifyDescription = `warned ${squadLabel}: ${message}`
+				adminNotifyDescription = `warned ${squadLabel}: ${tagged}`
 			}
 			await warnPlayers(ctx, input.playerIds, message, { type: 'slm-user', userId: ctx.user.discordId }, {
 				reasonLabel: reasonRes.applied.label,
 				notifyAdmins: input.notifyAdmins,
 				adminNotifyDescription,
+				adminNotifyMessage: tagged,
 			})
 			return { code: 'ok' as const }
 		}),
@@ -452,14 +461,31 @@ export const orpcRouter = {
 		}),
 
 	broadcast: orpcBase
-		.input(z.object({ serverId: z.string(), message: z.string().min(1) }))
+		.input(
+			z.object({
+				serverId: z.string(),
+				message: z.string().min(1).optional(),
+				presetReasonLabel: z.string().min(1).optional(),
+				prefixSenderName: z.boolean().optional(),
+			}).refine(i => !!i.message !== !!i.presetReasonLabel, { error: 'Exactly one of message or presetReasonLabel must be provided' }),
+		)
 		.handler(async ({ context: _ctx, input }) => {
 			const ctxRes = trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:broadcast'))
 			if (denyRes) return denyRes
-			await broadcastAction(ctx, input.message, { type: 'slm-user', userId: ctx.user.discordId })
+			let template = input.message
+			let presetLabel: string | undefined
+			if (input.presetReasonLabel) {
+				const res = resolvePresetReason('broadcast', input.presetReasonLabel)
+				if (res.code !== 'ok') return res
+				template = AAR.reasonText('broadcast', res.reason)
+				presetLabel = res.reason.label
+			}
+			// broadcastAction renders the template, so the sender prefix wraps the raw text and rides through with it
+			if (input.prefixSenderName) template = `${await Users.resolveDisplayName(ctx, ctx.user.discordId)}: ${template!}`
+			await broadcastAction(ctx, template!, { type: 'slm-user', userId: ctx.user.discordId }, { presetLabel })
 			return { code: 'ok' as const }
 		}),
 
@@ -1222,7 +1248,9 @@ export async function warnPlayers(
 	actor: AppEvents.Actor,
 	// notifyAdmins: forces the meta-notification on or off; left undefined it follows the admin-target rule below.
 	// adminNotifyDescription: override the admin-notification phrasing (squad warns name the squad + faction)
-	opts?: { reasonLabel?: string; notifyAdmins?: boolean; adminNotifyDescription?: string },
+	// adminNotifyMessage: the text the notification quotes, when that should differ from what was delivered (the
+	// notification already names the actor, so it drops the delivered message's sender prefix)
+	opts?: { reasonLabel?: string; notifyAdmins?: boolean; adminNotifyDescription?: string; adminNotifyMessage?: string },
 ) {
 	if (targets.length === 0) return
 	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
@@ -1251,7 +1279,8 @@ export async function warnPlayers(
 		// admin-to-admin chatter shouldn't page the whole admin team; a preset reason is a formal action, so it still does
 		if (!opts?.reasonLabel && audience.allAdmins) return
 	}
-	await notifyAdminsOfWebAction(ctx, appEvent, opts?.adminNotifyDescription ?? `warned ${audience.label}: ${reason}`)
+	const notifyMessage = opts?.adminNotifyMessage ?? reason
+	await notifyAdminsOfWebAction(ctx, appEvent, opts?.adminNotifyDescription ?? `warned ${audience.label}: ${notifyMessage}`)
 }
 
 // resolves warn targets against the live roster: the matching players (undefined where a target isn't online) plus

@@ -1,3 +1,4 @@
+import { AdminReasonPicker } from '@/components/admin-reason-picker'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -86,6 +87,8 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 	const selectedCount = ZusUtils.useStore(stores.squadServer, SquadServerFrame.Sel.selectedPlayerCount)
 	const selectionIsAllAdmins = ZusUtils.useStore(stores.squadServer, SquadServerFrame.Sel.selectionIsAllAdmins)
 	const notifyAdminsChecked = notifyAdmins ?? !selectionIsAllAdmins
+	// broadcasts get the reasons' broadcast text, not their warn text
+	const draft = WarnChat.useAdminReasonDraft(channel === 'broadcast' ? 'broadcast' : 'warn')
 
 	const warnAdminsMutation = SquadServerClient.useWarnAdminsMutation()
 	const broadcastMutation = SquadServerClient.useBroadcastMutation()
@@ -99,26 +102,37 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 	async function send() {
 		const text = message.trim()
 		if (!text || sendDisabled) return
-		// the audience tag leads, then the username prefix -- matching the "@Alice grey275: ..." the server produces
-		// for the other warn channels. warn-admins builds its own tag since it doesn't go through warnPlayers.
-		const prefixed = prefixName && username ? `${username}: ${text}` : text
-		const composed = channel === 'warn-admins' ? `@admins ${prefixed}` : prefixed
+		// the sender's name leads the whole message, ahead of any audience tag: "grey275: @admins ...". warn-selected
+		// leaves both to the server, which is the only path that knows who the "@..." tag should name.
+		const prefixed = (body: string) => prefixName && username ? `${username}: ${body}` : body
+		const asPreset = draft.match(text)
 		try {
 			let res: { code: string }
 			if (channel === 'warn-admins') {
-				res = await warnAdminsMutation.mutateAsync({ serverId, message: composed })
+				res = await warnAdminsMutation.mutateAsync({ serverId, message: prefixed(`@admins ${text}`) })
 			} else if (channel === 'broadcast') {
-				res = await broadcastMutation.mutateAsync({ serverId, message: composed })
+				res = await broadcastMutation.mutateAsync({
+					serverId,
+					prefixSenderName: prefixName && !!username,
+					...(asPreset ? { presetReasonLabel: asPreset.label } : { message: text }),
+				})
 			} else {
 				const playerIds = [...SquadServerFrame.Sel.selectedPlayerIds(ZusUtils.getState(stores.squadServer))]
 				if (playerIds.length === 0) return
-				res = await warnPlayersMutation.mutateAsync({ serverId, playerIds, reason: composed, notifyAdmins: notifyAdminsChecked })
+				res = await warnPlayersMutation.mutateAsync({
+					serverId,
+					playerIds,
+					notifyAdmins: notifyAdminsChecked,
+					prefixSenderName: prefixName && !!username,
+					...(asPreset ? { presetReasonLabel: asPreset.label } : { reason: text }),
+				})
 			}
 			if (res.code !== 'ok') {
 				toast.error('Failed to send', { description: res.code })
 				return
 			}
 			setMessage('')
+			draft.reset()
 		} catch (e) {
 			console.error(e)
 			toast.error('Failed to send')
@@ -195,6 +209,20 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 				rows={2}
 				className={cn('min-h-0 h-auto text-xs flex-1 min-w-0 resize-none px-2 py-1', cfg.inputClass)}
 			/>
+			{/* warn-admins is a free-form message to admins, with no preset codepath behind it */}
+			{channel !== 'warn-admins' && (
+				<AdminReasonPicker
+					reasons={draft.reasons}
+					preview={draft.render}
+					onPick={reason => {
+						setMessage(draft.pick(reason))
+						textareaRef.current?.focus()
+					}}
+					disabled={!!channelDenied}
+					title={channel === 'broadcast' ? 'Fill the box with a preset broadcast' : 'Fill the box with a preset reason'}
+					className={cfg.triggerClass}
+				/>
+			)}
 			<Button
 				size="sm"
 				variant="outline"
