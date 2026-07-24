@@ -1,17 +1,14 @@
+import { AdminReasonPicker } from '@/components/admin-reason-picker'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
-import * as AAR from '@/models/admin-action-reasons.models'
 import type * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
-import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UsersClient from '@/systems/users.client'
 import * as WarnChat from '@/systems/warn-chat.client'
@@ -48,9 +45,7 @@ export default function WarnChatBox({
 	const [prefixName, setPrefixName] = React.useState(false)
 	// null follows the server's admin-target rule; set once the admin ticks the box either way
 	const [notifyAdmins, setNotifyAdmins] = React.useState<boolean | null>(null)
-	// the preset last dropped into the box. Kept until send, which re-checks the text still matches it verbatim.
-	const [presetLabel, setPresetLabel] = React.useState<string | null>(null)
-	const [presetsOpen, setPresetsOpen] = React.useState(false)
+	const draft = WarnChat.useAdminReasonDraft('warn')
 	const textareaRef = React.useRef<HTMLTextAreaElement>(null)
 
 	WarnChat.useWarnFocusRequest(
@@ -63,48 +58,31 @@ export default function WarnChatBox({
 	const pending = warnPlayersMutation.isPending
 	const targetsAreAllAdmins = ZusUtils.useStore(stores.squadServer, SquadServerFrame.Sel.allTargetsAreAdmins(playerIds))
 	const notifyAdminsChecked = notifyAdmins ?? !targetsAreAllAdmins
-	const reasons = ZusUtils.useStore(
-		SettingsClient.PublicSettingsStore,
-		s => s ? AAR.reasonsForAction(s.adminActionReasons, 'warn') : [],
-	)
-	const messageVars = ZusUtils.useStore(
-		SettingsClient.PublicSettingsStore,
-		s => Object.fromEntries((s?.messageVariables ?? []).map(v => [v.name, v.value])) as Record<string, string>,
-	)
-	// untagged: the server prepends the "@..." audience tag to whatever it's given, on both paths
-	const renderPreset = (reason: AAR.AdminActionReason) => AAR.formatAppliedReason('warn', reason, { vars: messageVars }).trim()
 
 	const noTargets = playerIds.length === 0
 	const sendDisabled = pending || !!warnDenied || noTargets || !message.trim()
 
-	function applyPreset(reason: AAR.AdminActionReason) {
-		setMessage(renderPreset(reason))
-		setPresetLabel(reason.label)
-		textareaRef.current?.focus()
-	}
-
 	async function send() {
 		const text = message.trim()
 		if (!text || sendDisabled) return
-		const composed = prefixName && username ? `${username}: ${text}` : text
-		// route through the admin-action-reason path only when the server would render exactly what's in the box:
-		// the text is still the preset verbatim, and there's no username prefix for that path to drop
-		const preset = reasons.find(r => r.label === presetLabel)
-		const asPreset = preset && text === renderPreset(preset) && !(prefixName && username) ? preset : undefined
+		// the admin-action-reason path applies whenever the box still holds the preset verbatim; the sender prefix
+		// is the server's job on both paths, so it no longer rules the preset out
+		const asPreset = draft.match(text)
 		try {
 			const res = await warnPlayersMutation.mutateAsync({
 				serverId,
 				playerIds,
 				taggedSquad,
 				notifyAdmins: notifyAdminsChecked,
-				...(asPreset ? { presetReasonLabel: asPreset.label } : { reason: composed }),
+				prefixSenderName: prefixName && !!username,
+				...(asPreset ? { presetReasonLabel: asPreset.label } : { reason: text }),
 			})
 			if (res.code !== 'ok') {
 				toast.error('Failed to send', { description: res.code })
 				return
 			}
 			setMessage('')
-			setPresetLabel(null)
+			draft.reset()
 		} catch (e) {
 			console.error(e)
 			toast.error('Failed to send')
@@ -155,48 +133,16 @@ export default function WarnChatBox({
 					rows={2}
 					className={cn('min-h-0 h-auto text-xs flex-1 min-w-0 resize-none px-2 py-1', accent)}
 				/>
-				{reasons.length > 0 && (
-					<Popover open={presetsOpen} onOpenChange={setPresetsOpen}>
-						<PopoverTrigger asChild>
-							<Button
-								size="sm"
-								variant="outline"
-								className={cn('h-auto self-stretch w-7 p-0 shrink-0 text-orange-400', accent)}
-								disabled={!!warnDenied}
-								title="Fill the box with a preset reason"
-								aria-label="Preset reason"
-							>
-								<Icons.ListPlus className="h-3.5 w-3.5" />
-							</Button>
-						</PopoverTrigger>
-						<PopoverContent align="end" className="w-56 p-0">
-							<Command>
-								<CommandInput placeholder="Search reasons..." />
-								<CommandList>
-									<CommandEmpty>No reasons found.</CommandEmpty>
-									<CommandGroup>
-										{reasons.map(reason => (
-											<CommandItem
-												key={reason.label}
-												value={reason.label}
-												keywords={reason.aliases}
-												onSelect={() => {
-													applyPreset(reason)
-													setPresetsOpen(false)
-												}}
-											>
-												<span className="flex flex-col gap-0.5 min-w-0">
-													<span>{reason.label}</span>
-													<span className="text-xs text-muted-foreground truncate">{renderPreset(reason)}</span>
-												</span>
-											</CommandItem>
-										))}
-									</CommandGroup>
-								</CommandList>
-							</Command>
-						</PopoverContent>
-					</Popover>
-				)}
+				<AdminReasonPicker
+					reasons={draft.reasons}
+					preview={draft.render}
+					onPick={reason => {
+						setMessage(draft.pick(reason))
+						textareaRef.current?.focus()
+					}}
+					disabled={!!warnDenied}
+					className={cn('text-orange-400', accent)}
+				/>
 				<Button
 					size="sm"
 					variant="outline"
