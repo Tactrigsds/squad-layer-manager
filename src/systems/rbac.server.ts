@@ -545,6 +545,11 @@ export async function tryDenyPermissionsForPlayer<T extends RBAC.PermissionType>
 // falls back to "no identity, so allow" would make every such check fail-open for any future caller that reaches it
 // without one. Checks that genuinely depend on loaded state stay where the state is, inside the transaction.
 
+// whether this user may look at `serverId` at all; see RBAC.canViewServer for why it is not a plain permission check
+export async function canViewServerForUser(ctx: C.Db & C.UserId & CS.AbortSignal, serverId: string): Promise<boolean> {
+	return RBAC.canViewServer(await getUserPermissions(ctx), serverId)
+}
+
 // for the aggregate (non-equality) checks: settings access, timeouts
 export async function getUserPermissions(ctx: C.Db & C.UserId & CS.AbortSignal): Promise<RBAC.Permission[]> {
 	return RBAC.fromTracedPermissions((await getRbacForDiscordUser(ctx)).perms)

@@ -162,7 +162,7 @@ export const orpcRouter = {
 			Rx.switchMap(async () => {
 				const ids: string[] = []
 				for (const serverId of globalState.slices.keys()) {
-					if (await Rbac.tryDenyPermissionsForUser(context, RBAC.perm('squad-server:view', { serverId }))) continue
+					if (!await Rbac.canViewServerForUser(context, serverId)) continue
 					ids.push(serverId)
 				}
 				return ids
@@ -1738,8 +1738,9 @@ export async function trySliceCtx<T extends C.Db & C.UserId & CS.AbortSignal>(
 ): Promise<{ code: 'ok'; ctx: ReturnType<typeof withSliceSignal<T>> } | SM.ServerNotLoaded | RBAC.PermissionDeniedResponse> {
 	const slice = globalState.slices.get(serverId)
 	if (!slice) return SM.serverNotLoaded(serverId)
-	const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:view', { serverId }))
-	if (denyRes) return denyRes
+	if (!await Rbac.canViewServerForUser(ctx, serverId)) {
+		return RBAC.permissionDenied('all', [`squad-server:view on ${serverId}`])
+	}
 	return { code: 'ok', ctx: withSliceSignal(ctx, slice) }
 }
 
@@ -1756,7 +1757,7 @@ export function sliceCtx$(wsClientId: string, serverId: string) {
 			if (!slice) return null
 			const session = WsSessionSys.wsSessions.get(wsClientId)!
 			const ctx = { ...getBaseCtx(), ...session, ...slice }
-			if (await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:view', { serverId }))) return null
+			if (!await Rbac.canViewServerForUser(ctx, serverId)) return null
 			return ctx
 		}),
 	)

@@ -537,6 +537,13 @@ export function maxLayerRequests(perms: Permission[], serverId: string | null): 
 	return max
 }
 
+// Whether the dashboard for `serverId` is visible. Any server-scoped permission implies it: you cannot kick a player
+// or edit a queue you are not allowed to look at, so requiring both would just be a grant every role has to remember.
+// squad-server:view on its own is therefore the read-only grant.
+export function canViewServer(perms: Permission[], serverId: string): boolean {
+	return perms.some((p) => isServerScoped(p.type) && serverIdMatches(p.args as { serverId: string | null } | undefined, serverId))
+}
+
 // "holds this on at least one server", for the two client affordances that have no server in scope: the layer
 // table's force-select toggle and the row selectability the query stream marks. Deliberately loose, and
 // deliberately not spellable as a bare-string permit -- the authoritative check is the server-scoped one the
