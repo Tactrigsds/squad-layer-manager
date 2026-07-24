@@ -58,11 +58,8 @@ export async function handleCommand(baseCtx: C.Db & C.ServerSlice & CS.AbortSign
 		}
 	}
 
-	// all command feedback goes through reply(); admin-chat feedback carries the configured warnPrefix,
-	// feedback to public chats (and all player-directed warns elsewhere) stays unprefixed
-	const isAdminChat = msg.channelType === 'ChatAdmin'
 	async function reply(opts: SquadRcon.WarnOptions) {
-		await SquadRcon.warn(baseCtx, msg.playerIds, isAdminChat ? SquadRcon.withPrefixFlag(opts) : opts)
+		await SquadRcon.warn(baseCtx, msg.playerIds, opts)
 	}
 	async function error<T extends string>(reason: T, errorMessage: string) {
 		await reply(errorMessage)
@@ -229,7 +226,7 @@ async function resolveArgDefs(
 
 	const preds: CMD.AssignPredicates = {
 		isTeamToken: t => (currentMatch ? resolveTeamToken(currentMatch, t) !== null : false),
-		isPresetToken: (action, t) => !!LP.findByLabelOrAlias(AAR.reasonsForAction(Settings.GLOBAL_SETTINGS.adminActionReasons, action), t),
+		isPresetToken: (action, t) => !!LP.findByKeyword(AAR.reasonsForAction(Settings.GLOBAL_SETTINGS.adminActionReasons, action), t),
 	}
 	const assignRes = CMD.assignArgTokens(defs, tokens, preds)
 	if (assignRes.code === 'err:missing-arg') return assignRes
@@ -673,7 +670,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 				.map((a) => AAR.ADMIN_ACTIONS[a].displayName)
 				.join(', ')
 		const entries = reasons.map(r => {
-			const head = r.aliases.length > 0 ? `${r.label} (${r.aliases.join(', ')})` : r.label
+			const head = `${r.label} (${r.keywords.join(', ')})`
 			return `${head}\n${actionsFor(r)}`
 		})
 		// each reason is a 2-line block (label, then its actions); blank line between blocks

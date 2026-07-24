@@ -25,7 +25,6 @@ import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as LQYClient from '@/systems/layer-queries.client.ts'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as RbacClient from '@/systems/rbac.client'
-import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
@@ -425,7 +424,7 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 	const headerRef = React.useRef<HTMLDivElement>(null)
 
 	const queueLength = ZusUtils.useStore(props.stores.squadServer!, (s) => s.queue.layerList.length)
-	const maxQueueSize = ZusUtils.useStore(SettingsClient.PublicSettingsStore)?.layerQueue.maxQueueSize
+	const maxQueueSize = ZusUtils.useStore(props.stores.squadServer!, (s) => SquadServerFrame.Sel.settings(s).queue.maxQueueSize)
 	const queueMutations = ZusUtils.useStore(props.stores.squadServer!, (s) => s.queue.mutations)
 
 	const warnings = useQueueWarnings(props.stores)

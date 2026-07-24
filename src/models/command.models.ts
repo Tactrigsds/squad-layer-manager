@@ -81,7 +81,7 @@ export function commandsInSection(section: CommandSection): CommandId[] {
 // what this particular arg means.
 //
 // `sample` overrides the token the generated examples fill this arg with. Kinds whose values are drawn from live
-// settings (reason, broadcast) or are self-evident (player, duration) sample themselves; set this for `string` and
+// settings (reason) or are self-evident (player, duration) sample themselves; set this for `string` and
 // `int` args, whose name is all the generator would otherwise have to go on.
 type ArgCommon = { name: string; describe?: string; sample?: string }
 export type ArgDef =
@@ -97,7 +97,7 @@ export type ArgDef =
 	| ArgCommon & { kind: 'squad' }
 	// rest: raw remainder joined with spaces
 	| ArgCommon & { kind: 'text'; optional?: true }
-	// rest: a single token must match a configured reason (label/alias); 2+ tokens are a custom message
+	// rest: a single token must match one of a configured reason's keywords; 2+ tokens are a custom message
 	| ArgCommon & { kind: 'reason'; action: AAR.AdminActionType; optional?: true }
 	// single token, configured reason only
 	| ArgCommon & { kind: 'preset-reason'; action: AAR.AdminActionType; optional?: true }
@@ -439,7 +439,6 @@ export const AllCommandConfigSchema = z.object(
 // -------- resolved argument shapes --------
 
 export type ResolvedReasonArg = { type: 'preset'; reason: AAR.AdminActionReason } | { type: 'custom'; text: string }
-export type ResolvedBroadcastArg = { type: 'preset'; preset: LP.BroadcastPreset } | { type: 'custom'; text: string }
 // resolved by the server layer (needs the live roster); declared here so CommandArgs stays self-contained
 export type ResolvedSquadArg = { teamId: SM.TeamId; teamLabel: string; squad: SM.Squad; players: SM.Player[] }
 
@@ -451,7 +450,6 @@ type ArgValue<D extends ArgDef> = D extends { kind: 'string' } ? string
 	: D extends { kind: 'text' } ? string
 	: D extends { kind: 'reason' } ? ResolvedReasonArg
 	: D extends { kind: 'preset-reason' } ? AAR.AdminActionReason
-	: D extends { kind: 'broadcast' } ? ResolvedBroadcastArg
 	: never
 
 export type ResolvedArgs<Args extends readonly ArgDef[]> = {
@@ -579,16 +577,10 @@ export function resolveDurationArg(
 	return { code: 'ok', value }
 }
 
-function unknownPresetMsg(noun: string, token: string, presets: { label: string; aliases: string[] }[]) {
-	const suggestion = LP.didYouMean(token, LP.labelAliasStrings(presets))
-	return `Unknown ${noun} "${token}".${suggestion ? ` Did you mean ${suggestion}?` : ''}`
-}
-
-// "Available: label (alias1, alias2), ..." listing the reasons valid for an action, for error hints
+// "Available: label (keyword1, keyword2), ..." listing the reasons valid for an action, for error hints
 function reasonOptionsHint(applicable: AAR.AdminActionReason[]): string {
 	if (applicable.length === 0) return 'No reasons are configured for this action.'
-	const list = applicable.map(r => r.aliases.length > 0 ? `${r.label} (${r.aliases.join(', ')})` : r.label).join(', ')
-	return `Available: ${list}`
+	return `Available: ${applicable.map(LP.describePreset).join(', ')}`
 }
 
 // resolves a single reason token against ALL reasons for the action, distinguishing "no such reason" from
@@ -607,7 +599,7 @@ export function resolveReasonToken(
 			msg: `Reason "${token}" isn't set up for ${AAR.ADMIN_ACTIONS[action].displayName}. ${reasonOptionsHint(applicable)}`,
 		}
 	}
-	const suggestion = LP.didYouMean(token, LP.labelAliasStrings(applicable))
+	const suggestion = LP.didYouMean(token, LP.keywordStrings(applicable))
 	return {
 		code: 'err:unknown-preset',
 		msg: `Unknown reason "${token}".${suggestion ? ` Did you mean ${suggestion}?` : ''} ${reasonOptionsHint(applicable)}`,
@@ -633,18 +625,6 @@ export function resolveReasonArg(
 		const res = resolveReasonToken(allReasons, action, tokens[0])
 		if (res.code !== 'ok') return res
 		return { code: 'ok', value: { type: 'preset', reason: res.reason } }
-	}
-	return { code: 'ok', value: { type: 'custom', text: tokens.join(' ') } }
-}
-
-export function resolveBroadcastArg(
-	presets: LP.BroadcastPreset[],
-	tokens: string[],
-): { code: 'ok'; value: ResolvedBroadcastArg } | { code: 'err:unknown-preset'; msg: string } {
-	if (tokens.length === 1) {
-		const preset = LP.findByLabelOrAlias(presets, tokens[0])
-		if (!preset) return { code: 'err:unknown-preset', msg: unknownPresetMsg('broadcast', tokens[0], presets) }
-		return { code: 'ok', value: { type: 'preset', preset } }
 	}
 	return { code: 'ok', value: { type: 'custom', text: tokens.join(' ') } }
 }

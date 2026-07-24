@@ -9,55 +9,40 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteRouteImport } from './routes/_app/route'
-import { Route as AppCommandsRouteImport } from './routes/_app/commands'
-import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as SandboxSandboxRouteImport } from './routes/_sandbox/sandbox'
-import { Route as AppFiltersIndexRouteImport } from './routes/_app/filters/index'
-import { Route as AppFiltersFilterIdRouteImport } from './routes/_app/filters/$filterId'
-import { Route as AppFiltersNewRouteImport } from './routes/_app/filters/new'
+import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as AppCommandsRouteImport } from './routes/_app/commands'
 import { Route as AppServersIndexRouteImport } from './routes/_app/servers.index'
-import { Route as AppServersServerIdRouteImport } from './routes/_app/servers.$serverId'
+import { Route as AppFiltersIndexRouteImport } from './routes/_app/filters/index'
 import { Route as LayersLayerIdTabRouteImport } from './routes/layers.$layerId.$tab'
+import { Route as AppServersServerIdRouteImport } from './routes/_app/servers.$serverId'
+import { Route as AppFiltersNewRouteImport } from './routes/_app/filters/new'
+import { Route as AppFiltersFilterIdRouteImport } from './routes/_app/filters/$filterId'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AppRouteRoute = AppRouteRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppCommandsRoute = AppCommandsRouteImport.update({
-  id: '/commands',
-  path: '/commands',
-  getParentRoute: () => AppRouteRoute,
-} as any)
-const AppSettingsRoute = AppSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => AppRouteRoute,
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const SandboxSandboxRoute = SandboxSandboxRouteImport.update({
   id: '/_sandbox/sandbox',
   path: '/sandbox',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppFiltersIndexRoute = AppFiltersIndexRouteImport.update({
-  id: '/filters/',
-  path: '/filters/',
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AppFiltersFilterIdRoute = AppFiltersFilterIdRouteImport.update({
-  id: '/filters/$filterId',
-  path: '/filters/$filterId',
-  getParentRoute: () => AppRouteRoute,
-} as any)
-const AppFiltersNewRoute = AppFiltersNewRouteImport.update({
-  id: '/filters/new',
-  path: '/filters/new',
+const AppCommandsRoute = AppCommandsRouteImport.update({
+  id: '/commands',
+  path: '/commands',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppServersIndexRoute = AppServersIndexRouteImport.update({
@@ -65,15 +50,30 @@ const AppServersIndexRoute = AppServersIndexRouteImport.update({
   path: '/servers/',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AppServersServerIdRoute = AppServersServerIdRouteImport.update({
-  id: '/servers/$serverId',
-  path: '/servers/$serverId',
+const AppFiltersIndexRoute = AppFiltersIndexRouteImport.update({
+  id: '/filters/',
+  path: '/filters/',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const LayersLayerIdTabRoute = LayersLayerIdTabRouteImport.update({
   id: '/layers/$layerId/$tab',
   path: '/layers/$layerId/$tab',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppServersServerIdRoute = AppServersServerIdRouteImport.update({
+  id: '/servers/$serverId',
+  path: '/servers/$serverId',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppFiltersNewRoute = AppFiltersNewRouteImport.update({
+  id: '/filters/new',
+  path: '/filters/new',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppFiltersFilterIdRoute = AppFiltersFilterIdRouteImport.update({
+  id: '/filters/$filterId',
+  path: '/filters/$filterId',
+  getParentRoute: () => AppRouteRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -163,13 +163,6 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_app': {
       id: '/_app'
       path: ''
@@ -177,19 +170,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_app/commands': {
-      id: '/_app/commands'
-      path: '/commands'
-      fullPath: '/commands'
-      preLoaderRoute: typeof AppCommandsRouteImport
-      parentRoute: typeof AppRouteRoute
-    }
-    '/_app/settings': {
-      id: '/_app/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof AppSettingsRouteImport
-      parentRoute: typeof AppRouteRoute
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_sandbox/sandbox': {
       id: '/_sandbox/sandbox'
@@ -198,25 +184,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SandboxSandboxRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_app/filters/': {
-      id: '/_app/filters/'
-      path: '/filters'
-      fullPath: '/filters/'
-      preLoaderRoute: typeof AppFiltersIndexRouteImport
+    '/_app/settings': {
+      id: '/_app/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/_app/filters/$filterId': {
-      id: '/_app/filters/$filterId'
-      path: '/filters/$filterId'
-      fullPath: '/filters/$filterId'
-      preLoaderRoute: typeof AppFiltersFilterIdRouteImport
-      parentRoute: typeof AppRouteRoute
-    }
-    '/_app/filters/new': {
-      id: '/_app/filters/new'
-      path: '/filters/new'
-      fullPath: '/filters/new'
-      preLoaderRoute: typeof AppFiltersNewRouteImport
+    '/_app/commands': {
+      id: '/_app/commands'
+      path: '/commands'
+      fullPath: '/commands'
+      preLoaderRoute: typeof AppCommandsRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/_app/servers/': {
@@ -226,11 +205,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppServersIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/_app/servers/$serverId': {
-      id: '/_app/servers/$serverId'
-      path: '/servers/$serverId'
-      fullPath: '/servers/$serverId'
-      preLoaderRoute: typeof AppServersServerIdRouteImport
+    '/_app/filters/': {
+      id: '/_app/filters/'
+      path: '/filters'
+      fullPath: '/filters/'
+      preLoaderRoute: typeof AppFiltersIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/layers/$layerId/$tab': {
@@ -239,6 +218,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/layers/$layerId/$tab'
       preLoaderRoute: typeof LayersLayerIdTabRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_app/servers/$serverId': {
+      id: '/_app/servers/$serverId'
+      path: '/servers/$serverId'
+      fullPath: '/servers/$serverId'
+      preLoaderRoute: typeof AppServersServerIdRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/filters/new': {
+      id: '/_app/filters/new'
+      path: '/filters/new'
+      fullPath: '/filters/new'
+      preLoaderRoute: typeof AppFiltersNewRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/filters/$filterId': {
+      id: '/_app/filters/$filterId'
+      path: '/filters/$filterId'
+      fullPath: '/filters/$filterId'
+      preLoaderRoute: typeof AppFiltersFilterIdRouteImport
+      parentRoute: typeof AppRouteRoute
     }
   }
 }
