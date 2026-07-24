@@ -786,10 +786,10 @@ function AppEventEntry(
 		)
 	}
 
-	// warns render message-style (colored channel + border + gradient) like a chat message, with the channel
-	// naming who was warned rather than a chat scope. The actor keeps a verb ("X warned: ...") rather than a bare
-	// chat-sender prefix ("X: ..."), since the warn body may itself carry an admin's name (the warn box's optional
-	// username prefix) and a bare prefix makes the attribution indistinguishable from that.
+	// warns render message-style (colored channel + border + gradient) like a chat message, with the channel naming
+	// both ends of the warn ("(X warned Y): ...") rather than a chat scope. The verb stays inside the channel because
+	// the warn body may itself carry an admin's name (the warn box's optional username prefix), and a bare sender
+	// prefix would make the attribution indistinguishable from that.
 	if (appEvent.type === 'PLAYER_WARNED') {
 		const warnCount = appEvent.targets.length
 		const summary = event.warnSummary
@@ -797,31 +797,32 @@ function AppEventEntry(
 		const styleKey = summary.type === 'all-admins' ? 'admins' : single ? 'single' : 'selection'
 		const style = WARN_CHANNEL_STYLES[styleKey]
 
-		const channel: React.ReactNode = single
-			? (
-				<span
-					className="inline-flex items-baseline gap-1 flex-nowrap whitespace-nowrap"
-					style={{ color: style.color }}
-				>
-					(warning <PlayerDisplay showTeam player={event.targetPlayers[0]} matchId={matchId!} stores={stores} />)
-				</span>
-			)
-			: (
-				<span style={{ color: style.color }} title="the players this warning was sent to">
-					({(() => {
-						if (summary.type === 'all-admins') return 'warning admins'
-						const descriptor = warnSummaryDescriptor(summary)
-						if (!descriptor) return `warning ${warnCount} ${warnCount === 1 ? 'player' : 'players'}`
-						return warnCount > 1 ? `warning ${descriptor} (${warnCount} players)` : `warning ${descriptor}`
-					})()})
-				</span>
-			)
+		const warnee: React.ReactNode = single
+			? <PlayerDisplay showTeam player={event.targetPlayers[0]} matchId={matchId!} stores={stores} />
+			: summary.type === 'all-admins'
+			? 'all admins'
+			: (() => {
+				const descriptor = warnSummaryDescriptor(summary)
+				const players = `${warnCount} ${warnCount === 1 ? 'player' : 'players'}`
+				if (!descriptor) return players
+				return warnCount > 1 ? `${descriptor} (${players})` : descriptor
+			})()
+
+		const channel = (
+			<span
+				className="inline-flex items-baseline gap-1 flex-nowrap whitespace-nowrap"
+				style={{ color: style.color }}
+				title="who sent this warning and who received it"
+			>
+				({actorLabel} warned {warnee})
+			</span>
+		)
 
 		const header = (
 			<>
 				<EventTime time={event.time} />
 				<div className="grow min-w-0 wrap-anywhere">
-					{channel} {actorLabel} warned: "{appEvent.message}"
+					{channel}: {appEvent.message}
 				</div>
 			</>
 		)
