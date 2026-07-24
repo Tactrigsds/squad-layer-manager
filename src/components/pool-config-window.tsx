@@ -54,7 +54,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 	// the next-layer settings sit outside the pool subtree, so each gets its own api and its own write check
 	const nextLayerApis = {
 		overrideAdminSetNextLayer: useStorePoolConfigApi(stores.squadServer!, ['overrideAdminSetNextLayer']),
-		warnOnChangeLayer: useStorePoolConfigApi(stores.squadServer!, ['warnOnChangeLayer']),
+		warnOnNextLayerChange: useStorePoolConfigApi(stores.squadServer!, ['warnOnNextLayerChange']),
 	}
 	// with write access to nothing in the window it is a read-only viewer: the panels disable their controls, and
 	// the save/reset affordances disappear (this is all public data, so viewing stays available)

@@ -384,12 +384,12 @@ export function PoolFiltersPanel({ api }: { api: PoolConfigApi }) {
 // the settings deciding what SLM does about the next layer, each addressed by its own single-key api so its checkbox
 // is gated on write access to exactly that setting. Descriptions come from the schema so they can't drift from the
 // ones the settings page shows.
-export const NEXT_LAYER_SETTING_KEYS = ['overrideAdminSetNextLayer', 'warnOnChangeLayer'] as const
+export const NEXT_LAYER_SETTING_KEYS = ['overrideAdminSetNextLayer', 'warnOnNextLayerChange'] as const
 export type NextLayerSettingKey = typeof NEXT_LAYER_SETTING_KEYS[number]
 
 const NEXT_LAYER_LABELS: Record<NextLayerSettingKey, string> = {
 	overrideAdminSetNextLayer: 'Override the next layer when it is set outside SLM',
-	warnOnChangeLayer: 'Warn admins when SLM changes the next layer',
+	warnOnNextLayerChange: 'Warn admins when the next layer changes',
 }
 
 function BooleanSettingRow({ api, label, description }: { api: PoolConfigApi; label: string; description: string }) {
