@@ -10,10 +10,11 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 // Static, no-JS pages served outside the SPA: the login landing at '/' and the 403 shown to authenticated users
 // who lack site access. Authored as React components (landing-pages.tsx), rendered to a string once at setup()
-// and held, so requests never re-render them. The <html> attributes, <meta> tags, fonts/preconnects and the
-// compiled Tailwind stylesheet are pulled out of index.html (the single source of truth, id="site-head"): the
-// built dist/index.html in prod (which also carries the hashed stylesheet vite injected), the source index.html
-// plus vite's live '/src/index.css' in dev.
+// and held, so requests never re-render them. The <html> attributes, <meta> tags and fonts/preconnects are pulled
+// out of index.html (the single source of truth, id="site-head"); the source in dev/test, the built dist copy in
+// prod. Their own scoped Tailwind (landing-css.ts) is inlined so the pages are self-contained: unlike the app's
+// stylesheet under /assets, an inline <style> is not gated by the auth hook, so it loads for the unauthenticated
+// visitors these pages exist for.
 
 const DEFAULT_REPO_URL = 'https://github.com/Tactrigsds/squad-layer-manager'
 
@@ -32,14 +33,23 @@ let landingHtmlCache!: string
 let forbiddenHtmlCache!: string
 
 // must run after Discord.setup() so the home guild name is resolved
-export function setup() {
+export async function setup() {
 	ENV = envBuilder()
 	const repoUrl = ENV.PUBLIC_REPO_URL ?? DEFAULT_REPO_URL
 	const guildName = Discord.getHomeGuildName()
 	const head = resolveHead()
-	landingHtmlCache = render('landing', repoUrl, guildName, head)
-	forbiddenHtmlCache = render('forbidden', repoUrl, guildName, head)
+	const inlineCss = await resolveInlineCss()
+	landingHtmlCache = render('landing', repoUrl, guildName, head, inlineCss)
+	forbiddenHtmlCache = render('forbidden', repoUrl, guildName, head, inlineCss)
 	module.getLogger().info('landing pages rendered (guild: %s)', guildName ?? '<none>')
+}
+
+async function resolveInlineCss(): Promise<string> {
+	// prod's bundled server has no Tailwind, so it reads the sheet build-landing-css.ts baked into the image;
+	// dev/test run from source via tsx and compile it in-process (the dynamic import keeps Tailwind out of the bundle)
+	if (ENV.NODE_ENV === 'production') return fs.readFileSync(path.join(Paths.DIST, 'landing.css'), 'utf8')
+	const { compileLandingCss } = await import('@/systems/landing-css')
+	return compileLandingCss()
 }
 
 export function landingHtml() {
@@ -50,24 +60,16 @@ export function forbiddenHtml() {
 	return forbiddenHtmlCache
 }
 
-function render(variant: 'landing' | 'forbidden', repoUrl: string, guildName: string | null, head: Head) {
-	return '<!DOCTYPE html>' + renderToStaticMarkup(createElement(LandingDocument, { variant, repoUrl, guildName, head }))
+function render(variant: 'landing' | 'forbidden', repoUrl: string, guildName: string | null, head: Head, inlineCss: string) {
+	return '<!DOCTYPE html>' + renderToStaticMarkup(createElement(LandingDocument, { variant, repoUrl, guildName, head, inlineCss }))
 }
 
 function resolveHead(): Head {
-	if (ENV.NODE_ENV === 'development') {
-		const source = fs.readFileSync(path.join(Paths.PROJECT_ROOT, 'index.html'), 'utf8')
-		// the source index.html has the fonts but not the compiled Tailwind sheet (vite injects that as JS); ?direct
-		// makes vite serve it as text/css (a bare /src/index.css is an HMR JS module)
-		return {
-			htmlAttrs: parseHtmlAttrs(source),
-			metas: parseMetas(source),
-			assetLinks: [...parseSharedLinks(source), { rel: 'stylesheet', href: '/src/index.css?direct' }],
-		}
-	}
-	// dist/index.html carries the fonts and the hashed Tailwind stylesheet vite injected
-	const dist = fs.readFileSync(path.join(Paths.DIST, 'index.html'), 'utf8')
-	return { htmlAttrs: parseHtmlAttrs(dist), metas: parseMetas(dist), assetLinks: parseSharedLinks(dist) }
+	// only the bundled prod server lacks the source tree, so it reads the built copy; dev/test run from source
+	const html = ENV.NODE_ENV === 'production'
+		? fs.readFileSync(path.join(Paths.DIST, 'index.html'), 'utf8')
+		: fs.readFileSync(path.join(Paths.PROJECT_ROOT, 'index.html'), 'utf8')
+	return { htmlAttrs: parseHtmlAttrs(html), metas: parseMetas(html), assetLinks: parseSharedLinks(html) }
 }
 
 function parseAttrs(raw: string): Record<string, string> {
@@ -107,6 +109,9 @@ function parseSharedLinks(html: string): Link[] {
 	for (const tag of html.matchAll(/<link\b([^>]*)>/gi)) {
 		const attrs = parseAttrs(tag[1])
 		if (!attrs.href || !SHARED_RELS.has(attrs.rel)) continue
+		// the app's own stylesheet (same-origin /assets, vite-injected) is auth-gated and superseded by our inline
+		// sheet; keep only the external font/preconnect links
+		if (attrs.rel === 'stylesheet' && attrs.href.startsWith('/')) continue
 		const link: Link = { rel: attrs.rel, href: attrs.href }
 		if ('crossorigin' in attrs) link.crossOrigin = 'anonymous'
 		if (attrs.as) link.as = attrs.as
