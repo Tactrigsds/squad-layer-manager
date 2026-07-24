@@ -151,10 +151,10 @@ export async function forceDisconnect(ids: { userId?: bigint; wsSessionId?: stri
 	}
 
 	if (!sessions) {
-		log.warn('forceDisconnect: no sessions found', ids)
+		log.warn(ids, 'forceDisconnect: no sessions found')
 	} else {
 		for (const session of sessions) {
-			log.debug('Disconnecting session', ids, session.wsClientId)
+			log.debug({ ...ids, wsClientId: session.wsClientId }, 'Disconnecting session')
 			session.ws.close()
 		}
 	}
