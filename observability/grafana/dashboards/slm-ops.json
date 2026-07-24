@@ -1,7 +1,7 @@
 {
 	"uid": "slm-ops",
 	"title": "SLM / Ops (RED)",
-	"description": "Rate, errors and duration for every C.spanOp in the app, plus Node runtime health. Backed by the slm.op.duration histogram recorded in spanOp's finally block (src/server/context.ts), so a new spanOp shows up here with no extra wiring.",
+	"description": "Rate, errors and duration for every C.spanOp in the app, plus Node runtime health and Pyroscope profiles. Backed by the slm.op.duration histogram recorded in spanOp's finally block (src/server/context.ts), so a new spanOp shows up here with no extra wiring. The Profiling section is empty unless PYROSCOPE_ENABLED is set.",
 	"tags": ["slm"],
 	"timezone": "browser",
 	"editable": true,
@@ -19,6 +19,31 @@
 				"refresh": 2,
 				"includeAll": true,
 				"multi": true,
+				"current": { "text": "All", "value": "$__all" }
+			},
+			{
+				"name": "profileType",
+				"label": "Profile type",
+				"description": "Read from what Pyroscope has actually received rather than hardcoded: which sample types exist depends on the agent's config (PYROSCOPE_HEAP_ENABLED, wall.collectCpuTime).",
+				"type": "query",
+				"datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
+				"query": { "type": "profileType", "refId": "profileType" },
+				"refresh": 2,
+				"includeAll": false,
+				"multi": false,
+				"current": {}
+			},
+			{
+				"name": "instance",
+				"label": "Instance",
+				"description": "Profiles from two instances merge into a shape neither of them had, so pin this before reading a flame graph as one process's behaviour.",
+				"type": "query",
+				"datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
+				"query": { "type": "labelValue", "labelName": "service_instance_id", "profileTypeId": "$profileType", "refId": "instance" },
+				"refresh": 2,
+				"includeAll": true,
+				"allValue": ".*",
+				"multi": false,
 				"current": { "text": "All", "value": "$__all" }
 			}
 		]
@@ -231,6 +256,47 @@
 				"defaults": { "min": 0, "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1 } },
 				"overrides": []
 			}
+		},
+		{
+			"type": "row",
+			"title": "Profiling",
+			"gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 }
+		},
+		{
+			"type": "timeseries",
+			"title": "Profile total over time",
+			"description": "The selected profile type summed across the whole process, which is what the flame graph below is a breakdown of. Use it to pick the window worth expanding: a flame graph over a flat period and over a spike look the same until you narrow the range to the spike.",
+			"datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
+			"gridPos": { "h": 7, "w": 24, "x": 0, "y": 37 },
+			"targets": [
+				{
+					"refId": "A",
+					"queryType": "metrics",
+					"profileTypeId": "$profileType",
+					"labelSelector": "{service_name=\"squad-layer-manager\", service_instance_id=~\"$instance\"}",
+					"groupBy": []
+				}
+			],
+			"fieldConfig": {
+				"defaults": { "min": 0, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1 } },
+				"overrides": []
+			}
+		},
+		{
+			"type": "flamegraph",
+			"title": "Flame graph",
+			"description": "Where the selected profile type is spent, over the dashboard's time range. CPU/wall answers 'what is running'; the memory types answer 'what is allocating' (alloc_*) and 'what is still held' (inuse_*), the latter being the one to watch climb across a leak. Sampled, so a frame missing here means it was cheap, not that it never ran.",
+			"datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
+			"gridPos": { "h": 16, "w": 24, "x": 0, "y": 44 },
+			"targets": [
+				{
+					"refId": "A",
+					"queryType": "profile",
+					"profileTypeId": "$profileType",
+					"labelSelector": "{service_name=\"squad-layer-manager\", service_instance_id=~\"$instance\"}",
+					"groupBy": []
+				}
+			]
 		}
 	]
 }
