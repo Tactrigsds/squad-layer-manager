@@ -198,6 +198,20 @@ describe('tryDenyPermissions', () => {
 	})
 })
 
+describe('canViewServer', () => {
+	it('is implied by any server-scoped grant on that server', () => {
+		expect(RBAC.canViewServer([RBAC.perm('queue:write', { serverId: 's1' })], 's1')).toBe(true)
+		expect(RBAC.canViewServer([RBAC.perm('queue:write', { serverId: 's1' })], 's2')).toBe(false)
+		expect(RBAC.canViewServer([RBAC.perm('squad-server:kick-players', { serverId: null })], 's2')).toBe(true)
+	})
+
+	it('is granted on its own for the read-only case, and not by a global permission', () => {
+		expect(RBAC.canViewServer([RBAC.perm('squad-server:view', { serverId: 's1' })], 's1')).toBe(true)
+		expect(RBAC.canViewServer([RBAC.perm('site:authorized')], 's1')).toBe(false)
+		expect(RBAC.canViewServer([], 's1')).toBe(false)
+	})
+})
+
 describe('addTracedPerms', () => {
 	const roleA = RBAC.userDefinedRole('a')
 	const roleB = RBAC.userDefinedRole('b')
