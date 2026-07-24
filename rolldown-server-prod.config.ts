@@ -11,10 +11,6 @@ const externalModules: (string | RegExp)[] = Object.keys(packageJson.dependencie
 externalModules.push(
 	...builtinModules,
 	...builtinModules.map(m => `node:${m}`),
-	// The migration script imports the `mysql2/promise` subpath. The bare-name
-	// entries above only externalize exact ids, so keep mysql2's subpaths external
-	// too — bundling mysql2 breaks its dynamic auth-plugin requires at runtime.
-	/^mysql2\//,
 	// 'zlib-sync',
 	// Tailwind (a devDependency) is only reached via the dynamic import in landing.server.ts, which runs in
 	// dev/test; prod reads the prebuilt dist/landing.css. Externalize so its native oxide binary is never bundled.

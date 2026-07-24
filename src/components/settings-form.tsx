@@ -269,14 +269,15 @@ function getAtPath(root: any, path: Path): unknown {
 // these grants exist, and that they can only be changed via the environment, not from this page
 function RbacSuperCallout() {
 	const superRes = useQuery(RPC.orpc.rbac.getSuperConfig.queryOptions({ staleTime: Infinity }))
-	const superConfig = superRes.data?.code === 'ok' ? superRes.data : undefined
+	const superUsers = superRes.data?.code === 'ok' ? superRes.data.superUsers : []
+	const superRoles = superRes.data?.code === 'ok' ? superRes.data.superRoles : []
 	const rolesRes = useQuery(RPC.orpc.rbac.listGuildRoles.queryOptions({ staleTime: Infinity }))
 	const guildRoles = rolesRes.data?.code === 'ok' ? rolesRes.data.roles : []
-	const userIds = (superConfig?.superUsers ?? []).map(BigInt)
+	const userIds = superUsers.map(BigInt)
 	const usersRes = UsersClient.useUsers(userIds, { enabled: userIds.length > 0 })
 	const userMap = new Map((usersRes.data?.code === 'ok' ? usersRes.data.users : []).map((u) => [String(u.discordId), u]))
 
-	if (!superConfig || (superConfig.superUsers.length === 0 && superConfig.superRoles.length === 0)) return null
+	if (superUsers.length === 0 && superRoles.length === 0) return null
 
 	return (
 		<div className="space-y-2 rounded-md border border-info/40 bg-info/10 p-3">
@@ -288,20 +289,20 @@ function RbacSuperCallout() {
 				Configured through the SUPER_USERS / SUPER_ROLES environment variables. They always hold every permission (including unlimited kick
 				timeouts) and cannot be modified from this page.
 			</p>
-			{superConfig.superUsers.length > 0 && (
+			{superUsers.length > 0 && (
 				<div className="flex flex-wrap items-center gap-1.5">
 					<span className="text-xs text-muted-foreground">Users:</span>
-					{superConfig.superUsers.map((id) => (
+					{superUsers.map((id) => (
 						<span key={id} className="rounded border bg-background px-1.5 py-0.5 text-xs" title={id}>
 							{userMap.get(id)?.displayName ?? <span className="font-mono">{id}</span>}
 						</span>
 					))}
 				</div>
 			)}
-			{superConfig.superRoles.length > 0 && (
+			{superRoles.length > 0 && (
 				<div className="flex flex-wrap items-center gap-1.5">
 					<span className="text-xs text-muted-foreground">Discord roles:</span>
-					{superConfig.superRoles.map((id) => {
+					{superRoles.map((id) => {
 						const role = guildRoles.find((r) => r.id === id)
 						return (
 							<span key={id} className="flex items-center gap-1.5 rounded border bg-background px-1.5 py-0.5 text-xs" title={id}>
