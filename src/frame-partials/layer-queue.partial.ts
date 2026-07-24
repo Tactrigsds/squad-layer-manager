@@ -2,7 +2,6 @@ import type * as FRM from '@/lib/frame'
 import * as ItemMut from '@/lib/item-mutations'
 import * as ODSM from '@/lib/odsm'
 import * as RSel from '@/lib/reselect'
-import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
 import * as BB from '@/models/backburner.models'
 import type * as F from '@/models/filter.models'
@@ -29,7 +28,6 @@ export type State = {
 	rbSession: ODSM.Client.Session<SLL.Operation, SLL.State>
 
 	handleServerUpdate(update: SLL.Update): void
-	writeIncomingOperations(ops: SLL.Operation[]): void
 
 	syncedOp$: Rx.Subject<SLL.Operation>
 	// user-attributed queue + layer-request ops that landed on the synced timeline, for transient
@@ -129,41 +127,20 @@ export function initLayerQueue(args: Args) {
 			backburnerModified: false,
 
 			handleServerUpdate(update) {
-				switch (update.code) {
-					case 'init': {
-						// processInit rebases in-flight pending ops onto the snapshot so the acks that follow still resolve
-						const newRbSession = ODSM.Client.processInit(get().rbSession, update.state, update.ops, SLL.reducer)
-						set({ rbSession: newRbSession })
-						break
-					}
-					case 'op': {
-						get().writeIncomingOperations([update.op])
-						break
-					}
-					case 'ack': {
-						// ops are deterministic, so the server only sends back the id -- replay our pending copy
-						const session = get().rbSession
-						const res = ODSM.Client.processAcks(session, [update.opId], SLL.reducer)
-						if (res.unknownOpIds.length > 0) console.warn(`received ack for unknown op ${update.opId}`)
-						if (res.session !== session) {
-							set({ rbSession: res.session })
-							if (!res.rejected) { for (const se of res.sideEffects) onSideEffect(se) }
-							for (const ackedOp of res.ackedOps) get().syncedOp$.next(ackedOp)
-						}
-						break
-					}
-					default:
-						assertNever(update)
-				}
-			},
-
-			writeIncomingOperations(ops: SLL.Operation[]) {
-				const res = ODSM.Client.processIncomingOps(get().rbSession, ops, SLL.reducer)
-				set({ rbSession: res.session })
-				if (!res.rejected) { for (const se of res.sideEffects) onSideEffect(se) }
-				for (const op of ops) {
-					get().syncedOp$.next(op)
-				}
+				const prev = get().rbSession
+				const next = ODSM.Client.applyUpdate(prev, update, SLL.reducer, {
+					onSideEffects: ses => {
+						for (const se of ses) onSideEffect(se)
+					},
+					onDiverged: (phase, error) =>
+						console.error(`${phase === 'op' ? 'incoming' : 'acked'} queue op diverged from the server:`, error.data),
+					onRejected: (reason, opIds) => console.debug(`queue op ${opIds.join(', ')} rejected by the server: ${reason}`),
+					onUnknownAcks: opIds => console.warn(`received ack for unknown op ${opIds.join(', ')}`),
+					onSyncedOps: ops => {
+						for (const op of ops) get().syncedOp$.next(op)
+					},
+				})
+				if (next !== prev) set({ rbSession: next })
 			},
 		} satisfies State,
 	)

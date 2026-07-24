@@ -330,22 +330,7 @@ export type SideEffect =
 		opId: string
 	}
 
-export type Update =
-	| {
-		code: 'init'
-		state: State
-		ops: Operation[]
-	}
-	| {
-		code: 'op'
-		op: Operation
-	}
-	| {
-		// the client's own op was accepted -- ops are deterministic, so the originator only needs the
-		// id back and replays its pending copy locally instead of receiving the full op again
-		code: 'ack'
-		opId: string
-	}
+export type Update = ODSM.ClientUpdate<State, Operation, Rejection['code']>
 
 // the sequence id of the base queue the session
 const QueueSequenceId = z.number()

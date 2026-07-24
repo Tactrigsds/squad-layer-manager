@@ -58,7 +58,7 @@ export type LayerQueueSlice = {
 	update$: Rx.ReplaySubject<[SS.LQStateUpdate, C.Db & C.ServerId]>
 
 	session: ODSM.Server.Session<SLL.Operation, SLL.State>
-	op$: Rx.Subject<{ op: SLL.Operation; sourceWsClientId?: string }>
+	op$: Rx.Subject<ODSM.Server.Dispatched<SLL.Operation, SLL.Rejection>>
 	updateLayerMtx: MutexInterface
 }
 
@@ -77,7 +77,7 @@ export function initLayerQueueSlice(ctx: C.ServerSliceCleanup & C.ServerId, serv
 		update$: new IsolatedReplaySubject(1),
 
 		session: ODSM.Server.initSession<SLL.Operation, SLL.State>(sllState),
-		op$: new IsolatedSubject<{ op: SLL.Operation; sourceWsClientId?: string }>(),
+		op$: new IsolatedSubject<ODSM.Server.Dispatched<SLL.Operation, SLL.Rejection>>(),
 		updateLayerMtx: new Mutex(),
 	}
 
@@ -601,12 +601,8 @@ export const router = {
 					ops: ctx.layerQueue.session.ops,
 				}
 				const updateForClient$: Rx.Observable<SLL.Update> = ctx.layerQueue.op$.pipe(
-					// the originator already has the op in its pending set -- ack with just the id
-					Rx.map(({ op, sourceWsClientId }): SLL.Update =>
-						sourceWsClientId !== undefined && sourceWsClientId === context.wsClientId
-							? { code: 'ack' as const, opId: op.opId }
-							: { code: 'op' as const, op }
-					),
+					Rx.map(dispatched => ODSM.Server.toClientUpdate(dispatched, context.wsClientId)),
+					Rx.filter((update): update is NonNullable<typeof update> => update !== null),
 					Rx.startWith(initial),
 					// if we don't do this then the orpcWs breaks
 					Rx.observeOn(Rx.asyncScheduler),
@@ -908,13 +904,14 @@ export const dispatchOp = C.spanOp(
 	) => {
 		const applied = ODSM.Server.applyOps(ctx.layerQueue.session, [op], SLL.reducer)
 		ctx.layerQueue.session = applied.session
-		ctx.layerQueue.op$.next({ op, sourceWsClientId: opts?.sourceWsClientId })
 		if (applied.rejected) {
 			const rejection = applied.error.data as SLL.Rejection
+			ctx.layerQueue.op$.next({ ops: [op], sourceWsClientId: opts?.sourceWsClientId, rejection })
 			if (rejection.code === 'op-skipped') log.debug('layer queue op skipped: %s', op.op)
 			else log.error(new Error('layer queue op produced invalid state', { cause: applied.error }))
 			return
 		}
+		ctx.layerQueue.op$.next({ ops: [op], sourceWsClientId: opts?.sourceWsClientId })
 		// all side effect processing happens here in an uninterrupted async context
 		for (const se of applied.sideEffects) {
 			await handleSideEffect(ctx, op, se)

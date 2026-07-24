@@ -869,22 +869,7 @@ export const PresenceStateSchema = z.map(z.string(), ClientPresenceSchema)
 export type PresenceState = z.infer<typeof PresenceStateSchema>
 
 // the shape of the data flowing from server to client
-export type PresenceUpdate =
-	| {
-		code: 'init'
-		state: State
-		ops: Op[]
-	}
-	| {
-		code: 'op'
-		ops: Op[]
-	}
-	| {
-		// ops are deterministic, so the originator only receives the ids of its own acked ops and
-		// replays its pending copies
-		code: 'ack'
-		opIds: string[]
-	}
+export type PresenceUpdate = ODSM.ClientUpdate<State, Op, Rejection['code']>
 
 // no presence instances older than this should be displayed
 export const DISPLAYED_AWAY_PRESENCE_WINDOW = 1000 * 60 * 10

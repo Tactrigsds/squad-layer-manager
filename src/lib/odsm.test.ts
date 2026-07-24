@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { Client, type Reducer, RejectedError, Server } from './odsm'
+import { Client, type ClientUpdate, type Reducer, RejectedError, Server } from './odsm'
 
 type Op = { opId: string; value: number }
 type State = number[]
@@ -417,17 +417,25 @@ describe('RejectedError', () => {
 		expect(res.session.pendingOps).toEqual([op('a', 2)])
 	})
 
-	it('server keeps a rejected op in history as a state no-op and returns the rejection', () => {
+	it('server discards a rejected op entirely and returns the rejection', () => {
 		const session = Server.initSession<Op, State>([1])
-		const baseState = session.state
 		const res = Server.applyOps(session, [op('a', -5)], gatedReducer)
 		expect(res.rejected).toBe(true)
 		if (!res.rejected) throw new Error('expected rejection')
-		expect(res.session.state).toBe(baseState) // no state change, same reference
-		expect(res.session.ops).toEqual([op('a', -5)]) // still recorded so it broadcasts/acks coherently
+		expect(res.session).toBe(session) // neither state nor history moves, so it is never broadcast
 		expect((res.error.data as Rejection).code).toBe('would-empty')
 	})
 
+	it('lets a rejected opId be dispatched again, since it never entered server history', () => {
+		const session = Server.initSession<Op, State>([1])
+		const rejected = Server.applyOps(session, [op('a', -5)], gatedReducer)
+		const retried = Server.applyOps(rejected.session, [op('a', 2)], gatedReducer)
+		expect(retried.rejected).toBe(false)
+		expect(retried.session.state).toEqual([1, 2])
+	})
+
+	// the server only broadcasts what it accepted, so this is the divergence path: keep the op in history
+	// so op ids stay aligned, and leave synced state alone
 	it('leaves syncedState untouched on an incoming rejected op but still records it', () => {
 		let session = Client.initSession<Op, State>([1])
 		const base = session.syncedState
@@ -467,6 +475,131 @@ describe('RejectedError', () => {
 
 		const rejectedRes = Server.applyOps(accepted.session, [op('b', -1)], effectReducer)
 		expect(rejectedRes.rejected).toBe(true) // rejected branch has no `sideEffects` field at all
-		expect(rejectedRes.session.ops.map(o => o.opId)).toEqual(['a', 'b']) // op still recorded
+		expect(rejectedRes.session.ops.map(o => o.opId)).toEqual(['a']) // rejected op left no trace
+	})
+})
+
+describe('Server.toClientUpdate', () => {
+	type R = { code: 'refused' }
+	const dispatched = (over: Partial<Server.Dispatched<Op, R>>): Server.Dispatched<Op, R> => ({ ops: [op('a', 1)], ...over })
+
+	it('sends every non-originating client the full op', () => {
+		expect(Server.toClientUpdate(dispatched({ sourceWsClientId: 'other' }), 'me')).toEqual({ code: 'op', ops: [op('a', 1)] })
+		expect(Server.toClientUpdate(dispatched({}), 'me')).toEqual({ code: 'op', ops: [op('a', 1)] })
+	})
+
+	it('acks the originator with just the ids', () => {
+		expect(Server.toClientUpdate(dispatched({ sourceWsClientId: 'me' }), 'me')).toEqual({ code: 'ack', opIds: ['a'] })
+	})
+
+	it('echoes the full op back to the originator when echoToSource is set', () => {
+		expect(Server.toClientUpdate(dispatched({ sourceWsClientId: 'me', echoToSource: true }), 'me'))
+			.toEqual({ code: 'op', ops: [op('a', 1)] })
+	})
+
+	it('routes a rejection to the originator alone', () => {
+		const d = dispatched({ sourceWsClientId: 'me', rejection: { code: 'refused' } })
+		expect(Server.toClientUpdate(d, 'me')).toEqual({ code: 'rejected', opIds: ['a'], reason: 'refused' })
+	})
+
+	it('drops a rejection destined for a different client', () => {
+		expect(Server.toClientUpdate(dispatched({ sourceWsClientId: 'other', rejection: { code: 'refused' } }), 'me')).toBe(null)
+		expect(Server.toClientUpdate(dispatched({ rejection: { code: 'refused' } }), 'me')).toBe(null)
+	})
+})
+
+describe('Client.applyUpdate', () => {
+	type SE = { code: string }
+	type R = { code: 'neg' }
+	// a side effect per op; rejects the whole batch if any value is negative
+	const effectReducer: Reducer<Op, State, SE> = (state, ops) => {
+		if (ops.some(o => o.value < 0)) throw new RejectedError<R>({ code: 'neg' })
+		return [[...state, ...ops.map(o => o.value)], ops.map(o => ({ code: `se-${o.opId}` }))]
+	}
+
+	it('applies an init snapshot and rebases in-flight pending ops', () => {
+		let session = Client.initSession<Op, State>([])
+		session = Client.processOutgoingOps(session, [op('mine', 1)], effectReducer).session
+		const next = Client.applyUpdate(session, { code: 'init', state: [9], ops: [] }, effectReducer)
+		expect(next.syncedState).toEqual([9])
+		expect(next.pendingOps).toEqual([op('mine', 1)])
+		expect(next.localState).toEqual([9, 1])
+	})
+
+	it('advances synced state on an incoming op, fanning side effects and synced ops', () => {
+		const session = Client.initSession<Op, State>([])
+		const ses: SE[] = []
+		const synced: Op[] = []
+		const next = Client.applyUpdate(session, { code: 'op', ops: [op('a', 1)] }, effectReducer, {
+			onSideEffects: s => ses.push(...s),
+			onSyncedOps: o => synced.push(...o),
+		})
+		expect(next.syncedState).toEqual([1])
+		expect(ses).toEqual([{ code: 'se-a' }])
+		expect(synced).toEqual([op('a', 1)])
+	})
+
+	it('reports divergence and suppresses side effects when an incoming op is rejected', () => {
+		const session = Client.initSession<Op, State>([5])
+		const ses: SE[] = []
+		let diverged: { phase: string; data: unknown } | null = null
+		const next = Client.applyUpdate(session, { code: 'op', ops: [op('a', -1)] }, effectReducer, {
+			onSideEffects: s => ses.push(...s),
+			onDiverged: (phase, error) => (diverged = { phase, data: error.data }),
+		})
+		expect(diverged).toEqual({ phase: 'op', data: { code: 'neg' } })
+		expect(ses).toEqual([])
+		expect(next.syncedState).toEqual([5])
+		expect(next.syncedOps).toEqual([op('a', -1)])
+	})
+
+	it('advances synced state from pending copies on an ack', () => {
+		let session = Client.initSession<Op, State>([])
+		session = Client.processOutgoingOps(session, [op('a', 1)], effectReducer).session
+		const ses: SE[] = []
+		const synced: Op[] = []
+		const next = Client.applyUpdate(session, { code: 'ack', opIds: ['a'] }, effectReducer, {
+			onSideEffects: s => ses.push(...s),
+			onSyncedOps: o => synced.push(...o),
+		})
+		expect(next.syncedState).toEqual([1])
+		expect(next.pendingOps).toEqual([])
+		expect(ses).toEqual([{ code: 'se-a' }])
+		expect(synced).toEqual([op('a', 1)])
+	})
+
+	it('reports unknown acks and leaves the session reference unchanged', () => {
+		const session = Client.initSession<Op, State>([])
+		const unknown: string[][] = []
+		const synced: Op[] = []
+		const next = Client.applyUpdate(session, { code: 'ack', opIds: ['zzz'] }, effectReducer, {
+			onUnknownAcks: ids => unknown.push(ids),
+			onSyncedOps: o => synced.push(...o),
+		})
+		expect(unknown).toEqual([['zzz']])
+		expect(synced).toEqual([]) // nothing landed, so no synced-op fan-out
+		expect(next).toBe(session)
+	})
+
+	it('drops the refused ops and replays the rest of the local timeline on a rejection', () => {
+		let session = Client.initSession<Op, State>([])
+		session = Client.processOutgoingOps(session, [op('a', 1)], effectReducer).session
+		session = Client.processOutgoingOps(session, [op('b', 2)], effectReducer).session
+		const rejected: { reason: string; opIds: string[] }[] = []
+		const next = Client.applyUpdate(session, { code: 'rejected', opIds: ['a'], reason: 'neg' }, effectReducer, {
+			onRejected: (reason, opIds) => rejected.push({ reason, opIds }),
+		})
+		expect(rejected).toEqual([{ reason: 'neg', opIds: ['a'] }])
+		expect(next.pendingOps).toEqual([op('b', 2)])
+		expect(next.localState).toEqual([2])
+	})
+
+	it('narrows the reason to the system-specific code union', () => {
+		const update: ClientUpdate<State, Op, R['code']> = { code: 'rejected', opIds: ['a'], reason: 'neg' }
+		let seen: R['code'] | null = null
+		Client.applyUpdate(Client.initSession<Op, State>([]), update, effectReducer, {
+			onRejected: reason => (seen = reason),
+		})
+		expect(seen).toBe('neg')
 	})
 })
