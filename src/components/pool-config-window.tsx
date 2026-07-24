@@ -10,7 +10,7 @@ import * as UPClient from '@/systems/user-presence.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import { useStorePoolConfigApi } from './pool-config-panels.helpers.ts'
-import { PoolFiltersPanel, RepeatRulesPanel } from './pool-config-panels.tsx'
+import { NextLayerPanel, PoolFiltersPanel, RepeatRulesPanel } from './pool-config-panels.tsx'
 import type { PoolConfigWindowProps } from './pool-config-window.helpers.ts'
 import { Alert, AlertDescription } from './ui/alert.tsx'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle } from './ui/draggable-window'
@@ -51,11 +51,16 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 	)
 
 	const mainPoolApi = useStorePoolConfigApi(stores.squadServer!, ['queue', 'mainPool'])
-	// with no write access to the pool the window is a read-only viewer: the panels disable their controls, and
-	// the save/reset affordances disappear (pool config itself is public data, so viewing stays available)
-	const readOnly = !!mainPoolApi.writeDenied
+	// the next-layer settings sit outside the pool subtree, so each gets its own api and its own write check
+	const nextLayerApis = {
+		overrideAdminSetNextLayer: useStorePoolConfigApi(stores.squadServer!, ['overrideAdminSetNextLayer']),
+		warnOnNextLayerChange: useStorePoolConfigApi(stores.squadServer!, ['warnOnNextLayerChange']),
+	}
+	// with write access to nothing in the window it is a read-only viewer: the panels disable their controls, and
+	// the save/reset affordances disappear (this is all public data, so viewing stays available)
+	const readOnly = !!mainPoolApi.writeDenied && Object.values(nextLayerApis).every((api) => !!api.writeDenied)
 
-	const [tab, setTab] = React.useState<'filters' | 'repeatRules'>('filters')
+	const [tab, setTab] = React.useState<'filters' | 'repeatRules' | 'nextLayer'>('filters')
 
 	return (
 		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
@@ -70,6 +75,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 					options={[
 						{ label: 'Filters', value: 'filters' },
 						{ label: 'Repeat Rules', value: 'repeatRules' },
+						{ label: 'Next Layer', value: 'nextLayer' },
 					]}
 					active={tab}
 					setActive={setTab}
@@ -78,7 +84,11 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
 			<div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-6">
-				{tab === 'filters' ? <PoolFiltersPanel api={mainPoolApi} /> : <RepeatRulesPanel api={mainPoolApi} />}
+				{tab === 'filters'
+					? <PoolFiltersPanel api={mainPoolApi} />
+					: tab === 'repeatRules'
+					? <RepeatRulesPanel api={mainPoolApi} />
+					: <NextLayerPanel apis={nextLayerApis} />}
 			</div>
 			{!readOnly && (
 				<div className="flex items-center justify-end gap-2 px-6 py-3 border-t">

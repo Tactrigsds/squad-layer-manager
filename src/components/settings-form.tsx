@@ -9,6 +9,7 @@ import { ListEditor } from '@/components/list-editor.tsx'
 import { PoolFiltersPanel, RepeatRulesPanel } from '@/components/pool-config-panels'
 import type { PoolConfigApi } from '@/components/pool-config-panels.helpers'
 import { StickyGroup } from '@/components/sticky-group'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -22,21 +23,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDebounced } from '@/hooks/use-debounce'
+import { TRIGGER_LEVEL_DISPLAY } from '@/lib/balance-trigger-display'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object'
 import type { SettingsGroup } from '@/lib/settings-groups'
 import { HIDDEN_GLOBAL_SETTINGS_KEYS, LOCAL_JSON_EDITOR_PATHS, splitAdvanced, splitByGroups } from '@/lib/settings-groups'
 import { humanize, settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
-import * as Templating from '@/lib/templating'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zod from '@/lib/zod'
 import * as ZusUtils from '@/lib/zustand'
+import * as Messages from '@/messages'
 import * as AAR from '@/models/admin-action-reasons.models'
+import * as BAL from '@/models/balance-triggers.models'
 import type * as BM from '@/models/battlemetrics.models'
 import * as CMD from '@/models/command.models'
-import type * as LP from '@/models/labeled-presets.models'
+import * as LP from '@/models/labeled-presets.models'
 import * as LC from '@/models/layer-columns'
 import * as PG from '@/models/player-groupings.models'
 import * as PermRows from '@/models/rbac-perm-rows'
@@ -69,6 +72,9 @@ import { MessagePreviewBox } from './warn-reasons-sub'
 
 type Node = any
 type Path = (string | number)[]
+
+// a trigger with no level configured is not evaluated at all; the picker needs a value to represent that
+const TRIGGER_OFF = '__off__'
 
 // a BehaviorSubject-like handle: subscribable, plus a synchronous `.getValue()` for the current value
 type ValueState<T = any> = Rx.Observable<T> & { getValue: () => T }
@@ -1290,7 +1296,7 @@ function LayerGenerationField({ value$, reset$, onChange }: OverrideProps) {
 	)
 }
 
-// shared table shell for label/message/aliases preset lists (admin action reasons, broadcasts)
+// shared table shell for the label/keywords preset lists (admin action reasons)
 type PresetRowProps = {
 	idx: number
 	parent$: ValueState
@@ -1363,32 +1369,12 @@ function AdminActionReasonsField({ value$, reset$, onChange }: OverrideProps) {
 				<>
 					<TableHead className="w-[11rem]">Label</TableHead>
 					<TableHead>Texts</TableHead>
-					<TableHead className="w-[10rem]">Aliases</TableHead>
+					<TableHead className="w-[10rem]">Keywords</TableHead>
 					<TableHead className="w-8" />
 				</>
 			}
-			newRow={() => ({ label: '', aliases: [], actionTexts: {} })}
+			newRow={() => ({ label: '', keywords: [], actionTexts: {} })}
 			Row={AdminActionReasonRow}
-		/>
-	)
-}
-
-function BroadcastsField({ value$, reset$, onChange }: OverrideProps) {
-	return (
-		<PresetTableField
-			value$={value$}
-			reset$={reset$}
-			onChange={onChange}
-			headers={
-				<>
-					<TableHead className="w-[11rem]">Label</TableHead>
-					<TableHead>Message</TableHead>
-					<TableHead className="w-[10rem]">Aliases</TableHead>
-					<TableHead className="w-8" />
-				</>
-			}
-			newRow={() => ({ label: '', message: '', aliases: [] })}
-			Row={BroadcastRow}
 		/>
 	)
 }
@@ -1396,7 +1382,7 @@ function BroadcastsField({ value$, reset$, onChange }: OverrideProps) {
 function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetRowProps) {
 	const row$ = React.useMemo(() => scopeValue(parent$, idx), [parent$, idx])
 	const label$ = React.useMemo(() => scopeValue(row$, 'label'), [row$])
-	const aliases$ = React.useMemo(() => scopeValue(row$, 'aliases'), [row$])
+	const keywords$ = React.useMemo(() => scopeValue(row$, 'keywords'), [row$])
 	const actionTexts$ = React.useMemo(() => scopeValue(row$, 'actionTexts'), [row$])
 	// the set of actions this reason carries text for; keys are added/removed structurally (emits reset$)
 	const actionTexts = (useFieldValue(actionTexts$, reset$) as Partial<Record<AAR.AdminActionType, string>> | undefined) ?? {}
@@ -1481,7 +1467,7 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 				</div>
 			</TableCell>
 			<TableCell className="align-top">
-				<AliasesCell value$={aliases$} reset$={reset$} onChange={setField('aliases')} />
+				<KeywordsCell value$={keywords$} reset$={reset$} seedFrom$={label$} onChange={setField('keywords')} />
 			</TableCell>
 			<TableCell className="align-top">
 				<div className="flex flex-col gap-1">
@@ -1524,8 +1510,9 @@ function reasonPreviewEntries(reason: AAR.AdminActionReason, customVars: Record<
 	return entries
 }
 
-// message templates are rendered with Mustache (see src/lib/templating.ts); link to its syntax so authors know which
-// {{...}} features are actually supported (plain variable substitution, not Handlebars helpers/expressions)
+// message templates are rendered with Mustache (see src/lib/templating.ts), so link its reference rather than
+// Handlebars': the two share {{variable}} and {{#section}}, but Handlebars' block helpers ({{#if}}, {{#each}}) are
+// not available here, and pointing at docs that advertise them would send authors down a dead end
 const TEMPLATE_SYNTAX_URL = 'https://mustache.github.io/mustache.5.html'
 
 function TemplateSyntaxHint() {
@@ -1533,7 +1520,7 @@ function TemplateSyntaxHint() {
 		<p className="text-xs text-muted-foreground">
 			Supports{' '}
 			<a href={TEMPLATE_SYNTAX_URL} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-				{'{{variable}}'} syntax
+				Mustache {'{{variable}}'} syntax
 			</a>.
 		</p>
 	)
@@ -1548,7 +1535,7 @@ function ReasonPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Su
 	) as Partial<Record<AAR.AdminActionType, string>>
 	const reason: AAR.AdminActionReason = {
 		label: raw?.label?.trim() || '<label>',
-		aliases: raw?.aliases ?? [],
+		keywords: raw?.keywords ?? [],
 		actionTexts,
 	}
 	return (
@@ -1570,66 +1557,6 @@ function ReasonPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Su
 						<MessagePreviewBox>{entry.text}</MessagePreviewBox>
 					</div>
 				))}
-			</PopoverContent>
-		</Popover>
-	)
-}
-
-function BroadcastRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetRowProps) {
-	const row$ = React.useMemo(() => scopeValue(parent$, idx), [parent$, idx])
-	const label$ = React.useMemo(() => scopeValue(row$, 'label'), [row$])
-	const message$ = React.useMemo(() => scopeValue(row$, 'message'), [row$])
-	const aliases$ = React.useMemo(() => scopeValue(row$, 'aliases'), [row$])
-
-	const setField = (key: 'label' | 'message' | 'aliases') => (v: any) => {
-		const arr = [...((parent$.getValue() as LP.BroadcastPreset[]) ?? [])]
-		arr[idx] = { ...arr[idx], [key]: v }
-		parentOnChange(arr)
-	}
-
-	return (
-		<TableRow>
-			<TableCell className="align-top">
-				<TextInputField value$={label$} reset$={reset$} onChange={setField('label')} numeric={false} placeholder="Label" />
-			</TableCell>
-			<TableCell className="align-top">
-				<div className="rounded-md border">
-					<TextAreaCell value$={message$} reset$={reset$} onChange={setField('message')} placeholder="Broadcast text sent to all players" />
-				</div>
-			</TableCell>
-			<TableCell className="align-top">
-				<AliasesCell value$={aliases$} reset$={reset$} onChange={setField('aliases')} />
-			</TableCell>
-			<TableCell className="align-top">
-				<div className="flex flex-col gap-1">
-					<BroadcastPreviewButton row$={row$} reset$={reset$} />
-					<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={onRemove}>
-						<Icons.X className="h-4 w-4" />
-					</Button>
-				</div>
-			</TableCell>
-		</TableRow>
-	)
-}
-
-// previews the broadcast as delivered in-game, rendering {{label}} plus the draft's custom message variables the
-// same way broadcastAction does at runtime
-function BroadcastPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Subject<void> }) {
-	const raw = useFieldValue(row$, reset$) as Partial<LP.BroadcastPreset> | undefined
-	const customVars = React.useContext(MessageVarsContext)
-	const message = raw?.message?.trim() || '<broadcast text>'
-	const rendered = Templating.renderTemplate(message, { ...customVars, label: raw?.label?.trim() ?? '' })
-	return (
-		<Popover>
-			<PopoverTrigger asChild>
-				<Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Preview the delivered in-game broadcast">
-					<Icons.Eye className="h-4 w-4" />
-				</Button>
-			</PopoverTrigger>
-			<PopoverContent className="w-96 space-y-2" align="end">
-				<p className="text-xs text-muted-foreground">Broadcast text delivered to all players.</p>
-				<TemplateSyntaxHint />
-				<MessagePreviewBox>{rendered}</MessagePreviewBox>
 			</PopoverContent>
 		</Popover>
 	)
@@ -1666,10 +1593,18 @@ function TextAreaCell(
 	)
 }
 
-// aliases are edited as space/comma-separated text in a single cell and stored as string[] (aliases can't
-// contain whitespace, so the separators are unambiguous)
-function AliasesCell(
-	{ value$, reset$, onChange }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: string[]) => void },
+// Keywords are edited as space/comma-separated text in a single cell and stored as string[] (a keyword can't contain
+// whitespace, so the separators are unambiguous). A keyword is required, and typing one out for every reason is busy
+// work, so the cell follows `seedFrom$` (the label) for as long as it still holds exactly what that seeded, or nothing
+// at all. The first keyword the operator writes themselves stops it -- no dirty flag to keep in sync, since the input's
+// own contents already say whether they've taken it over.
+function KeywordsCell(
+	{ value$, reset$, seedFrom$, onChange }: {
+		value$: ValueState
+		reset$: Rx.Subject<void>
+		seedFrom$: ValueState
+		onChange: (v: string[]) => void
+	},
 ) {
 	const ref = React.useRef<HTMLInputElement>(null)
 	const format = (v: string[] | undefined) => (v ?? []).join(' ')
@@ -1682,6 +1617,20 @@ function AliasesCell(
 			push(parse(formatted))
 		}
 	})
+
+	const seedSource = useFieldValue(seedFrom$, reset$) as string | undefined
+	const lastSeed = React.useRef(LP.keywordFromLabel(seedSource ?? ''))
+	React.useEffect(() => {
+		const seed = LP.keywordFromLabel(seedSource ?? '')
+		const previous = lastSeed.current
+		lastSeed.current = seed
+		if (seed === previous || !ref.current) return
+		const current = ref.current.value.trim()
+		if (current !== '' && current !== previous) return
+		ref.current.value = seed
+		push(parse(seed))
+	}, [seedSource, push])
+
 	return (
 		<Input
 			ref={ref}
@@ -1784,18 +1733,21 @@ function AdminListSourcesField({ value$, reset$, onChange }: OverrideProps) {
 			{value.map((source, idx) => (
 				// oxlint-disable-next-line no-array-index-key
 				<div key={idx} className="space-y-3 rounded-md border p-3">
-					<div className="flex items-center gap-2">
-						<Select
-							value={source.type}
-							onValueChange={(t) => update((v) => v.map((s, i) => i === idx ? defaultAdminSource(t as SM.AdminListSourceType) : s))}
-						>
-							<SelectTrigger className="w-40">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								{ADMIN_SOURCE_TYPE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-							</SelectContent>
-						</Select>
+					<div className="flex items-end gap-2">
+						<div className="space-y-1">
+							<Label className="text-xs text-muted-foreground">Source Type</Label>
+							<Select
+								value={source.type}
+								onValueChange={(t) => update((v) => v.map((s, i) => i === idx ? defaultAdminSource(t as SM.AdminListSourceType) : s))}
+							>
+								<SelectTrigger className="w-40">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{ADMIN_SOURCE_TYPE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+								</SelectContent>
+							</Select>
+						</div>
 						<div className="flex-1" />
 						<Button
 							type="button"
@@ -2654,6 +2606,60 @@ function RoleAssignmentsEditor(
 	)
 }
 
+// bespoke editor for `balanceTriggerLevels`. A trigger is off unless it carries a level, and the level decides how
+// loudly it lands on the match history, so each row pairs the picker with a live preview of the alert it produces.
+function BalanceTriggerLevelsField({ value$, reset$, onChange }: OverrideProps) {
+	const value = (useFieldValue(value$, reset$) as Partial<Record<BAL.TriggerId, BAL.TriggerWarnLevel>> | undefined) ?? {}
+
+	function setLevel(id: BAL.TriggerId, level: BAL.TriggerWarnLevel | typeof TRIGGER_OFF) {
+		const next = { ...((value$.getValue() as Partial<Record<BAL.TriggerId, BAL.TriggerWarnLevel>>) ?? {}) }
+		if (level === TRIGGER_OFF) delete next[id]
+		else next[id] = level
+		onChange(next)
+		reset$.next()
+	}
+
+	return (
+		<div className="space-y-2">
+			{BAL.TRIGGER_IDS.options.map((id) => {
+				const level = value[id]
+				const display = level ? TRIGGER_LEVEL_DISPLAY[level] : undefined
+				const AlertIcon = display?.icon
+				return (
+					<div key={id} className="space-y-2 rounded-md border p-3">
+						<div className="flex items-start justify-between gap-3">
+							<div className="min-w-0 space-y-0.5">
+								<p className="text-sm font-medium">{BAL.TRIGGERS[id].name}</p>
+								<p className="text-xs text-muted-foreground">{Messages.GENERAL.balanceTrigger.descriptions[id]}</p>
+							</div>
+							<Select value={level ?? TRIGGER_OFF} onValueChange={(next) => setLevel(id, next as BAL.TriggerWarnLevel)}>
+								<SelectTrigger className={cn('h-8 w-36 shrink-0', display?.text)} aria-label={`${BAL.TRIGGERS[id].name} level`}>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value={TRIGGER_OFF}>Off</SelectItem>
+									{BAL.TRIGGER_LEVEL.options.map((opt) => (
+										<SelectItem key={opt} value={opt} className={TRIGGER_LEVEL_DISPLAY[opt].text}>{humanize(opt)}</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
+						{display && AlertIcon && (
+							<Alert variant={display.variant} className="bg-background!">
+								<AlertTitle className="flex items-center space-x-2">
+									<AlertIcon className="mr-2 h-4 w-4" />
+									{BAL.TRIGGERS[id].name}
+								</AlertTitle>
+								<AlertDescription>{Messages.GENERAL.balanceTrigger.sampleMessages[id]}</AlertDescription>
+							</Alert>
+						)}
+					</div>
+				)
+			})}
+		</div>
+	)
+}
+
 function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefined {
 	const last = path[path.length - 1]
 	if (path.length === 1 && last === 'adminListSources') return AdminListSourcesField
@@ -2662,9 +2668,9 @@ function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefin
 	if (path.length === 2 && path[0] === 'commands') return CommandCard
 	if (path.length === 1 && last === 'commandAliases') return CommandAliasesField
 	if (path.length === 1 && last === 'adminActionReasons') return AdminActionReasonsField
-	if (path.length === 1 && last === 'broadcasts') return BroadcastsField
 	if (path.length === 1 && last === 'layerTable') return LayerTableField
 	if (path.length === 1 && last === 'layerGeneration') return LayerGenerationField
+	if (path.length === 1 && last === 'balanceTriggerLevels') return BalanceTriggerLevelsField
 	if (path.length === 1 && last === 'playerFlagsRequiringNote') return FlagMultiSelectField
 	if (path.length === 1 && last === 'playerGroupings') return PlayerGroupingsField
 	// the entire `rbac` subtree is rendered by RbacBody (see FieldControl), so no per-field rbac overrides are needed here
@@ -3718,11 +3724,15 @@ function GroupedRootFields(
 	}
 	return (
 		<div className="space-y-6">
-			{grouped.map(({ group, keys }) => (
-				<GroupSection key={group.slug} slug={group.slug} label={group.label}>
-					{renderKeys(keys)}
-				</GroupSection>
-			))}
+			{grouped.map(({ group, keys }) =>
+				group.passthrough
+					? <React.Fragment key={group.slug}>{renderKeys(keys)}</React.Fragment>
+					: (
+						<GroupSection key={group.slug} slug={group.slug} label={group.label}>
+							{renderKeys(keys)}
+						</GroupSection>
+					)
+			)}
 			{renderKeys(ungrouped)}
 		</div>
 	)
