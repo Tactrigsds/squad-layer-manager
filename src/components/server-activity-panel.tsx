@@ -173,7 +173,7 @@ function ServerCounts(props: { stores: SquadServerFrame.KeyProp }) {
 	const tickRate = SquadServerClient.useTickRate(serverId)
 	const tickRateThresholds = ZusUtils.useStore(
 		SettingsClient.PublicSettingsStore,
-		s => s?.squadServer.tickRateThresholds,
+		s => s?.tickRateThresholds,
 	)
 
 	if (serverInfoStatusRes.code !== 'ok') return <ServerUnreachable statusRes={serverInfoStatusRes} />

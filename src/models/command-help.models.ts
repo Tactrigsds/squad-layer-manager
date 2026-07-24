@@ -10,6 +10,7 @@
 import { assertNever } from '@/lib/type-guards'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as CMD from '@/models/command.models'
+import * as LP from '@/models/labeled-presets.models'
 
 // what an arg kind accepts, explained once for every arg that uses it. `syntax` is the shape of the token(s);
 // `description` is the prose shown beside it.
@@ -33,15 +34,15 @@ export const ARG_KIND_HELP: Record<CMD.ArgDef['kind'], { syntax: string; descrip
 	text: { syntax: 'free text', description: 'Everything you type after this point, as-is.' },
 	reason: {
 		syntax: 'preset | free text',
-		description: 'A single word picks a configured reason by its name or alias. Two or more words are sent verbatim as a custom reason.',
+		description: 'A single word picks a configured reason by one of its keywords. Two or more words are sent verbatim as a custom reason.',
 	},
 	'preset-reason': {
 		syntax: 'preset',
-		description: 'A configured reason, by its name or alias. Custom text is not accepted here.',
+		description: 'A configured reason, by one of its keywords. Custom text is not accepted here.',
 	},
 }
 
-// the live values examples are filled from, so an example uses reasons and broadcasts this installation actually has
+// the live values examples are filled from, so an example uses reasons this installation actually has
 // configured rather than invented ones an admin would get an "unknown reason" error for
 export type ExampleSeeds = {
 	reasons: AAR.AdminActionReason[]
@@ -52,7 +53,7 @@ export type ArgHelp = {
 	syntax: string
 	description: string
 	optional: boolean
-	// the configured reasons/broadcasts this arg accepts, when it draws on them
+	// the configured reasons this arg accepts, when it draws on them
 	presets: string[]
 }
 
@@ -66,20 +67,13 @@ function argOptional(def: CMD.ArgDef, requiredReasonActions: readonly AAR.AdminA
 	return !!def.optional
 }
 
-// The single token that picks this preset in chat. A preset arg is only matched when it's exactly one token (two or
-// more are taken as custom text), so a preset whose label has whitespace can only be reached by an alias -- and one
-// with neither a single-word label nor a single-word alias can't be reached at all.
-function presetToken(preset: { label: string; aliases: string[] }): string | undefined {
-	return [preset.label, ...preset.aliases].find((s) => !/\s/.test(s))
+// The token that picks this preset in chat: its first keyword. Keywords carry no whitespace and at least one is
+// required, so unlike the label a preset is always reachable by one.
+function presetToken(preset: { keywords: string[] }): string | undefined {
+	return preset.keywords[0]
 }
 
-// how a preset lists in the help: its label, plus the aliases it can be typed as when the label itself isn't typeable
-function presetLabel(preset: { label: string; aliases: string[] }): string {
-	if (preset.aliases.length === 0) return preset.label
-	return `${preset.label} (${preset.aliases.join(', ')})`
-}
-
-function argPresets(def: CMD.ArgDef, seeds: ExampleSeeds): { label: string; aliases: string[] }[] {
+function argPresets(def: CMD.ArgDef, seeds: ExampleSeeds): { label: string; keywords: string[] }[] {
 	switch (def.kind) {
 		case 'reason':
 		case 'preset-reason':
@@ -103,7 +97,7 @@ export function describeArgs(
 			// the kind explains the general shape; `describe` says what this arg means for this command
 			description: def.describe ? `${def.describe} ${kindHelp.description}` : kindHelp.description,
 			optional: argOptional(def, requiredReasonActions),
-			presets: argPresets(def, seeds).map(presetLabel),
+			presets: argPresets(def, seeds).map(LP.describePreset),
 		}
 	})
 }
@@ -150,7 +144,7 @@ function sampleTokens(def: CMD.ArgDef, seeds: ExampleSeeds): Sample {
 	}
 }
 
-function firstPresetToken(presets: { label: string; aliases: string[] }[]): string | undefined {
+function firstPresetToken(presets: { keywords: string[] }[]): string | undefined {
 	for (const preset of presets) {
 		const token = presetToken(preset)
 		if (token !== undefined) return token

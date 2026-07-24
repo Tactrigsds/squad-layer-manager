@@ -62,15 +62,17 @@ function groupTocNodes(children: TocNode[], groups: SettingsGroup[], idPrefix: s
 	const byKey = new Map(children.map((c) => [c.path, c]))
 	const { groups: grouped, ungrouped } = splitByGroups(children.map((c) => c.path), groups)
 	return [
-		...grouped.map(({ group, keys }): TocNode => {
+		...grouped.flatMap(({ group, keys }): TocNode[] => {
 			const children = keys.map((k) => byKey.get(k)!)
-			return {
+			// no group header in the form means no group node here either; the field stands on its own
+			if (group.passthrough) return children
+			return [{
 				id: `${idPrefix}group:${group.slug}`,
 				label: group.label,
 				path: `group:${group.slug}`,
 				writable: children.some((c) => c.writable),
 				children,
-			}
+			}]
 		}),
 		...ungrouped.map((k) => byKey.get(k)!),
 	]

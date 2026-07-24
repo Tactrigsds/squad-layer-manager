@@ -107,9 +107,8 @@ export type AppFixtureOptions = {
 	// the test timings below already applied), so durations are milliseconds, not '3m' strings.
 	globalSettings?: (settings: SETTINGS.GlobalSettings) => void
 	serverSettings?: (settings: SETTINGS.ServerSettings) => void
-	// the queue the server starts with. Seeding one (and pinning queue.preferredLength to its length,
-	// which arrange() does) stops the generator from filling the queue with random layers, which is
-	// what makes a queue assertion worth writing.
+	// the queue the server starts with. Generation only fires when the saved list would be empty, so a
+	// seeded queue stays exactly as seeded, which is what makes a queue assertion worth writing.
 	layerQueue?: LL.List
 	// filter entities to seed. A server's pool config (serverSettings.queue.mainPool) references
 	// these by id, so anything that applies, indicates or warns on a filter needs them seeded first.
@@ -252,30 +251,33 @@ function renderAdminsCfg(steamIds: string[], reserveIds: string[] = []): string 
 
 // Durations that would make a test sit and wait. Every one is a setting, and settings are the only
 // lever we have: the app runs in its own process, so its timers can't be faked. Tests override any
-// of these through the globalSettings hook.
+// of these through the globalSettings / serverSettings hooks.
 function applyTestTimings(settings: SETTINGS.GlobalSettings) {
+	// the log tail's poll interval is also the window the event pipeline waits for the log to catch
+	// up with rcon/poll events, so a short one keeps tests responsive
+	settings.logFilePollInterval = 250
+}
+
+// The roster TTL doubles as the ListPlayers poll interval, so it sets the floor on waitForRosterSync
+// (which wants two polls) and dominates this suite's wall time. 2s roughly halves the suite against
+// the shipped 5s.
+//
+// Do not lower these further without re-measuring: at 1s the suite got faster still but started
+// failing about one run in three, and at 500ms it got both slower *and* flakier -- RCON is
+// serialized, so polling faster than it drains queues commands until responses breach the 2s
+// timeout in core-rcon and back off. The failures only appear under full-suite load, never in a
+// single file, and they land on whichever test is unluckiest rather than a consistent one.
+function applyTestServerTimings(settings: SETTINGS.ServerSettings) {
+	settings.rconCacheTTL.layersStatus = 2_000
+	settings.rconCacheTTL.serverInfo = 4_000
+	settings.rconCacheTTL.teams = 2_000
 	settings.vote.voteDuration = 8_000
 	settings.vote.finalVoteReminder = 2_000
 	settings.vote.voteReminderInterval = 3_000
 	settings.vote.internalVoteReminderInterval = 3_000
-	settings.layerQueue.adminQueueReminderInterval = 5_000
+	settings.queue.adminQueueReminderInterval = 5_000
 	settings.postRollAnnouncementsTimeout = 2_000
 	settings.fogOffDelay = 2_000
-	// the log tail's poll interval is also the window the event pipeline waits for the log to catch
-	// up with rcon/poll events, so a short one keeps tests responsive
-	settings.squadServer.logFilePollInterval = 250
-	// The roster TTL doubles as the ListPlayers poll interval, so it sets the floor on waitForRosterSync
-	// (which wants two polls) and dominates this suite's wall time. 2s roughly halves the suite against
-	// the shipped 5s.
-	//
-	// Do not lower these further without re-measuring: at 1s the suite got faster still but started
-	// failing about one run in three, and at 500ms it got both slower *and* flakier -- RCON is
-	// serialized, so polling faster than it drains queues commands until responses breach the 2s
-	// timeout in core-rcon and back off. The failures only appear under full-suite load, never in a
-	// single file, and they land on whichever test is unluckiest rather than a consistent one.
-	settings.squadServer.rconCacheTTL.layersStatus = 2_000
-	settings.squadServer.rconCacheTTL.serverInfo = 4_000
-	settings.squadServer.rconCacheTTL.teams = 2_000
 }
 
 export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<AppFixture> {
@@ -331,10 +333,8 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 				rcon: { host: '127.0.0.1', port: emu.rconPort, password: emu.password },
 			},
 	})
-	// a seeded queue is only stable if nothing tops it up: generation fills the queue to
-	// preferredLength with random layers, so pin that to what we seeded
 	const layerQueue = opts.layerQueue ?? []
-	if (opts.layerQueue) serverSettings.queue.preferredLength = opts.layerQueue.length
+	applyTestServerTimings(serverSettings)
 	opts.serverSettings?.(serverSettings)
 
 	// Put the emulated server's next layer where a steady-state server's would be: on the head of

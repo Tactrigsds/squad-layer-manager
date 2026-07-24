@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils.ts'
 import type * as F from '@/models/filter.models.ts'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
-import type * as SETTINGS from '@/models/settings.models.ts'
+import * as SETTINGS from '@/models/settings.models.ts'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -20,6 +20,7 @@ import type { PoolConfigApi } from './pool-config-panels.helpers.ts'
 import { Alert, AlertDescription } from './ui/alert.tsx'
 import { Checkbox } from './ui/checkbox.tsx'
 import { Input } from './ui/input.tsx'
+import { Label } from './ui/label.tsx'
 import { Toggle } from './ui/toggle.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
@@ -375,6 +376,57 @@ export function PoolFiltersPanel({ api }: { api: PoolConfigApi }) {
 				<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
 					{SECONDARY_LISTS.map((config) => <SecondaryFilterList key={config.key} api={api} config={config} />)}
 				</div>
+			</div>
+		</div>
+	)
+}
+
+// the settings deciding what SLM does about the next layer, each addressed by its own single-key api so its checkbox
+// is gated on write access to exactly that setting. Descriptions come from the schema so they can't drift from the
+// ones the settings page shows.
+export const NEXT_LAYER_SETTING_KEYS = ['overrideAdminSetNextLayer', 'warnOnNextLayerChange'] as const
+export type NextLayerSettingKey = typeof NEXT_LAYER_SETTING_KEYS[number]
+
+const NEXT_LAYER_LABELS: Record<NextLayerSettingKey, string> = {
+	overrideAdminSetNextLayer: 'Override the next layer when it is set outside SLM',
+	warnOnNextLayerChange: 'Warn admins when the next layer changes',
+}
+
+function BooleanSettingRow({ api, label, description }: { api: PoolConfigApi; label: string; description: string }) {
+	const id = React.useId()
+	const checked = api.useValue([]) === true
+	return (
+		<div className="flex items-start gap-2.5">
+			<PermissionDeniedTooltip denied={api.writeDenied}>
+				<Checkbox
+					id={id}
+					className="mt-0.5"
+					checked={checked}
+					disabled={!!api.writeDenied}
+					onCheckedChange={(next) => api.set([], next === true)}
+				/>
+			</PermissionDeniedTooltip>
+			<div className="min-w-0 space-y-1">
+				<Label htmlFor={id} className="cursor-pointer font-medium">{label}</Label>
+				<p className="text-sm text-muted-foreground">{description}</p>
+			</div>
+		</div>
+	)
+}
+
+export function NextLayerPanel({ apis }: { apis: Record<NextLayerSettingKey, PoolConfigApi> }) {
+	return (
+		<div className="space-y-3">
+			<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Next Layer</h4>
+			<div className="space-y-4">
+				{NEXT_LAYER_SETTING_KEYS.map((key) => (
+					<BooleanSettingRow
+						key={key}
+						api={apis[key]}
+						label={NEXT_LAYER_LABELS[key]}
+						description={SETTINGS.PublicServerSettingsSchema.shape[key].description ?? ''}
+					/>
+				))}
 			</div>
 		</div>
 	)

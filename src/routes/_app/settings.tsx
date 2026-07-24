@@ -420,10 +420,10 @@ function pickDefaultSelection(servers: PublicServer[]): string | null {
 	return (servers.find((s) => s.broken) ?? servers.find((s) => s.defaultServer) ?? servers[0])?.id ?? null
 }
 
-// master-detail for the server registry: pick a server on the left, edit its settings on the right. The server list
-// doubles as the old management card, and each server's lifecycle controls (status, start/stop, default, delete) live
-// in its detail-card header. All editing state still lives in per-server settings-editor frames (kept alive by the
-// route regardless of which detail is shown), so drafts survive switching servers and the save panel aggregates them.
+// the server registry: a full-width list of servers, each row carrying its own lifecycle controls (status, default,
+// start/stop, delete), above a "Server Settings" card holding the selected server's settings. All editing state lives
+// in per-server settings-editor frames (kept alive by the route regardless of which server is shown), so drafts
+// survive switching servers and the save panel aggregates them.
 function ServersSection(
 	{ servers, sectionKeys, canManage, canCreate, creating, onAddServer, onCancelCreate }: {
 		servers: PublicServer[]
@@ -496,88 +496,122 @@ function ServersSection(
 	const newServerKey = sectionKeys.find((k) => k.kind === 'new-server')
 
 	return (
-		<div className="grid grid-cols-[minmax(11rem,17rem)_1fr] gap-4 items-start">
+		<div className="space-y-4">
 			<ServerList
 				servers={servers}
 				selected={selected}
 				onSelect={setSelected}
 				inflight={inflight}
+				busy={busy}
+				canManage={canManage}
+				canDelete={!deleteServersDenied}
 				canCreate={canManage && canCreate}
 				creating={creating}
 				onAddServer={onAddServer}
+				onToggle={(server) =>
+					server.enabled ? disableMutation.mutate({ serverId: server.id }) : enableMutation.mutate({ serverId: server.id })}
+				onSetDefault={(server) => setDefaultMutation.mutate({ serverId: server.id })}
+				onDelete={handleDelete}
 			/>
-			<div className="min-w-0">
-				{creating && newServerKey
-					? (
-						<div id={`section:server:${NEW_SERVER_SELECTION}`} className="scroll-mt-2">
-							<CreateServerSection stores={{ settingsEditor: newServerKey }} onCancel={onCancelCreate} />
-						</div>
-					)
-					: selectedServer && serverKey
-					? (
-						<div id={`section:server:${selectedServer.id}`} className="scroll-mt-2">
-							<ServerSettingsSection
-								server={selectedServer}
-								stores={{ settingsEditor: serverKey }}
-								lifecycle={
-									<ServerLifecycleControls
-										server={selectedServer}
-										state={lifecycleState(selectedServer, inflight)}
-										busy={busy}
-										canManage={canManage}
-										canDelete={!deleteServersDenied}
-										onToggle={() =>
-											selectedServer.enabled
-												? disableMutation.mutate({ serverId: selectedServer.id })
-												: enableMutation.mutate({ serverId: selectedServer.id })}
-										onSetDefault={() => setDefaultMutation.mutate({ serverId: selectedServer.id })}
-										onDelete={() => handleDelete(selectedServer)}
-									/>
-								}
-							/>
-						</div>
-					)
-					: <p className="text-sm text-muted-foreground">Select a server to configure it.</p>}
-			</div>
+			{creating && newServerKey
+				? (
+					<div id={`section:server:${NEW_SERVER_SELECTION}`} className="scroll-mt-2">
+						<CreateServerSection stores={{ settingsEditor: newServerKey }} onCancel={onCancelCreate} />
+					</div>
+				)
+				: selectedServer && serverKey
+				? (
+					// the anchor id lives on the list row, so navigating to a server scrolls to it in the list rather than past it;
+					// this card is highlighted along with the row so it's clear which settings the anchor opened
+					<div
+						id="section:server-settings"
+						data-anchor-companion={`section:server:${selectedServer.id}`}
+						className="scroll-mt-2 rounded-xl"
+					>
+						<ServerSettingsSection server={selectedServer} stores={{ settingsEditor: serverKey }} />
+					</div>
+				)
+				: <p className="text-sm text-muted-foreground">Select a server to configure it.</p>}
 		</div>
 	)
 }
 
 function ServerList(
-	{ servers, selected, onSelect, inflight, canCreate, creating, onAddServer }: {
-		servers: PublicServer[]
-		selected: string | null
-		onSelect: (id: string) => void
-		inflight: { startingId?: string; stoppingId?: string }
-		canCreate: boolean
-		creating: boolean
-		onAddServer: () => void
-	},
+	{ servers, selected, onSelect, inflight, busy, canManage, canDelete, canCreate, creating, onAddServer, onToggle, onSetDefault, onDelete }:
+		{
+			servers: PublicServer[]
+			selected: string | null
+			onSelect: (id: string) => void
+			inflight: { startingId?: string; stoppingId?: string }
+			busy: boolean
+			canManage: boolean
+			canDelete: boolean
+			canCreate: boolean
+			creating: boolean
+			onAddServer: () => void
+			onToggle: (server: PublicServer) => void
+			onSetDefault: (server: PublicServer) => void
+			onDelete: (server: PublicServer) => void
+		},
 ) {
 	return (
-		<div className="sticky top-2 self-start space-y-2">
+		<div className="space-y-2">
 			<div className="space-y-1">
 				{servers.length === 0 && <p className="text-sm text-muted-foreground">No servers configured.</p>}
 				{servers.map((server) => (
-					<button
+					<div
 						key={server.id}
-						type="button"
-						onClick={() => onSelect(server.id)}
+						id={`section:server:${server.id}`}
 						className={cn(
-							'flex w-full flex-col gap-0.5 rounded-md border px-2.5 py-2 text-left',
+							'flex scroll-mt-2 items-center gap-3 rounded-md border px-2.5 py-2',
 							server.id === selected ? 'border-primary bg-accent' : 'border-transparent hover:bg-accent/50',
 						)}
 					>
-						<span className="flex items-center justify-between gap-2">
+						<button
+							type="button"
+							onClick={() => onSelect(server.id)}
+							className="flex min-w-0 grow flex-col gap-0.5 text-left"
+							aria-pressed={server.id === selected}
+						>
 							<span className="truncate text-sm font-medium">{server.displayName}</span>
-							<ServerStatusBadge state={lifecycleState(server, inflight)} />
-						</span>
-						<span className="truncate font-mono text-xs text-muted-foreground">{server.id}</span>
-					</button>
+							<span className="truncate font-mono text-xs text-muted-foreground">{server.id}</span>
+						</button>
+						<ServerStatusBadge state={lifecycleState(server, inflight)} />
+						{canManage && (
+							<>
+								<div className="flex items-center gap-1.5">
+									<Checkbox
+										id={`default-${server.id}`}
+										checked={server.defaultServer}
+										disabled={busy || server.defaultServer}
+										onCheckedChange={(checked) => checked && onSetDefault(server)}
+									/>
+									<Label htmlFor={`default-${server.id}`} className="text-sm font-normal cursor-pointer">Default</Label>
+								</div>
+								<Button
+									size="sm"
+									variant={server.enabled ? 'destructive' : 'outline'}
+									className={cn('w-28', server.broken && 'invisible')}
+									disabled={busy || server.broken}
+									title={server.enabled
+										? 'Disconnect from the server. It stays disconnected across SLM restarts.'
+										: 'Connect to the server. It will also connect automatically with SLM.'}
+									onClick={() => onToggle(server)}
+								>
+									{server.enabled ? 'Disconnect' : 'Connect'}
+								</Button>
+								{canDelete && (
+									<Button size="icon" variant="ghost" disabled={busy} title="Delete server" onClick={() => onDelete(server)}>
+										<Icons.Trash2 className="h-4 w-4" />
+									</Button>
+								)}
+							</>
+						)}
+					</div>
 				))}
 			</div>
 			{canCreate && (
-				<Button variant="outline" size="sm" className="w-full" disabled={creating} onClick={onAddServer}>
+				<Button variant="outline" size="sm" disabled={creating} onClick={onAddServer}>
 					<Icons.Plus className="mr-1 h-4 w-4" />
 					Add Server
 				</Button>
@@ -586,68 +620,14 @@ function ServerList(
 	)
 }
 
-// the selected server's lifecycle controls, shown on the right of its detail-card header
-function ServerLifecycleControls(
-	{ server, state, busy, canManage, canDelete, onToggle, onSetDefault, onDelete }: {
-		server: PublicServer
-		state: ServerLifecycleState
-		busy: boolean
-		canManage: boolean
-		canDelete: boolean
-		onToggle: () => void
-		onSetDefault: () => void
-		onDelete: () => void
-	},
-) {
-	return (
-		<div className="flex items-center gap-2">
-			<ServerStatusBadge state={state} />
-			{canManage && (
-				<>
-					<div className="flex items-center gap-1.5">
-						<Checkbox
-							id={`default-${server.id}`}
-							checked={server.defaultServer}
-							disabled={busy || server.defaultServer}
-							onCheckedChange={(checked) => checked && onSetDefault()}
-						/>
-						<Label htmlFor={`default-${server.id}`} className="text-sm font-normal cursor-pointer">Default</Label>
-					</div>
-					{!server.broken && (
-						<Button
-							size="sm"
-							variant={server.enabled ? 'destructive' : 'outline'}
-							className="w-28"
-							disabled={busy}
-							title={server.enabled
-								? 'Disconnect from the server. It stays disconnected across SLM restarts.'
-								: 'Connect to the server. It will also connect automatically with SLM.'}
-							onClick={onToggle}
-						>
-							{server.enabled ? 'Disconnect' : 'Connect'}
-						</Button>
-					)}
-					{canDelete && (
-						<Button size="icon" variant="ghost" disabled={busy} title="Delete server" onClick={onDelete}>
-							<Icons.Trash2 className="h-4 w-4" />
-						</Button>
-					)}
-				</>
-			)}
-		</div>
-	)
-}
-
-// GUI/JSON editor for one server's full settings (the right-hand detail of the servers master-detail). GUI mode routes
-// save/reset through the shared bottom panel; JSON mode keeps its own inline toolbar (a power-user escape hatch). Server
-// settings have no codec transforms, so the edit/input shape equals the stored shape (no encode step). All editing state
-// lives in the section's settings-editor frame; this component is a view over it. `lifecycle` renders the server's
-// start/stop/status/default/delete controls on the right of the header.
+// GUI/JSON editor for the settings of whichever server is selected in the list above. GUI mode routes save/reset
+// through the shared bottom panel; JSON mode keeps its own inline toolbar (a power-user escape hatch). Server settings
+// have no codec transforms, so the edit/input shape equals the stored shape (no encode step). All editing state lives
+// in the section's settings-editor frame; this component is a view over it.
 function ServerSettingsSection(
-	{ server, stores, lifecycle }: {
+	{ server, stores }: {
 		server: { id: string; displayName: string; broken: boolean }
 		stores: SettingsEditorFrame.KeyProp
-		lifecycle?: React.ReactNode
 	},
 ) {
 	const key = stores.settingsEditor
@@ -699,13 +679,13 @@ function ServerSettingsSection(
 					<div className="flex items-center justify-between gap-2">
 						<div>
 							<CardTitle className="flex items-center gap-2">
-								{server.displayName}
+								Server Settings
 								{access.write.kind === 'none' && (
 									<span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">Read-only</span>
 								)}
 							</CardTitle>
 							<CardDescription>
-								<span className="font-mono">{server.id}</span>
+								{server.displayName} <span className="font-mono">({server.id})</span>
 								{server.broken && <span className="ml-2 text-destructive">Settings failed validation and need repair</span>}
 							</CardDescription>
 							{access.write.kind === 'paths' && (
@@ -714,12 +694,9 @@ function ServerSettingsSection(
 								</p>
 							)}
 						</div>
-						<div className="flex items-center gap-3">
-							{lifecycle}
-							<div className="flex items-center rounded-md border p-0.5">
-								<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>GUI</Button>
-								<Button size="sm" variant={mode === 'json' ? 'secondary' : 'ghost'} onClick={() => switchMode('json')}>JSON</Button>
-							</div>
+						<div className="flex items-center rounded-md border p-0.5">
+							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>GUI</Button>
+							<Button size="sm" variant={mode === 'json' ? 'secondary' : 'ghost'} onClick={() => switchMode('json')}>JSON</Button>
 						</div>
 					</div>
 				</CardHeader>
@@ -751,7 +728,7 @@ function ServerSettingsSection(
 									schema={schema}
 									value={draft}
 									onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
-									onReady={() => SettingsNav.scrollToAnchorSettled(`section:server:${server.id}`)}
+									onReady={() => SettingsNav.scrollToAnchorSettled('section:server-settings')}
 									minHeightPx={350}
 									label="Server Settings"
 									toolbar={

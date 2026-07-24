@@ -75,12 +75,10 @@ const RoleConfigSchema = z.object({
 			+ 'Matching "!server-settings:*" denials in permissions override these.',
 	),
 	assignments: RoleAssignmentsSchema.describe('Which discord roles/users/members are granted this role'),
-}).describe('Everything about a role: its permissions, timeout cap, restricted settings grants and assignments')
+})
 
 export const RbacSettingsSchema = z.object({
-	roles: z.record(RBAC.UserDefinedRoleIdSchema, RoleConfigSchema).prefault({}).describe(
-		'Defined roles, keyed by id. Each holds its own permissions, timeout cap, settings grants and assignments.',
-	),
+	roles: z.record(RBAC.UserDefinedRoleIdSchema, RoleConfigSchema).prefault({}).describe('Defined roles, keyed by id.'),
 }).superRefine((val, ctx) => {
 	// only the first path segment is validated (deeper segments that don't resolve simply never match a write)
 	for (const [role, cfg] of Object.entries(val.roles ?? {})) {
@@ -197,15 +195,13 @@ export const GlobalSettingsSchema = z.object({
 	topBarColor: z.string().prefault('green').nullable().describe(
 		'Tints the top navigation bar so non-production environments are visually distinct. Set to null in production to disable the tint.',
 	),
-	warnPrefix: z.string().nullable().prefault('SLM: ').describe(
-		'Prefix applied to admin-directed warns (admin notifications and in-game command feedback). Never applied to warns delivered to affected players.',
-	),
 	adminActionReasons: AAR.AdminActionReasonsSchema.describe(
-		'Preset reasons admins can pick when performing actions against players. Each reason carries separate text per action it applies to, and is available for an action only if it has text for that action (so every reason needs at least one action text). Text is sent verbatim to the affected player(s) in-game and supports {{variables}}. '
-			+ 'Available: {{label}}, {{duration}} (timeouts only), plus any Message Variables below.',
+		'Preset reasons admins can pick when acting against players. A reason is offered for an action only where it has text for that '
+			+ 'action, so every reason needs at least one. The text reaches the player verbatim and takes {{label}}, {{duration}} '
+			+ '(timeouts only) and any Message Variables below.',
 	),
 	requireReasonFor: z.array(AAR.REQUIRABLE_ADMIN_ACTION_TYPE).prefault([]).describe(
-		'Actions that require a reason (a preset or custom text). Performing one of these without a reason is rejected. Warns always require a reason, so they are not listed here.',
+		'Actions that require a reason (a preset or custom text). Performing one of these without a reason is rejected.',
 	),
 	messageVariables: z.array(z.object({
 		name: z.string().trim().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, {
@@ -213,78 +209,38 @@ export const GlobalSettingsSchema = z.object({
 		}),
 		value: z.string(),
 	})).prefault([]).describe(
-		'Custom variables usable in reason and broadcast messages as {{name}} (e.g. name "discord", value "discord.gg/xyz").',
+		'Custom variables usable in any admin action reason as {{name}} (e.g. name "discord", value "discord.gg/xyz").',
 	),
-	postRollAnnouncementsTimeout: HumanTime.prefault('5m').describe('How long to wait before sending post-roll reminders'),
-	fogOffDelay: HumanTime.prefault('25s').describe('Delay before fog is automatically turned off'),
 	chat: CHAT.ChatConfigSchema.prefault({}).describe(
-		'Live chat/event feed settings, including regex patterns for suppressing noisy warn and broadcast messages.',
+		'What the live chat feed leaves out. Neither list changes what is actually sent in-game.',
 	),
-	layerQueue: z.object({
-		lowQueueWarningThreshold: z
-			.number()
-			.positive()
-			.prefault(1)
-			.describe('Number of layers in the queue to trigger a low queue size warning'),
-		adminQueueReminderInterval: HumanTime.prefault('10m').describe(
-			'How often to remind admins to maintain the queue. Low queue warnings happen half as often.',
+	logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines.'),
+	tickRateThresholds: z.object({
+		good: z.number().positive().prefault(60).describe(
+			'At or above this tick rate the live server tick rate displays as good (green)',
 		),
-		maxQueueSize: z.int().min(1).max(100).prefault(20).describe('Maximum number of layers that can be in the queue'),
-	}).prefault({}),
-	vote: z.object({
-		voteDuration: HumanTime.prefault('180s').describe('Duration of a vote'),
-		startVoteReminderThreshold: HumanTime.prefault('20m').describe('How far into a match to start reminding admins to start a vote'),
-		voteReminderInterval: HumanTime.prefault('30s').describe('How often to remind users to vote'),
-		internalVoteReminderInterval: HumanTime.prefault('15s').describe('How often to remind admins to vote in an internal vote'),
-		autoStartVoteDelay: HumanTime.prefault('20m').nullable().describe(
-			'Delay before autostarting a vote from the start of the current match. Set to null to disable',
+		warning: z.number().positive().prefault(50).describe(
+			'At or above this tick rate (but below the good threshold) the tick rate displays as a warning (yellow); below it, as unhealthy (red)',
 		),
-		autoStartVoteCutoff: HumanTime.prefault('30m').describe(
-			'How far into a match to stop auto-starting votes',
-		),
-		voteDisplayProps: z.array(DH.LAYER_DISPLAY_PROP).prefault(['map', 'gamemode']).describe(
-			'What parts of a layer setup should be displayed by default',
-		),
-		finalVoteReminder: HumanTime.prefault('10s').describe('How far in advance the final vote reminder should be sent'),
-		maxNumVoteChoices: z.int().min(1).max(50).prefault(5).describe('Maximum number of choices allowed in a vote'),
-	}).prefault({}),
-	squadServer: z.object({
-		logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines.'),
-		rconCacheTTL: z.object({
-			layersStatus: HumanTime.prefault('5s').describe(
-				'How stale the cached current/next layer may be before a read refetches it over RCON.',
-			),
-			serverInfo: HumanTime.prefault('10s').describe(
-				'How stale cached server info (player count, tick rate) may be before a read refetches it over RCON.',
-			),
-			teams: HumanTime.prefault('5s').describe(
-				'How stale the cached roster may be before a read refetches it over RCON. Also the interval at which observers poll ListPlayers.',
-			),
-		}).prefault({}).describe(
-			'How long RCON responses stay cached. Lower means fresher data and more RCON traffic; these are the dominant source of roster/status latency.',
-		),
-		tickRateThresholds: z.object({
-			good: z.number().positive().prefault(60).describe(
-				'At or above this tick rate the live server tick rate displays as good (green)',
-			),
-			warning: z.number().positive().prefault(50).describe(
-				'At or above this tick rate (but below the good threshold) the tick rate displays as a warning (yellow); below it, as unhealthy (red)',
-			),
-		}).prefault({}).describe('Thresholds for coloring the live server tick rate display'),
-	}).prefault({}),
+	}).prefault({}).describe('Thresholds for coloring the live server tick rate display'),
 	balanceTriggerLevels: z.partialRecord(BAL.TRIGGER_IDS, BAL.TRIGGER_LEVEL)
 		.prefault({ '150x2': 'warn' })
-		.describe('Configures the trigger warning levels for balance calculations'),
+		.describe(
+			'Which balance triggers run, and how severely each one reports when it fires (info, warn, or violation). A trigger with no '
+				+ 'level set here is not evaluated at all.',
+		),
 	playerFlagsRequiringNote: z.array(z.uuid()).prefault([]).describe(
 		"Flags (by id) that require a reason to be given when added, which is included in the note posted to the player's BattleMetrics profile",
 	),
 	playerGroupings: PG.PlayerGroupingsSchema.prefault(PG.EMPTY_PLAYER_GROUPINGS).describe(
 		'Named ways of sorting players into coloured groups. Each grouping is an ordered list of rules assigning a group to players with a given flag, highest priority first; the players panel and activity charts pick which grouping to show.',
 	),
-	navLinks: NavLinkSchema.optional().describe('Global links to display in the navbar dropdown menu'),
+	navLinks: NavLinkSchema.optional().describe(
+		'Links to display in the navbar dropdown menu, on every page. Each server can add links of its own on top of these.',
+	),
 	warnOnSlmStart: z.boolean().prefault(false).describe('Warn all in-game admins when SLM starts or restarts.'),
 	allowedPrefixes: z.array(CMD.PrefixSchema).min(1).prefault([CMD.FALLBACK_PREFIX]).describe(
-		'Prefixes an in-game command may start with. Every command string and timeout alias must begin with one of these',
+		'Prefixes an in-game command may start with. Every command string and command alias must begin with one of these.',
 	),
 	defaultPrefix: CMD.PrefixSchema.prefault(CMD.FALLBACK_PREFIX).describe(
 		'The allowed prefix that commands introduced by future SLM versions are seeded with',
@@ -298,7 +254,7 @@ export const GlobalSettingsSchema = z.object({
 	),
 	commands: CMD.AllCommandConfigSchema,
 	adminListSources: z.array(SM.AdminListSourceSchema).prefault([]).describe(
-		"Sources to load admins from, in the same format as the gameserver expects Each is a remote URL, local file, or FTP path serving admins in Squad's Admins.cfg format.",
+		'Where to load admins from. Each source serves the same Admins.cfg the gameserver reads, in the same format.',
 	),
 	adminIdentifyingPermissions: z.array(SM.PLAYER_PERM).prefault([]).describe(
 		'In-game admin-list permissions that mark a player as an admin in SLM (e.g. "canseeadminchat"). A player granted any of these by an '
@@ -330,12 +286,12 @@ export const GlobalSettingsSchema = z.object({
 			{ type: 'inrange', neg: false, args: [{ type: 'column', column: 'Balance_Differential' }, { type: 'value' }, { type: 'value' }] },
 			{ type: 'inrange', neg: false, args: [{ type: 'column', column: 'Asymmetry_Score' }, { type: 'value' }, { type: 'value' }] },
 		],
-	}).describe('Configures the columns, default sort, and extra menu items of the layer table'),
+	}).describe('Configures the appearance of the layers table and layer select menu'),
 	layerGeneration: LC.LayerGenerationConfigSchema.prefault({
 		pickOrder: ['Map', 'Gamemode', 'Faction_1', 'Faction_2', 'Unit_1', 'Unit_2'],
 	}).describe(
-		"Configures how layers are picked during generation (autogeneration, vote generation, and the layer table's random sort). "
-			+ 'Each column or matchup in the pick order is picked weighted-randomly in turn, narrowing the candidate pool for the next.',
+		"How layers are picked during generation, vote generation and the layer table's random sort. Each column or matchup in the pick "
+			+ 'order is drawn weighted-randomly in turn, narrowing the pool the next one draws from.',
 	),
 }).superRefine((val, ctx) => {
 	const allowedPrefixes = val.allowedPrefixes ?? [CMD.FALLBACK_PREFIX]
@@ -555,7 +511,10 @@ export const PoolConfigurationSchema = z.object({
 	constrainGeneration: z.array(AppliedFilterSettingSchema).prefault([]).meta({
 		description: 'Autogenerated layers are constrained by these filters in the given state, in addition to the pool filter',
 	}),
-	repeatRules: z.array(RepeatRuleConfigSchema).refine(
+	repeatRules: z.array(RepeatRuleConfigSchema).describe(
+		'How far apart a map, layer or faction has to be spaced in the queue and recent match history. Each rule can warn when it is '
+			+ 'broken, constrain autogeneration, or both.',
+	).refine(
 		(rules) => new Set(rules.map((r) => r.label)).size === rules.length,
 		{
 			error: 'Repeat rule labels must be unique',
@@ -609,31 +568,91 @@ export const ServerConnectionSchema = z.discriminatedUnion('type', [
 export type ServerConnection = z.infer<typeof ServerConnectionSchema>
 
 export const QueueSettingsSchema = z.object({
-	mainPool: PoolConfigurationSchema.prefault({ repeatRules: DEFAULT_REPEAT_RULE_CONFIGS }),
-	preferredLength: z.number().prefault(12),
-	generatedItemType: z.enum(['layer', 'vote']).prefault('layer'),
-	preferredNumVoteChoices: z.number().prefault(3),
+	maxQueueSize: z.int().min(1).max(100).prefault(20).describe(
+		'Maximum number of items the queue may hold. Saves that would exceed it are rejected.',
+	),
+	lowQueueWarningThreshold: z
+		.number()
+		.positive()
+		.prefault(1)
+		.describe('Admins are warned after a map roll when the queue holds this many items or fewer.'),
+	adminQueueReminderInterval: HumanTime.prefault('10m').describe(
+		'How often to remind admins to maintain the queue. Low queue warnings happen half as often.',
+	),
+	mainPool: PoolConfigurationSchema.prefault({ repeatRules: DEFAULT_REPEAT_RULE_CONFIGS }).describe(
+		'Which layers this server considers playable, and which of them it warns about.',
+	),
 	layerRequests: z.object({
 		maxTotal: z.number().int().positive().prefault(50).describe(
 			'Maximum number of layer requests the backburner may hold across all users',
 		),
-	}).prefault({}),
+	}).prefault({}).describe('Limits on the backburner, where layers players request in-game wait to be picked up.'),
 })
 export type QueueSettings = z.infer<typeof QueueSettingsSchema>
 
 export const PublicServerSettingsSchema = z
 	.object({
-		updatesToSquadServerDisabled: z.boolean().prefault(false).describe('Disable SLM from setting the next layer on the server.'),
-		queue: QueueSettingsSchema
-			// avoid sharing default queue object - TODO unclear if necessary
-			.prefault({}).transform((obj) => Obj.deepClone(obj)).describe(
-				'The layer queue configuration: the pool (filters and repeat rules) and queue length / vote preferences.',
-			),
-		remindersAndAnnouncementsEnabled: z.boolean().prefault(true).describe('Whether reminders/announcements for admins are enabled'),
-		overrideAdminSetNextLayer: z.boolean().prefault(false).describe(
-			'Whether AdminSetNextLayer commands not originating from SLM are respected',
+		updatesToSquadServerDisabled: z.boolean().prefault(false).describe(
+			'Stop SLM from writing the next layer to this server over RCON. The queue still runs and still tracks what is played; SLM just '
+				+ 'never sets the map itself. For running SLM alongside something else that owns the rotation.',
 		),
-		warnOnChangeLayer: z.boolean().prefault(false).describe('Warn admins when the next layer is changed'),
+		// no defensive clone of the prefault: zod v4 builds a fresh default per parse, and the shared
+		// DEFAULT_REPEAT_RULE_CONFIGS array is never mutated. A transform here would also be one-way, which costs
+		// ServerSettingsSchema its encodability -- and the settings editor needs that to show HumanTime fields as
+		// "5s" rather than 5000.
+		queue: QueueSettingsSchema.prefault({}),
+		vote: z.object({
+			voteDuration: HumanTime.prefault('180s').describe('How long a vote stays open before it is tallied.'),
+			startVoteReminderThreshold: HumanTime.prefault('20m').describe(
+				'How far into a match admins start being reminded that no vote has been started yet.',
+			),
+			voteReminderInterval: HumanTime.prefault('30s').describe('How often players are reminded to vote while a vote is open.'),
+			internalVoteReminderInterval: HumanTime.prefault('15s').describe(
+				'How often admins are reminded to vote while an internal (admin-only) vote is open.',
+			),
+			autoStartVoteDelay: HumanTime.prefault('20m').nullable().describe(
+				'How far into a match SLM starts a vote by itself, when the next queue item is a vote. Unset to only ever start votes manually.',
+			),
+			autoStartVoteCutoff: HumanTime.prefault('30m').describe(
+				'How far into a match auto-starting gives up. Past this point starting a vote is left to an admin, so a match running long '
+					+ 'does not open a vote nobody is around for.',
+			),
+			voteDisplayProps: z.array(DH.LAYER_DISPLAY_PROP).prefault(['map', 'gamemode']).describe(
+				'Which parts of a layer (map, gamemode, factions, units) vote choices spell out. Admins can override this per vote.',
+			),
+			finalVoteReminder: HumanTime.prefault('10s').describe('How long before a vote closes the last-chance reminder is sent.'),
+			maxNumVoteChoices: z.int().min(1).max(50).prefault(5).describe('Maximum number of choices a vote may offer.'),
+		}).prefault({}),
+		overrideAdminSetNextLayer: z.boolean().prefault(false).describe(
+			'What happens when the next layer is set from outside SLM (an in-game admin, or another RCON tool). On, SLM sets it straight '
+				+ 'back to whatever the queue says. Off, SLM adopts the change by putting that layer at the front of the queue.',
+		),
+		warnOnNextLayerChange: z.boolean().prefault(false).describe(
+			'Warn all in-game admins with the new next layer whenever it changes. A change SLM overrides is not announced.',
+		),
+		postRollAnnouncementsTimeout: HumanTime.prefault('5m').describe(
+			'How long after a map rolls before admins are told the balance trigger in effect, the next layer, and whether the queue is '
+				+ 'running low.',
+		),
+		fogOffDelay: HumanTime.prefault('25s').describe(
+			'How long after a FRAAS layer starts before fog of war is turned off and announced in-game. Other gamemodes are unaffected.',
+		),
+		remindersAndAnnouncementsEnabled: z.boolean().prefault(true).describe(
+			'Whether this server sends admins the recurring nudges: post-roll announcements, queue reminders, and vote reminders.',
+		),
+		rconCacheTTL: z.object({
+			layersStatus: HumanTime.prefault('5s').describe(
+				'How stale the cached current/next layer may be before a read refetches it over RCON.',
+			),
+			serverInfo: HumanTime.prefault('10s').describe(
+				'How stale cached server info (player count, tick rate) may be before a read refetches it over RCON.',
+			),
+			teams: HumanTime.prefault('5s').describe(
+				'How stale the cached roster may be before a read refetches it over RCON. Also the interval at which observers poll ListPlayers.',
+			),
+		}).prefault({}).describe(
+			'How long RCON responses stay cached. Lower means fresher data and more RCON traffic; these are the dominant source of roster/status latency.',
+		),
 	})
 
 export type PublicServerSettings = z.infer<typeof PublicServerSettingsSchema>
@@ -643,7 +662,11 @@ EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.poolFilter = { filterId: 'test-filter', m
 EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.defaultSelectable.push({ filterId: 'test-filter', applyAs: 'regular' })
 
 export const ServerSettingsSchema = PublicServerSettingsSchema.extend({
-	connections: ServerConnectionSchema,
+	connections: ServerConnectionSchema.describe(
+		'How SLM reaches this server. Local: SLM shares the box, reading the log file and dialing RCON directly. SFTP: SLM is remote, '
+			+ 'tailing the log over SFTP and dialing RCON over the network. Server agent: slm-server-agent runs next to the server and '
+			+ "handles both, so the RCON password lives in the agent's config rather than here.",
+	),
 	navLinks: NavLinkSchema.optional().describe('Server-specific links to display in the navbar dropdown menu'),
 })
 

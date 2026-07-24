@@ -747,7 +747,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		minSafeLogLeadTimeForOtherEvents: settings.connections.type === 'sftp'
 			? settings.connections.sftp.pollInterval * 2
 			: settings.connections.type === 'local'
-			? Settings.GLOBAL_SETTINGS.squadServer.logFilePollInterval * 2
+			? Settings.GLOBAL_SETTINGS.logFilePollInterval * 2
 			: settings.connections.type === 'server-agent'
 			? 1000
 			: assertNever(settings.connections),
@@ -773,7 +773,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		destroyed: false,
 		cleanupId: null,
 
-		...SquadRcon.initSquadRcon({ ...ctx, rcon }, cleanup, { onFatalError: onResourceFatalError }),
+		...SquadRcon.initSquadRcon({ ...ctx, rcon }, cleanup, { cacheTTL: settings.rconCacheTTL, onFatalError: onResourceFatalError }),
 	}
 
 	cleanup.push(
@@ -895,7 +895,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		} else if (settings.connections.type === 'local') {
 			const fileReader = new FileTail({
 				filePath: settings.connections.logFile,
-				pollInterval: Settings.GLOBAL_SETTINGS.squadServer.logFilePollInterval,
+				pollInterval: Settings.GLOBAL_SETTINGS.logFilePollInterval,
 				onFatalError: onResourceFatalError,
 				parentModule: module,
 			})
@@ -1088,7 +1088,7 @@ export async function emitAppEvent(ctx: C.SquadServer & C.Db & CS.AbortSignal, a
 // resolves a preset admin-action reason against the current global settings. handlers call this before executing
 // anything so a stale preset (deleted/retargeted since the client loaded it) fails the whole action.
 export function resolvePresetReason(action: AAR.AdminActionType, presetReasonLabel: string) {
-	return AAR.resolveReason(Settings.GLOBAL_SETTINGS.adminActionReasons, action, presetReasonLabel)
+	return AAR.resolveReasonByLabel(Settings.GLOBAL_SETTINGS.adminActionReasons, action, presetReasonLabel)
 }
 
 // the variable context for reason/broadcast message templates: the admin-configured custom variables,

@@ -5,7 +5,11 @@ const LABEL_OVERRIDES: Record<string, string> = {
 	messageVariables: 'Message Variables',
 	requireReasonFor: 'Require a Reason',
 	layerGeneration: 'Layer Generation Weights',
-	rbac: 'Permissions & Roles',
+	// its group header already reads "Permissions & Roles"; the field itself is the role definitions
+	rbac: 'Roles',
+	vote: 'Votes',
+	// the chat config holds nothing but the feed's warn/broadcast suppression patterns
+	chat: 'Chat Feed Suppression',
 	// per-server settings
 	connections: 'Connections',
 	'connections.rcon': 'RCON',

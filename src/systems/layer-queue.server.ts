@@ -106,9 +106,8 @@ export const setupInstance = C.spanOp(
 
 		// -------- schedule generic admin reminders --------
 		if (ctx.serverSettings.settings.remindersAndAnnouncementsEnabled) {
-			const GS = Settings.GLOBAL_SETTINGS
 			ctx.cleanup.push(
-				Rx.interval(GS.layerQueue.adminQueueReminderInterval).pipe(
+				Rx.interval(ctx.serverSettings.settings.queue.adminQueueReminderInterval).pipe(
 					C.durableSub('queue-reminders', { module, levels: { event: 'info' } }, async (_, signal) => {
 						const baseCtx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
 						const serverState = await SquadServer.getServerState(baseCtx)
@@ -148,14 +147,14 @@ export const setupInstance = C.spanOp(
 							&& voteState?.code === 'ready'
 							&& !serverState.layerQueue[0].endingVoteState
 							&& currentMatch.startTime !== undefined
-							&& currentMatch.startTime.getTime() + GS.vote.startVoteReminderThreshold < Date.now()
+							&& currentMatch.startTime.getTime() + serverState.settings.vote.startVoteReminderThreshold < Date.now()
 						) {
 							await SquadRcon.warnAllAdmins(
 								ctx,
 								Messages.WARNS.queue.votePending(
 									currentMatch.startTime,
-									GS.vote.startVoteReminderThreshold,
-									GS.vote.autoStartVoteDelay !== null,
+									serverState.settings.vote.startVoteReminderThreshold,
+									serverState.settings.vote.autoStartVoteDelay !== null,
 									Settings.GLOBAL_SETTINGS.commands,
 								),
 							)
@@ -296,7 +295,7 @@ export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.Serv
 	const currentLayer = L.toLayer(newLayerId)
 	if (currentLayer.Gamemode === 'FRAAS') {
 		ctx.server.postRollEventsSub.add(
-			Rx.timer(Settings.GLOBAL_SETTINGS.fogOffDelay).subscribe(async () => {
+			Rx.timer(ctx.serverSettings.settings.fogOffDelay).subscribe(async () => {
 				const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 				await SquadRcon.setFogOfWar(ctx, 'off')
 				await SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
@@ -325,13 +324,13 @@ export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.Serv
 		announcementTasks.push(toCold(async () => {
 			const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 			const queue = getSavedQueue(ctx)
-			if (queue && queue.length <= Settings.GLOBAL_SETTINGS.layerQueue.lowQueueWarningThreshold) {
+			if (queue && queue.length <= ctx.serverSettings.settings.queue.lowQueueWarningThreshold) {
 				await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.lowQueueItemCount(queue.length))
 			}
 		}))
 
 		const withWaits: Rx.Observable<unknown>[] = []
-		withWaits.push(Rx.timer(Settings.GLOBAL_SETTINGS.postRollAnnouncementsTimeout))
+		withWaits.push(Rx.timer(ctx.serverSettings.settings.postRollAnnouncementsTimeout))
 
 		for (let i = 0; i < announcementTasks.length; i++) {
 			withWaits.push(announcementTasks[i].pipe(Rx.catchError(() => Rx.EMPTY)))
@@ -355,6 +354,9 @@ export function getSavedQueue(ctx: C.LayerQueue) {
 export async function saveQueueAndUpdateServer(
 	ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.ServerSettings & CS.AbortSignal,
 	list: LL.List,
+	// the list this save replaces. Every next-layer change reaches the server through here -- an SLM edit, a roll, or
+	// adopting a layer someone set outside SLM -- so comparing the two heads is what tells admins the layer moved.
+	prevList: LL.List,
 	// the QUEUE_UPDATED for this save; the resulting MAP_SET app event (if the next layer changed) links back to it
 	queueUpdatedId?: string,
 ) {
@@ -363,6 +365,8 @@ export async function saveQueueAndUpdateServer(
 		const serverState = await SquadServer.getServerState(txCtx)
 		const nextItemId = list[0]?.itemId || null
 		const nextLayerId = LL.getNextLayerId(list)
+		const prevNextLayerId = LL.getNextLayerId(prevList)
+		const nextLayerChanged = !!nextLayerId && (!prevNextLayerId || !L.areLayersCompatible(prevNextLayerId, nextLayerId))
 
 		await SquadServer.updateServerState(txCtx, { layerQueue: list }, {
 			type: 'system',
@@ -376,14 +380,6 @@ export async function saveQueueAndUpdateServer(
 		// in autocommit with a rollback() that does nothing.
 		const deferredCtx = { ...ctx, tx: undefined }
 		txCtx.tx.unlockTasks.push(async () => {
-			if (deferredCtx.serverSettings.settings.warnOnChangeLayer && nextLayerId) {
-				const statusRes = await deferredCtx.server.layersStatus.get(deferredCtx)
-				if (statusRes.code === 'ok' && statusRes.data.nextLayer) {
-					if (!L.areLayersCompatible(statusRes.data.nextLayer.id, nextLayerId)) {
-						await warnShowNext(deferredCtx, 'all-admins', { updated: true })
-					}
-				}
-			}
 			if (nextLayerId && nextItemId) {
 				await syncNextLayerToServer(
 					deferredCtx,
@@ -394,6 +390,11 @@ export async function saveQueueAndUpdateServer(
 				)
 			} else {
 				log.error('No next layer to sync to server')
+			}
+			// after the sync, so the warn names the layer now set rather than the one it replaced. A change SLM overrides
+			// never gets here: the override sets the layer back directly instead of saving, so it announces nothing.
+			if (deferredCtx.serverSettings.settings.warnOnNextLayerChange && nextLayerChanged) {
+				await warnShowNext(deferredCtx, 'all-admins', { updated: true })
 			}
 		})
 
@@ -1095,7 +1096,7 @@ const handleSideEffect = C.spanOp(
 					save,
 				})
 				await SquadServer.emitAppEvent(ctx, queueUpdated)
-				await saveQueueAndUpdateServer(ctx, se.list, queueUpdated.id)
+				await saveQueueAndUpdateServer(ctx, se.list, se.prevList, queueUpdated.id)
 				await dispatchOp(ctx, { op: 'save-completed', opId: SLL.createOpId() })
 				UserPresenceSys.dispatchEndAllLayerQueueEditing(ctx.serverId)
 				break

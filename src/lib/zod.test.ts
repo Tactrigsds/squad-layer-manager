@@ -37,7 +37,7 @@ describe('schemaAtPath', () => {
 	it('resolves every path the settings form offers a scoped JSON editor for', () => {
 		const parsed = SETTINGS.parseGlobalSettings({})
 		expect(parsed.success).toBe(true)
-		for (const path of ['rbac', 'commands', 'playerGroupings', 'layerTable', 'squadServer.rconCacheTTL']) {
+		for (const path of ['rbac', 'commands', 'playerGroupings', 'layerTable']) {
 			const sub = schemaAtPath(SETTINGS.GlobalSettingsSchema, path.split('.'))
 			expect(sub, path).toBeDefined()
 			// the editor writes back through encode, so each subtree must survive the decoded -> input round trip

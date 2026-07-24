@@ -2,7 +2,10 @@
 // Grouping lives here rather than in the schemas so the persisted settings shape is untouched; keys not listed in
 // any group render ungrouped after the groups (so newly added settings surface automatically).
 
-export type SettingsGroup = { slug: string; label: string; keys: string[] }
+// A `passthrough` group emits no header of its own: it exists only to place a single field that already renders its
+// own section header (carrying that section's reset controls, anchor and JSON toggle), where a second header above it
+// would just repeat the name.
+export type SettingsGroup = { slug: string; label: string; keys: string[]; passthrough?: true }
 
 // top-level global-settings keys that render no field of their own in the GUI (they're managed inline by a sibling
 // editor), so neither the form nor the TOC should emit a row/anchor for them. `defaultPrefix` is chosen via the
@@ -10,27 +13,30 @@ export type SettingsGroup = { slug: string; label: string; keys: string[] }
 export const HIDDEN_GLOBAL_SETTINGS_KEYS: ReadonlySet<string> = new Set(['defaultPrefix'])
 
 export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
-	{ slug: 'general', label: 'General', keys: ['topBarColor', 'navLinks', 'warnOnSlmStart'] },
 	{
-		slug: 'messaging',
-		label: 'Messaging & Reasons',
-		keys: ['warnPrefix', 'adminActionReasons', 'requireReasonFor', 'broadcasts', 'messageVariables', 'chat'],
+		slug: 'rbac',
+		label: 'Permissions & Roles',
+		keys: ['rbac', 'adminListSources', 'adminIdentifyingPermissions'],
+	},
+	{
+		slug: 'warns-and-broadcasts',
+		label: 'Warns & Broadcasts',
+		keys: ['adminActionReasons', 'requireReasonFor', 'messageVariables', 'chat'],
 	},
 	{ slug: 'commands', label: 'In-game Commands', keys: ['allowedPrefixes', 'defaultPrefix', 'commands', 'commandAliases'] },
-	{ slug: 'queue-and-votes', label: 'Queue & Votes', keys: ['layerQueue', 'vote', 'layerTable', 'layerGeneration'] },
+	{ slug: 'players', label: 'Players & Balance', keys: ['playerGroupings', 'playerFlagsRequiringNote', 'balanceTriggerLevels'] },
+	{ slug: 'layers', label: 'Layers', keys: ['layerTable', 'layerGeneration'] },
 	{
-		slug: 'squad-server',
-		label: 'Squad Server',
-		keys: ['squadServer', 'fogOffDelay', 'postRollAnnouncementsTimeout', 'balanceTriggerLevels'],
+		slug: 'misc',
+		label: 'Miscellaneous',
+		keys: ['topBarColor', 'navLinks', 'warnOnSlmStart', 'logFilePollInterval', 'tickRateThresholds'],
 	},
-	{ slug: 'players', label: 'Players & Flags', keys: ['playerGroupings', 'playerFlagsRequiringNote'] },
-	// rbac stays ungrouped: its own section header already reads "Permissions & Roles"
 ]
 
-// server settings aren't grouped, but the fields an operator must configure to get a new server working (connection
-// details, admin list sources, admin-identifying permissions) float to the top of the form; the rest follow in schema
-// order. Presentation-only, so the persisted shape is untouched (same rationale as the groups above).
-export const SERVER_SETTINGS_PRIORITY_KEYS: string[] = ['connections', 'adminListSources', 'adminIdentifyingPermissions']
+// server settings aren't grouped, but the connection details -- the one thing an operator must get right before a new
+// server does anything at all -- float to the top of the form; the rest follow in schema order. Presentation-only, so
+// the persisted shape is untouched (same rationale as the groups above).
+export const SERVER_SETTINGS_PRIORITY_KEYS: string[] = ['connections']
 
 // Settings most installs never touch. Their field renders inside an "Advanced" disclosure at the bottom of whichever
 // section owns it (a group, a nested section, or the form root), collapsed by default. Matched on the field's dotted
@@ -39,26 +45,24 @@ export const SERVER_SETTINGS_PRIORITY_KEYS: string[] = ['connections', 'adminLis
 export const ADVANCED_GLOBAL_SETTINGS_PATHS: ReadonlySet<string> = new Set([
 	'topBarColor',
 	'warnOnSlmStart',
-	'warnPrefix',
-	'chat',
 	'allowedPrefixes',
-	'layerQueue.lowQueueWarningThreshold',
-	'layerQueue.adminQueueReminderInterval',
+	'logFilePollInterval',
+	'tickRateThresholds',
+])
+
+export const ADVANCED_SERVER_SETTINGS_PATHS: ReadonlySet<string> = new Set([
+	'updatesToSquadServerDisabled',
+	'navLinks',
+	'rconCacheTTL',
+	'queue.lowQueueWarningThreshold',
+	'queue.adminQueueReminderInterval',
 	'vote.voteReminderInterval',
 	'vote.internalVoteReminderInterval',
 	'vote.finalVoteReminder',
 	'vote.autoStartVoteCutoff',
 	'vote.maxNumVoteChoices',
-	'squadServer',
 	'fogOffDelay',
 	'postRollAnnouncementsTimeout',
-])
-
-export const ADVANCED_SERVER_SETTINGS_PATHS: ReadonlySet<string> = new Set([
-	'updatesToSquadServerDisabled',
-	'overrideAdminSetNextLayer',
-	'warnOnChangeLayer',
-	'navLinks',
 ])
 
 // Subtrees whose GUI editor is elaborate enough that bulk edits (reordering, copying a role between installs, pasting a
@@ -70,7 +74,6 @@ export const LOCAL_JSON_EDITOR_PATHS: ReadonlySet<string> = new Set([
 	'rbac',
 	'commands',
 	'adminActionReasons',
-	'broadcasts',
 	'commandAliases',
 	'messageVariables',
 	'playerGroupings',
@@ -80,6 +83,7 @@ export const LOCAL_JSON_EDITOR_PATHS: ReadonlySet<string> = new Set([
 	'chat',
 	// server
 	'queue',
+	'rconCacheTTL',
 	'adminListSources',
 ])
 
