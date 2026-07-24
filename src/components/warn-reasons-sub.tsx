@@ -11,25 +11,25 @@ import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 
-// the Warn menu entry: a flat item when no warn presets are configured (today's behavior), otherwise a sub-menu
-// with Custom (the flat item's behavior) first, then the configured presets
+// the Warn menu entry: a flat item when no warn presets are configured (which leaves only the custom path),
+// otherwise a sub-menu offering Custom (the warn box) or Preset Reason (the warn dialog)
 export function WarnReasonsSub(props: {
 	slots: MenuSlots
 	denied: RBAC.PermissionDeniedResponse | null
 	disabled?: boolean
 	label?: string
 	onCustom: () => void
-	onPreset: (reason: AAR.AdminActionReason) => void
+	onPreset: () => void
 }) {
 	const { Item, Separator, Sub, SubTrigger, SubContent } = props.slots
-	const reasons = ZusUtils.useStore(
+	const hasReasons = ZusUtils.useStore(
 		SettingsClient.PublicSettingsStore,
-		s => s ? AAR.reasonsForAction(s.adminActionReasons, 'warn') : [],
+		s => !!s && AAR.reasonsForAction(s.adminActionReasons, 'warn').length > 0,
 	)
 	const label = props.label ?? 'Warn'
 	const disabled = !!props.denied || props.disabled
 
-	if (reasons.length === 0) {
+	if (!hasReasons) {
 		return (
 			<PermissionDeniedTooltip denied={props.denied}>
 				<Item onClick={props.onCustom} disabled={disabled}>
@@ -46,11 +46,7 @@ export function WarnReasonsSub(props: {
 				<SubContent>
 					<Item onClick={props.onCustom}>Custom</Item>
 					<Separator />
-					{reasons.map(reason => (
-						<Item key={reason.label} onClick={() => props.onPreset(reason)}>
-							<span title={AAR.reasonText('warn', reason)}>{reason.label}</span>
-						</Item>
-					))}
+					<Item onClick={props.onPreset}>Preset Reason</Item>
 				</SubContent>
 			</Sub>
 		</PermissionDeniedTooltip>
