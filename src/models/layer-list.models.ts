@@ -4,6 +4,7 @@ import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import type * as DND from '@/models/dndkit.models'
+import * as LNote from '@/models/layer-notes.models'
 import * as LTag from '@/models/layer-tags.models'
 import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models'
@@ -39,12 +40,16 @@ export const NewSingleItemSchema = z.object({
 	layerId: L.LayerIdSchema,
 	source: SourceSchema.optional(),
 	tags: z.array(LTag.TagIdSchema).optional(),
+	tagsSetBy: LTag.AttributionSchema.optional(),
 })
 export type NewSingleItem = z.infer<typeof NewSingleItemSchema>
 
+// notes are deliberately absent from NewSingleItemSchema: they can only arrive through the note ops, which is what
+// keeps their author trustworthy
 export const SingleItemSchema = NewSingleItemSchema.extend({
 	itemId: ItemIdSchema,
 	source: SourceSchema,
+	notes: LNote.NotesSchema.optional(),
 })
 export type SingleItem = z.infer<typeof SingleItemSchema>
 
@@ -538,17 +543,68 @@ export function withTags(items: NewItem[], tags: LTag.TagId[]): NewItem[] {
 	return items.map(item => (item.type === 'single-list-item' ? merge(item) : { ...item, choices: item.choices.map(merge) }))
 }
 
+// who a tag is attributed to is decided by whoever the add itself is attributed to, so a client can't credit a tag to
+// someone else. Vote choices carry their own tags, so they are stamped too.
+export function withTagAttribution<T extends NewItem>(items: T[], source: Source): T[] {
+	const setBy = source.type === 'manual' ? source.userId : undefined
+	const stamp = <I extends { tags?: LTag.TagId[]; tagsSetBy?: LTag.Attribution }>(item: I): I => {
+		const { tagsSetBy: _discarded, ...rest } = item
+		const attribution = LTag.attribute(undefined, item.tags ?? [], setBy)
+		return (attribution ? { ...rest, tagsSetBy: attribution } : rest) as I
+	}
+	return items.map(item => (item.type === 'single-list-item' ? stamp(item) : { ...item, choices: item.choices.map(stamp) }) as T)
+}
+
 // tags belong to layer items only, so a vote item's id is a no-op here (its choices carry their own tags). Returns whether
 // anything actually changed, so the caller can skip marking the item edited.
-export function setTags(list: List, itemId: ItemId, tags: LTag.TagId[]): boolean {
+export function setTags(list: List, itemId: ItemId, tags: LTag.TagId[], setBy?: USR.UserId): boolean {
 	const { item } = Obj.destrNullable(findItemById(list, itemId))
 	if (!item || item.type !== 'single-list-item') return false
 	const next = [...new Set(tags)]
 	const current = item.tags ?? []
-	if (current.length === next.length && current.every((t, i) => t === next[i])) return false
+	const nextSetBy = LTag.attribute(item.tagsSetBy, next, setBy)
+	const sameTags = current.length === next.length && current.every((t, i) => t === next[i])
+	if (sameTags && Obj.deepEqual(nextSetBy, item.tagsSetBy)) return false
 	if (next.length === 0) delete item.tags
 	else item.tags = next
+	if (!nextSetBy) delete item.tagsSetBy
+	else item.tagsSetBy = nextSetBy
 	return true
+}
+
+// notes, like tags, belong to layer items only. Each returns whether anything changed so the caller can skip marking
+// the item edited.
+export function addNote(list: List, itemId: ItemId, note: LNote.Note): boolean {
+	const { item } = Obj.destrNullable(findItemById(list, itemId))
+	if (!item || item.type !== 'single-list-item') return false
+	if (item.notes?.some(existing => existing.id === note.id)) return false
+	item.notes = [...(item.notes ?? []), note]
+	return true
+}
+
+export function editNote(list: List, itemId: ItemId, noteId: LNote.NoteId, text: string): boolean {
+	const { item } = Obj.destrNullable(findItemById(list, itemId))
+	if (!item || item.type !== 'single-list-item' || !item.notes) return false
+	const note = item.notes.find(note => note.id === noteId)
+	if (!note || note.text === text) return false
+	item.notes = item.notes.map(note => (note.id === noteId ? { ...note, text } : note))
+	return true
+}
+
+export function deleteNote(list: List, itemId: ItemId, noteId: LNote.NoteId): boolean {
+	const { item } = Obj.destrNullable(findItemById(list, itemId))
+	if (!item || item.type !== 'single-list-item' || !item.notes) return false
+	const remaining = item.notes.filter(note => note.id !== noteId)
+	if (remaining.length === item.notes.length) return false
+	if (remaining.length === 0) delete item.notes
+	else item.notes = remaining
+	return true
+}
+
+export function findNote(list: List, itemId: ItemId, noteId: LNote.NoteId): LNote.Note | undefined {
+	const { item } = Obj.destrNullable(findItemById(list, itemId))
+	if (!item || item.type !== 'single-list-item') return undefined
+	return item.notes?.find(note => note.id === noteId)
 }
 
 export function deleteItem(list: List, itemId: ItemId) {

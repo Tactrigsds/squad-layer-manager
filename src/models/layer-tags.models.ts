@@ -1,4 +1,5 @@
 import { createId } from '@/lib/id'
+import * as USR from '@/models/users.models'
 import { z } from 'zod'
 
 // A tag's identity is its id, which is immutable and carries the label it was created with, so a tag whose definition has
@@ -32,6 +33,21 @@ export const TagsSchema = z.array(TagSchema).prefault([]).describe(
 		+ 'renaming a tag therefore keeps it attached to every layer carrying it. Deleting a tag here does not strip it from layers already '
 		+ 'carrying it -- those fall back to displaying the raw tag id and can only be removed.',
 )
+
+export const AttributionSchema = z.record(TagIdSchema, USR.UserIdSchema)
+export type Attribution = z.infer<typeof AttributionSchema>
+
+// rebuilds attribution to match `tags`: whoever already claimed a tag keeps it, ids added in this change go to
+// `setBy`, and ids no longer on the item are dropped so the two fields can't drift. Returns undefined when nothing is
+// attributed, since a tag set by anything other than a user has nobody to show.
+export function attribute(current: Attribution | undefined, tags: TagId[], setBy?: USR.UserId): Attribution | undefined {
+	const next: Attribution = {}
+	for (const id of tags) {
+		const attributed = current?.[id] ?? setBy
+		if (attributed !== undefined) next[id] = attributed
+	}
+	return Object.keys(next).length > 0 ? next : undefined
+}
 
 export function createTagId(label: string) {
 	return `${label.trim()}:${createId(ID_SUFFIX_LENGTH)}`

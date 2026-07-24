@@ -1,4 +1,5 @@
 import { AdvancedVoteConfigEditor } from '@/components/advanced-vote-config-editor'
+import { LayerNotes } from '@/components/layer-notes'
 import { LayerTags } from '@/components/layer-tags'
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Badge } from '@/components/ui/badge.tsx'
@@ -29,6 +30,7 @@ import * as ZusUtils from '@/lib/zustand.ts'
 
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
+import * as LNote from '@/models/layer-notes.models'
 import type * as LTag from '@/models/layer-tags.models'
 
 import * as UP from '@/models/user-presence'
@@ -582,9 +584,26 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 							tags={item.type === 'single-list-item' && (
 								<LayerTags
 									tags={item.tags}
+									setBy={item.tagsSetBy}
 									disabled={!canEdit}
 									revealAddOnHover
 									onChange={(tags) => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'set-tags', tags })}
+								/>
+							)}
+							notes={item.type === 'single-list-item' && (
+								<LayerNotes
+									notes={item.notes}
+									disabled={!canEdit}
+									revealAddOnHover
+									onAdd={(text) =>
+										LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, {
+											op: 'add-note',
+											noteId: LNote.createNoteId(),
+											text,
+										})}
+									onEdit={(noteId, text) =>
+										LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'edit-note', noteId, text })}
+									onDelete={(noteId) => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete-note', noteId })}
 								/>
 							)}
 						/>
