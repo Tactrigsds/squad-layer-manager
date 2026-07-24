@@ -98,7 +98,7 @@ export default C.spanOp(
 				}
 			} catch (error) {
 				if (signal?.aborted) throw signal.reason
-				log.error(`Error fetching ${source.type} admin list: ${sourceLabel}`, error)
+				log.error(error, `Error fetching ${source.type} admin list: ${sourceLabel}`)
 			}
 
 			const groupRgx = /(?<=^Group=)(?<groupID>.*?):(?<groupPerms>.*?)(?=(?:\r\n|\r|\n|\s+\/\/))/gm

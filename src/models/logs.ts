@@ -127,10 +127,8 @@ export function getSubmoduleLogger(submodule: string, log: pino.Logger) {
 	return log.child({ [ATTRS.Module.NAME]: module })
 }
 
-// Type guard for SDK span with internal properties
-interface SdkSpan extends Otel.Span {
-	name?: string
-}
+// the sdk's span carries a `name` the api type doesn't expose
+type SdkSpan = Otel.Span & { name?: string }
 
 export function mapSpanAttrs(span: Otel.Span, record: Record<string, any>) {
 	const sdkSpan = span as SdkSpan

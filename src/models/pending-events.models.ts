@@ -802,7 +802,7 @@ async function* processPendingEvent(
 					processedEventIds.add(pendingEvent.id)
 					return
 				}
-				log.debug('found new layer during roll: ', layersStatus.currentLayer.id)
+				log.debug({ layerId: layersStatus.currentLayer.id }, 'found new layer during roll')
 				newLayerId = layersStatus.currentLayer.id
 			}
 
