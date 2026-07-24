@@ -9,60 +9,50 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as AppRouteRouteImport } from './routes/_app/route'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as SandboxSandboxRouteImport } from './routes/_sandbox/sandbox'
-import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as AppRouteRouteImport } from './routes/_app/route'
 import { Route as AppCommandsRouteImport } from './routes/_app/commands'
-import { Route as AppServersIndexRouteImport } from './routes/_app/servers.index'
+import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as SandboxSandboxRouteImport } from './routes/_sandbox/sandbox'
 import { Route as AppFiltersIndexRouteImport } from './routes/_app/filters/index'
-import { Route as LayersLayerIdTabRouteImport } from './routes/layers.$layerId.$tab'
-import { Route as AppServersServerIdRouteImport } from './routes/_app/servers.$serverId'
-import { Route as AppFiltersNewRouteImport } from './routes/_app/filters/new'
 import { Route as AppFiltersFilterIdRouteImport } from './routes/_app/filters/$filterId'
+import { Route as AppFiltersNewRouteImport } from './routes/_app/filters/new'
+import { Route as AppServersIndexRouteImport } from './routes/_app/servers.index'
+import { Route as AppServersServerIdRouteImport } from './routes/_app/servers.$serverId'
+import { Route as LayersLayerIdTabRouteImport } from './routes/layers.$layerId.$tab'
 
-const AppRouteRoute = AppRouteRouteImport.update({
-  id: '/_app',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SandboxSandboxRoute = SandboxSandboxRouteImport.update({
-  id: '/_sandbox/sandbox',
-  path: '/sandbox',
+const AppRouteRoute = AppRouteRouteImport.update({
+  id: '/_app',
   getParentRoute: () => rootRouteImport,
-} as any)
-const AppSettingsRoute = AppSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => AppRouteRoute,
 } as any)
 const AppCommandsRoute = AppCommandsRouteImport.update({
   id: '/commands',
   path: '/commands',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AppServersIndexRoute = AppServersIndexRouteImport.update({
-  id: '/servers/',
-  path: '/servers/',
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => AppRouteRoute,
+} as any)
+const SandboxSandboxRoute = SandboxSandboxRouteImport.update({
+  id: '/_sandbox/sandbox',
+  path: '/sandbox',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AppFiltersIndexRoute = AppFiltersIndexRouteImport.update({
   id: '/filters/',
   path: '/filters/',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const LayersLayerIdTabRoute = LayersLayerIdTabRouteImport.update({
-  id: '/layers/$layerId/$tab',
-  path: '/layers/$layerId/$tab',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AppServersServerIdRoute = AppServersServerIdRouteImport.update({
-  id: '/servers/$serverId',
-  path: '/servers/$serverId',
+const AppFiltersFilterIdRoute = AppFiltersFilterIdRouteImport.update({
+  id: '/filters/$filterId',
+  path: '/filters/$filterId',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppFiltersNewRoute = AppFiltersNewRouteImport.update({
@@ -70,10 +60,20 @@ const AppFiltersNewRoute = AppFiltersNewRouteImport.update({
   path: '/filters/new',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AppFiltersFilterIdRoute = AppFiltersFilterIdRouteImport.update({
-  id: '/filters/$filterId',
-  path: '/filters/$filterId',
+const AppServersIndexRoute = AppServersIndexRouteImport.update({
+  id: '/servers/',
+  path: '/servers/',
   getParentRoute: () => AppRouteRoute,
+} as any)
+const AppServersServerIdRoute = AppServersServerIdRouteImport.update({
+  id: '/servers/$serverId',
+  path: '/servers/$serverId',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const LayersLayerIdTabRoute = LayersLayerIdTabRouteImport.update({
+  id: '/layers/$layerId/$tab',
+  path: '/layers/$layerId/$tab',
+  getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -163,13 +163,6 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/_app': {
-      id: '/_app'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof AppRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -177,19 +170,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_sandbox/sandbox': {
-      id: '/_sandbox/sandbox'
-      path: '/sandbox'
-      fullPath: '/sandbox'
-      preLoaderRoute: typeof SandboxSandboxRouteImport
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/_app/settings': {
-      id: '/_app/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof AppSettingsRouteImport
-      parentRoute: typeof AppRouteRoute
     }
     '/_app/commands': {
       id: '/_app/commands'
@@ -198,12 +184,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCommandsRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/_app/servers/': {
-      id: '/_app/servers/'
-      path: '/servers'
-      fullPath: '/servers/'
-      preLoaderRoute: typeof AppServersIndexRouteImport
+    '/_app/settings': {
+      id: '/_app/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRouteRoute
+    }
+    '/_sandbox/sandbox': {
+      id: '/_sandbox/sandbox'
+      path: '/sandbox'
+      fullPath: '/sandbox'
+      preLoaderRoute: typeof SandboxSandboxRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_app/filters/': {
       id: '/_app/filters/'
@@ -212,18 +205,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppFiltersIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/layers/$layerId/$tab': {
-      id: '/layers/$layerId/$tab'
-      path: '/layers/$layerId/$tab'
-      fullPath: '/layers/$layerId/$tab'
-      preLoaderRoute: typeof LayersLayerIdTabRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/_app/servers/$serverId': {
-      id: '/_app/servers/$serverId'
-      path: '/servers/$serverId'
-      fullPath: '/servers/$serverId'
-      preLoaderRoute: typeof AppServersServerIdRouteImport
+    '/_app/filters/$filterId': {
+      id: '/_app/filters/$filterId'
+      path: '/filters/$filterId'
+      fullPath: '/filters/$filterId'
+      preLoaderRoute: typeof AppFiltersFilterIdRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/_app/filters/new': {
@@ -233,12 +219,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppFiltersNewRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/_app/filters/$filterId': {
-      id: '/_app/filters/$filterId'
-      path: '/filters/$filterId'
-      fullPath: '/filters/$filterId'
-      preLoaderRoute: typeof AppFiltersFilterIdRouteImport
+    '/_app/servers/': {
+      id: '/_app/servers/'
+      path: '/servers'
+      fullPath: '/servers/'
+      preLoaderRoute: typeof AppServersIndexRouteImport
       parentRoute: typeof AppRouteRoute
+    }
+    '/_app/servers/$serverId': {
+      id: '/_app/servers/$serverId'
+      path: '/servers/$serverId'
+      fullPath: '/servers/$serverId'
+      preLoaderRoute: typeof AppServersServerIdRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/layers/$layerId/$tab': {
+      id: '/layers/$layerId/$tab'
+      path: '/layers/$layerId/$tab'
+      fullPath: '/layers/$layerId/$tab'
+      preLoaderRoute: typeof LayersLayerIdTabRouteImport
+      parentRoute: typeof rootRouteImport
     }
   }
 }
