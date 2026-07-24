@@ -72,6 +72,15 @@ describe('reason applicability and text', () => {
 		expect(AAR.resolveReason(reasons, 'kill', 'Teamkilling').code).toBe('err:reason-not-found')
 	})
 
+	// the web GUI picks a reason from a menu and sends its label, so that lookup is by label and stays that way
+	it('resolveReasonByLabel matches the label, not the keyword', () => {
+		const byLabel = AAR.resolveReasonByLabel(reasons, 'kill', 'Teamkilling')
+		expect(byLabel.code).toBe('ok')
+		if (byLabel.code === 'ok') expect(byLabel.reason.keywords).toEqual(['tk'])
+		expect(AAR.resolveReasonByLabel(reasons, 'kill', 'tk').code).toBe('err:reason-not-found')
+		expect(AAR.resolveReasonByLabel(reasons, 'kill', 'AFK').code).toBe('err:reason-not-applicable')
+	})
+
 	it('reasonText picks the per-action text', () => {
 		expect(AAR.reasonText('warn', reasons[0])).toBe('Teamkilling warn text')
 		expect(AAR.reasonText('kill', reasons[0])).toBe('Teamkilling kill text')

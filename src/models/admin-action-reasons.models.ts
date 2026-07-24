@@ -94,8 +94,19 @@ export type ResolveReasonRes =
 	| { code: 'err:reason-not-found'; msg: string }
 	| { code: 'err:reason-not-applicable'; msg: string }
 
-export function resolveReason(reasons: AdminActionReason[], action: AdminActionType, token: string): ResolveReasonRes {
-	const reason = LP.findByKeyword(reasons, token)
+// how in-game chat resolves a reason: by keyword only. A preset argument is matched as exactly one token, so a label
+// with whitespace would silently be unreachable -- hence keywords, which can't contain any and are required.
+export function resolveReason(reasons: AdminActionReason[], action: AdminActionType, keyword: string): ResolveReasonRes {
+	return checkApplicable(LP.findByKeyword(reasons, keyword), action, keyword)
+}
+
+// how the web GUI resolves a reason the admin picked from a menu: by label, the preset's identity. Handlers re-resolve
+// against current settings so a preset deleted or retargeted since the client loaded it fails the whole action.
+export function resolveReasonByLabel(reasons: AdminActionReason[], action: AdminActionType, label: string): ResolveReasonRes {
+	return checkApplicable(LP.findByLabel(reasons, label), action, label)
+}
+
+function checkApplicable(reason: AdminActionReason | undefined, action: AdminActionType, token: string): ResolveReasonRes {
 	if (!reason) return { code: 'err:reason-not-found', msg: `Admin action reason "${token}" no longer exists` }
 	if (reason.actionTexts[action] === undefined) {
 		return {
