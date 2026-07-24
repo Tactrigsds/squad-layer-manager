@@ -508,13 +508,13 @@ const globalRouter = {
 		}),
 
 	// inline tag creation/editing from the queue. A separate endpoint because updateSettings requires the caller to hold
-	// the whole settings object, which needs global-settings:read -- a queue editor allowed to manage tags may not have it.
+	// the whole settings object, which needs global-settings:read -- a queue editor holding queue:manage-tags may not have it.
 	// Deletion is deliberately absent: tags are only removed from the settings page (see LTag.TagsSchema).
 	upsertLayerTag: orpcBase
 		.meta({ type: 'mutation' })
 		.input(LTag.TagSchema)
 		.handler(async ({ context: ctx, input }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SETTINGS.Grants.writeGlobalSettingsPaths([['layerTags']]))
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:manage-tags'))
 			if (denyRes) return denyRes
 
 			const existing = GLOBAL_SETTINGS.layerTags
