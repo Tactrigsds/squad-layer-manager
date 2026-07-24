@@ -4,6 +4,7 @@ import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import type * as DND from '@/models/dndkit.models'
+import * as LTag from '@/models/layer-tags.models'
 import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models'
 import { z } from 'zod'
@@ -37,6 +38,7 @@ export const NewSingleItemSchema = z.object({
 	itemId: ItemIdSchema.optional(),
 	layerId: L.LayerIdSchema,
 	source: SourceSchema.optional(),
+	tags: z.array(LTag.TagIdSchema).optional(),
 })
 export type NewSingleItem = z.infer<typeof NewSingleItemSchema>
 
@@ -526,6 +528,27 @@ export function editLayer(list: List, source: Source, itemId: ItemId, layerId: L
 	item.source = source
 	item.layerId = layerId
 	if (parentVoteItem) setCorrectChosenLayerIdInPlace(parentVoteItem)
+}
+
+// stamps the tags chosen in a dialog's footer onto everything it created. A vote item holds no tags of its own, so its
+// choices take them instead.
+export function withTags(items: NewItem[], tags: LTag.TagId[]): NewItem[] {
+	if (tags.length === 0) return items
+	const merge = <T extends { tags?: LTag.TagId[] }>(item: T): T => ({ ...item, tags: [...new Set([...(item.tags ?? []), ...tags])] })
+	return items.map(item => (item.type === 'single-list-item' ? merge(item) : { ...item, choices: item.choices.map(merge) }))
+}
+
+// tags belong to layer items only, so a vote item's id is a no-op here (its choices carry their own tags). Returns whether
+// anything actually changed, so the caller can skip marking the item edited.
+export function setTags(list: List, itemId: ItemId, tags: LTag.TagId[]): boolean {
+	const { item } = Obj.destrNullable(findItemById(list, itemId))
+	if (!item || item.type !== 'single-list-item') return false
+	const next = [...new Set(tags)]
+	const current = item.tags ?? []
+	if (current.length === next.length && current.every((t, i) => t === next[i])) return false
+	if (next.length === 0) delete item.tags
+	else item.tags = next
+	return true
 }
 
 export function deleteItem(list: List, itemId: ItemId) {
