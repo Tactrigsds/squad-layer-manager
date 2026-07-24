@@ -8,7 +8,7 @@ import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as AAR from '@/models/admin-action-reasons.models'
-import * as SM from '@/models/squad.models'
+import type * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -24,9 +24,9 @@ function warnTargetsEqual(a: WarnChat.WarnFocusTarget, b: WarnChat.WarnFocusTarg
 	return a.kind === b.kind
 }
 
-// Compact warn-chat input reused by the player- and squad-details windows so admins can warn a target
-// straight from its window. When `taggedSquad` is set the message body gets that squad's "@Squad3" tag; when the
-// username checkbox is checked its prefix sits ahead of it, matching ServerChatBox's ordering.
+// Compact warn-chat input reused by the player- and squad-details windows so admins can warn a target straight
+// from its window. The leading "@..." tag naming the audience is the server's job; `taggedSquad` tells it these
+// targets are a squad rather than a set of players it should name individually.
 export default function WarnChatBox({
 	serverId,
 	playerIds,
@@ -71,9 +71,7 @@ export default function WarnChatBox({
 		SettingsClient.PublicSettingsStore,
 		s => Object.fromEntries((s?.messageVariables ?? []).map(v => [v.name, v.value])) as Record<string, string>,
 	)
-	// the tag the server prepends for a preset warn, so the two renders agree by construction
-	const bodyPrefix = taggedSquad ? SM.squadWarnTag(taggedSquad) : undefined
-	// unprefixed: send() adds the squad tag, and the server adds it for the preset path
+	// untagged: the server prepends the "@..." audience tag to whatever it's given, on both paths
 	const renderPreset = (reason: AAR.AdminActionReason) => AAR.formatAppliedReason('warn', reason, { vars: messageVars }).trim()
 
 	const noTargets = playerIds.length === 0
@@ -88,8 +86,7 @@ export default function WarnChatBox({
 	async function send() {
 		const text = message.trim()
 		if (!text || sendDisabled) return
-		const body = bodyPrefix ? `${bodyPrefix} ${text}` : text
-		const composed = prefixName && username ? `${username}: ${body}` : body
+		const composed = prefixName && username ? `${username}: ${text}` : text
 		// route through the admin-action-reason path only when the server would render exactly what's in the box:
 		// the text is still the preset verbatim, and there's no username prefix for that path to drop
 		const preset = reasons.find(r => r.label === presetLabel)
@@ -98,8 +95,9 @@ export default function WarnChatBox({
 			const res = await warnPlayersMutation.mutateAsync({
 				serverId,
 				playerIds,
+				taggedSquad,
 				notifyAdmins: notifyAdminsChecked,
-				...(asPreset ? { presetReasonLabel: asPreset.label, taggedSquad } : { reason: composed }),
+				...(asPreset ? { presetReasonLabel: asPreset.label } : { reason: composed }),
 			})
 			if (res.code !== 'ok') {
 				toast.error('Failed to send', { description: res.code })

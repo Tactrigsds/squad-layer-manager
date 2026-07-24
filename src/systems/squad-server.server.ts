@@ -412,7 +412,7 @@ export const orpcRouter = {
 			// the input refine guarantees a reason was provided; narrow without asserting
 			if (!reasonRes.applied) return { code: 'err:reason-required' as const, msg: 'A reason is required to warn.' }
 			const message = AAR.renderAppliedReason(reasonRes.applied, {
-				squadTag: input.taggedSquad ? SM.squadWarnTag(input.taggedSquad) : undefined,
+				audienceTag: await resolveWarnAudienceTag(ctx, input.playerIds, input.taggedSquad),
 			})
 			// squad warns name the squad + faction (e.g. "warned Squad1 (PLA): ...") in the admin notification
 			let adminNotifyDescription: string | undefined
@@ -1254,21 +1254,47 @@ export async function warnPlayers(
 	await notifyAdminsOfWebAction(ctx, appEvent, opts?.adminNotifyDescription ?? `warned ${audience.label}: ${reason}`)
 }
 
+// resolves warn targets against the live roster: the matching players (undefined where a target isn't online) plus
+// whether they're all admins and whether they're the entire online admin roster
+async function resolveWarnTargets(ctx: C.SquadRcon & CS.AbortSignal, targets: SM.PlayerId[]) {
+	const [adminList, teamsRes] = await Promise.all([AdminList.adminList.get(ctx), ctx.server.teams.get(ctx)])
+	if (teamsRes.code !== 'ok') return { players: [], allAdmins: false, isEntireAdminRoster: false }
+
+	const isAdmin = (player: SM.Player) => SM.AdminList.getIsAdmin(adminList, player.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
+	const players = targets.map(target => SM.PlayerIds.find(teamsRes.players, p => p.ids, target))
+	const allAdmins = players.every(player => !!player && isAdmin(player))
+	return { players, allAdmins, isEntireAdminRoster: allAdmins && players.length === teamsRes.players.filter(isAdmin).length }
+}
+
+// how many warn targets get named in the message before it just goes untagged rather than listing a crowd
+const MAX_WARN_MENTIONS = 3
+
+// the "@..." tag prepended to a warn so recipients see who it's aimed at. An explicit squad warn keeps its squad
+// tag whatever its size; otherwise a handful of targets are named individually, the whole admin roster reads as
+// "@admins", and anything larger goes untagged.
+async function resolveWarnAudienceTag(
+	ctx: C.SquadRcon & CS.AbortSignal,
+	targets: SM.PlayerId[],
+	taggedSquad?: { squadId: number; squadName: string; teamId: SM.TeamId },
+) {
+	if (taggedSquad) return SM.squadWarnTag(taggedSquad)
+	const resolved = await resolveWarnTargets(ctx, targets)
+	if (targets.length <= MAX_WARN_MENTIONS) {
+		const names = resolved.players.map(player => player?.ids.username).filter(name => !!name)
+		// naming only some of them would read as though the rest weren't warned
+		return names.length === targets.length ? names.map(name => `@${name}`).join(', ') : undefined
+	}
+	return resolved.isEntireAdminRoster ? '@admins' : undefined
+}
+
 // who a warn hit, phrased for the admin notification: the warnee by name for a single target, "all admins" when it
 // reached exactly the online admin roster, otherwise a plain count. allAdmins also drives the notification opt-out.
 async function classifyWarnTargets(ctx: C.SquadRcon & CS.AbortSignal, targets: SM.PlayerId[]) {
 	const count = (n: number) => `${n} ${n === 1 ? 'player' : 'players'}`
-	const [adminList, teamsRes] = await Promise.all([AdminList.adminList.get(ctx), ctx.server.teams.get(ctx)])
-	if (teamsRes.code !== 'ok') return { allAdmins: false, label: count(targets.length) }
-
-	const isAdmin = (player: SM.Player) => SM.AdminList.getIsAdmin(adminList, player.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
-	const targetPlayers = targets.map(target => SM.PlayerIds.find(teamsRes.players, p => p.ids, target))
-	const allAdmins = targetPlayers.every(player => !!player && isAdmin(player))
-	if (allAdmins && targetPlayers.length === teamsRes.players.filter(isAdmin).length) {
-		return { allAdmins, label: 'all admins' }
-	}
-	if (targetPlayers.length === 1 && targetPlayers[0]?.ids.username) return { allAdmins, label: targetPlayers[0].ids.username }
-	return { allAdmins, label: count(targets.length) }
+	const resolved = await resolveWarnTargets(ctx, targets)
+	if (resolved.isEntireAdminRoster) return { allAdmins: resolved.allAdmins, label: 'all admins' }
+	const only = resolved.players.length === 1 ? resolved.players[0]?.ids.username : undefined
+	return { allAdmins: resolved.allAdmins, label: only ?? count(targets.length) }
 }
 
 // disbands a squad through an app event: records the squad + its members, arms the machine to attribute the
@@ -1309,7 +1335,7 @@ export async function disbandSquadAction(
 			ctx,
 			appEvent.id,
 			members,
-			AAR.renderAppliedReason(reason, { squadTag: squad ? SM.squadWarnTag(squad) : `@Squad${squadId}` }),
+			AAR.renderAppliedReason(reason, { audienceTag: squad ? SM.squadWarnTag(squad) : `@Squad${squadId}` }),
 		)
 	}
 	// name the squad + faction consistently with squad warns (e.g. "disbanded Squad1 (PLA)")
