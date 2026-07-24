@@ -553,7 +553,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					ref={dragProps.ref}
 					className={cn(
 						Typo.LayerText,
-						'group/single-item flex data-[is-voting=true]:border-added  data-[is-voting=true]:bg-secondary w-full min-w-10 min-h-5 max items-center justify-between space-x-2 bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline-2 data-[is-dragging=true]:outline-solid data-[is-dragging=true]:outline-white data-[is-dragging=true]:bg-transparent! [&[data-is-dragging=true]>*]:invisible rounded-md bg-opacity-30 cursor-default data-[is-hovered=true]:outline-solid',
+						'group/single-item flex data-[is-voting=true]:border-added data-[is-voting=true]:bg-secondary w-full min-w-10 min-h-5 max items-center justify-between space-x-2 bg-background border-2 border-transparent data-[mutation=added]:border-added data-[mutation=moved]:border-moved data-[mutation=edited]:border-edited data-[is-dragging=true]:outline-2 data-[is-dragging=true]:outline-solid data-[is-dragging=true]:outline-white data-[is-dragging=true]:bg-transparent! [&[data-is-dragging=true]>*]:invisible rounded-md cursor-default data-[is-hovered=true]:outline-solid',
 					)}
 					data-mutation={displayedMutation}
 					data-is-dragging={dragProps.isDragging}
