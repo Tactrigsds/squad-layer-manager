@@ -3,7 +3,6 @@ import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import * as ZodLib from '@/lib/zod'
 import * as ZusUtils from '@/lib/zustand'
-import type * as AAR from '@/models/admin-action-reasons.models'
 import type * as BM from '@/models/battlemetrics.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as MH from '@/models/match-history.models'
@@ -443,14 +442,27 @@ export function PlayerMenuItems(
 		WarnChat.requestWarnFocus({ kind: 'player', playerId })
 	}
 
-	// preset warns skip the warn box and send immediately (single target)
-	async function sendPresetWarn(reason: AAR.AdminActionReason) {
-		const res = await warnPlayersMutation.mutateAsync({ serverId, playerIds: [playerId], presetReasonLabel: reason.label })
+	async function warnPreset() {
+		presetReasonRef.current = ''
+		const result = await openDialog({
+			title: 'Warn Player',
+			description: `Warn ${playerInfo?.username ?? 'this player'} with a preset reason?`,
+			content: (
+				<div className="grid gap-3 py-2">
+					<ReasonPicker action="warn" presetRef={presetReasonRef} required />
+				</div>
+			),
+			buttons: [{ id: 'confirm', label: 'Warn' }],
+		})
+		if (result !== 'confirm') return
+		const input = SquadServerClient.readReasonInput({ action: 'warn', required: true, presetRef: presetReasonRef })
+		if (!input) return
+		const res = await warnPlayersMutation.mutateAsync({ serverId, playerIds: [playerId], ...input })
 		if (res.code !== 'ok') {
 			toast.error('Warn failed', { description: 'msg' in res ? res.msg : res.code })
 			return
 		}
-		toast(`Warned ${playerInfo?.username ?? 'player'} for ${reason.label}`)
+		toast(`Warned ${playerInfo?.username ?? 'player'} for ${input.presetReasonLabel}`)
 	}
 
 	function copyTeleportCommand() {
@@ -702,7 +714,7 @@ export function PlayerMenuItems(
 				</Item>
 			</PermissionDeniedTooltip>
 			<Separator />
-			{!omitWarn && <WarnReasonsSub slots={slots} denied={warnDenied} disabled={!isOnServer} onCustom={warn} onPreset={sendPresetWarn} />}
+			{!omitWarn && <WarnReasonsSub slots={slots} denied={warnDenied} disabled={!isOnServer} onCustom={warn} onPreset={warnPreset} />}
 			<PlayerFlagsMenuItem slots={slots} playerId={playerId} />
 			<Item onClick={copyTeleportCommand} disabled={!isOnServer}>
 				Copy Teleport Command

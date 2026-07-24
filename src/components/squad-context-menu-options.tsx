@@ -2,7 +2,6 @@ import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
-import type * as AAR from '@/models/admin-action-reasons.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
@@ -128,25 +127,32 @@ export function SquadMenuItems(
 		WarnChat.requestWarnFocus({ kind: 'squad', uniqueSquadId: uniqueId })
 	}
 
-	// preset warns hit the whole squad, so confirm before sending (bulk-action rule)
-	async function warnSquadPreset(reason: AAR.AdminActionReason) {
+	async function warnSquadPreset() {
+		presetReasonRef.current = ''
 		const result = await openDialog({
 			title: 'Warn Squad',
-			description: `Warn the ${squadPlayerIds.length} members of squad ${squadLabel} for ${reason.label}?`,
+			description: `Warn the ${squadPlayerIds.length} members of squad ${squadLabel} with a preset reason?`,
+			content: (
+				<div className="grid gap-3 py-2">
+					<ReasonPicker action="warn" presetRef={presetReasonRef} required />
+				</div>
+			),
 			buttons: [{ id: 'confirm', label: 'Warn' }],
 		})
 		if (result !== 'confirm') return
+		const input = SquadServerClient.readReasonInput({ action: 'warn', required: true, presetRef: presetReasonRef })
+		if (!input) return
 		const res = await warnPlayersMutation.mutateAsync({
 			serverId,
 			playerIds: squadPlayerIds,
-			presetReasonLabel: reason.label,
+			...input,
 			taggedSquad: { squadId: squad.squadId, squadName: squad.squadName, teamId: squad.teamId },
 		})
 		if (res.code !== 'ok') {
 			toast.error('Warn failed', { description: 'msg' in res ? res.msg : res.code })
 			return
 		}
-		toast(`Warned squad ${squadLabel} for ${reason.label}`)
+		toast(`Warned squad ${squadLabel} for ${input.presetReasonLabel}`)
 	}
 
 	async function killSquad() {
