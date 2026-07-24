@@ -555,20 +555,29 @@ export function withTagAttribution<T extends NewItem>(items: T[], source: Source
 	return items.map(item => (item.type === 'single-list-item' ? stamp(item) : { ...item, choices: item.choices.map(stamp) }) as T)
 }
 
-// tags belong to layer items only, so a vote item's id is a no-op here (its choices carry their own tags). Returns whether
-// anything actually changed, so the caller can skip marking the item edited.
-export function setTags(list: List, itemId: ItemId, tags: LTag.TagId[], setBy?: USR.UserId): boolean {
+// tags belong to layer items only, so a vote item's id is a no-op here (its choices carry their own tags). One tag at a
+// time rather than a whole list, so two people tagging the same item concurrently don't overwrite each other. Each
+// returns whether anything actually changed, so the caller can skip marking the item edited.
+export function addTag(list: List, itemId: ItemId, tagId: LTag.TagId, setBy?: USR.UserId): boolean {
 	const { item } = Obj.destrNullable(findItemById(list, itemId))
 	if (!item || item.type !== 'single-list-item') return false
-	const next = [...new Set(tags)]
-	const current = item.tags ?? []
-	const nextSetBy = LTag.attribute(item.tagsSetBy, next, setBy)
-	const sameTags = current.length === next.length && current.every((t, i) => t === next[i])
-	if (sameTags && Obj.deepEqual(nextSetBy, item.tagsSetBy)) return false
-	if (next.length === 0) delete item.tags
-	else item.tags = next
-	if (!nextSetBy) delete item.tagsSetBy
-	else item.tagsSetBy = nextSetBy
+	if (item.tags?.includes(tagId)) return false
+	item.tags = [...(item.tags ?? []), tagId]
+	const attribution = LTag.attribute(item.tagsSetBy, item.tags, setBy)
+	if (attribution) item.tagsSetBy = attribution
+	return true
+}
+
+export function removeTag(list: List, itemId: ItemId, tagId: LTag.TagId): boolean {
+	const { item } = Obj.destrNullable(findItemById(list, itemId))
+	if (!item || item.type !== 'single-list-item' || !item.tags) return false
+	const remaining = item.tags.filter(id => id !== tagId)
+	if (remaining.length === item.tags.length) return false
+	if (remaining.length === 0) delete item.tags
+	else item.tags = remaining
+	const attribution = LTag.attribute(item.tagsSetBy, remaining)
+	if (attribution) item.tagsSetBy = attribution
+	else delete item.tagsSetBy
 	return true
 }
 

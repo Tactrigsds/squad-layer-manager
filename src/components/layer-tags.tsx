@@ -44,7 +44,8 @@ export function LayerTags(props: {
 	tags: LTag.TagId[] | undefined
 	// who put each tag on this item, where that's known. Absent in the dialogs, which tag items that don't exist yet.
 	setBy?: LTag.Attribution
-	onChange: (tags: LTag.TagId[]) => void
+	onAdd: (tagId: LTag.TagId) => void
+	onRemove: (tagId: LTag.TagId) => void
 	disabled?: boolean
 	className?: string
 	// keeps the add button out of the way until the queue item is hovered or the button takes focus. Only meaningful
@@ -56,10 +57,9 @@ export function LayerTags(props: {
 	const [editing, setEditing] = React.useState<LTag.Tag | 'new' | null>(null)
 
 	const tagIds = props.tags ?? []
-	const remove = (id: LTag.TagId) => props.onChange(tagIds.filter(t => t !== id))
 	const add = (id: LTag.TagId) => {
 		if (tagIds.includes(id)) return
-		props.onChange([...tagIds, id])
+		props.onAdd(id)
 	}
 
 	return (
@@ -70,7 +70,7 @@ export function LayerTags(props: {
 					tag={tag}
 					setBy={props.setBy?.[tag.id]}
 					disabled={props.disabled}
-					onRemove={() => remove(tag.id)}
+					onRemove={() => props.onRemove(tag.id)}
 					onEdit={() => setEditing(configured.find(t => t.id === tag.id) ?? null)}
 				/>
 			))}

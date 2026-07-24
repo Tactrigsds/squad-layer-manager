@@ -112,31 +112,39 @@ describe('withTags', () => {
 	})
 })
 
-describe('setTags', () => {
+describe('addTag / removeTag', () => {
 	const t1 = LTag.createTagId('a')
 	const t2 = LTag.createTagId('b')
 
-	it('sets tags on a layer item and reports the change', () => {
+	it('appends in the order tags were added', () => {
 		const list: LL.List = [single('a')]
-		expect(LL.setTags(list, 'a', [t1])).toBe(true)
+		expect(LL.addTag(list, 'a', t1)).toBe(true)
+		expect(LL.addTag(list, 'a', t2)).toBe(true)
+		expect(list[0]).toMatchObject({ tags: [t1, t2] })
+	})
+
+	// ops replay against several base states, so re-adding the same tag must not duplicate it
+	it('is idempotent for a tag already present', () => {
+		const list: LL.List = [single('a', [t1])]
+		expect(LL.addTag(list, 'a', t1)).toBe(false)
 		expect(list[0]).toMatchObject({ tags: [t1] })
 	})
 
-	it('reports no change when the tags are identical', () => {
-		const list: LL.List = [single('a', [t1])]
-		expect(LL.setTags(list, 'a', [t1])).toBe(false)
+	it('removes just the one tag', () => {
+		const list: LL.List = [single('a', [t1, t2])]
+		expect(LL.removeTag(list, 'a', t1)).toBe(true)
+		expect(list[0]).toMatchObject({ tags: [t2] })
 	})
 
-	it('drops the field entirely when cleared', () => {
+	it('drops the field entirely once the last tag goes', () => {
 		const list: LL.List = [single('a', [t1])]
-		expect(LL.setTags(list, 'a', [])).toBe(true)
+		expect(LL.removeTag(list, 'a', t1)).toBe(true)
 		expect(list[0]).not.toHaveProperty('tags')
 	})
 
-	it('dedupes', () => {
-		const list: LL.List = [single('a')]
-		LL.setTags(list, 'a', [t1, t1, t2])
-		expect(list[0]).toMatchObject({ tags: [t1, t2] })
+	it('reports no change for a tag that was never there', () => {
+		const list: LL.List = [single('a', [t1])]
+		expect(LL.removeTag(list, 'a', t2)).toBe(false)
 	})
 
 	// tags belong to layer items; a vote item holds none of its own
@@ -148,7 +156,7 @@ describe('setTags', () => {
 			source: { type: 'generated' },
 			choices: [single('c1')],
 		}]
-		expect(LL.setTags(list, 'v1', [t1])).toBe(false)
+		expect(LL.addTag(list, 'v1', t1)).toBe(false)
 		expect(list[0]).not.toHaveProperty('tags')
 	})
 
@@ -160,7 +168,7 @@ describe('setTags', () => {
 			source: { type: 'generated' },
 			choices: [single('c1')],
 		}]
-		expect(LL.setTags(list, 'c1', [t1])).toBe(true)
+		expect(LL.addTag(list, 'c1', t1)).toBe(true)
 		expect(list[0].type === 'vote-list-item' && list[0].choices[0].tags).toEqual([t1])
 	})
 })
@@ -173,42 +181,37 @@ describe('attribution', () => {
 
 	it('records who added each tag', () => {
 		const list: LL.List = [single('a')]
-		LL.setTags(list, 'a', [t1], alice)
+		LL.addTag(list, 'a', t1, alice)
 		expect(list[0]).toMatchObject({ tagsSetBy: { [t1]: alice } })
 	})
 
 	it('leaves an existing tag attributed to whoever added it', () => {
 		const list: LL.List = [single('a')]
-		LL.setTags(list, 'a', [t1], alice)
-		LL.setTags(list, 'a', [t1, t2], bob)
+		LL.addTag(list, 'a', t1, alice)
+		LL.addTag(list, 'a', t2, bob)
 		expect(list[0]).toMatchObject({ tagsSetBy: { [t1]: alice, [t2]: bob } })
 	})
 
 	it('drops attribution for a tag that was removed', () => {
 		const list: LL.List = [single('a')]
-		LL.setTags(list, 'a', [t1, t2], alice)
-		LL.setTags(list, 'a', [t2], alice)
+		LL.addTag(list, 'a', t1, alice)
+		LL.addTag(list, 'a', t2, alice)
+		LL.removeTag(list, 'a', t1)
 		expect(list[0]).toMatchObject({ tagsSetBy: { [t2]: alice } })
 	})
 
 	it('drops the field entirely once nothing is attributed', () => {
 		const list: LL.List = [single('a')]
-		LL.setTags(list, 'a', [t1], alice)
-		LL.setTags(list, 'a', [])
+		LL.addTag(list, 'a', t1, alice)
+		LL.removeTag(list, 'a', t1)
 		expect(list[0]).not.toHaveProperty('tagsSetBy')
 	})
 
 	// tags set by anything other than a user have nobody to show
 	it('records nothing for a non-user source', () => {
 		const list: LL.List = [single('a')]
-		LL.setTags(list, 'a', [t1])
+		LL.addTag(list, 'a', t1)
 		expect(list[0]).not.toHaveProperty('tagsSetBy')
-	})
-
-	it('reports a change when only the attribution is new', () => {
-		const list: LL.List = [single('a')]
-		LL.setTags(list, 'a', [t1])
-		expect(LL.setTags(list, 'a', [t1], alice)).toBe(true)
 	})
 
 	it('takes attribution from the op source, not from the client-supplied item', () => {

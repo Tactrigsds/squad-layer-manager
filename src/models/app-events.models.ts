@@ -636,7 +636,8 @@ function actorsByItem(ops: SLL.Operation[]): Map<LL.ItemId, Actor> {
 			case 'move':
 			case 'swap-factions':
 			case 'edit-layer':
-			case 'set-tags':
+			case 'add-tag':
+			case 'remove-tag':
 			case 'add-note':
 			case 'edit-note':
 			case 'delete-note':

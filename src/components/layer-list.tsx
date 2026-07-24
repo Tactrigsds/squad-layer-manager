@@ -282,7 +282,13 @@ function LoadedSelectLayersView({
 				onOpenChange={onSelectLayersChange}
 				selectQueueItems={onAddItems}
 				footerAdditions={activity.opts.variant === 'toggle-position' && addLayersTabsList}
-				footerBeforeSubmit={<LayerTags tags={pendingTags} onChange={setPendingTags} />}
+				footerBeforeSubmit={
+					<LayerTags
+						tags={pendingTags}
+						onAdd={(tagId) => setPendingTags(prev => [...prev, tagId])}
+						onRemove={(tagId) => setPendingTags(prev => prev.filter(id => id !== tagId))}
+					/>
+				}
 			/>
 		)
 	}
@@ -394,7 +400,11 @@ function LoadedPasteRotation({
 			extraFooter={
 				<>
 					{positionTabsList}
-					<LayerTags tags={pendingTags} onChange={setPendingTags} />
+					<LayerTags
+						tags={pendingTags}
+						onAdd={(tagId) => setPendingTags(prev => [...prev, tagId])}
+						onRemove={(tagId) => setPendingTags(prev => prev.filter(id => id !== tagId))}
+					/>
 				</>
 			}
 		/>
@@ -587,7 +597,8 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 									setBy={item.tagsSetBy}
 									disabled={!canEdit}
 									revealAddOnHover
-									onChange={(tags) => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'set-tags', tags })}
+									onAdd={(tagId) => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'add-tag', tagId })}
+									onRemove={(tagId) => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'remove-tag', tagId })}
 								/>
 							)}
 							notes={item.type === 'single-list-item' && (
