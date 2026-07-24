@@ -1,20 +1,31 @@
 import type { MigrationDriver } from '@/server/migrate'
 
-// Settings reorganization: several keys change scope between the global row and the per-server rows.
+// Settings reorganization. Most of it is keys changing scope between the global row and the per-server rows:
 //
-//   overrideAdminSetNextLayer / warnOnChangeLayer   per-server -> global (first server that sets them wins)
-//   adminActionReasons[].aliases                    -> .keywords, now the ONLY thing chat matches, so required
-//   squadServer.rconCacheTTL                        global -> per-server (copied to every server)
+//   vote, fogOffDelay, postRollAnnouncementsTimeout   global -> per-server (copied to every server)
+//   layerQueue.*                                      global -> per-server, under `queue`
+//   squadServer.rconCacheTTL                          global -> per-server
 //   squadServer.{logFilePollInterval,tickRateThresholds} -> global top level, dissolving squadServer
-//   warnPrefix                                      dropped; admin-directed warns are never prefixed now
+//   warnPrefix                                        dropped; admin-directed warns are never prefixed now
+//   queue.{preferredLength,generatedItemType,preferredNumVoteChoices} dropped; nothing read them
+//   adminActionReasons[].aliases                      -> .keywords, now the ONLY thing chat matches, so required
 //
-// `settings` is stored superjson-wrapped ({ json, meta }); every value touched here is a primitive or a plain
-// object, so `meta` never references them. Idempotent throughout: once a key has been moved the source no longer
-// carries it and the destination already does.
+// Everything moving global -> per-server was one value the whole install shared, so every server starts from it and
+// operators diverge them afterwards.
+//
+// `settings` is stored superjson-wrapped ({ json, meta }); every value touched here is a primitive, a plain object or
+// an array of them, so `meta` never references them. HumanTime values are copied across verbatim: the global row holds
+// them encoded ("5m") and server rows decoded (300000), but the schema parses either, and the next save through the
+// editor normalizes. Idempotent throughout: once a key has moved the source no longer carries it.
 
 type Wrapper = { json?: Record<string, unknown>; meta?: unknown }
 
-const GLOBALIZED_SERVER_KEYS = ['overrideAdminSetNextLayer', 'warnOnChangeLayer'] as const
+// per-server keys an earlier revision of this migration hoisted onto the global row. They belong to the server, so
+// they're pushed back down if a database ran that revision; on any other database there is nothing to push.
+const RETURNED_TO_SERVERS = ['overrideAdminSetNextLayer', 'warnOnChangeLayer'] as const
+
+const GLOBAL_TO_SERVER_KEYS = ['vote', 'fogOffDelay', 'postRollAnnouncementsTimeout'] as const
+const DROPPED_QUEUE_KEYS = ['preferredLength', 'generatedItemType', 'preferredNumVoteChoices'] as const
 
 function readGlobal(db: MigrationDriver): { id: number; wrapper: Wrapper; json: Record<string, unknown> } | null {
 	const row = db.prepare(`SELECT id, settings FROM globalSettings ORDER BY id LIMIT 1`).get() as
@@ -26,19 +37,12 @@ function readGlobal(db: MigrationDriver): { id: number; wrapper: Wrapper; json: 
 	return { id: row.id, wrapper, json: wrapper.json }
 }
 
-function writeGlobal(db: MigrationDriver, id: number, wrapper: Wrapper): void {
-	db.prepare(`UPDATE globalSettings SET settings = ? WHERE id = ?`).run(JSON.stringify(wrapper), id)
-}
-
 export async function up(db: MigrationDriver): Promise<void> {
 	const global = readGlobal(db)
-	const squadServer = (global?.json.squadServer ?? {}) as Record<string, unknown>
-	// every server starts from what the whole install was already using, so nobody's RCON traffic changes shape
-	const rconCacheTTL = squadServer.rconCacheTTL
+	const globalJson = global?.json ?? {}
+	const squadServer = (globalJson.squadServer ?? {}) as Record<string, unknown>
+	const layerQueue = (globalJson.layerQueue ?? {}) as Record<string, unknown>
 
-	// per-server -> global. These are policy rather than connection details, so the servers collapse into one value:
-	// the first server that has one explicitly set wins, and the schema default covers the rest.
-	const hoisted: Record<string, unknown> = {}
 	const serverRows = db.prepare(`SELECT id, settings FROM servers ORDER BY id`).all() as { id: string; settings: string | null }[]
 	for (const row of serverRows) {
 		if (!row.settings) continue
@@ -46,26 +50,35 @@ export async function up(db: MigrationDriver): Promise<void> {
 		const json = wrapper.json
 		if (!json || typeof json !== 'object') continue
 		let changed = false
-		for (const key of GLOBALIZED_SERVER_KEYS) {
-			if (!(key in json)) continue
-			if (!(key in hoisted)) hoisted[key] = json[key]
-			delete json[key]
+
+		const adopt = (key: string, value: unknown) => {
+			if (value === undefined || key in json) return
+			json[key] = structuredClone(value)
 			changed = true
 		}
-		if (rconCacheTTL !== undefined && !('rconCacheTTL' in json)) {
-			json.rconCacheTTL = structuredClone(rconCacheTTL)
+		for (const key of GLOBAL_TO_SERVER_KEYS) adopt(key, globalJson[key])
+		for (const key of RETURNED_TO_SERVERS) adopt(key, globalJson[key])
+		adopt('rconCacheTTL', squadServer.rconCacheTTL)
+
+		// the queue-length settings join the pool config under the server's own `queue`
+		const queue = (json.queue ?? {}) as Record<string, unknown>
+		for (const key of ['maxQueueSize', 'lowQueueWarningThreshold', 'adminQueueReminderInterval']) {
+			if (!(key in layerQueue) || key in queue) continue
+			queue[key] = structuredClone(layerQueue[key])
 			changed = true
 		}
+		for (const key of DROPPED_QUEUE_KEYS) {
+			if (!(key in queue)) continue
+			delete queue[key]
+			changed = true
+		}
+		if (changed) json.queue = queue
+
 		if (changed) db.prepare(`UPDATE servers SET settings = ? WHERE id = ?`).run(JSON.stringify(wrapper), row.id)
 	}
 
 	if (!global) return
 	let globalChanged = false
-	for (const key of GLOBALIZED_SERVER_KEYS) {
-		if (key in global.json || !(key in hoisted)) continue
-		global.json[key] = hoisted[key]
-		globalChanged = true
-	}
 
 	// squadServer dissolves: its cache TTLs went to the servers above, and the two settings left are unrelated to each
 	// other, so they sit at the top level rather than under a heading that no longer describes them
@@ -77,14 +90,15 @@ export async function up(db: MigrationDriver): Promise<void> {
 		globalChanged = true
 	}
 
-	if ('warnPrefix' in global.json) {
-		delete global.json.warnPrefix
+	for (const key of [...GLOBAL_TO_SERVER_KEYS, ...RETURNED_TO_SERVERS, 'layerQueue', 'warnPrefix']) {
+		if (!(key in global.json)) continue
+		delete global.json[key]
 		globalChanged = true
 	}
 
 	if (reasonAliasesToKeywords(global.json)) globalChanged = true
 
-	if (globalChanged) writeGlobal(db, global.id, global.wrapper)
+	if (globalChanged) db.prepare(`UPDATE globalSettings SET settings = ? WHERE id = ?`).run(JSON.stringify(global.wrapper), global.id)
 }
 
 // Chat used to resolve a reason by its label or an alias, which left a reason whose label has whitespace reachable

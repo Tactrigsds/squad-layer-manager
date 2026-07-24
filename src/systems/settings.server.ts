@@ -382,13 +382,11 @@ export const settings$ = new Rx.Subject<SettingsEvent>()
 // ============================== public settings (safe for any connected client; no connection details) ==============================
 
 export type PublicSettings = {
-	layerQueue: { lowQueueWarningThreshold: number; maxQueueSize: number }
 	topBarColor: SETTINGS.GlobalSettings['topBarColor']
 	navLinks: SETTINGS.GlobalSettings['navLinks']
 	chat: SETTINGS.GlobalSettings['chat']
 	commands: SETTINGS.GlobalSettings['commands']
 	commandAliases: SETTINGS.GlobalSettings['commandAliases']
-	vote: { voteDuration: number; voteDisplayProps: SETTINGS.GlobalSettings['vote']['voteDisplayProps'] }
 	servers: ServerEntry[]
 	playerGroupings: SETTINGS.GlobalSettings['playerGroupings']
 	playerFlagsRequiringNote: SETTINGS.GlobalSettings['playerFlagsRequiringNote']
@@ -402,16 +400,11 @@ export type PublicSettings = {
 
 function buildPublicSettings(): PublicSettings {
 	return {
-		layerQueue: Obj.selectProps(GLOBAL_SETTINGS.layerQueue, ['lowQueueWarningThreshold', 'maxQueueSize']),
 		topBarColor: GLOBAL_SETTINGS.topBarColor,
 		navLinks: GLOBAL_SETTINGS.navLinks,
 		chat: GLOBAL_SETTINGS.chat,
 		commands: GLOBAL_SETTINGS.commands,
 		commandAliases: GLOBAL_SETTINGS.commandAliases,
-		vote: {
-			voteDuration: GLOBAL_SETTINGS.vote.voteDuration,
-			voteDisplayProps: GLOBAL_SETTINGS.vote.voteDisplayProps,
-		},
 		servers: listServerEntries(),
 		playerGroupings: GLOBAL_SETTINGS.playerGroupings,
 		playerFlagsRequiringNote: GLOBAL_SETTINGS.playerFlagsRequiringNote,

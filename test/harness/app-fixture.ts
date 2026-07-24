@@ -107,9 +107,8 @@ export type AppFixtureOptions = {
 	// the test timings below already applied), so durations are milliseconds, not '3m' strings.
 	globalSettings?: (settings: SETTINGS.GlobalSettings) => void
 	serverSettings?: (settings: SETTINGS.ServerSettings) => void
-	// the queue the server starts with. Seeding one (and pinning queue.preferredLength to its length,
-	// which arrange() does) stops the generator from filling the queue with random layers, which is
-	// what makes a queue assertion worth writing.
+	// the queue the server starts with. Generation only fires when the saved list would be empty, so a
+	// seeded queue stays exactly as seeded, which is what makes a queue assertion worth writing.
 	layerQueue?: LL.List
 	// filter entities to seed. A server's pool config (serverSettings.queue.mainPool) references
 	// these by id, so anything that applies, indicates or warns on a filter needs them seeded first.
@@ -252,15 +251,8 @@ function renderAdminsCfg(steamIds: string[], reserveIds: string[] = []): string 
 
 // Durations that would make a test sit and wait. Every one is a setting, and settings are the only
 // lever we have: the app runs in its own process, so its timers can't be faked. Tests override any
-// of these through the globalSettings hook.
+// of these through the globalSettings / serverSettings hooks.
 function applyTestTimings(settings: SETTINGS.GlobalSettings) {
-	settings.vote.voteDuration = 8_000
-	settings.vote.finalVoteReminder = 2_000
-	settings.vote.voteReminderInterval = 3_000
-	settings.vote.internalVoteReminderInterval = 3_000
-	settings.layerQueue.adminQueueReminderInterval = 5_000
-	settings.postRollAnnouncementsTimeout = 2_000
-	settings.fogOffDelay = 2_000
 	// the log tail's poll interval is also the window the event pipeline waits for the log to catch
 	// up with rcon/poll events, so a short one keeps tests responsive
 	settings.logFilePollInterval = 250
@@ -279,6 +271,13 @@ function applyTestServerTimings(settings: SETTINGS.ServerSettings) {
 	settings.rconCacheTTL.layersStatus = 2_000
 	settings.rconCacheTTL.serverInfo = 4_000
 	settings.rconCacheTTL.teams = 2_000
+	settings.vote.voteDuration = 8_000
+	settings.vote.finalVoteReminder = 2_000
+	settings.vote.voteReminderInterval = 3_000
+	settings.vote.internalVoteReminderInterval = 3_000
+	settings.queue.adminQueueReminderInterval = 5_000
+	settings.postRollAnnouncementsTimeout = 2_000
+	settings.fogOffDelay = 2_000
 }
 
 export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<AppFixture> {
@@ -334,10 +333,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 				rcon: { host: '127.0.0.1', port: emu.rconPort, password: emu.password },
 			},
 	})
-	// a seeded queue is only stable if nothing tops it up: generation fills the queue to
-	// preferredLength with random layers, so pin that to what we seeded
 	const layerQueue = opts.layerQueue ?? []
-	if (opts.layerQueue) serverSettings.queue.preferredLength = opts.layerQueue.length
 	applyTestServerTimings(serverSettings)
 	opts.serverSettings?.(serverSettings)
 
