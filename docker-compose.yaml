@@ -8,14 +8,13 @@ services:
     environment:
       # send OTLP traces and logs to the otel collector, which is a separate image configured below
       - OTLP_COLLECTOR_ENDPOINT=http://otel:4318
-      # continuous CPU + heap profiling pushed to the Pyroscope bundled in the otel image; view the
-      # flamegraphs under Grafana's Pyroscope datasource. Costs a few percent of runtime overhead, most
-      # of it heap sampling, which is why it is off here: its sample tables are native allocations that
-      # sit in the main malloc arena for the life of the process. Set it true when you are actually
-      # chasing an allocation question. Drop PYROSCOPE_ENABLED to turn profiling off entirely.
-      - PYROSCOPE_ENABLED=true
-      - PYROSCOPE_HEAP_ENABLED=false
-      - PYROSCOPE_ENDPOINT=http://otel:4040
+      # Continuous CPU + heap profiling pushed to the Pyroscope bundled in the otel image, viewable under
+      # Grafana's Pyroscope datasource. Off by default: it costs a few percent of runtime overhead, most of
+      # it heap sampling, whose sample tables are native allocations that sit in the main malloc arena for
+      # the life of the process. Uncomment the two lines below to turn it on when you have an allocation or
+      # CPU question to chase; add PYROSCOPE_HEAP_ENABLED=false to keep only the flatter-cost CPU profiles.
+      # - PYROSCOPE_ENABLED=true
+      # - PYROSCOPE_ENDPOINT=http://otel:4040
 
     ports:
       # the app. ORIGIN has to match how this ends up being reached, whether that's this port directly or a
