@@ -143,7 +143,7 @@ export const syncVoteStateWithQueueState = C.spanOp(
 	'syncVoteStateWithQueueState',
 	{ module, mutexes: (ctx) => ctx.vote.mtx },
 	async (
-		ctx: C.SquadServer & C.Vote & C.MatchHistory & CS.AbortSignal,
+		ctx: C.SquadServer & C.Vote & C.MatchHistory & C.ServerSettings & CS.AbortSignal,
 		queue: LL.List,
 	) => {
 		const serverId = ctx.serverId
@@ -164,11 +164,11 @@ export const syncVoteStateWithQueueState = C.spanOp(
 			nextUpItem && LL.isVoteItem(nextUpItem) && !nextUpItem.endingVoteState
 			&& nextUpItem && ctx.vote.state?.itemId !== nextUpItem.itemId
 			&& currentMatch.status !== 'post-game'
-			&& (!currentMatch.startTime || currentMatch.startTime.getTime() + Settings.GLOBAL_SETTINGS.vote.autoStartVoteCutoff < Date.now())
+			&& (!currentMatch.startTime || currentMatch.startTime.getTime() + ctx.serverSettings.settings.vote.autoStartVoteCutoff < Date.now())
 		) {
 			let autostartTime: Date | undefined
-			if (currentMatch.startTime && Settings.GLOBAL_SETTINGS.vote.autoStartVoteDelay) {
-				const startTime = dateFns.addMilliseconds(currentMatch.startTime, Settings.GLOBAL_SETTINGS.vote.autoStartVoteDelay)
+			if (currentMatch.startTime && ctx.serverSettings.settings.vote.autoStartVoteDelay) {
+				const startTime = dateFns.addMilliseconds(currentMatch.startTime, ctx.serverSettings.settings.vote.autoStartVoteDelay)
 				if (dateFns.isFuture(startTime)) autostartTime = startTime
 				else autostartTime = dateFns.addMinutes(new Date(), 5)
 			}
@@ -193,7 +193,7 @@ export const syncVoteStateWithQueueState = C.spanOp(
 			vote.voteEndTask = null
 			vote.autostartVoteSub?.unsubscribe()
 			vote.autostartVoteSub = null
-			if (newVoteState?.code === 'ready' && newVoteState.autostartTime && Settings.GLOBAL_SETTINGS.vote.autoStartVoteDelay) {
+			if (newVoteState?.code === 'ready' && newVoteState.autostartTime && ctx.serverSettings.settings.vote.autoStartVoteDelay) {
 				log.info('scheduling autostart vote to %s for %s', newVoteState.autostartTime.toISOString(), newVoteState.itemId)
 				vote.autostartVoteSub = Rx.of(1).pipe(Rx.delay(dateFns.differenceInMilliseconds(newVoteState.autostartTime, Date.now()))).subscribe(
 					() => {
@@ -251,7 +251,7 @@ export const startVote = C.spanOp(
 			return { code: 'err:vote-not-allowed' as const, msg: Messages.WARNS.vote.start.noVoteInPostGame }
 		}
 
-		const duration = opts.duration ?? Settings.GLOBAL_SETTINGS.vote.voteDuration
+		const duration = opts.duration ?? ctx.serverSettings.settings.vote.voteDuration
 		const layerQueue = LayerQueue.getSavedQueue(ctx)
 		const itemId = opts.itemId ?? layerQueue[0]?.itemId
 		if (!itemId) {
@@ -319,7 +319,7 @@ export const startVote = C.spanOp(
 				ctx.vote.state,
 				item,
 				duration,
-				item.voteConfig?.displayProps ?? Settings.GLOBAL_SETTINGS.vote.voteDisplayProps,
+				item.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps,
 			),
 		)
 
@@ -348,7 +348,7 @@ export const handleVote = C.spanOp(
 		attrs: (_, msg) => ({ messageId: msg.message, playerUsername: msg.playerIds.username }),
 	},
 	(
-		ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.Rcon & CS.AbortSignal & CS.Deferred,
+		ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.Rcon & C.ServerSettings & CS.AbortSignal & CS.Deferred,
 		msg: SM.RconEvents.ChatMessage,
 	) => {
 		//
@@ -397,7 +397,10 @@ export const handleVote = C.spanOp(
 				await SquadRcon.warn(
 					ctx,
 					msg.playerIds,
-					Messages.WARNS.vote.voteCast(choiceLayerId, voteItem?.voteConfig?.displayProps ?? Settings.GLOBAL_SETTINGS.vote.voteDisplayProps),
+					Messages.WARNS.vote.voteCast(
+						choiceLayerId,
+						voteItem?.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps,
+					),
 				)
 			})(),
 		)
@@ -496,7 +499,7 @@ export const cancelVoteAutostart = C.spanOp(
 	},
 )
 
-function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
+function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote & C.ServerSettings) {
 	const serverId = ctx.serverId
 	ctx.vote.voteEndTask?.unsubscribe()
 
@@ -504,10 +507,10 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 	ctx.vote.voteEndTask = new Rx.Subscription()
 
 	const currentTime = Date.now()
-	const finalReminderWaitTime = Math.max(0, ctx.vote.state.deadline - Settings.GLOBAL_SETTINGS.vote.finalVoteReminder - currentTime)
+	const finalReminderWaitTime = Math.max(0, ctx.vote.state.deadline - ctx.serverSettings.settings.vote.finalVoteReminder - currentTime)
 	const regularReminderInterval = ctx.vote.state.voterType === 'internal'
-		? Settings.GLOBAL_SETTINGS.vote.internalVoteReminderInterval
-		: Settings.GLOBAL_SETTINGS.vote.voteReminderInterval
+		? ctx.serverSettings.settings.vote.internalVoteReminderInterval
+		: ctx.serverSettings.settings.vote.voteReminderInterval
 	const finalReminderBuffer = finalReminderWaitTime - regularReminderInterval
 
 	// -------- schedule regular reminders --------
@@ -527,7 +530,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 						voteItem,
 						timeLeft,
 						false,
-						voteItem.voteConfig?.displayProps ?? Settings.GLOBAL_SETTINGS.vote.voteDisplayProps,
+						voteItem.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps,
 					)
 					await broadcastVoteUpdate(ctx, ctx.vote.state, msg, { onlyNotifyNonVotingAdmins: true })
 				}),
@@ -548,9 +551,9 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 					const msg = Messages.BROADCASTS.vote.voteReminder(
 						ctx.vote.state,
 						voteItem,
-						Settings.GLOBAL_SETTINGS.vote.finalVoteReminder,
+						ctx.serverSettings.settings.vote.finalVoteReminder,
 						true,
-						voteItem.voteConfig?.displayProps ?? Settings.GLOBAL_SETTINGS.vote.voteDisplayProps,
+						voteItem.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps,
 					)
 					await broadcastVoteUpdate(ctx, ctx.vote.state, msg, { onlyNotifyNonVotingAdmins: true })
 				}),
@@ -636,7 +639,7 @@ export const endVote = C.spanOp(
 			voteItemId: endingVoteState.itemId,
 		})
 
-		const displayProps = listItem.voteConfig?.displayProps ?? Settings.GLOBAL_SETTINGS.vote.voteDisplayProps
+		const displayProps = listItem.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps
 		if (endingVoteState.code === 'ended:winner') {
 			await broadcastVoteUpdate(
 				ctx,

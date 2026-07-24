@@ -425,7 +425,7 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 	const headerRef = React.useRef<HTMLDivElement>(null)
 
 	const queueLength = ZusUtils.useStore(props.stores.squadServer!, (s) => s.queue.layerList.length)
-	const maxQueueSize = ZusUtils.useStore(SettingsClient.PublicSettingsStore)?.layerQueue.maxQueueSize
+	const maxQueueSize = ZusUtils.useStore(props.stores.squadServer!, (s) => SquadServerFrame.Sel.settings(s).queue.maxQueueSize)
 	const queueMutations = ZusUtils.useStore(props.stores.squadServer!, (s) => s.queue.mutations)
 
 	const warnings = useQueueWarnings(props.stores)

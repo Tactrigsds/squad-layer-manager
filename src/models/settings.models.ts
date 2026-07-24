@@ -212,57 +212,8 @@ export const GlobalSettingsSchema = z.object({
 	})).prefault([]).describe(
 		'Custom variables usable in reason and broadcast messages as {{name}} (e.g. name "discord", value "discord.gg/xyz").',
 	),
-	postRollAnnouncementsTimeout: HumanTime.prefault('5m').describe(
-		'How long after a map rolls to wait before announcing to admins: the balance trigger in effect, the next layer, and a '
-			+ 'low-queue warning, a couple of seconds apart. Only sent on servers with reminders and announcements enabled.',
-	),
-	fogOffDelay: HumanTime.prefault('25s').describe(
-		'How long after a FRAAS layer starts before fog of war is turned off and announced in-game. Other gamemodes are unaffected.',
-	),
 	chat: CHAT.ChatConfigSchema.prefault({}).describe(
 		'What the live chat feed leaves out. Neither list changes what is actually sent in-game.',
-	),
-	layerQueue: z.object({
-		lowQueueWarningThreshold: z
-			.number()
-			.positive()
-			.prefault(1)
-			.describe('Admins are warned after a map roll when the queue holds this many items or fewer.'),
-		adminQueueReminderInterval: HumanTime.prefault('10m').describe(
-			'How often to remind admins to maintain the queue. Low queue warnings happen half as often.',
-		),
-		maxQueueSize: z.int().min(1).max(100).prefault(20).describe(
-			'Maximum number of items the queue may hold. Saves that would exceed it are rejected.',
-		),
-	}).prefault({}).describe('How long the queue should be kept, and how often admins are nudged to keep it that way.'),
-	vote: z.object({
-		voteDuration: HumanTime.prefault('180s').describe('How long a vote stays open before it is tallied.'),
-		startVoteReminderThreshold: HumanTime.prefault('20m').describe(
-			'How far into a match admins start being reminded that no vote has been started yet.',
-		),
-		voteReminderInterval: HumanTime.prefault('30s').describe('How often players are reminded to vote while a vote is open.'),
-		internalVoteReminderInterval: HumanTime.prefault('15s').describe(
-			'How often admins are reminded to vote while an internal (admin-only) vote is open.',
-		),
-		autoStartVoteDelay: HumanTime.prefault('20m').nullable().describe(
-			'How far into a match SLM starts a vote by itself, when the next queue item is a vote. Unset to only ever start votes manually.',
-		),
-		autoStartVoteCutoff: HumanTime.prefault('30m').describe(
-			'How far into a match auto-starting gives up. Past this point starting a vote is left to an admin, so a match running long '
-				+ 'does not open a vote nobody is around for.',
-		),
-		voteDisplayProps: z.array(DH.LAYER_DISPLAY_PROP).prefault(['map', 'gamemode']).describe(
-			'Which parts of a layer (map, gamemode, factions, units) vote choices spell out. Admins can override this per vote.',
-		),
-		finalVoteReminder: HumanTime.prefault('10s').describe('How long before a vote closes the last-chance reminder is sent.'),
-		maxNumVoteChoices: z.int().min(1).max(50).prefault(5).describe('Maximum number of choices a vote may offer.'),
-	}).prefault({}).describe('How votes run: how long they stay open, how often they are advertised, and when SLM starts one itself.'),
-	overrideAdminSetNextLayer: z.boolean().prefault(false).describe(
-		'What happens when the next layer is set from outside SLM (an in-game admin, or another RCON tool). On, SLM sets it straight '
-			+ 'back to whatever the queue says. Off, SLM adopts the change by putting that layer at the front of the queue.',
-	),
-	warnOnChangeLayer: z.boolean().prefault(false).describe(
-		'Warn all in-game admins when SLM sets the next layer to something other than what the server was already going to play.',
 	),
 	logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines.'),
 	tickRateThresholds: z.object({
@@ -623,13 +574,21 @@ export const ServerConnectionSchema = z.discriminatedUnion('type', [
 export type ServerConnection = z.infer<typeof ServerConnectionSchema>
 
 export const QueueSettingsSchema = z.object({
+	maxQueueSize: z.int().min(1).max(100).prefault(20).describe(
+		'Maximum number of items the queue may hold. Saves that would exceed it are rejected.',
+	),
+	lowQueueWarningThreshold: z
+		.number()
+		.positive()
+		.prefault(1)
+		.describe('Admins are warned after a map roll when the queue holds this many items or fewer.'),
+	adminQueueReminderInterval: HumanTime.prefault('10m').describe(
+		'How often to remind admins to maintain the queue. Low queue warnings happen half as often.',
+	),
 	mainPool: PoolConfigurationSchema.prefault({ repeatRules: DEFAULT_REPEAT_RULE_CONFIGS }).describe(
 		'Which layers this server considers playable, and which of them it warns about: the pool filter that defines membership, the '
 			+ 'filters offered during layer selection, and the repeat rules.',
 	),
-	preferredLength: z.number().prefault(12).describe('How many items autogeneration tops the queue up to.'),
-	generatedItemType: z.enum(['layer', 'vote']).prefault('layer').describe('Whether autogeneration adds plain layers or votes.'),
-	preferredNumVoteChoices: z.number().prefault(3).describe('How many choices an autogenerated vote offers.'),
 	layerRequests: z.object({
 		maxTotal: z.number().int().positive().prefault(50).describe(
 			'Maximum number of layer requests the backburner may hold across all users',
@@ -652,6 +611,42 @@ export const PublicServerSettingsSchema = z
 			.prefault({}).describe(
 				'The layer queue configuration: the pool (filters and repeat rules) and queue length / vote preferences.',
 			),
+		vote: z.object({
+			voteDuration: HumanTime.prefault('180s').describe('How long a vote stays open before it is tallied.'),
+			startVoteReminderThreshold: HumanTime.prefault('20m').describe(
+				'How far into a match admins start being reminded that no vote has been started yet.',
+			),
+			voteReminderInterval: HumanTime.prefault('30s').describe('How often players are reminded to vote while a vote is open.'),
+			internalVoteReminderInterval: HumanTime.prefault('15s').describe(
+				'How often admins are reminded to vote while an internal (admin-only) vote is open.',
+			),
+			autoStartVoteDelay: HumanTime.prefault('20m').nullable().describe(
+				'How far into a match SLM starts a vote by itself, when the next queue item is a vote. Unset to only ever start votes manually.',
+			),
+			autoStartVoteCutoff: HumanTime.prefault('30m').describe(
+				'How far into a match auto-starting gives up. Past this point starting a vote is left to an admin, so a match running long '
+					+ 'does not open a vote nobody is around for.',
+			),
+			voteDisplayProps: z.array(DH.LAYER_DISPLAY_PROP).prefault(['map', 'gamemode']).describe(
+				'Which parts of a layer (map, gamemode, factions, units) vote choices spell out. Admins can override this per vote.',
+			),
+			finalVoteReminder: HumanTime.prefault('10s').describe('How long before a vote closes the last-chance reminder is sent.'),
+			maxNumVoteChoices: z.int().min(1).max(50).prefault(5).describe('Maximum number of choices a vote may offer.'),
+		}).prefault({}).describe('How votes run: how long they stay open, how often they are advertised, and when SLM starts one itself.'),
+		overrideAdminSetNextLayer: z.boolean().prefault(false).describe(
+			'What happens when the next layer is set from outside SLM (an in-game admin, or another RCON tool). On, SLM sets it straight '
+				+ 'back to whatever the queue says. Off, SLM adopts the change by putting that layer at the front of the queue.',
+		),
+		warnOnChangeLayer: z.boolean().prefault(false).describe(
+			'Warn all in-game admins when SLM sets the next layer to something other than what the server was already going to play.',
+		),
+		postRollAnnouncementsTimeout: HumanTime.prefault('5m').describe(
+			'How long after a map rolls to wait before announcing to admins: the balance trigger in effect, the next layer, and a '
+				+ 'low-queue warning, a couple of seconds apart. Only sent on servers with reminders and announcements enabled.',
+		),
+		fogOffDelay: HumanTime.prefault('25s').describe(
+			'How long after a FRAAS layer starts before fog of war is turned off and announced in-game. Other gamemodes are unaffected.',
+		),
 		remindersAndAnnouncementsEnabled: z.boolean().prefault(true).describe(
 			'Whether this server sends admins the recurring nudges: post-roll announcements, queue reminders, and vote reminders.',
 		),

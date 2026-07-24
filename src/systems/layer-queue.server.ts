@@ -106,9 +106,8 @@ export const setupInstance = C.spanOp(
 
 		// -------- schedule generic admin reminders --------
 		if (ctx.serverSettings.settings.remindersAndAnnouncementsEnabled) {
-			const GS = Settings.GLOBAL_SETTINGS
 			ctx.cleanup.push(
-				Rx.interval(GS.layerQueue.adminQueueReminderInterval).pipe(
+				Rx.interval(ctx.serverSettings.settings.queue.adminQueueReminderInterval).pipe(
 					C.durableSub('queue-reminders', { module, levels: { event: 'info' } }, async (_, signal) => {
 						const baseCtx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
 						const serverState = await SquadServer.getServerState(baseCtx)
@@ -148,14 +147,14 @@ export const setupInstance = C.spanOp(
 							&& voteState?.code === 'ready'
 							&& !serverState.layerQueue[0].endingVoteState
 							&& currentMatch.startTime !== undefined
-							&& currentMatch.startTime.getTime() + GS.vote.startVoteReminderThreshold < Date.now()
+							&& currentMatch.startTime.getTime() + serverState.settings.vote.startVoteReminderThreshold < Date.now()
 						) {
 							await SquadRcon.warnAllAdmins(
 								ctx,
 								Messages.WARNS.queue.votePending(
 									currentMatch.startTime,
-									GS.vote.startVoteReminderThreshold,
-									GS.vote.autoStartVoteDelay !== null,
+									serverState.settings.vote.startVoteReminderThreshold,
+									serverState.settings.vote.autoStartVoteDelay !== null,
 									Settings.GLOBAL_SETTINGS.commands,
 								),
 							)
@@ -215,7 +214,7 @@ export const setupInstance = C.spanOp(
 						const external: { type: 'player'; playerId: string } | { type: 'rcon' } = event.source?.type === 'player'
 							? { type: 'player', playerId: SM.PlayerIds.getPlayerId(event.source.playerIds) }
 							: { type: 'rcon' }
-						if (Settings.GLOBAL_SETTINGS.overrideAdminSetNextLayer) {
+						if (ctx.serverSettings.settings.overrideAdminSetNextLayer) {
 							const serverState = await SquadServer.getServerState(ctx)
 							if (savedNextLayerId === null) {
 								log.warn('no next layer to sync after map set')
@@ -296,7 +295,7 @@ export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.Serv
 	const currentLayer = L.toLayer(newLayerId)
 	if (currentLayer.Gamemode === 'FRAAS') {
 		ctx.server.postRollEventsSub.add(
-			Rx.timer(Settings.GLOBAL_SETTINGS.fogOffDelay).subscribe(async () => {
+			Rx.timer(ctx.serverSettings.settings.fogOffDelay).subscribe(async () => {
 				const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 				await SquadRcon.setFogOfWar(ctx, 'off')
 				await SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
@@ -325,13 +324,13 @@ export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.Serv
 		announcementTasks.push(toCold(async () => {
 			const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 			const queue = getSavedQueue(ctx)
-			if (queue && queue.length <= Settings.GLOBAL_SETTINGS.layerQueue.lowQueueWarningThreshold) {
+			if (queue && queue.length <= ctx.serverSettings.settings.queue.lowQueueWarningThreshold) {
 				await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.lowQueueItemCount(queue.length))
 			}
 		}))
 
 		const withWaits: Rx.Observable<unknown>[] = []
-		withWaits.push(Rx.timer(Settings.GLOBAL_SETTINGS.postRollAnnouncementsTimeout))
+		withWaits.push(Rx.timer(ctx.serverSettings.settings.postRollAnnouncementsTimeout))
 
 		for (let i = 0; i < announcementTasks.length; i++) {
 			withWaits.push(announcementTasks[i].pipe(Rx.catchError(() => Rx.EMPTY)))
@@ -376,7 +375,7 @@ export async function saveQueueAndUpdateServer(
 		// in autocommit with a rollback() that does nothing.
 		const deferredCtx = { ...ctx, tx: undefined }
 		txCtx.tx.unlockTasks.push(async () => {
-			if (Settings.GLOBAL_SETTINGS.warnOnChangeLayer && nextLayerId) {
+			if (deferredCtx.serverSettings.settings.warnOnChangeLayer && nextLayerId) {
 				const statusRes = await deferredCtx.server.layersStatus.get(deferredCtx)
 				if (statusRes.code === 'ok' && statusRes.data.nextLayer) {
 					if (!L.areLayersCompatible(statusRes.data.nextLayer.id, nextLayerId)) {
