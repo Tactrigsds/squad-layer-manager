@@ -99,9 +99,10 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 	async function send() {
 		const text = message.trim()
 		if (!text || sendDisabled) return
-		// @admins is part of the message body, so the username prefix (if any) goes ahead of it
-		const body = channel === 'warn-admins' ? `@admins ${text}` : text
-		const composed = prefixName && username ? `${username}: ${body}` : body
+		// the audience tag leads, then the username prefix -- matching the "@Alice grey275: ..." the server produces
+		// for the other warn channels. warn-admins builds its own tag since it doesn't go through warnPlayers.
+		const prefixed = prefixName && username ? `${username}: ${text}` : text
+		const composed = channel === 'warn-admins' ? `@admins ${prefixed}` : prefixed
 		try {
 			let res: { code: string }
 			if (channel === 'warn-admins') {
