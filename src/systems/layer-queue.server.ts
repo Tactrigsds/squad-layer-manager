@@ -215,7 +215,7 @@ export const setupInstance = C.spanOp(
 						const external: { type: 'player'; playerId: string } | { type: 'rcon' } = event.source?.type === 'player'
 							? { type: 'player', playerId: SM.PlayerIds.getPlayerId(event.source.playerIds) }
 							: { type: 'rcon' }
-						if (ctx.serverSettings.settings.overrideAdminSetNextLayer) {
+						if (Settings.GLOBAL_SETTINGS.overrideAdminSetNextLayer) {
 							const serverState = await SquadServer.getServerState(ctx)
 							if (savedNextLayerId === null) {
 								log.warn('no next layer to sync after map set')
@@ -376,7 +376,7 @@ export async function saveQueueAndUpdateServer(
 		// in autocommit with a rollback() that does nothing.
 		const deferredCtx = { ...ctx, tx: undefined }
 		txCtx.tx.unlockTasks.push(async () => {
-			if (deferredCtx.serverSettings.settings.warnOnChangeLayer && nextLayerId) {
+			if (Settings.GLOBAL_SETTINGS.warnOnChangeLayer && nextLayerId) {
 				const statusRes = await deferredCtx.server.layersStatus.get(deferredCtx)
 				if (statusRes.code === 'ok' && statusRes.data.nextLayer) {
 					if (!L.areLayersCompatible(statusRes.data.nextLayer.id, nextLayerId)) {

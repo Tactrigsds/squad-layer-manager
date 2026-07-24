@@ -10,7 +10,7 @@ import { expect, test } from './fixtures'
 const REASONS = [
 	{
 		label: 'Toxicity',
-		aliases: ['tox'],
+		keywords: ['tox'],
 		actionTexts: { warn: 'Cut out the toxicity', kick: 'Kicked for toxicity', kill: 'Killed for toxicity' },
 	},
 ]

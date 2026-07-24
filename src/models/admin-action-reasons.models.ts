@@ -64,7 +64,7 @@ export const ADMIN_ACTIONS: Record<AdminActionType, AdminActionDescriptor> = {
 	},
 }
 
-export const AdminActionReasonSchema = LP.LabeledPresetSchema.omit({ message: true }).extend({
+export const AdminActionReasonSchema = LP.LabeledPresetSchema.extend({
 	// per-action text; a reason applies to an action iff it has text here
 	actionTexts: z.partialRecord(ADMIN_ACTION_TYPE, z.string().trim().min(1)).prefault({}).describe(
 		'Per-action text. The reason is available for an action only if it has text for that action.',
@@ -76,7 +76,7 @@ export const AdminActionReasonSchema = LP.LabeledPresetSchema.omit({ message: tr
 export type AdminActionReason = z.infer<typeof AdminActionReasonSchema>
 
 export const AdminActionReasonsSchema = z.array(AdminActionReasonSchema)
-	.superRefine(LP.addLabelAliasUniquenessIssues)
+	.superRefine(LP.addLabelKeywordUniquenessIssues)
 	.prefault([])
 
 export function reasonsForAction(reasons: AdminActionReason[], action: AdminActionType): AdminActionReason[] {
@@ -95,7 +95,7 @@ export type ResolveReasonRes =
 	| { code: 'err:reason-not-applicable'; msg: string }
 
 export function resolveReason(reasons: AdminActionReason[], action: AdminActionType, token: string): ResolveReasonRes {
-	const reason = LP.findByLabelOrAlias(reasons, token)
+	const reason = LP.findByKeyword(reasons, token)
 	if (!reason) return { code: 'err:reason-not-found', msg: `Admin action reason "${token}" no longer exists` }
 	if (reason.actionTexts[action] === undefined) {
 		return {

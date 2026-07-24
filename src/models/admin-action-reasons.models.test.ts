@@ -2,14 +2,14 @@ import * as AAR from '@/models/admin-action-reasons.models'
 import { describe, expect, it } from 'vitest'
 
 function reason(label: string, opts: Partial<AAR.AdminActionReason> = {}): AAR.AdminActionReason {
-	return { label, aliases: [], actionTexts: { warn: `${label} warn text` }, ...opts }
+	return { label, keywords: [label.toLowerCase()], actionTexts: { warn: `${label} warn text` }, ...opts }
 }
 
 describe('AdminActionReasonsSchema', () => {
-	it('accepts distinct labels and aliases', () => {
+	it('accepts distinct labels and keywords', () => {
 		const res = AAR.AdminActionReasonsSchema.safeParse([
-			reason('Teamkilling', { aliases: ['tk'] }),
-			reason('Toxicity', { aliases: ['tox'], actionTexts: { kill: 'kill text' } }),
+			reason('Teamkilling', { keywords: ['tk'] }),
+			reason('Toxicity', { keywords: ['tox'], actionTexts: { kill: 'kill text' } }),
 		])
 		expect(res.success).toBe(true)
 	})
@@ -20,37 +20,29 @@ describe('AdminActionReasonsSchema', () => {
 		expect(res.error!.issues[0].path).toEqual([1, 'label'])
 	})
 
-	it('rejects duplicate aliases across reasons', () => {
+	it('rejects duplicate keywords across reasons', () => {
 		const res = AAR.AdminActionReasonsSchema.safeParse([
-			reason('Teamkilling', { aliases: ['tk'] }),
-			reason('Trolling', { aliases: ['TK'] }),
+			reason('Teamkilling', { keywords: ['tk'] }),
+			reason('Trolling', { keywords: ['TK'] }),
 		])
 		expect(res.success).toBe(false)
-		expect(res.error!.issues[0].path).toEqual([1, 'aliases', 0])
+		expect(res.error!.issues[0].path).toEqual([1, 'keywords', 0])
 	})
 
-	it("rejects aliases colliding with another reason's label", () => {
-		const res = AAR.AdminActionReasonsSchema.safeParse([
-			reason('Teamkilling'),
-			reason('Trolling', { aliases: ['teamkilling'] }),
-		])
+	it('requires at least one keyword', () => {
+		const res = AAR.AdminActionReasonsSchema.safeParse([reason('Teamkilling', { keywords: [] })])
 		expect(res.success).toBe(false)
-	})
-
-	it("accepts an alias matching its own reason's label", () => {
-		const res = AAR.AdminActionReasonsSchema.safeParse([reason('Teamkilling', { aliases: ['teamkilling'] })])
-		expect(res.success).toBe(true)
 	})
 
 	it('requires text for at least one action', () => {
-		const res = AAR.AdminActionReasonsSchema.safeParse([{ label: 'Teamkilling', aliases: [], actionTexts: {} }])
+		const res = AAR.AdminActionReasonsSchema.safeParse([{ label: 'Teamkilling', keywords: ['tk'], actionTexts: {} }])
 		expect(res.success).toBe(false)
 	})
 })
 
 describe('reason applicability and text', () => {
 	const reasons = [
-		reason('Teamkilling', { aliases: ['tk'], actionTexts: { warn: 'Teamkilling warn text', kill: 'Teamkilling kill text' } }),
+		reason('Teamkilling', { keywords: ['tk'], actionTexts: { warn: 'Teamkilling warn text', kill: 'Teamkilling kill text' } }),
 		reason('AFK', { actionTexts: { 'remove-from-squad': 'AFK rfs text' } }),
 		reason('Mic', { actionTexts: { warn: 'Mic warn text' } }),
 	]
@@ -58,25 +50,26 @@ describe('reason applicability and text', () => {
 	it('an action only offers the reasons carrying text for it', () => {
 		expect(AAR.reasonsForAction(reasons, 'warn').map(r => r.label)).toEqual(['Teamkilling', 'Mic'])
 		expect(AAR.reasonsForAction(reasons, 'kill').map(r => r.label)).toEqual(['Teamkilling'])
-		expect(AAR.resolveReason(reasons, 'kill', 'AFK').code).toBe('err:reason-not-applicable')
-		expect(AAR.resolveReason(reasons, 'warn', 'AFK').code).toBe('err:reason-not-applicable')
+		expect(AAR.resolveReason(reasons, 'kill', 'afk').code).toBe('err:reason-not-applicable')
+		expect(AAR.resolveReason(reasons, 'warn', 'afk').code).toBe('err:reason-not-applicable')
 	})
 
 	it('kick and timeout are independent actions', () => {
 		const kickOnly = reason('Toxicity', { actionTexts: { kick: 'Toxicity kick text' } })
 		expect(AAR.reasonsForAction([kickOnly], 'kick').map(r => r.label)).toEqual(['Toxicity'])
 		expect(AAR.reasonsForAction([kickOnly], 'timeout')).toEqual([])
-		expect(AAR.resolveReason([kickOnly], 'timeout', 'Toxicity').code).toBe('err:reason-not-applicable')
+		expect(AAR.resolveReason([kickOnly], 'timeout', 'toxicity').code).toBe('err:reason-not-applicable')
 	})
 
-	it('resolves by alias case-insensitively', () => {
+	it('resolves by keyword case-insensitively', () => {
 		const res = AAR.resolveReason(reasons, 'kill', 'TK')
 		expect(res.code).toBe('ok')
 		if (res.code === 'ok') expect(res.reason.label).toBe('Teamkilling')
 	})
 
-	it('errors on unknown token', () => {
+	it('errors on unknown token, including a bare label', () => {
 		expect(AAR.resolveReason(reasons, 'warn', 'Ghosting').code).toBe('err:reason-not-found')
+		expect(AAR.resolveReason(reasons, 'kill', 'Teamkilling').code).toBe('err:reason-not-found')
 	})
 
 	it('reasonText picks the per-action text', () => {

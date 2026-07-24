@@ -12,7 +12,7 @@ const ADMIN_STEAM_ID = '76561198000000003'
 const REASONS = [
 	{
 		label: 'Toxicity',
-		aliases: ['tox'],
+		keywords: ['tox'],
 		actionTexts: {
 			warn: 'Cut out the toxicity',
 			kick: 'Kicked for toxicity',
