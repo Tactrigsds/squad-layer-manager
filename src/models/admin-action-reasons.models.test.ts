@@ -86,7 +86,7 @@ describe('reason applicability and text', () => {
 
 	it('formatAppliedReason renders the per-action text verbatim (no wrapper), tagging squads', () => {
 		const r = reason('Teamkilling', { actionTexts: { 'disband-squad': 'Teamkilling disband text' } })
-		expect(AAR.formatAppliedReason('disband-squad', r, { squadTag: '@Squad3' })).toBe('@Squad3 Teamkilling disband text')
+		expect(AAR.formatAppliedReason('disband-squad', r, { audienceTag: '@Squad3' })).toBe('@Squad3 Teamkilling disband text')
 	})
 
 	it('formatAppliedReason exposes label + duration + custom template variables', () => {
@@ -123,6 +123,6 @@ describe('applied reason snapshots', () => {
 		const applied = AAR.applyCustomReason('Go touch grass. {{discord}}', { discord: 'discord.gg/x' })
 		expect(applied.label).toBeUndefined()
 		expect(AAR.renderAppliedReason(applied)).toBe('Go touch grass. discord.gg/x')
-		expect(AAR.renderAppliedReason(applied, { squadTag: '@Squad3' })).toBe('@Squad3 Go touch grass. discord.gg/x')
+		expect(AAR.renderAppliedReason(applied, { audienceTag: '@Squad3' })).toBe('@Squad3 Go touch grass. discord.gg/x')
 	})
 })

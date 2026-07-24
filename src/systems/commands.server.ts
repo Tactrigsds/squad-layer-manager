@@ -687,7 +687,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const targetIds = players.map(p => SM.PlayerIds.getPlayerId(p.ids))
 		const applied = CMD.applyResolvedReason('warn', args.reason, SquadServer.messageVars())
 		// squad warns carry the same @Squad tag the web squad warn box prepends
-		const message = AAR.renderAppliedReason(applied, { squadTag: SM.squadWarnTag(squad) })
+		const message = AAR.renderAppliedReason(applied, { audienceTag: SM.squadWarnTag(squad) })
 		await SquadServer.warnPlayers(h.ctx, targetIds, message, ingameActor(h.sender), { reasonLabel: applied.label })
 		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
 		const squadLabel = SM.squadAdminLabel(squad, MH.getTeamFaction(currentMatch, args.squad.teamId))
