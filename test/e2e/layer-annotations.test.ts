@@ -31,6 +31,7 @@ test.describe('layer tags and notes', () => {
 					permissions: ['site:authorized', 'queue:write'],
 					globalSettingsGrants: [],
 					serverSettingsGrants: [],
+					serverGrants: [],
 					assignments: {
 						discordRoleIds: [],
 						discordUserIds: [String(WRITER.discordId)],

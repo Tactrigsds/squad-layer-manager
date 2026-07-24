@@ -217,7 +217,13 @@ export const router = {
 	cancelTimeout: orpcBase
 		.input(z.object({ timeoutId: z.string() }))
 		.handler(async ({ context: ctx, input }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SM.Grants.anyTimeout())
+			// which server's grant applies is a property of the timeout, so the row is read before the check rather
+			// than taken from the request
+			const [timeout] = await ctx.db().select({ issuedServerId: Schema.timeouts.issuedServerId }).from(Schema.timeouts).where(
+				E.and(E.eq(Schema.timeouts.id, input.timeoutId), activeWhere()),
+			)
+			if (!timeout) return { code: 'err:not-found' as const, msg: 'No active timeout found' }
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SM.Grants.anyTimeout(timeout.issuedServerId))
 			if (denyRes) return denyRes
 			return await cancelTimeout(ctx, { timeoutId: input.timeoutId, actor: { type: 'slm-user', userId: ctx.user.discordId } })
 		}),
@@ -233,10 +239,10 @@ export const router = {
 			}).refine(i => !(i.reason && i.presetReasonLabel), { error: 'At most one of reason or presetReasonLabel may be provided' }),
 		)
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SM.Grants.satisfyingTimeout(input.durationMs))
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SM.Grants.satisfyingTimeout(ctx.serverId, input.durationMs))
 			if (denyRes) return denyRes
 			const reasonRes = SquadServer.resolveReasonInput('timeout', input, { duration: formatHumanTime(input.durationMs) })
 			if (reasonRes.code !== 'ok') return reasonRes

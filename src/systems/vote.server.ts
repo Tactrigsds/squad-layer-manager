@@ -55,17 +55,19 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(V.StartVoteInputSchema)
 		.handler(async ({ input, context: _ctx }) => {
-			const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage', { serverId: ctx.serverId }))
+			if (denyRes) return denyRes
 			return startVote(ctx, { ...input, initiator: { discordId: ctx.user.discordId } })
 		}),
 
 	endVoteEarly: orpcBase.meta({ type: 'mutation' }).input(z.object({ serverId: z.string() })).handler(async ({ context: _ctx, input }) => {
-		const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+		const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
 		if (ctxRes.code !== 'ok') return ctxRes
 		const ctx = ctxRes.ctx
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage'))
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage', { serverId: ctx.serverId }))
 		if (denyRes) return denyRes
 		return await endVote(ctx, {
 			reason: 'ended-early',
@@ -74,20 +76,20 @@ export const router = {
 	}),
 
 	abortVote: orpcBase.meta({ type: 'mutation' }).input(z.object({ serverId: z.string() })).handler(async ({ context: _ctx, input }) => {
-		const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+		const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
 		if (ctxRes.code !== 'ok') return ctxRes
 		const ctx = ctxRes.ctx
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage'))
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage', { serverId: ctx.serverId }))
 		if (denyRes) return denyRes
 		return await abortVote(ctx, { aborter: { discordId: ctx.user.discordId } })
 	}),
 
 	cancelVoteAutostart: orpcBase.meta({ type: 'mutation' }).input(z.object({ serverId: z.string() })).handler(
 		async ({ context: _ctx, input }) => {
-			const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage'))
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
 			return await cancelVoteAutostart(ctx, { user: { discordId: ctx.user.discordId } })
 		},
@@ -223,8 +225,6 @@ export const startVote = C.spanOp(
 	async (
 		ctx:
 			& C.Db
-			& Partial<C.User>
-			& Partial<C.PlayerIds>
 			& C.SquadServer
 			& C.Rcon
 			& C.Vote
@@ -234,11 +234,6 @@ export const startVote = C.spanOp(
 			& CS.AbortSignal,
 		opts: Omit<V.StartVoteInput, 'serverId'> & { initiator: USR.GuiOrChatUserId | 'autostart' },
 	) => {
-		const denyRes = await Rbac.tryDenyPermissionsForActor(ctx, RBAC.perm('vote:manage'))
-		if (denyRes) {
-			return denyRes
-		}
-
 		const statusRes = await ctx.server.layersStatus.get(ctx, { ttl: 10_000 })
 		if (statusRes.code !== 'ok') {
 			return statusRes

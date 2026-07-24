@@ -9,7 +9,9 @@ import * as RBAC from '@/rbac.models'
 // The row list is a *view*: rows are derived from the config on every read and distributed back on every write, so the
 // persisted shape is untouched.
 
-export type ServerGrant = { access: string; serverIds?: string[]; paths?: string[] }
+export type ServerSettingsGrant = { access: string; serverIds?: string[]; paths?: string[] }
+// one restricted grant of one server-scoped permission; unrestricted grants stay bare expressions in `permissions`
+export type ServerGrant = { permission: string; serverIds: string[] }
 export type RoleAssignmentsValue = {
 	discordRoleIds?: (string | number)[]
 	discordUserIds?: (string | number)[]
@@ -22,7 +24,8 @@ export type RoleConfig = {
 	maxTimeout?: string
 	maxLayerRequests?: number
 	globalSettingsGrants?: string[]
-	serverSettingsGrants?: ServerGrant[]
+	serverSettingsGrants?: ServerSettingsGrant[]
+	serverGrants?: ServerGrant[]
 	assignments?: RoleAssignmentsValue
 }
 export type RbacValue = { roles?: Record<string, RoleConfig> }
@@ -34,6 +37,7 @@ export type Effect = 'allow' | 'deny'
 export type RowScope =
 	| 'all'
 	| 'global'
+	| 'server'
 	| 'timeout'
 	| 'layer-requests'
 	| 'global-settings-write'
@@ -103,6 +107,8 @@ function emptyArgs(type: string): Partial<PermRow> {
 		case 'all':
 		case 'global':
 			return {}
+		case 'server':
+			return { serverIds: [] }
 		case 'timeout':
 			return { maxTimeout: DEFAULT_MAX_TIMEOUT }
 		case 'layer-requests':
@@ -158,6 +164,12 @@ export function rowsFromConfig(cfg: RoleConfig): PermRow[] {
 		rows.push({ id: '', type: 'global-settings:write', effect: 'allow', paths: [...cfg.globalSettingsGrants!] })
 	}
 
+	for (const grant of cfg.serverGrants ?? []) {
+		// as with the settings grants, a restricted grant is dead config next to the bare (all-servers) expression
+		if (bare.has(grant.permission) || !RBAC.isRoleGrantablePermissionType(grant.permission as RBAC.RolePermissionExpression)) continue
+		rows.push({ id: '', type: grant.permission, effect: 'allow', serverIds: [...grant.serverIds] })
+	}
+
 	for (const grant of cfg.serverSettingsGrants ?? []) {
 		const type = `server-settings:${grant.access}`
 		if (bare.has(type) || !RBAC.isRoleGrantablePermissionType(type as RBAC.RolePermissionExpression)) continue
@@ -191,7 +203,8 @@ export function rowsFromConfig(cfg: RoleConfig): PermRow[] {
 export function configFromRows(cfg: RoleConfig, rows: PermRow[]): RoleConfig {
 	const permissions: string[] = []
 	const globalSettingsGrants: string[] = []
-	const serverSettingsGrants: ServerGrant[] = []
+	const serverSettingsGrants: ServerSettingsGrant[] = []
+	const serverGrants: ServerGrant[] = []
 	let maxTimeout: string | undefined
 	let maxLayerRequests: number | undefined
 
@@ -205,6 +218,11 @@ export function configFromRows(cfg: RoleConfig, rows: PermRow[]): RoleConfig {
 			case 'all':
 			case 'global':
 				permissions.push(row.type)
+				break
+			case 'server':
+				// no servers listed = unrestricted, which only the bare expression can express
+				if ((row.serverIds?.length ?? 0) === 0) permissions.push(row.type)
+				else serverGrants.push({ permission: row.type, serverIds: [...row.serverIds!] })
 				break
 			case 'timeout':
 				maxTimeout = row.maxTimeout || DEFAULT_MAX_TIMEOUT
@@ -236,13 +254,14 @@ export function configFromRows(cfg: RoleConfig, rows: PermRow[]): RoleConfig {
 		}
 	}
 
-	// the three lists are written even when empty, because their schemas prefault to []: dropping them would leave the
+	// the grant lists are written even when empty, because their schemas prefault to []: dropping them would leave the
 	// editor's draft permanently one "change" away from the document it just saved.
 	const next: RoleConfig = {
 		...cfg,
 		permissions: [...new Set(permissions)],
 		globalSettingsGrants: [...new Set(globalSettingsGrants)],
 		serverSettingsGrants,
+		serverGrants,
 	}
 	// maxTimeout/maxLayerRequests are genuinely optional though: absent means the role cannot use the ability at all, so
 	// an absent row has to drop the field rather than write a falsy cap.

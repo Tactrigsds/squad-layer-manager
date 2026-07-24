@@ -21,6 +21,11 @@ export function usePermsCheck<T extends RBAC.PermissionType>(
 	return ZusUtils.useStore_Susp(UsersClient.loggedInUserQueryOptions, RbacStore, Sel.permsCheck(useStable(req)))
 }
 
+// for the affordances rendered where no server is in scope; see RBAC.hasPermOnAnyServer for why that is acceptable
+export function useAnyServerPermsCheck(type: RBAC.ServerPermissionType): RBAC.PermissionDeniedResponse | null {
+	return usePermsCheck((perms) => RBAC.hasPermOnAnyServer(perms, type) ? undefined : type)
+}
+
 // the logged-in user's effective (non-negated) permissions, for the aggregate settings-access checks below
 export function useSuspendableLoggedInUserPerms(): RBAC.Permission[] {
 	return ZusUtils.useStore_Susp(UsersClient.loggedInUserQueryOptions, RbacStore, Sel.loggedInUserPerms)

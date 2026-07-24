@@ -61,9 +61,9 @@ export default function BackburnerPanel(props: StoresProp) {
 	const serverId = props.stores.squadServer!.serverId
 	const items = ZusUtils.useStore(props.stores.squadServer!, s => s.queue.backburner)
 	const modified = ZusUtils.useStore(props.stores.squadServer!, s => s.queue.backburnerModified)
-	const canWriteQueue = RbacClient.usePermsCheck(RBAC.perm('queue:write')) === null
+	const canWriteQueue = RbacClient.usePermsCheck(RBAC.perm('queue:write', { serverId: serverId })) === null
 	const perms = RbacClient.useSuspendableLoggedInUserPerms()
-	const canRequest = canWriteQueue || RBAC.maxLayerRequests(perms) !== undefined
+	const canRequest = canWriteQueue || RBAC.maxLayerRequests(perms, serverId) !== undefined
 
 	const [isEditing, setIsEditing] = UPClient.useEditingLayerRequestsState(serverId)
 	const numEditors = ZusUtils.useStore(UPClient.Store, s => s.layerRequestEditors.size)

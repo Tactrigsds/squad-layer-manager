@@ -57,9 +57,9 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 		s => (s.chat.chatState.synced && !s.chat.chatState.connectionError) ? s.chat.chatState.interpolatedState.players.length : null,
 	)
 	const hasPlayers = playerCount !== null && playerCount > 0
-	const endMatchDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:end-match'))
-	const disableUpdatesDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:disable-slm-updates'))
-	const disableFogOfWarDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:turn-fog-off'))
+	const endMatchDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:end-match', { serverId: serverId }))
+	const disableUpdatesDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:disable-slm-updates', { serverId: serverId }))
+	const disableFogOfWarDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:turn-fog-off', { serverId: serverId }))
 
 	const updatesToSquadServerDisabled = ZusUtils.useStore(stores.squadServer!, s => s.settings.saved?.updatesToSquadServerDisabled)
 	const { disableUpdates, enableUpdates } = LayerQueueClient.useToggleSquadServerUpdates(serverId)

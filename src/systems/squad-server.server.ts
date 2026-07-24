@@ -155,10 +155,18 @@ export const orpcRouter = {
 	// which servers currently have a live slice. This is runtime state, not registry config: a server can be enabled and
 	// non-broken yet have no slice (still booting, or torn down by a fatal resource error), and everything served per-server
 	// needs one. The client gates the dashboard on this so it renders "unavailable" instead of hanging on silent streams.
-	watchLoadedServers: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ signal }) {
+	watchLoadedServers: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
 		const obs = globalState.sliceLifecycleUpdate$.pipe(
 			Rx.startWith(null),
-			Rx.map(() => [...globalState.slices.keys()]),
+			// servers the session may not view are omitted rather than listed-but-unusable, matching sliceCtx$
+			Rx.switchMap(async () => {
+				const ids: string[] = []
+				for (const serverId of globalState.slices.keys()) {
+					if (await Rbac.tryDenyPermissionsForUser(context, RBAC.perm('squad-server:view', { serverId }))) continue
+					ids.push(serverId)
+				}
+				return ids
+			}),
 			distinctDeepEquals(),
 			withAbortSignal(signal!),
 		)
@@ -230,12 +238,12 @@ export const orpcRouter = {
 	}),
 
 	endMatch: orpcBase.input(z.object({ serverId: z.string() })).handler(async ({ context: _ctx, input }) => {
-		const ctxRes = trySliceCtx(_ctx, input.serverId)
+		const ctxRes = await trySliceCtx(_ctx, input.serverId)
 		if (ctxRes.code !== 'ok') return ctxRes
 		const ctx = ctxRes.ctx
 		const deniedRes = await Rbac.tryDenyPermissionsForUser(
 			ctx,
-			RBAC.perm('squad-server:end-match'),
+			RBAC.perm('squad-server:end-match', { serverId: ctx.serverId }),
 		)
 		if (deniedRes) return deniedRes
 		const matchEnded$ = ctx.server.event$.pipe(
@@ -357,12 +365,12 @@ export const orpcRouter = {
 	toggleFogOfWar: orpcBase
 		.input(z.object({ serverId: z.string(), disabled: z.boolean() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(
 				ctx,
-				RBAC.perm('squad-server:turn-fog-off'),
+				RBAC.perm('squad-server:turn-fog-off', { serverId: ctx.serverId }),
 			)
 			if (denyRes) return denyRes
 			const serverStatusRes = await ctx.server.layersStatus.get(ctx)
@@ -406,10 +414,10 @@ export const orpcRouter = {
 			}).refine(i => !!i.reason !== !!i.presetReasonLabel, { error: 'Exactly one of reason or presetReasonLabel must be provided' }),
 		)
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players'))
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('warn', input)
 			if (reasonRes.code !== 'ok') return reasonRes
@@ -442,10 +450,10 @@ export const orpcRouter = {
 	warnAdmins: orpcBase
 		.input(z.object({ serverId: z.string(), message: z.string().min(1) }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players'))
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
 			const [adminList, teamsRes] = await Promise.all([AdminList.adminList.get(ctx), ctx.server.teams.get(ctx)])
 			if (teamsRes.code !== 'ok') return teamsRes
@@ -471,10 +479,10 @@ export const orpcRouter = {
 			}).refine(i => !!i.message !== !!i.presetReasonLabel, { error: 'Exactly one of message or presetReasonLabel must be provided' }),
 		)
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:broadcast'))
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:broadcast', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
 			let template = input.message
 			let presetLabel: string | undefined
@@ -493,10 +501,10 @@ export const orpcRouter = {
 	demoteCommander: orpcBase
 		.input(z.object({ serverId: z.string(), playerId: SM.PlayerIdSchema, presetReasonLabel: z.string().min(1).optional() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('demote-commander', input)
 			if (reasonRes.code !== 'ok') return reasonRes
@@ -512,10 +520,10 @@ export const orpcRouter = {
 			presetReasonLabel: z.string().min(1).optional(),
 		}))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('disband-squad', input)
 			if (reasonRes.code !== 'ok') return reasonRes
@@ -526,10 +534,10 @@ export const orpcRouter = {
 	removeFromSquad: orpcBase
 		.input(z.object({ serverId: z.string(), playerId: SM.PlayerIdSchema, presetReasonLabel: z.string().min(1).optional() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('remove-from-squad', input)
 			if (reasonRes.code !== 'ok') return reasonRes
@@ -542,10 +550,10 @@ export const orpcRouter = {
 			z.object({ serverId: z.string(), playerIds: z.array(SM.PlayerIdSchema).min(1), presetReasonLabel: z.string().min(1).optional() }),
 		)
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('remove-from-squad', input)
 			if (reasonRes.code !== 'ok') return reasonRes
@@ -561,10 +569,10 @@ export const orpcRouter = {
 			presetReasonLabel: z.string().min(1).optional(),
 		}))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('kill', input)
 			if (reasonRes.code !== 'ok') return reasonRes
@@ -583,10 +591,10 @@ export const orpcRouter = {
 			presetReasonLabel: z.string().min(1).optional(),
 		}))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:kick-players'))
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:kick-players', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('kick', input)
 			if (reasonRes.code !== 'ok') return reasonRes
@@ -597,10 +605,10 @@ export const orpcRouter = {
 	renameSquad: orpcBase
 		.input(z.object({ serverId: z.string(), teamId: SM.TeamIdSchema, squadId: z.number().int().positive() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
 			await renameSquadAction(ctx, input.teamId, input.squadId, { type: 'slm-user', userId: ctx.user.discordId })
 			return { code: 'ok' as const }
@@ -1721,24 +1729,35 @@ export function resolveSliceCtx<T extends object>(ctx: T, serverId: string) {
 	return withSliceSignal(ctx, slice)
 }
 
-export function trySliceCtx<T extends object>(
+// Resolving a slice for a request is also where the request is authorized to look at that server at all: every
+// per-server endpoint goes through here, so squad-server:view is enforced once rather than per handler. Action
+// permissions are still checked by the handler on top of this.
+export async function trySliceCtx<T extends C.Db & C.UserId & CS.AbortSignal>(
 	ctx: T,
 	serverId: string,
-): { code: 'ok'; ctx: ReturnType<typeof withSliceSignal<T>> } | SM.ServerNotLoaded {
+): Promise<{ code: 'ok'; ctx: ReturnType<typeof withSliceSignal<T>> } | SM.ServerNotLoaded | RBAC.PermissionDeniedResponse> {
 	const slice = globalState.slices.get(serverId)
 	if (!slice) return SM.serverNotLoaded(serverId)
+	const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:view', { serverId }))
+	if (denyRes) return denyRes
 	return { code: 'ok', ctx: withSliceSignal(ctx, slice) }
 }
 
 // like selectedServerCtx$, but keyed by an explicit serverId instead of a wsClientId's session selection
+// A server the session may not view resolves to null, exactly as one with no live slice does, so every per-server
+// stream reports it as not loaded. Deliberate: to a user without squad-server:view the server is indistinguishable
+// from one that isn't running, which is also what listLoadedServerIds tells them, so the two agree.
 export function sliceCtx$(wsClientId: string, serverId: string) {
 	return globalState.sliceLifecycleUpdate$.pipe(
 		Rx.filter((id) => id === serverId),
 		Rx.startWith(serverId),
-		Rx.map(() => {
+		Rx.switchMap(async () => {
 			const slice = globalState.slices.get(serverId)
 			if (!slice) return null
-			return { ...getBaseCtx(), ...WsSessionSys.wsSessions.get(wsClientId)!, ...slice }
+			const session = WsSessionSys.wsSessions.get(wsClientId)!
+			const ctx = { ...getBaseCtx(), ...session, ...slice }
+			if (await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:view', { serverId }))) return null
+			return ctx
 		}),
 	)
 }

@@ -601,9 +601,6 @@ export async function toggleUpdatesToSquadServer(
 		input: { disabled: boolean }
 	},
 ) {
-	const denyRes = await Rbac.tryDenyPermissionsForActor(ctx, RBAC.perm('squad-server:disable-slm-updates'))
-	if (denyRes) return denyRes
-
 	await DB.runTransaction(ctx, { redactParams: true }, async ctx => {
 		const serverState = await SquadServer.getServerState(ctx)
 		serverState.settings.updatesToSquadServerDisabled = input.disabled
@@ -657,9 +654,11 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string(), disabled: z.boolean() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = SquadServer.trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:disable-slm-updates', { serverId: ctx.serverId }))
+			if (denyRes) return denyRes
 			return await toggleUpdatesToSquadServer({ ctx, input })
 		}),
 
@@ -690,7 +689,7 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string(), op: SLL.OperationSchema }))
 		.handler(async ({ context: _ctx, input: { serverId, op } }) => {
-			const ctxRes = SquadServer.trySliceCtx(_ctx, serverId)
+			const ctxRes = await SquadServer.trySliceCtx(_ctx, serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 
@@ -713,7 +712,7 @@ export const router = {
 				const backburnerRes = await tryDenyBackburnerDraftOp(ctx, op)
 				if (backburnerRes) return backburnerRes
 			} else {
-				const authRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write'))
+				const authRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write', { serverId: ctx.serverId }))
 				if (authRes) return authRes
 				const noteRes = await tryDenyNoteOp(ctx, op)
 				if (noteRes) return noteRes
@@ -723,7 +722,7 @@ export const router = {
 			// only checked when the op introduces layers and the user lacks force-write, to keep the common path cheap.
 			const forceWriteCandidates = getForceWriteCandidateLayerIds(ctx.layerQueue.session.state, op)
 			if (forceWriteCandidates.length > 0) {
-				const forceWriteDenied = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:force-write'))
+				const forceWriteDenied = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:force-write', { serverId: ctx.serverId }))
 				if (forceWriteDenied) {
 					const serverState = await SquadServer.getServerState(ctx)
 					const poolConstraints = SETTINGS.getPoolMembershipConstraints(serverState.settings)
@@ -773,7 +772,7 @@ async function tryDenyNoteOp(ctx: C.Db & C.ServerSlice & C.UserId & CS.AbortSign
 	const note = LL.findNote(ctx.layerQueue.session.state.list, op.itemId, op.noteId)
 	// a note that isn't there is left to the reducer, which no-ops on it
 	if (!note || LNote.isAuthor(note, ctx.user.discordId)) return
-	return await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:manage-all-notes'))
+	return await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:manage-all-notes', { serverId: ctx.serverId }))
 }
 
 type BackburnerDraftOp = Exclude<Extract<SLL.Operation, { op: `backburner-${string}` }>, { op: 'backburner-write-saved' }>
@@ -814,8 +813,8 @@ async function tryDenyBackburnerDraftOp(
 	// own items qualify with any queue:request-layers grant; touching someone else's item needs queue:write
 	const touchesOthers = targets.some(item => !BB.sameOwner(item.source, owner))
 	const authReq = touchesOthers
-		? RBAC.perm('queue:write')
-		: RBAC.permReq('any', [RBAC.perm('queue:write'), 'queue:request-layers'])
+		? RBAC.perm('queue:write', { serverId: ctx.serverId })
+		: RBAC.permReq('any', [RBAC.perm('queue:write', { serverId: ctx.serverId }), RBAC.anyLayerRequestGrant(ctx.serverId)])
 	const authRes = await Rbac.tryDenyPermissionsForUser(ctx, authReq)
 	if (authRes) return authRes
 
@@ -877,7 +876,7 @@ export async function checkBackburnerCaps(
 	const serverState = await SquadServer.getServerState(ctx)
 	const maxTotal = serverState.settings.queue.layerRequests.maxTotal
 	if (list.length >= maxTotal) return { code: 'err:backburner-full' as const, max: maxTotal }
-	const hasQueueWrite = !(await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write')))
+	const hasQueueWrite = !(await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write', { serverId: ctx.serverId })))
 	if (hasQueueWrite) return null
 	const max = await Rbac.getMaxLayerRequestsForUser(ctx)
 	if (max === null || max === undefined) return null
@@ -900,7 +899,7 @@ export async function addBackburnerRequestFromChat(
 	ctx: C.Db & C.ServerSlice & CS.AbortSignal & C.PlayerIds,
 	args: { source: USR.GuiOrChatUserId; filter: F.FilterNode },
 ): Promise<AddRequestResult> {
-	const denied = await Rbac.tryDenyPermissionsForPlayer(ctx, 'queue:request-layers')
+	const denied = await Rbac.tryDenyPermissionsForPlayer(ctx, RBAC.anyLayerRequestGrant(ctx.serverId))
 	if (denied) return denied
 	const serverState = await SquadServer.getServerState(ctx)
 	// in-game requests always carry the main pool filter; only the GUI can deliberately drop it

@@ -450,7 +450,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 
 	const isModified = ZusUtils.useStore(props.stores.squadServer, LayerQueuePrt.Sel.isModified)
 	const isLocked = ZusUtils.useStore(UPClient.Store, UPClient.Sel.isSllItemLocked(item.itemId))
-	const writeDenied = RbacClient.usePermsCheck(RBAC.perm('queue:write'))
+	const writeDenied = RbacClient.usePermsCheck(RBAC.perm('queue:write', { serverId: props.stores.squadServer.serverId }))
 	const canEdit = !isLocked && !writeDenied
 
 	const [itemPresence, itemActivityUser, activityHovered] = UPClient.useItemPresence(item.itemId)
@@ -603,6 +603,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 							)}
 							notes={item.type === 'single-list-item' && (
 								<LayerNotes
+									serverId={props.stores.squadServer.serverId}
 									notes={item.notes}
 									disabled={!canEdit}
 									revealAddOnHover
@@ -695,10 +696,10 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const voteState = (globalVoteState?.itemId === item.itemId ? globalVoteState : undefined) ?? endingVoteState
 
 	const isModified = ZusUtils.useStore(props.stores.squadServer, LayerQueuePrt.Sel.isModified)
-	const manageVoteDenied = RbacClient.usePermsCheck(RBAC.perm('vote:manage'))
+	const manageVoteDenied = RbacClient.usePermsCheck(RBAC.perm('vote:manage', { serverId: props.stores.squadServer.serverId }))
 	const isEditing = UPClient.useIsEditing()
 	const isLocked = ZusUtils.useStore(UPClient.Store, UPClient.Sel.isSllItemLocked(item.itemId))
-	const writeDenied = RbacClient.usePermsCheck(RBAC.perm('queue:write'))
+	const writeDenied = RbacClient.usePermsCheck(RBAC.perm('queue:write', { serverId: props.stores.squadServer.serverId }))
 	const canEdit = !isLocked && !writeDenied
 	const draggableItem = LL.layerItemToDragItem(item)
 	const dragProps = DndKit.useDraggable(draggableItem, { disabled: !canEdit })
@@ -1255,7 +1256,7 @@ function ItemMenuItems(props: {
 	}, [item.itemId])
 
 	const isLocked = ZusUtils.useStore(UPClient.Store, UPClient.Sel.isSllItemLocked(item.itemId))
-	const writeDenied = RbacClient.usePermsCheck(RBAC.perm('queue:write'))
+	const writeDenied = RbacClient.usePermsCheck(RBAC.perm('queue:write', { serverId: props.stores.squadServer.serverId }))
 	const canEdit = !isLocked && !writeDenied
 	const itemStores = { queue: props.stores.squadServer }
 
