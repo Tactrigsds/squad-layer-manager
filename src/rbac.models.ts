@@ -321,13 +321,15 @@ export type PermissionTrace = {
 export type TracedPermission<T extends PermissionType = PermissionType> = Permission<T> & PermissionTrace
 export function addTracedPerms(perms: TracedPermission[], ...permsToAdd: TracedPermission[]) {
 	for (const permToAdd of permsToAdd) {
+		let matched = false
 		for (const permToCompare of perms) {
 			if (arePermsEqual(permToAdd, permToCompare)) {
 				permToCompare.allowedByRoles = Arr.union(permToCompare.allowedByRoles, permToAdd.allowedByRoles)
-				return
+				matched = true
+				break
 			}
 		}
-		perms.push(permToAdd)
+		if (!matched) perms.push(permToAdd)
 	}
 }
 

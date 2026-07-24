@@ -141,3 +141,21 @@ describe('permSubsumedBy', () => {
 		).toBe(true)
 	})
 })
+
+describe('addTracedPerms', () => {
+	const roleA = RBAC.userDefinedRole('a')
+	const roleB = RBAC.userDefinedRole('b')
+
+	it('merges roles onto a matching perm without dropping the perms that follow it', () => {
+		const perms = [RBAC.tracedPerm('site:authorized', [roleA])]
+		RBAC.addTracedPerms(
+			perms,
+			RBAC.tracedPerm('site:authorized', [roleB]),
+			RBAC.tracedPerm('vote:manage', [roleB]),
+			RBAC.tracedPerm('queue:write', [roleB]),
+		)
+		expect(perms.map((p) => p.type).sort()).toEqual(['queue:write', 'site:authorized', 'vote:manage'])
+		const authorized = perms.find((p) => p.type === 'site:authorized')!
+		expect(authorized.allowedByRoles).toEqual([roleA, roleB])
+	})
+})
