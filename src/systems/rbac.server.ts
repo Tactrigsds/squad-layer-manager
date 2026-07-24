@@ -329,67 +329,48 @@ async function resolveSuperUserPerms(userId: bigint) {
 
 async function resolveInferredRoleAssignments(ctx: C.Db, baseRoles: RBAC.Role[], discordUserId?: bigint): Promise<RBAC.Role[]> {
 	const db = ctx.db()
+	if (!discordUserId && baseRoles.length === 0) return []
 	type Source = 'owner' | 'user-contributor' | 'role-contributor'
-	const subqueries: any[] = []
-	if (discordUserId) {
-		subqueries.push(
-			db
-				.select({
-					source: E.sql<Source>`'owner'`.as('source'),
-					filterId: Schema.filters.id,
-					roleId: E.sql<string | null>`null`.as('roleId'),
-				})
-				.from(Schema.filters)
-				.where(E.eq(Schema.filters.owner, discordUserId)),
-		)
-		subqueries.push(
-			db
-				.select({
-					source: E.sql<Source>`'user-contributor'`.as('source'),
-					filterId: Schema.filterUserContributors.filterId,
-					roleId: E.sql<string | null>`null`.as('roleId'),
-				})
-				.from(Schema.filterUserContributors)
-				.where(E.eq(Schema.filterUserContributors.userId, discordUserId)),
-		)
-	}
-	if (baseRoles.length > 0) {
-		subqueries.push(
-			db
-				.select({
-					source: E.sql<Source>`'role-contributor'`.as('source'),
-					filterId: Schema.filterRoleContributors.filterId,
-					roleId: E.sql<string | null>`${Schema.filterRoleContributors.roleId}`.as('roleId'),
-				})
-				.from(Schema.filterRoleContributors)
-				.where(E.inArray(Schema.filterRoleContributors.roleId, baseRoles.map(r => r.type))),
-		)
-	}
-	if (subqueries.length === 0) return []
-	// @ts-expect-error idc
-	const rows = await unionAll(...subqueries)
+	// unionAll's arms are positional, so an inapplicable arm has to select nothing rather than be omitted: drop one and
+	// drizzle dereferences an undefined arm.
+	const owned = db
+		.select({
+			source: E.sql<Source>`'owner'`.as('source'),
+			filterId: Schema.filters.id,
+		})
+		.from(Schema.filters)
+		.where(discordUserId ? E.eq(Schema.filters.owner, discordUserId) : E.sql`false`)
+	const userContributed = db
+		.select({
+			source: E.sql<Source>`'user-contributor'`.as('source'),
+			filterId: Schema.filterUserContributors.filterId,
+		})
+		.from(Schema.filterUserContributors)
+		.where(discordUserId ? E.eq(Schema.filterUserContributors.userId, discordUserId) : E.sql`false`)
+	const roleContributed = db
+		.select({
+			source: E.sql<Source>`'role-contributor'`.as('source'),
+			filterId: Schema.filterRoleContributors.filterId,
+		})
+		.from(Schema.filterRoleContributors)
+		.where(E.inArray(Schema.filterRoleContributors.roleId, baseRoles.map(r => r.type)))
+
+	const rows = await unionAll(owned, userContributed, roleContributed)
 
 	const roles: RBAC.Role[] = []
 	for (const row of rows) {
 		switch (row.source) {
 			case 'owner':
-				RBAC.Role.push(roles, {
-					type: 'filter-owner',
-					filterId: row.filterId as any as string,
-				})
+				RBAC.Role.push(roles, { type: 'filter-owner', filterId: row.filterId })
 				break
 			case 'user-contributor':
-				RBAC.Role.push(roles, {
-					type: 'filter-user-contributor',
-					filterId: row.filterId as any as string,
-				})
+				RBAC.Role.push(roles, { type: 'filter-user-contributor', filterId: row.filterId })
 				break
 			case 'role-contributor':
-				RBAC.Role.push(roles, {
-					type: 'filter-role-contributor',
-					filterId: row.filterId as any as string,
-				})
+				RBAC.Role.push(roles, { type: 'filter-role-contributor', filterId: row.filterId })
 				break
+			default:
+				assertNever(row.source)
 		}
 	}
 	return roles
