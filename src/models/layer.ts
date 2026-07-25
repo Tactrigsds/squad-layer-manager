@@ -1,6 +1,6 @@
 import * as z from 'zod'
 
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as LC from '@/models/layer-columns'
 import type * as SLL from '@/models/squad-layer-list.models'

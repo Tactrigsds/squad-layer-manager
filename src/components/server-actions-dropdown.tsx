@@ -18,7 +18,7 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards.ts'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as Messages from '@/messages'
 import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
@@ -70,7 +70,7 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 	const { Item, Separator } = props.slots
 	const stores = props.stores
 	const serverId = stores.squadServer!.serverId
-	const playerCount = ZusUtils.useStore(stores.squadServer!, (s) =>
+	const playerCount = Zus.useStore(stores.squadServer!, (s) =>
 		s.chat.chatState.synced && !s.chat.chatState.connectionError ? s.chat.chatState.interpolatedState.players.length : null,
 	)
 	const hasPlayers = playerCount !== null && playerCount > 0
@@ -78,7 +78,7 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 	const disableUpdatesDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:disable-slm-updates', { serverId: serverId }))
 	const disableFogOfWarDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:turn-fog-off', { serverId: serverId }))
 
-	const updatesToSquadServerDisabled = ZusUtils.useStore(stores.squadServer!, (s) => s.settings.saved?.updatesToSquadServerDisabled)
+	const updatesToSquadServerDisabled = Zus.useStore(stores.squadServer!, (s) => s.settings.saved?.updatesToSquadServerDisabled)
 	const { disableUpdates, enableUpdates } = LayerQueueClient.useToggleSquadServerUpdates(serverId)
 	const disableFogOfWarMutation = SquadServerClient.useDisableFogOfWarMutation()
 	const endMatchMutation = useMutation(RPC.orpc.squadServer.endMatch.mutationOptions({}))

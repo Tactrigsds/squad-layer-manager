@@ -1,10 +1,10 @@
 import React from 'react'
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
 import * as UsersClient from '@/systems/users.client'
@@ -174,7 +174,7 @@ export default function UserPermissionsDialog(props: {
 		disabledPerms,
 		disablePerm,
 		enablePerm,
-	} = ZusUtils.useStore(RbacClient.RbacStore)
+	} = Zus.useStore(RbacClient.RbacStore)
 	const allRoles = RbacClient.useUserDefinedRoles().data
 	const myRoles = RbacClient.useMyRoles().data
 	const simulatableRoles = RbacClient.useSimulatableRoles().data

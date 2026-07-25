@@ -6,7 +6,7 @@ import { z } from 'zod'
 // another filter entity.
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import { createId } from '@/lib/id'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import * as Sparse from '@/lib/sparse-tree'
 import { assertNever } from '@/lib/type-guards'
 

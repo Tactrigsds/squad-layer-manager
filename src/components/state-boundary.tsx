@@ -4,12 +4,12 @@ import React from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
-import * as RxHelpers from '@/lib/react-rxjs-helpers'
+import * as ReactRx from '@/lib/react-rxjs'
 import * as RPC from '@/orpc.client'
 
 // a suspended component never commits, so it can't time itself out; the fallback is the only thing mounted while
 // we wait, which makes it the only place that can tell the user the wait has gone on too long. The hard failure
-// path is the stream's first-emit guard (see RxHelpers.bind), which lands here as a StateTimeoutError.
+// path is the stream's first-emit guard (see ReactRx.bind), which lands here as a StateTimeoutError.
 
 function SlowAwareFallback(props: { label: string; slowAfterMs: number }) {
 	const [slow, setSlow] = React.useState(false)
@@ -33,7 +33,7 @@ function SlowAwareFallback(props: { label: string; slowAfterMs: number }) {
 }
 
 function StateErrorFallback(props: { label: string; error: unknown; reset: () => void }) {
-	const timedOut = props.error instanceof RxHelpers.StateTimeoutError
+	const timedOut = props.error instanceof ReactRx.StateTimeoutError
 	const message = props.error instanceof Error ? props.error.message : String(props.error)
 
 	return (
@@ -91,7 +91,7 @@ class ErrorCatcher extends React.Component<{ label: string; children: React.Reac
 }
 
 /**
- * Suspense + error boundary for subtrees that read suspending StateObservables (`RxHelpers.bind` without a default).
+ * Suspense + error boundary for subtrees that read suspending StateObservables (`ReactRx.bind` without a default).
  * Retry resets the boundary, which drops the last subscriber and resubscribes the state observable from scratch.
  */
 export function StateBoundary(props: { label: string; children: React.ReactNode; slowAfterMs?: number; fallback?: React.ReactNode }) {

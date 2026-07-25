@@ -1,8 +1,8 @@
 import type { VisibilityState } from '@tanstack/react-table'
 import { z } from 'zod'
 
-import * as Gen from '@/lib/generator'
-import * as Obj from '@/lib/object'
+import * as Gen from '@/lib/generator-utils'
+import * as Obj from '@/lib/object-utils'
 import { assertNever, isNullOrUndef } from '@/lib/type-guards'
 import * as CB from '@/models/constraint-builders'
 import * as FB from '@/models/filter-builders'

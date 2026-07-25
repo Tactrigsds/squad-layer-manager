@@ -5,7 +5,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers.ts'
 import { cn } from '@/lib/utils.ts'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -32,7 +32,7 @@ export default function LayerDisplay(props: {
 	stores?: Partial<SquadServerFrame.KeyProp>
 }) {
 	const teamParity =
-		ZusUtils.useStore(
+		Zus.useStore(
 			props.stores?.squadServer,
 			React.useCallback(
 				(s: SquadServerFrame.State | undefined) => (s ? LQY.getParityForLayerItem(s.layerItemsState, props.item) : 0),

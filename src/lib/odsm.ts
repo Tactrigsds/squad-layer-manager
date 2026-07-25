@@ -2,8 +2,8 @@
 // independently on the server and each client: clients apply ops optimistically and reconcile
 // against the server's authoritative replay, while the server is just one more replica whose
 // history is the one everyone else converges to.
-import * as Arr from '@/lib/array'
-import * as Obj from '@/lib/object'
+import * as Arr from '@/lib/array-utils'
+import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 
 export type OpId = string

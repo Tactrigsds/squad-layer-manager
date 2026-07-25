@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as UP from '@/models/user-presence'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
@@ -47,9 +47,9 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 		}
 	}, [setViewingSettings, stores.squadServer])
 
-	const [settingsChanged, saving, validationErrors] = ZusUtils.useStore(
+	const [settingsChanged, saving, validationErrors] = Zus.useStore(
 		stores.squadServer!,
-		ZusUtils.useShallow((s) => [s.settings.modified, s.settings.saving, s.settings.validationErrors]),
+		Zus.useShallow((s) => [s.settings.modified, s.settings.saving, s.settings.validationErrors]),
 	)
 
 	const mainPoolApi = useStorePoolConfigApi(stores.squadServer!, ['queue', 'mainPool'])

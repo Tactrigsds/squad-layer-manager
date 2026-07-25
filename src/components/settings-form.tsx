@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import { HexColorPicker } from 'react-colorful'
-import * as Rx from 'rxjs'
 import { z } from 'zod'
 
 import { BmFlagMultiSelect, BmFlagSelect } from '@/components/bm-flag-picker'
@@ -31,15 +30,16 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useDebounced } from '@/hooks/use-debounce'
 import { TRIGGER_LEVEL_DISPLAY } from '@/lib/balance-trigger-display'
 import { createId } from '@/lib/id'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
+import * as Rx from '@/lib/rxjs'
 import type { SettingsGroup } from '@/lib/settings-groups'
 import { HIDDEN_GLOBAL_SETTINGS_KEYS, LOCAL_JSON_EDITOR_PATHS, splitAdvanced, splitByGroups } from '@/lib/settings-groups'
 import { humanize, settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
-import * as Zod from '@/lib/zod'
-import * as ZusUtils from '@/lib/zustand'
+import * as ZodUtils from '@/lib/zod-utils'
+import * as Zus from '@/lib/zustand'
 import * as Messages from '@/messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as BAL from '@/models/balance-triggers.models'
@@ -1215,7 +1215,7 @@ function ServerAgentTokenField({ value$, reset$, onChange }: OverrideProps) {
 	const [copied, setCopied] = React.useState(false)
 	const copiedTimeout = React.useRef<ReturnType<typeof setTimeout>>(null)
 	const push = useDebounced<any>({ delay: DEBOUNCE_MS, onChange })
-	const repoUrl = ZusUtils.useStore(ConfigClient.Store, (s) => s?.repoUrl)
+	const repoUrl = Zus.useStore(ConfigClient.Store, (s) => s?.repoUrl)
 	const docUrl = repoUrl ? `${repoUrl}/blob/HEAD/docs/configuring.md#server-agent` : undefined
 	const format = (v: any) => (v === null || v === undefined ? '' : String(v))
 	useReset(reset$, () => {
@@ -2517,7 +2517,7 @@ function PermScopeCell({
 	reset$: Rx.Subject<void>
 	onPatch: (id: string, patch: Partial<PermRows.PermRow>, quiet?: boolean) => void
 }) {
-	const servers = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers) ?? []
+	const servers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers) ?? []
 
 	// a denial is unrestricted by construction: the expression grammar carries no args
 	if (row.effect === 'deny') return <span className="text-xs leading-8 text-muted-foreground">Everything</span>
@@ -3758,7 +3758,7 @@ function useLocalJsonSchema(pathStr: string): z.ZodType | undefined {
 	return React.useMemo(
 		// splitting pathStr rather than taking the path array keeps this memo stable: the array is rebuilt every render.
 		// Only the declared paths are split, and those have no dots inside a segment.
-		() => (rootSchema && LOCAL_JSON_EDITOR_PATHS.has(pathStr) ? Zod.schemaAtPath(rootSchema, pathStr.split('.')) : undefined),
+		() => (rootSchema && LOCAL_JSON_EDITOR_PATHS.has(pathStr) ? ZodUtils.schemaAtPath(rootSchema, pathStr.split('.')) : undefined),
 		[rootSchema, pathStr],
 	)
 }

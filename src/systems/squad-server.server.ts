@@ -3,22 +3,22 @@ import * as Orpc from '@orpc/server'
 import { Mutex, type MutexInterface } from 'async-mutex'
 import { sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm'
-import * as Rx from 'rxjs'
 import superjson from 'superjson'
 import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 import * as AR from '@/app-routes'
-import * as Arr from '@/lib/array'
-import { acquireInBlock, anySignal, distinctDeepEquals, firstValueFrom, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import * as Arr from '@/lib/array-utils'
 import * as Cleanup from '@/lib/cleanup'
 import { superjsonify } from '@/lib/drizzle'
 import { FileTail } from '@/lib/file-tail'
-import * as Gen from '@/lib/generator'
+import * as Gen from '@/lib/generator-utils'
 import { IsolatedSubject } from '@/lib/isolated-subject'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
+import * as Prom from '@/lib/promise-utils'
 import Rcon, { DirectSocketTransport } from '@/lib/rcon/core-rcon'
+import * as Rx from '@/lib/rxjs'
 import { SftpTail } from '@/lib/sftp-tail'
 import * as Templating from '@/lib/templating'
 import { assertNever } from '@/lib/type-guards'
@@ -170,10 +170,10 @@ export const orpcRouter = {
 				}
 				return ids
 			}),
-			distinctDeepEquals(),
-			withAbortSignal(signal!),
+			Rx.Ext.distinctDeepEquals(),
+			Rx.Ext.withAbortSignal(signal!),
 		)
-		yield* toAsyncGenerator(obs)
+		yield* Rx.Ext.toAsyncGenerator(obs)
 	}),
 
 	watchLayersStatus: orpcBase
@@ -197,8 +197,8 @@ export const orpcRouter = {
 									currentMatch,
 								},
 							})
-							const event$ = sliceCtx.server.event$.pipe(withAbortSignal(ac.signal))
-							for await (const [ctx, event] of toAsyncGenerator(event$)) {
+							const event$ = sliceCtx.server.event$.pipe(Rx.Ext.withAbortSignal(ac.signal))
+							for await (const [ctx, event] of Rx.Ext.toAsyncGenerator(event$)) {
 								if (!['NEW_GAME', 'MAP_SET', 'RESET'].includes(event.type)) continue
 								const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 								const nextLayerId = ctx.server.eventState.nextLayerId
@@ -215,26 +215,28 @@ export const orpcRouter = {
 						})().catch((err) => subscriber.error(err))
 						return () => ac.abort()
 					}),
-			).pipe(withAbortSignal(signal!))
-			yield* toAsyncGenerator(obs)
+			).pipe(Rx.Ext.withAbortSignal(signal!))
+			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
 
 	watchServerRolling: orpcBase
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
-			const obs = sliceStream$(context.wsClientId, input.serverId, (ctx) => ctx.server.serverRolling$).pipe(withAbortSignal(signal!))
-			yield* toAsyncGenerator(obs)
+			const obs = sliceStream$(context.wsClientId, input.serverId, (ctx) => ctx.server.serverRolling$).pipe(
+				Rx.Ext.withAbortSignal(signal!),
+			)
+			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
 
 	watchTickRate: orpcBase
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
-			const obs = sliceStream$(context.wsClientId, input.serverId, (ctx) => ctx.server.tickRate$.pipe(distinctDeepEquals())).pipe(
-				withAbortSignal(signal!),
+			const obs = sliceStream$(context.wsClientId, input.serverId, (ctx) => ctx.server.tickRate$.pipe(Rx.Ext.distinctDeepEquals())).pipe(
+				Rx.Ext.withAbortSignal(signal!),
 			)
-			yield* toAsyncGenerator(obs)
+			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
 
 	watchServerInfo: orpcBase
@@ -242,9 +244,9 @@ export const orpcRouter = {
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
 			const obs = sliceStream$(context.wsClientId, input.serverId, (ctx) =>
-				ctx.server.serverInfo.observe(ctx).pipe(distinctDeepEquals()),
-			).pipe(withAbortSignal(signal!))
-			yield* toAsyncGenerator(obs)
+				ctx.server.serverInfo.observe(ctx).pipe(Rx.Ext.distinctDeepEquals()),
+			).pipe(Rx.Ext.withAbortSignal(signal!))
+			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
 
 	endMatch: orpcBase.input(z.object({ serverId: z.string() })).handler(async ({ context: _ctx, input }) => {
@@ -258,7 +260,7 @@ export const orpcRouter = {
 			Rx.filter((e) => e.type === 'ROUND_ENDED'),
 			Rx.endWith(null),
 		)
-		const result$ = firstValueFrom(Rx.race(matchEnded$, Rx.timer(20_000).pipe(Rx.map(() => 'timeout' as const))), ctx.signal)
+		const result$ = Rx.Ext.firstValueFrom(Rx.race(matchEnded$, Rx.timer(20_000).pipe(Rx.map(() => 'timeout' as const))), ctx.signal)
 
 		await SquadRcon.endMatch(ctx)
 		await emitAppEvent(
@@ -351,9 +353,9 @@ export const orpcRouter = {
 						log.error(err, 'Error in watchChatEvents')
 					},
 				}),
-				withAbortSignal(signal!),
+				Rx.Ext.withAbortSignal(signal!),
 			)
-			yield* toAsyncGenerator(obs)
+			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
 
 	toggleFogOfWar: orpcBase.input(z.object({ serverId: z.string(), disabled: z.boolean() })).handler(async ({ context: _ctx, input }) => {
@@ -704,7 +706,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	const sliceAbort = new AbortController()
 	sliceAbortControllers.set(serverId, sliceAbort)
 	// aborts when the slice is destroyed or the process shuts down
-	const signal = anySignal(ctx.signal, sliceAbort.signal)!
+	const signal = Prom.anySignal(ctx.signal, sliceAbort.signal)!
 	ctx = { ...ctx, signal }
 
 	// the emulator has to be listening before anything can dial it, and it owns its own (ephemeral) port
@@ -964,7 +966,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 
 		const errors: Error[] = []
 		for await (const event of SM.LogEvents.parseLogStream(
-			toAsyncGenerator(countedChunk$.pipe(withAbortSignal(logStreamAc.signal))),
+			Rx.Ext.toAsyncGenerator(countedChunk$.pipe(Rx.Ext.withAbortSignal(logStreamAc.signal))),
 			errors,
 			(rate) => server.tickRate$.next(rate),
 		)) {
@@ -1597,7 +1599,7 @@ export function actorFromUser(ctx: C.SquadServer, source: USR.GuiOrChatUserId | 
 }
 
 async function collectEvents(ctx: C.SquadServer & C.Db & CS.AbortSignal, addEventsCb: () => void) {
-	using _lock = await acquireInBlock(ctx.server.processEventsMtx, { signal: ctx.signal })
+	using _lock = await Prom.acquireInBlock(ctx.server.processEventsMtx, { signal: ctx.signal })
 	addEventsCb()
 	for await (const event of PendingEvents.process(ctx.server.eventState, Date.now())) {
 		// the single funnel for every server event, whatever produced it
@@ -1634,7 +1636,7 @@ function getLayersStatusExt$(serverId: string) {
 			}),
 		)
 		return () => sub.unsubscribe()
-	}).pipe(distinctDeepEquals(), Rx.share())
+	}).pipe(Rx.Ext.distinctDeepEquals(), Rx.share())
 }
 
 async function fetchLayersStatusExt(ctx: C.SquadServer & C.Rcon & C.MatchHistory & CS.AbortSignal) {
@@ -1702,7 +1704,7 @@ function withSliceSignal<T extends object>(ctx: T, slice: C.ServerSlice) {
 	// cancel when either the caller (e.g. the originating request) or the slice is done. the slice signal
 	// already covers process shutdown, so don't allocate a composite for base ctxs on the hot event path
 	const callerSignal = (ctx as Partial<CS.AbortSignal>).signal
-	const signal = callerSignal === CleanupSys.shutdownSignal ? slice.signal : anySignal(callerSignal, slice.signal)!
+	const signal = callerSignal === CleanupSys.shutdownSignal ? slice.signal : Prom.anySignal(callerSignal, slice.signal)!
 	return {
 		...ctx,
 		...slice,
@@ -2124,7 +2126,7 @@ const onNewGameDuringRoll =
 
 export async function waitForSynced(ctx: C.SquadServer & CS.AbortSignal) {
 	if (ctx.server.eventState.syncState.type === 'synced') return
-	await firstValueFrom(
+	await Rx.Ext.firstValueFrom(
 		ctx.server.event$.pipe(Rx.filter(([ctx, event]) => event.type === 'NEW_GAME' || event.type === 'RESET')),
 		ctx.signal,
 	)

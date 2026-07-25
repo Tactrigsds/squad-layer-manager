@@ -1,16 +1,16 @@
 import { Mutex } from 'async-mutex'
 import type { MutexInterface } from 'async-mutex'
 import * as E from 'drizzle-orm'
-import * as Rx from 'rxjs'
 import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema.ts'
-import { isAbortError, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { IsolatedBehaviorSubject, IsolatedReplaySubject, IsolatedSubject } from '@/lib/isolated-subject'
 import * as ODSM from '@/lib/odsm'
+import * as Prom from '@/lib/promise-utils'
+import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards.ts'
-import { HumanTime } from '@/lib/zod.ts'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as Messages from '@/messages.ts'
 import * as AppEvents from '@/models/app-events.models'
 import * as BB from '@/models/backburner.models'
@@ -192,7 +192,7 @@ export const setupInstance = C.spanOp(
 			.pipe(
 				Rx.switchMap((unexpectedNextLayer) => {
 					if (unexpectedNextLayer) {
-						return Rx.interval(HumanTime.parse('2m')).pipe(
+						return Rx.interval(ZodUtils.HumanTime.parse('2m')).pipe(
 							Rx.startWith(0),
 							Rx.map(() => unexpectedNextLayer),
 						)
@@ -337,7 +337,7 @@ export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.Serv
 	if (ctx.serverSettings.settings.remindersAndAnnouncementsEnabled) {
 		const announcementTasks: Rx.Observable<void>[] = []
 		announcementTasks.push(
-			toCold(async () => {
+			Rx.Ext.toCold(async () => {
 				const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 				const historyState = MatchHistory.getPublicMatchHistoryState(ctx)
 				const currentMatch = await MatchHistory.getCurrentMatch(ctx)
@@ -352,14 +352,14 @@ export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.Serv
 		)
 
 		announcementTasks.push(
-			toCold(async () => {
+			Rx.Ext.toCold(async () => {
 				const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 				await warnShowNext(ctx, 'all-admins')
 			}),
 		)
 
 		announcementTasks.push(
-			toCold(async () => {
+			Rx.Ext.toCold(async () => {
 				const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 				const queue = getSavedQueue(ctx)
 				if (queue && queue.length <= ctx.serverSettings.settings.queue.lowQueueWarningThreshold) {
@@ -571,7 +571,7 @@ export const syncNextLayerToServer = C.spanOp(
 				ctx.layerQueue.unexpectedNextLayerSet$.next(null)
 				// deliberately detached (see below): observe the rejection instead of awaiting
 				SquadServer.pushAttribution(ctx, { type: 'MAP_SET_ATTRIBUTION', itemId, layerId: nextQueuedLayerId }).catch((err) => {
-					if (!isAbortError(err)) log.error(err)
+					if (!Prom.isAbortError(err)) log.error(err)
 				})
 				break
 			case 'ok': {
@@ -605,7 +605,7 @@ export const syncNextLayerToServer = C.spanOp(
 					layerId: nextQueuedLayerId,
 					appEventId: mapSetAppEventId,
 				}).catch((err) => {
-					if (!isAbortError(err)) log.error(err)
+					if (!Prom.isAbortError(err)) log.error(err)
 				})
 				break
 			}
@@ -667,9 +667,9 @@ export const router = {
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
 			const obs = SquadServer.sliceStream$(context.wsClientId, input.serverId, (ctx) => ctx.layerQueue.unexpectedNextLayerSet$).pipe(
-				withAbortSignal(signal!),
+				Rx.Ext.withAbortSignal(signal!),
 			)
-			yield* toAsyncGenerator(obs)
+			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
 
 	toggleUpdatesToSquadServer: orpcBase
@@ -705,9 +705,9 @@ export const router = {
 					Rx.observeOn(Rx.asyncScheduler),
 				)
 				return updateForClient$
-			}).pipe(withAbortSignal(signal!))
+			}).pipe(Rx.Ext.withAbortSignal(signal!))
 
-			yield* toAsyncGenerator(updateForServer$)
+			yield* Rx.Ext.toAsyncGenerator(updateForServer$)
 		}),
 
 	dispatchOp: orpcBase

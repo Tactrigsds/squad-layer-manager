@@ -22,10 +22,10 @@ import { Input } from '@/components/ui/input'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
-import * as Typography from '@/lib/typography'
+import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as ValidationErrors from '@/lib/validation-errors'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as F from '@/models/filter.models'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
@@ -56,8 +56,8 @@ export function FilterEdit(props: {
 }) {
 	const stores = props.stores
 	// fix refetches wiping out edited state, probably via fast deep equals or w/e
-	const frameState = () => ZusUtils.getState(stores.filterEditor)
-	const useFrame = <O,>(selector: (table: EditFrame.FilterEditor) => O) => ZusUtils.useStore(stores.filterEditor, selector)
+	const frameState = () => Zus.getState(stores.filterEditor)
+	const useFrame = <O,>(selector: (table: EditFrame.FilterEditor) => O) => Zus.useStore(stores.filterEditor, selector)
 
 	const navigate = useNavigate()
 	const router = useRouter()
@@ -164,7 +164,7 @@ export function FilterEdit(props: {
 
 	const permitEdit = !canEditRes?.code
 
-	const [filterValid, filterModified] = useFrame(ZusUtils.useShallow((state) => [state.valid, state.modified]))
+	const [filterValid, filterModified] = useFrame(Zus.useShallow((state) => [state.valid, state.modified]))
 
 	useBlocker({
 		enableBeforeUnload: filterModified || form.state.isDirty,
@@ -230,7 +230,7 @@ export function FilterEdit(props: {
 										<Icons.Dot />
 									</>
 								)}
-								<h3 className={Typography.H3}>{props.entity.name}</h3>
+								<h3 className={Typo.H3}>{props.entity.name}</h3>
 								<Icons.Dot />
 								<small className="font-light">Owner: {props.owner.displayName}</small>
 								<Icons.Dot />
@@ -689,24 +689,16 @@ function DescriptionDisplay({ description }: { description?: string | null }) {
 }
 
 const markdownComponents = {
-	h1: ({ ...props }: React.ComponentPropsWithoutRef<'h1'>) => (
-		<h1 {...props} className={cn('text-xl font-semibold mt-4 mb-2', Typography.H3)} />
-	),
-	h2: ({ ...props }: React.ComponentPropsWithoutRef<'h2'>) => (
-		<h2 {...props} className={cn('text-lg font-medium mt-3 mb-2', Typography.H3)} />
-	),
-	h3: ({ ...props }: React.ComponentPropsWithoutRef<'h3'>) => (
-		<h3 {...props} className={cn('text-lg font-medium mt-3 mb-2', Typography.H3)} />
-	),
-	h4: ({ ...props }: React.ComponentPropsWithoutRef<'h4'>) => (
-		<h4 {...props} className={cn('text-base font-medium mt-2 mb-1', Typography.H4)} />
-	),
+	h1: ({ ...props }: React.ComponentPropsWithoutRef<'h1'>) => <h1 {...props} className={cn('text-xl font-semibold mt-4 mb-2', Typo.H3)} />,
+	h2: ({ ...props }: React.ComponentPropsWithoutRef<'h2'>) => <h2 {...props} className={cn('text-lg font-medium mt-3 mb-2', Typo.H3)} />,
+	h3: ({ ...props }: React.ComponentPropsWithoutRef<'h3'>) => <h3 {...props} className={cn('text-lg font-medium mt-3 mb-2', Typo.H3)} />,
+	h4: ({ ...props }: React.ComponentPropsWithoutRef<'h4'>) => <h4 {...props} className={cn('text-base font-medium mt-2 mb-1', Typo.H4)} />,
 	p: ({ ...props }: React.ComponentPropsWithoutRef<'p'>) => <p {...props} className="py-2" />,
 	ul: ({ ...props }: React.ComponentPropsWithoutRef<'ul'>) => <ul {...props} className="list-disc pl-6 py-2" />,
 	ol: ({ ...props }: React.ComponentPropsWithoutRef<'ol'>) => <ol {...props} className="list-decimal pl-6 py-2" />,
 	li: ({ ...props }: React.ComponentPropsWithoutRef<'li'>) => <li {...props} className="my-1" />,
 	blockquote: ({ ...props }: React.ComponentPropsWithoutRef<'blockquote'>) => (
-		<blockquote {...props} className={cn('border-l-4 border-gray-300 py-2 pl-4 italic', Typography.Blockquote)} />
+		<blockquote {...props} className={cn('border-l-4 border-gray-300 py-2 pl-4 italic', Typo.Blockquote)} />
 	),
 	code: ({ inline, ...props }: React.ComponentPropsWithoutRef<'code'> & { inline?: boolean }) =>
 		inline ? (

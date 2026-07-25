@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as UP from '@/models/user-presence'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 
@@ -69,13 +69,13 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 	const serverId = props.stores.squadServer.serverId
 	// the visible panel is client-only state; presence mirrors it while the client is engaged (see the
 	// dashboard route effect). tab switches persist and drive display without needing a presence entry.
-	const tab = ZusUtils.useStore(ClientOnlySettings.Store, (s) => (s.primaryPanelTab === 'VIEWING_TEAMS' ? 'teams' : 'queue'))
+	const tab = Zus.useStore(ClientOnlySettings.Store, (s) => (s.primaryPanelTab === 'VIEWING_TEAMS' ? 'teams' : 'queue'))
 
-	const queueLength = ZusUtils.useStore(props.stores.squadServer, (s) => s.queue.layerList.length)
-	const playerCount = ZusUtils.useStore(props.stores.squadServer, (s) => ChatPrt.Sel.chatState(s).players.length)
+	const queueLength = Zus.useStore(props.stores.squadServer, (s) => s.queue.layerList.length)
+	const playerCount = Zus.useStore(props.stores.squadServer, (s) => ChatPrt.Sel.chatState(s).players.length)
 
 	// subjects are created once per frame instance, so reading them outside a selector is fine
-	const frameState = ZusUtils.getState(props.stores.squadServer)
+	const frameState = Zus.getState(props.stores.squadServer)
 	const queueEvent$ = frameState.queue.presenceEvent$
 	const teamswapEvent$ = frameState.teamswaps.presenceEvent$
 

@@ -1,7 +1,6 @@
 import React from 'react'
-import * as Zus from 'zustand'
 
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as SettingsClient from '@/systems/settings.client'
 
@@ -10,10 +9,8 @@ import * as SettingsClient from '@/systems/settings.client'
 // render, which is what lets the caller route through the admin-action-reason codepath instead of custom text.
 export function useAdminReasonDraft(action: AAR.AdminActionType) {
 	const [pickedLabel, setPickedLabel] = React.useState<string | null>(null)
-	const reasons = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) =>
-		s ? AAR.reasonsForAction(s.adminActionReasons, action) : [],
-	)
-	const vars = ZusUtils.useStore(
+	const reasons = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => (s ? AAR.reasonsForAction(s.adminActionReasons, action) : []))
+	const vars = Zus.useStore(
 		SettingsClient.PublicSettingsStore,
 		(s) => Object.fromEntries((s?.messageVariables ?? []).map((v) => [v.name, v.value])) as Record<string, string>,
 	)

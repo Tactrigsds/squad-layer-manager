@@ -1,5 +1,5 @@
 import type * as FRM from '@/lib/frame'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type * as SB from '@/models/sandbox.models'
 import * as RPC from '@/orpc.client'
 import type { SandboxState } from '@/systems/sandbox.shared'
@@ -132,7 +132,7 @@ export namespace Sel {
 
 export namespace Actions {
 	function store(stores: KeyProp) {
-		return ZusUtils.resolveStore<Store>(stores.sandbox)
+		return Zus.resolveStore<Store>(stores.sandbox)
 	}
 
 	export function setSpeaker(stores: KeyProp, speaker: string) {

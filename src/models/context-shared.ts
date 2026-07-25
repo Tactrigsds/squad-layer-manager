@@ -1,6 +1,6 @@
 import type pino from 'pino'
 
-import { anySignal, isAbortError } from '@/lib/async'
+import * as Prom from '@/lib/promise-utils'
 import type * as F from '@/models/filter.models'
 import type * as LC from '@/models/layer-columns'
 import type * as MH from '@/models/match-history.models'
@@ -47,7 +47,7 @@ export type MatchHistory = Ctx & {
 export type LayerQuery = Ctx & LayerEngine & Log & Filters & LayerGeneration
 
 export function addSignal<C extends Ctx & Partial<AbortSignal>>(ctx: C, signal: globalThis.AbortSignal): C & AbortSignal {
-	return { ...ctx, signal: ctx.signal ? anySignal(signal, ctx.signal)! : signal }
+	return { ...ctx, signal: ctx.signal ? Prom.anySignal(signal, ctx.signal)! : signal }
 }
 
 // A bucket of background promises a callee schedules for an ancestor to await (via awaitDeferred) before
@@ -77,7 +77,7 @@ export async function awaitDeferred(ctx: Deferred): Promise<unknown[]> {
 	const errors: unknown[] = []
 	while (ctx.deferred.length > 0) {
 		for (const res of await Promise.allSettled(ctx.deferred.splice(0))) {
-			if (res.status === 'rejected' && !isAbortError(res.reason)) errors.push(res.reason)
+			if (res.status === 'rejected' && !Prom.isAbortError(res.reason)) errors.push(res.reason)
 		}
 	}
 	return errors

@@ -6,7 +6,7 @@ import type { LoggerOptions } from 'pino'
 import pino from 'pino'
 import format from 'quick-format-unescaped'
 
-import { flattenObjToAttrs } from '@/lib/object'
+import { flattenObjToAttrs } from '@/lib/object-utils'
 import type { OtelModule } from '@/lib/otel'
 import { assertNever } from '@/lib/type-guards'
 import type * as CS from '@/models/context-shared'

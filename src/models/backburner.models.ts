@@ -3,8 +3,8 @@ import { z } from 'zod'
 
 import { createId } from '@/lib/id'
 import * as ItemMut from '@/lib/item-mutations'
-import * as Obj from '@/lib/object'
-import { normalizeForMatch } from '@/lib/string'
+import * as Obj from '@/lib/object-utils'
+import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
@@ -469,7 +469,7 @@ export function resolveRequestTokens(input: {
 	const exact = new Map<string, TokenTarget>()
 	const addExact = (raw: string | null | undefined, target: TokenTarget) => {
 		if (!raw) return
-		const key = normalizeForMatch(raw)
+		const key = Str.normalizeForMatch(raw)
 		if (!exact.has(key)) exact.set(key, target)
 	}
 	for (const gamemode of components.gamemodes) {
@@ -499,7 +499,7 @@ export function resolveRequestTokens(input: {
 
 	const targets: TokenTarget[] = []
 	for (const token of tokens) {
-		const exactTarget = exact.get(normalizeForMatch(token))
+		const exactTarget = exact.get(Str.normalizeForMatch(token))
 		if (exactTarget) {
 			targets.push(exactTarget)
 			continue
@@ -592,8 +592,8 @@ export function resolveRequestTokens(input: {
 }
 
 function uniqueSubstringMatch(candidates: string[], token: string) {
-	const normalized = normalizeForMatch(token)
-	const matched = candidates.filter((candidate) => normalizeForMatch(candidate).includes(normalized))
+	const normalized = Str.normalizeForMatch(token)
+	const matched = candidates.filter((candidate) => Str.normalizeForMatch(candidate).includes(normalized))
 	if (matched.length === 0) return { code: 'err:not-found' as const }
 	if (matched.length > 1) return { code: 'err:multiple-matches' as const, count: matched.length }
 	return { code: 'ok' as const, value: matched[0] }
@@ -605,8 +605,12 @@ function unknownTokenMessage(
 	components: LC.LayerComponents,
 	filterEntities: { id: string; name: string }[],
 ): string {
-	const candidates = [...exact.keys(), ...components.maps.map(normalizeForMatch), ...filterEntities.map((f) => normalizeForMatch(f.name))]
-	const sorted = StringComparison.diceCoefficient.sortMatch(normalizeForMatch(token), candidates)
+	const candidates = [
+		...exact.keys(),
+		...components.maps.map(Str.normalizeForMatch),
+		...filterEntities.map((f) => Str.normalizeForMatch(f.name)),
+	]
+	const sorted = StringComparison.diceCoefficient.sortMatch(Str.normalizeForMatch(token), candidates)
 	const base = `Unknown request "${token}"`
 	if (sorted.length === 0) return base
 	const best = sorted[sorted.length - 1]
@@ -615,8 +619,8 @@ function unknownTokenMessage(
 		? 'value' in target
 			? target.value
 			: target.name
-		: (components.maps.find((m) => normalizeForMatch(m) === best.member) ??
-			filterEntities.find((f) => normalizeForMatch(f.name) === best.member)?.name)
+		: (components.maps.find((m) => Str.normalizeForMatch(m) === best.member) ??
+			filterEntities.find((f) => Str.normalizeForMatch(f.name) === best.member)?.name)
 	return suggestion ? `${base}. Did you mean ${suggestion}?` : base
 }
 

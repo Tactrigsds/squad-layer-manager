@@ -10,8 +10,8 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
-import { formatHumanTime } from '@/lib/zod'
-import * as ZusUtils from '@/lib/zustand'
+import * as ZodUtils from '@/lib/zod-utils'
+import * as Zus from '@/lib/zustand'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
@@ -78,7 +78,7 @@ function ChatMessageEvent({
 	stores: SquadServerFrame.KeyProp
 }) {
 	const match = MatchHistoryClient.useRecentMatches(stores.squadServer.serverId).find((m) => m.historyEntryId === event.matchId)
-	const displayTeamsNormalized = ZusUtils.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
+	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
 
 	// Get team-specific color for team chats
 	const getChannelStyle = () => {
@@ -754,7 +754,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 			<EventLine time={event.time} icon={<Icons.UserX className="h-4 w-4 text-red-500 shrink-0" />}>
 				{actorLabel} timed out{' '}
 				{target && matchId !== null ? <PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} /> : 'a player'} for{' '}
-				{formatHumanTime(appEvent.durationMs)}
+				{ZodUtils.formatHumanTime(appEvent.durationMs)}
 				{appEvent.reason?.label ? ` for ${appEvent.reason.label}` : ''}
 			</EventLine>
 		)

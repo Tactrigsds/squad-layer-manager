@@ -6,7 +6,7 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, 
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
@@ -41,7 +41,7 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 		LQYClient.Actions.setHoveredConstraintItemId(itemId ?? null)
 	}
 	const onMouseOut = () => {
-		const state = ZusUtils.getState(LQYClient.Store)
+		const state = Zus.getState(LQYClient.Store)
 		if (state.hoveredConstraintItemId !== itemId) return
 		LQYClient.Actions.setHoveredConstraintItemId(null)
 	}

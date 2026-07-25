@@ -30,16 +30,16 @@ import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import { useIsMobile } from '@/hooks/use-is-mobile.ts'
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { inline, useStableValue } from '@/lib/react.ts'
 import * as ST from '@/lib/state-tree.ts'
-import { statusCodeToTitleCase } from '@/lib/string.ts'
+import * as Str from '@/lib/string-utils'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards.ts'
 import { resToOptional } from '@/lib/types.ts'
-import * as Typo from '@/lib/typography.ts'
+import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand.ts'
+import * as Zus from '@/lib/zustand.ts'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LNote from '@/models/layer-notes.models'
@@ -68,7 +68,7 @@ import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator } from './ui
 import TabsList from './ui/tabs-list.tsx'
 
 export function LayerList(props: { stores: SquadServerFrame.KeyProp }) {
-	const queueItemIds = ZusUtils.useStore(props.stores.squadServer, LayerQueuePrt.Sel.queueItemIds)
+	const queueItemIds = Zus.useStore(props.stores.squadServer, LayerQueuePrt.Sel.queueItemIds)
 	const serverId = props.stores.squadServer.serverId
 
 	// -------- dispatch move events --------
@@ -76,7 +76,7 @@ export function LayerList(props: { stores: SquadServerFrame.KeyProp }) {
 		React.useCallback(
 			async (event) => {
 				const user = UsersClient.loggedInUser
-				const upState = ZusUtils.getState(UPClient.Store)
+				const upState = Zus.getState(UPClient.Store)
 				if (!user || !event.over) return
 				if (!UPClient.Sel.isEditing(user.discordId)(upState)) return
 				const target = event.over.slots[0]
@@ -84,7 +84,7 @@ export function LayerList(props: { stores: SquadServerFrame.KeyProp }) {
 				const cursors = LL.dropItemToLLItemCursors(event.over)
 				if (cursors.length === 0) return
 				const voteState = VotesClient.voteState$(serverId).getValue()
-				const layerList = LayerQueuePrt.Sel.layerList(ZusUtils.getState(props.stores.squadServer))
+				const layerList = LayerQueuePrt.Sel.layerList(Zus.getState(props.stores.squadServer))
 				if (voteState?.code === 'in-progress') {
 					for (const cursor of cursors) {
 						if (LL.isChildItem(cursor.itemId, voteState.itemId, layerList)) return
@@ -155,7 +155,7 @@ export function LayerList(props: { stores: SquadServerFrame.KeyProp }) {
 }
 
 function LoadedActivitiesRenderer({ stores }: { stores: SquadServerFrame.KeyProp }) {
-	const loadedActivities = ZusUtils.useStore(UPClient.Store, ZusUtils.useShallow(UPClient.Sel.loadedActivities))
+	const loadedActivities = Zus.useStore(UPClient.Store, Zus.useShallow(UPClient.Sel.loadedActivities))
 	return (
 		<>
 			{loadedActivities.map((entry) => {
@@ -197,7 +197,7 @@ function LoadedSelectLayersView({
 		[entry.data.selectLayersFrame, positionCursors],
 	)
 
-	const addLayersAtPosition = ZusUtils.useStore(
+	const addLayersAtPosition = Zus.useStore(
 		entry.data.selectLayersFrame,
 		React.useCallback((s: SelectLayersFrame.Types['state']) => {
 			if (s.cursor?.type === 'end') return 'after' as const
@@ -213,8 +213,8 @@ function LoadedSelectLayersView({
 	const onAddItems = React.useCallback(
 		(items: LL.NewItem[]) => {
 			if (activity.id !== 'ADDING_ITEM') return
-			const layerList = LayerQueuePrt.Sel.layerList(ZusUtils.getState(stores.squadServer))
-			let cursor = ZusUtils.getState(entry.data.selectLayersFrame).cursor
+			const layerList = LayerQueuePrt.Sel.layerList(Zus.getState(stores.squadServer))
+			let cursor = Zus.getState(entry.data.selectLayersFrame).cursor
 			let index: LL.ItemIndex
 			const defaultIndex = { outerIndex: 0, innerIndex: null }
 			if (cursor) index = LL.resolveCursorIndex(layerList, cursor) ?? defaultIndex
@@ -327,7 +327,7 @@ function LoadedGenVoteView({
 
 			const item = LL.createVoteItem(result.choices, source, result.voteConfig)
 
-			const layerList = LayerQueuePrt.Sel.layerList(ZusUtils.getState(stores.squadServer))
+			const layerList = LayerQueuePrt.Sel.layerList(Zus.getState(stores.squadServer))
 			let index: LL.ItemIndex
 			const defaultIndex: LL.ItemIndex = { outerIndex: 0, innerIndex: null }
 			if (cursor) {
@@ -372,7 +372,7 @@ function LoadedPasteRotation({
 		(layers: L.UnvalidatedLayer[]) => {
 			const layerIds = layers.map((l) => l.id)
 			const cursor: LL.Cursor = pastePosition === 'next' ? { type: 'start' } : { type: 'end' }
-			const layerList = LayerQueuePrt.Sel.layerList(ZusUtils.getState(stores.squadServer))
+			const layerList = LayerQueuePrt.Sel.layerList(Zus.getState(stores.squadServer))
 			const index: LL.ItemIndex = LL.resolveCursorIndex(layerList, cursor) ?? { outerIndex: 0, innerIndex: null }
 			void LayerQueuePrt.Actions.dispatch(
 				{ queue: stores.squadServer },
@@ -432,7 +432,7 @@ type LayerListItemProps = {
 // memoized so LayerList re-renders (e.g. queueItemIds reordering on a move) don't cascade into
 // every item's subtree -- items re-render via their own store subscriptions instead
 const LayerListItem = React.memo(function LayerListItem(props: LayerListItemProps) {
-	const entry = ZusUtils.useStore(props.stores.squadServer, LayerQueuePrt.Sel.itemEntry(props.itemId))
+	const entry = Zus.useStore(props.stores.squadServer, LayerQueuePrt.Sel.itemEntry(props.itemId))
 	if (!entry) return null
 	if (LL.isVoteItem(entry.item)) {
 		return <VoteLayerListItem {...props} />
@@ -441,11 +441,11 @@ const LayerListItem = React.memo(function LayerListItem(props: LayerListItemProp
 })
 
 const SingleLayerListItem = React.memo(function SingleLayerListItem(props: LayerListItemProps) {
-	const parentItem = ZusUtils.useStore(props.stores.squadServer, (store) => LayerQueuePrt.Sel.itemEntry(props.itemId)(store)?.parentItem)
+	const parentItem = Zus.useStore(props.stores.squadServer, (store) => LayerQueuePrt.Sel.itemEntry(props.itemId)(store)?.parentItem)
 
-	const [item, index, isLocallyLast, displayedMutation] = ZusUtils.useStore(
+	const [item, index, isLocallyLast, displayedMutation] = Zus.useStore(
 		props.stores.squadServer,
-		ZusUtils.useShallow((llState) => {
+		Zus.useShallow((llState) => {
 			const s = LayerQueuePrt.Sel.itemState(props.itemId)(llState)!
 			return [s.item, s.index, s.isLocallyLast, getDisplayedMutation(s.mutationState)]
 		}),
@@ -455,8 +455,8 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 
 	const isVoteChoice = !!parentItem
 
-	const isModified = ZusUtils.useStore(props.stores.squadServer, LayerQueuePrt.Sel.isModified)
-	const isLocked = ZusUtils.useStore(UPClient.Store, UPClient.Sel.isSllItemLocked(item.itemId))
+	const isModified = Zus.useStore(props.stores.squadServer, LayerQueuePrt.Sel.isModified)
+	const isLocked = Zus.useStore(UPClient.Store, UPClient.Sel.isSllItemLocked(item.itemId))
 	const writeDenied = RbacClient.usePermsCheck(RBAC.perm('queue:write', { serverId: props.stores.squadServer.serverId }))
 	const canEdit = !isLocked && !writeDenied
 
@@ -529,7 +529,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 	const itemChoiceTallyPercentage = isVoteChoice && voteState ? tally?.percentages?.get(item.itemId) : undefined
 	const isVoteWinner = isVoteChoice && voteState?.code === 'ended:winner' && voteState?.winnerId === item.itemId
 	const voteCount = isVoteChoice && voteState ? tally?.totals?.get(item.itemId) : undefined
-	const nextLayerId = ZusUtils.useStore(props.stores.squadServer, LayerQueuePrt.Sel.nextLayerId)
+	const nextLayerId = Zus.useStore(props.stores.squadServer, LayerQueuePrt.Sel.nextLayerId)
 	const isFirstQueuedLayer = index.innerIndex === 0 && nextLayerId === item.layerId
 	const viewingQueue = UPClient.useActivityMatch(UP.Trans.viewingQueue(props.stores.squadServer.serverId).match)
 
@@ -700,9 +700,9 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 })
 
 function VoteLayerListItem(props: LayerListItemProps) {
-	const [item, index, displayedMutation, isLocallyLast, endingVoteState] = ZusUtils.useStore(
+	const [item, index, displayedMutation, isLocallyLast, endingVoteState] = Zus.useStore(
 		props.stores.squadServer,
-		ZusUtils.useShallow((llState) => {
+		Zus.useShallow((llState) => {
 			const s = LayerQueuePrt.Sel.itemState(props.itemId)(llState)!
 			const voteItem = s.item as LL.VoteItem
 			return [voteItem, s.index, getDisplayedMutation(s.mutationState), s.isLocallyLast, voteItem.endingVoteState]
@@ -712,10 +712,10 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const globalVoteState = VotesClient.useVoteState(props.stores.squadServer.serverId)
 	const voteState = (globalVoteState?.itemId === item.itemId ? globalVoteState : undefined) ?? endingVoteState
 
-	const isModified = ZusUtils.useStore(props.stores.squadServer, LayerQueuePrt.Sel.isModified)
+	const isModified = Zus.useStore(props.stores.squadServer, LayerQueuePrt.Sel.isModified)
 	const manageVoteDenied = RbacClient.usePermsCheck(RBAC.perm('vote:manage', { serverId: props.stores.squadServer.serverId }))
 	const isEditing = UPClient.useIsEditing()
-	const isLocked = ZusUtils.useStore(UPClient.Store, UPClient.Sel.isSllItemLocked(item.itemId))
+	const isLocked = Zus.useStore(UPClient.Store, UPClient.Sel.isSllItemLocked(item.itemId))
 	const writeDenied = RbacClient.usePermsCheck(RBAC.perm('queue:write', { serverId: props.stores.squadServer.serverId }))
 	const canEdit = !isLocked && !writeDenied
 	const draggableItem = LL.layerItemToDragItem(item)
@@ -845,7 +845,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const internalVoteCheckboxId = React.useId()
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	const memoizedSelector = React.useCallback(
-		ZusUtils.useDeep((store: SquadServerFrame.Types['state']) => {
+		Zus.useDeep((store: SquadServerFrame.Types['state']) => {
 			const canInitiateVote = V.canInitiateVote(
 				item.itemId,
 				LayerQueuePrt.Sel.layerList(store),
@@ -863,7 +863,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		[item.itemId, voterType, globalVoteState, isModified, voteState, serverInfo?.playerCount],
 	)
 
-	const { canInitiateVote, voteAutostartTime, voteTally } = ZusUtils.useStore(
+	const { canInitiateVote, voteAutostartTime, voteTally } = Zus.useStore(
 		props.stores.squadServer,
 		memoizedSelector,
 		// dependencies: [item.itemId, voteState, globalVoteState?.code, voterType, serverInfo?.playerCount, isModified],
@@ -919,7 +919,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 									{voteState && voteState.code !== 'ready' && (
 										<div className="flex space-x-2 items-center">
 											<Icons.Dot width={20} height={20} />
-											<span>{statusCodeToTitleCase(voteState.code)}</span>
+											<span>{Str.statusCodeToTitleCase(voteState.code)}</span>
 											<Icons.Dot width={20} height={20} />
 											<span>
 												{voteTally && serverInfo && (
@@ -1090,9 +1090,9 @@ export function VoteDisplayPropsPopover(props: {
 	children: React.ReactNode
 	readonly?: boolean
 }) {
-	const [voteConfig, choices] = ZusUtils.useStore(
+	const [voteConfig, choices] = Zus.useStore(
 		props.stores.squadServer,
-		ZusUtils.useDeep(
+		Zus.useDeep(
 			React.useCallback(
 				(store: SquadServerFrame.Types['state']) => {
 					const s = LayerQueuePrt.Sel.itemState(props.itemId)(store)
@@ -1218,9 +1218,9 @@ function ItemContextMenu(props: { children: React.ReactNode; stores: SquadServer
 
 function ItemMenuItems(props: { stores: SquadServerFrame.KeyProp; itemId: LL.ItemId; menu: ItemMenuComponents }) {
 	const Menu = props.menu
-	const [item, index, lastLocalIndex] = ZusUtils.useStore(
+	const [item, index, lastLocalIndex] = Zus.useStore(
 		props.stores.squadServer,
-		ZusUtils.useShallow((llStore) => {
+		Zus.useShallow((llStore) => {
 			const itemState = LayerQueuePrt.Sel.itemState(props.itemId)(llStore)
 			return [itemState.item, itemState.index, LayerQueuePrt.Sel.itemEntry(props.itemId)(llStore)?.lastLocalIndex] as const
 		}),
@@ -1248,14 +1248,14 @@ function ItemMenuItems(props: { stores: SquadServerFrame.KeyProp; itemId: LL.Ite
 		return [activities] as const
 	}, [item.itemId])
 
-	const isLocked = ZusUtils.useStore(UPClient.Store, UPClient.Sel.isSllItemLocked(item.itemId))
+	const isLocked = Zus.useStore(UPClient.Store, UPClient.Sel.isSllItemLocked(item.itemId))
 	const writeDenied = RbacClient.usePermsCheck(RBAC.perm('queue:write', { serverId: props.stores.squadServer.serverId }))
 	const canEdit = !isLocked && !writeDenied
 	const itemStores = { queue: props.stores.squadServer }
 
 	function sendToFront() {
 		if (!user) return
-		const firstItem = LayerQueuePrt.Sel.layerList(ZusUtils.getState(props.stores.squadServer))[0]
+		const firstItem = LayerQueuePrt.Sel.layerList(Zus.getState(props.stores.squadServer))[0]
 		LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, {
 			op: 'move',
 			newFirstItemId: LL.createItemId(),
@@ -1264,7 +1264,7 @@ function ItemMenuItems(props: { stores: SquadServerFrame.KeyProp; itemId: LL.Ite
 	}
 	function sendToBack() {
 		if (!user) return
-		const state = ZusUtils.getState(props.stores.squadServer)
+		const state = Zus.getState(props.stores.squadServer)
 		const itemState = LayerQueuePrt.Sel.itemState(props.itemId)(state)
 		const layerList = LayerQueuePrt.Sel.layerList(state)
 		const lastLocalIndex = LL.getLastLocalIndexForItem(itemState.item.itemId, layerList)!

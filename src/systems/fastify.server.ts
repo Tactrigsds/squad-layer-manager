@@ -10,8 +10,8 @@ import type { WebSocket } from 'ws'
 
 import * as Paths from '$root/paths'
 import * as AR from '@/app-routes.ts'
-import { anySignal } from '@/lib/async'
 import { createId } from '@/lib/id.ts'
+import * as Prom from '@/lib/promise-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as Messages from '@/messages'
 import * as CS from '@/models/context-shared'
@@ -387,7 +387,7 @@ function monkeyPatchContextAndLogs(request: FastifyRequest) {
 	const route = AR.resolveRoute(request.url)
 	// aborts if the client disconnects prematurely (see the onRequestAbort hook) or the process shuts down
 	const abort = new AbortController()
-	const signal = anySignal(CleanupSys.shutdownSignal, abort.signal)!
+	const signal = Prom.anySignal(CleanupSys.shutdownSignal, abort.signal)!
 	const ctx: C.AttachedFastify = DB.addPooledDb({ ...CS.init(), route: route ?? undefined, signal })
 	// @ts-expect-error monkey patching. we don't include the full request context to avoid circular references
 	request.ctx = ctx

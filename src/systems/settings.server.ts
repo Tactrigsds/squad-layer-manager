@@ -1,11 +1,10 @@
 import * as E from 'drizzle-orm'
-import * as Rx from 'rxjs'
 import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema.ts'
-import { toAsyncGenerator, withAbortSignal } from '@/lib/async.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
+import * as Rx from '@/lib/rxjs'
 import { diffSettings, type SettingChange } from '@/lib/settings-diff'
 import { assertNever } from '@/lib/type-guards'
 import * as AppEvents from '@/models/app-events.models'
@@ -437,7 +436,7 @@ publicSettings$.subscribe()
 // safe for any connected client: no connection details, no per-server admin-only settings
 const publicRouter = {
 	watchPublicSettings: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ signal }) {
-		yield* toAsyncGenerator(publicSettings$.pipe(withAbortSignal(signal!)))
+		yield* Rx.Ext.toAsyncGenerator(publicSettings$.pipe(Rx.Ext.withAbortSignal(signal!)))
 	}),
 }
 
@@ -450,13 +449,13 @@ const globalRouter = {
 			yield denyRes
 			return
 		}
-		yield* toAsyncGenerator(
+		yield* Rx.Ext.toAsyncGenerator(
 			settings$.pipe(
 				Rx.filter((e) => e.scope === 'global'),
 				Rx.map((e) => e.settings),
 				Rx.startWith(GLOBAL_SETTINGS),
 				Rx.map((settings) => SETTINGS.GlobalSettingsSchema.encode(settings)),
-				withAbortSignal(ctx.signal),
+				Rx.Ext.withAbortSignal(ctx.signal),
 			),
 		)
 	}),
@@ -564,10 +563,10 @@ const serverRouter = {
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context: _ctx, signal, input }) {
 			const obs = SquadServer.sliceStream$(_ctx.wsClientId, input.serverId, (ctx) => ctx.serverSettings.update$).pipe(
-				withAbortSignal(signal!),
+				Rx.Ext.withAbortSignal(signal!),
 			)
 
-			yield* toAsyncGenerator(obs)
+			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
 
 	// deliberately doesn't resolve a slice: editing settings is how an admin repairs a broken server or prepares a

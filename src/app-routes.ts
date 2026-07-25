@@ -3,7 +3,7 @@
 import Cookie from 'cookie'
 import { z } from 'zod'
 
-import * as Arr from './lib/array'
+import * as Arr from './lib/array-utils'
 
 type GenericRouteDefinition = {
 	id: string

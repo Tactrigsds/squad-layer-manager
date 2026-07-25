@@ -6,14 +6,14 @@ import React from 'react'
 
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
-import * as Arr from '@/lib/array.ts'
-import * as Obj from '@/lib/object.ts'
+import * as Arr from '@/lib/array-utils'
+import * as Obj from '@/lib/object-utils'
 import type { Clearable, Focusable } from '@/lib/react'
 import { eltToFocusable } from '@/lib/react'
 import * as Sparse from '@/lib/sparse-tree'
 import { assertNever } from '@/lib/type-guards.ts'
 import { cn } from '@/lib/utils.ts'
-import * as ZusUtils from '@/lib/zustand.ts'
+import * as Zus from '@/lib/zustand.ts'
 import type * as DND from '@/models/dndkit.models.ts'
 import * as EFB from '@/models/editable-filter-builders'
 import * as F from '@/models/filter.models'
@@ -65,7 +65,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 			(event) => {
 				if (!event.over) return
 				if (event.active.type !== 'filter-node') return
-				const editor = ZusUtils.getState(props.stores.filterEditor)
+				const editor = Zus.getState(props.stores.filterEditor)
 				const sourcePath = editor.tree.paths.get(event.active.id)!
 				const slot = event.over.slots.find((s) => s.dragItem.type === 'filter-node')
 				if (!slot) return
@@ -98,14 +98,14 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 		),
 	)
 
-	const [nodeStore, modified] = ZusUtils.useStore(
+	const [nodeStore, modified] = Zus.useStore(
 		props.stores.filterEditor,
-		ZusUtils.useShallow((s) => [s.nodeMapStore, s.modified]),
+		Zus.useShallow((s) => [s.nodeMapStore, s.modified]),
 	)
-	const rootNodeId = ZusUtils.useStore(props.stores.filterEditor, EditFrame.Sel.idByPath([]))!
-	const allNodeIds = ZusUtils.useStore(
+	const rootNodeId = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.idByPath([]))!
+	const allNodeIds = Zus.useStore(
 		props.stores.filterEditor,
-		ZusUtils.useShallow((s) => Array.from(s.tree.nodes.keys())),
+		Zus.useShallow((s) => Array.from(s.tree.nodes.keys())),
 	)
 
 	// leaf nodes & block control panels. we render these flatly for vdom perf and use NodePortal to put them in the right place in the DOM
@@ -196,15 +196,12 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 }
 
 function FilterNodeDisplay(props: FilterCardProps & { nodeId: string }) {
-	const [nodeType, nodeMapStore] = ZusUtils.useStore(
+	const [nodeType, nodeMapStore] = Zus.useStore(
 		props.stores.filterEditor,
-		ZusUtils.useShallow((s) => [s.tree.nodes.get(props.nodeId)?.type, s.nodeMapStore]),
+		Zus.useShallow((s) => [s.tree.nodes.get(props.nodeId)?.type, s.nodeMapStore]),
 	)
-	const nodePath = ZusUtils.useStore(props.stores.filterEditor, ZusUtils.useShallow(EditFrame.Sel.nodePath(props.nodeId)))
-	const immediateChildren = ZusUtils.useStore(
-		props.stores.filterEditor,
-		ZusUtils.useShallow(EditFrame.Sel.immediateChildren(props.nodeId)),
-	)
+	const nodePath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(props.nodeId)))
+	const immediateChildren = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.immediateChildren(props.nodeId)))
 	if (!nodePath) return null
 	if (!nodeType) return null
 
@@ -284,11 +281,8 @@ function InlineAddButton(props: { actions: InlineAddAction[]; className?: string
 }
 
 function BlockNodeControlPanel(props: NodeProps) {
-	const node = ZusUtils.useStore(
-		props.stores.filterEditor,
-		EditFrame.Sel.node(props.nodeId),
-	) as F.ShallowEditableFilterNodeOfType<F.BlockType>
-	const nodePath = ZusUtils.useStore(props.stores.filterEditor, ZusUtils.useShallow(EditFrame.Sel.nodePath(props.nodeId)))
+	const node = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.node(props.nodeId)) as F.ShallowEditableFilterNodeOfType<F.BlockType>
+	const nodePath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(props.nodeId)))
 	if (!F.isBlockType(node.type) || !nodePath) return null
 	const isRootNode = nodePath.length === 0
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
@@ -342,11 +336,9 @@ function ChildNodeSeparator(props: {
 }) {
 	const dropProps = DndKit.useDroppable(props.item)
 	const activeItem = DndKit.useDragging()
-	const activePath =
-		ZusUtils.useStore(props.stores.filterEditor, ZusUtils.useShallow(EditFrame.Sel.nodePath(activeItem?.id?.toString()))) ?? null
+	const activePath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(activeItem?.id?.toString()))) ?? null
 	const slot = props.item.slots[0]
-	const itemPath =
-		ZusUtils.useStore(props.stores.filterEditor, ZusUtils.useShallow(EditFrame.Sel.nodePath(slot.dragItem.id?.toString()))) ?? null
+	const itemPath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(slot.dragItem.id?.toString()))) ?? null
 	let isValid = true
 	if (activePath && itemPath) {
 		if (activeItem!.type !== 'filter-node') isValid = false
@@ -419,9 +411,9 @@ const NodeWrapper = ({
 
 type NodeProps = { nodeId: string; stores: EditFrame.KeyProp }
 export function LeafFilterNode(props: NodeProps) {
-	const editedFilterId = ZusUtils.useStore(props.stores.filterEditor, (state) => state.editedFilterId)
-	const node = ZusUtils.useStore(props.stores.filterEditor, EditFrame.Sel.node(props.nodeId))
-	const nodePath = ZusUtils.useStore(props.stores.filterEditor, ZusUtils.useShallow(EditFrame.Sel.nodePath(props.nodeId)))!
+	const editedFilterId = Zus.useStore(props.stores.filterEditor, (state) => state.editedFilterId)
+	const node = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.node(props.nodeId))
+	const nodePath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(props.nodeId)))!
 	if (F.isBlockType(node.type)) return null
 	const depth = nodePath.length
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
@@ -498,7 +490,7 @@ export function LeafFilterNode(props: NodeProps) {
 function CompNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node: F.EditableCompNode }) {
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
 	const cfg = ConfigClient.useEffectiveColConfig()
-	const hint = ZusUtils.useStore(props.stores.filterEditor, EditFrame.Sel.createHint(props.nodeId))
+	const hint = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.createHint(props.nodeId))
 	// scope the subject dropdown to the node's column group, re-derived from the chosen column so the
 	// restriction persists; the create-hint only supplies the group while the comparison is still blank.
 	const subject = props.node.args[0] as F.EditableScalarArg | undefined
@@ -525,7 +517,7 @@ function CompNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node
 // the simplified `id in [...]` node: just the layer picker, since `id` supports no other operation.
 function SelectLayersNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node: F.EditableCompNode }) {
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
-	const hint = ZusUtils.useStore(props.stores.filterEditor, EditFrame.Sel.createHint(props.nodeId))
+	const hint = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.createHint(props.nodeId))
 	const valuesArg = props.node.args[1]
 	const items = (valuesArg?.type === 'values' ? valuesArg.values : undefined) ?? []
 	const values = items.filter((i) => !F.isColumnListItem(i)) as (string | null)[]

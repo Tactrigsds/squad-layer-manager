@@ -4,7 +4,7 @@ import React from 'react'
 
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as BM from '@/models/battlemetrics.models'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
@@ -169,15 +169,15 @@ export function ServerActivityCharts(props: {
 	layerId?: L.LayerId
 	stores: SquadServerFrame.KeyProp
 }) {
-	const displayTeamsNormalized = ZusUtils.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
-	const selectedMatchOrdinal = ZusUtils.useStore(props.stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
+	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
+	const selectedMatchOrdinal = Zus.useStore(props.stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
 	const { resolvedTheme } = ThemeClient.useTheme()
 	const isDark = resolvedTheme === 'dark'
 
 	// Get unfiltered live events for K/D calculation
-	const liveUnfilteredEvents = ZusUtils.useStore(
+	const liveUnfilteredEvents = Zus.useStore(
 		props.stores.squadServer!,
-		ZusUtils.useDeep((s) => {
+		Zus.useDeep((s) => {
 			if (selectedMatchOrdinal !== null || !s.chat.chatState.synced || props.currentMatchId === undefined) return null
 
 			const eventBuffer = s.chat.chatState.eventBuffer
@@ -191,9 +191,9 @@ export function ServerActivityCharts(props: {
 	)
 
 	// Current live players for flag group chart
-	const livePlayers = ZusUtils.useStore(
+	const livePlayers = Zus.useStore(
 		props.stores.squadServer!,
-		ZusUtils.useDeep((s) => {
+		Zus.useDeep((s) => {
 			if (selectedMatchOrdinal !== null || !s.chat.chatState.synced) return null
 			return s.chat.chatState.interpolatedState.players
 		}),
@@ -201,12 +201,12 @@ export function ServerActivityCharts(props: {
 
 	const bmData = BattlemetricsClient.usePlayerBmData()
 	const orgFlags = BattlemetricsClient.useOrgFlags()
-	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
+	const config = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const playerGroupings = config?.playerGroupings
 
 	const groupingIds = React.useMemo(() => (playerGroupings ? PG.getGroupingIds(playerGroupings) : []), [playerGroupings])
-	const slsOnly = ZusUtils.useStore(BattlemetricsClient.Store, (s) => s.slsOnly)
-	const activeGroupingId = ZusUtils.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingId(groupingIds))
+	const slsOnly = Zus.useStore(BattlemetricsClient.Store, (s) => s.slsOnly)
+	const activeGroupingId = Zus.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingId(groupingIds))
 
 	const events = selectedMatchOrdinal !== null ? props.historicalEvents : liveUnfilteredEvents
 	const isEmpty = !events || events.length === 0

@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
@@ -57,7 +57,7 @@ export default function WarnChatBox({
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players', { serverId: serverId }))
 	const warnPlayersMutation = SquadServerClient.useWarnPlayersMutation()
 	const pending = warnPlayersMutation.isPending
-	const targetsAreAllAdmins = ZusUtils.useStore(stores.squadServer, SquadServerFrame.Sel.allTargetsAreAdmins(playerIds))
+	const targetsAreAllAdmins = Zus.useStore(stores.squadServer, SquadServerFrame.Sel.allTargetsAreAdmins(playerIds))
 	const notifyAdminsChecked = notifyAdmins ?? !targetsAreAllAdmins
 
 	const noTargets = playerIds.length === 0

@@ -1,4 +1,4 @@
-import * as Zus from 'zustand'
+import * as Zus from '@/lib/zustand'
 
 export type Tab = 'details' | 'scores'
 

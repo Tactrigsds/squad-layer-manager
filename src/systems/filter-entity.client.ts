@@ -1,10 +1,8 @@
-import * as ReactRx from '@react-rxjs/core'
-import { createSignal } from '@react-rxjs/utils'
 import { useMutation } from '@tanstack/react-query'
-import * as Rx from 'rxjs'
 
-import * as MapUtils from '@/lib/map'
-import * as RxHelpers from '@/lib/react-rxjs-helpers'
+import * as MapUtils from '@/lib/map-utils'
+import * as ReactRx from '@/lib/react-rxjs'
+import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
 import type * as F from '@/models/filter.models'
 import * as LQY from '@/models/layer-queries.models'
@@ -55,7 +53,7 @@ export function filterIndexPrefetch() {
 export const filterEntities = new Map<string, F.FilterEntity>()
 export const filterEntityChanged$ = new Rx.Subject<void>()
 
-const [initialized$, setInitialized] = createSignal<true>()
+const [initialized$, setInitialized] = ReactRx.createSignal<true>()
 
 export const filterMutation$ = new Rx.Observable<USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>>((s) => {
 	const promise = RPC.observe('filters.watchFilters', () => RPC.orpc.filters.watchFilters.call()).subscribe(
@@ -99,15 +97,15 @@ export const filterMutation$ = new Rx.Observable<USR.UserEntityMutation<F.Filter
 export function setup() {
 	filterMutation$.subscribe()
 	filterEntities$.subscribe()
-	initializedFilterEntities$().pipe(RxHelpers.retryHot()).subscribe()
+	initializedFilterEntities$().pipe(ReactRx.retryHot()).subscribe()
 }
 
-export const [useFilterEntities, filterEntities$] = ReactRx.bind(
+export const [useFilterEntities, filterEntities$] = ReactRx.bindWithDefault(
 	filterEntityChanged$.pipe(Rx.map(() => MapUtils.deepClone(filterEntities))),
 	filterEntities,
 )
 
-export const [useInitializedFilterEntities, initializedFilterEntities$] = RxHelpers.bind('filterEntity.initializedFilterEntities', () =>
+export const [useInitializedFilterEntities, initializedFilterEntities$] = ReactRx.bind('filterEntity.initializedFilterEntities', () =>
 	initialized$.pipe(Rx.map(() => filterEntities)),
 )
 

@@ -5,7 +5,6 @@ import * as Icons from 'lucide-react'
 import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-react'
 import React from 'react'
 import { flushSync } from 'react-dom'
-import * as Zus from 'zustand'
 
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
@@ -19,10 +18,10 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useDebouncedState } from '@/hooks/use-debounce'
 import * as DH from '@/lib/display-helpers'
 import type { Focusable } from '@/lib/react'
-import * as SetUtils from '@/lib/set'
+import * as SetUtils from '@/lib/set-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
@@ -88,7 +87,7 @@ const LayerTableCellCtx = React.createContext<CellDisplayCtx>({ teamParity: 0, d
 
 function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTablePrt.KeyProp) {
 	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) =>
-		ZusUtils.useStore(stores.layerTable, (s) => selector(s.layerTable))
+		Zus.useStore(stores.layerTable, (s) => selector(s.layerTable))
 
 	return columnHelper.accessor(colDef.name, {
 		enableHiding: true,
@@ -220,8 +219,8 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 
 function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTablePrt.KeyProp) {
 	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) =>
-		ZusUtils.useStore(stores.layerTable, (s) => selector(s.layerTable))
-	const getTableFrame = () => ZusUtils.getState(stores.layerTable).layerTable
+		Zus.useStore(stores.layerTable, (s) => selector(s.layerTable))
+	const getTableFrame = () => Zus.getState(stores.layerTable).layerTable
 
 	const tableColDefs: ColumnDef<LayerQueriesClient.RowData>[] = [
 		{
@@ -229,7 +228,7 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 			size: SELECT_COLUMN_SIZE,
 			header: function SelectHeader() {
 				const [selectState, disabled] = useTableFrame(
-					ZusUtils.useShallow((table) => {
+					Zus.useShallow((table) => {
 						if (table.pageData === null) return [null, true] as const
 						const selected = new Set(table.selected)
 						const pageIds = new Set(table.pageData.layers.map((l) => l.id))
@@ -277,7 +276,7 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 				)
 			},
 			cell: function SelectCell({ row }) {
-				const [isUnselectable, isSelected] = ZusUtils.useStore(stores.layerTable, LayerTablePrt.Sel.rowSelectionStatus(row.id))
+				const [isUnselectable, isSelected] = Zus.useStore(stores.layerTable, LayerTablePrt.Sel.rowSelectionStatus(row.id))
 
 				return (
 					<Checkbox
@@ -369,10 +368,10 @@ export default function LayerTable(props: {
 	compact?: boolean
 }) {
 	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) =>
-		ZusUtils.useStore(props.stores.layerTable, (s) => selector(s.layerTable))
+		Zus.useStore(props.stores.layerTable, (s) => selector(s.layerTable))
 
 	const frameState = useTableFrame(
-		ZusUtils.useShallow((table) => ({
+		Zus.useShallow((table) => ({
 			colConfig: table.colConfig,
 			showSelectedLayers: table.showSelectedLayers,
 			sort: table.sort,
@@ -399,12 +398,12 @@ export default function LayerTable(props: {
 	const page = useTableFrame((table) => table.pageData)
 
 	// shared display state for all cells -- see LayerTableCellCtx
-	const displayLayersNormalized = ZusUtils.useStore(GlobalSettings.GlobalSettingsStore, (state) => state.displayTeamsNormalized)
+	const displayLayersNormalized = Zus.useStore(GlobalSettings.GlobalSettingsStore, (state) => state.displayTeamsNormalized)
 	const cursor = useTableFrame((table) => table.pageData?.input.cursor)
 	// read parity from the server frame store (safe getState) passed via props, rather than the layerItemsState$
 	// observable which throws when no frame is hot. omitted outside a server context (e.g. filter editor) -> parity 0
 	const teamParity =
-		ZusUtils.useStore(
+		Zus.useStore(
 			props.stores.squadServer,
 			React.useCallback(
 				(s: SquadServerFrame.State | undefined) => {
@@ -517,11 +516,11 @@ const LayerTableRow = React.memo(function LayerTableRow(props: {
 	const allCells = row.getAllCells()
 	const visibleCells = props.visibleColumns.map((column) => allCells.find((cell) => cell.column.id === column.id)!)
 	const id = row.original.id
-	const getStore = () => ZusUtils.getState(props.stores.layerTable)
-	const getTableFrame = () => ZusUtils.getState(props.stores.layerTable).layerTable
-	const canFocusLayers = ZusUtils.useStore(props.stores.layerTable, (s) => !!s.onLayerFocused)
+	const getStore = () => Zus.getState(props.stores.layerTable)
+	const getTableFrame = () => Zus.getState(props.stores.layerTable).layerTable
+	const canFocusLayers = Zus.useStore(props.stores.layerTable, (s) => !!s.onLayerFocused)
 
-	const [isUnselectable, isSelected] = ZusUtils.useStore(props.stores.layerTable, LayerTablePrt.Sel.rowSelectionStatus(row.id))
+	const [isUnselectable, isSelected] = Zus.useStore(props.stores.layerTable, LayerTablePrt.Sel.rowSelectionStatus(row.id))
 	function toggleRow() {
 		if (isUnselectable) return
 
@@ -614,9 +613,9 @@ export function PlaceholderColumns() {}
 
 export function LayerTableContextMenuItems(props: { layerId: L.LayerId; stores: LayerTablePrt.KeyProp }) {
 	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) =>
-		ZusUtils.useStore(props.stores.layerTable, (s) => selector(s.layerTable))
+		Zus.useStore(props.stores.layerTable, (s) => selector(s.layerTable))
 	const selectedForCopy = useTableFrame(
-		ZusUtils.useShallow((table) => {
+		Zus.useShallow((table) => {
 			if (!table.selected.includes(props.layerId)) {
 				return [props.layerId]
 			} else {
@@ -636,11 +635,11 @@ export function LayerTableControlPanel(props: {
 	extraPanelItems?: React.ReactNode
 	compact?: boolean
 }) {
-	const getTableFrame = () => ZusUtils.getState(props.stores.layerTable).layerTable
+	const getTableFrame = () => Zus.getState(props.stores.layerTable).layerTable
 
-	const frameState = ZusUtils.useStore(
+	const frameState = Zus.useStore(
 		props.stores.layerTable,
-		ZusUtils.useShallow((s) => ({
+		Zus.useShallow((s) => ({
 			colConfig: s.layerTable.colConfig,
 			showSelectedLayers: s.layerTable.showSelectedLayers,
 			sort: s.layerTable.sort,
@@ -941,14 +940,14 @@ function SetRawLayerDialog(props: {
 
 function LayerTablePaginationControls(props: { stores: LayerTablePrt.KeyProp; table: CoreTable<LayerQueriesClient.RowData> }) {
 	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) =>
-		ZusUtils.useStore(props.stores.layerTable, (s) => selector(s.layerTable))
+		Zus.useStore(props.stores.layerTable, (s) => selector(s.layerTable))
 
-	const initStatus = ZusUtils.useStore(
+	const initStatus = Zus.useStore(
 		LayerQueriesClient.Store,
-		ZusUtils.useShallow((s) => ({ status: s.status, errorMessage: s.errorMessage })),
+		Zus.useShallow((s) => ({ status: s.status, errorMessage: s.errorMessage })),
 	)
 	const frameState = useTableFrame(
-		ZusUtils.useShallow((table) => ({
+		Zus.useShallow((table) => ({
 			pageSize: table.pageSize,
 			pageIndex: table.pageIndex,
 			totalRowCount: table.pageData?.totalCount,

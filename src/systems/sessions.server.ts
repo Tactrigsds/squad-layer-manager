@@ -4,8 +4,8 @@ import * as E from 'drizzle-orm'
 
 import * as Schema from '$root/drizzle/schema.ts'
 import * as AR from '@/app-routes'
-import { sleep } from '@/lib/async'
 import { createId } from '@/lib/id'
+import * as Prom from '@/lib/promise-utils'
 import * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
 import * as RBAC from '@/rbac.models'
@@ -120,7 +120,7 @@ export async function setup() {
 	// --------  cleanup old sessions  --------
 	while (!ctx.signal.aborted) {
 		try {
-			await sleep(1000 * 60 * 60, ctx.signal)
+			await Prom.sleep(1000 * 60 * 60, ctx.signal)
 		} catch {
 			break
 		}

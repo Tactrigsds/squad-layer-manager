@@ -4,7 +4,7 @@ import * as Icons from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as SettingsClient from '@/systems/settings.client'
 
 export const Route = createFileRoute('/_app/servers/')({
@@ -12,7 +12,7 @@ export const Route = createFileRoute('/_app/servers/')({
 })
 
 function RouteComponent() {
-	const settings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
+	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const servers = settings?.servers ?? []
 
 	return (

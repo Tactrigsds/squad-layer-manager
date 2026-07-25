@@ -1,7 +1,7 @@
 // this is probably named poorly
 
 export type NodePath = number[]
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 export type SparseNode = { id: string; children?: SparseNode[] }
 
 const movePlaceholder = Symbol('movePlaceholder')

@@ -4,9 +4,9 @@ import path from 'node:path'
 import * as Timers from 'node:timers/promises'
 
 import * as Schema from '$root/drizzle/schema'
-import { isAbortError, sleep } from '@/lib/async'
+import * as Prom from '@/lib/promise-utils'
 import * as SFS from '@/lib/sftp-file-store'
-import { formatDurationApprox, formatHumanTime, parseHumanTime } from '@/lib/zod'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
 import * as MH from '@/models/match-history.models'
@@ -31,8 +31,8 @@ const MIN_RETAINED_MATCHES = Math.max(100, MH.MAX_RECENT_MATCHES)
 
 // how long a boot that comes up already due for a backup waits before taking it, so the snapshot doesn't land while
 // the rest of the app is still setting itself up
-const BOOT_SETTLE_DELAY = parseHumanTime('1m')
-const FAILED_BACKUP_RETRY_DELAY = parseHumanTime('30m')
+const BOOT_SETTLE_DELAY = ZodUtils.parseHumanTime('1m')
+const FAILED_BACKUP_RETRY_DELAY = ZodUtils.parseHumanTime('30m')
 
 export function setup() {
 	log = module.getLogger()
@@ -48,7 +48,7 @@ async function run() {
 	try {
 		await adoptUnrecordedBackups(ctx)
 	} catch (err) {
-		if (!isAbortError(err)) log.error(err, 'failed to account for backups taken outside the schedule')
+		if (!Prom.isAbortError(err)) log.error(err, 'failed to account for backups taken outside the schedule')
 	}
 
 	if (ENV.AUTOMATIC_BACKUPS_PERIODIC === undefined) {
@@ -58,10 +58,10 @@ async function run() {
 	const sftp = getSftpTarget()
 	log.info(
 		'automatic backups every %s to %s%s, event history retention: %s',
-		formatHumanTime(ENV.AUTOMATIC_BACKUPS_PERIODIC),
+		ZodUtils.formatHumanTime(ENV.AUTOMATIC_BACKUPS_PERIODIC),
 		ENV.BACKUPS_DIR,
 		sftp ? ` (uploading to ${sftp.username}@${sftp.host}:${ENV.BACKUP_SFTP_DIR})` : '',
-		ENV.EVENT_HISTORY_RETENTION_PERIOD === undefined ? 'disabled' : formatHumanTime(ENV.EVENT_HISTORY_RETENTION_PERIOD),
+		ENV.EVENT_HISTORY_RETENTION_PERIOD === undefined ? 'disabled' : ZodUtils.formatHumanTime(ENV.EVENT_HISTORY_RETENTION_PERIOD),
 	)
 	await runBackupLoop(ENV.AUTOMATIC_BACKUPS_PERIODIC, ctx)
 }
@@ -104,7 +104,7 @@ const adoptUnrecordedBackups = C.spanOp('adoptUnrecordedBackups', { module }, as
 				uploaded,
 			}),
 		)
-		log.info('recorded pre-migration backup %s, taken %s ago', fileName, formatDurationApprox(Date.now() - stat.mtimeMs))
+		log.info('recorded pre-migration backup %s, taken %s ago', fileName, ZodUtils.formatDurationApprox(Date.now() - stat.mtimeMs))
 	}
 })
 
@@ -112,17 +112,23 @@ async function runBackupLoop(interval: number, ctx: C.Db & CS.AbortSignal) {
 	// the schedule is anchored to the last backup that actually happened, not to boot: a server restarted more often
 	// than the interval would otherwise never reach its first backup at all. A backup taken shortly before a restart
 	// isn't taken again, and one that came due while we were down is taken now (BOOT_SETTLE_DELAY floors the first
-	// sleep either way, so the snapshot doesn't land while the rest of the app is still coming up).
+	// Prom.sleep either way, so the snapshot doesn't land while the rest of the app is still coming up).
 	const lastBackupAt = await getLastBackupTime(ctx)
 	const overdueBy = lastBackupAt === null ? 0 : Date.now() - (lastBackupAt + interval)
 	let wait = Math.max(BOOT_SETTLE_DELAY, -overdueBy)
-	if (lastBackupAt === null) log.info('no previous backup found, taking one in %s', formatDurationApprox(wait))
-	else if (overdueBy > 0) log.info('backup overdue by %s, taking one in %s', formatDurationApprox(overdueBy), formatDurationApprox(wait))
-	else log.info('last backup was %s ago, next in %s', formatDurationApprox(Date.now() - lastBackupAt), formatDurationApprox(wait))
+	if (lastBackupAt === null) log.info('no previous backup found, taking one in %s', ZodUtils.formatDurationApprox(wait))
+	else if (overdueBy > 0)
+		log.info('backup overdue by %s, taking one in %s', ZodUtils.formatDurationApprox(overdueBy), ZodUtils.formatDurationApprox(wait))
+	else
+		log.info(
+			'last backup was %s ago, next in %s',
+			ZodUtils.formatDurationApprox(Date.now() - lastBackupAt),
+			ZodUtils.formatDurationApprox(wait),
+		)
 
 	while (!ctx.signal.aborted) {
 		try {
-			await sleep(wait, ctx.signal)
+			await Prom.sleep(wait, ctx.signal)
 		} catch {
 			break
 		}
@@ -130,11 +136,11 @@ async function runBackupLoop(interval: number, ctx: C.Db & CS.AbortSignal) {
 			await runBackup(ctx)
 			wait = interval
 		} catch (err) {
-			if (isAbortError(err)) break
+			if (Prom.isAbortError(err)) break
 			// a failed backup must not kill the loop, but it must not spin either: retry sooner than the full interval,
 			// since we're already past due.
 			wait = Math.min(interval, FAILED_BACKUP_RETRY_DELAY)
-			log.error(err, 'backup failed, retrying in %s', formatDurationApprox(wait))
+			log.error(err, 'backup failed, retrying in %s', ZodUtils.formatDurationApprox(wait))
 		}
 	}
 }
@@ -339,7 +345,7 @@ const uploadBackup = C.spanOp('uploadBackup', { module }, async (ctx: CS.AbortSi
 						log.info('deleted remote backup %s', stale)
 					}
 				} catch (err) {
-					if (isAbortError(err)) throw err
+					if (Prom.isAbortError(err)) throw err
 					log.error(err, 'failed to prune old backups on %s (the upload itself succeeded)', target.host)
 				}
 			},
@@ -347,7 +353,7 @@ const uploadBackup = C.spanOp('uploadBackup', { module }, async (ctx: CS.AbortSi
 		)
 		return true
 	} catch (err) {
-		if (isAbortError(err)) throw err
+		if (Prom.isAbortError(err)) throw err
 		log.error(err, 'failed to upload backup %s to %s', fileName, target.host)
 		return uploaded
 	}

@@ -5,7 +5,7 @@ import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { useDebounced } from '@/hooks/use-debounce.ts'
 import { assertNever } from '@/lib/type-guards.ts'
-import * as Typography from '@/lib/typography.ts'
+import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils.ts'
 import type * as F from '@/models/filter.models.ts'
 import * as L from '@/models/layer'
@@ -132,7 +132,7 @@ export function PoolFilterSection({ api }: { api: PoolConfigApi }) {
 	return (
 		<div className="space-y-3">
 			<span className="flex items-center gap-1">
-				<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Pool Filter</h4>
+				<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>Pool Filter</h4>
 				<HelpTooltip label="About the pool filter">
 					<p>
 						Out-of-pool layers are hidden behind the pool toggle during layer selection, and only users with the queue:force-write
@@ -274,7 +274,7 @@ function SecondaryFilterList({ api, config }: { api: PoolConfigApi; config: Seco
 	return (
 		<div className="space-y-2">
 			<div className="flex items-center justify-between">
-				<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')} title={config.description}>
+				<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')} title={config.description}>
 					{config.title}
 				</h4>
 				<PermissionDeniedTooltip denied={api.writeDenied}>
@@ -362,7 +362,7 @@ function SkipWarningsForTagsSection({ api }: { api: PoolConfigApi }) {
 	return (
 		<section aria-label="Skip warnings for" className="space-y-2">
 			<span className="flex items-center gap-1">
-				<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Skip warnings for</h4>
+				<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>Skip warnings for</h4>
 				<HelpTooltip label="About skipping warnings">
 					<p>
 						A queue item carrying any of these tags raises no warnings: none in the save dialog, and none in the admin reminder sent
@@ -397,7 +397,7 @@ export function PoolFiltersPanel({ api }: { api: PoolConfigApi }) {
 			<SkipWarningsForTagsSection api={api} />
 			<div className="space-y-3">
 				<span className="flex items-center gap-1">
-					<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Secondary Filters</h4>
+					<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>Secondary Filters</h4>
 					<HelpTooltip label="About secondary filters">
 						<p>
 							Secondary filters never decide what is in the pool; they add behavior on top of it: displaying match or miss indicators
@@ -455,7 +455,7 @@ function BooleanSettingRow({ api, label, description }: { api: PoolConfigApi; la
 export function NextLayerPanel({ apis }: { apis: Record<NextLayerSettingKey, PoolConfigApi> }) {
 	return (
 		<div className="space-y-3">
-			<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Next Layer</h4>
+			<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>Next Layer</h4>
 			<div className="space-y-4">
 				{NEXT_LAYER_SETTING_KEYS.map((key) => (
 					<BooleanSettingRow
@@ -639,7 +639,7 @@ export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi
 		<div className={cn('space-y-3', props.className)}>
 			<div className="flex items-center justify-between">
 				<span className="flex items-center gap-2">
-					<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Repeat Rules</h4>
+					<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>Repeat Rules</h4>
 					<ConstraintViolationIcon />
 				</span>
 				<PermissionDeniedTooltip denied={api.writeDenied}>
