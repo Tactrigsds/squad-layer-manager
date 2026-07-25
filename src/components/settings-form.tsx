@@ -1132,9 +1132,9 @@ function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps
 							</div>
 						)}
 					<span>
-						A template over the words typed after the trigger. {'{{^arg2}}default{{/arg2}}'} fills one in when it is left out; {'{{rest2}}'}
-						{' '}
-						takes everything from the second word on.
+						A template over the words typed after the trigger, and the numbers count those words: {'{{arg1}}'} is the first one typed,{' '}
+						{'{{rest2}}'} the second onwards. Pinned text is never typed, so no placeholder refers to it. {'{{^arg2}}default{{/arg2}}'}{' '}
+						fills a word in when it is left out.
 					</span>
 				</div>
 			)}
