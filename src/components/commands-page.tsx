@@ -17,17 +17,26 @@ import * as React from 'react'
 
 type CommandAlias = PublicSettings['commandAliases'][number]
 
-// one listing in the page body. `key` identifies the command/alias itself; `id` is the DOM anchor, which also carries
-// the section, since a pinned or quick-reference command is listed again under its own section.
-type Entry =
-	| { kind: 'command'; key: string; id: string; label: string; search: string; cmdId: CMD.CommandId; cmd: CMD.CommandConfig }
-	| { kind: 'alias'; key: string; id: string; label: string; search: string; alias: CommandAlias }
+// an alias as listed under the command it runs: what a caller types, and the command text it expands to
+type ResolvedAlias = { alias: CommandAlias; usage: string }
+
+// one listing in the page body. `key` identifies the command itself; `id` is the DOM anchor, which also carries the
+// section, since a pinned or quick-reference command is listed again under its own section. An alias is not an entry
+// of its own: it belongs to the command it runs, and is listed (and searched) as part of it.
+type Entry = {
+	key: string
+	id: string
+	label: string
+	search: string
+	cmdId: CMD.CommandId
+	cmd: CMD.CommandConfig
+	aliases: ResolvedAlias[]
+}
 
 type Section = { id: string; label: string; blurb?: string; entries: Entry[] }
 
 const PINNED_SECTION_ID = 'section:pinned'
 const QUICK_REF_SECTION_ID = 'section:quick-reference'
-const ALIASES_SECTION_ID = 'section:aliases'
 
 // the sections that re-list commands already shown under their own section, rather than holding any of their own
 const SHORTCUT_SECTION_IDS: ReadonlySet<string> = new Set([PINNED_SECTION_ID, QUICK_REF_SECTION_ID])
@@ -79,7 +88,14 @@ function PinButton({ cmdId, pinned }: { cmdId: CMD.CommandId; pinned: boolean })
 
 // the per-argument breakdown and worked examples, shown when a command is expanded. Both are derived from the
 // command's declaration plus the installation's configured reasons/broadcasts (see command-help.models).
-function CommandDetails({ cmdId, cmd, settings }: { cmdId: CMD.CommandId; cmd: CMD.CommandConfig; settings: PublicSettings }) {
+function CommandDetails(
+	{ cmdId, cmd, aliases, settings }: {
+		cmdId: CMD.CommandId
+		cmd: CMD.CommandConfig
+		aliases: ResolvedAlias[]
+		settings: PublicSettings
+	},
+) {
 	const seeds: CMDH.ExampleSeeds = { reasons: settings.adminActionReasons }
 	const args = CMDH.describeArgs(cmdId, seeds, settings.requireReasonFor)
 	const examples = CMDH.buildExamples(cmdId, cmd, seeds, settings.requireReasonFor)
@@ -120,13 +136,24 @@ function CommandDetails({ cmdId, cmd, settings }: { cmdId: CMD.CommandId; cmd: C
 					</div>
 				))}
 			</div>
+			{aliases.length > 0 && (
+				<div className="space-y-1">
+					<p className="text-xs font-medium text-muted-foreground">Aliases</p>
+					{aliases.map(({ alias, usage }) => (
+						<div key={alias.alias} className="flex flex-wrap items-center gap-2">
+							<CopyableCommand cmdString={usage} chatScope={chatScope} />
+							<span className="text-xs text-muted-foreground">{Messages.GENERAL.command.aliasDescription(alias.command)}</span>
+						</div>
+					))}
+				</div>
+			)}
 		</div>
 	)
 }
 
 function CommandEntry(
 	{ entry, settings, pinned, onLink }: {
-		entry: Extract<Entry, { kind: 'command' }>
+		entry: Entry
 		settings: PublicSettings
 		pinned: boolean
 		onLink: (id: string) => void
@@ -167,35 +194,9 @@ function CommandEntry(
 			</div>
 			<p className="text-sm text-muted-foreground">{Messages.GENERAL.command.descriptions[cmdId]}</p>
 			<CollapsibleContent>
-				<CommandDetails cmdId={cmdId} cmd={cmd} settings={settings} />
+				<CommandDetails cmdId={cmdId} cmd={cmd} aliases={entry.aliases} settings={settings} />
 			</CollapsibleContent>
 		</Collapsible>
-	)
-}
-
-// an alias lists as what you type -- its shortcut plus whatever arguments it takes from chat -- what it expands to,
-// and (when the command it points at is disabled or no longer exists) why it currently does nothing
-function AliasEntry(
-	{ entry, settings, onLink }: { entry: Extract<Entry, { kind: 'alias' }>; settings: PublicSettings; onLink: (id: string) => void },
-) {
-	const res = CMD.resolveAliasCommand(entry.alias.command, settings.commands)
-	const target = res.code === 'ok' ? settings.commands[res.cmdId] : undefined
-	const unusable = res.code !== 'ok' ? 'Unavailable' : !target!.enabled ? 'Disabled' : undefined
-	const chatScope = target?.scopes.includes('public') && !target.scopes.includes('admin') ? 'ChatToAll' : 'ChatToAdmin'
-	const usage = res.code === 'ok'
-		? CMD.formatAliasUsage(entry.alias.alias, res.params, settings.requireReasonFor)
-		: entry.alias.alias
-	return (
-		<div id={entry.id} data-cmd-anchor className="space-y-1">
-			<div className="group flex items-center gap-2">
-				<CopyableCommand cmdString={usage} chatScope={chatScope} />
-				<AnchorLinkIcon id={entry.id} onNavigate={onLink} label="Link to this alias" />
-				{unusable && <Badge variant="destructive" className="text-xs">{unusable}</Badge>}
-			</div>
-			<p className="text-sm text-muted-foreground">{Messages.GENERAL.command.aliasDescription(entry.alias.command)}</p>
-			{res.code === 'ok' && <p className="text-sm text-muted-foreground">{Messages.GENERAL.command.descriptions[res.cmdId]}</p>}
-			{res.code === 'err:unknown-command' && <p className="text-sm text-destructive">{res.msg}</p>}
-		</div>
 	)
 }
 
@@ -238,24 +239,20 @@ function AnchorLinkIcon({ id, onNavigate, label }: { id: string; onNavigate: (id
 	)
 }
 
-// the full listing a compact card's "Details" jumps to: a command under its own declared section, an alias under
-// Aliases. The Pinned / Quick Reference cards are shortcuts, so Details links to the real entry rather than repeating
-// its arguments and examples inline.
+// the full listing a compact card's "Details" jumps to: the command under its own declared section. The Pinned /
+// Quick Reference cards are shortcuts, so Details links to the real entry rather than repeating its arguments and
+// examples inline.
 function detailsAnchorId(entry: Entry): string {
-	return entry.kind === 'command'
-		? `section:${CMD.COMMAND_DECLARATIONS[entry.cmdId].section}/command:${entry.cmdId}`
-		: `${ALIASES_SECTION_ID}/alias:${entry.alias.alias}`
+	return `section:${CMD.COMMAND_DECLARATIONS[entry.cmdId].section}/command:${entry.cmdId}`
 }
 
-// A command or alias reduced to its first string, its one-line description, and a link to the full listing. Small
-// enough to pack many per row -- the Pinned and Quick Reference sections are for scanning what exists, not reading the
-// detail. Not itself a scroll target: it lives above the scrolling body, and Details is what jumps into the body.
-// `onUnpin` is set for the pinned cards (which are always commands), adding an unpin control at the bottom-left.
+// A command reduced to its first string, its one-line description, and a link to the full listing. Small enough to
+// pack many per row -- the Pinned and Quick Reference sections are for scanning what exists, not reading the detail.
+// Not itself a scroll target: it lives above the scrolling body, and Details is what jumps into the body.
+// `onUnpin` is set for the pinned cards, adding an unpin control at the bottom-left.
 function CompactEntry({ entry, onDetails, onUnpin }: { entry: Entry; onDetails: (id: string) => void; onUnpin?: () => void }) {
-	const string = entry.kind === 'command' ? entry.cmd.strings[0] ?? entry.cmdId : entry.alias.alias
-	const description = entry.kind === 'command'
-		? Messages.GENERAL.command.descriptions[entry.cmdId]
-		: Messages.GENERAL.command.aliasDescription(entry.alias.command)
+	const string = entry.cmd.strings[0] ?? entry.cmdId
+	const description = Messages.GENERAL.command.descriptions[entry.cmdId]
 	return (
 		<div className="flex h-full flex-col gap-1 rounded-md border bg-background px-2.5 py-1.5">
 			<div className="flex items-center justify-between gap-1">
@@ -296,7 +293,7 @@ function CompactGrid(
 					key={entry.id}
 					entry={entry}
 					onDetails={onDetails}
-					onUnpin={onUnpin && entry.kind === 'command' ? () => onUnpin(entry.cmdId) : undefined}
+					onUnpin={onUnpin ? () => onUnpin(entry.cmdId) : undefined}
 				/>
 			))}
 		</div>
@@ -361,31 +358,50 @@ function useActiveEntry(scrollRef: React.RefObject<HTMLDivElement | null>, deps:
 	return activeId
 }
 
-function commandEntry(sectionId: string, cmdId: CMD.CommandId, cmd: CMD.CommandConfig, sectionLabel: string): Entry {
+// An alias is searched as part of the command it runs, so typing its shortcut finds that command rather than nothing.
+// Only resolvable aliases are listed: one whose command string no longer exists cannot be run, and the settings
+// editor is where that gets reported.
+function aliasesByCommand(settings: PublicSettings): Partial<Record<CMD.CommandId, ResolvedAlias[]>> {
+	const out: Partial<Record<CMD.CommandId, ResolvedAlias[]>> = {}
+	for (const alias of settings.commandAliases) {
+		const res = CMD.resolveAliasCommand(alias.command, settings.commands)
+		if (res.code !== 'ok') continue
+		const usage = CMD.formatAliasUsage(alias.alias, res.params, settings.requireReasonFor)
+		;(out[res.cmdId] ??= []).push({ alias, usage })
+	}
+	return out
+}
+
+function commandEntry(
+	sectionId: string,
+	cmdId: CMD.CommandId,
+	cmd: CMD.CommandConfig,
+	sectionLabel: string,
+	aliases: ResolvedAlias[],
+): Entry {
 	return {
-		kind: 'command',
 		key: cmdId,
 		id: `${sectionId}/command:${cmdId}`,
 		label: cmd.strings[0] ?? cmdId,
-		search: [cmdId, ...cmd.strings, Messages.GENERAL.command.descriptions[cmdId], sectionLabel].join(' ').toLowerCase(),
+		search: [
+			cmdId,
+			...cmd.strings,
+			Messages.GENERAL.command.descriptions[cmdId],
+			sectionLabel,
+			...aliases.flatMap((a) => [a.alias.alias, a.alias.command]),
+			aliases.length > 0 ? 'alias shortcut' : '',
+		].join(' ').toLowerCase(),
 		cmdId,
 		cmd,
-	}
-}
-
-function aliasEntry(sectionId: string, alias: CommandAlias): Entry {
-	return {
-		kind: 'alias',
-		key: `alias:${alias.alias}`,
-		id: `${sectionId}/alias:${alias.alias}`,
-		label: alias.alias,
-		search: `${alias.alias} ${alias.command} alias shortcut`.toLowerCase(),
-		alias,
+		aliases,
 	}
 }
 
 function buildSections(settings: PublicSettings, pinnedCommands: string[]): Section[] {
 	const sections: Section[] = []
+	const aliases = aliasesByCommand(settings)
+	const entry = (sectionId: string, cmdId: CMD.CommandId, sectionLabel: string) =>
+		commandEntry(sectionId, cmdId, settings.commands[cmdId], sectionLabel, aliases[cmdId] ?? [])
 
 	// pins are per-browser, so an id can outlive the command it named (a downgrade, or a renamed id)
 	const pinned = pinnedCommands.filter((id): id is CMD.CommandId => id in settings.commands)
@@ -394,44 +410,23 @@ function buildSections(settings: PublicSettings, pinnedCommands: string[]): Sect
 		sections.push({
 			id: PINNED_SECTION_ID,
 			label: 'Pinned',
-			entries: pinned.map((cmdId) => commandEntry(PINNED_SECTION_ID, cmdId, settings.commands[cmdId], 'Pinned')),
+			entries: pinned.map((cmdId) => entry(PINNED_SECTION_ID, cmdId, 'Pinned')),
 		})
 	}
 
 	// a pinned command is already called out in the Pinned subsection above, so it drops out of the quick-reference grid
 	const quickRef = CMD.COMMAND_IDS.filter((id) => settings.commands[id].quickReference && !pinnedSet.has(id))
-	const quickRefAliases = settings.commandAliases.filter((a) => {
-		const res = CMD.resolveAliasCommand(a.command, settings.commands)
-		return res.code === 'ok' && settings.commands[res.cmdId].quickReference
-	})
-	if (quickRef.length > 0 || quickRefAliases.length > 0) {
+	if (quickRef.length > 0) {
 		sections.push({
 			id: QUICK_REF_SECTION_ID,
 			label: 'Quick Reference',
-			entries: [
-				...quickRef.map((cmdId) => commandEntry(QUICK_REF_SECTION_ID, cmdId, settings.commands[cmdId], 'Quick Reference')),
-				...quickRefAliases.map((alias) => aliasEntry(QUICK_REF_SECTION_ID, alias)),
-			],
+			entries: quickRef.map((cmdId) => entry(QUICK_REF_SECTION_ID, cmdId, 'Quick Reference')),
 		})
 	}
 
 	for (const { section, label, ids } of CMDH.splitCommandsBySection(CMD.COMMAND_IDS)) {
 		const id = `section:${section}`
-		sections.push({
-			id,
-			label,
-			entries: ids.map((cmdId) => commandEntry(id, cmdId, settings.commands[cmdId], label)),
-		})
-	}
-
-	if (settings.commandAliases.length > 0) {
-		sections.push({
-			id: ALIASES_SECTION_ID,
-			label: 'Aliases',
-			blurb:
-				'Shortcuts for complete commands. An alias takes no arguments of its own, and runs in the same chats as the command it points at.',
-			entries: settings.commandAliases.map((alias) => aliasEntry(ALIASES_SECTION_ID, alias)),
-		})
+		sections.push({ id, label, entries: ids.map((cmdId) => entry(id, cmdId, label)) })
 	}
 
 	return sections
@@ -685,9 +680,7 @@ export default function CommandsPage() {
 								<div className="divide-y divide-border/70">
 									{section.entries.map((entry) => (
 										<div key={entry.id} className="py-3 first:pt-0 last:pb-0">
-											{entry.kind === 'command'
-												? <CommandEntry entry={entry} settings={settings} pinned={pinnedSet.has(entry.cmdId)} onLink={linkToEntry} />
-												: <AliasEntry entry={entry} settings={settings} onLink={linkToEntry} />}
+											<CommandEntry entry={entry} settings={settings} pinned={pinnedSet.has(entry.cmdId)} onLink={linkToEntry} />
 										</div>
 									))}
 								</div>
