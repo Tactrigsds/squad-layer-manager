@@ -1,7 +1,7 @@
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-
-import type * as RBAC from '@/rbac.models'
 import React from 'react'
+
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import type * as RBAC from '@/rbac.models'
 
 /**
  * Wraps children in a tooltip showing the permission denied reason when `denied` is non-null.

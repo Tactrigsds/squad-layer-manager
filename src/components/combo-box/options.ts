@@ -1,6 +1,6 @@
 import * as DH from '@/lib/display-helpers.ts'
-import type { ComboBoxOption } from './combo-box.tsx'
 
+import type { ComboBoxOption } from './combo-box.tsx'
 import { LOADING } from './constants.ts'
 
 // the string cmdk identifies an option's item by, which is what it reports as the highlighted item.

@@ -1,6 +1,7 @@
-import * as ZusUtils from '@/lib/zustand'
 import { z } from 'zod'
 import * as Zus from 'zustand'
+
+import * as ZusUtils from '@/lib/zustand'
 
 // TODO combine with global-settings.ts
 const THEME = z.enum(['dark', 'light', 'system'])

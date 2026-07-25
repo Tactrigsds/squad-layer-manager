@@ -1,3 +1,5 @@
+import { useMutation } from '@tanstack/react-query'
+
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import type { MenuSlots } from '@/components/player-context-menu-options'
 import { Button } from '@/components/ui/button'
@@ -25,7 +27,7 @@ import * as RbacClient from '@/systems/rbac.client'
 import * as SandboxClient from '@/systems/sandbox.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UsersClient from '@/systems/users.client'
-import { useMutation } from '@tanstack/react-query'
+
 import { useOpenSandboxControlWindow } from './sandbox-control-window.helpers'
 import { useOpenServerConsoleWindow } from './server-console-window.helpers'
 

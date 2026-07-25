@@ -1,3 +1,7 @@
+import { Link } from '@tanstack/react-router'
+import { AlertCircle, Home, Loader2 } from 'lucide-react'
+import React from 'react'
+
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -5,9 +9,6 @@ import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
 import * as SettingsClient from '@/systems/settings.client'
 import type * as SquadServerClient from '@/systems/squad-server.client'
-import { Link } from '@tanstack/react-router'
-import { AlertCircle, Home, Loader2 } from 'lucide-react'
-import React from 'react'
 
 type Status = Exclude<SquadServerClient.ServerAvailability, 'ok'>
 

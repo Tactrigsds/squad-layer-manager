@@ -1,5 +1,6 @@
-import * as DbBackup from '@/server/db-backup'
 import { describe, expect, test } from 'vitest'
+
+import * as DbBackup from '@/server/db-backup'
 
 const DB_PATH = './data/db.sqlite3'
 

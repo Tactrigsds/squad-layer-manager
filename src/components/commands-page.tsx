@@ -1,3 +1,6 @@
+import * as Icons from 'lucide-react'
+import * as React from 'react'
+
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -13,8 +16,6 @@ import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as SettingsClient from '@/systems/settings.client'
 import type { PublicSettings } from '@/systems/settings.server'
-import * as Icons from 'lucide-react'
-import * as React from 'react'
 
 // a trigger that pins arguments, as listed under its command: what a caller types, and what it runs
 type Shortcut = { usage: string; expansion: string }

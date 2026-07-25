@@ -1,11 +1,11 @@
+import * as ReactRx from '@react-rxjs/core'
+import { createSignal } from '@react-rxjs/utils'
+import * as Rx from 'rxjs'
+
 import * as RxHelpers from '@/lib/react-rxjs-helpers'
 import type * as MH from '@/models/match-history.models'
 import * as RPC from '@/orpc.client'
 import * as PartsSys from '@/systems/parts.client'
-
-import * as ReactRx from '@react-rxjs/core'
-import { createSignal } from '@react-rxjs/utils'
-import * as Rx from 'rxjs'
 
 const [initialized$, setInitialized] = createSignal<boolean>()
 

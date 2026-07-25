@@ -1,11 +1,12 @@
-import * as Paths from '$root/paths'
-import { escapeRegex } from '@/lib/string'
-import * as LA from '@/models/layer-artifact'
-import * as Env from '@/server/env'
 import Mustache from 'mustache'
 import fs from 'node:fs'
 import path from 'node:path'
 import * as semver from 'semver'
+
+import * as Paths from '$root/paths'
+import { escapeRegex } from '@/lib/string'
+import * as LA from '@/models/layer-artifact'
+import * as Env from '@/server/env'
 
 // Where the layer artifacts come from, and which version of them the app runs on.
 //

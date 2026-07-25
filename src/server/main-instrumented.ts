@@ -1,7 +1,7 @@
+import * as Cli from '@/systems/cli.server'
 import { sdk as otelSdk, setupOtel } from '@/systems/otel.server'
 import { setupPyroscope } from '@/systems/pyroscope.server'
 
-import * as Cli from '@/systems/cli.server'
 import * as Env from './env.ts'
 
 await Cli.ensureCliParsed()

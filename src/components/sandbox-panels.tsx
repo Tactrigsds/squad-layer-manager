@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
+
 import type { SandboxPanelWindowProps } from './sandbox-panels.helpers'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
 import { useSandboxFrame } from './use-sandbox-frame'

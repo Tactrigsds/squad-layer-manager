@@ -1,7 +1,8 @@
-import { HumanTime, schemaAtPath } from '@/lib/zod'
-import * as SETTINGS from '@/models/settings.models'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
+
+import { HumanTime, schemaAtPath } from '@/lib/zod'
+import * as SETTINGS from '@/models/settings.models'
 
 // schemaAtPath walks zod's internals to find the schema at a path, which is what lets the settings form hand a subtree
 // its own editor. These pin the wrapper shapes it has to see through -- a zod upgrade that renames them would otherwise

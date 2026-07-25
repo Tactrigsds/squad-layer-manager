@@ -1,3 +1,5 @@
+import { Mutex } from 'async-mutex'
+
 import engineWasmUrl from '$root/assets/layer-engine.wasm?url'
 import * as AR from '@/app-routes'
 import { acquireInBlock } from '@/lib/async'
@@ -10,7 +12,6 @@ import * as ATTRS from '@/models/otel-attrs'
 import { LayerEngine } from '@/systems/layer-engine.shared'
 import { queries, type QueryLayersResponsePart, queryLayersStreamed } from '@/systems/layer-queries.shared'
 import { baseLogger } from '@/systems/logger.client'
-import { Mutex } from 'async-mutex'
 // must match the loader variant the bundler resolves for 'sql.js' (browser export condition)
 
 export type ToWorker = RequestInner & Sequenced & Prioritized

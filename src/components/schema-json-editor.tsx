@@ -1,3 +1,8 @@
+import stringifyCompact from 'json-stringify-pretty-compact'
+import * as Icons from 'lucide-react'
+import React from 'react'
+import * as Rx from 'rxjs'
+
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDebounced } from '@/hooks/use-debounce'
@@ -6,10 +11,7 @@ import * as Obj from '@/lib/object'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
 import { BaseZIndexContext, ZI_OFFSETS } from '@/models/zindex'
-import stringifyCompact from 'json-stringify-pretty-compact'
-import * as Icons from 'lucide-react'
-import React from 'react'
-import * as Rx from 'rxjs'
+
 import type { SchemaJsonEditorProps } from './schema-json-editor.types'
 
 export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEditorProps<TOut, TIn>) {

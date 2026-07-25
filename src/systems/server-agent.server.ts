@@ -1,3 +1,7 @@
+import type { FastifyRequest } from 'fastify'
+import { StringDecoder } from 'node:string_decoder'
+import type { WebSocket } from 'ws'
+
 import * as Schema from '$root/drizzle/schema.ts'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import type { RconTransport, RconTransportHandlers } from '@/lib/rcon/core-rcon'
@@ -6,9 +10,6 @@ import * as DB from '@/server/db'
 import { baseLogger } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Settings from '@/systems/settings.server'
-import type { FastifyRequest } from 'fastify'
-import { StringDecoder } from 'node:string_decoder'
-import type { WebSocket } from 'ws'
 
 // The slm-server-agent (see ../../server-agent, a small rust program) runs on/near a squad server box and
 // connects out to SLM over a WebSocket on the app's normal port. It handles BOTH of that server's I/O:

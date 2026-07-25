@@ -1,3 +1,6 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { StartActivityInteraction } from '@/components/activity.tsx'
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -6,18 +9,15 @@ import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CardDescription } from '@/components/ui/card'
-
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
 import { cn } from '@/lib/utils.ts'
-
 import * as ZusUtils from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
-
 import * as UP from '@/models/user-presence'
 import * as RBAC from '@/rbac.models.ts'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
@@ -28,8 +28,7 @@ import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
+
 import { RepeatViolationDisplay } from './constraint-matches-indicator.tsx'
 import { LayerList } from './layer-list.tsx'
 import { useOpenPoolConfigWindow } from './pool-config-window.helpers.ts'
@@ -38,6 +37,7 @@ import ShortLayerName from './short-layer-name.tsx'
 void import('@/components/pool-config-window')
 
 import { assertNever } from '@/lib/type-guards.ts'
+
 import EmojiDisplay from './emoji-display.tsx'
 import { FilterEntityLink } from './filter-entity-select.tsx'
 import { StickyGroup } from './sticky-group.tsx'

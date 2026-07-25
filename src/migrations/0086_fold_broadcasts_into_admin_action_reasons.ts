@@ -1,5 +1,6 @@
-import type { MigrationDriver } from '@/server/migrate'
 import superjson from 'superjson'
+
+import type { MigrationDriver } from '@/server/migrate'
 
 // Removes seprately configured broadcasts
 export async function up(db: MigrationDriver): Promise<void> {

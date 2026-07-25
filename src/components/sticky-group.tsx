@@ -1,6 +1,7 @@
-import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import { createContext, type ReactNode, type RefObject, useContext, useLayoutEffect, useRef } from 'react'
 import { createStore, type StoreApi } from 'zustand/vanilla'
+
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 
 /**
  * StickyGroup

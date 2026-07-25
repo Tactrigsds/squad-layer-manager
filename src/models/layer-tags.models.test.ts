@@ -1,6 +1,7 @@
+import { describe, expect, it } from 'vitest'
+
 import * as LL from '@/models/layer-list.models'
 import * as LTag from '@/models/layer-tags.models'
-import { describe, expect, it } from 'vitest'
 
 function tag(label: string, color = '#ff0000'): LTag.Tag {
 	return { id: LTag.createTagId(label), label, description: `${label} desc`, color }

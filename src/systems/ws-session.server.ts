@@ -1,11 +1,10 @@
-import type * as CS from '@/models/context-shared'
-import * as ATTRS from '@/models/otel-attrs'
-import { initModule } from '@/server/logger'
-
-import type * as C from '@/server/context'
+import { metrics } from '@opentelemetry/api'
 
 import { IsolatedSubject } from '@/lib/isolated-subject'
-import { metrics } from '@opentelemetry/api'
+import type * as CS from '@/models/context-shared'
+import * as ATTRS from '@/models/otel-attrs'
+import type * as C from '@/server/context'
+import { initModule } from '@/server/logger'
 export const wsSessions = new Map<string, C.OrpcSessionBase>()
 // `interrupted` is true when the socket closed without a clean handshake (the client never
 // communicated intent to leave), e.g. a network drop -- distinct from a normal/going-away close.

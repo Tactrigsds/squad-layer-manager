@@ -1,3 +1,6 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { AdvancedVoteConfigEditor } from '@/components/advanced-vote-config-editor'
 import AppliedFiltersPanel from '@/components/applied-filters-panel.tsx'
 import { StringEqConfig } from '@/components/filter-card'
@@ -13,22 +16,18 @@ import {
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager'
 import * as GenVoteFrame from '@/frames/gen-vote.frame'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react'
 import * as ZusUtils from '@/lib/zustand'
-
 import type * as L from '@/models/layer'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as V from '@/models/vote.models'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
+
 import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 import EditLayerDialog from './edit-layer-dialog'
-
 import { Alert, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
 import { ButtonGroup } from './ui/button-group'

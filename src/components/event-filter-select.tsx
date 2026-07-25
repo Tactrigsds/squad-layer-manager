@@ -1,3 +1,5 @@
+import * as Icons from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import {
 	DropdownMenu,
@@ -9,8 +11,6 @@ import {
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import * as CHAT from '@/models/chat.models'
-
-import * as Icons from 'lucide-react'
 
 export default function EventFilterSelect(props: {
 	value: CHAT.SecondaryFilterState

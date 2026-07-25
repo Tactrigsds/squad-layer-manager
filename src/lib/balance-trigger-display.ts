@@ -1,5 +1,6 @@
-import type * as BAL from '@/models/balance-triggers.models'
 import { AlertOctagon, AlertTriangle, Info, type LucideIcon } from 'lucide-react'
+
+import type * as BAL from '@/models/balance-triggers.models'
 
 // How a balance trigger level presents: the alert it raises on the match history, and the preview of that alert the
 // settings editor shows beside the level picker. Shared so the two can never drift apart.

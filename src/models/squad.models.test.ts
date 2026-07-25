@@ -1,8 +1,9 @@
-import { matchLog } from '@/lib/log-parsing'
-import * as SM from '@/models/squad.models'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { describe, expect, it } from 'vitest'
+
+import { matchLog } from '@/lib/log-parsing'
+import * as SM from '@/models/squad.models'
 
 async function* toChunks(...chunks: string[]): AsyncGenerator<string> {
 	for (const chunk of chunks) yield chunk

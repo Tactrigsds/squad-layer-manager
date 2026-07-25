@@ -1,12 +1,13 @@
+import { useQuery } from '@tanstack/react-query'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import ComboBox from '@/components/combo-box/combo-box'
 import type { ComboBoxOption } from '@/components/combo-box/combo-box'
 import { LOADING } from '@/components/combo-box/constants'
 import { useDebounced } from '@/hooks/use-debounce'
 import * as RPC from '@/orpc.client'
 import * as UsersClient from '@/systems/users.client'
-import { useQuery } from '@tanstack/react-query'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 // a stored id that no longer resolves to a live Discord role/member (deleted role, departed member): surface the raw
 // id with a warning rather than a confusing blank, and explain the situation below the picker

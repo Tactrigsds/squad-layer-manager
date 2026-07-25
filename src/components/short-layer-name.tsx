@@ -1,5 +1,7 @@
-import { getTeamsDisplay } from '@/components/teams-display.tsx'
+import * as Icons from 'lucide-react'
+import React from 'react'
 
+import { getTeamsDisplay } from '@/components/teams-display.tsx'
 import * as Obj from '@/lib/object'
 import { isNullOrUndef } from '@/lib/type-guards.ts'
 import * as Typo from '@/lib/typography.ts'
@@ -8,8 +10,7 @@ import * as ZusUtils from '@/lib/zustand'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
+
 import LayerInfoDialog from './layer-info'
 import MapLayerDisplay from './map-layer-display.tsx'
 

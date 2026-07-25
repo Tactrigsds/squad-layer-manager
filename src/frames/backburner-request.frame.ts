@@ -1,3 +1,6 @@
+import type React from 'react'
+import * as Rx from 'rxjs'
+
 import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial'
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
@@ -15,8 +18,7 @@ import type * as LQY from '@/models/layer-queries.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
-import type React from 'react'
-import * as Rx from 'rxjs'
+
 import { frameManager } from './frame-manager'
 
 // The "Request a layer" editor: a pared-down layer-filter-menu (components or a specific layer string,

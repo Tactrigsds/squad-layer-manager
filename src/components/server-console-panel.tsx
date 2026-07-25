@@ -1,11 +1,12 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import * as ConsoleFrame from '@/frames/server-console.frame'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import type { ConsoleEvent } from '@/models/server-console.models'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 // The tail of what a squad server is saying and being told. Read-only by design: issuing rcon from here would
 // route around every other permission and leave no app event behind.

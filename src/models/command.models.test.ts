@@ -1,6 +1,7 @@
+import { describe, expect, it } from 'vitest'
+
 import type * as AAR from '@/models/admin-action-reasons.models'
 import * as CMD from '@/models/command.models'
-import { describe, expect, it } from 'vitest'
 
 const noPreds: CMD.AssignPredicates = { isTeamToken: () => false, isPresetToken: () => false }
 const preds = (opts: { teams?: string[]; presets?: string[] }): CMD.AssignPredicates => ({

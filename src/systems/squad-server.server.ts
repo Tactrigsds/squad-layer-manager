@@ -1,3 +1,12 @@
+import * as Otel from '@opentelemetry/api'
+import * as Orpc from '@orpc/server'
+import { Mutex, type MutexInterface } from 'async-mutex'
+import { sql } from 'drizzle-orm'
+import * as E from 'drizzle-orm'
+import * as Rx from 'rxjs'
+import superjson from 'superjson'
+import { z } from 'zod'
+
 import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 import * as AR from '@/app-routes'
@@ -54,14 +63,6 @@ import * as Timeouts from '@/systems/timeouts.server'
 import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
 import * as WsSessionSys from '@/systems/ws-session.server'
-import * as Otel from '@opentelemetry/api'
-import * as Orpc from '@orpc/server'
-import { Mutex, type MutexInterface } from 'async-mutex'
-import { sql } from 'drizzle-orm'
-import * as E from 'drizzle-orm'
-import * as Rx from 'rxjs'
-import superjson from 'superjson'
-import { z } from 'zod'
 
 const module = initModule('squad-server')
 

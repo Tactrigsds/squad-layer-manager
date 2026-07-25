@@ -1,3 +1,7 @@
+import { useQuery } from '@tanstack/react-query'
+import * as Icons from 'lucide-react'
+import React, { useRef } from 'react'
+
 import scoreRanges from '$root/assets/score-ranges.json'
 import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers'
 import * as DH from '@/lib/display-helpers.ts'
@@ -11,9 +15,7 @@ import * as ConfigClient from '@/systems/config.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import type * as LayerInfoDialogClient from '@/systems/layer-info-dialog.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
-import { useQuery } from '@tanstack/react-query'
-import * as Icons from 'lucide-react'
-import React, { useRef } from 'react'
+
 import type { LayerInfoWindowProps } from './layer-info-window.helpers'
 import MapLayerDisplay from './map-layer-display.tsx'
 import { Button, buttonVariants } from './ui/button.tsx'

@@ -1,7 +1,9 @@
-import { matchLog } from '@/lib/log-parsing'
-import * as SM from '@/models/squad.models'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+
+import { matchLog } from '@/lib/log-parsing'
+import * as SM from '@/models/squad.models'
+
 import { anonymizeIps } from './anonymize-ips'
 
 // Builds the emulator log corpus from real SquadGame.log files: representative raw samples per

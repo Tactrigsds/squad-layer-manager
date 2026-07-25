@@ -1,6 +1,8 @@
 import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial'
 
 export type { PostProcessedLayer } from '@/systems/layer-queries.shared'
+import * as Im from 'immer'
+
 import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import type * as DH from '@/lib/display-helpers'
@@ -15,7 +17,6 @@ import * as LQY from '@/models/layer-queries.models'
 import * as V from '@/models/vote.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
-import * as Im from 'immer'
 
 import { frameManager } from './frame-manager'
 export type SelectType = 'generic' | 'indexed'

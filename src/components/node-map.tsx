@@ -1,7 +1,8 @@
-import * as NodeMap from '@/lib/node-map'
 import React from 'react'
 import { createPortal } from 'react-dom'
 import type * as Zus from 'zustand'
+
+import * as NodeMap from '@/lib/node-map'
 
 export type NodeMapProps = {
 	nodeId: NodeMap.NodeId

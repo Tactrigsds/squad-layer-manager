@@ -1,8 +1,12 @@
+import { useQuery } from '@tanstack/react-query'
+import * as React from 'react'
+import * as Rx from 'rxjs'
+import * as Zus from 'zustand'
+
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toAsyncGenerator } from '@/lib/async'
 import * as Gen from '@/lib/generator'
 import * as Obj from '@/lib/object'
-
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
@@ -20,14 +24,9 @@ import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LayerDataClient from '@/systems/layer-data.client'
 import type * as WorkerTypes from '@/systems/layer-queries.worker'
-import * as React from 'react'
 // oxlint-disable-next-line import/default
 import LQWorker from '@/systems/layer-queries.worker?worker'
 import * as UsersClient from '@/systems/users.client'
-import { useQuery } from '@tanstack/react-query'
-
-import * as Rx from 'rxjs'
-import * as Zus from 'zustand'
 
 export type Store = {
 	// bumped whenever mutable state the worker holds (filter entities, generation weights) changes, invalidating

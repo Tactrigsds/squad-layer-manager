@@ -1,9 +1,3 @@
-import { formatVersion } from '@/lib/versioning'
-import { tsMigrations } from '@/migrations/registry'
-import * as DbBackup from '@/server/db-backup'
-import * as DbMeta from '@/server/db-meta'
-import * as Env from '@/server/env'
-import * as Migrate from '@/server/migrate'
 import DatabaseConstructor, { type Database } from 'better-sqlite3'
 import * as DateFns from 'date-fns'
 import fs from 'node:fs'
@@ -12,6 +6,13 @@ import * as readline from 'node:readline/promises'
 import * as Stream from 'node:stream/promises'
 import { parseArgs } from 'node:util'
 import * as Zlib from 'node:zlib'
+
+import { formatVersion } from '@/lib/versioning'
+import { tsMigrations } from '@/migrations/registry'
+import * as DbBackup from '@/server/db-backup'
+import * as DbMeta from '@/server/db-meta'
+import * as Env from '@/server/env'
+import * as Migrate from '@/server/migrate'
 
 // Puts a backup back. Run in dev via `pnpm db:restore`; in the production image via `pnpm db:restore:prod`, with the
 // app stopped (restore.sh does that choreography for a docker deployment).

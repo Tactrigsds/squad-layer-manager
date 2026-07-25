@@ -1,8 +1,9 @@
+import * as Otel from '@opentelemetry/api'
+import type pino from 'pino'
+
 import { FixedSizeMap } from '@/lib/lru-map'
 import { assertNever } from '@/lib/type-guards'
 import * as ATTRS from '@/models/otel-attrs'
-import * as Otel from '@opentelemetry/api'
-import type pino from 'pino'
 
 export const serializers = {
 	bigint: (n: bigint) => n.toString() + 'n',

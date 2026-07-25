@@ -1,3 +1,6 @@
+import type { DistributiveOmit } from '@tanstack/react-query'
+import { z } from 'zod'
+
 import { createId } from '@/lib/id'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
@@ -6,8 +9,6 @@ import { assertNever } from '@/lib/type-guards'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as USR from '@/models/users.models'
-import type { DistributiveOmit } from '@tanstack/react-query'
-import { z } from 'zod'
 
 export const TeamswapStatusSchema = z.enum(['ready', 'player-disconnected', 'player-changed-teams'])
 export type TeamswapStatus = z.infer<typeof TeamswapStatusSchema>

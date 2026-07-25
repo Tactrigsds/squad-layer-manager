@@ -1,4 +1,3 @@
-import type * as CS from '@/models/context-shared'
 import crypto from 'crypto'
 import EventEmitter from 'events'
 import fs from 'fs'
@@ -6,6 +5,9 @@ import { readFile } from 'fs/promises'
 import path from 'path'
 import type { SFTPWrapper } from 'ssh2'
 import { Client } from 'ssh2'
+
+import type * as CS from '@/models/context-shared'
+
 import { getChildModule, type OtelModule } from './otel'
 
 export type SftpTailOptions = {

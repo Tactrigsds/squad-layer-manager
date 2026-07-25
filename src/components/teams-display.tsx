@@ -1,15 +1,14 @@
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { withThrown } from '@/lib/error'
+import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as L from '@/models/layer'
-
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { cn } from '@/lib/utils'
 import * as DH from '../lib/display-helpers'
 
 export function TeamIndicator(props: { team: MH.NormedTeamId | SM.TeamId }) {

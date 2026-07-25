@@ -1,6 +1,8 @@
+import * as Icons from 'lucide-react'
+
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
-import * as Icons from 'lucide-react'
+
 import type { TeamswapsHelpWindowProps } from './teamswaps-help-window.helpers'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
 

@@ -1,12 +1,13 @@
-import { assertNever } from '@/lib/type-guards'
-import { cn } from '@/lib/utils'
-import * as DiscordClient from '@/systems/discord.client'
-import * as ThemeClient from '@/systems/theme.client'
 import { useQuery } from '@tanstack/react-query'
 import type { EmojiClickData } from 'emoji-picker-react'
 import EmojiPicker, { EmojiStyle, Theme } from 'emoji-picker-react'
 import React from 'react'
 import { useMemo } from 'react'
+
+import { assertNever } from '@/lib/type-guards'
+import { cn } from '@/lib/utils'
+import * as DiscordClient from '@/systems/discord.client'
+import * as ThemeClient from '@/systems/theme.client'
 
 export type UnifiedEmojiPickerProps = {
 	onEmojiClick: (emoji: string) => void

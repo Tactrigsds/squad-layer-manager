@@ -1,3 +1,7 @@
+import * as dateFns from 'date-fns'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { contextMenuSlots } from '@/components/player-context-menu-options'
 import { ServerActionMenuItems } from '@/components/server-actions-dropdown'
 import { getTeamsDisplay } from '@/components/teams-display'
@@ -7,29 +11,23 @@ import { Table, TableBody, TableCell as ShadcnTableCell, TableHead as ShadcnTabl
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-
-import * as UPClient from '@/systems/user-presence.client'
-
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
-
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import type * as MH from '@/models/match-history.models'
-
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as DndKit from '@/systems/dndkit.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
-import * as dateFns from 'date-fns'
-import * as Icons from 'lucide-react'
-import React from 'react'
+import * as UPClient from '@/systems/user-presence.client'
+
 import BalanceTriggerAlert from './balance-trigger-alert'
 import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 import LayerSourceDisplay from './layer-source-display'

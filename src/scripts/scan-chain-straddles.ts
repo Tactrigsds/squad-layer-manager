@@ -1,6 +1,8 @@
-import * as SM from '@/models/squad.models'
 import * as fs from 'node:fs'
 import * as readline from 'node:readline'
+
+import * as SM from '@/models/squad.models'
+
 import { anonymizeIps } from './anonymize-ips'
 
 // Diagnostic: reproduce parseLogStream's tick grouping over a log archive and report chains spanning ticks,

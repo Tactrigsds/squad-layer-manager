@@ -3,6 +3,7 @@
 import fastDeepEqual from 'fast-deep-equal/es6/index.js'
 import { current, isDraft } from 'immer'
 import jp from 'jsonpath'
+
 import { isNullOrUndef } from './type-guards'
 
 export function reverseMapping<T extends { [key: string]: string }>(obj: T) {

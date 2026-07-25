@@ -1,3 +1,6 @@
+import * as E from 'drizzle-orm'
+import { z } from 'zod'
+
 import * as Schema from '$root/drizzle/schema'
 import * as AppEvents from '@/models/app-events.models'
 import * as SETTINGS from '@/models/settings.models'
@@ -7,8 +10,6 @@ import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as Otel from '@/systems/otel.server'
 import * as Rbac from '@/systems/rbac.server'
-import * as E from 'drizzle-orm'
-import { z } from 'zod'
 
 const module = initModule('app-events')
 const orpcBase = getOrpcBase(module)

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
 import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fixture'
 
 // Regression: POST /logout used to deadlock. Sessions.logout awaited clearInvalidSession, which returns the

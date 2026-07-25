@@ -1,3 +1,9 @@
+import * as ReactRx from '@react-rxjs/core'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { createFileRoute, useBlocker } from '@tanstack/react-router'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import type SchemaJsonEditorComponent from '@/components/schema-json-editor'
 import type { SchemaJsonEditorHandle } from '@/components/schema-json-editor.types'
 import SettingsForm from '@/components/settings-form'
@@ -35,11 +41,6 @@ import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
-import * as ReactRx from '@react-rxjs/core'
-import { useMutation, useQuery } from '@tanstack/react-query'
-import { createFileRoute, useBlocker } from '@tanstack/react-router'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 // stable empty-servers reference while public settings haven't loaded, keeping the readable-servers memo stable
 const NO_SERVERS: never[] = []

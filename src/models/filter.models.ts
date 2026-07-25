@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 // Filter nodes form a small expression AST. Every node's `type` is an operator: block operators
 // (and/or/nor/nand) take child nodes, comparison operators take argument terms (columns,
 // constants, team-generic columns), and apply-filter operators (included-in/excluded-from) reference
@@ -7,7 +9,7 @@ import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object'
 import * as Sparse from '@/lib/sparse-tree'
 import { assertNever } from '@/lib/type-guards'
-import { z } from 'zod'
+
 import * as LC from './layer-columns'
 
 // -------- values & argument terms --------

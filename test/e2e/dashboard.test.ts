@@ -1,4 +1,5 @@
 import { makePlayer } from '@/emulator'
+
 import { expect, test } from './fixtures'
 
 // Drives the real client against a real app instance backed by the squad server emulator.

@@ -1,3 +1,6 @@
+import DatabaseConstructor from 'better-sqlite3'
+import { describe, expect, it } from 'vitest'
+
 import { up as migrateFilterNodes } from '@/migrations/0062_filter_nodes_operator_model'
 import { up as migrateTeamScopes } from '@/migrations/0063_filter_team_scopes_to_and_or'
 import { up as migrateBlockOperators } from '@/migrations/0065_filter_block_operators'
@@ -8,8 +11,6 @@ import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
 import * as LE from '@/models/layer-engine'
-import DatabaseConstructor from 'better-sqlite3'
-import { describe, expect, it } from 'vitest'
 
 // -------- operator selection round-trips --------
 

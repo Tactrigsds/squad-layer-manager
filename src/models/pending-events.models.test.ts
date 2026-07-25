@@ -1,3 +1,5 @@
+import { describe, expect, it, vi } from 'vitest'
+
 import * as Gen from '@/lib/generator'
 import type * as CS from '@/models/context-shared'
 import type * as L from '@/models/layer'
@@ -5,7 +7,6 @@ import type * as MH from '@/models/match-history.models'
 import * as PendingEvents from '@/models/pending-events.models'
 import type * as SE from '@/models/server-events.models'
 import type * as SM from '@/models/squad.models'
-import { describe, expect, it, vi } from 'vitest'
 
 // --- Layer IDs (from layer.test.ts) ---
 // Gorodok_RAAS_v1, Faction_1=RGF ('Russian Ground Forces'), Faction_2=ADF ('Australian Defence Force')

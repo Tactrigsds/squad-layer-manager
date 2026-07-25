@@ -1,3 +1,7 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+import type * as Rx from 'rxjs'
+
 import ComboBox from '@/components/combo-box/combo-box'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -5,9 +9,6 @@ import { useDebounced } from '@/hooks/use-debounce'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as DndKit from '@/systems/dndkit.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
-import type * as Rx from 'rxjs'
 
 type Config = LC.LayerGenerationConfig
 type WeightEntry = { value: string; weight: number }

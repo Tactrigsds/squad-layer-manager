@@ -1,8 +1,10 @@
+import React from 'react'
+
 import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as ZusUtils from '@/lib/zustand'
 import type * as SETTINGS from '@/models/settings.models.ts'
-import React from 'react'
+
 import { TriStateCheckbox } from './ui/tri-state-checkbox'
 
 export default function PoolCheckboxes(props: { stores: PoolCheckboxesPrt.KeyProp }) {

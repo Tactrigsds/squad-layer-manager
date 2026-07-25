@@ -1,11 +1,13 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
-import * as Icons from 'lucide-react'
-import React from 'react'
+
 import type { ComparisonHandle } from './filter-card'
 import { Comparison } from './filter-card'
 

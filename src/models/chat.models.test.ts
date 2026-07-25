@@ -1,8 +1,9 @@
+import { describe, expect, it } from 'vitest'
+
 import type * as AppEvents from '@/models/app-events.models'
 import * as CHAT from '@/models/chat.models'
 import type * as SE from '@/models/server-events.models'
 import type * as SM from '@/models/squad.models'
-import { describe, expect, it } from 'vitest'
 
 function makePlayer(eos: string, opts: Partial<SM.Player> = {}): SM.Player {
 	return {

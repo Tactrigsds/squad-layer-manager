@@ -1,10 +1,11 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import type * as AAR from '@/models/admin-action-reasons.models'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 // Drops a configured preset into a free-text chat box: unlike a select it holds no state of its own, so the
 // text stays editable afterwards. `preview` renders the text a pick would insert, shown under each label.

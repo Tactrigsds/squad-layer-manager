@@ -1,3 +1,7 @@
+import * as TSR from '@tanstack/react-router'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import * as AR from '@/app-routes.ts'
 import AboutDialog from '@/components/about-dialog'
 import LinkSteamAccountDialog from '@/components/link-steam-account-dialog'
@@ -26,9 +30,7 @@ import TabsList from '@/components/ui/tabs-list'
 import UserPermissionsDialog from '@/components/user-permissions-dialog'
 import { frameManager, useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
-
 import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
-
 import { useIsDesktopSize, useIsSmallViewport } from '@/lib/browser.ts'
 import * as Obj from '@/lib/object'
 import { cn } from '@/lib/utils'
@@ -38,15 +40,11 @@ import * as RBAC from '@/rbac.models'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
-
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as ThemeClient from '@/systems/theme.client'
 import { useLoggedInUser } from '@/systems/users.client'
-import * as TSR from '@tanstack/react-router'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 const EXPLORE_LAYERS_FRAME_INSTANCE_ID = 'explore-layers'
 

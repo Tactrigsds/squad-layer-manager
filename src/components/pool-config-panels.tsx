@@ -1,3 +1,6 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { useDebounced } from '@/hooks/use-debounce.ts'
@@ -10,8 +13,7 @@ import * as LQY from '@/models/layer-queries.models.ts'
 import type * as LTag from '@/models/layer-tags.models.ts'
 import * as SETTINGS from '@/models/settings.models.ts'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
+
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
 import { ConstraintViolationIcon } from './constraint-matches-indicator.tsx'

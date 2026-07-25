@@ -1,20 +1,19 @@
-import * as DH from '@/lib/display-helpers'
-import type * as CHAT from '@/models/chat.models'
+import type { EChartsOption } from 'echarts'
+import ReactECharts from 'echarts-for-react'
+import React from 'react'
 
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as DH from '@/lib/display-helpers'
 import * as ZusUtils from '@/lib/zustand'
 import * as BM from '@/models/battlemetrics.models'
+import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
 import * as PG from '@/models/player-groupings.models'
 import type * as SM from '@/models/squad.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as SettingsClient from '@/systems/settings.client'
-
 import * as ThemeClient from '@/systems/theme.client'
-import type { EChartsOption } from 'echarts'
-import ReactECharts from 'echarts-for-react'
-import React from 'react'
 
 function calculateOverallKD(events: CHAT.EventEnriched[]): { team1Ratio: number; team2Ratio: number } {
 	let team1Kills = 0

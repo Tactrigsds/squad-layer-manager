@@ -1,3 +1,6 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
 import { useAlertDialog } from '@/components/ui/lazy-alert-dialog'
 import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
@@ -8,8 +11,6 @@ import * as ZusUtils from '@/lib/zustand'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 // A single Save/Reset control panel shared by every editable settings section (global settings + each server + the
 // new-server form). Sections are settings-editor frame instances; the panel derives everything it shows straight from

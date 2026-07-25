@@ -1,5 +1,6 @@
-import type * as SM from '@/models/squad.models'
 import { z } from 'zod'
+
+import type * as SM from '@/models/squad.models'
 
 // ---- JSON:API shared shapes ----
 

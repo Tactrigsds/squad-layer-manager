@@ -1,3 +1,17 @@
+import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table'
+import type {
+	CellContext,
+	ColumnDef,
+	ColumnHelper,
+	HeaderContext,
+	OnChangeFn,
+	Row,
+	RowSelectionState,
+	SortingState,
+} from '@tanstack/react-table'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
@@ -13,7 +27,6 @@ import * as MH from '@/models/match-history.models'
 import * as PG from '@/models/player-groupings.models'
 import * as SM from '@/models/squad.models'
 import * as TeamsPanelModels from '@/models/teams-panel.models'
-
 import * as RBAC from '@/rbac.models.ts'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
@@ -24,19 +37,6 @@ import * as TSWClient from '@/systems/teamswaps.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
 
-import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table'
-import type {
-	CellContext,
-	ColumnDef,
-	ColumnHelper,
-	HeaderContext,
-	OnChangeFn,
-	Row,
-	RowSelectionState,
-	SortingState,
-} from '@tanstack/react-table'
-import * as Icons from 'lucide-react'
-import React from 'react'
 import PlayerBulkContextMenuOptions from './player-bulk-context-menu-options'
 import PlayerContextMenuOptions from './player-context-menu-options'
 import { PlayerDisplay } from './player-display'

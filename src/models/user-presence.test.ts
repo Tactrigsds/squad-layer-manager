@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import * as ST from '@/lib/state-tree'
+
 import * as UP from './user-presence'
 
 const serverId = 'server-1'

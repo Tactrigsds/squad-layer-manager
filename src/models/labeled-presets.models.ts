@@ -1,6 +1,7 @@
-import { BasicStrNoWhitespace } from '@/lib/zod'
 import StringComparison from 'string-comparison'
 import { z } from 'zod'
+
+import { BasicStrNoWhitespace } from '@/lib/zod'
 
 // shared shape for admin-configurable presets addressable from in-game chat (admin action reasons).
 // The label names the preset in menus and the audit log; the keywords are what chat matches against, and are

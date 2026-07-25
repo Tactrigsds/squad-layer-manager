@@ -1,6 +1,7 @@
 import * as fs from 'node:fs'
 import * as net from 'node:net'
 import * as path from 'node:path'
+
 import { anonymizeIps } from './anonymize-ips'
 
 // Captures ground-truth RCON traffic from a real squad server for the emulator corpus.

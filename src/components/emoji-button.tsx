@@ -1,8 +1,10 @@
+import * as Icons from 'lucide-react'
+
 import type { ButtonProps } from '@/components/ui/button'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type * as EMO from '@/models/emoji.models'
-import * as Icons from 'lucide-react'
+
 import EmojiDisplay from './emoji-display'
 
 export default function EmojiButton(_props: ButtonProps & { emoji?: string | EMO.Emoji; showTooltip?: boolean }) {

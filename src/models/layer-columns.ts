@@ -1,9 +1,11 @@
-import * as Obj from '@/lib/object'
-import { assertNever } from '@/lib/type-guards'
-import * as CS from '@/models/context-shared'
 import * as E from 'drizzle-orm'
 import { index, int, numeric, sqliteTable, sqliteView, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
+
+import * as Obj from '@/lib/object'
+import { assertNever } from '@/lib/type-guards'
+import * as CS from '@/models/context-shared'
+
 import * as L from './layer'
 export const COLUMN_TYPE = z.enum(['float', 'string', 'integer', 'boolean'])
 export type ColumnType = z.infer<typeof COLUMN_TYPE>

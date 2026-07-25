@@ -1,9 +1,11 @@
-import { anySignal } from '@/lib/async'
-import { getChildModule, type OtelModule } from '@/lib/otel.ts'
-import * as ATTRS from '@/models/otel-attrs'
 import * as Otel from '@opentelemetry/api'
 import { os } from '@orpc/server'
 import type Pino from 'pino'
+
+import { anySignal } from '@/lib/async'
+import { getChildModule, type OtelModule } from '@/lib/otel.ts'
+import * as ATTRS from '@/models/otel-attrs'
+
 import * as C from './context.ts'
 
 type OrpcMeta = { logLevel?: Pino.Level; type?: 'query' | 'mutation' }

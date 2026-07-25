@@ -1,5 +1,6 @@
 import DatabaseConstructor from 'better-sqlite3'
 import { describe, expect, test } from 'vitest'
+
 import { up } from './0092_named_admin_lists'
 
 function makeDb(globalJson: unknown, servers: Record<string, unknown> = {}) {

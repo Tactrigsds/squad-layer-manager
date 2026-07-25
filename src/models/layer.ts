@@ -1,8 +1,9 @@
+import * as z from 'zod'
+
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as LC from '@/models/layer-columns'
 import type * as SLL from '@/models/squad-layer-list.models'
-import * as z from 'zod'
 
 // fully derived layer data, loaded at startup by layer-data.server/layer-data.client (or built
 // directly during preprocessing). models are supposed to be inert, so this state living here is a

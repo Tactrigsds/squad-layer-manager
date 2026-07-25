@@ -1,3 +1,7 @@
+import { useMutation } from '@tanstack/react-query'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -6,9 +10,6 @@ import { toast } from '@/lib/toast'
 import * as RPC from '@/orpc.client'
 import * as UsersClient from '@/systems/users.client'
 import { invalidateLoggedInUser, useLoggedInUser } from '@/systems/users.client'
-import { useMutation } from '@tanstack/react-query'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 export default function NicknameDialog(props: { children: React.ReactNode; open?: boolean; onOpenChange?: (newState: boolean) => void }) {
 	const user = useLoggedInUser()

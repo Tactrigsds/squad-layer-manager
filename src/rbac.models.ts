@@ -1,9 +1,10 @@
+import { z } from 'zod'
+
 import * as Arr from '@/lib/array'
 import * as Obj from '@/lib/object'
 import * as F from '@/models/filter.models'
 import type * as USR from '@/models/users.models'
 
-import { z } from 'zod'
 import { assertNever } from './lib/type-guards'
 
 export type GenericRole = {

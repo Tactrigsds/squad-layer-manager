@@ -1,8 +1,9 @@
+import React from 'react'
+
 import * as Obj from '@/lib/object'
 import * as ZusUtils from '@/lib/zustand.ts'
 import type * as UP from '@/models/user-presence'
 import * as UPClient from '@/systems/user-presence.client'
-import React from 'react'
 
 type ChildPropsBase = {
 	ref?: React.Ref<any>

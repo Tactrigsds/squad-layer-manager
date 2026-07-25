@@ -1,3 +1,6 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -7,8 +10,7 @@ import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as UP from '@/models/user-presence'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as UPClient from '@/systems/user-presence.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
+
 import { useStorePoolConfigApi } from './pool-config-panels.helpers.ts'
 import { NextLayerPanel, PoolFiltersPanel, RepeatRulesPanel } from './pool-config-panels.tsx'
 import type { PoolConfigWindowProps } from './pool-config-window.helpers.ts'

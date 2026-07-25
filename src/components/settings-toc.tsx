@@ -1,3 +1,7 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+import { z } from 'zod'
+
 import { StickyGroup } from '@/components/sticky-group'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -9,9 +13,6 @@ import { cn } from '@/lib/utils'
 import * as SETTINGS from '@/models/settings.models'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
-import { z } from 'zod'
 
 // A tree-of-contents for the settings page. Nodes mirror the global-settings schema tree; clicking one scrolls the
 // matching field (anchored by `setting:<path>` ids emitted by SettingsForm) into view within the main scroll column.

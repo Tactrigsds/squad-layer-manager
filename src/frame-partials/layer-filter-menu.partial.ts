@@ -1,3 +1,7 @@
+import * as Im from 'immer'
+import React from 'react'
+import * as Rx from 'rxjs'
+
 import * as Arr from '@/lib/array'
 import type * as FRM from '@/lib/frame'
 import * as ZusUtils from '@/lib/zustand'
@@ -9,9 +13,6 @@ import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import type * as LQY from '@/models/layer-queries.models'
-import * as Im from 'immer'
-import React from 'react'
-import * as Rx from 'rxjs'
 
 export type FilterMenuItemPossibleValues = Record<string, string[]>
 

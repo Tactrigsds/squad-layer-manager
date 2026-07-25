@@ -1,7 +1,8 @@
-import { matchLog } from '@/lib/log-parsing'
-import * as SM from '@/models/squad.models'
 import * as fs from 'node:fs'
 import * as readline from 'node:readline'
+
+import { matchLog } from '@/lib/log-parsing'
+import * as SM from '@/models/squad.models'
 
 // Directly test each raw Die()/Wound() line against its matcher.
 async function run(path: string) {

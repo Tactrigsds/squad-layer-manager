@@ -1,7 +1,8 @@
-import * as Obj from '@/lib/object'
-
 import type { MutexInterface } from 'async-mutex'
 import * as Rx from 'rxjs'
+
+import * as Obj from '@/lib/object'
+
 import { assertNever } from './type-guards'
 
 export function sleep(ms: number, signal?: AbortSignal) {

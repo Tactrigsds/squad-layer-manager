@@ -1,6 +1,8 @@
+import { z } from 'zod'
+
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
-import { z } from 'zod'
+
 import type { StrKeys } from './types'
 
 /**

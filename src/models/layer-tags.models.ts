@@ -1,7 +1,8 @@
+import { z } from 'zod'
+
 import { createId } from '@/lib/id'
 import * as LNote from '@/models/layer-notes.models'
 import * as USR from '@/models/users.models'
-import { z } from 'zod'
 
 // A tag's identity is its id, which is immutable and carries the label it was created with, so a tag whose definition has
 // been deleted still renders as something a human recognizes. label/description/color are all freely editable.

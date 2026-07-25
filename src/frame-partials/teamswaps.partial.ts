@@ -1,3 +1,5 @@
+import * as Rx from 'rxjs'
+
 import type * as FRM from '@/lib/frame'
 import * as ODSM from '@/lib/odsm'
 import { toast } from '@/lib/toast'
@@ -8,7 +10,6 @@ import * as TSW from '@/models/teamswaps.models'
 import type * as UP from '@/models/user-presence'
 import * as RPC from '@/orpc.client'
 import * as UsersClient from '@/systems/users.client'
-import * as Rx from 'rxjs'
 
 export type Store = {
 	teamswaps: TeamswapSlice
