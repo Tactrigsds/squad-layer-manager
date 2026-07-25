@@ -1113,39 +1113,52 @@ function CommandCard({ value$, reset$, onChange }: OverrideProps) {
 	)
 }
 
-// what an alias's command text points at, for the status column. `undefined` means there's nothing useful to say:
-// either the text is still empty, or its args are malformed, which surfaces as a schema issue under the field instead.
-type AliasStatus = { broken: boolean; label: string; title: string }
-function aliasStatus(command: string, commands: CMD.CommandConfigs | undefined): AliasStatus | undefined {
+// what an alias's command text points at, plus what a caller has to type for it. `undefined` means there's nothing
+// useful to say: either the text is still empty, or its args are malformed, which surfaces as a schema issue under
+// the field instead.
+type AliasStatus = { broken: boolean; label: string; title: string; usage?: string }
+function aliasStatus(alias: string, command: string, root: AliasRoot): AliasStatus | undefined {
+	const commands = root.commands
 	if (!commands || command.trim() === '') return undefined
 	const res = CMD.resolveAliasCommand(command, commands)
 	if (res.code === 'err:invalid-args') return undefined
 	if (res.code === 'err:unknown-command') return { broken: true, label: 'Unavailable', title: res.msg }
+	const usage = CMD.formatAliasUsage(alias, res.params, root.requireReasonFor ?? [])
 	if (!commands[res.cmdId].enabled) {
-		return { broken: true, label: 'Disabled', title: `The "${res.cmdId}" command is disabled, so this alias does nothing.` }
+		return { broken: true, label: 'Disabled', title: `The "${res.cmdId}" command is disabled, so this alias does nothing.`, usage }
 	}
-	return { broken: false, label: res.cmdId, title: `Runs the "${res.cmdId}" command.` }
+	return { broken: false, label: res.cmdId, title: `Runs the "${res.cmdId}" command.`, usage }
 }
 
-// bespoke editor for `commandAliases`: an alias is just a shortcut string and the full command it runs, so the row is
-// two text fields plus a status showing which command it resolves to (and whether that command is usable).
+type AliasRoot = { commands?: CMD.CommandConfigs; requireReasonFor?: AAR.AdminActionType[] }
+
+// bespoke editor for `commandAliases`: an alias is a shortcut string and the command it runs, so the row is two text
+// fields plus what the alias takes from chat and which command it resolves to (and whether that command is usable).
 function CommandAliasesField({ value$, reset$, onChange }: OverrideProps) {
 	return (
-		<PresetTableField
-			value$={value$}
-			reset$={reset$}
-			onChange={onChange}
-			headers={
-				<>
-					<TableHead className="w-[12rem]">Alias</TableHead>
-					<TableHead>Full command</TableHead>
-					<TableHead className="w-[9rem]">Runs</TableHead>
-					<TableHead className="w-8" />
-				</>
-			}
-			newRow={() => ({ alias: '', command: '' })}
-			Row={CommandAliasRow}
-		/>
+		<div className="space-y-2">
+			<PresetTableField
+				value$={value$}
+				reset$={reset$}
+				onChange={onChange}
+				headers={
+					<>
+						<TableHead className="w-[12rem]">Alias</TableHead>
+						<TableHead>Full command</TableHead>
+						<TableHead className="w-[13rem]">Takes</TableHead>
+						<TableHead className="w-[9rem]">Runs</TableHead>
+						<TableHead className="w-8" />
+					</>
+				}
+				newRow={() => ({ alias: '', command: '' })}
+				Row={CommandAliasRow}
+			/>
+			<p className="text-xs text-muted-foreground">
+				The command text is a template over the words typed after the alias: {'{{arg1}}'} is the first, {'{{rest2}}'}{' '}
+				is everything from the second on. {'{{^arg2}}default{{/arg2}}'} fills one in when it is left out.
+			</p>
+			<TemplateSyntaxHint />
+		</div>
 	)
 }
 
@@ -1154,10 +1167,12 @@ function CommandAliasRow({ idx, parent$, reset$, parentOnChange, onRemove }: Pre
 	const alias$ = React.useMemo(() => scopeValue(row$, 'alias'), [row$])
 	const command$ = React.useMemo(() => scopeValue(row$, 'command'), [row$])
 	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
-	// the command text is read reactively so the status follows the input (a debounce behind it, like every other field)
+	// the alias and command text are read reactively so the status follows the input (a debounce behind it, like
+	// every other field)
 	const command = (useFieldValue(command$, reset$) as string | undefined) ?? ''
-	const commands = ((useFieldValue(root$, reset$) as { commands?: CMD.CommandConfigs } | undefined) ?? {}).commands
-	const status = aliasStatus(command, commands)
+	const alias = (useFieldValue(alias$, reset$) as string | undefined) ?? ''
+	const root = (useFieldValue(root$, reset$) as AliasRoot | undefined) ?? {}
+	const status = aliasStatus(alias, command, root)
 
 	const setField = (key: 'alias' | 'command') => (v: any) => {
 		const arr = [...((parent$.getValue() as CMD.CommandAlias[]) ?? [])]
@@ -1178,6 +1193,9 @@ function CommandAliasRow({ idx, parent$, reset$, parentOnChange, onRemove }: Pre
 					numeric={false}
 					placeholder="/broadcast Read the rules"
 				/>
+			</TableCell>
+			<TableCell className="align-top">
+				{status?.usage && <code className="font-mono text-xs text-muted-foreground">{status.usage}</code>}
 			</TableCell>
 			<TableCell className="align-top">
 				{status && (

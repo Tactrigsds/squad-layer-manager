@@ -1,4 +1,5 @@
 import * as Obj from '@/lib/object'
+import { renderTemplate, templateVars } from '@/lib/templating'
 import { BasicStrNoWhitespace, tryParseHumanTimeToken } from '@/lib/zod'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as LP from '@/models/labeled-presets.models'
@@ -673,23 +674,23 @@ export function resolveReasonArg(
 	return { code: 'ok', value: { type: 'custom', text: tokens.join(' ') } }
 }
 
-// renders a single arg's usage token. `requiredReasonActions` (typically GlobalSettings.requireReasonFor) forces a
-// reason/preset-reason arg to render as required (<...>) even when its declaration marks it optional, so signatures
-// reflect the configured requirement. `reason` accepts free text (shown as `name|message`); `preset-reason` is preset-only.
+// whether an arg may be left out. `requiredReasonActions` (typically GlobalSettings.requireReasonFor) forces a
+// reason/preset-reason arg to count as required even when its declaration marks it optional.
+export function argOptional(def: ArgDef, requiredReasonActions: readonly AAR.AdminActionType[] = []): boolean {
+	if (def.kind === 'squad') return false
+	if ((def.kind === 'reason' || def.kind === 'preset-reason') && requiredReasonActions.includes(def.action)) return false
+	return !!def.optional
+}
+
+// `reason` accepts free text, so it reads as `name|message`; `preset-reason` is preset-only
+function argLabel(def: ArgDef): string {
+	return def.kind === 'reason' ? `${def.name}|message` : def.name
+}
+
+// renders a single arg's usage token, so signatures reflect the configured reason requirement
 export function formatArg(def: ArgDef, requiredReasonActions: readonly AAR.AdminActionType[] = []): string {
-	const reasonRequired = (def.kind === 'reason' || def.kind === 'preset-reason') && requiredReasonActions.includes(def.action)
-	const optional = !reasonRequired && def.kind !== 'squad' && def.optional
-	let inner: string
-	switch (def.kind) {
-		case 'squad':
-			return '[team] <squad>'
-		case 'reason':
-			inner = `${def.name}|message`
-			break
-		default:
-			inner = def.name
-	}
-	return optional ? `[${inner}]` : `<${inner}>`
+	if (def.kind === 'squad') return '[team] <squad>'
+	return argOptional(def, requiredReasonActions) ? `[${argLabel(def)}]` : `<${argLabel(def)}>`
 }
 
 export function formatArgSignature(args: readonly ArgDef[], requiredReasonActions: readonly AAR.AdminActionType[] = []): string {
@@ -712,28 +713,92 @@ function matchCommandText(configs: CommandConfigs, cmdText: string) {
 
 // -------- command aliases --------
 
-// A shortcut to a complete command invocation: `/rules` -> `/broadcast Read the rules`. The aliased command carries
-// all of its own arguments and tokens typed after the alias are ignored, so an alias is a plain text substitution.
-//
-// If aliases ever need to take arguments, pin them by name (`/timeout duration=2h`, leaving `player` and `reason` to
-// be typed in chat) rather than splicing tokens positionally: a positional splice can only fix arguments that come
-// first, which can't express the old fixed-duration timeout aliases (`duration` sits between `player` and `reason`).
+// A shortcut to a command invocation: `/rules` -> `/broadcast Read the rules`. The command text is a template over
+// the words typed after the alias, so an alias can pin some of the target's arguments and take the rest from chat:
+// `/to2h` -> `/timeout {{arg1}} 2h {{rest2}}`. See docs/configuring.md.
 export type CommandAlias = { alias: string; command: string }
+
+// `{{argN}}` is the Nth word typed after the alias; `{{restN}}` is word N onwards joined by spaces, and `{{rest}}`
+// is all of them. Indices are 1-based, matching how they read in chat.
+export type AliasRef = { name: string; index: number; rest: boolean }
+
+const ARG_REF = /^arg([1-9]\d*)$/
+const REST_REF = /^rest([1-9]\d*)?$/
+
+export const ALIAS_REF_SYNTAX = '{{arg1}}, {{arg2}} and so on for single words, {{rest}} or {{rest2}} for the words from there on'
+
+export function parseAliasRef(name: string): AliasRef | undefined {
+	const arg = ARG_REF.exec(name)
+	if (arg) return { name, index: Number(arg[1]), rest: false }
+	const rest = REST_REF.exec(name)
+	if (rest) return { name, index: rest[1] ? Number(rest[1]) : 1, rest: true }
+	return undefined
+}
+
+function aliasRefs(command: string): AliasRef[] {
+	const refs: AliasRef[] = []
+	for (const { name } of templateVars(command) ?? []) {
+		const ref = parseAliasRef(name)
+		if (ref) refs.push(ref)
+	}
+	return refs
+}
+
+// An unsupplied word renders empty, leaving a gap where its token was, so the expansion is re-spaced before anything
+// parses it as a command. That collapse is what makes an alias parameter optional: the token simply isn't there.
+export function expandAlias(command: string, words: readonly string[]): string {
+	const vars = Object.fromEntries(
+		aliasRefs(command).map((r) => [r.name, r.rest ? words.slice(r.index - 1).join(' ') : words[r.index - 1] ?? '']),
+	)
+	return renderTemplate(command, vars).replace(/\s+/g, ' ').trim()
+}
+
+// which of the target's arguments a placeholder ends up filling. `wholeSlot` is false when the placeholder only
+// part-fills one (`/broadcast Round ends in {{arg1}} minutes`), where the argument's own name would misdescribe it.
+// `hasDefault` marks a placeholder with an inverted-section fallback (`{{^arg2}}spam{{/arg2}}`), which is what lets a
+// caller omit a word that fills a required argument.
+export type AliasParam = { ref: AliasRef; def: ArgDef; wholeSlot: boolean; hasDefault: boolean }
 
 export type AliasResolution =
 	// the target is resolved but may be disabled; callers decide whether that's an error (dispatch) or a display
 	// concern (the settings editor and help listings, which show it as unavailable)
-	| { code: 'ok'; cmdId: CommandId; tokens: string[] }
+	| { code: 'ok'; cmdId: CommandId; tokens: string[]; params: AliasParam[] }
 	// the first word matches no configured command string. Not a schema error: a later SLM release can rename a
 	// command's strings out from under a stored alias, and that must not stop the settings from loading
 	| { code: 'err:unknown-command'; msg: string }
 	| { code: 'err:invalid-args'; msg: string }
 
+// a placeholder stands in as one word during analysis, so the real assignment logic decides which argument it fills.
+// NUL can't reach here from chat, which keeps the marker distinguishable from anything an admin typed literally.
+const sentinel = (name: string) => `\u0000${name}\u0000`
+
 // Static validation of an alias's command text: everything checkable without the live roster or the configured
-// reasons. Resolves the command string, then checks the args assign (all required ones present) and that int and
-// duration tokens parse. Player/squad/reason tokens can only be checked at dispatch, so they're taken on faith.
+// reasons. Resolves the command string against the fully-supplied expansion, checks the args assign (all required
+// ones present) and that literal int and duration tokens parse, and reports which argument each placeholder fills.
+// Player/squad/reason tokens can only be checked at dispatch, so they're taken on faith.
 export function resolveAliasCommand(command: string, configs: CommandConfigs): AliasResolution {
-	const words = command.trim().split(/\s+/).filter((w) => w !== '')
+	const vars = templateVars(command)
+	if (vars === undefined) {
+		return { code: 'err:invalid-args', msg: 'The command text is not a valid template. Check for an unclosed {{#section}}.' }
+	}
+	const refs: (AliasRef & { hasDefault: boolean })[] = []
+	for (const { name, inverted } of vars) {
+		const ref = parseAliasRef(name)
+		if (!ref) return { code: 'err:invalid-args', msg: `Unknown placeholder "{{${name}}}". Use ${ALIAS_REF_SYNTAX}.` }
+		refs.push({ ...ref, hasDefault: inverted })
+	}
+	// a skipped index would make the caller type a word the alias throws away, and no honest usage string could be
+	// written for it
+	const highest = refs.reduce((max, r) => Math.max(max, r.index), 0)
+	for (let i = 1; i <= highest; i++) {
+		if (!refs.some((r) => r.index === i || (r.rest && r.index <= i))) {
+			return { code: 'err:invalid-args', msg: `{{arg${i}}} is skipped. The words typed after an alias have to be used in order.` }
+		}
+	}
+
+	// every placeholder supplied, which is the shape that says what the alias can accept at most
+	const expanded = renderTemplate(command, Object.fromEntries(refs.map((r) => [r.name, sentinel(r.name)])))
+	const words = expanded.split(/\s+/).filter((w) => w !== '')
 	if (words.length === 0) return { code: 'err:unknown-command', msg: 'No command given' }
 	const cmdId = matchCommandText(configs, words[0])
 	if (!cmdId) return { code: 'err:unknown-command', msg: `"${words[0]}" is not a configured command string` }
@@ -746,9 +811,28 @@ export function resolveAliasCommand(command: string, configs: CommandConfigs): A
 	if (assigned.code === 'err:missing-arg') {
 		return { code: 'err:invalid-args', msg: `Missing <${assigned.argName}>. Usage: ${words[0]} ${formatArgSignature(args)}`.trim() }
 	}
+
+	const params: AliasParam[] = []
 	for (const def of args) {
 		const window = assigned.windows[def.name]
 		if (!window || window.length === 0) continue
+		const filling = refs.filter((r) => window.some((t) => t.includes(sentinel(r.name))))
+		for (const ref of filling) {
+			if (ref.rest && !REST_KINDS.includes(def.kind)) {
+				return {
+					code: 'err:invalid-args',
+					msg: `{{${ref.name}}} can expand to several words, but it fills <${def.name}>, which takes one. Use {{arg${ref.index}}}.`,
+				}
+			}
+			if (params.some((p) => p.ref.name === ref.name)) continue
+			params.push({
+				ref: { name: ref.name, index: ref.index, rest: ref.rest },
+				def,
+				wholeSlot: window.length === 1 && window[0] === sentinel(ref.name),
+				hasDefault: ref.hasDefault,
+			})
+		}
+		if (filling.length > 0) continue
 		if (def.kind === 'int') {
 			const res = coerceIntArg(def.name, window[0])
 			if (res.code !== 'ok') return { code: 'err:invalid-args', msg: res.msg }
@@ -758,7 +842,39 @@ export function resolveAliasCommand(command: string, configs: CommandConfigs): A
 			if (res.code !== 'ok') return { code: 'err:invalid-args', msg: res.msg }
 		}
 	}
-	return { code: 'ok', cmdId, tokens }
+
+	const stranded = refs.find((r) => !params.some((p) => p.ref.name === r.name))
+	if (stranded) {
+		if (!expanded.includes(sentinel(stranded.name))) {
+			return {
+				code: 'err:invalid-args',
+				msg: `{{${stranded.name}}} only decides whether other text appears, so the word it stands for would be thrown away.`,
+			}
+		}
+		const signature = formatArgSignature(args)
+		return {
+			code: 'err:invalid-args',
+			msg: `{{${stranded.name}}} has nowhere to go: ${words[0]} takes ${signature || 'no arguments'}.`,
+		}
+	}
+
+	params.sort((a, b) => a.ref.index - b.ref.index || Number(a.ref.rest) - Number(b.ref.rest))
+	return { code: 'ok', cmdId, tokens, params }
+}
+
+// what a caller types after the alias, in the order they type it. A placeholder with a default reads as optional even
+// where the argument it fills is required, since omitting the word still leaves the argument filled.
+export function formatAliasUsage(
+	alias: string,
+	params: readonly AliasParam[],
+	requiredReasonActions: readonly AAR.AdminActionType[] = [],
+): string {
+	const parts = params.map((p) => {
+		if (p.wholeSlot && p.def.kind === 'squad') return formatArg(p.def)
+		const inner = p.wholeSlot ? argLabel(p.def) : p.ref.name
+		return p.hasDefault || argOptional(p.def, requiredReasonActions) ? `[${inner}]` : `<${inner}>`
+	})
+	return [alias, ...parts].join(' ').trim()
 }
 
 // a real command string always wins on collision, so an alias is only consulted when the token matches none

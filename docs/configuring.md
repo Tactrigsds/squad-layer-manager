@@ -95,3 +95,28 @@ Full settings access comes from a role's permissions, but a role can also be giv
 - **Server settings grants** - the same for a server's settings, optionally limited to specific servers. Sensitive connection details sit behind a separate write-sensitive permission and are never reachable through a path grant.
 
 A `!...:write` denial in a role's permissions overrides its grants.
+
+## Command aliases
+
+An alias is a shortcut to a command, configured under Settings > In-game Commands. Its command text is a template over
+the words typed after the alias, so an alias can pin some of the target command's arguments and take the rest from
+chat:
+
+| Alias     | Command text                                       | Typed in chat          | Runs                         |
+| --------- | -------------------------------------------------- | ---------------------- | ---------------------------- |
+| `/rules`  | `/broadcast Read the rules`                        | `/rules`               | `/broadcast Read the rules`  |
+| `/to2h`   | `/timeout {{arg1}} 2h {{rest2}}`                   | `/to2h Alice spamming` | `/timeout Alice 2h spamming` |
+| `/say`    | `/broadcast {{rest}}`                              | `/say back in 5`       | `/broadcast back in 5`       |
+| `/warnsp` | `/warn {{arg1}} {{^rest2}}spam{{/rest2}}{{rest2}}` | `/warnsp Alice`        | `/warn Alice spam`           |
+
+`{{arg1}}`, `{{arg2}}` and so on are single words. `{{restN}}` is word N onwards joined by spaces, and `{{rest}}` is
+every word. Use `{{restN}}` for anything that can be more than one word, such as a reason.
+
+A word that is left out renders as nothing and its token drops out, which is what makes it optional: `/to2h Alice`
+runs `/timeout Alice 2h` with no reason. `{{^arg2}}fallback{{/arg2}}` puts something in its place instead. The
+settings editor's Takes column shows what each alias asks for (`/to2h <player> [reason]`), and the same signature is
+what `!help` and the commands page list.
+
+Words the template never mentions are ignored. An alias runs in the scopes of the command it points at, so giving one
+arguments cannot turn a public alias into an admin command; what it can do is let a public alias pass a player's own
+words into a public command's free-text argument, which is worth keeping in mind when writing one.

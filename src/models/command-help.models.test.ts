@@ -141,10 +141,18 @@ describe('resolveHelpListing', () => {
 		const aliases = [{ alias: '!tox', command: '!kick Alice toxicity' }]
 		const listing = CMDH.resolveHelpListing(configs, aliases, 'moderation')
 		if (listing.code !== 'ok') throw new Error('expected ok')
-		expect(listing.aliases).toEqual(aliases)
+		expect(listing.aliases).toEqual([{ alias: aliases[0], usage: '!tox' }])
 
 		const disabled = CMDH.resolveHelpListing(withConfig('kick', { enabled: false }), aliases, 'moderation')
 		if (disabled.code !== 'ok') throw new Error('expected ok')
 		expect(disabled.aliases).toEqual([])
+	})
+
+	// an alias that takes arguments lists as what the caller types, not just its shortcut
+	it('carries the usage of an alias with placeholders', () => {
+		const aliases = [{ alias: '!to2h', command: '!timeout {{arg1}} 2h {{rest2}}' }]
+		const listing = CMDH.resolveHelpListing(configs, aliases, 'moderation')
+		if (listing.code !== 'ok') throw new Error('expected ok')
+		expect(listing.aliases).toEqual([{ alias: aliases[0], usage: '!to2h <player> [reason|message]' }])
 	})
 })

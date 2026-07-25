@@ -85,12 +85,14 @@ export async function handleCommand(baseCtx: C.Db & C.ServerSlice & CS.AbortSign
 	const ctx: HandlerCtx['ctx'] = Obj.trimUndefined({ ...baseCtx, user, player: sender })
 	const h: HandlerCtx = { ctx: ctx, msg, sender, user: { discordId, steamId: sender.ids.steam }, reply, error }
 
-	// an alias is a plain text substitution for a complete command, so it's expanded up front and everything after
-	// this point (scope, enabled, arg resolution) runs against the command it points at. Anything typed after the
-	// alias is dropped: aliases take no arguments of their own.
-	const alias = CMD.findAlias(Settings.GLOBAL_SETTINGS.commandAliases, Settings.GLOBAL_SETTINGS.commands, msg.message.split(/\s+/)[0])
-	if (alias) log.info('Command alias expanded: %s -> %s', alias.alias, alias.command)
-	const effectiveMsg = alias ? { ...msg, message: alias.command } : msg
+	// an alias expands to a complete command up front, so everything after this point (scope, enabled, arg
+	// resolution) runs against the command it points at. The words typed after the alias feed its placeholders;
+	// any the template doesn't reference are dropped, which is what an alias has always done with them.
+	const typed = msg.message.trim().split(/\s+/)
+	const alias = CMD.findAlias(Settings.GLOBAL_SETTINGS.commandAliases, Settings.GLOBAL_SETTINGS.commands, typed[0])
+	const expansion = alias ? CMD.expandAlias(alias.command, typed.slice(1)) : undefined
+	if (alias) log.info('Command alias expanded: %s -> %s', alias.alias, expansion)
+	const effectiveMsg = expansion !== undefined ? { ...msg, message: expansion } : msg
 
 	const parseRes = CMD.parseCommand(effectiveMsg, Settings.GLOBAL_SETTINGS.commands)
 	if (parseRes.code === 'err:unknown-command') {
@@ -130,7 +132,7 @@ export async function handleCommand(baseCtx: C.Db & C.ServerSlice & CS.AbortSign
 		if (denyRes) return await error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
 	}
 
-	const resolved = await resolveArgs(ctx, cmd, cmdConfig, tokens, sender)
+	const resolved = await resolveArgs(ctx, cmd, cmdConfig, tokens, sender, alias && aliasUsage(alias))
 	if (resolved.code !== 'ok') {
 		return await error('invalid-args', resolved.msg)
 	}
@@ -201,6 +203,15 @@ function resolveSquadArg(
 	return { code: 'ok', value: { teamId: rawTeamId, teamLabel, squad: matchedSquad, players } }
 }
 
+// what an alias asks the caller for. A missing argument has to be reported against this rather than the target's own
+// usage: `/to2h` typed bare expands to `/timeout 2h`, whose honest complaint names <duration>, which the alias pins
+// and the caller has no way to supply.
+function aliasUsage(alias: CMD.CommandAlias): string | undefined {
+	const res = CMD.resolveAliasCommand(alias.command, Settings.GLOBAL_SETTINGS.commands)
+	if (res.code !== 'ok') return undefined
+	return `Usage: ${CMD.formatAliasUsage(alias.alias, res.params, Settings.GLOBAL_SETTINGS.requireReasonFor)}`
+}
+
 // central arg resolution: token windows via the declared arg kinds, then per-kind resolution.
 // every failure surfaces as a single message the caller sends back to the sender.
 async function resolveArgs<Id extends CMD.CommandId>(
@@ -209,11 +220,12 @@ async function resolveArgs<Id extends CMD.CommandId>(
 	cmdConfig: CMD.CommandConfig,
 	tokens: string[],
 	sender: SM.Player,
+	usage?: string,
 ): Promise<{ code: 'ok'; args: CMD.CommandArgs<Id> } | { code: 'err'; msg: string }> {
 	const defs = CMD.COMMAND_DECLARATIONS[cmd].args as readonly CMD.ArgDef[]
 	const res = await resolveArgDefs(ctx, defs, tokens, sender)
 	if (res.code === 'err:missing-arg') {
-		return { code: 'err', msg: CMD.formatUsage(cmd, cmdConfig) }
+		return { code: 'err', msg: usage ?? CMD.formatUsage(cmd, cmdConfig) }
 	}
 	if (res.code !== 'ok') return res
 	return { code: 'ok', args: res.args as CMD.CommandArgs<Id> }
