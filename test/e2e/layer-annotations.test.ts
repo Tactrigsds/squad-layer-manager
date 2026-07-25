@@ -36,7 +36,7 @@ test.describe('layer tags and notes', () => {
 						discordRoleIds: [],
 						discordUserIds: [String(WRITER.discordId)],
 						everyMember: false,
-						includeIngameAdmins: false,
+						ingameAdminLists: [],
 						adminListGroups: [],
 					},
 				}
