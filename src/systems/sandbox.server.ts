@@ -2,12 +2,15 @@ import { Emulator, type EmuPlayer } from '@/emulator'
 import * as Verbs from '@/emulator/verbs'
 import type * as CS from '@/models/context-shared'
 import * as SB from '@/models/sandbox.models'
-import type * as SettingsModels from '@/models/settings.models'
+import * as SettingsModels from '@/models/settings.models'
+import { SandboxConnectionSchema } from '@/models/settings.models'
 import * as RBAC from '@/rbac.models'
+import type * as C from '@/server/context'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Rbac from '@/systems/rbac.server'
+import * as Settings from '@/systems/settings.server'
 import * as crypto from 'node:crypto'
 import { z } from 'zod'
 
@@ -65,6 +68,38 @@ export async function ensureInstance(serverId: string, conn: SettingsModels.Sand
 	instances.set(serverId, instance)
 	log.info(`Sandbox ${serverId}: emulated server listening for rcon on 127.0.0.1:${emu.rconPort}`)
 	return instance
+}
+
+export const SEEDED_SERVER_ID = 'sandbox'
+
+// A fresh install has nowhere to click. Seeding a sandbox gives it a server whose queue, filters and chat all
+// behave, without asking the operator to own a squad server first.
+//
+// It becomes the default server only when there is no other, which is exactly the fresh-install case: an install
+// that already has real servers gets the sandbox alongside them, never in front of them. Re-creating a deleted
+// sandbox would be obnoxious, so the setting -- not the absence of the row -- is what expresses the intent, and
+// deleting the row is undone by turning the setting off.
+export async function seedServerIfEnabled(ctx: C.Db): Promise<void> {
+	if (!Settings.GLOBAL_SETTINGS.seedSandboxServer) return
+	const entries = Settings.listServerEntries()
+	if (entries.some((e) => e.id === SEEDED_SERVER_ID)) return
+
+	const settings: SettingsModels.ServerSettings = {
+		...SettingsModels.PublicServerSettingsSchema.parse({}),
+		connections: SandboxConnectionSchema.parse({ type: 'sandbox' }),
+	}
+	const res = await Settings.createServerEntry(ctx, {
+		id: SEEDED_SERVER_ID,
+		displayName: 'Sandbox',
+		settings,
+	})
+	if (res.code !== 'ok') {
+		log.warn('Could not seed the sandbox server: %s', res.code)
+		return
+	}
+	await Settings.setServerEnabled(ctx, SEEDED_SERVER_ID, true)
+	if (entries.length === 0) await Settings.setDefaultServerEntry(ctx, SEEDED_SERVER_ID)
+	log.info('Seeded the sandbox server')
 }
 
 export function connectionFor(serverId: string): SettingsModels.RconConnection {

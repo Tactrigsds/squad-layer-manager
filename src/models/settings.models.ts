@@ -227,6 +227,11 @@ export const GlobalSettingsSchema = z.object({
 		'What the live chat feed leaves out. Neither list changes what is actually sent in-game.',
 	),
 	logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines.'),
+	seedSandboxServer: z.boolean().prefault(true).describe(
+		'Create a sandbox server on startup if none exists. A sandbox has no real squad server behind it: SLM emulates one in-process, so '
+			+ 'it is somewhere to learn the queue, try a filter or reproduce a bug without touching anyone real. Turning this off leaves any '
+			+ 'existing sandbox alone; delete it from the server registry to be rid of it.',
+	),
 	tickRateThresholds: z.object({
 		good: z.number().positive().prefault(60).describe(
 			'At or above this tick rate the live server tick rate displays as good (green)',
