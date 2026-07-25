@@ -3,9 +3,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { RenderHookOptions } from '@testing-library/react'
 import { act, cleanup, render as rtlRender, renderHook as rtlRenderHook, screen } from '@testing-library/react'
 import * as React from 'react'
-import * as Rx from 'rxjs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import * as Rx from './rxjs'
 import * as Zus from './zustand'
 
 type State = { count: number; name: string }

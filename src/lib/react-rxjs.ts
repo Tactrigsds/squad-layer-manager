@@ -1,5 +1,6 @@
 import * as ReactRx from '@react-rxjs/core'
-import * as Rx from 'rxjs'
+
+import * as Rx from './rxjs'
 
 /**
  * react-rxjs suspends a component until its StateObservable produces a first value, and React cannot notice when

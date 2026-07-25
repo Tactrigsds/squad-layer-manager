@@ -1,13 +1,14 @@
 import { useQueries, useSuspenseQueries } from '@tanstack/react-query'
 import type { QueryClient, UseQueryOptions } from '@tanstack/react-query'
 import * as React from 'react'
-import * as Rx from 'rxjs'
 import type { StoreApi, StoreMutatorIdentifier, StoreMutators } from 'zustand'
 import { useShallow as useShallowImported } from 'zustand/react/shallow'
 
 import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
 import type { StateObservable } from '@/lib/react-rxjs'
+
+import * as Rx from './rxjs'
 
 // The only module that may import zustand directly. Everything else reaches it through here, so
 // that our additions and zustand's own API are one namespace at the call site. Enumerated rather

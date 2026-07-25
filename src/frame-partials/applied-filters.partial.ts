@@ -1,11 +1,11 @@
 import type React from 'react'
-import * as Rx from 'rxjs'
 
 import * as SquadServerFrame from '@/frames/squad-server.frame'
-import { sleep } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
 import * as Gen from '@/lib/generator'
 import * as Obj from '@/lib/object'
+import * as Prom from '@/lib/promise-utils'
+import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
 import type * as F from '@/models/filter.models'
@@ -130,7 +130,7 @@ function getInitialFilterStates(context: Context, squadServer: SquadServerFrame.
 export const ExtraFiltersStore = Zus.createStore<LQY.ExtraQueryFiltersStore>((set, _get, store) => {
 	const extraFilters = new Set(localStorage.getItem('extraQueryFilters:v2')?.split(',') ?? [])
 	void (async () => {
-		await sleep(0)
+		await Prom.sleep(0)
 		const filterEntities = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
 		set((state) => ({
 			...state,

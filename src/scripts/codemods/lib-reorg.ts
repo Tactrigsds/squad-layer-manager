@@ -108,12 +108,69 @@ function reactRxjs(src: string, file: string): string {
 	return src
 }
 
+/** modules that make up the rxjs barrel, and so must keep importing the package directly */
+const RXJS_BARREL = new Set(['src/lib/rxjs.ts', 'src/lib/rxjs-ext.ts'])
+/** where each of the old async.ts exports ended up */
+const EXT = new Set(['firstValueFrom', 'distinctDeepEquals', 'toAsyncGenerator', 'toCold', 'filterTruthy', 'traceTag', 'withAbortSignal'])
+const PROM = new Set(['sleep', 'isAbortError', 'anySignal', 'raceAbort', 'acquireInBlock'])
+
+function relTo(file: string, mod: string) {
+	return file.startsWith('src/lib/') ? `./${mod}` : `@/lib/${mod}`
+}
+
+function insertImport(src: string, line: string) {
+	return src.includes(line) ? src : src.replace(/^import /m, `${line}\nimport `)
+}
+
+function rxjsAndPromise(src: string, file: string): string {
+	if (RXJS_BARREL.has(file)) return src
+
+	// route rxjs through the barrel
+	if (!file.startsWith('src/lib/rcon/')) {
+		src = src.replace(/^(import (?:type )?\* as Rx from )'rxjs'$/gm, `$1'${relTo(file, 'rxjs')}'`)
+	} else {
+		src = src.replace(/^(import (?:type )?\* as Rx from )'rxjs'$/gm, "$1'../rxjs'")
+	}
+
+	// the tree's one named rxjs import, alongside a `* as Rx` in the same file. Scoped to the file
+	// rather than done by pattern, because `map(` is far too common to rewrite blind.
+	if (file === 'src/systems/vote.client.ts') {
+		src = dropImport(src, /import \{ map, share \} from 'rxjs'/)
+		src = src.replace(/(?<![.\w])share\(\)/g, 'Rx.share()').replace(/(?<![.\w])map\(/g, 'Rx.map(')
+	}
+
+	// split the named imports from the old async.ts across Rx.Ext and Prom
+	const asyncImport = /^import \{ ([^}]+) \} from '(?:@\/lib\/async(?:\.ts)?|\.\.?\/(?:lib\/)?async)'\n/m
+	const m = src.match(asyncImport)
+	if (m) {
+		const names = m[1]
+			.split(',')
+			.map((n) => n.trim())
+			.filter(Boolean)
+		const unknown = names.filter((n) => !EXT.has(n) && !PROM.has(n))
+		if (unknown.length) throw new Error(`${file}: no bucket for ${unknown.join(', ')}`)
+		src = src.replace(asyncImport, '')
+		for (const n of names) {
+			if (EXT.has(n)) src = src.replace(new RegExp(`(?<![.\\w])${n}\\b`, 'g'), `Rx.Ext.${n}`)
+			else src = src.replace(new RegExp(`(?<![.\\w])${n}\\b`, 'g'), `Prom.${n}`)
+		}
+		if (names.some((n) => PROM.has(n))) {
+			src = insertImport(src, `import * as Prom from '${relTo(file, 'promise-utils')}'`)
+		}
+		if (names.some((n) => EXT.has(n)) && !/^import (?:type )?\* as Rx from/m.test(src)) {
+			const rx = file.startsWith('src/lib/rcon/') ? '../rxjs' : relTo(file, 'rxjs')
+			src = insertImport(src, `import * as Rx from '${rx}'`)
+		}
+	}
+	return src
+}
+
 async function main() {
 	const files = await sourceFiles()
 	let changed = 0
 	for (const file of files) {
 		const before = await Fsp.readFile(file, 'utf8')
-		const after = reactRxjs(zustand(before, file), file)
+		const after = rxjsAndPromise(reactRxjs(zustand(before, file), file), file)
 		if (after !== before) {
 			await Fsp.writeFile(file, after)
 			changed++

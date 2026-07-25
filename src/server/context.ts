@@ -2,17 +2,17 @@ import * as Otel from '@opentelemetry/api'
 import type { Mutex, MutexInterface } from 'async-mutex'
 import type * as Fastify from 'fastify'
 import type Pino from 'pino'
-import * as Rx from 'rxjs'
 import type * as ws from 'ws'
 
 import type * as AR from '@/app-routes.ts'
 import type { AsyncResourceInvocationOpts, ImmediateRefetchError } from '@/lib/async-resource.ts'
-import { isAbortError, sleep } from '@/lib/async.ts'
 import type * as Cleanup from '@/lib/cleanup.ts'
 import { LRUMap } from '@/lib/lru-map.ts'
 import { withAcquired } from '@/lib/nodejs-reentrant-mutexes.ts'
 import type { OtelModule } from '@/lib/otel'
+import * as Prom from '@/lib/promise-utils'
 import type RconCore from '@/lib/rcon/core-rcon.ts'
+import * as Rx from '@/lib/rxjs'
 import * as CS from '@/models/context-shared.ts'
 import * as LOG from '@/models/logs.ts'
 import * as ATTR from '@/models/otel-attrs.ts'
@@ -269,8 +269,8 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 			} catch (error) {
 				const message = recordGenericError(error)
 				const extraTextPart = extraText ? ` : ${extraText.trim()}` : ''
-				metricOutcome = isAbortError(error) ? 'aborted' : 'error'
-				if (isAbortError(error)) {
+				metricOutcome = Prom.isAbortError(error) ? 'aborted' : 'error'
+				if (Prom.isAbortError(error)) {
 					// expected cancellation (request dropped, slice destroyed, shutdown) -- not a failure
 					log?.debug(`${name}${extraTextPart} : aborted: ${message}`)
 				} else if (error instanceof Error) {
@@ -555,8 +555,8 @@ export function durableSub<T, O>(
 							return
 						} catch (error) {
 							// cancellation is expected, not a failure: stop quietly instead of feeding the retry pipeline.
-							// isAbortError also covers ctx signals the cb resolved itself (e.g. via resolveSliceCtx)
-							if (signal.aborted || isAbortError(error)) {
+							// Prom.isAbortError also covers ctx signals the cb resolved itself (e.g. via resolveSliceCtx)
+							if (signal.aborted || Prom.isAbortError(error)) {
 								subscriber.complete()
 								return
 							}
@@ -567,7 +567,7 @@ export function durableSub<T, O>(
 							}
 							log.warn(`retrying ${name} in ${opts.retryTimeoutMs ?? 0}ms`)
 							try {
-								await sleep(opts.retryTimeoutMs ?? 0, signal)
+								await Prom.sleep(opts.retryTimeoutMs ?? 0, signal)
 							} catch {
 								subscriber.complete()
 								return

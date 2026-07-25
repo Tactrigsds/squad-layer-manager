@@ -1,13 +1,13 @@
 import type React from 'react'
-import * as Rx from 'rxjs'
 
 import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial'
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
-import { distinctDeepEquals, sleep } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object'
+import * as Prom from '@/lib/promise-utils'
+import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import * as BB from '@/models/backburner.models'
 import * as CB from '@/models/constraint-builders'
@@ -145,7 +145,7 @@ const setup: Frame['setup'] = (args) => {
 	// the pool filter is special: it rides the pool toggle (on by default for new requests) rather than a row
 	void (async () => {
 		await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
-		await sleep(0)
+		await Prom.sleep(0)
 		if (args.sub.closed) return
 		const poolFilter = args.input.squadServer
 			? SquadServerFrame.Sel.settings(Zus.getState(args.input.squadServer)).queue.mainPool.poolFilter
@@ -208,7 +208,7 @@ const setup: Frame['setup'] = (args) => {
 		stateAndServer$
 			.pipe(
 				Rx.map(([state]) => Sel.queryPlan(state)),
-				distinctDeepEquals(),
+				Rx.Ext.distinctDeepEquals(),
 				Rx.switchMap((plan) =>
 					Rx.combineLatest([
 						firstCount(plan.count),

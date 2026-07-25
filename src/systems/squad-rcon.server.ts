@@ -1,10 +1,9 @@
-import * as Rx from 'rxjs'
-
-import { sleep } from '@/lib/async'
 import { AsyncResource } from '@/lib/async-resource'
 import type * as Cleanup from '@/lib/cleanup'
 import { matchLog } from '@/lib/log-parsing'
+import * as Prom from '@/lib/promise-utils'
 import type { DecodedPacket } from '@/lib/rcon/core-rcon'
+import * as Rx from '@/lib/rxjs'
 import { WARNS } from '@/messages'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
@@ -517,7 +516,7 @@ export async function killPlayers(
 	// (back-to-original) state.
 	await ctx.server.teams.fetchMtx.runExclusive(async () => {
 		await forceSwitch()
-		await sleep(1000)
+		await Prom.sleep(1000)
 		await forceSwitch()
 	})
 	ctx.server.teams.invalidate(ctx)

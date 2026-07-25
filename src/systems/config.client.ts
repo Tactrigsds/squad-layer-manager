@@ -1,6 +1,6 @@
 import React from 'react'
-import * as Rx from 'rxjs'
 
+import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import * as LC from '@/models/layer-columns'
 import type * as LQY from '@/models/layer-queries.models'

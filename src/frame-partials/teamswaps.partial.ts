@@ -1,7 +1,6 @@
-import * as Rx from 'rxjs'
-
 import type * as FRM from '@/lib/frame'
 import * as ODSM from '@/lib/odsm'
+import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as MH from '@/models/match-history.models'

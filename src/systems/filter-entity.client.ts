@@ -1,8 +1,8 @@
 import { useMutation } from '@tanstack/react-query'
-import * as Rx from 'rxjs'
 
 import * as MapUtils from '@/lib/map'
 import * as ReactRx from '@/lib/react-rxjs'
+import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
 import type * as F from '@/models/filter.models'
 import * as LQY from '@/models/layer-queries.models'

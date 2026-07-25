@@ -1,16 +1,16 @@
 import * as Otel from '@opentelemetry/api'
 import { Mutex, type MutexInterface } from 'async-mutex'
-import * as Rx from 'rxjs'
 
 import type * as CS from '@/models/context-shared'
 import * as LOG from '@/models/logs'
 import * as C from '@/server/context.ts'
 
-import { sleep, traceTag } from './async'
 import { withThrownAsync } from './error'
 import { createId } from './id'
 import { IsolatedSubject } from './isolated-subject'
 import { getChildModule, type OtelModule } from './otel'
+import * as Prom from './promise-utils'
+import * as Rx from './rxjs'
 
 type AsyncResourceOpts<T> = {
 	defaultTTL: number
@@ -87,7 +87,7 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 					while (refetching) {
 						const shouldBreak = await C.spanOp('refetch', { module, root: true, levels: { event: 'trace' } }, async (ctx: Ctx) => {
 							const activettl = Math.min(...this.observerTTLs)
-							await sleep(activettl)
+							await Prom.sleep(activettl)
 							if (!refetching) return true
 							// observers are already counted as subscribers, so skip get()'s registration
 							await this._get(ctx, { ttl: 0 })
@@ -131,7 +131,7 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 						if (error instanceof ImmediateRefetchError) {
 							this.log?.warn(error, 'immediate refetch requested: %s', error.message)
 						} else {
-							await sleep(this.opts.retryDelay, abort.signal)
+							await Prom.sleep(this.opts.retryDelay, abort.signal)
 						}
 						retriesLeft--
 						continue
@@ -257,7 +257,7 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 		return Rx.concat(
 			this.state?.value ?? Rx.EMPTY,
 			this.valueSubject.pipe(
-				traceTag(tag),
+				Rx.Ext.traceTag(tag),
 				// TODO adjust calling code to ingest ctx
 				Rx.map(({ value }) => value),
 				Rx.tap({

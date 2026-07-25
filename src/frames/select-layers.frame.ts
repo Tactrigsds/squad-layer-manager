@@ -1,14 +1,12 @@
-import * as Rx from 'rxjs'
-
 import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial'
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
 import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
-import { distinctDeepEquals } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object'
+import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import * as BB from '@/models/backburner.models'
 import * as CS from '@/models/context-shared'
@@ -159,7 +157,7 @@ const setup: Frame['setup'] = (args) => {
 		baseQueryInput$ = args.update$.pipe(Rx.map(([state]) => Sel.baseQueryInput(state, undefined)))
 	}
 	args.sub.add(
-		baseQueryInput$.pipe(Rx.retry({ count: Infinity, delay: 1000 }), distinctDeepEquals()).subscribe((baseQueryInput) => {
+		baseQueryInput$.pipe(Rx.retry({ count: Infinity, delay: 1000 }), Rx.Ext.distinctDeepEquals()).subscribe((baseQueryInput) => {
 			set({ baseQueryInput })
 		}),
 	)

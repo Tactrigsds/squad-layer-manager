@@ -1,5 +1,6 @@
 import { AsyncResource } from 'async_hooks'
-import * as Rx from 'rxjs'
+
+import * as Rx from './rxjs'
 
 // used in nodejs as a means to make sure subscribers don't pollute the async context of subject callers. important for use with reentrant mutexes (./nodejs-reentrant-mutexes.ts)
 

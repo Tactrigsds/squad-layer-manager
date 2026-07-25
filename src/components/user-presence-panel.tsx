@@ -1,11 +1,11 @@
 import * as DateFns from 'date-fns'
 import { Loader2 } from 'lucide-react'
 import React from 'react'
-import type * as Rx from 'rxjs'
 
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as MapUtils from '@/lib/map'
+import type * as Rx from '@/lib/rxjs'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as UP from '@/models/user-presence'

@@ -1,14 +1,14 @@
 import * as Im from 'immer'
 import * as React from 'react'
-import * as Rx from 'rxjs'
 
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
-import { sleep } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
 import { createId } from '@/lib/id'
 import * as MapUtils from '@/lib/map'
 import * as NodeMap from '@/lib/node-map'
 import * as Obj from '@/lib/object'
+import * as Prom from '@/lib/promise-utils'
+import * as Rx from '@/lib/rxjs'
 import * as Sparse from '@/lib/sparse-tree'
 import * as Zus from '@/lib/zustand'
 import * as EFB from '@/models/editable-filter-builders'
@@ -116,7 +116,7 @@ const setup: Frame['setup'] = (args) => {
 			modified: !Obj.deepEqual(filter, state.savedFilter),
 		})
 	}
-	void sleep(0).then(() => validate(get()))
+	void Prom.sleep(0).then(() => validate(get()))
 
 	const validateSub = args.update$
 		.pipe(Rx.throttleTime(150, Rx.asyncScheduler, { leading: true, trailing: true }), Rx.retry())

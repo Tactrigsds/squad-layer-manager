@@ -1,8 +1,8 @@
 import { useMutation } from '@tanstack/react-query'
 import type * as React from 'react'
-import * as Rx from 'rxjs'
 
 import * as ReactRx from '@/lib/react-rxjs'
+import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as AAR from '@/models/admin-action-reasons.models'

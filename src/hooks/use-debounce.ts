@@ -1,7 +1,7 @@
 import React from 'react'
-import * as Rx from 'rxjs'
 
 import { useRefConstructor } from '@/lib/react'
+import * as Rx from '@/lib/rxjs'
 
 export function useDebounced<T>(ops: {
 	mode?: 'debounce' | 'throttle'

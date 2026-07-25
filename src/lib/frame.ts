@@ -1,10 +1,11 @@
 import * as React from 'react'
-import * as Rx from 'rxjs'
 
 import * as Gen from '@/lib/generator'
 import * as Obj from '@/lib/object'
 import * as ReactUtils from '@/lib/react'
 import * as Zus from '@/lib/zustand'
+
+import * as Rx from './rxjs'
 
 type FrameId = symbol
 // default Props is the loose index-signature shape rather than `any` -- `{ frameId } & any` would collapse

@@ -1,4 +1,4 @@
-import { sleep } from '@/lib/async.ts'
+import * as Prom from '@/lib/promise-utils'
 import * as CoreRcon from '@/lib/rcon/core-rcon'
 import * as FetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import { formatVersion } from '@/lib/versioning.ts'
@@ -154,7 +154,7 @@ await C.spanOp('main', { module }, async () => {
 	})
 	.then(async (status) => {
 		log.warn('sleeping before exit: %s', status)
-		// sleep so any latent logs and traces are flushed in time
-		await sleep(1000)
+		// Prom.sleep so any latent logs and traces are flushed in time
+		await Prom.sleep(1000)
 		process.exit(status)
 	})

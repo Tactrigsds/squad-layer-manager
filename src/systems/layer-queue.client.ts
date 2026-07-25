@@ -1,10 +1,9 @@
 import { useMutation } from '@tanstack/react-query'
-import * as Rx from 'rxjs'
 
 import { frameManager } from '@/frames/frame-manager'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
-import { distinctDeepEquals } from '@/lib/async'
 import * as ReactRx from '@/lib/react-rxjs'
+import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import type * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
@@ -33,7 +32,7 @@ export const [useLayerItemsState, layerItemsState$] = ReactRx.bind('layerQueue.l
 		Rx.map(([layerList, history]) => {
 			return LQY.resolveLayerItemsState(layerList, history)
 		}),
-		distinctDeepEquals(),
+		Rx.Ext.distinctDeepEquals(),
 	)
 })
 

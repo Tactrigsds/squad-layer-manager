@@ -1,14 +1,13 @@
 import type { OnChangeFn, PaginationState, RowSelectionState, VisibilityState } from '@tanstack/react-table'
 import type * as Im from 'immer'
 import React from 'react'
-import * as Rx from 'rxjs'
 
 import type * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial.ts'
 import * as Arr from '@/lib/array'
-import { distinctDeepEquals, traceTag } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
 import * as RSel from '@/lib/reselect'
+import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import type * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
@@ -167,7 +166,7 @@ export function initLayerTable(args: Args) {
 	args.sub.add(
 		args.update$
 			.pipe(
-				traceTag('QUERY_LAYERS'),
+				Rx.Ext.traceTag('QUERY_LAYERS'),
 				Rx.map(([store]) => {
 					const input = LayerQueriesClient.getQueryLayersInput(store.baseQueryInput ?? {}, {
 						cfg: store.layerTable.colConfig,
@@ -179,7 +178,7 @@ export function initLayerTable(args: Args) {
 
 					return input
 				}),
-				distinctDeepEquals(),
+				Rx.Ext.distinctDeepEquals(),
 				Rx.throttleTime(500, Rx.asyncScheduler, { leading: true, trailing: true }),
 				Rx.switchMap((input) =>
 					LayerQueriesClient.queryLayers$(input).pipe(

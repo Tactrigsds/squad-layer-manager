@@ -1,9 +1,9 @@
 import * as Im from 'immer'
 import React from 'react'
-import * as Rx from 'rxjs'
 
 import * as Arr from '@/lib/array'
 import type * as FRM from '@/lib/frame'
+import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
 import * as CS from '@/models/context-shared'

@@ -1,11 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import * as React from 'react'
-import * as Rx from 'rxjs'
 
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import { toAsyncGenerator } from '@/lib/async'
 import * as Gen from '@/lib/generator'
 import * as Obj from '@/lib/object'
+import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
@@ -561,7 +560,7 @@ async function* streamLayerQueriesResponse(input: LQY.LayersQueryInput) {
 		Rx.takeWhile((e) => e.code !== 'end'),
 	)
 
-	yield* toAsyncGenerator(response$)
+	yield* Rx.Ext.toAsyncGenerator(response$)
 }
 
 let setup$: Promise<void> | null = null

@@ -1,11 +1,10 @@
-import * as Rx from 'rxjs'
 import { z } from 'zod'
 
 import * as Arr from '@/lib/array'
-import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as Obj from '@/lib/object'
 import * as ODSM from '@/lib/odsm'
+import * as Rx from '@/lib/rxjs'
 import type * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
 import * as UP from '@/models/user-presence'
@@ -57,9 +56,9 @@ export const orpcRouter = {
 			Rx.map((dispatched) => ODSM.Server.toClientUpdate(dispatched, context.wsClientId)),
 			Rx.filter((update): update is NonNullable<typeof update> => update !== null),
 			Rx.startWith(initial),
-			withAbortSignal(signal!),
+			Rx.Ext.withAbortSignal(signal!),
 		)
-		yield* toAsyncGenerator(update$)
+		yield* Rx.Ext.toAsyncGenerator(update$)
 	}),
 
 	dispatchOp: orpcBase

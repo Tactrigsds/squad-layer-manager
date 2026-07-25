@@ -1,10 +1,9 @@
 import * as E from 'drizzle-orm'
-import * as Rx from 'rxjs'
 import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema.ts'
-import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { IsolatedSubject } from '@/lib/isolated-subject'
+import * as Rx from '@/lib/rxjs'
 import { Steam64IdSchema } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
@@ -185,11 +184,11 @@ export const orpcRouter = {
 
 	watchUserInvalidation: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ context, signal }) {
 		const myId = context.user.discordId
-		yield* toAsyncGenerator(
+		yield* Rx.Ext.toAsyncGenerator(
 			invalidateUsers$.pipe(
 				Rx.filter((e) => e.discordId === undefined || e.discordId === myId),
 				Rx.map(() => undefined),
-				withAbortSignal(signal!),
+				Rx.Ext.withAbortSignal(signal!),
 			),
 		)
 	}),

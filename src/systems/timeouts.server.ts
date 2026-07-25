@@ -3,9 +3,9 @@ import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models.ts'
-import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { createId } from '@/lib/id'
 import { IsolatedSubject } from '@/lib/isolated-subject'
+import * as Rx from '@/lib/rxjs'
 import { formatDurationApprox, formatHumanTime } from '@/lib/zod'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as AppEvents from '@/models/app-events.models'
@@ -217,7 +217,7 @@ export const router = {
 
 	watchActiveTimeouts: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ signal, context: ctx }) {
 		yield await listActiveTimeouts(ctx)
-		for await (const _ of toAsyncGenerator(update$.pipe(withAbortSignal(signal!)))) {
+		for await (const _ of Rx.Ext.toAsyncGenerator(update$.pipe(Rx.Ext.withAbortSignal(signal!)))) {
 			yield await listActiveTimeouts(ctx)
 		}
 	}),
