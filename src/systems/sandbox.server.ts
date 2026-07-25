@@ -94,6 +94,25 @@ export const orpcRouter = {
 		return ids.sort()
 	}),
 
+	// The puppets this sandbox knows by name, which is the one piece of world state the client cannot get from
+	// the dashboard: the name->player mapping lives here, and every verb addresses players by it. Deliberately a
+	// query rather than a stream -- what the roster actually looks like is the dashboard's job to show.
+	listPlayers: orpcBase.input(z.object({ serverId: z.string() })).handler(async ({ context, input }) => {
+		const denyRes = await Rbac.tryDenyPermissionsForUser(context, RBAC.perm('sandbox:control', { serverId: input.serverId }))
+		if (denyRes) return denyRes
+		const instance = instances.get(input.serverId)
+		if (!instance) return { code: 'err:not-a-sandbox' as const, serverId: input.serverId }
+		return {
+			code: 'ok' as const,
+			players: [...instance.players.entries()].map(([name, p]) => ({
+				name,
+				eosId: p.eos,
+				teamId: p.teamId ?? null,
+				squadId: p.squadId ?? null,
+			})),
+		}
+	}),
+
 	// One procedure for every verb: the wire carries the verb name and its args, which are validated against
 	// that verb's own schema on arrival (parseVerbArgs, inside execute).
 	//
