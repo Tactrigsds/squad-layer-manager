@@ -23,7 +23,7 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 		label: 'Warns & Broadcasts',
 		keys: ['adminActionReasons', 'requireReasonFor', 'messageVariables', 'chat'],
 	},
-	{ slug: 'commands', label: 'In-game Commands', keys: ['allowedPrefixes', 'defaultPrefix', 'commands', 'commandAliases'] },
+	{ slug: 'commands', label: 'In-game Commands', keys: ['allowedPrefixes', 'defaultPrefix', 'commands'] },
 	{ slug: 'players', label: 'Players & Balance', keys: ['playerGroupings', 'playerFlagsRequiringNote', 'balanceTriggerLevels'] },
 	{ slug: 'layers', label: 'Layers', keys: ['layerTags', 'layerTable', 'layerGeneration'] },
 	{
@@ -73,7 +73,6 @@ export const LOCAL_JSON_EDITOR_PATHS: ReadonlySet<string> = new Set([
 	'rbac',
 	'commands',
 	'adminActionReasons',
-	'commandAliases',
 	'messageVariables',
 	'playerGroupings',
 	'layerTags',
