@@ -1,8 +1,8 @@
 import { z } from 'zod'
 
 import type { ServerEventPlayerAssocType } from '$root/drizzle/enums'
-import * as Arr from '@/lib/array'
-import * as Gen from '@/lib/generator'
+import * as Arr from '@/lib/array-utils'
+import * as Gen from '@/lib/generator-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'

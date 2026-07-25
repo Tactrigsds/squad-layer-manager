@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
 
-import * as MapUtils from '@/lib/map'
+import * as MapUtils from '@/lib/map-utils'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'

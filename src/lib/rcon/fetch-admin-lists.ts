@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 
 import * as Paths from '$root/paths.ts'
-import * as Arr from '@/lib/array'
+import * as Arr from '@/lib/array-utils'
 import * as OneToMany from '@/lib/one-to-many-map.ts'
 import { withSftp } from '@/lib/sftp-file-store.ts'
 import type * as CS from '@/models/context-shared'

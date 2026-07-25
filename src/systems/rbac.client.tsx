@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { useStable } from '@/lib/react'
 import * as RSel from '@/lib/reselect'
 import { toast } from '@/lib/toast'

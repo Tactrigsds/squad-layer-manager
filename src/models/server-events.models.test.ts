@@ -2,7 +2,7 @@ import superjson from 'superjson'
 import { describe, expect, it, vi } from 'vitest'
 
 import type * as SchemaModels from '$root/drizzle/schema.models'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import * as SE from '@/models/server-events.models'
 
 // mirrors buildEventRows in squad-server.server.ts: the envelope lives in typed columns, the rest in the blob

@@ -4,7 +4,7 @@ import path from 'node:path'
 import * as semver from 'semver'
 
 import * as Paths from '$root/paths'
-import { escapeRegex } from '@/lib/string'
+import * as Str from '@/lib/string-utils'
 import * as LA from '@/models/layer-artifact'
 import * as Env from '@/server/env'
 
@@ -90,8 +90,8 @@ function scanPairs(dir: string): ArtifactPair[] {
 	const tables = new Map<string, string>()
 	const layerData = new Map<string, string>()
 
-	const tableRegex = new RegExp(`^${escapeRegex(TABLE_PREFIX)}(.+)${escapeRegex(LA.ARTIFACT_EXT)}(\\.gz)?$`)
-	const layerDataRegex = new RegExp(`^${escapeRegex(LAYER_DATA_PREFIX)}(.+)${escapeRegex(LAYER_DATA_EXT)}$`)
+	const tableRegex = new RegExp(`^${Str.escapeRegex(TABLE_PREFIX)}(.+)${Str.escapeRegex(LA.ARTIFACT_EXT)}(\\.gz)?$`)
+	const layerDataRegex = new RegExp(`^${Str.escapeRegex(LAYER_DATA_PREFIX)}(.+)${Str.escapeRegex(LAYER_DATA_EXT)}$`)
 
 	for (const entry of fs.readdirSync(dir)) {
 		const tableMatch = entry.match(tableRegex)
@@ -143,7 +143,7 @@ export function getVersionTemplatedPath(filePath: string): [string, string] {
 		const [before, after] = segments[segmentIndex].split('{{LAYERS_VERSION}}')
 		const dir = segments.slice(0, segmentIndex).join('/')
 
-		const regex = new RegExp(`^${escapeRegex(before)}([^/]+)${escapeRegex(after)}$`)
+		const regex = new RegExp(`^${Str.escapeRegex(before)}([^/]+)${Str.escapeRegex(after)}$`)
 		const matches: Array<{ segment: string; version: string }> = []
 		for (const segment of fs.readdirSync(dir)) {
 			const match = segment.match(regex)

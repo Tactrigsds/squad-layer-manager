@@ -16,7 +16,7 @@ import {
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager'
 import * as GenVoteFrame from '@/frames/gen-vote.frame'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { useRefConstructor } from '@/lib/react'
 import * as Zus from '@/lib/zustand'
 import type * as L from '@/models/layer'

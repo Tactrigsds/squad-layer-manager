@@ -4,7 +4,7 @@ import React from 'react'
 
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import * as MapUtils from '@/lib/map'
+import * as MapUtils from '@/lib/map-utils'
 import type * as Rx from '@/lib/rxjs'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'

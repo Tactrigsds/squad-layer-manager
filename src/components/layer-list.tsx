@@ -30,14 +30,14 @@ import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import { useIsMobile } from '@/hooks/use-is-mobile.ts'
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { inline, useStableValue } from '@/lib/react.ts'
 import * as ST from '@/lib/state-tree.ts'
-import { statusCodeToTitleCase } from '@/lib/string.ts'
+import * as Str from '@/lib/string-utils'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards.ts'
 import { resToOptional } from '@/lib/types.ts'
-import * as Typo from '@/lib/typography.ts'
+import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand.ts'
 import * as L from '@/models/layer'
@@ -919,7 +919,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 									{voteState && voteState.code !== 'ready' && (
 										<div className="flex space-x-2 items-center">
 											<Icons.Dot width={20} height={20} />
-											<span>{statusCodeToTitleCase(voteState.code)}</span>
+											<span>{Str.statusCodeToTitleCase(voteState.code)}</span>
 											<Icons.Dot width={20} height={20} />
 											<span>
 												{voteTally && serverInfo && (

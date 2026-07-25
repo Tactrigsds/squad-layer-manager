@@ -4,7 +4,7 @@ import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema.ts'
 import { IsolatedSubject } from '@/lib/isolated-subject'
-import { objKeys } from '@/lib/object'
+import { objKeys } from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import type * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'

@@ -1,9 +1,9 @@
 import { z } from 'zod'
 
 import * as DH from '@/lib/display-helpers'
-import * as Gen from '@/lib/generator'
+import * as Gen from '@/lib/generator-utils'
 import * as ItemMut from '@/lib/item-mutations'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import type * as DND from '@/models/dndkit.models'
 import * as LNote from '@/models/layer-notes.models'

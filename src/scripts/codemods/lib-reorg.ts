@@ -165,12 +165,92 @@ function rxjsAndPromise(src: string, file: string): string {
 	return src
 }
 
+/**
+ * `<type>-utils.ts` naming, and one namespace alias per module. `named: true` converts that
+ * module's named imports into namespace-qualified references, per the repo's namespace-import
+ * convention; the symbol list is taken from the imports themselves rather than hardcoded.
+ */
+const UTILS: { from: string; to: string; ns: string; named?: boolean }[] = [
+	{ from: 'array', to: 'array-utils', ns: 'Arr' },
+	{ from: 'object', to: 'object-utils', ns: 'Obj' },
+	{ from: 'map', to: 'map-utils', ns: 'MapUtils' },
+	{ from: 'set', to: 'set-utils', ns: 'SetUtils' },
+	{ from: 'generator', to: 'generator-utils', ns: 'Gen' },
+	{ from: 'string', to: 'string-utils', ns: 'Str', named: true },
+	{ from: 'zod', to: 'zod-utils', ns: 'ZodUtils', named: true },
+	{ from: 'zod.dev', to: 'zod-utils.dev', ns: 'ZodDev', named: true },
+	// already correctly named, but imported under two aliases
+	{ from: 'typography', to: 'typography', ns: 'Typo' },
+	{ from: 'item-mutations', to: 'item-mutations', ns: 'ItemMut' },
+]
+
+/** matches '@/lib/<m>', './<m>' and '../<m>', with or without a .ts suffix */
+function modPath(m: string) {
+	return `(?:@/lib/${m}|\\.{1,2}/(?:lib/)?${m})(?:\\.ts)?`
+}
+
+function utils(src: string, file: string): string {
+	for (const { from, to, ns, named } of UTILS) {
+		const path = modPath(from.replace('.', '\\.'))
+		if (!new RegExp(`from '${path}'`).test(src)) continue
+
+		// collapse whatever alias this file used onto the one canonical namespace. The module path
+		// keeps whichever style it already had: vite.config.ts reaches src/app-routes.ts by relative
+		// path and bundles its own config before `resolve.alias` exists, so rewriting a relative
+		// import there into `@/...` breaks the config load.
+		const nsImport = new RegExp(
+			`^import (type )?\\* as (\\w+) from '(@/lib/|\\.{1,2}/(?:lib/)?)${from.replace('.', '\\.')}(?:\\.ts)?'$`,
+			'gm',
+		)
+		const aliases: string[] = []
+		src = src.replace(nsImport, (_all, typeKw: string | undefined, alias: string, prefix: string) => {
+			aliases.push(alias)
+			return `import ${typeKw ?? ''}* as ${ns} from '${prefix}${to}'`
+		})
+		for (const alias of aliases) {
+			if (alias !== ns) src = src.replace(new RegExp(`\\b${alias}\\.`, 'g'), `${ns}.`)
+		}
+
+		if (named) {
+			const namedImport = new RegExp(
+				`^import \\{ ([^}]+) \\} from '(@/lib/|\\.{1,2}/(?:lib/)?)${from.replace('.', '\\.')}(?:\\.ts)?'\\n`,
+				'gm',
+			)
+			const symbols: string[] = []
+			let prefix = ''
+			src = src.replace(namedImport, (_all, list: string, pre: string) => {
+				prefix = pre
+				symbols.push(
+					...list
+						.split(',')
+						.map((s) => s.trim().replace(/^type /, ''))
+						.filter(Boolean),
+				)
+				return ''
+			})
+			for (const sym of symbols) {
+				src = src.replace(new RegExp(`(?<![.\\w])${sym}\\b`, 'g'), `${ns}.${sym}`)
+			}
+			if (symbols.length && !new RegExp(`\\* as ${ns} from`).test(src)) {
+				src = src.replace(/^import /m, `import * as ${ns} from '${prefix}${to}'\nimport `)
+			}
+		}
+
+		// finally, point every remaining reference at the new filename
+		if (from !== to) {
+			src = src.replace(new RegExp(`from '@/lib/${from.replace('.', '\\.')}(?:\\.ts)?'`, 'g'), `from '@/lib/${to}'`)
+			src = src.replace(new RegExp(`from '(\\.{1,2}/(?:lib/)?)${from.replace('.', '\\.')}(?:\\.ts)?'`, 'g'), `from '$1${to}'`)
+		}
+	}
+	return src
+}
+
 async function main() {
 	const files = await sourceFiles()
 	let changed = 0
 	for (const file of files) {
 		const before = await Fsp.readFile(file, 'utf8')
-		const after = rxjsAndPromise(reactRxjs(zustand(before, file), file), file)
+		const after = utils(rxjsAndPromise(reactRxjs(zustand(before, file), file), file), file)
 		if (after !== before) {
 			await Fsp.writeFile(file, after)
 			changed++

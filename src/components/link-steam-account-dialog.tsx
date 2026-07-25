@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/lib/toast'
-import { Steam64IdSchema } from '@/lib/zod'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as UsersClient from '@/systems/users.client'
 
 // keeps a trailing empty slot so the list auto-expands as the user fills the last input
@@ -58,7 +58,7 @@ function LinkedSteamAccountsEditor({ initialIds, onClose }: { initialIds: readon
 	const rowError = (value: string): string | null => {
 		const v = value.trim()
 		if (!v) return null
-		if (!Steam64IdSchema.safeParse(v).success) return 'Must be a 17-digit Steam64 ID'
+		if (!ZodUtils.Steam64IdSchema.safeParse(v).success) return 'Must be a 17-digit Steam64 ID'
 		if (nonEmpty.filter((o) => o === v).length > 1) return 'Duplicate'
 		return null
 	}

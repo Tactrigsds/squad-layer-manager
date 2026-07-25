@@ -17,8 +17,8 @@ import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useIsDesktopSize } from '@/lib/browser'
 import * as DH from '@/lib/display-helpers'
-import * as MapUtils from '@/lib/map'
-import * as StrUtils from '@/lib/string'
+import * as MapUtils from '@/lib/map-utils'
+import * as Str from '@/lib/string-utils'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
@@ -86,7 +86,7 @@ const DEFAULT_COMBINED_SORTING: SortingState = [
 // other identifier (steam/eos/epic/playerController). Returns the set of matched indices in `players`.
 function matchPlayersBySearch<T extends { ids: SM.PlayerIds.Type }>(players: T[], searchQuery: string): Set<number> {
 	const names = players.map((p) => p.ids.usernameNoTag ?? p.ids.username ?? '')
-	const matched = new Set(StrUtils.simpleStringMatch(names, searchQuery))
+	const matched = new Set(Str.simpleStringMatch(names, searchQuery))
 	if (searchQuery.trim()) {
 		for (let i = 0; i < players.length; i++) {
 			if (!matched.has(i) && SM.PlayerIds.matchesStrictSearch(players[i].ids, searchQuery)) matched.add(i)

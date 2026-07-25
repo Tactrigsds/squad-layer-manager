@@ -1,8 +1,8 @@
 import { z } from 'zod'
 
-import * as Arr from '@/lib/array'
+import * as Arr from '@/lib/array-utils'
 import { IsolatedSubject } from '@/lib/isolated-subject'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import * as ODSM from '@/lib/odsm'
 import * as Rx from '@/lib/rxjs'
 import type * as CS from '@/models/context-shared'

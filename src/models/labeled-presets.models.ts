@@ -1,7 +1,7 @@
 import StringComparison from 'string-comparison'
 import { z } from 'zod'
 
-import { BasicStrNoWhitespace } from '@/lib/zod'
+import * as ZodUtils from '@/lib/zod-utils'
 
 // shared shape for admin-configurable presets addressable from in-game chat (admin action reasons).
 // The label names the preset in menus and the audit log; the keywords are what chat matches against, and are
@@ -11,7 +11,7 @@ import { BasicStrNoWhitespace } from '@/lib/zod'
 export const LabeledPresetSchema = z.object({
 	label: z.string().trim().min(1).max(60).describe('Short name shown in menus and the audit log'),
 	keywords: z
-		.array(BasicStrNoWhitespace)
+		.array(ZodUtils.BasicStrNoWhitespace)
 		.min(1)
 		.describe(
 			'What admins type to select this preset in in-game chat commands. At least one is required, and none may contain whitespace.',

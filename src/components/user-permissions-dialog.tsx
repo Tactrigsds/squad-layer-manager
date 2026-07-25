@@ -1,7 +1,7 @@
 import React from 'react'
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'

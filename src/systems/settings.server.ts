@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import { diffSettings, type SettingChange } from '@/lib/settings-diff'
 import { assertNever } from '@/lib/type-guards'

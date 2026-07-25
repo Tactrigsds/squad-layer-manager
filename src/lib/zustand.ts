@@ -5,7 +5,7 @@ import type { StoreApi, StoreMutatorIdentifier, StoreMutators } from 'zustand'
 import { useShallow as useShallowImported } from 'zustand/react/shallow'
 
 import type * as FRM from '@/lib/frame'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import type { StateObservable } from '@/lib/react-rxjs'
 
 import * as Rx from './rxjs'

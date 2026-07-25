@@ -10,7 +10,7 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
-import { formatHumanTime } from '@/lib/zod'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as Zus from '@/lib/zustand'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CHAT from '@/models/chat.models'
@@ -754,7 +754,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 			<EventLine time={event.time} icon={<Icons.UserX className="h-4 w-4 text-red-500 shrink-0" />}>
 				{actorLabel} timed out{' '}
 				{target && matchId !== null ? <PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} /> : 'a player'} for{' '}
-				{formatHumanTime(appEvent.durationMs)}
+				{ZodUtils.formatHumanTime(appEvent.durationMs)}
 				{appEvent.reason?.label ? ` for ${appEvent.reason.label}` : ''}
 			</EventLine>
 		)

@@ -1,4 +1,4 @@
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 
 // shared by the settings GUI/JSON editors and the aggregated save panel: a leaf-level diff of two settings objects
 // (in their encoded/input shape) keyed by dotted json path, plus value formatting for the change list.

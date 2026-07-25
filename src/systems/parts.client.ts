@@ -1,4 +1,4 @@
-import * as Arr from '@/lib/array'
+import * as Arr from '@/lib/array-utils'
 import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
 import * as Zus from '@/lib/zustand'

@@ -2,7 +2,7 @@ import * as E from 'drizzle-orm'
 import { index, int, numeric, sqliteTable, sqliteView, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
 

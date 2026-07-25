@@ -30,7 +30,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useDebounced } from '@/hooks/use-debounce'
 import { TRIGGER_LEVEL_DISPLAY } from '@/lib/balance-trigger-display'
 import { createId } from '@/lib/id'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import type { SettingsGroup } from '@/lib/settings-groups'
 import { HIDDEN_GLOBAL_SETTINGS_KEYS, LOCAL_JSON_EDITOR_PATHS, splitAdvanced, splitByGroups } from '@/lib/settings-groups'
@@ -38,7 +38,7 @@ import { humanize, settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
-import * as Zod from '@/lib/zod'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as Zus from '@/lib/zustand'
 import * as Messages from '@/messages'
 import * as AAR from '@/models/admin-action-reasons.models'
@@ -3758,7 +3758,7 @@ function useLocalJsonSchema(pathStr: string): z.ZodType | undefined {
 	return React.useMemo(
 		// splitting pathStr rather than taking the path array keeps this memo stable: the array is rebuilt every render.
 		// Only the declared paths are split, and those have no dots inside a segment.
-		() => (rootSchema && LOCAL_JSON_EDITOR_PATHS.has(pathStr) ? Zod.schemaAtPath(rootSchema, pathStr.split('.')) : undefined),
+		() => (rootSchema && LOCAL_JSON_EDITOR_PATHS.has(pathStr) ? ZodUtils.schemaAtPath(rootSchema, pathStr.split('.')) : undefined),
 		[rootSchema, pathStr],
 	)
 }

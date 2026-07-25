@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import * as Gen from '@/lib/generator'
+import * as Gen from '@/lib/generator-utils'
 import type * as CS from '@/models/context-shared'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'

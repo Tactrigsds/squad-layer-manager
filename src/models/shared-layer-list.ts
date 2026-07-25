@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 import { createId } from '@/lib/id'
 import * as ItemMut from '@/lib/item-mutations'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import * as ODSM from '@/lib/odsm'
 import { assertNever } from '@/lib/type-guards'
 import * as BB from '@/models/backburner.models'

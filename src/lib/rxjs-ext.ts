@@ -5,7 +5,7 @@
 // Imports rxjs directly, since ./rxjs re-exports this and the other way round would be a cycle.
 import * as Rx from 'rxjs'
 
-import * as Obj from './object'
+import * as Obj from './object-utils'
 import { assertNever } from './type-guards'
 
 /**
