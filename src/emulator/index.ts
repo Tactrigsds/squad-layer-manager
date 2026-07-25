@@ -1,7 +1,9 @@
+import type { EmuEvent } from '@/models/sandbox.models'
 import { LogFileSink } from './log-file'
 import { RconServer } from './rcon-server'
 import { World, type WorldOptions } from './world'
 
+export type { EmuEvent } from '@/models/sandbox.models'
 export * as Fmt from './format'
 export { LogFileSink } from './log-file'
 export { RconServer } from './rcon-server'
@@ -29,6 +31,7 @@ export class Emulator {
 	password: string
 	logLines: string[] = []
 	#logSubscribers = new Set<(line: string) => void>()
+	#eventSubscribers = new Set<(event: EmuEvent) => void>()
 	#layerChangeDelayMs: number
 	#timers = new Set<NodeJS.Timeout>()
 
@@ -40,7 +43,9 @@ export class Emulator {
 			logLine: (line) => {
 				this.logLines.push(line)
 				for (const sub of this.#logSubscribers) sub(line)
+				this.#emit({ type: 'log', line, time: Date.now() })
 			},
+			playerChat: (player, channel, message) => this.#emit({ type: 'command', player: player.name, channel, message, time: Date.now() }),
 			layerChangeRequested: (layer) => {
 				const timer = setTimeout(() => {
 					this.#timers.delete(timer)
@@ -50,7 +55,10 @@ export class Emulator {
 				this.#timers.add(timer)
 			},
 		}, opts)
-		this.rcon = new RconServer(this.world, { password: this.password })
+		this.rcon = new RconServer(this.world, {
+			password: this.password,
+			onTraffic: (dir, body) => this.#emit({ type: 'rcon', dir, body, time: Date.now() }),
+		})
 
 		const tickRateIntervalMs = opts.tickRateIntervalMs ?? 2000
 		if (tickRateIntervalMs > 0) {
@@ -73,6 +81,15 @@ export class Emulator {
 		this.logFile = sink
 		this.onLogLine((line) => sink.writeLine(line))
 		return sink
+	}
+
+	#emit(event: EmuEvent) {
+		for (const sub of this.#eventSubscribers) sub(event)
+	}
+
+	onEvent(cb: (event: EmuEvent) => void): () => void {
+		this.#eventSubscribers.add(cb)
+		return () => this.#eventSubscribers.delete(cb)
 	}
 
 	onLogLine(cb: (line: string) => void): () => void {

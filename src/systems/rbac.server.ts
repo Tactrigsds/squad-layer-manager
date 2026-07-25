@@ -189,7 +189,7 @@ export const getRbacForDiscordUser = C.spanOp(
 
 		const userRbacPromise = (async () => {
 			const ingameRolesPromise = (async () => {
-				return resolveAdminListAssignments(ctx, playerIds, AdminList.configuredListIds())
+				return resolveAdminListAssignments(ctx, playerIds, await AdminList.getAllLists(ctx))
 			})()
 			const discordRolesPromise = resolveDiscordAssignments(ctx, discordUserId)
 			const baseRoles = RBAC.Role.merge(await ingameRolesPromise, await discordRolesPromise)
@@ -248,7 +248,7 @@ export const getRbacForPlayer = C.spanOp(
 				adminListAssignmentsPromise = resolveAdminListAssignments(
 					ctx,
 					[{ ...ids, steam: steamId.toString() }],
-					AdminList.listIdsForServer(ctx.serverId),
+					await AdminList.getListsForServerId(ctx, ctx.serverId),
 				)
 			} else {
 				adminListAssignmentsPromise = Promise.resolve([])
@@ -291,9 +291,8 @@ export const getRbacForPlayer = C.spanOp(
 async function resolveAdminListAssignments(
 	ctx: C.Db & CS.AbortSignal,
 	allIds: SM.PlayerIds.IdQuery<'steam'>[],
-	listIds: readonly SM.AdminListId[],
+	lists: SM.AdminLists,
 ) {
-	const lists = await AdminList.getListsForServer(ctx, listIds)
 	const roles: RBAC.Role[] = []
 	for (const assignment of roleAssignments) {
 		if (assignment.type === 'admin-list-group') {

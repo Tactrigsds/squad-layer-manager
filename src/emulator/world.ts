@@ -12,6 +12,9 @@ export type WorldSinks = {
 	// AdminChangeLayer travels asynchronously on a real server; the facade schedules the
 	// endMatch/startNewGame transition when this fires
 	layerChangeRequested?: (layer: Fmt.LayerLike) => void
+	// a player said something. Reported separately from the chat packet it produces, because "who typed what"
+	// is a different thing to observe than the wire traffic carrying it
+	playerChat?: (p: EmuPlayer, channel: Fmt.ChatChannel, message: string) => void
 }
 
 export type WorldOptions = {
@@ -197,6 +200,7 @@ export class World {
 	}
 
 	chat(p: EmuPlayer, channel: Fmt.ChatChannel, message: string) {
+		this.#sinks.playerChat?.(p, channel, message)
 		this.#chat(Fmt.chatMessage(channel, p, message))
 	}
 

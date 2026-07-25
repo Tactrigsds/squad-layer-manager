@@ -1816,6 +1816,48 @@ const EMPTY_ROOT_VALUE$ = new Rx.BehaviorSubject<any>(undefined) as unknown as V
 // group permissions that mark an admin *in that list*. The name is what servers and role assignments refer to, so
 // renaming one is a breaking edit -- hence the rename is explicit rather than an inline text field that fires per
 // keystroke.
+// Which of the defined lists apply to this server. A sandbox additionally has one SLM synthesises, which is not
+// listed here because there is no source to name -- so say so, rather than leaving the impression that an empty
+// selection means the emulated server has no admins.
+function ServerAdminListsField({ value$, reset$, onChange }: OverrideProps) {
+	const value = (useFieldValue(value$, reset$) as string[] | undefined) ?? []
+	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
+	const connType$ = React.useMemo(() => scopeValue(scopeValue(root$, 'connections'), 'type'), [root$])
+	const isSandbox = useFieldValue(connType$, reset$) === 'sandbox'
+	const definedLists = useQuery(RPC.orpc.rbac.listAdminListGroups.queryOptions({ staleTime: 60_000 }))
+	const available = definedLists.data?.code === 'ok' ? definedLists.data.lists.map((l) => l.listId) : []
+	const options = [...new Set([...available, ...value])].sort().map((listId) => ({
+		value: listId,
+		label: available.includes(listId) ? listId : `${listId} (not configured)`,
+	}))
+
+	return (
+		<div className="space-y-2">
+			<div className="max-w-[28rem]">
+				<ComboBoxMulti
+					title="Admin list"
+					values={value}
+					options={options}
+					emptyLabel="Select admin lists..."
+					chipDisplay
+					onSelect={(next) => onChange(typeof next === 'function' ? next(value) : next)}
+				/>
+			</div>
+			{isSandbox && (
+				<Alert>
+					<Icons.Info className="h-4 w-4" />
+					<AlertTitle>This sandbox has an emulated admin list of its own</AlertTitle>
+					<AlertDescription>
+						It applies on top of anything selected here and is edited from the sandbox control window (Server Actions -&gt; Sandbox
+						Controls), where you can define groups and tick which fabricated players are admins. There is no source to configure, because it
+						only exists in memory.
+					</AlertDescription>
+				</Alert>
+			)}
+		</div>
+	)
+}
+
 function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 	const value = (useFieldValue(value$, reset$) as Record<string, SM.AdminListDef> | undefined) ?? {}
 	const names = Object.keys(value)
@@ -2811,7 +2853,8 @@ function BalanceTriggerLevelsField({ value$, reset$, onChange }: OverrideProps) 
 
 function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefined {
 	const last = path[path.length - 1]
-	if (path.length === 1 && last === 'adminLists') return AdminListsField
+	// global settings define the lists (a record); a server picks from them (an array of names)
+	if (path.length === 1 && last === 'adminLists') return _node.type === 'array' ? ServerAdminListsField : AdminListsField
 	if (path.length === 1 && last === 'allowedPrefixes') return AllowedPrefixesField
 	// each command renders as one compact card (which itself renders the strings sub-editor), so there's no separate strings override
 	if (path.length === 2 && path[0] === 'commands') return CommandCard

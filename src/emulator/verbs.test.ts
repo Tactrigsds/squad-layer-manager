@@ -124,6 +124,77 @@ describe('execute', () => {
 	})
 })
 
+describe('emulated admin list', () => {
+	function withList(): Verbs.SandboxHost {
+		const groups = new Map<string, string[]>([['Admin', ['canseeadminchat']]])
+		const memberships = new Map<string, Set<string>>()
+		return {
+			emu,
+			players: host.players,
+			adminList: {
+				isAdmin: (name) => [...(memberships.get(name) ?? [])].some((g) => (groups.get(g) ?? []).includes('canseeadminchat')),
+				setPlayerGroups: (name, next) => {
+					if (next.length === 0) memberships.delete(name)
+					else memberships.set(name, new Set(next))
+				},
+				defineGroup: (group, perms) => groups.set(group, perms),
+				deleteGroup: (group) => {
+					groups.delete(group)
+					for (const [name, gs] of memberships) {
+						if (gs.delete(group) && gs.size === 0) memberships.delete(name)
+					}
+				},
+				groupNames: () => [...groups.keys()],
+			},
+		}
+	}
+
+	it('keeps a non-admin out of admin chat, as a real server does', async () => {
+		const h = withList()
+		await Verbs.execute(h, 'join', { name: 'Alice' })
+		await expect(Verbs.execute(h, 'chat', { name: 'Alice', message: 'hi', channel: 'ChatAdmin' })).rejects.toThrow(/not an admin/)
+	})
+
+	it('lets an admin speak in admin chat once they are in an identifying group', async () => {
+		const h = withList()
+		await Verbs.execute(h, 'join', { name: 'Alice' })
+		await Verbs.execute(h, 'set-player-groups', { name: 'Alice', groups: ['Admin'] })
+		await expect(Verbs.execute(h, 'chat', { name: 'Alice', message: 'hi', channel: 'ChatAdmin' })).resolves.toContain('ChatAdmin')
+	})
+
+	it('refuses a group that does not exist rather than inventing one', async () => {
+		const h = withList()
+		await Verbs.execute(h, 'join', { name: 'Alice' })
+		await expect(Verbs.execute(h, 'set-player-groups', { name: 'Alice', groups: ['Nope'] })).rejects.toThrow(/no such group/)
+	})
+
+	it('drops memberships of a group it deletes, so no membership points at nothing', async () => {
+		const h = withList()
+		await Verbs.execute(h, 'join', { name: 'Alice' })
+		await Verbs.execute(h, 'set-player-groups', { name: 'Alice', groups: ['Admin'] })
+		await Verbs.execute(h, 'delete-group', { group: 'Admin' })
+		expect(h.adminList!.isAdmin('Alice')).toBe(false)
+	})
+
+	it('has no admin list on a host that keeps none, rather than silently doing nothing', async () => {
+		await Verbs.execute(host, 'join', { name: 'Alice' })
+		await expect(Verbs.execute(host, 'set-player-groups', { name: 'Alice', groups: [] })).rejects.toThrow(/no emulated admin list/)
+	})
+})
+
+describe('bulk join', () => {
+	it('connects the requested number under sequential default names', async () => {
+		await Verbs.execute(host, 'bulk-join', { count: 3 })
+		expect([...host.players.keys()]).toEqual(['Player1', 'Player2', 'Player3'])
+	})
+
+	it('skips names already taken rather than colliding', async () => {
+		await Verbs.execute(host, 'join', { name: 'Player2' })
+		await Verbs.execute(host, 'bulk-join', { count: 2 })
+		expect([...host.players.keys()].sort()).toEqual(['Player1', 'Player2', 'Player3'])
+	})
+})
+
 describe('executeTokens', () => {
 	it('maps positional tokens onto the same input the router takes', async () => {
 		await Verbs.executeTokens(host, ['join', 'Alice'])
