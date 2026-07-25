@@ -76,9 +76,9 @@ if (!args.values['no-clone']) {
 }
 
 console.log(`
-ready. In two terminals:
-  pnpm dev:emu    the emulated squad server (keep it running; the app reconnects on its own)
-  pnpm dev        the app + client, on http://localhost:${slot.ports.client}
+ready. \`pnpm dev\` runs this instance -- the app, the client and the emulated squad server -- at
 
-log in with ?login=<username> -- discord oauth is off for dev instances.
+  ${Slots.instanceUrl(Slots.requireSlot())}
+
+that one url is the whole instance, already signed in. Drive the emulated server with \`pnpm emuctl <command>\`.
 if you change layer-engine/, rebuild this worktree's copy with \`pnpm build:engine\`.`)

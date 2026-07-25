@@ -13,6 +13,6 @@ if (args.values.release) {
 	const slots = await Slots.listSlots()
 	if (slots.length === 0) console.log('no slots claimed')
 	for (const slot of slots) {
-		console.log(`slot ${slot.slot}\tapp :${slot.ports.app}\tclient :${slot.ports.client}\trcon :${slot.ports.rcon}\t${slot.worktree}`)
+		console.log(`slot ${slot.slot}\t${Slots.instanceUrl(slot)}\t${slot.worktree}`)
 	}
 }
