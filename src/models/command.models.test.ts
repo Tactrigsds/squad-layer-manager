@@ -224,6 +224,7 @@ describe('resolveAliasCommand', () => {
 			code: 'ok',
 			cmdId: 'broadcast',
 			tokens: ['Read', 'the', 'rules'],
+			params: [],
 		})
 	})
 
@@ -245,7 +246,116 @@ describe('resolveAliasCommand', () => {
 	})
 
 	it('accepts a command whose optional args are all omitted', () => {
-		expect(CMD.resolveAliasCommand('!startvote', configs)).toEqual({ code: 'ok', cmdId: 'startVote', tokens: [] })
+		expect(CMD.resolveAliasCommand('!startvote', configs)).toEqual({ code: 'ok', cmdId: 'startVote', tokens: [], params: [] })
+	})
+
+	// the shape migration 0080 had to drop: the pinned argument sits between two the caller types
+	it('maps placeholders onto the args they fill', () => {
+		const res = CMD.resolveAliasCommand('!timeout {{arg1}} 2h {{rest2}}', configs)
+		expect(res).toMatchObject({ code: 'ok', cmdId: 'timeout' })
+		expect(res.code === 'ok' && res.params.map((p) => [p.ref.name, p.def.name, p.wholeSlot])).toEqual([
+			['arg1', 'player', true],
+			['rest2', 'reason', true],
+		])
+	})
+
+	it('skips the literal token checks for an arg a placeholder fills', () => {
+		expect(CMD.resolveAliasCommand('!timeout {{arg1}} {{arg2}} {{rest3}}', configs)).toMatchObject({ code: 'ok' })
+		expect(CMD.resolveAliasCommand('!removefromsquad {{arg1}} {{rest2}}', configs)).toMatchObject({ code: 'ok' })
+	})
+
+	it('marks a placeholder that only part-fills an arg', () => {
+		const res = CMD.resolveAliasCommand('!broadcast Round ends in {{arg1}} minutes', configs)
+		expect(res.code === 'ok' && res.params.map((p) => [p.ref.name, p.def.name, p.wholeSlot])).toEqual([['arg1', 'reason', false]])
+	})
+
+	it('rejects an unknown placeholder', () => {
+		expect(CMD.resolveAliasCommand('!broadcast {{palyer}}', configs)).toMatchObject({ code: 'err:invalid-args' })
+		expect(CMD.resolveAliasCommand('!broadcast {{arg}}', configs)).toMatchObject({ code: 'err:invalid-args' })
+		expect(CMD.resolveAliasCommand('!broadcast {{arg0}}', configs)).toMatchObject({ code: 'err:invalid-args' })
+	})
+
+	it('rejects a malformed template rather than letting it render unexpanded', () => {
+		expect(CMD.resolveAliasCommand('!broadcast {{#arg1}}oops', configs)).toMatchObject({ code: 'err:invalid-args' })
+	})
+
+	// a multi-word value in a single-word slot would silently shift every argument after it
+	it('rejects a rest placeholder in a single-word arg', () => {
+		expect(CMD.resolveAliasCommand('!timeout {{rest}} 2h', configs)).toMatchObject({ code: 'err:invalid-args' })
+	})
+
+	it('rejects a placeholder the target has no argument for', () => {
+		expect(CMD.resolveAliasCommand('!startvote {{arg1}}', configs)).toMatchObject({ code: 'err:invalid-args' })
+	})
+
+	// the caller's first word would be read as arg1's slot and thrown away, and no honest usage could be written
+	it('rejects a skipped index', () => {
+		expect(CMD.resolveAliasCommand('!broadcast {{arg2}}', configs)).toMatchObject({ code: 'err:invalid-args' })
+	})
+
+	// referenced only as a condition, so the word it stands for is never actually used
+	it('rejects a placeholder that only gates other text', () => {
+		expect(CMD.resolveAliasCommand('!broadcast rules {{^arg1}}please{{/arg1}}', configs)).toMatchObject({ code: 'err:invalid-args' })
+	})
+
+	it('still reports a missing required arg the alias neither pins nor takes', () => {
+		expect(CMD.resolveAliasCommand('!timeout {{arg1}}', configs)).toMatchObject({ code: 'err:invalid-args' })
+	})
+})
+
+describe('expandAlias', () => {
+	it('substitutes single words and the remainder', () => {
+		expect(CMD.expandAlias('!timeout {{arg1}} 2h {{rest2}}', ['Alice', 'spamming', 'chat'])).toBe('!timeout Alice 2h spamming chat')
+		expect(CMD.expandAlias('!broadcast {{rest}}', ['back', 'in', '5'])).toBe('!broadcast back in 5')
+	})
+
+	// an omitted word leaves no token behind, which is what makes the argument it feeds optional
+	it('collapses the gap an omitted word leaves', () => {
+		expect(CMD.expandAlias('!timeout {{arg1}} 2h {{rest2}}', ['Alice'])).toBe('!timeout Alice 2h')
+		expect(CMD.expandAlias('!broadcast {{rest}}', [])).toBe('!broadcast')
+	})
+
+	it('falls back to an inverted section when the word is omitted', () => {
+		const command = '!warn {{arg1}} {{^rest2}}spam{{/rest2}}{{rest2}}'
+		expect(CMD.expandAlias(command, ['Alice'])).toBe('!warn Alice spam')
+		expect(CMD.expandAlias(command, ['Alice', 'stop', 'that'])).toBe('!warn Alice stop that')
+	})
+
+	it('ignores words the template never references', () => {
+		expect(CMD.expandAlias('!broadcast Read the rules', ['and', 'then', 'some'])).toBe('!broadcast Read the rules')
+	})
+
+	// mustache does not re-render what it interpolates, so a caller cannot inject template syntax of their own
+	it('leaves template syntax typed by the caller alone', () => {
+		expect(CMD.expandAlias('!broadcast {{rest}}', ['{{arg1}}', 'x'])).toBe('!broadcast {{arg1}} x')
+	})
+})
+
+describe('formatAliasUsage', () => {
+	const configs = CMD.seedCommandConfigs({}, '!') as unknown as CMD.CommandConfigs
+	const usage = (alias: string, command: string, required: AAR.AdminActionType[] = []) => {
+		const res = CMD.resolveAliasCommand(command, configs)
+		if (res.code !== 'ok') throw new Error(`${command}: ${res.msg}`)
+		return CMD.formatAliasUsage(alias, res.params, required)
+	}
+
+	it('names the arg a whole-slot placeholder fills, and the placeholder otherwise', () => {
+		expect(usage('!to2h', '!timeout {{arg1}} 2h {{rest2}}')).toBe('!to2h <player> [reason|message]')
+		expect(usage('!eta', '!broadcast Round ends in {{arg1}} minutes')).toBe('!eta <arg1>')
+	})
+
+	it('follows the configured reason requirement', () => {
+		expect(usage('!k', '!kick {{arg1}} {{rest2}}', ['kick'])).toBe('!k <player> <reason|message>')
+		expect(usage('!k', '!kick {{arg1}} {{rest2}}')).toBe('!k <player> [reason|message]')
+	})
+
+	// a default fills the arg when the word is left out, so the word itself is optional either way
+	it('reads a placeholder with a default as optional', () => {
+		expect(usage('!warnsp', '!warn {{arg1}} {{^rest2}}spam{{/rest2}}{{rest2}}')).toBe('!warnsp <player> [reason|message]')
+	})
+
+	it('is just the alias when it takes nothing', () => {
+		expect(usage('!rules', '!broadcast Read the rules')).toBe('!rules')
 	})
 })
 

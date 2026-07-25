@@ -259,10 +259,14 @@ export const GlobalSettingsSchema = z.object({
 	),
 	commandAliases: z.array(z.object({
 		alias: BasicStrNoWhitespace.describe('The shortcut typed in chat, including its prefix'),
-		command: z.string().min(1).describe('The full command this alias runs, including its prefix and every argument'),
+		command: z.string().min(1).describe(
+			'The command this alias runs, including its prefix. Arguments may be pinned here or taken from chat with '
+				+ CMD.ALIAS_REF_SYNTAX,
+		),
 	})).prefault([]).describe(
-		'Shortcuts to complete commands, e.g. /rules = /broadcast Read the rules. An alias takes no arguments of its own '
-			+ '(anything typed after it is ignored), runs in the scopes of the command it points at, and loses to a real command string on collision.',
+		'Shortcuts to commands, e.g. /rules = /broadcast Read the rules. The command text is a template over the words typed after the '
+			+ 'alias, so /to2h = /timeout {{arg1}} 2h {{rest2}} pins the duration and takes the player and reason from chat. An alias runs '
+			+ 'in the scopes of the command it points at, and loses to a real command string on collision.',
 	),
 	commands: CMD.AllCommandConfigSchema,
 	adminListSources: z.array(SM.AdminListSourceSchema).prefault([]).describe(

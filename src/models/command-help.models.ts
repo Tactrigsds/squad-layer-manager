@@ -210,8 +210,12 @@ export function buildExamples(
 
 // what a help command lists. A bare `!help` answers with the quick reference, since an admin mid-match wants the
 // handful of commands they actually use, not thirty lines paged into chat.
+// an alias as listed: `usage` is what the caller types, which for an alias with placeholders is more than its
+// shortcut (`/to2h <player> [reason]`)
+export type AliasListing = { alias: CMD.CommandAlias; usage: string }
+
 export type HelpListing =
-	| { code: 'ok'; title: string; commands: CMD.CommandId[]; aliases: CMD.CommandAlias[]; hint?: string }
+	| { code: 'ok'; title: string; commands: CMD.CommandId[]; aliases: AliasListing[]; hint?: string }
 	| { code: 'err:unknown-section'; msg: string }
 
 const sectionOptions = () => CMD.sectionTokens().join(', ')
@@ -224,13 +228,13 @@ export function resolveHelpListing(
 	sectionToken: string | undefined,
 ): HelpListing {
 	const runnable = (id: CMD.CommandId) => configs[id].enabled
-	const aliasesFor = (section: CMD.CommandSection | 'all' | 'quick-reference') =>
-		aliases.filter((a) => {
-			const res = CMD.resolveAliasCommand(a.command, configs)
-			if (res.code !== 'ok' || !configs[res.cmdId].enabled) return false
-			if (section === 'all') return true
-			if (section === 'quick-reference') return configs[res.cmdId].quickReference
-			return CMD.COMMAND_DECLARATIONS[res.cmdId].section === section
+	const aliasesFor = (section: CMD.CommandSection | 'all' | 'quick-reference'): AliasListing[] =>
+		aliases.flatMap((alias) => {
+			const res = CMD.resolveAliasCommand(alias.command, configs)
+			if (res.code !== 'ok' || !configs[res.cmdId].enabled) return []
+			if (section === 'quick-reference' && !configs[res.cmdId].quickReference) return []
+			if (section !== 'all' && section !== 'quick-reference' && CMD.COMMAND_DECLARATIONS[res.cmdId].section !== section) return []
+			return [{ alias, usage: CMD.formatAliasUsage(alias.alias, res.params) }]
 		})
 
 	if (sectionToken === undefined) {

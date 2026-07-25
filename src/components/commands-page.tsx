@@ -173,8 +173,8 @@ function CommandEntry(
 	)
 }
 
-// an alias takes no arguments, so its listing is the shortcut itself, what it expands to, and (when the command it
-// points at is disabled or no longer exists) why it currently does nothing
+// an alias lists as what you type -- its shortcut plus whatever arguments it takes from chat -- what it expands to,
+// and (when the command it points at is disabled or no longer exists) why it currently does nothing
 function AliasEntry(
 	{ entry, settings, onLink }: { entry: Extract<Entry, { kind: 'alias' }>; settings: PublicSettings; onLink: (id: string) => void },
 ) {
@@ -182,10 +182,13 @@ function AliasEntry(
 	const target = res.code === 'ok' ? settings.commands[res.cmdId] : undefined
 	const unusable = res.code !== 'ok' ? 'Unavailable' : !target!.enabled ? 'Disabled' : undefined
 	const chatScope = target?.scopes.includes('public') && !target.scopes.includes('admin') ? 'ChatToAll' : 'ChatToAdmin'
+	const usage = res.code === 'ok'
+		? CMD.formatAliasUsage(entry.alias.alias, res.params, settings.requireReasonFor)
+		: entry.alias.alias
 	return (
 		<div id={entry.id} data-cmd-anchor className="space-y-1">
 			<div className="group flex items-center gap-2">
-				<CopyableCommand cmdString={entry.alias.alias} chatScope={chatScope} />
+				<CopyableCommand cmdString={usage} chatScope={chatScope} />
 				<AnchorLinkIcon id={entry.id} onNavigate={onLink} label="Link to this alias" />
 				{unusable && <Badge variant="destructive" className="text-xs">{unusable}</Badge>}
 			</div>

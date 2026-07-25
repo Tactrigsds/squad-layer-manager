@@ -279,8 +279,8 @@ export const WARNS = {
 				const signature = CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS[id].args)
 				return `[${sortedStrings.join(', ')}]${signature ? ` ${signature}` : ''}: ${GENERAL.command.descriptions[id]}`
 			})
-			// aliases take no args of their own, so they list as the shortcut and what it expands to
-			const aliasLines = listing.aliases.map((a) => `[${a.alias}]: ${GENERAL.command.aliasDescription(a.command)}`)
+			// an alias lists as what you type (its shortcut plus any arguments it takes) and what it expands to
+			const aliasLines = listing.aliases.map((a) => `[${a.usage}]: ${GENERAL.command.aliasDescription(a.alias.command)}`)
 			const lines = [...commandLines, ...aliasLines]
 			if (lines.length === 0) return [`${listing.title}: none.`, ...(listing.hint ? [listing.hint] : [])]
 			const groups = Arr.paged(lines, 3)
