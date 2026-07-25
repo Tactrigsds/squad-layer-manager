@@ -4,14 +4,42 @@ Each worktree can run a complete, self-contained SLM: its own app, client, datab
 server, on its own ports. Nothing is shared with the main checkout except the credentials in `.env`, so any
 number of experiments can run side by side without a second real game server between them.
 
-```
-pnpm dev:init     # once per worktree: claims a port slot, links .env, clones the database
-pnpm dev:emu      # terminal 1: the emulated squad server (leave it running)
-pnpm dev          # terminal 2: the app + client
+```sh
+pnpm worktree new <name>   # from anywhere in the repo: creates the worktree, installs, provisions it
+cd ~/projects/slm/<name>
+pnpm dev                   # the app, the client and the emulated squad server
 ```
 
-`dev:init` prints the URL to open. Discord oauth is off for a dev instance, so log in with
-`?login=<username>` -- any username in the cloned database works.
+`worktree new` prints the one url the instance answers on, and `pnpm dev` prints it again on boot. That url
+is the whole instance and it carries a `?login=`, so opening it lands you signed in.
+
+An already-created worktree (one Claude Code made, or `git worktree add` by hand) needs only the provisioning
+step: `pnpm dev:init`, then `pnpm dev`.
+
+## Where worktrees live
+
+`~/projects/slm/<name>`, outside the repo. `SLM_WORKTREE_ROOT` overrides the root; `SLM_WORKTREE_BASE=head`
+branches from local HEAD instead of `origin/HEAD`.
+
+Outside the repo on purpose. A worktree nested in the checkout is a second copy of the tree inside the first
+one, and every tool that walks the repo -- git's own ignore rules most of all -- has to be taught to pretend
+it is not there.
+
+Claude Code creates worktrees through the `WorktreeCreate`/`WorktreeRemove` hooks in `.claude/settings.json`,
+which hand the work to `scripts/worktree.mjs`, so its `EnterWorktree` lands in the same place `pnpm worktree
+new` does, node_modules included. `pnpm worktree migrate` relocates worktrees left under the old
+`.claude/worktrees`; it reports what it would do until passed `--apply`, and skips any with processes still
+running in them.
+
+## The one url
+
+`http://localhost:<client port>/?login=<user>`. Everything is behind it: the vite dev server proxies every
+api route, the websocket and each page request to the app, so the app's own port is an implementation detail
+nothing needs to know. `pnpm -s dev:url [path]` prints it, which is what to paste into a report.
+
+The login is a super user from the cloned database, resolved once by `dev:init` and kept in the slot
+registry. Discord oauth is off for a dev instance, so `?login=<username>` is how anyone signs in; any
+username in the cloned database works.
 
 ## Slots
 
@@ -47,13 +75,15 @@ driving the production server.
 
 ## The emulator
 
-`pnpm dev:emu` runs the emulated squad server (`src/emulator`) and a stub BattleMetrics API. Run it as its own
-process (not under `pnpm dev`) so its world -- players, squads, match state -- survives app reloads.
+The emulated squad server (`src/emulator`) and a stub BattleMetrics API. `pnpm dev` starts one unless this
+worktree already has it running, and it stays a separate process either way: its world -- players, squads,
+match state -- has to survive the app's watch restarts, and it would not if the app hosted it.
 
 It writes the same `SquadGame.log` a real server does, and the app tails it over the same `local` code path.
 
-`--players N` connects N players at startup; `--admins <steamid,...>` writes them into the `Admins.cfg` the
-app reads.
+`pnpm dev:emu` runs it alone, with the repl below on stdin, for a session that outlives several `pnpm dev`s
+or wants its startup flags: `--players N` connects N players at startup, `--admins <steamid,...>` writes them
+into the `Admins.cfg` the app reads. `pnpm dev --no-emu` then leaves it alone.
 
 ### Driving it
 
