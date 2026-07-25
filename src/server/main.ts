@@ -24,6 +24,7 @@ import * as MatchHistory from '@/systems/match-history.server'
 import * as Metrics from '@/systems/metrics.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
 import * as Rbac from '@/systems/rbac.server'
+import * as Sandbox from '@/systems/sandbox.server'
 import * as ServerAgent from '@/systems/server-agent.server'
 import * as Sessions from '@/systems/sessions.server'
 import * as Settings from '@/systems/settings.server'
@@ -113,6 +114,8 @@ await C.spanOp('main', { module }, async () => {
 	await AppEventsSys.detectRestartAtBoot(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 
 	AdminList.setup()
+	// before SquadServer.setup: a sandbox server's slice boots its emulator through this
+	Sandbox.setup()
 
 	await Promise.all([SquadServer.setup(), Discord.setup()])
 

@@ -44,6 +44,7 @@ import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
+import * as Sandbox from '@/systems/sandbox.server'
 import * as ServerAgent from '@/systems/server-agent.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
@@ -701,10 +702,16 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	const signal = anySignal(ctx.signal, sliceAbort.signal)!
 	ctx = { ...ctx, signal }
 
-	// local/sftp dial RCON directly; server-agent tunnels it through the agent (the agent holds the password)
+	// the emulator has to be listening before anything can dial it, and it owns its own (ephemeral) port
+	if (Sandbox.isSandbox(settings.connections)) await Sandbox.ensureInstance(serverId, settings.connections)
+
+	// local/sftp dial RCON directly; server-agent tunnels it through the agent (the agent holds the password).
+	// sandbox dials the in-process emulator over loopback, so the real packet framing still runs.
 	const rconTransport = settings.connections.type === 'server-agent'
 		? ServerAgent.rconTransportFor(serverId)
-		: new DirectSocketTransport(settings.connections.rcon)
+		: new DirectSocketTransport(
+			settings.connections.type === 'sandbox' ? Sandbox.connectionFor(serverId) : settings.connections.rcon,
+		)
 	const rcon = new Rcon({ serverId, transport: rconTransport })
 	rcon.ensureConnected()
 	cleanup.push(() => rcon.disconnect())
@@ -759,6 +766,9 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			? Settings.GLOBAL_SETTINGS.logFilePollInterval * 2
 			: settings.connections.type === 'server-agent'
 			? 1000
+			// in-process: a log line is delivered in the same tick the world writes it
+			: settings.connections.type === 'sandbox'
+			? 0
 			: assertNever(settings.connections),
 	})
 
@@ -917,6 +927,17 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			)
 		} else if (settings.connections.type === 'server-agent') {
 			chunk$ = ServerAgent.streamFor(serverId)
+		} else if (settings.connections.type === 'sandbox') {
+			// straight from the world, with no file in between. The instance outlives this subscription, so the
+			// unsubscribe has to detach the listener or a slice restart would leave the old one writing into a dead stream.
+			chunk$ = new Rx.Observable<string>((subscriber) => {
+				const instance = Sandbox.getInstance(serverId)
+				if (!instance) {
+					subscriber.error(new Error(`sandbox ${serverId} has no running emulator`))
+					return
+				}
+				return instance.emu.onLogLine((line) => subscriber.next(line + '\n'))
+			})
 		} else {
 			assertNever(settings.connections)
 		}
@@ -1067,7 +1088,10 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	)
 
 	void LayerQueue.setupInstance({ ...ctx, ...slice })
-	Battlemetrics.setupSquadServerInstance({ ...ctx, ...slice })
+	// A sandbox's players are fabricated, so their eos ids belong to nobody. BattleMetrics is a real, org-wide
+	// outbound service: looking them up would spam it with garbage and any flag or note written while looking at
+	// the sandbox would land on the live org. It is left off entirely rather than stubbed.
+	if (!Sandbox.isSandbox(settings.connections)) Battlemetrics.setupSquadServerInstance({ ...ctx, ...slice })
 
 	server.cleanupId = CleanupSys.register(async () => {
 		await withSliceLock(serverId, () => destroySliceIfRunningLocked(serverId))
@@ -1801,6 +1825,8 @@ export async function disableServer(serverId: string) {
 	if (res.code !== 'ok') return res
 
 	await withSliceLock(serverId, () => destroySliceIfRunningLocked(serverId))
+	// the emulator deliberately outlives a slice restart, but not the server being switched off
+	Sandbox.disposeInstance(serverId)
 	log.info('Server %s disabled', serverId)
 	return { code: 'ok' as const }
 }
@@ -1808,6 +1834,7 @@ export async function disableServer(serverId: string) {
 export async function deleteServer(serverId: string) {
 	const ctx = getBaseCtx()
 	await withSliceLock(serverId, () => destroySliceIfRunningLocked(serverId))
+	Sandbox.disposeInstance(serverId)
 	return await Settings.deleteServerEntry(ctx, serverId)
 }
 
