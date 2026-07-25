@@ -1,5 +1,6 @@
-import * as Obj from '@/lib/object'
 import { z } from 'zod'
+
+import * as Obj from '@/lib/object'
 
 // do not expose these enums, use the loaded layer data (L.StaticLayerComponents) instead
 const FACTION_ID = z

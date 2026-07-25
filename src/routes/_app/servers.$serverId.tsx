@@ -1,3 +1,8 @@
+import * as ReactRx from '@react-rxjs/core'
+import { createFileRoute, useBlocker } from '@tanstack/react-router'
+import React from 'react'
+import * as Rx from 'rxjs'
+
 import ServerDashboard from '@/components/server-dashboard'
 import ServerUnavailable from '@/components/server-unavailable'
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager'
@@ -12,10 +17,6 @@ import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UPClient from '@/systems/user-presence.client'
-import * as ReactRx from '@react-rxjs/core'
-import { createFileRoute, useBlocker } from '@tanstack/react-router'
-import React from 'react'
-import * as Rx from 'rxjs'
 
 export const Route = createFileRoute('/_app/servers/$serverId')({
 	component: RouteComponent,

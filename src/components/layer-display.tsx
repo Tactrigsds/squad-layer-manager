@@ -1,3 +1,6 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers.ts'
@@ -9,8 +12,6 @@ import * as LQY from '@/models/layer-queries.models.ts'
 import * as DndKit from '@/systems/dndkit.client'
 import * as LQYClient from '@/systems/layer-queries.client'
 
-import * as Icons from 'lucide-react'
-import React from 'react'
 import { ConstraintEvalTooltip } from './constraint-matches-indicator.tsx'
 import ShortLayerName from './short-layer-name.tsx'
 

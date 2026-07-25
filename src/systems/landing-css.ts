@@ -1,8 +1,9 @@
-import * as Paths from '$root/paths'
 import tailwindcss from '@tailwindcss/postcss'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import postcss from 'postcss'
+
+import * as Paths from '$root/paths'
 
 // Compiles the landing/403 pages' scoped Tailwind sheet (src/landing.css, sourced only from landing-pages.tsx).
 // Small enough to inline into the cached HTML. Tailwind is a devDependency and absent from the bundled prod

@@ -1,9 +1,10 @@
+import React from 'react'
+
 import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
 import * as ConfigClient from '@/systems/config.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
-import React from 'react'
 
 // Renders nothing; while the current user has other actively-present clients (tabs / devices), shows a
 // persistent, dismissable toast offering to reset them (clear their activity, mark them away). The

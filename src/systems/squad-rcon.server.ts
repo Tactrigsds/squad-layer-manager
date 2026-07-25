@@ -1,3 +1,5 @@
+import * as Rx from 'rxjs'
+
 import { sleep } from '@/lib/async'
 import { AsyncResource } from '@/lib/async-resource'
 import type * as Cleanup from '@/lib/cleanup'
@@ -11,7 +13,6 @@ import * as SM from '@/models/squad.models'
 import * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
 import * as AdminList from '@/systems/adminlist.server'
-import * as Rx from 'rxjs'
 
 const module = initModule('squad-rcon')
 let log!: CS.Logger

@@ -1,3 +1,5 @@
+import * as E from 'drizzle-orm'
+
 import * as Schema from '$root/drizzle/schema'
 import { LRUMap } from '@/lib/lru-map'
 import * as CHAT from '@/models/chat.models'
@@ -5,7 +7,6 @@ import type * as CS from '@/models/context-shared'
 import * as SE from '@/models/server-events.models'
 import * as C from '@/server/context'
 import { initModule } from '@/server/logger'
-import * as E from 'drizzle-orm'
 
 const module = initModule('match-events-cache')
 let log!: CS.Logger

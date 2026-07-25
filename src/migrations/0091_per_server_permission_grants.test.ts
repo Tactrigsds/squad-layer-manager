@@ -1,5 +1,6 @@
 import DatabaseConstructor from 'better-sqlite3'
 import { describe, expect, test } from 'vitest'
+
 import { up } from './0091_per_server_permission_grants'
 
 function makeDb(roles: unknown, serverIds: string[]) {

@@ -1,6 +1,7 @@
+import { describe, expect, it } from 'vitest'
+
 import * as LL from '@/models/layer-list.models'
 import * as LNote from '@/models/layer-notes.models'
-import { describe, expect, it } from 'vitest'
 
 const alice = 1n
 const bob = 2n

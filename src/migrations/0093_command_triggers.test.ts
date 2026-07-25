@@ -1,5 +1,6 @@
 import DatabaseConstructor from 'better-sqlite3'
 import { describe, expect, test } from 'vitest'
+
 import { up } from './0093_command_triggers'
 
 function makeDb(commands: unknown, commandAliases: unknown) {

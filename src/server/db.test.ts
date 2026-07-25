@@ -1,5 +1,6 @@
-import { runDetectingYield } from '@/server/db'
 import { describe, expect, test } from 'vitest'
+
+import { runDetectingYield } from '@/server/db'
 
 // what an awaited drizzle query looks like to the runtime: better-sqlite3 runs the statement synchronously, and the
 // query builder is a thenable that resolves from inside .then() rather than from an IO completion

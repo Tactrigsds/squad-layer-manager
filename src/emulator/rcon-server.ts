@@ -1,4 +1,5 @@
 import * as net from 'node:net'
+
 import type { World } from './world'
 
 // RCON protocol frontend over a World. The framing reproduces what the real squad server was

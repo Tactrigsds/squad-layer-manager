@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest'
+
 import { getRouteRegex as _getRouteRegex } from './app-routes'
 
 const getRouteRegex = _getRouteRegex as (id: string) => RegExp

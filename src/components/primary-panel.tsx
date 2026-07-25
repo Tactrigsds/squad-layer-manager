@@ -1,3 +1,5 @@
+import React from 'react'
+
 import { Card } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
@@ -8,12 +10,9 @@ import * as ZusUtils from '@/lib/zustand'
 import * as UP from '@/models/user-presence'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 
-import React from 'react'
-
-import { MatchHistoryPanelContent } from './match-history-panel'
-
 import BackburnerPanel from './backburner-panel.tsx'
 import { QueuePanelContent, SlmUpdatesDisabledAlert } from './layer-queue-panel.tsx'
+import { MatchHistoryPanelContent } from './match-history-panel'
 import { StickyGroup } from './sticky-group.tsx'
 import TeamsPanel from './teams-panel.tsx'
 import UserPresencePanel, { sortEditingPresence } from './user-presence-panel.tsx'

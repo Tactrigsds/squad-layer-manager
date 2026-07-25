@@ -1,6 +1,7 @@
+import { describe, expect, it } from 'vitest'
+
 import type * as BM from '@/models/battlemetrics.models'
 import * as PG from '@/models/player-groupings.models'
-import { describe, expect, it } from 'vitest'
 
 function flag(id: string, color: string | null = null): BM.PlayerFlag {
 	return { id, name: id, color, description: null, icon: null }

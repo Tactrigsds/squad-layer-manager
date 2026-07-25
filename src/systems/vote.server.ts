@@ -1,3 +1,10 @@
+import * as Otel from '@opentelemetry/api'
+import { Mutex, type MutexInterface, withTimeout } from 'async-mutex'
+import * as dateFns from 'date-fns'
+import * as E from 'drizzle-orm'
+import * as Rx from 'rxjs'
+import { z } from 'zod'
+
 import * as Schema from '$root/drizzle/schema'
 import { isAbortError, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import type * as Cleanup from '@/lib/cleanup'
@@ -27,12 +34,6 @@ import * as Rbac from '@/systems/rbac.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Users from '@/systems/users.server'
-import * as Otel from '@opentelemetry/api'
-import { Mutex, type MutexInterface, withTimeout } from 'async-mutex'
-import * as dateFns from 'date-fns'
-import * as E from 'drizzle-orm'
-import * as Rx from 'rxjs'
-import { z } from 'zod'
 
 export type VoteContext = {
 	voteEndTask: Rx.Subscription | null

@@ -1,6 +1,7 @@
-import * as ThemeClient from '@/systems/theme.client'
 import type { CSSProperties } from 'react'
 import { Toaster as Sonner, type ToasterProps } from 'sonner'
+
+import * as ThemeClient from '@/systems/theme.client'
 
 function Toaster(props: ToasterProps) {
 	const { resolvedTheme } = ThemeClient.useTheme()

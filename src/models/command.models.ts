@@ -1,3 +1,6 @@
+import StringComparison from 'string-comparison'
+import { z } from 'zod'
+
 import * as Obj from '@/lib/object'
 import { renderTemplate, templateVars } from '@/lib/templating'
 import { BasicStrNoWhitespace, tryParseHumanTimeToken } from '@/lib/zod'
@@ -5,9 +8,6 @@ import * as AAR from '@/models/admin-action-reasons.models'
 import * as LP from '@/models/labeled-presets.models'
 import type * as SM from '@/models/squad.models.ts'
 import type * as RBAC from '@/rbac.models'
-
-import StringComparison from 'string-comparison'
-import { z } from 'zod'
 
 export const CHAT_GROUPS = z.enum(['admin', 'public'])
 export type ChatGroup = z.infer<typeof CHAT_GROUPS>

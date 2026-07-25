@@ -1,7 +1,8 @@
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import * as Icons from 'lucide-react'
 import React from 'react'
+
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 function formatPageCount(count: number): string {
 	if (count < 1000) {

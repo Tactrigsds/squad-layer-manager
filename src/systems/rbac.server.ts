@@ -1,26 +1,24 @@
+import * as E from 'drizzle-orm'
+import { unionAll } from 'drizzle-orm/sqlite-core'
+import { z } from 'zod'
+
 import * as Schema from '$root/drizzle/schema.ts'
+import { IsolatedSubject } from '@/lib/isolated-subject'
 import { objKeys } from '@/lib/object'
+import { assertNever } from '@/lib/type-guards'
 import type * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
 import * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
-import { initModule } from '@/server/logger'
-import * as AdminList from '@/systems/adminlist.server'
-import * as User from '@/systems/users.server'
-
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context'
 import * as Env from '@/server/env'
-
+import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as AdminList from '@/systems/adminlist.server'
 import * as Discord from '@/systems/discord.server'
-
-import { IsolatedSubject } from '@/lib/isolated-subject'
-import { assertNever } from '@/lib/type-guards'
-import * as E from 'drizzle-orm'
-import { unionAll } from 'drizzle-orm/sqlite-core'
-import { z } from 'zod'
+import * as User from '@/systems/users.server'
 
 // the role type attributed to permissions granted by the env-level SUPER_USERS/SUPER_ROLES bootstrap
 const SUPER_ROLE: RBAC.Role = { type: 'super' }

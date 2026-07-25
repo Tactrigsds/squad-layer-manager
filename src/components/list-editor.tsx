@@ -1,7 +1,9 @@
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 import * as Icons from 'lucide-react'
 import React from 'react'
+
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+
 import type { ComboBoxHandle } from './combo-box/combo-box.tsx'
 
 // A vertical add/remove list in the style of the settings scope editor: one row per item with a removal X,

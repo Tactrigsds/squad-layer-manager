@@ -1,3 +1,6 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import ComboBox from '@/components/combo-box/combo-box'
 import type { ComboBoxOption } from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
@@ -6,8 +9,6 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type * as BM from '@/models/battlemetrics.models'
 import { useOrgFlags } from '@/systems/battlemetrics.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 // a compact colored badge matching how flags are rendered elsewhere (see player-details-window)
 export function FlagBadge({ flag, className }: { flag: BM.PlayerFlag; className?: string }) {

@@ -1,3 +1,6 @@
+import * as E from 'drizzle-orm'
+import { z } from 'zod'
+
 import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
@@ -15,8 +18,6 @@ import * as AppEventsSys from '@/systems/app-events.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as SquadServer from '@/systems/squad-server.server'
-import * as E from 'drizzle-orm'
-import { z } from 'zod'
 
 // Kick timeouts: a row is active while cancelled=false and expiresAt > now, and is enforced globally --
 // players with an active timeout are re-kicked on PLAYER_CONNECTED / roster RESET on every SLM server

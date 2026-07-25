@@ -1,6 +1,8 @@
+import { describe, expect, it } from 'vitest'
+
 // @vitest-environment happy-dom
 import type { ConsoleEvent } from '@/models/server-console.models'
-import { describe, expect, it } from 'vitest'
+
 import * as ConsoleFrame from './server-console.frame'
 
 // Sel.view is pure, so it is exercised directly against a store shape rather than through a live frame.

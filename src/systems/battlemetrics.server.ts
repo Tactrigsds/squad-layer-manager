@@ -1,3 +1,7 @@
+import * as Otel from '@opentelemetry/api'
+import * as Rx from 'rxjs'
+import { z } from 'zod'
+
 import { raceAbort, sleep, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { FixedSizeMap } from '@/lib/lru-map'
@@ -17,9 +21,6 @@ import * as PersistedCache from '@/systems/persistedCache.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
-import * as Otel from '@opentelemetry/api'
-import * as Rx from 'rxjs'
-import { z } from 'zod'
 
 const getEnv = Env.getEnvBuilder({ ...Env.groups.battlemetrics })
 const module = initModule('battlemetrics')

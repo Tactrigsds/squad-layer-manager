@@ -1,8 +1,9 @@
+import { createFileRoute, notFound, redirect } from '@tanstack/react-router'
+import * as React from 'react'
+
 import { LayerInfo } from '@/components/layer-info'
 import * as DH from '@/lib/display-helpers.ts'
 import * as L from '@/models/layer'
-import { createFileRoute, notFound, redirect } from '@tanstack/react-router'
-import * as React from 'react'
 
 export const Route = createFileRoute('/layers/$layerId/$tab')({
 	component: RouteComponent,

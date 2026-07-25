@@ -1,7 +1,8 @@
+import { z } from 'zod'
+
 import { renderTemplate } from '@/lib/templating'
 import * as LP from '@/models/labeled-presets.models'
 import type * as RBAC from '@/rbac.models'
-import { z } from 'zod'
 
 // a kick removes the player from the server; a timeout additionally bars them from rejoining any SLM server
 // until it expires. They're separate actions with separate texts, permissions and commands.

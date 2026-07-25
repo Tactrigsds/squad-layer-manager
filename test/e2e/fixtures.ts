@@ -1,4 +1,5 @@
 import { test as base } from '@playwright/test'
+
 import { type AppFixture, createAppFixture, setCurrentTestLabel } from '../harness/app-fixture'
 
 // Playwright fixture: one app instance + one emulated squad server per test file (worker-scoped),

@@ -1,10 +1,12 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
 import { matchLog } from '@/lib/log-parsing'
 import Rcon from '@/lib/rcon/core-rcon'
 import * as CoreRcon from '@/lib/rcon/core-rcon'
 import * as SM from '@/models/squad.models'
 import * as Env from '@/server/env'
 import { ensureLoggerSetup } from '@/server/logger'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
 import { Emulator, makePlayer } from './index'
 
 // Self-checks: the emulator is exercised through the app's own RCON client and its output is

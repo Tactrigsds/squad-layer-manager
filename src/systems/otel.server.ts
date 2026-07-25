@@ -1,19 +1,18 @@
-import { formatVersion } from '@/lib/versioning.ts'
-
-import * as Env from '@/server/env'
-import * as Logger from '@/server/logger'
-import * as Cleanup from '@/systems/cleanup.server'
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node'
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-proto'
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-proto'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto'
-
 import { defaultResource, resourceFromAttributes } from '@opentelemetry/resources'
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
 import { logs, NodeSDK, tracing } from '@opentelemetry/sdk-node'
 import { ATTR_SERVICE_INSTANCE_ID, ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions'
 import { ORPCInstrumentation } from '@orpc/otel'
 import { randomBytes } from 'crypto'
+
+import { formatVersion } from '@/lib/versioning.ts'
+import * as Env from '@/server/env'
+import * as Logger from '@/server/logger'
+import * as Cleanup from '@/systems/cleanup.server'
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.otel })
 let ENV!: ReturnType<typeof envBuilder>

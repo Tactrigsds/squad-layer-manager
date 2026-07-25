@@ -1,3 +1,5 @@
+import * as Icons from 'lucide-react'
+
 import { EventTime } from '@/components/event-time'
 import MapLayerDisplay from '@/components/map-layer-display'
 import { PlayerDisplay } from '@/components/player-display'
@@ -15,12 +17,10 @@ import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import type * as USR from '@/models/users.models'
-
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as PartsSys from '@/systems/parts.client'
 import * as UsersClient from '@/systems/users.client'
-import * as Icons from 'lucide-react'
 
 const CHANNEL_STYLES = {
 	ChatAll: { color: 'white', gradientColor: 'rgba(255, 255, 255, 0.1)' },

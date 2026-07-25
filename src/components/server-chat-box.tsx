@@ -1,3 +1,6 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { AdminReasonPicker } from '@/components/admin-reason-picker'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -12,8 +15,6 @@ import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UsersClient from '@/systems/users.client'
 import * as WarnChat from '@/systems/warn-chat.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 type Channel = 'warn-admins' | 'broadcast' | 'warn-selected'
 

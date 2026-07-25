@@ -1,3 +1,5 @@
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
 import {
 	HeadlessDialog,
@@ -16,9 +18,8 @@ import { useRefConstructor } from '@/lib/react.ts'
 import * as ZusUtils from '@/lib/zustand'
 import type * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models.ts'
-
 import { useLoggedInUser } from '@/systems/users.client'
-import React from 'react'
+
 import AppliedFiltersPanel from './applied-filters-panel.tsx'
 import LayerFilterMenu from './layer-filter-menu.tsx'
 import LayerTable, { getFullTableWidth } from './layer-table.tsx'

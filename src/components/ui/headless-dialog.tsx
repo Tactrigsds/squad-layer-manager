@@ -1,11 +1,11 @@
-import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import { CloseButton, Description, Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react'
-
 import { Cross2Icon } from '@radix-ui/react-icons'
 import * as React from 'react'
 
 import { useIsMobile } from '@/hooks/use-is-mobile'
 import { cn } from '@/lib/utils'
+import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
+
 import { DraggableWindowOutlet } from './draggable-window'
 
 interface DialogProps {

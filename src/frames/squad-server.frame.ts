@@ -1,3 +1,5 @@
+import * as Rx from 'rxjs'
+
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
@@ -6,7 +8,6 @@ import type * as FRM from '@/lib/frame'
 import * as ODSM from '@/lib/odsm'
 import * as RSel from '@/lib/reselect'
 import * as ZusUtils from '@/lib/zustand'
-
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import type * as MH from '@/models/match-history.models'
@@ -21,7 +22,6 @@ import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as VoteClient from '@/systems/vote.client'
-import * as Rx from 'rxjs'
 
 import { frameManager } from './frame-manager'
 

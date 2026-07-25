@@ -1,12 +1,13 @@
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+
 import * as Paths from '$root/paths'
 import { LandingDocument } from '@/components/landing-pages'
 import * as Env from '@/server/env.ts'
 import { initModule } from '@/server/logger'
 import * as Discord from '@/systems/discord.server'
-import * as fs from 'node:fs'
-import * as path from 'node:path'
-import { createElement } from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
 
 // Static, no-JS pages served outside the SPA: the login landing at '/' and the 403 shown to authenticated users
 // who lack site access. Authored as React components (landing-pages.tsx), rendered to a string once at setup()

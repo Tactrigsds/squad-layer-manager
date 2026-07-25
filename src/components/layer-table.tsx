@@ -1,3 +1,12 @@
+import type { Column, ColumnDef, Row, VisibilityState } from '@tanstack/react-table'
+import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
+import type { Table as CoreTable } from '@tanstack/table-core'
+import * as Icons from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-react'
+import React from 'react'
+import { flushSync } from 'react-dom'
+import * as Zus from 'zustand'
+
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Button } from '@/components/ui/button'
@@ -21,16 +30,8 @@ import * as LQY from '@/models/layer-queries.models.ts'
 import * as GlobalSettings from '@/systems/client-only-settings.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as RbacClient from '@/systems/rbac.client'
-import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 
-import type { Column, ColumnDef, Row, VisibilityState } from '@tanstack/react-table'
-import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
-import type { Table as CoreTable } from '@tanstack/table-core'
-import * as Icons from 'lucide-react'
-import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-react'
-import React from 'react'
-import { flushSync } from 'react-dom'
-import * as Zus from 'zustand'
+import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
 import { MultiLayerSetDialog } from './multi-layer-set-dialog'
@@ -42,9 +43,10 @@ import { Separator } from './ui/separator'
 import { Switch } from './ui/switch'
 
 export type { PostProcessedLayer } from '@/systems/layer-queries.shared'
+import type { CheckedState } from '@radix-ui/react-checkbox'
+
 import { orUndef } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import type { CheckedState } from '@radix-ui/react-checkbox'
 
 const columnHelper = createColumnHelper<LayerQueriesClient.RowData>()
 

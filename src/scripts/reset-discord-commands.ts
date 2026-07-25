@@ -1,6 +1,7 @@
-import * as Cli from '@/systems/cli.server'
 import * as D from 'discord.js'
 import dotenv from 'dotenv'
+
+import * as Cli from '@/systems/cli.server'
 
 // Clears every application command registered for the SLM Discord app, both the home-guild-scoped
 // commands and any global ones. The app re-registers its guild commands on the next boot (see

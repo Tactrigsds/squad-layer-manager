@@ -1,5 +1,6 @@
-import * as AAR from '@/models/admin-action-reasons.models'
 import { describe, expect, it } from 'vitest'
+
+import * as AAR from '@/models/admin-action-reasons.models'
 
 function reason(label: string, opts: Partial<AAR.AdminActionReason> = {}): AAR.AdminActionReason {
 	return { label, keywords: [label.toLowerCase()], actionTexts: { warn: `${label} warn text` }, ...opts }

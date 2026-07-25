@@ -1,8 +1,9 @@
+import { z } from 'zod'
+
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import type * as BAL from '@/models/balance-triggers.models'
 import type * as LL from '@/models/layer-list.models'
 import type * as SM from '@/models/squad.models'
-import { z } from 'zod'
 
 import { assertNever, isNullOrUndef } from '../lib/type-guards'
 import * as L from './layer'

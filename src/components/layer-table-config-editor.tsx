@@ -1,3 +1,7 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+import type * as Rx from 'rxjs'
+
 import ComboBox from '@/components/combo-box/combo-box'
 import { Comparison } from '@/components/filter-card'
 import { Button } from '@/components/ui/button'
@@ -10,9 +14,6 @@ import type * as LQY from '@/models/layer-queries.models'
 import { LAYERS_QUERY_SORT_DIRECTION } from '@/models/layer-queries.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as DndKit from '@/systems/dndkit.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
-import type * as Rx from 'rxjs'
 
 type LayerTableConfig = LQY.LayerTableConfig
 

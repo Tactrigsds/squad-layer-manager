@@ -1,12 +1,14 @@
+import { ContextMenu } from '@radix-ui/react-context-menu'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { MatchTeamDisplay } from '@/components/teams-display'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { cn } from '@/lib/utils'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import { usePlayerGroupColor } from '@/systems/battlemetrics.client'
-import { ContextMenu } from '@radix-ui/react-context-menu'
-import * as Icons from 'lucide-react'
-import React from 'react'
+
 import PlayerContextMenuOptions from './player-context-menu-options'
 import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
 import { ContextMenuContent, ContextMenuTrigger } from './ui/context-menu'

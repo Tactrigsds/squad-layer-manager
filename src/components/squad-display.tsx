@@ -1,8 +1,10 @@
+import React from 'react'
+
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { cn } from '@/lib/utils'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import type * as SM from '@/models/squad.models'
-import React from 'react'
+
 import SquadContextMenuOptions from './squad-context-menu-options'
 import type { SquadDetailsWindowProps } from './squad-details-window.helpers'
 import { MatchTeamDisplay } from './teams-display'

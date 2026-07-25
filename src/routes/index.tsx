@@ -1,6 +1,7 @@
+import { createFileRoute, Navigate } from '@tanstack/react-router'
+
 import * as ZusUtils from '@/lib/zustand'
 import * as SquadServerClient from '@/systems/squad-server.client'
-import { createFileRoute, Navigate } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/')({
 	component: RouteComponent,

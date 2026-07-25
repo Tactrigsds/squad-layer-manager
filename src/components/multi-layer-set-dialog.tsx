@@ -1,8 +1,9 @@
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import * as L from '@/models/layer'
-import React from 'react'
 
 export type MultiLayerSetDialogProps = {
 	onSubmit: (layers: L.UnvalidatedLayer[]) => void

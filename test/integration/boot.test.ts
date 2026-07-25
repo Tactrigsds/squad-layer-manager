@@ -1,6 +1,8 @@
-import { makePlayer } from '@/emulator'
 import * as fs from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+import { makePlayer } from '@/emulator'
+
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 
 // First end-to-end milestone: the real app boots against the emulated squad server, holds an

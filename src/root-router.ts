@@ -1,6 +1,8 @@
-import { RouteErrorComponent, RoutePendingComponent } from '@/components/state-boundary'
 import * as TSR from '@tanstack/react-router'
 import * as Rx from 'rxjs'
+
+import { RouteErrorComponent, RoutePendingComponent } from '@/components/state-boundary'
+
 import { routeTree } from './routeTree.gen.ts'
 
 // Register things for typesafety

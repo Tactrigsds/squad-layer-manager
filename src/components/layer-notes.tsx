@@ -1,3 +1,6 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { RichText } from '@/components/rich-text'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -11,8 +14,6 @@ import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
 import * as UsersClient from '@/systems/users.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 // Freeform notes on a queue item, rendered `<author>: <text>` beside the item's tags. A note belongs to its author:
 // anyone else needs queue:manage-all-notes to touch it (the server enforces the same rule).

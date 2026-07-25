@@ -1,5 +1,6 @@
-import * as Obj from '@/lib/object'
 import { createSelectorCreator, weakMapMemoize } from 'reselect'
+
+import * as Obj from '@/lib/object'
 
 // Module-level memoized selectors for zustand stores (see selector-pattern.md).
 //

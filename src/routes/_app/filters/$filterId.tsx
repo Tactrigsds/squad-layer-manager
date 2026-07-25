@@ -1,3 +1,7 @@
+import { createFileRoute } from '@tanstack/react-router'
+import React from 'react'
+import * as Rx from 'rxjs'
+
 import { FilterEdit } from '@/components/filter-edit'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { frameManager } from '@/frames/frame-manager'
@@ -9,9 +13,6 @@ import { rootRouter } from '@/root-router'
 import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as UsersClient from '@/systems/users.client'
-import { createFileRoute } from '@tanstack/react-router'
-import React from 'react'
-import * as Rx from 'rxjs'
 
 // editor frames minted by the loader, per filter id. Each loader run creates a fresh instance (and a post-save
 // router.invalidate() re-runs the loader), so several can accumulate before the route is left; onLeave sweeps them.

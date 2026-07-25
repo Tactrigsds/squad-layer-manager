@@ -1,15 +1,15 @@
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import * as DH from '@/lib/display-helpers.ts'
-
 import * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as DH from '@/lib/display-helpers.ts'
 import * as ZusUtils from '@/lib/zustand'
 import { BROADCASTS } from '@/messages.ts'
 import type * as L from '@/models/layer'
 import * as V from '@/models/vote.models.ts'
-import React from 'react'
 
 export type AdvancedVoteConfigEditorProps = {
 	// vote defaults are per-server, so the editor needs the server whose defaults it is filling in

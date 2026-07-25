@@ -1,5 +1,6 @@
 import { createCipheriv, randomBytes } from 'node:crypto'
 import { beforeAll, describe, expect, it } from 'vitest'
+
 import * as Env from './env.ts'
 import type * as SecretBoxModule from './secret-box.server.ts'
 

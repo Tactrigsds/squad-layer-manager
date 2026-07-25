@@ -1,10 +1,13 @@
+import { Mutex } from 'async-mutex'
+import type { MutexInterface } from 'async-mutex'
+import * as Rx from 'rxjs'
+import { z } from 'zod'
+
 import * as Arr from '@/lib/array'
 import { isAbortError, sleep, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { withThrownAsync } from '@/lib/error'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as MapUtils from '@/lib/map'
-import * as ATTRS from '@/models/otel-attrs'
-
 import * as ODSM from '@/lib/odsm'
 import { assertNever } from '@/lib/type-guards'
 import { WARNS } from '@/messages'
@@ -12,11 +15,11 @@ import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
+import * as ATTRS from '@/models/otel-attrs'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswaps.models'
-
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
@@ -29,11 +32,6 @@ import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as UserPresenceSys from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
-
-import { Mutex } from 'async-mutex'
-import type { MutexInterface } from 'async-mutex'
-import * as Rx from 'rxjs'
-import { z } from 'zod'
 
 export const module = initModule('teamswaps')
 

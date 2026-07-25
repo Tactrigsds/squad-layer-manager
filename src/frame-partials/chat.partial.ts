@@ -1,3 +1,5 @@
+import * as Rx from 'rxjs'
+
 import type * as FRM from '@/lib/frame'
 import * as RSel from '@/lib/reselect'
 import * as ZusUtils from '@/lib/zustand'
@@ -7,7 +9,6 @@ import * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SettingsClient from '@/systems/settings.client'
-import * as Rx from 'rxjs'
 
 export type ChatSlice = {
 	serverId: string

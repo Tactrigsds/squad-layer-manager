@@ -1,5 +1,7 @@
-import * as FB from '@/models/filter-builders'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+import * as FB from '@/models/filter-builders'
+
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, queue } from '../harness/arrange'
 

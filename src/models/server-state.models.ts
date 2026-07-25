@@ -1,9 +1,10 @@
+import { z } from 'zod'
+
 import * as BB from '@/models/backburner.models'
 import * as LL from '@/models/layer-list.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as TSW from '@/models/teamswaps.models'
 import type * as USR from '@/models/users.models'
-import { z } from 'zod'
 
 export const ServerIdSchema = z.string().min(1).max(256)
 export type ServerId = z.infer<typeof ServerIdSchema>

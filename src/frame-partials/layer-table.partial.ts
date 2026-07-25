@@ -1,3 +1,8 @@
+import type { OnChangeFn, PaginationState, RowSelectionState, VisibilityState } from '@tanstack/react-table'
+import type * as Im from 'immer'
+import React from 'react'
+import * as Rx from 'rxjs'
+
 import type * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial.ts'
 import * as Arr from '@/lib/array'
 import { distinctDeepEquals, traceTag } from '@/lib/async'
@@ -9,10 +14,6 @@ import type * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
-import type { OnChangeFn, PaginationState, RowSelectionState, VisibilityState } from '@tanstack/react-table'
-import type * as Im from 'immer'
-import React from 'react'
-import * as Rx from 'rxjs'
 
 export type { PostProcessedLayer } from '@/systems/layer-queries.shared'
 

@@ -1,3 +1,8 @@
+import * as Im from 'immer'
+import * as React from 'react'
+import * as Rx from 'rxjs'
+import * as Zus from 'zustand'
+
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
 import { sleep } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
@@ -11,10 +16,7 @@ import * as EFB from '@/models/editable-filter-builders'
 import * as F from '@/models/filter.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
-import * as Im from 'immer'
-import * as React from 'react'
-import * as Rx from 'rxjs'
-import * as Zus from 'zustand'
+
 import { frameManager } from './frame-manager'
 
 type Input = {

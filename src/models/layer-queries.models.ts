@@ -1,11 +1,13 @@
+import type { VisibilityState } from '@tanstack/react-table'
+import { z } from 'zod'
+
 import * as Gen from '@/lib/generator'
 import * as Obj from '@/lib/object'
 import { assertNever, isNullOrUndef } from '@/lib/type-guards'
 import * as CB from '@/models/constraint-builders'
 import * as FB from '@/models/filter-builders'
 import * as V from '@/models/vote.models'
-import type { VisibilityState } from '@tanstack/react-table'
-import { z } from 'zod'
+
 import * as F from './filter.models'
 import * as L from './layer'
 import type * as LC from './layer-columns'

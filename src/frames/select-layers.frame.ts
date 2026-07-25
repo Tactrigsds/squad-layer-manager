@@ -1,3 +1,5 @@
+import * as Rx from 'rxjs'
+
 import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial'
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
@@ -16,10 +18,8 @@ import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
-
 import * as ConfigClient from '@/systems/config.client'
 
-import * as Rx from 'rxjs'
 import { frameManager } from './frame-manager'
 
 export type SelectType = 'generic' | 'indexed'

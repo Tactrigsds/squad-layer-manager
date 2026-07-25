@@ -1,3 +1,6 @@
+import * as Rx from 'rxjs'
+import { z } from 'zod'
+
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import type * as CS from '@/models/context-shared'
 import * as SC from '@/models/server-console.models'
@@ -5,8 +8,6 @@ import * as RBAC from '@/rbac.models'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as Rbac from '@/systems/rbac.server'
-import * as Rx from 'rxjs'
-import { z } from 'zod'
 
 // What each squad server is saying and being told, kept per server as a short tail. Every connection type feeds
 // this the same way, so the console reads identically whether the server is real, tunnelled through an agent, or

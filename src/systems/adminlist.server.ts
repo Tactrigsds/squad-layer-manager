@@ -1,23 +1,22 @@
-import * as Paths from '$root/paths.ts'
-import * as Arr from '@/lib/array'
-import { AsyncResource } from '@/lib/async-resource.ts'
-import * as OneToMany from '@/lib/one-to-many-map.ts'
-import * as CS from '@/models/context-shared'
-import { initModule } from '@/server/logger'
-import * as CleanupSys from '@/systems/cleanup.server'
-import * as Settings from '@/systems/settings.server'
-
-import type * as SM from '@/models/squad.models.ts'
-import * as C from '@/server/context.ts'
-
-import { isolateContext, IsolatedBehaviorSubject } from '@/lib/isolated-subject'
-import { WritableBuffer } from '@/lib/rcon/writable-buffer'
-import { withSftp } from '@/lib/sftp-file-store.ts'
-import { HumanTime } from '@/lib/zod'
 import { Client as FTPClient } from 'basic-ftp'
 import fs from 'fs'
 import path from 'path'
 import * as Rx from 'rxjs'
+
+import * as Paths from '$root/paths.ts'
+import * as Arr from '@/lib/array'
+import { AsyncResource } from '@/lib/async-resource.ts'
+import { isolateContext, IsolatedBehaviorSubject } from '@/lib/isolated-subject'
+import * as OneToMany from '@/lib/one-to-many-map.ts'
+import { WritableBuffer } from '@/lib/rcon/writable-buffer'
+import { withSftp } from '@/lib/sftp-file-store.ts'
+import { HumanTime } from '@/lib/zod'
+import * as CS from '@/models/context-shared'
+import type * as SM from '@/models/squad.models.ts'
+import * as C from '@/server/context.ts'
+import { initModule } from '@/server/logger'
+import * as CleanupSys from '@/systems/cleanup.server'
+import * as Settings from '@/systems/settings.server'
 
 const module = initModule('fetch-admin-lists')
 let log!: CS.Logger

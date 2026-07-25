@@ -1,5 +1,6 @@
-import type { MigrationDriver } from '@/server/migrate'
 import superjson from 'superjson'
+
+import type { MigrationDriver } from '@/server/migrate'
 
 // Renamed the "teamswitches" nomenclature to "teamswaps" throughout the app. Three persisted spots need updating:
 //  - `servers.teamswitches` (the saved-but-not-yet-executed swap queue) -> `servers.teamswaps`. A plain column

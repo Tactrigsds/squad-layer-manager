@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 import type { ServerEventPlayerAssocType } from '$root/drizzle/enums'
 import * as Arr from '@/lib/array'
 import * as Gen from '@/lib/generator'
@@ -8,7 +10,6 @@ import { applyEventTeamMutations } from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
 import * as SM from '@/models/squad.models'
 import { baseLogger } from '@/systems/logger.client'
-import { z } from 'zod'
 
 export type PlayerRef = string
 

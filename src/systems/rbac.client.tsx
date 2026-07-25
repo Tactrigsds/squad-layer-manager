@@ -1,3 +1,6 @@
+import { useQuery } from '@tanstack/react-query'
+import * as Zus from 'zustand'
+
 import * as Obj from '@/lib/object'
 import { useStable } from '@/lib/react'
 import * as RSel from '@/lib/reselect'
@@ -7,8 +10,6 @@ import * as Messages from '@/messages'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as UsersClient from '@/systems/users.client'
-import { useQuery } from '@tanstack/react-query'
-import * as Zus from 'zustand'
 
 export function handlePermissionDenied(res: RBAC.PermissionDeniedResponse) {
 	UsersClient.invalidateLoggedInUser()

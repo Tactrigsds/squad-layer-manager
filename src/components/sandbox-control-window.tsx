@@ -1,3 +1,6 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -12,8 +15,7 @@ import * as ZusUtils from '@/lib/zustand'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SB from '@/models/sandbox.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
+
 import type { SandboxControlWindowProps } from './sandbox-control-window.helpers'
 import { SandboxAdminListPanel } from './sandbox-panels'
 import { useOpenSandboxAdminListWindow } from './sandbox-panels.helpers'

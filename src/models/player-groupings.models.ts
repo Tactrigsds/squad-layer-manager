@@ -1,7 +1,8 @@
+import { z } from 'zod'
+
 import { assertNever } from '@/lib/type-guards'
 import type * as BM from '@/models/battlemetrics.models'
 import type * as SM from '@/models/squad.models'
-import { z } from 'zod'
 
 // A rule assigns players matching one source-specific attribute to a group. Sources are independent: rules from
 // different ones sit in the same priority order and a grouping may mix them freely.

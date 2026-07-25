@@ -1,3 +1,5 @@
+import * as dateFns from 'date-fns'
+
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -7,7 +9,7 @@ import { WINDOW_ID } from '@/models/draggable-windows.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UsersClient from '@/systems/users.client'
-import * as dateFns from 'date-fns'
+
 import { CopyIdButton } from './copy-id-button'
 import type { TimeoutsWindowProps } from './timeouts-window.helpers'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'

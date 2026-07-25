@@ -1,3 +1,7 @@
+import { useMutation } from '@tanstack/react-query'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { BmFlagSelect, FlagLabel } from '@/components/bm-flag-picker'
 import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
@@ -7,9 +11,7 @@ import * as RBAC from '@/rbac.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
-import { useMutation } from '@tanstack/react-query'
-import * as Icons from 'lucide-react'
-import React from 'react'
+
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import type { MenuSlots } from './player-context-menu-options'
 import { Button } from './ui/button'

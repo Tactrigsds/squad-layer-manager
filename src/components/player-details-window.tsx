@@ -1,3 +1,8 @@
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import * as dateFns from 'date-fns'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { PlayerFlagsButton } from '@/components/bm-flag-workflows'
 import EventFilterSelect from '@/components/event-filter-select'
 import { PlayerMenuItems } from '@/components/player-context-menu-options'
@@ -16,28 +21,22 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import * as ChatPrt from '@/frame-partials/chat.partial'
-
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
 import * as BM from '@/models/battlemetrics.models'
 import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as RPC from '@/orpc.client'
 import { useOrgFlags, usePlayerGroupColor, useRefreshPlayerBmData } from '@/systems/battlemetrics.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import * as dateFns from 'date-fns'
-import * as Icons from 'lucide-react'
-import React from 'react'
+
 import { CopyIdButton } from './copy-id-button'
 import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
 import { ServerEvent } from './server-event'
-import WarnChatBox from './warn-chat-box'
-
-import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import {
 	DraggableWindowClose,
 	DraggableWindowDragBar,
@@ -47,6 +46,7 @@ import {
 } from './ui/draggable-window'
 import { Separator } from './ui/separator'
 import { Spinner } from './ui/spinner'
+import WarnChatBox from './warn-chat-box'
 
 const dropdownMenuSlots = {
 	Item: DropdownMenuItem,

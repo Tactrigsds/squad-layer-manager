@@ -1,6 +1,7 @@
+import * as Otel from '@opentelemetry/api'
+
 import * as ATTRS from '@/models/otel-attrs'
 import * as SquadServer from '@/systems/squad-server.server'
-import * as Otel from '@opentelemetry/api'
 
 // Domain gauges. Everything here is read synchronously out of in-memory slice state on the metric
 // reader's export interval, so nothing in a callback may do I/O: an rcon or db round trip here would

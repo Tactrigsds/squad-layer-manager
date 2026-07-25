@@ -1,3 +1,5 @@
+import React from 'react'
+
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
@@ -20,7 +22,7 @@ import * as TSWClient from '@/systems/teamswaps.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
-import React from 'react'
+
 import { PlayerFlagsMenuItem } from './bm-flag-workflows'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import {

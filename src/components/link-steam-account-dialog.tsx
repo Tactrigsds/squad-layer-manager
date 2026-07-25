@@ -1,11 +1,12 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/lib/toast'
 import { Steam64IdSchema } from '@/lib/zod'
 import * as UsersClient from '@/systems/users.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 // keeps a trailing empty slot so the list auto-expands as the user fills the last input
 function withTrailingBlank(ids: string[]): string[] {

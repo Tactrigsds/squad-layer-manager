@@ -1,3 +1,8 @@
+import { useMutation } from '@tanstack/react-query'
+import * as Icons from 'lucide-react'
+import React from 'react'
+import { HexColorPicker } from 'react-colorful'
+
 import { RichText } from '@/components/rich-text'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -22,10 +27,6 @@ import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
-import { useMutation } from '@tanstack/react-query'
-import * as Icons from 'lucide-react'
-import React from 'react'
-import { HexColorPicker } from 'react-colorful'
 
 // The tag row shared by the queue item, the add-layers dialog and the paste-rotation dialog. It holds tag ids only:
 // labels/colors are resolved against global settings at render, so an id whose tag has been deleted still renders

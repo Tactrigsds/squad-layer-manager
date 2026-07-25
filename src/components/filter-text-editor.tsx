@@ -1,3 +1,7 @@
+import stringifyCompact from 'json-stringify-pretty-compact'
+import React from 'react'
+import * as Rx from 'rxjs'
+
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { useDebounced } from '@/hooks/use-debounce'
 import * as CM from '@/lib/codemirror'
@@ -6,9 +10,7 @@ import { toast } from '@/lib/toast'
 import * as Typography from '@/lib/typography.ts'
 import * as ZusUtils from '@/lib/zustand'
 import * as F from '@/models/filter.models'
-import stringifyCompact from 'json-stringify-pretty-compact'
-import React from 'react'
-import * as Rx from 'rxjs'
+
 import type { FilterTextEditorProps } from './filter-text-editor.types'
 
 export default function FilterTextEditor(props: FilterTextEditorProps) {

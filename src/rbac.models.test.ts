@@ -1,5 +1,6 @@
-import * as RBAC from '@/rbac.models'
 import { describe, expect, it } from 'vitest'
+
+import * as RBAC from '@/rbac.models'
 
 function timeoutPerm(maxDurationMs: number | null, serverId: string | null = null): RBAC.Permission {
 	return RBAC.perm('squad-server:timeout-players', { serverId, maxDurationMs })
