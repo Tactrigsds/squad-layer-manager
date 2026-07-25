@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils.ts'
 import type * as F from '@/models/filter.models.ts'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
+import type * as LTag from '@/models/layer-tags.models.ts'
 import * as SETTINGS from '@/models/settings.models.ts'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as Icons from 'lucide-react'
@@ -16,6 +17,7 @@ import ComboBox from './combo-box/combo-box.tsx'
 import { ConstraintViolationIcon } from './constraint-matches-indicator.tsx'
 import EmojiDisplay from './emoji-display.tsx'
 import FilterEntitySelect, { FilterEntityLink } from './filter-entity-select.tsx'
+import { LayerTags } from './layer-tags.tsx'
 import type { PoolConfigApi } from './pool-config-panels.helpers.ts'
 import { Alert, AlertDescription } from './ui/alert.tsx'
 import { Checkbox } from './ui/checkbox.tsx'
@@ -357,10 +359,42 @@ function SecondaryFilterList({ api, config }: { api: PoolConfigApi; config: Seco
 	)
 }
 
+// Tags whose presence on a queue item silences every warning that item would otherwise raise, for the times a layer is
+// queued deliberately in spite of the pool.
+function SkipWarningsForTagsSection({ api }: { api: PoolConfigApi }) {
+	const path = ['skipWarningsForTags']
+	const tags = (api.useValue(path) as LTag.TagId[] | null) ?? []
+	return (
+		<section aria-label="Skip warnings for" className="space-y-2">
+			<span className="flex items-center gap-1">
+				<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Skip warnings for</h4>
+				<HelpTooltip label="About skipping warnings">
+					<p>
+						A queue item carrying any of these tags raises no warnings: none in the save dialog, and none in the admin reminder sent before
+						it is played.
+					</p>
+					<p>Out-of-pool layers still need the force-write permission to save, and indicators still display as usual.</p>
+				</HelpTooltip>
+			</span>
+			<div className="border rounded-md p-2">
+				<PermissionDeniedTooltip denied={api.writeDenied}>
+					<LayerTags
+						tags={tags}
+						disabled={!!api.writeDenied}
+						onAdd={(tag) => api.set(path, [...((api.getValue(path) as LTag.TagId[] | null) ?? []), tag])}
+						onRemove={(tag) => api.set(path, ((api.getValue(path) as LTag.TagId[] | null) ?? []).filter(t => t !== tag))}
+					/>
+				</PermissionDeniedTooltip>
+			</div>
+		</section>
+	)
+}
+
 export function PoolFiltersPanel({ api }: { api: PoolConfigApi }) {
 	return (
 		<div className="space-y-4">
 			<PoolFilterSection api={api} />
+			<SkipWarningsForTagsSection api={api} />
 			<div className="space-y-3">
 				<span className="flex items-center gap-1">
 					<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Secondary Filters</h4>

@@ -10,6 +10,7 @@ import * as F from './filter.models'
 import * as L from './layer'
 import type * as LC from './layer-columns'
 import * as LL from './layer-list.models'
+import type * as LTag from './layer-tags.models'
 import * as MH from './match-history.models'
 
 export const RepeatRuleFieldSchema = z.enum(['Map', 'Layer', 'Gamemode', 'Faction', 'Alliance', 'Size'])
@@ -162,7 +163,7 @@ export type SearchIdsInput = {
 	constraints?: Constraint[]
 }
 
-export type LayerItemStatusesInput = BaseQueryInput
+export type LayerItemStatusesInput = BaseQueryInput & { skipWarningsForTags?: LTag.TagId[] }
 
 export type LayerItemStatuses = {
 	present: Set<L.LayerId>
@@ -337,6 +338,7 @@ export type SingleListItem = {
 	type: 'single-list-item'
 	itemId: LL.ItemId
 	layerId: L.LayerId
+	tags?: LTag.TagId[]
 }
 
 export type VoteListItem = {
@@ -540,6 +542,7 @@ export function getItemForLayerListItem(item: LL.Item): LayerItem {
 				type: 'single-list-item',
 				itemId: choice.itemId,
 				layerId: choice.layerId,
+				tags: choice.tags,
 			})),
 		}
 	}
@@ -547,7 +550,16 @@ export function getItemForLayerListItem(item: LL.Item): LayerItem {
 		type: 'single-list-item',
 		itemId: item.itemId,
 		layerId: item.layerId,
+		tags: item.tags,
 	}
+}
+
+// A vote item holds no tags of its own, so it inherits them from the choice it currently stands for -- the one whose
+// layer its warnings are about.
+export function getTags(item: LayerItem): LTag.TagId[] | undefined {
+	if (item.type === 'match-history-entry') return undefined
+	if (item.type === 'vote-list-item') return item.choices.find(choice => choice.layerId === item.layerId)?.tags
+	return item.tags
 }
 
 export function getLayerItemForMatchHistoryEntry(entry: MH.MatchDetails): LayerItem {
