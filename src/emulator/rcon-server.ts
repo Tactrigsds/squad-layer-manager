@@ -42,6 +42,9 @@ export class RconServer {
 	#conns = new Set<Conn>()
 	#commandWaiters: { pred: (cmd: ReceivedCommand) => boolean; resolve: (cmd: ReceivedCommand) => void }[] = []
 
+	// observes traffic as the server sees it: 'recv' is a command arriving from the client, 'send' is anything
+	// written back (a command response, or an unsolicited chat packet)
+
 	constructor(world: World, opts: { password: string }) {
 		this.#world = world
 		this.#password = opts.password

@@ -79,8 +79,10 @@ export type RoleAssignment =
 	| { type: 'discord-role'; discordRoleId: bigint; role: Role }
 	| { type: 'discord-user'; discordUserId: bigint; role: Role }
 	| { type: 'discord-server-member'; role: Role }
-	| { type: 'admin-list-group'; role: Role; groupId: string }
-	| { type: 'ingame-admin'; role: Role }
+	// both name the admin list they speak of: which lists a server uses is per-server, so an unqualified one could not
+	// say whether it meant this server's admins or some other server's
+	| { type: 'admin-list-group'; role: Role; listId: string; groupId: string }
+	| { type: 'ingame-admin'; role: Role; listId: string }
 
 export const ROLE_ASSIGNMENT_TYPES = ['discord-role', 'discord-user', 'discord-server-member'] as const
 {
@@ -187,6 +189,18 @@ export const PERMISSION_DEFINITION = {
 	...definePermission('squad-server:timeout-players', {
 		description: 'Kick players with a timeout barring them from rejoining, up to the granted maximum duration',
 		scope: 'timeout',
+	}),
+	...definePermission('squad-server:view-console', {
+		description: "Read the server's raw rcon traffic and unparsed log lines. This is everything the game server says, "
+			+ 'including player IPs, steam and EOS ids, admin chat and every admin action, so it discloses more than the '
+			+ 'dashboard does. Read-only: it cannot issue commands.',
+		scope: 'server',
+	}),
+
+	...definePermission('sandbox:control', {
+		description: 'Drive a sandbox server: connect and disconnect fabricated players, speak as them, end matches and inject faults. '
+			+ 'Has no effect on a server backed by a real squad server.',
+		scope: 'server',
 	}),
 
 	...definePermission('battlemetrics:write-flags', { description: 'Add or remove BattleMetrics player flags', scope: 'global' }),

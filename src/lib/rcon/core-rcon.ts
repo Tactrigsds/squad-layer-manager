@@ -129,11 +129,26 @@ export default class Rcon extends EventEmitter<Events> {
 	private autoReconnectDelay: number
 	private msgId: number
 	private responseString: { id: number; body: string }
+	// Reported from the game server's point of view, not ours: a command we write is one the server receives.
+	// The auth handshake is deliberately not reported -- it carries the rcon password.
+	//
+	// reqId is the packet id the exchange rode on, so a reader can pair a response with its command. Commands are
+	// in flight concurrently, and their responses do not necessarily come back in the order they were sent, so
+	// position in the stream does not correlate them. Absent on a packet the server pushed unprompted.
+	private onTraffic?: (dir: 'recv' | 'send', body: string, reqId?: number) => void
 
-	constructor(options: { serverId: string; transport: RconTransport; autoReconnectDelay?: number }) {
+	constructor(
+		options: {
+			serverId: string
+			transport: RconTransport
+			autoReconnectDelay?: number
+			onTraffic?: (dir: 'recv' | 'send', body: string, reqId?: number) => void
+		},
+	) {
 		super()
 		this.serverId = options.serverId
 		this.transport = options.transport
+		this.onTraffic = options.onTraffic
 		this.stream = Buffer.alloc(0)
 		this.type = { auth: 0x03, command: 0x02, response: 0x00, server: 0x01 }
 		this.soh = { size: 7, id: 0, type: this.type.response, body: '' }
@@ -269,6 +284,7 @@ export default class Rcon extends EventEmitter<Events> {
 	}
 
 	#send(body: string, id = 99): void {
+		this.onTraffic?.('recv', body, id)
 		this.#write(this.type.command, id, body)
 		this.#write(this.type.command, id + 2)
 	}
@@ -313,8 +329,10 @@ export default class Rcon extends EventEmitter<Events> {
 				log.trace(`Processing decoded packet: Size: ${packet.size}, ID: ${packet.id}, Type: ${packet.type}, Body: ${packet.body}`)
 			}
 			if (packet.type === this.type.response) this.#onResponse(packet)
-			else if (packet.type === this.type.server) this.emit('server', C.storeLinkToActiveSpan(CS.init(), 'event.emitter'), packet)
-			else if (packet.type === this.type.command) this.emit('auth')
+			else if (packet.type === this.type.server) {
+				this.onTraffic?.('send', packet.body)
+				this.emit('server', C.storeLinkToActiveSpan(CS.init(), 'event.emitter'), packet)
+			} else if (packet.type === this.type.command) this.emit('auth')
 		}
 	}
 
@@ -353,6 +371,7 @@ export default class Rcon extends EventEmitter<Events> {
 
 	#onResponse(packet: { size: number; id: number; type: number; body: string }): void {
 		if (packet.body === '') {
+			if (this.responseString.body) this.onTraffic?.('send', this.responseString.body, this.responseString.id - 2)
 			this.emit(`response${this.responseString.id - 2}`, this.responseString.body)
 			this.responseString.body = ''
 		} else if (!packet.body.includes('')) {
