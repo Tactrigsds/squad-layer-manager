@@ -5,7 +5,8 @@ import { LRUMap } from '@/lib/lru-map'
 import * as CHAT from '@/models/chat.models'
 import type * as CS from '@/models/context-shared'
 import * as SE from '@/models/server-events.models'
-import * as C from '@/server/context'
+import type * as C from '@/server/context'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 
 const module = initModule('match-events-cache')
@@ -28,7 +29,7 @@ export function initMatchEventsCacheContext(): MatchEventsCacheContext {
 	return { events: new LRUMap(MAX_CACHED_MATCHES) }
 }
 
-export const getEventsForMatches = C.spanOp(
+export const getEventsForMatches = Instr.spanOp(
 	'getEventsForMatches',
 	{ module, levels: { event: 'trace' } },
 	async (ctx: C.Db & C.MatchEventsCache & CS.AbortSignal, ..._matches: number[]) => {

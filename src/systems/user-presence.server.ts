@@ -9,7 +9,7 @@ import type * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
 import * as UP from '@/models/user-presence'
 import type * as USR from '@/models/users.models'
-import * as C from '@/server/context'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
@@ -127,7 +127,7 @@ function endsEditingDeliberately(op: UP.Op) {
 	return op.code === 'update-activity' && (op.update.code === 'clear-editing-queue' || op.update.code === 'clear-editing-layer-requests')
 }
 
-const dispatchOp = C.spanOp(
+const dispatchOp = Instr.spanOp(
 	'dispatchOp',
 	{ module, extraText: (ops) => ops.map((o) => o.code + (o.code === 'update-activity' ? ` (${o.update.code})` : '')).join(',') },
 	async (ops: UP.Op[], opts?: Omit<DispatchedOps, 'ops' | 'rejection'>) => {
@@ -323,7 +323,7 @@ export function setup() {
 
 	const cleanSub = Rx.interval(UP.DISPLAYED_AWAY_PRESENCE_WINDOW * 2)
 		.pipe(
-			C.durableSub('user-presence:clean-presence', { module }, async () => {
+			Instr.durableSub('user-presence:clean-presence', { module }, async () => {
 				const clientIdsToRemove: string[] = []
 				const presenceState = globalUserPresence.session.state.presence
 				for (const [wsClientId, presence] of Array.from(presenceState.entries())) {

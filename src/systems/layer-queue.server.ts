@@ -32,6 +32,7 @@ import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
@@ -95,7 +96,7 @@ export function initLayerQueueSlice(ctx: C.ServerSliceCleanup & C.ServerId, serv
 	return slice
 }
 
-export const setupInstance = C.spanOp(
+export const setupInstance = Instr.spanOp(
 	'setupInstance',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.vote.mtx },
 	async (ctx: C.Db & C.ServerSlice) => {
@@ -113,7 +114,7 @@ export const setupInstance = C.spanOp(
 			ctx.cleanup.push(
 				Rx.interval(ctx.serverSettings.settings.queue.adminQueueReminderInterval)
 					.pipe(
-						C.durableSub('queue-reminders', { module, levels: { event: 'info' } }, async (_, signal) => {
+						Instr.durableSub('queue-reminders', { module, levels: { event: 'info' } }, async (_, signal) => {
 							const baseCtx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
 							const serverState = await SquadServer.getServerState(baseCtx)
 							const currentMatch = await MatchHistory.getCurrentMatch(baseCtx)
@@ -199,7 +200,7 @@ export const setupInstance = C.spanOp(
 					}
 					return Rx.EMPTY
 				}),
-				C.durableSub('notify-unexpected-next-layer', { module }, async (unexpectedNextlayer, signal) => {
+				Instr.durableSub('notify-unexpected-next-layer', { module }, async (unexpectedNextlayer, signal) => {
 					const ctx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
 					const expectedNextLayer = LL.getNextLayerId(getSavedQueue(ctx))!
 					if (!expectedNextLayer) return
@@ -218,7 +219,7 @@ export const setupInstance = C.spanOp(
 			ctx.server.event$
 				.pipe(
 					Rx.filter(([ctx, event]) => event.type === 'MAP_SET'),
-					C.durableSub(
+					Instr.durableSub(
 						'sync-server-map-set',
 						{ module, mutexes: ([ctx]) => ctx.layerQueue.updateLayerMtx },
 						async ([_ctx, event], signal) => {
@@ -270,7 +271,7 @@ export const setupInstance = C.spanOp(
 			ctx.server.event$
 				.pipe(
 					Rx.filter(([ctx, event]) => event.type === 'ROUND_ENDED' && event.action?.type === 'AdminChangeLayer'),
-					C.durableSub('syncAdminChangeLayer', { module }, async ([_ctx, event], signal) => {
+					Instr.durableSub('syncAdminChangeLayer', { module }, async ([_ctx, event], signal) => {
 						const ctx = { ..._ctx, signal }
 						if (event.type !== 'ROUND_ENDED' || event.action?.type !== 'AdminChangeLayer') return
 						const external: { type: 'player'; playerId: string } | { type: 'rcon' } =
@@ -296,7 +297,7 @@ export const setupInstance = C.spanOp(
 		ctx.cleanup.push(
 			UserPresenceSys.editingAbandoned$(serverId)
 				.pipe(
-					C.durableSub('discard-abandoned-edits', { module, levels: { event: 'info' } }, async (scope, signal) => {
+					Instr.durableSub('discard-abandoned-edits', { module, levels: { event: 'info' } }, async (scope, signal) => {
 						const ctx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
 						const state = ctx.layerQueue.session.state
 						if (scope === 'queue') {
@@ -449,7 +450,7 @@ export async function saveQueueAndUpdateServer(
 
 // Draws the next queue item and applies it. Split out of handleSideEffect because a map roll defers it past that
 // transaction's commit, where it would otherwise run untraced.
-const generateAndDispatchQueueItem = C.spanOp(
+const generateAndDispatchQueueItem = Instr.spanOp(
 	'generateAndDispatchQueueItem',
 	{ module, levels: { event: 'info' } },
 	async (ctx: SideEffectCtx) => {
@@ -543,7 +544,7 @@ export async function warnShowNext(
 // matchHistory.mtx is declared here (rather than acquired lazily by the nested getCurrentMatch call
 // below) so that every op taking both locks takes them as one ordered set. Acquiring updateLayerMtx
 // first and matchHistory.mtx later deadlocks against onNewGameDuringRoll, which takes them together.
-export const syncNextLayerToServer = C.spanOp(
+export const syncNextLayerToServer = Instr.spanOp(
 	'syncNextLayerToServer',
 	{ module, mutexes: (ctx) => [ctx.layerQueue.updateLayerMtx, ctx.matchHistory.mtx] },
 	async (
@@ -993,7 +994,7 @@ function getForceWriteCandidateLayerIds(state: SLL.State, op: SLL.Operation): L.
 	}
 }
 
-export const dispatchOp = C.spanOp(
+export const dispatchOp = Instr.spanOp(
 	'dispatchOp',
 	{
 		module,
@@ -1027,7 +1028,7 @@ export const dispatchOp = C.spanOp(
 	},
 )
 
-const handleSideEffect = C.spanOp(
+const handleSideEffect = Instr.spanOp(
 	'handleSideEffect',
 	{
 		module,

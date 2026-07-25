@@ -10,10 +10,11 @@ import * as ZodUtils from '@/lib/zod-utils'
 import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
 import * as MH from '@/models/match-history.models'
-import * as C from '@/server/context'
+import type * as C from '@/server/context'
 import * as DB from '@/server/db'
 import * as DbBackup from '@/server/db-backup'
 import * as Env from '@/server/env'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
@@ -74,7 +75,7 @@ async function run() {
 //
 // Deliberately driven off what's on disk rather than a handoff file: it costs nothing, it's self-healing, and it
 // equally covers a snapshot taken by an out-of-band `pnpm db:migrate:prod` days before this boot.
-const adoptUnrecordedBackups = C.spanOp('adoptUnrecordedBackups', { module }, async (ctx: C.Db & CS.AbortSignal) => {
+const adoptUnrecordedBackups = Instr.spanOp('adoptUnrecordedBackups', { module }, async (ctx: C.Db & CS.AbortSignal) => {
 	if (!fs.existsSync(ENV.BACKUPS_DIR)) return
 	const loggedAt = await getLastBackupEventTime(ctx)
 	// only pre-migration backups: a periodic one is written by the loop below, which records its own event, so an
@@ -178,7 +179,7 @@ async function getLastBackupTime(ctx: C.Db) {
 // prunes stale event history, then snapshots the db and (if configured) ships it offsite. The prune runs first so
 // the snapshot is of the pruned db -- a backup taken before it would carry the rows we just decided to drop, which
 // would make the prune pointless the moment the backup is restored.
-export const runBackup = C.spanOp('runBackup', { module }, async (ctx: C.Db & CS.AbortSignal) => {
+export const runBackup = Instr.spanOp('runBackup', { module }, async (ctx: C.Db & CS.AbortSignal) => {
 	const startedAt = Date.now()
 	const pruned = await pruneEventHistory(ctx)
 
@@ -228,7 +229,7 @@ export const runBackup = C.spanOp('runBackup', { module }, async (ctx: C.Db & CS
 // gets its own short-lived write lock, and the loop breathes in between.
 const PRUNE_BATCH_SIZE = 5_000
 
-const pruneEventHistory = C.spanOp('pruneEventHistory', { module }, async (ctx: C.Db & CS.AbortSignal) => {
+const pruneEventHistory = Instr.spanOp('pruneEventHistory', { module }, async (ctx: C.Db & CS.AbortSignal) => {
 	const retention = ENV.EVENT_HISTORY_RETENTION_PERIOD
 	if (retention === undefined) return undefined
 
@@ -321,7 +322,7 @@ function getSftpTarget() {
 
 // returns undefined when no target is configured, false when the upload failed. An unreachable backup host is not
 // worth failing the run over: the local backup is already on disk, and the app event records that it never left.
-const uploadBackup = C.spanOp('uploadBackup', { module }, async (ctx: CS.AbortSignal, localPath: string, fileName: string) => {
+const uploadBackup = Instr.spanOp('uploadBackup', { module }, async (ctx: CS.AbortSignal, localPath: string, fileName: string) => {
 	const target = getSftpTarget()
 	if (!target) return undefined
 

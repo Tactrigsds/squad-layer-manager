@@ -16,8 +16,9 @@ import * as F from '@/models/filter.models'
 import * as ATTRS from '@/models/otel-attrs'
 import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
-import * as C from '@/server/context'
+import type * as C from '@/server/context'
 import * as DB from '@/server/db'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
@@ -30,7 +31,7 @@ const module = initModule('filter-entity')
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
 
-export const filterMutation$ = new IsolatedSubject<[C.Db & C.OtelCtx, USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>]>()
+export const filterMutation$ = new IsolatedSubject<[C.Db & Instr.OtelCtx, USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>]>()
 const ToggleFilterContributorInputSchema = z
 	.object({ filterId: F.FilterEntityIdSchema, userId: z.bigint().optional(), roleId: RBAC.UserDefinedRoleIdSchema.optional() })
 	.refine((input) => input.userId || input.roleId, {
@@ -222,7 +223,7 @@ export const filtersRouter = {
 			const res = await returnInsertErrors(ctx.db().insert(Schema.filters).values(newFilterEntity))
 			if (res.code === 'ok') {
 				filterMutation$.next([
-					C.storeLinkToActiveSpan(ctx, 'event.emitter'),
+					Instr.storeLinkToActiveSpan(ctx, 'event.emitter'),
 					{
 						type: 'add',
 						key: newFilterEntity.id,
@@ -269,7 +270,7 @@ export const filtersRouter = {
 			log.info({ [ATTRS.Filter.ID]: id, [ATTRS.Filter.OUTCOME]: res.code }, 'Updated filter %s: %s', id, res.code)
 			if (res.code === 'ok') {
 				filterMutation$.next([
-					C.storeLinkToActiveSpan(ctx, 'event.emitter'),
+					Instr.storeLinkToActiveSpan(ctx, 'event.emitter'),
 					{
 						type: 'update',
 						key: id,
@@ -356,7 +357,7 @@ export const filtersRouter = {
 				for (const userId of res.userContributorIds) Rbac.invalidateUser(userId)
 			}
 			filterMutation$.next([
-				C.storeLinkToActiveSpan(ctx, 'event.emitter'),
+				Instr.storeLinkToActiveSpan(ctx, 'event.emitter'),
 				{
 					type: 'delete',
 					key: idToDelete,
@@ -399,7 +400,7 @@ export const filtersRouter = {
 			Rbac.invalidateUser(res.filter.owner)
 			Rbac.invalidateUser(input.newOwner)
 			filterMutation$.next([
-				C.storeLinkToActiveSpan(ctx, 'event.emitter'),
+				Instr.storeLinkToActiveSpan(ctx, 'event.emitter'),
 				{
 					type: 'update',
 					key: input.filterId,

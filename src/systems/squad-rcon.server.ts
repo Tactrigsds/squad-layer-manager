@@ -9,7 +9,8 @@ import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import type * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
-import * as C from '@/server/context.ts'
+import type * as C from '@/server/context.ts'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import * as AdminList from '@/systems/adminlist.server'
 
@@ -21,7 +22,7 @@ export function setup() {
 }
 
 export type SquadRcon = {
-	rconEvent$: Rx.Observable<[C.OtelCtx, SM.RconEvents.Event]>
+	rconEvent$: Rx.Observable<[Instr.OtelCtx, SM.RconEvents.Event]>
 
 	layersStatus: AsyncResource<SM.LayerStatusRes, C.Rcon & CS.AbortSignal>
 	serverInfo: AsyncResource<SM.ServerInfoRes, C.Rcon & CS.AbortSignal>
@@ -81,9 +82,11 @@ export function initSquadRcon(
 	)
 	cleanup.push(() => teams.dispose())
 
-	const rconEventBase$ = Rx.fromEvent(rcon, 'server', (...args) => args) as unknown as Rx.Observable<[CS.Log & C.OtelCtx, DecodedPacket]>
-	const rconEvent$: Rx.Observable<[C.OtelCtx, SM.RconEvents.Event]> = rconEventBase$.pipe(
-		Rx.concatMap(([ctx, pkt]): Rx.Observable<[C.OtelCtx, SM.RconEvents.Event]> => {
+	const rconEventBase$ = Rx.fromEvent(rcon, 'server', (...args) => args) as unknown as Rx.Observable<
+		[CS.Log & Instr.OtelCtx, DecodedPacket]
+	>
+	const rconEvent$: Rx.Observable<[Instr.OtelCtx, SM.RconEvents.Event]> = rconEventBase$.pipe(
+		Rx.concatMap(([ctx, pkt]): Rx.Observable<[Instr.OtelCtx, SM.RconEvents.Event]> => {
 			log.info('RCON PACKET: %s', pkt.body)
 			const [event, err] = matchLog(pkt.body, SM.RCON_EVENT_MATCHERS)
 			if (err) {
@@ -369,7 +372,7 @@ export async function warn(ctx: C.SquadRcon & CS.AbortSignal, ids: SM.PlayerIds.
 	}
 }
 
-export const warnAll = C.spanOp(
+export const warnAll = Instr.spanOp(
 	'warnAll',
 	{ module, levels: { event: 'info' } },
 	async (ctx: C.SquadRcon & CS.AbortSignal, players: SM.PlayerIds.EosIdQueryOrPlayerId[], options: WarnOptions) => {
@@ -382,7 +385,7 @@ export const warnAll = C.spanOp(
 	},
 )
 
-export const warnAllAdmins = C.spanOp(
+export const warnAllAdmins = Instr.spanOp(
 	'warnAllAdmins',
 	{ module, levels: { event: 'info' } },
 	async (ctx: C.SquadRcon & CS.AbortSignal, options: WarnOptions, excludeSteamIds?: Set<string>) => {
@@ -427,26 +430,30 @@ export async function getServerInfo(ctx: C.Rcon & CS.AbortSignal): Promise<SM.Se
 	}
 }
 
-export const getLayerStatus = C.spanOp('getLayerStatus', { module }, async (ctx: C.Rcon & CS.AbortSignal): Promise<SM.LayerStatusRes> => {
-	const currentLayerTask = getCurrentLayer(ctx)
-	const nextLayerTask = getNextLayer(ctx)
-	const currentLayerRes = await currentLayerTask
-	const nextLayerRes = await nextLayerTask
-	if (currentLayerRes.code !== 'ok') return currentLayerRes
-	if (nextLayerRes.code !== 'ok') return nextLayerRes
+export const getLayerStatus = Instr.spanOp(
+	'getLayerStatus',
+	{ module },
+	async (ctx: C.Rcon & CS.AbortSignal): Promise<SM.LayerStatusRes> => {
+		const currentLayerTask = getCurrentLayer(ctx)
+		const nextLayerTask = getNextLayer(ctx)
+		const currentLayerRes = await currentLayerTask
+		const nextLayerRes = await nextLayerTask
+		if (currentLayerRes.code !== 'ok') return currentLayerRes
+		if (nextLayerRes.code !== 'ok') return nextLayerRes
 
-	const serverStatus: SM.LayersStatus = {
-		currentLayer: currentLayerRes.layer,
-		nextLayer: nextLayerRes.layer,
-	}
+		const serverStatus: SM.LayersStatus = {
+			currentLayer: currentLayerRes.layer,
+			nextLayer: nextLayerRes.layer,
+		}
 
-	return {
-		code: 'ok' as const,
-		data: serverStatus,
-	}
-})
+		return {
+			code: 'ok' as const,
+			data: serverStatus,
+		}
+	},
+)
 
-export const setNextLayer = C.spanOp(
+export const setNextLayer = Instr.spanOp(
 	'setNextLayer',
 	{ module },
 	async (ctx: C.SquadRcon & CS.AbortSignal, layer: L.LayerId | L.UnvalidatedLayer) => {
