@@ -19,7 +19,7 @@ export default function VoteTallyDisplay({ voteState, voteItem, playerCount, ser
 	const options = Array.from(tally.totals)
 		.map(([itemId, voteCount]) => {
 			const index = voteState.choiceIds.findIndex((id) => id === itemId)
-			const choice = voteItem.choices.find(c => c.itemId === itemId)
+			const choice = voteItem.choices.find((c) => c.itemId === itemId)
 			return {
 				id: itemId,
 				index,

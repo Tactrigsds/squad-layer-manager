@@ -21,12 +21,15 @@ interface SquadDisplayProps {
 	stores: SquadServerFrame.KeyProp
 }
 
-function SquadButton(
-	{ label, ref, className, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-		label: string
-		ref?: React.Ref<HTMLButtonElement>
-	},
-) {
+function SquadButton({
+	label,
+	ref,
+	className,
+	...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+	label: string
+	ref?: React.Ref<HTMLButtonElement>
+}) {
 	return (
 		<button ref={ref} type="button" className={cn('hover:underline cursor-pointer', className)} {...props}>
 			{label}
@@ -36,13 +39,11 @@ function SquadButton(
 
 export function SquadDisplay({ squad, matchId, className, showName = true, showTeam = false, showMenu = true, stores }: SquadDisplayProps) {
 	const isDefaultName = squad.squadName === `Squad ${squad.squadId}`
-	const label = isDefaultName
-		? `Squad ${squad.squadId}`
-		: `Squad ${squad.squadId}${showName ? ` "${squad.squadName}"` : ''}`
+	const label = isDefaultName ? `Squad ${squad.squadId}` : `Squad ${squad.squadId}${showName ? ` "${squad.squadName}"` : ''}`
 	const labelClass = isDefaultName ? 'font-bold' : 'font-bold'
 
-	const squadLabel = squad.uniqueId !== undefined
-		? (
+	const squadLabel =
+		squad.uniqueId !== undefined ? (
 			<OpenWindowInteraction
 				windowId={WINDOW_ID.enum['squad-details']}
 				windowProps={{ uniqueSquadId: squad.uniqueId, stores } satisfies SquadDetailsWindowProps}
@@ -51,19 +52,20 @@ export function SquadDisplay({ squad, matchId, className, showName = true, showT
 				label={label}
 				className={labelClass}
 			/>
+		) : (
+			<span className={labelClass}>{label}</span>
 		)
-		: <span className={labelClass}>{label}</span>
 
-	const labelWithMenu = showMenu
-		? (
-			<ContextMenu>
-				<ContextMenuTrigger>{squadLabel}</ContextMenuTrigger>
-				<ContextMenuContent>
-					<SquadContextMenuOptions squad={squad} stores={stores} />
-				</ContextMenuContent>
-			</ContextMenu>
-		)
-		: squadLabel
+	const labelWithMenu = showMenu ? (
+		<ContextMenu>
+			<ContextMenuTrigger>{squadLabel}</ContextMenuTrigger>
+			<ContextMenuContent>
+				<SquadContextMenuOptions squad={squad} stores={stores} />
+			</ContextMenuContent>
+		</ContextMenu>
+	) : (
+		squadLabel
+	)
 
 	return (
 		<span className={cn('inline-flex flex-nowrap items-center gap-1', className)}>

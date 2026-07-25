@@ -5,7 +5,14 @@ import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Badge } from '@/components/ui/badge.tsx'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { ContextMenu, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
+import {
+	ContextMenu,
+	ContextMenuContent,
+	ContextMenuGroup,
+	ContextMenuItem,
+	ContextMenuSeparator,
+	ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -62,59 +69,65 @@ import { Timer } from './timer.tsx'
 import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator } from './ui/dropdown-menu.tsx'
 import TabsList from './ui/tabs-list.tsx'
 
-export function LayerList(
-	props: { stores: SquadServerFrame.KeyProp },
-) {
-	const queueItemIds = ZusUtils.useStore(
-		props.stores.squadServer,
-		LayerQueuePrt.Sel.queueItemIds,
-	)
+export function LayerList(props: { stores: SquadServerFrame.KeyProp }) {
+	const queueItemIds = ZusUtils.useStore(props.stores.squadServer, LayerQueuePrt.Sel.queueItemIds)
 	const serverId = props.stores.squadServer.serverId
 
 	// -------- dispatch move events --------
-	DndKit.useDragEnd(React.useCallback(async (event) => {
-		const user = UsersClient.loggedInUser
-		const upState = ZusUtils.getState(UPClient.Store)
-		if (!user || !event.over) return
-		if (!UPClient.Sel.isEditing(user.discordId)(upState)) return
-		const target = event.over.slots[0]
-		if (target.dragItem.type !== 'layer-item') return
-		const cursors = LL.dropItemToLLItemCursors(event.over)
-		if (cursors.length === 0) return
-		const voteState = VotesClient.voteState$(serverId).getValue()
-		const layerList = LayerQueuePrt.Sel.layerList(ZusUtils.getState(props.stores.squadServer))
-		if (voteState?.code === 'in-progress') {
-			for (const cursor of cursors) {
-				if (LL.isChildItem(cursor.itemId, voteState.itemId, layerList)) return
-			}
-		}
+	DndKit.useDragEnd(
+		React.useCallback(
+			async (event) => {
+				const user = UsersClient.loggedInUser
+				const upState = ZusUtils.getState(UPClient.Store)
+				if (!user || !event.over) return
+				if (!UPClient.Sel.isEditing(user.discordId)(upState)) return
+				const target = event.over.slots[0]
+				if (target.dragItem.type !== 'layer-item') return
+				const cursors = LL.dropItemToLLItemCursors(event.over)
+				if (cursors.length === 0) return
+				const voteState = VotesClient.voteState$(serverId).getValue()
+				const layerList = LayerQueuePrt.Sel.layerList(ZusUtils.getState(props.stores.squadServer))
+				if (voteState?.code === 'in-progress') {
+					for (const cursor of cursors) {
+						if (LL.isChildItem(cursor.itemId, voteState.itemId, layerList)) return
+					}
+				}
 
-		const cursor = cursors[0]
+				const cursor = cursors[0]
 
-		if (event.active.type === 'history-entry') {
-			const history = await MatchHistoryClient.recentMatches$(serverId).getValue()
-			const activeId = event.active.id
-			const entry = history.find((entry) => entry.historyEntryId === activeId)
-			if (!entry) return
-			const index = LL.resolveCursorIndex(layerList, cursor)!
-			void LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer }, {
-				op: 'add',
-				items: [{ type: 'single-list-item', layerId: entry.layerId }],
-				index,
-			})
-		}
+				if (event.active.type === 'history-entry') {
+					const history = await MatchHistoryClient.recentMatches$(serverId).getValue()
+					const activeId = event.active.id
+					const entry = history.find((entry) => entry.historyEntryId === activeId)
+					if (!entry) return
+					const index = LL.resolveCursorIndex(layerList, cursor)!
+					void LayerQueuePrt.Actions.dispatch(
+						{ queue: props.stores.squadServer },
+						{
+							op: 'add',
+							items: [{ type: 'single-list-item', layerId: entry.layerId }],
+							index,
+						},
+					)
+				}
 
-		if (event.active.type === 'layer-item') {
-			void LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer }, {
-				op: 'move',
-				cursor: cursor,
-				itemId: event.active.id,
-				newFirstItemId: LL.createItemId(),
-			})
-		}
-	}, [props.stores.squadServer, serverId]))
+				if (event.active.type === 'layer-item') {
+					void LayerQueuePrt.Actions.dispatch(
+						{ queue: props.stores.squadServer },
+						{
+							op: 'move',
+							cursor: cursor,
+							itemId: event.active.id,
+							newFirstItemId: LL.createItemId(),
+						},
+					)
+				}
+			},
+			[props.stores.squadServer, serverId],
+		),
+	)
 
-	DndKit.useDraggingCallback(item => {
+	DndKit.useDraggingCallback((item) => {
 		if (!item) {
 			UPClient.Actions.updateActivity({ code: 'set-editing-queue-idle-if', currentIds: ['MOVING_ITEM', 'ADDING_ITEM_FROM_HISTORY'] })
 			return
@@ -135,11 +148,7 @@ export function LayerList(
 		<>
 			<ul className="flex w-full flex-col">
 				{queueItemIds.map((id) => (
-					<LayerListItem
-						key={id}
-						itemId={id}
-						stores={props.stores}
-					/>
+					<LayerListItem key={id} itemId={id} stores={props.stores} />
 				))}
 			</ul>
 			<LoadedActivitiesRenderer stores={props.stores} />
@@ -153,31 +162,13 @@ function LoadedActivitiesRenderer({ stores }: { stores: SquadServerFrame.KeyProp
 		<>
 			{loadedActivities.map((entry) => {
 				if (entry.name === 'selectLayers') {
-					return (
-						<LoadedSelectLayersView
-							key={entry.data.selectLayersFrame.instanceId}
-							stores={stores}
-							entry={entry}
-						/>
-					)
+					return <LoadedSelectLayersView key={entry.data.selectLayersFrame.instanceId} stores={stores} entry={entry} />
 				}
 				if (entry.name === 'genVote') {
-					return (
-						<LoadedGenVoteView
-							key={entry.data.genVoteFrame.instanceId}
-							stores={stores}
-							entry={entry}
-						/>
-					)
+					return <LoadedGenVoteView key={entry.data.genVoteFrame.instanceId} stores={stores} entry={entry} />
 				}
 				if (entry.name === 'pasteRotation') {
-					return (
-						<LoadedPasteRotation
-							key="paste-rotation"
-							stores={stores}
-							entry={entry}
-						/>
-					)
+					return <LoadedPasteRotation key="paste-rotation" stores={stores} entry={entry} />
 				}
 				assertNever(entry)
 			})}
@@ -201,9 +192,12 @@ function LoadedSelectLayersView({
 		return { next, after }
 	}, [])
 
-	const setPosition = React.useCallback((newPosition: AddLayersPosition) => {
-		SelectLayersFrame.Actions.setCursor({ selectLayers: entry.data.selectLayersFrame }, positionCursors[newPosition])
-	}, [entry.data.selectLayersFrame, positionCursors])
+	const setPosition = React.useCallback(
+		(newPosition: AddLayersPosition) => {
+			SelectLayersFrame.Actions.setCursor({ selectLayers: entry.data.selectLayersFrame }, positionCursors[newPosition])
+		},
+		[entry.data.selectLayersFrame, positionCursors],
+	)
 
 	const addLayersAtPosition = ZusUtils.useStore(
 		entry.data.selectLayersFrame,
@@ -218,30 +212,42 @@ function LoadedSelectLayersView({
 
 	const [pendingTags, setPendingTags] = React.useState<LTag.TagId[]>([])
 
-	const onAddItems = React.useCallback((items: LL.NewItem[]) => {
-		if (activity.id !== 'ADDING_ITEM') return
-		const layerList = LayerQueuePrt.Sel.layerList(ZusUtils.getState(stores.squadServer))
-		let cursor = ZusUtils.getState(entry.data.selectLayersFrame).cursor
-		let index: LL.ItemIndex
-		const defaultIndex = { outerIndex: 0, innerIndex: null }
-		if (cursor) index = LL.resolveCursorIndex(layerList, cursor) ?? defaultIndex
-		else index = defaultIndex
-		void LayerQueuePrt.Actions.dispatch({ queue: stores.squadServer }, {
-			op: 'add',
-			items: LL.withTags(items, pendingTags),
-			index,
-		})
-	}, [activity.id, stores.squadServer, entry.data.selectLayersFrame, pendingTags])
+	const onAddItems = React.useCallback(
+		(items: LL.NewItem[]) => {
+			if (activity.id !== 'ADDING_ITEM') return
+			const layerList = LayerQueuePrt.Sel.layerList(ZusUtils.getState(stores.squadServer))
+			let cursor = ZusUtils.getState(entry.data.selectLayersFrame).cursor
+			let index: LL.ItemIndex
+			const defaultIndex = { outerIndex: 0, innerIndex: null }
+			if (cursor) index = LL.resolveCursorIndex(layerList, cursor) ?? defaultIndex
+			else index = defaultIndex
+			void LayerQueuePrt.Actions.dispatch(
+				{ queue: stores.squadServer },
+				{
+					op: 'add',
+					items: LL.withTags(items, pendingTags),
+					index,
+				},
+			)
+		},
+		[activity.id, stores.squadServer, entry.data.selectLayersFrame, pendingTags],
+	)
 
-	const onEditedLayer = React.useCallback((layerId: L.LayerId) => {
-		if (activity.id !== 'EDITING_ITEM') return
-		const itemId = activity.opts.itemId
-		void LayerQueuePrt.Actions.dispatch({ queue: stores.squadServer }, {
-			op: 'edit-layer',
-			itemId,
-			newLayerId: layerId,
-		})
-	}, [activity.id, activity.opts, stores.squadServer])
+	const onEditedLayer = React.useCallback(
+		(layerId: L.LayerId) => {
+			if (activity.id !== 'EDITING_ITEM') return
+			const itemId = activity.opts.itemId
+			void LayerQueuePrt.Actions.dispatch(
+				{ queue: stores.squadServer },
+				{
+					op: 'edit-layer',
+					itemId,
+					newLayerId: layerId,
+				},
+			)
+		},
+		[activity.id, activity.opts, stores.squadServer],
+	)
 
 	const onSelectLayersChange = React.useCallback((open: boolean) => {
 		if (open) return
@@ -253,25 +259,23 @@ function LoadedSelectLayersView({
 		squadServer: stores.squadServer,
 	}
 
-	const addLayersTabsList = React.useMemo(() => (
-		<TabsList
-			options={[
-				{ label: 'Play Next', value: 'next' },
-				{ label: 'Play After', value: 'after' },
-			]}
-			active={addLayersAtPosition}
-			setActive={setPosition}
-		/>
-	), [addLayersAtPosition, setPosition])
+	const addLayersTabsList = React.useMemo(
+		() => (
+			<TabsList
+				options={[
+					{ label: 'Play Next', value: 'next' },
+					{ label: 'Play After', value: 'after' },
+				]}
+				active={addLayersAtPosition}
+				setActive={setPosition}
+			/>
+		),
+		[addLayersAtPosition, setPosition],
+	)
 
 	if (activity.id === 'EDITING_ITEM') {
 		return (
-			<EditLayerDialog
-				stores={dialogStores}
-				open={entry.active}
-				onOpenChange={onSelectLayersChange}
-				onSelectLayer={onEditedLayer}
-			/>
+			<EditLayerDialog stores={dialogStores} open={entry.active} onOpenChange={onSelectLayersChange} onSelectLayer={onEditedLayer} />
 		)
 	} else if (activity.id === 'ADDING_ITEM') {
 		return (
@@ -285,8 +289,8 @@ function LoadedSelectLayersView({
 				footerBeforeSubmit={
 					<LayerTags
 						tags={pendingTags}
-						onAdd={(tagId) => setPendingTags(prev => [...prev, tagId])}
-						onRemove={(tagId) => setPendingTags(prev => prev.filter(id => id !== tagId))}
+						onAdd={(tagId) => setPendingTags((prev) => [...prev, tagId])}
+						onRemove={(tagId) => setPendingTags((prev) => prev.filter((id) => id !== tagId))}
 					/>
 				}
 			/>
@@ -310,45 +314,46 @@ function LoadedGenVoteView({
 		UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
 	}, [])
 
-	const dialogStores = React.useMemo(() => ({
-		genVote: data.genVoteFrame,
-		squadServer: stores.squadServer,
-	}), [data.genVoteFrame, stores.squadServer])
-
-	const onSubmit = React.useCallback((result: GenVoteFrame.Result, cursor?: LL.Cursor) => {
-		const source: LL.Source = {
-			type: 'manual',
-			userId: UsersClient.loggedInUserId!,
-		}
-
-		const item = LL.createVoteItem(result.choices, source, result.voteConfig)
-
-		const layerList = LayerQueuePrt.Sel.layerList(ZusUtils.getState(stores.squadServer))
-		let index: LL.ItemIndex
-		const defaultIndex: LL.ItemIndex = { outerIndex: 0, innerIndex: null }
-		if (cursor) {
-			index = LL.resolveCursorIndex(layerList, cursor) ?? defaultIndex
-		} else {
-			index = defaultIndex
-		}
-
-		void LayerQueuePrt.Actions.dispatch({ queue: stores.squadServer }, {
-			op: 'add',
-			index: index ?? { outerIndex: 0, innerIndex: null },
-			items: [item],
-		})
-		UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
-	}, [stores.squadServer])
-
-	return (
-		<GenVoteDialog
-			title="Generate Vote"
-			stores={dialogStores}
-			open={entry.active}
-			onOpenChange={onOpenChange}
-			onSubmit={onSubmit}
-		/>
+	const dialogStores = React.useMemo(
+		() => ({
+			genVote: data.genVoteFrame,
+			squadServer: stores.squadServer,
+		}),
+		[data.genVoteFrame, stores.squadServer],
 	)
+
+	const onSubmit = React.useCallback(
+		(result: GenVoteFrame.Result, cursor?: LL.Cursor) => {
+			const source: LL.Source = {
+				type: 'manual',
+				userId: UsersClient.loggedInUserId!,
+			}
+
+			const item = LL.createVoteItem(result.choices, source, result.voteConfig)
+
+			const layerList = LayerQueuePrt.Sel.layerList(ZusUtils.getState(stores.squadServer))
+			let index: LL.ItemIndex
+			const defaultIndex: LL.ItemIndex = { outerIndex: 0, innerIndex: null }
+			if (cursor) {
+				index = LL.resolveCursorIndex(layerList, cursor) ?? defaultIndex
+			} else {
+				index = defaultIndex
+			}
+
+			void LayerQueuePrt.Actions.dispatch(
+				{ queue: stores.squadServer },
+				{
+					op: 'add',
+					index: index ?? { outerIndex: 0, innerIndex: null },
+					items: [item],
+				},
+			)
+			UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
+		},
+		[stores.squadServer],
+	)
+
+	return <GenVoteDialog title="Generate Vote" stores={dialogStores} open={entry.active} onOpenChange={onOpenChange} onSubmit={onSubmit} />
 }
 
 function LoadedPasteRotation({
@@ -367,29 +372,41 @@ function LoadedPasteRotation({
 		UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
 	}, [])
 
-	const onSubmit = React.useCallback((layers: L.UnvalidatedLayer[]) => {
-		const layerIds = layers.map(l => l.id)
-		const cursor: LL.Cursor = pastePosition === 'next' ? { type: 'start' } : { type: 'end' }
-		const layerList = LayerQueuePrt.Sel.layerList(ZusUtils.getState(stores.squadServer))
-		const index: LL.ItemIndex = LL.resolveCursorIndex(layerList, cursor) ?? { outerIndex: 0, innerIndex: null }
-		void LayerQueuePrt.Actions.dispatch({ queue: stores.squadServer }, {
-			op: 'add',
-			index,
-			items: LL.withTags(layerIds.map(layerId => ({ type: 'single-list-item', layerId })), pendingTags),
-		})
-		UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
-	}, [stores.squadServer, pastePosition, pendingTags])
+	const onSubmit = React.useCallback(
+		(layers: L.UnvalidatedLayer[]) => {
+			const layerIds = layers.map((l) => l.id)
+			const cursor: LL.Cursor = pastePosition === 'next' ? { type: 'start' } : { type: 'end' }
+			const layerList = LayerQueuePrt.Sel.layerList(ZusUtils.getState(stores.squadServer))
+			const index: LL.ItemIndex = LL.resolveCursorIndex(layerList, cursor) ?? { outerIndex: 0, innerIndex: null }
+			void LayerQueuePrt.Actions.dispatch(
+				{ queue: stores.squadServer },
+				{
+					op: 'add',
+					index,
+					items: LL.withTags(
+						layerIds.map((layerId) => ({ type: 'single-list-item', layerId })),
+						pendingTags,
+					),
+				},
+			)
+			UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
+		},
+		[stores.squadServer, pastePosition, pendingTags],
+	)
 
-	const positionTabsList = React.useMemo(() => (
-		<TabsList
-			options={[
-				{ label: 'Play Next', value: 'next' },
-				{ label: 'Play After', value: 'after' },
-			]}
-			active={pastePosition}
-			setActive={setPastePosition}
-		/>
-	), [pastePosition])
+	const positionTabsList = React.useMemo(
+		() => (
+			<TabsList
+				options={[
+					{ label: 'Play Next', value: 'next' },
+					{ label: 'Play After', value: 'after' },
+				]}
+				active={pastePosition}
+				setActive={setPastePosition}
+			/>
+		),
+		[pastePosition],
+	)
 
 	return (
 		<MultiLayerSetDialog
@@ -402,8 +419,8 @@ function LoadedPasteRotation({
 					{positionTabsList}
 					<LayerTags
 						tags={pendingTags}
-						onAdd={(tagId) => setPendingTags(prev => [...prev, tagId])}
-						onRemove={(tagId) => setPendingTags(prev => prev.filter(id => id !== tagId))}
+						onAdd={(tagId) => setPendingTags((prev) => [...prev, tagId])}
+						onRemove={(tagId) => setPendingTags((prev) => prev.filter((id) => id !== tagId))}
 					/>
 				</>
 			}
@@ -419,10 +436,7 @@ type LayerListItemProps = {
 // memoized so LayerList re-renders (e.g. queueItemIds reordering on a move) don't cascade into
 // every item's subtree -- items re-render via their own store subscriptions instead
 const LayerListItem = React.memo(function LayerListItem(props: LayerListItemProps) {
-	const entry = ZusUtils.useStore(
-		props.stores.squadServer,
-		LayerQueuePrt.Sel.itemEntry(props.itemId),
-	)
+	const entry = ZusUtils.useStore(props.stores.squadServer, LayerQueuePrt.Sel.itemEntry(props.itemId))
 	if (!entry) return null
 	if (LL.isVoteItem(entry.item)) {
 		return <VoteLayerListItem {...props} />
@@ -431,10 +445,7 @@ const LayerListItem = React.memo(function LayerListItem(props: LayerListItemProp
 })
 
 const SingleLayerListItem = React.memo(function SingleLayerListItem(props: LayerListItemProps) {
-	const parentItem = ZusUtils.useStore(
-		props.stores.squadServer,
-		(store) => LayerQueuePrt.Sel.itemEntry(props.itemId)(store)?.parentItem,
-	)
+	const parentItem = ZusUtils.useStore(props.stores.squadServer, (store) => LayerQueuePrt.Sel.itemEntry(props.itemId)(store)?.parentItem)
 
 	const [item, index, isLocallyLast, displayedMutation] = ZusUtils.useStore(
 		props.stores.squadServer,
@@ -456,8 +467,8 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 	const [itemPresence, itemActivityUser, activityHovered] = UPClient.useItemPresence(item.itemId)
 
 	const globalVoteState = VotesClient.useVoteState(props.stores.squadServer.serverId)
-	const voteState = (globalVoteState && globalVoteState?.itemId === parentItem?.itemId ? globalVoteState : undefined)
-		?? parentItem?.endingVoteState
+	const voteState =
+		(globalVoteState && globalVoteState?.itemId === parentItem?.itemId ? globalVoteState : undefined) ?? parentItem?.endingVoteState
 
 	const draggableItem = LL.layerItemToDragItem(item)
 	// 'default' (clone) not 'move': with 'move' dnd-kit drags the real element and animates it into its final
@@ -467,17 +478,23 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 
 	const itemStores = { queue: props.stores.squadServer }
 
-	const editActivity = React.useMemo(() => ({
-		_tag: 'leaf' as const,
-		id: 'EDITING_ITEM' as const,
-		opts: { itemId: item.itemId, cursor: { type: 'item-relative' as const, itemId: item.itemId, position: 'on' as const } },
-	}), [item.itemId])
+	const editActivity = React.useMemo(
+		() => ({
+			_tag: 'leaf' as const,
+			id: 'EDITING_ITEM' as const,
+			opts: { itemId: item.itemId, cursor: { type: 'item-relative' as const, itemId: item.itemId, position: 'on' as const } },
+		}),
+		[item.itemId],
+	)
 
 	const [dropdownOpen, _setDropdownOpen] = React.useState(false)
-	const setDropdownOpen: React.Dispatch<React.SetStateAction<boolean>> = React.useCallback((update) => {
-		if (!canEdit) _setDropdownOpen(false)
-		_setDropdownOpen(update)
-	}, [canEdit, _setDropdownOpen])
+	const setDropdownOpen: React.Dispatch<React.SetStateAction<boolean>> = React.useCallback(
+		(update) => {
+			if (!canEdit) _setDropdownOpen(false)
+			_setDropdownOpen(update)
+		},
+		[canEdit, _setDropdownOpen],
+	)
 
 	const isMobile = useIsMobile()
 
@@ -510,13 +527,12 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 
 	const layersStatus = resToOptional(SquadServerClient.useLayersStatus(props.stores.squadServer.serverId))?.data
 	const serverInfo = SquadServerClient.useServerInfo(props.stores.squadServer.serverId)
-	const tally = voteState && V.isVoteStateWithVoteData(voteState) && serverInfo
-		? V.tallyVotes(voteState, serverInfo.playerCount)
-		: undefined
+	const tally =
+		voteState && V.isVoteStateWithVoteData(voteState) && serverInfo ? V.tallyVotes(voteState, serverInfo.playerCount) : undefined
 
-	const itemChoiceTallyPercentage = (isVoteChoice && voteState) ? tally?.percentages?.get(item.itemId) : undefined
+	const itemChoiceTallyPercentage = isVoteChoice && voteState ? tally?.percentages?.get(item.itemId) : undefined
 	const isVoteWinner = isVoteChoice && voteState?.code === 'ended:winner' && voteState?.winnerId === item.itemId
-	const voteCount = (isVoteChoice && voteState) ? tally?.totals?.get(item.itemId) : undefined
+	const voteCount = isVoteChoice && voteState ? tally?.totals?.get(item.itemId) : undefined
 	const nextLayerId = ZusUtils.useStore(props.stores.squadServer, LayerQueuePrt.Sel.nextLayerId)
 	const isFirstQueuedLayer = index.innerIndex === 0 && nextLayerId === item.layerId
 	const viewingQueue = UPClient.useActivityMatch(UP.Trans.viewingQueue(props.stores.squadServer.serverId).match)
@@ -537,8 +553,11 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 	}
 
 	if (
-		!isModified && layersStatus?.nextLayer && isFirstQueuedLayer && voteState?.code !== 'in-progress'
-		&& !L.areLayersCompatible(item.layerId, layersStatus.nextLayer, true)
+		!isModified &&
+		layersStatus?.nextLayer &&
+		isFirstQueuedLayer &&
+		voteState?.code !== 'in-progress' &&
+		!L.areLayersCompatible(item.layerId, layersStatus.nextLayer, true)
 	) {
 		badges.push(
 			<Tooltip key="not current next">
@@ -555,7 +574,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 
 	return (
 		<>
-			{(LL.isLocallyFirstIndex(index)) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!canEdit} />}
+			{LL.isLocallyFirstIndex(index) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!canEdit} />}
 			<ItemContextMenu stores={props.stores} itemId={props.itemId} disabled={!canEdit}>
 				<li
 					ref={dragProps.ref}
@@ -591,40 +610,53 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 							droppable={true}
 							item={{ type: 'single-list-item', layerId: item.layerId, itemId: item.itemId }}
 							badges={badges}
-							tags={item.type === 'single-list-item' && (
-								<LayerTags
-									tags={item.tags}
-									setBy={item.tagsSetBy}
-									disabled={!canEdit}
-									revealAddOnHover
-									onAdd={(tagId) => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'add-tag', tagId })}
-									onRemove={(tagId) => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'remove-tag', tagId })}
-								/>
-							)}
-							notes={item.type === 'single-list-item' && (
-								<LayerNotes
-									serverId={props.stores.squadServer.serverId}
-									notes={item.notes}
-									disabled={!canEdit}
-									revealAddOnHover
-									onAdd={(text) =>
-										LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, {
-											op: 'add-note',
-											noteId: LNote.createNoteId(),
-											text,
-										})}
-									onEdit={(noteId, text) =>
-										LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'edit-note', noteId, text })}
-									onDelete={(noteId) => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete-note', noteId })}
-								/>
-							)}
+							tags={
+								item.type === 'single-list-item' && (
+									<LayerTags
+										tags={item.tags}
+										setBy={item.tagsSetBy}
+										disabled={!canEdit}
+										revealAddOnHover
+										onAdd={(tagId) =>
+											LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'add-tag', tagId })
+										}
+										onRemove={(tagId) =>
+											LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'remove-tag', tagId })
+										}
+									/>
+								)
+							}
+							notes={
+								item.type === 'single-list-item' && (
+									<LayerNotes
+										serverId={props.stores.squadServer.serverId}
+										notes={item.notes}
+										disabled={!canEdit}
+										revealAddOnHover
+										onAdd={(text) =>
+											LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, {
+												op: 'add-note',
+												noteId: LNote.createNoteId(),
+												text,
+											})
+										}
+										onEdit={(noteId, text) =>
+											LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, {
+												op: 'edit-note',
+												noteId,
+												text,
+											})
+										}
+										onDelete={(noteId) =>
+											LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete-note', noteId })
+										}
+									/>
+								)
+							}
 						/>
 						{itemChoiceTallyPercentage !== undefined && (
 							<span className="flex space-x-1 items-center">
-								<Progress
-									value={itemChoiceTallyPercentage}
-									className={cn('h-2', isVoteWinner && '[&>div]:bg-added')}
-								/>
+								<Progress value={itemChoiceTallyPercentage} className={cn('h-2', isVoteWinner && '[&>div]:bg-added')} />
 								<span>{voteCount}</span>
 							</span>
 						)}
@@ -638,7 +670,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					<StartActivityInteraction
 						loaderName="selectLayers"
 						createActivity={UP.createEditingQueueVariant(editActivity)}
-						matchKey={key => Obj.deepEqualStrict(key, { ...editActivity, serverId: props.stores.squadServer.serverId })}
+						matchKey={(key) => Obj.deepEqualStrict(key, { ...editActivity, serverId: props.stores.squadServer.serverId })}
 						preload="viewport"
 						render={Button}
 						variant="ghost"
@@ -667,11 +699,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 						<Icons.X />
 					</Button>
 					<ItemDropdown {...dropdownProps}>
-						<Button
-							{...editButtonProps()}
-							variant="ghost"
-							size="icon"
-						>
+						<Button {...editButtonProps()} variant="ghost" size="icon">
 							<Icons.EllipsisVertical />
 						</Button>
 					</ItemDropdown>
@@ -719,11 +747,11 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const manageVoteButtonProps = (opts?: { className?: string; hideWhenNotHovering?: boolean }) => {
 		opts ??= {}
 		opts.hideWhenNotHovering ??= true
-		return ({
+		return {
 			['data-mobile']: isMobile,
 			disabled: !!manageVoteDenied,
 			className: opts?.className,
-		})
+		}
 	}
 
 	const dropdownProps = {
@@ -838,7 +866,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 			)
 			const res = {
 				canInitiateVote,
-				voteAutostartTime: (voteState?.code === 'ready') ? voteState.autostartTime : undefined,
+				voteAutostartTime: voteState?.code === 'ready' ? voteState.autostartTime : undefined,
 				voteTally: voteState && voteState.code !== 'ready' ? V.tallyVotes(voteState, serverInfo?.playerCount ?? 0) : undefined,
 			}
 			return res
@@ -865,209 +893,201 @@ function VoteLayerListItem(props: LayerListItemProps) {
 					data-mutation={displayedMutation}
 					data-is-dragging={dragProps.isDragging}
 				>
-					{dragProps.isDragging
-						? <span className="mx-auto w-5">...</span>
-						: (
-							<div className="h-full flex flex-col grow">
-								<div className="p-1 space-x-2 flex items-center justify-between w-full">
-									<span className="flex items-center space-x-1">
+					{dragProps.isDragging ? (
+						<span className="mx-auto w-5">...</span>
+					) : (
+						<div className="h-full flex flex-col grow">
+							<div className="p-1 space-x-2 flex items-center justify-between w-full">
+								<span className="flex items-center space-x-1">
+									<Button
+										ref={dragProps.handleRef}
+										{...editButtonProps('data-[can-edit=true]:cursor-grab')}
+										variant="ghost"
+										size="icon"
+									>
+										<Icons.GripHorizontal />
+									</Button>
+									<h3 className={cn(Typo.Label, 'bold')}>Vote</h3>
+									{voteAutostartTime && (
+										<>
+											<span>:</span>
+											<span className="whitespace-nowrap text-nowrap w-max text-sm flex flex-nowrap items-center space-x-2">
+												<span>starts in</span> <Timer deadline={voteAutostartTime.getTime()} />
+												<PermissionDeniedTooltip denied={manageVoteDenied}>
+													<Button
+														variant="ghost"
+														size="icon"
+														title="Cancel Autostart"
+														onClick={cancelAutostart}
+														{...manageVoteButtonProps()}
+													>
+														<Icons.X />
+													</Button>
+												</PermissionDeniedTooltip>
+											</span>
+										</>
+									)}
+									{voteState && voteState.code !== 'ready' && (
+										<div className="flex space-x-2 items-center">
+											<Icons.Dot width={20} height={20} />
+											<span>{statusCodeToTitleCase(voteState.code)}</span>
+											<Icons.Dot width={20} height={20} />
+											<span>
+												{voteTally && serverInfo && (
+													<span>
+														{voteTally.totalVotes} of {serverInfo.playerCount} votes received
+													</span>
+												)}
+											</span>
+											{voteState.code === 'in-progress' && (
+												<>
+													<Icons.Dot width={20} height={20} />
+													<Badge variant="outline">
+														<Timer
+															className="font-mono"
+															formatTime={(ms) => dateFns.format(new Date(ms), 'm:ss')}
+															deadline={voteState.deadline}
+															zeros
+														/>
+													</Badge>
+												</>
+											)}
+											{voteState.code === 'in-progress' && (
+												<PermissionDeniedTooltip denied={manageVoteDenied}>
+													<Button
+														title="End Vote Early"
+														variant="ghost"
+														size="icon"
+														onClick={endVoteEarly}
+														{...manageVoteButtonProps({ hideWhenNotHovering: false })}
+													>
+														<Icons.CheckCheck />
+													</Button>
+												</PermissionDeniedTooltip>
+											)}
+											{voteState.code === 'in-progress' && (
+												<PermissionDeniedTooltip denied={manageVoteDenied}>
+													<Button
+														title="Abort Vote"
+														variant="ghost"
+														size="icon"
+														onClick={abortVote}
+														{...manageVoteButtonProps({ hideWhenNotHovering: false })}
+													>
+														<Icons.Pause />
+													</Button>
+												</PermissionDeniedTooltip>
+											)}
+										</div>
+									)}
+								</span>
+								<span className="flex items-center space-x-1">
+									<PermissionDeniedTooltip denied={manageVoteDenied}>
+										<div {...manageVoteButtonProps({ className: 'flex items-center space-x-2' })}>
+											<Checkbox
+												{...manageVoteButtonProps()}
+												id={internalVoteCheckboxId}
+												disabled={!!manageVoteDenied || voteState?.code === 'in-progress'}
+												checked={voterType === 'internal'}
+												onCheckedChange={(checked) => setVoterType(checked ? 'internal' : 'public')}
+											/>
+											<Label
+												htmlFor={internalVoteCheckboxId}
+												className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+											>
+												Internal
+											</Label>
+										</div>
+									</PermissionDeniedTooltip>
+									<PermissionDeniedTooltip denied={manageVoteDenied}>
 										<Button
-											ref={dragProps.handleRef}
-											{...editButtonProps('data-[can-edit=true]:cursor-grab')}
+											{...manageVoteButtonProps({ className: 'text-green-500 disabled:text-foreground' })}
 											variant="ghost"
 											size="icon"
+											onClick={() => startVote()}
+											disabled={!!manageVoteDenied || canInitiateVote.code !== 'ok'}
+											title="Start Vote"
 										>
-											<Icons.GripHorizontal />
+											<Icons.Play />
 										</Button>
-										<h3 className={cn(Typo.Label, 'bold')}>Vote</h3>
-										{voteAutostartTime && (
-											<>
-												<span>:</span>
-												<span className="whitespace-nowrap text-nowrap w-max text-sm flex flex-nowrap items-center space-x-2">
-													<span>starts in</span> <Timer deadline={voteAutostartTime.getTime()} />
-													<PermissionDeniedTooltip denied={manageVoteDenied}>
-														<Button
-															variant="ghost"
-															size="icon"
-															title="Cancel Autostart"
-															onClick={cancelAutostart}
-															{...manageVoteButtonProps()}
-														>
-															<Icons.X />
-														</Button>
-													</PermissionDeniedTooltip>
-												</span>
-											</>
-										)}
-										{voteState && voteState.code !== 'ready' && (
-											<div className="flex space-x-2 items-center">
-												<Icons.Dot width={20} height={20} />
-												<span>{statusCodeToTitleCase(voteState.code)}</span>
-												<Icons.Dot width={20} height={20} />
-												<span>
-													{voteTally && serverInfo && <span>{voteTally.totalVotes} of {serverInfo.playerCount} votes received</span>}
-												</span>
-												{voteState.code === 'in-progress' && (
-													<>
-														<Icons.Dot width={20} height={20} />
-														<Badge variant="outline">
-															<Timer
-																className="font-mono"
-																formatTime={ms => dateFns.format(new Date(ms), 'm:ss')}
-																deadline={voteState.deadline}
-																zeros
-															/>
-														</Badge>
-													</>
-												)}
-												{voteState.code === 'in-progress' && (
-													<PermissionDeniedTooltip denied={manageVoteDenied}>
-														<Button
-															title="End Vote Early"
-															variant="ghost"
-															size="icon"
-															onClick={endVoteEarly}
-															{...manageVoteButtonProps({ hideWhenNotHovering: false })}
-														>
-															<Icons.CheckCheck />
-														</Button>
-													</PermissionDeniedTooltip>
-												)}
-												{voteState.code === 'in-progress' && (
-													<PermissionDeniedTooltip denied={manageVoteDenied}>
-														<Button
-															title="Abort Vote"
-															variant="ghost"
-															size="icon"
-															onClick={abortVote}
-															{...manageVoteButtonProps({ hideWhenNotHovering: false })}
-														>
-															<Icons.Pause />
-														</Button>
-													</PermissionDeniedTooltip>
-												)}
-											</div>
-										)}
-									</span>
-									<span className="flex items-center space-x-1">
-										<PermissionDeniedTooltip denied={manageVoteDenied}>
-											<div
-												{...manageVoteButtonProps({ className: 'flex items-center space-x-2' })}
-											>
-												<Checkbox
-													{...manageVoteButtonProps()}
-													id={internalVoteCheckboxId}
-													disabled={!!manageVoteDenied || voteState?.code === 'in-progress'}
-													checked={voterType === 'internal'}
-													onCheckedChange={checked => setVoterType(checked ? 'internal' : 'public')}
-												/>
-												<Label
-													htmlFor={internalVoteCheckboxId}
-													className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-												>
-													Internal
-												</Label>
-											</div>
-										</PermissionDeniedTooltip>
-										<PermissionDeniedTooltip denied={manageVoteDenied}>
-											<Button
-												{...manageVoteButtonProps({ className: 'text-green-500 disabled:text-foreground' })}
-												variant="ghost"
-												size="icon"
-												onClick={() => startVote()}
-												disabled={!!manageVoteDenied || canInitiateVote.code !== 'ok'}
-												title="Start Vote"
-											>
-												<Icons.Play />
-											</Button>
-										</PermissionDeniedTooltip>
+									</PermissionDeniedTooltip>
 
-										{/* -------- add vote choices -------- */}
-										{inline(() => {
-											const activityTitle = 'Add Vote Choices'
-											return (
-												<StartActivityInteraction
-													loaderName="selectLayers"
-													preload="intent"
-													createActivity={UP.createEditingQueueVariant(
-														{
-															_tag: 'leaf',
-															id: 'ADDING_ITEM',
-															opts: {
-																cursor: {
-																	type: 'index',
-																	index: { outerIndex: index.outerIndex, innerIndex: item.choices.length },
-																},
-																action: 'add',
-																title: activityTitle,
-															},
+									{/* -------- add vote choices -------- */}
+									{inline(() => {
+										const activityTitle = 'Add Vote Choices'
+										return (
+											<StartActivityInteraction
+												loaderName="selectLayers"
+												preload="intent"
+												createActivity={UP.createEditingQueueVariant({
+													_tag: 'leaf',
+													id: 'ADDING_ITEM',
+													opts: {
+														cursor: {
+															type: 'index',
+															index: { outerIndex: index.outerIndex, innerIndex: item.choices.length },
 														},
-													)}
-													matchKey={key => key.id === 'ADDING_ITEM' && key.opts.title === activityTitle}
-													render={Button}
-													variant="ghost"
-													size="icon"
-													title="Add Vote Choices"
-													{...editButtonProps()}
-												>
-													<Icons.Plus />
-												</StartActivityInteraction>
-											)
-										})}
-
-										<VoteDisplayPropsPopover
-											open={voteDisplayPropsOpen}
-											onOpenChange={setVoteDisplayPropsOpen}
-											stores={props.stores}
-											itemId={props.itemId}
-											readonly={!canEdit || !!manageVoteDenied}
-										>
-											<Button variant="ghost" size="icon">
-												<Icons.Settings2 />
-											</Button>
-										</VoteDisplayPropsPopover>
-										<Button
-											variant="ghost"
-											size="icon"
-											title="Swap Factions"
-											disabled={!canEdit || !L.swapFactions(item.layerId)}
-											onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })}
-										>
-											<Icons.ArrowLeftRight />
-										</Button>
-										<Button
-											variant="ghost"
-											size="icon"
-											title="Delete"
-											disabled={!canEdit}
-											onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
-										>
-											<Icons.X />
-										</Button>
-										<ItemDropdown {...dropdownProps}>
-											<Button
+														action: 'add',
+														title: activityTitle,
+													},
+												})}
+												matchKey={(key) => key.id === 'ADDING_ITEM' && key.opts.title === activityTitle}
+												render={Button}
 												variant="ghost"
 												size="icon"
+												title="Add Vote Choices"
 												{...editButtonProps()}
 											>
-												<Icons.EllipsisVertical />
-											</Button>
-										</ItemDropdown>
-									</span>
-								</div>
-								<ol className="flex flex-col items-start">
-									{item.choices!.map((choice) => {
-										return (
-											<SingleLayerListItem
-												key={choice.itemId}
-												itemId={choice.itemId}
-												stores={props.stores}
-											/>
+												<Icons.Plus />
+											</StartActivityInteraction>
 										)
 									})}
-								</ol>
+
+									<VoteDisplayPropsPopover
+										open={voteDisplayPropsOpen}
+										onOpenChange={setVoteDisplayPropsOpen}
+										stores={props.stores}
+										itemId={props.itemId}
+										readonly={!canEdit || !!manageVoteDenied}
+									>
+										<Button variant="ghost" size="icon">
+											<Icons.Settings2 />
+										</Button>
+									</VoteDisplayPropsPopover>
+									<Button
+										variant="ghost"
+										size="icon"
+										title="Swap Factions"
+										disabled={!canEdit || !L.swapFactions(item.layerId)}
+										onClick={() =>
+											LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })
+										}
+									>
+										<Icons.ArrowLeftRight />
+									</Button>
+									<Button
+										variant="ghost"
+										size="icon"
+										title="Delete"
+										disabled={!canEdit}
+										onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
+									>
+										<Icons.X />
+									</Button>
+									<ItemDropdown {...dropdownProps}>
+										<Button variant="ghost" size="icon" {...editButtonProps()}>
+											<Icons.EllipsisVertical />
+										</Button>
+									</ItemDropdown>
+								</span>
 							</div>
-						)}
+							<ol className="flex flex-col items-start">
+								{item.choices!.map((choice) => {
+									return <SingleLayerListItem key={choice.itemId} itemId={choice.itemId} stores={props.stores} />
+								})}
+							</ol>
+						</div>
+					)}
 				</li>
 			</ItemContextMenu>
 			<QueueItemSeparator links={afterItemLinks} isAfterLast={isLocallyLast} disabled={!canEdit} />
@@ -1075,24 +1095,27 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	)
 }
 
-export function VoteDisplayPropsPopover(
-	props: {
-		itemId: LL.ItemId
-		stores: SquadServerFrame.KeyProp
-		open: boolean
-		onOpenChange: React.Dispatch<React.SetStateAction<boolean>>
-		children: React.ReactNode
-		readonly?: boolean
-	},
-) {
+export function VoteDisplayPropsPopover(props: {
+	itemId: LL.ItemId
+	stores: SquadServerFrame.KeyProp
+	open: boolean
+	onOpenChange: React.Dispatch<React.SetStateAction<boolean>>
+	children: React.ReactNode
+	readonly?: boolean
+}) {
 	const [voteConfig, choices] = ZusUtils.useStore(
 		props.stores.squadServer,
-		ZusUtils.useDeep(React.useCallback((store: SquadServerFrame.Types['state']) => {
-			const s = LayerQueuePrt.Sel.itemState(props.itemId)(store)
-			const voteItem = s.item as LL.VoteItem
-			const choices = voteItem.choices.map(c => c.layerId)
-			return [voteItem.voteConfig, choices] as const
-		}, [props.itemId])),
+		ZusUtils.useDeep(
+			React.useCallback(
+				(store: SquadServerFrame.Types['state']) => {
+					const s = LayerQueuePrt.Sel.itemState(props.itemId)(store)
+					const voteItem = s.item as LL.VoteItem
+					const choices = voteItem.choices.map((c) => c.layerId)
+					return [voteItem.voteConfig, choices] as const
+				},
+				[props.itemId],
+			),
+		),
 	)
 
 	const [localConfig, setLocalConfig] = React.useState<Partial<V.AdvancedVoteConfig> | null>(null)
@@ -1129,11 +1152,7 @@ export function VoteDisplayPropsPopover(
 					onChange={handleConfigChange}
 				/>
 				{!props.readonly && (
-					<Button
-						className="w-full mt-4"
-						size="sm"
-						onClick={handleSave}
-					>
+					<Button className="w-full mt-4" size="sm" onClick={handleSave}>
 						Save
 					</Button>
 				)}
@@ -1192,12 +1211,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 	)
 }
 
-function ItemContextMenu(props: {
-	children: React.ReactNode
-	stores: SquadServerFrame.KeyProp
-	itemId: LL.ItemId
-	disabled?: boolean
-}) {
+function ItemContextMenu(props: { children: React.ReactNode; stores: SquadServerFrame.KeyProp; itemId: LL.ItemId; disabled?: boolean }) {
 	return (
 		<ContextMenu modal={false}>
 			<ContextMenuTrigger
@@ -1215,31 +1229,23 @@ function ItemContextMenu(props: {
 	)
 }
 
-function ItemMenuItems(props: {
-	stores: SquadServerFrame.KeyProp
-	itemId: LL.ItemId
-	menu: ItemMenuComponents
-}) {
+function ItemMenuItems(props: { stores: SquadServerFrame.KeyProp; itemId: LL.ItemId; menu: ItemMenuComponents }) {
 	const Menu = props.menu
 	const [item, index, lastLocalIndex] = ZusUtils.useStore(
 		props.stores.squadServer,
 		ZusUtils.useShallow((llStore) => {
 			const itemState = LayerQueuePrt.Sel.itemState(props.itemId)(llStore)
-			return [
-				itemState.item,
-				itemState.index,
-				LayerQueuePrt.Sel.itemEntry(props.itemId)(llStore)?.lastLocalIndex,
-			] as const
+			return [itemState.item, itemState.index, LayerQueuePrt.Sel.itemEntry(props.itemId)(llStore)?.lastLocalIndex] as const
 		}),
 	)
 
 	const [activities] = React.useMemo(() => {
 		const activities = {
-			'add-after': ({
+			'add-after': {
 				_tag: 'leaf',
 				id: 'ADDING_ITEM',
 				opts: { cursor: { type: 'item-relative', itemId: item.itemId, position: 'after' }, action: 'add' },
-			}),
+			},
 			'add-before': {
 				_tag: 'leaf',
 				id: 'ADDING_ITEM',
@@ -1291,7 +1297,8 @@ function ItemMenuItems(props: {
 					disabled={!canEdit}
 					onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'clone', itemId: item.itemId })}
 				>
-					<Icons.Copy />Clone
+					<Icons.Copy />
+					Clone
 				</Menu.Item>
 			</Menu.Group>
 			<Menu.Separator />
@@ -1299,7 +1306,9 @@ function ItemMenuItems(props: {
 				<StartActivityInteraction
 					loaderName="selectLayers"
 					createActivity={UP.createEditingQueueVariant(activities['add-before'])}
-					matchKey={key => Obj.deepEqualStrict(key, { ...activities['add-before'], serverId: props.stores.squadServer.serverId })}
+					matchKey={(key) =>
+						Obj.deepEqualStrict(key, { ...activities['add-before'], serverId: props.stores.squadServer.serverId })
+					}
 					preload="viewport"
 					render={Menu.Item}
 					disabled={!canEdit}
@@ -1309,7 +1318,9 @@ function ItemMenuItems(props: {
 				<StartActivityInteraction
 					loaderName="selectLayers"
 					createActivity={UP.createEditingQueueVariant(activities['add-after'])}
-					matchKey={key => Obj.deepEqualStrict(key, { ...activities['add-after'], serverId: props.stores.squadServer.serverId })}
+					matchKey={(key) =>
+						Obj.deepEqualStrict(key, { ...activities['add-after'], serverId: props.stores.squadServer.serverId })
+					}
 					preload="viewport"
 					render={Menu.Item}
 					disabled={!canEdit}
@@ -1320,16 +1331,10 @@ function ItemMenuItems(props: {
 
 			<Menu.Separator />
 			<Menu.Group>
-				<Menu.Item
-					disabled={!canEdit || (index.innerIndex ?? index.outerIndex) === 0}
-					onClick={sendToFront}
-				>
+				<Menu.Item disabled={!canEdit || (index.innerIndex ?? index.outerIndex) === 0} onClick={sendToFront}>
 					Send to Front
 				</Menu.Item>
-				<Menu.Item
-					disabled={!canEdit || (!!lastLocalIndex && LL.indexesEqual(index, lastLocalIndex))}
-					onClick={sendToBack}
-				>
+				<Menu.Item disabled={!canEdit || (!!lastLocalIndex && LL.indexesEqual(index, lastLocalIndex))} onClick={sendToBack}>
 					Send to Back
 				</Menu.Item>
 			</Menu.Group>

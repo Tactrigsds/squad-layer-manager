@@ -45,11 +45,13 @@ export function setupOtel() {
 	const metricExporter = new OTLPMetricExporter({ url: getCollectorEndpoint('/v1/metrics') })
 	const logExporter = new OTLPLogExporter({ url: getCollectorEndpoint('/v1/logs') })
 
-	const resource = defaultResource().merge(resourceFromAttributes({
-		[ATTR_SERVICE_NAME]: 'squad-layer-manager',
-		[ATTR_SERVICE_VERSION]: formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA),
-		[ATTR_SERVICE_INSTANCE_ID]: instanceId,
-	}))
+	const resource = defaultResource().merge(
+		resourceFromAttributes({
+			[ATTR_SERVICE_NAME]: 'squad-layer-manager',
+			[ATTR_SERVICE_VERSION]: formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA),
+			[ATTR_SERVICE_INSTANCE_ID]: instanceId,
+		}),
+	)
 
 	sdk = new NodeSDK({
 		resource,

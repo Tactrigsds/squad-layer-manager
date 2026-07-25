@@ -15,7 +15,10 @@ describe('schemaAtPath', () => {
 			optional: z.object({ leaf }).optional(),
 			nullable: z.object({ leaf }).nullable(),
 			// a one-way transform: the input side is the shape the settings drafts hold, so the walk follows it
-			transformed: z.object({ leaf }).prefault({ leaf: '' }).transform((v) => v),
+			transformed: z
+				.object({ leaf })
+				.prefault({ leaf: '' })
+				.transform((v) => v),
 		})
 		for (const key of ['plain', 'defaulted', 'optional', 'nullable', 'transformed']) {
 			expect(schemaAtPath(schema, [key, 'leaf']), key).toBe(leaf)

@@ -6,33 +6,40 @@ export type DragEndContext = {
 	removeHook: (key: string) => void
 }
 
-export type DragItem = {
-	type: 'filter-node'
-	id: string
-} | {
-	type: 'layer-item'
-	id: LL.ItemId
-} | {
-	type: 'history-entry'
-	id: number
-} | {
-	// a column in the layer-table config editor (id = column name)
-	type: 'layer-table-column'
-	id: string
-} | {
-	// a column in the layer-generation config editor's pick order (id = column name)
-	type: 'layer-generation-column'
-	id: string
-} | {
-	// a rule row in a player grouping's ordered rule list. A rule has no id of its own and its order is its priority,
-	// so it's identified by grouping + position -- see ruleDragId (settings-form), which owns the encoding.
-	type: 'grouping-rule'
-	id: string
-} | {
-	// a layer template in the backburner panel (id = BB.ItemId)
-	type: 'backburner-item'
-	id: string
-}
+export type DragItem =
+	| {
+			type: 'filter-node'
+			id: string
+	  }
+	| {
+			type: 'layer-item'
+			id: LL.ItemId
+	  }
+	| {
+			type: 'history-entry'
+			id: number
+	  }
+	| {
+			// a column in the layer-table config editor (id = column name)
+			type: 'layer-table-column'
+			id: string
+	  }
+	| {
+			// a column in the layer-generation config editor's pick order (id = column name)
+			type: 'layer-generation-column'
+			id: string
+	  }
+	| {
+			// a rule row in a player grouping's ordered rule list. A rule has no id of its own and its order is its priority,
+			// so it's identified by grouping + position -- see ruleDragId (settings-form), which owns the encoding.
+			type: 'grouping-rule'
+			id: string
+	  }
+	| {
+			// a layer template in the backburner panel (id = BB.ItemId)
+			type: 'backburner-item'
+			id: string
+	  }
 
 {
 	const _: DragItem = undefined! satisfies { id: string | number }

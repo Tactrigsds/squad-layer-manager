@@ -21,25 +21,22 @@ export const [useUnexpectedNextLayer, unexpectedNextLayer$] = ReactRx.bind(
 )
 
 // serverId === '' is used as a sentinel by consumers (e.g. LayerDisplay) rendered outside any squadServer frame context
-export const [useLayerItemsState, layerItemsState$] = RxHelpers.bind(
-	'layerQueue.layerItemsState',
-	(serverId: string) => {
-		if (!serverId) return Rx.of({ layerItems: [], firstLayerItemParity: 0 } satisfies LQY.LayerItemsState)
-		const key = frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(serverId))
-		return Rx.combineLatest([
-			ZusRx.toStream(ZusUtils.resolveReadStore(key), undefined, { fireImmediately: true }).pipe(
-				Rx.map(s => s.queue.layerList),
-				Rx.distinctUntilChanged(),
-			),
-			MatchHistoryClient.recentMatches$(serverId),
-		]).pipe(
-			Rx.map(([layerList, history]) => {
-				return LQY.resolveLayerItemsState(layerList, history)
-			}),
-			distinctDeepEquals(),
-		)
-	},
-)
+export const [useLayerItemsState, layerItemsState$] = RxHelpers.bind('layerQueue.layerItemsState', (serverId: string) => {
+	if (!serverId) return Rx.of({ layerItems: [], firstLayerItemParity: 0 } satisfies LQY.LayerItemsState)
+	const key = frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(serverId))
+	return Rx.combineLatest([
+		ZusRx.toStream(ZusUtils.resolveReadStore(key), undefined, { fireImmediately: true }).pipe(
+			Rx.map((s) => s.queue.layerList),
+			Rx.distinctUntilChanged(),
+		),
+		MatchHistoryClient.recentMatches$(serverId),
+	]).pipe(
+		Rx.map(([layerList, history]) => {
+			return LQY.resolveLayerItemsState(layerList, history)
+		}),
+		distinctDeepEquals(),
+	)
+})
 
 export function watchServer(serverId: string, sub: Rx.Subscription) {
 	sub.add(unexpectedNextLayer$(serverId).subscribe())

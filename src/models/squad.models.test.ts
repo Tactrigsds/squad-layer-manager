@@ -139,7 +139,7 @@ describe('LogEvents.parse', () => {
 		it('does not treat a beacon-queue (BeaconNetDriver) connection close as a disconnect', async () => {
 			const errors: Error[] = []
 			const events = await collect([BEACON_DISCONNECT, NEXT_TICK_EVENT].join('\n'), errors)
-			expect(events.filter(e => e.type === 'PLAYER_DISCONNECTED')).toHaveLength(0)
+			expect(events.filter((e) => e.type === 'PLAYER_DISCONNECTED')).toHaveLength(0)
 			expect(events).toHaveLength(1)
 			expect(events[0]).toMatchObject({ type: 'UNKNOWN' })
 			expect(errors).toHaveLength(0)
@@ -208,7 +208,7 @@ describe('LogEvents.parse', () => {
 
 		it('drops a nullptr death when the attacker IDs are INVALID (bled out / no attacker)', async () => {
 			const events = await collect([DIED_NULLPTR_INVALID, NEXT_TICK_EVENT].join('\n'))
-			expect(events.filter(e => e.type === 'PLAYER_DIED')).toHaveLength(0)
+			expect(events.filter((e) => e.type === 'PLAYER_DIED')).toHaveLength(0)
 		})
 	})
 
@@ -278,7 +278,7 @@ describe('LogEvents.parse', () => {
 				errors,
 			)
 			expect(errors).toEqual([])
-			expect(events.map(e => e.type)).toEqual(['NEW_GAME', 'PLAYER_CONNECTED_CHAIN'])
+			expect(events.map((e) => e.type)).toEqual(['NEW_GAME', 'PLAYER_CONNECTED_CHAIN'])
 			expect(events[0]).toMatchObject({ type: 'NEW_GAME', layerClassname: 'Yehorivka_RAAS_v1' })
 		})
 
@@ -297,7 +297,7 @@ describe('LogEvents.parse', () => {
 	describe('PLAYER_CONNECTED_CHAIN', () => {
 		it('groups the join events into a single chain event', async () => {
 			const events = await collect([JOIN_CHAIN, NEXT_TICK_EVENT].join('\n'))
-			expect(events.map(e => e.type)).toEqual(['PLAYER_CONNECTED_CHAIN', 'PLAYER_RESTARTED'])
+			expect(events.map((e) => e.type)).toEqual(['PLAYER_CONNECTED_CHAIN', 'PLAYER_RESTARTED'])
 			expect(events[0]).toMatchObject({
 				type: 'PLAYER_CONNECTED_CHAIN',
 				events: {
@@ -310,7 +310,7 @@ describe('LogEvents.parse', () => {
 
 		it('handles two sequential join chains with different chainIDs', async () => {
 			const events = await collect([JOIN_CHAIN, JOIN_CHAIN_NEW, NEXT_TICK_EVENT].join('\n'))
-			expect(events.map(e => e.type)).toEqual([
+			expect(events.map((e) => e.type)).toEqual([
 				'PLAYER_CONNECTED_CHAIN',
 				'PLAYER_RESTARTED',
 				'PLAYER_CONNECTED_CHAIN',
@@ -322,19 +322,18 @@ describe('LogEvents.parse', () => {
 			const errors: Error[] = []
 			const unknownSameChain = '[2025.11.19-18.18.26:150][549]LogSomething: Some unrecognized line'
 			const events = await collect(
-				[PLAYER_CONNECTED, PLAYER_JOIN_SUCCEEDED, unknownSameChain, PLAYER_ADDED_TO_TEAM, PLAYER_RESTARTED, NEXT_TICK_EVENT].join('\n'),
+				[PLAYER_CONNECTED, PLAYER_JOIN_SUCCEEDED, unknownSameChain, PLAYER_ADDED_TO_TEAM, PLAYER_RESTARTED, NEXT_TICK_EVENT].join(
+					'\n',
+				),
 				errors,
 			)
-			expect(events.map(e => e.type)).toEqual(['PLAYER_CONNECTED_CHAIN', 'UNKNOWN', 'PLAYER_RESTARTED'])
+			expect(events.map((e) => e.type)).toEqual(['PLAYER_CONNECTED_CHAIN', 'UNKNOWN', 'PLAYER_RESTARTED'])
 			expect(errors).toHaveLength(0)
 		})
 
 		it('pushes error for incomplete chain when flushed by next chain', async () => {
 			const errors: Error[] = []
-			const events = await collect(
-				[PLAYER_CONNECTED, PLAYER_ADDED_TO_TEAM, NEXT_TICK_EVENT].join('\n'),
-				errors,
-			)
+			const events = await collect([PLAYER_CONNECTED, PLAYER_ADDED_TO_TEAM, NEXT_TICK_EVENT].join('\n'), errors)
 			expect(events).toHaveLength(0)
 			expect(errors).toHaveLength(1)
 			expect(errors[0].message).toMatch(/PLAYER_JOIN_SUCCEEDED/)
@@ -352,18 +351,16 @@ describe('LogEvents.parse', () => {
 					PLAYER_ADDED_TO_TEAM,
 					PLAYER_RESTARTED,
 					NEXT_TICK_EVENT,
-				].join(
-					'\n',
-				),
+				].join('\n'),
 				errors,
 			)
-			expect(events.map(e => e.type)).toEqual(['PLAYER_CONNECTED_CHAIN', 'PLAYER_CONNECTED_CHAIN', 'PLAYER_RESTARTED'])
+			expect(events.map((e) => e.type)).toEqual(['PLAYER_CONNECTED_CHAIN', 'PLAYER_CONNECTED_CHAIN', 'PLAYER_RESTARTED'])
 			expect(errors).toHaveLength(0)
 		})
 
 		it('parses new format: steam ID, generic controller, PLAYER_RESTARTED before PLAYER_JOIN_SUCCEEDED, no PLAYER_ADDED_TO_TEAM', async () => {
 			const events = await collect([JOIN_CHAIN_NEW, NEXT_TICK_EVENT].join('\n'))
-			expect(events.map(e => e.type)).toEqual(['PLAYER_CONNECTED_CHAIN', 'PLAYER_RESTARTED'])
+			expect(events.map((e) => e.type)).toEqual(['PLAYER_CONNECTED_CHAIN', 'PLAYER_RESTARTED'])
 			expect(events[0]).toMatchObject({
 				type: 'PLAYER_CONNECTED_CHAIN',
 				events: {
@@ -419,7 +416,7 @@ describe('LogEvents.parse', () => {
 			const errors: Error[] = []
 			const events = await collect(ROUND_ADMIN_CHAIN, errors)
 			expect(errors).toHaveLength(0)
-			const chains = events.filter(e => e.type === 'ROUND_ENDED_CHAIN')
+			const chains = events.filter((e) => e.type === 'ROUND_ENDED_CHAIN')
 			expect(chains).toHaveLength(1)
 			expect(chains[0]).toMatchObject({
 				type: 'ROUND_ENDED_CHAIN',
@@ -456,7 +453,7 @@ describe('LogEvents.parse', () => {
 			const errors: Error[] = []
 			const events = await collect([ADMIN_LAYER_CHANGED_PLAYER_CHAIN, NEXT_TICK_EVENT].join('\n'), errors)
 			expect(errors).toHaveLength(0)
-			const chains = events.filter(e => e.type === 'ROUND_ENDED_CHAIN')
+			const chains = events.filter((e) => e.type === 'ROUND_ENDED_CHAIN')
 			expect(chains).toHaveLength(1)
 			expect(chains[0]).toMatchObject({
 				type: 'ROUND_ENDED_CHAIN',
@@ -525,12 +522,12 @@ describe('LogEvents.parse', () => {
 	describe('mixed events', () => {
 		it('yields non-chain events before and after a chain', async () => {
 			const events = await collect([NEW_GAME, JOIN_CHAIN, NEW_GAME, NEXT_TICK_EVENT].join('\n'))
-			expect(events.map(e => e.type)).toEqual(['NEW_GAME', 'PLAYER_CONNECTED_CHAIN', 'PLAYER_RESTARTED', 'NEW_GAME'])
+			expect(events.map((e) => e.type)).toEqual(['NEW_GAME', 'PLAYER_CONNECTED_CHAIN', 'PLAYER_RESTARTED', 'NEW_GAME'])
 		})
 
 		it('yields two different chain types sequentially', async () => {
 			const events = await collect([JOIN_CHAIN, ROUND_CHAIN, NEXT_TICK_EVENT].join('\n'))
-			expect(events.map(e => e.type)).toEqual(['PLAYER_CONNECTED_CHAIN', 'PLAYER_RESTARTED', 'ROUND_ENDED_CHAIN'])
+			expect(events.map((e) => e.type)).toEqual(['PLAYER_CONNECTED_CHAIN', 'PLAYER_RESTARTED', 'ROUND_ENDED_CHAIN'])
 		})
 	})
 })
@@ -538,10 +535,9 @@ describe('LogEvents.parse', () => {
 describe('RconEvents', () => {
 	describe('PLAYER_WARNED', () => {
 		it('parses a single-line warn message', () => {
-			const [event, err] = matchLog(
-				'Remote admin has warned player TestUser. Message was "you did a bad thing"',
-				[SM.RconEvents.PlayerWarnedMatcher],
-			)
+			const [event, err] = matchLog('Remote admin has warned player TestUser. Message was "you did a bad thing"', [
+				SM.RconEvents.PlayerWarnedMatcher,
+			])
 			expect(err).toBeNull()
 			expect(event).toMatchObject({
 				type: 'PLAYER_WARNED',
@@ -551,10 +547,9 @@ describe('RconEvents', () => {
 		})
 
 		it('parses a multiline warn message', () => {
-			const [event, err] = matchLog(
-				'Remote admin has warned player TestUser. Message was "Line one\nLine two\nLine three"',
-				[SM.RconEvents.PlayerWarnedMatcher],
-			)
+			const [event, err] = matchLog('Remote admin has warned player TestUser. Message was "Line one\nLine two\nLine three"', [
+				SM.RconEvents.PlayerWarnedMatcher,
+			])
 			expect(err).toBeNull()
 			expect(event).toMatchObject({
 				type: 'PLAYER_WARNED',
@@ -570,33 +565,33 @@ describe('PlayerIds.findByUsernameLoose', () => {
 
 	it('matches when the roster name contains the target (tag/whitespace tolerant)', () => {
 		const players = [player('a', '『LiQ』  HoneyBooBoo rides again'), player('b', 'Hopeless')]
-		expect(SM.PlayerIds.findByUsernameLoose(players, p => p.ids, 'HoneyBooBoo rides again')).toBe(players[0])
+		expect(SM.PlayerIds.findByUsernameLoose(players, (p) => p.ids, 'HoneyBooBoo rides again')).toBe(players[0])
 	})
 
 	it('matches in reverse when the log name carries a tag the roster name lacks', () => {
 		const players = [player('a', 'HoneyBooBoo rides again'), player('b', 'Hopeless')]
-		expect(SM.PlayerIds.findByUsernameLoose(players, p => p.ids, '[LiQ] HoneyBooBoo rides again')).toBe(players[0])
+		expect(SM.PlayerIds.findByUsernameLoose(players, (p) => p.ids, '[LiQ] HoneyBooBoo rides again')).toBe(players[0])
 	})
 
 	it('returns undefined when the match is ambiguous', () => {
 		const players = [player('a', 'AAA alpha'), player('b', 'beta AAA')]
-		expect(SM.PlayerIds.findByUsernameLoose(players, p => p.ids, 'AAA')).toBeUndefined()
+		expect(SM.PlayerIds.findByUsernameLoose(players, (p) => p.ids, 'AAA')).toBeUndefined()
 	})
 
 	// names lifted from the log corpus; these resolve via the tag-prefix pass, not by discarding the non-ascii
 	it('matches a log name whose tag is non-ascii', () => {
 		const players = [player('a', 'Ewan'), player('b', 'Hopeless')]
-		expect(SM.PlayerIds.findByUsernameLoose(players, p => p.ids, 'Ω Ewan')).toBe(players[0])
+		expect(SM.PlayerIds.findByUsernameLoose(players, (p) => p.ids, 'Ω Ewan')).toBe(players[0])
 	})
 
 	it('does not resolve a non-latin name to an arbitrary player', () => {
 		const players = [player('a', 'Bob'), player('b', 'Hopeless')]
-		expect(SM.PlayerIds.findByUsernameLoose(players, p => p.ids, 'Пётр')).toBeUndefined()
+		expect(SM.PlayerIds.findByUsernameLoose(players, (p) => p.ids, 'Пётр')).toBeUndefined()
 	})
 
 	it('resolves a fully non-latin name to its own roster entry', () => {
 		const players = [player('a', 'кирикwise d(^. .^)'), player('b', 'Bob')]
-		expect(SM.PlayerIds.findByUsernameLoose(players, p => p.ids, '✘✘✘✘✘✘✘ кирикwise d(^. .^)')).toBe(players[0])
+		expect(SM.PlayerIds.findByUsernameLoose(players, (p) => p.ids, '✘✘✘✘✘✘✘ кирикwise d(^. .^)')).toBe(players[0])
 	})
 })
 
@@ -669,15 +664,15 @@ function countTypes(types: string[]): Record<string, number> {
 }
 
 function emittedTypes(events: (SM.LogEvents.AnyChainEvent | SM.LogEvents.NonChainEvent)[]): string[] {
-	return events.flatMap(event => ('events' in event ? Object.keys(event.events) : [event.type]))
+	return events.flatMap((event) => ('events' in event ? Object.keys(event.events) : [event.type]))
 }
 
 describe('LogEvents.parse conservation', () => {
 	it('has fixture coverage of the ticks that used to lose events', () => {
 		expect(CHAIN_TICKS.length).toBeGreaterThan(20)
-		expect(CHAIN_TICKS.some(t => t.reason === 'consumed-event-shares-tick')).toBe(true)
-		expect(CHAIN_TICKS.some(t => t.reason === 'two-instances-one-tick')).toBe(true)
-		expect(CHAIN_TICKS.some(t => t.lines.some(l => l.includes('Yehorivka_RAAS_v1 up for play')))).toBe(true)
+		expect(CHAIN_TICKS.some((t) => t.reason === 'consumed-event-shares-tick')).toBe(true)
+		expect(CHAIN_TICKS.some((t) => t.reason === 'two-instances-one-tick')).toBe(true)
+		expect(CHAIN_TICKS.some((t) => t.lines.some((l) => l.includes('Yehorivka_RAAS_v1 up for play')))).toBe(true)
 	})
 
 	// only a chain that fails validation may withhold events, and only its own members
@@ -695,25 +690,20 @@ describe('LogEvents.parse conservation', () => {
 	])
 
 	// the invariant partitionTick exists to hold: a recognized entry is never silently discarded
-	it.each(CHAIN_TICKS.map((tick, i) => [i, tick] as const))(
-		'accounts for every recognized entry in tick %i',
-		async (_i, tick) => {
-			// a line on a different chainID flushes the fixture's tick; it stays buffered and is not emitted
-			const sentinel = '[2026.01.01-00.00.00:000][9999]LogFlush: sentinel'
-			const expected = countTypes(
-				toEntries(tick.lines).flatMap(entry => matchLog(entry, SM.LogEvents.EventMatchers)[0]?.type ?? []),
-			)
+	it.each(CHAIN_TICKS.map((tick, i) => [i, tick] as const))('accounts for every recognized entry in tick %i', async (_i, tick) => {
+		// a line on a different chainID flushes the fixture's tick; it stays buffered and is not emitted
+		const sentinel = '[2026.01.01-00.00.00:000][9999]LogFlush: sentinel'
+		const expected = countTypes(toEntries(tick.lines).flatMap((entry) => matchLog(entry, SM.LogEvents.EventMatchers)[0]?.type ?? []))
 
-			const errors: Error[] = []
-			const emitted = countTypes(emittedTypes(await collect([...tick.lines, sentinel].join('\n'), errors)))
+		const errors: Error[] = []
+		const emitted = countTypes(emittedTypes(await collect([...tick.lines, sentinel].join('\n'), errors)))
 
-			for (const [type, count] of Object.entries(emitted)) {
-				expect({ type, count }).toEqual({ type, count: Math.min(count, expected[type] ?? 0) })
-			}
-			const withheld = Object.entries(expected).filter(([type, count]) => (emitted[type] ?? 0) < count)
-			expect(withheld.filter(([type]) => !CHAIN_MEMBER_TYPES.has(type))).toEqual([])
-			if (withheld.length > 0) expect(errors.length).toBeGreaterThan(0)
-			else expect(errors).toEqual([])
-		},
-	)
+		for (const [type, count] of Object.entries(emitted)) {
+			expect({ type, count }).toEqual({ type, count: Math.min(count, expected[type] ?? 0) })
+		}
+		const withheld = Object.entries(expected).filter(([type, count]) => (emitted[type] ?? 0) < count)
+		expect(withheld.filter(([type]) => !CHAIN_MEMBER_TYPES.has(type))).toEqual([])
+		if (withheld.length > 0) expect(errors.length).toBeGreaterThan(0)
+		else expect(errors).toEqual([])
+	})
 })

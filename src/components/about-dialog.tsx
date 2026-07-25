@@ -22,12 +22,14 @@ export default function AboutDialog({ children, open, onOpenChange }: AboutDialo
 	if (!config || !user) return null
 
 	const versionText = [
-		(config.PUBLIC_GIT_BRANCH || config.PUBLIC_GIT_SHA)
-		&& `App Version: ${formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)}`,
+		(config.PUBLIC_GIT_BRANCH || config.PUBLIC_GIT_SHA) &&
+			`App Version: ${formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)}`,
 		config.layersVersion && `Layer Pool Version: ${config.layersVersion}`,
 		user.username && `Logged in as: ${user.username}`,
 		config.wsClientId && `WebSocket Client ID: ${config.wsClientId}`,
-	].filter(Boolean).join('\n')
+	]
+		.filter(Boolean)
+		.join('\n')
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
@@ -42,8 +44,7 @@ export default function AboutDialog({ children, open, onOpenChange }: AboutDialo
 			<DialogContent className="max-w-max">
 				<DialogHeader>
 					<DialogTitle>About</DialogTitle>
-					<DialogDescription>
-					</DialogDescription>
+					<DialogDescription></DialogDescription>
 				</DialogHeader>
 				<div className="space-y-4">
 					<p className="text-sm">

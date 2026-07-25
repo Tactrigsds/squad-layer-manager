@@ -20,14 +20,12 @@ export async function up(db: MigrationDriver): Promise<void> {
 	const settings = wrapper.json
 	if (settings.allowedPrefixes !== undefined) return
 
-	const prefix = typeof settings.commandPrefix === 'string' && settings.commandPrefix !== ''
-		? settings.commandPrefix
-		: FALLBACK_PREFIX
+	const prefix = typeof settings.commandPrefix === 'string' && settings.commandPrefix !== '' ? settings.commandPrefix : FALLBACK_PREFIX
 
 	if (settings.commands && typeof settings.commands === 'object') {
 		for (const cmd of Object.values<any>(settings.commands)) {
 			if (!cmd || typeof cmd !== 'object' || !Array.isArray(cmd.strings)) continue
-			cmd.strings = cmd.strings.map((s: unknown) => typeof s === 'string' ? prefix + s : s)
+			cmd.strings = cmd.strings.map((s: unknown) => (typeof s === 'string' ? prefix + s : s))
 		}
 	}
 

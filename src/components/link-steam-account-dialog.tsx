@@ -13,15 +13,15 @@ function withTrailingBlank(ids: string[]): string[] {
 	return ids
 }
 
-export default function LinkSteamAccountDialog(
-	props: { children: React.ReactNode; open?: boolean; onOpenChange?: (newState: boolean) => void },
-) {
+export default function LinkSteamAccountDialog(props: {
+	children: React.ReactNode
+	open?: boolean
+	onOpenChange?: (newState: boolean) => void
+}) {
 	const linkedQuery = UsersClient.useMyLinkedSteamAccounts()
 	return (
 		<Dialog modal open={props.open} onOpenChange={props.onOpenChange}>
-			<DialogTrigger asChild>
-				{props.children}
-			</DialogTrigger>
+			<DialogTrigger asChild>{props.children}</DialogTrigger>
 			<DialogContent className="sm:max-w-md">
 				<DialogHeader>
 					<DialogTitle>Linked Steam Accounts</DialogTitle>
@@ -29,12 +29,14 @@ export default function LinkSteamAccountDialog(
 						Link your Steam64 IDs so in-game admin commands (like /kick) recognize you. Add as many as you need.
 					</DialogDescription>
 				</DialogHeader>
-				{linkedQuery.data?.code === 'ok'
+				{linkedQuery.data?.code === 'ok' ? (
 					// mounts once per dialog open (DialogContent unmounts on close), seeding the draft from the query in
 					// the state initializer: a background refetch (e.g. on window refocus, likely while the user tabs to
 					// Steam to copy their ID) must not clobber their in-progress edits
-					? <LinkedSteamAccountsEditor initialIds={linkedQuery.data.steamIds} onClose={() => props.onOpenChange?.(false)} />
-					: <p className="text-sm text-muted-foreground">Loading...</p>}
+					<LinkedSteamAccountsEditor initialIds={linkedQuery.data.steamIds} onClose={() => props.onOpenChange?.(false)} />
+				) : (
+					<p className="text-sm text-muted-foreground">Loading...</p>
+				)}
 			</DialogContent>
 		</Dialog>
 	)
@@ -51,15 +53,15 @@ function LinkedSteamAccountsEditor({ initialIds, onClose }: { initialIds: readon
 		setIds((prev) => withTrailingBlank(prev.filter((_, i) => i !== idx)))
 	}
 
-	const nonEmpty = ids.map(v => v.trim()).filter(Boolean)
+	const nonEmpty = ids.map((v) => v.trim()).filter(Boolean)
 	const rowError = (value: string): string | null => {
 		const v = value.trim()
 		if (!v) return null
 		if (!Steam64IdSchema.safeParse(v).success) return 'Must be a 17-digit Steam64 ID'
-		if (nonEmpty.filter(o => o === v).length > 1) return 'Duplicate'
+		if (nonEmpty.filter((o) => o === v).length > 1) return 'Duplicate'
 		return null
 	}
-	const hasErrors = ids.some(v => rowError(v) !== null)
+	const hasErrors = ids.some((v) => rowError(v) !== null)
 
 	async function handleSave() {
 		if (hasErrors) return

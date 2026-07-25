@@ -77,9 +77,8 @@ function onSideEffect(se: TSW.SideEffect, presenceEvent$: Rx.Subject<UP.Presence
 			if (source.discordId) presenceEvent$.next({ userId: source.discordId, action: 'saved-teamswaps' })
 			void resolveDisplayName(source).then((name) => {
 				const count = swaps.size
-				const description = count > 0
-					? `${name} saved ${count} teamswap${count !== 1 ? 's' : ''}.`
-					: `${name} cleared the saved teamswaps.`
+				const description =
+					count > 0 ? `${name} saved ${count} teamswap${count !== 1 ? 's' : ''}.` : `${name} cleared the saved teamswaps.`
 				toast('Teamswaps saved', { description })
 			})
 			break
@@ -116,11 +115,12 @@ function onSideEffect(se: TSW.SideEffect, presenceEvent$: Rx.Subject<UP.Presence
 		}
 
 		case 'teamswap-execution-failed': {
-			const description = se.reason === 'not-all-players-swapped'
-				? `${se.playerIds?.length ?? 0} player${se.playerIds?.length === 1 ? '' : 's'} could not be swapped to their assigned team.`
-				: se.reason === 'timeout'
-				? 'The swap never took effect on the server.'
-				: se.message ?? 'An error occurred while executing the team swap.'
+			const description =
+				se.reason === 'not-all-players-swapped'
+					? `${se.playerIds?.length ?? 0} player${se.playerIds?.length === 1 ? '' : 's'} could not be swapped to their assigned team.`
+					: se.reason === 'timeout'
+						? 'The swap never took effect on the server.'
+						: (se.message ?? 'An error occurred while executing the team swap.')
 			toast.error('Team swap failed', { description: `${description} The pending swaps have been cancelled.` })
 			break
 		}
@@ -156,34 +156,33 @@ export function initTeamswaps(args: Args) {
 	const serverId = args.input.serverId
 	const presenceEvent$ = new Rx.Subject<UP.PresenceEvent>()
 
-	set(
-		{
-			serverId,
-			session: initSession(),
-			presenceEvent$,
+	set({
+		serverId,
+		session: initSession(),
+		presenceEvent$,
 
-			onUpdate(update) {
-				const prev = get().session
-				const next = ODSM.Client.applyUpdate(prev, update, TSW.reducer, {
-					onSideEffects: ses => {
-						for (const se of ses) onSideEffect(se, presenceEvent$)
-					},
-					onDiverged: (phase, error) =>
-						console.error(`${phase === 'op' ? 'incoming' : 'acked'} teamswap ops diverged from the server:`, error.data),
-					// a 'noop' rejection changed nothing on the local timeline and has nothing to report
-					onRejected: reason => {
-						if (reason !== 'noop') toastOpError(reason)
-					},
-					onUnknownAcks: opIds => console.warn('received ack for unknown teamswap ops', opIds),
-				})
-				if (next !== prev) set({ session: next })
-			},
-		} satisfies TeamswapSlice,
-	)
+		onUpdate(update) {
+			const prev = get().session
+			const next = ODSM.Client.applyUpdate(prev, update, TSW.reducer, {
+				onSideEffects: (ses) => {
+					for (const se of ses) onSideEffect(se, presenceEvent$)
+				},
+				onDiverged: (phase, error) =>
+					console.error(`${phase === 'op' ? 'incoming' : 'acked'} teamswap ops diverged from the server:`, error.data),
+				// a 'noop' rejection changed nothing on the local timeline and has nothing to report
+				onRejected: (reason) => {
+					if (reason !== 'noop') toastOpError(reason)
+				},
+				onUnknownAcks: (opIds) => console.warn('received ack for unknown teamswap ops', opIds),
+			})
+			if (next !== prev) set({ session: next })
+		},
+	} satisfies TeamswapSlice)
 
 	args.sub.add(
-		RPC.observe('teamswaps.watchUpdates', () => RPC.orpc.teamswaps.watchUpdates.call({ serverId })).pipe(RPC.dropServerNotLoaded())
-			.subscribe(update => {
+		RPC.observe('teamswaps.watchUpdates', () => RPC.orpc.teamswaps.watchUpdates.call({ serverId }))
+			.pipe(RPC.dropServerNotLoaded())
+			.subscribe((update) => {
 				get().onUpdate(update)
 			}),
 	)
@@ -213,7 +212,7 @@ export function getPlayerOppositeTeam(
 	players: SM.Player[],
 ): MH.NormedTeamId | null {
 	if (!currentMatch) return null
-	const player = SM.PlayerIds.find(players, p => p.ids, playerId)
+	const player = SM.PlayerIds.find(players, (p) => p.ids, playerId)
 	if (!player?.teamId) return null
 	const normed = MH.getNormedTeamId(player.teamId, currentMatch.ordinal)
 	return normed === 'A' ? 'B' : 'A'

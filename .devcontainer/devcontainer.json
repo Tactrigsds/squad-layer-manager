@@ -71,12 +71,7 @@
 			"extensions": ["dockerfile", "sql", "html"]
 		},
 		"vscode": {
-			"extensions": [
-				"oxc.oxc-vscode",
-				"bradlc.vscode-tailwindcss",
-				"ms-playwright.playwright",
-				"vitest.explorer"
-			],
+			"extensions": ["oxc.oxc-vscode", "bradlc.vscode-tailwindcss", "ms-playwright.playwright", "vitest.explorer"],
 			"settings": {
 				// the repo is on a typescript prerelease; VS Code has to be pointed at it explicitly
 				"typescript.tsdk": "node_modules/typescript/lib",

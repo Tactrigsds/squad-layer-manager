@@ -39,40 +39,47 @@ function buildChildren(node: Node, path: (string | number)[], idPrefix: string, 
 	const props: Record<string, Node> | undefined = node?.properties
 	if (!props) return []
 	// top-level keys managed inline by a sibling editor (e.g. defaultPrefix) render no field, so emit no TOC anchor either
-	return Object.keys(props).filter((key) => !(path.length === 0 && HIDDEN_GLOBAL_SETTINGS_KEYS.has(key))).map((key): TocNode => {
-		const inner = stripNullable(props[key])
-		const childPath = [...path, key]
-		const pathStr = childPath.join('.')
-		// only static object sections recurse; records/arrays are dynamic, and override-rendered sections
-		// (TOC_LEAF_PATHS) emit no per-property anchors, so both stay leaf nodes
-		const recurse = inner.type === 'object' && inner.properties && !TOC_LEAF_PATHS.has(pathStr)
-		return {
-			id: `${idPrefix}${pathStr}`,
-			label: settingLabel(childPath, key),
-			path: pathStr,
-			writable: RBAC.settingsPathOverlaps(access, childPath),
-			children: recurse ? buildChildren(inner, childPath, idPrefix, access) : [],
-		}
-	})
+	return Object.keys(props)
+		.filter((key) => !(path.length === 0 && HIDDEN_GLOBAL_SETTINGS_KEYS.has(key)))
+		.map((key): TocNode => {
+			const inner = stripNullable(props[key])
+			const childPath = [...path, key]
+			const pathStr = childPath.join('.')
+			// only static object sections recurse; records/arrays are dynamic, and override-rendered sections
+			// (TOC_LEAF_PATHS) emit no per-property anchors, so both stay leaf nodes
+			const recurse = inner.type === 'object' && inner.properties && !TOC_LEAF_PATHS.has(pathStr)
+			return {
+				id: `${idPrefix}${pathStr}`,
+				label: settingLabel(childPath, key),
+				path: pathStr,
+				writable: RBAC.settingsPathOverlaps(access, childPath),
+				children: recurse ? buildChildren(inner, childPath, idPrefix, access) : [],
+			}
+		})
 }
 
 // mirror the form's presentation-level grouping: wrap the top-level nodes into group nodes (anchored to the group
 // headers the form emits), leaving ungrouped keys at the top level after them
 function groupTocNodes(children: TocNode[], groups: SettingsGroup[], idPrefix: string): TocNode[] {
 	const byKey = new Map(children.map((c) => [c.path, c]))
-	const { groups: grouped, ungrouped } = splitByGroups(children.map((c) => c.path), groups)
+	const { groups: grouped, ungrouped } = splitByGroups(
+		children.map((c) => c.path),
+		groups,
+	)
 	return [
 		...grouped.flatMap(({ group, keys }): TocNode[] => {
 			const children = keys.map((k) => byKey.get(k)!)
 			// no group header in the form means no group node here either; the field stands on its own
 			if (group.passthrough) return children
-			return [{
-				id: `${idPrefix}group:${group.slug}`,
-				label: group.label,
-				path: `group:${group.slug}`,
-				writable: children.some((c) => c.writable),
-				children,
-			}]
+			return [
+				{
+					id: `${idPrefix}group:${group.slug}`,
+					label: group.label,
+					path: `group:${group.slug}`,
+					writable: children.some((c) => c.writable),
+					children,
+				},
+			]
 		}),
 		...ungrouped.map((k) => byKey.get(k)!),
 	]
@@ -100,17 +107,23 @@ function flattenVisible(nodes: TocNode[], expanded: Set<string>, forceOpen: bool
 	return out
 }
 
-function TocItem(
-	{ node, depth, expanded, toggle, forceOpen, activeId, showMarkers }: {
-		node: TocNode
-		depth: number
-		expanded: Set<string>
-		toggle: (id: string) => void
-		forceOpen: boolean
-		activeId: string | null
-		showMarkers: boolean
-	},
-) {
+function TocItem({
+	node,
+	depth,
+	expanded,
+	toggle,
+	forceOpen,
+	activeId,
+	showMarkers,
+}: {
+	node: TocNode
+	depth: number
+	expanded: Set<string>
+	toggle: (id: string) => void
+	forceOpen: boolean
+	activeId: string | null
+	showMarkers: boolean
+}) {
 	const hasChildren = node.children.length > 0
 	const isOpen = forceOpen || expanded.has(node.id)
 	const isActive = node.id === activeId
@@ -122,18 +135,18 @@ function TocItem(
 			className={cn('flex items-center gap-0.5', hasChildren && 'bg-background')}
 			style={{ paddingLeft: depth * 12 }}
 		>
-			{hasChildren
-				? (
-					<button
-						type="button"
-						className="p-0.5 text-muted-foreground hover:text-foreground shrink-0"
-						onClick={() => toggle(node.id)}
-						aria-label={isOpen ? 'Collapse' : 'Expand'}
-					>
-						<Icons.ChevronRight className={cn('h-3.5 w-3.5 transition-transform', isOpen && 'rotate-90')} />
-					</button>
-				)
-				: <span className="w-[18px] shrink-0" />}
+			{hasChildren ? (
+				<button
+					type="button"
+					className="p-0.5 text-muted-foreground hover:text-foreground shrink-0"
+					onClick={() => toggle(node.id)}
+					aria-label={isOpen ? 'Collapse' : 'Expand'}
+				>
+					<Icons.ChevronRight className={cn('h-3.5 w-3.5 transition-transform', isOpen && 'rotate-90')} />
+				</button>
+			) : (
+				<span className="w-[18px] shrink-0" />
+			)}
 			<a
 				href={`#${node.id}`}
 				className={cn(
@@ -176,14 +189,14 @@ function TocItem(
 	)
 	return (
 		<li data-toc-id={node.id}>
-			{hasChildren
-				? (
-					<StickyGroup stickyRef={headerRef}>
-						{header}
-						{children}
-					</StickyGroup>
-				)
-				: header}
+			{hasChildren ? (
+				<StickyGroup stickyRef={headerRef}>
+					{header}
+					{children}
+				</StickyGroup>
+			) : (
+				header
+			)}
 		</li>
 	)
 }
@@ -237,17 +250,23 @@ function buildParentMap(nodes: TocNode[], parentId: string | null, map: Map<stri
 	}
 }
 
-export default function SettingsToc(
-	{ showServers, showGlobal, globalMode, servers, serverModes, creatingServer, newServerMode }: {
-		showServers: boolean
-		showGlobal: boolean
-		globalMode: 'gui' | 'json'
-		servers: { id: string; displayName: string }[]
-		serverModes: Record<string, 'gui' | 'json'>
-		creatingServer: boolean
-		newServerMode: 'gui' | 'json'
-	},
-) {
+export default function SettingsToc({
+	showServers,
+	showGlobal,
+	globalMode,
+	servers,
+	serverModes,
+	creatingServer,
+	newServerMode,
+}: {
+	showServers: boolean
+	showGlobal: boolean
+	globalMode: 'gui' | 'json'
+	servers: { id: string; displayName: string }[]
+	serverModes: Record<string, 'gui' | 'json'>
+	creatingServer: boolean
+	newServerMode: 'gui' | 'json'
+}) {
 	const [query, setQuery] = React.useState('')
 	// the search box's keyboard focus: which TOC row Enter jumps to, moved by up/down. Reset when the query changes.
 	const [focusedId, setFocusedId] = React.useState<string | null>(null)
@@ -284,15 +303,15 @@ export default function SettingsToc(
 			globalMode === 'json'
 				? []
 				: groupTocNodes(
-					buildChildren(
-						z.toJSONSchema(SETTINGS.GlobalSettingsSchema, { io: 'input', unrepresentable: 'any' }) as Node,
-						[],
+						buildChildren(
+							z.toJSONSchema(SETTINGS.GlobalSettingsSchema, { io: 'input', unrepresentable: 'any' }) as Node,
+							[],
+							'setting:',
+							globalWrite,
+						),
+						GLOBAL_SETTINGS_GROUPS,
 						'setting:',
-						globalWrite,
 					),
-					GLOBAL_SETTINGS_GROUPS,
-					'setting:',
-				),
 		[globalMode, globalWrite],
 	)
 
@@ -309,7 +328,8 @@ export default function SettingsToc(
 				label: s.displayName,
 				path: '',
 				writable: write.kind !== 'none',
-				children: (serverModes[s.id] ?? 'gui') === 'json' ? [] : buildChildren(serverJsonSchema, [], `setting:server:${s.id}:`, write),
+				children:
+					(serverModes[s.id] ?? 'gui') === 'json' ? [] : buildChildren(serverJsonSchema, [], `setting:server:${s.id}:`, write),
 			}
 		})
 		if (creatingServer) {
@@ -349,8 +369,8 @@ export default function SettingsToc(
 	}, [showServers, showGlobal, globalChildren, serverNodes, globalWrite])
 
 	// markers only add signal when something on the page is write-restricted; a fully-unrestricted admin sees none
-	const showMarkers = (showGlobal && globalWrite.kind !== 'all')
-		|| servers.some((s) => (serverWriteById.get(s.id) ?? WRITE_NONE).kind !== 'all')
+	const showMarkers =
+		(showGlobal && globalWrite.kind !== 'all') || servers.some((s) => (serverWriteById.get(s.id) ?? WRITE_NONE).kind !== 'all')
 
 	const parentById = React.useMemo(() => {
 		const map = new Map<string, string | null>()
@@ -388,7 +408,7 @@ export default function SettingsToc(
 	// the search box drives the table of contents: up/down move this focus, Enter jumps to it. It defaults to the first
 	// match while searching, so Enter jumps there with nothing arrowed. With neither, the highlight follows the scroll.
 	const flatIds = flattenVisible(visible, expanded, forceOpen)
-	const focusHighlightId = focusedId ?? (q ? flatIds[0] ?? null : null)
+	const focusHighlightId = focusedId ?? (q ? (flatIds[0] ?? null) : null)
 	const highlightId = focusHighlightId ?? activeId
 
 	// keep the highlighted item in view within the (independently scrolling) sidebar
@@ -413,9 +433,7 @@ export default function SettingsToc(
 		e.preventDefault()
 		const delta = e.key === 'ArrowDown' ? 1 : -1
 		const from = flatIds.indexOf(focusHighlightId ?? '')
-		const next = from === -1
-			? (delta === 1 ? 0 : flatIds.length - 1)
-			: Math.min(Math.max(from + delta, 0), flatIds.length - 1)
+		const next = from === -1 ? (delta === 1 ? 0 : flatIds.length - 1) : Math.min(Math.max(from + delta, 0), flatIds.length - 1)
 		setFocusedId(flatIds[next])
 	}
 
@@ -448,24 +466,24 @@ export default function SettingsToc(
 				</div>
 			</div>
 			<nav className="flex-1 min-h-0 overflow-y-auto">
-				{visible.length === 0
-					? <p className="text-sm text-muted-foreground px-1">No matches.</p>
-					: (
-						<ul>
-							{visible.map((n) => (
-								<TocItem
-									key={n.id}
-									node={n}
-									depth={0}
-									expanded={expanded}
-									toggle={toggle}
-									forceOpen={forceOpen}
-									activeId={highlightId}
-									showMarkers={showMarkers}
-								/>
-							))}
-						</ul>
-					)}
+				{visible.length === 0 ? (
+					<p className="text-sm text-muted-foreground px-1">No matches.</p>
+				) : (
+					<ul>
+						{visible.map((n) => (
+							<TocItem
+								key={n.id}
+								node={n}
+								depth={0}
+								expanded={expanded}
+								toggle={toggle}
+								forceOpen={forceOpen}
+								activeId={highlightId}
+								showMarkers={showMarkers}
+							/>
+						))}
+					</ul>
+				)}
 			</nav>
 		</div>
 	)

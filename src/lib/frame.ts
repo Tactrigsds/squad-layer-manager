@@ -64,9 +64,7 @@ export type SetupArgs<
 	sub: Rx.Subscription
 }
 
-export type Frame<
-	T extends FrameTypes,
-> = {
+export type Frame<T extends FrameTypes> = {
 	readonly _?: T // for inference
 	name: T['name']
 	id: FrameId
@@ -148,9 +146,7 @@ export class FrameManager {
 		this.cleanupReference(directKey)
 	}
 
-	createFrame<Types extends FrameTypes>(
-		opts: FrameOps<Types>,
-	) {
+	createFrame<Types extends FrameTypes>(opts: FrameOps<Types>) {
 		const id = createFrameId(opts)
 		const frame: Frame<Types> = {
 			id,
@@ -161,12 +157,9 @@ export class FrameManager {
 		return frame
 	}
 
-	ensureSetup<T extends FrameTypes>(
-		frameIdOrFrame: FrameId | Frame<T>,
-		input: T['input'],
-	): InstanceKey<T> {
+	ensureSetup<T extends FrameTypes>(frameIdOrFrame: FrameId | Frame<T>, input: T['input']): InstanceKey<T> {
 		const frame = typeof frameIdOrFrame === 'symbol' ? this.frameMap.get(frameIdOrFrame) : frameIdOrFrame
-		const frameId = frame?.id ?? frameIdOrFrame as FrameId
+		const frameId = frame?.id ?? (frameIdOrFrame as FrameId)
 		if (!frame) throw new Error(`Frame ${frameId.toString()} not found`)
 		const key = frame.createKey(frameId, input)
 		const entry = Gen.find(this.frameInstances.entries(), ([k]) => Obj.deepEqual(key, k))
@@ -270,10 +263,7 @@ export function createFrameHelpers(frameManager: FrameManager) {
 	}
 
 	// crudely just ensure the frame exists for the given input. for now just relies on FrameManagers GC behavior to clean up unused frames
-	function useFrameLifecycle<T extends FrameTypes>(
-		frameOrId: Frame<T> | FrameId,
-		options: FrameLifecycleOptions<T>,
-	) {
+	function useFrameLifecycle<T extends FrameTypes>(frameOrId: Frame<T> | FrameId, options: FrameLifecycleOptions<T>) {
 		const frameKey = ReactUtils.useStableValue(
 			(frameOrId, options) => {
 				if (options.frameKey) return options.frameKey

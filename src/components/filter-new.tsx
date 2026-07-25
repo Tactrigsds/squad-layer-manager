@@ -83,26 +83,25 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 		},
 	})
 
-	const isValidFilter = ZusUtils.useStore(props.stores.filterEditor, s => s.valid)
+	const isValidFilter = ZusUtils.useStore(props.stores.filterEditor, (s) => s.valid)
 	const createDenied = RbacClient.usePermsCheck(RBAC.perm('filters:create'))
 
-	const submitBtn = React.useMemo(() => (
-		<form.Subscribe>
-			{(f) => (
-				<PermissionDeniedTooltip denied={createDenied}>
-					<Button onClick={form.handleSubmit} disabled={!f.canSubmit || !isValidFilter || !!createDenied}>
-						Create
-					</Button>
-				</PermissionDeniedTooltip>
-			)}
-		</form.Subscribe>
-	), [form, isValidFilter, createDenied])
+	const submitBtn = React.useMemo(
+		() => (
+			<form.Subscribe>
+				{(f) => (
+					<PermissionDeniedTooltip denied={createDenied}>
+						<Button onClick={form.handleSubmit} disabled={!f.canSubmit || !isValidFilter || !!createDenied}>
+							Create
+						</Button>
+					</PermissionDeniedTooltip>
+				)}
+			</form.Subscribe>
+		),
+		[form, isValidFilter, createDenied],
+	)
 
-	const filterCard = React.useMemo(() => (
-		<FilterCard stores={props.stores}>
-			{submitBtn}
-		</FilterCard>
-	), [props.stores, submitBtn])
+	const filterCard = React.useMemo(() => <FilterCard stores={props.stores}>{submitBtn}</FilterCard>, [props.stores, submitBtn])
 
 	return (
 		<div className="container mx-auto flex flex-col gap-2">
@@ -134,7 +133,9 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 										{field.state.meta.errors.length > 0 && (
 											<Alert variant="destructive">
 												<AlertTitle>{label}:</AlertTitle>
-												<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
+												<AlertDescription>
+													{ValidationErrors.formatFieldErrors(field.state.meta.errors)}
+												</AlertDescription>
 											</Alert>
 										)}
 									</div>
@@ -158,7 +159,9 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 										{field.state.meta.errors.length > 0 && (
 											<Alert variant="destructive">
 												<AlertTitle>{label}:</AlertTitle>
-												<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
+												<AlertDescription>
+													{ValidationErrors.formatFieldErrors(field.state.meta.errors)}
+												</AlertDescription>
 											</Alert>
 										)}
 									</div>
@@ -185,7 +188,9 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 											{field.state.meta.errors.length > 0 && (
 												<Alert variant="destructive">
 													<AlertTitle>{label}:</AlertTitle>
-													<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
+													<AlertDescription>
+														{ValidationErrors.formatFieldErrors(field.state.meta.errors)}
+													</AlertDescription>
 												</Alert>
 											)}
 										</div>
@@ -213,7 +218,9 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 											{field.state.meta.errors.length > 0 && (
 												<Alert variant="destructive">
 													<AlertTitle>{label}:</AlertTitle>
-													<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
+													<AlertDescription>
+														{ValidationErrors.formatFieldErrors(field.state.meta.errors)}
+													</AlertDescription>
 												</Alert>
 											)}
 										</div>
@@ -241,7 +248,9 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 											{field.state.meta.errors.length > 0 && (
 												<Alert variant="destructive">
 													<AlertTitle>{label}:</AlertTitle>
-													<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
+													<AlertDescription>
+														{ValidationErrors.formatFieldErrors(field.state.meta.errors)}
+													</AlertDescription>
 												</Alert>
 											)}
 										</div>
@@ -269,7 +278,9 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 											{field.state.meta.errors.length > 0 && (
 												<Alert variant="destructive">
 													<AlertTitle>{label}:</AlertTitle>
-													<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
+													<AlertDescription>
+														{ValidationErrors.formatFieldErrors(field.state.meta.errors)}
+													</AlertDescription>
 												</Alert>
 											)}
 										</div>
@@ -281,10 +292,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 				</div>
 
 				{/* Right Column - Description */}
-				<form.Field
-					name="description"
-					validators={{ onChange: F.DescriptionSchema }}
-				>
+				<form.Field name="description" validators={{ onChange: F.DescriptionSchema }}>
 					{(field) => {
 						const label = 'Description'
 						return (

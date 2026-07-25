@@ -61,9 +61,7 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 	},
 
 	head: ({ loaderData }) => ({
-		meta: [
-			{ title: loaderData ? `SLM - ${loaderData.entity.name}` : undefined },
-		],
+		meta: [{ title: loaderData ? `SLM - ${loaderData.entity.name}` : undefined }],
 	}),
 })
 
@@ -90,30 +88,29 @@ function RouteComponent() {
 	const frameKey = useLiveFrameKey(params.filterId, loaderData?.frameKey, loaderData?.frameInput)
 
 	React.useEffect(() => {
-		const sub = FilterEntityClient.filterMutation$.pipe()
-			.subscribe({
-				next: async (mutation) => {
-					const loggedInUser = await UsersClient.fetchLoggedInUser()
-					if (!mutation || mutation.key !== params.filterId) return
-					switch (mutation.type) {
-						case 'add':
-							break
-						case 'update': {
-							if (mutation.userId === loggedInUser?.discordId) return
-							toast(`Filter ${mutation.value.name} was updated by ${await UsersClient.fetchDisplayName(mutation.userId)}`)
-							break
-						}
-						case 'delete': {
-							if (mutation.userId === loggedInUser?.discordId) return
-							toast(`Filter ${mutation.value.name} was deleted by ${await UsersClient.fetchDisplayName(mutation.userId)}`)
-							void rootRouter.navigate({ to: '/filters' })
-							break
-						}
-						default:
-							assertNever(mutation.type)
+		const sub = FilterEntityClient.filterMutation$.pipe().subscribe({
+			next: async (mutation) => {
+				const loggedInUser = await UsersClient.fetchLoggedInUser()
+				if (!mutation || mutation.key !== params.filterId) return
+				switch (mutation.type) {
+					case 'add':
+						break
+					case 'update': {
+						if (mutation.userId === loggedInUser?.discordId) return
+						toast(`Filter ${mutation.value.name} was updated by ${await UsersClient.fetchDisplayName(mutation.userId)}`)
+						break
 					}
-				},
-			})
+					case 'delete': {
+						if (mutation.userId === loggedInUser?.discordId) return
+						toast(`Filter ${mutation.value.name} was deleted by ${await UsersClient.fetchDisplayName(mutation.userId)}`)
+						void rootRouter.navigate({ to: '/filters' })
+						break
+					}
+					default:
+						assertNever(mutation.type)
+				}
+			},
+		})
 		return () => sub.unsubscribe()
 	}, [params.filterId])
 

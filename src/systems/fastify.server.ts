@@ -129,7 +129,7 @@ export const setup = C.spanOp('setup', { module }, async () => {
 		scope: ['identify'],
 	})
 
-	instance.get(AR.route('/login/callback'), async function(req, reply) {
+	instance.get(AR.route('/login/callback'), async function (req, reply) {
 		const tokenResult = await (this as any).discordOauth2.getAccessTokenFromAuthorizationCodeFlow(req)
 		const token = tokenResult.token as {
 			access_token: string
@@ -155,7 +155,7 @@ export const setup = C.spanOp('setup', { module }, async () => {
 		reply.redirect(AR.route('/'), 302)
 	})
 
-	instance.post(AR.route('/logout'), async function(req, res) {
+	instance.post(AR.route('/logout'), async function (req, res) {
 		// authed:false: only the session cookie is needed, so a signed-in-but-unauthorized user can still sign out
 		const ctx = buildHttpRequestContext(req, res)
 		const sessionId = ctx.cookies['session-id']
@@ -269,7 +269,7 @@ export const setup = C.spanOp('setup', { module }, async () => {
 	})
 
 	instance.register(fastifyWebsocket)
-	instance.register(async function(instance) {
+	instance.register(async function (instance) {
 		instance.get(AR.route('/orpc'), { websocket: true }, async (connection, req) => {
 			// carries the connection-level signal; orpc middleware narrows it per-call
 			const ctx = createOrpcSessionBase(getAuthedCtx(req), connection)
@@ -324,9 +324,7 @@ export const setup = C.spanOp('setup', { module }, async () => {
 	return { serverClosed }
 })
 
-export async function authorizeRequest<
-	T extends C.FastifyRequestFull,
->(ctx: T, res?: FastifyReply) {
+export async function authorizeRequest<T extends C.FastifyRequestFull>(ctx: T, res?: FastifyReply) {
 	const validSessionRes = await Sessions.validateAndUpdate({ ...ctx, res })
 	if (validSessionRes.code !== 'ok') {
 		return validSessionRes
@@ -357,15 +355,11 @@ export async function authorizeRequest<
 }
 
 // With the websocket handler this will run once per connection.
-export function createOrpcSessionBase(
-	ctx: C.FastifyRequestFull & C.AuthedUser,
-	websocket: WebSocket,
-): C.OrpcBase {
+export function createOrpcSessionBase(ctx: C.FastifyRequestFull & C.AuthedUser, websocket: WebSocket): C.OrpcBase {
 	// reconnecting clients send the id they last held as `?prior=`, so the socket picks up its held presence
 	// (activity + locks) in place with no visible break and leaves no ghost "other session"; otherwise mint a fresh id
-	const priorClientId = typeof (ctx.req.query as { prior?: unknown })?.prior === 'string'
-		? (ctx.req.query as { prior: string }).prior
-		: undefined
+	const priorClientId =
+		typeof (ctx.req.query as { prior?: unknown })?.prior === 'string' ? (ctx.req.query as { prior: string }).prior : undefined
 	const wsClientId = UserPresenceSys.reclaimClientId(ctx.user.discordId, priorClientId) ?? createId(32)
 
 	const wsCtx: C.OrpcBase = {
@@ -378,17 +372,14 @@ export function createOrpcSessionBase(
 	return wsCtx
 }
 
-function buildHttpRequestContext(
-	req: FastifyRequest,
-	res: FastifyReply,
-): C.HttpRequestFull {
+function buildHttpRequestContext(req: FastifyRequest, res: FastifyReply): C.HttpRequestFull {
 	const ctx = buildFastifyRequestContext(req)
 	return { ...ctx, res: res }
 }
 
 function buildFastifyRequestContext(req: FastifyRequest): C.FastifyRequestFull {
 	const patchedCtx = getPatchedCtx(req)
-	const cookies = req.headers.cookie ? AR.parseCookies(req.headers.cookie) : {} as AR.Cookies
+	const cookies = req.headers.cookie ? AR.parseCookies(req.headers.cookie) : ({} as AR.Cookies)
 	const ctx: C.FastifyRequestFull = { ...patchedCtx, req, cookies }
 	return ctx
 }

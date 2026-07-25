@@ -12,9 +12,7 @@ export function useIsMobile() {
 			const isSmallScreen = window.innerWidth < 768
 
 			// Check user agent for mobile devices
-			const isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-				navigator.userAgent,
-			)
+			const isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
 
 			// Consider it mobile if it has touch AND (small screen OR mobile user agent)
 			setIsMobile(hasTouch && (isSmallScreen || isMobileUserAgent))

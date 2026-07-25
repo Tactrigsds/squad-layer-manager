@@ -28,16 +28,25 @@ export let restartInfo: { userId: USR.UserId } | null = null
 
 export async function detectRestartAtBoot(ctx: C.Db) {
 	// the instance that ran immediately before this one (our own APP_STARTED isn't persisted yet at this point)
-	const [lastStart] = await ctx.db().select({ instanceId: Schema.appEvents.instanceId }).from(Schema.appEvents)
-		.where(E.eq(Schema.appEvents.type, 'APP_STARTED')).orderBy(E.desc(Schema.appEvents.time)).limit(1)
+	const [lastStart] = await ctx
+		.db()
+		.select({ instanceId: Schema.appEvents.instanceId })
+		.from(Schema.appEvents)
+		.where(E.eq(Schema.appEvents.type, 'APP_STARTED'))
+		.orderBy(E.desc(Schema.appEvents.time))
+		.limit(1)
 	if (!lastStart?.instanceId) {
 		restartInfo = null
 		return
 	}
 	// did that exact instance restart itself (as opposed to crashing / being replaced)? correlating by instanceId is
 	// clock-independent and can't be fooled by an older, unrelated restart.
-	const [restart] = await ctx.db().select({ actorUserId: Schema.appEvents.actorUserId }).from(Schema.appEvents)
-		.where(E.and(E.eq(Schema.appEvents.type, 'APP_RESTARTED'), E.eq(Schema.appEvents.instanceId, lastStart.instanceId))).limit(1)
+	const [restart] = await ctx
+		.db()
+		.select({ actorUserId: Schema.appEvents.actorUserId })
+		.from(Schema.appEvents)
+		.where(E.and(E.eq(Schema.appEvents.type, 'APP_RESTARTED'), E.eq(Schema.appEvents.instanceId, lastStart.instanceId)))
+		.limit(1)
 	if (!restart?.actorUserId) {
 		restartInfo = null
 		return

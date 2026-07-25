@@ -48,15 +48,15 @@ describe('reason applicability and text', () => {
 	]
 
 	it('an action only offers the reasons carrying text for it', () => {
-		expect(AAR.reasonsForAction(reasons, 'warn').map(r => r.label)).toEqual(['Teamkilling', 'Mic'])
-		expect(AAR.reasonsForAction(reasons, 'kill').map(r => r.label)).toEqual(['Teamkilling'])
+		expect(AAR.reasonsForAction(reasons, 'warn').map((r) => r.label)).toEqual(['Teamkilling', 'Mic'])
+		expect(AAR.reasonsForAction(reasons, 'kill').map((r) => r.label)).toEqual(['Teamkilling'])
 		expect(AAR.resolveReason(reasons, 'kill', 'afk').code).toBe('err:reason-not-applicable')
 		expect(AAR.resolveReason(reasons, 'warn', 'afk').code).toBe('err:reason-not-applicable')
 	})
 
 	it('kick and timeout are independent actions', () => {
 		const kickOnly = reason('Toxicity', { actionTexts: { kick: 'Toxicity kick text' } })
-		expect(AAR.reasonsForAction([kickOnly], 'kick').map(r => r.label)).toEqual(['Toxicity'])
+		expect(AAR.reasonsForAction([kickOnly], 'kick').map((r) => r.label)).toEqual(['Toxicity'])
 		expect(AAR.reasonsForAction([kickOnly], 'timeout')).toEqual([])
 		expect(AAR.resolveReason([kickOnly], 'timeout', 'toxicity').code).toBe('err:reason-not-applicable')
 	})
@@ -95,8 +95,9 @@ describe('reason applicability and text', () => {
 		const templated = reason('Teamkilling', {
 			actionTexts: { timeout: 'Kicked for {{label}} ({{duration}}). See {{discord}}.' },
 		})
-		expect(AAR.formatAppliedReason('timeout', templated, { vars: { duration: '2h', discord: 'discord.gg/x' } }))
-			.toBe('Kicked for Teamkilling (2h). See discord.gg/x.')
+		expect(AAR.formatAppliedReason('timeout', templated, { vars: { duration: '2h', discord: 'discord.gg/x' } })).toBe(
+			'Kicked for Teamkilling (2h). See discord.gg/x.',
+		)
 	})
 })
 
@@ -114,11 +115,11 @@ describe('applied reason snapshots', () => {
 
 	it('renderAppliedReason substitutes extraVars over the snapshot (remaining timeout duration)', () => {
 		const applied = AAR.applyReason('timeout', timeoutReason, { duration: '2h', discord: 'discord.gg/x' })
-		expect(AAR.renderAppliedReason(applied, { extraVars: { duration: '1h 29m' } }))
-			.toBe('Kicked for Toxicity. See discord.gg/x. Able to rejoin in 1h 29m.')
+		expect(AAR.renderAppliedReason(applied, { extraVars: { duration: '1h 29m' } })).toBe(
+			'Kicked for Toxicity. See discord.gg/x. Able to rejoin in 1h 29m.',
+		)
 		// empty duration drops the {{#duration}} section entirely
-		expect(AAR.renderAppliedReason(applied, { extraVars: { duration: '' } }))
-			.toBe('Kicked for Toxicity. See discord.gg/x.')
+		expect(AAR.renderAppliedReason(applied, { extraVars: { duration: '' } })).toBe('Kicked for Toxicity. See discord.gg/x.')
 	})
 
 	it('applyCustomReason renders free text with the snapshotted vars and no label', () => {

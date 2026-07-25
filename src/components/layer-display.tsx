@@ -14,30 +14,30 @@ import React from 'react'
 import { ConstraintEvalTooltip } from './constraint-matches-indicator.tsx'
 import ShortLayerName from './short-layer-name.tsx'
 
-export default function LayerDisplay(
-	props: {
-		item: LQY.LayerItem
-		badges?: React.ReactNode[]
-		// rendered alongside the layer name, ahead of the badges, so tags read as part of the layer rather than as
-		// another status indicator. Notes follow the tags, wrapping underneath them when the row runs out of room
-		tags?: React.ReactNode
-		notes?: React.ReactNode
-		backfillLayerId?: L.LayerId
-		allowShowInfo?: boolean
-		droppable?: boolean
-		className?: string
-		ref?: React.Ref<HTMLDivElement>
-		// only available when rendered within a servers/$serverId context (e.g. teams/queue/match-history panels) -- omit
-		// elsewhere (e.g. the filter editor) and queue-status badges/parity are simply not shown
-		stores?: Partial<SquadServerFrame.KeyProp>
-	},
-) {
-	const teamParity = ZusUtils.useStore(
-		props.stores?.squadServer,
-		React.useCallback((s: SquadServerFrame.State | undefined) => s ? LQY.getParityForLayerItem(s.layerItemsState, props.item) : 0, [
-			props.item,
-		]),
-	) ?? 0
+export default function LayerDisplay(props: {
+	item: LQY.LayerItem
+	badges?: React.ReactNode[]
+	// rendered alongside the layer name, ahead of the badges, so tags read as part of the layer rather than as
+	// another status indicator. Notes follow the tags, wrapping underneath them when the row runs out of room
+	tags?: React.ReactNode
+	notes?: React.ReactNode
+	backfillLayerId?: L.LayerId
+	allowShowInfo?: boolean
+	droppable?: boolean
+	className?: string
+	ref?: React.Ref<HTMLDivElement>
+	// only available when rendered within a servers/$serverId context (e.g. teams/queue/match-history panels) -- omit
+	// elsewhere (e.g. the filter editor) and queue-status badges/parity are simply not shown
+	stores?: Partial<SquadServerFrame.KeyProp>
+}) {
+	const teamParity =
+		ZusUtils.useStore(
+			props.stores?.squadServer,
+			React.useCallback(
+				(s: SquadServerFrame.State | undefined) => (s ? LQY.getParityForLayerItem(s.layerItemsState, props.item) : 0),
+				[props.item],
+			),
+		) ?? 0
 
 	const statusData = LQYClient.useLayerItemStatusData(props.item, props.stores?.squadServer)
 	const badges: React.ReactNode[] = []
@@ -94,11 +94,11 @@ export default function LayerDisplay(
 	return (
 		<div className={cn('flex space-x-2 items-center', props.className)} ref={props.ref}>
 			<span
-				data-over={props.droppable && dropOnAttrs.isDropTarget || undefined}
+				data-over={(props.droppable && dropOnAttrs.isDropTarget) || undefined}
 				className="flex-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-nowrap"
 			>
 				<ShortLayerName
-					ref={props.droppable && dropOnAttrs.ref || undefined}
+					ref={(props.droppable && dropOnAttrs.ref) || undefined}
 					className={dropOnAttrs.isDropTarget ? 'bg-secondary' : undefined}
 					layerId={props.item.layerId}
 					teamParity={teamParity}
@@ -109,9 +109,7 @@ export default function LayerDisplay(
 				{props.tags}
 				{props.notes}
 			</span>
-			<span className="flex items-center gap-1">
-				{badges}
-			</span>
+			<span className="flex items-center gap-1">{badges}</span>
 		</div>
 	)
 }

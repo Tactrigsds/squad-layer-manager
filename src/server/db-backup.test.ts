@@ -19,7 +19,7 @@ describe('backupFiles', () => {
 			[periodic('20260101-000000'), preMigration('20260716-120000'), periodic('20260301-000000')],
 			DB_PATH,
 		)
-		expect(files.map(f => f.name)).toEqual([
+		expect(files.map((f) => f.name)).toEqual([
 			preMigration('20260716-120000'),
 			periodic('20260301-000000'),
 			periodic('20260101-000000'),
@@ -27,14 +27,17 @@ describe('backupFiles', () => {
 	})
 
 	test('ignores anything that is not a backup of this database', () => {
-		const files = DbBackup.backupFiles([
-			periodic('20260101-000000'),
-			'slm-backup-otherdb-20260101-000000.sqlite3.gz',
-			'notes.txt',
-			'slm-backup-db-20260101-000000.sqlite3.gz.tmp',
-			'slm-backup-db.sqlite3.gz',
-		], DB_PATH)
-		expect(files.map(f => f.name)).toEqual([periodic('20260101-000000')])
+		const files = DbBackup.backupFiles(
+			[
+				periodic('20260101-000000'),
+				'slm-backup-otherdb-20260101-000000.sqlite3.gz',
+				'notes.txt',
+				'slm-backup-db-20260101-000000.sqlite3.gz.tmp',
+				'slm-backup-db.sqlite3.gz',
+			],
+			DB_PATH,
+		)
+		expect(files.map((f) => f.name)).toEqual([periodic('20260101-000000')])
 	})
 
 	test('reads the kind back off the name', () => {
@@ -51,7 +54,10 @@ describe('backupFiles', () => {
 	})
 
 	test('still parses names written before the sha segment existed, with a null sha', () => {
-		for (const [name, kind] of [[periodic('20260716-134016'), 'periodic'], [preMigration('20260716-134016'), 'pre-migration']] as const) {
+		for (const [name, kind] of [
+			[periodic('20260716-134016'), 'periodic'],
+			[preMigration('20260716-134016'), 'pre-migration'],
+		] as const) {
 			expect(DbBackup.parseBackupFile(name, DB_PATH)).toEqual({ name, kind, stamp: '20260716134016', sha: null })
 		}
 	})
@@ -87,11 +93,7 @@ describe('shaMatchesRequest', () => {
 
 describe('staleBackupFiles', () => {
 	test('keeps the newest N across both kinds', () => {
-		const files = [
-			periodic('20260103-000000'),
-			preMigration('20260102-000000'),
-			periodic('20260101-000000'),
-		]
+		const files = [periodic('20260103-000000'), preMigration('20260102-000000'), periodic('20260101-000000')]
 		expect(stale(files, 2)).toEqual([periodic('20260101-000000')])
 	})
 
@@ -104,11 +106,7 @@ describe('staleBackupFiles', () => {
 	})
 
 	test('pins only the newest pre-migration backup, not every one of them', () => {
-		const files = [
-			periodic('20260705-000000'),
-			preMigration('20260704-000000'),
-			preMigration('20260101-000000'),
-		]
+		const files = [periodic('20260705-000000'), preMigration('20260704-000000'), preMigration('20260101-000000')]
 		expect(stale(files, 1)).toEqual([preMigration('20260101-000000')])
 	})
 

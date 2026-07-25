@@ -8,10 +8,7 @@ const serverId = 'server-1'
 // Rebuild an activity from its serialized updates, mirroring how the reducer applies them.
 function rebuild(activity: UP.RootActivity | null): UP.RootActivity | null {
 	if (!activity) return null
-	return UP.activityToUpdates(activity).reduce<UP.RootActivity | null>(
-		(acc, update) => UP.applyActivityUpdate(acc, update),
-		null,
-	)
+	return UP.activityToUpdates(activity).reduce<UP.RootActivity | null>((acc, update) => UP.applyActivityUpdate(acc, update), null)
 }
 
 describe('activityToUpdates', () => {

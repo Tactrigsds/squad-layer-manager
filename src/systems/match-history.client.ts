@@ -18,29 +18,25 @@ export const [useMatchHistoryState, matchHistoryState$] = ReactRx.bind(
 	{ recentBalanceTriggerEvents: [], recentMatches: [] } satisfies MH.PublicMatchHistoryState,
 )
 
-export const [useRecentMatches, recentMatches$] = RxHelpers.bind(
-	'matchHistory.recentMatches',
-	(serverId: string) =>
-		matchHistoryState$(serverId).pipe(Rx.map((state) => {
+export const [useRecentMatches, recentMatches$] = RxHelpers.bind('matchHistory.recentMatches', (serverId: string) =>
+	matchHistoryState$(serverId).pipe(
+		Rx.map((state) => {
 			return [...state.recentMatches]
-		})),
+		}),
+	),
 )
 
-export const [useCurrentMatch, currentMatch$] = RxHelpers.bind(
-	'matchHistory.currentMatch',
-	(serverId: string) => recentMatches$(serverId).pipe(Rx.map(matches => (matches[matches.length - 1]) as MH.MatchDetails | undefined)),
+export const [useCurrentMatch, currentMatch$] = RxHelpers.bind('matchHistory.currentMatch', (serverId: string) =>
+	recentMatches$(serverId).pipe(Rx.map((matches) => matches[matches.length - 1] as MH.MatchDetails | undefined)),
 )
 
 export const [useInitializedRecentMatches, initializedRecentMatches$] = RxHelpers.bind(
 	'matchHistory.initializedRecentMatches',
-	(serverId: string) =>
-		initialized$.pipe(
-			Rx.map(() => recentMatches$(serverId).getValue()),
-		),
+	(serverId: string) => initialized$.pipe(Rx.map(() => recentMatches$(serverId).getValue())),
 )
 
 export async function resolveInitializedRecentMatches(serverId: string) {
-	const recentMatches = await Rx.firstValueFrom(initializedRecentMatches$(serverId).pipe(Rx.filter(v => !!v)))
+	const recentMatches = await Rx.firstValueFrom(initializedRecentMatches$(serverId).pipe(Rx.filter((v) => !!v)))
 	return recentMatches
 }
 

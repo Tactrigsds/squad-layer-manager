@@ -51,10 +51,7 @@ export function record(serverId: string, event: SC.ConsoleEventInput): void {
 	channel.buffer.push(stamped)
 	channel.bytes += SC.eventSize(stamped)
 	let dropped = 0
-	while (
-		dropped < channel.buffer.length
-		&& (channel.buffer.length - dropped > SC.BUFFER_SIZE || channel.bytes > SC.BUFFER_BYTES)
-	) {
+	while (dropped < channel.buffer.length && (channel.buffer.length - dropped > SC.BUFFER_SIZE || channel.bytes > SC.BUFFER_BYTES)) {
 		channel.bytes -= SC.eventSize(channel.buffer[dropped])
 		dropped++
 	}
@@ -81,27 +78,31 @@ export function disposeFor(serverId: string): void {
 export const orpcRouter = {
 	// The tail, backlog first and then live. Batched rather than one message per line: a busy server produces log
 	// lines faster than a websocket round trip, and the console renders them in batches anyway.
-	watch: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
-		{ context, input, signal },
-	) {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(
-			context,
-			RBAC.perm('squad-server:view-console', { serverId: input.serverId }),
-		)
-		if (denyRes) {
-			yield { code: 'err:permission-denied' as const, events: [] as SC.ConsoleEvent[] }
-			return
-		}
-		const channel = channelFor(input.serverId)
-		log.info('Server %s: user %s opened the console', input.serverId, context.user.discordId)
+	watch: orpcBase
+		.meta({ logLevel: 'trace' })
+		.input(z.object({ serverId: z.string() }))
+		.handler(async function* ({ context, input, signal }) {
+			const denyRes = await Rbac.tryDenyPermissionsForUser(
+				context,
+				RBAC.perm('squad-server:view-console', { serverId: input.serverId }),
+			)
+			if (denyRes) {
+				yield { code: 'err:permission-denied' as const, events: [] as SC.ConsoleEvent[] }
+				return
+			}
+			const channel = channelFor(input.serverId)
+			log.info('Server %s: user %s opened the console', input.serverId, context.user.discordId)
 
-		const backlog = Rx.of(channel.buffer.slice())
-		const live = channel.event$.pipe(Rx.bufferTime(120), Rx.filter((batch) => batch.length > 0))
-		const obs = Rx.concat(backlog, live).pipe(
-			Rx.filter((events) => events.length > 0),
-			Rx.map((events) => ({ code: 'ok' as const, events })),
-			withAbortSignal(signal!),
-		)
-		yield* toAsyncGenerator(obs)
-	}),
+			const backlog = Rx.of(channel.buffer.slice())
+			const live = channel.event$.pipe(
+				Rx.bufferTime(120),
+				Rx.filter((batch) => batch.length > 0),
+			)
+			const obs = Rx.concat(backlog, live).pipe(
+				Rx.filter((events) => events.length > 0),
+				Rx.map((events) => ({ code: 'ok' as const, events })),
+				withAbortSignal(signal!),
+			)
+			yield* toAsyncGenerator(obs)
+		}),
 }

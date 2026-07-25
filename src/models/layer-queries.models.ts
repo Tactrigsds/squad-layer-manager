@@ -29,37 +29,37 @@ export function valueFilteredByTargetValues(rule: RepeatRule, value?: string): b
 
 export type Constraint =
 	| {
-		type: 'filter-anon'
-		filter: F.FilterNode
-		filterApplState: 'regular'
-		showIndicator: 'disabled'
-		id: string
-	}
+			type: 'filter-anon'
+			filter: F.FilterNode
+			filterApplState: 'regular'
+			showIndicator: 'disabled'
+			id: string
+	  }
 	| {
-		type: 'filter-entity'
-		filterId: F.FilterEntityId
-		filterApplState: FilterApplicationState
-		showIndicator: IndicatorState
-		warn: FilterApplicationState
-		// set only on the single pool-membership constraint; consumers key off this to find it
-		poolFilterMode?: 'include' | 'exclude'
-		id: string
-	}
+			type: 'filter-entity'
+			filterId: F.FilterEntityId
+			filterApplState: FilterApplicationState
+			showIndicator: IndicatorState
+			warn: FilterApplicationState
+			// set only on the single pool-membership constraint; consumers key off this to find it
+			poolFilterMode?: 'include' | 'exclude'
+			id: string
+	  }
 	| {
-		type: 'do-not-repeat'
-		rule: RepeatRule
-		filterApplState: FilterApplicationState
-		warn: boolean
-		showIndicator: 'regular'
-		id: string
-	}
+			type: 'do-not-repeat'
+			rule: RepeatRule
+			filterApplState: FilterApplicationState
+			warn: boolean
+			showIndicator: 'regular'
+			id: string
+	  }
 	| {
-		type: 'filter-menu-items'
-		items: FilterMenuItem[]
-		filterApplState: 'regular'
-		showIndicator: 'disabled'
-		id: string
-	}
+			type: 'filter-menu-items'
+			items: FilterMenuItem[]
+			filterApplState: 'regular'
+			showIndicator: 'disabled'
+			id: string
+	  }
 
 export type FilterMenuItem = {
 	field: string
@@ -212,7 +212,7 @@ export const SpecialItemId = {
 	LAST_LIST_ITEM: 1,
 }
 
-export type SpecialItemId = typeof SpecialItemId[keyof typeof SpecialItemId]
+export type SpecialItemId = (typeof SpecialItemId)[keyof typeof SpecialItemId]
 
 export const CursorSchema = z.discriminatedUnion('type', [
 	z.object({
@@ -271,15 +271,7 @@ export function getEditFilterPageBaseInput(filter: F.FilterNode): BaseQueryInput
 export type RepeatMatchDescriptor = {
 	type: 'repeat-rule'
 	constraintId: string
-	field:
-		| 'Map'
-		| 'Gamemode'
-		| 'Layer'
-		| 'Size'
-		| 'Faction_A'
-		| 'Faction_B'
-		| 'Alliance_A'
-		| 'Alliance_B'
+	field: 'Map' | 'Gamemode' | 'Layer' | 'Size' | 'Faction_A' | 'Faction_B' | 'Alliance_A' | 'Alliance_B'
 	itemId?: ItemId
 	layerId: string
 	repeatOffset: number
@@ -355,10 +347,7 @@ export type MatchHistoryItem = {
 	itemId: number
 }
 
-export type LayerItem =
-	| SingleListItem
-	| VoteListItem
-	| MatchHistoryItem
+export type LayerItem = SingleListItem | VoteListItem | MatchHistoryItem
 
 {
 	const _ = {} as LayerItem satisfies LL.SparseItem
@@ -458,14 +447,10 @@ export function splice(list: LayerItem[], index: ItemIndex, deleteCount: number,
 		const parentItem = list[index.outerIndex]
 		if (!isVoteListitem(parentItem)) throw new Error('Cannot splice non-vote item index on a vote choice')
 
-		const newItems = Gen.map(iterItems(...items), res => res.item)
-		const newSingleItems = Gen.filter(newItems, item => !isVoteListitem(item)) as Generator<SingleListItem>
+		const newItems = Gen.map(iterItems(...items), (res) => res.item)
+		const newSingleItems = Gen.filter(newItems, (item) => !isVoteListitem(item)) as Generator<SingleListItem>
 
-		parentItem.choices.splice(
-			index.innerIndex,
-			deleteCount,
-			...newSingleItems,
-		)
+		parentItem.choices.splice(index.innerIndex, deleteCount, ...newSingleItems)
 		if (parentItem.choices.length === 0) {
 			list.splice(index.outerIndex, 1)
 		}
@@ -486,10 +471,7 @@ export function splice(list: LayerItem[], index: ItemIndex, deleteCount: number,
 	}
 }
 
-export function resolveCursorIndex(
-	orderedItemsState: LayerItemsState,
-	cursor: Cursor,
-): ItemIndex | null {
+export function resolveCursorIndex(orderedItemsState: LayerItemsState, cursor: Cursor): ItemIndex | null {
 	const orderedItems = orderedItemsState.layerItems
 
 	if (cursor.type === 'item-relative') {
@@ -538,7 +520,7 @@ export function getItemForLayerListItem(item: LL.Item): LayerItem {
 			itemId: item.itemId,
 			voteDecided,
 			layerId: item.layerId,
-			choices: item.choices.map(choice => ({
+			choices: item.choices.map((choice) => ({
 				type: 'single-list-item',
 				itemId: choice.itemId,
 				layerId: choice.layerId,
@@ -558,7 +540,7 @@ export function getItemForLayerListItem(item: LL.Item): LayerItem {
 // layer its warnings are about.
 export function getTags(item: LayerItem): LTag.TagId[] | undefined {
 	if (item.type === 'match-history-entry') return undefined
-	if (item.type === 'vote-list-item') return item.choices.find(choice => choice.layerId === item.layerId)?.tags
+	if (item.type === 'vote-list-item') return item.choices.find((choice) => choice.layerId === item.layerId)?.tags
 	return item.tags
 }
 
@@ -605,9 +587,7 @@ export function getQueryCursorForItemIndex(index: ItemIndex): Cursor {
 }
 
 export const LayerTableConfigSchema = z.object({
-	orderedColumns: z.array(
-		z.object({ name: z.string(), visible: z.boolean().optional().describe('default true') }),
-	),
+	orderedColumns: z.array(z.object({ name: z.string(), visible: z.boolean().optional().describe('default true') })),
 	defaultSortBy: LayersQuerySortSchema,
 	// must stay bidirectionally codec-able (no z.preprocess/one-way transforms): the settings system round-trips
 	// GlobalSettings through .encode() for the editor form, which throws on a unidirectional transform
@@ -620,8 +600,8 @@ export type EffectiveColumnAndTableConfig = LayerTableConfig & LC.EffectiveColum
 
 export function getDefaultColVisibilityState(cfg: EffectiveColumnAndTableConfig): VisibilityState {
 	const res = Object.fromEntries(
-		Object.values(cfg.defs).map(col => {
-			const colDef = cfg.orderedColumns.find(c => c.name === col.name)
+		Object.values(cfg.defs).map((col) => {
+			const colDef = cfg.orderedColumns.find((c) => c.name === col.name)
 			const visible = colDef ? (colDef.visible ?? true) : false
 			return [col.name, visible]
 		}),
@@ -643,18 +623,19 @@ export type ExtraQueryFiltersStore = ExtraQueryFiltersState
 
 export function getSeed() {
 	const bytes = crypto.getRandomValues(new Uint8Array(8))
-	return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
+	return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
-export type QueueWarning =
-	& {
-		itemId: ItemId
-	}
-	& ({
-		type: 'repeat-rule-violation-warning'
-		descriptors: RepeatMatchDescriptor[]
-	} | {
-		type: 'filter-entity-warning'
-		matched: boolean
-		constraintId: string
-	})
+export type QueueWarning = {
+	itemId: ItemId
+} & (
+	| {
+			type: 'repeat-rule-violation-warning'
+			descriptors: RepeatMatchDescriptor[]
+	  }
+	| {
+			type: 'filter-entity-warning'
+			matched: boolean
+			constraintId: string
+	  }
+)

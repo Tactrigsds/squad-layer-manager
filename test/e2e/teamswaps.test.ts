@@ -27,10 +27,10 @@ test.describe('teamswaps', () => {
 			await page.getByRole('button', { name: 'Swap Now' }).click()
 
 			// the game server actually moved them
-			await app.waitFor(
-				() => app.emu.rcon.commandLog.some((c) => c.body === `AdminForceTeamChange ${player.eos}`),
-				{ label: 'AdminForceTeamChange for the player', timeoutMs: 20_000 },
-			)
+			await app.waitFor(() => app.emu.rcon.commandLog.some((c) => c.body === `AdminForceTeamChange ${player.eos}`), {
+				label: 'AdminForceTeamChange for the player',
+				timeoutMs: 20_000,
+			})
 			expect(player.teamId).toBe(1)
 		} finally {
 			await app.dispose()

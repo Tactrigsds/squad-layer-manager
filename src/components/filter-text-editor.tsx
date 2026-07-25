@@ -109,7 +109,9 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 			<h3 className={Typography.Small + 'mb-2 ml-[45px]'}>Filter</h3>
 			<h3 className={Typography.Small + 'mb-2'}>Errors</h3>
 			<div ref={editorEltRef} className="min-h-0 overflow-hidden rounded-md border"></div>
-			<pre className="min-h-0 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">{errorText}</pre>
+			<pre className="min-h-0 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">
+				{errorText}
+			</pre>
 		</div>
 	)
 }

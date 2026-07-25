@@ -1,27 +1,27 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head id="site-head">
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!--
+	<head id="site-head">
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<!--
       Single source of truth for the site's fonts and head metadata. The server-rendered landing and 403 pages
       parse the <meta>, <html> attributes and font/preconnect <link> tags out of this file so they match the app
       without duplicating them (they inline their own scoped Tailwind; see src/systems/landing.server.ts). Keep
       font/metadata links here.
     -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-      href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:ital,wght@0,100..900;1,100..900&display=swap"
-      rel="stylesheet"
-    >
-    <link
-      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"
-      rel="stylesheet"
-    >
-  </head>
-  <body>
-    <div class="min-h-screen" id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:ital,wght@0,100..900;1,100..900&display=swap"
+			rel="stylesheet"
+		/>
+		<link
+			href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"
+			rel="stylesheet"
+		/>
+	</head>
+	<body>
+		<div class="min-h-screen" id="root"></div>
+		<script type="module" src="/src/main.tsx"></script>
+	</body>
 </html>

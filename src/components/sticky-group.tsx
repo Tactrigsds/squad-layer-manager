@@ -95,9 +95,7 @@ interface StickyState {
 	depth: number
 }
 
-function createStickyStore(
-	initial: StickyState = { offset: 0, depth: 0 },
-): StoreApi<StickyState> {
+function createStickyStore(initial: StickyState = { offset: 0, depth: 0 }): StoreApi<StickyState> {
 	return createStore<StickyState>(() => initial)
 }
 
@@ -117,10 +115,7 @@ export interface StickyGroupProps<T extends HTMLElement = HTMLElement> {
 	stickyRef: RefObject<T | null>
 }
 
-export function StickyGroup<T extends HTMLElement = HTMLElement>({
-	children,
-	stickyRef,
-}: StickyGroupProps<T>) {
+export function StickyGroup<T extends HTMLElement = HTMLElement>({ children, stickyRef }: StickyGroupProps<T>) {
 	const parentStore = useContext(StickyStoreContext)
 	const stickyCeiling = useZIndex(ZI_OFFSETS.STICKYGROUP_CEILING)
 	const stickyFloor = useZIndex(ZI_OFFSETS.STICKYGROUP_FLOOR)
@@ -189,9 +184,5 @@ export function StickyGroup<T extends HTMLElement = HTMLElement>({
 		}
 	}, [stickyRef, parentStore, ownStore, stickyCeiling, stickyFloor])
 
-	return (
-		<StickyStoreContext.Provider value={ownStore}>
-			{children}
-		</StickyStoreContext.Provider>
-	)
+	return <StickyStoreContext.Provider value={ownStore}>{children}</StickyStoreContext.Provider>
 }

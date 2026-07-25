@@ -95,10 +95,14 @@ function pick(): Candidate {
 	const commitSha = args.values['commit-sha']
 	const db = path.basename(ENV.DB_PATH)
 	let wanted = candidates()
-	if (args.values['pre-migration']) wanted = wanted.filter(c => c.kind === 'pre-migration')
-	if (commitSha) wanted = wanted.filter(c => DbBackup.shaMatchesRequest(c.sha, commitSha))
+	if (args.values['pre-migration']) wanted = wanted.filter((c) => c.kind === 'pre-migration')
+	if (commitSha) wanted = wanted.filter((c) => DbBackup.shaMatchesRequest(c.sha, commitSha))
 	if (wanted.length === 0) {
-		const scope = [args.values['pre-migration'] ? 'pre-migration ' : '', `backups of ${db}`, commitSha ? ` from commit ${commitSha}` : '']
+		const scope = [
+			args.values['pre-migration'] ? 'pre-migration ' : '',
+			`backups of ${db}`,
+			commitSha ? ` from commit ${commitSha}` : '',
+		]
 		fail(`no ${scope.join('')} in ${ENV.BACKUPS_DIR}`)
 	}
 	return wanted[0]
@@ -287,9 +291,9 @@ try {
 
 	if (pending.length > 0) {
 		console.log(
-			`\nnote: this database is ${pending.length} migration(s) behind this build (${pending.join(', ')}).\n`
-				+ 'Starting this version of the app applies them again, undoing the restore -- so roll the image back before\n'
-				+ 'starting it (or set DB_AUTOMIGRATE=0 if you know what you are doing).',
+			`\nnote: this database is ${pending.length} migration(s) behind this build (${pending.join(', ')}).\n` +
+				'Starting this version of the app applies them again, undoing the restore -- so roll the image back before\n' +
+				'starting it (or set DB_AUTOMIGRATE=0 if you know what you are doing).',
 		)
 		process.exit(EXIT_RESTORED_BEHIND_BUILD)
 	}

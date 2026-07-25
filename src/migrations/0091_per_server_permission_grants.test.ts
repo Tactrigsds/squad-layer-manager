@@ -20,9 +20,12 @@ function readRoles(db: InstanceType<typeof DatabaseConstructor>) {
 
 describe('0091_per_server_permission_grants', () => {
 	test('pins moved permissions to the configured servers, leaving global ones bare', async () => {
-		const db = makeDb({
-			admins: { permissions: ['site:authorized', 'queue:write', 'squad-server:kick-players', 'filters:create'] },
-		}, ['eu-1', 'us-1'])
+		const db = makeDb(
+			{
+				admins: { permissions: ['site:authorized', 'queue:write', 'squad-server:kick-players', 'filters:create'] },
+			},
+			['eu-1', 'us-1'],
+		)
 		await up(db)
 		const admins = readRoles(db).admins
 		expect(admins.permissions).toEqual(['site:authorized', 'filters:create'])
@@ -61,10 +64,13 @@ describe('0091_per_server_permission_grants', () => {
 	})
 
 	test('with no servers configured, leaves grants bare rather than writing an empty one', async () => {
-		const db = makeDb({
-			admins: { permissions: ['site:authorized', 'queue:write'] },
-			viewers: { permissions: ['site:authorized'] },
-		}, [])
+		const db = makeDb(
+			{
+				admins: { permissions: ['site:authorized', 'queue:write'] },
+				viewers: { permissions: ['site:authorized'] },
+			},
+			[],
+		)
 		await up(db)
 		const roles = readRoles(db)
 		// a grant naming no servers is not a valid grant; a bare expression is already the right answer here
@@ -82,12 +88,15 @@ describe('0091_per_server_permission_grants', () => {
 	})
 
 	test('keeps an existing serverGrant rather than duplicating it', async () => {
-		const db = makeDb({
-			admins: {
-				permissions: ['queue:write'],
-				serverGrants: [{ permission: 'queue:write', serverIds: ['eu-1'] }],
+		const db = makeDb(
+			{
+				admins: {
+					permissions: ['queue:write'],
+					serverGrants: [{ permission: 'queue:write', serverIds: ['eu-1'] }],
+				},
 			},
-		}, ['eu-1', 'us-1'])
+			['eu-1', 'us-1'],
+		)
 		await up(db)
 		expect(readRoles(db).admins.serverGrants).toEqual([{ permission: 'queue:write', serverIds: ['eu-1'] }])
 	})

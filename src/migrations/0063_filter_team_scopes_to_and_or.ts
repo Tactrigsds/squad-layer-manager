@@ -24,9 +24,7 @@ function resolveTeam(node: Node, team: 1 | 2): Node {
 	const out: Node = { ...node }
 	if (Array.isArray(node.args)) {
 		out.args = node.args.map((arg: any) =>
-			arg && arg.type === 'team-column'
-				? { type: 'column', column: `${arg.column}_${team}` }
-				: { ...arg }
+			arg && arg.type === 'team-column' ? { type: 'column', column: `${arg.column}_${team}` } : { ...arg },
 		)
 	}
 	if (Array.isArray(node.children)) {

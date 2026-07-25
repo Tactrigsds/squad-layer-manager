@@ -15,8 +15,9 @@ export const Store = Zus.createStore<PublicConfigForClient | undefined>(() => un
 // the server re-pushes the config whenever global settings change, so the settings-derived parts of it
 // (layerTable, layerGeneration) arrive here live. fireImmediately so a late subscriber sees the config that's
 // already loaded rather than waiting for the next push (toStream is change-only by default)
-export const config$: Rx.Observable<PublicConfigForClient> = toStream(Store, undefined, { fireImmediately: true })
-	.pipe(Rx.filter(config => !!config))
+export const config$: Rx.Observable<PublicConfigForClient> = toStream(Store, undefined, { fireImmediately: true }).pipe(
+	Rx.filter((config) => !!config),
+)
 
 // just hope the config exists already (probably will)
 export function getConfig() {
@@ -38,7 +39,7 @@ export async function fetchConfig() {
 }
 
 export function setup() {
-	RPC.observe('config.watchConfig', () => RPC.orpc.config.watchConfig.call()).subscribe(config => {
+	RPC.observe('config.watchConfig', () => RPC.orpc.config.watchConfig.call()).subscribe((config) => {
 		Store.setState(config)
 	})
 }

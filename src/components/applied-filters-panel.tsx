@@ -14,14 +14,12 @@ import { FilterEntityLabel } from './filter-entity-select.tsx'
 import { ScrollArea, ScrollBar } from './ui/scroll-area.tsx'
 import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
 
-export default function AppliedFiltersPanel(
-	props: { stores: Partial<SquadServerFrame.KeyProp> & AppliedFiltersPrt.KeyProp },
-) {
+export default function AppliedFiltersPanel(props: { stores: Partial<SquadServerFrame.KeyProp> & AppliedFiltersPrt.KeyProp }) {
 	const filterEntities = FilterEntityClient.useFilterEntities()
 	const scrollRef = React.useRef<HTMLDivElement>(null)
 	// an instance with locally-scoped extras renders its own set; otherwise the global saved one
-	const localExtraFilters = ZusUtils.useStore(props.stores.appliedFilters, s => s.appliedFilters.localExtraFilters)
-	const globalExtraFilters = ZusUtils.useStore(AppliedFiltersPrt.ExtraFiltersStore, s => s.extraFilters)
+	const localExtraFilters = ZusUtils.useStore(props.stores.appliedFilters, (s) => s.appliedFilters.localExtraFilters)
+	const globalExtraFilters = ZusUtils.useStore(AppliedFiltersPrt.ExtraFiltersStore, (s) => s.extraFilters)
 	const extraFilters = localExtraFilters ?? globalExtraFilters
 	const [canScrollLeft, setCanScrollLeft] = React.useState(false)
 	const [canScrollRight, setCanScrollRight] = React.useState(false)
@@ -73,11 +71,7 @@ export default function AppliedFiltersPanel(
 			checkScrollability()
 			const visible$ = Rx.fromEvent(document, 'visibilitychange').pipe(Rx.filter(() => !document.hidden))
 
-			const sub = Rx.merge(
-				visible$,
-				Rx.fromEvent(viewport, 'scroll'),
-				Rx.fromEvent(window, 'resize'),
-			).subscribe(checkScrollability)
+			const sub = Rx.merge(visible$, Rx.fromEvent(viewport, 'scroll'), Rx.fromEvent(window, 'resize')).subscribe(checkScrollability)
 
 			// Use ResizeObserver to detect content size changes
 			const resizeObserver = new ResizeObserver(checkScrollability)
@@ -90,23 +84,24 @@ export default function AppliedFiltersPanel(
 		}
 	}, [extraFilters])
 
-	const poolFilterId: F.FilterEntityId | null = ZusUtils.useStore(
-		props.stores.squadServer ?? null,
-		s => s ? s.settings.saved.queue.mainPool.poolFilter?.filterId ?? null : null,
+	const poolFilterId: F.FilterEntityId | null = ZusUtils.useStore(props.stores.squadServer ?? null, (s) =>
+		s ? (s.settings.saved.queue.mainPool.poolFilter?.filterId ?? null) : null,
 	)
 	const selectableFilterIds: F.FilterEntityId[] = ZusUtils.useStore(
 		props.stores.squadServer ?? null,
-		ZusUtils.useShallow(s => s ? s.settings.saved.queue.mainPool.defaultSelectable.map(c => c.filterId) : []),
+		ZusUtils.useShallow((s) => (s ? s.settings.saved.queue.mainPool.defaultSelectable.map((c) => c.filterId) : [])),
 	)
-	const extraFilterIds: F.FilterEntityId[] = Array.from(extraFilters).filter(id => !selectableFilterIds.includes(id))
+	const extraFilterIds: F.FilterEntityId[] = Array.from(extraFilters).filter((id) => !selectableFilterIds.includes(id))
 
-	const options = Array.from(Gen.map(filterEntities.values(), function*(filter) {
-		if (selectableFilterIds.includes(filter.id) || filter.id === poolFilterId) return
-		yield {
-			value: filter.id,
-			label: <FilterEntityLabel filter={filter} />,
-		}
-	}))
+	const options = Array.from(
+		Gen.map(filterEntities.values(), function* (filter) {
+			if (selectableFilterIds.includes(filter.id) || filter.id === poolFilterId) return
+			yield {
+				value: filter.id,
+				label: <FilterEntityLabel filter={filter} />,
+			}
+		}),
+	)
 
 	return (
 		<div className="flex items-center gap-1">
@@ -125,7 +120,9 @@ export default function AppliedFiltersPanel(
 			<ScrollArea ref={scrollRef} className="max-w-[55vw]">
 				<div className="flex flex-row gap-2 w-max">
 					{extraFilterIds.map((filterId) => {
-						return <FilterCheckbox key={filterId} filterId={filterId} stores={{ appliedFilters: props.stores.appliedFilters }} />
+						return (
+							<FilterCheckbox key={filterId} filterId={filterId} stores={{ appliedFilters: props.stores.appliedFilters }} />
+						)
 					})}
 				</div>
 				<ScrollBar orientation="horizontal" />
@@ -148,11 +145,7 @@ export default function AppliedFiltersPanel(
 				onSelect={(update) => AppliedFiltersPrt.Actions.selectExtraFilters(props.stores, update)}
 			>
 				<Button title="Edit extra filters" variant="ghost" size={extraFilterIds.length > 0 ? 'icon' : 'default'}>
-					{extraFilterIds.length === 0 && (
-						<div className="text-sm text-muted-foreground px-2">
-							Add Extra Filters
-						</div>
-					)}
+					{extraFilterIds.length === 0 && <div className="text-sm text-muted-foreground px-2">Add Extra Filters</div>}
 					<Icons.Edit />
 				</Button>
 			</ComboBoxMulti>
@@ -189,13 +182,13 @@ const POOL_STATE_TITLES: Record<AppliedFiltersPrt.ApplyAs, string> = {
 export function PoolFilterCheckbox({ stores }: { stores: Partial<SquadServerFrame.KeyProp> & AppliedFiltersPrt.KeyProp }) {
 	const poolFilter = ZusUtils.useStore(
 		stores.squadServer ?? null,
-		ZusUtils.useShallow(s => s ? s.settings.saved.queue.mainPool.poolFilter : null),
+		ZusUtils.useShallow((s) => (s ? s.settings.saved.queue.mainPool.poolFilter : null)),
 	)
-	const poolApplyAs = ZusUtils.useStore(stores.appliedFilters, s => s.appliedFilters.poolApplyAs)
+	const poolApplyAs = ZusUtils.useStore(stores.appliedFilters, (s) => s.appliedFilters.poolApplyAs)
 	const filter = FilterEntityClient.useFilterEntities().get(poolFilter?.filterId as string)
 	if (!poolFilter || !filter) return
 
-	const emoji = poolApplyAs === 'inverted' ? filter.invertedEmoji ?? filter.emoji : filter.emoji
+	const emoji = poolApplyAs === 'inverted' ? (filter.invertedEmoji ?? filter.emoji) : filter.emoji
 	return (
 		<TriStateCheckbox
 			variant="outline"
@@ -210,10 +203,7 @@ export function PoolFilterCheckbox({ stores }: { stores: Partial<SquadServerFram
 }
 
 export function FilterCheckbox({ filterId, stores }: { filterId: string; stores: AppliedFiltersPrt.KeyProp }) {
-	const storeAppliedState = ZusUtils.useStore(
-		stores.appliedFilters,
-		s => s.appliedFilters.filterStates.get(filterId) ?? 'disabled',
-	)
+	const storeAppliedState = ZusUtils.useStore(stores.appliedFilters, (s) => s.appliedFilters.filterStates.get(filterId) ?? 'disabled')
 	const filter = FilterEntityClient.useFilterEntities().get(filterId)
 
 	if (!filter) return

@@ -88,8 +88,7 @@ export function ManageFlagsDialogContent(props: {
 	// while true the add button is replaced by the picker it summoned
 	const [picking, setPicking] = React.useState(false)
 
-	const addable = (orgFlags ?? []).map((f) => f.id)
-		.filter((id) => !currentFlagIds.includes(id) && !pending.includes(id))
+	const addable = (orgFlags ?? []).map((f) => f.id).filter((id) => !currentFlagIds.includes(id) && !pending.includes(id))
 
 	function toggleStaged(id: string) {
 		const next = staged.includes(id) ? staged.filter((f) => f !== id) : [...staged, id]
@@ -113,7 +112,9 @@ export function ManageFlagsDialogContent(props: {
 	return (
 		<div className="grid gap-2">
 			<Label>Flags</Label>
-			{currentFlagIds.length === 0 && pending.length === 0 && <p className="text-xs text-muted-foreground">This player has no flags.</p>}
+			{currentFlagIds.length === 0 && pending.length === 0 && (
+				<p className="text-xs text-muted-foreground">This player has no flags.</p>
+			)}
 			<ul className="grid gap-1">
 				{currentFlagIds.map((id) => (
 					<FlagRow
@@ -138,34 +139,32 @@ export function ManageFlagsDialogContent(props: {
 					/>
 				))}
 			</ul>
-			{picking
-				? (
-					<BmFlagSelect
-						value={undefined}
-						only={addable}
-						autoOpen
-						placeholder="Select a flag..."
-						// dismissing without picking puts the button back, so the picker is never left sitting there empty
-						onOpenChange={(open) => {
-							if (!open) setPicking(false)
-						}}
-						onChange={addPending}
-					/>
-				)
-				: (
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						className="justify-self-start"
-						disabled={addable.length === 0}
-						title={addable.length === 0 ? 'This player already has every flag in the organization' : undefined}
-						onClick={() => setPicking(true)}
-					>
-						<Icons.Plus className="mr-1 h-3 w-3" />
-						Add flag
-					</Button>
-				)}
+			{picking ? (
+				<BmFlagSelect
+					value={undefined}
+					only={addable}
+					autoOpen
+					placeholder="Select a flag..."
+					// dismissing without picking puts the button back, so the picker is never left sitting there empty
+					onOpenChange={(open) => {
+						if (!open) setPicking(false)
+					}}
+					onChange={addPending}
+				/>
+			) : (
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					className="justify-self-start"
+					disabled={addable.length === 0}
+					title={addable.length === 0 ? 'This player already has every flag in the organization' : undefined}
+					onClick={() => setPicking(true)}
+				>
+					<Icons.Plus className="mr-1 h-3 w-3" />
+					Add flag
+				</Button>
+			)}
 			<span className="text-xs text-muted-foreground">
 				Each reason is posted to the player's BattleMetrics profile as its own note.
 			</span>
@@ -218,32 +217,30 @@ export function AddFlagsDialogContent(props: {
 					/>
 				))}
 			</ul>
-			{picking
-				? (
-					<BmFlagSelect
-						value={undefined}
-						only={addable}
-						autoOpen
-						placeholder="Select a flag..."
-						onOpenChange={(open) => {
-							if (!open) setPicking(false)
-						}}
-						onChange={addPending}
-					/>
-				)
-				: (
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						className="justify-self-start"
-						disabled={addable.length === 0}
-						onClick={() => setPicking(true)}
-					>
-						<Icons.Plus className="mr-1 h-3 w-3" />
-						Add flag
-					</Button>
-				)}
+			{picking ? (
+				<BmFlagSelect
+					value={undefined}
+					only={addable}
+					autoOpen
+					placeholder="Select a flag..."
+					onOpenChange={(open) => {
+						if (!open) setPicking(false)
+					}}
+					onChange={addPending}
+				/>
+			) : (
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					className="justify-self-start"
+					disabled={addable.length === 0}
+					onClick={() => setPicking(true)}
+				>
+					<Icons.Plus className="mr-1 h-3 w-3" />
+					Add flag
+				</Button>
+			)}
 			<span className="text-xs text-muted-foreground">
 				Each reason is posted to every selected player's BattleMetrics profile as its own note.
 			</span>
@@ -277,14 +274,7 @@ function useManageFlagsAction(playerId: string) {
 		const result = await openDialog({
 			title: 'Manage Flags',
 			description: "Add or remove BattleMetrics flags on this player's profile.",
-			content: (
-				<ManageFlagsDialogContent
-					playerId={playerId}
-					addRef={addRef}
-					removeRef={removeRef}
-					reasonsRef={reasonsRef}
-				/>
-			),
+			content: <ManageFlagsDialogContent playerId={playerId} addRef={addRef} removeRef={removeRef} reasonsRef={reasonsRef} />,
 			buttons: [{ id: 'confirm', label: 'Apply' }],
 		})
 		if (result !== 'confirm') return
@@ -303,10 +293,7 @@ function useManageFlagsAction(playerId: string) {
 			toast.error('Failed to update flags', { description: res.code })
 			return
 		}
-		const summary = [
-			...res.added.map((f) => `+${f.name}`),
-			...res.removed.map((f) => `−${f.name}`),
-		].join(', ')
+		const summary = [...res.added.map((f) => `+${f.name}`), ...res.removed.map((f) => `−${f.name}`)].join(', ')
 		toast(`Updated flags: ${summary}`, {
 			description: res.noteAdded ? undefined : 'The flags were updated, but a BattleMetrics note failed to post.',
 		})
@@ -322,7 +309,9 @@ export function PlayerFlagsMenuItem(props: { slots: MenuSlots; playerId: string;
 	const { manageFlags, denied, disabled } = useManageFlagsAction(props.playerId)
 	return (
 		<PermissionDeniedTooltip denied={denied}>
-			<Item onClick={manageFlags} disabled={disabled}>{props.label ?? 'Manage Flags...'}</Item>
+			<Item onClick={manageFlags} disabled={disabled}>
+				{props.label ?? 'Manage Flags...'}
+			</Item>
 		</PermissionDeniedTooltip>
 	)
 }
@@ -376,7 +365,9 @@ export function AddPlayerFlagsMenuItem(props: { slots: MenuSlots; playerIds: str
 	const { addFlags, denied, disabled } = useAddFlagsAction(props.playerIds, props.targetDescription)
 	return (
 		<PermissionDeniedTooltip denied={denied}>
-			<Item onClick={addFlags} disabled={disabled}>{props.label ?? 'Add Flags...'}</Item>
+			<Item onClick={addFlags} disabled={disabled}>
+				{props.label ?? 'Add Flags...'}
+			</Item>
 		</PermissionDeniedTooltip>
 	)
 }

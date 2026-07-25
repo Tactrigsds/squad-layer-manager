@@ -40,65 +40,58 @@ export const withAcquired = <Cb extends (...args: any[]) => Promise<any>>(
 	getMutexes: ((...args: Parameters<Cb>) => MutexInterface[] | MutexInterface) | MutexInterface | MutexInterface[],
 	cb: Cb,
 ): Cb =>
-	(
-		(...args: Parameters<Cb>) => {
-			if (typeof getMutexes === 'function') {
-				getMutexes = getMutexes(...args)
+	((...args: Parameters<Cb>) => {
+		if (typeof getMutexes === 'function') {
+			getMutexes = getMutexes(...args)
+		}
+		const mutexes = Array.isArray(getMutexes) ? getMutexes : [getMutexes]
+		return mtxStorage.run({ locked: new Set(mtxStorage.getStore()?.locked), releaseTasks: new Set() }, async () => {
+			const { locked, releaseTasks } = mtxStorage.getStore()!
+			// being in 'locked', means that we've already acquired this mutex
+			const mutexesToAcquire = mutexes.filter((mutex) => !locked.has(mutex))
+
+			// Acquire sequentially in a stable global order (not Promise.all): concurrent partial
+			// acquisition of multi-mutex sets deadlocks as soon as two ops share two mutexes
+			// (op A holds m1 awaiting m2, op B holds m2 awaiting m1). A consistent total order
+			// makes cyclic waits between multi-lock ops impossible.
+			const newlyAcquired: (() => void)[] = []
+			for (const mutex of [...mutexesToAcquire].sort((a, b) => lockOrderOf(a) - lockOrderOf(b))) {
+				newlyAcquired.push(await mutex.acquire().catch((e) => (e === E_CANCELED ? () => undefined : Promise.reject(e))))
 			}
-			const mutexes = Array.isArray(getMutexes) ? getMutexes : [getMutexes]
-			return mtxStorage.run(
-				{ locked: new Set(mtxStorage.getStore()?.locked), releaseTasks: new Set() },
-				async () => {
-					const { locked, releaseTasks } = mtxStorage.getStore()!
-					// being in 'locked', means that we've already acquired this mutex
-					const mutexesToAcquire = mutexes.filter(mutex => !locked.has(mutex))
 
-					// Acquire sequentially in a stable global order (not Promise.all): concurrent partial
-					// acquisition of multi-mutex sets deadlocks as soon as two ops share two mutexes
-					// (op A holds m1 awaiting m2, op B holds m2 awaiting m1). A consistent total order
-					// makes cyclic waits between multi-lock ops impossible.
-					const newlyAcquired: (() => void)[] = []
-					for (const mutex of [...mutexesToAcquire].sort((a, b) => lockOrderOf(a) - lockOrderOf(b))) {
-						newlyAcquired.push(
-							await mutex.acquire().catch(e => e === E_CANCELED ? () => undefined : Promise.reject(e)),
-						)
-					}
+			for (const mutex of mutexesToAcquire) {
+				locked.add(mutex)
+			}
 
-					for (const mutex of mutexesToAcquire) {
-						locked.add(mutex)
-					}
+			let logError: (...args: any[]) => void = console.error
+			if (typeof (args[0] as any)?.log === 'function') {
+				logError = (...args: any[]) => args[0].log.error?.(...args)
+			}
 
-					let logError: (...args: any[]) => void = console.error
-					if (typeof (args[0] as any)?.log === 'function') {
-						logError = (...args: any[]) => args[0].log.error?.(...args)
-					}
-
+			try {
+				return await cb(...args)
+			} finally {
+				void (async () => {
+					// wait for all mutexes to be released before processing release tasks
 					try {
-						return await cb(...args)
-					} finally {
-						void (async () => {
-							// wait for all mutexes to be released before processing release tasks
-							try {
-								await Promise.all(mutexes.map(mutex => mutex.waitForUnlock()))
-							} catch (err) {
-								// detached: rethrowing here is an unhandled rejection, not something a caller can catch
-								logError(err, 'error while waiting for mutexes to unlock')
-								return
-							}
-							for (const task of releaseTasks) {
-								try {
-									void task()
-								} catch (err) {
-									logError(err, 'error during release task execution')
-								}
-							}
-						})()
-
-						for (const release of newlyAcquired) {
-							release()
+						await Promise.all(mutexes.map((mutex) => mutex.waitForUnlock()))
+					} catch (err) {
+						// detached: rethrowing here is an unhandled rejection, not something a caller can catch
+						logError(err, 'error while waiting for mutexes to unlock')
+						return
+					}
+					for (const task of releaseTasks) {
+						try {
+							void task()
+						} catch (err) {
+							logError(err, 'error during release task execution')
 						}
 					}
-				},
-			)
-		}
-	) as unknown as Cb
+				})()
+
+				for (const release of newlyAcquired) {
+					release()
+				}
+			}
+		})
+	}) as unknown as Cb

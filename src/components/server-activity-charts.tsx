@@ -45,12 +45,8 @@ function calculateOverallKD(events: CHAT.EventEnriched[]): { team1Ratio: number;
 		}
 	}
 
-	const team1Ratio = team1Deaths === 0
-		? (team1Kills > 0 ? 999 : 0)
-		: team1Kills / team1Deaths
-	const team2Ratio = team2Deaths === 0
-		? (team2Kills > 0 ? 999 : 0)
-		: team2Kills / team2Deaths
+	const team1Ratio = team1Deaths === 0 ? (team1Kills > 0 ? 999 : 0) : team1Kills / team1Deaths
+	const team2Ratio = team2Deaths === 0 ? (team2Kills > 0 ? 999 : 0) : team2Kills / team2Deaths
 
 	return { team1Ratio, team2Ratio }
 }
@@ -84,12 +80,8 @@ function calculateOverallWD(events: CHAT.EventEnriched[]): { team1Ratio: number;
 		}
 	}
 
-	const team1Ratio = team1Wounded === 0
-		? (team1Wounds > 0 ? 999 : 0)
-		: team1Wounds / team1Wounded
-	const team2Ratio = team2Wounded === 0
-		? (team2Wounds > 0 ? 999 : 0)
-		: team2Wounds / team2Wounded
+	const team1Ratio = team1Wounded === 0 ? (team1Wounds > 0 ? 999 : 0) : team1Wounds / team1Wounded
+	const team2Ratio = team2Wounded === 0 ? (team2Wounds > 0 ? 999 : 0) : team2Wounds / team2Wounded
 
 	return { team1Ratio, team2Ratio }
 }
@@ -144,7 +136,7 @@ function createFlagGroupChartOption(
 				fontWeight: 'bold',
 				textShadowBlur: isDark ? 0 : 3,
 				textShadowColor: '#0006',
-				formatter: (p: { value?: unknown }) => (typeof p.value === 'number' && p.value > 0) ? String(p.value) : '',
+				formatter: (p: { value?: unknown }) => (typeof p.value === 'number' && p.value > 0 ? String(p.value) : ''),
 			},
 		})),
 		tooltip: {
@@ -178,15 +170,15 @@ export function ServerActivityCharts(props: {
 	layerId?: L.LayerId
 	stores: SquadServerFrame.KeyProp
 }) {
-	const displayTeamsNormalized = ZusUtils.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
-	const selectedMatchOrdinal = ZusUtils.useStore(props.stores.squadServer!, s => s.chat.selectedMatchOrdinal)
+	const displayTeamsNormalized = ZusUtils.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
+	const selectedMatchOrdinal = ZusUtils.useStore(props.stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
 	const { resolvedTheme } = ThemeClient.useTheme()
 	const isDark = resolvedTheme === 'dark'
 
 	// Get unfiltered live events for K/D calculation
 	const liveUnfilteredEvents = ZusUtils.useStore(
 		props.stores.squadServer!,
-		ZusUtils.useDeep(s => {
+		ZusUtils.useDeep((s) => {
 			if (selectedMatchOrdinal !== null || !s.chat.chatState.synced || props.currentMatchId === undefined) return null
 
 			const eventBuffer = s.chat.chatState.eventBuffer
@@ -202,7 +194,7 @@ export function ServerActivityCharts(props: {
 	// Current live players for flag group chart
 	const livePlayers = ZusUtils.useStore(
 		props.stores.squadServer!,
-		ZusUtils.useDeep(s => {
+		ZusUtils.useDeep((s) => {
 			if (selectedMatchOrdinal !== null || !s.chat.chatState.synced) return null
 			return s.chat.chatState.interpolatedState.players
 		}),
@@ -213,11 +205,8 @@ export function ServerActivityCharts(props: {
 	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
 	const playerGroupings = config?.playerGroupings
 
-	const groupingIds = React.useMemo(
-		() => playerGroupings ? PG.getGroupingIds(playerGroupings) : [],
-		[playerGroupings],
-	)
-	const slsOnly = ZusUtils.useStore(BattlemetricsClient.Store, s => s.slsOnly)
+	const groupingIds = React.useMemo(() => (playerGroupings ? PG.getGroupingIds(playerGroupings) : []), [playerGroupings])
+	const slsOnly = ZusUtils.useStore(BattlemetricsClient.Store, (s) => s.slsOnly)
 	const activeGroupingId = ZusUtils.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingId(groupingIds))
 
 	const events = selectedMatchOrdinal !== null ? props.historicalEvents : liveUnfilteredEvents
@@ -267,12 +256,12 @@ export function ServerActivityCharts(props: {
 		const grouping = playerGroupings[activeGroupingId]
 		if (!grouping) return null
 
-		const chartPlayers = slsOnly ? livePlayers.filter(p => p.isLeader) : livePlayers
+		const chartPlayers = slsOnly ? livePlayers.filter((p) => p.isLeader) : livePlayers
 
 		// Build [eosId, facts] pairs for all live players -- bmData is keyed by EOS ID
 		const playerFacts: [SM.PlayerId, PG.PlayerFacts][] = chartPlayers
-			.filter(p => p.ids.eos != null)
-			.map(p => {
+			.filter((p) => p.ids.eos != null)
+			.map((p) => {
 				const eosId = p.ids.eos!
 				const flagIds = bmData[eosId]?.flagIds ?? []
 				return [eosId, { flags: orgFlags ? BM.resolveFlags(flagIds, orgFlags) : [], adminGroups: p.adminGroups ?? [] }]
@@ -304,7 +293,7 @@ export function ServerActivityCharts(props: {
 			}
 		}
 
-		const groupColors = groupLabels.map(label => PG.getGroupColor(grouping, label, orgFlags))
+		const groupColors = groupLabels.map((label) => PG.getGroupColor(grouping, label, orgFlags))
 
 		return createFlagGroupChartOption(
 			groupLabels,
@@ -317,26 +306,12 @@ export function ServerActivityCharts(props: {
 			team2Label,
 			isDark,
 		)
-	}, [
-		playerGroupings,
-		activeGroupingId,
-		livePlayers,
-		slsOnly,
-		bmData,
-		team1Label,
-		team2Label,
-		isDark,
-		orgFlags,
-	])
+	}, [playerGroupings, activeGroupingId, livePlayers, slsOnly, bmData, team1Label, team2Label, isDark, orgFlags])
 
 	const hasAnything = !isEmpty || flagGroupChart !== null
 
 	if (!hasAnything) {
-		return (
-			<div className="text-muted-foreground text-sm text-center py-4">
-				No data available for charts
-			</div>
-		)
+		return <div className="text-muted-foreground text-sm text-center py-4">No data available for charts</div>
 	}
 
 	return (
@@ -348,12 +323,16 @@ export function ServerActivityCharts(props: {
 						<span className="flex items-center gap-1">
 							<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team1Color }}></span>
 							{team1Label}:{' '}
-							<span className="font-mono font-semibold">{overallKD.team1Ratio >= 999 ? '∞' : overallKD.team1Ratio.toFixed(2)}</span>
+							<span className="font-mono font-semibold">
+								{overallKD.team1Ratio >= 999 ? '∞' : overallKD.team1Ratio.toFixed(2)}
+							</span>
 						</span>
 						<span className="flex items-center gap-1">
 							<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team2Color }}></span>
 							{team2Label}:{' '}
-							<span className="font-mono font-semibold">{overallKD.team2Ratio >= 999 ? '∞' : overallKD.team2Ratio.toFixed(2)}</span>
+							<span className="font-mono font-semibold">
+								{overallKD.team2Ratio >= 999 ? '∞' : overallKD.team2Ratio.toFixed(2)}
+							</span>
 						</span>
 					</div>
 					<div className="flex items-center gap-2 shrink-0">
@@ -361,12 +340,16 @@ export function ServerActivityCharts(props: {
 						<span className="flex items-center gap-1">
 							<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team1Color }}></span>
 							{team1Label}:{' '}
-							<span className="font-mono font-semibold">{overallWD.team1Ratio >= 999 ? '∞' : overallWD.team1Ratio.toFixed(2)}</span>
+							<span className="font-mono font-semibold">
+								{overallWD.team1Ratio >= 999 ? '∞' : overallWD.team1Ratio.toFixed(2)}
+							</span>
 						</span>
 						<span className="flex items-center gap-1">
 							<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team2Color }}></span>
 							{team2Label}:{' '}
-							<span className="font-mono font-semibold">{overallWD.team2Ratio >= 999 ? '∞' : overallWD.team2Ratio.toFixed(2)}</span>
+							<span className="font-mono font-semibold">
+								{overallWD.team2Ratio >= 999 ? '∞' : overallWD.team2Ratio.toFixed(2)}
+							</span>
 						</span>
 					</div>
 				</div>
@@ -377,7 +360,7 @@ export function ServerActivityCharts(props: {
 						<span className="text-xs text-muted-foreground">Team Breakdowns</span>
 						{groupingIds.length > 1 && (
 							<div className="flex gap-0.5 ml-2">
-								{groupingIds.map(groupingId => (
+								{groupingIds.map((groupingId) => (
 									<button
 										type="button"
 										key={groupingId}

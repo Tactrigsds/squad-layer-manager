@@ -6,10 +6,7 @@ import React from 'react'
 import { TriStateCheckbox } from './ui/tri-state-checkbox'
 
 export default function PoolCheckboxes(props: { stores: PoolCheckboxesPrt.KeyProp }) {
-	const checkboxes = ZusUtils.useStore(
-		props.stores.poolCheckboxes,
-		PoolCheckboxesPrt.Sel.checkboxesState,
-	)
+	const checkboxes = ZusUtils.useStore(props.stores.poolCheckboxes, PoolCheckboxesPrt.Sel.checkboxesState)
 
 	return (
 		<div className="flex items-center flex-nowrap whitespace-nowrap space-x-1">
@@ -17,7 +14,7 @@ export default function PoolCheckboxes(props: { stores: PoolCheckboxesPrt.KeyPro
 				title="Hide layers which violate Repeat rules"
 				size="sm"
 				variant="ghost"
-				onCheckedChange={v => {
+				onCheckedChange={(v) => {
 					PoolCheckboxesPrt.Actions.setCheckbox(props.stores, 'dnr', invertApplyAs(v))
 				}}
 				checked={invertApplyAs(checkboxes.dnr)}

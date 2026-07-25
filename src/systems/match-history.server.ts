@@ -62,14 +62,16 @@ export function initMatchHistoryContext(event$: SquadServer.SquadServer['event$'
 		recentBalanceTriggerEvents: [],
 	}
 
-	event$.pipe(
-		Rx.filter(([ctx, e]) => e.type === 'ROUND_ENDED'),
-		C.durableSub('onRoundEnded', { module }, async ([_ctx, e], signal) => {
-			const ctx = { ..._ctx, signal }
-			if (e.type !== 'ROUND_ENDED' || e.matchId !== (await getCurrentMatch(ctx)).historyEntryId) return
-			await finalizeCurrentMatch(ctx, e.outcome, new Date(e.time))
-		}),
-	).subscribe()
+	event$
+		.pipe(
+			Rx.filter(([ctx, e]) => e.type === 'ROUND_ENDED'),
+			C.durableSub('onRoundEnded', { module }, async ([_ctx, e], signal) => {
+				const ctx = { ..._ctx, signal }
+				if (e.type !== 'ROUND_ENDED' || e.matchId !== (await getCurrentMatch(ctx)).historyEntryId) return
+				await finalizeCurrentMatch(ctx, e.outcome, new Date(e.time))
+			}),
+		)
+		.subscribe()
 
 	cleanup.push(ctx.update$, ctx.mtx)
 
@@ -91,26 +93,42 @@ export const loadState = C.spanOp(
 	async (ctx: C.Db & C.MatchHistory & C.MatchEventsCache & CS.AbortSignal, opts?: { startAtOrdinal?: number }) => {
 		const state = ctx.matchHistory
 		const startAtOrdinal = opts?.startAtOrdinal ?? 0
-		const recentMatchesCte = ctx.db().$with('recent_matches').as(
-			ctx.db().select().from(Schema.matchHistory).where(
-				E.and(
-					E.gte(Schema.matchHistory.ordinal, startAtOrdinal),
-					E.eq(Schema.matchHistory.serverId, ctx.serverId),
-				),
-			).orderBy(E.desc(Schema.matchHistory.ordinal)).limit(MH.MAX_RECENT_MATCHES),
-		)
+		const recentMatchesCte = ctx
+			.db()
+			.$with('recent_matches')
+			.as(
+				ctx
+					.db()
+					.select()
+					.from(Schema.matchHistory)
+					.where(E.and(E.gte(Schema.matchHistory.ordinal, startAtOrdinal), E.eq(Schema.matchHistory.serverId, ctx.serverId)))
+					.orderBy(E.desc(Schema.matchHistory.ordinal))
+					.limit(MH.MAX_RECENT_MATCHES),
+			)
 
 		const [rows, balanceTriggerRows, eventRows] = await Promise.all([
-			ctx.db().with(recentMatchesCte).select().from(recentMatchesCte)
+			ctx
+				.db()
+				.with(recentMatchesCte)
+				.select()
+				.from(recentMatchesCte)
 				.leftJoin(Schema.users, E.eq(recentMatchesCte.setByUserId, Schema.users.discordId)),
-			ctx.db().with(recentMatchesCte).select({
-				balanceTriggerEvents: Schema.balanceTriggerEvents,
-			}).from(Schema.balanceTriggerEvents)
+			ctx
+				.db()
+				.with(recentMatchesCte)
+				.select({
+					balanceTriggerEvents: Schema.balanceTriggerEvents,
+				})
+				.from(Schema.balanceTriggerEvents)
 				.innerJoin(recentMatchesCte, E.eq(Schema.balanceTriggerEvents.matchTriggeredId, recentMatchesCte.id)),
-			ctx.db().with(recentMatchesCte).select({
-				serverEvents: Schema.serverEvents,
-				matchId: recentMatchesCte.id,
-			}).from(Schema.serverEvents)
+			ctx
+				.db()
+				.with(recentMatchesCte)
+				.select({
+					serverEvents: Schema.serverEvents,
+					matchId: recentMatchesCte.id,
+				})
+				.from(Schema.serverEvents)
 				.innerJoin(recentMatchesCte, E.eq(Schema.serverEvents.matchId, recentMatchesCte.id)),
 		])
 
@@ -123,10 +141,12 @@ export const loadState = C.spanOp(
 
 		rows.reverse()
 		const currentMatchId = rows[rows.length - 1]?.recent_matches.id
-		state.recentMatches = state.recentMatches.filter(match => match.ordinal < startAtOrdinal).map(m => ({
-			...m,
-			isCurrentMatch: m.historyEntryId === currentMatchId,
-		}))
+		state.recentMatches = state.recentMatches
+			.filter((match) => match.ordinal < startAtOrdinal)
+			.map((m) => ({
+				...m,
+				isCurrentMatch: m.historyEntryId === currentMatchId,
+			}))
 		const userRows = new Map<bigint, Schema.User>()
 		for (const row of rows) {
 			const isCurrentMatch = row.recent_matches.id === currentMatchId!
@@ -158,9 +178,9 @@ export const loadState = C.spanOp(
 
 		// Prime the newest matches the cache can hold (skip the current match - its events are still being generated)
 		const matchIdsToPrime = state.recentMatches
-			.filter(match => !match.isCurrentMatch && !ctx.matchEventsCache.events.has(match.historyEntryId))
+			.filter((match) => !match.isCurrentMatch && !ctx.matchEventsCache.events.has(match.historyEntryId))
 			.slice(-MatchEventsCache.MAX_CACHED_MATCHES)
-			.map(match => match.historyEntryId)
+			.map((match) => match.historyEntryId)
 		if (matchIdsToPrime.length > 0) {
 			// getEventsForMatches populates the cache internally with a single batched query
 			void MatchEventsCache.getEventsForMatches(ctx, ...matchIdsToPrime)
@@ -168,39 +188,55 @@ export const loadState = C.spanOp(
 	},
 )
 
-export const getRecentMatches = C.spanOp('getRecentMatches', {
-	module,
-	levels: { event: 'trace' },
-	mutexes: (ctx) => ctx.matchHistory.mtx,
-}, async (ctx: C.MatchHistory & CS.AbortSignal) => {
-	return ctx.matchHistory.recentMatches
-})
+export const getRecentMatches = C.spanOp(
+	'getRecentMatches',
+	{
+		module,
+		levels: { event: 'trace' },
+		mutexes: (ctx) => ctx.matchHistory.mtx,
+	},
+	async (ctx: C.MatchHistory & CS.AbortSignal) => {
+		return ctx.matchHistory.recentMatches
+	},
+)
 
-export const getCurrentMatch = C.spanOp('getCurrentMatch', {
-	module,
-	levels: { event: 'trace' },
-	mutexes: (ctx) => ctx.matchHistory.mtx,
-}, async (ctx: C.MatchHistory & CS.AbortSignal) => {
-	return ctx.matchHistory.recentMatches[ctx.matchHistory.recentMatches.length - 1]
-})
+export const getCurrentMatch = C.spanOp(
+	'getCurrentMatch',
+	{
+		module,
+		levels: { event: 'trace' },
+		mutexes: (ctx) => ctx.matchHistory.mtx,
+	},
+	async (ctx: C.MatchHistory & CS.AbortSignal) => {
+		return ctx.matchHistory.recentMatches[ctx.matchHistory.recentMatches.length - 1]
+	},
+)
 
-export const getMatchById = C.spanOp('getMatchById', {
-	module,
-	levels: { event: 'trace' },
-	mutexes: (ctx) => ctx.matchHistory.mtx,
-}, async (ctx: C.MatchHistory & CS.AbortSignal, matchId: number) => {
-	const match = ctx.matchHistory.recentMatches.find(m => m.historyEntryId === matchId)
-	if (!match) return null
-	return match
-})
+export const getMatchById = C.spanOp(
+	'getMatchById',
+	{
+		module,
+		levels: { event: 'trace' },
+		mutexes: (ctx) => ctx.matchHistory.mtx,
+	},
+	async (ctx: C.MatchHistory & CS.AbortSignal, matchId: number) => {
+		const match = ctx.matchHistory.recentMatches.find((m) => m.historyEntryId === matchId)
+		if (!match) return null
+		return match
+	},
+)
 
 const loadCurrentMatch = C.spanOp(
 	'loadCurrentMatch',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.matchHistory.mtx },
 	async (ctx: C.Db & C.MatchHistory & CS.AbortSignal, _opts?: { forUpdate?: boolean }) => {
-		const query = ctx.db().select().from(Schema.matchHistory).where(E.eq(Schema.matchHistory.serverId, ctx.serverId)).orderBy(
-			E.desc(Schema.matchHistory.ordinal),
-		).limit(1)
+		const query = ctx
+			.db()
+			.select()
+			.from(Schema.matchHistory)
+			.where(E.eq(Schema.matchHistory.serverId, ctx.serverId))
+			.orderBy(E.desc(Schema.matchHistory.ordinal))
+			.limit(1)
 		const [match] = await query
 		if (!match) return null
 		return MH.matchHistoryEntryToMatchDetails(match, true)
@@ -208,20 +244,24 @@ const loadCurrentMatch = C.spanOp(
 )
 
 export const matchHistoryRouter = {
-	watchMatchHistoryState: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
-		{ signal, context: _ctx, input },
-	) {
-		const state$ = SquadServer.sliceStream$(_ctx.wsClientId, input.serverId, (ctx) =>
-			Rx.from((async function*() {
-				yield getPublicMatchHistoryState(ctx)
-				const historyUpdate$ = ctx.matchHistory.update$.pipe(withAbortSignal(signal!))
-				for await (const _ of toAsyncGenerator(historyUpdate$)) {
-					yield getPublicMatchHistoryState(ctx)
-				}
-			})())).pipe(withAbortSignal(signal!))
+	watchMatchHistoryState: orpcBase
+		.meta({ logLevel: 'trace' })
+		.input(z.object({ serverId: z.string() }))
+		.handler(async function* ({ signal, context: _ctx, input }) {
+			const state$ = SquadServer.sliceStream$(_ctx.wsClientId, input.serverId, (ctx) =>
+				Rx.from(
+					(async function* () {
+						yield getPublicMatchHistoryState(ctx)
+						const historyUpdate$ = ctx.matchHistory.update$.pipe(withAbortSignal(signal!))
+						for await (const _ of toAsyncGenerator(historyUpdate$)) {
+							yield getPublicMatchHistoryState(ctx)
+						}
+					})(),
+				),
+			).pipe(withAbortSignal(signal!))
 
-		yield* toAsyncGenerator(state$)
-	}),
+			yield* toAsyncGenerator(state$)
+		}),
 
 	getMatchEvents: orpcBase.input(z.object({ serverId: z.string(), ordinal: z.number() })).handler(async ({ input, context: _ctx }) => {
 		const ordinal = input.ordinal
@@ -235,20 +275,19 @@ export const matchHistoryRouter = {
 			throw new Error(`Cannot call getMatchEvents for current match (ordinal ${ordinal}). Use live event stream instead.`)
 		}
 
-		let match = ctx.matchHistory.recentMatches.find(m => ctx.serverId === m.serverId && m.ordinal === ordinal)
-		let previousMatch = ctx.matchHistory.recentMatches.find(m => ctx.serverId === m.serverId && m.ordinal === ordinal - 1)
+		let match = ctx.matchHistory.recentMatches.find((m) => ctx.serverId === m.serverId && m.ordinal === ordinal)
+		let previousMatch = ctx.matchHistory.recentMatches.find((m) => ctx.serverId === m.serverId && m.ordinal === ordinal - 1)
 
 		if (!match || !previousMatch) {
 			const ordinalsToFetch: number[] = []
 			if (!match) ordinalsToFetch.push(ordinal)
 			if (!previousMatch) ordinalsToFetch.push(ordinal - 1)
 
-			const matchesRaw = await ctx.db().select().from(Schema.matchHistory).where(
-				E.and(
-					E.eq(Schema.matchHistory.serverId, ctx.serverId),
-					E.inArray(Schema.matchHistory.ordinal, ordinalsToFetch),
-				),
-			)
+			const matchesRaw = await ctx
+				.db()
+				.select()
+				.from(Schema.matchHistory)
+				.where(E.and(E.eq(Schema.matchHistory.serverId, ctx.serverId), E.inArray(Schema.matchHistory.ordinal, ordinalsToFetch)))
 
 			for (const matchRaw of matchesRaw) {
 				if (matchRaw.ordinal === ordinal && !match) {
@@ -271,183 +310,203 @@ export const matchHistoryRouter = {
 		}
 	}),
 
-	getPlayerDetails: orpcBase.input(z.object({
-		serverId: z.string(),
-		playerId: z.string(),
-	})).handler(async ({ input, context: _ctx }) => {
-		const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
-		if (ctxRes.code !== 'ok') return ctxRes
-		const ctx = ctxRes.ctx
-		const playerId = input.playerId
+	getPlayerDetails: orpcBase
+		.input(
+			z.object({
+				serverId: z.string(),
+				playerId: z.string(),
+			}),
+		)
+		.handler(async ({ input, context: _ctx }) => {
+			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
+			const playerId = input.playerId
 
-		// Most recent connection event, for the connection status indicator. PLAYER_RECONCILED counts as a
-		// connection: the player is present (backfilled from the teams poll) even if we never saw their join log.
-		const connectionRows = await ctx.db()
-			.select({ type: Schema.serverEvents.type, time: Schema.serverEvents.time })
-			.from(Schema.serverEvents)
-			.innerJoin(
-				Schema.playerEventAssociations,
-				E.and(
-					E.eq(Schema.serverEvents.id, Schema.playerEventAssociations.serverEventId),
-					E.eq(Schema.playerEventAssociations.playerId, playerId),
-				),
-			)
-			.where(E.inArray(Schema.serverEvents.type, ['PLAYER_CONNECTED', 'PLAYER_RECONCILED', 'PLAYER_DISCONNECTED']))
-			.orderBy(E.desc(Schema.serverEvents.time))
-			.limit(1)
+			// Most recent connection event, for the connection status indicator. PLAYER_RECONCILED counts as a
+			// connection: the player is present (backfilled from the teams poll) even if we never saw their join log.
+			const connectionRows = await ctx
+				.db()
+				.select({ type: Schema.serverEvents.type, time: Schema.serverEvents.time })
+				.from(Schema.serverEvents)
+				.innerJoin(
+					Schema.playerEventAssociations,
+					E.and(
+						E.eq(Schema.serverEvents.id, Schema.playerEventAssociations.serverEventId),
+						E.eq(Schema.playerEventAssociations.playerId, playerId),
+					),
+				)
+				.where(E.inArray(Schema.serverEvents.type, ['PLAYER_CONNECTED', 'PLAYER_RECONCILED', 'PLAYER_DISCONNECTED']))
+				.orderBy(E.desc(Schema.serverEvents.time))
+				.limit(1)
 
-		const lastConnectionEvent = connectionRows[0]
-		const connectionStatus: { status: 'online'; connectedSince: number } | { status: 'offline'; lastSeen: number | null } =
-			lastConnectionEvent?.type === 'PLAYER_CONNECTED' || lastConnectionEvent?.type === 'PLAYER_RECONCILED'
-				? { status: 'online', connectedSince: lastConnectionEvent.time.getTime() }
-				: lastConnectionEvent?.type === 'PLAYER_DISCONNECTED'
-				? { status: 'offline', lastSeen: lastConnectionEvent.time.getTime() }
-				: { status: 'offline', lastSeen: null }
+			const lastConnectionEvent = connectionRows[0]
+			const connectionStatus: { status: 'online'; connectedSince: number } | { status: 'offline'; lastSeen: number | null } =
+				lastConnectionEvent?.type === 'PLAYER_CONNECTED' || lastConnectionEvent?.type === 'PLAYER_RECONCILED'
+					? { status: 'online', connectedSince: lastConnectionEvent.time.getTime() }
+					: lastConnectionEvent?.type === 'PLAYER_DISCONNECTED'
+						? { status: 'offline', lastSeen: lastConnectionEvent.time.getTime() }
+						: { status: 'offline', lastSeen: null }
 
-		return { connectionStatus }
-	}),
+			return { connectionStatus }
+		}),
 
 	// Player-specific events are drawn from the enriched events of the recent matches, cached or re-read per page.
 	// The current match is deliberately excluded: the client already has its events live via the chat feed. Pagination
 	// counts player-specific events (NEW_GAME/RESET have no player association so they don't count toward pageSize), but
 	// is aligned to match boundaries so pages never overlap. `cursor` is an exclusive upper-bound matchId.
-	getPlayerEvents: orpcBase.input(z.object({
-		serverId: z.string(),
-		playerId: z.string(),
-		cursor: z.number().optional(),
-		pageSize: z.number().positive().default(100),
-	})).handler(async ({ input, context: _ctx }) => {
-		const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
-		if (ctxRes.code !== 'ok') return ctxRes
-		const ctx = ctxRes.ctx
-		const currentMatch = await getCurrentMatch(ctx)
-		const playerId = input.playerId
+	getPlayerEvents: orpcBase
+		.input(
+			z.object({
+				serverId: z.string(),
+				playerId: z.string(),
+				cursor: z.number().optional(),
+				pageSize: z.number().positive().default(100),
+			}),
+		)
+		.handler(async ({ input, context: _ctx }) => {
+			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
+			const currentMatch = await getCurrentMatch(ctx)
+			const playerId = input.playerId
 
-		const historicalMatchIds = ctx.matchHistory.recentMatches
-			.filter(m => m.historyEntryId !== currentMatch?.historyEntryId)
-			.map(m => m.historyEntryId)
-		if (historicalMatchIds.length === 0) return { events: [] as CHAT.EventEnriched[], nextCursor: undefined }
+			const historicalMatchIds = ctx.matchHistory.recentMatches
+				.filter((m) => m.historyEntryId !== currentMatch?.historyEntryId)
+				.map((m) => m.historyEntryId)
+			if (historicalMatchIds.length === 0) return { events: [] as CHAT.EventEnriched[], nextCursor: undefined }
 
-		// per-match counts of player-specific events (game-participant assoc excluded so it counts only shown events)
-		const matchCountRows = await ctx.db()
-			.select({ matchId: Schema.serverEvents.matchId, count: E.count() })
-			.from(Schema.serverEvents)
-			.innerJoin(
-				Schema.playerEventAssociations,
-				E.and(
-					E.eq(Schema.serverEvents.id, Schema.playerEventAssociations.serverEventId),
-					E.eq(Schema.playerEventAssociations.playerId, playerId),
-					E.ne(Schema.playerEventAssociations.assocType, SchemaModels.SERVER_EVENT_PLAYER_ASSOC_TYPE.enum['game-participant']),
-				),
-			)
-			.where(E.inArray(Schema.serverEvents.matchId, historicalMatchIds))
-			.groupBy(Schema.serverEvents.matchId)
-
-		// most-recent match first (matchId is monotonic with recency)
-		const matchesWithEvents = matchCountRows
-			.map(r => ({ matchId: r.matchId, count: r.count }))
-			.sort((a, b) => b.matchId - a.matchId)
-
-		let index = input.cursor === undefined ? 0 : matchesWithEvents.findIndex(m => m.matchId < input.cursor!)
-		if (index === -1) index = matchesWithEvents.length
-
-		const includedMatchIds: number[] = []
-		let count = 0
-		for (; index < matchesWithEvents.length; index++) {
-			const m = matchesWithEvents[index]
-			includedMatchIds.push(m.matchId)
-			count += m.count
-			if (count >= input.pageSize) {
-				index++
-				break
-			}
-		}
-		if (includedMatchIds.length === 0) return { events: [] as CHAT.EventEnriched[], nextCursor: undefined }
-
-		const nextCursor = index < matchesWithEvents.length ? includedMatchIds[includedMatchIds.length - 1] : undefined
-
-		const enriched = await MatchEventsCache.getEventsForMatches(ctx, ...includedMatchIds)
-		const events = enriched
-			.filter(e => e.type === 'NEW_GAME' || CHAT.hasAssocPlayer(e, playerId))
-			.sort((a, b) => a.time - b.time)
-
-		return { events, nextCursor }
-	}),
-
-	getSquadDetails: orpcBase.input(z.object({
-		serverId: z.string(),
-		uniqueSquadId: z.number(),
-	})).handler(async ({ input, context: _ctx }) => {
-		const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
-		if (ctxRes.code !== 'ok') return ctxRes
-		const ctx = ctxRes.ctx
-
-		const [squadRow] = await ctx.db().select().from(Schema.squads).where(E.eq(Schema.squads.id, input.uniqueSquadId))
-		if (!squadRow) throw new Error(`Squad ${input.uniqueSquadId} not found`)
-
-		const associatedPlayers = alias(Schema.playerEventAssociations, 'associatedPlayers')
-
-		const rawEventRows = await ctx.db()
-			.select({
-				playerAssoc: associatedPlayers.playerId,
-				matchId: Schema.serverEvents.matchId,
-				eventId: Schema.serverEvents.id,
-			})
-			.from(Schema.serverEvents)
-			.innerJoin(
-				Schema.squadEventAssociations,
-				E.and(
-					E.eq(Schema.serverEvents.id, Schema.squadEventAssociations.serverEventId),
-					E.eq(Schema.squadEventAssociations.squadId, input.uniqueSquadId),
-				),
-			)
-			.leftJoin(associatedPlayers, E.eq(Schema.serverEvents.id, associatedPlayers.serverEventId))
-			.orderBy(E.desc(Schema.serverEvents.time))
-
-		const otherPlayers = new Set<string>()
-		for (const row of rawEventRows) {
-			if (row.playerAssoc) otherPlayers.add(row.playerAssoc)
-		}
-		if (squadRow.creatorId) otherPlayers.add(squadRow.creatorId)
-
-		const matchId = rawEventRows[0]?.matchId
-		if (matchId === undefined) {
-			return { squad: squadRow, events: [] }
-		}
-
-		const eventRows = await ctx.db()
-			.select({ event: Schema.serverEvents })
-			.from(Schema.serverEvents)
-			.where(
-				E.and(
-					E.eq(Schema.serverEvents.matchId, matchId),
-					E.or(
-						otherPlayers.size > 0
-							? E.inArray(Schema.playerEventAssociations.playerId, [...otherPlayers.values()])
-							: sql`1=0`,
-						E.inArray(Schema.squadEventAssociations.squadId, [input.uniqueSquadId]),
-						E.eq(Schema.serverEvents.type, 'NEW_GAME'),
+			// per-match counts of player-specific events (game-participant assoc excluded so it counts only shown events)
+			const matchCountRows = await ctx
+				.db()
+				.select({ matchId: Schema.serverEvents.matchId, count: E.count() })
+				.from(Schema.serverEvents)
+				.innerJoin(
+					Schema.playerEventAssociations,
+					E.and(
+						E.eq(Schema.serverEvents.id, Schema.playerEventAssociations.serverEventId),
+						E.eq(Schema.playerEventAssociations.playerId, playerId),
+						E.ne(
+							Schema.playerEventAssociations.assocType,
+							SchemaModels.SERVER_EVENT_PLAYER_ASSOC_TYPE.enum['game-participant'],
+						),
 					),
-				),
-			)
-			.innerJoin(Schema.playerEventAssociations, E.eq(Schema.serverEvents.id, Schema.playerEventAssociations.serverEventId))
-			.leftJoin(Schema.squadEventAssociations, E.eq(Schema.serverEvents.id, Schema.squadEventAssociations.serverEventId))
-			.orderBy(E.desc(Schema.serverEvents.id))
+				)
+				.where(E.inArray(Schema.serverEvents.matchId, historicalMatchIds))
+				.groupBy(Schema.serverEvents.matchId)
 
-		const events = SE.fromEventRows({ ...ctx, log }, eventRows.map((row) => row.event)).toReversed()
-		const state = CHAT.getInitialChatState()
-		const processedEvents = new Set<number>()
-		for (const event of events) {
-			if (processedEvents.has(event.id)) continue
-			processedEvents.add(event.id)
-			CHAT.handleEvent(state, event)
-		}
+			// most-recent match first (matchId is monotonic with recency)
+			const matchesWithEvents = matchCountRows
+				.map((r) => ({ matchId: r.matchId, count: r.count }))
+				.sort((a, b) => b.matchId - a.matchId)
 
-		return {
-			squad: squadRow,
-			events: state.eventBuffer.filter((event) => CHAT.isSquadFeedEvent(event, input.uniqueSquadId, false)),
-		}
-	}),
+			let index = input.cursor === undefined ? 0 : matchesWithEvents.findIndex((m) => m.matchId < input.cursor!)
+			if (index === -1) index = matchesWithEvents.length
+
+			const includedMatchIds: number[] = []
+			let count = 0
+			for (; index < matchesWithEvents.length; index++) {
+				const m = matchesWithEvents[index]
+				includedMatchIds.push(m.matchId)
+				count += m.count
+				if (count >= input.pageSize) {
+					index++
+					break
+				}
+			}
+			if (includedMatchIds.length === 0) return { events: [] as CHAT.EventEnriched[], nextCursor: undefined }
+
+			const nextCursor = index < matchesWithEvents.length ? includedMatchIds[includedMatchIds.length - 1] : undefined
+
+			const enriched = await MatchEventsCache.getEventsForMatches(ctx, ...includedMatchIds)
+			const events = enriched.filter((e) => e.type === 'NEW_GAME' || CHAT.hasAssocPlayer(e, playerId)).sort((a, b) => a.time - b.time)
+
+			return { events, nextCursor }
+		}),
+
+	getSquadDetails: orpcBase
+		.input(
+			z.object({
+				serverId: z.string(),
+				uniqueSquadId: z.number(),
+			}),
+		)
+		.handler(async ({ input, context: _ctx }) => {
+			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
+
+			const [squadRow] = await ctx.db().select().from(Schema.squads).where(E.eq(Schema.squads.id, input.uniqueSquadId))
+			if (!squadRow) throw new Error(`Squad ${input.uniqueSquadId} not found`)
+
+			const associatedPlayers = alias(Schema.playerEventAssociations, 'associatedPlayers')
+
+			const rawEventRows = await ctx
+				.db()
+				.select({
+					playerAssoc: associatedPlayers.playerId,
+					matchId: Schema.serverEvents.matchId,
+					eventId: Schema.serverEvents.id,
+				})
+				.from(Schema.serverEvents)
+				.innerJoin(
+					Schema.squadEventAssociations,
+					E.and(
+						E.eq(Schema.serverEvents.id, Schema.squadEventAssociations.serverEventId),
+						E.eq(Schema.squadEventAssociations.squadId, input.uniqueSquadId),
+					),
+				)
+				.leftJoin(associatedPlayers, E.eq(Schema.serverEvents.id, associatedPlayers.serverEventId))
+				.orderBy(E.desc(Schema.serverEvents.time))
+
+			const otherPlayers = new Set<string>()
+			for (const row of rawEventRows) {
+				if (row.playerAssoc) otherPlayers.add(row.playerAssoc)
+			}
+			if (squadRow.creatorId) otherPlayers.add(squadRow.creatorId)
+
+			const matchId = rawEventRows[0]?.matchId
+			if (matchId === undefined) {
+				return { squad: squadRow, events: [] }
+			}
+
+			const eventRows = await ctx
+				.db()
+				.select({ event: Schema.serverEvents })
+				.from(Schema.serverEvents)
+				.where(
+					E.and(
+						E.eq(Schema.serverEvents.matchId, matchId),
+						E.or(
+							otherPlayers.size > 0
+								? E.inArray(Schema.playerEventAssociations.playerId, [...otherPlayers.values()])
+								: sql`1=0`,
+							E.inArray(Schema.squadEventAssociations.squadId, [input.uniqueSquadId]),
+							E.eq(Schema.serverEvents.type, 'NEW_GAME'),
+						),
+					),
+				)
+				.innerJoin(Schema.playerEventAssociations, E.eq(Schema.serverEvents.id, Schema.playerEventAssociations.serverEventId))
+				.leftJoin(Schema.squadEventAssociations, E.eq(Schema.serverEvents.id, Schema.squadEventAssociations.serverEventId))
+				.orderBy(E.desc(Schema.serverEvents.id))
+
+			const events = SE.fromEventRows(
+				{ ...ctx, log },
+				eventRows.map((row) => row.event),
+			).toReversed()
+			const state = CHAT.getInitialChatState()
+			const processedEvents = new Set<number>()
+			for (const event of events) {
+				if (processedEvents.has(event.id)) continue
+				processedEvents.add(event.id)
+				CHAT.handleEvent(state, event)
+			}
+
+			return {
+				squad: squadRow,
+				events: state.eventBuffer.filter((event) => CHAT.isSquadFeedEvent(event, input.uniqueSquadId, false)),
+			}
+		}),
 }
 
 export const addNewCurrentMatch = C.spanOp(
@@ -460,9 +519,10 @@ export const addNewCurrentMatch = C.spanOp(
 		await DB.runTransaction(ctx, async (ctx) => {
 			const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
-			await ctx.db().insert(Schema.matchHistory).values(
-				superjsonify(Schema.matchHistory, { ...entry, ordinal, serverId: ctx.serverId }),
-			)
+			await ctx
+				.db()
+				.insert(Schema.matchHistory)
+				.values(superjsonify(Schema.matchHistory, { ...entry, ordinal, serverId: ctx.serverId }))
 
 			// events are persisted as they're emitted, so the in-memory cache is just dropped; it only ever
 			// holds the current match
@@ -476,75 +536,82 @@ export const addNewCurrentMatch = C.spanOp(
 	},
 )
 
-export const finalizeCurrentMatch = C.spanOp('finalizeCurrentMatch', {
-	module,
-	levels: { event: 'info' },
-	mutexes: (ctx) => ctx.matchHistory.mtx,
-	attrs: (_, currentLayerId) => ({
-		[ATTRS.MatchHistory.CURRENT_LAYER_ID]: currentLayerId,
-	}),
-}, async (
-	ctx: C.Db & C.MatchHistory & C.MatchEventsCache & CS.AbortSignal,
-	outcome: MH.MatchOutcome,
-	time: Date,
-) => {
-	const res = await DB.runTransaction(ctx, async ctx => {
-		const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
-		if (!currentMatch) return { code: 'err:no-match-found' as const, message: 'No match found' }
-		if (currentMatch.status !== 'in-progress') {
-			log.warn('unable to update current history entry: not in-progress')
-			return { code: 'err:match-not-in-progress' as const, message: 'Match not in progress' }
-		}
-
-		const update = {
-			endTime: time,
-			outcome: outcome.type === 'unknown' ? null : outcome.type,
-			team1Tickets: (outcome.type === 'team1' || outcome.type === 'team2') ? outcome.team1Tickets : undefined,
-			team2Tickets: (outcome.type === 'team1' || outcome.type === 'team2') ? outcome.team2Tickets : undefined,
-		}
-
-		await ctx.db().update(Schema.matchHistory).set(superjsonify(Schema.matchHistory, update)).where(
-			E.eq(Schema.matchHistory.id, currentMatch.historyEntryId),
-		)
-		await loadState(ctx, { startAtOrdinal: currentMatch.ordinal })
-
-		// -------- look for tripped balance triggers --------
-		for (const [trigId, level] of Object.entries(Settings.GLOBAL_SETTINGS.balanceTriggerLevels)) {
-			let inputStored: any
-			const trig = BAL.TRIGGERS[trigId as BAL.TriggerId]
-			try {
-				log.info('Evaluating trigger %s', trig.id)
-				const input = trig.resolveInput({ history: ctx.matchHistory.recentMatches })
-				inputStored = input
-				const res = trig.evaluate({ ...CS.init(), ...ctx, log: LOG.getSubmoduleLogger(`balance-trigger-eval::${trig.id}`, log) }, input)
-				if (!res) continue
-				const event = {
-					strongerTeam: res.strongerTeam,
-					level: level,
-					triggerId: trig.id,
-					triggerVersion: trig.version,
-					matchTriggeredId: currentMatch.historyEntryId,
-					evaluationResult: res,
-				}
-				const [{ id }] = await ctx.db().insert(Schema.balanceTriggerEvents)
-					.values(superjsonify(Schema.balanceTriggerEvents, event))
-					.returning({ id: Schema.balanceTriggerEvents.id })
-				log.info(
-					'Trigger %s fired: message: "%s"',
-					trig.id,
-					Messages.GENERAL.balanceTrigger.showEvent({ ...event, id }, currentMatch, false),
-				)
-			} catch (err) {
-				log.error(err, 'Error evaluating trigger %s input: %s', trig.id, JSON.stringify(inputStored ?? null))
+export const finalizeCurrentMatch = C.spanOp(
+	'finalizeCurrentMatch',
+	{
+		module,
+		levels: { event: 'info' },
+		mutexes: (ctx) => ctx.matchHistory.mtx,
+		attrs: (_, currentLayerId) => ({
+			[ATTRS.MatchHistory.CURRENT_LAYER_ID]: currentLayerId,
+		}),
+	},
+	async (ctx: C.Db & C.MatchHistory & C.MatchEventsCache & CS.AbortSignal, outcome: MH.MatchOutcome, time: Date) => {
+		const res = await DB.runTransaction(ctx, async (ctx) => {
+			const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
+			if (!currentMatch) return { code: 'err:no-match-found' as const, message: 'No match found' }
+			if (currentMatch.status !== 'in-progress') {
+				log.warn('unable to update current history entry: not in-progress')
+				return { code: 'err:match-not-in-progress' as const, message: 'Match not in progress' }
 			}
-		}
-		await loadState(ctx, { startAtOrdinal: currentMatch.ordinal })
-		return { code: 'ok' as const }
-	})
-	if (res.code !== 'ok') return res
-	addReleaseTask(ctx.matchHistory.dispatchUpdate)
-	return { ...res }
-})
+
+			const update = {
+				endTime: time,
+				outcome: outcome.type === 'unknown' ? null : outcome.type,
+				team1Tickets: outcome.type === 'team1' || outcome.type === 'team2' ? outcome.team1Tickets : undefined,
+				team2Tickets: outcome.type === 'team1' || outcome.type === 'team2' ? outcome.team2Tickets : undefined,
+			}
+
+			await ctx
+				.db()
+				.update(Schema.matchHistory)
+				.set(superjsonify(Schema.matchHistory, update))
+				.where(E.eq(Schema.matchHistory.id, currentMatch.historyEntryId))
+			await loadState(ctx, { startAtOrdinal: currentMatch.ordinal })
+
+			// -------- look for tripped balance triggers --------
+			for (const [trigId, level] of Object.entries(Settings.GLOBAL_SETTINGS.balanceTriggerLevels)) {
+				let inputStored: any
+				const trig = BAL.TRIGGERS[trigId as BAL.TriggerId]
+				try {
+					log.info('Evaluating trigger %s', trig.id)
+					const input = trig.resolveInput({ history: ctx.matchHistory.recentMatches })
+					inputStored = input
+					const res = trig.evaluate(
+						{ ...CS.init(), ...ctx, log: LOG.getSubmoduleLogger(`balance-trigger-eval::${trig.id}`, log) },
+						input,
+					)
+					if (!res) continue
+					const event = {
+						strongerTeam: res.strongerTeam,
+						level: level,
+						triggerId: trig.id,
+						triggerVersion: trig.version,
+						matchTriggeredId: currentMatch.historyEntryId,
+						evaluationResult: res,
+					}
+					const [{ id }] = await ctx
+						.db()
+						.insert(Schema.balanceTriggerEvents)
+						.values(superjsonify(Schema.balanceTriggerEvents, event))
+						.returning({ id: Schema.balanceTriggerEvents.id })
+					log.info(
+						'Trigger %s fired: message: "%s"',
+						trig.id,
+						Messages.GENERAL.balanceTrigger.showEvent({ ...event, id }, currentMatch, false),
+					)
+				} catch (err) {
+					log.error(err, 'Error evaluating trigger %s input: %s', trig.id, JSON.stringify(inputStored ?? null))
+				}
+			}
+			await loadState(ctx, { startAtOrdinal: currentMatch.ordinal })
+			return { code: 'ok' as const }
+		})
+		if (res.code !== 'ok') return res
+		addReleaseTask(ctx.matchHistory.dispatchUpdate)
+		return { ...res }
+	},
+)
 
 /**
  * Runs when rcon is connected to ensure that the match history is up-to-date. If the current layer is unexpected then we insert a new history entry for the current match.
@@ -558,7 +625,7 @@ export const syncWithCurrentLayer = C.spanOp(
 		_currentLayerOnServer: L.UnvalidatedLayer | L.LayerId,
 	) => {
 		const currentLayerOnServer = L.toLayer(_currentLayerOnServer)
-		return await DB.runTransaction(ctx, async ctx => {
+		return await DB.runTransaction(ctx, async (ctx) => {
 			const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
 			if (currentMatch && L.areLayersCompatible(currentMatch.layerId, currentLayerOnServer)) {
 				log.info(
@@ -579,12 +646,17 @@ export const syncWithCurrentLayer = C.spanOp(
 				)
 			}
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
-			await ctx.db().insert(Schema.matchHistory).values(superjsonify(Schema.matchHistory, {
-				serverId: ctx.serverId,
-				layerId: currentLayerOnServer.id,
-				ordinal,
-				setByType: 'unknown',
-			}))
+			await ctx
+				.db()
+				.insert(Schema.matchHistory)
+				.values(
+					superjsonify(Schema.matchHistory, {
+						serverId: ctx.serverId,
+						layerId: currentLayerOnServer.id,
+						ordinal,
+						setByType: 'unknown',
+					}),
+				)
 			await loadState(ctx)
 			addReleaseTask(ctx.matchHistory.dispatchUpdate)
 			{

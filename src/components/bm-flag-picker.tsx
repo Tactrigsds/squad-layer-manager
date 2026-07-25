@@ -17,7 +17,11 @@ export function FlagBadge({ flag, className }: { flag: BM.PlayerFlag; className?
 			style={{ backgroundColor: flag.color ? `${flag.color}33` : undefined, color: flag.color ?? undefined }}
 			title={flag.description ?? undefined}
 		>
-			{flag.icon && <span className="material-symbols-outlined leading-none" style={{ fontSize: '13px' }}>{flag.icon}</span>}
+			{flag.icon && (
+				<span className="material-symbols-outlined leading-none" style={{ fontSize: '13px' }}>
+					{flag.icon}
+				</span>
+			)}
 			{flag.name}
 		</span>
 	)
@@ -27,7 +31,11 @@ export function FlagBadge({ flag, className }: { flag: BM.PlayerFlag; className?
 // uuids and tell a reader nothing, so say what is wrong instead and keep the id in the tooltip for whoever fixes it.
 // The entry stays present and removable either way -- a reference is never silently dropped.
 export function UnknownFlagLabel({ id }: { id: string }) {
-	return <span className="text-xs italic text-muted-foreground" title={`Unknown flag: ${id}`}>Unknown flag</span>
+	return (
+		<span className="text-xs italic text-muted-foreground" title={`Unknown flag: ${id}`}>
+			Unknown flag
+		</span>
+	)
 }
 
 // shows a resolved flag badge if the id is known, otherwise marks it unknown (never the bare uuid)
@@ -41,11 +49,13 @@ function useFlagOptions(): ComboBoxOption<string>[] | typeof LOADING {
 	const orgFlags = useOrgFlags()
 	return React.useMemo(() => {
 		if (!orgFlags) return LOADING
-		return orgFlags.map((flag): ComboBoxOption<string> => ({
-			value: flag.id,
-			label: <FlagBadge flag={flag} />,
-			keywords: [flag.name, ...(flag.description ? [flag.description] : [])],
-		}))
+		return orgFlags.map(
+			(flag): ComboBoxOption<string> => ({
+				value: flag.id,
+				label: <FlagBadge flag={flag} />,
+				keywords: [flag.name, ...(flag.description ? [flag.description] : [])],
+			}),
+		)
 	}, [orgFlags])
 }
 
@@ -56,16 +66,21 @@ function toArrayUpdate<T>(prev: T[], next: React.SetStateAction<T[]>): T[] {
 // unordered multi-select of flags (e.g. playerFlagsRequiringNote). `only` narrows the choice to a given set (and keeps
 // their order), for callers where an arbitrary org flag would be meaningless.
 // a custom trigger is required because ComboBoxMulti's default trigger stringifies option labels (which are react nodes here).
-export function BmFlagMultiSelect(
-	{ value, onChange, disabled, only, placeholder, className }: {
-		value: string[]
-		onChange: (next: string[]) => void
-		disabled?: boolean
-		only?: string[]
-		placeholder?: string
-		className?: string
-	},
-) {
+export function BmFlagMultiSelect({
+	value,
+	onChange,
+	disabled,
+	only,
+	placeholder,
+	className,
+}: {
+	value: string[]
+	onChange: (next: string[]) => void
+	disabled?: boolean
+	only?: string[]
+	placeholder?: string
+	className?: string
+}) {
 	const options = useFlagOptions()
 	const orgFlags = useOrgFlags()
 	let selectable = options
@@ -92,9 +107,11 @@ export function BmFlagMultiSelect(
 				className={cn('h-auto min-h-9 w-full justify-between', className)}
 			>
 				<span className="flex flex-wrap items-center gap-1 min-w-0">
-					{value.length === 0
-						? <span className="text-muted-foreground">{placeholder ?? 'Select flags...'}</span>
-						: value.map((id) => <FlagLabel key={id} id={id} flags={orgFlags} />)}
+					{value.length === 0 ? (
+						<span className="text-muted-foreground">{placeholder ?? 'Select flags...'}</span>
+					) : (
+						value.map((id) => <FlagLabel key={id} id={id} flags={orgFlags} />)
+					)}
 				</span>
 				<Icons.ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 			</Button>
@@ -104,20 +121,29 @@ export function BmFlagMultiSelect(
 
 // single flag select. `exclude` drops flags already spoken for by a sibling row; `only` narrows the choice to a given
 // set (and keeps their order), for callers where an arbitrary org flag would be meaningless.
-export function BmFlagSelect(
-	{ value, onChange, disabled, exclude, only, title, className, autoOpen, onOpenChange, placeholder }: {
-		value: string | undefined
-		onChange: (next: string) => void
-		disabled?: boolean
-		exclude?: string[]
-		only?: string[]
-		title?: string
-		className?: string
-		autoOpen?: boolean
-		onOpenChange?: (open: boolean) => void
-		placeholder?: string
-	},
-) {
+export function BmFlagSelect({
+	value,
+	onChange,
+	disabled,
+	exclude,
+	only,
+	title,
+	className,
+	autoOpen,
+	onOpenChange,
+	placeholder,
+}: {
+	value: string | undefined
+	onChange: (next: string) => void
+	disabled?: boolean
+	exclude?: string[]
+	only?: string[]
+	title?: string
+	className?: string
+	autoOpen?: boolean
+	onOpenChange?: (open: boolean) => void
+	placeholder?: string
+}) {
 	const options = useFlagOptions()
 	let selectable = options
 	if (selectable !== LOADING && only) {

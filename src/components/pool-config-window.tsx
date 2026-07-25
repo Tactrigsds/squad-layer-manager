@@ -47,7 +47,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 
 	const [settingsChanged, saving, validationErrors] = ZusUtils.useStore(
 		stores.squadServer!,
-		ZusUtils.useShallow(s => [s.settings.modified, s.settings.saving, s.settings.validationErrors]),
+		ZusUtils.useShallow((s) => [s.settings.modified, s.settings.saving, s.settings.validationErrors]),
 	)
 
 	const mainPoolApi = useStorePoolConfigApi(stores.squadServer!, ['queue', 'mainPool'])
@@ -68,7 +68,9 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 				<DraggableWindowTitle>
 					<span className="flex items-center gap-2">
 						Pool Configuration
-						{readOnly && <span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">Read-only</span>}
+						{readOnly && (
+							<span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">Read-only</span>
+						)}
 					</span>
 				</DraggableWindowTitle>
 				<TabsList
@@ -84,20 +86,23 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
 			<div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-6">
-				{tab === 'filters'
-					? <PoolFiltersPanel api={mainPoolApi} />
-					: tab === 'repeatRules'
-					? <RepeatRulesPanel api={mainPoolApi} />
-					: <NextLayerPanel apis={nextLayerApis} />}
+				{tab === 'filters' ? (
+					<PoolFiltersPanel api={mainPoolApi} />
+				) : tab === 'repeatRules' ? (
+					<RepeatRulesPanel api={mainPoolApi} />
+				) : (
+					<NextLayerPanel apis={nextLayerApis} />
+				)}
 			</div>
 			{!readOnly && (
 				<div className="flex items-center justify-end gap-2 px-6 py-3 border-t">
 					<div className="flex flex-col gap-2 mr-auto">
-						{validationErrors && validationErrors.map((error) => (
-							<Alert key={error} variant="destructive">
-								<AlertDescription>{error}</AlertDescription>
-							</Alert>
-						))}
+						{validationErrors &&
+							validationErrors.map((error) => (
+								<Alert key={error} variant="destructive">
+									<AlertDescription>{error}</AlertDescription>
+								</Alert>
+							))}
 					</div>
 					<Tooltip>
 						<TooltipTrigger asChild>

@@ -23,9 +23,11 @@ type Input = {
 	instanceId: string
 } & LayerTablePrt.Input
 
-export const createInput = (
-	args: { editedFilterId?: string; startingFilter?: F.EditableFilterNode; colConfig: LQY.EffectiveColumnAndTableConfig },
-): Input => {
+export const createInput = (args: {
+	editedFilterId?: string
+	startingFilter?: F.EditableFilterNode
+	colConfig: LQY.EffectiveColumnAndTableConfig
+}): Input => {
 	return {
 		editedFilterId: args.editedFilterId,
 		startingFilter: args.startingFilter,
@@ -42,30 +44,26 @@ export type CreateHint = {
 	autoOpenLayers?: boolean
 }
 
-type FilterEditorBase =
-	& {
-		sub: Rx.Subscription
+type FilterEditorBase = {
+	sub: Rx.Subscription
 
-		editedFilterId?: string
-		savedFilter: F.EditableFilterNode
-		tree: F.FilterNodeTree
-		createHints: Map<string, CreateHint>
+	editedFilterId?: string
+	savedFilter: F.EditableFilterNode
+	tree: F.FilterNodeTree
+	createHints: Map<string, CreateHint>
 
-		validatedFilter: F.FilterNode | null
-		modified: boolean
-		valid: boolean
+	validatedFilter: F.FilterNode | null
+	modified: boolean
+	valid: boolean
 
-		nodeMapStore: Zus.StoreApi<NodeMap.NodeMapStore>
-	}
-	& F.NodeValidationErrorStore
-	& LayerTablePrt.Predicates
+	nodeMapStore: Zus.StoreApi<NodeMap.NodeMapStore>
+} & F.NodeValidationErrorStore &
+	LayerTablePrt.Predicates
 
-export type FilterEditor =
-	& {
-		frameKey: Key
-	}
-	& FilterEditorBase
-	& LayerTablePrt.Store
+export type FilterEditor = {
+	frameKey: Key
+} & FilterEditorBase &
+	LayerTablePrt.Store
 
 export type Key = FRM.InstanceKey<Types>
 export type KeyProp = FRM.KeyProp<Types>
@@ -87,26 +85,24 @@ const setup: Frame['setup'] = (args) => {
 	const editedFilterEntity = args.input.editedFilterId ? FilterEntityClient.filterEntities.get(args.input.editedFilterId) : null
 	const savedFilter: F.EditableFilterNode = args.input.startingFilter ?? editedFilterEntity?.filter ?? EFB.and()
 
-	set(
-		{
-			sub: new Rx.Subscription(),
+	set({
+		sub: new Rx.Subscription(),
 
-			errors: [],
-			setErrors: (errors) => set({ errors }),
+		errors: [],
+		setErrors: (errors) => set({ errors }),
 
-			savedFilter: savedFilter,
-			tree: F.upsertFilterNodeTreeInPlace(savedFilter),
-			createHints: new Map(),
+		savedFilter: savedFilter,
+		tree: F.upsertFilterNodeTreeInPlace(savedFilter),
+		createHints: new Map(),
 
-			validatedFilter: null,
-			modified: false,
-			valid: false,
+		validatedFilter: null,
+		modified: false,
+		valid: false,
 
-			baseQueryInput: undefined,
+		baseQueryInput: undefined,
 
-			nodeMapStore: Zus.create<NodeMap.NodeMapStore>((set, get) => NodeMap.initNodeMap(get, set)),
-		} satisfies FilterEditorBase,
-	)
+		nodeMapStore: Zus.create<NodeMap.NodeMapStore>((set, get) => NodeMap.initNodeMap(get, set)),
+	} satisfies FilterEditorBase)
 
 	function validate(state: FilterEditor) {
 		const filter = F.treeToFilterNode(state.tree)
@@ -121,14 +117,13 @@ const setup: Frame['setup'] = (args) => {
 	}
 	void sleep(0).then(() => validate(get()))
 
-	const validateSub = args.update$.pipe(
-		Rx.throttleTime(150, Rx.asyncScheduler, { leading: true, trailing: true }),
-		Rx.retry(),
-	).subscribe(([state, prev]) => {
-		if (state.tree !== prev.tree) {
-			validate(state)
-		}
-	})
+	const validateSub = args.update$
+		.pipe(Rx.throttleTime(150, Rx.asyncScheduler, { leading: true, trailing: true }), Rx.retry())
+		.subscribe(([state, prev]) => {
+			if (state.tree !== prev.tree) {
+				validate(state)
+			}
+		})
 	get().sub.add(validateSub)
 
 	LayerTablePrt.initLayerTable(args)
@@ -141,16 +136,24 @@ export const frame = frameManager.createFrame<Types>({
 })
 
 export namespace Sel {
-	export const nodePath = (id: string | undefined) => (state: FilterEditor) => id ? state.tree.paths.get(id) : undefined
+	export const nodePath = (id: string | undefined) => (state: FilterEditor) => (id ? state.tree.paths.get(id) : undefined)
 
 	export const immediateChildren = (id: string) => (state: FilterEditor) => F.resolveImmediateChildren(state.tree, id)
 
-	export const node = (id: string) => (state: FilterEditor): F.ShallowEditableFilterNode => state.tree.nodes.get(id)!
+	export const node =
+		(id: string) =>
+		(state: FilterEditor): F.ShallowEditableFilterNode =>
+			state.tree.nodes.get(id)!
 
-	export const idByPath = (path: Sparse.NodePath) => (state: FilterEditor): string | undefined =>
-		MapUtils.revLookup(state.tree.paths, path, Sparse.serializeNodePath)
+	export const idByPath =
+		(path: Sparse.NodePath) =>
+		(state: FilterEditor): string | undefined =>
+			MapUtils.revLookup(state.tree.paths, path, Sparse.serializeNodePath)
 
-	export const createHint = (id: string) => (state: FilterEditor): CreateHint | undefined => state.createHints.get(id)
+	export const createHint =
+		(id: string) =>
+		(state: FilterEditor): CreateHint | undefined =>
+			state.createHints.get(id)
 }
 
 export type CommonNodeActions = {
@@ -195,10 +198,10 @@ export namespace Actions {
 	}
 
 	export function moveNode(stores: KeyProp, sourcePath: Sparse.NodePath, targetPath: Sparse.NodePath) {
-		store(stores).setState(state => {
+		store(stores).setState((state) => {
 			const tree = Obj.deepClone(state.tree)
 			F.moveTreeNodeInPlace(tree, sourcePath, targetPath)
-			return ({ tree })
+			return { tree }
 		})
 	}
 
@@ -209,7 +212,7 @@ export namespace Actions {
 	export function updateNode(stores: KeyProp, id: string, cb: (draft: Im.Draft<F.ShallowEditableFilterNode>) => void) {
 		const s = store(stores)
 		s.setState({
-			tree: Im.produce(s.getState().tree, draft => {
+			tree: Im.produce(s.getState().tree, (draft) => {
 				cb(draft.nodes.get(id)!)
 			}),
 		})
@@ -218,7 +221,7 @@ export namespace Actions {
 	export function deleteNode(stores: KeyProp, id: string) {
 		const s = store(stores)
 		s.setState({
-			tree: Im.produce(s.getState().tree, draft => {
+			tree: Im.produce(s.getState().tree, (draft) => {
 				F.deleteTreeNode(draft, id)
 			}),
 		})
@@ -231,7 +234,7 @@ export namespace Actions {
 	export function addSeededChild(stores: KeyProp, parentId: string, seed: F.EditableFilterNode, hint?: CreateHint) {
 		const s = store(stores)
 		const id = createId(4)
-		const tree = Im.produce(s.getState().tree, draft => {
+		const tree = Im.produce(s.getState().tree, (draft) => {
 			const node: F.ShallowEditableFilterNode = F.toShallowNode(seed)
 			const parentPath = draft.paths.get(parentId)!
 			let last: number = -1
@@ -268,7 +271,7 @@ export function getNodeActions(stores: KeyProp, id: string): NodeActions {
 		},
 		block: {
 			setBlockType(type) {
-				updateNode(draft => {
+				updateNode((draft) => {
 					draft.type = type
 				})
 			},
@@ -281,7 +284,7 @@ export function getNodeActions(stores: KeyProp, id: string): NodeActions {
 		},
 		comp: {
 			setNode(update) {
-				updateNode(draft => {
+				updateNode((draft) => {
 					if (!F.isCompNode(draft)) return
 					const next = typeof update === 'function' ? update(draft as F.EditableCompNode) : update
 					// replace whole node contents (args count varies by operator), keeping only the new keys
@@ -294,13 +297,13 @@ export function getNodeActions(stores: KeyProp, id: string): NodeActions {
 		},
 		applyFilter: {
 			setType(type) {
-				updateNode(draft => {
+				updateNode((draft) => {
 					if (!F.isApplyFilterNode(draft)) return
 					draft.type = type
 				})
 			},
 			setFilterId(filterId) {
-				updateNode(draft => {
+				updateNode((draft) => {
 					if (!F.isApplyFilterNode(draft)) return
 					draft.filterId = filterId
 				})
@@ -308,25 +311,25 @@ export function getNodeActions(stores: KeyProp, id: string): NodeActions {
 		},
 		matchup: {
 			setType(type) {
-				updateNode(draft => {
+				updateNode((draft) => {
 					if (!F.isMatchupNode(draft)) return
 					draft.type = type
 				})
 			},
 			setLocked(locked) {
-				updateNode(draft => {
+				updateNode((draft) => {
 					if (!F.isMatchupNode(draft)) return
 					draft.locked = locked
 				})
 			},
 			swapTeams() {
-				updateNode(draft => {
+				updateNode((draft) => {
 					if (!F.isMatchupNode(draft)) return
 					draft.teams = [draft.teams[1], draft.teams[0]]
 				})
 			},
 			setTeamValues(teamIndex, column, values) {
-				updateNode(draft => {
+				updateNode((draft) => {
 					if (!F.isMatchupNode(draft)) return
 					// an empty dimension means "any"; drop the key rather than storing [] so the two spell
 					// the same thing in persisted filters

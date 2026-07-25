@@ -13,9 +13,8 @@ type Tagged<Tag extends string, T = Record<string, never>> = T & { readonly _tag
 type NodeOptions = Record<string, unknown>
 
 export type NodeOptionsSchema<T extends NodeOptions = NodeOptions> = z.ZodType<T> | { [k in keyof T]: z.ZodType<T[k]> }
-export type InferredOptions<T extends NodeOptionsSchema | undefined> = T extends NodeOptionsSchema<infer O> ? O
-	: T extends undefined ? object
-	: never
+export type InferredOptions<T extends NodeOptionsSchema | undefined> =
+	T extends NodeOptionsSchema<infer O> ? O : T extends undefined ? object : never
 
 // Utility type to allow {} in place of undefined for optional options
 type _OptionalOpts<T> = T extends undefined ? object | undefined : T
@@ -92,37 +91,49 @@ export namespace Def {
 	export function branch<ID extends string, T extends { [key: number]: Def.Node }>(
 		id: ID,
 		children: T,
-	): Tagged<'branch', {
-		id: ID
-		child: NodesArrayToObject<T>
-		opts: undefined
-	}>
+	): Tagged<
+		'branch',
+		{
+			id: ID
+			child: NodesArrayToObject<T>
+			opts: undefined
+		}
+	>
 	export function branch<ID extends string, Opts extends NodeOptionsSchema, T extends { [key: number]: Def.Node }>(
 		id: ID,
 		opts: Opts,
 		children: T,
-	): Tagged<'branch', {
-		id: ID
-		child: NodesArrayToObject<T>
-		opts: Opts
-	}>
+	): Tagged<
+		'branch',
+		{
+			id: ID
+			child: NodesArrayToObject<T>
+			opts: Opts
+		}
+	>
 	export function branch<ID extends string, T extends { [key: string]: Def.Node }>(
 		id: ID,
 		children: T,
-	): Tagged<'branch', {
-		id: ID
-		child: T
-		opts: undefined
-	}>
+	): Tagged<
+		'branch',
+		{
+			id: ID
+			child: T
+			opts: undefined
+		}
+	>
 	export function branch<ID extends string, Opts extends NodeOptionsSchema, T extends { [key: string]: Def.Node }>(
 		id: ID,
 		opts: Opts,
 		children: T,
-	): Tagged<'branch', {
-		id: ID
-		child: T
-		opts: Opts
-	}>
+	): Tagged<
+		'branch',
+		{
+			id: ID
+			child: T
+			opts: Opts
+		}
+	>
 	export function branch<ID extends string>(
 		id: ID,
 		optsOrChildren: NodeOptionsSchema | readonly Def.Node[] | { [key: string]: Def.Node },
@@ -182,12 +193,17 @@ export namespace Def {
 		return input as any
 	}
 
-	export function leaf<ID extends string>(id: ID): {
+	export function leaf<ID extends string>(
+		id: ID,
+	): {
 		_tag: 'leaf'
 		id: ID
 		opts: undefined
 	}
-	export function leaf<ID extends string, Opts extends NodeOptionsSchema>(id: ID, opts: Opts): {
+	export function leaf<ID extends string, Opts extends NodeOptionsSchema>(
+		id: ID,
+		opts: Opts,
+	): {
 		_tag: 'leaf'
 		id: ID
 		opts: Opts
@@ -200,10 +216,13 @@ export namespace Def {
 		}
 	}
 
-	export type NodeIds<N extends Def.Node> = N extends Def.Variant ? N['id'] | NodeIds<N['child'][keyof N['child']]>
-		: N extends Def.Branch ? N['id'] | NodeIds<N['child'][keyof N['child']]>
-		: N extends Def.Leaf ? N['id']
-		: never
+	export type NodeIds<N extends Def.Node> = N extends Def.Variant
+		? N['id'] | NodeIds<N['child'][keyof N['child']]>
+		: N extends Def.Branch
+			? N['id'] | NodeIds<N['child'][keyof N['child']]>
+			: N extends Def.Leaf
+				? N['id']
+				: never
 
 	/**
 	 * Type guards (refinements)
@@ -251,9 +270,7 @@ export namespace Match {
 		}
 	>
 
-	export type Branch<
-		B extends Def.Branch = Def.Branch,
-	> = Tagged<
+	export type Branch<B extends Def.Branch = Def.Branch> = Tagged<
 		'branch',
 		{
 			id: B['id']
@@ -262,29 +279,32 @@ export namespace Match {
 		}
 	>
 
-	export type Leaf<
-		L extends Def.Leaf = Def.Leaf,
-	> = Tagged<'leaf', {
-		id: L['id']
-		opts: InferredOptions<L['opts']>
-	}>
+	export type Leaf<L extends Def.Leaf = Def.Leaf> = Tagged<
+		'leaf',
+		{
+			id: L['id']
+			opts: InferredOptions<L['opts']>
+		}
+	>
 
 	export type Node<N extends Def.Node = Def.Node> = N extends Def.Variant
 		? { [k in StrKeys<N['child']>]: Variant<N, k> }[StrKeys<N['child']>]
-		: N extends Def.Branch ? Branch<N>
-		: N extends Def.Leaf ? Leaf<N>
-		: never
+		: N extends Def.Branch
+			? Branch<N>
+			: N extends Def.Leaf
+				? Leaf<N>
+				: never
 
-	export type AccumulatedOpts<MN extends Node> =
-		& MN['opts']
-		& (
-			MN extends Variant ? AccumulatedOpts<MN['chosen']>
-				: MN extends Branch ? {
+	export type AccumulatedOpts<MN extends Node> = MN['opts'] &
+		(MN extends Variant
+			? AccumulatedOpts<MN['chosen']>
+			: MN extends Branch
+				? {
 						[k in StrKeys<MN['child']>]: MN['child'][k] extends Node ? AccumulatedOpts<MN['child'][k]> : never
 					}[StrKeys<MN['child']>]
-				: MN extends { _tag: 'leaf' } ? object
-				: never
-		)
+				: MN extends { _tag: 'leaf' }
+					? object
+					: never)
 
 	export type Parent = Variant | Branch
 
@@ -292,11 +312,7 @@ export namespace Match {
 	 * Constructors
 	 */
 
-	export function branch<
-		Id extends string,
-		Opts extends NodeOptions | undefined | object,
-		Child extends { [key: string]: Match.Node },
-	>(
+	export function branch<Id extends string, Opts extends NodeOptions | undefined | object, Child extends { [key: string]: Match.Node }>(
 		id: Id,
 		opts: Opts,
 		child: Child,
@@ -314,14 +330,7 @@ export namespace Match {
 		}
 	}
 
-	export function variant<
-		Id extends string,
-		Child extends Match.Node,
-	>(
-		id: Id,
-		opts: NodeOptions | undefined,
-		child: Child,
-	) {
+	export function variant<Id extends string, Child extends Match.Node>(id: Id, opts: NodeOptions | undefined, child: Child) {
 		return {
 			_tag: 'variant' as const,
 			id,
@@ -427,17 +436,11 @@ export namespace Match {
 		return mapper(variant.chosen, variant.opts, variant.chosen.id)
 	}
 
-	export function mapBranch<B extends Match.Branch, R>(
-		mapper: (children: B['child'], opts: B['opts']) => R,
-		branch: B,
-	): R {
+	export function mapBranch<B extends Match.Branch, R>(mapper: (children: B['child'], opts: B['opts']) => R, branch: B): R {
 		return mapper(branch.child, branch.opts)
 	}
 
-	export function mapLeaf<L extends Match.Leaf, R>(
-		mapper: (opts: L['opts']) => R,
-		leaf: L,
-	): R {
+	export function mapLeaf<L extends Match.Leaf, R>(mapper: (opts: L['opts']) => R, leaf: L): R {
 		return mapper(leaf.opts)
 	}
 
@@ -540,10 +543,7 @@ export namespace DefUtils {
 	// ): T
 
 	// Implementation
-	export function getNodeById(
-		root: Def.Node,
-		id: string,
-	): Def.Node {
+	export function getNodeById(root: Def.Node, id: string): Def.Node {
 		const result = searchNode(root)
 		if (result === null) {
 			throw new Error(`Node with id "${id}" not found`)
@@ -587,17 +587,14 @@ export namespace MatchUtils {
 	}
 
 	export function getChildCount(branch: Match.Branch): number {
-		return Object.values(branch.child).filter(child => child !== undefined).length
+		return Object.values(branch.child).filter((child) => child !== undefined).length
 	}
 
 	export function hasAnyChildren(branch: Match.Branch): boolean {
 		return MatchUtils.getChildCount(branch) > 0
 	}
 
-	export function mapBranchChildren<R>(
-		branch: Match.Branch,
-		mapper: (child: Match.Node, id: string) => R,
-	): Record<string, R> {
+	export function mapBranchChildren<R>(branch: Match.Branch, mapper: (child: Match.Node, id: string) => R): Record<string, R> {
 		const result: Record<string, R> = {}
 		for (const [id, child] of Object.entries(branch.child)) {
 			if (child) {
@@ -613,9 +610,9 @@ export namespace MatchUtils {
 	export function createMatchSchema<N extends Def.Node>(defNode: N): z.ZodType<Match.Node<N>> {
 		// Handle options schema if present
 		const optsSchema = defNode.opts
-			? (typeof defNode.opts === 'object' && 'parse' in defNode.opts
-				? defNode.opts as z.ZodType
-				: z.record(z.string(), z.any()))
+			? typeof defNode.opts === 'object' && 'parse' in defNode.opts
+				? (defNode.opts as z.ZodType)
+				: z.record(z.string(), z.any())
 			: z.any()
 
 		switch (defNode._tag) {
@@ -629,13 +626,13 @@ export namespace MatchUtils {
 				const childKeys = Object.keys(defNode.child)
 
 				// Create union options for each variant
-				const variantOptions = childKeys.map(childId =>
+				const variantOptions = childKeys.map((childId) =>
 					z.object({
 						id: z.literal(defNode.id),
 						_tag: z.literal('variant' as const),
 						opts: optsSchema,
 						chosen: variantChildSchemas[childId],
-					})
+					}),
 				)
 
 				// Use regular union since child schemas should be different enough to discriminate
@@ -655,12 +652,7 @@ export namespace MatchUtils {
 
 				// Create a proper object schema with typed optional properties for each child
 				const childObjectSchema = z.object(
-					Object.fromEntries(
-						Object.entries(branchChildSchemas).map(([childId, schema]) => [
-							childId,
-							schema.optional(),
-						]),
-					),
+					Object.fromEntries(Object.entries(branchChildSchemas).map(([childId, schema]) => [childId, schema.optional()])),
 				)
 
 				return z.object({

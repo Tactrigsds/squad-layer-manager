@@ -121,10 +121,7 @@ export function UnifiedEmojiPicker(props: UnifiedEmojiPickerProps) {
 
 	if (isLoading) {
 		return (
-			<div
-				className="flex items-center justify-center"
-				style={{ width, height }}
-			>
+			<div className="flex items-center justify-center" style={{ width, height }}>
 				<div className="text-sm text-muted-foreground">Loading emojis...</div>
 			</div>
 		)

@@ -46,14 +46,14 @@ let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
 
 export const orpcRouter = {
-	watchUpdates: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
+	watchUpdates: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ context, signal }) {
 		const initial: UP.PresenceUpdate = {
 			code: 'init',
 			state: Obj.deepClone(globalUserPresence.session.state),
 			ops: Obj.deepClone(globalUserPresence.session.ops),
 		}
 		const update$ = globalUserPresence.op$.pipe(
-			Rx.map(dispatched => ODSM.Server.toClientUpdate(dispatched, context.wsClientId)),
+			Rx.map((dispatched) => ODSM.Server.toClientUpdate(dispatched, context.wsClientId)),
 			Rx.filter((update): update is NonNullable<typeof update> => update !== null),
 			Rx.startWith(initial),
 			withAbortSignal(signal!),
@@ -108,7 +108,7 @@ const DRAFT_SCOPES = ['queue', 'layer-requests'] as const
 // clients (not users) holding an editing session, counted per server for each shared draft
 type EditorCounts = Record<DraftScope, Map<string, number>>
 function countEditingClients(state: UP.State): EditorCounts {
-	const counts: EditorCounts = { 'queue': new Map(), 'layer-requests': new Map() }
+	const counts: EditorCounts = { queue: new Map(), 'layer-requests': new Map() }
 	for (const client of state.presence.values()) {
 		const activity = client.activityState
 		if (!activity) continue
@@ -124,13 +124,12 @@ function countEditingClients(state: UP.State): EditorCounts {
 // alongside it. Only an unannounced exit -- navigating off, disconnecting, timing out -- abandons the draft.
 function endsEditingDeliberately(op: UP.Op) {
 	if (op.code === 'sll:end-all-editing' || op.code === 'layer-requests:end-all-editing') return true
-	return op.code === 'update-activity'
-		&& (op.update.code === 'clear-editing-queue' || op.update.code === 'clear-editing-layer-requests')
+	return op.code === 'update-activity' && (op.update.code === 'clear-editing-queue' || op.update.code === 'clear-editing-layer-requests')
 }
 
 const dispatchOp = C.spanOp(
 	'dispatchOp',
-	{ module, extraText: (ops) => ops.map(o => o.code + (o.code === 'update-activity' ? ` (${o.update.code})` : '')).join(',') },
+	{ module, extraText: (ops) => ops.map((o) => o.code + (o.code === 'update-activity' ? ` (${o.update.code})` : '')).join(',') },
 	async (ops: UP.Op[], opts?: Omit<DispatchedOps, 'ops' | 'rejection'>) => {
 		const editorsBefore = countEditingClients(globalUserPresence.session.state)
 		const applied = ODSM.Server.applyOps(globalUserPresence.session, ops, UP.reducer)
@@ -201,8 +200,7 @@ export function reclaimClientId(userId: bigint, priorClientId?: string): string 
 // the reconnecting socket owns this id now; cancel any pending disconnect and mark it live
 function markReclaimed(clientId: string): string {
 	clearPendingDisconnect(clientId)
-	dispatchOp([{ code: 'connection-restored', clientId, opId: UP.createOpId(), time: Date.now() }])
-		.catch((error) => log.error(error))
+	dispatchOp([{ code: 'connection-restored', clientId, opId: UP.createOpId(), time: Date.now() }]).catch((error) => log.error(error))
 	return clientId
 }
 
@@ -223,34 +221,43 @@ export function getQueueEditors(serverId: string, exclude?: USR.UserId): USR.Use
 // draft is expected to discard it: nobody is left to commit it, and the next editor would inherit edits they
 // never made.
 export function editingAbandoned$(serverId: string): Rx.Observable<DraftScope> {
-	return globalUserPresence.abandoned$.pipe(Rx.filter(e => e.serverId === serverId), Rx.map(e => e.scope))
+	return globalUserPresence.abandoned$.pipe(
+		Rx.filter((e) => e.serverId === serverId),
+		Rx.map((e) => e.scope),
+	)
 }
 
 export function dispatchEndAllTeamswapEditing(serverId: string) {
-	dispatchOp([{
-		code: 'teamswaps:end-all-editing',
-		opId: UP.createOpId(),
-		time: Date.now(),
-		serverId,
-	}]).catch((error) => log.error(error))
+	dispatchOp([
+		{
+			code: 'teamswaps:end-all-editing',
+			opId: UP.createOpId(),
+			time: Date.now(),
+			serverId,
+		},
+	]).catch((error) => log.error(error))
 }
 
 export function dispatchEndAllLayerRequestEditing(serverId: string) {
-	dispatchOp([{
-		code: 'layer-requests:end-all-editing',
-		opId: UP.createOpId(),
-		time: Date.now(),
-		serverId,
-	}]).catch((error) => log.error(error))
+	dispatchOp([
+		{
+			code: 'layer-requests:end-all-editing',
+			opId: UP.createOpId(),
+			time: Date.now(),
+			serverId,
+		},
+	]).catch((error) => log.error(error))
 }
 
 export function dispatchEndAllLayerQueueEditing(serverId: string) {
-	dispatchOp([{
-		code: 'sll:end-all-editing',
-		opId: UP.createOpId(),
-		time: Date.now(),
-		serverId,
-	}]).catch((error) => log.error(error))
+	dispatchOp([
+		{
+			code: 'sll:end-all-editing',
+			opId: UP.createOpId(),
+			time: Date.now(),
+			serverId,
+		},
+	]).catch((error) => log.error(error))
 }
 
 export function setup() {
@@ -268,13 +275,16 @@ export function setup() {
 
 	// keep the presence state's notion of enabled servers in sync with the registry; disabling/removing a server
 	// dispatches an op that both updates the set and collapses any presence sitting on that server to null
-	const enabledServersSub = SettingsSys.publicSettings$.pipe(
-		Rx.map((settings) => settings.servers.filter((s) => s.enabled && !s.broken).map((s) => s.id)),
-		Rx.distinctUntilChanged((a, b) => a.length === b.length && a.every((id) => b.includes(id))),
-	).subscribe((serverIds) => {
-		dispatchOp([{ code: 'set-enabled-servers', serverIds, opId: UP.createOpId(), time: Date.now() }])
-			.catch((error) => log.error(error))
-	})
+	const enabledServersSub = SettingsSys.publicSettings$
+		.pipe(
+			Rx.map((settings) => settings.servers.filter((s) => s.enabled && !s.broken).map((s) => s.id)),
+			Rx.distinctUntilChanged((a, b) => a.length === b.length && a.every((id) => b.includes(id))),
+		)
+		.subscribe((serverIds) => {
+			dispatchOp([{ code: 'set-enabled-servers', serverIds, opId: UP.createOpId(), time: Date.now() }]).catch((error) =>
+				log.error(error),
+			)
+		})
 	CleanupSys.register(() => enabledServersSub.unsubscribe())
 
 	// On close, either the client cleanly left (drop it now) or the socket was interrupted (keep its
@@ -286,19 +296,22 @@ export function setup() {
 		const wsClientId = ctx.wsClientId
 		clearPendingDisconnect(wsClientId)
 		if (!interrupted) {
-			dispatchOp([{ code: 'client-disconnected', clientId: wsClientId, opId: UP.createOpId(), time: Date.now() }])
-				.catch((error) => log.error(error))
+			dispatchOp([{ code: 'client-disconnected', clientId: wsClientId, opId: UP.createOpId(), time: Date.now() }]).catch((error) =>
+				log.error(error),
+			)
 			return
 		}
-		dispatchOp([{ code: 'connection-interrupted', clientId: wsClientId, opId: UP.createOpId(), time: Date.now() }])
-			.catch((error) => log.error(error))
+		dispatchOp([{ code: 'connection-interrupted', clientId: wsClientId, opId: UP.createOpId(), time: Date.now() }]).catch((error) =>
+			log.error(error),
+		)
 		const timer = setTimeout(() => {
 			pendingDisconnects.delete(wsClientId)
 			// reclaim flips it back to 'connected'; only disconnect if it's still interrupted
 			const clientState = globalUserPresence.session.state.presence.get(wsClientId)
 			if (clientState?.connectionState !== 'connection-interrupted') return
-			dispatchOp([{ code: 'client-disconnected', clientId: wsClientId, opId: UP.createOpId(), time: Date.now() }])
-				.catch((error) => log.error(error))
+			dispatchOp([{ code: 'client-disconnected', clientId: wsClientId, opId: UP.createOpId(), time: Date.now() }]).catch((error) =>
+				log.error(error),
+			)
 		}, UP.DISCONNECT_TIMEOUT)
 		pendingDisconnects.set(wsClientId, timer)
 	})
@@ -308,21 +321,24 @@ export function setup() {
 		pendingDisconnects.clear()
 	})
 
-	const cleanSub = Rx.interval(UP.DISPLAYED_AWAY_PRESENCE_WINDOW * 2).pipe(
-		C.durableSub('user-presence:clean-presence', { module }, async () => {
-			const clientIdsToRemove: string[] = []
-			const presenceState = globalUserPresence.session.state.presence
-			for (const [wsClientId, presence] of Array.from(presenceState.entries())) {
-				// we don't want to remove presence instances that still might have an away indicator
-				const pastDisconnectTimeout = presence.lastSeen === null || (Date.now() - presence.lastSeen) > UP.DISPLAYED_AWAY_PRESENCE_WINDOW
-				if (!WSSessionSys.wsSessions.has(wsClientId) && pastDisconnectTimeout) {
-					clientIdsToRemove.push(wsClientId)
+	const cleanSub = Rx.interval(UP.DISPLAYED_AWAY_PRESENCE_WINDOW * 2)
+		.pipe(
+			C.durableSub('user-presence:clean-presence', { module }, async () => {
+				const clientIdsToRemove: string[] = []
+				const presenceState = globalUserPresence.session.state.presence
+				for (const [wsClientId, presence] of Array.from(presenceState.entries())) {
+					// we don't want to remove presence instances that still might have an away indicator
+					const pastDisconnectTimeout =
+						presence.lastSeen === null || Date.now() - presence.lastSeen > UP.DISPLAYED_AWAY_PRESENCE_WINDOW
+					if (!WSSessionSys.wsSessions.has(wsClientId) && pastDisconnectTimeout) {
+						clientIdsToRemove.push(wsClientId)
+					}
 				}
-			}
-			await dispatchOp([{ code: 'clean-stale-presence', clientIdsToRemove, opId: UP.createOpId(), time: Date.now() }])
-			log.info(`Cleaned ${clientIdsToRemove.length} stale presence sessions`)
-			// no need to send these deletions to the client
-		}),
-	).subscribe()
+				await dispatchOp([{ code: 'clean-stale-presence', clientIdsToRemove, opId: UP.createOpId(), time: Date.now() }])
+				log.info(`Cleaned ${clientIdsToRemove.length} stale presence sessions`)
+				// no need to send these deletions to the client
+			}),
+		)
+		.subscribe()
 	CleanupSys.register(() => cleanSub.unsubscribe())
 }

@@ -49,7 +49,7 @@ export async function up(db: MigrationDriver): Promise<void> {
 
 	// a grouping's mode may not have made it into the declared list, so take the union rather than trusting `modeIds`
 	const groupingIds: string[] = []
-	for (const modeId of [...(Array.isArray(old.modeIds) ? old.modeIds : []), ...oldGroupings.flatMap(g => g?.modeIds ?? [])]) {
+	for (const modeId of [...(Array.isArray(old.modeIds) ? old.modeIds : []), ...oldGroupings.flatMap((g) => g?.modeIds ?? [])]) {
 		const id = String(modeId)
 		if (id && !groupingIds.includes(id)) groupingIds.push(id)
 	}
@@ -58,7 +58,7 @@ export async function up(db: MigrationDriver): Promise<void> {
 
 	const playerGroupings: Record<string, { rules: any[]; groups: Record<string, { color: Color }> }> = {}
 	for (const groupingId of groupingIds) {
-		const mine = oldGroupings.filter(g => (g?.modeIds ?? []).map(String).includes(groupingId))
+		const mine = oldGroupings.filter((g) => (g?.modeIds ?? []).map(String).includes(groupingId))
 
 		const flattened: { group: string; flag: string; priority: number }[] = []
 		const groups: Record<string, { color: Color }> = {}

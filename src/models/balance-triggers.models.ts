@@ -43,7 +43,7 @@ export type SpecificBalanceTriggerEvent<BT extends BalanceTrigger<string, any>> 
 	input: BT['_']['input']
 	triggerId: BT['id']
 } & { evaluationResult: EvaluationResult<BT> }
-export type BalanceTriggerInstance = typeof TRIGGERS[keyof typeof TRIGGERS]
+export type BalanceTriggerInstance = (typeof TRIGGERS)[keyof typeof TRIGGERS]
 export type BalanceTriggerEventInstance = SpecificBalanceTriggerEvent<BalanceTriggerInstance>
 
 // -------- trigger definitions --------
@@ -173,9 +173,9 @@ const trigRAM3Plus = createTrigger<'RAM3+', MH.PostGameMatchDetails[]>({
 		return {
 			code: 'triggered' as const,
 			strongerTeam: streaker!,
-			messageTemplate: `{{strongerTeam}} has been winning for ${maxWindow!.length} games with an average of (125+)(${
-				maxWindow!.avg.toFixed(2)
-			}) tickets`,
+			messageTemplate: `{{strongerTeam}} has been winning for ${maxWindow!.length} games with an average of (125+)(${maxWindow!.avg.toFixed(
+				2,
+			)}) tickets`,
 			relevantInput: matchDetails.slice(matchDetails.length - maxWindow!.length),
 		}
 	},

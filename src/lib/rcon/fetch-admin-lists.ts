@@ -37,7 +37,8 @@ export default C.spanOp(
 		}
 
 		for (const [_idx, source] of sources.entries()) {
-			const sourceLabel = source.type === 'sftp' ? `${source.username}@${source.host}:${source.port}${source.filePath}` : source.source
+			const sourceLabel =
+				source.type === 'sftp' ? `${source.username}@${source.host}:${source.port}${source.filePath}` : source.source
 			log.info(`Fetching admin list from ${source.type} source ${sourceLabel}`)
 			let data = ''
 			try {
@@ -66,9 +67,9 @@ export default C.spanOp(
 						const [user, password] = loginString.split(':').map((v) => decodeURI(v))
 						const pathStartIndex = hostPathString.indexOf('/')
 						const remoteFilePath = pathStartIndex === -1 ? '/' : hostPathString.substring(pathStartIndex)
-						const [host, port = 21] = hostPathString.substring(0, pathStartIndex === -1 ? hostPathString.length : pathStartIndex).split(
-							':',
-						)
+						const [host, port = 21] = hostPathString
+							.substring(0, pathStartIndex === -1 ? hostPathString.length : pathStartIndex)
+							.split(':')
 
 						const buffer = new WritableBuffer()
 						const ftpClient = new FTPClient()

@@ -50,8 +50,16 @@ function permKey(perm: RBAC.Permission & Partial<RBAC.PermissionTrace>) {
 function NegationBadges(props: { perm: RBAC.TracedPermission }) {
 	return (
 		<>
-			{props.perm.negated && <Badge variant="destructive" className="text-xs">negated</Badge>}
-			{props.perm.negating && <Badge variant="outline" className="text-xs border-orange-500 text-orange-700">negating</Badge>}
+			{props.perm.negated && (
+				<Badge variant="destructive" className="text-xs">
+					negated
+				</Badge>
+			)}
+			{props.perm.negating && (
+				<Badge variant="outline" className="text-xs border-orange-500 text-orange-700">
+					negating
+				</Badge>
+			)}
 		</>
 	)
 }
@@ -60,7 +68,11 @@ function NegationBadges(props: { perm: RBAC.TracedPermission }) {
 // last enabled grantor of
 function RoleBadge(props: { role: RBAC.Role; simulate: boolean; enabled: boolean; onToggle: (enabled: boolean) => void }) {
 	if (!props.simulate) {
-		return <Badge variant="secondary" className="text-xs">{formatRoleName(props.role)}</Badge>
+		return (
+			<Badge variant="secondary" className="text-xs">
+				{formatRoleName(props.role)}
+			</Badge>
+		)
 	}
 	return (
 		<button type="button" onClick={() => props.onToggle(!props.enabled)}>
@@ -101,7 +113,9 @@ function RoleSection(props: {
 						/>
 					)}
 					<div>
-						<Label htmlFor={props.checkboxId} className="font-semibold">{formatRoleName(props.role)}</Label>
+						<Label htmlFor={props.checkboxId} className="font-semibold">
+							{formatRoleName(props.role)}
+						</Label>
 						<p className="text-sm text-muted-foreground">
 							{props.perms.length} permission{props.perms.length !== 1 ? 's' : ''}
 						</p>
@@ -127,16 +141,13 @@ function RoleSection(props: {
 								</div>
 								<div className="text-muted-foreground">{getPermissionDescription(perm.type)}</div>
 							</div>
-							<Badge variant="outline" className="text-xs">{formatPermissionScope(perm)}</Badge>
+							<Badge variant="outline" className="text-xs">
+								{formatPermissionScope(perm)}
+							</Badge>
 						</div>
 					))}
 					{(hiddenCount > 0 || showAll) && (
-						<Button
-							variant="link"
-							size="sm"
-							className="h-auto p-0 text-xs"
-							onClick={() => setShowAll(!showAll)}
-						>
+						<Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => setShowAll(!showAll)}>
 							{showAll ? 'Show fewer' : `...see all ${props.perms.length}`}
 						</Button>
 					)}
@@ -146,9 +157,11 @@ function RoleSection(props: {
 	)
 }
 
-export default function UserPermissionsDialog(
-	props: { children: React.ReactNode; open?: boolean; onOpenChange?: (newState: boolean) => void },
-) {
+export default function UserPermissionsDialog(props: {
+	children: React.ReactNode
+	open?: boolean
+	onOpenChange?: (newState: boolean) => void
+}) {
 	const userBase = UsersClient.useLoggedInUserBase()
 	const user = UsersClient.useLoggedInUser()
 	const {
@@ -193,13 +206,13 @@ export default function UserPermissionsDialog(
 	}, [basePerms, myRoles])
 	const unheldRoles = React.useMemo(() => {
 		if (!allRoles || !myRoles) return []
-		const held = new Set(myRoles.map(r => r.type))
-		return allRoles.filter(role => !held.has(role.type))
+		const held = new Set(myRoles.map((r) => r.type))
+		return allRoles.filter((role) => !held.has(role.type))
 	}, [allRoles, myRoles])
 	const unheldPermTypes = React.useMemo(() => {
 		if (!basePerms) return []
-		const held = new Set(basePerms.map(p => p.type))
-		return RBAC.PERMISSION_TYPE.options.filter(type => !held.has(type))
+		const held = new Set(basePerms.map((p) => p.type))
+		return RBAC.PERMISSION_TYPE.options.filter((type) => !held.has(type))
 	}, [basePerms])
 
 	const simulateId = React.useId()
@@ -207,9 +220,7 @@ export default function UserPermissionsDialog(
 	if (!userBase || !user) {
 		return (
 			<Dialog open={props.open} onOpenChange={props.onOpenChange}>
-				<DialogTrigger asChild>
-					{props.children}
-				</DialogTrigger>
+				<DialogTrigger asChild>{props.children}</DialogTrigger>
 				<DialogContent className="max-w-4xl">
 					<DialogHeader>
 						<DialogTitle>User Permissions</DialogTitle>
@@ -223,18 +234,18 @@ export default function UserPermissionsDialog(
 		)
 	}
 
-	const isRoleEnabled = (role: RBAC.Role) => !simulate || !disabledRoles.some(r => Obj.deepEqual(r, role))
-	const isPermDisabled = (perm: RBAC.Permission) => disabledPerms.some(p => RBAC.isSamePerm(p, perm))
-	const getSimulatableRole = (role: RBAC.Role) => simulatableRoles?.find(r => Obj.deepEqual(r.role, role))
+	const isRoleEnabled = (role: RBAC.Role) => !simulate || !disabledRoles.some((r) => Obj.deepEqual(r, role))
+	const isPermDisabled = (perm: RBAC.Permission) => disabledPerms.some((p) => RBAC.isSamePerm(p, perm))
+	const getSimulatableRole = (role: RBAC.Role) => simulatableRoles?.find((r) => Obj.deepEqual(r.role, role))
 	// granted under whatever simulation is currently in effect
-	const isPermActive = (perm: RBAC.Permission) => user.perms.some(p => RBAC.isSamePerm(p, perm) && !p.negated)
+	const isPermActive = (perm: RBAC.Permission) => user.perms.some((p) => RBAC.isSamePerm(p, perm) && !p.negated)
 
 	const toggleRole = (role: RBAC.Role, enabled: boolean) => {
 		if (enabled) enableRole(role)
 		else disableRole(role)
 	}
 
-	const activePermCount = user.perms.filter(p => !p.negated && !p.negating).length
+	const activePermCount = user.perms.filter((p) => !p.negated && !p.negating).length
 
 	return (
 		<Dialog modal open={props.open} onOpenChange={props.onOpenChange}>
@@ -247,9 +258,12 @@ export default function UserPermissionsDialog(
 
 				<div className="flex items-center space-x-3 p-4 border rounded-lg bg-muted/50">
 					<Switch checked={simulate} onCheckedChange={setSimulate} id={simulateId} />
-					<Label htmlFor={simulateId} className="text-sm font-medium shrink-0">Simulate</Label>
+					<Label htmlFor={simulateId} className="text-sm font-medium shrink-0">
+						Simulate
+					</Label>
 					<span className="text-xs text-muted-foreground text-balance leading-relaxed">
-						Toggle roles and permissions to see how the site behaves without them. You can only simulate losing access, never gaining it.
+						Toggle roles and permissions to see how the site behaves without them. You can only simulate losing access, never
+						gaining it.
 					</span>
 				</div>
 
@@ -281,14 +295,19 @@ export default function UserPermissionsDialog(
 										const canToggle = simulate && !perm.negating
 										const checkboxId = 'simulate-perm-checkbox-' + permKey(perm)
 										return (
-											<TableRow key={permKey(perm)} className={cn(simulate && !perm.negating && !isPermActive(perm) && 'opacity-50')}>
+											<TableRow
+												key={permKey(perm)}
+												className={cn(simulate && !perm.negating && !isPermActive(perm) && 'opacity-50')}
+											>
 												{simulate && (
 													<TableCell>
 														{canToggle && (
 															<Checkbox
 																id={checkboxId}
 																checked={!isPermDisabled(perm)}
-																onCheckedChange={(checked) => checked ? enablePerm(perm) : disablePerm(perm)}
+																onCheckedChange={(checked) =>
+																	checked ? enablePerm(perm) : disablePerm(perm)
+																}
 															/>
 														)}
 													</TableCell>
@@ -322,21 +341,26 @@ export default function UserPermissionsDialog(
 
 							<section className="space-y-2">
 								<h3 className="text-sm font-semibold">Permissions you don't have</h3>
-								{unheldPermTypes.length === 0
-									? <p className="text-sm text-muted-foreground">You have every permission.</p>
-									: (
-										<div className="space-y-1">
-											{unheldPermTypes.map((permType) => (
-												<div key={permType} className="flex items-start justify-between p-2 rounded text-sm opacity-60 bg-muted/30">
-													<div className="space-y-1">
-														<div className="font-mono">{permType}</div>
-														<div className="text-muted-foreground">{getPermissionDescription(permType)}</div>
-													</div>
-													<Badge variant="outline" className="text-xs">{RBAC.PERMISSION_DEFINITION[permType].scope}</Badge>
+								{unheldPermTypes.length === 0 ? (
+									<p className="text-sm text-muted-foreground">You have every permission.</p>
+								) : (
+									<div className="space-y-1">
+										{unheldPermTypes.map((permType) => (
+											<div
+												key={permType}
+												className="flex items-start justify-between p-2 rounded text-sm opacity-60 bg-muted/30"
+											>
+												<div className="space-y-1">
+													<div className="font-mono">{permType}</div>
+													<div className="text-muted-foreground">{getPermissionDescription(permType)}</div>
 												</div>
-											))}
-										</div>
-									)}
+												<Badge variant="outline" className="text-xs">
+													{RBAC.PERMISSION_DEFINITION[permType].scope}
+												</Badge>
+											</div>
+										))}
+									</div>
+								)}
 							</section>
 						</div>
 					</TabsContent>
@@ -366,7 +390,7 @@ export default function UserPermissionsDialog(
 								{unheldRoles.length === 0 && <p className="text-sm text-muted-foreground">You have every role.</p>}
 								{unheldRoles.map((role) => {
 									const simulatable = getSimulatableRole(role)
-									const added = !!simulatable && addedRoles.some(a => Obj.deepEqual(a.role, role))
+									const added = !!simulatable && addedRoles.some((a) => Obj.deepEqual(a.role, role))
 									const checkboxId = 'add-role-checkbox-' + JSON.stringify(role)
 									if (simulatable && added) {
 										return (
@@ -383,7 +407,10 @@ export default function UserPermissionsDialog(
 										)
 									}
 									return (
-										<div key={JSON.stringify(role)} className="flex items-center justify-between border rounded-lg p-4 bg-muted/30">
+										<div
+											key={JSON.stringify(role)}
+											className="flex items-center justify-between border rounded-lg p-4 bg-muted/30"
+										>
 											<div className="flex items-center space-x-3">
 												{simulate && simulatable && (
 													<Checkbox
@@ -392,11 +419,18 @@ export default function UserPermissionsDialog(
 														onCheckedChange={() => addRole(simulatable)}
 													/>
 												)}
-												<Label htmlFor={checkboxId} className={cn('font-semibold', !simulatable && 'text-muted-foreground')}>
+												<Label
+													htmlFor={checkboxId}
+													className={cn('font-semibold', !simulatable && 'text-muted-foreground')}
+												>
 													{formatRoleName(role)}
 												</Label>
 											</div>
-											{!simulatable && <Badge variant="outline" className="text-xs">Grants permissions you don't have</Badge>}
+											{!simulatable && (
+												<Badge variant="outline" className="text-xs">
+													Grants permissions you don't have
+												</Badge>
+											)}
 										</div>
 									)
 								})}

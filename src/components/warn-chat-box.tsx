@@ -49,7 +49,7 @@ export default function WarnChatBox({
 	const textareaRef = React.useRef<HTMLTextAreaElement>(null)
 
 	WarnChat.useWarnFocusRequest(
-		t => !!focusTarget && warnTargetsEqual(t, focusTarget),
+		(t) => !!focusTarget && warnTargetsEqual(t, focusTarget),
 		() => WarnChat.focusWhenVisible(() => textareaRef.current),
 	)
 	const username = UsersClient.useLoggedInUser()?.displayName
@@ -91,7 +91,7 @@ export default function WarnChatBox({
 
 	// orange "targeted warn" accent, matching ServerChatBox's warn-selected channel
 	const accent = 'border-orange-500/60 focus-visible:ring-orange-500/50'
-	const resolvedPlaceholder = warnDenied ? 'Missing permission' : noTargets ? 'No one to warn' : placeholder ?? 'Warn…'
+	const resolvedPlaceholder = warnDenied ? 'Missing permission' : noTargets ? 'No one to warn' : (placeholder ?? 'Warn…')
 
 	return (
 		<div className={cn('flex flex-col gap-1', className)}>
@@ -112,7 +112,11 @@ export default function WarnChatBox({
 						className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
 						title="Prefix the message with your username"
 					>
-						<Checkbox checked={prefixName} onCheckedChange={(checked: boolean) => setPrefixName(checked)} className="h-3.5 w-3.5" />
+						<Checkbox
+							checked={prefixName}
+							onCheckedChange={(checked: boolean) => setPrefixName(checked)}
+							className="h-3.5 w-3.5"
+						/>
 						{username}:
 					</label>
 				)}
@@ -121,8 +125,8 @@ export default function WarnChatBox({
 				<Textarea
 					ref={textareaRef}
 					value={message}
-					onChange={e => setMessage(e.target.value)}
-					onKeyDown={e => {
+					onChange={(e) => setMessage(e.target.value)}
+					onKeyDown={(e) => {
 						if (e.key === 'Enter' && !e.shiftKey) {
 							e.preventDefault()
 							void send()
@@ -136,7 +140,7 @@ export default function WarnChatBox({
 				<AdminReasonPicker
 					reasons={draft.reasons}
 					preview={draft.render}
-					onPick={reason => {
+					onPick={(reason) => {
 						setMessage(draft.pick(reason))
 						textareaRef.current?.focus()
 					}}

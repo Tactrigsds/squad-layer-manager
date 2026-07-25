@@ -64,11 +64,7 @@ async function loadValidSessionsIntoCache(ctx: C.Db) {
 }
 
 // Helper to update session in both cache and database
-async function updateSessionInCacheAndDb(
-	ctx: C.Db,
-	sessionId: string,
-	updates: Partial<Pick<CachedSession, 'expiresAt'>>,
-) {
+async function updateSessionInCacheAndDb(ctx: C.Db, sessionId: string, updates: Partial<Pick<CachedSession, 'expiresAt'>>) {
 	// Update database first
 	await ctx.db({ redactParams: true }).update(Schema.sessions).set(updates).where(E.eq(Schema.sessions.id, sessionId))
 
@@ -228,20 +224,14 @@ export async function logInUser(ctx: C.Db & C.FastifyRequest & C.FastifyReply, d
 	})
 
 	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-		const [user] = await ctx.db()
-			.select()
-			.from(Schema.users)
-			.where(E.eq(Schema.users.discordId, discordUser.id))
+		const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, discordUser.id))
 		if (!user) {
 			await ctx.db().insert(Schema.users).values({
 				discordId: discordUser.id,
 				username: discordUser.username,
 			})
 		} else {
-			await ctx.db()
-				.update(Schema.users)
-				.set({ username: discordUser.username })
-				.where(E.eq(Schema.users.discordId, discordUser.id))
+			await ctx.db().update(Schema.users).set({ username: discordUser.username }).where(E.eq(Schema.users.discordId, discordUser.id))
 		}
 		// Use the transaction-aware write-through cache for session creation
 		await createSessionTx(ctx, {
@@ -305,7 +295,7 @@ export const getUser = C.spanOp(
 				.select()
 				.from(Schema.sessions)
 				.where(E.eq(Schema.sessions.id, ctx.sessionId))
-				.then(rows => rows[0])
+				.then((rows) => rows[0])
 
 			if (session) {
 				sessionCache.set(ctx.sessionId, {

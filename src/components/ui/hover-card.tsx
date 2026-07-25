@@ -25,9 +25,7 @@ const HoverCardContent = React.forwardRef<
 			)}
 			{...props}
 		>
-			<BaseZIndexContext.Provider value={zIndex}>
-				{children}
-			</BaseZIndexContext.Provider>
+			<BaseZIndexContext.Provider value={zIndex}>{children}</BaseZIndexContext.Provider>
 		</HoverCardPrimitive.Content>
 	)
 })

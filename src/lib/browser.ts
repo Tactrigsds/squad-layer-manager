@@ -7,14 +7,11 @@ export function isBrowser(): boolean {
 
 const significantMouseMove$ = Rx.fromEvent(document, 'mousemove').pipe(
 	Rx.throttleTime(300, Rx.asyncScheduler, { leading: true, trailing: false }),
-	Rx.scan(
-		(blocks: boolean[], _) => {
-			// Keep a sliding window of 5 blocks
-			const newBlocks = [true, ...blocks.slice(0, 4)]
-			return newBlocks
-		},
-		[] as boolean[],
-	),
+	Rx.scan((blocks: boolean[], _) => {
+		// Keep a sliding window of 5 blocks
+		const newBlocks = [true, ...blocks.slice(0, 4)]
+		return newBlocks
+	}, [] as boolean[]),
 	Rx.map((blocks) => {
 		// Count how many blocks have movement (true values)
 		const activeBlocks = blocks.filter(Boolean).length
@@ -50,10 +47,7 @@ export const userInteracted$ = (function createInteractionObservable(): Rx.Obser
 // Any sign of life, including sustained mouse movement. Broader than userInteracted$ -- use this to
 // keep an already-active session from timing out, not to decide whether the user is engaged.
 export const userIsActive$ = (function createPageActivityObservable(): Rx.Observable<true> {
-	return Rx.merge(
-		significantMouseMove$,
-		userInteracted$,
-	).pipe(
+	return Rx.merge(significantMouseMove$, userInteracted$).pipe(
 		Rx.map((): true => true),
 		Rx.share(),
 	)

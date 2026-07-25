@@ -46,8 +46,5 @@ export function NodePortal(props: { nodeId: NodeMap.NodeId; store: Zus.StoreApi<
 		}
 	}, [props.nodeId])
 
-	return createPortal(
-		props.children,
-		node,
-	)
+	return createPortal(props.children, node)
 }

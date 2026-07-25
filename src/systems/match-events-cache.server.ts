@@ -46,7 +46,9 @@ export const getEventsForMatches = C.spanOp(
 
 		if (uncached.length > 0) {
 			const batch$ = (async () => {
-				const rawEvents = await ctx.db().select()
+				const rawEvents = await ctx
+					.db()
+					.select()
 					.from(Schema.serverEvents)
 					.where(E.inArray(Schema.serverEvents.matchId, uncached))
 					.orderBy(E.asc(Schema.serverEvents.id))
@@ -54,7 +56,7 @@ export const getEventsForMatches = C.spanOp(
 				const rowsByMatch = new Map<number, typeof rawEvents>()
 				for (const rawEvent of rawEvents) {
 					let rows = rowsByMatch.get(rawEvent.matchId)
-					if (!rows) rowsByMatch.set(rawEvent.matchId, rows = [])
+					if (!rows) rowsByMatch.set(rawEvent.matchId, (rows = []))
 					rows.push(rawEvent)
 				}
 
@@ -72,7 +74,10 @@ export const getEventsForMatches = C.spanOp(
 				for (const matchId of uncached) ctx.matchEventsCache.events.delete(matchId)
 			})
 			for (const matchId of uncached) {
-				ops.set(matchId, batch$.then(eventsByMatch => eventsByMatch.get(matchId)!))
+				ops.set(
+					matchId,
+					batch$.then((eventsByMatch) => eventsByMatch.get(matchId)!),
+				)
 			}
 			// a batch wider than the cache would evict its own earlier entries anyway, so only the newest are kept.
 			// `ops` holds every promise regardless, so the wider read itself is unaffected.
@@ -81,7 +86,7 @@ export const getEventsForMatches = C.spanOp(
 			}
 		}
 
-		const allEvents = (await Promise.all(matches.map(matchId => ops.get(matchId)!))).flat()
+		const allEvents = (await Promise.all(matches.map((matchId) => ops.get(matchId)!))).flat()
 		return allEvents
 	},
 )

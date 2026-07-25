@@ -58,7 +58,7 @@ function savedBackburner(): { itemId: string; description: string }[] {
 	try {
 		const row = db.prepare(`SELECT backburner FROM servers WHERE id = ?`).get(app.serverId) as { backburner: string }
 		const items = JSON.parse(row.backburner).json as { itemId: string; filter: Parameters<typeof BB.describeTemplate>[0] }[]
-		return items.map(item => ({ itemId: item.itemId, description: BB.describeTemplate(item.filter) }))
+		return items.map((item) => ({ itemId: item.itemId, description: BB.describeTemplate(item.filter) }))
 	} finally {
 		db.close()
 	}
@@ -77,16 +77,14 @@ function savedQueue(): { type: string; layerId?: string }[] {
 function appEventTypes(): string[] {
 	const db = app.readDb()
 	try {
-		return (db.prepare(`SELECT type FROM appEvents`).all() as { type: string }[]).map(r => r.type)
+		return (db.prepare(`SELECT type FROM appEvents`).all() as { type: string }[]).map((r) => r.type)
 	} finally {
 		db.close()
 	}
 }
 
 function warnsTo(player: { eos: string }): string[] {
-	return app.emu.rcon.commandLog
-		.filter((c) => c.body.startsWith('AdminWarn') && c.body.includes(player.eos))
-		.map((c) => c.body)
+	return app.emu.rcon.commandLog.filter((c) => c.body.startsWith('AdminWarn') && c.body.includes(player.eos)).map((c) => c.body)
 }
 
 describe('layer backburner via chat', () => {
@@ -109,20 +107,20 @@ describe('layer backburner via chat', () => {
 	it('rejects a request with no solutions in the pool', async () => {
 		app.emu.rcon.commandLog.length = 0
 		app.emu.world.chat(admin, 'ChatAdmin', '!reqlayer impossible')
-		await app.waitFor(
-			() => warnsTo(admin).some(w => w.includes('No layers in the current pool match')) || null,
-			{ label: 'the rejection reply', timeoutMs: 20_000 },
-		)
+		await app.waitFor(() => warnsTo(admin).some((w) => w.includes('No layers in the current pool match')) || null, {
+			label: 'the rejection reply',
+			timeoutMs: 20_000,
+		})
 		expect(savedBackburner()).toHaveLength(0)
 	})
 
 	it('suggests a correction for an unknown token', async () => {
 		app.emu.rcon.commandLog.length = 0
 		app.emu.world.chat(admin, 'ChatAdmin', '!reqlayer gorodokk')
-		await app.waitFor(
-			() => warnsTo(admin).some(w => w.includes('Unknown request')) || null,
-			{ label: 'the unknown-token reply', timeoutMs: 20_000 },
-		)
+		await app.waitFor(() => warnsTo(admin).some((w) => w.includes('Unknown request')) || null, {
+			label: 'the unknown-token reply',
+			timeoutMs: 20_000,
+		})
 	})
 
 	it('evicts the oldest request when a capped user exceeds their limit', async () => {
@@ -131,10 +129,10 @@ describe('layer backburner via chat', () => {
 		await app.waitFor(() => savedBackburner().length === 1 || null, { label: 'the first capped request', timeoutMs: 20_000 })
 
 		app.emu.world.chat(requester, 'ChatAll', '!reqlayer harju')
-		await app.waitFor(
-			() => (savedBackburner().length === 1 && savedBackburner()[0].description === 'Harju') || null,
-			{ label: 'the oldest request being evicted', timeoutMs: 20_000 },
-		)
+		await app.waitFor(() => (savedBackburner().length === 1 && savedBackburner()[0].description === 'Harju') || null, {
+			label: 'the oldest request being evicted',
+			timeoutMs: 20_000,
+		})
 		expect(warnsTo(requester).join('\n')).toContain('dropped')
 
 		// leave a clean slate for the generation test
@@ -150,10 +148,13 @@ describe('layer backburner via chat', () => {
 		app.emu.world.endMatch()
 		app.emu.world.startNewGame()
 
-		const generated = await app.waitFor(() => {
-			const q = savedQueue()
-			return q.length >= 1 && q[0].layerId && q[0].layerId !== LAYERS.gorodokRaas ? q[0] : null
-		}, { label: 'the generated layer', timeoutMs: 30_000 })
+		const generated = await app.waitFor(
+			() => {
+				const q = savedQueue()
+				return q.length >= 1 && q[0].layerId && q[0].layerId !== LAYERS.gorodokRaas ? q[0] : null
+			},
+			{ label: 'the generated layer', timeoutMs: 30_000 },
+		)
 		expect(generated.layerId).toMatch(/^FL-/)
 
 		await app.waitFor(() => savedBackburner().length === 0 || null, { label: 'the request being consumed', timeoutMs: 20_000 })

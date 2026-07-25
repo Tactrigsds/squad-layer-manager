@@ -202,36 +202,45 @@ type ServerAgentController = {
 	dispose: () => void
 }
 
-function startServerAgent(
-	args: { appPort: number; serverId: string; logPath: string; agentLogPath: string; rconPort: number; rconPassword: string },
-): ServerAgentController {
+function startServerAgent(args: {
+	appPort: number
+	serverId: string
+	logPath: string
+	agentLogPath: string
+	rconPort: number
+	rconPassword: string
+}): ServerAgentController {
 	const binary = resolveAgentBinary()
 	let child: childProcess.ChildProcess | null = null
 	const start = () => {
 		if (child) return
 		const out = fs.openSync(args.agentLogPath, 'a')
-		child = childProcess.spawn(binary, [
-			'--url',
-			`ws://127.0.0.1:${args.appPort}/server-agent`,
-			'--server-id',
-			args.serverId,
-			'--token',
-			SERVER_AGENT_TOKEN,
-			'--file',
-			args.logPath,
-			// the agent holds the RCON creds and proxies them; the app never sees them for a server-agent server
-			'--rcon-host',
-			'127.0.0.1',
-			'--rcon-port',
-			String(args.rconPort),
-			'--rcon-password',
-			args.rconPassword,
-			// tests move fast; poll and reconnect quickly so assertions don't wait on the agent
-			'--poll-ms',
-			'100',
-			'--reconnect-ms',
-			'300',
-		], { stdio: ['ignore', out, out] })
+		child = childProcess.spawn(
+			binary,
+			[
+				'--url',
+				`ws://127.0.0.1:${args.appPort}/server-agent`,
+				'--server-id',
+				args.serverId,
+				'--token',
+				SERVER_AGENT_TOKEN,
+				'--file',
+				args.logPath,
+				// the agent holds the RCON creds and proxies them; the app never sees them for a server-agent server
+				'--rcon-host',
+				'127.0.0.1',
+				'--rcon-port',
+				String(args.rconPort),
+				'--rcon-password',
+				args.rconPassword,
+				// tests move fast; poll and reconnect quickly so assertions don't wait on the agent
+				'--poll-ms',
+				'100',
+				'--reconnect-ms',
+				'300',
+			],
+			{ stdio: ['ignore', out, out] },
+		)
 		child.once('exit', () => {
 			child = null
 		})
@@ -318,9 +327,9 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		[TEST_ADMIN_LIST]: { source: { type: 'local', source: adminsCfgPath }, adminIdentifyingPermissions: [ADMIN_PERM] },
 	}
 	opts.globalSettings?.(globalSettings)
-	await db.insert(Schema.globalSettings).values(
-		superjsonify(Schema.globalSettings, { id: 1, settings: SETTINGS.GlobalSettingsSchema.encode(globalSettings) }),
-	)
+	await db
+		.insert(Schema.globalSettings)
+		.values(superjsonify(Schema.globalSettings, { id: 1, settings: SETTINGS.GlobalSettingsSchema.encode(globalSettings) }))
 
 	// -------- server --------
 	// the emulator writes its log to a file and the app tails it, the same `local` path a
@@ -329,13 +338,14 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	const logSource = opts.logSource ?? 'local'
 	const serverSettings = SETTINGS.ServerSettingsSchema.parse({
 		// server-agent mode keeps no RCON creds in the app: the agent holds them and proxies RCON over its tunnel
-		connections: logSource === 'server-agent'
-			? { type: 'server-agent', token: SERVER_AGENT_TOKEN }
-			: {
-				type: 'local',
-				logFile: squadLogPath,
-				rcon: { host: '127.0.0.1', port: emu.rconPort, password: emu.password },
-			},
+		connections:
+			logSource === 'server-agent'
+				? { type: 'server-agent', token: SERVER_AGENT_TOKEN }
+				: {
+						type: 'local',
+						logFile: squadLogPath,
+						rcon: { host: '127.0.0.1', port: emu.rconPort, password: emu.password },
+					},
 	})
 	const layerQueue = opts.layerQueue ?? []
 	applyTestServerTimings(serverSettings)
@@ -407,14 +417,14 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	const otelEnabled = !!opts.otel || process.env.SLM_TEST_OTEL === '1' || process.env.SLM_TEST_OTEL === 'true'
 	const otelEnv: Record<string, string> = otelEnabled
 		? {
-			OTEL_ENABLED: 'true',
-			OTLP_COLLECTOR_ENDPOINT: opts.otel?.endpoint ?? process.env.OTLP_COLLECTOR_ENDPOINT ?? 'http://localhost:4318',
-			// a test is short and rare: sample everything, or the one trace you want won't be there
-			OTEL_TRACE_SAMPLE_RATIO: '1',
-			OTEL_RESOURCE_ATTRIBUTES: Object.entries(otelLabels)
-				.map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
-				.join(','),
-		}
+				OTEL_ENABLED: 'true',
+				OTLP_COLLECTOR_ENDPOINT: opts.otel?.endpoint ?? process.env.OTLP_COLLECTOR_ENDPOINT ?? 'http://localhost:4318',
+				// a test is short and rare: sample everything, or the one trace you want won't be there
+				OTEL_TRACE_SAMPLE_RATIO: '1',
+				OTEL_RESOURCE_ATTRIBUTES: Object.entries(otelLabels)
+					.map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+					.join(','),
+			}
 		: { OTEL_ENABLED: 'false' }
 	if (otelEnabled) {
 		console.log(
@@ -425,7 +435,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	}
 
 	const env: Record<string, string> = {
-		...process.env as Record<string, string>,
+		...(process.env as Record<string, string>),
 		NODE_ENV: 'test',
 		...otelEnv,
 		DB_PATH: dbPath,
@@ -444,7 +454,10 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		QUERY_PARAM_AUTH_BYPASS: 'true',
 		// fixed 32-byte base64 key so encrypted settings survive across restarts within a test run
 		SETTINGS_ENCRYPTION_KEY: 'c2xtLXRlc3QtZW5jcnlwdGlvbi1rZXktMzJieXRlcyE=',
-		SUPER_USERS: users.filter((u) => u.superUser ?? u.discordId === ADMIN_USER.discordId).map((u) => String(u.discordId)).join(','),
+		SUPER_USERS: users
+			.filter((u) => u.superUser ?? u.discordId === ADMIN_USER.discordId)
+			.map((u) => String(u.discordId))
+			.join(','),
 		...opts.env,
 	}
 
@@ -474,10 +487,10 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 			? `\ntelemetry: slm.test.run_id="${TEST_RUN_ID}" slm.test.name="${otelLabels['slm.test.name']}"`
 			: ''
 		throw new Error(
-			`timed out waiting for ${waitOpts?.label ?? 'probe'} after ${timeoutMs}ms.`
-				+ (lastErr ? ` last error: ${lastErr.message}` : '')
-				+ telemetryHint
-				+ `\napp log tail:\n${tail}`,
+			`timed out waiting for ${waitOpts?.label ?? 'probe'} after ${timeoutMs}ms.` +
+				(lastErr ? ` last error: ${lastErr.message}` : '') +
+				telemetryHint +
+				`\napp log tail:\n${tail}`,
 		)
 	}
 
@@ -495,14 +508,17 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		child = childProcess.spawn(command, args, { cwd: REPO_ROOT, env, stdio: ['ignore', out, out] })
 		childExited = new Promise((resolve) => child!.once('exit', (code) => resolve(code)))
 
-		await waitFor(async () => {
-			if (child!.exitCode !== null) {
-				const tail = fs.readFileSync(logFile, 'utf8').split('\n').slice(-40).join('\n')
-				throw new Error(`app exited with code ${child!.exitCode} during boot.\napp log tail:\n${tail}`)
-			}
-			const res = await fetch(`${appUrl}/check-auth`).catch(() => null)
-			return res !== null
-		}, { label: 'app readiness', timeoutMs: 60_000 })
+		await waitFor(
+			async () => {
+				if (child!.exitCode !== null) {
+					const tail = fs.readFileSync(logFile, 'utf8').split('\n').slice(-40).join('\n')
+					throw new Error(`app exited with code ${child!.exitCode} during boot.\napp log tail:\n${tail}`)
+				}
+				const res = await fetch(`${appUrl}/check-auth`).catch(() => null)
+				return res !== null
+			},
+			{ label: 'app readiness', timeoutMs: 60_000 },
+		)
 	}
 
 	if (opts.spawn !== false) await spawnApp()
@@ -541,10 +557,10 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 			// two polls, not one: the roster resource fetches under a mutex, so the second ListPlayers
 			// can only have been issued after the first one's response was parsed and cached
 			const from = emu.rcon.commandLog.length
-			await waitFor(
-				() => emu.rcon.commandLog.slice(from).filter((c) => c.body === 'ListPlayers').length >= 2,
-				{ label: 'roster poll', timeoutMs: syncOpts?.timeoutMs ?? 25_000 },
-			)
+			await waitFor(() => emu.rcon.commandLog.slice(from).filter((c) => c.body === 'ListPlayers').length >= 2, {
+				label: 'roster poll',
+				timeoutMs: syncOpts?.timeoutMs ?? 25_000,
+			})
 		},
 		readDb: () => new Database(dbPath, { readonly: true }),
 		waitFor,

@@ -166,7 +166,10 @@ function reasonAliasesToKeywords(json: Record<string, unknown>): boolean {
 }
 
 function slugify(label: string): string {
-	return label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+	return label
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-')
+		.replace(/^-+|-+$/g, '')
 }
 
 // labels are unique but their slugs need not be ("No SLKit" and "No-SLKit" collapse to the same thing), and keywords
@@ -174,7 +177,7 @@ function slugify(label: string): string {
 function uniqueKeyword(base: string, taken: Set<string>): string {
 	const seed = base || 'reason'
 	if (!taken.has(seed)) return seed
-	for (let n = 2;; n++) {
+	for (let n = 2; ; n++) {
 		const candidate = `${seed}-${n}`
 		if (!taken.has(candidate)) return candidate
 	}

@@ -53,34 +53,26 @@ export function ListEditor<Item>(props: {
 					</Button>
 				</div>
 			))}
-			{adding
-				? (
-					<div className="flex items-center gap-1">
-						{props.renderAddControl({ ref: pendingRef, done })}
-						<Button
-							type="button"
-							size="icon"
-							variant="ghost"
-							className="h-8 w-8 shrink-0 text-destructive"
-							onClick={done}
-						>
-							<Icons.X className="h-4 w-4" />
-						</Button>
-					</div>
-				)
-				: (
-					<Button
-						type="button"
-						size="sm"
-						variant="outline"
-						className="h-7"
-						disabled={props.addDisabled}
-						onClick={() => setAdding(true)}
-					>
-						<Icons.Plus className="mr-1 h-3.5 w-3.5" />
-						{props.addLabel}
+			{adding ? (
+				<div className="flex items-center gap-1">
+					{props.renderAddControl({ ref: pendingRef, done })}
+					<Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-destructive" onClick={done}>
+						<Icons.X className="h-4 w-4" />
 					</Button>
-				)}
+				</div>
+			) : (
+				<Button
+					type="button"
+					size="sm"
+					variant="outline"
+					className="h-7"
+					disabled={props.addDisabled}
+					onClick={() => setAdding(true)}
+				>
+					<Icons.Plus className="mr-1 h-3.5 w-3.5" />
+					{props.addLabel}
+				</Button>
+			)}
 		</div>
 	)
 }

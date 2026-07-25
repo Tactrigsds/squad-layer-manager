@@ -8,7 +8,14 @@ import React from 'react'
 
 // Drops a configured preset into a free-text chat box: unlike a select it holds no state of its own, so the
 // text stays editable afterwards. `preview` renders the text a pick would insert, shown under each label.
-export function AdminReasonPicker({ reasons, preview, onPick, disabled, className, title }: {
+export function AdminReasonPicker({
+	reasons,
+	preview,
+	onPick,
+	disabled,
+	className,
+	title,
+}: {
 	reasons: AAR.AdminActionReason[]
 	preview: (reason: AAR.AdminActionReason) => string
 	onPick: (reason: AAR.AdminActionReason) => void
@@ -39,7 +46,7 @@ export function AdminReasonPicker({ reasons, preview, onPick, disabled, classNam
 					<CommandList>
 						<CommandEmpty>No reasons found.</CommandEmpty>
 						<CommandGroup>
-							{reasons.map(reason => (
+							{reasons.map((reason) => (
 								<CommandItem
 									key={reason.label}
 									value={reason.label}

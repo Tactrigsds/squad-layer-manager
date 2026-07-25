@@ -14,9 +14,11 @@ type GenericRouteDefinition = {
 	regex: RegExp
 }
 
-type ToGenericStrings<T extends ParamsBase> = T extends never[] ? [] : {
-	[K in keyof T]: K extends keyof string[] ? T[K] : string
-}
+type ToGenericStrings<T extends ParamsBase> = T extends never[]
+	? []
+	: {
+			[K in keyof T]: K extends keyof string[] ? T[K] : string
+		}
 
 type ParamsBase<U extends string = string> = U[]
 
@@ -60,7 +62,8 @@ export type PageRoutes = Extract<KnownRoute, { handle: 'page' }>
 export type PageRouteId = PageRoutes['id']
 export type RouteDefForId<R extends KnownRouteId> = Extract<KnownRoutes[number], { id: R }>
 
-export type RouteParamObj<R extends KnownRouteId> = RouteDefForId<R>['params'] extends never[] ? never
+export type RouteParamObj<R extends KnownRouteId> = RouteDefForId<R>['params'] extends never[]
+	? never
 	: { [k in RouteDefForId<R>['params'][number]]: string }
 
 export type ResolvedRoute<R extends KnownRouteId = KnownRouteId> = {
@@ -76,22 +79,24 @@ function defRoute<T extends string, Params extends ParamsBase, Handle extends 'p
 	handle: Handle,
 	options?: { websocket?: boolean; link?: GetLink<Params>; authed?: boolean },
 ) {
-	const getLink: GetLink<Params> = options?.link ?? ((...params) => {
-		if (params.length === 0) return str
-		// first segment will be empty, but that's fine
-		const segments = str.split('/')
-		const paramSegments = []
-		for (let i = 0; i < segments.length; i++) {
-			if (segments[i].startsWith(':') || segments[i] === '*') {
-				paramSegments.push(i)
+	const getLink: GetLink<Params> =
+		options?.link ??
+		((...params) => {
+			if (params.length === 0) return str
+			// first segment will be empty, but that's fine
+			const segments = str.split('/')
+			const paramSegments = []
+			for (let i = 0; i < segments.length; i++) {
+				if (segments[i].startsWith(':') || segments[i] === '*') {
+					paramSegments.push(i)
+				}
 			}
-		}
-		if (paramSegments.length !== params.length) throw new Error(`Invalid number of parameters for route ${str}`)
-		for (let i = 0; i < params.length; i++) {
-			segments[paramSegments[i]] = params[i]
-		}
-		return segments.join('/')
-	})
+			if (paramSegments.length !== params.length) throw new Error(`Invalid number of parameters for route ${str}`)
+			for (let i = 0; i < params.length; i++) {
+				segments[paramSegments[i]] = params[i]
+			}
+			return segments.join('/')
+		})
 
 	return {
 		id: str,
@@ -107,11 +112,11 @@ function defRoute<T extends string, Params extends ParamsBase, Handle extends 'p
 }
 
 function routeForId<Id extends KnownRouteId>(id: Id) {
-	return routes.find(route => route.id === id) as RouteDefForId<Id>
+	return routes.find((route) => route.id === id) as RouteDefForId<Id>
 }
 
 export function route<R extends KnownRouteId>(path: R) {
-	if (!routes.some(r => r.id === path)) {
+	if (!routes.some((r) => r.id === path)) {
 		throw new Error(`Route ${path} is not defined in the routes object`)
 	}
 	return path
@@ -121,7 +126,7 @@ export function link<R extends KnownRouteId>(id: R, ...args: ToGenericStrings<Ro
 	const route = routeForId(id)
 	const linkFn = routeForId(id).link
 	// @ts-expect-error idgaf
-	return linkFn(...args.map((arg, index) => route.params[index] === '*' ? arg : encodeURIComponent(arg)))
+	return linkFn(...args.map((arg, index) => (route.params[index] === '*' ? arg : encodeURIComponent(arg))))
 }
 
 export function checkResolvedRouteInIds<R extends KnownRouteId>(
@@ -177,18 +182,21 @@ export function getRouteRegex(id: string): RegExp {
 	// Remove trailing slash and escape special regex characters
 	const cleanPath = id.replace(/\/$/, '')
 	let globIdx = 0
-	const regex = cleanPath.split('/').map((segment) => {
-		if (segment.startsWith('__glob')) throw new Error('Invalid route segment: __glob__')
-		if (segment === '*') {
-			return `(?<__glob${globIdx++}__>.*)`
-		}
-		if (segment.startsWith(':')) {
-			// Ensure parameter captures at least one character, but stop at query params
-			return `(?<${segment.substring(1)}>[^/?]+)`
-		}
-		// Escape special regex characters
-		return segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-	}).join('/')
+	const regex = cleanPath
+		.split('/')
+		.map((segment) => {
+			if (segment.startsWith('__glob')) throw new Error('Invalid route segment: __glob__')
+			if (segment === '*') {
+				return `(?<__glob${globIdx++}__>.*)`
+			}
+			if (segment.startsWith(':')) {
+				// Ensure parameter captures at least one character, but stop at query params
+				return `(?<${segment.substring(1)}>[^/?]+)`
+			}
+			// Escape special regex characters
+			return segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+		})
+		.join('/')
 
 	return new RegExp(`^${regex}/?(?:\\?.*)?$`)
 }

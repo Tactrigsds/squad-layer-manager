@@ -10,46 +10,46 @@
 # more; a config carrying them fails to parse and Tempo exits silently (logging=false), taking traces
 # with it while every other component reports healthy. The two deltas below are the Tempo-3 forms.
 server:
-  http_listen_port: 3200
-  grpc_listen_port: 9096
+    http_listen_port: 3200
+    grpc_listen_port: 9096
 
 distributor:
-  receivers:
-    otlp:
-      protocols:
-        grpc:
-          endpoint: "127.0.0.1:4417"
-        http:
-          endpoint: "127.0.0.1:4418"
+    receivers:
+        otlp:
+            protocols:
+                grpc:
+                    endpoint: '127.0.0.1:4417'
+                http:
+                    endpoint: '127.0.0.1:4418'
 
 memberlist:
-  bind_addr: [127.0.0.1]
-  bind_port: 7947
+    bind_addr: [127.0.0.1]
+    bind_port: 7947
 
 querier:
-  frontend_worker:
-    frontend_address: 127.0.0.1:9096
+    frontend_worker:
+        frontend_address: 127.0.0.1:9096
 
 storage:
-  trace:
-    backend: local
-    wal:
-      path: /data/tempo/wal
-    local:
-      path: /data/tempo/blocks
+    trace:
+        backend: local
+        wal:
+            path: /data/tempo/wal
+        local:
+            path: /data/tempo/blocks
 
 metrics_generator:
-  processor:
-    span_metrics:
-      dimensions:
-        - service_name
-        - operation
-        - status_code
-  storage:
-    path: /data/tempo/generator/wal
-    remote_write:
-      - url: http://127.0.0.1:9090/api/v1/write
-        send_exemplars: true
+    processor:
+        span_metrics:
+            dimensions:
+                - service_name
+                - operation
+                - status_code
+    storage:
+        path: /data/tempo/generator/wal
+        remote_write:
+            - url: http://127.0.0.1:9090/api/v1/write
+              send_exemplars: true
 
 # 3 day trace retention (default is 336h). Traces are by far the highest-volume signal we emit (one span
 # per spanOp, plus auto-instrumented http/rcon/dns spans underneath each), so they get the shortest
@@ -62,19 +62,19 @@ metrics_generator:
 # is the scheduler's compaction provider, the inner its compaction settings (confirmed against Tempo's
 # own /status/config, since the -help flag paths are mangled for this struct).
 backend_scheduler:
-  provider:
-    compaction:
-      compaction:
-        block_retention: 72h
+    provider:
+        compaction:
+            compaction:
+                block_retention: 72h
 backend_worker:
-  compaction:
-    block_retention: 72h
+    compaction:
+        block_retention: 72h
 
 # Must be the scoped form: Tempo 3 refuses to start on the legacy flat `metrics_generator_processors`
 # key. These are the image's own two processors. There is no `local-blocks` entry: that processor is gone
 # in Tempo 3, and TraceQL metrics (`{...} | rate() by(...)`, which the Traces Drilldown issues on open)
 # are served natively without it.
 overrides:
-  defaults:
-    metrics_generator:
-      processors: [service-graphs, span-metrics]
+    defaults:
+        metrics_generator:
+            processors: [service-graphs, span-metrics]

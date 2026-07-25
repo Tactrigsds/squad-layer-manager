@@ -7,10 +7,7 @@
 	"formatter": {
 		"external": {
 			"command": "./node_modules/.bin/oxfmt",
-			"arguments": [
-				"--stdin-filepath",
-				"{buffer_path}"
-			]
+			"arguments": ["--stdin-filepath", "{buffer_path}"]
 		}
 	},
 	"languages": {

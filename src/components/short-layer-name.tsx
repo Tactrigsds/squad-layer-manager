@@ -15,17 +15,23 @@ import MapLayerDisplay from './map-layer-display.tsx'
 
 void import('./layer-info')
 
-export default function ShortLayerName(
-	{ layerId, teamParity, backfillLayerId, matchDescriptors, allowShowInfo: _allowShowInfo, ref, className }: {
-		layerId: L.LayerId
-		teamParity?: number
-		backfillLayerId?: L.LayerId
-		matchDescriptors?: LQY.MatchDescriptor[]
-		allowShowInfo?: boolean
-		className?: string
-		ref?: React.Ref<HTMLDivElement>
-	},
-) {
+export default function ShortLayerName({
+	layerId,
+	teamParity,
+	backfillLayerId,
+	matchDescriptors,
+	allowShowInfo: _allowShowInfo,
+	ref,
+	className,
+}: {
+	layerId: L.LayerId
+	teamParity?: number
+	backfillLayerId?: L.LayerId
+	matchDescriptors?: LQY.MatchDescriptor[]
+	allowShowInfo?: boolean
+	className?: string
+	ref?: React.Ref<HTMLDivElement>
+}) {
 	const allowShowInfo = _allowShowInfo ?? true
 	const backfilledStyle = 'text-gray-500'
 
@@ -73,12 +79,7 @@ export default function ShortLayerName(
 			Collection: combineStyles('Collection'),
 		}
 		return extraStyles
-	}, [
-		partialLayer,
-		backfillLayer,
-		matchDescriptors,
-		teamParity,
-	])
+	}, [partialLayer, backfillLayer, matchDescriptors, teamParity])
 
 	const backfilledLayer = React.useMemo(() => ({ ...(backfillLayer ?? {}), ...partialLayer }), [backfillLayer, partialLayer])
 
@@ -89,12 +90,7 @@ export default function ShortLayerName(
 	let rightTeamElt: React.ReactNode | undefined
 
 	if (partialLayer.Faction_1 && partialLayer.Faction_2) {
-		;[leftTeamElt, rightTeamElt] = getTeamsDisplay(
-			partialLayer,
-			teamParity ?? 0,
-			globalSettings.displayTeamsNormalized,
-			extraStyles,
-		)
+		;[leftTeamElt, rightTeamElt] = getTeamsDisplay(partialLayer, teamParity ?? 0, globalSettings.displayTeamsNormalized, extraStyles)
 	}
 	// flex-wrap so a long "Map_Gamemode_v1 . FactionA vs FactionB" can break across lines in a narrow
 	// container; each segment stays intact because it carries its own nowrap

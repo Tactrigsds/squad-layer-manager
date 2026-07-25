@@ -68,10 +68,7 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 					</Button>
 				))}
 				<label className="ml-auto flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
-					<Checkbox
-						checked={hideNoise}
-						onCheckedChange={(on) => ConsoleFrame.Actions.setHideNoise(stores, on === true)}
-					/>
+					<Checkbox checked={hideNoise} onCheckedChange={(on) => ConsoleFrame.Actions.setHideNoise(stores, on === true)} />
 					Hide noise
 					{hideNoise && hidden > 0 && <span className="tabular-nums">({hidden})</span>}
 				</label>
@@ -87,21 +84,21 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 				</Button>
 			</div>
 			<div ref={scrollRef} className="min-h-0 grow overflow-y-auto bg-muted/30 p-1.5">
-				{events.length === 0
-					? <p className="text-xs text-muted-foreground">Nothing yet.</p>
-					: (
-						<ol className="space-y-0.5">
-							{events.map((event) => {
-								const { prefix, body, tone } = formatEvent(event)
-								return (
-									<li key={event.seq} className="flex items-start gap-1.5 font-mono text-[11px] leading-tight">
-										<span className={cn('shrink-0', tone)}>{prefix}</span>
-										<span className="min-w-0 whitespace-pre-wrap break-all">{body}</span>
-									</li>
-								)
-							})}
-						</ol>
-					)}
+				{events.length === 0 ? (
+					<p className="text-xs text-muted-foreground">Nothing yet.</p>
+				) : (
+					<ol className="space-y-0.5">
+						{events.map((event) => {
+							const { prefix, body, tone } = formatEvent(event)
+							return (
+								<li key={event.seq} className="flex items-start gap-1.5 font-mono text-[11px] leading-tight">
+									<span className={cn('shrink-0', tone)}>{prefix}</span>
+									<span className="min-w-0 whitespace-pre-wrap break-all">{body}</span>
+								</li>
+							)
+						})}
+					</ol>
+				)}
 			</div>
 		</div>
 	)

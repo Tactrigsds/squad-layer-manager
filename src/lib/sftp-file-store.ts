@@ -77,13 +77,13 @@ function buildSession(sftp: SFTPWrapper, signal?: AbortSignal): SftpSession {
 	}
 
 	const session: SftpSession = {
-		uploadFile: (localPath, remotePath) => promisify<void>(cb => sftp.fastPut(localPath, remotePath, err => cb(err, undefined))),
-		readFile: (remotePath) => promisify<Buffer>(cb => sftp.readFile(remotePath, (err, data) => cb(err, data as Buffer))),
+		uploadFile: (localPath, remotePath) => promisify<void>((cb) => sftp.fastPut(localPath, remotePath, (err) => cb(err, undefined))),
+		readFile: (remotePath) => promisify<Buffer>((cb) => sftp.readFile(remotePath, (err, data) => cb(err, data as Buffer))),
 		listDir: async (remoteDir) => {
-			const entries = await promisify<{ filename: string }[]>(cb => sftp.readdir(remoteDir, cb))
-			return entries.map(e => e.filename)
+			const entries = await promisify<{ filename: string }[]>((cb) => sftp.readdir(remoteDir, cb))
+			return entries.map((e) => e.filename)
 		},
-		unlink: (remotePath) => promisify<void>(cb => sftp.unlink(remotePath, err => cb(err, undefined))),
+		unlink: (remotePath) => promisify<void>((cb) => sftp.unlink(remotePath, (err) => cb(err, undefined))),
 		mkdirp: async (remoteDir) => {
 			const segments = remoteDir.split('/').filter(Boolean)
 			// a leading '/' is the only thing that distinguishes an absolute remote path from one relative to the
@@ -92,7 +92,7 @@ function buildSession(sftp: SFTPWrapper, signal?: AbortSignal): SftpSession {
 			for (const segment of segments) {
 				current = current === '/' || current === '' ? `${current}${segment}` : `${current}/${segment}`
 				try {
-					await promisify<void>(cb => sftp.mkdir(current, err => cb(err, undefined)))
+					await promisify<void>((cb) => sftp.mkdir(current, (err) => cb(err, undefined)))
 				} catch {
 					// already exists (or we lack permission to create it, which the subsequent upload will report)
 				}

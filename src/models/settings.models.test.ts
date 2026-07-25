@@ -40,7 +40,7 @@ describe('pool configuration schema', () => {
 					{ label: 'Map', field: 'Map', within: 4 },
 					{ label: 'Map', field: 'Layer', within: 2 },
 				],
-			})
+			}),
 		).toThrow()
 	})
 })
@@ -73,7 +73,10 @@ describe('getSettingsConstraints', () => {
 		indicateMatches: ['a-filter', 'c-filter'],
 		indicateMisses: ['b-filter', 'c-filter'],
 		defaultSelectable: [{ filterId: 'a-filter', applyAs: 'regular' }],
-		warnFor: [{ filterId: 'b-filter', applyAs: 'inverted' }, { filterId: 'd-filter', applyAs: 'regular' }],
+		warnFor: [
+			{ filterId: 'b-filter', applyAs: 'inverted' },
+			{ filterId: 'd-filter', applyAs: 'regular' },
+		],
 		constrainGeneration: [{ filterId: 'e-filter', applyAs: 'inverted' }],
 		repeatRules: [
 			{ label: 'Map', field: 'Map', within: 4 },
@@ -83,7 +86,7 @@ describe('getSettingsConstraints', () => {
 
 	test('selection/status context: pool warns on a miss, lists merge into indication constraints', () => {
 		const constraints = SETTINGS.getSettingsConstraints(settings)
-		const byId = new Map(constraints.map(c => [c.id, c]))
+		const byId = new Map(constraints.map((c) => [c.id, c]))
 
 		// include-mode pool filter warns when the layer does NOT match
 		expect(byId.get('pool-filter')).toMatchObject({ filterApplState: 'regular', showIndicator: 'both', warn: 'inverted' })
@@ -98,12 +101,12 @@ describe('getSettingsConstraints', () => {
 		expect(byId.get('layer-pool:mainPool:Map')).toMatchObject({ type: 'do-not-repeat' })
 		expect(byId.get('layer-pool:mainPool:Gen')).toMatchObject({ type: 'do-not-repeat' })
 		// generation-only config stays out of selection contexts
-		expect(constraints.some(c => c.type === 'filter-entity' && c.filterId === 'e-filter')).toBe(false)
+		expect(constraints.some((c) => c.type === 'filter-entity' && c.filterId === 'e-filter')).toBe(false)
 	})
 
 	test('generation context: pool filter always constrains, constrainGeneration and autogen rules apply', () => {
 		const constraints = SETTINGS.getSettingsConstraints(settings, { generatingLayers: true })
-		const byId = new Map(constraints.map(c => [c.id, c]))
+		const byId = new Map(constraints.map((c) => [c.id, c]))
 
 		expect(byId.get('pool-filter')).toMatchObject({ filterApplState: 'regular', warn: 'disabled' })
 		expect(byId.get('gen:e-filter')).toMatchObject({ filterApplState: 'inverted' })

@@ -60,9 +60,7 @@ afterAll(async () => {
 })
 
 function warnsTo(player: EmuPlayer): string[] {
-	return app.emu.rcon.commandLog
-		.filter((c) => c.body.startsWith(`AdminWarn "${player.eos}"`))
-		.map((c) => c.body)
+	return app.emu.rcon.commandLog.filter((c) => c.body.startsWith(`AdminWarn "${player.eos}"`)).map((c) => c.body)
 }
 
 describe('admin actions from in-game chat', () => {
@@ -110,7 +108,8 @@ describe('admin actions from in-game chat', () => {
 
 		await app.waitFor(
 			() =>
-				warnsTo(leader).some((w) => w.includes('Cut out the toxicity')) && warnsTo(member).some((w) => w.includes('Cut out the toxicity')),
+				warnsTo(leader).some((w) => w.includes('Cut out the toxicity')) &&
+				warnsTo(member).some((w) => w.includes('Cut out the toxicity')),
 			{ label: 'a warn to each member of the squad', timeoutMs: 20_000 },
 		)
 		// ...and only them: a player on the same team but outside the squad is untouched. (The admin does
@@ -133,17 +132,20 @@ describe('admin actions from in-game chat', () => {
 	})
 
 	it('records what was done, and who did it', async () => {
-		await app.waitFor(() => {
-			const db = app.readDb()
-			try {
-				const rows = db
-					.prepare(`SELECT type, actorType, actorPlayerId FROM appEvents WHERE type LIKE '%ADMIN%' OR type LIKE '%PLAYER%'`)
-					.all() as { type: string; actorType: string; actorPlayerId: string | null }[]
-				// the admin acted from in game, so they are attributed as the in-game player they are
-				return rows.some((r) => r.actorType === 'ingame-user' && r.actorPlayerId === admin.eos)
-			} finally {
-				db.close()
-			}
-		}, { label: 'the actions attributed to the admin in the audit log', timeoutMs: 20_000 })
+		await app.waitFor(
+			() => {
+				const db = app.readDb()
+				try {
+					const rows = db
+						.prepare(`SELECT type, actorType, actorPlayerId FROM appEvents WHERE type LIKE '%ADMIN%' OR type LIKE '%PLAYER%'`)
+						.all() as { type: string; actorType: string; actorPlayerId: string | null }[]
+					// the admin acted from in game, so they are attributed as the in-game player they are
+					return rows.some((r) => r.actorType === 'ingame-user' && r.actorPlayerId === admin.eos)
+				} finally {
+					db.close()
+				}
+			},
+			{ label: 'the actions attributed to the admin in the audit log', timeoutMs: 20_000 },
+		)
 	})
 })

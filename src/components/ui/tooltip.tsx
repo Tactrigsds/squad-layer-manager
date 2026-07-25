@@ -9,11 +9,9 @@ import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 const TooltipProvider = TooltipPrimitive.Provider
 
 // Context to share mobile state and ensure consistent behavior across all tooltip components
-const TooltipMobileContext = React.createContext<
-	{
-		isMobile: boolean
-	} | null
->(null)
+const TooltipMobileContext = React.createContext<{
+	isMobile: boolean
+} | null>(null)
 
 const useTooltipMobile = () => {
 	const context = React.useContext(TooltipMobileContext)
@@ -32,7 +30,10 @@ const useTooltipMobile = () => {
  *
  * This ensures better mobile UX since tooltips are difficult to interact with on touch devices.
  */
-const Tooltip = ({ children, ...props }: React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Root> & {
+const Tooltip = ({
+	children,
+	...props
+}: React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Root> & {
 	children: React.ReactNode
 }) => {
 	const isMobile = useIsMobile()

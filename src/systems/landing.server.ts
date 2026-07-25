@@ -66,9 +66,10 @@ function render(variant: 'landing' | 'forbidden', repoUrl: string, guildName: st
 
 function resolveHead(): Head {
 	// only the bundled prod server lacks the source tree, so it reads the built copy; dev/test run from source
-	const html = ENV.NODE_ENV === 'production'
-		? fs.readFileSync(path.join(Paths.DIST, 'index.html'), 'utf8')
-		: fs.readFileSync(path.join(Paths.PROJECT_ROOT, 'index.html'), 'utf8')
+	const html =
+		ENV.NODE_ENV === 'production'
+			? fs.readFileSync(path.join(Paths.DIST, 'index.html'), 'utf8')
+			: fs.readFileSync(path.join(Paths.PROJECT_ROOT, 'index.html'), 'utf8')
 	return { htmlAttrs: parseHtmlAttrs(html), metas: parseMetas(html), assetLinks: parseSharedLinks(html) }
 }
 

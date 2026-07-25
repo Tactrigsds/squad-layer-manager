@@ -1,8 +1,6 @@
 import emojiNameMap from 'emoji-name-map'
 
-export type Emoji =
-	| { type: 'discord'; id: EmojiId; name: string | null }
-	| { type: 'unicode'; id: EmojiId; name: string | null }
+export type Emoji = { type: 'discord'; id: EmojiId; name: string | null } | { type: 'unicode'; id: EmojiId; name: string | null }
 
 export type EmojiId = string
 
@@ -37,7 +35,7 @@ export function idToEmoji(id: EmojiId, discordEmojis: DiscordEmoji[] | undefined
 		if (!discordEmojis) return
 		return {
 			id,
-			name: discordEmojis.find(emoji => emoji.id === id)?.name || null,
+			name: discordEmojis.find((emoji) => emoji.id === id)?.name || null,
 			type: 'discord',
 		}
 	}

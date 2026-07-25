@@ -29,11 +29,13 @@ const PING_INTERVAL = 30_000
 const socketAlive = new WeakMap<C.OrpcSessionBase['ws'], boolean>()
 
 const meter = metrics.getMeter('ws-session')
-meter.createObservableGauge(ATTRS.WebSocket.CONNECTED_CLIENTS, {
-	description: 'Number of currently connected WebSocket clients',
-}).addCallback((result) => {
-	result.observe(wsSessions.size)
-})
+meter
+	.createObservableGauge(ATTRS.WebSocket.CONNECTED_CLIENTS, {
+		description: 'Number of currently connected WebSocket clients',
+	})
+	.addCallback((result) => {
+		result.observe(wsSessions.size)
+	})
 
 // Cumulative, unlike the gauge above: a client that connects and drops inside one collection interval
 // is invisible to the gauge but shows up here, which is what makes reconnect storms detectable.
@@ -94,7 +96,9 @@ export function setup() {
 			socketAlive.set(ctx.ws, false)
 			try {
 				ctx.ws.ping()
-			} catch { /* socket already closing */ }
+			} catch {
+				/* socket already closing */
+			}
 		}
 	}, PING_INTERVAL).unref()
 }
@@ -108,7 +112,9 @@ export function evictStaleSocket(wsClientId: string) {
 	wsSessions.delete(wsClientId)
 	try {
 		stale.ws.terminate()
-	} catch { /* already dead */ }
+	} catch {
+		/* already dead */
+	}
 }
 
 export function registerClient(ctx: C.OrpcSessionBase) {

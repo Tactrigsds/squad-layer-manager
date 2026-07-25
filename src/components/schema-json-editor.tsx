@@ -156,7 +156,7 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 							variant="ghost"
 							className="absolute top-0 right-0 h-7 w-7"
 							style={{ zIndex: contentBaseZIndex + ZI_OFFSETS.MINOR_CEILING }}
-							onClick={() => setIsFullscreen(v => !v)}
+							onClick={() => setIsFullscreen((v) => !v)}
 						>
 							{isFullscreen ? <Icons.Minimize2 className="h-4 w-4" /> : <Icons.Maximize2 className="h-4 w-4" />}
 						</Button>
@@ -167,7 +167,9 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 					<div ref={editorEltRef} className="min-h-0 overflow-hidden rounded-md border"></div>
 					<div className="flex min-h-0 flex-col gap-2">
 						<h3 className={Typography.Small}>Errors</h3>
-						<pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">{errorText}</pre>
+						<pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">
+							{errorText}
+						</pre>
 					</div>
 				</div>
 			</div>

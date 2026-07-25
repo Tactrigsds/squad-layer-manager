@@ -38,9 +38,7 @@ type AsyncValueState<T> = {
 	abort: AbortController
 }
 
-type Subscriber =
-	| { kind: 'observer'; ttl: number }
-	| { kind: 'get' }
+type Subscriber = { kind: 'observer'; ttl: number } | { kind: 'get' }
 
 /**
  *  Provides cached access to an async resource. Callers can provide a ttl to specify how fresh their copy of the value should be. Promises are cached instead of raw values to dedupe fetches.
@@ -85,13 +83,17 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 				const ctx = C.storeLinkToActiveSpan(_ctx, 'event.setup')
 				void (async () => {
 					while (refetching) {
-						const shouldBreak = await C.spanOp('refetch', { module, root: true, levels: { event: 'trace' } }, async (ctx: Ctx) => {
-							const activettl = Math.min(...this.observerTTLs)
-							await sleep(activettl)
-							if (!refetching) return true
-							// observers are already counted as subscribers, so skip get()'s registration
-							await this._get(ctx, { ttl: 0 })
-						})(ctx).catch(() => {
+						const shouldBreak = await C.spanOp(
+							'refetch',
+							{ module, root: true, levels: { event: 'trace' } },
+							async (ctx: Ctx) => {
+								const activettl = Math.min(...this.observerTTLs)
+								await sleep(activettl)
+								if (!refetching) return true
+								// observers are already counted as subscribers, so skip get()'s registration
+								await this._get(ctx, { ttl: 0 })
+							},
+						)(ctx).catch(() => {
 							// abort means the last subscriber was released and teardown already unsubscribed us; any real
 							// fetch error is escalated by fetchValue's rejection handler (onFatalError or unhandled rejection)
 							return true
@@ -184,7 +186,7 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 		opts ??= {}
 		opts.ttl ??= this.opts.defaultTTL
 
-		if (!this.state || (this.state.resolveTime !== null && (Date.now() - this.state.resolveTime > opts.ttl))) {
+		if (!this.state || (this.state.resolveTime !== null && Date.now() - this.state.resolveTime > opts.ttl)) {
 			return await this.fetchValue(AsyncResource.includeInvocationCtx(ctx, { ttl: opts.ttl }), opts)
 		} else {
 			return await this.state!.value

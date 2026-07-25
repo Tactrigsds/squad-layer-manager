@@ -84,7 +84,7 @@ describe('applyPendingMigrations', () => {
 		const names = backupNames()
 		expect(names.length).toBe(2)
 		// the newest: the db as 0001 left it, which is what a botched 0002 has to be restorable to
-		const tables = readBackup(names[0]).map(t => t.name)
+		const tables = readBackup(names[0]).map((t) => t.name)
 		expect(tables).toContain('first')
 		expect(tables).not.toContain('second')
 	})
@@ -107,10 +107,7 @@ describe('applyPendingMigrations', () => {
 		writeSqlMigration('0001_first', 'CREATE TABLE first (id INTEGER PRIMARY KEY)')
 		await apply(2)
 
-		expect(backupNames()).toEqual([
-			expect.stringContaining('-pre-migration-'),
-			'slm-backup-db-20200107-000000.sqlite3.gz',
-		])
+		expect(backupNames()).toEqual([expect.stringContaining('-pre-migration-'), 'slm-backup-db-20200107-000000.sqlite3.gz'])
 	})
 
 	// retention itself (the shared window, the pinned rollback point) is db-backup.test.ts's business

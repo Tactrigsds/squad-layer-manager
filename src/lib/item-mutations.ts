@@ -67,9 +67,9 @@ export function idMutated(mutations: Mutations, id: string) {
 
 export function toItemMutationState<T extends string>(mutations: Mutations<T>, id: T, parentItemId?: T): ItemMutationState {
 	return {
-		added: mutations.added.has(id) || parentItemId != undefined && mutations.moved.has(parentItemId),
-		removed: mutations.removed.has(id) || parentItemId != undefined && mutations.moved.has(parentItemId),
-		moved: mutations.moved.has(id) || parentItemId != undefined && mutations.moved.has(parentItemId),
-		edited: mutations.edited.has(id) || parentItemId != undefined && mutations.moved.has(parentItemId),
+		added: mutations.added.has(id) || (parentItemId != undefined && mutations.moved.has(parentItemId)),
+		removed: mutations.removed.has(id) || (parentItemId != undefined && mutations.moved.has(parentItemId)),
+		moved: mutations.moved.has(id) || (parentItemId != undefined && mutations.moved.has(parentItemId)),
+		edited: mutations.edited.has(id) || (parentItemId != undefined && mutations.moved.has(parentItemId)),
 	}
 }

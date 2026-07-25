@@ -15,7 +15,7 @@ export function getChildModule(module: OtelModule, submoduleName: string) {
 	let log: pino.Logger | undefined
 	return {
 		name: name,
-		getLogger: () => log ??= module.getLogger().child({ [ATTRS.Module.NAME]: name }),
+		getLogger: () => (log ??= module.getLogger().child({ [ATTRS.Module.NAME]: name })),
 		tracer: Otel.trace.getTracer(name),
 	}
 }

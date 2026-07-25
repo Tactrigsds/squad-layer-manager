@@ -97,17 +97,16 @@ export async function setup() {
 	}
 	homeGuildName = res.guild.name
 
-	await res.guild.commands.set([
-		{ name: RESTART_SLM_COMMAND, description: 'Kill the SLM process so its container manager restarts it' },
-	])
+	await res.guild.commands.set([{ name: RESTART_SLM_COMMAND, description: 'Kill the SLM process so its container manager restarts it' }])
 	client.on('interactionCreate', (interaction) => void handleInteraction(interaction))
 
 	const homeGuildId = ENV.DISCORD_HOME_GUILD_ID.toString()
 	client.on('guildMemberUpdate', (oldMember, newMember) => {
 		if (newMember.guild.id !== homeGuildId) return
 		// only roles matter for rbac; nickname/avatar edits don't change permissions
-		const rolesChanged = oldMember.roles.cache.size !== newMember.roles.cache.size
-			|| newMember.roles.cache.some((_, id) => !oldMember.roles.cache.has(id))
+		const rolesChanged =
+			oldMember.roles.cache.size !== newMember.roles.cache.size ||
+			newMember.roles.cache.some((_, id) => !oldMember.roles.cache.has(id))
 		if (rolesChanged) guildRbacEvents$.next({ type: 'member', discordId: BigInt(newMember.id) })
 	})
 	client.on('guildMemberAdd', (member) => {
@@ -204,7 +203,12 @@ async function leaveForeignGuild(guild: D.Guild) {
 
 async function fetchGuild(guildId: bigint) {
 	if (!ENV.DISCORD_ENABLED) {
-		return { code: 'err:discord' as const, msg: 'discord integration disabled', err: 'discord integration disabled', errCode: undefined }
+		return {
+			code: 'err:discord' as const,
+			msg: 'discord integration disabled',
+			err: 'discord integration disabled',
+			errCode: undefined,
+		}
 	}
 	try {
 		const guild = await client.guilds.fetch(guildId.toString())
@@ -279,17 +283,15 @@ export async function searchGuildMembers(query: string, limit = 25) {
 }
 
 export const orpcRouter = {
-	getGuildEmojis: orpcBase
-		.input(z.object({}).optional())
-		.handler(async () => {
-			const guildRes = await fetchGuild(ENV.DISCORD_HOME_GUILD_ID)
-			if (guildRes.code !== 'ok') return []
-			const guild = guildRes.guild
-			let emojis = await guild.emojis.fetch()
+	getGuildEmojis: orpcBase.input(z.object({}).optional()).handler(async () => {
+		const guildRes = await fetchGuild(ENV.DISCORD_HOME_GUILD_ID)
+		if (guildRes.code !== 'ok') return []
+		const guild = guildRes.guild
+		let emojis = await guild.emojis.fetch()
 
-			if (ENV.NODE_ENV === 'development') {
-				emojis = client.emojis.cache
-			}
-			return emojis.map(emoji => toNormalizedEmoji(emoji))
-		}),
+		if (ENV.NODE_ENV === 'development') {
+			emojis = client.emojis.cache
+		}
+		return emojis.map((emoji) => toNormalizedEmoji(emoji))
+	}),
 }

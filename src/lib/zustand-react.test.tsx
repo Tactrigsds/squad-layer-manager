@@ -154,10 +154,12 @@ describe('useStore', () => {
 	it('reads query sources and re-renders when their data arrives', async () => {
 		const store = createStore()
 		const query = { queryKey: ['thing'], queryFn: async () => ({ n: 7 }) } as any
-		const { result } = renderHook(() => ZusUtils.useStore(store, query, (s: State, q: { n: number } | undefined) => s.count + (q?.n ?? 0)))
+		const { result } = renderHook(() =>
+			ZusUtils.useStore(store, query, (s: State, q: { n: number } | undefined) => s.count + (q?.n ?? 0)),
+		)
 		expect(result.current).toBe(0)
 		await act(async () => {
-			await new Promise(r => setTimeout(r, 10))
+			await new Promise((r) => setTimeout(r, 10))
 		})
 		expect(result.current).toBe(7)
 	})
@@ -171,9 +173,7 @@ describe('useStore', () => {
 		try {
 			const { rerender } = renderHook(
 				({ withQuery }: { withQuery: boolean }) =>
-					withQuery
-						? ZusUtils.useStore(store, query, (s: State) => s.count)
-						: ZusUtils.useStore(store, (s: State) => s.count),
+					withQuery ? ZusUtils.useStore(store, query, (s: State) => s.count) : ZusUtils.useStore(store, (s: State) => s.count),
 				{ initialProps: { withQuery: false } },
 			)
 			expect(() => rerender({ withQuery: true })).toThrow(/number of query sources/)
@@ -208,7 +208,7 @@ describe('useStore_Susp', () => {
 		)
 		expect(screen.getByTestId('fallback')).toBeDefined()
 		await act(async () => {
-			await new Promise(r => setTimeout(r, 10))
+			await new Promise((r) => setTimeout(r, 10))
 		})
 		expect(screen.getByTestId('value').textContent).toBe('7')
 		act(() => store.setState({ count: 3 }))

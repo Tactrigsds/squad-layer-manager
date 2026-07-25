@@ -42,7 +42,7 @@ function TabBar<T extends string>({
 			className={cn('grid divide-x', className)}
 			style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)` }}
 		>
-			{tabs.map(tab => (
+			{tabs.map((tab) => (
 				<button
 					key={tab.value}
 					type="button"
@@ -55,9 +55,7 @@ function TabBar<T extends string>({
 					tabIndex={value === tab.value ? 0 : -1}
 					className={cn(
 						'py-2 px-4 text-sm font-medium transition-colors',
-						value === tab.value
-							? 'border-b-2 border-b-primary'
-							: 'text-muted-foreground hover:text-foreground hover:bg-muted',
+						value === tab.value ? 'border-b-2 border-b-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted',
 					)}
 					onClick={() => onChange(tab.value)}
 				>
@@ -72,10 +70,10 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 	const serverId = props.stores.squadServer.serverId
 	// the visible panel is client-only state; presence mirrors it while the client is engaged (see the
 	// dashboard route effect). tab switches persist and drive display without needing a presence entry.
-	const tab = ZusUtils.useStore(ClientOnlySettings.Store, s => s.primaryPanelTab === 'VIEWING_TEAMS' ? 'teams' : 'queue')
+	const tab = ZusUtils.useStore(ClientOnlySettings.Store, (s) => (s.primaryPanelTab === 'VIEWING_TEAMS' ? 'teams' : 'queue'))
 
-	const queueLength = ZusUtils.useStore(props.stores.squadServer, s => s.queue.layerList.length)
-	const playerCount = ZusUtils.useStore(props.stores.squadServer, s => ChatPrt.Sel.chatState(s).players.length)
+	const queueLength = ZusUtils.useStore(props.stores.squadServer, (s) => s.queue.layerList.length)
+	const playerCount = ZusUtils.useStore(props.stores.squadServer, (s) => ChatPrt.Sel.chatState(s).players.length)
 
 	// subjects are created once per frame instance, so reading them outside a selector is fine
 	const frameState = ZusUtils.getState(props.stores.squadServer)
@@ -100,17 +98,22 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 										<UserPresencePanel
 											stores={props.stores}
 											sourcePresenceFn={sortEditingPresence}
-											matchActivity={root =>
-												UP.Trans.viewingQueue(serverId).match(root) || UP.Trans.editingQueue(serverId).match(root)
-												|| UP.Trans.editingLayerRequests(serverId).match(root)}
-											matchActivityForStatusText={root =>
-												UP.Trans.editingQueue(serverId).match(root) || UP.Trans.editingLayerRequests(serverId).match(root)
-												|| UP.Trans.viewingQueue(serverId).match(root)}
+											matchActivity={(root) =>
+												UP.Trans.viewingQueue(serverId).match(root) ||
+												UP.Trans.editingQueue(serverId).match(root) ||
+												UP.Trans.editingLayerRequests(serverId).match(root)
+											}
+											matchActivityForStatusText={(root) =>
+												UP.Trans.editingQueue(serverId).match(root) ||
+												UP.Trans.editingLayerRequests(serverId).match(root) ||
+												UP.Trans.viewingQueue(serverId).match(root)
+											}
 											event$={queueEvent$}
 											transitionMessages={[
 												{
-													matchActivity: root =>
-														UP.Trans.editingQueue(serverId).match(root) || UP.Trans.editingLayerRequests(serverId).match(root),
+													matchActivity: (root) =>
+														UP.Trans.editingQueue(serverId).match(root) ||
+														UP.Trans.editingLayerRequests(serverId).match(root),
 													leaveMessage: 'Finished editing',
 												},
 											]}
@@ -127,9 +130,14 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 										<UserPresencePanel
 											stores={props.stores}
 											sourcePresenceFn={sortEditingPresence}
-											matchActivity={root => UP.Trans.viewingTeams(serverId).match(root) || UP.Trans.editingTeamswaps(serverId).match(root)}
-											matchActivityForStatusText={root =>
-												UP.Trans.editingTeamswaps(serverId).match(root) || UP.Trans.viewingTeams(serverId).match(root)}
+											matchActivity={(root) =>
+												UP.Trans.viewingTeams(serverId).match(root) ||
+												UP.Trans.editingTeamswaps(serverId).match(root)
+											}
+											matchActivityForStatusText={(root) =>
+												UP.Trans.editingTeamswaps(serverId).match(root) ||
+												UP.Trans.viewingTeams(serverId).match(root)
+											}
 											event$={teamswapEvent$}
 											className="min-w-0"
 										/>
@@ -138,17 +146,17 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 							},
 						]}
 						value={tab}
-						onChange={(value) => ClientOnlySettings.Actions.setPrimaryPanelTab(value === 'teams' ? 'VIEWING_TEAMS' : 'VIEWING_QUEUE')}
+						onChange={(value) =>
+							ClientOnlySettings.Actions.setPrimaryPanelTab(value === 'teams' ? 'VIEWING_TEAMS' : 'VIEWING_QUEUE')
+						}
 					/>
 					<Separator />
 				</div>
 				<StickyGroup stickyRef={headerRef}>
 					<div className="grid">
-						{
-							/* both panels stay mounted (they hold live state) and share one grid cell. `inert` takes the
+						{/* both panels stay mounted (they hold live state) and share one grid cell. `inert` takes the
 						    inactive one out of the a11y tree and the tab order while leaving that layout intact --
-						    `invisible` alone does neither, so its buttons stayed focusable */
-						}
+						    `invisible` alone does neither, so its buttons stayed focusable */}
 						<div
 							role="tabpanel"
 							id={tabPanelId('queue')}

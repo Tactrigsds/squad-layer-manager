@@ -15,7 +15,10 @@ export async function ensureCliParsed() {
 	options = program.opts() as { envFile?: string; secretsFile?: string }
 
 	// -------- validation --------
-	for (const [label, filePath] of [['Environment', options.envFile], ['Secrets', options.secretsFile]] as const) {
+	for (const [label, filePath] of [
+		['Environment', options.envFile],
+		['Secrets', options.secretsFile],
+	] as const) {
 		if (!filePath) continue
 		try {
 			await fs.access(filePath)

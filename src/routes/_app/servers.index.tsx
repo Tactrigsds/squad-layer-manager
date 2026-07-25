@@ -22,7 +22,7 @@ function RouteComponent() {
 				</CardHeader>
 				<CardContent className="space-y-2">
 					{servers.length === 0 && <p className="text-sm text-muted-foreground">No servers available.</p>}
-					{servers.map(server => {
+					{servers.map((server) => {
 						const serverId = server.id
 						const usable = SettingsClient.isServerUsable(server)
 						const button = (
@@ -33,13 +33,13 @@ function RouteComponent() {
 							</Button>
 						)
 						// disabled/broken servers have no usable dashboard, so render a static button instead of a link
-						return usable
-							? (
-								<Link key={serverId} to="/servers/$serverId" params={{ serverId }}>
-									{button}
-								</Link>
-							)
-							: <div key={serverId}>{button}</div>
+						return usable ? (
+							<Link key={serverId} to="/servers/$serverId" params={{ serverId }}>
+								{button}
+							</Link>
+						) : (
+							<div key={serverId}>{button}</div>
+						)
 					})}
 				</CardContent>
 			</Card>

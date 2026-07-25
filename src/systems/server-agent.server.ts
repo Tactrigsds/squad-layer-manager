@@ -156,7 +156,7 @@ export function rconTransportFor(serverId: string): RconTransport {
 export async function setup() {
 	const log = baseLogger
 	const dbCtx = DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
-	const ids = (await dbCtx.db().select({ id: Schema.servers.id }).from(Schema.servers)).map(r => r.id)
+	const ids = (await dbCtx.db().select({ id: Schema.servers.id }).from(Schema.servers)).map((r) => r.id)
 	const usingAgent: string[] = []
 	for (const id of ids) {
 		try {

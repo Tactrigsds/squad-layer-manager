@@ -35,21 +35,24 @@ export class Emulator {
 	constructor(opts: EmulatorOptions = {}) {
 		this.password = opts.password ?? 'testpassword'
 		this.#layerChangeDelayMs = opts.layerChangeDelayMs ?? 200
-		this.world = new World({
-			chatPacket: (body) => this.rcon.broadcastChatPacket(body),
-			logLine: (line) => {
-				this.logLines.push(line)
-				for (const sub of this.#logSubscribers) sub(line)
+		this.world = new World(
+			{
+				chatPacket: (body) => this.rcon.broadcastChatPacket(body),
+				logLine: (line) => {
+					this.logLines.push(line)
+					for (const sub of this.#logSubscribers) sub(line)
+				},
+				layerChangeRequested: (layer) => {
+					const timer = setTimeout(() => {
+						this.#timers.delete(timer)
+						this.world.endMatch()
+						this.world.startNewGame(layer)
+					}, this.#layerChangeDelayMs)
+					this.#timers.add(timer)
+				},
 			},
-			layerChangeRequested: (layer) => {
-				const timer = setTimeout(() => {
-					this.#timers.delete(timer)
-					this.world.endMatch()
-					this.world.startNewGame(layer)
-				}, this.#layerChangeDelayMs)
-				this.#timers.add(timer)
-			},
-		}, opts)
+			opts,
+		)
 		this.rcon = new RconServer(this.world, { password: this.password })
 
 		const tickRateIntervalMs = opts.tickRateIntervalMs ?? 2000

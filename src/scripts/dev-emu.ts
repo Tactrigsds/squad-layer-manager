@@ -29,7 +29,10 @@ DevInstance.ensureLayerData()
 const slot = Slots.requireSlot()
 
 fs.mkdirSync(DevInstance.DEV_DIR, { recursive: true })
-const adminSteamIds = (args.values.admins ?? '').split(',').map((id) => id.trim()).filter(Boolean)
+const adminSteamIds = (args.values.admins ?? '')
+	.split(',')
+	.map((id) => id.trim())
+	.filter(Boolean)
 fs.writeFileSync(
 	DevInstance.ADMINS_CFG_PATH,
 	DevInstance.renderAdminsCfg(adminSteamIds, DevInstance.ADMIN_GROUP, ['canseeadminchat', 'balance', 'cameraman', 'teamchange']),

@@ -23,11 +23,9 @@ export type KeyProp = { poolCheckboxes: Key }
 export function initNewPoolCheckboxes(args: Args) {
 	const set = ZusUtils.toPartialSetter(args.set, 'poolCheckboxes')
 	const defaultState = args.input.defaultState
-	set(
-		{
-			checkboxesState: defaultState,
-		} satisfies PoolCheckboxesSlice,
-	)
+	set({
+		checkboxesState: defaultState,
+	} satisfies PoolCheckboxesSlice)
 }
 
 export namespace Sel {
@@ -38,7 +36,7 @@ export namespace Sel {
 
 export namespace Actions {
 	export function setCheckbox(stores: KeyProp, type: keyof PoolCheckboxesState, value: SETTINGS.PoolFilterApplyAs) {
-		ZusUtils.toPartialStore(stores.poolCheckboxes, 'poolCheckboxes').setState(state => ({
+		ZusUtils.toPartialStore(stores.poolCheckboxes, 'poolCheckboxes').setState((state) => ({
 			checkboxesState: { ...state.checkboxesState, [type]: value },
 		}))
 	}

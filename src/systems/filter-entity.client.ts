@@ -107,9 +107,8 @@ export const [useFilterEntities, filterEntities$] = ReactRx.bind(
 	filterEntities,
 )
 
-export const [useInitializedFilterEntities, initializedFilterEntities$] = RxHelpers.bind(
-	'filterEntity.initializedFilterEntities',
-	() => initialized$.pipe(Rx.map(() => filterEntities)),
+export const [useInitializedFilterEntities, initializedFilterEntities$] = RxHelpers.bind('filterEntity.initializedFilterEntities', () =>
+	initialized$.pipe(Rx.map(() => filterEntities)),
 )
 
 export function useFilterCreate() {
