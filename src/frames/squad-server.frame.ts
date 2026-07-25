@@ -7,7 +7,7 @@ import * as TeamswapsPrt from '@/frame-partials/teamswaps.partial'
 import type * as FRM from '@/lib/frame'
 import * as ODSM from '@/lib/odsm'
 import * as RSel from '@/lib/reselect'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import type * as MH from '@/models/match-history.models'
@@ -88,7 +88,7 @@ export const frame = frameManager.createFrame<Types>({
 		})
 
 		args.sub.add(
-			ZusUtils.toObservable(args.key, true)
+			Zus.toObservable(args.key, true)
 				.pipe(
 					Rx.map(([state]) => state.playerSelection),
 					Rx.distinctUntilChanged(),
@@ -112,7 +112,7 @@ export const frame = frameManager.createFrame<Types>({
 			})
 		})
 
-		const state$ = ZusUtils.toObservable(args.key, true)
+		const state$ = Zus.toObservable(args.key, true)
 		args.sub.add(
 			Rx.combineLatest([
 				state$.pipe(
@@ -124,7 +124,7 @@ export const frame = frameManager.createFrame<Types>({
 					Rx.distinctUntilChanged(),
 				),
 				// filter edits invalidate previously computed statuses
-				ZusUtils.toObservable(LayerQueriesClient.Store, true).pipe(
+				Zus.toObservable(LayerQueriesClient.Store, true).pipe(
 					Rx.map(([state]) => state.backgroundStateEpoch),
 					Rx.distinctUntilChanged(),
 				),
@@ -152,7 +152,7 @@ export const frame = frameManager.createFrame<Types>({
 })
 
 export function getLayerItemState$(squadServer: Key) {
-	const list$ = ZusUtils.toObservable(squadServer, true).pipe(
+	const list$ = Zus.toObservable(squadServer, true).pipe(
 		Rx.map(([state]) => state.queue.layerList),
 		Rx.distinctUntilChanged(),
 	)
@@ -232,7 +232,7 @@ function visiblePlayerSet(state: State): Set<SM.PlayerId> | null {
 
 export namespace Actions {
 	function store(stores: KeyProp) {
-		return ZusUtils.resolveStore<State>(stores.squadServer!)
+		return Zus.resolveStore<State>(stores.squadServer!)
 	}
 
 	export function setSelection(
@@ -256,7 +256,7 @@ export namespace Actions {
 	}
 
 	export function selectSquad(stores: KeyProp, playerId: SM.PlayerId) {
-		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
+		const players = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!)).players
 		const player = SM.PlayerIds.find(players, (p) => p.ids, playerId)
 		if (!player?.squadId || !player.teamId) return
 		const squadIds = players
@@ -267,7 +267,7 @@ export namespace Actions {
 
 	// teamId (raw): when given, only players on that team are selected
 	export function selectAllAdmins(stores: KeyProp, teamId?: SM.TeamId) {
-		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
+		const players = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!)).players
 		selectPlayers(
 			stores,
 			players.filter((p) => p.isAdmin && (teamId == null || p.teamId === teamId)).map((p) => SM.PlayerIds.getPlayerId(p.ids)),
@@ -275,7 +275,7 @@ export namespace Actions {
 	}
 
 	export function selectAllInAdminCam(stores: KeyProp, teamId?: SM.TeamId) {
-		const chatState = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!))
+		const chatState = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!))
 		selectPlayers(
 			stores,
 			chatState.players
@@ -285,7 +285,7 @@ export namespace Actions {
 	}
 
 	export function selectAllWithRole(stores: KeyProp, role: string, teamId?: SM.TeamId) {
-		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
+		const players = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!)).players
 		selectPlayers(
 			stores,
 			players.filter((p) => p.role === role && (teamId == null || p.teamId === teamId)).map((p) => SM.PlayerIds.getPlayerId(p.ids)),
@@ -293,7 +293,7 @@ export namespace Actions {
 	}
 
 	export function selectAllSquadLeaders(stores: KeyProp, teamId?: SM.TeamId) {
-		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
+		const players = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!)).players
 		selectPlayers(
 			stores,
 			players.filter((p) => p.isLeader && (teamId == null || p.teamId === teamId)).map((p) => SM.PlayerIds.getPlayerId(p.ids)),
@@ -301,7 +301,7 @@ export namespace Actions {
 	}
 
 	export function selectAllTeamPlayers(stores: KeyProp, teamId?: SM.TeamId) {
-		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
+		const players = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!)).players
 		selectPlayers(
 			stores,
 			players.filter((p) => (teamId == null ? p.teamId !== null : p.teamId === teamId)).map((p) => SM.PlayerIds.getPlayerId(p.ids)),
@@ -352,7 +352,7 @@ export namespace Actions {
 
 	function getEnrichedPlayers(stores: KeyProp): TeamsPanelModels.EnrichedPlayer[] {
 		const serverId = stores.squadServer!.serverId
-		const frameState = ZusUtils.getState(stores.squadServer!)
+		const frameState = Zus.getState(stores.squadServer!)
 		const currentMatch = MatchHistoryClient.currentMatch$(serverId).getValue() as MH.MatchDetails
 		const bmData = BattlemetricsClient.playerBmData$.getValue()
 		const bmStore = BattlemetricsClient.Store.getState()
@@ -383,10 +383,10 @@ export function selectQueueWarnings(state: State, userDiscordId: bigint | undefi
 // Statuses lag the queue by a debounce plus a query, so reading them straight after an edit gates the save on warnings
 // computed for a list the user has already edited away from -- which is how a stale warning could both block a save
 // and then vanish, leaving the editor stuck. Wait for the statuses that belong to the queue as it is now.
-export async function awaitCurrentStatuses(key: ZusUtils.AnyStore<State>, timeoutMs = 5000): Promise<void> {
-	if (statusesAreCurrent(ZusUtils.getState(key))) return
+export async function awaitCurrentStatuses(key: Zus.AnyStore<State>, timeoutMs = 5000): Promise<void> {
+	if (statusesAreCurrent(Zus.getState(key))) return
 	await Rx.firstValueFrom(
-		ZusUtils.toObservable(key, true).pipe(
+		Zus.toObservable(key, true).pipe(
 			Rx.filter(([state]) => statusesAreCurrent(state)),
 			// a query that never lands must not strand the editor: fall through and gate on what we have
 			Rx.timeout({ first: timeoutMs, with: () => Rx.of(null) }),

@@ -4,7 +4,7 @@ import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import * as ZodLib from '@/lib/zod'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type * as BM from '@/models/battlemetrics.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as MH from '@/models/match-history.models'
@@ -68,7 +68,7 @@ function bmSearchUrl(eos: string) {
 }
 
 function usePlayerLinkIds(playerIds: SM.PlayerId[], stores: SquadServerFrame.KeyProp): PlayerLinkIds[] {
-	return ZusUtils.useStore(
+	return Zus.useStore(
 		stores.squadServer,
 		BattlemetricsClient.playerBmData$,
 		(chatStore: ChatPrt.Store, bmData: BM.PublicPlayerBmData): PlayerLinkIds[] =>
@@ -254,7 +254,7 @@ export function PlayerMenuItems({
 	const removeFromSquadMutation = SquadServerClient.useRemoveFromSquadMutation()
 	const resetSquadNameMutation = SquadServerClient.useResetSquadNameMutation()
 
-	const otherTeam = ZusUtils.useStore(
+	const otherTeam = Zus.useStore(
 		stores.squadServer,
 		MatchHistoryClient.currentMatch$(serverId),
 		(chatStore: ChatPrt.Store, currentMatch: MH.MatchDetails | undefined): MH.NormedTeamId | null => {
@@ -266,7 +266,7 @@ export function PlayerMenuItems({
 		},
 	)
 
-	const playerInfo = ZusUtils.useStore(stores.squadServer, (chatStore: ChatPrt.Store) => {
+	const playerInfo = Zus.useStore(stores.squadServer, (chatStore: ChatPrt.Store) => {
 		const players = ChatPrt.Sel.chatState(chatStore).players
 		const squads = ChatPrt.Sel.chatState(chatStore).squads
 		const player = SM.PlayerIds.find(players, (p) => p.ids, playerId)
@@ -285,7 +285,7 @@ export function PlayerMenuItems({
 		}
 	})
 
-	const group = ZusUtils.useStore(
+	const group = Zus.useStore(
 		stores.squadServer,
 		MatchHistoryClient.currentMatch$(serverId),
 		BattlemetricsClient.playerBmData$,
@@ -305,10 +305,10 @@ export function PlayerMenuItems({
 		},
 	)
 
-	const existingSwap = ZusUtils.useStore(stores.squadServer, (s) => TSWClient.Sel.localState(s).editedSwaps.get(playerId) ?? null)
+	const existingSwap = Zus.useStore(stores.squadServer, (s) => TSWClient.Sel.localState(s).editedSwaps.get(playerId) ?? null)
 
-	const canSwapNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwapNow([playerId]))
-	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canQueue([playerId]))
+	const canSwapNow = Zus.useStore(stores.squadServer, TSWClient.Sel.canSwapNow([playerId]))
+	const canQueue = Zus.useStore(stores.squadServer, TSWClient.Sel.canQueue([playerId]))
 
 	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players', { serverId: serverId }))
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players', { serverId: serverId }))
@@ -317,8 +317,8 @@ export function PlayerMenuItems({
 
 	async function swapNow() {
 		if (!otherTeam) return
-		const initialTeam = TSWClient.Sel.localState(ZusUtils.getState(stores.squadServer)).players.get(playerId)
-		const unsubscribe = ZusUtils.resolveReadStore(stores.squadServer).subscribe((state) => {
+		const initialTeam = TSWClient.Sel.localState(Zus.getState(stores.squadServer)).players.get(playerId)
+		const unsubscribe = Zus.resolveReadStore(stores.squadServer).subscribe((state) => {
 			if (TSWClient.Sel.localState(state).players.get(playerId) !== initialTeam) closeDialog()
 		})
 		try {

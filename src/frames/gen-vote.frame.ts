@@ -9,7 +9,7 @@ import type * as DH from '@/lib/display-helpers'
 import type * as FRM from '@/lib/frame'
 import * as Gen from '@/lib/generator'
 import { createId } from '@/lib/id'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type * as L from '@/models/layer'
 import type * as LC from '@/models/layer-columns'
 import type * as LL from '@/models/layer-list.models'
@@ -152,7 +152,7 @@ export namespace Sel {
 
 export namespace Actions {
 	function store(stores: KeyProp) {
-		return ZusUtils.resolveStore<Store>(stores.genVote)
+		return Zus.resolveStore<Store>(stores.genVote)
 	}
 
 	export function setCursor(stores: KeyProp, cursor: LL.Cursor) {
@@ -213,7 +213,7 @@ export namespace Actions {
 			const startingChoices = state.choices.map((c, i) =>
 				onlyIndex === undefined || i === onlyIndex ? { ...c, layerId: undefined } : c,
 			)
-			const base = Sel.baseQueryInput(state, ZusUtils.getState(squadServer))
+			const base = Sel.baseQueryInput(state, Zus.getState(squadServer))
 
 			const res = await LayerQueriesClient.generateVote({
 				...base,

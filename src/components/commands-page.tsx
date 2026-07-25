@@ -7,7 +7,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Input } from '@/components/ui/input'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as Messages from '@/messages'
 import type * as AAR from '@/models/admin-action-reasons.models'
 import * as CMDH from '@/models/command-help.models'
@@ -448,8 +448,8 @@ function buildSections(settings: PublicSettings, pinnedCommands: string[]): Sect
 }
 
 export default function CommandsPage() {
-	const settings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
-	const pinnedCommands = ZusUtils.useStore(ClientOnlySettings.Store, (s) => s.pinnedCommands)
+	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
+	const pinnedCommands = Zus.useStore(ClientOnlySettings.Store, (s) => s.pinnedCommands)
 	const [query, setQuery] = React.useState('')
 	// Where the arrow keys are. Kept as state rather than read back off the scroll position: the highlight otherwise
 	// follows whatever sits at the top of the body, which only updates on a real user scroll -- so each press would

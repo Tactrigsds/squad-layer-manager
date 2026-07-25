@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers.ts'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import { BROADCASTS } from '@/messages.ts'
 import type * as L from '@/models/layer'
 import * as V from '@/models/vote.models.ts'
@@ -23,7 +23,7 @@ export type AdvancedVoteConfigEditorProps = {
 }
 
 export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
-	const voteDefaults = ZusUtils.useStore(props.stores.squadServer, (s) => SquadServerFrame.Sel.settings(s).vote)
+	const voteDefaults = Zus.useStore(props.stores.squadServer, (s) => SquadServerFrame.Sel.settings(s).vote)
 	const displayProps = props.config?.displayProps ?? voteDefaults.voteDisplayProps
 	const duration = props.config?.duration ?? voteDefaults.voteDuration
 	const usingDefault = !props.config?.displayProps && !props.config?.duration

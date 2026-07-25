@@ -11,7 +11,7 @@ import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import { formatHumanTime } from '@/lib/zod'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
@@ -78,7 +78,7 @@ function ChatMessageEvent({
 	stores: SquadServerFrame.KeyProp
 }) {
 	const match = MatchHistoryClient.useRecentMatches(stores.squadServer.serverId).find((m) => m.historyEntryId === event.matchId)
-	const displayTeamsNormalized = ZusUtils.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
+	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
 
 	// Get team-specific color for team chats
 	const getChannelStyle = () => {

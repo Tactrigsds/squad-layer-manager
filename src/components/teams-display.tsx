@@ -2,7 +2,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { withThrown } from '@/lib/error'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
@@ -53,7 +53,7 @@ export function TeamFactionDisplay(props: {
 	showAltTeamIndicator?: boolean
 	extraStyles?: Record<keyof L.KnownLayer, string | undefined>
 }) {
-	const displayTeamsNormalized = ZusUtils.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
+	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
 	const [partialLayer, error] = withThrown(() => (typeof props.layer === 'string' ? L.toLayer(props.layer) : props.layer))
 
 	if (error || !partialLayer) {

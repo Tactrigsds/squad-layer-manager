@@ -20,7 +20,7 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as BB from '@/models/backburner.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CB from '@/models/constraint-builders'
@@ -60,14 +60,14 @@ const PANEL_DROP_ITEM: DND.DropItem = {
 
 export default function BackburnerPanel(props: StoresProp) {
 	const serverId = props.stores.squadServer!.serverId
-	const items = ZusUtils.useStore(props.stores.squadServer!, (s) => s.queue.backburner)
-	const modified = ZusUtils.useStore(props.stores.squadServer!, (s) => s.queue.backburnerModified)
+	const items = Zus.useStore(props.stores.squadServer!, (s) => s.queue.backburner)
+	const modified = Zus.useStore(props.stores.squadServer!, (s) => s.queue.backburnerModified)
 	const canWriteQueue = RbacClient.usePermsCheck(RBAC.perm('queue:write', { serverId: serverId })) === null
 	const perms = RbacClient.useSuspendableLoggedInUserPerms()
 	const canRequest = canWriteQueue || RBAC.maxLayerRequests(perms, serverId) !== undefined
 
 	const [isEditing, setIsEditing] = UPClient.useEditingLayerRequestsState(serverId)
-	const numEditors = ZusUtils.useStore(UPClient.Store, (s) => s.layerRequestEditors.size)
+	const numEditors = Zus.useStore(UPClient.Store, (s) => s.layerRequestEditors.size)
 	const [forceSave, setForceSave] = React.useState(false)
 
 	const [editorState, setEditorState] = React.useState<{ open: boolean; itemId: string | null }>({ open: false, itemId: null })
@@ -120,7 +120,7 @@ export default function BackburnerPanel(props: StoresProp) {
 							LayerQueuePrt.Actions.combineBackburnerItems(queueKey, overId, activeId)
 							return
 						}
-						const currentItems = ZusUtils.getState(props.stores.squadServer!).queue.backburner
+						const currentItems = Zus.getState(props.stores.squadServer!).queue.backburner
 						const fromIndex = currentItems.findIndex((item) => item.itemId === activeId)
 						let targetIndex = currentItems.findIndex((item) => item.itemId === overId)
 						if (fromIndex === -1 || targetIndex === -1) return
@@ -131,9 +131,9 @@ export default function BackburnerPanel(props: StoresProp) {
 						return
 					}
 					if (queueSlot && canWriteQueue) {
-						const item = ZusUtils.getState(props.stores.squadServer!).queue.backburner.find((i) => i.itemId === activeId)
+						const item = Zus.getState(props.stores.squadServer!).queue.backburner.find((i) => i.itemId === activeId)
 						if (!item) return
-						const queueList = LayerQueuePrt.Sel.layerList(ZusUtils.getState(props.stores.squadServer!))
+						const queueList = LayerQueuePrt.Sel.layerList(Zus.getState(props.stores.squadServer!))
 						const cursors = LL.dropItemToLLItemCursors(event.over)
 						const resolved = cursors[0] ? LL.resolveCursorIndex(queueList, cursors[0]) : undefined
 						const index = resolved ?? { outerIndex: 0, innerIndex: null }
@@ -149,7 +149,7 @@ export default function BackburnerPanel(props: StoresProp) {
 				if (event.active.type === 'layer-item' && backburnerSlot && canRequest) {
 					// dragged a queue item into the requests: create a template capturing its layer, and move it out of
 					// the queue by removing the original
-					const queueList = LayerQueuePrt.Sel.layerList(ZusUtils.getState(props.stores.squadServer!))
+					const queueList = LayerQueuePrt.Sel.layerList(Zus.getState(props.stores.squadServer!))
 					const item = LL.findItemById(queueList, event.active.id)?.item
 					if (!item || LL.isVoteItem(item) || !item.layerId) return
 					LayerQueuePrt.Actions.addBackburnerItem(queueKey, { filter: BB.templateFromLayer(L.toLayer(item.layerId)) })
@@ -171,7 +171,7 @@ export default function BackburnerPanel(props: StoresProp) {
 		[queueDrop, consumeRequest],
 	)
 
-	const commandSettings = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.commands.requestLayer)
+	const commandSettings = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.commands.requestLayer)
 	const commandExamples = commandSettings ? CMDH.buildExamples('requestLayer', commandSettings, { reasons: [] }) : []
 	const commandExample: CMDH.CommandExample | undefined = commandExamples[0]
 
@@ -413,8 +413,8 @@ function BackburnerRow(
 		onEdit: () => void
 	},
 ) {
-	const item = ZusUtils.useStore(props.stores.squadServer!, LayerQueuePrt.Sel.backburnerItem(props.itemId))
-	const displayedMutation = ZusUtils.useStore(props.stores.squadServer!, (s) =>
+	const item = Zus.useStore(props.stores.squadServer!, LayerQueuePrt.Sel.backburnerItem(props.itemId))
+	const displayedMutation = Zus.useStore(props.stores.squadServer!, (s) =>
 		getDisplayedMutation(LayerQueuePrt.Sel.backburnerItemMutation(props.itemId)(s)),
 	)
 	const loggedInUserId = UsersClient.loggedInUserId
@@ -549,7 +549,7 @@ function TemplateDisplay(props: { filter: F.FilterNode; className?: string }) {
 }
 
 function BackburnerItemDialog(props: StoresProp & { open: boolean; itemId: string | null; onClose: () => void }) {
-	const item = ZusUtils.useStore(
+	const item = Zus.useStore(
 		props.stores.squadServer!,
 		React.useCallback(
 			(s: SquadServerFrame.State) => (props.itemId ? s.queue.backburner.find((i) => i.itemId === props.itemId) : undefined),
@@ -573,7 +573,7 @@ function BackburnerItemDialog(props: StoresProp & { open: boolean; itemId: strin
 
 	function save() {
 		if (!frameKey) return
-		const filter = RequestFrame.Sel.templateFilter(ZusUtils.getState(frameKey))
+		const filter = RequestFrame.Sel.templateFilter(Zus.getState(frameKey))
 		if (filter.type === 'and' && filter.children.length === 0) {
 			toast.warning('Empty request', { description: 'Pick at least one of layer, map, gamemode, version, matchup or a filter' })
 			return
@@ -605,13 +605,13 @@ function BackburnerItemDialog(props: StoresProp & { open: boolean; itemId: strin
 
 function RequestEditor(props: { stores: RequestFrame.KeyProp & Partial<SquadServerFrame.KeyProp> }) {
 	const key = props.stores.backburnerRequest
-	const [activeTab, matchup, preserved] = ZusUtils.useStore(
+	const [activeTab, matchup, preserved] = Zus.useStore(
 		key,
-		ZusUtils.useDeep((s) => [s.activeTab, s.matchup, s.preserved] as const),
+		Zus.useDeep((s) => [s.activeTab, s.matchup, s.preserved] as const),
 	)
-	const matchupSideOptions = ZusUtils.useStore(
+	const matchupSideOptions = Zus.useStore(
 		key,
-		ZusUtils.useDeep((s) => s.matchupSideOptions),
+		Zus.useDeep((s) => s.matchupSideOptions),
 	)
 	// per side and dimension: only values that keep at least one layer possible, given everything else picked
 	const allowedTeamValues = React.useCallback(
@@ -683,20 +683,20 @@ function RequestEditor(props: { stores: RequestFrame.KeyProp & Partial<SquadServ
 function RequestFiltersColumn(props: { stores: RequestFrame.KeyProp & Partial<SquadServerFrame.KeyProp> }) {
 	const key = props.stores.backburnerRequest
 	const filterEntities = FilterEntityClient.useFilterEntities()
-	const poolFilterId = ZusUtils.useStore(props.stores.squadServer ?? null, (s) =>
+	const poolFilterId = Zus.useStore(props.stores.squadServer ?? null, (s) =>
 		s ? (s.settings.saved.queue.mainPool.poolFilter?.filterId ?? null) : null,
 	)
-	const selectableFilterIds = ZusUtils.useStore(
+	const selectableFilterIds = Zus.useStore(
 		props.stores.squadServer ?? null,
-		ZusUtils.useShallow((s) => (s ? s.settings.saved.queue.mainPool.defaultSelectable.map((c) => c.filterId) : [])),
+		Zus.useShallow((s) => (s ? s.settings.saved.queue.mainPool.defaultSelectable.map((c) => c.filterId) : [])),
 	)
-	const extraIds = ZusUtils.useStore(
+	const extraIds = Zus.useStore(
 		key,
-		ZusUtils.useDeep((s) => Array.from(s.appliedFilters.localExtraFilters ?? [])),
+		Zus.useDeep((s) => Array.from(s.appliedFilters.localExtraFilters ?? [])),
 	).filter((id) => !selectableFilterIds.includes(id))
-	const filterStates = ZusUtils.useStore(
+	const filterStates = Zus.useStore(
 		key,
-		ZusUtils.useDeep((s) => Object.fromEntries(s.appliedFilters.filterStates)),
+		Zus.useDeep((s) => Object.fromEntries(s.appliedFilters.filterStates)),
 	)
 
 	const appliedKey: AppliedFiltersPrt.KeyProp = { appliedFilters: key }
@@ -780,9 +780,9 @@ function RequestFiltersColumn(props: { stores: RequestFrame.KeyProp & Partial<Sq
 function RequestMenuField(props: { field: string; stores: RequestFrame.KeyProp }) {
 	const key = props.stores.backburnerRequest
 	const ref = React.useRef<ComparisonHandle>(null)
-	const [comp, possibleValues] = ZusUtils.useStore(
+	const [comp, possibleValues] = Zus.useStore(
 		key,
-		ZusUtils.useDeep((s) => [s.filterMenu.menuItems[props.field], s.filterMenuItemPossibleValues?.[props.field]] as const),
+		Zus.useDeep((s) => [s.filterMenu.menuItems[props.field], s.filterMenuItemPossibleValues?.[props.field]] as const),
 	)
 	if (!comp) return null
 	return (
@@ -794,7 +794,7 @@ function RequestMenuField(props: { field: string; stores: RequestFrame.KeyProp }
 				allowedEnumValues={possibleValues}
 				lockOnSingleOption
 				highlight={F.editableCompHasValue(comp)}
-				onSetAllValuesAllowed={() => ZusUtils.getState(key).resetAllConstraints()}
+				onSetAllValuesAllowed={() => Zus.getState(key).resetAllConstraints()}
 				onSetAllValuesAllowedLabel="Remove all other constraints and select this one"
 				setNode={(update) => RequestFrame.Actions.setMenuComparison(props.stores, props.field, update)}
 			/>
@@ -814,7 +814,7 @@ function RequestMenuField(props: { field: string; stores: RequestFrame.KeyProp }
 }
 
 function MatchingCount(props: { stores: RequestFrame.KeyProp }) {
-	const count = ZusUtils.useStore(props.stores.backburnerRequest, (s) => s.matchingCount)
+	const count = Zus.useStore(props.stores.backburnerRequest, (s) => s.matchingCount)
 	if (count === null) return null
 	return (
 		<span className={cn('mr-auto text-xs', count === 0 ? 'text-amber-500' : 'text-muted-foreground')}>

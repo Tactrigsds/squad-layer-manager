@@ -1,6 +1,3 @@
-import * as Zus from 'zustand'
-import * as ZusMiddle from 'zustand/middleware'
-
 export type ChartTab = 'population' | 'kd' | 'wd'
 export type ChartTimeInterval = 1 | 5 | 10
 // mirrors the ON_PRIMARY_PANEL variants in models/user-presence.ts (kept as a literal union so this module stays dependency-free)
@@ -18,7 +15,7 @@ export type ClientOnlySettingsStore = {
 }
 
 export const Store = Zus.createStore<ClientOnlySettingsStore>()(
-	ZusMiddle.persist<ClientOnlySettingsStore>(
+	Zus.persist<ClientOnlySettingsStore>(
 		() => ({
 			displayTeamsNormalized: true,
 			chartTab: 'population',
@@ -28,7 +25,7 @@ export const Store = Zus.createStore<ClientOnlySettingsStore>()(
 		}),
 		{
 			name: 'settings:v1',
-			storage: ZusMiddle.createJSONStorage(() => localStorage),
+			storage: Zus.createJSONStorage(() => localStorage),
 		},
 	),
 )

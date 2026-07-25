@@ -1,5 +1,5 @@
 import type * as FRM from '@/lib/frame'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type { ConsoleEvent } from '@/models/server-console.models'
 import * as SC from '@/models/server-console.models'
 import * as RPC from '@/orpc.client'
@@ -106,7 +106,7 @@ export namespace Sel {
 
 export namespace Actions {
 	function store(stores: KeyProp) {
-		return ZusUtils.resolveStore<Store>(stores.serverConsole)
+		return Zus.resolveStore<Store>(stores.serverConsole)
 	}
 
 	export function setTab(stores: KeyProp, tab: Tab) {

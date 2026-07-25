@@ -2,13 +2,12 @@ import * as DateFns from 'date-fns'
 import { Loader2 } from 'lucide-react'
 import React from 'react'
 import type * as Rx from 'rxjs'
-import * as Zus from 'zustand'
 
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as MapUtils from '@/lib/map'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as UP from '@/models/user-presence'
 import type * as USR from '@/models/users.models'
 import * as ConfigClient from '@/systems/config.client'
@@ -183,18 +182,18 @@ export type UserPresencePanelProps = {
 }
 
 export default function UserPresencePanel(props: UserPresencePanelProps) {
-	const layerList = ZusUtils.useStore(props.stores?.squadServer ?? null, (state) => (state ? LayerQueuePrt.Sel.layerList(state) : []))
+	const layerList = Zus.useStore(props.stores?.squadServer ?? null, (state) => (state ? LayerQueuePrt.Sel.layerList(state) : []))
 
 	// per-client (not deduped by user): each of a user's tabs/devices shows separately
-	const matchingClientPresence = ZusUtils.useStore(
+	const matchingClientPresence = Zus.useStore(
 		UPClient.Store,
-		ZusUtils.useDeep((state) =>
+		Zus.useDeep((state) =>
 			MapUtils.filter(state.presence, (_clientId, presence) =>
 				props.matchActivity ? props.matchActivity(presence.activityState) : true,
 			),
 		),
 	)
-	const myClientId = ZusUtils.useStore(ConfigClient.Store, (config) => config?.wsClientId)
+	const myClientId = Zus.useStore(ConfigClient.Store, (config) => config?.wsClientId)
 
 	const allUserIds = new Set(Array.from(matchingClientPresence.values(), (p) => p.userId))
 
@@ -318,7 +317,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 	}, [panelId, sortedClientPresence])
 	React.useEffect(() => () => removePanelVisibleClients(panelId), [panelId])
 
-	const clientOrdinalByClientId = ZusUtils.useStore(visibleClientsStore, ZusUtils.useDeep(selectVisibleClientOrdinalByClientId))
+	const clientOrdinalByClientId = Zus.useStore(visibleClientsStore, Zus.useDeep(selectVisibleClientOrdinalByClientId))
 
 	const badgeFor = React.useCallback(
 		(entry: { clientId: string }) => clientOrdinalByClientId.get(entry.clientId),

@@ -9,7 +9,7 @@ import { distinctDeepEquals } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as BB from '@/models/backburner.models'
 import * as CS from '@/models/context-shared'
 import * as EFB from '@/models/editable-filter-builders'
@@ -150,7 +150,7 @@ const setup: Frame['setup'] = (args) => {
 	let baseQueryInput$: Rx.Observable<LQY.BaseQueryInput>
 
 	if (input.squadServer) {
-		baseQueryInput$ = Rx.combineLatest([args.update$, ZusUtils.toObservable(input.squadServer, true)]).pipe(
+		baseQueryInput$ = Rx.combineLatest([args.update$, Zus.toObservable(input.squadServer, true)]).pipe(
 			Rx.map(([[state], [squadServer]]) => {
 				return Sel.baseQueryInput(state, squadServer)
 			}),
@@ -229,7 +229,7 @@ export namespace Sel {
 
 export namespace Actions {
 	export function setCursor(stores: KeyProp, cursor: LL.Cursor | undefined) {
-		ZusUtils.resolveStore<State>(stores.selectLayers).setState({ cursor })
+		Zus.resolveStore<State>(stores.selectLayers).setState({ cursor })
 	}
 }
 

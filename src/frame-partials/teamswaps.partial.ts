@@ -3,7 +3,7 @@ import * as Rx from 'rxjs'
 import type * as FRM from '@/lib/frame'
 import * as ODSM from '@/lib/odsm'
 import { toast } from '@/lib/toast'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswaps.models'
@@ -152,8 +152,8 @@ function initSession(state?: TSW.State, ops?: TSW.Op[]) {
 }
 
 export function initTeamswaps(args: Args) {
-	const set = ZusUtils.toPartialSetter(args.set, 'teamswaps')
-	const get = ZusUtils.toPartialGetter(args.get, 'teamswaps')
+	const set = Zus.toPartialSetter(args.set, 'teamswaps')
+	const get = Zus.toPartialGetter(args.get, 'teamswaps')
 	const serverId = args.input.serverId
 	const presenceEvent$ = new Rx.Subject<UP.PresenceEvent>()
 
@@ -191,7 +191,7 @@ export function initTeamswaps(args: Args) {
 
 export namespace Actions {
 	export function dispatch(stores: KeyProp, newOp: TSW.NewClientOp) {
-		const slice = ZusUtils.toPartialStore(stores.teamswaps, 'teamswaps')
+		const slice = Zus.toPartialStore(stores.teamswaps, 'teamswaps')
 		const op = { ...newOp, opId: TSW.createOpId() }
 		const prev = slice.getState().session
 		const res = ODSM.Client.processOutgoingOps(prev, [op], TSW.reducer)

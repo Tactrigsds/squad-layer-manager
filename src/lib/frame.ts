@@ -1,11 +1,10 @@
 import * as React from 'react'
 import * as Rx from 'rxjs'
-import * as Zus from 'zustand'
 
 import * as Gen from '@/lib/generator'
 import * as Obj from '@/lib/object'
 import * as ReactUtils from '@/lib/react'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 
 type FrameId = symbol
 // default Props is the loose index-signature shape rather than `any` -- `{ frameId } & any` would collapse
@@ -57,8 +56,8 @@ export type SetupArgs<
 	input: I
 	// the instance's own key -- lets setup code call Actions/partial helpers that take keys
 	key: InstanceKeyOfState<Readable>
-	get: ZusUtils.Getter<Readable>
-	set: ZusUtils.Setter<State>
+	get: Zus.Getter<Readable>
+	set: Zus.Setter<State>
 	//                      current,  prev
 	update$: Rx.Observable<[Readable, Readable]>
 	sub: Rx.Subscription
@@ -89,8 +88,8 @@ type FrameInstance = {
 	frameId: FrameId
 	refCount: number
 	store: Zus.StoreApi<FrameTypes['state']>
-	get: ZusUtils.Getter<FrameTypes['state']>
-	set: ZusUtils.Setter<FrameTypes>
+	get: Zus.Getter<FrameTypes['state']>
+	set: Zus.Setter<FrameTypes>
 	update$: Rx.Subject<any>
 	sub: Rx.Subscription
 	input: FrameTypes['input']
@@ -181,7 +180,7 @@ export class FrameManager {
 			}
 
 			// instance.update$ = subject.pipe(Rx.tap({ next: () => instance.lastUsed = Date.now() }))
-			instance.sub.add(ZusUtils.toObservable(instance.store).subscribe(instance.update$))
+			instance.sub.add(Zus.toObservable(instance.store).subscribe(instance.update$))
 			instance.get = () => this.frameInstances.get(directKey)!.store.getState()
 			instance.set = (update) => this.frameInstances.get(directKey)!.store.setState(update)
 			this.frameInstances.set(directKey, instance)

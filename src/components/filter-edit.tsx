@@ -25,7 +25,7 @@ import { assertNever } from '@/lib/type-guards'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as ValidationErrors from '@/lib/validation-errors'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as F from '@/models/filter.models'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
@@ -56,8 +56,8 @@ export function FilterEdit(props: {
 }) {
 	const stores = props.stores
 	// fix refetches wiping out edited state, probably via fast deep equals or w/e
-	const frameState = () => ZusUtils.getState(stores.filterEditor)
-	const useFrame = <O,>(selector: (table: EditFrame.FilterEditor) => O) => ZusUtils.useStore(stores.filterEditor, selector)
+	const frameState = () => Zus.getState(stores.filterEditor)
+	const useFrame = <O,>(selector: (table: EditFrame.FilterEditor) => O) => Zus.useStore(stores.filterEditor, selector)
 
 	const navigate = useNavigate()
 	const router = useRouter()
@@ -164,7 +164,7 @@ export function FilterEdit(props: {
 
 	const permitEdit = !canEditRes?.code
 
-	const [filterValid, filterModified] = useFrame(ZusUtils.useShallow((state) => [state.valid, state.modified]))
+	const [filterValid, filterModified] = useFrame(Zus.useShallow((state) => [state.valid, state.modified]))
 
 	useBlocker({
 		enableBeforeUnload: filterModified || form.state.isDirty,

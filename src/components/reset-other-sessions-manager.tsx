@@ -1,7 +1,7 @@
 import React from 'react'
 
 import { toast } from '@/lib/toast'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as ConfigClient from '@/systems/config.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
@@ -10,9 +10,9 @@ import * as UsersClient from '@/systems/users.client'
 // persistent, dismissable toast offering to reset them (clear their activity, mark them away). The
 // toast dismisses itself once no other client is active -- e.g. after they're reset or disconnect.
 export function ResetOtherSessionsManager() {
-	const myClientId = ZusUtils.useStore(ConfigClient.Store, (config) => config?.wsClientId)
+	const myClientId = Zus.useStore(ConfigClient.Store, (config) => config?.wsClientId)
 	const loggedInUser = UsersClient.useLoggedInUser()
-	const activeOtherCount = ZusUtils.useStore(UPClient.Store, UPClient.Sel.activeOtherClientCount(loggedInUser?.discordId, myClientId))
+	const activeOtherCount = Zus.useStore(UPClient.Store, UPClient.Sel.activeOtherClientCount(loggedInUser?.discordId, myClientId))
 
 	const toastIdRef = React.useRef<string | number | null>(null)
 

@@ -3,7 +3,7 @@ import * as TSWPrt from '@/frame-partials/teamswaps.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as ItemMutations from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswaps.models'
@@ -129,7 +129,7 @@ function getPlayerOppositeTeam(stores: SquadServerFrame.KeyProp, playerId: SM.Pl
 	const matchesResult = MatchHistoryClient.recentMatches$(stores.squadServer.serverId).getValue()
 	if (matchesResult instanceof Promise) return null
 	const currentMatch = matchesResult[matchesResult.length - 1] as MH.MatchDetails | undefined
-	const state = ZusUtils.getState(stores.squadServer)
+	const state = Zus.getState(stores.squadServer)
 	const players = ChatPrt.Sel.chatState(state).players
 	return TSWPrt.getPlayerOppositeTeam(playerId, currentMatch, players)
 }
@@ -148,7 +148,7 @@ export namespace Actions {
 
 	export function swapNext(stores: SquadServerFrame.KeyProp, playerIds: SM.PlayerId[]) {
 		const source = { discordId: UsersClient.loggedInUserId }
-		const state = Sel.localState(ZusUtils.getState(stores.squadServer))
+		const state = Sel.localState(Zus.getState(stores.squadServer))
 		for (const playerId of playerIds) {
 			if (!TSW.canQueue(state, playerId)) continue
 			const toTeam = getPlayerOppositeTeam(stores, playerId)
@@ -191,7 +191,7 @@ export namespace Actions {
 
 	export function clearTeamSwaps(stores: SquadServerFrame.KeyProp, teamId: MH.NormedTeamId) {
 		const source = { discordId: UsersClient.loggedInUserId }
-		const state = Sel.localState(ZusUtils.getState(stores.squadServer))
+		const state = Sel.localState(Zus.getState(stores.squadServer))
 		for (const [playerId, swap_] of state.editedSwaps.entries()) {
 			if (swap_.toTeam !== teamId) continue
 			TSWPrt.Actions.dispatch({ teamswaps: stores.squadServer }, { code: 'remove-player-teamswaps', playerId, source, saved: false })

@@ -23,7 +23,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import { toast } from '@/lib/toast'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as BM from '@/models/battlemetrics.models'
 import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
@@ -92,9 +92,9 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	const flags = bmData && orgFlags ? BM.resolveFlags(bmData.flagIds, orgFlags) : undefined
 	const profile = bmData ? (({ flagIds: _, ...rest }) => rest)(bmData) : null
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
-	const currentMatchEvents = ZusUtils.useStore(
+	const currentMatchEvents = Zus.useStore(
 		squadServerFrameKey,
-		ZusUtils.useShallow((s) =>
+		Zus.useShallow((s) =>
 			currentMatch
 				? ChatPrt.Sel.chatEvents(s).filter(
 						(e) => e.matchId === currentMatch.historyEntryId && (e.type === 'NEW_GAME' || CHAT.hasAssocPlayer(e, playerId)),
@@ -111,15 +111,15 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	const allEvents = [...historicalEvents, ...currentMatchEvents]
 	// while the player is connected we render their full details; once they aren't, only what a RecentPlayer carries
 	// (their ids, and that they're an admin) is still true of them, so team/squad/role drop off rather than going stale.
-	const livePlayer = ZusUtils.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.player(playerId)(s) ?? null)
-	const recentPlayer = ZusUtils.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.recentPlayer(playerId)(s) ?? null)
+	const livePlayer = Zus.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.player(playerId)(s) ?? null)
+	const recentPlayer = Zus.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.recentPlayer(playerId)(s) ?? null)
 	const ids = livePlayer?.ids ?? recentPlayer?.ids
 	const groupColor = usePlayerGroupColor(playerId, livePlayer?.adminGroups ?? recentPlayer?.adminGroups ?? [])
 
 	const connectionStatus = data?.connectionStatus ?? null
 	const elapsed = useElapsed(connectionStatus?.status === 'online' ? connectionStatus.connectedSince : null)
 	const isOnline = !!livePlayer
-	const globalFilterState = ZusUtils.useStore(squadServerFrameKey, ChatPrt.Sel.secondaryFilterState)
+	const globalFilterState = Zus.useStore(squadServerFrameKey, ChatPrt.Sel.secondaryFilterState)
 	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>(globalFilterState)
 	const filteredEvents = allEvents.filter((e) => CHAT.isRenderableInFeed(e) && CHAT.showEventInFeed(e, filterState))
 	const { scrollAreaRef, contentRef, showScrollButton, isAtTop, scrollToBottom, anchorForPrepend } = useTailingScroll()

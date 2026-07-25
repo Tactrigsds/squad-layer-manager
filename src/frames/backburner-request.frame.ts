@@ -8,7 +8,7 @@ import { distinctDeepEquals, sleep } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as BB from '@/models/backburner.models'
 import * as CB from '@/models/constraint-builders'
 import * as EFB from '@/models/editable-filter-builders'
@@ -120,7 +120,7 @@ const setup: Frame['setup'] = (args) => {
 		resetAllConstraints() {
 			LayerFilterMenuPrt.Actions.resetAllFilters({ filterMenu: args.key })
 			AppliedFiltersPrt.Actions.disableAllAppliedFilters({ appliedFilters: args.key })
-			ZusUtils.resolveStore<State>(args.key).setState({ matchup: FB.allowMatchups([{}, {}]) as F.MatchupNode })
+			Zus.resolveStore<State>(args.key).setState({ matchup: FB.allowMatchups([{}, {}]) as F.MatchupNode })
 		},
 	} satisfies LayerFilterMenuPrt.Predicates)
 
@@ -148,7 +148,7 @@ const setup: Frame['setup'] = (args) => {
 		await sleep(0)
 		if (args.sub.closed) return
 		const poolFilter = args.input.squadServer
-			? SquadServerFrame.Sel.settings(ZusUtils.getState(args.input.squadServer)).queue.mainPool.poolFilter
+			? SquadServerFrame.Sel.settings(Zus.getState(args.input.squadServer)).queue.mainPool.poolFilter
 			: null
 		const seedFilterIds = parts.filterIds.filter((id) => id !== poolFilter?.filterId)
 		const seedExcludedIds = parts.excludedFilterIds.filter((id) => id !== poolFilter?.filterId)
@@ -158,7 +158,7 @@ const setup: Frame['setup'] = (args) => {
 				: poolFilter.mode === 'include'
 					? parts.filterIds.includes(poolFilter.filterId)
 					: parts.excludedFilterIds.includes(poolFilter.filterId)
-		ZusUtils.resolveStore<State>(args.key).setState((state) => {
+		Zus.resolveStore<State>(args.key).setState((state) => {
 			const filterStates = new Map(state.appliedFilters.filterStates)
 			for (const id of filterStates.keys()) filterStates.set(id, 'disabled')
 			for (const id of seedFilterIds) filterStates.set(id, 'regular')
@@ -200,7 +200,7 @@ const setup: Frame['setup'] = (args) => {
 
 	const squadServer = args.input.squadServer
 	const stateAndServer$: Rx.Observable<readonly [State, SquadServerFrame.State | undefined]> = squadServer
-		? Rx.combineLatest([args.update$, ZusUtils.toObservable(squadServer, true)]).pipe(
+		? Rx.combineLatest([args.update$, Zus.toObservable(squadServer, true)]).pipe(
 				Rx.map(([[state], [server]]) => [state, server] as const),
 			)
 		: args.update$.pipe(Rx.map(([state]) => [state, undefined] as const))
@@ -374,9 +374,7 @@ export namespace Sel {
 		}
 		// the pool checkbox writes pool membership into the template itself: 'regular' pins the request to the
 		// pool, 'inverted' to outside it, 'disabled' leaves it unconstrained
-		const poolFilter = state.squadServer
-			? SquadServerFrame.Sel.settings(ZusUtils.getState(state.squadServer)).queue.mainPool.poolFilter
-			: null
+		const poolFilter = state.squadServer ? SquadServerFrame.Sel.settings(Zus.getState(state.squadServer)).queue.mainPool.poolFilter : null
 		const poolApplyAs = state.appliedFilters.poolApplyAs
 		if (poolFilter && poolApplyAs !== 'disabled') {
 			const wantsPoolMatches = (poolFilter.mode === 'include') === (poolApplyAs === 'regular')
@@ -405,11 +403,11 @@ export namespace Actions {
 	}
 
 	export function setActiveTab(stores: KeyProp, activeTab: IdentityTab) {
-		ZusUtils.resolveStore<State>(stores.backburnerRequest).setState({ activeTab })
+		Zus.resolveStore<State>(stores.backburnerRequest).setState({ activeTab })
 	}
 
 	export function updateMatchup(stores: KeyProp, update: React.SetStateAction<F.EditableMatchupNode>) {
-		ZusUtils.resolveStore<State>(stores.backburnerRequest).setState((state) => ({
+		Zus.resolveStore<State>(stores.backburnerRequest).setState((state) => ({
 			matchup: typeof update === 'function' ? update(state.matchup) : update,
 		}))
 	}

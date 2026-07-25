@@ -11,7 +11,7 @@ import * as Obj from '@/lib/object'
 import * as ODSM from '@/lib/odsm'
 import * as RSel from '@/lib/reselect'
 import * as SetUtils from '@/lib/set'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as BAL from '@/models/balance-triggers.models'
 import * as BM from '@/models/battlemetrics.models'
 import * as CHAT from '@/models/chat.models'
@@ -116,7 +116,7 @@ const namespaces = {
 	ODSM,
 	RSel,
 	SetUtils,
-	ZusUtils,
+	Zus,
 
 	// misc
 	Im,

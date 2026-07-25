@@ -7,7 +7,7 @@ import * as Obj from '@/lib/object'
 import type { SettingChange } from '@/lib/settings-diff'
 import { diffSettings } from '@/lib/settings-diff'
 import { toast } from '@/lib/toast'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
@@ -142,7 +142,7 @@ function deriveComputed(state: SettingsEditor): Pick<SettingsEditor, 'changes' |
 const setup: Frame['setup'] = (args) => {
 	const input = args.input
 	const get = args.get
-	const set = args.set as ZusUtils.Setter<SettingsEditor>
+	const set = args.set as Zus.Setter<SettingsEditor>
 
 	const isNew = input.kind === 'new-server'
 	set({
@@ -268,7 +268,7 @@ export function deniedSettingPaths(state: SettingsEditor, perms: RBAC.Permission
 
 export namespace Actions {
 	function store(stores: KeyProp) {
-		return ZusUtils.resolveStore<SettingsEditor>(stores.settingsEditor)
+		return Zus.resolveStore<SettingsEditor>(stores.settingsEditor)
 	}
 
 	export function setDraft(stores: KeyProp, draft: any) {
@@ -411,8 +411,8 @@ export namespace Actions {
 
 // a ValueState (Rx.Observable + getValue) over the section's draft, for SettingsForm's uncontrolled-input data flow
 export function draftValueState(key: Key): Rx.Observable<any> & { getValue: () => any } {
-	const store = ZusUtils.resolveStore<SettingsEditor>(key)
-	const obs = ZusUtils.toObservable(store).pipe(
+	const store = Zus.resolveStore<SettingsEditor>(key)
+	const obs = Zus.toObservable(store).pipe(
 		Rx.map(([s]) => s.draft),
 		Rx.distinctUntilChanged(),
 	)
@@ -422,7 +422,7 @@ export function draftValueState(key: Key): Rx.Observable<any> & { getValue: () =
 // subscribe to a dynamic list of section instances and derive a combined value; the snapshot is cached on the
 // section states' identities so an unrelated render never produces a fresh (tearing) result
 export function useCombinedSections<R>(keys: Key[], combine: (states: SettingsEditor[]) => R): R {
-	const stores = React.useMemo(() => keys.map((k) => ZusUtils.resolveStore<SettingsEditor>(k)), [keys])
+	const stores = React.useMemo(() => keys.map((k) => Zus.resolveStore<SettingsEditor>(k)), [keys])
 	const combineRef = React.useRef(combine)
 	combineRef.current = combine
 	const cache = React.useRef<{ states: SettingsEditor[]; result: R } | null>(null)
