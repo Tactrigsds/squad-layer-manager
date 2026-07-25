@@ -898,6 +898,22 @@ export function resolveTriggerArgs(cmdId: CommandId, template: string): TriggerA
 	return { code: 'ok', params }
 }
 
+// The placeholder that fills each of a command's arguments, for showing an admin what a template can refer to. Derived
+// by resolving a generated full template rather than by walking the arg list, so what's advertised is exactly what
+// validation accepts (argTemplateSignature covers every command in the tests).
+export function argTemplateSignature(
+	cmdId: CommandId,
+	requiredReasonActions: readonly AAR.AdminActionType[] = [],
+): { ref: string; arg: string }[] {
+	const args = COMMAND_DECLARATIONS[cmdId].args as readonly ArgDef[]
+	// one placeholder per argument, in order: every kind takes a single word except the rest kinds, which take the
+	// remainder, and squad, whose optional leading team is left out
+	const template = args.map((def, i) => REST_KINDS.includes(def.kind) ? `{{rest${i + 1}}}` : `{{arg${i + 1}}}`).join(' ')
+	const res = resolveTriggerArgs(cmdId, template)
+	if (res.code !== 'ok') return []
+	return res.params.map((p) => ({ ref: `{{${p.ref.name}}}`, arg: formatArg(p.def, requiredReasonActions) }))
+}
+
 // What a caller types to run a command through this trigger. A plain trigger takes the command's own signature; one
 // with an args template takes only what that template leaves open, and a placeholder with a default reads as optional
 // even where the argument it fills is required, since omitting the word still leaves the argument filled.

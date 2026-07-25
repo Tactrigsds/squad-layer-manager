@@ -115,6 +115,10 @@ command aliases used to be:
 `{{arg1}}`, `{{arg2}}` and so on are single words typed after the trigger. `{{restN}}` is word N onwards joined by
 spaces, and `{{rest}}` is every word. Use `{{restN}}` for anything that can be more than one word, such as a reason.
 
+Once a trigger has pinned arguments, the command's card in Settings > In-game Commands shows which placeholder fills
+which argument (`{{arg1}} <player>  {{arg2}} <duration>  {{rest3}} <reason|message>`), including whether each one is
+required under the current reason settings.
+
 A word that is left out renders as nothing and its token drops out, which is what makes it optional: `/to2h Alice`
 runs `/timeout Alice 2h` with no reason. `{{^arg2}}fallback{{/arg2}}` puts something in its place instead. Words the
 template never mentions are ignored.

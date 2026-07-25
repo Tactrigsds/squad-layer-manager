@@ -270,6 +270,35 @@ describe('parseCommand', () => {
 	})
 })
 
+describe('argTemplateSignature', () => {
+	it('names the placeholder that fills each argument', () => {
+		expect(CMD.argTemplateSignature('timeout')).toEqual([
+			{ ref: '{{arg1}}', arg: '<player>' },
+			{ ref: '{{arg2}}', arg: '<duration>' },
+			{ ref: '{{rest3}}', arg: '[reason|message]' },
+		])
+	})
+
+	it('reflects the configured reason requirement', () => {
+		expect(CMD.argTemplateSignature('timeout', ['timeout']).at(-1)).toEqual({ ref: '{{rest3}}', arg: '<reason|message>' })
+	})
+
+	it('is empty for a command that takes no arguments', () => {
+		expect(CMD.argTemplateSignature('getSlmUpdatesEnabled')).toEqual([])
+	})
+
+	// what the settings editor advertises has to be a template an admin can actually save, for every command
+	it('produces a template that resolves, for every command', () => {
+		for (const id of CMD.COMMAND_IDS) {
+			const template = CMD.argTemplateSignature(id).map((p) => p.ref).join(' ')
+			const res = CMD.resolveTriggerArgs(id, template)
+			expect(res.code, `${id}: ${res.code === 'ok' ? '' : res.msg}`).toBe('ok')
+			expect(CMD.argTemplateSignature(id).length, `${id} advertises no placeholders`)
+				.toBe(CMD.COMMAND_DECLARATIONS[id].args.length)
+		}
+	})
+})
+
 describe('resolveTriggerArgs', () => {
 	// the shape migration 0080 had to drop: the pinned argument sits between two the caller types
 	it('maps placeholders onto the args they fill', () => {
